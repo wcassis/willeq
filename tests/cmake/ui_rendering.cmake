@@ -560,6 +560,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_alpha_blend_companion DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# T484 (board B726): the sky dome's time-of-day vertex tint reaches SOLID3D_FS
+# in R,G,B order. Real sky.s3d / sky.ini / sky.eqe1 through the real
+# SkyRenderer on a headless GLES2 device; self-skips without the device or the
+# assets. See refactor/T484_sky_colour_mismatch.md.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_sky_dome_tint_channel_order
+        test_sky_dome_tint_channel_order.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_sky_dome_tint_channel_order PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_sky_dome_tint_channel_order GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_sky_dome_tint_channel_order DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T417 (board B300): pixel proof that the SECOND particle sheet -- the spell
 # sprite atlas -- reaches the point sprite and that a cell index selects the
 # right cell on it. Same headless-GLES2 idiom and self-skip as the two above;

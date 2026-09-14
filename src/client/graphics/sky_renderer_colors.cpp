@@ -19,6 +19,7 @@
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/sky_config.h"
+#include "client/graphics/gles2_vertex_color.h"
 #include "common/logging.h"
 #include <cmath>
 #include <algorithm>
@@ -254,12 +255,17 @@ void SkyRenderer::updateSkyLayerColors() {
     }
 
     // Apply tint to custom dome mesh vertex colors
-    // Set vertex RGB to tint color while preserving per-vertex alpha (horizon fade)
+    // Set vertex RGB to tint color while preserving per-vertex alpha (horizon fade).
+    // T484 (B726): through toGles2VertexColor(), because the GLES2 driver uploads
+    // SColor's stored bytes unconverted and the shader would otherwise receive
+    // the tint with red and blue exchanged -- a tan daylight sky. See the header.
     if (skyDomeMeshBuffer_) {
+        const irr::video::SColor vertexTint = toGles2VertexColor(tint);
         for (irr::u32 i = 0; i < skyDomeMeshBuffer_->Vertices.size(); ++i) {
             irr::video::S3DVertex& vert = skyDomeMeshBuffer_->Vertices[i];
             irr::u32 existingAlpha = vert.Color.getAlpha();
-            vert.Color = irr::video::SColor(existingAlpha, tint.getRed(), tint.getGreen(), tint.getBlue());
+            vert.Color = vertexTint;
+            vert.Color.setAlpha(existingAlpha);
         }
         skyDomeMeshBuffer_->setDirty(irr::scene::EBT_VERTEX);
     }

@@ -10446,12 +10446,21 @@ Media and every number: `review/T478/README.md`; the plan's Review.
   horizontal (sheet `review/T478/sheets/T478_held_IT10_idle_oracle_top_fable_bottom.png`).
   Also set A: the official blade runs diagonally down and forward from the fist,
   fable's straight down along the leg. Found by T478.
-- **B726** (A, *unconfirmed*) **fable's qeynos2 sky and distant trees are drawn
+- ~~**B726** (A, *unconfirmed*) **fable's qeynos2 sky and distant trees are drawn
   wrongly at daylight.** In every T478 fable frame (x86 `build-gles2`,
   `--eqe1-path`, `#set time 11 0`) the sky is a tan/orange mottled texture and the
   distant trees are pale white silhouettes; the official client at the same spot and
   time shows a blue sky with clouds and green trees. Not investigated (outside
-  territory). Found by T478.
+  territory). Found by T478.~~ **STRUCK T484 (`task/T484-sky-colour`, offline).**
+  The SKY half was one defect: `SkyRenderer::updateSkyLayerColors()` wrote the
+  time-of-day tint into the dome's vertex colours and the GLES2 driver uploads
+  `SColor`'s stored bytes unconverted, so SOLID3D_FS received the 11:00 tint
+  (140,175,220) as (220,175,140). Measured headless on the real assets through
+  the real `SkyRenderer`: dome (126.0,117.3,104.0) before, against T478's live
+  (127,118,104); (80.2,117.3,163.6) after. Pinned by
+  `tests/test_sky_dome_tint_channel_order.cpp`. The TREES half is not the sky
+  and moves to **B782**; the live confirmation at T478's pose is **B783**; the
+  driver convention the fix works around is **B780**.
 - **B727** (P) **`#equipitem` is not a command on this server** ("Command '#equipitem
   14' not recognized"), so an official-client held set cannot be changed in world
   with GM commands: `#summonitem` lands on the cursor and there is no equip. T478
@@ -10468,3 +10477,47 @@ Media and every number: `review/T478/README.md`; the plan's Review.
   imported nothing; the row-count diff caught it and the lock was kept. Pipe a dump
   with a plain `ssh` (T478's `t478_restore_v2.sh`), and count the rows after.
   Found by T478.
+
+## Added 2026-09-14 by T484 (the daylight sky's vertex tint, B726)
+
+- **B780** (C) `docker/irrlicht-drm/COpenGLES2Driver.cpp`
+  `drawVertexPrimitiveList()` + the `drawMeshBuffer()` VBO path -- **every vertex
+  colour reaches the GLES2 shaders with red and blue exchanged.** Both paths give
+  GL the four bytes at `S3DVertex` offset 24 as `GL_UNSIGNED_BYTE` RGBA; an
+  `irr::video::SColor` is a u32 0xAARRGGBB, stored B,G,R,A on a little-endian host.
+  MEASURED T484 (headless GLES2, `SkyDomeTintChannelOrderTest.DriverDeliversVertexColourBytesInMemoryOrder`):
+  a pure-red vertex colour over `normalsky` reads (0,0,190). Grey colours are
+  immune, which is why it went unseen. T484 compensated for the SKY only
+  (`include/client/graphics/gles2_vertex_color.h`) and did NOT touch the driver,
+  because **the zone shaders read `aColor.rgb` as baked light through the same
+  upload** (`zone_geometry.cpp` `bakedVertexColor()` packs it as `SColor(A,R,G,B)`,
+  and qeynos2's baked means are B 26.8 / G 53.5 / R 53.1 per
+  `test_baked_vertex_lighting.cpp`), so on the GPU zone baked light is B/R-swapped
+  today, and T405/T428's live-solved lighting constants were solved WITH that swap.
+  *Unconfirmed* for the zone path: T484 did not render a baked-light mesh. Other
+  non-grey built-in-program consumers found by grep (not rendered): the
+  tumbleweed per-vertex colours, the boids and `ParticleManager` billboard quads,
+  the door placeholder meshes (`door_manager_mesh.cpp`) and `detail_chunk.cpp`.
+  Closes on Will's call between fixing the driver (one place, then re-solving the
+  lighting constants live, the B445 queue) and a per-consumer helper like T484's.
+  If the driver is fixed, T484's test fails by design and the helper goes.
+- **B781** (A, *unconfirmed*) `src/client/graphics/sky_renderer_colors.cpp`
+  `SkyRenderer::calculateSkyColors()` -- **the time-of-day tint table is invented,
+  not fitted to the oracle.** With the channel order fixed the headless zenith
+  reads (80.2,117.3,163.6); T478's official sky crop is (93,135,172) and
+  `normalsky.bmp` alone is (147,172,190). Whether the official client tints the
+  dome at all at 11:00, and by what, is unmeasured; the sky crop is also a blend
+  of dome, clouds and horizon fade, so the two numbers are not directly
+  comparable. Closes with a live A/B of the sky crop at several hours against the
+  oracle (lock), after B783. Found by T484.
+- **B782** (A, *unconfirmed*) **the distant qeynos2 trees are pale in fable** --
+  B726's second half. T478 h160 sheet canopy crop: fable (138,153,160), official
+  (47,63,54). NOT the sky: fog starts at 250 (T478 run.log `Fog: start=250,
+  end=300`) with the trees much nearer, and the dome is drawn with depth write off
+  behind them. The 160 trees are wind-shader objects (run.log "fixup pass ... trees
+  found=160, wind applied=160"). Not investigated (object/tree rendering is outside
+  T484's territory). Found by T478, narrowed by T484.
+- **B783** (P) **T484's sky fix has no live frame at T478's pose** -- Leg B, lock.
+  Re-take T478's h160 Chase still on a tip with T484 merged (`--eqe1-path`, `#set
+  time 11 0`, `#set weather 0`) and report the same sky crop beside the official
+  (93,135,172). The offline proof is `review/T484/`. Found by T484.
