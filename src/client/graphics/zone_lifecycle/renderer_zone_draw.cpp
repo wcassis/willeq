@@ -2,6 +2,7 @@
 #include "client/graphics/zone_lifecycle/zone_lifecycle_component.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/renderer_zone_merge.h"
+#include "client/graphics/work_priority.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <chrono>

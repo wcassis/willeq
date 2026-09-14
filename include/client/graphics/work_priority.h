@@ -16,12 +16,15 @@ namespace Graphics {
 // removed enumerator leaves a gap rather than renumbering its successors.
 // T477 (board B690): value 1 was ZoneTexture, whose only producers were the
 // async texture-arrival path T475 deleted.
+// T480 (board B711): values 2, 4 and 5 were Door, EntityTexture and
+// LightEffect, which no production code ever named.
 enum class AssetType : uint8_t {
     ZoneMesh      = 0,  // Highest priority within depth
-    Door          = 2,
+    // 1: ZoneTexture (T477)
+    // 2: Door (T480)
     EntityMesh    = 3,
-    EntityTexture = 4,
-    LightEffect   = 5,
+    // 4: EntityTexture (T480)
+    // 5: LightEffect (T480)
     Icon          = 6,  // Non-spatial UI asset (lowest)
 };
 

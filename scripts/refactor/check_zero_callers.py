@@ -729,10 +729,6 @@ EXEMPT_GROUPS = {
     ("PlayerState", "setCHA"): "B496",
     ("PlayerState", "setCharacterId"): "B496",
     ("PlayerState", "setDEX"): "B496",
-    # T474: unmasked, not new. The census matches by name, and the one "use" of
-    # this name was CameraController::adjustFollowDistance()'s call to its own
-    # setFollowDistance() -- deleted with the follow camera (board B650).
-    ("PlayerState", "setFollowDistance"): "B496",
     ("PlayerState", "setINT"): "B496",
     ("PlayerState", "setMovementSequence"): "B496",
     ("PlayerState", "setSTA"): "B496",

@@ -27,17 +27,20 @@ TEST(WorkPriorityKey, DepthDominatesAssetType) {
 
 TEST(WorkPriorityKey, SameDepthAssetTypeOrdering) {
     auto zoneMesh = WorkPriorityKey::make(0, AssetType::ZoneMesh);
-    auto door     = WorkPriorityKey::make(0, AssetType::Door);
     auto entMesh  = WorkPriorityKey::make(0, AssetType::EntityMesh);
-    auto entTex   = WorkPriorityKey::make(0, AssetType::EntityTexture);
-    auto light    = WorkPriorityKey::make(0, AssetType::LightEffect);
     auto icon     = WorkPriorityKey::make(0, AssetType::Icon);
 
-    EXPECT_LT(zoneMesh.value, door.value);
-    EXPECT_LT(door.value, entMesh.value);
-    EXPECT_LT(entMesh.value, entTex.value);
-    EXPECT_LT(entTex.value, light.value);
-    EXPECT_LT(light.value, icon.value);
+    EXPECT_LT(zoneMesh.value, entMesh.value);
+    EXPECT_LT(entMesh.value, icon.value);
+}
+
+// T477/T480: deleted enumerators left gaps, so the surviving values did not
+// move. A renumbering would still order correctly and pass the case above, so
+// the values are pinned here.
+TEST(WorkPriorityKey, SurvivingAssetTypeValuesAreUnchanged) {
+    EXPECT_EQ(static_cast<uint8_t>(AssetType::ZoneMesh), 0u);
+    EXPECT_EQ(static_cast<uint8_t>(AssetType::EntityMesh), 3u);
+    EXPECT_EQ(static_cast<uint8_t>(AssetType::Icon), 6u);
 }
 
 TEST(WorkPriorityKey, SameDepthSameTypeDistanceTiebreaker) {
@@ -78,12 +81,12 @@ TEST(WorkPriorityKey, NegativeDistanceSqClamped) {
 }
 
 TEST(WorkPriorityKey, EqualityAndInequality) {
-    auto a = WorkPriorityKey::make(1, AssetType::Door, 50.0f);
-    auto b = WorkPriorityKey::make(1, AssetType::Door, 50.0f);
+    auto a = WorkPriorityKey::make(1, AssetType::EntityMesh, 50.0f);
+    auto b = WorkPriorityKey::make(1, AssetType::EntityMesh, 50.0f);
     EXPECT_TRUE(a == b);
     EXPECT_FALSE(a != b);
 
-    auto c = WorkPriorityKey::make(2, AssetType::Door, 50.0f);
+    auto c = WorkPriorityKey::make(2, AssetType::EntityMesh, 50.0f);
     EXPECT_TRUE(a != c);
     EXPECT_FALSE(a == c);
 }
@@ -96,17 +99,17 @@ TEST(WorkPriorityKey, SortVectorByPriority) {
     std::vector<WorkPriorityKey> keys = {
         WorkPriorityKey::make(2, AssetType::ZoneMesh),
         WorkPriorityKey::make(0, AssetType::Icon),
-        WorkPriorityKey::make(1, AssetType::EntityTexture),
+        WorkPriorityKey::make(1, AssetType::EntityMesh),
         WorkPriorityKey::make(0, AssetType::ZoneMesh),
         WorkPriorityKey::makeNonSpatial(AssetType::Icon),
     };
 
     std::sort(keys.begin(), keys.end());
 
-    // Expected order: depth0/ZoneMesh, depth0/Icon, depth1/EntTex, depth2/ZoneMesh, nonSpatial/Icon
+    // Expected order: depth0/ZoneMesh, depth0/Icon, depth1/EntMesh, depth2/ZoneMesh, nonSpatial/Icon
     EXPECT_EQ(keys[0], WorkPriorityKey::make(0, AssetType::ZoneMesh));
     EXPECT_EQ(keys[1], WorkPriorityKey::make(0, AssetType::Icon));
-    EXPECT_EQ(keys[2], WorkPriorityKey::make(1, AssetType::EntityTexture));
+    EXPECT_EQ(keys[2], WorkPriorityKey::make(1, AssetType::EntityMesh));
     EXPECT_EQ(keys[3], WorkPriorityKey::make(2, AssetType::ZoneMesh));
     EXPECT_EQ(keys[4], WorkPriorityKey::makeNonSpatial(AssetType::Icon));
 }
@@ -116,11 +119,11 @@ TEST(WorkPriorityKey, SortVectorByPriority) {
 // ===========================================================================
 
 TEST(WorkPriorityKey, BitLayout) {
-    auto key = WorkPriorityKey::make(3, AssetType::Door, 0.0f);
+    auto key = WorkPriorityKey::make(3, AssetType::EntityMesh, 0.0f);
     // Depth 3 in bits 31-24 = 0x03000000
-    // Door (2) in bits 23-20 = 0x00200000
+    // EntityMesh (3) in bits 23-20 = 0x00300000
     // Distance 0 in bits 19-0 = 0x00000000
-    EXPECT_EQ(key.value, 0x03200000u);
+    EXPECT_EQ(key.value, 0x03300000u);
 }
 
 TEST(WorkPriorityKey, BitLayoutWithDistance) {

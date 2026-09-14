@@ -9697,7 +9697,15 @@ B691–B699 unused.
 
 ## Added 2026-09-14 by T477 (upload leftovers, shared /tmp names)
 
-- **B710** (B, hygiene) **Four renderer headers include `work_priority.h` and
+- ~~**B710**~~ **CLOSED by T480.** `renderer_types.h`, `renderer_draw_types.h`
+  and `renderer_event_receiver.h` no longer include `gpu_upload_thread.h` or
+  `work_priority.h`, and `irrlicht_renderer.h` no longer includes
+  `work_priority.h`. Its `gpu_upload_thread.h` include stays because it is live.
+  `renderer_zone_draw.cpp` and `renderer_zone_stream.cpp` now include
+  `work_priority.h` directly. The full `build/` tree (client, tests and every
+  tool target) and the ARM build compiled with all four removed at once.
+  Original entry:
+  **Four renderer headers include `work_priority.h` and
   do not use it; three of them include `gpu_upload_thread.h` and do not use it
   either.** `include/client/graphics/renderer_types.h`,
   `renderer_draw_types.h` and `renderer_event_receiver.h` include both and name
@@ -9712,7 +9720,16 @@ B691–B699 unused.
   B690 named only the cache TUs, and these are hot shared headers. Found by
   T477 (census: grep for each header name and each symbol over `src/`,
   `include/`, `tests/`, `tools/`, `benchmarks/`).
-- **B711** (B, unreached) **Three more `AssetType` enumerators have no
+- ~~**B711**~~ **CLOSED by T480.** `Door` (2), `EntityTexture` (4) and
+  `LightEffect` (5) are deleted and left as commented gaps. `ZoneMesh` = 0,
+  `EntityMesh` = 3 and `Icon` = 6 keep their values, and the new
+  `WorkPriorityKey.SurvivingAssetTypeValuesAreUnchanged` pins them. The three
+  values were not positionally significant. Nothing casts to `AssetType`,
+  switches over it, or indexes a table with it. The key is only compared, in
+  `GPUUploadThread` and `BackgroundThreadPool`. The only decode of bits 23-20
+  is the test's own. `BitLayout`, `EqualityAndInequality` and
+  `SortVectorByPriority` now use `EntityMesh`. Original entry:
+  **Three more `AssetType` enumerators have no
   production user.** `Door`, `EntityTexture` and `LightEffect`
   (`include/client/graphics/work_priority.h`) are named only by
   `tests/test_work_priority.cpp`. The live ones are `ZoneMesh`
@@ -10230,7 +10247,14 @@ unused.
   Leg B stopped): a fresh oracle h288 grab, a crop chosen for that view, a
   genuinely second spot, and B681's second race. Found by T474.
 
-- **B684** (B) **`PlayerState::setFollowDistance()` has no caller, and a name
+- ~~**B684**~~ **CLOSED by T480.** `PlayerState::setFollowDistance()` is deleted,
+  and so is its `check_zero_callers.py` EXEMPT row. The cascade stopped at once.
+  `followDistance()` and `m_followDistance` are not unreached: the follow logic
+  in `movement_update.cpp` and `movement_component.cpp` reads them. The field
+  is not write-only either, so it stays. It now always holds its 10.0f
+  initializer. The original entry's "rest of that unreached state" was wrong
+  about the getter. Original entry:
+  **`PlayerState::setFollowDistance()` has no caller, and a name
   collision hid it.** The zero-caller census matches by name; its one "use" was
   `CameraController::adjustFollowDistance()` calling the controller's own
   `setFollowDistance()`, which T474 deleted with the follow camera. T474 added it

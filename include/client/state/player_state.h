@@ -150,7 +150,6 @@ public:
     void clearFollowTarget() { m_followTargetId = 0; m_followTarget.clear(); }
     bool isFollowing() const { return m_followTargetId != 0; }
     float followDistance() const { return m_followDistance; }
-    void setFollowDistance(float dist) { m_followDistance = dist; }
 
     // T343 (board B032): the four keyboard-movement flags and their eight
     // accessors were deleted here with the game-side route that was their only

@@ -48,7 +48,6 @@
 #include "client/graphics/background_thread_pool.h"
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/gpu_upload_thread.h"
-#include "client/graphics/work_priority.h"
 #include "client/input/hotkey_manager.h"
 
 #include "client/graphics/renderer_context.h"

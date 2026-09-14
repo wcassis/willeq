@@ -2,6 +2,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/entity_prep_worker.h"
+#include "client/graphics/work_priority.h"
 #include "common/logging.h"
 #include <fmt/format.h>
 #include <algorithm>
