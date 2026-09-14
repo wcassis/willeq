@@ -10064,23 +10064,35 @@ Evidence for every entry below is in `review/T466/` (README names each file).
 
 ## Added 2026-09-14 by T472 (held items and model facing, Leg A)
 
-- **B660** (A, *unconfirmed*) **A hierarchical item whose skeleton does not name
-  its meshes per bone still falls back to the name rule, WITHOUT its rest DAG
-  transforms.** `resolveEquipmentActorGeometry()` walks 0x14 -> 0x2D and 0x14 ->
-  0x11 -> 0x10 bone `modelRef`s. T472's census: 1,149 IT actors, 1,041 matched by
-  name, 773 resolved by the chain, 19 by the chain only (now indexed), 89 by
-  neither. So up to ~287 actors are drawn from the name rule alone, pieces
-  un-posed relative to each other -- e.g. `IT61_HS_DEF` (flags 0x202, 7 bones),
-  whose 0x10 carries the 0x200 mesh list `WldLoader` does not keep per bone.
-  Confirm by rendering IT61 and one other multi-bone item. Found by T472.
+- ~~**B660**~~ **CLOSED by T476.** Skinned items drew with every vertex piece at
+  its own bone's origin. The cause: their 0x10 (flag 0x200) lists the skinned mesh
+  AFTER its bones, `parseFragment10()` never read that list, so the mesh was found
+  only by name and no rest pose applied. `SkeletonTrack::meshRefs` now holds it and
+  `resolveEquipmentActorGeometry()` places each vertex piece by its bone's
+  accumulated rest transform. Census (`review/T476/census/`): 1,081 index items,
+  before 736 chain / 266 name-only / 79 unresolved, after 735 chain / 346 skinned /
+  0 / 0; 282 of 286 skinned actors were wrong (4 have an identity rest pose).
+  Pinned by `HeldItemTest.SkinnedItemIsPlacedByItsSkeletonRestPose`,
+  `HeldItemTest.EverySkinnedItemIsPlacedByItsSkeletonRestPose` and
+  `EquipmentItemCensus.EveryItActorIsClassified`. No live look yet.
 
-- **B661** (A, *unconfirmed*) **Not every item's long axis is its +X.** IT10
-  spans z -3.35..0.25 about its origin (centre z -1.64) and only x -0.04..0.07,
-  so under the one held-item transform it lies along R_POINT's Z (horizontal at
-  idle), where IT1's blade hangs down. Whether the official client holds IT10
-  that way is unmeasured; before T472 every item was forced along X by the grip
-  heuristic, which was wrong in a different way. Confirm with an oracle capture
-  of an IT10 item (T472 Leg B, set B/C). Found by T472.
+- **B661** (A, *unconfirmed*, narrowed by T476 -- **STOP hit**) **Not every
+  item's long axis is its +X, and no rule from the S3D data says which way to
+  turn it.** IT10 spans z -3.35..0.25 about its origin and holds along R_POINT's
+  Z. T476 took the census and stopped before writing an axis rule. Evidence
+  (`review/T476/census/equip_census_after_b660.csv`, the 1,081 index items):
+  - no frame to derive from: neither 0x14 nor 0x2D carries a transform, so the
+    mesh's own axes are the only frame the item has;
+  - the extent ratio (longest / next) is continuous, with no gap: 621 items are
+    below 2 and the 1.0-6+ histogram has no empty bin, so no threshold separates
+    "long" from "compact" without choosing one by argument;
+  - the shields must not move but disagree with each other: IT200-IT202 read X-
+    (ratios 1.46, 1.00, 1.18) and IT203 reads Z+ at 1.003;
+  - the elongated Z class (109 items) is mostly armour-family archives (lgequip
+    56, lgequip_amr 29, lgequip2 13) and only 4 are used by a database item, so a
+    rule written for IT10 would also turn items that may never be held.
+  Needs the oracle: capture an IT10 item held by the official client (T472 Leg B,
+  set B/C) before any axis change. Found by T472.
 
 - **B662** (P) **There is no scripted offline capture of an IN-WORLD entity with
   held items.** `tools/model_viewer` is interactive only (F12 writes
@@ -10091,4 +10103,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   paperdoll. Found by T472.
 
 B663–B669 unused.
+
+T476 (2026-09-14) closed B660, narrowed B661 and added no entries; B700–B709
+unused.
 

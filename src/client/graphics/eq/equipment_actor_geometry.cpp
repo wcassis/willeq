@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cmath>
 #include <limits>
+#include <unordered_map>
 
 namespace EQT {
 namespace Graphics {
@@ -20,19 +21,46 @@ std::shared_ptr<ZoneGeometry> meshForReference(const WldLoader& wld, uint32_t re
     return wld.getGeometryByFragmentIndex(it->second.geometryFragRef);
 }
 
-// Appends `src` to `out`, centre first, then `xf` (EQ space), remapping its
-// texture indices into `out`'s own texture list.
-void appendMesh(ZoneGeometry& out, const ZoneGeometry& src, const BoneMat4& xf) {
+// True when `src`'s vertex pieces cover its vertices exactly and every piece
+// names a bone of a skeleton with `boneCount` bones.
+bool piecesFit(const ZoneGeometry& src, size_t boneCount) {
+    if (src.vertexPieces.empty()) return false;
+    size_t covered = 0;
+    for (const VertexPiece& p : src.vertexPieces) {
+        if (p.boneIndex >= boneCount) return false;
+        covered += p.count;
+    }
+    return covered == src.vertices.size();
+}
+
+// Appends `src` to `out`, centre first, then a transform (EQ space), remapping
+// its texture indices into `out`'s own texture list. The transform is `xf` for
+// every vertex, unless `boneWorld` is given and `src`'s vertex pieces fit it:
+// then each piece's vertices take the rest transform of the bone it names
+// (T476, B660 -- the skinning SkeletalAnimator applies, at the rest pose).
+void appendMesh(ZoneGeometry& out, const ZoneGeometry& src, const BoneMat4& xf,
+                const std::vector<BoneMat4>* boneWorld = nullptr) {
+    const bool skinned = boneWorld && piecesFit(src, boneWorld->size());
+    std::vector<const BoneMat4*> perVertex(src.vertices.size(), &xf);
+    if (skinned) {
+        size_t v = 0;
+        for (const VertexPiece& p : src.vertexPieces) {
+            for (int k = 0; k < p.count; ++k) perVertex[v++] = &(*boneWorld)[p.boneIndex];
+        }
+    }
+
     const uint32_t base = static_cast<uint32_t>(out.vertices.size());
-    for (const Vertex3D& v : src.vertices) {
+    for (size_t i = 0; i < src.vertices.size(); ++i) {
+        const Vertex3D& v = src.vertices[i];
+        const BoneMat4& m = *perVertex[i];
         const float px = v.x + src.centerX, py = v.y + src.centerY, pz = v.z + src.centerZ;
         Vertex3D w = v;
-        w.x = xf.m[0] * px + xf.m[4] * py + xf.m[8] * pz + xf.m[12];
-        w.y = xf.m[1] * px + xf.m[5] * py + xf.m[9] * pz + xf.m[13];
-        w.z = xf.m[2] * px + xf.m[6] * py + xf.m[10] * pz + xf.m[14];
-        float nx = xf.m[0] * v.nx + xf.m[4] * v.ny + xf.m[8] * v.nz;
-        float ny = xf.m[1] * v.nx + xf.m[5] * v.ny + xf.m[9] * v.nz;
-        float nz = xf.m[2] * v.nx + xf.m[6] * v.ny + xf.m[10] * v.nz;
+        w.x = m.m[0] * px + m.m[4] * py + m.m[8] * pz + m.m[12];
+        w.y = m.m[1] * px + m.m[5] * py + m.m[9] * pz + m.m[13];
+        w.z = m.m[2] * px + m.m[6] * py + m.m[10] * pz + m.m[14];
+        float nx = m.m[0] * v.nx + m.m[4] * v.ny + m.m[8] * v.nz;
+        float ny = m.m[1] * v.nx + m.m[5] * v.ny + m.m[9] * v.nz;
+        float nz = m.m[2] * v.nx + m.m[6] * v.ny + m.m[10] * v.nz;
         const float len = std::sqrt(nx * nx + ny * ny + nz * nz);
         if (len > 1e-6f) { nx /= len; ny /= len; nz /= len; }
         w.nx = nx; w.ny = ny; w.nz = nz;
@@ -83,6 +111,30 @@ void appendBone(ZoneGeometry& out, const WldLoader& wld, const SkeletonBone& bon
     }
 }
 
+// Every bone's accumulated rest transform, indexed like allBones (the index a
+// vertex piece names), walked from the roots the same way appendBone() walks.
+std::vector<BoneMat4> restWorldTransforms(const SkeletonTrack& track) {
+    std::unordered_map<const SkeletonBone*, size_t> index;
+    for (size_t i = 0; i < track.allBones.size(); ++i) index[track.allBones[i].get()] = i;
+    std::vector<BoneMat4> world(track.allBones.size(), BoneMat4::identity());
+    std::vector<std::pair<const SkeletonBone*, BoneMat4>> stack;
+    for (const auto& root : track.bones) {
+        if (root) stack.push_back({root.get(), BoneMat4::identity()});
+    }
+    size_t guard = 0;
+    while (!stack.empty() && guard++ < 100000) {
+        auto [bone, parent] = stack.back();
+        stack.pop_back();
+        const BoneMat4 w = parent * restTransform(*bone);
+        auto it = index.find(bone);
+        if (it != index.end()) world[it->second] = w;
+        for (const auto& child : bone->children) {
+            if (child) stack.push_back({child.get(), w});
+        }
+    }
+    return world;
+}
+
 }  // namespace
 
 std::shared_ptr<ZoneGeometry> resolveEquipmentActorGeometry(const WldLoader& wld,
@@ -104,6 +156,15 @@ std::shared_ptr<ZoneGeometry> resolveEquipmentActorGeometry(const WldLoader& wld
             if (track == wld.getSkeletonTracks().end() || !track->second) continue;
             for (const auto& root : track->second->bones) {
                 if (root) appendBone(*out, wld, *root, BoneMat4::identity());
+            }
+            // T476 (B660): the skeleton's own skinned meshes (0x10 flag 0x200).
+            if (!track->second->meshRefs.empty()) {
+                const std::vector<BoneMat4> boneWorld = restWorldTransforms(*track->second);
+                for (uint32_t meshRef : track->second->meshRefs) {
+                    if (auto mesh = meshForReference(wld, meshRef)) {
+                        appendMesh(*out, *mesh, BoneMat4::identity(), &boneWorld);
+                    }
+                }
             }
         }
     }

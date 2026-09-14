@@ -89,6 +89,13 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
     GTEST_DISCOVER_TESTS(test_held_item_attachment DISCOVERY_TIMEOUT 120)
+
+    # T476: census of every IT actor in the seventeen equipment archives --
+    # which route resolves it, rest transforms, and its principal axis.
+    ADD_EXECUTABLE(test_equipment_item_census test_equipment_item_census.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_equipment_item_census PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_equipment_item_census GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_equipment_item_census DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T301 Leg D: the UI-hide toggle, from the paths a user or a capture script

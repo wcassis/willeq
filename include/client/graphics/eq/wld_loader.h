@@ -392,6 +392,10 @@ struct SkeletonTrack {
     std::vector<std::shared_ptr<SkeletonBone>> bones;  // Root bones only
     std::vector<std::shared_ptr<SkeletonBone>> allBones;  // All bones in original file order
     std::vector<int> parentIndices;  // Parent index for each bone (-1 for roots)
+    // T476 (B660): the 0x2D mesh references listed after the bones when the
+    // 0x10 carries flag 0x200 -- the SKINNED meshes, whose vertex pieces name
+    // bones of this skeleton (e.g. IT4_HS_DEF -> IT4_DMSPRITEDEF).
+    std::vector<uint32_t> meshRefs;
 };
 
 // Light source data (Fragment 0x1B definition + 0x28 placement)

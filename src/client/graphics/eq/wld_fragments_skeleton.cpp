@@ -97,6 +97,23 @@ void WldLoader::parseFragment10(const char* fragBuffer, uint32_t fragLength, uin
         }
     }
 
+    // T476 (B660): flag 0x200 -- after the bones, a count, that many 0x2D mesh
+    // references (the skinned meshes this skeleton deforms), then one uint32
+    // per reference. Before this the list was never read, so a skinned item's
+    // mesh was reachable only by its name and drew with no rest pose.
+    if (header.flags & 0x200) {
+        if (ptr + sizeof(uint32_t) <= fragBuffer + fragLength) {
+            uint32_t meshCount = read_val<uint32_t>(ptr);
+            ptr += sizeof(uint32_t);
+            for (uint32_t i = 0; i < meshCount; ++i) {
+                if (ptr + sizeof(int32_t) > fragBuffer + fragLength) break;
+                int32_t ref = read_val<int32_t>(ptr);
+                ptr += sizeof(int32_t);
+                if (ref > 0) track->meshRefs.push_back(static_cast<uint32_t>(ref));
+            }
+        }
+    }
+
     // Build parent index array (initialized to -1 for roots)
     track->parentIndices.resize(allBones.size(), -1);
 

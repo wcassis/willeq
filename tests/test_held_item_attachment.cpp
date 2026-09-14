@@ -27,8 +27,10 @@
  */
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <regex>
 #include <sstream>
@@ -371,6 +373,140 @@ TEST_F(HeldItemTest, StationaryPlayerIsDrawnAtTheRendererHeading) {
     ents_->flushPendingUpdatesForAnimations();
     ents_->syncLocalPlayerHeading(kRendererHeading512);
     EXPECT_NEAR(node->getRotation().Y, -(kRendererHeading512 * 360.0f / 512.0f), 0.01f);
+}
+
+// ---------------------------------------------------------------------------
+// 4. T476 (B660): a SKINNED item is placed by its skeleton's rest pose.
+//
+// 266 of the index's items (census: review/T476/census/) are shaped
+//   IT4_ACTORDEF (0x14) -> 0x11 -> IT4_HS_DEF (0x10, flags 0x202, no bone mesh)
+//   IT4_DMSPRITEDEF (0x36): centre 0, bounds 0, vertex pieces naming bones
+// so each vertex run is stored in the frame of the bone its piece names, and
+// only the skeleton's rest transforms put the runs together.
+// ---------------------------------------------------------------------------
+
+struct SkinnedItem {
+    std::shared_ptr<ZoneGeometry> raw;
+    std::shared_ptr<SkeletonTrack> track;
+};
+
+// The actor's skeleton (0x14 -> 0x11 -> 0x10) and its DMSPRITEDEF by name.
+SkinnedItem findSkinnedItem(const WldLoader& wld, const std::string& actor) {
+    SkinnedItem out;
+    auto def = wld.getObjectDefs().find(actor);
+    if (def == wld.getObjectDefs().end()) return out;
+    for (uint32_t ref : def->second.meshRefs) {
+        auto sr = wld.getSkeletonRefs().find(ref);
+        if (sr == wld.getSkeletonRefs().end()) continue;
+        auto tr = wld.getSkeletonTracks().find(sr->second);
+        if (tr != wld.getSkeletonTracks().end()) out.track = tr->second;
+    }
+    const std::string want = actor + "_DMSPRITEDEF";
+    for (const auto& g : wld.getGeometries()) {
+        if (!g || g->vertexPieces.empty()) continue;
+        std::string up = g->name;
+        for (auto& c : up) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        if (up == want) out.raw = g;
+    }
+    return out;
+}
+
+// Each bone's accumulated rest transform through the file's own PARENT table
+// (the loader walks children instead), T * R * S per bone.
+std::vector<BoneMat4> restWorldByParentTable(const SkeletonTrack& t) {
+    const size_t n = t.allBones.size();
+    std::vector<BoneMat4> world(n, BoneMat4::identity());
+    std::vector<int> done(n, 0);
+    std::function<const BoneMat4&(size_t, int)> get = [&](size_t i, int depth) -> const BoneMat4& {
+        if (done[i] || depth > 256) return world[i];
+        BoneMat4 local = BoneMat4::identity();
+        if (const auto& o = t.allBones[i]->orientation) {
+            local = BoneMat4::translate(o->shiftX, o->shiftY, o->shiftZ) *
+                    BoneMat4::fromQuaternion(o->quatX, o->quatY, o->quatZ, o->quatW) *
+                    BoneMat4::scale(o->scale > 0.0f ? o->scale : 1.0f);
+        }
+        const int p = i < t.parentIndices.size() ? t.parentIndices[i] : -1;
+        world[i] = (p >= 0 && static_cast<size_t>(p) < n) ? get(static_cast<size_t>(p), depth + 1) * local : local;
+        done[i] = 1;
+        return world[i];
+    };
+    for (size_t i = 0; i < n; ++i) get(i, 0);
+    return world;
+}
+
+struct SkinCheck {
+    size_t vertices = 0;
+    float maxError = 0.0f;  // resolved vs expected
+    float maxMove = 0.0f;   // expected vs the raw bone-local vertex
+};
+
+// Compares what resolveEquipmentActorGeometry() returns with the raw mesh
+// skinned by the rest pose. Returns false when the actor is not that shape.
+bool checkSkinnedItem(const WldLoader& wld, const std::string& actor, SkinCheck& out) {
+    const SkinnedItem item = findSkinnedItem(wld, actor);
+    if (!item.raw || !item.track) return false;
+    size_t pieceVerts = 0;
+    for (const VertexPiece& p : item.raw->vertexPieces) {
+        if (p.boneIndex >= item.track->allBones.size()) return false;
+        pieceVerts += p.count;
+    }
+    if (pieceVerts != item.raw->vertices.size()) return false;
+    const std::vector<BoneMat4> world = restWorldByParentTable(*item.track);
+    auto resolved = resolveEquipmentActorGeometry(wld, actor);
+    out.vertices = item.raw->vertices.size();
+    if (!resolved || resolved->vertices.size() != item.raw->vertices.size()) {
+        out.maxError = 1e9f;
+        return true;
+    }
+    size_t v = 0;
+    for (const VertexPiece& p : item.raw->vertexPieces) {
+        for (int k = 0; k < p.count; ++k, ++v) {
+            const Vertex3D& r = item.raw->vertices[v];
+            const float px = r.x + item.raw->centerX, py = r.y + item.raw->centerY, pz = r.z + item.raw->centerZ;
+            const V3 e = boneXf(world[p.boneIndex], px, py, pz);
+            const Vertex3D& g = resolved->vertices[v];
+            out.maxError = std::max(out.maxError, std::fabs(g.x - e.x) + std::fabs(g.y - e.y) + std::fabs(g.z - e.z));
+            out.maxMove = std::max(out.maxMove, std::fabs(px - e.x) + std::fabs(py - e.y) + std::fabs(pz - e.z));
+        }
+    }
+    return true;
+}
+
+TEST_F(HeldItemTest, SkinnedItemIsPlacedByItsSkeletonRestPose) {
+    WldLoader wld;
+    ASSERT_TRUE(wld.parseFromArchive(eq_ + "gequip.s3d", "gequip.wld"));
+    SkinCheck c;
+    ASSERT_TRUE(checkSkinnedItem(wld, "IT4", c)) << "IT4 is no longer a skinned item (0x11 skeleton + vertex pieces)";
+    ASSERT_GT(c.maxMove, 0.1f) << "IT4's rest pose moves nothing, so this test proves nothing";
+    EXPECT_LT(c.maxError, 1e-3f) << "B660: IT4's vertices are left in their bones' local frames";
+}
+
+TEST_F(HeldItemTest, EverySkinnedItemIsPlacedByItsSkeletonRestPose) {
+    int skinned = 0;
+    std::vector<std::string> wrong;
+    for (const auto& archive : kEquipArchives) {
+        PfsArchive pfs;
+        if (!pfs.open(eq_ + archive)) continue;
+        std::vector<std::string> wlds;
+        pfs.getFilenames(".wld", wlds);
+        for (const auto& wldName : wlds) {
+            WldLoader wld;
+            if (!wld.parseFromArchive(eq_ + archive, wldName)) continue;
+            for (const auto& [name, def] : wld.getObjectDefs()) {
+                (void)def;
+                if (name.rfind("IT", 0) != 0) continue;
+                SkinCheck c;
+                if (!checkSkinnedItem(wld, name, c)) continue;
+                ++skinned;
+                if (c.maxError >= 1e-3f) wrong.push_back(archive + ":" + name);
+            }
+        }
+    }
+    std::ostringstream list;
+    for (size_t i = 0; i < wrong.size() && i < 20; ++i) list << " " << wrong[i];
+    EXPECT_GT(skinned, 200) << "the census found too few skinned items to mean anything";
+    EXPECT_TRUE(wrong.empty()) << wrong.size() << " of " << skinned
+                               << " skinned items ignore their skeleton's rest pose:" << list.str();
 }
 
 TEST(HeldItemFrameOrder, PlayerHeadingIsSyncedAfterUpdatesAndBeforeEquipment) {

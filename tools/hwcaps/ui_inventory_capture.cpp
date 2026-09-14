@@ -477,6 +477,19 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
             doll.setCharacter(kRaceHuman, kGenderMale, t472Lantern);
             ok &= captureDoll(outputDir + "/inventory_paperdoll_t472_lantern_it48_only.png", /*timeIt=*/false);
 
+            // T476 (boards B660/B661): two SKINNED items (0x10 flag 0x200,
+            // vertex pieces) whose pieces the fix places by the skeleton's rest
+            // pose, and IT10, whose long axis is Z (unchanged by T476). These
+            // are MODEL ids that are not also item ids in willeq.db, so
+            // getEquipmentMesh() falls through to the model id.
+            for (uint32_t model : {4u, 157u, 10u}) {
+                EntityAppearance t476{};
+                t476.equipment[7] = model;
+                doll.setCharacter(kRaceHuman, kGenderMale, t476);
+                ok &= captureDoll(outputDir + "/inventory_paperdoll_t476_primary_it" + std::to_string(model) + ".png",
+                                  /*timeIt=*/false);
+            }
+
             // Fully equipped: both weapon and shield attached (bone-
             // attachment path exercised — this is the instrument the plan
             // wants for the held-item misalignment).

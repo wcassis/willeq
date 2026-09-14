@@ -23,7 +23,12 @@
 //     its grip: IT1 (a sword) spans x -1.37..1.37 about its centre and
 //     -0.51..2.24 about its origin, pommel at -0.51 and crossguard at +0.29;
 //   - a mesh hung from a skeleton bone is moved by that bone's accumulated REST
-//     transform (T * R * S, the order SkeletalAnimator uses).
+//     transform (T * R * S, the order SkeletalAnimator uses);
+//   - T476 (B660): a SKINNED mesh -- listed after the bones of the skeleton
+//     (0x10 flag 0x200), its vertex pieces naming that skeleton's bones --
+//     has each piece moved by the rest transform of the bone it names. 282 of
+//     286 such items (IT4, the lgequip/lgequip_amr/frogequip families) used to
+//     resolve only by name and drew with every piece at its bone's origin.
 // When the chain yields nothing, the pre-T472 name-prefix match is used, so no
 // item that drew before draws less now.
 
