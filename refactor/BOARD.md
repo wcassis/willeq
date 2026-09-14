@@ -10521,3 +10521,138 @@ Media and every number: `review/T478/README.md`; the plan's Review.
   Re-take T478's h160 Chase still on a tip with T484 merged (`--eqe1-path`, `#set
   time 11 0`, `#set weather 0`) and report the same sky crop beside the official
   (93,135,172). The offline proof is `review/T484/`. Found by T484.
+
+---
+
+> **Orchestrator note (2026-09-14):** the two sections below were written on the UNMERGED branch `task/T479-skeleton-mesh-list-loaders` (commits `64c9273d` T479, `dfb3a0e8` T481) and copied here so the board of record carries them. B730–B732 are fixed ONLY on that branch; the branch is held because the T479 build is OOM-killed on the Pi (B750) until Will picks a lever (B752). Will must also bless the qeynos2 `placeableObjectsBytes` gate figure (1,365,564 → 1,389,324) before that branch can merge.
+
+## Added 2026-09-14 by T479 (the 0x10 skeleton mesh list in the character and object loaders)
+
+Census of every 0x10 in the 94 global, 2,592 zone-chr and 654 zone-object
+skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
+`SkeletonMeshListCensus.CharacterAndObjectArchives`.
+
+- ~~**B730**~~ **CLOSED by T479.** `S3DLoader::loadObjects()` dropped every
+  placement of an actor whose 0x14 reaches a 0x11 skeleton and no 0x2D mesh:
+  644 placed actors, **95,666 placements in 158 zones** -- trees (196 actors,
+  80,768 placements, meshes hung from bones: emeraldjungle 22,174, trakanon
+  14,920, wakening 13,833), and torches, braziers and flags (447 actors, 14,897
+  placements, skinned meshes listed after the bones). Such an actor now resolves
+  through `resolveEquipmentActorGeometry()` (bone meshes and listed skinned
+  meshes at their rest pose), one geometry shared by all its placements. Pinned
+  by `SkeletonMeshListLoaders.SkeletalObjectIsPlacedAtItsRestPose` (thedeep
+  TDTORCH301 0/16 -> 16/16, qeynos2 TEMPLELIFE 0/1 -> 1/1). **Moves one
+  Will-blessed gate number:** `memoryCoverage` qeynos2 `placeableObjectsBytes`
+  1,365,564 -> 1,389,324 (TEMPLELIFE and TEMPLELIFEB); no image golden moved.
+  No live look; Pi cost of the added placements unmeasured (B735).
+
+- ~~**B731**~~ **CLOSED by T479.** A character mesh the race-code NAME PREFIX
+  handed to two skeletons was skinned twice, because `applySkinning()` works in
+  place on the shared mesh: CL_HS_DEF's "CL" took CLF_* and CLM_* (akanon, races
+  88/457 Clockwork Gnome), KA_HS_DEF's "KA" took KAF_*/KAM_* (kaladima/b, race
+  94 Kaladim Citizen), and powar's two STG_HS_DEF skeletons shared STG_DMSPRITEDEF.
+  Vertices were off by 5-8.5 units, the animation copies too. Each character now
+  skins its own copy, and the prefix no longer takes a mesh another skeleton
+  lists. Pinned by `SkeletonMeshListLoaders.CharacterMeshIsSkinnedOnceByItsOwnSkeleton`.
+
+- ~~**B732**~~ **CLOSED by T479.** `S3DLoader::loadCharacters()` never read the
+  meshes a skeleton lists. 49 zone-chr skeletons (19 names: KAR, AAM, PHX, GTD,
+  BKN ...) whose listed meshes carry no race-code prefix stored no model; 8
+  names missed listed meshes -- GOM (body and head: its two bone meshes stopped
+  the prefix), SSN (head SNNHE00_DMSPRITEDEF), UDK (HSN_*), SRG (cape), TRT, CCD,
+  GOJ, IVM. Fitting listed meshes are now parts. The real loader's output over
+  all 419 chr archives before/after is `review/T479/census/chr_loader_dump.diff`:
+  no global archive and no gate zone moved. Pinned by
+  `SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart`. Of the affected codes
+  only CLM/CLF, KAM/KAF, SSN, STG and IVM have a `race_models` row.
+
+- **B733** (A, *unconfirmed*) **The race model builder selects parts by NAME, so
+  a listed part with another name is still dropped.** `RaceModelLoader` keeps
+  `{CODE}_DMSPRITEDEF` + `{CODE}HE00_DMSPRITEDEF` whenever either exists
+  (`loadModelFromZoneChr`, `loadModelFromCachedChr` in `model_loading_chr.cpp`,
+  `searchAndBuildModel` in `model_loading_search.cpp`, `model_loading.cpp`,
+  `variant_loading_animation.cpp`). The character now carries SSN's head
+  SNNHE00_DMSPRITEDEF and SRG's cape, but that selection would drop both.
+  Confirm with a model-build test for race 146 (Spectral Sarnak). Found by T479.
+
+- **B734** (A, *unconfirmed*) **`S3DZone::objectGeometries` holds skinned meshes
+  un-posed, under their MESH name.** `loadObjects()` stores every mesh by name
+  for `DoorManager` (`door_manager_mesh.cpp`, exact then partial match); a
+  skinned mesh (STOR301, FWD301 ...) is stored with each vertex piece at its
+  bone's origin, and a skeletal ACTOR's name finds nothing. Confirm with a door
+  whose name matches either. Found by T479.
+
+- ~~**B735**~~ **MEASURED by T481 -> B750.** The Pi cost of B730's placements:
+  qeynos2 and nro fit on the T479 build; emeraldjungle (+22,174) is OOM-killed
+  during the object build. warslikswood and most thedeep runs could not zone in on
+  either build (B751), so their cost is still unmeasured. Found by T479.
+
+- **B736** (B, *unconfirmed*) **`S3DLoader::loadZone()` rejects 20 chr archives
+  with "No geometry"** -- global3_chr.s3d and nineteen `global*_chr2.s3d` -- so any
+  model or texture only they hold is unreachable through `RaceModelLoader`.
+  Measured by the T479 dump (`LOAD_FAILED` rows); not checked whether they hold
+  models. Found by T479.
+
+B737–B739 unused.
+
+## Added 2026-09-14 by T481 (the Pi cost of T479's skeletal object placements)
+
+Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>/`,
+`pi/oom_evidence/`). Pi at 1280x720, `--constrained orangepi --eqe1-path`, before
+= fable-tip ARM build, after = T479 rebased on `bb248847`.
+
+- **B750** (A, *T479 branch only, not on fable*) **The T479 build is OOM-killed on the
+  Orange Pi loading emeraldjungle.** The kernel killed `willeq` (total-vm 809,476 kB,
+  anon-rss 212,592 kB) at `Building objects [22000/24505]`; swap was exhausted
+  (SwapFree 0, MemAvailable 15 MB), exit 137. RSS+swap grew about 7.6 kB per placed
+  object (296 MB at 5,000 -> 424 MB near 21,800), and no budget warning fired first.
+  The fable build loads the same zone (2,331 objects) at 323.5 MB RSS+swap with 46 MB
+  left. qeynos2 (478 -> 480) and nro (345) fit on both builds; thedeep fit on the one
+  T479 run that zoned in (414 objects). T479 must not merge for the Pi until a lever
+  (B752) lands. Pinned only by the live run: `review/T481/pi/raw/emeraldjungle_2_after/`.
+  Found by T481.
+
+- **B751** (A, *cause unconfirmed*) **On the Pi, a login into a dynamic zone often
+  stalls at `[Phase 9/15] (40%) Finalizing connection`**, right after the client's
+  weather packet: no "Zone connection complete", no asset load, while the server holds
+  the character in-zone (5-minute saves, linkdead only when the client is killed).
+  Measured on BOTH builds: thedeep 3 of 4 logins, warslikswood 4 of 4. emeraldjungle's
+  one fable-build login did not stall. The static fleet zones qeynos2 and nro reached ready
+  in 9 of 9 logins. Idle zones are not the cause: every qeynos2 success connected to a
+  zone that had gone idle. Not B511 (that is x86 NFS `rmem_max` 212,992; the Pi's is
+  1,048,576). Logs: `review/T481/pi/raw/{thedeep,warslikswood}_*`, the eqemu zone logs
+  on the VM. Found by T481.
+
+- **B752** (C) **Which lever makes B750 fit on the Pi is Will's call.** Candidates,
+  none tried:
+  - per-object build or draw distance (PVS or distance), or a distance for the 196
+    skeletal tree actors, because every placement's mesh is built eagerly;
+  - instancing a shared mesh with a per-placement transform instead of the per-placement
+    copy (where the copy is made -- node or world-space merge -- is unmeasured);
+  - bringing object geometry under the `orangepi` preset's RAM budget, which raised no
+    warning before the kill;
+  - a placement cap on the Pi preset, which drops objects.
+  Found by T481.
+
+- **B753** (P) **Three rig traps from T481's Pi runs.**
+  1. Replacing a script on NFS with `mv` from the dev box while the Pi's bash is
+     executing it kills that bash when it next reads the file (stale handle).
+     T481 lost `warslikswood_2_after`'s exit code that way. Ship changes under a new
+     file name.
+  2. `pkill -f PATTERN` inside `ssh host '...PATTERN...'` or under `sudo` matches its
+     own command line and kills itself or its parent. Bracket one character:
+     `pkill -f "[u]input_inject"`.
+  3. T459's injector waits the whole `--trigger-deadline` after the client has died.
+     A watchdog must kill the injector as well as the client.
+  Scripts: `review/T481/scripts/run_pi_v3.sh`, `uinput_inject_v3.py`. Found by T481.
+
+- **B754** (P) **Pi memory: read RSS+swap, not VmRSS, and expect swap in use.** In
+  T481's 18 runs swap was 18-88 MB even where the zone fit, and the killed run's RSS
+  stayed near 200-250 MB while swap filled. Runs that never loaded a zone
+  (B751 stalls) still peaked at 196-235 MB VmHWM, so for small zones the resident
+  peak is set before the zone load. `/pmem`'s `[Placeable Objects]` prints 0.1 MB
+  steps, too coarse for a gate-sized change such as qeynos2's +23,760 bytes.
+  Found by T481.
+
+B755–B759 unused.
+
