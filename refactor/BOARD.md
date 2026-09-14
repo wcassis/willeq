@@ -9893,6 +9893,34 @@ B712–B719 unused.
   gem-indexed arm, including T482's `OnMemorizeSpell` scribing 3 arm, drops
   slot 8. Found by T482 and not measured: check whether the ninth gem is shown
   and castable on a character that has it.
+  **Narrowed by T483 (source only, no live run).** Titanium carries 9 slots on
+  the wire (PlayerProfile `mem_spells[9]` at 4360). But eqemu refuses a cast
+  from slot 8 unless the caster has AA 1071 Mnemonic Retention
+  (`zone/client_packet.cpp:4387-4392`; rule `Spells:RequireMnemonicRetention`,
+  default true, `common/ruletypes.h:534`). The oracle's loaded skin (`UISkin=Default`)
+  parks `CSPW_Spell8` at (-5000,-5000) with no size, so the official client
+  shows 8 gems. What remains is the design question in B770. The full census of
+  every 8 is in `refactor/T483_ninth_spell_gem.md` Review.
+
+## Added 2026-09-14 by T483 (the ninth spell gem)
+
+- **B770** (C) **What should fable do with gem 9?** The facts (T483 Review):
+  the gem is on the wire; casting from it is server-gated on the Mnemonic
+  Retention AA (1071: cost 3, max rank 1, level 55, every class but
+  Warrior/Monk/Rogue, `aa_expansion=8`), with the rule on by default; memorising
+  into it is NOT gated; fable parses no AA ranks (`ZoneProcessRespondAA` only
+  logs); the oracle's default skin hides the gem off screen, while
+  `uifiles/default_old` places it at (1,264), 40x32. Options: (a) keep 8 and
+  match the oracle skin, reading `mem_spells[8]` only so a spell held there is
+  not lost silently; (b) parse the AA ranks and show gem 9 only when rank 1 is
+  held, which is new AA tracking; (c) show 9 always and let the server refuse.
+  (c) contradicts the oracle's skin. Also recorded: fable spells the gem count
+  four different ways (`EQ::MAX_SPELL_GEMS`, `eqt::state::SPELL_GEM_COUNT`, a
+  local constant in `zone_entry.cpp`, `SpellGemPanelState::GEM_COUNT`), plus a
+  literal 8 in `ui_layout.h:112`, and `EQT::SPELL_GEM_COUNT = 9` is used by no
+  gem code. Whichever option is chosen, those should become one constant.
+  Before any change, read the live `rule_values` row for
+  `Spells:RequireMnemonicRetention` under a lock.
 
 ## Added 2026-09-14 by T469 (the server's cast interrupt)
 
