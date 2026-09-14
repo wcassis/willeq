@@ -99,7 +99,7 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     {
         int sx = layout.spellGems.UpperLeftCorner.X;
         int sy = layout.spellGems.UpperLeftCorner.Y;
-        for (int i = 0; i < SpellGemPanelState::GEM_COUNT; ++i) {
+        for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) {
             int gy = sy + i * (UILayout::SLOT_SIZE + UILayout::MARGIN);
             if (mouseX >= sx && mouseX < sx + UILayout::SLOT_SIZE &&
                 mouseY >= gy && mouseY < gy + UILayout::SLOT_SIZE) {

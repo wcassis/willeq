@@ -29,7 +29,8 @@ namespace EQ {
 
 bool SpellManager::memorizeSpell(uint32_t spell_id, uint8_t gem_slot)
 {
-    if (gem_slot >= MAX_SPELL_GEMS) {
+    // T483: the client offers eight gems; the ninth is the server's alone.
+    if (gem_slot >= EQT::VISIBLE_SPELL_GEM_COUNT) {
         return false;
     }
 
@@ -91,7 +92,7 @@ bool SpellManager::memorizeSpell(uint32_t spell_id, uint8_t gem_slot)
 
 bool SpellManager::forgetSpell(uint8_t gem_slot)
 {
-    if (gem_slot >= MAX_SPELL_GEMS) {
+    if (gem_slot >= EQT::VISIBLE_SPELL_GEM_COUNT) {
         return false;
     }
 
@@ -119,7 +120,7 @@ bool SpellManager::forgetSpell(uint8_t gem_slot)
 
 bool SpellManager::swapGems(uint8_t slot1, uint8_t slot2)
 {
-    if (slot1 >= MAX_SPELL_GEMS || slot2 >= MAX_SPELL_GEMS) {
+    if (slot1 >= EQT::VISIBLE_SPELL_GEM_COUNT || slot2 >= EQT::VISIBLE_SPELL_GEM_COUNT) {
         return false;
     }
 
@@ -151,7 +152,7 @@ bool SpellManager::swapGems(uint8_t slot1, uint8_t slot2)
 
 uint32_t SpellManager::getMemorizedSpell(uint8_t gem_slot) const
 {
-    if (gem_slot >= MAX_SPELL_GEMS) {
+    if (gem_slot >= EQT::SPELL_GEM_COUNT) {
         return SPELL_UNKNOWN;
     }
     return m_spell_gems[gem_slot];
@@ -159,7 +160,7 @@ uint32_t SpellManager::getMemorizedSpell(uint8_t gem_slot) const
 
 GemState SpellManager::getGemState(uint8_t gem_slot) const
 {
-    if (gem_slot >= MAX_SPELL_GEMS) {
+    if (gem_slot >= EQT::SPELL_GEM_COUNT) {
         return GemState::Empty;
     }
     return m_gem_states[gem_slot];
@@ -167,7 +168,7 @@ GemState SpellManager::getGemState(uint8_t gem_slot) const
 
 float SpellManager::getGemCooldownProgress(uint8_t gem_slot) const
 {
-    if (gem_slot >= MAX_SPELL_GEMS || m_gem_states[gem_slot] != GemState::Refresh) {
+    if (gem_slot >= EQT::SPELL_GEM_COUNT || m_gem_states[gem_slot] != GemState::Refresh) {
         return 1.0f;  // Ready
     }
 
@@ -184,7 +185,7 @@ float SpellManager::getGemCooldownProgress(uint8_t gem_slot) const
 
 uint32_t SpellManager::getGemCooldownRemaining(uint8_t gem_slot) const
 {
-    if (gem_slot >= MAX_SPELL_GEMS || m_gem_states[gem_slot] != GemState::Refresh) {
+    if (gem_slot >= EQT::SPELL_GEM_COUNT || m_gem_states[gem_slot] != GemState::Refresh) {
         return 0;
     }
 
@@ -230,7 +231,8 @@ uint32_t SpellManager::calculateMemorizeTime(uint32_t spell_id) const
 
 uint8_t SpellManager::findGemSlotForSpell(uint32_t spell_id) const
 {
-    for (uint8_t i = 0; i < MAX_SPELL_GEMS; ++i) {
+    // T483: a cast by spell id may only resolve to a gem the client offers.
+    for (uint8_t i = 0; i < EQT::VISIBLE_SPELL_GEM_COUNT; ++i) {
         if (m_spell_gems[i] == spell_id) {
             return i;
         }
@@ -307,7 +309,7 @@ void SpellManager::setSpellbook(const uint32_t* spells, size_t count)
 
 void SpellManager::setSpellGems(const uint32_t* gems, size_t count)
 {
-    size_t max_count = std::min(count, static_cast<size_t>(MAX_SPELL_GEMS));
+    size_t max_count = std::min(count, static_cast<size_t>(EQT::SPELL_GEM_COUNT));
     for (size_t i = 0; i < max_count; ++i) {
         m_spell_gems[i] = gems[i];
         m_gem_states[i] = (gems[i] != SPELL_UNKNOWN && gems[i] != 0)
@@ -320,7 +322,7 @@ void SpellManager::setSpellGems(const uint32_t* gems, size_t count)
 void SpellManager::applyServerGemUpdate(uint32_t gem_slot, uint32_t spell_id,
                                         uint32_t scribing)
 {
-    if (gem_slot >= MAX_SPELL_GEMS) {
+    if (gem_slot >= EQT::SPELL_GEM_COUNT) {
         return;
     }
     const uint8_t slot = static_cast<uint8_t>(gem_slot);
@@ -360,7 +362,7 @@ void SpellManager::applyServerGemUpdate(uint32_t gem_slot, uint32_t spell_id,
 
 void SpellManager::startGemCooldown(uint8_t gem_slot, uint32_t duration_ms)
 {
-    if (gem_slot >= MAX_SPELL_GEMS) {
+    if (gem_slot >= EQT::SPELL_GEM_COUNT) {
         return;
     }
 

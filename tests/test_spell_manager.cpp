@@ -131,28 +131,29 @@ SpellData MakeSpell(SpellTargetType tt, int32_t mana_cost = 0, uint32_t range = 
 // ===================================================================
 
 // ---- Invalid-slot boundaries (no DB needed -- these return before any
-// spell lookup). EQ::MAX_SPELL_GEMS == 8, so slot 8+ is out of range; pinning
+// spell lookup). T483: gems are STORED at EQT::SPELL_GEM_COUNT (9) and OFFERED at
+// EQT::VISIBLE_SPELL_GEM_COUNT (8), so an offer at 8 or a read at 9 is out of range; pinning
 // which side of the 0-vs-1-based boundary these use (T16 precedent: 0-based
 // throughout, slot 0 is the first gem, slot 8 is already invalid).
 
 TEST(SpellManagerGems, MemorizeSpellInvalidSlotReturnsFalse) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
-    EXPECT_FALSE(mgr->memorizeSpell(1, EQ::MAX_SPELL_GEMS));
+    EXPECT_FALSE(mgr->memorizeSpell(1, EQT::VISIBLE_SPELL_GEM_COUNT));
     EXPECT_FALSE(mgr->memorizeSpell(1, 200));
 }
 
 TEST(SpellManagerGems, ForgetSpellInvalidSlotReturnsFalse) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
-    EXPECT_FALSE(mgr->forgetSpell(EQ::MAX_SPELL_GEMS));
+    EXPECT_FALSE(mgr->forgetSpell(EQT::VISIBLE_SPELL_GEM_COUNT));
 }
 
 TEST(SpellManagerGems, SwapGemsInvalidSlotReturnsFalse) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
-    EXPECT_FALSE(mgr->swapGems(EQ::MAX_SPELL_GEMS, 0));
-    EXPECT_FALSE(mgr->swapGems(0, EQ::MAX_SPELL_GEMS));
+    EXPECT_FALSE(mgr->swapGems(EQT::VISIBLE_SPELL_GEM_COUNT, 0));
+    EXPECT_FALSE(mgr->swapGems(0, EQT::VISIBLE_SPELL_GEM_COUNT));
 }
 
 TEST(SpellManagerGems, SwapGemsSameSlotReturnsFalse) {
@@ -164,13 +165,13 @@ TEST(SpellManagerGems, SwapGemsSameSlotReturnsFalse) {
 TEST(SpellManagerGems, GetMemorizedSpellInvalidSlotReturnsUnknown) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
-    EXPECT_EQ(mgr->getMemorizedSpell(EQ::MAX_SPELL_GEMS), SPELL_UNKNOWN);
+    EXPECT_EQ(mgr->getMemorizedSpell(EQT::SPELL_GEM_COUNT), SPELL_UNKNOWN);
 }
 
 TEST(SpellManagerGems, GetGemStateInvalidSlotReturnsEmpty) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
-    EXPECT_EQ(mgr->getGemState(EQ::MAX_SPELL_GEMS), GemState::Empty);
+    EXPECT_EQ(mgr->getGemState(EQT::SPELL_GEM_COUNT), GemState::Empty);
 }
 
 // ---- setSpellGems / setSpellbook (public, direct injection -- no packet
@@ -179,8 +180,8 @@ TEST(SpellManagerGems, GetGemStateInvalidSlotReturnsEmpty) {
 TEST(SpellManagerGems, SetSpellGemsPopulatesReadyForNonEmptyEntries) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
-    uint32_t gems[EQ::MAX_SPELL_GEMS] = {100, 0, SPELL_UNKNOWN, 200, 0, 0, 0, 0};
-    mgr->setSpellGems(gems, EQ::MAX_SPELL_GEMS);
+    uint32_t gems[EQT::SPELL_GEM_COUNT] = {100, 0, SPELL_UNKNOWN, 200, 0, 0, 0, 0, 0};
+    mgr->setSpellGems(gems, EQT::SPELL_GEM_COUNT);
 
     EXPECT_EQ(mgr->getMemorizedSpell(0), 100u);
     EXPECT_EQ(mgr->getGemState(0), GemState::Ready);
@@ -752,7 +753,7 @@ TEST(SpellManagerAdjustTarget, DefaultTargetTypePassesThroughUnchanged) {
 TEST(SpellManagerBeginCast, InvalidSlotReturnsInvalidSpell) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
-    EXPECT_EQ(mgr->beginCastFromGem(EQ::MAX_SPELL_GEMS), CastResult::InvalidSpell);
+    EXPECT_EQ(mgr->beginCastFromGem(EQT::VISIBLE_SPELL_GEM_COUNT), CastResult::InvalidSpell);
 }
 
 TEST(SpellManagerBeginCast, EmptyGemReturnsNotMemorized) {

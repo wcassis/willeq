@@ -114,7 +114,7 @@ void SpellManager::publishCastComplete(uint32_t spell_id, CastResult result) {
 
 // U06b: Push SpellGemChanged to bridge for new UI
 void SpellManager::publishGemChanged(uint8_t gem_slot) {
-    if (gem_slot >= MAX_SPELL_GEMS) return;
+    if (gem_slot >= EQT::SPELL_GEM_COUNT) return;
     // T221: source-side write; SpellGemChanged projection redundant. The two
     // gem-state enums are value-identical (spell_constants.h GemState vs
     // spell_state.h SpellGemState) -- same cast the projection makes.

@@ -467,10 +467,10 @@ void renderHotbar(UIRenderer& ui, const UILayout& layout,
 
 int resolveMemorizeGem(const SpellGemPanelState& state) {
     if (state.memorizeTargetGem >= 0 &&
-        state.memorizeTargetGem < SpellGemPanelState::GEM_COUNT) {
+        state.memorizeTargetGem < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT)) {
         return state.memorizeTargetGem;
     }
-    for (int i = 0; i < SpellGemPanelState::GEM_COUNT; ++i) {
+    for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) {
         // SpellGemState documents both 0 and SPELL_UNKNOWN as "empty".
         if (state.gems[i].spellId == 0 || state.gems[i].spellId == 0xFFFFFFFFu) {
             return i;
@@ -504,9 +504,9 @@ void renderSpellGemPanel(UIRenderer& ui, const UILayout& layout,
         }
     };
 
-    static const char* gemLabels[8] = {"A1","A2","A3","A4","A5","A6","A7","A8"};
+    static const char* gemLabels[EQT::VISIBLE_SPELL_GEM_COUNT] = {"A1","A2","A3","A4","A5","A6","A7","A8"};
 
-    for (int i = 0; i < SpellGemPanelState::GEM_COUNT; ++i) {
+    for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) {
         irr::s32 x = layout.spellGems.UpperLeftCorner.X;
         irr::s32 y = layout.spellGems.UpperLeftCorner.Y + i * (SLOT + PAD);
         irr::core::rect<irr::s32> slotRect(x, y, x + SLOT, y + SLOT);

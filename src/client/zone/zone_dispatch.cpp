@@ -596,8 +596,8 @@ void eqt::zone::ZoneComponent::OnMemorizeSpell(const EQ::Net::Packet & p)
 			m_pending_scribe_book_slot = 0;
 			m_pending_scribe_source_slot = -1;
 		}
-		// Handle gem slot memorization confirmations (slot < MAX_SPELL_GEMS)
-		else if (slot < EQ::MAX_SPELL_GEMS && scribing == 0) {
+		// Handle gem slot memorization confirmations (slot < EQT::SPELL_GEM_COUNT -- T483: all nine)
+		else if (slot < EQT::SPELL_GEM_COUNT && scribing == 0) {
 			// Existing gem memorization - SpellManager handles this via other mechanisms
 			LOG_DEBUG(MOD_SPELL, "Gem memorization confirmation: gem={} spell={}", slot, spell_id);
 		}
@@ -614,7 +614,7 @@ void eqt::zone::ZoneComponent::OnMemorizeSpell(const EQ::Net::Packet & p)
 		//
 		// One packet, one edit, applied in ARRIVAL ORDER -- so the un-memorise
 		// that precedes the memorise for the same slot cannot undo it.
-		else if (slot < EQ::MAX_SPELL_GEMS && (scribing == 1 || scribing == 2)) {
+		else if (slot < EQT::SPELL_GEM_COUNT && (scribing == 1 || scribing == 2)) {
 			if (ctx_.spell_manager) {
 				ctx_.spell_manager->applyServerGemUpdate(slot, spell_id, scribing);
 			}

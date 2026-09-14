@@ -15,6 +15,7 @@
 #include "client/action/action_dispatcher.h"
 #include "client/state/game_state.h"
 #include "client/pet_constants.h"
+#include "common/packets/common.h"  // T483: the gem counts
 #include <cmath>
 #include <limits>
 
@@ -497,7 +498,7 @@ ActionResult ActionDispatcher::beginCastFromGem(uint8_t gemSlot, uint16_t target
     // T101: matches game's /cast bound (1-8, EQ::SpellManager's real gem
     // count) -- distinct from castSpell()'s 1-12 (the older CombatManager
     // path's more permissive, and less correct, bound).
-    if (gemSlot < 1 || gemSlot > 8) {
+    if (gemSlot < 1 || gemSlot > EQT::VISIBLE_SPELL_GEM_COUNT) {
         return ActionResult::Failure("Gem slot must be 1-8");
     }
 

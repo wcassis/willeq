@@ -724,7 +724,7 @@ TEST(PlayerStateTest, LoadFromProfileBulkSetsAndFiresEvents) {
 
 TEST(SpellStateTest, DefaultConstructedGemsAreEmpty) {
     SpellState ss;
-    for (uint8_t i = 0; i < SPELL_GEM_COUNT; ++i) {
+    for (uint8_t i = 0; i < EQT::SPELL_GEM_COUNT; ++i) {
         EXPECT_EQ(ss.getGemSpellId(i), SPELL_ID_UNKNOWN);
         EXPECT_EQ(ss.getGemState(i), SpellGemState::Empty);
         EXPECT_FALSE(ss.hasSpellMemorized(i));
@@ -737,8 +737,8 @@ TEST(SpellStateTest, DefaultConstructedGemsAreEmpty) {
 
 TEST(SpellStateTest, GemAccessorsOutOfRangeReturnSafeDefaults) {
     SpellState ss;
-    EXPECT_EQ(ss.getGemSpellId(SPELL_GEM_COUNT), SPELL_ID_UNKNOWN);
-    EXPECT_EQ(ss.getGemState(SPELL_GEM_COUNT), SpellGemState::Empty);
+    EXPECT_EQ(ss.getGemSpellId(EQT::SPELL_GEM_COUNT), SPELL_ID_UNKNOWN);
+    EXPECT_EQ(ss.getGemState(EQT::SPELL_GEM_COUNT), SpellGemState::Empty);
     EXPECT_FLOAT_EQ(ss.getGemCooldownProgress(255), 1.0f);
     EXPECT_EQ(ss.getGemCooldownRemaining(255), 0u);
     EXPECT_FALSE(ss.hasSpellMemorized(255));
@@ -767,7 +767,7 @@ TEST(SpellStateTest, SetGemFiresEventOnlyWhenChanged) {
 
 TEST(SpellStateTest, SetGemOutOfRangeIsNoOp) {
     SpellState ss;
-    EXPECT_NO_THROW(ss.setGem(SPELL_GEM_COUNT, 1, SpellGemState::Ready));
+    EXPECT_NO_THROW(ss.setGem(EQT::SPELL_GEM_COUNT, 1, SpellGemState::Ready));
 }
 
 TEST(SpellStateTest, ClearGemResetsToEmpty) {

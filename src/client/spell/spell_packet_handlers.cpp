@@ -283,7 +283,7 @@ void SpellManager::endOwnCastByServer(CastResult result)
 
     // eqemu starts no recast on an interrupt: InterruptSpell/StopCasting only
     // zero the casting vars and re-enable the spell bar.
-    if (m_current_gem_slot < MAX_SPELL_GEMS) {
+    if (m_current_gem_slot < EQT::SPELL_GEM_COUNT) {
         m_gem_states[m_current_gem_slot] = GemState::Ready;
         publishGemChanged(m_current_gem_slot);
     }
@@ -366,7 +366,7 @@ void SpellManager::releaseConfirmedCast()
 
     m_is_casting = false;
     m_waiting_for_server_confirm = false;
-    if (m_current_gem_slot < MAX_SPELL_GEMS) {
+    if (m_current_gem_slot < EQT::SPELL_GEM_COUNT) {
         m_gem_states[m_current_gem_slot] = GemState::Ready;
         publishGemChanged(m_current_gem_slot);
     }
@@ -390,7 +390,7 @@ void SpellManager::resolvePendingOutcome(CastResult result)
     m_pending_gem_slot = 0xFF;
 
     const SpellData* spell = m_spell_db.getSpell(spell_id);
-    if (result == CastResult::Success && gem_slot < MAX_SPELL_GEMS) {
+    if (result == CastResult::Success && gem_slot < EQT::SPELL_GEM_COUNT) {
         startGemCooldown(gem_slot, spell ? spell->recast_time_ms : 0);
     }
     if (m_on_cast_complete) {
@@ -421,7 +421,7 @@ void SpellManager::handleSpellBarRefresh(uint32_t slot, uint32_t spell_id)
 
     // The outcome was already resolved (an unreliable packet reached us inside
     // the tail): the recast is still the server's word for that gem.
-    if (slot < MAX_SPELL_GEMS && spell_id != SPELL_UNKNOWN && m_spell_gems[slot] == spell_id &&
+    if (slot < EQT::SPELL_GEM_COUNT && spell_id != SPELL_UNKNOWN && m_spell_gems[slot] == spell_id &&
         !(m_is_casting && m_current_gem_slot == slot)) {
         const SpellData* spell = m_spell_db.getSpell(spell_id);
         startGemCooldown(static_cast<uint8_t>(slot), spell ? spell->recast_time_ms : 0);

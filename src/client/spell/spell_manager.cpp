@@ -74,7 +74,7 @@ void SpellManager::update(float delta_time)
             LOG_WARN(MOD_SPELL, "Cast timeout waiting for server confirmation");
             m_is_casting = false;
             m_waiting_for_server_confirm = false;
-            if (m_current_gem_slot < MAX_SPELL_GEMS) {
+            if (m_current_gem_slot < EQT::SPELL_GEM_COUNT) {
                 m_gem_states[m_current_gem_slot] = GemState::Ready;
                 publishGemChanged(m_current_gem_slot);
             }
@@ -117,7 +117,7 @@ void SpellManager::updateGemCooldowns(float delta_time)
 {
     auto now = std::chrono::steady_clock::now();
 
-    for (uint8_t i = 0; i < MAX_SPELL_GEMS; ++i) {
+    for (uint8_t i = 0; i < EQT::SPELL_GEM_COUNT; ++i) {
         if (m_gem_states[i] == GemState::Refresh) {
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 now - m_gem_cooldown_start[i]).count();
@@ -168,7 +168,8 @@ void SpellManager::updateMemorization(float delta_time)
 
 CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
 {
-    if (gem_slot >= MAX_SPELL_GEMS) {
+    // T483 (B770 option (a)): the official client offers no ninth gem.
+    if (gem_slot >= EQT::VISIBLE_SPELL_GEM_COUNT) {
         return CastResult::InvalidSpell;
     }
 
@@ -273,7 +274,7 @@ CastResult SpellManager::beginCastById(uint32_t spell_id, uint16_t target_id)
 {
     // Find which gem has this spell
     uint8_t gem_slot = findGemSlotForSpell(spell_id);
-    if (gem_slot < MAX_SPELL_GEMS) {
+    if (gem_slot < EQT::VISIBLE_SPELL_GEM_COUNT) {
         return beginCastFromGem(gem_slot, target_id);
     }
 
@@ -348,7 +349,7 @@ void SpellManager::interruptCast()
     m_waiting_for_server_confirm = false;
 
     // Reset gem state if it was a gem cast
-    if (m_current_gem_slot < MAX_SPELL_GEMS) {
+    if (m_current_gem_slot < EQT::SPELL_GEM_COUNT) {
         m_gem_states[m_current_gem_slot] = GemState::Ready;
         publishGemChanged(m_current_gem_slot);
     }
@@ -432,7 +433,7 @@ void SpellManager::completeCast(bool success)
 
     if (success) {
         // Start gem cooldown
-        if (m_current_gem_slot < MAX_SPELL_GEMS && spell) {
+        if (m_current_gem_slot < EQT::SPELL_GEM_COUNT && spell) {
             startGemCooldown(m_current_gem_slot, spell->recast_time_ms);
         }
 

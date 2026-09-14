@@ -4,6 +4,7 @@
 #include "client/skill/skill_constants.h"  // T156: /useskill id/name resolution
 #include "client/inventory/inventory_constants.h"  // T278: /combine <general slot>
 #include "common/logging.h"
+#include "common/packets/common.h"  // T483: the gem counts
 #include <fmt/format.h>
 #include <algorithm>
 #include <sstream>
@@ -45,7 +46,7 @@ ActionResult CommandProcessor::cmdCast(const std::string& args) {
     } catch (const std::exception&) {
         return ActionResult::Failure("Usage: /cast <gem# 1-8>");
     }
-    if (gem < 1 || gem > 8) {
+    if (gem < 1 || gem > static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT)) {
         return ActionResult::Failure("Gem slot must be 1-8");
     }
     uint16_t targetId = m_state.combat().hasTarget() ? m_state.combat().targetId() : 0;
@@ -63,7 +64,7 @@ ActionResult CommandProcessor::cmdMem(const std::string& args) {
     if (spellName.empty()) {
         return ActionResult::Failure("Usage: /mem <gem# 1-8> <spell_name>");
     }
-    if (gem < 1 || gem > 8) {
+    if (gem < 1 || gem > static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT)) {
         return ActionResult::Failure("Gem slot must be 1-8");
     }
     return m_dispatcher.memorizeSpellByName(spellName, static_cast<uint8_t>(gem));
@@ -79,7 +80,7 @@ ActionResult CommandProcessor::cmdForget(const std::string& args) {
     } catch (const std::exception&) {
         return ActionResult::Failure("Usage: /forget <gem# 1-8>");
     }
-    if (gem < 1 || gem > 8) {
+    if (gem < 1 || gem > static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT)) {
         return ActionResult::Failure("Gem slot must be 1-8");
     }
     return m_dispatcher.forgetSpell(static_cast<uint8_t>(gem));

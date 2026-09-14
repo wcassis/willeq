@@ -5,14 +5,15 @@
 #include <array>
 #include <chrono>
 
+#include "common/packets/common.h"  // T483: the gem counts
+
 namespace eqt {
 namespace state {
 
 // Forward declaration
 class EventBus;
 
-// Spell gem count (matching spell_constants.h)
-constexpr uint8_t SPELL_GEM_COUNT = 8;
+// Gem storage is EQT::SPELL_GEM_COUNT (T483: all nine Titanium gems).
 
 // Spellbook slot count
 constexpr uint16_t SPELLBOOK_SLOT_COUNT = 400;
@@ -50,14 +51,14 @@ public:
 
     /**
      * Get spell ID in a gem slot.
-     * @param gemSlot Gem slot (0-7)
+     * @param gemSlot Gem slot (0-8)
      * @return Spell ID, or SPELL_ID_UNKNOWN if empty
      */
     uint32_t getGemSpellId(uint8_t gemSlot) const;
 
     /**
      * Get gem state.
-     * @param gemSlot Gem slot (0-7)
+     * @param gemSlot Gem slot (0-8)
      */
     SpellGemState getGemState(uint8_t gemSlot) const;
 
@@ -65,33 +66,33 @@ public:
      * Get cooldown progress for a gem (0.0 = just cast, 1.0 = ready).
      * T44: computed on read from a stored start-time + total, not from a
      * per-tick poll -- see setGemCooldown().
-     * @param gemSlot Gem slot (0-7)
+     * @param gemSlot Gem slot (0-8)
      */
     float getGemCooldownProgress(uint8_t gemSlot) const;
 
     /**
      * Get remaining cooldown in milliseconds. Computed on read (T44); see
      * getGemCooldownProgress().
-     * @param gemSlot Gem slot (0-7)
+     * @param gemSlot Gem slot (0-8)
      */
     uint32_t getGemCooldownRemaining(uint8_t gemSlot) const;
 
     /**
      * Check if a gem slot has a spell memorized.
-     * @param gemSlot Gem slot (0-7)
+     * @param gemSlot Gem slot (0-8)
      */
     bool hasSpellMemorized(uint8_t gemSlot) const;
 
     /**
      * Check if a gem is ready to cast.
-     * @param gemSlot Gem slot (0-7)
+     * @param gemSlot Gem slot (0-8)
      */
     bool isGemReady(uint8_t gemSlot) const;
 
     /**
      * Set gem spell and state.
      * Fires SpellGemChanged event if changed.
-     * @param gemSlot Gem slot (0-7)
+     * @param gemSlot Gem slot (0-8)
      * @param spellId Spell ID (or SPELL_ID_UNKNOWN to clear)
      * @param state Gem state
      */
@@ -106,7 +107,7 @@ public:
      * further calls needed -- T44's countdown model (see
      * refactor/T44_spell_state_via_bridge.md): publish once, consumer
      * computes elapsed.
-     * @param gemSlot Gem slot (0-7)
+     * @param gemSlot Gem slot (0-8)
      * @param remainingMs Remaining cooldown in milliseconds as of now
      * @param totalMs Total cooldown duration in milliseconds
      */
@@ -115,7 +116,7 @@ public:
     /**
      * Clear a gem slot.
      * Fires SpellGemChanged event.
-     * @param gemSlot Gem slot (0-7)
+     * @param gemSlot Gem slot (0-8)
      */
     void clearGem(uint8_t gemSlot);
 
@@ -255,7 +256,7 @@ private:
         std::chrono::steady_clock::time_point cooldownStartTime{};
         uint32_t cooldownTotalMs = 0;
     };
-    std::array<GemData, SPELL_GEM_COUNT> m_gems;
+    std::array<GemData, EQT::SPELL_GEM_COUNT> m_gems;
 
     // Casting state. T44: same start-time + total model as gem cooldowns --
     // castTimeRemaining()/castProgress() compute elapsed on read.

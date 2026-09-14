@@ -627,12 +627,12 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	}
 
 	// Extract spell gems and spellbook from PlayerProfile
-	// Titanium offsets: spell_book at 2312 (400 x uint32), mem_spells at 4360 (8 x uint32)
+	// Titanium offsets: spell_book at 2312 (400 x uint32), mem_spells at 4360 (EQT::SPELL_GEM_COUNT x uint32)
 	if (ctx_.spell_manager) {
 		constexpr size_t SPELLBOOK_OFFSET = 2312;
 		constexpr size_t MEM_SPELLS_OFFSET = 4360;
 		constexpr size_t SPELLBOOK_SIZE = 400;
-		constexpr size_t SPELL_GEM_COUNT = 8;
+		constexpr size_t kGems = EQT::SPELL_GEM_COUNT;  // T483: all nine are stored
 
 		// Extract spellbook (400 spell IDs)
 		if (p.Length() >= base + SPELLBOOK_OFFSET + SPELLBOOK_SIZE * 4) {
@@ -654,17 +654,17 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 			}
 		}
 
-		// Extract memorized spells (8 spell gem slots)
-		if (p.Length() >= base + MEM_SPELLS_OFFSET + SPELL_GEM_COUNT * 4) {
-			std::array<uint32_t, 8> mem_spells;
-			for (size_t i = 0; i < SPELL_GEM_COUNT; ++i) {
+		// Extract memorized spells: all nine Titanium gems (the ninth is stored, never shown)
+		if (p.Length() >= base + MEM_SPELLS_OFFSET + kGems * 4) {
+			std::array<uint32_t, kGems> mem_spells;
+			for (size_t i = 0; i < kGems; ++i) {
 				mem_spells[i] = p.GetUInt32(base + MEM_SPELLS_OFFSET + i * 4);
 			}
-			ctx_.spell_manager->setSpellGems(mem_spells.data(), SPELL_GEM_COUNT);
+			ctx_.spell_manager->setSpellGems(mem_spells.data(), kGems);
 
 			if (EverQuest::GetDebugLevel() >= 1) {
 				LOG_DEBUG(MOD_SPELL, "Memorized spells:");
-				for (size_t i = 0; i < SPELL_GEM_COUNT; ++i) {
+				for (size_t i = 0; i < kGems; ++i) {
 					if (mem_spells[i] != 0xFFFFFFFF && mem_spells[i] != 0) {
 						const EQ::SpellData* spell = ctx_.spell_manager->getSpell(mem_spells[i]);
 						std::string name = spell ? spell->name : "Unknown";

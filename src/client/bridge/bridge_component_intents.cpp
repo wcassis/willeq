@@ -656,7 +656,7 @@ void eqt::bridge::BridgeComponent::onHotbarActivateIntent(const eqt::events::Hot
 	switch (i.type) {
 	case eqt::HotbarSlotType::Spell: { // Spell
 		if (ctx_.spell_manager) {
-			for (uint8_t gem = 0; gem < EQ::MAX_SPELL_GEMS; gem++) {
+			for (uint8_t gem = 0; gem < EQT::VISIBLE_SPELL_GEM_COUNT; gem++) {  // T483: offered gems only
 				if (ctx_.spell_manager->getMemorizedSpell(gem) == i.id) {
 					uint16_t targetId = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;
 					EQ::CastResult result = ctx_.spell_manager->beginCastFromGem(gem, targetId);

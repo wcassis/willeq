@@ -1,5 +1,6 @@
 #include "client/input/graphics_input_handler.h"
 #include "common/logging.h"
+#include "common/packets/common.h"  // T483: the gem counts
 
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
@@ -172,7 +173,7 @@ std::optional<SpellCastRequest> GraphicsInputHandler::consumeSpellCastRequest() 
     if (!m_eventReceiver) return std::nullopt;
 
     int8_t gem = m_eventReceiver->getSpellGemCastRequest();
-    if (gem >= 0 && gem < 8) {
+    if (gem >= 0 && gem < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT)) {
         return SpellCastRequest{static_cast<uint8_t>(gem)};
     }
 #endif

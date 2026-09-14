@@ -69,10 +69,10 @@ protected:
         ASSERT_NE(mgr->getDatabase().getSpell(kNewSpell), nullptr) << kNewSpell;
 
         // The bar as #scribespells left it: gem 0 holds the old spell.
-        uint32_t gems[EQ::MAX_SPELL_GEMS];
+        uint32_t gems[EQT::SPELL_GEM_COUNT];
         for (auto& g : gems) g = EQ::SPELL_UNKNOWN;
         gems[0] = kOldSpell;
-        mgr->setSpellGems(gems, EQ::MAX_SPELL_GEMS);
+        mgr->setSpellGems(gems, EQT::SPELL_GEM_COUNT);
         ASSERT_EQ(mgr->getMemorizedSpell(0), kOldSpell);
     }
 
@@ -132,7 +132,7 @@ TEST_F(MemorizeIntoOccupiedGemTest, MemoriseIntoAnEmptyGemStillWorks) {
 // clamped into gem 7 or write anything.
 TEST_F(MemorizeIntoOccupiedGemTest, ASpellbookSlotIsNotAGem) {
     Replay(200, kNewSpell, 1);
-    for (uint8_t g = 1; g < EQ::MAX_SPELL_GEMS; ++g) {
+    for (uint8_t g = 1; g < EQT::SPELL_GEM_COUNT; ++g) {
         EXPECT_EQ(mgr->getMemorizedSpell(g), EQ::SPELL_UNKNOWN) << "gem " << int(g);
     }
     EXPECT_EQ(mgr->getMemorizedSpell(0), kOldSpell);

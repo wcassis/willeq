@@ -13,6 +13,8 @@
 #include <cstdint>
 #include <chrono>
 
+#include "common/packets/common.h"  // T483: the gem counts
+
 #include "client/hotbar/hotbar_slot_type.h"  // T156
 #include "client/graphics/ui/text_entry.h"  // T421: ChatPanelState derives from it
 #include "client/graphics/ui/chat_wrap_cache.h"  // T462: ChatPanelState::wrapCache
@@ -265,8 +267,9 @@ struct SpellGemState {
 };
 
 struct SpellGemPanelState {
-    static constexpr int GEM_COUNT = 8;
-    SpellGemState gems[8];
+    // T483: EQT::VISIBLE_SPELL_GEM_COUNT -- the official skin's eight
+    // (include/common/packets/common.h). The stored ninth gem is never shown.
+    SpellGemState gems[EQT::VISIBLE_SPELL_GEM_COUNT];
     int hoveredGem = -1;
     // T272: destination gem for the next spellbook memorize click, chosen by
     // clicking a gem WHILE THE SPELLBOOK IS OPEN. -1 means "no explicit

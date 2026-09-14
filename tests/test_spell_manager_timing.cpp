@@ -50,8 +50,8 @@ TEST(SpellManagerTiming, GemCooldownProgressAndRemainingOnReadyGem) {
 TEST(SpellManagerTiming, GemCooldownProgressAndRemainingInvalidSlot) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
-    EXPECT_FLOAT_EQ(mgr->getGemCooldownProgress(EQ::MAX_SPELL_GEMS), 1.0f);
-    EXPECT_EQ(mgr->getGemCooldownRemaining(EQ::MAX_SPELL_GEMS), 0u);
+    EXPECT_FLOAT_EQ(mgr->getGemCooldownProgress(EQT::SPELL_GEM_COUNT), 1.0f);
+    EXPECT_EQ(mgr->getGemCooldownRemaining(EQT::SPELL_GEM_COUNT), 0u);
 }
 
 TEST(SpellManagerTiming, StartGemCooldownThenBackdatePastDurationTransitionsToReady) {

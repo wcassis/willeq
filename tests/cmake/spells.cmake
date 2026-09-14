@@ -95,6 +95,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_cast_end_wire DISCOVERY_TIMEOUT 120)
 
+# T483 (board B762/B770): store the ninth Titanium gem, show and offer eight.
+# The panel half draws on the EDT_NULL device, so the target needs graphics.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ninth_spell_gem
+        test_ninth_spell_gem.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_ninth_spell_gem GTest::gtest_main willeq_core)
+    TARGET_INCLUDE_DIRECTORIES(test_ninth_spell_gem PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    GTEST_DISCOVER_TESTS(test_ninth_spell_gem DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T24: BuffManager coverage. BuffManager is constructible standalone from a
 # SpellDatabase* (buff_manager.h:99) with no EverQuest at all -- the
 # cleanest isolation in this batch, so this target links only the spell

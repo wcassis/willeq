@@ -15,6 +15,7 @@
 #include "client/action/action_dispatcher.h"
 #include "client/state/game_state.h"
 #include "client/pet_constants.h"
+#include "common/packets/common.h"  // T483: the gem counts
 #include <cmath>
 #include <limits>
 
@@ -214,7 +215,7 @@ ActionResult ActionDispatcher::forgetSpell(uint8_t gemSlot) {
     // dispatcher method. See the plan's Review: this is a repoint, not a
     // new method -- forgetSpell()'s signature/callers are unchanged, no
     // test asserted on the old stub's behavior.
-    if (gemSlot < 1 || gemSlot > 8) {
+    if (gemSlot < 1 || gemSlot > EQT::VISIBLE_SPELL_GEM_COUNT) {
         return ActionResult::Failure("Gem slot must be 1-8");
     }
 
@@ -240,7 +241,7 @@ ActionResult ActionDispatcher::memorizeSpellByName(const std::string& spellName,
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    if (gemSlot < 1 || gemSlot > 8) {
+    if (gemSlot < 1 || gemSlot > EQT::VISIBLE_SPELL_GEM_COUNT) {
         return ActionResult::Failure("Gem slot must be 1-8");
     }
     if (spellName.empty()) {

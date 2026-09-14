@@ -10,14 +10,16 @@
 
 #include <cstdint>
 
+#include "common/packets/common.h"  // T483: the gem counts
+
 namespace EQ {
 
 // ============================================================================
 // Spell System Limits
 // ============================================================================
 
-// Maximum spell gems (Classic/Velious = 8, Titanium client supports 9)
-constexpr uint8_t MAX_SPELL_GEMS = 8;
+// Spell gems: EQT::SPELL_GEM_COUNT (9) are stored and EQT::VISIBLE_SPELL_GEM_COUNT
+// (8) are shown and offered -- include/common/packets/common.h (T483).
 
 // Maximum spells in spellbook
 constexpr uint16_t MAX_SPELLBOOK_SLOTS = 400;

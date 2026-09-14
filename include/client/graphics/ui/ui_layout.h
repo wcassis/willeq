@@ -11,6 +11,8 @@
 
 #include <irrlicht.h>
 
+#include "common/packets/common.h"  // T483: the gem counts
+
 namespace EQT {
 namespace Graphics {
 
@@ -109,7 +111,9 @@ struct UILayout {
 
         // Spell gems: bottom-right, above XP bar
         irr::s32 gemsW = SLOT_SIZE;
-        irr::s32 gemsH = SLOT_SIZE * 8 + MARGIN * 7;
+        // T483: EQT::VISIBLE_SPELL_GEM_COUNT gems, the official skin's eight.
+        const irr::s32 gemCount = static_cast<irr::s32>(EQT::VISIBLE_SPELL_GEM_COUNT);
+        irr::s32 gemsH = SLOT_SIZE * gemCount + MARGIN * (gemCount - 1);
         irr::s32 gemsX = width - MARGIN - gemsW;
         irr::s32 gemsY = hotbar.UpperLeftCorner.Y - MARGIN - gemsH;
         spellGems = {gemsX, gemsY, gemsX + gemsW, gemsY + gemsH};

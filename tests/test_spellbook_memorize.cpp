@@ -76,7 +76,7 @@ TEST(ResolveMemorizeGem, SpellUnknownSentinelCountsAsEmpty) {
     // SpellGemState documents both 0 and SPELL_UNKNOWN (0xFFFFFFFF) as
     // "empty"; a panel fed from SpellManager carries the sentinel.
     SpellGemPanelState gems;
-    for (int i = 0; i < SpellGemPanelState::GEM_COUNT; ++i) gems.gems[i].spellId = 0xFFFFFFFFu;
+    for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) gems.gems[i].spellId = 0xFFFFFFFFu;
     gems.gems[0].spellId = 111;
     EXPECT_EQ(resolveMemorizeGem(gems), 1);
 }
@@ -90,7 +90,7 @@ TEST(ResolveMemorizeGem, ExplicitTargetWinsOverFirstEmpty) {
 TEST(ResolveMemorizeGem, ExplicitTargetWinsEvenWhenOccupied) {
     // The whole point of picking a gem by hand: overwriting a full one.
     SpellGemPanelState gems;
-    for (int i = 0; i < SpellGemPanelState::GEM_COUNT; ++i) gems.gems[i].spellId = 100 + i;
+    for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) gems.gems[i].spellId = 100 + i;
     gems.memorizeTargetGem = 3;
     EXPECT_EQ(resolveMemorizeGem(gems), 3);
 }
@@ -98,7 +98,7 @@ TEST(ResolveMemorizeGem, ExplicitTargetWinsEvenWhenOccupied) {
 TEST(ResolveMemorizeGem, AllGemsFullWithNoExplicitTargetReturnsMinusOne) {
     // Refuse rather than silently clobber gem 1.
     SpellGemPanelState gems;
-    for (int i = 0; i < SpellGemPanelState::GEM_COUNT; ++i) gems.gems[i].spellId = 100 + i;
+    for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) gems.gems[i].spellId = 100 + i;
     EXPECT_EQ(resolveMemorizeGem(gems), -1);
 }
 
@@ -237,7 +237,7 @@ TEST_F(SpellbookClickTest, SelectedGemBecomesTheMemorizeDestinationAndIsThenCons
 }
 
 TEST_F(SpellbookClickTest, AllGemsFullAndNoPickPushesNothing) {
-    for (int i = 0; i < SpellGemPanelState::GEM_COUNT; ++i) gems.gems[i].spellId = 100 + i;
+    for (int i = 0; i < static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT); ++i) gems.gems[i].spellId = 100 + i;
     click(300, 160);
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
@@ -289,7 +289,7 @@ uint32_t FindSpellId(EQ::SpellDatabase& db, uint32_t lo, uint32_t hi,
 
 TEST(SpellbookMemorizeConsumer, IntentMemorizesTheNamedSpellIntoTheNamedGem) {
     // RED before T272: the arm's arguments were swapped, so this asked for
-    // "memorize spell 6 into gem <id & 0xFF>" -- gem_slot >= MAX_SPELL_GEMS,
+    // "memorize spell 6 into gem <id & 0xFF>" -- gem_slot >= EQT::VISIBLE_SPELL_GEM_COUNT,
     // an immediate false, nothing memorized in gem 6 or anywhere else.
     if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
     EverQuest eq = zonetest::MakeEq();
@@ -300,7 +300,7 @@ TEST(SpellbookMemorizeConsumer, IntentMemorizesTheNamedSpellIntoTheNamedGem) {
         return s.canClassUse(EQ::PlayerClass::Cleric, 60);
     });
     if (id == 0) GTEST_SKIP() << "no Cleric-usable spell found in scanned range";
-    ASSERT_GT(id, 8u) << "spell id must exceed MAX_SPELL_GEMS for the swap to be detectable";
+    ASSERT_GT(id, 8u) << "spell id must exceed EQT::VISIBLE_SPELL_GEM_COUNT for the swap to be detectable";
 
     zonetest::TestBridge bridge;
     eq.setBridge(&bridge);

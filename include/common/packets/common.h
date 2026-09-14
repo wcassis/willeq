@@ -30,7 +30,21 @@ static const uint32_t MAX_PP_DISCIPLINES = 100;
 static const uint32_t MAX_PLAYER_TRIBUTES = 5;
 static const uint32_t MAX_RECAST_TYPES = 20;
 static const uint32_t SPELLBOOK_SIZE = 400;
+// T483 (boards B762/B770): the spell gem counts -- the ONE source of truth.
+// SPELL_GEM_COUNT is the PROTOCOL count: Titanium's CastingSlot Gem1..Gem9,
+// MaxGems = 9 (eqemu common/patches/titanium_limits.h:308-328), and
+// PlayerProfile mem_spells[9] at offset 4360 (titanium_structs.h:854). Every
+// gem the server can name is STORED at this size, so none is dropped.
 static const uint32_t SPELL_GEM_COUNT = 9;
+// VISIBLE_SPELL_GEM_COUNT is what the official client SHOWS and OFFERS. Its
+// loaded skin (eqclient.ini UISkin=Default) lays out CSPW_Spell0..7 at X=3,
+// Y=10+30i, 36x28, in a 48x290 CastSpellWnd, and parks CSPW_Spell8 at
+// (-5000,-5000) with no size (uifiles/default/EQUI_CastSpellWnd.xml:32-158).
+// eqemu also refuses a cast from slot 8 without AA 1071 Mnemonic Retention
+// (zone/client_packet.cpp:4387-4392), which fable does not track. The gem
+// panel, its hit test, /cast, /mem, /forget, the gem keys and every
+// client-initiated cast use this count; the ninth gem is stored, never offered.
+static const uint32_t VISIBLE_SPELL_GEM_COUNT = 8;
 static const uint32_t BANDOLIERS_SIZE = 4;
 static const uint32_t BANDOLIER_ITEM_COUNT = 4;
 static const uint32_t POTION_BELT_SIZE = 4;

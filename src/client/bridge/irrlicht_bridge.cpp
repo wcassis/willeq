@@ -668,7 +668,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::SpellGemChanged:
         if (renderer_) {
             auto& d = std::get<state::SpellGemChangedData>(event.data);
-            if (d.gemSlot < EQT::Graphics::SpellGemPanelState::GEM_COUNT) {
+            if (d.gemSlot < EQT::VISIBLE_SPELL_GEM_COUNT) {  // T483: the ninth is stored, not shown
                 auto& gem = renderer_->Frame().spellGemState_.gems[d.gemSlot];
                 gem.spellId = d.spellId;
                 gem.gemState = d.gemState;

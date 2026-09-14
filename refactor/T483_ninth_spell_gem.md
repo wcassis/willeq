@@ -189,3 +189,132 @@ Untouched. No source file changed, so no G golden or image golden could move.
 - **B762** narrowed. The count is 9 on the wire, but the ninth gem is AA-gated
   and hidden in the oracle skin.
 - **B770** (C) added: Will's decision on what fable does with gem 9.
+
+---
+
+## Resumed: B770 decided as option (a)
+
+**The decision is the orchestrator's, recorded 2026-09-14, and Will may veto
+it.** The standing rule is that the official client is the golden, and its
+Default skin shows eight gems. So fable keeps 8 visible gems and 8 cast and
+hotkey slots, stores all 9 memorised spells, never offers the ninth, and parses
+no AA ranks. The branch was rebased onto `bb248847` first; the rebase was clean.
+
+**DocCitations fix.** The first docs commit cited `zone/client_packet.cpp:4387`
+and `common/ruletypes.h:534` on the board as paths relative to this repo, so
+the checker failed them (2 FAIL). Both are now absolute
+`/mnt/projects/akk-stack/code/...` paths, which the checker skips as
+cross-project citations. After the fix it reports 1,378 citations, 0 fail.
+
+### The one source of truth
+
+`include/common/packets/common.h` holds both counts, each with its citation:
+- `EQT::SPELL_GEM_COUNT = 9`, the protocol count. It already existed, pinned by
+  `test_packet_structs.cpp:134`. Sources: `titanium_limits.h:308-328` and
+  `titanium_structs.h:854`.
+- `EQT::VISIBLE_SPELL_GEM_COUNT = 8`, new. Source: the Default skin's
+  `CSPW_Spell0..7` at X=3, Y=10+30i, 36x28, in a 48x290 window, with
+  `CSPW_Spell8` parked at (-5000,-5000) (`EQUI_CastSpellWnd.xml:32-158`).
+
+Four constants were deleted: `EQ::MAX_SPELL_GEMS`,
+`eqt::state::SPELL_GEM_COUNT`, `SpellGemPanelState::GEM_COUNT` (plus
+`gems[8]`), and the local `SPELL_GEM_COUNT = 8` in `zone_entry.cpp`. So was the
+literal 8 in `ui_layout.h:112`. One trap was checked by census: `combat.h`
+declares a GLOBAL `SpellSlot` enum with `MAX_SPELL_GEMS = 12`. An unqualified
+leftover inside `namespace EQ` would have silently bound to 12. After the patch,
+`grep -w MAX_SPELL_GEMS` over `src include tests tools benchmarks docker` finds
+only `combat.h`, `combat.cpp` and `test_combat.cpp`, and nothing else mentions
+`GEM_COUNT` or an unqualified `SPELL_GEM_COUNT`.
+
+| count | sites |
+|---|---|
+| **stored, 9** | `SpellManager` arrays (`spell_manager.h`); `getMemorizedSpell`, `getGemState`, cooldown progress/remaining, `setSpellGems`, `applyServerGemUpdate`, `startGemCooldown` (`spell_gems.cpp`); gem-reset and cooldown loops (`spell_manager.cpp` x4, `spell_packet_handlers.cpp` x4, `spell_publish.cpp`); `SpellState::m_gems` and its 10 bounds; the PlayerProfile read (`zone_entry.cpp`, now `kGems = EQT::SPELL_GEM_COUNT`); both `OP_MemorizeSpell` gem arms (`zone_dispatch.cpp:600,617`); the zone-in gem snapshot (`everquest.cpp:642`) |
+| **shown / offered, 8** | `beginCastFromGem`, `beginCastById`'s gem lookup (`findGemSlotForSpell`), `memorizeSpell`, `forgetSpell`, `swapGems`; the hotbar spell search (`bridge_component_intents.cpp:659`); `/cast` `/mem` `/forget` (`command_processor_spells_gm.cpp` x3); dispatcher bounds (`action_dispatcher.cpp`, `action_dispatcher_social.cpp` x2); Alt+N (`graphics_input_handler.cpp`) and stdin `cast` (`console_input_handler.cpp`); `SpellGemPanelState::gems[]`, `gemLabels[]`, `resolveMemorizeGem`, the panel loop (`static_panels.cpp`), the hit test (`static_ui_input.cpp`), `gemsH` (`ui_layout.h`); the bridge's panel filter (`irrlicht_bridge.cpp:671`), where a `SpellGemChanged` for slot 8 is published but not drawn |
+
+The hotkey table (`SpellGem1..8`, Alt+1..8) is already eight and unchanged.
+User-facing text ("Gem slot must be 1-8") is unchanged. Nothing moved on
+screen: `gemsH` is still 8x32 + 7x4 = 284 px, the 800x600 rect is still
+{764,268,796,552}, and at 1280x720 it is {1244,388,1276,672}. The panel emits
+eight 32x32 slots at x = `spellGems.X`, y = top + 36i, for i = 0..7.
+
+### Tests (literal 8 and 9, so a drifting constant is a red test)
+
+`tests/test_ninth_spell_gem.cpp` (new target `test_ninth_spell_gem`,
+`tests/cmake/spells.cmake`) and one case in
+`tests/test_command_processor_migration.cpp`:
+
+| test | pre-fix (source at `bb248847`, tests added) | post-fix |
+|---|---|---|
+| `NinthSpellGem.PlayerProfileKeepsTheNinthMemorisedSpell` (a 9-spell profile keeps spell 9) | **FAIL**: `getMemorizedSpell(8)` = 4294967295, expected 1008 ("mem_spells[8] was dropped at the PlayerProfile read") | pass |
+| `NinthSpellGem.MemorizeSpellForSlotEightLandsInState` (lands in SpellManager AND GameState; the un-memorise empties it) | **FAIL**: 4294967295 vs 2345 in both stores ("dropped at the zone dispatcher") | pass |
+| `NinthSpellGem.TheNinthGemIsNeverCastFromTheClient` (cast/memorize/forget/swap at 8 refused; the stored spell survives) | **FAIL**, but only its last line, because nothing was stored to survive. The refusals already held | pass |
+| `NinthSpellGem.ThePanelHoldsEightGems` | pass (guard) | pass |
+| `NinthSpellGem.PanelEmitsExactlyEightOnScreenSlotsAt800x600` | pass (guard) | pass |
+| `NinthSpellGem.PanelEmitsExactlyEightOnScreenSlotsAt1280x720` | pass (guard) | pass |
+| `CommandProcessorTest.Cast_NinthGem_RefusedClientSideWithoutDispatching` (`/cast 9` -> "Gem slot must be 1-8", handler never called) | pass (guard) | pass |
+
+**Four of the seven are guards, not red-first tests, and this is flagged as a
+deviation from "every test fails first".** Before the fix the ninth gem could
+be neither stored nor offered, so "still refused" and "still eight on screen"
+were already true. They exist to catch the storage growing into the offer path,
+and the three red tests prove that growth happened. The panel tests count the
+quads `renderSpellGemPanel` queues on the `EDT_NULL` driver (no atlas, so every
+sprite is a solid quad in `UIRenderer::atlasQuads_`). Each slot is asserted on
+screen, above the hotbar, and inside `layout.spellGems`.
+
+Existing tests updated to the split, in place (G-correction 32 style):
+- `test_spell_manager.cpp`: the offer-side probes use the visible count, the
+  read-side probes use the stored count, and the `setSpellGems` array has 9
+  entries.
+- `test_spell_manager_timing.cpp`, `test_memorize_into_occupied_gem.cpp` and
+  `test_state_modules.cpp` use the stored count.
+- `test_spellbook_memorize.cpp` uses the visible count.
+
+No assertion was weakened: each probe still names the first out-of-range index
+on its own side.
+
+### Goldens
+
+- G goldens: `zone_opcodes_g01.txt`, `command_registration_order_g03.txt` and
+  `frame_render_order_g05.txt` are unchanged, and no golden file contains any
+  gem-count text (grepped `tests/goldens/`). The zone dispatch table gained and
+  lost no opcode; the change sits inside existing `On*` bodies. The pins for
+  `bridge_component_intents` (`BridgeIntentTable`, `ReachabilitySweep`,
+  `OptionsMerchantResidue`) all passed in the full run.
+- Image goldens: see step 4.
+
+### Media
+
+No `review/T483/` capture was made, because option (a) changes no pixel. The
+panel geometry is identical before and after (the numbers above), so a
+before/after pair would be two identical images. This is a deviation from plan
+task 4, which was written for a ninth VISIBLE gem.
+
+### Verification
+
+| step | result |
+|---|---|
+| 1. `cmake --build slot3/build -j24` | **PASS**, exit 0 (backgrounded; no 143) |
+| 2. `ctest -j6` | **PASS**, 100% of 4,811, 0 failed. Includes `NinthSpellGem.*`, `UIAtlasPixelTest.*`, `ZoneDispatchTable.*`, `CommandRegistrationOrderTest.*`, `FrameRenderOrder.*`, `DocCitations`, `DocClaims`, `DocCounts`, `CommentClaims`, `FileSizeCeiling`, `ZeroCallers` |
+| 3. `build-gles2-x86.sh` | **PASS**, exit 0 |
+| 4. visual gate | **PASS** (`=== VISUAL GATE: PASS ===`, run against the freshly rebuilt `build-gles2`); `git status -- tests/goldens/` is empty, so no image golden moved |
+| 5. `build-arm-noble.sh` | **PASS**, exit 0 |
+| 6. `check_file_sizes.sh fable` | **PASS**, 29 checked, 0 warn, 0 fail |
+
+### Board (resumed)
+
+- **B770**: the decision is recorded as the orchestrator's with Will's veto
+  open, and the entry stays open for that veto. Still owed live, under a lock:
+  the `rule_values` read, and a character whose profile holds a ninth spell
+  keeping it across a zone.
+- **B762**: its citation is fixed; the substance is unchanged.
+
+### Deviations (resumed)
+
+1. Four of the seven new tests are guards that were green before the fix (see
+   Tests).
+2. No before/after captures, because no pixel moved (see Media).
+3. The hotbar spell search, `beginCastById`'s gem lookup and the input handlers
+   were narrowed to the visible count as well. They are "offer" paths, so this
+   follows from rule 1 of the decision, and none of them could reach gem 9
+   before.

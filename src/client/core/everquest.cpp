@@ -639,7 +639,7 @@ void EverQuest::PublishFullStateSnapshot() {
 
 	// --- Spell gems ---
 	if (m_spell_manager) {
-		for (uint8_t i = 0; i < EQ::MAX_SPELL_GEMS; ++i) {
+		for (uint8_t i = 0; i < EQT::SPELL_GEM_COUNT; ++i) {
 			uint32_t spellId = m_spell_manager->getMemorizedSpell(i);
 			eqt::state::SpellGemChangedData data;
 			data.gemSlot = i;

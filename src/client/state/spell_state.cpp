@@ -13,21 +13,21 @@ SpellState::SpellState() {
 // ========== Spell Gems ==========
 
 uint32_t SpellState::getGemSpellId(uint8_t gemSlot) const {
-    if (gemSlot >= SPELL_GEM_COUNT) {
+    if (gemSlot >= EQT::SPELL_GEM_COUNT) {
         return SPELL_ID_UNKNOWN;
     }
     return m_gems[gemSlot].spellId;
 }
 
 SpellGemState SpellState::getGemState(uint8_t gemSlot) const {
-    if (gemSlot >= SPELL_GEM_COUNT) {
+    if (gemSlot >= EQT::SPELL_GEM_COUNT) {
         return SpellGemState::Empty;
     }
     return m_gems[gemSlot].state;
 }
 
 float SpellState::getGemCooldownProgress(uint8_t gemSlot) const {
-    if (gemSlot >= SPELL_GEM_COUNT) {
+    if (gemSlot >= EQT::SPELL_GEM_COUNT) {
         return 1.0f;
     }
     const auto& gem = m_gems[gemSlot];
@@ -44,7 +44,7 @@ float SpellState::getGemCooldownProgress(uint8_t gemSlot) const {
 }
 
 uint32_t SpellState::getGemCooldownRemaining(uint8_t gemSlot) const {
-    if (gemSlot >= SPELL_GEM_COUNT) {
+    if (gemSlot >= EQT::SPELL_GEM_COUNT) {
         return 0;
     }
     const auto& gem = m_gems[gemSlot];
@@ -63,21 +63,21 @@ uint32_t SpellState::getGemCooldownRemaining(uint8_t gemSlot) const {
 }
 
 bool SpellState::hasSpellMemorized(uint8_t gemSlot) const {
-    if (gemSlot >= SPELL_GEM_COUNT) {
+    if (gemSlot >= EQT::SPELL_GEM_COUNT) {
         return false;
     }
     return m_gems[gemSlot].spellId != SPELL_ID_UNKNOWN;
 }
 
 bool SpellState::isGemReady(uint8_t gemSlot) const {
-    if (gemSlot >= SPELL_GEM_COUNT) {
+    if (gemSlot >= EQT::SPELL_GEM_COUNT) {
         return false;
     }
     return m_gems[gemSlot].state == SpellGemState::Ready;
 }
 
 void SpellState::setGem(uint8_t gemSlot, uint32_t spellId, SpellGemState state) {
-    if (gemSlot >= SPELL_GEM_COUNT) {
+    if (gemSlot >= EQT::SPELL_GEM_COUNT) {
         return;
     }
 
@@ -97,7 +97,7 @@ void SpellState::setGem(uint8_t gemSlot, uint32_t spellId, SpellGemState state) 
 }
 
 void SpellState::setGemCooldown(uint8_t gemSlot, uint32_t remainingMs, uint32_t totalMs) {
-    if (gemSlot >= SPELL_GEM_COUNT) {
+    if (gemSlot >= EQT::SPELL_GEM_COUNT) {
         return;
     }
 
@@ -186,7 +186,7 @@ void SpellState::setMemorizing(bool memorizing, uint8_t gemSlot, uint32_t spellI
     m_memorizeTimeTotal = totalMs;
     m_memorizeTimeRemaining = totalMs;
 
-    if (memorizing && gemSlot < SPELL_GEM_COUNT) {
+    if (memorizing && gemSlot < EQT::SPELL_GEM_COUNT) {
         m_gems[gemSlot].state = SpellGemState::MemorizeProgress;
         fireSpellGemChangedEvent(gemSlot);
     }
@@ -272,7 +272,7 @@ void SpellState::reset() {
 // ========== Event Firing ==========
 
 void SpellState::fireSpellGemChangedEvent(uint8_t gemSlot) {
-    if (!m_eventBus || gemSlot >= SPELL_GEM_COUNT) {
+    if (!m_eventBus || gemSlot >= EQT::SPELL_GEM_COUNT) {
         return;
     }
 

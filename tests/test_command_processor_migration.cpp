@@ -268,6 +268,16 @@ TEST_F(CommandProcessorTest, Cast_WithTarget_PassesTargetId) {
     ASSERT_TRUE(handler.calledOnceWith("beginCastFromGem(1, 555)"));
 }
 
+// T483 (B770 option (a)): Titanium stores a ninth gem, but the official
+// client's skin shows eight and offers no ninth, so /cast 9 is refused
+// client-side with the same message as every other out-of-range gem.
+TEST_F(CommandProcessorTest, Cast_NinthGem_RefusedClientSideWithoutDispatching) {
+    auto result = processor->processCommand("/cast 9");
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.message, "Gem slot must be 1-8");
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 TEST_F(CommandProcessorTest, Cast_NoArgs_FailsCleanlyWithoutDispatching) {
     auto result = processor->processCommand("/cast");
     EXPECT_FALSE(result.success);

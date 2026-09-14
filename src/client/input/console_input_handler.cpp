@@ -1,4 +1,5 @@
 #include "client/input/console_input_handler.h"
+#include "common/packets/common.h"  // T483: the gem counts
 
 #include <iostream>
 #include <sstream>
@@ -457,7 +458,7 @@ void ConsoleInputHandler::processCommand(const std::string& cmd) {
     // Spell casting (cast 1-8)
     if (command == "cast") {
         int gem;
-        if (iss >> gem && gem >= 1 && gem <= 8) {
+        if (iss >> gem && gem >= 1 && gem <= static_cast<int>(EQT::VISIBLE_SPELL_GEM_COUNT)) {
             m_spellCastRequests.push(SpellCastRequest{static_cast<uint8_t>(gem - 1)});
         }
         return;

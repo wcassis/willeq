@@ -89,7 +89,8 @@ public:
     // Casting - Player Initiated
     // ========================================================================
 
-    // Begin casting from a spell gem (1-8)
+    // Begin casting from a spell gem (0-based; only the first
+    // EQT::VISIBLE_SPELL_GEM_COUNT are castable -- T483)
     CastResult beginCastFromGem(uint8_t gem_slot, uint16_t target_id = 0);
 
     // Begin casting by spell ID directly (for scripted/item casts)
@@ -380,13 +381,14 @@ private:
     uint8_t m_pending_gem_slot = 0xFF;
 
     // ------------------------------------------------------------------------
-    // Spell Gems (8 slots for Classic/Velious)
+    // Spell Gems: EQT::SPELL_GEM_COUNT (9) stored; the first
+    // EQT::VISIBLE_SPELL_GEM_COUNT (8) shown and offered (T483)
     // ------------------------------------------------------------------------
 
-    std::array<uint32_t, MAX_SPELL_GEMS> m_spell_gems;
-    std::array<GemState, MAX_SPELL_GEMS> m_gem_states;
-    std::array<std::chrono::steady_clock::time_point, MAX_SPELL_GEMS> m_gem_cooldown_start;
-    std::array<uint32_t, MAX_SPELL_GEMS> m_gem_cooldown_duration;
+    std::array<uint32_t, EQT::SPELL_GEM_COUNT> m_spell_gems;
+    std::array<GemState, EQT::SPELL_GEM_COUNT> m_gem_states;
+    std::array<std::chrono::steady_clock::time_point, EQT::SPELL_GEM_COUNT> m_gem_cooldown_start;
+    std::array<uint32_t, EQT::SPELL_GEM_COUNT> m_gem_cooldown_duration;
 
     // ------------------------------------------------------------------------
     // Memorization State

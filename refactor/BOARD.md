@@ -9896,8 +9896,8 @@ B712–B719 unused.
   **Narrowed by T483 (source only, no live run).** Titanium carries 9 slots on
   the wire (PlayerProfile `mem_spells[9]` at 4360). But eqemu refuses a cast
   from slot 8 unless the caster has AA 1071 Mnemonic Retention
-  (`zone/client_packet.cpp:4387-4392`; rule `Spells:RequireMnemonicRetention`,
-  default true, `common/ruletypes.h:534`). The oracle's loaded skin (`UISkin=Default`)
+  (`/mnt/projects/akk-stack/code/zone/client_packet.cpp:4387-4392`; rule `Spells:RequireMnemonicRetention`,
+  default true, `/mnt/projects/akk-stack/code/common/ruletypes.h:534`). The oracle's loaded skin (`UISkin=Default`)
   parks `CSPW_Spell8` at (-5000,-5000) with no size, so the official client
   shows 8 gems. What remains is the design question in B770. The full census of
   every 8 is in `refactor/T483_ninth_spell_gem.md` Review.
@@ -9921,6 +9921,22 @@ B712–B719 unused.
   gem code. Whichever option is chosen, those should become one constant.
   Before any change, read the live `rule_values` row for
   `Spells:RequireMnemonicRetention` under a lock.
+  **DECIDED 2026-09-14: option (a), by the orchestrator. Will may veto.** The
+  standing rule is that the official client is the golden, and its Default
+  skin shows eight gems. T483 implemented it: `include/common/packets/common.h`
+  now holds the only two gem counts. `EQT::SPELL_GEM_COUNT` (9) sizes storage:
+  SpellManager, SpellState, the PlayerProfile read and both `OP_MemorizeSpell`
+  arms. `EQT::VISIBLE_SPELL_GEM_COUNT` (8, citing the XML geometry) bounds
+  everything shown or offered: the panel, the layout, the hit test,
+  `beginCastFromGem`, memorize/forget/swap, `/cast` `/mem` `/forget`, the gem
+  keys and the hotbar's spell search. `EQ::MAX_SPELL_GEMS`,
+  `eqt::state::SPELL_GEM_COUNT`, `SpellGemPanelState::GEM_COUNT` and the
+  constant local to `zone_entry.cpp` are gone. No AA ranks are parsed (option
+  (b) was not chosen). Pinned by `tests/test_ninth_spell_gem.cpp` and
+  `CommandProcessorTest.Cast_NinthGem_RefusedClientSideWithoutDispatching`.
+  Still owed: the live `rule_values` read, and a live check that a character
+  whose profile holds a ninth spell keeps it across a zone. This entry stays
+  open for the veto.
 
 ## Added 2026-09-14 by T469 (the server's cast interrupt)
 
