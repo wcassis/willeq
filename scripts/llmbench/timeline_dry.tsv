@@ -1,0 +1,29 @@
+# T492 DRY-RUN timeline (Leg B) -- 24 steps, 8 per player, ~3 min.
+# t_offset<TAB>player<TAB>action<TAB>truth k=v;...
+# Content: zone in, /say each player (the OTHER TWO's logs are the assertion),
+# one camera change per player, /who, /loc.  Every row also takes an official
+# window+root pair, so every step has a paired official frame.
+0	p1	nop	label=dry_zonein_p1;zone=qeynos2;char=Oraclealpha;expect=unlabelled
+5	p2	/loc	label=dry_loc_p2;zone=qeynos2;char=Testcaster;expect=unlabelled
+10	p3	/loc	label=dry_loc_p3;zone=qeynos2;char=Testbuddy;expect=unlabelled
+16	p1	cmd /say T492 dry p1 hello|hello	label=dry_say_p1;zone=qeynos2;said=T492 dry p1 hello;expect=unlabelled
+24	p2	/say T492 dry p2 hello	label=dry_say_p2;zone=qeynos2;said=T492 dry p2 hello;expect=unlabelled
+32	p3	/say T492 dry p3 hello	label=dry_say_p3;zone=qeynos2;said=T492 dry p3 hello;expect=unlabelled
+40	p1	key F9	label=dry_cam_p1_f9_1;zone=qeynos2;camera=f9x1_from_login;expect=unlabelled
+48	p2	/camera chase	label=dry_cam_p2_chase;zone=qeynos2;camera=Chase;expect=discrepancy:B721
+56	p3	/camera chase	label=dry_cam_p3_chase;zone=qeynos2;camera=Chase;expect=discrepancy:B721
+64	p1	nop	label=dry_idle_p1;zone=qeynos2;expect=unlabelled
+70	p2	/who	label=dry_who_p2;zone=qeynos2;expect=unlabelled
+76	p3	/who	label=dry_who_p3;zone=qeynos2;expect=unlabelled
+84	p1	cmd /who|Players	label=dry_who_p1;zone=qeynos2;expect=unlabelled
+92	p2	/camera firstperson	label=dry_cam_p2_fp;zone=qeynos2;camera=FirstPerson;expect=match
+98	p3	/camera firstperson	label=dry_cam_p3_fp;zone=qeynos2;camera=FirstPerson;expect=match
+106	p1	key F9	label=dry_cam_p1_f9_2;zone=qeynos2;camera=f9x2_from_login;expect=unlabelled
+112	p2	/loc	label=dry_loc2_p2;zone=qeynos2;expect=unlabelled
+118	p3	/loc	label=dry_loc2_p3;zone=qeynos2;expect=unlabelled
+126	p1	nop	label=dry_idle2_p1;zone=qeynos2;expect=unlabelled
+132	p2	/say T492 dry p2 second	label=dry_say2_p2;zone=qeynos2;said=T492 dry p2 second;expect=unlabelled
+140	p3	/say T492 dry p3 second	label=dry_say2_p3;zone=qeynos2;said=T492 dry p3 second;expect=unlabelled
+148	p1	cmd /loc|Location	label=dry_loc_p1;zone=qeynos2;expect=unlabelled
+156	p2	/camera get	label=dry_camget_p2;zone=qeynos2;expect=unlabelled
+162	p3	/camera get	label=dry_camget_p3;zone=qeynos2;expect=unlabelled
