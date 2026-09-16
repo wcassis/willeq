@@ -76,14 +76,22 @@ def main():
             chunk = items[n:n + a.per_sheet]
             rows = []
             for i, (_, label, pid, of, ot, wf, wt, kv) in enumerate(chunk):
-                cap = (f"{label}  [{pid}]  expect={e}\\n"
-                       f"official {ot}   |   willeq {wt}\\n"
+                cap = (f"OFFICIAL (left) vs WILLEQ (right)   step {label}  [{pid}]   expect={e}\n"
+                       f"official {ot}   |   willeq {wt}\n"
                        + "  ".join(f"{k}={v}" for k, v in kv.items()
                                    if k in ("zone", "camera", "held", "target", "sky", "trees")))
                 row = os.path.join(a.outdir, f".row_{safe}_{n}_{i}.png")
+                pair = os.path.join(a.outdir, f".pair_{safe}_{n}_{i}.png")
                 subprocess.run(["montage", of, wf, "-tile", "2x1", "-geometry", "+4+4",
-                                "-background", "black", "-label", cap, "-pointsize", "13",
-                                "-fill", "white", row], check=True)
+                                "-background", "black", pair], check=True)
+                # A caption STRIP under the pair.  (`montage -label` only applies to
+                # inputs that FOLLOW it, so the first version captioned nothing --
+                # Will could not find the labels.)
+                subprocess.run(["convert", pair, "-background", "#202020", "-fill", "white",
+                                "-pointsize", "22", "-gravity", "west",
+                                "label:" + cap.replace("\\n", "\n"),
+                                "-append", row], check=True)
+                os.remove(pair)
                 rows.append(row)
             out = os.path.join(a.outdir, f"T492_{safe}_{n//a.per_sheet+1}.png")
             subprocess.run(["montage", *rows, "-tile", "1x", "-geometry", "+2+2",
