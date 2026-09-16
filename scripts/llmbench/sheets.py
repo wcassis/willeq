@@ -110,9 +110,11 @@ def main():
                 # A caption STRIP under the pair.  (`montage -label` only applies to
                 # inputs that FOLLOW it, so the first version captioned nothing --
                 # Will could not find the labels.)
+                width = subprocess.run(["identify", "-format", "%w", pair], capture_output=True,
+                                       text=True, check=True).stdout.strip()
                 subprocess.run(["convert", pair, "-background", "#202020", "-fill", "white",
-                                "-pointsize", "22", "-gravity", "west",
-                                "label:" + cap.replace("\\n", "\n"),
+                                "-pointsize", "22", "-gravity", "west", "-size", f"{width}x",
+                                "caption:" + cap.replace("\\n", "\n"),
                                 "-append", row], check=True)
                 os.remove(pair)
                 rows.append(row)
