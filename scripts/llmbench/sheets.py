@@ -24,6 +24,27 @@ def index(pdir):
     return out
 
 
+
+BOARD = {
+    "B721": "B721 Chase framing: official figure larger/closer than fable's (T478 STOP). Weigh: how the own model is framed.",
+    "B722": "B722 held items (set A: short sword + lantern): compare presence + orientation of what is in each hand.",
+    "B723": "B723 set B: fable draws a kite shield on the left arm, official shows no shield.",
+    "B724": "B724 set C: the 2H sword is held differently (official roughly horizontal).",
+    "B725": "B725 IT10 arrow model held along a different axis.",
+    "B781": "B781 sky: official dusk gradient vs fable's time-of-day tint (now B789: wrong, time-varying colour).",
+    "B782": "B782 distant trees pale/untextured in fable (now also B790: pink untextured cards).",
+}
+def claim(e, kv):
+    ign = "  IGNORE everything else (sky colour, pink trees, UI, nametags, lighting) -- boarded, unscored."
+    if e == "match":
+        if "target" in kv:
+            return f"CLAIM: both clients have {kv['target']} targeted in {kv.get('zone','?')}. Weigh: same entity singled out." + ign
+        return (f"CLAIM: both clients are in the {kv.get('camera','?')} camera in {kv.get('zone','?')}. "
+                f"Weigh the VIEWPOINT only: eye height, distance, whether the own model is drawn." + ign)
+    b = e.split(":", 1)[1] if ":" in e else e
+    extra = f"  held={kv['held']}" if "held" in kv else ""
+    return "CLAIM (discrepancy): " + BOARD.get(b, b) + extra + ign
+
 def truth_by_step(pdir):
     d = {}
     path = os.path.join(pdir, "truth.tsv")
@@ -79,7 +100,9 @@ def main():
                 cap = (f"OFFICIAL (left) vs WILLEQ (right)   step {label}  [{pid}]   expect={e}\n"
                        f"official {ot}   |   willeq {wt}\n"
                        + "  ".join(f"{k}={v}" for k, v in kv.items()
-                                   if k in ("zone", "camera", "held", "target", "sky", "trees")))
+                                   if k in ("zone", "camera", "held", "target", "sky", "trees"))
+                       + ("\n(willeq UI hidden in this step, B791)" if "rerecorded" in kv else "")
+                       + "\n" + claim(e, kv))
                 row = os.path.join(a.outdir, f".row_{safe}_{n}_{i}.png")
                 pair = os.path.join(a.outdir, f".pair_{safe}_{n}_{i}.png")
                 subprocess.run(["montage", of, wf, "-tile", "2x1", "-geometry", "+4+4",
