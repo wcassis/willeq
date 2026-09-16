@@ -10658,7 +10658,7 @@ B755–B759 unused.
 
 ## Added 2026-09-16 by T492 (the three-player LLM-benchmark corpus rig)
 
-- **B784** (A) `scripts/scenario.sh` `restore_snapshot()` -- **the "restore with the
+- ~~**B784**~~ (A) `scripts/scenario.sh` `restore_snapshot()` -- **the "restore with the
   world DOWN" step does not actually keep the world down, and is slow enough for
   that to matter.** It stops world/zone/loginserver with `pkill` INSIDE the
   eqemu-server container, but that container's entrypoint supervisor brings the
@@ -10673,7 +10673,41 @@ B755–B759 unused.
   v2 did: `docker stop` the eqemu-server container (mariadb stays up) and send
   the whole restore as ONE statement batch -- **25 s, byte-identical**
   (`scripts/llmbench/teardown.sh`, `record.sh` `restore()`). `scenario.sh` is
-  UNCHANGED and still has both halves of the defect. Found by T492.
+  UNCHANGED and still has both halves of the defect. Found by T492.~~
+  **FIXED T493**, and the mechanism was WORSE than the entry says. Two things
+  were measured on the local lane before anything was changed:
+  (1) the `pkill` chain **killed its own shell**. The container-side
+  `bash -c "pkill -f /tmp/spire-launcher; pkill -f 'bin/world'; ..."` matches
+  the FIRST pattern against its own command line, so the exec died with rc 143
+  and the other three `pkill`s never ran at all -- **27 world/zone processes
+  were still alive when the restore finished**. The supervisor never even had
+  to respawn anything.
+  (2) **the zone writes its in-memory copy of a character back when the ZONE
+  SHUTS DOWN, not when the client disconnects.** A row moved to a sentinel
+  while `Testbuddy` was in world survived the client's death by 60 s untouched,
+  and went back to the zone's copy the instant the zone got SIGTERM. So the old
+  restore printed `snapshot restored BYTE-IDENTICALLY` **and was then undone by
+  the `down.sh` that followed it** -- which is why nothing in the tree had ever
+  caught this: the after-snapshot diff runs before the teardown that does the
+  damage. Reproduced exactly (`review/T493/`): sentinel 1111/2222 restored,
+  teardown SIGTERM, `Testbuddy` back at 0/0.
+  The fix is ONE shared implementation, `scripts/eqemu/restore_lib.sh`
+  (`eqemu_world_stop` = `docker stop` the eqemu-server container, mariadb is a
+  separate container and stays up; then one statement batch), sourced by
+  `scripts/scenario.sh`, `scripts/llmbench/teardown.sh` and
+  `scripts/llmbench/record.sh` -- the three duplicates are gone. Measured on
+  the local lane: **restore 17 s, byte-identical through the teardown, 0 world
+  processes alive**, against the old path's 22 s local (2 min over ssh) and a
+  clobbered row. `scripts/scenario.sh` also now restores on the `--keep-server`
+  path, which it previously skipped entirely, leaving a moved character behind
+  for the next unit.
+  Pinned by `scripts/eqemu/restore_selftest.sh`, reached as
+  `scripts/scenario.sh --selftest`: it logs a character in, makes the snapshot
+  and the world disagree on purpose, restores, runs `down.sh`'s SIGTERM step
+  and only THEN diffs, and asserts the restore's wall time and that no
+  world/zone process survived it. `--legacy` runs the pre-T493 restore and
+  FAILS (exit 66), so the net is known to test something. Real end-to-end proof:
+  `scenario.sh zone_in` exit 0, byte-identical, 44 s total.
 - **B785** (B) `review/T478/scripts/t478_o.sh` (and T466's and T377's copies of
   it) -- **the oracle driver stamps its marks with `date -u` while every willeq
   `run.log` stamps LOCAL time**, and the two are the halves of every joined
@@ -10830,3 +10864,31 @@ B755–B759 unused.
   `src/client/action/command_processor_registration.cpp` and whatever maps its
   argument to an inventory index. The two `E_heldB_p2_*` corpus steps are parked
   `expect=unlabelled` with `why=` naming this. Found by T492.
+
+## Added 2026-09-16 by T493 (scenario.sh restore keeps the world down)
+
+- **B797** (A) `scripts/eqemu/env.sh` `eqemu_port_open()`, and its callers
+  `scripts/eqemu/up.sh` (`wait_for "<x> port ..."`) and
+  `scripts/llmbench/record.sh` ("eqemu already up (5998 and 9000 open)") --
+  **a TCP port probe cannot tell a live eqemu stack from a dead one on the
+  local lane.** 5998/9000/7000 are PUBLISHED container ports, so
+  `docker-proxy` completes the `connect()` on the host whether or not anything
+  inside the container is listening. MEASURED T493: with the eqemu-server
+  container running but `world`, `zone` and `loginserver` all at **zero**
+  processes, both `eqemu_port_open 5998` and `eqemu_port_open 9000` returned
+  success. The consequences are live: `up.sh` prints `loginserver port 5998:
+  ready (0s)` and `world port 9000: ready (0s)` and exits 0 against a stack
+  that is not running, and `record.sh` skips `up.sh` entirely on the same
+  evidence -- T493 lost a 3.5-minute run to exactly that (the client never
+  reached the world and the selftest reported 67). `server_process_running`
+  (T457) already exists and is the honest check;
+  `scripts/eqemu/restore_selftest.sh` uses it and runs `up.sh`
+  unconditionally, but `up.sh` and `record.sh` are untouched. Found by T493.
+- **B798** (B) `scripts/eqemu/down.sh` -- **its `pkill` pattern is the right
+  one and `scenario.sh`'s was not, and nothing said so.** `down.sh` uses
+  `pkill -TERM -f '/bin/(loginserver|world|zone)( |$)'`, which does not match
+  its own `bash -c` wrapper; the `restore_snapshot()` chain T493 deleted used
+  `pkill -f /tmp/spire-launcher` first, which does. Any future container-side
+  `pkill` has the same trap waiting for it, and there is no shared helper: both
+  call sites spell the pattern out. Small, but it is the exact shape of the
+  defect B784 turned out to be. Found by T493.

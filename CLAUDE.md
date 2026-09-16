@@ -486,7 +486,39 @@ the process exit code the result.
 # The whole rig -- lock, up.sh, snapshot, run, restore with the world DOWN,
 # down.sh, release -- with the client's exit code passed through:
 bash scripts/scenario.sh zone_in --timeout 120 --unit T4xx
+
+# The restore's own regression net (T493) -- run it after ANY change to the
+# restore path; it takes the lock itself and leaves the stack down:
+bash scripts/scenario.sh --selftest --unit T4xx
 ```
+
+**"Restore with the world DOWN" means STOP THE CONTAINER** (T493, board B784).
+Until T493 that step did not take the world down at all, and two MEASURED
+facts hid it:
+
+- the container-side kill was `bash -c "pkill -f /tmp/spire-launcher; pkill -f
+  'bin/world'; ..."`, whose own command line matches the FIRST pattern, so the
+  exec killed itself (rc 143) and the other three `pkill`s never ran -- 27
+  world/zone processes were still alive after it, and the image's entrypoint
+  supervisor would have respawned them anyway (board B483 names the launcher);
+- **the zone writes its in-memory copy of a character back when the zone SHUTS
+  DOWN, not when the client disconnects.** A row moved while Testbuddy was in
+  world survived the client's death by 60 s untouched and was overwritten the
+  instant the zone got SIGTERM. So the restore verified itself byte-identical
+  and the `down.sh` that followed it silently undid the restore.
+
+The one implementation is `scripts/eqemu/restore_lib.sh`, sourced by
+`scripts/scenario.sh`, `scripts/llmbench/teardown.sh` and
+`scripts/llmbench/record.sh` -- `eqemu_world_stop` (`docker stop` the
+eqemu-server container; mariadb is a separate container and stays up) then ONE
+statement batch, not one `UPDATE` per row. Measured on the local lane: 17 s
+byte-identical, against 22 s (local) / 2 min (over ssh) for the per-row loop
+that did not work. **Do not inline another copy**, and do not go back to
+`pkill`. `scripts/eqemu/restore_selftest.sh` is the net: it logs a character
+in, makes the snapshot and the world disagree on purpose, restores, runs
+`down.sh`'s SIGTERM step and only THEN diffs, so the write-back is caught
+rather than waited for. Its `--legacy` flag runs the pre-T493 restore and
+fails, which is how the net is known to test something.
 
 **Exit-code taxonomy** (`include/client/scenario/scenario_runner.h`; nothing
 else may be returned from a scenario run):
@@ -500,6 +532,9 @@ else may be returned from a scenario run):
 
 `scripts/scenario.sh` adds its own operator codes on top: 64 lock held by
 another session, 65 `up.sh` failed, 66 the server snapshot did not restore.
+`--selftest` adds 67 (the client never reached the world), 68 (the restore was
+slower than its budget) and 69 (a world/zone process was still alive when the
+restore finished).
 
 **How it hangs off the client.** `--scenario` forces Automated mode, and the
 runner is registered on `AutomatedMode::setAutomationCallback` — the per-tick
