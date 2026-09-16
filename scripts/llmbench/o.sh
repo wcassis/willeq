@@ -78,8 +78,25 @@ case "${1:?}" in
              fi
              focus; xdotool key F9; sleep 3
          done
+         # A failure must say WHY, not just "no".  Score the last probe against
+         # all six cameras under three crops: if the right camera is best but
+         # above threshold the scene conditions are off; if the wrong camera is
+         # best, something else is (T492 Leg F: 0.448-0.558, wrong camera best,
+         # because `#set time`/`#set weather`/the pinned pose were not applied).
          mark "camto $want FAILED after $tries probes last=$sc"
-         echo "camto $want FAILED last=$sc"; exit 1 ;;
+         echo "camto $want FAILED last=$sc -- diagnosis:"
+         for cr in 1000x480+12+40 1000x380+12+40 900x300+60+60; do
+             line="  crop $cr:"
+             for cam in FirstPerson Overhead Chase User1 User2 Tether; do
+                 v=$(python3 /mnt/projects/fable/wt/t3/scripts/camera_match_score.py \
+                       --oracle "$refs/T466_oracle_h160_direct_${cam}_noui_root_1024x768.png" \
+                       --candidate "$tmp" --crop "$cr" --candidate-crop "$cr" 2>/dev/null \
+                     | awk 'END{print $3}')
+                 line="$line ${cam}=${v}"
+             done
+             echo "$line"; mark "camto-diag $line"
+         done
+         exit 1 ;;
   # The official TARGET window's name field.  MEASURED on
   # review/T492/llmbench/players/p1/frames/15:27:43.497_C_target_p1_p2_window.png:
   # the box Will took for the target is the PLAYER's own window; the target name
@@ -90,6 +107,21 @@ case "${1:?}" in
              | tesseract - - --psm 7 2>/dev/null | tr -d '\r\n' | sed 's/[^A-Za-z_ ]//g' | xargs)
          [ -n "$t" ] || t="unreadable"
          mark "target window reads: $t"; echo "$t" ;;
+  # targetname <expected> -- the gate form of `target`: the official target
+  # window must read the WHOLE name.  T492 Leg F accepted whatever OCR returned
+  # and got the fragment "es" on all six targeting steps, which proves nothing
+  # about what the client was targeting.  Tries several crops around the
+  # measured one and reports the first that contains the expected name.
+  targetname) want="$2"
+         timeout 25 import -window "$WID" "$P1/.target_probe.png" 2>/dev/null
+         for cr in 140x24+885+470 160x30+875+466 200x34+865+462 240x40+790+455; do
+             t=$(convert "$P1/.target_probe.png" -crop "$cr" +repage -colorspace Gray \
+                   -resize 500% -threshold 50% png:- 2>/dev/null \
+                 | tesseract - - --psm 7 2>/dev/null | tr -d '\r\n' | sed 's/[^A-Za-z ]//g' | xargs)
+             mark "targetname probe crop=$cr read='$t'"
+             case "$t" in *"$want"*) echo "OK crop=$cr read=$t"; exit 0 ;; esac
+         done
+         echo "FAILED want=$want last='$t'"; exit 1 ;;
   geom)  xwininfo -id "$WID" | grep -E 'Absolute|Width|Height' ;;
   ocr)   screen_text "${2:-}" ;;
   video) f="$P1/video/$2.mkv"; mark "video begin $2 $3s"

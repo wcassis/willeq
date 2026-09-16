@@ -29,12 +29,13 @@ TIMELINE="${2:?timeline}"
 CORPUS="${3:?corpus name}"
 shift 3
 
-LEAD=150; HARD_STOP=75; STALL=120; KEEP_SERVER=0; PLACE=1; SETTLE=0; ORACLE_COND=0
+LEAD=150; HARD_STOP=75; STALL=120; KEEP_SERVER=0; PLACE=1; SETTLE=0; ORACLE_COND=0; GATE=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --lead) LEAD="$2"; shift 2 ;;
         --settle) SETTLE="$2"; shift 2 ;;
         --oracle-conditions) ORACLE_COND=1; shift ;;
+        --gate) GATE="$2"; shift 2 ;;
         --hard-stop) HARD_STOP="$2"; shift 2 ;;
         --stall) STALL="$2"; shift 2 ;;
         --keep-server) KEEP_SERVER=1; shift ;;
@@ -357,6 +358,52 @@ p2_ready || { say "p2 never reported '$READY'"; exit 67; }
 p3_ready || { say "p3 never reported '$READY'"; exit 67; }
 say "p2 and p3 in world"
 
+O_GATE="$REPO/scripts/llmbench/o.sh"; O="$O_GATE"
+# ----------------------------------------------------------------- gate -----
+# T492 Leg G.  Leg F spent a whole lock session recording 32 steps against a
+# check that never passed once: every `camto` failed and every target OCR
+# returned a fragment, and none of it was usable.  So the checks are run ONCE,
+# here, with all three clients in world -- which is the condition that matters,
+# because the other two players stand 10 and 10 units away and are IN the
+# official client's frame, unlike T466's reference stills -- and if they do not
+# pass, nothing is recorded at all.
+if [ -n "$GATE" ]; then
+    GATEOUT="$OUT/shared/gate.tsv"; : > "$GATEOUT"
+    gate_fail=0
+    say "GATE: all three clients in world; checking the official client before recording"
+    GCAM="${GATE%%,*}"; GTGT="${GATE#*,}"
+    if [ -n "$GCAM" ]; then
+        if out=$(bash "$O_GATE" camto "$GCAM" 9 0.30 </dev/null 2>&1); then
+            say "GATE camera OK: $out"; printf 'camera	%s	PASS	%s
+' "$GCAM" "$out" >> "$GATEOUT"
+        else
+            say "GATE camera FAILED for $GCAM"; printf '%s
+' "$out" | tee -a "$LOG" >&2
+            printf 'camera	%s	FAIL	%s
+' "$GCAM" "$(printf '%s' "$out" | tr '\n' ' ')" >> "$GATEOUT"
+            gate_fail=1
+        fi
+    fi
+    if [ -n "$GTGT" ] && [ "$gate_fail" -eq 0 ]; then
+        bash "$O_GATE" cmd "/target $GTGT" "" </dev/null >>"$LOG" 2>&1
+        sleep "${SETTLE:-3}"
+        if out=$(bash "$O_GATE" targetname "$GTGT" </dev/null 2>&1); then
+            say "GATE target OK: $out"; printf 'target	%s	PASS	%s
+' "$GTGT" "$out" >> "$GATEOUT"
+        else
+            say "GATE target FAILED for $GTGT: $out"
+            printf 'target	%s	FAIL	%s
+' "$GTGT" "$out" >> "$GATEOUT"
+            gate_fail=1
+        fi
+    fi
+    if [ "$gate_fail" -ne 0 ]; then
+        say "GATE FAILED -- refusing to record. Scores are in $GATEOUT"
+        exit 69
+    fi
+    say "GATE PASSED -- recording"
+fi
+
 # ------------------------------------------------------------- watchdog -----
 # feedback-watch-long-live-runs: a dead client must not be discovered an hour
 # late.  Stall = no new byte in a client's log for $STALL seconds.
@@ -391,7 +438,6 @@ fi
 HARD=$((T0 + HARD_STOP * 60))
 say "T0 = ${T0} ($(date -d @${T0} '+%H:%M:%S')); hard stop at $(date -d @${HARD} '+%H:%M:%S')"
 echo -n > "$OUT/players/p1/truth.tsv"
-O="$REPO/scripts/llmbench/o.sh"
 DONE=0; ABORTED=""
 while IFS=$'\t' read -r idx toff player label action truth; do
     [ -n "${idx:-}" ] || continue

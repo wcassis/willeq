@@ -10769,3 +10769,32 @@ B755–B759 unused.
   documented "oracle conditions" helper the scoring script itself can point at,
   or a refusal in `camera_match_score.py` when it is handed a candidate whose
   conditions were not stated. Found by T492.
+- **B793** (A) **the T492 corpus's `held=` truth values are wrong, and one of
+  them was never applied.** MEASURED T492 Leg G by `scripts/llmbench/verify_labels.py`
+  against the run's own inventory snapshot: the `E_heldA_p2_*` steps claim
+  Testcaster holds `slot13=9998, slot14=9979` while `character_data`/`inventory`
+  give **14337** and **20656** (Testbuddy's `13=9997,14=9979` does match, so the
+  check discriminates). Worse, the `/equip 23 13` the `E_heldB_*` steps depend on
+  was REFUSED by the client -- *"Bread Cakes* cannot go in Primary (13) -- wrong
+  slot type for this item"* -- so every `held=13=9990` claim is false: slot 23 is
+  food, not a weapon. `refactor/T492_llmbench_three_player_corpus.md`'s
+  `make_timeline.py` hardcoded both from a misread of the inventory dump and
+  nothing checked them until Leg G. Fix: read the held values FROM the snapshot
+  at compile time rather than hardcoding, and pick a slot that actually holds a
+  weapon for the `/equip` step. The affected steps are parked
+  `expect=unlabelled` with `why=`. Found by T492.
+- **B794** (P) **a camera-identification threshold validated with one client in
+  world does not transfer to a frame with three.** B792 is that the scene
+  conditions must match T466's stills; this is the other half. MEASURED T492:
+  with `#set time 11 0` / `#set weather 0` applied and the official client
+  verifiably in Chase, the score against T466's Chase still is **0.415-0.495**
+  (best by a factor of 1.7-2.3 over every other camera) where the same check
+  single-client scored **0.058-0.191**. The other two players stand 10 units
+  either side of Oraclealpha and are IN frame; T466's references have no other
+  players. So `< 0.30` rejects a correct identification, which stopped T492 Leg
+  G's recording (correctly -- the gate did its job). What is needed is a
+  calibration under three-client conditions, or a best/next-best MARGIN
+  criterion instead of an absolute one; raising the threshold until it passes is
+  choosing the answer. `[assumed]` that the extra players are the whole of the
+  difference -- the pose there is placed by SQL rather than pinned with
+  `camera_match_pose.sh`, and the two were not separated. Found by T492.

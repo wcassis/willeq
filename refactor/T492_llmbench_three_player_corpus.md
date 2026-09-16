@@ -477,6 +477,90 @@ and unvalidated under Leg F's conditions; it was not re-measured.
 Restoring them needs one more ~20 min lock session with `--oracle-conditions`
 and a re-measured target crop. `restore_pending.py` is written and ready.
 
+### Leg G — the gate held, and the labels were checked by machine instead of by Will
+
+**Nothing was recorded.** The gate refused, which is what it is for. The corpus
+is unchanged except that every labelled pair now carries the measured verdict.
+
+#### The gate `[measured]`
+
+`record.sh --gate "Chase,Testcaster"` runs once, with all three clients in
+world — the condition that matters, because the other two players stand 10
+units either side of Oraclealpha and are IN the official client's frame, which
+T466's reference stills are not. It failed and stopped the run before a single
+step was recorded (`review/T492/llmbench-legG/shared/gate.tsv`):
+
+| crop | First Person | Overhead | **Chase** | User 1 | User 2 | Tether |
+|---|---|---|---|---|---|---|
+| `1000x480+12+40` | 0.874 | 1.013 | **0.495** | 0.967 | 0.994 | 0.998 |
+| `1000x380+12+40` | 0.852 | 1.033 | **0.469** | 0.963 | 0.992 | 0.993 |
+| `900x300+60+60`  | 0.862 | 1.006 | **0.415** | 0.971 | 0.978 | 0.998 |
+
+Read it carefully: **`camto` put the client in Chase and the scoring says so** —
+Chase is best under all three crops by a factor of 1.7–2.3 over every
+alternative. What failed is the **absolute 0.30 threshold**, which was
+validated in Leg F step 1 under single-client conditions (0.058–0.191) and does
+not transfer to a frame with two other players in it. `[assumed]` that the two
+extra players are the whole of the 0.415→0.062 difference; the pose is also
+placed by SQL here rather than pinned with `camera_match_pose.sh`, and the two
+were not separated.
+
+The fix is **not** to raise the threshold until it passes — that is choosing the
+answer. It is a calibration: put the official client in each of the six cameras
+with all three clients in world and derive the threshold (or a best/next-best
+margin criterion) from that. That is a new measurement and the instruction was
+to stop before making one. **Owed, and the blocker for the parked labels.**
+
+#### `verify_labels.py` — every labelled pair, checked mechanically `[measured]`
+
+Will: *"there was no reason to have me evaluate those images. You could have
+found all of the same issues trivially. Worst case, OCR of ui windows."* He is
+right. `scripts/llmbench/verify_labels.py` checks each claim against something
+measurable — `camera=` by scoring the official frame against T466's still for
+that camera plus the willeq client's own `Camera mode:` line inside the settle
+window; `target=` by OCR of the official target window plus the willeq log;
+`held=` against the inventory snapshot the run started from plus any refusal the
+client logged. Three-way verdict, because **contradicted** and **could not be
+checked** are different answers.
+
+**20 labelled pairs: 0 PASS, 10 FAIL, 10 INCONCLUSIVE.** Full table:
+`review/T492/llmbench/verify_labels.tsv`.
+
+The 10 FAILs are all pairs already parked at `pending=B7xx`, and they are
+contradicted three separate ways:
+
+1. `[measured]` **The official client is in Overhead on every one of them** —
+   Overhead 0.766–0.782 against the claimed Chase/Tether at 0.971–1.000. This
+   reproduces Will's finding by measurement, with nobody looking at a frame.
+2. `[measured]` **The `held=` values were wrong from the start.** The Leg C
+   timeline hardcoded them from a misread of the inventory dump:
+   `E_heldA_p2_*` claims `slot13=9998, slot14=9979` while Testcaster's DB rows
+   are **14337** and **20656**. (Testbuddy's `13=9997,14=9979` does match, and
+   the check says so — it discriminates.)
+3. `[measured]` **`/equip 23 13` was REFUSED**: the client answered
+   *"Bread Cakes* cannot go in Primary (13) — wrong slot type for this item"*,
+   so every `held=13=9990` claim on the `E_heldB_*` steps is false. Slot 23 is
+   food, not the weapon the timeline assumed.
+
+The 10 INCONCLUSIVE are every currently-graded pair (the 4 `match` labels and
+the B781/B782 ones): the claimed camera IS the best match in each, at
+0.545–0.959, above the 0.30 threshold — the same B792 calibration gap the gate
+hit. They are annotated `unverified=` and their labels are left alone: demoting
+them would take the corpus below the handoff's ≥10 match / ≥5 discrepancy and
+that is a decision for the orchestrator, not a side effect of a threshold that
+is known to be mis-calibrated.
+
+`apply_verdicts.py` wrote `why=` onto the 10 contradicted rows and
+`unverified=` onto the 10 unchecked ones — 24 truth rows annotated. No label was
+promoted: `restore_pending.py` and the target-step restore run only on pairs
+that PASS, and none did. `check_corpus.py` is unchanged at **12 pass, 0 fail**.
+Sheets were not regenerated: no frame changed.
+
+**Owed, in order:** (1) calibrate the camera threshold under three-client
+conditions (B792); (2) fix the `held=` values in `make_timeline.py` against the
+actual inventory and pick a real weapon for the `/equip` step; (3) re-record the
+B721/B722/B725 and target steps behind the gate; (4) then `restore_pending.py`.
+
 ### What is owed
 
 - `[assumed]` Will has not seen the sheets. The corpus is recorded, not blessed.
