@@ -11,6 +11,13 @@
 #   scripts/scenario.sh <scenario> [--timeout N] [--hold N] [--spell ID]
 #                                  [--config FILE] [--peer-config FILE]
 #                                  [--unit T###] [--keep-server]
+#   scripts/scenario.sh --selftest [--unit T###] [--config FILE] [...]
+#
+# --selftest runs scripts/eqemu/restore_selftest.sh, the regression net for the
+# snapshot restore this script performs (T493, board B784): it logs a character
+# in, makes the snapshot and the world disagree, restores, tears the server
+# down and checks that the snapshot survived. Everything after --selftest is
+# passed to it. Run it after ANY change to the restore path.
 #
 # Exit codes are the client's, passed through unchanged:
 #   0 pass   1 fail   2 timeout   3 could-not-start
@@ -24,12 +31,24 @@
 
 set -u
 
-SCENARIO="${1:?usage: scenario.sh <scenario> [options]}"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# T493: `--selftest` is how a user reaches the restore's regression net. It
+# takes the lock itself, so hand it the whole command line and get out of the
+# way.
+if [ "${1:-}" = "--selftest" ]; then
+    shift
+    exec bash "$REPO/scripts/eqemu/restore_selftest.sh" "$@"
+fi
+
+SCENARIO="${1:?usage: scenario.sh <scenario> [options] | scenario.sh --selftest [options]}"
 shift
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # eqemu runs on its own VM; env.sh supplies eq_docker/mysql + the lock on that host.
 source "$REPO/scripts/eqemu/env.sh"
+# T493 (board B784): ONE snapshot/restore implementation, shared with
+# scripts/llmbench/{record,teardown}.sh. Do not inline another copy here.
+source "$REPO/scripts/eqemu/restore_lib.sh"
 UNIT="T410"
 TIMEOUT=300
 HOLD=300
@@ -57,7 +76,13 @@ LOG="$OUT/${SCENARIO}_client.log"
 PEERLOG="$OUT/${SCENARIO}_peer.log"
 BEFORE="$OUT/${SCENARIO}_snapshot_before.tsv"
 AFTER="$OUT/${SCENARIO}_snapshot_after.tsv"
-BIN="$REPO/build/bin/willeq"
+# A task worktree has no build/ of its own; the shared build lives in main.
+BIN="${WILLEQ_BIN:-}"
+if [ -z "$BIN" ]; then
+    for c in "$REPO/build/bin/willeq" /mnt/projects/fable/main/build/bin/willeq; do
+        [ -x "$c" ] && { BIN="$c"; break; }
+    done
+fi
 
 [ -n "$CONFIG" ] || CONFIG="$REPO/scripts/scenario_configs/${SCENARIO}.json"
 [ -n "$PEER_CONFIG" ] || PEER_CONFIG="$REPO/scripts/scenario_configs/peer.json"
@@ -79,54 +104,42 @@ cleanup() {
     kill ${PEER_PID:-} ${CLIENT_PID:-} >/dev/null 2>&1
     sleep 2
     kill -9 ${PEER_PID:-} ${CLIENT_PID:-} >/dev/null 2>&1
+    # The restore runs on EVERY path now, --keep-server included: it is what
+    # leaves the database as the run found it, and leaving a moved character
+    # behind for the next unit is the whole point of B784. It stops the
+    # eqemu-server container itself, so --keep-server starts it again.
+    restore_snapshot
     if [ "$KEEP_SERVER" -eq 0 ]; then
-        restore_snapshot
         bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/${SCENARIO}_server.log" 2>&1
+    else
+        eqemu_world_start
+        say "eqemu-server container restarted (--keep-server)"
     fi
     eqemu_lock_release
     say "lock released"
 }
 trap cleanup EXIT INT TERM
 
-sql() {
-    # One-shot SQL against the akk-stack peq db (T401's sql.sh, inlined so the
-    # lane has no dependency outside the repo).
-    eq_docker exec "${MARIADB_CONTAINER}" mysql -uroot -p"$(mariadb_root_password)" peq -B -N -e "$1"
-}
-
-snapshot() {
-    # The rows a scenario can plausibly move. Ordered, so a diff is meaningful.
-    sql "SELECT id,name,zone_id,x,y,z,heading,level,exp FROM character_data ORDER BY id;" > "$1"
-    sql "SELECT id,platinum,gold,silver,copper FROM character_currency ORDER BY id;" >> "$1"
-}
+# The snapshot and the restore are restore_lib.sh's, not this script's.
+snapshot() { eqemu_snapshot "$1"; }
 
 restore_snapshot() {
-    [ -s "$BEFORE" ] || return 0
-    # T377's lesson, repeated in T401: the WORLD writes character rows back on
-    # shutdown, so a restore applied while it is up is silently undone. Stop
-    # world/zone/loginserver (and the spire launcher that respawns them),
-    # leaving only mariadb, then write.
-    say "restoring server snapshot with the world DOWN"
-    eq_docker exec "${EQEMU_CONTAINER}" bash -c \
-        "pkill -f /tmp/spire-launcher; pkill -f 'bin/world'; pkill -f 'bin/zone'; pkill -f 'bin/loginserver'" \
-        >/dev/null 2>&1
-    sleep 6
-    while IFS=$'\t' read -r id name zone x y z h lvl exp; do
-        [ -n "${id:-}" ] || continue
-        [ -n "${name:-}" ] || continue
-        sql "UPDATE character_data SET zone_id=${zone},x=${x},y=${y},z=${z},heading=${h},level=${lvl},exp=${exp} WHERE id=${id};" >/dev/null
-    done < <(grep -v '^$' "$BEFORE" | awk -F'\t' 'NF==9')
-    while IFS=$'\t' read -r id p g s c; do
-        [ -n "${id:-}" ] || continue
-        sql "UPDATE character_currency SET platinum=${p},gold=${g},silver=${s},copper=${c} WHERE id=${id};" >/dev/null
-    done < <(grep -v '^$' "$BEFORE" | awk -F'\t' 'NF==5')
-    snapshot "$AFTER"
-    if diff -q "$BEFORE" "$AFTER" >/dev/null 2>&1; then
-        say "snapshot restored byte-identically"
-    else
-        say "SNAPSHOT MISMATCH -- see $BEFORE vs $AFTER"
-        RESTORE_BAD=1
-    fi
+    # T493 (board B784). What this used to do, and why none of it survives:
+    # it `pkill`ed world/zone/loginserver INSIDE the eqemu-server container and
+    # then issued one UPDATE per row. Both halves were broken. The pkill chain
+    # matched its OWN command line on the first pattern (`/tmp/spire-launcher`)
+    # and killed the exec's shell before the other three ran -- MEASURED: rc
+    # 143, and 27 world/zone processes still alive afterwards -- and the
+    # per-row loop cost 22 s locally and 2 min over ssh. So the restore ran
+    # against a live world, reported itself byte-identical, and was then undone
+    # by the zone's shutdown save when down.sh followed it: MEASURED, Testbuddy
+    # back at 0/0 over the snapshot's 1111/2222.
+    #
+    # eqemu_restore_snapshot stops the CONTAINER (mariadb is a separate one and
+    # stays up) and sends the whole restore as one statement batch.
+    # scripts/eqemu/restore_selftest.sh pins it; `scenario.sh --selftest` runs
+    # that.
+    eqemu_restore_snapshot "$BEFORE" "$AFTER" say || RESTORE_BAD=1
 }
 
 # ---- 2. server up ----------------------------------------------------------

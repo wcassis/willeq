@@ -47,6 +47,9 @@ done
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$REPO/scripts/eqemu/env.sh"
+# T493 (board B784): the snapshot/restore recipe lives in ONE place now and
+# scenario.sh uses the same one. Do not re-inline it here.
+source "$REPO/scripts/eqemu/restore_lib.sh"
 # build-gles2/ is bootstrapped once per checkout and is NOT built inside a task
 # worktree, so the binary comes from the main checkout unless one is told.
 BIN_SRC="${LLMB_BIN:-}"
@@ -97,16 +100,13 @@ say "lock taken by ${UNIT}"
 # scenario.sh's sql(), unchanged.  The statement travels as ARGV, never on
 # stdin: `eq_remote` is `ssh -n`, which drops stdin, and a `mysql < dump.sql`
 # through it silently imports nothing (board B729, which cost T478 a restore).
-sql() { eq_docker exec "${MARIADB_CONTAINER}" mysql -uroot -p"$(mariadb_root_password)" peq -B -N -e "$1"; }
+sql() { eqemu_sql "$@"; }   # restore_lib.sh
 
 BEFORE="$OUT/shared/db_before/snapshot.tsv"
 AFTER="$OUT/shared/db_after/snapshot.tsv"
 mkdir -p "$OUT/shared/db_before" "$OUT/shared/db_after"
 
-snapshot() {   # scenario.sh's exact contract: these rows must come back identical
-    sql "SELECT id,name,zone_id,x,y,z,heading,level,exp FROM character_data ORDER BY id;" > "$1"
-    sql "SELECT id,platinum,gold,silver,copper FROM character_currency ORDER BY id;" >> "$1"
-}
+snapshot() { eqemu_snapshot "$1"; }   # scenario.sh's exact contract, shared
 full_rows() {
     sql "SELECT * FROM character_data WHERE name IN ('Oraclealpha','Testcaster','Testbuddy','Testchar') ORDER BY id;" > "$1"
     sql "SELECT * FROM inventory WHERE character_id IN (65,67,68,74) ORDER BY character_id,slot_id;" >> "$1"
@@ -116,23 +116,11 @@ inv_snapshot() {
     # /equip, #summonitem and a death all move inventory rows, and scenario.sh's
     # snapshot does not cover them.  Kept as a full row dump so the restore is a
     # wholesale replace rather than a guess at which rows moved.
-    sql "SELECT character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornament_icon,ornament_idfile,ornament_hero_model,guid FROM inventory WHERE character_id IN (${CHARS}) ORDER BY character_id,slot_id;" > "$1"
-}
-restore_sql_from() {
-    awk -F'\t' '
-        NF==9 && $1!="" {printf "UPDATE character_data SET zone_id=%s,x=%s,y=%s,z=%s,heading=%s,level=%s,exp=%s WHERE id=%s;", $3,$4,$5,$6,$7,$8,$9,$1}
-        NF==5 && $1!="" {printf "UPDATE character_currency SET platinum=%s,gold=%s,silver=%s,copper=%s WHERE id=%s;", $2,$3,$4,$5,$1}
-    ' "$1"
-}
-inv_sql_from() {
-    awk -F'\t' 'NF>=17 && $1!="" {
-        cd = ($13=="NULL") ? "NULL" : "\x27" $13 "\x27"
-        printf "INSERT INTO inventory (character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornament_icon,ornament_idfile,ornament_hero_model,guid) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);", $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,cd,$14,$15,$16,$17
-    }' "$1"
+    eqemu_inventory_snapshot "$1" "${CHARS}"
 }
 inv_restore() {
     [ -s "$1" ] || return 0
-    sql "DELETE FROM inventory WHERE character_id IN (${CHARS});$(inv_sql_from "$1")" >/dev/null
+    eqemu_inventory_restore "$1" "${CHARS}"
     say "inventory: $(wc -l < "$1") rows written back in one batch"
 }
 
@@ -148,17 +136,10 @@ kill_clients() {
 restore() {
     [ -s "$BEFORE" ] || return 0
     say "restoring with the WORLD DOWN (the world writes character rows back on shutdown)"
-    # T492 MEASURED: `pkill` inside the container is NOT enough.  The image's
-    # entrypoint supervisor brings world and the static-zone fleet straight back
-    # (board B483 names the launcher), and with ~90 restore statements each
-    # costing an ssh round trip the zone that still holds the character is up
-    # again long before the loop ends -- the first T492 dry run's teardown
-    # killed the processes, restored 90 rows over two minutes and found
-    # Testbuddy's row written back underneath it.  T478's restore v2 had it
-    # right: STOP THE CONTAINER, leave mariadb alone up.  And send the restore
-    # as ONE statement batch, not ninety.
-    eq_docker stop "${EQEMU_CONTAINER}" >/dev/null 2>&1
-    sleep 3
+    # restore_lib.sh's eqemu_world_stop: STOP THE CONTAINER, leave mariadb up.
+    # `pkill` inside the container never worked (T493 measured the chain killing
+    # its own shell) and the entrypoint supervisor respawns the fleet anyway.
+    eqemu_world_stop
     if [ -n "$MAXSPAWN" ]; then
         # B720: `#npctypespawn` lands in zone_state_spawns at the zone save and
         # is restored at the next boot.  Every row this recording created has an
@@ -176,7 +157,7 @@ restore() {
         sql "DELETE FROM character_corpses WHERE id > ${MAXCORPSE};" >/dev/null
     fi
     inv_restore "$OUT/shared/db_before/inventory.tsv"
-    sql "$(restore_sql_from "$BEFORE")" >/dev/null
+    eqemu_sql "$(eqemu_restore_sql_from "$BEFORE")" >/dev/null
     snapshot "$AFTER"
     full_rows "$OUT/shared/db_after/full_rows.tsv"
     inv_snapshot "$OUT/shared/db_after/inventory.tsv"
@@ -207,7 +188,7 @@ cleanup() {
         bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/shared/server.log" 2>&1
         say "server down (whole compose project)"
     else
-        eq_docker start "${EQEMU_CONTAINER}" >/dev/null 2>&1
+        eqemu_world_start
         say "eqemu-server container restarted (--keep-server)"
     fi
     eqemu_lock_release

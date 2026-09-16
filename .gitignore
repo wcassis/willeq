@@ -128,3 +128,9 @@ build-gles2/
 # SQLite transient sidecar files -- never commit these (see below)
 data/*.db-wal
 data/*.db-shm
+
+# T493: per-lane client configs. `scripts/scenario_configs/*.json` ships the
+# default lane (the eqemu VM); a lane whose server is somewhere else -- the
+# local stack, say -- copies one to `<name>.local.json` and edits the host
+# there. The shipped originals' "host" is never edited in place.
+scripts/scenario_configs/*.local.json

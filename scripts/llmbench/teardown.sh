@@ -13,9 +13,11 @@ KEEP=0; RELEASE=0
 while [ $# -gt 0 ]; do case "$1" in --keep-server) KEEP=1; shift;; --release-lock) RELEASE=1; shift;; *) shift;; esac; done
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$REPO/scripts/eqemu/env.sh"
+# T493 (board B784): the snapshot/restore recipe lives in ONE place now and
+# scenario.sh uses the same one. Do not re-inline it here.
+source "$REPO/scripts/eqemu/restore_lib.sh"
 HERMES="${LLMB_HERMES:-user@172.16.200.100}"
 say() { printf '[teardown] %s %s\n' "$(date '+%H:%M:%S')" "$*" >&2; }
-sql() { eq_docker exec "${MARIADB_CONTAINER}" mysql -uroot -p"$(mariadb_root_password)" peq -B -N -e "$1"; }
 CHARS="65,67,68,74"
 B="$C/shared/db_before/snapshot.tsv"; A="$C/shared/db_after/snapshot.tsv"
 IB="$C/shared/db_before/inventory.tsv"; IA="$C/shared/db_after/inventory.tsv"
@@ -29,52 +31,21 @@ ssh -o BatchMode=yes "$HERMES" "pkill -f build-gles2/bin/willeq; true" >/dev/nul
 pkill -f 'Xvfb :99' >/dev/null 2>&1
 sleep 3
 
-say "stopping the eqemu-server CONTAINER (mariadb stays up) -- see the note below"
-# T492 MEASURED: `pkill` inside the container is NOT enough.  The image's
-# entrypoint supervisor brings world and the static-zone fleet straight back
-# (board B483 names the launcher), and with ~90 restore statements each
-# costing an ssh round trip the zone that still holds the character is up
-# again long before the loop ends -- the first T492 dry run's teardown
-# killed the processes, restored 90 rows over two minutes and found
-# Testbuddy's row written back underneath it.  T478's restore v2 had it
-# right: STOP THE CONTAINER, leave mariadb alone up.  And send the restore
-# as ONE statement batch, not ninety.
-eq_docker stop "${EQEMU_CONTAINER}" >/dev/null 2>&1
-sleep 3
-
-restore_sql_from() {
-    awk -F'\t' '
-        NF==9 && $1!="" {printf "UPDATE character_data SET zone_id=%s,x=%s,y=%s,z=%s,heading=%s,level=%s,exp=%s WHERE id=%s;", $3,$4,$5,$6,$7,$8,$9,$1}
-        NF==5 && $1!="" {printf "UPDATE character_currency SET platinum=%s,gold=%s,silver=%s,copper=%s WHERE id=%s;", $2,$3,$4,$5,$1}
-    ' "$1"
-}
-inv_sql_from() {
-    awk -F'\t' 'NF>=17 && $1!="" {
-        cd = ($13=="NULL") ? "NULL" : "\x27" $13 "\x27"
-        printf "INSERT INTO inventory (character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornament_icon,ornament_idfile,ornament_hero_model,guid) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);", $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,cd,$14,$15,$16,$17
-    }' "$1"
-}
+say "stopping the eqemu-server CONTAINER (mariadb stays up)"
+eqemu_world_stop
 
 RC=0
-if [ -s "$B" ]; then
-    sql "$(restore_sql_from "$B")" >/dev/null
-    sql "SELECT id,name,zone_id,x,y,z,heading,level,exp FROM character_data ORDER BY id;" > "$A"
-    sql "SELECT id,platinum,gold,silver,copper FROM character_currency ORDER BY id;" >> "$A"
-    if diff -q "$B" "$A" >/dev/null 2>&1; then say "snapshot restored BYTE-IDENTICALLY"
-    else say "SNAPSHOT MISMATCH"; diff "$B" "$A" | head -20 >&2; RC=66; fi
-else
-    say "no snapshot at $B -- nothing to restore"
-fi
+eqemu_restore_snapshot "$B" "$A" say || RC=$?
 if [ -s "$IB" ]; then
-    sql "DELETE FROM inventory WHERE character_id IN (${CHARS});$(inv_sql_from "$IB")" >/dev/null
-    sql "SELECT character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornament_icon,ornament_idfile,ornament_hero_model,guid FROM inventory WHERE character_id IN (${CHARS}) ORDER BY character_id,slot_id;" > "$IA"
+    eqemu_inventory_restore "$IB" "${CHARS}"
+    eqemu_inventory_snapshot "$IA" "${CHARS}"
     if diff -q "$IB" "$IA" >/dev/null 2>&1; then say "inventory restored BYTE-IDENTICALLY"
     else say "INVENTORY MISMATCH"; RC=66; fi
 fi
 if [ "$KEEP" -eq 0 ]; then
     bash "$REPO/scripts/eqemu/down.sh" >/dev/null 2>&1; say "server down (whole compose project)"
 else
-    eq_docker start "${EQEMU_CONTAINER}" >/dev/null 2>&1; say "eqemu-server container restarted (--keep-server)"
+    eqemu_world_start; say "eqemu-server container restarted (--keep-server)"
 fi
 [ "$RELEASE" -eq 1 ] && { eqemu_lock_release; say "lock released"; }
 exit $RC
