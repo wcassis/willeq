@@ -26,7 +26,7 @@ FRAME = re.compile(r"^(\d{3})_(.*)_window\.png$")
 # What an OBSERVING client logs when another player's chat reaches it.  Kept
 # wide on purpose and reported verbatim: the assertion is "the observer saw
 # it", so the observer's own words are the evidence.
-CHATISH = re.compile(r"\b(says|tells you|shouts|auctions|Chat|CHAT|tell|say)\b")
+CHATISH = re.compile(r"\[FormattedMessage\]|\b(says|tells you|shouts|auctions)\b")
 
 
 def main():

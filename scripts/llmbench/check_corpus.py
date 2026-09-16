@@ -61,6 +61,13 @@ def main():
     ap.add_argument("--min-steps", type=int, default=40)
     ap.add_argument("--min-match", type=int, default=10)
     ap.add_argument("--min-discrepancy", type=int, default=5)
+    ap.add_argument("--min-cross-refs", type=int, default=1,
+                    help="how many of one player's /say or /tell texts must be "
+                         "found in ANOTHER player's chat.tsv. Handoff §7 does not "
+                         "ask for this, but the whole point of a three-player "
+                         "corpus is that the logs cross-reference, and T492's "
+                         "first complete dry run passed every §7 line while the "
+                         "three players never actually overlapped in time.")
     ap.add_argument("--mark-window", type=float, default=30.0,
                     help="seconds a truth line may sit from its nearest marks line")
     a = ap.parse_args()
@@ -165,6 +172,37 @@ def main():
     check(not bad_labels,
           "every expect= label is match | discrepancy:B### | unlabelled"
           + ("" if not bad_labels else f" -- BAD: {bad_labels[:5]}"))
+
+    # --- the cross-reference check ---------------------------------------
+    # The actor's own belief is never the evidence: a /say counts only when it
+    # appears in a DIFFERENT player's chat log.
+    said = {}
+    for pid in ids:
+        for t, body in read_tsv(os.path.join(C, "players", pid, "truth.tsv")):
+            kv = parse_kv(body)
+            if kv.get("actor") != pid:
+                continue
+            for key in ("said", "told"):
+                if kv.get(key):
+                    said.setdefault(pid, set()).add(kv[key])
+    chats = {}
+    for pid in ids:
+        f = os.path.join(C, "players", pid, "chat.tsv")
+        chats[pid] = open(f, errors="replace").read() if os.path.exists(f) else ""
+    seen_by_other = []
+    for pid, texts in said.items():
+        for text in texts:
+            if len(text) < 8:
+                continue
+            for other in ids:
+                if other != pid and text in chats.get(other, ""):
+                    seen_by_other.append((pid, other, text))
+                    break
+    check(len(seen_by_other) >= a.min_cross_refs,
+          f"cross-player chat an OBSERVER logged: {len(seen_by_other)} "
+          f"(need {a.min_cross_refs}); "
+          + (f"e.g. {seen_by_other[0][0]}->{seen_by_other[0][1]}: {seen_by_other[0][2][:40]!r}"
+             if seen_by_other else "none -- the players may never have overlapped in time"))
 
     # --- 5. timestamps ----------------------------------------------------
     bad_ts = []

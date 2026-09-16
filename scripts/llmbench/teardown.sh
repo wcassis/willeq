@@ -49,9 +49,9 @@ restore_sql_from() {
     ' "$1"
 }
 inv_sql_from() {
-    awk -F'\t' 'NF>=16 && $1!="" {
+    awk -F'\t' 'NF>=17 && $1!="" {
         cd = ($13=="NULL") ? "NULL" : "\x27" $13 "\x27"
-        printf "INSERT INTO inventory (character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornamenticon,ornamentidfile,ornament_hero_model) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);", $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,cd,$14,$15,$16
+        printf "INSERT INTO inventory (character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornament_icon,ornament_idfile,ornament_hero_model,guid) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);", $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,cd,$14,$15,$16,$17
     }' "$1"
 }
 
@@ -67,7 +67,7 @@ else
 fi
 if [ -s "$IB" ]; then
     sql "DELETE FROM inventory WHERE character_id IN (${CHARS});$(inv_sql_from "$IB")" >/dev/null
-    sql "SELECT character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornamenticon,ornamentidfile,ornament_hero_model FROM inventory WHERE character_id IN (${CHARS}) ORDER BY character_id,slot_id;" > "$IA"
+    sql "SELECT character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornament_icon,ornament_idfile,ornament_hero_model,guid FROM inventory WHERE character_id IN (${CHARS}) ORDER BY character_id,slot_id;" > "$IA"
     if diff -q "$IB" "$IA" >/dev/null 2>&1; then say "inventory restored BYTE-IDENTICALLY"
     else say "INVENTORY MISMATCH"; RC=66; fi
 fi

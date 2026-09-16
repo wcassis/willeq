@@ -40,9 +40,21 @@ bash /mnt/projects/eq-oracle/scripts/login-as.sh "$ACCOUNT" "$PASSWORD" \
     >"$SCRATCH/login_${LABEL}.log" 2>&1
 LRC=$?; mark "login exit=${LRC}"
 [ $LRC -ne 0 ] && { tail -20 "$SCRATCH/login_${LABEL}.log"; exit 1; }
-bash /mnt/projects/eq-oracle/scripts/enter-world.sh >"$SCRATCH/enter_${LABEL}.log" 2>&1
-ERC=$?; mark "enter-world exit=${ERC}"
-[ $ERC -ne 0 ] && { tail -20 "$SCRATCH/enter_${LABEL}.log"; exit 1; }
+# The character-select scene takes ~2 min to render the first time under
+# llvmpipe and clicks issued before it is up are dropped SILENTLY (hermes-ext
+# note, 2026-09-13).  MEASURED T492: without this wait, enter-world.sh burned
+# all four of its attempts (~90 s each -- `wait_for_text N` is N OCR polls, not
+# N seconds) and reported "failed to enter world" for a client that was fine.
+mark "settling at character select for 60 s before the first Enter World click"
+sleep 60
+ERC=1
+for w in 1 2; do
+    bash /mnt/projects/eq-oracle/scripts/enter-world.sh >"$SCRATCH/enter_${LABEL}_${w}.log" 2>&1
+    ERC=$?; mark "enter-world pass ${w} exit=${ERC}"
+    [ $ERC -eq 0 ] && break
+    sleep 20
+done
+[ $ERC -ne 0 ] && { tail -20 "$SCRATCH/enter_${LABEL}_2.log"; exit 1; }
 WID=$(xdotool search --name '^EverQuest$' | head -1)
 xdotool windowfocus --sync "$WID" 2>/dev/null
 xdotool windowactivate "$WID" 2>/dev/null

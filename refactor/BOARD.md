@@ -10656,3 +10656,56 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
 
 B755–B759 unused.
 
+## Added 2026-09-16 by T492 (the three-player LLM-benchmark corpus rig)
+
+- **B784** (A) `scripts/scenario.sh` `restore_snapshot()` -- **the "restore with the
+  world DOWN" step does not actually keep the world down, and is slow enough for
+  that to matter.** It stops world/zone/loginserver with `pkill` INSIDE the
+  eqemu-server container, but that container's entrypoint supervisor brings the
+  fleet straight back (the launcher B483 documents), and the restore then issues
+  one `ssh` round trip PER ROW -- ~90 rows, **measured at 2 min**. MEASURED T492:
+  a teardown that killed the processes and restored 90 rows over those two
+  minutes found `Testbuddy`'s row written back underneath it (zone 2 / -64 / 428
+  / 3.75 / 160 instead of the snapshot's zone 36 / 0 / 0 / 3 / 0) while the other
+  three rows, whose characters were not logged in, came back clean -- so the
+  symptom only appears for a character that was in world, which is every
+  character a live unit touches. T492's recorder does it the way T478's restore
+  v2 did: `docker stop` the eqemu-server container (mariadb stays up) and send
+  the whole restore as ONE statement batch -- **25 s, byte-identical**
+  (`scripts/llmbench/teardown.sh`, `record.sh` `restore()`). `scenario.sh` is
+  UNCHANGED and still has both halves of the defect. Found by T492.
+- **B785** (B) `review/T478/scripts/t478_o.sh` (and T466's and T377's copies of
+  it) -- **the oracle driver stamps its marks with `date -u` while every willeq
+  `run.log` stamps LOCAL time**, and the two are the halves of every joined
+  corpus. Both hosts are UTC today, so nothing measured so far is wrong; the
+  moment a rig host is not UTC, marks and logs are silently offset by the zone
+  and no check in the tree notices. T492's copy (`scripts/llmbench/o.sh`) uses
+  local time; the T478 originals are untouched, being evidence. Found by T492.
+- **B786** (P) **`/mnt/projects/eq-oracle/CLAUDE.md` and `README.md` are stale on
+  all three facts a session needs before it can start.** They give the eqemu VM
+  as `10.0.30.23` (it moved to 172.16.200.99 on 2026-09-12), the lock as
+  `/mnt/projects/fable/.eqemu-lock` (it is `/mnt/projects/.eqemu-lock` ON the
+  eqemu host, taken with `eqemu_lock_take`), and say "**NOT installed: wine** --
+  that is prerequisite #1" (wine has run the client on the dev host since T310
+  and on hermes-ext since 2026-09-13). `env.sh` beside them is correct, which is
+  what makes the prose dangerous. Found by T492.
+- **B787** (B) **willeq at `-d 4 --log-level=DEBUG` is 90% per-frame GRAPHICS
+  visibility counts.** MEASURED T492 on hermes-ext: 60,891 of 67,407 lines in the
+  first 90 s of a session are `[DEBUG] [GRAPHICS]` `ObjectVis/ZoneLightVis/
+  ObjLightVis/EntityVis/RegionVis` lines, one set per frame -- 6.7 MB of log for
+  90 s of play, ~2.7 MB/min, which is what a consumer of the log (the LLM
+  benchmark's agent loop, any live-unit grep) has to read past. The counts are a
+  profiling aid, not per-frame news; TRACE is the level for them. T492 works
+  around it with `--log-module=GRAPHICS:INFO`. Found by T492.
+- **B788** (B) `/mnt/projects/eq-oracle/scripts/enter-world.sh` -- **the Enter
+  World flow has no settle and its "4 attempts" are not the budget they look
+  like.** `wait_for_text <n>` is n OCR POLLS, not n seconds, and each poll is an
+  `import` + `convert` + `tesseract` over a 3D scene under llvmpipe, so one
+  attempt is ~90 s and the four are ~6 min. The character-select scene takes
+  ~2 min to render the first time and clicks issued before it is up are dropped
+  silently (hermes-ext note 2026-09-13), so attempts 1-3 are usually spent
+  clicking at nothing. MEASURED T492: 5 min 12 s from character select to in
+  world, succeeding only on the fourth attempt, twice in a row; with a 60 s
+  settle first it is one attempt. T492's launcher adds the settle around the
+  rig's script (`scripts/llmbench/oracle_start.sh`); `enter-world.sh` itself is
+  UNCHANGED, being the shared rig. Found by T492.

@@ -112,7 +112,7 @@ inv_snapshot() {
     # /equip, #summonitem and a death all move inventory rows, and scenario.sh's
     # snapshot does not cover them.  Kept as a full row dump so the restore is a
     # wholesale replace rather than a guess at which rows moved.
-    sql "SELECT character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornamenticon,ornamentidfile,ornament_hero_model FROM inventory WHERE character_id IN (${CHARS}) ORDER BY character_id,slot_id;" > "$1"
+    sql "SELECT character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornament_icon,ornament_idfile,ornament_hero_model,guid FROM inventory WHERE character_id IN (${CHARS}) ORDER BY character_id,slot_id;" > "$1"
 }
 restore_sql_from() {
     awk -F'\t' '
@@ -121,9 +121,9 @@ restore_sql_from() {
     ' "$1"
 }
 inv_sql_from() {
-    awk -F'\t' 'NF>=16 && $1!="" {
+    awk -F'\t' 'NF>=17 && $1!="" {
         cd = ($13=="NULL") ? "NULL" : "\x27" $13 "\x27"
-        printf "INSERT INTO inventory (character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornamenticon,ornamentidfile,ornament_hero_model) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);", $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,cd,$14,$15,$16
+        printf "INSERT INTO inventory (character_id,slot_id,item_id,charges,color,augment_one,augment_two,augment_three,augment_four,augment_five,augment_six,instnodrop,custom_data,ornament_icon,ornament_idfile,ornament_hero_model,guid) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);", $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,cd,$14,$15,$16,$17
     }' "$1"
 }
 inv_restore() {
@@ -304,15 +304,23 @@ P2_LAUNCH=$(date +%s)
 
 say "p3: launching willeq (Testbuddy) on hermes-ext"
 scp -q -o BatchMode=yes "$OUT/players/p3/script.txt" "$OUT/players/p3/client.json" "$HERMES:/tmp/" || { say "scp to hermes failed"; exit 67; }
-ssh -o BatchMode=yes "$HERMES" "
+ssh -n -o BatchMode=yes "$HERMES" "
   rm -rf $HERMES_OUT; mkdir -p $HERMES_OUT/players/p3/frames
   mv /tmp/script.txt /tmp/client.json $HERMES_OUT/
   sudo -n setcap cap_net_raw,cap_net_admin+ep $HERMES_REPO/build-gles2/bin/willeq
   cd $HERMES_REPO && WILLEQ_DATA_ROOT=$HERMES_REPO nohup setsid ./build-gles2/bin/willeq \
       -c $HERMES_OUT/client.json --renderer gles2 -r 1024 768 --no-audio \
       --eqe1-path /mnt/projects/EverQuest_ETC1 -d 4 --log-level=DEBUG --log-module=GRAPHICS:INFO \
-      --script $HERMES_OUT/script.txt > $HERMES_OUT/run.log 2>&1 &
-  echo \$! > $HERMES_OUT/pid; cat $HERMES_OUT/pid" >>"$LOG" 2>&1 || { say "p3 launch failed"; exit 67; }
+      --script $HERMES_OUT/script.txt > $HERMES_OUT/run.log 2>&1 < /dev/null &
+  echo \$! > $HERMES_OUT/pid" </dev/null >>"$LOG" 2>&1 || { say "p3 launch failed"; exit 67; }
+# MEASURED, dry run 2: p3's willeq started at 14:43:41 and was in world at
+# 14:43:50 -- ten seconds -- but the ssh that launched it did not RETURN until
+# 14:49:19, five minutes and forty seconds later, because the backgrounded
+# process still held the session channel's stdin.  T0 was three minutes in the
+# past before the driver's first step, the timeline ran flat out, and the three
+# players never overlapped: not one cross-player /say reached an observer.
+# `ssh -n` plus `< /dev/null` on the remote background command is the fix.
+say "p3 launched $(( $(date +%s) - P2_LAUNCH ))s after p2"
 
 # ------------------------------------------------ wait for both in world ----
 READY="Graphics loading complete. Game ready!"
@@ -339,12 +347,26 @@ say "p2 and p3 in world"
     m3=$(ssh -o BatchMode=yes "$HERMES" "stat -c %Y $HERMES_OUT/run.log 2>/dev/null || echo 0" 2>/dev/null || echo 0)
     if [ $((now - m2)) -gt "$STALL" ]; then echo "p2 stalled ($((now-m2))s)" > "$ABORT"; exit 0; fi
     if [ $((now - m3)) -gt "$STALL" ]; then echo "p3 stalled ($((now-m3))s)" > "$ABORT"; exit 0; fi
-    pgrep -f 'wine.*eqgame' >/dev/null 2>&1 || { echo "p1 (wine eqgame) is gone" > "$ABORT"; exit 0; }
+    # After Wine hands off, the `wine eqgame` wrapper is gone and only a
+    # process matching `eqgame` remains -- the old pattern called a live client
+    # dead and raised a false ABORT at the end of dry run 2.
+    pgrep -f 'eqgame' >/dev/null 2>&1 || { echo "p1 (eqgame) is gone" > "$ABORT"; exit 0; }
   done
 ) & WATCHDOG_PID=$!
 
 # -------------------------------------------------------------- the run -----
 T0=$DEADLINE
+# The willeq clients burn exactly $LEAD of `wait` before their first step,
+# counted from their own launch, so T0 is fixed at launch + LEAD and the driver
+# must reach this loop BEFORE it.  If it does not, the timeline is already in
+# the past, the driver runs flat out, and the players never overlap -- which is
+# exactly what dry run 2 recorded.  That corpus is not worth the lock: stop.
+NOW=$(date +%s)
+if [ "$NOW" -ge $((T0 - 15)) ]; then
+    say "DESYNC: T0 ($(date -d @${T0} '+%H:%M:%S')) is already here or past at $(date -d @${NOW} '+%H:%M:%S')"
+    say "-- the willeq scripts are on their own clock and the driver cannot catch up. Refusing to record."
+    exit 67
+fi
 HARD=$((T0 + HARD_STOP * 60))
 say "T0 = ${T0} ($(date -d @${T0} '+%H:%M:%S')); hard stop at $(date -d @${HARD} '+%H:%M:%S')"
 echo -n > "$OUT/players/p1/truth.tsv"
