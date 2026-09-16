@@ -82,8 +82,16 @@ while [ $# -gt 0 ]; do
 done
 
 # T489: not Testchar. peer.json is Testbuddy, the character B784 was measured
-# on. A lane whose server is not the default one passes its own .local.json.
-[ -n "$CONFIG" ] || CONFIG="$REPO/scripts/scenario_configs/peer.json"
+# on. The default follows the LANE: EQEMU_HOST=local -> peer.local.json (this
+# host), otherwise peer.json (the VM). The orchestrator ran this in local mode
+# without --config and pointed a client at the VM for 180 s -- a lane leak.
+if [ -z "$CONFIG" ]; then
+    if [ "${EQEMU_HOST:-}" = "local" ]; then
+        CONFIG="$REPO/scripts/scenario_configs/peer.local.json"
+    else
+        CONFIG="$REPO/scripts/scenario_configs/peer.json"
+    fi
+fi
 
 # build/ is not populated in a task worktree; the shared build is in main.
 BIN="${WILLEQ_BIN:-}"
@@ -107,6 +115,17 @@ say() { printf '[restore_selftest] %s %s\n' "$(date '+%H:%M:%S')" "$*" >&2; }
 
 [ -n "$BIN" ] && [ -x "$BIN" ] || { say "no willeq binary (set WILLEQ_BIN)"; exit 65; }
 [ -f "$CONFIG" ] || { say "no client config at $CONFIG"; exit 65; }
+# Lane guard: the config's host must be the lane's server, whichever way the
+# mismatch runs (a VM config on the local lane, or a local config on the VM).
+CFG_HOST="$(sed -n 's/.*"host"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG" | head -1)"
+LANE_HOST="$(eqemu_port_host)"
+case "$CFG_HOST" in
+    "$LANE_HOST"|127.0.0.1|localhost) ;;
+    *) if ! { [ "$LANE_HOST" = 127.0.0.1 ] && hostname -I | tr ' ' '\n' | grep -qx "$CFG_HOST"; }; then
+           say "LANE MISMATCH: config host ${CFG_HOST} is not this lane's server (${LANE_HOST}, EQEMU_HOST=${EQEMU_HOST:-unset}) -- refusing"
+           exit 65
+       fi ;;
+esac
 CHAR="$(sed -n 's/.*"character"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG" | head -1)"
 [ -n "$CHAR" ] || { say "no \"character\" in $CONFIG"; exit 65; }
 

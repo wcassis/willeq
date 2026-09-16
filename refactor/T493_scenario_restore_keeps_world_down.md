@@ -154,3 +154,5 @@ alone. `docs/` has no live-unit procedure text of its own —
 - [assumed] That `--keep-server` now works end to end in `scenario.sh`. The
   restore-then-`eqemu_world_start` path was exercised repeatedly by the selftest
   (same two calls, same order) but not through `scenario.sh` itself.
+
+**Orchestrator verification 2026-09-16 23:02 UTC [measured, local lane]:** `scenario.sh --selftest` PASS (17 s, 0 world processes, byte-identical through the teardown); `restore_selftest.sh --legacy` exit 66 (the B784 symptom reproduced); lane left clean. Found and fixed one lane-safety defect in the new selftest: with `EQEMU_HOST=local` and no `--config` it defaulted to `peer.json` (the VM) and pointed a client at 172.16.200.99 for 180 s (harmless only because that stack was down). Default now follows the lane and a host guard refuses a config whose host is not the lane's server (`LANE MISMATCH`, exit 65, verified).
