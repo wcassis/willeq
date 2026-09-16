@@ -10815,3 +10815,18 @@ B755–B759 unused.
   verified by OCR that "Another Tip" is gone) -- NOT by waiting longer, since it
   is modal until dismissed. `camto` is unaffected: it passed at ratio 1.993 with
   the dialog in frame. Found by T492.
+- **B796** (A) `/equip <from> <to>` -- **the slot numbers the command takes are
+  NOT `inventory.slot_id`; general slots are off by one.** MEASURED T492 Leg I,
+  with a controlled experiment rather than an argument: item 9997 (Dagger*) was
+  seeded into DB slot **21** for BOTH willeq characters and each was told
+  `/equip 21 13`. Testbuddy (68), who has nothing at DB slot 22, equipped the
+  dagger and the pair verified. Testcaster (67), who has a Shuriken at DB slot
+  **22**, got *"] Shuriken cannot go in Primary (13) -- wrong slot type for this
+  item"* -- so the client resolved the argument `21` to the row at DB slot 22.
+  The two characters differ only in whether slot 22 is occupied, which isolates
+  the off-by-one. `/equip list` presumably prints the same shifted numbering, so
+  a user copying a number out of it and back in lands one slot away whenever the
+  neighbouring slot is full. Anchor: the `"equip"` registration in
+  `src/client/action/command_processor_registration.cpp` and whatever maps its
+  argument to an inventory index. The two `E_heldB_p2_*` corpus steps are parked
+  `expect=unlabelled` with `why=` naming this. Found by T492.

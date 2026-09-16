@@ -29,11 +29,12 @@ for p in ("p1", "p2", "p3"):
     out, n = [], 0
     for line in open(path, errors="replace"):
         line = line.rstrip("\n")
-        m = re.search(r"pending=(B\d{3})", line)
+        m = re.search(r"pending=(B\d{3}|match)", line)
         lm = re.search(r"label=([^;\t]+)", line)
         if m and "expect=unlabelled" in line and lm and lm.group(1) in passed:
-            line = line.replace("expect=unlabelled", f"expect=discrepancy:{m.group(1)}")
-            line = re.sub(r";?pending=B\d{3}", "", line)
+            tag = "match" if m.group(1) == "match" else f"discrepancy:{m.group(1)}"
+            line = line.replace("expect=unlabelled", f"expect={tag}")
+            line = re.sub(r";?pending=(B\d{3}|match)", "", line)
             n += 1
         out.append(line)
     open(path, "w").write("\n".join(out) + "\n")

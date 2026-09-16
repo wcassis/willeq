@@ -640,6 +640,81 @@ make the target gate pass; that has not been run.
 re-record the B721/B722/B725 and target steps. Everything else for that session
 is now in place and validated.
 
+### Leg I — both gates passed, the steps were re-recorded, and 18 of 24 pairs now verify
+
+#### B795 — the Tip of the Day dialog, fixed both ways `[measured]`
+
+The dialog's own `[TipWindow]` geometry in the character UI ini is
+**(664, 234) 360x300**, which is exactly where the target window sits — that is
+why Leg H's target OCR read `ow Another Tip`.
+
+- **Persistent:** `[Tips] ShowTips=0` in
+  `~/eq-oracle/client/UI_Oraclealpha_WillEQ Private Server.ini`. Oraclealpha's
+  ini had **no `[Tips]` section at all**, so tips defaulted on; other characters
+  shipped in the same client copy already carry `ShowTips=0`, which is where the
+  key came from. The pre-change file is kept beside it as `.t492-pristine`.
+- **Runtime:** `oracle_start.sh` now OCRs that exact region after entering the
+  world and refuses to proceed until it is clear, dismissing with Escape then a
+  click on the panel's close box, up to four attempts, and failing loudly
+  otherwise. `[measured]` this run: *"tip dialog PRESENT on probe 1 (OCR: PAY
+  Check back with your guild trainers periadically…) -- dismissing"* then *"tip
+  dialog: region clear on probe 2"*. So the ini key alone did not stop it on the
+  launch that wrote it, and the runtime check is what actually cleared the way.
+
+#### The gates `[measured]`
+
+| gate | result |
+|---|---|
+| camera | **PASS** — `camto Chase OK presses=2 score=0.3316 next=0.8439 ratio=2.545` |
+| target | **PASS** — `crop=140x24+885+470 read=Testcaster` |
+
+Then 30 of 30 steps recorded, with both in-run `camto` calls verified
+(Chase 2.545, First Person `presses=4 score=0.3968 next=0.8572 ratio=2.160`) and
+the official target window reading real names throughout.
+
+#### `verify_labels.py` `[measured]`
+
+**24 pairs: 18 PASS, 4 INCONCLUSIVE, 2 FAIL** (Leg G was 0 / 10 / 10).
+
+- **INCONCLUSIVE (4):** `F_sky_p2/p3_overhead` (ratio 1.24 / 1.25) and
+  `H_cam_p2/p3_qeytoqrg_chase` (1.03). Not re-recorded this leg; they stay
+  parked with `unverified=`.
+- **FAIL (2):** `E_heldB_p2_chase` / `E_heldB_p2_tether`, and the reason is a
+  new defect — see below. Parked with `why=`.
+
+Three verifier defects were found and fixed on the way, all of which had been
+producing wrong verdicts:
+
+1. `merge_segment.py` copied every segment's log to the fixed name
+   `run_legE.log`, so Leg I's merge **overwrote Leg E's log** — the file holding
+   the `Camera mode:` evidence for the steps Leg E recorded. Restored from the
+   segment directories and the name is now per-segment.
+2. The target crops are WINDOW coordinates and the verifier was OCR'ing the
+   ROOT grab, which is the same scene offset by (−1, +30): it read `pO`.
+3. The official client's target window shows the OFFICIAL client's target, so on
+   a step where a *willeq* player targeted someone it says nothing about the
+   claim — it had failed `C_target_p2_p3` because the official window read
+   `Testcaster` while p2 had targeted Testbuddy. The official OCR now decides
+   only when the actor is the official client; otherwise the willeq log decides
+   and the OCR is recorded as context.
+
+`restore_pending.py` promoted only the 18 passing labels (14 rows per player).
+**`check_corpus.py`: 12 pass, 0 fail — 24 match and 42 discrepancy step-rows,
+every one of them machine-verified.** Sheets regenerated.
+
+#### B796 — `/equip`'s slot numbers are off by one `[measured]`
+
+The two `E_heldB_p2_*` failures are a real client defect, isolated by a
+controlled experiment rather than argued: item 9997 was seeded into DB slot
+**21** for BOTH willeq characters and each was told `/equip 21 13`. Testbuddy,
+with nothing at DB slot 22, equipped the dagger and the pair verifies.
+Testcaster, who has a Shuriken at DB slot **22**, got *"] Shuriken cannot go in
+Primary (13)"*. The characters differ only in whether slot 22 is occupied, so
+the command resolved `21` to the row at DB slot 22. Boarded; not fixed here.
+
+`[assumed]` that the off-by-one is uniform across general slots rather than a
+boundary case at 21/22 — only the one pair of slots was exercised.
+
 ### What is owed
 
 - `[assumed]` Will has not seen the sheets. The corpus is recorded, not blessed.

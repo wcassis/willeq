@@ -117,8 +117,12 @@ def main():
                 with open(os.path.join(cdir, name), "w") as fh:
                     for t, b in sorted(rows):
                         fh.write(f"{t}\t{b}\n")
-            for src, dst in ((os.path.join(sdir, "run.log"), os.path.join(cdir, "run_legE.log")),
-                             (os.path.join(sdir, "script.txt"), os.path.join(cdir, "script_legE.txt"))):
+            # Name the copied log after THIS segment: a fixed name means the
+            # next merge silently overwrites the previous segment's log, which
+            # is where the `Camera mode:` evidence for its steps lives.
+            tag = os.path.basename(a.segment).replace("llmbench-", "")
+            for src, dst in ((os.path.join(sdir, "run.log"), os.path.join(cdir, f"run_{tag}.log")),
+                             (os.path.join(sdir, "script.txt"), os.path.join(cdir, f"script_{tag}.txt"))):
                 if os.path.exists(src):
                     shutil.copy2(src, dst)
         print(f"  {pid}: {len(replaced_labels)} labels replaced, "

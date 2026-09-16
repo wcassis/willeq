@@ -28,6 +28,27 @@ else
 fi
 sha256sum "$PRISTINE" "$EQO_CLIENT_RUN/eqclient.ini" > "$P1/eqclient_ini_at_launch.sha256"
 
+# B795: the Tip of the Day dialog.  MEASURED T492 Leg H -- it sits at window
+# (664, 234) 360x300 (its own [TipWindow] geometry in the character UI ini),
+# which is exactly where the TARGET window is, so the target-window OCR read
+# "ow Another Tip" instead of a character name and the Leg H gate stopped the
+# run.  Two fixes, belt and braces:
+#   1. PERSISTENT: `[Tips] ShowTips=0` in the CHARACTER's UI ini.  Oraclealpha's
+#      had no [Tips] section at all (tips default on); other characters shipped
+#      in this client copy do have `ShowTips=0`, which is where the key is from.
+#   2. RUNTIME: dismiss whatever is up and PROVE the region is clear by OCR
+#      before the driver is allowed to proceed.
+UIINI="$EQO_CLIENT_RUN/UI_Oraclealpha_WillEQ Private Server.ini"
+if [ -f "$UIINI" ]; then
+    [ -f "${UIINI}.t492-pristine" ] || cp "$UIINI" "${UIINI}.t492-pristine"
+    if grep -q '^\[Tips\]' "$UIINI"; then
+        sed -i 's/^ShowTips=.*/ShowTips=0/' "$UIINI"
+    else
+        printf '[Tips]\nShowTips=0\n' >> "$UIINI"
+    fi
+    mark "UI ini: [Tips] ShowTips=0 set for Oraclealpha"
+fi
+
 pkill -f "wine.*eqgame" >/dev/null 2>&1
 pkill -f "Xvfb ${EQO_XVFB_DISPLAY}" >/dev/null 2>&1
 sleep 5
@@ -59,6 +80,28 @@ WID=$(xdotool search --name '^EverQuest$' | head -1)
 xdotool windowfocus --sync "$WID" 2>/dev/null
 xdotool windowactivate "$WID" 2>/dev/null
 sleep 15
+
+# --- B795 runtime half: dismiss the tip dialog and PROVE the region is clear --
+TIPCROP="360x300+664+234"
+tip_text() {
+    timeout 25 import -window "$WID" "$SCRATCH/tip_probe.png" 2>/dev/null
+    convert "$SCRATCH/tip_probe.png" -crop "$TIPCROP" +repage -colorspace Gray \
+        -resize 300% -threshold 55% png:- 2>/dev/null | tesseract - - --psm 6 2>/dev/null | tr '\n' ' '
+}
+TIPRE='Another Tip|Tip of the|TipWindow|Show Another'
+for a in 1 2 3 4; do
+    t="$(tip_text)"
+    if ! printf '%s' "$t" | grep -qiE "$TIPRE"; then
+        mark "tip dialog: region clear on probe ${a} (OCR: $(printf '%s' "$t" | cut -c1-60))"
+        break
+    fi
+    mark "tip dialog PRESENT on probe ${a} (OCR: $(printf '%s' "$t" | cut -c1-60)) -- dismissing"
+    xdotool windowfocus --sync "$WID" 2>/dev/null
+    xdotool key Escape; sleep 2
+    # its close box is the top-right of the 360x300 panel at (664,234)
+    jclick 1010 246; sleep 2
+    [ "$a" -eq 4 ] && { echo "FATAL: tip dialog would not dismiss (OCR: $t)"; mark "tip dialog UNDISMISSED"; exit 1; }
+done
 timeout 25 import -window "$WID" "$P1/frames/$(date '+%H:%M:%S.%3N')_login_camera_untouched_window.png" 2>/dev/null
 echo "WID=$WID"
 mark "in world WID=$WID"

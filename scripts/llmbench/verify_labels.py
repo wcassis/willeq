@@ -121,10 +121,12 @@ def main():
             if m:
                 idx.setdefault((m.group(2), m.group(3)), f)
         frames[p["id"]] = idx
-    logs = {p["id"]: load_log_events(os.path.join(C, "players", p["id"], "run.log"))
-            + load_log_events(os.path.join(C, "players", p["id"], "run_legE.log"))
-            + load_log_events(os.path.join(C, "players", p["id"], "run_legG.log"))
-            for p in man["players"]}
+    logs = {}
+    for p in man["players"]:
+        ev = []
+        for f in sorted(glob.glob(os.path.join(C, "players", p["id"], "run*.log"))):
+            ev += load_log_events(f)
+        logs[p["id"]] = ev
 
     # the inventory the run started from, and each player's character id
     inv, charid = {}, {}
@@ -194,11 +196,26 @@ def main():
 
             tgt = d.get("target")
             if tgt and not tgt.startswith("F8"):
-                reads = [ocr(ofr, c) for c in TARGET_CROPS] if ofr else []
+                # The target crops are WINDOW coordinates; a root grab is the
+                # same scene offset by (-1, +30), so OCR must use the window
+                # frame or it reads the wrong rectangle (T492 Leg I: "pO").
+                # The official client's target window shows the OFFICIAL
+                # client's target.  On a step where a WILLEQ player targeted
+                # someone, that window says nothing about the claim -- T492 Leg
+                # I's first pass failed `C_target_p2_p3` (p2 targets Testbuddy)
+                # because the official window read "Testcaster", which is simply
+                # a different client's target.  So the official OCR DECIDES only
+                # when the actor is the official client; otherwise it is
+                # recorded for context and the willeq log decides.
+                wof = frames[official].get((lab, "window"))
+                reads = [ocr(wof, c) for c in TARGET_CROPS] if wof else []
                 hit = next((r for r in reads if tgt in r), None)
                 ev = before(logs[pid], t, re.escape(tgt), a.window) if logs[pid] else None
                 claims.append(f"target={tgt}")
-                checks.append(("official_target_ocr", (hit or (reads[0] if reads else "none")), bool(hit)))
+                shown = hit or (reads[0] if reads else "none")
+                checks.append(("official_target_window",
+                               shown + ("" if pid == official else " (p1's own target; context only)"),
+                               bool(hit) if pid == official else True))
                 checks.append(("willeq_log", (ev[1][-40:] if ev else "none"), bool(ev)))
 
             held = d.get("held")
