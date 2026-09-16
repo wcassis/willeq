@@ -182,9 +182,11 @@ def main():
             kv = parse_kv(body)
             if kv.get("actor") != pid:
                 continue
-            for key in ("said", "told"):
-                if kv.get(key):
-                    said.setdefault(pid, set()).add(kv[key])
+            # Only `said=` -- the MESSAGE.  `told=` is the recipient's NAME,
+            # which appears in every observer's log for a dozen unrelated
+            # reasons and would pass this check without proving anything.
+            if kv.get("said"):
+                said.setdefault(pid, set()).add(kv["said"])
     chats = {}
     for pid in ids:
         f = os.path.join(C, "players", pid, "chat.tsv")
@@ -192,7 +194,7 @@ def main():
     seen_by_other = []
     for pid, texts in said.items():
         for text in texts:
-            if len(text) < 8:
+            if len(text) < 16:
                 continue
             for other in ids:
                 if other != pid and text in chats.get(other, ""):

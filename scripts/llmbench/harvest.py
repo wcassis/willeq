@@ -23,9 +23,18 @@ LOG = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\] \[(\w+)\s*\
 SHOT = re.compile(r"Screenshot saved: (\S+)")
 EXEC = re.compile(r"Script: executing '(.*)' \(step (\d+)/(\d+)\)")
 FRAME = re.compile(r"^(\d{3})_(.*)_window\.png$")
-# What an OBSERVING client logs when another player's chat reaches it.  Kept
-# wide on purpose and reported verbatim: the assertion is "the observer saw
-# it", so the observer's own words are the evidence.
+# What an OBSERVING client logs when another player's chat reaches it.  Two
+# different shapes, and MEASURED T492 that it matters which:
+#   * `[CHAT] <sender> (say|tell|tellecho): <text>` -- player chat.  This one
+#     goes to STDOUT directly, NOT through the logger, so it carries no
+#     `[date time] [LEVEL] [MOD]` prefix at all and a line-by-line parser that
+#     only understands log lines drops it on the floor.  It is attributed to
+#     the last log timestamp seen, which is the closest honest answer available.
+#   * `[FormattedMessage] channel=..., sender=..., text=...` -- server-formatted
+#     strings: NPC shouts, system messages.  NOT player /say.
+# The first T492 harvester keyed on words like "says" and found, in a whole
+# three-player session, two lines -- both of them an NPC.
+CHAT_PLAIN = re.compile(r"^\[CHAT\] ")
 CHATISH = re.compile(r"\[FormattedMessage\]|\b(says|tells you|shouts|auctions)\b")
 
 
@@ -50,13 +59,18 @@ def main():
 
     marks, chat = [], []
     shot_ts = {}   # idx -> HH:MM:SS.mmm
+    last_t = "00:00:00.000"
     with open(runlog, errors="replace") as f:
         for line in f:
-            m = LOG.match(line.rstrip("\n"))
+            line = line.rstrip("\n")
+            m = LOG.match(line)
             if not m:
+                if CHAT_PLAIN.match(line):
+                    chat.append((last_t, line))
                 continue
             ts, _lvl, _mod, body = m.groups()
             t = stamp(ts)
+            last_t = t
             e = EXEC.search(body)
             if e:
                 marks.append((t, f"cmd {e.group(1)}"))
@@ -80,11 +94,17 @@ def main():
         s = steps[idx]
         src = os.path.join(frames, f"{idx:03d}_{s['label']}_window.png")
         t = shot_ts.get(idx)
-        if t is None or not os.path.exists(src):
+        if t is None:
             missing += 1
             continue
         dst = os.path.join(frames, f"{t}_{s['label']}_window.png")
-        shutil.move(src, dst)
+        if os.path.exists(src):
+            shutil.move(src, dst)
+        elif not os.path.exists(dst):
+            # Re-running the harvester on a corpus it already named must not
+            # invent a missing frame.
+            missing += 1
+            continue
         renamed += 1
         kv = dict(s["truth"])
         kv.setdefault("actor", s["player"])

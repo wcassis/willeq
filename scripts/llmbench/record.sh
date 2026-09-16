@@ -137,7 +137,8 @@ kill_clients() {
     say "killing clients"
     pkill -f 'wine.*eqgame'    >/dev/null 2>&1
     kill ${P2_PID:-} >/dev/null 2>&1; sleep 2; kill -9 ${P2_PID:-} >/dev/null 2>&1
-    ssh -o BatchMode=yes "$HERMES" "kill \$(cat $HERMES_OUT/pid 2>/dev/null) 2>/dev/null; sleep 2; kill -9 \$(cat $HERMES_OUT/pid 2>/dev/null) 2>/dev/null; true" >/dev/null 2>&1
+    kill ${P3_SSH_PID:-} >/dev/null 2>&1
+    ssh -n -o BatchMode=yes "$HERMES" "pkill -f 'build-gles2/bin/willeq'; sleep 2; pkill -9 -f 'build-gles2/bin/willeq'; true" >/dev/null 2>&1
     pkill -f "Xvfb ${EQO_XVFB_DISPLAY:-:99}" >/dev/null 2>&1
 }
 restore() {
@@ -269,7 +270,7 @@ cat > "$OUT/players/p2/client.txt" <<TXT
 willeq
 host=devhost (this machine), surfaceless EGL + llvmpipe, no display
 account=willeq_test character=Testcaster
-binary=${SCRATCH}/willeq (local copy of ${REPO}/build-gles2/bin/willeq with cap_net_raw,cap_net_admin+ep)
+binary=${SCRATCH}/willeq (local copy of ${BIN_SRC} with cap_net_raw,cap_net_admin+ep)
 flags=--renderer gles2 -r 1024 768 --no-audio --eqe1-path /mnt/projects/EverQuest_ETC1 -d 4 --log-level=DEBUG --log-module=GRAPHICS:INFO
 TXT
 cat > "$OUT/players/p3/client.txt" <<TXT
@@ -304,23 +305,29 @@ P2_LAUNCH=$(date +%s)
 
 say "p3: launching willeq (Testbuddy) on hermes-ext"
 scp -q -o BatchMode=yes "$OUT/players/p3/script.txt" "$OUT/players/p3/client.json" "$HERMES:/tmp/" || { say "scp to hermes failed"; exit 67; }
+# The remote side is prepared FIRST, in a call that does return.
 ssh -n -o BatchMode=yes "$HERMES" "
   rm -rf $HERMES_OUT; mkdir -p $HERMES_OUT/players/p3/frames
   mv /tmp/script.txt /tmp/client.json $HERMES_OUT/
-  sudo -n setcap cap_net_raw,cap_net_admin+ep $HERMES_REPO/build-gles2/bin/willeq
-  cd $HERMES_REPO && WILLEQ_DATA_ROOT=$HERMES_REPO nohup setsid ./build-gles2/bin/willeq \
+  sudo -n setcap cap_net_raw,cap_net_admin+ep $HERMES_REPO/build-gles2/bin/willeq" \
+  </dev/null >>"$LOG" 2>&1 || { say "p3 preparation failed"; exit 67; }
+# MEASURED T492 (dry runs 2 and 3, and an isolated probe with `setsid sleep 300`):
+# an ssh whose remote command backgrounds a long-lived process does NOT return,
+# even with `ssh -n`, `nohup`, `setsid` and stdin/stdout/stderr all redirected --
+# the session channel stays open for the life of that process.  p3's client was
+# in world ten seconds after launch both times while the launching ssh sat there
+# for 4m40s and 5m40s, and T0 (= launch + lead) went by before the driver reached
+# its loop.  So the ssh is backgrounded LOCALLY and never waited on; readiness is
+# polled through separate short ssh calls, exactly as p2's is polled through its
+# local log.
+ssh -n -o BatchMode=yes "$HERMES" "
+  cd $HERMES_REPO && WILLEQ_DATA_ROOT=$HERMES_REPO ./build-gles2/bin/willeq \
       -c $HERMES_OUT/client.json --renderer gles2 -r 1024 768 --no-audio \
       --eqe1-path /mnt/projects/EverQuest_ETC1 -d 4 --log-level=DEBUG --log-module=GRAPHICS:INFO \
-      --script $HERMES_OUT/script.txt > $HERMES_OUT/run.log 2>&1 < /dev/null &
-  echo \$! > $HERMES_OUT/pid" </dev/null >>"$LOG" 2>&1 || { say "p3 launch failed"; exit 67; }
-# MEASURED, dry run 2: p3's willeq started at 14:43:41 and was in world at
-# 14:43:50 -- ten seconds -- but the ssh that launched it did not RETURN until
-# 14:49:19, five minutes and forty seconds later, because the backgrounded
-# process still held the session channel's stdin.  T0 was three minutes in the
-# past before the driver's first step, the timeline ran flat out, and the three
-# players never overlapped: not one cross-player /say reached an observer.
-# `ssh -n` plus `< /dev/null` on the remote background command is the fix.
-say "p3 launched $(( $(date +%s) - P2_LAUNCH ))s after p2"
+      --script $HERMES_OUT/script.txt > $HERMES_OUT/run.log 2>&1;
+  echo p3_exit=\$? >> $HERMES_OUT/run.log" </dev/null >>"$LOG" 2>&1 &
+P3_SSH_PID=$!
+say "p3 launch ssh backgrounded (pid $P3_SSH_PID), $(( $(date +%s) - P2_LAUNCH ))s after p2"
 
 # ------------------------------------------------ wait for both in world ----
 READY="Graphics loading complete. Game ready!"
