@@ -314,6 +314,90 @@ other, and the corpus README says so where a grader will read it.
 Everything else is `unlabelled`. **No model judged a frame at any point, and
 neither did this executor.**
 
+### Leg E — Will's ruling on the sheets: the camera and held-item steps re-recorded
+
+**The `/camera` command was never broken.** `[measured]`, from the Leg C
+corpus's own logs: `/camera firstperson` was queued at **15:21:56.500**, the
+renderer applied it at **15:21:56.593** (`Camera mode: First Person Camera`,
+`renderer_camera.cpp:534`), and `/camera get` two minutes later read back
+`mode="First Person Camera" view=1` with `node camPos=(428.001,-84.049,5.565)`
+against `player=(428.000,-84.000,2.895)` — the camera is at the player's eye.
+`Camera mode:` appears **15 times** in each willeq run.log; the report that it
+appears none was a false negative. `camera_command.cpp`'s `Kind::Error` path
+was never taken: there is no error line in either log.
+
+What was wrong is the **settle**, and it explains the frames completely: the
+`/screenshot` was queued 17 ms after the command and the renderer executed it at
+**15:21:56.517 — 76 ms BEFORE the camera moved**. Both are registry-3 commands
+on the same async bridge, so the screenshot grabbed the framebuffer of the frame
+rendered under the previous camera. `[assumed]` that the same 17 ms race
+explains every other camera and held-item frame in Leg C; the timestamps have
+the same shape throughout, but only the First Person step was measured to the
+millisecond.
+
+The fix, and only this:
+
+- `[measured]` `compile_timeline.py --settle N` puts `wait N` between a step's
+  command and its `/screenshot`, and a `/camera get` in the gap on camera steps
+  so the client's own `[CAMERA-GET] mode="…"` reply lands in its log between the
+  two. `record.sh --settle N` gives the official client the same wait before its
+  grab. The settle is subtracted from the gap to the next step, so the schedule
+  does not slip one settle per step (76 x 3 s would have been nearly four
+  minutes by the end of the segment); verified offline: max |script time −
+  t_offset − lead| = **0.0 s** over all 76 rows.
+- `[measured]` **All 33 camera/held frames per willeq player are preceded by a
+  client camera-confirmation line** (p2 median gap 2.999 s, closest 0.001 s;
+  p3 median 0.010 s, closest 0.000 s). The First Person frame follows its
+  confirmation by +11.07 s (p2) and +19.15 s (p3).
+- `[measured]` The change is visible in the pixels, by T310's gradient metric
+  (`scripts/camera_match_score.py`, 0 = identical edges, no frame judged):
+  First Person vs Chase scores **0.864** within the Leg E frames and **0.635**
+  within the Leg C frames of the same two steps. Each comparison is internally
+  consistent (Leg E has the UI off on both sides, Leg C has it on).
+- `[measured]` `/hideui` (registry 3, T301 Leg D) is the only lever that removes
+  the willeq debug overlay, and it is all-or-nothing — it takes the chat window
+  with it. Used on p2/p3 for these steps; p1's UI is left ON, so in these 69
+  steps the willeq frames have no UI and the official frames do. Boarded as
+  **B791**; said in both READMEs.
+
+**The run.** 2026-09-16 16:23:58 → 16:45:30, lock held 21 min 32 s, **76 of 76
+steps**, no abort. Drift zero at the two points checked exactly (step 25 at
+t+221 and step 50 at t+445 both fired at T0+their offset). Snapshot and
+inventory **restored byte-identically**, 0 spawn rows and 0 corpse rows left,
+stack down, lock released.
+
+**The merge.** `scripts/llmbench/merge_segment.py` replaced 69 of the corpus's
+125 steps: 276 frames moved to `review/T492/llmbench-v1-camera-steps-bad/`
+(with the pre-merge `truth`/`marks`/`chat` files), 276 copied in, truth rows
+swapped keeping the CORPUS step id and gaining `rerecorded=`, marks and chat
+merged so the timestamp join still holds. 56 Leg C truth lines kept + 69 swapped
+= 125 per player. `check_corpus.py` after the merge: **12 pass, 0 fail**.
+Sheets regenerated: 16 sheets, 80 labelled step pairs.
+
+**Will's two product rulings, boarded and NOT investigated here.** `[measured]`
+colours, from single crops of named frames, which is what separates them from
+the existing entries:
+
+- **B789** (A) the sky renders red: mean **(80, 29, 29)** of 255 over a sky-only
+  band (`600x60+200+10`) of
+  `players/p2/frames/15:38:13.227_F_sky_p2_overhead_window.png` — red is 2.75x
+  both other channels. **Not B781**, whose measured zenith is (80.2, 117.3,
+  163.6), a blue that is merely the wrong blue, and whose channel-order half
+  (B726) is already fixed in this binary.
+- **B790** (A) untextured pink/magenta trees and distant blocks: mean
+  **(88, 35, 38)** over the horizon band (`800x120+120+200`) of
+  `players/p2/frames/15:46:54.538_H_cam_p2_qeytoqrg_chase_window.png` against
+  the paired official frame's **(16, 30, 23)**. **Not B782**, which is "the
+  distant trees are PALE" — fable (138, 153, 160) vs official (47, 63, 54), a
+  desaturated grey-blue in a different zone.
+
+`[assumed]` throughout Leg E: that these two are single defects rather than
+several, and that a crop mean describes the region — Will ruled them bugs from
+the frames, and this executor did not look at one.
+
+**Still owed:** Will has not seen the re-generated sheets. The corpus is
+recorded, not blessed.
+
 ### What is owed
 
 - `[assumed]` Will has not seen the sheets. The corpus is recorded, not blessed.

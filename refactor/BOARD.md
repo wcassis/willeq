@@ -10709,3 +10709,46 @@ B755–B759 unused.
   settle first it is one attempt. T492's launcher adds the settle around the
   rig's script (`scripts/llmbench/oracle_start.sh`); `enter-world.sh` itself is
   UNCHANGED, being the shared rig. Found by T492.
+
+## Added 2026-09-16 by T492 Leg E (Will's ruling on the corpus sheets)
+
+- **B789** (A) **the qeynos2/qeytoqrg sky renders RED in fable, not blue.**
+  **Will's ruling, 2026-09-16, looking at T492's sheets: this is a bug, not a
+  rig artifact.** MEASURED on `review/T492/llmbench/players/p2/frames/
+  15:38:13.227_F_sky_p2_overhead_window.png`, crop `600x60+200+10` (a sky-only
+  band at the top of the frame), mean **(80, 29, 29)** of 255 -- red is 2.75x
+  green and 2.75x blue. The official client's frame at the same step is
+  `players/p1/frames/15:38:09.793_F_sky_p2_overhead_window.png`. Binary:
+  `build-gles2` at `566ac88a` (T484's channel-order fix IS in it),
+  `--eqe1-path`, 1024x768, qeynos2 at the server's own time.
+  **This is NOT B781.** B781 is "the time-of-day tint TABLE is invented, not
+  fitted": its measured headless zenith is (80.2, 117.3, 163.6) -- a blue that
+  is merely the wrong blue. A band whose red is nearly triple both other
+  channels is a different failure, downstream of whatever B781 is about, and
+  T484's B726 channel-order fix is already in this binary. Not investigated:
+  Will ruled it a bug and ruled that T492 does not chase it. Found by T492.
+- **B790** (A) **untextured pink/magenta trees and pink distant blocks in
+  fable.** **Will's ruling, 2026-09-16, on the same sheets: a bug.** MEASURED on
+  `review/T492/llmbench/players/p2/frames/
+  15:46:54.538_H_cam_p2_qeytoqrg_chase_window.png`, crop `800x120+120+200` (the
+  horizon/tree band), mean **(88, 35, 38)** of 255 -- again red/magenta
+  dominant -- against the paired official frame
+  `players/p1/frames/15:46:49.474_H_cam_p2_qeytoqrg_chase_window.png` at
+  **(16, 30, 23)**, which is green dominant. Magenta is the conventional
+  missing-texture colour, so a texture that never bound is the first place to
+  look. **This is NOT B782.** B782 is "the distant qeynos2 trees are PALE",
+  measured as fable (138, 153, 160) vs official (47, 63, 54) -- a desaturated
+  grey-blue, not magenta, and in a different zone. Not investigated by T492.
+  Found by T492.
+- **B791** (B) **nothing hides fable's renderer command replies without hiding
+  the whole UI.** Every registry-3 command answers through `chat()`, which puts
+  it in the in-game chat window -- so a captured fable frame with the UI on
+  carries `Screenshot saved: <path>`, `[CAMERA-GET]` dumps and combat lines that
+  the official client would never show, on top of the scene being compared.
+  The only lever is `/hideui` (`renderer_slash_commands.cpp`, T301 Leg D),
+  which is all-or-nothing: it also removes the chat window, which is part of
+  what a verification corpus wants to capture. T492 Leg E uses `/hideui` for
+  its camera and held-item steps for exactly this reason and says so in the
+  corpus README; every visual gate since T63 has fought the same overlay (the
+  comment at the `/hideui` site says so). What is missing is a way to keep the
+  UI and route command replies to the log only. Found by T492.

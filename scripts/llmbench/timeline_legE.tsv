@@ -1,0 +1,87 @@
+# T492 Leg E -- SUPPLEMENTARY timeline: the camera and held-item steps only,
+# re-recorded after Will looked at the sheets.  Two things differ from the
+# Leg C recording of the same steps and NOTHING else does:
+#   1. a settle between the command and the frame.  MEASURED on the Leg C
+#      corpus: `/camera firstperson` was queued at 15:21:56.500, the renderer
+#      applied it at 15:21:56.593 (`Camera mode: First Person Camera`), and the
+#      `/screenshot` queued 17 ms after the command executed at 15:21:56.517 --
+#      76 ms BEFORE the camera moved.  The command was never the problem.
+#   2. `/hideui` on the two willeq clients, so their frames do not carry the
+#      chat window full of renderer command replies.
+# `replaces_step=` names the Leg C step id each row's frames replace.
+0.0	p2	/hideui	label=E0_hideui_p2;ui=hidden;expect=unlabelled
+8.0	p3	/hideui	label=E0_hideui_p3;ui=hidden;expect=unlabelled
+22.0	p1	nop	label=A_zonein_p1;char=Oraclealpha;camera=FirstPerson_login_untouched;f9_presses=0;zone=qeynos2;expect=unlabelled;replaces_step=0
+33.0	p2	/camera firstperson	label=A_cam_p2_firstperson;char=Testcaster;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=1
+41.0	p3	/camera firstperson	label=A_cam_p3_firstperson;char=Testbuddy;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=2
+49.0	p2	/loc	label=A_loc_p2;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=4
+57.0	p3	/loc	label=A_loc_p3;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=5
+65.0	p2	/who	label=A_who_p2;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=7
+73.0	p3	/who	label=A_who_p3;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=8
+81.0	p1	nop	label=A_idle0_p1;camera=FirstPerson_login_untouched;zone=qeynos2;expect=unlabelled;replaces_step=9
+92.0	p2	/camera get	label=A_camget_p2;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=10
+100.0	p3	/camera get	label=A_camget_p3;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=11
+108.0	p1	nop	label=A_idle_p1;camera=FirstPerson_login_untouched;zone=qeynos2;expect=unlabelled;replaces_step=12
+119.0	p2	/say T492 p2 Testcaster greets Oraclealpha and Testbuddy	label=B_say_p2;said=T492 p2 Testcaster greets Oraclealpha and Testbuddy;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=14
+127.0	p3	/say T492 p3 Testbuddy greets Oraclealpha and Testcaster	label=B_say_p3;said=T492 p3 Testbuddy greets Oraclealpha and Testcaster;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=15
+135.0	p2	/tell Oraclealpha T492 p2 tells p1	label=B_tell_p2_p1;told=Oraclealpha;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=17
+143.0	p3	/tell Oraclealpha T492 p3 tells p1	label=B_tell_p3_p1;told=Oraclealpha;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=18
+151.0	p2	/tell Testbuddy T492 p2 tells p3	label=B_tell_p2_p3;told=Testbuddy;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=20
+159.0	p3	/tell Testcaster T492 p3 tells p2	label=B_tell_p3_p2;told=Testcaster;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=21
+167.0	p1	nop	label=B_idle2_p1;camera=FirstPerson_login_untouched;zone=qeynos2;expect=unlabelled;replaces_step=22
+178.0	p2	/say T492 p2 heard the tells	label=B_say2_p2;said=T492 p2 heard the tells;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=23
+186.0	p3	/say T492 p3 heard the tells	label=B_say2_p3;said=T492 p3 heard the tells;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=24
+194.0	p1	key F8	label=C_target_p1_f8;target=F8_nearest;camera=FirstPerson_login_untouched;zone=qeynos2;expect=unlabelled;replaces_step=25
+205.0	p2	/target Oraclealpha	label=C_target_p2_p1;target=Oraclealpha;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=26
+213.0	p3	/target Oraclealpha	label=C_target_p3_p1;target=Oraclealpha;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=27
+221.0	p2	/target Testbuddy	label=C_target_p2_p3;target=Testbuddy;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=29
+229.0	p3	/target Testcaster	label=C_target_p3_p2;target=Testcaster;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=30
+237.0	p2	/loc	label=C_loc2_p2;target=Testbuddy;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=32
+245.0	p3	/loc	label=C_loc2_p3;target=Testcaster;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=33
+253.0	p1	nop	label=C_idle_p1;camera=FirstPerson_login_untouched;zone=qeynos2;expect=unlabelled;replaces_step=34
+264.0	p2	/who	label=C_who2_p2;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=35
+272.0	p3	/who	label=C_who2_p3;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match;replaces_step=36
+280.0	p1	key F9	label=D_cam_p1_f9x1;f9_presses=1;camera=unnamed_by_the_client;zone=qeynos2;expect=unlabelled;replaces_step=37
+291.0	p2	/camera overhead	label=D_cam_p2_overhead;camera=Overhead;zone=qeynos2;expect=unlabelled;replaces_step=38
+299.0	p3	/camera overhead	label=D_cam_p3_overhead;camera=Overhead;zone=qeynos2;expect=unlabelled;replaces_step=39
+307.0	p1	key F9	label=D_cam_p1_f9x2;f9_presses=2;camera=unnamed_by_the_client;zone=qeynos2;expect=unlabelled;replaces_step=40
+318.0	p2	/camera chase	label=D_cam_p2_chase;camera=Chase;zone=qeynos2;expect=discrepancy:B721;replaces_step=41
+326.0	p3	/camera chase	label=D_cam_p3_chase;camera=Chase;zone=qeynos2;expect=discrepancy:B721;replaces_step=42
+334.0	p1	key F9	label=D_cam_p1_f9x3;f9_presses=3;camera=unnamed_by_the_client;zone=qeynos2;expect=unlabelled;replaces_step=43
+345.0	p2	/camera user1	label=D_cam_p2_user1;camera=User1;zone=qeynos2;expect=unlabelled;replaces_step=44
+353.0	p3	/camera user1	label=D_cam_p3_user1;camera=User1;zone=qeynos2;expect=unlabelled;replaces_step=45
+361.0	p1	key F9	label=D_cam_p1_f9x4;f9_presses=4;camera=unnamed_by_the_client;zone=qeynos2;expect=unlabelled;replaces_step=46
+372.0	p2	/camera user2	label=D_cam_p2_user2;camera=User2;zone=qeynos2;expect=unlabelled;replaces_step=47
+380.0	p3	/camera user2	label=D_cam_p3_user2;camera=User2;zone=qeynos2;expect=unlabelled;replaces_step=48
+388.0	p1	key F9	label=D_cam_p1_f9x5;f9_presses=5;camera=unnamed_by_the_client;zone=qeynos2;expect=unlabelled;replaces_step=49
+399.0	p2	/camera tether	label=D_cam_p2_tether;camera=Tether;zone=qeynos2;expect=unlabelled;replaces_step=50
+407.0	p3	/camera tether	label=D_cam_p3_tether;camera=Tether;zone=qeynos2;expect=unlabelled;replaces_step=51
+415.0	p1	key F9	label=D_cam_p1_f9x6;f9_presses=6;camera=unnamed_by_the_client;zone=qeynos2;expect=unlabelled;replaces_step=52
+426.0	p1	key F9	label=D_cam_p1_f9x7;f9_presses=7;camera=unnamed_by_the_client;note=hermes-ext measured the in-world F9 cycle at period ~7 against T466's six named modes;presses are COUNTED here and nothing is resolved=;zone=qeynos2;expect=unlabelled;replaces_step=55
+437.0	p2	/camera chase	label=E_heldA_p2_chase;camera=Chase;held=13=9998 short sword,14=9979 lantern;zone=qeynos2;expect=discrepancy:B722;replaces_step=56
+445.0	p3	/camera chase	label=E_heldA_p3_chase;camera=Chase;held=13=9997,14=9979 lantern;zone=qeynos2;expect=discrepancy:B722;replaces_step=57
+453.0	p1	cmd #wc 7 10|	label=E_wc_p1_it10;held_visual=#wc slot 7 material 10 (IT10 arrow) -- visual only, no relogin (T478);zone=qeynos2;expect=unlabelled;replaces_step=58
+473.0	p2	/camera tether	label=E_heldA_p2_tether;camera=Tether;held=13=9998 short sword,14=9979 lantern;zone=qeynos2;expect=discrepancy:B722;replaces_step=59
+481.0	p3	/camera tether	label=E_heldA_p3_tether;camera=Tether;held=13=9997,14=9979 lantern;zone=qeynos2;expect=discrepancy:B722;replaces_step=60
+489.0	p2	/equip 23 13	label=E_equip_p2_23to13;held=13=9990 (moved in-game from general slot 23;no relogin, so the world's cached appearance is not in the way)=;zone=qeynos2;expect=unlabelled;replaces_step=62
+497.0	p3	/equip 23 13	label=E_equip_p3_23to13;held=13=9990 (moved in-game from general slot 23);zone=qeynos2;expect=unlabelled;replaces_step=63
+505.0	p1	cmd #wc 7 4|	label=E_wc_p1_m4;held_visual=#wc slot 7 material 4;zone=qeynos2;expect=unlabelled;replaces_step=64
+525.0	p2	/camera chase	label=E_heldB_p2_chase;camera=Chase;held=13=9990;zone=qeynos2;expect=discrepancy:B725;replaces_step=65
+533.0	p3	/camera chase	label=E_heldB_p3_chase;camera=Chase;held=13=9990;zone=qeynos2;expect=discrepancy:B725;replaces_step=66
+541.0	p2	/camera tether	label=E_heldB_p2_tether;camera=Tether;held=13=9990;zone=qeynos2;expect=discrepancy:B725;replaces_step=68
+549.0	p3	/camera tether	label=E_heldB_p3_tether;camera=Tether;held=13=9990;zone=qeynos2;expect=discrepancy:B725;replaces_step=69
+557.0	p2	/camera chase	label=F_pre_p2_chase;camera=Chase;zone=qeynos2;expect=unlabelled;replaces_step=70
+565.0	p3	/camera chase	label=F_pre_p3_chase;camera=Chase;zone=qeynos2;expect=unlabelled;replaces_step=71
+573.0	p2	/camera overhead	label=F_sky_p2_overhead;camera=Overhead;sky=in frame;zone=qeynos2;expect=discrepancy:B781;replaces_step=82
+581.0	p3	/camera overhead	label=F_sky_p3_overhead;camera=Overhead;sky=in frame;zone=qeynos2;expect=discrepancy:B781;replaces_step=83
+589.0	p2	/camera chase	label=G_pre_p2_chase;camera=Chase;zone=qeynos2;expect=discrepancy:B721;replaces_step=86
+597.0	p3	/camera chase	label=G_pre_p3_chase;camera=Chase;zone=qeynos2;expect=discrepancy:B721;replaces_step=87
+611.0	p1	cmd #movechar Testcaster qeytoqrg|	label=E0_zone_p2;zoning=Testcaster -> qeytoqrg by the GM's #movechar;expect=unlabelled
+631.0	p1	cmd #movechar Testbuddy qeytoqrg|	label=E0_zone_p3;zoning=Testbuddy -> qeytoqrg by the GM's #movechar;expect=unlabelled
+651.0	p1	cmd #zone qeytoqrg|	label=E0_zone_p1;zone=qeytoqrg;zoning=Oraclealpha -> qeytoqrg by the GM's #zone;expect=unlabelled
+671.0	p2	/hideui	label=E0_hideui2_p2;ui=hidden after the zone;expect=unlabelled
+679.0	p3	/hideui	label=E0_hideui2_p3;ui=hidden after the zone;expect=unlabelled
+699.0	p2	/camera chase	label=H_cam_p2_qeytoqrg_chase;zone=qeytoqrg;camera=Chase;trees=a distant tree line is in frame;expect=discrepancy:B782;replaces_step=117
+707.0	p3	/camera chase	label=H_cam_p3_qeytoqrg_chase;zone=qeytoqrg;camera=Chase;trees=a distant tree line is in frame;expect=discrepancy:B782;replaces_step=118
+715.0	p2	/camera firstperson	label=H_cam_p2_qeytoqrg_fp;zone=qeytoqrg;camera=FirstPerson;expect=unlabelled;replaces_step=120
+723.0	p3	/camera firstperson	label=H_cam_p3_qeytoqrg_fp;zone=qeytoqrg;camera=FirstPerson;expect=unlabelled;replaces_step=121

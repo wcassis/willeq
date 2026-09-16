@@ -61,6 +61,16 @@ def main():
                          "defaults to <outdir>. p3 runs on another host, so its "
                          "frames-root is that host's path, not this one's.")
     ap.add_argument("--p3-frames-root", default=None)
+    ap.add_argument("--settle", type=float, default=0.0,
+                    help="seconds of `wait` between a step's command and its "
+                         "/screenshot. MEASURED on the Leg C corpus: with no "
+                         "settle the screenshot is queued 17 ms after the "
+                         "command and the renderer executes it 76 ms BEFORE the "
+                         "camera change lands, so the frame is of the previous "
+                         "camera. A camera step additionally gets a `/camera "
+                         "get` in the gap, whose `[CAMERA-GET] mode=\"...\"` "
+                         "reply is the client's OWN evidence, in its own log, "
+                         "that the mode was in effect before the frame.")
     a = ap.parse_args()
 
     rows = []
@@ -102,14 +112,25 @@ def main():
             "# 'Screenshot saved:' INFO line timestamps the frame in run.log.",
             f"wait {a.lead:g}",
         ]
+        # `prev` is where the PREVIOUS step's block ENDED, not where it began:
+        # the settle sits between a step's command and its frame, so it is part
+        # of that step's block and must come out of the gap to the next one.
+        # Without this the schedule slips by one settle per step -- 3 s x 76
+        # steps is nearly four minutes by the end of a segment, and the three
+        # players stop being contemporaneous.
         prev = 0.0
         for s in steps:
             dt = s["t_offset"] - prev
             if dt > 0:
                 out.append(f"wait {dt:g}")
-            prev = s["t_offset"]
-            if s["player"] == p and s["action"] != "nop":
+            prev = s["t_offset"] + a.settle
+            acted = s["player"] == p and s["action"] != "nop"
+            if acted:
                 out.append(s["action"])
+            if a.settle > 0:
+                out.append(f"wait {a.settle:g}")
+                if "camera" in s["truth"]:
+                    out.append("/camera get")
             shot = f"{froot[p]}/players/{p}/frames/{s['idx']:03d}_{s['label']}_window.png"
             out.append(f"/screenshot {shot}")
         out += ["wait 5", "/camp", "wait 20", "/quit"]

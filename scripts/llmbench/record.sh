@@ -29,10 +29,11 @@ TIMELINE="${2:?timeline}"
 CORPUS="${3:?corpus name}"
 shift 3
 
-LEAD=150; HARD_STOP=75; STALL=120; KEEP_SERVER=0; PLACE=1
+LEAD=150; HARD_STOP=75; STALL=120; KEEP_SERVER=0; PLACE=1; SETTLE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --lead) LEAD="$2"; shift 2 ;;
+        --settle) SETTLE="$2"; shift 2 ;;
         --hard-stop) HARD_STOP="$2"; shift 2 ;;
         --stall) STALL="$2"; shift 2 ;;
         --keep-server) KEEP_SERVER=1; shift ;;
@@ -237,7 +238,7 @@ fi
 
 # --------------------------------------------------- compile the timeline ---
 python3 "$REPO/scripts/llmbench/compile_timeline.py" "$TIMELINE" "$OUT" \
-    --lead "$LEAD" --frames-root "$OUT" --p3-frames-root "$HERMES_OUT" \
+    --lead "$LEAD" --settle "$SETTLE" --frames-root "$OUT" --p3-frames-root "$HERMES_OUT" \
     | tee -a "$LOG"
 [ -s "$OUT/steps.tsv" ] || { say "timeline compiled to nothing"; exit 64; }
 cp "$TIMELINE" "$OUT/shared/timeline.tsv"
@@ -403,6 +404,9 @@ while IFS=$'\t' read -r idx toff player label action truth; do
             *)    bash "$O" $verb $rest >>"$LOG" 2>&1 </dev/null ;;
         esac
     fi
+    # The official client needs the same settle the willeq scripts get: a grab
+    # taken milliseconds after a keypress is a picture of the frame before it.
+    [ "${SETTLE%.*}" -gt 0 ] 2>/dev/null && sleep "$SETTLE"
     # Every step gets an official window+root pair, so a match/discrepancy step
     # on ANY player has a paired official frame.
     PT=$(bash "$O" pair "$label" 2>/dev/null </dev/null | awk '{print $1}')
