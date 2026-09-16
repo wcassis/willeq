@@ -398,6 +398,85 @@ the frames, and this executor did not look at one.
 **Still owed:** Will has not seen the re-generated sheets. The corpus is
 recorded, not blessed.
 
+### Leg F — the official F9 cycle, measured; the re-record attempt, failed
+
+**Step 1 succeeded and is the deliverable. Step 2 failed and nothing from it was
+merged; the corpus is exactly as Will's relabelling left it, 12 pass / 0 fail.**
+
+#### Step 1 — the F9 cycle `[measured]`
+
+Oraclealpha, qeynos2, pinned at T466/T478's spot (−74, 428, 3.751, h160) with
+`camera_match_pose.sh` (zone bounced, pose read back), `#set time 11 0`,
+`#set weather 0`, UI off (F10), 1024x768 ROOT grabs so no geometry mapping is
+needed. Nine F9 presses from the untouched login camera, each followed by the
+Leg E 3 s settle, scored against T466's six direct-mode stills with T310's
+gradient metric, crop `1000x480+12+40`. **Nobody looked at a frame.**
+
+| press | camera | score | next best |
+|---|---|---|---|
+| 0 | **First Person** | 0.062 | 0.784 |
+| 1 | **Overhead** | 0.133 | 0.948 |
+| 2 | **Chase** | 0.144 | 0.954 |
+| 3 | **User 1** | 0.138 | 0.929 |
+| 4 | **User 2** | 0.140 | 0.930 |
+| 5 | **Tether** | 0.191 | 0.935 |
+| 6 | **First Person** | 0.058 | 0.792 |
+| 7 | **Overhead** | 0.133 | 0.948 |
+| 8 | **Chase** | 0.109 | 0.796 |
+| 9 | **User 1** | 0.079 | 0.918 |
+
+**Period 6, and exactly T466's successor matrix:** First Person → Overhead →
+Chase → User 1 → User 2 → Tether → First Person. Every grab identified, margin
+≥ 0.59 in every row. **No seventh preset**: nothing scored above 0.30 against
+all six, so nothing was named `unnamed_N`. The hermes-ext "period ~7" note is
+**refuted at this spot** — it was an unmeasured impression at that VM's
+different geometry with no reference stills to score against.
+
+Method validated offline BEFORE the lock was taken: the six references score
+0.000 against themselves and **0.769–1.078** against each other, so the 0.30
+threshold sits far below the nearest wrong answer.
+
+`[measured]` **So the mapping was never the bug.** The recorder drove the
+official camera **open loop** — pressed F9 and wrote down what the count
+implied. One dropped keypress shifts the rest of the cycle by one, which is
+precisely the symptom Will found: the official client one step behind, in
+Overhead where the truth said Chase. Output: `review/T492/f9_cycle/`
+(`table.md`, `scores.tsv`, ten frames, contact sheet).
+
+#### Step 2 — attempted and DISCARDED `[measured]`
+
+`o.sh camto <camera>` was added to close the loop (press F9 until a grab scores
+as the named camera, reject otherwise), plus `o.sh target` to read the official
+target window — whose real location was MEASURED at window crop
+`140x24+885+470` on `players/p1/frames/15:27:43.497_C_target_p1_p2_window.png`,
+where it OCRs as `Testcaster`. (Will was right that the box he was shown is the
+player's own window; the target window is a different one, further right.)
+
+The run completed 32 of 32 steps and restored cleanly, but **every `camto`
+failed** — 0.907, 1.020, 0.998, 1.025, 1.000, 1.021 against the named camera —
+and `o.sh target` returned the fragment `es` on all six targeting steps. Its
+frames were therefore **not merged**.
+
+The cause, measured after the fact: `record.sh` does not set the conditions
+T466's reference stills were taken in. `f9_cycle.sh` pins the pose with
+`camera_match_pose.sh` and issues `#set time 11 0` / `#set weather 0`, and
+identified all ten grabs at 0.058–0.191; the Leg F run did neither, and
+re-scoring its frames offline gives **0.448–0.558** with the WRONG camera best
+(User 1 where First Person was wanted) under two different UI-free crops — so
+this is the scene conditions, not the UI and not the crop. Boarded as **B792**;
+`record.sh --oracle-conditions` now issues both commands.
+
+`[assumed]` that setting those two conditions is sufficient to bring `camto`
+back to f9_cycle's 0.058–0.191 in a full three-client run; that has been
+measured only in `f9_cycle.sh`'s own single-client run, not in `record.sh`.
+`[assumed]` why `o.sh target` read `es` — the crop is measured on a Leg C frame
+and unvalidated under Leg F's conditions; it was not re-measured.
+
+**Owed:** the B721/B722/B725 steps are still parked at `expect=unlabelled` with
+`pending=B7xx`, and the target steps at `expect=unlabelled;graded_from=log`.
+Restoring them needs one more ~20 min lock session with `--oracle-conditions`
+and a re-measured target crop. `restore_pending.py` is written and ready.
+
 ### What is owed
 
 - `[assumed]` Will has not seen the sheets. The corpus is recorded, not blessed.

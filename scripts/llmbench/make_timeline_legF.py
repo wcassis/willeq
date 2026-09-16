@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""T492 Leg F step 2 -- the timeline that re-records what Will's review rejected.
+
+Two groups, and only these:
+
+  * the TARGET steps.  Will could not check them: the willeq UI was hidden by
+    Leg E, and the official box he was shown is the PLAYER's own window.  So the
+    willeq clients run with the UI **ON** here (the target window is the claim;
+    the chat-reply overlay, board B791, is accepted), and the driver reads the
+    official client's real target window -- MEASURED at window crop
+    140x24+885+470 -- into p1's truth as `target_window=`.
+  * the B721 / B722 / B725 steps.  On those sheets the official client was in
+    Overhead while willeq was in Chase.  The cycle itself is sound (Leg F step 1:
+    period 6, every preset identified 0.058-0.191 against T466's stills with the
+    next-best >= 0.784); what was wrong is that the recorder pressed F9 open
+    loop and one dropped keypress put it a step behind for the rest of the
+    cycle.  Here the official client is driven by `camto <camera>`, which
+    presses F9 until a grab SCORES as the camera the truth line names.  These
+    keep the UI off on the willeq side, as Leg E had them.
+
+Prerequisite rows (`/equip`, `#wc`) are carried so the held sets are what their
+truth lines say.  Every re-recorded row keeps its original step id in
+`replaces_step=`.
+
+    make_timeline_legF.py <corpus> <out.tsv>
+"""
+import json, os, re, sys
+from collections import Counter
+
+GAP = {"cmd": 20, "camto": 16, "key": 11, "willeq": 8}
+
+
+def gap(player, action):
+    if player != "p1":
+        return GAP["willeq"]
+    return GAP.get(action.split()[0], GAP["key"])
+
+
+def main():
+    corpus, out = sys.argv[1], sys.argv[2]
+    steps = json.load(open(os.path.join(corpus, "steps.json")))["steps"]
+    # the CURRENT labels (the orchestrator relabelled B721/B722/B725 to
+    # unlabelled + pending=, and the target steps to graded_from=log)
+    cur = {}
+    for line in open(os.path.join(corpus, "players", "p2", "truth.tsv")):
+        kv = dict(p.split("=", 1) for p in line.split("\t", 1)[1].strip().split(";") if "=" in p)
+        if "step" in kv:
+            cur[int(kv["step"])] = kv
+
+    def sel(s):
+        k = cur.get(s["idx"], {})
+        lab = s["label"]
+        if s["player"] in ("p2", "p3"):
+            if k.get("pending"):
+                return "camheld"
+            if lab.startswith("C_target"):
+                return "target"
+            if lab.startswith("E_equip"):
+                return "camheld"       # prerequisite for the heldB sets
+        if s["player"] == "p1":
+            if lab.startswith("C_target"):
+                return "target"
+            if lab.startswith("E_wc"):
+                return "camheld"       # the official half of the held sets
+        return None
+
+    groups = {"target": [], "camheld": []}
+    for s in steps:
+        g = sel(s)
+        if g:
+            groups[g].append(s)
+
+    rows, t = [], 0.0
+
+    def emit(player, action, truth, keep=None):
+        nonlocal t
+        body = truth if isinstance(truth, str) else ";".join(f"{k}={v}" for k, v in truth.items())
+        if keep is not None:
+            body += f";replaces_step={keep}"
+        rows.append((round(t, 1), player, action, body))
+        t += gap(player, action)
+
+    # --- target block: willeq UI ON -----------------------------------------
+    # These steps' truth lines say camera=FirstPerson (they came from the First
+    # Person block), so both sides are put there before the block runs and the
+    # official side is VERIFIED there by score, not assumed.
+    emit("p2", "/camera firstperson", "label=F0_fp_p2;camera=FirstPerson;expect=unlabelled")
+    emit("p3", "/camera firstperson", "label=F0_fp_p3;camera=FirstPerson;expect=unlabelled")
+    emit("p1", "camto FirstPerson",
+         "label=F0_camto_FirstPerson;official_camera=FirstPerson (driven closed loop, "
+         "verified by score against T466's still);ui=official UI on, willeq UI on;expect=unlabelled")
+    for s in groups["target"]:
+        emit(s["player"], s["action"], s["truth"], s["idx"])
+    t += 8
+
+    # --- camera / held block: willeq UI OFF, official camera closed loop -----
+    emit("p2", "/hideui", "label=F0_hideui_p2;ui=hidden;expect=unlabelled")
+    emit("p3", "/hideui", "label=F0_hideui_p3;ui=hidden;expect=unlabelled")
+    t += 6
+    last_cam = None
+    for s in groups["camheld"]:
+        cam = s["truth"].get("camera")
+        if s["player"] in ("p2", "p3") and cam and cam != last_cam:
+            # put the OFFICIAL client in that camera, verified by score, before
+            # the pair is taken
+            emit("p1", f"camto {cam}",
+                 f"label=F0_camto_{cam}_{s['idx']};official_camera={cam} (driven closed loop, "
+                 f"verified by score against T466's still);expect=unlabelled")
+            last_cam = cam
+        emit(s["player"], s["action"], s["truth"], s["idx"])
+
+    hdr = """# T492 Leg F -- GENERATED by scripts/llmbench/make_timeline_legF.py.
+# Re-records only what Will's review of the Leg E sheets rejected: the target
+# steps (unverifiable: willeq UI hidden, and the box shown was the player's own
+# window) and the B721/B722/B725 steps (official client in Overhead where the
+# truth said Chase).  `replaces_step=` names the corpus step each row replaces.
+# The official client's camera is driven CLOSED LOOP by `camto`, which presses
+# F9 until a grab scores as the named camera -- the cycle is sound (Leg F step
+# 1), the open-loop press counting was not.
+"""
+    with open(out, "w") as f:
+        f.write(hdr + "".join(f"{a}\t{b}\t{c}\t{d}\n" for a, b, c, d in rows))
+    print(f"{out}: {len(rows)} rows, {rows[-1][0]/60:.1f} min; "
+          f"per player {dict(Counter(r[1] for r in rows))}")
+    print(f"  replaces {sum(len(v) for v in groups.values())} corpus steps "
+          f"(target {len(groups['target'])}, camera/held {len(groups['camheld'])})")
+
+
+if __name__ == "__main__":
+    main()

@@ -10752,3 +10752,20 @@ B755–B759 unused.
   corpus README; every visual gate since T63 has fought the same overlay (the
   comment at the `/hideui` site says so). What is missing is a way to keep the
   UI and route command replies to the log only. Found by T492.
+- **B792** (P) **a camera-identification score is only valid under the reference
+  stills' own scene conditions, and nothing enforces that.** T466's six
+  direct-mode stills -- the references every camera fit and every "which camera
+  is this?" check scores against -- were taken at `#set time 11 0`,
+  `#set weather 0`, pose pinned with `scripts/camera_match_pose.sh`, UI off.
+  MEASURED T492 Leg F: with those conditions set, ten F9 grabs identified at
+  **0.058-0.191** with the next-best >= 0.784; from the SAME client at the same
+  spot minutes later WITHOUT them, the same scoring put every grab at
+  **0.45-0.56** and named the wrong camera (User 1 for First Person), so a
+  closed-loop `camto` that required < 0.30 never confirmed anything and a whole
+  recording was discarded. The conditions are documented only inside T466's and
+  T478's own scripts; `scripts/scenario.sh` and any new harness will omit them
+  and get plausible-looking numbers that are wrong. T492 added
+  `record.sh --oracle-conditions` for its own rig. What is missing is a single
+  documented "oracle conditions" helper the scoring script itself can point at,
+  or a refusal in `camera_match_score.py` when it is handed a candidate whose
+  conditions were not stated. Found by T492.

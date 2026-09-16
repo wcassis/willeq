@@ -29,11 +29,12 @@ TIMELINE="${2:?timeline}"
 CORPUS="${3:?corpus name}"
 shift 3
 
-LEAD=150; HARD_STOP=75; STALL=120; KEEP_SERVER=0; PLACE=1; SETTLE=0
+LEAD=150; HARD_STOP=75; STALL=120; KEEP_SERVER=0; PLACE=1; SETTLE=0; ORACLE_COND=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --lead) LEAD="$2"; shift 2 ;;
         --settle) SETTLE="$2"; shift 2 ;;
+        --oracle-conditions) ORACLE_COND=1; shift ;;
         --hard-stop) HARD_STOP="$2"; shift 2 ;;
         --stall) STALL="$2"; shift 2 ;;
         --keep-server) KEEP_SERVER=1; shift ;;
@@ -290,6 +291,18 @@ if ! bash "$REPO/scripts/llmbench/oracle_start.sh" willeq_a WillEqH03Pass "$CORP
     exit 67
 fi
 say "p1 in world"
+if [ "$ORACLE_COND" -eq 1 ]; then
+    # T492 Leg F, MEASURED: a camera-identification score against T466's
+    # reference stills is only meaningful under the conditions those stills were
+    # taken in.  f9_cycle.sh pins the pose with camera_match_pose.sh and sets
+    # `#set time 11 0` / `#set weather 0`, and identified all ten of its grabs at
+    # 0.058-0.191.  Leg F step 2 did neither, and the SAME scoring never got
+    # below 0.45 for any camera -- every `camto` failed and the run was thrown
+    # away.  Anything that scores against those stills must set this.
+    bash "$REPO/scripts/llmbench/o.sh" cmd "#set time 11 0" "" </dev/null >>"$LOG" 2>&1
+    bash "$REPO/scripts/llmbench/o.sh" cmd "#set weather 0" "" </dev/null >>"$LOG" 2>&1
+    say "oracle conditions set (#set time 11 0, #set weather 0)"
+fi
 
 # ------------------------------------------------------------ p2, p3 --------
 BIN2="$SCRATCH/willeq"
@@ -404,6 +417,12 @@ while IFS=$'\t' read -r idx toff player label action truth; do
             *)    bash "$O" $verb $rest >>"$LOG" 2>&1 </dev/null ;;
         esac
     fi
+    # T492 Leg F: on a targeting step, READ the official client's target window
+    # and put what it says into p1's truth line, so the pair is checkable
+    # against something the official client actually displayed rather than
+    # against what the driver believes it commanded.
+    TW=""
+    case "$truth" in *target=*) TW=$(bash "$O" target 2>/dev/null </dev/null | tail -1) ;; esac
     # The official client needs the same settle the willeq scripts get: a grab
     # taken milliseconds after a keypress is a picture of the frame before it.
     [ "${SETTLE%.*}" -gt 0 ] 2>/dev/null && sleep "$SETTLE"
@@ -411,7 +430,8 @@ while IFS=$'\t' read -r idx toff player label action truth; do
     # on ANY player has a paired official frame.
     PT=$(bash "$O" pair "$label" 2>/dev/null </dev/null | awk '{print $1}')
     [ -n "$PT" ] || PT=$(date '+%H:%M:%S.%3N')
-    printf '%s\t%s;actor=%s;step=%s\n' "$PT" "$truth" "$player" "$idx" >> "$OUT/players/p1/truth.tsv"
+    printf '%s\t%s;actor=%s;step=%s%s\n' "$PT" "$truth" "$player" "$idx" \
+        "${TW:+;target_window=$TW}" >> "$OUT/players/p1/truth.tsv"
     DONE=$((DONE+1))
 done < "$OUT/steps.tsv"
 [ -f "$ABORT" ] && ABORTED="$(cat "$ABORT")"

@@ -52,6 +52,44 @@ case "${1:?}" in
          screen_text "$CHATCROP" > "$P1/chat/${t}.txt" 2>/dev/null
          printf '%s\t%s\n' "$t" "pair $lab" >> "$MARKS"
          echo "$t $(identify -format '%wx%h' "$P1/frames/${t}_${lab}_window.png" 2>/dev/null) $(identify -format '%wx%h' "$P1/frames/${t}_${lab}_root.png" 2>/dev/null)" ;;
+  # T492 Leg F.  Drive the camera CLOSED LOOP: press F9 until a root grab
+  # SCORES as the named camera against T466's direct-mode still, instead of
+  # pressing once and writing down what the count implies.  Leg C/E drove it
+  # open loop and one dropped keypress put the official client a whole step
+  # behind the truth line for the rest of the cycle -- Overhead where the truth
+  # said Chase, which is what Will found on the sheets.  The cycle itself is
+  # measured and sound (review/T492/f9_cycle/: period 6, every preset
+  # identified 0.058-0.191 with the next-best >= 0.784).
+  camto) want="$2"; tries="${3:-9}"; thr="${4:-0.30}"
+         refs=/mnt/projects/fable/review/T466/oracle
+         ref="$refs/T466_oracle_h160_direct_${want}_noui_root_1024x768.png"
+         [ -f "$ref" ] || { echo "camto: no reference still for $want"; exit 2; }
+         tmp="$P1/.camto_probe.png"
+         for a in $(seq 1 "$tries"); do
+             timeout 25 import -window root "$tmp" 2>/dev/null
+             sc=$(python3 /mnt/projects/fable/wt/t3/scripts/camera_match_score.py \
+                    --oracle "$ref" --candidate "$tmp" \
+                    --crop 1000x480+12+40 --candidate-crop 1000x480+12+40 2>/dev/null \
+                  | awk 'END{print $3}')
+             ok=$(python3 -c "print(1 if ${sc:-9} < $thr else 0)" 2>/dev/null)
+             if [ "${ok:-0}" = "1" ]; then
+                 mark "camto $want OK after $((a-1)) presses score=$sc"
+                 echo "camto $want OK presses=$((a-1)) score=$sc"; exit 0
+             fi
+             focus; xdotool key F9; sleep 3
+         done
+         mark "camto $want FAILED after $tries probes last=$sc"
+         echo "camto $want FAILED last=$sc"; exit 1 ;;
+  # The official TARGET window's name field.  MEASURED on
+  # review/T492/llmbench/players/p1/frames/15:27:43.497_C_target_p1_p2_window.png:
+  # the box Will took for the target is the PLAYER's own window; the target name
+  # sits at window crop 140x24+885+470 and OCRs there as "Testcaster".
+  target) timeout 25 import -window "$WID" "$P1/.target_probe.png" 2>/dev/null
+         t=$(convert "$P1/.target_probe.png" -crop 140x24+885+470 +repage \
+               -colorspace Gray -resize 500% -threshold 50% png:- 2>/dev/null \
+             | tesseract - - --psm 7 2>/dev/null | tr -d '\r\n' | sed 's/[^A-Za-z_ ]//g' | xargs)
+         [ -n "$t" ] || t="unreadable"
+         mark "target window reads: $t"; echo "$t" ;;
   geom)  xwininfo -id "$WID" | grep -E 'Absolute|Width|Height' ;;
   ocr)   screen_text "${2:-}" ;;
   video) f="$P1/video/$2.mkv"; mark "video begin $2 $3s"
