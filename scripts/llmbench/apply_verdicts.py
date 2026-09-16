@@ -40,10 +40,16 @@ for p in ("p1", "p2", "p3"):
         m = re.search(r"label=([^;\t]+)", line)
         lab = m.group(1) if m else None
         v = verdict.get(lab)
-        if v in ("FAIL", "INCONCLUSIVE") and "why=" not in line and "unverified=" not in line:
+        # Idempotent: the verdict can CHANGE (T492 Leg H moved five pairs from
+        # INCONCLUSIVE to PASS when the margin criterion replaced the absolute
+        # threshold), so a stale annotation must go before the current one lands.
+        cleaned = re.sub(r";(why|unverified)=[^;\t]*", "", line)
+        if v in ("FAIL", "INCONCLUSIVE"):
             key = "why" if v == "FAIL" else "unverified"
-            line += f";{key}={short(reason[lab])}"
+            cleaned += f";{key}={short(reason[lab])}"
+        if cleaned != line:
             changed += 1
+        line = cleaned
         out.append(line)
     if not dry:
         open(path, "w").write("\n".join(out) + "\n")

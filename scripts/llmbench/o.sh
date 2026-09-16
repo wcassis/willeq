@@ -60,21 +60,36 @@ case "${1:?}" in
   # said Chase, which is what Will found on the sheets.  The cycle itself is
   # measured and sound (review/T492/f9_cycle/: period 6, every preset
   # identified 0.058-0.191 with the next-best >= 0.784).
-  camto) want="$2"; tries="${3:-9}"; thr="${4:-0.30}"
+  # T492 Leg H: identity is the MARGIN, not an absolute score.  The claimed
+  # camera must be BEST of the six and the next-best at least 1.5x its score.
+  # Validated on data already in hand before use: f9_cycle's ten rows pass at a
+  # min ratio of 4.90, the Leg G gate's verified Chase at 1.77-2.08.
+  camto) want="$2"; tries="${3:-9}"; margin="${4:-1.5}"
          refs=/mnt/projects/fable/review/T466/oracle
          ref="$refs/T466_oracle_h160_direct_${want}_noui_root_1024x768.png"
          [ -f "$ref" ] || { echo "camto: no reference still for $want"; exit 2; }
          tmp="$P1/.camto_probe.png"
          for a in $(seq 1 "$tries"); do
              timeout 25 import -window root "$tmp" 2>/dev/null
-             sc=$(python3 /mnt/projects/fable/wt/t3/scripts/camera_match_score.py \
-                    --oracle "$ref" --candidate "$tmp" \
-                    --crop 1000x480+12+40 --candidate-crop 1000x480+12+40 2>/dev/null \
-                  | awk 'END{print $3}')
-             ok=$(python3 -c "print(1 if ${sc:-9} < $thr else 0)" 2>/dev/null)
+             read -r sc best nxt ratio <<<"$(python3 - "$refs" "$tmp" "$want" <<'PYX'
+import subprocess,sys,re
+refs,cand,want=sys.argv[1],sys.argv[2],sys.argv[3]
+cams=["FirstPerson","Overhead","Chase","User1","User2","Tether"]
+def sc(c):
+    r=subprocess.run(["python3","/mnt/projects/fable/wt/t3/scripts/camera_match_score.py",
+        "--oracle",f"{refs}/T466_oracle_h160_direct_{c}_noui_root_1024x768.png","--candidate",cand,
+        "--crop","1000x480+12+40","--candidate-crop","1000x480+12+40"],capture_output=True,text=True)
+    try: return float(r.stdout.strip().splitlines()[-1].split()[2])
+    except Exception: return float("inf")
+v={c:sc(c) for c in cams}
+b=min(v,key=v.get); nxt=sorted(v.values())[1]
+print(f"{v[want]:.4f} {b} {nxt:.4f} {(nxt/v[b] if v[b]>0 else 0):.3f}")
+PYX
+)"
+             ok=$(python3 -c "print(1 if '$best'=='$want' and float('$ratio')>=$margin else 0)" 2>/dev/null)
              if [ "${ok:-0}" = "1" ]; then
-                 mark "camto $want OK after $((a-1)) presses score=$sc"
-                 echo "camto $want OK presses=$((a-1)) score=$sc"; exit 0
+                 mark "camto $want OK after $((a-1)) presses score=$sc next=$nxt ratio=$ratio"
+                 echo "camto $want OK presses=$((a-1)) score=$sc next=$nxt ratio=$ratio"; exit 0
              fi
              focus; xdotool key F9; sleep 3
          done

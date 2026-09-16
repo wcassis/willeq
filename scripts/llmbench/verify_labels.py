@@ -33,7 +33,13 @@ REFS = "/mnt/projects/fable/review/T466/oracle"
 SCORE = "/mnt/projects/fable/wt/t3/scripts/camera_match_score.py"
 CROP = "1000x480+12+40"
 CAMS = ("FirstPerson", "Overhead", "Chase", "User1", "User2", "Tether")
-THR = 0.30
+# T492 Leg H.  The absolute 0.30 was calibrated on an EMPTY scene (Leg F step 1,
+# one client, 0.058-0.191) and rejects a correct identification once two other
+# players are in frame (Leg G gate: a verified Chase at 0.415-0.495).  The stable
+# statistic across both is the MARGIN.  Validated offline before it touched the
+# corpus: every f9_cycle row passes with its measured camera at a min ratio of
+# 4.90, and the Leg G gate's Chase passes on all three crops at 1.77-2.08.
+MARGIN = 1.5
 FRAME = re.compile(r"^(\d{2}:\d{2}:\d{2}\.\d{3})_(.+?)_(window|root)\.png$")
 LOGLINE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\].*$")
 TARGET_CROPS = ["140x24+885+470", "160x30+875+466", "200x34+865+462", "240x40+790+455"]
@@ -169,15 +175,19 @@ def main():
                 allc = {c: score(f"{REFS}/T466_oracle_h160_direct_{c}_noui_root_1024x768.png", ofr)
                         for c in CAMS} if ofr else {}
                 best = min(allc, key=allc.get) if allc else None
-                ok_o = s == s and s < THR
-                if not ok_o and best == cam:
-                    checks.append(("official_score", f"{s:.3f} (best match, but > {THR}"
-                                   " -- scene conditions, B792)", None))
-                elif not ok_o and best:
+                nxt = sorted(allc.values())[1] if len(allc) > 1 else float("nan")
+                ratio = (nxt / allc[best]) if (best and allc[best] > 0) else float("nan")
+                if best != cam:
                     checks.append(("official_score", f"{s:.3f} CONTRADICTED: best is "
-                                   f"{best} at {allc[best]:.3f}", False))
+                                   f"{best} at {allc[best]:.3f} (ratio {ratio:.2f})", False))
+                elif ratio >= MARGIN:
+                    checks.append(("official_score",
+                                   f"{s:.3f} best, next {nxt:.3f}, ratio {ratio:.2f} "
+                                   f">= {MARGIN}", True))
                 else:
-                    checks.append(("official_score", f"{s:.3f}", True))
+                    checks.append(("official_score",
+                                   f"{s:.3f} best but ratio {ratio:.2f} < {MARGIN} "
+                                   "-- not separated", None))
                 ev = before(logs[pid], t, rf"Camera mode: .*{cam[:5]}", a.window) if logs[pid] else None
                 claims.append(f"camera={cam}")
                 checks.append(("willeq_log", (ev[1][-40:] if ev else "none"), bool(ev)))

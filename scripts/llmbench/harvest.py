@@ -35,6 +35,7 @@ FRAME = re.compile(r"^(\d{3})_(.*)_window\.png$")
 # The first T492 harvester keyed on words like "says" and found, in a whole
 # three-player session, two lines -- both of them an NPC.
 CHAT_PLAIN = re.compile(r"^\[CHAT\] ")
+REFUSAL = re.compile(r"cannot go in|wrong slot type|not recognized|You cannot")
 CHATISH = re.compile(r"\[FormattedMessage\]|\b(says|tells you|shouts|auctions)\b")
 
 
@@ -83,6 +84,12 @@ def main():
                     idx = int(fm.group(1))
                     shot_ts[idx] = t
                     marks.append((t, f"shot {fm.group(2)}"))
+                continue
+            # T492 Leg H: the client REFUSING a command is a step failure, not a
+            # step.  Leg C read `/equip 23 13` as done while the client had
+            # answered "Bread Cakes* cannot go in Primary (13)" (B793).
+            if REFUSAL.search(body):
+                marks.append((t, f"REFUSED {body[:120]}"))
                 continue
             if CHATISH.search(body):
                 chat.append((t, body))

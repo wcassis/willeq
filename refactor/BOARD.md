@@ -10798,3 +10798,20 @@ B755–B759 unused.
   choosing the answer. `[assumed]` that the extra players are the whole of the
   difference -- the pose there is placed by SQL rather than pinned with
   `camera_match_pose.sh`, and the two were not separated. Found by T492.
+- **B795** (A) **the official client's "Tip of the Day" dialog sits over the
+  frame after entering the world, and nothing in the oracle rig dismisses it.**
+  MEASURED T492 Leg H: with all three clients in world and a target set, the
+  four candidate crops of the official TARGET window OCR'd as `es`, `a`, `a` and
+  **`ow Another Tip`** -- the last is the dialog's own "Show Another Tip"
+  checkbox, so the dialog is occupying the region the target window uses. The
+  same crop reads `Testcaster` cleanly on a Leg C frame
+  (`review/T492/llmbench/players/p1/frames/15:27:43.497_C_target_p1_p2_window.png`),
+  so this is the dialog, not the crop. It stopped T492 Leg H's target gate and
+  is the remaining blocker for the target steps. It also means any official
+  frame taken soon after entering the world may have the dialog over it --
+  `review/T492/llmbench-legH/players/p1/frames/` has examples, and earlier units'
+  post-login grabs should be re-checked before being trusted. Fix: dismiss it in
+  `oracle_start.sh` after `enter-world.sh` (Escape, or a click on its close box,
+  verified by OCR that "Another Tip" is gone) -- NOT by waiting longer, since it
+  is modal until dismissed. `camto` is unaffected: it passed at ratio 1.993 with
+  the dialog in frame. Found by T492.

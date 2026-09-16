@@ -10,16 +10,28 @@ back.  Only rows that carry `pending=` are touched; idempotent.
 
     restore_pending.py <corpus>
 """
-import os, re, sys
+import csv, os, re, sys
 
 corpus = sys.argv[1]
+# T492 Leg H: a parked label goes back ONLY if verify_labels.py passed that pair.
+# Restoring one the verifier could not confirm is how the corpus got into this
+# state in the first place.
+passed = set()
+rep = os.path.join(corpus, "verify_labels.tsv")
+if os.path.exists(rep):
+    with open(rep) as f:
+        passed = {r["label"] for r in csv.DictReader(f, delimiter="\t") if r["result"] == "PASS"}
+    print(f"verifier PASS list: {len(passed)} labels")
+else:
+    sys.exit("no verify_labels.tsv -- run verify_labels.py first; refusing to promote blind")
 for p in ("p1", "p2", "p3"):
     path = os.path.join(corpus, "players", p, "truth.tsv")
     out, n = [], 0
     for line in open(path, errors="replace"):
         line = line.rstrip("\n")
         m = re.search(r"pending=(B\d{3})", line)
-        if m and "expect=unlabelled" in line:
+        lm = re.search(r"label=([^;\t]+)", line)
+        if m and "expect=unlabelled" in line and lm and lm.group(1) in passed:
             line = line.replace("expect=unlabelled", f"expect=discrepancy:{m.group(1)}")
             line = re.sub(r";?pending=B\d{3}", "", line)
             n += 1

@@ -29,13 +29,14 @@ TIMELINE="${2:?timeline}"
 CORPUS="${3:?corpus name}"
 shift 3
 
-LEAD=150; HARD_STOP=75; STALL=120; KEEP_SERVER=0; PLACE=1; SETTLE=0; ORACLE_COND=0; GATE=""
+LEAD=150; HARD_STOP=75; STALL=120; KEEP_SERVER=0; PLACE=1; SETTLE=0; ORACLE_COND=0; GATE=""; SEED_WEAPON=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --lead) LEAD="$2"; shift 2 ;;
         --settle) SETTLE="$2"; shift 2 ;;
         --oracle-conditions) ORACLE_COND=1; shift ;;
         --gate) GATE="$2"; shift 2 ;;
+        --seed-weapon) SEED_WEAPON=1; shift ;;
         --hard-stop) HARD_STOP="$2"; shift 2 ;;
         --stall) STALL="$2"; shift 2 ;;
         --keep-server) KEEP_SERVER=1; shift ;;
@@ -236,6 +237,18 @@ if [ "$PLACE" -eq 1 ]; then
          UPDATE character_data SET zone_id=2,x=-64,y=428,z=3.751,heading=160 WHERE name='Testbuddy';" >/dev/null
     sql "SELECT name,zone_id,x,y,z,heading FROM character_data WHERE name IN ('Oraclealpha','Testcaster','Testbuddy');" \
         | tee "$OUT/shared/placement.tsv" >> "$LOG"
+fi
+
+# B793: neither willeq character has a WEAPON in any general slot -- their
+# spares are food, drink, spells, bandages and (Testcaster) a Shuriken -- so an
+# in-game `/equip <general> 13` has nothing legal to move and Leg C's attempt
+# was refused outright.  Seed one, AFTER the inventory snapshot so the restore
+# takes it out again.  9997 is Dagger* (IT5), a one-hand weapon both can hold.
+if [ "$SEED_WEAPON" -eq 1 ]; then
+    sql "DELETE FROM inventory WHERE character_id IN (67,68) AND slot_id=21;
+         INSERT INTO inventory (character_id,slot_id,item_id,charges,color) VALUES
+           (67,21,9997,1,0),(68,21,9997,1,0);" >/dev/null
+    say "seeded item 9997 (Dagger*) into slot 21 for 67 and 68 -- removed by the restore"
 fi
 
 # --------------------------------------------------- compile the timeline ---

@@ -561,6 +561,85 @@ conditions (B792); (2) fix the `held=` values in `make_timeline.py` against the
 actual inventory and pick a real weapon for the `/equip` step; (3) re-record the
 B721/B722/B725 and target steps behind the gate; (4) then `restore_pending.py`.
 
+### Leg H — the margin criterion, validated and applied; held= read from the server
+
+#### The criterion, validated before it touched the corpus `[measured]`
+
+Camera identity is now: the claimed camera is the **best of the six** AND
+**next-best / best ≥ 1.5**; a different camera best is FAIL, best-but-unseparated
+is INCONCLUSIVE. Validated on data already in hand, both validations required to
+pass before the criterion was used anywhere:
+
+- `review/T492/f9_cycle/scores.tsv` (one client, empty scene): **all ten rows
+  PASS with their measured camera**, ratios 4.90–13.58, **minimum 4.90**
+  (press 5, Tether).
+- `review/T492/llmbench-legG/shared/gate.tsv` (three clients in world): **Chase
+  PASSes on all three crops**, ratios **1.77 / 1.82 / 2.08**.
+
+So 1.5 sits below every real case, with the tightest at 1.77, and the old
+absolute 0.30 sat above a correct identification. The 1.5 was not tuned: both
+validations passed first time.
+
+#### `verify_labels.py` under the new criterion `[measured]`
+
+**20 pairs: 5 PASS, 5 INCONCLUSIVE, 10 FAIL** (was 0 / 10 / 10).
+
+| verdict | pairs |
+|---|---|
+| PASS | `A_cam_p2_firstperson`, `A_camget_p2`, `A_cam_p3_firstperson`, `A_camget_p3` (FirstPerson), `D_cam_p3_chase` (Chase) |
+| INCONCLUSIVE | `D_cam_p2_chase` ratio **1.48**, `F_sky_p2_overhead` 1.24, `F_sky_p3_overhead` 1.25, `H_cam_p2_qeytoqrg_chase` 1.03, `H_cam_p3_qeytoqrg_chase` 1.03 |
+| FAIL | the eight `E_held*` pairs and `G_pre_p2_chase` / `G_pre_p3_chase` — official client in **Overhead** (0.766–0.782) against the claimed camera at 0.971–1.000 |
+
+`D_cam_p2_chase` at **1.48** misses by 0.02 while its p3 twin passes. It stays
+parked: moving the threshold to catch it would be choosing the answer, which is
+the thing this criterion exists to stop.
+
+`restore_pending.py` now refuses to promote anything the verifier did not pass,
+and promoted exactly one label (`D_cam_p3_chase` → `discrepancy:B721`, three
+rows). `apply_verdicts.py` was made idempotent — a verdict can change, so a
+stale annotation is stripped before the current one lands — and rewrote 72 rows.
+**`check_corpus.py`: 12 pass, 0 fail, now 12 match and 15 discrepancy step-rows.**
+
+#### B793 — `held=` now comes from the server `[measured]`
+
+`make_timeline_legH.py` ASKS the `inventory` table joined to `items` at compile
+time instead of hardcoding. What is actually there:
+
+- Testcaster (67): `13=14337 Blue Crystal Staff (IT122)`, `14=20656 Eye of Innoruuk (IT72)`
+- Testbuddy (68): `13=9997 Dagger* (IT5)`, `14=9979 Gloomingdeep Lantern (IT48)`
+
+— against Leg C's claim of `13=9998, 14=9979` for Testcaster, which was simply
+false. And **no general slot of either character holds a weapon**: the spares
+are food, drink, spells, bandages and (Testcaster) a Shuriken, which is ammo.
+That is why `/equip 23 13` was refused. `record.sh --seed-weapon` now seeds
+item 9997 (Dagger*, a one-hand weapon) into slot 21 **after** the inventory
+snapshot, so the restore removes it again — verified: inventory restored
+BYTE-IDENTICALLY with the seed gone. `harvest.py` now marks a client refusal
+line (`cannot go in`, `wrong slot type`, `not recognized`) as `REFUSED` in
+marks.tsv rather than letting the step read as done.
+
+#### The gates `[measured]`
+
+Camera gate **PASSED** — and this is the criterion working live, in the
+condition that defeated the old one: `camto Chase OK presses=2 score=0.4433
+next=0.8836 ratio=1.993`.
+
+Target gate **FAILED**, so the run stopped before recording anything. The four
+candidate crops read `es`, `a`, `a` and **`ow Another Tip`** — the official
+client's **Tip of the Day dialog** is sitting over the region the target window
+uses. The same crop reads `Testcaster` cleanly on a Leg C frame, so it is the
+dialog and not the crop. Boarded **B795**; it also means any official frame
+taken soon after entering the world may have the dialog over it, and earlier
+units' post-login grabs deserve a re-check. `camto` is unaffected — it passed at
+ratio 1.993 with the dialog in frame.
+
+`[assumed]` that dismissing the dialog in `oracle_start.sh` is sufficient to
+make the target gate pass; that has not been run.
+
+**Owed:** dismiss the Tip of the Day dialog, then one more gated session to
+re-record the B721/B722/B725 and target steps. Everything else for that session
+is now in place and validated.
+
 ### What is owed
 
 - `[assumed]` Will has not seen the sheets. The corpus is recorded, not blessed.
