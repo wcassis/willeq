@@ -61,7 +61,10 @@ bool RaceModelLoader::loadNumberedGlobalModels() {
         return true;
     }
 
-    // Load global2_chr.s3d through global7_chr.s3d
+    // T500 Leg B: TEXTURES only. `zone` goes out of scope with its characters,
+    // their parts, their rawParts deep copies and their animated skeletons
+    // still in it -- 15,486,203 B of retention that every caller of this
+    // function but one was paying for a texture map. See the header.
     int loadedCount = 0;
     for (int num = 2; num <= 7; ++num) {
         std::string filename = clientPath_ + "global" + std::to_string(num) + "_chr.s3d";
@@ -73,14 +76,14 @@ bool RaceModelLoader::loadNumberedGlobalModels() {
         }
 
         auto zone = loader.getZone();
-        if (!zone || zone->characters.empty()) {
+        if (!zone || zone->characterTextures.empty()) {
             continue;
         }
 
-        numberedGlobalCharacters_[num] = zone->characters;
         numberedGlobalTextures_[num] = zone->characterTextures;
 
-        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} character models from global{}_chr.s3d", zone->characters.size(), num);
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} character textures from global{}_chr.s3d",
+                  zone->characterTextures.size(), num);
 
         loadedCount++;
     }
@@ -88,6 +91,32 @@ bool RaceModelLoader::loadNumberedGlobalModels() {
     numberedGlobalsLoaded_ = true;
 
     return loadedCount > 0;
+}
+
+// T500 Leg B: the character half, per archive and on demand. This is what
+// loadNumberedGlobalModels() used to do eagerly for all six.
+bool RaceModelLoader::ensureNumberedGlobalCharacters(int num) {
+    if (clientPath_.empty()) return false;
+    if (numberedGlobalCharacterArchives_.count(num))
+        return numberedGlobalCharacters_.count(num) > 0;
+    numberedGlobalCharacterArchives_.insert(num);
+
+    const std::string filename = clientPath_ + "global" + std::to_string(num) + "_chr.s3d";
+    S3DLoader loader;
+    if (!loader.loadZone(filename)) return false;
+    auto zone = loader.getZone();
+    if (!zone || zone->characters.empty()) return false;
+
+    numberedGlobalCharacters_[num] = zone->characters;
+    // The textures come with the same parse; if the texture-only pass never
+    // ran (or found nothing) this is the same map it would have stored.
+    if (!numberedGlobalTextures_.count(num) && !zone->characterTextures.empty()) {
+        numberedGlobalTextures_[num] = zone->characterTextures;
+        mergedTexturesCacheValid_ = false;
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} character models from global{}_chr.s3d (on demand)",
+              zone->characters.size(), num);
+    return true;
 }
 
 // T452 (board B468): the armor archive is DERIVED FROM THE TEXTURE NAME.
@@ -477,6 +506,11 @@ bool RaceModelLoader::loadModelFromGlobalChr(uint16_t raceId, uint8_t gender) {
 }
 
 bool RaceModelLoader::loadModelFromNumberedGlobal(int globalNum, uint16_t raceId, uint8_t gender) {
+    // T500 Leg B: the characters are no longer pre-loaded by
+    // loadNumberedGlobalModels(); this is the one path that wants them, so it
+    // is the one that loads them.
+    ensureNumberedGlobalCharacters(globalNum);
+
     // Check if this numbered global is loaded
     auto charIt = numberedGlobalCharacters_.find(globalNum);
     if (charIt == numberedGlobalCharacters_.end()) {

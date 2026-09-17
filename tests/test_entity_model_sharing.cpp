@@ -181,4 +181,93 @@ TEST_F(EntityModelSharingTest, TheThreeNewTermsAreMeasured) {
               s.characterModelBytes);
 }
 
+// ---------------------------------------------------------------------------
+// Leg B — the root fix, RED FIRST, on ledger bytes.
+//
+// Leg A measured which of the plan's two duplications was larger, and it was
+// not close: the per-model merged-texture-map copies are 2,376,336 B, while
+// the retained SOURCE data is 2,049,649 + 2,856,632 (characters) +
+// 1,772,372 + 12,629,571 (skeletons) + 4,863,104 (the rawParts deep copies).
+// Inside that, one term stands out as pure waste rather than a trade:
+// `numberedGlobalNoModelCameFromThere` below.
+//
+// `getMergedTextures()` calls `loadNumberedGlobalModels()` because it wants
+// global2-7_chr.s3d's TEXTURES. That call also retained every CharacterModel in
+// all six archives -- parts, partsWithTransforms, rawParts, the original
+// SkeletonTrack and a full animated skeleton per race -- for the whole life of
+// the process, 15,486,203 B of it, for races the client's default (old models)
+// path never asks those archives for. Nothing DROPS here: the characters are
+// loaded per archive the moment `loadModelFromNumberedGlobal()` actually wants
+// one, so the worst case (a race in none of the six) does exactly the work it
+// did before, and the common case does none of it. A re-parse is load time,
+// which is secondary; a missing model would be a pixel change and is out of
+// scope.
+// ---------------------------------------------------------------------------
+TEST_F(EntityModelSharingTest, NumberedGlobalCharactersAreNotRetainedForTheirTextures) {
+    ASSERT_GT(loadAll(), 0u);
+    const auto s = loader_->getMemoryStats();
+
+    // The textures ARE still merged -- this must not become a fix that works by
+    // not loading the thing at all.
+    EXPECT_GT(s.numberedTextureBytes, 0u)
+        << "global2-7 textures must still reach the merged map";
+
+    // Every one of these races resolves from global_chr.s3d, so not one model
+    // came out of a numbered global. Nothing from those archives should be
+    // retained but the textures.
+    // MEASURED before the fix: 2,856,632 B of CharacterModel and 12,629,571 B
+    // of skeleton, i.e. ALL SIX archives, retained for a texture map. After it,
+    // only the archives a model was actually taken from are retained. The
+    // bounds below are the post-fix figures with headroom, not round numbers:
+    // 1,048,950 and 1,487,013 for this race set.
+    EXPECT_LT(s.sourceCharacterNumberedBytes, 1500000u)
+        << "numbered-global CharacterModels retained beyond the archives used";
+    EXPECT_LT(s.sourceSkeletonNumberedBytes, 2500000u)
+        << "numbered-global skeletons retained beyond the archives used";
+    // The point of the fix, stated as a ratio rather than a constant: the
+    // skeletons retained from the numbered globals are now a small fraction of
+    // the global_chr ones, where they used to be seven times larger.
+    EXPECT_LT(s.sourceSkeletonNumberedBytes, s.sourceSkeletonGlobalBytes)
+        << "global2-7 still costs more skeleton than global_chr itself";
+}
+
+// The narrow statement the fix rests on, with nothing else in the picture: the
+// TEXTURE path must not pull in a single numbered-global CharacterModel. This
+// is the one that fails loudly if someone puts the eager character load back.
+TEST_F(EntityModelSharingTest, TheTexturePathAloneRetainsNoNumberedGlobalCharacter) {
+    ASSERT_TRUE(loader_->loadNumberedGlobalModels());
+    const auto s = loader_->getMemoryStats();
+    EXPECT_GT(s.numberedTextureBytes, 0u) << "the textures are the point of the call";
+    EXPECT_EQ(s.sourceCharacterNumberedBytes, 0u);
+    EXPECT_EQ(s.sourceSkeletonNumberedBytes, 0u);
+}
+
+// The same statement in LEDGER bytes, which is the currency the plan's bound is
+// written in: loading K races that all live in one archive must not cost the
+// numbered globals' source data on top.
+TEST_F(EntityModelSharingTest, EntityModelsLiveStaysUnderTheStatedBound) {
+    const uint64_t before = ledgerLive();
+    ASSERT_GT(loadAll(), 0u);
+    const uint64_t after = ledgerLive();
+    const auto s = loader_->getMemoryStats();
+
+    std::cout << loader_->modelMemLogLine("test_bound") << "\n";
+
+    // MEASURED at this tip before the fix: 53,485,626 B of logical live bytes,
+    // of which 15,486,203 is numbered-global source data no model came from.
+    // The bound is the pre-fix figure minus that, rounded up to a round number
+    // so a few hundred KB of ordinary drift does not make it a tripwire.
+    constexpr uint64_t kBound = 40ull * 1024 * 1024;
+    EXPECT_LT(after - before, kBound)
+        << "entity_models logical live bytes for twelve global_chr races";
+
+    // And the split still closes, so the bound is being met by not allocating
+    // rather than by the tally losing sight of something.
+    const double residualPct =
+        100.0 * (static_cast<double>(after - before)
+                 - static_cast<double>(EQT::Graphics::RaceModelLoader::modelMemTotal(s)))
+        / static_cast<double>(after - before);
+    EXPECT_LT(std::abs(residualPct), 2.0) << "split no longer closes: " << residualPct << "%";
+}
+
 #endif  // EQT_HAS_GRAPHICS

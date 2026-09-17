@@ -76,8 +76,26 @@ public:
     // Load all global character models from global_chr.s3d
     bool loadGlobalModels();
 
-    // Load additional numbered global#_chr.s3d files (global2-global7)
+    // Load additional numbered global#_chr.s3d files (global2-global7).
+    //
+    // T500 Leg B: this loads their TEXTURES, and no longer their
+    // CharacterModels. Every caller but one wanted the textures --
+    // getMergedTextures() calls it for exactly that -- and retaining the
+    // characters cost 15,486,203 B (2,856,632 of CharacterModel plus
+    // 12,629,571 of animated skeletons, MEASURED x86, twelve global_chr races)
+    // for archives the default old-models path never takes a model from.
+    // Nothing is dropped: loadModelFromNumberedGlobal() calls
+    // ensureNumberedGlobalCharacters() for the one archive it is about to
+    // search, so a race that really does live in a numbered global gets its
+    // model exactly as before, at the price of a parse. Load time is
+    // secondary (docs/decisions.md); a missing model would be a pixel change
+    // and is out of scope.
     bool loadNumberedGlobalModels();
+
+    // T500 Leg B: parse global<num>_chr.s3d's characters into
+    // numberedGlobalCharacters_[num] if they are not there yet. Idempotent;
+    // a failed or empty archive is remembered so it is parsed once.
+    bool ensureNumberedGlobalCharacters(int num);
 
     // Load zone-specific character models from zone_chr.s3d
     bool loadZoneModels(const std::string& zoneName);
@@ -710,7 +728,12 @@ private:
     // Numbered global character data (global2-7_chr.s3d)
     std::map<int, std::vector<std::shared_ptr<CharacterModel>>> numberedGlobalCharacters_;
     std::map<int, std::map<std::string, std::shared_ptr<TextureInfo>>> numberedGlobalTextures_;
+    // T500 Leg B: "the numbered globals' TEXTURES are loaded". The characters
+    // are loaded per archive, on demand, and numberedGlobalCharacterArchives_
+    // records which have been tried (present in the map = has characters;
+    // in the set but not the map = parsed and had none).
     bool numberedGlobalsLoaded_ = false;
+    std::set<int> numberedGlobalCharacterArchives_;
 
     // T452: on-demand armor textures from global17-23_amr.s3d. A NULL mapped
     // value is a cached MISS -- every reader of this map must skip it.
