@@ -661,9 +661,63 @@ it without taking that measurement first.
   budget, only baseline guards. The per-category ruling is owed. Prov: archived
   board, T69.~~ **STALE — CLOSED by T293 (2026-08-26): every one of the eight categories has a configured budget in the orangepi preset (`config/constrained_presets.json`), derived per Will's ruling from the assets on disk, 1280x720 and the Orange Pi One envelope (`include/client/graphics/constrained_renderer_config.h` §T293). The only remaining unbudgeted figure is untracked RSS, which is B021. Re-confirmed to Will 2026-09-05.**
 
-- **B021** (C) `scripts/ci/visual_gate.py` `untrackedBytes` — emitted and
+- ~~**B021** (C) `scripts/ci/visual_gate.py` `untrackedBytes` — emitted and
   baselined but deliberately not asserted; gating it needs repeat-run data from a
-  second machine first. Prov: archived board, T69.
+  second machine first. Prov: archived board, T69.~~ **STRUCK by T491
+  (2026-09-17), on Will's 2026-09-14 ruling ("I want 100% accounting of memory
+  use and I want it controlled" — `docs/decisions.md`).** The question is not
+  "gate the T69 estimate gap" any more; the estimate gap is superseded.
+  `include/client/core/memory_ledger.h` attributes memory AT THE ALLOCATOR
+  (malloc/operator-new interposition, whole glibc chunk charged to the calling
+  thread's `MemoryScope` category) and `scripts/ci/visual_gate.py`
+  `assert_memory_ledger()` now asserts, on the three golden zones AND the
+  memory-coverage run: (1) bytes charged to NO category ≤ 1.0% of the ledger
+  — **measured 87,456 B, 0.040–0.087%**; (2) the ledger covers every resident
+  heap byte (`ledgerTotal ≥ smaps [heap] anon` — measured true on all four
+  runs, 100.6–216.4 MB vs 59.2–178.7 MB); (3) non-heap anonymous RSS ≤ 24 MiB
+  — **measured 15.6–15.8 MiB, and it is llvmpipe** (libLLVM JIT 6.6 MiB,
+  ~298 unnamed anon mappings 6.7 MiB, libgallium 1.15 MiB), none of which
+  exists on Mali; (4) allocator slack ≤ 35% of RssAnon (measured 8.6–12.6%);
+  (5) each category against `memoryLedgerBudgets` in the orangepi preset.
+  The ONE thing T69 asked for that is still open is the Pi-side number, which
+  is T490 Leg B's, not a gate defect — see B802 below.
+
+- **B802** (B) The memory ledger's budgets and bounds are **x86/llvmpipe
+  numbers** (T491, 2026-09-17). `startup`, `textures_driver` and
+  `irrlicht_scene` deliberately carry NO budget in the orangepi preset because
+  the x86 figures are Mesa's — `startup` alone measures 40.5–49.7 MiB of
+  llvmpipe state — and budgeting them from x86 would ship a fiction on Mali.
+  Same for `LEDGER_NONHEAP_MAX_BYTES` (24 MiB, from a 15.8 MiB llvmpipe
+  measurement). **What would close it:** one `/pmem` dump and one
+  `gles2_zone_benchmark --memory-json` on the Pi at zone-ready; the ledger and
+  the `[memmap]` census both run there unchanged. T490 Leg B owns the Pi lane.
+  Confirmed by T491 (measured, `refactor/T491_memory_ledger_100_percent.md`
+  Review).
+
+- **B803** (A, half struck) `s3dZoneSourceMemoryBytes` did not describe the
+  worst zone. ~~24 MiB~~ **→ 32 MiB in T491 (2026-09-17)**: the T293 figure was
+  extrapolated from the three golden zones, and T490 then MEASURED iceclad's
+  S3D zone source at **24.55 MiB**, over the old budget on its own. Re-derived
+  on that measured worst case × 1.25 = 30.7 → 32 MiB, in
+  `include/client/graphics/constrained_renderer_config.h`,
+  `config/constrained_presets.json` and the compiled-in `fromPreset` default,
+  pinned by `test_constrained_renderer.cpp` and pinned EQUAL to the ledger's
+  `zone_parse` budget (they bound the same bytes by two methods).
+  **STILL OPEN:** the gate only applies any of these budgets to the zones it
+  RUNS — qeynos2, gfaydark, befallen and the gfaydark coverage run — so **no CI
+  assertion covers iceclad or any Velious zone today**. Closing that means
+  adding a Velious zone to the gate's zone set, which means blessing new
+  goldens: **Will's call, not an executor's.**
+
+- **B804** (A) One category is bigger than the whole target. T491 measured
+  `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage
+  run (gfaydark, 5 races, objects + EQE1) — on its own larger than Will's
+  32–64 MB RSS goal (`docs/decisions.md` 2026-09-17). Its budget is set at
+  84 MiB, which records where it is, NOT where it belongs. Next behind it:
+  `startup` 40.5–49.7 MiB (llvmpipe, see B802), `objects` 28.9 MiB,
+  `irrlicht_scene` 25.4–27.9 MiB, `zone_mesh` 18.9–20.3 MiB. These five are the
+  shrink queue, in order, and the ledger prints exactly this list on every run
+  (`[rss-target]`). Confirmed by T491 (measured).
 
 - ~~**B022** (C) `src/client/graphics/spell_visual_fx.cpp` --
   **THE PADDING RULING IS ANSWERED BY THE ORACLE (T389, 2026-09-05):

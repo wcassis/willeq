@@ -46,6 +46,7 @@ review section under `refactor/F*.md` and `refactor/J*.md`.
 | src/client/core/eq_strings.cpp | 699 | K14: split. Ten name/price lookups (class/race/deity/opcode/body-type/chat-type/equip-slot/npc-type, `FormatPrice`) and `DumpPacket` are free functions in namespace `eqt::strings` (`include/client/eq_strings.h`); `GetStringMessage`/`GetFormattedStringMessage`/`LoadStringFiles` became `eqt::StringDb`, the fourth context service, reached as `ctx_.strings` / `EverQuest::Strings()`. `DumpEntityAppearance` moved out to `src/client/core/everquest.cpp` (it reads `m_entities`, not a pure lookup) |
 | src/client/player/player_misc.cpp | 747 | K08: `eqt::player::PlayerComponent` — assist/split/LFG/shielding/discipline/banker, save, duel, bindwound, track, cosmetic misc social, camera/mp3/sound handlers |
 | src/client/player/player_component.cpp | 701 | K08: `eqt::player::PlayerComponent` — emote/AFK/anon/roleplay/camp/logout, rezz/who/inspect (+ OP_InspectAnswer reply, T170), corpse/consent; the four T145 double-prefix senders (SendCamp/SendLogout/SendWhoAllRequest/SendInspectRequest) |
+| src/client/core/memory_ledger.cpp | 565 | T491: the allocator-level memory ledger (`include/client/core/memory_ledger.h`, `eqt::memory`). THE ONLY TU that replaces the allocator entry points -- `malloc`/`free`/`calloc`/`realloc`/`memalign`/`posix_memalign`/`aligned_alloc`/`valloc`/`pvalloc`/`malloc_usable_size` and every `operator new`/`delete` overload -- with thin wrappers over glibc's `__libc_*` backends that charge each block's whole chunk to the calling thread's `MemoryScope` category. Also the lifecycle-point API (`recordPoint`, the `[memledger]` log line, `toJson`, `toReportText`, `gapToTarget`) that `/pmem`, `gles2_zone_benchmark`'s memory JSON, `scripts/ci/visual_gate.py` and `scripts/ci/memory_cap_hunt.sh` all read. Built into every binary when `-DEQT_MEMORY_LEDGER=ON` (the default); OFF replaces no symbol and `MemoryScope` is an empty struct |
 | src/client/core/eq_chat.cpp | 35 | K13: three forwarders (K14 moved the file, no content change). `EverQuest::AddChatSystemMessage`/`AddChatCombatMessage`/`AddChatMissMessage` call `src/client/chat_output.cpp`; the receiver is kept for the callers outside the EverQuest family (action layer, spell/skill managers, `src/client/application_commands.cpp`) |
 | src/client/chat_output.cpp | 67 | K13: `eqt::ChatOutput` (`include/client/chat_output.h`) — the three chat output primitives (system / combat / combat-miss), the context service every component reaches as `ctx_.out`. Publishes `SystemMessage`/`ChatMessage` through the bridge and logs to console |
 | src/client/player/player_buffs.cpp | 613 | K08: `eqt::player::PlayerComponent` — task/DZ, spell-cast, mana, buff and pet-buff handlers, poison, bind wound, track |
@@ -431,11 +432,13 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (11 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
+`hygiene` (13 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields`, T450's `DbReproducible`, T455's
-`ZeroCallers` and T486's `ZeroCallersSelfTest` (the classifier's own probes,
-`check_zero_callers.py --self-test`) -- the three
+`ZeroCallers`, T486's `ZeroCallersSelfTest` (the classifier's own probes,
+`check_zero_callers.py --self-test`) and T491's `VisualGateLedgerAssertions`
++ `MemoryCapHuntScript` (the memory-ledger half of the visual gate and the
+cap-hunt script, both pure-script checks) -- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two
 halves of the reachability ratchet, a field written and never read and a

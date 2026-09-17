@@ -182,6 +182,50 @@ On memory-limited devices (Orange Pi One: 512 MB shared RAM), the renderer uses 
 
 **`/pmem` diagnostics**: Shows tracked memory across all subsystems (texture cache, mesh cache, GPU textures, atlas pages, S3D zone source data, entity renderer, audio, etc.) compared against RSS. Texture cache is NOT added to the tracked total because its textures are already counted in GPU Textures (created via `driver_->addTexture()`).
 
+**The memory ledger (T491, 2026-09-14)** — `include/client/core/memory_ledger.h`,
+`eqt::memory`. The `/pmem` figures above are per-subsystem *estimates*: each
+subsystem tallies what it believes it holds, and T293 measured that as only
+10–24% of RSS. Will's ruling ("I want 100% accounting of memory use and I want
+it controlled") replaced that with attribution **at the allocator**. The ledger
+TU replaces `malloc`/`free`/`operator new` and charges every block's whole glibc
+chunk to whatever `eqt::memory::Category` the CALLING THREAD is scoped to.
+
+- **Opening a scope is the entire API you need in renderer code**:
+  `eqt::memory::MemoryScope s(eqt::memory::Category::ZoneMesh);` at the top of a
+  function attributes everything it and its callees allocate, on this thread,
+  until it returns. Scopes nest and restore in LIFO order; a thread's default is
+  set once at its entry point with `setThreadCategory()`. A block is always
+  credited back to the category it was CHARGED to, whatever scope frees it, so
+  mismatched scopes cannot drive a category negative.
+- **Irrlicht needs no third_party patch.** Its containers allocate through
+  `irrAllocator::internal_new`, which resolves to our `operator new` at link
+  time, so driver and scene-graph allocations land in whichever scope called
+  into Irrlicht. That is why the zone-load steps and the render loop set
+  `Category::IrrlichtScene`.
+- **Lifecycle points**, not polls: `recordPoint("<point>")` emits one
+  `[memledger]` line with every category's live/peak bytes, `RssAnon`, and the
+  coverage split. The client records startup, login_world, zone_load_start,
+  zone_parse, spatial_bsp, mesh_build_textures, objects, entities,
+  zone_load_complete, ready, steady_60s, zone_change_before/after_unload and
+  shutdown; `gles2_zone_benchmark` mirrors the same schema so one parser reads
+  both (`scripts/ci/memory_cap_hunt.sh`).
+- **RssAnon is COVERED, not partitioned**, and the reason is measured: glibc's
+  `arena` can hold free pages that are not resident. The four buckets are
+  attributed (the categories) + `heap_uncharged` (glibc's own internal
+  allocations, which an in-executable interposer cannot see) + `malloc_slack`
+  (free lists and fragmentation) + `unaccounted` (`RssAnon - arena`: thread
+  stacks, direct mmap, llvmpipe's JIT pages). Only `unaccounted` and
+  `heap_uncharged` are exact; only `unaccounted` is what more attribution work
+  can never reduce. The CI gate asserts the unaccounted share, the slack share
+  and each category against its `memoryLedgerBudgets` preset entry.
+- **Cost**: measured at ~45 ns per malloc/free pair over glibc's ~18 ns on x86
+  (`MemoryLedger.HookOverheadPerAllocationIsSmall` prints it every run).
+  Compile it out with `-DEQT_MEMORY_LEDGER=OFF` — then no symbol is replaced and
+  `MemoryScope` is an empty struct.
+- **The target is 32–64 MB RSS** (Will, 2026-09-17), with the T293 256 MB
+  ceiling now an interim bound. Every report prints the gap to 64 MB by bucket,
+  largest first; the gate fails on the ceiling and prints the target gap.
+
 ## Zone Loading Thread
 
 Zone loading runs on a dedicated **LoadingThread** that owns the GL context during the load. This keeps the main thread free to pump the network and handle packets while the loading screen is displayed.

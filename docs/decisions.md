@@ -691,9 +691,13 @@ silently clamping the display.
 
 ### What is deliberately still unbudgeted
 
-- **Untracked RSS** (RSS minus every tallied category): 10–24% tracked on the
+- ~~**Untracked RSS** (RSS minus every tallied category): 10–24% tracked on the
   golden-image path, i.e. **76–90% of RSS is untracked**. T69 Step 4 ruled it
-  reported-not-gated and that stands. The x86 figure is inflated by llvmpipe
+  reported-not-gated and that stands.~~ **SUPERSEDED by the 2026-09-14 entry
+  below (Will's 100%-accounting ruling, T491): untracked anonymous memory is
+  measured at the allocator and GATED. The paragraph below describes only the
+  T69/T293 per-subsystem ESTIMATES, which remain reported-not-gated.** The
+  original text, for the estimate gap only: The x86 figure is inflated by llvmpipe
   and does **not** transfer to the Pi, and T289 did not dump `/pmem`, so the
   Pi's tracked/untracked split is **unmeasured**. That is the one place the
   envelope arithmetic cannot be closed end-to-end today; a `/pmem` dump on a
@@ -1008,3 +1012,74 @@ applied by T461/T464/T471/T474:
   by T466/T474 (still open on the scoring crop, B721), the login camera is
   First Person (T471). User 1/2 and Tether hold a world azimuth (B580).
 
+## 2026-09-14 — 100% memory accounting, at the allocator, gated (Will; T491)
+
+**Will's ruling, verbatim:** "the 32 MB figure and the need to track memory
+usage meticulously is the reason I went down the ConstrainedCache road. I want
+100% accounting of memory use and I want it controlled. We have extensive
+perf/profiling and should be able to track it at all game lifecycle points."
+
+**Decision.** Untracked anonymous memory is a **defect to drive to zero**, not
+a number to report. This **supersedes** the "Untracked RSS ... T69 Step 4 ruled
+it reported-not-gated and that stands" line in *What is deliberately still
+unbudgeted* above, and the T69 sentence in `scripts/ci/visual_gate.py` that
+called RSS "reported, not asserted". ~~Untracked RSS is reported, not gated.~~
+It is now measured at the allocator and gated.
+
+**What replaced the estimates.** `include/client/core/memory_ledger.h` /
+`src/client/core/memory_ledger.cpp` (`eqt::memory`, `-DEQT_MEMORY_LEDGER=ON` by
+default) replaces the allocator entry points and charges every block's whole
+glibc chunk to the calling thread's `MemoryScope` category — eighteen
+lifecycle/owner categories, not per-subsystem self-reports. The T69 `/pmem`
+estimates stay for continuity and are explicitly labelled estimates.
+
+**RssAnon is COVERED by four buckets, not partitioned, and that is measured,
+not a hedge:** `mallinfo2`'s `arena` is what glibc has taken from the OS and its
+free lists may hold pages that are **not resident**, so the heap buckets can sum
+past the resident total. The buckets are
+
+| bucket | definition | exact? | can attribution work shrink it? |
+|---|---|---|---|
+| attributed | sum of the eighteen categories | yes | it IS the attribution |
+| `heap_uncharged` | `mallocInUse - ledgerTotal` — glibc's own internal allocations, which an in-executable interposer never sees | yes | no (would need `LD_PRELOAD` or a patched libc) |
+| `malloc_slack` | `arena - inUse` — free lists and fragmentation | upper bound | no: no caller owns those bytes. It is a glibc tuning question (`M_ARENA_MAX`, `M_TRIM_THRESHOLD`) |
+| `unaccounted` | `RssAnon - arena` — thread stacks, direct `mmap`, llvmpipe's JIT code pages | yes | no |
+
+So the gate asserts the **unaccounted** share (`LEDGER_UNATTRIBUTED_MAX_PCT`),
+the **slack** share separately and much more loosely (`LEDGER_SLACK_MAX_PCT`),
+and each category against its `memoryLedgerBudgets` preset entry. Gating the
+raw `RssAnon - ledger` gap, as T491's plan first framed it, would gate glibc's
+free-list state, which no code change in this repo can move.
+
+**Deviation from the T491 plan, flagged:** the plan said "assert unattributed ≤
+a stated bound ... (allocator overhead/fragmentation reported separately via
+`mallinfo2`)". Reported-separately and asserted-inside are incompatible, and the
+measurement decided it: in a 450 kB test process the arena was 544 kB with 97 kB
+in use, so `RssAnon - ledger` was 81% while attribution was essentially
+complete. The bound is therefore taken over the residual after the measured
+slack is removed. The name `unattributedBytes` is kept in the schema.
+
+**Cost, measured:** ~45 ns per malloc/free pair on top of glibc's ~18 ns on
+x86-64 (`MemoryLedger.HookOverheadPerAllocationIsSmall`, best of five ×400k
+iterations). Under the plan's 2%-of-frame-time STOP for anything a frame does
+tens of allocations of; the flag exists to compile it out regardless.
+
+## 2026-09-17 — the RSS target is 32–64 MB; 256 MB is an interim ceiling (Will)
+
+**Will's standing decision:** "the goal is willeq's RSS footprint between 32 and
+64 MB. The 256 MB ceiling is now an interim bound, not the target."
+
+**Decision.** The T293 envelope's **256 MB stays the FAILING bound** in CI
+(`scripts/ci/visual_gate.py` `RSS_CEILING_BYTES`) and the **64 MB target is
+printed, never asserted** (`RSS_TARGET_BYTES`) — every zone is over it today, so
+gating it would make the gate uniformly red and say nothing the printed gap does
+not. Every memory-ledger report at every lifecycle point carries both lines
+(`target=`/`over_target=`/`ceiling=`/`over_ceiling=` on the `[memledger]` line,
+`rssTargetBytes`/`overTargetBytes` in the JSON) plus the gap to 64 MB broken
+down by bucket, largest first (`eqt::memory::gapToTarget`). The whole point is
+that the next unit can be planned off the ledger's own output rather than a new
+measurement: the buckets named at the top of that list, with their bytes, are
+the shrink work.
+
+Reference: the original client ran these assets in 32 MB total (Will's T490
+ruling, 2026-09-14), so 32–64 MB is a restoration target, not an aspiration.
