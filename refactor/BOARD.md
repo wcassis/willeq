@@ -11024,8 +11024,8 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   ruling rather than against the T478 prose. The first closure (2026-09-14) was
   against a reading of the crops that Will has now judged wrong; the tests that
   pinned it went red and were rewritten on the frame-independent criterion.
-- ~~**B588**~~ stays closed; the lantern half gains a finding, B799.
-- **B799** (P) **A pin can be green on geometry that is upside-down.**
+- ~~**B588**~~ stays closed; the lantern half gains a finding, B804.
+- **B804** (P) **A pin can be green on geometry that is upside-down.**
   `HeldItemTest.LanternHangsBelowTheLeftHand` asserted "the mean vertex is below the
   hand" and was GREEN under T472's correction, which MEASURED T485 points the
   lantern's own long axis straight UP (+0.964 at the arm-hanging frame), and green
@@ -11035,7 +11035,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   frame-independent, and red at 150 / 118 for the two wrong corrections). Look for
   the same shape wherever a test asserts a centroid instead of an axis. Found by
   T485 Leg B.
-- **B800** (A) **`held_item_candidate_search` compared its 24 candidates at
+- **B805** (A) **`held_item_candidate_search` compared its 24 candidates at
   DIFFERENT poses.** `ISceneManager::drawAll()` calls `OnAnimate()` with the DEVICE
   timer, so the skeleton moved between one candidate's capture and the next: every
   candidate after the first was measured and drawn at a frame other than the one

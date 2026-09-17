@@ -389,7 +389,7 @@ bent, hand at the belt in front). Same 6-crop oracle strip.
 `review/T485/T485_v2_before_c20_shipped_frame25_sheet.png`, all 24 in
 `review/T485/candidates_frame25/`.
 
-**A defect in the instrument, found while doing this (B800).** [measured]
+**A defect in the instrument, found while doing this (B805).** [measured]
 `ISceneManager::drawAll()` calls `OnAnimate()` with the DEVICE timer, so with the
 animation playing the skeleton moved between one candidate's capture and the next:
 every candidate after the first was measured and drawn at a frame other than the
@@ -413,7 +413,7 @@ criterion; seven reds under c20, all green under the identity):
 | `HeldItemTest.ShieldFrontFacesAwayFromTheBody` | green | green (identity keeps item Y, as c20 did) |
 
 Two of those rewrites were forced by findings, not by taste:
-- **the lantern pin was green on an upside-down lantern (B799).** "The mean vertex is
+- **the lantern pin was green on an upside-down lantern (B804).** "The mean vertex is
   below the hand" passed under T472, which [measured] points the lantern's long axis
   straight UP (+0.964), and under c20, which points it backward; under the correct
   identity it went red by **0.011 units**. A centroid does not constrain an
