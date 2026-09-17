@@ -10394,7 +10394,7 @@ Media and every number: `review/T478/README.md`; the plan's Review.
 - **B587 CLOSED by T478 (live).** fable default Chase, Testchar not moved since
   zone-in: the back of the head, back and shoulders, as the official Chase frame
   (`fable/sessions/chase_sweep_h160`, frame 163).
-- **B661 NARROWED by T478** -- the oracle frame is captured. No item that can be
+- **B661 NARROWED by T478** (~~now CLOSED by T485~~ -- this line is the T478 record; the live entry is struck above) -- the oracle frame is captured. No item that can be
   held uses IT10 (every IT10 item is an arrow, ammo slot only), so both clients were
   given the model with `#wc 7 10`. Official (Tether, idle): the arrow hangs DOWN along
   the right leg, tip near the foot. fable: the arrow is horizontal, pointing forward
@@ -10932,22 +10932,40 @@ straight down (`review/T485/data/rpoint_frames.txt`). Tests
 `BoneAttachmentTest.ShippedCorrectionIsAQuarterTurnAboutTheItemsY` pin it (all
 red under T472's C, green under c20).
 
-- **B755** (P) **`willeq.db` maps item 2894 (Spiny Two Handed Sword) to IT10009,
-  while T478 read IT10004 off the eqemu `items` table and T485 searched with
-  IT10004.** Both are X+ blades in the T476 census, so the correction is the same,
-  but fable's live set C frame in `review/T478/sheets/T478_held_C_*` drew a
-  different model from the official client's. `data/item_models.json` (the
-  builder input) is where the row comes from. Found by T485.
-- **B756** (A, *unconfirmed*) **The blade's pitch is 24 deg below the oracle's.**
-  With c20 the blade continues R_POINT's -Z, 16 deg below level at o01 frame 0 and
-  swinging with the idle loop (frames 0-48: -Z from (0.96, 0.06, -0.28) to
-  (0.38, -0.16, -0.91)); the official User 2 frames read the short sword level to
-  slightly up. A signed permutation cannot close that; whether the official
-  client's R_POINT frame differs from fable's (a composition or rest-pose
-  difference on a leaf bone with no skinned vertices) is the next measurement --
-  a bone-frame dump from the official client is not available, so it would be a
-  fit of fable's blade angle against several oracle frames of the loop. Found by
-  T485.
+- **B755** (A, *unconfirmed*) **`data/item_models.json` disagrees with the server's
+  `items.idfile`, so fable can draw a DIFFERENT MODEL from the official client for
+  the same item.** MEASURED T485 (offline): `data/item_models.json` and
+  `data/willeq.db`'s `item_models` both map item 2894 (Spiny Two Handed Sword) to
+  model **10009**, while T478 read **IT10004** off the eqemu `items` table for the
+  same item -- and fable's live set C frame
+  (`review/T478/sheets/T478_held_C_idle_oracle_top_fable_bottom.png`) drew a
+  different blade from the official client's. The held-item correction is not
+  affected (both are X+ blades in the T476 census, and T485 searched with IT10004),
+  so this is not a T485 regression; the defect is the data file. `item_models.json`
+  is hand-carried, 3,661 rows, and NOTHING checks it against the server -- 2894 is
+  the first row anyone has compared, so the drift's size is unknown. **Next
+  measurement (needs the lock, ~5 min):** dump eqemu's `SELECT id, idfile FROM
+  items` and diff all 3,661 rows against `item_models.json`; a row-count of
+  mismatches decides whether this is one bad row or a stale table. Found by T485.
+- **B756** (A, *unconfirmed*) **The blade's pitch does not match the oracle's, and
+  the o01 loop's own swing is larger than the mismatch.** With c20 the blade
+  continues R_POINT's -Z. MEASURED over the whole loop
+  (`review/T485/data/rpoint_frames.txt`, 41 distinct frames, re-scored by
+  `review/T485/data/score_over_loop.py`): that direction pitches from **16.5 deg
+  below level at frame 0 to 66.6 deg below at frame 24** and back, and its forward
+  component drops under 0.7 on 16 of the 41 frames. The contact sheets and the
+  ctest pins are at one frame near the top of that swing (-23.7 deg). The official
+  User 2 / Tether crops (`review/T485/oracle_crops/A_*_zoom.png`,
+  `C_user2_zoom.png`) read the short sword level to slightly UP -- which also
+  contradicts T478 README section 4's own prose for set A ("diagonally down and
+  forward"), so the two readings of the same frames disagree and neither is a
+  measurement. **What is NOT established:** that a signed permutation cannot close
+  it -- the oracle frames' phase in the idle loop is unknown, and 16 deg to 67 deg
+  is a wide enough band to contain "level to slightly up" at some phase but not at
+  frame 0. What would settle it: an official-client video of the idle loop (not
+  stills -- `dont-sample-transients-with-stills`) with fable's loop stepped beside
+  it, or a bone-frame dump from the official client, which is not available.
+  Needs the lock. Found by T485.
 
 B757–B759 unused.
 

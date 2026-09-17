@@ -127,6 +127,16 @@ inline int findBoneIndex(const std::shared_ptr<CharacterSkeleton>& skeleton,
 // consequence, not as an input (the oracle has not been seen holding a shield,
 // B723).
 //
+// The sheets score ONE frame of the o01 loop, and that loop swings R_POINT by
+// ~50 deg (its -Z pitches from 16 to 67 deg below level over 41 frames), so
+// the choice was re-scored over EVERY frame of the loop as well
+// (review/T485/data/score_over_loop.py): c20 is first with a mean
+// blade-to-forward + arrow-to-down of 80.5 deg against 103.7 for the runner-up
+// (identity), so the winner does not depend on which frame was captured. What
+// the correction cannot fix is the PITCH: the oracle's blade reads level to
+// slightly up and c20's is 16-67 deg below level depending on the frame, and
+// the oracle frames' loop phase is not known (B756).
+//
 // Converting to Irrlicht (x, z, y) on both sides gives S * B * C * S, laid out
 // below column by column (Irrlicht matrix4 is column-major like BoneMat4:
 // transformVect's X = M[0]*x + M[4]*y + M[8]*z + M[12]).

@@ -195,10 +195,22 @@ false since T472; the entry is struck (T472 the lantern, T485 the blade).
 
 ### 7. Board
 
-Closed B588, B661, B662, B724, B725; B723 marked contaminated; added B755 (item 2894
-maps to IT10009 in `willeq.db` while T478 read IT10004 off the server) and B756
-(the blade's pitch is ~24 deg below the oracle's level-to-slightly-up; a signed
-permutation cannot close it).
+Closed B588, B661 (both its live entry and the T478 record line), B662, B724, B725;
+B723 marked contaminated; added B755 and B756. Both new entries were **rewritten on
+the 2026-09-17 verification leg** against what was actually measured:
+
+- **B755** was (P) "`willeq.db` maps 2894 to IT10009"; it is now **(A,
+  *unconfirmed*)**. [measured] `data/item_models.json` and `data/willeq.db`'s
+  `item_models` table both map item 2894 to model **10009** while T478 read
+  **IT10004** off the eqemu `items` table for the same item, so fable can draw a
+  different model from the official client for the same item -- a user-visible
+  defect, not a process note. [measured] nothing in the tree checks
+  `item_models.json` (3,661 rows, hand-carried) against the server: `DbReproducible`
+  pins the db against the json, and the json against nothing. The entry now names
+  the next measurement (diff all 3,661 rows against eqemu's `items.idfile`; needs
+  the lock, ~5 min).
+- **B756** claimed "a signed permutation cannot close" a 24 deg pitch residual. That
+  was over-claimed and is now stated as what was measured -- see section 8.
 
 ### 8. Deviations (flagged)
 
@@ -218,3 +230,61 @@ permutation cannot close it).
   `placeHeldItem()`, so it moves with it.
 - **Item ids.** T478's set C is item 2894, which `willeq.db` maps to IT10009, not
   IT10004; the plan named IT10004 and that is what was searched (B755).
+
+### 9. The 2026-09-17 verification leg (a second executor; the first died mid-unit)
+
+The work above was inherited as one unreviewed WIP commit and re-verified from
+scratch on 2026-09-17, rebased onto `fable` `c637518a`. Nothing in it was dropped
+-- it builds, its tests are green, and the change matches the plan -- but four
+claims in it did not survive review as written, and one new measurement was taken.
+
+- **[measured] The choice does not depend on the capture frame, and this had not
+  been checked.** The sheets and `candidates.tsv` score ONE frame of a 49-frame
+  loop, and that loop is not still: over the 41 distinct frames in
+  `review/T485/data/rpoint_frames.txt`, R_POINT's -Z pitches from **16.5 deg below
+  level at frame 0 to 66.6 deg below at frame 24**, and its forward component is
+  under 0.7 on **16 of the 41 frames**. Re-scoring all 24 candidates over the whole
+  loop (`review/T485/data/score_over_loop.py`, new) puts **c20 first at a mean
+  blade-to-forward + arrow-to-down of 80.5 deg against 103.7 for the runner-up
+  (identity)**, so the winner is the same measured over the loop as at the capture
+  frame. The header comment, `src/client/graphics/CLAUDE.md` and
+  `review/T485/README.md` now say so.
+- **[measured] B756 was over-claimed.** "A signed permutation cannot close" the
+  pitch was an argument, not a measurement: the oracle frames' phase in the idle
+  loop is unknown, and 16-67 deg is a wide enough band to contain "level to
+  slightly up" at some phase. The entry now states the measured swing, says what is
+  NOT established, and names what would settle it (an official-client VIDEO of the
+  idle loop stepped beside fable's, per `dont-sample-transients-with-stills`, or a
+  bone-frame dump that is not available). **Needs the lock** -- this unit is
+  offline, so it was not done.
+- **[measured] The two readings of the same oracle frames disagree.**
+  `review/T478/README.md` section 4 describes set A as "diagonally down and
+  forward"; the crops of those same frames in `review/T485/oracle_crops/` were read
+  as "level to slightly up". Neither is a measurement (unknown camera), and c20's
+  16-24 deg below level matches the first reading and not the second. Recorded on
+  B756 rather than resolved.
+- **[measured] Two numeric claims in the inherited text were wrong** and were
+  corrected: `tests/test_held_item_attachment.cpp`'s comment said the shipped
+  correction gives "0.96 forward / 0.28 down" (the tsv says fwd 0.912, up -0.402),
+  and `docs/module_map.md` gave `entity_equipment.cpp` as 263 lines (it is 243; the
+  row was also out of the table's descending order).
+- **[measured] B755 is a class-A defect, not a process note** -- see section 7.
+- **[measured] `scripts/refactor/check_zero_callers.py`.** The WIP deletes two
+  `EXEMPT_TESTS_GROUPS` rows (`EntityRenderer::loadEquipmentModels`,
+  `loadGlobalCharacters`) with no explanation. It is correct and required: the new
+  tool calls both, so they are no longer tests-only, and the `ZeroCallers` ratchet
+  fails on "a table entry whose function has a caller again"
+  (`tests/cmake/hygiene.cmake`). Verified by running the script standalone (exit 0)
+  and by `ZeroCallers` in the suite.
+- **[assumed, unchanged] The oracle facts themselves.** Blade forward, 2H level at
+  the waist with a vertical crossguard, arrow down the leg are read off pictures by
+  eye -- the plan's task 2 allowed this where the cameras are unknown (B651), and
+  the candidates separate by 40-130 deg, so the reading does not have to be precise
+  to pick the winner. It does have to be right about DIRECTION, and it has not been
+  checked by a second pair of eyes; Will judges the frames.
+- **[assumed, unchanged] Set B / shields.** `ShieldFrontFacesAwayFromTheBody` still
+  pins winding, not the oracle. B723 is contaminated and no clean shield grab
+  exists.
+- **Blocked, needs the lock (NOT taken, per the dispatch):** B755's row-by-row diff
+  of `item_models.json` against eqemu's `items.idfile`, and B756's official-client
+  idle-loop video. Everything else in the plan was offline and was done.

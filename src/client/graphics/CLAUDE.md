@@ -243,9 +243,15 @@ argument (T485, `refactor/T485_held_item_transform_candidate_search.md`,
 `review/T485/`): all 24 proper signed permutations rendered through the same
 function, scored on T478's oracle facts (blades forward and level, arrow down
 the leg). The winner is item X -> bone -Z, Y -> Y, Z -> X; the reason it is
-that and not T472's diag(-1, 1, -1) is written on the constant. Do not
-re-derive it from one bone axis; if an item looks wrong, add it to the search
-tool's `--items` and re-run against a fresh oracle grab.
+that and not T472's diag(-1, 1, -1) is written on the constant. The choice does
+not hang on the frame the sheets were captured at: re-scored over every frame of
+the `o01` loop (`review/T485/data/score_over_loop.py`) the same candidate is
+first, 80.5 deg against 103.7 for the runner-up. Do not re-derive it from one
+bone axis; if an item looks wrong, add it to the search tool's `--items` and
+re-run against a fresh oracle grab. What is still open is the blade's PITCH
+(B756): the o01 loop swings R_POINT's -Z from 16 to 67 deg below level, so no
+constant correction has one pitch to match, and the oracle frames' phase in
+that loop is unknown.
 
 ### The shared client pack `willeq.eqe1`
 
