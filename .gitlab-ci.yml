@@ -62,6 +62,13 @@ workflow:
     - set -o pipefail
     - '[ "$(hostname)" = "hermes-ext" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
     - hostname; nproc; free -g | head -2
+    # The client asset symlinks are gitignored (tests/test_data_paths.cpp), so
+    # `git clean -ffdx` removes them before every job and they must be re-made
+    # here. They are NOT only the gate's business: ComprehensiveZoneTest and
+    # DoorLoadingUnitTest report every zone "SKIP (not found)" and then FAIL on
+    # `loadedCount > 0`, so without these three tests fail rather than skip.
+    - ln -sfn /mnt/projects/EverQuestP1999 data/eq_client
+    - ln -sfn /mnt/projects/EverQuest_ETC1 data/eqe1_client
 
 # Stage 1: pure source/doc scans (ctest label `hygiene`). No C++ compile, so it
 # fails a bad doc/file-size/citation change in ~a minute instead of after a
@@ -119,9 +126,6 @@ gate:
   stage: gate
   allow_failure: false
   script:
-    # Asset symlinks are gitignored (tests/test_data_paths.cpp) -- wire them.
-    - ln -sfn /mnt/projects/EverQuestP1999 data/eq_client
-    - ln -sfn /mnt/projects/EverQuest_ETC1 data/eqe1_client
     # visual_gate.py needs PIL; hermes-ext's python3.12 has no Pillow and no
     # ensurepip, so install it once into a cache dir with the pip from the
     # host's existing ~/.venvs/ci (python3.11) driving the 3.12 interpreter.
