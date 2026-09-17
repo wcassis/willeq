@@ -11792,4 +11792,4 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   `review/T492/llmbench/README.md` and in `review/T492/README.md` naming
   `review/T499/tip_dialog_audit.tsv` as the per-frame index. Found by T499.
 
-B836 onwards unused.
+B828–B829 and B832 unused. B830–B831 used by T496 Leg D. B833–B835 used by T499. B836 onwards unused.
