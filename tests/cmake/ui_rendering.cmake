@@ -573,6 +573,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_sky_dome_tint_channel_order DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# T495 (board B789/B790): the time-of-day sky colour table's channel lerp,
+# pure. No device, no assets -- the table moved to its own TU
+# (src/client/graphics/sky_color_table.cpp) so it could be driven this way.
+# See refactor/T495_sky_fog_colour_underflow.md.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_sky_color_interpolation
+        test_sky_color_interpolation.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_sky_color_interpolation PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_sky_color_interpolation GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_sky_color_interpolation DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T417 (board B300): pixel proof that the SECOND particle sheet -- the spell
 # sprite atlas -- reaches the point sprite and that a cell index selects the
 # right cell on it. Same headless-GLES2 idiom and self-skip as the two above;

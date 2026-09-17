@@ -28,6 +28,20 @@
 //     drawn with a white vertex colour, must give the tint in R,G,B order.
 //     Red before the fix: the ratios came back (0.86,0.69,0.55).
 //
+// T495 (board B789/B790) added the fog and the two corpus hours. The table's
+// channel lerp underflowed `irr::u32` on every DECREASING channel (see
+// tests/test_sky_color_interpolation.cpp and sky_color_table.h), and the dome
+// tint was only one of its three consumers -- `getRecommendedFogColor()` feeds
+// `IrrlichtRenderer::updateTimeOfDay()` -> `driver_->setFog()` -> `uFogColor`.
+// The two hours are T492's corpus hours: 17:25 (zone-in, the red sky band,
+// tint was (161,58,58)) and 16:49 (Leg E, the red far field, fog was
+// (171,180,0) with blue exactly zero).
+//   * FogColourAtTheCorpusHoursIsInsideItsAnchorHull -- the fog consumer, in
+//     colour space, through the real SkyRenderer.
+//   * DomeAtTheCorpusHoursIsNotRed -- the same two hours in PIXELS.
+// The bounds are the TABLE's anchors, not the official frames: whether those
+// anchors are right is board B781.
+//
 // Set T484_DUMP_DIR to also write the rendered frames as PNGs.
 // Self-skips when a GLES2 device or the EQ / ETC1 assets are unavailable.
 
@@ -38,6 +52,7 @@
 #include "client/graphics/eq/s3d_loader.h"  // TextureInfo
 #include "client/graphics/eq/sky_loader.h"
 #include "client/graphics/eqe1_loader.h"
+#include "client/graphics/sky_color_table.h"
 #include "client/graphics/sky_config.h"
 #include "client/graphics/sky_renderer.h"
 
@@ -203,6 +218,43 @@ protected:
         return frameMean();
     }
 
+    // The prepared dome, exactly as DaylightDomeTintReachesTheShaderInRgbOrder
+    // builds it. Consumes skyLoader_/skyConfig_, so once per fixture instance
+    // (gtest gives each case its own).
+    std::unique_ptr<SkyRenderer> buildSky() {
+        auto sky = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
+        if (!sky->initializeFromPreloaded(std::move(skyLoader_), std::move(skyConfig_))) {
+            return nullptr;
+        }
+        sky->registerUploadedTexture(bgTextureName_, bgTexture_);
+        sky->prepareSkyType(kServerSkyType, kZone);
+        if (!sky->isSkyPrepared()) return nullptr;
+        std::vector<irr::video::S3DVertex> verts;
+        std::vector<irr::u16> indices;
+        SkyRenderer::precomputeDomeMesh(verts, indices);
+        sky->createSkyDomeFromPrecomputed(verts, indices);
+        sky->setEnabled(true);
+        sky->setCameraPosition(irr::core::vector3df(0, 0, 0));
+        return sky;
+    }
+
+    // Look straight up: the zenith is fully opaque for every sky.ini fade.
+    void aimAtZenith() {
+        irr::scene::ICameraSceneNode* cam = smgr_->addCameraSceneNode(
+            nullptr, irr::core::vector3df(0, 0, 0), irr::core::vector3df(0, 1000, 0));
+        cam->setUpVector(irr::core::vector3df(0, 0, 1));
+        cam->setNearValue(1.0f);
+        cam->setFarValue(5000.0f);
+        smgr_->setActiveCamera(cam);
+    }
+
+    Mean drawDome() {
+        driver_->beginScene(true, true, irr::video::SColor(255, 0, 0, 0));
+        smgr_->drawAll();
+        driver_->endScene();
+        return frameMean();
+    }
+
     int dumpIndex_ = 0;
 };
 
@@ -289,4 +341,64 @@ TEST_F(SkyDomeTintChannelOrderTest, DaylightDomeTintReachesTheShaderInRgbOrder) 
     EXPECT_NEAR(rg, 175.0 / 255.0, 0.10);
     EXPECT_NEAR(rb, 220.0 / 255.0, 0.10);
     EXPECT_GT(rb, rr * 1.3) << "the daylight tint must be blue-dominant on screen";
+}
+
+// T495. The fog consumer, in colour space: at both corpus hours
+// getRecommendedFogColor() must lie inside the hull of the two fog anchors it
+// is interpolated between. 16:49 read (172,180,0) before the fix -- blue
+// exactly zero, against a DAY->AFTERNOON fog ramp of 200 -> 190.
+TEST_F(SkyDomeTintChannelOrderTest, FogColourAtTheCorpusHoursIsInsideItsAnchorHull) {
+    std::unique_ptr<SkyRenderer> sky = buildSky();
+    ASSERT_NE(sky, nullptr);
+
+    const int hours[2][2] = {{16, 49}, {17, 25}};
+    for (const auto& hm : hours) {
+        sky->updateTimeOfDay(static_cast<uint8_t>(hm[0]), static_cast<uint8_t>(hm[1]));
+        const irr::video::SColor fog = sky->getRecommendedFogColor();
+        const SkyColorSegment seg = SkyColorSegmentAt(
+            static_cast<float>(hm[0]) + static_cast<float>(hm[1]) / 60.0f);
+        ASSERT_NE(seg.a, nullptr);
+        const irr::u32 got[3] = {fog.getRed(), fog.getGreen(), fog.getBlue()};
+        const irr::u32 a[3] = {seg.a->fog.getRed(), seg.a->fog.getGreen(), seg.a->fog.getBlue()};
+        const irr::u32 b[3] = {seg.b->fog.getRed(), seg.b->fog.getGreen(), seg.b->fog.getBlue()};
+        for (int c = 0; c < 3; ++c) {
+            EXPECT_GE(got[c], std::min(a[c], b[c]))
+                << hm[0] << ":" << hm[1] << " fog channel " << c << " = " << got[c]
+                << " (" << got[0] << "," << got[1] << "," << got[2] << "), anchors "
+                << a[c] << " -> " << b[c]
+                << " -- this is what reaches driver_->setFog()";
+            EXPECT_LE(got[c], std::max(a[c], b[c]))
+                << hm[0] << ":" << hm[1] << " fog channel " << c << " = " << got[c]
+                << " (" << got[0] << "," << got[1] << "," << got[2] << "), anchors "
+                << a[c] << " -> " << b[c];
+        }
+    }
+}
+
+// T495. The same two hours in PIXELS, through the real dome: the rendered sky
+// must keep its blue and must not be red-dominant. The bar is deliberately
+// loose -- it is the SHAPE B789/B790 reported (a band whose red is ~2.75x both
+// other channels, and a far field with blue 0), not a colour match.
+TEST_F(SkyDomeTintChannelOrderTest, DomeAtTheCorpusHoursIsNotRed) {
+    std::unique_ptr<SkyRenderer> sky = buildSky();
+    ASSERT_NE(sky, nullptr);
+    aimAtZenith();
+
+    const int hours[2][2] = {{16, 49}, {17, 25}};
+    for (const auto& hm : hours) {
+        sky->updateTimeOfDay(static_cast<uint8_t>(hm[0]), static_cast<uint8_t>(hm[1]));
+        const Mean dome = drawDome();
+        const std::string when = std::to_string(hm[0]) + ":" + std::to_string(hm[1]);
+        const std::string got = "(" + std::to_string(dome.r) + "," +
+                                std::to_string(dome.g) + "," + std::to_string(dome.b) + ")";
+        ASSERT_GT(dome.r + dome.g + dome.b, 1.0) << when << " dome is black " << got;
+        EXPECT_GT(dome.b, 10.0)
+            << when << " dome " << got
+            << " -- normalsky is blue-dominant (147,172,190) and no tint in the "
+               "table zeroes a channel; blue 0 is the u32 underflow (board B790)";
+        EXPECT_LE(dome.r, 2.0 * dome.g)
+            << when << " dome " << got << " -- red-dominant sky (board B789)";
+        EXPECT_LE(dome.r, 2.0 * dome.b)
+            << when << " dome " << got << " -- red-dominant sky (board B789)";
+    }
 }

@@ -34,184 +34,16 @@ extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTex
 
 namespace EQT {
 namespace Graphics {
+// T495 (board B789/B790): the table and the arithmetic over it moved WHOLE to
+// sky_color_table.cpp, where they can be driven with no device. The anchor
+// values did not change; the channel lerp did -- it underflowed `irr::u32` on
+// every decreasing channel. These two methods stay as the class's own way in.
 SkyColorSet SkyRenderer::calculateSkyColors(float timeOfDay) const {
-    // Define color sets for different times of day
-    // Night (0-4): Dark blue/black sky
-    static const SkyColorSet NIGHT = {
-        irr::video::SColor(255, 10, 10, 30),     // zenith: deep blue-black
-        irr::video::SColor(255, 20, 20, 50),     // horizon: slightly lighter
-        irr::video::SColor(255, 15, 15, 35),     // fog: dark blue
-        0.0f,                                     // sunIntensity
-        0.2f                                      // cloudBrightness: dim
-    };
-
-    // Pre-dawn (4-5): Very early light
-    static const SkyColorSet PRE_DAWN = {
-        irr::video::SColor(255, 25, 25, 60),     // zenith: dark blue
-        irr::video::SColor(255, 60, 40, 50),     // horizon: hint of color
-        irr::video::SColor(255, 35, 30, 45),     // fog
-        0.05f,
-        0.3f
-    };
-
-    // Dawn (5-6): Orange/pink gradient, sun rising
-    static const SkyColorSet DAWN = {
-        irr::video::SColor(255, 80, 100, 150),   // zenith: lightening blue
-        irr::video::SColor(255, 220, 140, 90),   // horizon: orange-pink
-        irr::video::SColor(255, 140, 110, 100),  // fog: warm
-        0.3f,
-        0.6f
-    };
-
-    // Sunrise (6-7): Golden hour
-    static const SkyColorSet SUNRISE = {
-        irr::video::SColor(255, 130, 160, 200),  // zenith: light blue
-        irr::video::SColor(255, 255, 180, 100),  // horizon: golden
-        irr::video::SColor(255, 180, 160, 140),  // fog: warm golden
-        0.6f,
-        0.8f
-    };
-
-    // Morning (7-10): Transitioning to day
-    static const SkyColorSet MORNING = {
-        irr::video::SColor(255, 140, 180, 220),  // zenith: bright blue
-        irr::video::SColor(255, 200, 210, 220),  // horizon: pale blue
-        irr::video::SColor(255, 180, 195, 210),  // fog: light blue
-        0.85f,
-        0.95f
-    };
-
-    // Day (10-16): Full daylight
-    static const SkyColorSet DAY = {
-        irr::video::SColor(255, 100, 150, 220),  // zenith: sky blue
-        irr::video::SColor(255, 180, 200, 220),  // horizon: pale
-        irr::video::SColor(255, 160, 180, 200),  // fog: bluish
-        1.0f,
-        1.0f
-    };
-
-    // Afternoon (16-17): Slightly warmer
-    static const SkyColorSet AFTERNOON = {
-        irr::video::SColor(255, 120, 160, 210),  // zenith: warm blue
-        irr::video::SColor(255, 210, 200, 190),  // horizon: hint of warmth
-        irr::video::SColor(255, 175, 180, 190),  // fog
-        0.9f,
-        1.0f
-    };
-
-    // Sunset (17-18): Golden hour
-    static const SkyColorSet SUNSET = {
-        irr::video::SColor(255, 130, 130, 180),  // zenith: purple-blue
-        irr::video::SColor(255, 255, 160, 80),   // horizon: orange-gold
-        irr::video::SColor(255, 180, 140, 120),  // fog: warm
-        0.6f,
-        0.8f
-    };
-
-    // Dusk (18-19): Orange/red gradient, sun setting
-    static const SkyColorSet DUSK = {
-        irr::video::SColor(255, 80, 60, 120),    // zenith: purple
-        irr::video::SColor(255, 200, 100, 60),   // horizon: red-orange
-        irr::video::SColor(255, 120, 80, 80),    // fog: reddish
-        0.25f,
-        0.5f
-    };
-
-    // Twilight (19-20): Transitioning to night
-    static const SkyColorSet TWILIGHT = {
-        irr::video::SColor(255, 40, 40, 80),     // zenith: dark blue-purple
-        irr::video::SColor(255, 80, 50, 60),     // horizon: fading color
-        irr::video::SColor(255, 50, 40, 55),     // fog: dark
-        0.1f,
-        0.35f
-    };
-
-    // Interpolate between color sets based on time
-    if (timeOfDay < 4.0f) {
-        // Night (0-4)
-        return NIGHT;
-    } else if (timeOfDay < 5.0f) {
-        // Pre-dawn (4-5)
-        float t = timeOfDay - 4.0f;
-        return interpolateSkyColors(NIGHT, PRE_DAWN, t);
-    } else if (timeOfDay < 6.0f) {
-        // Dawn (5-6)
-        float t = timeOfDay - 5.0f;
-        return interpolateSkyColors(PRE_DAWN, DAWN, t);
-    } else if (timeOfDay < 7.0f) {
-        // Sunrise (6-7)
-        float t = timeOfDay - 6.0f;
-        return interpolateSkyColors(DAWN, SUNRISE, t);
-    } else if (timeOfDay < 10.0f) {
-        // Morning (7-10)
-        float t = (timeOfDay - 7.0f) / 3.0f;
-        return interpolateSkyColors(SUNRISE, MORNING, t);
-    } else if (timeOfDay < 16.0f) {
-        // Day (10-16) - no interpolation, full daylight
-        if (timeOfDay < 11.0f) {
-            float t = timeOfDay - 10.0f;
-            return interpolateSkyColors(MORNING, DAY, t);
-        }
-        return DAY;
-    } else if (timeOfDay < 17.0f) {
-        // Afternoon (16-17)
-        float t = timeOfDay - 16.0f;
-        return interpolateSkyColors(DAY, AFTERNOON, t);
-    } else if (timeOfDay < 18.0f) {
-        // Sunset (17-18)
-        float t = timeOfDay - 17.0f;
-        return interpolateSkyColors(AFTERNOON, SUNSET, t);
-    } else if (timeOfDay < 19.0f) {
-        // Dusk (18-19)
-        float t = timeOfDay - 18.0f;
-        return interpolateSkyColors(SUNSET, DUSK, t);
-    } else if (timeOfDay < 20.0f) {
-        // Twilight (19-20)
-        float t = timeOfDay - 19.0f;
-        return interpolateSkyColors(DUSK, TWILIGHT, t);
-    } else if (timeOfDay < 21.0f) {
-        // Transition to night (20-21)
-        float t = timeOfDay - 20.0f;
-        return interpolateSkyColors(TWILIGHT, NIGHT, t);
-    } else {
-        // Night (21-24)
-        return NIGHT;
-    }
+    return SkyColorsAt(timeOfDay);
 }
 
 SkyColorSet SkyRenderer::interpolateSkyColors(const SkyColorSet& a, const SkyColorSet& b, float t) const {
-    // Clamp t to 0-1
-    t = irr::core::clamp(t, 0.0f, 1.0f);
-
-    SkyColorSet result;
-
-    // Interpolate colors
-    result.zenith = irr::video::SColor(
-        255,
-        static_cast<irr::u32>(a.zenith.getRed() + (b.zenith.getRed() - a.zenith.getRed()) * t),
-        static_cast<irr::u32>(a.zenith.getGreen() + (b.zenith.getGreen() - a.zenith.getGreen()) * t),
-        static_cast<irr::u32>(a.zenith.getBlue() + (b.zenith.getBlue() - a.zenith.getBlue()) * t)
-    );
-
-    result.horizon = irr::video::SColor(
-        255,
-        static_cast<irr::u32>(a.horizon.getRed() + (b.horizon.getRed() - a.horizon.getRed()) * t),
-        static_cast<irr::u32>(a.horizon.getGreen() + (b.horizon.getGreen() - a.horizon.getGreen()) * t),
-        static_cast<irr::u32>(a.horizon.getBlue() + (b.horizon.getBlue() - a.horizon.getBlue()) * t)
-    );
-
-    result.fog = irr::video::SColor(
-        255,
-        static_cast<irr::u32>(a.fog.getRed() + (b.fog.getRed() - a.fog.getRed()) * t),
-        static_cast<irr::u32>(a.fog.getGreen() + (b.fog.getGreen() - a.fog.getGreen()) * t),
-        static_cast<irr::u32>(a.fog.getBlue() + (b.fog.getBlue() - a.fog.getBlue()) * t)
-    );
-
-    // Interpolate floats
-    result.sunIntensity = a.sunIntensity + (b.sunIntensity - a.sunIntensity) * t;
-    result.cloudBrightness = a.cloudBrightness + (b.cloudBrightness - a.cloudBrightness) * t;
-
-    return result;
+    return LerpSkyColors(a, b, t);
 }
 
 void SkyRenderer::updateSkyLayerColors() {
@@ -222,24 +54,12 @@ void SkyRenderer::updateSkyLayerColors() {
     // Apply tint to sky layers based on time of day
     // Use cloud brightness to modulate layer colors
 
-    // Create a tint color that blends zenith and horizon colors
-    // This simulates the sky gradient effect
-    irr::video::SColor tint(
-        255,
-        (currentSkyColors_.zenith.getRed() + currentSkyColors_.horizon.getRed()) / 2,
-        (currentSkyColors_.zenith.getGreen() + currentSkyColors_.horizon.getGreen()) / 2,
-        (currentSkyColors_.zenith.getBlue() + currentSkyColors_.horizon.getBlue()) / 2
-    );
-
-    // Modulate by time-of-day brightness AND weather brightness
-    // Weather darkens the sky during rain/storms
-    float effectiveBrightness = currentSkyColors_.cloudBrightness * weatherBrightness_;
-    tint = irr::video::SColor(
-        255,
-        static_cast<irr::u32>(tint.getRed() * effectiveBrightness),
-        static_cast<irr::u32>(tint.getGreen() * effectiveBrightness),
-        static_cast<irr::u32>(tint.getBlue() * effectiveBrightness)
-    );
+    // The zenith/horizon average, modulated by time-of-day brightness AND
+    // weather brightness (weather darkens the sky during rain/storms). One
+    // definition, in sky_color_table.cpp, so a test can assert the tint
+    // without a device (T495).
+    const float effectiveBrightness = currentSkyColors_.cloudBrightness * weatherBrightness_;
+    irr::video::SColor tint = SkyLayerTint(currentSkyColors_, effectiveBrightness);
 
     // Apply tint to legacy sky dome nodes
     for (auto* node : skyDomeNodes_) {
@@ -272,16 +92,8 @@ void SkyRenderer::updateSkyLayerColors() {
 
     // Set the background/clear color to match the tint for proper day/night effect
     if (driver_) {
-        // Use a darker version of the tint as the background color
-        // This shows through the semi-transparent sky at night
-        irr::video::SColor clearColor(
-            255,
-            tint.getRed() / 2,
-            tint.getGreen() / 2,
-            tint.getBlue() / 2
-        );
         // Store for use by beginScene
-        currentClearColor_ = clearColor;
+        currentClearColor_ = SkyClearColorFromTint(tint);
     }
 }
 

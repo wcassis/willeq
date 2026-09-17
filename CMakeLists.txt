@@ -625,6 +625,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/door_manager_animation.cpp
         src/client/graphics/animated_texture_manager.cpp
         src/client/graphics/sky_config.cpp
+        src/client/graphics/sky_color_table.cpp
         src/client/graphics/sky_renderer.cpp
         src/client/graphics/sky_renderer_celestial.cpp
         src/client/graphics/sky_renderer_colors.cpp

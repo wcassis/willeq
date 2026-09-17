@@ -8,6 +8,7 @@
 #include <map>
 #include <irrlicht.h>
 #include "client/graphics/sky_config.h"
+#include "client/graphics/sky_color_table.h"
 #include "client/graphics/constrained_texture_cache.h"
 
 namespace EQT {
@@ -36,14 +37,7 @@ enum class SkyCategory {
     Indoor       // Indoor/NULL - no sky
 };
 
-// Sky color set for a specific time of day
-struct SkyColorSet {
-    irr::video::SColor zenith;     // Top of sky dome color
-    irr::video::SColor horizon;    // Horizon color (blends with zenith)
-    irr::video::SColor fog;        // Recommended fog color
-    float sunIntensity;            // Sun brightness (0.0 - 1.0)
-    float cloudBrightness;         // Cloud layer brightness (0.0 - 1.0)
-};
+// SkyColorSet lives in sky_color_table.h (T495), with the table itself.
 
 // Sky renderer - renders sky dome, clouds, and celestial bodies
 class SkyRenderer : public TextureEvictionListener {
