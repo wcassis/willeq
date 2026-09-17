@@ -278,9 +278,28 @@ setting a first one for it is a budget change and belongs with B818.1.
 | 3. four runs disagree > ~10 % on `startup` live bytes | **no — they agree to 0.003 %** |
 | 4. head of the queue is NON-HEAP (Mali/DRM) | **no — `audio` is malloc'd and the ledger charges it; the Pi's non-heap anon is glibc's own mmap region** |
 
-## 4. Verification bar
+## 4. Verification bar [measured]
 
-(filled below)
+| step | result |
+|---|---|
+| `scripts/build-arm-noble.sh` (Leg A binary, at this tip) | **exit 0** |
+| `cmake -S . -B build` (GLES2, tests ON) + `cmake --build build -j8` | **exit 0** (`BUILD_EXIT=0`; no ccache) |
+| `scripts/build-gles2-x86.sh` (incl. the one-time `--irrlicht-only` bootstrap) | **exit 0** |
+| `scripts/build-arm-noble.sh` (rebuild with the B817 fix) | **exit 0** |
+| full `ctest -j6` | **4,885 registered, 4,884 pass, 125 skip, 1 FAIL** |
+| the one FAIL | `MemoryLedger.MallocFamilyAllRouteThroughTheLedger` — **PRE-EXISTING, not this branch.** That target links only `tests/test_memory_ledger.cpp` + `src/client/core/memory_ledger.cpp`, and `git diff b646a315 HEAD` over both is **EMPTY**. The assertion is the last one in the case: `realloc(nullptr, 0)` returns a minimum-size chunk (**48 B** here) that the test never frees, so `live(Equipment) == before` cannot hold. A test defect left by T491, not a ledger defect, and **not fixed here** — the orchestrator's own gate is already red on it (`gate2 … exit=8`) and a second edit to that file would collide |
+| new test `test_music_player_soundfont_lifetime` | **3/3 green** (red first: two cases, 24,160,112 B / 24,159,872 B against a 1,048,576 B bound) |
+| `visual_gate` | **PASS, goldens untouched** (`review/T496/visual_gate_PASS.log`); also **Passed inside the full suite** |
+| `visual_gate` stability on this host | **8 runs: 5 PASS, 3 FAIL.** Every failure is a p95 process-CPU ceiling and **the zone VARIES** (befallen ×2 at 11.53/11.58 ms vs 10.95; gfaydark ×1 at 11.89 vs 10.67) — T490's measured signature at load 3–13, not a branch regression. **Proved, not argued: `nm -C build-gles2/bin/gles2_zone_benchmark \| grep -c 'MusicPlayer\|MidiPlayer\|tsf_load'` returns 0** — the binary the gate measures contains no audio symbols at all, so this branch cannot move its CPU |
+| `check_file_sizes.sh --all` | **1,245 files, 0 warn, 0 fail** |
+| `ZeroCallers` / `FileSizeCeiling` / `WriteOnlyFields` / `DbReproducible` / `TexturesReproducible` / `PackReproducible` | all **Passed** |
+
+**Two gitignored symlinks a task worktree lacks had to be created** (B815 and a
+second of the same shape): `data/eq_client -> /mnt/projects/EverQuestP1999`
+**and `data/eqe1_client -> /mnt/projects/EverQuest_ETC1`**. Without the second
+the gate prints `[verify] memoryCoverage: SKIP … this is a real coverage gap on
+this machine, not a pass` and still exits 0 on that check — so a worktree gate
+run silently covers less than main's. Worth adding to B815's note.
 
 ## 5. Lane state
 
