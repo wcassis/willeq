@@ -245,14 +245,26 @@ golden entry 132 re-taught in place, count unchanged at 328.
     and 2026-08-13 that no current target produces. Deleted, as the checker
     directs. Now green.
   - `visual_gate` — **pre-existing, not this branch**: this worktree's
-    `build-gles2/` tree is from 2026-08-12 and predates T291, so its benchmark
-    CSV has no `cpu_proc_ms` column and the gate raises
+    `build-gles2/` tree was from 2026-08-12 and predated T291, so its benchmark
+    CSV had no `cpu_proc_ms` column and the gate raised
     `RuntimeError: qeynos2: benchmark CSV has no cpu_proc_ms column -- the
-    build-gles2/ binary predates T291. Rebuild it`. It fails identically on the
-    branch base. `scripts/build-gles2-x86.sh` was run (exit pending at
-    hand-back: the 3.98 GB `libwilleq_core.a` was still in `ranlib` on the NFS
-    share under load 54-88). **Re-run `ctest -R visual_gate` once that finishes
-    before merging.**
+    build-gles2/ binary predates T291. Rebuild it`. It failed identically on the
+    branch base. `scripts/build-gles2-x86.sh` exit 0 (slow: the 3.98 GB
+    `libwilleq_core.a` spent ~20 min in `ranlib` on the NFS share under load
+    54-88). With the rebuilt tree the gate is **FLAKY on this host, and it is
+    host load, not this branch**: nine runs of the same binary, six PASS and
+    three FAIL, and the failing zone VARIES (qeynos2 once, befallen twice).
+    p95 process-CPU over five runs — qeynos2 mean 5.155 ms against a blessed
+    baseline of 5.054 (**1.02x**, i.e. exactly baseline), gfaydark 7.321 vs
+    5.336 (1.37x), befallen 9.051 vs 5.474 (1.65x), ceilings 2x baseline.
+    The deviation grows with region count, so I measured the cost T490
+    actually adds per camera-region change rather than arguing about it
+    (`review/T490/scripts/pvs_cost.cpp`): **18.4 us qeynos2, 41.8 gfaydark,
+    67.9 befallen** (decode + candidate rebuild). Even at one change EVERY
+    frame that is 0.018-0.068 ms, **~2% of the deviations and 30-50x too small
+    to explain them**; and qeynos2, the zone whose PVS work T490 changed most
+    per region, sits exactly on its baseline. **Re-run the gate on a quiet host
+    before merging** — it is not decidable at load 43-88.
 - `check_file_sizes.sh --all`: 1,237 files, 0 warn, 0 fail.
 - `check_zero_callers.py`: exit 0, 411 exempt, 0 unlisted, 0 stale.
 - eqemu: lock taken and released as T490 on the LOCAL lane, `down.sh` run,
