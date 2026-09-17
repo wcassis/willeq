@@ -87,6 +87,8 @@ citations are checked on CI exactly as they are locally.
 | 5 | `review/` judged only from a checkout beside the media | `hygiene` 45 s GREEN, cold `build` 1,237 s GREEN, then FAILED in `test`: 3 of 4,908 |
 | 6 | asset symlinks wired in `before_script` for every job | **SUCCESS — green end to end** (first green) |
 | 7 | docs + board + plan (no CI or code change) | **SUCCESS — green end to end**, and the warm-tree measurement |
+| 8 | the warm-tree numbers written down | **SUCCESS** — 44 s / 6 s / 118 s / 17 s, a **3-minute** fully warm pipeline |
+| 9 | this table's last row | the tip's own pipeline |
 
 ## Review
 
@@ -134,6 +136,8 @@ Claims, each marked [measured] or [assumed].
   work), covering **4,908** registered tests plus the RDP case's own re-run;
   `gate` 363 s cold (that includes building the patched Irrlicht and the whole
   `build-gles2` tree from nothing) / **18 s** warm.
+- [measured] A fully warm green pipeline costs **about 3 minutes** end to end
+  (pipeline 8: hygiene 44 s, build 6 s, test 118 s, gate 17 s).
 - [measured] The green run is real, not a skip: job 138 reports
   `100% tests passed, 0 tests failed out of 4908` and the RDP re-run
   `100% tests passed ... out of 1`; job 139 logs
@@ -148,9 +152,9 @@ Claims, each marked [measured] or [assumed].
   every zone "SKIP (not found)", then `Expected: (loadedCount) > (0u)`). The
   symlinks are therefore made in every job's `before_script`, not just the
   gate's.
-- [measured] "warm" is not one number: pipeline 6's build rebuilt nothing (6 s),
-  pipeline 7's — a docs-only commit — recompiled 5 test TUs and relinked 34
-  binaries for 403 s. With no ccache and no ninja, warm cost is dominated by
+- [measured] "warm" is not one number: pipelines 6 and 8 rebuilt nothing (6 s
+  each), while pipeline 7 — also a docs-only commit — recompiled 5 test TUs and
+  relinked 34 binaries for 403 s. With no ccache and no ninja, warm cost is dominated by
   linking. [assumed] why a docs-only commit invalidated those 5 TUs: not
   established. It is a cost, not a correctness problem, and it is bounded by the
   cold number.

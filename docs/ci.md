@@ -48,7 +48,8 @@ nothing (6 s), while the next one — a **docs-only** commit — still recompile
 test TUs and relinked 34 binaries, costing 403 s. With no ccache and no ninja on
 this host, a warm build's cost is dominated by *linking*, so expect anywhere from
 seconds to ~7 minutes. What makes a docs-only commit relink was not run to
-ground.
+ground. A fully warm pipeline — nothing to rebuild — is about **3 minutes** end
+to end.
 
 Every job's `before_script` re-creates the `data/eq_client` and
 `data/eqe1_client` symlinks. They are gitignored (`tests/test_data_paths.cpp`),
