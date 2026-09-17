@@ -1117,3 +1117,34 @@ the typed arguments in `tests/test_eq_commands_equip_*.cpp`,
 `tests/test_read_book.cpp`, `tests/test_scribe_scroll.cpp`,
 `tests/test_tradeskill_combine.cpp` and the llmbench timelines back. The
 model-side expectations do not move either way.
+
+## 2026-09-17 (addendum) — the PI's shrink queue is the planning list, not the x86 one (T496)
+
+**Decision.** From T496 on, a memory-shrink unit is planned off
+`review/T496/pi/table_categories.tsv` — the Orange Pi's own ledger output —
+and **not** off the x86/llvmpipe queue T491 printed. The two disagree on which
+buckets matter, by more than an order of magnitude, in both directions:
+
+| bucket | x86 (T491, llvmpipe) | Orange Pi (T496, `ready`) |
+|---|---:|---:|
+| `textures_driver` | 30.50 MiB | 0.56–0.67 MiB |
+| `irrlicht_scene` | 25.4–27.9 MiB | 1.11–1.45 MiB |
+| `entity_models` | 64.56 MiB | 18.6–22.9 MiB |
+| `startup` | 40.5–49.7 MiB | 26.82 MiB |
+| **`audio`** | **not in the top ten** | **47.57 MiB — the largest bucket on the machine** |
+
+The x86 queue's top three were Mesa's state, and the Pi's #1 was invisible on
+x86 because llvmpipe's own allocations dwarfed it. This is B812's answer and
+the reason it is struck.
+
+**Corollary, and the reason the rule is written down:** the head of the Pi
+queue turned out to be a LIFETIME defect, not a size one — two complete copies
+of `synthus2.sf2`, one of them unreachable (B817). A queue taken on the wrong
+machine would not have pointed at it.
+
+The measurement is reproducible without a new tool:
+`review/T496/scripts/pi_sweep.sh` + `pi_zone_run.sh` + `pi_table.py`. The one
+thing the Pi rig needs that the x86 one does not is **`--log-module=MAIN:INFO`**:
+`[memledger]`/`[memmap]` are `LOG_INFO` on `MOD_MAIN`, the Pi runs at the
+default quiet level, and T490's Pi logs contain zero `[INFO]` lines — the
+ledger was silent there and nobody had noticed.

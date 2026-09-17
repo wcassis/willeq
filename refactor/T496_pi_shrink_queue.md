@@ -114,5 +114,179 @@ actual zone, and a before/after Pi number for the category attacked.
   + its test + `config/constrained_presets.json` if a budget moves. NOT the gate's
   zone set, NOT goldens, NOT `zone_bsp*`/PVS (T490), NOT the ledger's categories.
 
-## Review
-(executor)
+## Review (executor, 2026-09-17)
+
+Every claim below is tagged **[measured]** or **[assumed]**.
+
+## 0. What did not work / deviations, first
+
+1. **The plan's own candidate list carried a unit error.** It reads "the
+   orangepi texture cache (44,116 kB by the Pi's own audit line [measured])".
+   `src/client/graphics/load_mem_audit.cpp:48` prints that field with `%zu`
+   from a `size_t` of **bytes**, and the same line reports
+   `accounted_kb=43`. The startup texture cache is **43 kB**, not 43 MiB, and
+   was never a shrink candidate. **[measured]**
+2. **Leg B's target fell outside the plan's declared file territory.** The plan
+   scoped Leg B to `race_model_loader.{cpp,h}` **or**
+   `renderer_init.cpp`/`irrlicht_renderer.cpp`, anticipating `entity_models` or
+   `startup`. Leg A named **`audio`**, a category the x86 queue does not list
+   at all, so Leg B touched `src/client/audio/{audio_manager,midi_player,
+   music_player}.cpp` instead. The plan's own instruction — "Target = whatever
+   Leg A names first" — was followed over the file list. Three files, one
+   lifetime change each, no behaviour change. **Flagged for the orchestrator.**
+3. **`gfaydark` did not reach `ready` on the Pi** inside a 360 s watchdog: no
+   OOM, `LoadZoneSources` finished in 403 ms, and the run died on the duration
+   cap with only `startup` and `login_world` recorded. B751's shape on a zone
+   that loads elsewhere. Boarded (B818.4), not chased. **[measured]**
+4. **`iceclad` OOM-killed at `spatial_bsp`**, as B800 predicts. Its
+   `startup`/`login_world` lines are intact and are the point. **[measured]**
+5. **No `/pmem` was issued.** `/pmem` is a slash command and the Pi runs
+   headless under DRM with no input rig. It is not needed: `/pmem` calls
+   `toReportText()` over the same `snapshot()` that `recordPoint("ready")`
+   already logs, and `recordMappings("ready", 16)` already emits the `[memmap]`
+   census B812 asked for. Same bytes, no extra rig. **[measured]**
+6. **The ledger was SILENT on the Pi until this unit.** `[memledger]` and
+   `[memmap]` are `LOG_INFO` on `MOD_MAIN`, and the Pi runs at the default
+   quiet level: `grep -c '\[INFO\]'` over every T490 Pi log returns **0**.
+   `review/T496/scripts/pi_zone_run.sh` adds `--log-module=MAIN:INFO`, which
+   overrides the global level per module (`logging.h:182`) without the global
+   firehose on a 242 MB tmpfs. **[measured]**
+
+## 1. Leg A — the Pi's shrink queue (B816), and B812 struck
+
+Four runs, `--drm --renderer gles2 --constrained orangepi -r 1280 720
+--load-mem-audit`, through `review/T496/scripts/pi_sweep.sh` (B802 read-back
+guard) and `pi_zone_run.sh` (watchdog + stall deadline). **All four
+`zone_actual` matched the request**; the table
+(`review/T496/pi/table_categories.tsv`) is generated from the client's own
+`[memledger]`/`[memmap]` lines and names the entered zone on every row.
+**Nothing in it comes from x86.**
+
+**At `ready`, largest-first (MiB live):**
+
+| bucket | qeynos2 | befallen | x86 (T491) |
+|---|---:|---:|---:|
+| **`audio`** | **47.57** | **47.57** | *not in the top ten* |
+| `malloc_slack` | 33.66 | 21.94 | 17.43 |
+| `startup` | 26.82 | 26.82 | 40.5–49.7 |
+| `zone_mesh` | 20.79 | 31.94 | 20.26 |
+| `entity_instances` | 18.52 | 28.24 | — |
+| `entity_models` | 22.87 | 18.59 | 64.56 |
+| `game_state` | 7.23 | 8.62 | — |
+| `spatial` | 6.28 | 5.53 | — |
+| `zone_parse` | 5.80 | 7.00 | 8.52 |
+| `objects` | 2.89 | 3.83 | 28.91 |
+| `irrlicht_scene` | 1.45 | 1.11 | 27.95 |
+| `textures_driver` | 0.67 | 0.56 | 30.50 |
+
+**At `startup` alone** — identical on all four runs to **0.003 %**
+(28,125,352 / 28,126,096 / 28,125,480 / 28,125,496 B for `startup`;
+49,881,176 / 49,881,200 / 49,881,112 / 49,881,200 B for `audio`):
+
+| bucket | live | peak |
+|---|---:|---:|
+| `malloc_slack` | **110.34 MiB** | — |
+| `audio` | **47.57 MiB** | **171.29 MiB** |
+| `startup` | **26.82 MiB** | 31.12 MiB |
+| `unaccounted` | 3.42–3.46 MiB | — |
+| everything else | < 0.1 MiB | |
+
+RssAnon at `startup` **188.34 MiB**, `over_target` vs 64 MiB **124.34 MiB**.
+**This is T490's B801 gap, now attributed.** **[measured]**
+
+**Non-heap anon, from the client's own `[memmap]` census** (qeynos2, `ready`):
+`[heap]` 136.4 MiB in 11 mappings; `[anon]` **48.2 MiB in 34 mappings**;
+everything else — `libgallium` 0.64, `libLLVM` 0.58, `file:willeq` 0.14, and
+~15 more libraries — under 0.7 MiB **combined**. The `[anon]` block is glibc
+servicing large `malloc`s by `mmap`, **not a Mali/DRM mapping**: the ledger
+charges every byte of it, and `ledger` (170.2 MB) exceeds `[heap]` anon
+(136.4 MB) by exactly that shape. **STOP condition 4 does NOT fire.**
+**[measured]**
+
+**B812 is struck.** Its premise — that the x86 figures would flatter the Pi —
+is **refuted in direction**: `textures_driver` and `irrlicht_scene` are
+**40–50x SMALLER** on Mali, and `startup` is 1.5–1.9x smaller. Budgeting them
+from x86 would have shipped ceilings far too loose. All three are stable across
+the four runs, so they are **ready to budget** — I did **not** move
+`config/constrained_presets.json`, because a budget change in a measurement leg
+is the thing the plan's own first line forbids ("A measurement leg that edits
+the thing it measures is not a measurement"). Boarded **B818.1**.
+
+**B812's second half (hook cost on ARM) is NOT closed.** It needs
+`[memledger] frame_allocs`, which only `gles2_zone_benchmark` emits, and the
+four Leg A runs are `willeq`. Boarded **B818.2** with the one command that
+closes it. **[measured that it is missing; the cost itself is [assumed] on
+ARM]**
+
+## 2. Leg B — the head of the queue, at the root (B817)
+
+**`audio` is 47.57 MiB live at EVERY lifecycle point** — `startup`,
+`login_world`, `ready`, `steady_60s`, on every zone, to within 3.6 kB. A
+constant that large is a load, not a working set. Two defects, one cause:
+
+1. **`~MidiPlayer` leaked outright.** It cleared `impl_->soundFont` and then
+   closed only `gmSoundFont`/`customSoundFont`. `soundFont` aliases one of
+   those **only on the dual-font path**; the single-font `init(path, rate)`
+   overload loads into `soundFont` alone — so that font was never closed.
+2. **`MusicPlayer::setMidiPlayer()` abandoned its fallback.** It overwrote
+   `midiPlayer_` and left `ownedMidiPlayer_` alive holding a complete second
+   copy of `synthus2.sf2`. `AudioManager::initialize()` called
+   `initialize()` **before** `setMidiPlayer()`, so the shipping client always
+   took that path.
+
+**RED, offline on x86, in bytes** (`tests/test_music_player_soundfont_lifetime.cpp`,
+3 cases, ledger-linked so the assertion is on `Category::Audio` live bytes):
+
+```
+SupersedingTheOwnedMidiPlayerReleasesItsSoundFont
+  retained 24,160,112 vs bound 1,048,576          FAILED
+AFallbackSoundFontIsNotSmall  (destructor half)
+  retained 24,159,872 vs bound 1,048,576          FAILED
+```
+
+**GREEN after: 3/3.** The fix is lifetime only — `MusicPlayer` renders through
+the shared `MidiPlayer` on either ordering, so no audio output changes.
+`AudioManager` now wires the shared player **first**, so the duplicate is never
+loaded at all and the transient leaves the startup peak too.
+
+**Confirming Pi run, `qeynos2_T496fix`, Leg A recipe verbatim:**
+
+| | before (`qeynos2_T496`) | after (`qeynos2_T496fix`) | delta |
+|---|---:|---:|---:|
+| `audio` live @ `startup` | 49,881,176 | **25,722,488** | **−24,158,688 (−23.04 MiB)** |
+| `audio` live @ `ready` | 49,884,824 | **25,726,104** | **−24,158,720** |
+| `audio` **peak** @ `startup` | 179,607,200 | **155,448,424** | **−24,158,776** |
+| RssAnon @ `startup` | 197,492,736 | **174,211,072** | **−23,281,664 (−22.2 MiB)** |
+| RssAnon @ `ready` | 195,428,352 | **181,243,904** | −14,184,448 |
+| **peak RssAnon, whole run** | 212,828 kB | **186,640 kB** | **−26,188 kB (−25.6 MiB)** |
+| `over_target` vs 64 MiB @ `startup` | 130,383,872 | **107,102,208** | −23,281,664 |
+
+The Pi delta matches the x86 red/green to **1.4 kB**. `audio` is no longer the
+largest bucket at `ready`. Every other category moved by < 0.01 %. **[measured]**
+
+**No x86 gate budget was moved.** `audio` has never had a
+`memoryLedgerBudgets` entry (the orangepi preset budgets eight categories and
+`audio` is not one of them), so there was no per-category budget to lower;
+setting a first one for it is a budget change and belongs with B818.1.
+
+## 3. STOP conditions
+
+| STOP | fired? |
+|---|---|
+| 1. golden re-bless | no — goldens untouched, gate zone set untouched |
+| 2. changes what is drawn | no — lifetime/sharing only, no texture/variant/cursor/particle change |
+| 3. four runs disagree > ~10 % on `startup` live bytes | **no — they agree to 0.003 %** |
+| 4. head of the queue is NON-HEAP (Mali/DRM) | **no — `audio` is malloc'd and the ledger charges it; the Pi's non-heap anon is glibc's own mmap region** |
+
+## 4. Verification bar
+
+(filled below)
+
+## 5. Lane state
+
+LOCAL lane only. Lock taken as `T496` and **released**; world **DOWN**
+(`down.sh`, ports 5998/9000 closed); Testcaster's `character_data` restored to
+`zone_id=34, x=-41.8658, y=2723.33, z=-24.8438`, the row saved at
+`review/T496/pi/testcaster_original_row.txt`. The VM at 172.16.200.99 and
+hermes-ext were never touched. No Testchar. Pi left idle, no willeq running,
+`/tmp/t496` removed by the run script.

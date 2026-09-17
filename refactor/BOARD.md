@@ -682,17 +682,34 @@ it without taking that measurement first.
   The ONE thing T69 asked for that is still open is the Pi-side number, which
   is T490 Leg B's, not a gate defect — see B812 below.
 
-- **B812** (B) The memory ledger's budgets and bounds are **x86/llvmpipe
+- ~~**B812** (B) The memory ledger's budgets and bounds are **x86/llvmpipe
   numbers** (T491, 2026-09-17). `startup`, `textures_driver` and
-  `irrlicht_scene` deliberately carry NO budget in the orangepi preset because
-  the x86 figures are Mesa's — `startup` alone measures 40.5–49.7 MiB of
-  llvmpipe state — and budgeting them from x86 would ship a fiction on Mali.
-  Same for `LEDGER_NONHEAP_MAX_BYTES` (24 MiB, from a 15.8 MiB llvmpipe
-  measurement). **What would close it:** one `/pmem` dump and one
-  `gles2_zone_benchmark --memory-json` on the Pi at zone-ready; the ledger and
-  the `[memmap]` census both run there unchanged. T490 Leg B owns the Pi lane.
-  Confirmed by T491 (measured, `refactor/T491_memory_ledger_100_percent.md`
-  Review).
+  `irrlicht_scene` deliberately carry NO budget in the orangepi preset ... one
+  `/pmem` dump and one `gles2_zone_benchmark --memory-json` on the Pi at
+  zone-ready would close it.~~ **STRUCK by T496 (2026-09-17): the Pi has now
+  been measured, four runs, `review/T496/pi/table_categories.tsv`.** The x86
+  figures do NOT transfer, and the direction is the opposite of what a budget
+  derived from them would have assumed:
+
+  | category | x86 (T491, llvmpipe) | **Orange Pi (T496, `ready`)** |
+  |---|---:|---:|
+  | `textures_driver` | 30.50 MiB | **0.56–0.67 MiB** |
+  | `irrlicht_scene` | 25.4–27.9 MiB | **1.11–1.45 MiB** |
+  | `startup` | 40.5–49.7 MiB | **26.82 MiB** |
+  | non-heap anon | 15.8 MiB (llvmpipe JIT) | **5.0–52.2 MiB, and it is glibc's mmap'd malloc region, not the driver** |
+
+  Two of the three are **40–50x smaller on Mali than on llvmpipe**, so budgeting
+  them from x86 would have shipped a ceiling 40x too loose rather than a
+  fiction in the tight direction. `startup` is stable to **0.003 % across all
+  four runs** (28,125,352 / 28,126,096 / 28,125,480 / 28,125,496 B), and
+  `textures_driver`/`irrlicht_scene` vary only with the zone, so **all three are
+  stable enough to budget** — boarded as **B818** rather than set here, because
+  moving `config/constrained_presets.json` is a budget change and this was a
+  measurement leg. The `[memmap]` half is answered too: the Pi's non-heap anon
+  is `[anon]` (30–34 mappings, 50.5 MiB at qeynos2 `ready`), which is glibc
+  servicing large mallocs by `mmap`, **not** a Mali/DRM mapping — the ledger
+  charges every byte of it. The *second* half of B812 (hook cost on ARM) is
+  **NOT closed**: see B818.
 
 - **B813** (A, half struck; resolves T490's B803 origin entry) `s3dZoneSourceMemoryBytes` did not describe the
   worst zone. ~~24 MiB~~ **→ 32 MiB in T491 (2026-09-17)**: the T293 figure was
@@ -718,6 +735,71 @@ it without taking that measurement first.
   `irrlicht_scene` 25.4–27.9 MiB, `zone_mesh` 18.9–20.3 MiB. These five are the
   shrink queue, in order, and the ledger prints exactly this list on every run
   (`[rss-target]`). Confirmed by T491 (measured).
+
+  **T496 amends this (2026-09-17): the x86 queue is NOT the Pi's queue, and the
+  Pi's is the planning list now.** `entity_models` measures **18.6–22.9 MiB on
+  the Pi**, a third of its x86 figure, and three of the five names above are
+  llvmpipe (B812). See B816.
+
+- **B816** (A, *measured*) **The Orange Pi's own shrink queue.** T496 Leg A,
+  four runs at 1280x720 (`--drm --constrained orangepi`), every row naming the
+  zone the client's own log says it entered (B802 read-back guard):
+  `review/T496/pi/table_categories.tsv`. Largest-first at **`ready`**
+  (qeynos2 / befallen):
+
+  | bucket | qeynos2 | befallen | note |
+  |---|---:|---:|---|
+  | **`audio`** | **47.57 MiB** | **47.57 MiB** | **#1 on the Pi, and it does not appear in the x86 top ten at all.** ~23 MiB of it was a duplicate SoundFont — B817 |
+  | `malloc_slack` | 33.66 | 21.94 | glibc arena the allocator never returned; driven by the 171 MiB `audio` startup peak |
+  | `startup` | 26.82 | 26.82 | identical to 0.003 % across all four runs |
+  | `zone_mesh` | 20.79 | 31.94 | |
+  | `entity_instances` | 18.52 | 28.24 | |
+  | `entity_models` | 22.87 | 18.59 | vs 64.56 MiB on x86 (B814) |
+  | `game_state` | 7.23 | 8.62 | |
+  | `spatial` / `zone_parse` | 6.28 / 5.80 | 5.53 / 7.00 | |
+
+  **Startup alone**, identical on every run to within 0.003 %:
+  `malloc_slack` **110.34 MiB**, `audio` **47.57 MiB** (peak **171.29 MiB**),
+  `startup` **26.82 MiB**, `unaccounted` 3.4–3.5 MiB, everything else < 0.1 MiB.
+  RssAnon at `startup` is **188.3 MiB** and `over_target` vs 64 MiB is
+  **124.3 MiB** — T490's B801 finding ("the gap is the pre-zone baseline") is
+  confirmed on the ledger, and the baseline is now ATTRIBUTED: it is
+  `audio` + `startup` + the allocator slack those two created.
+
+- **B817** (A, *measured*, **fixed in T496**) **The client held two complete
+  copies of `synthus2.sf2`, and one of them was unreachable.**
+  `AudioManager::initialize()` called `musicPlayer_->initialize()` BEFORE
+  `musicPlayer_->setMidiPlayer()`, so `MusicPlayer` built its own fallback
+  `MidiPlayer` and loaded the font into it; `setMidiPlayer()` then overwrote
+  the pointer and left the fallback alive for the life of the process. A second
+  defect underneath it: `~MidiPlayer` cleared `impl_->soundFont` and then closed
+  only `gmSoundFont`/`customSoundFont` — `soundFont` aliases one of those ONLY
+  on the dual-font path, so a font loaded by the single-font `init()` overload
+  (exactly the one the fallback uses) was **never closed at all**.
+  RED, in bytes, offline on x86: **24,160,112 B retained** against a 1 MiB
+  bound; GREEN after, 3/3
+  (`tests/test_music_player_soundfont_lifetime.cpp`). No audio output changes —
+  `MusicPlayer` renders through the shared `MidiPlayer` either way.
+
+- **B818** (B) **Owed from T496, deliberately not taken there.** (1) The three
+  Mali budgets B812 now has numbers for (`startup` 26.82 MiB,
+  `textures_driver` ≤ 0.67 MiB, `irrlicht_scene` ≤ 1.45 MiB) are **stable
+  across four Pi runs and ready to enter the orangepi preset's
+  `memoryLedgerBudgets`** — not set in T496 because that is a budget change in
+  a measurement leg. (2) **The ledger hook cost on ARM is still unmeasured** —
+  the second half of B812. The four Leg A runs emit no `frame_allocs` line
+  because they are `willeq`, not the benchmark; one
+  `gles2_zone_benchmark --memory-json` on the Pi closes it. (3)
+  **`malloc_slack` is the Pi's #2 bucket at 110 MiB at startup and nothing
+  bounds it.** It is glibc arena retention, and it tracks the `audio` peak that
+  B817 has now removed; re-measure before treating it as its own item.
+  (4) `gfaydark` reached `login_world` but not `ready` inside a 360 s watchdog
+  on the Pi (no OOM, zone sources loaded in 403 ms) — an instance of B751's
+  shape on a zone that used to load. (5) **The T496 plan's own candidate list
+  contained a unit error**: it read the Pi audit line's `texcache=44116` as
+  44,116 **kB**; `load_mem_audit.cpp` prints that field with `%zu` from a
+  `size_t` of BYTES, so the startup texture cache is **43 kB**, not 43 MiB, and
+  was never a shrink candidate.
 
 - ~~**B022** (C) `src/client/graphics/spell_visual_fx.cpp` --
   **THE PADDING RULING IS ANSWERED BY THE ORACLE (T389, 2026-09-05):
