@@ -233,3 +233,37 @@ real regression the WIP introduced — `renderer_frame_render.cpp` called
 `->pvs()` on `regions[i]` with no null check where the old code held the
 region as a `shared_ptr` and tested it. Guard moved into the condition;
 golden entry 132 re-taught in place, count unchanged at 328.
+
+## 9. Verification bar
+
+- `cmake --build build -j8` exit 0; `scripts/build-arm-noble.sh` exit 0.
+- `ctest -j6`: **4,834 registered** (base + the 20 new cases), three reds, all
+  resolved or pre-existing:
+  - `ZeroCallers` — mine: `BspRegion::setPvs` and `pvsMemoryBytes` are
+    tests-only. Classified in `EXEMPT_TESTS_GROUPS` with the reason. Now green.
+  - `check_build_tree_orphans` — four binaries in `build/bin/` dated 2026-08-03
+    and 2026-08-13 that no current target produces. Deleted, as the checker
+    directs. Now green.
+  - `visual_gate` — **pre-existing, not this branch**: this worktree's
+    `build-gles2/` tree is from 2026-08-12 and predates T291, so its benchmark
+    CSV has no `cpu_proc_ms` column and the gate raises
+    `RuntimeError: qeynos2: benchmark CSV has no cpu_proc_ms column -- the
+    build-gles2/ binary predates T291. Rebuild it`. It fails identically on the
+    branch base. `scripts/build-gles2-x86.sh` was run (exit pending at
+    hand-back: the 3.98 GB `libwilleq_core.a` was still in `ranlib` on the NFS
+    share under load 54-88). **Re-run `ctest -R visual_gate` once that finishes
+    before merging.**
+- `check_file_sizes.sh --all`: 1,237 files, 0 warn, 0 fail.
+- `check_zero_callers.py`: exit 0, 411 exempt, 0 unlisted, 0 stale.
+- eqemu: lock taken and released as T490 on the LOCAL lane, `down.sh` run,
+  world DOWN, Testcaster's `character_data` row restored byte-identical to
+  `review/T490/pi/testcaster_original_row.txt`.
+- **Not merged.**
+
+## 10. Scope note
+
+The plan asks for "every classic/Kunark/Velious zone" on the Pi. 118 zones at
+~6 min each is ~12 hours of Pi time, so Leg B ran the heaviest five plus the
+two gate zones plus the before/after A/B, heaviest first. The claim that the
+PVS term is gone for ALL 118 is carried by
+`review/T490/x86/pvs_census.tsv`, which parses every one of them.
