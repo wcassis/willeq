@@ -931,6 +931,12 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # T491: the memory ledger's read-back of the calling thread's current
+    # MemoryScope category. Production code SETS the category (MemoryScope,
+    # setThreadCategory) and never needs to read it back; the tests use it to
+    # prove scopes nest and restore in LIFO order and that a new thread starts
+    # Unattributed. A pure observation window on live state.
+    ("(free)", "currentCategory"): "seam",
     ("(free)", "ConsiderEqStrIds"): "seam",
     ("(free)", "ItemDisplayEqStrIds"): "seam",
     ("(free)", "SpellDisplayEqStrIds"): "seam",

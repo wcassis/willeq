@@ -210,7 +210,16 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         printf("%s\n", eqt::memory::toLogLine(eqt::memory::snapshot(point)).c_str());
         fflush(stdout);
     };
+    auto mappingPoint = [&](const char* point) {
+        // T491 addendum (B801): the startup baseline is the whole gap to the
+        // 64 MB target, and most of it never goes through malloc. Census it
+        // by mapping, at the two points that bracket a zone load.
+        printf("%s\n",
+               eqt::memory::mappingsToLogLines(point, eqt::memory::readMappings(), 16).c_str());
+        fflush(stdout);
+    };
     ledgerPoint("startup");
+    mappingPoint("bench_startup");
 
     // ── Step 1: Create Irrlicht device ──
     {
@@ -985,6 +994,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     }
     sampleStep("bench_11_entities");
     ledgerPoint("entities");
+    mappingPoint("bench_entities");
 
     // ── Summary ──
     auto totalEnd = std::chrono::steady_clock::now();

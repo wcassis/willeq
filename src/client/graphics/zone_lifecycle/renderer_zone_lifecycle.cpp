@@ -358,6 +358,12 @@ void ZoneLifecycleComponent::unloadZone() {
     ctx_.zoneBoundsValid = false;
     // T491 lifecycle point: the zone is gone, before the next one loads.
     eqt::memory::recordPoint("zone_change_after_unload", ctx_.currentZoneName);
+    // ...and from here the per-category PEAKS measure the NEXT zone's
+    // residency, not the whole process history. Without this the peak column
+    // is pinned forever by whichever zone was heaviest since launch, which is
+    // exactly the question a zone-change report is not asking. The snapshot
+    // above is taken FIRST, so the outgoing zone's peaks are still reported.
+    eqt::memory::resetPeaks();
 }
 
 void ZoneLifecycleComponent::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,

@@ -1086,6 +1086,22 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                     start = nl + 1;
                 }
                 LOG_INFO(MOD_MAIN, "{}", eqt::memory::toLogLine(snap));
+                // T491 addendum (board B801): /pmem also answers "what IS the
+                // untracked memory" by MAPPING. The biggest owners at the
+                // startup baseline (driver/EGL, thread stacks, shared-library
+                // data) never go through malloc, so no allocator hook can ever
+                // see them -- /proc/self/smaps is the only tool that can.
+                const auto maps = eqt::memory::readMappings();
+                const std::string mapText = eqt::memory::mappingsToLogLines(
+                    d.label.empty() ? std::string("pmem") : d.label, maps, 12);
+                size_t mstart = 0;
+                while (mstart < mapText.size()) {
+                    size_t nl = mapText.find('\n', mstart);
+                    if (nl == std::string::npos) nl = mapText.size();
+                    report.push_back(mapText.substr(mstart, nl - mstart));
+                    mstart = nl + 1;
+                }
+                LOG_INFO(MOD_MAIN, "{}", mapText);
             }
             for (const auto& line : report) {
                 LOG_INFO(MOD_MAIN, "{}", line);

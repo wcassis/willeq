@@ -905,6 +905,10 @@ void eqt::bridge::BridgeComponent::SetLoadingPhase(LoadingPhase phase, const cha
 		eqt::memory::recordPoint("login_world");
 	} else if (phase == LoadingPhase::COMPLETE) {
 		eqt::memory::recordPoint("ready", ctx_.self.CurrentZoneName());
+		// T491 addendum (B801): the second mapping census. Diffing it against
+		// the startup one says how much of a zone-in is heap and how much is
+		// driver/mmap the ledger can never charge.
+		eqt::memory::recordMappings("ready", 16);
 		eqt::memory::noteReady();
 	}
 

@@ -803,6 +803,12 @@ bool Application::initLoginConnection(const ApplicationConfig& config) {
 void Application::run() {
     // T491 lifecycle point: everything is constructed, nothing has run.
     eqt::memory::recordPoint("startup");
+    // T491 addendum (board B801): the STARTUP BASELINE is the whole gap to the
+    // 64 MB target -- T490 measured the Pi at ~190 MB RssAnon before any zone,
+    // and zone loading then costs ~nothing. The allocator ledger cannot see
+    // most of it (driver/EGL, thread stacks, shared-library data all bypass
+    // malloc), so attribute it by MAPPING here, once, where it is formed.
+    eqt::memory::recordMappings("startup", 16);
     LOG_INFO(MOD_MAIN, "Starting main loop...");
     mainLoop();
     LOG_INFO(MOD_MAIN, "Main loop exited");

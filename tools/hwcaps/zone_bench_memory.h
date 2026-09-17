@@ -80,6 +80,10 @@ struct BenchMemorySnapshot {
     // from the SAME ConstrainedRendererConfig as the T293 budgets above
     // (memoryLedgerBudgetBytes; 0 = no budget, the gate skips it).
     eqt::memory::Snapshot ledger;
+    // T491 addendum (board B801): the per-mapping census. The ledger's
+    // `unaccounted` bucket is everything that never went through malloc, and
+    // this is the only thing that says WHOSE it is.
+    eqt::memory::MappingBreakdown mappings;
     std::array<size_t, eqt::memory::kCategoryCount> ledgerBudgetBytes{};
 
     size_t totalEstimate = 0;      // sum of every category above with a defined estimate

@@ -225,6 +225,7 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
 
     // T491: the allocator ledger, same schema as /pmem and the log lines.
     snap.ledger = eqt::memory::snapshot("benchmark_end");
+    snap.mappings = eqt::memory::readMappings();  // T491 addendum (B801)
 
     return snap;
 }
@@ -284,7 +285,9 @@ void writeMemoryJson(const std::string& path, const std::string& zoneName,
                 eqt::memory::categoryName(static_cast<eqt::memory::Category>(i)),
                 snap.ledgerBudgetBytes[i]);
     }
-    fprintf(f, "}\n}\n");
+    fprintf(f, "},\n");
+    fprintf(f, "  \"mappings\": %s\n}\n",
+            eqt::memory::mappingsToJson(snap.mappings, 24).c_str());
     fclose(f);
     printf("[memory-json] %s: saved\n", path.c_str());
 }
