@@ -971,14 +971,11 @@ void AudioManager::scanPfsArchives() {
 
     size_t totalFiles = 0;
     for (const auto& archivePath : archivePaths) {
-        auto archive = std::make_unique<Graphics::PfsArchive>();
-        if (!archive->open(archivePath)) {
-            LOG_WARN(MOD_AUDIO, "Failed to open archive: {}", archivePath);
+        std::vector<std::string> wavFiles;
+        if (!Graphics::PfsArchive::listFilenames(archivePath, ".wav", wavFiles)) {
+            LOG_WARN(MOD_AUDIO, "Failed to index archive: {}", archivePath);
             continue;
         }
-
-        std::vector<std::string> wavFiles;
-        archive->getFilenames(".wav", wavFiles);
 
         for (const auto& wavFile : wavFiles) {
             std::string lowerFile = wavFile;
@@ -988,9 +985,34 @@ void AudioManager::scanPfsArchives() {
             totalFiles++;
         }
 
-        if (!lazyPfsLoading_) {
-            pfsArchives_[archivePath] = std::move(archive);
-        }
+        // T496 Leg D (board B823): this loop INDEXES; it must not materialise.
+        //
+        // It needs one thing from each archive -- the list of .wav names -- and
+        // it used to get that by calling PfsArchive::open(), which reads the
+        // whole file into one buffer AND copies every member's compressed
+        // blocks into `files_`, then kept the opened archive alive whenever
+        // `lazyPfsLoading_` was false. That flag is false HERE on every run,
+        // because the preset's constraints arrive later, through
+        // `setMemoryConstraints()` from `BridgeComponent`, and every
+        // constrained preset sets `lazyPfsLoading = true`
+        // (`ConstrainedRendererConfig::calculateMemoryLimits()`). So the client
+        // loaded seventeen archives it was configured never to keep and freed
+        // them again moments afterwards.
+        //
+        // MEASURED, x86, orangepi preset, cold index cache:
+        //   before  `audio` peak 155,560,752 B, live after initialize()
+        //           150,590,448 B
+        //   after   peak 26,458,800 B, live 25,679,152 B
+        // against 124,397,766 bytes of snd*.pfs on disk. The arena glibc took
+        // for that transient is the Pi's 110 MiB of `malloc_slack`, its #2
+        // bucket (review/T496/pi/table_categories.tsv).
+        //
+        // `listFilenames()` streams the filename table alone. Nothing is lost:
+        // `loadSoundDataFromPfs()` already opens an archive on demand and
+        // caches it in `pfsArchives_` when `lazyPfsLoading_` is false, so a
+        // non-lazy run still ends up with exactly the archives it reads from --
+        // it just no longer pre-warms all seventeen before knowing whether it
+        // may. No sound changes; placement and lifetime only.
 
         if (tickCallback_) tickCallback_();
     }

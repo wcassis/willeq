@@ -175,7 +175,33 @@ TEST(MemoryLedger, MallocFamilyAllRouteThroughTheLedger) {
     EXPECT_EQ(live(Category::Equipment), before);
 
     free(nullptr);  // must be a no-op
-    EXPECT_EQ(realloc(nullptr, 0) != nullptr || true, true);
+    EXPECT_EQ(live(Category::Equipment), before);
+
+    // T496 (board B819): this used to read
+    //     EXPECT_EQ(realloc(nullptr, 0) != nullptr || true, true);
+    // and then assert live == before with the returned pointer DISCARDED, which
+    // made the case a function of the optimisation level rather than of the
+    // ledger. PROVED, not inferred, on the exact body (`g++ -S`, count of
+    // emitted calls):
+    //   -O0: one `call malloc@PLT`  -- GCC lowers realloc(NULL, n) to malloc(n),
+    //        the allocation really happens, nothing frees it, and the ledger
+    //        correctly reports the 48-byte minimum chunk still live -> RED.
+    //   -O2: ZERO calls              -- the pointer never escapes, so GCC elides
+    //        the allocation entirely -> live == before -> GREEN.
+    // Same class as this file's own FreeUnderAnotherScopeCreditsTheChargedCategory
+    // (T491 Review §3) and T400's -O0/-O2 protocol trap. `realloc(ptr, 0)` and
+    // the size of glibc's minimum chunk are both implementation-defined, so
+    // neither is assertable. What the LEDGER promises is: whatever that call
+    // returns, it is charged, and freeing it credits the same category back to
+    // where it started. Let the pointer escape so no optimiser can remove the
+    // call, then free it and assert exactly that.
+    void* rz = realloc(nullptr, 0);
+    __asm__ __volatile__("" : : "r"(rz) : "memory");  // the pointer escapes
+    if (rz) {
+        EXPECT_GE(live(Category::Equipment), before)
+            << "realloc(nullptr, 0) returned a block the ledger did not charge";
+        free(rz);
+    }
     EXPECT_EQ(live(Category::Equipment), before);
 }
 

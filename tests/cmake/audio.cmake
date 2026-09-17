@@ -355,3 +355,21 @@ IF(WITH_AUDIO)
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_music_player_soundfont_lifetime DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# T496 Leg D (board B823): the `audio` category's PEAK at startup. Links the
+# ledger TU directly so the assertion is in bytes of Category::Audio, and links
+# the same AUDIO_COMMON_TEST_SOURCES the other AudioManager tests use.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_audio_startup_peak
+        test_audio_startup_peak.cpp
+        ${AUDIO_COMMON_TEST_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_audio_startup_peak PRIVATE
+        WITH_AUDIO
+        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+    TARGET_LINK_LIBRARIES(test_audio_startup_peak
+        GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
+    GTEST_DISCOVER_TESTS(test_audio_startup_peak DISCOVERY_TIMEOUT 120)
+ENDIF()

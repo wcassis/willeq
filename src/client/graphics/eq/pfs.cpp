@@ -300,5 +300,102 @@ bool PfsArchive::inflateByOffset(uint32_t offset, uint32_t size,
     return true;
 }
 
+// T496 Leg D (board B823). See the declaration in pfs.h for why this exists.
+bool PfsArchive::listFilenames(const std::string& path, const std::string& extension,
+                               std::vector<std::string>& filenames) {
+    filenames.clear();
+
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) return false;
+    const std::streamsize fileSize = file.tellg();
+    if (fileSize < 12) return false;
+
+    auto readAt = [&](std::streamoff off, char* dst, std::streamsize n) {
+        if (off < 0 || off + n > fileSize) return false;
+        file.seekg(off, std::ios::beg);
+        return static_cast<bool>(file.read(dst, n));
+    };
+
+    char head[8];
+    if (!readAt(0, head, 8)) return false;
+    const uint32_t dirOffset = read_val<uint32_t>(head);
+    if (head[4] != 'P' || head[5] != 'F' || head[6] != 'S' || head[7] != ' ') return false;
+
+    char countBuf[4];
+    if (!readAt(dirOffset, countBuf, 4)) return false;
+    const uint32_t dirCount = read_val<uint32_t>(countBuf);
+    if (dirCount == 0 || dirCount > (1u << 22)) return false;
+
+    std::vector<char> dir(static_cast<size_t>(dirCount) * 12);
+    if (!readAt(static_cast<std::streamoff>(dirOffset) + 4, dir.data(),
+                static_cast<std::streamsize>(dir.size()))) {
+        return false;
+    }
+
+    // The filename table is the entry carrying this well-known CRC; every other
+    // entry is a member file and is of no interest to an index pass.
+    uint32_t fnOffset = 0, fnSize = 0;
+    bool found = false;
+    for (uint32_t i = 0; i < dirCount; ++i) {
+        const char* e = dir.data() + static_cast<size_t>(i) * 12;
+        if (read_val<int32_t>(e) != 0x61580ac9) continue;
+        fnOffset = read_val<uint32_t>(e + 4);
+        fnSize = read_val<uint32_t>(e + 8);
+        found = true;
+        break;
+    }
+    if (!found || fnSize == 0) return false;
+
+    // Inflate just that entry, one compressed block at a time, straight off the
+    // stream -- never a buffer the size of the archive.
+    std::vector<char> out(fnSize, '\0');
+    std::vector<char> block;
+    std::streamoff pos = fnOffset;
+    uint32_t done = 0;
+    while (done < fnSize) {
+        char lens[8];
+        if (!readAt(pos, lens, 8)) return false;
+        const uint32_t deflateLength = read_val<uint32_t>(lens);
+        const uint32_t inflateLength = read_val<uint32_t>(lens + 4);
+        if (inflateLength == 0 || done + inflateLength > fnSize) return false;
+        block.resize(deflateLength);
+        if (deflateLength && !readAt(pos + 8, block.data(),
+                                     static_cast<std::streamsize>(deflateLength))) {
+            return false;
+        }
+        inflateData(block.data(), deflateLength, out.data() + done, inflateLength);
+        done += inflateLength;
+        pos += static_cast<std::streamoff>(deflateLength) + 8;
+    }
+
+    std::string ext = extension;
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    const bool allFiles = (ext == "*");
+    const size_t extLen = ext.length();
+
+    uint32_t p = 0;
+    if (p + sizeof(uint32_t) > out.size()) return false;
+    const uint32_t nameCount = read_val<uint32_t>(&out[p]);
+    p += sizeof(uint32_t);
+    for (uint32_t i = 0; i < nameCount; ++i) {
+        if (p + sizeof(uint32_t) > out.size()) return false;
+        const uint32_t len = read_val<uint32_t>(&out[p]);
+        p += sizeof(uint32_t);
+        if (len == 0 || p + len > out.size()) return false;
+        std::string name(&out[p], len - 1);   // trailing NUL, as open() does
+        p += len;
+        std::transform(name.begin(), name.end(), name.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        if (allFiles) {
+            filenames.push_back(std::move(name));
+        } else if (name.length() > extLen &&
+                   name.compare(name.length() - extLen, extLen, ext) == 0) {
+            filenames.push_back(std::move(name));
+        }
+    }
+    return !filenames.empty();
+}
+
 } // namespace Graphics
 } // namespace EQT
