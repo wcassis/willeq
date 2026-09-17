@@ -427,3 +427,26 @@ the Pi, which no run in T496 performed. (b) That `listFilenames()` is correct
 for archives with **no** filename table, or a malformed one, is asserted only
 by its defensive returns, not by a fixture — every real `snd*.pfs` has one.
 Everything else in this addendum is [measured].
+
+### 5. Leg D verification bar [measured]
+
+| step | result |
+|---|---|
+| rebase onto `fable` `ec1e9d77` (T497) | clean but for one `docs/decisions.md` hunk, which was ADDITIONS (two new dated sections after one anchor), **both kept** |
+| `cmake --build build -j8` | **exit 0**, 0 `error:` |
+| `scripts/build-gles2-x86.sh` | **exit 0** |
+| `scripts/build-arm-noble.sh` (Leg D confirming binary) | **exit 0**, 0 `error:` |
+| **full `ctest -j6`** | **4,903 tests, 4,903 PASS, 0 FAIL** — including `visual_gate` (Passed in-suite, 22.62 s) and the formerly-red `MemoryLedger.MallocFamilyAllRouteThroughTheLedger` |
+| `test_memory_ledger` at `-O2` (a separate `-DCMAKE_BUILD_TYPE=Release` tree) | **20/20** — the B819 fix holds at both optimisation levels, which was the point |
+| `test_audio_startup_peak` | **3/3**; red first at 155,560,752 B peak / 150,590,448 B live |
+| `test_music_player_soundfont_lifetime` | **3/3** (B817, unchanged) |
+| `test_constrained_renderer` | **74/74** with the new `audio` budget pinned |
+| two hygiene reds found and fixed | `ZeroCallers` (**mine**: an identifier collision — see B823's commit) and `DocCitations` (**not mine**: red on `fable` `ec1e9d77`, T497 cites a script it only proposes) |
+| goldens | **untouched** (`git status` clean) |
+
+### 6. Lane state after Leg D
+
+Lock taken as `T496` and **released**; world **DOWN** (`down.sh`); Testcaster's
+row restored to `zone_id=34, x=-41.8658, y=2723.33, z=-24.8438` with the world
+stopped FIRST (T493 write-back rule). LOCAL lane only; the VM at 172.16.200.99
+and hermes-ext never touched; no Testchar. Pi idle. Not merged.
