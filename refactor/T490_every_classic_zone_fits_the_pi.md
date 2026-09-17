@@ -144,7 +144,11 @@ outside the build tree so the running build was untouched.
 | iceclad heap retained by the parse | 28,869,232 B | 205,197,400 B |
 | iceclad parse peak | 65,456,736 B | 232,714,944 B |
 
-The 176.3 MB retained difference is regions²/8 and nothing else. `[measured]`
+The 176,328,168 B retained difference decomposes exactly: 178,417,096 B of
+dense bitsets (regions²/8 = 176,804,610 B plus each `vector<bool>`'s header)
+less the 4,832,309 B RLE arena the tip holds instead, plus a 2,743,381 B
+residual that is 72.9 B per region — the control block and map node of 37,609
+separate heap blocks, which one arena does not pay. `[measured]`
 
 ## 4. The test's bound
 
