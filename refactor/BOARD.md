@@ -11238,7 +11238,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
 
 ## Added 2026-09-16 by T493 (scenario.sh restore keeps the world down)
 
-- **B797** (A) `scripts/eqemu/env.sh` `eqemu_port_open()`, and its callers
+- ~~**B797**~~ (A) STRUCK 2026-09-17 by T497 (fable ec1e9d77): readiness is `eqemu_stack_ready` = `server_process_running` AND an in-container `/dev/tcp` probe; `eqemu_port_open` renamed `eqemu_host_port_reachable` (reachability only); `ready_selftest.sh --legacy` exit 70 / fixed exit 0 [measured]. `scripts/eqemu/env.sh` `eqemu_port_open()`, and its callers
   `scripts/eqemu/up.sh` (`wait_for "<x> port ..."`) and
   `scripts/llmbench/record.sh` ("eqemu already up (5998 and 9000 open)") --
   **a TCP port probe cannot tell a live eqemu stack from a dead one on the
@@ -11269,7 +11269,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   both host ports still answered -- and the same run against
   `eqemu_stack_ready` exits **0**. `up.sh` now waits a REAL 2 s for world's
   in-container port after starting it, where it used to print `ready (0s)`.
-- **B798** (B) `scripts/eqemu/down.sh` -- **its `pkill` pattern is the right
+- ~~**B798**~~ (B) STRUCK 2026-09-17 by T497: `eq_container_pkill` refuses a self-matching pattern (rc 2); down.sh/restore_selftest.sh/camera_match_*.sh re-pointed at it [measured]. `scripts/eqemu/down.sh` -- **its `pkill` pattern is the right
   one and `scenario.sh`'s was not, and nothing said so.** `down.sh` uses
   `pkill -TERM -f '/bin/(loginserver|world|zone)( |$)'`, which does not match
   its own `bash -c` wrapper; the `restore_snapshot()` chain T493 deleted used

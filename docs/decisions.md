@@ -1148,3 +1148,24 @@ thing the Pi rig needs that the x86 one does not is **`--log-module=MAIN:INFO`**
 `[memledger]`/`[memmap]` are `LOG_INFO` on `MOD_MAIN`, the Pi runs at the
 default quiet level, and T490's Pi logs contain zero `[INFO]` lines — the
 ledger was silent there and nobody had noticed.
+
+## 2026-09-17 — memory: 100 % accounting is PRIMARY; x86 development; shared blocks (Will)
+
+Three rulings from Will, recorded verbatim in substance by the orchestrator (T501 found the
+second and third relayed into CLAUDE.md without a citation here):
+
+1. **"For memory, 'inside target' is a secondary goal. The primary goal is 100 % accounting for
+   all use. This is non-negotiable and must be completed."** Every resident byte — anonymous and
+   file-backed, heap and non-heap, driver mappings, stacks, library data — is attributed to a named
+   owner at every lifecycle point, on BOTH platforms. `unaccounted`, `unattributed` and
+   `malloc_slack` are defects to be explained byte-for-byte, not residues.
+2. **"If perf is better, the memory work can be done on x86. There's no requirement that all
+   testing must be done on the Pi. However, having final memory usage numbers for both x86 and
+   arm is a requirement."** Instrument, red-test and fix on x86; the Pi is the confirming run and
+   the source of the ARM numbers; every memory unit's Review carries BOTH tables. Caveat measured
+   by T496: driver-coupled buckets differ 1.5–50× between llvmpipe and Mali and in direction, so
+   for those the accounting closes on both, never assumed from x86.
+3. **Shared resources (B843): "in the case of shared resources occupying X amount of memory, just
+   report X: category1, category2, … categoryN."** A shared block is reported ONCE with every
+   claimant listed; it is never added into each claimant's total (that double-count is what made
+   the Pi `[modelmem]` tally read 125 %). The ledger/tally sums to the resident total exactly once.
