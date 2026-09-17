@@ -171,6 +171,11 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     `EQT::Graphics::PvsBits pvsRegion;`, 133 gained `->pvs()`, and 138,
 //     141, 142 read `.empty()` / `.size()` / `[regionIdx]` on that handle
 //     instead of `->visibleRegions.*`. The count is UNCHANGED at 328.
+//     Entry 132 also gained `&& ctx_.zoneBspTree->regions[...]`: the old code
+//     held the region as a shared_ptr and tested it (`if (pvsRegion && ...)`
+//     at 138), so a null slot in `regions` was safe; calling `->pvs()` at 133
+//     dereferences it, and the guard moved into the condition rather than
+//     becoming a statement of its own. Still 328.
 const size_t kGoldenSize = 328u;
 
 std::vector<std::string> readLines(const std::string& path) {

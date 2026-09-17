@@ -38,6 +38,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_preload.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
+        # T490: BspRegion/BspTree PVS methods moved into zone_bsp.cpp (RLE store).
+        ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_material.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_mesh.cpp
@@ -117,6 +119,8 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(test_asset_loading
         test_asset_loading.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
+        # T490: BspRegion/BspTree PVS methods moved into zone_bsp.cpp (RLE store).
+        ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_material.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_mesh.cpp

@@ -130,7 +130,7 @@
 129 ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
 130 EQT::Graphics::PvsBits pvsRegion;
 131 if (ctx_.usePvsCulling && ctx_.zoneBspTree && ctx_.currentPvsRegion != SIZE_MAX
-132 && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size()) {
+132 && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size() && ctx_.zoneBspTree->regions[ctx_.currentPvsRegion]) {
 133 pvsRegion = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion]->pvs();
 134 float camX = ctx_.playerX, camY = ctx_.playerY, camZ = ctx_.playerZ;
 135 for (auto& [regionIdx, eqBbox] : ctx_.regionBoundingBoxes) {

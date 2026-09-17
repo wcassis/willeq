@@ -1572,6 +1572,8 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(equipment_index_builder
         tools/equipment_index_builder.cpp
         src/client/graphics/eq/pfs.cpp
+        # T490: BspRegion/BspTree PVS methods moved into zone_bsp.cpp (RLE store).
+        src/client/zone_bsp.cpp
         src/client/graphics/eq/wld_loader.cpp
         src/client/graphics/eq/wld_fragments_material.cpp
         src/client/graphics/eq/wld_fragments_mesh.cpp

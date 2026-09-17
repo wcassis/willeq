@@ -11,6 +11,7 @@
 #include <memory>
 #include <vector>
 
+#include "client/zone_bsp.h"   // BspTree/BspRegion are only forward-declared by simulation_worker.h
 #include "client/graphics/simulation_worker.h"
 
 using namespace EQT::Graphics;

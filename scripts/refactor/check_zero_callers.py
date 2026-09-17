@@ -936,6 +936,14 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "SpellDisplayEqStrIds"): "seam",
     ("(free)", "Test_GetLastComputedPositionUpdate"): "seam",
     ("(free)", "Test_SnapToMovementTargetForSeam"): "seam",
+    # T490: the PVS store's two observation windows. setPvs() is the pinned,
+    # pre-decoded form a HAND-BUILT tree uses (tests and tools construct a
+    # BspTree with no WLD behind it); the WLD parser always calls setPvsRle().
+    # pvsMemoryBytes() reports one region's share of the arena so a test can
+    # assert the storage is linear in regions and not regions^2/8 -- production
+    # tallies the whole arena at once through BspTree::pvsArenaBytes().
+    ("BspRegion", "setPvs"): "seam",
+    ("BspRegion", "pvsMemoryBytes"): "seam",
     ("EquipmentModelLoader", "debugInjectCachedMeshForTest"): "seam",
     ("FrameComponent", "frustumDebugBoxCount"): "seam",
     ("FrameComponent", "frustumDebugDraw"): "seam",

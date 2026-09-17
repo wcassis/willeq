@@ -391,7 +391,7 @@ void FrameComponent::renderDebugOverlays(float deltaTime) {
         // Get current PVS region for occlusion check
         EQT::Graphics::PvsBits pvsRegion;
         if (ctx_.usePvsCulling && ctx_.zoneBspTree && ctx_.currentPvsRegion != SIZE_MAX
-            && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size()) {
+            && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size() && ctx_.zoneBspTree->regions[ctx_.currentPvsRegion]) {
             pvsRegion = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion]->pvs();
         }
 

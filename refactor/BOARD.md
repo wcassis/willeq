@@ -10989,6 +10989,92 @@ red under T472's C, green under c20).
 
 B757–B759 unused.
 
+## Added 2026-09-17 by T490 (the Iceclad OOM: the PVS was stored regions²/8)
+
+Census of all 118 original/Kunark/Velious zone archives (regions, PVS storage,
+WLD tally, parse peak/retained heap): `review/T490/x86/pvs_census.tsv`, taken by
+`review/T490/scripts/pvs_census.cpp`. Pi runs: `review/T490/pi/`.
+
+- ~~**B799**~~ **CLOSED by T490.** `BspRegion::visibleRegions` was a dense
+  `std::vector<bool>` sized to the zone's region count, decoded for EVERY region
+  at WLD parse time -- **regions²/8 bytes per tree**, 176,804,610 B for iceclad's
+  37,609 regions. On the Orange Pi that OOM-killed the client at
+  `loadZoneSequential: [55%] Computing spatial data` (`loadZoneStep2_BSP`),
+  AUDIT-0914 anon-rss 318,500 kB. A second term of the same shape sat beside it:
+  `SimBridgeComponent::buildSimulationZoneData()` pre-built
+  `pvsVisibleBoundsIndices`, one candidate list per camera region --
+  `sum(visible-per-region)` `size_t`s, **257,796,088 B for iceclad**,
+  224,283,968 B for warslikswood, 293,052,304 B for cabeast, and 22.9 MiB for
+  the GATE zone gfaydark. The PVS is now kept as the WLD's own fragment-0x22 RLE
+  string in one arena on the tree (iceclad 4,832,309 B, a 36.6x reduction) and
+  decoded on demand through a bounded 16-slot cache; the candidate list is built
+  for one camera region at a time. Pinned by `ZoneBspPvs*` (15 cases, four real
+  zones incl. iceclad and timorous) and `SimPvsCandidates` (4 cases). RED proof
+  `review/T490/x86/redproof/`: restoring the dense form takes iceclad's retained
+  parse heap from 28,869,232 B to 205,197,400 B and fails five cases. Found by
+  AUDIT-0914, fixed by T490.
+
+- **B800** (A, *measured*) **Iceclad and Timorous still OOM on the Orange Pi
+  after B799 -- the eager per-region mesh build is the next term.** With B799
+  fixed the client passes `loadZoneStep2_BSP` (which now costs +10 MB anon,
+  184,444 -> 194,732 kB) and is killed in the mesh build instead. Same-rig A/B,
+  2026-09-17: the fable-tip ARM binary dies **inside** step 2 (last audit step
+  `01_S3D`, peak RssAnon 326,724 kB); the T490 binary logs `02_BSP` and dies
+  after it (peak RssAnon 318,880 kB). timorous the same (`02_BSP`, 236,044 kB).
+  `loadZoneStep4_Regions()` builds one `IMeshSceneNode` + mesh + hardware buffer
+  per region, eagerly, for all 37,609 -- heaptrack puts `uploadMeshHWBuffers` at
+  31.04 MiB for iceclad against 11.09 MiB for firiona (9,686 regions) and
+  2.10 MiB for wakening (`review/T490/x86/heaptrack_peak_sites.md`). **That the
+  step is step 4 is measured** (the run logs `02_BSP` and never `04_Regions`,
+  and there is no step 3); **that `uploadMeshHWBuffers` is the term on the Pi is
+  ASSUMED** -- the heaptrack numbers are x86/llvmpipe, and the Pi's buffer
+  allocation happens inside the Mali driver where the client cannot see it.
+  Confirming it needs a per-step audit line inside step 4. This is
+  **B752's lever question** (per-object/per-region build distance, instancing,
+  or the removed `ConstrainedMeshCache`) applied to region meshes rather than
+  placed objects, so it is Will's call in the same way. Runs:
+  `review/T490/pi/raw/{iceclad_T490,iceclad_BEFORE_fable,timorous_T490c}`.
+  Found by T490.
+
+- **B801** (A, *measured*) **The client is ~190 MB of anonymous memory BEFORE it
+  loads a zone, and a zone that loads costs approximately nothing on top.** nro
+  on the Pi, the full `[LOAD-MEM-AUDIT]` ladder at the T490 tip
+  (`review/T490/pi/raw/nro_T490c`): `00_start` RssAnon **192,284 kB** ->
+  `13_Cleanup` **190,548 kB**, a net *decrease* across all fifteen steps; peak
+  RssAnon for the whole run 199,396 kB with 1,828 kB of swap; qeynos2 the same
+  shape (172,512 -> 157,516 kB, peak 184,316 kB). Against Will's
+  2026-09-17 target (32-64 MB RSS) the gap is ~126 MB and **all of it is the
+  pre-zone baseline** -- no amount of zone-load work reaches 64 MB. Whatever
+  holds that 190 MB at `00_start` is unattributed: the audit line's own
+  `accounted_kb` is 43 and `untracked_kb` 228,621. T491 owns the ledger; this
+  is the number it has to explain first. Found by T490.
+
+- **B802** (P) **A Pi/live sweep that sets `character_data` between runs must
+  wait out the previous client's LINKDEAD flush, then read the row back.** The
+  server re-saves the character tens of seconds AFTER the client process dies,
+  silently clobbering a zone written in between, and the next run logs into the
+  PREVIOUS zone with no error anywhere. Four T490 runs were wasted this way
+  (a timorous run entered iceclad; an eastwastes run, a cabeast run and a
+  warslikswood retry all entered stonebrunt) and the memory figures looked
+  perfectly plausible. Same family as B784. The recipe that works is in
+  `review/T490/scripts/pi_sweep.sh`: settle 75 s, `update`, `select` it back and
+  refuse to launch on a mismatch, then re-check the client's own
+  `=== Entering <zone> ===` line afterwards and mark the run invalid if it
+  disagrees. **Every table must carry the zone the client actually entered, not
+  the one requested.** Found by T490.
+
+- **B803** (B, *measured*) **`orangepi.s3dZoneSourceMemoryBytes` (24 MiB) does
+  not describe the largest zone in the game.** T293 derived it from gfaydark
+  (7.52 MiB x 2.34 x 1.25); iceclad's WLD tally at the T490 tip is 25,737,912 B
+  = 24.55 MiB, 572,088 B over, and its retained parse heap is 27.53 MiB. Nothing
+  is red because `scripts/ci/visual_gate.py` applies the preset to the three
+  GOLDEN zones only (qeynos2 2.68 MiB, gfaydark 5.83 MiB, nro 1.46 MiB) -- i.e.
+  the gate's zones are not the worst case and nothing says so. T490's
+  `test_zone_bsp_pvs` bounds at 32 MiB instead, derived from the measured maxima
+  over all 118 zones. Either the preset moves to 32 MiB or the ledger records
+  why the gate zones suffice. T490 did not touch the presets or the gate (T491's
+  territory). Found by T490.
+
 ## Added 2026-09-17 by T485 Leg B (Will's ruling: the correction is the IDENTITY)
 
 **WILL'S RULING, 2026-09-17, verbatim** -- this is the measured fact the held-item
@@ -11052,5 +11138,4 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   vertical), not the correction. B756 stays open, re-scoped, and still needs the
   lock and a stepped video.
 
-B801–B809 unused.
-
+B806–B809 unused.
