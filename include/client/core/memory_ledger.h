@@ -34,6 +34,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #ifndef EQT_MEMORY_LEDGER
 #define EQT_MEMORY_LEDGER 0
@@ -155,6 +156,16 @@ inline Category setThreadCategory(Category c) {
 
 constexpr bool enabled() { return EQT_MEMORY_LEDGER != 0; }
 
+// T491 addendum -- Will's standing decision, 2026-09-17: "the goal is willeq's
+// RSS footprint between 32 and 64 MB. The 256 MB ceiling is now an interim
+// bound, not the target." Both lines travel with every report so a lifecycle
+// point is read against the target, not only against the ceiling that is being
+// retired. kRssCeilingBytes is the FAILING bound (docs/decisions.md, T293
+// envelope); kRssTargetBytes is printed as a gap, never asserted -- asserting
+// it today would make every run red and tell nobody anything new.
+constexpr uint64_t kRssCeilingBytes = 256ull * 1024 * 1024;
+constexpr uint64_t kRssTargetBytes = 64ull * 1024 * 1024;
+
 struct CategoryStats {
     uint64_t liveBytes = 0;   // charged - credited
     uint64_t peakBytes = 0;   // high-water mark of liveBytes since start/resetPeaks()
@@ -180,7 +191,97 @@ struct Snapshot {
     uint64_t mallocArenaBytes = 0;           // mallinfo2: arena + hblkhd
     uint64_t mallocInUseBytes = 0;           // mallinfo2: uordblks + hblkhd
     uint64_t mallocSlackBytes = 0;           // arena - inuse (free lists, fragmentation)
+    // How RssAnon is covered. NOT a strict partition, and the reason is
+    // measured, not assumed: mallinfo2's `arena` is what glibc has taken from
+    // the OS, and its free lists may hold pages that are NOT resident, so the
+    // heap buckets can sum past the resident total. The buckets therefore
+    // COVER RssAnon (sum >= RssAnon); only `unaccounted` below is exact.
+    //   attributed      = ledgerTotalBytes           (a category owns it)
+    //   heap_uncharged  = mallocInUse - ledgerTotal  (glibc's own internals)
+    //   malloc_slack    = arena - inUse              (free lists, fragmentation)
+    //   unaccounted     = rssAnon - arena            (NOT heap at all)
+    // unattributedBytes above is rssAnon - ledger, kept because the plan and
+    // the gate's first bound were written in those terms.
+    // Heap bytes glibc counts as IN USE that the ledger did not charge:
+    // allocations glibc makes through its OWN internal malloc, which an
+    // in-executable interposer does not see (early stdio/locale/dl work).
+    // Small and bounded, but it is real RSS, so it gets a named bucket rather
+    // than silently widening "unaccounted" -- that is what 100% means.
+    uint64_t heapUnchargedBytes = 0;         // max(0, mallocInUse - ledgerTotal)
+    // Anonymous RSS that is NOT on glibc's heap at all: thread stacks, direct
+    // mmap (Irrlicht/driver), llvmpipe's JIT code pages. Exact, and the only
+    // residual no amount of allocator attribution can ever reduce.
+    uint64_t unaccountedBytes = 0;           // max(0, rssAnon - mallocArena)
+    double unaccountedPct = 0.0;             // 100 * unaccounted / rssAnon
+    // T491 addendum (2026-09-17): the two lines every point is read against.
+    uint64_t rssCeilingBytes = kRssCeilingBytes;
+    uint64_t rssTargetBytes = kRssTargetBytes;
+    uint64_t overCeilingBytes = 0;           // max(0, rssAnon - ceiling)
+    uint64_t overTargetBytes = 0;            // max(0, rssAnon - target)
 };
+
+// T491 addendum: the categories that would have to shrink to reach the 64 MB
+// target, largest live bytes first, with the three non-category buckets
+// (heap_uncharged, malloc_slack, unaccounted) included -- they are part of
+// RssAnon and shrinking only the categories cannot close the gap on its own.
+// The rows are a PARTITION of RssAnon: they sum to it exactly. Returns every
+// bucket with nonzero live bytes, sorted descending.
+struct GapRow {
+    std::string bucket;   // category name, or one of the three non-category buckets
+    uint64_t liveBytes = 0;
+    double pctOfRssAnon = 0.0;
+};
+std::vector<GapRow> gapToTarget(const Snapshot& s);
+
+// ---------------------------------------------------------------------------
+// T491 addendum (2026-09-17, from T490's measurement, board B801): the gap to
+// the 64 MB target is ENTIRELY the pre-zone baseline -- on the Pi nro goes
+// 192,284 kB -> 190,548 kB across the whole load ladder, so zone loading costs
+// ~nothing in anon and ~180 MB is already resident before any zone exists.
+// The allocator ledger cannot see that memory: driver/EGL/Mali allocations,
+// thread stacks and every shared library's writable data are mmap'd or brk'd
+// behind malloc's back and land in the `unaccounted` bucket by construction.
+//
+// /proc/self/smaps CAN see it: every mapping reports its own `Anonymous:`
+// (private dirty anonymous pages -- exactly RssAnon, summed) alongside the
+// pathname that says WHOSE it is. This is the tool that answers "what is the
+// untracked 180 MB", and it is the only one that works for allocations that
+// never went through malloc.
+// ---------------------------------------------------------------------------
+
+struct MappingRow {
+    std::string name;        // "[heap]", "[stack]", "[anon]", "so:libfoo.so.1", "file:willeq"
+    uint64_t anonBytes = 0;  // sum of `Anonymous:` -- the RssAnon this owner holds
+    uint64_t rssBytes = 0;   // sum of `Rss:` (anon + file-backed resident)
+    uint64_t sizeBytes = 0;  // sum of `Size:` -- address space, resident or not
+    uint32_t mappings = 0;   // how many mappings folded into this row
+};
+
+struct MappingBreakdown {
+    bool available = false;      // false if /proc/self/smaps could not be read
+    std::vector<MappingRow> rows;  // descending by anonBytes
+    uint64_t totalAnonBytes = 0;
+    uint64_t totalRssBytes = 0;
+    uint32_t mappings = 0;
+};
+
+// Parse an smaps-format buffer. Split out from the /proc read so it is
+// testable offline against a fixture -- a parser proved only against the
+// running process is proved against one input.
+MappingBreakdown parseSmaps(const std::string& text);
+// Read and parse /proc/self/smaps. Costs one ~100 kB read and a parse
+// (milliseconds), so this is a LIFECYCLE-POINT call, never per frame.
+MappingBreakdown readMappings();
+// `[memmap] point=<point> owner=<name> anon=<bytes> rss=<bytes> size=<bytes>
+// maps=<n>` lines, one per row, biggest first, capped at `topN` (0 = all),
+// preceded by a total line. Same parse contract as the [memledger] lines.
+std::string mappingsToLogLines(const std::string& point, const MappingBreakdown& b,
+                               size_t topN = 12);
+// JSON array of the rows, for the benchmark's memory JSON and the gate.
+std::string mappingsToJson(const MappingBreakdown& b, size_t topN = 24);
+// Snapshot + LOG_INFO of the [memmap] lines. Called at the baseline-defining
+// lifecycle points (startup, ready) -- not at every point.
+MappingBreakdown recordMappings(const std::string& point, size_t topN = 12);
 
 // Take a snapshot now. `point` is the lifecycle label; `zone` optional.
 Snapshot snapshot(const std::string& point, const std::string& zone = std::string());

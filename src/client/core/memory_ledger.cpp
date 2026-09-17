@@ -6,10 +6,13 @@
 
 #include "client/core/memory_ledger.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <vector>
 #include <mutex>
 #include <new>
 
@@ -152,11 +155,47 @@ Snapshot snapshot(const std::string& point, const std::string& zone) {
     if (s.rssAnonBytes > s.ledgerTotalBytes) {
         s.unattributedBytes = s.rssAnonBytes - s.ledgerTotalBytes;
     }
+    // Cover RssAnon with four named buckets so nothing is hidden. See the
+    // Snapshot comment for why this covers rather than partitions: glibc's
+    // arena can hold non-resident free pages.
+    if (s.mallocInUseBytes > s.ledgerTotalBytes) {
+        s.heapUnchargedBytes = s.mallocInUseBytes - s.ledgerTotalBytes;
+    }
+    if (s.rssAnonBytes > s.mallocArenaBytes) {
+        s.unaccountedBytes = s.rssAnonBytes - s.mallocArenaBytes;
+    }
     if (s.rssAnonBytes > 0) {
         s.unattributedPct = 100.0 * static_cast<double>(s.unattributedBytes)
                             / static_cast<double>(s.rssAnonBytes);
+        s.unaccountedPct = 100.0 * static_cast<double>(s.unaccountedBytes)
+                           / static_cast<double>(s.rssAnonBytes);
     }
+    // T491 addendum (2026-09-17): both lines, on every point.
+    if (s.rssAnonBytes > s.rssCeilingBytes) s.overCeilingBytes = s.rssAnonBytes - s.rssCeilingBytes;
+    if (s.rssAnonBytes > s.rssTargetBytes) s.overTargetBytes = s.rssAnonBytes - s.rssTargetBytes;
     return s;
+}
+
+std::vector<GapRow> gapToTarget(const Snapshot& s) {
+    std::vector<GapRow> rows;
+    rows.reserve(kCategoryCount + 2);
+    auto push = [&](const char* name, uint64_t live) {
+        if (!live) return;
+        GapRow r;
+        r.bucket = name;
+        r.liveBytes = live;
+        r.pctOfRssAnon = s.rssAnonBytes
+                             ? 100.0 * static_cast<double>(live) / static_cast<double>(s.rssAnonBytes)
+                             : 0.0;
+        rows.push_back(r);
+    };
+    for (size_t i = 0; i < kCategoryCount; ++i) push(kCategoryNames[i], s.categories[i].liveBytes);
+    push("heap_uncharged", s.heapUnchargedBytes);
+    push("malloc_slack", s.mallocSlackBytes);
+    push("unaccounted", s.unaccountedBytes);
+    std::sort(rows.begin(), rows.end(),
+              [](const GapRow& a, const GapRow& b) { return a.liveBytes > b.liveBytes; });
+    return rows;
 }
 
 std::string toLogLine(const Snapshot& s) {
@@ -178,6 +217,15 @@ std::string toLogLine(const Snapshot& s) {
     appendKV(out, "malloc_arena", s.mallocArenaBytes);
     appendKV(out, "malloc_inuse", s.mallocInUseBytes);
     appendKV(out, "malloc_slack", s.mallocSlackBytes);
+    appendKV(out, "heap_uncharged", s.heapUnchargedBytes);
+    appendKV(out, "unaccounted", s.unaccountedBytes);
+    // T491 addendum: the 64 MB target and the 256 MB interim ceiling travel on
+    // every line, so a cap-hunt log answers "how far past 64 MB" without a
+    // second tool.
+    appendKV(out, "target", s.rssTargetBytes);
+    appendKV(out, "over_target", s.overTargetBytes);
+    appendKV(out, "ceiling", s.rssCeilingBytes);
+    appendKV(out, "over_ceiling", s.overCeilingBytes);
     appendKV(out, "allocs", s.allocCount);
     for (size_t i = 0; i < kCategoryCount; ++i) {
         out += ' ';
@@ -219,6 +267,35 @@ std::string toReportText(const Snapshot& s) {
              static_cast<unsigned long long>(s.mallocSlackBytes),
              static_cast<unsigned long long>(s.rssFileBytes));
     out += buf;
+    snprintf(buf, sizeof(buf),
+             "  RssAnon covered by: attributed %.1f MiB + glibc-internal %.1f MiB + "
+             "allocator slack %.1f MiB + non-heap %.1f MiB (%.1f%%)\n",
+             s.ledgerTotalBytes / 1048576.0, s.heapUnchargedBytes / 1048576.0,
+             s.mallocSlackBytes / 1048576.0,
+             s.unaccountedBytes / 1048576.0, s.unaccountedPct);
+    out += buf;
+    // T491 addendum (Will, 2026-09-17): both lines, and the gap to the target.
+    snprintf(buf, sizeof(buf),
+             "  RssAnon %.1f MiB vs TARGET %.0f MiB (%s%.1f MiB) vs ceiling %.0f MiB (%s%.1f MiB)\n",
+             s.rssAnonBytes / 1048576.0, s.rssTargetBytes / 1048576.0,
+             s.overTargetBytes ? "over by " : "under, headroom ",
+             (s.overTargetBytes ? s.overTargetBytes : s.rssTargetBytes - s.rssAnonBytes) / 1048576.0,
+             s.rssCeilingBytes / 1048576.0,
+             s.overCeilingBytes ? "over by " : "under, headroom ",
+             (s.overCeilingBytes ? s.overCeilingBytes : s.rssCeilingBytes - s.rssAnonBytes) / 1048576.0);
+    out += buf;
+    if (s.overTargetBytes) {
+        snprintf(buf, sizeof(buf),
+                 "  to reach the %.0f MiB target, shrink %.1f MiB; biggest buckets first:\n",
+                 s.rssTargetBytes / 1048576.0, s.overTargetBytes / 1048576.0);
+        out += buf;
+        const auto rows = gapToTarget(s);
+        for (size_t i = 0; i < rows.size() && i < 8; ++i) {
+            snprintf(buf, sizeof(buf), "    %-18s %10.2f MiB  %5.1f%% of RssAnon\n",
+                     rows[i].bucket.c_str(), rows[i].liveBytes / 1048576.0, rows[i].pctOfRssAnon);
+            out += buf;
+        }
+    }
     return out;
 }
 
@@ -250,9 +327,183 @@ std::string toJson(const Snapshot& s) {
     out += std::string("\"unattributedPct\":") + pct + ",";
     out += "\"mallocArenaBytes\":" + std::to_string(s.mallocArenaBytes) + ",";
     out += "\"mallocInUseBytes\":" + std::to_string(s.mallocInUseBytes) + ",";
-    out += "\"mallocSlackBytes\":" + std::to_string(s.mallocSlackBytes);
+    out += "\"mallocSlackBytes\":" + std::to_string(s.mallocSlackBytes) + ",";
+    out += "\"heapUnchargedBytes\":" + std::to_string(s.heapUnchargedBytes) + ",";
+    out += "\"unaccountedBytes\":" + std::to_string(s.unaccountedBytes) + ",";
+    snprintf(pct, sizeof(pct), "%.2f", s.unaccountedPct);
+    out += std::string("\"unaccountedPct\":") + pct + ",";
+    // T491 addendum (2026-09-17): the gate prints the gap to 64 MB from these.
+    out += "\"rssTargetBytes\":" + std::to_string(s.rssTargetBytes) + ",";
+    out += "\"overTargetBytes\":" + std::to_string(s.overTargetBytes) + ",";
+    out += "\"rssCeilingBytes\":" + std::to_string(s.rssCeilingBytes) + ",";
+    out += "\"overCeilingBytes\":" + std::to_string(s.overCeilingBytes);
     out += "}";
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// T491 addendum: /proc/self/smaps attribution of the baseline (board B801).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Fold a mapping's pathname into an OWNER name. The grouping is what makes the
+// output readable: 40 mappings of the same .so are one row, and every unnamed
+// anonymous mapping (thread stacks, driver arenas, JIT pools) is one row that
+// can then be chased with the mapping count.
+std::string ownerOf(const std::string& path) {
+    if (path.empty()) return "[anon]";
+    if (path[0] == '[') return path;                 // [heap] [stack] [vvar] ...
+    const size_t slash = path.find_last_of('/');
+    const std::string base = slash == std::string::npos ? path : path.substr(slash + 1);
+    if (base.find(".so") != std::string::npos) return "so:" + base;
+    return "file:" + base;
+}
+
+uint64_t kbField(const std::string& line, const char* key, size_t keyLen) {
+    if (line.compare(0, keyLen, key, keyLen) != 0) return UINT64_MAX;
+    const char* p = line.c_str() + keyLen;
+    while (*p == ' ' || *p == '\t') ++p;
+    return strtoull(p, nullptr, 10) * 1024;
+}
+
+}  // namespace
+
+MappingBreakdown parseSmaps(const std::string& text) {
+    MappingBreakdown b;
+    b.available = !text.empty();
+    // Insertion-ordered accumulation keyed by owner name.
+    std::vector<MappingRow> rows;
+    auto rowFor = [&rows](const std::string& name) -> MappingRow& {
+        for (auto& r : rows) {
+            if (r.name == name) return r;
+        }
+        rows.push_back(MappingRow{name, 0, 0, 0, 0});
+        return rows.back();
+    };
+    std::string owner;
+    size_t pos = 0;
+    bool inMapping = false;
+    while (pos <= text.size()) {
+        size_t nl = text.find('\n', pos);
+        if (nl == std::string::npos) nl = text.size();
+        const std::string line = text.substr(pos, nl - pos);
+        pos = nl + 1;
+        if (line.empty()) {
+            if (nl >= text.size()) break;
+            continue;
+        }
+        // A header line starts with a hex address range; a field line starts
+        // with a capital letter and contains ':'. Distinguish on the former.
+        const size_t dash = line.find('-');
+        const bool isHeader = dash != std::string::npos && dash > 0 && dash < 40 &&
+                              line.find(' ') > dash &&
+                              line.find_first_not_of("0123456789abcdefABCDEF") == dash;
+        if (isHeader) {
+            // fields: range perms offset dev inode [path]
+            size_t p = 0;
+            int spaces = 0;
+            for (; p < line.size() && spaces < 5; ++p) {
+                if (line[p] == ' ') {
+                    ++spaces;
+                    while (p + 1 < line.size() && line[p + 1] == ' ') ++p;
+                }
+            }
+            const std::string path = p < line.size() ? line.substr(p) : std::string();
+            owner = ownerOf(path);
+            MappingRow& r = rowFor(owner);
+            ++r.mappings;
+            ++b.mappings;
+            inMapping = true;
+            continue;
+        }
+        if (!inMapping) continue;
+        MappingRow& r = rowFor(owner);
+        uint64_t v;
+        if ((v = kbField(line, "Anonymous:", 10)) != UINT64_MAX) {
+            r.anonBytes += v;
+            b.totalAnonBytes += v;
+        } else if ((v = kbField(line, "Rss:", 4)) != UINT64_MAX) {
+            r.rssBytes += v;
+            b.totalRssBytes += v;
+        } else if ((v = kbField(line, "Size:", 5)) != UINT64_MAX) {
+            r.sizeBytes += v;
+        }
+    }
+    std::sort(rows.begin(), rows.end(), [](const MappingRow& a, const MappingRow& c) {
+        if (a.anonBytes != c.anonBytes) return a.anonBytes > c.anonBytes;
+        return a.rssBytes > c.rssBytes;
+    });
+    b.rows = std::move(rows);
+    return b;
+}
+
+MappingBreakdown readMappings() {
+#if defined(__linux__)
+    FILE* f = fopen("/proc/self/smaps", "r");
+    if (!f) return MappingBreakdown{};
+    std::string text;
+    char buf[8192];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
+    fclose(f);
+    return parseSmaps(text);
+#else
+    return MappingBreakdown{};
+#endif
+}
+
+std::string mappingsToLogLines(const std::string& point, const MappingBreakdown& b,
+                               size_t topN) {
+    std::string out;
+    if (!b.available) {
+        out = "[memmap] point=" + point + " unavailable=1";
+        return out;
+    }
+    out = "[memmap] point=" + point + " owner=TOTAL";
+    appendKV(out, "anon", b.totalAnonBytes);
+    appendKV(out, "rss", b.totalRssBytes);
+    appendKV(out, "maps", b.mappings);
+    const size_t limit = topN ? (topN < b.rows.size() ? topN : b.rows.size()) : b.rows.size();
+    for (size_t i = 0; i < limit; ++i) {
+        const auto& r = b.rows[i];
+        if (!r.anonBytes && !r.rssBytes) continue;
+        out += "\n[memmap] point=";
+        out += point;
+        out += " owner=";
+        out += r.name;
+        appendKV(out, "anon", r.anonBytes);
+        appendKV(out, "rss", r.rssBytes);
+        appendKV(out, "size", r.sizeBytes);
+        appendKV(out, "maps", r.mappings);
+    }
+    return out;
+}
+
+std::string mappingsToJson(const MappingBreakdown& b, size_t topN) {
+    std::string out = "{\"available\":";
+    out += b.available ? "true" : "false";
+    out += ",\"totalAnonBytes\":" + std::to_string(b.totalAnonBytes);
+    out += ",\"totalRssBytes\":" + std::to_string(b.totalRssBytes);
+    out += ",\"mappings\":" + std::to_string(b.mappings);
+    out += ",\"owners\":[";
+    const size_t limit = topN ? (topN < b.rows.size() ? topN : b.rows.size()) : b.rows.size();
+    for (size_t i = 0; i < limit; ++i) {
+        const auto& r = b.rows[i];
+        if (i) out += ',';
+        out += "{\"name\":\"" + r.name + "\",\"anonBytes\":" + std::to_string(r.anonBytes)
+             + ",\"rssBytes\":" + std::to_string(r.rssBytes)
+             + ",\"sizeBytes\":" + std::to_string(r.sizeBytes)
+             + ",\"mappings\":" + std::to_string(r.mappings) + "}";
+    }
+    out += "]}";
+    return out;
+}
+
+MappingBreakdown recordMappings(const std::string& point, size_t topN) {
+    MappingBreakdown b = readMappings();
+    LOG_INFO(MOD_MAIN, "{}", mappingsToLogLines(point, b, topN));
+    return b;
 }
 
 Snapshot recordPoint(const std::string& point, const std::string& zone) {
