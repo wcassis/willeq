@@ -371,5 +371,31 @@ IF(WITH_AUDIO)
         WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
     TARGET_LINK_LIBRARIES(test_audio_startup_peak
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
-    GTEST_DISCOVER_TESTS(test_audio_startup_peak DISCOVERY_TIMEOUT 120)
+    # B845 (board B845): register the three cases by hand instead of
+    # GTEST_DISCOVER_TESTS so SET_TESTS_PROPERTIES can name them at configure
+    # time (discovery defers the add_test calls to build time). The RESOURCE_LOCK
+    # is the second belt, not the fix: the cases are isolated from each other at
+    # the root by the authoritative WILLEQ_CACHE_DIR (each process's read and
+    # write are confined to its own per-process directory -- see the
+    # ColdSoundIndex fixture and src/client/core/data_paths.cpp), so they can no
+    # longer share the on-disk snd_index_cache.json. The lock serialises the
+    # three against each other so even a regression that reintroduces
+    # shared-cache state cannot flake the suite. It deliberately does NOT cover
+    # the other audio tests, which use the shared cache by design and must stay
+    # free to run in parallel. Renaming a case means adding it here too -- the
+    # fixture's resolver ASSERT is what keeps a renamed case from measuring
+    # nothing silently.
+    FOREACH(_case IN ITEMS
+            IndexingTheSoundArchivesDoesNotHoldThemAllAtOnce
+            TheSteadyStateIsTheSoundFontsAndLittleElse
+            ListFilenamesMatchesOpenPlusGetFilenames)
+        ADD_TEST(NAME AudioStartupPeak.${_case}
+            COMMAND test_audio_startup_peak
+            --gtest_filter=AudioStartupPeak.${_case}
+            --gtest_also_run_disabled_tests)
+        SET_TESTS_PROPERTIES(AudioStartupPeak.${_case} PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            SKIP_REGULAR_EXPRESSION "\\[  SKIPPED \\]"
+            RESOURCE_LOCK "audio_startup_peak_shared_cache")
+    ENDFOREACH()
 ENDIF()
