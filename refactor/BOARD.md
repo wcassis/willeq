@@ -11875,4 +11875,17 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   -- `otherChrCaches_`, the ZONE `_chr.s3d` archives -- and `dup_geometry`
   (5.38 MB). That is the next unit's target, not this one's.
 
-B828–B829 and B832 unused. B830–B831 used by T496 Leg D. B833–B835 used by T499. B836–B844 used by T500. B845 onwards unused.
+- **B845** (P) **The three `AudioStartupPeak` cases share one on-disk
+  `snd_index_cache.json` and flake against each other under `ctest -j`.**
+  [measured T500] `TheSteadyStateIsTheSoundFontsAndLittleElse` failed its own
+  `ASSERT_TRUE(cold.scanReallyRan())` guard -- "the archive scan was
+  short-circuited by a warm index cache" -- in a `-j4` run and passed
+  immediately when the three were run alone. `ColdSoundIndex` removes the cache
+  in its constructor, but a sibling case running concurrently rewrites it
+  before this one scans. The guard did its job (the case refused to measure
+  nothing rather than passing hollow), so this is an isolation defect, not a
+  measurement one. Fix: give each case its own `WILLEQ_CACHE_DIR`, or put the
+  three in a ctest RESOURCE_LOCK. Nothing to do with T500's change; found by
+  its final suite run.
+
+B828–B829 and B832 unused. B830–B831 used by T496 Leg D. B833–B835 used by T499. B836–B845 used by T500. B846 onwards unused.
