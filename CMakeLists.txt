@@ -1003,6 +1003,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
+        src/client/core/memory_ledger.cpp  # T500: model_loading_search.cpp reads eqt::memory::stats()
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/variant_loading.cpp

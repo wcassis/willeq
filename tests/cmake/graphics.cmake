@@ -31,6 +31,9 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading_chr.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading_search.cpp
+        # T500: model_loading_search.cpp reads eqt::memory::stats() for the
+        # [modelmem] split line, so the ledger TU comes with it.
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/mesh_building.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_creation.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading.cpp
@@ -141,6 +144,9 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading_chr.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading_search.cpp
+        # T500: model_loading_search.cpp reads eqt::memory::stats() for the
+        # [modelmem] split line, so the ledger TU comes with it.
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/mesh_building.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/animated_mesh_creation.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading.cpp

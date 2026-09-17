@@ -808,7 +808,9 @@ void Application::run() {
     // and zone loading then costs ~nothing. The allocator ledger cannot see
     // most of it (driver/EGL, thread stacks, shared-library data all bypass
     // malloc), so attribute it by MAPPING here, once, where it is formed.
-    eqt::memory::recordMappings("startup", 16);
+    // T500 (Will's addendum): the FULL census, every owner row, not the top 16.
+    // 100% accounting is the primary goal; a truncated census is not accounting.
+    eqt::memory::recordMappings("startup", 0);
     LOG_INFO(MOD_MAIN, "Starting main loop...");
     mainLoop();
     LOG_INFO(MOD_MAIN, "Main loop exited");

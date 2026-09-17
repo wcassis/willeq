@@ -668,3 +668,19 @@ TARGET_COMPILE_DEFINITIONS(test_ui_sprite_roster PRIVATE
     WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 TARGET_LINK_LIBRARIES(test_ui_sprite_roster GTest::gtest_main willeq_core)
 GTEST_DISCOVER_TESTS(test_ui_sprite_roster DISCOVERY_TIMEOUT 120)
+
+# T500 (B836/B837): the entity_models byte split and the merged-texture-map
+# sharing it paid for. Same EDT_NULL + willeq_core gate as test_chr_cache_lru;
+# opens the shipped data/willeq.db and the real client tree and skips without
+# either. It asserts in LEDGER bytes, so it is one of the B819 tests that must
+# be run at -O0 as well as -O2.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_entity_model_sharing
+        test_entity_model_sharing.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_entity_model_sharing PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_entity_model_sharing GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_entity_model_sharing PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_entity_model_sharing DISCOVERY_TIMEOUT 120)
+ENDIF()

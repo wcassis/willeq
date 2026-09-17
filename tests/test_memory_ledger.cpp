@@ -372,7 +372,11 @@ TEST(MemoryLedger, LogLineAndJsonCarryTheSchema) {
     const auto s = eqt::memory::snapshot("schema_test", "zone_x");
     const std::string line = eqt::memory::toLogLine(s);
     EXPECT_NE(line.find("[memledger] point=schema_test zone=zone_x seq="), std::string::npos) << line;
-    for (const char* key : {" enabled=", " rss_anon=", " rss_file=", " ledger=", " ledger_peak=",
+    for (const char* key : {" enabled=", " rss_anon=", " rss_file=",
+                            // T500 (Will's addendum): the file-backed side is in
+                            // the schema now -- it counts against a cgroup cap.
+                            " rss_shmem=", " vm_rss=",
+                            " ledger=", " ledger_peak=",
                             " unattributed=", " unattributed_pct=", " malloc_arena=",
                             " malloc_inuse=", " malloc_slack=", " allocs="}) {
         EXPECT_NE(line.find(key), std::string::npos) << key << " missing from " << line;
@@ -392,7 +396,8 @@ TEST(MemoryLedger, LogLineAndJsonCarryTheSchema) {
     EXPECT_EQ(root["zone"].asString(), "zone_x");
     EXPECT_TRUE(root["ledgerEnabled"].asBool());
     for (const char* key : {"ledgerTotalBytes", "ledgerPeakBytes", "allocCount", "rssAnonBytes",
-                            "rssFileBytes", "vmRssBytes", "unattributedBytes", "unattributedPct",
+                            "rssFileBytes", "rssShmemBytes",  // T500
+                            "vmRssBytes", "unattributedBytes", "unattributedPct",
                             "mallocArenaBytes", "mallocInUseBytes", "mallocSlackBytes"}) {
         EXPECT_TRUE(root.isMember(key)) << key;
     }

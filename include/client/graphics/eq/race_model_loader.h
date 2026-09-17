@@ -312,8 +312,103 @@ public:
         size_t characterModelBytes = 0;    // CharacterModel data (global + numbered + zone + other)
         size_t animatedMeshBytes = 0;      // EQAnimatedMesh working data (originalVertices_ etc.)
         size_t irrlichtMeshBytes = 0;      // Irrlicht IMesh vertex/index buffers in mesh caches
+
+        // --- T500 Leg A: the entity_models byte split (ADDITIVE; no lifetime
+        // moved, no existing field touched). Every field below is either
+        // DISJOINT from the ten above or a stated SUBDIVISION of one of them,
+        // so modelMemTotal() can sum them without double counting.
+
+        // (a) RaceModelData::textures is a full std::map COPY of the merged
+        // character-texture map, per model. The TextureInfo PIXELS are shared
+        // (shared_ptr) and are already counted in globalTextureBytes /
+        // numberedTextureBytes / armorTextureBytes / zoneTextureBytes /
+        // otherChrTextureBytes; the MAP is not counted anywhere -- one
+        // red-black node plus one std::string key per entry, per model.
+        // DISJOINT from every field above.
+        size_t mergedTextureMapBytes = 0;   // nodes + out-of-SSO keys, over
+                                            // loadedModels_ + variantModels_ + preparedModelData_
+        size_t mergedTextureMapCount = 0;   // how many such maps exist
+        size_t mergedTextureEntryCount = 0; // total entries across them
+        size_t distinctTextureMapCount = 0; // maps whose value-pointer set differs
+                                            // from cachedMergedTextures_ (the rest are
+                                            // byte-for-byte duplicates of it)
+
+        // (b) the retained source CharacterModels, by owner. These four SUM to
+        // characterModelBytes exactly -- a SUBDIVISION, not an addition.
+        size_t sourceCharacterGlobalBytes = 0;    // globalCharacters_
+        size_t sourceCharacterNumberedBytes = 0;  // numberedGlobalCharacters_
+        size_t sourceCharacterZoneBytes = 0;      // zoneCharacters_
+        size_t sourceCharacterOtherBytes = 0;     // otherChrCaches_[*].characters
+
+        // (c) CharacterModel::rawParts holds a DEEP COPY of each part's
+        // geometry (s3d_loader_characters.cpp: "Deep copy geometry for rawParts
+        // BEFORE skinning is applied"), and characterModelBytes charges those
+        // vectors only sizeof(CharacterPart) each -- the copied vertices and
+        // triangles are counted NOWHERE. partsWithTransforms aliases `parts`
+        // (same shared_ptr) and is correctly not double counted; this term
+        // counts only geometry pointers that are in neither `parts` nor
+        // `partsWithTransforms`. DISJOINT from every field above.
+        size_t duplicateGeometryBytes = 0;
+
+        // (d) T500 Leg A, second pass. The first pass closed to only 52 % of
+        // the ledger; these are the four terms the residual turned out to be
+        // made of, and each is DISJOINT from everything above.
+        //
+        // The big one: modelSkeletonBytes charges the skeletons of the twelve
+        // models in loadedModels_ and NOTHING else, but every CharacterModel
+        // retained in globalCharacters_ / numberedGlobalCharacters_ /
+        // zoneCharacters_ / otherChrCaches_ holds its OWN animatedSkeleton
+        // (bones, pose tracks, one BoneTransform array per animation per bone)
+        // and its own SkeletonTrack, for every race in the archive including
+        // the ones no spawn will ever use. Deduplicated by pointer against the
+        // skeletons modelSkeletonBytes already charged.
+        size_t sourceSkeletonGlobalBytes = 0;
+        size_t sourceSkeletonNumberedBytes = 0;
+        size_t sourceSkeletonZoneBytes = 0;
+        size_t sourceSkeletonOtherBytes = 0;
+
+        // ResolvedMaterialList is SHARED between geometries (that is the point
+        // of the 0x31 fragment), so ZoneGeometry::getMemoryUsage() deliberately
+        // excludes it and the caller is supposed to charge it once. Nothing
+        // ever did. Deduplicated by pointer over every retained geometry.
+        size_t materialListBytes = 0;
+
+        // TextureInfo::rawDataBytes() is the PIXELS only; the object, its name
+        // and its frames vector are not in it. Deduplicated by pointer.
+        size_t textureObjectBytes = 0;
+
+        // The loader's OWN texture maps (globalTextures_, numberedGlobalTextures_,
+        // armorTextureCache_, zoneTextures_, otherChrCaches_[*].textures and
+        // cachedMergedTextures_): nodes and keys, same arithmetic as
+        // mergedTextureMapBytes, which covers only the per-MODEL copies.
+        size_t loaderTextureMapBytes = 0;
+
+        // (e) T500 Leg A, third pass. calcSkeletonBytes() charges the KEYFRAME
+        // ARRAYS and little else: not the std::map nodes that hold the tracks,
+        // not the TrackDef/TrackRef objects themselves, not the shared_ptr
+        // control blocks, and it estimates an Animation's track map at a flat
+        // 64 B per entry. With the source skeletons now in the tally (term d)
+        // those omissions are the largest thing left. Deduplicated by pointer,
+        // and DISJOINT from modelSkeletonBytes / sourceSkeleton*Bytes -- this
+        // term is only what those two do not charge.
+        size_t skeletonContainerBytes = 0;
+        // Vector capacity the per-element sums above do not reach
+        // (CharacterModel::parts, and excess capacity in the bone vectors).
+        size_t containerCapacityBytes = 0;
     };
     MemoryStats getMemoryStats() const;
+
+    // T500 Leg A: the sum of the DISJOINT terms in MemoryStats -- i.e. what
+    // RaceModelLoader claims to hold. The bound for Leg B's red, and the left
+    // side of the split-closes check against
+    // eqt::memory::stats(Category::EntityModels).liveBytes.
+    static size_t modelMemTotal(const MemoryStats& s);
+
+    // T500 Leg A: the `[modelmem] ...` line. Emitted once per zone-in at
+    // zone_load_complete (LOG_INFO, MOD_GRAPHICS) and used by the offline
+    // split test. Carries the ledger's EntityModels live/peak read at the SAME
+    // instant, so total-vs-ledger is one line, not two greps.
+    std::string modelMemLogLine(const std::string& point) const;
 
     // P08d: composite sheet hit/miss counters, tracked across all composite-ALLOWED mesh
     // build attempts (getAnimatedMeshForRace / getAnimatedMeshWithAppearance) since the

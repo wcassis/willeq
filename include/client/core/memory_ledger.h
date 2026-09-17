@@ -167,9 +167,21 @@ constexpr uint64_t kRssCeilingBytes = 256ull * 1024 * 1024;
 constexpr uint64_t kRssTargetBytes = 64ull * 1024 * 1024;
 
 struct CategoryStats {
-    uint64_t liveBytes = 0;   // charged - credited
+    uint64_t liveBytes = 0;   // charged - credited (the whole glibc chunk)
     uint64_t peakBytes = 0;   // high-water mark of liveBytes since start/resetPeaks()
     uint64_t allocs = 0;      // charges since start (monotonic)
+    // T500 (Will's addendum, 2026-09-17). liveBytes is the CHUNK: the caller's
+    // bytes plus glibc's size word, its 16-byte rounding and the ledger's own
+    // 16-byte LedgerHeader. A subsystem that tallies its own logical bytes
+    // (RaceModelLoader::getMemoryStats(), say) can only ever reconcile against
+    // liveRequestedBytes; the difference is per-BLOCK overhead and it is not a
+    // rounding error -- T500 measured 13.07 MB of it over 824,868
+    // entity_models blocks, 15.84 B each, which is 22 % of that category.
+    // liveBytes stays the number checked against RssAnon, because the overhead
+    // is real resident memory; this pair is what gives it a NAME.
+    uint64_t liveRequestedBytes = 0;  // sum of the sizes the callers asked for
+    uint64_t liveBlocks = 0;          // blocks currently live in this category
+    uint64_t blockOverheadBytes = 0;  // liveBytes - liveRequestedBytes
 };
 
 // One lifecycle-point report. Same schema for /pmem, the log line, the
@@ -185,6 +197,11 @@ struct Snapshot {
     uint64_t allocCount = 0;                 // total charges since start
     uint64_t rssAnonBytes = 0;               // /proc/self/status RssAnon
     uint64_t rssFileBytes = 0;               // /proc/self/status RssFile
+    // T500 (Will's addendum, 2026-09-17): file-backed and shared pages have
+    // never been in any number this project quotes, and they count against a
+    // cgroup cap exactly as anon does. RssFile was read but reported only on
+    // the log line; RssShmem was read nowhere at all.
+    uint64_t rssShmemBytes = 0;              // /proc/self/status RssShmem
     uint64_t vmRssBytes = 0;                 // /proc/self/status VmRSS
     uint64_t unattributedBytes = 0;          // max(0, rssAnon - ledgerTotal)
     double unattributedPct = 0.0;            // 100 * unattributed / rssAnon

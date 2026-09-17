@@ -908,7 +908,8 @@ void eqt::bridge::BridgeComponent::SetLoadingPhase(LoadingPhase phase, const cha
 		// T491 addendum (B801): the second mapping census. Diffing it against
 		// the startup one says how much of a zone-in is heap and how much is
 		// driver/mmap the ledger can never charge.
-		eqt::memory::recordMappings("ready", 16);
+		// T500 (Will's addendum): the FULL census, every owner row, not the top 16.
+		eqt::memory::recordMappings("ready", 0);
 		eqt::memory::noteReady();
 	}
 
