@@ -26,13 +26,13 @@
 189.0	p2	/camera tether	label=E_heldA_p2_tether;camera=Tether;held=13=14337 Blue Crystal Staff (IT122),14=20656 Eye of Innoruuk (IT72);zone=qeynos2;expect=discrepancy:B722;held_source=inventory table, read at compile time;replaces_step=59
 197.0	p3	/camera tether	label=E_heldA_p3_tether;camera=Tether;held=13=9997 Dagger* (IT5),14=9979 Gloomingdeep Lantern (IT48);zone=qeynos2;expect=discrepancy:B722;held_source=inventory table, read at compile time;replaces_step=60
 205.0	p1	camto Chase	label=H0_camto_Chase_65;official_camera=Chase (closed loop, margin-verified against T466's still);expect=unlabelled
-221.0	p2	/equip 21 13	label=H0_equip_p2;held=13=9997 Dagger* (IT5);expect=unlabelled
-229.0	p2	/camera chase	label=E_heldB_p2_chase;camera=Chase;held=13=9997 Dagger* (IT5) moved from slot 21;zone=qeynos2;expect=discrepancy:B725;held_source=/equip 21 13, seeded by --seed-weapon;replaces_step=65
-237.0	p3	/equip 21 13	label=H0_equip_p3;held=13=9997 Dagger* (IT5);expect=unlabelled
-245.0	p3	/camera chase	label=E_heldB_p3_chase;camera=Chase;held=13=9997 Dagger* (IT5) moved from slot 21;zone=qeynos2;expect=discrepancy:B725;held_source=/equip 21 13, seeded by --seed-weapon;replaces_step=66
+221.0	p2	/equip 23 13	label=H0_equip_p2;held=13=9997 Dagger* (IT5);expect=unlabelled
+229.0	p2	/camera chase	label=E_heldB_p2_chase;camera=Chase;held=13=9997 Dagger* (IT5) moved from slot 23;zone=qeynos2;expect=discrepancy:B725;held_source=/equip 23 13, seeded by --seed-weapon;replaces_step=65
+237.0	p3	/equip 23 13	label=H0_equip_p3;held=13=9997 Dagger* (IT5);expect=unlabelled
+245.0	p3	/camera chase	label=E_heldB_p3_chase;camera=Chase;held=13=9997 Dagger* (IT5) moved from slot 23;zone=qeynos2;expect=discrepancy:B725;held_source=/equip 23 13, seeded by --seed-weapon;replaces_step=66
 253.0	p1	camto Tether	label=H0_camto_Tether_68;official_camera=Tether (closed loop, margin-verified against T466's still);expect=unlabelled
-269.0	p2	/camera tether	label=E_heldB_p2_tether;camera=Tether;held=13=9997 Dagger* (IT5) moved from slot 21;zone=qeynos2;expect=discrepancy:B725;held_source=/equip 21 13, seeded by --seed-weapon;replaces_step=68
-277.0	p3	/camera tether	label=E_heldB_p3_tether;camera=Tether;held=13=9997 Dagger* (IT5) moved from slot 21;zone=qeynos2;expect=discrepancy:B725;held_source=/equip 21 13, seeded by --seed-weapon;replaces_step=69
+269.0	p2	/camera tether	label=E_heldB_p2_tether;camera=Tether;held=13=9997 Dagger* (IT5) moved from slot 23;zone=qeynos2;expect=discrepancy:B725;held_source=/equip 23 13, seeded by --seed-weapon;replaces_step=68
+277.0	p3	/camera tether	label=E_heldB_p3_tether;camera=Tether;held=13=9997 Dagger* (IT5) moved from slot 23;zone=qeynos2;expect=discrepancy:B725;held_source=/equip 23 13, seeded by --seed-weapon;replaces_step=69
 285.0	p1	camto Chase	label=H0_camto_Chase_86;official_camera=Chase (closed loop, margin-verified against T466's still);expect=unlabelled
 301.0	p2	/camera chase	label=G_pre_p2_chase;camera=Chase;zone=qeynos2;expect=discrepancy:B721;replaces_step=86
 309.0	p3	/camera chase	label=G_pre_p3_chase;camera=Chase;zone=qeynos2;expect=discrepancy:B721;replaces_step=87

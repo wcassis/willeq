@@ -38,7 +38,12 @@ def gap(player, action):
 
 def main():
     corpus, out = sys.argv[1], sys.argv[2]
-    eslot = int(sys.argv[sys.argv.index("--equip-slot") + 1]) if "--equip-slot" in sys.argv else 21
+    # T494 (board B796): 23, not 21. `inventory.slot_id` 21 is RoF2's
+    # slotPowerSource -- ServerToTitaniumSlot(21) is SLOT_INVALID, so a row
+    # seeded there is never serialised to a Titanium client at all, and the
+    # `/equip 21 13` these timelines carried reached the AMMO slot instead.
+    # 23 is general slot 1, which record.sh --seed-weapon now seeds.
+    eslot = int(sys.argv[sys.argv.index("--equip-slot") + 1]) if "--equip-slot" in sys.argv else 23
     steps = json.load(open(os.path.join(corpus, "steps.json")))["steps"]
     cur = {}
     for line in open(os.path.join(corpus, "players", "p2", "truth.tsv")):

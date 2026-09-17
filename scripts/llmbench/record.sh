@@ -225,11 +225,19 @@ fi
 # in-game `/equip <general> 13` has nothing legal to move and Leg C's attempt
 # was refused outright.  Seed one, AFTER the inventory snapshot so the restore
 # takes it out again.  9997 is Dagger* (IT5), a one-hand weapon both can hold.
+#
+# T494 (board B796): the slot is 23, NOT 21.  `inventory.slot_id` is the
+# SERVER's (RoF2) numbering, in which 21 is slotPowerSource --
+# common/patches/titanium.cpp:3576 ServerToTitaniumSlot(21) returns
+# SLOT_INVALID, so a row seeded at 21 is never sent to a Titanium client and
+# the timelines' `/equip 21 13` was addressing the AMMO slot (DB 22) instead.
+# 23 is general slot 1.  This was the defect UNDER B796's experiment, which is
+# why the experiment's own result could not be read straight.
 if [ "$SEED_WEAPON" -eq 1 ]; then
-    sql "DELETE FROM inventory WHERE character_id IN (67,68) AND slot_id=21;
+    sql "DELETE FROM inventory WHERE character_id IN (67,68) AND slot_id=23;
          INSERT INTO inventory (character_id,slot_id,item_id,charges,color) VALUES
-           (67,21,9997,1,0),(68,21,9997,1,0);" >/dev/null
-    say "seeded item 9997 (Dagger*) into slot 21 for 67 and 68 -- removed by the restore"
+           (67,23,9997,1,0),(68,23,9997,1,0);" >/dev/null
+    say "seeded item 9997 (Dagger*) into slot 23 (general 1) for 67 and 68 -- removed by the restore"
 fi
 
 # --------------------------------------------------- compile the timeline ---
