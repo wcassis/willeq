@@ -262,8 +262,16 @@ TEST_F(HeldItemTest, LanternMeshBuildsOnTheZoneLoadAndTheOnDemandPaths) {
 // from the item's origin (its grip); "forward" is the drawn direction of the
 // model's EQ +X (T472: R_POINT's Y is character-left, so +X is forward), taken
 // through drawn() so the player's baked heading is honoured. Thresholds leave
-// room for the o01 pose: the shipped correction puts the blade 0.96 forward /
-// 0.28 down and the arrow 0.96 down (tools/hwcaps/held_item_candidate_search).
+// room for the o01 pose: at the capture frame the shipped correction puts the
+// short sword's long axis (fwd +0.91, left +0.08, up -0.40), the 2H sword's
+// (+0.92, +0.09, -0.39) and the arrow's (-0.38, -0.10, -0.92) in the body
+// frame (review/T485/data/candidates.tsv, c20). NOTE: these thresholds are
+// frame-bound. The o01 loop swings R_POINT by ~50 deg -- the blade direction
+// pitches from 16.5 to 66.6 deg below level across the 41 distinct frames, and
+// its forward component is under 0.7 on 16 of them (measured,
+// review/T485/data/score_over_loop.py) -- so the fixture's fixed OnAnimate
+// schedule is load-bearing. If a test here goes red after an animation change,
+// check the frame before the correction (B756).
 namespace {
 struct LongAxis {
     irr::core::vector3df dir;      // unit, world (Irrlicht)

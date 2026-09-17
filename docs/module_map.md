@@ -344,10 +344,10 @@ retired by P30/P32 and no supported build parsed it.
 | entity_combat_anim.cpp | 437 | Combat animation queues + animation queries |
 | entity_first_person_draw.cpp | 401 | T309: the attack-animation draw rule, first-person mode, player entity position/animation |
 | entity_interpolation.cpp | 372 | J03: updateInterpolation |
-| entity_equipment.cpp | 263 | Equipment models, attachment; placement is `bone_attachment.h`'s `placeHeldItem()` (T485: the one placement the paperdoll and the model viewer also call, with the correction chosen by search against the official client) |
-| equipment_actor_geometry.cpp (under `src/client/graphics/eq/`) | 197 | T476: resolves an IT actor's reference chain (0x14 -> 0x2D mesh, or 0x11 skeleton with rest-pose-placed pieces) into one `ZoneGeometry` with the item's centre added, the frame `computeHeldItemTransform()` expects |
 | entity_castbars.cpp | 264 | Casting bar state + rendering |
+| entity_equipment.cpp | 243 | Equipment models, attachment; placement is `bone_attachment.h`'s `placeHeldItem()` (T485: the one placement the paperdoll and the model viewer also call, with the correction chosen by search against the official client) |
 | entity_spatial.cpp | 218 | Spatial grid, BSP occlusion cache, boats |
+| equipment_actor_geometry.cpp (under `src/client/graphics/eq/`) | 197 | T476: resolves an IT actor's reference chain (0x14 -> 0x2D mesh, or 0x11 skeleton with rest-pose-placed pieces) into one `ZoneGeometry` with the item's centre added, the frame `computeHeldItemTransform()` expects |
 | entity_size.cpp | 58 | setEntitySize |
 
 ## WLD loader — WLDLoader class (split by J05)
