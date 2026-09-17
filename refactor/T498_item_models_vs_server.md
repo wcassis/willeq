@@ -217,8 +217,9 @@ be checked against the ACTOR's class/race/level, not just against the defect.
 
 ### Suite
 
-`ctest -j6` (visual_gate excluded, then run alone): **4,903 of 4,903 passed, 0
-failed**, 125 skipped. All 31 `HeldItem*` / `FirstPersonWeaponAttachment*` /
+`ctest -j6` (visual_gate excluded, then run alone against a `build-gles2/`
+rebuilt from this tip): **4,903 of 4,903 passed, 0 failed**, 125 skipped, plus
+`visual_gate` PASSED standalone in 21.3 s -- **4,904 green in total**. All 31 `HeldItem*` / `FirstPersonWeaponAttachment*` /
 paperdoll tests green; no golden moved and no T485 pin was re-blessed.
 
 **`DocCitations` was RED on the base tip `ec1e9d77` and it was not mine**
