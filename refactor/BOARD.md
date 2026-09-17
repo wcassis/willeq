@@ -781,7 +781,7 @@ it without taking that measurement first.
   (`tests/test_music_player_soundfont_lifetime.cpp`). No audio output changes —
   `MusicPlayer` renders through the shared `MidiPlayer` either way.
 
-- **B818** (B, *items 1a/2/3/5 resolved by T496 Leg D -- see B819/B823/B824*) **Owed from T496, deliberately not taken there.** (1) The three
+- **B818** (B, *items 1a/2/3/5 resolved by T496 Leg D -- see B819/B830/B831*) **Owed from T496, deliberately not taken there.** (1) The three
   Mali budgets B812 now has numbers for (`startup` 26.82 MiB,
   `textures_driver` ≤ 0.67 MiB, `irrlicht_scene` ≤ 1.45 MiB) are **stable
   across four Pi runs and ready to enter the orangepi preset's
@@ -835,7 +835,7 @@ it without taking that measurement first.
   tree differs from the way the trees that gate merges are built. Worth one
   line in that recipe.
 
-- **B823** (A, *measured*, **fixed in T496 Leg D**) **The client read 125 MB of
+- **B830** (A, *measured*, **fixed in T496 Leg D**) **The client read 125 MB of
   sound archives it was configured never to keep, then freed them again —
   and that transient was the Pi's #2 bucket.**
   `AudioManager::scanPfsArchives()` indexes seventeen `snd*.pfs`
@@ -855,7 +855,7 @@ it without taking that measurement first.
   **155,560,752 → 26,752,336**, live **150,590,448 → 25,678,336**.
   **Orange Pi, `startup`, confirming run, Leg A recipe verbatim:**
 
-  | | T496 base | after B817 | **after B823** |
+  | | T496 base | after B817 | **after B830** |
   |---|---:|---:|---:|
   | `audio` peak | 179,607,200 | 155,448,424 | **26,522,912** |
   | `malloc_slack` | 115,696,496 | 116,654,416 | **726,664** |
@@ -875,7 +875,7 @@ it without taking that measurement first.
   cases pass against the unfixed code (measured: peak 26,279,360 warm). No
   sound changes; placement and lifetime only.
 
-- **B824** (C) **There is one ledger budget table and it is asserted on two
+- **B831** (C) **There is one ledger budget table and it is asserted on two
   different machines.** `tools/hwcaps/zone_bench_loader.cpp` hard-codes
   `ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi)`,
   and `scripts/ci/visual_gate.sh` runs that benchmark on **x86/llvmpipe**. So
@@ -11709,4 +11709,4 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   in one command when Will wants it, and `data/willeq.db` + `.sha256` must be
   rebuilt in the SAME commit or `DbReproducible` goes red. Found by T498.
 
-B828 onwards unused.
+B828-B829 unused. B830-B831 used by T496 Leg D. B832 onwards unused.

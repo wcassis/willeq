@@ -352,7 +352,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             //    the visual gate measures hard-codes this preset
             //    (zone_bench_loader.cpp, fromPreset(OrangePi)) while running on
             //    llvmpipe, so a Mali-derived budget fails the gate by 3,280% on
-            //    textures_driver alone. Per-backend budgets are board B824.
+            //    textures_driver alone. Per-backend budgets are board B831.
             //  - doors / equipment / entity_instances / ui / network /
             //    game_state: no benchmark constructs them, so a budget would be
             //    decoration -- the same rule T69/T293 applied to their estimates.
@@ -398,7 +398,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
                 40 * 1024 * 1024;
             // T496 Leg D: the first `audio` budget, and the first budget in
             // this table derived from a measurement taken ON THE PI rather than
-            // on x86. Measured steady state after B817 and B823, Orange Pi,
+            // on x86. Measured steady state after B817 and B830, Orange Pi,
             // qeynos2, every lifecycle point: 25,725,824 B = 24.53 MiB
             // (review/T496/pi/table_categories.tsv). x1.25 = 30.66 -> 32.
             // This is two SoundFonts' float samples and essentially nothing

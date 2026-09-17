@@ -36,7 +36,7 @@ public:
     bool exists(const std::string& filename) const;
     bool getFilenames(const std::string& extension, std::vector<std::string>& filenames) const;
 
-    // T496 Leg D (board B823): read ONLY an archive's filename table, without
+    // T496 Leg D (board B830): read ONLY an archive's filename table, without
     // materialising the archive.
     //
     // `open()` reads the whole file into one buffer AND copies every member's

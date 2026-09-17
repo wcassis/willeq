@@ -1,4 +1,4 @@
-// T496 Leg D (board B823): the `audio` category's PEAK at startup.
+// T496 Leg D (board B830): the `audio` category's PEAK at startup.
 //
 // B817 took 24 MB off `audio`'s LIVE bytes. This is the other half: after that
 // fix the Orange Pi still measured `audio` at **155.4 MiB peak for a 25.7 MiB

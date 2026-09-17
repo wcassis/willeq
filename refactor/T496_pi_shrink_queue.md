@@ -333,12 +333,12 @@ ADDITIONS conflict, not alternatives — **both kept**, verified by
    on two machines: `zone_bench_loader.cpp` hard-codes
    `fromPreset(OrangePi)` and the visual gate runs that benchmark on llvmpipe.
    A Pi-derived `textures_driver` budget reads **3,280 %** on the gate. Setting
-   them ships a permanently red gate, which is not a budget. **Boarded B824**
+   them ships a permanently red gate, which is not a budget. **Boarded B831**
    with the table and two ways to close it. `audio` is safe because the
    benchmark links no audio: `nm -C build-gles2/bin/gles2_zone_benchmark |
    grep -c 'MusicPlayer\|MidiPlayer\|tsf_load'` is **0** [measured].
 3. **`malloc_slack`: measured, and it needs no board entry.** It was a symptom.
-   110.34 MiB → **0.69 MiB** at `startup` once B823 removed the transient that
+   110.34 MiB → **0.69 MiB** at `startup` once B830 removed the transient that
    forced glibc to grow the arena.
 
 ### 1. B818.5 → B819: why the ledger test disagreed between trees
@@ -359,7 +359,7 @@ freed, and the case asserts charge-then-credit. **20/20 green at `-O0` and at
 build type, so the documented way to make a tree is not the way the trees that
 gate merges are made.
 
-### 2. B823: the audio startup peak
+### 2. B830: the audio startup peak
 
 Located by instrumenting `AudioManager::initialize()` with per-stage ledger
 probes (scaffold, reverted before commit) — the transient is one call:
@@ -399,7 +399,7 @@ index and refuse to assert unless the scan actually ran.
 
 **Confirming Pi run** (`qeynos2_T496legD`, Leg A recipe verbatim), at `startup`:
 
-| | T496 base | after B817 | **after B823** |
+| | T496 base | after B817 | **after B830** |
 |---|---:|---:|---:|
 | `audio` live | 49,881,176 | 25,722,488 | **25,722,216** |
 | `audio` peak | 179,607,200 | 155,448,424 | **26,522,912** |
@@ -441,7 +441,7 @@ Everything else in this addendum is [measured].
 | `test_audio_startup_peak` | **3/3**; red first at 155,560,752 B peak / 150,590,448 B live |
 | `test_music_player_soundfont_lifetime` | **3/3** (B817, unchanged) |
 | `test_constrained_renderer` | **74/74** with the new `audio` budget pinned |
-| two hygiene reds found and fixed | `ZeroCallers` (**mine**: an identifier collision — see B823's commit) and `DocCitations` (**not mine**: red on `fable` `ec1e9d77`, T497 cites a script it only proposes) |
+| two hygiene reds found and fixed | `ZeroCallers` (**mine**: an identifier collision — see B830's commit) and `DocCitations` (**not mine**: red on `fable` `ec1e9d77`, T497 cites a script it only proposes) |
 | goldens | **untouched** (`git status` clean) |
 
 ### 6. Lane state after Leg D

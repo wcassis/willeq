@@ -985,7 +985,7 @@ void AudioManager::scanPfsArchives() {
             totalFiles++;
         }
 
-        // T496 Leg D (board B823): this loop INDEXES; it must not materialise.
+        // T496 Leg D (board B830): this loop INDEXES; it must not materialise.
         //
         // It needs one thing from each archive -- the list of .wav names -- and
         // it used to get that by calling PfsArchive::open(), which reads the

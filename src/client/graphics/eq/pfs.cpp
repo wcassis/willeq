@@ -300,7 +300,7 @@ bool PfsArchive::inflateByOffset(uint32_t offset, uint32_t size,
     return true;
 }
 
-// T496 Leg D (board B823). See the declaration in pfs.h for why this exists.
+// T496 Leg D (board B830). See the declaration in pfs.h for why this exists.
 bool PfsArchive::listFilenames(const std::string& path, const std::string& extension,
                                std::vector<std::string>& filenames) {
     filenames.clear();
