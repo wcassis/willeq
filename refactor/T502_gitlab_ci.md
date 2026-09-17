@@ -85,7 +85,8 @@ citations are checked on CI exactly as they are locally.
 | 3 | SKIP `review/` when the directory is absent | FAILED identically — the directory is present but stale |
 | 4 | (superseded; auto-cancelled by `interruptible: true`) | CANCELED |
 | 5 | `review/` judged only from a checkout beside the media | `hygiene` 45 s GREEN, cold `build` 1,237 s GREEN, then FAILED in `test`: 3 of 4,908 |
-| 6 | asset symlinks wired in `before_script` for every job | **SUCCESS — green end to end** |
+| 6 | asset symlinks wired in `before_script` for every job | **SUCCESS — green end to end** (first green) |
+| 7 | docs + board + plan (no CI or code change) | **SUCCESS — green end to end**, and the warm-tree measurement |
 
 ## Review
 
@@ -132,7 +133,7 @@ Claims, each marked [measured] or [assumed].
   `build` **1,237 s (20.6 min) / 6 s**; `test` 116 s either way (it is the same
   work), covering **4,908** registered tests plus the RDP case's own re-run;
   `gate` 363 s cold (that includes building the patched Irrlicht and the whole
-  `build-gles2` tree from nothing) / GATE_WARM.
+  `build-gles2` tree from nothing) / **18 s** warm.
 - [measured] The green run is real, not a skip: job 138 reports
   `100% tests passed, 0 tests failed out of 4908` and the RDP re-run
   `100% tests passed ... out of 1`; job 139 logs
@@ -147,6 +148,12 @@ Claims, each marked [measured] or [assumed].
   every zone "SKIP (not found)", then `Expected: (loadedCount) > (0u)`). The
   symlinks are therefore made in every job's `before_script`, not just the
   gate's.
+- [measured] "warm" is not one number: pipeline 6's build rebuilt nothing (6 s),
+  pipeline 7's — a docs-only commit — recompiled 5 test TUs and relinked 34
+  binaries for 403 s. With no ccache and no ninja, warm cost is dominated by
+  linking. [assumed] why a docs-only commit invalidated those 5 TUs: not
+  established. It is a cost, not a correctness problem, and it is bounded by the
+  cold number.
 - [measured] cmake 3.28.3 and g++ 13.3.0 on the runner; `ctest --repeat
   until-pass` is supported (3.17+).
 - [measured] CLAUDE.md is 56,416 bytes after this unit's paragraph, under the
