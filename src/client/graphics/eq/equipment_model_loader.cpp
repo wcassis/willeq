@@ -139,6 +139,10 @@ int EquipmentModelLoader::loadItemModelMapping(const std::string& jsonPath) {
 
     // Parse JSON object: { "itemId": modelId, ... }
     for (const auto& key : root.getMemberNames()) {
+        // T498: skip non-numeric keys. std::stoul THROWS on one, so a
+        // "_provenance" header (the convention B826 proposes) would have taken
+        // the client down at startup.
+        if (key.empty() || key.find_first_not_of("0123456789") != std::string::npos) continue;
         uint32_t itemId = std::stoul(key);
         int modelId = root[key].asInt();
         itemToModelMap_[itemId] = modelId;
@@ -475,15 +479,16 @@ irr::scene::IMesh* EquipmentModelLoader::getEquipmentMeshByModelId(int modelId) 
 
 irr::scene::IMesh* EquipmentModelLoader::getEquipmentMesh(uint32_t equipmentId) {
     ensureIndexLoaded();
-    // First try to look up as a database item ID (for player inventory items)
-    int modelId = getModelIdForItem(equipmentId);
-    if (modelId >= 0) {
-        return getEquipmentMeshByModelId(modelId);
-    }
-
-    // If not found in mapping, try using the value directly as an IT model ID
-    // NPC spawn packets contain direct model IDs, not database item IDs
-    // Common NPC weapon model IDs are in the IT10000+ range
+    // T498 (board B755/B823): `equipmentId` is an appearance MATERIAL, i.e. an
+    // IT model number, for every character -- spawn packets and wear changes
+    // always carried one, and since T498 the local player's own weapon slots do
+    // too (the wire's items.idfile, the server's own
+    // Mob::GetEquipmentMaterial() rule). This used to try a DATABASE item-id
+    // lookup through data/item_models.json first, which was right for nobody
+    // but the local player and silently hijacked any peer whose material
+    // happened to land on one of that file's keys (8 materials, 9 peq items --
+    // review/T498/collision_census.tsv). getModelIdForItem() survives for the
+    // offline tools, which genuinely do hold item ids.
     return getEquipmentMeshByModelId(static_cast<int>(equipmentId));
 }
 

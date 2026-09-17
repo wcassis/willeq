@@ -98,10 +98,12 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
                     }
                 }
                 LOG_DEBUG(MOD_ENTITY, "Attached primary equipment {} to entity {}", primaryId, visual.spawnId);
-                // Track reference for cache eviction
-                int modelId = equipmentModelLoader_->getModelIdForItem(primaryId);
-                if (modelId < 0) modelId = static_cast<int>(primaryId);
-                equipmentModelLoader_->addMeshRef(modelId);
+                // Track reference for cache eviction. T498 (board B755/B823):
+                // equipment[] is uniformly a MATERIAL / IT model number now --
+                // the self path takes it from the wire's own idfile, exactly as
+                // the server computes a peer's -- so the item-id lookup that
+                // used to sit here (and could collide, see B824) is gone.
+                equipmentModelLoader_->addMeshRef(static_cast<int>(primaryId));
             }
         }
     }
@@ -130,10 +132,8 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
                     }
                 }
                 LOG_DEBUG(MOD_ENTITY, "Attached secondary equipment {} to entity {}", secondaryId, visual.spawnId);
-                // Track reference for cache eviction
-                int modelId = equipmentModelLoader_->getModelIdForItem(secondaryId);
-                if (modelId < 0) modelId = static_cast<int>(secondaryId);
-                equipmentModelLoader_->addMeshRef(modelId);
+                // Track reference for cache eviction (T498: a material, see above).
+                equipmentModelLoader_->addMeshRef(static_cast<int>(secondaryId));
             }
         }
     }
@@ -219,13 +219,12 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
 
     // Secondary (SHIELD_POINT for a shield, otherwise the left hand)
     if (visual.secondaryEquipNode) {
-        // A player's appearance carries a DATABASE item id and an NPC's a model
-        // id (EquipmentModelLoader::getEquipmentMesh()); ask the same question
-        // of both.
-        int secondaryModel = equipmentModelLoader_
-            ? equipmentModelLoader_->getModelIdForItem(visual.currentSecondaryId) : -1;
-        if (secondaryModel < 0) secondaryModel = static_cast<int>(visual.currentSecondaryId);
-        bool isShield = EquipmentModelLoader::isShield(secondaryModel);
+        // T498 (board B755/B823): every appearance -- player, peer and NPC --
+        // carries a MATERIAL / IT model number here, so the shield question is
+        // asked of it directly. It used to be a DATABASE item id for the local
+        // player only, resolved through data/item_models.json by a rule the
+        // server does not use.
+        bool isShield = EquipmentModelLoader::isShield(static_cast<int>(visual.currentSecondaryId));
 
         std::vector<std::string> suffixes = isShield
             ? std::vector<std::string>{"SHIELD_POINT_DAG", "SHIELD_POINT", "shield_point_dag", "shield_point",

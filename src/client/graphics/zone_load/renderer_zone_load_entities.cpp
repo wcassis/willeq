@@ -458,8 +458,9 @@ bool ZoneLoadComponent::loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx) {
         auto prepOneEquip = [&](uint32_t equipmentId, bool isPrimary) {
             if (equipError) return;
             if (equipmentId == 0) return;
-            int modelId = ctx.equipLoader->getModelIdForItem(equipmentId);
-            if (modelId < 0) modelId = static_cast<int>(equipmentId);
+            // T498 (board B755/B823): equipment[] is uniformly a MATERIAL /
+            // IT model number.
+            int modelId = static_cast<int>(equipmentId);
             const EquipmentModelLoader::EquipmentModelRef* modelRef = ctx.equipLoader->getModelRef(modelId);
             if (!modelRef) {
                 // P10b (borrowed verbatim from task/anim-video-capture's

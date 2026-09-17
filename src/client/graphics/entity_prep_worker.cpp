@@ -401,9 +401,10 @@ void EntityPrepWorker::prepEquipmentModels(const PrepRequest& req, PrepResult& r
 
         auto extractStart = std::chrono::steady_clock::now();
 
-        // Resolve model ID
-        int modelId = equipLoader_->getModelIdForItem(equipmentId);
-        if (modelId < 0) modelId = static_cast<int>(equipmentId);
+        // T498 (board B755/B823): equipment[] is uniformly a MATERIAL / IT
+        // model number -- the self path takes it from the wire's own idfile,
+        // exactly as the server computes a peer's.
+        int modelId = static_cast<int>(equipmentId);
 
         // Look up model reference in the index
         const EquipmentModelLoader::EquipmentModelRef* modelRef = equipLoader_->getModelRef(modelId);

@@ -562,3 +562,64 @@ TEST(ItemDisplayT421, TheDescriptionScrollsThroughTheOneRouter) {
     EXPECT_EQ(state.scrollOffset + rows, static_cast<int>(state.lines.size()))
         << "the bottom of the description is still unreachable";
 }
+
+// ===================================================================
+// T498 (board B755/B823) -- IDFile, Titanium static field 3.
+// ===================================================================
+//
+// The number in `IT<n>` is the appearance MATERIAL the server would compute
+// for this item on anyone else: Mob::GetEquipmentMaterial() is literally
+// atoi(&item->IDFile[2]) (akk-stack code/zone/mob_appearance.cpp). fable
+// skipped the field for its whole history -- inventory_item_parser.cpp
+// carried the comment `// fields[3] = IDFile` and nothing else -- and derived
+// the LOCAL player's weapon appearance from the database item id through
+// data/item_models.json instead, a different rule over a table that disagrees
+// with the server on 2,128 of its 3,661 rows.
+
+TEST(ItemDisplayT498, IdFileModelIsParsedFromStaticFieldThree) {
+    auto f = baseFields();
+    f[3] = "IT10004";   // the server's row for item 2894, Spiny Two Handed Sword
+    f[4] = "2894";
+    int16_t slot = -1;
+    auto item = eqt::inventory::TitaniumItemParser::parseItem(serializeItem(f), slot);
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->itemId, 2894u);
+    EXPECT_EQ(item->idfileModel, 10004u)
+        << "the weapon material is the numeric part of IDFile, not "
+           "data/item_models.json's 10009 for this item";
+}
+
+TEST(ItemDisplayT498, ABareITIdFileParsesAsZero) {
+    // 222 of peq's 117,944 item rows carry a bare "IT" with no number. eqemu's
+    // own atoi() answers 0 there, and so must this -- 0 is the guard the
+    // appearance feeder warns on.
+    auto f = baseFields();
+    f[3] = "IT";
+    int16_t slot = -1;
+    auto item = eqt::inventory::TitaniumItemParser::parseItem(serializeItem(f), slot);
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->idfileModel, 0u);
+}
+
+TEST(ItemDisplayT498, AnUnparseableIdFileIsZeroNotGarbage) {
+    for (const char* idfile : {"", "I", "IT10004X", "XX1234", "IT1.5"}) {
+        auto f = baseFields();
+        f[3] = idfile;
+        int16_t slot = -1;
+        auto item = eqt::inventory::TitaniumItemParser::parseItem(serializeItem(f), slot);
+        ASSERT_NE(item, nullptr) << idfile;
+        EXPECT_EQ(item->idfileModel, 0u) << "idfile '" << idfile << "'";
+    }
+}
+
+TEST(ItemDisplayT498, AnArmourIdFileStillParses) {
+    // Armour rows carry an IT number too (IT63 is the generic one); the
+    // appearance feeder simply does not use it, because slots 0..6 take
+    // `material`. Parsing it is still the honest reading of the field.
+    auto f = baseFields();
+    f[3] = "IT63";
+    int16_t slot = -1;
+    auto item = eqt::inventory::TitaniumItemParser::parseItem(serializeItem(f), slot);
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->idfileModel, 63u);
+}

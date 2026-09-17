@@ -48,15 +48,13 @@ void EntityRenderer::removeEntity(uint16_t spawnId) {
 
     // Release mesh ref counts for equipment
     if (equipmentModelLoader_) {
+        // T498 (board B755/B823): a MATERIAL / IT model number, matching the
+        // addMeshRef() in entity_equipment.cpp -- no item-id lookup.
         if (visual.currentPrimaryId != 0) {
-            int modelId = equipmentModelLoader_->getModelIdForItem(visual.currentPrimaryId);
-            if (modelId < 0) modelId = static_cast<int>(visual.currentPrimaryId);
-            equipmentModelLoader_->removeMeshRef(modelId);
+            equipmentModelLoader_->removeMeshRef(static_cast<int>(visual.currentPrimaryId));
         }
         if (visual.currentSecondaryId != 0) {
-            int modelId = equipmentModelLoader_->getModelIdForItem(visual.currentSecondaryId);
-            if (modelId < 0) modelId = static_cast<int>(visual.currentSecondaryId);
-            equipmentModelLoader_->removeMeshRef(modelId);
+            equipmentModelLoader_->removeMeshRef(static_cast<int>(visual.currentSecondaryId));
         }
     }
 

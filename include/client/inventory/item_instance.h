@@ -88,6 +88,17 @@ struct ItemInstance {
     uint32_t icon = 0;           // Icon ID for display
     uint32_t color = 0;          // Tint color (0xAARRGGBB)
     uint8_t material = 0;        // Armor material/graphics ID
+    // T498 (board B755/B823): the numeric part of the server's items.idfile,
+    // Titanium static field 3 ("IT10004" -> 10004). This is a MATERIAL / IT
+    // model number, the same unit the server puts in a spawn packet's
+    // equipment[] -- Mob::GetEquipmentMaterial() is literally
+    // atoi(&item->IDFile[2]) (akk-stack code/zone/mob_appearance.cpp). fable
+    // skipped this field for its whole history and computed the local player's
+    // weapon appearance from the DATABASE ITEM ID instead, through
+    // data/item_models.json, which is a different rule and a stale table
+    // (2,128 of its 3,661 rows disagree with the server -- B755). 0 = the
+    // server sent no usable IT<n>, which is eqemu's own guard too.
+    uint32_t idfileModel = 0;
 
     // Combat stats
     int32_t ac = 0;              // Armor class

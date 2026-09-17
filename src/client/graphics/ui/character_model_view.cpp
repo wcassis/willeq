@@ -536,11 +536,9 @@ void CharacterModelView::attachWeapons() {
             secondaryWeaponNode_ = modelSmgr_->addMeshSceneNode(secondaryMesh, characterNode_);
             if (secondaryWeaponNode_) {
                 currentSecondaryId_ = secondaryId;
-                // A player's appearance carries a database item id; ask the
-                // shield question of the MODEL id (entity_equipment.cpp does too).
-                int secondaryModel = equipmentModelLoader_->getModelIdForItem(secondaryId);
-                if (secondaryModel < 0) secondaryModel = static_cast<int>(secondaryId);
-                secondaryIsShield_ = EQT::Graphics::EquipmentModelLoader::isShield(secondaryModel);
+                // T498 (board B755/B823): a MATERIAL / IT model number, for
+                // the player exactly as for a peer (entity_equipment.cpp too).
+                secondaryIsShield_ = EQT::Graphics::EquipmentModelLoader::isShield(static_cast<int>(secondaryId));
                 secondaryWeaponNode_->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
 
                 // Find left hand or shield bone (same fallback chain entity_equipment.cpp uses)

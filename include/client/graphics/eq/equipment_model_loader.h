@@ -81,6 +81,14 @@ public:
 
     // Get IT model number from database item ID
     // Returns -1 if item not found in mapping
+    // Database ITEM id -> IT model number, via willeq.db's item_models table
+    // (data/item_models.json is its input). T498 (board B755/B823): this is for
+    // the OFFLINE TOOLS only -- tools/model_viewer and
+    // tools/hwcaps/ui_inventory_capture are the last callers that genuinely
+    // hold an item id. No render site may use it: EntityAppearance::equipment[]
+    // is a MATERIAL / IT model number for every character, never a DB item id,
+    // and the table it reads disagrees with the server on 2,128 of its 3,661
+    // rows (data/item_models_drift_baseline.txt).
     int getModelIdForItem(uint32_t databaseItemId) const;
 
     // Get equipment mesh by IT model ID

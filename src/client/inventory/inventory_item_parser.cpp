@@ -188,6 +188,25 @@ bool TitaniumItemParser::parseInstanceData(const std::vector<std::string_view>& 
     return true;
 }
 
+namespace {
+
+// "IT10004" -> 10004; 0 for anything else (including the server's bare "IT",
+// which 222 peq rows carry). Deliberately NOT a regex: this runs once per item
+// in the inventory burst at zone-in.
+uint32_t parseIdFile(std::string_view idfile) {
+    if (idfile.size() < 3) return 0;
+    if (!(idfile[0] == 'I' || idfile[0] == 'i')) return 0;
+    if (!(idfile[1] == 'T' || idfile[1] == 't')) return 0;
+    uint32_t value = 0;
+    for (size_t i = 2; i < idfile.size(); ++i) {
+        if (idfile[i] < '0' || idfile[i] > '9') return 0;
+        value = value * 10 + static_cast<uint32_t>(idfile[i] - '0');
+    }
+    return value;
+}
+
+}  // namespace
+
 bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstance& item) {
     auto fields = splitByPipe(quotedData);
 
@@ -204,7 +223,13 @@ bool TitaniumItemParser::parseStaticData(std::string_view quotedData, ItemInstan
     item.itemType = static_cast<uint8_t>(toInt(fields[0]));  // ItemClass
     item.name = std::string(fields[1]);
     item.lore = std::string(fields[2]);
-    // fields[3] = IDFile
+    // fields[3] = IDFile, e.g. "IT10004". T498 (board B755/B823): its numeric
+    // part is the appearance MATERIAL for a weapon -- the server computes a
+    // spawn packet's equipment[] as atoi(&item->IDFile[2])
+    // (Mob::GetEquipmentMaterial(), akk-stack code/zone/mob_appearance.cpp) --
+    // so parsing it here is what lets the local player's own weapon be drawn
+    // by the same rule as every peer's. 0 when there is no usable IT<n>.
+    item.idfileModel = parseIdFile(fields[3]);
     item.itemId = static_cast<uint32_t>(toInt(fields[4]));
     item.weight = static_cast<float>(toInt(fields[5])) / 10.0f;  // Weight is in tenths
 

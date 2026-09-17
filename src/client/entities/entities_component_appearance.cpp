@@ -556,8 +556,25 @@ void eqt::entities::EntitiesComponent::UpdatePlayerAppearanceFromInventory()
 				data.equipment[mapping.equipSlotIndex] = item->material;
 				data.equipmentTint[mapping.equipSlotIndex] = item->color;
 			} else {
-				// Weapons: use item ID for model lookup
-				data.equipment[mapping.equipSlotIndex] = item->itemId;
+				// Weapons: the appearance MATERIAL, i.e. the numeric part of
+				// the server's items.idfile, which Titanium serialises as
+				// static field 3. T498 (board B755/B823): this used to be the
+				// DATABASE ITEM ID, resolved at each render site through
+				// data/item_models.json -- a different rule from the one the
+				// server applies to every peer and NPC
+				// (Mob::GetEquipmentMaterial() = atoi(&item->IDFile[2])), over
+				// a hand-carried table whose rows disagree with the server
+				// 2,128 times in 3,661. equipment[] is now uniformly a
+				// material/IT number, never an item id.
+				if (item->idfileModel != 0) {
+					data.equipment[mapping.equipSlotIndex] = item->idfileModel;
+				} else {
+					LOG_WARN(MOD_INVENTORY,
+						"UpdatePlayerAppearanceFromInventory: item {} ({}) in slot {} has no IT<n> idfile on the wire; "
+						"falling back to the item id, which the render sites resolve through data/item_models.json",
+						item->itemId, item->name, mapping.inventorySlot);
+					data.equipment[mapping.equipSlotIndex] = item->itemId;
+				}
 			}
 		} else {
 			// No item in slot - clear the appearance slot
