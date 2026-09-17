@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# kb -- run a hermes kanban command on hermes-ext for the willeq board.
+#   kb list | kb show t_xxx | kb create "Title" --assignee dev --body-file f.md ...
+# The agent script needs its venv; the `hermes` on PATH there is browser-use.
+set -u
+HOST="${HERMES_HOST:-172.16.200.100}"
+BOARD="${KB_BOARD:-willeq}"
+args=$(printf '%q ' "$@")
+exec ssh -o BatchMode=yes -o ConnectTimeout=10 "$HOST" -- \
+  "~/.hermes/hermes-agent/venv/bin/python ~/.hermes/hermes-agent/hermes kanban --board $BOARD $args"

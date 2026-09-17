@@ -67,6 +67,15 @@ std::string ResolveDataPath(const std::string& relative);
  *
  * The read side takes the first candidate where the file EXISTS, so a
  * read-only staged cache still serves a run that cannot write one.
+ *
+ * B845: a SET WILLEQ_CACHE_DIR is AUTHORITATIVE -- when it is set and
+ * non-empty, both the read and the write are confined to that directory and
+ * candidates 2-4 are not consulted at all. Rationale: a caller that names a
+ * cache directory is stating "this run owns it"; falling through to the shared
+ * fallbacks (which is what let a concurrent test process's build/bin/cache/
+ * entry short-circuit another process's cold scan) defeats that. Every
+ * production caller leaves the variable unset and takes the full candidate
+ * walk; only tests set it, to isolate a run from the shared caches.
  * ---------------------------------------------------------------------------
  */
 

@@ -11812,7 +11812,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   ctest test -- shown RED against the pre-T501 file and GREEN against the new
   one.
 
-## Added 2026-09-17 by kanban pilot (task/kb-b842-log-module-list)
+## Added 2026-09-17 by kanban pilot
 
 ~~- **B842** (P) **`--log-module` takes ONE `MOD:LEVEL` per flag and silently
   eats a comma-separated list.** [measured T500] `logging.h:878` splits on the
@@ -11831,4 +11831,66 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   bad-pair-does-not-poison-neighbours), shown RED on the pre-fix code.
   `--help` now says the list form.
 
-B828–B829 and B832 unused. B830–B831 used by T496 Leg D. B833–B835 used by T499. B836–B845 used by T500 (B845 closed by its own unit, B842 closed above by its own unit). B846 used by T501. B847 onwards unused.
+- **B845** (P) **The three `AudioStartupPeak` cases share one on-disk
+  `snd_index_cache.json` and flake against each other under `ctest -j`.**
+  [measured T500] `TheSteadyStateIsTheSoundFontsAndLittleElse` failed its own
+  `ASSERT_TRUE(cold.scanReallyRan())` guard -- "the archive scan was
+  short-circuited by a warm index cache" -- in a `-j4` run and passed
+  immediately when the three were run alone. `ColdSoundIndex` removes the cache
+  in its constructor, but a sibling case running concurrently rewrites it
+  before this one scans. The guard did its job (the case refused to measure
+  nothing rather than passing hollow), so this is an isolation defect, not a
+  measurement one. Fix: give each case its own `WILLEQ_CACHE_DIR`, or put the
+  three in a ctest RESOURCE_LOCK. Nothing to do with T500's change; found by
+  its final suite run.
+  [closed 2026-09-17, task/kb-b845-audio-peak-isolation] Root cause [measured]: `ColdSoundIndex`'s
+  per-process `WILLEQ_CACHE_DIR` (`/tmp/t496_audio_peak_<pid>`) already
+  isolated the WRITE, but `loadPfsIndexCache()` -> `ResolveCachePathForRead()`
+  fell through the empty per-process dir to the SHARED `<exe dir>/cache`
+  (`build/bin/cache/`) -- which 15 other test binaries (no `WILLEQ_CACHE_DIR`)
+  also read and write. The fixture kept that shared file away with a rename to
+  a shared `.t496bak` (hide in the ctor, restore in the dtor) -- cross-process
+  mutable state; a sibling's step landing between this case's hide and its read
+  short-circuits the scan. Reproduced deterministically against the original
+  code by pre-planting the sibling-in-flight on-disk state (shared file absent,
+  `.t496bak` present holding the valid warm index) and restoring the shared
+  file before the victim's read: `Value of: cold.scanReallyRan() / Actual:
+  false / Expected: true / the archive scan was short-circuited by a warm index
+  cache`, `1 FAILED TEST`. Fix at the root: a set `WILLEQ_CACHE_DIR` is now
+  AUTHORITATIVE in `CacheDirCandidates()` (`src/client/core/data_paths.cpp`) --
+  read and write are confined to that directory with no shared fallback; every
+  production caller leaves the variable unset, so no shipped path changes. The
+  fixture no longer renames anything: it creates a per-process directory,
+  points the resolver at it, and EXPECTs the resolver honoured it (read reports
+  a MISS, not a shared hit; the write lands in the per-process dir), so a
+  regression that reintroduces a fallback fails the case itself instead of
+  measuring nothing. After: the same trigger passes 10/10 with the scan really
+  running (`[measured] audio live after initialize(): 25681280 bytes`,
+  `scanReallyRan()` true), and 10/10 rounds of `ctest -R AudioStartupPeak -j3`
+  are clean. A ctest `RESOURCE_LOCK` on the three cases (hand-registered in
+  `tests/cmake/audio.cmake`) is the second belt, not the fix.
+
+
+## Added 2026-09-17 by T502 (no CI; hermes workers OOM at 4 GiB)
+
+~~- **B847** (P) **There is no CI.** Every build and every ctest run happens
+  wherever an agent happens to be, and when that is a hermes kanban worker the
+  worker is capped at 4 GiB and is OOM-killed while linking -- so the suite is
+  not run at all on the path a worker takes, and a red tip can reach `fable`
+  with nobody having compiled it. [measured T502] the project's GitLab
+  (`willeq/willeq`, id 1) had `ciConfigPathOrDefault` = `.gitlab-ci.yml` and no
+  such file; the one registered runner (id 1, shell executor, `concurrent = 1`)
+  had never run a job for this project.~~ **STRUCK by T502 (this commit):**
+  `.gitlab-ci.yml` adds four stages -- `hygiene` (no C++ build), `build`
+  (Release, `-j8`), `test` (full ctest plus the intermittent RDP case with
+  `--repeat until-pass:3`) and `gate` (`visual_gate`, 3 in-script retries,
+  **not** `allow_failure`) -- on the runner, which executes on **hermes-ext**
+  (16 cores, 31 GB: the job log's own `hostname; nproc; free -g`), not in a
+  4 GiB worker. Every job refuses any host but hermes-ext (Will's 2026-09-17
+  ruling that the Inspur inference box must never build) and is bounded to 8 of
+  16 cores at `nice -n 10` so a pipeline cannot starve a kanban worker on the
+  same host. `docs/ci.md` documents how to read a pipeline, the warm-tree
+  trade-off and how to retry the gate. First green pipeline and the per-stage
+  wall times are in `refactor/T502_gitlab_ci.md`.
+
+B848 used by the kanban pilot (issue #4, migration card). B849 onwards unused.

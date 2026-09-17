@@ -86,10 +86,26 @@ namespace {
 // The candidate directories for a generated cache, in order. See the block
 // comment in include/client/data_paths.h (T402, board B248): none of them is
 // inside the checkout, which is the point.
+//
+// B845 (board B845): a non-empty WILLEQ_CACHE_DIR is AUTHORITATIVE. The
+// original T402 design treated it as merely the FIRST candidate, so a read
+// whose per-process dir was still empty fell through to the shared
+// `<exe dir>/cache` (build/bin/cache/) and could short-circuit on a cache that
+// a CONCURRENT test process had just written there. That shared-file
+// read/write is what made the AudioStartupPeak cases flake under ctest -j
+// (their fixture tried to keep the shared file hidden with a rename that a
+// sibling's in-flight destructor could undo). When a caller sets
+// WILLEQ_CACHE_DIR it is stating "this run owns this directory" -- so read and
+// write are confined to it and never touch the shared fallbacks. An unset or
+// empty variable keeps the full candidate walk, which is every production
+// caller (none of them sets the variable).
 std::vector<std::string> CacheDirCandidates() {
     std::vector<std::string> dirs;
     if (const char* explicitDir = std::getenv("WILLEQ_CACHE_DIR")) {
-        if (explicitDir[0] != '\0') dirs.push_back(explicitDir);
+        if (explicitDir[0] != '\0') {
+            dirs.push_back(explicitDir);
+            return dirs;  // authoritative: no shared fallback
+        }
     }
     if (const char* root = std::getenv("WILLEQ_DATA_ROOT")) {
         if (root[0] != '\0') dirs.push_back(std::string(root) + "/cache");

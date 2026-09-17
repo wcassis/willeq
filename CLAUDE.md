@@ -68,6 +68,20 @@ Additional context is in subdirectory CLAUDE.md files:
   states a new number adds a row to `scripts/refactor/check_doc_counts.py`.
 - **Strike every mention when you close an item.** A fix verified only by a
   hand-run tool leaves no regression net and no doc trigger.
+- **CI runs the build and the suite on the GitLab runner, not in your
+  worker.** `.gitlab-ci.yml` (T502) builds Release and runs the full ctest suite
+  on pushes to `task/*`, `plans/*` and `fable`, and on merge requests, in four
+  stages: `hygiene` (no C++ build, so a doc/size/citation break fails in under a
+  minute), `build`, `test` (the intermittent `RDPServerFrameTest.UpdateFrameMultipleTimes`
+  is re-run with `--repeat until-pass:3`) and `gate` (`visual_gate`, 3 in-script
+  retries, never `allow_failure`). The jobs execute on **hermes-ext** and refuse
+  any other host — a hermes kanban worker is capped at 4 GiB and is OOM-killed
+  while linking, which is what CI exists to stop, and Will's 2026-09-17 ruling
+  keeps builds off the Inspur inference box. Pushing a branch is therefore the
+  cheapest way to get the suite run, but the runner keeps a **warm** build tree
+  between pipelines, so a green pipeline is evidence about an incremental build;
+  force a clean one before trusting it on a build-system change. How to read a
+  pipeline, retry the gate and go cold: `docs/ci.md`.
 
 ### File sizes
 

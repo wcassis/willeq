@@ -24,6 +24,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <unistd.h>
 #include <filesystem>
@@ -78,41 +80,68 @@ uint64_t AudioPeak() {
 // points WILLEQ_CACHE_DIR at a fresh empty directory, and then PROVES the scan
 // really ran by requiring the cache file to have been written -- a green that
 // came from the short circuit is not a green.
+//
+// B845 (board B845): the original T496 fixture kept the shared
+// `build/bin/cache/snd_index_cache.json` away by RENAMING it to a shared
+// `.t496bak` in the ctor and restoring it in the dtor. Each ctest case is a
+// separate process, so that rename was CROSS-PROCESS mutable state: under
+// `ctest -j` a sibling's destructor could undo this process's hide between the
+// hide and this process's read, the read then fell through to the warm shared
+// file (ResolveCachePathForRead's `<exe dir>/cache` fallback) and
+// short-circuited the scan -- `TheSteadyStateIsTheSoundFontsAndLittleElse`
+// failed its own guard on T500's final -j4 run. The hide could not be made
+// safe: every fallback directory is shared by definition, and 15 other test
+// binaries (no WILLEQ_CACHE_DIR) read and write that same shared file.
+//
+// The root fix is in the resolver: a set WILLEQ_CACHE_DIR is now AUTHORITATIVE
+// (see src/client/core/data_paths.cpp) -- read and write are confined to the
+// directory, with no shared fallback. So this fixture only has to create a
+// per-process directory, point the resolver at it, and PROVE the resolver
+// honoured it. No rename, no restore, no cross-process state at all: the cases
+// cannot share a cache with each other or with any other test process, and a
+// run that somehow still hit a fallback directory fails its own ASSERT below
+// instead of measuring nothing. A ctest RESOURCE_LOCK (tests/cmake/audio.cmake)
+// is the second belt, not the fix.
 class ColdSoundIndex {
 public:
     ColdSoundIndex() {
-        dir_ = std::filesystem::temp_directory_path() /
-               ("t496_audio_peak_" + std::to_string(::getpid()));
         std::error_code ec;
+        // Per-process: ctest gives each case its own process, so <pid> alone
+        // already makes this unique among the three cases; the counter guards
+        // a hypothetical same-process reuse.
+        static std::atomic<uint64_t> counter{0};
+        dir_ = std::filesystem::temp_directory_path() /
+               ("t496_audio_peak_" + std::to_string(::getpid()) + "_" +
+                std::to_string(counter.fetch_add(1)));
         std::filesystem::remove_all(dir_, ec);
         std::filesystem::create_directories(dir_, ec);
         ::setenv("WILLEQ_CACHE_DIR", dir_.c_str(), 1);
-        // WILLEQ_CACHE_DIR is only the FIRST candidate: ResolveCachePathForRead
-        // falls through to `<exe dir>/cache`, i.e. `build/bin/cache/`, which any
-        // earlier client run in this tree has populated. So move that one file
-        // aside for the duration and put it back afterwards. It is a GENERATED
-        // cache whose miss costs a rescan and is explicitly not an error (T402),
-        // and this object restores it, so nothing is lost either way.
-        const std::string exeDir = eqt::ExecutableDirectory();
-        if (!exeDir.empty()) {
-            hidden_ = std::filesystem::path(exeDir) / "cache" / "snd_index_cache.json";
-            backup_ = hidden_;
-            backup_ += ".t496bak";
-            if (std::filesystem::exists(hidden_)) {
-                std::filesystem::rename(hidden_, backup_, ec);
-                if (ec) { hidden_.clear(); backup_.clear(); }
-            } else {
-                hidden_.clear();
-                backup_.clear();
-            }
+        // ASSERT the resolver actually used the directory we created -- for
+        // BOTH directions. With B845's authoritative rule a set
+        // WILLEQ_CACHE_DIR admits no fallback, so the write must land here;
+        // and the read must report a MISS (the directory is empty) rather
+        // than a shared build/bin/cache hit. If either ever resolves somewhere
+        // else, the scan would short-circuit (or the proof file would land
+        // elsewhere) and this case would pass without measuring anything.
+        const std::string read = eqt::ResolveCachePathForRead("snd_index_cache.json");
+        if (!read.empty()) {
+            std::fprintf(stderr,
+                         "B845: ResolveCachePathForRead hit '%s' even though the "
+                         "per-process dir %s is the only candidate\n",
+                         read.c_str(), dir_.c_str());
         }
+        EXPECT_TRUE(read.empty())
+            << "resolver did not confine the read to the per-process cache "
+               "directory (it found '" << read << "'); the scan would be "
+               "short-circuited by a shared warm cache -- refusing to measure";
+        const std::string write = eqt::ResolveCachePathForWrite("snd_index_cache.json");
+        EXPECT_EQ(write, dir_.string() + "/snd_index_cache.json")
+            << "resolver would write the index to '" << write
+            << "' instead of the per-process directory " << dir_
+            << " -- the scanReallyRan() proof file would land elsewhere";
     }
     ~ColdSoundIndex() {
         std::error_code ec;
-        if (!backup_.empty() && std::filesystem::exists(backup_)) {
-            std::filesystem::remove(hidden_, ec);
-            std::filesystem::rename(backup_, hidden_, ec);
-        }
         ::unsetenv("WILLEQ_CACHE_DIR");
         std::filesystem::remove_all(dir_, ec);
     }
@@ -121,7 +150,7 @@ public:
         return std::filesystem::exists(dir_ / "snd_index_cache.json");
     }
 private:
-    std::filesystem::path dir_, hidden_, backup_;
+    std::filesystem::path dir_;
 };
 
 }  // namespace
