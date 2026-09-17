@@ -680,9 +680,9 @@ it without taking that measurement first.
   exists on Mali; (4) allocator slack ≤ 35% of RssAnon (measured 8.6–12.6%);
   (5) each category against `memoryLedgerBudgets` in the orangepi preset.
   The ONE thing T69 asked for that is still open is the Pi-side number, which
-  is T490 Leg B's, not a gate defect — see B802 below.
+  is T490 Leg B's, not a gate defect — see B812 below.
 
-- **B802** (B) The memory ledger's budgets and bounds are **x86/llvmpipe
+- **B812** (B) The memory ledger's budgets and bounds are **x86/llvmpipe
   numbers** (T491, 2026-09-17). `startup`, `textures_driver` and
   `irrlicht_scene` deliberately carry NO budget in the orangepi preset because
   the x86 figures are Mesa's — `startup` alone measures 40.5–49.7 MiB of
@@ -694,7 +694,7 @@ it without taking that measurement first.
   Confirmed by T491 (measured, `refactor/T491_memory_ledger_100_percent.md`
   Review).
 
-- **B803** (A, half struck) `s3dZoneSourceMemoryBytes` did not describe the
+- **B813** (A, half struck; resolves T490's B803 origin entry) `s3dZoneSourceMemoryBytes` did not describe the
   worst zone. ~~24 MiB~~ **→ 32 MiB in T491 (2026-09-17)**: the T293 figure was
   extrapolated from the three golden zones, and T490 then MEASURED iceclad's
   S3D zone source at **24.55 MiB**, over the old budget on its own. Re-derived
@@ -709,12 +709,12 @@ it without taking that measurement first.
   adding a Velious zone to the gate's zone set, which means blessing new
   goldens: **Will's call, not an executor's.**
 
-- **B804** (A) One category is bigger than the whole target. T491 measured
+- **B814** (A) One category is bigger than the whole target. T491 measured
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage
   run (gfaydark, 5 races, objects + EQE1) — on its own larger than Will's
   32–64 MB RSS goal (`docs/decisions.md` 2026-09-17). Its budget is set at
   84 MiB, which records where it is, NOT where it belongs. Next behind it:
-  `startup` 40.5–49.7 MiB (llvmpipe, see B802), `objects` 28.9 MiB,
+  `startup` 40.5–49.7 MiB (llvmpipe, see B812), `objects` 28.9 MiB,
   `irrlicht_scene` 25.4–27.9 MiB, `zone_mesh` 18.9–20.3 MiB. These five are the
   shrink queue, in order, and the ledger prints exactly this list on every run
   (`[rss-target]`). Confirmed by T491 (measured).

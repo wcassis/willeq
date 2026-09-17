@@ -220,8 +220,8 @@ should be planned from:
 | non-heap anon (llvmpipe) | **15.8 MiB** | all | 8–21% |
 
 `entity_models` alone is larger than Will's entire 32–64 MB target; boarded as
-**B804**. `startup`, `textures_driver` and `irrlicht_scene` are llvmpipe/Mesa
-on x86 and **do not transfer to Mali** — boarded as **B802**.
+**B814**. `startup`, `textures_driver` and `irrlicht_scene` are llvmpipe/Mesa
+on x86 and **do not transfer to Mali** — boarded as **B812**.
 
 ### 6. Addendum — attributing the startup baseline by MAPPING (B801)
 
@@ -250,7 +250,7 @@ the non-heap remainder is llvmpipe's JIT and its ~298 rasteriser-thread
 mappings. **[assumed, and flagged]:** that this shape carries to the Pi. It
 almost certainly does not — Mali's driver allocations are the reason T490 saw
 190 MB before any zone — and the client's own `[memmap]` census is what will
-answer it in one Pi run. **Boarded B802; this unit did not take the Pi lane.**
+answer it in one Pi run. **Boarded B812; this unit did not take the Pi lane.**
 
 ### 7. Cost of the hooks [measured]
 
@@ -259,7 +259,7 @@ alloc/free pairs, x86: raw glibc **17.8–19.4 ns/pair**, ledger
 **62.7–79.5 ns/pair**, delta **43.3–61.5 ns/pair**. The frame loop's
 allocation rate is printed by the benchmark (`[memledger] frame_allocs`) so the
 per-frame cost is arithmetic, not a guess. **The plan's 2%-of-frame-time STOP
-did not fire on x86** and is **[assumed]** for the Pi — same B802 measurement
+did not fire on x86** and is **[assumed]** for the Pi — same B812 measurement
 closes it. `-DEQT_MEMORY_LEDGER=OFF` replaces no symbol and makes `MemoryScope`
 an empty struct.
 
@@ -293,10 +293,10 @@ time, so its allocations are attributed by the scope that called into it
 ### 10. What this unit did NOT do
 
 - **No Pi run, no eqemu lane** — the unit is offline and T490 owns both. Every
-  Pi-dependent number above is flagged **[assumed]** and boarded as **B802**.
+  Pi-dependent number above is flagged **[assumed]** and boarded as **B812**.
 - **No Velious zone in the gate.** The gate asserts only the zones it runs, so
   iceclad is uncovered; adding one means blessing new goldens, which is Will's
-  call. Open half of **B803**.
+  call. Open half of **B813**.
 
 ### 11. Verification bar [measured]
 
