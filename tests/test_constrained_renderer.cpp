@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+
+#include "client/core/memory_ledger.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include <string>
@@ -1061,10 +1063,45 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudget
     EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(64) * 1024 * 1024);
     EXPECT_EQ(config.zoneGeometryMemoryBytes,     static_cast<size_t>(16) * 1024 * 1024);
     EXPECT_EQ(config.placeableObjectsMemoryBytes, static_cast<size_t>(24) * 1024 * 1024);
-    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(24) * 1024 * 1024);
+    // T491 (board B803): 24 -> 32 MiB. The T293 figure was extrapolated from
+    // the three golden zones; T490 then MEASURED iceclad's S3D zone source at
+    // 24.55 MiB, over the old budget on its own. Re-derived on that measured
+    // worst case x 1.25 headroom = 30.7 -> 32 MiB (constrained_renderer_config.h).
+    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(32) * 1024 * 1024);
     EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
+
+    // T491 (2026-09-14, Will's 100%-accounting ruling): the ALLOCATOR-level
+    // ledger's per-category budgets, derived by the T293 headroom rule from
+    // measured worst-case LIVE bytes across the three golden zones plus the
+    // memory-coverage run. A silent change to any of these is a budget change
+    // and must be an explicit edit here, exactly like the T293 block above.
+    using eqt::memory::Category;
+    auto ledgerBudget = [&config](Category c) {
+        return config.memoryLedgerBudgetBytes[static_cast<size_t>(c)];
+    };
+    EXPECT_EQ(ledgerBudget(Category::Unattributed),    static_cast<size_t>(1) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::Archives),        static_cast<size_t>(4) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::ZoneParse),       static_cast<size_t>(32) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::ZoneMesh),        static_cast<size_t>(28) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::Spatial),         static_cast<size_t>(4) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(20) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::EntityModels),    static_cast<size_t>(84) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::Objects),         static_cast<size_t>(40) * 1024 * 1024);
+    // The ZoneParse ledger budget is PINNED to the S3D-zone-source estimate
+    // budget (board B803): they bound the same bytes by two different methods,
+    // and letting them drift would make one of them a lie.
+    EXPECT_EQ(ledgerBudget(Category::ZoneParse), config.s3dZoneSourceMemoryBytes);
+    // Driver-coupled and never-constructed categories carry NO budget on
+    // purpose -- see the reason list in constrained_renderer_config.cpp. A
+    // budget derived from llvmpipe would be a fiction on Mali.
+    for (Category c : {Category::Startup, Category::TexturesDriver, Category::IrrlichtScene,
+                       Category::Doors, Category::Equipment, Category::EntityInstances,
+                       Category::UI, Category::Audio, Category::Network, Category::GameState}) {
+        EXPECT_EQ(ledgerBudget(c), 0u) << eqt::memory::categoryName(c);
+    }
+
 
     // VBO/EBO is derived BY IDENTITY, not by scaling: the GPU hardware
     // buffers hold the same vertex+index data as the CPU-side zone geometry
@@ -1089,10 +1126,45 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(64) * 1024 * 1024);
     EXPECT_EQ(config.zoneGeometryMemoryBytes,     static_cast<size_t>(16) * 1024 * 1024);
     EXPECT_EQ(config.placeableObjectsMemoryBytes, static_cast<size_t>(24) * 1024 * 1024);
-    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(24) * 1024 * 1024);
+    // T491 (board B803): 24 -> 32 MiB. The T293 figure was extrapolated from
+    // the three golden zones; T490 then MEASURED iceclad's S3D zone source at
+    // 24.55 MiB, over the old budget on its own. Re-derived on that measured
+    // worst case x 1.25 headroom = 30.7 -> 32 MiB (constrained_renderer_config.h).
+    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(32) * 1024 * 1024);
     EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
+
+    // T491 (2026-09-14, Will's 100%-accounting ruling): the ALLOCATOR-level
+    // ledger's per-category budgets, derived by the T293 headroom rule from
+    // measured worst-case LIVE bytes across the three golden zones plus the
+    // memory-coverage run. A silent change to any of these is a budget change
+    // and must be an explicit edit here, exactly like the T293 block above.
+    using eqt::memory::Category;
+    auto ledgerBudget = [&config](Category c) {
+        return config.memoryLedgerBudgetBytes[static_cast<size_t>(c)];
+    };
+    EXPECT_EQ(ledgerBudget(Category::Unattributed),    static_cast<size_t>(1) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::Archives),        static_cast<size_t>(4) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::ZoneParse),       static_cast<size_t>(32) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::ZoneMesh),        static_cast<size_t>(28) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::Spatial),         static_cast<size_t>(4) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(20) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::EntityModels),    static_cast<size_t>(84) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::Objects),         static_cast<size_t>(40) * 1024 * 1024);
+    // The ZoneParse ledger budget is PINNED to the S3D-zone-source estimate
+    // budget (board B803): they bound the same bytes by two different methods,
+    // and letting them drift would make one of them a lie.
+    EXPECT_EQ(ledgerBudget(Category::ZoneParse), config.s3dZoneSourceMemoryBytes);
+    // Driver-coupled and never-constructed categories carry NO budget on
+    // purpose -- see the reason list in constrained_renderer_config.cpp. A
+    // budget derived from llvmpipe would be a fiction on Mali.
+    for (Category c : {Category::Startup, Category::TexturesDriver, Category::IrrlichtScene,
+                       Category::Doors, Category::Equipment, Category::EntityInstances,
+                       Category::UI, Category::Audio, Category::Network, Category::GameState}) {
+        EXPECT_EQ(ledgerBudget(c), 0u) << eqt::memory::categoryName(c);
+    }
+
 #else
     GTEST_SKIP() << "WILLEQ_CONSTRAINED_PRESETS_JSON not defined by build";
 #endif

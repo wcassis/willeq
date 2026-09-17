@@ -328,11 +328,63 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.gpuTextureMemoryBytes         = 64 * 1024 * 1024;   // 64MB
             config.zoneGeometryMemoryBytes       = 16 * 1024 * 1024;   // 16MB
             config.placeableObjectsMemoryBytes   = 24 * 1024 * 1024;   // 24MB
-            config.s3dZoneSourceMemoryBytes      = 24 * 1024 * 1024;   // 24MB
+            config.s3dZoneSourceMemoryBytes      = 32 * 1024 * 1024;   // 32MB (T491/B803: iceclad measures 24.55 MiB)
             config.vboEboMemoryBytes             = 40 * 1024 * 1024;   // 40MB
             config.characterModelsMemoryBytes    = 40 * 1024 * 1024;   // 40MB
             // Address space, not RAM -- see the field's comment.
             config.eqe1MappedAddressSpaceBytes   = 256 * 1024 * 1024;  // 256MB
+            // T491 (2026-09-14, Will's 100%-accounting ruling): per-category
+            // budgets for the ALLOCATOR-level ledger (client/core/memory_ledger.h),
+            // asserted by scripts/ci/visual_gate.py on every gate run. Derived by
+            // the T293 headroom rule -- worst LIVE bytes measured across the three
+            // golden zones plus the memory-coverage run, x 1.25, rounded up -- on
+            // x86/llvmpipe at 800x600. Unlike the estimates above these bound
+            // EVERY byte the category allocates, transients included.
+            // 0 = no budget configured; the gate skips the category and says so.
+            // DELIBERATELY 0, with the reason:
+            //  - startup / textures_driver / irrlicht_scene: driver-coupled. The
+            //    x86 figures are llvmpipe's (startup alone is 40-50 MiB of Mesa
+            //    JIT state) and do NOT transfer to Mali. Budgeting them from x86
+            //    would ship a fiction. They need a Pi measurement (T490 Leg B).
+            //  - doors / equipment / entity_instances / ui / audio / network /
+            //    game_state: no benchmark constructs them, so a budget would be
+            //    decoration -- the same rule T69/T293 applied to their estimates.
+            // THE ATTRIBUTION RATCHET, not a capacity budget: bytes
+            // charged with NO MemoryScope on the calling thread (static
+            // initialisers, a thread's first allocations). Measured 87,456 B
+            // on every T491 run; 1 MiB is an order of magnitude of headroom so
+            // a NEW unscoped subsystem is red. Ratchet DOWN, never up.
+            config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Unattributed)] =
+                1 * 1024 * 1024;
+            // measured worst 1.24 MiB (coverage run) x 1.25 = 1.6 -> 4
+            config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Archives)] =
+                4 * 1024 * 1024;
+            // measured worst 8.52 MiB over the three golden zones, but
+            // those are the SMALL zones: T490 measured iceclad's S3D zone
+            // source at 24.55 MiB. Pinned to s3dZoneSourceMemoryBytes (32 MiB,
+            // board B803) because zone_parse holds exactly that data
+            config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::ZoneParse)] =
+                32 * 1024 * 1024;
+            // measured worst 20.26 MiB (befallen) x 1.25 = 25.3 -> 28
+            config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::ZoneMesh)] =
+                28 * 1024 * 1024;
+            // measured worst 2.68 MiB (gfaydark) x 1.25 = 3.4 -> 4.
+            // ⚠ iceclad is 37,609 BSP regions against gfaydark's; this budget is
+            // derived from zones that do not exercise the term T490 is chasing
+            config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Spatial)] =
+                4 * 1024 * 1024;
+            // measured worst 13.04 MiB (coverage) x 1.25 = 16.3 -> 20
+            config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::TexturesDecoded)] =
+                20 * 1024 * 1024;
+            // measured worst 64.56 MiB (coverage, 5 races) x 1.25 =
+            // 80.7 -> 84. ⚠ This ONE category is larger than Will's whole
+            // 32-64 MB RSS target: it is the #1 shrink item, and the budget
+            // records where it is today, not where it belongs
+            config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::EntityModels)] =
+                84 * 1024 * 1024;
+            // measured worst 28.91 MiB (coverage) x 1.25 = 36.1 -> 40
+            config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Objects)] =
+                40 * 1024 * 1024;
             // Deferred asset loading (progressive mesh building during gameplay)
             config.deferredAssetLoading = true;
             config.backgroundThreadCount = 1;

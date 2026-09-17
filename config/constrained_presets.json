@@ -47,7 +47,7 @@
       "gpuTextureMemoryBytes": 67108864,
       "zoneGeometryMemoryBytes": 16777216,
       "placeableObjectsMemoryBytes": 25165824,
-      "s3dZoneSourceMemoryBytes": 25165824,
+      "s3dZoneSourceMemoryBytes": 33554432,
       "vboEboMemoryBytes": 41943040,
       "characterModelsMemoryBytes": 41943040,
       "eqe1MappedAddressSpaceBytes": 268435456,
@@ -81,7 +81,17 @@
       "occlusionMaxOccluderRegions": 256,
       "totalMemoryBudgetBytes": 134217728,
       "occlusionBufferWidth": 64,
-      "occlusionBufferHeight": 32
+      "occlusionBufferHeight": 32,
+      "memoryLedgerBudgets": {
+        "unattributed": 1048576,
+        "archives": 4194304,
+        "zone_parse": 33554432,
+        "zone_mesh": 29360128,
+        "spatial": 4194304,
+        "textures_decoded": 20971520,
+        "entity_models": 88080384,
+        "objects": 41943040
+      }
     }
   }
 }

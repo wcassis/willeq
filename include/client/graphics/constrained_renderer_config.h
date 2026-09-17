@@ -140,8 +140,21 @@ struct ConstrainedRendererConfig {
 
     // CPU-side S3D zone source retained for mesh rebuilds (geometry, BSP,
     // animation data).
-    // Derived: 7.52 MiB worst measured (gfaydark) x 2.34 x 1.25 = 22.00 MiB
-    // -> 24 MiB.
+    // T293 derivation: 7.52 MiB worst measured (gfaydark) x 2.34 x 1.25 =
+    // 22.00 MiB -> 24 MiB.
+    // T491 (2026-09-17, board B803): 24 MiB DOES NOT DESCRIBE THE WORST ZONE.
+    // T490 measured iceclad's S3D zone source at 24.55 MiB -- over the budget
+    // by itself -- because the T293 scaling factor was taken over the three
+    // GOLDEN zones and iceclad is not one of them. Re-derived on the measured
+    // worst case instead of an extrapolated one: 24.55 MiB x 1.25 headroom =
+    // 30.7 MiB -> 32 MiB. This is a budget that now describes reality; it is
+    // NOT a target. Under Will's 32-64 MB RSS goal (docs/decisions.md
+    // 2026-09-17) a single category holding 32 MiB is itself the shrink work,
+    // and the memory ledger's zone_parse/zone_mesh categories measure it at
+    // the allocator rather than by this estimate.
+    // ⚠ The gate only applies this budget to the zones it RUNS (the three
+    // goldens + the memory-coverage zone), so no CI assertion covers iceclad
+    // today -- that is the open half of B803.
     size_t s3dZoneSourceMemoryBytes = 0;
 
     // GPU hardware buffers (VBO/EBO). Measured to be exactly the GPU mirror
