@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# gql -- run a GraphQL query against the local GitLab.
+#   gql '<query>' ['<variables-json>']        or        gql -f query.graphql ['<variables-json>']
+# Token: $GITLAB_TOKEN, else ~/gitlab_token.txt (chmod 600). Endpoint: $GITLAB_URL (default
+# https://gitlab.goldfarm.local). The instance cert is self-signed: set GITLAB_CA to its CA file to
+# verify, else the call goes -k (TLS still on, peer unverified) -- never put the token in a URL.
+set -u
+URL="${GITLAB_URL:-https://gitlab.goldfarm.local}"
+TOKEN="${GITLAB_TOKEN:-$(tr -d '[:space:]' < "$HOME/gitlab_token.txt")}"
+if [ "${1:-}" = "-f" ]; then Q=$(cat "$2"); shift 2; else Q="$1"; shift; fi
+VARS="${1:-{\}}"
+CURLTLS=(-k); [ -n "${GITLAB_CA:-}" ] && CURLTLS=(--cacert "$GITLAB_CA")
+python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1], "variables": json.loads(sys.argv[2])}))' "$Q" "$VARS" \
+  | curl -s -m 30 "${CURLTLS[@]}" -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data-binary @- "$URL/api/graphql"
