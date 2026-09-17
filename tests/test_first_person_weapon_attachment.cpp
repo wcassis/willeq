@@ -49,6 +49,7 @@
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
+#include "client/graphics/eq/skeletal_animator.h"
 #include "client/graphics/first_person_camera.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -258,13 +259,20 @@ TEST_F(FirstPersonWeaponAttachmentTest, HeldWeaponIsHeadingInvariantInTheCameraF
 }
 
 // T472 (board B588) / T485 (B725): the same player, the same attachment, third
-// person and IDLE. The official client points a one-handed blade FORWARD from
-// the fist, roughly level (T478 set A, review/T478/README.md section 4);
-// fable stood it up before T472 and hung it straight down before T485. The
-// attack-frame canary above keeps the first-person draw rule honest; this
-// keeps the idle orientation honest, and both run over the one production
-// placement (updateMainThreadEntityState).
-TEST_F(FirstPersonWeaponAttachmentTest, ThirdPersonIdleBladePointsForward) {
+// person and IDLE. Will's ruling on the T485 sheets (2026-09-17): a held item is
+// gripped in a FIST, so its long axis is PERPENDICULAR to the forearm. fable
+// stood the blade up the forearm before T472, hung it back down it after, and
+// T485's first pick laid it along the forearm the other way. The attack-frame
+// canary above keeps the first-person draw rule honest; this keeps the idle
+// orientation honest ON THE PLAYER'S OWN NODE, whose body is drawn baked while
+// its equipment children are not (T301) -- so it is the one place the bake and
+// the placement are checked against each other. Both run over the one
+// production placement (updateMainThreadEntityState).
+//
+// Perpendicularity is measured against the forearm in the node's UNBAKED frame,
+// which is the frame the equipment child lives in, so the bake cancels on both
+// sides and the assertion is heading-independent by construction.
+TEST_F(FirstPersonWeaponAttachmentTest, ThirdPersonIdleBladeIsPerpendicularToTheForearm) {
     constexpr uint16_t kSpawn = 1;
     for (float headingDeg : {0.0f, 135.0f, 270.0f}) {
         EQT::Graphics::EntityAppearance appearance;
@@ -295,13 +303,40 @@ TEST_F(FirstPersonWeaponAttachmentTest, ThirdPersonIdleBladePointsForward) {
         irr::core::vector3df tip = tipLocal;
         abs.transformVect(tip);
         const irr::core::vector3df blade = (tip - grip).normalize();
-        // The player's body is drawn baked by (nodeRot.Y + 90) about Irrlicht Y
-        // (EQAnimatedMeshSceneNode::applyAnimation), so its EQ +X (forward)
-        // lands at (cos th, 0, sin th).
-        const float th = (node->getRotation().Y + 90.0f) * 3.14159265f / 180.0f;
-        const irr::core::vector3df forward(std::cos(th), 0.0f, std::sin(th));
-        EXPECT_GT(blade.dotProduct(forward), 0.7f) << "heading " << headingDeg << ": the blade does not point forward";
-        EXPECT_LT(std::fabs(blade.Y), 0.6f) << "heading " << headingDeg << ": the blade is not roughly level";
+
+        // The forearm, elbow to fingers, through the same node transform the
+        // equipment child inherits. EQ (x, y, z) -> Irrlicht (x, z, y).
+        const auto& animator = node->getAnimator();
+        auto skeleton = animator.getSkeleton();
+        ASSERT_TRUE(skeleton) << "no skeleton on the player node";
+        int elbow = -1, fingers = -1;
+        for (size_t b = 0; b < skeleton->bones.size(); ++b) {
+            if (skeleton->bones[b].name == "humfo_r") elbow = static_cast<int>(b);
+            if (skeleton->bones[b].name == "humfi_r") fingers = static_cast<int>(b);
+        }
+        ASSERT_GE(elbow, 0);
+        ASSERT_GE(fingers, 0);
+        const auto& boneStates = animator.getBoneStates();
+        // The player's node draws its BODY baked by (nodeRot.Y + 90) about
+        // Irrlicht Y, while placeHeldItem() puts the equipment child through
+        // T301's matching yaw compensation -- so a bone origin has to go
+        // through the SAME bake as the body for the two to be comparable.
+        // Taking it through the node's plain absolute transform instead leaves
+        // the two frames a heading apart, and the measured angle then varies
+        // with heading (105 deg at 0, 122 deg at 135) even though the geometry
+        // does not.
+        const float bake = (node->getRotation().Y + 90.0f) * 3.14159265f / 180.0f;
+        const float cb = std::cos(bake), sb = std::sin(bake);
+        auto originIrr = [&](int idx) {
+            const auto& m = boneStates[idx].worldTransform;
+            const float ex = m.m[12], ey = m.m[13], ez = m.m[14];  // EQ x, y, z
+            return irr::core::vector3df(ex * cb - ey * sb, ez, ex * sb + ey * cb) +
+                   node->getAbsoluteTransformation().getTranslation();
+        };
+        const irr::core::vector3df forearm = (originIrr(fingers) - originIrr(elbow)).normalize();
+        const float deg = std::acos(std::max(-1.0f, std::min(1.0f, blade.dotProduct(forearm)))) * 180.0f / 3.14159265f;
+        EXPECT_NEAR(deg, 90.0f, 15.0f)
+            << "heading " << headingDeg << ": the blade is not perpendicular to the forearm -- not a fist grip";
     }
 }
 

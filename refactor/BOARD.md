@@ -10921,6 +10921,12 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   defect B784 turned out to be. Found by T493.
 ## Added 2026-09-14 by T485 (the held-item correction chosen by search against the oracle)
 
+**SUPERSEDED 2026-09-17 by T485 Leg B (see that section below): the correction
+this paragraph describes, c20, was WRONG -- Will ruled it 90 degrees out. The
+shipped correction is the IDENTITY, the test names below no longer exist, and the
+"only the four X->-Z candidates put a blade forward" scoring was against a target
+that is now known to be a misreading. Kept as the record of how it was reached.**
+
 T485 (2026-09-14) CLOSED B588 (blade half; T472 had closed the lantern half),
 B661, B662, B724 and B725, and marked B723 contaminated. `bone_attachment.h`'s
 `kHeldItemCorrection` is now candidate c20 -- item X -> bone -Z, Y -> Y, Z -> X,
@@ -10982,4 +10988,69 @@ red under T472's C, green under c20).
   Needs the lock. Found by T485.
 
 B757–B759 unused.
+
+## Added 2026-09-17 by T485 Leg B (Will's ruling: the correction is the IDENTITY)
+
+**WILL'S RULING, 2026-09-17, verbatim** -- this is the measured fact the held-item
+transform now rests on, and it replaces every reading of a still that came before it:
+
+> "ALL held items are wrongly oriented in both. In the 'after' (c20) sheet the item's
+> long axis FOLLOWS the forearm; it must be PERPENDICULAR to the forearm, a fist
+> grip, so c20 is off by 90 degrees. In the 'before' (T472 diag(-1,1,-1)) sheet they
+> are off by 180 degrees."
+
+`kHeldItemCorrection` is now the **IDENTITY** (item axes straight to the bone's).
+Two independent routes reach it and they agree:
+
+1. **From the ruling alone, no picture.** A rotation about the ITEM's Y is a signed
+   permutation only at 0/90/180/270 -- c00 identity, c20 (what T485 shipped), c02
+   (T472), c22. "c20 is 90 out" gives {c00, c02}; "c02 is 180 out" gives {c00}.
+2. **From the geometry.** MEASURED: R_POINT's -Z **is** the forearm
+   (`humfo_r -> humfi_r`), dot 1.001 at all 41 frames of `o01`, so the angle between
+   the forearm and a rigidly attached item is FRAME-INDEPENDENT. Averaged over the
+   loop (`review/T485/data/score_perpendicular.py`): c00 blade **89.1** / arrow 1.1;
+   c20 blade **1.1** (it lies along the forearm -- what Will saw) / arrow 90.9; c02
+   blade 90.9 / arrow **178.9**. The sign then comes from the official idle, which
+   hangs the arm at the side: the arrow runs from the hand at the hip DOWN past the
+   knee (13 deg off vertical) so `Z -> +Z`, and the blades run FORWARD out of the
+   fist, which at the hanging frame is bone +X, so `X -> +X`; det +1 forces `Y -> +Y`.
+
+Sheets: `review/T485/T485_v2_after_c00_IDENTITY_frame25_sheet.png` and
+`..._before_c20_shipped_frame25_sheet.png`, plus all 24 in
+`review/T485/candidates_frame25/`, rendered at **o01 frame 25** -- fable's
+arm-hanging frame, not frame 0 where the elbow is bent.
+
+- ~~**B722**~~, ~~**B724**~~, ~~**B725**~~ **re-closed by T485 Leg B** against Will's
+  ruling rather than against the T478 prose. The first closure (2026-09-14) was
+  against a reading of the crops that Will has now judged wrong; the tests that
+  pinned it went red and were rewritten on the frame-independent criterion.
+- ~~**B588**~~ stays closed; the lantern half gains a finding, B799.
+- **B799** (P) **A pin can be green on geometry that is upside-down.**
+  `HeldItemTest.LanternHangsBelowTheLeftHand` asserted "the mean vertex is below the
+  hand" and was GREEN under T472's correction, which MEASURED T485 points the
+  lantern's own long axis straight UP (+0.964 at the arm-hanging frame), and green
+  under T485's first pick, which points it backward (-0.93 forward). Under the
+  correct identity it went **red by 0.011 units**. A mean-vertex proxy does not
+  constrain orientation; the pin is now the angle to the left forearm (27.7 deg,
+  frame-independent, and red at 150 / 118 for the two wrong corrections). Look for
+  the same shape wherever a test asserts a centroid instead of an axis. Found by
+  T485 Leg B.
+- **B800** (A) **`held_item_candidate_search` compared its 24 candidates at
+  DIFFERENT poses.** `ISceneManager::drawAll()` calls `OnAnimate()` with the DEVICE
+  timer, so the skeleton moved between one candidate's capture and the next: every
+  candidate after the first was measured and drawn at a frame other than the one
+  intended, and with `--frame` it was snapped straight back off the requested frame
+  (c20's blade read 40.3 deg to the forearm instead of 1.2). FIXED by pausing the
+  animator for the sweep (`pauseAnimation()`, after the per-frame dump, which needs
+  it running). The 2026-09-14 `candidates.tsv` was taken with the pose drifting;
+  it was regenerated. Any offscreen tool that measures a skeleton across several
+  `drawAll()` calls has this trap. Found by T485 Leg B.
+- **B756 RE-SCOPED by T485 Leg B** -- B756 said the blade's PITCH does not match the
+  oracle and blamed a residual a signed permutation cannot close. With the identity
+  the pitch question changes shape: what does not match is the POSE (fable's o01
+  arm-hanging frame is 24.5 deg off straight down, the official idle reads nearer
+  vertical), not the correction. B756 stays open, re-scoped, and still needs the
+  lock and a stepped video.
+
+B801–B809 unused.
 

@@ -138,11 +138,12 @@ TEST(BoneAttachmentTest, MatchesTheSameFallbackChainRealRaceCodesUse) {
 
 // --- computeHeldItemTransform / placeHeldItem: the one held-item transform ---
 //
-// In EQ space it is B * C with C = kHeldItemCorrection (T485: item X -> -Z,
-// Y -> Y, Z -> X, a quarter turn about the item's Y, chosen by search against
-// the official client); in Irrlicht (x, z, y) it is S * B * C * S. These pin
-// the algebra, and tests/test_held_item_attachment.cpp pins the result against
-// real skeletons and real items.
+// In EQ space it is B * C with C = kHeldItemCorrection (T485 as ruled by Will:
+// the IDENTITY -- an item's axes go straight to the bone's); in Irrlicht
+// (x, z, y) it is S * B * C * S. These pin the algebra over the shipped
+// correction AND over two that are not shipped, so the composition is still
+// exercised for a non-trivial C; tests/test_held_item_attachment.cpp pins the
+// result against real skeletons and real items.
 
 namespace {
 // EQ-space reference: S * (B * C * S*p) for an Irrlicht item-mesh point p and
@@ -165,12 +166,17 @@ BoneMat4 rotatedBone() {
 }
 }  // namespace
 
-TEST(BoneAttachmentTest, ShippedCorrectionIsAQuarterTurnAboutTheItemsY) {
-    // The winner of T485's search, spelled out: item X -> bone -Z, Y -> Y, Z -> X.
+TEST(BoneAttachmentTest, ShippedCorrectionIsTheIdentity) {
+    // T485 as ruled by Will, 2026-09-17: an item's axes go straight to the point
+    // bone's. The two corrections this replaced are both rotations about the
+    // ITEM's Y -- T472's diag(-1, 1, -1) is a half turn, T485's first pick a
+    // quarter turn -- and Will read them off the sheets as 180 and 90 degrees
+    // out, which meet at the identity. If this test is ever "fixed" by putting
+    // a turn back, read bone_attachment.h first.
     const auto& c = EQT::Graphics::kHeldItemCorrection;
-    EXPECT_FLOAT_EQ(c.c[0][0], 0.0f);  EXPECT_FLOAT_EQ(c.c[0][1], 0.0f);  EXPECT_FLOAT_EQ(c.c[0][2], -1.0f);
+    EXPECT_FLOAT_EQ(c.c[0][0], 1.0f);  EXPECT_FLOAT_EQ(c.c[0][1], 0.0f);  EXPECT_FLOAT_EQ(c.c[0][2], 0.0f);
     EXPECT_FLOAT_EQ(c.c[1][0], 0.0f);  EXPECT_FLOAT_EQ(c.c[1][1], 1.0f);  EXPECT_FLOAT_EQ(c.c[1][2], 0.0f);
-    EXPECT_FLOAT_EQ(c.c[2][0], 1.0f);  EXPECT_FLOAT_EQ(c.c[2][1], 0.0f);  EXPECT_FLOAT_EQ(c.c[2][2], 0.0f);
+    EXPECT_FLOAT_EQ(c.c[2][0], 0.0f);  EXPECT_FLOAT_EQ(c.c[2][1], 0.0f);  EXPECT_FLOAT_EQ(c.c[2][2], 1.0f);
     // A proper rotation (det +1), so Irrlicht's Euler round trip holds.
     const float det = c.c[0][0] * (c.c[1][1] * c.c[2][2] - c.c[2][1] * c.c[1][2]) -
                       c.c[1][0] * (c.c[0][1] * c.c[2][2] - c.c[2][1] * c.c[0][2]) +
@@ -178,15 +184,15 @@ TEST(BoneAttachmentTest, ShippedCorrectionIsAQuarterTurnAboutTheItemsY) {
     EXPECT_FLOAT_EQ(det, 1.0f);
 }
 
-TEST(BoneAttachmentTest, HeldItemAtAnIdentityBoneIsAQuarterTurnAboutTheItemsY) {
+TEST(BoneAttachmentTest, HeldItemAtAnIdentityBoneIsTheIdentity) {
     const irr::core::matrix4 m = computeHeldItemTransform(BoneMat4::identity());
     irr::core::vector3df eqX(1, 0, 0), eqY(0, 0, 1), eqZ(0, 1, 0);  // EQ axes, in Irrlicht coordinates
     m.transformVect(eqX);
     m.transformVect(eqY);
     m.transformVect(eqZ);
-    EXPECT_NEAR(eqX.Y, -1.0f, 1e-6f) << "the item's long axis (+X) must land on the bone's -Z";
+    EXPECT_NEAR(eqX.X, 1.0f, 1e-6f) << "the item's long axis (+X) must land on the bone's +X";
     EXPECT_NEAR(eqY.Z, 1.0f, 1e-6f) << "the item's Y (a shield's painted face) must be kept";
-    EXPECT_NEAR(eqZ.X, 1.0f, 1e-6f) << "the item's Z must land on the bone's +X";
+    EXPECT_NEAR(eqZ.Y, 1.0f, 1e-6f) << "the item's Z (a crossguard) must land on the bone's +Z";
 }
 
 TEST(BoneAttachmentTest, HeldItemOriginIsTheBoneOrigin) {
@@ -202,9 +208,12 @@ TEST(BoneAttachmentTest, HeldItemTransformMatchesTheEqSpaceCompositionForARotate
     // The shipped correction and, through the explicit parameter, T472's old
     // one and the identity -- the same algebra for every candidate the search
     // rendered.
+    // The shipped correction is now the identity, so the two that are NOT
+    // shipped are what keep the general composition honest: T472's half turn
+    // about the item's Y and T485's first pick, a quarter turn about it.
     const EQT::Graphics::HeldItemCorrection t472{{{-1, 0, 0}, {0, 1, 0}, {0, 0, -1}}};
-    const EQT::Graphics::HeldItemCorrection identity{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
-    for (const auto* c : {&EQT::Graphics::kHeldItemCorrection, &t472, &identity}) {
+    const EQT::Graphics::HeldItemCorrection quarterTurn{{{0, 0, -1}, {0, 1, 0}, {1, 0, 0}}};
+    for (const auto* c : {&EQT::Graphics::kHeldItemCorrection, &t472, &quarterTurn}) {
         const irr::core::matrix4 m = computeHeldItemTransform(b, *c);
         for (const irr::core::vector3df& p : {irr::core::vector3df(2.24f, 0.0f, 0.0f), irr::core::vector3df(0.0f, 0.3f, -0.2f),
                                               irr::core::vector3df(-0.51f, 0.1f, 0.4f)}) {

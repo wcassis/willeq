@@ -237,21 +237,43 @@ routine that writes it onto a scene node. The three consumers --
 `src/client/graphics/entity_equipment.cpp` (in-world, passing T301's player-bake compensation),
 `src/client/graphics/ui/character_model_view.cpp` (the paperdoll) and
 `tools/model_viewer/model_viewer_equipment.cpp` -- all call `placeHeldItem()`;
-none may keep a local rotation/position split or a per-slot Euler offset. The
-correction itself was chosen by SEARCH against the official client, not by
-argument (T485, `refactor/T485_held_item_transform_candidate_search.md`,
-`review/T485/`): all 24 proper signed permutations rendered through the same
-function, scored on T478's oracle facts (blades forward and level, arrow down
-the leg). The winner is item X -> bone -Z, Y -> Y, Z -> X; the reason it is
-that and not T472's diag(-1, 1, -1) is written on the constant. The choice does
-not hang on the frame the sheets were captured at: re-scored over every frame of
-the `o01` loop (`review/T485/data/score_over_loop.py`) the same candidate is
-first, 80.5 deg against 103.7 for the runner-up. Do not re-derive it from one
-bone axis; if an item looks wrong, add it to the search tool's `--items` and
-re-run against a fresh oracle grab. What is still open is the blade's PITCH
-(B756): the o01 loop swings R_POINT's -Z from 16 to 67 deg below level, so no
-constant correction has one pitch to match, and the oracle frames' phase in
-that loop is unknown.
+none may keep a local rotation/position split or a per-slot Euler offset.
+
+**`kHeldItemCorrection` is the IDENTITY.** An item's axes go straight to the
+point bone's. Two units shipped a turn here and both were wrong: T472's
+`diag(-1, 1, -1)` (a half turn about the item's Y) and T485's first pick (a
+quarter turn about it). Will ruled on the sheets, 2026-09-17: *"ALL held items
+are wrongly oriented in both. In the after sheet the item's long axis FOLLOWS
+the forearm; it must be PERPENDICULAR to the forearm, a fist grip, so it is off
+by 90 degrees. In the before sheet they are off by 180 degrees."* Those two
+statements meet at the identity and nowhere else, because a rotation about the
+item's Y is a signed permutation only at 0/90/180/270.
+
+**The criterion, and why it is worth more than the ones it replaced.** Score a
+candidate by the angle between the item's long axis and the FOREARM
+(`humfo_r -> humfi_r`). MEASURED: R_POINT's -Z *is* the forearm direction, dot
+1.001 at all 41 frames of `o01` -- so item and forearm are both fixed in the
+bone frame and that angle is **the same at every frame**. The two readings it
+replaced were not: "the blade points body-forward" swung 50 degrees over the
+same loop, and at the bent-elbow frame the old sheets were captured at,
+body-forward and the forearm nearly coincide. That is exactly how a correction
+laying the blade ALONG the forearm came to score well against it. A held-item
+target that is not frame-independent is the smell; check it against
+`review/T485/data/score_perpendicular.py` before believing it.
+
+Shipped values (identity, `o01` frame 25 -- fable's arm-hanging frame, the one
+to compare against the official idle, which hangs the arm at the side): blade
+88.9 deg to the forearm, 2H blade 89.0, 2H crossguard along the forearm axis,
+arrow 1.2 (the arrow's long axis is `-Z_item`, a different item axis from a
+blade's `+X`, so the one correction sends it out past the fingers -- which is
+what "hangs down the leg" looks like when the arm hangs), lantern 27.7.
+`tools/hwcaps/held_item_candidate_search --frame 25` regenerates all of it; it
+PAUSES the animation for the sweep, because otherwise `drawAll()` re-animates
+the node between candidates and no two are compared at the same pose.
+
+Do not re-derive this from one bone axis, and do not re-target it on a reading
+of a still. If an item looks wrong, add it to the search tool's `--items` and
+re-run against a fresh oracle grab.
 
 ### The shared client pack `willeq.eqe1`
 

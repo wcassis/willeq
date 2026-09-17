@@ -101,41 +101,50 @@ inline int findBoneIndex(const std::shared_ptr<CharacterSkeleton>& skeleton,
 //
 // WHICH C -- chosen by SEARCH against the official client, not by argument
 // (T485, refactor/T485_held_item_transform_candidate_search.md, the
-// match-the-oracle rule in docs/decisions.md). T472 derived
-// C = diag(-1, 1, -1) from one R_POINT axis at one o01 frame plus shield
-// winding; T478's fresh oracle grabs (review/T478/sheets/T478_held_*) refuted
-// it on every orientation observation. T485 rendered all 24 proper signed
-// permutations through this function (tools/hwcaps/held_item_candidate_search)
-// and scored each against the three oracle facts:
-//   - a one-handed blade (IT10649, long axis +X) points FORWARD from the
-//     fist, roughly level, at idle;
-//   - a two-handed blade (IT10004, long axis +X) is level in front of the
-//     waist, pointing forward, its crossguard (item Z) vertical;
-//   - an arrow (IT10, long axis -Z) hangs DOWN along the leg, tip near the foot.
-// Exactly one candidate satisfies all three: item +X -> bone -Z, item Z ->
-// bone +X, item Y kept -- a quarter turn about the item's Y (candidate c20 of
-// review/T485/). Measured on the Human male at o01 frame 0 (rpoint_frames.txt
-// there): the FOREARM runs (0.96, 0.07, -0.27) from elbow to fingers -- the
-// elbow is bent and the hand is at the belt -- and R_POINT's -Z is that same
-// line (0.958, 0.06, -0.284), while its X (0.28, 0.03, 0.96) points UP,
-// perpendicular to the forearm. T472's "X runs up the forearm" was wrong, and
-// that is why its C hung the blade straight down. With c20 the blade
-// continues the forearm forward and the arrow's long end (-Z_item -> -X_bone)
-// hangs down. With X -> -Z and Z -> +X fixed, det +1 forces Y -> +Y, so c20 is
-// the UNIQUE proper candidate -- and every shield's painted face, which faces
-// item +Y by winding and normals (T472), still points away from the body as a
-// consequence, not as an input (the oracle has not been seen holding a shield,
-// B723).
+// match-the-oracle rule in docs/decisions.md), and settled by WILL'S RULING on
+// the sheets (2026-09-17), which is the oracle fact this rests on:
 //
-// The sheets score ONE frame of the o01 loop, and that loop swings R_POINT by
-// ~50 deg (its -Z pitches from 16 to 67 deg below level over 41 frames), so
-// the choice was re-scored over EVERY frame of the loop as well
-// (review/T485/data/score_over_loop.py): c20 is first with a mean
-// blade-to-forward + arrow-to-down of 80.5 deg against 103.7 for the runner-up
-// (identity), so the winner does not depend on which frame was captured. What
-// the correction cannot fix is the PITCH: the oracle's blade reads level to
-// slightly up and c20's is 16-67 deg below level depending on the frame, and
-// the oracle frames' loop phase is not known (B756).
+//   "ALL held items are wrongly oriented in both. In the after (c20) sheet the
+//    item's long axis FOLLOWS the forearm; it must be PERPENDICULAR to the
+//    forearm, a fist grip, so c20 is off by 90 degrees. In the before (T472)
+//    sheet they are off by 180 degrees."
+//
+// That is a MEASURABLE criterion, and unlike the two readings it replaces it
+// does not depend on which frame anything was captured at. MEASURED (the
+// instrument writes review/T485/data/rpoint_frames.txt; scored by
+// score_perpendicular.py there): R_POINT's -Z IS the forearm direction
+// (humfo_r -> humfi_r), dot 1.001 at all 41 frames of o01. So the forearm and
+// the item's long axis are both fixed in the BONE frame and the angle between
+// them is the same at every frame. Per candidate, averaged over the loop:
+//
+//   correction                     blade (+X_item)   arrow (-Z_item)
+//   c00 identity   X+X Y+Y Z+Z         89.1 deg          1.1 deg
+//   c20 (T485 shipped, WRONG)            1.1 deg        90.9 deg
+//   c02 (T472, WRONG)                   90.9 deg       178.9 deg
+//
+// c20 lays the BLADE along the forearm -- exactly what Will saw. The sign then
+// comes from the official idle, which hangs the arm at the side
+// (review/T478/oracle/*_idle_*): the arrow runs from the hand at the hip DOWN
+// past the knee, 13 deg off vertical, so item -Z lands on bone -Z (Z -> +Z);
+// the blades run FORWARD out of the fist, and forward-and-up at the hanging
+// frame is bone +X (bone Y is character-left, the sideways one), so X -> +X.
+// det +1 then forces Y -> +Y. That is the IDENTITY, and it is also the only
+// correction consistent with Will's two numbers on their own: rotations about
+// the item's Y are signed permutations only at 0/90/180/270, namely
+// c00 / c20 / c02 / c22, so "c20 is 90 deg out" and "c02 is 180 deg out" meet
+// at c00 alone.
+//
+// Consequences worth knowing: the item's +Y (every shield's painted face, by
+// winding and vertex normals -- T472) is kept, so a shield still faces away
+// from the body; and a 2H sword's crossguard (item Z) lands on bone +Z, which
+// is vertical at the hanging frame (itemZ_up 0.917), as the official set C
+// frames show.
+//
+// STILL NOT MEASURED, and the reason this could move again: fable's o01 and the
+// official client's idle are not the same pose. fable's closest arm-hanging
+// frame is 25, forearm 24.5 deg off straight down; the official arm reads
+// nearer vertical. Only an official-client bone dump or a stepped video would
+// close that, and neither exists (board B756).
 //
 // Converting to Irrlicht (x, z, y) on both sides gives S * B * C * S, laid out
 // below column by column (Irrlicht matrix4 is column-major like BoneMat4:
@@ -146,10 +155,11 @@ struct HeldItemCorrection {
     float c[3][3];
 };
 
-// The one correction the client ships (T485's winner).
-constexpr HeldItemCorrection kHeldItemCorrection = {{{0.0f, 0.0f, -1.0f},   // item X -> bone -Z
-                                                     {0.0f, 1.0f, 0.0f},    // item Y -> bone +Y
-                                                     {1.0f, 0.0f, 0.0f}}};  // item Z -> bone +X
+// The one correction the client ships: the IDENTITY (T485, Will's ruling).
+// An item's axes go straight to the point bone's -- no correction at all.
+constexpr HeldItemCorrection kHeldItemCorrection = {{{1.0f, 0.0f, 0.0f},   // item X (the long axis of a blade) -> bone +X
+                                                     {0.0f, 1.0f, 0.0f},   // item Y (a shield's painted face)  -> bone +Y
+                                                     {0.0f, 0.0f, 1.0f}}};  // item Z (a crossguard)             -> bone +Z
 
 inline irr::core::matrix4 computeHeldItemTransform(const BoneMat4& bone,
                                                    const HeldItemCorrection& corr = kHeldItemCorrection) {

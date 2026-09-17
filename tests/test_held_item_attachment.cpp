@@ -258,20 +258,32 @@ TEST_F(HeldItemTest, LanternMeshBuildsOnTheZoneLoadAndTheOnDemandPaths) {
 // 2. Orientation, from the data.
 // ---------------------------------------------------------------------------
 
-// T485 (B724, B725): the oracle facts. The long axis is the vertex farthest
-// from the item's origin (its grip); "forward" is the drawn direction of the
-// model's EQ +X (T472: R_POINT's Y is character-left, so +X is forward), taken
-// through drawn() so the player's baked heading is honoured. Thresholds leave
-// room for the o01 pose: at the capture frame the shipped correction puts the
-// short sword's long axis (fwd +0.91, left +0.08, up -0.40), the 2H sword's
-// (+0.92, +0.09, -0.39) and the arrow's (-0.38, -0.10, -0.92) in the body
-// frame (review/T485/data/candidates.tsv, c20). NOTE: these thresholds are
-// frame-bound. The o01 loop swings R_POINT by ~50 deg -- the blade direction
-// pitches from 16.5 to 66.6 deg below level across the 41 distinct frames, and
-// its forward component is under 0.7 on 16 of them (measured,
-// review/T485/data/score_over_loop.py) -- so the fixture's fixed OnAnimate
-// schedule is load-bearing. If a test here goes red after an animation change,
-// check the frame before the correction (B756).
+// T485 (B724, B725), as ruled by Will on the sheets, 2026-09-17: an item held
+// at a point bone is gripped in a FIST, so its long axis is PERPENDICULAR to
+// the FOREARM. Verbatim: "ALL held items are wrongly oriented in both. In the
+// after (c20) sheet the item's long axis FOLLOWS the forearm; it must be
+// PERPENDICULAR to the forearm, a fist grip, so c20 is off by 90 degrees. In
+// the before (T472) sheet they are off by 180 degrees."
+//
+// These tests pin THAT, and not the earlier reading they replace ("the blade
+// points body-forward and level"), for a reason that is measured rather than
+// argued: R_POINT's -Z IS the forearm (humfo_r -> humfi_r), dot 1.001 at all 41
+// frames of o01, so the angle between the forearm and a rigidly attached item
+// is the SAME AT EVERY FRAME. The old target was not: body-forward swung 50 deg
+// over the same loop, and at the bent-elbow frame the old sheets were captured
+// at, body-forward and the forearm nearly coincide -- which is exactly how a
+// correction that lays the blade ALONG the forearm came to score well against
+// it. Nothing here depends on the fixture's OnAnimate schedule any more.
+//
+// The long axis is the vertex farthest from the item's origin (its grip).
+// Blades (IT10649, IT10004) are +X_item, so they must come out perpendicular;
+// the arrow IT10 is -Z_item, which the same correction sends ALONG the forearm,
+// tip at the fingers -- which is what the official client shows (its idle hangs
+// the arm at the side and the arrow runs from the hand at the hip down past the
+// knee, 13 deg off vertical: review/T478/oracle/T478_oracle_held_IT10_idle_Tether_noui_root.png).
+// Measured for the shipped identity correction at o01 frame 25, fable's
+// arm-hanging frame (review/T485/data/candidates.tsv): blade 88.9 deg to the
+// forearm, 2H 89.0, arrow 1.2.
 namespace {
 struct LongAxis {
     irr::core::vector3df dir;      // unit, world (Irrlicht)
@@ -296,15 +308,26 @@ LongAxis longAxisOf(irr::scene::IMeshSceneNode* equip) {
     return out;
 }
 
-irr::core::vector3df bodyForward(EQAnimatedMeshSceneNode* node) {
-    return (drawn(node, {1, 0, 0}) - drawn(node, {0, 0, 0})).normalize();
+// The RIGHT FOREARM, elbow to fingers, in the same drawn world frame the item's
+// long axis is measured in. This is what perpendicularity is scored against.
+irr::core::vector3df forearmAxis(EQAnimatedMeshSceneNode* node, V3 elbow, V3 fingers) {
+    return (drawn(node, fingers) - drawn(node, elbow)).normalize();
 }
+
+// Degrees between two unit vectors.
+float angleDeg(const irr::core::vector3df& a, const irr::core::vector3df& b) {
+    const float d = std::max(-1.0f, std::min(1.0f, a.dotProduct(b)));
+    return std::acos(d) * 180.0f / 3.14159265f;
+}
+
 }  // namespace
 
-TEST_F(HeldItemTest, OneHandedBladePointsForwardAndLevelAtIdle) {
-    // Set A, T478: Short Sword IT10649. Official: the blade runs forward from
-    // the right fist, roughly level (User 2) to diagonally down-and-forward
-    // (Tether). fable before T485: straight down along the leg.
+TEST_F(HeldItemTest, OneHandedBladeIsPerpendicularToTheForearmAtIdle) {
+    // Set A, T478: Short Sword IT10649, in the right fist. Will's ruling: the
+    // blade crosses the fist, so it is PERPENDICULAR to the forearm. fable
+    // before T472 stood it up the forearm; T472 hung it backwards; T485's first
+    // pick (c20) laid it ALONG the forearm, 1.2 deg off -- which is what Will
+    // saw and called "off by 90 degrees".
     struct Case { bool player; float heading; };
     for (Case c : {Case{true, 0.0f}, Case{true, 90.0f}, Case{true, 337.5f}, Case{false, 0.0f}, Case{false, 112.5f}}) {
         EQAnimatedMeshSceneNode* node = spawnIdle(7, c.player, c.heading, /*IT10649 short sword*/ 10649, 0);
@@ -312,63 +335,107 @@ TEST_F(HeldItemTest, OneHandedBladePointsForwardAndLevelAtIdle) {
         ASSERT_NE(vis.primaryEquipNode, nullptr);
         const irr::core::vector3df hand = drawn(node, boneOrigin(node, "humr_point"));
         const LongAxis blade = longAxisOf(vis.primaryEquipNode);
+        const irr::core::vector3df forearm =
+            forearmAxis(node, boneOrigin(node, "humfo_r"), boneOrigin(node, "humfi_r"));
         SCOPED_TRACE(::testing::Message() << (c.player ? "player" : "npc") << " heading " << c.heading);
-        EXPECT_GT(blade.dir.dotProduct(bodyForward(node)), 0.7f) << "the blade does not point forward (B725)";
-        EXPECT_LT(std::fabs(blade.dir.Y), 0.6f) << "the blade is not roughly level (it hung straight down before T485)";
+        EXPECT_NEAR(angleDeg(blade.dir, forearm), 90.0f, 15.0f)
+            << "the blade is not perpendicular to the forearm -- it is not held in a fist (B725). "
+               "1 deg means it lies ALONG the forearm (T485's c20), 180 means it points back up it";
         EXPECT_LT(blade.grip.getDistanceFrom(hand), 0.05f) << "the item origin (its grip) is not at R_POINT";
     }
 }
 
-TEST_F(HeldItemTest, TwoHandedBladeIsLevelInFrontOfTheWaistAtIdle) {
-    // Set C, T478: Spiny Two Handed Sword IT10004. Official (Tether, User 2):
-    // roughly horizontal in front of the waist, pointing at the target, the
-    // crossguard vertical. fable before T485: hanging vertically to the ground.
+TEST_F(HeldItemTest, TwoHandedBladeIsPerpendicularToTheForearmAndItsCrossguardRunsAlongIt) {
+    // Set C, T478: Spiny Two Handed Sword IT10004. Same fist grip as set A --
+    // the blade crosses the fist -- and the crossguard (item Z, +/-0.68 against
+    // +/-0.11 in Y, T476 census) runs the other way, along the forearm, which is
+    // what puts it VERTICAL when the arm hangs: the official set C frames
+    // (review/T485/oracle_crops/C_user2_zoom.png) show a vertical crossguard at
+    // the belt. Measured for the shipped identity at frame 25: itemZ_up 0.917.
     for (bool player : {true, false}) {
         EQAnimatedMeshSceneNode* node = spawnIdle(7, player, player ? 337.5f : 112.5f, /*IT10004*/ 10004, 0);
         const EntityVisual& vis = ents_->getEntities().at(7);
         ASSERT_NE(vis.primaryEquipNode, nullptr);
         const LongAxis blade = longAxisOf(vis.primaryEquipNode);
-        // The crossguard spans the item's EQ Z (Irrlicht Y) -- IT10004 is
-        // +/-0.68 in Z against +/-0.11 in Y (T476 census).
-        irr::core::vector3df crossguard(0, 1, 0);
+        irr::core::vector3df crossguard(0, 1, 0);  // item EQ Z is Irrlicht Y
         vis.primaryEquipNode->getAbsoluteTransformation().rotateVect(crossguard);
         crossguard.normalize();
+        const irr::core::vector3df forearm =
+            forearmAxis(node, boneOrigin(node, "humfo_r"), boneOrigin(node, "humfi_r"));
         SCOPED_TRACE(player ? "player" : "npc");
-        EXPECT_GT(blade.dir.dotProduct(bodyForward(node)), 0.7f) << "the 2H blade does not point forward (B724)";
-        EXPECT_LT(std::fabs(blade.dir.Y), 0.6f) << "the 2H blade is not roughly level (B724: it hung to the ground)";
-        EXPECT_GT(std::fabs(crossguard.Y), 0.8f) << "the crossguard is not vertical";
+        EXPECT_NEAR(angleDeg(blade.dir, forearm), 90.0f, 15.0f)
+            << "the 2H blade is not perpendicular to the forearm (B724)";
+        // A crossguard is a BAR: it runs along the forearm AXIS, and which of
+        // its two ends is which carries no meaning. Measured under the shipped
+        // identity: 178.8 deg, i.e. the bar lies on the forearm line pointing
+        // back toward the elbow. What would be wrong is 90 -- a crossguard
+        // sticking out sideways, which is what T485's first pick drew.
+        const float guard = angleDeg(crossguard, forearm);
+        EXPECT_LT(std::min(guard, 180.0f - guard), 15.0f)
+            << "the crossguard does not lie along the forearm axis, so it will not stand vertical "
+               "when the arm hangs (B724)";
     }
 }
 
-TEST_F(HeldItemTest, ArrowHangsDownTheLegAtIdle) {
-    // IT10 (an arrow; no item wears it, T478 used #wc 7 10). Official (Tether):
-    // hangs down along the right leg, tip near the foot. fable before T485:
-    // horizontal, pointing forward or back. IT10's long axis is -Z, 3.35 long.
+TEST_F(HeldItemTest, ArrowRunsAlongTheForearmPastTheFingers) {
+    // IT10 (an arrow; no item wears it, T478 used #wc 7 10). Its long axis is
+    // -Z_item, 3.35 long -- a DIFFERENT item axis from a blade's +X (B661) --
+    // and the one correction therefore sends it the other way: ALONG the
+    // forearm, out past the fingers. That is what the official client shows,
+    // and it is why the arrow looks like it "hangs down the leg" there: the
+    // official idle hangs the arm, so along-the-forearm IS down the leg
+    // (review/T478/oracle/T478_oracle_held_IT10_idle_Tether_noui_root.png, the
+    // arrow 13 deg off vertical from the hand at the hip to below the knee).
+    // The sign is the half that matters: 1 deg is out past the fingers, 179
+    // would be back up the arm through the elbow (T472 drew that).
     for (bool player : {true, false}) {
         EQAnimatedMeshSceneNode* node = spawnIdle(7, player, player ? 337.5f : 112.5f, /*IT10*/ 10, 0);
         const EntityVisual& vis = ents_->getEntities().at(7);
         ASSERT_NE(vis.primaryEquipNode, nullptr);
         const irr::core::vector3df hand = drawn(node, boneOrigin(node, "humr_point"));
         const LongAxis arrow = longAxisOf(vis.primaryEquipNode);
+        const irr::core::vector3df forearm =
+            forearmAxis(node, boneOrigin(node, "humfo_r"), boneOrigin(node, "humfi_r"));
         SCOPED_TRACE(player ? "player" : "npc");
-        EXPECT_LT(arrow.dir.Y, -0.85f) << "the arrow does not hang down (B725: it was horizontal)";
-        EXPECT_LT(arrow.tip.Y, hand.Y - 2.5f) << "the arrow's long end is not below the hand along the leg";
+        EXPECT_LT(angleDeg(arrow.dir, forearm), 15.0f)
+            << "the arrow does not continue the forearm past the fingers (B725); "
+               "near 180 means it runs back up the arm, near 90 that it sticks out sideways";
+        EXPECT_GT(arrow.tip.getDistanceFrom(hand), 2.5f) << "the arrow's long end is not out beyond the hand";
     }
 }
 
-TEST_F(HeldItemTest, LanternHangsBelowTheLeftHand) {
+TEST_F(HeldItemTest, LanternHangsDownFromTheLeftHand) {
+    // T472 pinned this as "the mean vertex is below the hand", which is a weak
+    // proxy: MEASURED T485, the lantern's own long axis pointed straight UP
+    // under T472's correction (up +0.964 at the arm-hanging frame) and BACKWARD
+    // under T485's first pick (-0.93 forward), and that mean-vertex assertion
+    // passed for both -- it was green on a lantern drawn upside-down, and under
+    // the correct one it went red by 0.011 units. So it is replaced here.
+    //
+    // The pin is the angle to the LEFT forearm, for the same reason as the
+    // blades: item and forearm are both fixed in the bone frame, so it is the
+    // same at every frame of the loop, whereas "points down" is not -- at the
+    // fixture's bent-elbow frame the correctly-placed lantern reads only -0.574
+    // in Y, at the arm-hanging frame -0.994. IT48 is a compact mesh whose
+    // farthest vertex is a corner, not an axis, so the angle is 27.7 rather than
+    // 0 or 90; what matters is that it separates (T472 150, T485's first pick
+    // 118).
     for (bool player : {true, false}) {
         EQAnimatedMeshSceneNode* node = spawnIdle(7, player, player ? 337.5f : 112.5f, 0, /*IT48*/ 48);
         const EntityVisual& vis = ents_->getEntities().at(7);
         ASSERT_NE(vis.secondaryEquipNode, nullptr) << "no lantern node (B588: it was never drawn)";
         const irr::core::vector3df hand = drawn(node, boneOrigin(node, "huml_point"));
+        const LongAxis lantern = longAxisOf(vis.secondaryEquipNode);
         auto world = worldVertices(vis.secondaryEquipNode);
         ASSERT_FALSE(world.empty());
-        float mean = 0, lowest = 1e9f;
-        for (const auto& p : world) { mean += p.Y; lowest = std::min(lowest, p.Y); }
-        mean /= static_cast<float>(world.size());
+        float lowest = 1e9f;
+        for (const auto& p : world) lowest = std::min(lowest, p.Y);
         SCOPED_TRACE(player ? "player" : "npc");
-        EXPECT_LT(mean, hand.Y) << "the lantern's mass is not below the hand";
+        const irr::core::vector3df lfore =
+            forearmAxis(node, boneOrigin(node, "humfo_l"), boneOrigin(node, "humfi_l"));
+        EXPECT_NEAR(angleDeg(lantern.dir, lfore), 27.7f, 15.0f)
+            << "the lantern is not oriented on the left forearm the way the shipped correction puts it "
+               "(T472 drew it at 150 deg -- upside-down; T485's first pick at 118 deg -- on its side)";
         EXPECT_LT(lowest, hand.Y - 0.5f) << "the lantern does not hang";
     }
 }

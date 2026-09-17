@@ -8,6 +8,13 @@ T478 Review §4 and its sheets `review/T478/sheets/T478_held_{A,B,C,IT10}_idle_o
 `docs/CLAUDE.md` (heading conventions), `match-the-oracle-dont-infer-it` rule
 in `docs/decisions.md`.
 
+> **READ SECTION 10 FIRST (Leg B, 2026-09-17).** Will ruled on the sheets this plan
+> produced: the correction it shipped (c20) is 90 degrees out and T472's is 180 out.
+> The shipped correction is now the **identity**. Sections 1-9 are the record of how
+> that was reached and of what was re-verified on 2026-09-17; the target they score
+> against ("the blade points body-forward") is a misreading, and section 10 replaces
+> it with a frame-independent one.
+
 ## The finding
 
 `computeHeldItemTransform()` (`include/client/graphics/eq/bone_attachment.h:118-136`)
@@ -310,3 +317,139 @@ claims in it did not survive review as written, and one new measurement was take
 - **Blocked, needs the lock (NOT taken, per the dispatch):** B755's row-by-row diff
   of `item_models.json` against eqemu's `items.idfile`, and B756's official-client
   idle-loop video. Everything else in the plan was offline and was done.
+
+---
+
+### 10. Leg B, 2026-09-17: Will ruled, and the answer is the IDENTITY
+
+Will looked at both sheets and judged the oracle fact section 9 had flagged as
+`[assumed]`. Verbatim, and this is now the fact the transform rests on:
+
+> "ALL held items are wrongly oriented in both. In the 'after' (c20) sheet the
+> item's long axis FOLLOWS the forearm; it must be PERPENDICULAR to the forearm, a
+> fist grip, so c20 is off by 90 degrees. In the 'before' (T472) sheet they are off
+> by 180 degrees."
+
+So the search was right and its TARGET was wrong. "The blade points body-forward"
+was a misreading, and the reason it survived scoring is now measured: at the
+bent-elbow frame the sheets were captured at, **body-forward and the forearm are
+nearly the same direction**, so a correction that laid the blade along the forearm
+scored 24 deg against a target it should have missed by 90.
+
+**The criterion, restated as something measurable.** angle(item long axis, FOREARM),
+target 90 for a blade. [measured] R_POINT's -Z **is** the forearm direction
+(`humfo_r -> humfi_r`): dot **1.001 at all 41 frames** of `o01`. Item and forearm
+are therefore both fixed in the bone frame and the angle is **frame-independent** --
+unlike the target it replaces, which swung 50 deg over the same loop. The
+instrument now dumps the forearm per frame and scores the angle
+(`review/T485/data/score_perpendicular.py`).
+
+**The table** (averaged over all 41 frames; blade = `+X_item`, arrow = `-Z_item`):
+
+| candidate | blade to forearm | arrow to forearm | |
+|---|---|---|---|
+| c00 `X+X Y+Y Z+Z` | **89.1** | 1.1 | **IDENTITY -- shipped by this leg** |
+| c01 / c02 / c03 | 90.9 / 90.9 / 89.1 | 1.1 / **178.9** / 178.9 | c02 = T472 |
+| c04-c07 (`X+/-X`, `Y->+/-Z`) | 89.1-90.9 | 89.4-90.6 | |
+| c08-c11 (`X->+/-Y`, `Z->+/-Z`) | 89.4-90.6 | 1.1 / 178.9 | |
+| c12-c15 (`X->+/-Y`, `Z->+/-X`) | 89.4-90.6 | 89.1-90.9 | |
+| c16-c19, c21-c23 | **1.1 or 178.8** | 89.4-90.9 | |
+| c20 `X-Z Y+Y Z+X` | **1.1** | 90.9 | what T485 shipped -- along the forearm |
+
+**Within 15 deg of perpendicular on the blade: 16 of 24** (c00-c15). The other eight
+(c16-c23, every `X -> +/-Z`) lay the blade on the forearm line; c20 is one of them,
+at 1.1 deg, which is exactly what Will saw.
+
+**The sign (task 2), [assumed] -- it is still a reading.** From
+`review/T478/oracle/T478_oracle_held_IT10_idle_Tether_noui_root.png` (cropped
+`180x300+440+460` at 4x) and `..._held_C_idle_User2_noui_root.png`, full size:
+- (a) the official idle **hangs both arms straight down** at the side, so the frame
+  to compare against is fable's arm-hanging one, not frame 0;
+- (b) IT10's arrow runs from the hand at the hip **down past the knee, 13 deg off
+  image-vertical** -- along the hanging forearm, tip at the fingers. So
+  `item -Z -> bone -Z`, i.e. **Z -> +Z**; the anti-parallel half (which T472 drew,
+  178.9) is out.
+- (c) set A's and set C's blades run **forward** out of the fist, and forward-and-up
+  at the hanging frame is bone **+X** (bone Y is character-left, the sideways axis),
+  so **X -> +X** -- `+X` and not `-X` because the tip is forward, away from the body.
+
+det +1 then forces `Y -> +Y`. **One candidate remains: c00, the identity.** No second
+sheet is owed.
+
+**The same answer with no picture at all.** A rotation about the item's Y is a signed
+permutation only at 0/90/180/270 -- c00 / c20 / c02 / c22. "c20 is 90 out" leaves
+{c00, c02}; "c02 is 180 out" leaves {c00}. The two halves of Will's ruling intersect
+in the identity alone. That the picture-free route and the oracle route agree is the
+strongest thing in this unit.
+
+**Sheets (task 3).** Rendered at **o01 frame 25**, fable's arm-hanging frame
+(forearm 24.5 deg off straight down, hand z 0.43; frame 0 is 74.6 deg off, elbow
+bent, hand at the belt in front). Same 6-crop oracle strip.
+`review/T485/T485_v2_after_c00_IDENTITY_frame25_sheet.png`,
+`review/T485/T485_v2_before_c20_shipped_frame25_sheet.png`, all 24 in
+`review/T485/candidates_frame25/`.
+
+**A defect in the instrument, found while doing this (B800).** [measured]
+`ISceneManager::drawAll()` calls `OnAnimate()` with the DEVICE timer, so with the
+animation playing the skeleton moved between one candidate's capture and the next:
+every candidate after the first was measured and drawn at a frame other than the
+intended one, and with `--frame` it was snapped straight off it (c20's blade read
+40.3 deg instead of 1.2). The sweep now pauses the animator -- after the per-frame
+dump, which needs it running. The 2026-09-14 `candidates.tsv` was taken with the
+pose drifting and has been regenerated.
+
+**Tests: red before, green after** (all rewritten onto the frame-independent
+criterion; seven reds under c20, all green under the identity):
+
+| test | under c20 | under identity |
+|---|---|---|
+| `HeldItemTest.OneHandedBladeIsPerpendicularToTheForearmAtIdle` (5 headings, player + NPC) | RED | green, 88.9 |
+| `...TwoHandedBladeIsPerpendicularToTheForearmAndItsCrossguardRunsAlongIt` | RED | green, 89.0 + crossguard on the forearm axis |
+| `...ArrowRunsAlongTheForearmPastTheFingers` | RED | green, 1.2 |
+| `...LanternHangsDownFromTheLeftHand` | RED | green, 27.7 |
+| `FirstPersonWeaponAttachmentTest.ThirdPersonIdleBladeIsPerpendicularToTheForearm` | RED | green |
+| `BoneAttachmentTest.ShippedCorrectionIsTheIdentity` | RED | green |
+| `BoneAttachmentTest.HeldItemAtAnIdentityBoneIsTheIdentity` | RED | green |
+| `HeldItemTest.ShieldFrontFacesAwayFromTheBody` | green | green (identity keeps item Y, as c20 did) |
+
+Two of those rewrites were forced by findings, not by taste:
+- **the lantern pin was green on an upside-down lantern (B799).** "The mean vertex is
+  below the hand" passed under T472, which [measured] points the lantern's long axis
+  straight UP (+0.964), and under c20, which points it backward; under the correct
+  identity it went red by **0.011 units**. A centroid does not constrain an
+  orientation. It now pins the angle to the left forearm, 27.7 deg,
+  frame-independent, and 150 / 118 for the two wrong corrections.
+- **the crossguard is a BAR.** Asserting it runs along the forearm *in a direction*
+  failed at 178.8; which end is which carries no meaning, so the pin is on the axis.
+- the first-person test's forearm had to go through the player's **bake** (T301), or
+  the measured angle varies with heading (105 deg at h0, 122 at h135) for geometry
+  that does not change.
+
+### 11. Leg B verification
+
+| step | result |
+|---|---|
+| 0 rebase onto `fable` | clean (`33aa4563`, past T486); Leg A was already merged |
+| 1 `cmake --build build -j24` | **PASS, exit 0**, 0 `error:` |
+| 2 RED BEFORE | `kHeldItemCorrection` set to c20 and the three binaries rebuilt: **7 reds**, the four `HeldItemTest` orientation pins, the first-person one and both `BoneAttachmentTest` identity pins. Green under the identity. `ShieldFrontFacesAwayFromTheBody` green both ways (identity keeps item Y, as c20 did) |
+| 3 `ctest --test-dir build -j6` | first run **4829/4830**, one red: `ZeroCallers`, and it was mine and correct -- the sweep's new `pauseAnimation()` call made a B491-exempt zero-caller reachable, and the ratchet fails on "an entry whose function has a caller again". Exemption removed, script clean standalone (410 exempt, 0 unlisted, 0 stale). **Re-run: PASS, 4830/4830, 0 failed, exit 0**, including `visual_gate` (44.0 s), `ZeroCallers`, `FileSizeCeiling`, `DocClaims`, `CommentClaims` |
+| 4 goldens | `git status --porcelain tests/goldens` **empty** after the suite |
+| 5 `check_file_sizes.sh` | **PASS**: 5 changed files, 0 warn, 0 fail (largest `test_held_item_attachment.cpp` 681) |
+| 6 `scripts/build-arm-noble.sh` | **PASS, exit 0**, 0 `error:` |
+| 7 instrument | re-run end to end at `--frame 25`; `candidates.tsv` and `rpoint_frames.txt` regenerated under `review/T485/data/` |
+
+4830 against Leg A's 4818: +12 from T486 landing on `fable` in between; T485 Leg B
+renames tests rather than adding them, and adds none.
+
+### 12. Leg B `[assumed]` items
+
+- **[assumed]** the three oracle readings (a), (b), (c) above. They fix only the
+  SIGNS; the axis choice is Will's ruling plus det +1. Two independent routes agree
+  on c00, so a wrong reading would have to be wrong in a way that still lands there.
+- **[assumed]** that Will's "90 degrees" and "180 degrees" mean rotations about the
+  ITEM's Y (the axis both previous corrections turned about). Under any other axis
+  the arithmetic in section 10's last paragraph would not close.
+- **[measured, but pose-limited]** fable's `o01` and the official idle are not the
+  same pose: fable's closest arm-hanging frame is 24.5 deg off straight down, the
+  official reads nearer vertical. That gap is B756, re-scoped, and it needs the lock
+  and a stepped video -- **not taken, this leg is offline.**
