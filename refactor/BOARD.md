@@ -11853,4 +11853,27 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   are clean. A ctest `RESOURCE_LOCK` on the three cases (hand-registered in
   `tests/cmake/audio.cmake`) is the second belt, not the fix.
 
-B828–B829 and B832 unused. B830–B831 used by T496 Leg D. B833–B835 used by T499. B836–B845 used by T500 (B845 closed above by its own unit). B846 used by T501. B847 onwards unused.
+
+## Added 2026-09-17 by T502 (no CI; hermes workers OOM at 4 GiB)
+
+~~- **B847** (P) **There is no CI.** Every build and every ctest run happens
+  wherever an agent happens to be, and when that is a hermes kanban worker the
+  worker is capped at 4 GiB and is OOM-killed while linking -- so the suite is
+  not run at all on the path a worker takes, and a red tip can reach `fable`
+  with nobody having compiled it. [measured T502] the project's GitLab
+  (`willeq/willeq`, id 1) had `ciConfigPathOrDefault` = `.gitlab-ci.yml` and no
+  such file; the one registered runner (id 1, shell executor, `concurrent = 1`)
+  had never run a job for this project.~~ **STRUCK by T502 (this commit):**
+  `.gitlab-ci.yml` adds four stages -- `hygiene` (no C++ build), `build`
+  (Release, `-j8`), `test` (full ctest plus the intermittent RDP case with
+  `--repeat until-pass:3`) and `gate` (`visual_gate`, 3 in-script retries,
+  **not** `allow_failure`) -- on the runner, which executes on **hermes-ext**
+  (16 cores, 31 GB: the job log's own `hostname; nproc; free -g`), not in a
+  4 GiB worker. Every job refuses any host but hermes-ext (Will's 2026-09-17
+  ruling that the Inspur inference box must never build) and is bounded to 8 of
+  16 cores at `nice -n 10` so a pipeline cannot starve a kanban worker on the
+  same host. `docs/ci.md` documents how to read a pipeline, the warm-tree
+  trade-off and how to retry the gate. First green pipeline and the per-stage
+  wall times are in `refactor/T502_gitlab_ci.md`.
+
+B848 used by the kanban pilot (issue #4, migration card). B849 onwards unused.

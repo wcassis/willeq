@@ -34,10 +34,14 @@ starve a live worker.
 
 | Stage | What it does | Cold | Warm |
 | --- | --- | --- | --- |
-| `hygiene` | `ctest -L hygiene` in a no-C++ tree (`EQT_GRAPHICS=OFF`), configured into `build/hygiene` | ~45 s | ~45 s |
-| `build` | the Release recipe from `CLAUDE.md`, `-j8` | see the job log | |
-| `test` | full `ctest -j6`, minus two cases, then one of them with retries | | |
-| `gate` | `visual_gate` (T80/T291) over `build-gles2/bin/gles2_zone_benchmark` | | |
+| `hygiene` | `ctest -L hygiene` in a no-C++ tree (`EQT_GRAPHICS=OFF`), configured into `build/hygiene` | 45 s | 44 s |
+| `build` | the Release recipe from `CLAUDE.md`, `-j8` | 1,237 s (20.6 min) | 6 s |
+| `test` | full `ctest -j6`, minus two cases, then one of them with retries | 116 s (4,908 tests) | 116 s |
+| `gate` | `visual_gate` (T80/T291) over `build-gles2/bin/gles2_zone_benchmark` | 363 s | GATE_WARM |
+
+(T502's own measurements on hermes-ext; cold = pipeline 5/6, and `test` does the
+same work either way — only the two build trees are warm or cold. A cold `gate`
+includes building the patched Irrlicht *and* the whole `build-gles2` tree.)
 
 Every job's `before_script` re-creates the `data/eq_client` and
 `data/eqe1_client` symlinks. They are gitignored (`tests/test_data_paths.cpp`),
