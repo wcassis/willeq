@@ -126,6 +126,31 @@ IF(TARGET willeq_db_builder)
         TIMEOUT 300)
 ENDIF()
 
+# T498 (2026-09-17, board B755): the shipped item->model table against the
+# server. data/item_models.json is hand-carried, 3,661 rows, and until this unit
+# NOTHING compared it to anything -- DbReproducible above pins willeq.db against
+# the JSON, so the two agree with each other and neither agrees with the server.
+# 2894 (Spiny Two Handed Sword) was the first row anyone checked and it was
+# wrong (json 10009, server IT10004).
+#
+# The comparison is against a COMMITTED export, data/item_idfile.tsv (id, name,
+# idfile for all 117,944 peq items, written by
+# scripts/eqemu/export_item_idfile.sh under the eqemu lock), so this test needs
+# no mariadb, no server, no artefact and no display -- the same shape as its
+# neighbours, and the same "hygiene" label. The rule it applies is the server's
+# own: Mob::GetEquipmentMaterial() is atoi(&item->IDFile[2]).
+#
+# It runs against data/item_models_drift_baseline.txt, which lists the 2,128
+# rows that were already wrong at T498 and is a RATCHET in both directions: a
+# row not on the list that drifts is a failure, and a listed row that has been
+# fixed without being struck is also a failure. Regenerating the whole file is
+# Will's call (it changes what the offline tools draw), not a data fix.
+# `--strict` ignores the baseline and is how the red is reproduced.
+ADD_TEST(NAME ItemModelsMatchServer
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check_item_models.py
+            --repo ${CMAKE_SOURCE_DIR} --check --highlight 2894)
+SET_TESTS_PROPERTIES(ItemModelsMatchServer PROPERTIES LABELS "hygiene")
+
 # T414 Leg C (2026-09-06, board B290): the write-only field census as a ratchet.
 # T404 found MixChannel::sampleRate written by every producer and read by
 # nobody, for years; T407 turned that shape into a script and left 213 of its

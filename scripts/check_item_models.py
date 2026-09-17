@@ -159,6 +159,55 @@ def cmd_diff(args, root):
     return 0
 
 
+def baseline_path(root):
+    return os.path.join(root, "data", "item_models_drift_baseline.txt")
+
+
+def read_baseline(path):
+    known = set()
+    if not os.path.exists(path):
+        return known
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            cls, item_id = line.split("\t")
+            known.add((cls, int(item_id)))
+    return known
+
+
+BASELINE_HEADER = """\
+# data/item_models_drift_baseline.txt -- T498 (board B755, B827).
+#
+# Every row of data/item_models.json that disagrees with the server export
+# data/item_idfile.tsv, as measured at T498.  This is a RATCHET, not an
+# approval: ItemModelsMatchServer fails when a row NOT listed here drifts, and
+# equally when a row listed here has been fixed without being struck, so the
+# list cannot outlive the defect.
+#
+# It exists because the fix is not a code decision.  1,226 of the 3,661 rows
+# name a different model from the server and 902 name an item id the server
+# does not have, so regenerating the file wholesale is a VISUAL change to every
+# offline tool that draws from it -- the plan's own STOP condition, and Will's
+# call.  The RUNTIME no longer depends on any of it: T498 task 3 feeds
+# appearance.equipment[7|8] from the wire's own IDFile, the same rule the
+# server uses, so this file now only serves tools/model_viewer and
+# tools/ui_inventory_capture.
+#
+# Regenerate with:  python3 scripts/check_item_models.py --write-baseline
+#
+# class\titem_id
+"""
+
+
+def write_baseline(defects, path):
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(BASELINE_HEADER)
+        for cls, item_id, *_ in sorted(defects, key=lambda d: (d[0], d[1])):
+            fh.write("%s\t%d\n" % (cls, item_id))
+
+
 def cmd_check(args, root):
     export_path = os.path.join(root, "data", "item_idfile.tsv")
     json_path = os.path.join(root, "data", "item_models.json")
@@ -168,15 +217,66 @@ def cmd_check(args, root):
     export, _ = load_export(export_path)
     json_map, _ = load_json_map(json_path)
     defects, _ = analyse(json_map, export)
-    if not defects:
-        print("OK: all %d item_models.json rows match the server's items.idfile" % len(json_map))
+
+    if args.write_baseline:
+        write_baseline(defects, baseline_path(root))
+        print("wrote %s (%d rows)" % (baseline_path(root), len(defects)))
         return 0
+
+    if args.strict:
+        known = set()
+    else:
+        known = read_baseline(baseline_path(root))
+
+    current = {(cls, item_id): (name, model, idfile) for cls, item_id, name, model, idfile, _ in defects}
+    new = sorted(k for k in current if k not in known)
+    fixed = sorted(known - set(current))
+
+    if not new and not fixed:
+        if known:
+            print("OK: %d of %d item_models.json rows match the server's items.idfile; "
+                  "the other %d are the T498 baseline (data/item_models_drift_baseline.txt)"
+                  % (len(json_map) - len(defects), len(json_map), len(defects)))
+        else:
+            print("OK: all %d item_models.json rows match the server's items.idfile" % len(json_map))
+        return 0
+
     print("FAIL: %d of %d item_models.json rows disagree with data/item_idfile.tsv"
           % (len(defects), len(json_map)))
-    for cls, item_id, name, model, idfile, num in defects[:args.max_report]:
-        print("  %-19s item %d (%s): json %s, server %s" % (cls, item_id, name, model, idfile or "<absent>"))
-    if len(defects) > args.max_report:
-        print("  ... and %d more" % (len(defects) - args.max_report))
+    for want in args.highlight:
+        for cls, item_id, name, model, idfile, num in defects:
+            if item_id == want:
+                print("  the boarded example -- %s: item %d (%s): json %s, server %s"
+                      % (cls, item_id, name, model, idfile or "<absent>"))
+    if new:
+        print("  %d NEW defect(s) not in data/item_models_drift_baseline.txt:" % len(new))
+        for cls, item_id in new[:args.max_report]:
+            name, model, idfile = current[(cls, item_id)]
+            print("    %s: item %d (%s): json %s, server %s"
+                  % (cls, item_id, name, model, idfile or "<absent>"))
+        if len(new) > args.max_report:
+            print("    ... and %d more" % (len(new) - args.max_report))
+    if fixed:
+        print("  %d baseline row(s) are no longer defects -- strike them "
+              "(--write-baseline):" % len(fixed))
+        for cls, item_id in fixed[:args.max_report]:
+            print("    %s: item %d" % (cls, item_id))
+        if len(fixed) > args.max_report:
+            print("    ... and %d more" % (len(fixed) - args.max_report))
+    if args.strict:
+        by_class = {}
+        for d in defects:
+            by_class.setdefault(d[0], []).append(d)
+        for cls in DEFECT_CLASSES:
+            rows = by_class.get(cls)
+            if not rows:
+                continue
+            print("  %s: %d" % (cls, len(rows)))
+            for _, item_id, name, model, idfile, num in rows[:args.max_report]:
+                print("    item %d (%s): json %s, server %s"
+                      % (item_id, name, model, idfile or "<absent>"))
+            if len(rows) > args.max_report:
+                print("    ... and %d more" % (len(rows) - args.max_report))
     return 1
 
 
@@ -237,6 +337,12 @@ def main():
                     help="--rebuild: keep exactly the item ids the file already had")
     ap.add_argument("--out", default=None)
     ap.add_argument("--max-report", type=int, default=25)
+    ap.add_argument("--highlight", type=int, action="append", default=[],
+                    help="--check: always name this item id in the report (B755's 2894)")
+    ap.add_argument("--strict", action="store_true",
+                    help="--check: ignore the baseline; every disagreement is a failure")
+    ap.add_argument("--write-baseline", action="store_true",
+                    help="--check: rewrite data/item_models_drift_baseline.txt from the tree")
     args = ap.parse_args()
     root = repo_root(args.repo)
     if args.diff:
