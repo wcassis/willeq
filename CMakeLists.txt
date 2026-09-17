@@ -2137,6 +2137,7 @@ IF(EQT_GRAPHICS)
     # Shader diagnostic tool — renders test modules through all debug shader modes
     ADD_EXECUTABLE(gles2_shader_diagnostic
         tools/hwcaps/gles2_shader_diagnostic.cpp
+        src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
@@ -2242,6 +2243,7 @@ IF(EQT_GRAPHICS)
     # Composite entity audit tool — renders all race/gender/variant combos as PNGs
     ADD_EXECUTABLE(gles2_composite_audit
         tools/hwcaps/gles2_composite_audit.cpp
+        src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp

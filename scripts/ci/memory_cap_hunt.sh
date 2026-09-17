@@ -67,7 +67,10 @@ if [ -z "$OUT" ]; then
 fi
 mkdir -p "$OUT"
 
-printf '%-8s %-8s %-26s %12s %12s %12s  %s\n' cap exit last_point rss_anon ledger unattrib top_category
+# T491 addendum (2026-09-17): the row also carries how far past the 64 MB
+# target the last point was, so a hunt answers the target question directly.
+printf '%-8s %-8s %-26s %12s %12s %12s %12s  %s\n' \
+    cap exit last_point rss_anon ledger unaccount over_tgt top_category
 IFS=',' read -r -a CAP_LIST <<< "$CAPS"
 for cap in "${CAP_LIST[@]}"; do
     log="$OUT/cap_${cap}.log"
@@ -77,14 +80,28 @@ for cap in "${CAP_LIST[@]}"; do
     rc=$?
     last="$(grep -a '\[memledger\] point=' "$log" | tail -n 1)"
     if [ -z "$last" ]; then
-        point="(no memledger line)"; rss="-"; ledger="-"; unat="-"; top="-"
+        point="(no memledger line)"; rss="-"; ledger="-"; unac="-"; ovt="-"; top="-"
     else
-        point="$(sed -n 's/.*point=\([^ ]*\).*/\1/p' <<< "$last")"
-        rss="$(sed -n 's/.* rss_anon=\([0-9]*\).*/\1/p' <<< "$last")"
-        ledger="$(sed -n 's/.* ledger=\([0-9]*\).*/\1/p' <<< "$last")"
-        unat="$(sed -n 's/.* unattributed=\([0-9]*\).*/\1/p' <<< "$last")"
-        # largest live category on that line: tokens after allocs= are name=live/peak
-        top="$(sed -n 's/.* allocs=[0-9]* //p' <<< "$last" | tr ' ' '\n' \
+        # SPLIT FIRST, then parse. The scalar fields and the per-category
+        # tokens share names ("unattributed=" is both a byte count and a
+        # category), and sed's greedy .* takes the LAST match -- so parsing the
+        # whole line reported the CATEGORY's bytes for every colliding name.
+        # (T491, 2026-09-17: the inherited script did exactly that and read
+        # unattributed=0 for a line that said 500.) Everything up to " allocs="
+        # is scalars; everything after it is name=live/peak.
+        head_="${last%% allocs=*}"
+        tail_="$(sed -n 's/.* allocs=[0-9]* //p' <<< "$last")"
+        point="$(sed -n 's/.*point=\([^ ]*\).*/\1/p' <<< "$head_")"
+        rss="$(sed -n 's/.* rss_anon=\([0-9]*\).*/\1/p' <<< "$head_")"
+        ledger="$(sed -n 's/.* ledger=\([0-9]*\).*/\1/p' <<< "$head_")"
+        # unaccounted = RssAnon - ledger - allocator slack: what attribution
+        # work can still remove. Older logs have only "unattributed".
+        unac="$(sed -n 's/.* unaccounted=\([0-9]*\).*/\1/p' <<< "$head_")"
+        [ -n "$unac" ] || unac="$(sed -n 's/.* unattributed=\([0-9]*\).*/\1/p' <<< "$head_")"
+        ovt="$(sed -n 's/.* over_target=\([0-9]*\).*/\1/p' <<< "$head_")"
+        [ -n "$ovt" ] || ovt="-"
+        # largest live bucket on that line: tokens after allocs= are name=live/peak
+        top="$(tr ' ' '\n' <<< "$tail_" \
                | awk -F'[=/]' '{ if ($2+0 > best) { best = $2+0; name = $1 } } END { printf "%s=%d", name, best }')"
     fi
     case "$rc" in
@@ -93,7 +110,8 @@ for cap in "${CAP_LIST[@]}"; do
         124) verdict="timeout" ;;
         *)   verdict="exit=$rc" ;;
     esac
-    printf '%-8s %-8s %-26s %12s %12s %12s  %s\n' "$cap" "$verdict" "$point" "$rss" "$ledger" "$unat" "$top"
+    printf '%-8s %-8s %-26s %12s %12s %12s %12s  %s\n' \
+        "$cap" "$verdict" "$point" "$rss" "$ledger" "$unac" "$ovt" "$top"
 done
 echo "logs: $OUT"
 exit 0
