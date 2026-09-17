@@ -1089,6 +1089,9 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudget
     EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(20) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::EntityModels),    static_cast<size_t>(84) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Objects),         static_cast<size_t>(40) * 1024 * 1024);
+    // T496 Leg D: the first budget in this table derived from a PI measurement
+    // (24.53 MiB steady, x1.25 -> 32). See B823.
+    EXPECT_EQ(ledgerBudget(Category::Audio),           static_cast<size_t>(32) * 1024 * 1024);
     // The ZoneParse ledger budget is PINNED to the S3D-zone-source estimate
     // budget (board B803): they bound the same bytes by two different methods,
     // and letting them drift would make one of them a lie.
@@ -1096,9 +1099,21 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudget
     // Driver-coupled and never-constructed categories carry NO budget on
     // purpose -- see the reason list in constrained_renderer_config.cpp. A
     // budget derived from llvmpipe would be a fiction on Mali.
+    // T496 Leg D: `Audio` LEFT this list. It is no longer driver-coupled
+    // guesswork -- it was MEASURED on the Pi (24.53 MiB steady, every
+    // lifecycle point, every zone) and budgeted at 32 MiB. `Startup`,
+    // `TexturesDriver` and `IrrlichtScene` stay unbudgeted, and T496 Leg A
+    // measured exactly why that still matters: on Mali they are 26.82 /
+    // <=0.67 / <=1.45 MiB, while the same binary on llvmpipe reports 40.5-49.9
+    // / 2.1-30.5 / 24.0-27.1 MiB. The benchmark that the visual gate measures
+    // hard-codes this very preset (zone_bench_loader.cpp, fromPreset(OrangePi))
+    // and runs on llvmpipe, so one budget has to satisfy BOTH machines -- and
+    // a Mali-derived number would fail the gate by 3,280% on
+    // `textures_driver`. That is board B824, not something a budget line can
+    // fix.
     for (Category c : {Category::Startup, Category::TexturesDriver, Category::IrrlichtScene,
                        Category::Doors, Category::Equipment, Category::EntityInstances,
-                       Category::UI, Category::Audio, Category::Network, Category::GameState}) {
+                       Category::UI, Category::Network, Category::GameState}) {
         EXPECT_EQ(ledgerBudget(c), 0u) << eqt::memory::categoryName(c);
     }
 
@@ -1152,6 +1167,9 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(20) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::EntityModels),    static_cast<size_t>(84) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Objects),         static_cast<size_t>(40) * 1024 * 1024);
+    // T496 Leg D: the first budget in this table derived from a PI measurement
+    // (24.53 MiB steady, x1.25 -> 32). See B823.
+    EXPECT_EQ(ledgerBudget(Category::Audio),           static_cast<size_t>(32) * 1024 * 1024);
     // The ZoneParse ledger budget is PINNED to the S3D-zone-source estimate
     // budget (board B803): they bound the same bytes by two different methods,
     // and letting them drift would make one of them a lie.
@@ -1159,9 +1177,21 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     // Driver-coupled and never-constructed categories carry NO budget on
     // purpose -- see the reason list in constrained_renderer_config.cpp. A
     // budget derived from llvmpipe would be a fiction on Mali.
+    // T496 Leg D: `Audio` LEFT this list. It is no longer driver-coupled
+    // guesswork -- it was MEASURED on the Pi (24.53 MiB steady, every
+    // lifecycle point, every zone) and budgeted at 32 MiB. `Startup`,
+    // `TexturesDriver` and `IrrlichtScene` stay unbudgeted, and T496 Leg A
+    // measured exactly why that still matters: on Mali they are 26.82 /
+    // <=0.67 / <=1.45 MiB, while the same binary on llvmpipe reports 40.5-49.9
+    // / 2.1-30.5 / 24.0-27.1 MiB. The benchmark that the visual gate measures
+    // hard-codes this very preset (zone_bench_loader.cpp, fromPreset(OrangePi))
+    // and runs on llvmpipe, so one budget has to satisfy BOTH machines -- and
+    // a Mali-derived number would fail the gate by 3,280% on
+    // `textures_driver`. That is board B824, not something a budget line can
+    // fix.
     for (Category c : {Category::Startup, Category::TexturesDriver, Category::IrrlichtScene,
                        Category::Doors, Category::Equipment, Category::EntityInstances,
-                       Category::UI, Category::Audio, Category::Network, Category::GameState}) {
+                       Category::UI, Category::Network, Category::GameState}) {
         EXPECT_EQ(ledgerBudget(c), 0u) << eqt::memory::categoryName(c);
     }
 

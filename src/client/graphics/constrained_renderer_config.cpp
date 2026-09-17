@@ -342,13 +342,24 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // EVERY byte the category allocates, transients included.
             // 0 = no budget configured; the gate skips the category and says so.
             // DELIBERATELY 0, with the reason:
-            //  - startup / textures_driver / irrlicht_scene: driver-coupled. The
-            //    x86 figures are llvmpipe's (startup alone is 40-50 MiB of Mesa
-            //    JIT state) and do NOT transfer to Mali. Budgeting them from x86
-            //    would ship a fiction. They need a Pi measurement (T490 Leg B).
-            //  - doors / equipment / entity_instances / ui / audio / network /
+            //  - startup / textures_driver / irrlicht_scene: driver-coupled, and
+            //    T496 Leg A MEASURED the Pi rather than assuming it. On Mali
+            //    they are 26.82 / <=0.67 / <=1.45 MiB; the same binary on
+            //    llvmpipe reports 40.5-49.9 / 2.1-30.5 / 24.0-27.1 MiB. So the
+            //    x86 figures were not merely untransferable, they are 40-50x
+            //    too LARGE. They still carry no budget, for a different reason
+            //    than before: there is only ONE budget table and the benchmark
+            //    the visual gate measures hard-codes this preset
+            //    (zone_bench_loader.cpp, fromPreset(OrangePi)) while running on
+            //    llvmpipe, so a Mali-derived budget fails the gate by 3,280% on
+            //    textures_driver alone. Per-backend budgets are board B824.
+            //  - doors / equipment / entity_instances / ui / network /
             //    game_state: no benchmark constructs them, so a budget would be
             //    decoration -- the same rule T69/T293 applied to their estimates.
+            //  - audio: NO LONGER 0. T496 Leg D budgets it from the Pi; see
+            //    below. It is the one category here the benchmark never
+            //    constructs that is nevertheless worth budgeting, because it is
+            //    the client's largest steady bucket and does not vary by zone.
             // THE ATTRIBUTION RATCHET, not a capacity budget: bytes
             // charged with NO MemoryScope on the calling thread (static
             // initialisers, a thread's first allocations). Measured 87,456 B
@@ -385,6 +396,15 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // measured worst 28.91 MiB (coverage) x 1.25 = 36.1 -> 40
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Objects)] =
                 40 * 1024 * 1024;
+            // T496 Leg D: the first `audio` budget, and the first budget in
+            // this table derived from a measurement taken ON THE PI rather than
+            // on x86. Measured steady state after B817 and B823, Orange Pi,
+            // qeynos2, every lifecycle point: 25,725,824 B = 24.53 MiB
+            // (review/T496/pi/table_categories.tsv). x1.25 = 30.66 -> 32.
+            // This is two SoundFonts' float samples and essentially nothing
+            // else; it does not vary with the zone.
+            config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Audio)] =
+                32 * 1024 * 1024;
             // Deferred asset loading (progressive mesh building during gameplay)
             config.deferredAssetLoading = true;
             config.backgroundThreadCount = 1;

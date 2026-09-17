@@ -781,7 +781,7 @@ it without taking that measurement first.
   (`tests/test_music_player_soundfont_lifetime.cpp`). No audio output changes —
   `MusicPlayer` renders through the shared `MidiPlayer` either way.
 
-- **B818** (B) **Owed from T496, deliberately not taken there.** (1) The three
+- **B818** (B, *items 1a/2/3/5 resolved by T496 Leg D -- see B819/B823/B824*) **Owed from T496, deliberately not taken there.** (1) The three
   Mali budgets B812 now has numbers for (`startup` 26.82 MiB,
   `textures_driver` ≤ 0.67 MiB, `irrlicht_scene` ≤ 1.45 MiB) are **stable
   across four Pi runs and ready to enter the orangepi preset's
@@ -810,6 +810,93 @@ it without taking that measurement first.
   44,116 **kB**; `load_mem_audit.cpp` prints that field with `%zu` from a
   `size_t` of BYTES, so the startup texture cache is **43 kB**, not 43 MiB, and
   was never a shrink candidate.
+
+- ~~**B818.5** the ledger test is red on the tip~~ **RESOLVED as B819.**
+
+- **B819** (A, *measured*, **fixed in T496 Leg D**) **A ctest case was a
+  function of the optimisation level, not of the code under test.**
+  `MemoryLedger.MallocFamilyAllRouteThroughTheLedger` passed in `main`'s
+  RelWithDebInfo tree and failed in a worktree configured by **CLAUDE.md's own
+  recipe**, which sets no `CMAKE_BUILD_TYPE` and therefore builds at `-O0`.
+  Cause, PROVED on the exact body with `g++ -S` and a count of emitted calls,
+  not inferred: at **-O0** GCC lowers `realloc(NULL, n)` to **`call
+  malloc@PLT`**, the allocation really happens, the case discards the returned
+  pointer and never frees it, and the ledger correctly reports glibc's 48-byte
+  minimum chunk still live — RED. At **-O2** the pointer never escapes, so GCC
+  **elides the allocation entirely (zero calls emitted)** and `live == before`
+  — GREEN. Third instance of this trap in this tree (T400's protocol case,
+  T491 Review §3's `FreeUnderAnotherScopeCreditsTheChargedCategory`). Fixed by
+  asserting **what the ledger promises** — the pointer escapes through an `asm`
+  barrier, is freed, and the case asserts charge-then-credit — because
+  `realloc(ptr, 0)` and the minimum chunk size are both
+  implementation-defined and neither is assertable. Green at `-O0` **and** at
+  `-O2`: 20/20. **Adjacent and still open:** the configure command in
+  `CLAUDE.md` names no `CMAKE_BUILD_TYPE`, so the documented way to set up a
+  tree differs from the way the trees that gate merges are built. Worth one
+  line in that recipe.
+
+- **B823** (A, *measured*, **fixed in T496 Leg D**) **The client read 125 MB of
+  sound archives it was configured never to keep, then freed them again —
+  and that transient was the Pi's #2 bucket.**
+  `AudioManager::scanPfsArchives()` indexes seventeen `snd*.pfs`
+  (**124,397,766 bytes** on disk) at startup and got each name list by calling
+  `PfsArchive::open()`, which reads the whole archive into one buffer AND
+  copies every member's compressed blocks into `files_` — then RETAINED the
+  opened archive whenever `lazyPfsLoading_` was false. **It is false there on
+  every run**: the preset's constraints arrive afterwards, via
+  `setMemoryConstraints()` from `BridgeComponent`, and every constrained preset
+  sets `lazyPfsLoading = true`
+  (`ConstrainedRendererConfig::calculateMemoryLimits()`). So the constraint
+  arrived after the allocation it existed to prevent, and glibc kept the arena.
+  New `PfsArchive::listFilenames()` streams the filename-table entry alone
+  (directory walk → CRC `0x61580ac9` → inflate that entry block by block off
+  the `ifstream`); purely additive, no existing caller changes.
+  **x86 red → green, `Category::Audio` bytes, cold index:** peak
+  **155,560,752 → 26,752,336**, live **150,590,448 → 25,678,336**.
+  **Orange Pi, `startup`, confirming run, Leg A recipe verbatim:**
+
+  | | T496 base | after B817 | **after B823** |
+  |---|---:|---:|---:|
+  | `audio` peak | 179,607,200 | 155,448,424 | **26,522,912** |
+  | `malloc_slack` | 115,696,496 | 116,654,416 | **726,664** |
+  | **RssAnon** | 197,492,736 | 174,211,072 | **58,331,136** |
+  | **`over_target` vs 64 MiB** | 130,383,872 | 107,102,208 | **0** |
+
+  **At `startup` the client is now INSIDE Will's 32–64 MB target: 55.63 MiB
+  RssAnon, `over_target` 0, down from 188.34 MiB.** `malloc_slack` fell
+  110.34 MiB → **0.69 MiB**, which confirms it was a symptom of this transient
+  and not a bucket of its own — so it gets no board entry, per the
+  orchestrator's ruling. At `ready` RssAnon is 169.5 MiB (zone data dominates
+  there) against 186.4 before. Pinned by
+  `tests/test_audio_startup_peak.cpp`, which also asserts the index did not
+  drift (**17 archives, 2,127 `.wav` names, `listFilenames` ==
+  `open`+`getFilenames`, zero mismatches**) and which forces a COLD index —
+  a warm `snd_index_cache.json` short-circuits the scan and made both peak
+  cases pass against the unfixed code (measured: peak 26,279,360 warm). No
+  sound changes; placement and lifetime only.
+
+- **B824** (C) **There is one ledger budget table and it is asserted on two
+  different machines.** `tools/hwcaps/zone_bench_loader.cpp` hard-codes
+  `ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi)`,
+  and `scripts/ci/visual_gate.sh` runs that benchmark on **x86/llvmpipe**. So
+  `config/constrained_presets.json`'s `memoryLedgerBudgets` must satisfy Mali
+  and llvmpipe at once. T496 Leg A measured how far apart they are:
+
+  | category | Orange Pi | x86 gate | Pi-derived budget ×1.25 | x86 would read |
+  |---|---:|---:|---:|---:|
+  | `textures_driver` | ≤ 0.67 MiB | 2.08–**30.50** MiB | ~0.93 MiB | **3,280 %** |
+  | `irrlicht_scene` | ≤ 1.45 MiB | 24.01–**27.07** MiB | ~2 MiB | **~1,350 %** |
+  | `startup` | 26.82 MiB | 40.53–**49.87** MiB | 34 MiB | **147 %** |
+
+  This is why the orchestrator's T496 Leg D instruction to set all three could
+  not be carried out: each one turns the visual gate permanently red, which is
+  a knowingly-broken gate, not a budget. **`audio` WAS set** (32 MiB from the
+  Pi's measured 24.53 MiB × 1.25) because the benchmark links no audio at all
+  — `nm -C gles2_zone_benchmark | grep -c 'MusicPlayer\|MidiPlayer\|tsf_load'`
+  is **0** — so it cannot conflict. **What would close this:** budgets keyed by
+  rendering backend (Mali vs llvmpipe) rather than by preset alone, or a gate
+  that runs the benchmark under a second, llvmpipe-derived budget set. Either
+  is a schema + parser + gate change and a design call, not an executor's.
 
 - ~~**B022** (C) `src/client/graphics/spell_visual_fx.cpp` --
   **THE PADDING RULING IS ANSWERED BY THE ORACLE (T389, 2026-09-05):
@@ -11550,7 +11637,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   unit's pre-flight.
   Needs Will's call on whether that lane is worth owning. Found by T497.
 
-B816-B819 unused (T497 was dispatched to start at B820).
+B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
 
 ## Added 2026-09-17 by T498 (item_models.json vs the server's items.idfile)
 

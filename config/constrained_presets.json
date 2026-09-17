@@ -90,7 +90,8 @@
         "spatial": 4194304,
         "textures_decoded": 20971520,
         "entity_models": 88080384,
-        "objects": 41943040
+        "objects": 41943040,
+        "audio": 33554432
       }
     }
   }

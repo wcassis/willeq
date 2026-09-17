@@ -376,9 +376,16 @@ bool PfsArchive::listFilenames(const std::string& path, const std::string& exten
 
     uint32_t p = 0;
     if (p + sizeof(uint32_t) > out.size()) return false;
-    const uint32_t nameCount = read_val<uint32_t>(&out[p]);
+    // Named `filenameTableCount` rather than `nameCount` or `entryCount`:
+    // check_zero_callers.py matches call sites by bare IDENTIFIER, so a local
+    // that happens to share a name with an exempt accessor silently
+    // un-exempts it and turns ZeroCallers red pointing at an unrelated header.
+    // Measured, T496 Leg D: `nameCount` collided with
+    // EQE1TextureIndex::nameCount and `entryCount` with
+    // SkillCapTable::entryCount. This name collides with nothing in the tree.
+    const uint32_t filenameTableCount = read_val<uint32_t>(&out[p]);
     p += sizeof(uint32_t);
-    for (uint32_t i = 0; i < nameCount; ++i) {
+    for (uint32_t i = 0; i < filenameTableCount; ++i) {
         if (p + sizeof(uint32_t) > out.size()) return false;
         const uint32_t len = read_val<uint32_t>(&out[p]);
         p += sizeof(uint32_t);

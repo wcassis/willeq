@@ -309,3 +309,121 @@ LOCAL lane only. Lock taken as `T496` and **released**; world **DOWN**
 `review/T496/pi/testcaster_original_row.txt`. The VM at 172.16.200.99 and
 hermes-ext were never touched. No Testchar. Pi left idle, no willeq running,
 `/tmp/t496` removed by the run script.
+
+
+## Review addendum — Leg D (executor, 2026-09-17)
+
+Rebased onto `fable` `ec1e9d77` (T497). One conflict, in `docs/decisions.md`:
+both sides append a new dated section after the same anchor, so it is an
+ADDITIONS conflict, not alternatives — **both kept**, verified by
+`grep '^## 2026-09-17'` returning all three sections.
+
+### 0. The orchestrator's three decisions
+
+1. **Leg B outside the plan's file territory: ACCEPTED**, on the ruling that
+   the plan's "target = whatever Leg A names first" outranks its file list, the
+   change is lifetime-only, and the Pi confirmed it. Recorded here as directed.
+2. **B818.1, set the budgets: HALF DONE, and the other half is a STOP.**
+   `audio` is set (32 MiB, from the Pi's measured 24.53 MiB × 1.25), in all
+   three places the convention requires — `config/constrained_presets.json`,
+   the compiled-in `fromPreset` default, and the pin in
+   `tests/test_constrained_renderer.cpp`, where `Audio` also left the
+   "deliberately 0" list. **`startup`, `textures_driver` and `irrlicht_scene`
+   were NOT set**, because there is exactly one budget table and it is asserted
+   on two machines: `zone_bench_loader.cpp` hard-codes
+   `fromPreset(OrangePi)` and the visual gate runs that benchmark on llvmpipe.
+   A Pi-derived `textures_driver` budget reads **3,280 %** on the gate. Setting
+   them ships a permanently red gate, which is not a budget. **Boarded B824**
+   with the table and two ways to close it. `audio` is safe because the
+   benchmark links no audio: `nm -C build-gles2/bin/gles2_zone_benchmark |
+   grep -c 'MusicPlayer\|MidiPlayer\|tsf_load'` is **0** [measured].
+3. **`malloc_slack`: measured, and it needs no board entry.** It was a symptom.
+   110.34 MiB → **0.69 MiB** at `startup` once B823 removed the transient that
+   forced glibc to grow the arena.
+
+### 1. B818.5 → B819: why the ledger test disagreed between trees
+
+Not glibc tunables and not the worktree's cmake cache — **the optimisation
+level**, proved on the exact body with `g++ -S` and a count of emitted calls:
+
+| | calls emitted | result |
+|---|---|---|
+| `-O0` (a tree configured by CLAUDE.md's recipe, which sets no `CMAKE_BUILD_TYPE`) | one `call malloc@PLT` — GCC lowers `realloc(NULL,n)` to `malloc(n)` | the block is real, the case discards the pointer and never frees it, ledger reports glibc's 48-byte minimum chunk live → **RED** |
+| `-O2` (`main`'s RelWithDebInfo) | **zero** — the pointer never escapes, GCC elides the allocation | `live == before` → **GREEN** |
+
+Third instance of this trap here (T400; T491 Review §3). `realloc(ptr, 0)` and
+the minimum chunk size are both implementation-defined, so the fix asserts what
+the **ledger** promises: the pointer escapes through an `asm` barrier, is
+freed, and the case asserts charge-then-credit. **20/20 green at `-O0` and at
+`-O2`.** Adjacent, boarded with B819: CLAUDE.md's configure command names no
+build type, so the documented way to make a tree is not the way the trees that
+gate merges are made.
+
+### 2. B823: the audio startup peak
+
+Located by instrumenting `AudioManager::initialize()` with per-stage ledger
+probes (scaffold, reverted before commit) — the transient is one call:
+
+```
+50_backend_done        live=25,277,200   peak=25,458,928
+70_pfsscan_done        live=150,591,888  peak=155,561,024
+```
+
+`scanPfsArchives()` wants each archive's `.wav` names and used `PfsArchive::open()`
+to get them, which reads the whole archive AND copies every member's compressed
+blocks, then **retained** the archive because `lazyPfsLoading_` is false at that
+moment on **every** run — the preset's constraints arrive later, through
+`setMemoryConstraints()`, and every constrained preset sets `lazyPfsLoading =
+true`. The constraint arrived after the allocation it existed to prevent. Same
+shape as B817.
+
+Root fix: a new additive `PfsArchive::listFilenames()` that streams the
+filename-table entry alone. Two intermediate measurements are worth keeping,
+because the first fix was not enough: dropping only the *retention* left the
+peak at **116,603,104 B**, since `open()` still holds the raw file and the
+per-file copies at once — so the archive had to stop being opened at all, not
+merely stop being kept.
+
+**Red → green, x86, cold index, `Category::Audio`:**
+
+```
+peak through initialize()  155,560,752 -> 26,752,336   (-122.8 MiB)
+live after initialize()    150,590,448 -> 25,678,336
+```
+
+**The test would have been a false green.** A warm `snd_index_cache.json`
+short-circuits the scan entirely, and `ResolveCachePathForRead` falls through
+to `build/bin/cache/`, which any earlier client run has populated — measured
+peak **26,279,360 B against the UNFIXED code**. Both peak cases now force a cold
+index and refuse to assert unless the scan actually ran.
+
+**Confirming Pi run** (`qeynos2_T496legD`, Leg A recipe verbatim), at `startup`:
+
+| | T496 base | after B817 | **after B823** |
+|---|---:|---:|---:|
+| `audio` live | 49,881,176 | 25,722,488 | **25,722,216** |
+| `audio` peak | 179,607,200 | 155,448,424 | **26,522,912** |
+| `malloc_slack` | 115,696,496 (110.34 MiB) | 116,654,416 | **726,664 (0.69 MiB)** |
+| **RssAnon** | 197,492,736 (188.34 MiB) | 174,211,072 | **58,331,136 (55.63 MiB)** |
+| **`over_target` vs 64 MiB** | 130,383,872 | 107,102,208 | **0** |
+| peak RssAnon, whole run | 212,828 kB | 186,640 kB | **179,408 kB** |
+
+**At `startup` the client is inside Will's 32–64 MB target** — 55.63 MiB, gap
+zero, from 188.34 MiB. At `ready` RssAnon is 169.5 MiB (zone data dominates;
+`malloc_slack` there fell 33.66 → 28.90 MiB) against 186.4 MiB at the base.
+
+### 3. STOP conditions
+
+None fired. Nothing changes what is drawn or heard: `listFilenames()` returns
+the identical index (**17 archives, 2,127 names, zero mismatches** against
+`open`+`getFilenames`, pinned as a ctest case), and no sample rate, instrument
+set or texture moved. Goldens untouched.
+
+### 4. [assumed]
+
+Two, both narrow. (a) The ledger **hook cost on ARM** is still unmeasured —
+B812's second half, B818.2; it needs `gles2_zone_benchmark --memory-json` on
+the Pi, which no run in T496 performed. (b) That `listFilenames()` is correct
+for archives with **no** filename table, or a malformed one, is asserted only
+by its defensive returns, not by a fixture — every real `snd*.pfs` has one.
+Everything else in this addendum is [measured].
