@@ -667,11 +667,13 @@ InventoryManager::MoveItemOutcome InventoryManager::moveItem(int16_t fromSlot, i
     MoveItemOutcome outcome;
 
     if (!isValidSlot(fromSlot)) {
-        outcome.message = "Invalid source slot: " + std::to_string(fromSlot);
+        // T494: describeSlot() prints the user-facing (`inventory.slot_id`)
+        // number, so a refusal quotes back what the user typed.
+        outcome.message = "Invalid source slot: " + describeSlot(fromSlot);
         return outcome;
     }
     if (!isValidSlot(toSlot)) {
-        outcome.message = "Invalid destination slot: " + std::to_string(toSlot);
+        outcome.message = "Invalid destination slot: " + describeSlot(toSlot);
         return outcome;
     }
     if (fromSlot == toSlot) {
@@ -714,9 +716,16 @@ InventoryManager::MoveItemOutcome InventoryManager::moveItem(int16_t fromSlot, i
     // item"). Refuse it here, before any mutation or packet, rather than
     // let /equip 22 3000 disconnect the player.
     if (isTradeSlot(toSlot) && !isCursorSlot(fromSlot)) {
+        // T494 (board B796): the numbers in a hint a user is meant to TYPE
+        // are `inventory.slot_id`, so they go through clientSlotToServer()
+        // exactly as describeSlot() does -- this line used to print the raw
+        // model slot and the cursor as 30, neither of which /equip accepts.
         outcome.message = "Items can only be offered in a trade from the cursor: pick up " +
-                          describeSlot(fromSlot) + " first (/equip " + std::to_string(fromSlot) +
-                          " 30, then /equip 30 " + std::to_string(toSlot) + ").";
+                          describeSlot(fromSlot) + " first (/equip " +
+                          std::to_string(clientSlotToServer(fromSlot)) + " " +
+                          std::to_string(SERVER_CURSOR_SLOT) + ", then /equip " +
+                          std::to_string(SERVER_CURSOR_SLOT) + " " +
+                          std::to_string(clientSlotToServer(toSlot)) + ").";
         return outcome;
     }
 

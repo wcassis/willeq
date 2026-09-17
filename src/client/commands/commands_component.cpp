@@ -290,26 +290,13 @@ void eqt::commands::CommandsComponent::RegisterCommands()
 
 namespace {
 
-// T66: /equip slot argument parsing. Same consumed-length idiom T48's
-// (now-removed, T136) ParseVendorSlot used, but signed/int16_t range since inventory slot ids
-// (include/client/inventory/inventory_constants.h) are the same type
-// MoveItemIntent::fromSlot/toSlot and SendMoveItem() use -- no separate
-// slot numbering invented here (T57's ruling: that enum/header is canonical).
-bool ParseEquipSlot(const std::string& tok, int16_t& out) {
-	if (tok.empty()) return false;
-	try {
-		size_t consumed = 0;
-		long v = std::stol(tok, &consumed);
-		if (v < std::numeric_limits<int16_t>::min() || v > std::numeric_limits<int16_t>::max() ||
-		    consumed != tok.size()) {
-			return false;
-		}
-		out = static_cast<int16_t>(v);
-		return true;
-	} catch (const std::exception&) {
-		return false;
-	}
-}
+// T66's ParseEquipSlot() lived here and did nothing but strtol into an
+// int16_t -- it handed the command the raw number as if it were a model slot.
+// T494 (board B796) DELETED it: the number a user types is
+// `inventory.slot_id` (the server's numbering), not the model's, and the
+// conversion belongs in the inventory layer beside describeSlot(), which is
+// its inverse. Both call sites below now use
+// eqt::inventory::parseUserSlot(), which parses AND converts.
 
 // T141 -- IsRecognizedInventorySlot()/DescribeEquipSlot()/
 // CheckEquipDestination()/FindItemsByNameSubstring()/
@@ -495,8 +482,9 @@ void eqt::commands::CommandsComponent::RegisterSocialCommands()
 // action::CommandProcessor::cmdBuy/cmdSell -- a formatting concern, not a
 // guard, same precedent as cmdSplit/cmdWho's own token parsing. The old
 // ParseVendorSlot()/ParseVendorQuantity() free functions below are UNUSED
-// now (equip's ParseEquipSlot is a separate, still-used, function) --
-// removed rather than left as dead code.
+// now -- removed rather than left as dead code. (equip's own ParseEquipSlot
+// was a separate, still-used function until T494 replaced it with
+// eqt::inventory::parseUserSlot().)
 //
 // Registrations removed from eq_commands.cpp's m_command_registry in the
 // same commit as the CommandProcessor registrations (RegisterCommands()
@@ -642,6 +630,16 @@ void eqt::commands::CommandsComponent::RequestVendorSell(uint32_t slot, uint8_t 
 // cannot push bridge intents" constraint that stopped three prior units on
 // this very command does not apply to this shape: this method (and its
 // caller, whichever registry it is reached through) never touches m_bridge.
+// T494 (board B796): the usage strings say WHICH numbering, once. Slot
+// numbers are `inventory.slot_id` -- what the database, Spire and every
+// eqemu log line print -- so general slot 1 is 23 and the cursor is 33.
+static constexpr const char* kEquipUsage =
+	"Usage: /equip <fromSlot> <toSlot> | /equip <item name> | /equip list "
+	"(slot numbers are inventory.slot_id: 0-20 worn, 22 ammo, 23-30 general, 33 cursor)";
+static constexpr const char* kEquipSlotUsage =
+	"Usage: /equip <fromSlot> <toSlot> "
+	"(slot numbers are inventory.slot_id: 0-20 worn, 22 ammo, 23-30 general, 33 cursor)";
+
 void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 {
 	// T71/T77 -- shared execution for both slot-bearing forms: hands
@@ -665,9 +663,7 @@ void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 	iss >> toTok;
 
 	if (fromTok.empty()) {
-		ctx_.out.System(
-			"Usage: /equip <fromSlot> <toSlot> | /equip <item name> | /equip list "
-			"(see include/client/inventory/inventory_constants.h for slot ids)");
+		ctx_.out.System(kEquipUsage);
 		return;
 	}
 
@@ -743,10 +739,28 @@ void eqt::commands::CommandsComponent::RequestEquip(const std::string& args)
 	bool firstLooksNumeric = !fromTok.empty() &&
 		(std::isdigit(static_cast<unsigned char>(fromTok[0])) || fromTok[0] == '-');
 	if (firstLooksNumeric) {
+		using eqt::inventory::UserSlotResult;
 		int16_t fromSlot = 0;
 		int16_t toSlot = 0;
-		if (toTok.empty() || !ParseEquipSlot(fromTok, fromSlot) || !ParseEquipSlot(toTok, toSlot)) {
-			ctx_.out.System("Usage: /equip <fromSlot> <toSlot> (see include/client/inventory/inventory_constants.h for slot ids)");
+		const UserSlotResult fromResult =
+			toTok.empty() ? UserSlotResult::NotANumber
+			              : eqt::inventory::parseUserSlot(fromTok, fromSlot);
+		const UserSlotResult toResult =
+			toTok.empty() ? UserSlotResult::NotANumber
+			              : eqt::inventory::parseUserSlot(toTok, toSlot);
+		if (fromResult == UserSlotResult::NotANumber || toResult == UserSlotResult::NotANumber) {
+			ctx_.out.System(kEquipSlotUsage);
+			return;
+		}
+		// T494 -- a real `inventory.slot_id` that this client is simply not
+		// sent (21, the power source, above all) is its own answer, not a
+		// usage error and emphatically not a silent slide onto the next slot.
+		if (fromResult == UserSlotResult::NotAddressable) {
+			ctx_.out.System(eqt::inventory::describeUnaddressableSlot(fromTok));
+			return;
+		}
+		if (toResult == UserSlotResult::NotAddressable) {
+			ctx_.out.System(eqt::inventory::describeUnaddressableSlot(toTok));
 			return;
 		}
 		doMove(fromSlot, toSlot);
@@ -851,9 +865,17 @@ const eqt::inventory::ItemInstance* eqt::commands::CommandsComponent::ResolveCar
 	const bool numericForm = std::isdigit(static_cast<unsigned char>(args[0])) || args[0] == '-';
 
 	if (numericForm) {
+		using eqt::inventory::UserSlotResult;
 		int16_t parsed = 0;
-		if (!ParseEquipSlot(args, parsed)) {
+		const UserSlotResult parseResult = eqt::inventory::parseUserSlot(args, parsed);
+		if (parseResult == UserSlotResult::NotANumber) {
 			ctx_.out.System(fmt::format("Invalid slot '{}' - use /{} <item name> instead.", args, verb));
+			return nullptr;
+		}
+		// T494 -- same rule as /equip: a slot the server does not send is not
+		// a typo, and must not resolve to its neighbour.
+		if (parseResult == UserSlotResult::NotAddressable) {
+			ctx_.out.System(eqt::inventory::describeUnaddressableSlot(args));
 			return nullptr;
 		}
 		const eqt::inventory::ItemInstance* item = ctx_.inventory_manager->getItem(parsed);

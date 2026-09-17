@@ -174,16 +174,24 @@ ActionResult CommandProcessor::cmdCombine(const std::string& args) {
     if (parts.empty()) {
         return m_dispatcher.tradeskillCombine(eqt::inventory::SLOT_INVALID);
     }
-    uint32_t slot = 0;
-    if (parts.size() != 1 || !parseU32Strict(parts[0], slot) ||
-        !eqt::inventory::isGeneralSlot(static_cast<int16_t>(slot))) {
+    // T494 (board B796): the argument is `inventory.slot_id`, so the usage
+    // string names the SERVER numbering (general 1-8 = 23-30) and
+    // parseUserSlot() converts it to the model slot the dispatcher wants.
+    // The range is printed through clientSlotToServer() rather than
+    // hardcoded, so it can never drift from the conversion.
+    int16_t slot = eqt::inventory::SLOT_INVALID;
+    if (parts.size() != 1 ||
+        eqt::inventory::parseUserSlot(parts[0], slot) != eqt::inventory::UserSlotResult::Ok ||
+        !eqt::inventory::isGeneralSlot(slot)) {
         return ActionResult::Failure(
             "Usage: /combine (the open world container) | /combine <general slot "
-            + std::to_string(eqt::inventory::GENERAL_BEGIN) + "-"
-            + std::to_string(eqt::inventory::GENERAL_END)
-            + "> (a container you are carrying) - did you mean /recipecombine <recipe_id>?");
+            + std::to_string(eqt::inventory::clientSlotToServer(eqt::inventory::GENERAL_BEGIN))
+            + "-"
+            + std::to_string(eqt::inventory::clientSlotToServer(eqt::inventory::GENERAL_END))
+            + "> (a container you are carrying, slot numbers are inventory.slot_id)"
+            + " - did you mean /recipecombine <recipe_id>?");
     }
-    return m_dispatcher.tradeskillCombine(static_cast<int16_t>(slot));
+    return m_dispatcher.tradeskillCombine(slot);
 }
 
 ActionResult CommandProcessor::cmdCloseContainer(const std::string& args) {
@@ -346,19 +354,31 @@ ActionResult CommandProcessor::cmdScribe(const std::string& args) {
     return m_dispatcher.scribeItem(args);
 }
 
+// T494 (board B796): /sell's <slot> is an INVENTORY slot (unlike /buy's,
+// which is an index into the merchant's list and is not a slot at all), so it
+// is the one arm of ParseMerchantSlot's two callers that has to convert.
+// `inventory.slot_id` in, model slot out, exactly as /equip.
 ActionResult CommandProcessor::cmdSell(const std::string& args) {
     if (args.empty()) {
-        return ActionResult::Failure("Usage: /sell <slot> [quantity] - <slot> is your inventory slot");
+        return ActionResult::Failure(
+            "Usage: /sell <slot> [quantity] - <slot> is your inventory.slot_id "
+            "(23-30 general, 33 cursor)");
     }
     std::istringstream iss(args);
     std::string slotTok, qtyTok;
     iss >> slotTok;
     iss >> qtyTok;
 
-    uint32_t slot = 0;
-    if (!ParseMerchantSlot(slotTok, slot)) {
-        return ActionResult::Failure("Invalid slot");
+    int16_t modelSlot = eqt::inventory::SLOT_INVALID;
+    switch (eqt::inventory::parseUserSlot(slotTok, modelSlot)) {
+        case eqt::inventory::UserSlotResult::Ok:
+            break;
+        case eqt::inventory::UserSlotResult::NotAddressable:
+            return ActionResult::Failure(eqt::inventory::describeUnaddressableSlot(slotTok));
+        case eqt::inventory::UserSlotResult::NotANumber:
+            return ActionResult::Failure("Invalid slot");
     }
+    const uint32_t slot = static_cast<uint32_t>(modelSlot);
     uint8_t quantity = 1;
     if (!qtyTok.empty() && !ParseMerchantQuantity(qtyTok, quantity)) {
         return ActionResult::Failure("Invalid quantity (must be 1-255)");

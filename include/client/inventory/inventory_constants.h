@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -8,6 +9,20 @@ namespace eqt {
 namespace inventory {
 
 // Equipment slot IDs (0-21)
+//
+// T494 (board B796) -- WHICH NUMBERING THIS IS. Everything in this block is
+// the TITANIUM numbering: the slot ids the server has already translated to
+// by the time a packet reaches inventory_item_parser.cpp, and the ids fable's
+// inventory model, MoveItemIntent and the whole wire are indexed by.
+//
+// `inventory.slot_id` in the database -- and every number an eqemu log line,
+// Spire or #summonitem prints -- is the SERVER (RoF2) numbering, which is
+// NOT the same: server ammo is 22, general 1-8 are 23-30 and the cursor is
+// 33, and server slot 21 (the power source) has no Titanium slot at all.
+//
+// USER-FACING SLOT NUMBERS ARE `inventory.slot_id`. The conversion lives in
+// exactly two functions below -- parseUserSlot() on the way IN and
+// describeSlot() on the way OUT. Nothing else in the tree converts.
 enum EquipmentSlot : int16_t {
     SLOT_CHARM = 0,
     SLOT_EAR1 = 1,
@@ -43,8 +58,11 @@ constexpr int16_t GENERAL_END = 29;
 constexpr int16_t GENERAL_COUNT = 8;
 
 constexpr int16_t CURSOR_SLOT = 30;
-constexpr int16_t SERVER_CURSOR_SLOT = 33;  // Server uses slot 33 for cursor
 constexpr int16_t POSSESSIONS_COUNT = 31;
+// SERVER_CURSOR_SLOT used to be the literal 33 here. It is now DERIVED from
+// clientSlotToServer(CURSOR_SLOT), below the conversion functions -- the
+// magic number was the last surviving fragment of the server's slot table in
+// fable, and a fragment is how the table drifts.
 
 // Bag slot ranges (each bag has 10 slots)
 constexpr int16_t BAG_SLOT_COUNT = 10;
@@ -85,6 +103,199 @@ constexpr int16_t SLOT_TRADESKILL_EXPERIMENT_COMBINE = 1000;
 
 // Invalid slot
 constexpr int16_t SLOT_INVALID = -1;
+
+// ============================================================================
+// Titanium <-> server (RoF2) slot numbering -- T494, board B796
+// ============================================================================
+// Everything ABOVE is the TITANIUM numbering: it is what fable's inventory
+// model is indexed by, because the server has already translated every slot
+// id by the time a packet reaches inventory_item_parser.cpp.
+//
+// `inventory.slot_id` in the database, every eqemu log line, and everything
+// `#summonitem`/Spire shows is the SERVER numbering (EQ::invslot, which
+// common/emu_constants.h:155-156 aliases to RoF2::invslot). The two differ:
+//
+//     meaning        server (RoF2)   Titanium (this header)
+//     waist               20               20
+//     POWER SOURCE        21               -- (not sent to Titanium at all)
+//     ammo                22               21
+//     general 1-8         23-30            22-29
+//     general 9-10        31-32            --
+//     cursor              33               30
+//     general bags        4010 + 200*bag + idx      251 + 10*bag + idx
+//
+// The conversions below are ported field for field from the server's own
+// pair, /mnt/projects/akk-stack/code/common/patches/titanium.cpp:3576
+// `ServerToTitaniumSlot()` and :3666 `TitaniumToServerSlot()`, with the
+// constants from common/patches/{titanium,rof2}_limits.h. They are
+// deliberately faithful, quirks included (the server maps bank 2016-2023 and
+// general bags 9/10 to Titanium numbers Titanium does not have); callers that
+// need a slot a Titanium client can actually address use parseUserSlot(),
+// which round-trips through both and refuses anything that does not survive.
+//
+// T494's convention, stated once: USER-FACING SLOT NUMBERS ARE
+// `inventory.slot_id`. parseUserSlot() is the only IN conversion and
+// describeSlot() is the only OUT one; nothing else in the tree converts, and
+// the wire/model stays Titanium end to end.
+namespace serverslot {
+
+// RoF2::invslot (rof2_limits.h:124-158) / EQ::invslot.
+constexpr int16_t SLOT_WAIST = 20;
+constexpr int16_t SLOT_POWER_SOURCE = 21;
+constexpr int16_t SLOT_AMMO = 22;
+constexpr int16_t GENERAL_BEGIN = 23;
+constexpr int16_t GENERAL_END = 32;   // general1..general10
+constexpr int16_t CURSOR = 33;
+constexpr int16_t POSSESSIONS_COUNT = 34;
+
+constexpr int16_t TRIBUTE_BEGIN = 400;
+constexpr int16_t TRIBUTE_END = 404;
+constexpr int16_t GUILD_TRIBUTE_BEGIN = 450;
+constexpr int16_t GUILD_TRIBUTE_END = 451;
+constexpr int16_t SLOT_TRADESKILL_EXPERIMENT_COMBINE = 1000;
+
+constexpr int16_t BANK_BEGIN = 2000;
+constexpr int16_t BANK_END = 2023;    // BANK_SIZE 24, not Titanium's 16
+constexpr int16_t SHARED_BANK_BEGIN = 2500;
+constexpr int16_t SHARED_BANK_END = 2501;
+constexpr int16_t TRADE_BEGIN = 3000;
+constexpr int16_t TRADE_END = 3007;
+constexpr int16_t WORLD_BEGIN = 4000;
+constexpr int16_t WORLD_END = 4009;
+
+// EQ::invbag (emu_constants.h:215-235): SLOT_COUNT is 200 per container and
+// the families are laid out end to end starting one past WORLD_END.
+constexpr int16_t BAG_SLOT_COUNT = 200;
+constexpr int16_t GENERAL_BAGS_BEGIN = 4010;   // WORLD_END + 1
+constexpr int16_t GENERAL_BAGS_END = 6009;     // + 10 bags * 200
+constexpr int16_t CURSOR_BAG_BEGIN = 6010;
+constexpr int16_t CURSOR_BAG_END = 6209;
+constexpr int16_t BANK_BAGS_BEGIN = 6210;
+constexpr int16_t BANK_BAGS_END = 11009;       // + 24 * 200
+constexpr int16_t SHARED_BANK_BAGS_BEGIN = 11010;
+constexpr int16_t SHARED_BANK_BAGS_END = 11409;
+constexpr int16_t TRADE_BAGS_BEGIN = 11410;
+constexpr int16_t TRADE_BAGS_END = 13009;
+
+}  // namespace serverslot
+
+/**
+ * Server (`inventory.slot_id`) -> this client's model slot.
+ * Port of titanium.cpp:3576 ServerToTitaniumSlot(). SLOT_INVALID means the
+ * server never serialises that slot to a Titanium client (slot 21, the power
+ * source, is the one a user is most likely to type).
+ */
+constexpr int16_t serverSlotToClient(int16_t serverSlot) {
+    if (serverSlot < 0) return SLOT_INVALID;
+    if (serverSlot <= serverslot::SLOT_WAIST) return serverSlot;
+    if (serverSlot == serverslot::SLOT_AMMO) return static_cast<int16_t>(serverSlot - 1);
+    if (serverSlot >= serverslot::GENERAL_BEGIN && serverSlot <= serverslot::GENERAL_BEGIN + 7)
+        return static_cast<int16_t>(serverSlot - 1);  // general1-8 only; Titanium has no 9/10
+    if (serverSlot >= serverslot::CURSOR &&
+        serverSlot <= serverslot::POSSESSIONS_COUNT + serverslot::SLOT_WAIST)
+        return static_cast<int16_t>(serverSlot - 3);
+    if (serverSlot == serverslot::POSSESSIONS_COUNT + serverslot::SLOT_AMMO)
+        return static_cast<int16_t>(serverSlot - 4);
+    if (serverSlot >= serverslot::GENERAL_BAGS_BEGIN && serverSlot <= serverslot::GENERAL_BAGS_END)
+        return static_cast<int16_t>(
+            serverSlot - (serverslot::GENERAL_BAGS_BEGIN - GENERAL_BAGS_BEGIN) -
+            (serverslot::BAG_SLOT_COUNT - BAG_SLOT_COUNT) *
+                ((serverSlot - serverslot::GENERAL_BAGS_BEGIN) / serverslot::BAG_SLOT_COUNT));
+    if (serverSlot >= serverslot::CURSOR_BAG_BEGIN && serverSlot <= serverslot::CURSOR_BAG_END)
+        return static_cast<int16_t>(serverSlot -
+                                    (serverslot::CURSOR_BAG_BEGIN - CURSOR_BAG_BEGIN));
+    if (serverSlot >= serverslot::TRIBUTE_BEGIN && serverSlot <= serverslot::TRIBUTE_END)
+        return serverSlot;
+    if (serverSlot >= serverslot::GUILD_TRIBUTE_BEGIN && serverSlot <= serverslot::GUILD_TRIBUTE_END)
+        return serverSlot;
+    if (serverSlot == serverslot::SLOT_TRADESKILL_EXPERIMENT_COMBINE) return serverSlot;
+    if (serverSlot >= serverslot::BANK_BEGIN && serverSlot <= serverslot::BANK_END)
+        return serverSlot;
+    if (serverSlot >= serverslot::BANK_BAGS_BEGIN && serverSlot <= serverslot::BANK_BAGS_END)
+        return static_cast<int16_t>(
+            serverSlot - (serverslot::BANK_BAGS_BEGIN - BANK_BAGS_BEGIN) -
+            (serverslot::BAG_SLOT_COUNT - BAG_SLOT_COUNT) *
+                ((serverSlot - serverslot::BANK_BAGS_BEGIN) / serverslot::BAG_SLOT_COUNT));
+    if (serverSlot >= serverslot::SHARED_BANK_BEGIN && serverSlot <= serverslot::SHARED_BANK_END)
+        return serverSlot;
+    if (serverSlot >= serverslot::SHARED_BANK_BAGS_BEGIN &&
+        serverSlot <= serverslot::SHARED_BANK_BAGS_END)
+        return static_cast<int16_t>(
+            serverSlot - (serverslot::SHARED_BANK_BAGS_BEGIN - SHARED_BANK_BAGS_BEGIN) -
+            (serverslot::BAG_SLOT_COUNT - BAG_SLOT_COUNT) *
+                ((serverSlot - serverslot::SHARED_BANK_BAGS_BEGIN) / serverslot::BAG_SLOT_COUNT));
+    if (serverSlot >= serverslot::TRADE_BEGIN && serverSlot <= serverslot::TRADE_END)
+        return serverSlot;
+    if (serverSlot >= serverslot::TRADE_BAGS_BEGIN && serverSlot <= serverslot::TRADE_BAGS_END)
+        return static_cast<int16_t>(
+            serverSlot - (serverslot::TRADE_BAGS_BEGIN - TRADE_BAGS_BEGIN) -
+            (serverslot::BAG_SLOT_COUNT - BAG_SLOT_COUNT) *
+                ((serverSlot - serverslot::TRADE_BAGS_BEGIN) / serverslot::BAG_SLOT_COUNT));
+    if (serverSlot >= serverslot::WORLD_BEGIN && serverSlot <= serverslot::WORLD_END)
+        return serverSlot;
+    return SLOT_INVALID;
+}
+
+/**
+ * This client's model slot -> server (`inventory.slot_id`).
+ * Port of titanium.cpp:3666 TitaniumToServerSlot(). This is the number a user
+ * should SEE, so describeSlot() is its only caller besides parseUserSlot()'s
+ * round-trip guard.
+ */
+constexpr int16_t clientSlotToServer(int16_t clientSlot) {
+    if (clientSlot < 0) return SLOT_INVALID;
+    if (clientSlot <= SLOT_WAIST) return clientSlot;
+    if (clientSlot == SLOT_AMMO) return static_cast<int16_t>(clientSlot + 1);
+    if (clientSlot >= GENERAL_BEGIN && clientSlot <= GENERAL_END)
+        return static_cast<int16_t>(clientSlot + 1);
+    if (clientSlot >= CURSOR_SLOT && clientSlot <= POSSESSIONS_COUNT + SLOT_WAIST)
+        return static_cast<int16_t>(clientSlot + 3);
+    if (clientSlot == POSSESSIONS_COUNT + SLOT_AMMO)
+        return static_cast<int16_t>(clientSlot + 4);
+    if (clientSlot >= GENERAL_BAGS_BEGIN && clientSlot <= GENERAL_BAGS_END)
+        return static_cast<int16_t>(
+            clientSlot + (serverslot::GENERAL_BAGS_BEGIN - GENERAL_BAGS_BEGIN) +
+            (serverslot::BAG_SLOT_COUNT - BAG_SLOT_COUNT) *
+                ((clientSlot - GENERAL_BAGS_BEGIN) / BAG_SLOT_COUNT));
+    if (clientSlot >= CURSOR_BAG_BEGIN && clientSlot <= CURSOR_BAG_END)
+        return static_cast<int16_t>(clientSlot +
+                                    (serverslot::CURSOR_BAG_BEGIN - CURSOR_BAG_BEGIN));
+    if (clientSlot >= serverslot::TRIBUTE_BEGIN && clientSlot <= serverslot::TRIBUTE_END)
+        return clientSlot;
+    if (clientSlot == SLOT_TRADESKILL_EXPERIMENT_COMBINE) return clientSlot;
+    if (clientSlot >= serverslot::GUILD_TRIBUTE_BEGIN && clientSlot <= serverslot::GUILD_TRIBUTE_END)
+        return clientSlot;
+    if (clientSlot >= BANK_BEGIN && clientSlot <= BANK_END) return clientSlot;
+    if (clientSlot >= BANK_BAGS_BEGIN && clientSlot <= BANK_BAGS_END)
+        return static_cast<int16_t>(
+            clientSlot + (serverslot::BANK_BAGS_BEGIN - BANK_BAGS_BEGIN) +
+            (serverslot::BAG_SLOT_COUNT - BAG_SLOT_COUNT) *
+                ((clientSlot - BANK_BAGS_BEGIN) / BAG_SLOT_COUNT));
+    if (clientSlot >= SHARED_BANK_BEGIN && clientSlot <= SHARED_BANK_END) return clientSlot;
+    if (clientSlot >= SHARED_BANK_BAGS_BEGIN && clientSlot <= SHARED_BANK_BAGS_END)
+        return static_cast<int16_t>(
+            clientSlot + (serverslot::SHARED_BANK_BAGS_BEGIN - SHARED_BANK_BAGS_BEGIN) +
+            (serverslot::BAG_SLOT_COUNT - BAG_SLOT_COUNT) *
+                ((clientSlot - SHARED_BANK_BAGS_BEGIN) / BAG_SLOT_COUNT));
+    if (clientSlot >= TRADE_BEGIN && clientSlot <= TRADE_END) return clientSlot;
+    if (clientSlot >= TRADE_BAGS_BEGIN && clientSlot <= TRADE_BAGS_END)
+        return static_cast<int16_t>(
+            clientSlot + (serverslot::TRADE_BAGS_BEGIN - TRADE_BAGS_BEGIN) +
+            (serverslot::BAG_SLOT_COUNT - BAG_SLOT_COUNT) *
+                ((clientSlot - TRADE_BAGS_BEGIN) / BAG_SLOT_COUNT));
+    if (clientSlot >= WORLD_BEGIN && clientSlot <= WORLD_END) return clientSlot;
+    return SLOT_INVALID;
+}
+
+// The cursor's server slot, DERIVED rather than the literal 33 it used to be.
+constexpr int16_t SERVER_CURSOR_SLOT = clientSlotToServer(CURSOR_SLOT);
+static_assert(SERVER_CURSOR_SLOT == 33, "titanium.cpp:3666 maps cursor 30 -> 33");
+static_assert(serverSlotToClient(33) == CURSOR_SLOT, "and back again");
+static_assert(serverSlotToClient(21) == SLOT_INVALID,
+              "RoF2 slotPowerSource is not sent to a Titanium client");
+static_assert(serverSlotToClient(23) == GENERAL_BEGIN, "DB general 1 is model slot 22");
+static_assert(clientSlotToServer(GENERAL_BEGIN) == 23, "and back again");
+
 
 // ============================================================================
 // The ZONE-IN SNAPSHOT's slot set (T439, board B444)
@@ -806,17 +1017,78 @@ inline const char* getSlotName(int16_t slotId) {
 // (from eq_commands.cpp's file-local DescribeEquipSlot()) so both
 // InventoryManager's own messages and EverQuest's command-layer messages
 // share one formatter instead of two copies.
+// T494 (board B796): the number PRINTED is the server's (`inventory.slot_id`),
+// because that is the number the reader can type back in -- see parseUserSlot()
+// below, which is this function's exact inverse. The argument is still a MODEL
+// slot: every caller passes the slot it is holding, untouched.
 inline std::string describeSlot(int16_t slotId) {
+    const int16_t shown = clientSlotToServer(slotId);
+    const std::string number = std::to_string(shown == SLOT_INVALID ? slotId : shown);
     if (isEquipmentSlot(slotId)) {
-        return std::string(getSlotName(slotId)) + " (" + std::to_string(slotId) + ")";
+        return std::string(getSlotName(slotId)) + " (" + number + ")";
     }
     // T282: 4000-4009 read as bare numbers in every refusal message about a
     // world tradeskill container; name them by their 1-based container index.
     if (isWorldContainerItemSlot(slotId)) {
         return "tradeskill container slot " + std::to_string(slotId - WORLD_BEGIN + 1) +
-               " (" + std::to_string(slotId) + ")";
+               " (" + number + ")";
     }
-    return "slot " + std::to_string(slotId);
+    return "slot " + number;
+}
+
+// ============================================================================
+// parseUserSlot -- the ONE inbound conversion (T494, board B796)
+// ============================================================================
+// Every command that takes a slot NUMBER from a user (/equip, /read, /scribe,
+// /sell, /combine, and the same via --script and the llmbench timelines) goes
+// through here. It parses AND converts, so a command handler never sees a
+// server number and never has to remember which numbering it is holding.
+//
+// Three outcomes, because the refusals are not interchangeable: a typo is a
+// usage error, but a real server slot this client is not sent (21, the power
+// source, is the one a reader of the DB will type) needs to say so, or the
+// user re-types it and blames the client.
+enum class UserSlotResult {
+    Ok,
+    NotANumber,       // not an integer, or out of int16_t range
+    NotAddressable,   // a number, but no slot this client can reach
+};
+
+inline UserSlotResult parseUserSlot(const std::string& tok, int16_t& out) {
+    out = SLOT_INVALID;
+    if (tok.empty()) return UserSlotResult::NotANumber;
+    long value = 0;
+    try {
+        size_t consumed = 0;
+        value = std::stol(tok, &consumed);
+        if (consumed != tok.size()) return UserSlotResult::NotANumber;
+    } catch (const std::exception&) {
+        return UserSlotResult::NotANumber;
+    }
+    if (value < std::numeric_limits<int16_t>::min() ||
+        value > std::numeric_limits<int16_t>::max()) {
+        return UserSlotResult::NotANumber;
+    }
+    const int16_t serverSlot = static_cast<int16_t>(value);
+    const int16_t clientSlot = serverSlotToClient(serverSlot);
+    if (clientSlot == SLOT_INVALID) return UserSlotResult::NotAddressable;
+    // The ROUND-TRIP guard. The server's own table is not injective over its
+    // whole domain -- it maps bank 2016-2023 and general bags 9/10 onto
+    // Titanium numbers Titanium does not have, and inside a container it is
+    // only right for the first ten of the server's two hundred slots. Rather
+    // than silently pass one of those through as some other slot, require the
+    // number to survive both directions. This is also what makes the bag half
+    // of the table safe: 4010 round-trips, 4025 and 5610 do not.
+    if (clientSlotToServer(clientSlot) != serverSlot) return UserSlotResult::NotAddressable;
+    out = clientSlot;
+    return UserSlotResult::Ok;
+}
+
+/** The refusal text for UserSlotResult::NotAddressable, in one place. */
+inline std::string describeUnaddressableSlot(const std::string& tok) {
+    return "Slot " + tok +
+           " is not a slot this client can reach -- the server does not send it to a "
+           "Titanium client. Slot numbers are inventory.slot_id; try /equip list.";
 }
 
 // Get size name
