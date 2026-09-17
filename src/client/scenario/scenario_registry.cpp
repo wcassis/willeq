@@ -20,6 +20,7 @@ const Entry kScenarios[] = {
     // the peer scripts/scenario.sh launches for it.
     {"equip_observed", &MakeEquipObservedScenario},
     {"equip_actor", &MakeEquipActorScenario},
+    {"equip_actor_return", &MakeEquipActorReturnScenario},
 };
 
 }  // namespace

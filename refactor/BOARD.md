@@ -10996,21 +10996,46 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   verified by OCR that "Another Tip" is gone) -- NOT by waiting longer, since it
   is modal until dismissed. `camto` is unaffected: it passed at ratio 1.993 with
   the dialog in frame. Found by T492.
-- **B796** (A) `/equip <from> <to>` -- **the slot numbers the command takes are
-  NOT `inventory.slot_id`; general slots are off by one.** MEASURED T492 Leg I,
-  with a controlled experiment rather than an argument: item 9997 (Dagger*) was
-  seeded into DB slot **21** for BOTH willeq characters and each was told
-  `/equip 21 13`. Testbuddy (68), who has nothing at DB slot 22, equipped the
-  dagger and the pair verified. Testcaster (67), who has a Shuriken at DB slot
-  **22**, got *"] Shuriken cannot go in Primary (13) -- wrong slot type for this
-  item"* -- so the client resolved the argument `21` to the row at DB slot 22.
-  The two characters differ only in whether slot 22 is occupied, which isolates
-  the off-by-one. `/equip list` presumably prints the same shifted numbering, so
-  a user copying a number out of it and back in lands one slot away whenever the
-  neighbouring slot is full. Anchor: the `"equip"` registration in
-  `src/client/action/command_processor_registration.cpp` and whatever maps its
-  argument to an inventory index. The two `E_heldB_p2_*` corpus steps are parked
-  `expect=unlabelled` with `why=` naming this. Found by T492.
+- ~~**B796** (A) `/equip <from> <to>` -- **the slot numbers the command takes are
+  NOT `inventory.slot_id`; general slots are off by one.**~~ **STRUCK T494
+  (`task/T494-equip-slot-convention`).** The off-by-one was real and is fixed;
+  what B796 got wrong is WHERE it came from and what the experiment proved.
+
+  **The mapping, MEASURED from the server source.** fable's inventory model,
+  its wire and every `MoveItemIntent` are TITANIUM-numbered; `inventory.slot_id`
+  is SERVER (RoF2) numbering; and nothing in fable converted between them,
+  because the conversion lives entirely on the server --
+  `/mnt/projects/akk-stack/code/common/patches/titanium.cpp:3576`
+  `ServerToTitaniumSlot()` and `:3666` `TitaniumToServerSlot()`, with
+  `/mnt/projects/akk-stack/code/common/emu_constants.h:155-156` aliasing `EQ::invslot` to `RoF2::invslot`.
+  Identity to waist (20); **server 21 is slotPowerSource and has NO Titanium
+  slot at all**; ammo 22<->21; general 1-8 23-30 <-> 22-29; cursor 33 <-> 30;
+  general bags `4010 + 200*bag + idx` <-> `251 + 10*bag + idx`; bank, shared
+  bank, trade and world identity. So `/equip 21 13` reached model slot 21 =
+  the AMMO slot = DB 22, which is why Testcaster's **Shuriken** (her DB slot
+  22) answered a command about slot 21. Fixed by `serverSlotToClient()` /
+  `clientSlotToServer()` in `include/client/inventory/inventory_constants.h`
+  (ported field for field, with a round-trip guard on the ranges the server's
+  own table is not injective over) applied at exactly two seams:
+  `parseUserSlot()` IN and `describeSlot()` OUT.
+
+  **The experiment's seed was itself wrong, and its success half was an
+  artefact.** `scripts/llmbench/record.sh --seed-weapon` inserted item 9997 at
+  `slot_id=21` -- the power source -- so the dagger was never serialised to a
+  Titanium client for EITHER character and both `/equip 21 13` commands were
+  about the ammo slot. Testbuddy's reported SUCCESS was **not** an equip:
+  `scripts/llmbench/timeline_legH.tsv:27` records, from the inventory table at
+  compile time, that Testbuddy was ALREADY holding `13=9997 Dagger* (IT5)`
+  before the command ran, and the local DB still shows `68 | 13 | 9997` today.
+  The E_heldA/E_heldB pair cannot tell "already holding it" from "just equipped
+  it" -- boarded as B811. The seed is now DB slot 23 and the timelines type
+  `/equip 23 13`.
+
+  **Proved live, observed.** `scripts/scenario.sh equip_observed` on the local
+  lane, 2026-09-17: the actor logs in empty-handed, runs `/equip 23 13` and
+  exits; an OBSERVING second client that sends nothing reports *"the peer's
+  material slot 7 went 0 -> 5"* -- 5 being Dagger*'s IT5 -- and exits 0.
+  Struck by T494.
 
 ## Added 2026-09-16 by T493 (scenario.sh restore keeps the world down)
 
@@ -11300,4 +11325,62 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   level, and whether a per-minute line is acceptable in a corpus run, given
   B791). Found by T495.
 
-B809 unused.
+## Added 2026-09-17 by T494 (the /equip slot convention, B796)
+
+- **B809** (B) **eqemu never broadcasts a WEAPON `OP_WearChange` when a weapon
+  is equipped by `OP_MoveItem`, so another player's weapon does not appear in
+  fable until they respawn.** `/mnt/projects/akk-stack/code/zone/inventory.cpp:2205` computes the material
+  slot with `Client::SlotConvert2()`, and that switch
+  (`/mnt/projects/akk-stack/code/zone/client.cpp:4128-4154`) has cases for the seven ARMOR slots ONLY:
+  `slotPrimary`(13) and `slotSecondary`(14) fall through to its
+  `uint8 slot2 = 0` default, so the packet sent describes the HEAD -- whose
+  material did not change -- and the dedupe at
+  `/mnt/projects/akk-stack/code/zone/mob_appearance.cpp:420-428` then drops it entirely. MEASURED T494 on
+  the local lane: the row moved `23 -> 13` in `inventory` (polled in the
+  database while the run was live) and the observing client logged **not one**
+  `OP_WearChange` in the 150 s that followed, while the same client had logged
+  a burst of nine for that character at its spawn. The weapon materials ARE
+  correct at spawn (`Mob::SendWearChangeAndLighting` runs over
+  `textureBegin..LastTexture`, which includes `weaponPrimary`=7), which is why
+  T494's live proof makes the actor log out and back in. This is a SERVER
+  defect, not fable's, but the user-visible consequence is fable's: a party
+  member who draws a weapon mid-session stays empty-handed on your screen.
+  Decide whether to patch akk-stack (`SlotConvert2` wants
+  `slotPrimary -> weaponPrimary`, `slotSecondary -> weaponSecondary`) or to
+  accept it as era behaviour -- the official client has the same server. Found
+  by T494.
+- **B810** (B) **`LootItemIntent`'s corpse slot numbers have the SAME
+  Titanium/server split B796 was, and nothing converts them either.** The
+  server's pair is `titanium.cpp:3641` `ServerToTitaniumCorpseSlot()` /
+  `:3727` `TitaniumToServerCorpseSlot()`, and it is NOT the same table as the
+  possessions one: general1-8 shift by 1, the cursor range by 3, and
+  `POSSESSIONS_COUNT + slotAmmo` by 4, over a domain that starts at
+  `invslot::slotGeneral1`. T494 fixed the possessions/bank/trade/world/bag
+  table and deliberately did not touch this one (out of scope). Anything that
+  prints or takes a corpse slot number is suspect; start at whatever pushes
+  `LootItemIntent`. Found by T494.
+- **B811** (A) **The llmbench held-item check cannot tell "already holding it"
+  from "just equipped it", and that is how B796's own experiment produced a
+  false positive.** `E_heldA_*` records what the inventory table says at
+  COMPILE time and `E_heldB_*` records what it should say after the equip, but
+  nothing asserts the two DIFFER, and nothing asserts the character started
+  empty-handed. MEASURED T494: `timeline_legH.tsv:27` shows Testbuddy already
+  at `13=9997 Dagger* (IT5)` before its `/equip` step ran, so the step that
+  moved nothing was read as a success and B796 recorded a contradiction it did
+  not have. The fix shape is the one `equip_observed` uses: refuse to score a
+  held-item step whose BEFORE state already matches its AFTER state. Found by
+  T494.
+- **B812** (C) **A task worktree has no `data/eq_client`, and three ctest cases
+  fail as if they were real reds.** `tests/CMakeLists.txt:114` defaults
+  `EQ_CLIENT_DATA_PATH` to `${CMAKE_SOURCE_DIR}/data/eq_client`, which is a
+  gitignored symlink present in `main` and absent in every fresh worktree, so
+  `ComprehensiveZoneTest.ClassicZones`, `ComprehensiveZoneTest.OverallSummary`
+  and `DoorLoadingUnitTest.MultipleZonesHaveObjectGeometries` fail with
+  `SKIP (not found)` for every zone -- MEASURED T494, and green the moment the
+  symlink is made (or `EQ_CLIENT_PATH` is exported). Everything else in the
+  suite either skips cleanly or does not need the assets, so these three read
+  as a regression to anyone who has not hit it before. Either make the tests
+  SKIP like their siblings when the path is absent, or create the symlink in
+  the worktree setup. Found by T494.
+
+B813 onwards unused.

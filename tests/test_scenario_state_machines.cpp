@@ -72,13 +72,14 @@ ScenarioOptions DefaultOptions() { return ScenarioOptions{}; }
 
 TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     const std::vector<std::string> names = ScenarioNames();
-    EXPECT_EQ(names.size(), 5u);
+    EXPECT_EQ(names.size(), 6u);
     EXPECT_TRUE(IsScenarioName("zone_in"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));
     EXPECT_TRUE(IsScenarioName("cast_lands"));
     // T494 (board B796): the observed-/equip pair.
     EXPECT_TRUE(IsScenarioName("equip_observed"));
     EXPECT_TRUE(IsScenarioName("equip_actor"));
+    EXPECT_TRUE(IsScenarioName("equip_actor_return"));
 }
 
 TEST(ScenarioRegistry, UnknownNameIsNullNotACrash) {
@@ -376,7 +377,7 @@ TEST(CastLandsScenario, TheSpellIdIsAnOptionNotAConstant) {
 // fails when no WearChange arrives, and that it passes on the 0 -> non-zero
 // transition -- with no client, no server and no network.
 
-TEST(EquipObservedScenario, SendsNothingAndFailsWhenNoWearChangeArrives) {
+TEST(EquipObservedScenario, SendsNothingAndFailsWhenThePeerNeverHoldsAnything) {
     FakeWorld world;
     world.zonedIn = true;
     world.zone = "qeynos2";
@@ -384,11 +385,48 @@ TEST(EquipObservedScenario, SendsNothingAndFailsWhenNoWearChangeArrives) {
     world.peerMaterial = 0;  // peer is empty-handed and stays that way
 
     ScenarioRunner runner(MakeEquipObservedScenario(DefaultOptions()), world, 600.0, 60.0);
-    Advance(runner, 200.0);
+    Advance(runner, 300.0);
 
     EXPECT_EQ(runner.exitCode(), kScenarioFail);
     EXPECT_TRUE(world.commands.empty()) << "the observer must send nothing";
     EXPECT_NE(runner.reason().find("never left"), std::string::npos) << runner.reason();
+}
+
+// The trap B796's own experiment fell into: a peer that was ALREADY holding
+// the weapon proves nothing, so the run refuses rather than passing.
+TEST(EquipObservedScenario, FailsWhenThePeerIsAlreadyHoldingSomething) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos2";
+    world.otherPlayers = 1;
+    world.peerMaterial = 5;
+
+    ScenarioRunner runner(MakeEquipObservedScenario(DefaultOptions()), world, 600.0, 60.0);
+    Advance(runner, 5.0);
+
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_NE(runner.reason().find("ALREADY holding"), std::string::npos) << runner.reason();
+}
+
+// The peer logging out mid-watch is EXPECTED -- the actor equips and exits.
+TEST(EquipObservedScenario, ToleratesThePeerLeavingAndPassesWhenItComesBackArmed) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos2";
+    world.otherPlayers = 1;
+    world.peerMaterial = 0;
+
+    ScenarioRunner runner(MakeEquipObservedScenario(DefaultOptions()), world, 600.0, 60.0);
+    Advance(runner, 5.0);
+    world.otherPlayers = 0;                 // actor equipped and logged out
+    Advance(runner, 20.0);
+    world.otherPlayers = 1;                 // and came straight back
+    world.peerMaterial = 5;                 // wearing what the database says
+    Advance(runner, 5.0);
+
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_TRUE(world.commands.empty());
+    EXPECT_NE(runner.reason().find("0 -> 5"), std::string::npos) << runner.reason();
 }
 
 TEST(EquipObservedScenario, PassesOnTheZeroToNonZeroTransition) {
@@ -419,6 +457,18 @@ TEST(EquipObservedScenario, FailsWhenNoPeerEverAppears) {
 
     EXPECT_EQ(runner.exitCode(), kScenarioFail);
     EXPECT_NE(runner.reason().find("no second player"), std::string::npos) << runner.reason();
+}
+
+TEST(EquipActorReturnScenario, SendsNothingAtAll) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos2";
+
+    ScenarioRunner runner(MakeEquipActorReturnScenario(DefaultOptions()), world, 600.0, 60.0);
+    Advance(runner, 70.0);
+
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_TRUE(world.commands.empty());
 }
 
 TEST(EquipActorScenario, SettlesThenTypesTheDbSlotNumber) {

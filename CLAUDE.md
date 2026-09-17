@@ -859,6 +859,19 @@ Audio tests and graphics integration tests are documented in their respective CL
   `zone_shader_callbacks.h`. A component reaches shared state as `ctx_.member`
   and a sibling family as `ctx_.<Family>().Foo()`; if something new needs
   `EverQuest`, it goes on `ClientContext` or a context service, not on a handle.
+- **Inventory slot numbering — TWO numberings, one convention** (T494, board
+  B796, `docs/decisions.md` 2026-09-17). fable's inventory model, every
+  `MoveItemIntent`, `SendMoveItem` and the whole wire are **Titanium**-numbered
+  (ammo 21, general 22-29, cursor 30) because that is what the server
+  serialises to a Titanium client. `inventory.slot_id` in the database, every
+  eqemu log line and everything Spire shows are **server/RoF2**-numbered (waist
+  20, **power source 21 — not sent to this client at all**, ammo 22, general
+  23-30, cursor 33, general bags `4010 + 200*bag + idx`). **Everything a user
+  types or reads is `inventory.slot_id`**, and the conversion lives in exactly
+  two functions in `include/client/inventory/inventory_constants.h`:
+  `parseUserSlot()` in, `describeSlot()` out (both ported from the server's own
+  `/mnt/projects/akk-stack/code/common/patches/titanium.cpp:3576/:3666`). Do not add a third conversion, and
+  do not "fix" a model-side number to match a message.
 - **BSP tree** (`include/client/zone_bsp.h`): Zone spatial data shared between game state (water detection, zone lines) and renderer (PVS culling). No graphics dependencies.
 
 ## Configuration

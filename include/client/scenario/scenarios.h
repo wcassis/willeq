@@ -25,8 +25,11 @@ std::unique_ptr<IScenario> MakeCastLandsScenario(const ScenarioOptions& options)
  */
 std::unique_ptr<IScenario> MakeEquipObservedScenario(const ScenarioOptions& options);
 
-/** Its peer: settles, runs one `/equip <inventory.slot_id> 13`, then holds. */
+/** Its peer: settles, runs one `/equip <inventory.slot_id> 13`, then exits. */
 std::unique_ptr<IScenario> MakeEquipActorScenario(const ScenarioOptions& options);
+
+/** The peer's SECOND login: sends nothing, just stays visible to be observed. */
+std::unique_ptr<IScenario> MakeEquipActorReturnScenario(const ScenarioOptions& options);
 
 }  // namespace scenario
 }  // namespace eqt

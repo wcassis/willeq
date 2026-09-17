@@ -68,7 +68,13 @@ long long ApplicationScenarioWorld::PeerEquipmentMaterial(const std::string& pee
     if (materialSlot < 0 || materialSlot >= 9) {
         return -1;
     }
+    // With several matching peers this returns the LARGEST material any of
+    // them is wearing. That is deliberate: a character who logs out leaves a
+    // linkdead entity behind for a while, so the same name can be present
+    // twice, and the stale copy reads 0 -- taking the max means the fresh
+    // spawn is what a scenario sees, not whichever came first in the map.
     const uint16_t me = client_.GetMySpawnID();
+    long long best = -1;
     for (const auto& entry : client_.GetEntities()) {
         if (entry.second.npc_type != 0 || entry.first == me) {
             continue;  // same "live player, not us" rule OtherPlayerCount() uses
@@ -76,9 +82,12 @@ long long ApplicationScenarioWorld::PeerEquipmentMaterial(const std::string& pee
         if (!peerName.empty() && entry.second.name != peerName) {
             continue;
         }
-        return static_cast<long long>(entry.second.equipment[materialSlot]);
+        const long long material = static_cast<long long>(entry.second.equipment[materialSlot]);
+        if (material > best) {
+            best = material;
+        }
     }
-    return -1;
+    return best;
 }
 
 void ApplicationScenarioWorld::SendCommand(const std::string& rawLine) {

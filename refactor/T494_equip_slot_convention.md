@@ -140,4 +140,150 @@ back — record either way in `docs/decisions.md`.
 
 ## Review
 
-(to be filled by the executor, every claim tagged `[measured]`/`[assumed]`)
+Branch `task/T494-equip-slot-convention`, base `9a99d54c` on fable `8c6e39cf`.
+Corpus, logs and the reproduction recipe: `/mnt/projects/fable/review/T494/`.
+
+### What did not work, first
+
+- [measured] **The plan's task-4 observable does not exist on this server.**
+  The first `equip_observed` design waited for an `OP_WearChange` on the peer's
+  primary after the equip and got NOTHING in 150 s -- while the `inventory`
+  row had demonstrably moved `23 -> 13` (polled in the database during the
+  run, `review/T494/inventory_row_poll_during_run.log`). Cause, read off the
+  server: `zone/inventory.cpp:2205` takes the material slot from
+  `Client::SlotConvert2()`, whose switch (`zone/client.cpp:4128-4154`) has
+  cases for the seven ARMOR slots only, so `slotPrimary`(13) falls through to
+  its `uint8 slot2 = 0` default; the packet therefore describes the HEAD,
+  whose material did not change, and `zone/mob_appearance.cpp:420-428`'s
+  dedupe drops it. The weapon materials ARE correct in the SPAWN packet
+  (`Mob::SendWearChangeAndLighting` runs to `weaponPrimary`=7 -- the observer
+  logged a burst of nine for that character at its spawn). So the scenario now
+  has the actor equip and EXIT, and the harness logs the same character
+  straight back in; the proof is the fresh spawn packet, which is still
+  entirely the server's statement. Boarded **B809**.
+- [measured] **The plan's `scripts/scenario.sh has a lane guard` is wrong.**
+  It did not have one; `scripts/eqemu/restore_selftest.sh:85-131` did. T494
+  gave `scenario.sh` the same lane-following config default and the same
+  refusal.
+- [measured] **The plan's "the two parked `E_heldB_p2_*` steps lose their
+  `expect=unlabelled`" does not apply.** Those steps carry
+  `expect=discrepancy:B725` at this tip, not `expect=unlabelled`, and B725 is a
+  held-item RENDERING discrepancy untouched by slot numbering. The parking
+  stands; only the `/equip` argument and the `moved from slot N` prose changed.
+- [measured] **Three ctest cases fail in a fresh worktree for an environmental
+  reason** (`data/eq_client` is a gitignored symlink that only `main` has).
+  Boarded **B812**; making the symlink turns them green and the suite is
+  4842/4842.
+- [measured] **`git diff --stat scripts/` dumps 700 KB** because
+  `benchmarks/contact_sheets/*.html` embeds base64 PNGs; scope any `grep -rn`
+  over the tree away from `benchmarks/`.
+
+### The red
+
+[measured] At `86bf335f`, `tests/test_inventory_slot_convention.cpp` seeds the
+model the way the wire does -- the DB slot run through a literal transcription
+of `titanium.cpp:3576`, deliberately NOT through any production helper -- and:
+
+```
+EquipByDbSlot_AddressesTheRowAtThatSlotId_NotItsNeighbour
+  /equip 23 13  ->  "Nothing to move: slot 23 is empty."   (no MoveItemIntent)
+EquipDbSlot21_PowerSource_Refused_DoesNotReachDbSlot22
+  /equip 21 13  ->  "Shuriken cannot go in Primary (13) -- wrong slot type
+                     for this item."
+```
+
+The second is B796's live message verbatim. Full output:
+`review/T494/red_before_fix.txt`.
+
+### The fix
+
+[measured] `serverSlotToClient()` / `clientSlotToServer()` in
+`include/client/inventory/inventory_constants.h`, ported field for field from
+`titanium.cpp:3576/:3666` with the constants from
+`{titanium,rof2}_limits.h`/`emu_constants.h`. `SERVER_CURSOR_SLOT` is now
+derived from `clientSlotToServer(CURSOR_SLOT)` and `static_assert`ed, not the
+literal 33.
+
+[measured] Applied at exactly two seams: `parseUserSlot()` IN (replacing
+`ParseEquipSlot`, which is deleted; re-pointed `/equip`'s slot form,
+`/read`/`/scribe`'s numeric form, `/sell`'s slot and `/combine`'s container
+slot -- `/buy` is NOT converted, its `<slot>` is an index into the merchant's
+list) and `describeSlot()` OUT. `parseUserSlot()` returns three outcomes so a
+typo and an unreachable-but-real slot get different answers, and it ROUND-TRIPS
+through both directions, refusing anything that does not survive -- which is
+what makes bank 2016-2023, general bags 9/10 and container offsets above 9
+refusals rather than silent slides.
+
+[measured] The wire and the model did not move: `MoveItemIntent{22,13}`, the
+parser's verbatim take of the server's slot, and every model-side test
+expectation are unchanged. The live run's own trace shows the split:
+`Moving item: slot 23 -> Primary (13)` next to
+`Sending MoveItem packet: 22 -> 13`.
+
+### The `[assumed]` bag range, now measured
+
+[measured] The plan asked for a bagged row to be checked against
+`getBagContentsSlots()`. There was none to check: the whole `inventory` table
+is `MIN(slot_id)=1, MAX(slot_id)=29` over 154 rows, **zero** rows at
+`slot_id >= 4010` -- every Backpack\* in the database is empty
+(`review/T494/bag_range_db_check.txt`). So one was made: a Dagger\* seeded at
+`inventory.slot_id = 5210` (= 4010 + 200x6 + 0, bag 6 being the Backpack\* at
+DB slot 29) came back out of `/equip list` as
+
+```
+  Dagger* (slot 5210) -> Primary (13)
+```
+
+i.e. the server sent it as Titanium 311, it landed in
+`getBagContentsSlots(28)[0]` = 311, and `describeSlot()` printed 5210. The
+general-bags half round-trips against real data. The OTHER bag families
+(cursor, bank, shared bank, trade) remain `[assumed]` -- they are ported from
+the same server function and pinned by the round-trip test, but no real row
+exists to check.
+
+### The live proof
+
+[measured] `scripts/scenario.sh equip_observed --unit T494 --inventory-chars
+"67,68" --seed-sql ...` on the LOCAL lane, twice, exit **0** both times. The
+observer sends nothing; its own log line:
+
+```
+OBSERVED: the peer's material slot 7 went 0 -> 5 (all nine
+  [0,0,0,0,0,0,0,5,48]) 57.6138s after it first appeared -- read off the
+  SERVER's packets for another character, never this client's own belief
+```
+
+5 is Dagger\*'s `idfile` IT5. `snapshot restored BYTE-IDENTICALLY` and the
+inventory rows for 67/68 were put back on both runs; `down.sh` ran; the lock
+was released on every path.
+
+### B796's success half, explained
+
+[measured] B796 recorded that Testbuddy "equipped the dagger and the pair
+verified". He did not: `scripts/llmbench/timeline_legH.tsv:27` records, from
+the inventory table at compile time, that Testbuddy was ALREADY holding
+`13=9997 Dagger* (IT5)` before the `/equip` step ran, and the local database
+still shows `68 | 13 | 9997` today. The seed at `slot_id=21` was invisible to
+both clients, so BOTH commands were about the ammo slot; only Testcaster had
+anything there to complain about. The verification shape that cannot tell
+those apart is boarded **B811**, and `equip_observed` refuses outright when the
+peer starts out already holding something.
+
+### Suite
+
+[measured] `ctest --test-dir build -j8`: **4842/4842**, zero failures, after
+creating the gitignored `data/eq_client` symlink (B812). `visual_gate` was
+green; it did not need a rerun.
+
+### Every `[assumed]` left standing
+
+- [assumed] The cursor-bag, bank-bag, shared-bank-bag and trade-bag ranges of
+  the conversion table. Ported from the same server function as the general
+  bags and pinned by the round-trip property test, but no row in any of those
+  ranges exists in the database to measure against.
+- [assumed] B809's user-visible consequence (a party member who draws a weapon
+  mid-session stays empty-handed on your screen until they respawn) follows
+  from the measurement but was not itself watched on screen.
+- [assumed] That the official client behaves the same way as fable does under
+  B809. It talks to the same server and the same packet is suppressed, but it
+  was not run.

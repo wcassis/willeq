@@ -12,6 +12,7 @@
 #                                  [--config FILE] [--peer-config FILE]
 #                                  [--unit T###] [--keep-server]
 #                                  [--inventory-chars "67,68"] [--seed-sql FILE]
+#                                  [--log-level INFO|DEBUG]
 #   scripts/scenario.sh --selftest [--unit T###] [--config FILE] [...]
 #
 # --selftest runs scripts/eqemu/restore_selftest.sh, the regression net for the
@@ -57,6 +58,9 @@ SPELL=46
 CONFIG=""
 PEER_CONFIG=""
 KEEP_SERVER=0
+# T494: the client's log level, for both processes. INFO is the default a
+# verdict needs; a run being DIAGNOSED wants DEBUG.
+LOG_LEVEL="INFO"
 # T494: a scenario that MOVES AN ITEM needs the inventory rows snapshotted and
 # put back too -- eqemu_snapshot only covers character_data/character_currency,
 # so before T494 an /equip left the row where the run put it. Both are
@@ -74,6 +78,7 @@ while [ $# -gt 0 ]; do
         --peer-config) PEER_CONFIG="$2"; shift 2 ;;
         --unit) UNIT="$2"; shift 2 ;;
         --keep-server) KEEP_SERVER=1; shift ;;
+        --log-level) LOG_LEVEL="$2"; shift 2 ;;
         --inventory-chars) INVENTORY_CHARS="$2"; shift 2 ;;
         --seed-sql) SEED_SQL="$2"; shift 2 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
@@ -218,9 +223,10 @@ fi
 PEER_PID=""
 # T494: equip_observed needs the peer to ACT (equip_actor), not just exist.
 PEER_SCENARIO=""
+PEER_SCENARIO_2=""
 case "$SCENARIO" in
     two_client_survive) PEER_SCENARIO="zone_in" ;;
-    equip_observed)     PEER_SCENARIO="equip_actor" ;;
+    equip_observed)     PEER_SCENARIO="equip_actor"; PEER_SCENARIO_2="equip_actor_return" ;;
 esac
 if [ -n "$PEER_SCENARIO" ]; then
     if [ ! -f "$PEER_CONFIG" ]; then
@@ -231,17 +237,29 @@ if [ -n "$PEER_SCENARIO" ]; then
     (
         sleep 55
         "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO" --timeout "$TIMEOUT" \
-            --log-level=INFO > "$PEERLOG" 2>&1
+            --log-level="$LOG_LEVEL" > "$PEERLOG" 2>&1
+        # T494: equip_observed's peer runs TWICE. eqemu does not broadcast a
+        # weapon WearChange on an OP_MoveItem equip (Client::SlotConvert2,
+        # zone/client.cpp:4128-4154, has no slotPrimary case, so the packet
+        # describes the head and the dedupe in zone/mob_appearance.cpp drops
+        # it) -- the observable the server WILL produce is the peer's next
+        # SPAWN, whose materials come from the database. So the actor equips
+        # and exits, and the same character logs straight back in.
+        if [ -n "$PEER_SCENARIO_2" ]; then
+            sleep 15
+            "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO_2" --timeout "$TIMEOUT" \
+                --log-level="$LOG_LEVEL" > "${PEERLOG%.log}_2.log" 2>&1
+        fi
     ) &
     PEER_PID=$!
-    say "peer scheduled ($PEER_SCENARIO, +55s, pid $PEER_PID)"
+    say "peer scheduled ($PEER_SCENARIO${PEER_SCENARIO_2:+ then $PEER_SCENARIO_2}, +55s, pid $PEER_PID)"
 fi
 
 # ---- 5. the run ------------------------------------------------------------
 say "running --scenario ${SCENARIO} --timeout ${TIMEOUT}"
 "$BIN" -c "$CONFIG" --scenario "$SCENARIO" --timeout "$TIMEOUT" \
     --scenario-hold "$HOLD" --scenario-spell "$SPELL" \
-    --log-level=INFO > "$LOG" 2>&1 &
+    --log-level="$LOG_LEVEL" > "$LOG" 2>&1 &
 CLIENT_PID=$!
 wait "$CLIENT_PID"
 CODE=$?

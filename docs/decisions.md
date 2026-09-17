@@ -1083,3 +1083,37 @@ the shrink work.
 
 Reference: the original client ran these assets in 32 MB total (Will's T490
 ruling, 2026-09-14), so 32–64 MB is a restoration target, not an aspiration.
+
+## 2026-09-17 - user-facing slot numbers are `inventory.slot_id` (T494, board B796)
+
+**Class C, taken by the orchestrator while Will is away, and REVERSIBLE.**
+
+Every slot number a user types or reads at fable's command boundary --
+`/equip`, `/read`, `/scribe`, `/sell`, `/combine`, `/equip list`, and every
+refusal message -- is the SERVER's (RoF2) numbering, the one stored in
+`inventory.slot_id`: 0-20 worn, **21 is the power source and this client
+cannot reach it**, 22 ammo, 23-30 general 1-8, 33 cursor, `4010 + 200*bag +
+idx` inside a general bag, bank/shared-bank/trade/world unchanged.
+
+Why that side of the fence. The only people who type a slot number are
+developers and rigs, and both read them out of the database and the server
+log, which print RoF2 slots. The official client never shows a slot number at
+all, so no player convention is broken either way. Before T494 the boundary
+used fable's own (Titanium) model numbering, which nothing else a user can
+see prints, and `/equip 21 13` silently addressed DB slot 22 (board B796).
+
+What did NOT change, and must not: fable's inventory model, `MoveItemIntent`,
+`SendMoveItem` and the whole wire stay TITANIUM-numbered, because that is what
+the server serialises to a Titanium client. The conversion exists at exactly
+two seams, both in `include/client/inventory/inventory_constants.h`:
+`parseUserSlot()` on the way in and `describeSlot()` on the way out. If a
+third one ever appears, one of them is wrong.
+
+**If Will prefers Titanium numbering at the user boundary**, the change is
+small and local: delete the conversion from `parseUserSlot()` (keep its
+addressability check), make `describeSlot()` print `slotId` again, and flip
+the typed arguments in `tests/test_eq_commands_equip_*.cpp`,
+`tests/test_inventory_slot_convention.cpp`, `tests/test_command_processor_world.cpp`,
+`tests/test_read_book.cpp`, `tests/test_scribe_scroll.cpp`,
+`tests/test_tradeskill_combine.cpp` and the llmbench timelines back. The
+model-side expectations do not move either way.
