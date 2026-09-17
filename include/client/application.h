@@ -125,6 +125,7 @@ struct ApplicationConfig {
     double scenarioStartDeadlineSeconds = 120.0;  // zone-in deadline -> exit 3
     double scenarioHoldSeconds = 300.0;         // --scenario-hold <s>
     unsigned int scenarioSpellId = 46;          // --scenario-spell <id>
+    long long scenarioExpectMaterial = -1;      // --scenario-expect-material <n> (T498)
 
     // T64: video-capture evidence tool (--dump-frames-dir/--dump-every/
     // --dump-max-frames). Off by default (empty dir = disabled) -- does not

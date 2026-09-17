@@ -21,6 +21,7 @@ bool Application::initScenario(const ApplicationConfig& config) {
     scenario::ScenarioOptions options;
     options.holdSeconds = config.scenarioHoldSeconds;
     options.castSpellId = config.scenarioSpellId;
+    options.expectSelfMaterial = config.scenarioExpectMaterial;
 
     auto built = scenario::MakeScenario(config.scenarioName, options);
     if (!built) {

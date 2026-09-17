@@ -12,6 +12,7 @@
 #                                  [--config FILE] [--peer-config FILE]
 #                                  [--unit T###] [--keep-server]
 #                                  [--inventory-chars "67,68"] [--seed-sql FILE]
+#                                  [--expect-material N]
 #                                  [--log-level INFO|DEBUG]
 #   scripts/scenario.sh --selftest [--unit T###] [--config FILE] [...]
 #
@@ -68,6 +69,7 @@ LOG_LEVEL="INFO"
 # script still owns no restore SQL of its own.
 INVENTORY_CHARS=""
 SEED_SQL=""
+EXPECT_MATERIAL="-1"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -81,6 +83,10 @@ while [ $# -gt 0 ]; do
         --log-level) LOG_LEVEL="$2"; shift 2 ;;
         --inventory-chars) INVENTORY_CHARS="$2"; shift 2 ;;
         --seed-sql) SEED_SQL="$2"; shift 2 ;;
+        # T498: the peer's SECOND login asserts its OWN primary material is this
+        # number -- the server's items.idfile for the seeded weapon. -1 (the
+        # default) means it only stays logged in, as before.
+        --expect-material) EXPECT_MATERIAL="$2"; shift 2 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -248,6 +254,7 @@ if [ -n "$PEER_SCENARIO" ]; then
         if [ -n "$PEER_SCENARIO_2" ]; then
             sleep 15
             "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO_2" --timeout "$TIMEOUT" \
+                --scenario-expect-material "$EXPECT_MATERIAL" \
                 --log-level="$LOG_LEVEL" > "${PEERLOG%.log}_2.log" 2>&1
         fi
     ) &

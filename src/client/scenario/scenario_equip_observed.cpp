@@ -231,8 +231,8 @@ private:
  */
 class StayLoggedInScenario final : public IScenario {
 public:
-    StayLoggedInScenario(const char* name, double holdSeconds)
-        : name_(name), holdSeconds_(holdSeconds) {}
+    StayLoggedInScenario(const char* name, double holdSeconds, long long expectSelfMaterial = -1)
+        : name_(name), holdSeconds_(holdSeconds), expectSelfMaterial_(expectSelfMaterial) {}
 
     const char* Name() const override { return name_; }
 
@@ -241,10 +241,34 @@ public:
             SetReason("left the zone during the hold");
             return StepResult::Fail;
         }
+        // T498 (board B755/B823): the SELF half of the proof. The observer
+        // process reads the server's number for this character off its spawn
+        // packet; this reads the number this client derived for itself from
+        // the same item, which before T498 came from data/item_models.json and
+        // could differ. They must be the same number.
+        const long long self = world.SelfEquipmentMaterial(kPrimaryMaterialSlot);
+        if (expectSelfMaterial_ >= 0 && self >= 0 && self != selfSeen_) {
+            selfSeen_ = self;
+            std::ostringstream os;
+            os << "self material slot " << kPrimaryMaterialSlot << " reads " << self
+               << " at " << tick.sinceStart << "s (expecting " << expectSelfMaterial_ << ")";
+            world.Note(os.str());
+        }
         if (tick.sinceStart >= holdSeconds_) {
             std::ostringstream os;
             os << "stayed logged in for " << tick.sinceStart << "s in '" << world.ZoneName()
                << "', sending nothing";
+            if (expectSelfMaterial_ >= 0) {
+                os << "; own material slot " << kPrimaryMaterialSlot << " = " << self;
+                if (self != expectSelfMaterial_) {
+                    os << ", but the server's items.idfile says " << expectSelfMaterial_
+                       << " -- the self path is NOT computing a weapon material the way the"
+                          " server does";
+                    SetReason(os.str());
+                    return StepResult::Fail;
+                }
+                os << ", matching the server's items.idfile";
+            }
             SetReason(os.str());
             return StepResult::Pass;
         }
@@ -254,13 +278,15 @@ public:
 private:
     const char* name_;
     double holdSeconds_;
+    long long expectSelfMaterial_ = -1;
+    long long selfSeen_ = -2;
 };
 
 }  // namespace
 
 std::unique_ptr<IScenario> MakeEquipActorReturnScenario(const ScenarioOptions& options) {
-    (void)options;
-    return std::unique_ptr<IScenario>(new StayLoggedInScenario("equip_actor_return", 60.0));
+    return std::unique_ptr<IScenario>(
+        new StayLoggedInScenario("equip_actor_return", 60.0, options.expectSelfMaterial));
 }
 
 std::unique_ptr<IScenario> MakeEquipObservedScenario(const ScenarioOptions& options) {

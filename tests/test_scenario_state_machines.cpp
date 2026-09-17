@@ -29,6 +29,8 @@ public:
     std::vector<uint32_t> buffs;
     // T494: what the server has told us the OTHER player is wearing.
     long long peerMaterial = -1;
+    // T498: what THIS client derived for itself from its own inventory.
+    long long selfMaterial = -1;
 
     std::vector<std::string> commands;
     std::vector<std::string> notes;
@@ -42,6 +44,7 @@ public:
     long long PeerEquipmentMaterial(const std::string&, int) const override {
         return otherPlayers >= 1 ? peerMaterial : -1;
     }
+    long long SelfEquipmentMaterial(int) const override { return selfMaterial; }
     void SendCommand(const std::string& rawLine) override { commands.push_back(rawLine); }
     void Note(const std::string& line) override { notes.push_back(line); }
 
@@ -469,6 +472,42 @@ TEST(EquipActorReturnScenario, SendsNothingAtAll) {
 
     EXPECT_EQ(runner.exitCode(), kScenarioPass);
     EXPECT_TRUE(world.commands.empty());
+}
+
+// T498 (board B755/B823): the SELF half of the /equip proof. The observer
+// process reads the server's number off the peer's spawn packet; the actor's
+// own return login reads the number IT derived from the same item. Before T498
+// the two came from different rules (the wire's items.idfile vs
+// data/item_models.json) and could differ -- item 2894 is 10004 on the server
+// and 10009 in the file.
+TEST(EquipActorReturnScenario, PassesWhenItsOwnMaterialIsTheExpectedOne) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos2";
+    world.selfMaterial = 10004;
+
+    ScenarioOptions options = DefaultOptions();
+    options.expectSelfMaterial = 10004;
+    ScenarioRunner runner(MakeEquipActorReturnScenario(options), world, 600.0, 60.0);
+    Advance(runner, 70.0);
+
+    EXPECT_EQ(runner.exitCode(), kScenarioPass) << runner.reason();
+    EXPECT_NE(runner.reason().find("10004"), std::string::npos) << runner.reason();
+}
+
+TEST(EquipActorReturnScenario, FailsWhenItsOwnMaterialIsTheItemModelsJsonNumber) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos2";
+    world.selfMaterial = 10009;  // what data/item_models.json says for item 2894
+
+    ScenarioOptions options = DefaultOptions();
+    options.expectSelfMaterial = 10004;  // what the server's items.idfile says
+    ScenarioRunner runner(MakeEquipActorReturnScenario(options), world, 600.0, 60.0);
+    Advance(runner, 70.0);
+
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_NE(runner.reason().find("the self path is NOT"), std::string::npos) << runner.reason();
 }
 
 TEST(EquipActorScenario, SettlesThenTypesTheDbSlotNumber) {

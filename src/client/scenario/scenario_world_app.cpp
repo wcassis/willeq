@@ -90,6 +90,26 @@ long long ApplicationScenarioWorld::PeerEquipmentMaterial(const std::string& pee
     return best;
 }
 
+long long ApplicationScenarioWorld::SelfEquipmentMaterial(int materialSlot) const {
+    // T498 (board B755/B823). The counterpart of PeerEquipmentMaterial(): that
+    // one reads what the SERVER said about someone else, this one reads what
+    // THIS client derived for itself.
+    //
+    // The store is GameState's, not EverQuest's m_entities, because
+    // UpdatePlayerAppearanceFromInventory() derives equipment from the
+    // INVENTORY and writes it back through ApplyAppearanceToGameState() only
+    // (T221's note in entities_component_appearance.cpp says so out loud) --
+    // m_entities never sees it, so reading there would always answer 0.
+    if (materialSlot < 0 || materialSlot >= 9) {
+        return -1;
+    }
+    const auto* me = client_.GetGameState().entities().getEntity(client_.GetMySpawnID());
+    if (!me) {
+        return -1;
+    }
+    return static_cast<long long>(me->equipment[materialSlot]);
+}
+
 void ApplicationScenarioWorld::SendCommand(const std::string& rawLine) {
     // The same unified dispatch --script and piped stdin use (T29), so a
     // scenario can never reach a command a human operator could not.

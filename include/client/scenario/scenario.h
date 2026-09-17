@@ -65,6 +65,17 @@ public:
      */
     virtual long long PeerEquipmentMaterial(const std::string& peerName,
                                             int materialSlot) const = 0;
+    /**
+     * T498 (board B755/B823): the equipment MATERIAL this client has computed
+     * for ITSELF, i.e. GameState's own entity's `equipment[materialSlot]`, the
+     * value EntitiesComponent::UpdatePlayerAppearanceFromInventory() derives
+     * from the inventory. Paired with PeerEquipmentMaterial() it is what makes
+     * "self and peers agree" an assertion rather than an argument: the observer
+     * process reads the server's number off the spawn packet, this reads the
+     * number the actor's own renderer will draw. Returns -1 when our own entity
+     * is not readable yet.
+     */
+    virtual long long SelfEquipmentMaterial(int materialSlot) const = 0;
 
     // --- actions ---
     /** Dispatch one slash command line, exactly as --script would. */
@@ -92,6 +103,12 @@ struct ScenarioOptions {
      * the client's own buff list.
      */
     uint32_t castSpellId = 46;
+    /**
+     * T498: equip_actor_return asserts that its OWN primary material equals
+     * this. Negative = do not assert (the default), which is what every
+     * scenario but that one wants.
+     */
+    long long expectSelfMaterial = -1;
 };
 
 class IScenario {

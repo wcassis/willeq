@@ -218,6 +218,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                 config.scenarioSpellId =
                     static_cast<unsigned int>(std::atoi(argv[++i]));
             }
+        } else if (arg == "--scenario-expect-material") {
+            if (i + 1 < argc) {
+                config.scenarioExpectMaterial = std::atoll(argv[++i]);
+            }
         } else if (arg == "--script") {
             if (i + 1 < argc) {
                 config.scriptPath = argv[++i];
@@ -247,6 +251,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --timeout <s>            --scenario: overall wall-clock budget (default 300)\n";
             std::cout << "  --scenario-hold <s>      --scenario two_client_survive: how long the pair must hold (default 300)\n";
             std::cout << "  --scenario-spell <id>    --scenario cast_lands: beneficial spell to memorise and cast (default 46, Ultravision)\n";
+        std::cout << "  --scenario-expect-material <n>  --scenario equip_actor_return: assert our OWN primary material is <n> (T498)\n";
             std::cout << "  --fpcam <name=value,...>  Override first-person camera tunables at startup (repeatable; same names as /fpcam)\n";
             std::cout << "  --dump-frames-dir <dir>  Video-capture evidence tool: write numbered PNG frames to <dir> (needs --dump-every)\n";
             std::cout << "  --dump-every <N>         Video-capture: dump every Nth rendered frame\n";
