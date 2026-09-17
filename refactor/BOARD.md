@@ -10583,15 +10583,24 @@ Media and every number: `review/T478/README.md`; the plan's Review.
   Closes on Will's call between fixing the driver (one place, then re-solving the
   lighting constants live, the B445 queue) and a per-consumer helper like T484's.
   If the driver is fixed, T484's test fails by design and the helper goes.
-- **B781** (A, *unconfirmed*) `src/client/graphics/sky_renderer_colors.cpp`
-  `SkyRenderer::calculateSkyColors()` -- **the time-of-day tint table is invented,
+- **B781** (A, *unconfirmed*) `src/client/graphics/sky_color_table.cpp`
+  (moved there from `sky_renderer_colors.cpp` by T495)
+  `SkyColorsAt()` -- **the time-of-day tint table is invented,
   not fitted to the oracle.** With the channel order fixed the headless zenith
   reads (80.2,117.3,163.6); T478's official sky crop is (93,135,172) and
   `normalsky.bmp` alone is (147,172,190). Whether the official client tints the
   dome at all at 11:00, and by what, is unmeasured; the sky crop is also a blend
   of dome, clouds and horizon fade, so the two numbers are not directly
   comparable. Closes with a live A/B of the sky crop at several hours against the
-  oracle (lock), after B783. Found by T484.
+  oracle (lock), after B783. Found by T484. **NARROWED by T495:** the question is
+  now purely "are the ANCHOR VALUES right". T495 proved the arithmetic BETWEEN
+  the anchors was wrong (B789/B790) and fixed it without touching a single
+  anchor, and `tests/test_sky_color_interpolation.cpp` now asserts every
+  interpolated colour lies inside its anchors' hull -- so a future re-fit of the
+  table changes the anchors and nothing else, and the ten anchor sets are the
+  whole of what is unmeasured. T484's headless zenith figure (80.2,117.3,163.6)
+  is at 11:00, a CONSTANT arm of the table, so it is unaffected by T495 and
+  stays the number to A/B.
 - **B782** (A, *unconfirmed*) **the distant qeynos2 trees are pale in fable** --
   B726's second half. T478 h160 sheet canopy crop: fable (138,153,160), official
   (47,63,54). NOT the sky: fog starts at 250 (T478 run.log `Fog: start=250,
@@ -10827,7 +10836,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
 
 ## Added 2026-09-16 by T492 Leg E (Will's ruling on the corpus sheets)
 
-- **B789** (A) **the qeynos2/qeytoqrg sky renders RED in fable, not blue.**
+- ~~**B789** (A) **the qeynos2/qeytoqrg sky renders RED in fable, not blue.**
   **Will's ruling, 2026-09-16, looking at T492's sheets: this is a bug, not a
   rig artifact.** MEASURED on `review/T492/llmbench/players/p2/frames/
   15:38:13.227_F_sky_p2_overhead_window.png`, crop `600x60+200+10` (a sky-only
@@ -10841,8 +10850,38 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   is merely the wrong blue. A band whose red is nearly triple both other
   channels is a different failure, downstream of whatever B781 is about, and
   T484's B726 channel-order fix is already in this binary. Not investigated:
-  Will ruled it a bug and ruled that T492 does not chase it. Found by T492.
-- **B790** (A) **untextured pink/magenta trees and pink distant blocks in
+  Will ruled it a bug and ruled that T492 does not chase it. Found by T492.~~
+  **STRUCK T495 (`task/T495-sky-colour-interp`, offline) -- B789 AND B790 ARE
+  ONE DEFECT.** `SkyRenderer::interpolateSkyColors()` lerped each channel as
+  `a.getRed() + (b.getRed() - a.getRed()) * t`, and `SColor::getRed()` returns
+  `irr::u32`: on every ramp where a channel DECREASES the subtraction wrapped to
+  ~4.29e9, `* t` in float zeroed the low bits, and the `& 0xff` in SColor's
+  constructor left 0, 64, 128 or 192. The garbage reached THREE consumers -- the
+  dome vertex tint, `currentClearColor_`, and `getRecommendedFogColor()` ->
+  `IrrlichtRenderer::updateTimeOfDay()` -> `driver_->setFog()` -> `uFogColor`,
+  which every fogged pixel is mixed toward. That is both boards: one arithmetic,
+  two consumers. **Path correction:** both entries cite the frames under
+  `review/T492/llmbench/players/...`; they are actually under
+  `review/T492/llmbench-v1-camera-steps-bad/players/...` (T495 re-measured
+  there). MEASURED through the production code on the broken commit, with
+  the corpus's own game times (`review/T492/llmbench/players/p2/run.log`:
+  zone-in at **17:25**): tint **(161,58,58)**, clear colour = tint/2 =
+  **(80,29,29)** -- byte for byte B789's measured sky band, and T495 re-measured
+  the crop to confirm it is the CLEAR COLOUR rather than the fog: the flat pixel
+  **(80,29,29)** occupies **35,748 of the 36,000 px** of B789's sky crop and
+  **33,893 of 96,000** of B790's tree band, i.e. the scene background showing
+  through wherever the dome or the geometry is not; at 16:45/16:49 the
+  fog was **(171,180,0)** / **(172,180,0)**, blue exactly zero; at 18:30 all
+  three anchors collapsed to **(0,0,0)**. Fixed by lerping in float
+  (`src/client/graphics/sky_color_table.cpp`, `lerpChannel()`); after, 17:25
+  tint **(161,151,156)** / clear **(80,75,78)**, 16:49 fog **(172,180,192)**.
+  Pinned by `tests/test_sky_color_interpolation.cpp` (pure, 8 cases) and two new
+  cases in `tests/test_sky_dome_tint_channel_order.cpp` (headless GLES2, real
+  dome: 16:49 (91.66,120.02,**0.00**) -> (91.66,120.02,**150.85**), 17:25
+  (92.24,**38.86,43.09**) -> (92.24,**101.25,115.97**)). The visual gate is
+  unaffected (zero pixel diff; `gles2_zone_benchmark` builds no sky/fog stack).
+  `review/T495/`.
+- ~~**B790** (A) **untextured pink/magenta trees and pink distant blocks in
   fable.** **Will's ruling, 2026-09-16, on the same sheets: a bug.** MEASURED on
   `review/T492/llmbench/players/p2/frames/
   15:46:54.538_H_cam_p2_qeytoqrg_chase_window.png`, crop `800x120+120+200` (the
@@ -10854,7 +10893,34 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   look. **This is NOT B782.** B782 is "the distant qeynos2 trees are PALE",
   measured as fable (138, 153, 160) vs official (47, 63, 54) -- a desaturated
   grey-blue, not magenta, and in a different zone. Not investigated by T492.
-  Found by T492.
+  Found by T492.~~ **STRUCK T495 -- SAME DEFECT AS B789, and this entry's record
+  needed three corrections.** (1) **Nothing is magenta.** T495 re-measured all
+  three T492 corpora: the ONLY magenta in any of them is the target-highlight
+  outline. This entry's own evidence frame means **(88,35,38)** -- dark RED, not
+  pink. fable's actual missing-texture placeholder is a 0xFFFF00FF checkerboard
+  (`ConstrainedTextureCache::getPlaceholderTextureInternal()`), mean ~(143,16,143)
+  with R ~= B, and no band in any corpus frame shows it. (2) **The
+  missing-texture lead is dead** -- the only texture-failure line the run emits
+  is the door rebuild's "60 doors (0 failed, 0 with missing textures)", and no
+  frame carries the placeholder's colour, so "a texture that never bound is the
+  first place to look" sent the next reader the wrong way. (3) **The plan's
+  EQE1 claim was WRONG and T495 corrects it rather than repeating it:** these
+  runs did NOT load "one EQE1 entry plus sky". `EQE1-USAGE` for the qeynos2 leg
+  lists **8 archives open, 48,696 KB mapped, 511 lookups** -- including
+  `qeynos2` (152 entries) and `qeynos2_obj` (110), i.e. the zone and object
+  textures DID come from EQE1. ("Loaded EQE1 archive config: 1 entries" is the
+  archive-config file, not the loaded set; it is what the earlier reading
+  mistook.) That does not rescue the missing-texture lead -- 0 wasted opens, 0
+  idle zone archives -- but the sentence "EQE1 is not implicated because it was
+  barely used" is not a thing anyone may quote. What the band actually is:
+  `uFogColor`. Leg E's game time is **16:49**, where the broken fog was
+  (172,180,0) with blue EXACTLY zero, and the far field of
+  `llmbench/players/p2/frames/16:43:43.983_H_cam_p2_qeytoqrg_chase_window.png`
+  measures (170.0,178.0,**0.75**) over the sky AND the distant trees. Fix,
+  tests and after-values are on B789. T495's own re-measure of this entry's two
+  crops: fable (88.02,35.37,38.03) with **zero magenta pixels** (none with R,B >
+  120, G < 80), official (16.39,30.94,23.83). Fix, tests and after-values are on
+  B789.
 - **B791** (B) **nothing hides fable's renderer command replies without hiding
   the whole UI.** Every registry-3 command answers through `chat()`, which puts
   it in the in-game chat window -- so a captured fable frame with the UI on
@@ -11192,4 +11258,46 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   vertical), not the correction. B756 stays open, re-scoped, and still needs the
   lock and a stepped video.
 
-B806–B809 unused.
+## Added 2026-09-17 by T495 (the sky/fog colour lerp underflow, B789/B790)
+
+- ~~**B799** (B) `src/client/graphics/detail/detail_texture_atlas_flora.cpp`
+  `drawShell()` -- the same u32 underflow as B789, in the detail atlas's shell
+  spiral: `baseColor.getRed() - 30` on accessors that return `irr::u32`.~~
+  **STRUCK ON ARRIVAL by T495** -- it is two lines, so it was fixed rather than
+  boarded, and it is recorded here because a swept pattern that leaves no trace
+  gets re-found. It was producing CORRECT pixels: all three shell colours
+  (255,250,240 / 255,220,210 / 230,210,180) are >= 180 in every channel, so
+  nothing underflowed, `data/textures/detail_atlas.bmp` does not move and
+  `TexturesReproducible` stays green. The clamp is a guard against a future
+  darker shell colour, not a pixel fix. That census is the whole tree: a
+  comment-filtered grep for `get{Red,Green,Blue,Alpha}() -` over `src/`,
+  `include/` and `tools/` returns exactly ten hits -- the nine lerp lines T495
+  replaced and this one.
+- **B800** (B) **the T492 corpus pairs fable sky frames with official frames
+  that contain no sky**, so the corpus cannot answer "what colour should the sky
+  be". MEASURED T495: the official frames B789 and B790 name as their pairs
+  (`players/p1/frames/15:38:09.793_F_sky_p2_overhead_window.png` and
+  `15:46:49.474_H_cam_p2_qeytoqrg_chase_window.png`) show a wall/ground with the
+  Tip-of-the-Day dialog over them (B795) -- no sky band at all. T495 measured
+  B789's official crop at **(19.31,20.55,19.12)**, a near-black grey whose
+  commonest pixel is (14,15,14) at 3,709 of 36,000: that is not a sky. B790's
+  "official (16,30,23), which is green dominant" is therefore a reading of
+  GROUND, not of sky, and the two numbers in that entry were never comparable.
+  A sky A/B needs the oracle pointed UP with the dialog dismissed; T466's
+  camera-step recipe plus B795's dismissal is what would produce it. This is
+  what B781 has been waiting for since T484. Found by T495.
+- **B801** (C) **`SkyRenderer` never logs the colour it chose, or the hour it
+  chose it for**, so a wrong sky can only be diagnosed by re-deriving the
+  function offline. T495 had to write an emulator of `calculateSkyColors()`
+  (`review/T495/scripts/sky_color_emulator.cpp`) and sweep it against the corpus
+  band means to discover that the frames were taken at 17:25 -- the run log
+  records the game time only at zone-in, and `updateTimeOfDay()` logs nothing at
+  all on the sky path (the one `updateTimeOfDay:` line in
+  `src/client/graphics/renderer/irrlicht_renderer.cpp` is the weather
+  modifier, and it fires only when that modifier MOVES). One `MOD_GRAPHICS` DEBUG line per tint change --
+  hour, zenith, horizon, fog, tint, clear -- would have made this a log read.
+  Will's call because it is a logging-policy question (which module, which
+  level, and whether a per-minute line is acceptable in a corpus run, given
+  B791). Found by T495.
+
+B809 unused.
