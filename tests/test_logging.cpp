@@ -277,6 +277,91 @@ TEST_F(LoggingTest, InitLogging_ParsesLevelAndModules) {
 }
 
 // =============================================================================
+// B842: comma-separated --log-module lists and loud rejection of bad levels
+// =============================================================================
+// The pre-fix code split the value on the FIRST ':' and handed the rest
+// ("INFO,GRAPHICS:INFO") to ParseLevelName(), which fell back to LOG_NONE --
+// silencing MAIN entirely and never setting GRAPHICS at all.
+
+TEST_F(LoggingTest, InitLogging_ParsesCommaSeparatedModuleList) {
+    const char* argv[] = {"program", "--log-module=MAIN:INFO,GRAPHICS:INFO"};
+    int argc = 2;
+
+    InitLogging(argc, const_cast<char**>(argv));
+
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), LOG_INFO);
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_GRAPHICS), LOG_INFO);
+    // A module not named in the list keeps "use global level"
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_NET), -1);
+}
+
+TEST_F(LoggingTest, InitLogging_RejectsUnparseableLevelName) {
+    // Same stderr-capture pattern the T31 drain-thread test below uses for
+    // stdout: the rejection must be LOUD (printed, naming the bad token)
+    // and must not silently map the module to any level.
+    char tmpl[] = "/tmp/willeq_b842_stderr_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    const char* argv[] = {"program", "--log-module=MAIN:BOGUS"};
+    int argc = 2;
+    InitLogging(argc, const_cast<char**>(argv));
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("BOGUS"), std::string::npos)
+        << "rejection must name the bad token; captured stderr: [" << content << "]";
+    // MAIN must NOT have been silently mapped to a level (LOG_NONE or
+    // anything else): it stays at -1 = "use global level".
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
+}
+
+TEST_F(LoggingTest, InitLogging_BadPairDoesNotPoisonGoodPairs) {
+    char tmpl[] = "/tmp/willeq_b842_stderr2_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    const char* argv[] = {"program", "--log-module=NET:TRACE,MAIN:BOGUS,UI:DEBUG"};
+    int argc = 2;
+    InitLogging(argc, const_cast<char**>(argv));
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("BOGUS"), std::string::npos)
+        << "rejection must name the bad token; captured stderr: [" << content << "]";
+    // The good pairs around the bad one still apply
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_NET), LOG_TRACE);
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_UI), LOG_DEBUG);
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
+}
+
+// =============================================================================
 // Legacy Compatibility Tests
 // =============================================================================
 
