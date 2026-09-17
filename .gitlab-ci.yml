@@ -1,0 +1,9 @@
+# T502 probe: identify the runner host before any build lands on it.
+runner-probe:
+  stage: build
+  interruptible: true
+  timeout: 10m
+  script:
+    - hostname; cat /etc/hostname; nproc; free -g; pwd
+    - which cmake g++ ninja ccache || true
+    - ls -d /mnt/projects/EverQuestP1999 /mnt/projects/EverQuest_ETC1 /mnt/projects/irrlicht-1.8.5 2>&1 || true
