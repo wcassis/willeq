@@ -11188,9 +11188,9 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   held-item sheets take only `_noui_` frames and all of those are clear, and
   T492 Leg F's F9 cycle -- the 20 grabs that validated the MARGIN criterion at
   min ratio 4.90 -- are clear too (F10 hides the dialog with the UI).
-  **The one contaminated score is T492's own: board B828.** T499 also measured
+  **The one contaminated score is T492's own: board B833.** T499 also measured
   that this window has context-sensitive variants at the same rect, which this
-  entry's title does not cover: board **B829**. Fix: dismiss it in
+  entry's title does not cover: board **B834**. Fix: dismiss it in
   `oracle_start.sh` after `enter-world.sh` (Escape, or a click on its close box,
   verified by OCR that "Another Tip" is gone) -- NOT by waiting longer, since it
   is modal until dismissed. `camto` is unaffected: it passed at ratio 1.993 with
@@ -11731,7 +11731,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
 
 ## Added 2026-09-17 by T499 (the B795 re-check of every archived oracle frame)
 
-- **B828** (B) **6 of the 24 scored rows in T492's delivered corpus
+- **B833** (B) **6 of the 24 scored rows in T492's delivered corpus
   (`review/T492/llmbench/verify_labels.tsv`) were scored on an official frame
   with the Tip of the Day dialog in it.** [measured T499] The camera check in
   `scripts/llmbench/verify_labels.py` scores the official p1 frame against
@@ -11754,7 +11754,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   Not class A: the score decided a corpus LABEL, not a shipped constant, and
   `review/T492/README.md` says the corpus is not blessed until Will has looked
   at the sheets. Found by T499.
-- **B829** (B) **The tip window is not only "Tip of the Day" at login -- it has
+- **B834** (B) **The tip window is not only "Tip of the Day" at login -- it has
   context-sensitive variants that pop at the SAME rect after an in-world
   action, and nothing has ever verified that `[Tips] ShowTips=0` suppresses
   them.** [measured T499] The same 360x300 window at (664,234) carries a
@@ -11780,7 +11780,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   OCR the rect. Until then any oracle grab taken right after a loot, a death, a
   con, a sit or an inventory open is suspect wherever the run's crop reaches
   past x=663. Found by T499.
-- **B830** (P) **`review/T492/llmbench/` -- the delivered corpus -- has 103 of
+- **B835** (P) **`review/T492/llmbench/` -- the delivered corpus -- has 103 of
   its 251 official frames with the dialog over them, and its README says
   nothing about it.** [measured T499] `llmbench-legE` is 139/153 and
   `llmbench-v2-legI-replaced` 34/36; only `llmbench-legI` is clean (0/63). The
@@ -11788,8 +11788,8 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   pair, and the eight `sheets/T492_match_*.png` contact sheets Will blessed are
   built from them, so a grader or a reader who crops the right-hand third of an
   official frame is reading UI chrome. This is a documentation defect, not a
-  measurement one -- B828 covers the numbers. Fix: a line in
+  measurement one -- B833 covers the numbers. Fix: a line in
   `review/T492/llmbench/README.md` and in `review/T492/README.md` naming
   `review/T499/tip_dialog_audit.tsv` as the per-frame index. Found by T499.
 
-B831 onwards unused.
+B836 onwards unused.

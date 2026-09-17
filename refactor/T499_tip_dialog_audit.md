@@ -3,7 +3,7 @@
 Class A follow-on to **B795** (found by T492 Leg H). Lane: **OFFLINE** — no eqemu, no Pi,
 no VM, no client launch. Nothing is re-scored and no constant is changed; this unit only
 says, per archived frame, whether the dialog was in it, and whether that frame fed a number.
-Branch `task/T499-tip-dialog-audit` off fable `817a76f0`. Board entries start at **B828**.
+Branch `task/T499-tip-dialog-audit` off fable `817a76f0`. Board entries start at **B833**.
 
 ## The facts this plan rests on
 
@@ -83,7 +83,7 @@ negative with the UI off
    (README.md, logs, `*.tsv`, `*.md`, `*.txt`, `*.json`) and through `refactor/` — the unit's
    plan and its Review — and list every score or table that cites it.
 4. Board: strike B795's "earlier units deserve a re-check" half with the counts; open one entry
-   per affected unit whose scores are contaminated, from **B828** (class A if the score decided
+   per affected unit whose scores are contaminated, from **B833** (class A if the score decided
    a shipped constant, B otherwise). If nothing is contaminated, say so with the counts.
 5. `review/T499/README.md`; commit scripts + board + plan; do **not** merge.
 
@@ -117,7 +117,7 @@ frames** — 4 PASS (`A_cam_p2_firstperson`, `A_camget_p2`, `A_cam_p3_firstperso
 the two PASS ratios that are readable in the table, **1.66 and 1.62**, are the two
 closest to the 1.5 margin in the whole table. [assumed] that the dialog is the whole of
 that difference — nobody re-scored anything, which this unit was forbidden to do. Board
-**B828**.
+**B833**.
 
 **The T466 near miss is the reason this was worth running.** [measured]
 `T466_oracle_alpha_login_camera_untouched_1024x768.png` — the frame that decided the
@@ -150,9 +150,9 @@ login `Tip of the Day` (whose *body* heading — "Etiquette Tip", "Safety Tip", 
 Tip", "Convenience Tip", "Performance Tip" — is not a caption and was not mistaken for
 one). B795's fix dismisses one window at one moment. [measured] Leg I's 31 steps contain
 no sit, death, loot, consider or options action, so its clean sweep is evidence for the
-login window and nothing else. Board **B829**. [measured] the delivered corpus
+login window and nothing else. Board **B834**. [measured] the delivered corpus
 `review/T492/llmbench/` is **103 of 251** official frames and its README says nothing:
-board **B830** (P).
+board **B835** (P).
 
 **The two `unreadable` rows** are both `Keyboard Options Tips` frames (T377, T466) where
 OCR read the caption but the chrome match reached **0.907** against a 0.95 bar, because
@@ -164,8 +164,8 @@ constant changed, and no frame was judged by eye beyond the four validation fram
 
 ### Owed / next
 
-- B828 wants `verify_labels.py` re-run on six labels with the dialog rect masked out of
+- B833 wants `verify_labels.py` re-run on six labels with the dialog rect masked out of
   both crops, or those four `A_*` steps re-recorded behind Leg I's dismissal. Offline-able
   for the mask; the re-record needs the eqemu lane.
-- B829 wants one probe: `ShowTips=0`, then `/sit` and an options page, OCR the rect.
-- B830 is two README lines.
+- B834 wants one probe: `ShowTips=0`, then `/sit` and an options page, OCR the rect.
+- B835 is two README lines.
