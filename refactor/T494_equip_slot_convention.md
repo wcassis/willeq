@@ -172,7 +172,7 @@ Corpus, logs and the reproduction recipe: `/mnt/projects/fable/review/T494/`.
   stands; only the `/equip` argument and the `moved from slot N` prose changed.
 - [measured] **Three ctest cases fail in a fresh worktree for an environmental
   reason** (`data/eq_client` is a gitignored symlink that only `main` has).
-  Boarded **B812**; making the symlink turns them green and the suite is
+  Boarded **B815**; making the symlink turns them green and the suite is
   4842/4842.
 - [measured] **`git diff --stat scripts/` dumps 700 KB** because
   `benchmarks/contact_sheets/*.html` embeds base64 PNGs; scope any `grep -rn`
@@ -272,7 +272,7 @@ peer starts out already holding something.
 ### Suite
 
 [measured] `ctest --test-dir build -j8`: **4842/4842**, zero failures, after
-creating the gitignored `data/eq_client` symlink (B812). `visual_gate` was
+creating the gitignored `data/eq_client` symlink (B815). `visual_gate` was
 green; it did not need a rerun.
 
 ### Every `[assumed]` left standing

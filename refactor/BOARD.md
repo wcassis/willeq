@@ -11370,7 +11370,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   not have. The fix shape is the one `equip_observed` uses: refuse to score a
   held-item step whose BEFORE state already matches its AFTER state. Found by
   T494.
-- **B812** (C) **A task worktree has no `data/eq_client`, and three ctest cases
+- **B815** (C) **A task worktree has no `data/eq_client`, and three ctest cases
   fail as if they were real reds.** `tests/CMakeLists.txt:114` defaults
   `EQ_CLIENT_DATA_PATH` to `${CMAKE_SOURCE_DIR}/data/eq_client`, which is a
   gitignored symlink present in `main` and absent in every fresh worktree, so
@@ -11383,4 +11383,4 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   SKIP like their siblings when the path is absent, or create the symlink in
   the worktree setup. Found by T494.
 
-B813 onwards unused.
+B816 onwards unused.
