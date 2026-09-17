@@ -21,7 +21,11 @@ Citations are resolved relative to the repo root, with two exceptions
     `/mnt/projects/fable/review/` instead — the sanctioned outside-repo
     media directory (`refactor/EXECUTOR_PROTOCOL.md`). OK if it exists
     there, FAIL otherwise: `review/` citations are still real pointers that
-    can go stale, just not against this checkout.
+    can go stale, just not against this checkout. T502: on a host where that
+    directory does not exist AT ALL (the GitLab runner on hermes-ext has no
+    NFS and never carries review media), every `review/` citation is reported
+    SKIP instead — the absence is the host's, not the citation's, and turning
+    it into 19 FAILs would only teach CI to ignore this test.
   - A citation whose path is absolute (starts with `/`) is a deliberate
     cross-project reference (e.g. a sibling repo's source file, cited for
     context) that this checker has no tree to resolve against. Reported as
@@ -149,12 +153,23 @@ CITE_BARE = re.compile(
 REVIEW_DIR = "/mnt/projects/fable/review"
 
 
+def _skip_reason(cited_path):
+    """Why this citation was not resolved -- an outside-repo media path on a
+    host that has no review/ directory, or a cross-project absolute path."""
+    if cited_path.startswith("review/"):
+        return "no %s on this host" % REVIEW_DIR
+    return "cross-project citation"
+
+
 def resolve_target(repo_root, cited_path):
     """Returns (target_path, status) where status is None (resolve normally),
     or "SKIP" for an absolute cross-project path. review/ paths resolve
     against REVIEW_DIR rather than SKIPping -- they are still real pointers
-    this host can check."""
+    this host can check, EXCEPT on a host with no REVIEW_DIR at all (T502:
+    the CI runner), where they SKIP."""
     if cited_path.startswith("review/"):
+        if not os.path.isdir(REVIEW_DIR):
+            return cited_path, "SKIP"
         return os.path.join(REVIEW_DIR, cited_path[len("review/"):]), None
     if cited_path.startswith("/"):
         return cited_path, "SKIP"
@@ -185,7 +200,7 @@ def check_with_line(doc_path, doc_lineno, repo_root, cited_path, cited_line):
     label = "%s:%d" % (cited_path, cited_line)
     target, status = resolve_target(repo_root, cited_path)
     if status == "SKIP":
-        return ("SKIP", doc_path, doc_lineno, label, "cross-project citation")
+        return ("SKIP", doc_path, doc_lineno, label, _skip_reason(cited_path))
     if not os.path.isfile(target):
         return ("FAIL", doc_path, doc_lineno, label, "file does not exist")
     with open(target, "r", encoding="utf-8", errors="replace") as fh:
@@ -199,7 +214,7 @@ def check_with_line(doc_path, doc_lineno, repo_root, cited_path, cited_line):
 def check_bare(doc_path, doc_lineno, repo_root, cited_path):
     target, status = resolve_target(repo_root, cited_path)
     if status == "SKIP":
-        return ("SKIP", doc_path, doc_lineno, cited_path, "cross-project citation")
+        return ("SKIP", doc_path, doc_lineno, cited_path, _skip_reason(cited_path))
     if not os.path.isfile(target):
         return ("FAIL", doc_path, doc_lineno, cited_path, "file does not exist")
     return ("OK", doc_path, doc_lineno, cited_path, "")
