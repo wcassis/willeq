@@ -11167,10 +11167,30 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   same crop reads `Testcaster` cleanly on a Leg C frame
   (`review/T492/llmbench/players/p1/frames/15:27:43.497_C_target_p1_p2_window.png`),
   so this is the dialog, not the crop. It stopped T492 Leg H's target gate and
-  is the remaining blocker for the target steps. It also means any official
+  is the remaining blocker for the target steps. ~~It also means any official
   frame taken soon after entering the world may have the dialog over it --
   `review/T492/llmbench-legH/players/p1/frames/` has examples, and earlier units'
-  post-login grabs should be re-checked before being trusted. Fix: dismiss it in
+  post-login grabs should be re-checked before being trusted.~~ **The re-check
+  half is DISCHARGED by T499**: `scripts/oracle/find_tip_dialog.py` (two
+  independent signals, both required -- tesseract over the dialog rect and the
+  title bar's invariant chrome bitmap matched anywhere in the frame; validated
+  on three known positives and a known negative before the sweep) scanned
+  **1,183 archived official frames across 17 units** and found
+  **382 dialog, 799 clear, 2 unreadable** -- `review/T499/tip_dialog_audit.tsv`.
+  **363 of the 382 are T492's own**; the other **19 are in six units** (T377 1,
+  T386 1, T389 1, T401 3, T466 2, T478 11) and **not one of them fed a score**:
+  13 are cited at all (`review/T499/dialog_frame_citations.tsv`), every citation
+  is a grab log line or a "what this file shows" README row, and the two that
+  back a claim back an OCR reading of chat/inventory text, not a number.
+  T466's login-camera identification is the near miss: its scoring crop is
+  `660x450` upper-left and the dialog's leftmost column in that frame is
+  **664** -- clear by 4 px, by luck, not by design. T478's Chase fit and
+  held-item sheets take only `_noui_` frames and all of those are clear, and
+  T492 Leg F's F9 cycle -- the 20 grabs that validated the MARGIN criterion at
+  min ratio 4.90 -- are clear too (F10 hides the dialog with the UI).
+  **The one contaminated score is T492's own: board B828.** T499 also measured
+  that this window has context-sensitive variants at the same rect, which this
+  entry's title does not cover: board **B829**. Fix: dismiss it in
   `oracle_start.sh` after `enter-world.sh` (Escape, or a click on its close box,
   verified by OCR that "Another Tip" is gone) -- NOT by waiting longer, since it
   is modal until dismissed. `camto` is unaffected: it passed at ratio 1.993 with
@@ -11709,4 +11729,67 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   in one command when Will wants it, and `data/willeq.db` + `.sha256` must be
   rebuilt in the SAME commit or `DbReproducible` goes red. Found by T498.
 
-B828-B829 unused. B830-B831 used by T496 Leg D. B832 onwards unused.
+## Added 2026-09-17 by T499 (the B795 re-check of every archived oracle frame)
+
+- **B828** (B) **6 of the 24 scored rows in T492's delivered corpus
+  (`review/T492/llmbench/verify_labels.tsv`) were scored on an official frame
+  with the Tip of the Day dialog in it.** [measured T499] The camera check in
+  `scripts/llmbench/verify_labels.py` scores the official p1 frame against
+  T466's `_noui_` direct-mode stills over `CROP = "1000x480+12+40"` in ROOT
+  coordinates -- x 12..1012, y 40..520. The dialog's root rect is
+  x 663..1023, y 259..564, so it covers **349 x 261 px = 19.0% of the scoring
+  crop**, and the reference stills have no dialog in them. The six rows, with
+  their frames, are in `review/T499/t492_verify_labels_provenance.tsv`:
+  `A_cam_p2_firstperson` (PASS, 0.545 best, next 0.903, ratio 1.66),
+  `A_camget_p2` (PASS, ratio 1.62), `A_cam_p3_firstperson` (PASS),
+  `A_camget_p3` (PASS) and `F_sky_p2_overhead` / `F_sky_p3_overhead`
+  (INCONCLUSIVE). **The four PASSes carry grading labels into the corpus that
+  went to the grader**, and their ratios (1.62, 1.66) are the two closest to
+  the 1.5 margin in the whole table -- which is what a 19% common-mode region
+  would do. [assumed] that the dialog is the whole of the difference; nobody
+  re-scored anything here, and T499 was forbidden to. What would settle it:
+  re-run `verify_labels.py` on those six labels with the dialog rect masked out
+  of both crops, or re-record the four `A_*` steps behind Leg I's dismissal
+  (Leg I's own 63 frames are **0/63 dialog**, so the rig can already do it).
+  Not class A: the score decided a corpus LABEL, not a shipped constant, and
+  `review/T492/README.md` says the corpus is not blessed until Will has looked
+  at the sheets. Found by T499.
+- **B829** (B) **The tip window is not only "Tip of the Day" at login -- it has
+  context-sensitive variants that pop at the SAME rect after an in-world
+  action, and nothing has ever verified that `[Tips] ShowTips=0` suppresses
+  them.** [measured T499] The same 360x300 window at (664,234) carries a
+  different CAPTION depending on what the player just did, across five units:
+  `Tip of the Day` (login -- its body then names a category, "Etiquette Tip",
+  "Safety Tip", "Gameplay Tip", "Convenience Tip", "Performance Tip", which is
+  NOT the caption), `Consider Tip window` (T478, after attacking an NPC that
+  cons red), `Death Tips` (T389 and T492, after dying), `Inventory Tips` (T401
+  and T478, on opening the inventory), `Looting Tips` (T377, on opening a
+  corpse's loot window), `Sitting Tips` (T492, on `/camp`) and
+  `Keyboard Options Tips` (T377, T466, on the Options>Keys page -- these two are
+  the sweep's only `unreadable` rows: OCR read the caption but the chrome match
+  reached 0.907 against a 0.95 bar, because the Options window sits over part of
+  the bar). The title bar is byte-identical apart from the centred caption and
+  the two alpha-blended end caps -- which is why T499's detector matches the
+  invariant columns only and lets OCR say which window it is. B795's fix as written ("dismiss it in
+  `oracle_start.sh` after `enter-world.sh` ... verified by OCR that 'Another
+  Tip' is gone") dismisses ONE window at ONE moment. [measured] T492 Leg I,
+  which is the only run with `ShowTips=0`, has 0 dialog frames in 63 -- but its
+  31 steps contain no sit, death, loot, consider or options action, so it is
+  evidence for the login window and **for nothing else**. What would settle it:
+  one offline-able probe -- `ShowTips=0`, then `/sit` and an options page, and
+  OCR the rect. Until then any oracle grab taken right after a loot, a death, a
+  con, a sit or an inventory open is suspect wherever the run's crop reaches
+  past x=663. Found by T499.
+- **B830** (P) **`review/T492/llmbench/` -- the delivered corpus -- has 103 of
+  its 251 official frames with the dialog over them, and its README says
+  nothing about it.** [measured T499] `llmbench-legE` is 139/153 and
+  `llmbench-v2-legI-replaced` 34/36; only `llmbench-legI` is clean (0/63). The
+  frames are the grader's evidence for every `match` and `discrepancy` step
+  pair, and the eight `sheets/T492_match_*.png` contact sheets Will blessed are
+  built from them, so a grader or a reader who crops the right-hand third of an
+  official frame is reading UI chrome. This is a documentation defect, not a
+  measurement one -- B828 covers the numbers. Fix: a line in
+  `review/T492/llmbench/README.md` and in `review/T492/README.md` naming
+  `review/T499/tip_dialog_audit.tsv` as the per-frame index. Found by T499.
+
+B831 onwards unused.
