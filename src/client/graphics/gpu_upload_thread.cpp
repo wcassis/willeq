@@ -4,6 +4,7 @@
 
 #include "client/graphics/gpu_upload_thread.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 
 #include <algorithm>
 #include <chrono>
@@ -158,6 +159,7 @@ size_t GPUUploadThread::getPendingCount() const {
 }
 
 void GPUUploadThread::workerLoop() {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDriver);  // T491
     LOG_DEBUG(MOD_GRAPHICS, "GPUUploadThread worker: started (context unbound)");
 
     while (running_.load(std::memory_order_acquire)) {

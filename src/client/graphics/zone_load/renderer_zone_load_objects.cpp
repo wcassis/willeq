@@ -33,6 +33,7 @@
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <fmt/format.h>
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
@@ -63,6 +64,7 @@ namespace EQT {
 namespace Graphics {
 
 void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Objects);  // T491
     // ── Step 6: Objects — zone objects ──────────────────────────────────────
     ctx.updateProgress(75, "Installing zone objects...");
     {
@@ -462,6 +464,7 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
 }
 
 void ZoneLoadComponent::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Doors);  // T491
     // ── Step 7: Doors — door meshes ────────────────────────────────────────
     ctx.updateProgress(78, "Building door meshes...");
     {
@@ -523,6 +526,7 @@ void ZoneLoadComponent::loadZoneStep7_Doors(ZoneLoadContext& ctx) {
 }
 
 void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Spatial);  // T491
     // ── Step 9: Collision ──────────────────────────────────────────────────
     ctx.updateProgress(88, "Setting up collision...");
     {

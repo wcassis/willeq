@@ -31,6 +31,7 @@
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <fmt/format.h>
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
@@ -61,6 +62,7 @@ namespace EQT {
 namespace Graphics {
 
 bool ZoneLoadComponent::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityInstances);  // T491
     // ── Step 8: Entities — inline prep + build (no background threads) ────
     ctx.updateProgress(80, "Preparing entity models...");
     {
@@ -274,6 +276,7 @@ bool ZoneLoadComponent::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
 }
 
 bool ZoneLoadComponent::loadZoneStep8a_BaseModelPrep(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     // Step 8a: Base race model prep (S3D load, WLD parse, animation merge)
     uint32_t key = (static_cast<uint32_t>(ctx.vis->raceId) << 8) | ctx.vis->gender;
     bool alreadyCached = ctx.modelLoader->isModelDataCached(key);
@@ -337,6 +340,7 @@ bool ZoneLoadComponent::loadZoneStep8a_BaseModelPrep(ZoneLoadContext& ctx) {
 }
 
 void ZoneLoadComponent::loadZoneStep8b_VariantModelPrep(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     // Step 8b: Variant model prep (zone-specific S3D for head/body variants)
     if (ctx.entitySuccess) {
         uint8_t headVariant = ctx.vis->appearance.helm;
@@ -355,6 +359,7 @@ void ZoneLoadComponent::loadZoneStep8b_VariantModelPrep(ZoneLoadContext& ctx) {
 }
 
 void ZoneLoadComponent::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     // Step 8c: Load variant textures via constrained cache
     // T06: Replaced inline DDS/BMP decoder with getOrLoad() calls.
     ctx.variantTextureCount = 0;
@@ -439,6 +444,7 @@ void ZoneLoadComponent::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
 }
 
 bool ZoneLoadComponent::loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Equipment);  // T491
     // Step 8d: Equipment model extraction + texture decode via constrained cache
     // T07: Replaced inline DDS decoder with getOrLoad() calls.
     using EquipPrepData = ZoneLoadContext::EquipPrepData;

@@ -534,6 +534,21 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         characterModelsMemoryBytes = static_cast<size_t>(preset["characterModelsMemoryBytes"].asUInt64());
     if (preset.isMember("eqe1MappedAddressSpaceBytes"))
         eqe1MappedAddressSpaceBytes = static_cast<size_t>(preset["eqe1MappedAddressSpaceBytes"].asUInt64());
+    // T491: ledger budgets, keyed by eqt::memory::categoryName(). An unknown
+    // key is a config error worth hearing about, not a silent skip.
+    if (preset.isMember("memoryLedgerBudgets") && preset["memoryLedgerBudgets"].isObject()) {
+        const auto& budgets = preset["memoryLedgerBudgets"];
+        for (const auto& key : budgets.getMemberNames()) {
+            eqt::memory::Category cat;
+            if (!eqt::memory::categoryFromName(key, cat)) {
+                LOG_WARN(MOD_GRAPHICS, "constrained preset '{}': unknown memoryLedgerBudgets key '{}' ignored",
+                         presetName, key);
+                continue;
+            }
+            memoryLedgerBudgetBytes[static_cast<size_t>(cat)] =
+                static_cast<size_t>(budgets[key].asUInt64());
+        }
+    }
     if (preset.isMember("colorDepthBits"))
         colorDepthBits = preset["colorDepthBits"].asInt();
     if (preset.isMember("maxVisibleEntities"))

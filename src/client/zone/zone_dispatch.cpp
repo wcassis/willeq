@@ -1,3 +1,4 @@
+#include "client/core/memory_ledger.h"
 #include "client/eq.h"
 #include "client/say_link_text.h"
 #include "client/willeq_database.h"
@@ -940,6 +941,9 @@ eqt::zone::ZoneComponent::IgnoredZoneOpcodes()
 
 void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 {
+	// T491: everything a zone packet creates (entities, inventory, spells,
+	// doors on the game side) is game state, not the network buffer it came in.
+	eqt::memory::MemoryScope gsScope(eqt::memory::Category::GameState);
 	auto opcode = p.GetUInt16(0);
 
 	// T482 (board B631): a confirmed cast released by keepcasting 0 is a

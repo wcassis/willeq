@@ -41,11 +41,23 @@ checks them against three independent assertions:
            bit-identical run to run (see refactor/T69_memory_enforcement_gate.md
            Review), so exact match is an empirically justified tolerance of
            zero, not a guess.
-       (c) Reported, not asserted: process RSS and the untracked-RSS gap
-           (RSS minus every tallied category). Printed and baselined every
-           run for visibility, but never gated in this unit -- see the T69
-           Review for why (RSS is real but noisier than the categories in
-           (b), and a spuriously-firing gate is worse than no gate).
+       (c) Reported, not asserted: process RSS and the T69 untracked-RSS gap
+           (RSS minus every tallied ESTIMATE). Printed and baselined every
+           run for visibility. Never gated -- T69 ruled it too noisy, and
+           T491 superseded the whole question: the estimate-based gap is not
+           what is controlled any more, the allocator ledger below is.
+       (d) T491 memory ledger (Will's ruling 2026-09-14, docs/decisions.md):
+           the benchmark's memory JSON now carries a "ledger" object -- every
+           anonymous byte charged at the allocator to a lifecycle category
+           (include/client/core/memory_ledger.h) -- and "ledgerBudgets" from
+           the orangepi preset. assert_memory_ledger() asserts
+           (i) unattributed = RssAnon - ledger is at most
+               LEDGER_UNATTRIBUTED_MAX_PCT of RssAnon, and
+           (ii) every category's live bytes are within its configured budget
+                (0 = no budget, skipped and named).
+           Both run on the golden-image runs AND the memory-coverage runs.
+           The bound is a ratchet: it is lowered as attribution improves, and
+           its history is in tests/goldens/README.md.
 
   4. T80 memory-coverage run (SEPARATE invocation, see MEMORY_COVERAGE_*
      and run_memory_coverage_benchmark()/bless_memory_coverage()/
@@ -218,6 +230,16 @@ BLESS_CPU_REPEATS = 3
 
 MEMORY_COVERAGE_FRAMES = 5
 MEMORY_COVERAGE_WARMUP = 1
+
+# T491: the ledger's unattributed bound, in percent of RssAnon. What is left
+# unattributed on the x86 llvmpipe path is (a) glibc free-list slack after
+# the zone-load churn (mallinfo2 arena - in use, printed alongside) and (b)
+# anonymous memory that never goes through malloc: llvmpipe's JIT code pages
+# and rasteriser thread stacks. Neither exists on the Pi's Mali path, so the
+# x86 number OVERSTATES the Pi's. Start at the measured x86 worst case plus
+# headroom and ratchet DOWN as attribution improves -- never up without a
+# Review that says why. History: tests/goldens/README.md.
+LEDGER_UNATTRIBUTED_MAX_PCT = 10.0
 
 
 def load_manifest():
@@ -582,6 +604,61 @@ def assert_memory_budgets(label_prefix, memory, failures):
         print(f"  [budget] {label_prefix}: NO BUDGET CONFIGURED for " + ", ".join(skipped))
 
 
+def assert_memory_ledger(label_prefix, memory, failures, max_unattributed_pct=None):
+    """T491: assert the allocator ledger's two invariants on one memory dict.
+
+    (i)  ledger.unattributedBytes / ledger.rssAnonBytes <= the bound;
+    (ii) ledger.categories[c].live <= ledgerBudgets[c] for every budgeted c.
+
+    A memory JSON without a "ledger" object comes from a benchmark built
+    before T491 -- or with -DEQT_MEMORY_LEDGER=OFF -- and is a FAILURE, not a
+    skip: the gate's memory section is meaningless without it. Same for
+    ledgerEnabled == false.
+    """
+    if max_unattributed_pct is None:
+        max_unattributed_pct = LEDGER_UNATTRIBUTED_MAX_PCT
+    ledger = memory.get("ledger")
+    if not isinstance(ledger, dict):
+        failures.append(f"{label_prefix}: memory JSON has no \"ledger\" object "
+                        f"(benchmark predates T491 or was built with EQT_MEMORY_LEDGER=OFF)")
+        return
+    if not ledger.get("ledgerEnabled", False):
+        failures.append(f"{label_prefix}: memory ledger hooks are OFF in this benchmark "
+                        f"(EQT_MEMORY_LEDGER=0); the gate requires them ON")
+        return
+    rss_anon = ledger.get("rssAnonBytes", 0)
+    total = ledger.get("ledgerTotalBytes", 0)
+    unattributed = ledger.get("unattributedBytes", 0)
+    pct = (100.0 * unattributed / rss_anon) if rss_anon else 0.0
+    cats = ledger.get("categories", {})
+    top = sorted(((v.get("live", 0), k) for k, v in cats.items()), reverse=True)[:4]
+    top_txt = ", ".join(f"{k} {v / 1048576:.1f} MiB" for v, k in top)
+    print(f"  [ledger] {label_prefix}: RssAnon={rss_anon} ledger={total} "
+          f"unattributed={unattributed} ({pct:.1f}%, bound {max_unattributed_pct:.1f}%) "
+          f"malloc_slack={ledger.get('mallocSlackBytes', 0)} top: {top_txt}")
+    if pct > max_unattributed_pct:
+        failures.append(
+            f"{label_prefix}: ledger unattributed {unattributed} bytes is {pct:.1f}% of "
+            f"RssAnon {rss_anon}, over the {max_unattributed_pct:.1f}% bound"
+        )
+    budgets = memory.get("ledgerBudgets", {})
+    checked, skipped = [], []
+    for name, budget in budgets.items():
+        live = cats.get(name, {}).get("live", 0)
+        if not budget:
+            skipped.append(name)
+            continue
+        checked.append(f"{name} {100.0 * live / budget:.0f}%")
+        if live > budget:
+            failures.append(
+                f"{label_prefix}: ledger category {name} live {live} exceeds budget {budget}"
+            )
+    if checked:
+        print(f"  [ledger-budget] {label_prefix}: " + ", ".join(checked))
+    if skipped:
+        print(f"  [ledger-budget] {label_prefix}: NO BUDGET CONFIGURED for " + ", ".join(skipped))
+
+
 def verify_memory_coverage(manifest, failures):
     """T80: verify the SEPARATE memory-coverage run. Appends to `failures`
     in place (same accumulation pattern verify() uses for the golden-image
@@ -613,6 +690,8 @@ def verify_memory_coverage(manifest, failures):
         # where placeableObjectsBytes/characterModelsBytes/eqe1MappedBytes are
         # nonzero, so it is the only run where their budgets mean anything.
         assert_memory_budgets(f"memory-coverage {zone}", memory, failures)
+        # T491: the allocator ledger, on the heavier asset mix too.
+        assert_memory_ledger(f"memory-coverage {zone}", memory, failures)
 
         expected_mem = zone_cfg.get("memory")
         if not expected_mem:
@@ -645,7 +724,7 @@ def verify_memory_coverage(manifest, failures):
         if rss is not None:
             pct = (100.0 * total / rss) if (total is not None and rss) else 0.0
             print(f"  [memory-coverage] {zone}: tracked={total} RSS={rss} ({pct:.0f}%) "
-                  f"untracked={untracked}  (reported only, not gated)")
+                  f"untracked={untracked}  (T69 estimate gap, reported only; the ledger above is gated)")
 
 
 def verify(manifest):
@@ -721,6 +800,10 @@ def verify(manifest):
             # below; see assert_memory_budgets() for why that mattered.
             assert_memory_budgets(zone, memory, failures)
 
+            # (d) T491: the allocator ledger -- unattributed bound + per-category
+            # budgets. See assert_memory_ledger().
+            assert_memory_ledger(zone, memory, failures)
+
             # (a') Exact-match the two originally-budgeted categories' usage
             # against their blessed values as well -- regression detection on
             # top of the budget check, as the texture cache has done since
@@ -756,7 +839,7 @@ def verify(manifest):
             if rss is not None:
                 pct = (100.0 * total / rss) if (total is not None and rss) else 0.0
                 print(f"  [memory] {zone}: tracked={total} RSS={rss} ({pct:.0f}%) "
-                      f"untracked={untracked}  (reported only, not gated -- see T69 Review)")
+                      f"untracked={untracked}  (T69 estimate gap, reported only; the ledger above is gated)")
 
     # T80: separate memory-coverage run, verified after the golden-image loop
     # above and appending to the same `failures` list for one combined

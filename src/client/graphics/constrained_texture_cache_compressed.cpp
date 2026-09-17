@@ -9,6 +9,7 @@
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/background_thread_pool.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <algorithm>
 #include <cstring>
 #include <functional>
@@ -67,6 +68,7 @@ void ConstrainedTextureCache::probeCompressedTextureSupport() {
 
 irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
         const std::string& name, const std::vector<char>& data) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDecoded);  // T491
 #ifdef EQT_HAS_DRM
     // Extract compressed DXT data without decompressing
     CompressedTextureData compressed = DDSDecoder::extractCompressed(data);
@@ -99,6 +101,8 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
     size_t dummyBytes = static_cast<size_t>(compressed.width) * compressed.height * 4;
     std::vector<uint8_t> dummyPixels(dummyBytes, 0);
 
+    // T491: driver-side from here (IImage, COGLES2Texture, the ETC1 upload).
+    eqt::memory::MemoryScope driverScope(eqt::memory::Category::TexturesDriver);
     irr::video::IImage* image = driver_->createImageFromData(
         irr::video::ECF_A8R8G8B8,
         irr::core::dimension2d<irr::u32>(compressed.width, compressed.height),

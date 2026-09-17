@@ -11,6 +11,7 @@
 #include "client/willeq_database.h"
 #include "client/graphics/eq/pfs.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include "client/data_paths.h"
 
 #include <filesystem>
@@ -42,6 +43,7 @@ AudioManager::~AudioManager() {
 bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
                               const std::string& soundFontPath,
                               std::function<void()> tickCallback) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Audio);  // T491
     if (initialized_) {
         return true;
     }

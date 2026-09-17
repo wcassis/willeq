@@ -1,4 +1,5 @@
 #include "client/bridge/irrlicht_bridge.h"
+#include "client/core/memory_ledger.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/spell_visual_fx.h"
@@ -1071,6 +1072,21 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 LOG_INFO(MOD_MAIN, "=== /pmem [{}] ===", d.label);
             }
             auto report = renderer_->getMemoryReport(ext);
+            // T491: the allocator-level ledger, same schema as the lifecycle
+            // log lines and the benchmark JSON, after the T69 estimates.
+            {
+                const auto snap = eqt::memory::snapshot(
+                    d.label.empty() ? std::string("pmem") : d.label);
+                const std::string text = eqt::memory::toReportText(snap);
+                size_t start = 0;
+                while (start < text.size()) {
+                    size_t nl = text.find('\n', start);
+                    if (nl == std::string::npos) nl = text.size();
+                    report.push_back(text.substr(start, nl - start));
+                    start = nl + 1;
+                }
+                LOG_INFO(MOD_MAIN, "{}", eqt::memory::toLogLine(snap));
+            }
             for (const auto& line : report) {
                 LOG_INFO(MOD_MAIN, "{}", line);
                 // T108: mirror to in-game chat -- the old renderer-side

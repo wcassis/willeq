@@ -150,6 +150,7 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
         snap.characterModelsBudgetBytes   = cfg.characterModelsMemoryBytes;
         snap.eqe1MappedBudgetBytes        = cfg.eqe1MappedAddressSpaceBytes;
         snap.totalEstimateBudgetBytes     = cfg.totalMemoryBudgetBytes;
+        snap.ledgerBudgetBytes            = cfg.memoryLedgerBudgetBytes;  // T491
     }
 
     for (auto& [id, region] : data.regions) {
@@ -222,6 +223,9 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
         snap.untrackedBytes = snap.processRssBytes - snap.totalEstimate;
     }
 
+    // T491: the allocator ledger, same schema as /pmem and the log lines.
+    snap.ledger = eqt::memory::snapshot("benchmark_end");
+
     return snap;
 }
 
@@ -258,8 +262,7 @@ void writeMemoryJson(const std::string& path, const std::string& zoneName,
             "  \"totalEstimateBudgetBytes\": %zu,\n"
             "  \"totalEstimate\": %zu,\n"
             "  \"processRssBytes\": %zu,\n"
-            "  \"untrackedBytes\": %zu\n"
-            "}\n",
+            "  \"untrackedBytes\": %zu,\n",
             zoneName.c_str(),
             snap.textureCacheBytesUsed, snap.textureCacheBytesLimit, snap.textureCacheCount,
             snap.eqe1MappedBytes, snap.eqe1ArchiveCount,
@@ -272,6 +275,16 @@ void writeMemoryJson(const std::string& path, const std::string& zoneName,
             snap.vboEboBudgetBytes, snap.characterModelsBudgetBytes,
             snap.eqe1MappedBudgetBytes, snap.totalEstimateBudgetBytes,
             snap.totalEstimate, snap.processRssBytes, snap.untrackedBytes);
+    // T491: the ledger object and its budgets, appended in the same file so
+    // the gate reads one JSON per run.
+    fprintf(f, "  \"ledger\": %s,\n", eqt::memory::toJson(snap.ledger).c_str());
+    fprintf(f, "  \"ledgerBudgets\": {");
+    for (size_t i = 0; i < eqt::memory::kCategoryCount; ++i) {
+        fprintf(f, "%s\"%s\": %zu", i ? ", " : "",
+                eqt::memory::categoryName(static_cast<eqt::memory::Category>(i)),
+                snap.ledgerBudgetBytes[i]);
+    }
+    fprintf(f, "}\n}\n");
     fclose(f);
     printf("[memory-json] %s: saved\n", path.c_str());
 }

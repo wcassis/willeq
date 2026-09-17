@@ -7,6 +7,7 @@
 #include "client/graphics/sky_renderer.h"
 #include "client/hc_map.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <algorithm>
 #include <cmath>
 #include <mutex>
@@ -21,6 +22,8 @@ ZoneLifecycleComponent::~ZoneLifecycleComponent() = default;
 
 void ZoneLifecycleComponent::unloadZone() {
     if (owner_.isLoading()) return;
+    // T491 lifecycle point: everything the outgoing zone owns is still live.
+    eqt::memory::recordPoint("zone_change_before_unload", ctx_.currentZoneName);
     ctx_.sequentialLoadComplete = false;
     storedZoneEnvironment_.pending = false;
 
@@ -353,6 +356,8 @@ void ZoneLifecycleComponent::unloadZone() {
     ctx_.currentZoneName.clear();
     ctx_.isIndoorZone = false;
     ctx_.zoneBoundsValid = false;
+    // T491 lifecycle point: the zone is gone, before the next one loads.
+    eqt::memory::recordPoint("zone_change_after_unload", ctx_.currentZoneName);
 }
 
 void ZoneLifecycleComponent::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,

@@ -30,6 +30,7 @@
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <fmt/format.h>
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
@@ -60,6 +61,7 @@ namespace EQT {
 namespace Graphics {
 
 bool ZoneLoadComponent::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::IrrlichtScene);  // T491
     // ── Step 10: Sky — all sky, fog, weather ───────────────────────────────
     ctx.updateProgress(90, "Loading sky and weather...");
     {
@@ -341,6 +343,7 @@ bool ZoneLoadComponent::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
 }
 
 void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::IrrlichtScene);  // T491
     // ── Step 11: Env — environment subsystems ──────────────────────────────
     ctx.updateProgress(93, "Initializing environment...");
     {
@@ -790,6 +793,7 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
 }
 
 void ZoneLoadComponent::loadZoneStep12_Lights(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::IrrlichtScene);  // T491
     // ── Step 12: Lights — zone lighting ────────────────────────────────────
     ctx.updateProgress(96, "Setting up lighting...");
     {
@@ -849,6 +853,7 @@ void ZoneLoadComponent::loadZoneStep12_Lights(ZoneLoadContext& ctx) {
 }
 
 void ZoneLoadComponent::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::IrrlichtScene);  // T491
     // ── Step 12b: SimulationWorker first-frame computation ──────────────────
     // Create SimulationWorker, set zone data, and run one synchronous computation
     // so the first rendered frame after loading has full PVS culling, sorted draw

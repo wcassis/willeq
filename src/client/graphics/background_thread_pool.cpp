@@ -1,5 +1,6 @@
 #include "client/graphics/background_thread_pool.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 
 namespace EQT {
 namespace Graphics {
@@ -44,6 +45,7 @@ size_t BackgroundThreadPool::getPendingCount() const {
 }
 
 void BackgroundThreadPool::workerLoop() {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     while (true) {
         std::function<void()> task;
         {

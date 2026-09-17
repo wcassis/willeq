@@ -8,6 +8,7 @@
 #endif
 
 #include "client/application.h"
+#include "client/core/memory_ledger.h"
 #include "client/eq.h"
 #include "client/scenario/scenarios.h"
 #include "common/logging.h"
@@ -38,6 +39,10 @@ int main(int argc, char* argv[]) {
     // statement in main().
     mallopt(M_ARENA_MAX, 1);
 #endif
+
+    // T491: everything the main thread allocates before the loops start is
+    // process start-up (device, fonts, DB, config). The loops re-scope below.
+    eqt::memory::setThreadCategory(eqt::memory::Category::Startup);
 
     auto config = eqt::Application::parseArguments(argc, argv);
 

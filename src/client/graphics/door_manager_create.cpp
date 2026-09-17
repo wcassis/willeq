@@ -12,6 +12,7 @@
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 
 #include <algorithm>
 #include <cctype>
@@ -29,6 +30,7 @@ bool DoorManager::createDoor(uint8_t doorId, const std::string& name,
                               uint32_t incline, uint16_t size, uint8_t opentype,
                               bool initiallyOpen, uint32_t doorParam)
 {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Doors);  // T491
     if (!smgr_) {
         return false;
     }
@@ -221,6 +223,7 @@ bool DoorManager::registerDoor(uint8_t doorId, const std::string& name,
                                 uint32_t incline, uint16_t size, uint8_t opentype,
                                 bool initiallyOpen, uint32_t doorParam)
 {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Doors);  // T491
     if (!smgr_) {
         return false;
     }

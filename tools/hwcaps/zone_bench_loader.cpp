@@ -28,6 +28,7 @@
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eqe1_texture_index.h"
 #include "client/graphics/load_mem_audit.h"
+#include "client/core/memory_ledger.h"
 
 #ifdef EQT_HAS_GLES2
 extern bool gles2CreateStaticHWBuffer(void* driver, const void* meshBuffer);
@@ -201,9 +202,21 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     };
 
     sampleStep("bench_00_start");
+    // T491: the benchmark's lifecycle points mirror the client's
+    // (renderer_zone_load.cpp loadZoneSequential) -- same [memledger] line,
+    // same schema -- so scripts/ci/memory_cap_hunt.sh and the gate read both.
+    eqt::memory::setCurrentZone(config.zoneName);
+    auto ledgerPoint = [&](const char* point) {
+        printf("%s\n", eqt::memory::toLogLine(eqt::memory::snapshot(point)).c_str());
+        fflush(stdout);
+    };
+    ledgerPoint("startup");
 
     // ── Step 1: Create Irrlicht device ──
-    data->device = createDevice(config);
+    {
+        eqt::memory::MemoryScope devScope(eqt::memory::Category::Startup);  // T491
+        data->device = createDevice(config);
+    }
     if (!data->device) return nullptr;
     data->driver = data->device->getVideoDriver();
     data->smgr = data->device->getSceneManager();
@@ -219,6 +232,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     opts.loadCharacters = false;
     opts.computeCombinedGeometry = false;
 
+    eqt::memory::MemoryScope parseScope(eqt::memory::Category::ZoneParse);  // T491
     if (!loader.loadZone(archivePath, opts)) {
         fprintf(stderr, "ERROR: Failed to load zone: %s (%s)\n",
                 archivePath.c_str(), loader.getError().c_str());
@@ -244,8 +258,10 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
            data->zone->textures.size(),
            std::chrono::duration<double, std::milli>(loadEnd - loadStart).count());
     sampleStep("bench_02_s3d");
+    ledgerPoint("zone_parse");
 
     // ── Step 3: Set up constrained renderer config (OrangePi preset) ──
+    eqt::memory::MemoryScope texScope(eqt::memory::Category::TexturesDecoded);  // T491
     auto constrainedConfig = ConstrainedRendererConfig::fromPreset(
         ConstrainedRenderingPreset::OrangePi);
     constrainedConfig.eqe1Path = config.eqe1Path;
@@ -256,6 +272,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
 
     // ── Step 4b: Load EQE1 flat packs (zone-specific only) ──
     if (!config.eqe1Path.empty()) {
+        eqt::memory::MemoryScope arcScope(eqt::memory::Category::Archives);  // T491
         // Only load archives needed for this zone + global assets
         std::vector<std::string> eqe1Names = {
             config.zoneName,                    // zone geometry textures
@@ -287,6 +304,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     sampleStep("bench_04b_eqe1");
 
     // ── Step 5: Set up shaders ──
+    eqt::memory::MemoryScope sceneScope(eqt::memory::Category::IrrlichtScene);  // T491
     auto* gpu = data->driver->getGPUProgrammingServices();
     if (gpu) {
         data->zoneShader = std::make_unique<ZoneShaderManager>(data->driver, gpu);
@@ -320,6 +338,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     }
 
     // ── Step 7: Build per-region meshes ──
+    eqt::memory::MemoryScope meshScope(eqt::memory::Category::ZoneMesh);  // T491
     auto meshStart = std::chrono::steady_clock::now();
 
     ZoneMeshBuilder builder(data->smgr, data->driver, data->device->getFileSystem());
@@ -401,9 +420,11 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
            regionsBuilt, regionsSkipped, totalBuffers, uploaded,
            std::chrono::duration<double, std::milli>(meshEnd - meshStart).count());
     sampleStep("bench_07_meshes");
+    ledgerPoint("mesh_build_textures");
 
     // ── Step 7b: Load and build zone objects ──
     if (config.loadObjects) {
+        eqt::memory::MemoryScope objScope(eqt::memory::Category::Objects);  // T491
         auto objStart = std::chrono::steady_clock::now();
 
         // Re-load zone with objects enabled
@@ -548,6 +569,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     }
 
     // ── Step 8: Portal system ──
+    eqt::memory::MemoryScope portalScope(eqt::memory::Category::Spatial);  // T491
     // NOTE: Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.
     // The PortalSystem builds AABB portal quads from BSP boundaries but the
     // benchmark never used them for culling — it uses PVS bitvectors from the
@@ -561,7 +583,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     //        data->portalSystem->getData().portals.size(),
     //        data->portalSystem->hasPortals());
 
+    ledgerPoint("objects");
     // ── Step 9: Set up frustum culler ──
+    eqt::memory::MemoryScope spatialScope(eqt::memory::Category::Spatial);  // T491
     data->frustumCuller = std::make_unique<FrustumCuller>();
     data->frustumCuller->setEnabled(true);
 
@@ -649,8 +673,10 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                totalOccluders, regionsWithOccluders);
     }
 
+    ledgerPoint("spatial_bsp");
     // ── Step 11: Load entity models ──
     if (config.entityCount > 0) {
+        eqt::memory::MemoryScope entScope(eqt::memory::Category::EntityModels);  // T491
         auto entityStart = std::chrono::steady_clock::now();
 
         data->raceModelLoader = std::make_unique<RaceModelLoader>(
@@ -958,6 +984,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                config.entityCount, raceMeshes.size());
     }
     sampleStep("bench_11_entities");
+    ledgerPoint("entities");
 
     // ── Summary ──
     auto totalEnd = std::chrono::steady_clock::now();

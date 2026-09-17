@@ -21,6 +21,17 @@ OPTION(EQT_GLES2 "Use OpenGL ES 2.0 backend instead of desktop GL (for DRM+Mali/
 #   cmake -S . -B build -DEQT_LIVE_TESTS=ON
 #   ctest --test-dir build -L live
 OPTION(EQT_LIVE_TESTS "Register the live/integration tests (need a server + display) with ctest" OFF)
+# T491: the memory ledger (include/client/core/memory_ledger.h). ON replaces
+# the allocator entry points with attributing wrappers (glibc only); OFF is
+# zero-cost -- no symbol is replaced and MemoryScope is an empty struct. The
+# macro is defined for EVERY target (it is in a header every TU may include)
+# so the ledger TU and its callers can never disagree about the layout.
+OPTION(EQT_MEMORY_LEDGER "Attribute every anonymous byte to a lifecycle category at the allocator (T491)" ON)
+IF(EQT_MEMORY_LEDGER)
+    ADD_DEFINITIONS(-DEQT_MEMORY_LEDGER=1)
+ELSE()
+    ADD_DEFINITIONS(-DEQT_MEMORY_LEDGER=0)
+ENDIF()
 # H01: path to a locally-built patched Irrlicht (headers/ + lib/libIrrlicht.a),
 # e.g. third_party/irrlicht-gles2-x86/ produced by scripts/build-gles2-x86.sh.
 # When set, this overrides the system Irrlicht FIND_PATH/FIND_LIBRARY below.
@@ -265,6 +276,7 @@ SET(COMMON_SOURCES
 # Client sources (core - without main.cpp, for library)
 SET(CLIENT_CORE_SOURCES
     src/client/core/everquest.cpp
+    src/client/core/memory_ledger.cpp
     src/client/zone/zone_dispatch.cpp
     src/client/zone/zone_handshake.cpp
     src/client/zone/zone_entry.cpp
@@ -1972,6 +1984,7 @@ ENDIF()
 IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_zone_benchmark
         tools/hwcaps/gles2_zone_benchmark.cpp
+        src/client/core/memory_ledger.cpp
         tools/hwcaps/zone_bench_options.cpp
         tools/hwcaps/zone_bench_frame.cpp
         tools/hwcaps/zone_bench_modes.cpp

@@ -1,9 +1,12 @@
 #ifndef EQT_GRAPHICS_CONSTRAINED_RENDERER_CONFIG_H
 #define EQT_GRAPHICS_CONSTRAINED_RENDERER_CONFIG_H
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
+
+#include "client/core/memory_ledger.h"
 
 namespace EQT {
 namespace Graphics {
@@ -157,6 +160,17 @@ struct ConstrainedRendererConfig {
     // qeynos2_chr.s3d 2.44 MB) = 38.5 MiB -> 40 MiB. 40 resident races is
     // ~3x the 14 distinct models T289 measured live in befallen on the Pi.
     size_t characterModelsMemoryBytes = 0;
+
+    // T491: per-category budgets for the allocator-level memory ledger
+    // (client/core/memory_ledger.h), indexed by eqt::memory::Category and
+    // keyed by categoryName() in config/constrained_presets.json
+    // ("memoryLedgerBudgets"). 0 = no budget configured; the CI gate
+    // (scripts/ci/visual_gate.py) skips that category. Derived by the T293
+    // headroom rule from the three golden zones -- see docs/decisions.md
+    // 2026-09-14 for the table. Unlike the T69 estimates above these are
+    // measured at the allocator, so they bound EVERY byte the category
+    // allocates, transient intermediates included.
+    std::array<size_t, eqt::memory::kCategoryCount> memoryLedgerBudgetBytes{};
 
     // EQE1 flat-pack mmap pool. THIS ONE BOUNDS ADDRESS SPACE, NOT RAM --
     // mapping an archive costs virtual address space and only the touched

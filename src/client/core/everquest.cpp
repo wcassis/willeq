@@ -19,6 +19,7 @@
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
+#include "client/core/memory_ledger.h"
 
 // P28: inventory/chat/hotbar/command-registry are plain data-model headers
 // with no renderer dependency (used unconditionally below: m_inventory_manager,
@@ -457,6 +458,9 @@ bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 
 void EverQuest::TickNetwork()
 {
+	// T491: connection managers, packet buffers and the session recorder
+	// allocate here; DispatchZonePacket re-scopes to GameState underneath.
+	eqt::memory::MemoryScope netScope(eqt::memory::Category::Network);
 	if (m_login_world->LoginManager()) {
 		m_login_world->LoginManager()->Tick();
 	}

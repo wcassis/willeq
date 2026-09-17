@@ -5,6 +5,7 @@
 #include "client/audio/eff_loader.h"
 #include "client/audio/audio_manager.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <algorithm>
 
 namespace EQT {
@@ -24,6 +25,7 @@ void ZoneAudioManager::setAudioManager(AudioManager* audioManager) {
 }
 
 bool ZoneAudioManager::loadZone(const std::string& zoneName, const std::string& eqPath) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Audio);  // T491
     // Unload previous zone
     unloadZone();
 

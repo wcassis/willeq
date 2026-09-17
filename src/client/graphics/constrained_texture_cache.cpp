@@ -9,6 +9,7 @@
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/background_thread_pool.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <algorithm>
 #include <cstring>
 #include <functional>
@@ -116,6 +117,7 @@ void ConstrainedTextureCache::touchInternal(const std::string& name) {
 }
 
 irr::video::ITexture* ConstrainedTextureCache::getPlaceholderTextureInternal() {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDriver);  // T491
     if (placeholderTexture_) {
         return placeholderTexture_;
     }
@@ -158,6 +160,7 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
                                                           const std::string& category,
                                                           const std::string& callsite,
                                                           bool applyPaletteMask) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDecoded);  // T491
     std::lock_guard<std::mutex> lock(mutex_);
 
     // P46d: masked and unmasked variants of the same name are distinct cache
@@ -274,6 +277,7 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
 }
 
 irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& name, bool applyPaletteMask) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDecoded);  // T491
     std::lock_guard<std::mutex> lock(mutex_);
 
     // P46d: internalKey is the same (name, applyPaletteMask) key getOrLoad()
@@ -332,6 +336,9 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     }
 
     irr::core::dimension2d<irr::u32> size(entry.width, entry.height);
+    // T491: from here the bytes are the driver's (IImage copy, COGLES2Texture
+    // and its mip/lock buffers), not the cache's decoded entry.
+    eqt::memory::MemoryScope driverScope(eqt::memory::Category::TexturesDriver);
     irr::video::IImage* image = driver_->createImageFromData(
         irr::video::ECF_A8R8G8B8, size, argbData.data(), false);
 
@@ -438,6 +445,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
 }
 
 int ConstrainedTextureCache::uploadAllPending() {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDecoded);  // T491
     // Collect internal keys first (uploadTexture modifies decodedEntries_ and
     // compressedEntries_). P46d: these keys may already be mangled (see
     // cacheKey()) — splitCacheKey() recovers the real display name and

@@ -17,6 +17,7 @@
 #include <string>
 
 #include "zone_bench_loader.h"
+#include "client/core/memory_ledger.h"
 
 struct BenchMemorySnapshot {
     // Reused verbatim from ConstrainedTextureCache (unchanged since H02).
@@ -73,6 +74,13 @@ struct BenchMemorySnapshot {
     // totalMemoryBudgetBytes, which has shipped on the orangepi preset since
     // long before T293 with nothing asserting against it).
     size_t totalEstimateBudgetBytes = 0;
+
+    // T491: the allocator-level ledger (client/core/memory_ledger.h), taken
+    // at the end of the run ("benchmark_end"), and the per-category budgets
+    // from the SAME ConstrainedRendererConfig as the T293 budgets above
+    // (memoryLedgerBudgetBytes; 0 = no budget, the gate skips it).
+    eqt::memory::Snapshot ledger;
+    std::array<size_t, eqt::memory::kCategoryCount> ledgerBudgetBytes{};
 
     size_t totalEstimate = 0;      // sum of every category above with a defined estimate
     size_t processRssBytes = 0;    // this process's own RSS (/proc/self/statm)

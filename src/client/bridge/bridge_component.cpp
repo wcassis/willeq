@@ -32,6 +32,7 @@
 #include "client/formatted_message.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
+#include "client/core/memory_ledger.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
 
@@ -896,6 +897,16 @@ void eqt::bridge::BridgeComponent::SetLoadingPhase(LoadingPhase phase, const cha
 	float progress = GetLoadingProgress();
 	LOG_INFO(MOD_MAIN, "[LOADING][Phase {}/15] ({:.0f}%) {}",
 	         phaseNum, progress * 100.0f, m_loading_status_text);
+
+	// T491 lifecycle points on the game-thread side of the machine: the world
+	// handshake done (character select reached) and the zone fully ready.
+	// "ready" also arms the steady-state (60 s) point.
+	if (phase == LoadingPhase::WORLD_CHARACTER_SELECT) {
+		eqt::memory::recordPoint("login_world");
+	} else if (phase == LoadingPhase::COMPLETE) {
+		eqt::memory::recordPoint("ready", ctx_.self.CurrentZoneName());
+		eqt::memory::noteReady();
+	}
 
 	// Write to LoadingStatus for the loading thread's passive display loop
 #ifdef EQT_HAS_GRAPHICS

@@ -5,6 +5,7 @@
 #include "client/graphics/eq/equipment_textures.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <algorithm>
 #include <chrono>
 
@@ -123,6 +124,7 @@ bool EntityPrepWorker::isPendingForEntity(uint16_t spawnId) const {
 }
 
 EntityPrepWorker::PrepResult EntityPrepWorker::processRequest(PrepRequest&& req) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     auto start = std::chrono::steady_clock::now();
 
     // Step 1: Base race model prep (S3D load, WLD parse, animation merge)
@@ -385,6 +387,7 @@ void EntityPrepWorker::prepVariantTextures(const PrepRequest& req, PrepResult& r
 }
 
 void EntityPrepWorker::prepEquipmentModels(const PrepRequest& req, PrepResult& result) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Equipment);  // T491
     if (!equipLoader_) return;
 
     const auto& appearance = req.appearance;

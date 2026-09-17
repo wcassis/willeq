@@ -6,12 +6,14 @@
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <json/json.h>
 
 namespace EQT {
 namespace Graphics {
 
 bool UIAtlas::load(irr::video::IVideoDriver* driver, ConstrainedTextureCache* cache) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::UI);  // T491
     if (!driver || !cache) return false;
 
     // Load texture via constrained cache — EQE1 compressed entry "ui_atlas"

@@ -6,6 +6,7 @@
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <json/json.h>
 #include <fstream>
 #include <algorithm>
@@ -171,6 +172,7 @@ int EquipmentModelLoader::parseModelIdFromActorName(const std::string& actorName
 }
 
 void EquipmentModelLoader::ensureIndexLoaded() {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Equipment);  // T491
     if (archivesLoaded_) return;
 
     std::lock_guard<std::mutex> lock(initMutex_);
@@ -190,6 +192,7 @@ void EquipmentModelLoader::ensureIndexLoaded() {
 }
 
 bool EquipmentModelLoader::loadEquipmentArchives() {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Equipment);  // T491
     if (clientPath_.empty()) {
         LOG_ERROR(MOD_GRAPHICS, "EquipmentModelLoader: Client path not set");
         return false;
@@ -313,6 +316,7 @@ bool EquipmentModelLoader::loadEquipmentArchive(const std::string& archivePath) 
 }
 
 bool EquipmentModelLoader::loadEquipmentModelOnDemand(int modelId) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Equipment);  // T491
     auto indexIt = equipmentModelIndex_.find(modelId);
     if (indexIt == equipmentModelIndex_.end()) {
         return false;
@@ -379,6 +383,7 @@ bool EquipmentModelLoader::loadEquipmentModelOnDemand(int modelId) {
 }
 
 std::shared_ptr<TextureInfo> EquipmentModelLoader::getEquipmentTexture(const std::string& lowerName) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Equipment);  // T491
     // Check cache first
     auto cacheIt = textures_.find(lowerName);
     if (cacheIt != textures_.end()) {
@@ -429,6 +434,7 @@ const EquipmentModelData* EquipmentModelLoader::getEquipmentModelData(int modelI
 }
 
 irr::scene::IMesh* EquipmentModelLoader::getEquipmentMeshByModelId(int modelId) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Equipment);  // T491
     if (modelId < 0) {
         return nullptr;
     }

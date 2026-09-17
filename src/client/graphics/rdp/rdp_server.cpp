@@ -32,6 +32,7 @@
 #include <openssl/bn.h>
 
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <cstring>
 #include <algorithm>
 #include <chrono>
@@ -484,6 +485,7 @@ void RDPServer::addPeerThread(freerdp_peer* client) {
 }
 
 void RDPServer::listenerThread() {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Network);  // T491
     HANDLE handles[32];
     DWORD count;
 
@@ -519,6 +521,7 @@ void RDPServer::listenerThread() {
 }
 
 void RDPServer::peerThreadImpl(freerdp_peer* client, std::atomic<bool>* finished) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Network);  // T491
     RDPPeerContext* context = reinterpret_cast<RDPPeerContext*>(client->context);
     rdpSettings* settings = client->context->settings;
     rdpInput* input = nullptr;  // Declared early to avoid goto issues

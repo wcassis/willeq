@@ -20,6 +20,7 @@
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
+#include "client/core/memory_ledger.h"
 
 #ifdef WITH_AUDIO
 #include "client/audio/audio_manager.h"
@@ -112,6 +113,9 @@ void eqt::player::PlayerComponent::StartCampTimer()
 	// Phase 7.8 / T286: PlayerState is the only store, start time included
 	ctx_.game_state.player().setCamping(true);
 	ctx_.game_state.player().setCampStartTime(std::chrono::steady_clock::now());
+
+	// T491 lifecycle point: the user typed /camp.
+	eqt::memory::recordPoint("camp");
 
 	// Send OP_Camp to server to notify we're camping
 	SendCamp();

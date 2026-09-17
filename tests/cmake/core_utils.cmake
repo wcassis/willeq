@@ -225,3 +225,14 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_config_key_reachability PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_config_key_reachability DISCOVERY_TIMEOUT 120)
+
+# T491 (2026-09-14): the allocator-level memory ledger
+# (include/client/core/memory_ledger.h). Links the ledger TU directly -- it
+# REPLACES malloc/free/operator new for this whole binary, gtest included --
+# and exercises the hooks through the public allocation entry points.
+ADD_EXECUTABLE(test_memory_ledger
+    test_memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+)
+TARGET_LINK_LIBRARIES(test_memory_ledger GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} Threads::Threads)
+GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)

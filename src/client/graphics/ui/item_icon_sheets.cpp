@@ -8,6 +8,7 @@
 
 #include "client/graphics/constrained_texture_cache.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 
 namespace EQT {
 namespace Graphics {
@@ -15,6 +16,7 @@ namespace Graphics {
 namespace Layout = ItemIconAtlasLayout;
 
 bool ItemIconSheets::load(ConstrainedTextureCache* cache) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::UI);  // T491
     if (loaded_) return true;
     if (!cache) return false;
 

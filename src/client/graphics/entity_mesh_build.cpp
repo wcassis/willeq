@@ -13,6 +13,7 @@
 #include "client/graphics/eq/skeletal_animator.h"
 #include "client/animation_constants.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
 #include <algorithm>
@@ -32,6 +33,7 @@ bool EntityRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std
                                      float x, float y, float z, float heading, bool isPlayer,
                                      uint8_t gender, const EntityAppearance& appearance, bool isNPC,
                                      bool isCorpse, float serverSize, uint8_t entityLevel) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityInstances);  // T491
     if (!smgr_ || hasEntity(spawnId)) {
         return false;
     }
@@ -120,6 +122,7 @@ bool EntityRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std
 }
 
 bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityInstances);  // T491
     // If entity building is disabled, keep placeholder (zero disk I/O)
     if (constrainedConfig_ && constrainedConfig_->skipEntityBuild) {
         return false;
@@ -531,6 +534,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 }
 
 bool EntityRenderer::pollAndDistributePrepResults() {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityInstances);  // T491
     if (!entityPrepWorker_) return false;
     bool distributed = false;
     EntityPrepWorker::PrepResult result;

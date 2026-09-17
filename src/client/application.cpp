@@ -19,6 +19,7 @@
 #include "common/util/json_config.h"
 #include "common/logging.h"
 #include "common/performance_metrics.h"
+#include "client/core/memory_ledger.h"
 
 #include <filesystem>
 #include <fstream>
@@ -800,6 +801,8 @@ bool Application::initLoginConnection(const ApplicationConfig& config) {
 }
 
 void Application::run() {
+    // T491 lifecycle point: everything is constructed, nothing has run.
+    eqt::memory::recordPoint("startup");
     LOG_INFO(MOD_MAIN, "Starting main loop...");
     mainLoop();
     LOG_INFO(MOD_MAIN, "Main loop exited");
@@ -811,6 +814,8 @@ void Application::shutdown() {
     }
 
     LOG_INFO(MOD_MAIN, "Shutting down application...");
+    // T491 lifecycle point: the /camp (or window-close / SIGTERM) teardown.
+    eqt::memory::recordPoint("shutdown");
     m_running.store(false);
 
     // T47: clear all five bridge pointers (EverQuest::m_bridge plus the four
@@ -900,6 +905,9 @@ void Application::requestQuit() {
 
 // D21b: Game thread loop — network, game state, intent processing
 void Application::gameThreadLoop() {
+    // T491: the game thread owns game state; the network tick and packet
+    // dispatch re-scope themselves (Network / GameState) underneath.
+    eqt::memory::setThreadCategory(eqt::memory::Category::GameState);
     LOG_INFO(MOD_MAIN, "Game thread started");
     auto lastTick = std::chrono::steady_clock::now();
 
@@ -1022,9 +1030,13 @@ void Application::mainLoop() {
     m_gameThread = std::make_unique<std::thread>(&Application::gameThreadLoop, this);
 
     LOG_INFO(MOD_MAIN, "Entering render loop (main thread)");
+    // T491: per-frame driver/scene-manager work on the render thread is
+    // Irrlicht scene memory; UI draw re-scopes itself.
+    eqt::memory::setThreadCategory(eqt::memory::Category::IrrlichtScene);
 
     while (m_running.load()) {
         try {
+            eqt::memory::pollSteadyState();  // T491: "steady_60s" once per zone-in
             // P36: SIGTERM handler (above) only sets a flag -- do the actual
             // quit request here, in ordinary (non-signal-handler) code on the
             // main thread, going through the same requestQuit() path as

@@ -35,6 +35,7 @@
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include "client/data_paths.h"
 #include <fmt/format.h>
 #include "common/name_utils.h"
@@ -77,6 +78,7 @@ ZoneLoadComponent::ZoneLoadComponent(RendererContext& ctx, IrrlichtRenderer& own
 ZoneLoadComponent::~ZoneLoadComponent() = default;
 
 void ZoneLoadComponent::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Archives);  // T491
     // ── Step 0: EQE1 — open flat pack files (if configured) ────────────────
     if (!ctx_.config.constrainedConfig.eqe1Path.empty()) {
         ctx.updateProgress(48, "Opening EQE1 textures...");
@@ -198,6 +200,7 @@ void ZoneLoadComponent::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
 }
 
 bool ZoneLoadComponent::loadZoneStep1_S3D(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::ZoneParse);  // T491
     // ── Step 1: S3D — parse zone archive ───────────────────────────────────
     ctx.updateProgress(50, "Loading zone data...");
     {
@@ -261,6 +264,7 @@ bool ZoneLoadComponent::loadZoneStep1_S3D(ZoneLoadContext& ctx) {
 }
 
 void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Spatial);  // T491
     // ── Step 2: BSP — compute spatial data ─────────────────────────────────
     ctx.updateProgress(55, "Computing spatial data...");
     {
@@ -515,6 +519,7 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
 }
 
 void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::ZoneMesh);  // T491
     // ── Step 4: Regions — build ALL zone meshes eagerly ────────────────────
     ctx.updateProgress(63, "Building zone meshes...");
     {
@@ -763,6 +768,7 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
 }
 
 void ZoneLoadComponent::loadZoneStep5_Assets(ZoneLoadContext& ctx) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Archives);  // T491
     // ── Step 5: Assets — build indexes, create subsystems ──────────────────
     ctx.updateProgress(71, "Building asset indexes...");
     {
@@ -914,15 +920,22 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
     };
 
     sampleStep("00_start");
+    // T491: every [memledger] line of this zone-in carries the zone and a
+    // zone-in sequence number; the per-step points below are the contract's
+    // "zone parse / spatial / mesh build / textures / entities" set.
+    eqt::memory::setCurrentZone(ctx_.currentZoneName);
+    eqt::memory::recordPoint("zone_load_start");
 
     loadZoneStep0_EQE1(ctx);
     sampleStep("00_EQE1");
 
     if (!loadZoneStep1_S3D(ctx)) return;
     sampleStep("01_S3D");
+    eqt::memory::recordPoint("zone_parse");
 
     loadZoneStep2_BSP(ctx);
     sampleStep("02_BSP");
+    eqt::memory::recordPoint("spatial_bsp");
 
     // Step 3 (zone texture atlas) removed — E10: EQE1 flat packs replace atlas system.
     // Zone textures are loaded as individual ETC1 textures via constrained cache.
@@ -930,18 +943,24 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
 
     loadZoneStep4_Regions(ctx);
     sampleStep("04_Regions");
+    // Region build decodes and uploads the zone textures inline (the cache
+    // scopes them TexturesDecoded/TexturesDriver underneath ZoneMesh), so
+    // this one point is both "mesh build" and "textures".
+    eqt::memory::recordPoint("mesh_build_textures");
 
     loadZoneStep5_Assets(ctx);
     sampleStep("05_Assets");
 
     loadZoneStep6_Objects(ctx);
     sampleStep("06_Objects");
+    eqt::memory::recordPoint("objects");
 
     loadZoneStep7_Doors(ctx);
     sampleStep("07_Doors");
 
     if (!loadZoneStep8_Entities(ctx)) return;
     sampleStep("08_Entities");
+    eqt::memory::recordPoint("entities");
 
     loadZoneStep9_Collision(ctx);
     sampleStep("09_Collision");
@@ -960,6 +979,7 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
 
     loadZoneStep13_Cleanup(ctx);
     sampleStep("13_Cleanup");
+    eqt::memory::recordPoint("zone_load_complete");
 
     ctx_.sequentialLoadComplete = true;
     LOG_DEBUG(MOD_GRAPHICS, "SEQ DONE: sequentialLoadComplete_=true, fireGlowLights_={}, "

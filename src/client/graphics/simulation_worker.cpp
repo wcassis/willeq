@@ -5,6 +5,7 @@
 #include "client/graphics/environment/spell_particle_types.h"
 #include "client/hc_map.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -341,6 +342,7 @@ SimulationWorker::DebugInfo SimulationWorker::getDebugInfo() const {
 // ============================================================================
 
 void SimulationWorker::workerLoop() {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::IrrlichtScene);  // T491
     LOG_DEBUG(MOD_GRAPHICS, "SimulationWorker thread started");
 
     while (running_.load(std::memory_order_relaxed)) {

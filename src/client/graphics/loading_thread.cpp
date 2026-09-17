@@ -10,6 +10,7 @@
 #endif
 
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 
 namespace EQT {
 namespace Graphics {
@@ -140,6 +141,7 @@ void LoadingThread::threadFunc(irr::IrrlichtDevice* device,
                                 GLContextHandles handles,
                                 LoadingStatus& status,
                                 ActivePhaseCallback activeCallback) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::ZoneMesh);  // T491
     // Acquire GL context on this thread
     if (!acquireContext(handles)) {
         LOG_ERROR(MOD_GRAPHICS, "LoadingThread: failed to acquire GL context, aborting");

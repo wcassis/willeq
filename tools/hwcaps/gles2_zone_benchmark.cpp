@@ -19,6 +19,7 @@
 #include "zone_bench_merge_probe.h"
 #include "zone_bench_metrics.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 
 #include <algorithm>
 #include <chrono>
@@ -70,6 +71,8 @@
 // ======== Main ========
 
 int main(int argc, char** argv) {
+    // T491: same start-up scoping as the client's main().
+    eqt::memory::setThreadCategory(eqt::memory::Category::Startup);
     InitLogging(argc, argv);
     Options opts = parseArgs(argc, argv);
 
@@ -551,6 +554,12 @@ int main(int argc, char** argv) {
     // placement) -- both record (navmesh/orbit) and replay (--path-file)
     // populate the same per-frame trace, so the loop below no longer cares
     // which mode it's in.
+    // T491 lifecycle points: "ready" before the first frame, "steady" after
+    // the last, both to stdout in the same [memledger] schema as the client.
+    printf("%s\n", eqt::memory::toLogLine(eqt::memory::snapshot("ready")).c_str());
+    fflush(stdout);
+    eqt::memory::setThreadCategory(eqt::memory::Category::IrrlichtScene);
+    const uint64_t ledgerAllocsBeforeFrames = eqt::memory::snapshot("frames").allocCount;
     for (int frame = 0; frame < totalFrames; ++frame) {
         bool measuring = (frame >= opts.warmup);
 
@@ -964,6 +973,19 @@ int main(int argc, char** argv) {
 
     // ── Output results ──
     metrics.printSummary();
+    {
+        const auto steady = eqt::memory::snapshot("steady");
+        printf("%s\n", eqt::memory::toLogLine(steady).c_str());
+        if (totalFrames > 0) {
+            // T491: allocation rate of the frame loop, for the ledger-overhead
+            // arithmetic (allocs/frame x measured ns/alloc).
+            printf("[memledger] frame_allocs total=%llu frames=%d per_frame=%.1f\n",
+                   static_cast<unsigned long long>(steady.allocCount - ledgerAllocsBeforeFrames),
+                   totalFrames,
+                   static_cast<double>(steady.allocCount - ledgerAllocsBeforeFrames) / totalFrames);
+        }
+        fflush(stdout);
+    }
 
     if (!opts.csvFile.empty()) {
         metrics.writeCSV(opts.csvFile);

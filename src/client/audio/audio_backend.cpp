@@ -4,6 +4,7 @@
 #include "client/audio/audio_callback_probe.h"
 #include "client/audio/audio_mixer.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 
 #include <vector>
 #include <string>
@@ -191,6 +192,7 @@ void RDPAudioBackend::setOutputCallback(AudioOutputCallback callback) {
 }
 
 void RDPAudioBackend::pumpThread() {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Audio);  // T491
     static constexpr size_t BUFFER_FRAMES = 1024;
     std::vector<float> floatBuf(BUFFER_FRAMES * 2);
     std::vector<int16_t> s16Buf(BUFFER_FRAMES * 2);

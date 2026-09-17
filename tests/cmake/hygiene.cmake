@@ -176,3 +176,16 @@ ADD_TEST(NAME ZeroCallersSelfTest
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_zero_callers.py
             --self-test)
 SET_TESTS_PROPERTIES(ZeroCallersSelfTest PROPERTIES LABELS "hygiene")
+
+# T491 (2026-09-14): the memory-ledger half of the visual gate
+# (scripts/ci/visual_gate.py assert_memory_ledger) and the cap-hunt script
+# (scripts/ci/memory_cap_hunt.sh). The first drives the assertion on
+# synthetic memory dicts -- no benchmark, no artefact. The second runs the
+# hunt over a fake command under systemd-run --user --scope and SKIPs (125)
+# where no user manager exists. Both are pure-script checks, "hygiene" label.
+ADD_TEST(NAME VisualGateLedgerAssertions
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_visual_gate_ledger.py)
+SET_TESTS_PROPERTIES(VisualGateLedgerAssertions PROPERTIES LABELS "hygiene")
+ADD_TEST(NAME MemoryCapHuntScript
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/ci/test_memory_cap_hunt.sh)
+SET_TESTS_PROPERTIES(MemoryCapHuntScript PROPERTIES LABELS "hygiene" SKIP_RETURN_CODE 125)

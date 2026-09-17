@@ -12,6 +12,7 @@
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
 #include "common/performance_metrics.h"
 #include <algorithm>
 #include <cctype>
@@ -270,6 +271,7 @@ void RaceModelLoader::clearMeshCaches() {
 }
 
 std::shared_ptr<RaceModelData> RaceModelLoader::ensureModelDataLoaded(uint16_t raceId, uint8_t gender) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     uint32_t key = makeCacheKey(raceId, gender);
 
     // Check if model data is loaded
@@ -422,6 +424,7 @@ std::shared_ptr<RaceModelData> RaceModelLoader::ensureModelDataLoaded(uint16_t r
 }
 
 irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gender) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     auto funcStart = std::chrono::steady_clock::now();
     uint32_t key = makeCacheKey(raceId, gender);
 
@@ -491,6 +494,7 @@ bool RaceModelLoader::isRaceModelKnownMissing(uint32_t cacheKey) const {
 }
 
 void RaceModelLoader::promotePreparedModels() {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     std::lock_guard<std::mutex> lock(preparedDataMutex_);
     if (preparedModelData_.empty()) return;
     {
@@ -678,6 +682,7 @@ RaceModelLoader::ChrCacheAccounting RaceModelLoader::getChrCacheAccountingForTes
 }
 
 bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int textureVariant) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     uint32_t key = makeCacheKey(raceId, gender);
 
     // Check staging cache (thread-safe). If already staged or will be promoted,
