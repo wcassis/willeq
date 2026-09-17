@@ -73,7 +73,8 @@ int main(int argc, char** argv) {
     std::cout << "\n--- Player Region " << targetRegion << " ---" << std::endl;
     std::cout << "  containsPolygons: " << playerRegion->containsPolygons << std::endl;
     std::cout << "  meshReference: " << playerRegion->meshReference << std::endl;
-    std::cout << "  PVS size: " << playerRegion->visibleRegions.size() << std::endl;
+    const auto playerPvs = playerRegion->pvs();
+    std::cout << "  PVS size: " << playerPvs.size() << std::endl;
 
     auto playerGeom = loader.getGeometryForRegion(targetRegion);
     if (playerGeom) {
@@ -100,8 +101,8 @@ int main(int argc, char** argv) {
     size_t pvsVisibleTris = 0;
     std::vector<std::pair<size_t, size_t>> regionTriCounts; // (region_idx, tri_count)
 
-    for (size_t i = 0; i < playerRegion->visibleRegions.size(); ++i) {
-        if (!playerRegion->visibleRegions[i]) continue;
+    for (size_t i = 0; i < playerPvs.size(); ++i) {
+        if (!playerPvs[i]) continue;
         pvsVisibleCount++;
 
         auto geom = loader.getGeometryForRegion(i);
@@ -173,8 +174,7 @@ int main(int argc, char** argv) {
         float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 
         if (dist < 30.0f) {
-            bool pvsVisible = (i < playerRegion->visibleRegions.size() &&
-                               playerRegion->visibleRegions[i]);
+            bool pvsVisible = (i < playerPvs.size() && playerPvs[i]);
             std::cout << "  R" << i << ": " << geom->triangles.size() << " tris, "
                       << geom->vertices.size() << " verts, dist=" << std::fixed << std::setprecision(1) << dist
                       << " PVS=" << (pvsVisible ? "YES" : "NO")

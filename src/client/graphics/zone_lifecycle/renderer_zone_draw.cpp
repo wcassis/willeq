@@ -847,8 +847,8 @@ void ZoneLifecycleComponent::drawPortalRecursive(size_t fromRegion, int stencilL
         // Check PVS: is otherRegion visible from current region?
         if (ctx_.currentPvsRegion != SIZE_MAX && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size()) {
             const auto& currentRegionData = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion];
-            if (currentRegionData && otherRegion < currentRegionData->visibleRegions.size()) {
-                if (!currentRegionData->visibleRegions[otherRegion]) continue;
+            if (currentRegionData && otherRegion < currentRegionData->pvsRegionCount()) {
+                if (!currentRegionData->pvs()[otherRegion]) continue;
             }
         }
 

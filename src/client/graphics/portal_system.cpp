@@ -306,8 +306,10 @@ void PortalSystem::buildFromBsp(const BspTree& bsp,
         if (!regA->containsPolygons || !regB->containsPolygons) continue;
 
         // Check mutual PVS visibility
-        bool aSeesB = (p.regionB < regA->visibleRegions.size()) && regA->visibleRegions[p.regionB];
-        bool bSeesA = (p.regionA < regB->visibleRegions.size()) && regB->visibleRegions[p.regionA];
+        // T490: single lookups walk the RLE; no per-region bitset is decoded
+        // for a whole-zone pass like this one.
+        bool aSeesB = regA->pvsContains(p.regionB);
+        bool bSeesA = regB->pvsContains(p.regionA);
         if (!aSeesB || !bSeesA) continue;
 
         size_t portalIdx = data_.portals.size();

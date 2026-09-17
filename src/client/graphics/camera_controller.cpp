@@ -173,7 +173,7 @@ bool CameraController::isBspPointVisible(size_t originRegion, float eqX, float e
 
     // Check PVS: is pointRegion visible from the origin region?
     if (originRegion < bspTree_->regions.size()) {
-        const auto& playerPvs = bspTree_->regions[originRegion]->visibleRegions;
+        const auto playerPvs = bspTree_->regions[originRegion]->pvs();
         if (pointRegion < playerPvs.size()) {
             return playerPvs[pointRegion];
         }

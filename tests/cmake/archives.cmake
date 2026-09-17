@@ -44,3 +44,25 @@ IF(EQT_GRAPHICS)
     TARGET_LINK_LIBRARIES(test_wld GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
     GTEST_DISCOVER_TESTS(test_wld DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# T490: the BSP PVS is kept as the WLD's RLE bytes and decoded per camera
+# region through a bounded cache; the real-zone cases pin the parse's peak and
+# resident heap (a counting operator new seam in the test TU -- its own
+# executable so the seam cannot leak into other suites) under the orangepi
+# S3D-zone-source budget for iceclad and the three golden zones.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_zone_bsp_pvs
+        test_zone_bsp_pvs.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_material.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_mesh.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_actor.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_skeleton.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_light.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_fragments_bsp.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_zone_bsp_pvs GTest::gtest_main ${ZLIB_LIBRARIES} ${FMT_LIB})
+    GTEST_DISCOVER_TESTS(test_zone_bsp_pvs DISCOVERY_TIMEOUT 120)
+ENDIF()

@@ -128,19 +128,19 @@
 127 debugMat.Thickness = 2.0f;
 128 WorldLineBatch batch(ctx_, debugMat);
 129 ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
-130 std::shared_ptr<EQT::Graphics::BspRegion> pvsRegion;
+130 EQT::Graphics::PvsBits pvsRegion;
 131 if (ctx_.usePvsCulling && ctx_.zoneBspTree && ctx_.currentPvsRegion != SIZE_MAX
 132 && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size()) {
-133 pvsRegion = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion];
+133 pvsRegion = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion]->pvs();
 134 float camX = ctx_.playerX, camY = ctx_.playerY, camZ = ctx_.playerZ;
 135 for (auto& [regionIdx, eqBbox] : ctx_.regionBoundingBoxes) {
 136 irr::video::SColor color;
 137 bool pvsVisible = true;
-138 if (pvsRegion && !pvsRegion->visibleRegions.empty()) {
+138 if (!pvsRegion.empty()) {
 139 if (regionIdx == ctx_.currentPvsRegion) {
 140 pvsVisible = true;
-141 } else if (regionIdx < pvsRegion->visibleRegions.size()) {
-142 pvsVisible = pvsRegion->visibleRegions[regionIdx];
+141 } else if (regionIdx < pvsRegion.size()) {
+142 pvsVisible = pvsRegion[regionIdx];
 143 if (!pvsVisible) {
 144 color = irr::video::SColor(255, 64, 64, 255);  // Blue = PVS-culled
 145 } else {

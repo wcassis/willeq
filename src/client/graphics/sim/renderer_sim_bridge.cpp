@@ -53,31 +53,13 @@ SimulationZoneData SimBridgeComponent::buildSimulationZoneData() {
         zoneData.allBoundsIndices[i] = i;
     }
 
-    // Pre-compute PVS visible region lists per camera region.
-    // For each BspRegion with PVS data, extract its visibleRegions bitvector
-    // into a compact list of regionBounds indices.
+    // T490: the per-camera-region PVS candidate list is built on demand by
+    // the worker (SimulationZoneData::pvsCandidatesFor) from the region's
+    // RLE PVS, one camera region at a time. The whole-zone table this used to
+    // build here was regions x visible-per-region entries.
     if (zoneData.usePvsCulling && zoneData.bspTree) {
-        const auto& bsp = *zoneData.bspTree;
-        for (size_t camRegion = 0; camRegion < bsp.regions.size(); ++camRegion) {
-            if (!bsp.regions[camRegion]) continue;
-            const auto& pvs = bsp.regions[camRegion]->visibleRegions;
-            if (pvs.empty()) continue;
-
-            std::vector<size_t> indices;
-            // Walk the bitvector, collect regionBounds indices for visible regions
-            for (size_t regionIdx = 0; regionIdx < pvs.size(); ++regionIdx) {
-                if (!pvs[regionIdx]) continue;
-                auto it = zoneData.regionBoundsIndex.find(regionIdx);
-                if (it != zoneData.regionBoundsIndex.end()) {
-                    indices.push_back(it->second);
-                }
-            }
-            if (!indices.empty()) {
-                zoneData.pvsVisibleBoundsIndices[camRegion] = std::move(indices);
-            }
-        }
-        LOG_INFO(MOD_GRAPHICS, "PVS lookup tables built: {} camera regions with PVS data, {} total region bounds",
-                 zoneData.pvsVisibleBoundsIndices.size(), zoneData.regionBounds.size());
+        LOG_INFO(MOD_GRAPHICS, "PVS candidate lists: on demand per camera region, {} total region bounds",
+                 zoneData.regionBounds.size());
     }
 
     // Copy object data

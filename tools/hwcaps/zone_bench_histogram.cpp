@@ -140,8 +140,8 @@ OcclusionHeadroom computeOcclusionHeadroomUncapped(
     for (auto& [regionIdx, rd] : data.regions) {
         if (pvsCull && camRegion != SIZE_MAX && data.bspTree) {
             auto& camReg = data.bspTree->regions[camRegion];
-            if (camReg && regionIdx < camReg->visibleRegions.size() &&
-                !camReg->visibleRegions[regionIdx]) {
+            if (camReg && regionIdx < camReg->pvsRegionCount() &&
+                !camReg->pvs()[regionIdx]) {
                 continue;
             }
         }

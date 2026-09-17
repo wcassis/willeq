@@ -12,20 +12,27 @@
 
 namespace EQT { namespace Graphics {
 
-long readProcessRssKb() {
+ProcessRssKb readProcessRssBreakdownKb() {
+    ProcessRssKb out;
     FILE* f = std::fopen("/proc/self/status", "r");
-    if (!f) return 0;
+    if (!f) return out;
 
-    long rssKb = 0;
     char line[256];
     while (std::fgets(line, sizeof(line), f)) {
         if (std::strncmp(line, "VmRSS:", 6) == 0) {
-            std::sscanf(line + 6, "%ld", &rssKb);
-            break;
+            std::sscanf(line + 6, "%ld", &out.rssKb);
+        } else if (std::strncmp(line, "RssAnon:", 8) == 0) {
+            std::sscanf(line + 8, "%ld", &out.anonKb);
+        } else if (std::strncmp(line, "RssFile:", 8) == 0) {
+            std::sscanf(line + 8, "%ld", &out.fileKb);
         }
     }
     std::fclose(f);
-    return rssKb;
+    return out;
+}
+
+long readProcessRssKb() {
+    return readProcessRssBreakdownKb().rssKb;
 }
 
 void logLoadMemAuditStep(const char* stepName,
@@ -33,14 +40,14 @@ void logLoadMemAuditStep(const char* stepName,
                           size_t textureCacheBytes,
                           size_t meshCacheBytes,
                           size_t entityPrepBytes) {
-    long rssKb = readProcessRssKb();
+    ProcessRssKb rss = readProcessRssBreakdownKb();
     size_t accountedBytes = eqe1MappedBytes + textureCacheBytes + meshCacheBytes + entityPrepBytes;
     long accountedKb = static_cast<long>(accountedBytes / 1024);
-    long untrackedKb = rssKb - accountedKb;
+    long untrackedKb = rss.rssKb - accountedKb;
 
-    printf("[LOAD-MEM-AUDIT] step=%s rss_kb=%ld eqe1_mapped=%zu texcache=%zu "
+    printf("[LOAD-MEM-AUDIT] step=%s rss_kb=%ld anon_kb=%ld file_kb=%ld eqe1_mapped=%zu texcache=%zu "
            "meshcache=%zu entityprep=%zu accounted_kb=%ld untracked_kb=%ld\n",
-           stepName, rssKb, eqe1MappedBytes, textureCacheBytes,
+           stepName, rss.rssKb, rss.anonKb, rss.fileKb, eqe1MappedBytes, textureCacheBytes,
            meshCacheBytes, entityPrepBytes, accountedKb, untrackedKb);
     fflush(stdout);
 }

@@ -187,8 +187,8 @@ float EntityRenderer::findBoatDeckZ(float x, float y, float currentZ) const {
 
         // PVS check: skip if boat is not in a PVS-visible region from the camera
         if (currentCameraRegion_ && boat.cachedBspRegion != SIZE_MAX
-            && boat.cachedBspRegion < currentCameraRegion_->visibleRegions.size()
-            && !currentCameraRegion_->visibleRegions[boat.cachedBspRegion]) {
+            && boat.cachedBspRegion < currentCameraRegion_->pvsRegionCount()
+            && !currentCameraRegion_->pvs()[boat.cachedBspRegion]) {
             continue;
         }
 

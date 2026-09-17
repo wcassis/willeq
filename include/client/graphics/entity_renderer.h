@@ -611,7 +611,7 @@ public:
     // Set camera's BSP region (computed by IrrlichtRenderer::updatePvsVisibility)
     // Eliminates duplicate BSP lookup — entity renderer uses this for PVS entity culling
     // T407: the regionIdx parameter is accepted and discarded -- only the
-    // region pointer is read (currentCameraRegion_->visibleRegions). The
+    // region pointer is read (currentCameraRegion_->pvs()). The
     // index member it used to cache was written here and by
     // setBspTree()/clearBspTree() and read nowhere.
     void setCameraRegion(size_t /*regionIdx*/, std::shared_ptr<BspRegion> region) {
@@ -736,7 +736,7 @@ private:
 
     // PVS-based visibility culling
     std::shared_ptr<BspTree> bspTree_;                  // BSP tree for region lookups
-    std::shared_ptr<BspRegion> currentCameraRegion_;    // Camera's current region (has visibleRegions)
+    std::shared_ptr<BspRegion> currentCameraRegion_;    // Camera's current region (has PVS)
 
     // Frustum culling (non-owning pointer, owned by IrrlichtRenderer)
     FrustumCuller* frustumCuller_ = nullptr;

@@ -375,8 +375,8 @@ static void findRegionBoundariesRecursive(
                 if (a < bsp.regions.size() && b < bsp.regions.size()) {
                     const auto& regA = bsp.regions[a];
                     const auto& regB = bsp.regions[b];
-                    bool aSeesB = (b < regA->visibleRegions.size()) && regA->visibleRegions[b];
-                    bool bSeesA = (a < regB->visibleRegions.size()) && regB->visibleRegions[a];
+                    bool aSeesB = regA->pvsContains(b);
+                    bool bSeesA = regB->pvsContains(a);
                     if (aSeesB && bSeesA) {
                         boundaries.push_back({a, b, node.normalX, node.normalY, node.normalZ, node.splitDistance});
                     }

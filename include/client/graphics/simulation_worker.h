@@ -664,12 +664,18 @@ struct SimulationZoneData {
     // (regionVisible[] output is indexed by vector position, not region index)
     std::unordered_map<size_t, size_t> regionBoundsIndex;
 
-    // Pre-computed PVS visible region lists per camera region.
-    // For each region that has PVS data, stores the list of regionBounds vector
-    // indices whose regionIdx is in that region's visibleRegions bitvector.
-    // At runtime, iterate only this list instead of scanning all ~1900 regions.
-    // Key: camera region index. Value: vector of indices into regionBounds.
-    std::unordered_map<size_t, std::vector<size_t>> pvsVisibleBoundsIndices;
+    // T490: the PVS-visible regionBounds indices for ONE camera region, built
+    // when the camera region changes and reused until it changes again.
+    // This replaced a table of those lists for EVERY region
+    // (pvsVisibleBoundsIndices), which was regions x visible-per-region
+    // entries -- a second regions^2-shaped term on top of the dense PVS
+    // bitsets, and the reason iceclad could not fit the Orange Pi. Worker
+    // thread only (like everything on this struct after setZoneData()).
+    // Returns nullptr when the camera region has no PVS, so the caller falls
+    // back to allBoundsIndices exactly as the old table miss did.
+    const std::vector<size_t>* pvsCandidatesFor(size_t cameraRegion) const;
+    mutable size_t pvsCandidatesRegion = SIZE_MAX;
+    mutable std::vector<size_t> pvsCandidates;
 
     // Flat list of all regionBounds indices (fallback for no-PVS zones)
     std::vector<size_t> allBoundsIndices;

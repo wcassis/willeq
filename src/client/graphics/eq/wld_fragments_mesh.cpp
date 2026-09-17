@@ -484,7 +484,7 @@ bool WldLoader::hasPvsData() const {
 
     // Check if at least one region has PVS visibility data
     for (const auto& region : bspTree_->regions) {
-        if (!region->visibleRegions.empty()) {
+        if (region->hasPvs()) {
             return true;
         }
     }

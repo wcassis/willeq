@@ -58,7 +58,7 @@ protected:
         bsp->regions.resize(1);
         bsp->regions[0] = std::make_shared<BspRegion>();
         bsp->regions[0]->containsPolygons = true;
-        bsp->regions[0]->visibleRegions = std::vector<bool>(1, true);
+        bsp->regions[0]->setPvs(std::vector<bool>(1, true));
         data.bspTree = bsp;
         data.usePvsCulling = false;
 

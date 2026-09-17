@@ -30,18 +30,18 @@ bool DoorManager::isRegionPvsVisible(size_t regionIdx) const {
         || currentPvsRegion_ >= bspTree_->regions.size())
         return true;  // No PVS data — assume visible
     auto& camRegion = bspTree_->regions[currentPvsRegion_];
-    if (!camRegion || camRegion->visibleRegions.empty()
-        || regionIdx >= camRegion->visibleRegions.size())
+    if (!camRegion || !camRegion->hasPvs()
+        || regionIdx >= camRegion->pvsRegionCount())
         return true;
-    if (camRegion->visibleRegions[regionIdx])
+    const auto camPvs = camRegion->pvs();
+    if (camPvs[regionIdx])
         return true;  // Directly PVS-visible
     // Check 1-depth portal neighbors
     if (regionNeighbors_) {
         auto it = regionNeighbors_->find(regionIdx);
         if (it != regionNeighbors_->end()) {
             for (size_t neighbor : it->second) {
-                if (neighbor < camRegion->visibleRegions.size()
-                    && camRegion->visibleRegions[neighbor])
+                if (neighbor < camPvs.size() && camPvs[neighbor])
                     return true;
             }
         }
@@ -74,17 +74,18 @@ bool DoorManager::isRegionPvsVisibleDebug(size_t regionIdx, uint8_t doorId) cons
                   doorId, regionIdx, currentPvsRegion_);
         return true;
     }
-    if (camRegion->visibleRegions.empty()) {
+    if (!camRegion->hasPvs()) {
         LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (camRegion {} bitvec empty)",
                   doorId, regionIdx, currentPvsRegion_);
         return true;
     }
-    if (regionIdx >= camRegion->visibleRegions.size()) {
+    if (regionIdx >= camRegion->pvsRegionCount()) {
         LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (region >= bitvec size {})",
-                  doorId, regionIdx, camRegion->visibleRegions.size());
+                  doorId, regionIdx, camRegion->pvsRegionCount());
         return true;
     }
-    bool directlyVisible = camRegion->visibleRegions[regionIdx];
+    const auto camPvs = camRegion->pvs();
+    bool directlyVisible = camPvs[regionIdx];
     if (directlyVisible) {
         LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (bitvector[{}]=1, camRegion={})",
                   doorId, regionIdx, regionIdx, currentPvsRegion_);
@@ -95,8 +96,7 @@ bool DoorManager::isRegionPvsVisibleDebug(size_t regionIdx, uint8_t doorId) cons
         auto it = regionNeighbors_->find(regionIdx);
         if (it != regionNeighbors_->end()) {
             for (size_t neighbor : it->second) {
-                if (neighbor < camRegion->visibleRegions.size()
-                    && camRegion->visibleRegions[neighbor]) {
+                if (neighbor < camPvs.size() && camPvs[neighbor]) {
                     LOG_DEBUG(MOD_GRAPHICS, "Door-PVS-DBG [door#{}] region={}: VISIBLE (neighbor {} is PVS-visible)",
                               doorId, regionIdx, neighbor);
                     return true;

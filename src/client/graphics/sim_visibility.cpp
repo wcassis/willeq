@@ -12,6 +12,26 @@
 namespace EQT {
 namespace Graphics {
 
+// T490: PVS candidate list for the camera region, rebuilt on region change.
+// Decodes the region's RLE PVS once (through the tree's bounded cache) and
+// maps the visible region indices to regionBounds slots.
+const std::vector<size_t>* SimulationZoneData::pvsCandidatesFor(size_t cameraRegion) const {
+    if (!bspTree || cameraRegion >= bspTree->regions.size()) return nullptr;
+    const auto& region = bspTree->regions[cameraRegion];
+    if (!region || !region->hasPvs()) return nullptr;
+    if (pvsCandidatesRegion == cameraRegion) return &pvsCandidates;
+
+    pvsCandidates.clear();
+    const auto pvs = region->pvs();
+    for (size_t regionIdx = 0; regionIdx < pvs.size(); ++regionIdx) {
+        if (!pvs[regionIdx]) continue;
+        auto it = regionBoundsIndex.find(regionIdx);
+        if (it != regionBoundsIndex.end()) pvsCandidates.push_back(it->second);
+    }
+    pvsCandidatesRegion = cameraRegion;
+    return &pvsCandidates;
+}
+
 // ============================================================================
 // Region Calculation (prep layer — runs during loading too)
 // ============================================================================
@@ -38,10 +58,7 @@ void SimulationWorker::calculateRegions(const SimulationInput& input, Simulation
     // Select candidate list: pre-computed PVS-visible indices (O(PVS)) or all indices (O(N))
     const std::vector<size_t>* candidates = &zoneData_.allBoundsIndices;
     if (zoneData_.usePvsCulling && cameraRegion != SIZE_MAX) {
-        auto it = zoneData_.pvsVisibleBoundsIndices.find(cameraRegion);
-        if (it != zoneData_.pvsVisibleBoundsIndices.end()) {
-            candidates = &it->second;
-        }
+        if (const auto* pvsList = zoneData_.pvsCandidatesFor(cameraRegion)) candidates = pvsList;
     }
 
     for (size_t boundsIdx : *candidates) {
@@ -104,10 +121,7 @@ void SimulationWorker::computeVisibility(const SimulationInput& input, Simulatio
     // Select candidate list: pre-computed PVS-visible indices or all indices
     const std::vector<size_t>* candidates = &zoneData_.allBoundsIndices;
     if (zoneData_.usePvsCulling && output.currentPvsRegion != SIZE_MAX) {
-        auto it = zoneData_.pvsVisibleBoundsIndices.find(output.currentPvsRegion);
-        if (it != zoneData_.pvsVisibleBoundsIndices.end()) {
-            candidates = &it->second;
-        }
+        if (const auto* pvsList = zoneData_.pvsCandidatesFor(output.currentPvsRegion)) candidates = pvsList;
     }
 
     for (size_t boundsIdx : *candidates) {
@@ -332,7 +346,7 @@ void SimulationWorker::computeObjectVisibility(const SimulationInput& input, Sim
             obj.bspRegion != SIZE_MAX && output.currentPvsRegion != SIZE_MAX) {
             const auto& regions = zoneData_.bspTree->regions;
             if (output.currentPvsRegion < regions.size() && regions[output.currentPvsRegion]) {
-                const auto& pvs = regions[output.currentPvsRegion]->visibleRegions;
+                const auto pvs = regions[output.currentPvsRegion]->pvs();
                 if (!pvs.empty() && obj.bspRegion < pvs.size() && !pvs[obj.bspRegion]) {
                     output.objectVisible[i] = 0;
                     objPvsCulled++;
@@ -424,7 +438,7 @@ void SimulationWorker::computeLightVisibility(const SimulationInput& input, Simu
             light.bspRegion != SIZE_MAX && output.currentPvsRegion != SIZE_MAX) {
             const auto& regions = zoneData_.bspTree->regions;
             if (output.currentPvsRegion < regions.size() && regions[output.currentPvsRegion]) {
-                const auto& pvs = regions[output.currentPvsRegion]->visibleRegions;
+                const auto pvs = regions[output.currentPvsRegion]->pvs();
                 if (!pvs.empty() && light.bspRegion < pvs.size() && !pvs[light.bspRegion]) {
                     output.lightVisible[i] = 0;
                     ltPvsCulled++;
@@ -498,7 +512,7 @@ void SimulationWorker::computeObjectLightVisibility(const SimulationInput& input
             light.bspRegion != SIZE_MAX && output.currentPvsRegion != SIZE_MAX) {
             const auto& regions = zoneData_.bspTree->regions;
             if (output.currentPvsRegion < regions.size() && regions[output.currentPvsRegion]) {
-                const auto& pvs = regions[output.currentPvsRegion]->visibleRegions;
+                const auto pvs = regions[output.currentPvsRegion]->pvs();
                 if (!pvs.empty() && light.bspRegion < pvs.size() && !pvs[light.bspRegion]) {
                     output.objectLightVisible[i] = 0;
                     olPvsCulled++;

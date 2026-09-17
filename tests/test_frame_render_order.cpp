@@ -163,6 +163,14 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //       nothing may cover it, not even the Options window or the XP bar.
 //     The count rises 320 -> 328: five statements plus one plus one plus
 //     one, nothing removed and nothing replaced.
+//   * T490: the region-box debug overlay reads the camera region's PVS
+//     through the new decoded-bitset handle (BspRegion::visibleRegions, a
+//     dense vector<bool> per region, was regions^2/8 bytes across the tree
+//     and OOM-killed the Orange Pi on iceclad). FIVE entries changed text and
+//     nothing moved: 130 `std::shared_ptr<...BspRegion> pvsRegion;` became
+//     `EQT::Graphics::PvsBits pvsRegion;`, 133 gained `->pvs()`, and 138,
+//     141, 142 read `.empty()` / `.size()` / `[regionIdx]` on that handle
+//     instead of `->visibleRegions.*`. The count is UNCHANGED at 328.
 const size_t kGoldenSize = 328u;
 
 std::vector<std::string> readLines(const std::string& path) {

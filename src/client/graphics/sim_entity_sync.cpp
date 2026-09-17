@@ -395,7 +395,7 @@ void SimulationWorker::computeEntityVisibility(const SimulationInput& input, Sim
             if (er.cachedBspRegion != SIZE_MAX) {
                 const auto& regions = zoneData_.bspTree->regions;
                 if (output.currentPvsRegion < regions.size() && regions[output.currentPvsRegion]) {
-                    const auto& pvs = regions[output.currentPvsRegion]->visibleRegions;
+                    const auto pvs = regions[output.currentPvsRegion]->pvs();
                     if (!pvs.empty() && er.cachedBspRegion < pvs.size() && !pvs[er.cachedBspRegion]) {
                         visible = false;
                         cullReason = "pvs";
@@ -466,6 +466,7 @@ void SimulationWorker::computeNameTagVisibility(const SimulationInput& input, Si
         && output.currentPvsRegion < zoneData_.bspTree->regions.size()) {
         cameraRegion = zoneData_.bspTree->regions[output.currentPvsRegion].get();
     }
+    const PvsBits cameraPvs = cameraRegion ? cameraRegion->pvs() : PvsBits();
 
     for (auto& er : output.entityResults) {
         er.nameTagVisible = false;
@@ -486,10 +487,10 @@ void SimulationWorker::computeNameTagVisibility(const SimulationInput& input, Si
         bool visible = true;
 
         // PVS bitvector check
-        if (visible && cameraRegion && !cameraRegion->visibleRegions.empty()) {
+        if (visible && cameraRegion && cameraRegion->hasPvs()) {
             size_t entityRegion = er.cachedBspRegion;
-            if (entityRegion != SIZE_MAX && entityRegion < cameraRegion->visibleRegions.size()) {
-                if (!cameraRegion->visibleRegions[entityRegion]) {
+            if (entityRegion != SIZE_MAX && entityRegion < cameraRegion->pvsRegionCount()) {
+                if (!cameraPvs[entityRegion]) {
                     visible = false;
                 }
             }

@@ -438,6 +438,7 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
     // Centroid coords: Irrlicht Y-up (cx, cy, cz) → EQ Z-up (cx, cz, cy)
     bool usePvsFilter = false;
     std::shared_ptr<BspRegion> camRegion;
+    PvsBits camPvs;
     if (ctx_.zoneBspTree) {
         // Use currentPvsRegion_ if already computed, otherwise derive from player position
         // (handles the case where BSP preload just completed but PVS update hasn't run yet)
@@ -448,7 +449,8 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
         }
         if (cameraRegion != SIZE_MAX && cameraRegion < ctx_.zoneBspTree->regions.size()) {
             camRegion = ctx_.zoneBspTree->regions[cameraRegion];
-            if (camRegion && !camRegion->visibleRegions.empty()) {
+            if (camRegion && camRegion->hasPvs()) {
+                camPvs = camRegion->pvs();
                 usePvsFilter = true;
             }
         }
@@ -472,8 +474,8 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
         // PVS check: convert Irrlicht Y-up centroid to EQ Z-up for BSP lookup
         if (usePvsFilter) {
             size_t triRegion = ctx_.zoneBspTree->findRegionIndexForPoint(cx, cz, cy);
-            if (triRegion != SIZE_MAX && triRegion < camRegion->visibleRegions.size()
-                && !camRegion->visibleRegions[triRegion]) {
+            if (triRegion != SIZE_MAX && triRegion < camPvs.size()
+                && !camPvs[triRegion]) {
                 pvsCulledCount++;
                 continue;
             }

@@ -97,7 +97,7 @@ protected:
 
 std::shared_ptr<BspRegion> Region(std::vector<bool> pvs) {
     auto r = std::make_shared<BspRegion>();
-    r->visibleRegions = std::move(pvs);
+    r->setPvs(std::move(pvs));
     return r;
 }
 

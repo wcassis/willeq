@@ -798,7 +798,7 @@ bool OverlaysComponent::checkEntityLOS(const irr::core::vector3df& cameraPos, co
 
         if (camRegion != SIZE_MAX && entRegion != SIZE_MAX && camRegion != entRegion) {
             if (camRegion < ctx_.zoneBspTree->regions.size()) {
-                const auto& pvs = ctx_.zoneBspTree->regions[camRegion]->visibleRegions;
+                const auto pvs = ctx_.zoneBspTree->regions[camRegion]->pvs();
                 if (entRegion < pvs.size() && !pvs[entRegion]) {
                     return false;  // Not PVS-visible — wall between camera and entity
                 }

@@ -99,8 +99,10 @@ size_t WldLoader::getMemoryUsage() const {
             if (!region) continue;
             total += sizeof(BspRegion);
             total += region->regionTypes.capacity() * sizeof(RegionType);
-            total += region->visibleRegions.capacity() / 8;  // vector<bool>
         }
+        // T490: the RLE arena (every region's PVS, back to back) and the
+        // bounded decode cache -- not regions^2/8.
+        total += bspTree_->pvsArenaBytes() + bspTree_->pvsCacheBytes();
     }
 
     // Lights
@@ -171,10 +173,9 @@ void WldLoader::logMemoryBreakdown() const {
         for (const auto& region : bspTree_->regions) {
             if (!region) continue;
             bspBytes += sizeof(BspRegion) + region->regionTypes.capacity() * sizeof(RegionType);
-            size_t pvs = region->visibleRegions.capacity() / 8;
-            pvsBytes += pvs;
-            bspBytes += pvs;
         }
+        pvsBytes = bspTree_->pvsArenaBytes() + bspTree_->pvsCacheBytes();
+        bspBytes += pvsBytes;
     }
 
     // Skeleton/Animation
@@ -455,6 +456,8 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
               geometries_.size(), geometryByFragIndex_.size(), textures_.size(), brushes_.size(), textureRefs_.size(),
               materials_.size(), brushSets_.size(), resolvedMaterialListCache_.size(),
               skeletonTracks_.size(), modelRefs_.size(), placeables_.size(), objectDefs_.size(), lights_.size());
+
+    if (bspTree_) bspTree_->shrinkPvsArena();  // T490: trim the RLE arena's growth slack
 
     bool result = !geometries_.empty() || !placeables_.empty() || !objectDefs_.empty() || !skeletonTracks_.empty() || !lights_.empty();
     LOG_DEBUG(MOD_GRAPHICS, "WldLoader::parseWldBuffer: returning {}", result);

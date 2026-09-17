@@ -590,11 +590,11 @@ bool IrrlichtRenderer::isRegionPvsVisible(size_t regionIdx) const {
     if (!zoneBspTree_ || currentPvsRegion_ >= zoneBspTree_->regions.size())
         return true;
     auto& camRegion = zoneBspTree_->regions[currentPvsRegion_];
-    if (!camRegion || camRegion->visibleRegions.empty())
+    if (!camRegion || !camRegion->hasPvs())
         return true;
-    if (regionIdx >= camRegion->visibleRegions.size())
+    if (regionIdx >= camRegion->pvsRegionCount())
         return true;
-    return camRegion->visibleRegions[regionIdx];
+    return camRegion->pvs()[regionIdx];
 }
 
 // Dead code removed: updateObjectVisibility(), updateZoneLightVisibility(), updateObjectLights()

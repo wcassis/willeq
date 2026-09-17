@@ -389,10 +389,10 @@ void FrameComponent::renderDebugOverlays(float deltaTime) {
         ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
 
         // Get current PVS region for occlusion check
-        std::shared_ptr<EQT::Graphics::BspRegion> pvsRegion;
+        EQT::Graphics::PvsBits pvsRegion;
         if (ctx_.usePvsCulling && ctx_.zoneBspTree && ctx_.currentPvsRegion != SIZE_MAX
             && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size()) {
-            pvsRegion = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion];
+            pvsRegion = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion]->pvs();
         }
 
         float camX = ctx_.playerX, camY = ctx_.playerY, camZ = ctx_.playerZ;
@@ -403,11 +403,11 @@ void FrameComponent::renderDebugOverlays(float deltaTime) {
 
             // 1. PVS check
             bool pvsVisible = true;
-            if (pvsRegion && !pvsRegion->visibleRegions.empty()) {
+            if (!pvsRegion.empty()) {
                 if (regionIdx == ctx_.currentPvsRegion) {
                     pvsVisible = true;
-                } else if (regionIdx < pvsRegion->visibleRegions.size()) {
-                    pvsVisible = pvsRegion->visibleRegions[regionIdx];
+                } else if (regionIdx < pvsRegion.size()) {
+                    pvsVisible = pvsRegion[regionIdx];
                 }
             }
 

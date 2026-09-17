@@ -616,6 +616,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_zone_light_culling DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# T490: the simulation worker's PVS candidate list is built for the camera
+# region on demand (SimulationZoneData::pvsCandidatesFor), replacing the
+# per-region table the sim bridge used to build at zone load.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_sim_pvs_candidates
+        test_sim_pvs_candidates.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_sim_pvs_candidates PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_sim_pvs_candidates GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_sim_pvs_candidates DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # Integration test: Beneficial Spell Casting (connects to real EQEmu server with graphics enabled)
 # This test verifies beneficial spell casting works correctly - casting buffs on self and verifying
 # they land properly. Tests casting multiple spells in series and buff refresh behavior.

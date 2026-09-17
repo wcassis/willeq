@@ -174,8 +174,8 @@ void collectDrawEntries(
         // PVS culling
         if (pvsCull && camRegion != SIZE_MAX && data.bspTree) {
             auto& camReg = data.bspTree->regions[camRegion];
-            if (camReg && regionIdx < camReg->visibleRegions.size() &&
-                !camReg->visibleRegions[regionIdx]) {
+            if (camReg && regionIdx < camReg->pvsRegionCount() &&
+                !camReg->pvs()[regionIdx]) {
                 continue;
             }
         }
@@ -473,8 +473,7 @@ void collectObjectDrawEntries(
             bool pvsVisible = false;
             if (camReg) {
                 for (size_t regionIdx : obj.bspRegions) {
-                    if (regionIdx < camReg->visibleRegions.size() &&
-                        camReg->visibleRegions[regionIdx]) {
+                    if (camReg->pvsContains(regionIdx)) {
                         pvsVisible = true;
                         break;
                     }

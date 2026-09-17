@@ -416,12 +416,9 @@ TEST_F(IntegrationTest, PvsDataDecoding) {
     size_t maxVisible = 0;
 
     for (const auto& region : bspTree->regions) {
-        if (!region->visibleRegions.empty()) {
+        if (region->hasPvs()) {
             regionsWithPvs++;
-            size_t visibleCount = 0;
-            for (bool v : region->visibleRegions) {
-                if (v) visibleCount++;
-            }
+            size_t visibleCount = region->pvsVisibleCount();
             totalVisibleRegions += visibleCount;
             minVisible = std::min(minVisible, visibleCount);
             maxVisible = std::max(maxVisible, visibleCount);

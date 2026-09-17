@@ -64,7 +64,7 @@ protected:
             bsp->regions[i] = std::make_shared<BspRegion>();
             bsp->regions[i]->containsPolygons = true;
             // Nothing sees anything, including itself -- the harshest PVS.
-            bsp->regions[i]->visibleRegions = std::vector<bool>(2, false);
+            bsp->regions[i]->setPvs(std::vector<bool>(2, false));
         }
         return bsp;
     }
