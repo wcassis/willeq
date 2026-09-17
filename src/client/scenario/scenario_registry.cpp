@@ -16,6 +16,10 @@ const Entry kScenarios[] = {
     {"zone_in", &MakeZoneInScenario},
     {"two_client_survive", &MakeTwoClientSurviveScenario},
     {"cast_lands", &MakeCastLandsScenario},
+    // T494 (board B796): a PAIR. equip_observed is the verdict; equip_actor is
+    // the peer scripts/scenario.sh launches for it.
+    {"equip_observed", &MakeEquipObservedScenario},
+    {"equip_actor", &MakeEquipActorScenario},
 };
 
 }  // namespace

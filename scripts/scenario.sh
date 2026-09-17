@@ -11,6 +11,7 @@
 #   scripts/scenario.sh <scenario> [--timeout N] [--hold N] [--spell ID]
 #                                  [--config FILE] [--peer-config FILE]
 #                                  [--unit T###] [--keep-server]
+#                                  [--inventory-chars "67,68"] [--seed-sql FILE]
 #   scripts/scenario.sh --selftest [--unit T###] [--config FILE] [...]
 #
 # --selftest runs scripts/eqemu/restore_selftest.sh, the regression net for the
@@ -56,6 +57,13 @@ SPELL=46
 CONFIG=""
 PEER_CONFIG=""
 KEEP_SERVER=0
+# T494: a scenario that MOVES AN ITEM needs the inventory rows snapshotted and
+# put back too -- eqemu_snapshot only covers character_data/character_currency,
+# so before T494 an /equip left the row where the run put it. Both are
+# restore_lib.sh's (eqemu_inventory_snapshot / eqemu_inventory_restore); this
+# script still owns no restore SQL of its own.
+INVENTORY_CHARS=""
+SEED_SQL=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -66,6 +74,8 @@ while [ $# -gt 0 ]; do
         --peer-config) PEER_CONFIG="$2"; shift 2 ;;
         --unit) UNIT="$2"; shift 2 ;;
         --keep-server) KEEP_SERVER=1; shift ;;
+        --inventory-chars) INVENTORY_CHARS="$2"; shift 2 ;;
+        --seed-sql) SEED_SQL="$2"; shift 2 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -76,6 +86,7 @@ LOG="$OUT/${SCENARIO}_client.log"
 PEERLOG="$OUT/${SCENARIO}_peer.log"
 BEFORE="$OUT/${SCENARIO}_snapshot_before.tsv"
 AFTER="$OUT/${SCENARIO}_snapshot_after.tsv"
+INV_BEFORE="$OUT/${SCENARIO}_inventory_before.tsv"
 # A task worktree has no build/ of its own; the shared build lives in main.
 BIN="${WILLEQ_BIN:-}"
 if [ -z "$BIN" ]; then
@@ -84,10 +95,36 @@ if [ -z "$BIN" ]; then
     done
 fi
 
-[ -n "$CONFIG" ] || CONFIG="$REPO/scripts/scenario_configs/${SCENARIO}.json"
-[ -n "$PEER_CONFIG" ] || PEER_CONFIG="$REPO/scripts/scenario_configs/peer.json"
+# T494: the default config follows the LANE, exactly as
+# scripts/eqemu/restore_selftest.sh:85-94 already did. EQEMU_HOST=local means
+# this host's stack, whose configs are the gitignored `<name>.local.json`
+# copies; anything else is the VM and gets the shipped `<name>.json`. Without
+# this a `EQEMU_HOST=local` run took the local lock, brought the local stack up
+# and then pointed the client at the VM -- the lane leak T489/T493 hit.
+LANE_SUFFIX="json"
+[ "${EQEMU_HOST:-}" = "local" ] && LANE_SUFFIX="local.json"
+[ -n "$CONFIG" ] || CONFIG="$REPO/scripts/scenario_configs/${SCENARIO}.${LANE_SUFFIX}"
+[ -n "$PEER_CONFIG" ] || PEER_CONFIG="$REPO/scripts/scenario_configs/peer.${LANE_SUFFIX}"
 
 say() { printf '[scenario.sh] %s\n' "$*" >&2; }
+
+# Lane guard, same shape as restore_selftest.sh:120-131: the config's host must
+# be this lane's server, whichever way the mismatch runs.
+lane_check() {  # lane_check <config file>
+    local cfg="$1" cfg_host lane_host
+    [ -f "$cfg" ] || { say "no client config at $cfg"; return 1; }
+    cfg_host="$(sed -n 's/.*"host"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" | head -1)"
+    lane_host="$(eqemu_port_host)"
+    case "$cfg_host" in
+        "$lane_host"|127.0.0.1|localhost) return 0 ;;
+    esac
+    if [ "$lane_host" = 127.0.0.1 ] && hostname -I | tr ' ' '\n' | grep -qx "$cfg_host"; then
+        return 0
+    fi
+    say "LANE MISMATCH: ${cfg}'s host ${cfg_host} is not this lane's server (${lane_host}, EQEMU_HOST=${EQEMU_HOST:-unset}) -- refusing"
+    return 1
+}
+lane_check "$CONFIG" || exit 65
 
 # ---- 1. the lock, taken atomically -----------------------------------------
 if ! eqemu_lock_take "${UNIT} scenario.sh ${SCENARIO}"; then
@@ -140,6 +177,14 @@ restore_snapshot() {
     # scripts/eqemu/restore_selftest.sh pins it; `scenario.sh --selftest` runs
     # that.
     eqemu_restore_snapshot "$BEFORE" "$AFTER" say || RESTORE_BAD=1
+    # T494: the inventory half. eqemu_restore_snapshot has already stopped the
+    # eqemu-server container (eqemu_world_stop is idempotent), so this replaces
+    # the rows with the world down, same as the character rows above.
+    if [ -n "$INVENTORY_CHARS" ]; then
+        eqemu_world_stop
+        eqemu_inventory_restore "$INV_BEFORE" "$INVENTORY_CHARS"
+        say "inventory rows for ${INVENTORY_CHARS} restored from $(wc -l < "$INV_BEFORE") snapshot rows"
+    fi
 }
 
 # ---- 2. server up ----------------------------------------------------------
@@ -152,6 +197,17 @@ fi
 # ---- 3. snapshot -----------------------------------------------------------
 snapshot "$BEFORE"
 say "snapshot taken ($(wc -l < "$BEFORE") rows)"
+if [ -n "$INVENTORY_CHARS" ]; then
+    eqemu_inventory_snapshot "$INV_BEFORE" "$INVENTORY_CHARS"
+    say "inventory snapshot taken ($(wc -l < "$INV_BEFORE") rows for ${INVENTORY_CHARS})"
+fi
+
+# ---- 3b. seed, AFTER the snapshots so the restore takes it out again --------
+if [ -n "$SEED_SQL" ]; then
+    [ -f "$SEED_SQL" ] || { say "no --seed-sql file at $SEED_SQL"; exit 64; }
+    eqemu_sql "$(cat "$SEED_SQL")" >/dev/null || { say "--seed-sql failed"; exit 65; }
+    say "seeded from $SEED_SQL"
+fi
 
 # ---- 4. the peer, for two_client_survive ------------------------------------
 # The partner is a PEER PROCESS running zone_in on the second account -- the
@@ -160,18 +216,25 @@ say "snapshot taken ($(wc -l < "$BEFORE") rows)"
 # arrives as a fresh spawn packet rather than inside the bulk zone-in list;
 # the observer's peer window (180 s from ITS zone-in) covers that.
 PEER_PID=""
-if [ "$SCENARIO" = "two_client_survive" ]; then
+# T494: equip_observed needs the peer to ACT (equip_actor), not just exist.
+PEER_SCENARIO=""
+case "$SCENARIO" in
+    two_client_survive) PEER_SCENARIO="zone_in" ;;
+    equip_observed)     PEER_SCENARIO="equip_actor" ;;
+esac
+if [ -n "$PEER_SCENARIO" ]; then
     if [ ! -f "$PEER_CONFIG" ]; then
-        say "two_client_survive needs --peer-config <file> (a second account)"
+        say "$SCENARIO needs --peer-config <file> (a second account)"
         exit 64
     fi
+    lane_check "$PEER_CONFIG" || exit 65
     (
         sleep 55
-        "$BIN" -c "$PEER_CONFIG" --scenario zone_in --timeout "$TIMEOUT" \
+        "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO" --timeout "$TIMEOUT" \
             --log-level=INFO > "$PEERLOG" 2>&1
     ) &
     PEER_PID=$!
-    say "peer scheduled (zone_in, +55s, pid $PEER_PID)"
+    say "peer scheduled ($PEER_SCENARIO, +55s, pid $PEER_PID)"
 fi
 
 # ---- 5. the run ------------------------------------------------------------

@@ -27,6 +27,8 @@ public:
     int otherPlayers = 0;
     std::string playerName = "Testcaster";
     std::vector<uint32_t> buffs;
+    // T494: what the server has told us the OTHER player is wearing.
+    long long peerMaterial = -1;
 
     std::vector<std::string> commands;
     std::vector<std::string> notes;
@@ -37,6 +39,9 @@ public:
     int OtherPlayerCount() const override { return otherPlayers; }
     std::string PlayerName() const override { return playerName; }
     std::vector<uint32_t> PlayerBuffSpellIds() const override { return buffs; }
+    long long PeerEquipmentMaterial(const std::string&, int) const override {
+        return otherPlayers >= 1 ? peerMaterial : -1;
+    }
     void SendCommand(const std::string& rawLine) override { commands.push_back(rawLine); }
     void Note(const std::string& line) override { notes.push_back(line); }
 
@@ -65,12 +70,15 @@ ScenarioOptions DefaultOptions() { return ScenarioOptions{}; }
 // Registry
 // ===========================================================================
 
-TEST(ScenarioRegistry, KnowsTheThreeShippedScenarios) {
+TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     const std::vector<std::string> names = ScenarioNames();
-    EXPECT_EQ(names.size(), 3u);
+    EXPECT_EQ(names.size(), 5u);
     EXPECT_TRUE(IsScenarioName("zone_in"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));
     EXPECT_TRUE(IsScenarioName("cast_lands"));
+    // T494 (board B796): the observed-/equip pair.
+    EXPECT_TRUE(IsScenarioName("equip_observed"));
+    EXPECT_TRUE(IsScenarioName("equip_actor"));
 }
 
 TEST(ScenarioRegistry, UnknownNameIsNullNotACrash) {
@@ -357,4 +365,73 @@ TEST(CastLandsScenario, TheSpellIdIsAnOptionNotAConstant) {
     Advance(runner, 1.0);
     EXPECT_TRUE(runner.finished());
     EXPECT_EQ(runner.exitCode(), kScenarioPass);
+}
+
+// ===========================================================================
+// equip_observed / equip_actor -- T494 (board B796)
+// ===========================================================================
+//
+// The observer's whole claim is that it asserted on something only the SERVER
+// could have written. These cases pin that it never sends a command, that it
+// fails when no WearChange arrives, and that it passes on the 0 -> non-zero
+// transition -- with no client, no server and no network.
+
+TEST(EquipObservedScenario, SendsNothingAndFailsWhenNoWearChangeArrives) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos2";
+    world.otherPlayers = 1;
+    world.peerMaterial = 0;  // peer is empty-handed and stays that way
+
+    ScenarioRunner runner(MakeEquipObservedScenario(DefaultOptions()), world, 600.0, 60.0);
+    Advance(runner, 200.0);
+
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_TRUE(world.commands.empty()) << "the observer must send nothing";
+    EXPECT_NE(runner.reason().find("never left"), std::string::npos) << runner.reason();
+}
+
+TEST(EquipObservedScenario, PassesOnTheZeroToNonZeroTransition) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos2";
+    world.otherPlayers = 1;
+    world.peerMaterial = 0;
+
+    ScenarioRunner runner(MakeEquipObservedScenario(DefaultOptions()), world, 600.0, 60.0);
+    Advance(runner, 10.0);
+    world.peerMaterial = 5;  // the server's OP_WearChange: IT5
+    Advance(runner, 5.0);
+
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_TRUE(world.commands.empty());
+    EXPECT_NE(runner.reason().find("0 -> 5"), std::string::npos) << runner.reason();
+}
+
+TEST(EquipObservedScenario, FailsWhenNoPeerEverAppears) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos2";
+    world.otherPlayers = 0;
+
+    ScenarioRunner runner(MakeEquipObservedScenario(DefaultOptions()), world, 600.0, 60.0);
+    Advance(runner, 200.0);
+
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_NE(runner.reason().find("no second player"), std::string::npos) << runner.reason();
+}
+
+TEST(EquipActorScenario, SettlesThenTypesTheDbSlotNumber) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos2";
+
+    ScenarioRunner runner(MakeEquipActorScenario(DefaultOptions()), world, 600.0, 60.0);
+    Advance(runner, 10.0);
+    EXPECT_TRUE(world.commands.empty()) << "must not type before the inventory has arrived";
+
+    Advance(runner, 20.0);
+    // 23 is `inventory.slot_id` for general slot 1 -- the convention T494 set.
+    EXPECT_TRUE(world.sent("/equip 23 13")) << "actor never sent the equip";
+    EXPECT_TRUE(world.sent("/equip list"));
 }

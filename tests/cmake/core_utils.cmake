@@ -92,6 +92,7 @@ ADD_EXECUTABLE(test_scenario_state_machines
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_in.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_two_client_survive.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_cast_lands.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_equip_observed.cpp
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_state_machines PRIVATE ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_scenario_state_machines GTest::gtest_main)

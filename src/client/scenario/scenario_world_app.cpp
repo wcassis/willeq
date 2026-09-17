@@ -58,6 +58,29 @@ std::vector<uint32_t> ApplicationScenarioWorld::PlayerBuffSpellIds() const {
     return ids;
 }
 
+long long ApplicationScenarioWorld::PeerEquipmentMaterial(const std::string& peerName,
+                                                          int materialSlot) const {
+    // T494 (board B796). Entity::equipment[] (include/client/eq_types.h:69) is
+    // written in exactly one place -- EntitiesComponent::ZoneProcessWearChange()
+    // (src/client/entities/entities_component_appearance.cpp:409-440), the
+    // OP_WearChange handler -- so what this returns is the SERVER's statement
+    // about another character, never this client's belief about itself.
+    if (materialSlot < 0 || materialSlot >= 9) {
+        return -1;
+    }
+    const uint16_t me = client_.GetMySpawnID();
+    for (const auto& entry : client_.GetEntities()) {
+        if (entry.second.npc_type != 0 || entry.first == me) {
+            continue;  // same "live player, not us" rule OtherPlayerCount() uses
+        }
+        if (!peerName.empty() && entry.second.name != peerName) {
+            continue;
+        }
+        return static_cast<long long>(entry.second.equipment[materialSlot]);
+    }
+    return -1;
+}
+
 void ApplicationScenarioWorld::SendCommand(const std::string& rawLine) {
     // The same unified dispatch --script and piped stdin use (T29), so a
     // scenario can never reach a command a human operator could not.

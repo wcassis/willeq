@@ -18,5 +18,15 @@ std::unique_ptr<IScenario> MakeTwoClientSurviveScenario(const ScenarioOptions& o
 /** Gem-cast a spell and wait for the landing (T348's OP_Action buff path). */
 std::unique_ptr<IScenario> MakeCastLandsScenario(const ScenarioOptions& options);
 
+/**
+ * T494 (board B796): the OBSERVER half of the /equip proof. Sends nothing;
+ * asserts the PEER's primary equipment material changed, which only the
+ * server's OP_WearChange can do.
+ */
+std::unique_ptr<IScenario> MakeEquipObservedScenario(const ScenarioOptions& options);
+
+/** Its peer: settles, runs one `/equip <inventory.slot_id> 13`, then holds. */
+std::unique_ptr<IScenario> MakeEquipActorScenario(const ScenarioOptions& options);
+
 }  // namespace scenario
 }  // namespace eqt

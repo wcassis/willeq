@@ -56,6 +56,15 @@ public:
     virtual std::string PlayerName() const = 0;
     /** Spell ids of the buffs currently on the player, in slot order. */
     virtual std::vector<uint32_t> PlayerBuffSpellIds() const = 0;
+    /**
+     * T494: the equipment MATERIAL another player is wearing, as this client
+     * was told by the server (Entity::equipment[], filled only by
+     * EntitiesComponent::ZoneProcessWearChange()). `peerName` empty means "the
+     * one other player". Returns -1 when there is no such peer, so a scenario
+     * can tell "not there" from "there, wearing nothing" (0).
+     */
+    virtual long long PeerEquipmentMaterial(const std::string& peerName,
+                                            int materialSlot) const = 0;
 
     // --- actions ---
     /** Dispatch one slash command line, exactly as --script would. */
