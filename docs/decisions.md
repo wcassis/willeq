@@ -1148,3 +1148,52 @@ thing the Pi rig needs that the x86 one does not is **`--log-module=MAIN:INFO`**
 `[memledger]`/`[memmap]` are `LOG_INFO` on `MOD_MAIN`, the Pi runs at the
 default quiet level, and T490's Pi logs contain zero `[INFO]` lines — the
 ledger was silent there and nobody had noticed.
+
+## 2026-09-17 (addendum) — 100% accounting means the LEDGER's own overhead has a name (T500)
+
+**Will's standing decision, restated at T500:** *"for memory, 100% ACCOUNTING
+of all use is the PRIMARY goal and non-negotiable; the 32–64 MB target is
+secondary."* Three rules follow, and T500 is the unit that had to learn each
+one.
+
+**1. A subsystem's own byte tally reconciles against `liveRequestedBytes`, not
+against `liveBytes`.** The ledger charges the whole glibc chunk: the caller's
+bytes, plus glibc's size word, plus its 16-byte rounding, plus the ledger's
+OWN 16-byte `LedgerHeader`. That is real resident memory and `liveBytes` stays
+the number checked against RssAnon — but no logical tally can ever reach it.
+MEASURED on x86 over twelve race models: **5,786,646 B across 185,396 live
+blocks, 31.2 B each, 11 % of `entity_models`.** `CategoryStats` now carries
+`liveRequestedBytes`, `liveBlocks` and `blockOverheadBytes`, so the gap is a
+named bucket instead of a residual. It cost no header bytes: the cached chunk
+size was replaced by the requested size and the chunk is recomputed from
+glibc's own chunk word (a 24-byte header would break `max_align_t`, and a
+32-byte one would double the overhead being measured).
+
+**2. A truncated census is not accounting.** `recordMappings()` at `startup`
+and `ready` prints every owner row, not the top 16. `RssShmem` is read and on
+the `[memledger]` line beside `RssFile` and `VmRSS`; file-backed and shared
+pages had never been in any number this project quotes, and they count against
+a cgroup cap exactly as anon does. T500 Leg C is the demonstration: on qeynos2
+RssAnon fell 21.0 MB between two runs while RssFile ROSE 22.4 MB, and VmRSS
+did not move — an anon-only table would have reported a 21 MB win that does
+not exist.
+
+**3. `unaccounted` and `malloc_slack` are defects to be explained, not
+residues.** If a change moves either, the unit says by how much and why.
+
+**Corollary T500 paid for (board B843):** a structure shared between two
+subsystems has ONE owner in the ledger, and the other must not tally it. The
+`[modelmem]` split closes to −0.9 % on x86, where every model is loaded under
+`ensureModelDataLoaded()`'s `EntityModels` scope, and over-counts by 125 % on
+the Pi, where `graphicsArchiveIndex_` is set and the same `TextureInfo` pixels
+are allocated under other scopes. Both numbers are right about their own
+machine; the tally is wrong about ownership.
+
+**Corollary on where a measurement is valid (board B844):** the Pi and x86 do
+not run the same loader path. T500's Leg B fix — the numbered globals'
+textures no longer dragging in their characters — is worth 19.0 MB on x86 and
+**24 bytes** on the Pi, because `getMergedTextures()` already guarded that
+load with `!graphicsArchiveIndex_` and the orangepi preset sets the index. An
+offline x86 win is not a Pi win until the Pi says so, which is what the 2026-09-17
+"the PI's shrink queue is the planning list" rule above already said about
+PLANNING and this says about CONFIRMING.

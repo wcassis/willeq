@@ -135,4 +135,146 @@ ledger's categories, NOT `renderer_zone_*`/`renderer_zone_merge.cpp` (B838), NOT
 `entity_mesh_build.cpp`/`animated_mesh_scene_node.cpp` (next unit).
 
 ## Review
-(executor)
+(executor, 2026-09-17)
+
+Every figure below is `[measured]` unless it says otherwise. Full evidence:
+`review/T500/README.md` and `review/T500/pi/`.
+
+### Leg A — the split CLOSES, at −1.28 %
+
+Will's addendum of 2026-09-17 made this the unit's deliverable rather than its
+preamble, with a STOP if it did not close. It closes, but only after the
+residual turned out to be five things rather than the plan's three, and the
+last of them was in the ledger, not in the loader.
+
+x86, twelve global_chr races, `Category::EntityModels`, deltas:
+
+- the ten pre-existing terms covered **30,858,350 of 59,275,152** — 48 % was a
+  residual nobody had named.
+- the plan's three new terms: `merged_tex_map` **2,376,336** (12 maps, 29,688
+  entries, **exactly 1 distinct**), `src_char_*` **4,906,281** (global
+  2,049,649 / numbered 2,856,632 / zone 0 / other 0 — an exact SUBDIVISION of
+  `characterModelBytes`, which did not move), `dup_geometry` **4,863,104**.
+  That reached 46,204,592, residual 22.05 %.
+- what the rest was made of, and the plan did not anticipate:
+  **`src_skel_*` 14,401,943** — nothing had ever charged the skeletons the
+  source `CharacterModel`s retain, and 12,629,571 of it is global2-7;
+  **`skel_containers` 7,962,825** — what `calcSkeletonBytes()` omits (the map
+  nodes holding the tracks, the `TrackDef`/`TrackRef` objects, the `shared_ptr`
+  control blocks, a flat 64 B per `Animation` track where the real cost is
+  ~152); `material_lists` 247,372; `tex_objects` 289,911;
+  `loader_tex_maps` 407,016; `container_capacity` 4,672.
+- **`block_overhead` 5,786,646 over 185,396 live blocks, 31.2 B each.** The
+  ledger charges the whole glibc chunk — caller bytes, glibc's size word, its
+  16-byte rounding, and the ledger's OWN 16-byte `LedgerHeader` — so no logical
+  tally can ever reach `liveBytes`. This is the one that needed a ledger
+  change: `CategoryStats` now carries `liveRequestedBytes`, `liveBlocks` and
+  `blockOverheadBytes`, and the split is asserted against the logical side.
+  The header grew no bytes — the cached chunk size was replaced by the
+  requested size and the chunk is recomputed from glibc's own chunk word.
+
+**Final: 54,172,089 tallied against 53,485,626 live requested, residual
+−686,463 = −1.28 %.** The sign is an over-count and its cause is known: SSO
+strings are charged `capacity()` = 15 where they cost no heap. `[assumed]`
+that this is the whole of the −1.28 %; it is the only over-charging term found
+and the magnitude is right, but it was not isolated.
+
+Also from the addendum: `RssShmem` is read and reported (it was read nowhere),
+`VmRSS` is on the `[memledger]` line, and `recordMappings()` at `startup` and
+`ready` prints EVERY owner row rather than the top 16.
+
+### Leg B — target (b), not (a); −19.0 MB on x86; red-first on ledger bytes
+
+(b) is ~13× (a): 2.38 MB of map copies against ~32 MB of retained source data.
+Inside (b), the plan's first option — dropping `partsWithTransforms`/`rawParts`
+once the combined geometry is registered — **hits STOP 5**:
+`preloadVariantModel()` re-reads exactly those vectors of an already-combined
+character to pick body/head variant parts, and WearChange reaches it. Not done.
+
+The plan's second option is what was done, in its narrowest form.
+`getMergedTextures()` called `loadNumberedGlobalModels()` for global2-7's
+TEXTURES and the call retained every `CharacterModel` in all six archives —
+**15,486,203 B** — for archives the default old-models path takes no model
+from. The textures are still loaded eagerly; the characters are loaded per
+archive, on demand, by `ensureNumberedGlobalCharacters()`, which
+`loadModelFromNumberedGlobal()` calls. **Nothing is dropped**: the worst case
+(a race in none of the six) does the work it did before, and the test's own
+evidence is that ONE numbered archive is still retained after loading twelve
+global_chr races, because one of those races' models really comes from it.
+
+Red (pre-fix): `src_char_numbered` 2,856,632 and `src_skel_numbered`
+12,629,571 asserted == 0 on the texture path alone; logical live 53,485,626
+against a 40 MiB bound. Green: 0, 0, and 34,449,051.
+
+| | before | after |
+|---|---:|---:|
+| logical live | 53,485,626 | **34,449,051** (−35.6 %) |
+| chunk live | 59,272,272 | 37,734,784 |
+| live blocks | 185,396 | 102,371 |
+| `tex_numbered` | 9,781,900 | 9,781,900 (unchanged) |
+| split residual | −1.28 % | −0.88 % |
+
+### Leg C — the Pi says the win does not reach it
+
+Four runs (two zones × two builds), LOCAL lane, all exit 0, right zone, no OOM.
+
+| zone | `entity_models` live @ ready | | peak | |
+|---|---:|---:|---:|---:|
+| | before | after | before | after |
+| qeynos2 | 23,985,576 | 23,985,552 (**−24 B**) | 62,543,112 | 62,542,784 |
+| befallen | 19,805,912 | 19,805,904 (**−8 B**) | 62,536,456 | 62,536,344 |
+
+`getMergedTextures()` already guards the numbered-global load with
+`!graphicsArchiveIndex_`, and the orangepi preset sets the index — so the
+defect Leg B fixed does not exist there. The after-run's `[modelmem]` confirms
+it from the other side: `src_char_numbered=0 src_skel_numbered=0
+tex_numbered=0`. Board **B844**. The x86 win is real for every
+non-archive-index consumer (the tools, the tests, `--no-graphics` rigs) and it
+is worth having, but it is not a Pi win and is not reported as one.
+
+RssAnon/RssFile/`over_target`/`08_Entities` moved in OPPOSITE directions in the
+two zones and are not quoted as a result — qeynos2 −21.0 MB anon / +22.4 MB
+file with VmRSS +1.4 MB, befallen +18.1 MB anon / +12.4 MB file. All four runs
+swapped (528–38,916 kB). **This is exactly why the addendum asked for RssFile:
+an anon-only table would have claimed a 21 MB win that does not exist.**
+`unaccounted` 1,290,240 → 0 on qeynos2 and 0 in both befallen runs, which is
+the same re-split, not a reduction. `malloc_slack` moved +615,888 /
+−779,944 B at `ready` — noise against a 19–32 MB base — and then 31.58 →
+47.67 MB between `ready` and `steady_60s` while the ledger freed 17.4 MB and
+RssAnon fell 0.09 MB (B841).
+
+The Pi's own head, from the `[modelmem]` line and not contested by B843:
+`otherChrCaches_` (`src_skel_other` 4,106,346 + `src_char_other` 2,693,014 =
+6.80 MB) then `dup_geometry` 5,381,308. That is the next unit's target.
+
+### The finding that outlives this unit: B843
+
+The `[modelmem]` tally closes to −0.9 % on x86 and **over-counts by 125 % on
+the Pi** (49,778,752 against 22,146,989). The x86 test loads every model under
+`ensureModelDataLoaded()`'s `EntityModels` scope; the Pi has
+`graphicsArchiveIndex_` set and the same `TextureInfo` pixels are allocated
+under other scopes. Nothing is lost — the ledger's own total is unaffected —
+but a shared structure has two claimants and 100 % accounting allows one.
+Boarded rather than fixed: the plan forbids touching the ledger's categories,
+and deciding who owns a shared `TextureInfo` is Will's call.
+
+### STOPs honoured
+
+No budget moved (B831 still open). No golden re-blessed. Nothing that changes
+what is drawn: no texture size, variant set, `chrCacheMaxEntries`,
+`entityLoadRadius`/`entityRenderDistance`, no composite entities. The split
+closed within 2 %. Leg B's fix drops nothing a reachable path reads — and the
+alternative that would have (option 1, the `rawParts` drop) was stopped.
+
+### Territory taken outside the plan, and why
+
+`include/client/core/memory_ledger.{h,cpp}` (requested-bytes tracking,
+`RssShmem`), `src/client/application.cpp` and
+`src/client/bridge/bridge_component.cpp` (full `[memmap]` census),
+`tests/test_memory_ledger.cpp` (the two new schema keys),
+`scripts/refactor/check_write_only_fields.py` (the B337 exemption for
+`MemoryStats::loadedModelCount` went stale the moment `[modelmem]` printed it),
+`CMakeLists.txt` + `tests/cmake/graphics.cmake` (four targets that compile
+`model_loading_search.cpp` now need the ledger TU). The ledger work is Will's
+addendum; the rest is fallout from it. **The ledger's CATEGORIES were not
+touched.**
