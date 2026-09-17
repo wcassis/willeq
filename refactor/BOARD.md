@@ -11826,7 +11826,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   measurement one. Fix: give each case its own `WILLEQ_CACHE_DIR`, or put the
   three in a ctest RESOURCE_LOCK. Nothing to do with T500's change; found by
   its final suite run.
-  [closed 2026-09-17, B845 unit] Root cause [measured]: `ColdSoundIndex`'s
+  [closed 2026-09-17, task/kb-b845-audio-peak-isolation] Root cause [measured]: `ColdSoundIndex`'s
   per-process `WILLEQ_CACHE_DIR` (`/tmp/t496_audio_peak_<pid>`) already
   isolated the WRITE, but `loadPfsIndexCache()` -> `ResolveCachePathForRead()`
   fell through the empty per-process dir to the SHARED `<exe dir>/cache`
