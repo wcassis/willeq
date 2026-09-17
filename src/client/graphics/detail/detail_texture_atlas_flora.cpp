@@ -10,6 +10,15 @@
 
 namespace EQT {
 namespace Graphics {
+
+namespace {
+// Subtract from an 0-255 channel without underflowing the unsigned type
+// SColor's accessors return. See drawShell() (T495).
+irr::u32 darken(irr::u32 channel, irr::u32 amount) {
+    return channel > amount ? channel - amount : 0u;
+}
+}  // namespace
+
 namespace Detail {
 // ============================================================
 // Snow biome (Velious) - Row 1
@@ -196,7 +205,16 @@ void DetailTextureAtlas::drawShell(irr::video::IImage* image, int startX, int st
 
         // Spiral lines
         for (int r = 1; r < rx; r += 2) {
-            irr::video::SColor lineColor(255, baseColor.getRed() - 30, baseColor.getGreen() - 30, baseColor.getBlue() - 20);
+            // T495 swept the B789/B790 pattern here: `getRed()` returns
+            // `irr::u32`, so `- 30` on a channel below 30 wraps to ~4.29e9 and
+            // SColor's `& 0xff` keeps a garbage byte. All three shell colours
+            // are >= 180 in every channel today, so this produced the right
+            // pixels and detail_atlas.bmp does not move (TexturesReproducible
+            // is the net); the clamp is so a darker shell colour cannot turn
+            // into a bright one.
+            irr::video::SColor lineColor(255, darken(baseColor.getRed(), 30),
+                                         darken(baseColor.getGreen(), 30),
+                                         darken(baseColor.getBlue(), 20));
             for (float a = 0; a < 3.14f; a += 0.3f) {
                 int px = cx + static_cast<int>(r * std::cos(a));
                 int py = cy - static_cast<int>((r * 0.6f) * std::sin(a));

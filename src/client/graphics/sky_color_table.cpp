@@ -107,10 +107,15 @@ const SkyColorSet TWILIGHT = {
     0.35f
 };
 
-// PRE-T495 ARITHMETIC, MOVED VERBATIM. This is the defect; the next commit
-// replaces it. Kept for exactly one commit so the red tests show the bug.
+// T495: the whole defect was here. `SColor::getRed()` and friends return
+// `irr::u32`, so the old `a + (b - a) * t` wrapped on every DECREASING channel.
+// Doing the difference in float cannot wrap; the clamp and the round then keep
+// the result a legal channel.
 irr::u32 lerpChannel(irr::u32 a, irr::u32 b, float t) {
-    return static_cast<irr::u32>(a + (b - a) * t);
+    const float af = static_cast<float>(a);
+    const float bf = static_cast<float>(b);
+    const float v = std::clamp(af + (bf - af) * t, 0.0f, 255.0f);
+    return static_cast<irr::u32>(std::lround(v));
 }
 
 irr::video::SColor lerpColor(const irr::video::SColor& a, const irr::video::SColor& b, float t) {
