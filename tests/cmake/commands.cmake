@@ -561,6 +561,7 @@ ADD_EXECUTABLE(test_eq_commands_equip
     test_eq_commands_equip_moves.cpp
     test_eq_commands_equip_swaps.cpp
     test_eq_commands_equip_bags.cpp
+    test_inventory_slot_convention.cpp
 )
 TARGET_LINK_LIBRARIES(test_eq_commands_equip GTest::gtest_main willeq_core)
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
