@@ -362,7 +362,9 @@ TEST(ScribeScroll, SlotFormPushesScribeSpellIntent) {
     ASSERT_NE(picks.usableAtLevel1, 0u);
     h.seedScroll(kScrollSlot, "Spell: Minor Shielding", picks.usableAtLevel1);
 
-    ASSERT_TRUE(h.processor.processCommand("/scribe " + std::to_string(kScrollSlot)).success);
+    // T494 (board B796): /scribe's numeric form takes `inventory.slot_id`.
+    ASSERT_TRUE(h.processor.processCommand(
+        "/scribe " + std::to_string(eqt::inventory::clientSlotToServer(kScrollSlot))).success);
     const auto intents = h.drainIntents();
     const auto* intent = FindScribeIntent(intents);
     ASSERT_NE(intent, nullptr);
@@ -622,7 +624,7 @@ TEST(ScribeScroll, AScrollAlreadyOnTheCursorIsNotMovedAgain) {
     h.drainIntents();
 
     ASSERT_TRUE(h.processor.processCommand(
-        "/scribe " + std::to_string(eqt::inventory::CURSOR_SLOT)).success);
+        "/scribe " + std::to_string(eqt::inventory::SERVER_CURSOR_SLOT)).success);
     h.clearSent();
     h.eq.Bridge().ProcessBridgeIntents();
 

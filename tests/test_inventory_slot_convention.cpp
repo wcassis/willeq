@@ -73,7 +73,8 @@ TEST_F(EqCommandsEquipTest, EquipByDbSlot_AddressesTheRowAtThatSlotId_NotItsNeig
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
-    EXPECT_NE(msgs[0].find("Dagger*"), std::string::npos) << msgs[0];
+    // The reply quotes the DB numbering back, so a user can retype it.
+    EXPECT_NE(msgs[0].find("slot 23"), std::string::npos) << msgs[0];
     EXPECT_EQ(msgs[0].find("Shuriken"), std::string::npos) << msgs[0];
 
     auto intents = bridge.drainIntents();
@@ -83,6 +84,104 @@ TEST_F(EqCommandsEquipTest, EquipByDbSlot_AddressesTheRowAtThatSlotId_NotItsNeig
     // the user boundary converts.
     EXPECT_EQ(mv->fromSlot, 22);
     EXPECT_EQ(mv->toSlot, 13);
+
+    // And it is the DAGGER that moved, not its DB-22 neighbour.
+    auto* inv = eq.GetInventoryManager();
+    ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
+    EXPECT_EQ(inv->getItem(SLOT_PRIMARY)->itemId, 9997u);
+    EXPECT_EQ(inv->getItem(22), nullptr);          // DB 23, now empty
+    ASSERT_NE(inv->getItem(21), nullptr);          // DB 22, the Shuriken
+    EXPECT_EQ(inv->getItem(21)->itemId, 5000u);
+}
+
+// ---------------------------------------------------------------------------
+// The conversion table itself, both directions, against the server's own
+// numbers (titanium.cpp:3576 / :3666).
+// ---------------------------------------------------------------------------
+
+TEST(InventorySlotConvention, PossessionsRoundTripAgainstTheServersTable) {
+    // worn slots are identity
+    for (int16_t s = 0; s <= 20; ++s) {
+        EXPECT_EQ(serverSlotToClient(s), s) << s;
+        EXPECT_EQ(clientSlotToServer(s), s) << s;
+    }
+    EXPECT_EQ(serverSlotToClient(21), SLOT_INVALID);  // slotPowerSource
+    EXPECT_EQ(serverSlotToClient(22), SLOT_AMMO);
+    EXPECT_EQ(clientSlotToServer(SLOT_AMMO), 22);
+    for (int16_t bag = 0; bag < 8; ++bag) {
+        EXPECT_EQ(serverSlotToClient(static_cast<int16_t>(23 + bag)),
+                  static_cast<int16_t>(GENERAL_BEGIN + bag));
+        EXPECT_EQ(clientSlotToServer(static_cast<int16_t>(GENERAL_BEGIN + bag)),
+                  static_cast<int16_t>(23 + bag));
+    }
+    EXPECT_EQ(serverSlotToClient(31), SLOT_INVALID);  // general 9, Titanium has none
+    EXPECT_EQ(serverSlotToClient(32), SLOT_INVALID);  // general 10
+    EXPECT_EQ(serverSlotToClient(33), CURSOR_SLOT);
+    EXPECT_EQ(clientSlotToServer(CURSOR_SLOT), 33);
+    EXPECT_EQ(SERVER_CURSOR_SLOT, 33);
+}
+
+TEST(InventorySlotConvention, BankTradeAndWorldAreIdentity) {
+    const std::vector<int16_t> probes = {BANK_BEGIN, BANK_END, SHARED_BANK_BEGIN,
+                                         SHARED_BANK_END, TRADE_BEGIN, TRADE_END,
+                                         WORLD_BEGIN, WORLD_END};
+    for (int16_t s : probes) {
+        EXPECT_EQ(serverSlotToClient(s), s) << s;
+        EXPECT_EQ(clientSlotToServer(s), s) << s;
+    }
+}
+
+TEST(InventorySlotConvention, GeneralBagsAreTheLargeRemap) {
+    // server 4010 + 200*bag + idx  <->  Titanium 251 + 10*bag + idx
+    for (int16_t bag = 0; bag < 8; ++bag) {
+        for (int16_t idx = 0; idx < BAG_SLOT_COUNT; ++idx) {
+            const int16_t serverSlot = static_cast<int16_t>(4010 + 200 * bag + idx);
+            const int16_t clientSlot = static_cast<int16_t>(GENERAL_BAGS_BEGIN + 10 * bag + idx);
+            EXPECT_EQ(serverSlotToClient(serverSlot), clientSlot) << serverSlot;
+            EXPECT_EQ(clientSlotToServer(clientSlot), serverSlot) << clientSlot;
+        }
+    }
+}
+
+TEST(InventorySlotConvention, ParseUserSlotRefusesWhatDoesNotRoundTrip) {
+    int16_t out = 0;
+    EXPECT_EQ(parseUserSlot("23", out), UserSlotResult::Ok);
+    EXPECT_EQ(out, GENERAL_BEGIN);
+    EXPECT_EQ(parseUserSlot("4010", out), UserSlotResult::Ok);
+    EXPECT_EQ(out, GENERAL_BAGS_BEGIN);
+
+    EXPECT_EQ(parseUserSlot("", out), UserSlotResult::NotANumber);
+    EXPECT_EQ(parseUserSlot("23abc", out), UserSlotResult::NotANumber);
+    EXPECT_EQ(parseUserSlot("99999", out), UserSlotResult::NotANumber);
+
+    EXPECT_EQ(parseUserSlot("21", out), UserSlotResult::NotAddressable);   // power source
+    EXPECT_EQ(parseUserSlot("31", out), UserSlotResult::NotAddressable);   // general 9
+    EXPECT_EQ(parseUserSlot("-1", out), UserSlotResult::NotAddressable);
+    EXPECT_EQ(parseUserSlot("9999", out), UserSlotResult::NotAddressable);
+    // Bank 2016-2023 exist on the server; the server's own table maps them to
+    // Titanium numbers Titanium does not have, so they do not round-trip.
+    EXPECT_EQ(parseUserSlot("2016", out), UserSlotResult::NotAddressable);
+    // Inside a container the server has 200 slots and Titanium has 10.
+    EXPECT_EQ(parseUserSlot("4025", out), UserSlotResult::NotAddressable);
+    // General bags 9 and 10 (server 5610+) collide with Titanium's cursor bag.
+    EXPECT_EQ(parseUserSlot("5610", out), UserSlotResult::NotAddressable);
+}
+
+TEST(InventorySlotConvention, DescribeSlotIsParseUserSlotsInverse) {
+    const std::vector<int16_t> probes = {0, SLOT_PRIMARY, SLOT_AMMO, GENERAL_BEGIN, GENERAL_END,
+                                         CURSOR_SLOT, GENERAL_BAGS_BEGIN, BANK_BEGIN,
+                                         TRADE_BEGIN, WORLD_BEGIN};
+    for (int16_t clientSlot : probes) {
+        const std::string text = describeSlot(clientSlot);
+        const size_t open = text.rfind('(');
+        // "Name (n)" for equipment/world, "slot n" otherwise.
+        std::string number = (open == std::string::npos)
+                                 ? text.substr(text.rfind(' ') + 1)
+                                 : text.substr(open + 1, text.size() - open - 2);
+        int16_t back = SLOT_INVALID;
+        ASSERT_EQ(parseUserSlot(number, back), UserSlotResult::Ok) << text;
+        EXPECT_EQ(back, clientSlot) << text;
+    }
 }
 
 // ---------------------------------------------------------------------------

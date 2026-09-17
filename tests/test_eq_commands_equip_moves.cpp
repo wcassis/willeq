@@ -63,7 +63,7 @@ TEST_F(EqCommandsEquipTest, NoArgs_PrintsUsage_PushesNoIntent) {
 }
 
 TEST_F(EqCommandsEquipTest, MissingSecondSlot_PrintsUsage_PushesNoIntent) {
-    eq.Commands().RequestEquip("22");
+    eq.Commands().RequestEquip("23");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -103,6 +103,13 @@ TEST_F(EqCommandsEquipTest, TrailingGarbageOnSlot_PrintsUsage_PushesNoIntent) {
 // ---------------------------------------------------------------------------
 // Slot validation -- reject out-of-range/unrecognized slots with a clear
 // message rather than emitting a malformed packet (the plan's explicit bar).
+//
+// T494 (board B796) moved WHERE the refusal comes from, not whether there is
+// one: a number that is no `inventory.slot_id` is now caught by
+// parseUserSlot() at the command boundary (which can say WHY: the server does
+// not send that slot to this client) instead of falling through to
+// InventoryManager::moveItem()'s "Invalid source slot". The bar -- one clear
+// message, no intent, no packet -- is unchanged.
 // ---------------------------------------------------------------------------
 
 TEST_F(EqCommandsEquipTest, OutOfRangeSourceSlot_PrintsInvalidSourceSlot_PushesNoIntent) {
@@ -111,17 +118,17 @@ TEST_F(EqCommandsEquipTest, OutOfRangeSourceSlot_PrintsInvalidSourceSlot_PushesN
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
-    EXPECT_NE(msgs[0].find("Invalid source slot"), std::string::npos);
+    EXPECT_NE(msgs[0].find("does not send"), std::string::npos) << msgs[0];
     EXPECT_NE(msgs[0].find("9999"), std::string::npos);
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 
 TEST_F(EqCommandsEquipTest, OutOfRangeDestinationSlot_PrintsInvalidDestinationSlot_PushesNoIntent) {
-    eq.Commands().RequestEquip("22 9999");
+    eq.Commands().RequestEquip("23 9999");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
-    EXPECT_NE(msgs[0].find("Invalid destination slot"), std::string::npos);
+    EXPECT_NE(msgs[0].find("does not send"), std::string::npos) << msgs[0];
     EXPECT_NE(msgs[0].find("9999"), std::string::npos);
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
@@ -133,7 +140,7 @@ TEST_F(EqCommandsEquipTest, NegativeSlot_RejectedAsInvalid_PushesNoIntent) {
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
-    EXPECT_NE(msgs[0].find("Invalid source slot"), std::string::npos);
+    EXPECT_NE(msgs[0].find("does not send"), std::string::npos) << msgs[0];
     EXPECT_TRUE(bridge.drainIntents().empty());
 }
 
@@ -145,7 +152,7 @@ TEST_F(EqCommandsEquipTest, NegativeSlot_RejectedAsInvalid_PushesNoIntent) {
 TEST_F(EqCommandsEquipTest, GeneralToPrimary_PushesMoveItemIntentWithExactSlots) {
     // The plan's own worked example: "e.g. equip a weapon: /equip 22 13".
     SeedItem(eq, 22, 6011);  // Rusty Mace (T63/T65/T71's shared test item)
-    eq.Commands().RequestEquip("22 13");
+    eq.Commands().RequestEquip("23 13");
 
     // The confirmation message is asserted separately below
     // (GeneralToPrimary_PrintsSlotNamesInConfirmation) -- just drain it here.
@@ -164,7 +171,7 @@ TEST_F(EqCommandsEquipTest, GeneralToPrimary_PushesMoveItemIntentWithExactSlots)
 
 TEST_F(EqCommandsEquipTest, GeneralToPrimary_PrintsSlotNamesInConfirmation) {
     SeedItem(eq, 22, 6011);
-    eq.Commands().RequestEquip("22 13");
+    eq.Commands().RequestEquip("23 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -180,7 +187,7 @@ TEST_F(EqCommandsEquipTest, UnequipPrimaryToGeneral_PushesMoveItemIntent) {
     // way moving into one does. Scope discipline: this is not a special
     // "unequip" command with its own semantics, just the same wrapper.
     SeedItem(eq, 13, 6011);
-    eq.Commands().RequestEquip("13 22");
+    eq.Commands().RequestEquip("13 23");
 
     auto intents = bridge.drainIntents();
     // fromSlot 13 (Primary) is an equipment slot -- same EquipmentChangedIntent
@@ -196,7 +203,7 @@ TEST_F(EqCommandsEquipTest, CursorToSecondary_PushesMoveItemIntent) {
     // CURSOR_SLOT (30) -> SLOT_SECONDARY (14): the other common real
     // sequence (pick an item up, then equip it).
     SeedItem(eq, CURSOR_SLOT, 9997);  // Dagger (T63/T65/T71's shared test item)
-    eq.Commands().RequestEquip("30 14");
+    eq.Commands().RequestEquip("33 14");
 
     auto intents = bridge.drainIntents();
     // toSlot 14 (Secondary) is an equipment slot; this path goes through
@@ -220,7 +227,7 @@ TEST_F(EqCommandsEquipTest, BankSlotToGeneral_RecognizedAsValid_PushesMoveItemIn
     // Bank slots (2000-2015) are a recognized category too -- /equip is a
     // generic slot-to-slot wrapper over SendMoveItem, not equip-only.
     SeedItem(eq, BANK_BEGIN, 9990);  // arbitrary stackable test item
-    eq.Commands().RequestEquip("2000 22");
+    eq.Commands().RequestEquip("2000 23");
 
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -256,7 +263,7 @@ TEST_F(EqCommandsEquipTest, DirectSwap_UpdatesLocalInventoryModel) {
 
 TEST_F(EqCommandsEquipTest, DirectMoveToEmptySlot_ClearsSourceLocally) {
     SeedItem(eq, 22, 6011);
-    eq.Commands().RequestEquip("22 13");
+    eq.Commands().RequestEquip("23 13");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv, nullptr);
@@ -279,7 +286,7 @@ TEST_F(EqCommandsEquipTest, EmptySourceSlot_PrintsErrorAndPushesNoIntent) {
 TEST_F(EqCommandsEquipTest, CursorToSecondary_UpdatesLocalInventoryModel) {
     SeedItem(eq, SLOT_SECONDARY, 9990);  // pre-existing occupant, displaced to cursor
     SeedItem(eq, CURSOR_SLOT, 9997);     // Dagger, picked up
-    eq.Commands().RequestEquip("30 14");
+    eq.Commands().RequestEquip("33 14");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv, nullptr);
@@ -304,7 +311,7 @@ TEST_F(EqCommandsEquipTest, WrongSlotType_RejectedLocally_NamesItemAndSlot_Pushe
     // A Primary-only weapon aimed at Head (slot 2): canEquipInSlot() fails
     // first (wrong bitmask), not the restrictions check.
     SeedNamedItem(eq, 22, 7001, "Rusty Mace", EQUIPSLOT_PRIMARY);
-    eq.Commands().RequestEquip("22 2");
+    eq.Commands().RequestEquip("23 2");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -322,7 +329,7 @@ TEST_F(EqCommandsEquipTest, RestrictionFailure_RejectedLocally_PushesNoIntent) {
     // player (level 1, from InventoryManager's own playerLevel_ default) --
     // canEquipInSlot() passes, meetsRestrictions() fails.
     SeedNamedItem(eq, 22, 7002, "Ancient Blade", EQUIPSLOT_PRIMARY, /*reqLevel=*/50);
-    eq.Commands().RequestEquip("22 13");
+    eq.Commands().RequestEquip("23 13");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -335,7 +342,7 @@ TEST_F(EqCommandsEquipTest, LegalDestination_StillMoves) {
     // Confirms the pre-flight check is not overly strict -- a legal
     // destination still goes through exactly as before.
     SeedNamedItem(eq, 22, 7003, "Rusty Mace", EQUIPSLOT_PRIMARY);
-    eq.Commands().RequestEquip("22 13");
+    eq.Commands().RequestEquip("23 13");
 
     auto* inv = eq.GetInventoryManager();
     ASSERT_NE(inv->getItem(SLOT_PRIMARY), nullptr);
@@ -346,7 +353,7 @@ TEST_F(EqCommandsEquipTest, LegalDestination_StillMoves) {
 
 TEST_F(EqCommandsEquipTest, NoOpMove_SameSlot_RejectedLocally_PushesNoIntent) {
     SeedItem(eq, 22, 6011);
-    eq.Commands().RequestEquip("22 22");
+    eq.Commands().RequestEquip("23 23");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);

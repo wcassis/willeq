@@ -325,22 +325,33 @@ TEST_F(CommandProcessorTest, Sell_NoArgs_FailsCleanlyWithoutDispatching) {
 }
 
 TEST_F(CommandProcessorTest, Sell_MalformedSlot_FailsCleanlyWithoutDispatching) {
+    auto result = processor->processCommand("/sell notaslot");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("Invalid slot"), std::string::npos) << result.message;
+    EXPECT_EQ(handler.count(), 0u);
+}
+
+// T494 (board B796): -1 parses as a number but is no `inventory.slot_id`, so
+// it gets the "this client is not sent that slot" refusal, not the usage one.
+TEST_F(CommandProcessorTest, Sell_NumberThatIsNoSlot_FailsWithTheUnaddressableRefusal) {
     auto result = processor->processCommand("/sell -1");
     EXPECT_FALSE(result.success);
-    EXPECT_NE(result.message.find("Invalid slot"), std::string::npos);
+    EXPECT_NE(result.message.find("does not send"), std::string::npos) << result.message;
     EXPECT_EQ(handler.count(), 0u);
 }
 
 TEST_F(CommandProcessorTest, Sell_ValidSlotNoQuantity_DispatchesWithDefaultQuantityOne) {
     auto result = processor->processCommand("/sell 23");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("sellToVendor(23, 1)"));
+    // T494: /sell takes `inventory.slot_id`; 23 is model slot 22, which is
+    // what the dispatcher (and the wire) must see.
+    ASSERT_TRUE(handler.calledOnceWith("sellToVendor(22, 1)"));
 }
 
 TEST_F(CommandProcessorTest, Sell_ValidSlotAndQuantity_DispatchesExactValues) {
     auto result = processor->processCommand("/sell 23 4");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("sellToVendor(23, 4)"));
+    ASSERT_TRUE(handler.calledOnceWith("sellToVendor(22, 4)"));
 }
 
 TEST_F(CommandProcessorTest, Sell_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
@@ -367,9 +378,11 @@ TEST_F(CommandProcessorTest, T141_EquipRegisteredWithInventoryCategory) {
 }
 
 TEST_F(CommandProcessorTest, Equip_RawArgsPassedThrough) {
-    auto result = processor->processCommand("/equip 22 13");
+    auto result = processor->processCommand("/equip 23 13");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("equip(\"22 13\")"));
+    // The args string is passed through UNTOUCHED: cmdEquip does no parsing,
+    // so the user's `inventory.slot_id` text arrives verbatim (T494).
+    ASSERT_TRUE(handler.calledOnceWith("equip(\"23 13\")"));
 }
 
 TEST_F(CommandProcessorTest, Equip_ItemNameFormPassedThroughVerbatim) {
@@ -390,7 +403,7 @@ TEST_F(CommandProcessorTest, Equip_NoArgs_StillDispatches_GuardLivesInEverQuest)
 
 TEST_F(CommandProcessorTest, Equip_NotConnectedToZone_FailsCleanlyWithoutDispatching) {
     state.world().setZoneConnected(false);
-    auto result = processor->processCommand("/equip 22 13");
+    auto result = processor->processCommand("/equip 23 13");
     EXPECT_FALSE(result.success);
     EXPECT_EQ(handler.count(), 0u);
 }

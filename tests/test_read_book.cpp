@@ -233,7 +233,9 @@ TEST(ReadBook, SlotFormPushesReadItemIntent) {
     ReadBookHarness h;
     h.seedItem(kBookSlot, "Journal of Ranger Wu", "wujournal", 1);
 
-    auto r = h.processor.processCommand("/read " + std::to_string(kBookSlot));
+    // T494 (board B796): /read's numeric form takes `inventory.slot_id`.
+    auto r = h.processor.processCommand(
+        "/read " + std::to_string(eqt::inventory::clientSlotToServer(kBookSlot)));
     EXPECT_TRUE(r.success) << r.message;
 
     auto intents = h.drainIntents();

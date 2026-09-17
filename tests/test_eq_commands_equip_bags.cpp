@@ -31,7 +31,7 @@ TEST_F(EqCommandsEquipTest, DirectSwap_BagOnBag_BothContentsFollowTheirBags) {
     SeedNamedItem(eq, calcBagSlotId(23, 0), 7401, "Bp", 0);
     SeedNamedItem(eq, calcBagSlotId(23, 1), 7402, "Bq", 0);
 
-    eq.Commands().RequestEquip("22 23");
+    eq.Commands().RequestEquip("23 24");
 
     ASSERT_NE(inv->getItem(23), nullptr);
     EXPECT_EQ(inv->getItem(23)->itemId, 7210u);  // A now in 23 ...
@@ -58,7 +58,7 @@ TEST_F(EqCommandsEquipTest, DirectMove_BagToEmptyGeneral_ContentsFollow) {
     SeedBag(eq, 22, 7210, "Small Bag A", 4);
     SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Ax", 0);
 
-    eq.Commands().RequestEquip("22 24");
+    eq.Commands().RequestEquip("23 25");
 
     EXPECT_EQ(inv->getItem(22), nullptr);
     EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0)), nullptr);
@@ -152,7 +152,7 @@ TEST_F(EqCommandsEquipTest, DirectMove_BagToEmptyBank_ContentsFollow) {
     SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Ax", 0);
     SeedNamedItem(eq, calcBagSlotId(22, 1), 7302, "Ay", 0);
 
-    eq.Commands().RequestEquip("22 2000");
+    eq.Commands().RequestEquip("23 2000");
 
     EXPECT_EQ(inv->getItem(22), nullptr);
     EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0)), nullptr);
@@ -177,7 +177,7 @@ TEST_F(EqCommandsEquipTest, DirectMove_BagFromBankToGeneral_ContentsFollow) {
     SeedBag(eq, 2001, 7210, "Small Bag A", 4);
     SeedNamedItem(eq, calcBankBagSlotId(2001, 3), 7301, "Ax", 0);
 
-    eq.Commands().RequestEquip("2001 24");
+    eq.Commands().RequestEquip("2001 25");
 
     EXPECT_EQ(inv->getItem(2001), nullptr);
     EXPECT_EQ(inv->getItem(calcBankBagSlotId(2001, 3)), nullptr);
@@ -193,7 +193,7 @@ TEST_F(EqCommandsEquipTest, DirectSwap_GeneralBagOnBankBag_BothContentsFollowThe
     SeedNamedItem(eq, calcBagSlotId(22, 0), 7301, "Ax", 0);
     SeedNamedItem(eq, calcBankBagSlotId(2000, 0), 7401, "Bp", 0);
 
-    eq.Commands().RequestEquip("22 2000");
+    eq.Commands().RequestEquip("23 2000");
 
     ASSERT_NE(inv->getItem(2000), nullptr);
     EXPECT_EQ(inv->getItem(2000)->itemId, 7210u);
@@ -437,7 +437,7 @@ TEST_F(EqCommandsEquipTest, ItemPacket_BankBagWithContents_ContentsLandInBankRan
     EXPECT_EQ(inv->getItem(calcBankBagSlotId(2000, 0))->itemId, 7301u);
     EXPECT_EQ(inv->getItem(calcBankBagSlotId(2000, 1))->itemId, 7302u);
 
-    eq.Commands().RequestEquip("2000 22");
+    eq.Commands().RequestEquip("2000 23");
     ASSERT_NE(inv->getItem(calcBagSlotId(22, 0)), nullptr);
     ASSERT_NE(inv->getItem(calcBagSlotId(22, 1)), nullptr);
     EXPECT_EQ(inv->getItem(calcBagSlotId(22, 0))->itemId, 7301u);
@@ -544,7 +544,7 @@ TEST_F(EqCommandsEquipTest, DirectMove_GeneralBagStraightIntoTradeSlot_RefusedBe
     (void)bridge.drainEvents();
     (void)bridge.drainIntents();
 
-    eq.Commands().RequestEquip("22 3000");
+    eq.Commands().RequestEquip("23 3000");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);

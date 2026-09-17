@@ -181,7 +181,7 @@ TEST_F(EqCommandsEquipTest, Swap_DisplacedItemCannotGoInSourceEquipSlot_Rejected
     // Milk in Primary -- the server refuses that (swapNotAllowed).
     SeedNamedItem(eq, SLOT_PRIMARY, 7100, "Rusty Mace", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 22, 7101, "Skin of Milk", /*slotsBitmask=*/0);
-    eq.Commands().RequestEquip("13 22");
+    eq.Commands().RequestEquip("13 23");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -201,7 +201,7 @@ TEST_F(EqCommandsEquipTest, Swap_DisplacedItemFailsRestrictionsForSourceEquipSlo
     // sufficient level to use this item.") on the displaced side.
     SeedNamedItem(eq, SLOT_PRIMARY, 7110, "Rusty Mace", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 22, 7111, "Ancient Blade", EQUIPSLOT_PRIMARY, /*reqLevel=*/50);
-    eq.Commands().RequestEquip("13 22");
+    eq.Commands().RequestEquip("13 23");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -219,7 +219,7 @@ TEST_F(EqCommandsEquipTest, Swap_DisplacedItemLegalForSourceEquipSlot_StillMoves
     // strict.
     SeedNamedItem(eq, SLOT_PRIMARY, 7120, "Rusty Mace", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 22, 7121, "Broad Sword", EQUIPSLOT_PRIMARY);
-    eq.Commands().RequestEquip("13 22");
+    eq.Commands().RequestEquip("13 23");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -240,7 +240,7 @@ TEST_F(EqCommandsEquipTest, Swap_SourceIsGeneralSlot_DisplacedItemNotEquipChecke
     // non-equippable item is legal server-side and must stay legal here.
     SeedNamedItem(eq, 22, 7130, "Rusty Mace", EQUIPSLOT_PRIMARY);
     SeedNamedItem(eq, 23, 7131, "Skin of Milk", /*slotsBitmask=*/0);
-    eq.Commands().RequestEquip("22 23");
+    eq.Commands().RequestEquip("23 24");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -265,7 +265,7 @@ TEST_F(EqCommandsEquipTest, CursorSwap_IntoOccupiedGeneralSlot_StillMoves) {
     (void)bridge.drainIntents();
     (void)DrainSystemMessages(bridge);
     SeedNamedItem(eq, 22, 7141, "Scaled Curskin", /*slotsBitmask=*/0);
-    eq.Commands().RequestEquip("30 22");
+    eq.Commands().RequestEquip("33 23");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -304,7 +304,7 @@ TEST_F(EqCommandsEquipTest, CursorSwap_CursorItemFromEquipSlot_DisplacedNotCheck
     (void)bridge.drainIntents();
     (void)DrainSystemMessages(bridge);
     SeedNamedItem(eq, 22, 7151, "Skin of Milk", /*slotsBitmask=*/0);
-    eq.Commands().RequestEquip("30 22");
+    eq.Commands().RequestEquip("33 23");
 
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
@@ -358,7 +358,7 @@ TEST_F(EqCommandsEquipTest, CursorSwap_CursorItemDoesNotFitDestination_StillRefu
     EXPECT_FALSE(inv->placeItem(SLOT_PRIMARY));
     EXPECT_TRUE(bridge.drainIntents().empty());
     // ...and so does /equip's pre-flight (the command path).
-    eq.Commands().RequestEquip("30 13");
+    eq.Commands().RequestEquip("33 13");
     auto msgs = DrainSystemMessages(bridge);
     ASSERT_EQ(msgs.size(), 1u);
     EXPECT_NE(msgs[0].find("Skin of Milk"), std::string::npos) << msgs[0];

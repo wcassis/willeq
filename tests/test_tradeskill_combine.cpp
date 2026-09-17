@@ -410,7 +410,10 @@ TEST(TradeskillCombine, CarriedContainerFormSendsItsOwnInventorySlot) {
     h.clearSent();
     h.drainIntents();
 
-    auto result = h.processor.processCommand("/combine " + std::to_string(kKitSlot));
+    // T494 (board B796): /combine takes `inventory.slot_id`, so the typed
+    // number is the SERVER slot; the intent still carries the model slot.
+    auto result = h.processor.processCommand(
+        "/combine " + std::to_string(eqt::inventory::clientSlotToServer(kKitSlot)));
     EXPECT_TRUE(result.success) << result.message;
 
     auto intents = h.drainIntents();
@@ -420,7 +423,8 @@ TEST(TradeskillCombine, CarriedContainerFormSendsItsOwnInventorySlot) {
 
     // Issue it again and let the bridge drain it this time -- drainIntents()
     // above already consumed the first one.
-    h.processor.processCommand("/combine " + std::to_string(kKitSlot));
+    h.processor.processCommand(
+        "/combine " + std::to_string(eqt::inventory::clientSlotToServer(kKitSlot)));
     h.eq.Bridge().ProcessBridgeIntents();
     auto pkts = h.packetsWithOpcode(HC_OP_TradeSkillCombine);
     ASSERT_EQ(pkts.size(), 1u);
@@ -442,13 +446,15 @@ TEST(TradeskillCombine, CarriedContainerFormRefusesAnEmptySlotAndANonContainer) 
     h.drainEvents();
     h.drainIntents();
 
-    h.processor.processCommand("/combine " + std::to_string(kEmpty));
+    h.processor.processCommand(
+        "/combine " + std::to_string(eqt::inventory::clientSlotToServer(kEmpty)));
     EXPECT_EQ(FindCombineIntent(h.drainIntents()), nullptr);
     auto msgs = h.systemMessages();
     ASSERT_FALSE(msgs.empty());
     EXPECT_NE(msgs.back().find("Nothing in"), std::string::npos) << msgs.back();
 
-    h.processor.processCommand("/combine " + std::to_string(kSword));
+    h.processor.processCommand(
+        "/combine " + std::to_string(eqt::inventory::clientSlotToServer(kSword)));
     EXPECT_EQ(FindCombineIntent(h.drainIntents()), nullptr);
     msgs = h.systemMessages();
     ASSERT_FALSE(msgs.empty());
