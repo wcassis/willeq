@@ -795,7 +795,17 @@ it without taking that measurement first.
   B817 has now removed; re-measure before treating it as its own item.
   (4) `gfaydark` reached `login_world` but not `ready` inside a 360 s watchdog
   on the Pi (no OOM, zone sources loaded in 403 ms) — an instance of B751's
-  shape on a zone that used to load. (5) **The T496 plan's own candidate list
+  shape on a zone that used to load. (5) `test_memory_ledger.cpp`'s
+  `MallocFamilyAllRouteThroughTheLedger` is **RED on the tip and was already red
+  before T496**: its last assertion cannot hold, because `realloc(nullptr, 0)`
+  returns a minimum-size chunk (48 B here) that the case never frees. A T491
+  test defect, not a ledger defect; T496 left it alone to avoid colliding with
+  the orchestrator's in-flight gate work on that file. (6) A task worktree lacks
+  **two** gitignored symlinks, not one: `data/eq_client` (B815) **and
+  `data/eqe1_client`**. Missing the second makes `visual_gate` print
+  `memoryCoverage: SKIP ... a real coverage gap on this machine, not a pass`
+  and still exit 0, so a worktree gate run covers less than main's without
+  saying so. (7) **The T496 plan's own candidate list
   contained a unit error**: it read the Pi audit line's `texcache=44116` as
   44,116 **kB**; `load_mem_audit.cpp` prints that field with `%zu` from a
   `size_t` of BYTES, so the startup texture cache is **43 kB**, not 43 MiB, and
