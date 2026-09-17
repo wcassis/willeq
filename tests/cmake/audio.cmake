@@ -324,3 +324,34 @@ IF(WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_audio_playback_rate ${AUDIO_COMMON_TEST_LIBS})
     GTEST_DISCOVER_TESTS(test_audio_playback_rate DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# T496 Leg B (board B817): the `audio` ledger category is the HEAD of the
+# Orange Pi's shrink queue -- 47.6 MiB live at every lifecycle point, measured
+# on the Pi itself (review/T496/pi/table_categories.tsv). Roughly half of it is
+# a second, abandoned copy of synthus2.sf2 held by MusicPlayer's fallback
+# MidiPlayer. This target links the ledger TU directly (as test_memory_ledger
+# does) so the assertions can be in BYTES of the `audio` category rather than
+# in a proxy. Skips itself when no EQ client SoundFont is present.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_music_player_soundfont_lifetime
+        test_music_player_soundfont_lifetime.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/music_player.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/midi_player.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/xmi_decoder.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/audio_mixer.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/sound_buffer.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/sfx_manager.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/sound_assets.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+        ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_music_player_soundfont_lifetime PRIVATE
+        WITH_AUDIO
+        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+    TARGET_LINK_LIBRARIES(test_music_player_soundfont_lifetime
+        GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
+    GTEST_DISCOVER_TESTS(test_music_player_soundfont_lifetime DISCOVERY_TIMEOUT 120)
+ENDIF()

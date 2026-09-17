@@ -125,12 +125,20 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
     musicPlayer_ = std::make_unique<MusicPlayer>();
     LOG_INFO(MOD_AUDIO, "Initializing music player with eqPath: {}, soundfont: {}",
              eqPath_, soundFontPath_.empty() ? "(none)" : soundFontPath_);
+    // T496 (board B817): wire the shared MidiPlayer BEFORE initialize(). With
+    // no player set, MusicPlayer::initialize() builds its own fallback and
+    // loads synthus2.sf2 into it -- a second complete copy of the font
+    // midiPlayer_ already holds. setMidiPlayer() now releases a superseded
+    // fallback, so the order is no longer a correctness matter, but calling it
+    // first means the copy is never LOADED: it removes ~24 MB from the startup
+    // peak as well as from the resident set. Measured on the Orange Pi: the
+    // `audio` category was 47.6 MiB live / 171 MiB peak at `startup`, the
+    // largest bucket on the machine (review/T496/pi/table_categories.tsv).
+    musicPlayer_->setMidiPlayer(midiPlayer_.get());
+    musicPlayer_->setMixer(mixer_.get());
     if (!musicPlayer_->initialize(eqPath_, soundFontPath_)) {
         LOG_WARN(MOD_AUDIO, "Music player initialization failed, music will be disabled");
     }
-    // Give MusicPlayer access to MidiPlayer and mixer
-    musicPlayer_->setMidiPlayer(midiPlayer_.get());
-    musicPlayer_->setMixer(mixer_.get());
 
     // Pump event loop after music player init
     if (tickCallback_) tickCallback_();

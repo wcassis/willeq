@@ -93,6 +93,18 @@ void MusicPlayer::shutdown() {
 }
 
 void MusicPlayer::setMidiPlayer(MidiPlayer* player) {
+    // T496 (board B817): installing an external player SUPERSEDES the fallback
+    // one initialize() may have built, so release it -- it holds a complete
+    // second copy of the same SoundFont (MEASURED: 24,160,112 bytes for
+    // synthus2.sf2) that nothing can render from once this pointer moves.
+    // AudioManager::initialize() performs exactly this sequence, which is why
+    // the `audio` ledger category measured 47.6 MiB live on the Orange Pi at
+    // every lifecycle point -- the head of that machine's shrink queue
+    // (review/T496/pi/table_categories.tsv).
+    if (player && ownedMidiPlayer_ && player != ownedMidiPlayer_.get()) {
+        ownedMidiPlayer_->stop();
+        ownedMidiPlayer_.reset();
+    }
     midiPlayer_ = player;
 }
 

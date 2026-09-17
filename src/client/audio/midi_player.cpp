@@ -89,8 +89,23 @@ MidiPlayer::~MidiPlayer() {
         tml_free(impl_->midiMessages);
         impl_->midiMessages = nullptr;
     }
-    // Clear active pointer first to avoid double-free
+    // T496 (board B817): `soundFont` is an ALIAS of gmSoundFont/customSoundFont
+    // only on the dual-font path -- `init(path, rate)` (the single-font
+    // overload MusicPlayer's fallback uses) loads into `soundFont` and leaves
+    // both of the others null, so clearing the pointer before the two closes
+    // below leaked the whole font. MEASURED: 24,160,112 bytes for
+    // synthus2.sf2, retained for the life of the process
+    // (tests/test_music_player_soundfont_lifetime.cpp). Close it when it owns
+    // itself; the alias case still goes through gm/custom exactly as before,
+    // so there is no double-free.
+    tsf* ownSoundFont = (impl_->soundFont != impl_->gmSoundFont &&
+                         impl_->soundFont != impl_->customSoundFont)
+                            ? impl_->soundFont
+                            : nullptr;
     impl_->soundFont = nullptr;
+    if (ownSoundFont) {
+        tsf_close(ownSoundFont);
+    }
     if (impl_->gmSoundFont) {
         tsf_close(impl_->gmSoundFont);
         impl_->gmSoundFont = nullptr;
