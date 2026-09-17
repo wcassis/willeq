@@ -14,7 +14,7 @@
 // fine here — the STOP condition on unchanged behaviour applies only to
 // the in-world/production path (entity_equipment.cpp), not this tool.
 using EQT::Graphics::findBoneIndex;
-using EQT::Graphics::computeHeldItemTransform;
+using EQT::Graphics::placeHeldItem;
 
 // Stored bone indices for equipment attachment (cached after first lookup)
 int primaryBoneIndex = -1;
@@ -29,15 +29,11 @@ void updateEquipmentPositions() {
     const auto& boneStates = animatedNode->getAnimator().getBoneStates();
     if (boneStates.empty()) return;
 
-    // T472 (B588): the one held-item transform (bone_attachment.h), the same
-    // one the in-world path and the paperdoll use, for both hands.
+    // T472 (B588) / T485: the one held-item placement (bone_attachment.h
+    // placeHeldItem), the same one the in-world path and the paperdoll use.
     auto place = [&](scene::IMeshSceneNode* node, int boneIndex) {
         if (!node || boneIndex < 0 || boneIndex >= static_cast<int>(boneStates.size())) return;
-        core::matrix4 held = computeHeldItemTransform(boneStates[boneIndex].worldTransform);
-        const core::vector3df position = held.getTranslation();
-        held.setTranslation(core::vector3df(0.0f, 0.0f, 0.0f));
-        node->setRotation(held.getRotationDegrees());
-        node->setPosition(position);
+        placeHeldItem(node, boneStates[boneIndex].worldTransform);
     };
     place(primaryEquipNode, primaryBoneIndex);
     place(secondaryEquipNode, secondaryBoneIndex);

@@ -12,11 +12,15 @@
  *     requires the index to hold all of them (pre-fix: 19 missing).
  *
  *  2. An item held at a point bone is placed in that BONE'S frame with one
- *     constant correction, a half turn about the item's Y axis, and the mesh
- *     centre added (see bone_attachment.h computeHeldItemTransform()). Pinned
- *     by what that correction was derived from: a one-handed blade's tip hangs
- *     BELOW the grip at idle, the lantern hangs below the hand, and a shield's
- *     front-textured face points AWAY from the body.
+ *     constant correction and the mesh centre added (see bone_attachment.h
+ *     computeHeldItemTransform() / placeHeldItem()). T485 chose the correction
+ *     by SEARCH against the official client (review/T478/oracle, README
+ *     section 4) and these pin the oracle facts, not an argument: a one-handed
+ *     blade points FORWARD from the fist and roughly level, a two-handed blade
+ *     is level in front of the waist with its crossguard vertical, an arrow's
+ *     long end hangs DOWN along the leg; the lantern hangs below the hand, and
+ *     a shield's front-textured face (item +Y, which the correction keeps)
+ *     points AWAY from the body.
  *
  *  3. A player who has not moved since zone-in is drawn at the renderer's own
  *     heading -- the one the camera orbits -- and so looks exactly like any
@@ -254,23 +258,93 @@ TEST_F(HeldItemTest, LanternMeshBuildsOnTheZoneLoadAndTheOnDemandPaths) {
 // 2. Orientation, from the data.
 // ---------------------------------------------------------------------------
 
-TEST_F(HeldItemTest, OneHandedBladeHangsBelowTheGripAtIdle) {
+// T485 (B724, B725): the oracle facts. The long axis is the vertex farthest
+// from the item's origin (its grip); "forward" is the drawn direction of the
+// model's EQ +X (T472: R_POINT's Y is character-left, so +X is forward), taken
+// through drawn() so the player's baked heading is honoured. Thresholds leave
+// room for the o01 pose: the shipped correction puts the blade 0.96 forward /
+// 0.28 down and the arrow 0.96 down (tools/hwcaps/held_item_candidate_search).
+namespace {
+struct LongAxis {
+    irr::core::vector3df dir;      // unit, world (Irrlicht)
+    irr::core::vector3df tip;      // world
+    irr::core::vector3df grip;     // world
+};
+
+LongAxis longAxisOf(irr::scene::IMeshSceneNode* equip) {
+    std::vector<irr::core::vector3df> local;
+    irr::scene::IMesh* mesh = equip->getMesh();
+    irr::core::vector3df tipLocal;
+    for (irr::u32 b = 0; mesh && b < mesh->getMeshBufferCount(); ++b) {
+        irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(b);
+        for (irr::u32 i = 0; i < buf->getVertexCount(); ++i)
+            if (buf->getPosition(i).getLengthSQ() > tipLocal.getLengthSQ()) tipLocal = buf->getPosition(i);
+    }
+    LongAxis out;
+    out.grip = equip->getAbsoluteTransformation().getTranslation();
+    out.tip = tipLocal;
+    equip->getAbsoluteTransformation().transformVect(out.tip);
+    out.dir = (out.tip - out.grip).normalize();
+    return out;
+}
+
+irr::core::vector3df bodyForward(EQAnimatedMeshSceneNode* node) {
+    return (drawn(node, {1, 0, 0}) - drawn(node, {0, 0, 0})).normalize();
+}
+}  // namespace
+
+TEST_F(HeldItemTest, OneHandedBladePointsForwardAndLevelAtIdle) {
+    // Set A, T478: Short Sword IT10649. Official: the blade runs forward from
+    // the right fist, roughly level (User 2) to diagonally down-and-forward
+    // (Tether). fable before T485: straight down along the leg.
     struct Case { bool player; float heading; };
     for (Case c : {Case{true, 0.0f}, Case{true, 90.0f}, Case{true, 337.5f}, Case{false, 0.0f}, Case{false, 112.5f}}) {
-        EQAnimatedMeshSceneNode* node = spawnIdle(7, c.player, c.heading, /*IT1 sword*/ 1, 0);
+        EQAnimatedMeshSceneNode* node = spawnIdle(7, c.player, c.heading, /*IT10649 short sword*/ 10649, 0);
         const EntityVisual& vis = ents_->getEntities().at(7);
         ASSERT_NE(vis.primaryEquipNode, nullptr);
         const irr::core::vector3df hand = drawn(node, boneOrigin(node, "humr_point"));
-        std::vector<irr::core::vector3df> local;
-        auto world = worldVertices(vis.primaryEquipNode, &local);
-        ASSERT_FALSE(world.empty());
-        size_t tip = 0;
-        for (size_t i = 1; i < local.size(); ++i)
-            if (local[i].getLengthSQ() > local[tip].getLengthSQ()) tip = i;
-        const irr::core::vector3df grip = vis.primaryEquipNode->getAbsoluteTransformation().getTranslation();
+        const LongAxis blade = longAxisOf(vis.primaryEquipNode);
         SCOPED_TRACE(::testing::Message() << (c.player ? "player" : "npc") << " heading " << c.heading);
-        EXPECT_LT(world[tip].Y, hand.Y - 1.5f) << "blade tip is not below the hand (B588: it stood UP)";
-        EXPECT_LT(grip.getDistanceFrom(hand), 0.05f) << "the item origin (its grip) is not at R_POINT";
+        EXPECT_GT(blade.dir.dotProduct(bodyForward(node)), 0.7f) << "the blade does not point forward (B725)";
+        EXPECT_LT(std::fabs(blade.dir.Y), 0.6f) << "the blade is not roughly level (it hung straight down before T485)";
+        EXPECT_LT(blade.grip.getDistanceFrom(hand), 0.05f) << "the item origin (its grip) is not at R_POINT";
+    }
+}
+
+TEST_F(HeldItemTest, TwoHandedBladeIsLevelInFrontOfTheWaistAtIdle) {
+    // Set C, T478: Spiny Two Handed Sword IT10004. Official (Tether, User 2):
+    // roughly horizontal in front of the waist, pointing at the target, the
+    // crossguard vertical. fable before T485: hanging vertically to the ground.
+    for (bool player : {true, false}) {
+        EQAnimatedMeshSceneNode* node = spawnIdle(7, player, player ? 337.5f : 112.5f, /*IT10004*/ 10004, 0);
+        const EntityVisual& vis = ents_->getEntities().at(7);
+        ASSERT_NE(vis.primaryEquipNode, nullptr);
+        const LongAxis blade = longAxisOf(vis.primaryEquipNode);
+        // The crossguard spans the item's EQ Z (Irrlicht Y) -- IT10004 is
+        // +/-0.68 in Z against +/-0.11 in Y (T476 census).
+        irr::core::vector3df crossguard(0, 1, 0);
+        vis.primaryEquipNode->getAbsoluteTransformation().rotateVect(crossguard);
+        crossguard.normalize();
+        SCOPED_TRACE(player ? "player" : "npc");
+        EXPECT_GT(blade.dir.dotProduct(bodyForward(node)), 0.7f) << "the 2H blade does not point forward (B724)";
+        EXPECT_LT(std::fabs(blade.dir.Y), 0.6f) << "the 2H blade is not roughly level (B724: it hung to the ground)";
+        EXPECT_GT(std::fabs(crossguard.Y), 0.8f) << "the crossguard is not vertical";
+    }
+}
+
+TEST_F(HeldItemTest, ArrowHangsDownTheLegAtIdle) {
+    // IT10 (an arrow; no item wears it, T478 used #wc 7 10). Official (Tether):
+    // hangs down along the right leg, tip near the foot. fable before T485:
+    // horizontal, pointing forward or back. IT10's long axis is -Z, 3.35 long.
+    for (bool player : {true, false}) {
+        EQAnimatedMeshSceneNode* node = spawnIdle(7, player, player ? 337.5f : 112.5f, /*IT10*/ 10, 0);
+        const EntityVisual& vis = ents_->getEntities().at(7);
+        ASSERT_NE(vis.primaryEquipNode, nullptr);
+        const irr::core::vector3df hand = drawn(node, boneOrigin(node, "humr_point"));
+        const LongAxis arrow = longAxisOf(vis.primaryEquipNode);
+        SCOPED_TRACE(player ? "player" : "npc");
+        EXPECT_LT(arrow.dir.Y, -0.85f) << "the arrow does not hang down (B725: it was horizontal)";
+        EXPECT_LT(arrow.tip.Y, hand.Y - 2.5f) << "the arrow's long end is not below the hand along the leg";
     }
 }
 
@@ -294,6 +368,10 @@ TEST_F(HeldItemTest, LanternHangsBelowTheLeftHand) {
 TEST_F(HeldItemTest, ShieldFrontFacesAwayFromTheBody) {
     // The front of IT202 is the face textured kiteshield-m.bmp (its back is
     // kiteshield-mback.bmp); its outward direction comes from the winding.
+    // This is a DATA pin, not an oracle one: T478's set B frames show no shield
+    // at all (B723, contaminated inventory rows), so the official client has
+    // not been seen holding one. T485's correction keeps the item's Y, which
+    // is why this pin survives the search unchanged.
     WldLoader wld;
     ASSERT_TRUE(wld.parseFromArchive(eq_ + "gequip.s3d", "gequip.wld"));
     auto shield = resolveEquipmentActorGeometry(wld, "IT202");

@@ -147,7 +147,7 @@ void EntityRenderer::attachEquipment(EntityVisual& visual) {
 }
 
 // Bone lookup and the held-item transform are the shared implementation in
-// bone_attachment.h (T60 findBoneIndex, T472 computeHeldItemTransform) --
+// bone_attachment.h (T60 findBoneIndex, T472/T485 placeHeldItem) --
 // see that header's comment for why. Do not reintroduce local copies here.
 
 void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
@@ -199,31 +199,13 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
         const float s = visual.animatedNode->getScale().X;
         if (s > 0.0001f) playerScale = s;
     }
-    // T472 (B588): every held item takes ONE transform,
-    // computeHeldItemTransform() -- the point bone's frame with a half turn
-    // about the item's Y axis, and the item's origin (its grip, once the mesh
-    // centre is added) exactly at the bone. It replaces the per-slot Euler
-    // offsets (180,0,0) / (180,0,180) and the bounding-box grip heuristic; the
-    // derivation from the S3D data is on that function.
-    //
-    // Places one attachment in the parent node's local frame, so that it
-    // coincides with the geometry the node actually DRAWS for that bone.
-    auto placeAttachment = [&](irr::scene::ISceneNode* node, const irr::core::matrix4& held) {
-        irr::core::matrix4 rotation = held;
-        rotation.setTranslation(irr::core::vector3df(0.0f, 0.0f, 0.0f));
-        irr::core::vector3df position = held.getTranslation();
-        if (!playerBake) {
-            node->setRotation(rotation.getRotationDegrees());
-            node->setPosition(position);
-            return;
-        }
-        // Bone position un-scaled, because the baked body is drawn without the
-        // node's scale.
-        position /= playerScale;
-        playerYawFix.rotateVect(position);
-        // m3 = m1 * m2 applies m2 first, then m1 (Irrlicht matrix4::operator*).
-        node->setRotation((playerYawFix * rotation).getRotationDegrees());
-        node->setPosition(position);
+    // T472 (B588) / T485: every held item takes ONE transform and ONE
+    // placement, bone_attachment.h's placeHeldItem() -- the point bone's frame
+    // with the T485 correction (chosen by search against the official client)
+    // and the item's origin (its grip, once the mesh centre is added) exactly
+    // at the bone. The paperdoll and the model viewer call the same function.
+    auto placeAttachment = [&](irr::scene::ISceneNode* node, int boneIndex) {
+        placeHeldItem(node, boneStates[boneIndex].worldTransform, playerBake ? &playerYawFix : nullptr, playerScale);
     };
 
     // Primary (right hand - R_POINT)
@@ -231,8 +213,7 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
         std::vector<std::string> suffixes = {"R_POINT_DAG", "R_POINT", "r_point_dag", "r_point"};
         int boneIndex = findBoneIndex(skeleton, raceCode, suffixes);
         if (boneIndex >= 0 && boneIndex < static_cast<int>(boneStates.size())) {
-            placeAttachment(visual.primaryEquipNode,
-                            computeHeldItemTransform(boneStates[boneIndex].worldTransform));
+            placeAttachment(visual.primaryEquipNode, boneIndex);
         }
     }
 
@@ -252,8 +233,7 @@ void EntityRenderer::updateEquipmentTransforms(EntityVisual& visual) {
             : std::vector<std::string>{"L_POINT_DAG", "L_POINT", "l_point_dag", "l_point"};
         int boneIndex = findBoneIndex(skeleton, raceCode, suffixes);
         if (boneIndex >= 0 && boneIndex < static_cast<int>(boneStates.size())) {
-            placeAttachment(visual.secondaryEquipNode,
-                            computeHeldItemTransform(boneStates[boneIndex].worldTransform));
+            placeAttachment(visual.secondaryEquipNode, boneIndex);
         }
     }
 }

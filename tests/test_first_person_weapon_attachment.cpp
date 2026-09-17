@@ -257,16 +257,18 @@ TEST_F(FirstPersonWeaponAttachmentTest, HeldWeaponIsHeadingInvariantInTheCameraF
     EXPECT_LT(std::fabs(ref.right), 2.5f) << "the weapon is out beside the player, not in his hand";
 }
 
-// T472 (board B588): the same player, the same attachment, third person and
-// IDLE. The official client hangs a one-handed blade DOWN from the fist (T466's
-// set A); fable stood it up. The attack-frame canary above keeps the
-// first-person draw rule honest; this keeps the idle orientation honest, and
-// both run over the one production placement (updateMainThreadEntityState).
-TEST_F(FirstPersonWeaponAttachmentTest, ThirdPersonIdleBladeHangsBelowTheGrip) {
+// T472 (board B588) / T485 (B725): the same player, the same attachment, third
+// person and IDLE. The official client points a one-handed blade FORWARD from
+// the fist, roughly level (T478 set A, review/T478/README.md section 4);
+// fable stood it up before T472 and hung it straight down before T485. The
+// attack-frame canary above keeps the first-person draw rule honest; this
+// keeps the idle orientation honest, and both run over the one production
+// placement (updateMainThreadEntityState).
+TEST_F(FirstPersonWeaponAttachmentTest, ThirdPersonIdleBladePointsForward) {
     constexpr uint16_t kSpawn = 1;
     for (float headingDeg : {0.0f, 135.0f, 270.0f}) {
         EQT::Graphics::EntityAppearance appearance;
-        appearance.equipment[7] = 1;  // IT1, a one-handed sword
+        appearance.equipment[7] = 10649;  // IT10649, T478's Short Sword
         entities_->clearEntities();
         ASSERT_TRUE(entities_->createEntity(kSpawn, /*race=*/1, "Testchar", 100.0f, 200.0f, 3.0f, headingDeg,
                                             /*isPlayer=*/true, /*gender=*/0, appearance, /*isNPC=*/false));
@@ -292,7 +294,14 @@ TEST_F(FirstPersonWeaponAttachmentTest, ThirdPersonIdleBladeHangsBelowTheGrip) {
         }
         irr::core::vector3df tip = tipLocal;
         abs.transformVect(tip);
-        EXPECT_LT(tip.Y, grip.Y - 1.5f) << "heading " << headingDeg << ": the blade stands up out of the fist";
+        const irr::core::vector3df blade = (tip - grip).normalize();
+        // The player's body is drawn baked by (nodeRot.Y + 90) about Irrlicht Y
+        // (EQAnimatedMeshSceneNode::applyAnimation), so its EQ +X (forward)
+        // lands at (cos th, 0, sin th).
+        const float th = (node->getRotation().Y + 90.0f) * 3.14159265f / 180.0f;
+        const irr::core::vector3df forward(std::cos(th), 0.0f, std::sin(th));
+        EXPECT_GT(blade.dotProduct(forward), 0.7f) << "heading " << headingDeg << ": the blade does not point forward";
+        EXPECT_LT(std::fabs(blade.Y), 0.6f) << "heading " << headingDeg << ": the blade is not roughly level";
     }
 }
 

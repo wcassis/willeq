@@ -9826,7 +9826,9 @@ B712–B719 unused.
 - **B606** (B, unreached) **Renderer, asset and data API with no production
   caller.** `IrrlichtRenderer::setNewUIEnabled`,
   `EntityRenderer::loadEquipmentModels/loadGlobalCharacters` (not called even
-  by the zero-caller `loadGlobalAssets`, B494, which T468 deleted),
+  by the zero-caller `loadGlobalAssets`, B494, which T468 deleted; since T485
+  `tools/hwcaps/held_item_candidate_search` calls both, so they left the
+  tests-only census bucket -- still no PRODUCTION caller),
   `ZoneLifecycleComponent::applyStoredZoneEnvironment` (its header already
   calls it a superseded duplicate of `renderer_zone_load_env.cpp`'s apply path
   "boarded for a measured wire-or-delete decision" -- but no board entry
@@ -10131,7 +10133,8 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   Owed: the oracle Chase capture of a stationary fable character (and the
   two-client observation the heading note asks for).
 
-- **B588** (A, *unconfirmed*) **Held items in the hand: the sword's blade points
+- ~~**B588**~~ **CLOSED by T485** (lantern half closed by T472, blade half by T485's
+  searched correction; see the T485 block). Original text: (A, *unconfirmed*) **Held items in the hand: the sword's blade points
   the opposite way and the lantern is not drawn.** Idle, set A, same sheet as
   B587 (oracle User 1 and Tether crops on top, fable az 90 / az 270 below).
   Descriptive, not judged: the official client shows the Short Sword in the
@@ -10249,7 +10252,9 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   `HeldItemTest.EverySkinnedItemIsPlacedByItsSkeletonRestPose` and
   `EquipmentItemCensus.EveryItActorIsClassified`. No live look yet.
 
-- **B661** (A, *unconfirmed*, narrowed by T476 -- **STOP hit**) **Not every
+- ~~**B661**~~ **CLOSED by T485**: no axis rule is needed -- one correction holds IT10's -Z
+  down the leg and the blades' +X forward at once (see the T485 block). Original
+  text: (A, *unconfirmed*, narrowed by T476 -- **STOP hit**) **Not every
   item's long axis is its +X, and no rule from the S3D data says which way to
   turn it.** IT10 spans z -3.35..0.25 about its origin and holds along R_POINT's
   Z. T476 took the census and stopped before writing an axis rule. Evidence
@@ -10267,7 +10272,10 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   Needs the oracle: capture an IT10 item held by the official client (T472 Leg B,
   set B/C) before any axis change. Found by T472.
 
-- **B662** (P) **There is no scripted offline capture of an IN-WORLD entity with
+- ~~**B662**~~ **CLOSED by T485**: `tools/hwcaps/held_item_candidate_search` builds the
+  entity through `EntityRenderer::createEntity()` + `updateMainThreadEntityState()`
+  and captures it from three cameras (NPC path; the player bake is pinned by
+  `tests/test_held_item_attachment.cpp` instead). Original text: (P) **There is no scripted offline capture of an IN-WORLD entity with
   held items.** `tools/model_viewer` is interactive only (F12 writes
   `model_viewer.png` in the working directory) and has its own attach copy;
   `tools/hwcaps/ui_inventory_capture` renders the paperdoll (`CharacterModelView`),
@@ -10432,16 +10440,22 @@ Media and every number: `review/T478/README.md`; the plan's Review.
   C (2H): the blade angle differs between frames. fable's dumped frames show swing
   poses on every set. Not yet known whether the official client skips the swing on a
   miss, or whether the Wine capture misses it. Found by T478.
-- **B723** (A, *unconfirmed*) **Set B: fable draws a kite shield on the left arm;
+- **B723** (A, *unconfirmed* -- **CONTAMINATED, do not act on it**: T485 read
+  `review/T478/logs/oracle_setB_db.log` and the inventory write that put the shield
+  on Oraclealpha sits beside garbage rows, so "no shield visible" may mean the
+  official client never had one to draw; a clean re-grab of set B is owed before
+  any shield work) **Set B: fable draws a kite shield on the left arm;
   the official client shows no shield.** Shield of the Forlorn (1523, IT202) in the
   secondary slot, idle, four official views (Chase, User 1, User 2, Tether): no
   shield visible; fable az 90 / az 270: a kite shield on the left arm, face outward.
   Found by T478.
-- **B724** (A, *unconfirmed*) **Set C: the 2H sword is held differently.** Spiny Two
+- ~~**B724**~~ **CLOSED by T485** (the searched correction puts the 2H blade forward and
+  level with the crossguard vertical; `review/T485/T485_after_c20_*`). Original text: (A, *unconfirmed*) **Set C: the 2H sword is held differently.** Spiny Two
   Handed Sword (2894, IT10004). Official (Tether, User 2): roughly horizontal in
   front of the waist, pointing at the dummy. fable (az 180, az 270): hanging
   vertically from the right hand to near the ground. Found by T478.
-- **B725** (A, *unconfirmed*) **IT10 (arrow model) is held along a different axis**
+- ~~**B725**~~ **CLOSED by T485** (the same correction hangs the arrow's -Z down the leg;
+  `review/T485/T485_after_c20_*`). Original text: (A, *unconfirmed*) **IT10 (arrow model) is held along a different axis**
   -- the oracle evidence B661 asked for: official down along the leg, fable
   horizontal (sheet `review/T478/sheets/T478_held_IT10_idle_oracle_top_fable_bottom.png`).
   Also set A: the official blade runs diagonally down and forward from the fist,
@@ -10654,7 +10668,6 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   steps, too coarse for a gate-sized change such as qeynos2's +23,760 bytes.
   Found by T481.
 
-B755–B759 unused.
 
 ## Added 2026-09-16 by T492 (the three-player LLM-benchmark corpus rig)
 
@@ -10892,3 +10905,49 @@ B755–B759 unused.
   `pkill` has the same trap waiting for it, and there is no shared helper: both
   call sites spell the pattern out. Small, but it is the exact shape of the
   defect B784 turned out to be. Found by T493.
+## Added 2026-09-14 by T485 (the held-item correction chosen by search against the oracle)
+
+T485 (2026-09-14) CLOSED B588 (blade half; T472 had closed the lantern half),
+B661, B662, B724 and B725, and marked B723 contaminated. `bone_attachment.h`'s
+`kHeldItemCorrection` is now candidate c20 -- item X -> bone -Z, Y -> Y, Z -> X,
+a quarter turn about the item's Y -- chosen by rendering all 24 proper signed
+permutations through the one production placement (`placeHeldItem()`, which
+`entity_equipment.cpp`, the paperdoll and the model viewer all call now) on a
+Human male at o01 with IT10649, IT10004 and IT10, and measuring each item's long
+axis in the body frame (`review/T485/data/candidates.tsv`, one sheet per
+candidate under `review/T485/candidates/`). Only the four X->-Z candidates put a
+blade forward (angle 23-24 deg to forward; every other candidate 67-157) and of
+those only Z->+X hangs the arrow down (23 deg to down); with X->-Z and Z->+X
+fixed, det +1 forces Y->+Y, so c20 is the unique proper candidate and the
+shields' painted face (item +Y, T472) stays outward as a consequence. The measurement that overturned T472: at o01 frame 0 the forearm
+runs (0.96, 0.07, -0.27) from elbow to fingers (the elbow is bent, the hand at
+the belt -- which is also why the official client's grip sits at belt height in
+`review/T478/oracle/*User2*`), R_POINT's -Z is that same line (0.958, 0.06,
+-0.284) and its X (0.28, 0.03, 0.96) points UP, perpendicular to the forearm;
+T472 read X as "up the forearm" and negated it, which is what hung the blade
+straight down (`review/T485/data/rpoint_frames.txt`). Tests
+`HeldItemTest.OneHandedBladePointsForwardAndLevelAtIdle`,
+`TwoHandedBladeIsLevelInFrontOfTheWaistAtIdle`, `ArrowHangsDownTheLegAtIdle`,
+`FirstPersonWeaponAttachmentTest.ThirdPersonIdleBladePointsForward` and
+`BoneAttachmentTest.ShippedCorrectionIsAQuarterTurnAboutTheItemsY` pin it (all
+red under T472's C, green under c20).
+
+- **B755** (P) **`willeq.db` maps item 2894 (Spiny Two Handed Sword) to IT10009,
+  while T478 read IT10004 off the eqemu `items` table and T485 searched with
+  IT10004.** Both are X+ blades in the T476 census, so the correction is the same,
+  but fable's live set C frame in `review/T478/sheets/T478_held_C_*` drew a
+  different model from the official client's. `data/item_models.json` (the
+  builder input) is where the row comes from. Found by T485.
+- **B756** (A, *unconfirmed*) **The blade's pitch is 24 deg below the oracle's.**
+  With c20 the blade continues R_POINT's -Z, 16 deg below level at o01 frame 0 and
+  swinging with the idle loop (frames 0-48: -Z from (0.96, 0.06, -0.28) to
+  (0.38, -0.16, -0.91)); the official User 2 frames read the short sword level to
+  slightly up. A signed permutation cannot close that; whether the official
+  client's R_POINT frame differs from fable's (a composition or rest-pose
+  difference on a leaf bone with no skinned vertices) is the next measurement --
+  a bone-frame dump from the official client is not available, so it would be a
+  fit of fable's blade angle against several oracle frames of the loop. Found by
+  T485.
+
+B757–B759 unused.
+

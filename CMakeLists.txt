@@ -914,6 +914,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(ui_panel_capture willeq_core ${LINK_LIBS})
 ENDIF()
 
+# T485 (boards B588/B724/B725): renders every proper signed permutation of the
+# held-item correction through bone_attachment.h's placeHeldItem() -- the one
+# production placement -- on a Human male at o01 with the T478 oracle items,
+# and measures each item's long axis in the body frame. The instrument the
+# held-item transform was chosen with (match-the-oracle, docs/decisions.md).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(held_item_candidate_search tools/hwcaps/held_item_candidate_search.cpp)
+    TARGET_LINK_LIBRARIES(held_item_candidate_search willeq_core ${LINK_LIBS})
+ENDIF()
+
 # P23: SimulationWorker input/output-buffer race stress harness. Manual
 # tool (not ctest-registered — it's a bounded soak, not a fast deterministic
 # unit test); see refactor/P23_particle_race_stability.md Review for the

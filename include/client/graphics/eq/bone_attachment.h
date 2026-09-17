@@ -81,45 +81,78 @@ inline int findBoneIndex(const std::shared_ptr<CharacterSkeleton>& skeleton,
     return -1;
 }
 
-// T472 (board B588) -- THE ONE TRANSFORM FOR AN ITEM HELD AT A POINT BONE
-// (R_POINT, L_POINT, SHIELD_POINT), for every item and every slot.
+// T472 (board B588) / T485 (B724, B725) -- THE ONE TRANSFORM FOR AN ITEM HELD
+// AT A POINT BONE (R_POINT, L_POINT, SHIELD_POINT), for every item and every
+// slot, and the one placement routine that applies it to a scene node.
 //
-// Returns the matrix that takes a vertex of an equipment mesh -- Irrlicht
-// coordinates, as EquipmentModelLoader::buildMeshFromGeometry() writes them,
-// with the item's mesh centre already added (equipment_actor_geometry.cpp) --
-// into the entity's MODEL frame (Irrlicht, before the scene node's own
-// transform). Rotation and translation; no scale.
+// computeHeldItemTransform() returns the matrix that takes a vertex of an
+// equipment mesh -- Irrlicht coordinates, as
+// EquipmentModelLoader::buildMeshFromGeometry() writes them, with the item's
+// mesh centre already added (equipment_actor_geometry.cpp) -- into the
+// entity's MODEL frame (Irrlicht, before the scene node's own transform).
+// Rotation and translation; no scale.
 //
-// In EQ coordinates it is  B * C,  where B is the bone's world transform and
-//   C = diag(-1, 1, -1)   -- a half turn about the ITEM's Y axis.
-// The item's origin lands exactly on the bone: once the centre is added, an
-// item's origin IS its grip (IT1, a sword: pommel at x -0.51, crossguard at
-// +0.29), so there is no grip offset to guess.
+// In EQ coordinates it is  B * C,  where B is the bone's world transform and C
+// is a constant proper signed permutation of the item's axes (a
+// HeldItemCorrection: column j is the image of the item's EQ axis j). The
+// item's origin lands exactly on the bone: once the centre is added, an item's
+// origin IS its grip (IT1, a sword: pommel at x -0.51, crossguard at +0.29),
+// so there is no grip offset to guess.
 //
-// WHY C, measured from the data (T472 Review, tests/test_held_item_attachment.cpp):
-//   - Human male idle ("o01"): R_POINT's X axis is (0.28, 0.03, 0.96) in EQ
-//     space -- UP the forearm -- and its Y axis (0.07, 1.00, 0.01) points to
-//     the character's left; L_POINT's are the same to within 0.15; and
-//     SHIELD_POINT's Y axis points AWAY from the chest.
-//   - An item's long axis is its +X (IT1's blade runs pommel -0.51 -> tip
-//     2.24; IT48's lantern body, after its own rest DAG, the same way). With C
-//     = identity -- which is what the pre-T472 (180, 0, 0) amounted to, since a
-//     half turn about X leaves X alone -- the blade stands UP out of the fist,
-//     exactly T466's frame. X must be negated.
-//   - Every shield's painted face (IT200-IT203: qguard-front, kiteshield-m,
-//     shield round-metal, shield round-wood; their backs are the *back.bmp
-//     textures) faces the item's +Y, by winding AND by vertex normals. For the
-//     painted face to point away from the body, Y must be KEPT.
-//   A proper rotation negating X and keeping Y is exactly C.
+// WHICH C -- chosen by SEARCH against the official client, not by argument
+// (T485, refactor/T485_held_item_transform_candidate_search.md, the
+// match-the-oracle rule in docs/decisions.md). T472 derived
+// C = diag(-1, 1, -1) from one R_POINT axis at one o01 frame plus shield
+// winding; T478's fresh oracle grabs (review/T478/sheets/T478_held_*) refuted
+// it on every orientation observation. T485 rendered all 24 proper signed
+// permutations through this function (tools/hwcaps/held_item_candidate_search)
+// and scored each against the three oracle facts:
+//   - a one-handed blade (IT10649, long axis +X) points FORWARD from the
+//     fist, roughly level, at idle;
+//   - a two-handed blade (IT10004, long axis +X) is level in front of the
+//     waist, pointing forward, its crossguard (item Z) vertical;
+//   - an arrow (IT10, long axis -Z) hangs DOWN along the leg, tip near the foot.
+// Exactly one candidate satisfies all three: item +X -> bone -Z, item Z ->
+// bone +X, item Y kept -- a quarter turn about the item's Y (candidate c20 of
+// review/T485/). Measured on the Human male at o01 frame 0 (rpoint_frames.txt
+// there): the FOREARM runs (0.96, 0.07, -0.27) from elbow to fingers -- the
+// elbow is bent and the hand is at the belt -- and R_POINT's -Z is that same
+// line (0.958, 0.06, -0.284), while its X (0.28, 0.03, 0.96) points UP,
+// perpendicular to the forearm. T472's "X runs up the forearm" was wrong, and
+// that is why its C hung the blade straight down. With c20 the blade
+// continues the forearm forward and the arrow's long end (-Z_item -> -X_bone)
+// hangs down. With X -> -Z and Z -> +X fixed, det +1 forces Y -> +Y, so c20 is
+// the UNIQUE proper candidate -- and every shield's painted face, which faces
+// item +Y by winding and normals (T472), still points away from the body as a
+// consequence, not as an input (the oracle has not been seen holding a shield,
+// B723).
 //
 // Converting to Irrlicht (x, z, y) on both sides gives S * B * C * S, laid out
 // below column by column (Irrlicht matrix4 is column-major like BoneMat4:
 // transformVect's X = M[0]*x + M[4]*y + M[8]*z + M[12]).
-inline irr::core::matrix4 computeHeldItemTransform(const BoneMat4& bone) {
-    // Columns of B * C in EQ space: C negates B's X and Z columns.
-    const float cx[3] = {-bone.m[0], -bone.m[1], -bone.m[2]};
-    const float cy[3] = {bone.m[4], bone.m[5], bone.m[6]};
-    const float cz[3] = {-bone.m[8], -bone.m[9], -bone.m[10]};
+struct HeldItemCorrection {
+    // c[j] is the image of the item's EQ axis j (0 = X, 1 = Y, 2 = Z), as an
+    // EQ-space vector. Proper (det +1) signed permutations only.
+    float c[3][3];
+};
+
+// The one correction the client ships (T485's winner).
+constexpr HeldItemCorrection kHeldItemCorrection = {{{0.0f, 0.0f, -1.0f},   // item X -> bone -Z
+                                                     {0.0f, 1.0f, 0.0f},    // item Y -> bone +Y
+                                                     {1.0f, 0.0f, 0.0f}}};  // item Z -> bone +X
+
+inline irr::core::matrix4 computeHeldItemTransform(const BoneMat4& bone,
+                                                   const HeldItemCorrection& corr = kHeldItemCorrection) {
+    // Columns of B * C in EQ space: column j of B*C = B * corr.c[j].
+    float col[3][3];
+    for (int j = 0; j < 3; ++j) {
+        for (int r = 0; r < 3; ++r) {
+            col[j][r] = bone.m[0 + r] * corr.c[j][0] + bone.m[4 + r] * corr.c[j][1] + bone.m[8 + r] * corr.c[j][2];
+        }
+    }
+    const float* cx = col[0];
+    const float* cy = col[1];
+    const float* cz = col[2];
 
     irr::core::matrix4 m;
     // Irrlicht input x = EQ x -> EQ column X, rows swapped y<->z.
@@ -133,6 +166,40 @@ inline irr::core::matrix4 computeHeldItemTransform(const BoneMat4& bone) {
     m[14] = bone.m[13];
     m[15] = 1.0f;
     return m;
+}
+
+// T485: THE ONE PLACEMENT. Sets `node`'s rotation and position (in its
+// parent's local frame) so that it coincides with the geometry the parent
+// node actually DRAWS for `bone`. The three consumers -- in-world
+// (entity_equipment.cpp), the paperdoll (character_model_view.cpp) and the
+// model viewer (model_viewer_equipment.cpp) -- used to each carry a copy of
+// the setRotation/setPosition split; they all call this now so they cannot
+// drift.
+//
+// playerYawFix / playerScale: the T301 Leg C compensation for the PLAYER's own
+// node (see playerEquipmentYawCompensationDegrees() below), whose body is
+// drawn baked and translation-only. Pass nullptr / 1.0 for every other node.
+// `corr` is exposed for tools/hwcaps/held_item_candidate_search only; the
+// client always ships kHeldItemCorrection.
+inline void placeHeldItem(irr::scene::ISceneNode* node, const BoneMat4& bone,
+                          const irr::core::matrix4* playerYawFix = nullptr, float playerScale = 1.0f,
+                          const HeldItemCorrection& corr = kHeldItemCorrection) {
+    if (!node) return;
+    irr::core::matrix4 rotation = computeHeldItemTransform(bone, corr);
+    irr::core::vector3df position = rotation.getTranslation();
+    rotation.setTranslation(irr::core::vector3df(0.0f, 0.0f, 0.0f));
+    if (!playerYawFix) {
+        node->setRotation(rotation.getRotationDegrees());
+        node->setPosition(position);
+        return;
+    }
+    // Bone position un-scaled, because the baked body is drawn without the
+    // node's scale.
+    if (playerScale > 0.0001f) position /= playerScale;
+    playerYawFix->rotateVect(position);
+    // m3 = m1 * m2 applies m2 first, then m1 (Irrlicht matrix4::operator*).
+    node->setRotation(((*playerYawFix) * rotation).getRotationDegrees());
+    node->setPosition(position);
 }
 
 // T301 Leg C -- THE PLAYER'S OWN NODE DRAWS ITS BODY IN A DIFFERENT FRAME

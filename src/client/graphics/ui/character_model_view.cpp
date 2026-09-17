@@ -509,8 +509,8 @@ void CharacterModelView::attachWeapons() {
                     primaryWeaponNode_->setPosition(irr::core::vector3df(2.0f, 5.0f, 0.0f));
                 }
 
-                // T472: placed by updateWeaponTransforms() through
-                // computeHeldItemTransform() -- no grip offset, no Euler base.
+                // T472/T485: placed by updateWeaponTransforms() through
+                // placeHeldItem() -- no grip offset, no Euler base.
 
                 for (irr::u32 i = 0; i < primaryWeaponNode_->getMaterialCount(); ++i) {
                     primaryWeaponNode_->getMaterial(i).Lighting = false;
@@ -560,9 +560,9 @@ void CharacterModelView::attachWeapons() {
                     secondaryWeaponNode_->setPosition(irr::core::vector3df(-2.0f, 5.0f, 0.0f));
                 }
 
-                // T472: placed by updateWeaponTransforms() through
-                // computeHeldItemTransform() -- one transform for shields and
-                // plain items alike (T65's split is gone with the Euler base).
+                // T472/T485: placed by updateWeaponTransforms() through
+                // placeHeldItem() -- one transform for shields and plain
+                // items alike (T65's split is gone with the Euler base).
 
                 for (irr::u32 i = 0; i < secondaryWeaponNode_->getMaterialCount(); ++i) {
                     secondaryWeaponNode_->getMaterial(i).Lighting = false;
@@ -588,16 +588,12 @@ void CharacterModelView::updateWeaponTransforms() {
     const auto& boneStates = animator.getBoneStates();
     if (boneStates.empty()) return;
 
-    // T472 (B588): the one held-item transform (bone_attachment.h) for both
-    // hands. The doll's node is not a player node (no heading bake), so the
-    // result is set directly, as for any NPC's equipment.
+    // T472 (B588) / T485: the one held-item placement (bone_attachment.h
+    // placeHeldItem) for both hands. The doll's node is not a player node (no
+    // heading bake), so no yaw compensation is passed, as for any NPC.
     auto place = [&](irr::scene::IMeshSceneNode* node, int boneIndex) {
         if (!node || boneIndex < 0 || boneIndex >= static_cast<int>(boneStates.size())) return;
-        irr::core::matrix4 held = EQT::Graphics::computeHeldItemTransform(boneStates[boneIndex].worldTransform);
-        const irr::core::vector3df position = held.getTranslation();
-        held.setTranslation(irr::core::vector3df(0.0f, 0.0f, 0.0f));
-        node->setRotation(held.getRotationDegrees());
-        node->setPosition(position);
+        EQT::Graphics::placeHeldItem(node, boneStates[boneIndex].worldTransform);
     };
     place(primaryWeaponNode_, primaryBoneIndex_);
     place(secondaryWeaponNode_, secondaryBoneIndex_);

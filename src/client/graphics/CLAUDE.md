@@ -223,6 +223,29 @@ Zone loading runs on a dedicated **LoadingThread** that owns the GL context duri
 - `wld_dump` - WLD file content analyzer
 - GPU capability tools: `gpu_texture_formats`, `gles2_etc1_benchmark`, `egl_image_sharing_test`
 - Shader benchmarks: `gles2_shader_perpixel_benchmark` (FS optimization variants), `gles2_program_switch_benchmark` (per-light-count programs, switching cost, program count pressure)
+- `held_item_candidate_search` (T485) - renders every proper signed permutation of the held-item correction on an `EntityRenderer`-built Human male at o01 and measures each item's long axis in the body frame; see "Held items" below
+
+## Held items (weapons, shields, lanterns at the point bones)
+
+**One owner: `include/client/graphics/eq/bone_attachment.h`.**
+`computeHeldItemTransform(bone)` is the matrix that takes an equipment mesh
+(Irrlicht coordinates, centre already added by `src/client/graphics/eq/equipment_actor_geometry.cpp`)
+into the entity's model frame -- in EQ space `B * C`, the point bone's world
+transform times `kHeldItemCorrection`, with the item's origin (its grip) on the
+bone -- and `placeHeldItem(node, bone, playerYawFix, playerScale)` is the ONE
+routine that writes it onto a scene node. The three consumers --
+`src/client/graphics/entity_equipment.cpp` (in-world, passing T301's player-bake compensation),
+`src/client/graphics/ui/character_model_view.cpp` (the paperdoll) and
+`tools/model_viewer/model_viewer_equipment.cpp` -- all call `placeHeldItem()`;
+none may keep a local rotation/position split or a per-slot Euler offset. The
+correction itself was chosen by SEARCH against the official client, not by
+argument (T485, `refactor/T485_held_item_transform_candidate_search.md`,
+`review/T485/`): all 24 proper signed permutations rendered through the same
+function, scored on T478's oracle facts (blades forward and level, arrow down
+the leg). The winner is item X -> bone -Z, Y -> Y, Z -> X; the reason it is
+that and not T472's diag(-1, 1, -1) is written on the constant. Do not
+re-derive it from one bone axis; if an item looks wrong, add it to the search
+tool's `--items` and re-run against a fresh oracle grab.
 
 ### The shared client pack `willeq.eqe1`
 

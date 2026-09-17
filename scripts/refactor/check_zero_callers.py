@@ -1128,8 +1128,6 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "toString"): "B606",
     ("BackgroundWorkQueue", "pollAll"): "B606",
     ("BackgroundWorkQueue", "setBatchHooks"): "B606",
-    ("EntityRenderer", "loadEquipmentModels"): "B606",
-    ("EntityRenderer", "loadGlobalCharacters"): "B606",
     ("IrrlichtRenderer", "setNewUIEnabled"): "B606",
     ("RDPServer", "setCertificate"): "B606",
     ("StringDatabase", "loadDbStrFile"): "B606",

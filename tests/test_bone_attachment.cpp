@@ -136,33 +136,57 @@ TEST(BoneAttachmentTest, MatchesTheSameFallbackChainRealRaceCodesUse) {
     ASSERT_EQ(idx, 0);
 }
 
-// --- computeHeldItemTransform: T472, the one held-item transform ---
+// --- computeHeldItemTransform / placeHeldItem: the one held-item transform ---
 //
-// In EQ space it is B * diag(-1, 1, -1); in Irrlicht (x, z, y) it is
-// S * B * C * S. The derivation from the S3D data is on the function; these
-// pin the algebra, and tests/test_held_item_attachment.cpp pins the result
-// against real skeletons and real items.
+// In EQ space it is B * C with C = kHeldItemCorrection (T485: item X -> -Z,
+// Y -> Y, Z -> X, a quarter turn about the item's Y, chosen by search against
+// the official client); in Irrlicht (x, z, y) it is S * B * C * S. These pin
+// the algebra, and tests/test_held_item_attachment.cpp pins the result against
+// real skeletons and real items.
 
 namespace {
-// EQ-space reference: S * (B * C * S*p) for an Irrlicht item-mesh point p.
-irr::core::vector3df referenceHeld(const BoneMat4& b, const irr::core::vector3df& irrPoint) {
-    const float ex = -irrPoint.X, ey = irrPoint.Z, ez = -irrPoint.Y;  // C * (S * p)
+// EQ-space reference: S * (B * C * S*p) for an Irrlicht item-mesh point p and
+// an explicit correction (column j = image of item axis j).
+irr::core::vector3df referenceHeld(const BoneMat4& b, const irr::core::vector3df& irrPoint,
+                                   const EQT::Graphics::HeldItemCorrection& c) {
+    const float px = irrPoint.X, py = irrPoint.Z, pz = irrPoint.Y;  // S * p, in EQ axes
+    const float ex = c.c[0][0] * px + c.c[1][0] * py + c.c[2][0] * pz;
+    const float ey = c.c[0][1] * px + c.c[1][1] * py + c.c[2][1] * pz;
+    const float ez = c.c[0][2] * px + c.c[1][2] * py + c.c[2][2] * pz;
     const float wx = b.m[0] * ex + b.m[4] * ey + b.m[8] * ez + b.m[12];
     const float wy = b.m[1] * ex + b.m[5] * ey + b.m[9] * ez + b.m[13];
     const float wz = b.m[2] * ex + b.m[6] * ey + b.m[10] * ez + b.m[14];
     return irr::core::vector3df(wx, wz, wy);  // back to Irrlicht
 }
+
+BoneMat4 rotatedBone() {
+    const float n = std::sqrt(0.2f * 0.2f + 0.5f * 0.5f + 0.1f * 0.1f + 0.83f * 0.83f);
+    return BoneMat4::translate(0.54f, -0.84f, 1.25f) * BoneMat4::fromQuaternion(0.2f / n, 0.5f / n, 0.1f / n, 0.83f / n);
+}
 }  // namespace
 
-TEST(BoneAttachmentTest, HeldItemAtAnIdentityBoneIsAHalfTurnAboutTheItemsY) {
+TEST(BoneAttachmentTest, ShippedCorrectionIsAQuarterTurnAboutTheItemsY) {
+    // The winner of T485's search, spelled out: item X -> bone -Z, Y -> Y, Z -> X.
+    const auto& c = EQT::Graphics::kHeldItemCorrection;
+    EXPECT_FLOAT_EQ(c.c[0][0], 0.0f);  EXPECT_FLOAT_EQ(c.c[0][1], 0.0f);  EXPECT_FLOAT_EQ(c.c[0][2], -1.0f);
+    EXPECT_FLOAT_EQ(c.c[1][0], 0.0f);  EXPECT_FLOAT_EQ(c.c[1][1], 1.0f);  EXPECT_FLOAT_EQ(c.c[1][2], 0.0f);
+    EXPECT_FLOAT_EQ(c.c[2][0], 1.0f);  EXPECT_FLOAT_EQ(c.c[2][1], 0.0f);  EXPECT_FLOAT_EQ(c.c[2][2], 0.0f);
+    // A proper rotation (det +1), so Irrlicht's Euler round trip holds.
+    const float det = c.c[0][0] * (c.c[1][1] * c.c[2][2] - c.c[2][1] * c.c[1][2]) -
+                      c.c[1][0] * (c.c[0][1] * c.c[2][2] - c.c[2][1] * c.c[0][2]) +
+                      c.c[2][0] * (c.c[0][1] * c.c[1][2] - c.c[1][1] * c.c[0][2]);
+    EXPECT_FLOAT_EQ(det, 1.0f);
+}
+
+TEST(BoneAttachmentTest, HeldItemAtAnIdentityBoneIsAQuarterTurnAboutTheItemsY) {
     const irr::core::matrix4 m = computeHeldItemTransform(BoneMat4::identity());
     irr::core::vector3df eqX(1, 0, 0), eqY(0, 0, 1), eqZ(0, 1, 0);  // EQ axes, in Irrlicht coordinates
     m.transformVect(eqX);
     m.transformVect(eqY);
     m.transformVect(eqZ);
-    EXPECT_NEAR(eqX.X, -1.0f, 1e-6f) << "the item's long axis must be reversed";
+    EXPECT_NEAR(eqX.Y, -1.0f, 1e-6f) << "the item's long axis (+X) must land on the bone's -Z";
     EXPECT_NEAR(eqY.Z, 1.0f, 1e-6f) << "the item's Y (a shield's painted face) must be kept";
-    EXPECT_NEAR(eqZ.Y, -1.0f, 1e-6f);
+    EXPECT_NEAR(eqZ.X, 1.0f, 1e-6f) << "the item's Z must land on the bone's +X";
 }
 
 TEST(BoneAttachmentTest, HeldItemOriginIsTheBoneOrigin) {
@@ -174,26 +198,69 @@ TEST(BoneAttachmentTest, HeldItemOriginIsTheBoneOrigin) {
 }
 
 TEST(BoneAttachmentTest, HeldItemTransformMatchesTheEqSpaceCompositionForARotatedBone) {
-    const float n = std::sqrt(0.2f * 0.2f + 0.5f * 0.5f + 0.1f * 0.1f + 0.83f * 0.83f);
-    const BoneMat4 b = BoneMat4::translate(0.54f, -0.84f, 1.25f) *
-                       BoneMat4::fromQuaternion(0.2f / n, 0.5f / n, 0.1f / n, 0.83f / n);
-    const irr::core::matrix4 m = computeHeldItemTransform(b);
-    for (const irr::core::vector3df& p : {irr::core::vector3df(2.24f, 0.0f, 0.0f), irr::core::vector3df(0.0f, 0.3f, -0.2f),
-                                          irr::core::vector3df(-0.51f, 0.1f, 0.4f)}) {
-        irr::core::vector3df got = p;
-        m.transformVect(got);
-        const irr::core::vector3df want = referenceHeld(b, p);
-        EXPECT_NEAR(got.X, want.X, 1e-5f);
-        EXPECT_NEAR(got.Y, want.Y, 1e-5f);
-        EXPECT_NEAR(got.Z, want.Z, 1e-5f);
+    const BoneMat4 b = rotatedBone();
+    // The shipped correction and, through the explicit parameter, T472's old
+    // one and the identity -- the same algebra for every candidate the search
+    // rendered.
+    const EQT::Graphics::HeldItemCorrection t472{{{-1, 0, 0}, {0, 1, 0}, {0, 0, -1}}};
+    const EQT::Graphics::HeldItemCorrection identity{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
+    for (const auto* c : {&EQT::Graphics::kHeldItemCorrection, &t472, &identity}) {
+        const irr::core::matrix4 m = computeHeldItemTransform(b, *c);
+        for (const irr::core::vector3df& p : {irr::core::vector3df(2.24f, 0.0f, 0.0f), irr::core::vector3df(0.0f, 0.3f, -0.2f),
+                                              irr::core::vector3df(-0.51f, 0.1f, 0.4f)}) {
+            irr::core::vector3df got = p;
+            m.transformVect(got);
+            const irr::core::vector3df want = referenceHeld(b, p, *c);
+            EXPECT_NEAR(got.X, want.X, 1e-5f);
+            EXPECT_NEAR(got.Y, want.Y, 1e-5f);
+            EXPECT_NEAR(got.Z, want.Z, 1e-5f);
+        }
+        // A proper rotation (no mirror), so Irrlicht's Euler round trip holds.
+        irr::core::matrix4 r = m;
+        r.setTranslation(irr::core::vector3df(0, 0, 0));
+        const float det = r[0] * (r[5] * r[10] - r[9] * r[6]) - r[4] * (r[1] * r[10] - r[9] * r[2]) +
+                          r[8] * (r[1] * r[6] - r[5] * r[2]);
+        EXPECT_NEAR(det, 1.0f, 1e-5f);
+        irr::core::matrix4 roundTrip;
+        roundTrip.setRotationDegrees(r.getRotationDegrees());
+        for (int i = 0; i < 16; ++i) EXPECT_NEAR(roundTrip[i], r[i], 1e-3f) << "element " << i;
     }
-    // A proper rotation (no mirror), so Irrlicht's Euler round trip holds.
-    irr::core::matrix4 r = m;
-    r.setTranslation(irr::core::vector3df(0, 0, 0));
-    const float det = r[0] * (r[5] * r[10] - r[9] * r[6]) - r[4] * (r[1] * r[10] - r[9] * r[2]) +
-                      r[8] * (r[1] * r[6] - r[5] * r[2]);
-    EXPECT_NEAR(det, 1.0f, 1e-5f);
-    irr::core::matrix4 roundTrip;
-    roundTrip.setRotationDegrees(r.getRotationDegrees());
-    for (int i = 0; i < 16; ++i) EXPECT_NEAR(roundTrip[i], r[i], 1e-3f) << "element " << i;
+}
+
+// T485: the one placement. An NPC's node takes the transform's rotation and
+// translation as they are; the player's takes T301's yaw compensation on both
+// and the un-scaled position. Pinned on an empty scene node (EDT_NULL).
+TEST(BoneAttachmentTest, PlaceHeldItemSetsTheNodeFromTheOneTransform) {
+    irr::SIrrlichtCreationParameters p;
+    p.DriverType = irr::video::EDT_NULL;
+    p.WindowSize = irr::core::dimension2d<irr::u32>(16, 16);
+    irr::IrrlichtDevice* device = irr::createDeviceEx(p);
+    ASSERT_NE(device, nullptr);
+    irr::scene::ISceneNode* node = device->getSceneManager()->addEmptySceneNode();
+    ASSERT_NE(node, nullptr);
+    const BoneMat4 b = rotatedBone();
+    irr::core::matrix4 held = computeHeldItemTransform(b);
+    const irr::core::vector3df position = held.getTranslation();
+    held.setTranslation(irr::core::vector3df(0, 0, 0));
+
+    EQT::Graphics::placeHeldItem(node, b);
+    EXPECT_LT(node->getPosition().getDistanceFrom(position), 1e-5f);
+    irr::core::matrix4 fromNode;
+    fromNode.setRotationDegrees(node->getRotation());
+    for (int i = 0; i < 16; ++i) EXPECT_NEAR(fromNode[i], held[i], 1e-3f) << "element " << i;
+
+    // Player: yaw fix Y = 30 deg, scale 2 -> position halved then rotated, rotation composed.
+    irr::core::matrix4 yawFix;
+    yawFix.setRotationDegrees(irr::core::vector3df(0, 30.0f, 0));
+    EQT::Graphics::placeHeldItem(node, b, &yawFix, 2.0f);
+    irr::core::vector3df wantPos = position / 2.0f;
+    yawFix.rotateVect(wantPos);
+    EXPECT_LT(node->getPosition().getDistanceFrom(wantPos), 1e-5f);
+    const irr::core::matrix4 wantRot = yawFix * held;
+    fromNode.setRotationDegrees(node->getRotation());
+    for (int i = 0; i < 16; ++i) EXPECT_NEAR(fromNode[i], wantRot[i], 1e-3f) << "element " << i;
+
+    // A null node is a no-op, not a crash.
+    EQT::Graphics::placeHeldItem(nullptr, b);
+    device->drop();
 }

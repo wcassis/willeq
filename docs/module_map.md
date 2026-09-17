@@ -344,7 +344,8 @@ retired by P30/P32 and no supported build parsed it.
 | entity_combat_anim.cpp | 437 | Combat animation queues + animation queries |
 | entity_first_person_draw.cpp | 401 | T309: the attack-animation draw rule, first-person mode, player entity position/animation |
 | entity_interpolation.cpp | 372 | J03: updateInterpolation |
-| entity_equipment.cpp | 320 | Equipment models, attachment, bone transforms |
+| entity_equipment.cpp | 263 | Equipment models, attachment; placement is `bone_attachment.h`'s `placeHeldItem()` (T485: the one placement the paperdoll and the model viewer also call, with the correction chosen by search against the official client) |
+| equipment_actor_geometry.cpp (under `src/client/graphics/eq/`) | 197 | T476: resolves an IT actor's reference chain (0x14 -> 0x2D mesh, or 0x11 skeleton with rest-pose-placed pieces) into one `ZoneGeometry` with the item's centre added, the frame `computeHeldItemTransform()` expects |
 | entity_castbars.cpp | 264 | Casting bar state + rendering |
 | entity_spatial.cpp | 218 | Spatial grid, BSP occlusion cache, boats |
 | entity_size.cpp | 58 | setEntitySize |
@@ -449,6 +450,7 @@ one file per tool.
 | `wld_dump` (T447) | `tools/wld_dump/wld_dump.h` | `wld_dump.cpp` (archive I/O + main) + `tools/wld_dump/wld_dump_core.cpp` (header, string table, fragment index) + `wld_dump_geometry.cpp` (0x10/0x36/lights) + `wld_dump_animation.cpp` (0x12–0x2D + hex fallback) |
 | `gles2_shader_perpixel_benchmark` (T447) | `tools/hwcaps/shader_perpixel/shader_perpixel.h` | benchmark (runner + main) + `shader_perpixel_egl.cpp` + `shader_perpixel_shaders.cpp` (13 GLSL ES sources) + `shader_perpixel_scene.cpp` |
 | `test_gl_points` (T453) | `tools/gl_points/gl_points.h` | `test_gl_points.cpp` (the six-test `main`, left whole — its test blocks share locals, so cutting it would not be a structural move) + `tools/gl_points/gl_points_egl.cpp` (DRM/GBM and X11 EGL bring-up, teardown, the GL error helpers, shader compile/link) + `gl_points_fbo.cpp` (the offscreen FBO, the pixel readback analyser, the four GLSL ES sources, the pass/fail tally) |
+| `held_item_candidate_search` (T485) | — | `tools/hwcaps/held_item_candidate_search.cpp`, one TU: renders all 24 proper signed permutations of the held-item correction through `placeHeldItem()` on an `EntityRenderer`-built Human male and writes `candidates.tsv` + `rpoint_frames.txt`; the instrument `kHeldItemCorrection` was chosen with |
 | `zone_line_editor` (T451) | `tools/zone_line_editor/zone_line_editor.h` | `zone_line_editor.cpp` (lifecycle + `main`) + `tools/zone_line_editor/zle_io.cpp` (zone geometry, portal data, zone-line JSON) + `zle_input.cpp` (the key/mouse edit operations and the view transforms) + `zle_render.cpp` (the 2D draw passes and the HUD) |
 
 Each of those targets carries `${CMAKE_SOURCE_DIR}/tools` on its include path,
