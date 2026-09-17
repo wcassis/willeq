@@ -191,7 +191,29 @@ false since T472; the entry is struck (T472 the lantern, T485 the blade).
 
 ### 6. Verification
 
-(filled in below)
+Run on the 2026-09-17 verification leg, on the rebased branch (base `fable`
+`c637518a`), in `/mnt/projects/fable/wt/slot1`. The 2026-09-14 executor died before
+filling this in, so every row here is this leg's own run, not an inherited claim.
+
+| step | result |
+|---|---|
+| 0 rebase onto `fable` | one conflict, `refactor/BOARD.md`: T485's section against T492/T493's. Both are ADDITIONS (checked, not assumed) and both were kept; the stale `B755-B759 unused.` line above them was dropped, since T485 takes B755/B756 |
+| 1 `cmake --build build -j24` | **PASS, exit 0**, 0 `error:` |
+| 2 the three affected binaries | `test_bone_attachment` 16/16, `test_held_item_attachment` 11/11, `test_first_person_weapon_attachment` 2/2 |
+| 3 RED BEFORE, re-run not inherited | `kHeldItemCorrection` temporarily set back to T472's `diag(-1, 1, -1)` and the three binaries rebuilt: **exactly 6 reds** -- `OneHandedBladePointsForwardAndLevelAtIdle` (forward **-0.282** vs > 0.7, |up| **0.959** vs < 0.6, at all five headings), `TwoHandedBladeIsLevelInFrontOfTheWaistAtIdle`, `ArrowHangsDownTheLegAtIdle`, `ThirdPersonIdleBladePointsForward`, `ShippedCorrectionIsAQuarterTurnAboutTheItemsY`, `HeldItemAtAnIdentityBoneIsAQuarterTurnAboutTheItemsY`. `ShieldFrontFacesAwayFromTheBody` and `LanternHangsBelowTheLeftHand` stayed GREEN under T472's C, as section 8 says. The constant was then restored and everything rebuilt |
+| 4 the instrument reproduces | `build/bin/held_item_candidate_search` re-run from scratch: `candidates.tsv` (73 lines) and `rpoint_frames.txt` **diff byte-identical** against `review/T485/data/` |
+| 5 `ctest --test-dir build -j6` | **PASS, 4818/4818, 0 failed, exit 0**, 556.77 s. Includes `visual_gate` (62.4 s), `ZeroCallers`, `WriteOnlyFields`, `FileSizeCeiling`, `DocCitations`, `DocCounts`, `DocClaims`, `CommentClaims` and all 12 `HeldItemTest` / `BoneAttachmentTest` / `FirstPersonWeaponAttachmentTest` cases. 18 skips, all pre-existing |
+| 6 goldens | `git status --porcelain tests/goldens` **empty** after the suite: no golden moved, as the plan's STOP required |
+| 7 `check_file_sizes.sh` | **PASS**: 8 changed files, 0 warn, 0 fail (largest `character_model_view.cpp` 663) |
+| 8 `check_zero_callers.py` standalone | exit 0, 411 exempt, 0 unlisted, 0 stale -- the WIP's two deleted `EXEMPT_TESTS_GROUPS` rows are required, not incidental (section 9) |
+| 9 ARM build `scripts/build-arm-noble.sh` | **PASS, exit 0**, 0 `error:` (armhf/Noble cross build in docker, graphics + audio, links `bin/willeq`) |
+
+Against the last full suite on record, T484's **4,806/4,807** at `fable`; T479,
+T481, T483, T492 and T493 landed in between, and T485 adds four cases
+(`TwoHandedBladeIsLevelInFrontOfTheWaistAtIdle`, `ArrowHangsDownTheLegAtIdle`,
+`ShippedCorrectionIsAQuarterTurnAboutTheItemsY`,
+`PlaceHeldItemSetsTheNodeFromTheOneTransform`). There are no expected failures in
+this suite since T392 (`CLAUDE.md`), and there were none.
 
 ### 7. Board
 
