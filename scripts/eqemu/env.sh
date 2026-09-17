@@ -68,9 +68,70 @@ eqemu_port_host() {
     if eqemu_is_local; then echo 127.0.0.1; else echo "${EQEMU_HOST}"; fi
 }
 
-eqemu_port_open() {
-    # eqemu_port_open <port> — TCP connect probe against the eqemu host.
+eqemu_host_port_reachable() {
+    # eqemu_host_port_reachable <port> — a host-side TCP connect probe.
+    #
+    # T497 (board B797). This proves REACHABILITY ONLY and must NEVER gate
+    # readiness. 5998/9000/7000 are PUBLISHED container ports
+    # (/mnt/projects/akk-stack/docker-compose.yml:35-46), so `docker-proxy`
+    # binds them on the host for as long as the CONTAINER runs and completes
+    # the connect() whatever is — or is not — listening inside it. MEASURED
+    # T493 and again T497: with the eqemu-server container up and world, zone
+    # and loginserver all at ZERO processes, this returns 0 for both 5998 and
+    # 9000. It was renamed from `eqemu_port_open` precisely so that every call
+    # site had to be revisited. Use `eqemu_stack_ready` for readiness.
     bash -c "exec 3<>/dev/tcp/$(eqemu_port_host)/$1" 2>/dev/null
+}
+
+eqemu_container_port_open() {
+    # eqemu_container_port_open <port> — the same connect probe, but INSIDE the
+    # eqemu-server container's network namespace, where docker-proxy cannot
+    # answer for a process that is not there. The bash-less fallback reads
+    # /proc/net/tcp (listening sockets are state 0A, port in hex).
+    local port="$1" hex
+    hex="$(printf '%04X' "${port}")"
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c \
+        "exec 3<>/dev/tcp/127.0.0.1/${port} 2>/dev/null || grep -Eq ':${hex} .* 0A ' /proc/net/tcp" \
+        >/dev/null 2>&1
+}
+
+eqemu_service_ready() {
+    # eqemu_service_ready <basename> <tcp port> — the honest per-service check:
+    # the process is running AND its port answers from inside the container.
+    server_process_running "$1" && eqemu_container_port_open "$2"
+}
+
+eqemu_stack_ready() {
+    # THE readiness definition. Everything that used to gate on a host port
+    # probe gates on this instead (T497, board B797).
+    #
+    # zone is deliberately absent: its port is UDP and assigned by world, and
+    # a UDP port does not refuse a connect() the way a TCP one does — up.sh
+    # polls the zone's own bootup log line instead.
+    eqemu_service_ready loginserver "${LOGIN_PORT}" \
+        && eqemu_service_ready world "${WORLD_PORT}"
+}
+
+eq_container_pkill() {
+    # eq_container_pkill <signal> <ere> — pkill inside the eqemu-server
+    # container, with the guard B798 asks for.
+    #
+    # The trap (MEASURED T493): the container-side `bash -c "pkill -f
+    # /tmp/spire-launcher; ..."` matches its OWN command line, so the exec
+    # kills itself (rc 143) and everything after the first pkill never runs.
+    # Safe shapes are ones the wrapper cannot match: down.sh's
+    # '/bin/(loginserver|world|zone)( |$)' (the literal "(" after /bin/ is not
+    # one of the alternatives) and the bracket trick '[s]pire-launcher'.
+    # The guard approximates pkill's per-process argv match with a match
+    # against the command string this function is about to run; it catches
+    # exactly the T493 shape and is deliberately conservative.
+    local sig="$1" pat="$2" cmd
+    cmd="pkill -${sig} -f '${pat}'"
+    if printf '%s' "${cmd}" | grep -Eq -- "${pat}"; then
+        echo "REFUSING self-matching pkill pattern: ${pat}" >&2
+        return 2
+    fi
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c "${cmd}" 2>/dev/null
 }
 
 eqemu_lock_take() {

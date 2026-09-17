@@ -32,9 +32,9 @@ source "${_CMP_DIR}/eqemu/env.sh"
 cmp_reset_zone() {   # cmp_reset_zone <zone_short>
     local zs="$1" i
     echo "== bouncing zone ${zs} (clears the linkdead client cache)"
-    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -TERM -f '/bin/zone( |\$)'" >/dev/null 2>&1
+    eq_container_pkill TERM '/bin/zone( |$)' >/dev/null 2>&1
     sleep 4
-    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -KILL -f '/bin/zone( |\$)'" >/dev/null 2>&1
+    eq_container_pkill KILL '/bin/zone( |$)' >/dev/null 2>&1
     sleep 2
     server_exec_bg "./bin/zone ${zs} > logs/zone_${zs}_sweep.log 2>&1"
     for i in $(seq 1 40); do

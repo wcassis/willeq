@@ -83,4 +83,68 @@ with `wait_for "… ready" 30 eqemu_service_ready …`; fix the header's step-5 
 - Commit only scripts, CLAUDE.md, BOARD.md, this plan's Review; evidence to `review/T497/`.
 
 ## Review
-(executor)
+(executor, 2026-09-17, local lane, branch `task/T497-readiness-probe`)
+
+**The red proof.** [measured] `ready_selftest.sh --legacy` exits **70**: with
+the eqemu-server container Up and `world`/`loginserver`/`zone` all at ZERO
+processes, the old port-only definition (a host-side `connect()` on 5998 and
+9000) still said READY, and both host ports still answered. Recorded BEFORE the
+readiness definition was written --
+`review/T497/ready_selftest/result_legacy.txt`. The same net against
+`eqemu_stack_ready` exits **0** (`result_fixed.txt`): ready after `up.sh`, NOT
+ready with the fleet killed, ready again after the second `up.sh`.
+
+**The in-container probe method.** [measured] The eqemu-server image's `bash`
+HAS network redirections -- `docker exec ... bash -c 'exec 3<>/dev/tcp/…'`
+answers `Connection refused` for a dead port, not "no such file" -- so
+`eqemu_container_port_open` uses `/dev/tcp/127.0.0.1/<port>` and falls back to
+`grep ':<HEX> .* 0A ' /proc/net/tcp` only if that fails. Both were checked in
+the container; the fallback was never needed on this image. [measured] With the
+fleet at zero: host 5998/9000 OPEN, container 5998/9000 CLOSED -- the whole
+finding in one line.
+
+**What the fix moved.** [measured] `up.sh` now waits a real **2 s** for world's
+in-container port after starting it, where it printed `ready (0s)` before.
+`grep -rn '/dev/tcp' scripts/` outside `env.sh` returns NOTHING; `eqemu_port_open`
+survives only inside comments that say what it was renamed from.
+
+**B798.** [measured] `eq_container_pkill` refuses `/tmp/spire-launcher` with
+rc 2 and the message `REFUSING self-matching pkill pattern:`, and accepts
+`'/bin/(loginserver|world|zone)( |$)'`, `'[s]pire-launcher'`,
+`'[e]qemu-server:launcher'` and `'/bin/zone( |$)'`. Two call sites the plan did
+not name -- `camera_match_pose.sh` and `camera_match_sweep.sh`, both bouncing
+the zone -- were re-pointed too; `restore_selftest.sh`'s `--legacy` branch was
+deliberately left hand-written (it reproduces the defect, and the guard would
+refuse it).
+
+**Both selftests coexist, and a real run passed.** [measured]
+`scripts/eqemu/restore_selftest.sh --unit T497` exits **0** (restore
+byte-identical in 17 s, 0 world/zone processes alive, budget 40 s), and
+`scripts/scenario.sh zone_in --config scripts/scenario_configs/zone_in.local.json`
+exits **0** (`zoned in to 'qeynos2'` after 3.7 s) through `up.sh`'s new
+readiness wait, with the snapshot restored byte-identically.
+
+**Deviations / order.** `eq_container_pkill` and the `eqemu_port_open` rename
+(task 3 and half of task 2) were written BEFORE the red run, because the
+selftest needs the helper to kill the fleet and needs a name for the old
+definition. The readiness definition itself -- `eqemu_container_port_open`,
+`eqemu_service_ready`, `eqemu_stack_ready` -- was written only after the red 70
+was recorded, which is what the red proof is about. No C++ changed.
+
+**[assumed]** (a) that the guard's command-string match approximates pkill's
+per-process argv match closely enough -- it catches the T493 shape and is
+deliberately conservative, and a legitimate pattern it refuses is a refusal,
+not a kill; (b) that killing `[s]pire-launcher` plus the fleet leaves the
+container Up -- it did on every run here (`compose ps` checked each time, exit
+71 if not), but it is the image's behaviour, not a contract; (c) that the
+zone's readiness is adequately covered by its bootup log line, since its port
+is UDP; (d) that 60 s / 120 s are enough for loginserver / world to listen
+after a cold start -- measured 0 s and 2 s locally, so the margin is large, but
+the VM lane was not exercised (this unit is local-only).
+
+**Also found.** `status.sh` on a live stack reports `loginserver: running (2)`
+and `world: running (2)` -- the container supervisor's copy plus `up.sh`'s --
+which is B483's territory, not this unit's, and did not affect any result here.
+`scripts/scenario_configs/*.local.json` are gitignored and absent in a fresh
+worktree; `zone_in.local.json` and `peer.local.json` were created locally
+(127.0.0.1) and are deliberately NOT committed.

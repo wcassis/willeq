@@ -171,6 +171,9 @@ trap cleanup EXIT INT TERM
 
 # ---- the pre-T493 restore, kept ONLY so this net can be shown to fail ------
 legacy_restore_snapshot() {
+    # Deliberately NOT eq_container_pkill (T497/B798): reproducing the pre-T493
+    # defect is the whole point of this branch, and the helper's guard would
+    # refuse this pattern -- which is exactly the guard working.
     say "LEGACY restore: pkill inside the container, one UPDATE per row"
     eq_docker exec "${EQEMU_CONTAINER}" bash -c \
         "pkill -f /tmp/spire-launcher; pkill -f 'bin/world'; pkill -f 'bin/zone'; pkill -f 'bin/loginserver'" \
@@ -203,15 +206,17 @@ world_procs() {
 
 # ---- 1. server up ---------------------------------------------------------
 # Unconditionally, because up.sh adopts a running fleet (T457, board B483) and
-# because a port probe cannot tell this lane apart from a dead one: with the
-# stack running under docker on THIS host, 5998 and 9000 are published ports,
-# so docker-proxy completes the connect() even when nothing inside the
-# container is listening (MEASURED T493 with world/zone/loginserver all at
-# zero). The process counts are the only honest check.
+# because a HOST port probe cannot tell this lane apart from a dead one: with
+# the stack running under docker on THIS host, 5998 and 9000 are published
+# ports, so docker-proxy completes the connect() even when nothing inside the
+# container is listening (MEASURED T493 and re-measured T497 with
+# world/zone/loginserver all at zero). T497 made that the ONE readiness
+# definition, `eqemu_stack_ready`, which is what this pair of process checks
+# grew into -- see `scripts/eqemu/ready_selftest.sh`.
 say "bringing eqemu up (up.sh adopts anything already running)"
 bash "$REPO/scripts/eqemu/up.sh" > "$SERVERLOG" 2>&1 || { say "up.sh failed -- see $SERVERLOG"; exit 65; }
-if ! server_process_running world || ! server_process_running loginserver; then
-    say "up.sh returned 0 but world/loginserver are not running -- see $SERVERLOG"
+if ! eqemu_stack_ready; then
+    say "up.sh returned 0 but the stack is not ready -- see $SERVERLOG"
     exit 65
 fi
 
@@ -272,8 +277,7 @@ say "restore wall time: ${ELAPSED}s (budget ${MAX_SECONDS}s); world/zone process
 # down.sh's first step, verbatim. This is where a zone that is still up writes
 # its in-memory copy of the character back over the restore.
 say "sending down.sh's SIGTERM to loginserver/world/zone and settling ${SAVE_SETTLE}s"
-eq_docker exec "${EQEMU_CONTAINER}" bash -c \
-    "pkill -TERM -f '/bin/(loginserver|world|zone)( |\$)'" >/dev/null 2>&1
+eq_container_pkill TERM '/bin/(loginserver|world|zone)( |$)' >/dev/null 2>&1
 sleep "$SAVE_SETTLE"
 
 # ---- 8. the verdict -------------------------------------------------------

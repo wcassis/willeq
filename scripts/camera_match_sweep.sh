@@ -128,9 +128,9 @@ fi
 ZONE_SHORT="${ZONE_SHORT:-qeynos2}"
 reset_zone() {
     echo "== bouncing zone ${ZONE_SHORT} (clears the linkdead client cache)"
-    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -TERM -f '/bin/zone( |\$)'" >/dev/null 2>&1
+    eq_container_pkill TERM '/bin/zone( |$)' >/dev/null 2>&1
     sleep 4
-    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -KILL -f '/bin/zone( |\$)'" >/dev/null 2>&1
+    eq_container_pkill KILL '/bin/zone( |$)' >/dev/null 2>&1
     sleep 2
     server_exec_bg "./bin/zone ${ZONE_SHORT} > logs/zone_${ZONE_SHORT}_sweep.log 2>&1"
     local i

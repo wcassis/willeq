@@ -11056,6 +11056,20 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   (T457) already exists and is the honest check;
   `scripts/eqemu/restore_selftest.sh` uses it and runs `up.sh`
   unconditionally, but `up.sh` and `record.sh` are untouched. Found by T493.
+  **STRUCK by T497.** There is now ONE readiness definition, `eqemu_stack_ready`
+  (`server_process_running` + `eqemu_container_port_open`, a `/dev/tcp` connect
+  inside the container's own netns, where docker-proxy cannot answer);
+  `eqemu_port_open` was RENAMED to `eqemu_host_port_reachable` so every call
+  site had to be revisited, and a grep now shows zero inline `/dev/tcp` probes
+  outside `env.sh`. `up.sh`'s four inline probes, `record.sh:200`,
+  `f9_cycle.sh:48` (B821), `restore_selftest.sh`'s post-up pair and `status.sh`
+  all go through it. `scripts/eqemu/ready_selftest.sh` is the net and the
+  proof: MEASURED 2026-09-17 on the local lane, `--legacy` (the old port-only
+  definition) exits **70** -- it called the stack READY with world=0
+  loginserver=0 zone=0 while `compose ps` still showed the container Up and
+  both host ports still answered -- and the same run against
+  `eqemu_stack_ready` exits **0**. `up.sh` now waits a REAL 2 s for world's
+  in-container port after starting it, where it used to print `ready (0s)`.
 - **B798** (B) `scripts/eqemu/down.sh` -- **its `pkill` pattern is the right
   one and `scenario.sh`'s was not, and nothing said so.** `down.sh` uses
   `pkill -TERM -f '/bin/(loginserver|world|zone)( |$)'`, which does not match
@@ -11064,6 +11078,17 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   `pkill` has the same trap waiting for it, and there is no shared helper: both
   call sites spell the pattern out. Small, but it is the exact shape of the
   defect B784 turned out to be. Found by T493.
+  **STRUCK by T497.** `eq_container_pkill <signal> <ere>` (`env.sh`) is the one
+  helper: it builds the command and refuses a pattern that matches the command
+  string it is about to run (`REFUSING self-matching pkill pattern: ...`,
+  return 2). MEASURED: `/tmp/spire-launcher` is refused with rc 2, while
+  `'/bin/(loginserver|world|zone)( |$)'`, `'[s]pire-launcher'` and
+  `'/bin/zone( |$)'` all pass the guard. Every container-side `pkill` in the
+  tree now goes through it -- `down.sh`'s two, `restore_selftest.sh`'s step-7
+  SIGTERM, `camera_match_pose.sh`'s and `camera_match_sweep.sh`'s zone bounces
+  (neither was named in B798) and the new `ready_selftest.sh` -- with ONE
+  deliberate exception: `restore_selftest.sh`'s `--legacy` branch, which
+  reproduces the defect on purpose and carries a comment saying so.
 ## Added 2026-09-14 by T485 (the held-item correction chosen by search against the oracle)
 
 **SUPERSEDED 2026-09-17 by T485 Leg B (see that section below): the correction
@@ -11383,4 +11408,40 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   SKIP like their siblings when the path is absent, or create the symlink in
   the worktree setup. Found by T494.
 
-B816 onwards unused.
+## Added 2026-09-17 by T497 (readiness that docker-proxy cannot fake)
+
+- **B820** (B) **Every readiness probe in the lane tests TCP, and the CLIENT
+  speaks UDP.** Even the fixed `eqemu_stack_ready` proves "the server links are
+  up", not "a client can log in": TCP 5998 is the loginserver's **servertalk**
+  listener for WORLD SERVERS
+  (`/mnt/projects/akk-stack/code/loginserver/world_server_manager.cpp:30-36`,
+  `EQ::Net::ServertalkServer::Listen`) and TCP 9000 is world's zone link, while
+  a Titanium client logs in over **UDP** 5998 and plays over UDP
+  (`client_manager.cpp:105-107` builds an `EQStreamManager` on `titanium_port`).
+  [measured, from the server source.] A UDP port does not refuse a `connect()`,
+  so the honest client-facing check is not a probe at all -- it is a login, i.e.
+  `scripts/scenario.sh zone_in`. Nothing in the tree says this, and the next
+  person to "improve" readiness will reach for a UDP probe that always
+  succeeds. Either document the limit where the definition lives (T497 did, in
+  `env.sh` and CLAUDE.md) or give the lane a cheap real-login smoke gate.
+  Found by T497.
+- **B821** (C) **`scripts/llmbench/f9_cycle.sh:48` carried the same host-port
+  gate B797 named, and B797 missed it.** B797 listed `up.sh`, `record.sh` and
+  `status.sh`; the fourth call site was `f9_cycle.sh`, which skipped `up.sh` on
+  `eqemu_port_open 5998 && 9000` exactly like `record.sh`. T497 found it only
+  because the rename forced a full re-grep, and fixed it. The open question is
+  the process one: a board entry that enumerates call sites is a snapshot, and
+  nothing checks the enumeration. Worth a convention (name the grep, not the
+  list) before the next one. Found by T497.
+- **B822** (C) **There is no shell test lane.** `restore_selftest.sh` (T493)
+  and `ready_selftest.sh` (T497) are real regression nets for real defects --
+  both with a `--legacy` mode that proves they fail on the defect -- but
+  nothing runs them: they are not in ctest, not in CI, and reachable only by a
+  human typing the path (or `scripts/scenario.sh --selftest` for the first).
+  They also need the eqemu lock and ~2 minutes each, so they cannot simply join
+  the default ctest suite. Proposal: `scripts/eqemu/*_selftest.sh` is the
+  convention, each takes the lock itself, each exits 0/64/6x-7x, and a single
+  `scripts/eqemu/selftests.sh` runs all of them for a live unit's pre-flight.
+  Needs Will's call on whether that lane is worth owning. Found by T497.
+
+B816-B819 unused (T497 was dispatched to start at B820). B823 onwards unused.

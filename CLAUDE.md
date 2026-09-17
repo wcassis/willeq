@@ -507,6 +507,50 @@ facts hid it:
   instant the zone got SIGTERM. So the restore verified itself byte-identical
   and the `down.sh` that followed it silently undid the restore.
 
+**A PORT PROBE IS NOT LIVENESS** (T497, board B797). Every readiness gate in
+the lane used to be a host-side `connect()` on 5998/9000. That answers with the
+server fleet at ZERO processes: those are PUBLISHED container ports
+(`/mnt/projects/akk-stack/docker-compose.yml:35-46`), so `docker-proxy` binds
+them on the host for as long as the CONTAINER runs, whatever is (not) listening
+inside it. MEASURED T493 and re-measured T497 -- `up.sh` printed
+`world port 9000: ready (0s)` against a dead stack and `record.sh` /
+`f9_cycle.sh` skipped `up.sh` entirely on the same evidence. The probe was also
+testing a transport no client uses: TCP 5998 is the loginserver's **servertalk**
+listener for world servers
+(`/mnt/projects/akk-stack/code/loginserver/world_server_manager.cpp:30-36`) and
+TCP 9000 is world's zone link, while the Titanium client logs in over **UDP**
+5998/9000 (`client_manager.cpp:105-107`, an `EQStreamManager`).
+
+There is now ONE readiness definition, `eqemu_stack_ready` in
+`scripts/eqemu/env.sh`: for loginserver and world, the process is running AND
+its port answers from INSIDE the container's netns
+(`eqemu_service_ready` = `server_process_running` + `eqemu_container_port_open`,
+a `/dev/tcp` connect via `docker exec`, falling back to `/proc/net/tcp`).
+zone is deliberately not in it -- its port is UDP and assigned by world, so
+`up.sh` polls the zone's own bootup log line. **Nothing may gate on
+`eqemu_host_port_reachable`** (the renamed `eqemu_port_open`); it proves
+reachability only, and `status.sh` prints exactly that distinction
+(`DOWN -- host port answers (docker-proxy), nothing is listening inside the
+container`). The net is `scripts/eqemu/ready_selftest.sh`: it brings the stack
+up, kills the fleet AND the container's supervisor, checks the container is
+still Up with both host ports still answering, and requires `eqemu_stack_ready`
+to be FALSE. `--legacy` evaluates the old port-only definition and exits 70,
+which is how the net is known to test something.
+
+```bash
+bash scripts/eqemu/ready_selftest.sh --unit T4xx            # expect 0
+bash scripts/eqemu/ready_selftest.sh --unit T4xx --legacy   # expect 70
+```
+
+**Never write a container-side `pkill` by hand** (T497, board B798). Use
+`eq_container_pkill <signal> <ere>` (`env.sh`), which refuses a pattern that
+matches its own `bash -c` wrapper -- the exact defect B784 turned out to be
+(the exec killed itself with 143 and the rest of the chain never ran). The safe
+shapes are `'/bin/(loginserver|world|zone)( |$)'` and the bracket trick
+`'[s]pire-launcher'`. The one deliberate exception is
+`restore_selftest.sh`'s `--legacy` branch, which reproduces the defect on
+purpose.
+
 The one implementation is `scripts/eqemu/restore_lib.sh`, sourced by
 `scripts/scenario.sh`, `scripts/llmbench/teardown.sh` and
 `scripts/llmbench/record.sh` -- `eqemu_world_stop` (`docker stop` the

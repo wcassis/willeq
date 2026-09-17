@@ -132,7 +132,9 @@ probe with world/zone/loginserver all at zero [measured]; `up.sh` prints
 `down.sh`'s `pkill` pattern is the one that does not match its own wrapper, and
 nothing in the tree says so. CLAUDE.md's scenario-lane section now spells out
 what "restore with the world DOWN" means, names the shared library, gives the
-`--selftest` command and the three extra exit codes. [measured] Every other
+`--selftest` command and the three extra exit codes. **B797 and B798 were both
+closed by T497** (`scripts/eqemu/ready_selftest.sh`, `eqemu_stack_ready`,
+`eq_container_pkill`); see that plan's Review. [measured] Every other
 `"world DOWN"` string in the tree is inside a COMPLETED unit plan
 (T386/T389/T391/T405/T418/T422/T426/T428/T431/T433/T438/T449) describing what
 that unit did; those are historical records, not live procedure, and were left

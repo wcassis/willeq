@@ -45,7 +45,9 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-if ! eqemu_port_open 5998 || ! eqemu_port_open 9000; then
+# T497 (board B797/B821): the same host-port gate B797 named in record.sh was
+# here too, and B797 missed it -- docker-proxy answers it with nothing running.
+if ! eqemu_stack_ready; then
     say "bringing eqemu up"; bash "$REPO/scripts/eqemu/up.sh" >>"$LOG" 2>&1 || { say "up.sh failed"; exit 65; }
 fi
 sql() { eq_docker exec "${MARIADB_CONTAINER}" mysql -uroot -p"$(mariadb_root_password)" peq -B -N -e "$1"; }

@@ -22,8 +22,13 @@
 #      fleet (~15 zone processes). Pass --launcher to use the sanctioned
 #      spire:launcher path instead (boots the fleet per eqemu_config's
 #      web-admin.launcher block).
-#   5. Wait for the login (5998), world (9000), and zone (7000) ports to
-#      accept TCP/UDP-adjacent connections on the host.
+#   5. Wait until each service is READY -- the process is running AND its
+#      port answers from INSIDE the container (`eqemu_service_ready`, env.sh).
+#      T497/board B797: this used to be a host-side connect() on 5998/9000,
+#      which proves nothing at all. Those are published container ports, so
+#      docker-proxy answers them for as long as the CONTAINER runs; this
+#      script printed "world port 9000: ready (0s)" and exited 0 against a
+#      fleet at ZERO processes. `scripts/eqemu/ready_selftest.sh` is the net.
 #
 # Usage: scripts/eqemu/up.sh [zone_shortname]  (default: arena)
 
@@ -76,10 +81,10 @@ if [ "${USE_LAUNCHER}" = "1" ]; then
     echo "== up.sh: starting via sanctioned spire:launcher =="
     server_exec_bg "./bin/loginserver > logs/loginserver_h03.log 2>&1"
     server_exec "./bin/spire spire:launcher start 2>&1 | head -3"
-    wait_for "loginserver port ${LOGIN_PORT}" 30 bash -c \
-        "exec 3<>/dev/tcp/$(eqemu_port_host)/${LOGIN_PORT}"
-    wait_for "world port ${WORLD_PORT}" 90 bash -c \
-        "exec 3<>/dev/tcp/$(eqemu_port_host)/${WORLD_PORT}"
+    wait_for "loginserver ready (process + :${LOGIN_PORT} in-container)" 60 \
+        eqemu_service_ready loginserver "${LOGIN_PORT}"
+    wait_for "world ready (process + :${WORLD_PORT} in-container)" 120 \
+        eqemu_service_ready world "${WORLD_PORT}"
     echo "== up.sh: launcher mode up (fleet booting in background) =="
     exit 0
 fi
@@ -105,8 +110,8 @@ else
     echo "== up.sh: starting loginserver =="
     server_exec_bg "./bin/loginserver > logs/loginserver_h03.log 2>&1"
 fi
-wait_for "loginserver port ${LOGIN_PORT}" 30 bash -c \
-    "exec 3<>/dev/tcp/$(eqemu_port_host)/${LOGIN_PORT}"
+wait_for "loginserver ready (process + :${LOGIN_PORT} in-container)" 60 \
+    eqemu_service_ready loginserver "${LOGIN_PORT}"
 
 if server_process_running world; then
     echo "== up.sh: world already running ($(server_process_count world)) -- adopting =="
@@ -114,8 +119,8 @@ else
     echo "== up.sh: starting world =="
     server_exec_bg "./bin/world > logs/world_h03.log 2>&1"
 fi
-wait_for "world port ${WORLD_PORT}" 30 bash -c \
-    "exec 3<>/dev/tcp/$(eqemu_port_host)/${WORLD_PORT}"
+wait_for "world ready (process + :${WORLD_PORT} in-container)" 120 \
+    eqemu_service_ready world "${WORLD_PORT}"
 
 # The zone check is deliberately for ANY zone process, not for this shortname.
 # When the launcher fleet is up it is already serving the static zones and the

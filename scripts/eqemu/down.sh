@@ -11,12 +11,14 @@ set -uo pipefail  # not -e: best-effort teardown, keep going on individual failu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/env.sh"
 
+# T497 (board B798): the pattern is unchanged -- it is the one that does NOT
+# match its own `bash -c` wrapper -- but it now goes through the one helper
+# that refuses a self-matching pattern, so the next container-side pkill
+# cannot repeat T493's "the exec killed itself" defect.
 echo "== down.sh: stopping loginserver/world/zone processes =="
-eq_docker exec "${EQEMU_CONTAINER}" bash -c \
-    "pkill -TERM -f '/bin/(loginserver|world|zone)( |\$)'" 2>/dev/null || true
+eq_container_pkill TERM '/bin/(loginserver|world|zone)( |$)' || true
 sleep 2
-eq_docker exec "${EQEMU_CONTAINER}" bash -c \
-    "pkill -KILL -f '/bin/(loginserver|world|zone)( |\$)'" 2>/dev/null || true
+eq_container_pkill KILL '/bin/(loginserver|world|zone)( |$)' || true
 
 echo "== down.sh: docker compose down (mariadb + eqemu-server + deps) =="
 compose down --timeout 3

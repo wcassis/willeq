@@ -197,11 +197,14 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ------------------------------------------------------------- server up ----
-if ! eqemu_port_open 5998 || ! eqemu_port_open 9000; then
+# T497 (board B797): this gate used to be `eqemu_port_open 5998 && 9000`, a
+# host-side connect() that docker-proxy answers with the fleet at zero
+# processes -- so this script skipped up.sh against a dead stack.
+if ! eqemu_stack_ready; then
     say "bringing eqemu up"
     bash "$REPO/scripts/eqemu/up.sh" > "$OUT/shared/server.log" 2>&1 || { say "up.sh failed"; exit 65; }
 else
-    say "eqemu already up (5998 and 9000 open)"
+    say "eqemu already up (world + loginserver running AND listening inside the container)"
 fi
 
 snapshot "$BEFORE"; full_rows "$OUT/shared/db_before/full_rows.tsv"
