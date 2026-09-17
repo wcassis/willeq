@@ -11814,6 +11814,23 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
 
 ## Added 2026-09-17 by kanban pilot
 
+~~- **B842** (P) **`--log-module` takes ONE `MOD:LEVEL` per flag and silently
+  eats a comma-separated list.** [measured T500] `logging.h:878` splits on the
+  first `:` and hands the rest to `ParseLevelName()`, so
+  `--log-module=MAIN:INFO,GRAPHICS:INFO` sets MAIN to whatever that returns for
+  `"INFO,GRAPHICS:INFO"` -- the first T500 Pi run came back with
+  `ledger_lines=0` and an otherwise perfect exit 0. Two flags work. Fix: reject
+  or split on commas, and say so in `--help`; a rig that asks for a log level
+  and gets silence is the same defect class as B784's self-killing `pkill`.~~
+  **STRUCK by the B842 unit (`task/kb-b842-log-module-list`):**
+  `InitLogging()` now splits `--log-module=` values on commas into
+  `MOD:LEVEL` pairs, and a pair whose level name does not parse is rejected
+  with a line on stderr naming the bad token (the module keeps "use global
+  level" -- never silently mapped to LOG_NONE). Pinned by three
+  `tests/test_logging.cpp` cases (comma list, `MAIN:BOGUS` rejection,
+  bad-pair-does-not-poison-neighbours), shown RED on the pre-fix code.
+  `--help` now says the list form.
+
 - **B845** (P) **The three `AudioStartupPeak` cases share one on-disk
   `snd_index_cache.json` and flake against each other under `ctest -j`.**
   [measured T500] `TheSteadyStateIsTheSoundFontsAndLittleElse` failed its own
