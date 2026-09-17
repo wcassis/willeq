@@ -11260,7 +11260,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
 
 ## Added 2026-09-17 by T495 (the sky/fog colour lerp underflow, B789/B790)
 
-- ~~**B799** (B) `src/client/graphics/detail/detail_texture_atlas_flora.cpp`
+- ~~**B806** (B) `src/client/graphics/detail/detail_texture_atlas_flora.cpp`
   `drawShell()` -- the same u32 underflow as B789, in the detail atlas's shell
   spiral: `baseColor.getRed() - 30` on accessors that return `irr::u32`.~~
   **STRUCK ON ARRIVAL by T495** -- it is two lines, so it was fixed rather than
@@ -11273,7 +11273,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   comment-filtered grep for `get{Red,Green,Blue,Alpha}() -` over `src/`,
   `include/` and `tools/` returns exactly ten hits -- the nine lerp lines T495
   replaced and this one.
-- **B800** (B) **the T492 corpus pairs fable sky frames with official frames
+- **B807** (B) **the T492 corpus pairs fable sky frames with official frames
   that contain no sky**, so the corpus cannot answer "what colour should the sky
   be". MEASURED T495: the official frames B789 and B790 name as their pairs
   (`players/p1/frames/15:38:09.793_F_sky_p2_overhead_window.png` and
@@ -11286,7 +11286,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   A sky A/B needs the oracle pointed UP with the dialog dismissed; T466's
   camera-step recipe plus B795's dismissal is what would produce it. This is
   what B781 has been waiting for since T484. Found by T495.
-- **B801** (C) **`SkyRenderer` never logs the colour it chose, or the hour it
+- **B808** (C) **`SkyRenderer` never logs the colour it chose, or the hour it
   chose it for**, so a wrong sky can only be diagnosed by re-deriving the
   function offline. T495 had to write an emulator of `calculateSkyColors()`
   (`review/T495/scripts/sky_color_emulator.cpp`) and sweep it against the corpus

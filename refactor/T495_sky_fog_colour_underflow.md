@@ -158,7 +158,7 @@ logs [measured].
    move and no pin had to be rewritten. Census [measured]: a grep for a
    subtraction involving `get{Red,Green,Blue,Alpha}()` over `src/`, `include/`,
    `tools/` and `benchmarks/` returned exactly ten hits — the nine lerp lines and
-   this one — and now returns none outside a comment. Recorded as B799, struck on
+   this one — and now returns none outside a comment. Recorded as B806, struck on
    arrival, so a swept pattern leaves a trace.
 5. **Golden impact** — `scripts/ci/visual_gate.py` unchanged: **PASS, exit 0,
    zero pixel diff**, all three zones, plus the memory-coverage run (I symlinked
@@ -172,10 +172,10 @@ logs [measured].
    record corrected on four points (no magenta, the missing-texture lead is
    dead, the EQE1 sentence was wrong, and the frame paths); B781 narrowed to "are
    the anchor values right" with the note that its 11:00 figure sits on a
-   constant arm and is unaffected; B782/B783/B780/B726 untouched. Added B799
-   (flora, struck on arrival), **B800** (B — the corpus's official frames contain
+   constant arm and is unaffected; B782/B783/B780/B726 untouched. Added B806
+   (flora, struck on arrival), **B807** (B — the corpus's official frames contain
    no sky, so they cannot answer B781; B789's official crop measures
-   (19.31,20.55,19.12), near-black) and **B801** (C — SkyRenderer logs neither
+   (19.31,20.55,19.12), near-black) and **B808** (C — SkyRenderer logs neither
    the hour nor the colour it chose, which is why this unit had to emulate the
    function to find the hour).
 
@@ -206,4 +206,4 @@ logs [measured].
 
 B781 (are the anchors right), B782 (pale trees), B783 (the live frame at T478's
 pose) and B780 (the driver's R/B convention) all still need the oracle or Will.
-B800 is what B781 has actually been waiting for since T484.
+B807 is what B781 has actually been waiting for since T484.
