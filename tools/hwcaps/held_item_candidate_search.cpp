@@ -15,7 +15,7 @@
 // pictures are for Will.
 //
 // Usage: held_item_candidate_search <output_dir> [--eq-path <dir>] [--db <willeq.db>]
-//                                   [--items 10649,10004,10] [--size WxH]
+//                                   [--items 10649,10004,10] [--size WxH] [--frame N]
 // Writes <output_dir>/c<NN>_<perm>_it<model>_<view>.png for every candidate,
 // item and view, plus <output_dir>/candidates.tsv (one row per candidate and
 // item: the long axis' forward/left/up components, the item Z axis' up
@@ -37,6 +37,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -110,6 +111,13 @@ struct Options {
     std::string dbPath = "data/willeq.db";
     std::vector<uint32_t> items = {10649, 10004, 10};
     irr::u32 width = 360, height = 520;
+    // T485 follow-up: which o01 frame to capture at. -1 keeps the original
+    // behaviour (whatever frame the attach loop lands on, near 0, where the
+    // elbow is BENT and the hand is out in front). The official idle hangs the
+    // arm at the side, so the sheets are captured at the arm-hanging frame
+    // instead -- 25 on the Human male (review/T485/data/score_perpendicular.py
+    // picks it out: forearm 24.5 deg from straight down).
+    int frame = -1;
 };
 
 bool parseOptions(int argc, char** argv, Options& o) {
@@ -129,6 +137,8 @@ bool parseOptions(int argc, char** argv, Options& o) {
                 o.items.push_back(static_cast<uint32_t>(std::stoul(s.substr(pos, comma - pos))));
                 pos = comma + 1;
             }
+        } else if (!strcmp(argv[i], "--frame") && i + 1 < argc) {
+            o.frame = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--size") && i + 1 < argc) {
             unsigned w = 0, h = 0;
             if (sscanf(argv[++i], "%ux%u", &w, &h) == 2 && w > 0 && h > 0) { o.width = w; o.height = h; }
@@ -201,7 +211,9 @@ int main(int argc, char** argv) {
         FILE* tsv = rc == 0 ? fopen((opt.outDir + "/candidates.tsv").c_str(), "w") : nullptr;
         FILE* frames = rc == 0 ? fopen((opt.outDir + "/rpoint_frames.txt").c_str(), "w") : nullptr;
         if (tsv)
-            fprintf(tsv, "candidate\tname\tflags\titem\tlong_fwd\tlong_left\tlong_up\titemZ_up\ttarget\tangle_deg\n");
+            fprintf(tsv,
+                    "candidate\tname\tflags\titem\tlong_fwd\tlong_left\tlong_up\titemZ_up\ttarget\tangle_deg"
+                    "\tfore_angle_deg\tperp_err_deg\n");
 
         irr::scene::ICameraSceneNode* camera = smgr->addCameraSceneNode();
         camera->setFOV(irr::core::PI / 5.0f);
@@ -244,6 +256,24 @@ int main(int argc, char** argv) {
                 fprintf(stderr, "ERROR: item %u never attached (no primaryEquipNode)\n", item);
                 rc = 1;
                 break;
+            }
+            // T485 follow-up: wind the loop on to the requested o01 frame
+            // before anything is measured or captured. The animator takes
+            // absolute times, so this walks forward until getCurrentFrame()
+            // reports the frame asked for.
+            if (opt.frame >= 0) {
+                bool reached = false;
+                for (int ms = 0; ms <= 8000 && !reached; ms += 25) {
+                    node->OnAnimate(20000 + ms);
+                    ents->updateMainThreadEntityState(0.025f);
+                    reached = node->getAnimator().getCurrentFrame() == opt.frame;
+                }
+                if (!reached) {
+                    fprintf(stderr, "ERROR: o01 frame %d never came up for item %u\n", opt.frame, item);
+                    rc = 1;
+                    break;
+                }
+                printf("item IT%u: wound on to o01 frame %d\n", item, opt.frame);
             }
             node->updateAbsolutePosition();
             equip->updateAbsolutePosition();
@@ -289,7 +319,24 @@ int main(int argc, char** argv) {
                                 v3(d).c_str());
                     }
                 }
-                fprintf(frames, "# per o01 frame: frame  X-axis  Y-axis  Z-axis  origin\n");
+                // T485 follow-up (Will's ruling, 2026-09-17): the target is
+                // "the item's long axis is PERPENDICULAR to the forearm" (a
+                // fist grip), so the FOREARM has to be dumped per frame, not
+                // once at frame 0 -- the earlier dump measured it only at
+                // frame 0 and used R_POINT's -Z as a stand-in for the rest of
+                // the loop. chain[0] = R_POINT, so the forearm is the segment
+                // from the elbow to the fingers; find it by name rather than
+                // by depth so a skeleton without humfi_r2 still works.
+                int elbowIdx = -1, fingerIdx = -1;
+                for (int b = 0; b < static_cast<int>(skeleton->bones.size()); ++b) {
+                    const std::string& nm = skeleton->bones[b].name;
+                    if (nm == "humfo_r") elbowIdx = b;
+                    if (nm == "humfi_r") fingerIdx = b;
+                }
+                fprintf(frames, "# forearm = %s -> %s (elbow to fingers), per frame, unit\n",
+                        elbowIdx >= 0 ? skeleton->bones[elbowIdx].name.c_str() : "?",
+                        fingerIdx >= 0 ? skeleton->bones[fingerIdx].name.c_str() : "?");
+                fprintf(frames, "# per o01 frame: frame  X-axis  Y-axis  Z-axis  origin  forearm  fore_dot_negZ\n");
                 int lastFrame = -1;
                 for (int ms = 0; ms <= 4000; ms += 25) {
                     node->OnAnimate(5000 + ms);
@@ -298,14 +345,31 @@ int main(int argc, char** argv) {
                     if (f == lastFrame) continue;
                     lastFrame = f;
                     const BoneMat4& w = bones[rIdx].worldTransform;
-                    fprintf(frames, "%d\t%s\t%s\t%s\t%s\n", f, v3(boneAxisEq(w, 0)).c_str(), v3(boneAxisEq(w, 1)).c_str(),
-                            v3(boneAxisEq(w, 2)).c_str(), v3(boneOriginEq(w)).c_str());
+                    irr::core::vector3df fore(0, 0, 0);
+                    if (elbowIdx >= 0 && fingerIdx >= 0) {
+                        fore = boneOriginEq(bones[fingerIdx].worldTransform) - boneOriginEq(bones[elbowIdx].worldTransform);
+                        const float len = fore.getLength();
+                        if (len > 1e-4f) fore /= len;
+                    }
+                    // How well R_POINT's -Z stands in for the forearm, per frame.
+                    const irr::core::vector3df negZ = -boneAxisEq(w, 2);
+                    fprintf(frames, "%d\t%s\t%s\t%s\t%s\t%s\t%.3f\n", f, v3(boneAxisEq(w, 0)).c_str(),
+                            v3(boneAxisEq(w, 1)).c_str(), v3(boneAxisEq(w, 2)).c_str(), v3(boneOriginEq(w)).c_str(),
+                            v3(fore).c_str(), fore.dotProduct(negZ));
                 }
                 fflush(frames);
                 // Back to the frame the captures use.
-                for (int t = 0; t < 5; ++t) {
-                    node->OnAnimate(200 + t * 16);
-                    ents->updateMainThreadEntityState(0.016f);
+                if (opt.frame >= 0) {
+                    for (int ms = 0; ms <= 8000; ms += 25) {
+                        node->OnAnimate(40000 + ms);
+                        ents->updateMainThreadEntityState(0.025f);
+                        if (node->getAnimator().getCurrentFrame() == opt.frame) break;
+                    }
+                } else {
+                    for (int t = 0; t < 5; ++t) {
+                        node->OnAnimate(200 + t * 16);
+                        ents->updateMainThreadEntityState(0.016f);
+                    }
                 }
                 node->updateAbsolutePosition();
                 equip->updateAbsolutePosition();
@@ -343,6 +407,45 @@ int main(int argc, char** argv) {
             printf("item IT%u: body height %.2f, R_POINT at %s (rel. origin %s)\n", item, height, v3(handWorld).c_str(),
                    v3(handWorld - origin).c_str());
 
+            // PIN THE POSE for the whole sweep. MEASURED DEFECT in the original
+            // run of this tool: with the animation left PLAYING,
+            // ISceneManager::drawAll() calls OnAnimate() with the DEVICE timer,
+            // so the pose moved between one candidate's capture and the next --
+            // every candidate after the first was measured and drawn at a
+            // different frame from the one intended, and with --frame it was
+            // snapped straight back off the requested frame. Comparing 24
+            // candidates only means something if they share one pose. This must
+            // stay AFTER the per-frame dump above, which needs the animation to
+            // run.
+            node->getAnimator().pauseAnimation();
+            node->OnAnimate(0);
+            ents->updateMainThreadEntityState(0.0f);
+            printf("item IT%u: pose pinned at o01 frame %d\n", item, node->getAnimator().getCurrentFrame());
+
+            // The FOREARM at the capture frame, in the same world frame the
+            // item's long axis is measured in (Irrlicht, through the body's
+            // absolute transform). This is what perpendicularity is scored
+            // against -- Will's ruling, 2026-09-17.
+            irr::core::vector3df forearmWorld(0, 0, 0);
+            {
+                int elbow = -1, finger = -1;
+                for (int b = 0; b < static_cast<int>(skeleton->bones.size()); ++b) {
+                    if (skeleton->bones[b].name == "humfo_r") elbow = b;
+                    if (skeleton->bones[b].name == "humfi_r") finger = b;
+                }
+                if (elbow >= 0 && finger >= 0) {
+                    const irr::core::vector3df e = boneOriginEq(bones[elbow].worldTransform);
+                    const irr::core::vector3df g = boneOriginEq(bones[finger].worldTransform);
+                    irr::core::vector3df eIrr = eqToIrr(e.X, e.Y, e.Z), gIrr = eqToIrr(g.X, g.Y, g.Z);
+                    bodyAbs.transformVect(eIrr);
+                    bodyAbs.transformVect(gIrr);
+                    forearmWorld = gIrr - eIrr;
+                    const float len = forearmWorld.getLength();
+                    if (len > 1e-4f) forearmWorld /= len;
+                }
+                printf("item IT%u: forearm (world, unit) %s\n", item, v3(forearmWorld).c_str());
+            }
+
             struct View { const char* name; irr::core::vector3df pos; irr::core::vector3df at; };
             const float d = std::max(12.0f, height * 2.1f);
             const View views[3] = {
@@ -366,12 +469,27 @@ int main(int argc, char** argv) {
                 itemZ.normalize();
                 const float lf = longAxis.dotProduct(fwd), ll = longAxis.dotProduct(left), lu = longAxis.dotProduct(up);
                 const float zu = itemZ.dotProduct(up);
-                // Oracle targets (review/T478, README section 4): blades forward
-                // and level; the arrow's long end straight down.
+                // THE TARGET (Will's ruling, 2026-09-17): the item's long axis
+                // is PERPENDICULAR to the FOREARM -- a fist grip. `fore_angle`
+                // is that angle and 90 is the target; `perp_err` = |90 - it| is
+                // the score, and it is the same criterion for every item, with
+                // no per-item "forward"/"down" reading of a picture in it.
+                //
+                // The old columns are kept so the two runs can be compared:
+                // `angle_deg` scored blades against BODY-FORWARD and the arrow
+                // against BODY-DOWN, from a reading of the T478 crops that Will
+                // has since judged wrong. In this bent-elbow idle frame forward
+                // IS roughly the forearm direction, which is why a candidate
+                // that lays the blade ALONG the forearm scored well against it.
                 const bool arrow = (item == 10);
                 const irr::core::vector3df target = arrow ? -up : fwd;
                 const float angle = std::acos(std::max(-1.0f, std::min(1.0f, longAxis.dotProduct(target)))) * 180.0f /
                                     3.14159265f;
+                const float foreAngle = forearmWorld.getLengthSQ() > 0.25f
+                                            ? std::acos(std::max(-1.0f, std::min(1.0f, longAxis.dotProduct(forearmWorld)))) *
+                                                  180.0f / 3.14159265f
+                                            : -1.0f;
+                const float perpErr = foreAngle >= 0.0f ? std::fabs(90.0f - foreAngle) : -1.0f;
                 std::string flags;
                 if (sameCorrection(cand.corr, kHeldItemCorrection)) flags += "SHIPPED ";
                 {
@@ -381,10 +499,13 @@ int main(int argc, char** argv) {
                     if (sameCorrection(cand.corr, ident)) flags += "IDENTITY ";
                 }
                 if (tsv)
-                    fprintf(tsv, "c%02zu\t%s\t%s\tIT%u\t%.3f\t%.3f\t%.3f\t%.3f\t%s\t%.1f\n", ci, cand.name.c_str(), flags.c_str(),
-                            item, lf, ll, lu, zu, arrow ? "down" : "forward", angle);
-                printf("c%02zu %-12s %-10s IT%-6u long=(fwd %+.2f left %+.2f up %+.2f) itemZ.up %+.2f angle-to-%s %.1f\n", ci,
-                       cand.name.c_str(), flags.c_str(), item, lf, ll, lu, zu, arrow ? "down" : "forward", angle);
+                    fprintf(tsv, "c%02zu\t%s\t%s\tIT%u\t%.3f\t%.3f\t%.3f\t%.3f\t%s\t%.1f\t%.1f\t%.1f\n", ci,
+                            cand.name.c_str(), flags.c_str(), item, lf, ll, lu, zu, arrow ? "down" : "forward", angle,
+                            foreAngle, perpErr);
+                printf("c%02zu %-12s %-10s IT%-6u long=(fwd %+.2f left %+.2f up %+.2f) itemZ.up %+.2f angle-to-%s %.1f "
+                       "fore_angle %.1f perp_err %.1f\n",
+                       ci, cand.name.c_str(), flags.c_str(), item, lf, ll, lu, zu, arrow ? "down" : "forward", angle,
+                       foreAngle, perpErr);
 
                 for (const View& view : views) {
                     camera->setPosition(view.pos);

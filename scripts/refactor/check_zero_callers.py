@@ -579,7 +579,10 @@ EXEMPT_GROUPS = {
     ("SkeletalAnimator", "isBlending"): "B491",
     ("SkeletalAnimator", "isBlendingEnabled"): "B491",
     ("SkeletalAnimator", "isVerboseLogging"): "B491",
-    ("SkeletalAnimator", "pauseAnimation"): "B491",
+    # T485 Leg B: pauseAnimation now has a caller (tools/hwcaps/held_item_candidate_search
+    # pins the pose for its 24-candidate sweep), so its B491 exemption is gone --
+    # the table is not allowed to outlive its rows. resumeAnimation below is still
+    # unreached and stays listed.
     ("SkeletalAnimator", "removeFrameTrigger"): "B491",
     ("SkeletalAnimator", "resetPlaybackSpeed"): "B491",
     ("SkeletalAnimator", "resumeAnimation"): "B491",
