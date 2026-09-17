@@ -266,6 +266,36 @@ what is drawn: no texture size, variant set, `chrCacheMaxEntries`,
 closed within 2 %. Leg B's fix drops nothing a reachable path reads — and the
 alternative that would have (option 1, the `rawParts` drop) was stopped.
 
+### STOP REACHED — the visual gate's memory-coverage rows (STOP 2)
+
+`visual_gate.py` FAILS, and only on `characterModelsBytes`, by **exactly
+1,807,682 B in all three zones**:
+
+| zone | expected | got |
+|---|---:|---:|
+| qeynos2 | 25,743,220 | 23,935,538 |
+| gfaydark | 25,374,894 | 23,567,212 |
+| befallen | 25,502,699 | 23,695,017 |
+
+A constant across three different zones, and it is Leg B's own measured number:
+`src_char_numbered` 2,856,632 → 1,048,950 = 1,807,682. So the gate is
+reporting the fix, correctly, and its expectation is stale.
+
+**The three PNG goldens are untouched and the image comparisons pass** — the
+memory-coverage run is a separate benchmark invocation that renders nothing
+(T80). But the expectation lives in `tests/goldens/manifest.json`, and STOP 2
+is "any golden re-bless", unqualified. **Not re-blessed. Reported.** Whoever
+approves it should note that this is a memory row in the manifest and not a
+pixel, that only `characterModelsBytes` moves, that the delta is identical in
+all three zones and equals the measured saving, and that no budget in
+`config/constrained_presets.json` is involved (STOP 1 / B831 untouched).
+
+Everything else in the Proof bar is met: `cmake --build` exit 0 at -O2 and -O0;
+`build-gles2-x86.sh` exit 0; `build-arm-noble.sh` exit 0 (both tips);
+`check_file_sizes.sh --all` 1,249 files, 0 warn, 0 fail; the new ledger-byte
+test byte-identical at -O0 and -O2 (B819); full ctest **4,913 of 4,915** — the
+two reds are this gate and B845's `-j` isolation flake, which is green alone.
+
 ### Territory taken outside the plan, and why
 
 `include/client/core/memory_ledger.{h,cpp}` (requested-bytes tracking,
