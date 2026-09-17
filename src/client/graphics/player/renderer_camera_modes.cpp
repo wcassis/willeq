@@ -68,6 +68,10 @@ float PlayerCameraComponent::chaseEyeAboveFeet() {
     return chaseEyeAboveFeet_;
 }
 
+void PlayerCameraComponent::resetChaseEyeScale() {
+    chaseEyeAboveFeet_ = kChaseFitEyeAboveFeet;
+}
+
 void PlayerCameraComponent::updateRigCamera() {
     const CameraRig* rig = cameraRigFor(cameraMode_);
     if (!rig || !ctx_.cameraController) return;

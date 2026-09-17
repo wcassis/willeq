@@ -96,6 +96,8 @@ void FrameComponent::syncUiPreferences() {
             const UiPreferences defaults;
             ApplyUiPreferences(defaults, uiPreferencesBinding());
             ctx_.PlayerCamera().setUserCameraRigs(defaults.user1Camera, defaults.user2Camera);
+            // T486 (item 7): the Chase race scale is per character too.
+            ctx_.PlayerCamera().resetChaseEyeScale();
         }
 
         // Start from what the client now holds, so a key this file does not

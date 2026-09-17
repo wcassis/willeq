@@ -309,9 +309,11 @@ std::vector<std::string> goldenOrder() {
 //   402 `ctx_.cameraController->setFollowPosition(ctx_.playerX, ctx_.playerY, ctx_.playerZ, ctx_.playerHeading, deltaTime);`
 // CameraController::setFollowPosition() -- the pre-T474 Chase camera, 20 behind
 // and looking ahead of the player -- is deleted. Chase is T466's oracle fit as
-// a rig (camera_rig.h kChaseRig), and FrameComponent::processFrameInput() calls
-// PlayerCameraComponent::updateRigCamera() immediately after
-// updatePlayerMovement() every frame, which is where Chase is now placed.
+// a rig (camera_rig.h kChaseRig), and FrameComponent calls
+// PlayerCameraComponent::updateRigCamera() once per frame after
+// updatePlayerMovement() and the lift carry (processFrameSimulation(), since
+// T486 -- it was also called right after this body), which is where Chase is
+// now placed.
 constexpr size_t kGoldenSize = 454;
 
 }  // namespace

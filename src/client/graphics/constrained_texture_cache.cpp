@@ -672,6 +672,13 @@ void ConstrainedTextureCache::clear() {
     for (auto& [name, entry] : preserved) {
         currentUsage_ += entry.sizeBytes;
         lruOrder_.push_back(name);
+        // T486 (2026-09-14 audit, item 1): the copied entry still holds its
+        // iterator into the list cleared just above -- a dangling node. Every
+        // later touch of a protected name (getOrLoad / uploadTexture hit,
+        // registerTexture, getTexture, touch()) does lruOrder_.erase() on it.
+        // Re-point it at the node just pushed; tests/test_constrained_
+        // texture_cache.cpp ProtectedEntriesSurviveClearWithValidLruIterators.
+        entry.lruIterator = std::prev(lruOrder_.end());
         cache_.emplace(name, entry);
     }
     if (!preserved.empty()) {

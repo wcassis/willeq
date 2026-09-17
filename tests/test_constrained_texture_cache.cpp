@@ -25,7 +25,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <chrono>
+#include <list>
 #include <thread>
 #include <vector>
 #include <cstring>
@@ -33,7 +35,13 @@
 #include <string>
 
 #ifdef EQT_HAS_GRAPHICS
+// T486 (item 1): ProtectedEntriesSurviveClearWithValidLruIterators reads the
+// LRU list and each entry's iterator into it, which no public method exposes.
+#define private public
+#define protected public
 #include "client/graphics/constrained_texture_cache.h"
+#undef private
+#undef protected
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/eqe1_loader.h"
 #include "common/logging.h"
@@ -415,6 +423,74 @@ TEST(Eqe1PreloadGate, CompositeSheetLookupIsGatedOnEqe1BeingConfigured) {
         << "RaceModelLoader::preloadModelData() calls getOrLoad() with an EMPTY buffer "
            "outside any EQE1 check -- with no EQE1 tree configured that is one "
            "guaranteed-to-fail call and one warn per composite name (B014).";
+}
+
+
+// ---------------------------------------------------------------------------
+// T486 (2026-09-14 audit, item 1): clear() preserves the protected entries
+// (T205) but never refreshed their CachedTexture::lruIterator after
+// lruOrder_.clear() -- every preserved entry kept an iterator into a list
+// whose nodes had been freed. The next touch of a protected name (getOrLoad
+// hit, uploadTexture hit, registerTexture, getTexture, touch()) did
+// lruOrder_.erase(<dangling>) -- undefined behaviour on freed memory. The UI
+// atlas is protected for the life of the process and is touched on every
+// zone after the first, so this was reached on every second zone load.
+//
+// The check is the invariant itself: every cached entry's iterator must point
+// INTO lruOrder_ at the node carrying its own name. Three names are planted in
+// ascending order and clear()'s preserve loop walks a std::map (ascending),
+// while list::clear() frees the nodes in list order -- so with glibc's LIFO
+// free-list reuse the stale iterators land on the WRONG live nodes and the
+// name check fails; with any other allocator they point at no live node and
+// the address check fails. Either way the pre-fix cache fails here without
+// ever dereferencing freed memory.
+// ---------------------------------------------------------------------------
+TEST_F(ConstrainedTextureCacheTest, ProtectedEntriesSurviveClearWithValidLruIterators) {
+    const char* names[] = {"t486_protected_a", "t486_protected_b", "t486_protected_c"};
+    for (const char* name : names) {
+        auto bmp = makeTestBmp(4, 4, 30, 60, 90);
+        cache_->getOrLoad(name, bmp, "test", "ProtectedEntriesSurviveClearWithValidLruIterators");
+        ASSERT_NE(cache_->uploadTexture(name), nullptr) << name;
+        cache_->protectTexture(name);
+    }
+    ASSERT_EQ(cache_->getTextureCount(), 3u);
+
+    cache_->clear();
+    ASSERT_EQ(cache_->getTextureCount(), 3u) << "the protected entries did not survive clear()";
+    ASSERT_EQ(cache_->lruOrder_.size(), 3u);
+
+    auto iteratorIsValidFor = [&](const std::string& name,
+                                  std::list<std::string>::iterator it) -> ::testing::AssertionResult {
+        for (auto live = cache_->lruOrder_.begin(); live != cache_->lruOrder_.end(); ++live) {
+            if (live == it) {
+                if (*live == name) return ::testing::AssertionSuccess();
+                return ::testing::AssertionFailure()
+                       << "'" << name << "' holds an iterator to the node carrying '" << *live
+                       << "' -- a stale iterator into the list clear() emptied";
+            }
+        }
+        return ::testing::AssertionFailure()
+               << "'" << name << "' holds an iterator to no live node of lruOrder_";
+    };
+    for (const auto& [name, entry] : cache_->cache_) {
+        EXPECT_TRUE(iteratorIsValidFor(name, entry.lruIterator));
+    }
+
+    // And the user-reachable consequence: touching every protected name after
+    // the zone-unload wipe leaves one LRU node per entry, none lost, none
+    // doubled.
+    for (const char* name : names) {
+        cache_->touch(name);
+        EXPECT_NE(cache_->getTexture(name), nullptr) << name;
+    }
+    EXPECT_EQ(cache_->lruOrder_.size(), 3u);
+    for (const char* name : names) {
+        EXPECT_EQ(std::count(cache_->lruOrder_.begin(), cache_->lruOrder_.end(), name), 1)
+            << name << " is not exactly once in the LRU order";
+    }
+    for (const auto& [name, entry] : cache_->cache_) {
+        EXPECT_TRUE(iteratorIsValidFor(name, entry.lruIterator));
+    }
 }
 
 #else  // !EQT_HAS_GRAPHICS

@@ -360,6 +360,53 @@ TEST(CameraModeWiringSource, TheReceiverQueuesTheCameraActionsForTheFrame) {
     }
 }
 
+// T486 (2026-09-14 audit, item 5): the zoom notch has ONE owner,
+// kCameraZoomStepUnits (camera_rig.h). The receiver's key arms hard-coded
+// +/-2.0 beside it, so a change to the constant would have moved the wheel
+// and not the keys.
+TEST(CameraModeWiringSource, TheZoomKeysUseTheOneZoomStepConstant) {
+    const std::string src =
+        readFile(kRoot / "src/client/graphics/renderer/renderer_event_receiver.cpp");
+    EXPECT_NE(src.find("case HA::CameraZoomIn: cameraZoomDelta_ = -kCameraZoomStepUnits; break;"),
+              std::string::npos) << "CameraZoomIn does not use kCameraZoomStepUnits";
+    EXPECT_NE(src.find("case HA::CameraZoomOut: cameraZoomDelta_ = kCameraZoomStepUnits; break;"),
+              std::string::npos) << "CameraZoomOut does not use kCameraZoomStepUnits";
+    EXPECT_EQ(src.find("cameraZoomDelta_ = -2.0f"), std::string::npos) << "a hard-coded zoom notch is back";
+    EXPECT_EQ(src.find("cameraZoomDelta_ = 2.0f"), std::string::npos) << "a hard-coded zoom notch is back";
+}
+
+// T486 (2026-09-14 audit, item 6): the rig camera is placed ONCE per frame,
+// after the lift carry -- the last thing that moves the player in a frame.
+// Before this unit FrameComponent called updateRigCamera() twice per frame
+// (right after updatePlayerMovement() and again after carryPlayerOnLifts()):
+// two BSP lookups and a PVS ray per frame on the Pi, and the ceiling log's
+// counter counted every frame twice. The second call was also inside
+// `if (ctx_.doorManager)`, so without doors the camera was placed BEFORE the
+// lift carry, not after it.
+TEST(CameraModeWiringSource, TheRigCameraIsPlacedOncePerFrameAfterTheLiftCarry) {
+    const std::string frame =
+        readFile(kRoot / "src/client/graphics/frame/renderer_frame_input.cpp");
+    const std::string call = "ctx_.PlayerCamera().updateRigCamera();";
+    size_t count = 0;
+    for (size_t pos = frame.find(call); pos != std::string::npos; pos = frame.find(call, pos + 1)) {
+        ++count;
+    }
+    EXPECT_EQ(count, 1u) << "updateRigCamera() is called " << count
+                         << " times per frame in renderer_frame_input.cpp; it must be exactly one";
+    const size_t carry = frame.find("ctx_.PlayerCamera().carryPlayerOnLifts(deltaTime);");
+    const size_t place = frame.find(call);
+    ASSERT_NE(carry, std::string::npos);
+    ASSERT_NE(place, std::string::npos);
+    EXPECT_LT(carry, place) << "the rig camera is placed before the lift carry moves the player";
+    // And not gated on the door manager: the closing brace of the door block
+    // comes before the placement.
+    const size_t doorBlock = frame.find("if (ctx_.doorManager) {");
+    ASSERT_NE(doorBlock, std::string::npos);
+    const size_t doorClose = frame.find("\n    }\n", carry);
+    ASSERT_NE(doorClose, std::string::npos);
+    EXPECT_LT(doorClose, place) << "updateRigCamera() is inside `if (ctx_.doorManager)`";
+}
+
 TEST(CameraModeWiringSource, TheFrameZoomsWithAWheelNotchTheUIDidNotConsume) {
     const std::string frame =
         readFile(kRoot / "src/client/graphics/frame/renderer_frame_input.cpp");

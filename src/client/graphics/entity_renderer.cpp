@@ -1,4 +1,5 @@
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/corpse_death_pose.h"  // T486: the ONE death-pose ladder
 #include "client/graphics/simulation_worker.h"
 #include "client/graphics/entity_prep_worker.h"
 #include "client/graphics/constrained_renderer_config.h"
@@ -378,34 +379,16 @@ void EntityRenderer::markEntityAsCorpse(uint16_t spawnId) {
         }
     }
 
-    // Play death animation if animated - d05 is the actual death animation
+    // T486 (2026-09-14 audit, item 3): the ONE death-pose ladder
+    // (corpse_death_pose.cpp), in its witnessed form -- the fall is played
+    // through to its last frame rather than jumped to, because the player saw
+    // it. This arm used to carry a third textual copy of the d05/d02/d01
+    // ladder; tests/test_corpse_death_pose.cpp keeps it folded.
     if (visual.isAnimated && visual.animatedNode) {
-        std::string deathAnim;
-        bool animFound = false;
-
-        if (visual.animatedNode->hasAnimation("d05")) {
-            deathAnim = "d05";
-            animFound = true;
-        } else if (visual.animatedNode->hasAnimation("d02")) {
-            deathAnim = "d02";
-            animFound = true;
-        } else if (visual.animatedNode->hasAnimation("d01")) {
-            deathAnim = "d01";
-            animFound = true;
-        }
-
-        if (animFound) {
-            // Stop any current animation first to ensure clean state
-            visual.animatedNode->stopAnimation();
-
-            // Play death animation with loop=false (holds on last frame) and playThrough=true
-            bool playResult = visual.animatedNode->playAnimation(deathAnim, false, true);
-            visual.currentAnimation = deathAnim;
-
-            // Verify playThrough was set
+        if (ApplyCorpseDeathPose(visual, visual.animatedNode, /*witnessed=*/true)) {
             SkeletalAnimator& animator = visual.animatedNode->getAnimator();
-            LOG_DEBUG(MOD_ENTITY, "CORPSE Entity {} playing death animation '{}' result={} playThrough={} state={}",
-                      spawnId, deathAnim, playResult, animator.isPlayingThrough(),
+            LOG_DEBUG(MOD_ENTITY, "CORPSE Entity {} playing death animation '{}' playThrough={} state={}",
+                      spawnId, visual.currentAnimation, animator.isPlayingThrough(),
                       (animator.getState() == AnimationState::Playing ? "Playing" : "Other"));
         } else {
             LOG_WARN(MOD_ENTITY, "CORPSE Entity {} WARNING: No death animation found!", spawnId);

@@ -869,7 +869,8 @@ void PlayerCameraComponent::publishPositionAndCamera(MovementFrame& frame) {
 
         // T474 (board B650): no Chase placement here any more. Chase is a rig
         // (T466's fit), and FrameComponent re-places every rig camera with
-        // PlayerCameraComponent::updateRigCamera() right after this body returns.
+        // PlayerCameraComponent::updateRigCamera() later in the same frame,
+        // after the lift carry (T486: once per frame, not here as well).
     }
 
     // T295: ONE first-person camera formula, and this is NOT it -- this

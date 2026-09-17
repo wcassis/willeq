@@ -540,9 +540,16 @@ TEST(CombatManagerCorpseRecognition, PlayerCorpseSpawnedAtZoneInIsACorpse) {
 
     const auto& entities = eq.GetEntities();
     ASSERT_EQ(entities.count(30), 1u);
-    EXPECT_FALSE(entities.at(30).is_corpse)
-        << "spawn parsing still does not write the flag -- recognition is the "
-           "predicate's job, so no consumer of the raw field moved";
+    // T160 pinned the flag FALSE here ("spawn parsing does not write the
+    // flag -- recognition is the predicate's job"). T486 (2026-09-14 audit,
+    // item 2) reversed that on purpose: three production sites read the bare
+    // flag (spell_cast_validation.cpp, bridge_component.cpp's
+    // CorpseDecayStarted, entities_component_appearance.cpp) and saw every
+    // pre-existing corpse as alive, so both Spawn_Struct parsers now set it
+    // from the NPC byte through IsCorpseNpcType(). The predicate below still
+    // owns recognition; the flag simply agrees with it from the first frame.
+    EXPECT_TRUE(entities.at(30).is_corpse)
+        << "the ZoneSpawns parser no longer sets is_corpse from the NPC byte (T486)";
 
     auto* cm = eq.GetCombatManager();
     EXPECT_TRUE(cm->IsCorpse(entities.at(30)));

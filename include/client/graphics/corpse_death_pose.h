@@ -25,14 +25,24 @@ namespace Graphics {
 struct EntityVisual;
 class EQAnimatedMeshSceneNode;
 
-// Puts `visual`'s animated node in the held death pose and records it on the
+// Puts `visual`'s animated node in the death pose and records it on the
 // visual (currentAnimation, corpsePositionAdjusted, corpseYOffset).
+//
+// witnessed=false (a corpse found lying there: the zone load, a spawn that
+// arrives dead): the node is HELD on the animation's last frame at once.
+// witnessed=true (T486, item 3 -- EntityRenderer::markEntityAsCorpse(), the
+// EntityDeathAnimation arm for a death the player saw): the same ladder, but
+// the fall is PLAYED from its first frame, non-looping and play-through, and
+// comes to rest on the same last frame. Before T486 that arm carried a third
+// textual copy of the ladder; tests/test_corpse_death_pose.cpp
+// TheDeathPoseLadderHasOneCopy keeps it here.
 //
 // Returns true if a pose was applied; false when `animNode` is null or the
 // model has none of d05/d02/d01, in which case `visual` is left untouched.
 // The caller decides whether the entity is a corpse -- ask
 // IsCorpseByFields() (client/corpse_predicate.h), never a name substring.
-bool ApplyCorpseDeathPose(EntityVisual& visual, EQAnimatedMeshSceneNode* animNode);
+bool ApplyCorpseDeathPose(EntityVisual& visual, EQAnimatedMeshSceneNode* animNode,
+                          bool witnessed = false);
 
 }  // namespace Graphics
 }  // namespace EQT

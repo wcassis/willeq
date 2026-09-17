@@ -99,7 +99,8 @@ void PlayerCameraComponent::carryPlayerOnLifts(float deltaTime) {
                                                         ctx_.playerZ, ctx_.playerHeading);
     }
     // T474: Chase is a rig now, and FrameComponent re-places every rig camera
-    // (updateRigCamera()) right after this call; only first person is placed here.
+    // (updateRigCamera()) right after this call -- the frame's one placement
+    // since T486; only first person is placed here.
     if (cameraMode_ == CameraMode::FirstPerson) {
         repositionFirstPersonCamera();
     }

@@ -31,6 +31,7 @@
 // note in this family's component header.
 
 #include "client/eq.h"
+#include "client/corpse_predicate.h"  // T486: IsCorpseNpcType
 #include "client/entities/entities_component.h"
 #include "client/world_object.h"
 #include "client/combat.h"
@@ -302,6 +303,14 @@ void eqt::entities::EntitiesComponent::ZoneProcessNewSpawn(const EQ::Net::Packet
 	// Read npc_type early - needed to determine heading transformation
 	// NPC type: 0=player, 1=npc, 2=pc_corpse, 3=npc_corpse
 	entity.npc_type = p.GetUInt8(offset + 83);
+	// T486 (2026-09-14 audit, item 2): the flag has ONE owner -- this read.
+	// eqemu writes NPC=2 for every corpse it spawns, and a corpse already
+	// lying here when we zoned in gets no OP_Death / OP_MobRename, so without
+	// this the bare is_corpse readers (a corpse-target spell's validateCast,
+	// the CorpseDecayStarted fade, the name suffix on an appearance change)
+	// saw a live mob. Same rule as IsCorpseByFields(); a parser that skips
+	// this fails tests/test_corpse_death_pose.cpp.
+	entity.is_corpse = IsCorpseNpcType(entity.npc_type);
 	bool isNPC = (entity.npc_type == 1 || entity.npc_type == 3);
 
 	// Extract heading (11 bits to match C->S format)

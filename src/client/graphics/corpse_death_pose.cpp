@@ -9,7 +9,8 @@
 namespace EQT {
 namespace Graphics {
 
-bool ApplyCorpseDeathPose(EntityVisual& visual, EQAnimatedMeshSceneNode* animNode) {
+bool ApplyCorpseDeathPose(EntityVisual& visual, EQAnimatedMeshSceneNode* animNode,
+                          bool witnessed) {
 	if (!animNode) {
 		return false;
 	}
@@ -29,18 +30,30 @@ bool ApplyCorpseDeathPose(EntityVisual& visual, EQAnimatedMeshSceneNode* animNod
 		return false;
 	}
 
-	// Not looping and not playThrough: the body must come to rest, not fall
-	// over again every few seconds.
-	animNode->playAnimation(deathAnim, false, false);
+	if (witnessed) {
+		// T486: the player saw this one die. Stop whatever was playing so
+		// the fall starts clean, then play it ONCE, play-through (nothing may
+		// pre-empt it), and let it come to rest on its last frame -- the same
+		// frame the held branch below jumps to. This is what
+		// EntityRenderer::markEntityAsCorpse() did with its own copy of the
+		// ladder before T486.
+		animNode->stopAnimation();
+		animNode->playAnimation(deathAnim, false, true);
+	} else {
+		// Not looping and not playThrough: the body must come to rest, not
+		// fall over again every few seconds.
+		animNode->playAnimation(deathAnim, false, false);
 
-	// Jump to the last frame -- the "lying down" pose. Frame 0 of d05 is the
-	// STANDING pose, which is board B473's symptom.
-	SkeletalAnimator& animator = animNode->getAnimator();
-	animator.setToLastFrame();
+		// Jump to the last frame -- the "lying down" pose. Frame 0 of d05 is
+		// the STANDING pose, which is board B473's symptom.
+		SkeletalAnimator& animator = animNode->getAnimator();
+		animator.setToLastFrame();
 
-	// Force the mesh update now so the corpse appears lying down on the very
-	// first frame it is drawn, rather than standing until the next tick.
-	animNode->forceAnimationUpdate();
+		// Force the mesh update now so the corpse appears lying down on the
+		// very first frame it is drawn, rather than standing until the next
+		// tick.
+		animNode->forceAnimationUpdate();
+	}
 
 	// No Z offset needed for the death pose.
 	visual.corpsePositionAdjusted = true;

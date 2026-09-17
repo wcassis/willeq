@@ -187,6 +187,9 @@ def last_word(s):
 LONE_COLON = re.compile(r"(?<!:):(?!:)")
 BAD_IN_LEAD = ("&&",)
 STREAM_OP = re.compile(r"(?:^|\s)(?:<<|>>)(?:\s|$)")
+# T486: a lead ending in `,` or in a whitespace-bounded `&` / `*` / `<` is a
+# continuation line's binary operator, and what follows is a USE.
+CONTINUATION_OP = re.compile(r"(?:,\s*|\s[&*<]\s+)$")
 
 
 def classify_occurrence(code, start, end):
@@ -232,7 +235,85 @@ def classify_occurrence(code, start, end):
         # only -- `    , foo(x)` continuing an argument list, `    * f(y)`
         # continuing an expression -- is a call (T458).
         return False
+    if CONTINUATION_OP.search(lead):
+        # T486: a lead that ENDS in a binary operator is an expression, not a
+        # type -- `        value, foo(x)` continuing an argument list,
+        # `        a & foo(x)` / `        a * foo(x)` / `        a < foo(x)`
+        # continuing a condition on a wrapped line.  TYPEISH let all four
+        # through because `,`, `&`, `*`, `<` and spaces are all type
+        # characters (`std::map<int, Foo>`, `Foo&`, `Foo*`).  A definition's
+        # name never follows a comma; and the reference / pointer / template
+        # forms are whitespace-bounded the same way STREAM_OP is (`Foo& bar(`
+        # and `Foo &bar(` keep their definition score, `a & foo(` does not).
+        return False
     return TYPEISH.match(lead) is not None
+
+
+# ---------------------------------------------------------------------------
+# Self-test of the classifier (T486).  --self-test runs every probe below
+# through classify_occurrence() and exits 1 on the first disagreement.  Each
+# probe is a line shape the census has scored wrongly at some point, or the
+# definition shape that a fix for one of those must NOT hide: a call scored as
+# a definition invents a dead function (the direction this census must never
+# get wrong -- the next hygiene unit deletes it), a definition scored as a
+# call hides a dead one (safe, but it is what T458's first cut of STREAM_OP
+# did four times over).  Wired as the ZeroCallersSelfTest ctest.
+# ---------------------------------------------------------------------------
+
+# (line, identifier, expected: True = declaration/definition, False = use)
+CLASSIFY_PROBES = [
+    # Plain call and qualified call at statement start.
+    ("    foo(x);", "foo", False),
+    ("    ns::foo(x);", "foo", False),
+    # Definitions: a type-shaped lead.
+    ("void foo(int x) {", "foo", True),
+    ("const std::string eqt::util::StringFormat(const char* fmt, ...)", "StringFormat", True),
+    ("std::vector<std::pair<int16_t, const ItemInstance*>> getBankItems(", "getBankItems", True),
+    ("std::map<int, Foo> lookup(int key);", "lookup", True),
+    ("Foo& bar(int x);", "bar", True),
+    ("Foo &bar(int x);", "bar", True),
+    ("Foo* bar(int x);", "bar", True),
+    ("Foo *bar(int x);", "bar", True),
+    # T458: a stream operator is an expression.
+    ("    outFile << SerializeUiPreferences(p);", "SerializeUiPreferences", False),
+    # T458: punctuation-only leads continue an expression.
+    ("    , foo(x)", "foo", False),
+    ("    * f(y)", "f", False),
+    # Statement keywords and expression characters.
+    ("    return foo(x);", "foo", False),
+    ("    x = foo(y);", "foo", False),
+    ("    if (a && foo(y))", "foo", False),
+    ("    cond ? foo(x) : bar(y);", "foo", False),
+    # T486: an identifier followed by a binary operator on a continuation
+    # line -- the four shapes that scored as DEFINITIONS.
+    ("        value, foo(x)", "foo", False),
+    ("        a & foo(x)", "foo", False),
+    ("        a * foo(x)", "foo", False),
+    ("        a < foo(x)", "foo", False),
+    # A bare mention (no paren) is a use: a dispatch table, a bound member.
+    ("    {HC_OP_Foo, foo},", "foo", False),
+]
+
+
+def self_test():
+    failed = 0
+    for line, name, expected in CLASSIFY_PROBES:
+        code = strip_noncode(line)
+        hits = [m for m in TOKEN.finditer(code) if m.group(0) == name]
+        if not hits:
+            print("PROBE BROKEN (identifier not found): %r" % line)
+            failed += 1
+            continue
+        m = hits[-1]
+        got = classify_occurrence(code, m.start(), m.end())
+        if got != expected:
+            print("FAIL %-60r %s scored %s, expected %s"
+                  % (line, name, "DEF" if got else "USE",
+                     "DEF" if expected else "USE"))
+            failed += 1
+    print("classify_occurrence self-test: %d probes, %d failed"
+          % (len(CLASSIFY_PROBES), failed))
+    return 1 if failed else 0
 
 
 # ---------------------------------------------------------------------------
@@ -1194,7 +1275,12 @@ def main():
     ap.add_argument("--tests-only", action="store_true",
                     help="with --check, check only the tests-only half "
                          "(EXEMPT_TESTS, T458)")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run the classify_occurrence() probes (T486) and "
+                         "exit; no tree is scanned")
     args = ap.parse_args()
+    if args.self_test:
+        return self_test()
     root = os.path.abspath(args.repo)
 
     decls, virtual_names = collect_functions(root)

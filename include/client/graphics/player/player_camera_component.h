@@ -255,6 +255,13 @@ public:
 	// Persistence (FrameComponent::syncUiPreferences): the two user cameras,
 	// the only rigs the official client persists (eqclient.ini Camera1-*/2-*).
 	void setUserCameraRigs(const CameraRig& user1, const CameraRig& user2);
+	// T486 (item 7): part of T467's identity reset (FrameComponent::
+	// syncUiPreferences()). The Chase race scale caches the player's measured
+	// eye height (chaseEyeAboveFeet_) and is refreshed only once the player
+	// model is built and standing, so a change of character would place its
+	// first Chase frames with the previous character's eye. Back to the fitted
+	// character's value; the new model overwrites it as before.
+	void resetChaseEyeScale();
 	// The player's feet: node origin minus the player's collisionZOffset.
 	float playerFeetZ() const;
 

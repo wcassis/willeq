@@ -9888,7 +9888,7 @@ B712–B719 unused.
   the song's own `OP_Action` completed it. No bard has been cast on fable, with
   the rule on or off. Confirm with a bard on the live server.
 
-- **B762** (A, *unconfirmed*) **fable tracks 8 spell gems and Titanium has 9.**
+- ~~**B762** (A, *unconfirmed*) **fable tracks 8 spell gems and Titanium has 9.**~~ **CLOSED by T483 (resumed, B770 option (a); struck T486).** `EQT::SPELL_GEM_COUNT = 9` is stored (the PlayerProfile read, both `OP_MemorizeSpell` arms, the `SpellManager` arrays) and `EQT::VISIBLE_SPELL_GEM_COUNT = 8` is shown and offered, matching the Default skin; `tests/test_ninth_spell_gem.cpp`. The original entry follows for the record.
   `EQ::MAX_SPELL_GEMS` is 8 (`include/client/spell/spell_constants.h`), while
   Titanium's `CastingSlot` has `Gem1`..`Gem9`
   (`/mnt/projects/akk-stack/code/common/patches/titanium_limits.h`). Every
@@ -10144,6 +10144,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   the fist (about a half turn about the hand's horizontal axis, as far as the
   frames show), and no lantern in the left hand from either side. Attack-pose
   comparison owed (B586). Found by T466.
+  **T485 (slot1, in flight, `refactor/T485_held_item_transform_candidate_search.md`) OWNS this item** — the lantern half is already false since T472, and T485 strikes or narrows the rest; nobody else scopes a fix off it (T486 note).
 
 ---
 
@@ -10509,9 +10510,22 @@ Media and every number: `review/T478/README.md`; the plan's Review.
   `test_baked_vertex_lighting.cpp`), so on the GPU zone baked light is B/R-swapped
   today, and T405/T428's live-solved lighting constants were solved WITH that swap.
   *Unconfirmed* for the zone path: T484 did not render a baked-light mesh. Other
-  non-grey built-in-program consumers found by grep (not rendered): the
+  non-grey built-in-program consumers found by grep: the
   tumbleweed per-vertex colours, the boids and `ParticleManager` billboard quads,
   the door placeholder meshes (`door_manager_mesh.cpp`) and `detail_chunk.cpp`.
+  **T486 addendum (reading, no render): "not rendered" was wrong for at least
+  three of these.** `ParticleManager::render()` builds each billboard's four
+  `S3DVertex` with `SColor(alpha, r, g, b)` from the particle's own colour
+  (`particle_manager.cpp`, the quad draw through `drawVertexPrimitiveList`) and
+  is called EVERY frame from `FrameComponent::renderParticleEffects()`
+  (`renderer_frame_render.cpp`, gated only on `isEnabled()` and `zoneReady`), so
+  every non-grey particle -- fire, spell sprites, weather -- is drawn R/B-swapped
+  today. The tumbleweed mesh bakes two browns per vertex
+  (`tumbleweed_manager.cpp`, `SColor(255,180,150,100)` / `(255,140,110,70)`) and
+  is drawn whenever a tumbleweed is alive; the door placeholder prism bakes
+  `colorFromName()` per vertex (`door_manager_mesh.cpp`) and is drawn for every
+  door whose `_obj` mesh is missing. None of the three was measured; the sky was.
+  The decision between fixing the driver and per-consumer helpers stays Will's.
   Closes on Will's call between fixing the driver (one place, then re-solving the
   lighting constants live, the B445 queue) and a per-consumer helper like T484's.
   If the driver is fixed, T484's test fails by design and the helper goes.
@@ -10546,7 +10560,7 @@ Census of every 0x10 in the 94 global, 2,592 zone-chr and 654 zone-object
 skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
 `SkeletonMeshListCensus.CharacterAndObjectArchives`.
 
-- ~~**B730**~~ **CLOSED by T479.** `S3DLoader::loadObjects()` dropped every
+- **B730** (A) **FIXED ON THE HELD BRANCH ONLY — `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` this is still open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: `S3DLoader::loadObjects()` dropped every
   placement of an actor whose 0x14 reaches a 0x11 skeleton and no 0x2D mesh:
   644 placed actors, **95,666 placements in 158 zones** -- trees (196 actors,
   80,768 placements, meshes hung from bones: emeraldjungle 22,174, trakanon
@@ -10560,7 +10574,7 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   1,365,564 -> 1,389,324 (TEMPLELIFE and TEMPLELIFEB); no image golden moved.
   No live look; Pi cost of the added placements unmeasured (B735).
 
-- ~~**B731**~~ **CLOSED by T479.** A character mesh the race-code NAME PREFIX
+- **B731** (A) **FIXED ON THE HELD BRANCH ONLY — `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` this is still open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: A character mesh the race-code NAME PREFIX
   handed to two skeletons was skinned twice, because `applySkinning()` works in
   place on the shared mesh: CL_HS_DEF's "CL" took CLF_* and CLM_* (akanon, races
   88/457 Clockwork Gnome), KA_HS_DEF's "KA" took KAF_*/KAM_* (kaladima/b, race
@@ -10569,7 +10583,7 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   skins its own copy, and the prefix no longer takes a mesh another skeleton
   lists. Pinned by `SkeletonMeshListLoaders.CharacterMeshIsSkinnedOnceByItsOwnSkeleton`.
 
-- ~~**B732**~~ **CLOSED by T479.** `S3DLoader::loadCharacters()` never read the
+- **B732** (A) **FIXED ON THE HELD BRANCH ONLY — `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` this is still open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: `S3DLoader::loadCharacters()` never read the
   meshes a skeleton lists. 49 zone-chr skeletons (19 names: KAR, AAM, PHX, GTD,
   BKN ...) whose listed meshes carry no race-code prefix stored no model; 8
   names missed listed meshes -- GOM (body and head: its two bone meshes stopped

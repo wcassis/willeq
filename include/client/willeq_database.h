@@ -16,9 +16,16 @@ namespace EQT {
 
 // Expected `metadata.version` value in data/willeq.db. The builder
 // (tools/willeq_db_builder.cpp) writes this via setMeta("version", ...) and
-// the client compares against it in WilleqDatabase::open() (T56). Bump this
-// AND the builder's setMeta() call together, in the same commit, whenever
-// the schema changes — they must never drift independently again.
+// the client compares against it in WilleqDatabase::open() (T56). Bump it
+// whenever the CLIENT's expectation of the schema changes -- a table or
+// column the client reads is added, renamed or re-typed -- and always
+// together with the builder's setMeta() call (it reads this constant, so the
+// two cannot drift). A schema change the client never reads does NOT bump it:
+// T454 and T456 dropped `equipment_textures` and `equipment_models` (nothing
+// read either) and kept v7. The shipped FILE is pinned separately, by the
+// input digest the builder writes (`metadata.input_digest`, T450) and the
+// DbReproducible ctest that rebuilds it from its inputs -- so a stale
+// data/willeq.db is caught even when the version is unchanged.
 inline constexpr int kWilleqDbExpectedVersion = 7;  // T384: spells.target_anim + spells.travel_type added (T355 endurance_cost at 6, T304 race_models.color at 5, T246 spell reagents at 4, T68 effect slots at 3)
 
 // Runtime query stats for /pmem and /ft diagnostics

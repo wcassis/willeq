@@ -1,8 +1,11 @@
 // equipment_index_builder — Build equipment model index from *equip.s3d archives
 //
-// Phase 1 of the equipment data pipeline:
+// Phase 1 of what WAS the equipment data pipeline:
 //   Phase 1: Scan all *equip.s3d WLD files, extract IT model actor defs → JSON
-//   Phase 2: willeq_db_builder imports JSON into SQLite equipment_models table
+//   Phase 2 (RETIRED, T456): willeq_db_builder used to import the JSON into
+//   an `equipment_models` table; that table was never read and was dropped.
+//   EquipmentModelLoader::buildEquipmentIndex() indexes the same archives
+//   live at zone load. This tool's output feeds nothing -- board B480.
 //
 // Output JSON format:
 // {

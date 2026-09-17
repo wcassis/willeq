@@ -544,8 +544,9 @@ void PlayerCameraComponent::cycleCameraMode() {
 // record on the player entity this zone just registered, the projection, the
 // immediate placement; T74/T300), and the mode stays the player's.
 // setPlayerPosition() then places the camera at the new pose in that mode.
-// What a character with NO saved view gets (Chase) is applied where the
-// identity is loaded, syncUiPreferences(), not on every zone.
+// What a character with NO saved view gets (First Person since T471 -- the
+// official login camera; Chase before that) is applied where the identity is
+// loaded, syncUiPreferences(), not on every zone.
 void PlayerCameraComponent::placeCameraForZoneIn(float x, float y, float z, float heading512) {
     setCameraMode(cameraMode_);
     setPlayerPosition(x, y, z, heading512);

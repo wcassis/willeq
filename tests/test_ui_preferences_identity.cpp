@@ -35,9 +35,19 @@
 #include <sstream>
 #include <string>
 
+// T486 (item 7): AThirdCharacterDoesNotInheritTheChaseEyeScale plants the
+// cached Chase eye height, which only a built player model writes in
+// production (chaseEyeAboveFeet()); there is no model on this bare renderer.
+// The define must precede every client include: frame_component.h reaches the
+// camera component's header first.
+#define private public
+#define protected public
 #include "client/graphics/frame/frame_component.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/player/player_camera_component.h"
+#undef private
+#undef protected
+#include "client/graphics/player/camera_rig.h"
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/options_panel.h"
 #include "client/graphics/ui/static_panels.h"
@@ -193,4 +203,31 @@ TEST_F(UiPreferencesIdentityTest, TheFirstCharacterOfARunKeepsWhatTheClientAlrea
     EXPECT_EQ(Held().soundVolume, 11);
     renderer_.Frame().syncUiPreferences();
     EXPECT_FALSE(fs::exists(IniFor("Alpha"))) << "the first character wrote a file for a value it did not change";
+}
+
+// T486 (2026-09-14 audit, item 7): the Chase race scale is a per-character
+// value too. chaseEyeAboveFeet_ caches the player's head-bone eye height
+// (T474) and is refreshed only while the player model is STANDING with a
+// head-derived eye; a new character's first frames -- and every frame until
+// its model is built and standing -- placed Chase with the PREVIOUS
+// character's eye. It now goes back to the fitted character's value with the
+// rest of the T467 identity reset.
+TEST_F(UiPreferencesIdentityTest, AThirdCharacterDoesNotInheritTheChaseEyeScale) {
+    ZoneIn("Alpha");
+    // What a built Human male standing in the world would have written.
+    renderer_.PlayerCamera().chaseEyeAboveFeet_ = kChaseFitEyeAboveFeet * 1.5f;
+    ASSERT_NE(renderer_.PlayerCamera().chaseEyeAboveFeet_, kChaseFitEyeAboveFeet);
+
+    ZoneIn("Beta");
+    EXPECT_FLOAT_EQ(renderer_.PlayerCamera().chaseEyeAboveFeet_, kChaseFitEyeAboveFeet)
+        << "Beta's Chase camera is scaled by Alpha's eye height";
+}
+
+// Zoning as the same character keeps the measured eye (the reset is for a
+// change of character, not of zone).
+TEST_F(UiPreferencesIdentityTest, AZoneLoadForTheSameCharacterKeepsItsChaseEyeScale) {
+    ZoneIn("Alpha");
+    renderer_.PlayerCamera().chaseEyeAboveFeet_ = kChaseFitEyeAboveFeet * 1.5f;
+    ZoneIn("Alpha");
+    EXPECT_FLOAT_EQ(renderer_.PlayerCamera().chaseEyeAboveFeet_, kChaseFitEyeAboveFeet * 1.5f);
 }

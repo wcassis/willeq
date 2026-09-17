@@ -164,3 +164,15 @@ ADD_TEST(NAME ZeroCallers
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_zero_callers.py
             --repo ${CMAKE_SOURCE_DIR} --check)
 SET_TESTS_PROPERTIES(ZeroCallers PROPERTIES LABELS "hygiene" TIMEOUT 600)
+
+# T486 (2026-09-14): the classifier behind ZeroCallers has its own probes.
+# classify_occurrence() scored a continuation line's `value, foo(x)` /
+# `a & foo(x)` / `a * foo(x)` / `a < foo(x)` as DEFINITIONS -- the direction
+# that invents a dead function for the next hygiene unit to delete. The
+# --self-test runs every shape the census has ever scored wrongly, and the
+# definition shapes a fix must not hide, through the live classifier; no tree
+# is scanned, so it is instant. Same "hygiene" label.
+ADD_TEST(NAME ZeroCallersSelfTest
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_zero_callers.py
+            --self-test)
+SET_TESTS_PROPERTIES(ZeroCallersSelfTest PROPERTIES LABELS "hygiene")

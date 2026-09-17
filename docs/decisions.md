@@ -982,3 +982,29 @@ them as the official client does, treat lifts/elevators as walkable
 moving surfaces, and apply trap behaviour. **The official client's
 handling of doors and objects is the baseline to emulate.** Era rule
 applies (launch → Velious).
+
+## 2026-09-13 - the camera set (Will; recorded 2026-09-14 by T486)
+
+Ruled for T461 (`refactor/T461_camera_modes_orbit_f9.md`, "Will's ruling"),
+applied by T461/T464/T471/T474:
+
+- **Match the official client's camera set** (First Person, Overhead, Chase,
+  User Defined 1, User Defined 2, Tether -- names and order from
+  `eqstr_us.txt` 9500-9505). **No Free mode**: the official client has no
+  free-fly camera, and fable's (whose WASD fly routine had no caller) is
+  deleted, not kept as an extra.
+- **F9 cycles the modes in the official order and REPLACES Ctrl+F5** (no
+  alias). The other camera keys follow the official Options > Keys > Camera
+  page as T466 measured them (T471); F10/F11/L/Alt+C are still Will's call
+  (B582).
+- **Include the official orbit camera**: the user cameras orbit the player and
+  zoom; the wheel and the zoom keys edit the active rig's distance.
+- **`/camera` is the exact-placement command**: azimuth, pitch, distance and
+  look-at height set absolutely, nudged by an exact step, and read back
+  (`/camera get`). Its purpose is oracle work: put the official client in one
+  of its fixed cameras, measure it, and set fable's to match.
+- Every mode's geometry is MEASURED against the official client, never
+  argued (`match-the-oracle-dont-infer-it`): Overhead and FOV by T466, Chase
+  by T466/T474 (still open on the scoring crop, B721), the login camera is
+  First Person (T471). User 1/2 and Tether hold a world azimuth (B580).
+

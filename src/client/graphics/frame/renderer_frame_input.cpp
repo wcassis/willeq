@@ -108,10 +108,11 @@ void FrameComponent::processFrameInput(float deltaTime) {
     // Update camera and player movement
     ctx_.PlayerCamera().updatePlayerMovement(deltaTime);
     // T461: a rig camera (Overhead, Chase since T474, User Defined 1/2, Tether)
-    // is re-placed every frame around wherever movement left the player -- the
-    // rig itself is never touched by a move. A no-op in first person, which the
-    // movement path places itself.
-    ctx_.PlayerCamera().updateRigCamera();
+    // is re-placed every frame around wherever the frame leaves the player --
+    // ONCE, in processFrameSimulation() after the lift carry, the last thing
+    // that moves the player (T486, item 6: it was placed here too, so every
+    // frame paid two BSP lookups and a PVS ray for one camera). A no-op in
+    // first person, which the movement path places itself.
     frameTimings_.playerMovement = measureSection();
     // Update sky position to follow camera
     if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized() && ctx_.camera) {
@@ -925,11 +926,16 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
         // follow syncDoorCollision(), which is what puts the platform's
         // CURRENT triangles in the map the ride probe queries.
         ctx_.PlayerCamera().carryPlayerOnLifts(deltaTime);
-        // T461: and a rig camera rides with the player it is expressed around
-        // (Chase included since T474; first person is re-placed inside
-        // carryPlayerOnLifts()).
-        ctx_.PlayerCamera().updateRigCamera();
     }
+    // T461: a rig camera (Overhead, Chase since T474, User Defined 1/2, Tether)
+    // is re-placed around wherever this frame left the player -- after the
+    // movement integration AND the lift carry, and whether or not there is a
+    // door manager. T486 (item 6): this is the frame's ONE placement; it used
+    // to run right after updatePlayerMovement() as well, and only here when
+    // doors existed. First person is placed by the movement path and inside
+    // carryPlayerOnLifts(); this is a no-op there. Pinned by
+    // tests/test_camera_mode_wiring.cpp TheRigCameraIsPlacedOncePerFrameAfterTheLiftCarry.
+    ctx_.PlayerCamera().updateRigCamera();
     frameTimings_.doorUpdate = measureSection();
 
     // Spell VFX update

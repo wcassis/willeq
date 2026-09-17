@@ -46,6 +46,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <vector>
 #include <string>
 
@@ -210,6 +211,112 @@ TEST(CorpseRecognition, NoProductionSiteDerivesCorpsenessFromANameSubstring) {
            " \"a corpse beetle\" as a corpse and freezes it in the death pose."
            " Call IsCorpseByFields() (client/corpse_predicate.h) instead."
            " Board B478. Sites:" << report;
+}
+
+// -------------------------------------------------------------------------
+// T486 (2026-09-14 audit, item 2) -- the flag has ONE owner.
+//
+// Entity::is_corpse used to be written by two handlers only (OP_Death for a
+// death we witnessed, OP_MobRename for an NPC corpse's rename), so a corpse
+// that was already lying there when we zoned in -- Spawn_Struct NPC byte 2,
+// no death, no rename -- carried is_corpse=false for the whole session, and
+// the three sites that read the bare flag (spell_cast_validation.cpp's corpse
+// target check, bridge_component.cpp's CorpseDecayStarted, and
+// entities_component_appearance.cpp's name suffix) treated it as alive.
+// Both Spawn_Struct parsers now set the flag from the NPC byte through
+// IsCorpseNpcType() -- the same rule IsCorpseByFields() applies -- so a bare
+// read of the flag answers the same question the predicate does.
+//
+// Two nets keep it that way:
+//   * a parser that stores npc_type from the wire must set is_corpse through
+//     the owner in the same TU -- a new spawn parser cannot bypass it;
+//   * no production site re-derives corpse-ness from `npc_type == 2` inline,
+//     which is the fifth copy T456 buried coming back in a new spelling.
+// -------------------------------------------------------------------------
+
+TEST(CorpseRecognition, TheNpcByteRuleIsOneFunction) {
+    EXPECT_TRUE(IsCorpseNpcType(2));
+    EXPECT_TRUE(IsCorpseNpcType(3));
+    EXPECT_FALSE(IsCorpseNpcType(0));
+    EXPECT_FALSE(IsCorpseNpcType(1));
+    // And IsCorpseByFields() gives the same answer for the byte alone.
+    for (int b = 0; b < 8; ++b) {
+        EXPECT_EQ(IsCorpseByFields(false, static_cast<uint8_t>(b), "a_rat"),
+                  IsCorpseNpcType(static_cast<uint8_t>(b))) << "npc byte " << b;
+    }
+}
+
+namespace {
+
+// Comment-filtered source, the same way the substring census above reads it.
+std::string ReadCodeOnly(const std::filesystem::path& path) {
+    std::ifstream in(path);
+    std::string src;
+    for (std::string line; std::getline(in, line);) {
+        const size_t slashes = line.find("//");
+        src += (slashes == std::string::npos) ? line : line.substr(0, slashes);
+        src += '\n';
+    }
+    return src;
+}
+
+std::vector<std::filesystem::path> ProductionSources() {
+    namespace fs = std::filesystem;
+    std::vector<fs::path> out;
+    for (const char* dir : {"src", "include"}) {
+        const fs::path base = fs::path(WILLEQ_REPO_ROOT) / dir;
+        if (!fs::exists(base)) continue;
+        for (const auto& e : fs::recursive_directory_iterator(base)) {
+            if (!e.is_regular_file()) continue;
+            const std::string ext = e.path().extension().string();
+            if (ext == ".cpp" || ext == ".h" || ext == ".hpp") out.push_back(e.path());
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST(CorpseRecognition, EverySpawnStructParserSetsTheCorpseFlagThroughTheOwner) {
+    // The wire read that makes a TU a Spawn_Struct parser.
+    const std::string npcRead = ".npc_type = p.GetUInt8(";
+    const std::string ownerWrite = ".is_corpse = IsCorpseNpcType(";
+    std::vector<std::string> parsers, bypassing;
+    for (const auto& path : ProductionSources()) {
+        const std::string src = ReadCodeOnly(path);
+        if (src.find(npcRead) == std::string::npos) continue;
+        parsers.push_back(path.string());
+        if (src.find(ownerWrite) == std::string::npos) bypassing.push_back(path.string());
+    }
+    // ZoneSpawns (the bulk burst) and NewSpawn (a single later arrival) are
+    // the two parsers on this tree; a count of zero means the census broke.
+    ASSERT_GE(parsers.size(), 2u) << "no Spawn_Struct parser found -- the census is broken";
+    std::string report;
+    for (const std::string& b : bypassing) report += "\n  " + b;
+    EXPECT_TRUE(bypassing.empty())
+        << "a Spawn_Struct parser stores npc_type from the wire without setting"
+           " is_corpse through IsCorpseNpcType(). A corpse that was already in the"
+           " zone then reads as alive to every bare is_corpse reader. Sites:" << report;
+}
+
+TEST(CorpseRecognition, NoProductionSiteDerivesCorpsenessFromTheNpcByteInline) {
+    const std::regex inlineByte(R"(npc_type\s*==\s*2\b)");
+    std::vector<std::string> offenders;
+    int scanned = 0;
+    for (const auto& path : ProductionSources()) {
+        const std::string p = path.string();
+        // The predicate itself is the one place the byte value lives.
+        if (p.find("corpse_predicate") != std::string::npos) continue;
+        ++scanned;
+        if (std::regex_search(ReadCodeOnly(path), inlineByte)) offenders.push_back(p);
+    }
+    ASSERT_GT(scanned, 500) << "the census scanned almost nothing -- it is broken, not clean";
+    std::string report;
+    for (const std::string& o : offenders) report += "\n  " + o;
+    EXPECT_TRUE(offenders.empty())
+        << "a production site tests the Spawn_Struct NPC byte inline. Ask"
+           " IsCorpseNpcType() / IsCorpseByFields() (client/corpse_predicate.h)"
+           " -- board B478. Sites:" << report;
 }
 
 // -------------------------------------------------------------------------
@@ -413,6 +520,59 @@ TEST_F(CorpsePoseTest, AnAppearanceChangeDoesNotStandTheCorpseBackUp) {
     EXPECT_EQ(a.getCurrentFrame(), heldFrame)
         << "the corpse went back to frame 0 of d05, which is the STANDING pose";
     EXPECT_FLOAT_EQ(a.getProgress(), 1.0f);
+}
+
+// -------------------------------------------------------------------------
+// T486 (2026-09-14 audit, item 3) -- the THIRD copy of the ladder.
+//
+// EntityRenderer::markEntityAsCorpse() (the EntityDeathAnimation bridge arm:
+// a death we WITNESSED) carried its own textual d05/d02/d01 ladder beside
+// T456's one function. It now calls ApplyCorpseDeathPose() with
+// witnessed=true: the same ladder, the same bookkeeping
+// (corpsePositionAdjusted, currentAnimation), but the animation PLAYS
+// THROUGH to its last frame rather than jumping there, because this time the
+// player saw the body fall.
+// -------------------------------------------------------------------------
+TEST_F(CorpsePoseTest, AWitnessedDeathPlaysTheOneLadderThrough) {
+    constexpr uint16_t kSpawn = 401;
+    const auto* live = buildCorpse(kSpawn, /*isCorpse=*/false);
+    ASSERT_NE(live, nullptr);
+    ASSERT_NE(live->animatedNode, nullptr);
+    ASSERT_FALSE(live->isCorpse);
+
+    entities_->markEntityAsCorpse(kSpawn);
+
+    auto it = entities_->getEntities().find(kSpawn);
+    ASSERT_NE(it, entities_->getEntities().end());
+    const auto& v = it->second;
+    EXPECT_TRUE(v.isCorpse);
+    EXPECT_EQ(v.currentAnimation, "d05");
+    EXPECT_TRUE(v.corpsePositionAdjusted)
+        << "the witnessed-death path did not go through ApplyCorpseDeathPose()";
+    EXPECT_FLOAT_EQ(v.corpseYOffset, 0.0f);
+    const auto& a = v.animatedNode->getAnimator();
+    EXPECT_EQ(a.getCurrentAnimation(), "d05");
+    // Witnessed: the fall is PLAYED, from the start, and must complete.
+    EXPECT_TRUE(a.isPlayingThrough()) << "a witnessed death must play the fall through";
+    EXPECT_EQ(a.getState(), EQT::Graphics::AnimationState::Playing);
+    EXPECT_EQ(a.getCurrentFrame(), 0);
+}
+
+// Device-free: the ladder's text exists ONCE under src/.
+TEST(CorpseRecognition, TheDeathPoseLadderHasOneCopy) {
+    std::vector<std::string> copies;
+    for (const auto& path : ProductionSources()) {
+        if (ReadCodeOnly(path).find("hasAnimation(\"d05\")") != std::string::npos) {
+            copies.push_back(path.string());
+        }
+    }
+    std::string report;
+    for (const std::string& c : copies) report += "\n  " + c;
+    ASSERT_EQ(copies.size(), 1u)
+        << "the d05/d02/d01 death-pose ladder must live in corpse_death_pose.cpp only"
+           " (T456 board B477; T486 folded EntityRenderer::markEntityAsCorpse()'s copy)."
+           " Copies:" << report;
+    EXPECT_NE(copies[0].find("corpse_death_pose.cpp"), std::string::npos) << copies[0];
 }
 
 // -------------------------------------------------------------------------

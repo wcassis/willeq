@@ -64,6 +64,20 @@ bool ParseCorpseName(const std::string& name,
 std::string MakeCorpseName(const std::string& living_name, uint32_t entity_id,
                            bool is_player);
 
+// T486 (2026-09-14 audit, item 2): the Spawn_Struct NPC byte's corpse rule,
+// on its own. eqemu's Corpse::FillSpawnStruct writes 2 for EVERY corpse it
+// spawns (player and npc alike); 3 is the documented npc-corpse value other
+// servers may send. Both Spawn_Struct parsers (ZoneSpawns and NewSpawn,
+// src/client/entities/) set Entity::is_corpse from this at spawn, so a corpse
+// that was already lying there when we zoned in carries the flag from its
+// first frame -- before this, only a death we witnessed (OP_Death) or an NPC
+// corpse's rename (OP_MobRename) ever set it, and the three sites that read
+// the bare flag (a corpse-target spell's validateCast, the CorpseDecayStarted
+// fade, the corpse-name suffix on an appearance change) saw a live mob.
+// IsCorpseByFields() applies the same rule; tests/test_corpse_death_pose.cpp
+// fails on a parser that stores npc_type without setting the flag here.
+bool IsCorpseNpcType(uint8_t npc_type);
+
 // The predicate, on the three fields any entity representation carries:
 //   * the flag, set by the death and rename handlers (a death we witnessed);
 //   * the Spawn_Struct NPC field (2 for EVERY corpse eqemu spawns, 3 the

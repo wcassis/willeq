@@ -275,7 +275,8 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
         // T62 correction: the plan's original "kTestPrimaryItemId = 1000"
         // (inherited from T60) does NOT map to a weapon. willeq.db's
         // item_models table maps database item 1000 -> equipment model
-        // IT64, and IT64's texture (per equipment_models table) is
+        // IT64, and IT64's texture (per the equipment index of the day;
+        // its `equipment_models` table was dropped by T456, B480) is
         // "sack1.bmp" -- a sack/container model, not a sword. That
         // explains the huge, wrong-shaped brown mass in T60's original
         // capture far better than a grip-offset bug would: it was never a

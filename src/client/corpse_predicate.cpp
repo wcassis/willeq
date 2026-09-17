@@ -72,18 +72,24 @@ std::string MakeCorpseName(const std::string& living_name, uint32_t entity_id,
 	return base;
 }
 
+bool IsCorpseNpcType(uint8_t npc_type) {
+	// eqemu's Corpse::FillSpawnStruct (zone/corpse.cpp:1792) sets it to 2 for
+	// every corpse it spawns, player or NPC; 3 is the documented npc-corpse
+	// value other servers may send.
+	return npc_type == 2 || npc_type == 3;
+}
+
 bool IsCorpseByFields(bool is_corpse_flag, uint8_t npc_type, const std::string& name) {
 	// 1. The flag, set by the HC_OP_Death and HC_OP_MobRename handlers. Only
 	//    ever true for a death we personally witnessed this session.
 	if (is_corpse_flag) {
 		return true;
 	}
-	// 2. Spawn_Struct NPC field (offset 83). eqemu's Corpse::FillSpawnStruct
-	//    (zone/corpse.cpp:1792) sets it to 2 for every corpse it spawns,
-	//    player or NPC; 3 is the documented npc-corpse value other servers
-	//    may send. This is the authoritative bit, and it is the one that
-	//    covers corpses that were already lying there when we zoned in.
-	if (npc_type == 2 || npc_type == 3) {
+	// 2. Spawn_Struct NPC field (offset 83) -- IsCorpseNpcType() above. This
+	//    is the authoritative bit, and it is the one that covers corpses that
+	//    were already lying there when we zoned in (T486: the spawn parsers
+	//    now set the flag from it too, so route 1 covers them as well).
+	if (IsCorpseNpcType(npc_type)) {
 		return true;
 	}
 	// 3. The name, for entities whose npc_type we never saw (e.g. an entity

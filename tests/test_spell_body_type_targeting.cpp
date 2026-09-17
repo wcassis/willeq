@@ -236,6 +236,40 @@ TEST(SpellManagerBodyType, ValidateCastRefusesUndeadSpellOnALivingHumanoid) {
     EXPECT_EQ(mgr->validateCast(spell, 101), CastResult::Success);
 }
 
+// T486 (2026-09-14 audit, item 2): a corpse that was already lying there when
+// we zoned in. eqemu's Corpse::FillSpawnStruct writes Spawn_Struct NPC=2 for
+// EVERY corpse it spawns (zone/corpse.cpp), and no OP_Death / OP_MobRename
+// ever follows for it -- those only fire at the moment of death. Before this
+// unit the spawn parsers stored npc_type and left Entity::is_corpse false, so
+// the three readers of the bare flag (validateCast's corpse-target check,
+// the CorpseDecayStarted fade, the corpse-name suffix on appearance changes)
+// saw a living mob: a cleric zoning in to rez a corpse it did not see die was
+// refused client-side with InvalidTarget. The flag is now set from the NPC
+// byte by the parser that reads it (IsCorpseNpcType, corpse_predicate.h).
+TEST(SpellManagerCorpseTarget, APreExistingCorpseIsACorpseTargetWithoutAWitnessedDeath) {
+    EverQuest eq = MakeEq();
+    // The wire shape of a corpse already in the zone: NPC byte 2, the
+    // Corpse::CalcCorpseName name, and nothing else to say it is dead.
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
+                               NewSpawnPayloadAt(100, "Oraclealpha's corpse42", 0, 10, 0,
+                                                 /*level=*/5, /*npc_type=*/2,
+                                                 /*char_class=*/0, /*hp_percent=*/0,
+                                                 /*race=*/1, BT::Humanoid)));
+    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn, NpcWithBodyType(101, "a_guard", BT::Humanoid)));
+
+    const auto& entities = eq.GetEntities();
+    ASSERT_NE(entities.find(100), entities.end());
+    EXPECT_TRUE(entities.at(100).is_corpse)
+        << "the spawn parser stored npc_type=2 without setting is_corpse";
+    EXPECT_FALSE(entities.at(101).is_corpse);
+
+    auto* mgr = eq.GetSpellManager();
+    SpellData spell = MakeSpell(SpellTargetType::Corpse);
+    EXPECT_EQ(mgr->validateCast(spell, 100), CastResult::Success)
+        << "a corpse we did not see die is refused as a corpse-spell target";
+    EXPECT_EQ(mgr->validateCast(spell, 101), CastResult::InvalidTarget);
+}
+
 // ===================================================================
 // The guard: the numbering has ONE home.
 //

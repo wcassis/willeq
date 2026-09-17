@@ -126,6 +126,18 @@ constexpr CameraRig kOverheadRig{0.0f, 83.0f, 45.0f, 3.0f};
 // looking 10 AHEAD of the player -- 16.02 farther back than this, 5.70 higher,
 // 1.60 degrees more pitch (T471's computation). The camera and its look-at are
 // the rig's; the scale below is applied first.
+//
+// NOT SETTLED (T478, board B721): the fit depends on the scoring crop, and no
+// rig is the minimum at both headings on either crop. On T474's wall crop
+// (400x600+0+100, which leaves the player out) h160 minimises at p6 / d4 /
+// h6.75 and h288 at p7.5 / d4 / h7.5; on a player-centred crop
+// (424x668+300+100) h160 at p6 / d2.5 / h6.5 and h288 at p4.5 / d2 / h6.5;
+// the official figure's head is about 1.6x the width of fable's at this rig,
+// and the same rig scores up to 0.033 apart between two sessions. The
+// distance agrees at 4.0 on the wall crop only. This rig stays until a metric
+// that uses the whole frame without being dominated by the model's shading
+// exists (B721). Whether the official Chase zooms at all is board B680
+// (narrowed T478: the wheel does not zoom it).
 constexpr CameraRig kChaseRig{0.0f, 6.0f, 4.0f, 7.0f};
 // The character the Chase fit was taken on: T466's Human male Warrior, whose eye
 // the official client puts 6.023 +/- 0.08 above its own feet (T431, solved on the

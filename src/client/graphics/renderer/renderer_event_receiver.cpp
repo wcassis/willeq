@@ -1,4 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/player/camera_rig.h"  // T486: kCameraZoomStepUnits
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -276,8 +277,10 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::HotbarSlot10: hotbarActivationRequest_ = 9; break;
 
                     // Camera Zoom
-                    case HA::CameraZoomIn: cameraZoomDelta_ = -2.0f; break;
-                    case HA::CameraZoomOut: cameraZoomDelta_ = 2.0f; break;
+                    // T486 (item 5): the notch has ONE owner, camera_rig.h's
+                    // kCameraZoomStepUnits -- the wheel already used it.
+                    case HA::CameraZoomIn: cameraZoomDelta_ = -kCameraZoomStepUnits; break;
+                    case HA::CameraZoomOut: cameraZoomDelta_ = kCameraZoomStepUnits; break;
                     // T461/T471: the camera adjust keys (Tether-slide, Pitch,
                     // Raise/Lower); the arms are in
                     // FrameComponent::processCommonInput().
