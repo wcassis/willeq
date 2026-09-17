@@ -11122,7 +11122,18 @@ straight down (`review/T485/data/rpoint_frames.txt`). Tests
 `BoneAttachmentTest.ShippedCorrectionIsAQuarterTurnAboutTheItemsY` pin it (all
 red under T472's C, green under c20).
 
-- **B755** (A, *unconfirmed*) **`data/item_models.json` disagrees with the server's
+- ~~**B755**~~ **STRUCK by T498** (`task/T498-item-models-vs-server`, local lane).
+  The drift is MEASURED and it is not one bad row: `data/item_idfile.tsv` (a
+  committed export of peq's `SELECT id, name, idfile FROM items`, 117,944 rows,
+  `scripts/eqemu/export_item_idfile.sh`) against the JSON's 3,661 rows gives
+  **1,226 mismatch, 902 not-on-server, 115,185 server-only, 0
+  non-numeric-idfile**, plus a **collision census of 8 materials over 9 server
+  items**. 2894 is confirmed (`2894 | Spiny Two Handed Sword | IT10004` against
+  the file's 10009) and is one of 1,226. The ROOT CAUSE turned out not to be the
+  file: `appearance.equipment[7|8]` had two feeders in two different units, and
+  the file only ever decided the LOCAL player's own weapon -- see the struck
+  B823 below for the fix, and **B827** for what is left, which is Will's call.
+  Original text: (A, *unconfirmed*) **`data/item_models.json` disagrees with the server's
   `items.idfile`, so fable can draw a DIFFERENT MODEL from the official client for
   the same item.** MEASURED T485 (offline): `data/item_models.json` and
   `data/willeq.db`'s `item_models` both map item 2894 (Spiny Two Handed Sword) to
@@ -11441,7 +11452,82 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   They also need the eqemu lock and ~2 minutes each, so they cannot simply join
   the default ctest suite. Proposal: `scripts/eqemu/*_selftest.sh` is the
   convention, each takes the lock itself, each exits 0/64/6x-7x, and a single
-  `scripts/eqemu/selftests.sh` runs all of them for a live unit's pre-flight.
+  driver beside them (`selftests.sh`, which does not exist yet -- T498 had to
+  de-cite this line because `DocCitations` reads a backticked path as a
+  citation and was RED on the tip because of it) runs all of them for a live
+  unit's pre-flight.
   Needs Will's call on whether that lane is worth owning. Found by T497.
 
-B816-B819 unused (T497 was dispatched to start at B820). B823 onwards unused.
+B816-B819 unused (T497 was dispatched to start at B820).
+
+## Added 2026-09-17 by T498 (item_models.json vs the server's items.idfile)
+
+- ~~**B823**~~ **CLOSED by T498, and recorded because the SHAPE will recur.**
+  **`appearance.equipment[7|8]` had two feeders carrying two different units,
+  and nothing named the type.** For the client's whole history the LOCAL
+  player's weapon slots took `item->itemId`, a DATABASE item id
+  (`entities_component_appearance.cpp`, `UpdatePlayerAppearanceFromInventory()`),
+  while every peer and NPC took the server's **material** -- spawn parse,
+  `entities_component_updates.cpp` and `ZoneProcessWearChange()` -- which for a
+  weapon is `atoi(&item->IDFile[2])` (`Mob::GetEquipmentMaterial()`,
+  `/mnt/projects/akk-stack/code/zone/mob_appearance.cpp`). Nine render sites
+  papered over it with `getModelIdForItem()` + "if that missed, use the number
+  as a model id", so both units "worked" and the disagreement was invisible.
+  [measured] Weapon idfiles are >= 10000 and the JSON's keys stop at 8456, so
+  the peer lookup ALWAYS missed and only the local player was ever drawn from
+  the file. T498's fix is the wire: Titanium serialises `IDFile` as static field
+  3 (`titanium.cpp:3359`) and fable's parser skipped it
+  (`inventory_item_parser.cpp` carried the comment `// fields[3] = IDFile` and
+  nothing else). `ItemInstance::idfileModel` now parses it, the feeder uses it,
+  and the item-id lookup is gone from all nine render sites -- `equipment[]` is
+  uniformly a MATERIAL / IT number.
+- **B824** (C) **`EquipmentModelLoader::loadItemModelMapping()` builds a map
+  nothing reads.** [measured] It parses all 3,661 rows of
+  `data/item_models.json` into `itemToModelMap_` at load, and
+  `getModelIdForItem()` -- the only thing that would want it -- queries
+  `WilleqDatabase::getItemModel()` (the `item_models` table) instead. The JSON
+  at runtime is a startup `checkFile` (`application.cpp:242`) plus an input to
+  `willeq.db`; the db table is the live lookup. T498 left the loader alone and
+  only stopped it THROWING on a non-digit key (`std::stoul`), which is what a
+  `"_provenance"` header would have done to it. Delete the map, or delete the
+  query and read the map -- one of the two, and it is a decision about which
+  source of truth the tools get. Found by T498.
+- **B825** (C) **The JSON covers 3,661 of peq's 117,944 items, and an
+  uncovered one used to fall silently to `modelId = itemId`.** [measured]
+  115,185 server items have no row. Every render site's fallback was `if
+  (modelId < 0) modelId = equipmentId`, i.e. "draw the item id as a model
+  number", with no log line -- which is how `renderer_zone_load_entities.cpp`
+  came to carry a P10b comment about a giant rat whose missing model aborted an
+  entire zone load. T498 removed the lookup from the render sites, so the
+  runtime no longer depends on the coverage at all; what is left is the offline
+  tools, which do hold item ids and do hit the gap. Decide whether the tools
+  want the full table (117,722 rows with a numeric idfile) or should report a
+  miss. Found by T498.
+- **B826** (C) **No derived data file in the tree carries provenance.**
+  [measured] `data/item_models.json` is a bare `{"<itemId>": <modelId>}` map
+  with no header at all -- no source, no host, no date, no rule -- which is why
+  nobody could tell a hand-edit from an export, and why the drift B755 names
+  went six months unnoticed. `data/willeq.db` has had `metadata.input_digest`
+  since T450 and it is the only one. T498 proposes the convention for JSON:
+  a `"_provenance"` object as the first key, holding generator, source, source
+  host, source row count, UTC timestamp and the RULE applied -- the shape
+  `scripts/check_item_models.py --rebuild` already writes and
+  `data/item_idfile.tsv`'s `#` header already carries. Needs Will's call on
+  whether to apply it to the other derived JSONs. Found by T498.
+- **B827** (C) **Regenerating `data/item_models.json` from the server is a
+  VISUAL change and is NOT done.** [measured] 2,128 of its 3,661 rows disagree
+  with the export, so rewriting the file changes what
+  `tools/model_viewer` and `tools/hwcaps/ui_inventory_capture` draw for a third
+  of the items they can be asked about -- T498's own STOP condition ("a
+  wholesale swap is a visual change, not a data fix"), and 497 of the keys are
+  below peq's first item id, so they were never item ids and nobody knows what
+  they were. The runtime no longer reads any of it (B823), so this is now a
+  tools-only question with no user-visible consequence, which is why T498
+  stopped rather than swapped. What exists instead: the drift is enumerated in
+  `data/item_models_drift_baseline.txt` and ratcheted in both directions by the
+  `ItemModelsMatchServer` ctest test, so it cannot grow and a fixed row cannot
+  stay listed. `python3 scripts/check_item_models.py --rebuild` does the swap
+  in one command when Will wants it, and `data/willeq.db` + `.sha256` must be
+  rebuilt in the SAME commit or `DbReproducible` goes red. Found by T498.
+
+B828 onwards unused.

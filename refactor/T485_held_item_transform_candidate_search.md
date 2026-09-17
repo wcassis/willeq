@@ -314,6 +314,9 @@ claims in it did not survive review as written, and one new measurement was take
 - **[assumed, unchanged] Set B / shields.** `ShieldFrontFacesAwayFromTheBody` still
   pins winding, not the oracle. B723 is contaminated and no clean shield grab
   exists.
+- **[DONE by T498, 2026-09-17]** B755's row-by-row diff was taken on the local lane:
+  1,226 mismatch / 902 not-on-server / 115,185 server-only / 0 non-numeric-idfile,
+  and the root cause was not the file but `equipment[]` carrying two units (B823).
 - **Blocked, needs the lock (NOT taken, per the dispatch):** B755's row-by-row diff
   of `item_models.json` against eqemu's `items.idfile`, and B756's official-client
   idle-loop video. Everything else in the plan was offline and was done.

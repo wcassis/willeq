@@ -916,6 +916,29 @@ Audio tests and graphics integration tests are documented in their respective CL
   `parseUserSlot()` in, `describeSlot()` out (both ported from the server's own
   `/mnt/projects/akk-stack/code/common/patches/titanium.cpp:3576/:3666`). Do not add a third conversion, and
   do not "fix" a model-side number to match a message.
+- **`EntityAppearance::equipment[]` is a MATERIAL / IT model number, never a
+  database item id** (T498, board B755/B823, 2026-09-17). Slots 0-6 carry the
+  armour material, slots 7 and 8 the weapon's `IT<n>` number, and the rule is
+  the server's own: `Mob::GetEquipmentMaterial()` is `atoi(&item->IDFile[2])`
+  (`/mnt/projects/akk-stack/code/zone/mob_appearance.cpp`). It reaches the
+  client three ways and all three now agree -- the spawn parse, `OP_WearChange`,
+  and for the LOCAL player `UpdatePlayerAppearanceFromInventory()`, which reads
+  `ItemInstance::idfileModel` off Titanium static field 3
+  (`titanium.cpp:3359`). Until T498 the local player's own weapon slots carried
+  the DB item id instead and every render site resolved it through
+  `data/item_models.json`, a hand-carried table that disagrees with the server
+  on **2,128 of its 3,661 rows** -- item 2894 (Spiny Two Handed Sword) is 10004
+  on the server and 10009 in the file, so fable drew the wrong blade. **Do not
+  put an item id in `equipment[]`, and do not add an item-id lookup to a render
+  site**: `EquipmentModelLoader::getModelIdForItem()` survives for the two
+  offline tools that genuinely hold item ids
+  (`tools/model_viewer`, `tools/hwcaps/ui_inventory_capture`) and its header
+  says so. The file's drift is enumerated in
+  `data/item_models_drift_baseline.txt` and ratcheted both ways by the
+  `ItemModelsMatchServer` ctest test, which compares it to the committed export
+  `data/item_idfile.tsv` (`scripts/eqemu/export_item_idfile.sh`, 117,944 peq
+  rows) and so needs no live mariadb. Regenerating the file is still open --
+  board **B827**, Will's call, because it changes what the tools draw.
 - **BSP tree** (`include/client/zone_bsp.h`): Zone spatial data shared between game state (water detection, zone lines) and renderer (PVS culling). No graphics dependencies.
 
 ## Configuration
