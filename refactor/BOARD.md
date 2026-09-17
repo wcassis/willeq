@@ -11792,4 +11792,24 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   `review/T492/llmbench/README.md` and in `review/T492/README.md` naming
   `review/T499/tip_dialog_audit.tsv` as the per-frame index. Found by T499.
 
-B828–B829 and B832 unused. B830–B831 used by T496 Leg D. B833–B835 used by T499. B836 onwards unused.
+
+## Added 2026-09-17 by T501 (CLAUDE.md exceeded the hermes context-file cap)
+
+~~- **B846** (P) **The root `CLAUDE.md` was 66,660 bytes, past the 62,914-byte
+  context-file cap the hermes kanban workers read it under, so they silently
+  lost the MIDDLE of it** -- rules, not decoration: the derived-asset recipes,
+  the scenario-lane exit codes and the whole Key Patterns section all sat in the
+  dropped span. [measured T501] `wc -c CLAUDE.md` = 66,660 at `5e6f9afe`; the
+  cap is 6% of a 256K-token window at 4 bytes/token. There was no ceiling on the
+  file and nothing would have reported one being crossed. Found and fixed by
+  T501.~~ **STRUCK by T501 (this commit):** the file was audited claim by claim
+  (`review/T501/claude_md_audit.tsv`, 147 rows -- 129 current, 12 stale, 3 wrong,
+  3 unverifiable), every stale/wrong row was fixed, and the unit-by-unit
+  narrative moved out behind links to `refactor/completed/` and
+  `docs/decisions.md`: **66,660 bytes -> 55,319 bytes (-17%)**. A 60,000-byte
+  ceiling for `CLAUDE.md` is now enforced by
+  `scripts/refactor/check_file_sizes.sh --all`, i.e. by the `FileSizeCeiling`
+  ctest test -- shown RED against the pre-T501 file and GREEN against the new
+  one.
+
+B828–B829 and B832 unused. B830–B831 used by T496 Leg D. B833–B835 used by T499. B836–B845 unused. B846 used by T501. B847 onwards unused.
