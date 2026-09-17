@@ -287,7 +287,8 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --log-level=LEVEL        Set log level (NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
             std::cout << "                           If both --log-level= and -d <n> are given, --log-level=\n";
             std::cout << "                           wins (a one-line notice is logged when they disagree)\n";
-            std::cout << "  --log-module=MOD:LEVEL   Set per-module log level (e.g., NET:DEBUG, GRAPHICS:TRACE)\n";
+            std::cout << "  --log-module=MOD:LEVEL   Set per-module log level; comma-separated list (e.g., NET:DEBUG,GRAPHICS:TRACE)\n";
+            std::cout << "                           Unparseable level names are rejected with an error (never mapped silently)\n";
             std::cout << "                           Modules: NET, NET_PACKET, LOGIN, WORLD, ZONE, ENTITY,\n";
             std::cout << "                                    MOVEMENT, COMBAT, INVENTORY, GRAPHICS, GRAPHICS_LOAD,\n";
             std::cout << "                                    CAMERA, INPUT, AUDIO, PATHFIND, MAP, UI, CONFIG, MAIN\n";

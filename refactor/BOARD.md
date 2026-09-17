@@ -11812,4 +11812,23 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   ctest test -- shown RED against the pre-T501 file and GREEN against the new
   one.
 
-B828–B829 and B832 unused. B830–B831 used by T496 Leg D. B833–B835 used by T499. B836–B845 unused. B846 used by T501. B847 onwards unused.
+## Added 2026-09-17 by kanban pilot (task/kb-b842-log-module-list)
+
+~~- **B842** (P) **`--log-module` takes ONE `MOD:LEVEL` per flag and silently
+  eats a comma-separated list.** [measured T500] `logging.h:878` splits on the
+  first `:` and hands the rest to `ParseLevelName()`, so
+  `--log-module=MAIN:INFO,GRAPHICS:INFO` sets MAIN to whatever that returns for
+  `"INFO,GRAPHICS:INFO"` -- the first T500 Pi run came back with
+  `ledger_lines=0` and an otherwise perfect exit 0. Two flags work. Fix: reject
+  or split on commas, and say so in `--help`; a rig that asks for a log level
+  and gets silence is the same defect class as B784's self-killing `pkill`.~~
+  **STRUCK by the B842 unit (`task/kb-b842-log-module-list`):**
+  `InitLogging()` now splits `--log-module=` values on commas into
+  `MOD:LEVEL` pairs, and a pair whose level name does not parse is rejected
+  with a line on stderr naming the bad token (the module keeps "use global
+  level" -- never silently mapped to LOG_NONE). Pinned by three
+  `tests/test_logging.cpp` cases (comma list, `MAIN:BOGUS` rejection,
+  bad-pair-does-not-poison-neighbours), shown RED on the pre-fix code.
+  `--help` now says the list form.
+
+B828–B829 and B832 unused. B830–B831 used by T496 Leg D. B833–B835 used by T499. B836–B845 used by T500 (B845 closed by its own unit, B842 closed above by its own unit). B846 used by T501. B847 onwards unused.

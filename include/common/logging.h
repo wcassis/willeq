@@ -846,6 +846,54 @@ inline void LogLevelDecrease() {
 // =============================================================================
 // Call from main() to set up logging from command-line or config
 
+// B842: parse one --log-module= pair ("MOD:LEVEL"). Returns false and leaves
+// the module level untouched when the level name does not parse. The
+// pre-B842 code split the value on the FIRST ':' and handed the remainder to
+// ParseLevelName(), which falls back to LOG_NONE on garbage -- so a typo or
+// a comma-separated list (both "legitimate" looking inputs) silently
+// SILENCED the module instead of being reported (T500's Pi run: an
+// otherwise perfect exit 0 with zero ledger lines). Rejection is loud: the
+// bad token is printed to stderr and the module keeps "use global level".
+// (An exit() here would be wrong: InitLogging() is a plain inline in a
+// shared header, and the caller keeps the rest of the flag working.)
+inline bool ApplyLogModulePair(const char* pair, size_t len) {
+    // Copy to a scratch buffer so we can NUL-terminate at the ':' and scan
+    // it without mutating the (possibly read-only) argv.
+    char spec[96] = {0};
+    if (len == 0 || len >= sizeof(spec)) {
+        std::cerr << "[logging] ignoring --log-module pair (empty or too long): \"["
+                  << (len >= sizeof(spec) ? std::string(pair, len).substr(0, 80) : "")
+                  << "]\"\n";
+        return false;
+    }
+    std::copy_n(pair, len, spec);
+
+    char* colon = strchr(spec, ':');
+    if (!colon) {
+        std::cerr << "[logging] ignoring --log-module pair without 'MOD:LEVEL' form: \""
+                  << spec << "\"\n";
+        return false;
+    }
+    *colon = '\0';
+    LogModule mod = ParseModuleName(spec);
+    std::string levelStr(colon + 1);
+    // Round-trip check (main.cpp uses the same pattern for --log-level=):
+    // GetLevelName() pads some names for column alignment ("NONE ", "WARN ",
+    // "INFO "), so trim before comparing. "OFF" is a legitimate alias for
+    // NONE that does not round-trip textually.
+    const char* levelName = GetLevelName(ParseLevelName(levelStr.c_str()));
+    std::string canonical(levelName);
+    while (!canonical.empty() && canonical.back() == ' ') canonical.pop_back();
+    if (levelStr != canonical && levelStr != "OFF") {
+        std::cerr << "[logging] ignoring --log-module pair with unparseable level "
+                     "name '" << levelStr << "' in \"" << spec << ":" << levelStr
+                  << "\" (valid: NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
+        return false;
+    }
+    SetModuleLogLevel(mod, ParseLevelName(levelStr.c_str()));
+    return true;
+}
+
 inline void InitLogging(int argc, char* argv[]) {
     // Two-pass parsing: first apply level/only/exclude, then per-module overrides
     const char* logOnly = nullptr;
@@ -872,20 +920,20 @@ inline void InitLogging(int argc, char* argv[]) {
         ApplyLogExclude(logExclude);
     }
 
-    // Pass 2: apply per-module overrides (these win over only/exclude)
+    // Pass 2: apply per-module overrides (these win over only/exclude).
+    // B842: the value is a COMMA-SEPARATED list of MOD:LEVEL pairs, so one
+    // flag can set several modules at once. A bad pair is rejected (named on
+    // stderr, module untouched) without poisoning the pairs around it.
     for (int i = 1; i < argc; i++) {
         const char* arg = argv[i];
         if (strncmp(arg, "--log-module=", 13) == 0) {
             const char* spec = arg + 13;
-            const char* colon = strchr(spec, ':');
-            if (colon) {
-                char modName[32] = {0};
-                size_t len = colon - spec;
-                if (len < sizeof(modName)) {
-                    strncpy(modName, spec, len);
-                    LogModule mod = ParseModuleName(modName);
-                    LogLevel level = ParseLevelName(colon + 1);
-                    SetModuleLogLevel(mod, level);
+            const char* pairStart = spec;
+            for (const char* p = spec;; ++p) {
+                if (*p == ',' || *p == '\0') {
+                    ApplyLogModulePair(pairStart, p - pairStart);
+                    if (*p == '\0') break;
+                    pairStart = p + 1;
                 }
             }
         }
