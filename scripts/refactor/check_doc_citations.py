@@ -21,11 +21,16 @@ Citations are resolved relative to the repo root, with two exceptions
     `/mnt/projects/fable/review/` instead — the sanctioned outside-repo
     media directory (`refactor/EXECUTOR_PROTOCOL.md`). OK if it exists
     there, FAIL otherwise: `review/` citations are still real pointers that
-    can go stale, just not against this checkout. T502: on a host where that
-    directory does not exist AT ALL (the GitLab runner on hermes-ext has no
-    NFS and never carries review media), every `review/` citation is reported
-    SKIP instead — the absence is the host's, not the citation's, and turning
-    it into 19 FAILs would only teach CI to ignore this test.
+    can go stale, just not against this checkout. T502: that check is only
+    authoritative for a checkout that lives ALONGSIDE the media — i.e. under
+    `/mnt/projects/fable/`, which every canonical checkout and executor
+    worktree does. Checked from anywhere else (the GitLab runner builds under
+    `/home/user/builds/…`), `review/` citations are reported SKIP instead.
+    The runner host happens to carry a *stale* rsync of the archive, which is
+    the reason the rule is "is this checkout a sibling of the media" and not
+    "does the directory exist": resolving against a stale copy would report a
+    host's sync lag as 19 stale citations, which only teaches CI to ignore
+    this test.
   - A citation whose path is absolute (starts with `/`) is a deliberate
     cross-project reference (e.g. a sibling repo's source file, cited for
     context) that this checker has no tree to resolve against. Reported as
@@ -153,11 +158,23 @@ CITE_BARE = re.compile(
 REVIEW_DIR = "/mnt/projects/fable/review"
 
 
+def _review_dir_is_authoritative(repo_root):
+    """True when this checkout sits alongside the review media -- any checkout
+    under the workspace root that REVIEW_DIR belongs to (/mnt/projects/fable:
+    `main`, `wt/*`). Elsewhere (the CI runner's own builds directory) the
+    media either is not there or is an out-of-date rsync of it, and a
+    review/ citation cannot be judged from here at all."""
+    workspace = os.path.dirname(REVIEW_DIR.rstrip("/"))
+    root = os.path.realpath(repo_root)
+    return os.path.isdir(REVIEW_DIR) and (
+        root == workspace or root.startswith(workspace + os.sep))
+
+
 def _skip_reason(cited_path):
     """Why this citation was not resolved -- an outside-repo media path on a
     host that has no review/ directory, or a cross-project absolute path."""
     if cited_path.startswith("review/"):
-        return "no %s on this host" % REVIEW_DIR
+        return "%s not authoritative for this checkout" % REVIEW_DIR
     return "cross-project citation"
 
 
@@ -168,7 +185,7 @@ def resolve_target(repo_root, cited_path):
     this host can check, EXCEPT on a host with no REVIEW_DIR at all (T502:
     the CI runner), where they SKIP."""
     if cited_path.startswith("review/"):
-        if not os.path.isdir(REVIEW_DIR):
+        if not _review_dir_is_authoritative(repo_root):
             return cited_path, "SKIP"
         return os.path.join(REVIEW_DIR, cited_path[len("review/"):]), None
     if cited_path.startswith("/"):
