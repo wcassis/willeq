@@ -160,6 +160,20 @@ SET_TESTS_PROPERTIES(ItemModelsMatchServer PROPERTIES LABELS "hygiene")
 # whose field is no longer write-only. The second half is what keeps the table
 # from rotting -- an exemption cannot outlive the row it excuses. Pure source
 # scan, no artefact/server/display, same "hygiene" label as its neighbours.
+# B840 (kanban t_a817842a): the NEVER-TOUCHED half, same ratchet. The script
+# collected both halves all along (write-only AND unused: no writer, no
+# reader), but --check ratcheted only the write-only half, which is why
+# RaceModelData::decodedTextures (zero references, dead since the background-
+# decode scheme it was for was superseded by ConstrainedTextureCache) survived
+# uncaught. The fix has two legs: a receiver-typing sweep (a qualified use of
+# a member is attributed to the receiver's own type where the tree types the
+# receiver, so the DIFFERENT member EquipmentPrepData::decodedTextures stops
+# counting as a use of RaceModelData::decodedTextures -- the bare-name
+# collision that masked it for years), and an EXEMPT_UNUSED table ratcheted
+# both ways exactly like EXEMPT. The script surfaced five more fields the old
+# name-matching sweep masked the same way (CombatDamage_Struct's
+# force/hit_heading/hit_pitch, TextureInfo::animationDelayMs,
+# WldFragment2CHeader::size9); all eight are in the table with a reason.
 ADD_TEST(NAME WriteOnlyFields
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_write_only_fields.py
             --repo ${CMAKE_SOURCE_DIR} --check)

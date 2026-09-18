@@ -1149,6 +1149,27 @@ thing the Pi rig needs that the x86 one does not is **`--log-module=MAIN:INFO`**
 default quiet level, and T490's Pi logs contain zero `[INFO]` lines — the
 ledger was silent there and nobody had noticed.
 
+## 2026-09-17 — memory: 100 % accounting is PRIMARY; x86 development; shared blocks (Will)
+
+Three rulings from Will, recorded verbatim in substance by the orchestrator (T501 found the
+second and third relayed into CLAUDE.md without a citation here):
+
+1. **"For memory, 'inside target' is a secondary goal. The primary goal is 100 % accounting for
+   all use. This is non-negotiable and must be completed."** Every resident byte — anonymous and
+   file-backed, heap and non-heap, driver mappings, stacks, library data — is attributed to a named
+   owner at every lifecycle point, on BOTH platforms. `unaccounted`, `unattributed` and
+   `malloc_slack` are defects to be explained byte-for-byte, not residues.
+2. **"If perf is better, the memory work can be done on x86. There's no requirement that all
+   testing must be done on the Pi. However, having final memory usage numbers for both x86 and
+   arm is a requirement."** Instrument, red-test and fix on x86; the Pi is the confirming run and
+   the source of the ARM numbers; every memory unit's Review carries BOTH tables. Caveat measured
+   by T496: driver-coupled buckets differ 1.5–50× between llvmpipe and Mali and in direction, so
+   for those the accounting closes on both, never assumed from x86.
+3. **Shared resources (B843): "in the case of shared resources occupying X amount of memory, just
+   report X: category1, category2, … categoryN."** A shared block is reported ONCE with every
+   claimant listed; it is never added into each claimant's total (that double-count is what made
+   the Pi `[modelmem]` tally read 125 %). The ledger/tally sums to the resident total exactly once.
+
 ## 2026-09-17 (addendum) — 100% accounting means the LEDGER's own overhead has a name (T500)
 
 **Will's standing decision, restated at T500:** *"for memory, 100% ACCOUNTING
@@ -1182,7 +1203,9 @@ not exist.
 residues.** If a change moves either, the unit says by how much and why.
 
 **Corollary T500 paid for (board B843):** a structure shared between two
-subsystems has ONE owner in the ledger, and the other must not tally it. The
+subsystems has ONE owner in the ledger, and the other must not tally it. (Will's
+ruling 3 in the entry above settles the FORM: the block is reported once with
+every claimant listed.) The
 `[modelmem]` split closes to −0.9 % on x86, where every model is loaded under
 `ensureModelDataLoaded()`'s `EntityModels` scope, and over-counts by 125 % on
 the Pi, where `graphicsArchiveIndex_` is set and the same `TextureInfo` pixels

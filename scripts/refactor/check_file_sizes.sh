@@ -127,9 +127,50 @@ else
     source_desc="files changed vs '$base' in $repo_root"
 fi
 
+# T501 (board B846): the ROOT CLAUDE.md has a BYTE ceiling as well, and it is
+# not a style preference. The hermes kanban workers read it as a context file
+# with a 62,914-byte cap (6% of a 256K-token window at 4 bytes/token) and
+# silently drop the MIDDLE of anything longer -- so a file that grows past the
+# cap loses RULES without anyone seeing an error. It was 66,660 bytes at T501,
+# i.e. already over. The ceiling is set below the cap so ordinary growth is
+# caught before it truncates; keep the file to rules and a map, and move
+# narrative to refactor/completed/ or docs/decisions.md.
+#
+# Only --all enforces it, for the same reason the C++ allowlist is only
+# consulted there: --all is what the FileSizeCeiling ctest test runs, and the
+# diff/--files modes are a per-change convenience. It runs even when the C++
+# scan finds nothing (the T37 rule: a check that silently checked nothing is
+# indistinguishable from a pass).
+status=0
+DOC_BYTE_CEILINGS="CLAUDE.md:60000"
+check_doc_ceilings() {
+    [ "$all_mode" -eq 1 ] || return 0
+    local spec d_rel d_max d_path d_bytes n=0
+    for spec in $DOC_BYTE_CEILINGS; do
+        d_rel="${spec%%:*}"
+        d_max="${spec##*:}"
+        d_path="$repo_root/$d_rel"
+        n=$((n + 1))
+        if [ ! -f "$d_path" ]; then
+            echo "ERROR $d_rel: not found under $repo_root — the doc ceiling checked nothing"
+            status=2
+            continue
+        fi
+        d_bytes=$(wc -c < "$d_path")
+        if [ "$d_bytes" -gt "$d_max" ]; then
+            echo "FAIL  $d_rel: $d_bytes bytes (> $d_max — the context-file ceiling; cut narrative, not rules, and link to refactor/completed/ or docs/decisions.md instead)"
+            status=1
+        else
+            echo "ok    $d_rel: $d_bytes bytes (ceiling $d_max)"
+        fi
+    done
+    echo "checked $n doc byte-ceiling(s)"
+}
+
 if [ "${#files[@]}" -eq 0 ]; then
     echo "no C++ files to check ($source_desc) — nothing was checked, this is not a pass"
-    exit 0
+    check_doc_ceilings
+    exit $status
 fi
 
 # K00: --all consults the no-grow allowlist. Format: path<TAB>max_lines<TAB>reason,
@@ -203,4 +244,7 @@ done
 # T37: always close with a countable summary, so a caller pasting this into a
 # Review shows what was actually examined rather than an absence of output.
 echo "checked ${#files[@]} file(s): $n_ok ok, $n_warn warn, $n_fail fail"
+
+check_doc_ceilings
+
 exit $status

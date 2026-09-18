@@ -46,9 +46,6 @@ struct RaceModelData {
     std::shared_ptr<CharacterSkeleton> skeleton;     // Skeleton with animation tracks
     std::vector<VertexPiece> vertexPieces;           // Vertex-to-bone mapping for skinning
 
-    // Pre-decoded textures (background thread decodes DDS → ARGB, main thread uploads to GPU)
-    std::vector<DecodedTexture> decodedTextures;
-
     // Composite texture data (if available — enables 1-draw-call entity rendering)
     std::shared_ptr<CompositeTextureData> compositeData;  // UV remap metadata
     std::string compositeBmpPath;  // EQE1 entry name for composite texture (e.g., "hum_hs_def_0_0")

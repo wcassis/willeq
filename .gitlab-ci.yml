@@ -1,0 +1,161 @@
+# T502 -- WillEQ CI on the project's own GitLab runner.
+#
+# WHY: builds and the ~4,900-case ctest suite were being run inside hermes
+# kanban workers, which are capped at 4 GiB and were OOM-killed while linking.
+# This moves both onto the shell runner (GitLab runner id 1, registered
+# 2026-09-12), which executes on hermes-ext (172.16.200.100: 16 cores, 31 GB).
+# The runner's GitLab-side description still reads "inspur-shell" -- that label
+# is stale. hermes-ext ALSO hosts the hermes gateway and its kanban workers, so
+# every heavy command here is bounded to JOBS (8 of 16 cores) and `nice -n 10`
+# so a pipeline cannot starve a live worker.
+#
+# HARD GUARD: Will's ruling (2026-09-17) is that the Inspur inference box must
+# never build (CPU contention with the GPUs). Every job therefore refuses to run
+# on any host but hermes-ext, so a future runner reassignment fails loudly
+# instead of quietly moving builds onto the Inspur.
+#
+# See docs/ci.md for how to read a pipeline, the warm-tree trade-off and how to
+# retry the gate.
+
+stages:
+  - hygiene
+  - build
+  - test
+  - gate
+
+variables:
+  CMAKE_BUILD_TYPE: Release
+  # 8 of hermes-ext's 16 cores; the rest stay for the gateway + kanban workers.
+  JOBS: "8"
+  CTEST_JOBS: "6"
+  # Keep a warm tree per project on the runner: clean everything EXCEPT the two
+  # build trees and the locally built Irrlicht, so a pipeline is incremental.
+  # `git clean -ffdx -e <pattern>` keeps the excluded paths (GitLab passes these
+  # flags straight to `git clean`); GitLab's own default is a bare `-ffdx`.
+  # TRADE-OFF: a stale object file or a stale CMake cache can survive into the
+  # next pipeline. A from-scratch pipeline is a manual
+  # `rm -rf build build-gles2 third_party/irrlicht-gles2-x86` on the runner, or
+  # run the pipeline with GIT_CLEAN_FLAGS=-ffdx (see docs/ci.md).
+  GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e third_party/irrlicht-gles2-x86
+
+# Branch/MR scope, pipeline-wide: task/* and plans/* branches, merge requests,
+# and fable. Never on tags. The CI_OPEN_MERGE_REQUESTS rule suppresses the
+# duplicate branch pipeline once a branch has an open MR.
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH == "fable"
+    - if: $CI_COMMIT_BRANCH =~ /^task\//
+    - if: $CI_COMMIT_BRANCH =~ /^plans\//
+
+.goldfarm:
+  timeout: 3h
+  interruptible: true
+  # Nothing is passed between stages as artifacts -- the jobs share one warm
+  # working tree on a concurrent=1 runner. Never download upstream artifacts.
+  dependencies: []
+  before_script:
+    - set -o pipefail
+    - '[ "$(hostname)" = "hermes-ext" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
+    - hostname; nproc; free -g | head -2
+    # The client asset symlinks are gitignored (tests/test_data_paths.cpp), so
+    # `git clean -ffdx` removes them before every job and they must be re-made
+    # here. They are NOT only the gate's business: ComprehensiveZoneTest and
+    # DoorLoadingUnitTest report every zone "SKIP (not found)" and then FAIL on
+    # `loadedCount > 0`, so without these three tests fail rather than skip.
+    - ln -sfn /mnt/projects/EverQuestP1999 data/eq_client
+    - ln -sfn /mnt/projects/EverQuest_ETC1 data/eqe1_client
+
+# Stage 1: pure source/doc scans (ctest label `hygiene`). No C++ compile, so it
+# fails a bad doc/file-size/citation change in ~a minute instead of after a
+# 30-minute build. Configured with EQT_GRAPHICS=OFF into build/hygiene -- a
+# subdirectory of the preserved `build` tree, so its CMake cache (and the
+# googletest FetchContent clone) also survives between pipelines.
+hygiene:
+  extends: .goldfarm
+  stage: hygiene
+  script:
+    - nice -n 10 cmake -S . -B build/hygiene -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_GRAPHICS=OFF -DEQT_BUILD_TESTS=ON
+    - nice -n 10 ctest --test-dir build/hygiene -L hygiene -j $CTEST_JOBS --output-on-failure 2>&1 | tee hygiene-ctest.log
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - hygiene-ctest.log
+      - build/hygiene/Testing/Temporary/LastTest.log
+
+# Stage 2: the Release build (the recipe from CLAUDE.md). The patched x86 GLES2
+# Irrlicht is BUILT, not committed; bootstrap it only when it is missing.
+build:
+  extends: .goldfarm
+  stage: build
+  script:
+    - test -f third_party/irrlicht-gles2-x86/lib/libIrrlicht.a || JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh --irrlicht-only
+    - nice -n 10 cmake -S . -B build -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_GLES2_IRRLICHT_DIR=$PWD/third_party/irrlicht-gles2-x86
+    - nice -n 10 cmake --build build -j $JOBS 2>&1 | tail -n 200
+
+# Stage 3: the full suite, minus the two documented special cases:
+#   - visual_gate      -- runs in the `gate` stage (it needs build-gles2/).
+#   - RDPServerFrameTest.UpdateFrameMultipleTimes -- documented intermittent
+#     race; re-run on its own with --repeat until-pass:3.
+test:
+  extends: .goldfarm
+  stage: test
+  script:
+    - nice -n 10 ctest --test-dir build -j $CTEST_JOBS --output-on-failure -E '(^visual_gate$|^RDPServerFrameTest\.UpdateFrameMultipleTimes$)' 2>&1 | tee ctest.log
+    - nice -n 10 ctest --test-dir build -R '^RDPServerFrameTest\.UpdateFrameMultipleTimes$' --repeat until-pass:3 --output-on-failure 2>&1 | tee -a ctest.log
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - ctest.log
+      - build/Testing/Temporary/LastTest.log
+
+# Stage 4: the visual gate (T80/T291) -- golden frames + CPU-p95 + memory ledger
+# over build-gles2/bin/gles2_zone_benchmark against real client assets.
+# allow_failure is FALSE: hermes-ext has both asset trees and the pristine
+# Irrlicht source, so nothing here is legitimately skippable. The CPU-p95
+# assertion is load-sensitive (see tests/cmake/eqe1.cmake), so the retry is
+# inside the script: up to 3 attempts, and the gate must pass one of them.
+gate:
+  extends: .goldfarm
+  stage: gate
+  allow_failure: false
+  script:
+    # visual_gate.py needs PIL; hermes-ext's python3.12 has no Pillow and no
+    # ensurepip, so install it once into a cache dir with the pip from the
+    # host's existing ~/.venvs/ci (python3.11) driving the 3.12 interpreter.
+    - PYLIBS=$HOME/.cache/willeq-ci/pylibs
+    - python3 -c "import PIL" 2>/dev/null || $HOME/.venvs/ci/bin/pip --python /usr/bin/python3 install -q --target "$PYLIBS" Pillow
+    - export PYTHONPATH="$PYLIBS${PYTHONPATH:+:$PYTHONPATH}"
+    - python3 -c "import PIL; print('PIL', PIL.__version__)"
+    # build-gles2/ is preserved between pipelines. The bootstrap script always
+    # wipes and rebuilds Irrlicht, so only call it when there is no benchmark
+    # binary yet; otherwise build the two targets incrementally (cmake re-runs
+    # its own configure if CMakeLists.txt changed).
+    - |
+      if [ -x build-gles2/bin/gles2_zone_benchmark ]; then
+        nice -n 10 cmake --build build-gles2 --target willeq gles2_zone_benchmark -j "$JOBS" 2>&1 | tail -n 60
+      else
+        JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh 2>&1 | tail -n 100
+      fi
+    - |
+      set +e
+      for attempt in 1 2 3; do
+        echo "=== visual_gate attempt $attempt/3 ==="
+        nice -n 10 bash scripts/ci/visual_gate.sh 2>&1 | tee -a gate.log
+        rc=${PIPESTATUS[0]}
+        [ "$rc" -eq 0 ] && break
+        echo "attempt $attempt failed (rc=$rc)" | tee -a gate.log
+      done
+      exit "$rc"
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - gate.log
+      - build-gles2/ci_artifacts/
