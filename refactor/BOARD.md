@@ -11993,4 +11993,4 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
 
 B828–B829 and B832 unused. B836–B845 used by T500 (B840, B842, B845 closed by the kanban pilot, below T501's section).
 
-B848 used by the kanban pilot (issue #4, migration card). B849 onwards unused.
+B848 used by the kanban pilot (issue #4, migration card). B849 (issue #91), B850 (#92) and B851 (#97) were filed straight to GitLab issues by the orchestrator 2026-09-18 and have no board entry (docs/issues.md: the issue is the record). B852 onwards unused.

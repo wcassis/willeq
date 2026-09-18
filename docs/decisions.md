@@ -1220,3 +1220,37 @@ load with `!graphicsArchiveIndex_` and the orangepi preset sets the index. An
 offline x86 win is not a Pi win until the Pi says so, which is what the 2026-09-17
 "the PI's shrink queue is the planning list" rule above already said about
 PLANNING and this says about CONFIRMING.
+
+## 2026-09-18 — eight product rulings from the lane::oracle triage (Will)
+
+The hermes research card t_648b471c (issue #93) triaged every open `lane::oracle`
+issue by what a worker can reach; the orchestrator reduced its "needs Will" list
+to the questions that are genuinely product calls — the rest are MEASUREMENTS
+under the standing match-the-oracle rule (does the official Chase camera zoom,
+how the Chase fit scales with race, which way User 1/2 and Tether start,
+whether Ultravision lifts a daylight frame) and are carded as oracle captures,
+not asked. Will ruled in chat; each issue carries the same text.
+
+1. **UI panel opacity (B350, with B385 and B410): match the oracle** — the
+   official panels' measured opacity, not fable's translucency.
+2. **Keymap (B582, with B561 and B652): adopt the official keymap.** F10, F11
+   and L mean what the official keys mean; fable's own zoom keys move off them.
+3. **Left HUD column (B366): resolution-aware** (the entry's option (b)).
+4. **Spell burst ramps (B396): match the oracle.** Low priority.
+5. **Guild line on name tags (B459): match the oracle** — capture it (a guild
+   made by GM command first), then draw it the same way.
+6. **Bank Change button (B441): build the official coin-conversion dialog**
+   from a capture and enable the button; `/bank convert` stays as the slash route.
+7. **UI sounds (B036), the three open items:** the zero-denomination corpse
+   message is a measurement; **the money-slot UI is to be BUILT** (clickable
+   pp/gp/sp/cp, coin to cursor), which gives `InventoryManager::pickupMoney()`
+   its first production caller; the six mis-named `SoundId`s are measured against
+   the oracle and corrected, `DEATH` (140 = `LevDn.WAV`, a live caller) first.
+8. **Gem 9 (B770): option (a) stands** — eight visible gems, storage for nine
+   (T483). Issue closed; the two owed live checks are B851.
+
+Same day, process: **the orchestrator is authorised to run the board and its
+tickets end to end** — merging an MR into `fable` once its pipeline is green
+(and, for kanban work, QA and review have passed), resuming the shepherd,
+unblocking waves — and does not hand those back as questions. Only class C
+(product/design) goes to Will.
