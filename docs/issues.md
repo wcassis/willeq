@@ -4,7 +4,13 @@ Will's 2026-09-17 ruling (B848, issue #4): a GitLab issue is the durable
 record for one work item; a hermes kanban card is an execution LEG of it;
 the MR that lands the fix closes the issue. `refactor/BOARD.md` remains the
 board of record for classes B and P until they migrate too; class A and C
-entries there carry a `→ issue #N` pointer to their issue.
+entries there carry a `→ issue #N` pointer to their issue. The live A/C count
+is not quoted here (it drifts with every new classed entry) --
+`scripts/gitlab/board_to_issues.py --dry-run` prints it (`per class:`) and its
+red cross-check asserts the parser's count matches a format-agnostic recount of
+the same bullets, so a format variant that drops an entry fails the run before
+it can be left without an issue. The script is the one way in and re-running it
+never duplicates an existing issue.
 
 ## Labels
 

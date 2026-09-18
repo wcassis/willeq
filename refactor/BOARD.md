@@ -8994,7 +8994,7 @@ fine — the table fails on a stale entry, so it cannot rot.
 
 ### Added by T457 (2026-09-08), entered by the orchestrator at merge
 
-- **B504** (class A, process): `scripts/eqemu/up.sh` polls the zone log for
+- **B504** (class A, process): `scripts/eqemu/up.sh` polls the zone log for → issue #90
   `Zone bootup type`, which this eqemu build never prints (it prints
   `Bootup Booting [<zone>]`), so a cold `up.sh` times out after 60 s and exits 1
   on a zone that booted correctly. `scripts/scenario.sh` turns that into

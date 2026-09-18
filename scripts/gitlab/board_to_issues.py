@@ -5,11 +5,15 @@ Will's 2026-09-17 ruling (card B848, issue #4): GitLab issues are the durable
 record per work item; hermes kanban cards are execution legs; MRs close issues.
 Class B and P stay in BOARD.md for now -- migrate A and C first.
 
-A LIVE entry is a bullet `- **B###** (X)` that is NOT wrapped in `~~`. Its text
-runs until the next bullet, a blank line, or a section header (`#`/`---`).
-(BOARD.md entries never contain blank lines -- verified by the parse itself:
-any blank line inside an entry range is reported as an anomaly, not silently
-swallowed.)
+A LIVE entry is a bullet `- **B###** (X)` that is NOT wrapped in `~~` -- the
+class parenthetical may also be written `(class X, ...)` (B504 is the live
+entry in that form); both parse. Its text runs until the next bullet, a blank
+line, or a section header (`#`/`---`). (BOARD.md entries never contain blank
+lines -- verified by the parse itself: any blank line inside an entry range is
+reported as an anomaly, not silently swallowed.) A post-parse cross-check
+counts the live bullets a format-agnostic second way and FAILS on any entry
+the bullet regex dropped, so a future format variant can never silently
+escape the migration.
 
 Usage:
   scripts/gitlab/board_to_issues.py --dry-run            # print the plan
@@ -68,7 +72,13 @@ def http(method, url, token, payload=None):
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode()
 
-BULLET = re.compile(r"^- .*?\*\*B(\d{3,})\*\*\s*\(([A-PS])(?![A-Za-z0-9])")
+# The class parenthetical is written two ways in the board: `(A, ...)` and
+# `(class A, ...)` (B504 is the live entry in the latter form). Both must parse
+# -- a format variant is data, not a reason to silently drop an entry. The
+# optional `class\s+` keeps group 2 on the class letter either way.
+BULLET = re.compile(
+    r"^- .*?\*\*B(\d{3,})\*\*\s*\((?:class\s+)?([A-PS])(?![A-Za-z0-9])"
+)
 
 
 def parse_live_entries(text):
@@ -128,12 +138,73 @@ def nl_k_indented_continuation(lines, k):
     )
 
 
+def cross_check_live_counts(text, entries):
+    """RED anomaly probe: the format-agnostic live-entry count must equal the
+    parsed count, or FAIL.
+
+    A live entry is a bullet that DECLARES A CLASS in the parenthetical right
+    after its B-number (`(A, ...)`, `(class A, ...)`, ...). That parenthetical
+    is what makes the line a classed entry rather than a bare cross-reference,
+    a re-opening of a struck number that inherits its class from the struck
+    original (B170/B171/B172 live lines carry no class of their own), or a
+    struck entry whose parenthetical is itself `~~(B)~~` (B390). Counting the
+    live bullets a second, format-agnostic way -- any unstruck bullet with a
+    B-number followed by a parenthetical, whatever that parenthetical's
+    contents -- and comparing the sets to the parsed set turns a silent drop
+    into a hard FAIL naming the B-numbers. The parser's bullet regex knows the
+    board's CURRENT class format; a future variant (a reworded paren, a new
+    class letter, a stray token) that stops matching still has its paren, so
+    the probe catches it before it can reach the API call that would leave that
+    entry without an issue.
+
+    Runs in every mode (dry-run and create), so a drifted board can never
+    proceed. The counts are not quoted here (they drift with every new classed
+    entry); the cross-check line this prints, and the `per class:` line
+    `--dry-run` prints, are the measurements to cite."""
+    any_entry = re.compile(r"^- .*?\*\*B(\d{3,})\*\*\s*\(")
+    live = set()
+    for l in text.split("\n"):
+        m = any_entry.match(l)
+        if m and not l.lstrip("- ").startswith("~~"):
+            live.add(m.group(1))
+    parsed = {e["num"] for e in entries}
+    missing = sorted(live - parsed, key=lambda n: int(n))
+    extra = sorted(parsed - live, key=lambda n: int(n))
+    problems = []
+    if missing:
+        problems.append(
+            "live on the board but not parsed (class-parenthetical format the "
+            f"regex does not know): {', '.join('B' + n for n in missing)}"
+        )
+    if extra:
+        problems.append(
+            f"parsed but not a live classed entry: {', '.join('B' + n for n in extra)}"
+        )
+    if problems:
+        for p in problems:
+            print(f"CROSS-CHECK FAIL: {p}", file=sys.stderr)
+        sys.exit(1)
+    print(
+        f"cross-check: {len(parsed)} parsed live entries == "
+        f"{len(live)} format-agnostic live classed bullets (classes: "
+        + _class_tally(entries) + ")"
+    )
+
+
+def _class_tally(entries):
+    from collections import Counter
+
+    return ", ".join(f"{k}={v}" for k, v in sorted(Counter(e["cls"] for e in entries).items()))
+
+
 def first_sentence(body):
     """First sentence of the entry text, after the class parenthetical, <= 120
     chars. The parenthetical may carry qualifiers (e.g. `(A, *measured*,
     **fixed in T496 Leg D**)`) and one entry (B723) has a paren that is only
     closed later in the body, so the closing `)` is found by balanced-paren
-    scan over the whole body, not by line or `[^)]*`."""
+    scan over the whole body, not by line or `[^)]*`. B504's parenthetical is
+    terminated with a colon (`(class A, process):`); drop a leading `:` or
+    `: ` after it so the `B###: ` title prefix does not double up."""
     full = " ".join(x.strip() for x in body.split("\n"))
     m = re.search(r"\*\*B\d{3,}\*\*", full)
     if not m:
@@ -158,6 +229,8 @@ def first_sentence(body):
         else:
             start = i
     rest = full[start:].strip()
+    if rest.startswith(":") or rest.startswith(": "):
+        rest = rest[1:].lstrip()
     m2 = re.search(r"(?<=[.!?])\s", rest)
     s = (rest[: m2.start() + 1] if m2 else rest).strip()
     if len(s) > 120:
@@ -251,6 +324,7 @@ def main():
     entries, anomalies = parse_live_entries(text)
     for a in anomalies:
         print(f"ANOMALY: {a}", file=sys.stderr)
+    cross_check_live_counts(text, entries)
     live = [e for e in entries if e["cls"] in cls_wanted]
     today = datetime.date.today().isoformat()
     host = args.host or HOST
