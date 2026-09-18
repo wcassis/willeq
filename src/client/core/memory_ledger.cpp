@@ -32,6 +32,17 @@ struct Counters {
     std::atomic<uint64_t> live[kCategoryCount];
     std::atomic<uint64_t> peak[kCategoryCount];
     std::atomic<uint64_t> allocs[kCategoryCount];
+    // T500 (Will's addendum, 2026-09-17): the bytes the CALLER asked for, as
+    // against `live`, which is the whole glibc chunk -- caller bytes plus
+    // glibc's size word, its 16-byte rounding, and the ledger's own 16-byte
+    // LedgerHeader. The difference is per-BLOCK overhead, and it is not small:
+    // T500 measured 13.07 MB of it across 824,868 entity_models allocations
+    // (15.84 B each). It is real resident memory, so `live` stays the number
+    // that is checked against RssAnon -- but a subsystem that tallies its own
+    // logical bytes can only ever reconcile against THIS one, and 100%
+    // accounting means the gap has a name instead of being a residual.
+    std::atomic<uint64_t> liveRequested[kCategoryCount];
+    std::atomic<uint64_t> liveBlocks[kCategoryCount];
     std::atomic<uint64_t> totalLive;
     std::atomic<uint64_t> totalPeak;
 };
@@ -45,16 +56,20 @@ inline void raiseMax(std::atomic<uint64_t>& peak, uint64_t v) {
     }
 }
 
-inline void charge(uint8_t cat, uint64_t bytes) {
+inline void charge(uint8_t cat, uint64_t bytes, uint64_t requested) {
     const uint64_t v = g_counters.live[cat].fetch_add(bytes, std::memory_order_relaxed) + bytes;
     raiseMax(g_counters.peak[cat], v);
     g_counters.allocs[cat].fetch_add(1, std::memory_order_relaxed);
+    g_counters.liveRequested[cat].fetch_add(requested, std::memory_order_relaxed);  // T500
+    g_counters.liveBlocks[cat].fetch_add(1, std::memory_order_relaxed);             // T500
     const uint64_t t = g_counters.totalLive.fetch_add(bytes, std::memory_order_relaxed) + bytes;
     raiseMax(g_counters.totalPeak, t);
 }
 
-inline void credit(uint8_t cat, uint64_t bytes) {
+inline void credit(uint8_t cat, uint64_t bytes, uint64_t requested) {
     g_counters.live[cat].fetch_sub(bytes, std::memory_order_relaxed);
+    g_counters.liveRequested[cat].fetch_sub(requested, std::memory_order_relaxed);  // T500
+    g_counters.liveBlocks[cat].fetch_sub(1, std::memory_order_relaxed);             // T500
     g_counters.totalLive.fetch_sub(bytes, std::memory_order_relaxed);
 }
 
@@ -78,6 +93,8 @@ void readProcStatus(Snapshot& s) {
             s.rssAnonBytes = static_cast<uint64_t>(kb) * 1024;
         } else if (sscanf(line, "RssFile: %lu kB", &kb) == 1) {
             s.rssFileBytes = static_cast<uint64_t>(kb) * 1024;
+        } else if (sscanf(line, "RssShmem: %lu kB", &kb) == 1) {
+            s.rssShmemBytes = static_cast<uint64_t>(kb) * 1024;  // T500
         } else if (sscanf(line, "VmRSS: %lu kB", &kb) == 1) {
             s.vmRssBytes = static_cast<uint64_t>(kb) * 1024;
         }
@@ -102,6 +119,11 @@ CategoryStats stats(Category c) {
     st.liveBytes = g_counters.live[i].load(std::memory_order_relaxed);
     st.peakBytes = g_counters.peak[i].load(std::memory_order_relaxed);
     st.allocs = g_counters.allocs[i].load(std::memory_order_relaxed);
+    // T500: the logical side of the same blocks.
+    st.liveRequestedBytes = g_counters.liveRequested[i].load(std::memory_order_relaxed);
+    st.liveBlocks = g_counters.liveBlocks[i].load(std::memory_order_relaxed);
+    st.blockOverheadBytes = st.liveBytes > st.liveRequestedBytes
+                                ? st.liveBytes - st.liveRequestedBytes : 0;
     return st;
 }
 
@@ -208,6 +230,8 @@ std::string toLogLine(const Snapshot& s) {
     out += s.ledgerEnabled ? "1" : "0";
     appendKV(out, "rss_anon", s.rssAnonBytes);
     appendKV(out, "rss_file", s.rssFileBytes);
+    appendKV(out, "rss_shmem", s.rssShmemBytes);   // T500
+    appendKV(out, "vm_rss", s.vmRssBytes);         // T500
     appendKV(out, "ledger", s.ledgerTotalBytes);
     appendKV(out, "ledger_peak", s.ledgerPeakBytes);
     appendKV(out, "unattributed", s.unattributedBytes);
@@ -267,6 +291,12 @@ std::string toReportText(const Snapshot& s) {
              static_cast<unsigned long long>(s.mallocSlackBytes),
              static_cast<unsigned long long>(s.rssFileBytes));
     out += buf;
+    // T500 (Will's addendum): the file-backed side, which no report quoted.
+    snprintf(buf, sizeof(buf), "  RssFile %llu | RssShmem %llu | VmRSS %llu\n",
+             static_cast<unsigned long long>(s.rssFileBytes),
+             static_cast<unsigned long long>(s.rssShmemBytes),
+             static_cast<unsigned long long>(s.vmRssBytes));
+    out += buf;
     snprintf(buf, sizeof(buf),
              "  RssAnon covered by: attributed %.1f MiB + glibc-internal %.1f MiB + "
              "allocator slack %.1f MiB + non-heap %.1f MiB (%.1f%%)\n",
@@ -320,6 +350,7 @@ std::string toJson(const Snapshot& s) {
     out += "\"allocCount\":" + std::to_string(s.allocCount) + ",";
     out += "\"rssAnonBytes\":" + std::to_string(s.rssAnonBytes) + ",";
     out += "\"rssFileBytes\":" + std::to_string(s.rssFileBytes) + ",";
+    out += "\"rssShmemBytes\":" + std::to_string(s.rssShmemBytes) + ",";  // T500
     out += "\"vmRssBytes\":" + std::to_string(s.vmRssBytes) + ",";
     out += "\"unattributedBytes\":" + std::to_string(s.unattributedBytes) + ",";
     char pct[32];
@@ -558,7 +589,12 @@ namespace {
 // 16 bytes on every ABI (uint64 first): keeps the user pointer at the
 // backend's own alignment (16 on x86_64, 8 on 32-bit ARM).
 struct LedgerHeader {
-    uint64_t charged;   // bytes charged to `category` (whole backend chunk)
+    // T500: this field used to cache the CHUNK size. It now holds the bytes the
+    // caller asked for, and the chunk is recomputed from glibc's own chunk word
+    // at free/realloc time -- which is exact, costs one load, and needs no extra
+    // header bytes (a 24-byte header would break max_align_t, and a 32-byte one
+    // would double the very overhead this is measuring).
+    uint64_t requested; // bytes the caller asked for
     uint32_t category;
     uint32_t offset;    // user pointer - backend pointer
 };
@@ -579,6 +615,13 @@ inline LedgerHeader* headerOf(void* user) {
     return reinterpret_cast<LedgerHeader*>(static_cast<char*>(user) - kHeader);
 }
 
+// T500: the whole backend chunk, recomputed. Valid for as long as the block is
+// allocated, which is every call site (free reads it before __libc_free).
+inline uint64_t chargedOf(void* user) {
+    const LedgerHeader* h = headerOf(user);
+    return backendChunkBytes(static_cast<char*>(user) - h->offset);
+}
+
 void* ledgerAlloc(size_t size, size_t align) {
     void* base;
     uint32_t offset;
@@ -595,17 +638,17 @@ void* ledgerAlloc(size_t size, size_t align) {
     if (!base) return nullptr;
     void* user = static_cast<char*>(base) + offset;
     LedgerHeader* h = headerOf(user);
-    h->charged = backendChunkBytes(base);
+    h->requested = size;
     h->category = eqt::memory::detail::t_category;
     h->offset = offset;
-    eqt::memory::charge(static_cast<uint8_t>(h->category), h->charged);
+    eqt::memory::charge(static_cast<uint8_t>(h->category), backendChunkBytes(base), size);
     return user;
 }
 
 void ledgerFree(void* user) {
     if (!user) return;
     LedgerHeader* h = headerOf(user);
-    eqt::memory::credit(static_cast<uint8_t>(h->category), h->charged);
+    eqt::memory::credit(static_cast<uint8_t>(h->category), chargedOf(user), h->requested);
     __libc_free(static_cast<char*>(user) - h->offset);
 }
 
@@ -618,24 +661,25 @@ void* ledgerRealloc(void* user, size_t size) {
     LedgerHeader* h = headerOf(user);
     const uint32_t cat = h->category;
     if (h->offset == kHeader) {
-        const uint64_t oldCharged = h->charged;
+        const uint64_t oldCharged = chargedOf(user);
+        const uint64_t oldRequested = h->requested;
         void* base = static_cast<char*>(user) - kHeader;
         void* nbase = __libc_realloc(base, size + kHeader);
         if (!nbase) return nullptr;
         void* nuser = static_cast<char*>(nbase) + kHeader;
         LedgerHeader* nh = headerOf(nuser);
-        nh->charged = backendChunkBytes(nbase);
+        nh->requested = size;
         nh->category = cat;
         nh->offset = kHeader;
         // Ownership stays with the original category: a growing container
         // belongs to whoever created it, not to whoever happens to push.
-        eqt::memory::credit(static_cast<uint8_t>(cat), oldCharged);
-        eqt::memory::charge(static_cast<uint8_t>(cat), nh->charged);
+        eqt::memory::credit(static_cast<uint8_t>(cat), oldCharged, oldRequested);
+        eqt::memory::charge(static_cast<uint8_t>(cat), backendChunkBytes(nbase), size);
         return nuser;
     }
     // Over-aligned block: realloc has no alignment contract beyond the
     // default, so allocate fresh and copy.
-    const uint64_t oldUsable = h->charged > h->offset ? h->charged - h->offset : 0;
+    const uint64_t oldUsable = h->requested;
     const uint8_t saved = eqt::memory::detail::t_category;
     eqt::memory::detail::t_category = static_cast<uint8_t>(cat);
     void* nuser = ledgerAlloc(size, kHeader);
@@ -691,9 +735,12 @@ size_t malloc_usable_size(void* p) {
     if (!p) return 0;
     const LedgerHeader* h = headerOf(p);
     // Bytes from the user pointer to the end of the chunk, minus the chunk's
-    // own size word (SIZE_SZ) that the next chunk overlaps.
-    const uint64_t tail = h->charged > h->offset + sizeof(size_t)
-                              ? h->charged - h->offset - sizeof(size_t) : 0;
+    // own size word (SIZE_SZ) that the next chunk overlaps. T500: the chunk is
+    // recomputed rather than cached in the header -- same number, no extra
+    // header bytes.
+    const uint64_t charged = chargedOf(p);
+    const uint64_t tail = charged > h->offset + sizeof(size_t)
+                              ? charged - h->offset - sizeof(size_t) : 0;
     return static_cast<size_t>(tail);
 }
 

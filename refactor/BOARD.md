@@ -11792,6 +11792,77 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   `review/T492/llmbench/README.md` and in `review/T492/README.md` naming
   `review/T499/tip_dialog_audit.tsv` as the per-frame index. Found by T499.
 
+## Added 2026-09-17 by T500 (the `entity_models` byte split)
+
+- **B836** (P) **The `entity_models` byte split, and the order of the `ready`
+  queue it sets.** [measured T500] `RaceModelLoader::getMemoryStats()` tallied
+  ten terms and nothing ever checked they added to anything: on x86 with twelve
+  global_chr races they covered 30,858,350 of the 59,275,152 bytes the ledger
+  charged to `Category::EntityModels`. The split now closes to **-1.28 %**
+  (pre-fix) / **-0.88 %** (post-fix) against live REQUESTED bytes, and the
+  terms it needed are in `refactor/T500_entity_models.md`'s Review. The
+  `ready`-point queue behind it is unchanged: 1. `entity_models` (this unit),
+  2. `entity_instances` (share the index array), 3. `startup` (Pi attribution
+  leg first), 4. `zone_mesh` (merge/selector ordering first). Closed by T500 on
+  x86; **the Pi half is B843**.
+- **B837** (A) **CLOSED by T500.** `getMergedTextures()` called
+  `loadNumberedGlobalModels()` for global2-7_chr.s3d's TEXTURES and the call
+  retained every CharacterModel in all six archives -- parts, rawParts deep
+  copies, SkeletonTrack and a full animated skeleton per race -- for the life
+  of the process. 15,486,203 B [measured T500, x86, twelve races]. The
+  characters are now loaded per archive on demand by
+  `ensureNumberedGlobalCharacters()`, which
+  `loadModelFromNumberedGlobal()` calls; nothing is dropped. Red:
+  `EntityModelSharingTest.TheTexturePathAloneRetainsNoNumberedGlobalCharacter`.
+  **It changes nothing on the orangepi preset** -- see B843.
+- **B838** (B) **`zone_mesh` after the VBO upload: 21.80 MB live at `ready` on
+  the Pi that the draw does not read.** [measured T496/T500] After
+  `uploadMeshHardwareBuffers()` the draw binds the VBO only, but the CPU arrays
+  are still read by `ZoneMergeBuffers::build()` (first frame after loading;
+  `mergeZoneDraws: true` on orangepi), `createTriangleSelector()` (load step 9)
+  and the client-array fallback. Largest-looking, smallest real win, highest
+  risk. Needs the merge/selector ordering settled first. Deferred by T500.
+- **B839** (B) **`startup` is 28.12 MB live at every point on the Pi and has NO
+  Pi-side attribution.** [measured T496 Leg D, re-measured T500: 28,134,104 B
+  at `ready`, qeynos2, and it does not move between `startup` and
+  `steady_60s`.] The x86 heads (cursor 8.70 MB, loading screen 7.47 MB) were
+  wrong in DIRECTION on Mali (board B812), so nothing is known about what this
+  bucket holds on the target. Needs its own measurement leg before any fix.
+- **B841** (P) **A byte freed late is not a byte returned: the arena keeps it.**
+  [measured T496 Leg D, re-measured T500] Between `ready` and `steady_60s` on
+  qeynos2 the ledger frees 17.4 MB and RssAnon falls 0.09 MB, because
+  `malloc_slack` goes 31.58 -> 47.67 MB. Any future memory unit must state
+  whether its win is a byte NEVER ALLOCATED or a byte freed before the peak;
+  only those two move RSS. `malloc_trim()` has never been tried here and is the
+  obvious next question.
+- **B843** (A) **The `[modelmem]` tally over-counts `entity_models` by 125 % on
+  the Pi and closes to -0.9 % on x86.** [measured T500 Leg C,
+  `review/T500/pi/raw/qeynos2_T500after/modelmem.txt`] On the Pi at
+  `zone_load_complete` the tally is 49,778,752 B against 22,146,989 B of live
+  requested bytes in the category. The x86 offline test loads every model
+  through `ensureModelDataLoaded()`, whose `MemoryScope` is `EntityModels`; the
+  Pi runs with `graphicsArchiveIndex_` set and its `TextureInfo` pixels
+  (`tex_global` 6.95 MB + `tex_zone` 2.35 MB + `tex_otherchr` 9.37 MB) are
+  allocated under other scopes, so `RaceModelLoader` TALLIES bytes another
+  category OWNS. Nothing is lost -- the ledger's own total is unaffected -- but
+  100 % accounting means a shared structure has one owner, and today it has
+  two. Fix: decide who owns a shared `TextureInfo` and make the tally agree.
+  Do NOT "fix" it by changing the ledger's categories without Will.
+  **RULED by Will 2026-09-17 (`docs/decisions.md`, memory rulings, item 3):** a
+  shared block is reported ONCE with every claimant listed (`X: cat1, cat2`),
+  never added into each claimant's total. The implementation is still open.
+- **B844** (P) **The orangepi preset never had B837's defect, so T500's Leg B
+  win does not reach the Pi.** [measured T500 Leg C] `getMergedTextures()`
+  guards its numbered-global load with `!graphicsArchiveIndex_`, and the Pi
+  sets the archive index, so `src_char_numbered` and `src_skel_numbered` read
+  0 there before and after. `entity_models` live at `ready` moved 23,985,576 ->
+  23,985,552 on qeynos2 (**-24 B**) and 19,805,912 -> 19,805,904 on befallen
+  (**-8 B**). The x86 win is real for every non-archive-index consumer (the
+  tools, the tests, `--no-graphics` rigs) and worth having, but the Pi's
+  `entity_models` is still 23.99 MB and `over_target` is still 91 MB. The
+  Pi-side head is now `src_skel_other` (4.11 MB) + `src_char_other` (2.69 MB)
+  -- `otherChrCaches_`, the ZONE `_chr.s3d` archives -- and `dup_geometry`
+  (5.38 MB). That is the next unit's target, not this one's.
 
 ## Added 2026-09-17 by T501 (CLAUDE.md exceeded the hermes context-file cap)
 
@@ -11919,5 +11990,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   same host. `docs/ci.md` documents how to read a pipeline, the warm-tree
   trade-off and how to retry the gate. First green pipeline and the per-stage
   wall times are in `refactor/T502_gitlab_ci.md`.
+
+B828–B829 and B832 unused. B836–B845 used by T500 (B840, B842, B845 closed by the kanban pilot, below T501's section).
 
 B848 used by the kanban pilot (issue #4, migration card). B849 onwards unused.

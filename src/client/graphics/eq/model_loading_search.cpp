@@ -12,8 +12,12 @@
 #include "client/graphics/eq/pfs.h"
 #include "client/graphics/graphics_archive_index.h"
 #include "common/logging.h"
+#include "client/core/memory_ledger.h"
+#include <fmt/format.h>
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
+#include <set>
 #include <iostream>
 
 namespace EQT {
@@ -530,6 +534,132 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
         return total;
     };
 
+    // --- T500 Leg A (d): the four terms the first pass's 48 % residual was
+    // made of. Pointer sets, so a structure shared between two owners is
+    // charged ONCE and to the first owner that reaches it -- that is what
+    // makes these terms disjoint from the ten above rather than a second
+    // opinion about the same bytes.
+    std::set<const CharacterSkeleton*> chargedSkeletons;
+    std::set<const SkeletonTrack*> chargedSkeletonTracks;
+    std::set<const ResolvedMaterialList*> chargedMaterialLists;
+    std::set<const TextureInfo*> chargedTextureObjects;
+
+    // The original (pre-flatten) skeleton every CharacterModel keeps a
+    // shared_ptr to. Nothing has ever charged it.
+    auto calcSkeletonTrackBytes = [](const std::shared_ptr<SkeletonTrack>& sk) -> size_t {
+        if (!sk) return 0;
+        size_t total = sizeof(SkeletonTrack) + sk->name.capacity();
+        total += sk->bones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+        total += sk->allBones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+        total += sk->parentIndices.capacity() * sizeof(int);
+        total += sk->meshRefs.capacity() * sizeof(uint32_t);
+        for (const auto& b : sk->allBones) {
+            if (!b) continue;
+            total += sizeof(SkeletonBone) + b->name.capacity();
+            total += b->children.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+            if (b->orientation) total += sizeof(BoneOrientation);
+        }
+        return total;
+    };
+
+    // T500 (e): what calcSkeletonBytes() does NOT charge. Same traversal, the
+    // complement of the same structure, deduplicated by pointer so a TrackDef
+    // shared between two bones is charged once. The constants are computed from
+    // the types, never written down, so the figure is right on armv7 too.
+    constexpr size_t kRbNode = 4 * sizeof(void*);          // _Rb_tree_node_base
+    constexpr size_t kCtrlBlock = 2 * sizeof(void*) + 16;  // shared_ptr control block
+    constexpr size_t kSso = 15;                            // libstdc++ std::string
+    auto strHeap = [](const std::string& x) -> size_t {
+        return x.capacity() > kSso ? x.capacity() + 1 : 0;
+    };
+    std::set<const TrackDef*> chargedTracks;
+    auto calcSkeletonExtra = [&](const std::shared_ptr<CharacterSkeleton>& skel) -> size_t {
+        if (!skel) return 0;
+        size_t extra = 0;
+        // The bone vector's own storage beyond the per-bone sizeof() the
+        // existing sum already adds.
+        if (skel->bones.capacity() > skel->bones.size())
+            extra += (skel->bones.capacity() - skel->bones.size()) * sizeof(AnimatedBone);
+        extra += strHeap(skel->modelCode);
+        auto noteTrack = [&](const std::shared_ptr<TrackDef>& t) {
+            if (!t || !chargedTracks.insert(t.get()).second) return;
+            extra += sizeof(TrackDef) + kCtrlBlock + strHeap(t->name);
+            // frames.capacity() * sizeof(BoneTransform) is already charged.
+        };
+        for (const auto& bone : skel->bones) {
+            extra += strHeap(bone.name);
+            noteTrack(bone.poseTrack);
+            for (const auto& [code, track] : bone.animationTracks) {
+                extra += kRbNode + sizeof(std::pair<const std::string,
+                                                    std::shared_ptr<TrackDef>>);
+                extra += strHeap(code);
+                noteTrack(track);
+            }
+        }
+        for (const auto& [code, anim] : skel->animations) {
+            extra += kRbNode + sizeof(std::pair<const std::string,
+                                                std::shared_ptr<Animation>>);
+            extra += strHeap(code) + kCtrlBlock;
+            if (!anim) continue;
+            extra += strHeap(anim->name) + strHeap(anim->modelCode);
+            // The existing sum charges a flat 64 B per track; charge the rest.
+            const size_t perTrack = kRbNode
+                + sizeof(std::pair<const std::string, std::shared_ptr<TrackRef>>)
+                + sizeof(TrackRef) + kCtrlBlock;
+            extra += anim->tracks.size() * (perTrack > 64 ? perTrack - 64 : 0);
+            for (const auto& [bname, tref] : anim->tracks) {
+                extra += strHeap(bname);
+                if (tref) extra += strHeap(tref->name);
+            }
+        }
+        return extra;
+    };
+
+    // A geometry's materialData is SHARED by design (one 0x31 fragment serves
+    // many meshes), which is exactly why ZoneGeometry::getMemoryUsage()
+    // excludes it -- and why every caller that summed getMemoryUsage() left it
+    // uncharged. Charge each distinct list once.
+    auto noteGeometry = [&](const std::shared_ptr<ZoneGeometry>& g) {
+        if (!g || !g->materialData) return;
+        if (chargedMaterialLists.insert(g->materialData.get()).second)
+            stats.materialListBytes += g->materialData->getMemoryUsage();
+    };
+
+    // --- T500 Leg A (a): the per-model COPY of the merged texture map ---
+    // RaceModelData::textures is assigned `getMergedTextures()` BY VALUE at ten
+    // sites and layered on top of an S3D map at three more, so every model owns
+    // a full std::map of its own. The mapped TextureInfo is shared (shared_ptr)
+    // and its pixels are already charged by sumMapBytes above; what nothing has
+    // ever charged is the map's own storage -- one red-black node per entry
+    // plus any key too long for std::string's SSO buffer.
+    //
+    // The node size is computed, not assumed: libstdc++'s _Rb_tree_node is
+    // _Rb_tree_node_base (a colour enum padded to a word, plus three pointers)
+    // followed by the value_type. So the figure is right on both x86-64 (80 B)
+    // and armv7 (40 B) without a per-arch constant.
+    using MergedTexMap = std::map<std::string, std::shared_ptr<TextureInfo>>;
+    constexpr size_t kRbNodeOverhead = 4 * sizeof(void*);
+    constexpr size_t kMergedTexNodeBytes =
+        kRbNodeOverhead + sizeof(std::pair<const std::string, std::shared_ptr<TextureInfo>>);
+    constexpr size_t kStringSsoCapacity = 15;  // libstdc++
+    // (entries, sum of the mapped shared_ptr targets): two maps with the same
+    // fingerprint hold the same texture set, which is what "duplicate" means
+    // here. Cheap, and it needs no lock on cachedMergedTextures_, so no new
+    // lock-ordering edge is introduced into getMemoryStats().
+    std::set<std::pair<size_t, uintptr_t>> texMapFingerprints;
+    auto sumTextureMap = [&](const MergedTexMap& m) {
+        stats.mergedTextureMapCount += 1;
+        stats.mergedTextureEntryCount += m.size();
+        size_t bytes = m.size() * kMergedTexNodeBytes;
+        uintptr_t fp = 0;
+        for (const auto& [name, tex] : m) {
+            if (name.capacity() > kStringSsoCapacity) bytes += name.capacity() + 1;
+            fp += reinterpret_cast<uintptr_t>(tex.get());
+        }
+        stats.mergedTextureMapBytes += bytes;
+        texMapFingerprints.insert({m.size(), fp});
+    };
+
     {
         // T113: loadedModelsMutex_ — see race_model_loader.h loadedModels_ comment.
         std::lock_guard<std::mutex> lock(loadedModelsMutex_);
@@ -539,6 +669,11 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
             if (model->rawGeometry) stats.modelGeometryBytes += model->rawGeometry->getMemoryUsage();
             stats.modelGeometryBytes += model->vertexPieces.capacity() * sizeof(VertexPiece);
             stats.modelSkeletonBytes += calcSkeletonBytes(model->skeleton);
+            if (chargedSkeletons.insert(model->skeleton.get()).second)
+                stats.skeletonContainerBytes += calcSkeletonExtra(model->skeleton);  // T500
+            noteGeometry(model->combinedGeometry);
+            noteGeometry(model->rawGeometry);
+            sumTextureMap(model->textures);
         }
     }
     {
@@ -547,11 +682,35 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
             if (!model) continue;
             if (model->combinedGeometry) stats.modelGeometryBytes += model->combinedGeometry->getMemoryUsage();
             if (model->rawGeometry) stats.modelGeometryBytes += model->rawGeometry->getMemoryUsage();
+            noteGeometry(model->combinedGeometry);
+            noteGeometry(model->rawGeometry);
+            sumTextureMap(model->textures);
         }
     }
+    {
+        std::lock_guard<std::mutex> lock(preparedDataMutex_);
+        for (const auto& [key, model] : preparedModelData_) {
+            if (!model) continue;
+            noteGeometry(model->combinedGeometry);
+            noteGeometry(model->rawGeometry);
+            sumTextureMap(model->textures);
+        }
+    }
+    stats.distinctTextureMapCount = texMapFingerprints.size();
 
     // --- CharacterModel data (global + numbered + zone + other) ---
-    auto calcCharModels = [](const std::vector<std::shared_ptr<CharacterModel>>& chars) -> size_t {
+    // T500 Leg A (b)/(c): the arithmetic for characterModelBytes is UNCHANGED
+    // (that field may not move); what is new is the per-owner split, which sums
+    // to it exactly, and dupGeomOut -- the geometry a CharacterModel holds that
+    // this sum has never charged. `parts` is charged in full below;
+    // `partsWithTransforms` aliases the same shared_ptr objects, so it is
+    // correctly not double counted; `rawParts` is a DEEP COPY made before
+    // skinning (s3d_loader_characters.cpp) and is charged only
+    // sizeof(CharacterPart) -- its vertices and triangles are counted nowhere.
+    // The pointer set below charges each distinct geometry at most once, so the
+    // term is the uncharged remainder and nothing else.
+    auto calcCharModels = [&](const std::vector<std::shared_ptr<CharacterModel>>& chars,
+                              size_t& dupGeomOut, size_t& skeletonOut) -> size_t {
         size_t total = 0;
         for (const auto& cm : chars) {
             if (!cm) continue;
@@ -560,19 +719,79 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
                 if (part) total += part->getMemoryUsage();
             total += cm->partsWithTransforms.capacity() * sizeof(CharacterPart);
             total += cm->rawParts.capacity() * sizeof(CharacterPart);
+
+            std::set<const ZoneGeometry*> charged;
+            for (const auto& part : cm->parts)
+                if (part) charged.insert(part.get());
+            for (const auto& p : cm->partsWithTransforms)
+                if (p.geometry && charged.insert(p.geometry.get()).second)
+                    dupGeomOut += p.geometry->getMemoryUsage();
+            for (const auto& p : cm->rawParts)
+                if (p.geometry && charged.insert(p.geometry.get()).second)
+                    dupGeomOut += p.geometry->getMemoryUsage();
+
+            // T500 (d): the shared material lists behind all of that geometry,
+            // and the two skeletons this CharacterModel keeps alive for the
+            // whole process whether or not any spawn ever uses its race.
+            for (const auto* g : charged)
+                if (g && g->materialData
+                      && chargedMaterialLists.insert(g->materialData.get()).second)
+                    stats.materialListBytes += g->materialData->getMemoryUsage();
+            if (cm->animatedSkeleton
+                    && chargedSkeletons.insert(cm->animatedSkeleton.get()).second) {
+                skeletonOut += calcSkeletonBytes(cm->animatedSkeleton);
+                stats.skeletonContainerBytes += calcSkeletonExtra(cm->animatedSkeleton);
+            }
+            stats.containerCapacityBytes +=
+                cm->parts.capacity() * sizeof(std::shared_ptr<ZoneGeometry>);
+            if (cm->skeleton && chargedSkeletonTracks.insert(cm->skeleton.get()).second)
+                skeletonOut += calcSkeletonTrackBytes(cm->skeleton);
         }
         return total;
     };
-    stats.characterModelBytes += calcCharModels(globalCharacters_);
+    stats.sourceCharacterGlobalBytes +=
+        calcCharModels(globalCharacters_, stats.duplicateGeometryBytes,
+                       stats.sourceSkeletonGlobalBytes);
     for (const auto& [num, chars] : numberedGlobalCharacters_)
-        stats.characterModelBytes += calcCharModels(chars);
-    stats.characterModelBytes += calcCharModels(zoneCharacters_);
+        stats.sourceCharacterNumberedBytes += calcCharModels(chars, stats.duplicateGeometryBytes,
+                                                             stats.sourceSkeletonNumberedBytes);
+    stats.sourceCharacterZoneBytes +=
+        calcCharModels(zoneCharacters_, stats.duplicateGeometryBytes,
+                       stats.sourceSkeletonZoneBytes);
     {
         // T114: otherChrCaches_ is shared with the worker thread.
         std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
         for (const auto& [name, cache] : otherChrCaches_)
-            stats.characterModelBytes += calcCharModels(cache.characters);
+            stats.sourceCharacterOtherBytes += calcCharModels(cache.characters,
+                                                              stats.duplicateGeometryBytes,
+                                                              stats.sourceSkeletonOtherBytes);
+
+        // T500 (d): the loader's OWN texture maps -- nodes and keys, plus each
+        // distinct TextureInfo object (rawDataBytes() is the pixels only).
+        // cachedMergedTextures_ is guarded by this same mutex.
+        auto noteTexMapStorage = [&](const MergedTexMap& m) {
+            stats.loaderTextureMapBytes += m.size() * kMergedTexNodeBytes;
+            for (const auto& [name, tex] : m) {
+                if (name.capacity() > kStringSsoCapacity)
+                    stats.loaderTextureMapBytes += name.capacity() + 1;
+                if (tex && chargedTextureObjects.insert(tex.get()).second) {
+                    stats.textureObjectBytes += sizeof(TextureInfo) + tex->name.capacity();
+                    stats.textureObjectBytes += tex->frames.capacity() * sizeof(TextureFrame);
+                    for (const auto& f : tex->frames) stats.textureObjectBytes += f.name.capacity();
+                }
+            }
+        };
+        noteTexMapStorage(globalTextures_);
+        for (const auto& [num, m] : numberedGlobalTextures_) noteTexMapStorage(m);
+        noteTexMapStorage(armorTextureCache_);
+        noteTexMapStorage(zoneTextures_);
+        for (const auto& [name, cache] : otherChrCaches_) noteTexMapStorage(cache.textures);
+        noteTexMapStorage(cachedMergedTextures_);
     }
+    stats.characterModelBytes += stats.sourceCharacterGlobalBytes
+                               + stats.sourceCharacterNumberedBytes
+                               + stats.sourceCharacterZoneBytes
+                               + stats.sourceCharacterOtherBytes;
 
     // --- EQAnimatedMesh working data ---
     for (const auto& [key, mesh] : animatedMeshCache_)
@@ -603,6 +822,69 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
         stats.irrlichtMeshBytes += calcMeshBytes(mesh);
 
     return stats;
+}
+
+// T500 Leg A: the DISJOINT terms, summed. The ten pre-existing terms partition
+// what the loader knew it held; mergedTextureMapBytes and duplicateGeometryBytes
+// are the two it did not. The per-owner sourceCharacter* fields are a
+// subdivision of characterModelBytes and are deliberately NOT added again.
+size_t RaceModelLoader::modelMemTotal(const MemoryStats& s) {
+    return s.globalTextureBytes + s.numberedTextureBytes + s.armorTextureBytes
+         + s.zoneTextureBytes + s.otherChrTextureBytes
+         + s.modelGeometryBytes + s.modelSkeletonBytes + s.characterModelBytes
+         + s.animatedMeshBytes + s.irrlichtMeshBytes
+         + s.mergedTextureMapBytes + s.duplicateGeometryBytes
+         + s.sourceSkeletonGlobalBytes + s.sourceSkeletonNumberedBytes
+         + s.sourceSkeletonZoneBytes + s.sourceSkeletonOtherBytes
+         + s.materialListBytes + s.textureObjectBytes + s.loaderTextureMapBytes
+         + s.skeletonContainerBytes + s.containerCapacityBytes;
+}
+
+// T500 Leg A: the split, one line, with the ledger's own EntityModels figures
+// read at the SAME instant so `total` vs `ledger_live` is a single comparison
+// rather than two greps that may straddle an allocation.
+std::string RaceModelLoader::modelMemLogLine(const std::string& point) const {
+    const MemoryStats s = getMemoryStats();
+    const size_t total = modelMemTotal(s);
+    const auto cat = eqt::memory::stats(eqt::memory::Category::EntityModels);
+    // T500: the comparison is against liveREQUESTED, not liveBytes. liveBytes
+    // is the whole glibc chunk -- caller bytes plus the size word, the 16-byte
+    // rounding and the ledger's own 16-byte header -- and a logical tally can
+    // never reach it. The per-block overhead is reported beside it rather than
+    // hidden in the residual.
+    const int64_t residual = static_cast<int64_t>(cat.liveRequestedBytes)
+                           - static_cast<int64_t>(total);
+    const double residualPct = cat.liveRequestedBytes
+                                   ? (100.0 * static_cast<double>(residual)
+                                      / static_cast<double>(cat.liveRequestedBytes))
+                                   : 0.0;
+    return fmt::format(
+        "[modelmem] point={} total={} ledger_requested={} ledger_live={} ledger_peak={}"
+        " block_overhead={} blocks={} residual={} residual_pct={:.2f}"
+        " tex_global={} tex_numbered={} tex_armor={} tex_zone={} tex_otherchr={}"
+        " model_geometry={} model_skeleton={} char_models={} anim_mesh={} irr_mesh={}"
+        " merged_tex_map={} merged_tex_maps={} merged_tex_entries={} merged_tex_distinct={}"
+        " src_char_global={} src_char_numbered={} src_char_zone={} src_char_other={}"
+        " dup_geometry={}"
+        " src_skel_global={} src_skel_numbered={} src_skel_zone={} src_skel_other={}"
+        " material_lists={} tex_objects={} loader_tex_maps={}"
+        " skel_containers={} container_capacity={} allocs={} models={}",
+        point, total, cat.liveRequestedBytes, cat.liveBytes, cat.peakBytes,
+        cat.blockOverheadBytes, cat.liveBlocks, residual, residualPct,
+        s.globalTextureBytes, s.numberedTextureBytes, s.armorTextureBytes,
+        s.zoneTextureBytes, s.otherChrTextureBytes,
+        s.modelGeometryBytes, s.modelSkeletonBytes, s.characterModelBytes,
+        s.animatedMeshBytes, s.irrlichtMeshBytes,
+        s.mergedTextureMapBytes, s.mergedTextureMapCount, s.mergedTextureEntryCount,
+        s.distinctTextureMapCount,
+        s.sourceCharacterGlobalBytes, s.sourceCharacterNumberedBytes,
+        s.sourceCharacterZoneBytes, s.sourceCharacterOtherBytes,
+        s.duplicateGeometryBytes,
+        s.sourceSkeletonGlobalBytes, s.sourceSkeletonNumberedBytes,
+        s.sourceSkeletonZoneBytes, s.sourceSkeletonOtherBytes,
+        s.materialListBytes, s.textureObjectBytes, s.loaderTextureMapBytes,
+        s.skeletonContainerBytes, s.containerCapacityBytes,
+        cat.allocs, s.loadedModelCount);
 }
 
 } // namespace Graphics

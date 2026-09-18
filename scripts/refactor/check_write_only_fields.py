@@ -269,8 +269,10 @@ EXEMPT = {
         ("report", "B337: /pmem aggregates a loader fills and the report never prints"),
     ("MemoryStats", "armorTextureCount"):
         ("report", "B337: /pmem aggregates a loader fills and the report never prints"),
-    ("MemoryStats", "loadedModelCount"):
-        ("report", "B337: /pmem aggregates a loader fills and the report never prints"),
+    # T500: loadedModelCount is no longer write-only -- the [modelmem] line
+    # (RaceModelLoader::modelMemLogLine) prints it once per zone-in, so its
+    # B337 exemption came out. The other four MemoryStats counters below are
+    # still filled and never printed.
     ("MemoryStats", "variantMeshCacheCount"):
         ("report", "B337: /pmem aggregates a loader fills and the report never prints"),
     ("MemoryStats", "meshCacheCount"):

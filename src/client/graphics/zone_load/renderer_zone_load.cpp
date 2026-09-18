@@ -981,6 +981,19 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
     sampleStep("13_Cleanup");
     eqt::memory::recordPoint("zone_load_complete");
 
+    // T500 Leg A: the entity_models byte split. One INFO line per zone-in on
+    // MOD_GRAPHICS (so --log-module=GRAPHICS:INFO is enough; it does not need
+    // DEBUG, which T486 measured as 90% of the log). It carries the ledger's
+    // EntityModels live/peak read in the same call, so `total` vs `ledger_live`
+    // is one line. This is the renderer-side instant of "ready": the game
+    // thread's recordPoint("ready") fires when LoadingPhase::COMPLETE lands,
+    // which this function's return is what drives.
+    if (ctx_.entityRenderer) {
+        if (auto* rml = ctx_.entityRenderer->getRaceModelLoader()) {
+            LOG_INFO(MOD_GRAPHICS, "{}", rml->modelMemLogLine("zone_load_complete"));
+        }
+    }
+
     ctx_.sequentialLoadComplete = true;
     LOG_DEBUG(MOD_GRAPHICS, "SEQ DONE: sequentialLoadComplete_=true, fireGlowLights_={}, "
               "fireGlowLightingEnabled_={}, fireGlowIcospheresEnabled_={}, maxFireGlowLights_={}",
