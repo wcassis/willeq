@@ -435,6 +435,114 @@ TEST_F(LoggingTest, InitLogging_UnknownModuleDoesNotPoisonGoodPairs) {
     EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
 }
 
+// The same silent-mapping existed on the whitelist/blacklist paths:
+// ApplyLogOnly/ApplyLogExclude handed every token to ParseModuleName's
+// MOD_MAIN fallback. In a whitelist that keeps MAIN at the global level
+// (defeating the filter); in a blacklist it silences MAIN.
+
+TEST_F(LoggingTest, ApplyLogOnly_UnknownNameIgnoredNotMappedToMain) {
+    char tmpl[] = "/tmp/willeq_b850_only_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    ApplyLogOnly("NET,NTE");
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("NTE"), std::string::npos)
+        << "rejection must name the bad module; captured stderr: [" << content << "]";
+    // NET is the only whitelisted module: it follows the global level.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_NET), -1);
+    // MAIN was NOT whitelisted by the typo: it stays suppressed.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), LOG_NONE);
+}
+
+TEST_F(LoggingTest, ApplyLogExclude_UnknownNameIgnoredNotSilencingMain) {
+    char tmpl[] = "/tmp/willeq_b850_exclude_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    ApplyLogExclude("NET,NTE");
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("NTE"), std::string::npos)
+        << "rejection must name the bad module; captured stderr: [" << content << "]";
+    // The typo must not have silenced MAIN.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
+    // The real token still applied.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_NET), LOG_NONE);
+}
+
+// B850 criterion 3: the empty/too-long pair message used to print a stray
+// '[' before and ']' after the token. Pin the fixed shape.
+
+TEST_F(LoggingTest, InitLogging_TooLongPairMessageHasNoStrayBrackets) {
+    char tmpl[] = "/tmp/willeq_b850_long_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    // 96+ chars in one "pair": overflows ApplyLogModulePair's 96-byte spec.
+    const std::string longPair = std::string(120, 'X') + ":DEBUG";
+    ASSERT_GE(longPair.size(), 96u);
+    const std::string flag = "--log-module=" + longPair;
+    const char* argv[] = {"program", flag.c_str()};
+    int argc = 2;
+    InitLogging(argc, const_cast<char**>(argv));
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("too long"), std::string::npos)
+        << "the rejection must still fire; captured stderr: [" << content << "]";
+    size_t start = content.find("too long");
+    std::string after = (start == std::string::npos) ? content : content.substr(start);
+    // The pre-fix text was ...": \"[" + token + "]\"" -- the stray '[' right
+    // after the opening quote and the ']' right before the closing one.
+    EXPECT_EQ(after.find("\"\["), std::string::npos)
+        << "stray '[' after the opening quote: [" << after.substr(0, 120) << "]";
+    // Nothing may have been applied by the oversized pair.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
+}
+
 // =============================================================================
 // Legacy Compatibility Tests
 // =============================================================================
