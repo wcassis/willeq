@@ -83,8 +83,13 @@ inline const char* GetModuleName(LogModule mod) {
     return "UNKNOWN";
 }
 
-// Parse module name from string (for command-line/config)
-inline LogModule ParseModuleName(const char* name) {
+// B850: try-parse a module name, reporting whether it is a known module.
+// ParseModuleName() below keeps its MOD_MAIN fallback for call sites that
+// need a module no matter what; every site that takes a name from a USER
+// (argv, config file, in-game command) must go through this one, or a typo
+// ("NTE" for NET) is silently mapped to MAIN -- the same silent-mapping
+// defect class B842 closed for level names.
+inline bool TryParseModuleName(const char* name, LogModule& out) {
     static const struct { const char* name; LogModule mod; } mapping[] = {
         {"NET", MOD_NET}, {"NET_PACKET", MOD_NET_PACKET},
         {"LOGIN", MOD_LOGIN}, {"WORLD", MOD_WORLD}, {"ZONE", MOD_ZONE},
@@ -98,10 +103,21 @@ inline LogModule ParseModuleName(const char* name) {
         {"SCENARIO", MOD_SCENARIO}
     };
     for (const auto& m : mapping) {
-        if (strcmp(name, m.name) == 0) return m.mod;
+        if (strcmp(name, m.name) == 0) { out = m.mod; return true; }
     }
-    return MOD_MAIN; // Default fallback
+    return false;
 }
+
+// Parse module name from string (for command-line/config)
+inline LogModule ParseModuleName(const char* name) {
+    LogModule mod;
+    if (TryParseModuleName(name, mod)) return mod;
+    return MOD_MAIN; // Default fallback (NOT for user-typed names -- see TryParseModuleName)
+}
+
+// Forward declaration: the rejection messages in ApplyLogOnly/ApplyLogExclude
+// and ApplyLogModulePair name the valid set; the definition is below them.
+inline std::string GetAllModuleNames();
 
 // =============================================================================
 // Log Level Names
@@ -501,12 +517,16 @@ inline bool ShouldLog(LogModule mod, LogLevel level) {
 
 // Apply whitelist filter: set all modules NOT in the comma-separated list to LOG_NONE.
 // Modules in the list get reset to -1 (use global level).
+// B850: a name the mapping does not know is no longer silently mapped to
+// MAIN (which, in a whitelist, would keep MAIN at the global level and
+// defeat the filter) -- it is skipped and named on one stderr line.
 inline void ApplyLogOnly(const char* modules) {
     // First, set all modules to LOG_NONE
     for (int i = 0; i < MOD_COUNT; i++) {
         SetModuleLogLevel(static_cast<LogModule>(i), LOG_NONE);
     }
     // Then, reset listed modules to use global level
+    std::string unknown;
     const char* p = modules;
     while (*p) {
         // Skip leading whitespace and commas
@@ -524,14 +544,26 @@ inline void ApplyLogOnly(const char* modules) {
                 if (modName[i] >= 'a' && modName[i] <= 'z')
                     modName[i] -= 32;
             }
-            LogModule mod = ParseModuleName(modName);
-            SetModuleLogLevel(mod, -1);  // Use global level
+            LogModule mod;
+            if (TryParseModuleName(modName, mod)) {
+                SetModuleLogLevel(mod, -1);  // Use global level
+            } else {
+                if (!unknown.empty()) unknown += ", ";
+                unknown += modName;
+            }
         }
+    }
+    if (!unknown.empty()) {
+        std::cerr << "[logging] --log-only: unknown module name(s) ignored: "
+                  << unknown << " (valid: " << GetAllModuleNames() << ")\n";
     }
 }
 
 // Apply blacklist filter: set listed modules to LOG_NONE.
+// B850: unknown names were silently mapped to MAIN (silencing it) -- now
+// skipped and named on one stderr line.
 inline void ApplyLogExclude(const char* modules) {
+    std::string unknown;
     const char* p = modules;
     while (*p) {
         while (*p == ',' || *p == ' ' || *p == '\t') p++;
@@ -546,9 +578,18 @@ inline void ApplyLogExclude(const char* modules) {
                 if (modName[i] >= 'a' && modName[i] <= 'z')
                     modName[i] -= 32;
             }
-            LogModule mod = ParseModuleName(modName);
-            SetModuleLogLevel(mod, LOG_NONE);
+            LogModule mod;
+            if (TryParseModuleName(modName, mod)) {
+                SetModuleLogLevel(mod, LOG_NONE);
+            } else {
+                if (!unknown.empty()) unknown += ", ";
+                unknown += modName;
+            }
         }
+    }
+    if (!unknown.empty()) {
+        std::cerr << "[logging] --log-exclude: unknown module name(s) ignored: "
+                  << unknown << " (valid: " << GetAllModuleNames() << ")\n";
     }
 }
 
@@ -861,9 +902,11 @@ inline bool ApplyLogModulePair(const char* pair, size_t len) {
     // it without mutating the (possibly read-only) argv.
     char spec[96] = {0};
     if (len == 0 || len >= sizeof(spec)) {
-        std::cerr << "[logging] ignoring --log-module pair (empty or too long): \"["
-                  << (len >= sizeof(spec) ? std::string(pair, len).substr(0, 80) : "")
-                  << "]\"\n";
+        // B850: the pre-fix message printed a stray '[' before and ']' after
+        // the token ("\"[NTE:DEBUG]\"") -- a leftover of some older framing.
+        const std::string preview(pair, len > 0 && len < sizeof(spec) ? len : 80);
+        std::cerr << "[logging] ignoring --log-module pair (empty or too long): \""
+                  << preview << (len > 80 ? "..." : "") << "\"\n";
         return false;
     }
     std::copy_n(pair, len, spec);
@@ -875,7 +918,17 @@ inline bool ApplyLogModulePair(const char* pair, size_t len) {
         return false;
     }
     *colon = '\0';
-    LogModule mod = ParseModuleName(spec);
+    // B850: a USER-TYPED module name goes through the try-parse, not
+    // ParseModuleName()'s MOD_MAIN fallback -- "NTE:DEBUG" (a typo of NET)
+    // used to set MAIN to DEBUG and say nothing. Same silent-mapping class
+    // as B842's level names.
+    LogModule mod;
+    if (!TryParseModuleName(spec, mod)) {
+        std::cerr << "[logging] ignoring --log-module pair with unknown module "
+                     "name '" << spec << "' in \"" << spec << ":" << (colon + 1)
+                  << "\" (valid: " << GetAllModuleNames() << ")\n";
+        return false;
+    }
     std::string levelStr(colon + 1);
     // Round-trip check (main.cpp uses the same pattern for --log-level=):
     // GetLevelName() pads some names for column alignment ("NONE ", "WARN ",
@@ -994,15 +1047,25 @@ inline void InitLoggingFromJson(const Json::Value& config) {
         }
     }
 
-    // Per-module levels (override only/exclude)
+    // Per-module levels (override only/exclude). B850: an unknown key was
+    // silently mapped to MAIN -- now it is skipped and named on one stderr
+    // line (config files are typed by the user, same as argv).
     if (logging.isMember("modules") && logging["modules"].isObject()) {
         const Json::Value& modules = logging["modules"];
+        std::string unknown;
         for (const auto& modName : modules.getMemberNames()) {
-            if (modules[modName].isString()) {
-                LogModule mod = ParseModuleName(modName.c_str());
-                LogLevel level = ParseLevelName(modules[modName].asString().c_str());
-                SetModuleLogLevel(mod, level);
+            if (!modules[modName].isString()) continue;
+            LogModule mod;
+            if (TryParseModuleName(modName.c_str(), mod)) {
+                SetModuleLogLevel(mod, ParseLevelName(modules[modName].asString().c_str()));
+            } else {
+                if (!unknown.empty()) unknown += ", ";
+                unknown += modName;
             }
+        }
+        if (!unknown.empty()) {
+            std::cerr << "[logging] config logging.modules: unknown module name(s) "
+                      << "ignored: " << unknown << " (valid: " << GetAllModuleNames() << ")\n";
         }
     }
 }
