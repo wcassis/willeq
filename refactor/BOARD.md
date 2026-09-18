@@ -766,7 +766,7 @@ it without taking that measurement first.
   confirmed on the ledger, and the baseline is now ATTRIBUTED: it is
   `audio` + `startup` + the allocator slack those two created.
 
-- **B817** (A, *measured*, **fixed in T496**) **The client held two complete → issue #10
+- ~~**B817** (A, *measured*, **fixed in T496**) **The client held two complete → issue #10
   copies of `synthus2.sf2`, and one of them was unreachable.**
   `AudioManager::initialize()` called `musicPlayer_->initialize()` BEFORE
   `musicPlayer_->setMidiPlayer()`, so `MusicPlayer` built its own fallback
@@ -779,7 +779,14 @@ it without taking that measurement first.
   RED, in bytes, offline on x86: **24,160,112 B retained** against a 1 MiB
   bound; GREEN after, 3/3
   (`tests/test_music_player_soundfont_lifetime.cpp`). No audio output changes —
-  `MusicPlayer` renders through the shared `MidiPlayer` either way.
+  `MusicPlayer` renders through the shared `MidiPlayer` either way.~~
+  **STRUCK B849 (2026-09-18, issue #10 closed by the B849 unit)**: both halves
+  verified on fable — the ordering fix is
+  `src/client/audio/audio_manager.cpp:128-139` (T496 Leg B, `942c51e9`) and
+  `MusicPlayer::setMidiPlayer()` releases the superseded fallback,
+  `src/client/audio/music_player.cpp:95-106`; the destructor leak is closed in
+  `src/client/audio/midi_player.cpp:92-106`, pinned by
+  `tests/test_music_player_soundfont_lifetime.cpp`.
 
 - **B818** (B, *items 1a/2/3/5 resolved by T496 Leg D -- see B819/B830/B831*) **Owed from T496, deliberately not taken there.** (1) The three
   Mali budgets B812 now has numbers for (`startup` 26.82 MiB,
@@ -813,7 +820,7 @@ it without taking that measurement first.
 
 - ~~**B818.5** the ledger test is red on the tip~~ **RESOLVED as B819.**
 
-- **B819** (A, *measured*, **fixed in T496 Leg D**) **A ctest case was a → issue #11
+- ~~**B819** (A, *measured*, **fixed in T496 Leg D**) **A ctest case was a → issue #11
   function of the optimisation level, not of the code under test.**
   `MemoryLedger.MallocFamilyAllRouteThroughTheLedger` passed in `main`'s
   RelWithDebInfo tree and failed in a worktree configured by **CLAUDE.md's own
@@ -832,10 +839,13 @@ it without taking that measurement first.
   implementation-defined and neither is assertable. Green at `-O0` **and** at
   `-O2`: 20/20. **Adjacent and still open:** the configure command in
   `CLAUDE.md` names no `CMAKE_BUILD_TYPE`, so the documented way to set up a
-  tree differs from the way the trees that gate merges are built. Worth one
-  line in that recipe.
+  tree differs from the way the trees that gate merges are built (CI is
+  `Release`); B849 could not touch that file (agent-protected) and left the
+  item open. ~~Struck B849 (2026-09-18, issue #11 closed by the B849 unit):
+  the test fix itself is `tests/test_memory_ledger.cpp:180-215` (T496 Leg D,
+  `39fe0166`).~~
 
-- **B830** (A, *measured*, **fixed in T496 Leg D**) **The client read 125 MB of → issue #12
+- ~~**B830** (A, *measured*, **fixed in T496 Leg D**) **The client read 125 MB of → issue #12
   sound archives it was configured never to keep, then freed them again —
   and that transient was the Pi's #2 bucket.**
   `AudioManager::scanPfsArchives()` indexes seventeen `snd*.pfs`
@@ -873,7 +883,12 @@ it without taking that measurement first.
   `open`+`getFilenames`, zero mismatches**) and which forces a COLD index —
   a warm `snd_index_cache.json` short-circuits the scan and made both peak
   cases pass against the unfixed code (measured: peak 26,279,360 warm). No
-  sound changes; placement and lifetime only.
+  sound changes; placement and lifetime only.~~ **STRUCK B849 (2026-09-18,
+  issue #12 closed by the B849 unit)**: verified on fable — the streaming
+  index is `PfsArchive::listFilenames()`, `src/client/graphics/eq/pfs.cpp:304`
+  (declared `include/client/graphics/eq/pfs.h:56`), called from
+  `src/client/audio/audio_manager.cpp:975` (T496 Leg D, `39fe0166`), pinned by
+  `tests/test_audio_startup_peak.cpp`.
 
 - **B831** (C) **There is one ledger budget table and it is asserted on two → issue #13
   different machines.** `tools/hwcaps/zone_bench_loader.cpp` hard-codes
@@ -11158,7 +11173,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   choosing the answer. `[assumed]` that the extra players are the whole of the
   difference -- the pose there is placed by SQL rather than pinned with
   `camera_match_pose.sh`, and the two were not separated. Found by T492.
-- **B795** (A) **the official client's "Tip of the Day" dialog sits over the → issue #76
+- ~~**B795** (A) **the official client's "Tip of the Day" dialog sits over the → issue #76
   frame after entering the world, and nothing in the oracle rig dismisses it.**
   MEASURED T492 Leg H: with all three clients in world and a target set, the
   four candidate crops of the official TARGET window OCR'd as `es`, `a`, `a` and
@@ -11194,7 +11209,13 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   `oracle_start.sh` after `enter-world.sh` (Escape, or a click on its close box,
   verified by OCR that "Another Tip" is gone) -- NOT by waiting longer, since it
   is modal until dismissed. `camto` is unaffected: it passed at ratio 1.993 with
-  the dialog in frame. Found by T492.
+  the dialog in frame. Found by T492.~~ **STRUCK B849 (2026-09-18, issue #76
+  closed by the B849 unit)**: the fix as written is on fable —
+  `scripts/llmbench/oracle_start.sh:34-49` (`[Tips] ShowTips=0`, T492 Leg I,
+  `ed2ae5e5`) plus the runtime OCR-verified dismiss at :84-110, and the
+  re-check half was already struck as discharged by T499 (`98a5931d`,
+  `scripts/oracle/find_tip_dialog.py`, 1,183 frames swept). Nothing of B795
+  remains; the after-action variants are the separate B834.
 - ~~**B796** (A) `/equip <from> <to>` -- **the slot numbers the command takes are
   NOT `inventory.slot_id`; general slots are off by one.**~~ **STRUCK T494
   (`task/T494-equip-slot-convention`).** The off-by-one was real and is fixed;
@@ -11501,7 +11522,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   frame-independent, and red at 150 / 118 for the two wrong corrections). Look for
   the same shape wherever a test asserts a centroid instead of an axis. Found by
   T485 Leg B.
-- **B805** (A) **`held_item_candidate_search` compared its 24 candidates at → issue #80
+- ~~**B805** (A) **`held_item_candidate_search` compared its 24 candidates at → issue #80
   DIFFERENT poses.** `ISceneManager::drawAll()` calls `OnAnimate()` with the DEVICE
   timer, so the skeleton moved between one candidate's capture and the next: every
   candidate after the first was measured and drawn at a frame other than the one
@@ -11510,7 +11531,10 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   animator for the sweep (`pauseAnimation()`, after the per-frame dump, which needs
   it running). The 2026-09-14 `candidates.tsv` was taken with the pose drifting;
   it was regenerated. Any offscreen tool that measures a skeleton across several
-  `drawAll()` calls has this trap. Found by T485 Leg B.
+  `drawAll()` calls has this trap. Found by T485 Leg B.~~ **STRUCK B849 (2026-09-18,
+  issue #80 closed by the B849 unit)**: the pause is on fable at
+  `tools/hwcaps/held_item_candidate_search.cpp:420`
+  (`node->getAnimator().pauseAnimation()`, T485 Leg B, `a232e4d8`).
 - **B756 RE-SCOPED by T485 Leg B** -- B756 said the blade's PITCH does not match the
   oracle and blamed a residual a signed permutation cannot close. With the identity
   the pitch question changes shape: what does not match is the POSE (fable's o01
@@ -11805,7 +11829,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   2. `entity_instances` (share the index array), 3. `startup` (Pi attribution
   leg first), 4. `zone_mesh` (merge/selector ordering first). Closed by T500 on
   x86; **the Pi half is B843**.
-- **B837** (A) **CLOSED by T500.** `getMergedTextures()` called
+- ~~**B837** (A) **CLOSED by T500.** `getMergedTextures()` called
   `loadNumberedGlobalModels()` for global2-7_chr.s3d's TEXTURES and the call
   retained every CharacterModel in all six archives -- parts, rawParts deep
   copies, SkeletonTrack and a full animated skeleton per race -- for the life
@@ -11814,7 +11838,11 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   `ensureNumberedGlobalCharacters()`, which
   `loadModelFromNumberedGlobal()` calls; nothing is dropped. Red:
   `EntityModelSharingTest.TheTexturePathAloneRetainsNoNumberedGlobalCharacter`.
-  **It changes nothing on the orangepi preset** -- see B843.
+  **It changes nothing on the orangepi preset** -- see B843.~~ **STRUCK B849
+  (2026-09-18)**: landed by T500 Leg B (`68af49f6`), the per-archive loader is
+  on fable at `src/client/graphics/eq/model_loading.cpp:98` and pinned by
+  `tests/test_entity_model_sharing.cpp:237`; no issue was ever opened for it,
+  so there is no record to close -- the Pi half remains open as B843.
 - **B838** (B) **`zone_mesh` after the VBO upload: 21.80 MB live at `ready` on
   the Pi that the draw does not read.** [measured T496/T500] After
   `uploadMeshHardwareBuffers()` the draw binds the VBO only, but the CPU arrays
@@ -11835,7 +11863,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   whether its win is a byte NEVER ALLOCATED or a byte freed before the peak;
   only those two move RSS. `malloc_trim()` has never been tried here and is the
   obvious next question.
-- **B843** (A) **The `[modelmem]` tally over-counts `entity_models` by 125 % on
+- **B843** (A) **The `[modelmem]` tally over-counts `entity_models` by 125 % on → issue #96
   the Pi and closes to -0.9 % on x86.** [measured T500 Leg C,
   `review/T500/pi/raw/qeynos2_T500after/modelmem.txt`] On the Pi at
   `zone_load_complete` the tally is 49,778,752 B against 22,146,989 B of live
