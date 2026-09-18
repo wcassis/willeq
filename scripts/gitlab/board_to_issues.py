@@ -137,7 +137,14 @@ def parse_live_entries(text):
                     or nl.startswith("---"):
                 break
             j += 1
-        body = "\n".join(lines[i : j + 1])
+        # lines[i:j] -- the line at j is what ENDED the body (the next bullet,
+        # a header, or the blank after the last continuation), so it belongs
+        # to no entry. Including it (the pre-B849 `i : j + 1`) made a
+        # contiguous next bullet's text -- and its `→ issue #N` pointer --
+        # part of THIS entry's body: two live entries separated by no blank
+        # line (the board's B792/B793) then cross-attribute each other's
+        # pointers, and a created issue's body would carry a foreign entry.
+        body = "\n".join(lines[i:j])
         entries.append(
             {"num": m.group(1), "cls": m.group(2), "line": i, "body": body}
         )
@@ -340,13 +347,15 @@ def plan_actions(entries, issues, cls_wanted):
             continue
         ptr = POINTER.search(e["body"])
         in_issues = n in issues
-        state = issues[n][1] if in_issues else None
+        issue = issues.get(n)
+        state = issue[1] if issue else None
+        iid = issue[2] if issue and len(issue) > 2 else None
         if state == "closed" or in_issues or ptr is not None:
             if in_issues:
-                why = f"issue #{n} ({state})"
+                ref = f"issue #{iid}" if iid is not None else f"issue (B{n})"
+                skips[n] = f"{ref} ({state})"
             else:
-                why = f"pointer \u2192 issue #{ptr.group(1) if ptr else '?'}"
-            skips[n] = why
+                skips[n] = f"pointer \u2192 issue #{ptr.group(1) if ptr is not None else '?'}"
             continue
         if header_says_fixed(e):
             anomalies.append(
@@ -400,17 +409,20 @@ def list_issues(http_, token, state):
 
 
 def issue_title_map(http_, token, state="all"):
-    """{B-number: (title, state)} for issues whose title starts `B###:`.
+    """{B-number: (title, state, iid)} for issues whose title starts `B###:`.
 
     state="all" by default (B849): the pre-B849 open_issue_titles() read
     state=opened only, so a CLOSED issue never stopped a re-create. The board
     keeps entries unstruck after their issue closes (docs/issues.md), so the
-    only thing that prevents a duplicate is reading every state."""
+    only thing that prevents a duplicate is reading every state. The iid is
+    the GitLab issue number (the pointer's `#N`), which in general differs
+    from the B-number — the skip report cites it, so it must not be
+    re-derived as the B-number."""
     out = {}
     for i in list_issues(http_, token, state):
         m = re.match(r"^B(\d{3,}):", i["title"])
         if m:
-            out[m.group(1)] = (i["title"], i["state"])
+            out[m.group(1)] = (i["title"], i["state"], i["iid"])
     return out
 
 

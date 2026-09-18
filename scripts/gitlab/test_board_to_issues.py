@@ -43,16 +43,18 @@ class PlanActionsTest(unittest.TestCase):
 
     def test_closed_issue_titled_like_the_entry_still_skips_creation(self):
         # The RED case from the card: `open_issue_titles()` returned only
-        # state=opened, so this map (a CLOSED issue titled B817) left B817
-        # planned for creation.
+        # state=opened, so this map (a CLOSED issue titled B817, iid 10) left
+        # B817 planned for creation. The skip must cite the REAL iid (#10),
+        # not re-derive it as the B-number.
         entries = [entry("817", "The client held two copies of a SoundFont.")]
         issues = {"817": ("B817: The client held two copies of a SoundFont.",
-                          "closed")}
+                          "closed", 10)}
         planned, skips, _ = bti.plan_actions(entries, issues, {"A"})
         self.assertEqual(planned, [],
                          "B817 must not be planned while ANY issue titled "
                          "B817: exists -- closed ones included")
         self.assertIn("817", skips)
+        self.assertEqual(skips["817"], "issue #10 (closed)")
 
     def test_pointer_to_closed_issue_skips_creation(self):
         # The entry carries the pointer the migration wrote; the issue is
@@ -75,10 +77,11 @@ class PlanActionsTest(unittest.TestCase):
         # closes), so the entry is skipped -- never re-created -- with the
         # pointer named as the record.
         entries = [entry("817", "The client held two copies. → issue #10")]
-        issues = {"817": ("B817: The client held two copies.", "closed")}
+        issues = {"817": ("B817: The client held two copies.", "closed", 10)}
         planned, skips, anomalies = bti.plan_actions(entries, issues, {"A"})
         self.assertEqual(planned, [])
         self.assertIn("817", skips)
+        self.assertEqual(skips["817"], "issue #10 (closed)")
         self.assertEqual(anomalies, [])
 
     def test_entry_without_pointer_or_issue_is_planned(self):
@@ -157,6 +160,45 @@ class FixedHeaderTest(unittest.TestCase):
         text = "- ~~**B806** (B) some detail atlas underflow.~~\n"
         entries, _ = bti.parse_live_entries(text)
         self.assertEqual(entries, [])
+
+
+class ParserBodyTest(unittest.TestCase):
+    """B849 (defect found during this unit): an entry's body must stop at its
+    OWN last line, not swallow the next bullet's. The pre-fix parser joined
+    `lines[i : j + 1]` and `j` was the terminating line (the next bullet) --
+    so two live entries separated by no blank line (the board's B792/B793,
+    B793's pointer `→ issue #75`) cross-attributed each other's pointers, and
+    every issue B848 created next to a blank-line-free neighbour carried that
+    neighbour's first line in its description (15 issues, repaired 2026-09-18).
+    """
+
+    def test_contiguous_entries_do_not_swallow_each_other(self):
+        text = (
+            "- **B900** (A) first entry needs an issue.\n"
+            "  its continuation line.\n"
+            "- **B901** (A) second entry, already migrated. → issue #5\n"
+            "  its continuation.\n"
+        )
+        entries, _ = bti.parse_live_entries(text)
+        self.assertEqual([e["num"] for e in entries], ["900", "901"])
+        self.assertIsNone(bti.POINTER.search(entries[0]["body"]),
+                          "B900 must not inherit B901's pointer")
+        self.assertEqual(bti.POINTER.search(entries[1]["body"]).group(1), "5")
+        # the bodies are exactly their own lines -- nothing borrowed
+        self.assertFalse(entries[0]["body"].lstrip().startswith(
+            "- **B901**"))
+        self.assertEqual(entries[0]["body"].rstrip().split("\n")[-1],
+                         "  its continuation line.")
+        self.assertEqual(entries[1]["body"].rstrip().split("\n")[-1],
+                         "  its continuation.")
+
+    def test_last_entry_still_ends_at_eof(self):
+        text = ("- **B900** (A) only entry.\n"
+                "  its continuation line.\n")
+        entries, _ = bti.parse_live_entries(text)
+        self.assertEqual(len(entries), 1)
+        self.assertTrue(entries[0]["body"].rstrip().endswith(
+            "its continuation line."))
 
 
 class LabelMissingStatusPlanTest(unittest.TestCase):

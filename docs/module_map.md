@@ -444,7 +444,10 @@ cap-hunt script, both pure-script checks), T498's `ItemModelsMatchServer`
 `data/item_idfile.tsv`, a ratchet over
 `data/item_models_drift_baseline.txt`) and B849's `BoardToIssuesHygiene`
 (`scripts/gitlab/test_board_to_issues.py`, the board-to-issue migration
-script's regression net, no network) -- the three
+script's regression net — all-states dedup, `→ issue #N` pointer
+honouring, the fixed-header anomaly probe, the parser's body
+termination, and the `--label-missing-status` plan; pure python with an
+injected http stub, so no network, no GitLab token, no artefact) -- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two
 halves of the reachability ratchet, a field written and never read and a
