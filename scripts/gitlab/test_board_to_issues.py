@@ -162,6 +162,44 @@ class FixedHeaderTest(unittest.TestCase):
         self.assertEqual(entries, [])
 
 
+class IssueTitleMapTest(unittest.TestCase):
+    """Defect 1 (B849) pinned at the HTTP boundary. The card's review
+    finding: no test ever injected a fake http_ into issue_title_map(), so
+    the all-states read (state="all") was unpinned -- reverting it to
+    state="opened" kept every plan_actions() fixture test green. This fake
+    GitLab answers the way the real API does: state=opened returns only
+    open issues, so a CLOSED issue titled B817 (iid 10) reaches the map
+    ONLY through state="all"."""
+
+    def test_issue_title_map_reads_closed_issues(self):
+        import json
+        import urllib.parse
+
+        closed_issue = {
+            "title": "B817: The client held two copies of a SoundFont.",
+            "state": "closed",
+            "iid": 10,
+        }
+
+        def fake_http(method, url, token, payload=None):
+            self.assertEqual(method, "GET")
+            state = urllib.parse.parse_qs(
+                urllib.parse.urlparse(url).query).get("state", [""])[0]
+            if state == "opened":
+                return 200, "[]"
+            if state in ("all", "closed"):
+                return 200, json.dumps([closed_issue])
+            raise AssertionError(f"unexpected state={state!r} in {url}")
+
+        m = bti.issue_title_map(fake_http, "token")
+        self.assertIn("817", m,
+                      "a CLOSED issue must enter the title map -- "
+                      "reverting state=\"all\" to \"opened\" goes RED here")
+        self.assertEqual(m["817"],
+                         ("B817: The client held two copies of a SoundFont.",
+                          "closed", 10))
+
+
 class ParserBodyTest(unittest.TestCase):
     """B849 (defect found during this unit): an entry's body must stop at its
     OWN last line, not swallow the next bullet's. The pre-fix parser joined
