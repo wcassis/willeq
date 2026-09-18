@@ -6191,7 +6191,7 @@ client uses every field.
   when each is printed (`/pmem`, the tree report) or dropped. Classified
   `report` in the census table. Found by T414 Leg C.
 
-- **B338** (A) `include/client/graphics/constrained_texture_cache.h` -- → issue #17
+- ~~**B338** (A) `include/client/graphics/constrained_texture_cache.h` --
   **two cache flags a caller sets and the cache ignores.** `bgThreadPool_` is
   handed a real `BackgroundThreadPool*` by a setter and read by nothing, while
   `renderer_zone_draw.cpp` carries a comment about "async background decode
@@ -6199,7 +6199,15 @@ client uses every field.
   times by the ETC1 support probe and consulted nowhere. Same shape as the
   closed B291 (`skipEntityTextureUpload`): a caller supplies an intended value
   that changes nothing. Closes when both are consumed or both are deleted with
-  their setters. Found by T414 Leg C.
+  their setters. Found by T414 Leg C.~~
+  **CLOSED by the `task/kb-b338-texture-cache-dead-flags` card (issue #17,
+  2026-09-18)**: both members deleted with their setter
+  (`setBackgroundThreadPool` and its `renderer_init.cpp` call), the two stale
+  "bgThreadPool_" comments, and both `boarded` EXEMPT rows; WriteOnlyFields
+  went RED with the exemptions removed and the fields present, GREEN after.
+  The ETC1 probe was reduced to a diagnostic log (its member-writes were the
+  only thing deleted) so it stays the sole consumer of
+  `config_.enableCompressedTextures`.
 
 - **B339** (B) `include/client/graphics/weather_effects_controller.h`
   `targetIntensity_` -- commented "For smooth transitions", written on every

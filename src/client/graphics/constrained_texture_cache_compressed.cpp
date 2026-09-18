@@ -7,7 +7,6 @@
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/zone_geometry.h"
-#include "client/graphics/background_thread_pool.h"
 #include "common/logging.h"
 #include "client/core/memory_ledger.h"
 #include <algorithm>
@@ -47,22 +46,22 @@ namespace EQT {
 namespace Graphics {
 
 void ConstrainedTextureCache::probeCompressedTextureSupport() {
+    // B338: the probe result is diagnostic only — it answers "does this GPU
+    // have S3TC" for the log. It is the sole consumer of
+    // config_.enableCompressedTextures, so it stays, but it no longer writes
+    // a state flag nothing consulted (the old
+    // compressedTexturesAvailable_ member).
     if (!config_.enableCompressedTextures) {
-        compressedTexturesAvailable_ = false;
         return;
     }
 
 #ifdef EQT_HAS_DRM
     const char* extensions = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
     if (extensions && strstr(extensions, "GL_EXT_texture_compression_s3tc")) {
-        compressedTexturesAvailable_ = true;
         LOG_INFO(MOD_GRAPHICS, "Compressed textures: S3TC support detected, enabled");
     } else {
-        compressedTexturesAvailable_ = false;
         LOG_WARN(MOD_GRAPHICS, "Compressed textures: S3TC not available, falling back to software decode");
     }
-#else
-    compressedTexturesAvailable_ = false;
 #endif
 }
 
