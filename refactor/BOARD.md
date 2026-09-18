@@ -11814,6 +11814,33 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
 
 ## Added 2026-09-17 by kanban pilot
 
+~~- **B840** (B) **`RaceModelData::decodedTextures` has zero writers.**
+  [measured T500, re-confirmed at this tip] `race_model_loader.h`'s
+  `std::vector<DecodedTexture> decodedTextures` is a dead field: the
+  background-decode/main-thread-upload scheme it was for is done by
+  `ConstrainedTextureCache` instead. It costs 24 B per RaceModelData and no
+  more, so it is hygiene, not a leak -- but `DecodedTexture` itself exists only
+  for it. T500 did not delete it: it is outside the unit's measured claim and
+  a deletion wants its own reachability check (B468's lesson).~~
+  **STRUCK by the B840 unit (`task/kb-b840-decodedtextures-dead-field`,
+  kanban t_a817842a, 2026-09-17):** the field is deleted and the reachability
+  check is now mechanical. `WriteOnlyFields` (scripts/refactor/
+  check_write_only_fields.py) ratcheted only the write-only half of its
+  census, and its bare-identifier sweep counted the DIFFERENT member
+  `EquipmentPrepData::decodedTextures` (written at
+  entity_prep_worker.cpp:462, read at :470) as a use of this one -- the
+  name collision that hid it. The unit added a receiver-typing sweep (a
+  qualified use is attributed to the receiver's own type where the tree
+  types the receiver; an untyped use still counts for every type, so the
+  logic can only remove hiding) and an `EXEMPT_UNUSED` table ratcheted both
+  ways, exactly like `EXEMPT`. With the field present and un-exempted the
+  test is RED on exactly `RaceModelData::decodedTextures`; after the
+  deletion it is GREEN, and the write-only half's 67 classified rows are
+  unchanged. The new sweep surfaced five more fields the old name matching
+  masked the same way (CombatDamage_Struct's force/hit_heading/hit_pitch,
+  TextureInfo::animationDelayMs, WldFragment2CHeader::size9); all are in
+  the table with a reason.
+
 ~~- **B842** (P) **`--log-module` takes ONE `MOD:LEVEL` per flag and silently
   eats a comma-separated list.** [measured T500] `logging.h:878` splits on the
   first `:` and hands the rest to `ParseLevelName()`, so
