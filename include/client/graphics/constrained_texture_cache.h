@@ -18,7 +18,6 @@
 namespace EQT {
 namespace Graphics {
 
-class BackgroundThreadPool;
 class ZoneMeshBuilder;
 class EQE1Loader;
 
@@ -238,9 +237,6 @@ public:
     // Check if any decoded textures are waiting for their upload
     bool hasPendingWork() const;
 
-    // Set background thread pool for async texture decode (non-owning)
-    void setBackgroundThreadPool(BackgroundThreadPool* pool);
-
     // Set mesh builder for entity texture registration (non-owning)
     void setMeshBuilder(ZoneMeshBuilder* meshBuilder);
 
@@ -392,7 +388,11 @@ private:
     // Remove all references to a texture from mesh materials in the scene
     // This must be called before driver_->removeTexture() to prevent dangling pointers
     void clearTextureReferences(irr::video::ITexture* texture);
-    // Probe for GL compressed texture support (called once in constructor)
+
+    // B338: S3TC capability probe, called once from setDriver(). Diagnostic
+    // log only — its old result flag (compressedTexturesAvailable_) was
+    // written four ways and consulted nowhere. It is the sole consumer of
+    // config_.enableCompressedTextures, which is why it stays.
     void probeCompressedTextureSupport();
 
     // Try uploading DDS data as compressed texture directly to GPU
@@ -495,14 +495,8 @@ private:
     size_t evictionCount_ = 0;
     size_t compressedUploadCount_ = 0;
 
-    // Compressed texture support
-    bool compressedTexturesAvailable_ = false;
-
     // Frozen flag - when true, no evictions occur
     bool frozen_ = false;
-
-    // Background thread pool for async texture decode (non-owning)
-    BackgroundThreadPool* bgThreadPool_ = nullptr;
 
     // Mesh builder for entity texture registration (non-owning)
     ZoneMeshBuilder* meshBuilder_ = nullptr;

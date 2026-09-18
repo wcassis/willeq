@@ -285,10 +285,6 @@ EXEMPT = {
         ("report", "B337: TreeIdentifier counters filled and never printed"),
     ("Stats", "zoneTreeMeshCount"):
         ("report", "B337: TreeIdentifier counters filled and never printed"),
-    ("ConstrainedTextureCache", "bgThreadPool_"):
-        ("boarded", "B338: setter supplies a real pool, no async decode reads it"),
-    ("ConstrainedTextureCache", "compressedTexturesAvailable_"):
-        ("boarded", "B338: four writes probe ETC1 support, nothing consults the answer"),
     ("WeatherEffectsController", "targetIntensity_"):
         ("boarded", "B339: the smooth weather transition it was for does not exist"),
     ("ZoneLifecycleComponent", "entitiesLoaded_"):

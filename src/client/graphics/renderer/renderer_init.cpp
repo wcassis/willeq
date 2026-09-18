@@ -488,8 +488,6 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Wire ancillary services into cache (driver/smgr already wired above)
     if (constrainedTextureCache_) {
-        if (backgroundThreadPool_)
-            constrainedTextureCache_->setBackgroundThreadPool(backgroundThreadPool_.get());
         // Pre-create placeholder texture before render loop starts
         constrainedTextureCache_->getPlaceholderTexture();
 

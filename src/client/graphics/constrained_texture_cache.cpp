@@ -7,7 +7,6 @@
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/zone_geometry.h"
-#include "client/graphics/background_thread_pool.h"
 #include "common/logging.h"
 #include "client/core/memory_ledger.h"
 #include <algorithm>
@@ -800,11 +799,6 @@ bool ConstrainedTextureCache::isFrozen() const {
 void ConstrainedTextureCache::setSceneManager(irr::scene::ISceneManager* smgr) {
     std::lock_guard<std::mutex> lock(mutex_);
     smgr_ = smgr;
-}
-
-void ConstrainedTextureCache::setBackgroundThreadPool(BackgroundThreadPool* pool) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    bgThreadPool_ = pool;
 }
 
 void ConstrainedTextureCache::setMeshBuilder(ZoneMeshBuilder* meshBuilder) {

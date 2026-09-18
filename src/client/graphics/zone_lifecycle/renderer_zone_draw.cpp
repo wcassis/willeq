@@ -950,9 +950,11 @@ bool ZoneLifecycleComponent::rebuildRegionMesh(size_t regionIdx) {
              geom->centerX, geom->centerY, geom->centerZ);
 
     ZoneMeshBuilder builder(ctx_.smgr, ctx_.driver, ctx_.device->getFileSystem());
-    // Only use constrained cache at runtime — during sequential loading, the cache's
-    // async background decode submits to bgThreadPool_ which may not be initialized,
-    // causing pthread_mutex_lock(NULL) crashes.
+    // Use the constrained cache at runtime only, not during sequential loading.
+    // (The historical rationale — the cache's async background decode submitting
+    // to a thread pool that may not be initialized yet — is stale: T475 deleted
+    // the async texture-arrival path and B338 deleted the unused pool handle.
+    // The guard itself remains a live runtime condition.)
     if (ctx_.constrainedTextureCache && !owner_.isLoading())
         builder.setConstrainedTextureCache(ctx_.constrainedTextureCache);
 
