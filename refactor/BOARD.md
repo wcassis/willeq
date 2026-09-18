@@ -11965,6 +11965,31 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   bad-pair-does-not-poison-neighbours), shown RED on the pre-fix code.
   `--help` now says the list form.
 
+~~- **B850** (A) **`--log-module` silently maps an unknown MODULE name to
+  MAIN.** [measured 2026-09-18 on fable 6d5e43ed] B842 made
+  `ApplyLogModulePair()` reject an unparseable LEVEL loudly, but the MODULE
+  half still goes through `ParseModuleName()`, whose fallback is
+  `return MOD_MAIN;` -- so `--log-module=NTE:DEBUG` (a typo for NET) sets
+  MAIN to DEBUG and says nothing. The same fallback silently mapped typos on
+  the `--log-only` / `--log-exclude` paths, the config `logging.modules`
+  object and the `/logmodule` command, and the empty/too-long pair message
+  printed a stray `[` and `]` around the token.~~
+  **STRUCK by the B850 unit (`task/kb-b850-log-module-unknown-module`,
+  kanban t_fcfa2fd8, 2026-09-18):** user-typed module names now go through a
+  `TryParseModuleName()` that returns bool, and every site that reads one is
+  loud: `ApplyLogModulePair()` rejects the pair naming the token on stderr
+  (module untouched), `ApplyLogOnly()` / `ApplyLogExclude()` skip the token
+  and name it, `InitLoggingFromJson()` skips an unknown `logging.modules`
+  key and names it, and `/logmodule` returns a `Failure` (module AND level
+  half, which shared the same silent `LOG_NONE` fallback).
+  `ParseModuleName()` had zero callers left once that check was in (the
+  ZeroCallers census refused the merge), so the MOD_MAIN fallback is deleted
+  with it -- no "any module will do" caller exists. Pinned by six
+  `tests/test_logging.cpp` cases (`NTE:DEBUG` rejection,
+  `NET:TRACE,NTE:DEBUG,UI:DEBUG` neighbours, whitelist/blacklist typos, the
+  stray-bracket message, the try-parse itself), shown RED on the pre-fix
+  code. → issue #92
+
 - **B845** (P) **The three `AudioStartupPeak` cases share one on-disk
   `snd_index_cache.json` and flake against each other under `ctest -j`.**
   [measured T500] `TheSteadyStateIsTheSoundFontsAndLittleElse` failed its own

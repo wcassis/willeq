@@ -193,29 +193,51 @@ TEST_F(LoggingTest, ParseLevelName_Works) {
     EXPECT_EQ(ParseLevelName(""), LOG_NONE);
 }
 
-TEST_F(LoggingTest, ParseModuleName_Works) {
-    EXPECT_EQ(ParseModuleName("NET"), MOD_NET);
-    EXPECT_EQ(ParseModuleName("NET_PACKET"), MOD_NET_PACKET);
-    EXPECT_EQ(ParseModuleName("LOGIN"), MOD_LOGIN);
-    EXPECT_EQ(ParseModuleName("WORLD"), MOD_WORLD);
-    EXPECT_EQ(ParseModuleName("ZONE"), MOD_ZONE);
-    EXPECT_EQ(ParseModuleName("ENTITY"), MOD_ENTITY);
-    EXPECT_EQ(ParseModuleName("MOVEMENT"), MOD_MOVEMENT);
-    EXPECT_EQ(ParseModuleName("COMBAT"), MOD_COMBAT);
-    EXPECT_EQ(ParseModuleName("INVENTORY"), MOD_INVENTORY);
-    EXPECT_EQ(ParseModuleName("GRAPHICS"), MOD_GRAPHICS);
-    EXPECT_EQ(ParseModuleName("GRAPHICS_LOAD"), MOD_GRAPHICS_LOAD);
-    EXPECT_EQ(ParseModuleName("CAMERA"), MOD_CAMERA);
-    EXPECT_EQ(ParseModuleName("INPUT"), MOD_INPUT);
-    EXPECT_EQ(ParseModuleName("AUDIO"), MOD_AUDIO);
-    EXPECT_EQ(ParseModuleName("PATHFIND"), MOD_PATHFIND);
-    EXPECT_EQ(ParseModuleName("MAP"), MOD_MAP);
-    EXPECT_EQ(ParseModuleName("UI"), MOD_UI);
-    EXPECT_EQ(ParseModuleName("CONFIG"), MOD_CONFIG);
-    EXPECT_EQ(ParseModuleName("MAIN"), MOD_MAIN);
+TEST_F(LoggingTest, TryParseModuleName_Works) {
+    LogModule mod;
+    EXPECT_TRUE(TryParseModuleName("NET", mod));
+    EXPECT_EQ(mod, MOD_NET);
+    EXPECT_TRUE(TryParseModuleName("NET_PACKET", mod));
+    EXPECT_EQ(mod, MOD_NET_PACKET);
+    EXPECT_TRUE(TryParseModuleName("LOGIN", mod));
+    EXPECT_EQ(mod, MOD_LOGIN);
+    EXPECT_TRUE(TryParseModuleName("WORLD", mod));
+    EXPECT_EQ(mod, MOD_WORLD);
+    EXPECT_TRUE(TryParseModuleName("ZONE", mod));
+    EXPECT_EQ(mod, MOD_ZONE);
+    EXPECT_TRUE(TryParseModuleName("ENTITY", mod));
+    EXPECT_EQ(mod, MOD_ENTITY);
+    EXPECT_TRUE(TryParseModuleName("MOVEMENT", mod));
+    EXPECT_EQ(mod, MOD_MOVEMENT);
+    EXPECT_TRUE(TryParseModuleName("COMBAT", mod));
+    EXPECT_EQ(mod, MOD_COMBAT);
+    EXPECT_TRUE(TryParseModuleName("INVENTORY", mod));
+    EXPECT_EQ(mod, MOD_INVENTORY);
+    EXPECT_TRUE(TryParseModuleName("GRAPHICS", mod));
+    EXPECT_EQ(mod, MOD_GRAPHICS);
+    EXPECT_TRUE(TryParseModuleName("GRAPHICS_LOAD", mod));
+    EXPECT_EQ(mod, MOD_GRAPHICS_LOAD);
+    EXPECT_TRUE(TryParseModuleName("CAMERA", mod));
+    EXPECT_EQ(mod, MOD_CAMERA);
+    EXPECT_TRUE(TryParseModuleName("INPUT", mod));
+    EXPECT_EQ(mod, MOD_INPUT);
+    EXPECT_TRUE(TryParseModuleName("AUDIO", mod));
+    EXPECT_EQ(mod, MOD_AUDIO);
+    EXPECT_TRUE(TryParseModuleName("PATHFIND", mod));
+    EXPECT_EQ(mod, MOD_PATHFIND);
+    EXPECT_TRUE(TryParseModuleName("MAP", mod));
+    EXPECT_EQ(mod, MOD_MAP);
+    EXPECT_TRUE(TryParseModuleName("UI", mod));
+    EXPECT_EQ(mod, MOD_UI);
+    EXPECT_TRUE(TryParseModuleName("CONFIG", mod));
+    EXPECT_EQ(mod, MOD_CONFIG);
+    EXPECT_TRUE(TryParseModuleName("MAIN", mod));
+    EXPECT_EQ(mod, MOD_MAIN);
 
-    // Unknown should return MOD_MAIN as fallback
-    EXPECT_EQ(ParseModuleName("UNKNOWN"), MOD_MAIN);
+    // Unknown: false, and the out parameter must not be silently filled with
+    // MAIN (B850 -- that was the silent mapping).
+    EXPECT_FALSE(TryParseModuleName("UNKNOWN", mod));
+    EXPECT_FALSE(TryParseModuleName("", mod));
 }
 
 TEST_F(LoggingTest, GetModuleName_Works) {
@@ -358,6 +380,188 @@ TEST_F(LoggingTest, InitLogging_BadPairDoesNotPoisonGoodPairs) {
     // The good pairs around the bad one still apply
     EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_NET), LOG_TRACE);
     EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_UI), LOG_DEBUG);
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
+}
+
+// =============================================================================
+// B850: a typo'd MODULE name must not be silently mapped to MAIN
+// =============================================================================
+// The pre-fix ApplyLogModulePair() handed the module half to ParseModuleName(),
+// whose fallback is MOD_MAIN -- so --log-module=NTE:DEBUG (a typo of NET) set
+// MAIN to DEBUG and said nothing. Same defect class B842 closed for levels:
+// the rejection must be LOUD (name the bad token on stderr) and the module
+// state must be untouched.
+
+TEST_F(LoggingTest, InitLogging_RejectsUnknownModuleName) {
+    // Same stderr-capture pattern as InitLogging_RejectsUnparseableLevelName.
+    char tmpl[] = "/tmp/willeq_b850_stderr_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    const char* argv[] = {"program", "--log-module=NTE:DEBUG"};
+    int argc = 2;
+    InitLogging(argc, const_cast<char**>(argv));
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("NTE"), std::string::npos)
+        << "rejection must name the bad module; captured stderr: [" << content << "]";
+    // MAIN must NOT have been silently mapped to DEBUG: it stays at -1.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
+    // And no module at all may have been set by the typo.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_NET), -1);
+}
+
+TEST_F(LoggingTest, InitLogging_UnknownModuleDoesNotPoisonGoodPairs) {
+    char tmpl[] = "/tmp/willeq_b850_stderr2_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    const char* argv[] = {"program", "--log-module=NET:TRACE,NTE:DEBUG,UI:DEBUG"};
+    int argc = 2;
+    InitLogging(argc, const_cast<char**>(argv));
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("NTE"), std::string::npos)
+        << "rejection must name the bad module; captured stderr: [" << content << "]";
+    // The good pairs around the bad one still apply
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_NET), LOG_TRACE);
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_UI), LOG_DEBUG);
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
+}
+
+// The same silent-mapping existed on the whitelist/blacklist paths:
+// ApplyLogOnly/ApplyLogExclude handed every token to ParseModuleName's
+// MOD_MAIN fallback. In a whitelist that keeps MAIN at the global level
+// (defeating the filter); in a blacklist it silences MAIN.
+
+TEST_F(LoggingTest, ApplyLogOnly_UnknownNameIgnoredNotMappedToMain) {
+    char tmpl[] = "/tmp/willeq_b850_only_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    ApplyLogOnly("NET,NTE");
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("NTE"), std::string::npos)
+        << "rejection must name the bad module; captured stderr: [" << content << "]";
+    // NET is the only whitelisted module: it follows the global level.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_NET), -1);
+    // MAIN was NOT whitelisted by the typo: it stays suppressed.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), LOG_NONE);
+}
+
+TEST_F(LoggingTest, ApplyLogExclude_UnknownNameIgnoredNotSilencingMain) {
+    char tmpl[] = "/tmp/willeq_b850_exclude_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    ApplyLogExclude("NET,NTE");
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("NTE"), std::string::npos)
+        << "rejection must name the bad module; captured stderr: [" << content << "]";
+    // The typo must not have silenced MAIN.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
+    // The real token still applied.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_NET), LOG_NONE);
+}
+
+// B850 criterion 3: the empty/too-long pair message used to print a stray
+// '[' before and ']' after the token. Pin the fixed shape.
+
+TEST_F(LoggingTest, InitLogging_TooLongPairMessageHasNoStrayBrackets) {
+    char tmpl[] = "/tmp/willeq_b850_long_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    // 96+ chars in one "pair": overflows ApplyLogModulePair's 96-byte spec.
+    const std::string longPair = std::string(120, 'X') + ":DEBUG";
+    ASSERT_GE(longPair.size(), 96u);
+    const std::string flag = "--log-module=" + longPair;
+    const char* argv[] = {"program", flag.c_str()};
+    int argc = 2;
+    InitLogging(argc, const_cast<char**>(argv));
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("too long"), std::string::npos)
+        << "the rejection must still fire; captured stderr: [" << content << "]";
+    size_t start = content.find("too long");
+    std::string after = (start == std::string::npos) ? content : content.substr(start);
+    // The pre-fix text was ...": \"[" + token + "]\"" -- the stray '[' right
+    // after the opening quote and the ']' right before the closing one.
+    EXPECT_EQ(after.find("\"\["), std::string::npos)
+        << "stray '[' after the opening quote: [" << after.substr(0, 120) << "]";
+    // Nothing may have been applied by the oversized pair.
     EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
 }
 
