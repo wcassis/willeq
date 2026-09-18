@@ -84,11 +84,15 @@ inline const char* GetModuleName(LogModule mod) {
 }
 
 // B850: try-parse a module name, reporting whether it is a known module.
-// ParseModuleName() below keeps its MOD_MAIN fallback for call sites that
-// need a module no matter what; every site that takes a name from a USER
-// (argv, config file, in-game command) must go through this one, or a typo
-// ("NTE" for NET) is silently mapped to MAIN -- the same silent-mapping
-// defect class B842 closed for level names.
+// Every site that takes a name from a USER (argv, config file, in-game
+// command) must go through this one, or a typo ("NTE" for NET) is
+// silently mapped to MAIN -- the same silent-mapping defect class B842
+// closed for level names. The pre-B850 ParseModuleName() wrapper carried
+// the MOD_MAIN fallback and existed only so those sites could ignore the
+// result; once every one of them checks the bool the wrapper had zero
+// callers and the ZeroCallers census (CI hygiene stage) refused a merge
+// that would have carried a dead fallback around forever. There is no
+// "any module will do" caller left, so the fallback is gone with it.
 inline bool TryParseModuleName(const char* name, LogModule& out) {
     static const struct { const char* name; LogModule mod; } mapping[] = {
         {"NET", MOD_NET}, {"NET_PACKET", MOD_NET_PACKET},
@@ -106,13 +110,6 @@ inline bool TryParseModuleName(const char* name, LogModule& out) {
         if (strcmp(name, m.name) == 0) { out = m.mod; return true; }
     }
     return false;
-}
-
-// Parse module name from string (for command-line/config)
-inline LogModule ParseModuleName(const char* name) {
-    LogModule mod;
-    if (TryParseModuleName(name, mod)) return mod;
-    return MOD_MAIN; // Default fallback (NOT for user-typed names -- see TryParseModuleName)
 }
 
 // Forward declaration: the rejection messages in ApplyLogOnly/ApplyLogExclude

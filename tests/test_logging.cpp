@@ -193,29 +193,51 @@ TEST_F(LoggingTest, ParseLevelName_Works) {
     EXPECT_EQ(ParseLevelName(""), LOG_NONE);
 }
 
-TEST_F(LoggingTest, ParseModuleName_Works) {
-    EXPECT_EQ(ParseModuleName("NET"), MOD_NET);
-    EXPECT_EQ(ParseModuleName("NET_PACKET"), MOD_NET_PACKET);
-    EXPECT_EQ(ParseModuleName("LOGIN"), MOD_LOGIN);
-    EXPECT_EQ(ParseModuleName("WORLD"), MOD_WORLD);
-    EXPECT_EQ(ParseModuleName("ZONE"), MOD_ZONE);
-    EXPECT_EQ(ParseModuleName("ENTITY"), MOD_ENTITY);
-    EXPECT_EQ(ParseModuleName("MOVEMENT"), MOD_MOVEMENT);
-    EXPECT_EQ(ParseModuleName("COMBAT"), MOD_COMBAT);
-    EXPECT_EQ(ParseModuleName("INVENTORY"), MOD_INVENTORY);
-    EXPECT_EQ(ParseModuleName("GRAPHICS"), MOD_GRAPHICS);
-    EXPECT_EQ(ParseModuleName("GRAPHICS_LOAD"), MOD_GRAPHICS_LOAD);
-    EXPECT_EQ(ParseModuleName("CAMERA"), MOD_CAMERA);
-    EXPECT_EQ(ParseModuleName("INPUT"), MOD_INPUT);
-    EXPECT_EQ(ParseModuleName("AUDIO"), MOD_AUDIO);
-    EXPECT_EQ(ParseModuleName("PATHFIND"), MOD_PATHFIND);
-    EXPECT_EQ(ParseModuleName("MAP"), MOD_MAP);
-    EXPECT_EQ(ParseModuleName("UI"), MOD_UI);
-    EXPECT_EQ(ParseModuleName("CONFIG"), MOD_CONFIG);
-    EXPECT_EQ(ParseModuleName("MAIN"), MOD_MAIN);
+TEST_F(LoggingTest, TryParseModuleName_Works) {
+    LogModule mod;
+    EXPECT_TRUE(TryParseModuleName("NET", mod));
+    EXPECT_EQ(mod, MOD_NET);
+    EXPECT_TRUE(TryParseModuleName("NET_PACKET", mod));
+    EXPECT_EQ(mod, MOD_NET_PACKET);
+    EXPECT_TRUE(TryParseModuleName("LOGIN", mod));
+    EXPECT_EQ(mod, MOD_LOGIN);
+    EXPECT_TRUE(TryParseModuleName("WORLD", mod));
+    EXPECT_EQ(mod, MOD_WORLD);
+    EXPECT_TRUE(TryParseModuleName("ZONE", mod));
+    EXPECT_EQ(mod, MOD_ZONE);
+    EXPECT_TRUE(TryParseModuleName("ENTITY", mod));
+    EXPECT_EQ(mod, MOD_ENTITY);
+    EXPECT_TRUE(TryParseModuleName("MOVEMENT", mod));
+    EXPECT_EQ(mod, MOD_MOVEMENT);
+    EXPECT_TRUE(TryParseModuleName("COMBAT", mod));
+    EXPECT_EQ(mod, MOD_COMBAT);
+    EXPECT_TRUE(TryParseModuleName("INVENTORY", mod));
+    EXPECT_EQ(mod, MOD_INVENTORY);
+    EXPECT_TRUE(TryParseModuleName("GRAPHICS", mod));
+    EXPECT_EQ(mod, MOD_GRAPHICS);
+    EXPECT_TRUE(TryParseModuleName("GRAPHICS_LOAD", mod));
+    EXPECT_EQ(mod, MOD_GRAPHICS_LOAD);
+    EXPECT_TRUE(TryParseModuleName("CAMERA", mod));
+    EXPECT_EQ(mod, MOD_CAMERA);
+    EXPECT_TRUE(TryParseModuleName("INPUT", mod));
+    EXPECT_EQ(mod, MOD_INPUT);
+    EXPECT_TRUE(TryParseModuleName("AUDIO", mod));
+    EXPECT_EQ(mod, MOD_AUDIO);
+    EXPECT_TRUE(TryParseModuleName("PATHFIND", mod));
+    EXPECT_EQ(mod, MOD_PATHFIND);
+    EXPECT_TRUE(TryParseModuleName("MAP", mod));
+    EXPECT_EQ(mod, MOD_MAP);
+    EXPECT_TRUE(TryParseModuleName("UI", mod));
+    EXPECT_EQ(mod, MOD_UI);
+    EXPECT_TRUE(TryParseModuleName("CONFIG", mod));
+    EXPECT_EQ(mod, MOD_CONFIG);
+    EXPECT_TRUE(TryParseModuleName("MAIN", mod));
+    EXPECT_EQ(mod, MOD_MAIN);
 
-    // Unknown should return MOD_MAIN as fallback
-    EXPECT_EQ(ParseModuleName("UNKNOWN"), MOD_MAIN);
+    // Unknown: false, and the out parameter must not be silently filled with
+    // MAIN (B850 -- that was the silent mapping).
+    EXPECT_FALSE(TryParseModuleName("UNKNOWN", mod));
+    EXPECT_FALSE(TryParseModuleName("", mod));
 }
 
 TEST_F(LoggingTest, GetModuleName_Works) {

@@ -463,9 +463,9 @@ ActionResult CommandProcessor::cmdLogModule(const std::string& args) {
     std::transform(levelStr.begin(), levelStr.end(), levelStr.begin(),
                    [](unsigned char c) { return std::toupper(c); });
 
-    // B850: user-typed names go through the try-parse; ParseModuleName's
-    // MOD_MAIN fallback would turn "/logmodule NTE:DEBUG" into a silent
-    // MAIN=DEBUG.
+    // B850: user-typed names go through the try-parse; the pre-fix
+    // ParseModuleName's MOD_MAIN fallback would turn "/logmodule NTE:DEBUG"
+    // into a silent MAIN=DEBUG.
     LogModule mod;
     if (!TryParseModuleName(modStr.c_str(), mod)) {
         return ActionResult::Failure("Unknown module '" + modStr +

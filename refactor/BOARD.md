@@ -11974,11 +11974,13 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   and name it, `InitLoggingFromJson()` skips an unknown `logging.modules`
   key and names it, and `/logmodule` returns a `Failure` (module AND level
   half, which shared the same silent `LOG_NONE` fallback).
-  `ParseModuleName()` keeps its MOD_MAIN fallback only for internal
-  non-user callers. Pinned by five `tests/test_logging.cpp` cases
-  (`NTE:DEBUG` rejection, `NET:TRACE,NTE:DEBUG,UI:DEBUG` neighbours,
-  whitelist/blacklist typos, the stray-bracket message), shown RED on the
-  pre-fix code. → issue #92
+  `ParseModuleName()` had zero callers left once that check was in (the
+  ZeroCallers census refused the merge), so the MOD_MAIN fallback is deleted
+  with it -- no "any module will do" caller exists. Pinned by six
+  `tests/test_logging.cpp` cases (`NTE:DEBUG` rejection,
+  `NET:TRACE,NTE:DEBUG,UI:DEBUG` neighbours, whitelist/blacklist typos, the
+  stray-bracket message, the try-parse itself), shown RED on the pre-fix
+  code. → issue #92
 
 - **B845** (P) **The three `AudioStartupPeak` cases share one on-disk
   `snd_index_cache.json` and flake against each other under `ctest -j`.**
