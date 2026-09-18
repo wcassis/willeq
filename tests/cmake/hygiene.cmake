@@ -239,6 +239,5 @@ SET_TESTS_PROPERTIES(MemoryCapHuntScript PROPERTIES LABELS "hygiene" SKIP_RETURN
 # the real http() would have returned -- so it needs no network, no GitLab
 # token and no artefact. Pure python, same "hygiene" label as its neighbours.
 ADD_TEST(NAME BoardToIssuesHygiene
-    COMMAND python3 -m unittest
-            ${CMAKE_SOURCE_DIR}/scripts/gitlab/test_board_to_issues.py -v)
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/gitlab/test_board_to_issues.py -v)
 SET_TESTS_PROPERTIES(BoardToIssuesHygiene PROPERTIES LABELS "hygiene")
