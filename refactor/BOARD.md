@@ -520,7 +520,7 @@ it without taking that measurement first.
 
 ## C — needs Will's decision
 
-- **B017** (C) `src/client/guild/guild_component.cpp`
+- **B017** (C) `src/client/guild/guild_component.cpp` → issue #5
   `eqt::guild::GuildComponent::SendGuildInviteAccept` —
   prints "You have declined the guild invite." on a path the server processes as
   an accept. T318 confirmed the decline is **unfixable client-side** (the server
@@ -644,7 +644,7 @@ it without taking that measurement first.
   every corpse of either kind
   (`/mnt/projects/akk-stack/code/zone/corpse.cpp:1809`), so the two are
   indistinguishable on the wire.
-- **B040** (C) server-sent placeables and doors are measured by no gate — the
+- **B040** (C) server-sent placeables and doors are measured by no gate — the → issue #6
   benchmark's `placeableObjectsBytes` (`tools/hwcaps/zone_bench_memory.h`) is
   summed over the zone's own S3D archive and never connects to a server, so
   eqemu's `object` and `doors` tables are counted by nothing. Closing it needs a
@@ -711,7 +711,7 @@ it without taking that measurement first.
   charges every byte of it. The *second* half of B812 (hook cost on ARM) is
   **NOT closed**: see B818.
 
-- **B813** (A, half struck; resolves T490's B803 origin entry) `s3dZoneSourceMemoryBytes` did not describe the
+- **B813** (A, half struck; resolves T490's B803 origin entry) `s3dZoneSourceMemoryBytes` did not describe the → issue #7
   worst zone. ~~24 MiB~~ **→ 32 MiB in T491 (2026-09-17)**: the T293 figure was
   extrapolated from the three golden zones, and T490 then MEASURED iceclad's
   S3D zone source at **24.55 MiB**, over the old budget on its own. Re-derived
@@ -726,7 +726,7 @@ it without taking that measurement first.
   adding a Velious zone to the gate's zone set, which means blessing new
   goldens: **Will's call, not an executor's.**
 
-- **B814** (A) One category is bigger than the whole target. T491 measured
+- **B814** (A) One category is bigger than the whole target. T491 measured → issue #8
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage
   run (gfaydark, 5 races, objects + EQE1) — on its own larger than Will's
   32–64 MB RSS goal (`docs/decisions.md` 2026-09-17). Its budget is set at
@@ -741,7 +741,7 @@ it without taking that measurement first.
   the Pi**, a third of its x86 figure, and three of the five names above are
   llvmpipe (B812). See B816.
 
-- **B816** (A, *measured*) **The Orange Pi's own shrink queue.** T496 Leg A,
+- **B816** (A, *measured*) **The Orange Pi's own shrink queue.** T496 Leg A, → issue #9
   four runs at 1280x720 (`--drm --constrained orangepi`), every row naming the
   zone the client's own log says it entered (B802 read-back guard):
   `review/T496/pi/table_categories.tsv`. Largest-first at **`ready`**
@@ -766,7 +766,7 @@ it without taking that measurement first.
   confirmed on the ledger, and the baseline is now ATTRIBUTED: it is
   `audio` + `startup` + the allocator slack those two created.
 
-- **B817** (A, *measured*, **fixed in T496**) **The client held two complete
+- **B817** (A, *measured*, **fixed in T496**) **The client held two complete → issue #10
   copies of `synthus2.sf2`, and one of them was unreachable.**
   `AudioManager::initialize()` called `musicPlayer_->initialize()` BEFORE
   `musicPlayer_->setMidiPlayer()`, so `MusicPlayer` built its own fallback
@@ -813,7 +813,7 @@ it without taking that measurement first.
 
 - ~~**B818.5** the ledger test is red on the tip~~ **RESOLVED as B819.**
 
-- **B819** (A, *measured*, **fixed in T496 Leg D**) **A ctest case was a
+- **B819** (A, *measured*, **fixed in T496 Leg D**) **A ctest case was a → issue #11
   function of the optimisation level, not of the code under test.**
   `MemoryLedger.MallocFamilyAllRouteThroughTheLedger` passed in `main`'s
   RelWithDebInfo tree and failed in a worktree configured by **CLAUDE.md's own
@@ -835,7 +835,7 @@ it without taking that measurement first.
   tree differs from the way the trees that gate merges are built. Worth one
   line in that recipe.
 
-- **B830** (A, *measured*, **fixed in T496 Leg D**) **The client read 125 MB of
+- **B830** (A, *measured*, **fixed in T496 Leg D**) **The client read 125 MB of → issue #12
   sound archives it was configured never to keep, then freed them again —
   and that transient was the Pi's #2 bucket.**
   `AudioManager::scanPfsArchives()` indexes seventeen `snd*.pfs`
@@ -875,7 +875,7 @@ it without taking that measurement first.
   cases pass against the unfixed code (measured: peak 26,279,360 warm). No
   sound changes; placement and lifetime only.
 
-- **B831** (C) **There is one ledger budget table and it is asserted on two
+- **B831** (C) **There is one ledger budget table and it is asserted on two → issue #13
   different machines.** `tools/hwcaps/zone_bench_loader.cpp` hard-codes
   `ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi)`,
   and `scripts/ci/visual_gate.sh` runs that benchmark on **x86/llvmpipe**. So
@@ -1442,7 +1442,7 @@ it without taking that measurement first.
 
 ## Added 2026-09-03 by the K11 Review (bridge extraction)
 
-- **B036** (A, feature — **WILL RULED 2026-09-03**) UI sounds are wanted:
+- **B036** (A, feature — **WILL RULED 2026-09-03**) UI sounds are wanted: → issue #14
   opening and closing bags, picking up coins (pp/gp/sp/cp), and possibly
   tradeskill (combine) sounds — "there may be other UI sounds". Today no UI
   event plays a sound (combat, cast, death, door and water sounds are wired
@@ -2834,7 +2834,7 @@ line of a future live session. The LIVE proof of the corpse row itself (hear
 
 ## Added 2026-09-05 by T367 (the night oracle)
 
-- **B110** (C) `src/client/graphics/eq/wld_fragments_mesh.cpp`
+- **B110** (C) `src/client/graphics/eq/wld_fragments_mesh.cpp` → issue #15
   `WldLoader::parseFragment36` / `src/client/graphics/eq/zone_geometry.cpp` /
   `src/client/graphics/zone_shader_sources_gles2.h` — **fable throws away the
   zone's baked per-vertex lighting, which is what the official client uses to
@@ -4333,7 +4333,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   which is why the memory baselines moved by exactly one empty vector header
   per geometry). Prov: T408 Review §5.
 
-- **B281** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` /
+- **B281** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` / → issue #16
   `SkyRenderer::updateTimeOfDay` -- **fable's night frame gets steadily
   brighter as the world clock runs, with no buff, no weather and no camera
   movement; the official client's does not.** MEASURED T405. A probe session
@@ -6176,7 +6176,7 @@ client uses every field.
   when each is printed (`/pmem`, the tree report) or dropped. Classified
   `report` in the census table. Found by T414 Leg C.
 
-- **B338** (A) `include/client/graphics/constrained_texture_cache.h` --
+- **B338** (A) `include/client/graphics/constrained_texture_cache.h` -- → issue #17
   **two cache flags a caller sets and the cache ignores.** `bgThreadPool_` is
   handed a real `BackgroundThreadPool*` by a setter and read by nothing, while
   `renderer_zone_draw.cpp` carries a comment about "async background decode
@@ -6352,7 +6352,7 @@ client uses every field.
 
 ## Added 2026-09-06 by T416
 
-- **B350** (C) `tools/ui_atlas_builder.cpp` `generate()`, and every panel that
+- **B350** (C) `tools/ui_atlas_builder.cpp` `generate()`, and every panel that → issue #18
   draws `panel_background` / `slot_background` -- **since T411 the whole static
   UI is translucent, and the oracle's windows are opaque.** The atlas author
   gave `panel_background` alpha **180/255** and `slot_background` **200/255**,
@@ -6519,7 +6519,7 @@ client uses every field.
   T357's rule is that Tab with no vocabulary leaves the text alone.
   Pinned by `tests/test_search_entry.cpp` (9 cases).
 
-- **B366** (C) `include/client/graphics/ui/ui_layout.h`,
+- **B366** (C) `include/client/graphics/ui/ui_layout.h`, → issue #19
   `include/client/graphics/ui/pet_layout.h` -- **fable's left HUD column cannot
   hold the oracle's pet window, and which way to fix that is a look decision.**
   Measured at 640x480, the smallest supported resolution: `playerStatus` ends at
@@ -6593,7 +6593,7 @@ client uses every field.
   Will blesses in chat. Prov: T420 Review.~~ **APPLIED at the T420 merge under the B240 bless: 124,064,062 / 122,730,154 / 117,214,650.**
 ## Added 2026-09-06 by T418 (the active-weather oracle)
 
-- **B360** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+- **B360** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` → issue #20
   `IrrlichtRenderer::updateTimeOfDay` weather fog block /
   `WeatherEffectsController::getWeatherFogColor` -- **what the official client
   actually does for weather is swap the sky and the fog to an overcast state,
@@ -6883,7 +6883,7 @@ client uses every field.
   differ) and `SpellBurstOracleMatch.TheConfiguredPoolHoldsTwoOverlappingLandings`.
   Prov: T422 Review.
 
-- **B396** (C) `config/spell_effects.json` `styles.impact` /
+- **B396** (C) `config/spell_effects.json` `styles.impact` / → issue #21
   `styles.spellComplete` -- **the official client's burst RAMPS and is then cut
   off, and fable's emitter cannot express that shape.** MEASURED T422 at
   4.4-5.8 renders/s: spell 93's population rises monotonically with no deaths
@@ -7063,7 +7063,7 @@ client uses every field.
   WITH a writer and WITH `markSceneAmbientDirty()` -- which is B362's whole
   point: a term nothing can move is not an input.
 
-- **B385** (C) `src/client/graphics/ui/loot_panel.cpp` `drawButton`,
+- **B385** (C) `src/client/graphics/ui/loot_panel.cpp` `drawButton`, → issue #22
   `src/client/graphics/ui/static_panels.cpp` `renderChatPanel`,
   `tools/ui_atlas_builder.cpp` -- **the UI's buttons and its scrollbar thumb
   are hand-drawn `drawRect`s, and the oracle draws them from art.** T416 read
@@ -7188,7 +7188,7 @@ client uses every field.
 
 ### Added by T427 (2026-09-07)
 
-- **B410** (C) `data/textures/detail_atlas.bmp` / `tools/generate_textures.cpp`
+- **B410** (C) `data/textures/detail_atlas.bmp` / `tools/generate_textures.cpp` → issue #23
   (`m.push_back({"detail_atlas.bmp", BmpFormat::Bmp24, ...})`) --
   **the detail atlas ships 24-bit and both of its consumers alpha-BLEND it.**
   `DetailTextureAtlas::createAtlasImage()` fills the whole 512x512 with
@@ -7289,7 +7289,7 @@ client uses every field.
 
 ## Added 2026-09-07 by T437 (ground sentinels; found while closing B435/B436)
 
-- **B437** (A, live proof owed) **B435's live repro is still owed, and it
+- **B437** (A, live proof owed) **B435's live repro is still owed, and it → issue #24
   cannot be taken headless.** T437 fixed the ceiling sentinel and pinned it
   device-free, but the path that produced it --
   `PlayerCameraComponent::findGroundZBspFiltered()` --  reads
@@ -7335,7 +7335,7 @@ client uses every field.
 
 ## Added 2026-09-07 by the orchestrator (Will's direction: doors, lifts, traps)
 
-- **B420** (A, feature — **WILL 2026-09-07**) lifts, elevators, click-driven
+- **B420** (A, feature — **WILL 2026-09-07**) lifts, elevators, click-driven → issue #25
   switches and triggered traps are unimplemented. The server sends them as
   `doors` (opentype / name-coded; some may be placeables); fable's
   `DoorStateManager` + `src/client/graphics/door_manager.cpp` (1,394 lines)
@@ -7846,7 +7846,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   is established that Titanium never puts one there and the two elements are
   recorded as deliberately unused. Found by T436.
 
-- **B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`),
+- **B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`), → issue #26
   `include/client/graphics/ui/bank_layout.h` -- **the bank window's Change
   button is drawn greyed and is not hit-testable.** The oracle's Change opens a
   coin-denomination dialog that fable does not have, and the underlying
@@ -7918,7 +7918,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 ## Added 2026-09-07 by T428 (the night base, B280; the fourth vision level, B060)
 
-- **B445** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp`
+- **B445** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` → issue #27
   `IrrlichtRenderer::updateTimeOfDay` -- **the scene ambient is uploaded to the
   zone shader TWICE, and the second copy is the first one normalised to its own
   largest channel**, so the ambient's chromaticity is applied squared. The two
@@ -7941,7 +7941,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   measured job of its own or deleted, and the affected constants are re-solved
   live in the same session. Prov: T428 Review §1d, §2; B280; B203.
 
-- **B446** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` +
+- **B446** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` + → issue #28
   `src/client/graphics/sim_animation.cpp` -- **fable's zone LAMP is worth far
   more, relative to its ambient, than the official client's is, and the night
   ambient cannot absorb it.** T428 solved the night base at the lamp-free spot
@@ -7978,7 +7978,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `VisionAmbientTest.DaylightIsUntouchedByInfravisionAndBarelyMovedByUltravision`.
   Prov: T428 Review §3b.
 
-- **B448** (A) `src/client/graphics/player/renderer_camera.cpp`
+- **B448** (A) `src/client/graphics/player/renderer_camera.cpp` → issue #29
   `PlayerCameraComponent::setPlayerRace` -- **a server-side race change on the
   player's OWN character never reaches the vision system.** `setPlayerRace()` is
   called from `IrrlichtRenderer::registerEntity()` (T348, B056), i.e. when an
@@ -8116,7 +8116,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 ### Added by T441 (2026-09-07)
   `createZoneMesh()`. Found by T440 while confirming the non-BSP zone path.
-- **B455** (C) `data/textures/spell_sprite_atlas.bmp` / `spela2.tga` --
+- **B455** (C) `data/textures/spell_sprite_atlas.bmp` / `spela2.tga` -- → issue #30
   **Whirling Wind (253) draws blue where the oracle measured near-neutral,
   and no colour rule fable can apply will fix it, because the art it is
   required to draw has no red in it.** T441 closed B398 by taking the colour
@@ -8221,7 +8221,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 ## Added 2026-09-07 by T443
 
-- **B459** (C) `src/client/graphics/entity_mesh_build.cpp` (both name-tag
+- **B459** (C) `src/client/graphics/entity_mesh_build.cpp` (both name-tag → issue #31
   creation sites), `include/client/state/entity_manager.h` `guildId` --
   **fable now HAS a guild-id -> name lookup (the struck B418) and still draws
   no guild anywhere, because the one surface the oracle uses has never been
@@ -8267,7 +8267,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 ## Added 2026-09-07 by T438 (the oracle door measurements)
 
-- **B461** (A, live proof owed) **the lift ride is implemented and unit-proven
+- **B461** (A, live proof owed) **the lift ride is implemented and unit-proven → issue #32
   but has never carried a player in a live fable session.**
   `PlayerCameraComponent::carryPlayerOnLifts()`
   (`src/client/graphics/player/renderer_player_lift.cpp`) runs once per frame
@@ -8299,7 +8299,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   object's horizontal centroid; the half-period shows as a strong NEGATIVE peak,
   which is the trap that produced fable's original 42.35). Found by T438.
 
-- **B463** (A, live defect) **fable's jump is 25 units high, and the number is a
+- **B463** (A, live defect) **fable's jump is 25 units high, and the number is a → issue #33
   debug value.** `MovementComponent::UpdateJump()`
   (`src/client/movement/movement_state.cpp:545`) reads
   `const float jump_height = 25.0f;  // Maximum height of jump (increased for
@@ -8334,7 +8334,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 ### Added by T445 (2026-09-07)
 
-- **B465** (C) `include/client/graphics/vision_ambient.h` -- **Ultravision and
+- **B465** (C) `include/client/graphics/vision_ambient.h` -- **Ultravision and → issue #34
   Froglok vision are NOT inert in daylight, and nobody has checked whether the
   oracle's are.** The floor a vision type imposes is gain x tint, and for
   Ultravision that is (0.5132, 0.5141, 0.4922) and for Froglok (0.5059,
@@ -8692,7 +8692,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   here because it wants a pin and there is no shell-level test for the lane.
   Found by T449.~~ **FIXED T457 (8900efa3): `up.sh` adopts a running fleet — cold run one world, second run adopts, still one world. Correction: the container's auto-launcher starts the ZONE fleet only (no world/login); T449's duplicate world was its own earlier fleet.**
 
-- **B484** (A) `scripts/scenario.sh` (`SPELL=46`),
+- **B484** (A) `scripts/scenario.sh` (`SPELL=46`), → issue #35
   `scripts/scenario_configs/cast_lands.json` -- **the `cast_lands` scenario's
   default spell cannot be cast by its own default character, so the lane can
   never pass as shipped.** `spells_new` row 46 (Ultravision) has
@@ -8749,7 +8749,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   can always press Escape; it cost this unit three attempts at a two-key
   sequence. Found by T449.
 
-- **B488** (A, unowned side) **a zone change into `airplane` (Plane of Sky)
+- **B488** (A, unowned side) **a zone change into `airplane` (Plane of Sky) → issue #36
   leaves the client stuck at `[LOADING][Phase 5/15] Connecting to zone` for
   ever, with the game thread already at the arrival position.** `#zone
   airplane` is refused below level 46 (`zone.min_level = 46`, answered as
@@ -9062,7 +9062,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   `include/client/graphics` declare a lifetime policy (Protected /
   ListenerReload / ZoneScoped / NotOnGles2) and checks the marker each policy
   stands on. A new site, or a changed call count, fails until it declares one.
-- **B525** (A, *lead*, for T459) **Two camera-heading writers remain possible
+- **B525** (A, *lead*, for T459) **Two camera-heading writers remain possible → issue #37
   while moving.** T460 found no client-side per-tick echo:
   `OnGraphicsMovement` publishes no `PlayerMoved`, and `UpdateMovement`
   returns without console movement. Unmeasured:
@@ -9199,7 +9199,7 @@ because the Pi had no keyboard or mouse attached (B510).
   both keyboard forward runs from Testcaster's nro pose: horizontal follow
   distance constant at 20.0, height over the player 10.0 then 3.0 with
   exactly one change per run (`camera_runs.txt`), the same latch.
-- **B508** (A, *unconfirmed*; **narrowed by T464**) **Will's "Follow camera jerks rapidly between
+- **B508** (A, *unconfirmed*; **narrowed by T464**) **Will's "Follow camera jerks rapidly between → issue #38
   two perspectives while running forward" is NOT reproduced by injected
   keyboard forward runs.** T464 found and removed a two-state mechanism in the
   code: the ceiling clamp's region was the SimulationWorker's CAMERA region,
@@ -9240,7 +9240,7 @@ because the Pi had no keyboard or mouse attached (B510).
     in the two runs, height constant 10.0, distance 20.0, zero jumps.
   The live candidates are unchanged from T459: B507 on Will's terrain, and
   B525 (b).
-- **B509** (A, *unconfirmed*) **"Spell gem bar missing the whole session" is
+- **B509** (A, *unconfirmed*) **"Spell gem bar missing the whole session" is → issue #39
   not reproduced in the rendered buffer.** On the Pi, DRM matched
   `800x600@60Hz` and GBM created an 800x600 surface. Dumped frames (P1, P4)
   and the x86 `build-gles2` contrast both show the gem column at x 764–796:
@@ -9325,7 +9325,7 @@ because the Pi had no keyboard or mouse attached (B510).
 
 ### Added by T461 Leg A (2026-09-13, the official camera set)
 
-- **B530** (C -> ORACLE-OWED, T461 Leg B) **The official cameras' GEOMETRY and
+- **B530** (C -> ORACLE-OWED, T461 Leg B) **The official cameras' GEOMETRY and → issue #40
   the user cameras' UNITS are not in any client file.** The files settle the
   set, the names and an order (`eqstr_us.txt` 9500-9505, `eqgame.exe`'s
   `FIRST_PERSON_CAMERA` .. `TETHER_CAMERA`) and that the user cameras are
@@ -9359,7 +9359,7 @@ because the Pi had no keyboard or mouse attached (B510).
   at (B651), the Camera1-* units, the zoom / pitch / slide / raise steps (B653),
   and Chase: fable's follow camera does NOT reproduce the Chase fit (B650).
 
-- **B531** (C -> ORACLE-OWED, T461 Leg B) **The official camera KEYS are not in
+- **B531** (C -> ORACLE-OWED, T461 Leg B) **The official camera KEYS are not in → issue #41
   any client file.** `eqgame.exe` names the actions (`TOGGLECAM`, `ZOOMIN`,
   `ZOOMOUT`, `CENTERVIEW`, `PITCHUP`, `PITCHDOWN`, `LEFT_CAM`, `RIGHT_CAM`,
   `FORWARD_CAM`, `BACK_CAM`, `PITCHUP_CAM`, `PITCHDOWN_CAM`) and `eqstr_us.txt`
@@ -9516,7 +9516,7 @@ because the Pi had no keyboard or mouse attached (B510).
   Confirm by: `/camp` to character select, log in a second character with no
   `UI_<char>_<server>.ini`, look at the windows and `/camera get`. Found by T464.
 
-- **B561** (C, ORACLE-OWED) **F11 is bound to two actions in the defaults.**
+- **B561** (C, ORACLE-OWED) **F11 is bound to two actions in the defaults.** → issue #42
   `HotkeyManager::setupDefaults()` binds F11 to `ToggleAllUI` (Global) and
   `MusicVolumeUp` (Player); `getAction()` prefers Global, so F11 has only ever
   toggled the UI, and `config/hotkeys.json` binds `MusicVolumeUp` nowhere. T464
@@ -9556,7 +9556,7 @@ because the Pi had no keyboard or mouse attached (B510).
 
 Evidence for every entry is under `review/T462/` (README there).
 
-- **B540** (C) **Will's Orange Pi recipe runs the whole static UI on
+- **B540** (C) **Will's Orange Pi recipe runs the whole static UI on → issue #43
   `UIRenderer`'s placeholder FALLBACK path: no UI atlas art and no item
   icons.** `renderer_init.cpp` opens `willeq.eqe1` and loads `UIAtlas` (and
   with it T430's item icon sheets) only when `--eqe1-path` is set, and the
@@ -9857,7 +9857,7 @@ B641–B649 unused.
     `DoorTextureArrivalSource.NoTextureUploadIsSubmittedWithTheArrivalKey`.
   - Found by T473.
 
-- **B671** (A, *unconfirmed live*) **A zone-geometry mesh built without its
+- **B671** (A, *unconfirmed live*) **A zone-geometry mesh built without its → issue #44
   texture draws that way for the rest of the zone, and some paths do not even
   record it.** This is the reachable form of B640, and a sibling of B620.
   - **How a texture comes out missing** in `ZoneMeshBuilder::buildTexturedMesh()`
@@ -10097,7 +10097,7 @@ B712–B719 unused.
 
 ## Added 2026-09-14 by T482 (how a confirmed cast ends)
 
-- **B760** (A, *unconfirmed live, rare*) **A cast's result code can say
+- **B760** (A, *unconfirmed live, rare*) **A cast's result code can say → issue #45
   Interrupted for a success, and can be late.** `SpellManager::noteZonePacket()`
   settles a released cast as a stop on the first packet after the keepcasting 0
   that is not `OP_MemorizeSpell` or `OP_LinkedReuse`. eqemu sends some packets
@@ -10111,7 +10111,7 @@ B712–B719 unused.
   next packet. Confirm by recording, on the B630 live run, whether anything
   arrives between the two tail packets.
 
-- **B761** (A, *unconfirmed live*) **A bard song with
+- **B761** (A, *unconfirmed live*) **A bard song with → issue #46
   `Character:EnableBardMelody` false has no end packet, so it ends on the
   duration + 5 s timeout with no result.** A song's tail is `OP_MemorizeSpell`
   alone, and only when that rule is on
@@ -10139,7 +10139,7 @@ B712–B719 unused.
 
 ## Added 2026-09-14 by T483 (the ninth spell gem)
 
-- **B770** (C) **What should fable do with gem 9?** The facts (T483 Review):
+- **B770** (C) **What should fable do with gem 9?** The facts (T483 Review): → issue #47
   the gem is on the wire; casting from it is server-gated on the Mnemonic
   Retention AA (1071: cost 3, max rank 1, level 55, every class but
   Warrior/Monk/Rogue, `aa_expansion=8`), with the rule on by default; memorising
@@ -10175,7 +10175,7 @@ B712–B719 unused.
 
 ## Added 2026-09-14 by T469 (the server's cast interrupt)
 
-- **B630** (A, *owed live proof*) **A real server-interrupted cast has not been
+- **B630** (A, *owed live proof*) **A real server-interrupted cast has not been → issue #48
   watched on fable.** T469 wired `HC_OP_InterruptCast` and
   `ManaChange keepcasting 0` from the eqemu source
   (`/mnt/projects/akk-stack/code/zone/spells.cpp` `Mob::InterruptSpell`,
@@ -10282,7 +10282,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   Tether the node must land on the follow pose at T466's baseline pose). Not
   live-proven: no lock was assigned.
 
-- **B582** (C) **fable's F10/F11 and L do not mean what the official keys mean.**
+- **B582** (C) **fable's F10/F11 and L do not mean what the official keys mean.** → issue #49
   Measured on the oracle's Options > Keys (UI category): **F10 = Toggle UI
   Display, F11 = Toggle netstat, L = Toggle Leadership Window, Alt+C = Toggle
   Combat Ability Window** (fable's Alt+C matches). fable binds F11 =
@@ -10318,7 +10318,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   used to learn the units of DirHeading/Pitch/Height/Zoom; they are the client's
   own write-out. Found by T466.
 
-- **B586** (A, *owed*) **The held-item attack animation was not captured on the
+- **B586** (A, *owed*) **The held-item attack animation was not captured on the → issue #50
   oracle.** Set A (Short Sword primary, Gloomingdeep Lantern secondary) was
   captured idle from four cameras, but auto-attack at 8 units behind the
   training dummy produced no swing in 40 stepped frames. Owed: an attack capture
@@ -10333,7 +10333,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   T472 Leg A (2026-09-14) changed nothing here: offline only; the attack
   captures are T472 Leg B's.
 
-- **B587** (A, *unconfirmed*) **At the camera that reproduces the official Chase
+- **B587** (A, *unconfirmed*) **At the camera that reproduces the official Chase → issue #51
   view, fable draws the player model facing the camera.** fable session
   `heldA_sword_lantern_spotA_h160` (Testchar at qeynos2 (-81.39, 431.06, 3.751)
   h160): the rig az 0, pitch 6, dist 4, height 7 -- whose world view matches the
@@ -10383,7 +10383,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
 
 ## Added 2026-09-14 by T471 (T466's camera measurements applied)
 
-- **B650** (A) **fable's Chase camera does not reproduce the official Chase
+- **B650** (A) **fable's Chase camera does not reproduce the official Chase → issue #52
   geometry.** T466 fitted the oracle's Chase frame as a rig: az 0, pitch 6, dist
   4.0, height 7.0 above the feet (edge 0.738, bracketed; dist +/-0.5 -> 0.767 /
   0.839). fable's Chase is `CameraController::setFollowPosition()`, not a rig.
@@ -10401,7 +10401,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   wall collision -- the visual gate does not read this camera, but B587's model
   yaw and B588's held items are judged through it. Found by T471.
 
-- **B651** (C -> ORACLE-OWED) **Which world direction User 1, User 2 and Tether
+- **B651** (C -> ORACLE-OWED) **Which world direction User 1, User 2 and Tether → issue #53
   start at.** T471 made the three hold a WORLD azimuth (B580) but kept the
   placeholder numbers (User 1/2 azimuth 0, Tether az 0 pitch 10 dist 30 height
   5): T466's sweeps did not converge, and a best-of-a-coarse-sweep value is not a
@@ -10414,7 +10414,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   changes at all, B585). Method: enter User 1 at two different LOGIN headings
   and A/B the world view. Found by T471.
 
-- **B652** (C) **fable's own zoom keys collide with the official meanings of
+- **B652** (C) **fable's own zoom keys collide with the official meanings of → issue #54
   those keys.** T471 bound the official Zoom in Numpad7/Insert and Zoom out
   Numpad1/Delete and KEPT fable's `CameraZoomIn` = Plus (and Shift+Plus in the
   shipped file) and `CameraZoomOut` = Minus (and NumpadSubtract in the file). On
@@ -10424,7 +10424,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   player of the official client expects. Same decision class as B582 (Will is
   deciding the UI-page keymap). Found by T471.
 
-- **B653** (A, *owed*) **What Raise, Lower and Tether-slide do on the official
+- **B653** (A, *owed*) **What Raise, Lower and Tether-slide do on the official → issue #55
   client, and every camera key step.** T466 pressed Tether-slide right x10,
   Raise x10 and Zoom in x5 in User 1 and scored no change (0.047 / 0.022 /
   0.013), while Pitch up x10 in the same session did move it -- so the keys
@@ -10436,7 +10436,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   (and Chase, for Zoom and Raise) on the oracle, with the image shift per press.
   Found by T471.
 
-- **B654** (A, *unconfirmed*) **The `--egl-x11` device drops every numpad digit
+- **B654** (A, *unconfirmed*) **The `--egl-x11` device drops every numpad digit → issue #56
   key.** `docker/irrlicht-drm-x86/CIrrDeviceFB_X11.cpp` looks a key up with
   `XLookupKeysym(&xev.xkey, 0)` -- index 0, which for a keypad digit is its
   NumLock-OFF keysym (`XK_KP_Home`, `XK_KP_Up`, ...) -- and
@@ -10543,7 +10543,7 @@ unused.
   13.119 -- the eye-region ceiling clamped it. **Still open:** B683 (the h288
   view disagrees), B681 (races), B680 (does the official Chase zoom).
 
-- **B680** (C -> ORACLE-OWED) **Whether the official Chase camera zooms.** The T474
+- **B680** (C -> ORACLE-OWED) **Whether the official Chase camera zooms.** The T474 → issue #57
   plan requires fable's zoom keys and wheel to act on the Chase distance, and
   they do (T474). T466 pressed Insert x5 then Delete x10 in the official Chase
   camera and saw no visible change (`review/T466/oracle/T466_oracle_keys_chase_*`;
@@ -10551,7 +10551,7 @@ unused.
   something the oracle does not. Method: the same key presses in Chase, scored
   frame against frame. Found by T474.
 
-- **B681** (C -> ORACLE-OWED) **How the Chase fit scales with race and posture.**
+- **B681** (C -> ORACLE-OWED) **How the Chase fit scales with race and posture.** → issue #58
   T466 fitted ONE character (Human male). T474 scales the rig UNIFORMLY about
   the feet by eyeAboveFeet / 6.023 (T431's oracle-solved Human male eye), using
   the head-bone eye fable derives per race (`scaleChaseRigForEye()`,
@@ -10573,7 +10573,7 @@ unused.
   floors it at the player's eye. Neither was measured on the oracle; both are
   written down in `camera_controller.h`. Found by T474.
 
-- **B683** (A, **T474 STOP**) **The Chase re-fit at a second view disagrees with
+- **B683** (A, **T474 STOP**) **The Chase re-fit at a second view disagrees with → issue #59
   T466's fit on distance.** Same spot and pose, heading 288, scored against
   T466's own h288 oracle Chase still on the crop that reproduces T466's h160
   numbers (`400x600+0+100`, recovered by reproduction:
@@ -10646,13 +10646,13 @@ Media and every number: `review/T478/README.md`; the plan's Review.
   0.791 < dist 4 0.817), whose minimum is off that plane. The clean-spot re-grab does
   not settle the fit; see B721.
 
-- **B720** (C) **The qeynos2 `zone_state_spawns` rows keep the training dummies
+- **B720** (C) **The qeynos2 `zone_state_spawns` rows keep the training dummies → issue #60
   (and any future GM spawn) alive across zone boots.** 14 rows of npc 77002 on or
   near the canonical camera spot, restored by T478 per protocol. Decision: delete
   them for good (and add "no lingering `#npctypespawn`" to the eqemu protocol, or
   have units `#depop` their spawns), or keep them as a deliberate melee target.
   Found by T478.
-- **B721** (A, **T478 STOP**) **The Chase fit depends on the scoring crop, and no
+- **B721** (A, **T478 STOP**) **The Chase fit depends on the scoring crop, and no → issue #61
   rig is the minimum at both headings on either crop.** Fresh official grabs on the
   clean spot (three per heading, re-grab floor 0.02-0.08). T474's recovered crop
   `400x600+0+100` (the wall; it leaves out the player): h160 minimum p6 / d4 / h6.75
@@ -10667,14 +10667,14 @@ Media and every number: `review/T478/README.md`; the plan's Review.
   `kChaseRig` unchanged. Owed: a metric that uses the whole frame without being
   dominated by the model's shading (e.g. a silhouette or keypoint measure of the
   head), or a direct measure of the official camera's distance. Found by T478.
-- **B722** (A, *owed*) **No swing pose is visible in the official client's Tether
+- **B722** (A, *owed*) **No swing pose is visible in the official client's Tether → issue #62
   frames while its chat logs the swings.** Every distinct rendered frame of 16 s of
   auto-attack (sets A, B, IT10: 111 / 93 / 100 frames): the arms keep the idle pose
   while chat logs "You try to slash / crush / punch a training dummy, but miss!". Set
   C (2H): the blade angle differs between frames. fable's dumped frames show swing
   poses on every set. Not yet known whether the official client skips the swing on a
   miss, or whether the Wine capture misses it. Found by T478.
-- **B723** (A, *unconfirmed* -- **CONTAMINATED, do not act on it**: T485 read
+- **B723** (A, *unconfirmed* -- **CONTAMINATED, do not act on it**: T485 read → issue #63
   `review/T478/logs/oracle_setB_db.log` and the inventory write that put the shield
   on Oraclealpha sits beside garbage rows, so "no shield visible" may mean the
   official client never had one to draw; a clean re-grab of set B is owed before
@@ -10728,7 +10728,7 @@ Media and every number: `review/T478/README.md`; the plan's Review.
 
 ## Added 2026-09-14 by T484 (the daylight sky's vertex tint, B726)
 
-- **B780** (C) `docker/irrlicht-drm/COpenGLES2Driver.cpp`
+- **B780** (C) `docker/irrlicht-drm/COpenGLES2Driver.cpp` → issue #64
   `drawVertexPrimitiveList()` + the `drawMeshBuffer()` VBO path -- **every vertex
   colour reaches the GLES2 shaders with red and blue exchanged.** Both paths give
   GL the four bytes at `S3DVertex` offset 24 as `GL_UNSIGNED_BYTE` RGBA; an
@@ -10762,7 +10762,7 @@ Media and every number: `review/T478/README.md`; the plan's Review.
   Closes on Will's call between fixing the driver (one place, then re-solving the
   lighting constants live, the B445 queue) and a per-consumer helper like T484's.
   If the driver is fixed, T484's test fails by design and the helper goes.
-- **B781** (A, *unconfirmed*) `src/client/graphics/sky_color_table.cpp`
+- **B781** (A, *unconfirmed*) `src/client/graphics/sky_color_table.cpp` → issue #65
   (moved there from `sky_renderer_colors.cpp` by T495)
   `SkyColorsAt()` -- **the time-of-day tint table is invented,
   not fitted to the oracle.** With the channel order fixed the headless zenith
@@ -10780,7 +10780,7 @@ Media and every number: `review/T478/README.md`; the plan's Review.
   whole of what is unmeasured. T484's headless zenith figure (80.2,117.3,163.6)
   is at 11:00, a CONSTANT arm of the table, so it is unaffected by T495 and
   stays the number to A/B.
-- **B782** (A, *unconfirmed*) **the distant qeynos2 trees are pale in fable** --
+- **B782** (A, *unconfirmed*) **the distant qeynos2 trees are pale in fable** -- → issue #66
   B726's second half. T478 h160 sheet canopy crop: fable (138,153,160), official
   (47,63,54). NOT the sky: fog starts at 250 (T478 run.log `Fog: start=250,
   end=300`) with the trees much nearer, and the dome is drawn with depth write off
@@ -10802,7 +10802,7 @@ Census of every 0x10 in the 94 global, 2,592 zone-chr and 654 zone-object
 skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
 `SkeletonMeshListCensus.CharacterAndObjectArchives`.
 
-- **B730** (A) **FIXED ON THE HELD BRANCH ONLY — `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` this is still open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: `S3DLoader::loadObjects()` dropped every
+- **B730** (A) **FIXED ON THE HELD BRANCH ONLY — `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` this is still open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: `S3DLoader::loadObjects()` dropped every → issue #67
   placement of an actor whose 0x14 reaches a 0x11 skeleton and no 0x2D mesh:
   644 placed actors, **95,666 placements in 158 zones** -- trees (196 actors,
   80,768 placements, meshes hung from bones: emeraldjungle 22,174, trakanon
@@ -10816,7 +10816,7 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   1,365,564 -> 1,389,324 (TEMPLELIFE and TEMPLELIFEB); no image golden moved.
   No live look; Pi cost of the added placements unmeasured (B735).
 
-- **B731** (A) **FIXED ON THE HELD BRANCH ONLY — `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` this is still open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: A character mesh the race-code NAME PREFIX
+- **B731** (A) **FIXED ON THE HELD BRANCH ONLY — `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` this is still open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: A character mesh the race-code NAME PREFIX → issue #68
   handed to two skeletons was skinned twice, because `applySkinning()` works in
   place on the shared mesh: CL_HS_DEF's "CL" took CLF_* and CLM_* (akanon, races
   88/457 Clockwork Gnome), KA_HS_DEF's "KA" took KAF_*/KAM_* (kaladima/b, race
@@ -10825,7 +10825,7 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   skins its own copy, and the prefix no longer takes a mesh another skeleton
   lists. Pinned by `SkeletonMeshListLoaders.CharacterMeshIsSkinnedOnceByItsOwnSkeleton`.
 
-- **B732** (A) **FIXED ON THE HELD BRANCH ONLY — `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` this is still open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: `S3DLoader::loadCharacters()` never read the
+- **B732** (A) **FIXED ON THE HELD BRANCH ONLY — `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` this is still open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: `S3DLoader::loadCharacters()` never read the → issue #69
   meshes a skeleton lists. 49 zone-chr skeletons (19 names: KAR, AAM, PHX, GTD,
   BKN ...) whose listed meshes carry no race-code prefix stored no model; 8
   names missed listed meshes -- GOM (body and head: its two bone meshes stopped
@@ -10836,7 +10836,7 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   `SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart`. Of the affected codes
   only CLM/CLF, KAM/KAF, SSN, STG and IVM have a `race_models` row.
 
-- **B733** (A, *unconfirmed*) **The race model builder selects parts by NAME, so
+- **B733** (A, *unconfirmed*) **The race model builder selects parts by NAME, so → issue #70
   a listed part with another name is still dropped.** `RaceModelLoader` keeps
   `{CODE}_DMSPRITEDEF` + `{CODE}HE00_DMSPRITEDEF` whenever either exists
   (`loadModelFromZoneChr`, `loadModelFromCachedChr` in `model_loading_chr.cpp`,
@@ -10845,7 +10845,7 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   SNNHE00_DMSPRITEDEF and SRG's cape, but that selection would drop both.
   Confirm with a model-build test for race 146 (Spectral Sarnak). Found by T479.
 
-- **B734** (A, *unconfirmed*) **`S3DZone::objectGeometries` holds skinned meshes
+- **B734** (A, *unconfirmed*) **`S3DZone::objectGeometries` holds skinned meshes → issue #71
   un-posed, under their MESH name.** `loadObjects()` stores every mesh by name
   for `DoorManager` (`door_manager_mesh.cpp`, exact then partial match); a
   skinned mesh (STOR301, FWD301 ...) is stored with each vertex piece at its
@@ -10871,7 +10871,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
 `pi/oom_evidence/`). Pi at 1280x720, `--constrained orangepi --eqe1-path`, before
 = fable-tip ARM build, after = T479 rebased on `bb248847`.
 
-- **B750** (A, *T479 branch only, not on fable*) **The T479 build is OOM-killed on the
+- **B750** (A, *T479 branch only, not on fable*) **The T479 build is OOM-killed on the → issue #72
   Orange Pi loading emeraldjungle.** The kernel killed `willeq` (total-vm 809,476 kB,
   anon-rss 212,592 kB) at `Building objects [22000/24505]`; swap was exhausted
   (SwapFree 0, MemAvailable 15 MB), exit 137. RSS+swap grew about 7.6 kB per placed
@@ -10882,7 +10882,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   (B752) lands. Pinned only by the live run: `review/T481/pi/raw/emeraldjungle_2_after/`.
   Found by T481.
 
-- **B751** (A, *cause unconfirmed*) **On the Pi, a login into a dynamic zone often
+- **B751** (A, *cause unconfirmed*) **On the Pi, a login into a dynamic zone often → issue #73
   stalls at `[Phase 9/15] (40%) Finalizing connection`**, right after the client's
   weather packet: no "Zone connection complete", no asset load, while the server holds
   the character in-zone (5-minute saves, linkdead only when the client is killed).
@@ -10893,7 +10893,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   1,048,576). Logs: `review/T481/pi/raw/{thedeep,warslikswood}_*`, the eqemu zone logs
   on the VM. Found by T481.
 
-- **B752** (C) **Which lever makes B750 fit on the Pi is Will's call.** Candidates,
+- **B752** (C) **Which lever makes B750 fit on the Pi is Will's call.** Candidates, → issue #74
   none tried:
   - per-object build or draw distance (PVS or distance), or a distance for the 196
     skeletal tree actors, because every placement's mesh is built eagerly;
@@ -11129,7 +11129,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   documented "oracle conditions" helper the scoring script itself can point at,
   or a refusal in `camera_match_score.py` when it is handed a candidate whose
   conditions were not stated. Found by T492.
-- **B793** (A) **the T492 corpus's `held=` truth values are wrong, and one of
+- **B793** (A) **the T492 corpus's `held=` truth values are wrong, and one of → issue #75
   them was never applied.** MEASURED T492 Leg G by `scripts/llmbench/verify_labels.py`
   against the run's own inventory snapshot: the `E_heldA_p2_*` steps claim
   Testcaster holds `slot13=9998, slot14=9979` while `character_data`/`inventory`
@@ -11158,7 +11158,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   choosing the answer. `[assumed]` that the extra players are the whole of the
   difference -- the pose there is placed by SQL rather than pinned with
   `camera_match_pose.sh`, and the two were not separated. Found by T492.
-- **B795** (A) **the official client's "Tip of the Day" dialog sits over the
+- **B795** (A) **the official client's "Tip of the Day" dialog sits over the → issue #76
   frame after entering the world, and nothing in the oracle rig dismisses it.**
   MEASURED T492 Leg H: with all three clients in world and a target set, the
   four candidate crops of the official TARGET window OCR'd as `es`, `a`, `a` and
@@ -11347,7 +11347,7 @@ red under T472's C, green under c20).
   measurement (needs the lock, ~5 min):** dump eqemu's `SELECT id, idfile FROM
   items` and diff all 3,661 rows against `item_models.json`; a row-count of
   mismatches decides whether this is one bad row or a stale table. Found by T485.
-- **B756** (A, *unconfirmed*) **The blade's pitch does not match the oracle's, and
+- **B756** (A, *unconfirmed*) **The blade's pitch does not match the oracle's, and → issue #77
   the o01 loop's own swing is larger than the mismatch.** With c20 the blade
   continues R_POINT's -Z. MEASURED over the whole loop
   (`review/T485/data/rpoint_frames.txt`, 41 distinct frames, re-scored by
@@ -11394,7 +11394,7 @@ WLD tally, parse peak/retained heap): `review/T490/x86/pvs_census.tsv`, taken by
   parse heap from 28,869,232 B to 205,197,400 B and fails five cases. Found by
   AUDIT-0914, fixed by T490.
 
-- **B800** (A, *measured*) **Iceclad and Timorous still OOM on the Orange Pi
+- **B800** (A, *measured*) **Iceclad and Timorous still OOM on the Orange Pi → issue #78
   after B799 -- the eager per-region mesh build is the next term.** With B799
   fixed the client passes `loadZoneStep2_BSP` (which now costs +10 MB anon,
   184,444 -> 194,732 kB) and is killed in the mesh build instead. Same-rig A/B,
@@ -11416,7 +11416,7 @@ WLD tally, parse peak/retained heap): `review/T490/x86/pvs_census.tsv`, taken by
   `review/T490/pi/raw/{iceclad_T490,iceclad_BEFORE_fable,timorous_T490c}`.
   Found by T490.
 
-- **B801** (A, *measured*) **The client is ~190 MB of anonymous memory BEFORE it
+- **B801** (A, *measured*) **The client is ~190 MB of anonymous memory BEFORE it → issue #79
   loads a zone, and a zone that loads costs approximately nothing on top.** nro
   on the Pi, the full `[LOAD-MEM-AUDIT]` ladder at the T490 tip
   (`review/T490/pi/raw/nro_T490c`): `00_start` RssAnon **192,284 kB** ->
@@ -11501,7 +11501,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   frame-independent, and red at 150 / 118 for the two wrong corrections). Look for
   the same shape wherever a test asserts a centroid instead of an axis. Found by
   T485 Leg B.
-- **B805** (A) **`held_item_candidate_search` compared its 24 candidates at
+- **B805** (A) **`held_item_candidate_search` compared its 24 candidates at → issue #80
   DIFFERENT poses.** `ISceneManager::drawAll()` calls `OnAnimate()` with the DEVICE
   timer, so the skeleton moved between one candidate's capture and the next: every
   candidate after the first was measured and drawn at a frame other than the one
@@ -11546,7 +11546,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   A sky A/B needs the oracle pointed UP with the dialog dismissed; T466's
   camera-step recipe plus B795's dismissal is what would produce it. This is
   what B781 has been waiting for since T484. Found by T495.
-- **B808** (C) **`SkyRenderer` never logs the colour it chose, or the hour it
+- **B808** (C) **`SkyRenderer` never logs the colour it chose, or the hour it → issue #81
   chose it for**, so a wrong sky can only be diagnosed by re-deriving the
   function offline. T495 had to write an emulator of `calculateSkyColors()`
   (`review/T495/scripts/sky_color_emulator.cpp`) and sweep it against the corpus
@@ -11594,7 +11594,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   table and deliberately did not touch this one (out of scope). Anything that
   prints or takes a corpse slot number is suspect; start at whatever pushes
   `LootItemIntent`. Found by T494.
-- **B811** (A) **The llmbench held-item check cannot tell "already holding it"
+- **B811** (A) **The llmbench held-item check cannot tell "already holding it" → issue #82
   from "just equipped it", and that is how B796's own experiment produced a
   false positive.** `E_heldA_*` records what the inventory table says at
   COMPILE time and `E_heldB_*` records what it should say after the equip, but
@@ -11605,7 +11605,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   not have. The fix shape is the one `equip_observed` uses: refuse to score a
   held-item step whose BEFORE state already matches its AFTER state. Found by
   T494.
-- **B815** (C) **A task worktree has no `data/eq_client`, and three ctest cases
+- **B815** (C) **A task worktree has no `data/eq_client`, and three ctest cases → issue #83
   fail as if they were real reds.** `tests/CMakeLists.txt:114` defaults
   `EQ_CLIENT_DATA_PATH` to `${CMAKE_SOURCE_DIR}/data/eq_client`, which is a
   gitignored symlink present in `main` and absent in every fresh worktree, so
@@ -11635,7 +11635,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   succeeds. Either document the limit where the definition lives (T497 did, in
   `env.sh` and CLAUDE.md) or give the lane a cheap real-login smoke gate.
   Found by T497.
-- **B821** (C) **`scripts/llmbench/f9_cycle.sh:48` carried the same host-port
+- **B821** (C) **`scripts/llmbench/f9_cycle.sh:48` carried the same host-port → issue #84
   gate B797 named, and B797 missed it.** B797 listed `up.sh`, `record.sh` and
   `status.sh`; the fourth call site was `f9_cycle.sh`, which skipped `up.sh` on
   `eqemu_port_open 5998 && 9000` exactly like `record.sh`. T497 found it only
@@ -11643,7 +11643,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   the process one: a board entry that enumerates call sites is a snapshot, and
   nothing checks the enumeration. Worth a convention (name the grep, not the
   list) before the next one. Found by T497.
-- **B822** (C) **There is no shell test lane.** `restore_selftest.sh` (T493)
+- **B822** (C) **There is no shell test lane.** `restore_selftest.sh` (T493) → issue #85
   and `ready_selftest.sh` (T497) are real regression nets for real defects --
   both with a `--legacy` mode that proves they fail on the defect -- but
   nothing runs them: they are not in ctest, not in CI, and reachable only by a
@@ -11680,7 +11680,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   nothing else). `ItemInstance::idfileModel` now parses it, the feeder uses it,
   and the item-id lookup is gone from all nine render sites -- `equipment[]` is
   uniformly a MATERIAL / IT number.
-- **B824** (C) **`EquipmentModelLoader::loadItemModelMapping()` builds a map
+- **B824** (C) **`EquipmentModelLoader::loadItemModelMapping()` builds a map → issue #86
   nothing reads.** [measured] It parses all 3,661 rows of
   `data/item_models.json` into `itemToModelMap_` at load, and
   `getModelIdForItem()` -- the only thing that would want it -- queries
@@ -11691,7 +11691,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   `"_provenance"` header would have done to it. Delete the map, or delete the
   query and read the map -- one of the two, and it is a decision about which
   source of truth the tools get. Found by T498.
-- **B825** (C) **The JSON covers 3,661 of peq's 117,944 items, and an
+- **B825** (C) **The JSON covers 3,661 of peq's 117,944 items, and an → issue #87
   uncovered one used to fall silently to `modelId = itemId`.** [measured]
   115,185 server items have no row. Every render site's fallback was `if
   (modelId < 0) modelId = equipmentId`, i.e. "draw the item id as a model
@@ -11702,7 +11702,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   tools, which do hold item ids and do hit the gap. Decide whether the tools
   want the full table (117,722 rows with a numeric idfile) or should report a
   miss. Found by T498.
-- **B826** (C) **No derived data file in the tree carries provenance.**
+- **B826** (C) **No derived data file in the tree carries provenance.** → issue #88
   [measured] `data/item_models.json` is a bare `{"<itemId>": <modelId>}` map
   with no header at all -- no source, no host, no date, no rule -- which is why
   nobody could tell a hand-edit from an export, and why the drift B755 names
@@ -11713,7 +11713,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   `scripts/check_item_models.py --rebuild` already writes and
   `data/item_idfile.tsv`'s `#` header already carries. Needs Will's call on
   whether to apply it to the other derived JSONs. Found by T498.
-- **B827** (C) **Regenerating `data/item_models.json` from the server is a
+- **B827** (C) **Regenerating `data/item_models.json` from the server is a → issue #89
   VISUAL change and is NOT done.** [measured] 2,128 of its 3,661 rows disagree
   with the export, so rewriting the file changes what
   `tools/model_viewer` and `tools/hwcaps/ui_inventory_capture` draw for a third
