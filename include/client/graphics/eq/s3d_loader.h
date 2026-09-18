@@ -32,6 +32,18 @@ struct TextureInfo {
     uint32_t width = 0;
     uint32_t height = 0;
 
+    // B843: the eqt::memory::Category that ALLOCATED the pixel data -- the
+    // MemoryScope active when loadCharacterTextures() (and getArmorTexture())
+    // filled `data`. A TextureInfo is shared by shared_ptr across every
+    // map that holds it (globalTextures_, zoneTextures_, otherChrCaches_,
+    // per-model maps), so its pixels have EXACTLY ONE ledger owner, and a
+    // tally that adds them to every claimant would over-count.
+    // kOwnerUnknown means no pixels are allocated yet; 0xFF is deliberately
+    // outside the Category range, so an allocated pixel always carries its
+    // real allocating scope (s3d_loader_textures.cpp stamps it).
+    uint8_t ownerCategory = kOwnerUnknown;
+    static constexpr uint8_t kOwnerUnknown = 0xFF;
+
     // Animation support
     bool isAnimated = false;                     // True if this is an animated texture
     int animationDelayMs = 0;                    // Milliseconds between frames

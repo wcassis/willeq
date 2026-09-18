@@ -5,6 +5,7 @@
 // refactor/J29_model_loading_split.md (move-only, no behaviour change).
 
 #include "client/graphics/eq/race_model_loader.h"
+#include "client/core/memory_ledger.h"
 #include "client/willeq_database.h"
 #include "client/graphics/eq/race_codes.h"
 #include "client/graphics/eq/geometry_combiner.h"
@@ -194,6 +195,11 @@ std::vector<std::string> ArmorArchivesForTextureName(const std::string& lowerNam
 }
 
 std::shared_ptr<TextureInfo> RaceModelLoader::getArmorTexture(const std::string& lowerName) {
+    // B843: armor pixels are charged to the scope ACTIVE at the call site
+    // (EntityModels on the render thread, the entity-prep scope on the worker
+    // thread) -- same as before, this only records that owner on the
+    // TextureInfo (s3d_loader_textures-style stamping below) so the tally can
+    // name it.
     // A cached entry may be null: that is a cached MISS, and it matters --
     // without it every mesh build re-probes seven 3 MB archives for a name no
     // archive has (most races do not have every one of the seven tiers).
@@ -215,6 +221,8 @@ std::shared_ptr<TextureInfo> RaceModelLoader::getArmorTexture(const std::string&
         auto tex = std::make_shared<TextureInfo>();
         tex->name = lowerName;
         tex->data = std::move(data);
+        // B843: stamp the allocating scope, like loadCharacterTextures() does.
+        tex->ownerCategory = static_cast<uint8_t>(eqt::memory::currentCategory());
         armorTextureCache_[lowerName] = tex;
 
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded armor texture on demand: {} ({} bytes from {})",

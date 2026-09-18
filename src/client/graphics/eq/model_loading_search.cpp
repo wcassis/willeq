@@ -479,31 +479,109 @@ size_t RaceModelLoader::releaseRawTextureData() {
 RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     MemoryStats stats;
 
-    auto sumMapBytes = [](const std::map<std::string, std::shared_ptr<TextureInfo>>& texMap) -> size_t {
-        size_t total = 0;
+    // --- B843: ownership-aware pixel tally. A TextureInfo's PIXELS belong to
+    // the ledger category that allocated them (TextureInfo::ownerCategory,
+    // stamped by loadCharacterTextures()/getArmorTexture()), and a shared_ptr
+    // can hold the same TextureInfo in several of the maps below. So every
+    // map is walked through this one deduplicator:
+    //   owner == EntityModels  -> its bytes go into the matching tex_* term
+    //                             (modelMemTotal() charges them to this
+    //                             category, exactly as before);
+    //   owner == anything else -> the bytes are LEFT OUT of every tex_* term
+    //                             and recorded ONCE in sharedTextureBytes
+    //                             with the owner and every claimant named
+    //                             (Will's ruling, docs/decisions.md
+    //                             2026-09-17 item 3).
+    // Before B843 the five tex_* terms counted every pixel in every map, so
+    // on the Pi -- where zoneTextures_ is allocated under the render thread's
+    // ZoneParse scope and the zone _chr.s3d caches under the entity-prep
+    // thread's scope -- the EntityModels tally claimed 27,631,752 B another
+    // category owned (tally 49,778,752 against 22,146,989 live requested,
+    // +125 %, T500 Leg C).
+    std::map<const TextureInfo*, size_t> sharedEntryIndex;
+    auto sumMapBytes = [&](const char* claimant,
+                           const std::map<std::string, std::shared_ptr<TextureInfo>>& texMap,
+                           size_t& ownedTermOut) {
+        size_t owned = 0;
         for (const auto& [name, tex] : texMap) {
-            if (tex) total += tex->rawDataBytes();
+            if (!tex) continue;
+            if (tex->ownerCategory
+                    == static_cast<uint8_t>(eqt::memory::Category::EntityModels)) {
+                owned += tex->rawDataBytes();
+                continue;
+            }
+            size_t idx;
+            auto it = sharedEntryIndex.find(tex.get());
+            if (it != sharedEntryIndex.end()) {
+                idx = it->second;
+                stats.sharedTextureBytes[idx].claimants += std::string(", ") + claimant;
+            } else {
+                idx = stats.sharedTextureBytes.size();
+                sharedEntryIndex.emplace(tex.get(), idx);
+                const uint8_t owner = tex->ownerCategory;
+                const char* ownerName = owner < eqt::memory::kCategoryCount
+                    ? eqt::memory::kCategoryNames[owner] : "unknown";
+                stats.sharedTextureBytes.push_back(
+                    {tex->rawDataBytes(), ownerName, claimant});
+            }
         }
-        return total;
+        ownedTermOut += owned;
+    };
+    // Same pixels through another map: add the claimant, count nothing.
+    // The per-model `textures` maps are shared views of the loader maps
+    // (getMergedTextures() copies the shared_ptrs), so their pixels are
+    // already charged -- to the tex_* terms (owner EntityModels) or the
+    // shared entries above -- and nothing here may add them a second time.
+    auto claimSharedMap = [&](const char* claimant,
+                              const std::map<std::string, std::shared_ptr<TextureInfo>>& texMap) {
+        for (const auto& [name, tex] : texMap) {
+            if (!tex) continue;
+            if (tex->rawDataBytes() == 0) continue;
+            if (tex->ownerCategory
+                    == static_cast<uint8_t>(eqt::memory::Category::EntityModels)) {
+                continue;  // charged in a tex_* term, not a shared block
+            }
+            auto it = sharedEntryIndex.find(tex.get());
+            if (it != sharedEntryIndex.end()) {
+                stats.sharedTextureBytes[it->second].claimants +=
+                    std::string(", ") + claimant;
+            } else {
+                // Only reachable when a per-model map holds a TextureInfo no
+                // loader map holds -- defensive: still report it once
+                // rather than drop it.
+                sharedEntryIndex.emplace(tex.get(), stats.sharedTextureBytes.size());
+                const uint8_t owner = tex->ownerCategory;
+                const char* ownerName = owner < eqt::memory::kCategoryCount
+                    ? eqt::memory::kCategoryNames[owner] : "unknown";
+                stats.sharedTextureBytes.push_back(
+                    {tex->rawDataBytes(), ownerName, claimant});
+            }
+        }
     };
 
-    stats.globalTextureBytes = sumMapBytes(globalTextures_);
+    sumMapBytes("tex_global", globalTextures_, stats.globalTextureBytes);
 
     for (const auto& [num, texMap] : numberedGlobalTextures_) {
-        stats.numberedTextureBytes += sumMapBytes(texMap);
+        sumMapBytes("tex_numbered", texMap, stats.numberedTextureBytes);
+        // B843 (g): the raw held total the owned term is a subdivision of.
+        for (const auto& [name, tex] : texMap)
+            if (tex) stats.numberedTextureBytesHeld += tex->rawDataBytes();
     }
 
-    stats.armorTextureBytes = sumMapBytes(armorTextureCache_);
+    sumMapBytes("tex_armor", armorTextureCache_, stats.armorTextureBytes);
     // T452: was armorTextureIndex_.size(), a map with no writer at all --
     // it always read 0. The cache is what actually holds armor textures.
     stats.armorTextureCount = armorTextureCache_.size();
-    stats.zoneTextureBytes = sumMapBytes(zoneTextures_);
+    sumMapBytes("tex_zone", zoneTextures_, stats.zoneTextureBytes);
+    // B843 (g): the raw held total the owned term is a subdivision of.
+    for (const auto& [name, tex] : zoneTextures_)
+        if (tex) stats.zoneCharacterTexturesHeld += tex->rawDataBytes();
 
     {
         // T114: otherChrCaches_ is shared with the worker thread.
         std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
         for (const auto& [filename, cache] : otherChrCaches_) {
-            stats.otherChrTextureBytes += sumMapBytes(cache.textures);
+            sumMapBytes("tex_otherchr", cache.textures, stats.otherChrTextureBytes);
         }
     }
 
@@ -674,6 +752,12 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
             noteGeometry(model->combinedGeometry);
             noteGeometry(model->rawGeometry);
             sumTextureMap(model->textures);
+            // B843: name this model as a claimant of any shared texture
+            // pixels it holds (never a second count of them).
+            claimSharedMap(
+                ("model:" + std::to_string(model->raceId)
+                 + ":" + std::to_string(model->gender)).c_str(),
+                model->textures);
         }
     }
     {
@@ -685,6 +769,10 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
             noteGeometry(model->combinedGeometry);
             noteGeometry(model->rawGeometry);
             sumTextureMap(model->textures);
+            claimSharedMap(
+                ("variant:" + std::to_string(model->raceId)
+                 + ":" + std::to_string(model->gender)).c_str(),
+                model->textures);
         }
     }
     {
@@ -694,6 +782,10 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
             noteGeometry(model->combinedGeometry);
             noteGeometry(model->rawGeometry);
             sumTextureMap(model->textures);
+            claimSharedMap(
+                ("prepared:" + std::to_string(model->raceId)
+                 + ":" + std::to_string(model->gender)).c_str(),
+                model->textures);
         }
     }
     stats.distinctTextureMapCount = texMapFingerprints.size();
@@ -885,6 +977,27 @@ std::string RaceModelLoader::modelMemLogLine(const std::string& point) const {
         s.materialListBytes, s.textureObjectBytes, s.loaderTextureMapBytes,
         s.skeletonContainerBytes, s.containerCapacityBytes,
         cat.allocs, s.loadedModelCount);
+}
+
+// B843: the shared lines. One line per distinct TextureInfo whose pixels the
+// loader holds but the ledger charges to ANOTHER category, in Will's ruling
+// form (`X: owner, claimant, ...`) -- reported ONCE, never added into the
+// entity_models total. Emitted after the [modelmem] line; empty when every
+// texture pixel the loader holds is owned by entity_models (the x86 offline
+// path).
+std::string RaceModelLoader::modelMemSharedLines(const std::string& point) const {
+    const MemoryStats s = getMemoryStats();
+    if (s.sharedTextureBytes.empty()) return std::string();
+    uint64_t total = 0;
+    for (const auto& e : s.sharedTextureBytes) total += e.bytes;
+    std::string out = fmt::format(
+        "[modelmem-shared] point={} shared_total={} distinct_blocks={}",
+        point, total, s.sharedTextureBytes.size());
+    for (const auto& e : s.sharedTextureBytes) {
+        out += fmt::format(" | {} : {}, [{}]",
+                           e.bytes, e.owner, e.claimants);
+    }
+    return out;
 }
 
 } // namespace Graphics
