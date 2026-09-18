@@ -432,16 +432,19 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (14 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
+`hygiene` (15 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
-`PackReproducible`, `WriteOnlyFields`, T450's `DbReproducible`, T455's
+`PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
+reachability ratchet), T450's `DbReproducible`, T455's
 `ZeroCallers`, T486's `ZeroCallersSelfTest` (the classifier's own probes,
 `check_zero_callers.py --self-test`), T491's `VisualGateLedgerAssertions`
 + `MemoryCapHuntScript` (the memory-ledger half of the visual gate and the
-cap-hunt script, both pure-script checks) and T498's `ItemModelsMatchServer`
+cap-hunt script, both pure-script checks), T498's `ItemModelsMatchServer`
 (`data/item_models.json` against the committed server export
 `data/item_idfile.tsv`, a ratchet over
-`data/item_models_drift_baseline.txt`) -- the three
+`data/item_models_drift_baseline.txt`) and B849's `BoardToIssuesHygiene`
+(`scripts/gitlab/test_board_to_issues.py`, the board-to-issue migration
+script's regression net, no network) -- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two
 halves of the reachability ratchet, a field written and never read and a

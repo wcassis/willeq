@@ -228,3 +228,17 @@ SET_TESTS_PROPERTIES(VisualGateLedgerAssertions PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME MemoryCapHuntScript
     COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/ci/test_memory_cap_hunt.sh)
 SET_TESTS_PROPERTIES(MemoryCapHuntScript PROPERTIES LABELS "hygiene" SKIP_RETURN_CODE 125)
+
+# B849 (2026-09-18): the board-to-issue migration script's regression net.
+# The pre-B849 script deduped against OPEN issues only and never read the
+# `→ issue #N` pointer it wrote into refactor/BOARD.md, so closing a
+# migrated issue and re-running the script created it AGAIN; and an unstruck
+# bullet whose own header says the work is fixed (B817/B819/B830, B805, B837)
+# was migrated as live work. test_board_to_issues.py drives plan_actions()
+# and label_missing_status_plan() with injected fixtures -- the same shapes
+# the real http() would have returned -- so it needs no network, no GitLab
+# token and no artefact. Pure python, same "hygiene" label as its neighbours.
+ADD_TEST(NAME BoardToIssuesHygiene
+    COMMAND python3 -m unittest
+            ${CMAKE_SOURCE_DIR}/scripts/gitlab/test_board_to_issues.py -v)
+SET_TESTS_PROPERTIES(BoardToIssuesHygiene PROPERTIES LABELS "hygiene")
