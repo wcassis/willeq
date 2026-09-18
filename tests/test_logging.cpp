@@ -362,6 +362,80 @@ TEST_F(LoggingTest, InitLogging_BadPairDoesNotPoisonGoodPairs) {
 }
 
 // =============================================================================
+// B850: a typo'd MODULE name must not be silently mapped to MAIN
+// =============================================================================
+// The pre-fix ApplyLogModulePair() handed the module half to ParseModuleName(),
+// whose fallback is MOD_MAIN -- so --log-module=NTE:DEBUG (a typo of NET) set
+// MAIN to DEBUG and said nothing. Same defect class B842 closed for levels:
+// the rejection must be LOUD (name the bad token on stderr) and the module
+// state must be untouched.
+
+TEST_F(LoggingTest, InitLogging_RejectsUnknownModuleName) {
+    // Same stderr-capture pattern as InitLogging_RejectsUnparseableLevelName.
+    char tmpl[] = "/tmp/willeq_b850_stderr_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    const char* argv[] = {"program", "--log-module=NTE:DEBUG"};
+    int argc = 2;
+    InitLogging(argc, const_cast<char**>(argv));
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("NTE"), std::string::npos)
+        << "rejection must name the bad module; captured stderr: [" << content << "]";
+    // MAIN must NOT have been silently mapped to DEBUG: it stays at -1.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
+    // And no module at all may have been set by the typo.
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_NET), -1);
+}
+
+TEST_F(LoggingTest, InitLogging_UnknownModuleDoesNotPoisonGoodPairs) {
+    char tmpl[] = "/tmp/willeq_b850_stderr2_XXXXXX";
+    int file_fd = mkstemp(tmpl);
+    ASSERT_GE(file_fd, 0);
+    int saved_stderr = dup(2);
+    ASSERT_GE(saved_stderr, 0);
+    ASSERT_GE(dup2(file_fd, 2), 0);
+    close(file_fd);
+
+    const char* argv[] = {"program", "--log-module=NET:TRACE,NTE:DEBUG,UI:DEBUG"};
+    int argc = 2;
+    InitLogging(argc, const_cast<char**>(argv));
+
+    fflush(stderr);
+    std::cerr.flush();
+    ASSERT_GE(dup2(saved_stderr, 2), 0);
+    close(saved_stderr);
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("NTE"), std::string::npos)
+        << "rejection must name the bad module; captured stderr: [" << content << "]";
+    // The good pairs around the bad one still apply
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_NET), LOG_TRACE);
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_UI), LOG_DEBUG);
+    EXPECT_EQ(LogManager::Instance().GetModuleLevel(MOD_MAIN), -1);
+}
+
+// =============================================================================
 // Legacy Compatibility Tests
 // =============================================================================
 
