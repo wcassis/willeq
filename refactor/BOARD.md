@@ -8715,7 +8715,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   here because it wants a pin and there is no shell-level test for the lane.
   Found by T449.~~ **FIXED T457 (8900efa3): `up.sh` adopts a running fleet — cold run one world, second run adopts, still one world. Correction: the container's auto-launcher starts the ZONE fleet only (no world/login); T449's duplicate world was its own earlier fleet.**
 
-- **B484** (A) `scripts/scenario.sh` (`SPELL=46`), → issue #35
+- ~~**B484** (A) `scripts/scenario.sh` (`SPELL=46`), → issue #35
   `scripts/scenario_configs/cast_lands.json` -- **the `cast_lands` scenario's
   default spell cannot be cast by its own default character, so the lane can
   never pass as shipped.** `spells_new` row 46 (Ultravision) has
@@ -8731,7 +8731,24 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   exited **0**, `spell 288 landed on Testcaster 2.93 s after gem cast #1 (buff
   slots 0 -> 1)`. Closes by picking a spell the config's class can cast (and
   asserting that at run time rather than in a comment).
-  `review/T449/logs/cast_lands_direct*.log`. Found by T449.
+  `review/T449/logs/cast_lands_direct*.log`. Found by T449.~~ **STRUCK
+  2026-09-19 (issue #35 closed by the B484 card,
+  `task/kb-b484-cast-lands-default-spell`)**: the default is 288 in all three
+  places the lane reads one (`scripts/scenario.sh` `SPELL=288`,
+  `ScenarioOptions::castSpellId`, `ApplicationConfig::scenarioSpellId`), and
+  `scripts/scenario.sh` now re-checks it at run time -- for cast_lands, before
+  the client launches, it reads the config's character's class and level and
+  `spells_new.classes<N>` (the per-class minimum cast level; 255 = the table's
+  "no class carries it" sentinel, eqemu's own convention in its spell table)
+  and exits **72** naming spell, class and level instead of fizzling three 20 s
+  windows. Measured the real mechanic on the lane: neither fizzle model is a
+  hard block -- a level-1 Wizard on spell 46 (min level over all classes: 26)
+  rolls a 95% fizzle, so the same run fizzled 3/3 once and landed 1/3 minutes
+  later. Re-measured: the shipped lane exits 0 (`spell 288 landed on
+  Testcaster 2.58 s after gem cast #1`), and `--spell 46` fails fast in under
+  a minute with `spell 46 has no minimum level for
+  (spells_new.classes12 = 255 ...)`. `refactor/T506_cast_lands_default_spell.md`
+  (evidence: `refactor/B484/`).
 
 - **B485** (B) `scripts/scenario.sh`, `src/client/scenario/scenario_two_client_survive.cpp`
   -- **`two_client_survive`'s peer terminates 0.15 s after it zones in, so the
