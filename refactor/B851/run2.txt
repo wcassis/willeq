@@ -1,0 +1,4 @@
+526:[2026-09-19 11:47:08.972] [DEBUG] [SPELL] Set 9 spell gems
+527:[2026-09-19 11:47:08.972] [DEBUG] [SPELL] Memorized spells:
+528:[2026-09-19 11:47:08.972] [DEBUG] [SPELL]   Gem 1: Minor Shielding (ID 288)
+529:[2026-09-19 11:47:08.972] [DEBUG] [SPELL]   Gem 9: Frost Bolt (ID 54)

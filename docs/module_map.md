@@ -432,7 +432,7 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (15 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
+`hygiene` (17 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
 reachability ratchet), T450's `DbReproducible`, T455's
@@ -442,12 +442,20 @@ reachability ratchet), T450's `DbReproducible`, T455's
 cap-hunt script, both pure-script checks), T498's `ItemModelsMatchServer`
 (`data/item_models.json` against the committed server export
 `data/item_idfile.tsv`, a ratchet over
-`data/item_models_drift_baseline.txt`) and B849's `BoardToIssuesHygiene`
+`data/item_models_drift_baseline.txt`), B824's `ItemModelMapDeletion`
+(`scripts/refactor/check_item_model_map.py`, the deleted item-to-model JSON
+map's ratchet — the map's identifiers stay out of the tree and
+`getModelIdForItem()` stays db-only) and B849's `BoardToIssuesHygiene`
 (`scripts/gitlab/test_board_to_issues.py`, the board-to-issue migration
 script's regression net — all-states dedup, `→ issue #N` pointer
 honouring, the fixed-header anomaly probe, the parser's body
 termination, and the `--label-missing-status` plan; pure python with an
-injected http stub, so no network, no GitLab token, no artefact) -- the three
+injected http stub, so no network, no GitLab token, no artefact) and B811's
+`LlmBenchHeldBeforeAfterHygiene` (`scripts/llmbench/test_timeline_held_check.py`,
+the llmbench held-item before/after gate — a timeline step that claims to
+have MOVED an item into a slot the character already held it in must be
+INVALID at compile time and may never carry a grading label; pure python over
+committed TSVs) -- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two
 halves of the reachability ratchet, a field written and never read and a

@@ -30,6 +30,25 @@ hermes gateway and its kanban workers, so every heavy command is bounded to
 `JOBS` (8 of the 16 cores) and runs under `nice -n 10`: a pipeline must not
 starve a live worker.
 
+## The ARM runner and Pi runs (T503)
+
+A second runner, **`dev-u24-arm-nfs`** (GitLab runner id 2, tag `arm-nfs`, does NOT run untagged), runs in user
+mode on the dev host `dev-u24`: binary `~/.local/bin/gitlab-runner`, config `~/.gitlab-runner/config.toml`
+(GitLab's self-signed cert pinned beside it), `systemctl --user status gitlab-runner` (linger on), builds under
+`~/gitlab-runner/builds`. It exists for one job, **`build-arm`**: `scripts/build-arm-noble.sh` (docker image
+`willeq-arm-noble`) then `scripts/pi/publish_arm_build.sh`, which publishes the stripped client plus that
+commit's tracked `config/` + `data/` to **`/mnt/projects/fable/ci-arm/<sha>/`** (`by-branch/<branch>` symlinks;
+newest 12 kept). The job is automatic on `fable` and a manual, non-blocking job everywhere else
+(`glab ci trigger build-arm`), and refuses any host but `dev-u24`.
+
+Why there: hermes-ext has no docker and no NFS; the Orange Pi mounts the same NFS share as the dev host. A
+hermes-ext worker therefore runs a Pi leg entirely over ssh — NFS paths exist **on the Pi**, not on the worker:
+
+    source scripts/pi/env.sh; pi_lock_take kb-<slug>          # single-tenant Pi, see scripts/pi/lock_selftest.sh
+    D=/mnt/projects/fable/ci-arm/$(git rev-parse HEAD)
+    pi_remote "cd $D && WILLEQ_DATA_ROOT=$D WILLEQ_CACHE_DIR=/tmp/<slug>/cache $D/bin/willeq --drm --renderer gles2 --constrained orangepi -r 1280 720 -c <config> > /tmp/<slug>/willeq.log 2>&1"
+    pi_remote cat /tmp/<slug>/willeq.log > evidence.log;  pi_lock_release kb-<slug>
+
 ## The stages
 
 | Stage | What it does | Cold | Warm |
@@ -53,12 +72,14 @@ to end.
 
 Every job's `before_script` re-creates the `data/eq_client` and
 `data/eqe1_client` symlinks. They are gitignored (`tests/test_data_paths.cpp`),
-so `git clean -ffdx` removes them before every job — and they are **not** only
-the gate's business: without them `ComprehensiveZoneTest.ClassicZones`,
-`ComprehensiveZoneTest.OverallSummary` and
-`DoorLoadingUnitTest.MultipleZonesHaveObjectGeometries` print every zone as
-"SKIP (not found)" and then **fail** on `loadedCount > 0`. An asset-less run of
-the suite is red, not skipped.
+so `git clean -ffdx` removes them before every job. B815 (issue #83): without
+them the asset suites now behave by decision, not by accident —
+`tests/asset_requirement.h` (`requireEqClientAssets`) makes an absent asset
+root a GTEST_SKIP locally, and a hard FAIL when `WILLEQ_REQUIRE_ASSETS=1` is
+set, which the `test` job exports (a green pipeline proves the assets were
+found, so CI can never skip them silently). `test_asset_requirement` pins
+both outcomes. A task worktree without the symlink therefore runs green with
+skipped asset suites instead of three fake reds.
 
 `hygiene` is first and deliberately cheap: a bad doc count, an over-size file or
 a stale citation fails in under a minute instead of after a 30-minute build.

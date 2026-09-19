@@ -392,14 +392,10 @@ void initViewerSubsystems() {
     equipmentTextureCache->setDriver(driver);
     equipmentModelLoader->setConstrainedTextureCache(equipmentTextureCache.get());
 
-    // Load item ID to model ID mapping
-    std::string mappingPath = "data/item_models.json";
-    int mappingCount = equipmentModelLoader->loadItemModelMapping(mappingPath);
-    if (mappingCount > 0) {
-        std::cout << "Loaded " << mappingCount << " item-to-model mappings from " << mappingPath << std::endl;
-    } else {
-        std::cout << "Warning: Failed to load item mappings from " << mappingPath << std::endl;
-    }
+    // B824: the item->model mapping is willeq.db-only
+    // (getModelIdForItem() -> WilleqDatabase::getItemModel; the db is opened
+    // by main() via openWilleqRaceDatabase()). The JSON map parsed here used
+    // to be written and never read, so the call went.
 
     // Load equipment models from gequip archives
     if (equipmentModelLoader->loadEquipmentArchives()) {

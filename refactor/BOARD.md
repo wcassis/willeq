@@ -10234,9 +10234,9 @@ B712–B719 unused.
   constant local to `zone_entry.cpp` are gone. No AA ranks are parsed (option
   (b) was not chosen). Pinned by `tests/test_ninth_spell_gem.cpp` and
   `CommandProcessorTest.Cast_NinthGem_RefusedClientSideWithoutDispatching`.
-  Still owed: the live `rule_values` read, and a live check that a character
-  whose profile holds a ninth spell keeps it across a zone. This entry stays
-  open for the veto.
+  Live checks done by B851 (2026-09-19, issue #97): rule_values read
+  (default ruleset = true) and the ninth-spell-across-zone check; see
+  `refactor/B851_gem9_retention_live.md`.
 
 ## Added 2026-09-14 by T469 (the server's cast interrupt)
 
@@ -11668,7 +11668,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   table and deliberately did not touch this one (out of scope). Anything that
   prints or takes a corpse slot number is suspect; start at whatever pushes
   `LootItemIntent`. Found by T494.
-- **B811** (A) **The llmbench held-item check cannot tell "already holding it" → issue #82
+- ~~**B811** (A) **The llmbench held-item check cannot tell "already holding it" → issue #82
   from "just equipped it", and that is how B796's own experiment produced a
   false positive.** `E_heldA_*` records what the inventory table says at
   COMPILE time and `E_heldB_*` records what it should say after the equip, but
@@ -11678,8 +11678,22 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   moved nothing was read as a success and B796 recorded a contradiction it did
   not have. The fix shape is the one `equip_observed` uses: refuse to score a
   held-item step whose BEFORE state already matches its AFTER state. Found by
-  T494.
-- **B815** (C) **A task worktree has no `data/eq_client`, and three ctest cases → issue #83
+  T494.~~ **STRUCK 2026-09-19 (issue #82, `task/kb-b811-llmbench-held-before-after`)**:
+  the gate lives in `scripts/llmbench/timeline_held_check.py` (shared by the
+  compile gate and the ctest net `LlmBenchHeldBeforeAfterHygiene`,
+  `tests/cmake/hygiene.cmake`). `compile_timeline.py` now refuses to compile a
+  timeline whose `/equip` step targets a slot the character's own last
+  recorded `held=` already fills with the same item -- non-zero exit, before
+  any frame is recorded -- and `verify_labels.py` marks an already-recorded
+  held-B row whose BEFORE state matches its AFTER state as
+  `db_inventory=...no-op... [FAIL]`, so it can never carry a grading label.
+  Measured on the committed timelines: it rejects `timeline_legH.tsv:31`
+  (H0_equip_p3) and the same-shape `timeline_legI.tsv:31`; p2's `/equip 23 13`
+  in the same files is a genuine move (its slot 13 held 14337, not 9997) and
+  still compiles, as do `timeline.tsv`, `timeline_dry.tsv` and `legE`/`legF`/
+  `legG` (their equip rows name no destination item, so the legacy
+  `db_inventory` check covers them unchanged).
+- ~~**B815** (C) **A task worktree has no `data/eq_client`, and three ctest cases → issue #83
   fail as if they were real reds.** `tests/CMakeLists.txt:114` defaults
   `EQ_CLIENT_DATA_PATH` to `${CMAKE_SOURCE_DIR}/data/eq_client`, which is a
   gitignored symlink present in `main` and absent in every fresh worktree, so
@@ -11690,7 +11704,14 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   suite either skips cleanly or does not need the assets, so these three read
   as a regression to anyone who has not hit it before. Either make the tests
   SKIP like their siblings when the path is absent, or create the symlink in
-  the worktree setup. Found by T494.
+  the worktree setup. Found by T494.~~ **STRUCK 2026-09-19 (issue #83 closed
+  by the B815 card, `task/kb-b815-asset-tests-skip`)**: `tests/asset_requirement.h`
+  (`requireEqClientAssets`, one shared helper) makes an absent asset root a
+  GTEST_SKIP locally and a hard FAIL under `WILLEQ_REQUIRE_ASSETS=1`; the three
+  aggregate cases (plus the whole `ComprehensiveZoneTest` /
+  `DoorLoadingUnitTest` suites) now gate on it, `.gitlab-ci.yml`'s `test` job
+  exports the variable so CI can never skip them silently, and
+  `test_asset_requirement` pins both outcomes.
 
 ## Added 2026-09-17 by T497 (readiness that docker-proxy cannot fake)
 
@@ -11754,7 +11775,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   nothing else). `ItemInstance::idfileModel` now parses it, the feeder uses it,
   and the item-id lookup is gone from all nine render sites -- `equipment[]` is
   uniformly a MATERIAL / IT number.
-- **B824** (C) **`EquipmentModelLoader::loadItemModelMapping()` builds a map → issue #86
+~~- **B824** (C) **`EquipmentModelLoader::loadItemModelMapping()` builds a map → issue #86
   nothing reads.** [measured] It parses all 3,661 rows of
   `data/item_models.json` into `itemToModelMap_` at load, and
   `getModelIdForItem()` -- the only thing that would want it -- queries
@@ -11764,7 +11785,17 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   only stopped it THROWING on a non-digit key (`std::stoul`), which is what a
   `"_provenance"` header would have done to it. Delete the map, or delete the
   query and read the map -- one of the two, and it is a decision about which
-  source of truth the tools get. Found by T498.
+  source of truth the tools get. Found by T498.~~
+  **STRUCK by the B824 unit (`task/kb-b824-item-model-map-dead`, kanban
+  t_20a88e62, 2026-09-19):** the map is deleted and the db table confirmed the
+  live lookup. `getModelIdForItem()` is now the only item->model route,
+  answering from `WilleqDatabase::getItemModel()` with no JSON parsed at
+  runtime; `data/item_models.json` stays (startup `checkFile`, input to
+  willeq.db). The deletion is pinned twice: `test_item_model_mapping` (db
+  resolves an item with no JSON map loaded) and the `ItemModelMapDeletion`
+  hygiene test (`scripts/refactor/check_item_model_map.py`) ratchets the map's
+  identifiers out of the tree and the db query in. The source-of-truth call
+  (db over JSON map) was Will's (board B824, 2026-09-18).
 - **B825** (C) **The JSON covers 3,661 of peq's 117,944 items, and an → issue #87
   uncovered one used to fall silently to `modelId = itemId`.** [measured]
   115,185 server items have no row. Every render site's fallback was `if

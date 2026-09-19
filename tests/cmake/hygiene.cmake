@@ -216,6 +216,24 @@ ADD_TEST(NAME ZeroCallersSelfTest
             --self-test)
 SET_TESTS_PROPERTIES(ZeroCallersSelfTest PROPERTIES LABELS "hygiene")
 
+# B824 (issue #86, kanban t_20a88e62): the deleted item-to-model JSON map,
+# ratcheted. EquipmentModelLoader parsed all 3,661 rows of
+# data/item_models.json into itemToModelMap_ on every startup and read it
+# back from nothing -- getModelIdForItem() queries WilleqDatabase's
+# item_models table (the db is built from that JSON). This unit deleted the
+# map and its plumbing (the member, loadItemModelMapping[/Static],
+# getMappingCount, MemoryStats::mappingCount, adoptIndex()'s map argument,
+# and a second never-referenced copy on IrrlichtRenderer). check_item_model_map.py
+# fails if any of the map's identifiers reappears under src/ include/ tools/
+# benchmarks/ docker/ OR if getModelIdForItem() stops querying the database.
+# Pure source scan, no artefact/server/display; the C++ half of the pin is
+# tests/test_item_model_mapping.cpp (db resolves an item with no JSON map
+# loaded). Same discipline as WriteOnlyFields (B840) and ZeroCallers (B491).
+ADD_TEST(NAME ItemModelMapDeletion
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_item_model_map.py
+            --repo ${CMAKE_SOURCE_DIR})
+SET_TESTS_PROPERTIES(ItemModelMapDeletion PROPERTIES LABELS "hygiene")
+
 # T491 (2026-09-14): the memory-ledger half of the visual gate
 # (scripts/ci/visual_gate.py assert_memory_ledger) and the cap-hunt script
 # (scripts/ci/memory_cap_hunt.sh). The first drives the assertion on
@@ -241,3 +259,16 @@ SET_TESTS_PROPERTIES(MemoryCapHuntScript PROPERTIES LABELS "hygiene" SKIP_RETURN
 ADD_TEST(NAME BoardToIssuesHygiene
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/gitlab/test_board_to_issues.py -v)
 SET_TESTS_PROPERTIES(BoardToIssuesHygiene PROPERTIES LABELS "hygiene")
+
+# B811 (issue #82): the llmbench held-item before/after gate.  T494's legH
+# timeline let p3's /equip step score as a success although the character
+# was ALREADY holding the destination item at slot 13 (timeline_legH.tsv:27),
+# because nothing asserted BEFORE != AFTER.  test_timeline_held_check.py
+# drives the production gate (timeline_held_check.check_held_steps, wired
+# into compile_timeline.py) and the production verifier (verify_labels.py)
+# on the committed legH rows: the no-op step must be INVALID at compile time
+# and its held-B row must FAIL verification, while a genuine move still
+# passes.  Pure python over committed TSVs, no server, no artefact.
+ADD_TEST(NAME LlmBenchHeldBeforeAfterHygiene
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/llmbench/test_timeline_held_check.py -v)
+SET_TESTS_PROPERTIES(LlmBenchHeldBeforeAfterHygiene PROPERTIES LABELS "hygiene")

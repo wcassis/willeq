@@ -1,0 +1,1608 @@
+# B824: hygiene census + affected-test results (post-deletion)
+
+$ python3 scripts/refactor/check_zero_callers.py --repo . --checkdeclared functions: 6782 (4540 public/protected non-virtual candidates, 4048 distinct names) in include, src
+swept 1267 files in src, include, tests, tools, benchmarks, docker
+zero-caller census clean: 408 functions, all classified in EXEMPT (boarded 408).
+tests-only census clean: 290 functions, all classified in EXEMPT_TESTS (boarded 107, observer 145, seam 38).
+(exit 0)
+
+$ python3 scripts/refactor/check_write_only_fields.py --repo . --check
+declared members: 6783 (4609 distinct names) in include/client, src/client
+write-only census clean: 64 fields, all 64 classified in EXEMPT.
+unused census clean: 86 fields, all 86 classified in EXEMPT_UNUSED.
+(exit 0)
+
+$ python3 scripts/refactor/check_doc_counts.py --repo .
+DocCounts: 17 counts netted over 33 doc sites in 12 docs, 5 not-a-number assertions, 2 forbidden-restatement assertions, 8 directory-coverage assertions
+  measured InputAction enumerators                                    33
+  measured HotkeyAction enumerators                                   101
+  measured registerCommand({ calls in registry 2                      143
+  measured GameEventType enumerators                                  101
+  measured RendererIntent variant alternatives                        42
+  measured loadZoneStep* functions                                    20
+  measured renderer components (include/client/graphics/*/*_component.h) 11
+  measured EverQuest components (include/client/*/*_component.h)      12
+  measured VisionType enumerators                                     4
+  measured audio volume steps (kVolumeSteps)                          20
+  measured Options window control rows (OptionsLayout::kControls)     114
+  measured item icon source sheets (kSheetCount)                      34
+  measured item icon cells that carry art (kPopulatedIconCount)       1200
+  measured shipped data/textures BMPs                                 67
+  measured shipped 32-bit BMPs (alpha in band)                        63
+  measured hygiene ctest tests                                        16
+  measured tests/cmake per-domain fragments                           19
+OK: every stated count matches the tree.
+(exit 0)
+
+$ python3 scripts/refactor/check_doc_claims.py --repo .
+DocClaims: 15 orientation docs scanned (including refactor/BOARD.md's 224 LIVE entries; struck entries skipped), 54 retired names in the table, 11 exempted line hits (RETIRED-OK)
+OK: no live doc names a retired symbol.
+(exit 0)
+
+$ python3 scripts/refactor/check_doc_citations.py --repo .
+checking 16 live doc(s) in /home/user/src/willeq-wt/kb-b824-item-model-map-dead
+OK    CLAUDE.md:6 cites docs/decisions.md
+OK    CLAUDE.md:12 cites src/client/graphics/CLAUDE.md
+OK    CLAUDE.md:13 cites include/client/graphics/ui/CLAUDE.md
+OK    CLAUDE.md:14 cites include/client/state/CLAUDE.md
+OK    CLAUDE.md:15 cites include/client/bridge/CLAUDE.md
+OK    CLAUDE.md:16 cites src/client/input/CLAUDE.md
+OK    CLAUDE.md:17 cites src/client/audio/CLAUDE.md
+OK    CLAUDE.md:18 cites docker/CLAUDE.md
+OK    CLAUDE.md:19 cites docs/CLAUDE.md
+OK    CLAUDE.md:23 cites docs/decisions.md
+OK    CLAUDE.md:25 cites docs/module_map.md
+OK    CLAUDE.md:29 cites refactor/BOARD.md
+OK    CLAUDE.md:33 cites refactor/K_component_extraction.md
+OK    CLAUDE.md:47 cites refactor/BOARD.md
+OK    CLAUDE.md:47 cites docs/module_map.md
+OK    CLAUDE.md:48 cites docs/decisions.md
+OK    CLAUDE.md:55 cites refactor/EXECUTOR_PROTOCOL.md
+OK    CLAUDE.md:57 cites docs/decisions.md
+OK    CLAUDE.md:68 cites scripts/refactor/check_doc_counts.py
+OK    CLAUDE.md:84 cites docs/ci.md
+OK    CLAUDE.md:92 cites docs/decisions.md
+OK    CLAUDE.md:96 cites scripts/refactor/check_file_sizes.sh
+OK    CLAUDE.md:99 cites refactor/J_file_size_reclamation.md
+OK    CLAUDE.md:100 cites refactor/K_component_extraction.md
+OK    CLAUDE.md:101 cites refactor/L_renderer_component_extraction.md
+OK    CLAUDE.md:101 cites refactor/G_oversize_methods.md
+OK    CLAUDE.md:108 cites docs/decisions.md
+OK    CLAUDE.md:110 cites include/client/core/memory_ledger.h
+OK    CLAUDE.md:112 cites scripts/ci/visual_gate.py
+OK    CLAUDE.md:114 cites docs/decisions.md
+OK    CLAUDE.md:121 cites docs/decisions.md
+OK    CLAUDE.md:127 cites docs/decisions.md
+OK    CLAUDE.md:141 cites scripts/build-arm-noble.sh
+OK    CLAUDE.md:144 cites refactor/desktop_gl_elimination_plan.md
+OK    CLAUDE.md:153 cites scripts/build-gles2-x86.sh
+OK    CLAUDE.md:188 cites scripts/build-gles2-x86.sh
+OK    CLAUDE.md:189 cites scripts/build-arm-noble.sh
+OK    CLAUDE.md:190 cites scripts/build-gles2-x86.sh
+OK    CLAUDE.md:192 cites scripts/ci/visual_gate.sh
+OK    CLAUDE.md:212 cites ./scripts/start-with-vnc.sh
+OK    CLAUDE.md:215 cites ./scripts/start-with-vnc-audio.sh
+OK    CLAUDE.md:238 cites include/client/data_paths.h
+OK    CLAUDE.md:252 cites tests/test_data_path_routing.cpp
+OK    CLAUDE.md:273 cites scripts/build_textures.sh
+OK    CLAUDE.md:274 cites scripts/build_willeq_pack.sh
+OK    CLAUDE.md:275 cites scripts/build_willeq_db.sh
+OK    CLAUDE.md:286 cites scripts/build_willeq_db.sh
+OK    CLAUDE.md:318 cites include/client/graphics/ui/item_icon_atlas.h
+OK    CLAUDE.md:330 cites tests/test_item_icon_atlas.cpp
+OK    CLAUDE.md:338 cites include/client/graphics/ui/item_icon_sheets.h
+OK    CLAUDE.md:345 cites include/client/graphics/environment/spell_sprite_atlas.h
+SKIP  CLAUDE.md:364 cites review/T422/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    CLAUDE.md:365 cites tests/test_spell_burst_oracle_match.cpp
+OK    CLAUDE.md:382 cites tests/test_spell_colour_and_overrides.cpp
+OK    CLAUDE.md:388 cites tests/test_texture_alpha_census.cpp
+OK    CLAUDE.md:423 cites scripts/eqemu/env.sh
+OK    CLAUDE.md:429 cites refactor/EXECUTOR_PROTOCOL.md
+OK    CLAUDE.md:444 cites scripts/scenario.sh
+OK    CLAUDE.md:448 cites scripts/scenario.sh
+OK    CLAUDE.md:451 cites scripts/eqemu/ready_selftest.sh
+OK    CLAUDE.md:452 cites scripts/eqemu/ready_selftest.sh
+OK    CLAUDE.md:471 cites scripts/eqemu/env.sh
+OK    CLAUDE.md:478 cites scripts/eqemu/ready_selftest.sh
+OK    CLAUDE.md:490 cites scripts/eqemu/restore_lib.sh
+OK    CLAUDE.md:491 cites scripts/scenario.sh
+OK    CLAUDE.md:491 cites scripts/llmbench/teardown.sh
+OK    CLAUDE.md:492 cites scripts/llmbench/record.sh
+OK    CLAUDE.md:497 cites scripts/eqemu/restore_selftest.sh
+OK    CLAUDE.md:503 cites include/client/scenario/scenario_runner.h
+OK    CLAUDE.md:513 cites scripts/scenario.sh
+OK    CLAUDE.md:539 cites src/client/scenario/scenario_registry.cpp
+OK    CLAUDE.md:546 cites scripts/scenario.sh
+OK    CLAUDE.md:551 cites include/client/scenario/scenario.h
+OK    CLAUDE.md:552 cites tests/test_scenario_state_machines.cpp
+OK    CLAUDE.md:571 cites scripts/ci/encode_capture.sh
+OK    CLAUDE.md:580 cites scripts/ci/encode_capture.sh
+OK    CLAUDE.md:591 cites refactor/T64_video_capture_extraction.md
+SKIP  CLAUDE.md:591 cites review/T64/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    CLAUDE.md:620 cites src/client/graphics/CLAUDE.md
+OK    CLAUDE.md:622 cites scripts/build-arm-noble.sh
+OK    CLAUDE.md:627 cites scripts/build-arm-noble.sh
+OK    CLAUDE.md:633 cites scripts/build-gles2-x86.sh
+OK    CLAUDE.md:643 cites docs/decisions.md
+OK    CLAUDE.md:648 cites docker/irrlicht-drm/CIrrDeviceFB.cpp
+OK    CLAUDE.md:684 cites include/client/bridge/game_state_bridge.h
+OK    CLAUDE.md:688 cites include/client/bridge/irrlicht_bridge.h
+OK    CLAUDE.md:692 cites include/client/bridge/console_bridge.h
+OK    CLAUDE.md:694 cites include/client/state/event_types.h
+OK    CLAUDE.md:697 cites include/client/events/renderer_intents.h
+OK    CLAUDE.md:707 cites src/client/bridge/bridge_component.cpp
+OK    CLAUDE.md:708 cites src/client/core/everquest.cpp
+OK    CLAUDE.md:710 cites include/client/graphics/zone_load_surface.h
+OK    CLAUDE.md:726 cites include/client/application.h
+OK    CLAUDE.md:726 cites src/client/application.cpp
+OK    CLAUDE.md:732 cites include/client/eq.h
+OK    CLAUDE.md:732 cites src/client/core/everquest.cpp
+OK    CLAUDE.md:738 cites docs/module_map.md
+OK    CLAUDE.md:742 cites include/client/graphics/irrlicht_renderer.h
+OK    CLAUDE.md:757 cites include/client/graphics/renderer_context.h
+OK    CLAUDE.md:768 cites docs/module_map.md
+OK    CLAUDE.md:779 cites include/client/hc_map.h
+OK    CLAUDE.md:779 cites include/client/raycast_mesh.h
+OK    CLAUDE.md:782 cites include/client/combat.h
+OK    CLAUDE.md:785 cites src/client/trade_manager.cpp
+OK    CLAUDE.md:791 cites docs/module_map.md
+OK    CLAUDE.md:796 cites src/client/core/everquest.cpp
+OK    CLAUDE.md:803 cites include/common/packet_structs.h
+OK    CLAUDE.md:808 cites docs/standards/debug_logging_standards.md
+OK    CLAUDE.md:813 cites include/common/logging.h
+OK    CLAUDE.md:824 cites docs/plans/session_replay_oracle.md
+OK    CLAUDE.md:847 cites include/client/door_state_manager.h
+OK    CLAUDE.md:865 cites docs/decisions.md
+OK    CLAUDE.md:873 cites include/client/inventory/inventory_constants.h
+OK    CLAUDE.md:894 cites scripts/eqemu/export_item_idfile.sh
+OK    CLAUDE.md:897 cites include/client/zone_bsp.h
+OK    CLAUDE.md:916 cites docs/decisions.md
+OK    CLAUDE.md:938 cites include/client/graphics/ui/ui_preferences.h
+OK    CLAUDE.md:939 cites src/client/graphics/ui/ui_preferences.cpp
+OK    CLAUDE.md:940 cites src/client/graphics/frame/renderer_frame_preferences.cpp
+OK    CLAUDE.md:942 cites src/client/graphics/frame/renderer_frame_options.cpp
+OK    CLAUDE.md:954 cites include/client/audio/volume_steps.h
+OK    CLAUDE.md:968 cites src/client/audio/CLAUDE.md
+OK    CLAUDE.md:973 cites src/client/graphics/CLAUDE.md
+OK    CLAUDE.md:974 cites include/client/graphics/ui/CLAUDE.md
+OK    docker/CLAUDE.md:14 cites scripts/build-arm-noble.sh
+OK    docker/CLAUDE.md:16 cites ./scripts/build-arm-noble.sh
+OK    docker/CLAUDE.md:17 cites ./scripts/build-arm-noble.sh
+OK    docker/CLAUDE.md:18 cites ./scripts/build-arm-noble.sh
+OK    docker/CLAUDE.md:19 cites ./scripts/build-arm-noble.sh
+OK    docker/CLAUDE.md:22 cites docs/decisions.md
+OK    docs/CLAUDE.md:82 cites src/client/graphics/eq/mesh_building.cpp
+OK    docs/CLAUDE.md:159 cites src/client/zone/zone_entry.cpp
+OK    docs/CLAUDE.md:161 cites src/client/entities/entities_component.cpp
+OK    include/client/bridge/CLAUDE.md:20 cites src/client/bridge/irrlicht_bridge.cpp
+OK    include/client/bridge/CLAUDE.md:43 cites include/client/state/event_bus.h
+OK    include/client/bridge/CLAUDE.md:43 cites include/client/state/CLAUDE.md
+OK    include/client/bridge/CLAUDE.md:47 cites include/client/events/renderer_intents.h
+OK    include/client/bridge/CLAUDE.md:50 cites src/client/commands/commands_movement.cpp
+OK    include/client/bridge/CLAUDE.md:59 cites include/client/audio/volume_steps.h
+OK    include/client/graphics/ui/CLAUDE.md:7 cites tests/test_static_ui_frame_cost.cpp
+OK    include/client/graphics/ui/CLAUDE.md:16 cites include/client/graphics/ui/item_icon_atlas.h
+OK    include/client/graphics/ui/CLAUDE.md:21 cites include/client/graphics/ui/item_icon_sheets.h
+OK    include/client/graphics/ui/CLAUDE.md:38 cites tests/test_ui_sprite_roster.cpp
+OK    include/client/graphics/ui/CLAUDE.md:39 cites scripts/build_willeq_pack.sh
+OK    include/client/graphics/ui/CLAUDE.md:40 cites src/client/graphics/frame/renderer_frame_input.cpp
+OK    include/client/graphics/ui/CLAUDE.md:40 cites include/client/command_completion.h
+OK    include/client/graphics/ui/CLAUDE.md:60 cites src/client/graphics/ui/tradeskill_recipe_list.cpp
+OK    include/client/graphics/ui/CLAUDE.md:109 cites include/client/graphics/ui/text_entry.h
+OK    include/client/graphics/ui/CLAUDE.md:109 cites tests/test_read_and_reset_ownership.cpp
+OK    include/client/graphics/ui/CLAUDE.md:111 cites include/client/graphics/ui/item_display_layout.h
+OK    include/client/graphics/ui/CLAUDE.md:116 cites include/client/graphics/ui/tradeskill_layout.h
+OK    include/client/graphics/ui/CLAUDE.md:119 cites include/client/graphics/ui/combat_ability_layout.h
+OK    include/client/graphics/ui/CLAUDE.md:124 cites include/client/graphics/ui/pet_layout.h
+OK    include/client/graphics/ui/CLAUDE.md:139 cites tests/test_ui_atlas_pixels.cpp
+OK    include/client/graphics/ui/CLAUDE.md:206 cites src/client/input/CLAUDE.md
+OK    include/client/graphics/ui/CLAUDE.md:249 cites tests/test_ui_preferences_identity.cpp
+OK    include/client/graphics/ui/CLAUDE.md:254 cites src/client/graphics/frame/renderer_frame_preferences.cpp
+OK    include/client/graphics/ui/CLAUDE.md:272 cites docs/decisions.md
+OK    include/client/graphics/ui/CLAUDE.md:283 cites src/client/action/command_processor_registration.cpp
+OK    include/client/graphics/ui/CLAUDE.md:294 cites src/client/graphics/slash/renderer_slash_commands.cpp
+OK    include/client/graphics/ui/CLAUDE.md:309 cites include/client/graphics/slash/camera_command.h
+OK    include/client/graphics/ui/CLAUDE.md:312 cites src/client/graphics/CLAUDE.md
+OK    include/client/graphics/ui/CLAUDE.md:313 cites src/client/help/renderer_command_catalog.cpp
+OK    include/client/graphics/ui/CLAUDE.md:347 cites src/client/graphics/ui/loot_panel.cpp
+OK    include/client/state/CLAUDE.md:37 cites include/client/state/event_bus.h
+OK    include/client/state/CLAUDE.md:53 cites scripts/refactor/check_doc_counts.py
+OK    src/client/audio/CLAUDE.md:49 cites include/client/audio/volume_steps.h
+OK    src/client/audio/CLAUDE.md:61 cites src/client/bridge/bridge_component_ui_audio.cpp
+OK    src/client/graphics/CLAUDE.md:7 cites refactor/L_renderer_component_extraction.md
+OK    src/client/graphics/CLAUDE.md:15 cites docs/module_map.md
+OK    src/client/graphics/CLAUDE.md:43 cites include/client/graphics/player/camera_mode.h
+OK    src/client/graphics/CLAUDE.md:53 cites src/client/bridge/irrlicht_bridge.cpp
+OK    src/client/graphics/CLAUDE.md:56 cites tools/model_viewer/model_viewer_spell_test.cpp
+OK    src/client/graphics/CLAUDE.md:85 cites docs/decisions.md
+OK    src/client/graphics/CLAUDE.md:167 cites docs/decisions.md
+OK    src/client/graphics/CLAUDE.md:174 cites docs/decisions.md
+OK    src/client/graphics/CLAUDE.md:176 cites include/client/graphics/eq/zone_geometry.h
+OK    src/client/graphics/CLAUDE.md:176 cites src/client/graphics/eq/zone_geometry.cpp
+OK    src/client/graphics/CLAUDE.md:185 cites include/client/core/memory_ledger.h
+OK    src/client/graphics/CLAUDE.md:211 cites scripts/ci/memory_cap_hunt.sh
+OK    src/client/graphics/CLAUDE.md:234 cites include/client/graphics/loading_thread.h
+OK    src/client/graphics/CLAUDE.md:237 cites include/client/graphics/zone_load/zone_load_component.h
+OK    src/client/graphics/CLAUDE.md:274 cites include/client/graphics/eq/bone_attachment.h
+OK    src/client/graphics/CLAUDE.md:276 cites src/client/graphics/eq/equipment_actor_geometry.cpp
+OK    src/client/graphics/CLAUDE.md:281 cites src/client/graphics/entity_equipment.cpp
+OK    src/client/graphics/CLAUDE.md:282 cites src/client/graphics/ui/character_model_view.cpp
+OK    src/client/graphics/CLAUDE.md:283 cites tools/model_viewer/model_viewer_equipment.cpp
+SKIP  src/client/graphics/CLAUDE.md:306 cites review/T485/data/score_perpendicular.py — /mnt/projects/fable/review not authoritative for this checkout
+OK    src/client/graphics/CLAUDE.md:338 cites scripts/build_willeq_pack.sh
+OK    src/client/graphics/CLAUDE.md:376 cites refactor/T60_paperdoll_restore.md
+OK    src/client/graphics/CLAUDE.md:378 cites refactor/T294_paperdoll_atlas_verify.md
+OK    src/client/graphics/CLAUDE.md:387 cites tests/test_static_ui_panels.cpp
+OK    src/client/graphics/CLAUDE.md:419 cites scripts/gdb_core_bt.sh
+OK    src/client/input/CLAUDE.md:44 cites docs/module_map.md
+OK    src/client/input/CLAUDE.md:48 cites src/client/graphics/frame/renderer_frame_input.cpp
+OK    src/client/input/CLAUDE.md:48 cites include/client/command_completion.h
+OK    src/client/input/CLAUDE.md:71 cites src/client/action/eq_action_handler.cpp
+OK    docs/ci.md:55 cites tests/test_data_paths.cpp
+OK    docs/ci.md:117 cites scripts/build-gles2-x86.sh
+OK    docs/decisions.md:11 cites scripts/refactor/check_file_sizes.sh
+OK    docs/decisions.md:18 cites tools/hwcaps/zone_bench_loader.cpp
+OK    docs/decisions.md:18 cites tools/model_viewer.cpp
+OK    docs/decisions.md:19 cites tools/hwcaps/gles2_zone_benchmark.cpp
+OK    docs/decisions.md:19 cites tools/model_viewer_spell_bar.h
+OK    docs/decisions.md:20 cites tools/entity_composite_builder.cpp
+OK    docs/decisions.md:21 cites tools/hwcaps/gles2_fog_volume_benchmark.cpp
+OK    docs/decisions.md:23 cites tools/model_viewer.cpp
+OK    docs/decisions.md:36 cites scripts/refactor/check_file_sizes.sh
+OK    docs/decisions.md:41 cites include/client/eq.h
+OK    docs/decisions.md:42 cites refactor/K_component_extraction.md
+OK    docs/decisions.md:43 cites include/client/graphics/irrlicht_renderer.h
+OK    docs/decisions.md:44 cites refactor/L_renderer_component_extraction.md
+OK    docs/decisions.md:59 cites scripts/refactor/check_file_sizes.sh
+OK    docs/decisions.md:60 cites scripts/refactor/check_doc_citations.py
+OK    docs/decisions.md:69 cites include/client/eq.h
+OK    docs/decisions.md:70 cites include/client/graphics/irrlicht_renderer.h
+OK    docs/decisions.md:72 cites refactor/K_component_extraction.md
+OK    docs/decisions.md:76 cites refactor/BOARD.md
+OK    docs/decisions.md:77 cites refactor/EXECUTOR_PROTOCOL.md
+OK    docs/decisions.md:166 cites refactor/F_file_split.md
+OK    docs/decisions.md:192 cites docs/future/custom_renderer.md
+OK    docs/decisions.md:194 cites docs/archive/c99_handoff.md
+OK    docs/decisions.md:257 cites refactor/completed/deferred_archive_20260903.md
+OK    docs/decisions.md:287 cites docs/module_map.md
+OK    docs/decisions.md:287 cites refactor/completed/deferred_archive_20260903.md
+OK    docs/decisions.md:298 cites scripts/refactor/verify_move_only.py
+OK    docs/decisions.md:305 cites scripts/refactor/check_file_sizes.sh
+OK    docs/decisions.md:311 cites docs/decisions.md
+OK    docs/decisions.md:312 cites docs/module_map.md
+OK    docs/decisions.md:312 cites refactor/BOARD.md
+OK    docs/decisions.md:313 cites docs/reference/arch_design_orig.md
+OK    docs/decisions.md:315 cites refactor/BOARD.md
+OK    docs/decisions.md:316 cites refactor/completed/progress_archive_20260903.md
+OK    docs/decisions.md:317 cites refactor/completed/deferred_archive_20260903.md
+OK    docs/decisions.md:323 cites refactor/completed/deferred_archive_20260903.md
+OK    docs/decisions.md:324 cites refactor/BOARD.md
+OK    docs/decisions.md:338 cites refactor/desktop_gl_elimination_plan.md
+OK    docs/decisions.md:349 cites refactor/P31_phase4_5_dead_code_docs.md
+OK    docs/decisions.md:354 cites docker/irrlicht-drm-x86/CIrrDeviceFB.cpp
+OK    docs/decisions.md:370 cites scripts/build-gles2-x86.sh
+OK    docs/decisions.md:371 cites scripts/build-arm-noble.sh
+OK    docs/decisions.md:387 cites docker/README.md
+OK    docs/decisions.md:389 cites scripts/build-gles2-x86.sh
+OK    docs/decisions.md:406 cites refactor/P32_phase4_final.md
+OK    docs/decisions.md:417 cites scripts/build-arm-noble.sh
+OK    docs/decisions.md:419 cites refactor/desktop_gl_elimination_plan.md
+OK    docs/decisions.md:420 cites refactor/P32_phase4_final.md
+OK    docs/decisions.md:442 cites refactor/perf_truth_audit.md
+OK    docs/decisions.md:481 cites src/client/bridge/bridge_component_intents.cpp
+OK    docs/decisions.md:525 cites refactor/T78_two_gamestate_analysis.md
+OK    docs/decisions.md:543 cites tests/test_game_state_source_writes.cpp
+OK    docs/decisions.md:580 cites src/client/graphics/ui/loot_panel.cpp
+OK    docs/decisions.md:581 cites refactor/completed/D06b_publish_loot_vendor.md
+OK    docs/decisions.md:582 cites include/client/graphics/ui/CLAUDE.md
+OK    docs/decisions.md:605 cites refactor/T293_memory_budgets.md
+OK    docs/decisions.md:731 cites src/client/graphics/CLAUDE.md
+OK    docs/decisions.md:732 cites tests/test_eqe1_composite_open.cpp
+OK    docs/decisions.md:769 cites refactor/T300_leg_b_implementation.md
+OK    docs/decisions.md:770 cites refactor/completed/deferred_archive_20260903.md
+SKIP  docs/decisions.md:817 cites /mnt/projects/akk-stack/code/world/zoneserver.cpp:423 — cross-project citation
+OK    docs/decisions.md:898 cites include/client/graphics/vision_ambient.h
+OK    docs/decisions.md:925 cites scripts/scenario.sh
+OK    docs/decisions.md:992 cites refactor/T461_camera_modes_orbit_f9.md
+OK    docs/decisions.md:1025 cites scripts/ci/visual_gate.py
+OK    docs/decisions.md:1029 cites include/client/core/memory_ledger.h
+OK    docs/decisions.md:1030 cites src/client/core/memory_ledger.cpp
+OK    docs/decisions.md:1073 cites scripts/ci/visual_gate.py
+OK    docs/decisions.md:1108 cites include/client/inventory/inventory_constants.h
+OK    docs/decisions.md:1116 cites tests/test_inventory_slot_convention.cpp
+OK    docs/decisions.md:1116 cites tests/test_command_processor_world.cpp
+OK    docs/decisions.md:1117 cites tests/test_read_book.cpp
+OK    docs/decisions.md:1117 cites tests/test_scribe_scroll.cpp
+OK    docs/decisions.md:1118 cites tests/test_tradeskill_combine.cpp
+SKIP  docs/decisions.md:1146 cites review/T496/scripts/pi_sweep.sh — /mnt/projects/fable/review not authoritative for this checkout
+OK    docs/issues.md:5 cites refactor/BOARD.md
+OK    docs/issues.md:9 cites scripts/gitlab/board_to_issues.py
+OK    docs/issues.md:31 cites scripts/gitlab/test_board_to_issues.py
+OK    docs/issues.md:46 cites refactor/BOARD.md
+OK    docs/issues.md:57 cites refactor/BOARD.md
+OK    docs/module_map.md:8 cites scripts/refactor/check_file_sizes.sh
+OK    docs/module_map.md:11 cites docs/decisions.md
+OK    docs/module_map.md:13 cites docs/decisions.md
+OK    docs/module_map.md:20 cites tools/hwcaps/zone_bench_loader.cpp
+OK    docs/module_map.md:21 cites tools/hwcaps/gles2_zone_benchmark.cpp
+OK    docs/module_map.md:25 cites docs/module_map.md
+OK    docs/module_map.md:28 cites include/client/eq.h
+OK    docs/module_map.md:30 cites src/client/core/everquest.cpp
+OK    docs/module_map.md:36 cites src/client/core/everquest.cpp
+OK    docs/module_map.md:37 cites src/client/action/eq_action_handler.cpp
+OK    docs/module_map.md:38 cites src/client/movement/movement_component.cpp
+OK    docs/module_map.md:39 cites src/client/bridge/bridge_component.cpp
+OK    docs/module_map.md:40 cites src/client/merchant/merchant.cpp
+OK    docs/module_map.md:41 cites src/client/commands/commands_component.cpp
+OK    docs/module_map.md:41 cites docs/decisions.md
+OK    docs/module_map.md:42 cites src/client/zone/zone_component.cpp
+OK    docs/module_map.md:43 cites src/client/zone/zone_entry.cpp
+OK    docs/module_map.md:44 cites src/client/zone/zone_dispatch.cpp
+OK    docs/module_map.md:44 cites tests/test_zone_dispatch_table.cpp
+OK    docs/module_map.md:45 cites src/client/login_world/login_world_component.cpp
+OK    docs/module_map.md:46 cites src/client/core/eq_strings.cpp
+OK    docs/module_map.md:46 cites include/client/eq_strings.h
+OK    docs/module_map.md:46 cites src/client/core/everquest.cpp
+OK    docs/module_map.md:47 cites src/client/player/player_misc.cpp
+OK    docs/module_map.md:48 cites src/client/player/player_component.cpp
+OK    docs/module_map.md:49 cites src/client/core/memory_ledger.cpp
+OK    docs/module_map.md:49 cites include/client/core/memory_ledger.h
+OK    docs/module_map.md:49 cites scripts/ci/visual_gate.py
+OK    docs/module_map.md:49 cites scripts/ci/memory_cap_hunt.sh
+OK    docs/module_map.md:50 cites src/client/core/eq_chat.cpp
+OK    docs/module_map.md:50 cites src/client/chat_output.cpp
+OK    docs/module_map.md:50 cites src/client/application_commands.cpp
+OK    docs/module_map.md:51 cites src/client/chat_output.cpp
+OK    docs/module_map.md:51 cites include/client/chat_output.h
+OK    docs/module_map.md:52 cites src/client/player/player_buffs.cpp
+OK    docs/module_map.md:53 cites src/client/player/player_state.cpp
+OK    docs/module_map.md:53 cites src/client/core/eq_player_info.cpp
+OK    docs/module_map.md:54 cites src/client/commands/combat_actions.cpp
+OK    docs/module_map.md:55 cites src/client/commands/commands_spells.cpp
+OK    docs/module_map.md:56 cites src/client/core/eq_player_info.cpp
+OK    docs/module_map.md:56 cites src/client/player_facade.cpp
+OK    docs/module_map.md:57 cites src/client/player_facade.cpp
+OK    docs/module_map.md:57 cites include/client/player_facade.h
+OK    docs/module_map.md:58 cites include/client/lifecycle_facade.h
+OK    docs/module_map.md:59 cites src/client/packet_sender.cpp
+OK    docs/module_map.md:59 cites include/client/packet_sender.h
+OK    docs/module_map.md:60 cites src/client/player/player_info.cpp
+OK    docs/module_map.md:61 cites src/client/zone/zone_handshake.cpp
+OK    docs/module_map.md:62 cites src/client/commands/commands_movement.cpp
+OK    docs/module_map.md:63 cites src/client/core/eq_chat.cpp
+OK    docs/module_map.md:67 cites src/client/commands/commands_train.cpp
+OK    docs/module_map.md:68 cites src/client/player/profile_appearance.cpp
+OK    docs/module_map.md:68 cites include/client/player/profile_appearance.h
+OK    docs/module_map.md:69 cites src/client/action/eq_action_handler_extended.cpp
+OK    docs/module_map.md:70 cites src/client/action/eq_action_handler_spells_trade.cpp
+OK    docs/module_map.md:71 cites src/client/bridge/bridge_component_intents.cpp
+OK    docs/module_map.md:71 cites tests/test_bridge_intent_table.cpp
+OK    docs/module_map.md:72 cites src/client/bridge/bridge_component_ui_audio.cpp
+OK    docs/module_map.md:73 cites src/client/merchant/merchant_trade.cpp
+OK    docs/module_map.md:74 cites src/client/merchant/merchant_vendor_bank.cpp
+OK    docs/module_map.md:77 cites tests/test_corpse_death_pose.cpp
+OK    docs/module_map.md:79 cites src/client/movement/movement_state.cpp
+OK    docs/module_map.md:80 cites src/client/movement/movement_update.cpp
+OK    docs/module_map.md:82 cites refactor/K_component_extraction.md
+OK    docs/module_map.md:92 cites include/client/client_context.h
+OK    docs/module_map.md:99 cites src/client/core/eq_player_info.cpp
+OK    docs/module_map.md:100 cites src/client/core/everquest.cpp
+OK    docs/module_map.md:101 cites src/client/core/everquest.cpp
+OK    docs/module_map.md:102 cites src/client/core/everquest.cpp
+OK    docs/module_map.md:104 cites src/client/core/everquest.cpp
+OK    docs/module_map.md:107 cites include/client/application.h
+OK    docs/module_map.md:111 cites src/client/application.cpp
+OK    docs/module_map.md:111 cites tests/test_application_init_order.cpp
+OK    docs/module_map.md:119 cites src/client/scenario/scenario_application_wiring.cpp
+OK    docs/module_map.md:131 cites src/client/scenario/scenario_runner.cpp
+OK    docs/module_map.md:132 cites src/client/scenario/scenario_registry.cpp
+OK    docs/module_map.md:133 cites src/client/scenario/scenario_zone_in.cpp
+OK    docs/module_map.md:134 cites src/client/scenario/scenario_two_client_survive.cpp
+OK    docs/module_map.md:135 cites src/client/scenario/scenario_cast_lands.cpp
+OK    docs/module_map.md:136 cites src/client/scenario/scenario_world_app.cpp
+OK    docs/module_map.md:137 cites src/client/scenario/scenario_application_wiring.cpp
+OK    docs/module_map.md:144 cites tests/test_command_registration_order.cpp
+OK    docs/module_map.md:147 cites src/client/action/command_processor.cpp
+OK    docs/module_map.md:164 cites include/client/spell/spell_manager.h
+OK    docs/module_map.md:177 cites tests/test_spell_manager_timing.cpp
+OK    docs/module_map.md:182 cites include/client/graphics/irrlicht_renderer.h
+OK    docs/module_map.md:185 cites include/client/graphics/zone_load_surface.h
+OK    docs/module_map.md:196 cites refactor/L_renderer_component_extraction.md
+OK    docs/module_map.md:198 cites include/client/graphics/renderer_context.h
+OK    docs/module_map.md:200 cites include/client/client_context.h
+OK    docs/module_map.md:209 cites refactor/L13_pairwise_ownership.md
+OK    docs/module_map.md:219 cites include/client/graphics/render_pass_timer.h
+OK    docs/module_map.md:248 cites include/client/graphics/rdp/rdp_component.h
+OK    docs/module_map.md:248 cites src/client/graphics/rdp/rdp_component.cpp
+OK    docs/module_map.md:249 cites include/client/graphics/eqe1/eqe1_archive_component.h
+OK    docs/module_map.md:249 cites src/client/graphics/eqe1/eqe1_archive_component.cpp
+OK    docs/module_map.md:250 cites include/client/graphics/overlays/overlays_component.h
+OK    docs/module_map.md:250 cites src/client/graphics/overlays/overlays_component.cpp
+OK    docs/module_map.md:250 cites src/client/graphics/overlays/overlays_hud_env.cpp
+OK    docs/module_map.md:250 cites src/client/graphics/overlays/overlays_env_managers.cpp
+OK    docs/module_map.md:250 cites tests/test_environment_manager_construction.cpp
+OK    docs/module_map.md:251 cites include/client/graphics/diagnostics/diagnostics_component.h
+OK    docs/module_map.md:251 cites src/client/graphics/diagnostics/diagnostics_component.cpp
+OK    docs/module_map.md:251 cites src/client/graphics/diagnostics/diagnostics_debug.cpp
+OK    docs/module_map.md:252 cites include/client/graphics/player/player_camera_component.h
+OK    docs/module_map.md:252 cites src/client/graphics/player/renderer_player_physics.cpp
+OK    docs/module_map.md:252 cites src/client/graphics/player/renderer_player_collision.cpp
+OK    docs/module_map.md:252 cites src/client/graphics/player/renderer_camera.cpp
+OK    docs/module_map.md:252 cites src/client/graphics/player/ground_query.cpp
+OK    docs/module_map.md:252 cites src/client/graphics/player/renderer_player_lift.cpp
+OK    docs/module_map.md:253 cites include/client/graphics/sim/sim_bridge_component.h
+OK    docs/module_map.md:253 cites src/client/graphics/sim/renderer_sim_bridge.cpp
+OK    docs/module_map.md:254 cites include/client/graphics/zone_stream/zone_stream_component.h
+OK    docs/module_map.md:254 cites src/client/graphics/zone_stream/renderer_zone_stream.cpp
+OK    docs/module_map.md:254 cites src/client/graphics/zone_stream/renderer_zone_merge.cpp
+OK    docs/module_map.md:255 cites include/client/graphics/zone_lifecycle/zone_lifecycle_component.h
+OK    docs/module_map.md:255 cites src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp
+OK    docs/module_map.md:255 cites src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp
+OK    docs/module_map.md:255 cites src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
+OK    docs/module_map.md:256 cites include/client/graphics/zone_load/zone_load_component.h
+OK    docs/module_map.md:256 cites include/client/graphics/zone_load/zone_load_context.h
+OK    docs/module_map.md:256 cites src/client/graphics/zone_load/renderer_zone_load.cpp
+OK    docs/module_map.md:256 cites src/client/graphics/zone_load/renderer_entity_load_gate.cpp
+OK    docs/module_map.md:256 cites src/client/graphics/zone_load/renderer_zone_load_objects.cpp
+OK    docs/module_map.md:256 cites src/client/graphics/zone_load/renderer_zone_load_entities.cpp
+OK    docs/module_map.md:256 cites src/client/graphics/zone_load/renderer_zone_load_env.cpp
+OK    docs/module_map.md:257 cites include/client/graphics/frame/frame_component.h
+OK    docs/module_map.md:257 cites src/client/graphics/frame/renderer_frame.cpp
+OK    docs/module_map.md:257 cites src/client/graphics/frame/renderer_frame_input.cpp
+OK    docs/module_map.md:257 cites src/client/graphics/frame/renderer_frame_render.cpp
+OK    docs/module_map.md:257 cites src/client/graphics/frame/renderer_frame_preferences.cpp
+OK    docs/module_map.md:257 cites src/client/graphics/frame/renderer_frame_options.cpp
+OK    docs/module_map.md:261 cites src/client/graphics/player/renderer_player_physics.cpp
+OK    docs/module_map.md:261 cites tests/test_movement_order.cpp
+OK    docs/module_map.md:261 cites include/client/graphics/player/player_camera_component.h
+OK    docs/module_map.md:261 cites tests/test_first_person_camera_single_formula.cpp
+OK    docs/module_map.md:262 cites src/client/graphics/diagnostics/diagnostics_component.cpp
+OK    docs/module_map.md:262 cites include/client/graphics/diagnostics/diagnostics_component.h
+OK    docs/module_map.md:263 cites src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp
+OK    docs/module_map.md:263 cites include/client/graphics/render_pass_timer.h
+OK    docs/module_map.md:263 cites include/client/graphics/zone_lifecycle/zone_lifecycle_component.h
+OK    docs/module_map.md:264 cites src/client/graphics/zone_load/renderer_zone_load_env.cpp
+OK    docs/module_map.md:264 cites include/client/graphics/zone_load/zone_load_component.h
+OK    docs/module_map.md:265 cites src/client/graphics/sim/renderer_sim_bridge.cpp
+OK    docs/module_map.md:265 cites include/client/graphics/sim/sim_bridge_component.h
+OK    docs/module_map.md:266 cites src/client/graphics/overlays/overlays_component.cpp
+OK    docs/module_map.md:266 cites include/client/graphics/overlays/overlays_component.h
+OK    docs/module_map.md:267 cites src/client/graphics/zone_load/renderer_zone_load.cpp
+OK    docs/module_map.md:267 cites include/client/graphics/zone_load/zone_load_component.h
+OK    docs/module_map.md:267 cites include/client/graphics/zone_load/zone_load_context.h
+OK    docs/module_map.md:268 cites src/client/graphics/renderer/irrlicht_renderer.cpp
+OK    docs/module_map.md:269 cites src/client/graphics/zone_stream/renderer_zone_stream.cpp
+OK    docs/module_map.md:269 cites include/client/graphics/zone_stream/zone_stream_component.h
+OK    docs/module_map.md:270 cites src/client/graphics/renderer/renderer_init.cpp
+OK    docs/module_map.md:271 cites src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp
+OK    docs/module_map.md:272 cites src/client/graphics/overlays/overlays_hud_env.cpp
+OK    docs/module_map.md:273 cites src/client/graphics/overlays/overlays_env_managers.cpp
+OK    docs/module_map.md:273 cites tests/test_environment_manager_construction.cpp
+OK    docs/module_map.md:274 cites src/client/graphics/slash/renderer_slash_commands.cpp
+OK    docs/module_map.md:274 cites include/client/graphics/slash/slash_commands_component.h
+OK    docs/module_map.md:274 cites tests/test_merged_help.cpp
+OK    docs/module_map.md:275 cites src/client/graphics/zone_load/renderer_zone_load_objects.cpp
+OK    docs/module_map.md:276 cites src/client/graphics/diagnostics/diagnostics_debug.cpp
+OK    docs/module_map.md:277 cites src/client/graphics/diagnostics/scene_node_census.cpp
+OK    docs/module_map.md:277 cites include/client/graphics/diagnostics/scene_node_census.h
+OK    docs/module_map.md:278 cites src/client/graphics/player/renderer_camera.cpp
+OK    docs/module_map.md:278 cites tests/test_first_person_camera_single_formula.cpp
+OK    docs/module_map.md:279 cites src/client/graphics/player/renderer_camera_modes.cpp
+OK    docs/module_map.md:280 cites src/client/graphics/player/camera_rig.cpp
+OK    docs/module_map.md:280 cites include/client/graphics/player/camera_mode.h
+OK    docs/module_map.md:280 cites include/client/graphics/player/camera_rig.h
+OK    docs/module_map.md:281 cites src/client/graphics/slash/camera_command.cpp
+OK    docs/module_map.md:281 cites include/client/graphics/slash/camera_command.h
+OK    docs/module_map.md:282 cites src/client/graphics/player/renderer_player_collision.cpp
+OK    docs/module_map.md:283 cites src/client/graphics/player/renderer_player_lift.cpp
+OK    docs/module_map.md:284 cites src/client/graphics/door_motion.cpp
+OK    docs/module_map.md:284 cites include/client/graphics/door_motion.h
+OK    docs/module_map.md:285 cites src/client/graphics/door_manager_animation.cpp
+OK    docs/module_map.md:286 cites src/client/graphics/door_manager.cpp
+OK    docs/module_map.md:286 cites include/client/graphics/door_manager.h
+OK    docs/module_map.md:287 cites src/client/graphics/door_manager_mesh.cpp
+OK    docs/module_map.md:288 cites src/client/graphics/door_manager_create.cpp
+OK    docs/module_map.md:289 cites src/client/graphics/door_manager_rebuild.cpp
+OK    docs/module_map.md:290 cites src/client/graphics/detail/detail_manager.cpp
+OK    docs/module_map.md:291 cites src/client/graphics/detail/detail_manager_chunks.cpp
+OK    docs/module_map.md:292 cites src/client/graphics/detail/detail_manager_surface.cpp
+OK    docs/module_map.md:292 cites docs/plans/surface_map_expansion_plan.md
+OK    docs/module_map.md:293 cites src/client/graphics/zone_stream/renderer_zone_merge.cpp
+OK    docs/module_map.md:293 cites include/client/graphics/renderer_zone_merge.h
+OK    docs/module_map.md:294 cites src/client/graphics/zone_load/renderer_zone_load_entities.cpp
+OK    docs/module_map.md:294 cites src/client/graphics/zone_load/renderer_entity_load_gate.cpp
+OK    docs/module_map.md:295 cites src/client/graphics/frame/renderer_frame_input.cpp
+OK    docs/module_map.md:295 cites include/client/graphics/frame/frame_component.h
+OK    docs/module_map.md:295 cites tests/test_static_ui_scroll.cpp
+OK    docs/module_map.md:295 cites tests/test_debug_hotkey_arms.cpp
+OK    docs/module_map.md:295 cites tests/test_camera_mode_wiring.cpp
+OK    docs/module_map.md:296 cites src/client/graphics/frame/renderer_frame_render.cpp
+OK    docs/module_map.md:296 cites tests/test_frame_render_order.cpp
+OK    docs/module_map.md:296 cites tests/test_ui_hide_command.cpp
+OK    docs/module_map.md:297 cites src/client/graphics/frame/renderer_frame_options.cpp
+OK    docs/module_map.md:297 cites include/client/audio/volume_steps.h
+OK    docs/module_map.md:298 cites src/client/graphics/player/ground_query.cpp
+OK    docs/module_map.md:298 cites include/client/graphics/player/ground_query.h
+OK    docs/module_map.md:298 cites tests/test_ground_sentinels.cpp
+OK    docs/module_map.md:299 cites src/client/graphics/frame/renderer_frame_preferences.cpp
+OK    docs/module_map.md:300 cites src/client/graphics/frame/renderer_frame.cpp
+OK    docs/module_map.md:301 cites src/client/graphics/renderer/renderer_entities.cpp
+OK    docs/module_map.md:302 cites src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
+OK    docs/module_map.md:303 cites src/client/graphics/renderer/renderer_event_receiver.cpp
+OK    docs/module_map.md:303 cites tests/test_ui_hide_command.cpp
+OK    docs/module_map.md:303 cites tests/test_static_ui_scroll.cpp
+OK    docs/module_map.md:303 cites tests/test_debug_hotkey_arms.cpp
+OK    docs/module_map.md:303 cites tests/test_camera_mode_wiring.cpp
+OK    docs/module_map.md:304 cites src/client/graphics/text_batch.cpp
+OK    docs/module_map.md:304 cites include/client/graphics/text_batch.h
+OK    docs/module_map.md:305 cites src/client/graphics/ui/ui_quad_batch.cpp
+OK    docs/module_map.md:305 cites include/client/graphics/ui/ui_quad_batch.h
+OK    docs/module_map.md:305 cites tests/test_static_ui_frame_cost.cpp
+OK    docs/module_map.md:306 cites src/client/graphics/ui/chat_wrap_cache.cpp
+OK    docs/module_map.md:306 cites include/client/graphics/ui/chat_wrap_cache.h
+OK    docs/module_map.md:307 cites src/client/graphics/eq/equipment_actor_geometry.cpp
+OK    docs/module_map.md:307 cites include/client/graphics/eq/equipment_actor_geometry.h
+OK    docs/module_map.md:308 cites include/client/graphics/gles2_vertex_color.h
+OK    docs/module_map.md:308 cites tests/test_sky_dome_tint_channel_order.cpp
+OK    docs/module_map.md:309 cites src/client/graphics/renderer/software_cursor_texture.cpp
+OK    docs/module_map.md:309 cites tests/test_software_cursor_pack_name.cpp
+OK    docs/module_map.md:310 cites src/client/graphics/eqe1/eqe1_archive_component.cpp
+OK    docs/module_map.md:310 cites include/client/graphics/eqe1/eqe1_archive_component.h
+OK    docs/module_map.md:311 cites src/client/graphics/rdp/rdp_component.cpp
+OK    docs/module_map.md:311 cites include/client/graphics/rdp/rdp_component.h
+OK    docs/module_map.md:312 cites src/client/graphics/zone_load/renderer_entity_load_gate.cpp
+OK    docs/module_map.md:313 cites src/client/graphics/diagnostics/scene_node_census.cpp
+OK    docs/module_map.md:321 cites src/client/graphics/zone_shader.cpp
+OK    docs/module_map.md:358 cites include/client/graphics/corpse_death_pose.h
+OK    docs/module_map.md:358 cites tests/test_corpse_death_pose.cpp
+OK    docs/module_map.md:373 cites include/client/graphics/eq/s3d_loader.h
+OK    docs/module_map.md:389 cites include/client/graphics/eq/animated_mesh_scene_node.h
+OK    docs/module_map.md:398 cites include/client/graphics/eq/animated_mesh_skinning.h
+OK    docs/module_map.md:400 cites include/client/graphics/eq/race_model_loader.h
+OK    docs/module_map.md:410 cites refactor/G07_variant_loader.md
+OK    docs/module_map.md:410 cites tests/test_variant_loader_candidates.cpp
+OK    docs/module_map.md:422 cites include/client/state/event_types.h
+OK    docs/module_map.md:422 cites tests/test_reachability_sweep.cpp
+OK    docs/module_map.md:423 cites include/client/state/event_bus.h
+OK    docs/module_map.md:424 cites include/client/state/event_payloads_entity.h
+OK    docs/module_map.md:425 cites include/client/state/event_payloads_inventory.h
+OK    docs/module_map.md:426 cites include/client/state/event_payloads_social.h
+OK    docs/module_map.md:427 cites include/client/state/event_payloads_spell.h
+OK    docs/module_map.md:428 cites include/client/state/event_payloads_ui.h
+OK    docs/module_map.md:446 cites scripts/gitlab/test_board_to_issues.py
+OK    docs/module_map.md:462 cites tests/zone_stream_test_utils.h
+OK    docs/module_map.md:463 cites tests/spell_wire_payloads.h
+OK    docs/module_map.md:466 cites tests/action_dispatcher_test_fixture.h
+OK    docs/module_map.md:473 cites tests/action_dispatcher_test_fixture.h
+OK    docs/module_map.md:489 cites tools/model_viewer/model_viewer_state.h
+OK    docs/module_map.md:490 cites tools/entity_composite/composite_builder.h
+OK    docs/module_map.md:491 cites tools/hwcaps/fog_volume/fog_volume_shaders.h
+OK    docs/module_map.md:491 cites tools/hwcaps/fog_volume/fog_volume_shaders.cpp
+OK    docs/module_map.md:493 cites tools/willeq_db/db_builder.h
+OK    docs/module_map.md:493 cites tools/willeq_db/db_loaders_text.cpp
+OK    docs/module_map.md:493 cites tools/willeq_db/db_loaders_json.cpp
+OK    docs/module_map.md:494 cites tools/wld_dump/wld_dump.h
+OK    docs/module_map.md:494 cites tools/wld_dump/wld_dump_core.cpp
+OK    docs/module_map.md:495 cites tools/hwcaps/shader_perpixel/shader_perpixel.h
+OK    docs/module_map.md:496 cites tools/gl_points/gl_points.h
+OK    docs/module_map.md:496 cites tools/gl_points/gl_points_egl.cpp
+OK    docs/module_map.md:497 cites tools/hwcaps/held_item_candidate_search.cpp
+OK    docs/module_map.md:498 cites tools/zone_line_editor/zone_line_editor.h
+OK    docs/module_map.md:498 cites tools/zone_line_editor/zle_io.cpp
+OK    docs/module_map.md:506 cites refactor/T166_split_renderer_zone_load.md
+OK    docs/module_map.md:512 cites scripts/refactor/check_file_sizes.sh
+OK    docs/module_map.md:515 cites docs/decisions.md
+OK    docs/module_map.md:518 cites scripts/refactor/verify_move_only.py
+OK    refactor/BOARD.md:9 cites refactor/K00_truth_reset.md
+OK    refactor/BOARD.md:10 cites refactor/BOARD.md
+OK    refactor/BOARD.md:34 cites refactor/completed/deferred_archive_20260903.md
+OK    refactor/BOARD.md:42 cites src/client/movement/movement_state.cpp
+OK    refactor/BOARD.md:46 cites refactor/T344_forced_pose_setter.md
+OK    refactor/BOARD.md:58 cites tests/test_forced_pose_no_echo.cpp
+OK    refactor/BOARD.md:63 cites refactor/T346_self_death_sequence.md
+OK    refactor/BOARD.md:73 cites tests/test_self_death_sequence.cpp
+OK    refactor/BOARD.md:75 cites scripts/refactor/t311_death_golden.py
+OK    refactor/BOARD.md:78 cites src/client/action/eq_action_handler.cpp
+OK    refactor/BOARD.md:91 cites tests/test_autorun_arm.cpp
+SKIP  refactor/BOARD.md:107 cites /mnt/projects/akk-stack/code/zone/client_process.cpp:430 — cross-project citation
+SKIP  refactor/BOARD.md:108 cites /mnt/projects/akk-stack/code/zone/mob.cpp:7599 — cross-project citation
+OK    refactor/BOARD.md:135 cites src/client/action/action_dispatcher.cpp:154
+OK    refactor/BOARD.md:144 cites src/client/entities/entities_component_appearance.cpp:326
+OK    refactor/BOARD.md:154 cites src/client/entities/entities_component_appearance.cpp:326
+OK    refactor/BOARD.md:160 cites src/client/movement/movement_update.cpp:183
+OK    refactor/BOARD.md:162 cites refactor/T359_combat_movement_spawn_id.md
+OK    refactor/BOARD.md:176 cites include/client/graphics/ui/ui_layout.h
+OK    refactor/BOARD.md:191 cites tests/test_static_ui_panels.cpp
+OK    refactor/BOARD.md:195 cites refactor/T351_inventory_popup_frame.md
+OK    refactor/BOARD.md:224 cites include/client/eq.h
+OK    refactor/BOARD.md:231 cites include/client/graphics/zone_load_surface.h
+OK    refactor/BOARD.md:236 cites include/client/eq.h
+OK    refactor/BOARD.md:236 cites include/client/bridge/bridge_component.h
+OK    refactor/BOARD.md:238 cites tests/test_zone_load_surface.cpp
+OK    refactor/BOARD.md:241 cites include/client/graphics/eq/pfs.h
+OK    refactor/BOARD.md:241 cites include/client/graphics/eq/wld_loader.h
+OK    refactor/BOARD.md:248 cites include/client/skill/skill_data.h
+SKIP  refactor/BOARD.md:255 cites /mnt/projects/akk-stack/code/zone/client_packet.cpp — cross-project citation
+OK    refactor/BOARD.md:270 cites tests/test_skill_gates.cpp:405
+OK    refactor/BOARD.md:271 cites refactor/T353_skill_costs.md
+OK    refactor/BOARD.md:273 cites src/common/net/daybreak_connection_send.cpp
+OK    refactor/BOARD.md:281 cites tests/test_daybreak_crc_capture.cpp
+OK    refactor/BOARD.md:285 cites tests/test_daybreak_connection_pcap.cpp
+OK    refactor/BOARD.md:305 cites tests/test_irrlicht_camera_command.cpp
+OK    refactor/BOARD.md:317 cites src/client/graphics/entity_size.cpp
+OK    refactor/BOARD.md:335 cites src/client/action/action_dispatcher.cpp
+OK    refactor/BOARD.md:351 cites src/client/graphics/slash/renderer_slash_commands.cpp
+OK    refactor/BOARD.md:357 cites src/client/help/renderer_command_catalog.cpp:62
+OK    refactor/BOARD.md:377 cites src/client/graphics/eq/race_model_loader.cpp
+OK    refactor/BOARD.md:382 cites refactor/T357_tab_completion_spell_land_eqe1_gate.md
+OK    refactor/BOARD.md:392 cites tests/test_constrained_texture_cache.cpp
+OK    refactor/BOARD.md:397 cites src/client/audio/midi_player.cpp
+OK    refactor/BOARD.md:427 cites src/client/graphics/eq/mesh_building.cpp
+OK    refactor/BOARD.md:455 cites src/client/graphics/eq/model_loading_chr.cpp
+OK    refactor/BOARD.md:465 cites tests/test_chr_cache_lru.cpp
+OK    refactor/BOARD.md:480 cites tests/test_chr_path_derivation.cpp
+OK    refactor/BOARD.md:494 cites tests/test_chr_cache_lru.cpp
+OK    refactor/BOARD.md:502 cites src/client/graphics/eq/model_loading_chr.cpp
+OK    refactor/BOARD.md:504 cites src/client/graphics/eq/model_loading_search.cpp
+OK    refactor/BOARD.md:514 cites tests/test_chr_cache_lru.cpp
+OK    refactor/BOARD.md:517 cites include/client/eq.h
+OK    refactor/BOARD.md:523 cites src/client/guild/guild_component.cpp
+OK    refactor/BOARD.md:530 cites refactor/T301_first_person_eye_placement.md
+OK    refactor/BOARD.md:532 cites src/client/graphics/entity_first_person_draw.cpp
+SKIP  refactor/BOARD.md:550 cites review/T431/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:556 cites include/client/graphics/first_person_eye.h
+OK    refactor/BOARD.md:574 cites include/client/graphics/first_person_eye.h
+OK    refactor/BOARD.md:585 cites scripts/camera_match_sweep.sh
+OK    refactor/BOARD.md:630 cites src/client/graphics/entity_lifecycle.cpp
+OK    refactor/BOARD.md:639 cites tests/test_corpse_death_pose.cpp
+SKIP  refactor/BOARD.md:645 cites /mnt/projects/akk-stack/code/zone/corpse.cpp:1809 — cross-project citation
+OK    refactor/BOARD.md:648 cites tools/hwcaps/zone_bench_memory.h
+OK    refactor/BOARD.md:655 cites refactor/K00_truth_reset.md
+OK    refactor/BOARD.md:658 cites include/client/graphics/constrained_renderer_config.h
+OK    refactor/BOARD.md:662 cites include/client/graphics/constrained_renderer_config.h
+OK    refactor/BOARD.md:664 cites scripts/ci/visual_gate.py
+OK    refactor/BOARD.md:668 cites docs/decisions.md
+OK    refactor/BOARD.md:670 cites include/client/core/memory_ledger.h
+OK    refactor/BOARD.md:672 cites scripts/ci/visual_gate.py
+OK    refactor/BOARD.md:719 cites include/client/graphics/constrained_renderer_config.h
+OK    refactor/BOARD.md:732 cites docs/decisions.md
+OK    refactor/BOARD.md:781 cites tests/test_music_player_soundfont_lifetime.cpp
+OK    refactor/BOARD.md:785 cites src/client/audio/audio_manager.cpp:128
+OK    refactor/BOARD.md:787 cites src/client/audio/music_player.cpp:95
+OK    refactor/BOARD.md:788 cites src/client/audio/midi_player.cpp:92
+OK    refactor/BOARD.md:789 cites tests/test_music_player_soundfont_lifetime.cpp
+OK    refactor/BOARD.md:845 cites tests/test_memory_ledger.cpp:180
+OK    refactor/BOARD.md:881 cites tests/test_audio_startup_peak.cpp
+OK    refactor/BOARD.md:888 cites src/client/graphics/eq/pfs.cpp:304
+OK    refactor/BOARD.md:889 cites include/client/graphics/eq/pfs.h:56
+OK    refactor/BOARD.md:890 cites src/client/audio/audio_manager.cpp:975
+OK    refactor/BOARD.md:891 cites tests/test_audio_startup_peak.cpp
+OK    refactor/BOARD.md:894 cites tools/hwcaps/zone_bench_loader.cpp
+OK    refactor/BOARD.md:896 cites scripts/ci/visual_gate.sh
+OK    refactor/BOARD.md:916 cites src/client/graphics/spell_visual_fx.cpp
+OK    refactor/BOARD.md:933 cites refactor/T389_spell_fx_oracle.md
+OK    refactor/BOARD.md:944 cites scripts/refactor/t380_spell_visual_census.py
+OK    refactor/BOARD.md:945 cites refactor/T380_spell_visuals_survey.md
+OK    refactor/BOARD.md:948 cites src/client/graphics/renderer/renderer_entities.cpp
+OK    refactor/BOARD.md:961 cites tests/test_spell_visual_selection.cpp
+OK    refactor/BOARD.md:981 cites src/client/player/player_misc.cpp
+OK    refactor/BOARD.md:994 cites tests/test_op_report_shape.cpp
+OK    refactor/BOARD.md:1014 cites include/client/spell/spell_visual_vocabulary.h
+OK    refactor/BOARD.md:1018 cites src/client/bridge/irrlicht_bridge.cpp
+OK    refactor/BOARD.md:1025 cites tests/test_spell_visual_vocabulary.cpp
+OK    refactor/BOARD.md:1026 cites tools/model_viewer.cpp
+OK    refactor/BOARD.md:1038 cites include/client/graphics/spell_visual_fx.h
+OK    refactor/BOARD.md:1043 cites src/client/graphics/spell_visual_fx_nodes.cpp
+OK    refactor/BOARD.md:1047 cites src/client/graphics/spell_visual_fx.cpp
+OK    refactor/BOARD.md:1053 cites include/client/spell/spell_manager.h
+OK    refactor/BOARD.md:1054 cites include/client/spell/spell_database.h
+OK    refactor/BOARD.md:1063 cites include/client/graphics/spell_visual_fx.h
+OK    refactor/BOARD.md:1072 cites src/client/graphics/spell_visual_fx.cpp
+OK    refactor/BOARD.md:1075 cites src/client/graphics/spell_visual_fx_nodes.cpp
+OK    refactor/BOARD.md:1082 cites src/client/bridge/irrlicht_bridge.cpp
+OK    refactor/BOARD.md:1091 cites tools/model_viewer/model_viewer_spell_test.cpp
+OK    refactor/BOARD.md:1094 cites tests/test_spell_visual_vocabulary.cpp
+OK    refactor/BOARD.md:1113 cites src/client/spell/spells_eff_reader.cpp
+OK    refactor/BOARD.md:1129 cites refactor/T389_spell_fx_oracle.md
+OK    refactor/BOARD.md:1145 cites tests/test_spell_target_stage_textures.cpp
+OK    refactor/BOARD.md:1161 cites include/client/graphics/environment/particle_types.h
+OK    refactor/BOARD.md:1165 cites src/client/graphics/environment/spell_effects_config.cpp
+OK    refactor/BOARD.md:1192 cites tools/willeq_db_builder.cpp
+SKIP  refactor/BOARD.md:1197 cites /mnt/projects/akk-stack/code/common/repositories/base/base_spells_new_repository.h — cross-project citation
+OK    refactor/BOARD.md:1227 cites src/client/graphics/spell_visual_fx.cpp
+OK    refactor/BOARD.md:1241 cites scripts/refactor/t380_spell_visual_census.py
+OK    refactor/BOARD.md:1251 cites include/client/graphics/spell_visual_fx.h
+OK    refactor/BOARD.md:1259 cites src/client/graphics/spell_visual_fx_nodes.cpp
+OK    refactor/BOARD.md:1266 cites tools/model_viewer.cpp
+OK    refactor/BOARD.md:1269 cites tools/model_viewer/model_viewer_spell_test.cpp
+OK    refactor/BOARD.md:1278 cites src/client/action/command_processor_registration.cpp
+SKIP  refactor/BOARD.md:1281 cites /mnt/projects/akk-stack/code/zone/client_packet.cpp:4253 — cross-project citation
+SKIP  refactor/BOARD.md:1283 cites /mnt/projects/akk-stack/code/common/patches/titanium_structs.h:2604 — cross-project citation
+OK    refactor/BOARD.md:1300 cites refactor/K_component_extraction.md
+OK    refactor/BOARD.md:1306 cites src/client/zone/zone_dispatch.cpp
+OK    refactor/BOARD.md:1312 cites src/client/bridge/bridge_component_intents.cpp
+OK    refactor/BOARD.md:1316 cites refactor/J_file_size_reclamation.md
+OK    refactor/BOARD.md:1316 cites refactor/G_oversize_methods.md
+OK    refactor/BOARD.md:1322 cites refactor/T372_unmerged_branch_survey.md
+OK    refactor/BOARD.md:1323 cites refactor/T305_branch_audit.md
+SKIP  refactor/BOARD.md:1344 cites /mnt/projects/akk-stack/code/zone/client.cpp:2659 — cross-project citation
+SKIP  refactor/BOARD.md:1347 cites /mnt/projects/akk-stack/code/zone/zonedb.cpp:501 — cross-project citation
+OK    refactor/BOARD.md:1363 cites src/client/movement/movement_state.cpp
+OK    refactor/BOARD.md:1369 cites include/client/state/event_payloads_spell.h:113
+OK    refactor/BOARD.md:1374 cites tests/test_movement_component.cpp
+OK    refactor/BOARD.md:1378 cites include/client/eq.h
+OK    refactor/BOARD.md:1384 cites include/client/eq.h
+OK    refactor/BOARD.md:1388 cites src/client/movement/movement_component.cpp
+OK    refactor/BOARD.md:1407 cites tests/test_stop_all_movement.cpp
+OK    refactor/BOARD.md:1423 cites refactor/L_renderer_component_extraction.md
+OK    refactor/BOARD.md:1425 cites include/client/graphics/irrlicht_renderer.h
+OK    refactor/BOARD.md:1431 cites include/client/graphics/irrlicht_renderer.h
+OK    refactor/BOARD.md:1449 cites include/client/zone/zone_component.h
+OK    refactor/BOARD.md:1453 cites src/client/core/everquest.cpp
+OK    refactor/BOARD.md:1471 cites refactor/T328_ui_sounds.md
+OK    refactor/BOARD.md:1477 cites include/client/audio/ui_sounds.h
+OK    refactor/BOARD.md:1481 cites refactor/T328_ui_sounds.md
+OK    refactor/BOARD.md:1496 cites tests/test_ui_sound_events.cpp
+OK    refactor/BOARD.md:1523 cites refactor/T342_unmeasured_sound_rows.md
+OK    refactor/BOARD.md:1554 cites src/client/commands/combat_actions.cpp:487
+SKIP  refactor/BOARD.md:1581 cites /mnt/projects/akk-stack/code/zone/tradeskills.cpp:1124 — cross-project citation
+OK    refactor/BOARD.md:1597 cites src/client/player/player_state.cpp:184
+OK    refactor/BOARD.md:1603 cites include/client/bridge/bridge_component.h
+OK    refactor/BOARD.md:1638 cites refactor/K_component_extraction.md
+OK    refactor/BOARD.md:1668 cites refactor/K_component_extraction.md
+OK    refactor/BOARD.md:1673 cites refactor/K_component_extraction.md
+OK    refactor/BOARD.md:1678 cites src/client/bridge/irrlicht_bridge.cpp
+OK    refactor/BOARD.md:1686 cites src/client/movement/movement_state.cpp
+OK    refactor/BOARD.md:1687 cites src/client/zone/zone_component.cpp
+OK    refactor/BOARD.md:1694 cites tests/test_navmesh_overlay_wire.cpp
+OK    refactor/BOARD.md:1705 cites refactor/T329_navmesh_overlay_wire.md
+OK    refactor/BOARD.md:1716 cites refactor/T354_dead_renderer_paths.md
+OK    refactor/BOARD.md:1730 cites tests/test_debug_hotkey_arms.cpp
+OK    refactor/BOARD.md:1735 cites src/client/graphics/renderer/renderer_event_receiver.cpp:181
+OK    refactor/BOARD.md:1737 cites include/client/graphics/renderer_types.h:111
+OK    refactor/BOARD.md:1739 cites src/client/graphics/frame/renderer_frame_input.cpp
+OK    refactor/BOARD.md:1741 cites src/client/input/hotkey_manager.cpp:111
+OK    refactor/BOARD.md:1742 cites include/client/input/input_handler.h:63
+OK    refactor/BOARD.md:1744 cites src/client/mode/graphical_mode.cpp:184
+OK    refactor/BOARD.md:1755 cites refactor/L_renderer_component_extraction.md
+OK    refactor/BOARD.md:1755 cites refactor/L01_rdp_component.md
+OK    refactor/BOARD.md:1760 cites include/client/graphics/irrlicht_renderer.h
+OK    refactor/BOARD.md:1764 cites refactor/L_renderer_component_extraction.md
+OK    refactor/BOARD.md:1784 cites tests/test_spatial_audio.cpp
+OK    refactor/BOARD.md:1789 cites src/client/graphics/player/renderer_camera.cpp
+OK    refactor/BOARD.md:1797 cites src/client/core/everquest.cpp
+OK    refactor/BOARD.md:1807 cites tests/test_vision_buff_fade_wire.cpp
+OK    refactor/BOARD.md:1814 cites src/client/graphics/player/renderer_player_physics.cpp
+OK    refactor/BOARD.md:1825 cites src/client/graphics/player/renderer_camera.cpp
+OK    refactor/BOARD.md:1844 cites refactor/T354_dead_renderer_paths.md
+OK    refactor/BOARD.md:1849 cites src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:198
+OK    refactor/BOARD.md:1853 cites src/client/graphics/zone_load/renderer_zone_load_objects.cpp:545
+OK    refactor/BOARD.md:1864 cites src/client/graphics/overlays/overlays_component.cpp
+OK    refactor/BOARD.md:1883 cites tests/test_navmesh_overlay_draw.cpp
+OK    refactor/BOARD.md:1914 cites src/client/bridge/bridge_component.cpp:717
+SKIP  refactor/BOARD.md:1933 cites review/T331/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:1950 cites src/client/zone/zone_entry.cpp
+OK    refactor/BOARD.md:1956 cites tests/test_zone_in_z_conversion.cpp
+SKIP  refactor/BOARD.md:1958 cites review/T332/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:1980 cites include/client/graphics/render_pass_timer.h
+OK    refactor/BOARD.md:2000 cites src/client/application.cpp
+OK    refactor/BOARD.md:2017 cites src/client/graphics/eq/variant_loading_animation.cpp
+OK    refactor/BOARD.md:2020 cites refactor/T340_variant_loader_behaviour_test.md
+OK    refactor/BOARD.md:2021 cites tests/test_variant_loader_candidates.cpp
+OK    refactor/BOARD.md:2050 cites refactor/M00_ceiling_closed.md
+OK    refactor/BOARD.md:2056 cites include/client/eq.h
+OK    refactor/BOARD.md:2057 cites refactor/K_component_extraction.md
+OK    refactor/BOARD.md:2058 cites include/client/graphics/irrlicht_renderer.h
+OK    refactor/BOARD.md:2059 cites refactor/L_renderer_component_extraction.md
+OK    refactor/BOARD.md:2060 cites refactor/J_file_size_reclamation.md
+OK    refactor/BOARD.md:2061 cites refactor/G_oversize_methods.md
+OK    refactor/BOARD.md:2067 cites src/client/graphics/door_manager.cpp
+OK    refactor/BOARD.md:2068 cites src/client/spell/spell_manager.cpp
+OK    refactor/BOARD.md:2069 cites refactor/T446_test_tu_splits.md
+OK    refactor/BOARD.md:2070 cites tests/test_eq_commands_equip_bags.cpp
+OK    refactor/BOARD.md:2070 cites docs/decisions.md
+OK    refactor/BOARD.md:2077 cites src/client/graphics/overlays/overlays_component.cpp
+OK    refactor/BOARD.md:2080 cites src/client/graphics/player/renderer_player_collision.cpp
+OK    refactor/BOARD.md:2092 cites tests/test_navmesh_overlay_draw.cpp
+OK    refactor/BOARD.md:2097 cites include/client/graphics/world_line_batch.h
+OK    refactor/BOARD.md:2102 cites tests/test_map_overlay_draw.cpp
+OK    refactor/BOARD.md:2103 cites tests/test_collision_debug_draw.cpp
+OK    refactor/BOARD.md:2113 cites tests/test_frame_render_order.cpp
+OK    refactor/BOARD.md:2116 cites tests/test_frustum_debug_draw.cpp
+OK    refactor/BOARD.md:2123 cites src/client/core/everquest.cpp
+OK    refactor/BOARD.md:2149 cites tests/test_buff_manager.cpp
+OK    refactor/BOARD.md:2157 cites tests/test_vision_buff_fade_wire.cpp
+SKIP  refactor/BOARD.md:2184 cites review/T345/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:2204 cites tests/test_buff_landing_producer.cpp
+SKIP  refactor/BOARD.md:2229 cites review/T358/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:2239 cites tests/test_collision_debug_draw.cpp
+SKIP  refactor/BOARD.md:2241 cites review/T338/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:2245 cites src/client/graphics/player/renderer_camera.cpp
+OK    refactor/BOARD.md:2252 cites src/client/graphics/renderer/renderer_entities.cpp:29
+OK    refactor/BOARD.md:2253 cites src/client/graphics/zone_load/renderer_zone_load_entities.cpp
+SKIP  refactor/BOARD.md:2261 cites review/T345/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:2265 cites include/client/action/command_processor.h
+OK    refactor/BOARD.md:2266 cites include/client/graphics/ui/command_registry.h
+OK    refactor/BOARD.md:2271 cites refactor/T357_tab_completion_spell_land_eqe1_gate.md
+OK    refactor/BOARD.md:2276 cites src/client/graphics/frame/renderer_frame_input.cpp
+OK    refactor/BOARD.md:2286 cites tests/test_frame_component.cpp
+OK    refactor/BOARD.md:2303 cites refactor/T363_skills_rename.md
+OK    refactor/BOARD.md:2320 cites src/client/player/player_misc.cpp
+OK    refactor/BOARD.md:2342 cites src/client/graphics/zone_load/renderer_zone_load_entities.cpp
+OK    refactor/BOARD.md:2345 cites tests/test_vision_buff_fade_wire.cpp
+OK    refactor/BOARD.md:2365 cites refactor/T428_night_base.md
+SKIP  refactor/BOARD.md:2379 cites review/T428/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:2393 cites tests/test_vision_ambient.cpp
+SKIP  refactor/BOARD.md:2400 cites review/T361/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:2421 cites include/client/spell/spell_manager.h:193
+OK    refactor/BOARD.md:2431 cites refactor/T357_tab_completion_spell_land_eqe1_gate.md
+OK    refactor/BOARD.md:2446 cites include/client/spell/spell_data.h:74
+OK    refactor/BOARD.md:2449 cites src/client/spell/spell_database.cpp
+OK    refactor/BOARD.md:2451 cites tools/willeq_db_builder.cpp
+SKIP  refactor/BOARD.md:2452 cites /mnt/projects/akk-stack/code/zone/effects.cpp:900 — cross-project citation
+OK    refactor/BOARD.md:2456 cites refactor/T355_spell_endurance_cost.md
+SKIP  refactor/BOARD.md:2458 cites /mnt/projects/akk-stack/code/client_files/import/main.cpp — cross-project citation
+SKIP  refactor/BOARD.md:2461 cites /mnt/projects/akk-stack/code/common/repositories/base/base_spells_new_repository.h — cross-project citation
+OK    refactor/BOARD.md:2474 cites refactor/T349_op_save_body.md
+OK    refactor/BOARD.md:2475 cites include/common/packets/character.h
+SKIP  refactor/BOARD.md:2483 cites /mnt/projects/akk-stack/code/zone/client_packet.cpp:13661 — cross-project citation
+OK    refactor/BOARD.md:2490 cites src/client/graphics/sim_animation.cpp
+OK    refactor/BOARD.md:2496 cites include/client/graphics/renderer_types.h
+OK    refactor/BOARD.md:2497 cites src/client/spell/buff_manager.cpp
+OK    refactor/BOARD.md:2502 cites include/client/graphics/simulation_worker.h
+OK    refactor/BOARD.md:2510 cites refactor/T360_vision_swap_packet_sender.md
+OK    refactor/BOARD.md:2512 cites include/client/graphics/vision_type.h
+OK    refactor/BOARD.md:2520 cites tests/test_vision_zone_lights.cpp
+OK    refactor/BOARD.md:2525 cites src/client/graphics/sim_animation.cpp
+OK    refactor/BOARD.md:2526 cites src/client/graphics/zone_shader.cpp
+OK    refactor/BOARD.md:2531 cites src/client/graphics/vision_ambient.cpp
+OK    refactor/BOARD.md:2565 cites tests/test_vision_ambient.cpp
+SKIP  refactor/BOARD.md:2566 cites review/T361/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:2596 cites src/client/graphics/renderer/irrlicht_renderer.cpp
+OK    refactor/BOARD.md:2619 cites src/client/graphics/sim_visibility.cpp
+OK    refactor/BOARD.md:2623 cites tests/test_zone_light_culling.cpp
+SKIP  refactor/BOARD.md:2626 cites review/T367/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:2628 cites src/client/entities/entities_component_world.cpp
+OK    refactor/BOARD.md:2633 cites src/client/packet_sender.cpp
+OK    refactor/BOARD.md:2651 cites refactor/T360_vision_swap_packet_sender.md
+OK    refactor/BOARD.md:2657 cites tests/test_self_death_sequence.cpp
+OK    refactor/BOARD.md:2672 cites src/client/action/command_processor.cpp
+OK    refactor/BOARD.md:2674 cites src/client/graphics/ui/command_registry.cpp
+OK    refactor/BOARD.md:2688 cites include/client/command_completion.h
+OK    refactor/BOARD.md:2694 cites tests/test_command_completion.cpp
+OK    refactor/BOARD.md:2699 cites src/client/commands/commands_movement.cpp
+OK    refactor/BOARD.md:2729 cites src/client/input/console_input_handler.cpp
+OK    refactor/BOARD.md:2734 cites src/client/action/input_action_bridge.cpp
+OK    refactor/BOARD.md:2767 cites src/client/help/merged_help.cpp
+OK    refactor/BOARD.md:2792 cites refactor/T357_tab_completion_spell_land_eqe1_gate.md
+OK    refactor/BOARD.md:2794 cites include/client/graphics/ui/CLAUDE.md
+OK    refactor/BOARD.md:2794 cites src/client/input/CLAUDE.md
+OK    refactor/BOARD.md:2808 cites src/client/help/renderer_command_catalog.cpp
+OK    refactor/BOARD.md:2814 cites include/client/graphics/ui/CLAUDE.md
+OK    refactor/BOARD.md:2814 cites src/client/input/CLAUDE.md
+OK    refactor/BOARD.md:2820 cites include/client/input/input_handler.h
+OK    refactor/BOARD.md:2834 cites src/client/graphics/frame/renderer_frame_input.cpp
+OK    refactor/BOARD.md:2852 cites src/client/graphics/eq/wld_fragments_mesh.cpp
+OK    refactor/BOARD.md:2853 cites src/client/graphics/eq/zone_geometry.cpp
+OK    refactor/BOARD.md:2854 cites src/client/graphics/zone_shader_sources_gles2.h
+SKIP  refactor/BOARD.md:2883 cites review/T367/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:2889 cites tests/test_baked_vertex_lighting.cpp
+OK    refactor/BOARD.md:2928 cites src/client/input/hotkey_manager.cpp
+OK    refactor/BOARD.md:2969 cites src/client/input/CLAUDE.md
+OK    refactor/BOARD.md:2972 cites src/client/input/CLAUDE.md
+OK    refactor/BOARD.md:2972 cites include/client/graphics/ui/CLAUDE.md
+OK    refactor/BOARD.md:2974 cites include/client/bridge/CLAUDE.md
+OK    refactor/BOARD.md:2977 cites src/client/graphics/CLAUDE.md
+OK    refactor/BOARD.md:2987 cites refactor/T373_doc_counts_net.md
+OK    refactor/BOARD.md:2987 cites scripts/refactor/check_doc_counts.py
+OK    refactor/BOARD.md:3004 cites refactor/BOARD.md
+OK    refactor/BOARD.md:3014 cites refactor/T373_doc_counts_net.md
+OK    refactor/BOARD.md:3017 cites refactor/BOARD.md
+OK    refactor/BOARD.md:3036 cites refactor/T372_unmerged_branch_survey.md
+OK    refactor/BOARD.md:3041 cites include/client/entities/entities_component.h
+OK    refactor/BOARD.md:3048 cites src/client/entities/entities_component_world.cpp
+OK    refactor/BOARD.md:3056 cites tests/test_door_click_zone_reset.cpp
+OK    refactor/BOARD.md:3062 cites src/client/zone/zone_dispatch.cpp
+OK    refactor/BOARD.md:3065 cites include/client/eq_opcodes.h
+OK    refactor/BOARD.md:3066 cites src/client/core/eq_strings.cpp
+OK    refactor/BOARD.md:3070 cites include/client/eq_opcodes.h
+OK    refactor/BOARD.md:3077 cites tests/test_zone_opcode_literals.cpp
+OK    refactor/BOARD.md:3095 cites tests/test_scenario_state_machines.cpp
+OK    refactor/BOARD.md:3095 cites scripts/scenario.sh
+OK    refactor/BOARD.md:3103 cites src/client/scenario/scenario_application_wiring.cpp
+OK    refactor/BOARD.md:3112 cites src/client/entities/entities_component_world.cpp
+OK    refactor/BOARD.md:3123 cites tests/test_door_click_zone_reset.cpp
+OK    refactor/BOARD.md:3129 cites src/client/entities/entities_component_world.cpp
+OK    refactor/BOARD.md:3133 cites tests/test_click_senders_packet_sender.cpp
+OK    refactor/BOARD.md:3138 cites include/client/door_state_manager.h
+OK    refactor/BOARD.md:3173 cites tests/test_direct_sender_census.cpp
+OK    refactor/BOARD.md:3175 cites tests/test_direct_senders_packet_sender.cpp
+OK    refactor/BOARD.md:3192 cites src/client/login_world/login_world_component.cpp
+OK    refactor/BOARD.md:3209 cites tests/test_login_world_senders_packet_sender.cpp
+OK    refactor/BOARD.md:3212 cites include/client/audio/audio_mixer.h
+OK    refactor/BOARD.md:3234 cites src/client/input/hotkey_manager.cpp
+OK    refactor/BOARD.md:3255 cites src/client/graphics/vision_ambient.cpp
+OK    refactor/BOARD.md:3271 cites tests/test_vision_ambient.cpp
+OK    refactor/BOARD.md:3272 cites tests/test_vision_zone_lights.cpp
+SKIP  refactor/BOARD.md:3285 cites review/T383/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:3300 cites tests/test_vision_ambient.cpp
+OK    refactor/BOARD.md:3302 cites src/client/commands/combat_actions.cpp
+OK    refactor/BOARD.md:3315 cites tests/test_corpse_coin.cpp
+OK    refactor/BOARD.md:3315 cites tests/test_ui_sound_events.cpp
+OK    refactor/BOARD.md:3319 cites scripts/refactor/check_file_sizes.sh
+OK    refactor/BOARD.md:3325 cites tools/hwcaps/gles2_fog_volume_benchmark.cpp
+OK    refactor/BOARD.md:3326 cites tools/model_viewer.cpp
+OK    refactor/BOARD.md:3327 cites tools/model_viewer_spell_bar.h
+OK    refactor/BOARD.md:3328 cites tools/entity_composite_builder.cpp
+OK    refactor/BOARD.md:3330 cites tools/hwcaps/gles2_fog_volume_benchmark.cpp
+OK    refactor/BOARD.md:3333 cites docs/decisions.md
+OK    refactor/BOARD.md:3334 cites refactor/M00_ceiling_closed.md
+OK    refactor/BOARD.md:3342 cites tools/hwcaps/zone_bench_loader.cpp
+OK    refactor/BOARD.md:3343 cites tools/hwcaps/gles2_zone_benchmark.cpp
+OK    refactor/BOARD.md:3349 cites scripts/ci/visual_gate.sh
+OK    refactor/BOARD.md:3354 cites tests/test_direct_sender_census.cpp
+SKIP  refactor/BOARD.md:3365 cites review/T383/README.md — /mnt/projects/fable/review not authoritative for this checkout
+SKIP  refactor/BOARD.md:3369 cites review/T386/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:3372 cites src/client/audio/audio_manager.cpp
+OK    refactor/BOARD.md:3399 cites tools/willeq_db_builder.cpp
+OK    refactor/BOARD.md:3414 cites tests/test_pfs_sound_load.cpp
+OK    refactor/BOARD.md:3427 cites src/client/bridge/irrlicht_bridge.cpp
+OK    refactor/BOARD.md:3441 cites src/client/core/everquest.cpp
+OK    refactor/BOARD.md:3441 cites src/client/commands/combat_actions.cpp
+OK    refactor/BOARD.md:3441 cites src/client/merchant/merchant_trade.cpp
+OK    refactor/BOARD.md:3441 cites tests/test_static_ui_panels.cpp
+OK    refactor/BOARD.md:3468 cites tests/test_entity_light_node_lifetime.cpp
+OK    refactor/BOARD.md:3475 cites include/client/graphics/vision_ambient.h
+OK    refactor/BOARD.md:3507 cites tests/test_vision_ambient.cpp
+OK    refactor/BOARD.md:3525 cites include/client/graphics/vision_ambient.h
+OK    refactor/BOARD.md:3525 cites include/client/graphics/vision_type.h
+OK    refactor/BOARD.md:3526 cites src/client/graphics/vision_ambient.cpp
+OK    refactor/BOARD.md:3532 cites tests/test_vision_ambient.cpp
+OK    refactor/BOARD.md:3534 cites tests/test_vision_zone_lights.cpp
+SKIP  refactor/BOARD.md:3587 cites review/T405/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:3621 cites src/client/graphics/renderer/irrlicht_renderer.cpp
+OK    refactor/BOARD.md:3655 cites tests/test_weather_ambient_modifier.cpp
+OK    refactor/BOARD.md:3680 cites src/client/graphics/spell_visual_fx_nodes.cpp
+SKIP  refactor/BOARD.md:3689 cites /mnt/projects/akk-stack/code/zone/spells.cpp — cross-project citation
+OK    refactor/BOARD.md:3718 cites tests/test_spell_impact_visual.cpp
+SKIP  refactor/BOARD.md:3742 cites /mnt/projects/akk-stack/code/common/say_link.cpp — cross-project citation
+OK    refactor/BOARD.md:3758 cites include/client/say_link_text.h
+OK    refactor/BOARD.md:3758 cites src/client/core/say_link_text.cpp
+OK    refactor/BOARD.md:3762 cites tests/test_say_link_text.cpp
+OK    refactor/BOARD.md:3767 cites tests/test_sound_assets.cpp
+OK    refactor/BOARD.md:3770 cites refactor/EXECUTOR_PROTOCOL.md
+OK    refactor/BOARD.md:3770 cites refactor/TESTING_CHARTER.md
+OK    refactor/BOARD.md:3785 cites tools/willeq_db_builder.cpp
+OK    refactor/BOARD.md:3807 cites src/client/graphics/environment/particle_manager.cpp
+OK    refactor/BOARD.md:3810 cites src/client/graphics/sim_particles.cpp
+OK    refactor/BOARD.md:3818 cites refactor/T397_spell_effects_config_path.md
+OK    refactor/BOARD.md:3824 cites src/client/graphics/environment/particle_manager.cpp
+OK    refactor/BOARD.md:3841 cites tests/test_spell_effect_removal.cpp
+OK    refactor/BOARD.md:3845 cites src/client/graphics/environment/particle_manager.cpp
+OK    refactor/BOARD.md:3853 cites tests/test_spell_impact_visual.cpp
+OK    refactor/BOARD.md:3858 cites refactor/T397_spell_effects_config_path.md
+OK    refactor/BOARD.md:3860 cites include/client/data_paths.h
+OK    refactor/BOARD.md:3860 cites src/client/core/data_paths.cpp
+OK    refactor/BOARD.md:3864 cites tests/test_data_paths.cpp
+OK    refactor/BOARD.md:3879 cites src/client/graphics/ui/static_panels.cpp
+OK    refactor/BOARD.md:3888 cites tests/test_ui_atlas_pixels.cpp
+OK    refactor/BOARD.md:3901 cites tools/ui_atlas_builder.cpp
+OK    refactor/BOARD.md:3905 cites tools/dump_icon_sheet.cpp
+OK    refactor/BOARD.md:3910 cites tests/test_ui_atlas_pixels.cpp
+OK    refactor/BOARD.md:3924 cites tools/tga_reader.h
+OK    refactor/BOARD.md:3925 cites tools/dump_icon_sheet.cpp
+OK    refactor/BOARD.md:3937 cites tests/test_ui_atlas_pixels.cpp
+OK    refactor/BOARD.md:3952 cites include/client/graphics/ui/inventory_layout.h
+OK    refactor/BOARD.md:3987 cites tools/hwcaps/ui_inventory_capture.cpp
+OK    refactor/BOARD.md:3991 cites tests/test_static_ui_panels.cpp
+OK    refactor/BOARD.md:3996 cites tools/ui_atlas_builder.cpp
+OK    refactor/BOARD.md:4002 cites tools/dump_icon_sheet.cpp
+OK    refactor/BOARD.md:4024 cites scripts/build_willeq_pack.sh
+OK    refactor/BOARD.md:4092 cites scripts/build_willeq_pack.sh
+OK    refactor/BOARD.md:4092 cites tools/ui_atlas_builder.cpp
+OK    refactor/BOARD.md:4112 cites src/client/graphics/weather_effects_controller.cpp
+OK    refactor/BOARD.md:4135 cites include/client/graphics/weather_ambient_oracle.h
+OK    refactor/BOARD.md:4170 cites tests/test_data_path_routing.cpp
+OK    refactor/BOARD.md:4191 cites include/client/application.h
+OK    refactor/BOARD.md:4193 cites include/client/data_paths.h
+OK    refactor/BOARD.md:4207 cites refactor/completed/U_ui_overhaul.md
+OK    refactor/BOARD.md:4212 cites refactor/T402_caches_dead_configs.md
+OK    refactor/BOARD.md:4214 cites include/client/graphics/ui/ui_layout.h
+OK    refactor/BOARD.md:4214 cites include/client/graphics/ui/static_panels.h
+OK    refactor/BOARD.md:4217 cites refactor/T432_per_character_persistence.md
+OK    refactor/BOARD.md:4233 cites tests/test_ui_preferences.cpp
+SKIP  refactor/BOARD.md:4247 cites review/T449/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:4251 cites refactor/T428_night_base.md
+OK    refactor/BOARD.md:4257 cites include/client/graphics/vision_ambient.h
+OK    refactor/BOARD.md:4258 cites tests/test_night_ambient.cpp
+OK    refactor/BOARD.md:4301 cites include/client/graphics/zone_shader.h
+OK    refactor/BOARD.md:4302 cites src/client/graphics/slash/renderer_slash_commands.cpp
+SKIP  refactor/BOARD.md:4319 cites review/T408/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:4329 cites src/client/graphics/eq/zone_geometry.cpp
+OK    refactor/BOARD.md:4351 cites src/client/graphics/renderer/irrlicht_renderer.cpp
+SKIP  refactor/BOARD.md:4369 cites review/T405/scripts/t405_fable_vision.sh — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:4375 cites src/client/graphics/eq/race_codes.cpp
+OK    refactor/BOARD.md:4387 cites tools/willeq_db_builder.cpp:356
+OK    refactor/BOARD.md:4387 cites tools/willeq_db/db_loaders_json.cpp:126
+OK    refactor/BOARD.md:4387 cites refactor/T402_caches_dead_configs.md
+OK    refactor/BOARD.md:4387 cites scripts/generate_race_colors.py
+OK    refactor/BOARD.md:4387 cites scripts/update_race_models_from_reference.py
+OK    refactor/BOARD.md:4387 cites scripts/generate_s3d_reference_json.py
+OK    refactor/BOARD.md:4389 cites scripts/ci/visual_gate.sh
+OK    refactor/BOARD.md:4416 cites refactor/T402_caches_dead_configs.md
+OK    refactor/BOARD.md:4416 cites include/client/data_paths.h
+SKIP  refactor/BOARD.md:4432 cites /mnt/projects/akk-stack/code/zone/loot.cpp — cross-project citation
+OK    refactor/BOARD.md:4493 cites src/client/graphics/texture_generators.cpp
+OK    refactor/BOARD.md:4500 cites tools/retired/README.md
+OK    refactor/BOARD.md:4519 cites tools/retired/README.md
+OK    refactor/BOARD.md:4521 cites tools/generate_textures.cpp
+OK    refactor/BOARD.md:4522 cites scripts/build_textures.sh
+OK    refactor/BOARD.md:4528 cites tools/retired/README.md
+OK    refactor/BOARD.md:4531 cites tools/eqe1_builder.cpp
+OK    refactor/BOARD.md:4531 cites docker/irrlicht-drm/COGLES2Shaders.cpp
+OK    refactor/BOARD.md:4564 cites tests/test_alpha_blend_companion.cpp
+OK    refactor/BOARD.md:4575 cites src/client/graphics/detail/detail_texture_atlas.cpp
+OK    refactor/BOARD.md:4596 cites scripts/build_textures.sh
+OK    refactor/BOARD.md:4613 cites tools/hwcaps/gles2_zone_benchmark.cpp
+OK    refactor/BOARD.md:4640 cites tools/generate_textures.cpp
+OK    refactor/BOARD.md:4663 cites tools/bmp32_writer.h
+OK    refactor/BOARD.md:4682 cites scripts/build_willeq_pack.sh
+OK    refactor/BOARD.md:4683 cites tests/test_texture_alpha_census.cpp
+OK    refactor/BOARD.md:4689 cites tools/particle_atlas_builder.cpp
+OK    refactor/BOARD.md:4692 cites tools/bmp32_writer.h
+OK    refactor/BOARD.md:4697 cites tests/test_particle_atlas_alpha.cpp
+OK    refactor/BOARD.md:4703 cites src/client/graphics/texture_generators.cpp
+OK    refactor/BOARD.md:4734 cites src/client/graphics/texture_generators.cpp
+OK    refactor/BOARD.md:4739 cites tools/generate_textures.cpp
+OK    refactor/BOARD.md:4755 cites tools/bmp32_writer.h
+OK    refactor/BOARD.md:4774 cites scripts/build_willeq_pack.sh
+SKIP  refactor/BOARD.md:4839 cites review/T422/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:4855 cites tests/test_spell_burst_oracle_match.cpp
+SKIP  refactor/BOARD.md:4866 cites /mnt/projects/akk-stack/code/zone/gm_commands/goto.cpp — cross-project citation
+OK    refactor/BOARD.md:4900 cites src/client/audio/audio_manager.cpp
+OK    refactor/BOARD.md:4937 cites tests/test_audio_playback_rate.cpp
+OK    refactor/BOARD.md:4942 cites src/client/commands/combat_actions.cpp
+OK    refactor/BOARD.md:4980 cites tests/test_self_entity_position.cpp
+OK    refactor/BOARD.md:4986 cites refactor/BOARD.md
+OK    refactor/BOARD.md:5043 cites src/client/spell/spell_manager.cpp
+OK    refactor/BOARD.md:5060 cites src/client/zone/zone_dispatch.cpp
+OK    refactor/BOARD.md:5073 cites tests/test_memorize_into_occupied_gem.cpp
+OK    refactor/BOARD.md:5125 cites src/client/graphics/renderer/irrlicht_renderer.cpp
+OK    refactor/BOARD.md:5142 cites tests/test_software_cursor_pack_name.cpp
+OK    refactor/BOARD.md:5144 cites src/client/graphics/spell_visual_fx.cpp
+OK    refactor/BOARD.md:5177 cites tests/test_texture_alpha_census.cpp
+OK    refactor/BOARD.md:5188 cites include/client/graphics/eqe1_format.h
+OK    refactor/BOARD.md:5213 cites scripts/refactor/check_write_only_fields.py
+OK    refactor/BOARD.md:5230 cites scripts/refactor/check_write_only_fields.py
+OK    refactor/BOARD.md:5243 cites scripts/refactor/check_write_only_fields.py
+OK    refactor/BOARD.md:5255 cites refactor/T414_inert_config_keys_combat_tuning.md
+OK    refactor/BOARD.md:5258 cites include/client/graphics/entity_renderer.h
+OK    refactor/BOARD.md:5260 cites src/client/graphics/renderer/irrlicht_renderer.cpp
+OK    refactor/BOARD.md:5277 cites tests/test_entity_texture_upload_skip.cpp
+OK    refactor/BOARD.md:5279 cites include/client/audio/sfx_manager.h
+OK    refactor/BOARD.md:5293 cites src/client/audio/CLAUDE.md
+OK    refactor/BOARD.md:5295 cites tests/test_sfx_cache_eviction.cpp
+OK    refactor/BOARD.md:5297 cites include/client/graphics/environment/particle_manager.h
+OK    refactor/BOARD.md:5299 cites src/client/graphics/renderer/renderer_entities.cpp
+OK    refactor/BOARD.md:5300 cites tools/model_viewer/model_viewer_spell_test.cpp
+OK    refactor/BOARD.md:5305 cites include/client/graphics/irrlicht_renderer.h
+OK    refactor/BOARD.md:5307 cites src/client/graphics/renderer/renderer_init.cpp
+OK    refactor/BOARD.md:5308 cites src/client/graphics/player/renderer_camera.cpp
+OK    refactor/BOARD.md:5309 cites src/client/graphics/frame/renderer_frame_input.cpp
+OK    refactor/BOARD.md:5328 cites tests/test_pvs_render_distance_trigger.cpp
+OK    refactor/BOARD.md:5335 cites include/client/graphics/graphics_archive_index.h
+OK    refactor/BOARD.md:5341 cites include/client/state/event_bus.h
+OK    refactor/BOARD.md:5384 cites tests/test_bridge_payload_fields.cpp
+OK    refactor/BOARD.md:5390 cites include/client/graphics/environment/environment_config.h
+OK    refactor/BOARD.md:5418 cites src/client/graphics/display_settings_loader.cpp
+OK    refactor/BOARD.md:5438 cites include/client/inventory/item_instance.h
+OK    refactor/BOARD.md:5439 cites include/client/spell/spell_data.h
+OK    refactor/BOARD.md:5439 cites include/client/skill/skill_data.h
+OK    refactor/BOARD.md:5440 cites include/client/state/entity_manager.h
+OK    refactor/BOARD.md:5447 cites src/client/inventory/item_display_text.cpp
+OK    refactor/BOARD.md:5458 cites scripts/refactor/check_write_only_fields.py
+OK    refactor/BOARD.md:5479 cites src/client/spell/spell_display_text.cpp
+OK    refactor/BOARD.md:5494 cites src/client/core/everquest.cpp
+OK    refactor/BOARD.md:5545 cites src/client/commands/consider_text.cpp
+SKIP  refactor/BOARD.md:5549 cites /mnt/projects/akk-stack/code/common/faction.h:34 — cross-project citation
+OK    refactor/BOARD.md:5566 cites include/client/combat.h
+OK    refactor/BOARD.md:5591 cites src/client/graphics/environment/spell_effects_config.cpp
+OK    refactor/BOARD.md:5642 cites include/client/graphics/environment/spell_sprite_atlas.h
+OK    refactor/BOARD.md:5687 cites tools/spell_sprite_atlas_builder.cpp
+OK    refactor/BOARD.md:5768 cites refactor/T422_spell_effects_live_ab.md
+SKIP  refactor/BOARD.md:5774 cites review/T422/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:5784 cites tests/test_spell_burst_oracle_match.cpp
+OK    refactor/BOARD.md:5804 cites scripts/scenario.sh
+OK    refactor/BOARD.md:5811 cites scripts/scenario.sh
+OK    refactor/BOARD.md:5820 cites scripts/scenario.sh
+SKIP  refactor/BOARD.md:5833 cites review/T449/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:5844 cites scripts/scenario.sh
+OK    refactor/BOARD.md:5854 cites scripts/build_willeq_pack.sh
+OK    refactor/BOARD.md:5863 cites tests/test_texture_alpha_census.cpp
+OK    refactor/BOARD.md:5924 cites refactor/T416_ui_atlas_review.md
+OK    refactor/BOARD.md:5929 cites tools/hwcaps/ui_panel_capture.cpp
+OK    refactor/BOARD.md:5946 cites include/client/state/event_bus.h
+OK    refactor/BOARD.md:5950 cites src/client/core/everquest.cpp
+OK    refactor/BOARD.md:5962 cites include/client/graphics/ui/combat_ability_panel.h
+OK    refactor/BOARD.md:5963 cites src/client/graphics/ui/combat_ability_panel.cpp
+OK    refactor/BOARD.md:5985 cites tests/test_tradeskill_combat_panels.cpp
+OK    refactor/BOARD.md:5988 cites include/client/state/event_bus.h
+OK    refactor/BOARD.md:5999 cites include/client/graphics/ui/tradeskill_panel.h
+OK    refactor/BOARD.md:6000 cites src/client/graphics/ui/tradeskill_panel.cpp
+OK    refactor/BOARD.md:6019 cites tests/test_tradeskill_combat_panels.cpp
+OK    refactor/BOARD.md:6022 cites src/client/graphics/texture_generators.cpp
+OK    refactor/BOARD.md:6044 cites tests/test_texture_alpha_census.cpp
+OK    refactor/BOARD.md:6047 cites refactor/T424_fallback_multiplier_sprites.md
+OK    refactor/BOARD.md:6070 cites tests/test_texture_alpha_census.cpp
+OK    refactor/BOARD.md:6077 cites include/client/graphics/environment/rain_overlay.h
+OK    refactor/BOARD.md:6110 cites include/client/graphics/weather_quality_preset.h
+OK    refactor/BOARD.md:6119 cites include/client/graphics/constrained_renderer_config.h
+OK    refactor/BOARD.md:6128 cites include/client/graphics/constrained_renderer_config.h
+OK    refactor/BOARD.md:6136 cites include/client/graphics/detail/detail_types.h
+OK    refactor/BOARD.md:6155 cites include/client/graphics/detail/detail_types.h
+OK    refactor/BOARD.md:6169 cites tests/test_detail_view_distance.cpp
+OK    refactor/BOARD.md:6184 cites include/client/graphics/eq/race_model_loader.h
+OK    refactor/BOARD.md:6185 cites include/client/graphics/tree_identifier.h
+OK    refactor/BOARD.md:6194 cites include/client/graphics/constrained_texture_cache.h
+OK    refactor/BOARD.md:6212 cites include/client/graphics/weather_effects_controller.h
+OK    refactor/BOARD.md:6218 cites include/client/graphics/zone_lifecycle/zone_lifecycle_component.h
+OK    refactor/BOARD.md:6224 cites include/client/graphics/overlays/overlays_component.h
+OK    refactor/BOARD.md:6230 cites include/client/inventory/inventory_manager.h
+OK    refactor/BOARD.md:6231 cites include/client/graphics/environment/particle_manager.h
+OK    refactor/BOARD.md:6239 cites include/client/graphics/ui/character_model_view.h
+OK    refactor/BOARD.md:6240 cites include/client/graphics/eq/animated_mesh_scene_node.h
+OK    refactor/BOARD.md:6244 cites include/client/bridge/bridge_component.h
+OK    refactor/BOARD.md:6245 cites include/client/player/player_component.h
+OK    refactor/BOARD.md:6246 cites include/client/skill/skill_manager.h
+OK    refactor/BOARD.md:6253 cites include/client/graphics/camera_controller.h
+OK    refactor/BOARD.md:6254 cites include/client/output/console_renderer.h
+OK    refactor/BOARD.md:6256 cites include/client/input/hotkey_manager.h
+OK    refactor/BOARD.md:6274 cites include/client/graphics/ui/tradeskill_layout.h
+OK    refactor/BOARD.md:6275 cites src/client/graphics/ui/tradeskill_panel.cpp
+OK    refactor/BOARD.md:6291 cites src/client/merchant/merchant_vendor_bank.cpp:547
+OK    refactor/BOARD.md:6308 cites src/client/merchant/merchant_vendor_bank.cpp
+SKIP  refactor/BOARD.md:6312 cites /mnt/projects/akk-stack/code/common/eq_packet_structs.h:4313 — cross-project citation
+SKIP  refactor/BOARD.md:6314 cites /mnt/projects/akk-stack/code/zone/tradeskills.cpp:866 — cross-project citation
+OK    refactor/BOARD.md:6322 cites src/client/graphics/ui/tradeskill_recipe_list.cpp
+OK    refactor/BOARD.md:6337 cites tests/test_recipe_list.cpp
+OK    refactor/BOARD.md:6343 cites src/client/graphics/ui/static_ui_input.cpp
+OK    refactor/BOARD.md:6358 cites refactor/T443_guild_list_esc_dumpscene.md
+OK    refactor/BOARD.md:6367 cites tests/test_esc_server_owned_windows.cpp
+OK    refactor/BOARD.md:6378 cites tools/ui_atlas_builder.cpp
+OK    refactor/BOARD.md:6411 cites include/client/graphics/ui/ui_atlas.h
+OK    refactor/BOARD.md:6418 cites src/client/graphics/ui/loot_panel.cpp
+OK    refactor/BOARD.md:6435 cites tests/test_ui_sprite_roster.cpp
+OK    refactor/BOARD.md:6443 cites src/client/graphics/ui/static_panels.cpp
+OK    refactor/BOARD.md:6444 cites include/client/graphics/ui/ui_layout.h
+OK    refactor/BOARD.md:6456 cites include/client/graphics/ui/pet_layout.h
+OK    refactor/BOARD.md:6474 cites include/client/pet_constants.h
+OK    refactor/BOARD.md:6475 cites tests/test_pet_buttons.cpp
+OK    refactor/BOARD.md:6480 cites scripts/ci/visual_gate.sh
+OK    refactor/BOARD.md:6493 cites src/client/graphics/ui/tradeskill_recipe_list.cpp
+OK    refactor/BOARD.md:6494 cites src/client/graphics/ui/static_ui_input.cpp
+OK    refactor/BOARD.md:6515 cites include/client/graphics/ui/text_entry.h
+OK    refactor/BOARD.md:6516 cites src/client/graphics/ui/text_entry.cpp
+OK    refactor/BOARD.md:6536 cites tests/test_read_and_reset_ownership.cpp
+OK    refactor/BOARD.md:6543 cites tests/test_search_entry.cpp
+OK    refactor/BOARD.md:6545 cites include/client/graphics/ui/ui_layout.h
+OK    refactor/BOARD.md:6546 cites include/client/graphics/ui/pet_layout.h
+OK    refactor/BOARD.md:6564 cites refactor/BOARD.md
+SKIP  refactor/BOARD.md:6599 cites review/T422/README.md — /mnt/projects/fable/review not authoritative for this checkout
+SKIP  refactor/BOARD.md:6601 cites /mnt/projects/eq-oracle/scripts/login-as.sh — cross-project citation
+OK    refactor/BOARD.md:6619 cites src/client/graphics/renderer/irrlicht_renderer.cpp
+SKIP  refactor/BOARD.md:6680 cites review/T426/scripts/t426_fable_weather.sh — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:6684 cites src/client/graphics/sim_weather.cpp
+OK    refactor/BOARD.md:6686 cites src/client/graphics/weather_effects_controller.cpp
+OK    refactor/BOARD.md:6715 cites tests/weather_worker_step.h
+OK    refactor/BOARD.md:6724 cites src/client/graphics/renderer/irrlicht_renderer.cpp
+OK    refactor/BOARD.md:6758 cites tests/test_scene_ambient_recompute.cpp
+OK    refactor/BOARD.md:6762 cites include/client/graphics/irrlicht_renderer.h
+OK    refactor/BOARD.md:6783 cites include/client/inventory/item_instance.h
+SKIP  refactor/BOARD.md:6802 cites /mnt/projects/akk-stack/code/common/item_instance.h — cross-project citation
+OK    refactor/BOARD.md:6808 cites tests/test_item_display.cpp
+OK    refactor/BOARD.md:6812 cites include/client/inventory/item_instance.h
+OK    refactor/BOARD.md:6816 cites src/client/inventory/inventory_item_parser.cpp
+OK    refactor/BOARD.md:6832 cites include/client/graphics/ui/static_panels.h
+OK    refactor/BOARD.md:6853 cites include/client/graphics/ui/item_icon_atlas.h
+OK    refactor/BOARD.md:6865 cites tests/test_item_icon_atlas.cpp
+OK    refactor/BOARD.md:6867 cites tests/test_ui_atlas_pixels.cpp
+OK    refactor/BOARD.md:6871 cites src/client/bridge/bridge_component_intents.cpp
+OK    refactor/BOARD.md:6872 cites include/client/graphics/ui/tradeskill_panel.h
+OK    refactor/BOARD.md:6892 cites src/client/graphics/sim/renderer_sim_bridge.cpp
+OK    refactor/BOARD.md:6951 cites tests/test_spell_colour_and_overrides.cpp
+SKIP  refactor/BOARD.md:6975 cites /mnt/projects/akk-stack/code/common/spdat.h:1653 — cross-project citation
+OK    refactor/BOARD.md:7003 cites tests/test_spell_colour_and_overrides.cpp
+OK    refactor/BOARD.md:7007 cites src/client/graphics/player/renderer_camera.cpp
+OK    refactor/BOARD.md:7039 cites docs/CLAUDE.md
+OK    refactor/BOARD.md:7044 cites tests/test_self_relocation_heading.cpp
+SKIP  refactor/BOARD.md:7046 cites review/T426/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:7048 cites src/client/graphics/sim_particles.cpp
+OK    refactor/BOARD.md:7081 cites include/client/graphics/vision_ambient.h
+OK    refactor/BOARD.md:7089 cites src/client/graphics/ui/loot_panel.cpp
+OK    refactor/BOARD.md:7090 cites src/client/graphics/ui/static_panels.cpp
+OK    refactor/BOARD.md:7091 cites tools/ui_atlas_builder.cpp
+OK    refactor/BOARD.md:7115 cites src/client/inventory/item_display_text.cpp
+OK    refactor/BOARD.md:7116 cites src/client/spell/spell_display_text.cpp
+OK    refactor/BOARD.md:7119 cites include/client/display_eqstr.h
+OK    refactor/BOARD.md:7123 cites tests/test_display_text_from_db.cpp
+OK    refactor/BOARD.md:7135 cites tools/willeq_db_builder.cpp
+OK    refactor/BOARD.md:7147 cites src/client/spell/spell_display_text.cpp
+OK    refactor/BOARD.md:7148 cites include/client/spell/spell_data.h
+OK    refactor/BOARD.md:7163 cites src/client/merchant/merchant.cpp:103
+OK    refactor/BOARD.md:7164 cites src/client/merchant/merchant_trade.cpp:405
+OK    refactor/BOARD.md:7172 cites include/client/graphics/ui/CLAUDE.md
+OK    refactor/BOARD.md:7194 cites tests/test_merchant_bank_cursor.cpp
+SKIP  refactor/BOARD.md:7210 cites review/T449/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:7214 cites tools/generate_textures.cpp
+OK    refactor/BOARD.md:7249 cites src/client/graphics/player/renderer_player_collision.cpp:574
+OK    refactor/BOARD.md:7251 cites src/client/graphics/player/renderer_player_physics.cpp:434
+OK    refactor/BOARD.md:7262 cites refactor/T437_ground_sentinels.md
+OK    refactor/BOARD.md:7265 cites include/client/graphics/player/ground_query.h
+OK    refactor/BOARD.md:7271 cites src/client/graphics/player/ground_query.cpp
+OK    refactor/BOARD.md:7275 cites tests/test_ground_sentinels.cpp
+OK    refactor/BOARD.md:7280 cites src/client/hc_map.cpp:793
+OK    refactor/BOARD.md:7285 cites src/client/graphics/player/renderer_player_collision.cpp:73
+OK    refactor/BOARD.md:7287 cites src/client/zone/zone_component.cpp:1106
+OK    refactor/BOARD.md:7302 cites src/client/hc_map.cpp
+OK    refactor/BOARD.md:7308 cites tests/test_ground_sentinels.cpp
+OK    refactor/BOARD.md:7332 cites src/client/graphics/player/renderer_player_collision.cpp
+OK    refactor/BOARD.md:7344 cites refactor/T440_ground_miss_and_dead_stores.md
+OK    refactor/BOARD.md:7354 cites tests/test_ground_sentinels.cpp
+SKIP  refactor/BOARD.md:7355 cites review/T440/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:7364 cites src/client/graphics/door_manager.cpp
+OK    refactor/BOARD.md:7421 cites include/client/audio/volume_steps.h
+OK    refactor/BOARD.md:7434 cites tests/test_options_merchant_residue.cpp
+SKIP  refactor/BOARD.md:7446 cites review/T449/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:7508 cites tests/test_caster_own_landing.cpp
+OK    refactor/BOARD.md:7522 cites include/client/skill/skill_data.h
+OK    refactor/BOARD.md:7526 cites src/client/skill/skill_manager.cpp:719
+OK    refactor/BOARD.md:7537 cites scripts/refactor/check_write_only_fields.py
+OK    refactor/BOARD.md:7539 cites include/client/skill/skill_data.h
+SKIP  refactor/BOARD.md:7553 cites /mnt/projects/akk-stack/code/zone/special_attacks.cpp:976 — cross-project citation
+OK    refactor/BOARD.md:7558 cites src/client/combat.cpp:645
+SKIP  refactor/BOARD.md:7561 cites /mnt/projects/akk-stack/code/zone/client_packet.cpp — cross-project citation
+SKIP  refactor/BOARD.md:7563 cites /mnt/projects/akk-stack/code/zone/aa.cpp:1323 — cross-project citation
+OK    refactor/BOARD.md:7568 cites src/client/commands/consider_text.cpp
+OK    refactor/BOARD.md:7581 cites include/client/state/entity_manager.h
+OK    refactor/BOARD.md:7582 cites include/client/eq_types.h
+OK    refactor/BOARD.md:7583 cites src/client/login_world/login_world_component.cpp
+OK    refactor/BOARD.md:7595 cites refactor/T443_guild_list_esc_dumpscene.md
+OK    refactor/BOARD.md:7597 cites include/client/guild/guild_name_table.h
+SKIP  refactor/BOARD.md:7602 cites /mnt/projects/akk-stack/code/common/patches/titanium.cpp:819 — cross-project citation
+SKIP  refactor/BOARD.md:7604 cites /mnt/projects/akk-stack/code/common/patches/titanium_structs.h:1412 — cross-project citation
+SKIP  refactor/BOARD.md:7607 cites /mnt/projects/akk-stack/code/common/patches/titanium_limits.h:287 — cross-project citation
+OK    refactor/BOARD.md:7608 cites tests/test_guild_name_table.cpp
+SKIP  refactor/BOARD.md:7613 cites /mnt/projects/akk-stack/code/world/clientlist.cpp:824 — cross-project citation
+SKIP  refactor/BOARD.md:7614 cites /mnt/projects/akk-stack/code/zone/entity.cpp:4970 — cross-project citation
+OK    refactor/BOARD.md:7642 cites refactor/T433_doors_lifts_survey.md
+SKIP  refactor/BOARD.md:7668 cites /mnt/projects/akk-stack/code/zone/doors.cpp:658 — cross-project citation
+OK    refactor/BOARD.md:7668 cites refactor/T438_lift_oracle.md
+SKIP  refactor/BOARD.md:7668 cites review/T438/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:7680 cites include/client/graphics/door_motion.h
+OK    refactor/BOARD.md:7680 cites src/client/graphics/door_motion.cpp
+OK    refactor/BOARD.md:7689 cites tests/test_door_motion.cpp
+SKIP  refactor/BOARD.md:7689 cites review/T438/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:7706 cites src/client/graphics/door_collision.cpp
+OK    refactor/BOARD.md:7711 cites src/client/graphics/door_collision.cpp
+OK    refactor/BOARD.md:7713 cites src/client/graphics/player/renderer_player_lift.cpp
+OK    refactor/BOARD.md:7735 cites src/client/graphics/player/renderer_player_physics.cpp:317
+OK    refactor/BOARD.md:7740 cites src/client/graphics/sim/renderer_sim_bridge.cpp:276
+OK    refactor/BOARD.md:7749 cites src/client/entities/entities_component_updates.cpp:508
+OK    refactor/BOARD.md:7765 cites src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:954
+OK    refactor/BOARD.md:7768 cites tools/bsp_region_finder.cpp
+OK    refactor/BOARD.md:7778 cites tests/test_jump_relocation.cpp
+OK    refactor/BOARD.md:7783 cites include/client/graphics/renderer_types.h:414
+OK    refactor/BOARD.md:7785 cites src/client/graphics/player/renderer_player_collision.cpp:336
+OK    refactor/BOARD.md:7797 cites refactor/T435_door_collision.md
+OK    refactor/BOARD.md:7797 cites src/client/graphics/frame/renderer_frame_input.cpp
+OK    refactor/BOARD.md:7797 cites src/client/graphics/door_collision.cpp
+OK    refactor/BOARD.md:7797 cites tests/test_door_collision.cpp
+OK    refactor/BOARD.md:7822 cites src/client/entities/entities_component_world.cpp:130
+SKIP  refactor/BOARD.md:7825 cites /mnt/projects/akk-stack/code/zone/doors.cpp:37 — cross-project citation
+SKIP  refactor/BOARD.md:7828 cites /mnt/projects/akk-stack/code/zone/doors.cpp:37 — cross-project citation
+OK    refactor/BOARD.md:7828 cites refactor/T435_door_collision.md
+OK    refactor/BOARD.md:7828 cites src/client/entities/entities_component_world.cpp
+OK    refactor/BOARD.md:7828 cites tests/test_door_invert_state.cpp
+OK    refactor/BOARD.md:7858 cites include/client/graphics/ui/cursor_attachment_layout.h
+OK    refactor/BOARD.md:7872 cites src/client/graphics/ui/bank_panel.cpp
+OK    refactor/BOARD.md:7873 cites include/client/graphics/ui/bank_layout.h
+OK    refactor/BOARD.md:7883 cites src/client/graphics/ui/static_ui_input.cpp
+OK    refactor/BOARD.md:7895 cites src/client/graphics/ui/merchant_panel.cpp
+OK    refactor/BOARD.md:7908 cites src/client/core/everquest.cpp
+OK    refactor/BOARD.md:7944 cites src/client/graphics/renderer/irrlicht_renderer.cpp
+OK    refactor/BOARD.md:7956 cites include/client/graphics/vision_ambient.h
+OK    refactor/BOARD.md:7967 cites src/client/graphics/renderer/irrlicht_renderer.cpp
+OK    refactor/BOARD.md:7968 cites src/client/graphics/sim_animation.cpp
+OK    refactor/BOARD.md:7985 cites include/client/graphics/vision_ambient.h
+OK    refactor/BOARD.md:8004 cites src/client/graphics/player/renderer_camera.cpp
+OK    refactor/BOARD.md:8028 cites src/client/commands/commands_spells.cpp
+OK    refactor/BOARD.md:8042 cites include/client/graphics/ui/static_panels.h
+OK    refactor/BOARD.md:8056 cites refactor/T442_dead_renderer_members.md
+OK    refactor/BOARD.md:8056 cites tests/test_dead_renderer_members.cpp
+OK    refactor/BOARD.md:8061 cites src/client/graphics/player/renderer_player_collision.cpp
+OK    refactor/BOARD.md:8074 cites refactor/T442_dead_renderer_members.md
+OK    refactor/BOARD.md:8074 cites tests/test_dead_renderer_members.cpp
+OK    refactor/BOARD.md:8076 cites include/client/graphics/irrlicht_renderer.h
+OK    refactor/BOARD.md:8081 cites src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp:180
+OK    refactor/BOARD.md:8082 cites src/client/graphics/zone_load/renderer_zone_load.cpp:426
+OK    refactor/BOARD.md:8085 cites src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:321
+OK    refactor/BOARD.md:8086 cites src/client/graphics/diagnostics/diagnostics_component.cpp:214
+OK    refactor/BOARD.md:8087 cites src/client/graphics/diagnostics/diagnostics_debug.cpp:282
+OK    refactor/BOARD.md:8093 cites src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:183
+OK    refactor/BOARD.md:8093 cites refactor/T442_dead_renderer_members.md
+OK    refactor/BOARD.md:8093 cites tests/test_dead_renderer_members.cpp
+OK    refactor/BOARD.md:8098 cites src/client/graphics/diagnostics/diagnostics_component.cpp
+OK    refactor/BOARD.md:8107 cites src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:183
+OK    refactor/BOARD.md:8118 cites refactor/T443_guild_list_esc_dumpscene.md
+OK    refactor/BOARD.md:8122 cites include/client/graphics/diagnostics/scene_node_census.h
+OK    refactor/BOARD.md:8132 cites tests/test_scene_node_census.cpp
+OK    refactor/BOARD.md:8167 cites src/client/graphics/spell_visual_fx.cpp
+OK    refactor/BOARD.md:8189 cites include/client/graphics/vision_ambient.h
+OK    refactor/BOARD.md:8206 cites scripts/refactor/check_comment_claims.py
+OK    refactor/BOARD.md:8218 cites refactor/BOARD.md
+OK    refactor/BOARD.md:8240 cites refactor/BOARD.md:3
+OK    refactor/BOARD.md:8247 cites src/client/graphics/entity_mesh_build.cpp
+OK    refactor/BOARD.md:8248 cites include/client/state/entity_manager.h
+SKIP  refactor/BOARD.md:8253 cites /mnt/projects/akk-stack/code/world/clientlist.cpp:824 — cross-project citation
+SKIP  refactor/BOARD.md:8254 cites /mnt/projects/akk-stack/code/zone/entity.cpp:4970 — cross-project citation
+SKIP  refactor/BOARD.md:8259 cites /mnt/projects/akk-stack/code/zone/client_packet.cpp:8728 — cross-project citation
+SKIP  refactor/BOARD.md:8269 cites review/T100/README.md:43 — /mnt/projects/fable/review not authoritative for this checkout
+SKIP  refactor/BOARD.md:8269 cites review/T132/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:8274 cites refactor/TESTING_CHARTER.md
+OK    refactor/BOARD.md:8296 cites src/client/graphics/player/renderer_player_lift.cpp
+OK    refactor/BOARD.md:8327 cites src/client/movement/movement_state.cpp:545
+SKIP  refactor/BOARD.md:8343 cites /mnt/projects/akk-stack/code/zone/entity.cpp:988 — cross-project citation
+OK    refactor/BOARD.md:8350 cites tests/test_entities_component.cpp
+OK    refactor/BOARD.md:8360 cites include/client/graphics/vision_ambient.h
+OK    refactor/BOARD.md:8376 cites tools/hwcaps/gles2_zone_benchmark.cpp
+OK    refactor/BOARD.md:8394 cites tools/willeq_db_builder.cpp
+OK    refactor/BOARD.md:8408 cites src/client/willeq_database.cpp:101
+OK    refactor/BOARD.md:8412 cites scripts/build_willeq_db.sh
+OK    refactor/BOARD.md:8421 cites src/client/graphics/eq/model_loading.cpp
+OK    refactor/BOARD.md:8422 cites src/client/willeq_database.cpp
+OK    refactor/BOARD.md:8433 cites src/client/graphics/eq/mesh_building.cpp:210
+OK    refactor/BOARD.md:8440 cites scripts/build_willeq_db.sh
+OK    refactor/BOARD.md:8479 cites tests/test_armor_texture_archive.cpp
+OK    refactor/BOARD.md:8481 cites src/client/willeq_database.cpp
+OK    refactor/BOARD.md:8488 cites tools/zone_line_editor.cpp
+OK    refactor/BOARD.md:8510 cites tools/willeq_db/db_loaders_json.cpp
+OK    refactor/BOARD.md:8517 cites include/client/graphics/eq/equipment_textures.h
+OK    refactor/BOARD.md:8534 cites src/client/graphics/eq/equipment_model_loader.cpp:916
+OK    refactor/BOARD.md:8547 cites src/client/graphics/eq/model_loading.cpp
+OK    refactor/BOARD.md:8560 cites docs/decisions.md
+OK    refactor/BOARD.md:8572 cites tools/willeq_db/db_loaders_json.cpp
+OK    refactor/BOARD.md:8575 cites src/client/willeq_database.cpp
+OK    refactor/BOARD.md:8590 cites src/client/graphics/eq/equipment_model_loader.cpp:180
+OK    refactor/BOARD.md:8593 cites src/client/graphics/entity_prep_worker.cpp:406
+OK    refactor/BOARD.md:8607 cites tests/test_corpse_death_pose.cpp
+OK    refactor/BOARD.md:8609 cites src/client/graphics/entity_build_step.cpp:420
+OK    refactor/BOARD.md:8611 cites src/client/graphics/entity_mesh_build.cpp:365
+OK    refactor/BOARD.md:8620 cites include/client/graphics/corpse_death_pose.h
+OK    refactor/BOARD.md:8621 cites src/client/graphics/corpse_death_pose.cpp
+OK    refactor/BOARD.md:8624 cites tests/test_corpse_death_pose.cpp
+OK    refactor/BOARD.md:8639 cites src/client/corpse_predicate.cpp:75
+OK    refactor/BOARD.md:8641 cites src/client/bridge/bridge_component.cpp:464
+OK    refactor/BOARD.md:8642 cites src/client/application_zone_loading.cpp:239
+OK    refactor/BOARD.md:8644 cites include/client/state/entity_manager.h:74
+OK    refactor/BOARD.md:8646 cites include/client/corpse_predicate.h
+SKIP  refactor/BOARD.md:8649 cites /mnt/projects/akk-stack/code/zone/corpse.cpp:1809 — cross-project citation
+OK    refactor/BOARD.md:8656 cites src/client/combat_hunting.cpp:251
+OK    refactor/BOARD.md:8660 cites src/client/combat_hunting.cpp:482
+OK    refactor/BOARD.md:8662 cites src/client/combat.cpp:724
+OK    refactor/BOARD.md:8667 cites tests/test_corpse_death_pose.cpp
+OK    refactor/BOARD.md:8677 cites src/client/graphics/ui/character_model_view.cpp
+SKIP  refactor/BOARD.md:8695 cites review/T449/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:8700 cites tests/test_paperdoll_zone_unload_order.cpp
+OK    refactor/BOARD.md:8702 cites scripts/eqemu/up.sh
+OK    refactor/BOARD.md:8702 cites scripts/scenario.sh
+OK    refactor/BOARD.md:8718 cites scripts/scenario.sh
+OK    refactor/BOARD.md:8737 cites scripts/scenario.sh
+OK    refactor/BOARD.md:8739 cites scripts/scenario.sh
+OK    refactor/BOARD.md:8750 cites refactor/T506_cast_lands_default_spell.md
+OK    refactor/BOARD.md:8753 cites scripts/scenario.sh
+OK    refactor/BOARD.md:8753 cites src/client/scenario/scenario_two_client_survive.cpp
+OK    refactor/BOARD.md:8767 cites src/client/scenario/scenario_cast_lands.cpp
+OK    refactor/BOARD.md:8778 cites src/client/input/hotkey_manager.cpp
+OK    refactor/BOARD.md:8806 cites src/client/graphics/ui/static_ui_input.cpp
+OK    refactor/BOARD.md:8819 cites refactor/T455_zero_caller_census.md
+OK    refactor/BOARD.md:8823 cites scripts/refactor/check_zero_callers.py
+OK    refactor/BOARD.md:8888 cites include/client/graphics/ui/character_model_view.h
+OK    refactor/BOARD.md:8968 cites include/client/scenario/scenario.h
+OK    refactor/BOARD.md:9037 cites scripts/eqemu/up.sh
+OK    refactor/BOARD.md:9040 cites scripts/scenario.sh
+OK    refactor/BOARD.md:9050 cites scripts/eqemu/up.sh
+OK    refactor/BOARD.md:9052 cites scripts/eqemu/zone_booted_selftest.sh
+OK    refactor/BOARD.md:9065 cites tests/test_software_cursor_eviction.cpp
+OK    refactor/BOARD.md:9077 cites tests/test_player_moved_heading_units.cpp
+OK    refactor/BOARD.md:9087 cites tests/test_environment_texture_eviction.cpp
+OK    refactor/BOARD.md:9093 cites refactor/T463_evicted_texture_no_reload.md
+OK    refactor/BOARD.md:9111 cites tests/test_texture_cache_holder_census.cpp
+OK    refactor/BOARD.md:9138 cites refactor/T467_tumbleweed_lazy_init_and_session_identity.md
+OK    refactor/BOARD.md:9140 cites tests/test_environment_manager_construction.cpp
+OK    refactor/BOARD.md:9149 cites src/client/graphics/overlays/overlays_env_managers.cpp
+OK    refactor/BOARD.md:9203 cites tests/test_static_ui_frame_cost.cpp
+OK    refactor/BOARD.md:9233 cites tests/test_camera_bsp_ceiling.cpp
+SKIP  refactor/BOARD.md:9281 cites review/T462/scripts/analyze_camera_runs.py — /mnt/projects/fable/review not authoritative for this checkout
+SKIP  refactor/BOARD.md:9323 cites review/T459/scripts/uinput_inject.py — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:9340 cites src/client/graphics/entity_renderer.cpp:370
+SKIP  refactor/BOARD.md:9345 cites /mnt/projects/akk-stack/code/zone/corpse.cpp:629 — cross-project citation
+OK    refactor/BOARD.md:9348 cites include/client/corpse_predicate.h
+OK    refactor/BOARD.md:9366 cites tools/equipment_index_builder.cpp
+OK    refactor/BOARD.md:9387 cites include/client/graphics/player/camera_rig.h
+OK    refactor/BOARD.md:9469 cites tests/test_camera_zone_in_preference.cpp
+OK    refactor/BOARD.md:9492 cites scripts/refactor/check_write_only_fields.py
+OK    refactor/BOARD.md:9503 cites include/client/output/output_renderer.h
+OK    refactor/BOARD.md:9541 cites refactor/T467_tumbleweed_lazy_init_and_session_identity.md
+OK    refactor/BOARD.md:9543 cites tests/test_ui_preferences_identity.cpp
+OK    refactor/BOARD.md:9596 cites tests/test_camera_bsp_ceiling.cpp
+SKIP  refactor/BOARD.md:9614 cites review/pi/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:9622 cites docs/decisions.md
+SKIP  refactor/BOARD.md:9630 cites review/T462/scripts/run_pi.sh — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:9645 cites refactor/T465_headless_shutdown_load_flake.md
+OK    refactor/BOARD.md:9669 cites tests/scoped_temp_dir.h
+OK    refactor/BOARD.md:9672 cites tests/test_tmp_path_census.cpp
+OK    refactor/BOARD.md:9707 cites tests/test_door_texture_eviction.cpp
+OK    refactor/BOARD.md:9754 cites tests/test_door_texture_eviction.cpp
+OK    refactor/BOARD.md:9808 cites tests/test_door_texture_eviction.cpp
+OK    refactor/BOARD.md:9822 cites tests/test_door_texture_eviction.cpp
+OK    refactor/BOARD.md:9870 cites refactor/T475_delete_dead_texture_arrival_path.md
+OK    refactor/BOARD.md:9962 cites include/client/graphics/work_priority.h
+OK    refactor/BOARD.md:9966 cites tests/test_work_priority.cpp
+OK    refactor/BOARD.md:9968 cites include/client/graphics/gpu_upload_thread.h
+OK    refactor/BOARD.md:9969 cites include/client/graphics/work_priority.h
+OK    refactor/BOARD.md:9971 cites src/client/graphics/texture_atlas.cpp
+OK    refactor/BOARD.md:9994 cites include/client/graphics/renderer_types.h
+OK    refactor/BOARD.md:10018 cites include/client/graphics/work_priority.h
+OK    refactor/BOARD.md:10019 cites tests/test_work_priority.cpp
+OK    refactor/BOARD.md:10067 cites tests/test_state_modules.cpp
+OK    refactor/BOARD.md:10086 cites src/client/zone/zone_dispatch.cpp
+OK    refactor/BOARD.md:10089 cites refactor/T469_cast_interrupt_unhandled.md
+OK    refactor/BOARD.md:10099 cites tests/test_spell_interrupt_wire.cpp
+SKIP  refactor/BOARD.md:10156 cites /mnt/projects/akk-stack/code/zone/mob.cpp — cross-project citation
+SKIP  refactor/BOARD.md:10157 cites /mnt/projects/akk-stack/code/zone/groups.cpp — cross-project citation
+SKIP  refactor/BOARD.md:10169 cites /mnt/projects/akk-stack/code/zone/spells.cpp — cross-project citation
+SKIP  refactor/BOARD.md:10171 cites /mnt/projects/akk-stack/code/common/ruletypes.h — cross-project citation
+OK    refactor/BOARD.md:10175 cites tests/test_ninth_spell_gem.cpp
+OK    refactor/BOARD.md:10176 cites include/client/spell/spell_constants.h
+SKIP  refactor/BOARD.md:10178 cites /mnt/projects/akk-stack/code/common/patches/titanium_limits.h — cross-project citation
+SKIP  refactor/BOARD.md:10185 cites /mnt/projects/akk-stack/code/zone/client_packet.cpp:4387 — cross-project citation
+SKIP  refactor/BOARD.md:10186 cites /mnt/projects/akk-stack/code/common/ruletypes.h:534 — cross-project citation
+OK    refactor/BOARD.md:10189 cites refactor/T483_ninth_spell_gem.md
+OK    refactor/BOARD.md:10212 cites include/common/packets/common.h
+OK    refactor/BOARD.md:10221 cites tests/test_ninth_spell_gem.cpp
+SKIP  refactor/BOARD.md:10232 cites /mnt/projects/akk-stack/code/zone/spells.cpp — cross-project citation
+OK    refactor/BOARD.md:10257 cites refactor/T482_cast_ended_by_stopcasting_or_resist.md
+SKIP  refactor/BOARD.md:10260 cites /mnt/projects/akk-stack/code/zone/spells.cpp — cross-project citation
+OK    refactor/BOARD.md:10268 cites tests/test_spell_cast_end_wire.cpp
+SKIP  refactor/BOARD.md:10271 cites /mnt/projects/akk-stack/code/zone/spells.cpp — cross-project citation
+OK    refactor/BOARD.md:10431 cites refactor/T485_held_item_transform_candidate_search.md
+OK    refactor/BOARD.md:10491 cites docker/irrlicht-drm-x86/CIrrDeviceFB_X11.cpp
+OK    refactor/BOARD.md:10521 cites tests/test_held_item_attachment.cpp
+OK    refactor/BOARD.md:10563 cites tests/test_held_item_attachment.cpp
+SKIP  refactor/BOARD.md:10631 cites review/T474/scripts/t474_recover_t466_chase_crop.py — /mnt/projects/fable/review not authoritative for this checkout
+SKIP  refactor/BOARD.md:10663 cites review/T478/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:10760 cites tests/test_sky_dome_tint_channel_order.cpp
+SKIP  refactor/BOARD.md:10767 cites review/T478/scripts/t478_oracle_set_by_db.sh — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:10782 cites docker/irrlicht-drm/COpenGLES2Driver.cpp
+OK    refactor/BOARD.md:10790 cites include/client/graphics/gles2_vertex_color.h
+OK    refactor/BOARD.md:10816 cites src/client/graphics/sky_color_table.cpp
+OK    refactor/BOARD.md:10828 cites tests/test_sky_color_interpolation.cpp
+SKIP  refactor/BOARD.md:10968 cites review/T481/scripts/run_pi_v3.sh — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:10981 cites scripts/scenario.sh
+OK    refactor/BOARD.md:10995 cites scripts/llmbench/teardown.sh
+OK    refactor/BOARD.md:11014 cites scripts/eqemu/restore_lib.sh
+OK    refactor/BOARD.md:11017 cites scripts/scenario.sh
+OK    refactor/BOARD.md:11017 cites scripts/llmbench/teardown.sh
+OK    refactor/BOARD.md:11018 cites scripts/llmbench/record.sh
+OK    refactor/BOARD.md:11021 cites scripts/scenario.sh
+OK    refactor/BOARD.md:11024 cites scripts/eqemu/restore_selftest.sh
+OK    refactor/BOARD.md:11025 cites scripts/scenario.sh
+SKIP  refactor/BOARD.md:11031 cites review/T478/scripts/t478_o.sh — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:11036 cites scripts/llmbench/o.sh
+SKIP  refactor/BOARD.md:11038 cites /mnt/projects/eq-oracle/CLAUDE.md — cross-project citation
+SKIP  refactor/BOARD.md:11054 cites /mnt/projects/eq-oracle/scripts/enter-world.sh — cross-project citation
+OK    refactor/BOARD.md:11064 cites scripts/llmbench/oracle_start.sh
+OK    refactor/BOARD.md:11106 cites src/client/graphics/sky_color_table.cpp
+OK    refactor/BOARD.md:11108 cites tests/test_sky_color_interpolation.cpp
+OK    refactor/BOARD.md:11109 cites tests/test_sky_dome_tint_channel_order.cpp
+OK    refactor/BOARD.md:11170 cites scripts/camera_match_pose.sh
+OK    refactor/BOARD.md:11177 cites scripts/scenario.sh
+OK    refactor/BOARD.md:11184 cites scripts/llmbench/verify_labels.py
+OK    refactor/BOARD.md:11191 cites refactor/T492_llmbench_three_player_corpus.md
+OK    refactor/BOARD.md:11225 cites scripts/oracle/find_tip_dialog.py
+OK    refactor/BOARD.md:11250 cites scripts/llmbench/oracle_start.sh:34
+OK    refactor/BOARD.md:11253 cites scripts/oracle/find_tip_dialog.py
+SKIP  refactor/BOARD.md:11264 cites /mnt/projects/akk-stack/code/common/patches/titanium.cpp:3576 — cross-project citation
+SKIP  refactor/BOARD.md:11266 cites /mnt/projects/akk-stack/code/common/emu_constants.h:155 — cross-project citation
+OK    refactor/BOARD.md:11273 cites include/client/inventory/inventory_constants.h
+OK    refactor/BOARD.md:11279 cites scripts/llmbench/record.sh
+OK    refactor/BOARD.md:11290 cites scripts/scenario.sh
+OK    refactor/BOARD.md:11298 cites scripts/eqemu/env.sh
+OK    refactor/BOARD.md:11299 cites scripts/eqemu/up.sh
+OK    refactor/BOARD.md:11300 cites scripts/llmbench/record.sh
+OK    refactor/BOARD.md:11313 cites scripts/eqemu/restore_selftest.sh
+OK    refactor/BOARD.md:11322 cites scripts/eqemu/ready_selftest.sh
+OK    refactor/BOARD.md:11329 cites scripts/eqemu/down.sh
+OK    refactor/BOARD.md:11329 cites scripts/eqemu/restore_selftest.sh
+OK    refactor/BOARD.md:11329 cites scripts/eqemu/down.sh
+OK    refactor/BOARD.md:11384 cites scripts/eqemu/export_item_idfile.sh
+SKIP  refactor/BOARD.md:11411 cites review/T485/data/score_over_loop.py — /mnt/projects/fable/review not authoritative for this checkout
+SKIP  refactor/BOARD.md:11433 cites review/T490/scripts/pvs_census.cpp — /mnt/projects/fable/review not authoritative for this checkout
+SKIP  refactor/BOARD.md:11464 cites review/T490/x86/heaptrack_peak_sites.md — /mnt/projects/fable/review not authoritative for this checkout
+SKIP  refactor/BOARD.md:11497 cites review/T490/scripts/pi_sweep.sh — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:11507 cites scripts/ci/visual_gate.py
+SKIP  refactor/BOARD.md:11534 cites review/T485/data/score_perpendicular.py — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:11572 cites tools/hwcaps/held_item_candidate_search.cpp:420
+OK    refactor/BOARD.md:11583 cites src/client/graphics/detail/detail_texture_atlas_flora.cpp
+SKIP  refactor/BOARD.md:11612 cites review/T495/scripts/sky_color_emulator.cpp — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:11616 cites src/client/graphics/renderer/irrlicht_renderer.cpp
+SKIP  refactor/BOARD.md:11627 cites /mnt/projects/akk-stack/code/zone/inventory.cpp:2205 — cross-project citation
+SKIP  refactor/BOARD.md:11629 cites /mnt/projects/akk-stack/code/zone/client.cpp:4128 — cross-project citation
+SKIP  refactor/BOARD.md:11633 cites /mnt/projects/akk-stack/code/zone/mob_appearance.cpp:420 — cross-project citation
+SKIP  refactor/BOARD.md:11687 cites /mnt/projects/akk-stack/code/loginserver/world_server_manager.cpp:30 — cross-project citation
+OK    refactor/BOARD.md:11693 cites scripts/scenario.sh
+OK    refactor/BOARD.md:11698 cites scripts/llmbench/f9_cycle.sh:48
+OK    refactor/BOARD.md:11710 cites scripts/scenario.sh
+SKIP  refactor/BOARD.md:11732 cites /mnt/projects/akk-stack/code/zone/mob_appearance.cpp — cross-project citation
+OK    refactor/BOARD.md:11761 cites scripts/refactor/check_item_model_map.py
+OK    refactor/BOARD.md:11783 cites scripts/check_item_models.py
+OK    refactor/BOARD.md:11798 cites scripts/check_item_models.py
+OK    refactor/BOARD.md:11807 cites scripts/llmbench/verify_labels.py
+SKIP  refactor/BOARD.md:11825 cites review/T492/README.md — /mnt/projects/fable/review not authoritative for this checkout
+SKIP  refactor/BOARD.md:11862 cites review/T492/llmbench/README.md — /mnt/projects/fable/review not authoritative for this checkout
+SKIP  refactor/BOARD.md:11862 cites review/T492/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/BOARD.md:11873 cites refactor/T500_entity_models.md
+OK    refactor/BOARD.md:11889 cites src/client/graphics/eq/model_loading.cpp:98
+OK    refactor/BOARD.md:11890 cites tests/test_entity_model_sharing.cpp:237
+OK    refactor/BOARD.md:11917 cites tests/test_memory_ledger.cpp
+OK    refactor/BOARD.md:11949 cites docs/decisions.md
+OK    refactor/BOARD.md:11961 cites tests/test_entity_model_sharing.cpp
+OK    refactor/BOARD.md:11994 cites docs/decisions.md
+OK    refactor/BOARD.md:11996 cites scripts/refactor/check_file_sizes.sh
+OK    refactor/BOARD.md:12042 cites tests/test_logging.cpp
+OK    refactor/BOARD.md:12066 cites tests/test_logging.cpp
+OK    refactor/BOARD.md:12097 cites src/client/core/data_paths.cpp
+OK    refactor/BOARD.md:12129 cites docs/ci.md
+OK    refactor/BOARD.md:12131 cites refactor/T502_gitlab_ci.md
+OK    refactor/BOARD.md:12135 cites docs/issues.md
+OK    refactor/EXECUTOR_PROTOCOL.md:25 cites scripts/wait_for.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:29 cites scripts/build-gles2-x86.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:95 cites scripts/wait_for.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:99 cites scripts/wait_for.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:100 cites scripts/wait_for.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:107 cites scripts/wait_for.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:147 cites scripts/pi/pi_common.py
+OK    refactor/EXECUTOR_PROTOCOL.md:164 cites scripts/eqemu/env.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:165 cites scripts/eqemu/env.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:167 cites refactor/TESTING_CHARTER.md
+OK    refactor/EXECUTOR_PROTOCOL.md:171 cites scripts/eqemu/env.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:185 cites scripts/eqemu/env.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:191 cites scripts/eqemu/up.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:199 cites refactor/BOARD.md
+OK    refactor/EXECUTOR_PROTOCOL.md:212 cites tools/model_viewer.cpp
+OK    refactor/EXECUTOR_PROTOCOL.md:216 cites refactor/desktop_gl_elimination_plan.md
+OK    refactor/EXECUTOR_PROTOCOL.md:220 cites scripts/build-gles2-x86.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:235 cites refactor/T35_rdp_stop_uaf.md
+OK    refactor/EXECUTOR_PROTOCOL.md:242 cites refactor/BOARD.md
+OK    refactor/EXECUTOR_PROTOCOL.md:244 cites scripts/build-gles2-x86.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:252 cites scripts/build-arm-noble.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:253 cites scripts/refactor/check_file_sizes.sh
+OK    refactor/EXECUTOR_PROTOCOL.md:305 cites scripts/ci/encode_capture.sh
+SKIP  refactor/EXECUTOR_PROTOCOL.md:311 cites review/T64/README.md — /mnt/projects/fable/review not authoritative for this checkout
+OK    refactor/K_component_extraction.md:15 cites include/client/eq.h
+OK    refactor/K_component_extraction.md:70 cites include/client/client_context.h
+OK    refactor/K_component_extraction.md:311 cites refactor/K01_guild_component.md
+OK    refactor/K_component_extraction.md:361 cites refactor/L_renderer_component_extraction.md
+checked 16 live doc(s), 1552 citation(s): 1435 ok, 0 fail, 117 skip
+(exit 0)
+
+$ python3 scripts/refactor/check_comment_claims.py --repo .
+CommentClaims: 1 file(s) scanned, 227 comment line(s), 1 retired pattern(s) in the table, 0 exempted line hit(s) (RETIRED-OK)
+OK: no scanned comment restates a retired constant.
+(exit 0)
+
+Affected graphics tests (post-deletion):
+  test_held_item_attachment: 11 PASSED
+  test_equipment_item_census: 1 PASSED
+  test_item_model_mapping: 2 PASSED
+  willeq_core / model_viewer / ui_inventory_capture: BUILD_EXIT=0 (compile+link clean)

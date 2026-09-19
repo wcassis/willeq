@@ -1,0 +1,19 @@
+# B824 GREEN output (post-deletion)
+
+$ python3 scripts/refactor/check_item_model_map.py --repo .
+ItemModelMapDeletion: the B824 item-to-model JSON map stays deleted; getModelIdForItem() stays db-only.
+(exit 0)
+
+$ ./build/bin/test_item_model_mappingRunning main() from ./googletest/src/gtest_main.cc
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from ItemModelMappingTest
+[ RUN      ] ItemModelMappingTest.ResolvesFromDatabaseWithNoJsonMapLoaded
+[       OK ] ItemModelMappingTest.ResolvesFromDatabaseWithNoJsonMapLoaded (27 ms)
+[ RUN      ] ItemModelMappingTest.UnknownItemMissesInTheDatabase
+[       OK ] ItemModelMappingTest.UnknownItemMissesInTheDatabase (26 ms)
+[----------] 2 tests from ItemModelMappingTest (54 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (54 ms total)
+[  PASSED  ] 2 tests.

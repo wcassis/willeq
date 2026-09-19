@@ -31,9 +31,18 @@ Outputs (under <outdir>):
     steps.tsv                                      the driver's step table
     steps.json                                     the same, for the checker
 """
-import argparse, json, os, sys
+import argparse, importlib.util, json, os, sys
 
 WILLEQ_PLAYERS = ("p2", "p3")
+
+# B811 (issue #82): the held-item before/after gate lives in its own module so
+# verify_labels.py and the standalone ctest scan share ONE implementation.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_spec = importlib.util.spec_from_file_location(
+    "timeline_held_check", os.path.join(_HERE, "timeline_held_check.py"))
+assert _spec is not None and _spec.loader is not None
+_held = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_held)
 
 
 def parse_truth(s):
@@ -88,6 +97,29 @@ def main():
     for i in range(1, len(rows)):
         if rows[i][0] < rows[i - 1][0]:
             sys.exit(f"{a.timeline}: t_offset goes backwards at row {i+1}")
+
+    # --- B811 (issue #82): the held-item before/after gate -----------------
+    # A step that claims to have MOVED item X into a slot the character ALREADY
+    # held X in proves nothing: record.sh would record every frame, and
+    # verify_labels.py's db_inventory check would then compare the after-claim
+    # against the db_before snapshot, find the item where it already was, and
+    # score the no-op as a success.  The live equip_observed scenario refuses
+    # the same situation (scenario_equip_observed.cpp:100-109): baseline holds
+    # the item -> the run "could not tell an equip from a character that was
+    # wearing it all along" -> Fail.  Do the same here, at COMPILE time, so no
+    # frame of the no-op is ever recorded: the timeline is INVALID.
+    held_issues = _held.check_held_steps(
+        [(_ln, p, act, tr) for _ln, (_t, p, act, tr) in
+         zip(_held.file_line_numbers(a.timeline), rows)])
+    for player in sorted(held_issues):
+        for lineno, label, why in held_issues[player]:
+            print(f"INVALID {a.timeline}:{lineno} {player} {label}: {why}",
+                  file=sys.stderr)
+    if held_issues:
+        sys.exit(f"{a.timeline}: {sum(len(v) for v in held_issues.values())} "
+                 "held-item step(s) claim a move that the character was already "
+                 "holding (B811) -- the timeline is INVALID; re-record with a "
+                 "character that starts empty-handed in the destination slot")
 
     froot = {"p2": a.frames_root or a.outdir,
              "p3": a.p3_frames_root or a.frames_root or a.outdir}
