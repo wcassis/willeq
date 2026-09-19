@@ -186,7 +186,8 @@ ever observed again on a modern fleet, the triage order is:
 ## Lane state at finish
 
 [measured]
-- willeq: dead (process gone; log ends "IrrlichtRenderer shutdown"); Xvfb :77 left up (harmless, display-only) — actually killed below at teardown.
+- willeq: dead (process gone; log ends "IrrlichtRenderer shutdown"); my Xvfb
+  :77 display killed after the last session.
 - Testchar restored to the T449 snapshot row: level 20, zone 2
   (qeynos2), (-74, 428, 3.75) h160 — re-read from mariadb after the UPDATE,
   before `down.sh` [measured]; no client was connected when down.sh ran, so
