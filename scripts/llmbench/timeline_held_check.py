@@ -91,10 +91,14 @@ def check_held_steps(rows):
             dest = int(m.group(1))
             item = truth.get("held", "")
             hm = HELD.match(item)
-            # the equip row's own claim is `13=<item>`; only that shape names
-            # the destination item.  (Legacy rows say `13=9990 (moved
-            # in-game...)` instead; those were checked against the DB by the
-            # db_inventory net and are not this defect.)
+            # the equip row's own claim is `13=<item>`; the HELD regex reads
+            # the destination item off that shape -- and off the legacy shape
+            # (`13=9990 (moved in-game...)`) too, on its `13=<item>` prefix.
+            # So a legacy-shaped no-op is caught here as well: if the
+            # destination slot already held the same item, the step moved
+            # nothing and is rejected.  Only a legacy claim naming a
+            # DIFFERENT item (a real move this text cannot score) falls
+            # through to the legacy db_inventory net.
             target = int(hm.group(2)) if hm else None
             if target is not None:
                 already = baseline[player].get(dest)
