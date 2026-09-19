@@ -124,7 +124,7 @@ struct ApplicationConfig {
     double scenarioTimeoutSeconds = 300.0;      // --timeout <s>
     double scenarioStartDeadlineSeconds = 120.0;  // zone-in deadline -> exit 3
     double scenarioHoldSeconds = 300.0;         // --scenario-hold <s>
-    unsigned int scenarioSpellId = 46;          // --scenario-spell <id>
+    unsigned int scenarioSpellId = 288;         // --scenario-spell <id> (B484: 288 is castable by the config's class; 46 was not)
     long long scenarioExpectMaterial = -1;      // --scenario-expect-material <n> (T498)
 
     // T64: video-capture evidence tool (--dump-frames-dir/--dump-every/

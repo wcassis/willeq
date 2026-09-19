@@ -1,0 +1,20 @@
+[scenario.sh] lock taken
+[scenario.sh] bringing eqemu up
+[scenario.sh] snapshot taken (90 rows)
+[scenario.sh] castability pre-flight: spell 288 is castable by Testcaster (Wizard, level 1; minimum level 1)
+[scenario.sh] running --scenario cast_lands --timeout 240
+[scenario.sh] client exit 0
+[2026-09-19 06:15:51.167] [INFO ] [SCENARIO] scenario 'cast_lands' starting: zoned in to 'nro' after 2.42939s
+[2026-09-19 06:15:54.177] [INFO ] [SCENARIO] prep: /say #set invulnerable off
+[2026-09-19 06:15:58.180] [INFO ] [SCENARIO] prep: /say #unmemspells
+[2026-09-19 06:16:02.175] [INFO ] [SCENARIO] prep: /say #memspell 288 0
+[2026-09-19 06:16:07.177] [INFO ] [SCENARIO] prep: /target Testcaster
+[2026-09-19 06:16:12.183] [INFO ] [SCENARIO] gem cast attempt 1: /cast 1
+[2026-09-19 06:16:14.761] [INFO ] [SCENARIO] VERDICT pass (exit 0) after 26.0232s: spell 288 landed on Testcaster 2.57837s after gem cast #1 (buff slots 0 -> 1)
+SCENARIO cast_lands pass exit=0 reason=spell 288 landed on Testcaster 2.57837s after gem cast #1 (buff slots 0 -> 1)
+[2026-09-19 06:15:48.734] [INFO ] [SCENARIO] scenario lane armed: name='cast_lands' timeout=240s start-deadline=120s hold=300s
+[2026-09-19 06:16:14.780] [INFO ] [SCENARIO] scenario 'cast_lands' -> exit 0 (pass): spell 288 landed on Testcaster 2.57837s after gem cast #1 (buff slots 0 -> 1)
+[scenario.sh] restoring with the WORLD DOWN (the world writes character rows back on shutdown)
+[scenario.sh] snapshot restored BYTE-IDENTICALLY
+[scenario.sh] lock released
+GREEN2_EXIT=0

@@ -26,7 +26,8 @@
 #   0 pass   1 fail   2 timeout   3 could-not-start
 # plus this script's own operator errors:
 #   64 lock held by another session   65 server would not come up
-#   66 snapshot/restore mismatch
+#   66 snapshot/restore mismatch   72 the cast_lands spell is not castable
+#   by the config's character (B484, issue #35)
 #
 # It NEVER waits for the lock and never overwrites one: a held lock is exit
 # 64 immediately (T224 clobbered another session's lock 90 s after seeing it
@@ -55,7 +56,14 @@ source "$REPO/scripts/eqemu/restore_lib.sh"
 UNIT="T410"
 TIMEOUT=300
 HOLD=300
-SPELL=46
+# B484 (issue #35): 288 = Minor Shielding, classes12 = 1, the spell T449
+# proved lands for the config's Wizard (Testcaster). The old default, 46
+# (Ultravision), has classes12 = 255 -- uncastable by that class -- so the
+# lane fizzled 3/3 and could never pass as shipped. The pre-flight below
+# re-checks this against spells_new.classesN for the config's own class and
+# level, so a default or --spell that stops being castable is a fast exit 72,
+# not a fizzle loop.
+SPELL=288
 CONFIG=""
 PEER_CONFIG=""
 KEEP_SERVER=0
@@ -198,6 +206,80 @@ restore_snapshot() {
     fi
 }
 
+# ---- the castability pre-flight (cast_lands only) ---------------------------
+# B484 (issue #35): the shipped default was spell 46 (Ultravision), whose
+# spells_new.classes12 is 255 -- the MINIMUM level at which class 12 (Wizard)
+# may cast it. The config's character is Testcaster, class 12, level 1: below
+# every class's minimum for spell 46 (min over all 16 columns is 26). Neither
+# fizzle model in zone/spells.cpp Client::CheckFizzle is a hard block; both
+# clamp this caster's fizzle chance to 95% (legacy: spell_difficulty = 26*5
+# = 130 + basediff 25, no skill to offset; non-legacy: par_skill 235 + 255,
+# capped, + basediff, level/skill 0). So a gem cast lands ~1 in 20 and the
+# 3-attempt lane passes ~1 in 7. Measured: the shipped lane fizzled 3/3 and
+# failed (RED), and the same run repeated by hand landed 1/3 (RED2). Three
+# 20-second windows on a coin that comes down fizzle 19 times out of 20 is
+# not a lane.
+#
+# A comment is not a guard: a config that points at another character, or a
+# --spell an operator passes, can both be uncastable. So before the client
+# runs, the rig asks the database. spells_new.classes<N> is the minimum level
+# at which class N may cast the spell (eqemu's own table documents it,
+# common/spdat.h: "Classes, and their min levels"); a character at or above
+# it is in the spell's intended band. A character below it, or a config whose
+# character the server does not know, is reported here -- naming the spell,
+# class and level -- instead of burning three gem casts on a
+# "Your spell fizzles!" loop the operator has to decode.
+#
+# Exit 72: the spell is not in the config's character's castable band (64/65/
+# 66 are this script's existing operator codes; the selftest family owns
+# 67-71).
+spell_castability_check() {  # spell_castability_check <character name>
+    local char_name="$1" class_num char_level min_level class_name
+    class_num="$(eqemu_sql "SELECT class FROM character_data WHERE name='${char_name}';" | head -1 | tr -d '[:space:]')"
+    if [ -z "$class_num" ]; then
+        say "no character_data row for '${char_name}' -- the config points at a character the server does not know"
+        exit 64
+    fi
+    char_level="$(eqemu_sql "SELECT level FROM character_data WHERE name='${char_name}';" | head -1 | tr -d '[:space:]')"
+    # spells_new has one classes<N> column per eqemu class (1-16, Warrior-
+    # Berserker); the class number IS the column number. A class outside that
+    # range means the pre-flight cannot reason about castability.
+    if ! [ "$class_num" -ge 1 ] 2>/dev/null || ! [ "$class_num" -le 16 ] 2>/dev/null; then
+        say "castability pre-flight: character '${char_name}' has class ${class_num}, outside spells_new's classes1-16 -- refusing to guess"
+        exit 72
+    fi
+    min_level="$(eqemu_sql "SELECT classes${class_num} FROM spells_new WHERE id=${SPELL};" | head -1 | tr -d '[:space:]')"
+    if [ -z "$min_level" ]; then
+        say "spell ${SPELL} has no spells_new row -- the server knows no such spell"
+        exit 72
+    fi
+    case "$class_num" in
+        1) class_name=Warrior ;; 2) class_name=Cleric ;; 3) class_name=Paladin ;;
+        4) class_name=Ranger ;; 5) class_name=Shadowknight ;; 6) class_name=Druid ;;
+        7) class_name=Monk ;; 8) class_name=Bard ;; 9) class_name=Rogue ;;
+        10) class_name=Shaman ;; 11) class_name=Necromancer ;; 12) class_name=Wizard ;;
+        13) class_name=Magician ;; 14) class_name=Enchanter ;; 15) class_name=Beastlord ;;
+        16) class_name=Berserker ;;
+    esac
+    # 255 means "no class carries this spell at a reachable level", and any
+    # minimum the character sits below does the same job: neither fizzle model
+    # in zone/spells.cpp Client::CheckFizzle is a hard block; both clamp this
+    # kind of caster's fizzle chance to 95%, so a gem cast lands ~1 in 20 and
+    # the 3-attempt lane passes ~1 in 7 (measured on this card: RED1 fizzled
+    # 3/3, RED2 landed 1/3, same server/character/spell). That is a coin, not
+    # a lane. One message covers both, naming the spell, the class, and the
+    # level the operator actually has.
+    if ! [ "$char_level" -ge "$min_level" ] 2>/dev/null; then
+        if [ "$min_level" -ge 255 ]; then
+            say "spell ${SPELL} has no minimum level for ${class_name} (spells_new.classes${class_num} = ${min_level}, the table's 255 sentinel); ${char_name} (level ${char_level}) cannot cast it reliably -- pick a spell this class carries, e.g. --spell 288 (Minor Shielding)"
+        else
+            say "spell ${SPELL} needs at least level ${min_level} for ${class_name}, but ${char_name} is level ${char_level} -- the server will fizzle it hard (a level this far under the minimum is a ~95% fizzle, so the lane would pass only about 1 in 7 runs); raise the character or pick another spell"
+        fi
+        exit 72
+    fi
+    say "castability pre-flight: spell ${SPELL} is castable by ${char_name} (${class_name}, level ${char_level}; minimum level ${min_level})"
+}
+
 # ---- 2. server up ----------------------------------------------------------
 say "bringing eqemu up"
 if ! bash "$REPO/scripts/eqemu/up.sh" > "$OUT/${SCENARIO}_server.log" 2>&1; then
@@ -218,6 +300,20 @@ if [ -n "$SEED_SQL" ]; then
     [ -f "$SEED_SQL" ] || { say "no --seed-sql file at $SEED_SQL"; exit 64; }
     eqemu_sql "$(cat "$SEED_SQL")" >/dev/null || { say "--seed-sql failed"; exit 65; }
     say "seeded from $SEED_SQL"
+fi
+
+# ---- 3c. the castability pre-flight, cast_lands only ------------------------
+# The server is up (3) and the character is in the world the client is about
+# to log into, so its class/level is the row the server will hand the client.
+# Everything up to here is undone by the trap; an exit 72 here is a fast,
+# operator-readable failure instead of the fizzle loop (B484, issue #35).
+if [ "$SCENARIO" = "cast_lands" ]; then
+    CAST_LANDS_CHAR="$(sed -n 's/.*"character"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG" | head -1)"
+    if [ -z "$CAST_LANDS_CHAR" ]; then
+        say "no \"character\" in $CONFIG"
+        exit 64
+    fi
+    spell_castability_check "$CAST_LANDS_CHAR"
 fi
 
 # ---- 4. the peer, for two_client_survive ------------------------------------

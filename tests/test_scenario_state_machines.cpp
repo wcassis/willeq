@@ -298,7 +298,7 @@ TEST(CastLandsScenario, RunsT401sPrepRecipeInOrderThenCastsFromTheGem) {
     EXPECT_EQ(world.commands[0], "/say #set invulnerable off");
     EXPECT_EQ(world.commands[1], "/say #unmemspells");
     // #memspell takes the gem 0-based; /cast takes it 1-based.
-    EXPECT_EQ(world.commands[2], "/say #memspell 46 0");
+    EXPECT_EQ(world.commands[2], "/say #memspell 288 0");  // B484: 288, not 46
     EXPECT_EQ(world.commands[3], "/target Testcaster");
     EXPECT_EQ(world.commands[4], "/cast 1");
 }
@@ -315,7 +315,7 @@ TEST(CastLandsScenario, PassesOnlyWhenTheBUFFAPPEARS) {
     Advance(runner, 5.0);
     EXPECT_FALSE(runner.finished());
     // The OP_Action landing (T348) reaches BuffManager.
-    world.buffs.push_back(46);
+    world.buffs.push_back(288);  // the default spell (B484)
     Advance(runner, 1.0);
     EXPECT_TRUE(runner.finished());
     EXPECT_EQ(runner.exitCode(), kScenarioPass);
@@ -326,12 +326,12 @@ TEST(CastLandsScenario, ABuffThatWasALREADYThereIsNotALanding) {
     FakeWorld world;
     world.zonedIn = true;
     world.zone = "arena";
-    world.buffs.push_back(46);  // already buffed at zone-in
+    world.buffs.push_back(288);  // already buffed at zone-in (B484: 288 is the default)
     ScenarioRunner runner(MakeScenario("cast_lands", DefaultOptions()), world,
                           /*timeout=*/600.0, /*startDeadline=*/30.0);
     Advance(runner, 30.0);
     EXPECT_FALSE(runner.finished());
-    world.buffs.push_back(46);  // a SECOND copy: the cast landed
+    world.buffs.push_back(288);  // a SECOND copy: the cast landed
     Advance(runner, 1.0);
     EXPECT_TRUE(runner.finished());
     EXPECT_EQ(runner.exitCode(), kScenarioPass);
@@ -362,13 +362,23 @@ TEST(CastLandsScenario, TheSpellIdIsAnOptionNotAConstant) {
                           /*timeout=*/600.0, /*startDeadline=*/30.0);
     Advance(runner, 25.0);
     EXPECT_TRUE(world.sent("#memspell 93 0"));
-    world.buffs.push_back(46);  // the DEFAULT spell must not satisfy this run
+    world.buffs.push_back(288);  // the DEFAULT spell must not satisfy this run (B484)
     Advance(runner, 2.0);
     EXPECT_FALSE(runner.finished());
     world.buffs.push_back(93);
     Advance(runner, 1.0);
     EXPECT_TRUE(runner.finished());
     EXPECT_EQ(runner.exitCode(), kScenarioPass);
+}
+
+// B484 (issue #35): the default used to be 46 (Ultravision), whose
+// spells_new.classes12 is 255 -- the level-1 Wizard in the shipped config
+// sat far under it, so the legacy fizzle model (which this server provably
+// runs) clamped its fizzle chance to 95% and the lane passed only about 1 in
+// 7 runs. The default now names a spell the class can actually cast:
+// Minor Shielding, 288.
+TEST(CastLandsScenario, TheDefaultSpellIsOneTheConfigClassCanCast) {
+    EXPECT_EQ(DefaultOptions().castSpellId, 288u);
 }
 
 // ===========================================================================
