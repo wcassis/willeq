@@ -587,3 +587,180 @@ TEST(MemoryLedger, HookOverheadPerAllocationIsSmall) {
            "delta: %.1f ns/pair\n", rawBest, ledgerBest, ledgerBest - rawBest);
     EXPECT_LT(ledgerBest - rawBest, 200.0);
 }
+
+// ---------------------------------------------------------------------------
+// B841: the arena-retention census (parseMallocInfo / arenaNow / the bins).
+// The parser is proved against a FIXTURE -- a parser proved only against the
+// running process is proved against one input -- and then against the real
+// process for the one invariant that must hold anywhere: the bins never hide
+// bytes. glibc's own mallinfo2 is the source of truth for the totals, and
+// the binned rows must be consistent with it.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A minimal glibc malloc_info(0) document: one heap, three <size> rows that
+// pin one bin each (a small row, a middle row, a large row) plus one
+// <unsorted> row that must NOT be folded into any size bin.
+const char kMallocInfoFixture[] =
+    "<malloc version=\"1\">\n"
+    "<heap nr=\"0\">\n"
+    "<sizes>\n"
+    "  <size from=\"32\" to=\"64\" total=\"352\" count=\"11\"/>\n"
+    "  <size from=\"4096\" to=\"8192\" total=\"49152\" count=\"6\"/>\n"
+    "  <size from=\"70000\" to=\"70000\" total=\"140000\" count=\"2\"/>\n"
+    "  <unsorted from=\"1000\" to=\"9000\" total=\"9000\" count=\"1\"/>\n"
+    "</sizes>\n"
+    "<total type=\"fast\" count=\"0\" size=\"0\"/>\n"
+    "<total type=\"rest\" count=\"19\" size=\"189064\"/>\n"
+    "<system type=\"current\" size=\"200000\"/>\n"
+    "<system type=\"max\" size=\"262144\"/>\n"
+    "</heap>\n"
+    "<total type=\"fast\" count=\"0\" size=\"0\"/>\n"
+    "<total type=\"rest\" count=\"19\" size=\"189064\"/>\n"
+    "<total type=\"mmap\" count=\"3\" size=\"300000\"/>\n"
+    "<system type=\"current\" size=\"200000\"/>\n"
+    "<system type=\"max\" size=\"262144\"/>\n"
+    "</malloc>\n";
+
+}  // namespace
+
+TEST(ArenaCensus, BinPlacementFollowsTheChunkSize) {
+    EXPECT_EQ(eqt::memory::arenaBinForBytes(1), 0u);
+    EXPECT_EQ(eqt::memory::arenaBinForBytes(127), 0u);
+    EXPECT_EQ(eqt::memory::arenaBinForBytes(128), 1u);
+    EXPECT_EQ(eqt::memory::arenaBinForBytes(1023), 3u);
+    EXPECT_EQ(eqt::memory::arenaBinForBytes(1024), 4u);
+    EXPECT_EQ(eqt::memory::arenaBinForBytes(65535), 9u);
+    EXPECT_EQ(eqt::memory::arenaBinForBytes(65536), 10u);
+    EXPECT_EQ(eqt::memory::arenaBinForBytes(1ull << 30), 10u);
+}
+
+TEST(ArenaCensus, ParsesMallocInfoXmlIntoSizeBins) {
+    const auto r = eqt::memory::parseMallocInfo(kMallocInfoFixture);
+    ASSERT_TRUE(r.ok);
+    // bin 0: the 32-64 row (11 chunks, 352 B)
+    EXPECT_EQ(r.bins[0].chunks, 11u);
+    EXPECT_EQ(r.bins[0].freeBytes, 352u);
+    // bin 6 (4k-8k): the 4096-8192 row (6 chunks, 49152 B)
+    EXPECT_EQ(r.bins[6].chunks, 6u);
+    EXPECT_EQ(r.bins[6].freeBytes, 49152u);
+    // bin 10 (ge64k): the 70000 row (2 chunks, 140000 B)
+    EXPECT_EQ(r.bins[10].chunks, 2u);
+    EXPECT_EQ(r.bins[10].freeBytes, 140000u);
+    // The unsorted row (9000 B, 1 chunk) is inside fordblks, not a size bin:
+    // the binned total is the size rows ONLY. 352 + 49152 + 140000 = 189504.
+    uint64_t binned = 0;
+    for (const auto& b : r.bins) binned += b.freeBytes;
+    EXPECT_EQ(binned, 352u + 49152u + 140000u);
+    EXPECT_EQ(binned, 189504u);
+    // And the bins account for every size-row chunk: 11 + 6 + 2.
+    uint64_t chunkTotal = 0;
+    for (const auto& b : r.bins) chunkTotal += b.chunks;
+    EXPECT_EQ(chunkTotal, 19u);
+}
+
+TEST(ArenaCensus, RejectsGarbageInput) {
+    EXPECT_FALSE(eqt::memory::parseMallocInfo("").ok);
+    // The wrong root tag is a parse failure, whatever it contains.
+    EXPECT_FALSE(eqt::memory::parseMallocInfo("<heap nr=\"0\"></heap>").ok);
+    // A lone root with no <heap> is the no-free-chunks state: ok, zero bins.
+    const auto lone = eqt::memory::parseMallocInfo("<malloc version=\"1\"></malloc>");
+    ASSERT_TRUE(lone.ok);
+    uint64_t total = 0;
+    for (const auto& b : lone.bins) total += b.freeBytes;
+    EXPECT_EQ(total, 0u);
+}
+
+TEST(ArenaCensus, LiveCensusAgreesWithMallinfo2) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "glibc-only census";
+#endif
+    // Deterministic interior free chunks: a 1.5 MiB BASE block stays LIVE,
+    // so the small blocks malloced out of it cannot coalesce into the top
+    // pad when they free. 60 x 100 B + 1 x 512 B freed => ~6700 B of
+    // interior free, all in the le128 bin, plus one 8k-16k chunk. (A freed
+    // chunk at the top of the heap coalesces into the top pad and would make
+    // the size bins empty -- that is the non-determinism this layout kills.)
+    void* base = malloc(1536 * 1024);
+    ASSERT_NE(base, nullptr);
+    memset(base, 1, 1536 * 1024);  // commit the pages
+    void* small[60];
+    for (int i = 0; i < 60; ++i) {
+        small[i] = malloc(100);
+        ASSERT_NE(small[i], nullptr);
+        memset(small[i], 2, 100);
+    }
+    void* mid = malloc(512);
+    ASSERT_NE(mid, nullptr);
+    memset(mid, 3, 512);
+    for (int i = 0; i < 60; ++i) free(small[i]);
+    free(mid);
+
+    const auto r = eqt::memory::arenaNow();
+    ASSERT_TRUE(r.ok) << "the live process must produce a parseable census";
+    // mallinfo2 by construction: the aggregates are the mallinfo2 fields.
+    EXPECT_EQ(r.interiorFreeBytes, static_cast<uint64_t>(r.mi.fordblks + r.mi.fsmblks));
+    EXPECT_EQ(r.topPadBytes, static_cast<uint64_t>(r.mi.keepcost));
+    EXPECT_EQ(r.mmapBytes, static_cast<uint64_t>(r.mi.hblkhd));
+    // The 60 small frees are ~112 B chunks: they land in the le128 bin
+    // (or a fastbin, which is smblks/fsmblks, also inside interiorFreeBytes).
+    // Either way the interior free bytes must have grown by at least the
+    // bytes requested -- the census cannot hide them.
+    EXPECT_GE(r.interiorFreeBytes, 60ull * 100ull + 512ull);
+    // Binned rows are a SUBSET of fordblks (unsorted/fast are excluded by
+    // design): never more, and they account for the interior bytes that are
+    // in sorted bins.
+    uint64_t binned = 0;
+    for (const auto& b : r.bins) binned += b.freeBytes;
+    EXPECT_LE(binned, r.interiorFreeBytes);
+    // The base block keeps the heap above the trim threshold, so the top
+    // pad stays at roughly the 128 KiB default, far under the 1.5 MiB base.
+    EXPECT_LT(r.topPadBytes, 1024 * 1024);
+    (void)base;
+    free(base);
+}
+
+TEST(ArenaCensus, TrimReturnsTheTopPad) {
+#if !defined(__linux__)
+    GTEST_SKIP() << "glibc-only census";
+#endif
+    // Grow the top pad well past the 128 KiB default trim threshold, then
+    // let a single big block own it. Freeing it back must make
+    // malloc_trim(0) release a substantial share of the pad: that is the
+    // "trimmable" half of B841's decomposition, proven live.
+    constexpr size_t kPad = 2ull * 1024 * 1024;
+    void* p = malloc(kPad);
+    ASSERT_NE(p, nullptr);
+    memset(p, 1, kPad);
+    free(p);
+    const int pages = malloc_trim(0);
+    EXPECT_GT(pages, 0)
+        << "a 2 MiB top pad above the default 128 KiB trim threshold must trim";
+    // The census after the trim: the top pad is down to roughly the trim
+    // threshold, so keepcost must now be far smaller than the pad we made.
+    const auto r = eqt::memory::arenaNow();
+    ASSERT_TRUE(r.ok);
+    EXPECT_LT(r.topPadBytes, kPad / 2);
+}
+
+TEST(ArenaCensus, ExperimentsAreOffUnlessTheirVariablesAreSet) {
+    unsetenv("B841_TRIM_READY");
+    unsetenv("B841_MMAP_THRESHOLD");
+    unsetenv("B841_TRIM_THRESHOLD");
+    const auto off = eqt::memory::arenaExperiments();
+    EXPECT_FALSE(off.trimAtReady);
+    EXPECT_EQ(off.mmapThresholdBytes, 0);
+    EXPECT_EQ(off.trimThresholdBytes, 0);
+
+    setenv("B841_TRIM_READY", "1", 1);
+    setenv("B841_MMAP_THRESHOLD", "131072", 1);
+    setenv("B841_TRIM_THRESHOLD", "4096", 1);
+    const auto on = eqt::memory::arenaExperiments();
+    EXPECT_TRUE(on.trimAtReady);
+    EXPECT_EQ(on.mmapThresholdBytes, 131072);
+    EXPECT_EQ(on.trimThresholdBytes, 4096);
+    unsetenv("B841_TRIM_READY");
+    unsetenv("B841_MMAP_THRESHOLD");
+    unsetenv("B841_TRIM_THRESHOLD");
+}
