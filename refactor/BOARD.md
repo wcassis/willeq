@@ -11679,7 +11679,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   still compiles, as do `timeline.tsv`, `timeline_dry.tsv` and `legE`/`legF`/
   `legG` (their equip rows name no destination item, so the legacy
   `db_inventory` check covers them unchanged).
-- **B815** (C) **A task worktree has no `data/eq_client`, and three ctest cases → issue #83
+- ~~**B815** (C) **A task worktree has no `data/eq_client`, and three ctest cases → issue #83
   fail as if they were real reds.** `tests/CMakeLists.txt:114` defaults
   `EQ_CLIENT_DATA_PATH` to `${CMAKE_SOURCE_DIR}/data/eq_client`, which is a
   gitignored symlink present in `main` and absent in every fresh worktree, so
@@ -11690,7 +11690,14 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   suite either skips cleanly or does not need the assets, so these three read
   as a regression to anyone who has not hit it before. Either make the tests
   SKIP like their siblings when the path is absent, or create the symlink in
-  the worktree setup. Found by T494.
+  the worktree setup. Found by T494.~~ **STRUCK 2026-09-19 (issue #83 closed
+  by the B815 card, `task/kb-b815-asset-tests-skip`)**: `tests/asset_requirement.h`
+  (`requireEqClientAssets`, one shared helper) makes an absent asset root a
+  GTEST_SKIP locally and a hard FAIL under `WILLEQ_REQUIRE_ASSETS=1`; the three
+  aggregate cases (plus the whole `ComprehensiveZoneTest` /
+  `DoorLoadingUnitTest` suites) now gate on it, `.gitlab-ci.yml`'s `test` job
+  exports the variable so CI can never skip them silently, and
+  `test_asset_requirement` pins both outcomes.
 
 ## Added 2026-09-17 by T497 (readiness that docker-proxy cannot fake)
 
