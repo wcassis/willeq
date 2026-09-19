@@ -22,6 +22,8 @@ stages:
   - build
   - test
   - gate
+  # T503: last, and build-arm has `needs: []`, so it starts at once and NOTHING waits on it.
+  - arm
 
 variables:
   CMAKE_BUILD_TYPE: Release
@@ -108,9 +110,10 @@ build:
 # hermes-ext workers cannot see NFS but can ssh to the Pi, so the job publishes
 # to /mnt/projects/fable/ci-arm/<sha>/ and a worker runs it there over ssh.
 # Automatic on fable; on any other ref it is a MANUAL job that never blocks the
-# pipeline (`glab ci trigger build-arm`). Independent of the x86 stages.
+# pipeline (`glab ci trigger build-arm`). Own final stage + `needs: []`: it starts
+# immediately and the x86 gate never waits for an ARM build.
 build-arm:
-  stage: build
+  stage: arm
   tags: [arm-nfs]
   needs: []
   dependencies: []
