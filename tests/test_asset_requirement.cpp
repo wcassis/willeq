@@ -28,6 +28,7 @@
 #include <gtest/gtest.h>
 
 #include "asset_requirement.h"
+#include "scoped_temp_dir.h"
 
 namespace {
 
@@ -55,12 +56,12 @@ protected:
 
 // A path that opens must not skip or fail.
 TEST_F(AssetRequirementTest, PresentPathRuns) {
-    std::string file = "/tmp/b815_asset_requirement_probe";
+    willeq_test::ScopedTempDir dir("b815_asset_requirement");
+    const std::string file = (dir / "root").string();
     { std::ofstream out(file); out << "probe"; }
     eqt::test::requireEqClientAssets(file);
     markReached(flag_);
     EXPECT_EQ(flag_, "reached");
-    std::remove(file.c_str());
 }
 
 // Absent root, no env var: the test is SKIPPED, naming the missing path.
@@ -85,12 +86,12 @@ TEST_F(AssetRequirementTest, AbsentPathWithEnvVarFails) {
 // The env var only means anything when the path is actually missing.
 TEST_F(AssetRequirementTest, PresentPathWithEnvVarRuns) {
     setenv("WILLEQ_REQUIRE_ASSETS", "1", 1);
-    std::string file = "/tmp/b815_asset_requirement_probe";
+    willeq_test::ScopedTempDir dir("b815_asset_requirement");
+    const std::string file = (dir / "root").string();
     { std::ofstream out(file); out << "probe"; }
     eqt::test::requireEqClientAssets(file);
     markReached(flag_);
     EXPECT_EQ(flag_, "reached");
-    std::remove(file.c_str());
 }
 
 // A value other than "1" does not arm the requirement (the CI convention is
