@@ -28,6 +28,29 @@ ADD_EXECUTABLE(test_crc32
 TARGET_LINK_LIBRARIES(test_crc32 GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_crc32 DISCOVERY_TIMEOUT 120)
 
+# B815 (issue #83): pin tests/asset_requirement.h itself -- absent asset root
+# skips, absent root + WILLEQ_REQUIRE_ASSETS=1 fails. Header-only, so it
+# builds with neither graphics nor any production source. The failing case
+# cannot assert on its own success (gtest exits the test at GTEST_FAIL), so
+# it is registered alone under WILL_FAIL; everything else runs in the
+# discovery pass, where a helper that stopped skipping would flip
+# AbsentPathSkips from Skipped to OK -- visible in the ctest summary.
+ADD_EXECUTABLE(test_asset_requirement
+    test_asset_requirement.cpp
+)
+TARGET_LINK_LIBRARIES(test_asset_requirement GTest::gtest_main)
+GTEST_DISCOVER_TESTS(
+    test_asset_requirement
+    DISCOVERY_TIMEOUT 120
+    TEST_FILTER "-AssetRequirementTest.AbsentPathWithEnvVarFails"
+)
+ADD_TEST(NAME test_asset_requirement_envvar_fail
+         COMMAND test_asset_requirement
+                 --gtest_filter=AssetRequirementTest.AbsentPathWithEnvVarFails)
+SET_TESTS_PROPERTIES(test_asset_requirement_envvar_fail PROPERTIES
+    ENVIRONMENT "WILLEQ_REQUIRE_ASSETS=1" WILL_FAIL TRUE
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+
 # P49: DRM mode-selection decision logic (docker/irrlicht-drm/
 # drm_mode_select.h) -- pure, header-only, no libdrm/gbm/EGL/Irrlicht
 # dependency, so it builds and runs on x86 even though the real DRM device

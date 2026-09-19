@@ -15,6 +15,8 @@
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/pfs.h"
 
+#include "asset_requirement.h"
+
 using namespace EQT::Graphics;
 
 class ComprehensiveZoneTest : public ::testing::Test {
@@ -28,6 +30,11 @@ protected:
         } else {
             eqClientPath_ = EQ_CLIENT_DATA_PATH;
         }
+        // B815: the aggregate cases (ClassicZones, OverallSummary) assert on
+        // a count of loaded zones, so a missing asset root was a hard FAIL
+        // while every per-zone sibling skipped cleanly. Root-level gate:
+        // skip the suite (or fail under WILLEQ_REQUIRE_ASSETS=1).
+        eqt::test::requireEqClientAssets(eqClientPath_);
     }
 
     bool fileExists(const std::string& path) {

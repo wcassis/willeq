@@ -53,12 +53,14 @@ to end.
 
 Every job's `before_script` re-creates the `data/eq_client` and
 `data/eqe1_client` symlinks. They are gitignored (`tests/test_data_paths.cpp`),
-so `git clean -ffdx` removes them before every job — and they are **not** only
-the gate's business: without them `ComprehensiveZoneTest.ClassicZones`,
-`ComprehensiveZoneTest.OverallSummary` and
-`DoorLoadingUnitTest.MultipleZonesHaveObjectGeometries` print every zone as
-"SKIP (not found)" and then **fail** on `loadedCount > 0`. An asset-less run of
-the suite is red, not skipped.
+so `git clean -ffdx` removes them before every job. B815 (issue #83): without
+them the asset suites now behave by decision, not by accident —
+`tests/asset_requirement.h` (`requireEqClientAssets`) makes an absent asset
+root a GTEST_SKIP locally, and a hard FAIL when `WILLEQ_REQUIRE_ASSETS=1` is
+set, which the `test` job exports (a green pipeline proves the assets were
+found, so CI can never skip them silently). `test_asset_requirement` pins
+both outcomes. A task worktree without the symlink therefore runs green with
+skipped asset suites instead of three fake reds.
 
 `hygiene` is first and deliberately cheap: a bad doc count, an over-size file or
 a stale citation fails in under a minute instead of after a 30-minute build.

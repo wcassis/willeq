@@ -18,6 +18,8 @@
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/pfs.h"
 
+#include "asset_requirement.h"
+
 #ifdef EQT_HAS_GRAPHICS
 #include <irrlicht.h>
 #include "client/graphics/door_manager.h"
@@ -54,6 +56,11 @@ protected:
         } else {
             eqClientPath_ = EQ_CLIENT_DATA_PATH;
         }
+        // B815: MultipleZonesHaveObjectGeometries counts doors across zones,
+        // so a missing asset root was a hard FAIL while the per-zone siblings
+        // skipped cleanly. Root-level gate (skip, or fail under
+        // WILLEQ_REQUIRE_ASSETS=1).
+        eqt::test::requireEqClientAssets(eqClientPath_);
     }
 
     bool fileExists(const std::string& path) {
@@ -239,6 +246,10 @@ protected:
         } else {
             eqClientPath_ = EQ_CLIENT_DATA_PATH;
         }
+        // B815: same root-level gate as DoorLoadingUnitTest (class-level rule
+        // -- every door case in this binary behaves the same way the asset
+        // root is present or not).
+        eqt::test::requireEqClientAssets(eqClientPath_);
 
         // Create minimal Irrlicht device for testing
         irr::SIrrlichtCreationParameters params;
