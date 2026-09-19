@@ -9017,11 +9017,22 @@ fine — the table fails on a stale entry, so it cannot rot.
 
 ### Added by T457 (2026-09-08), entered by the orchestrator at merge
 
-- **B504** (class A, process): `scripts/eqemu/up.sh` polls the zone log for → issue #90
+- ~~**B504** (class A, process): `scripts/eqemu/up.sh` polls the zone log for
   `Zone bootup type`, which this eqemu build never prints (it prints
   `Bootup Booting [<zone>]`), so a cold `up.sh` times out after 60 s and exits 1
   on a zone that booted correctly. `scripts/scenario.sh` turns that into
-  operator code 65. Evidence: `review/T457/logs/up_sh_cold_container.log`.
+  operator code 65. Evidence: `review/T457/logs/up_sh_cold_container.log`.~~
+  **STRUCK 2026-09-19 (issue #90 closed by the B504 unit, `task/kb-b504-up-sh-boot-marker`)**:
+  re-measured on the VM — the current build (binaries 2026-02-24,
+  `CURRENT_VERSION 23.10.3-dev`) DOES print `Zone bootup type [Static]` on a
+  cold start-zone boot, so the literal "never prints" defect does not reproduce
+  on it; what was real and is now fixed is the structural weakness — a single
+  unpinned grep string with no failure fast-path and no liveness check: a
+  bogus shortname cost the shipped check the full 60 s timeout (measured 111 s
+  run) where the zone had said `Zone Bootup failed :: Zone::Bootup` ~5 s in.
+  `scripts/eqemu/up.sh` now calls `eqemu_zone_booted` (env.sh): marker AND the
+  shortname's process alive, with `Zone Bootup failed` as a hard stop;
+  `scripts/eqemu/zone_booted_selftest.sh` re-measures the marker on every run.
 
 ---
 
