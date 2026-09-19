@@ -99,10 +99,13 @@ struct ScenarioOptions {
     double holdSeconds = 300.0;
     /**
      * cast_lands: the beneficial, durational spell to memorise and cast.
-     * 46 = Ultravision, the buff T401 already proved lands and is visible in
-     * the client's own buff list.
+     * 288 = Minor Shielding (classes12 = 1), the spell T449 proved lands for
+     * the config's Wizard. The old default, 46 (Ultravision, classes12 = 255),
+     * could not be cast by that class at any level, so the lane fizzled (B484,
+     * issue #35). scripts/scenario.sh re-checks the value it passes against
+     * spells_new.classesN for the character's class and level before casting.
      */
-    uint32_t castSpellId = 46;
+    uint32_t castSpellId = 288;
     /**
      * T498: equip_actor_return asserts that its OWN primary material equals
      * this. Negative = do not assert (the default), which is what every
