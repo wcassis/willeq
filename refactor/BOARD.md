@@ -11654,7 +11654,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   table and deliberately did not touch this one (out of scope). Anything that
   prints or takes a corpse slot number is suspect; start at whatever pushes
   `LootItemIntent`. Found by T494.
-- **B811** (A) **The llmbench held-item check cannot tell "already holding it" → issue #82
+- ~~**B811** (A) **The llmbench held-item check cannot tell "already holding it" → issue #82
   from "just equipped it", and that is how B796's own experiment produced a
   false positive.** `E_heldA_*` records what the inventory table says at
   COMPILE time and `E_heldB_*` records what it should say after the equip, but
@@ -11664,7 +11664,21 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   moved nothing was read as a success and B796 recorded a contradiction it did
   not have. The fix shape is the one `equip_observed` uses: refuse to score a
   held-item step whose BEFORE state already matches its AFTER state. Found by
-  T494.
+  T494.~~ **STRUCK 2026-09-19 (issue #82, `task/kb-b811-llmbench-held-before-after`)**:
+  the gate lives in `scripts/llmbench/timeline_held_check.py` (shared by the
+  compile gate and the ctest net `LlmBenchHeldBeforeAfterHygiene`,
+  `tests/cmake/hygiene.cmake`). `compile_timeline.py` now refuses to compile a
+  timeline whose `/equip` step targets a slot the character's own last
+  recorded `held=` already fills with the same item -- non-zero exit, before
+  any frame is recorded -- and `verify_labels.py` marks an already-recorded
+  held-B row whose BEFORE state matches its AFTER state as
+  `db_inventory=...no-op... [FAIL]`, so it can never carry a grading label.
+  Measured on the committed timelines: it rejects `timeline_legH.tsv:31`
+  (H0_equip_p3) and the same-shape `timeline_legI.tsv:31`; p2's `/equip 23 13`
+  in the same files is a genuine move (its slot 13 held 14337, not 9997) and
+  still compiles, as do `timeline.tsv`, `timeline_dry.tsv` and `legE`/`legF`/
+  `legG` (their equip rows name no destination item, so the legacy
+  `db_inventory` check covers them unchanged).
 - **B815** (C) **A task worktree has no `data/eq_client`, and three ctest cases → issue #83
   fail as if they were real reds.** `tests/CMakeLists.txt:114` defaults
   `EQ_CLIENT_DATA_PATH` to `${CMAKE_SOURCE_DIR}/data/eq_client`, which is a
