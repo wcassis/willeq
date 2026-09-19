@@ -8789,7 +8789,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   can always press Escape; it cost this unit three attempts at a two-key
   sequence. Found by T449.
 
-- **B488** (A, unowned side) **a zone change into `airplane` (Plane of Sky) → issue #36
+- ~~**B488**~~ (A, unowned side) **a zone change into `airplane` (Plane of Sky) → issue #36
   leaves the client stuck at `[LOADING][Phase 5/15] Connecting to zone` for
   ever, with the game thread already at the arrival position.** `#zone
   airplane` is refused below level 46 (`zone.min_level = 46`, answered as
@@ -8801,7 +8801,21 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   vs. a client that never reconnected) is UNMEASURED and needs the zone
   process's own log. **This is what blocks B453's `/dumpscene` proof**, since
   T440 measured Plane of Sky as the one playable zone with no BSP tree.
-  `review/T449/logs/t449_control_inventory_closed.log`. Found by T449.
+  `review/T449/logs/t449_control_inventory_closed.log`. Found by T449.~~
+  **STRUCK 2026-09-19 (re-measured live, issue #36, `task/kb-b488-airplane-zone-stuck`):
+  NOT reproducible on a build containing T457 — six airplane entries and four
+  qeynos2<->airplane round-trips all reach `Phase 15/15`, with the world log,
+  the airplane zone process's own log and the client agreeing on
+  `172.16.200.99:7001` (world sent it, client dialed it, exactly one zone
+  process owns it and accepts the client in 0.5 s). The original observation
+  is most consistent with the **B483 double-world race**, fixed by T457 and
+  documented as the contamination of that very T449 session (its own README
+  discards the first `zone_in` run for it); the UDP zone connect has no
+  timeout, so a hand-off to a port nobody answers on stalls at Phase 5/15
+  forever — every clause of the filed symptom, no client code involved. The
+  client path was unchanged between T449's base and the re-measurement build.
+  B453's `/dumpscene` unblock stands: airplane loads its map (7611 BSP regions)
+  and navmesh cleanly. Evidence: `refactor/B488/`.**
 
 - **B489** (B) `src/client/graphics/ui/static_ui_input.cpp` -- **nothing in
   fable's inventory UI picks an item up to the cursor.** A left-click on an

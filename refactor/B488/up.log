@@ -1,0 +1,35 @@
+== up.sh: docker compose up -d mariadb eqemu-server ==
+ Network akk-stack_backend  Creating
+ Network akk-stack_backend  Created
+ Container akk-stack-fail2ban-server-1  Creating
+ Container akk-stack-fail2ban-mysqld-1  Creating
+ Container akk-stack-fail2ban-mysqld-1  Created
+ Container akk-stack-fail2ban-server-1  Created
+ Container akk-stack-mariadb-1  Creating
+ Container akk-stack-eqemu-server-1  Creating
+ Container akk-stack-eqemu-server-1  Created
+ Container akk-stack-mariadb-1  Created
+ Container akk-stack-fail2ban-server-1  Starting
+ Container akk-stack-fail2ban-mysqld-1  Starting
+ Container akk-stack-fail2ban-server-1  Started
+ Container akk-stack-eqemu-server-1  Starting
+ Container akk-stack-fail2ban-mysqld-1  Started
+ Container akk-stack-mariadb-1  Starting
+ Container akk-stack-mariadb-1  Started
+ Container akk-stack-eqemu-server-1  Started
+== up.sh: waiting for mariadb ==
+mariadb: ready (0s)
+== up.sh: waiting for eqemu-server container ==
+eqemu-server container: ready (0s)
+== up.sh: populating shared memory (bin/shared_memory) ==
+Shared |    Info    | LoadStaticGlobalZoneInstances Loaded [11] zone_instances 
+Shared |    Info    | LoadZones Loaded [618] zones 
+Shared |    Info    | main Current expansion is [9] (Dragons of Norrath) 
+Shared |    Info    | main Loading items 
+Shared |    Info    | main Loading spells 
+== up.sh: starting via sanctioned spire:launcher ==
+Launcher process already running
+2026/09/19 11:09:09 launcher process already running
+loginserver ready (process + :5998 in-container): ready (0s)
+world ready (process + :9000 in-container): ready (0s)
+== up.sh: launcher mode up (fleet booting in background) ==

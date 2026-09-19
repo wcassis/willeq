@@ -1,0 +1,103 @@
+[2026-09-19 16:22:19.273] [INFO ] [MAIN] [LOADING][Phase 2/15] (5%) Authenticating...
+[2026-09-19 16:22:19.400] [INFO ] [WORLD] Logged in successfully with dbid 1 and key 9QR1NH08YO
+[2026-09-19 16:22:19.499] [INFO ] [MAIN] [LOADING][Phase 3/15] (10%) Connecting to world server...
+[2026-09-19 16:22:20.067] [INFO ] [MAIN] [LOADING][Phase 4/15] (15%) Loading characters...
+[2026-09-19 16:22:20.127] [DEBUG] [ZONE] Zone server info received: 172.16.200.99:7001
+[2026-09-19 16:22:20.127] [DEBUG] [ZONE] Connecting to zone server at 172.16.200.99:7001
+[2026-09-19 16:22:20.127] [INFO ] [MAIN] [LOADING][Phase 5/15] (20%) Connecting to zone...
+[2026-09-19 16:22:20.631] [DEBUG] [ZONE] Zone connected
+[2026-09-19 16:22:20.678] [INFO ] [MAIN] [LOADING][Phase 6/15] (25%) Receiving player data...
+[2026-09-19 16:22:20.684] [INFO ] [MAIN] [LOADING][Phase 7/15] (30%) Receiving zone data...
+[2026-09-19 16:22:20.752] [INFO ] [MAP] Loaded Navmesh V[2] file [/mnt/projects/maps/nav/airplane.nav]
+[2026-09-19 16:22:20.752] [DEBUG] [MAIN] LoadZoneMap: Loading map for zone 'airplane'
+[2026-09-19 16:22:20.752] [DEBUG] [MAIN] LoadZoneMap: Using maps path: /mnt/projects/maps/base
+[2026-09-19 16:22:20.872] [INFO ] [MAP] Successfully loaded map for zone: airplane
+[2026-09-19 16:22:20.931] [INFO ] [MAIN] LoadZoneSources: Loaded zone 'airplane' in 47ms (7611 BSP regions, 15221 nodes)
+[2026-09-19 16:22:20.931] [DEBUG] [AUDIO] Zone change:  -> airplane
+[2026-09-19 16:22:20.931] [INFO ] [AUDIO] Zone change:  -> airplane
+[2026-09-19 16:22:20.953] [INFO ] [MAIN] [LOADING][Phase 8/15] (35%) Synchronizing...
+[2026-09-19 16:22:18.713] [INFO ] [MAIN] [LOADING][Phase 1/15] (2%) Connecting to login server...
+[2026-09-19 16:22:21.064] [INFO ] [MAIN] [LOADING][Phase 9/15] (40%) Finalizing connection...
+[2026-09-19 16:22:21.122] [INFO ] [MAIN] [LOADING][Phase 10/15] (45%) Player confirmed...
+[2026-09-19 16:22:21.122] [INFO ] [ZONE] Zone connection complete! Player position confirmed (spawn_id=137).
+[2026-09-19 16:22:21.122] [INFO ] [MAIN] [LOADING] Game state setup complete. Spawn ID: 137, Zone: airplane
+[2026-09-19 16:22:21.122] [INFO ] [MAIN] [LOADING][Phase 11/15] (50%) Entering world...
+[2026-09-19 16:22:23.970] [DEBUG] [GRAPHICS_LOAD] [Loading] EverQuest - Receiving player data... (25%)
+[2026-09-19 16:22:23.932] [INFO ] [MAIN] [LOADING][Phase 15/15] (100%) Ready!
+[2026-09-19 16:22:46.989] [INFO ] [GRAPHICS] Chat submit: '/loc'
+[2026-09-19 16:22:46.995] [INFO ] [MAIN] Your location is 1415.0, 614.0, -650.6
+[2026-09-19 16:23:18.648] [INFO ] [GRAPHICS] Chat submit: '#zone airplane'
+[2026-09-19 16:23:18.673] [INFO ] [ZONE] Server requests zone change: zone=71 instance=0 pos=(1415.0, 614.0, -650.0) heading=0.0 type=1
+[2026-09-19 16:25:51.897] [INFO ] [GRAPHICS] Chat submit: '#zone qeynos2'
+[2026-09-19 16:25:51.973] [INFO ] [ZONE] Server requests zone change: zone=2 instance=0 pos=(1415.0, 614.0, -650.0) heading=0.0 type=1
+[2026-09-19 16:25:51.973] [DEBUG] [ZONE] Zone change request sent to server
+[2026-09-19 16:25:52.013] [DEBUG] [ZONE] Zone change response: zone=2 instance=0 pos=(0.0, 0.0, 0.0) reason=0 success=1
+[2026-09-19 16:25:52.013] [DEBUG] [ZONE] Zone change APPROVED to zone 2 at (0.0, 0.0, 0.0)
+[2026-09-19 16:25:52.015] [DEBUG] [ZONE] Graceful zone-out sent (entity 137), awaiting source-zone acknowledgement
+[2026-09-19 16:25:52.029] [DEBUG] [ZONE] Zone change response: zone=2 instance=0 pos=(0.0, 0.0, 0.0) reason=0 success=1
+[2026-09-19 16:25:52.029] [DEBUG] [ZONE] Zone change APPROVED to zone 2 at (0.0, 0.0, 0.0)
+[2026-09-19 16:25:52.032] [DEBUG] [ZONE] Graceful zone-out already in flight, not re-sending
+[2026-09-19 16:25:52.084] [DEBUG] [ZONE] Processing deferred zone change...
+[2026-09-19 16:25:52.084] [DEBUG] [ZONE] Processing deferred zone change
+[2026-09-19 16:25:52.084] [INFO ] [MAIN] [LOADING][Phase 0/15] (0%) Leaving zone...
+[2026-09-19 16:25:52.085] [INFO ] [MAIN] [LOADING][Phase 3/15] (10%) Connecting to world server...
+[2026-09-19 16:25:52.667] [DEBUG] [ZONE] Zone server info received: 172.16.200.99:7000
+[2026-09-19 16:25:52.667] [DEBUG] [ZONE] Connecting to zone server at 172.16.200.99:7000
+[2026-09-19 16:25:52.667] [INFO ] [MAIN] [LOADING][Phase 5/15] (20%) Connecting to zone...
+[2026-09-19 16:25:53.171] [DEBUG] [ZONE] Zone connected
+[2026-09-19 16:25:53.270] [INFO ] [MAIN] [LOADING][Phase 6/15] (25%) Receiving player data...
+[2026-09-19 16:25:53.281] [DEBUG] [GRAPHICS_LOAD] [Loading] EverQuest - Receiving player data... (25%)
+[2026-09-19 16:25:53.273] [INFO ] [MAIN] [LOADING][Phase 7/15] (30%) Receiving zone data...
+[2026-09-19 16:25:53.329] [INFO ] [MAP] Loaded Navmesh V[2] file [/mnt/projects/maps/nav/qeynos2.nav]
+[2026-09-19 16:25:53.329] [DEBUG] [MAIN] LoadZoneMap: Loading map for zone 'qeynos2'
+[2026-09-19 16:25:53.329] [DEBUG] [MAIN] LoadZoneMap: Using maps path: /mnt/projects/maps/base
+[2026-09-19 16:25:53.414] [INFO ] [MAP] Successfully loaded map for zone: qeynos2
+[2026-09-19 16:25:53.447] [INFO ] [MAIN] LoadZoneSources: Loaded zone 'qeynos2' in 32ms (2074 BSP regions, 6563 nodes)
+[2026-09-19 16:25:53.448] [DEBUG] [AUDIO] Zone change: airplane -> qeynos2
+[2026-09-19 16:25:53.448] [INFO ] [AUDIO] Zone change: airplane -> qeynos2
+[2026-09-19 16:25:53.484] [INFO ] [MAIN] [LOADING][Phase 8/15] (35%) Synchronizing...
+[2026-09-19 16:25:53.564] [INFO ] [MAIN] [LOADING][Phase 9/15] (40%) Finalizing connection...
+[2026-09-19 16:25:53.681] [INFO ] [MAIN] [LOADING][Phase 10/15] (45%) Player confirmed...
+[2026-09-19 16:25:53.681] [INFO ] [ZONE] Zone connection complete! Player position confirmed (spawn_id=278).
+[2026-09-19 16:25:53.681] [INFO ] [MAIN] [LOADING] Game state setup complete. Spawn ID: 278, Zone: qeynos2
+[2026-09-19 16:25:53.681] [INFO ] [MAIN] [LOADING][Phase 11/15] (50%) Entering world...
+[2026-09-19 16:25:58.253] [INFO ] [MAIN] [LOADING][Phase 15/15] (100%) Ready!
+[2026-09-19 16:28:28.978] [INFO ] [GRAPHICS] Chat submit: '#zone airplane'
+[2026-09-19 16:28:29.028] [INFO ] [ZONE] Server requests zone change: zone=71 instance=0 pos=(428.0, -74.0, 3.0) heading=0.0 type=1
+[2026-09-19 16:28:29.028] [DEBUG] [ZONE] Zone change request sent to server
+[2026-09-19 16:28:29.097] [DEBUG] [ZONE] Zone change response: zone=71 instance=0 pos=(0.0, 0.0, 0.0) reason=0 success=1
+[2026-09-19 16:28:29.097] [DEBUG] [ZONE] Zone change APPROVED to zone 71 at (0.0, 0.0, 0.0)
+[2026-09-19 16:28:29.102] [DEBUG] [ZONE] Graceful zone-out sent (entity 278), awaiting source-zone acknowledgement
+[2026-09-19 16:28:29.112] [DEBUG] [ZONE] Zone change response: zone=71 instance=0 pos=(0.0, 0.0, 0.0) reason=0 success=1
+[2026-09-19 16:28:29.112] [DEBUG] [ZONE] Zone change APPROVED to zone 71 at (0.0, 0.0, 0.0)
+[2026-09-19 16:28:29.119] [DEBUG] [ZONE] Graceful zone-out already in flight, not re-sending
+[2026-09-19 16:28:29.170] [DEBUG] [ZONE] Processing deferred zone change...
+[2026-09-19 16:28:29.170] [DEBUG] [ZONE] Processing deferred zone change
+[2026-09-19 16:28:29.170] [INFO ] [MAIN] [LOADING][Phase 0/15] (0%) Leaving zone...
+[2026-09-19 16:28:29.172] [INFO ] [MAIN] [LOADING][Phase 3/15] (10%) Connecting to world server...
+[2026-09-19 16:28:29.763] [DEBUG] [ZONE] Zone server info received: 172.16.200.99:7001
+[2026-09-19 16:28:29.763] [DEBUG] [ZONE] Connecting to zone server at 172.16.200.99:7001
+[2026-09-19 16:28:29.763] [INFO ] [MAIN] [LOADING][Phase 5/15] (20%) Connecting to zone...
+[2026-09-19 16:28:30.267] [DEBUG] [ZONE] Zone connected
+[2026-09-19 16:28:30.322] [INFO ] [MAIN] [LOADING][Phase 6/15] (25%) Receiving player data...
+[2026-09-19 16:28:30.331] [DEBUG] [GRAPHICS_LOAD] [Loading] EverQuest - Receiving player data... (25%)
+[2026-09-19 16:28:30.325] [INFO ] [MAIN] [LOADING][Phase 7/15] (30%) Receiving zone data...
+[2026-09-19 16:28:30.400] [INFO ] [MAP] Loaded Navmesh V[2] file [/mnt/projects/maps/nav/airplane.nav]
+[2026-09-19 16:28:30.400] [DEBUG] [MAIN] LoadZoneMap: Loading map for zone 'airplane'
+[2026-09-19 16:28:30.400] [DEBUG] [MAIN] LoadZoneMap: Using maps path: /mnt/projects/maps/base
+[2026-09-19 16:28:30.563] [INFO ] [MAP] Successfully loaded map for zone: airplane
+[2026-09-19 16:28:30.621] [INFO ] [MAIN] LoadZoneSources: Loaded zone 'airplane' in 48ms (7611 BSP regions, 15221 nodes)
+[2026-09-19 16:28:30.621] [DEBUG] [AUDIO] Zone change: qeynos2 -> airplane
+[2026-09-19 16:28:30.621] [INFO ] [AUDIO] Zone change: qeynos2 -> airplane
+[2026-09-19 16:28:30.667] [INFO ] [MAIN] [LOADING][Phase 8/15] (35%) Synchronizing...
+[2026-09-19 16:28:30.743] [INFO ] [MAIN] [LOADING][Phase 9/15] (40%) Finalizing connection...
+[2026-09-19 16:28:30.802] [INFO ] [MAIN] [LOADING][Phase 10/15] (45%) Player confirmed...
+[2026-09-19 16:28:30.802] [INFO ] [ZONE] Zone connection complete! Player position confirmed (spawn_id=138).
+[2026-09-19 16:28:30.802] [INFO ] [MAIN] [LOADING] Game state setup complete. Spawn ID: 138, Zone: airplane
+[2026-09-19 16:28:30.802] [INFO ] [MAIN] [LOADING][Phase 11/15] (50%) Entering world...
+[2026-09-19 16:28:33.676] [INFO ] [MAIN] [LOADING][Phase 15/15] (100%) Ready!
+[2026-09-19 16:32:40.818] [INFO ] [GRAPHICS] Chat submit: '/loc'
+[2026-09-19 16:32:40.834] [INFO ] [MAIN] Your location is 1415.0, 614.0, -650.6
+[2026-09-19 16:32:45.651] [INFO ] [GRAPHICS] Chat submit: '/who'
+[2026-09-19 16:34:21.022] [INFO ] [GRAPHICS] Chat submit: '/camp'
+[2026-09-19 16:34:35.854] [INFO ] [GRAPHICS] Chat submit: '/quit'
