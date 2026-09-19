@@ -619,6 +619,8 @@ kernel, Lima open-source driver.
   textures (real 6:1 savings via `GL_ETC1_RGB8_OES`), and the shared path for
   the planned Android port. See `src/client/graphics/CLAUDE.md`.
 - **Display**: DRM/KMS direct rendering without X11 (`--drm`).
+- **Pi lock**: the Pi is single-tenant — `source scripts/pi/env.sh; pi_lock_take <owner>` before
+  any run, `pi_lock_release <owner>` after (atomic, on the Pi; pinned by `scripts/pi/lock_selftest.sh`).
 - **Build**: `docker/Dockerfile.arm-noble` + `scripts/build-arm-noble.sh` (sets
   `-DEQT_GLES2=ON`) → `build-arm-noble/bin/willeq` (ELF 32-bit ARM, ~10 MB
   stripped).
