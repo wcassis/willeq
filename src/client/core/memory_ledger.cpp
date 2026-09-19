@@ -15,6 +15,7 @@
 #include <vector>
 #include <mutex>
 #include <new>
+#include <string>
 
 #if defined(__linux__)
 #include <malloc.h>
@@ -43,6 +44,14 @@ struct Counters {
     // accounting means the gap has a name instead of being a residual.
     std::atomic<uint64_t> liveRequested[kCategoryCount];
     std::atomic<uint64_t> liveBlocks[kCategoryCount];
+    // B839: the startup category's sub-owners. A block charged while its
+    // thread's category is Startup goes to the row its label names
+    // (kStartupSublabelNone/Misc -> the catch-all row); a block charged in any
+    // other category touches no row, which is why these arrays always sum to
+    // the startup category's live bytes/blocks. Constant-sized, constant-
+    // initialised: the hooks below may charge from the very first allocation.
+    std::atomic<uint64_t> subLive[kStartupSublabelSlots];
+    std::atomic<uint64_t> subBlocks[kStartupSublabelSlots];
     std::atomic<uint64_t> totalLive;
     std::atomic<uint64_t> totalPeak;
 };
@@ -56,20 +65,84 @@ inline void raiseMax(std::atomic<uint64_t>& peak, uint64_t v) {
     }
 }
 
-inline void charge(uint8_t cat, uint64_t bytes, uint64_t requested) {
+// B839: the sub-owner name table. Slot 0 is unused, slot 1 is the catch-all
+// (whose name, "misc", is SPOKEN by the readers, never stored); slots
+// 2..kStartupSublabelSlots-1 are named sub-owners in first-open order. The
+// table is plain data (fixed char buffers, no std::string, `used` a trivial
+// integer initialiser, even the mutex left default) because the allocator
+// hooks below can run BEFORE any dynamic initialiser has finished: a
+// static-init allocation must be chargeable with the ledger at half-
+// constructed state, so nothing the hook touches may allocate. The mutex
+// protects the name writes, which happen once per StartupScope OPEN -- at
+// most a handful of times per process -- while the charge/credit path reads
+// the SLOTS lock-free.
+struct Sublabels {
+    std::mutex mutex;
+    char names[kStartupSublabelSlots][24];  // 23 chars + NUL
+    uint8_t used = kStartupSublabelMisc;    // highest slot allocated so far
+};
+Sublabels g_sublabels;
+
+// Armed by recordPoint() (the first lifecycle point, "startup", is taken
+// long after every static constructor has run). Until then
+// startupBreakdown() reports no rows, so a pre-arming report shows the
+// startup category without owner names -- the same NUMBER, the pre-B839
+// view, rather than a partition of all-zero rows.
+volatile bool g_sublabelsArmed = false;
+
+inline void packSub(uint32_t& catWord, uint8_t sub) {
+    catWord = static_cast<uint32_t>(catWord & 0x0000FFFFu) |
+              (static_cast<uint32_t>(sub) << 16);
+}
+inline uint8_t subOf(uint32_t catWord) {
+    return static_cast<uint8_t>(catWord >> 16);
+}
+inline uint8_t catOf(uint32_t catWord) {
+    // The header word carries category | (sub << 16) (packSub); the
+    // category enum needs only its low bits, and every array index below
+    // takes the LOW half -- the packed word itself would be out of range.
+    return static_cast<uint8_t>(catWord & 0x0000FFFFu);
+}
+
+inline uint8_t subSlotOf(uint8_t label) {
+    // kStartupSublabelNone ("no scope open") and kStartupSublabelMisc both
+    // fold into the catch-all row; anything else is already its own slot.
+    return label == kStartupSublabelNone ? kStartupSublabelMisc : label;
+}
+
+// B839: the per-block label is carried in the header (see packSub above), so
+// charge and credit take it as a parameter instead of re-reading the
+// thread_local: a block credits the owner it was CHARGED to, whatever scope
+// is open on the freeing thread.
+inline void charge(uint8_t cat, uint64_t bytes, uint64_t requested, uint8_t sub) {
     const uint64_t v = g_counters.live[cat].fetch_add(bytes, std::memory_order_relaxed) + bytes;
     raiseMax(g_counters.peak[cat], v);
     g_counters.allocs[cat].fetch_add(1, std::memory_order_relaxed);
     g_counters.liveRequested[cat].fetch_add(requested, std::memory_order_relaxed);  // T500
     g_counters.liveBlocks[cat].fetch_add(1, std::memory_order_relaxed);             // T500
+    // The startup category's bytes are split one level deeper, by the
+    // block's own label. NO other category touches the rows -- even a named
+    // label opened on a non-startup thread (a scope whose category is not
+    // Startup) folds into nothing, which is what keeps the rows a partition
+    // of exactly the startup category.
+    if (cat == static_cast<uint8_t>(Category::Startup)) {
+        const uint8_t slot = subSlotOf(sub);
+        g_counters.subLive[slot].fetch_add(bytes, std::memory_order_relaxed);
+        g_counters.subBlocks[slot].fetch_add(1, std::memory_order_relaxed);
+    }
     const uint64_t t = g_counters.totalLive.fetch_add(bytes, std::memory_order_relaxed) + bytes;
     raiseMax(g_counters.totalPeak, t);
 }
 
-inline void credit(uint8_t cat, uint64_t bytes, uint64_t requested) {
+inline void credit(uint8_t cat, uint64_t bytes, uint64_t requested, uint8_t sub) {
     g_counters.live[cat].fetch_sub(bytes, std::memory_order_relaxed);
     g_counters.liveRequested[cat].fetch_sub(requested, std::memory_order_relaxed);  // T500
     g_counters.liveBlocks[cat].fetch_sub(1, std::memory_order_relaxed);             // T500
+    if (cat == static_cast<uint8_t>(Category::Startup)) {
+        const uint8_t slot = subSlotOf(sub);
+        g_counters.subLive[slot].fetch_sub(bytes, std::memory_order_relaxed);
+        g_counters.subBlocks[slot].fetch_sub(1, std::memory_order_relaxed);
+    }
     g_counters.totalLive.fetch_sub(bytes, std::memory_order_relaxed);
 }
 
@@ -125,6 +198,84 @@ CategoryStats stats(Category c) {
     st.blockOverheadBytes = st.liveBytes > st.liveRequestedBytes
                                 ? st.liveBytes - st.liveRequestedBytes : 0;
     return st;
+}
+
+// ---------------------------------------------------------------------------
+// B839: the startup sub-owners.
+// ---------------------------------------------------------------------------
+
+uint8_t startupSublabelIndex(const char* name) {
+    // A name already allocated gets its own slot back; a new one takes the
+    // next free slot. Both paths hold the table mutex (one open per step,
+    // never on a hot path).
+    std::lock_guard<std::mutex> lock(g_sublabels.mutex);
+    for (uint8_t s = kStartupSublabelMisc + 1; s <= g_sublabels.used; ++s) {
+        if (strncmp(g_sublabels.names[s], name, 24) == 0) return s;
+    }
+    if (g_sublabels.used + 1 >= kStartupSublabelSlots) {
+        return kStartupSublabelNone;  // table full: charge into the catch-all
+    }
+    ++g_sublabels.used;
+    strncpy(g_sublabels.names[g_sublabels.used], name, 23);
+    g_sublabels.names[g_sublabels.used][23] = '\0';
+    return g_sublabels.used;
+}
+
+StartupScope::StartupScope(const char* name) : prev_(detail::t_sublabel) {
+    detail::t_sublabel = startupSublabelIndex(name);
+}
+
+StartupScope::~StartupScope() { detail::t_sublabel = prev_; }
+
+std::vector<StartupSublabelRow> startupBreakdown() {
+    std::vector<StartupSublabelRow> rows;
+    if (!enabled() || !g_sublabelsArmed) return rows;  // see the armed note above
+    for (uint8_t s = kStartupSublabelMisc; s <= g_sublabels.used; ++s) {
+        const uint64_t live = g_counters.subLive[s].load(std::memory_order_relaxed);
+        const uint64_t blocks = g_counters.subBlocks[s].load(std::memory_order_relaxed);
+        if (!live && !blocks) continue;
+        // The catch-all's name is spoken here, not stored in the table
+        // (see the Sublabels comment: no stored string, no constructor).
+        const char* name = s == kStartupSublabelMisc ? "misc" : g_sublabels.names[s];
+        rows.push_back(StartupSublabelRow{
+            name, live, blocks});
+    }
+    // misc last: it is the catch-all a shrink unit has to chase, and the
+    // named owners are what the table is for.
+    std::stable_sort(rows.begin(), rows.end(),
+                     [](const StartupSublabelRow& a, const StartupSublabelRow& b) {
+                         if (a.name == "misc") return false;
+                         if (b.name == "misc") return true;
+                         return a.liveBytes > b.liveBytes;
+                     });
+    return rows;
+}
+
+std::string startupToLogLines(const std::string& point) {
+    if (!enabled() || !g_sublabelsArmed) return std::string();
+    const auto rows = startupBreakdown();
+    // The TOTAL line is the SUM OF THE ROWS, not a second read of the
+    // category counters: reading the category first and the rows after
+    // would let this table's own string allocations (charged to startup.misc
+    // on the client's main thread) land between the two reads and make the
+    // total and the rows disagree inside one table. Taken from the rows,
+    // the total equals their sum exactly by construction, and it equals the
+    // category's live bytes to within this call's own churn -- which the
+    // card's 1 % acceptance bound covers.
+    uint64_t totalLive = 0, totalBlocks = 0;
+    for (const auto& r : rows) { totalLive += r.liveBytes; totalBlocks += r.liveBlocks; }
+    std::string out = "[memledger-startup] point=" + point + " owner=TOTAL";
+    appendKV(out, "live", totalLive);
+    appendKV(out, "blocks", totalBlocks);
+    for (const auto& r : rows) {
+        out += "\n[memledger-startup] point=";
+        out += point;
+        out += " owner=startup.";
+        out += r.name;
+        appendKV(out, "live", r.liveBytes);
+        appendKV(out, "blocks", r.liveBlocks);
+    }
+    return out;
 }
 
 void resetPeaks() {
@@ -538,8 +689,22 @@ MappingBreakdown recordMappings(const std::string& point, size_t topN) {
 }
 
 Snapshot recordPoint(const std::string& point, const std::string& zone) {
+    // B839: arm the startup sub-owner rows on the FIRST lifecycle point. The
+    // first one is "startup" (Application::run), taken long after every
+    // static constructor, so from here on the sub rows partition the startup
+    // category. Arming here (not in a static init) keeps the arming
+    // constructor- and allocation-free by construction.
+    g_sublabelsArmed = true;
     Snapshot s = snapshot(point, zone);
     LOG_INFO(MOD_MAIN, "{}", toLogLine(s));
+    // The startup breakdown rides as a sibling of the ledger line at EVERY
+    // point, so `startup`, `ready` and `steady_60s` all carry it and the
+    // Pi run gets the same table the x86 run does -- the bucket that never
+    // moved between them now names its owners at each of them.
+    const std::string startup = startupToLogLines(point);
+    if (!startup.empty()) {
+        LOG_INFO(MOD_MAIN, "{}", startup);
+    }
     return s;
 }
 
@@ -596,6 +761,11 @@ struct LedgerHeader {
     // would double the very overhead this is measuring).
     uint64_t requested; // bytes the caller asked for
     uint32_t category;
+    // B839: the category word's UPPER 16 bits carry the startup sub-owner
+    // label (packSub/subOf). The category itself needs only its 5 bits, so
+    // no new header bytes: the 16-byte size and the user-pointer alignment
+    // are unchanged, and a block freed by another thread or under another
+    // scope still credits the owner it was charged to.
     uint32_t offset;    // user pointer - backend pointer
 };
 static_assert(sizeof(LedgerHeader) == 16, "header must be 16 bytes");
@@ -640,15 +810,21 @@ void* ledgerAlloc(size_t size, size_t align) {
     LedgerHeader* h = headerOf(user);
     h->requested = size;
     h->category = eqt::memory::detail::t_category;
+    eqt::memory::packSub(h->category, eqt::memory::detail::t_sublabel);  // B839: upper 16 bits
     h->offset = offset;
-    eqt::memory::charge(static_cast<uint8_t>(h->category), backendChunkBytes(base), size);
+    // The category index is the LOW half of the packed word (packSub put the
+    // sub-owner in the upper 16); catOf() makes that explicit rather than
+    // relying on the implicit uint32->uint8 narrowing.
+    eqt::memory::charge(eqt::memory::catOf(h->category), backendChunkBytes(base), size,
+                        eqt::memory::detail::t_sublabel);
     return user;
 }
 
 void ledgerFree(void* user) {
     if (!user) return;
     LedgerHeader* h = headerOf(user);
-    eqt::memory::credit(static_cast<uint8_t>(h->category), chargedOf(user), h->requested);
+    eqt::memory::credit(eqt::memory::catOf(h->category), chargedOf(user), h->requested,
+                        eqt::memory::subOf(h->category));
     __libc_free(static_cast<char*>(user) - h->offset);
 }
 
@@ -659,7 +835,7 @@ void* ledgerRealloc(void* user, size_t size) {
         return nullptr;
     }
     LedgerHeader* h = headerOf(user);
-    const uint32_t cat = h->category;
+    const uint32_t cat = h->category;   // B839: label included (upper 16 bits)
     if (h->offset == kHeader) {
         const uint64_t oldCharged = chargedOf(user);
         const uint64_t oldRequested = h->requested;
@@ -671,19 +847,24 @@ void* ledgerRealloc(void* user, size_t size) {
         nh->requested = size;
         nh->category = cat;
         nh->offset = kHeader;
-        // Ownership stays with the original category: a growing container
-        // belongs to whoever created it, not to whoever happens to push.
-        eqt::memory::credit(static_cast<uint8_t>(cat), oldCharged, oldRequested);
-        eqt::memory::charge(static_cast<uint8_t>(cat), backendChunkBytes(nbase), size);
+        // Ownership stays with the original category AND sub-owner: a growing
+        // container belongs to whoever created it, not to whoever happens to
+        // push (or to whichever scope happens to be open on the resizing
+        // thread).
+        eqt::memory::credit(eqt::memory::catOf(cat), oldCharged, oldRequested, eqt::memory::subOf(cat));
+        eqt::memory::charge(eqt::memory::catOf(cat), backendChunkBytes(nbase), size, eqt::memory::subOf(cat));
         return nuser;
     }
     // Over-aligned block: realloc has no alignment contract beyond the
     // default, so allocate fresh and copy.
     const uint64_t oldUsable = h->requested;
-    const uint8_t saved = eqt::memory::detail::t_category;
-    eqt::memory::detail::t_category = static_cast<uint8_t>(cat);
+    const uint8_t savedCat = eqt::memory::detail::t_category;
+    const uint8_t savedSub = eqt::memory::detail::t_sublabel;
+    eqt::memory::detail::t_category = eqt::memory::catOf(cat);
+    eqt::memory::detail::t_sublabel = eqt::memory::subOf(cat);
     void* nuser = ledgerAlloc(size, kHeader);
-    eqt::memory::detail::t_category = saved;
+    eqt::memory::detail::t_category = savedCat;
+    eqt::memory::detail::t_sublabel = savedSub;
     if (!nuser) return nullptr;
     memcpy(nuser, user, oldUsable < size ? static_cast<size_t>(oldUsable) : size);
     ledgerFree(user);

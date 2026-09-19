@@ -11874,7 +11874,31 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   at `ready`, qeynos2, and it does not move between `startup` and
   `steady_60s`.] The x86 heads (cursor 8.70 MB, loading screen 7.47 MB) were
   wrong in DIRECTION on Mali (board B812), so nothing is known about what this
-  bucket holds on the target. Needs its own measurement leg before any fix.
+  bucket holds on the target. Needs its own measurement leg before any fix.~~
+  **STRUCK B839 (2026-09-19, issue #94 closed by the B839 unit, x86 lane)**:
+  the bucket now names every one of its bytes permanently. A per-thread
+  startup sub-owner label (`StartupScope`, the 16 high bits of the ledger
+  header's category word) splits the `startup` category into rows
+  (`startup.cli`, `startup.client`, `startup.willeq_db`, `startup.eq_strings`,
+  `startup.spells`, `startup.graphics`, `startup.login`, `startup.mode`,
+  coarse `startup.application` underneath, `misc` catch-all last) that are a
+  partition of the category by construction; `[memledger-startup]` lines
+  (MOD_MAIN, INFO) ride as a sibling of the `[memledger]` line at every
+  lifecycle point (`recordPoint`), no debug build needed. x86 headless run
+  [measured 2026-09-19]: TOTAL 356,832 B / 964 blocks = willeq_db
+  161,856 + application 77,536 + login 74,848 + client 24,752 + cli 10,736
+  + mode 7,104 + misc **0** — the 5 % bar in `tests/test_memory_ledger.cpp`
+  `MemoryLedger.HeadlessClientNamesAtLeast95PercentOfItsStartupBytes`
+  (which spawns a headless client and reads the table it prints) measures
+  0 %. `eq_strings` / `spells` / `graphics` exist as rows but hold 0 B in a
+  headless run (no graphics, no spell-string pass). The Pi's 28,134,104 B is
+  expected to read the same way [assumed, not re-measured on the Pi by this
+  unit]: `./willeq -c config.json --no-graphics --log-level=INFO` (the
+  `[memledger-startup]` lines are MOD_MAIN INFO) — the numbers differ from
+  x86 by design (B812), the NAMES are what this closed. Shrink candidates
+  from the x86 table: `startup.application` 77,536 B (action layer / input
+  bridge / console bridge, no narrower scope) and `startup.login` 74,848 B
+  (the login connection manager's buffers, held until the next connection).
 - **B841** (P) **A byte freed late is not a byte returned: the arena keeps it.**
   [measured T496 Leg D, re-measured T500] Between `ready` and `steady_60s` on
   qeynos2 the ledger frees 17.4 MB and RssAnon falls 0.09 MB, because

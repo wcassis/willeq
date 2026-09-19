@@ -141,6 +141,17 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 #endif
 	        }
 {
+	// B839 (issue #94): the startup sub-owner for the game client itself --
+	// every component the constructor builds (guild, gm, chat, group,
+	// merchant, entities, movement, login_world, player, zone, bridge,
+	// commands, combat/trade/spell/skill managers, hotbar, inventory,
+	// command registry) is "the client". The narrower owners (willeq_db,
+	// eq_strings, spells) open their own scopes inside their own bodies and
+	// charge under those labels instead, because the sub-owner is per-block:
+	// a block credits the label it was charged with, so the innermost open
+	// scope at allocation time is what names it.
+	eqt::memory::StartupScope client("client");
+
 	// K01: the guild family. Constructed first so nothing below can reach a
 	// null m_guild.
 	m_guild = std::make_unique<eqt::guild::GuildComponent>(m_ctx);
@@ -307,6 +318,9 @@ void EverQuest::StartSessionRecording(const std::string& path) {
 }
 
 void EverQuest::OpenDatabase(const std::string& dbPath) {
+	// B839: the db's own bytes (its SQLite handle plus the cached row
+	// tables) are the "willeq_db" sub-owner, not "client".
+	eqt::memory::StartupScope db("willeq_db");
 	m_willeq_db = std::make_unique<EQT::WilleqDatabase>();
 	if (m_willeq_db->open(dbPath)) {
 		EQT::WilleqDatabase::setGlobalInstance(m_willeq_db.get());
@@ -320,6 +334,11 @@ void EverQuest::OpenDatabase(const std::string& dbPath) {
 
 bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 {
+	// B839: the spell database (its rows, the buff manager and the effect
+	// presets) is the "spells" sub-owner, charged under it here even though
+	// the spell manager object itself was created earlier in the
+	// constructor under "client".
+	eqt::memory::StartupScope spells("spells");
 	// S04: Initialize spell database from SQLite
 	if (!m_spell_manager->initialize()) {
 		return false;
@@ -1001,8 +1020,15 @@ void EverQuest::QueuePacket(uint16_t opcode, EQ::Net::DynamicPacket* packet)
 void EverQuest::SetEQClientPath(const std::string& path) {
 	m_eq_client_path = path;
 
-	// Load EQ string files for message lookups
-	m_strings.LoadStringFiles(path);
+	// B839: the EQ string files (chat names, skill names, ... the whole
+	// string database loaded from the client install) are their own
+	// sub-owner -- they are the single largest "what" among the small
+	// startup owners, and a shrink unit should find them by name.
+	{
+		eqt::memory::StartupScope strings("eq_strings");
+		// Load EQ string files for message lookups
+		m_strings.LoadStringFiles(path);
+	}
 }
 
 // T341 (B038 cluster 1): SetConstrainedConfig's body moved verbatim into

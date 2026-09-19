@@ -13,17 +13,28 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <cerrno>
+#include <fcntl.h>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 #include <malloc.h>
 #include <new>
+#include <sys/poll.h>
+#include <sys/wait.h>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #include <json/json.h>
 
 #include "client/core/memory_ledger.h"
 
+namespace fs = std::filesystem;
 using eqt::memory::Category;
 using eqt::memory::MemoryScope;
 
@@ -420,6 +431,346 @@ TEST(MemoryLedger, SteadyStatePointFiresOnceAfterTheDeadline) {
     eqt::memory::pollSteadyState();  // records "steady_60s" once
     eqt::memory::pollSteadyState();  // disarmed: no-op
     SUCCEED();
+}
+
+// ---------------------------------------------------------------------------
+// B839 (issue #94): the `startup` ledger category is charged a whole
+// process-init (28.13 MB live at `ready` on the Pi, measured T496/T500) with
+// NO owner breakdown -- the category is set once at main() and never
+// re-labelled per step. This card makes the breakdown permanent: named
+// sub-owners (startup.client, startup.willeq_db, ...) ride as a sibling of
+// the [memledger] line at every lifecycle point, and the acceptance bar is
+// here: in a real headless run, no more than 5 % of the startup category's
+// live bytes may sit in the unnamed catch-all ("misc").
+//
+// It is a SPAWN test (same shape as tests/test_headless_shutdown.cpp): the
+// number is only real on the client's own process, not on a hand-built
+// scope, so the child's own [memledger-startup] table at point=startup is
+// the evidence. Pre-fix the table does not exist at all, which is exactly
+// the defect this card closes.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// How long the child gets to reach Application::run() (and thereby write
+// the startup table) before the test gives up and SIGTERMs it. The headless
+// init is well under a second on x86 even on a loaded CI box; 10 s leaves
+// an order of magnitude for a cold, oversubscribed runner.
+constexpr std::chrono::seconds kStartupSettle{10};
+
+// One headless client: `<bin> -c <config> --no-graphics --log-level=INFO`
+// (the INFO level is what carries the [memledger] lines -- the default
+// NONE gates LOG_INFO out, the same reason the Pi run passes
+// --log-level=INFO), stdin is EOF immediately (nothing to type), and
+// stdout+stderr share one pipe.
+struct StartupChild {
+    pid_t pid = -1;
+    int outFd = -1;
+    bool eof = false;
+    bool reaped = false;
+    int status = 0;
+    std::string output;
+
+    ~StartupChild() {
+        if (pid > 0 && !reaped) {
+            ::kill(pid, SIGKILL);
+            int st = 0;
+            ::waitpid(pid, &st, 0);
+        }
+        if (outFd >= 0) ::close(outFd);
+    }
+
+    bool start(const std::string& bin, const std::string& config,
+               std::string& error) {
+        std::signal(SIGPIPE, SIG_IGN);
+        int inPipe[2];
+        int outPipe[2];
+        if (::pipe2(inPipe, O_CLOEXEC) != 0 || ::pipe2(outPipe, O_CLOEXEC) != 0) {
+            error = std::string("pipe2: ") + std::strerror(errno);
+            return false;
+        }
+        pid = ::fork();
+        if (pid < 0) {
+            error = std::string("fork: ") + std::strerror(errno);
+            return false;
+        }
+        if (pid == 0) {
+            ::close(inPipe[1]);
+            ::close(outPipe[0]);
+            ::dup2(inPipe[0], STDIN_FILENO);
+            ::dup2(outPipe[1], STDOUT_FILENO);
+            ::dup2(outPipe[1], STDERR_FILENO);
+            // B839: the logger's drain thread writes each LOG line to
+            // std::cout -- line-buffered on a terminal, 4 KB BLOCK-buffered
+            // on a pipe. Measured (B839 x86 lane, 2026-09-19): with the
+            // default buffering the [memledger-startup] table at point=
+            // startup reached the pipe only at the child's own death,
+            // ~60 s after it was written. Unbuffered, the table lands in
+            // under a second and the wait below never burns its deadline.
+            ::setvbuf(stdout, nullptr, _IONBF, 0);
+            ::setvbuf(stderr, nullptr, _IONBF, 0);
+            std::vector<const char*> argv = {
+                bin.c_str(), "-c", config.c_str(), "--no-graphics",
+                "--log-level=INFO", nullptr};
+            ::execv(bin.c_str(), const_cast<char* const*>(argv.data()));
+            _exit(127);
+        }
+        ::close(inPipe[0]);
+        ::close(inPipe[1]);  // EOF: the client has nothing to read
+        ::close(outPipe[1]);
+        outFd = outPipe[0];
+        return true;
+    }
+
+    // Drain the pipe until `deadline` or EOF, appending to `output`. The
+    // headless client's own logger (common/logging.h's drain thread) is
+    // measured to flush its stdout in two waves: the first ~10 lines at
+    // start, then NOTHING until the process's own clean shutdown, which
+    // flushes the whole backlog in one burst (measured B839 x86 lane,
+    // 2026-09-19: 10 write(1) calls total in an 8 s strace, ALL at the
+    // SIGTERM instant). The startup table is written at Application::run(),
+    // microseconds after init, and its contents are frozen by then -- so
+    // the evidence is captured at death, not by racing the pipe.
+    void readUntil(std::chrono::steady_clock::time_point deadline) {
+        char buf[8192];
+        for (;;) {
+            if (eof || std::chrono::steady_clock::now() >= deadline) return;
+            pollfd pfd{outFd, POLLIN, 0};
+            int ready = ::poll(&pfd, 1, 500);
+            if (ready < 0 && errno != EINTR) return;
+            if (ready > 0) {
+                ssize_t n = ::read(outFd, buf, sizeof(buf));
+                if (n > 0) {
+                    output.append(buf, static_cast<size_t>(n));
+                } else {
+                    eof = true;
+                }
+            }
+        }
+    }
+
+    void stop() {
+        if (pid <= 0 || reaped) return;
+        ::kill(pid, SIGTERM);
+        // The client handles SIGTERM with a clean shutdown (recordPoint("shutdown"),
+        // FlushThreadLog, drain-thread final drain) that flushes the whole
+        // stdout backlog before it exits. That burst is the FULL startup+ready
+        // log plus the memmap census -- well over a 64 KB pipe buffer -- so
+        // this loop DRAINS the pipe while waiting for exit: if it merely
+        // slept, a full pipe would block the child in write(), it would never
+        // exit, and the table we came to read would be lost. Draining to EOF
+        // (the child's write-end closes on exit) is both the read and the
+        // wait. A deadline bounds a stuck child; the destructor's SIGKILL is
+        // the backstop.
+        char buf[8192];
+        const auto deadline = std::chrono::steady_clock::now()
+            + std::chrono::seconds(30);
+        for (;;) {
+            // Done once the pipe is drained AND the child is reaped: every
+            // byte the client wrote on its way out is in `output`.
+            if (eof && reaped) return;
+            if (std::chrono::steady_clock::now() >= deadline) return;
+            pollfd pfd{outFd, POLLIN, 0};
+            int ready = ::poll(&pfd, 1, 100);
+            if (ready > 0) {
+                ssize_t n = ::read(outFd, buf, sizeof(buf));
+                if (n > 0) {
+                    output.append(buf, static_cast<size_t>(n));
+                    continue;
+                }
+                if (n == 0) eof = true;  // EOF: the child's write-end closed
+            } else if (ready < 0 && errno != EINTR) {
+                return;
+            }
+            // Reap as soon as the child exits (its flush burst is in flight
+            // by then; the pipe keeps delivering the rest to us).
+            int st = 0;
+            pid_t r = ::waitpid(pid, &st, WNOHANG);
+            if (r == pid) { reaped = true; status = st; }
+            // r == -1/ESRCH here only if somebody else reaped it: treat as
+            // reaped too, else the eof branch below would spin to the
+            // deadline calling waitpid on a non-existent child.
+            else if (r < 0 && errno == ESRCH) reaped = true;
+        }
+    }
+};
+
+// The child's [memledger-startup] table at point=startup: the TOTAL line
+// (owner=TOTAL) plus one owner=startup.<name> line per sub-owner, misc last.
+struct StartupTable {
+    std::string totalLine;
+    uint64_t totalLive = 0;
+    uint64_t miscLive = 0;
+    uint64_t namedLive = 0;
+    size_t namedOwners = 0;
+    std::string allLines;
+
+    bool parse(const std::string& output);  // defined below splitLines()
+};
+
+bool parseKV(const std::string& line, const char* key, uint64_t* out);  // fwd
+
+std::vector<std::string> splitLines(const std::string& s) {
+    std::vector<std::string> out;
+    size_t from = 0;
+    for (;;) {
+        size_t nl = s.find('\n', from);
+        if (nl == std::string::npos) {
+            out.push_back(s.substr(from));
+            break;
+        }
+        out.push_back(s.substr(from, nl - from));
+        from = nl + 1;
+    }
+    return out;
+}
+
+bool StartupTable::parse(const std::string& output) {
+    // Log lines carry a "[ts] [LEVEL] [MOD] " prefix (common/logging.h's
+    // append()), so the marker is a SUBSTRING, not a line anchor -- the same
+    // idiom scripts/ci/memory_cap_hunt.sh greps with.
+    static const char kPrefix[] = "[memledger-startup] point=startup ";
+    for (const std::string& raw : splitLines(output)) {
+        if (raw.find(kPrefix) == std::string::npos) continue;
+        allLines += raw + "\n";
+        uint64_t live = 0;
+        if (!parseKV(raw, " live=", &live)) return false;
+        // B839 fix: the owner token is followed by " live=", not a space --
+        // " owner=TOTAL " (trailing space) never matched, which made the
+        // whole table look absent even when it had landed. The " live="
+        // key is also space-bounded: bare "live=" would match inside
+        // "ledger=", which the sibling [memledger] line carries.
+        if (raw.find(" owner=TOTAL") != std::string::npos) {
+            totalLine = raw;
+            totalLive = live;
+        } else if (raw.find(" owner=startup.misc") != std::string::npos) {
+            miscLive = live;
+        } else if (raw.find(" owner=startup.") != std::string::npos) {
+            namedLive += live;
+            ++namedOwners;
+        }
+    }
+    return !totalLine.empty();
+}
+
+bool parseKV(const std::string& line, const char* key, uint64_t* out) {
+    const size_t at = line.find(key);
+    if (at == std::string::npos) return false;
+    const std::string rest = line.substr(at + std::strlen(key));
+    *out = 0;
+    for (char c : rest) {
+        if (c < '0' || c > '9') break;
+        *out = *out * 10 + static_cast<uint64_t>(c - '0');
+    }
+    return true;
+}
+
+std::string miscPctMessage(const StartupTable& t) {
+    std::ostringstream oss;
+    const double pct = t.totalLive
+        ? 100.0 * static_cast<double>(t.miscLive) / static_cast<double>(t.totalLive)
+        : 0.0;
+    oss << "startup.misc holds " << t.miscLive << " of " << t.totalLive
+        << " live bytes (" << pct << " %) -- the card's bar is 5 %. Table:\n"
+        << t.allLines;
+    return oss.str();
+}
+}  // namespace
+
+TEST(MemoryLedger, HeadlessClientNamesAtLeast95PercentOfItsStartupBytes) {
+#ifndef WILLEQ_BIN_PATH
+    GTEST_SKIP() << "WILLEQ_BIN_PATH not defined at configure time";
+#else
+    // Self-contained config, exactly the shape test_headless_shutdown uses:
+    // TEST-NET-1 host so the child never connects, --no-graphics so the
+    // measurement is the game-side init (the Pi run is the same command
+    // without --no-graphics).
+    std::string tmpl = (fs::temp_directory_path() / "b839_startup_ledger_XXXXXX").string();
+    std::vector<char> name(tmpl.begin(), tmpl.end());
+    name.push_back('\0');
+    ASSERT_NE(::mkdtemp(name.data()), nullptr) << "mkdtemp: " << std::strerror(errno);
+    const std::string dir = name.data();
+    const std::string configPath = dir + "/config.json";
+    {
+        std::ofstream out(configPath);
+        out << R"({
+  "clients": [
+    {
+      "character": "B839Test",
+      "host": "192.0.2.1",
+      "port": 5998,
+      "server": "B839NoServer",
+      "user": "b839test",
+      "pass": "test"
+    }
+  ]
+})";
+        ASSERT_TRUE(out);
+    }
+
+    StartupChild child;
+    std::string error;
+    ASSERT_TRUE(child.start(WILLEQ_BIN_PATH, configPath, error)) << error;
+
+    const auto t0 = std::chrono::steady_clock::now();
+    // Let the child reach Application::run() (microseconds after a headless
+    // init, which returns true without a live server), so the startup table
+    // is in the logger's buffer. Then SIGTERM: the client's own clean
+    // shutdown flushes the whole backlog to the pipe in one burst (the
+    // only flush the headless logger performs while waiting on a server).
+    // A generous settle covers a slow CI box; the table contents are frozen
+    // by init, so extra settling buys nothing.
+    child.readUntil(t0 + kStartupSettle);
+    const auto t1 = std::chrono::steady_clock::now();
+    std::cout << "[B839] settle="
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()
+              << "ms preStopBytes=" << child.output.size() << "\n";
+    child.stop();
+    const auto t2 = std::chrono::steady_clock::now();
+    std::cout << "[B839] stop="
+              << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count()
+              << "ms postStopBytes=" << child.output.size() << " eof=" << child.eof
+              << " reaped=" << child.reaped << "\n";
+    child.readUntil(t2 + std::chrono::seconds(5));
+    const int cleanup = ::system(("rm -rf " + dir).c_str());
+    (void)cleanup;  // a failed rm just leaks a temp dir in /tmp
+
+    StartupTable table;
+    const bool tableParsed = table.parse(child.output);
+    if (!tableParsed) {
+        // RED before the fix: the ledger prints the [memledger] line with a
+        // startup=<bytes> category but no owner breakdown at all -- the
+        // 28 MB bucket has no names. Quote the category line so the failure
+        // shows the number that went unnamed. (Substring, not line anchor:
+        // the line is prefixed by [ts] [LEVEL] [MOD].)
+        std::string ledgerLine;
+        for (const auto& l : splitLines(child.output)) {
+            if (l.find("[memledger] point=startup ") != std::string::npos) ledgerLine = l;
+        }
+        FAIL() << "no [memledger-startup] owner table at point=startup -- the "
+                  "startup category has no owner breakdown.\n"
+               << "category line: " << ledgerLine << "\n"
+               << "table lines: " << table.allLines << "\n"
+               << "child output (tail):\n"
+               << child.output.substr(std::max<size_t>(child.output.size(), 4000) - 4000);
+    }
+
+    ASSERT_GT(table.totalLive, 0u) << "the TOTAL line carries no live bytes:\n" << table.allLines;
+
+    // The card's acceptance bar: no more than 5 % of the startup category's
+    // live bytes may sit in the unnamed catch-all.
+    EXPECT_LE(table.miscLive * 20, table.totalLive)
+        << miscPctMessage(table);
+
+    // A table where every byte is named-but-one is not a breakdown either:
+    // a headless init must show several distinct owners (client, db, spells,
+    // mode, ...), not one lucky scope.
+    EXPECT_GE(table.namedOwners, 3u)
+        << "only " << table.namedOwners << " named sub-owner(s) at startup:\n"
+        << table.allLines;
+
+    std::cout << "[B839] startup table (headless x86):\n" << table.allLines;
+#endif
 }
 
 // ---------------------------------------------------------------------------

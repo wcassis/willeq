@@ -2,6 +2,7 @@
 #include "client/mode/automated_mode.h"
 #include "client/mode/headless_mode.h"
 #include "client/mode/graphical_mode.h"
+#include "client/core/memory_ledger.h"
 
 #include <algorithm>
 #include <cctype>
@@ -10,6 +11,11 @@ namespace eqt {
 namespace mode {
 
 std::unique_ptr<IGameMode> createMode(OperatingMode mode, GraphicalRendererType rendererType) {
+    // B839 (issue #94): the mode object (input handler, renderer adapter)
+    // and the per-mode initialize() that runs under it are the "mode"
+    // sub-owner. The mode's own bytes are small; the scope mostly exists so
+    // a future growth there has a name instead of landing in misc.
+    eqt::memory::StartupScope modeScope("mode");
     switch (mode) {
         case OperatingMode::Automated:
             return std::make_unique<AutomatedMode>();

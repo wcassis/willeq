@@ -236,4 +236,13 @@ ADD_EXECUTABLE(test_memory_ledger
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
 )
 TARGET_LINK_LIBRARIES(test_memory_ledger GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} Threads::Threads)
+# B839 (issue #94): the startup sub-owner acceptance case SPAWNS the real
+# client (headless, TEST-NET-1, same idiom as test_headless_shutdown) and
+# reads its own [memledger-startup] table, so it needs the binary's path and
+# a build-order dependency on it.
+IF(TARGET willeq)
+    TARGET_COMPILE_DEFINITIONS(test_memory_ledger PRIVATE
+        WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>")
+    ADD_DEPENDENCIES(test_memory_ledger willeq)
+ENDIF()
 GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)

@@ -124,6 +124,14 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 		return false;
 	}
 
+	// B839 (issue #94): the renderer bring-up -- initLoadingScreen's
+	// Irrlicht device, fonts, UI atlas and the audio system it starts at
+	// the end -- is the "graphics" sub-owner. On the Pi this is the
+	// dominant startup owner (the 28 MB bucket is mostly device/driver,
+	// which the allocator ledger cannot see at all -- see run()'s
+	// recordMappings); this row names what the ledger CAN see of it.
+	eqt::memory::StartupScope graphics("graphics");
+
 	// D20e3: Store bridge only — renderer is owned by Application.
 	// T46: wireBridgeToSubsystems() sets m_bridge and also wires the four
 	// managers' own bridge pointers (previously done inline here only,
