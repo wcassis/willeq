@@ -117,7 +117,18 @@ namespace detail {
 // that opens scopes but is linked into a binary WITHOUT the hooks (a tool,
 // a narrow test) still links -- the scope then simply records nothing.
 inline thread_local uint8_t t_category = 0;
+// B839: the current startup SUB-owner index (see the B839 block below).
+// Default 0 = none: until a StartupScope opens, everything folds into the
+// catch-all row.
+inline thread_local uint8_t t_sublabel = 0;
 }
+
+// B839 sub-owner index values. 0 is "no label open" (every block it charges
+// folds into the catch-all row); 1 is the catch-all row itself. Named
+// sub-owners get 2..kStartupSublabelSlots-1 in first-open order.
+constexpr uint8_t kStartupSublabelNone = 0;   // no sub-owner open
+constexpr uint8_t kStartupSublabelMisc = 1;   // the catch-all sub-owner
+constexpr uint8_t kStartupSublabelSlots = 32; // total rows incl. the two above
 
 // RAII scope: every allocation on this thread until the scope ends is charged
 // to `c`. Nests; the previous category is restored on exit. A block freed
@@ -126,10 +137,20 @@ inline thread_local uint8_t t_category = 0;
 class MemoryScope {
 public:
 #if EQT_MEMORY_LEDGER
-    explicit MemoryScope(Category c) : prev_(detail::t_category) {
+    explicit MemoryScope(Category c) : prev_(detail::t_category), prevSub_(detail::t_sublabel) {
         detail::t_category = static_cast<uint8_t>(c);
+        // B839: a category scope is not a startup sub-owner. If this thread
+        // opens one while a StartupScope is still open (the client's startup
+        // steps open real scopes inside their labelled step), the label must
+        // go: what a ZoneParse scope charges is zone_parse, never startup.*.
+        // The LIFO restore below still hands the label back to whoever owns
+        // it, because prevSub_ was captured BEFORE this write.
+        detail::t_sublabel = kStartupSublabelNone;
     }
-    ~MemoryScope() { detail::t_category = prev_; }
+    ~MemoryScope() {
+        detail::t_category = prev_;
+        detail::t_sublabel = prevSub_;
+    }
 #else
     explicit MemoryScope(Category) {}
     ~MemoryScope() = default;
@@ -139,6 +160,7 @@ public:
 private:
 #if EQT_MEMORY_LEDGER
     uint8_t prev_;
+    uint8_t prevSub_;
 #endif
 };
 
@@ -153,6 +175,49 @@ inline Category setThreadCategory(Category c) {
     detail::t_category = static_cast<uint8_t>(c);
     return prev;
 }
+
+// ---------------------------------------------------------------------------
+// B839 (2026-09-18): the `startup` sub-owners. The startup category is set
+// once at main() (src/client/main.cpp) and never re-scoped per step, so the
+// ledger charged every byte of process init to one bucket with no owners --
+// 28,134,104 B live at `ready` on the Pi (measured T496 Leg D / T500). This
+// adds a SECOND, NARROWER label that applies only while the thread's category
+// is Startup: named sub-owners (startup.client, startup.graphics, ...) whose
+// live bytes always sum to the category's live bytes, the catch-all
+// ("misc") included. The label is per-THREAD and per-BLOCK: a block is
+// credited to the sub-owner it was CHARGED to, exactly like the category, so
+// mismatched scopes cannot drive a sub-owner negative. It exists so the
+// [memledger-startup] lines printed at `startup` and `ready` (recordPoint)
+// name every byte of the bucket on both platforms without a debug build.
+//
+// Cost when OFF: zero (the thread_local is a single byte, the RAII object is
+// empty, the hooks are not compiled in). Cost when ON: one relaxed atomic
+// increment per startup-category allocation -- no lock, no map lookup; the
+// label index is resolved once per scope open against a fixed-size table.
+// (The t_sublabel variable and the index constants live at the top of the
+// scope helpers, because MemoryScope restores the label in LIFO order.)
+//
+// RAII sub-owner: every allocation this thread makes while the scope is open
+// AND its category is Startup is charged to `name`. Nesting and interleaving
+// with MemoryScope are safe: the label is restored in LIFO order on exit, and
+// a MemoryScope opened for another category clears it (a UI allocation after
+// a startup scope must not be reported as startup.*).
+class StartupScope {
+public:
+    explicit StartupScope(const char* name);
+    ~StartupScope();
+    StartupScope(const StartupScope&) = delete;
+    StartupScope& operator=(const StartupScope&) = delete;
+private:
+    uint8_t prev_;
+};
+
+// Resolve a sub-owner name to its index, creating the row on first use. When
+// the slot table is full (kStartupSublabelSlots) it returns
+// kStartupSublabelNone so the caller's bytes still land -- in the catch-all,
+// exactly as an unlabelled allocation would. The client opens far fewer
+// scopes than slots, so this overflow path is a safety net, not a routine.
+uint8_t startupSublabelIndex(const char* name);
 
 constexpr bool enabled() { return EQT_MEMORY_LEDGER != 0; }
 
@@ -183,6 +248,22 @@ struct CategoryStats {
     uint64_t liveBlocks = 0;          // blocks currently live in this category
     uint64_t blockOverheadBytes = 0;  // liveBytes - liveRequestedBytes
 };
+
+// B839: one sub-owner of the startup category. The rows (misc included) are a
+// PARTITION of the category's live blocks: their liveBytes always sum to
+// CategoryStats(Category::Startup).liveBytes, and their liveBlocks to its
+// liveBlocks. The sum holds by construction (every charge/credit touches
+// exactly one row) -- the tests pin it, they do not re-derive it.
+struct StartupSublabelRow {
+    std::string name;   // "misc" or the scope's name, e.g. "client"
+    uint64_t liveBytes = 0;
+    uint64_t liveBlocks = 0;
+};
+// The live breakdown of the startup category, misc last (it is what a shrink
+// unit has to chase), named sub-owners before it, live bytes descending.
+// Empty when the ledger is OFF or before the first recordPoint() arms the
+// rows (recordPoint's comment: the "startup" point is the first).
+std::vector<StartupSublabelRow> startupBreakdown();
 
 // One lifecycle-point report. Same schema for /pmem, the log line, the
 // benchmark JSON and the gate.
@@ -308,6 +389,14 @@ Snapshot snapshot(const std::string& point, const std::string& zone = std::strin
 // malloc_inuse=... malloc_slack=... allocs=... <cat>=<live>/<peak> ...`.
 // This is what the cap-hunt script greps.
 std::string toLogLine(const Snapshot& s);
+// B839: `[memledger-startup] point=<point> owner=startup.<name> live=<bytes>
+// blocks=<n> ...` lines, one per sub-owner (misc last, it is what a shrink
+// unit has to chase), preceded by a total line whose live equals the
+// category's live. Emitted as a sibling of the [memledger] line by
+// recordPoint() at every lifecycle point, so the Pi run (and the x86 runs)
+// get the same table without a second tool. Same line contract as
+// toLogLine: one owner per line, `key=value` tokens.
+std::string startupToLogLines(const std::string& point);
 // Multi-line human form for /pmem (header, one row per category, totals).
 std::string toReportText(const Snapshot& s);
 // JSON object (no trailing newline). Keys: point, zone, seq, ledgerEnabled,
