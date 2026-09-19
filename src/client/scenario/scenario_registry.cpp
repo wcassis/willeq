@@ -21,6 +21,17 @@ const Entry kScenarios[] = {
     {"equip_observed", &MakeEquipObservedScenario},
     {"equip_actor", &MakeEquipActorScenario},
     {"equip_actor_return", &MakeEquipActorReturnScenario},
+    // B630 (issue #48): the interrupted-cast pair. cast_interrupt_chain is the
+    // GM caster (legs A/D1/D2/D3 in one zone-in); cast_interrupt_observe is the
+    // peer scripts/scenario.sh launches for it; cast_fizzle is the non-GM
+    // buddy's leg B, run as its own scenario on the second account.
+    {"cast_interrupt", &MakeCastInterruptScenario},
+    {"cast_interrupt_chain", &MakeCastInterruptChainScenario},
+    {"cast_success_tail", &MakeCastSuccessTailScenario},
+    {"cast_recast_stop", &MakeCastRecastStopScenario},
+    {"cast_buff_notake", &MakeCastBuffNotakeScenario},
+    {"cast_interrupt_observe", &MakeCastInterruptObserveScenario},
+    {"cast_fizzle", &MakeCastFizzleScenario},
 };
 
 }  // namespace

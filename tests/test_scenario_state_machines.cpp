@@ -75,7 +75,8 @@ ScenarioOptions DefaultOptions() { return ScenarioOptions{}; }
 
 TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     const std::vector<std::string> names = ScenarioNames();
-    EXPECT_EQ(names.size(), 6u);
+    // 6 pre-B630 + 7 B630 (issue #48) interrupted-cast legs.
+    EXPECT_EQ(names.size(), 13u);
     EXPECT_TRUE(IsScenarioName("zone_in"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));
     EXPECT_TRUE(IsScenarioName("cast_lands"));
@@ -83,6 +84,14 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     EXPECT_TRUE(IsScenarioName("equip_observed"));
     EXPECT_TRUE(IsScenarioName("equip_actor"));
     EXPECT_TRUE(IsScenarioName("equip_actor_return"));
+    // B630: the interrupted-cast pair.
+    EXPECT_TRUE(IsScenarioName("cast_interrupt"));
+    EXPECT_TRUE(IsScenarioName("cast_interrupt_chain"));
+    EXPECT_TRUE(IsScenarioName("cast_success_tail"));
+    EXPECT_TRUE(IsScenarioName("cast_recast_stop"));
+    EXPECT_TRUE(IsScenarioName("cast_buff_notake"));
+    EXPECT_TRUE(IsScenarioName("cast_interrupt_observe"));
+    EXPECT_TRUE(IsScenarioName("cast_fizzle"));
 }
 
 TEST(ScenarioRegistry, UnknownNameIsNullNotACrash) {
@@ -533,4 +542,245 @@ TEST(EquipActorScenario, SettlesThenTypesTheDbSlotNumber) {
     // 23 is `inventory.slot_id` for general slot 1 -- the convention T494 set.
     EXPECT_TRUE(world.sent("/equip 23 13")) << "actor never sent the equip";
     EXPECT_TRUE(world.sent("/equip list"));
+}
+
+// ===========================================================================
+// B630 (issue #48) + B760 (issue #45): the two-client interrupted-cast lane
+// ===========================================================================
+//
+// These scenarios are pure drivers: they run their leg's command sequence on a
+// calibrated clock and pass on completion. The wire-level assertions (cast bar
+// clears, the interrupt chat, no late impact, the B760 packet order) are made
+// from the run's DEBUG log by scripts/ci/b760_analyze.py, so what a headless
+// state machine can pin is the SEQUENCE and its failure modes -- not a
+// log grep.
+
+ScenarioOptions B630Options(const std::string& target = "Testbuddy") {
+    ScenarioOptions options;
+    options.castTargetName = target;
+    options.castSpellId = 378;  // O'Keils Radiation, 3 s cast, targettype 5
+    options.successSpellId = 372;  // Blast of Cold
+    options.recastStopSpellId = 293;  // Haze, 2 s cast / 4 s recast
+    options.buffNotakeVictimId = 293;  // Haze: the caster's own buff leg
+    return options;
+}
+
+TEST(CastInterruptScenario, RefusesWhenNoTargetNameIsSupplied) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    ScenarioRunner runner(MakeScenario("cast_interrupt", DefaultOptions()), world,
+                          /*timeout=*/60.0, /*startDeadline=*/10.0);
+    Advance(runner, 5.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_NE(runner.reason().find("--scenario-cast-target"), std::string::npos);
+}
+
+TEST(CastInterruptScenario, PrepThenTargetThenCastThenInterruptsMidCast) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    world.otherPlayers = 1;  // the co-located peer is tracked from the start
+    ScenarioRunner runner(MakeScenario("cast_interrupt", B630Options()), world,
+                          /*timeout=*/600.0, /*startDeadline=*/10.0);
+    Advance(runner, 16.0);
+    // The full A-leg sequence, in order: unmem, memspell, target, cast,
+    // and the GM #interrupt ~1.5 s into the 3 s cast (cast at t=14, interrupt
+    // at t=15.5, so advance past 15.5 to have all five commands sent).
+    ASSERT_GE(world.commands.size(), 5u);
+    EXPECT_EQ(world.commands[0], "/say #unmemspells");
+    EXPECT_EQ(world.commands[1], "/say #memspell 378 0");
+    EXPECT_EQ(world.commands[2], "/target Testbuddy");
+    EXPECT_EQ(world.commands[3], "/cast 1");
+    EXPECT_EQ(world.commands[4], "/say #interrupt");
+    // Still holding after the interrupt (the log is what proves the cast bar
+    // cleared) -- not finished yet (interrupt t=15.5 + hold 10s = t=25.5).
+    Advance(runner, 5.0);
+    EXPECT_FALSE(runner.finished());
+    Advance(runner, 10.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_NE(runner.reason().find("interrupt leg executed"), std::string::npos);
+}
+
+TEST(CastInterruptScenario, NoPeerIsAFailureNotASilentWait) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    world.otherPlayers = 0;
+    ScenarioRunner runner(MakeScenario("cast_interrupt", B630Options()), world,
+                          /*timeout=*/600.0, /*startDeadline=*/10.0);
+    Advance(runner, 100.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_NE(runner.reason().find("never appeared"), std::string::npos);
+    EXPECT_FALSE(world.sent("/cast 1")) << "must not cast at no one";
+}
+
+TEST(CastSuccessTailScenario, CastsAndLetsItFinish) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    world.otherPlayers = 1;
+    ScenarioRunner runner(MakeScenario("cast_success_tail", B630Options()), world,
+                          /*timeout=*/600.0, /*startDeadline=*/10.0);
+    Advance(runner, 9.0);
+    EXPECT_TRUE(world.sent("/target Testbuddy"));
+    EXPECT_TRUE(world.sent("/cast 1"));
+    EXPECT_FALSE(runner.finished());
+    Advance(runner, 12.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_NE(runner.reason().find("success-tail leg executed"), std::string::npos);
+}
+
+TEST(CastRecastStopScenario, TwoCastsWithTheSecondInsideTheRecastWindow) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    world.otherPlayers = 1;
+    ScenarioRunner runner(MakeScenario("cast_recast_stop", B630Options()), world,
+                          /*timeout=*/600.0, /*startDeadline=*/10.0);
+    Advance(runner, 9.0);
+    EXPECT_TRUE(world.sent("/cast 1"));
+    ASSERT_EQ(std::count(world.commands.begin(), world.commands.end(),
+                         std::string("/cast 1")), 1)
+        << "no second cast before the gem recovers";
+    Advance(runner, 5.0);
+    EXPECT_EQ(std::count(world.commands.begin(), world.commands.end(),
+                         std::string("/cast 1")), 2)
+        << "the second cast must land inside the server recast window";
+    Advance(runner, 10.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_NE(runner.reason().find("recast-stop leg executed"), std::string::npos);
+}
+
+TEST(CastBuffNotakeScenario, MemorisesThenCastsTheOwnBuff) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    world.otherPlayers = 1;
+    ScenarioRunner runner(MakeScenario("cast_buff_notake", B630Options()), world,
+                          /*timeout=*/600.0, /*startDeadline=*/10.0);
+    Advance(runner, 15.0);
+    // The buff leg: unmem, memspell the buff on gem 1, target the peer, cast.
+    ASSERT_GE(world.commands.size(), 4u);
+    EXPECT_EQ(world.commands[0], "/say #unmemspells");
+    EXPECT_EQ(world.commands[1], "/say #memspell 293 0");
+    EXPECT_EQ(world.commands[2], "/target Testbuddy");
+    EXPECT_EQ(world.commands[3], "/cast 1");
+    Advance(runner, 12.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_NE(runner.reason().find("buff-notake leg executed"), std::string::npos);
+}
+
+TEST(CastInterruptChainScenario, RunsAllFourLegsInOrder) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    world.otherPlayers = 1;
+    ScenarioRunner runner(MakeScenario("cast_interrupt_chain", B630Options()), world,
+                          /*timeout=*/600.0, /*startDeadline=*/10.0);
+    Advance(runner, 600.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    // The chain fires each leg's tell-tale command: A's #interrupt trigger and
+    // four caster gem casts (A once, D1 once, D2 twice, D3 once).
+    EXPECT_TRUE(world.sent("/say #interrupt")) << "leg A's trigger";
+    EXPECT_EQ(std::count(world.commands.begin(), world.commands.end(),
+                         std::string("/cast 2")), 0)
+        << "no leg uses gem 2 in this rig";
+    EXPECT_EQ(std::count(world.commands.begin(), world.commands.end(),
+                         std::string("/cast 1")), 5);
+}
+
+TEST(CastInterruptChainScenario, RefusesWhenNoTargetNameIsSupplied) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    world.otherPlayers = 1;
+    ScenarioRunner runner(MakeScenario("cast_interrupt_chain", DefaultOptions()),
+                          world, /*timeout=*/60.0, /*startDeadline=*/10.0);
+    Advance(runner, 5.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_NE(runner.reason().find("--scenario-cast-target"), std::string::npos);
+}
+
+TEST(CastInterruptObserveScenario, TargetsTheCasterAndHoldsSendingNothingElse) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    world.otherPlayers = 1;
+    ScenarioOptions options = B630Options();
+    options.holdSeconds = 20.0;
+    // For the observer, castTargetName is the CASTER's name (the peer it
+    // watches): the observer targets that character and then holds it.
+    options.castTargetName = "Testcaster";
+    ScenarioRunner runner(MakeScenario("cast_interrupt_observe", options), world,
+                          /*timeout=*/600.0, /*startDeadline=*/10.0);
+    Advance(runner, 30.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    ASSERT_EQ(world.commands.size(), 1u) << "the observer sends nothing but the target";
+    EXPECT_EQ(world.commands[0], "/target Testcaster");
+    EXPECT_NE(runner.reason().find("observer held"), std::string::npos);
+}
+
+TEST(CastInterruptObserveScenario, RefusesWhenNoTargetNameIsSupplied) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    world.otherPlayers = 1;
+    ScenarioRunner runner(MakeScenario("cast_interrupt_observe", DefaultOptions()),
+                          world, /*timeout=*/60.0, /*startDeadline=*/10.0);
+    Advance(runner, 5.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_NE(runner.reason().find("--scenario-cast-target"), std::string::npos);
+}
+
+TEST(CastFizzleScenario, RefusesWhenNoFizzleSpellIsSupplied) {
+    // The default fizzle spell is 0: without --scenario-fizzle-spell the leg
+    // would have to guess a spell, so it refuses instead.
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    ScenarioRunner runner(MakeScenario("cast_fizzle", DefaultOptions()), world,
+                          /*timeout=*/60.0, /*startDeadline=*/10.0);
+    Advance(runner, 5.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_NE(runner.reason().find("--scenario-fizzle-spell"), std::string::npos);
+}
+
+TEST(CastFizzleScenario, PrepThenLoopsGemCastsOnAThrottledCadence) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    ScenarioOptions options = B630Options();
+    options.fizzleSpellId = 41;
+    ScenarioRunner runner(MakeScenario("cast_fizzle", options), world,
+                          /*timeout=*/600.0, /*startDeadline=*/10.0);
+    Advance(runner, 14.0);
+    EXPECT_EQ(world.commands[0], "/target Testbuddy");
+    EXPECT_EQ(world.commands[1], "/say #unmemspells");
+    EXPECT_EQ(world.commands[2], "/say #memspell 41 0");
+    EXPECT_EQ(world.commands[3], "/cast 1");
+    // Throttled: at 14 s only the first cast has fired.
+    ASSERT_EQ(std::count(world.commands.begin(), world.commands.end(),
+                         std::string("/cast 1")), 1);
+    Advance(runner, 30.0);  // ~7 more casts on the 4 s cadence
+    const int casts = std::count(world.commands.begin(), world.commands.end(),
+                                 std::string("/cast 1"));
+    EXPECT_GT(casts, 1);
+    EXPECT_LT(casts, 20) << "the cadence must keep a landed cast from clobbering the next";
+    // A fixed attempt count terminates the leg even if nothing fizzles.
+    Advance(runner, 120.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_NE(runner.reason().find("fizzle leg executed"), std::string::npos);
 }

@@ -946,6 +946,17 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p)
 	eqt::memory::MemoryScope gsScope(eqt::memory::Category::GameState);
 	auto opcode = p.GetUInt16(0);
 
+	// B760 (issue #45, recorded under B630): the cast-tail question is a
+	// packet-ORDER question -- what arrives between `ManaChange keepcasting 0`
+	// and `OP_MemorizeSpell`? The SPELL-side handlers already log their own
+	// packets at DEBUG, but a DEBUG lane run needs the FULL order of every
+	// zone packet, not just the spell ones, so the analyzer can place each
+	// spell packet in the stream. One line per packet, named by opcode, is the
+	// record; it is deliberately generic (every opcode) because the answer to
+	// "is there a packet in between" is only interesting for the opcodes nobody
+	// expected. DEBUG keeps it out of a normal run.
+	LOG_DEBUG(MOD_ZONE, "[ZonePacket] {}", eqt::strings::GetOpcodeName(opcode));
+
 	// T482 (board B631): a confirmed cast released by keepcasting 0 is a
 	// success only if the success tail's OP_MemorizeSpell follows; any other
 	// packet first means StopCasting. SpellManager decides, before the arm.

@@ -329,6 +329,10 @@ PEER_SCENARIO_2=""
 case "$SCENARIO" in
     two_client_survive) PEER_SCENARIO="zone_in" ;;
     equip_observed)     PEER_SCENARIO="equip_actor"; PEER_SCENARIO_2="equip_actor_return" ;;
+    # B630 (issue #48): the caster runs the whole 4-leg chain, the observer
+    # targets the caster and holds it for the chain's duration. Co-location is
+    # the seed SQL, not a re-login.
+    cast_interrupt_chain) PEER_SCENARIO="cast_interrupt_observe" ;;
 esac
 if [ -n "$PEER_SCENARIO" ]; then
     if [ ! -f "$PEER_CONFIG" ]; then
@@ -336,10 +340,30 @@ if [ -n "$PEER_SCENARIO" ]; then
         exit 64
     fi
     lane_check "$PEER_CONFIG" || exit 65
+    # B630: the two characters' names, so each process targets the OTHER one.
+    # The caster (this script's CONFIG) targets the buddy; the observer (the
+    # PEER) targets the caster.
+    CASTER_CHAR="$(sed -n 's/.*"character"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG" | head -1)"
+    PEER_CHAR="$(sed -n 's/.*"character"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PEER_CONFIG" | head -1)"
+    # T391 staggered the partner by ~55 s so it arrives as a fresh spawn packet
+    # rather than inside the bulk zone-in list (two_client_survive). The B630
+    # chain needs the observer to already be a tracked peer when the caster
+    # starts leg A, so it only waits a few seconds.
+    PEER_STAGGER=55
+    [ "$PEER_SCENARIO" = "cast_interrupt_observe" ] && PEER_STAGGER=8
     (
-        sleep 55
-        "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO" --timeout "$TIMEOUT" \
-            --log-level="$LOG_LEVEL" > "$PEERLOG" 2>&1
+        sleep "$PEER_STAGGER"
+        case "$PEER_SCENARIO" in
+            cast_interrupt_observe)
+                "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO" --timeout "$TIMEOUT" \
+                    --scenario-cast-target "$CASTER_CHAR" \
+                    --log-level="$LOG_LEVEL" > "$PEERLOG" 2>&1
+                ;;
+            *)
+                "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO" --timeout "$TIMEOUT" \
+                    --log-level="$LOG_LEVEL" > "$PEERLOG" 2>&1
+                ;;
+        esac
         # T494: equip_observed's peer runs TWICE. eqemu does not broadcast a
         # weapon WearChange on an OP_MoveItem equip (Client::SlotConvert2,
         # zone/client.cpp:4128-4154, has no slotPrimary case, so the packet
@@ -359,9 +383,20 @@ if [ -n "$PEER_SCENARIO" ]; then
 fi
 
 # ---- 5. the run ------------------------------------------------------------
+# B630: the caster runs the whole 4-leg chain. It targets the OBSERVER
+# (Testbuddy), preps its own kit with GM commands, and the lane seeds the two
+# characters co-located (b630_seed.sql) so the observer is a live peer.
+if [ "$SCENARIO" = "cast_interrupt_chain" ]; then
+    # Auto-seed unless the operator already passed --seed-sql. Co-location is
+    # the whole point of the two-client lane.
+    [ -n "$SEED_SQL" ] || SEED_SQL="$REPO/scripts/scenario_configs/b630_seed.sql"
+    [ -f "$SEED_SQL" ] || { say "no B630 seed at $SEED_SQL"; exit 64; }
+    say "B630 chain: caster targets ${PEER_CHAR:-<peer>}, seed=$SEED_SQL"
+fi
 say "running --scenario ${SCENARIO} --timeout ${TIMEOUT}"
 "$BIN" -c "$CONFIG" --scenario "$SCENARIO" --timeout "$TIMEOUT" \
     --scenario-hold "$HOLD" --scenario-spell "$SPELL" \
+    --scenario-cast-target "${PEER_CHAR:-}" \
     --log-level="$LOG_LEVEL" > "$LOG" 2>&1 &
 CLIENT_PID=$!
 wait "$CLIENT_PID"
@@ -369,6 +404,15 @@ CODE=$?
 CLIENT_PID=""
 say "client exit ${CODE}"
 grep -E '\[SCENARIO\]|^SCENARIO ' "$LOG" | tail -20 >&2
+
+# B630: turn the two logs into the results table + the B760 packet-order table.
+# The exit code here is advisory (informational) -- the client's own code above
+# is the pass/fail for the lane; the analyzer records the assertions.
+if [ "$SCENARIO" = "cast_interrupt_chain" ]; then
+    say "analyzing caster+observer logs"
+    python3 "$REPO/scripts/scenario_configs/b630_analyze.py" \
+        "$LOG" "$PEERLOG" --out "$OUT" || say "analyzer reported FAIL(s) -- see $OUT/b630_results.txt"
+fi
 
 # ---- 6. teardown (trap) ----------------------------------------------------
 cleanup
