@@ -10220,9 +10220,9 @@ B712–B719 unused.
   constant local to `zone_entry.cpp` are gone. No AA ranks are parsed (option
   (b) was not chosen). Pinned by `tests/test_ninth_spell_gem.cpp` and
   `CommandProcessorTest.Cast_NinthGem_RefusedClientSideWithoutDispatching`.
-  Still owed: the live `rule_values` read, and a live check that a character
-  whose profile holds a ninth spell keeps it across a zone. This entry stays
-  open for the veto.
+  Live checks done by B851 (2026-09-19, issue #97): rule_values read
+  (default ruleset = true) and the ninth-spell-across-zone check; see
+  `refactor/B851_gem9_retention_live.md`.
 
 ## Added 2026-09-14 by T469 (the server's cast interrupt)
 
