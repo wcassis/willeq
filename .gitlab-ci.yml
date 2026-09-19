@@ -22,6 +22,8 @@ stages:
   - build
   - test
   - gate
+  # T503: last, and build-arm has `needs: []`, so it starts at once and NOTHING waits on it.
+  - arm
 
 variables:
   CMAKE_BUILD_TYPE: Release
@@ -102,6 +104,33 @@ build:
 #   - visual_gate      -- runs in the `gate` stage (it needs build-gles2/).
 #   - RDPServerFrameTest.UpdateFrameMultipleTimes -- documented intermittent
 #     race; re-run on its own with --repeat until-pass:3.
+# T503 -- ARM cross-build for the Orange Pi, on the SECOND runner
+# (dev-u24-arm-nfs: user-mode shell runner on the dev host, tag arm-nfs; it has
+# docker, the willeq-arm-noble image and the NFS share the Pi also mounts).
+# hermes-ext workers cannot see NFS but can ssh to the Pi, so the job publishes
+# to /mnt/projects/fable/ci-arm/<sha>/ and a worker runs it there over ssh.
+# Automatic on fable; on any other ref it is a MANUAL job that never blocks the
+# pipeline (`glab ci trigger build-arm`). Own final stage + `needs: []`: it starts
+# immediately and the x86 gate never waits for an ARM build.
+build-arm:
+  stage: arm
+  tags: [arm-nfs]
+  needs: []
+  dependencies: []
+  timeout: 2h
+  interruptible: true
+  variables:
+    GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble
+  rules:
+    - if: $CI_COMMIT_BRANCH == "fable"
+    - when: manual
+      allow_failure: true
+  script:
+    - set -o pipefail
+    - '[ "$(hostname)" = "dev-u24" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
+    - nice -n 10 scripts/build-arm-noble.sh 2>&1 | tail -n 40
+    - scripts/pi/publish_arm_build.sh "$CI_COMMIT_SHA" "${CI_COMMIT_BRANCH:-$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+
 test:
   extends: .goldfarm
   stage: test
