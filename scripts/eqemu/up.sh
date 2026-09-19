@@ -137,20 +137,19 @@ fi
 echo "== up.sh: starting zone ${ZONE_SHORTNAME} =="
 server_exec_bg "./bin/zone ${ZONE_SHORTNAME} > logs/zone_${ZONE_SHORTNAME}_h03.log 2>&1"
 
-# Zone doesn't open its TCP port; it opens a UDP EQ Network server port
-# assigned by world (7000 for the first zone process, per launcher_zones/
-# zones.ports config). Poll the zone log for the "Bootup" line instead of a
-# port check since UDP ports don't refuse a connect() the way TCP does.
-waited=0
-until server_exec "grep -q 'Zone bootup type' logs/zone_${ZONE_SHORTNAME}_h03.log" >/dev/null 2>&1; do
-    if [ "${waited}" -ge 60 ]; then
-        echo "TIMEOUT waiting for zone ${ZONE_SHORTNAME} to boot after 60s" >&2
-        server_exec "tail -40 logs/zone_${ZONE_SHORTNAME}_h03.log" || true
-        exit 1
-    fi
-    sleep 1
-    waited=$((waited + 1))
-done
-echo "zone ${ZONE_SHORTNAME}: booted (${waited}s)"
+# Zone doesn't open a TCP port; its EQ Network port is UDP, assigned by world
+# (7000 for the first zone process, per launcher_zones/zones.ports config), and
+# a UDP port does not refuse a connect() the way TCP does. So readiness is the
+# zone's own boot log, checked by eqemu_zone_booted (env.sh): the boot marker
+# line AND the process still alive, with `Zone Bootup failed` as a hard stop.
+# B504/issue #90: this used to be a bare `grep 'Zone bootup type'` — a single
+# string with no liveness check and nothing to pin it. If it times out here the
+# log tail below names the line the zone actually printed.
+if ! eqemu_zone_booted "${ZONE_SHORTNAME}" "logs/zone_${ZONE_SHORTNAME}_h03.log" 90; then
+    echo "zone ${ZONE_SHORTNAME}: FAILED to boot -- last 40 log lines:" >&2
+    server_exec "tail -40 logs/zone_${ZONE_SHORTNAME}_h03.log" 2>&1 || true
+    exit 1
+fi
+echo "zone ${ZONE_SHORTNAME}: booted"
 
 echo "== up.sh: stack is up (loginserver:${LOGIN_PORT} world:${WORLD_PORT} zone:${ZONE_SHORTNAME}) =="
