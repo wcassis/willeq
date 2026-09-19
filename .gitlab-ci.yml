@@ -66,9 +66,10 @@ workflow:
     - hostname; nproc; free -g | head -2
     # The client asset symlinks are gitignored (tests/test_data_paths.cpp), so
     # `git clean -ffdx` removes them before every job and they must be re-made
-    # here. They are NOT only the gate's business: ComprehensiveZoneTest and
-    # DoorLoadingUnitTest report every zone "SKIP (not found)" and then FAIL on
-    # `loadedCount > 0`, so without these three tests fail rather than skip.
+    # here. They are NOT only the gate's business: without them the asset
+    # suites lose their real input, and the `test` job (which exports
+    # WILLEQ_REQUIRE_ASSETS=1, B815) turns that absence into a hard FAIL
+    # instead of a silent SKIP.
     - ln -sfn /mnt/projects/EverQuestP1999 data/eq_client
     - ln -sfn /mnt/projects/EverQuest_ETC1 data/eqe1_client
 
@@ -134,6 +135,13 @@ build-arm:
 test:
   extends: .goldfarm
   stage: test
+  variables:
+    # B815: an absent asset root is a SKIP in a local run, but CI has the
+    # assets (before_script re-makes the gitignored symlinks) and must never
+    # skip them silently -- under this value the same condition is a hard
+    # FAIL. tests/asset_requirement.h implements the check;
+    # test_asset_requirement pins both outcomes.
+    WILLEQ_REQUIRE_ASSETS: "1"
   script:
     - nice -n 10 ctest --test-dir build -j $CTEST_JOBS --output-on-failure -E '(^visual_gate$|^RDPServerFrameTest\.UpdateFrameMultipleTimes$)' 2>&1 | tee ctest.log
     - nice -n 10 ctest --test-dir build -R '^RDPServerFrameTest\.UpdateFrameMultipleTimes$' --repeat until-pass:3 --output-on-failure 2>&1 | tee -a ctest.log
