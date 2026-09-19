@@ -1,31 +1,3 @@
-/**
- * T500 — the `entity_models` byte split, and the sharing it pays for.
- *
- * Leg A (the split). `RaceModelLoader::getMemoryStats()` tallied ten terms and
- * nothing ever checked that they added up to what the process actually holds.
- * The memory ledger (T491) charges every allocation made under
- * `MemoryScope(Category::EntityModels)` — and `ensureModelDataLoaded()` opens
- * exactly that scope — so the two numbers are measurable at the same instant
- * and the difference is a RESIDUAL, not an opinion. A split that does not
- * close is not a split.
- *
- * Leg B (the fix). `RaceModelData::textures` was a full `std::map` COPY of the
- * merged character-texture map, per model: the `TextureInfo` pixels were
- * shared through `shared_ptr` but the map — one red-black node plus a key per
- * entry — was duplicated at every one of the thirteen assignment sites. The
- * K-th model therefore cost a whole extra map for a texture set it shares with
- * the first. `MergedTextureMapIsNotCopiedPerModel` is the red: it fails at the
- * pre-fix tip and passes once the map is shared.
- *
- * Offline. EDT_NULL Irrlicht device, the shipped `data/willeq.db` and the real
- * client tree (`data/eq_client -> EverQuestP1999`); skips without either. No
- * server, no display, nothing drawn.
- *
- * Protocol (B819): the ledger-byte assertions here are run at -O0 AND -O2 —
- * they are different programs, and an optimiser that elides an allocation
- * measures itself rather than the ledger (T491's own lesson).
- */
-
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -44,6 +16,7 @@
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/graphics_archive_index.h"
 #endif
 
 namespace {
@@ -85,6 +58,15 @@ protected:
     // under test. (1 human, 2 barbarian, 3 erudite, 4 wood elf, 5 high elf,
     // 6 dark elf, 7 half elf, 8 dwarf, 9 troll, 10 ogre, 11 halfling, 12 gnome.)
     const std::vector<uint16_t> races_{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+    // B843: the race the ARCHIVE-INDEX path must serve. Its s3d_file is a
+    // NUMBERED global (config/race_models.json) with no global_chr.s3d
+    // alternative, so with graphicsArchiveIndex_ installed it resolves only
+    // through the index — exactly the way the orangepi preset (which sets
+    // deferredAssetLoading) drives every model load on the Pi.
+    static constexpr uint16_t kArchiveIndexRace = 42;  // Wolf (WOF) -> global6_chr.s3d
+
+    std::unique_ptr<EQT::Graphics::GraphicsArchiveIndex> archiveIndex_;
 
     void SetUp() override {
         ASSERT_TRUE(eqt::memory::enabled())
@@ -164,6 +146,267 @@ TEST_F(EntityModelSharingTest, TheSplitClosesAgainstTheLedger) {
         << " of the " << ledgerDelta << " bytes the ledger charged";
 }
 
+// ---------------------------------------------------------------------------
+// B843 — a shared TextureInfo block is reported ONCE, with every claimant
+// named, and is NEVER added into a category's total that does not own it.
+//
+// T500 Leg C [measured on the Pi, qeynos2 + befallen]: with
+// graphicsArchiveIndex_ installed (the orangepi preset builds it in
+// loadZoneStep5_Assets and installs it via setGraphicsArchiveIndex), the
+// `[modelmem]` tally at zone_load_complete read 49,778,752 against
+// 22,146,989 live requested bytes in the category — a 125 % over-count —
+// while the same split closes to -0.9 % on x86. The difference is the
+// texture pixels: the x86 offline path loads every model under
+// ensureModelDataLoaded()'s EntityModels scope, so every TextureInfo it
+// holds is entity-owned; on the Pi the same loader maps hold pixels that
+// were ALLOCATED under other scopes (tex_global 6.95 MB + tex_zone 2.35 MB +
+// tex_otherchr 9.37 MB, [measured, T500 Leg C]). The ledger's own total was
+// right in both cases — the TALLY claimed bytes it did not own. Will's ruling
+// (docs/decisions.md 2026-09-17, memory rulings, item 3): a shared block is
+// reported ONCE with every claimant listed (`X: category1, category2, ...`),
+// never added into each claimant's total.
+//
+// The scenario, reproduced offline the way production drives it:
+//   1. build + install the archive index (loadZoneStep5_Assets does exactly
+//      this for the orangepi preset: buildIndex, then setGraphicsArchiveIndex)
+//      — with it set, getMergedTextures() skips its eager numbered-global
+//      load and loadModelFromGlobalChr() refuses, so model loads are
+//      archive-index-driven, like on the Pi;
+//   2. loadNumberedGlobalModels() under a ZoneParse scope: T500 Leg B left
+//      this call retaining ONLY the numbered-global TextureInfo pixels
+//      (the characters go out of scope), so numberedGlobalTextures_ holds
+//      pixels the EntityModels scope never allocated — the Pi's foreign-scope
+//      tex_* maps, same shape;
+//   3. ensureModelDataLoaded() for a numbered-global race (Wolf, 42,
+//      global6_chr.s3d per config/race_models.json): its own allocations
+//      charge the EntityModels scope (loadZoneStep8a_BaseModelPrep's scope),
+//      and its texture map holds shared views of the step-2 pixels.
+//
+// RED at the pre-fix tip [measured this run]: the tally's entity_models
+// total (15,261,253, incl. the 9,781,900 B tex_numbered the ZoneParse scope
+// allocated) exceeded the ledger's live requested (5,193,855) by 193.83 %.
+// GREEN: those pixels are left out of modelMemTotal() and reported ONCE in
+// sharedTextureBytes with the owner and every claimant named.
+// ---------------------------------------------------------------------------
+TEST_F(EntityModelSharingTest, B843SharedPixelsAreNotClaimedByEntityModels) {
+    const uint64_t ledgerBefore = ledgerLive();
+    const size_t totalBefore =
+        EQT::Graphics::RaceModelLoader::modelMemTotal(loader_->getMemoryStats());
+
+    // Step 1: the archive index, built and installed the way
+    // loadZoneStep5_Assets does it for the orangepi preset.
+    archiveIndex_ = std::make_unique<EQT::Graphics::GraphicsArchiveIndex>();
+    ASSERT_TRUE(archiveIndex_->buildIndex(
+                    clientPath(),
+                    EQT::Graphics::ConstrainedRendererConfig::fromPreset(
+                        EQT::Graphics::ConstrainedRenderingPreset::OrangePi)
+                        .lazyPfsLoading))
+        << "the archive index must build from the real client tree";
+    loader_->setGraphicsArchiveIndex(archiveIndex_.get());
+
+    // Step 1b: the numbered-global characters, parsed under a scope that is
+    // NOT EntityModels (the Pi's equivalent: the render thread's ZoneParse
+    // scope, loadZoneStep2 — the renderer parses the zone Chr files and the
+    // numbered globals they name before the entity-prep thread ever runs).
+    // T500 Leg B left this call retaining ONLY the pixels — the characters go
+    // out of scope — so numberedGlobalTextures_ holds pixels the EntityModels
+    // scope never allocated: the Pi's foreign-scope tex_* maps, same shape.
+    {
+        eqt::memory::MemoryScope zoneScope(eqt::memory::Category::ZoneParse);
+        ASSERT_TRUE(loader_->loadNumberedGlobalModels())
+            << "global2-7_chr.s3d must yield texture pixels";
+    }
+    {
+        const auto s1b = loader_->getMemoryStats();
+        // Which ledger category owns step 1b's bytes?
+        std::cout << "[diag ledger all-categories after 1b]\n";
+        for (size_t i = 0; i < eqt::memory::kCategoryCount; ++i) {
+            const auto& c = eqt::memory::stats(eqt::memory::Category(i));
+            if (c.liveRequestedBytes > 0)
+                std::cout << "   " << eqt::memory::kCategoryNames[i]
+                          << " live_req=" << c.liveRequestedBytes
+                          << " blocks=" << c.liveBlocks << "\n";
+        }
+        std::cout << "[diag after 1b] shared_blocks=" << s1b.sharedTextureBytes.size()
+                  << " numberedHeld=" << s1b.numberedTextureBytesHeld
+                  << " ledgerLive=" << ledgerLive()
+                  << " ledgerDelta1b=" << (ledgerLive() - ledgerBefore)
+                  << " totalDelta1b="
+                  << (EQT::Graphics::RaceModelLoader::modelMemTotal(s1b) - totalBefore)
+                  << "\n";
+        for (const auto& e : s1b.sharedTextureBytes)
+            std::cout << "   shared " << e.bytes << " owner=" << e.owner
+                      << " claimants=[" << e.claimants << "]\n";
+    }
+
+    // Step 2: the entity base — the base races and the player's own model,
+    // under the EntityModels scope (loadZoneStep8a_BaseModelPrep). The base
+    // races resolve through global_chr.s3d (they are not in
+    // config/race_models.json, so the index never claims them); the numbered
+    // globals the index does claim were already parsed in step 1b, so their
+    // shared pixel views stay owned by ZoneParse.
+    // The delta is measured ACROSS THIS STEP ONLY: step 1b's allocations
+    // (their map nodes, the shared_ptr control blocks) were charged to
+    // ZoneParse and must not land in the EntityModels delta.
+    const uint64_t ledgerMid = ledgerLive();
+    const auto statsMid = loader_->getMemoryStats();
+    const size_t totalMid = EQT::Graphics::RaceModelLoader::modelMemTotal(statsMid);
+    {
+        eqt::memory::MemoryScope entityScope(eqt::memory::Category::EntityModels);
+        ASSERT_GT(loadAll(), 0u) << "the base races must load";
+        // B843 bisect: base races only (global_chr, EntityModels) -- how far
+        // off the ledger are they, before the archive-index race is added?
+        {
+            const uint64_t baseLedger = ledgerLive();
+            const auto baseStats = loader_->getMemoryStats();
+            std::cout << "[diag base-races only] ledgerDelta="
+                      << (baseLedger - ledgerMid) << " statsDelta="
+                      << (EQT::Graphics::RaceModelLoader::modelMemTotal(baseStats) - totalMid)
+                      << " loaderTexMaps=" << baseStats.loaderTextureMapBytes
+                      << " texObjects=" << baseStats.textureObjectBytes
+                      << " mergedMap=" << baseStats.mergedTextureMapBytes << "\n";
+        }
+        ASSERT_TRUE(loader_->ensureModelDataLoaded(kArchiveIndexRace, 0))
+            << "race " << kArchiveIndexRace << " must load";
+    }
+    {
+        const auto s2 = loader_->getMemoryStats();
+        struct T { const char* name; size_t v; };
+        const T termsMid[] = {
+            {"tex_global", statsMid.globalTextureBytes},
+            {"tex_numbered", statsMid.numberedTextureBytes},
+            {"tex_armor", statsMid.armorTextureBytes},
+            {"tex_zone", statsMid.zoneTextureBytes},
+            {"tex_otherchr", statsMid.otherChrTextureBytes},
+            {"model_geometry", statsMid.modelGeometryBytes},
+            {"model_skeleton", statsMid.modelSkeletonBytes},
+            {"char_models", statsMid.characterModelBytes},
+            {"merged_tex_map", statsMid.mergedTextureMapBytes},
+            {"src_char_global", statsMid.sourceCharacterGlobalBytes},
+            {"src_char_numbered", statsMid.sourceCharacterNumberedBytes},
+            {"src_char_zone", statsMid.sourceCharacterZoneBytes},
+            {"src_char_other", statsMid.sourceCharacterOtherBytes},
+            {"src_skel_global", statsMid.sourceSkeletonGlobalBytes},
+            {"src_skel_numbered", statsMid.sourceSkeletonNumberedBytes},
+            {"src_skel_zone", statsMid.sourceSkeletonZoneBytes},
+            {"src_skel_other", statsMid.sourceSkeletonOtherBytes},
+            {"material_lists", statsMid.materialListBytes},
+            {"tex_objects", statsMid.textureObjectBytes},
+            {"loader_tex_maps", statsMid.loaderTextureMapBytes},
+            {"skel_containers", statsMid.skeletonContainerBytes},
+            {"dup_geometry", statsMid.duplicateGeometryBytes},
+        };
+        const T termsAfter[] = {
+            {"tex_global", s2.globalTextureBytes},
+            {"tex_numbered", s2.numberedTextureBytes},
+            {"tex_armor", s2.armorTextureBytes},
+            {"tex_zone", s2.zoneTextureBytes},
+            {"tex_otherchr", s2.otherChrTextureBytes},
+            {"model_geometry", s2.modelGeometryBytes},
+            {"model_skeleton", s2.modelSkeletonBytes},
+            {"char_models", s2.characterModelBytes},
+            {"merged_tex_map", s2.mergedTextureMapBytes},
+            {"src_char_global", s2.sourceCharacterGlobalBytes},
+            {"src_char_numbered", s2.sourceCharacterNumberedBytes},
+            {"src_char_zone", s2.sourceCharacterZoneBytes},
+            {"src_char_other", s2.sourceCharacterOtherBytes},
+            {"src_skel_global", s2.sourceSkeletonGlobalBytes},
+            {"src_skel_numbered", s2.sourceSkeletonNumberedBytes},
+            {"src_skel_zone", s2.sourceSkeletonZoneBytes},
+            {"src_skel_other", s2.sourceSkeletonOtherBytes},
+            {"material_lists", s2.materialListBytes},
+            {"tex_objects", s2.textureObjectBytes},
+            {"loader_tex_maps", s2.loaderTextureMapBytes},
+            {"skel_containers", s2.skeletonContainerBytes},
+            {"dup_geometry", s2.duplicateGeometryBytes},
+        };
+        std::cout << "[diag terms mid->after2]\n";
+        for (size_t i = 0; i < sizeof(termsMid) / sizeof(termsMid[0]); ++i) {
+            const long d =
+                static_cast<long>(termsAfter[i].v) - static_cast<long>(termsMid[i].v);
+            if (d != 0)
+                std::cout << "   " << termsAfter[i].name << " delta=" << d
+                          << " after2=" << termsAfter[i].v << "\n";
+        }
+        std::cout << "[diag after 2] shared_blocks=" << s2.sharedTextureBytes.size()
+                  << " numberedHeld=" << s2.numberedTextureBytesHeld
+                  << " numberedOwned=" << s2.numberedTextureBytes
+                  << " loaderTexMaps=" << s2.loaderTextureMapBytes
+                  << " texObjects=" << s2.textureObjectBytes
+                  << " mergedMap=" << s2.mergedTextureMapBytes
+                  << " ledgerLive=" << ledgerLive()
+                  << " ledgerDeltaStep2=" << (ledgerLive() - ledgerMid)
+                  << " totalDeltaStep2="
+                  << (EQT::Graphics::RaceModelLoader::modelMemTotal(s2) - totalMid)
+                  << " total=" << EQT::Graphics::RaceModelLoader::modelMemTotal(s2) << "\n";
+        for (const auto& e : s2.sharedTextureBytes)
+            std::cout << "   shared " << e.bytes << " owner=" << e.owner
+                      << " claimants=[" << e.claimants << "]\n";
+    }
+    const auto s = loader_->getMemoryStats();
+    const uint64_t ledgerAfter = ledgerLive();
+    const size_t totalAfter = EQT::Graphics::RaceModelLoader::modelMemTotal(s);
+
+    // (g) invariant: each owned tex_* term is a SUBDIVISION of the raw held
+    // total of its map (owned + shared, per map), never more. This is what
+    // the (g) fields are for -- a test asserts the split against the bytes
+    // actually held rather than re-summing the maps.
+    EXPECT_LE(s.numberedTextureBytes, s.numberedTextureBytesHeld)
+        << "the owned numbered term (" << s.numberedTextureBytes
+        << ") exceeds the numbered map's held total ("
+        << s.numberedTextureBytesHeld << "): not a subdivision";
+    EXPECT_LE(s.zoneTextureBytes, s.zoneCharacterTexturesHeld)
+        << "the owned zone term (" << s.zoneTextureBytes
+        << ") exceeds the zone map's held total (" << s.zoneCharacterTexturesHeld
+        << "): not a subdivision";
+
+    // The evidence, printed on every run.
+    std::cout << loader_->modelMemLogLine("test_b843") << "\n";
+
+    // The defect's subject must be in the picture: a shared block the
+    // EntityModels scope does NOT own, named once with its owner and every
+    // claimant (Will's ruling, docs/decisions.md 2026-09-17 item 3).
+    bool sawForeignOwnedBlock = false;
+    uint64_t sharedTotal = 0;
+    for (const auto& e : s.sharedTextureBytes) {
+        sharedTotal += e.bytes;
+        if (e.bytes > 0 && std::string(e.owner) != "entity_models") {
+            sawForeignOwnedBlock = true;
+        }
+    }
+    EXPECT_TRUE(sawForeignOwnedBlock)
+        << "the ZoneParse-owned numbered-global pixels were not reported as a "
+           "shared block: the scenario did not reproduce the Pi condition "
+           "(shared_total=" << sharedTotal << ")";
+
+    // The acceptance (AC1): the entity_models total the tally claims must not
+    // exceed the ledger's live REQUESTED bytes for Category::EntityModels by
+    // more than the existing test's 2 % tolerance -- the SAME comparison the
+    // [modelmem] line makes (its `residual_pct`), and the SAME one T500 Leg C
+    // measured on the Pi (tally 49,778,752 vs 22,146,989 live requested,
+    // +125 %). Pre-fix, on x86, this scenario's tally claimed the whole
+    // ZoneParse-owned block map (pixels AND their map nodes / TextureInfo
+    // objects) as entity_models: the absolute tally read
+    // 31,610,137 against 30,761,219 live requested, +2.76 % [measured, WIP-tip
+    // 0862527c]. Post-fix the block's pixels AND its storage sit in
+    // sharedTextureBytes, out of the total, and the split closes like it does
+    // on the Pi after the fix (+1.88 %; see the green log below).
+    const double ledgerAbs = static_cast<double>(ledgerAfter);
+    const double statsAbs = static_cast<double>(totalAfter);
+    const double overPct =
+        ledgerAbs ? 100.0 * (statsAbs - ledgerAbs) / ledgerAbs : 0.0;
+    std::cout << "[modelmem-b843] tally_abs=" << totalAfter
+              << " ledger_abs=" << ledgerAfter
+              << " over_pct=" << overPct << " shared_pixels=" << sharedTotal << "\n";
+    ASSERT_GT(ledgerAbs, 0.0)
+        << "the ledger holds no live entity_models bytes for the archive-index load";
+    EXPECT_LT(overPct, 2.0)
+        << "the entity_models tally over-claims the archive-index load: it "
+           "claims " << totalAfter << " against " << ledgerAfter
+           << " live requested ledger bytes (+" << overPct
+           << "%) — shared blocks report " << sharedTotal << " B of pixels";
+}
+
 // The three new terms are real, not zero-valued placeholders.
 TEST_F(EntityModelSharingTest, TheThreeNewTermsAreMeasured) {
     ASSERT_GT(loadAll(), 0u);
@@ -235,6 +478,7 @@ TEST_F(EntityModelSharingTest, NumberedGlobalCharactersAreNotRetainedForTheirTex
 // TEXTURE path must not pull in a single numbered-global CharacterModel. This
 // is the one that fails loudly if someone puts the eager character load back.
 TEST_F(EntityModelSharingTest, TheTexturePathAloneRetainsNoNumberedGlobalCharacter) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);
     ASSERT_TRUE(loader_->loadNumberedGlobalModels());
     const auto s = loader_->getMemoryStats();
     EXPECT_GT(s.numberedTextureBytes, 0u) << "the textures are the point of the call";

@@ -390,12 +390,17 @@ public:
 
         // TextureInfo::rawDataBytes() is the PIXELS only; the object, its name
         // and its frames vector are not in it. Deduplicated by pointer.
+        // B843: counts only objects whose ownerCategory IS entity_models;
+        // foreign-owned objects are in sharedTextureBytes[].storageBytes.
         size_t textureObjectBytes = 0;
 
         // The loader's OWN texture maps (globalTextures_, numberedGlobalTextures_,
         // armorTextureCache_, zoneTextures_, otherChrCaches_[*].textures and
         // cachedMergedTextures_): nodes and keys, same arithmetic as
         // mergedTextureMapBytes, which covers only the per-MODEL copies.
+        // B843: counts only entries whose ownerCategory IS entity_models;
+        // foreign-owned entries' nodes + keys are in
+        // sharedTextureBytes[].storageBytes.
         size_t loaderTextureMapBytes = 0;
 
         // (e) T500 Leg A, third pass. calcSkeletonBytes() charges the KEYFRAME
@@ -410,6 +415,35 @@ public:
         // Vector capacity the per-element sums above do not reach
         // (CharacterModel::parts, and excess capacity in the bone vectors).
         size_t containerCapacityBytes = 0;
+
+        // (f) B843 (Will's ruling, docs/decisions.md 2026-09-17 item 3): a
+        // TextureInfo is shared by shared_ptr, and the block it names -- its
+        // PIXELS plus the map node + key that hold it and the TextureInfo
+        // object itself -- was allocated under whatever MemoryScope the load
+        // path that first parsed its archive was running in. On the Pi that is
+        // ZoneParse for zoneTextures_ (the render thread's loadZoneModels
+        // call, inside loadZoneStep1_S3D) and the entity-prep thread's scope
+        // for the zone _chr.s3d caches, not EntityModels. The five tex_* terms
+        // above therefore count only bytes whose ownerCategory IS
+        // entity_models; the rest are reported ONCE here, deduplicated by
+        // pointer, never added into this category's sum. The shared_ptr
+        // control block, like the object it guards, lives in the allocator's
+        // block and is intentionally outside this tally (the T500 (d) baseline
+        // never charged it), so it is NOT part of storageBytes.
+        // One entry per distinct shared TextureInfo held by a loader map.
+        struct SharedTextureBytes {
+            uint64_t bytes = 0;                 // rawDataBytes(), counted once
+            uint64_t storageBytes = 0;          // map node+key (per occurrence) + object (once)
+            const char* owner = "unknown";      // ledger category that allocated the block
+            std::string claimants;              // comma-separated map names holding it
+        };
+        std::vector<SharedTextureBytes> sharedTextureBytes;
+
+        // (g) B843: the RAW held totals the tex_* terms are a SUBDIVISION of
+        // (owned + shared, per map). Exposed so a test can assert the split
+        // against the bytes actually held rather than re-summing the maps.
+        uint64_t zoneCharacterTexturesHeld = 0;      // sum of zoneTextures_ rawDataBytes
+        uint64_t numberedTextureBytesHeld = 0;       // sum of numberedGlobalTextures_
     };
     MemoryStats getMemoryStats() const;
 
@@ -417,6 +451,13 @@ public:
     // RaceModelLoader claims to hold. The bound for Leg B's red, and the left
     // side of the split-closes check against
     // eqt::memory::stats(Category::EntityModels).liveBytes.
+    // B843: the five tex_* terms count ONLY pixels whose owning ledger
+    // category is EntityModels (TextureInfo::ownerCategory). Pixels the
+    // loader holds but that were allocated under another category (the Pi's
+    // zoneTextures_ under ZoneParse, the zone _chr.s3d caches under the
+    // entity-prep scope) are excluded here and reported ONCE, with every
+    // claimant named, in MemoryStats::sharedTextureBytes -- Will's ruling,
+    // docs/decisions.md 2026-09-17 item 3.
     static size_t modelMemTotal(const MemoryStats& s);
 
     // T500 Leg A: the `[modelmem] ...` line. Emitted once per zone-in at
@@ -424,6 +465,15 @@ public:
     // split test. Carries the ledger's EntityModels live/peak read at the SAME
     // instant, so total-vs-ledger is one line, not two greps.
     std::string modelMemLogLine(const std::string& point) const;
+
+    // B843: the `[modelmem-shared] ...` lines, in Will's ruling form
+    // (`X: owner_category, [claimant, claimant, ...]` per distinct block,
+    // docs/decisions.md 2026-09-17 item 3). One line per distinct TextureInfo
+    // whose pixels this loader holds but whose ALLOCATING ledger category is
+    // not entity_models -- reported once, never added into the entity_models
+    // total. Empty string when there is nothing shared, so the call site logs
+    // nothing.
+    std::string modelMemSharedLines(const std::string& point) const;
 
     // P08d: composite sheet hit/miss counters, tracked across all composite-ALLOWED mesh
     // build attempts (getAnimatedMeshForRace / getAnimatedMeshWithAppearance) since the

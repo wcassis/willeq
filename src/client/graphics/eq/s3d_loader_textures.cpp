@@ -4,6 +4,7 @@
 // Bodies are contiguous line ranges of that file, moved verbatim.
 
 #include "client/graphics/eq/s3d_loader.h"
+#include "client/core/memory_ledger.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <iostream>
@@ -110,6 +111,12 @@ bool S3DLoader::loadCharacterTextures(PfsArchive& archive) {
             tex->data = std::move(data);
             tex->width = 0;
             tex->height = 0;
+            // B843: the pixels were just allocated on this thread, under this
+            // thread's current ledger scope -- that scope is the ONLY owner
+            // of these bytes. Record it so a tally that also holds `tex`
+            // (shared_ptr) knows whether to count the pixels or report them
+            // as a shared block owned by somebody else.
+            tex->ownerCategory = static_cast<uint8_t>(eqt::memory::currentCategory());
 
             // Store with lowercase key for case-insensitive lookup
             std::string lowerName = texName;

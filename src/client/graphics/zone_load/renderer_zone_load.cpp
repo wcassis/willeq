@@ -991,6 +991,13 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
     if (ctx_.entityRenderer) {
         if (auto* rml = ctx_.entityRenderer->getRaceModelLoader()) {
             LOG_INFO(MOD_GRAPHICS, "{}", rml->modelMemLogLine("zone_load_complete"));
+            // B843: the shared texture blocks the EntityModels tally does not
+            // own, in Will's ruling form (one line, every claimant named).
+            // Empty on x86 offline runs where every pixel is EntityModels'.
+            const std::string sharedLines = rml->modelMemSharedLines("zone_load_complete");
+            if (!sharedLines.empty()) {
+                LOG_INFO(MOD_GRAPHICS, "{}", sharedLines);
+            }
         }
     }
 

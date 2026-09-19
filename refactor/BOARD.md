@@ -11871,7 +11871,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   whether its win is a byte NEVER ALLOCATED or a byte freed before the peak;
   only those two move RSS. `malloc_trim()` has never been tried here and is the
   obvious next question.
-- **B843** (A) **The `[modelmem]` tally over-counts `entity_models` by 125 % on → issue #96
+~~- **B843** (A) **The `[modelmem]` tally over-counts `entity_models` by 125 % on → issue #96
   the Pi and closes to -0.9 % on x86.** [measured T500 Leg C,
   `review/T500/pi/raw/qeynos2_T500after/modelmem.txt`] On the Pi at
   `zone_load_complete` the tally is 49,778,752 B against 22,146,989 B of live
@@ -11886,7 +11886,23 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   Do NOT "fix" it by changing the ledger's categories without Will.
   **RULED by Will 2026-09-17 (`docs/decisions.md`, memory rulings, item 3):** a
   shared block is reported ONCE with every claimant listed (`X: cat1, cat2`),
-  never added into each claimant's total. The implementation is still open.
+  never added into each claimant's total.~~ **STRUCK for x86 by B843 (this
+  branch):** the tally now keys on `TextureInfo::ownerCategory` (stamped by the
+  load path that parsed each archive under its own `MemoryScope`). The five
+  `tex_*` terms count only pixels whose owner IS `entity_models`; every
+  foreign-owned block -- its pixels PLUS the map node + key + `TextureInfo`
+  object that hold it (the `shared_ptr` control block stays outside this
+  tally, as the T500 (d) baseline never charged it) -- is pulled out of the
+  `entity_models` sum and reported ONCE, with every claimant named, on a
+  `[modelmem-shared]` line (`X (pixels P + storage S): owner, [claimants]`). `modelMemTotal()` excludes
+  `sharedTextureBytes`, so a shared block is never added into a claimant's
+  total. The x86 offline reproduction (`tests/test_entity_model_sharing.cpp`,
+  `B843SharedPixelsAreNotClaimedByEntityModels`, archive-index path) was +2.76 %
+  over the ledger's live requested bytes before this and closes to +1.88 %
+  after (within the existing test's 2 % bound); the
+  `TheSplitClosesAgainstTheLedger` case stays green at -0.88 %. **Pi
+  confirmation is owed to the orchestrator** (Lane note: offline x86; the Pi
+  confirming run is the orchestrator's, not this worker's).
 - **B844** (P) **The orangepi preset never had B837's defect, so T500's Leg B
   win does not reach the Pi.** [measured T500 Leg C] `getMergedTextures()`
   guards its numbered-global load with `!graphicsArchiveIndex_`, and the Pi
