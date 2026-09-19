@@ -1,0 +1,40 @@
+# B824 RED output (pre-deletion tip ac34acab)
+
+The Ratchet (scripts/refactor/check_item_model_map.py) was run against the
+PRE-deletion tree. It reports 21 findings and exits 1. This is the RED that
+proves the item-to-model JSON map was present and its identifiers were live
+in the source (the member, loadItemModelMapping, loadItemModelMappingStatic,
+getMappingCount, MemoryStats::mappingCount, adoptIndex()'s map argument, and
+the never-referenced IrrlichtRenderer copy).
+
+The C++ pin (tests/test_item_model_mapping.cpp) was also built and run
+against the PRE-deletion tree and PASSED: the db-only path already worked,
+so the RED that makes the deletion provable (rather than asserted) is the
+ratchet, exactly as B840's WriteOnlyFields was.
+
+$ python3 scripts/refactor/check_item_model_map.py --repo .
+(exit 1)
+
+--- findings (verbatim) ---
+DELETED-REAPPEARED src/client/graphics/entity_equipment.cpp:38: int mappingCount = equipmentModelLoader_->loadItemModelMapping(
+DELETED-REAPPEARED src/client/graphics/eq/equipment_model_loader.cpp:122: int EquipmentModelLoader::loadItemModelMapping(const std::string& jsonPath) {
+DELETED-REAPPEARED src/client/graphics/eq/equipment_model_loader.cpp:138: itemToModelMap_.clear();
+DELETED-REAPPEARED src/client/graphics/eq/equipment_model_loader.cpp:148: itemToModelMap_[itemId] = modelId;
+DELETED-REAPPEARED src/client/graphics/eq/equipment_model_loader.cpp:151: LOG_INFO(MOD_GRAPHICS, "", itemToModelMap_.size());
+DELETED-REAPPEARED src/client/graphics/eq/equipment_model_loader.cpp:152: return static_cast<int>(itemToModelMap_.size());
+DELETED-REAPPEARED src/client/graphics/eq/equipment_model_loader.cpp:716: stats.mappingCount = itemToModelMap_.size();
+DELETED-REAPPEARED src/client/graphics/eq/equipment_model_loader.cpp:744: + itemToModelMap_.size() * 16;
+DELETED-REAPPEARED src/client/graphics/eq/equipment_model_loader.cpp:752: std::map<uint32_t, int>&& itemToModelMap)
+DELETED-REAPPEARED src/client/graphics/eq/equipment_model_loader.cpp:756: itemToModelMap_ = std::move(itemToModelMap);
+DELETED-REAPPEARED src/client/graphics/eq/equipment_model_loader.cpp:759: equipmentModelIndex_.size(), textureIndex_.size(), itemToModelMap_.size());
+DELETED-REAPPEARED src/client/graphics/eq/equipment_model_loader.cpp:867: int EquipmentModelLoader::loadItemModelMappingStatic(const std::string& jsonPath,
+DELETED-REAPPEARED include/client/graphics/irrlicht_renderer.h:971: std::map<uint32_t, int> itemToModelMap_;
+DELETED-REAPPEARED include/client/graphics/eq/equipment_model_loader.h:77: int loadItemModelMapping(const std::string& jsonPath);
+DELETED-REAPPEARED include/client/graphics/eq/equipment_model_loader.h:127: size_t getMappingCount() const { return itemToModelMap_.size(); }
+DELETED-REAPPEARED include/client/graphics/eq/equipment_model_loader.h:127: size_t getMappingCount() const { return itemToModelMap_.size(); }
+DELETED-REAPPEARED include/client/graphics/eq/equipment_model_loader.h:187: std::map<uint32_t, int>&& itemToModelMap);
+DELETED-REAPPEARED include/client/graphics/eq/equipment_model_loader.h:199: static int loadItemModelMappingStatic(const std::string& jsonPath,
+DELETED-REAPPEARED include/client/graphics/eq/equipment_model_loader.h:237: std::map<uint32_t, int> itemToModelMap_;
+DELETED-REAPPEARED tools/model_viewer/model_viewer_startup.cpp:397: int mappingCount = equipmentModelLoader->loadItemModelMapping(mappingPath);
+DELETED-REAPPEARED tools/hwcaps/ui_inventory_capture.cpp:270: equipmentModelLoader.loadItemModelMapping("");
+ItemModelMapDeletion: 21 failure(s). The B824 deletion (db-only item->model lookup) has regressed.

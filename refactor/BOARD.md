@@ -11740,7 +11740,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   nothing else). `ItemInstance::idfileModel` now parses it, the feeder uses it,
   and the item-id lookup is gone from all nine render sites -- `equipment[]` is
   uniformly a MATERIAL / IT number.
-- **B824** (C) **`EquipmentModelLoader::loadItemModelMapping()` builds a map → issue #86
+~~- **B824** (C) **`EquipmentModelLoader::loadItemModelMapping()` builds a map → issue #86
   nothing reads.** [measured] It parses all 3,661 rows of
   `data/item_models.json` into `itemToModelMap_` at load, and
   `getModelIdForItem()` -- the only thing that would want it -- queries
@@ -11750,7 +11750,17 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   only stopped it THROWING on a non-digit key (`std::stoul`), which is what a
   `"_provenance"` header would have done to it. Delete the map, or delete the
   query and read the map -- one of the two, and it is a decision about which
-  source of truth the tools get. Found by T498.
+  source of truth the tools get. Found by T498.~~
+  **STRUCK by the B824 unit (`task/kb-b824-item-model-map-dead`, kanban
+  t_20a88e62, 2026-09-19):** the map is deleted and the db table confirmed the
+  live lookup. `getModelIdForItem()` is now the only item->model route,
+  answering from `WilleqDatabase::getItemModel()` with no JSON parsed at
+  runtime; `data/item_models.json` stays (startup `checkFile`, input to
+  willeq.db). The deletion is pinned twice: `test_item_model_mapping` (db
+  resolves an item with no JSON map loaded) and the `ItemModelMapDeletion`
+  hygiene test (`scripts/refactor/check_item_model_map.py`) ratchets the map's
+  identifiers out of the tree and the db query in. The source-of-truth call
+  (db over JSON map) was Will's (board B824, 2026-09-18).
 - **B825** (C) **The JSON covers 3,661 of peq's 117,944 items, and an → issue #87
   uncovered one used to fall silently to `modelId = itemId`.** [measured]
   115,185 server items have no row. Every render site's fallback was `if
