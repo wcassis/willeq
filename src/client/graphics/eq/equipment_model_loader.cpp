@@ -7,8 +7,6 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "common/logging.h"
 #include "client/core/memory_ledger.h"
-#include <json/json.h>
-#include <fstream>
 #include <algorithm>
 #include <iostream>
 #include <regex>
@@ -117,39 +115,6 @@ void EquipmentModelLoader::setClientPath(const std::string& path) {
     if (!clientPath_.empty() && clientPath_.back() != '/') {
         clientPath_ += '/';
     }
-}
-
-int EquipmentModelLoader::loadItemModelMapping(const std::string& jsonPath) {
-    std::ifstream file(jsonPath);
-    if (!file.is_open()) {
-        LOG_ERROR(MOD_GRAPHICS, "EquipmentModelLoader: Failed to open item mapping file: {}", jsonPath);
-        return -1;
-    }
-
-    Json::Value root;
-    Json::CharReaderBuilder builder;
-    std::string errors;
-
-    if (!Json::parseFromStream(builder, file, &root, &errors)) {
-        LOG_ERROR(MOD_GRAPHICS, "EquipmentModelLoader: Failed to parse item mapping JSON: {}", errors);
-        return -1;
-    }
-
-    itemToModelMap_.clear();
-
-    // Parse JSON object: { "itemId": modelId, ... }
-    for (const auto& key : root.getMemberNames()) {
-        // T498: skip non-numeric keys. std::stoul THROWS on one, so a
-        // "_provenance" header (the convention B826 proposes) would have taken
-        // the client down at startup.
-        if (key.empty() || key.find_first_not_of("0123456789") != std::string::npos) continue;
-        uint32_t itemId = std::stoul(key);
-        int modelId = root[key].asInt();
-        itemToModelMap_[itemId] = modelId;
-    }
-
-    LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: Loaded {} item-to-model mappings", itemToModelMap_.size());
-    return static_cast<int>(itemToModelMap_.size());
 }
 
 int EquipmentModelLoader::getModelIdForItem(uint32_t databaseItemId) const {
@@ -713,7 +678,6 @@ EquipmentModelLoader::MemoryStats EquipmentModelLoader::getMemoryStats() const {
     stats.indexedModelCount = equipmentModelIndex_.size();
     stats.loadedGeometryCount = equipmentModels_.size();
     stats.meshCacheCount = meshCache_.size();
-    stats.mappingCount = itemToModelMap_.size();
 
     // Count raw texture bytes in on-demand loaded textures
     for (const auto& [name, tex] : textures_) {
@@ -740,23 +704,20 @@ EquipmentModelLoader::MemoryStats EquipmentModelLoader::getMemoryStats() const {
 
     // Index data overhead
     stats.indexBytes = equipmentModelIndex_.size() * 128  // ~128 bytes per index entry (strings)
-                     + textureIndex_.size() * 96           // ~96 bytes per texture ref
-                     + itemToModelMap_.size() * 16;        // 16 bytes per mapping entry
+                     + textureIndex_.size() * 96;          // ~96 bytes per texture ref
 
     return stats;
 }
 
 void EquipmentModelLoader::adoptIndex(
     std::map<int, EquipmentModelRef>&& modelIndex,
-    std::map<std::string, EquipmentTextureRef>&& textureIndex,
-    std::map<uint32_t, int>&& itemToModelMap)
+    std::map<std::string, EquipmentTextureRef>&& textureIndex)
 {
     equipmentModelIndex_ = std::move(modelIndex);
     textureIndex_ = std::move(textureIndex);
-    itemToModelMap_ = std::move(itemToModelMap);
     archivesLoaded_ = true;
-    LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: adopted pre-built index ({} models, {} textures, {} mappings)",
-             equipmentModelIndex_.size(), textureIndex_.size(), itemToModelMap_.size());
+    LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: adopted pre-built index ({} models, {} textures)",
+             equipmentModelIndex_.size(), textureIndex_.size());
 }
 
 bool EquipmentModelLoader::indexEquipmentArchive(
@@ -862,33 +823,6 @@ bool EquipmentModelLoader::buildEquipmentIndex(
     }
 
     return !outModelIndex.empty();
-}
-
-int EquipmentModelLoader::loadItemModelMappingStatic(const std::string& jsonPath,
-                                                      std::map<uint32_t, int>& outMap)
-{
-    std::ifstream file(jsonPath);
-    if (!file.is_open()) {
-        return -1;
-    }
-
-    Json::Value root;
-    Json::CharReaderBuilder builder;
-    std::string errors;
-
-    if (!Json::parseFromStream(builder, file, &root, &errors)) {
-        LOG_ERROR(MOD_GRAPHICS, "EquipmentModelLoader::loadItemModelMappingStatic: JSON parse error: {}", errors);
-        return -1;
-    }
-
-    outMap.clear();
-    for (const auto& key : root.getMemberNames()) {
-        uint32_t itemId = std::stoul(key);
-        int modelId = root[key].asInt();
-        outMap[itemId] = modelId;
-    }
-
-    return static_cast<int>(outMap.size());
 }
 
 const EquipmentModelLoader::EquipmentModelRef* EquipmentModelLoader::getModelRef(int modelId) {

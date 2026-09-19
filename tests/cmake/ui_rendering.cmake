@@ -90,6 +90,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
     GTEST_DISCOVER_TESTS(test_held_item_attachment DISCOVERY_TIMEOUT 120)
 
+    # B824 (issue #86): the item -> IT-model lookup is willeq.db-only.
+    # The in-memory JSON map (itemToModelMap_, loadItemModelMapping()) is
+    # deleted; this suite pins that getModelIdForItem() answers from the
+    # database with no JSON map loaded. The mechanical half is the
+    # ItemModelMapDeletion hygiene test (scripts/refactor/check_item_model_map.py).
+    ADD_EXECUTABLE(test_item_model_mapping test_item_model_mapping.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_item_model_mapping PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_item_model_mapping GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_item_model_mapping DISCOVERY_TIMEOUT 120)
+
     # T476: census of every IT actor in the seventeen equipment archives --
     # which route resolves it, rest transforms, and its principal axis.
     ADD_EXECUTABLE(test_equipment_item_census test_equipment_item_census.cpp)

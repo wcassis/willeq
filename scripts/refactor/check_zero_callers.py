@@ -557,9 +557,12 @@ EXEMPT_GROUPS = {
     ("(free)", "normalToColor"): "B491",
     ("EQAnimatedMeshSceneNode", "getBoneIndexByName"): "B491",
     ("EQAnimatedMeshSceneNode", "getInstanceMeshIndexCount"): "B491",
-    ("EquipmentModelLoader", "getMappingCount"): "B491",
+    # B824 (kanban t_20a88e62): getMappingCount and loadItemModelMappingStatic
+    # are DELETED (the item-to-model JSON map went; the lookup is
+    # willeq.db-only). An exemption cannot outlive its row, so both rows go
+    # with the functions -- ItemModelMapDeletion (check_item_model_map.py)
+    # is the ratchet that keeps them gone.
     ("EquipmentModelLoader", "getTextureRef"): "B491",
-    ("EquipmentModelLoader", "loadItemModelMappingStatic"): "B491",
     ("Placeable", "getFileName"): "B491",
     ("Placeable", "getRotateXRad"): "B491",
     ("Placeable", "getRotateYRad"): "B491",

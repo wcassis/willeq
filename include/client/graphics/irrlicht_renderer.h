@@ -967,8 +967,9 @@ private:
     bool displaySettingsCached_ = false;
     eqt::ui::DisplaySettings getDisplaySettings();
 
-    // Pre-loaded item-to-model mapping (tiny JSON, loaded once at app startup)
-    std::map<uint32_t, int> itemToModelMap_;
+    // B824: the pre-loaded item-to-model mapping map went. It was a second,
+    // never-referenced copy of EquipmentModelLoader's (also deleted by B824);
+    // the item->model lookup is willeq.db-only.
 
     bool initialized_ = false;
     std::atomic<bool> loading_{false};   // True while loading thread owns GL context

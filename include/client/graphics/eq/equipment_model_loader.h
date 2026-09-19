@@ -72,23 +72,21 @@ public:
     // Set the base path for EQ client files
     void setClientPath(const std::string& path);
 
-    // Load item ID to model ID mapping from JSON file
-    // Returns number of mappings loaded, or -1 on error
-    int loadItemModelMapping(const std::string& jsonPath);
-
     // Load equipment models from gequip.s3d and gequip2.s3d
     bool loadEquipmentArchives();
 
     // Get IT model number from database item ID
-    // Returns -1 if item not found in mapping
+    // Returns -1 if item not found in the database
     // Database ITEM id -> IT model number, via willeq.db's item_models table
-    // (data/item_models.json is its input). T498 (board B755/B823): this is for
-    // the OFFLINE TOOLS only -- tools/model_viewer and
-    // tools/hwcaps/ui_inventory_capture are the last callers that genuinely
-    // hold an item id. No render site may use it: EntityAppearance::equipment[]
-    // is a MATERIAL / IT model number for every character, never a DB item id,
-    // and the table it reads disagrees with the server on 2,128 of its 3,661
-    // rows (data/item_models_drift_baseline.txt).
+    // (data/item_models.json is its input; the JSON itself is never parsed at
+    // runtime -- B824 deleted the in-memory map that used to hold it).
+    // T498 (board B755/B823): this is for the OFFLINE TOOLS only --
+    // tools/model_viewer and tools/hwcaps/ui_inventory_capture are the last
+    // callers that genuinely hold an item id. No render site may use it:
+    // EntityAppearance::equipment[] is a MATERIAL / IT model number for
+    // every character, never a DB item id, and the table it reads disagrees
+    // with the server on 2,128 of its 3,661 rows
+    // (data/item_models_drift_baseline.txt).
     int getModelIdForItem(uint32_t databaseItemId) const;
 
     // Get equipment mesh by IT model ID
@@ -96,8 +94,10 @@ public:
     irr::scene::IMesh* getEquipmentMeshByModelId(int modelId);
 
     // Get equipment mesh by equipment ID
-    // First tries to look up as database item ID, then as direct IT model ID
-    // NPC spawn packets use direct model IDs; player items use database IDs
+    // T498 (B755/B823): equipmentId is an appearance MATERIAL, i.e. an IT
+    // model number, for every character (spawn packets and wear changes, and
+    // since T498 the local player's own slots). It is used directly; there is
+    // no database-item-id branch.
     irr::scene::IMesh* getEquipmentMesh(uint32_t equipmentId);
 
     // Check if a model ID is a shield (IT200-IT299)
@@ -123,9 +123,6 @@ public:
     // Get total number of indexed equipment models
     size_t getLoadedModelCount() const { return equipmentModelIndex_.size(); }
 
-    // Get number of item ID mappings
-    size_t getMappingCount() const { return itemToModelMap_.size(); }
-
     // Get equipment model data by model ID (for debugging/inspection)
     // Triggers on-demand loading if model is indexed but not yet loaded
     const EquipmentModelData* getEquipmentModelData(int modelId);
@@ -140,10 +137,9 @@ public:
         size_t meshCacheCount = 0;       // Number of cached meshes
         size_t indexedModelCount = 0;    // Total models indexed from archives
         size_t loadedGeometryCount = 0;  // Models with geometry loaded on demand
-        size_t mappingCount = 0;         // Number of item-to-model mappings
         size_t geometryBytes = 0;        // ZoneGeometry data in loaded models
         size_t irrlichtMeshBytes = 0;    // Irrlicht IMesh vertex/index buffers
-        size_t indexBytes = 0;           // Index data (model refs, texture refs, mappings)
+        size_t indexBytes = 0;           // Index data (model refs, texture refs)
     };
     MemoryStats getMemoryStats() const;
 
@@ -182,9 +178,11 @@ public:
     void cacheEquipmentModelData(int modelId, std::shared_ptr<EquipmentModelData> data);
 
     // Accept pre-built index data from background thread (avoids re-parsing archives)
+    // B824: the map argument went -- the item->model lookup is willeq.db-only
+    // (WilleqDatabase::getItemModel()); the JSON map it used to adopt was
+    // never read.
     void adoptIndex(std::map<int, EquipmentModelRef>&& modelIndex,
-                    std::map<std::string, EquipmentTextureRef>&& textureIndex,
-                    std::map<uint32_t, int>&& itemToModelMap);
+                    std::map<std::string, EquipmentTextureRef>&& textureIndex);
 
     // Build equipment index from archives (no GL, no Irrlicht — thread-safe)
     // clientPath must end with '/'
@@ -193,11 +191,6 @@ public:
         const std::string& clientPath,
         std::map<int, EquipmentModelRef>& outModelIndex,
         std::map<std::string, EquipmentTextureRef>& outTextureIndex);
-
-    // Load item-to-model mapping from JSON (thread-safe, no Irrlicht)
-    // Returns number of mappings loaded, or -1 on error
-    static int loadItemModelMappingStatic(const std::string& jsonPath,
-                                          std::map<uint32_t, int>& outMap);
 
 private:
     // Lazy-init: build equipment index on first use (if not already loaded via adoptIndex)
@@ -232,9 +225,6 @@ private:
     std::unique_ptr<ZoneMeshBuilder> meshBuilder_;
 
     std::string clientPath_;
-
-    // Database item ID -> IT model number mapping
-    std::map<uint32_t, int> itemToModelMap_;
 
     // Model index: modelId -> location (populated at startup, no geometry)
     std::map<int, EquipmentModelRef> equipmentModelIndex_;

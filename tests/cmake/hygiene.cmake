@@ -216,6 +216,24 @@ ADD_TEST(NAME ZeroCallersSelfTest
             --self-test)
 SET_TESTS_PROPERTIES(ZeroCallersSelfTest PROPERTIES LABELS "hygiene")
 
+# B824 (issue #86, kanban t_20a88e62): the deleted item-to-model JSON map,
+# ratcheted. EquipmentModelLoader parsed all 3,661 rows of
+# data/item_models.json into itemToModelMap_ on every startup and read it
+# back from nothing -- getModelIdForItem() queries WilleqDatabase's
+# item_models table (the db is built from that JSON). This unit deleted the
+# map and its plumbing (the member, loadItemModelMapping[/Static],
+# getMappingCount, MemoryStats::mappingCount, adoptIndex()'s map argument,
+# and a second never-referenced copy on IrrlichtRenderer). check_item_model_map.py
+# fails if any of the map's identifiers reappears under src/ include/ tools/
+# benchmarks/ docker/ OR if getModelIdForItem() stops querying the database.
+# Pure source scan, no artefact/server/display; the C++ half of the pin is
+# tests/test_item_model_mapping.cpp (db resolves an item with no JSON map
+# loaded). Same discipline as WriteOnlyFields (B840) and ZeroCallers (B491).
+ADD_TEST(NAME ItemModelMapDeletion
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_item_model_map.py
+            --repo ${CMAKE_SOURCE_DIR})
+SET_TESTS_PROPERTIES(ItemModelMapDeletion PROPERTIES LABELS "hygiene")
+
 # T491 (2026-09-14): the memory-ledger half of the visual gate
 # (scripts/ci/visual_gate.py assert_memory_ledger) and the cap-hunt script
 # (scripts/ci/memory_cap_hunt.sh). The first drives the assertion on
