@@ -905,6 +905,13 @@ void eqt::bridge::BridgeComponent::SetLoadingPhase(LoadingPhase phase, const cha
 		eqt::memory::recordPoint("login_world");
 	} else if (phase == LoadingPhase::COMPLETE) {
 		eqt::memory::recordPoint("ready", ctx_.self.CurrentZoneName());
+		// B841: the arena census at the same instant -- where the slack sits
+		// (top pad vs interior free chunks vs mmap) is answered by the
+		// [memarena] line, and its delta against the steady_60s one says
+		// whether the freed bytes landed in a trimmable place. Experiment
+		// (a) of B841's card: B841_TRIM_READY=1 trims the top pad ONCE here,
+		// so the census shows the state a trim leaves, not the state before.
+		eqt::memory::recordArena("ready", eqt::memory::arenaExperiments().trimAtReady);
 		// T491 addendum (B801): the second mapping census. Diffing it against
 		// the startup one says how much of a zone-in is heap and how much is
 		// driver/mmap the ledger can never charge.

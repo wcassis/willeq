@@ -38,6 +38,19 @@ int main(int argc, char* argv[]) {
     // game thread, audio threads, worker pool, etc.), so this is the first
     // statement in main().
     mallopt(M_ARENA_MAX, 1);
+    // B841 (board): the two threshold experiments, env-gated so a run without
+    // the variables is byte-for-byte the shipped behaviour (main.cpp's
+    // M_ARENA_MAX is the only mallopt in the default path). Must sit here,
+    // before any other thread starts, for the same reason M_ARENA_MAX does.
+    {
+        const eqt::memory::ArenaExperiments b841 = eqt::memory::arenaExperiments();
+        if (b841.mmapThresholdBytes > 0) {
+            mallopt(M_MMAP_THRESHOLD, b841.mmapThresholdBytes);
+        }
+        if (b841.trimThresholdBytes > 0) {
+            mallopt(M_TRIM_THRESHOLD, b841.trimThresholdBytes);
+        }
+    }
 #endif
 
     // T491: everything the main thread allocates before the loops start is
