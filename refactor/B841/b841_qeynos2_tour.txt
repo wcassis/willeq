@@ -1,0 +1,12 @@
+# B841: qeynos2 zone-in for the arena-retention census.
+# Timeline: wait 25 (login+select) -> /frametiming -> wait 5 ->
+# /gmzone qeynos2 303 -> wait 16 (zone-in completes ~02:56:53 in run 1) ->
+# wait 80 (hold: `ready` fires at zone-in, steady_60s fires 60 s after ready)
+# -> /camp (clean teardown; exit 0).
+wait 25
+/frametiming
+wait 5
+/gmzone qeynos2 303
+wait 16
+wait 80
+/camp
