@@ -1,0 +1,37 @@
+### B851 live-lane SQL evidence (eqemu VM 172.16.200.99, peq DB, under lock
+### kb-b851-gem9-retention-live)
+
+== AC1: the live rule_values row for Spells:RequireMnemonicRetention ==
+ruleset_id  rule_name                        rule_value  notes
+1           Spells:RequireMnemonicRetention  true        Enabling will require spell slots 9-12 to have the appropriate Mnemonic Retention AA learned.
+rule_sets: ruleset_id 1 = 'default'  -> the live default ruleset has the gate ON.
+
+== AC2: the seeded row, read back (character_memmed_spells) ==
+seed: INSERT INTO character_memmed_spells (id, slot_id, spell_id) VALUES (67, 8, 54);
+      -- 67=Testcaster(Wiz L1), slot 8=0-based ninth gem, 54=Frost Bolt (classes12=1)
+Reads:
+  after seed (offline)                          -> 67 0 288 / 67 8 54
+  WHILE THE CLIENT WAS ONLINE in nro            -> 67 0 288 / 67 8 54   (run5)
+  after run5 /camp + client exit (offline)      -> 67 0 288 / 67 8 54   (run5)
+  after runs 1/2/3 incl. a cross-zone relogin   -> 67 0 288 / 67 8 54   (run1..run3)
+The while-online read is the decisive one: the world process's IN-MEMORY copy
+of the character holds the slot, not merely the DB row the server loaded at
+login. A server that dropped gem 9 would show 67 0 288 only there.
+
+== AC2: restore -- back to pre-test state ==
+character_memmed_spells for id 67:  67  0  288   (seeded row deleted)
+restore_lib.sh eqemu_restore_snapshot (world container stopped):
+final character+currency snapshot diff vs the FIRST pre-test snapshot = empty
+(byte-identical, incl. Testcaster at nro -81.7863/2565.59/-18.0615 heading
+257.5, level 1, exp 1).
+
+== AC4: /gems offer path shows exactly 8 slots (run2 lines 13168-13176,
+     identical in run5 lines 12789-12797) ==
+[1] Minor Shielding Ready
+[2] <empty>
+[3] <empty>
+[4] <empty>
+[5] <empty>
+[6] <empty>
+[7] <empty>
+[8] <empty>

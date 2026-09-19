@@ -1,0 +1,16 @@
+[2026-09-19 12:12:45.754] [DEBUG] [SPELL] Set 9 spell gems
+[2026-09-19 12:12:45.754] [DEBUG] [SPELL] Memorized spells:
+[2026-09-19 12:12:45.755] [DEBUG] [SPELL]   Gem 1: Minor Shielding (ID 288)
+[2026-09-19 12:12:45.755] [DEBUG] [SPELL]   Gem 9: Frost Bolt (ID 54)
+[2026-09-19 12:12:46.212] [INFO ] [ZONE] Zone connection complete! Player position confirmed (spawn_id=177).
+-- while ONLINE, the DB was read: character_memmed_spells still held 67/8/54
+[2026-09-19 12:13:03.831] [INFO ] [MAIN] === Spell Gems ===
+[2026-09-19 12:13:03.831] [INFO ] [MAIN] [1] Minor Shielding Ready
+[2026-09-19 12:13:03.831] [INFO ] [MAIN] [2] <empty>
+[2026-09-19 12:13:03.831] [INFO ] [MAIN] [3] <empty>
+[2026-09-19 12:13:03.831] [INFO ] [MAIN] [4] <empty>
+[2026-09-19 12:13:03.831] [INFO ] [MAIN] [5] <empty>
+[2026-09-19 12:13:03.831] [INFO ] [MAIN] [6] <empty>
+[2026-09-19 12:13:03.831] [INFO ] [MAIN] [7] <empty>
+[2026-09-19 12:13:03.831] [INFO ] [MAIN] [8] <empty>
+CLIENT_EXIT=0

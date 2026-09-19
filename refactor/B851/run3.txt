@@ -1,0 +1,7 @@
+491:[96m=== Entering causeway ===[0m
+507:[2026-09-19 11:50:43.467] [DEBUG] [SPELL] Set 9 spell gems
+508:[2026-09-19 11:50:43.467] [DEBUG] [SPELL] Memorized spells:
+509:[2026-09-19 11:50:43.467] [DEBUG] [SPELL]   Gem 1: Minor Shielding (ID 288)
+510:[2026-09-19 11:50:43.467] [DEBUG] [SPELL]   Gem 9: Frost Bolt (ID 54)
+802:[2026-09-19 11:50:43.991] [DEBUG] [AUDIO] Zone change:  -> causeway
+803:[2026-09-19 11:50:43.991] [INFO ] [AUDIO] Zone change:  -> causeway
