@@ -228,12 +228,46 @@ def main():
                 have = inv.get(charid.get(pid, -1), {})
                 bad = {sl: (it, have.get(int(sl))) for sl, it in want.items()
                        if have.get(int(sl)) != int(it)}
-                checks.append(("db_inventory",
-                               ("matches " + ",".join(f"{k}={v}" for k, v in want.items()))
-                               if not bad else
-                               ("claim " + ";".join(f"slot{k}={v[0]} but DB has {v[1]}"
-                                                    for k, v in bad.items())),
-                               not bad))
+                mv = re.search(r"moved from slot (\d{1,4})", held)
+                if mv:
+                    # B811 (issue #82): this claim is the AFTER state of a
+                    # /equip MOVE, so the authority for it is the BEFORE state
+                    # -- the inventory snapshot the run started from.  If the
+                    # before state already matches the claimed after state
+                    # exactly, the step could not have moved anything: this is
+                    # the situation the live equip_observed scenario refuses
+                    # (scenario_equip_observed.cpp:100-109, "could not tell an
+                    # equip from a character that was wearing it all along" ->
+                    # Fail, never Pass).  T494's legH p3 rows were exactly
+                    # this: heldA said 13=9997 at run start, the /equip
+                    # "moved" 9997 into 13, and the before state matched the
+                    # after state, so the no-op scored as a success.
+                    diff = {sl: (it, have.get(int(sl))) for sl, it in want.items()
+                            if have.get(int(sl)) != int(it)}
+                    if diff:
+                        checks.append(("db_inventory",
+                                       "before differed (" +
+                                       ";".join(f"slot{k}={v[1]}" for k, v in diff.items()) +
+                                       "), so the claimed move is non-trivial and the "
+                                       "after-claim is consistent with the step having "
+                                       "moved something", True))
+                    else:
+                        checks.append(("db_inventory",
+                                       "no-op: db_before already had " +
+                                       ",".join(f"{k}={v}" for k, v in want.items()) +
+                                       " at run start, so BEFORE == AFTER and the /equip "
+                                       "it claims moved nothing (B811)", False))
+                        checks.append(("before_matches_after",
+                                       "db_before already had the claimed after-state "
+                                       "at run start; the character was wearing it all "
+                                       "along", False))
+                else:
+                    checks.append(("db_inventory",
+                                   ("matches " + ",".join(f"{k}={v}" for k, v in want.items()))
+                                   if not bad else
+                                   ("claim " + ";".join(f"slot{k}={v[0]} but DB has {v[1]}"
+                                                        for k, v in bad.items())),
+                                   not bad))
                 # ...and if the recorder tried to CHANGE it, the client's own
                 # refusal is decisive.  T492 Leg G found `/equip 23 13` answered
                 # "Bread Cakes* cannot go in Primary (13) -- wrong slot type for

@@ -241,3 +241,16 @@ SET_TESTS_PROPERTIES(MemoryCapHuntScript PROPERTIES LABELS "hygiene" SKIP_RETURN
 ADD_TEST(NAME BoardToIssuesHygiene
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/gitlab/test_board_to_issues.py -v)
 SET_TESTS_PROPERTIES(BoardToIssuesHygiene PROPERTIES LABELS "hygiene")
+
+# B811 (issue #82): the llmbench held-item before/after gate.  T494's legH
+# timeline let p3's /equip step score as a success although the character
+# was ALREADY holding the destination item at slot 13 (timeline_legH.tsv:27),
+# because nothing asserted BEFORE != AFTER.  test_timeline_held_check.py
+# drives the production gate (timeline_held_check.check_held_steps, wired
+# into compile_timeline.py) and the production verifier (verify_labels.py)
+# on the committed legH rows: the no-op step must be INVALID at compile time
+# and its held-B row must FAIL verification, while a genuine move still
+# passes.  Pure python over committed TSVs, no server, no artefact.
+ADD_TEST(NAME LlmBenchHeldBeforeAfterHygiene
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/llmbench/test_timeline_held_check.py -v)
+SET_TESTS_PROPERTIES(LlmBenchHeldBeforeAfterHygiene PROPERTIES LABELS "hygiene")
