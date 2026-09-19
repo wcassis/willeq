@@ -112,6 +112,100 @@ eqemu_stack_ready() {
         && eqemu_service_ready world "${WORLD_PORT}"
 }
 
+eqemu_zone_booted() {
+    # eqemu_zone_booted <shortname> <log> <timeout_seconds> — the honest "zone
+    # <short> is really booted" check for the process up.sh's start-zone branch
+    # launches into its own stdout redirect (<log>), e.g.
+    # logs/zone_arena_h03.log.
+    #
+    # B504 (issue #90). This build used to be pinned to a single grep string,
+    # `Zone bootup type`, in up.sh: a marker this eqemu build prints at the END
+    # of a successful boot (line 97 of a cold arena boot, MEASURED 2026-09-19),
+    # and nothing else in the tree verified it. If the server team ever stops
+    # printing it, a cold up.sh times out after 60 s on a zone that booted
+    # perfectly (scenario.sh turns that into 65) — the original T457 evidence
+    # was exactly that. So the check here is the marker PLUS a liveness check
+    # scoped to THIS shortname (a respawned launcher fleet must not satisfy it):
+    # the `./bin/zone <short>` process is still running AND the marker line
+    # exists; a `Zone Bootup failed` line in the log is a hard stop (MEASURED
+    # 2026-09-19: a bogus shortname prints `Zone Bootup failed :: Zone::Bootup`
+    # and the process EXITs — without the failure line, the liveness check
+    # alone would eventually catch that, but the marker alone would NOT,
+    # because a dying process can have printed it).
+    #
+    # scripts/eqemu/zone_booted_selftest.sh re-measures this on every run —
+    # that is the net that keeps the marker string from rotting again.
+    local short="$1" log="$2" timeout="${3:-90}"
+    local waited=0
+    until server_exec "grep -q 'Zone bootup type' '${log}'" >/dev/null 2>&1; do
+        if server_exec "grep -q 'Zone Bootup failed' '${log}'" >/dev/null 2>&1; then
+            echo "zone ${short} did not boot (log says 'Zone Bootup failed')" >&2
+            return 1
+        fi
+        if [ "${waited}" -ge "${timeout}" ]; then
+            echo "TIMEOUT waiting for zone ${short} boot marker after ${timeout}s (log: ${log})" >&2
+            return 1
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    # The marker was printed; now prove the specific process is still alive
+    # with it. Scoped to the shortname: a respawned launcher fleet (which runs
+    # the static zones, not this shortname, unless it has one) must not satisfy
+    # it. server_process_count anchors on `bin/<name>` and excludes its own
+    # grep, so this is the same liveness probe the rest of the lane uses.
+    local n
+    n="$(server_process_count "zone ${short}")"
+    if [ -z "${n}" ] || [ "${n}" -le 0 ] 2>/dev/null; then
+        echo "zone ${short} printed its boot marker but its process is no longer running" >&2
+        return 1
+    fi
+    return 0
+}
+
+eqemu_kill_supervisor_chain() {
+    # eqemu_kill_supervisor_chain — kill EVERYTHING in the eqemu-server
+    # container that can respawn the server fleet, so a script can observe a
+    # "no zone process" state long enough to exercise up.sh's start-zone
+    # branch (B504, issue #90).
+    #
+    # The tree (MEASURED 2026-09-19): entrypoint.pl -> process-watcher.pl
+    # (respawns /tmp/spire-launcher when it dies) -> spire http:serve (run in
+    # a `sh -c while true` loop) -> /tmp/spire-launcher (re-execs `eqemu-
+    # server:launcher start`) -> world/ucs + the static zone fleet.
+    #
+    # Order matters: the respawners go first, or they resurrect what the later
+    # pkills take. Every pattern uses the bracket trick (board B798) so none of
+    # them matches this exec's own command line; eq_container_pkill's guard
+    # rejects the other two shapes.
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -KILL -f '[p]rocess-watcher'" 2>/dev/null || true
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -KILL -f 'while true; do nohup'" 2>/dev/null || true
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -KILL -f '[s]h -c while true; do cd ~/server'" 2>/dev/null || true
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -KILL -f '[s]pire http:serve'" 2>/dev/null || true
+    eq_docker exec "${EQEMU_CONTAINER}" bash -c "pkill -KILL -f '[s]pire-launcher'" 2>/dev/null || true
+    eq_container_pkill KILL '[e]qemu-server:launcher' || true
+    eq_container_pkill KILL '/bin/(loginserver|world|zone|ucs)( |$)' || true
+}
+
+eqemu_fleet_at_zero() {
+    # eqemu_fleet_at_zero <deadline_seconds> — poll until loginserver, world,
+    # zone AND ucs are all absent; return 1 (after printing the ps dump) if
+    # the deadline passes, i.e. something is still respawning them.
+    local deadline="$1" waited=0
+    until [ "$(server_process_count loginserver)" = "0" ] \
+       && [ "$(server_process_count world)" = "0" ] \
+       && [ "$(server_process_count zone)" = "0" ] \
+       && [ "$(server_process_count ucs)" = "0" ]; do
+        if [ "${waited}" -ge "${deadline}" ]; then
+            eq_docker exec "${EQEMU_CONTAINER}" bash -c 'ps -eo pid,ppid,args' 2>&1 | head -40 >&2
+            return 1
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+    return 0
+}
+
 eq_container_pkill() {
     # eq_container_pkill <signal> <ere> — pkill inside the eqemu-server
     # container, with the guard B798 asks for.
