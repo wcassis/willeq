@@ -1,0 +1,21 @@
+[scenario.sh] lock taken
+[scenario.sh] bringing eqemu up
+[scenario.sh] snapshot taken (90 rows)
+[scenario.sh] running --scenario cast_lands --timeout 240
+[scenario.sh] client exit 1
+[2026-09-19 06:13:10.758] [INFO ] [SCENARIO] scenario 'cast_lands' starting: zoned in to 'nro' after 2.39598s
+[2026-09-19 06:13:13.770] [INFO ] [SCENARIO] prep: /say #set invulnerable off
+[2026-09-19 06:13:17.761] [INFO ] [SCENARIO] prep: /say #unmemspells
+[2026-09-19 06:13:21.771] [INFO ] [SCENARIO] prep: /say #memspell 46 0
+[2026-09-19 06:13:26.759] [INFO ] [SCENARIO] prep: /target Testcaster
+[2026-09-19 06:13:31.772] [INFO ] [SCENARIO] gem cast attempt 1: /cast 1
+[2026-09-19 06:13:51.779] [INFO ] [SCENARIO] gem cast attempt 2: /cast 1
+[2026-09-19 06:13:08.358] [INFO ] [SCENARIO] scenario lane armed: name='cast_lands' timeout=240s start-deadline=120s hold=300s
+[2026-09-19 06:14:11.782] [INFO ] [SCENARIO] gem cast attempt 3: /cast 1
+[2026-09-19 06:14:31.792] [INFO ] [SCENARIO] VERDICT fail (exit 1) after 83.4307s: spell 46 never landed after 3 gem casts (gem 1 must hold a beneficial, durational spell; buff list unchanged at 0 slot(s))
+SCENARIO cast_lands fail exit=1 reason=spell 46 never landed after 3 gem casts (gem 1 must hold a beneficial, durational spell; buff list unchanged at 0 slot(s))
+[2026-09-19 06:14:31.803] [INFO ] [SCENARIO] scenario 'cast_lands' -> exit 1 (fail): spell 46 never landed after 3 gem casts (gem 1 must hold a beneficial, durational spell; buff list unchanged at 0 slot(s))
+[scenario.sh] restoring with the WORLD DOWN (the world writes character rows back on shutdown)
+[scenario.sh] snapshot restored BYTE-IDENTICALLY
+[scenario.sh] lock released
+RED3_EXIT=1

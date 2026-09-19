@@ -1,0 +1,316 @@
+[2026-09-19 06:15:48.732] [INFO ] [MAIN] Starting WillEQ with debug level 0, config file: /home/user/src/willeq/scripts/scenario_configs/cast_lands.json, pathfinding: enabled
+[2026-09-19 06:15:48.732] [INFO ] [MAIN] Log level: INFO  (use --log-level=LEVEL to change)
+[2026-09-19 06:15:48.732] [INFO ] [MAIN] Loading config file: /home/user/src/willeq/scripts/scenario_configs/cast_lands.json
+[2026-09-19 06:15:48.733] [INFO ] [INPUT] HotkeyManager: Loaded 115 bindings from config/hotkeys.json
+[2026-09-19 06:15:48.738] [INFO ] [MAIN] Game thread started
+[2026-09-19 06:15:49.239] [INFO ] [WORLD] Login connected.
+[2026-09-19 06:15:49.295] [INFO ] [MAIN] [LOADING][Phase 2/15] (5%) Authenticating...
+[2026-09-19 06:15:49.408] [INFO ] [WORLD] Logged in successfully with dbid 1 and key J8AC766RJT
+[2026-09-19 06:15:49.457] [INFO ] [WORLD] Found world server WillEQ, attempting to login.
+[2026-09-19 06:15:49.539] [INFO ] [WORLD] Connecting to world server WillEQ at 172.16.200.99:9000
+[2026-09-19 06:15:49.539] [INFO ] [MAIN] [LOADING][Phase 3/15] (10%) Connecting to world server...
+[2026-09-19 06:15:49.539] [INFO ] [NET] PosixUdpTransport: connected to 172.16.200.99:9000 fd=5
+[2026-09-19 06:15:50.044] [INFO ] [WORLD] Sending login info: dbid=1, key=J8AC766RJT, zoning=0
+[2026-09-19 06:15:50.129] [INFO ] [MAIN] [LOADING][Phase 4/15] (15%) Loading characters...
+[2026-09-19 06:15:50.129] [INFO ] [MAIN] [memledger] point=login_world zone=- seq=0 enabled=1 rss_anon=2932736 rss_file=17088512 rss_shmem=0 vm_rss=20021248 ledger=811712 ledger_peak=1014192 unattributed=2121024 unattributed_pct=72.3 malloc_arena=991232 malloc_inuse=864544 malloc_slack=126688 heap_uncharged=52832 unaccounted=1941504 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=17449 unattributed=134032/134032 startup=486864/880160 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=190576/224672 game_state=240/464 irrlicht_scene=0/0
+[2026-09-19 06:15:50.129] [INFO ] [MAIN] [memledger-startup] point=login_world owner=TOTAL live=486864 blocks=1003
+[memledger-startup] point=login_world owner=startup.willeq_db live=161824 blocks=244
+[memledger-startup] point=login_world owner=startup.spells live=123952 blocks=30
+[memledger-startup] point=login_world owner=startup.application live=85088 blocks=489
+[memledger-startup] point=login_world owner=startup.login live=74416 blocks=8
+[memledger-startup] point=login_world owner=startup.client live=24784 blocks=74
+[memledger-startup] point=login_world owner=startup.cli live=10816 blocks=141
+[memledger-startup] point=login_world owner=startup.mode live=5984 blocks=17
+[2026-09-19 06:15:50.167] [INFO ] [MAIN] [LOADING][Phase 5/15] (20%) Connecting to zone...
+[2026-09-19 06:15:50.167] [INFO ] [NET] PosixUdpTransport: connected to 172.16.200.99:7013 fd=6
+[2026-09-19 06:15:50.736] [INFO ] [MAIN] [LOADING][Phase 6/15] (25%) Receiving player data...
+[2026-09-19 06:15:50.740] [INFO ] [MAIN] SkillCapTable: loaded 603 (class, skill) rows from 'config/skill_caps.json'
+[2026-09-19 06:15:50.740] [INFO ] [MAIN] Loaded 100 skills from PlayerProfile (36 non-zero)
+[2026-09-19 06:15:50.741] [INFO ] [MAIN] [LOADING][Phase 7/15] (30%) Receiving zone data...
+[2026-09-19 06:15:50.741] [INFO ] [ZONE] Loaded 13 spawns in zone
+[2026-09-19 06:15:50.743] [INFO ] [ZONE] Weather packet: type=255, intensity=0
+[2026-09-19 06:15:50.743] [INFO ] [MAIN] [STATS] HP=315/315 Mana=614/614 End=72/72
+[2026-09-19 06:15:50.743] [INFO ] [MAIN] [STATS] HP=315/315 Mana=614/614 End=72/72
+[2026-09-19 06:15:50.833] [INFO ] [MAP] Loaded Navmesh V[2] file [/mnt/projects/maps/nav/nro.nav]
+[2026-09-19 06:15:50.930] [INFO ] [MAP] Loaded V2 map: 45812 vertices, 22850 faces (13696 placeables, 9154 terrain)
+[2026-09-19 06:15:50.930] [INFO ] [MAP] Successfully loaded map for zone: nro
+[2026-09-19 06:15:50.931] [INFO ] [MAP] Loaded 3 zone lines from zone-specific file
+[2026-09-19 06:15:50.931] [INFO ] [MAP] Loaded 3 zone lines for nro from zone-specific file data/zone_lines/nro.json
+[2026-09-19 06:15:50.941] [INFO ] [MAIN] LoadZoneSources: Loaded zone 'nro' in 10ms (2583 BSP regions, 5165 nodes)
+[2026-09-19 06:15:50.941] [INFO ] [ZONE] [ZONE] Entering nro at (3538, 299, -24)
+[2026-09-19 06:15:50.982] [INFO ] [MAIN] [LOADING][Phase 8/15] (35%) Synchronizing...
+[2026-09-19 06:15:50.982] [INFO ] [ZONE] Zone Request phase complete, sending ReqClientSpawn
+[2026-09-19 06:15:50.997] [INFO ] [ENTITY] Received 10 doors (802 bytes)
+[2026-09-19 06:15:51.062] [INFO ] [ZONE] Server assigned new spawn ID: 170 (was 170)
+[2026-09-19 06:15:51.074] [INFO ] [MAIN] [LOADING][Phase 9/15] (40%) Finalizing connection...
+[2026-09-19 06:15:51.156] [INFO ] [ZONE] Weather packet: type=0, intensity=0
+[2026-09-19 06:15:51.156] [INFO ] [ZONE] *** RECEIVED OUR OWN ClientUpdate! spawn_id=170 ***
+[2026-09-19 06:15:51.156] [INFO ] [MAIN] [LOADING][Phase 10/15] (45%) Player confirmed...
+[2026-09-19 06:15:51.156] [INFO ] [ZONE] Zone connection complete! Player position confirmed (spawn_id=170).
+[2026-09-19 06:15:51.156] [INFO ] [MAIN] [LOADING] Game state setup complete. Spawn ID: 170, Zone: nro
+[2026-09-19 06:15:51.156] [INFO ] [MAIN] [LOADING][Phase 15/15] (100%) Ready!
+[2026-09-19 06:15:51.157] [INFO ] [MAIN] [memledger] point=ready zone=nro seq=0 enabled=1 rss_anon=18505728 rss_file=17969152 rss_shmem=0 vm_rss=36474880 ledger=12956592 ledger_peak=16899520 unattributed=5549136 unattributed_pct=30.0 malloc_arena=17170432 malloc_inuse=13189216 malloc_slack=3981216 heap_uncharged=232624 unaccounted=1335296 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=259278 unattributed=134032/134032 startup=486864/880160 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=209072/438544 game_state=12126624/16109232 irrlicht_scene=0/0
+[2026-09-19 06:15:51.157] [INFO ] [MAIN] [memledger-startup] point=ready owner=TOTAL live=486864 blocks=1003
+[memledger-startup] point=ready owner=startup.willeq_db live=161824 blocks=244
+[memledger-startup] point=ready owner=startup.spells live=123952 blocks=30
+[memledger-startup] point=ready owner=startup.application live=85088 blocks=489
+[memledger-startup] point=ready owner=startup.login live=74416 blocks=8
+[memledger-startup] point=ready owner=startup.client live=24784 blocks=74
+[memledger-startup] point=ready owner=startup.cli live=10816 blocks=141
+[memledger-startup] point=ready owner=startup.mode live=5984 blocks=17
+[2026-09-19 06:15:51.157] [INFO ] [MAIN] [memarena] point=ready ok=1 ordblks=292 smblks=0 fordblks=3979264 fsmblks=0 keepcost=131584 hblks=1 hblkhd=5517312 arena=11653120 uordblks=7673856 mmap_thr=0 trim_pages=0 le128=79/7487 128-256=76/14444 256-512=11/3243 512-1k=0/0 1k-2k=1/1825 2k-4k=41/125945 4k-8k=49/283425 8k-16k=14/151950 16k-32k=9/179241 32k-64k=1/39089 ge64k=9/3037193
+[2026-09-19 06:15:51.162] [INFO ] [MAIN] [memmap] point=ready owner=TOTAL anon=18505728 rss=36474880 maps=291
+[memmap] point=ready owner=[heap] anon=10821632 rss=10821632 size=11653120 maps=11
+[memmap] point=ready owner=[anon] anon=5799936 rss=5799936 size=22982656 maps=25
+[memmap] point=ready owner=file:willeq anon=434176 rss=8519680 size=18489344 maps=5
+[memmap] point=ready owner=so:libcrypto.so.3 anon=389120 rss=1503232 size=5312512 maps=5
+[memmap] point=ready owner=so:libwinpr3.so.3.31.0 anon=118784 rss=544768 size=1265664 maps=5
+[memmap] point=ready owner=so:libGLdispatch.so.0.0.0 anon=118784 rss=516096 size=720896 maps=5
+[memmap] point=ready owner=so:libicuuc.so.74.2 anon=81920 rss=573440 size=2142208 maps=5
+[memmap] point=ready owner=so:libfreerdp3.so.3.31.0 anon=81920 rss=368640 size=2191360 maps=5
+[memmap] point=ready owner=so:libkrb5.so.3.3 anon=61440 rss=258048 size=823296 maps=5
+[memmap] point=ready owner=so:libstdc++.so.6.0.33 anon=57344 rss=1642496 size=2596864 maps=5
+[memmap] point=ready owner=so:libssl.so.3 anon=57344 rss=245760 size=696320 maps=5
+[memmap] point=ready owner=so:libpixman-1.so.0.42.2 anon=36864 rss=200704 size=716800 maps=5
+[memmap] point=ready owner=so:libfreetype.so.6.20.1 anon=32768 rss=151552 size=835584 maps=5
+[memmap] point=ready owner=[stack] anon=28672 rss=28672 size=139264 maps=1
+[memmap] point=ready owner=so:libc.so.6 anon=24576 rss=1789952 size=2121728 maps=5
+[memmap] point=ready owner=so:libcairo.so.2.11800.0 anon=24576 rss=163840 size=1323008 maps=5
+[memmap] point=ready owner=so:libX11.so.6.4.0 anon=20480 rss=204800 size=1298432 maps=5
+[memmap] point=ready owner=so:ld-linux-x86-64.so.2 anon=16384 rss=237568 size=237568 maps=5
+[memmap] point=ready owner=so:libfontconfig.so.1.12.1 anon=12288 rss=110592 size=331776 maps=5
+[memmap] point=ready owner=so:libexpat.so.1.9.1 anon=12288 rss=94208 size=180224 maps=5
+[memmap] point=ready owner=so:libGLESv2.so.2.1.0 anon=12288 rss=65536 size=73728 maps=5
+[memmap] point=ready owner=so:libm.so.6 anon=8192 rss=462848 size=954368 maps=5
+[memmap] point=ready owner=so:libjsoncpp.so.1.9.5 anon=8192 rss=225280 size=225280 maps=5
+[memmap] point=ready owner=so:libfmt.so.9.1.0 anon=8192 rss=131072 size=135168 maps=5
+[memmap] point=ready owner=so:libz.so.1.3 anon=8192 rss=114688 size=114688 maps=5
+[memmap] point=ready owner=so:libxcb.so.1.1.0 anon=8192 rss=114688 size=167936 maps=5
+[memmap] point=ready owner=so:libgcc_s.so.1 anon=8192 rss=106496 size=188416 maps=5
+[memmap] point=ready owner=so:libDetour.so.1.0.0 anon=8192 rss=102400 size=106496 maps=5
+[memmap] point=ready owner=so:libpng16.so.16.43.0 anon=8192 rss=94208 size=229376 maps=5
+[memmap] point=ready owner=so:libk5crypto.so.3.1 anon=8192 rss=90112 size=180224 maps=5
+[memmap] point=ready owner=so:libxkbfile.so.1.0.2 anon=8192 rss=90112 size=159744 maps=5
+[memmap] point=ready owner=so:libfreerdp-server3.so.3.31.0 anon=8192 rss=90112 size=303104 maps=5
+[memmap] point=ready owner=so:libopus.so.0.9.0 anon=8192 rss=86016 size=389120 maps=5
+[memmap] point=ready owner=so:libEGL.so.1.1.0 anon=8192 rss=73728 size=73728 maps=5
+[memmap] point=ready owner=so:libdrm.so.2.125.0 anon=8192 rss=73728 size=94208 maps=5
+[memmap] point=ready owner=so:libXext.so.6.4.0 anon=8192 rss=69632 size=81920 maps=5
+[memmap] point=ready owner=so:libbsd.so.0.12.1 anon=8192 rss=69632 size=86016 maps=5
+[memmap] point=ready owner=so:libbz2.so.1.0.4 anon=8192 rss=69632 size=81920 maps=5
+[memmap] point=ready owner=so:libjson-c.so.5.3.0 anon=8192 rss=61440 size=81920 maps=5
+[memmap] point=ready owner=so:libresolv.so.2 anon=8192 rss=53248 size=65536 maps=5
+[memmap] point=ready owner=so:libmd.so.0.1.0 anon=8192 rss=49152 size=61440 maps=5
+[memmap] point=ready owner=so:libxcb-render.so.0.0.0 anon=8192 rss=45056 size=61440 maps=5
+[memmap] point=ready owner=so:libkrb5support.so.0.1 anon=8192 rss=45056 size=53248 maps=5
+[memmap] point=ready owner=so:libXrender.so.1.3.0 anon=8192 rss=40960 size=49152 maps=5
+[memmap] point=ready owner=so:libbrotlidec.so.1.1.0 anon=8192 rss=40960 size=57344 maps=5
+[memmap] point=ready owner=so:libgbm.so.1.0.0 anon=8192 rss=24576 size=28672 maps=5
+[memmap] point=ready owner=so:libXdmcp.so.6.0.0 anon=8192 rss=24576 size=32768 maps=5
+[memmap] point=ready owner=so:libkeyutils.so.1.10 anon=8192 rss=24576 size=28672 maps=5
+[memmap] point=ready owner=so:libXau.so.6.0.0 anon=8192 rss=20480 size=24576 maps=5
+[memmap] point=ready owner=so:libcom_err.so.2.1 anon=8192 rss=20480 size=24576 maps=5
+[memmap] point=ready owner=so:libicudata.so.74.2 anon=8192 rss=16384 size=30801920 maps=5
+[memmap] point=ready owner=so:libbrotlicommon.so.1.1.0 anon=8192 rss=16384 size=143360 maps=5
+[memmap] point=ready owner=so:libxcb-shm.so.0.0.0 anon=8192 rss=16384 size=20480 maps=5
+[memmap] point=ready owner=file:willeq.db anon=0 rss=65536 size=1048576 maps=1
+[memmap] point=ready owner=[vdso] anon=0 rss=4096 size=8192 maps=1
+[2026-09-19 06:15:51.162] [INFO ] [MAIN] Publishing full state snapshot to bridge
+[2026-09-19 06:15:51.163] [INFO ] [MAIN] State snapshot published
+[2026-09-19 06:15:51.167] [INFO ] [MAIN] Fully connected to zone!
+[2026-09-19 06:15:51.167] [INFO ] [SCENARIO] scenario 'cast_lands' starting: zoned in to 'nro' after 2.42939s
+[2026-09-19 06:15:51.167] [INFO ] [ZONE] [ZONE] nro loaded
+[2026-09-19 06:15:51.167] [INFO ] [MAIN] [STATS] HP=315/315 Mana=614/614 End=72/72
+[2026-09-19 06:15:51.167] [INFO ] [MAIN] [STATS] HP=20/20 Mana=614/614 End=72/72
+[2026-09-19 06:15:51.167] [INFO ] [MAIN] [STATS] HP=20/20 Mana=614/614 End=72/72
+[2026-09-19 06:15:52.714] [INFO ] [MAIN] [STATS] HP=20/20 Mana=614/614 End=72/72
+[2026-09-19 06:15:52.714] [INFO ] [MAIN] [STATS] HP=20/20 Mana=614/614 End=72/72
+[2026-09-19 06:15:54.177] [INFO ] [SCENARIO] prep: /say #set invulnerable off
+[2026-09-19 06:15:54.225] [INFO ] [MAIN] You are now vulnerable.
+[2026-09-19 06:15:54.228] [INFO ] [MAIN] [SYS] You are now vulnerable.
+[2026-09-19 06:15:58.180] [INFO ] [SCENARIO] prep: /say #unmemspells
+[2026-09-19 06:16:02.175] [INFO ] [SCENARIO] prep: /say #memspell 288 0
+[2026-09-19 06:16:02.240] [INFO ] [SPELL] Server memorised 'Minor Shielding' (288) into gem 1
+[2026-09-19 06:16:07.177] [INFO ] [SCENARIO] prep: /target Testcaster
+[2026-09-19 06:16:07.177] [INFO ] [MAIN] Targeting: Testcaster
+[2026-09-19 06:16:07.178] [INFO ] [MAIN] [TARGET] Testcaster (id=170) level=1 HP=100%
+[2026-09-19 06:16:07.178] [INFO ] [MAIN] [SYS] Targeting: Testcaster
+[2026-09-19 06:16:07.247] [INFO ] [MAIN] [STATS] HP=20/20 Mana=614/614 End=72/72
+[2026-09-19 06:16:07.247] [INFO ] [MAIN] [STATS] HP=20/20 Mana=614/614 End=72/72
+[2026-09-19 06:16:12.183] [INFO ] [SCENARIO] gem cast attempt 1: /cast 1
+[2026-09-19 06:16:12.183] [INFO ] [SPELL] Beginning cast of 'Minor Shielding' (ID: 288) on target 170
+[2026-09-19 06:16:12.183] [INFO ] [MAIN] Casting from gem 1
+[2026-09-19 06:16:12.183] [INFO ] [MAIN] [SYS] Casting from gem 1
+[2026-09-19 06:16:12.234] [INFO ] [SPELL] Server confirmed cast of 'Minor Shielding'
+[2026-09-19 06:16:14.753] [INFO ] [SPELL] Cast of 'Minor Shielding' completed successfully
+[2026-09-19 06:16:14.761] [INFO ] [SCENARIO] VERDICT pass (exit 0) after 26.0232s: spell 288 landed on Testcaster 2.57837s after gem cast #1 (buff slots 0 -> 1)
+[2026-09-19 06:16:14.761] [INFO ] [MAIN] [CHAT] Your Moonstone Ring pulses with light as your vision sharpens.
+[2026-09-19 06:16:14.761] [INFO ] [MAIN] [CHAT] You try to hit Testcaster but miss!
+[2026-09-19 06:16:14.761] [INFO ] [MAIN] [STATS] HP=20/20 Mana=604/614 End=72/72
+[2026-09-19 06:16:14.761] [INFO ] [MAIN] [STATS] HP=20/20 Mana=604/614 End=72/72
+[2026-09-19 06:16:14.761] [INFO ] [MAIN] [STATS] HP=22/26 Mana=604/614 End=72/72
+[2026-09-19 06:16:14.761] [INFO ] [MAIN] [STATS] HP=22/26 Mana=604/614 End=72/72
+[2026-09-19 06:16:14.761] [INFO ] [MAIN] [STATS] HP=22/26 Mana=604/614 End=72/72
+[2026-09-19 06:16:14.761] [INFO ] [MAIN] [STATS] HP=22/26 Mana=604/614 End=72/72
+[2026-09-19 06:16:14.762] [INFO ] [MAIN] Game thread stopped
+[2026-09-19 06:16:14.753] [INFO ] [COMBAT] ZoneProcessDamage called, packet length=25
+SCENARIO cast_lands pass exit=0 reason=spell 288 landed on Testcaster 2.57837s after gem cast #1 (buff slots 0 -> 1)
+[2026-09-19 06:15:48.733] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: CancelDialog and CancelInput both bound to Escape in global mode
+[2026-09-19 06:15:48.733] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: CancelDialog and ClearTarget both bound to Escape (global conflicts with player)
+[2026-09-19 06:15:48.733] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: CancelInput and ClearTarget both bound to Escape (global conflicts with player)
+[2026-09-19 06:15:48.733] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: ChatAutocomplete and CycleTargets both bound to Tab (global conflicts with player)
+[2026-09-19 06:15:48.733] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: ConfirmDialog and SubmitInput both bound to Return in global mode
+[2026-09-19 06:15:48.733] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: ConfirmDialog and OpenChat both bound to Return (global conflicts with player)
+[2026-09-19 06:15:48.733] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: SubmitInput and OpenChat both bound to Return (global conflicts with player)
+[2026-09-19 06:15:48.733] [INFO ] [MAIN] Initializing application...
+[2026-09-19 06:15:48.733] [INFO ] [MAIN] No constrained preset specified, defaulting to 'orangepi'
+[2026-09-19 06:15:48.733] [INFO ] [MAIN] Config: host=172.16.200.99, server=WillEQ, character=Testcaster
+[2026-09-19 06:15:48.733] [INFO ] [MAIN] WilleqDatabase: opened data/willeq.db (version 7)
+[2026-09-19 06:15:48.733] [INFO ] [MAIN] WilleqDatabase opened: data/willeq.db (cache: 9352 bytes)
+[2026-09-19 06:15:48.734] [INFO ] [MAIN] StringDatabase: initialized from SQLite
+[2026-09-19 06:15:48.734] [INFO ] [MAIN] Loaded strings from SQLite (5901 eqstr, 8305 dbstr)
+[2026-09-19 06:15:48.734] [INFO ] [SPELL] SpellDatabase: initialized from SQLite (8066 spells, cache capacity 256)
+[2026-09-19 06:15:48.734] [INFO ] [SPELL] Spell database initialized from SQLite (8066 spells)
+[2026-09-19 06:15:48.734] [INFO ] [MAIN] Creating game mode with renderer type: Software
+[2026-09-19 06:15:48.734] [INFO ] [MAIN] Console bridge attached (headless mode)
+[2026-09-19 06:15:48.734] [INFO ] [SCENARIO] scenario lane armed: name='cast_lands' timeout=240s start-deadline=120s hold=300s
+[2026-09-19 06:15:48.734] [INFO ] [MAIN] Connecting to login server (172.16.200.99:5998)...
+[2026-09-19 06:15:48.734] [INFO ] [MAIN] [LOADING][Phase 1/15] (2%) Connecting to login server...
+[2026-09-19 06:15:48.734] [INFO ] [NET] PosixUdpTransport: connected to 172.16.200.99:5998 fd=4
+[2026-09-19 06:15:48.734] [INFO ] [WORLD] Connecting...
+[2026-09-19 06:15:48.734] [INFO ] [MAIN] Application initialized successfully
+[2026-09-19 06:15:48.734] [INFO ] [MAIN] [memledger] point=startup zone=- seq=0 enabled=1 rss_anon=2650112 rss_file=16306176 rss_shmem=0 vm_rss=18956288 ledger=612512 ledger_peak=612576 unattributed=2037600 unattributed_pct=76.9 malloc_arena=778240 malloc_inuse=648608 malloc_slack=129632 heap_uncharged=36096 unaccounted=1871872 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=3383 unattributed=134032/134032 startup=478480/478544 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=0/0 game_state=0/0 irrlicht_scene=0/0
+[2026-09-19 06:15:48.734] [INFO ] [MAIN] [memledger-startup] point=startup owner=TOTAL live=481344 blocks=1005
+[memledger-startup] point=startup owner=startup.willeq_db live=161824 blocks=244
+[memledger-startup] point=startup owner=startup.spells live=123952 blocks=30
+[memledger-startup] point=startup owner=startup.application live=79072 blocks=487
+[memledger-startup] point=startup owner=startup.login live=74848 blocks=11
+[memledger-startup] point=startup owner=startup.client live=24784 blocks=74
+[memledger-startup] point=startup owner=startup.cli live=10880 blocks=142
+[memledger-startup] point=startup owner=startup.mode live=5984 blocks=17
+[2026-09-19 06:15:48.738] [INFO ] [MAIN] [memmap] point=startup owner=TOTAL anon=2658304 rss=19030016 maps=278
+[memmap] point=startup owner=[heap] anon=528384 rss=528384 size=778240 maps=1
+[memmap] point=startup owner=file:willeq anon=434176 rss=7274496 size=18489344 maps=5
+[memmap] point=startup owner=so:libcrypto.so.3 anon=389120 rss=1376256 size=5312512 maps=5
+[memmap] point=startup owner=[anon] anon=245760 rss=245760 size=9072640 maps=22
+[memmap] point=startup owner=so:libwinpr3.so.3.31.0 anon=118784 rss=544768 size=1265664 maps=5
+[memmap] point=startup owner=so:libGLdispatch.so.0.0.0 anon=118784 rss=516096 size=720896 maps=5
+[memmap] point=startup owner=so:libicuuc.so.74.2 anon=81920 rss=573440 size=2142208 maps=5
+[memmap] point=startup owner=so:libfreerdp3.so.3.31.0 anon=81920 rss=368640 size=2191360 maps=5
+[memmap] point=startup owner=so:libkrb5.so.3.3 anon=61440 rss=258048 size=823296 maps=5
+[memmap] point=startup owner=so:libstdc++.so.6.0.33 anon=57344 rss=1597440 size=2596864 maps=5
+[memmap] point=startup owner=so:libssl.so.3 anon=57344 rss=245760 size=696320 maps=5
+[memmap] point=startup owner=so:libpixman-1.so.0.42.2 anon=36864 rss=200704 size=716800 maps=5
+[memmap] point=startup owner=so:libfreetype.so.6.20.1 anon=32768 rss=151552 size=835584 maps=5
+[memmap] point=startup owner=[stack] anon=28672 rss=28672 size=139264 maps=1
+[memmap] point=startup owner=so:libc.so.6 anon=24576 rss=1789952 size=2121728 maps=5
+[memmap] point=startup owner=so:libcairo.so.2.11800.0 anon=24576 rss=163840 size=1323008 maps=5
+[memmap] point=startup owner=so:libX11.so.6.4.0 anon=20480 rss=204800 size=1298432 maps=5
+[memmap] point=startup owner=so:ld-linux-x86-64.so.2 anon=16384 rss=237568 size=237568 maps=5
+[memmap] point=startup owner=so:libfontconfig.so.1.12.1 anon=12288 rss=110592 size=331776 maps=5
+[memmap] point=startup owner=so:libexpat.so.1.9.1 anon=12288 rss=94208 size=180224 maps=5
+[memmap] point=startup owner=so:libGLESv2.so.2.1.0 anon=12288 rss=65536 size=73728 maps=5
+[memmap] point=startup owner=so:libm.so.6 anon=8192 rss=331776 size=954368 maps=5
+[memmap] point=startup owner=so:libjsoncpp.so.1.9.5 anon=8192 rss=225280 size=225280 maps=5
+[memmap] point=startup owner=so:libfmt.so.9.1.0 anon=8192 rss=131072 size=135168 maps=5
+[memmap] point=startup owner=so:libxcb.so.1.1.0 anon=8192 rss=114688 size=167936 maps=5
+[memmap] point=startup owner=so:libgcc_s.so.1 anon=8192 rss=106496 size=188416 maps=5
+[memmap] point=startup owner=so:libpng16.so.16.43.0 anon=8192 rss=94208 size=229376 maps=5
+[memmap] point=startup owner=so:libfreerdp-server3.so.3.31.0 anon=8192 rss=90112 size=303104 maps=5
+[memmap] point=startup owner=so:libk5crypto.so.3.1 anon=8192 rss=90112 size=180224 maps=5
+[memmap] point=startup owner=so:libxkbfile.so.1.0.2 anon=8192 rss=90112 size=159744 maps=5
+[memmap] point=startup owner=so:libopus.so.0.9.0 anon=8192 rss=86016 size=389120 maps=5
+[memmap] point=startup owner=so:libDetour.so.1.0.0 anon=8192 rss=86016 size=106496 maps=5
+[memmap] point=startup owner=so:libz.so.1.3 anon=8192 rss=81920 size=114688 maps=5
+[memmap] point=startup owner=so:libEGL.so.1.1.0 anon=8192 rss=73728 size=73728 maps=5
+[memmap] point=startup owner=so:libdrm.so.2.125.0 anon=8192 rss=73728 size=94208 maps=5
+[memmap] point=startup owner=so:libXext.so.6.4.0 anon=8192 rss=69632 size=81920 maps=5
+[memmap] point=startup owner=so:libbsd.so.0.12.1 anon=8192 rss=69632 size=86016 maps=5
+[memmap] point=startup owner=so:libbz2.so.1.0.4 anon=8192 rss=69632 size=81920 maps=5
+[memmap] point=startup owner=so:libjson-c.so.5.3.0 anon=8192 rss=61440 size=81920 maps=5
+[memmap] point=startup owner=so:libresolv.so.2 anon=8192 rss=53248 size=65536 maps=5
+[memmap] point=startup owner=so:libmd.so.0.1.0 anon=8192 rss=49152 size=61440 maps=5
+[memmap] point=startup owner=so:libxcb-render.so.0.0.0 anon=8192 rss=45056 size=61440 maps=5
+[memmap] point=startup owner=so:libkrb5support.so.0.1 anon=8192 rss=45056 size=53248 maps=5
+[memmap] point=startup owner=so:libXrender.so.1.3.0 anon=8192 rss=40960 size=49152 maps=5
+[memmap] point=startup owner=so:libbrotlidec.so.1.1.0 anon=8192 rss=40960 size=57344 maps=5
+[memmap] point=startup owner=so:libgbm.so.1.0.0 anon=8192 rss=24576 size=28672 maps=5
+[memmap] point=startup owner=so:libXdmcp.so.6.0.0 anon=8192 rss=24576 size=32768 maps=5
+[memmap] point=startup owner=so:libkeyutils.so.1.10 anon=8192 rss=24576 size=28672 maps=5
+[memmap] point=startup owner=so:libXau.so.6.0.0 anon=8192 rss=20480 size=24576 maps=5
+[memmap] point=startup owner=so:libcom_err.so.2.1 anon=8192 rss=20480 size=24576 maps=5
+[memmap] point=startup owner=so:libicudata.so.74.2 anon=8192 rss=16384 size=30801920 maps=5
+[memmap] point=startup owner=so:libbrotlicommon.so.1.1.0 anon=8192 rss=16384 size=143360 maps=5
+[memmap] point=startup owner=so:libxcb-shm.so.0.0.0 anon=8192 rss=16384 size=20480 maps=5
+[memmap] point=startup owner=file:willeq.db anon=0 rss=65536 size=1048576 maps=1
+[memmap] point=startup owner=[vdso] anon=0 rss=4096 size=8192 maps=1
+[2026-09-19 06:15:48.738] [INFO ] [MAIN] Starting main loop...
+[2026-09-19 06:15:48.738] [INFO ] [MAIN] Starting game thread
+[2026-09-19 06:15:48.738] [INFO ] [MAIN] Entering render loop (main thread)
+[2026-09-19 06:16:14.777] [INFO ] [MAIN] Render loop exited, joining game thread
+[2026-09-19 06:16:14.777] [INFO ] [MAIN] Game thread joined
+[2026-09-19 06:16:14.777] [INFO ] [MAIN] Main loop exited
+[2026-09-19 06:16:14.777] [INFO ] [MAIN] Shutting down application...
+[2026-09-19 06:16:14.778] [INFO ] [MAIN] [memledger] point=shutdown zone=- seq=0 enabled=1 rss_anon=18493440 rss_file=18837504 rss_shmem=0 vm_rss=37330944 ledger=13025744 ledger_peak=16899520 unattributed=5467696 unattributed_pct=29.6 malloc_arena=17170432 malloc_inuse=13068576 malloc_slack=4101856 heap_uncharged=42832 unaccounted=1323008 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=315947 unattributed=134032/134032 startup=483408/880160 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=170368/438544 game_state=12237936/16109232 irrlicht_scene=0/64
+[2026-09-19 06:16:14.778] [INFO ] [MAIN] [memledger-startup] point=shutdown owner=TOTAL live=482896 blocks=995
+[memledger-startup] point=shutdown owner=startup.willeq_db live=161824 blocks=244
+[memledger-startup] point=shutdown owner=startup.spells live=123952 blocks=30
+[memledger-startup] point=shutdown owner=startup.application live=84896 blocks=486
+[memledger-startup] point=shutdown owner=startup.login live=71152 blocks=4
+[memledger-startup] point=shutdown owner=startup.client live=24784 blocks=74
+[memledger-startup] point=shutdown owner=startup.cli live=10304 blocks=140
+[memledger-startup] point=shutdown owner=startup.mode live=5984 blocks=17
+[2026-09-19 06:16:14.778] [INFO ] [MAIN] 
+================================================================================
+                         PERFORMANCE METRICS REPORT
+================================================================================
+
+STARTUP TIMINGS
+--------------------------------------------------------------------------------
+  Config Loading                                 0 ms
+  Client Creation                                0 ms
+  TOTAL                                          0 ms
+
+ZONING TIMINGS
+--------------------------------------------------------------------------------
+  (no zoning timings recorded)
+
+GAMEPLAY STATISTICS
+--------------------------------------------------------------------------------
+  (no gameplay statistics recorded)
+
+SUMMARY
+--------------------------------------------------------------------------------
+  Total elapsed time:    26045 ms (26.0 sec)
+  Startup time:          0 ms
+  Zoning time:           0 ms
+================================================================================
+
+[2026-09-19 06:16:14.778] [INFO ] [MAIN] 
+================================================================================
+                         PERFORMANCE METRICS REPORT
+================================================================================
+
+STARTUP TIMINGS
+--------------------------------------------------------------------------------
+  Config Loading                                 0 ms
+  Client Creation                                0 ms
+  TOTAL                                          0 ms
+
+ZONING TIMINGS
+--------------------------------------------------------------------------------
+  (no zoning timings recorded)
+
+GAMEPLAY STATISTICS
+--------------------------------------------------------------------------------
+  (no gameplay statistics recorded)
+
+SUMMARY
+--------------------------------------------------------------------------------
+  Total elapsed time:    26045 ms (26.0 sec)
+  Startup time:          0 ms
+  Zoning time:           0 ms
+================================================================================
+
+[2026-09-19 06:16:14.780] [INFO ] [MAIN] Application shutdown complete
+[2026-09-19 06:16:14.780] [INFO ] [SCENARIO] scenario 'cast_lands' -> exit 0 (pass): spell 288 landed on Testcaster 2.57837s after gem cast #1 (buff slots 0 -> 1)

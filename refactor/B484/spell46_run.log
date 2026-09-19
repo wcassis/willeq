@@ -1,0 +1,8 @@
+[scenario.sh] lock taken
+[scenario.sh] bringing eqemu up
+[scenario.sh] snapshot taken (90 rows)
+[scenario.sh] spell 46 has no minimum level for Wizard (spells_new.classes12 = 255, the table's 255 sentinel); Testcaster (level 1) cannot cast it reliably -- pick a spell this class carries, e.g. --spell 288 (Minor Shielding)
+[scenario.sh] restoring with the WORLD DOWN (the world writes character rows back on shutdown)
+[scenario.sh] snapshot restored BYTE-IDENTICALLY
+[scenario.sh] lock released
+SPELL46B_EXIT=72
