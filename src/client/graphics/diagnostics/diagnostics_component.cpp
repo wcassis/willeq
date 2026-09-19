@@ -941,13 +941,13 @@ std::vector<std::string> DiagnosticsComponent::getMemoryReport(const MemoryRepor
     if (ctx_.entityRenderer) {
         if (auto* eml = ctx_.entityRenderer->getEquipmentModelLoader()) {
             auto stats = eml->getMemoryStats();
-            lines.push_back(fmt::format("[Equipment Models] {} (tex {}, geom {}, mesh {}, idx {}; {}/{} loaded, {} mappings)",
+            lines.push_back(fmt::format("[Equipment Models] {} (tex {}, geom {}, mesh {}, idx {}; {}/{} loaded)",
                 formatBytes(b.equipmentModelsBytes),
                 formatBytes(stats.rawTextureBytes),
                 formatBytes(stats.geometryBytes),
                 formatBytes(stats.irrlichtMeshBytes),
                 formatBytes(stats.indexBytes),
-                stats.loadedGeometryCount, stats.indexedModelCount, stats.mappingCount));
+                stats.loadedGeometryCount, stats.indexedModelCount));
         }
     }
 

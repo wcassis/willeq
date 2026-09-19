@@ -831,8 +831,7 @@ void ZoneLoadComponent::loadZoneStep5_Assets(ZoneLoadContext& ctx) {
             if (auto* eml = ctx_.entityRenderer->getEquipmentModelLoader()) {
                 eml->adoptIndex(
                     std::move(computations->equipmentIndex->modelIndex),
-                    std::move(computations->equipmentIndex->textureIndex),
-                    std::map<uint32_t, int>());  // Item models via on-demand SQLite
+                    std::move(computations->equipmentIndex->textureIndex));
                 // P04: consumed — free the wrapper now instead of at step 13
                 // (skyLoadData precedent: release each computation as soon as
                 // its consumer step is done with it).

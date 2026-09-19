@@ -267,7 +267,10 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
         // omission in tools/model_viewer.cpp (which has no
         // ConstrainedTextureCache at all).
         equipmentModelLoader.setConstrainedTextureCache(&textureCache);
-        equipmentModelLoader.loadItemModelMapping("data/item_models.json");
+        // B824: the item->model mapping is willeq.db-only
+        // (willeqDb.open("data/willeq.db") + setGlobalInstance above;
+        // getModelIdForItem() -> WilleqDatabase::getItemModel). The JSON map
+        // used to be parsed here and never read.
         equipmentModelLoader.loadEquipmentArchives();
 
         constexpr uint16_t kRaceHuman = 1;   // HUM
