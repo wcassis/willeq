@@ -390,12 +390,17 @@ public:
 
         // TextureInfo::rawDataBytes() is the PIXELS only; the object, its name
         // and its frames vector are not in it. Deduplicated by pointer.
+        // B843: counts only objects whose ownerCategory IS entity_models;
+        // foreign-owned objects are in sharedTextureBytes[].storageBytes.
         size_t textureObjectBytes = 0;
 
         // The loader's OWN texture maps (globalTextures_, numberedGlobalTextures_,
         // armorTextureCache_, zoneTextures_, otherChrCaches_[*].textures and
         // cachedMergedTextures_): nodes and keys, same arithmetic as
         // mergedTextureMapBytes, which covers only the per-MODEL copies.
+        // B843: counts only entries whose ownerCategory IS entity_models;
+        // foreign-owned entries' nodes + keys are in
+        // sharedTextureBytes[].storageBytes.
         size_t loaderTextureMapBytes = 0;
 
         // (e) T500 Leg A, third pass. calcSkeletonBytes() charges the KEYFRAME
