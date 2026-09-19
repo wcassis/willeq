@@ -4,14 +4,20 @@
 // (the hooks below touch atomics, a thread_local byte and glibc's __libc_*
 // backends, nothing else).
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE  // B841: mallinfo2, malloc_info, malloc_trim, get_mallopt
+#endif
 #include "client/core/memory_ledger.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <vector>
 #include <mutex>
 #include <new>
@@ -708,6 +714,254 @@ Snapshot recordPoint(const std::string& point, const std::string& zone) {
     return s;
 }
 
+// ---------------------------------------------------------------------------
+// B841: the arena-retention census. The slack decomposition, named:
+//   malloc_slack = arena + hblkhd - (uordblks + hblkhd)
+//                = keepcost (top pad, trimmable)
+//                + fordblks + fsmblks (interior free chunks, NOT trimmable)
+//   plus, outside the brk arena:
+//     hblkhd   = live mmapped regions (returned to the OS the instant they
+//                free -- retention lives here ONLY as the gap between the
+//                ledger and this number)
+//     mmap_thr = the DYNAMIC mmap threshold; it only grows (double when a
+//                large free fails to trim), and it decides which future frees
+//                land in the free lists at all.
+// The per-size-bin rows come from glibc's own malloc_info(0) XML, so they
+// agree with mallinfo2 by construction (same counters, one format apart).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct XmlAttr {
+    std::string name;
+    std::string value;
+};
+
+// One <attr name="v"/> pair inside a start tag. Enough of an XML reader for
+// malloc_info's flat two-level document; no namespaces, no nesting beyond
+// <malloc><heap><sizes><size/>.
+std::vector<XmlAttr> parseAttrs(const std::string& tag) {
+    std::vector<XmlAttr> out;
+    size_t pos = 1;  // skip the '<'
+    // Skip the element name first: it is NOT an attribute, and folding it
+    // into the first attr's name (the "size from" bug) is the one way this
+    // reader can silently drop every row of a document.
+    while (pos < tag.size() && !std::isspace(static_cast<unsigned char>(tag[pos]))) ++pos;
+    while (pos < tag.size()) {
+        while (pos < tag.size() && std::isspace(static_cast<unsigned char>(tag[pos]))) ++pos;
+        if (pos >= tag.size() || tag[pos] == '/') break;
+        size_t eq = tag.find('=', pos);
+        if (eq == std::string::npos) break;
+        std::string name = tag.substr(pos, eq - pos);
+        // trim trailing spaces from the name
+        while (!name.empty() && name.back() == ' ') name.pop_back();
+        if (name.empty()) break;
+        size_t vstart = eq + 1;
+        while (vstart < tag.size() && tag[vstart] == ' ') ++vstart;
+        if (vstart >= tag.size()) break;
+        char quote = tag[vstart];
+        if (quote != '"' && quote != '\'') break;
+        size_t vend = tag.find(quote, vstart + 1);
+        if (vend == std::string::npos) break;
+        out.push_back({name, tag.substr(vstart + 1, vend - vstart - 1)});
+        pos = vend + 1;
+    }
+    return out;
+}
+
+bool attr(const std::vector<XmlAttr>& a, const char* name, std::string& out) {
+    for (const auto& x : a) if (x.name == name) { out = x.value; return true; }
+    return false;
+}
+
+uint64_t attrU64(const std::vector<XmlAttr>& a, const char* name, uint64_t fallback = 0) {
+    std::string v;
+    return attr(a, name, v) ? std::stoull(v) : fallback;
+}
+
+}  // namespace
+
+size_t arenaBinForBytes(size_t freeChunkBytes) {
+    static const size_t breaks[kArenaBinCount] = {
+        128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 0};
+    for (size_t i = 0; i < kArenaBinCount; ++i) {
+        if (breaks[i] == 0 || freeChunkBytes < breaks[i]) return i;
+    }
+    return kArenaBinCount - 1;
+}
+
+namespace {
+
+// Walk one <heap> element. glibc emits the main heap (nr=0) first; the
+// census is per-process either way, so every heap's size rows are summed.
+void foldHeapSizes(ArenaReport& r, const std::string& xml, size_t from, size_t to) {
+    size_t pos = from;
+    while (pos < to) {
+        size_t open = xml.find("<size", pos);
+        size_t unsorted = xml.find("<unsorted", pos);
+        // Closest element of either kind wins; a non-size element between
+        // them would be </sizes> or </heap>, which ends the walk.
+        const auto endSizes = xml.find("</sizes>", pos);
+        size_t stop = std::min(open == std::string::npos ? to : open,
+                               unsorted == std::string::npos ? to : unsorted);
+        if (endSizes != std::string::npos && endSizes < stop) break;
+        if (stop >= to) break;
+        size_t tagEnd = xml.find('>', stop);
+        if (tagEnd == std::string::npos || tagEnd >= to) break;
+        const std::string tag = xml.substr(stop, tagEnd - stop + 1);
+        // find("<size") matches the <sizes> CONTAINER as well as a <size> row
+        // (both start "<size"). A real row is "<size" + space; a closing tag
+        // ("</sizes>", "</heap>") ends the walk; the container is skipped.
+        const bool isSizeRow = tag.compare(0, 5, "<size") == 0 && tag[5] == ' ';
+        const bool isUnsortedRow = tag.compare(0, 8, "<unsorte") == 0;
+        if (tag[1] == '/') break;
+        if (!isSizeRow && !isUnsortedRow) { pos = tagEnd + 1; continue; }
+        const auto attrs = parseAttrs(tag);
+        const uint64_t total = attrU64(attrs, "total");
+        const uint64_t count = attrU64(attrs, "count");
+        if (isUnsortedRow) {
+            // The unsorted bin: a free chunk glibc has not yet coalesced into
+            // a size bin. malloc_info reports it as a RANGE row (from < to)
+            // and it is already inside fordblks, so it is NOT added to any
+            // size bin -- double-counting is the one thing the census must
+            // not do. It shows up in the log line through fordblks.
+        } else {
+            const uint64_t fromB = attrU64(attrs, "from");
+            // A <size> row is a RANGE: every chunk whose size is in [from,to].
+            // Bin on the LOW end: a row straddling a bin edge over-reports the
+            // low bin and under-reports the high one, never hides bytes --
+            // `total` is the whole row and it is placed exactly once.
+            const size_t bin = arenaBinForBytes(fromB);
+            r.bins[bin].chunks += count;
+            r.bins[bin].freeBytes += total;
+        }
+        pos = tagEnd + 1;
+    }
+}
+
+}  // namespace
+
+ArenaReport parseMallocInfo(const std::string& xml) {
+    ArenaReport r;
+    // An empty document is a failure, not a "malloc with zero free chunks".
+    r.ok = xml.rfind("<malloc", 0) == 0;
+    if (!r.ok) return r;
+    size_t pos = 0;
+    while (pos < xml.size()) {
+        const size_t heap = xml.find("<heap", pos);
+        if (heap == std::string::npos) break;
+        // Distinguish the opening tag from the "</heap>" the next search would
+        // otherwise treat as a new heap: only a non-'/' after "<heap" opens.
+        if (heap + 5 < xml.size() && xml[heap + 5] == '/') break;
+        size_t heapEnd = xml.find("</heap>", heap);
+        if (heapEnd == std::string::npos) heapEnd = xml.size();
+        foldHeapSizes(r, xml, heap, heapEnd);
+        pos = heapEnd + 1;  // past the "<" of "</heap>"
+    }
+    return r;
+}
+
+ArenaReport arenaNow() {
+    ArenaReport r;
+#if defined(__linux__)
+    r.mi = mallinfo2();
+    r.interiorFreeBytes = r.mi.fordblks + r.mi.fsmblks;
+    r.topPadBytes = r.mi.keepcost;
+    r.mmapBytes = r.mi.hblkhd;
+    // malloc_info(0, f) writes glibc's own per-bin free-chunk XML into any
+    // stream. A per-pid temp file is the least-surprising FILE (fmemopen on a
+    // growable std::string is not), and the whole census is a LIFECYCLE-POINT
+    // call, so one write+read+unlink is nothing next to what recordPoint
+    // already does.
+    const std::string path = "/tmp/.memarena_" + std::to_string(::getpid());
+    FILE* f = std::fopen(path.c_str(), "w");
+    if (!f) return r;
+    std::string xml;
+    if (malloc_info(0, f) == 0) {
+        std::fclose(f);
+        std::ifstream in(path);
+        xml.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        const ArenaReport parsed = parseMallocInfo(xml);
+        r.bins = parsed.bins;
+        r.ok = parsed.ok;
+    }
+    std::remove(path.c_str());
+#else
+    (void)r;
+#endif
+    return r;
+}
+
+namespace {
+
+std::string arenaToLogLine(const std::string& point, const ArenaReport& r,
+                           uint64_t trimmedPages, int mmapThreshold) {
+    std::string out = "[memarena] point=";
+    out += point;
+    out += " ok=";
+    out += r.ok ? "1" : "0";
+    if (r.ok) {
+        appendKV(out, "ordblks", r.mi.ordblks);
+        appendKV(out, "smblks", r.mi.smblks);
+        appendKV(out, "fordblks", r.mi.fordblks);
+        appendKV(out, "fsmblks", r.mi.fsmblks);
+        appendKV(out, "keepcost", r.mi.keepcost);
+        appendKV(out, "hblks", r.mi.hblks);
+        appendKV(out, "hblkhd", r.mi.hblkhd);
+        appendKV(out, "arena", r.mi.arena);
+        appendKV(out, "uordblks", r.mi.uordblks);
+        appendKV(out, "mmap_thr", static_cast<uint64_t>(mmapThreshold));
+        appendKV(out, "trim_pages", trimmedPages);
+        for (size_t i = 0; i < kArenaBinCount; ++i) {
+            out += ' ';
+            out += kArenaBinNames[i];
+            out += "=";
+            out += std::to_string(r.bins[i].chunks);
+            out += '/';
+            out += std::to_string(r.bins[i].freeBytes);
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+ArenaReport recordArena(const std::string& point, bool trim) {
+    ArenaReport r;
+#if defined(__linux__)
+    uint64_t trimmedPages = 0;
+    if (trim) {
+        // malloc_trim(0) returns the number of 4 KiB pages it released from
+        // the top of the heap (0 when the top pad is below the threshold).
+        // Called BEFORE the census: the census then shows what the trim left.
+        const int pages = malloc_trim(0);
+        trimmedPages = pages > 0 ? static_cast<uint64_t>(pages) : 0;
+    }
+    // The DYNAMIC M_MMAP_THRESHOLD. glibc has NO way to read it back:
+    // mallopt(opt, 0) SETS the option (it has no query form), mallinfo2 has
+    // no field for it, and get_mallopt() is glibc >= 2.40 (this host is
+    // 2.39). When the B841_MMAP_THRESHOLD experiment is on the value IS
+    // known to the caller (it set it at startup), so the census carries it;
+    // otherwise it is reported as 0 (unknown) and DERIVED in the analysis:
+    // it starts at 128 KiB and doubles whenever a large free cannot trim the
+    // top down to the trim threshold, so the census's ge64k-bin population
+    // plus the keepcost growth between two points is the evidence.
+    const int mmapThreshold =
+        arenaExperiments().mmapThresholdBytes > 0 ? arenaExperiments().mmapThresholdBytes : 0;
+    r = arenaNow();
+    LOG_INFO(MOD_MAIN, "{}", arenaToLogLine(point, r, trimmedPages, mmapThreshold));
+#endif
+    return r;
+}
+
+ArenaExperiments arenaExperiments() {
+    ArenaExperiments e;
+    if (const char* v = std::getenv("B841_TRIM_READY")) e.trimAtReady = (v[0] == '1');
+    if (const char* v = std::getenv("B841_MMAP_THRESHOLD")) e.mmapThresholdBytes = std::atoi(v);
+    if (const char* v = std::getenv("B841_TRIM_THRESHOLD")) e.trimThresholdBytes = std::atoi(v);
+    return e;
+}
+
 void noteReady(double seconds) {
     std::lock_guard<std::mutex> lock(g_steadyMutex);
     g_steadyDeadline = std::chrono::steady_clock::now()
@@ -728,6 +982,11 @@ void pollSteadyState() {
     g_steadyDone.store(true, std::memory_order_relaxed);
     g_steadyArmed.store(false, std::memory_order_relaxed);
     recordPoint("steady_60s");
+    // B841: the second half of the delta. T496/T500 measured 17.4 MB of
+    // ledger frees between ready and here with a 0.09 MB RssAnon fall; this
+    // census says whether those frees landed in the top pad (trimmable), an
+    // interior free bin (fragmentation), or mmap (already returned).
+    recordArena("steady_60s");
 }
 
 } // namespace memory

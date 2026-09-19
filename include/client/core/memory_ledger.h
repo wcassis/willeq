@@ -36,6 +36,10 @@
 #include <string>
 #include <vector>
 
+#if defined(__linux__)
+#include <malloc.h>  // struct mallinfo2 (mallinfo2(), glibc >= 2.33)
+#endif
+
 #ifndef EQT_MEMORY_LEDGER
 #define EQT_MEMORY_LEDGER 0
 #endif
@@ -420,6 +424,108 @@ void pollSteadyState();
 
 // Reset every category's peak (and the total peak) to its current live value.
 void resetPeaks();
+
+// ---------------------------------------------------------------------------
+// B841 (board, 2026-09-18): the arena-retention census. T496/T500 measured
+// that between `ready` and `steady_60s` the ledger frees 17.4 MB while
+// RssAnon falls 0.09 MB, because malloc_slack grows 31.58 -> 47.67 MB: a byte
+// freed late is not a byte returned. mallinfo2's slack is ONE number, though,
+// and it does not say where the bytes sit -- top-of-heap (trimmable), interior
+// free chunks (fragmentation, not trimmable), or mmap'd (already returned to
+// the OS on free). This census is that answer: glibc's own per-bin free-chunk
+// accounting (malloc_info XML) folded into size bins, plus the mallinfo2
+// totals, so the slack decomposes into named bytes.
+//
+// recordArena() is a LIFECYCLE-POINT call like recordPoint(): one malloc_info
+// (a ~few-hundred-kB XML write to an in-memory stream, milliseconds) and one
+// mallinfo2 per call, never per frame.
+// ---------------------------------------------------------------------------
+
+// One free-chunk size bin. Bins are half-open [lo, hi) in BYTES of the free
+// chunk, EXCEPT the last bin, which is [lo, +infinity). The last break is
+// 64 KiB because glibc's dynamic M_MMAP_THRESHOLD starts at 128 KiB
+// (2 x 65536) and only grows: a freed chunk at or above it is returned to the
+// OS via munmap instead of joining the free lists, so the bins above it are
+// where retained slack would actually show up.
+struct ArenaBin {
+    uint64_t chunks = 0;
+    uint64_t freeBytes = 0;   // sum of `total` over this bin's rows
+};
+
+constexpr size_t kArenaBinCount = 11;
+inline const char* const kArenaBinNames[kArenaBinCount] = {
+    "le128",   // < 128 B
+    "128-256",
+    "256-512",
+    "512-1k",
+    "1k-2k",
+    "2k-4k",
+    "4k-8k",
+    "8k-16k",
+    "16k-32k",
+    "32k-64k",
+    "ge64k",   // >= 64 KiB
+};
+
+// Which bin a free chunk of this size lands in (index into kArenaBinNames).
+// Pure so it is testable against a fixture without an allocator.
+size_t arenaBinForBytes(size_t freeChunkBytes);
+
+// Parse a glibc malloc_info(0) XML document into the bin census. Split out
+// from the in-memory write for the same reason parseSmaps is: a parser
+// proved only against the running process is proved against one input.
+// Unparseable input (empty, wrong root tag) yields an empty report with
+// `ok` false.
+struct ArenaReport {
+    bool ok = false;
+#if defined(__linux__)
+    struct mallinfo2 mi{};          // the mallinfo2() of the same instant
+#endif
+    std::array<ArenaBin, kArenaBinCount> bins{};
+    // Aggregates the report itself names, so a log line never needs the
+    // reader to subtract: interior (fragmentation, untrimmable) vs the rest.
+    uint64_t interiorFreeBytes = 0;    // fordblks + fsmblks
+    uint64_t topPadBytes = 0;          // keepcost
+    uint64_t mmapBytes = 0;            // hblkhd (returned to OS on free)
+};
+
+// The XML parse, fixture-testable without touching the process's allocator.
+ArenaReport parseMallocInfo(const std::string& xml);
+
+// Take the census now and LOG_INFO it as
+//   [memarena] point=... zone=... ok=1 ordblks=.. smblks=.. fordblks=..
+//   fsmblks=.. keepcost=.. hblks=.. hblkhd=.. arena=.. uordblks=..
+//   mmap_thr=.. <bin>=<chunks>/<bytes> ...
+// `trim` runs malloc_trim(0) FIRST and reports the pages it actually gave
+// back (0 if the top pad was below the trim threshold). The shipped call
+// sites never trim: this is the B841 experiment knob (a one-shot run flag),
+// and default behaviour must stay byte-for-byte what the client has always
+// done.
+ArenaReport recordArena(const std::string& point, bool trim = false);
+
+// Raw census without logging, for tests and for callers that want to compute
+// their own deltas. Same cost as the log line minus the format.
+ArenaReport arenaNow();
+
+// B841 experiment knobs -- one-shot measurement runs, NEVER shipped defaults.
+// The orchestrator decides after the Pi confirms (board B841), so every
+// knob is off unless its variable is set, and a run without the variables
+// behaves byte-for-byte as before.
+//   B841_TRIM_READY=1         -> one malloc_trim(0) before the `ready` census
+//   B841_MMAP_THRESHOLD=<B>   -> mallopt(M_MMAP_THRESHOLD, B) at startup, so
+//                                frees at or above B unmap instead of joining
+//                                the free lists (dynamic-threshold experiment)
+//   B841_TRIM_THRESHOLD=<B>   -> mallopt(M_TRIM_THRESHOLD, B) at startup, so
+//                                the top pad trims back to B instead of the
+//                                128 KiB default
+struct ArenaExperiments {
+    bool trimAtReady = false;
+    int mmapThresholdBytes = 0;   // 0 = leave glibc's default alone
+    int trimThresholdBytes = 0;   // 0 = leave glibc's default alone
+};
+// Reads the environment fresh on every call (getenv is thread-safe; the
+// call sites are startup and `ready`, so there is nothing to cache).
+ArenaExperiments arenaExperiments();
 
 // Raw counters for tests: live/peak/allocs of one category.
 CategoryStats stats(Category c);
