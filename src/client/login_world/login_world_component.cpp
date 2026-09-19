@@ -37,6 +37,7 @@
 
 #include "client/eq.h"
 #include "client/login_world/login_world_component.h"
+#include "client/core/memory_ledger.h"  // B839: the login sub-owner
 #include "common/net/posix_udp_transport.h"  // K10: ConnectToLogin/ConnectToWorld moved in from eq.cpp
 #include "common/logging.h"
 #include "common/packet_structs.h"
@@ -78,6 +79,11 @@ void LoginWorldComponent::SetCredentials(const std::string& host, int port, cons
 
 void LoginWorldComponent::ConnectToLogin()
 {
+	// B839 (issue #94): the UDP transport and the login connection
+	// manager (and their buffers) are the "login" sub-owner -- the last
+	// startup step, deliberately after graphics so a slow bring-up cannot
+	// time the login server out.
+	eqt::memory::StartupScope login("login");
 	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
 	m_login_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(std::move(transport)));
 

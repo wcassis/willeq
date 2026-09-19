@@ -13,6 +13,11 @@
 #include "client/scenario/scenarios.h"
 #include "common/logging.h"
 
+// B839 (issue #94): main()'s CLI/config half, defined below main() so the
+// startup.cli scope above owns exactly its bytes.
+static bool parseCliAndLoadConfig(int argc, char* argv[],
+                                  eqt::ApplicationConfig& out, int& exitCode);
+
 int main(int argc, char* argv[]) {
 #if defined(__linux__)
     // T127: glibc gives every thread that contends on the main arena its own
@@ -44,13 +49,80 @@ int main(int argc, char* argv[]) {
     // process start-up (device, fonts, DB, config). The loops re-scope below.
     eqt::memory::setThreadCategory(eqt::memory::Category::Startup);
 
+    // B839 (issue #94): name the CLI/config half of the startup category --
+    // the argv strings, the parsed ApplicationConfig, the log setup, the
+    // config file's JSON tree. initialize()'s steps open their own scopes
+    // underneath (startup.client, startup.willeq_db, ...), so this row is
+    // exactly the pre-init bytes; everything below it is either a named
+    // sub-owner or the (small) misc residual.
+    eqt::ApplicationConfig config;
+    int exitCode = 0;
+    {
+        eqt::memory::StartupScope cli("cli");
+        if (!parseCliAndLoadConfig(argc, argv, config, exitCode)) {
+            return exitCode;
+        }
+    }
+
+    // B839 (issue #94): name the whole initialize() + run() + shutdown()
+    // half of the startup category -- "application": the Application object
+    // itself and everything its steps build that no narrower scope names
+    // (action layer, input bridge, console bridge, the performance metrics
+    // and the main thread's own run/shutdown churn). The fine-grained
+    // owners (startup.client, startup.willeq_db, startup.graphics, ...)
+    // open their own StartupScopes INSIDE these calls and win per-block,
+    // because a block credits the label it was charged with. main() is
+    // not part of the G04 init-order golden, so this scope adds no line
+    // there.
+    eqt::memory::StartupScope application("application");
+    // Create and run application
+    eqt::Application app;
+    if (!app.initialize(config)) {
+        LOG_FATAL(MOD_MAIN, "Failed to initialize application");
+        // T410: in the scenario lane an initialize() failure is
+        // could-not-start (3), never a scenario failure (1).
+        return config.scenarioName.empty() ? 1 : eqt::scenario::kScenarioCouldNotStart;
+    }
+
+    app.run();
+    app.shutdown();
+
+    // T410: the scenario lane's exit-code taxonomy -- 0 pass, 1 fail,
+    // 2 timeout, 3 could-not-start. Read AFTER shutdown() on purpose: the
+    // runner outlives the game mode, so a client stopped by anything other
+    // than the runner itself (SIGTERM, /quit, an early camp) reports the
+    // unfinished-run code rather than a false 0. Every non-scenario run
+    // still returns 0 exactly as it did before this existed.
+    if (app.scenarioRequested()) {
+        exitCode = app.scenarioExitCode();
+        LOG_INFO(MOD_SCENARIO, "scenario '{}' -> exit {} ({}): {}",
+            app.scenarioName(), exitCode,
+            eqt::scenario::ScenarioExitCodeName(exitCode), app.scenarioReason());
+        std::cerr << "SCENARIO " << app.scenarioName() << " "
+                  << eqt::scenario::ScenarioExitCodeName(exitCode)
+                  << " exit=" << exitCode << " reason=" << app.scenarioReason()
+                  << "\n";
+    }
+    FlushThreadLog();
+    return exitCode;
+}
+
+// B839: the CLI and config half of main(), in its own function so the
+// cli scope above owns exactly these bytes (parse + log setup + config
+// load). Returns false on an early exit (help, parse error, unknown
+// scenario, unreadable config) with `exitCode` carrying main's exit code;
+// on success `out` holds the filled config.
+static bool parseCliAndLoadConfig(int argc, char* argv[],
+                                  eqt::ApplicationConfig& out, int& exitCode) {
     auto config = eqt::Application::parseArguments(argc, argv);
 
     if (config.showHelp) {
-        return 0;  // parseArguments already printed help
+        exitCode = 0;  // parseArguments already printed help
+        return false;
     }
     if (config.parseError) {
-        return 1;  // parseArguments already printed the fatal message
+        exitCode = 1;  // parseArguments already printed the fatal message
+        return false;
     }
 
     // T410 (board B138): validate --scenario before anything else starts.
@@ -65,7 +137,8 @@ int main(int argc, char* argv[]) {
             std::cerr << " " << name;
         }
         std::cerr << "\n";
-        return eqt::scenario::kScenarioCouldNotStart;
+        exitCode = eqt::scenario::kScenarioCouldNotStart;
+        return false;
     }
 
     // Initialize logging from CLI args (--log-level, --log-module)
@@ -169,38 +242,10 @@ int main(int argc, char* argv[]) {
     LOG_INFO(MOD_MAIN, "Loading config file: {}", config.configFile);
     if (!eqt::Application::loadConfigFile(config.configFile, config)) {
         LOG_FATAL(MOD_MAIN, "Failed to load config file: {}", config.configFile);
-        return 1;
+        exitCode = 1;
+        return false;
     }
 
-    // Create and run application
-    eqt::Application app;
-    if (!app.initialize(config)) {
-        LOG_FATAL(MOD_MAIN, "Failed to initialize application");
-        // T410: in the scenario lane an initialize() failure is
-        // could-not-start (3), never a scenario failure (1).
-        return config.scenarioName.empty() ? 1 : eqt::scenario::kScenarioCouldNotStart;
-    }
-
-    app.run();
-    app.shutdown();
-
-    // T410: the scenario lane's exit-code taxonomy -- 0 pass, 1 fail,
-    // 2 timeout, 3 could-not-start. Read AFTER shutdown() on purpose: the
-    // runner outlives the game mode, so a client stopped by anything other
-    // than the runner itself (SIGTERM, /quit, an early camp) reports the
-    // unfinished-run code rather than a false 0. Every non-scenario run
-    // still returns 0 exactly as it did before this existed.
-    int exitCode = 0;
-    if (app.scenarioRequested()) {
-        exitCode = app.scenarioExitCode();
-        LOG_INFO(MOD_SCENARIO, "scenario '{}' -> exit {} ({}): {}",
-            app.scenarioName(), exitCode,
-            eqt::scenario::ScenarioExitCodeName(exitCode), app.scenarioReason());
-        std::cerr << "SCENARIO " << app.scenarioName() << " "
-                  << eqt::scenario::ScenarioExitCodeName(exitCode)
-                  << " exit=" << exitCode << " reason=" << app.scenarioReason()
-                  << "\n";
-    }
-    FlushThreadLog();
-    return exitCode;
+    out = std::move(config);
+    return true;
 }
