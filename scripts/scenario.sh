@@ -296,6 +296,14 @@ if [ -n "$INVENTORY_CHARS" ]; then
 fi
 
 # ---- 3b. seed, AFTER the snapshots so the restore takes it out again --------
+# B630 (issue #48): the co-location seed is a LANE concern, not an operator
+# option -- default it HERE, before this block runs. Setting it later (at the
+# client launch) leaves this block seeing an empty SEED_SQL and the two
+# characters log into their stored zones, unco-located. (First B630 run
+# 2026-09-19: seed never applied, caster 'nro' / observer 'befallen'.)
+if [ "$SCENARIO" = "cast_interrupt_chain" ] && [ -z "$SEED_SQL" ]; then
+    SEED_SQL="$REPO/scripts/scenario_configs/b630_seed.sql"
+fi
 if [ -n "$SEED_SQL" ]; then
     [ -f "$SEED_SQL" ] || { say "no --seed-sql file at $SEED_SQL"; exit 64; }
     eqemu_sql "$(cat "$SEED_SQL")" >/dev/null || { say "--seed-sql failed"; exit 65; }
