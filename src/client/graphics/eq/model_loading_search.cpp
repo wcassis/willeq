@@ -499,6 +499,56 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     // category owned (tally 49,778,752 against 22,146,989 live requested,
     // +125 %, T500 Leg C).
     std::map<const TextureInfo*, size_t> sharedEntryIndex;
+    // B843: node/key/object sizes, shared by the pixel tally (below), the
+    // per-model map sum (T500 Leg A (a)) and the loader-map storage sum
+    // (T500 (d)). Defined once, here, at the top of the function.
+    using MergedTexMap = std::map<std::string, std::shared_ptr<TextureInfo>>;
+    constexpr size_t kRbNodeOverhead = 4 * sizeof(void*);
+    constexpr size_t kMergedTexNodeBytes =
+        kRbNodeOverhead + sizeof(std::pair<const std::string, std::shared_ptr<TextureInfo>>);
+    constexpr size_t kStringSsoCapacity = 15;  // libstdc++
+    // The TextureInfo object's bytes in the EXACT arithmetic T500 (d) used in
+    // noteTexMapStorage (raw name/frame capacity, no SSO threshold, no +1),
+    // so the EntityModels-owned figure is byte-identical to the pre-B843
+    // baseline. Used both for the owned term and, for foreign-owned blocks,
+    // as the object half of the shared block's storageBytes (the control
+    // block, like the object itself, lives in the allocator's block and is
+    // intentionally outside this tally, matching the baseline).
+    auto texObjectBytes = [](const TextureInfo& tex) -> size_t {
+        size_t n = sizeof(TextureInfo) + tex.name.capacity()
+                 + tex.frames.capacity() * sizeof(TextureFrame);
+        for (const auto& f : tex.frames) n += f.name.capacity();
+        return n;
+    };
+    // B843: register `tex` as a shared block if its owner is not EntityModels
+    // (deduped by pointer); return the entry's index, or -1 when owned.
+    // storageBytes is NOT set here: noteTexMapStorage is the single authority
+    // on the node+key+object bytes, and it visits every loader map.
+    auto ensureSharedEntry = [&](const char* claimant,
+                                 const std::shared_ptr<TextureInfo>& tex) -> int {
+        if (tex->ownerCategory
+                == static_cast<uint8_t>(eqt::memory::Category::EntityModels))
+            return -1;
+        auto it = sharedEntryIndex.find(tex.get());
+        if (it != sharedEntryIndex.end()) {
+            stats.sharedTextureBytes[it->second].claimants +=
+                std::string(", ") + claimant;
+            return static_cast<int>(it->second);
+        }
+        size_t idx = stats.sharedTextureBytes.size();
+        sharedEntryIndex.emplace(tex.get(), idx);
+        const uint8_t owner = tex->ownerCategory;
+        const char* ownerName = owner < eqt::memory::kCategoryCount
+            ? eqt::memory::kCategoryNames[owner] : "unknown";
+        MemoryStats::SharedTextureBytes entry;
+        entry.bytes = tex->rawDataBytes();
+        // storageBytes is filled in by noteTexMapStorage (the single authority
+        // on the node+key+object bytes).
+        entry.owner = ownerName;
+        entry.claimants = claimant;
+        stats.sharedTextureBytes.push_back(std::move(entry));
+        return static_cast<int>(idx);
+    };
     auto sumMapBytes = [&](const char* claimant,
                            const std::map<std::string, std::shared_ptr<TextureInfo>>& texMap,
                            size_t& ownedTermOut) {
@@ -510,20 +560,10 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
                 owned += tex->rawDataBytes();
                 continue;
             }
-            size_t idx;
-            auto it = sharedEntryIndex.find(tex.get());
-            if (it != sharedEntryIndex.end()) {
-                idx = it->second;
-                stats.sharedTextureBytes[idx].claimants += std::string(", ") + claimant;
-            } else {
-                idx = stats.sharedTextureBytes.size();
-                sharedEntryIndex.emplace(tex.get(), idx);
-                const uint8_t owner = tex->ownerCategory;
-                const char* ownerName = owner < eqt::memory::kCategoryCount
-                    ? eqt::memory::kCategoryNames[owner] : "unknown";
-                stats.sharedTextureBytes.push_back(
-                    {tex->rawDataBytes(), ownerName, claimant});
-            }
+            // Foreign-owned: left out of this tex_* term, reported ONCE in
+            // sharedTextureBytes (Will's ruling, docs/decisions.md
+            // 2026-09-17 item 3).
+            ensureSharedEntry(claimant, tex);
         }
         ownedTermOut += owned;
     };
@@ -532,30 +572,15 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     // (getMergedTextures() copies the shared_ptrs), so their pixels are
     // already charged -- to the tex_* terms (owner EntityModels) or the
     // shared entries above -- and nothing here may add them a second time.
+    // Storage (node + key + object) is charged by noteTexMapStorage, which
+    // visits every loader map including cachedMergedTextures_ -- a superset of
+    // every per-model map -- so there is no storage to claim here either.
     auto claimSharedMap = [&](const char* claimant,
                               const std::map<std::string, std::shared_ptr<TextureInfo>>& texMap) {
         for (const auto& [name, tex] : texMap) {
             if (!tex) continue;
             if (tex->rawDataBytes() == 0) continue;
-            if (tex->ownerCategory
-                    == static_cast<uint8_t>(eqt::memory::Category::EntityModels)) {
-                continue;  // charged in a tex_* term, not a shared block
-            }
-            auto it = sharedEntryIndex.find(tex.get());
-            if (it != sharedEntryIndex.end()) {
-                stats.sharedTextureBytes[it->second].claimants +=
-                    std::string(", ") + claimant;
-            } else {
-                // Only reachable when a per-model map holds a TextureInfo no
-                // loader map holds -- defensive: still report it once
-                // rather than drop it.
-                sharedEntryIndex.emplace(tex.get(), stats.sharedTextureBytes.size());
-                const uint8_t owner = tex->ownerCategory;
-                const char* ownerName = owner < eqt::memory::kCategoryCount
-                    ? eqt::memory::kCategoryNames[owner] : "unknown";
-                stats.sharedTextureBytes.push_back(
-                    {tex->rawDataBytes(), ownerName, claimant});
-            }
+            ensureSharedEntry(claimant, tex);
         }
     };
 
@@ -621,6 +646,10 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     std::set<const SkeletonTrack*> chargedSkeletonTracks;
     std::set<const ResolvedMaterialList*> chargedMaterialLists;
     std::set<const TextureInfo*> chargedTextureObjects;
+    // B843: the foreign-owned TextureInfo objects (deduped by pointer), so the
+    // object half of each shared block's storageBytes is charged once, not
+    // once per map occurrence (node+key are genuinely per-occurrence).
+    std::set<const TextureInfo*> chargedSharedObjects;
 
     // The original (pre-flatten) skeleton every CharacterModel keeps a
     // shared_ptr to. Nothing has ever charged it.
@@ -714,12 +743,10 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     // The node size is computed, not assumed: libstdc++'s _Rb_tree_node is
     // _Rb_tree_node_base (a colour enum padded to a word, plus three pointers)
     // followed by the value_type. So the figure is right on both x86-64 (80 B)
-    // and armv7 (40 B) without a per-arch constant.
-    using MergedTexMap = std::map<std::string, std::shared_ptr<TextureInfo>>;
-    constexpr size_t kRbNodeOverhead = 4 * sizeof(void*);
-    constexpr size_t kMergedTexNodeBytes =
-        kRbNodeOverhead + sizeof(std::pair<const std::string, std::shared_ptr<TextureInfo>>);
-    constexpr size_t kStringSsoCapacity = 15;  // libstdc++
+    // and armv7 (40 B) without a per-arch constant. (MergedTexMap,
+    // kRbNodeOverhead, kMergedTexNodeBytes and kStringSsoCapacity are defined
+    // once at the top of this function, beside the B843 shared-block
+    // accounting that re-uses the same node size.)
     // (entries, sum of the mapped shared_ptr targets): two maps with the same
     // fingerprint hold the same texture set, which is what "duplicate" means
     // here. Cheap, and it needs no lock on cachedMergedTextures_, so no new
@@ -861,15 +888,57 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
         // T500 (d): the loader's OWN texture maps -- nodes and keys, plus each
         // distinct TextureInfo object (rawDataBytes() is the pixels only).
         // cachedMergedTextures_ is guarded by this same mutex.
+        //
+        // B843: ownership follows the block. The map node, the key and the
+        // TextureInfo object were allocated in the SAME step and scope that
+        // parsed the texture's pixels (the whole loader map is populated by
+        // one copy in that scope), so they carry the SAME ledger owner as the
+        // pixels. A texture whose pixels another category owns therefore has
+        // its node + key + object owned by that category too: they are
+        // excluded from loaderTextureMapBytes / textureObjectBytes (the
+        // EntityModels-owned remainder) and added to the shared block's
+        // storageBytes, reported once with its owner (Will's ruling,
+        // docs/decisions.md 2026-09-17 item 3).
         auto noteTexMapStorage = [&](const MergedTexMap& m) {
-            stats.loaderTextureMapBytes += m.size() * kMergedTexNodeBytes;
             for (const auto& [name, tex] : m) {
-                if (name.capacity() > kStringSsoCapacity)
-                    stats.loaderTextureMapBytes += name.capacity() + 1;
-                if (tex && chargedTextureObjects.insert(tex.get()).second) {
-                    stats.textureObjectBytes += sizeof(TextureInfo) + tex->name.capacity();
-                    stats.textureObjectBytes += tex->frames.capacity() * sizeof(TextureFrame);
-                    for (const auto& f : tex->frames) stats.textureObjectBytes += f.name.capacity();
+                if (!tex) continue;
+                const size_t keyBytes =
+                    name.capacity() > kStringSsoCapacity ? name.capacity() + 1 : 0;
+                const bool ownedByEntity = tex->ownerCategory
+                    == static_cast<uint8_t>(eqt::memory::Category::EntityModels);
+                if (ownedByEntity) {
+                    stats.loaderTextureMapBytes += kMergedTexNodeBytes + keyBytes;
+                    if (chargedTextureObjects.insert(tex.get()).second)
+                        stats.textureObjectBytes += texObjectBytes(*tex);
+                } else {
+                    // Foreign-owned: attribute the node + key + object to the
+                    // shared block, never to the EntityModels-owned terms.
+                    // The node + key are one allocation PER map occurrence
+                    // (each red-black map holds its own node + key for this
+                    // pointer); the TextureInfo object is one allocation per
+                    // DISTINCT pointer (deduped), matching the owned arm's
+                    // chargedTextureObjects. ensureSharedEntry() has already
+                    // registered the block when the loader maps were summed
+                    // above; the else arm covers cachedMergedTextures_, which
+                    // sumMapBytes does not visit.
+                    size_t storageHere = kMergedTexNodeBytes + keyBytes;
+                    if (chargedSharedObjects.insert(tex.get()).second)
+                        storageHere += texObjectBytes(*tex);
+                    auto it = sharedEntryIndex.find(tex.get());
+                    if (it != sharedEntryIndex.end()) {
+                        stats.sharedTextureBytes[it->second].storageBytes += storageHere;
+                    } else {
+                        sharedEntryIndex.emplace(tex.get(), stats.sharedTextureBytes.size());
+                        const uint8_t owner = tex->ownerCategory;
+                        const char* ownerName = owner < eqt::memory::kCategoryCount
+                            ? eqt::memory::kCategoryNames[owner] : "unknown";
+                        MemoryStats::SharedTextureBytes entry;
+                        entry.bytes = tex->rawDataBytes();
+                        entry.storageBytes = storageHere;
+                        entry.owner = ownerName;
+                        entry.claimants = "cached_merged";
+                        stats.sharedTextureBytes.push_back(std::move(entry));
+                    }
                 }
             }
         };
@@ -979,23 +1048,31 @@ std::string RaceModelLoader::modelMemLogLine(const std::string& point) const {
         cat.allocs, s.loadedModelCount);
 }
 
-// B843: the shared lines. One line per distinct TextureInfo whose pixels the
-// loader holds but the ledger charges to ANOTHER category, in Will's ruling
-// form (`X: owner, claimant, ...`) -- reported ONCE, never added into the
-// entity_models total. Emitted after the [modelmem] line; empty when every
-// texture pixel the loader holds is owned by entity_models (the x86 offline
-// path).
+// B843: the shared lines. One line per distinct TextureInfo block the loader
+// holds but the ledger charges to ANOTHER category, in Will's ruling form
+// (`X: owner, claimant, ...`) -- reported ONCE, never added into the
+// entity_models total. `X` is the WHOLE block: its pixels plus the map node +
+// key and the TextureInfo object that hold it (storageBytes; the shared_ptr
+// control block, like the object, is outside this tally -- see
+// MemoryStats::SharedTextureBytes). Emitted after the [modelmem] line; empty
+// when every texture block the loader holds is owned by entity_models (the
+// x86 offline path).
 std::string RaceModelLoader::modelMemSharedLines(const std::string& point) const {
     const MemoryStats s = getMemoryStats();
     if (s.sharedTextureBytes.empty()) return std::string();
     uint64_t total = 0;
-    for (const auto& e : s.sharedTextureBytes) total += e.bytes;
-    std::string out = fmt::format(
-        "[modelmem-shared] point={} shared_total={} distinct_blocks={}",
-        point, total, s.sharedTextureBytes.size());
+    uint64_t storageTotal = 0;
     for (const auto& e : s.sharedTextureBytes) {
-        out += fmt::format(" | {} : {}, [{}]",
-                           e.bytes, e.owner, e.claimants);
+        total += e.bytes + e.storageBytes;
+        storageTotal += e.storageBytes;
+    }
+    std::string out = fmt::format(
+        "[modelmem-shared] point={} shared_total={} shared_storage={} distinct_blocks={}",
+        point, total, storageTotal, s.sharedTextureBytes.size());
+    for (const auto& e : s.sharedTextureBytes) {
+        out += fmt::format(" | {} (pixels {} + storage {}): {}, [{}]",
+                           e.bytes + e.storageBytes, e.bytes, e.storageBytes,
+                           e.owner, e.claimants);
     }
     return out;
 }

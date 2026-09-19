@@ -412,19 +412,24 @@ public:
         size_t containerCapacityBytes = 0;
 
         // (f) B843 (Will's ruling, docs/decisions.md 2026-09-17 item 3): a
-        // TextureInfo is shared by shared_ptr, and its PIXELS were allocated
-        // under whatever MemoryScope the load path that first parsed its
-        // archive was running in -- on the Pi that is ZoneParse for
-        // zoneTextures_ (the render thread's loadZoneModels call, inside
-        // loadZoneStep1_S3D) and the entity-prep thread's scope for the
-        // zone _chr.s3d caches, not EntityModels. The five tex_* terms above
-        // therefore count only pixels whose ownerCategory IS entity_models;
-        // the rest are reported ONCE here, deduplicated by pointer, never
-        // added into this category's sum.
+        // TextureInfo is shared by shared_ptr, and the block it names -- its
+        // PIXELS plus the map node + key that hold it and the TextureInfo
+        // object itself -- was allocated under whatever MemoryScope the load
+        // path that first parsed its archive was running in. On the Pi that is
+        // ZoneParse for zoneTextures_ (the render thread's loadZoneModels
+        // call, inside loadZoneStep1_S3D) and the entity-prep thread's scope
+        // for the zone _chr.s3d caches, not EntityModels. The five tex_* terms
+        // above therefore count only bytes whose ownerCategory IS
+        // entity_models; the rest are reported ONCE here, deduplicated by
+        // pointer, never added into this category's sum. The shared_ptr
+        // control block, like the object it guards, lives in the allocator's
+        // block and is intentionally outside this tally (the T500 (d) baseline
+        // never charged it), so it is NOT part of storageBytes.
         // One entry per distinct shared TextureInfo held by a loader map.
         struct SharedTextureBytes {
             uint64_t bytes = 0;                 // rawDataBytes(), counted once
-            const char* owner = "unknown";      // ledger category that allocated the pixels
+            uint64_t storageBytes = 0;          // map node+key (per occurrence) + object (once)
+            const char* owner = "unknown";      // ledger category that allocated the block
             std::string claimants;              // comma-separated map names holding it
         };
         std::vector<SharedTextureBytes> sharedTextureBytes;
