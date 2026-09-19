@@ -1,0 +1,7 @@
+637:[2026-09-19 11:22:28.334] [DEBUG] [SPELL] Set 9 spell gems
+4421:[2026-09-19 11:22:28.742] [INFO ] [ZONE] Zone connection complete! Player position confirmed (spawn_id=177).
+9890:CMD outcome=failed registry=action recognized=true message="That command is a GM command and you were not in GM mode when you logged in. Use #gm on, then log out and back in." cmd="/gmzone Testcaster 303"
+10003:[2026-09-19 11:22:41.299] [INFO ] [MAIN] Script: executing '/gmzone Testcaster 303' (step 2/4)
+48225:[2026-09-19 11:24:21.332] [INFO ] [MAIN] You have begun to camp. You will log out in 30 seconds.
+49754:[2026-09-19 11:24:51.343] [INFO ] [MAIN] You have camped.
+49958:CLIENT_EXIT=0
