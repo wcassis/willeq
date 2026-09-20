@@ -80,7 +80,11 @@ rebuild. docs/ci.md: "Device-source changes are caught by the input stamp".
   are genuinely absent from the host; any device-path failure is a hard FAIL.
 - Alt+ variants [measured, probe run against the rebuilt lib, display :96]:
   alt+KP_8 -> KEY_NUMPAD8 + CameraRaise, alt+KP_6 -> KEY_NUMPAD6 +
-  CameraOrbitRight, alt+KP_9 -> KEY_NUMPAD9 + CameraPitchUp (altprobe.txt).
+  CameraOrbitRight, alt+KP_9 -> KEY_NUMPAD9 + CameraPitchUp (altprobe.txt;
+  the probe drives the real device with xdotool alt+ combinations and
+  resolves through the shipped HotkeyManager with the client's own keyIsDown_
+  Alt derivation, renderer_event_receiver.cpp:158 — alt+KP_1 correctly
+  resolves to nothing, since plain Numpad1 is the zoom-out binding).
 
 ## Local verification
 
