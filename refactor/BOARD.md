@@ -10369,7 +10369,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   used to learn the units of DirHeading/Pitch/Height/Zoom; they are the client's
   own write-out. Found by T466.
 
-- **B586** (A, *owed*) **The held-item attack animation was not captured on the → issue #50
+- ~~**B586**~~ (A, *owed*) **The held-item attack animation was not captured on the → issue #50
   oracle.** Set A (Short Sword primary, Gloomingdeep Lantern secondary) was
   captured idle from four cameras, but auto-attack at 8 units behind the
   training dummy produced no swing in 40 stepped frames. Owed: an attack capture
@@ -10383,6 +10383,12 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   Found by T466.
   T472 Leg A (2026-09-14) changed nothing here: offline only; the attack
   captures are T472 Leg B's.
+  **CLOSED by T478 (issue #50), struck 2026-09-20 (card kb-chase-closures).**
+  T478 paid the whole capture debt: the `/target` cause was the underscore spawn
+  name (all four T478 sessions targeted `a_training_dummy000` and
+  auto-attacked), and attack captures landed on both clients for every set --
+  A, B, C and IT10. What T478 found in them is the live record now: B722 (#62)
+  and B723 (#63).
 
 - **B587** (A, *unconfirmed*) **At the camera that reproduces the official Chase → issue #51
   view, fable draws the player model facing the camera.** fable session
