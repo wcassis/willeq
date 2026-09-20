@@ -1152,6 +1152,10 @@ void ZoneLoadComponent::loadZoneStep13_Cleanup(ZoneLoadContext& ctx) {
         if (ctx_.currentZone && ctx_.currentZone->wldLoader) {
             ctx_.currentZone->wldLoader->releasePostLoadData();
             LOG_INFO(MOD_GRAPHICS, "Sequential: released WLD post-load data");
+            // T504: every region mesh is built by now (this is the automatic,
+            // eager path); the per-region source geometry is a second copy.
+            const size_t regionGeomFreed = ctx_.currentZone->wldLoader->releaseRegionGeometry();
+            LOG_INFO(MOD_GRAPHICS, "Sequential: released {} bytes of per-region source geometry", regionGeomFreed);
         } else if (ctx_.currentZone && !ctx_.currentZone->wldLoader) {
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: wldLoader is null, skipping releasePostLoadData");
         }

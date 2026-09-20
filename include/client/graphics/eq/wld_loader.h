@@ -607,6 +607,17 @@ public:
     // (needed by mesh cache for progressive region rebuilds).
     void releasePostLoadData();
 
+    // T504 (load-step audit): drop the per-region SOURCE geometry once every
+    // region mesh has been built. releasePostLoadData() kept it "for progressive
+    // region rebuilds" by ConstrainedMeshCache -- a class T67 deleted because it
+    // was never constructed. In automatic mode loadZoneStep4_Regions() builds
+    // every region eagerly, so after the load this is a second full copy of the
+    // zone's vertices and triangles beside the built meshes. Returns the bytes
+    // released (ZoneGeometry::getFullMemoryUsage). After this,
+    // getGeometryForRegion() returns null and rebuildRegionMesh() declines with
+    // its existing warning.
+    size_t releaseRegionGeometry();
+
     // PVS (Potentially Visible Set) accessors
     // Get the geometry associated with a BSP region (via meshReference)
     std::shared_ptr<ZoneGeometry> getGeometryForRegion(size_t regionIndex) const;

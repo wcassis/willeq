@@ -251,6 +251,17 @@ void WldLoader::releasePostLoadData() {
     resolvedMaterialListCache_.clear();
 }
 
+size_t WldLoader::releaseRegionGeometry() {
+    size_t freed = 0;
+    for (const auto& g : geometries_) {
+        // a geometry another owner still holds is not freed by dropping ours
+        if (g && g.use_count() <= 2) freed += g->getFullMemoryUsage();
+    }
+    std::vector<std::shared_ptr<ZoneGeometry>>().swap(geometries_);
+    std::map<uint32_t, std::shared_ptr<ZoneGeometry>>().swap(geometryByFragIndex_);
+    return freed;
+}
+
 bool WldLoader::parseFromArchive(const std::string& archivePath, const std::string& wldName) {
     PfsArchive archive;
     if (!archive.open(archivePath)) {
