@@ -1,0 +1,41 @@
+test_equip_rows_carry_no_held_claim (__main__.CommittedTimelineTest.test_equip_rows_carry_no_held_claim) ... FAIL
+test_heldA_rows_claim_the_snapshot (__main__.CommittedTimelineTest.test_heldA_rows_claim_the_snapshot) ... FAIL
+test_heldB_rows_are_parked (__main__.CommittedTimelineTest.test_heldB_rows_are_parked) ... FAIL
+test_equip_step_does_not_claim_the_after_state (__main__.GeneratorFromSnapshotTest.test_equip_step_does_not_claim_the_after_state) ... ok
+test_heldA_claims_come_from_the_snapshot (__main__.GeneratorFromSnapshotTest.test_heldA_claims_come_from_the_snapshot) ... ok
+test_heldB_frames_are_parked_with_why (__main__.GeneratorFromSnapshotTest.test_heldB_frames_are_parked_with_why) ... ok
+test_missing_snapshot_is_a_loud_error (__main__.GeneratorFromSnapshotTest.test_missing_snapshot_is_a_loud_error) ... ok
+test_no_hand_typed_item_id_remains_in_a_held_claim (__main__.GeneratorFromSnapshotTest.test_no_hand_typed_item_id_remains_in_a_held_claim) ... ok
+test_slot_with_no_item_is_a_loud_error (__main__.GeneratorFromSnapshotTest.test_slot_with_no_item_is_a_loud_error) ... ok
+
+======================================================================
+FAIL: test_equip_rows_carry_no_held_claim (__main__.CommittedTimelineTest.test_equip_rows_carry_no_held_claim)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/src/willeq-wt/kb-b793-timeline-held-from-snapshot/scripts/llmbench/test_timeline_held_snapshot.py", line 223, in test_equip_rows_carry_no_held_claim
+    self.assertNotIn("held", kv,
+AssertionError: 'held' unexpectedly found in {'label': 'E_equip_p2_23to13', 'held': '13=9990 (moved in-game from general slot 23', 'zone': 'qeynos2', 'expect': 'unlabelled'} : E_equip_p2_23to13 still claims the after-state '13=9990 (moved in-game from general slot 23' (13=9990) although the client refused the move (B793)
+
+======================================================================
+FAIL: test_heldA_rows_claim_the_snapshot (__main__.CommittedTimelineTest.test_heldA_rows_claim_the_snapshot)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/src/willeq-wt/kb-b793-timeline-held-from-snapshot/scripts/llmbench/test_timeline_held_snapshot.py", line 211, in test_heldA_rows_claim_the_snapshot
+    self.assertEqual(kv.get("held"), "13=14337,14=20656",
+AssertionError: '13=9998 short sword,14=9979 lantern' != '13=14337,14=20656'
+- 13=9998 short sword,14=9979 lantern
++ 13=14337,14=20656
+ : E_heldA_p2_chase claims '13=9998 short sword,14=9979 lantern' but the snapshot says 14337/20656 -- the hand-typed value (9998) survived (B793)
+
+======================================================================
+FAIL: test_heldB_rows_are_parked (__main__.CommittedTimelineTest.test_heldB_rows_are_parked)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/src/willeq-wt/kb-b793-timeline-held-from-snapshot/scripts/llmbench/test_timeline_held_snapshot.py", line 232, in test_heldB_rows_are_parked
+    self.assertNotIn("held", kv,
+AssertionError: 'held' unexpectedly found in {'label': 'E_heldB_p2_chase', 'camera': 'Chase', 'held': '13=9990', 'zone': 'qeynos2', 'expect': 'discrepancy:B725'} : E_heldB_p2_chase still claims held='13=9990'; the after-state was refused by the client (B793)
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.663s
+
+FAILED (failures=3)

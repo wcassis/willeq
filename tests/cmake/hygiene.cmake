@@ -272,3 +272,19 @@ SET_TESTS_PROPERTIES(BoardToIssuesHygiene PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME LlmBenchHeldBeforeAfterHygiene
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/llmbench/test_timeline_held_check.py -v)
 SET_TESTS_PROPERTIES(LlmBenchHeldBeforeAfterHygiene PROPERTIES LABELS "hygiene")
+
+# B793 (issue #75): the llmbench timeline's held= claims must come from the
+# inventory snapshot, not from hand-typed constants.  The committed Leg C
+# timeline claimed Testcaster holds 13=9998 while the run's own snapshot
+# says 14337, and its /equip after-state was refused by the client.
+# test_timeline_held_snapshot.py drives the production generator
+# (make_timeline.build_timeline) on the committed T492 reference snapshot
+# (scripts/llmbench/fixtures/T492/db_before/) and checks the committed
+# timeline.tsv against it: every held= claim is the snapshot's, the /equip
+# after-state is not claimed, the held-B frames are parked with a why=, and
+# a missing snapshot is a loud error.  RED on the pre-B793 tree (the
+# committed file still claims 9998), GREEN once the timeline is regenerated.
+# Pure python over committed TSVs, no server, no artefact.
+ADD_TEST(NAME LlmBenchTimelineHeldFromSnapshot
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/llmbench/test_timeline_held_snapshot.py -v)
+SET_TESTS_PROPERTIES(LlmBenchTimelineHeldFromSnapshot PROPERTIES LABELS "hygiene")

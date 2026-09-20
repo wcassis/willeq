@@ -11247,7 +11247,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   documented "oracle conditions" helper the scoring script itself can point at,
   or a refusal in `camera_match_score.py` when it is handed a candidate whose
   conditions were not stated. Found by T492.
-- **B793** (A) **the T492 corpus's `held=` truth values are wrong, and one of → issue #75
+- ~~**B793** (A) **the T492 corpus's `held=` truth values are wrong, and one of → issue #75
   them was never applied.** MEASURED T492 Leg G by `scripts/llmbench/verify_labels.py`
   against the run's own inventory snapshot: the `E_heldA_p2_*` steps claim
   Testcaster holds `slot13=9998, slot14=9979` while `character_data`/`inventory`
@@ -11260,7 +11260,21 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   nothing checked them until Leg G. Fix: read the held values FROM the snapshot
   at compile time rather than hardcoding, and pick a slot that actually holds a
   weapon for the `/equip` step. The affected steps are parked
-  `expect=unlabelled` with `why=`. Found by T492.
+  `expect=unlabelled` with `why=`. Found by T492.~~
+  **STRUCK 2026-09-20 (issue #75, `task/kb-b793-timeline-held-from-snapshot`):
+  `make_timeline.py` now takes `--db-before <corpus>/shared/db_before/` -- the
+  same file `verify_labels.py` scores held= against -- and derives every held=
+  claim from its inventory.tsv + snapshot.tsv (reference snapshot committed at
+  `scripts/llmbench/fixtures/T492/db_before/`); a missing snapshot is a hard
+  error (exit 2), never a fallback to constants. The regenerated timeline's
+  `E_heldA_p2_*` rows claim 14337/20656 and Testbuddy's stay 9997/9979; the
+  `/equip` step drops its after-claim and the `E_heldB_*` frames are parked
+  `expect=unlabelled` with a `why=` -- no repo file establishes a general
+  slot's eligibility for Primary (13) (no slot-type/slots bitmask in the
+  snapshot, no item TYPE in data/item_idfile.tsv [measured]), so the after-
+  state is not guessed. Pinned by `test_timeline_held_snapshot.py`
+  (`LlmBenchTimelineHeldFromSnapshot`, hygiene; RED on the pre-fix tree: the
+  committed timeline claimed 9998 where the snapshot says 14337).~~
 - **B794** (P) **a camera-identification threshold validated with one client in
   world does not transfer to a frame with three.** B792 is that the scene
   conditions must match T466's stills; this is the other half. MEASURED T492:

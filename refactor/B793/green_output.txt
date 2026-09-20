@@ -1,0 +1,14 @@
+test_equip_rows_carry_no_held_claim (__main__.CommittedTimelineTest.test_equip_rows_carry_no_held_claim) ... ok
+test_heldA_rows_claim_the_snapshot (__main__.CommittedTimelineTest.test_heldA_rows_claim_the_snapshot) ... ok
+test_heldB_rows_are_parked (__main__.CommittedTimelineTest.test_heldB_rows_are_parked) ... ok
+test_equip_step_does_not_claim_the_after_state (__main__.GeneratorFromSnapshotTest.test_equip_step_does_not_claim_the_after_state) ... ok
+test_heldA_claims_come_from_the_snapshot (__main__.GeneratorFromSnapshotTest.test_heldA_claims_come_from_the_snapshot) ... ok
+test_heldB_frames_are_parked_with_why (__main__.GeneratorFromSnapshotTest.test_heldB_frames_are_parked_with_why) ... ok
+test_missing_snapshot_is_a_loud_error (__main__.GeneratorFromSnapshotTest.test_missing_snapshot_is_a_loud_error) ... ok
+test_no_hand_typed_item_id_remains_in_a_held_claim (__main__.GeneratorFromSnapshotTest.test_no_hand_typed_item_id_remains_in_a_held_claim) ... ok
+test_slot_with_no_item_is_a_loud_error (__main__.GeneratorFromSnapshotTest.test_slot_with_no_item_is_a_loud_error) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.667s
+
+OK

@@ -172,7 +172,7 @@ line behind it in this unit) or `[assumed]`.
 | `teardown.sh` | the same teardown, standalone, for when the recorder dies without its trap |
 | `o.sh` | the official-client driver — a copy of T478's `t478_o.sh` (local-time marks, `pair` also OCRs the chat crop) |
 | `oracle_start.sh` | a copy of T478's launcher, plus a pristine `eqclient.ini` restored before every launch |
-| `make_timeline.py` | generates `timeline.tsv`: the row SPACING is derived from the action, not hand-written |
+| `make_timeline.py` | generates `timeline.tsv`: the row SPACING is derived from the action, not hand-written; since B793 every `held=` value is read from the run's inventory snapshot (`--db-before <corpus>/shared/db_before/`, the file `verify_labels.py` scores against) — a missing snapshot is a hard error |
 | `compile_timeline.py` | one timeline → the two willeq `--script` files + `steps.tsv`/`steps.json` |
 | `harvest.py` | one willeq `run.log` → `marks.tsv`, `truth.tsv`, `chat.tsv`, and the frames renamed to `<HH:MM:SS.mmm>_<label>_window.png` |
 | `clock_offset.sh` | the other host's clock minus this host's, median over a ControlMaster socket |
@@ -558,8 +558,13 @@ Sheets were not regenerated: no frame changed.
 
 **Owed, in order:** (1) calibrate the camera threshold under three-client
 conditions (B792); (2) fix the `held=` values in `make_timeline.py` against the
-actual inventory and pick a real weapon for the `/equip` step; (3) re-record the
-B721/B722/B725 and target steps behind the gate; (4) then `restore_pending.py`.
+actual inventory and pick a real weapon for the `/equip` step — CLOSED by
+B793 (issue #75, `task/kb-b793-timeline-held-from-snapshot`): the Leg C
+`held=` values are now read from the snapshot the run started from and the
+unestablishable `/equip` after-state is parked `expect=unlabelled` with a
+`why=`; the re-record still seeds its weapon at record time (Leg H); (3)
+re-record the B721/B722/B725 and target steps behind the gate; (4) then
+`restore_pending.py`.
 
 ### Leg H — the margin criterion, validated and applied; held= read from the server
 
@@ -617,6 +622,24 @@ snapshot, so the restore removes it again — verified: inventory restored
 BYTE-IDENTICALLY with the seed gone. `harvest.py` now marks a client refusal
 line (`cannot go in`, `wrong slot type`, `not recognized`) as `REFUSED` in
 marks.tsv rather than letting the step read as done.
+
+B793 (issue #75, `task/kb-b793-timeline-held-from-snapshot`) closed the LEG C
+generator the same way: `make_timeline.py` now takes
+`--db-before <corpus>/shared/db_before/` (the same convention
+`verify_labels.py` reads) and derives every `held=` claim from its
+`inventory.tsv` + `snapshot.tsv` — a missing snapshot is a hard error (exit
+2), never a fallback to constants. The committed reference snapshot lives at
+`scripts/llmbench/fixtures/T492/db_before/`, and the regenerated
+`timeline.tsv`'s `E_heldA_p2_*` rows now claim `13=14337,14=20656` while
+Testbuddy's rows stay `13=9997,14=9979`. The `/equip` step keeps its action
+but drops its `held=13=9990` after-claim, and the `E_heldB_*` frames are
+parked `expect=unlabelled` with a `why=`: no repo file establishes a general
+slot's eligibility for Primary (13) (the snapshot carries no slot-type / slots
+bitmask and `data/item_idfile.tsv` carries no item TYPE), so claiming the
+after-state offline would be a guess. Pinned by
+`scripts/llmbench/test_timeline_held_snapshot.py` (ctest
+`LlmBenchTimelineHeldFromSnapshot`, label `hygiene`; RED on the pre-fix tree:
+the committed timeline claimed 9998 where the snapshot says 14337).
 
 #### The gates `[measured]`
 
