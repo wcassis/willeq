@@ -783,16 +783,26 @@ def assert_memory_ledger(label_prefix, memory, failures, max_unattributed_pct=No
     # (2) the ledger must cover every RESIDENT heap byte. smaps' [heap] row is
     #     the resident anonymous heap; the ledger charges whole glibc chunks,
     #     so it is legitimately larger -- but never smaller.
+    #
+    #     T504: the resident heap is LIVE chunks plus FREED chunks glibc still
+    #     holds (malloc_slack). Comparing the ledger alone against it was only
+    #     ever true because a load freed almost nothing; once the load releases
+    #     memory early (T504 fix 4 frees ~19 MB of raw texture bytes at archive
+    #     load) the freed-but-resident pages were reported as "escaped the hooks"
+    #     -- MEASURED qeynos2 coverage run: gap 11,982,608 B, slack 57,403,248 B.
+    #     Slack is a named bucket with its own bound, so it counts as covered;
+    #     what this check exists to catch is heap that is neither.
     heap_anon = _heap_anon_bytes(memory.get("mappings"))
     if heap_anon:
-        if total < heap_anon:
+        covered = total + slack
+        if covered < heap_anon:
             failures.append(
-                f"{label_prefix}: ledger {total} does not cover the resident heap "
-                f"{heap_anon} -- {heap_anon - total} bytes of heap escaped the hooks"
+                f"{label_prefix}: ledger {total} + malloc_slack {slack} does not cover the "
+                f"resident heap {heap_anon} -- {heap_anon - covered} bytes of heap escaped the hooks"
             )
         else:
-            print(f"  [ledger] {label_prefix}: ledger covers the resident heap "
-                  f"({total} >= [heap] anon {heap_anon})")
+            print(f"  [ledger] {label_prefix}: ledger + slack cover the resident heap "
+                  f"({total} + {slack} >= [heap] anon {heap_anon})")
     # (3) non-heap anonymous RSS: what no allocator hook can ever see.
     nonheap = _nonheap_anon_bytes(memory.get("mappings"))
     if nonheap is not None:
