@@ -10440,8 +10440,9 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   Gloomingdeep Lantern (item 9979, IT48) hanging in the LEFT hand at the hip.
   fable shows the Short Sword in the right hand with the blade standing UP above
   the fist (about a half turn about the hand's horizontal axis, as far as the
-  frames show), and no lantern in the left hand from either side. Attack-pose
-  comparison owed (B586). Found by T466.
+ frames show), and no lantern in the left hand from either side. Attack-pose
+ comparison owed (B586) -- that comparison was captured by T478 and its
+ findings live on as B722/B723 (kb-chase-closures). Found by T466.
   **T485 (slot1, in flight, `refactor/T485_held_item_transform_candidate_search.md`) OWNS this item** — the lantern half is already false since T472, and T485 strikes or narrows the rest; nobody else scopes a fix off it (T486 note).
 
 ---
@@ -10638,7 +10639,8 @@ unused.
   floors it at the player's eye. Neither was measured on the oracle; both are
   written down in `camera_controller.h`. Found by T474.
 
-- **B683** (A, **T474 STOP**) **The Chase re-fit at a second view disagrees with → issue #59
+- ~~**B683**~~ (A, **T474 STOP**) **SUPERSEDED by B721 -- see the T478 record
+  below; struck 2026-09-20 (card kb-chase-closures, issue #59).** **The Chase re-fit at a second view disagrees with → issue #59
   T466's fit on distance.** Same spot and pose, heading 288, scored against
   T466's own h288 oracle Chase still on the crop that reproduces T466's h160
   numbers (`400x600+0+100`, recovered by reproduction:
@@ -10653,6 +10655,12 @@ unused.
   near wall is at the left; at h288 the wall fills the frame. Owed (not run,
   Leg B stopped): a fresh oracle h288 grab, a crop chosen for that view, a
   genuinely second spot, and B681's second race. Found by T474.
+  **SUPERSEDED by B721 (T478 record below), struck 2026-09-20 (card
+  kb-chase-closures, issue #59).** T478 reproduced T474's h288 "dist 3.5" on
+  T474's wall crop as the pitch-6 slice of a diagonal pitch/height valley whose
+  minimum is off that plane, so the crop explains the disagreement and the
+  clean-spot re-grab does not settle the fit. B721 (issue #61) carries the
+  remaining work.
 
 - ~~**B684**~~ **CLOSED by T480.** `PlayerState::setFollowDistance()` is deleted,
   and so is its `check_zero_callers.py` EXEMPT row. The cascade stopped at once.
