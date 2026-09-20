@@ -1,0 +1,39 @@
+Note: Google Test filter = B734ObjectGeometriesTest.*:DoorManagerNullDeviceTest.FindDoorMeshByActorName
+[==========] Running 3 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 2 tests from B734ObjectGeometriesTest
+[ RUN      ] B734ObjectGeometriesTest.SkinnedObjectGeometryIsAtRestPose
+/home/user/src/willeq-wt/kb-b734-object-geometries-posed/tests/test_door_loading.cpp:187: Failure
+Expected: (it) != (zone->objectGeometries.end()), actual: 8-byte object <80-FF AD-80 3D-5B 00-00> vs 8-byte object <80-FF AD-80 3D-5B 00-00>
+TDTORCH301 (the actor name) is not an exact key in objectGeometries; keys present: STOR301 TDCVRCK301 TDCVRCK302 TDCVRCK303 TDOS301 TDOS302 TDOS303 TDOS304 TDOS305 TDROCKS301 TDROCKS302 TDROCKS303 TDROCKS304 TDROCKS305 TDROCKS306 TDSTLGTS301 TDSTLGTS302 TDSTLGTS303 TDSTLGTS304 TDSTLGTS305 
+
+[  FAILED  ] B734ObjectGeometriesTest.SkinnedObjectGeometryIsAtRestPose (113 ms)
+[ RUN      ] B734ObjectGeometriesTest.NoSkinnedGeometryStoredUnPosed
+/home/user/src/willeq-wt/kb-b734-object-geometries-posed/tests/test_door_loading.cpp:244: Failure
+Value of: degenerate
+  Actual: true
+Expected: false
+skinned geometry 'STOR301' stored with degenerate (0,0,0)-(0,0,0) bounds
+
+[  FAILED  ] B734ObjectGeometriesTest.NoSkinnedGeometryStoredUnPosed (90 ms)
+[----------] 2 tests from B734ObjectGeometriesTest (203 ms total)
+
+[----------] 1 test from DoorManagerNullDeviceTest
+[ RUN      ] DoorManagerNullDeviceTest.FindDoorMeshByActorName
+Irrlicht Engine version 1.8.5
+/home/user/src/willeq-wt/kb-b734-object-geometries-posed/tests/test_door_loading.cpp:304: Failure
+Expected: (mesh) != (nullptr), actual: NULL vs (nullptr)
+findDoorMesh("TDTORCH301") missed on thedeep: the skinned torch is not reachable by its actor name
+
+[  FAILED  ] DoorManagerNullDeviceTest.FindDoorMeshByActorName (92 ms)
+[----------] 1 test from DoorManagerNullDeviceTest (92 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 2 test suites ran. (296 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 3 tests, listed below:
+[  FAILED  ] B734ObjectGeometriesTest.SkinnedObjectGeometryIsAtRestPose
+[  FAILED  ] B734ObjectGeometriesTest.NoSkinnedGeometryStoredUnPosed
+[  FAILED  ] DoorManagerNullDeviceTest.FindDoorMeshByActorName
+
+ 3 FAILED TESTS
