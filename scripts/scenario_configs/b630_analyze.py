@@ -181,121 +181,6 @@ def b760_rows(caster_lines, label):
     return rows
 
 
-# ---------------------------------------------------------------------------
-# The self-test (item 4, RED-pinned): feed the analyzer's own needle logic
-# the three real false-positive lines from the failed dev run plus one true
-# positive each. If any of the three false positives lights up a needle, or
-# any true positive fails to, this exits 1.
-# ---------------------------------------------------------------------------
-FALSE_POSITIVE_236 = (
-    "[2026-09-19 23:34:49.552] [INFO ] [MAIN] [memarena] point=ready ok=1 "
-    "ordblks=262 smblks=0 fordblks=6065696 fsmblks=0 keepcost=133888 hblks=7 "
-    "hblkhd=9834496 arena=9179136 uordblks=3113440 mmap_thr=0 trim_pages=0 "
-    "le128=85/7333 128-256=65/12385 256-512=11/3179 512-1k=2/561 1k-2k=11/1185 "
-    "2k-4k=13/78781 8k-16k=19/236563 16k-32k=28/660508 32k-64k=15/721199 "
-    "ge64k=21/4203893\n")
-FALSE_POSITIVE_LOGIN = (
-    "[2026-09-19 23:34:47.173] [INFO ] [WORLD] Logged in successfully with "
-    "dbid 1 and key W5J422OQA9\n")
-FALSE_POSITIVE_VACUOUS_SPELL = (
-    "[2026-09-19 23:35:17.696] [INFO ] [SPELL] Cast of 'Minor Shielding' "
-    "(ID: 288) completed successfully\n")  # ID 288, never O'Keil
-
-TRUE_RECAST = (
-    "[2026-09-19 23:36:00.000] [INFO ] [MAIN] Spell recast time not yet met.\n")
-TRUE_FIZZLE = (
-    "[2026-09-19 23:36:01.000] [INFO ] [MAIN] Your spell fizzles!\n")
-TRUE_OKEIL_LAND = (
-    "[2026-09-19 23:36:02.000] [INFO ] [SPELL] Cast of 'O'Keils Radiation' "
-    "(ID: 378) completed successfully\n")
-TRUE_BYSTANDER = (
-    "[2026-09-19 23:36:03.000] [DEBUG] [SPELL] Interrupt: caster=165 "
-    "('Wiza the Caster'), spell=378, message=12478\n")
-# The caster's OWN interrupt copy (message=439, empty name) must NOT match
-# the bystander needle -- it is the caster-side line, not the bystander's.
-TRUE_BYSTANDER_SELF = (
-    "[2026-09-19 23:36:03.000] [DEBUG] [SPELL] Interrupt: caster=165 "
-    "(''), spell=378, message=439\n")
-TRUE_B760_KEEPCASTING = (
-    "[2026-09-19 23:36:04.000] [DEBUG] [ZONE] [ZonePacket] HC_OP_ManaChange\n")
-TRUE_B760_MEMORIZE = (
-    "[2026-09-19 23:36:04.100] [DEBUG] [ZONE] [ZonePacket] HC_OP_MemorizeSpell\n")
-
-
-def run_self_test():
-    failures = []
-
-    def check(name, cond):
-        if not cond:
-            failures.append(name)
-
-    # The three dev-run false positives must NOT light up their needles.
-    check("D2 236: memarena line must not match the recast needle",
-          grep([FALSE_POSITIVE_236], CHAT_RECAST_NOT_MET) is None)
-    check("B land: login line must not match the fizzle/land needles",
-          grep([FALSE_POSITIVE_LOGIN], CHAT_FIZZLE) is None
-          and SPELL_COMPLETED.search(FALSE_POSITIVE_LOGIN) is None)
-
-    # The true positives must light up.
-    check("D2 236: the real chat string matches",
-          grep([TRUE_RECAST], CHAT_RECAST_NOT_MET) is not None)
-    check("B fizzle: the real chat string matches",
-          grep([TRUE_FIZZLE], CHAT_FIZZLE) is not None)
-    # A's no-late-impact fix: attribute a 'completed successfully' to a spell
-    # id, so a 288 land is NOT counted as a 378 land. New handler lines carry
-    # the id inline; older logs carry the name only, resolved via the
-    # name->id map from the 'Beginning cast ... (ID: n)' lines.
-    check("A no-late-impact: the 288 land maps to 288, not 378",
-          _spell_id_of(FALSE_POSITIVE_VACUOUS_SPELL, {}) == 288)
-    check("A no-late-impact: the 378 land maps to 378",
-          _spell_id_of(TRUE_OKEIL_LAND, {}) == 378)
-    map_lines = [
-        "[2026-09-19 23:35:03.566] [INFO ] [SPELL] Beginning cast of "
-        "'Minor Shielding' (ID: 288) on target 165\n",
-    ]
-    name_map = _spell_id_map(map_lines)
-    check("A no-late-impact: a name-only completion resolves via the map",
-          _spell_id_of(
-              "[2026-09-19 23:35:17.696] [INFO ] [SPELL] Cast of "
-              "'Minor Shielding' completed successfully\n",
-              name_map) == 288)
-    check("A bystander: the real 12478 line matches",
-          BYSTANDER_INTERRUPT.search(TRUE_BYSTANDER) is not None)
-    # The caster's own 439 copy (empty name) must NOT match the bystander
-    # needle: the bystander's copy is the one with the name + 12478.
-    check("A bystander: the caster's own 439 copy does not match",
-          BYSTANDER_INTERRUPT.search(TRUE_BYSTANDER_SELF) is None)
-    check("B760: the keepcasting-0 anchor is the [ZonePacket] handler line",
-          HANDLER_KEEPCASTING_0.search(TRUE_B760_KEEPCASTING) is not None)
-    # The anchor is the PAIR: a [SPELL] decode of keepcasting 0 right after the
-    # [ZonePacket] line (a keepcasting 1 mana regen is not a tail).
-    b760_pair = [
-        TRUE_B760_KEEPCASTING,
-        "[2026-09-19 23:36:04.001] [DEBUG] [SPELL] ManaChange: mana=991, "
-        "stamina=214, spell=372, keepcasting=0\n",
-    ]
-    check("B760: the keepcasting-0 pair yields a row",
-          len(b760_rows(b760_pair, "selftest")) == 1)
-    check("B760: a keepcasting 1 decode is not a tail anchor",
-          len(b760_rows(
-              [TRUE_B760_KEEPCASTING,
-               "[2026-09-19 23:36:04.001] [DEBUG] [SPELL] ManaChange: mana=999, "
-               "stamina=138, spell=0, keepcasting=1\n"],
-              "selftest")) == 0)
-    check("B760: the MemorizeSpell handler line is recognised",
-          HANDLER_MEMORIZE.search(TRUE_B760_MEMORIZE) is not None)
-    # And the memarena line must not be read as a B760 keepcasting 0 tail.
-    check("B760: memarena is not a ManaChange handler line",
-          HANDLER_KEEPCASTING_0.search(FALSE_POSITIVE_236) is None)
-
-    if failures:
-        for f in failures:
-            print("SELF-TEST FAIL: " + f)
-        return 1
-    print("SELF-TEST PASS: all needles anchored")
-    return 0
-
-
 def _spell_id_map(lines):
     """Spell name -> id, from the two lines that carry both.
 
@@ -331,19 +216,29 @@ def _lines_of(lines, pattern, spell_id=None, name_map=None):
     return out
 
 
-def _spell_id_of(line, name_map):
+def _spell_id_of(line, name_map, outcome=None):
     """The id a [SPELL] 'Cast of '<name>' ...' line belongs to, else None.
 
     New handler lines carry the id inline ("(ID: n)"); older logs carry the
     name only, in which case the name->id map (from the 'Beginning cast' /
     'Server memorised' lines) is the fallback.
+
+    outcome: when given, only a line ending in exactly that result phrase
+    counts. QA attempt 3 + 4 (FAIL x3 on MR !20): matching every outcome let
+    the D1/D3 "was cast and completed" cells PASS on a "was interrupted" or
+    "fizzled" line of the right id. The D1/D3 cells now pass
+    "completed successfully"; the A-leg late-impact count (a WARN-only cell)
+    and the self-test's id-attribution checks keep the bare form, where any
+    outcome is the right question.
     """
+    if outcome is None:
+        outcome = "completed successfully|was interrupted|fizzled"
     m = re.search(r"\[SPELL\] Cast of '(.+)' \(ID: (\d+)\) "
-                  r"(?:completed successfully|was interrupted|fizzled)", line)
+                  r"(?:" + outcome + r")", line)
     if m:
         return int(m.group(2))
     m = re.search(r"\[SPELL\] Cast of '(.+)' "
-                  r"(?:completed successfully|was interrupted|fizzled)", line)
+                  r"(?:" + outcome + r")", line)
     if not m:
         return None
     return name_map.get(m.group(1))
@@ -385,27 +280,12 @@ def b760_windows(caster_lines):
             yield (label, start + r[1], r[2], r[3])
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("caster", nargs="?")
-    ap.add_argument("observer", nargs="?")
-    ap.add_argument("--out", default="")
-    ap.add_argument("--self-test", action="store_true")
-    args = ap.parse_args()
+def analyze(caster, observer, results):
+    """Run every leg's assertions over two already-read logs, appending to
+    `results` (leg, assertion, verdict, evidence). Returns the FAIL count.
+    main() owns the table print; the self-test drives this directly on its
+    synthetic logs, so the cells it pins are the shipped cells, verbatim."""
 
-    if args.self_test:
-        return run_self_test()
-
-    if not args.caster or not args.observer:
-        ap.error("caster and observer logs are required (or use --self-test)")
-
-    caster = read(args.caster)
-    observer = read(args.observer)
-    if caster is None or observer is None:
-        print("ERROR: could not read both logs", file=sys.stderr)
-        return 2
-
-    results = []  # (leg, assertion, verdict, evidence)
     failures = 0
 
     def record(leg, assertion, verdict, evidence):
@@ -450,10 +330,16 @@ def main():
         recast-stop cell records), and the chain runs the legs back-to-back,
         so D3's completion is the first 293 completion AFTER that marker. The
         marker is the lane's own wire event, not a spell-id guess.
+
+        Outcome filter (B630 fix pass 3, QA verdict attempts 3 + 4): ONLY a
+        'completed successfully' line certifies a completion. A 'was
+        interrupted' or 'fizzled' line of the right id must NOT do -- that is
+        the false positive that let a never-completing D1 or D3 read as PASS.
         """
         start = 0 if after_index is None else after_index + 1
         for i in range(start, len(caster)):
-            if _spell_id_of(caster[i], name_map) == spell_id:
+            if (_spell_id_of(caster[i], name_map,
+                             outcome="completed successfully") == spell_id):
                 return caster[i].rstrip("\n")
         return None
 
@@ -565,6 +451,331 @@ def main():
               "the leg is deferred on #48 if it never ran)")
 
     # ------------------------------------------------------------------ table
+    return failures
+
+
+# ---------------------------------------------------------------------------
+# The self-test (item 4, RED-pinned): feed the analyzer's own needle logic
+# the three real false-positive lines from the failed dev run plus one true
+# positive each. If any of the three false positives lights up a needle, or
+# any true positive fails to, this exits 1.
+# B630 fix pass 3 (QA verdict attempts 3 + 4, FAIL x3 on MR !20): three more
+# cases, these at the CELL level -- the D1 and D3 "completed" cells must FAIL
+# on a synthetic caster log whose leg never completes ("was interrupted",
+# "was interrupted", "fizzled" x2). They run the SHIPPED analyze() over a
+# full synthetic log (the QA probes, taken from
+# /home/user/kb-evidence/b630-interrupted-cast-live/qa3-probes/ and
+# qa4-probes/), so a regression that re-opens the false positive is a
+# self-test failure, not a future lane surprise.
+# ---------------------------------------------------------------------------
+FALSE_POSITIVE_236 = (
+    "[2026-09-19 23:34:49.552] [INFO ] [MAIN] [memarena] point=ready ok=1 "
+    "ordblks=262 smblks=0 fordblks=6065696 fsmblks=0 keepcost=133888 hblks=7 "
+    "hblkhd=9834496 arena=9179136 uordblks=3113440 mmap_thr=0 trim_pages=0 "
+    "le128=85/7333 128-256=65/12385 256-512=11/3179 512-1k=2/561 1k-2k=11/1185 "
+    "2k-4k=13/78781 8k-16k=19/236563 16k-32k=28/660508 32k-64k=15/721199 "
+    "ge64k=21/4203893\n")
+FALSE_POSITIVE_LOGIN = (
+    "[2026-09-19 23:34:47.173] [INFO ] [WORLD] Logged in successfully with "
+    "dbid 1 and key W5J422OQA9\n")
+FALSE_POSITIVE_VACUOUS_SPELL = (
+    "[2026-09-19 23:35:17.696] [INFO ] [SPELL] Cast of 'Minor Shielding' "
+    "(ID: 288) completed successfully\n")  # ID 288, never O'Keil
+
+TRUE_RECAST = (
+    "[2026-09-19 23:36:00.000] [INFO ] [MAIN] Spell recast time not yet met.\n")
+TRUE_FIZZLE = (
+    "[2026-09-19 23:36:01.000] [INFO ] [MAIN] Your spell fizzles!\n")
+TRUE_OKEIL_LAND = (
+    "[2026-09-19 23:36:02.000] [INFO ] [SPELL] Cast of 'O'Keils Radiation' "
+    "(ID: 378) completed successfully\n")
+TRUE_BYSTANDER = (
+    "[2026-09-19 23:36:03.000] [DEBUG] [SPELL] Interrupt: caster=165 "
+    "('Wiza the Caster'), spell=378, message=12478\n")
+# The caster's OWN interrupt copy (message=439, empty name) must NOT match
+# the bystander needle -- it is the caster-side line, not the bystander's.
+TRUE_BYSTANDER_SELF = (
+    "[2026-09-19 23:36:03.000] [DEBUG] [SPELL] Interrupt: caster=165 "
+    "(''), spell=378, message=439\n")
+TRUE_B760_KEEPCASTING = (
+    "[2026-09-19 23:36:04.000] [DEBUG] [ZONE] [ZonePacket] HC_OP_ManaChange\n")
+TRUE_B760_MEMORIZE = (
+    "[2026-09-19 23:36:04.100] [DEBUG] [ZONE] [ZonePacket] HC_OP_MemorizeSpell\n")
+
+
+# B630 fix pass 3: the QA probes as cell-level negatives. Each is a full
+# synthetic caster log in the realistic fix-run ordering (taken from
+# qa3-probes/ and qa4-probes/ in the evidence dir) with ONE leg's outcome
+# flipped so the leg never completes, plus the shared synthetic observer (the
+# 12478 bystander line). Everything else in the log is realistic, so a
+# regression shows up as exactly the QA-named cell.
+OBSERVER_SELFTEST = [
+    "[2026-09-20 08:57:35.178] [DEBUG] [SPELL] Interrupt: caster=165 "
+    "('Testcaster'), spell=378, message=12478\n",
+]
+
+
+def _synth_d3_interrupted():
+    """D3's 293 is interrupted after D2's recast marker (QA attempt 3 probe a)."""
+    return [
+        "[2026-09-20 08:57:33.633] [INFO ] [SCENARIO] casting: /cast 1\n",
+        "[2026-09-20 08:57:33.633] [INFO ] [SPELL] Beginning cast of "
+        "'O'Keils Radiation' (ID: 378) on target 167\n",
+        "[2026-09-20 08:57:35.179] [INFO ] [SPELL] Cast of "
+        "'O'Keils Radiation' (ID: 378) was interrupted\n",
+        "[2026-09-20 08:57:35.179] [INFO ] [MAIN] Your spell is "
+        "interrupted.\n",
+        "[2026-09-20 08:57:35.180] [ZONE] [ZonePacket] HC_OP_ManaChange\n",
+        "[2026-09-20 08:57:36.000] [INFO ] [SCENARIO] leg 1 complete\n",
+        "[2026-09-20 08:57:40.000] [INFO ] [SCENARIO] casting to "
+        "completion\n",
+        "[2026-09-20 08:58:00.715] [INFO ] [SPELL] Cast of 'Blast of "
+        "Cold' (ID: 372) completed successfully\n",
+        "[2026-09-20 08:58:00.716] [ZONE] [ZonePacket] HC_OP_ManaChange\n",
+        "[2026-09-20 08:58:00.717] [ZONE] [ZonePacket] "
+        "HC_OP_MemorizeSpell\n",
+        "[2026-09-20 08:58:01.000] [INFO ] [SCENARIO] leg 2 complete\n",
+        "[2026-09-20 08:58:20.000] [INFO ] [SCENARIO] first cast (to "
+        "completion)\n",
+        "[2026-09-20 08:58:25.206] [INFO ] [SPELL] Beginning cast of "
+        "'Haze' (ID: 293) on target 167\n",
+        "[2026-09-20 08:58:28.700] [INFO ] [SPELL] Cast of 'Haze' "
+        "(ID: 293) completed successfully\n",
+        "[2026-09-20 08:58:28.701] [ZONE] [ZonePacket] HC_OP_ManaChange\n",
+        "[2026-09-20 08:58:28.702] [ZONE] [ZonePacket] "
+        "HC_OP_MemorizeSpell\n",
+        "[2026-09-20 08:58:28.722] [INFO ] [MAIN] Spell recast time not "
+        "yet met.\n",
+        "[2026-09-20 08:58:29.000] [INFO ] [SCENARIO] leg 3 complete\n",
+        "[2026-09-20 08:58:35.000] [INFO ] [SCENARIO] buff leg: /cast 1\n",
+        "[2026-09-20 08:58:36.500] [INFO ] [SPELL] Beginning cast of "
+        "'Haze' (ID: 293) on target 167\n",
+        "[2026-09-20 08:58:38.000] [INFO ] [SPELL] Cast of 'Haze' "
+        "(ID: 293) was interrupted\n",
+        "[2026-09-20 08:58:38.000] [INFO ] [MAIN] Your spell is "
+        "interrupted.\n",
+        "[2026-09-20 08:58:38.500] [INFO ] [SCENARIO] leg 4 complete\n",
+    ]
+
+
+def _synth_d1_never_completes():
+    """D1's 372 is interrupted (QA attempt 3 probe b); D2/D3 complete."""
+    return [
+        "[2026-09-20 08:57:33.633] [INFO ] [SCENARIO] casting: /cast 1\n",
+        "[2026-09-20 08:57:33.633] [INFO ] [SPELL] Beginning cast of "
+        "'O'Keils Radiation' (ID: 378) on target 167\n",
+        "[2026-09-20 08:57:35.179] [INFO ] [SPELL] Cast of "
+        "'O'Keils Radiation' (ID: 378) was interrupted\n",
+        "[2026-09-20 08:57:35.179] [INFO ] [MAIN] Your spell is "
+        "interrupted.\n",
+        "[2026-09-20 08:57:35.180] [ZONE] [ZonePacket] HC_OP_ManaChange\n",
+        "[2026-09-20 08:57:36.000] [INFO ] [SCENARIO] leg 1 complete\n",
+        "[2026-09-20 08:57:40.000] [INFO ] [SCENARIO] casting to "
+        "completion\n",
+        "[2026-09-20 08:57:41.500] [INFO ] [SPELL] Beginning cast of "
+        "'Blast of Cold' (ID: 372) on target 167\n",
+        "[2026-09-20 08:57:42.000] [INFO ] [SPELL] Cast of 'Blast of "
+        "Cold' (ID: 372) was interrupted\n",
+        "[2026-09-20 08:57:42.000] [INFO ] [MAIN] Your spell is "
+        "interrupted.\n",
+        "[2026-09-20 08:57:42.500] [INFO ] [SCENARIO] leg 2 complete\n",
+        "[2026-09-20 08:58:20.000] [INFO ] [SCENARIO] first cast (to "
+        "completion)\n",
+        "[2026-09-20 08:58:25.206] [INFO ] [SPELL] Beginning cast of "
+        "'Haze' (ID: 293) on target 167\n",
+        "[2026-09-20 08:58:28.700] [INFO ] [SPELL] Cast of 'Haze' "
+        "(ID: 293) completed successfully\n",
+        "[2026-09-20 08:58:28.701] [ZONE] [ZonePacket] HC_OP_ManaChange\n",
+        "[2026-09-20 08:58:28.702] [ZONE] [ZonePacket] "
+        "HC_OP_MemorizeSpell\n",
+        "[2026-09-20 08:58:28.722] [INFO ] [MAIN] Spell recast time not "
+        "yet met.\n",
+        "[2026-09-20 08:58:29.000] [INFO ] [SCENARIO] leg 3 complete\n",
+        "[2026-09-20 08:58:35.000] [INFO ] [SCENARIO] buff leg: /cast 1\n",
+        "[2026-09-20 08:58:36.500] [INFO ] [SPELL] Beginning cast of "
+        "'Haze' (ID: 293) on target 167\n",
+        "[2026-09-20 08:58:38.000] [INFO ] [SPELL] Cast of 'Haze' "
+        "(ID: 293) completed successfully\n",
+        "[2026-09-20 08:58:38.500] [INFO ] [SCENARIO] leg 4 complete\n",
+    ]
+
+
+def _synth_d2d3_fizzled():
+    """D2's and D3's 293 both fizzle (QA attempt 4 probe a); D1 completes."""
+    return [
+        "[2026-09-20 10:02:33.633] [INFO ] [SCENARIO] casting: /cast 1\n",
+        "[2026-09-20 10:02:33.633] [INFO ] [SPELL] Beginning cast of "
+        "'O'Keils Radiation' (ID: 378) on target 167\n",
+        "[2026-09-20 10:02:35.179] [INFO ] [SPELL] Cast of "
+        "'O'Keils Radiation' (ID: 378) was interrupted\n",
+        "[2026-09-20 10:02:35.179] [INFO ] [MAIN] Your spell is "
+        "interrupted.\n",
+        "[2026-09-20 10:02:35.180] [ZONE] [ZonePacket] HC_OP_ManaChange\n",
+        "[2026-09-20 10:02:36.000] [INFO ] [SCENARIO] leg 1 complete\n",
+        "[2026-09-20 10:02:40.000] [INFO ] [SCENARIO] casting to "
+        "completion\n",
+        "[2026-09-20 10:02:41.500] [INFO ] [SPELL] Beginning cast of "
+        "'Blast of Cold' (ID: 372) on target 167\n",
+        "[2026-09-20 10:02:42.715] [INFO ] [SPELL] Cast of 'Blast of "
+        "Cold' (ID: 372) completed successfully\n",
+        "[2026-09-20 10:02:42.716] [ZONE] [ZonePacket] HC_OP_ManaChange\n",
+        "[2026-09-20 10:02:42.717] [ZONE] [ZonePacket] "
+        "HC_OP_MemorizeSpell\n",
+        "[2026-09-20 10:02:43.000] [INFO ] [SCENARIO] leg 2 complete\n",
+        "[2026-09-20 10:02:44.000] [INFO ] [SCENARIO] first cast (to "
+        "completion)\n",
+        "[2026-09-20 10:02:44.200] [INFO ] [SPELL] Beginning cast of "
+        "'Haze' (ID: 293) on target 167\n",
+        "[2026-09-20 10:02:45.700] [INFO ] [SPELL] Cast of 'Haze' "
+        "(ID: 293) fizzled\n",
+        "[2026-09-20 10:02:45.700] [INFO ] [MAIN] Your spell fizzles!\n",
+        "[2026-09-20 10:02:45.701] [ZONE] [ZonePacket] HC_OP_ManaChange\n",
+        "[2026-09-20 10:02:45.722] [INFO ] [MAIN] Spell recast time not "
+        "yet met.\n",
+        "[2026-09-20 10:02:46.000] [INFO ] [SCENARIO] leg 3 complete\n",
+        "[2026-09-20 10:02:52.000] [INFO ] [SCENARIO] buff leg: /cast 1\n",
+        "[2026-09-20 10:02:53.500] [INFO ] [SPELL] Beginning cast of "
+        "'Haze' (ID: 293) on target 167\n",
+        "[2026-09-20 10:02:55.000] [INFO ] [SPELL] Cast of 'Haze' "
+        "(ID: 293) fizzled\n",
+        "[2026-09-20 10:02:55.000] [INFO ] [MAIN] Your spell fizzles!\n",
+        "[2026-09-20 10:02:55.500] [INFO ] [SCENARIO] leg 4 complete\n",
+    ]
+
+
+def _cell_verdict(caster_lines, leg_prefix, assertion_prefix):
+    """The verdict of the first result row whose leg and assertion names
+    start with the given prefixes, running the shipped analyze() over the
+    synthetic logs."""
+    results = []
+    analyze(caster_lines, OBSERVER_SELFTEST, results)
+    for leg, assertion, verdict, _evidence in results:
+        if leg.startswith(leg_prefix) and assertion.startswith(assertion_prefix):
+            return verdict
+    return None
+
+
+def run_self_test():
+    failures = []
+
+    def check(name, cond):
+        if not cond:
+            failures.append(name)
+
+    # The three dev-run false positives must NOT light up their needles.
+    check("D2 236: memarena line must not match the recast needle",
+          grep([FALSE_POSITIVE_236], CHAT_RECAST_NOT_MET) is None)
+    check("B land: login line must not match the fizzle/land needles",
+          grep([FALSE_POSITIVE_LOGIN], CHAT_FIZZLE) is None
+          and SPELL_COMPLETED.search(FALSE_POSITIVE_LOGIN) is None)
+
+    # The true positives must light up.
+    check("D2 236: the real chat string matches",
+          grep([TRUE_RECAST], CHAT_RECAST_NOT_MET) is not None)
+    check("B fizzle: the real chat string matches",
+          grep([TRUE_FIZZLE], CHAT_FIZZLE) is not None)
+    # A's no-late-impact fix: attribute a 'completed successfully' to a spell
+    # id, so a 288 land is NOT counted as a 378 land. New handler lines carry
+    # the id inline; older logs carry the name only, resolved via the
+    # name->id map from the 'Beginning cast ... (ID: n)' lines.
+    check("A no-late-impact: the 288 land maps to 288, not 378",
+          _spell_id_of(FALSE_POSITIVE_VACUOUS_SPELL, {}) == 288)
+    check("A no-late-impact: the 378 land maps to 378",
+          _spell_id_of(TRUE_OKEIL_LAND, {}) == 378)
+    map_lines = [
+        "[2026-09-19 23:35:03.566] [INFO ] [SPELL] Beginning cast of "
+        "'Minor Shielding' (ID: 288) on target 165\n",
+    ]
+    name_map = _spell_id_map(map_lines)
+    check("A no-late-impact: a name-only completion resolves via the map",
+          _spell_id_of(
+              "[2026-09-19 23:35:17.696] [INFO ] [SPELL] Cast of "
+              "'Minor Shielding' completed successfully\n",
+              name_map) == 288)
+    check("A bystander: the real 12478 line matches",
+          BYSTANDER_INTERRUPT.search(TRUE_BYSTANDER) is not None)
+    # The caster's own 439 copy (empty name) must NOT match the bystander
+    # needle: the bystander's copy is the one with the name + 12478.
+    check("A bystander: the caster's own 439 copy does not match",
+          BYSTANDER_INTERRUPT.search(TRUE_BYSTANDER_SELF) is None)
+    check("B760: the keepcasting-0 anchor is the [ZonePacket] handler line",
+          HANDLER_KEEPCASTING_0.search(TRUE_B760_KEEPCASTING) is not None)
+    # The anchor is the PAIR: a [SPELL] decode of keepcasting 0 right after the
+    # [ZonePacket] line (a keepcasting 1 mana regen is not a tail).
+    b760_pair = [
+        TRUE_B760_KEEPCASTING,
+        "[2026-09-19 23:36:04.001] [DEBUG] [SPELL] ManaChange: mana=991, "
+        "stamina=214, spell=372, keepcasting=0\n",
+    ]
+    check("B760: the keepcasting-0 pair yields a row",
+          len(b760_rows(b760_pair, "selftest")) == 1)
+    check("B760: a keepcasting 1 decode is not a tail anchor",
+          len(b760_rows(
+              [TRUE_B760_KEEPCASTING,
+               "[2026-09-19 23:36:04.001] [DEBUG] [SPELL] ManaChange: mana=999, "
+               "stamina=138, spell=0, keepcasting=1\n"],
+              "selftest")) == 0)
+    check("B760: the MemorizeSpell handler line is recognised",
+          HANDLER_MEMORIZE.search(TRUE_B760_MEMORIZE) is not None)
+    # And the memarena line must not be read as a B760 keepcasting 0 tail.
+    check("B760: memarena is not a ManaChange handler line",
+          HANDLER_KEEPCASTING_0.search(FALSE_POSITIVE_236) is None)
+
+    # B630 fix pass 3: the three QA cell-level negatives. Each runs the
+    # SHIPPED analyze() over a full synthetic log; the QA-named D cell must
+    # FAIL because its leg never completes. The companion checks (the OTHER
+    # leg's genuine completion, and the A leg) must keep PASSing, so a
+    # "fix" that merely breaks the D cells in general is caught too.
+    d3int = _synth_d3_interrupted()
+    check("D1/D3 outcome filter: an interrupted D3 (293) FAILs the D3 cell",
+          _cell_verdict(d3int, "D3", "D3's declared spell") == "FAIL")
+    check("D1/D3 outcome filter: D1 still PASSes in the interrupted-D3 log "
+          "(its 372 genuinely completed)",
+          _cell_verdict(d3int, "D1", "D1's declared spell") == "PASS")
+    d1int = _synth_d1_never_completes()
+    check("D1/D3 outcome filter: an interrupted D1 (372) FAILs the D1 cell",
+          _cell_verdict(d1int, "D1", "D1's declared spell") == "FAIL")
+    check("D1/D3 outcome filter: D3 still PASSes in the interrupted-D1 log "
+          "(its 293 genuinely completed)",
+          _cell_verdict(d1int, "D3", "D3's declared spell") == "PASS")
+    d23fizz = _synth_d2d3_fizzled()
+    check("D1/D3 outcome filter: fizzled D2+D3 (293 x2) FAIL the D3 cell",
+          _cell_verdict(d23fizz, "D3", "D3's declared spell") == "FAIL")
+    check("D1/D3 outcome filter: D1 still PASSes in the fizzled-D2/D3 log "
+          "(its 372 genuinely completed)",
+          _cell_verdict(d23fizz, "D1", "D1's declared spell") == "PASS")
+
+    if failures:
+        for f in failures:
+            print("SELF-TEST FAIL: " + f)
+        return 1
+    print("SELF-TEST PASS: all needles anchored")
+    return 0
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("caster", nargs="?")
+    ap.add_argument("observer", nargs="?")
+    ap.add_argument("--out", default="")
+    ap.add_argument("--self-test", action="store_true")
+    args = ap.parse_args()
+
+    if args.self_test:
+        return run_self_test()
+
+    if not args.caster or not args.observer:
+        ap.error("caster and observer logs are required (or use --self-test)")
+
+    caster = read(args.caster)
+    observer = read(args.observer)
+    if caster is None or observer is None:
+        print("ERROR: could not read both logs", file=sys.stderr)
+        return 2
+
+    results = []  # (leg, assertion, verdict, evidence)
+    failures = analyze(caster, observer, results)
+
     print()
     print("=== B630 results (leg x assertion) ===")
     for leg, assertion, verdict, evidence in results:
