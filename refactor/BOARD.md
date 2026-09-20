@@ -10390,7 +10390,9 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   A, B, C and IT10. What T478 found in them is the live record now: B722 (#62)
   and B723 (#63).
 
-- **B587** (A, *unconfirmed*) **At the camera that reproduces the official Chase → issue #51
+- ~~**B587**~~ (A, *unconfirmed*) **CLOSED by T478 (live) -- see the T478 record
+  below; struck 2026-09-20 (card kb-chase-closures, issue #51).** At the camera that
+  reproduces the official Chase → issue #51
   view, fable draws the player model facing the camera.** fable session
   `heldA_sword_lantern_spotA_h160` (Testchar at qeynos2 (-81.39, 431.06, 3.751)
   h160): the rig az 0, pitch 6, dist 4, height 7 -- whose world view matches the
@@ -10422,6 +10424,12 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   `HeldItemFrameOrder.PlayerHeadingIsSyncedAfterUpdatesAndBeforeEquipment`.
   Owed: the oracle Chase capture of a stationary fable character (and the
   two-client observation the heading note asks for).
+  **Closed by T478 (live), struck 2026-09-20 (card kb-chase-closures, issue #51):**
+  T478's Chase sweep at h160 on Testchar, not moved since zone-in, shows the
+  back of the head, back and shoulders, matching the official Chase frame
+  (`fable/sessions/chase_sweep_h160`, frame 163; `review/T478/README.md`). The
+  offline pin `HeldItemTest.StationaryPlayerIsDrawnAtTheRendererHeading`
+  (tests/test_held_item_attachment.cpp) re-verified green on this card.
 
 - ~~**B588**~~ **CLOSED by T485** (lantern half closed by T472, blade half by T485's
   searched correction; see the T485 block). Original text: (A, *unconfirmed*) **Held items in the hand: the sword's blade points
