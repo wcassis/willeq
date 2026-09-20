@@ -24,6 +24,7 @@
 #include <string>
 
 #if defined(__linux__)
+#include <link.h>    // T504: dl_iterate_phdr, for the gpu_driver classifier
 #include <malloc.h>
 #include <unistd.h>
 #endif
@@ -1051,7 +1052,118 @@ inline uint64_t chargedOf(void* user) {
     return backendChunkBytes(static_cast<char*>(user) - h->offset);
 }
 
-void* ledgerAlloc(size_t size, size_t align) {
+// ---- T504: is the caller of this malloc/new inside the GL stack? -----------
+//
+// On llvmpipe the "GPU" is our own process: texture storage, vertex buffers and
+// the shader JIT are malloc'd by Mesa/LLVM from inside whatever MemoryScope made
+// the GL call, so every category that touches GL was contaminated by the
+// platform's rasteriser (MEASURED: textures_decoded read 12.7 MiB live at
+// startup with no CPU-side pixel buffer alive -- it was llvmpipe's copy of the
+// UI atlas and the two icon sheets). Classifying by RETURN ADDRESS gives that
+// memory its own row, `gpu_driver`, on every platform.
+//
+// Hook-safe by construction: no allocation (static tables, std::sort on a POD
+// array), no lock a caller can hold (a try-lock flag; a busy table just means
+// this one block is classified by scope, as before), and re-entry is cut by a
+// thread_local. dl_iterate_phdr takes the loader's recursive lock, so a malloc
+// made from inside dlopen() on this thread is fine.
+struct CodeRange {
+    uintptr_t lo;
+    uintptr_t hi;
+    bool gpu;
+};
+constexpr size_t kMaxCodeRanges = 768;
+struct RangeTable {
+    CodeRange r[kMaxCodeRanges];
+    size_t n;
+};
+RangeTable g_rangeTables[2];                  // zero-initialised
+std::atomic<int> g_activeRangeTable{-1};      // -1: never built
+std::atomic_flag g_rangeTableBusy = ATOMIC_FLAG_INIT;
+std::atomic<uint32_t> g_unknownAfterRebuild{0};
+std::atomic<uint32_t> g_unknownHits{0};
+thread_local bool t_inClassifier = false;
+
+#if defined(__linux__)
+bool moduleIsGlStack(const char* name) {
+    if (!name || !*name) return false;       // the executable itself
+    static const char* const kNeedles[] = {
+        "libgallium", "libLLVM", "libEGL", "libGLES", "libGLdispatch", "libGLX",
+        "libGL.so", "libglapi", "libgbm", "libdrm", "_dri.so", "libMali", "libmali",
+    };
+    for (const char* needle : kNeedles) {
+        if (strstr(name, needle)) return true;
+    }
+    return false;
+}
+
+int collectCodeRanges(struct dl_phdr_info* info, size_t, void* data) {
+    auto* t = static_cast<RangeTable*>(data);
+    const bool gpu = moduleIsGlStack(info->dlpi_name);
+    for (int i = 0; i < info->dlpi_phnum; ++i) {
+        const auto& ph = info->dlpi_phdr[i];
+        if (ph.p_type != PT_LOAD || !(ph.p_flags & PF_X)) continue;
+        if (t->n >= kMaxCodeRanges) return 1;
+        const uintptr_t lo = static_cast<uintptr_t>(info->dlpi_addr + ph.p_vaddr);
+        t->r[t->n++] = CodeRange{lo, lo + static_cast<uintptr_t>(ph.p_memsz), gpu};
+    }
+    return 0;
+}
+
+void rebuildCodeRanges() {
+    if (g_rangeTableBusy.test_and_set(std::memory_order_acquire)) return;
+    const int cur = g_activeRangeTable.load(std::memory_order_relaxed);
+    const int next = cur == 0 ? 1 : 0;
+    RangeTable& t = g_rangeTables[next];
+    t.n = 0;
+    dl_iterate_phdr(collectCodeRanges, &t);
+    std::sort(t.r, t.r + t.n, [](const CodeRange& a, const CodeRange& b) { return a.lo < b.lo; });
+    g_activeRangeTable.store(next, std::memory_order_release);
+    g_rangeTableBusy.clear(std::memory_order_release);
+}
+
+// 1 = GL stack, 0 = some other known module, -1 = address in no known module.
+int lookupCaller(uintptr_t pc) {
+    const int a = g_activeRangeTable.load(std::memory_order_acquire);
+    if (a < 0) return -1;
+    const RangeTable& t = g_rangeTables[a];
+    size_t lo = 0, hi = t.n < kMaxCodeRanges ? t.n : kMaxCodeRanges;
+    while (lo < hi) {
+        const size_t mid = (lo + hi) / 2;
+        if (pc < t.r[mid].lo) hi = mid;
+        else if (pc >= t.r[mid].hi) lo = mid + 1;
+        else return t.r[mid].gpu ? 1 : 0;
+    }
+    return -1;
+}
+#endif
+
+inline bool callerIsGlStack(const void* caller) {
+#if defined(__linux__)
+    if (t_inClassifier || !caller) return false;
+    const uintptr_t pc = reinterpret_cast<uintptr_t>(caller);
+    int r = lookupCaller(pc);
+    if (r >= 0) return r == 1;
+    // Unknown address: a module dlopen'd since the last scan -- rescan at once,
+    // so the driver's first allocations are not missed. An address that is
+    // STILL unknown after a rescan is JIT code; once that has happened a few
+    // times, rescan only every 1024th unknown hit so a JIT-heavy frame does not
+    // walk the module list per allocation.
+    const uint32_t hits = g_unknownHits.fetch_add(1, std::memory_order_relaxed);
+    if (g_unknownAfterRebuild.load(std::memory_order_relaxed) > 8 && (hits & 1023) != 0) return false;
+    t_inClassifier = true;
+    rebuildCodeRanges();
+    t_inClassifier = false;
+    r = lookupCaller(pc);
+    if (r < 0) g_unknownAfterRebuild.fetch_add(1, std::memory_order_relaxed);
+    return r == 1;
+#else
+    (void)caller;
+    return false;
+#endif
+}
+
+void* ledgerAlloc(size_t size, size_t align, const void* caller) {
     void* base;
     uint32_t offset;
     if (align <= kHeader) {
@@ -1068,14 +1180,18 @@ void* ledgerAlloc(size_t size, size_t align) {
     void* user = static_cast<char*>(base) + offset;
     LedgerHeader* h = headerOf(user);
     h->requested = size;
-    h->category = eqt::memory::detail::t_category;
-    eqt::memory::packSub(h->category, eqt::memory::detail::t_sublabel);  // B839: upper 16 bits
+    // T504: a block the GL stack allocated belongs to gpu_driver whatever scope
+    // is open on this thread (and carries no startup sub-owner).
+    const bool gl = callerIsGlStack(caller);
+    const uint8_t sub = gl ? uint8_t{0} : eqt::memory::detail::t_sublabel;
+    h->category = gl ? static_cast<uint32_t>(eqt::memory::Category::GpuDriver)
+                     : static_cast<uint32_t>(eqt::memory::detail::t_category);
+    eqt::memory::packSub(h->category, sub);  // B839: upper 16 bits
     h->offset = offset;
     // The category index is the LOW half of the packed word (packSub put the
     // sub-owner in the upper 16); catOf() makes that explicit rather than
     // relying on the implicit uint32->uint8 narrowing.
-    eqt::memory::charge(eqt::memory::catOf(h->category), backendChunkBytes(base), size,
-                        eqt::memory::detail::t_sublabel);
+    eqt::memory::charge(eqt::memory::catOf(h->category), backendChunkBytes(base), size, sub);
     return user;
 }
 
@@ -1087,8 +1203,8 @@ void ledgerFree(void* user) {
     __libc_free(static_cast<char*>(user) - h->offset);
 }
 
-void* ledgerRealloc(void* user, size_t size) {
-    if (!user) return ledgerAlloc(size, kHeader);
+void* ledgerRealloc(void* user, size_t size, const void* caller) {
+    if (!user) return ledgerAlloc(size, kHeader, caller);
     if (size == 0) {
         ledgerFree(user);
         return nullptr;
@@ -1121,7 +1237,7 @@ void* ledgerRealloc(void* user, size_t size) {
     const uint8_t savedSub = eqt::memory::detail::t_sublabel;
     eqt::memory::detail::t_category = eqt::memory::catOf(cat);
     eqt::memory::detail::t_sublabel = eqt::memory::subOf(cat);
-    void* nuser = ledgerAlloc(size, kHeader);
+    void* nuser = ledgerAlloc(size, kHeader, nullptr);  // T504: keeps the ORIGINAL category, set just above
     eqt::memory::detail::t_category = savedCat;
     eqt::memory::detail::t_sublabel = savedSub;
     if (!nuser) return nullptr;
@@ -1130,10 +1246,10 @@ void* ledgerRealloc(void* user, size_t size) {
     return nuser;
 }
 
-void* newImpl(size_t size, size_t align) {
+void* newImpl(size_t size, size_t align, const void* caller) {
     if (size == 0) size = 1;
     for (;;) {
-        void* p = ledgerAlloc(size, align);
+        void* p = ledgerAlloc(size, align, caller);
         if (p) return p;
         std::new_handler h = std::get_new_handler();
         if (!h) throw std::bad_alloc();
@@ -1145,31 +1261,31 @@ void* newImpl(size_t size, size_t align) {
 
 extern "C" {
 
-void* malloc(size_t size) { return ledgerAlloc(size, kHeader); }
+void* malloc(size_t size) { return ledgerAlloc(size, kHeader, __builtin_return_address(0)); }
 void free(void* p) { ledgerFree(p); }
 void* calloc(size_t n, size_t m) {
     size_t total;
     if (__builtin_mul_overflow(n, m, &total)) return nullptr;
-    void* p = ledgerAlloc(total, kHeader);
+    void* p = ledgerAlloc(total, kHeader, __builtin_return_address(0));
     if (p) memset(p, 0, total);
     return p;
 }
-void* realloc(void* p, size_t size) { return ledgerRealloc(p, size); }
-void* memalign(size_t align, size_t size) { return ledgerAlloc(size, align); }
-void* aligned_alloc(size_t align, size_t size) { return ledgerAlloc(size, align); }
+void* realloc(void* p, size_t size) { return ledgerRealloc(p, size, __builtin_return_address(0)); }
+void* memalign(size_t align, size_t size) { return ledgerAlloc(size, align, __builtin_return_address(0)); }
+void* aligned_alloc(size_t align, size_t size) { return ledgerAlloc(size, align, __builtin_return_address(0)); }
 int posix_memalign(void** out, size_t align, size_t size) {
     if (align < sizeof(void*) || (align & (align - 1))) return 22;  // EINVAL
-    void* p = ledgerAlloc(size, align);
+    void* p = ledgerAlloc(size, align, __builtin_return_address(0));
     if (!p) return 12;  // ENOMEM
     *out = p;
     return 0;
 }
 void* valloc(size_t size) {
-    return ledgerAlloc(size, static_cast<size_t>(sysconf(_SC_PAGESIZE)));
+    return ledgerAlloc(size, static_cast<size_t>(sysconf(_SC_PAGESIZE)), __builtin_return_address(0));
 }
 void* pvalloc(size_t size) {
     const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
-    return ledgerAlloc((size + page - 1) & ~(page - 1), page);
+    return ledgerAlloc((size + page - 1) & ~(page - 1), page, __builtin_return_address(0));
 }
 size_t malloc_usable_size(void* p) {
     if (!p) return 0;
@@ -1186,13 +1302,13 @@ size_t malloc_usable_size(void* p) {
 
 } // extern "C"
 
-void* operator new(size_t n) { return newImpl(n, kHeader); }
-void* operator new[](size_t n) { return newImpl(n, kHeader); }
+void* operator new(size_t n) { return newImpl(n, kHeader, __builtin_return_address(0)); }
+void* operator new[](size_t n) { return newImpl(n, kHeader, __builtin_return_address(0)); }
 void* operator new(size_t n, const std::nothrow_t&) noexcept {
-    try { return newImpl(n, kHeader); } catch (...) { return nullptr; }
+    try { return newImpl(n, kHeader, __builtin_return_address(0)); } catch (...) { return nullptr; }
 }
 void* operator new[](size_t n, const std::nothrow_t&) noexcept {
-    try { return newImpl(n, kHeader); } catch (...) { return nullptr; }
+    try { return newImpl(n, kHeader, __builtin_return_address(0)); } catch (...) { return nullptr; }
 }
 void operator delete(void* p) noexcept { ledgerFree(p); }
 void operator delete[](void* p) noexcept { ledgerFree(p); }
@@ -1201,13 +1317,13 @@ void operator delete[](void* p, size_t) noexcept { ledgerFree(p); }
 void operator delete(void* p, const std::nothrow_t&) noexcept { ledgerFree(p); }
 void operator delete[](void* p, const std::nothrow_t&) noexcept { ledgerFree(p); }
 
-void* operator new(size_t n, std::align_val_t a) { return newImpl(n, static_cast<size_t>(a)); }
-void* operator new[](size_t n, std::align_val_t a) { return newImpl(n, static_cast<size_t>(a)); }
+void* operator new(size_t n, std::align_val_t a) { return newImpl(n, static_cast<size_t>(a), __builtin_return_address(0)); }
+void* operator new[](size_t n, std::align_val_t a) { return newImpl(n, static_cast<size_t>(a), __builtin_return_address(0)); }
 void* operator new(size_t n, std::align_val_t a, const std::nothrow_t&) noexcept {
-    try { return newImpl(n, static_cast<size_t>(a)); } catch (...) { return nullptr; }
+    try { return newImpl(n, static_cast<size_t>(a), __builtin_return_address(0)); } catch (...) { return nullptr; }
 }
 void* operator new[](size_t n, std::align_val_t a, const std::nothrow_t&) noexcept {
-    try { return newImpl(n, static_cast<size_t>(a)); } catch (...) { return nullptr; }
+    try { return newImpl(n, static_cast<size_t>(a), __builtin_return_address(0)); } catch (...) { return nullptr; }
 }
 void operator delete(void* p, std::align_val_t) noexcept { ledgerFree(p); }
 void operator delete[](void* p, std::align_val_t) noexcept { ledgerFree(p); }

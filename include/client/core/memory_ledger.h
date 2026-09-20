@@ -69,6 +69,17 @@ enum class Category : uint8_t {
     GameState,          // entities/inventory/spells on the game thread
     IrrlichtScene,      // scene manager, environment, sky, lights, particles,
                         // simulation worker, per-frame driver work
+    GpuDriver,          // T504: a block whose malloc/new CALLER is inside the GL
+                        // stack's own code (Mesa/gallium, LLVM, EGL/GLES, DRM) --
+                        // pseudo-VRAM. On llvmpipe this is where the "GPU's"
+                        // textures, vertex buffers and shader JIT live, inside
+                        // our process; on Lima it is the driver's CPU-side state
+                        // (texture storage is in GEM buffer objects). It is
+                        // classified by return address, whatever MemoryScope is
+                        // open, so no other category is contaminated by the
+                        // platform's rasteriser. Reported on its own line and
+                        // NOT counted against the 64 MB client budget (Will,
+                        // 2026-09-20).
     Count
 };
 
@@ -96,6 +107,7 @@ inline const char* const kCategoryNames[kCategoryCount] = {
     "network",
     "game_state",
     "irrlicht_scene",
+    "gpu_driver",
 };
 
 inline const char* categoryName(Category c) {
