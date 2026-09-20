@@ -53,6 +53,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_textures.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_objects.cpp
+        # B734: loadObjects() poses skinned objects through T476's resolver.
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/equipment_actor_geometry.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_characters.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_skinning.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/skeletal_animator.cpp

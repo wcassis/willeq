@@ -1140,6 +1140,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
+        # B734: loadObjects() poses skinned objects through T476's resolver.
+        src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -1212,6 +1214,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
+        # B734: loadObjects() poses skinned objects through T476's resolver.
+        src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -1410,6 +1414,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
+        # B734: loadObjects() poses skinned objects through T476's resolver.
+        src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -1481,6 +1487,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
+        # B734: loadObjects() poses skinned objects through T476's resolver.
+        src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -2016,6 +2024,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
+        # B734: loadObjects() poses skinned objects through T476's resolver.
+        src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -2160,6 +2170,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
+        # B734: loadObjects() poses skinned objects through T476's resolver.
+        src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
@@ -2266,6 +2278,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
+        # B734: loadObjects() poses skinned objects through T476's resolver.
+        src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
