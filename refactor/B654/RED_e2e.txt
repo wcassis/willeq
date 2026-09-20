@@ -1,0 +1,109 @@
+############ E2E TEST — RED (pre-fix) ############
+Running main() from ./googletest/src/gtest_main.cc
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from X11NumpadE2E
+[ RUN      ] X11NumpadE2E.NumpadDigitFiresCameraAction
+libEGL warning: failed to open /dev/dri/card1: Permission denied
+
+libEGL warning: failed to open /dev/dri/card1: Permission denied
+
+libEGL warning: failed to open /dev/dri/card1: Permission denied
+
+The XKEYBOARD keymap compiler (xkbcomp) reports:
+> Warning:          Could not resolve keysym XF86CameraAccessEnable
+> Warning:          Could not resolve keysym XF86CameraAccessDisable
+> Warning:          Could not resolve keysym XF86CameraAccessToggle
+> Warning:          Could not resolve keysym XF86NextElement
+> Warning:          Could not resolve keysym XF86PreviousElement
+> Warning:          Could not resolve keysym XF86AutopilotEngageToggle
+> Warning:          Could not resolve keysym XF86MarkWaypoint
+> Warning:          Could not resolve keysym XF86Sos
+> Warning:          Could not resolve keysym XF86NavChart
+> Warning:          Could not resolve keysym XF86FishingChart
+> Warning:          Could not resolve keysym XF86SingleRangeRadar
+> Warning:          Could not resolve keysym XF86DualRangeRadar
+> Warning:          Could not resolve keysym XF86RadarOverlay
+> Warning:          Could not resolve keysym XF86TraditionalSonar
+> Warning:          Could not resolve keysym XF86ClearvuSonar
+> Warning:          Could not resolve keysym XF86SidevuSonar
+> Warning:          Could not resolve keysym XF86NavInfo
+Errors from xkbcomp are not fatal to the X server
+libEGL warning: failed to open /dev/dri/card1: Permission denied
+
+libEGL warning: failed to open /dev/dri/card1: Permission denied
+
+libEGL warning: failed to open /dev/dri/card1: Permission denied
+
+The XKEYBOARD keymap compiler (xkbcomp) reports:
+> Warning:          Could not resolve keysym XF86CameraAccessEnable
+> Warning:          Could not resolve keysym XF86CameraAccessDisable
+> Warning:          Could not resolve keysym XF86CameraAccessToggle
+> Warning:          Could not resolve keysym XF86NextElement
+> Warning:          Could not resolve keysym XF86PreviousElement
+> Warning:          Could not resolve keysym XF86AutopilotEngageToggle
+> Warning:          Could not resolve keysym XF86MarkWaypoint
+> Warning:          Could not resolve keysym XF86Sos
+> Warning:          Could not resolve keysym XF86NavChart
+> Warning:          Could not resolve keysym XF86FishingChart
+> Warning:          Could not resolve keysym XF86SingleRangeRadar
+> Warning:          Could not resolve keysym XF86DualRangeRadar
+> Warning:          Could not resolve keysym XF86RadarOverlay
+> Warning:          Could not resolve keysym XF86TraditionalSonar
+> Warning:          Could not resolve keysym XF86ClearvuSonar
+> Warning:          Could not resolve keysym XF86SidevuSonar
+> Warning:          Could not resolve keysym XF86NavInfo
+Errors from xkbcomp are not fatal to the X server
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+XGetInputFocus returned the focused window of 1. This is likely a bug in the X server.
+XGetInputFocus returned the focused window of 1. This is likely a bug in the X server.
+XGetInputFocus returned the focused window of 1. This is likely a bug in the X server.
+XGetInputFocus returned the focused window of 1. This is likely a bug in the X server.
+Irrlicht Engine version 1.8.5
+EGL (X11): Version 1.5, vendor=Mesa Project
+EGL (X11): Context created and window mapped (--egl-x11)
+GLES2 Driver: llvmpipe (LLVM 20.1.2, 256 bits) (Mesa) [OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.2]
+GLES2: GL_EXT_discard_framebuffer
+GLES2: GL_OES_standard_derivatives
+GLES2: GL_OES_get_program_binary (1 formats)
+GLES2: Shader binary cache enabled (config/shader_cache)
+GLES2: Using fwidth() alpha threshold (standard_derivatives)
+GLES2: Shader loaded from cache (config/shader_cache/8fc2ddd4.bin)
+GLES2: Color2D shader compiled
+GLES2: Shader loaded from cache (config/shader_cache/9eaba16a.bin)
+GLES2: UI2D shader compiled
+GLES2: Shader loaded from cache (config/shader_cache/7d13039b.bin)
+GLES2: Solid3D shader compiled
+GLES2: Shader loaded from cache (config/shader_cache/67473dae.bin)
+GLES2: AlphaTest3D shader compiled
+GLES2: Shader loaded from cache (config/shader_cache/420035f5.bin)
+GLES2: AtlasSolid3D shader compiled
+GLES2: Shader loaded from cache (config/shader_cache/bf30b893.bin)
+GLES2: AtlasAlpha3D shader compiled
+GLES2 Driver initialized
+[B654-E2E] press key=0 action=(none)
+[B654-E2E] press key=0 action=(none)
+[B654-E2E] total presses recorded=2 CameraZoomIn presses=0 CameraZoomOut presses=0
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_numpad_e2e.cpp:248: Failure
+Expected: (recv.zoomInPresses.load()) >= (1), actual: 0 vs 1
+KP_7 press did not fire CameraZoomIn (device delivered no usable key). B654: the index-0 keysym is the navigation alias; the map must resolve it to KEY_NUMPAD7 so the Numpad7 -> CameraZoomIn binding fires.
+Google Test trace:
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_numpad_e2e.cpp:211: CIrrDeviceFB created on :97
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_numpad_e2e.cpp:253: Failure
+Expected: (recv.zoomOutPresses.load()) >= (1), actual: 0 vs 1
+KP_1 press did not fire CameraZoomOut (device delivered no usable key). B654: the index-0 keysym is the navigation alias; the map must resolve it to KEY_NUMPAD1 so the Numpad1 -> CameraZoomOut binding fires.
+Google Test trace:
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_numpad_e2e.cpp:211: CIrrDeviceFB created on :97
+
+[  FAILED  ] X11NumpadE2E.NumpadDigitFiresCameraAction (8887 ms)
+[----------] 1 test from X11NumpadE2E (8887 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (8887 ms total)
+[  PASSED  ] 0 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] X11NumpadE2E.NumpadDigitFiresCameraAction
+
+ 1 FAILED TEST

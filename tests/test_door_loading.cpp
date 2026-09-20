@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <string>
 #include <fstream>
+#include <iostream>
 
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/pfs.h"
@@ -131,6 +132,199 @@ TEST_F(DoorLoadingUnitTest, ObjectGeometriesContainDoorMeshes) {
     }
     std::cout << "\n";
 }
+
+// B734 (issue #71): skinned object geometry in S3DZone::objectGeometries, and
+// the name a skinned ACTOR is reachable by.
+//
+// thedeep_obj.s3d carries the skeleton TDTORCH301_HS_DEF (flags 0x202, 5
+// bones) whose skinned mesh is STOR301_DMSPRITEDEF: 189 verts, 1 vertex
+// piece, Center (0,0,0), Bounds (0,0,0)-(0,0,0) -- i.e. degenerate, because
+// its vertices are stored relative to the bones they are skinned to. The
+// placement/actor name is TDTORCH301 (from TDTORCH301_ACTORDEF, whose mesh
+// ref 191 is the 0x11 skeleton-track ref of TDTORCH301_HS_DEF).
+//
+// Before the fix, loadObjects() stored every 0x36 under its MESH name
+// ("STOR301") with only the center offset applied -- a no-op here -- so the
+// map held the torch un-posed (every vertex at its bone's origin) and the
+// actor name TDTORCH301 found nothing by exact match. The fix stores the
+// skinned geometry at its rest pose (vertex pieces moved by their bones'
+// accumulated rest transforms, T476's equipment-actor resolver) under the
+// ACTOR name.
+class B734ObjectGeometriesTest : public ::testing::Test {
+protected:
+    std::string eqClientPath_;
+
+    void SetUp() override {
+        const char* envPath = std::getenv("EQ_CLIENT_PATH");
+        if (envPath) {
+            eqClientPath_ = envPath;
+        } else {
+            eqClientPath_ = EQ_CLIENT_DATA_PATH;
+        }
+        eqt::test::requireEqClientAssets(eqClientPath_);
+        std::ifstream probe(eqClientPath_ + "/thedeep.s3d");
+        if (!probe.good()) {
+            GTEST_SKIP() << "thedeep.s3d not found under " << eqClientPath_;
+        }
+    }
+};
+
+// AC1: the skinned object geometry is stored at its rest pose, with
+// non-degenerate bounds. The map must not hold a skinned (vertex-pieced)
+// geometry whose bounds are still the file's (0,0,0)-(0,0,0).
+TEST_F(B734ObjectGeometriesTest, SkinnedObjectGeometryIsAtRestPose) {
+    S3DLoader loader;
+    ASSERT_TRUE(loader.loadZone(eqClientPath_ + "/thedeep.s3d"))
+        << "Failed to load zone: " << loader.getError();
+    auto zone = loader.getZone();
+    ASSERT_NE(zone, nullptr);
+    ASSERT_FALSE(zone->objectGeometries.empty()) << "no object geometries loaded";
+
+    // AC2: findable by the ACTOR name DoorManager/placement uses, as an exact
+    // key.
+    auto it = zone->objectGeometries.find("TDTORCH301");
+    ASSERT_NE(it, zone->objectGeometries.end())
+        << "TDTORCH301 (the actor name) is not an exact key in objectGeometries; "
+        << "keys present: " << [&] {
+            std::string s;
+            for (const auto& [k, v] : zone->objectGeometries) s += k + " ";
+            return s;
+        }();
+    const auto& geom = it->second;
+    ASSERT_NE(geom, nullptr);
+    ASSERT_EQ(geom->vertices.size(), 189u)
+        << "TDTORCH301 must carry STOR301's 189 vertices (the skinned torch)";
+
+    // Recompute the bounds from the stored vertices; they must be real.
+    float minX = std::numeric_limits<float>::max(), maxX = std::numeric_limits<float>::lowest();
+    float minY = std::numeric_limits<float>::max(), maxY = std::numeric_limits<float>::lowest();
+    float minZ = std::numeric_limits<float>::max(), maxZ = std::numeric_limits<float>::lowest();
+    for (const auto& v : geom->vertices) {
+        minX = std::min(minX, v.x); maxX = std::max(maxX, v.x);
+        minY = std::min(minY, v.y); maxY = std::max(maxY, v.y);
+        minZ = std::min(minZ, v.z); maxZ = std::max(maxZ, v.z);
+    }
+    std::cout << "B734: TDTORCH301 bounds x[" << minX << "," << maxX
+              << "] y[" << minY << "," << maxY << "] z[" << minZ << "," << maxZ << "]\n";
+    EXPECT_GT(maxX - minX, 0.01f) << "TDTORCH301 bounds are still degenerate (un-posed)";
+    EXPECT_GT(maxY - minY, 0.01f) << "TDTORCH301 bounds are still degenerate (un-posed)";
+    EXPECT_GT(maxZ - minZ, 0.01f) << "TDTORCH301 bounds are still degenerate (un-posed)";
+
+    // The raw MESH name must not be the key that holds a skinned geometry.
+    auto raw = zone->objectGeometries.find("STOR301");
+    if (raw != zone->objectGeometries.end()) {
+        // Whatever is under STOR301 must be the SAME shared geometry (alias),
+        // never a second un-posed copy.
+        EXPECT_EQ(raw->second.get(), geom.get())
+            << "STOR301 holds a second, different copy of the torch geometry";
+    }
+}
+
+// AC4: no entry in the map may still be a skinned geometry stored raw (its
+// vertex pieces cover every vertex, i.e. the center offset was a no-op and
+// the pieces were never posed).
+TEST_F(B734ObjectGeometriesTest, NoSkinnedGeometryStoredUnPosed) {
+    S3DLoader loader;
+    ASSERT_TRUE(loader.loadZone(eqClientPath_ + "/thedeep.s3d"))
+        << "Failed to load zone: " << loader.getError();
+    auto zone = loader.getZone();
+    ASSERT_NE(zone, nullptr);
+
+    for (const auto& [name, geom] : zone->objectGeometries) {
+        if (!geom) continue;
+        if (geom->vertexPieces.empty()) continue;
+        size_t covered = 0;
+        for (const auto& p : geom->vertexPieces) covered += p.count;
+        if (covered != geom->vertices.size()) continue;
+        // A skinned geometry: it must not sit at the degenerate file bounds.
+        const bool degenerate =
+            geom->minX == 0.0f && geom->minY == 0.0f && geom->minZ == 0.0f &&
+            geom->maxX == 0.0f && geom->maxY == 0.0f && geom->maxZ == 0.0f;
+        EXPECT_FALSE(degenerate)
+            << "skinned geometry '" << name << "' stored with degenerate (0,0,0)-(0,0,0) bounds";
+    }
+}
+
+#ifdef EQT_HAS_GRAPHICS
+
+// DoorLoadingUnitTest (above) runs without a device; the DoorManager cases
+// below build a bare EDT_NULL device, as test_door_loading has always done.
+class DoorManagerNullDeviceTest : public ::testing::Test {
+protected:
+    std::string eqClientPath_;
+    irr::IrrlichtDevice* device_ = nullptr;
+    irr::scene::ISceneManager* smgr_ = nullptr;
+    irr::video::IVideoDriver* driver_ = nullptr;
+
+    void SetUp() override {
+        const char* envPath = std::getenv("EQ_CLIENT_PATH");
+        if (envPath) {
+            eqClientPath_ = envPath;
+        } else {
+            eqClientPath_ = EQ_CLIENT_DATA_PATH;
+        }
+        eqt::test::requireEqClientAssets(eqClientPath_);
+        std::ifstream probe(eqClientPath_ + "/thedeep.s3d");
+        if (!probe.good()) {
+            GTEST_SKIP() << "thedeep.s3d not found under " << eqClientPath_;
+        }
+        irr::SIrrlichtCreationParameters params;
+        params.DriverType = irr::video::EDT_NULL;
+        params.WindowSize = irr::core::dimension2d<irr::u32>(100, 100);
+        device_ = irr::createDeviceEx(params);
+        if (!device_) {
+            GTEST_SKIP() << "Failed to create Irrlicht device";
+        }
+        smgr_ = device_->getSceneManager();
+        driver_ = device_->getVideoDriver();
+    }
+
+    void TearDown() override {
+        if (device_) {
+            device_->drop();
+            device_ = nullptr;
+        }
+    }
+};
+
+// AC2 witness: findDoorMesh("TDTORCH301") resolves on thedeep by the exact
+// actor-name key, not the loose substring fallback.
+TEST_F(DoorManagerNullDeviceTest, FindDoorMeshByActorName) {
+    S3DLoader loader;
+    ASSERT_TRUE(loader.loadZone(eqClientPath_ + "/thedeep.s3d"))
+        << "Failed to load zone: " << loader.getError();
+    auto zone = loader.getZone();
+    ASSERT_NE(zone, nullptr);
+
+    DoorManager doorMgr(smgr_, driver_);
+    doorMgr.setZone(zone);
+
+    irr::scene::IMesh* mesh = doorMgr.findDoorMesh("TDTORCH301");
+    ASSERT_NE(mesh, nullptr)
+        << "findDoorMesh(\"TDTORCH301\") missed on thedeep: the skinned torch is "
+        << "not reachable by its actor name";
+    mesh->drop();
+
+    // And the cached mesh really is the torch: findDoorMesh must return the
+    // ACTOR's posed geometry (the 189-vertex skinned torch mesh
+    // "STOR301_DMSPRITEDEF" plus the skeleton's bone meshes), not a degenerate
+    // zero-vertex bind-pose stub and not some unrelated oversized model.
+    auto cacheIt = doorMgr.findDoorMesh("TDTORCH301");
+    ASSERT_NE(cacheIt, nullptr) << "second findDoorMesh should hit the cache";
+    uint32_t total = 0;
+    for (irr::u32 i = 0; i < cacheIt->getMeshBufferCount(); ++i) {
+        total += cacheIt->getMeshBuffer(i)->getVertexCount();
+    }
+    cacheIt->drop();
+    EXPECT_GE(total, 189u)
+        << "TDTORCH301's actor geometry must contain the 189-vertex torch mesh; "
+        << "got " << total << " -- a degenerate/un-posed bind-pose geometry";
+    EXPECT_LT(total, 2048u)
+        << "TDTORCH301's actor geometry is unexpectedly large (" << total
+        << " verts) -- the resolver likely pulled in a wrong/whole-zone mesh";
+}
+
+#endif // EQT_HAS_GRAPHICS
 
 // Test that door geometries have proper bounding data for collision
 TEST_F(DoorLoadingUnitTest, DoorGeometriesHaveValidBounds) {

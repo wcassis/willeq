@@ -4,6 +4,7 @@
 // Bodies are contiguous line ranges of that file, moved verbatim.
 
 #include "client/graphics/eq/s3d_loader.h"
+#include "client/graphics/eq/equipment_actor_geometry.h"
 #include "common/logging.h"
 #include <algorithm>
 #include <iostream>
@@ -119,6 +120,50 @@ bool S3DLoader::loadObjects(const std::string& archivePath) {
         return false;
     }
 
+    // B734 (issue #71): a SKINNED object geometry -- vertex pieces naming the
+    // bones of the 0x10 skeleton that lists it (flag 0x200, T476) -- is stored
+    // in the archive relative to those bones, with a degenerate center and
+    // bounds (thedeep's STOR301_DMSPRITEDEF: 189 verts, 1 piece,
+    // Center (0,0,0), Bounds (0,0,0)-(0,0,0)). Storing it with only the center
+    // offset applied kept every piece at its bone's origin -- the un-posed
+    // torch. Pose it with T476's equipment-actor resolver (the same rest-pose
+    // path, not a second skinning implementation) and store it under the
+    // ACTOR name -- the name the placement (0x15) and DoorManager use, e.g.
+    // TDTORCH301, not the MESH name STOR301. The mesh name is aliased to the
+    // SAME shared geometry (one copy, per the 100 %-memory rule), so the
+    // pre-B734 lookup by mesh name keeps working.
+    //
+    // Which skeleton owns a skinned mesh: the 0x10 whose meshRefs resolve to
+    // its fragment index. Which actors name that skeleton: the 0x14s whose
+    // meshRefs resolve to the 0x11 track ref (parseFragment14's
+    // objectDefs_/modelRefs_/skeletonRefs_ chain, the same chain
+    // resolveEquipmentActorGeometry() walks).
+    std::map<size_t, const SkeletonTrack*> skinnedGeomTrack;
+    for (const auto& geom : geometries) {
+        if (!geom || geom->vertices.empty() || geom->vertexPieces.empty()) continue;
+        for (const auto& [trackRef, track] : objDefLoader.getSkeletonTracks()) {
+            if (!track) continue;
+            for (uint32_t meshRef : track->meshRefs) {
+                auto modelIt = objDefLoader.getModelRefs().find(meshRef);
+                if (modelIt == objDefLoader.getModelRefs().end()
+                    || modelIt->second.geometryFragRef == 0) continue;
+                if (objDefLoader.getGeometryByFragmentIndex(modelIt->second.geometryFragRef)
+                        .get() == geom.get()) {
+                    skinnedGeomTrack[&geom - &geometries[0]] = track.get();
+                }
+            }
+        }
+    }
+    std::map<uint32_t, std::vector<std::string>> trackToActors;
+    for (const auto& [actorName, def] : objectDefs) {
+        for (uint32_t meshRef : def.meshRefs) {
+            auto skelRef = objDefLoader.getSkeletonRefs().find(meshRef);
+            if (skelRef != objDefLoader.getSkeletonRefs().end()) {
+                trackToActors[skelRef->second].push_back(actorName);
+            }
+        }
+    }
+
     // Store all object geometries by name for dynamic placement (e.g., doors)
     // This allows finding geometries even for objects not pre-placed in the zone
     for (const auto& geom : geometries) {
@@ -133,9 +178,52 @@ bool S3DLoader::loadObjects(const std::string& archivePath) {
             baseName = baseName.substr(0, suffixPos);
         }
 
+        if (baseName.empty()) continue;
+
+        // Skinned geometry: store the rest-pose geometry under the ACTOR name
+        // (B734), aliased under the mesh name.
+        auto trackIt = skinnedGeomTrack.find(&geom - &geometries[0]);
+        if (trackIt != skinnedGeomTrack.end()) {
+            // Prefer the actor whose name prefixes the mesh base name (the
+            // skeleton's own DAG, e.g. TDTORCH301 for STOR301); otherwise any
+            // actor on this skeleton (std::map: objectDefs' name order).
+            std::string actorName;
+            for (const auto& [trackRef, names] : trackToActors) {
+                auto trackDef = objDefLoader.getSkeletonTracks().find(trackRef);
+                if (trackDef == objDefLoader.getSkeletonTracks().end()
+                    || trackDef->second.get() != trackIt->second) continue;
+                for (const auto& name : names) {
+                    if (actorName.empty()
+                        || (baseName.compare(0, name.size(), name) == 0)) {
+                        actorName = name;
+                    }
+                }
+            }
+            if (!actorName.empty()) {
+                auto resolved = resolveEquipmentActorGeometry(objDefLoader, actorName);
+                if (resolved && !resolved->vertices.empty()) {
+                    zone_->objectGeometries[actorName] = resolved;
+                    // Alias the mesh name to the SAME shared geometry.
+                    if (actorName != baseName) {
+                        zone_->objectGeometries[baseName] = resolved;
+                    }
+                    LOG_DEBUG(MOD_GRAPHICS,
+                        "Stored skinned object geometry '{}' -> actor '{}' ({} verts, rest pose, B734)",
+                        baseName, actorName, resolved->vertices.size());
+                    continue;
+                }
+                LOG_WARN(MOD_GRAPHICS,
+                    "B734: rest-pose resolution of actor '{}' failed; storing '{}' un-posed",
+                    actorName, baseName);
+            } else {
+                LOG_WARN(MOD_GRAPHICS,
+                    "B734: skinned geometry '{}' has no naming actor; storing un-posed", baseName);
+            }
+        }
+
         // Store geometry by base name with center offset applied to vertices
         // This matches eqsage which adds center to vertex positions before export
-        if (!baseName.empty()) {
+        {
             // Create a copy with center offset applied to vertices
             auto adjustedGeom = std::make_shared<ZoneGeometry>(*geom);
 

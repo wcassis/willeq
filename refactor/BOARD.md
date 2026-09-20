@@ -10383,7 +10383,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   used to learn the units of DirHeading/Pitch/Height/Zoom; they are the client's
   own write-out. Found by T466.
 
-- **B586** (A, *owed*) **The held-item attack animation was not captured on the → issue #50
+- ~~**B586**~~ (A, *owed*) **The held-item attack animation was not captured on the → issue #50
   oracle.** Set A (Short Sword primary, Gloomingdeep Lantern secondary) was
   captured idle from four cameras, but auto-attack at 8 units behind the
   training dummy produced no swing in 40 stepped frames. Owed: an attack capture
@@ -10397,8 +10397,16 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   Found by T466.
   T472 Leg A (2026-09-14) changed nothing here: offline only; the attack
   captures are T472 Leg B's.
+  **CLOSED by T478 (issue #50), struck 2026-09-20 (card kb-chase-closures).**
+  T478 paid the whole capture debt: the `/target` cause was the underscore spawn
+  name (all four T478 sessions targeted `a_training_dummy000` and
+  auto-attacked), and attack captures landed on both clients for every set --
+  A, B, C and IT10. What T478 found in them is the live record now: B722 (#62)
+  and B723 (#63).
 
-- **B587** (A, *unconfirmed*) **At the camera that reproduces the official Chase → issue #51
+- ~~**B587**~~ (A, *unconfirmed*) **CLOSED by T478 (live) -- see the T478 record
+  below; struck 2026-09-20 (card kb-chase-closures, issue #51).** At the camera that
+  reproduces the official Chase → issue #51
   view, fable draws the player model facing the camera.** fable session
   `heldA_sword_lantern_spotA_h160` (Testchar at qeynos2 (-81.39, 431.06, 3.751)
   h160): the rig az 0, pitch 6, dist 4, height 7 -- whose world view matches the
@@ -10430,6 +10438,12 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   `HeldItemFrameOrder.PlayerHeadingIsSyncedAfterUpdatesAndBeforeEquipment`.
   Owed: the oracle Chase capture of a stationary fable character (and the
   two-client observation the heading note asks for).
+  **Closed by T478 (live), struck 2026-09-20 (card kb-chase-closures, issue #51):**
+  T478's Chase sweep at h160 on Testchar, not moved since zone-in, shows the
+  back of the head, back and shoulders, matching the official Chase frame
+  (`fable/sessions/chase_sweep_h160`, frame 163; `review/T478/README.md`). The
+  offline pin `HeldItemTest.StationaryPlayerIsDrawnAtTheRendererHeading`
+  (tests/test_held_item_attachment.cpp) re-verified green on this card.
 
 - ~~**B588**~~ **CLOSED by T485** (lantern half closed by T472, blade half by T485's
   searched correction; see the T485 block). Original text: (A, *unconfirmed*) **Held items in the hand: the sword's blade points
@@ -10440,8 +10454,9 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   Gloomingdeep Lantern (item 9979, IT48) hanging in the LEFT hand at the hip.
   fable shows the Short Sword in the right hand with the blade standing UP above
   the fist (about a half turn about the hand's horizontal axis, as far as the
-  frames show), and no lantern in the left hand from either side. Attack-pose
-  comparison owed (B586). Found by T466.
+ frames show), and no lantern in the left hand from either side. Attack-pose
+ comparison owed (B586) -- that comparison was captured by T478 and its
+ findings live on as B722/B723 (kb-chase-closures). Found by T466.
   **T485 (slot1, in flight, `refactor/T485_held_item_transform_candidate_search.md`) OWNS this item** — the lantern half is already false since T472, and T485 strikes or narrows the rest; nobody else scopes a fix off it (T486 note).
 
 ---
@@ -10501,7 +10516,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   (and Chase, for Zoom and Raise) on the oracle, with the image shift per press.
   Found by T471.
 
-- **B654** (A, *unconfirmed*) **The `--egl-x11` device drops every numpad digit → issue #56
+- ~~**B654**~~ (A, *unconfirmed*) **The `--egl-x11` device drops every numpad digit → issue #56
   key.** `docker/irrlicht-drm-x86/CIrrDeviceFB_X11.cpp` looks a key up with
   `XLookupKeysym(&xev.xkey, 0)` -- index 0, which for a keypad digit is its
   NumLock-OFF keysym (`XK_KP_Home`, `XK_KP_Up`, ...) -- and
@@ -10510,7 +10525,23 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   are therefore unreachable in an X11-windowed run; the DRM/evdev device maps
   `KEY_KP7` -> `KEY_NUMPAD7` regardless of NumLock and is unaffected, and the
   Insert/Delete/Alt+arrow/Alt+PageUp alternates work on both. From code, not
-  run: T471 had no display. Outside T471's territory. Found by T471.
+  run: T471 had no display. Outside T471's territory. Found by T471.~~
+  **STRUCK 2026-09-20 (fixed live, issue #56, `task/kb-b654-x11-numpad`):
+  the keysym -> EKEY_CODE decision moved to the display-free header
+  `docker/irrlicht-drm-x86/x11_keysym_map.h`, which maps the ten NumLock-level-0
+  navigation aliases (KP_Home/Up/Prior/Left/Begin/Right/End/Down/Next/Insert,
+  measured against Xvfb's default keymap) to the same KEY_NUMPAD0..9 as the
+  digit keysyms, so a numpad digit press delivers its digit in BOTH NumLock
+  states. Pinned display-less (test_x11_keysym_map, RED: all ten aliases -> 0)
+  and end-to-end on Xvfb (test_x11_numpad_e2e: real CIrrDeviceFB under
+  WILLEQ_EGL_X11, xdotool KP_7/KP_1 -> CameraZoomIn/CameraZoomOut through the
+  shipped HotkeyManager, RED: both presses delivered key 0; GREEN: 103/97 ->
+  the two actions; Alt+ variants probed too). CI propagation is part of the
+  fix: scripts/ci/irrlicht_input_stamp.sh stamps the lib's committed inputs
+  and the CI build job rebuilds the warm lib on mismatch, so a committed
+  device-source change can no longer stay invisible to CI (docs/ci.md,
+  "Device-source changes are caught by the input stamp"). Evidence:
+  `refactor/B654/`.**
 
 ---
 
@@ -10605,8 +10636,9 @@ unused.
   minimum 0.7379; the pre-T474 binary scores **0.9951**). The 3x3x3 re-fit at
   that view reproduces T466's bracket to <= 0.001. Correction to T471's B650
   arithmetic: the pre-T474 camera at that spot sat 11.500 above the ground, not
-  13.119 -- the eye-region ceiling clamped it. **Still open:** B683 (the h288
-  view disagrees), B681 (races), B680 (does the official Chase zoom).
+  13.119 -- the eye-region ceiling clamped it. **Still open:** B721 (the
+  crop-dependent Chase fit, superseding B683 -- pointer updated 2026-09-20, card
+  chase-closures-fix), B681 (races), B680 (does the official Chase zoom).
 
 - **B680** (C -> ORACLE-OWED) **Whether the official Chase camera zooms.** The T474 → issue #57
   plan requires fable's zoom keys and wheel to act on the Chase distance, and
@@ -10638,7 +10670,8 @@ unused.
   floors it at the player's eye. Neither was measured on the oracle; both are
   written down in `camera_controller.h`. Found by T474.
 
-- **B683** (A, **T474 STOP**) **The Chase re-fit at a second view disagrees with → issue #59
+- ~~**B683**~~ (A, **T474 STOP**) **SUPERSEDED by B721 -- see the T478 record
+  below; struck 2026-09-20 (card kb-chase-closures, issue #59).** **The Chase re-fit at a second view disagrees with → issue #59
   T466's fit on distance.** Same spot and pose, heading 288, scored against
   T466's own h288 oracle Chase still on the crop that reproduces T466's h160
   numbers (`400x600+0+100`, recovered by reproduction:
@@ -10653,6 +10686,12 @@ unused.
   near wall is at the left; at h288 the wall fills the frame. Owed (not run,
   Leg B stopped): a fresh oracle h288 grab, a crop chosen for that view, a
   genuinely second spot, and B681's second race. Found by T474.
+  **SUPERSEDED by B721 (T478 record below), struck 2026-09-20 (card
+  kb-chase-closures, issue #59).** T478 reproduced T474's h288 "dist 3.5" on
+  T474's wall crop as the pitch-6 slice of a diagonal pitch/height valley whose
+  minimum is off that plane, so the crop explains the disagreement and the
+  clean-spot re-grab does not settle the fit. B721 (issue #61) carries the
+  remaining work.
 
 - ~~**B684**~~ **CLOSED by T480.** `PlayerState::setFollowDistance()` is deleted,
   and so is its `check_zero_callers.py` EXEMPT row. The cascade stopped at once.
@@ -10910,12 +10949,26 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   SNNHE00_DMSPRITEDEF and SRG's cape, but that selection would drop both.
   Confirm with a model-build test for race 146 (Spectral Sarnak). Found by T479.
 
-- **B734** (A, *unconfirmed*) **`S3DZone::objectGeometries` holds skinned meshes → issue #71
-  un-posed, under their MESH name.** `loadObjects()` stores every mesh by name
-  for `DoorManager` (`door_manager_mesh.cpp`, exact then partial match); a
-  skinned mesh (STOR301, FWD301 ...) is stored with each vertex piece at its
-  bone's origin, and a skeletal ACTOR's name finds nothing. Confirm with a door
-  whose name matches either. Found by T479.
+- ~~**B734**~~ **CLOSED on `task/kb-b734-object-geometries-posed` (issue #71).** `loadObjects()` now poses skinned
+  object geometries (vertex pieces on a 0x10 skeleton, flag 0x200) through T476's
+  `resolveEquipmentActorGeometry` — the same rest-pose path the equipment actors
+  use, not a second skinning implementation — and stores them in
+  `S3DZone::objectGeometries` under the ACTOR name the placement and
+  `DoorManager::findDoorMesh` use (thedeep: `TDTORCH301`), with the MESH name
+  (`STOR301`) aliased to the SAME shared_ptr so no geometry is copied and
+  `getMemoryUsage()` accounts each distinct geometry once. thedeep's `TDTORCH301`
+  now has non-degenerate bounds (x[-0.568,0.565] y[-0.492,0.490] z[0.906,4.067]);
+  the `objectGeometries` byte census (per-key sum of `getFullMemoryUsage`) goes
+  157,538 -> 171,968 for thedeep (20 -> 21 keys; the actor key is added, the
+  skinned mesh's own raw geometry is REPLACED by the rest-pose one, and the
+  mesh name aliases the same shared_ptr — 20 distinct geometry pointers both
+  before and after, so no geometry is copied twice; `getMemoryUsage()` dedupes
+  the alias) and 1,798,921 -> 3,169,268 for bothunder (20 skinned keys: the
+  rest-pose geometry also carries the skeleton's bone meshes, which the
+  un-posed storage omitted). Pinned by `test_door_loading.cpp`
+  (`B734ObjectGeometriesTest`, headless, asset-gated by
+  `tests/asset_requirement.h`). `refactor/B734_object_geometries_posed.md`.
+  Found by T479.
 
 - ~~**B735**~~ **MEASURED by T481 -> B750.** The Pi cost of B730's placements:
   qeynos2 and nro fit on the T479 build; emeraldjungle (+22,174) is OOM-killed
