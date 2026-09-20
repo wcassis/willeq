@@ -37,10 +37,11 @@ checks them against three independent assertions:
            T293 these categories all have a budget too; this bucket is the
            regression-detection half, which catches drift a budget with
            headroom cannot. T69 measured 9 repeat runs
-           across all 3 golden zones and found EVERY one of these fields
-           bit-identical run to run (see refactor/T69_memory_enforcement_gate.md
-           Review), so exact match is an empirically justified tolerance of
-           zero, not a guess.
+           across all 3 golden zones (the pre-B813 sample; B813 added
+           iceclad + timorous as the 4th and 5th zones) and found EVERY one of
+           these fields bit-identical run to run (see
+           refactor/T69_memory_enforcement_gate.md Review), so exact match is
+           an empirically justified tolerance of zero, not a guess.
        (c) Reported, not asserted: process RSS and the T69 untracked-RSS gap
            (RSS minus every tallied ESTIMATE). Printed and baselined every
            run for visibility. Never gated -- T69 ruled it too noisy, and
@@ -167,8 +168,10 @@ MEMORY_BUDGET_PAIRS = [
 MEMORY_BUDGET_PAIRS_ALSO_BASELINED = ["textureCacheBytesUsed", "framebufferBytes"]
 
 # (b) no configured budget -- baseline with the tolerance measured in T69
-# (zero: 9 repeat runs across all 3 golden zones, every field below was
-# bit-identical run to run on this deterministic llvmpipe path). A future
+# (zero: 9 repeat runs across all 3 golden zones -- the pre-B813 sample;
+# B813's two additions reproduced the same bit-identity on this host's
+# llvmpipe, every field below was bit-identical run to run on this
+# deterministic llvmpipe path). A future
 # zone/config where these are NOT bit-identical is real news, not noise --
 # see the T69 Review before loosening this to a nonzero tolerance.
 MEMORY_BASELINE_FIELDS = [
@@ -878,8 +881,10 @@ def verify_memory_coverage(manifest, failures):
             continue
 
         # Exact match -- T80 measured 5 (qeynos2) + 3 + 3 (gfaydark, befallen)
-        # repeat runs under this exact asset mix and found every field below
-        # bit-identical run to run, same discipline and same empirically-zero
+        # repeat runs under this exact asset mix (pre-B813 sample); B813 added
+        # iceclad + timorous as the 4th and 5th zones, and both were
+        # bit-identical across two coverage passes on this host's llvmpipe --
+        # same discipline and same empirically-zero
         # tolerance as T69's MEMORY_BASELINE_FIELDS. See the T80 Review.
         for key in MEMORY_COVERAGE_FIELDS:
             if key not in memory or key not in expected_mem:

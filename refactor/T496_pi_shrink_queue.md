@@ -96,8 +96,9 @@ items; `src/client/graphics/CLAUDE.md` + `docs/module_map.md` if Leg B touches t
 actual zone, and a before/after Pi number for the category attacked.
 
 ## STOP (report, do not proceed)
-1. Anything needing a golden re-bless (adding iceclad/Velious to the gate = Will's
-   call, open half of B813).
+1. Anything needing a golden re-bless (adding iceclad/Velious to the gate =
+   Will's call, open half of B813 — **struck 2026-09-20 by B813/t_9bab9dd4**,
+   iceclad + timorous now run in the gate; see `refactor/B813/README.md`).
 2. Anything that changes what is drawn (texture size, variants, cursor/loading-screen
    resolution, particle sets). Only lifetime/sharing/staging changes are in scope.
 3. Leg A's four runs disagree by > ~10% on `startup` live bytes.
