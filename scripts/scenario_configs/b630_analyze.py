@@ -101,9 +101,13 @@ CHAT_RECAST_NOT_MET = "[MAIN] Spell recast time not yet met."
 CHAT_FIZZLE = "[MAIN] Your spell fizzles!"
 CHAT_NOT_TAKE_HOLD = "did not take hold"
 
-# The B760 tail packets as [ZonePacket] handler lines, exact opcode names.
-HANDLER_KEEPCASTING_0 = "[ZonePacket] ManaChange"   # the spell-bar re-enable
-HANDLER_MEMORIZE = "[ZonePacket] MemorizeSpell"
+# The B760 tail packets as [ZonePacket] handler lines. The opcode name the
+# handler prints carries the wire prefix, e.g.
+#   [ZONE] [ZonePacket] HC_OP_ManaChange
+# (zone_component's generic dispatcher), so the anchors accept the
+# HC_ prefix; a bare-name line would be the pre-patch shape.
+HANDLER_KEEPCASTING_0 = re.compile(r"\[ZonePacket\] (?:HC_)?OP_ManaChange")
+HANDLER_MEMORIZE = re.compile(r"\[ZonePacket\] (?:HC_)?OP_MemorizeSpell")
 
 
 def read(path):
@@ -138,15 +142,28 @@ def count(lines, *needles):
 # Item 4: anchor on the [ZonePacket] handler lines, not the SCENARIO prose.
 # ---------------------------------------------------------------------------
 def b760_rows(caster_lines, label):
+    """B760 rows for a slice of the caster log (one leg's window).
+
+    An anchor is the `[ZonePacket] HC_OP_ManaChange` line whose IMMEDIATE
+    [SPELL] decode is a keepcasting 0 (the spell bar re-enables, end of the
+    cast). The next `[ZonePacket] HC_OP_MemorizeSpell` decides the outcome;
+    every zone packet between the two is the #45 answer for that outcome.
+    A keepcasting 0 with no MemorizeSpell after is the "stopped" outcome
+    (interrupt / refused cast).
+    """
     rows = []
     lines = caster_lines
     n = len(lines)
     for i, line in enumerate(lines):
-        # The ManaChange handler line (the spell bar re-enables, keepcasting 0).
-        if "[ZonePacket] ManaChange" not in line:
+        if not HANDLER_KEEPCASTING_0.search(line):
+            continue
+        # The [SPELL] decode line follows the [ZonePacket] line directly;
+        # only a keepcasting 0 (cast ended) is a B760 anchor, not a mana
+        # regen keepcasting 1.
+        if i + 1 >= n or "keepcasting=0" not in lines[i + 1]:
             continue
         # Find the next MemorizeSpell handler after this keepcasting 0.
-        j = i + 1
+        j = i + 2
         between = []
         outcome = "no-MemorizeSpell-after (stopped)"
         while j < n:
@@ -200,9 +217,9 @@ TRUE_BYSTANDER_SELF = (
     "[2026-09-19 23:36:03.000] [DEBUG] [SPELL] Interrupt: caster=165 "
     "(''), spell=378, message=439\n")
 TRUE_B760_KEEPCASTING = (
-    "[2026-09-19 23:36:04.000] [DEBUG] [ZONE] [ZonePacket] ManaChange\n")
+    "[2026-09-19 23:36:04.000] [DEBUG] [ZONE] [ZonePacket] HC_OP_ManaChange\n")
 TRUE_B760_MEMORIZE = (
-    "[2026-09-19 23:36:04.100] [DEBUG] [ZONE] [ZonePacket] MemorizeSpell\n")
+    "[2026-09-19 23:36:04.100] [DEBUG] [ZONE] [ZonePacket] HC_OP_MemorizeSpell\n")
 
 
 def run_self_test():
@@ -249,18 +266,33 @@ def run_self_test():
     check("A bystander: the caster's own 439 copy does not match",
           BYSTANDER_INTERRUPT.search(TRUE_BYSTANDER_SELF) is None)
     check("B760: the keepcasting-0 anchor is the [ZonePacket] handler line",
-          grep([TRUE_B760_KEEPCASTING], HANDLER_KEEPCASTING_0) is not None)
+          HANDLER_KEEPCASTING_0.search(TRUE_B760_KEEPCASTING) is not None)
+    # The anchor is the PAIR: a [SPELL] decode of keepcasting 0 right after the
+    # [ZonePacket] line (a keepcasting 1 mana regen is not a tail).
+    b760_pair = [
+        TRUE_B760_KEEPCASTING,
+        "[2026-09-19 23:36:04.001] [DEBUG] [SPELL] ManaChange: mana=991, "
+        "stamina=214, spell=372, keepcasting=0\n",
+    ]
+    check("B760: the keepcasting-0 pair yields a row",
+          len(b760_rows(b760_pair, "selftest")) == 1)
+    check("B760: a keepcasting 1 decode is not a tail anchor",
+          len(b760_rows(
+              [TRUE_B760_KEEPCASTING,
+               "[2026-09-19 23:36:04.001] [DEBUG] [SPELL] ManaChange: mana=999, "
+               "stamina=138, spell=0, keepcasting=1\n"],
+              "selftest")) == 0)
     check("B760: the MemorizeSpell handler line is recognised",
-          grep([TRUE_B760_MEMORIZE], HANDLER_MEMORIZE) is not None)
+          HANDLER_MEMORIZE.search(TRUE_B760_MEMORIZE) is not None)
     # And the memarena line must not be read as a B760 keepcasting 0 tail.
     check("B760: memarena is not a ManaChange handler line",
-          HANDLER_KEEPCASTING_0 not in FALSE_POSITIVE_236)
+          HANDLER_KEEPCASTING_0.search(FALSE_POSITIVE_236) is None)
 
     if failures:
         for f in failures:
             print("SELF-TEST FAIL: " + f)
         return 1
-    print("SELF-TEST PASS: 10/10 needles anchored")
+    print("SELF-TEST PASS: all needles anchored")
     return 0
 
 
@@ -503,20 +535,41 @@ def main():
         print("[%s] %s -- %s" % (verdict, leg, assertion))
         print("    evidence: %s" % evidence)
     print()
-    print("=== B760: packets between [ZonePacket] ManaChange (keepcasting 0) "
-          "and [ZonePacket] MemorizeSpell ===")
+    print("=== B760: packets between [ZonePacket] HC_OP_ManaChange "
+          "(keepcasting 0) and HC_OP_MemorizeSpell, per leg ===")
+    # B760's question is per OUTCOME, so each leg's rows are read from its own
+    # window: from the leg's cast to the "leg N complete" note. Without the
+    # window every keepcasting 0 in the log (mana regen, the interrupt, the
+    # tail) would print once per leg and the table would be noise.
+    b760_legs = (
+        ("A cast_interrupt", "casting: /cast 1", "leg 1 complete"),
+        ("D1 cast_success_tail", "casting to completion", "leg 2 complete"),
+        ("D2 cast_recast_stop", "first cast (to completion)", "leg 3 complete"),
+        ("D3 cast_buff_notake", "buff leg: /cast 1", "leg 4 complete"),
+    )
+
+    def index_of(needle, lo=0):
+        for i in range(lo, len(caster)):
+            if needle in caster[i]:
+                return i
+        return None
+
     any_b760 = False
-    for label in ("A cast_interrupt", "D1 cast_success_tail",
-                  "D2 cast_recast_stop", "D3 cast_buff_notake",
-                  "B cast_fizzle"):
-        rows = b760_rows(caster, label)
-        for lineno, between, outcome in ((r[1], r[2], r[3]) for r in rows):
+    for label, start_marker, end_marker in b760_legs:
+        start = index_of("[SCENARIO] " + start_marker)
+        end = index_of("[SCENARIO] " + end_marker, start + 1) if start is not None else None
+        if start is None or end is None:
+            print("%-22s (no %r..%r window in the caster log)"
+                  % (label, start_marker, end_marker))
+            continue
+        for r in b760_rows(caster[start:end + 1], label):
+            lineno, between, outcome = r[1], r[2], r[3]
             any_b760 = True
             print("%-22s line%-4d outcome=%s between=%s"
-                  % (label, lineno, outcome,
+                  % (label, start + lineno, outcome,
                      between if between else "(none)"))
     if not any_b760:
-        print("(no [ZonePacket] ManaChange tail found in the caster log -- "
+        print("(no HC_OP_ManaChange tail found in any leg window -- "
               "run with ZONE:DEBUG, see scripts/scenario.sh log_module_for)")
     print()
 
