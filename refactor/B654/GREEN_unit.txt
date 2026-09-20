@@ -1,0 +1,18 @@
+############ UNIT TEST — GREEN (post-fix) ############
+Running main() from ./googletest/src/gtest_main.cc
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from X11KeysymMap
+[ RUN      ] X11KeysymMap.NumpadDigitsResolveToNumpadCodes
+[       OK ] X11KeysymMap.NumpadDigitsResolveToNumpadCodes (0 ms)
+[ RUN      ] X11KeysymMap.NumpadNavigationAliasesResolveToNumpadCodes
+[       OK ] X11KeysymMap.NumpadNavigationAliasesResolveToNumpadCodes (0 ms)
+[ RUN      ] X11KeysymMap.NumpadDecimalUnchanged
+[       OK ] X11KeysymMap.NumpadDecimalUnchanged (0 ms)
+[ RUN      ] X11KeysymMap.UnhandledKeysymStillZero
+[       OK ] X11KeysymMap.UnhandledKeysymStillZero (0 ms)
+[----------] 4 tests from X11KeysymMap (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 4 tests.

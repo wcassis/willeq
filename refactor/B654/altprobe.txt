@@ -1,0 +1,10 @@
+[B654-ALT] key=164 alt=1 action=(none)
+[B654-ALT] key=104 alt=1 action=CameraRaise
+[B654-ALT] key=164 alt=1 action=(none)
+[B654-ALT] key=102 alt=1 action=CameraOrbitRight
+[B654-ALT] key=164 alt=1 action=(none)
+[B654-ALT] key=105 alt=1 action=CameraPitchUp
+[B654-ALT] key=164 alt=1 action=(none)
+[B654-ALT] key=97 alt=1 action=(none)
+[B654-ALT] totals hits=8 raises=1 orbits=1 pitches=1 plainZoom=0
+ALT-PROBE-PASS

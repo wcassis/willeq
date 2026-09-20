@@ -206,6 +206,52 @@ IF(EQT_GRAPHICS)
     GTEST_DISCOVER_TESTS(test_asset_loading DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B654 (issue #56): display-less regression test for the X11-keysym -> EKEY_CODE
+# map. It compiles the pure header docker/irrlicht-drm-x86/x11_keysym_map.h
+# (the same header the X11 device TU includes) and pins the numpad-digit AND
+# numpad-navigation-alias decisions directly -- no Display*, no X11 connection,
+# no graphics driver. Needs only gtest + <Keycodes.h> (IRRLICHT_INCLUDE_DIR) +
+# the system X11 headers, so it links no driver and runs in the normal suite.
+# RED before the fix (the ten nav-alias cases returned 0), GREEN after.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_x11_keysym_map
+        test_x11_keysym_map.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_x11_keysym_map PRIVATE
+        ${IRRLICHT_INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/docker/irrlicht-drm-x86)
+    TARGET_LINK_LIBRARIES(test_x11_keysym_map GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_x11_keysym_map DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B654 (issue #56): the Xvfb end-to-end regression. Drives the REAL
+# CIrrDeviceFB::run() -> pollX11Events() -> x11KeysymToIrrlicht() ->
+# HotkeyManager::getAction() chain: a private Xvfb, a real CIrrDeviceFB created
+# via createDeviceEx (EDT_OGLES2 + the WILLEQ_EGL_X11 opt-in), a real xdotool
+# KP_7/KP_1 press, and the resulting EKEY_CODE resolved through the shipped
+# HotkeyManager so the Numpad7/Numpad1 camera actions fire. Links the patched
+# Irrlicht (for CIrrDeviceFB / createDeviceEx) + its device deps (EGL/GLESv2/
+# drm/gbm/X11, the same set test_graphics links for the windowed-EGL backend)
+# plus the HotkeyManager TU. SKIPs loudly only when Xvfb/xdotool are genuinely
+# absent; any device-path failure is a hard FAIL. RED before the fix, GREEN after.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_x11_numpad_e2e
+        test_x11_numpad_e2e.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/input/hotkey_manager.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_x11_numpad_e2e PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_x11_numpad_e2e
+        GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} ${IRRLICHT_LIBRARY})
+    IF(EQT_DRM OR EQT_GLES2)
+        TARGET_LINK_LIBRARIES(test_x11_numpad_e2e EGL GLESv2 drm gbm)
+        IF(NOT EQT_DRM)
+            TARGET_LINK_LIBRARIES(test_x11_numpad_e2e X11)
+        ENDIF()
+    ENDIF()
+    GTEST_DISCOVER_TESTS(test_x11_numpad_e2e DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T400 (board B225): the particle atlas must carry its alpha.
 #
 # Three things are pinned here and they only mean something together:

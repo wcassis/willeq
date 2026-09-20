@@ -125,6 +125,10 @@ cp "$DRM_X86_SRC/CIrrDeviceFB.cpp"      "$DEST_SRC/CIrrDeviceFB.cpp"
 # keep CIrrDeviceFB.cpp under the file-size warning threshold (same class,
 # not a separate device) - x86-only, no ARM equivalent.
 cp "$DRM_X86_SRC/CIrrDeviceFB_X11.cpp"  "$DEST_SRC/CIrrDeviceFB_X11.cpp"
+# B654: the pure X11-keysym -> EKEY_CODE map, shared by CIrrDeviceFB_X11.cpp
+# and the display-less unit test. Copied into the build area next to the TU
+# (like the other driver headers) so the TU's relative #include resolves.
+cp "$DRM_X86_SRC/x11_keysym_map.h"      "$DEST_SRC/x11_keysym_map.h"
 
 # ------------------------------------------------------------------
 # Step 3: Apply the shared DRM/GLES2 compile-config patch (identical to ARM;
@@ -170,6 +174,13 @@ rm -rf "$IRRLICHT_BUILD_DIR/include"
 mv "$IRRLICHT_BUILD_DIR/irrlicht-include-tmp" "$IRRLICHT_BUILD_DIR/include"
 
 echo "=== libIrrlicht.a built: $IRRLICHT_BUILD_DIR/lib/libIrrlicht.a ==="
+
+# B654 (issue #56): stamp the inputs this lib was built from, so the CI build
+# job can tell a current warm lib (GIT_CLEAN_FLAGS keeps it between pipelines)
+# from a stale one -- a committed change to the device sources no longer leaves
+# the whole pipeline running old code. The stamp is over content (relative path
+# + sha256, sorted), stable across checkouts of the same commit.
+bash scripts/ci/irrlicht_input_stamp.sh write "$IRRLICHT_BUILD_DIR/irrlicht_input_stamp.txt"
 
 if [ "$IRRLICHT_ONLY" -eq 1 ]; then
     exit 0

@@ -10516,7 +10516,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   (and Chase, for Zoom and Raise) on the oracle, with the image shift per press.
   Found by T471.
 
-- **B654** (A, *unconfirmed*) **The `--egl-x11` device drops every numpad digit → issue #56
+- ~~**B654**~~ (A, *unconfirmed*) **The `--egl-x11` device drops every numpad digit → issue #56
   key.** `docker/irrlicht-drm-x86/CIrrDeviceFB_X11.cpp` looks a key up with
   `XLookupKeysym(&xev.xkey, 0)` -- index 0, which for a keypad digit is its
   NumLock-OFF keysym (`XK_KP_Home`, `XK_KP_Up`, ...) -- and
@@ -10525,7 +10525,23 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   are therefore unreachable in an X11-windowed run; the DRM/evdev device maps
   `KEY_KP7` -> `KEY_NUMPAD7` regardless of NumLock and is unaffected, and the
   Insert/Delete/Alt+arrow/Alt+PageUp alternates work on both. From code, not
-  run: T471 had no display. Outside T471's territory. Found by T471.
+  run: T471 had no display. Outside T471's territory. Found by T471.~~
+  **STRUCK 2026-09-20 (fixed live, issue #56, `task/kb-b654-x11-numpad`):
+  the keysym -> EKEY_CODE decision moved to the display-free header
+  `docker/irrlicht-drm-x86/x11_keysym_map.h`, which maps the ten NumLock-level-0
+  navigation aliases (KP_Home/Up/Prior/Left/Begin/Right/End/Down/Next/Insert,
+  measured against Xvfb's default keymap) to the same KEY_NUMPAD0..9 as the
+  digit keysyms, so a numpad digit press delivers its digit in BOTH NumLock
+  states. Pinned display-less (test_x11_keysym_map, RED: all ten aliases -> 0)
+  and end-to-end on Xvfb (test_x11_numpad_e2e: real CIrrDeviceFB under
+  WILLEQ_EGL_X11, xdotool KP_7/KP_1 -> CameraZoomIn/CameraZoomOut through the
+  shipped HotkeyManager, RED: both presses delivered key 0; GREEN: 103/97 ->
+  the two actions; Alt+ variants probed too). CI propagation is part of the
+  fix: scripts/ci/irrlicht_input_stamp.sh stamps the lib's committed inputs
+  and the CI build job rebuilds the warm lib on mismatch, so a committed
+  device-source change can no longer stay invisible to CI (docs/ci.md,
+  "Device-source changes are caught by the input stamp"). Evidence:
+  `refactor/B654/`.**
 
 ---
 
