@@ -197,6 +197,12 @@ public:
     // Invalidate cached mesh for a door model (forces rebuild on next findDoorMesh)
     void invalidateMeshCache(const std::string& doorName);
 
+    // Find matching mesh in zone objects by name. Returns a reference the
+    // CALLER owns (see doorMeshCache_), or nullptr.
+    // B734: made public so tests can witness the lookup by ACTOR name
+    // (findDoorMesh("TDTORCH301")) without building a door scene node.
+    irr::scene::IMesh* findDoorMesh(const std::string& doorName) const;
+
     // Remove all doors (zone change)
     void clearDoors();
 
@@ -233,10 +239,6 @@ public:
     const std::map<uint8_t, DoorVisual>& getDoors() const { return doors_; }
 
 private:
-    // Find matching mesh in zone objects by name. Returns a reference the
-    // CALLER owns (see doorMeshCache_), or nullptr.
-    irr::scene::IMesh* findDoorMesh(const std::string& doorName) const;
-
     // Store `mesh` under `key`, taking the cache's own grab() (T470).
     void cacheDoorMesh(const std::string& key, irr::scene::IMesh* mesh);
 
