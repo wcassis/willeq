@@ -207,12 +207,12 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                     }
                     // Check raw data in textures map
                     auto it = textures.find(name);
-                    if (it != textures.end() && it->second && !it->second->data.empty()) {
+                    if (it != textures.end() && it->second && it->second->present()) {
                         return true;
                     }
                     // Check armor texture archives (lazy-loaded)
                     auto armorTex = getArmorTexture(name);
-                    if (armorTex && !armorTex->data.empty()) {
+                    if (armorTex && armorTex->present()) {
                         return true;
                     }
                     return false;
@@ -270,7 +270,7 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                 // Helper lambda: try to find texture data from passed map or armor index
                 auto findTextureData = [&](const std::string& name) -> std::shared_ptr<TextureInfo> {
                     auto texIt = textures.find(name);
-                    if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
+                    if (texIt != textures.end() && texIt->second && texIt->second->present()) {
                         return texIt->second;
                     }
                     // Fallback: try lazy-loading from armor texture archives
@@ -280,13 +280,13 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                 texture = meshBuilder_->getOrLoadTexture(finalTexName, isMaskedMaterial);
                 if (!texture) {
                     auto texInfo = findTextureData(finalTexName);
-                    if (texInfo && !texInfo->data.empty()) {
+                    if (texInfo && texInfo->present()) {
                         texture = meshBuilder_->loadTextureFromBMP(finalTexName, texInfo->data, isMaskedMaterial);
                     } else if (overrideApplied) {
                         texture = meshBuilder_->getOrLoadTexture(lowerTexName, isMaskedMaterial);
                         if (!texture) {
                             texInfo = findTextureData(lowerTexName);
-                            if (texInfo && !texInfo->data.empty()) {
+                            if (texInfo && texInfo->present()) {
                                 texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texInfo->data, isMaskedMaterial);
                             }
                         }

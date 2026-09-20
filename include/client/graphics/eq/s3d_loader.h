@@ -53,6 +53,23 @@ struct TextureInfo {
     // Helper to get frame count
     size_t frameCount() const { return isAnimated ? frames.size() : 1; }
 
+    // T504 (load-step audit): "this texture exists" is NOT "its file bytes are
+    // in memory". Readers used `!data.empty()` for both, which made it
+    // impossible to free the bytes before every consumer had run -- so on the
+    // EQE1 presets, where the bytes are never decoded at all (the cache serves
+    // the name from a flat pack, and a miss is fatal), whole archives' worth of
+    // raw BMP/DDS sat in the heap through the load peak. releaseBytes() frees
+    // them and keeps the texture present; ask present(), not data.empty().
+    bool bytesReleased = false;
+    bool present() const { return bytesReleased || !data.empty(); }
+    size_t releaseBytes() {
+        const size_t freed = rawDataBytes();
+        std::vector<char>().swap(data);
+        for (auto& f : frames) std::vector<char>().swap(f.data);
+        bytesReleased = true;
+        return freed;
+    }
+
     // Get total raw data bytes (for memory reporting)
     size_t rawDataBytes() const {
         size_t total = data.capacity();

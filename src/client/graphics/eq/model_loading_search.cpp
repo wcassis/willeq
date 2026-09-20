@@ -5,6 +5,7 @@
 // refactor/J29_model_loading_split.md (move-only, no behaviour change).
 
 #include "client/graphics/eq/race_model_loader.h"
+#include "client/graphics/constrained_texture_cache.h"  // T504: snapshotEQE1Loaders()
 #include "client/willeq_database.h"
 #include "client/graphics/eq/race_codes.h"
 #include "client/graphics/eq/geometry_combiner.h"
@@ -437,13 +438,7 @@ size_t RaceModelLoader::releaseRawTextureData() {
         for (auto& [name, tex] : texMap) {
             if (!tex) continue;
             if (deferredNames.count(name)) continue;
-            freed += tex->rawDataBytes();
-            tex->data.clear();
-            tex->data.shrink_to_fit();
-            for (auto& frame : tex->frames) {
-                frame.data.clear();
-                frame.data.shrink_to_fit();
-            }
+            freed += tex->releaseBytes();  // T504: stays present()
         }
     };
 
@@ -473,6 +468,18 @@ size_t RaceModelLoader::releaseRawTextureData() {
     // Release armor texture cache (can be re-loaded on demand from index)
     releaseMap(armorTextureCache_);
 
+    return freed;
+}
+
+size_t RaceModelLoader::releaseBytesIfEqe1Authoritative(
+        std::map<std::string, std::shared_ptr<TextureInfo>>& texMap) {
+    if (!constrainedTextureCache_ || !constrainedTextureCache_->hasEQE1Loaders()) {
+        return 0;  // S3D textures are the source: the bytes are needed
+    }
+    size_t freed = 0;
+    for (auto& [name, tex] : texMap) {
+        if (tex && !tex->bytesReleased) freed += tex->releaseBytes();
+    }
     return freed;
 }
 

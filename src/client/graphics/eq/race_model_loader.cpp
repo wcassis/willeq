@@ -651,6 +651,7 @@ void RaceModelLoader::storeOtherChrCacheLocked(const std::string& lowerFilename,
     OtherChrCache& cache = otherChrCaches_[lowerFilename];
     cache.characters = std::move(characters);
     cache.textures = std::move(textures);
+    releaseBytesIfEqe1Authoritative(cache.textures);  // T504: see the header
     mergedTexturesCacheValid_ = false;
 
     if (maxChrCacheEntries_ > 0) {
@@ -1109,7 +1110,8 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
                 continue;
             }
             const auto& rawData = texIt->second->data;
-            if (rawData.empty()) {
+            // T504: bytes released early (EQE1 serves the name) is not "empty".
+            if (!texIt->second->present()) {
                 LOG_DEBUG(MOD_GRAPHICS, "  T05: texName='{}' found but data is empty", lowerName);
                 emptyData++;
                 continue;

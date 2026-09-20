@@ -308,6 +308,17 @@ public:
     // Returns the number of bytes freed
     size_t releaseRawTextureData();
 
+    // T504 (load-step audit): release one texture map's raw file bytes AS SOON
+    // AS IT IS STORED, when an EQE1 flat pack is authoritative. On those presets
+    // ConstrainedTextureCache::getOrLoad() serves every name from a pack and a
+    // miss is a fatal exit, so the BMP/DDS bytes parsed out of the S3D archives
+    // are never decoded -- yet they were held until releaseRawTextureData() ran
+    // "after progressive load", ~140 ms AFTER the ready point, i.e. through the
+    // whole load peak (MEASURED qeynos2: 17.8 MiB freed too late to lower it).
+    // The textures stay present() (names, sizes, animation info), which is what
+    // every reader needs. No-op (returns 0) without EQE1 loaders.
+    size_t releaseBytesIfEqe1Authoritative(std::map<std::string, std::shared_ptr<TextureInfo>>& texMap);
+
     // Memory stats for /pmem reporting
     struct MemoryStats {
         size_t globalTextureBytes = 0;     // Raw bytes in globalTextures_

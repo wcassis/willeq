@@ -45,6 +45,7 @@ bool RaceModelLoader::loadGlobalModels() {
 
     globalCharacters_ = zone->characters;
     globalTextures_ = zone->characterTextures;
+    releaseBytesIfEqe1Authoritative(globalTextures_);  // T504
     globalModelsLoaded_ = true;
 
     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} character models from global_chr.s3d", globalCharacters_.size());
@@ -82,6 +83,7 @@ bool RaceModelLoader::loadNumberedGlobalModels() {
         }
 
         numberedGlobalTextures_[num] = zone->characterTextures;
+        releaseBytesIfEqe1Authoritative(numberedGlobalTextures_[num]);  // T504
 
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} character textures from global{}_chr.s3d",
                   zone->characterTextures.size(), num);
@@ -113,6 +115,7 @@ bool RaceModelLoader::ensureNumberedGlobalCharacters(int num) {
     // ran (or found nothing) this is the same map it would have stored.
     if (!numberedGlobalTextures_.count(num) && !zone->characterTextures.empty()) {
         numberedGlobalTextures_[num] = zone->characterTextures;
+        releaseBytesIfEqe1Authoritative(numberedGlobalTextures_[num]);  // T504
         mergedTexturesCacheValid_ = false;
     }
     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} character models from global{}_chr.s3d (on demand)",
@@ -300,8 +303,10 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
     for (const auto& [name, tex] : zoneTextures_) {
         if (tex) rawTextureBytes += tex->rawDataBytes();
     }
-    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: zone models '{}': {} characters, {} textures holding {} raw bytes",
-             zoneFilename, zoneCharacters_.size(), zoneTextures_.size(), rawTextureBytes);
+    const size_t releasedNow = releaseBytesIfEqe1Authoritative(zoneTextures_);  // T504
+    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: zone models '{}': {} characters, {} textures with {} raw bytes "
+             "({} released at once: EQE1 authoritative)",
+             zoneFilename, zoneCharacters_.size(), zoneTextures_.size(), rawTextureBytes, releasedNow);
 
     return true;
 }
