@@ -349,6 +349,42 @@ def _spell_id_of(line, name_map):
     return name_map.get(m.group(1))
 
 
+# ---------------------------------------------------------------------------
+# B760 leg windows: each leg's rows come from its own slice of the caster log
+# (the leg's cast note to "leg N complete"), because B760's question is per
+# outcome -- without the window every keepcasting 0 in the log (mana regen,
+# the interrupt, a later leg's tail) would print once per leg.
+# ---------------------------------------------------------------------------
+B760_LEG_WINDOWS = (
+    ("A cast_interrupt", "casting: /cast 1", "leg 1 complete"),
+    ("D1 cast_success_tail", "casting to completion", "leg 2 complete"),
+    ("D2 cast_recast_stop", "first cast (to completion)", "leg 3 complete"),
+    ("D3 cast_buff_notake", "buff leg: /cast 1", "leg 4 complete"),
+)
+
+
+def b760_windows(caster_lines):
+    """All B760 rows, one leg's window at a time.
+
+    Yields (label, absolute_lineno, between, outcome). A leg whose window
+    cannot be found is skipped (the log simply did not run that leg).
+    """
+    def index_of(needle, lo=0):
+        for i in range(lo, len(caster_lines)):
+            if needle in caster_lines[i]:
+                return i
+        return None
+
+    for label, start_marker, end_marker in B760_LEG_WINDOWS:
+        start = index_of("[SCENARIO] " + start_marker)
+        end = (index_of("[SCENARIO] " + end_marker, start + 1)
+               if start is not None else None)
+        if start is None or end is None:
+            continue
+        for r in b760_rows(caster_lines[start:end + 1], label):
+            yield (label, start + r[1], r[2], r[3])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("caster", nargs="?")
@@ -537,37 +573,11 @@ def main():
     print()
     print("=== B760: packets between [ZonePacket] HC_OP_ManaChange "
           "(keepcasting 0) and HC_OP_MemorizeSpell, per leg ===")
-    # B760's question is per OUTCOME, so each leg's rows are read from its own
-    # window: from the leg's cast to the "leg N complete" note. Without the
-    # window every keepcasting 0 in the log (mana regen, the interrupt, the
-    # tail) would print once per leg and the table would be noise.
-    b760_legs = (
-        ("A cast_interrupt", "casting: /cast 1", "leg 1 complete"),
-        ("D1 cast_success_tail", "casting to completion", "leg 2 complete"),
-        ("D2 cast_recast_stop", "first cast (to completion)", "leg 3 complete"),
-        ("D3 cast_buff_notake", "buff leg: /cast 1", "leg 4 complete"),
-    )
-
-    def index_of(needle, lo=0):
-        for i in range(lo, len(caster)):
-            if needle in caster[i]:
-                return i
-        return None
-
     any_b760 = False
-    for label, start_marker, end_marker in b760_legs:
-        start = index_of("[SCENARIO] " + start_marker)
-        end = index_of("[SCENARIO] " + end_marker, start + 1) if start is not None else None
-        if start is None or end is None:
-            print("%-22s (no %r..%r window in the caster log)"
-                  % (label, start_marker, end_marker))
-            continue
-        for r in b760_rows(caster[start:end + 1], label):
-            lineno, between, outcome = r[1], r[2], r[3]
-            any_b760 = True
-            print("%-22s line%-4d outcome=%s between=%s"
-                  % (label, start + lineno, outcome,
-                     between if between else "(none)"))
+    for label, lineno, between, outcome in b760_windows(caster):
+        any_b760 = True
+        print("%-22s line%-4d outcome=%s between=%s"
+              % (label, lineno, outcome, between if between else "(none)"))
     if not any_b760:
         print("(no HC_OP_ManaChange tail found in any leg window -- "
               "run with ZONE:DEBUG, see scripts/scenario.sh log_module_for)")
@@ -581,12 +591,9 @@ def main():
                 fh.write("[%s] %s -- %s\n    %s\n"
                          % (verdict, leg, assertion, evidence))
             fh.write("\n=== B760 ===\n")
-            for label in ("A cast_interrupt", "D1 cast_success_tail",
-                          "D2 cast_recast_stop", "D3 cast_buff_notake",
-                          "B cast_fizzle"):
-                for r in b760_rows(caster, label):
-                    fh.write("%-22s line%-4d outcome=%s between=%s\n"
-                             % (label, r[1], r[3], r[2] or "(none)"))
+            for label, lineno, between, outcome in b760_windows(caster):
+                fh.write("%-22s line%-4d outcome=%s between=%s\n"
+                         % (label, lineno, outcome, between or "(none)"))
 
     print("=== verdict: %d assertion(s) FAILED ===" % failures)
     return 1 if failures else 0
