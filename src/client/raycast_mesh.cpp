@@ -772,10 +772,41 @@ public:
 		KSM::MarkMemoryForKSM(mFaceNormals, sizeof(RmReal) * 3 * tcount);
 
 		mRoot = getNode();
+		// T504 (load-step audit): this pointer was set to NULL WITHOUT freeing the
+		// page-aligned block allocated and zeroed a few lines above -- 12 bytes
+		// per triangle leaked on every zone load (getFaceNormal() allocates its
+		// own table lazily, which is the one that gets used and freed).
+		free(mFaceNormals);
 		mFaceNormals = NULL;
 		new ( mRoot ) NodeAABB(mVcount,mVertices,mTcount,mIndices,maxDepth,minLeafSize,minAxisSize,this,mLeafTriangles);
 
+		shrinkNodePool();
+
 		KSM::MarkMemoryForKSM(mLeafTriangles.data(), mLeafTriangles.size() * sizeof(RmUint32));
+	}
+
+	// T504 (load-step audit): mNodes is sized for a FULL binary tree of maxDepth
+	// before the build -- 98,303 nodes x 48 bytes = 4.5 MiB at the default depth
+	// 15, whatever the mesh (MEASURED: qeynos2's 132 KB map file cost +7.5 MiB of
+	// client heap, most of it this pool). The build only ever takes the next free
+	// slot (getNode()), so once it has finished the used nodes are the first
+	// mNodeCount entries: copy them into an exact-size pool and rebase the child
+	// pointers, which all point into the same array.
+	void shrinkNodePool(void)
+	{
+		if (mNodeCount == 0 || mNodeCount >= mMaxNodeCount) return;
+		NodeAABB *exact = static_cast<NodeAABB*>(KSM::AllocatePageAligned(sizeof(NodeAABB) * mNodeCount));
+		if (!exact) return;  // keep the big pool: correct, just not small
+		std::memcpy(static_cast<void*>(exact), static_cast<const void*>(mNodes), sizeof(NodeAABB) * mNodeCount);
+		for (RmUint32 i = 0; i < mNodeCount; i++)
+		{
+			if (exact[i].mLeft)  exact[i].mLeft  = exact + (exact[i].mLeft  - mNodes);
+			if (exact[i].mRight) exact[i].mRight = exact + (exact[i].mRight - mNodes);
+		}
+		mRoot = exact + (mRoot - mNodes);
+		free(mNodes);
+		mNodes = exact;
+		mMaxNodeCount = mNodeCount;
 	}
 
 	~MyRaycastMesh(void)
