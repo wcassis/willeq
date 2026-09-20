@@ -39,6 +39,28 @@ it without taking that measurement first.
 
 ## A — live defects
 
+- **B852** (A) **Nothing verifies that Kunark and Velious zones load.** The CI
+  gate renders three classic zones and nothing else; no test, script or gate
+  opened a single Kunark or Velious zone. Will, 2026-09-20: "velious and
+  kunark zones are part of the willeq target, so we need to verify that
+  content works." (docs/decisions.md; the zone set is the 118-zone T490
+  census.) **Swept by the B852 unit (kanban t_c10e8f98,
+  `task/kb-b852-zone-content-sweep`):** `scripts/ci/zone_content_sweep.sh`
+  ran all 118 zones offline (one gles2_zone_benchmark process each, the gate's
+  memory-coverage invocation, heaviest first, per-zone timeout + watchdog).
+  Result [measured 2026-09-20, x86/llvmpipe]: 116/118 clean — **every** Kunark
+  and Velious zone loads clean; two CLASSIC zones do not: **soldunga**
+  (FATAL `Texture 'gnome_stronghold_floor_transition.bmp' not found in any EQE1
+  flat pack` — the pack stores the name truncated to 31 chars, `#100`) and
+  **hole** (loads and renders fine, peak RssAnon 261.2 MB, 5.2 MB over the 256 MB
+  Pi ceiling, `#101`). One issue per distinct failing line: **#100** (soldunga,
+  EQE1-tree defect — loads clean without `--eqe1-path`) and **#101** (hole,
+  memory). Fixes are those issues, not this card. The sweep is committed
+  (`refactor/B852/` holds the 118-row TSV + summary), with a 3-zone ctest
+  smoke (qeynos2/sebilis/iceclad, label `slow`) in the test job; how to run it:
+  `docs/ci.md` "The zone-content sweep". Related: B813/#7 (gate zone set),
+  B853/#99 (live zone-in sweep — a live soldunga zone-in hits #100's FATAL).
+
 - ~~**B001** (A) `src/client/movement/movement_state.cpp`
   `eqt::movement::MovementComponent::SetPositionState` (K07 moved it) —
   every arm ends in `SendSpawnAppearance`, so a server-forced pose cannot be
@@ -12234,4 +12256,4 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
 
 B828–B829 and B832 unused. B836–B845 used by T500 (B840, B842, B845 closed by the kanban pilot, below T501's section).
 
-B848 used by the kanban pilot (issue #4, migration card). B849 (issue #91), B850 (#92) and B851 (#97) were filed straight to GitLab issues by the orchestrator 2026-09-18 and have no board entry (docs/issues.md: the issue is the record). B852 onwards unused.
+B848 used by the kanban pilot (issue #4, migration card). B849 (issue #91), B850 (#92), B851 (#97) and B852 (#98, the A-section entry above) were filed straight to GitLab issues by the orchestrator 2026-09-18/20 and have no board entry of their own (docs/issues.md: the issue is the record). B853 onwards unused.

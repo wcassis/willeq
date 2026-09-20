@@ -1221,6 +1221,22 @@ offline x86 win is not a Pi win until the Pi says so, which is what the 2026-09-
 "the PI's shrink queue is the planning list" rule above already said about
 PLANNING and this says about CONFIRMING.
 
+## 2026-09-20 — Kunark and Velious are target content (Will)
+
+**Will, 2026-09-20: "velious and kunark zones are part of the willeq target,
+so we need to verify that content works."** (Restates the era rule already on
+record — launch through Kunark and Velious — as a verification obligation:
+until this ruling, the CI gate loaded three classic zones and nothing else,
+and no test, script or gate opened a single Kunark or Velious zone; issue #7
+/ B813 said the same of the memory budgets.)
+
+Consequence: Kunark and Velious zones join the CI gate's zone set (issue #7,
+B813 — the gate's golden/memory zone list grows), and the whole era zone set
+is swept offline (B852, issue #98: `scripts/ci/zone_content_sweep.sh` over
+the 118-zone T490 census, with a 3-zone smoke in ctest) and live (B853,
+issue #99: the zone-in scenario lane). New goldens for ADDED zones follow
+from the ruling; existing goldens and budgets stay Will's.
+
 ## 2026-09-18 — eight product rulings from the lane::oracle triage (Will)
 
 The hermes research card t_648b471c (issue #93) triaged every open `lane::oracle`
