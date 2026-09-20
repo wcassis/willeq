@@ -1,0 +1,182 @@
+############ UNIT TEST — RED (pre-fix) ############
+Running main() from ./googletest/src/gtest_main.cc
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from X11KeysymMap
+[ RUN      ] X11KeysymMap.NumpadDigitsResolveToNumpadCodes
+[       OK ] X11KeysymMap.NumpadDigitsResolveToNumpadCodes (0 ms)
+[ RUN      ] X11KeysymMap.NumpadNavigationAliasesResolveToNumpadCodes
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:94: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  n.code
+    Which is: 103
+navigation alias 65429 (65429) for digit 65463 must resolve to 103 -- the index-0 keysym pollX11Events() receives, not 0.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:100: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  x11KeysymToIrrlicht(n.digit)
+    Which is: 103
+alias 65429 and digit 65463 must map to the same EKEY_CODE.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:94: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  n.code
+    Which is: 104
+navigation alias 65431 (65431) for digit 65464 must resolve to 104 -- the index-0 keysym pollX11Events() receives, not 0.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:100: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  x11KeysymToIrrlicht(n.digit)
+    Which is: 104
+alias 65431 and digit 65464 must map to the same EKEY_CODE.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:94: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  n.code
+    Which is: 105
+navigation alias 65434 (65434) for digit 65465 must resolve to 105 -- the index-0 keysym pollX11Events() receives, not 0.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:100: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  x11KeysymToIrrlicht(n.digit)
+    Which is: 105
+alias 65434 and digit 65465 must map to the same EKEY_CODE.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:94: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  n.code
+    Which is: 100
+navigation alias 65430 (65430) for digit 65460 must resolve to 100 -- the index-0 keysym pollX11Events() receives, not 0.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:100: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  x11KeysymToIrrlicht(n.digit)
+    Which is: 100
+alias 65430 and digit 65460 must map to the same EKEY_CODE.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:94: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  n.code
+    Which is: 101
+navigation alias 65437 (65437) for digit 65461 must resolve to 101 -- the index-0 keysym pollX11Events() receives, not 0.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:100: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  x11KeysymToIrrlicht(n.digit)
+    Which is: 101
+alias 65437 and digit 65461 must map to the same EKEY_CODE.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:94: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  n.code
+    Which is: 102
+navigation alias 65432 (65432) for digit 65462 must resolve to 102 -- the index-0 keysym pollX11Events() receives, not 0.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:100: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  x11KeysymToIrrlicht(n.digit)
+    Which is: 102
+alias 65432 and digit 65462 must map to the same EKEY_CODE.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:94: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  n.code
+    Which is: 97
+navigation alias 65436 (65436) for digit 65457 must resolve to 97 -- the index-0 keysym pollX11Events() receives, not 0.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:100: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  x11KeysymToIrrlicht(n.digit)
+    Which is: 97
+alias 65436 and digit 65457 must map to the same EKEY_CODE.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:94: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  n.code
+    Which is: 98
+navigation alias 65433 (65433) for digit 65458 must resolve to 98 -- the index-0 keysym pollX11Events() receives, not 0.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:100: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  x11KeysymToIrrlicht(n.digit)
+    Which is: 98
+alias 65433 and digit 65458 must map to the same EKEY_CODE.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:94: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  n.code
+    Which is: 99
+navigation alias 65435 (65435) for digit 65459 must resolve to 99 -- the index-0 keysym pollX11Events() receives, not 0.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:100: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  x11KeysymToIrrlicht(n.digit)
+    Which is: 99
+alias 65435 and digit 65459 must map to the same EKEY_CODE.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:94: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  n.code
+    Which is: 96
+navigation alias 65438 (65438) for digit 65456 must resolve to 96 -- the index-0 keysym pollX11Events() receives, not 0.
+
+/home/user/src/willeq-wt/kb-b654-x11-numpad/tests/test_x11_keysym_map.cpp:100: Failure
+Expected equality of these values:
+  x11KeysymToIrrlicht(n.alias)
+    Which is: 0
+  x11KeysymToIrrlicht(n.digit)
+    Which is: 96
+alias 65438 and digit 65456 must map to the same EKEY_CODE.
+
+[  FAILED  ] X11KeysymMap.NumpadNavigationAliasesResolveToNumpadCodes (0 ms)
+[ RUN      ] X11KeysymMap.NumpadDecimalUnchanged
+[       OK ] X11KeysymMap.NumpadDecimalUnchanged (0 ms)
+[ RUN      ] X11KeysymMap.UnhandledKeysymStillZero
+[       OK ] X11KeysymMap.UnhandledKeysymStillZero (0 ms)
+[----------] 4 tests from X11KeysymMap (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 3 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] X11KeysymMap.NumpadNavigationAliasesResolveToNumpadCodes
+
+ 1 FAILED TEST
