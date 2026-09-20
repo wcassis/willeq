@@ -60,7 +60,16 @@ source; updating it is a manual cold-rebuild event). Proven live: this MR's
 own pipeline must show the rebuild happening once (its first build runs on a
 warm lib built from PRE-MR inputs, with no stamp file) and the Xvfb test
 passing against the rebuilt lib; a second push with no input change must NOT
-rebuild. docs/ci.md: "Device-source changes are caught by the input stamp".
+rebuild.
+
+Proven in CI [measured, pipeline #134 @ a2347f00]: the build job logged
+`irrlicht input stamp MISMATCH (stored=none computed=fa929adefe...)`,
+rebuilt the lib (20 s), wrote the stamp, then built and ran the full suite —
+all four stages green, X11KeysymMap (4 tests) and X11NumpadE2E passed against
+the freshly rebuilt lib. [measured, pipeline #136 @ c7da6bd7, a docs-only
+follow-up push]: the build job logged `irrlicht input stamp matches (warm lib
+is current): fa929adefe...` and took 7 s without rebuilding — exactly the
+"no input change, no rebuild" half of the contract. docs/ci.md: "Device-source changes are caught by the input stamp".
 
 ## Tests
 

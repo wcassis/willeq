@@ -170,6 +170,10 @@ The digest is over file contents, so it is identical on every checkout of the
 same commit — no mtime or git-state dependence. The pristine Irrlicht reference
 (`/mnt/projects/irrlicht-1.8.5`) is deliberately out of scope: it is a fixed
 read-only source, and updating it is a manual cold-rebuild event.
+Both halves were proven in the B654 pipeline: a commit that changed the device
+sources rebuilt the warm lib (`stamp MISMATCH (stored=none ...)`, then
+`stamp written`), and the follow-up docs-only push took 7 s with
+`stamp matches (warm lib is current)` and no rebuild (`refactor/B654/README.md`).
 
 ## Retrying the gate
 
