@@ -1,0 +1,20 @@
+Note: Google Test filter = B734ObjectGeometriesTest.*:DoorManagerNullDeviceTest.FindDoorMeshByActorName
+[==========] Running 3 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 2 tests from B734ObjectGeometriesTest
+[ RUN      ] B734ObjectGeometriesTest.SkinnedObjectGeometryIsAtRestPose
+B734: TDTORCH301 bounds x[-0.567871,0.56543] y[-0.491699,0.489746] z[0.90625,4.06689]
+[       OK ] B734ObjectGeometriesTest.SkinnedObjectGeometryIsAtRestPose (112 ms)
+[ RUN      ] B734ObjectGeometriesTest.NoSkinnedGeometryStoredUnPosed
+[       OK ] B734ObjectGeometriesTest.NoSkinnedGeometryStoredUnPosed (95 ms)
+[----------] 2 tests from B734ObjectGeometriesTest (208 ms total)
+
+[----------] 1 test from DoorManagerNullDeviceTest
+[ RUN      ] DoorManagerNullDeviceTest.FindDoorMeshByActorName
+Irrlicht Engine version 1.8.5
+[       OK ] DoorManagerNullDeviceTest.FindDoorMeshByActorName (94 ms)
+[----------] 1 test from DoorManagerNullDeviceTest (94 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 2 test suites ran. (302 ms total)
+[  PASSED  ] 3 tests.

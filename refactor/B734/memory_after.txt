@@ -1,0 +1,3 @@
+thedeep: keys=21 bytes=171968 skinnedKeys=0 distinctGeomPtrs=20 objects=398
+bothunder: keys=108 bytes=3169268 skinnedKeys=0 distinctGeomPtrs=98 objects=324
+qeynos2: keys=52 bytes=255702 skinnedKeys=0 distinctGeomPtrs=52 objects=478

@@ -7,6 +7,7 @@
 #include <string>
 #include <memory>
 #include <map>
+#include <set>
 
 namespace EQT {
 namespace Graphics {
@@ -116,6 +117,10 @@ struct S3DZone {
 
     // All object geometries from _obj.s3d (keyed by uppercase name, e.g., "DOOR1")
     // This includes objects not placed in the zone (like doors which are placed dynamically)
+    // B734: skinned geometries (vertex pieces on a 0x10 skeleton, flag 0x200) are
+    // stored at their REST POSE, keyed by the ACTOR name the placement uses
+    // (e.g. "TDTORCH301"), with the MESH name ("STOR301") aliased to the same
+    // shared_ptr — one copy, per the 100 %-memory rule.
     std::map<std::string, std::shared_ptr<ZoneGeometry>> objectGeometries;
 
     // Object textures loaded from _obj.s3d
@@ -147,9 +152,17 @@ struct S3DZone {
         // Placeable objects (ObjectInstance = shared_ptr pair, geometry may be shared)
         total += objects.capacity() * sizeof(ObjectInstance);
 
-        // Object geometries from _obj.s3d (standalone, not shared via WldLoader)
-        for (const auto& [name, geom] : objectGeometries)
-            if (geom) total += geom->getFullMemoryUsage();
+        // Object geometries from _obj.s3d (standalone, not shared via WldLoader).
+        // B734: a skinned geometry is stored under the ACTOR name with the mesh
+        // name aliased to the SAME shared_ptr — account each distinct geometry
+        // ONCE (the 100 %-accounting rule), not once per key.
+        {
+            std::set<const ZoneGeometry*> counted;
+            for (const auto& [name, geom] : objectGeometries) {
+                if (!geom) continue;
+                if (counted.insert(geom.get()).second) total += geom->getFullMemoryUsage();
+            }
+        }
 
         // Object textures
         for (const auto& [name, tex] : objectTextures)

@@ -10910,12 +10910,26 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   SNNHE00_DMSPRITEDEF and SRG's cape, but that selection would drop both.
   Confirm with a model-build test for race 146 (Spectral Sarnak). Found by T479.
 
-- **B734** (A, *unconfirmed*) **`S3DZone::objectGeometries` holds skinned meshes → issue #71
-  un-posed, under their MESH name.** `loadObjects()` stores every mesh by name
-  for `DoorManager` (`door_manager_mesh.cpp`, exact then partial match); a
-  skinned mesh (STOR301, FWD301 ...) is stored with each vertex piece at its
-  bone's origin, and a skeletal ACTOR's name finds nothing. Confirm with a door
-  whose name matches either. Found by T479.
+- ~~**B734**~~ **CLOSED on `task/kb-b734-object-geometries-posed` (issue #71).** `loadObjects()` now poses skinned
+  object geometries (vertex pieces on a 0x10 skeleton, flag 0x200) through T476's
+  `resolveEquipmentActorGeometry` — the same rest-pose path the equipment actors
+  use, not a second skinning implementation — and stores them in
+  `S3DZone::objectGeometries` under the ACTOR name the placement and
+  `DoorManager::findDoorMesh` use (thedeep: `TDTORCH301`), with the MESH name
+  (`STOR301`) aliased to the SAME shared_ptr so no geometry is copied and
+  `getMemoryUsage()` accounts each distinct geometry once. thedeep's `TDTORCH301`
+  now has non-degenerate bounds (x[-0.568,0.565] y[-0.492,0.490] z[0.906,4.067]);
+  the `objectGeometries` byte census (per-key sum of `getFullMemoryUsage`) goes
+  157,538 -> 171,968 for thedeep (20 -> 21 keys; the actor key is added, the
+  skinned mesh's own raw geometry is REPLACED by the rest-pose one, and the
+  mesh name aliases the same shared_ptr — 20 distinct geometry pointers both
+  before and after, so no geometry is copied twice; `getMemoryUsage()` dedupes
+  the alias) and 1,798,921 -> 3,169,268 for bothunder (20 skinned keys: the
+  rest-pose geometry also carries the skeleton's bone meshes, which the
+  un-posed storage omitted). Pinned by `test_door_loading.cpp`
+  (`B734ObjectGeometriesTest`, headless, asset-gated by
+  `tests/asset_requirement.h`). `refactor/B734_object_geometries_posed.md`.
+  Found by T479.
 
 - ~~**B735**~~ **MEASURED by T481 -> B750.** The Pi cost of B730's placements:
   qeynos2 and nro fit on the T479 build; emeraldjungle (+22,174) is OOM-killed
