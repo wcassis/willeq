@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <string>
-#include <unordered_map>
+#include <cstddef>
 #include <vector>
 
 namespace EQT { namespace Graphics {
@@ -25,9 +25,18 @@ public:
     bool isLoaded() const { return loaded_; }
 
     // Archives holding `name` (already lowercased, extension stripped -- the
-    // same key the cache builds), or nullptr if no archive in the tree has it.
-    // A nullptr here is the answer "absent", reached without opening anything.
-    const std::vector<uint16_t>* owners(const std::string& name) const;
+    // same key the cache builds), in index order; empty if no archive in the
+    // tree has it. Empty is the answer "absent", reached without opening anything.
+    struct OwnerList {
+        const uint16_t* first = nullptr;
+        size_t count = 0;
+        const uint16_t* begin() const { return first; }
+        const uint16_t* end() const { return first + count; }
+        bool empty() const { return count == 0; }
+        size_t size() const { return count; }
+        uint16_t front() const { return *first; }
+    };
+    OwnerList owners(const std::string& name) const;
 
     // T266: the archive to open for `name`, given the zone's candidate set.
     //   1. A name in NO archive resolves to nothing (returns false). That is a
@@ -52,11 +61,24 @@ public:
 
     const std::string& archiveName(uint16_t idx) const { return archives_[idx]; }
     size_t archiveCount() const { return archives_.size(); }
-    size_t nameCount() const { return entries_.size(); }
+    size_t nameCount() const { return nameOffsets_.empty() ? 0 : nameOffsets_.size() - 1; }
+
+    // T504: bytes this index holds once loaded (the flat arrays' capacities).
+    size_t residentBytes() const;
 
 private:
     std::vector<std::string> archives_;
-    std::unordered_map<std::string, std::vector<uint16_t>> entries_;
+    // T504 (load-step audit): FLAT storage. This was
+    // std::unordered_map<std::string, std::vector<uint16_t>> -- a hash node, a
+    // std::string and a heap-allocated vector per name: MEASURED 7.5 MiB live in
+    // ~100,000 blocks for 50,972 names, for the whole session, to answer "which
+    // archive holds this name". Now: the names sorted in one blob, an offset per
+    // name, and every owner list end to end (each in index order, which is what
+    // resolve()'s rule R2 depends on). Lookup is a binary search.
+    std::string nameBlob_;                 // names, sorted, concatenated
+    std::vector<uint32_t> nameOffsets_;    // nameCount+1 offsets into nameBlob_
+    std::vector<uint32_t> ownerOffsets_;   // nameCount+1 offsets into ownerIds_
+    std::vector<uint16_t> ownerIds_;       // owner lists, end to end
     bool loaded_ = false;
 };
 
