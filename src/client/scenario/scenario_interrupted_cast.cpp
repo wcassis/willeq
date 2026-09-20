@@ -43,6 +43,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -557,8 +558,25 @@ public:
             return StepResult::Pass;
         }
         IScenario& leg = *legs_[legIndex_];
-        const StepResult r = leg.Step(world, tick);
+        // B630 fix pass: each leg's prep/cast offsets are calibrated from ITS
+        // OWN start, not the run's. Passing the global run clock let every D
+        // leg's prep offsets (1/3/7/8/14 s) land already-elapsed, so the whole
+        // prep fired in a ~50 ms burst BEFORE the server's #memspell response
+        // arrived, and the leg's /cast used the PREVIOUS leg's gem (D1 cast
+        // 378, D2 cast 372, D3 cast nothing). Offset by when this leg started
+        // so its t=0 is the first tick after the previous leg finished; the
+        // offsets then re-open and each #memspell round-trip lands before the
+        // leg's cast.
+        if (!legStartedAt_) {
+            legStartedAt_ = tick.sinceStart;
+            world.Note("leg " + std::to_string(legIndex_ + 1) + " clock "
+                       "re-baselined at t=" + Fmt(tick.sinceStart));
+        }
+        ScenarioTick legTick = tick;
+        legTick.sinceStart = tick.sinceStart - *legStartedAt_;
+        const StepResult r = leg.Step(world, legTick);
         if (r == StepResult::Pass) {
+            legStartedAt_.reset();
             world.Note("leg " + std::to_string(legIndex_ + 1) + " complete: " +
                        leg.Name());
             ++legIndex_;
@@ -580,6 +598,9 @@ public:
 private:
     std::vector<std::unique_ptr<IScenario>> legs_;
     size_t legIndex_ = 0;
+    // The run-clock instant the current leg started (for the per-leg offset);
+    // reset to nullopt when a leg finishes so the next leg re-baselines.
+    std::optional<double> legStartedAt_ = std::nullopt;
 };
 
 // ---------------------------------------------------------------------------
@@ -635,7 +656,30 @@ public:
             SetReason("observer left the zone during the hold");
             return StepResult::Fail;
         }
+        // B630 fix pass: in the CHAIN lane the caster runs its four legs
+        // back-to-back and then EXITS, while the observer holds on a timer.
+        // Without this the observer always failed with "caster left the zone
+        // during the hold" shortly after the chain ended -- a false negative
+        // that read as a lane defect (devrun-1 2026-09-19: observer exit 1,
+        // the chain itself clean). The caster's clean departure IS the
+        // chain's end: the observer saw every cast from outside (that is what
+        // the analyzer's observer-side cells assert from THIS log), so a
+        // caster that is gone after the observer has watched it for a
+        // meaningful floor is a pass, not a failure. The floor (not the hold)
+        // is the guard: a caster that vanishes almost immediately (before it
+        // could have run any leg) still fails, and the analyzer still checks
+        // the observer log independently, so a too-early departure cannot
+        // mask a missing 12478 line.
         if (world.OtherPlayerCount() < 1) {
+            if (t - targetAt_ >= kDepartureFloor) {
+                world.Note("caster left the zone at t=" + Fmt(t) +
+                           " (" + Fmt(t - targetAt_) + "s after targeting, "
+                           "end of the chain); the observer-side assertions "
+                           "are read from this log; pass");
+                SetReason("caster departed after " + Fmt(t - targetAt_) +
+                          "s of observation (end of chain); assert from the log");
+                return StepResult::Pass;
+            }
             SetReason("caster left the zone during the hold");
             return StepResult::Fail;
         }
@@ -656,6 +700,11 @@ public:
 private:
     static constexpr double kTargetAt = 6.0;
     static constexpr double kPeerDeadline = 90.0;
+    // The observer must have actually watched the caster for this long before
+    // a caster departure counts as "end of the chain" rather than a failure.
+    // Leg A alone takes ~19 s (cast 14 s + interrupt + hold 10 s), so 45 s is
+    // well past it and comfortably inside the ~85 s chain.
+    static constexpr double kDepartureFloor = 45.0;
 
     std::string targetName_;
     double holdSeconds_;

@@ -31,8 +31,8 @@ The needles now:
     ("Your spell is interrupted.", "Spell recast time not yet met.",
     "Your spell fizzles!"),
   * match the `[ZonePacket]` handler lines by exact opcode name,
-    and the bystander interrupt by the full 12478 phrase shape
-    ("<name> has interrupted the casting of <spell> by <caster>").
+    and the bystander interrupt by the named `[SPELL]` handler line
+    ("Interrupt: caster=N ('Name'), spell=M, message=12478").
 
 Usage:
     scripts/scenario_configs/b630_analyze.py <caster.log> <observer.log> [--out DIR]
@@ -86,9 +86,13 @@ SPELL_COMPLETED = re.compile(
 SPELL_MEMORISED = re.compile(
     r"\[SPELL\] Server memorised '(.+)' \((\d+)\)")
 # The bystander interrupt (T469's handler for OP_InterruptCast, msg 12478).
-# Module is [SPELL]; the full phrase shape, not the bare id, is the anchor.
+# Module is [SPELL]; the actual line shape is
+#   Interrupt: caster=<id> ('<caster name>'), spell=<id>, message=12478
+# (spell_packet_handlers.cpp:234, handleInterrupt). The caster's OWN copy
+# carries message=439 with an empty name; the bystander's carries 12478 with
+# the caster's name, so the 12478 + non-empty-name shape is the bystander's.
 BYSTANDER_INTERRUPT = re.compile(
-    r"\[SPELL\] Interrupt: caster .+ interrupted the casting of .+")
+    r"\[SPELL\] Interrupt: caster=\d+ \('([^']+)'\), spell=(\d+), message=12478")
 
 # The [MAIN] chat strings, full text (ChatOutput::System logs the formatted
 # eqemu string). Anchored to the module + the whole phrase.
@@ -188,8 +192,13 @@ TRUE_OKEIL_LAND = (
     "[2026-09-19 23:36:02.000] [INFO ] [SPELL] Cast of 'O'Keils Radiation' "
     "(ID: 378) completed successfully\n")
 TRUE_BYSTANDER = (
-    "[2026-09-19 23:36:03.000] [INFO ] [SPELL] Interrupt: caster Wiza the "
-    "Caster interrupted the casting of O'Keils Radiation\n")
+    "[2026-09-19 23:36:03.000] [DEBUG] [SPELL] Interrupt: caster=165 "
+    "('Wiza the Caster'), spell=378, message=12478\n")
+# The caster's OWN interrupt copy (message=439, empty name) must NOT match
+# the bystander needle -- it is the caster-side line, not the bystander's.
+TRUE_BYSTANDER_SELF = (
+    "[2026-09-19 23:36:03.000] [DEBUG] [SPELL] Interrupt: caster=165 "
+    "(''), spell=378, message=439\n")
 TRUE_B760_KEEPCASTING = (
     "[2026-09-19 23:36:04.000] [DEBUG] [ZONE] [ZonePacket] ManaChange\n")
 TRUE_B760_MEMORIZE = (
@@ -234,7 +243,11 @@ def run_self_test():
               "'Minor Shielding' completed successfully\n",
               name_map) == 288)
     check("A bystander: the real 12478 line matches",
-          grep([TRUE_BYSTANDER], "interrupted the casting of") is not None)
+          BYSTANDER_INTERRUPT.search(TRUE_BYSTANDER) is not None)
+    # The caster's own 439 copy (empty name) must NOT match the bystander
+    # needle: the bystander's copy is the one with the name + 12478.
+    check("A bystander: the caster's own 439 copy does not match",
+          BYSTANDER_INTERRUPT.search(TRUE_BYSTANDER_SELF) is None)
     check("B760: the keepcasting-0 anchor is the [ZonePacket] handler line",
           grep([TRUE_B760_KEEPCASTING], HANDLER_KEEPCASTING_0) is not None)
     check("B760: the MemorizeSpell handler line is recognised",
@@ -358,12 +371,30 @@ def main():
                 return line.rstrip("\n")
         return None
 
-    def completion_line(spell_id):
-        """The [SPELL] 'completed successfully' line for this leg's spell id."""
-        for line in caster:
-            if _spell_id_of(line, name_map) == spell_id:
-                return line.rstrip("\n")
+    def completion_line(spell_id, after_index=None):
+        """The [SPELL] 'completed successfully' line for this leg's spell id.
+
+        after_index: when given, only completions strictly AFTER that line of
+        the caster log count. That is the D2/D3 disambiguation (fix pass, QA
+        verdict): both legs declare 293, and the bare first-completion rule
+        let D3 pass off D2's completion. D2's own completion lands BEFORE its
+        second cast is refused by the server recast timer (the chat line the
+        recast-stop cell records), and the chain runs the legs back-to-back,
+        so D3's completion is the first 293 completion AFTER that marker. The
+        marker is the lane's own wire event, not a spell-id guess.
+        """
+        start = 0 if after_index is None else after_index + 1
+        for i in range(start, len(caster)):
+            if _spell_id_of(caster[i], name_map) == spell_id:
+                return caster[i].rstrip("\n")
         return None
+
+    # The D2 marker: the chat line the recast-stop cell asserts (the second
+    # cast's rejection). None when the log has no recast line at all.
+    d2_recast_marker_index = None
+    for i, line in enumerate(caster):
+        if CHAT_RECAST_NOT_MET in line:
+            d2_recast_marker_index = i
 
     # ------------------------------------------------------------------ A
     # The interrupted cast (GM #interrupt mid-cast).
@@ -390,12 +421,18 @@ def main():
            "PASS" if a_late_impact == 0 else "WARN",
            "%d 'completed successfully' lines attributed to ID %d "
            "(0 expected after #interrupt)" % (a_late_impact, A_SPELL_ID))
-    # Observer: the bystander must see the NAMED interrupt.
-    o_interrupt = grep(observer, "[SPELL]", "interrupted the casting of")
+    # Observer: the bystander must see the NAMED 12478 interrupt. The [SPELL]
+    # handler line (spell_packet_handlers.cpp:234) carries the caster's name,
+    # the spell id and the message id: "Interrupt: caster=N ('Name'), spell=378,
+    # message=12478". The regex captures the name and spell so the assertion
+    # can attribute the interrupt to the A leg's declared spell.
+    o_interrupt = next(
+        (line.rstrip("\n") for line in observer
+         if BYSTANDER_INTERRUPT.search(line)), None)
     record("A cast_interrupt",
            "observer sees the named 12478 interrupt line",
            "PASS" if o_interrupt else "FAIL",
-           o_interrupt or "(observer log has no 'interrupted the casting of' line)")
+           o_interrupt or "(observer log has no \"Interrupt: ... message=12478\" line)")
 
     # ------------------------------------------------------------------ D1
     # Success tail: let the nuke finish. Caster reports the tail; the B760
@@ -411,6 +448,11 @@ def main():
     # Recast-timer stop: the SECOND cast of the recast-stop spell must be
     # refused by the server's per-spell recast timer -> SPELL_RECAST 236
     # "Spell recast time not yet met." + keepcasting 0, NO MemorizeSpell.
+    # D2's OWN completion (its first cast finishing) lands strictly BEFORE
+    # the marker line that the marker hunt above finds: the recast rejection
+    # only exists because the first cast already completed. The first-293
+    # completion in the log is therefore D2's, which is what the bare
+    # completion_line() call below attributes to it.
     d2_recast = grep(caster, CHAT_RECAST_NOT_MET)
     record("D2 cast_recast_stop",
            "second cast hits the server recast timer (236)",
@@ -425,11 +467,20 @@ def main():
     # ------------------------------------------------------------------ D3
     # The caster's own beneficial buff: it MUST take hold on the caster (the
     # success-tail buff), and the observer must see the target gain it.
-    d3_buff = completion_line(D3_SPELL_ID)
+    # D2/D3 disambiguation (fix pass): D3's completion is the first 293
+    # completion STRICTLY AFTER D2's recast marker, so it can never be
+    # D2's first-cast completion wearing D3's id. If the marker is absent
+    # (the D2 cell failed), the plain first-completion rule applies and this
+    # cell reads against the same log the D2 cell already failed on.
+    d3_buff = completion_line(D3_SPELL_ID,
+                              after_index=d2_recast_marker_index)
     record("D3 cast_buff_notake",
-           "D3's declared spell (ID %d) was cast and completed" % D3_SPELL_ID,
+           "D3's declared spell (ID %d) was cast and its OWN completion "
+           "landed (after D2's recast marker, not D2's completion)"
+           % D3_SPELL_ID,
            "PASS" if d3_buff else "FAIL",
-           d3_buff or "(no [SPELL] completion attributed to ID %d)" % D3_SPELL_ID)
+           d3_buff or "(no [SPELL] 293 completion after D2's recast marker; "
+                      "D2's completion is D2's and cannot pass for D3)")
 
     # ------------------------------------------------------------------ B
     # Fizzle: the non-GM caster rolls a high-level spell. This is a coin the

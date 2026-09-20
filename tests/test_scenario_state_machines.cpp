@@ -34,6 +34,13 @@ public:
 
     std::vector<std::string> commands;
     std::vector<std::string> notes;
+    // B630 fix pass: when set, the world drops its peer once the run's clock
+    // reaches this many seconds (the caster's clean chain-lane departure).
+    // Advance() applies it; -1 (the default) means the peer never leaves.
+    double peerVanishesAt = -1.0;
+    // The run's clock in seconds, advanced by Advance(). Separate from the
+    // runner's because the scenario only sees time since zone-in.
+    double runClock = 0.0;
 
     bool IsConnected() const override { return connected; }
     bool IsFullyZonedIn() const override { return zonedIn; }
@@ -54,11 +61,23 @@ public:
     }
 };
 
-/** Advance a runner by `seconds` in 1/60 s ticks, or until it finishes. */
-void Advance(ScenarioRunner& runner, double seconds) {
+/** Advance a runner by `seconds` in 1/60 s ticks, or until it finishes.
+
+    When `world` is given (the B630 observer departure tests), the world's
+    `peerVanishesAt` (run seconds, -1 = never) is applied at the first tick
+    at or past it: OtherPlayerCount() drops to 0, simulating the caster's
+    clean chain-lane departure. */
+void Advance(ScenarioRunner& runner, double seconds, FakeWorld* world = nullptr) {
     const float dt = 1.0f / 60.0f;
     const int ticks = static_cast<int>(seconds * 60.0);
     for (int i = 0; i < ticks; ++i) {
+        if (world) {
+            world->runClock += dt;
+            if (world->peerVanishesAt >= 0.0 &&
+                world->runClock >= world->peerVanishesAt && world->otherPlayers > 0) {
+                world->otherPlayers = 0;
+            }
+        }
         if (!runner.Tick(dt)) {
             return;
         }
@@ -783,6 +802,58 @@ TEST(CastInterruptObserveScenario, TargetsTheCasterAndHoldsSendingNothingElse) {
     ASSERT_EQ(world.commands.size(), 1u) << "the observer sends nothing but the target";
     EXPECT_EQ(world.commands[0], "/target Testcaster");
     EXPECT_NE(runner.reason().find("observer held"), std::string::npos);
+}
+
+TEST(CastInterruptObserveScenario, CasterDepartureAfterTheFloorIsAPass) {
+    // B630 fix pass: in the chain lane the caster's clean exit ends the
+    // observer early. Once the departure floor (45 s after targeting) has
+    // elapsed, a vanished caster is the END OF THE CHAIN, not a defect: the
+    // observer's log is what the analyzer asserts, and this path must not
+    // fail the lane ~45 s after the chain finished (devrun-1's false
+    // negative. The world drops its peer at t=51.5 (45.5 s after the t=6
+    // target), past the 45 s floor and inside the chain.
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    world.otherPlayers = 1;
+    world.peerVanishesAt = 51.5;
+    ScenarioOptions options = B630Options();
+    options.holdSeconds = 120.0;  // the chain lane's hold
+    options.castTargetName = "Testcaster";
+    ScenarioRunner runner(MakeScenario("cast_interrupt_observe", options), world,
+                          /*timeout=*/600.0, /*startDeadline=*/10.0);
+    // Still holding while the caster is present.
+    Advance(runner, 50.0, &world);
+    EXPECT_FALSE(runner.finished());
+    // The caster departs at t=51; the floor (45 s after the t=6 target) is
+    // already met, so this is a pass with the departure reason.
+    Advance(runner, 10.0, &world);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_NE(runner.reason().find("caster departed after"), std::string::npos);
+    ASSERT_EQ(world.commands.size(), 1u) << "the observer sent only the target";
+}
+
+TEST(CastInterruptObserveScenario, CasterDepartureBeforeTheFloorIsAFailure) {
+    // The negative of the floor: a caster that vanishes almost immediately
+    // never ran its legs, so the observer must still fail. The world drops
+    // its peer at t=10 (4 s after the t=6 target, far short of the 45 s
+    // floor), so the old "caster left the zone during the hold" applies.
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "cazicthule";
+    world.otherPlayers = 1;
+    world.peerVanishesAt = 10.0;
+    ScenarioOptions options = B630Options();
+    options.holdSeconds = 120.0;
+    options.castTargetName = "Testcaster";
+    ScenarioRunner runner(MakeScenario("cast_interrupt_observe", options), world,
+                          /*timeout=*/600.0, /*startDeadline=*/10.0);
+    Advance(runner, 30.0, &world);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_NE(runner.reason().find("caster left the zone during the hold"),
+              std::string::npos);
 }
 
 TEST(CastInterruptObserveScenario, RefusesWhenNoTargetNameIsSupplied) {
