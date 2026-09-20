@@ -32,6 +32,14 @@ public:
 	virtual const RmReal * getBoundMax(void) const = 0;
 
 	// Release the raycast mesh and free all memory
+	// T504 (load-step audit): read access to the mesh's OWN vertex/index arrays,
+	// so a caller (HCMap) need not keep a second copy of the same geometry.
+	// Valid until release().
+	virtual const RmReal * getVertices(void) const = 0;   // vertexCount * 3 reals
+	virtual RmUint32 getVertexCount(void) const = 0;
+	virtual const RmUint32 * getIndices(void) const = 0;  // triangleCount * 3 indices
+	virtual RmUint32 getTriangleCount(void) const = 0;
+
 	virtual void release(void) = 0;
 
 protected:

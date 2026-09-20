@@ -809,6 +809,11 @@ public:
 		mMaxNodeCount = mNodeCount;
 	}
 
+	virtual const RmReal * getVertices(void) const { return mVertices; }
+	virtual RmUint32 getVertexCount(void) const { return mVcount; }
+	virtual const RmUint32 * getIndices(void) const { return mIndices; }
+	virtual RmUint32 getTriangleCount(void) const { return mTcount; }
+
 	~MyRaycastMesh(void)
 	{
 		if (mNodes) { free(mNodes); }
