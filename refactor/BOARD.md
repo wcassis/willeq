@@ -10606,8 +10606,9 @@ unused.
   minimum 0.7379; the pre-T474 binary scores **0.9951**). The 3x3x3 re-fit at
   that view reproduces T466's bracket to <= 0.001. Correction to T471's B650
   arithmetic: the pre-T474 camera at that spot sat 11.500 above the ground, not
-  13.119 -- the eye-region ceiling clamped it. **Still open:** B683 (the h288
-  view disagrees), B681 (races), B680 (does the official Chase zoom).
+  13.119 -- the eye-region ceiling clamped it. **Still open:** B721 (the
+  crop-dependent Chase fit, superseding B683 -- pointer updated 2026-09-20, card
+  chase-closures-fix), B681 (races), B680 (does the official Chase zoom).
 
 - **B680** (C -> ORACLE-OWED) **Whether the official Chase camera zooms.** The T474 → issue #57
   plan requires fable's zoom keys and wheel to act on the Chase distance, and
