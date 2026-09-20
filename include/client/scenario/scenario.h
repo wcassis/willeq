@@ -112,6 +112,41 @@ struct ScenarioOptions {
      * scenario but that one wants.
      */
     long long expectSelfMaterial = -1;
+    /**
+     * B630 (issue #48): the character the interrupted-cast pair TARGETS.
+     * cast_interrupt targets the observer's character before it casts; the
+     * observer's mirror targets the caster. Empty (the default) means "no
+     * target name is supplied -- the scenario that needs one fails fast",
+     * which keeps the flag optional for every existing scenario.
+     */
+    std::string castTargetName;
+    /**
+     * B630: the D3 leg's VICTIM buff -- a beneficial, targetable buff whose
+     * caster-level minimum is above the target's level, so eqemu's
+     * CheckSpellLevelRestriction (spells.cpp:4589) makes SpellEffect fail and
+     * the caster's cast ends with keepcasting 0 + "did not take hold" but no
+     * recast and no buff on the target. 0 = the scenario refuses.
+     */
+    uint32_t buffNotakeVictimId = 0;
+    /**
+     * B630: the D1 leg's success nuke (a short, targetable damage spell that
+     * the caster lets finish, so the success tail's ManaChange->MemorizeSpell
+     * order is recorded). 372 = Blast of Cold.
+     */
+    uint32_t successSpellId = 372;
+    /**
+     * B630: the D2 leg's recast-stop spell -- recast_time longer than its
+     * recovery_time so the client gem is castable again while the server's
+     * per-spell recast timer still runs. 293 = Haze (cast 2000, recovery 2250,
+     * recast 4000).
+     */
+    uint32_t recastStopSpellId = 293;
+    /**
+     * B630: the B leg's fizzle spell, cast by the NON-GM account. Its class
+     * minimum must be far above that character's level so the fizzle roll
+     * clamps to ~95%. 41 = Weaken (classes13 255). 0 = the scenario refuses.
+     */
+    uint32_t fizzleSpellId = 0;
 };
 
 class IScenario {

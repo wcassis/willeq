@@ -22,6 +22,12 @@ bool Application::initScenario(const ApplicationConfig& config) {
     options.holdSeconds = config.scenarioHoldSeconds;
     options.castSpellId = config.scenarioSpellId;
     options.expectSelfMaterial = config.scenarioExpectMaterial;
+    // B630 (issue #48): the two-client interrupted-cast lane.
+    options.castTargetName = config.scenarioCastTarget;
+    options.successSpellId = config.scenarioSuccessSpellId;
+    options.recastStopSpellId = config.scenarioRecastStopSpellId;
+    options.buffNotakeVictimId = config.scenarioBuffNotakeSpellId;
+    options.fizzleSpellId = config.scenarioFizzleSpellId;
 
     auto built = scenario::MakeScenario(config.scenarioName, options);
     if (!built) {

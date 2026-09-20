@@ -222,6 +222,30 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.scenarioExpectMaterial = std::atoll(argv[++i]);
             }
+        } else if (arg == "--scenario-cast-target") {
+            if (i + 1 < argc) {
+                config.scenarioCastTarget = argv[++i];
+            }
+        } else if (arg == "--scenario-success-spell") {
+            if (i + 1 < argc) {
+                config.scenarioSuccessSpellId =
+                    static_cast<unsigned int>(std::atoi(argv[++i]));
+            }
+        } else if (arg == "--scenario-recast-stop-spell") {
+            if (i + 1 < argc) {
+                config.scenarioRecastStopSpellId =
+                    static_cast<unsigned int>(std::atoi(argv[++i]));
+            }
+        } else if (arg == "--scenario-buff-notake-spell") {
+            if (i + 1 < argc) {
+                config.scenarioBuffNotakeSpellId =
+                    static_cast<unsigned int>(std::atoi(argv[++i]));
+            }
+        } else if (arg == "--scenario-fizzle-spell") {
+            if (i + 1 < argc) {
+                config.scenarioFizzleSpellId =
+                    static_cast<unsigned int>(std::atoi(argv[++i]));
+            }
         } else if (arg == "--script") {
             if (i + 1 < argc) {
                 config.scriptPath = argv[++i];
@@ -251,7 +275,12 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --timeout <s>            --scenario: overall wall-clock budget (default 300)\n";
             std::cout << "  --scenario-hold <s>      --scenario two_client_survive: how long the pair must hold (default 300)\n";
             std::cout << "  --scenario-spell <id>    --scenario cast_lands: beneficial spell to memorise and cast (default 288, Minor Shielding)\n";
-        std::cout << "  --scenario-expect-material <n>  --scenario equip_actor_return: assert our OWN primary material is <n> (T498)\n";
+            std::cout << "  --scenario-expect-material <n>  --scenario equip_actor_return: assert our OWN primary material is <n> (T498)\n";
+            std::cout << "  --scenario-cast-target <name>   --scenario cast_interrupt*: the character to target (B630 two-client lane)\n";
+            std::cout << "  --scenario-success-spell <id>   --scenario cast_interrupt_chain: D1 nuke to let finish (default 372)\n";
+            std::cout << "  --scenario-recast-stop-spell <id>  D2 recast-stop spell (default 293 Haze)\n";
+            std::cout << "  --scenario-buff-notake-spell <id>  D3: the caster's own beneficial buff (default 293 Haze)\n";
+            std::cout << "  --scenario-fizzle-spell <id>    --scenario cast_fizzle: spell the non-GM caster rolls to fizzle (0=refuse)\n";
             std::cout << "  --fpcam <name=value,...>  Override first-person camera tunables at startup (repeatable; same names as /fpcam)\n";
             std::cout << "  --dump-frames-dir <dir>  Video-capture evidence tool: write numbered PNG frames to <dir> (needs --dump-every)\n";
             std::cout << "  --dump-every <N>         Video-capture: dump every Nth rendered frame\n";

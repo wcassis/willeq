@@ -64,12 +64,35 @@ HOLD=300
 # level, so a default or --spell that stops being castable is a fast exit 72,
 # not a fizzle loop.
 SPELL=288
+# B630 fix pass (QA verdict on MR !20): the chain's A leg is a RIG constant,
+# not an operator option. The lane's own B630Options pins it (the unit test's
+# declared A-leg spell) and b630_analyze.py asserts it (A_SPELL_ID); the
+# operator's --spell applies to cast_lands and the standalone legs only.
+# Changing one side without the other is exactly the 378-vs-288 split the QA
+# caught: with the 288 default the chain's A leg could never pass its own
+# "declared spell (ID 378)" cell.
+CHAIN_A_SPELL=378
 CONFIG=""
 PEER_CONFIG=""
 KEEP_SERVER=0
 # T494: the client's log level, for both processes. INFO is the default a
 # verdict needs; a run being DIAGNOSED wants DEBUG.
 LOG_LEVEL="INFO"
+# B630 item 3: the B760 deliverable (#45) is a per-opcode cast-tail table, and
+# the only record of the wire order is the per-opcode [ZonePacket] DEBUG line
+# (zone_dispatch.cpp:958) plus the [SPELL] handler lines. The whole
+# interrupted-cast family needs ZONE and SPELL at DEBUG; every OTHER scenario
+# stays at plain INFO. The module list is the comma form parsed by
+# --log-module (application_config.cpp). A run being DIAGNOSED with full
+# --log-level DEBUG subsumes this, so it is never forced on.
+log_module_for() {
+    case "$1" in
+        cast_interrupt_chain|cast_interrupt|cast_interrupt_observe|cast_success_tail|cast_recast_stop|cast_buff_notake|cast_fizzle)
+            echo "ZONE:DEBUG,SPELL:DEBUG" ;;
+        *)
+            echo "" ;;
+    esac
+}
 # T494: a scenario that MOVES AN ITEM needs the inventory rows snapshotted and
 # put back too -- eqemu_snapshot only covers character_data/character_currency,
 # so before T494 an /equip left the row where the run put it. Both are
@@ -296,6 +319,14 @@ if [ -n "$INVENTORY_CHARS" ]; then
 fi
 
 # ---- 3b. seed, AFTER the snapshots so the restore takes it out again --------
+# B630 (issue #48): the co-location seed is a LANE concern, not an operator
+# option -- default it HERE, before this block runs. Setting it later (at the
+# client launch) leaves this block seeing an empty SEED_SQL and the two
+# characters log into their stored zones, unco-located. (First B630 run
+# 2026-09-19: seed never applied, caster 'nro' / observer 'befallen'.)
+if [ "$SCENARIO" = "cast_interrupt_chain" ] && [ -z "$SEED_SQL" ]; then
+    SEED_SQL="$REPO/scripts/scenario_configs/b630_seed.sql"
+fi
 if [ -n "$SEED_SQL" ]; then
     [ -f "$SEED_SQL" ] || { say "no --seed-sql file at $SEED_SQL"; exit 64; }
     eqemu_sql "$(cat "$SEED_SQL")" >/dev/null || { say "--seed-sql failed"; exit 65; }
@@ -326,9 +357,20 @@ PEER_PID=""
 # T494: equip_observed needs the peer to ACT (equip_actor), not just exist.
 PEER_SCENARIO=""
 PEER_SCENARIO_2=""
+# B630 fix pass: the CHAIN observer's hold is NOT the lane's --hold/--timeout
+# (300 s): the caster's four legs run back-to-back (~85 s incl. login offset)
+# and then exit, so a 300 s hold always ended with the observer failing on
+# "caster left the zone during the hold" (devrun-1 2026-09-19). 120 s covers
+# the chain plus margin and is what the observer is asked to survive. The
+# peer's --timeout stays the lane's, so the hold above it is never a problem.
+CHAIN_OBSERVE_HOLD=120
 case "$SCENARIO" in
     two_client_survive) PEER_SCENARIO="zone_in" ;;
     equip_observed)     PEER_SCENARIO="equip_actor"; PEER_SCENARIO_2="equip_actor_return" ;;
+    # B630 (issue #48): the caster runs the whole 4-leg chain, the observer
+    # targets the caster and holds it for the chain's duration. Co-location is
+    # the seed SQL, not a re-login.
+    cast_interrupt_chain) PEER_SCENARIO="cast_interrupt_observe" ;;
 esac
 if [ -n "$PEER_SCENARIO" ]; then
     if [ ! -f "$PEER_CONFIG" ]; then
@@ -336,10 +378,39 @@ if [ -n "$PEER_SCENARIO" ]; then
         exit 64
     fi
     lane_check "$PEER_CONFIG" || exit 65
+    # B630: the two characters' names, so each process targets the OTHER one.
+    # The caster (this script's CONFIG) targets the buddy; the observer (the
+    # PEER) targets the caster.
+    CASTER_CHAR="$(sed -n 's/.*"character"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG" | head -1)"
+    PEER_CHAR="$(sed -n 's/.*"character"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PEER_CONFIG" | head -1)"
+    # T391 staggered the partner by ~55 s so it arrives as a fresh spawn packet
+    # rather than inside the bulk zone-in list (two_client_survive). The B630
+    # chain needs the observer to already be a tracked peer when the caster
+    # starts leg A, so it only waits a few seconds.
+    PEER_STAGGER=55
+    [ "$PEER_SCENARIO" = "cast_interrupt_observe" ] && PEER_STAGGER=8
+    PEER_LOG_MODULE="$(log_module_for "$PEER_SCENARIO")"
     (
-        sleep 55
-        "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO" --timeout "$TIMEOUT" \
-            --log-level="$LOG_LEVEL" > "$PEERLOG" 2>&1
+        sleep "$PEER_STAGGER"
+        case "$PEER_SCENARIO" in
+            cast_interrupt_observe)
+                # The chain observer holds for CHAIN_OBSERVE_HOLD (120 s, not
+                # the lane's --timeout): the chain's legs finish in ~85 s, and
+                # its caster's departure ends the observer early via the
+                # departure floor (see CastInterruptObserveScenario).
+                "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO" \
+                    --timeout "$TIMEOUT" \
+                    --scenario-hold "$CHAIN_OBSERVE_HOLD" \
+                    --scenario-cast-target "$CASTER_CHAR" \
+                    --log-level="$LOG_LEVEL" \
+                    ${PEER_LOG_MODULE:+--log-module="$PEER_LOG_MODULE"} > "$PEERLOG" 2>&1
+                ;;
+            *)
+                "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO" --timeout "$TIMEOUT" \
+                    --log-level="$LOG_LEVEL" \
+                    ${PEER_LOG_MODULE:+--log-module="$PEER_LOG_MODULE"} > "$PEERLOG" 2>&1
+                ;;
+        esac
         # T494: equip_observed's peer runs TWICE. eqemu does not broadcast a
         # weapon WearChange on an OP_MoveItem equip (Client::SlotConvert2,
         # zone/client.cpp:4128-4154, has no slotPrimary case, so the packet
@@ -355,20 +426,56 @@ if [ -n "$PEER_SCENARIO" ]; then
         fi
     ) &
     PEER_PID=$!
-    say "peer scheduled ($PEER_SCENARIO${PEER_SCENARIO_2:+ then $PEER_SCENARIO_2}, +55s, pid $PEER_PID)"
+    say "peer scheduled ($PEER_SCENARIO${PEER_SCENARIO_2:+ then $PEER_SCENARIO_2}, +${PEER_STAGGER}s, pid $PEER_PID)"
 fi
 
 # ---- 5. the run ------------------------------------------------------------
+# B630: the caster runs the whole 4-leg chain. It targets the OBSERVER
+# (Testbuddy), preps its own kit with GM commands, and the lane seeds the two
+# characters co-located (b630_seed.sql) so the observer is a live peer.
+if [ "$SCENARIO" = "cast_interrupt_chain" ]; then
+    # Auto-seed unless the operator already passed --seed-sql. Co-location is
+    # the whole point of the two-client lane.
+    [ -n "$SEED_SQL" ] || SEED_SQL="$REPO/scripts/scenario_configs/b630_seed.sql"
+    [ -f "$SEED_SQL" ] || { say "no B630 seed at $SEED_SQL"; exit 64; }
+    say "B630 chain: caster targets ${PEER_CHAR:-<peer>}, seed=$SEED_SQL"
+fi
 say "running --scenario ${SCENARIO} --timeout ${TIMEOUT}"
+MAIN_LOG_MODULE="$(log_module_for "$SCENARIO")"
+# B630 fix pass (QA verdict on MR !20): the chain's A leg uses CHAIN_A_SPELL
+# (378), the rig's declared id, not the operator's $SPELL (288, the
+# cast_lands/standalone default). The D legs keep their client defaults
+# (372 / 293 / 293, application.h) unless an operator overrides them, which
+# is exactly what the analyzer's declared ids (B630Options in the unit test)
+# pin. Feeding $SPELL=288 into the chain's A leg is how the "declared spell
+# (ID 378)" cell could never pass.
+MAIN_SPELL_FLAGS="--scenario-spell $SPELL"
+case "$SCENARIO" in
+    cast_interrupt_chain)
+        MAIN_SPELL_FLAGS="--scenario-spell $CHAIN_A_SPELL"
+        ;;
+esac
 "$BIN" -c "$CONFIG" --scenario "$SCENARIO" --timeout "$TIMEOUT" \
-    --scenario-hold "$HOLD" --scenario-spell "$SPELL" \
-    --log-level="$LOG_LEVEL" > "$LOG" 2>&1 &
+    --scenario-hold "$HOLD" \
+    $MAIN_SPELL_FLAGS \
+    --scenario-cast-target "${PEER_CHAR:-}" \
+    --log-level="$LOG_LEVEL" \
+    ${MAIN_LOG_MODULE:+--log-module="$MAIN_LOG_MODULE"} > "$LOG" 2>&1 &
 CLIENT_PID=$!
 wait "$CLIENT_PID"
 CODE=$?
 CLIENT_PID=""
 say "client exit ${CODE}"
 grep -E '\[SCENARIO\]|^SCENARIO ' "$LOG" | tail -20 >&2
+
+# B630: turn the two logs into the results table + the B760 packet-order table.
+# The exit code here is advisory (informational) -- the client's own code above
+# is the pass/fail for the lane; the analyzer records the assertions.
+if [ "$SCENARIO" = "cast_interrupt_chain" ]; then
+    say "analyzing caster+observer logs"
+    python3 "$REPO/scripts/scenario_configs/b630_analyze.py" \
+        "$LOG" "$PEERLOG" --out "$OUT" || say "analyzer reported FAIL(s) -- see $OUT/b630_results.txt"
+fi
 
 # ---- 6. teardown (trap) ----------------------------------------------------
 cleanup

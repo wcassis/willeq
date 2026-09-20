@@ -126,6 +126,12 @@ struct ApplicationConfig {
     double scenarioHoldSeconds = 300.0;         // --scenario-hold <s>
     unsigned int scenarioSpellId = 288;         // --scenario-spell <id> (B484: 288 is castable by the config's class; 46 was not)
     long long scenarioExpectMaterial = -1;      // --scenario-expect-material <n> (T498)
+    // B630 (issue #48): the two-client interrupted-cast lane.
+    std::string scenarioCastTarget;             // --scenario-cast-target <name>
+    unsigned int scenarioSuccessSpellId = 372;  // --scenario-success-spell <id> (D1)
+    unsigned int scenarioRecastStopSpellId = 293; // --scenario-recast-stop-spell <id> (D2)
+    unsigned int scenarioBuffNotakeSpellId = 293; // --scenario-buff-notake-spell <id> (D3: the caster's own beneficial buff; the "does not take hold" variant is recorded, not forced, in this rig)
+    unsigned int scenarioFizzleSpellId = 0;     // --scenario-fizzle-spell <id> (B leg, non-GM caster)
 
     // T64: video-capture evidence tool (--dump-frames-dir/--dump-every/
     // --dump-max-frames). Off by default (empty dir = disabled) -- does not
