@@ -555,6 +555,14 @@ bool DiagnosticsComponent::loadIndoorRegionMap(const std::string& zoneName) {
 
 void DiagnosticsComponent::togglePortalOcclusion() {
     if (owner_.isLoading()) return;
+    // T504: presets with portalOcclusion off no longer build the portal system at
+    // zone load (it cost +92.9 MiB in iceclad). Ask the deferred builder
+    // (ZoneStreamComponent) for it; it lands within a frame or two.
+    if (!ctx_.portalSystem && ctx_.zoneBspTree) {
+        ctx_.portalBuildPending = true;
+        LOG_INFO(MOD_GRAPHICS, "Portal occlusion: building the portal system on demand -- run /portal again");
+        return;
+    }
     if (!ctx_.portalOcclusionEligible) {
         LOG_INFO(MOD_GRAPHICS, "Portal occlusion not available (no portals or too few)");
         return;

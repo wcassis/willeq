@@ -319,15 +319,32 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: zone bounds: X=[{:.1f},{:.1f}] Y=[{:.1f},{:.1f}] Z=[{:.1f},{:.1f}]",
                           zbMinX, zbMaxX, zbMinY, zbMaxY, zbMinZ, zbMaxZ);
 
-                // Build portal system from BSP split planes
-                computations->portalSystem = std::make_unique<PortalSystem>();
-                computations->portalSystem->buildFromBsp(*bspTree, zbMinX, zbMinY, zbMinZ, zbMaxX, zbMaxY, zbMaxZ);
-                computations->portalOcclusionEligible = computations->portalSystem->hasPortals() &&
-                    (computations->portalSystem->getData().portals.size() > 10);
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: portal system: hasPortals={}, portalCount={}, occlusionEligible={}",
-                          computations->portalSystem->hasPortals(),
-                          computations->portalSystem->getData().portals.size(),
-                          computations->portalOcclusionEligible);
+                // Build portal system from BSP split planes -- ONLY when the preset
+                // will use it.
+                //
+                // T504 (load-step audit): this ran unconditionally and the result was
+                // kept for the whole session although stencil portal occlusion is off
+                // by default (the orangepi preset sets portalOcclusion=false) and, by
+                // this file's own heuristic below, never auto-enabled in an outdoor
+                // zone, whose "portals" are BSP adjacency artifacts. MEASURED in
+                // iceclad: 428,337 portals from 2,016,868 raw candidates, 2.7 s, and
+                // +92.9 MiB of `spatial` -- a third of the client's heap -- for a
+                // feature that was not on. /portal still works: with no portal
+                // system it requests the deferred build (togglePortalOcclusion()).
+                const bool wantPortals = ctx_.config.constrainedConfig.portalOcclusion &&
+                                         ctx_.config.constrainedConfig.enableStencilBuffer;
+                if (wantPortals) {
+                    computations->portalSystem = std::make_unique<PortalSystem>();
+                    computations->portalSystem->buildFromBsp(*bspTree, zbMinX, zbMinY, zbMinZ, zbMaxX, zbMaxY, zbMaxZ);
+                    computations->portalOcclusionEligible = computations->portalSystem->hasPortals() &&
+                        (computations->portalSystem->getData().portals.size() > 10);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: portal system: hasPortals={}, portalCount={}, occlusionEligible={}",
+                              computations->portalSystem->hasPortals(),
+                              computations->portalSystem->getData().portals.size(),
+                              computations->portalOcclusionEligible);
+                } else {
+                    LOG_INFO(MOD_GRAPHICS, "SEQ Step2: portal system NOT built (preset portalOcclusion/stencil off); /portal builds it on demand");
+                }
 
                 // Cache zone light BSP regions
                 for (size_t i = 0; i < zone->lights.size(); ++i) {
@@ -496,8 +513,12 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                 }
             }
         } else if (ctx_.zoneBspTree && !ctx_.regionBoundingBoxes.empty() && !ctx_.portalSystem) {
-            ctx_.portalBuildPending = true;
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: portal system deferred (portalBuildPending=true)");
+            // T504: the deferred build is for presets that use portals; a preset
+            // that does not gets one only when /portal asks for it.
+            ctx_.portalBuildPending = ctx_.config.constrainedConfig.portalOcclusion &&
+                                      ctx_.config.constrainedConfig.enableStencilBuffer;
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: portal system deferred (portalBuildPending={})",
+                      ctx_.portalBuildPending);
         }
         if (ctx_.regionNeighbors.empty()) {
             ctx_.ZoneLifecycle().buildRegionNeighborMap();
