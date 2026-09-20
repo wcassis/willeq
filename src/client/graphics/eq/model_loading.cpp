@@ -295,6 +295,14 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
     currentZoneName_ = zoneName;
     zoneModelsLoaded_ = true;
 
+    // T504 (load-step audit): what this eager whole-archive parse retains.
+    size_t rawTextureBytes = 0;
+    for (const auto& [name, tex] : zoneTextures_) {
+        if (tex) rawTextureBytes += tex->rawDataBytes();
+    }
+    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: zone models '{}': {} characters, {} textures holding {} raw bytes",
+             zoneFilename, zoneCharacters_.size(), zoneTextures_.size(), rawTextureBytes);
+
     return true;
 }
 
