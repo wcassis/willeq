@@ -8,6 +8,11 @@
 # player has a paired official frame.
 # expect= comes from a refactor/BOARD.md B-number or a prior oracle fit and
 # from nowhere else; everything else is `unlabelled` and the grader ignores it.
+# The E block's held= values are read from the run's inventory snapshot
+# (make_timeline.py --db-before, the same <corpus>/shared/db_before/
+# inventory.tsv verify_labels.py scores against) and no hand-typed item id
+# remains in a held= claim (B793); the E_heldB_* frames are parked with a
+# why= naming the missing input.
 # Nothing here is a visual judgement: the truth is what the driver COMMANDED.
 0.0	p1	nop	label=A_zonein_p1;char=Oraclealpha;camera=FirstPerson_login_untouched;f9_presses=0;zone=qeynos2;expect=unlabelled
 12.0	p2	/camera firstperson	label=A_cam_p2_firstperson;char=Testcaster;zone=qeynos2;camera=FirstPerson;official_camera=FirstPerson_login_untouched;expect=match
@@ -65,20 +70,20 @@
 632.0	p2	/camera get	label=D_camget_p2;zone=qeynos2;expect=unlabelled
 641.0	p3	/camera get	label=D_camget_p3;zone=qeynos2;expect=unlabelled
 650.0	p1	key F9	label=D_cam_p1_f9x7;f9_presses=7;camera=unnamed_by_the_client;note=hermes-ext measured the in-world F9 cycle at period ~7 against T466's six named modes; presses are COUNTED here and nothing is resolved;zone=qeynos2;expect=unlabelled
-662.0	p2	/camera chase	label=E_heldA_p2_chase;camera=Chase;held=13=9998 short sword,14=9979 lantern;zone=qeynos2;expect=discrepancy:B722
-671.0	p3	/camera chase	label=E_heldA_p3_chase;camera=Chase;held=13=9997,14=9979 lantern;zone=qeynos2;expect=discrepancy:B722
+662.0	p2	/camera chase	label=E_heldA_p2_chase;camera=Chase;held=13=14337,14=20656;zone=qeynos2;expect=discrepancy:B722
+671.0	p3	/camera chase	label=E_heldA_p3_chase;camera=Chase;held=13=9997,14=9979;zone=qeynos2;expect=discrepancy:B722
 680.0	p1	cmd #wc 7 10|	label=E_wc_p1_it10;held_visual=#wc slot 7 material 10 (IT10 arrow) -- visual only, no relogin (T478);zone=qeynos2;expect=unlabelled
-706.0	p2	/camera tether	label=E_heldA_p2_tether;camera=Tether;held=13=9998 short sword,14=9979 lantern;zone=qeynos2;expect=discrepancy:B722
-715.0	p3	/camera tether	label=E_heldA_p3_tether;camera=Tether;held=13=9997,14=9979 lantern;zone=qeynos2;expect=discrepancy:B722
+706.0	p2	/camera tether	label=E_heldA_p2_tether;camera=Tether;held=13=14337,14=20656;zone=qeynos2;expect=discrepancy:B722
+715.0	p3	/camera tether	label=E_heldA_p3_tether;camera=Tether;held=13=9997,14=9979;zone=qeynos2;expect=discrepancy:B722
 724.0	p1	nop	label=E_idle_p1;zone=qeynos2;expect=unlabelled
-736.0	p2	/equip 23 13	label=E_equip_p2_23to13;held=13=9990 (moved in-game from general slot 23; no relogin, so the world's cached appearance is not in the way);zone=qeynos2;expect=unlabelled
-745.0	p3	/equip 23 13	label=E_equip_p3_23to13;held=13=9990 (moved in-game from general slot 23);zone=qeynos2;expect=unlabelled
+736.0	p2	/equip 23 13	label=E_equip_p2_23to13;note=source slot 23 holds 9990 Skin of Milk per the inventory snapshot (B793); no repo file establishes that item's eligibility for Primary (13), so the after-state is not claimed -- see the E_heldB_* why=;zone=qeynos2;expect=unlabelled
+745.0	p3	/equip 23 13	label=E_equip_p3_23to13;note=source slot 23 holds 9990 Skin of Milk per the inventory snapshot (B793); no repo file establishes that item's eligibility for Primary (13), so the after-state is not claimed -- see the E_heldB_* why=;zone=qeynos2;expect=unlabelled
 754.0	p1	cmd #wc 7 4|	label=E_wc_p1_m4;held_visual=#wc slot 7 material 4;zone=qeynos2;expect=unlabelled
-780.0	p2	/camera chase	label=E_heldB_p2_chase;camera=Chase;held=13=9990;zone=qeynos2;expect=discrepancy:B725
-789.0	p3	/camera chase	label=E_heldB_p3_chase;camera=Chase;held=13=9990;zone=qeynos2;expect=discrepancy:B725
+780.0	p2	/camera chase	label=E_heldB_p2_chase;camera=Chase;zone=qeynos2;expect=unlabelled;why=B793: no repo file establishes a general slot's eligibility for Primary (13) -- the inventory snapshot carries no slot-type / slots bitmask and data/item_idfile.tsv carries the item model (IT<n>), not the item TYPE; Leg C's `/equip 23 13` was refused by the client ("cannot go in Primary (13) -- wrong slot type for this item"), so the after-state was never claimed.  Re-recorded with a weapon seeded after the snapshot by record.sh --seed-weapon (Leg H)
+789.0	p3	/camera chase	label=E_heldB_p3_chase;camera=Chase;zone=qeynos2;expect=unlabelled;why=B793: no repo file establishes a general slot's eligibility for Primary (13) -- the inventory snapshot carries no slot-type / slots bitmask and data/item_idfile.tsv carries the item model (IT<n>), not the item TYPE; Leg C's `/equip 23 13` was refused by the client ("cannot go in Primary (13) -- wrong slot type for this item"), so the after-state was never claimed.  Re-recorded with a weapon seeded after the snapshot by record.sh --seed-weapon (Leg H)
 798.0	p1	cmd /loc|Location	label=E_loc_p1;zone=qeynos2;expect=unlabelled
-824.0	p2	/camera tether	label=E_heldB_p2_tether;camera=Tether;held=13=9990;zone=qeynos2;expect=discrepancy:B725
-833.0	p3	/camera tether	label=E_heldB_p3_tether;camera=Tether;held=13=9990;zone=qeynos2;expect=discrepancy:B725
+824.0	p2	/camera tether	label=E_heldB_p2_tether;camera=Tether;zone=qeynos2;expect=unlabelled;why=B793: no repo file establishes a general slot's eligibility for Primary (13) -- the inventory snapshot carries no slot-type / slots bitmask and data/item_idfile.tsv carries the item model (IT<n>), not the item TYPE; Leg C's `/equip 23 13` was refused by the client ("cannot go in Primary (13) -- wrong slot type for this item"), so the after-state was never claimed.  Re-recorded with a weapon seeded after the snapshot by record.sh --seed-weapon (Leg H)
+833.0	p3	/camera tether	label=E_heldB_p3_tether;camera=Tether;zone=qeynos2;expect=unlabelled;why=B793: no repo file establishes a general slot's eligibility for Primary (13) -- the inventory snapshot carries no slot-type / slots bitmask and data/item_idfile.tsv carries the item model (IT<n>), not the item TYPE; Leg C's `/equip 23 13` was refused by the client ("cannot go in Primary (13) -- wrong slot type for this item"), so the after-state was never claimed.  Re-recorded with a weapon seeded after the snapshot by record.sh --seed-weapon (Leg H)
 842.0	p2	/camera chase	label=F_pre_p2_chase;camera=Chase;zone=qeynos2;expect=unlabelled
 851.0	p3	/camera chase	label=F_pre_p3_chase;camera=Chase;zone=qeynos2;expect=unlabelled
 860.0	p1	hold w 20	label=F_run_p1_hold_w_20s;moved=held w for 20 s;zone=qeynos2;expect=unlabelled
