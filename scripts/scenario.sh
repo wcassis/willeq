@@ -70,6 +70,21 @@ KEEP_SERVER=0
 # T494: the client's log level, for both processes. INFO is the default a
 # verdict needs; a run being DIAGNOSED wants DEBUG.
 LOG_LEVEL="INFO"
+# B630 item 3: the B760 deliverable (#45) is a per-opcode cast-tail table, and
+# the only record of the wire order is the per-opcode [ZonePacket] DEBUG line
+# (zone_dispatch.cpp:958) plus the [SPELL] handler lines. The whole
+# interrupted-cast family needs ZONE and SPELL at DEBUG; every OTHER scenario
+# stays at plain INFO. The module list is the comma form parsed by
+# --log-module (application_config.cpp). A run being DIAGNOSED with full
+# --log-level DEBUG subsumes this, so it is never forced on.
+log_module_for() {
+    case "$1" in
+        cast_interrupt_chain|cast_interrupt|cast_interrupt_observe|cast_success_tail|cast_recast_stop|cast_buff_notake|cast_fizzle)
+            echo "ZONE:DEBUG,SPELL:DEBUG" ;;
+        *)
+            echo "" ;;
+    esac
+}
 # T494: a scenario that MOVES AN ITEM needs the inventory rows snapshotted and
 # put back too -- eqemu_snapshot only covers character_data/character_currency,
 # so before T494 an /equip left the row where the run put it. Both are
@@ -359,17 +374,20 @@ if [ -n "$PEER_SCENARIO" ]; then
     # starts leg A, so it only waits a few seconds.
     PEER_STAGGER=55
     [ "$PEER_SCENARIO" = "cast_interrupt_observe" ] && PEER_STAGGER=8
+    PEER_LOG_MODULE="$(log_module_for "$PEER_SCENARIO")"
     (
         sleep "$PEER_STAGGER"
         case "$PEER_SCENARIO" in
             cast_interrupt_observe)
                 "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO" --timeout "$TIMEOUT" \
                     --scenario-cast-target "$CASTER_CHAR" \
-                    --log-level="$LOG_LEVEL" > "$PEERLOG" 2>&1
+                    --log-level="$LOG_LEVEL" \
+                    ${PEER_LOG_MODULE:+--log-module="$PEER_LOG_MODULE"} > "$PEERLOG" 2>&1
                 ;;
             *)
                 "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO" --timeout "$TIMEOUT" \
-                    --log-level="$LOG_LEVEL" > "$PEERLOG" 2>&1
+                    --log-level="$LOG_LEVEL" \
+                    ${PEER_LOG_MODULE:+--log-module="$PEER_LOG_MODULE"} > "$PEERLOG" 2>&1
                 ;;
         esac
         # T494: equip_observed's peer runs TWICE. eqemu does not broadcast a
@@ -402,10 +420,12 @@ if [ "$SCENARIO" = "cast_interrupt_chain" ]; then
     say "B630 chain: caster targets ${PEER_CHAR:-<peer>}, seed=$SEED_SQL"
 fi
 say "running --scenario ${SCENARIO} --timeout ${TIMEOUT}"
+MAIN_LOG_MODULE="$(log_module_for "$SCENARIO")"
 "$BIN" -c "$CONFIG" --scenario "$SCENARIO" --timeout "$TIMEOUT" \
     --scenario-hold "$HOLD" --scenario-spell "$SPELL" \
     --scenario-cast-target "${PEER_CHAR:-}" \
-    --log-level="$LOG_LEVEL" > "$LOG" 2>&1 &
+    --log-level="$LOG_LEVEL" \
+    ${MAIN_LOG_MODULE:+--log-module="$MAIN_LOG_MODULE"} > "$LOG" 2>&1 &
 CLIENT_PID=$!
 wait "$CLIENT_PID"
 CODE=$?

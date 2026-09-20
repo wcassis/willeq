@@ -138,7 +138,14 @@ public:
     CastInterruptScenario(uint32_t spellId, std::string targetName)
         : spellId_(spellId),
           target_(kTargetAt, targetName),
+          // B630 item 1: eqemu's GM `#unmemspells`/`#memspell` apply to
+          // c->GetTarget() (zone/gm_commands/unmemspells.cpp:22-24,
+          // memspell.cpp:31-33), so the prep must run with nothing targeted.
+          // This is the first leg of the chain, but a fresh zone-in can still
+          // carry a server-side target (last-target persists across logins on
+          // the character), so clear it explicitly before the GM prep.
           prep_({
+              {1.0, "/cleartarget"},
               {3.0, "/say #unmemspells"},
               {7.0, "/say #memspell " + std::to_string(spellId) + " 0"},
           }) {}
@@ -237,12 +244,34 @@ private:
 class CastSuccessTailScenario final : public IScenario {
 public:
     CastSuccessTailScenario(uint32_t spellId, std::string targetName)
-        : spellId_(spellId), target_(kTargetAt, targetName) {}
+        : spellId_(spellId),
+          target_(kTargetAt, targetName),
+          // B630 item 1: eqemu's GM `#unmemspells`/`#memspell` apply to
+          // c->GetTarget() (zone/gm_commands/unmemspells.cpp:22-24,
+          // memspell.cpp:31-33), so the PREP must run with nothing targeted.
+          // The previous leg's `/target` persists on the server, so the first
+          // prep step clears it. The peer is targeted only AFTER the prep.
+          prep_({
+              {1.0, "/cleartarget"},
+              {3.0, "/say #unmemspells"},
+              {7.0, "/say #memspell " + std::to_string(spellId) + " 0"},
+          }) {}
 
     const char* Name() const override { return "cast_success_tail"; }
 
     StepResult Step(IScenarioWorld& world, const ScenarioTick& tick) override {
         const double t = tick.sinceStart;
+
+        if (prepIndex_ < prep_.size()) {
+            const PrepStep& step = prep_[prepIndex_];
+            if (t < step.at) {
+                return StepResult::Running;
+            }
+            world.Note("prep: " + step.command);
+            world.SendCommand(step.command);
+            ++prepIndex_;
+            return StepResult::Running;
+        }
 
         if (!target_.MaybeTarget(world, t, kPeerDeadline)) {
             if (!target_.Failure().empty()) {
@@ -284,12 +313,16 @@ public:
     }
 
 private:
-    static constexpr double kTargetAt = 3.0;
-    static constexpr double kPeerDeadline = 45.0;
-    static constexpr double kCastAt = 8.0;
+    // The prep ends at 7.0 s (memspell), so targeting only starts at 8.0 s;
+    // it also waits for the peer to be tracked. The cast follows the target.
+    static constexpr double kTargetAt = 8.0;
+    static constexpr double kPeerDeadline = 60.0;
+    static constexpr double kCastAt = 14.0;
     static constexpr double kTailWindow = 12.0;
 
     uint32_t spellId_;
+    std::vector<PrepStep> prep_;
+    size_t prepIndex_ = 0;
     TargetPeer target_;
     bool castSent_ = false;
     double castAt_ = 0.0;
@@ -311,12 +344,31 @@ private:
 class CastRecastStopScenario final : public IScenario {
 public:
     CastRecastStopScenario(uint32_t spellId, std::string targetName)
-        : spellId_(spellId), target_(kTargetAt, targetName) {}
+        : spellId_(spellId),
+          target_(kTargetAt, targetName),
+          // B630 item 1: prep with nothing targeted (see D1). The second cast
+          // of this leg must still be the same spell, so the prep memorises it.
+          prep_({
+              {1.0, "/cleartarget"},
+              {3.0, "/say #unmemspells"},
+              {7.0, "/say #memspell " + std::to_string(spellId) + " 0"},
+          }) {}
 
     const char* Name() const override { return "cast_recast_stop"; }
 
     StepResult Step(IScenarioWorld& world, const ScenarioTick& tick) override {
         const double t = tick.sinceStart;
+
+        if (prepIndex_ < prep_.size()) {
+            const PrepStep& step = prep_[prepIndex_];
+            if (t < step.at) {
+                return StepResult::Running;
+            }
+            world.Note("prep: " + step.command);
+            world.SendCommand(step.command);
+            ++prepIndex_;
+            return StepResult::Running;
+        }
 
         if (!target_.MaybeTarget(world, t, kPeerDeadline)) {
             if (!target_.Failure().empty()) {
@@ -369,15 +421,20 @@ public:
     }
 
 private:
-    static constexpr double kTargetAt = 3.0;
-    static constexpr double kPeerDeadline = 45.0;
-    static constexpr double kFirstCastAt = 8.0;
+    // The prep ends at 7.0 s, so targeting starts at 8.0 s (also waits for the
+    // peer). First cast at 14 s; the second at +3.5 s lands inside the 4 s
+    // server recast window of the first.
+    static constexpr double kTargetAt = 8.0;
+    static constexpr double kPeerDeadline = 60.0;
+    static constexpr double kFirstCastAt = 14.0;
     // Gem recovers at ~2.25 s after the first cast starts; cast again at 3.5 s,
     // still inside the 4 s server recast window.
     static constexpr double kSecondAfter = 3.5;
     static constexpr double kHoldAfter = 8.0;
 
     uint32_t spellId_;
+    std::vector<PrepStep> prep_;
+    size_t prepIndex_ = 0;
     TargetPeer target_;
     bool firstSent_ = false;
     bool secondSent_ = false;
@@ -400,7 +457,10 @@ public:
     CastBuffNotakeScenario(uint32_t buffId, std::string targetName)
         : buffId_(buffId),
           target_(kTargetAt, targetName),
+          // B630 item 1: the GM prep applies to c->GetTarget(), so clear any
+          // target first even though this leg targets the peer at 8.0 s.
           prep_({
+              {1.0, "/cleartarget"},
               {3.0, "/say #unmemspells"},
               {7.0, "/say #memspell " + std::to_string(buffId) + " 0"},
           }) {}

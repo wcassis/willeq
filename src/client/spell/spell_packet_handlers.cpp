@@ -295,8 +295,11 @@ void SpellManager::endOwnCastByServer(CastResult result)
     publishCastComplete(spell_id, result);
 
     const SpellData* spell = m_spell_db.getSpell(spell_id);
-    LOG_INFO(MOD_SPELL, "Cast of '{}' {}",
-        spell ? spell->name : "Unknown",
+    // B630 item 4: the log carries the spell id, so the lane analyzer can
+    // attribute this outcome to its leg's declared spell instead of the name
+    // (which the GM-prep bug could have made carry the wrong spell's name).
+    LOG_INFO(MOD_SPELL, "Cast of '{}' (ID: {}) {}",
+        spell ? spell->name : "Unknown", spell_id,
         result == CastResult::Fizzle ? "fizzled" : "was interrupted");
 
     m_current_spell_id = SPELL_UNKNOWN;
@@ -398,7 +401,8 @@ void SpellManager::resolvePendingOutcome(CastResult result)
     }
     publishCastComplete(spell_id, result);
 
-    LOG_INFO(MOD_SPELL, "Cast of '{}' {}", spell ? spell->name : "Unknown",
+    LOG_INFO(MOD_SPELL, "Cast of '{}' (ID: {}) {}", spell ? spell->name : "Unknown",
+        spell_id,
         result == CastResult::Success ? "completed successfully"
                                       : "was stopped by the server (no spell bar refresh)");
 }

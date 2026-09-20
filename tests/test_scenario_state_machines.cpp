@@ -65,6 +65,49 @@ void Advance(ScenarioRunner& runner, double seconds) {
     }
 }
 
+// B630 item 1, RED-pinned: eqemu's GM `#unmemspells`/`#memspell` apply to
+// c->GetTarget() (zone/gm_commands/unmemspells.cpp:22-24, memspell.cpp:31-33).
+// If a leg's prep runs while a target is still set, the spells land on the
+// buddy and every D leg casts gem 0's old spell (288), not its declared id.
+// The ordering that keeps the caster's own gem 0 intact is:
+//     /cleartarget -> /say #unmemspells -> /say #memspell <id> 0 -> /target <peer>
+// This helper asserts that exact order (strict, first occurrence of each)
+// against the FakeWorld's recorded commands. Pre-fix, D1/D2 had no memspell
+// prep at all and every leg's prep ran against the previous leg's persisted
+// target, so this fails on the old code.
+void ExpectPrepOrder(const FakeWorld& world, const std::string& memspellCmd,
+                     const std::string& targetName = "Testbuddy") {
+    const std::vector<std::string> order = {
+        "/cleartarget",
+        "/say #unmemspells",
+        memspellCmd,
+        "/target " + targetName,
+    };
+    size_t last = 0;
+    bool first = true;
+    for (const std::string& cmd : order) {
+        auto it = std::find(world.commands.begin(), world.commands.end(), cmd);
+        ASSERT_NE(it, world.commands.end())
+            << "missing " << cmd << " in: "
+            << [&]() {
+                   std::string joined;
+                   for (const std::string& c : world.commands) {
+                       if (!joined.empty()) {
+                           joined += " | ";
+                       }
+                       joined += c;
+                   }
+                   return joined;
+               }();
+        const size_t idx = static_cast<size_t>(it - world.commands.begin());
+        if (!first) {
+            ASSERT_GT(idx, last) << cmd << " must come after the previous step";
+        }
+        last = idx;
+        first = false;
+    }
+}
+
 ScenarioOptions DefaultOptions() { return ScenarioOptions{}; }
 
 }  // namespace
@@ -585,15 +628,18 @@ TEST(CastInterruptScenario, PrepThenTargetThenCastThenInterruptsMidCast) {
     ScenarioRunner runner(MakeScenario("cast_interrupt", B630Options()), world,
                           /*timeout=*/600.0, /*startDeadline=*/10.0);
     Advance(runner, 16.0);
-    // The full A-leg sequence, in order: unmem, memspell, target, cast,
-    // and the GM #interrupt ~1.5 s into the 3 s cast (cast at t=14, interrupt
-    // at t=15.5, so advance past 15.5 to have all five commands sent).
-    ASSERT_GE(world.commands.size(), 5u);
-    EXPECT_EQ(world.commands[0], "/say #unmemspells");
-    EXPECT_EQ(world.commands[1], "/say #memspell 378 0");
-    EXPECT_EQ(world.commands[2], "/target Testbuddy");
-    EXPECT_EQ(world.commands[3], "/cast 1");
-    EXPECT_EQ(world.commands[4], "/say #interrupt");
+    // The full A-leg sequence, in order: B630 item 1 adds the leading
+    // /cleartarget (eqemu's GM #unmemspells/#memspell apply to c->GetTarget(),
+    // so the prep must run with nothing targeted); then unmem, memspell,
+    // target, cast, and the GM #interrupt ~1.5 s into the 3 s cast (cast at
+    // t=14, interrupt at t=15.5, so advance past 15.5 to have all six sent).
+    ASSERT_GE(world.commands.size(), 6u);
+    EXPECT_EQ(world.commands[0], "/cleartarget");
+    EXPECT_EQ(world.commands[1], "/say #unmemspells");
+    EXPECT_EQ(world.commands[2], "/say #memspell 378 0");
+    EXPECT_EQ(world.commands[3], "/target Testbuddy");
+    EXPECT_EQ(world.commands[4], "/cast 1");
+    EXPECT_EQ(world.commands[5], "/say #interrupt");
     // Still holding after the interrupt (the log is what proves the cast bar
     // cleared) -- not finished yet (interrupt t=15.5 + hold 10s = t=25.5).
     Advance(runner, 5.0);
@@ -618,18 +664,22 @@ TEST(CastInterruptScenario, NoPeerIsAFailureNotASilentWait) {
     EXPECT_FALSE(world.sent("/cast 1")) << "must not cast at no one";
 }
 
-TEST(CastSuccessTailScenario, CastsAndLetsItFinish) {
+TEST(CastSuccessTailScenario, PrepRunsTargetFreeThenCastsTheDeclaredSpell) {
     FakeWorld world;
     world.zonedIn = true;
     world.zone = "cazicthule";
     world.otherPlayers = 1;
     ScenarioRunner runner(MakeScenario("cast_success_tail", B630Options()), world,
                           /*timeout=*/600.0, /*startDeadline=*/10.0);
-    Advance(runner, 9.0);
+    Advance(runner, 15.0);
+    // B630 item 1: the D1 prep must be cleartarget -> unmem -> memspell 372
+    // -> target, in that order, so the caster's own gem 0 carries 372 and the
+    // buddy's does not.
+    ExpectPrepOrder(world, "/say #memspell 372 0");
     EXPECT_TRUE(world.sent("/target Testbuddy"));
     EXPECT_TRUE(world.sent("/cast 1"));
     EXPECT_FALSE(runner.finished());
-    Advance(runner, 12.0);
+    Advance(runner, 13.0);
     EXPECT_TRUE(runner.finished());
     EXPECT_EQ(runner.exitCode(), kScenarioPass);
     EXPECT_NE(runner.reason().find("success-tail leg executed"), std::string::npos);
@@ -642,11 +692,13 @@ TEST(CastRecastStopScenario, TwoCastsWithTheSecondInsideTheRecastWindow) {
     world.otherPlayers = 1;
     ScenarioRunner runner(MakeScenario("cast_recast_stop", B630Options()), world,
                           /*timeout=*/600.0, /*startDeadline=*/10.0);
-    Advance(runner, 9.0);
+    Advance(runner, 15.0);
     EXPECT_TRUE(world.sent("/cast 1"));
     ASSERT_EQ(std::count(world.commands.begin(), world.commands.end(),
                          std::string("/cast 1")), 1)
         << "no second cast before the gem recovers";
+    // B630 item 1: D2 got its own memspell prep, target-free.
+    ExpectPrepOrder(world, "/say #memspell 293 0");
     Advance(runner, 5.0);
     EXPECT_EQ(std::count(world.commands.begin(), world.commands.end(),
                          std::string("/cast 1")), 2)
@@ -665,12 +717,15 @@ TEST(CastBuffNotakeScenario, MemorisesThenCastsTheOwnBuff) {
     ScenarioRunner runner(MakeScenario("cast_buff_notake", B630Options()), world,
                           /*timeout=*/600.0, /*startDeadline=*/10.0);
     Advance(runner, 15.0);
-    // The buff leg: unmem, memspell the buff on gem 1, target the peer, cast.
-    ASSERT_GE(world.commands.size(), 4u);
-    EXPECT_EQ(world.commands[0], "/say #unmemspells");
-    EXPECT_EQ(world.commands[1], "/say #memspell 293 0");
-    EXPECT_EQ(world.commands[2], "/target Testbuddy");
-    EXPECT_EQ(world.commands[3], "/cast 1");
+    // The buff leg: B630 item 1's /cleartarget, then unmem, memspell the buff
+    // on gem 0, target the peer, cast.
+    ASSERT_GE(world.commands.size(), 5u);
+    EXPECT_EQ(world.commands[0], "/cleartarget");
+    EXPECT_EQ(world.commands[1], "/say #unmemspells");
+    EXPECT_EQ(world.commands[2], "/say #memspell 293 0");
+    EXPECT_EQ(world.commands[3], "/target Testbuddy");
+    EXPECT_EQ(world.commands[4], "/cast 1");
+    ExpectPrepOrder(world, "/say #memspell 293 0");
     Advance(runner, 12.0);
     EXPECT_TRUE(runner.finished());
     EXPECT_EQ(runner.exitCode(), kScenarioPass);

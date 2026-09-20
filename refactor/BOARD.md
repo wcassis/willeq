@@ -10240,7 +10240,7 @@ B712–B719 unused.
 
 ## Added 2026-09-14 by T469 (the server's cast interrupt)
 
-- **B630** (A, *owed live proof*) **A real server-interrupted cast has not been → issue #48
+- **B630** (A, *owed live proof*) **A real server-interrupted cast has been → issue #48
   watched on fable.** T469 wired `HC_OP_InterruptCast` and
   `ManaChange keepcasting 0` from the eqemu source
   (`/mnt/projects/akk-stack/code/zone/spells.cpp` `Mob::InterruptSpell`,
