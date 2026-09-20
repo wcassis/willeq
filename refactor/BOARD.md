@@ -10383,7 +10383,7 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   used to learn the units of DirHeading/Pitch/Height/Zoom; they are the client's
   own write-out. Found by T466.
 
-- **B586** (A, *owed*) **The held-item attack animation was not captured on the → issue #50
+- ~~**B586**~~ (A, *owed*) **The held-item attack animation was not captured on the → issue #50
   oracle.** Set A (Short Sword primary, Gloomingdeep Lantern secondary) was
   captured idle from four cameras, but auto-attack at 8 units behind the
   training dummy produced no swing in 40 stepped frames. Owed: an attack capture
@@ -10397,8 +10397,16 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   Found by T466.
   T472 Leg A (2026-09-14) changed nothing here: offline only; the attack
   captures are T472 Leg B's.
+  **CLOSED by T478 (issue #50), struck 2026-09-20 (card kb-chase-closures).**
+  T478 paid the whole capture debt: the `/target` cause was the underscore spawn
+  name (all four T478 sessions targeted `a_training_dummy000` and
+  auto-attacked), and attack captures landed on both clients for every set --
+  A, B, C and IT10. What T478 found in them is the live record now: B722 (#62)
+  and B723 (#63).
 
-- **B587** (A, *unconfirmed*) **At the camera that reproduces the official Chase → issue #51
+- ~~**B587**~~ (A, *unconfirmed*) **CLOSED by T478 (live) -- see the T478 record
+  below; struck 2026-09-20 (card kb-chase-closures, issue #51).** At the camera that
+  reproduces the official Chase → issue #51
   view, fable draws the player model facing the camera.** fable session
   `heldA_sword_lantern_spotA_h160` (Testchar at qeynos2 (-81.39, 431.06, 3.751)
   h160): the rig az 0, pitch 6, dist 4, height 7 -- whose world view matches the
@@ -10430,6 +10438,12 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   `HeldItemFrameOrder.PlayerHeadingIsSyncedAfterUpdatesAndBeforeEquipment`.
   Owed: the oracle Chase capture of a stationary fable character (and the
   two-client observation the heading note asks for).
+  **Closed by T478 (live), struck 2026-09-20 (card kb-chase-closures, issue #51):**
+  T478's Chase sweep at h160 on Testchar, not moved since zone-in, shows the
+  back of the head, back and shoulders, matching the official Chase frame
+  (`fable/sessions/chase_sweep_h160`, frame 163; `review/T478/README.md`). The
+  offline pin `HeldItemTest.StationaryPlayerIsDrawnAtTheRendererHeading`
+  (tests/test_held_item_attachment.cpp) re-verified green on this card.
 
 - ~~**B588**~~ **CLOSED by T485** (lantern half closed by T472, blade half by T485's
   searched correction; see the T485 block). Original text: (A, *unconfirmed*) **Held items in the hand: the sword's blade points
@@ -10440,8 +10454,9 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   Gloomingdeep Lantern (item 9979, IT48) hanging in the LEFT hand at the hip.
   fable shows the Short Sword in the right hand with the blade standing UP above
   the fist (about a half turn about the hand's horizontal axis, as far as the
-  frames show), and no lantern in the left hand from either side. Attack-pose
-  comparison owed (B586). Found by T466.
+ frames show), and no lantern in the left hand from either side. Attack-pose
+ comparison owed (B586) -- that comparison was captured by T478 and its
+ findings live on as B722/B723 (kb-chase-closures). Found by T466.
   **T485 (slot1, in flight, `refactor/T485_held_item_transform_candidate_search.md`) OWNS this item** — the lantern half is already false since T472, and T485 strikes or narrows the rest; nobody else scopes a fix off it (T486 note).
 
 ---
@@ -10605,8 +10620,9 @@ unused.
   minimum 0.7379; the pre-T474 binary scores **0.9951**). The 3x3x3 re-fit at
   that view reproduces T466's bracket to <= 0.001. Correction to T471's B650
   arithmetic: the pre-T474 camera at that spot sat 11.500 above the ground, not
-  13.119 -- the eye-region ceiling clamped it. **Still open:** B683 (the h288
-  view disagrees), B681 (races), B680 (does the official Chase zoom).
+  13.119 -- the eye-region ceiling clamped it. **Still open:** B721 (the
+  crop-dependent Chase fit, superseding B683 -- pointer updated 2026-09-20, card
+  chase-closures-fix), B681 (races), B680 (does the official Chase zoom).
 
 - **B680** (C -> ORACLE-OWED) **Whether the official Chase camera zooms.** The T474 → issue #57
   plan requires fable's zoom keys and wheel to act on the Chase distance, and
@@ -10638,7 +10654,8 @@ unused.
   floors it at the player's eye. Neither was measured on the oracle; both are
   written down in `camera_controller.h`. Found by T474.
 
-- **B683** (A, **T474 STOP**) **The Chase re-fit at a second view disagrees with → issue #59
+- ~~**B683**~~ (A, **T474 STOP**) **SUPERSEDED by B721 -- see the T478 record
+  below; struck 2026-09-20 (card kb-chase-closures, issue #59).** **The Chase re-fit at a second view disagrees with → issue #59
   T466's fit on distance.** Same spot and pose, heading 288, scored against
   T466's own h288 oracle Chase still on the crop that reproduces T466's h160
   numbers (`400x600+0+100`, recovered by reproduction:
@@ -10653,6 +10670,12 @@ unused.
   near wall is at the left; at h288 the wall fills the frame. Owed (not run,
   Leg B stopped): a fresh oracle h288 grab, a crop chosen for that view, a
   genuinely second spot, and B681's second race. Found by T474.
+  **SUPERSEDED by B721 (T478 record below), struck 2026-09-20 (card
+  kb-chase-closures, issue #59).** T478 reproduced T474's h288 "dist 3.5" on
+  T474's wall crop as the pitch-6 slice of a diagonal pitch/height valley whose
+  minimum is off that plane, so the crop explains the disagreement and the
+  clean-spot re-grab does not settle the fit. B721 (issue #61) carries the
+  remaining work.
 
 - ~~**B684**~~ **CLOSED by T480.** `PlayerState::setFollowDistance()` is deleted,
   and so is its `check_zero_callers.py` EXEMPT row. The cascade stopped at once.
