@@ -92,12 +92,20 @@ hygiene:
       - build/hygiene/Testing/Temporary/LastTest.log
 
 # Stage 2: the Release build (the recipe from CLAUDE.md). The patched x86 GLES2
-# Irrlicht is BUILT, not committed; bootstrap it only when it is missing.
+# Irrlicht is BUILT, not committed; bootstrap it when it is missing OR STALE
+# (B654, issue #56): the input stamp (scripts/ci/irrlicht_input_stamp.sh)
+# hashes the committed device-source inputs this lib encodes, so a merge that
+# changes docker/irrlicht-drm[-x86]/ or the build script forces a rebuild
+# instead of every later pipeline silently testing against the old lib.
+# (docs/ci.md, "Device-source changes are caught by the input stamp".)
 build:
   extends: .goldfarm
   stage: build
   script:
-    - test -f third_party/irrlicht-gles2-x86/lib/libIrrlicht.a || JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh --irrlicht-only
+    - |
+      if [ ! -f third_party/irrlicht-gles2-x86/lib/libIrrlicht.a ] || ! bash scripts/ci/irrlicht_input_stamp.sh verify third_party/irrlicht-gles2-x86/irrlicht_input_stamp.txt; then
+        JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh --irrlicht-only
+      fi
     - nice -n 10 cmake -S . -B build -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_GLES2_IRRLICHT_DIR=$PWD/third_party/irrlicht-gles2-x86
     - nice -n 10 cmake --build build -j $JOBS 2>&1 | tail -n 200
 

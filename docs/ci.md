@@ -151,6 +151,26 @@ evidence about an *incremental* build, not a clean one. To force a cold run:
 Do the cold run before trusting a green pipeline on anything that changed the
 build system itself.
 
+### Device-source changes are caught by the input stamp, not by a cold run
+
+The warm-tree trade-off has one concrete failure mode that a cold run does not
+catch automatically: the patched Irrlicht is built from `docker/irrlicht-drm/`
+and `docker/irrlicht-drm-x86/` (plus the build script and the shared patch), and
+none of that is committed — only `libIrrlicht.a` survives the clean, and the
+build job only rebuilt it when the `.a` was *absent*. So a merged fix to the
+device sources (e.g. B654's X11 numpad mapping) left every later pipeline
+testing against the pre-fix lib, invisibly.
+
+`scripts/ci/irrlicht_input_stamp.sh` closes that: `build-gles2-x86.sh` writes a
+content digest (relative path + sha256 of every in-scope input, sorted) to
+`third_party/irrlicht-gles2-x86/irrlicht_input_stamp.txt` each time it produces
+the lib, and the build job's bootstrap now rebuilds when the `.a` is absent **or
+when `verify` reports the stored digest no longer matches the committed inputs**.
+The digest is over file contents, so it is identical on every checkout of the
+same commit — no mtime or git-state dependence. The pristine Irrlicht reference
+(`/mnt/projects/irrlicht-1.8.5`) is deliberately out of scope: it is a fixed
+read-only source, and updating it is a manual cold-rebuild event.
+
 ## Retrying the gate
 
 The gate's CPU-p95 assertion is load-sensitive by nature — it is a real CPU-time
