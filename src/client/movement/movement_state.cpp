@@ -25,7 +25,6 @@
 // bodies rebased from EverQuest onto eqt::movement::MovementComponent. Still
 // verbatim -- only the substitutions Mechanism 4 allows. See the K07 Review.
 
-#include "client/core/baseline_mode.h"  // T504
 #include "client/movement/movement_component.h"
 #include "client/eq.h"
 #include "client/combat.h"
@@ -79,15 +78,10 @@ void eqt::movement::MovementComponent::LoadPathfinder(const std::string& zone_na
 	m_current_path.clear();
 	m_current_path_index = 0;
 	
-	// T504 / Will 2026-09-21: navmesh pathfinding (/moveto, follow) is not an
-	// original-client feature; the baseline is measured without it. MEASURED
-	// dreadlands: +10.9 MiB of game_state from a 4.4 MB .nav file (the inflated
-	// Detour tiles, stored once -- the feature's honest cost, not a defect).
-	if (eqt::BaselineOnly()) {
-		LOG_INFO(MOD_MAIN, "WILLEQ_BASELINE=1: navmesh not loaded for '{}' (non-original feature)", zone_name);
-		return;
-	}
-
+	// T504 / Will 2026-09-21: the navmesh IS part of the original-parity baseline --
+	// follow existed at launch; a different implementation technique of an
+	// original capability is still core. MEASURED dreadlands: +10.9 MiB of
+	// game_state from a 4.4 MB .nav file (inflated Detour tiles, stored once).
 	try {
 		// Use the IPathfinder factory method to load the navigation mesh
 		m_pathfinder.reset(IPathfinder::Load(zone_name, ctx_.Zone().NavmeshPath()));

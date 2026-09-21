@@ -2,10 +2,12 @@
 
 // T504 / Will 2026-09-21: "Baseline is feature parity with the original client."
 // The non-original features -- detail objects, reactive foliage, boids,
-// tumbleweeds, atmospheric particles, animated trees, storm clouds, fire glow,
-// and navmesh pathfinding (/moveto, follow) -- are measured SEPARATELY, on top
+// tumbleweeds, atmospheric particles, animated trees, storm clouds, fire glow --
+// are measured SEPARATELY, on top
 // of a baseline that does not contain them. WILLEQ_BASELINE=1 runs that
-// baseline. Header-only and dependency-free so game code and renderer code can
+// baseline. The test is whether the GAMEPLAY CAPABILITY existed in the original
+// client, not whether the implementation did: the navmesh is CORE (follow existed
+// at launch). Header-only and dependency-free so game code and renderer code can
 // both ask.
 
 #include <cstdlib>
