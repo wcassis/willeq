@@ -56,7 +56,9 @@ it without taking that measurement first.
   Pi ceiling, `#101`). One issue per distinct failing line: **#100** (soldunga,
   EQE1-tree defect — loads clean without `--eqe1-path`) and **#101** (hole,
   memory). Fixes are those issues, not this card. The sweep is committed
-  (`refactor/B852/` holds the 118-row TSV + summary), with a 3-zone ctest
+  (`refactor/B852/` holds the 118-row TSV + summary; `refactor/B100/` holds the
+  1506-pack/183,058-entry v3-aware name census + captured output for the soldunga
+  closure), with a 3-zone ctest
   smoke (qeynos2/sebilis/iceclad, label `slow`) in the test job; how to run it:
   `docs/ci.md` "The zone-content sweep". Related: B813/#7 (gate zone set),
   B853/#99 (live zone-in sweep — a live soldunga zone-in hits #100's FATAL).

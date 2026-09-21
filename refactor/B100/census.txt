@@ -1,0 +1,16 @@
+pack tree: /mnt/projects/EverQuest_ETC1
+PFS source dir: /mnt/projects/EverQuestP1999
+
+packs: 1506
+entries: 183058
+version census: {v1:1504, v2:1, v3:1}
+v3 packs: ['soldunga.eqe1']
+v3 table-resident names: 1
+structural violations: 0
+
+=== truncation candidates (stored names of exactly 31 chars): 1 ===
+  frozenshadow.eqe1        'bricktrimflorish&protrait_alpha'  ->  GENUINE companion  (base 'bricktrimflorish&protrait', len 25 + _alpha = 31, fits; base present in source)
+
+=== SUMMARY ===
+genuinely truncated: 0
+verdict: PASS — 0 genuinely truncated, no structural violations
