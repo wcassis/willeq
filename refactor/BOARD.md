@@ -59,7 +59,9 @@ it without taking that measurement first.
   (`refactor/B852/` holds the 118-row TSV + summary), with a 3-zone ctest
   smoke (qeynos2/sebilis/iceclad, label `slow`) in the test job; how to run it:
   `docs/ci.md` "The zone-content sweep". Related: B813/#7 (gate zone set),
-  B853/#99 (live zone-in sweep — a live soldunga zone-in hits #100's FATAL).
+  ~~B853/#99~~ (live zone-in sweep — swept clean by B853, `refactor/B853/`:
+  all 46 Kunark/Velious zones B852 proved load clean now reach
+  `IsFullyZonedIn()` live with the server's own spawns and doors, 2026-09-21).
 
 - ~~**B001** (A) `src/client/movement/movement_state.cpp`
   `eqt::movement::MovementComponent::SetPositionState` (K07 moved it) —
@@ -12256,4 +12258,4 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
 
 B828–B829 and B832 unused. B836–B845 used by T500 (B840, B842, B845 closed by the kanban pilot, below T501's section).
 
-B848 used by the kanban pilot (issue #4, migration card). B849 (issue #91), B850 (#92), B851 (#97) and B852 (#98, the A-section entry above) were filed straight to GitLab issues by the orchestrator 2026-09-18/20 and have no board entry of their own (docs/issues.md: the issue is the record). B853 onwards unused.
+B848 used by the kanban pilot (issue #4, migration card). B849 (issue #91), B850 (#92), B851 (#97), B852 (#98, the A-section entry above) and B853 (#99, swept clean 2026-09-21, `refactor/B853/`) were filed straight to GitLab issues by the orchestrator 2026-09-18/20 and have no board entry of their own (docs/issues.md: the issue is the record). B854 onwards unused.
