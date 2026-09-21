@@ -339,7 +339,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         if (eqt::ui::BaselineOnly()) {
             cachedDisplaySettings_.applyBaselineOnly();
             LOG_INFO(MOD_GRAPHICS, "WILLEQ_BASELINE=1: non-original features OFF (detail objects, reactive foliage, "
-                     "boids, tumbleweeds, atmospheric particles, animated trees)");
+                     "boids, tumbleweeds, atmospheric particles, animated trees, fire glow; storm clouds skipped at creation)");
         }
         displaySettingsCached_ = true;
     }

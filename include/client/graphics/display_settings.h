@@ -64,6 +64,9 @@ struct DisplaySettings {
         reactiveFoliage = false;
         rollingObjects = false;
         animatedTrees = false;
+        enableFireGlowLighting = false;   // Will 2026-09-21: fire glow is a new willeq feature
+        enableFireGlowIcospheres = false;
+        maxFireGlowLights = 0;
         detailObjectsEnabled = false;
         detailGrass = detailPlants = detailRocks = detailDebris = false;
         detailDensity = 0.0f;
