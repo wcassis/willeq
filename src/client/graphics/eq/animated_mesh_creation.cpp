@@ -18,6 +18,11 @@ namespace EQT {
 namespace Graphics {
 
 EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t gender, bool compositeAllowed) {
+    // T504 (load-step audit): everything built here is SHARED MODEL data (the
+    // race's model data, any archive parsed to find it or its animation source,
+    // and the per-race animated mesh) -- it is called lazily from inside entity
+    // creation, whose scope is EntityInstances, which is where it was filed.
+    eqt::memory::MemoryScope modelScope(eqt::memory::Category::EntityModels);
     uint32_t key = makeCacheKey(raceId, gender);
 
     // P08d: composite-allowed and composite-disallowed builds of the same race/gender
@@ -419,6 +424,7 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
     }
 
     // Get the model data to access textures
+    if (eqt::memory::enabled()) eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex("ent.nodeobj");  // T504 owner label
     // Try variant cache first (for models loaded with head/body variants)
     // Note: Model data is keyed without texture variant since geometry is the same
     std::shared_ptr<RaceModelData> modelData;

@@ -123,7 +123,7 @@ void EQAnimatedMesh::setOriginalVertices(const std::vector<irr::video::S3DVertex
 }
 
 void EQAnimatedMesh::setVertexMapping(const std::vector<VertexMappingList>& mapping) {
-    vertexMapping_ = mapping;
+    vertexMapping_.assign(mapping);  // T504: stored flat
 }
 
 void EQAnimatedMesh::copyBaseMesh() {

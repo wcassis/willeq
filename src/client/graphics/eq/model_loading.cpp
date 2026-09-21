@@ -361,7 +361,7 @@ bool RaceModelLoader::loadModelFromS3D(const std::string& s3dPath, uint16_t race
         auto merged = getMergedTextures();
         for (const auto& [name, tex] : merged) {
             if (modelData->textures.find(name) == modelData->textures.end()) {
-                modelData->textures[name] = tex;
+                modelData->textures.set(name, tex);  // T504: copy-on-write
             }
         }
         modelData->raceName = character->name;
@@ -499,7 +499,7 @@ bool RaceModelLoader::loadModelFromGlobalChr(uint16_t raceId, uint8_t gender) {
                 modelData->combinedGeometry = combinedGeom;
                 modelData->rawGeometry = rawGeom;  // Store raw geometry for animation
                 // Use merged textures from all sources (global + numbered globals + zone)
-                modelData->textures = getMergedTextures();
+                modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
                 modelData->raceName = character->name;
                 modelData->raceId = raceId;
                 modelData->gender = gender;
@@ -622,7 +622,7 @@ bool RaceModelLoader::loadModelFromNumberedGlobal(int globalNum, uint16_t raceId
 
                 auto modelData = std::make_shared<RaceModelData>();
                 modelData->combinedGeometry = combinedGeom;
-                modelData->textures = getMergedTextures();
+                modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
                 modelData->raceName = character->name;
                 modelData->raceId = raceId;
                 modelData->gender = gender;
@@ -651,7 +651,7 @@ bool RaceModelLoader::loadModelFromNumberedGlobal(int globalNum, uint16_t raceId
             modelData->combinedGeometry = combinedGeom;
             modelData->rawGeometry = rawGeom;  // Store raw geometry for animation
             // Use merged textures from all sources (global + numbered globals + zone)
-            modelData->textures = getMergedTextures();
+            modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
             modelData->raceName = character->name;
             modelData->raceId = raceId;
             modelData->gender = gender;

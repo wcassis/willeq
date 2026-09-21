@@ -33,10 +33,51 @@ struct DecodedTexture {
 };
 
 // Race model data - combined geometry for a race/gender combo
+// T504 (load-step audit): RaceModelData::textures used to be a std::map BY VALUE
+// and a dozen sites assigned it `getMergedTextures()`, which returns the merged
+// map by value -- so every base model, every appearance variant and every _chr
+// model carried its own full copy of a ~1,000-node map with string keys.
+// MEASURED qeynos2: 10.5 MiB in 47,535 allocations for the variant models alone
+// (~260 KB and ~1,100 blocks each), filed under entity_instances.
+//
+// This is that map shared by pointer. Reads are unchanged (find/begin/end/size,
+// and it converts to `const Map&`). The only writers call set(), which detaches
+// a private copy first (copy-on-write). There is deliberately NO operator[]: a
+// read through it would silently detach, so a missed site fails to compile.
+class SharedTextureMap {
+public:
+    using Map = std::map<std::string, std::shared_ptr<TextureInfo>>;
+    SharedTextureMap() = default;
+    SharedTextureMap& operator=(const Map& m) { map_ = std::make_shared<Map>(m); return *this; }
+    SharedTextureMap& operator=(Map&& m) { map_ = std::make_shared<Map>(std::move(m)); return *this; }
+    SharedTextureMap& operator=(std::shared_ptr<const Map> shared) {
+        map_ = std::const_pointer_cast<Map>(std::move(shared));   // never written through: set() detaches
+        return *this;
+    }
+    const Map& get() const { return map_ ? *map_ : emptyMap(); }
+    operator const Map&() const { return get(); }
+    Map::const_iterator find(const std::string& k) const { return get().find(k); }
+    Map::const_iterator begin() const { return get().begin(); }
+    Map::const_iterator end() const { return get().end(); }
+    size_t count(const std::string& k) const { return get().count(k); }
+    size_t size() const { return get().size(); }
+    bool empty() const { return get().empty(); }
+    void set(const std::string& k, std::shared_ptr<TextureInfo> v) {
+        if (!map_) map_ = std::make_shared<Map>();
+        else if (map_.use_count() > 1) map_ = std::make_shared<Map>(*map_);
+        (*map_)[k] = std::move(v);
+    }
+    // identity of the underlying storage, for tallies that must count a shared map once
+    const void* storageId() const { return map_.get(); }
+private:
+    static const Map& emptyMap() { static const Map e; return e; }
+    std::shared_ptr<Map> map_;
+};
+
 struct RaceModelData {
     std::shared_ptr<ZoneGeometry> combinedGeometry;      // Skinned geometry (bone transforms applied)
     std::shared_ptr<ZoneGeometry> rawGeometry;           // Raw geometry (no bone transforms, for animation)
-    std::map<std::string, std::shared_ptr<TextureInfo>> textures;
+    SharedTextureMap textures;   // T504: a shared snapshot, not a private copy (see the class)
     std::string raceName;
     uint16_t raceId = 0;
     uint8_t gender = 0;
@@ -306,6 +347,10 @@ public:
     // Release raw texture data after GPU upload (frees CPU-side pixel data)
     // Armor texture cache is also released (reconstructible from index)
     // Returns the number of bytes freed
+    // T504: the merged texture map as ONE shared immutable snapshot (rebuilt when
+    // the merged cache is). Models keep the snapshot they were built against,
+    // exactly as they kept their private copy before.
+    std::shared_ptr<const SharedTextureMap::Map> getMergedTexturesShared();
     size_t releaseRawTextureData();
 
     // T504 (load-step audit): release one texture map's raw file bytes AS SOON
@@ -687,6 +732,9 @@ private:
 
     // Constrained texture cache for direct texture loading (non-owning)
     EQT::Graphics::ConstrainedTextureCache* constrainedTextureCache_ = nullptr;
+    std::shared_ptr<const SharedTextureMap::Map> mergedTexturesShared_;  // T504
+    uint64_t mergedTexturesGeneration_ = 0;        // bumped on every merged-map rebuild
+    uint64_t mergedTexturesSharedGeneration_ = 0;  // generation mergedTexturesShared_ was built from
 
     // Composite entity texture directory (from entity_composite_builder output)
     std::string compositeEntityPath_;

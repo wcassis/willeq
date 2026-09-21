@@ -108,7 +108,7 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
                     auto merged = getMergedTextures();
                     for (const auto& [name, tex] : merged) {
                         if (modelData->textures.find(name) == modelData->textures.end()) {
-                            modelData->textures[name] = tex;
+                            modelData->textures.set(name, tex);  // T504: copy-on-write
                         }
                     }
                     modelData->raceName = character->name;
@@ -143,7 +143,7 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
                 auto merged = getMergedTextures();
                 for (const auto& [name, tex] : merged) {
                     if (modelData->textures.find(name) == modelData->textures.end()) {
-                        modelData->textures[name] = tex;
+                        modelData->textures.set(name, tex);  // T504: copy-on-write
                     }
                 }
                 modelData->raceName = character->name;

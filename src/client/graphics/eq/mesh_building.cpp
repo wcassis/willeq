@@ -101,8 +101,24 @@ std::map<std::string, std::shared_ptr<TextureInfo>> RaceModelLoader::getMergedTe
     // Cache the result
     cachedMergedTextures_ = merged;
     mergedTexturesCacheValid_ = true;
+    ++mergedTexturesGeneration_;  // T504: the shared snapshot is now stale
 
     return cachedMergedTextures_;
+}
+
+std::shared_ptr<const SharedTextureMap::Map> RaceModelLoader::getMergedTexturesShared() {
+    {
+        std::lock_guard<std::mutex> lock(otherChrCacheMutex_);
+        if (mergedTexturesCacheValid_ && mergedTexturesShared_ &&
+            mergedTexturesSharedGeneration_ == mergedTexturesGeneration_) {
+            return mergedTexturesShared_;
+        }
+    }
+    auto merged = getMergedTextures();   // rebuilds if needed (takes the same mutex itself)
+    std::lock_guard<std::mutex> lock(otherChrCacheMutex_);
+    mergedTexturesShared_ = std::make_shared<const SharedTextureMap::Map>(std::move(merged));
+    mergedTexturesSharedGeneration_ = mergedTexturesGeneration_;
+    return mergedTexturesShared_;
 }
 
 irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(

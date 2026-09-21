@@ -259,7 +259,7 @@ bool RaceModelLoader::tryBuildVariantFrom(const std::vector<std::shared_ptr<Char
         modelData->combinedGeometry = combinedGeom;
         modelData->rawGeometry = rawGeom;
         // Use merged textures from all sources (global + numbered globals + zone)
-        modelData->textures = getMergedTextures();
+        modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
         modelData->raceName = character->name;
         modelData->raceId = req.raceId;
         modelData->gender = req.gender;

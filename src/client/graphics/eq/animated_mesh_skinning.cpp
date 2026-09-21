@@ -118,7 +118,7 @@ void applyBoneTransformsToMeshImpl(
     const std::vector<AnimatedBoneState>& boneStates,
     const std::vector<VertexPiece>& vertexPieces,
     const std::vector<irr::video::S3DVertex>& originalVertices,
-    const std::vector<VertexMappingList>& vertexMapping,
+    const FlatVertexMapping& vertexMapping,
     irr::scene::IMesh* baseMesh,
     float extraRotCos,
     float extraRotSin)
@@ -194,7 +194,7 @@ void applyBoneTransformsToMeshImpl(
                 // MULTIPLE destinations (see VertexMappingList) -- compute the transform
                 // once, then write it to every duplicate so none are left frozen at bind
                 // pose. Empty list = unmapped vertex (skipped entirely), same as before.
-                const auto& mappings = vertexMapping[vIdx];
+                const auto mappings = vertexMapping[vIdx];  // T504: a span into the flat store
                 if (mappings.empty()) continue;
 
                 // Get original vertex position and normal (in EQ Z-up coordinates)
