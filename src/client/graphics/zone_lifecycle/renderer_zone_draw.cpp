@@ -660,6 +660,32 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
                 : std::function<bool(irr::video::ITexture*)>();
             zoneMergeBuffers_->build(ctx_.regionMeshNodes, isTextureLive);
             mergeZoneDrawsBuildEvictionCount_ = evictionCount;
+
+            // T504 (load-step audit): what the per-region objects weigh, by part.
+            // zone_mesh was 40-55 MiB in dreadlands/iceclad while ALL the zone's
+            // vertices fit in 7-9 MB of merged buffers.
+            {
+                uint64_t nodes = 0, buffers = 0, vbytes = 0, ibytes = 0, nodeMaterials = 0;
+                for (const auto& [idx, node] : ctx_.regionMeshNodes) {
+                    if (!node || !node->getMesh()) continue;
+                    ++nodes;
+                    nodeMaterials += node->getMaterialCount();
+                    irr::scene::IMesh* m = node->getMesh();
+                    for (irr::u32 b = 0; b < m->getMeshBufferCount(); ++b) {
+                        irr::scene::IMeshBuffer* mb = m->getMeshBuffer(b);
+                        ++buffers;
+                        vbytes += static_cast<uint64_t>(mb->getVertexCount()) * sizeof(irr::video::S3DVertex);
+                        ibytes += static_cast<uint64_t>(mb->getIndexCount()) * sizeof(irr::u16);
+                    }
+                }
+                LOG_INFO(MOD_GRAPHICS, "[regionmesh] nodes={} mesh_buffers={} vertex_bytes={} index_bytes={} "
+                         "node_materials={} sizeof(SMaterial)={} sizeof(SMeshBuffer)={} "
+                         "=> buffer_objects={} B, node_material_copies={} B",
+                         nodes, buffers, vbytes, ibytes, nodeMaterials,
+                         sizeof(irr::video::SMaterial), sizeof(irr::scene::SMeshBuffer),
+                         buffers * sizeof(irr::scene::SMeshBuffer),
+                         nodeMaterials * sizeof(irr::video::SMaterial));
+            }
         }
 
         mergeActive = zoneMergeBuffers_->isBuilt();
