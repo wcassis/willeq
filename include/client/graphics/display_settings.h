@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "client/core/baseline_mode.h"
 #include <cstdlib>
 #include <cstdint>
 
@@ -26,13 +27,7 @@ enum class EffectQuality {
 // not contain them. WILLEQ_BASELINE=1 runs that baseline: the non-original
 // switches below are forced off and the DetailManager is never created (it holds
 // the zone's combined geometry, which pinned a baseline structure in memory).
-inline bool BaselineOnly() {
-    static const bool v = [] {
-        const char* e = std::getenv("WILLEQ_BASELINE");
-        return e && e[0] == '1';
-    }();
-    return v;
-}
+inline bool BaselineOnly() { return ::eqt::BaselineOnly(); }  // see client/core/baseline_mode.h
 
 struct DisplaySettings {
     float renderDistance = 300.0f;

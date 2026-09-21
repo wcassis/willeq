@@ -1,5 +1,6 @@
 #include "client/raycast_mesh.h"
 #include "common/util/ksm.h"
+#include "common/logging.h"  // T504
 #include <math.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -781,6 +782,14 @@ public:
 		new ( mRoot ) NodeAABB(mVcount,mVertices,mTcount,mIndices,maxDepth,minLeafSize,minAxisSize,this,mLeafTriangles);
 
 		shrinkNodePool();
+
+		// T504 (load-step audit): what the finished tree weighs, by part.
+		LOG_INFO(MOD_MAP, "[raycastmesh] verts={} tris={} nodes={} leaf_tri_refs={} | bytes: vertices={} indices={} "
+		         "raycast_marks={} nodes={} leaf_refs={} (face normals: {} more when first queried)",
+		         mVcount, mTcount, mNodeCount, mLeafTriangles.size(),
+		         sizeof(RmReal) * 3 * (size_t)mVcount, sizeof(RmUint32) * 3 * (size_t)mTcount,
+		         sizeof(RmUint32) * (size_t)mTcount, sizeof(NodeAABB) * (size_t)mNodeCount,
+		         sizeof(RmUint32) * mLeafTriangles.capacity(), sizeof(RmReal) * 3 * (size_t)mTcount);
 
 		KSM::MarkMemoryForKSM(mLeafTriangles.data(), mLeafTriangles.size() * sizeof(RmUint32));
 	}
