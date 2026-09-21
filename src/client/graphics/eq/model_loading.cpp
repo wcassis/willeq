@@ -238,6 +238,13 @@ std::shared_ptr<TextureInfo> RaceModelLoader::getArmorTexture(const std::string&
 }
 
 bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
+    // T504 (load-step audit): this is ENTITY model data. It is called from
+    // setupInstantScene() on the render thread, whose open scope is ZoneMesh, so
+    // the whole <zone>_chr.s3d parse was charged to zone_mesh -- MEASURED iceclad:
+    // zone_mesh read 11.4 MiB at zone_load_start, before any zone geometry
+    // existed, and the [modelmem] tally (25.95 MiB) was twice the entity_models
+    // row (11.41) because the other half was filed here.
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);
     if (clientPath_.empty()) {
         LOG_ERROR(MOD_GRAPHICS, "RaceModelLoader: No client path set");
         return false;

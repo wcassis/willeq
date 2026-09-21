@@ -121,6 +121,24 @@ inline uint8_t subSlotOf(uint8_t label) {
 // charge and credit take it as a parameter instead of re-reading the
 // thread_local: a block credits the owner it was CHARGED to, whatever scope
 // is open on the freeing thread.
+// T504 (load-step audit): the B839 owner rows belong to ONE category. It is
+// `startup` unless WILLEQ_LEDGER_OWNERS=<category name> points the same
+// mechanism at another row for a diagnostic run (e.g. entity_instances, to see
+// what one entity instance is made of). The [memledger-startup] lines then
+// describe that category; the startup partition invariant is untouched because
+// in that mode no startup block touches a row.
+uint8_t g_ownerCat = static_cast<uint8_t>(Category::Startup);
+__attribute__((constructor)) void initOwnerCategoryFromEnv() {
+    const char* want = std::getenv("WILLEQ_LEDGER_OWNERS");
+    if (!want || !*want) return;
+    for (size_t i = 0; i < kCategoryCount; ++i) {
+        if (std::strcmp(want, kCategoryNames[i]) == 0) {
+            g_ownerCat = static_cast<uint8_t>(i);
+            return;
+        }
+    }
+}
+
 inline void charge(uint8_t cat, uint64_t bytes, uint64_t requested, uint8_t sub) {
     const uint64_t v = g_counters.live[cat].fetch_add(bytes, std::memory_order_relaxed) + bytes;
     raiseMax(g_counters.peak[cat], v);
@@ -132,7 +150,7 @@ inline void charge(uint8_t cat, uint64_t bytes, uint64_t requested, uint8_t sub)
     // label opened on a non-startup thread (a scope whose category is not
     // Startup) folds into nothing, which is what keeps the rows a partition
     // of exactly the startup category.
-    if (cat == static_cast<uint8_t>(Category::Startup)) {
+    if (cat == g_ownerCat) {
         const uint8_t slot = subSlotOf(sub);
         g_counters.subLive[slot].fetch_add(bytes, std::memory_order_relaxed);
         g_counters.subBlocks[slot].fetch_add(1, std::memory_order_relaxed);
@@ -145,7 +163,7 @@ inline void credit(uint8_t cat, uint64_t bytes, uint64_t requested, uint8_t sub)
     g_counters.live[cat].fetch_sub(bytes, std::memory_order_relaxed);
     g_counters.liveRequested[cat].fetch_sub(requested, std::memory_order_relaxed);  // T500
     g_counters.liveBlocks[cat].fetch_sub(1, std::memory_order_relaxed);             // T500
-    if (cat == static_cast<uint8_t>(Category::Startup)) {
+    if (cat == g_ownerCat) {
         const uint8_t slot = subSlotOf(sub);
         g_counters.subLive[slot].fetch_sub(bytes, std::memory_order_relaxed);
         g_counters.subBlocks[slot].fetch_sub(1, std::memory_order_relaxed);

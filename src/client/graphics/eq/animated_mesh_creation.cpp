@@ -1,6 +1,7 @@
 // RaceModelLoader animated mesh creation methods - split from race_model_loader.cpp
 // These methods remain part of the RaceModelLoader class
 
+#include "client/core/memory_ledger.h"  // T504
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
 #include "client/graphics/eq/animation_mapping.h"
@@ -262,7 +263,11 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNode(uint16_t raceId, ui
                                                               irr::scene::ISceneNode* parent,
                                                               irr::s32 id,
                                                               bool compositeAllowed) {
+    // T504: owner labels for WILLEQ_LEDGER_OWNERS=entity_instances -- the race's
+    // SHARED animated mesh is built lazily here, under the instance's scope.
+    if (eqt::memory::enabled()) eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex("ent.racemesh");
     EQAnimatedMesh* animMesh = getAnimatedMeshForRace(raceId, gender, compositeAllowed);
+    if (eqt::memory::enabled()) eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex("ent.nodeobj");
     if (!animMesh) {
         return nullptr;
     }
