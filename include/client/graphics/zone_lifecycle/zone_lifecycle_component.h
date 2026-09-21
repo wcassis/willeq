@@ -271,6 +271,9 @@ public:
 	float& zoneMaxClip() { return zoneMaxClip_; }
 	float const& zoneMaxClip() const { return zoneMaxClip_; }
 	std::unique_ptr<ZoneMergeBuffers> const& zoneMergeBuffers() const { return zoneMergeBuffers_; }
+	// T504 (zone draw rework): the loader fills the pools at step 4, before any
+	// frame is drawn, so it needs the object to exist.
+	ZoneMergeBuffers& ensureZoneMergeBuffers();
 	irr::scene::ITriangleSelector*& zoneTriangleSelector() { return zoneTriangleSelector_; }
 	irr::scene::ITriangleSelector* const& zoneTriangleSelector() const { return zoneTriangleSelector_; }
 

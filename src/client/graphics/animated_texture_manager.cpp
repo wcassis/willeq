@@ -402,6 +402,11 @@ void AnimatedTextureManager::update(float deltaMs) {
             for (const auto& am : state.affectedMaterials) {
                 am.node->getMaterial(am.materialIndex).setTexture(0, newTex);
             }
+            if (frameSwapHook_) {
+                for (irr::video::ITexture* other : state.frameTextures) {
+                    if (other && other != newTex) frameSwapHook_(other, newTex);
+                }
+            }
         }
     }
 }

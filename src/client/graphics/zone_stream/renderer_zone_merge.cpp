@@ -48,6 +48,10 @@ struct ZoneMergeBuffers::RegionBufferRange {
     int indexCount;
 };
 
+struct ZoneMergeBuffers::PoolMaterials {
+    std::vector<irr::video::SMaterial> list;
+};
+
 ZoneMergeBuffers::ZoneMergeBuffers() = default;
 ZoneMergeBuffers::~ZoneMergeBuffers() { destroy(); }
 
@@ -167,8 +171,168 @@ void ZoneMergeBuffers::destroy() {
     }
     buckets_.clear();
     ranges_.clear();
+    for (auto& gens : poolBuckets_) {
+        for (auto* gen : gens) {
+            if (gen->buf) gen->buf->drop();
+            delete gen;
+        }
+    }
+    poolBuckets_.clear();
+    std::vector<ZoneSlice>().swap(slices_);
+    std::vector<RegionSpan>().swap(regionSpans_);
+    delete poolMaterials_;
+    poolMaterials_ = nullptr;
+    pooled_ = false;
     built_ = false;
     totalBytes_ = 0;
+}
+
+// ---------------------------------------------------------------------------
+// T504 POOLED mode (see the header). The per-region meshes never outlive
+// appendRegion(): their vertices are baked to world space into the pool of
+// their MATERIAL, their indices into that pool's template array, and one
+// 16-byte ZoneSlice remembers where.
+// ---------------------------------------------------------------------------
+void ZoneMergeBuffers::beginPooled() {
+    destroy();
+    pooled_ = true;
+    poolMaterials_ = new PoolMaterials();
+}
+
+int ZoneMergeBuffers::appendRegion(size_t regionIdx, irr::scene::IMesh* mesh, float px, float py, float pz) {
+    if (!pooled_ || !mesh) return 0;
+    const irr::core::vector3df regionPos(px, py, pz);
+    const uint32_t firstSlice = static_cast<uint32_t>(slices_.size());
+
+    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+        irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(i);
+        if (!buf || buf->getVertexCount() == 0 || buf->getIndexCount() == 0) continue;
+        if (buf->getVertexType() != irr::video::EVT_STANDARD) {
+            LOG_WARN(MOD_GRAPHICS, "[zonepools] region {} buffer {} is not EVT_STANDARD -- not drawn", regionIdx, i);
+            continue;
+        }
+        if (buf->getVertexCount() > static_cast<irr::u32>(kMaxVertsPerBucket)) {
+            LOG_WARN(MOD_GRAPHICS, "[zonepools] region {} buffer {} has {} vertices (> u16 index space) -- not drawn",
+                     regionIdx, i, buf->getVertexCount());
+            continue;
+        }
+
+        // Material table: a few dozen distinct materials per zone, so a linear
+        // search by value is cheap and keeps the table minimal.
+        const irr::video::SMaterial& mat = buf->getMaterial();
+        auto& mats = poolMaterials_->list;
+        size_t materialId = 0;
+        for (; materialId < mats.size(); ++materialId) {
+            if (mats[materialId] == mat) break;
+        }
+        if (materialId == mats.size()) {
+            if (mats.size() >= 65535) continue;  // uint16 id space; never reached in practice
+            mats.push_back(mat);
+            poolBuckets_.emplace_back();
+        }
+
+        auto& gens = poolBuckets_[materialId];
+        if (gens.empty() ||
+            gens.back()->buf->getVertexCount() + buf->getVertexCount() > static_cast<irr::u32>(kMaxVertsPerBucket)) {
+            auto* g = new MergedGeneration();
+            g->buf = new irr::scene::SMeshBuffer();
+            gens.push_back(g);
+        }
+        MergedGeneration* gen = gens.back();
+
+        const uint16_t vertexBase = static_cast<uint16_t>(gen->buf->getVertexCount());
+        const irr::video::S3DVertex* srcVerts = static_cast<const irr::video::S3DVertex*>(buf->getVertices());
+        for (irr::u32 v = 0; v < buf->getVertexCount(); ++v) {
+            irr::video::S3DVertex vtx = srcVerts[v];
+            vtx.Pos += regionPos;
+            gen->buf->Vertices.push_back(vtx);
+        }
+        const int32_t indexOffset = static_cast<int32_t>(gen->templateIndices.size());
+        const irr::u16* srcIdx = buf->getIndices();
+        for (irr::u32 ix = 0; ix < buf->getIndexCount(); ++ix) {
+            gen->templateIndices.push_back(static_cast<uint16_t>(vertexBase + srcIdx[ix]));
+        }
+
+        slices_.push_back(ZoneSlice{static_cast<uint32_t>(regionIdx), static_cast<uint16_t>(materialId),
+                                     static_cast<uint16_t>(gens.size() - 1), indexOffset,
+                                     static_cast<int32_t>(buf->getIndexCount())});
+    }
+
+    const uint32_t added = static_cast<uint32_t>(slices_.size()) - firstSlice;
+    if (added > 0) {
+        regionSpans_.push_back(RegionSpan{static_cast<uint32_t>(regionIdx), firstSlice, added});
+    }
+    return static_cast<int>(added);
+}
+
+void ZoneMergeBuffers::finishPooled() {
+    if (!pooled_) return;
+    // appendRegion() is called in ascending region order by the load loop;
+    // sort anyway so slicesForRegion()'s binary search is a guarantee.
+    std::sort(regionSpans_.begin(), regionSpans_.end(),
+              [](const RegionSpan& a, const RegionSpan& b) { return a.regionIdx < b.regionIdx; });
+    slices_.shrink_to_fit();
+    regionSpans_.shrink_to_fit();
+
+    totalBytes_ = 0;
+    size_t totalGens = 0, totalVerts = 0;
+    for (auto& gens : poolBuckets_) {
+        for (auto* gen : gens) {
+            gen->templateIndices.shrink_to_fit();
+            totalVerts += gen->buf->getVertexCount();
+            totalBytes_ += static_cast<size_t>(gen->buf->getVertexCount()) * sizeof(irr::video::S3DVertex);
+            totalBytes_ += gen->templateIndices.size() * sizeof(uint16_t);
+        }
+        totalGens += gens.size();
+    }
+    totalBytes_ += slices_.size() * sizeof(ZoneSlice) + regionSpans_.size() * sizeof(RegionSpan);
+    built_ = true;
+    LOG_INFO(MOD_GRAPHICS, "[zonepools] built: {} regions, {} slices, {} materials, {} generations, {} vertices, {} bytes",
+             regionSpans_.size(), slices_.size(), poolMaterials_->list.size(), totalGens, totalVerts, totalBytes_);
+}
+
+const ZoneSlice* ZoneMergeBuffers::slicesForRegion(size_t regionIdx, size_t& countOut) const {
+    countOut = 0;
+    if (!pooled_ || regionSpans_.empty()) return nullptr;
+    const uint32_t key = static_cast<uint32_t>(regionIdx);
+    auto it = std::lower_bound(regionSpans_.begin(), regionSpans_.end(), key,
+                               [](const RegionSpan& s, uint32_t k) { return s.regionIdx < k; });
+    if (it == regionSpans_.end() || it->regionIdx != key) return nullptr;
+    countOut = it->count;
+    return slices_.data() + it->first;
+}
+
+size_t ZoneMergeBuffers::materialCount() const {
+    return poolMaterials_ ? poolMaterials_->list.size() : 0;
+}
+
+irr::video::SMaterial& ZoneMergeBuffers::material(size_t id) {
+    return poolMaterials_->list[id];
+}
+
+int ZoneMergeBuffers::swapTexture(irr::video::ITexture* from, irr::video::ITexture* to) {
+    if (!poolMaterials_ || !from) return 0;
+    int changed = 0;
+    for (auto& mat : poolMaterials_->list) {
+        changed += swapTextureInMaterial(mat, from, to);
+    }
+    return changed;
+}
+
+void ZoneMergeBuffers::forEachRegionTriangle(
+        size_t regionIdx, const std::function<void(const float*, const float*, const float*)>& fn) const {
+    size_t n = 0;
+    const ZoneSlice* s = slicesForRegion(regionIdx, n);
+    for (size_t k = 0; k < n; ++k) {
+        const MergedGeneration* gen = poolBuckets_[s[k].materialId][s[k].generation];
+        const irr::video::S3DVertex* verts = static_cast<const irr::video::S3DVertex*>(gen->buf->getVertices());
+        for (int32_t off = s[k].indexOffset; off + 2 < s[k].indexOffset + s[k].indexCount; off += 3) {
+            const irr::core::vector3df& a = verts[gen->templateIndices[off]].Pos;
+            const irr::core::vector3df& b = verts[gen->templateIndices[off + 1]].Pos;
+            const irr::core::vector3df& c = verts[gen->templateIndices[off + 2]].Pos;
+            fn(&a.X, &b.X, &c.X);
+        }
+    }
 }
 
 int ZoneMergeBuffers::renderMerged(irr::video::IVideoDriver* driver,
@@ -177,6 +341,70 @@ int ZoneMergeBuffers::renderMerged(irr::video::IVideoDriver* driver,
 
     irr::core::matrix4 identity;
     int drawCalls = 0;
+
+    if (pooled_) {
+        // T504: every entry carries a slice. A run is a maximal stretch of equal
+        // materialKey + materialId (the list is sorted by materialKey); within a
+        // run, each generation that appears is gathered and drawn once. There is
+        // no unmerged path: a single slice is just a gather of one.
+        const size_t total = sortedEntries.size();
+        size_t a = 0;
+        std::vector<uint16_t> gensInRun;
+        while (a < total) {
+            const ZoneDrawEntry& first = sortedEntries[a];
+            if (!first.slice) {
+                // Not zone geometry (placeable objects share this list): draw
+                // the mesh buffer itself, exactly as the unmerged path does.
+                if (first.buffer) {
+                    driver->setTransform(irr::video::ETS_WORLD, first.worldMat);
+                    if (first.materialOverride >= 0) {
+                        irr::video::SMaterial om = first.buffer->getMaterial();
+                        om.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(first.materialOverride);
+                        driver->setMaterial(om);
+                    } else {
+                        driver->setMaterial(first.buffer->getMaterial());
+                    }
+                    driver->drawMeshBuffer(first.buffer);
+                    ++drawCalls;
+                }
+                ++a;
+                continue;
+            }
+            size_t b = a + 1;
+            while (b < total && sortedEntries[b].slice &&
+                   sortedEntries[b].materialKey == first.materialKey &&
+                   sortedEntries[b].slice->materialId == first.slice->materialId) {
+                ++b;
+            }
+            gensInRun.clear();
+            for (size_t k = a; k < b; ++k) {
+                const uint16_t g = sortedEntries[k].slice->generation;
+                if (std::find(gensInRun.begin(), gensInRun.end(), g) == gensInRun.end()) gensInRun.push_back(g);
+            }
+            irr::video::SMaterial mat = poolMaterials_->list[first.slice->materialId];
+            if (first.materialOverride >= 0) {
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(first.materialOverride);
+            }
+            for (uint16_t g : gensInRun) {
+                MergedGeneration* gen = poolBuckets_[first.slice->materialId][g];
+                gen->buf->Indices.set_used(0);
+                for (size_t k = a; k < b; ++k) {
+                    const ZoneSlice* sl = sortedEntries[k].slice;
+                    if (sl->generation != g) continue;
+                    for (int32_t off = sl->indexOffset; off < sl->indexOffset + sl->indexCount; ++off) {
+                        gen->buf->Indices.push_back(gen->templateIndices[off]);
+                    }
+                }
+                gen->buf->Material = mat;
+                driver->setTransform(irr::video::ETS_WORLD, identity);
+                driver->setMaterial(mat);
+                driver->drawMeshBuffer(gen->buf);
+                ++drawCalls;
+            }
+            a = b;
+        }
+        return drawCalls;
+    }
     const size_t n = sortedEntries.size();
     size_t i = 0;
 
@@ -345,6 +573,7 @@ void RegionMeshTextureGuard::onTextureEvicted(const std::string& name,
     // resolved once, safely, at construction time.
     irr::video::ITexture* placeholder = placeholder_;
     int swapped = 0;
+    if (poolSwap_) swapped += poolSwap_(texture, placeholder);  // T504: pooled zone materials
 
     // T124: migrated onto swapTextureInMesh() -- behaviour-preserving,
     // this guard only ever scanned mesh-buffer materials (region mesh

@@ -8,6 +8,7 @@
 // files; ZoneLoadContext moved to include/client/graphics/zone_load_context.h
 // so all four TUs can see it. The driver stays here.
 
+#include "client/graphics/renderer_zone_merge.h"  // T504: ZoneMergeBuffers pooled mode
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -570,6 +571,21 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
             size_t regionsSkipped = 0;
             size_t meshBuildFailed = 0;
             size_t nodeFailed = 0;
+            // T504 (zone draw rework): POOLED mode. With mergeZoneDraws on, the
+            // region meshes are appended straight into ZoneMergeBuffers' per-
+            // material pools and dropped -- no scene node, no SMesh, no VBO per
+            // region. MEASURED before: iceclad 17,886 nodes / 16,049 buffers of
+            // 10.6 vertices each, zone_mesh 54.9 MiB for 6.6 MiB of geometry.
+            // WILLEQ_ZONE_POOLS=0 forces the legacy per-region-node path with the
+            // same binary, so the two can be compared frame for frame.
+            const char* poolsEnv = std::getenv("WILLEQ_ZONE_POOLS");
+            const bool pooledRegions = ctx_.config.constrainedConfig.mergeZoneDraws && !(poolsEnv && (poolsEnv[0] == '0' || poolsEnv[0] == 'u'));
+            ZoneMergeBuffers* pools = nullptr;
+            size_t pooledRegionCount = 0;
+            if (pooledRegions) {
+                pools = &ctx_.ZoneLifecycle().ensureZoneMergeBuffers();
+                pools->beginPooled();
+            }
             for (size_t i = 0; i < totalRegions; ++i) {
                 auto geom = wldLoader->getGeometryForRegion(i);
                 if (!geom || geom->vertices.empty()) { ++regionsBuilt; ++regionsSkipped; continue; }
@@ -590,6 +606,26 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                     continue;
                 }
 
+                if (pooledRegions) {
+                    const irr::core::vector3df regionPos(geom->centerX, geom->centerZ, geom->centerY);
+                    if (pools->appendRegion(i, mesh, regionPos.X, regionPos.Y, regionPos.Z) > 0) {
+                        ++pooledRegionCount;
+                        if (ctx_.regionBoundingBoxes.find(i) == ctx_.regionBoundingBoxes.end()) {
+                            irr::core::aabbox3df box = mesh->getBoundingBox();
+                            box.MinEdge += regionPos;
+                            box.MaxEdge += regionPos;
+                            ctx_.regionBoundingBoxes[i] = box;
+                        }
+                    }
+                    mesh->drop();
+                    ++regionsBuilt;
+                    if (regionsBuilt % 20 == 0 && totalRegions > 0) {
+                        int pct = 63 + static_cast<int>(7.0f * regionsBuilt / totalRegions);
+                        ctx.updateProgress(pct, "Building zone meshes [" + std::to_string(regionsBuilt)
+                                            + "/" + std::to_string(totalRegions) + "]");
+                    }
+                    continue;
+                }
                 irr::scene::IMeshSceneNode* node = ctx_.smgr->addMeshSceneNode(mesh);
                 if (node) {
                     node->setPosition(irr::core::vector3df(geom->centerX, geom->centerZ, geom->centerY));
@@ -623,6 +659,11 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                     ctx.updateProgress(pct, "Building zone meshes [" + std::to_string(regionsBuilt)
                                         + "/" + std::to_string(totalRegions) + "]");
                 }
+            }
+            if (pooledRegions) {
+                pools->finishPooled();
+                LOG_INFO(MOD_GRAPHICS, "Sequential: pooled {} regions into the zone draw pools (no per-region nodes)",
+                         pooledRegionCount);
             }
             LOG_INFO(MOD_GRAPHICS, "Sequential: built {} region meshes eagerly ({} skipped, {} mesh failures, {} node failures)",
                      ctx_.regionMeshNodes.size(), regionsSkipped, meshBuildFailed, nodeFailed);
@@ -722,6 +763,15 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                           waterAnimCount);
                 animCount += waterAnimCount;
 
+                // T504 (zone draw rework): pooled zone materials follow the frame changes.
+                if (pooledRegions) {
+                    ZoneMergeBuffers* animPools = pools;
+                    ctx_.animatedTextureManager->setFrameSwapHook(
+                        [animPools](irr::video::ITexture* from, irr::video::ITexture* to) {
+                            if (animPools->isPooled()) animPools->swapTexture(from, to);
+                        });
+                }
+
                 // Register each region mesh's buffers with the animated texture manager.
                 // PVS region meshes use addMesh (buffer materials) because they're drawn
                 // via manual draw path, not through Irrlicht's scene graph.
@@ -758,9 +808,19 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
         // destroys any built merge buffers on zone teardown, so each zone
         // visit starts from the config default again.
         ctx_.mergeZoneDrawsEnabled = ctx_.config.constrainedConfig.mergeZoneDraws;
+        // T504 diagnostic: WILLEQ_ZONE_POOLS=u = legacy region nodes with the merge
+        // OFF (every buffer drawn from its own VBO), for three-way frame compares.
+        if (const char* pe = std::getenv("WILLEQ_ZONE_POOLS"); pe && pe[0] == 'u') {
+            ctx_.mergeZoneDrawsEnabled = false;
+        }
 
         // Setup front-to-back sorting
-        if (ctx_.usePvsCulling && !ctx_.regionMeshNodes.empty() && !ctx_.config.constrainedConfig.skipManualZoneDraw) {
+        // T504 (zone draw rework): pooled regions count as zone geometry too --
+        // with no region nodes this test used to leave the zone undrawn.
+        const auto& drawPools = ctx_.ZoneLifecycle().zoneMergeBuffers();
+        const bool havePooledRegions = drawPools && drawPools->isPooled() && drawPools->pooledRegionCount() > 0;
+        if (ctx_.usePvsCulling && (!ctx_.regionMeshNodes.empty() || havePooledRegions) &&
+            !ctx_.config.constrainedConfig.skipManualZoneDraw) {
             // P32: GLES2 is the only backend now, so this was always true —
             // collapsed from an #ifdef EQT_HAS_GLES2 / EDT_BURNINGSVIDEO check.
             ctx_.manualZoneDrawEnabled = true;

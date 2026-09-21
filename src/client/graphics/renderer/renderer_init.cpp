@@ -518,6 +518,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         // this avoids).
         regionMeshTextureGuard_ = std::make_unique<RegionMeshTextureGuard>(
             regionMeshNodes_, constrainedTextureCache_->getPlaceholderTexture());
+        // T504: the same guard covers the pooled zone draw materials.
+        regionMeshTextureGuard_->setPoolSwap([this](irr::video::ITexture* from, irr::video::ITexture* to) {
+            const auto& pools = ZoneLifecycle().zoneMergeBuffers();
+            return (pools && pools->isPooled()) ? pools->swapTexture(from, to) : 0;
+        });
         constrainedTextureCache_->addEvictionListener(regionMeshTextureGuard_.get());
 
         // P10b: softwareCursorTexture_ was already set by createSoftwareCursor()

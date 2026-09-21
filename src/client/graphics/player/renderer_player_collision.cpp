@@ -4,6 +4,8 @@
 // refactor/J33_renderer_player_physics_split.md (move-only, verbatim relocation).
 // updatePlayerMovement() stays in renderer_player_physics.cpp: a filename-keyed
 // guard in tests/test_first_person_camera_single_formula.cpp requires it.
+#include "client/graphics/zone_lifecycle/zone_lifecycle_component.h"  // T504
+#include "client/graphics/renderer_zone_merge.h"  // T504
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/player/player_camera_component.h"
 #include "client/graphics/door_collision.h"
@@ -215,6 +217,27 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
             totalRegionTriangles += triangles.size();
             regionsAdded++;
             ctx_.regionWorldTriangles[regionIdx] = std::move(triangles);
+        }
+    }
+
+    // T504 (zone draw rework): in POOLED mode there are no region nodes; the same
+    // world-space triangles come out of the zone draw pools (their vertices were
+    // baked with the region position at load, which is all extractWorldTriangles
+    // applies to a region node).
+    if (const auto& pools = ctx_.ZoneLifecycle().zoneMergeBuffers(); pools && pools->isPooled()) {
+        for (const auto& [regionIdx, bbox] : ctx_.regionBoundingBoxes) {
+            std::vector<irr::core::triangle3df> triangles;
+            pools->forEachRegionTriangle(regionIdx, [&](const float* a, const float* b, const float* c) {
+                triangles.emplace_back(irr::core::vector3df(a[0], a[1], a[2]),
+                                       irr::core::vector3df(b[0], b[1], b[2]),
+                                       irr::core::vector3df(c[0], c[1], c[2]));
+            });
+            if (!triangles.empty()) {
+                totalRegionTriangles += triangles.size();
+                regionsAdded++;
+                triangles.shrink_to_fit();
+                ctx_.regionWorldTriangles[regionIdx] = std::move(triangles);
+            }
         }
     }
 

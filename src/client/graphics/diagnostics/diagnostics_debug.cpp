@@ -272,6 +272,20 @@ void DiagnosticsComponent::swapZoneMeshMaterials() {
 
     // Swap zone mesh node (non-PVS single mesh)
     swapNode(ctx_.zoneMeshNode);
+    // T504 (zone draw rework): in POOLED mode the zone's materials are the pools'
+    // table, a few dozen entries instead of one per region buffer.
+    if (const auto& pools = ctx_.ZoneLifecycle().zoneMergeBuffers(); pools && pools->isPooled()) {
+        for (size_t mi = 0; mi < pools->materialCount(); ++mi) {
+            auto& mat = pools->material(mi);
+            irr::s32 cur = mat.MaterialType;
+            irr::s32 mapped = mapMaterial(cur);
+            ++swapTotal;
+            if (mapped != cur) {
+                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(mapped);
+                ++swapChanged;
+            }
+        }
+    }
 
     // Swap PVS region mesh nodes
     for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
@@ -488,6 +502,12 @@ void DiagnosticsComponent::toggleManualZoneDraw() {
 // branch, toggling on lets the next eligible frame attempt a build.
 void DiagnosticsComponent::toggleMergeZoneDraws() {
     if (owner_.isLoading()) return;
+    // T504: pooled zone geometry has no unmerged form to fall back to.
+    if (const auto& pools = ctx_.ZoneLifecycle().zoneMergeBuffers(); pools && pools->isPooled()) {
+        LOG_INFO(MOD_GRAPHICS, "[mergedraws] the zone is drawn from pools (no per-region nodes) -- "
+                 "cannot be switched off for this zone visit; restart with WILLEQ_ZONE_POOLS=0 for the legacy path");
+        return;
+    }
     ctx_.mergeZoneDrawsEnabled = !ctx_.mergeZoneDrawsEnabled;
     if (!ctx_.mergeZoneDrawsEnabled && ctx_.ZoneLifecycle().zoneMergeBuffers()) {
         // Free the merge buffers immediately when turned off — no reason to

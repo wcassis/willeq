@@ -146,6 +146,11 @@ static uint32_t textureGroupId(const irr::video::SMaterial& mat) {
 
 } // namespace
 
+ZoneMergeBuffers& ZoneLifecycleComponent::ensureZoneMergeBuffers() {
+    if (!zoneMergeBuffers_) zoneMergeBuffers_ = std::make_unique<ZoneMergeBuffers>();
+    return *zoneMergeBuffers_;
+}
+
 void ZoneLifecycleComponent::createZoneMesh() {
     if (!ctx_.currentZone || !ctx_.currentZone->geometry) {
         return;
@@ -387,6 +392,39 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
         }
     };
 
+    // T504 (zone draw rework): POOLED mode has no region nodes. A visible region
+    // contributes its ZoneSlices; the material comes from the pools' table.
+    const bool pooledDraw = zoneMergeBuffers_ && zoneMergeBuffers_->isPooled();
+    const irr::core::matrix4 pooledIdentity;
+    auto collectRegionSlices = [&](const ZoneSlice* slices, size_t count, float distSq, bool useLightweight) {
+        for (size_t k = 0; k < count; ++k) {
+            const irr::video::SMaterial& mat = zoneMergeBuffers_->material(slices[k].materialId);
+            irr::s32 matOverride = useLightweight ? getLightweightOverride(mat.MaterialType) : -1;
+            uint32_t texId = textureGroupId(mat);
+            irr::s32 effectiveType = (matOverride >= 0) ? matOverride : mat.MaterialType;
+            uint32_t matKey = (static_cast<uint32_t>(effectiveType) << 16) | texId;
+            ZoneDrawEntry de{matKey, distSq, nullptr, pooledIdentity, matOverride};
+            de.slice = &slices[k];
+            sortedDrawEntries_.push_back(de);
+        }
+    };
+    // World-space box of a region: the node's in legacy mode, the one step 2/4
+    // recorded in regionBoundingBoxes in pooled mode.
+    auto regionWorldBox = [&](size_t regionIdx, irr::scene::IMeshSceneNode* node, irr::core::aabbox3df& out) -> bool {
+        if (!pooledDraw) {
+            irr::scene::IMesh* m = node ? node->getMesh() : nullptr;
+            if (!m) return false;
+            out = m->getBoundingBox();
+            out.MinEdge += node->getPosition();
+            out.MaxEdge += node->getPosition();
+            return true;
+        }
+        auto bit = ctx_.regionBoundingBoxes.find(regionIdx);
+        if (bit == ctx_.regionBoundingBoxes.end()) return false;
+        out = bit->second;
+        return true;
+    };
+
     // When portal vis is enabled via BFS (no stencil), filter to portal-visible regions
     const bool useBfsPortalCulling = owner_.portalVisibleRegions_ && !owner_.portalVisibleRegions_->empty() &&
                                      ctx_.config.constrainedConfig.portalOcclusion &&
@@ -457,7 +495,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
     int portalCulled = 0;
     int occlusionCulledCount = 0;
     for (const auto& entry : ctx_.sortedZoneDrawList) {
-        if (!entry.node) continue;
+        if (!pooledDraw && !entry.node) continue;
 
         // BFS portal culling: skip regions not reachable through portal walk
         if (useBfsPortalCulling && owner_.portalVisibleRegions_->count(entry.regionIdx) == 0) {
@@ -472,7 +510,15 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
         }
 
         auto it = ctx_.regionMeshNodes.find(entry.regionIdx);
-        if (it == ctx_.regionMeshNodes.end() || !it->second) continue;
+        size_t regionSliceCount = 0;
+        const ZoneSlice* regionSlices =
+            pooledDraw ? zoneMergeBuffers_->slicesForRegion(entry.regionIdx, regionSliceCount) : nullptr;
+        if (pooledDraw) {
+            if (!regionSlices) continue;
+        } else if (it == ctx_.regionMeshNodes.end() || !it->second) {
+            continue;
+        }
+        irr::scene::IMeshSceneNode* regionNode = pooledDraw ? nullptr : it->second;
 
         bool regionUseLW;
         if (!adaptiveLight) {
@@ -486,11 +532,9 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
             // nearly the whole screen). Deciding on the pre-region total would
             // always give the nearest region a free pass, exactly reproducing
             // the count-mode bug for the single/few-huge-region case.
-            irr::scene::IMesh* regionMesh = it->second->getMesh();
+            irr::core::aabbox3df worldBox;
+            const bool regionMesh = regionWorldBox(entry.regionIdx, regionNode, worldBox);
             if (regionMesh) {
-                irr::core::aabbox3df worldBox = regionMesh->getBoundingBox();
-                worldBox.MinEdge += it->second->getPosition();
-                worldBox.MaxEdge += it->second->getPosition();
                 cumulativeRegionArea += estimateRegionScreenArea(
                     worldBox, zoneViewProj, screenAreaW, screenAreaH);
             }
@@ -511,12 +555,10 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
             // they differ slightly (light sits at player pos + vertical
             // offset, see renderer_entities.cpp), so entry.distanceSq is not
             // reused directly.
-            irr::scene::IMesh* regionMesh = it->second->getMesh();
+            irr::core::aabbox3df worldBox;
+            const bool regionMesh = regionWorldBox(entry.regionIdx, regionNode, worldBox);
             bool inRange = true;  // conservative default if mesh missing
             if (regionMesh) {
-                irr::core::aabbox3df worldBox = regionMesh->getBoundingBox();
-                worldBox.MinEdge += it->second->getPosition();
-                worldBox.MaxEdge += it->second->getPosition();
                 const float nearX = std::max(worldBox.MinEdge.X, std::min(lightPos.X, worldBox.MaxEdge.X));
                 const float nearY = std::max(worldBox.MinEdge.Y, std::min(lightPos.Y, worldBox.MaxEdge.Y));
                 const float nearZ = std::max(worldBox.MinEdge.Z, std::min(lightPos.Z, worldBox.MaxEdge.Z));
@@ -532,7 +574,11 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
         } else {
             regionUseLW = regionsDrawn >= zonePPBudget;
         }
-        collectMeshBuffers(it->second, entry.distanceSq, regionUseLW);
+        if (pooledDraw) {
+            collectRegionSlices(regionSlices, regionSliceCount, entry.distanceSq, regionUseLW);
+        } else {
+            collectMeshBuffers(regionNode, entry.distanceSq, regionUseLW);
+        }
         regionsDrawn++;
     }
 
@@ -631,7 +677,13 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
 
         const size_t evictionCount = ctx_.constrainedTextureCache ? ctx_.constrainedTextureCache->getEvictionCount() : 0;
 
-        if (zoneMergeBuffers_->isBuilt() && evictionCount > mergeZoneDrawsBuildEvictionCount_) {
+        if (zoneMergeBuffers_->isPooled()) {
+            // T504: the pools ARE the zone geometry -- there is nothing to fall
+            // back to, so an eviction does not tear them down. The eviction guard
+            // swaps the evicted texture for the placeholder in the pools'
+            // material table, which is what RegionMeshTextureGuard does for
+            // region buffers.
+        } else if (zoneMergeBuffers_->isBuilt() && evictionCount > mergeZoneDrawsBuildEvictionCount_) {
             // A region's texture evicted after we built the merge -- the
             // merge buffers may reference textures that are no longer
             // resident/valid. Bail permanently for this zone visit rather
@@ -690,6 +742,9 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
 
         mergeActive = zoneMergeBuffers_->isBuilt();
     }
+    // T504: pooled geometry can only be drawn by renderMerged() -- whatever the
+    // /mergedraws flag says, there are no region buffers to draw unmerged.
+    if (pooledDraw && zoneMergeBuffers_->isBuilt()) mergeActive = true;
 
     int drawCalls = 0;
     if (mergeActive) {
@@ -700,6 +755,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
         // driver's state tracking (SOGLES2State) skips redundant GL calls for
         // blend/depth/cull/texture/program when consecutive draws share the same material.
         for (const auto& de : sortedDrawEntries_) {
+            if (!de.buffer) continue;  // T504: a pooled slice has no mesh buffer
             ctx_.driver->setTransform(irr::video::ETS_WORLD, de.worldMat);
             if (de.materialOverride >= 0) {
                 // Adaptive lighting: override material type (per-pixel → lightweight)
