@@ -240,6 +240,48 @@ the files above are near the 1,500-line ceiling.
    today). I recommend accepting that rather than pinning all playable races
    resident, which is most of what this unit removes.
 
+## Revision 1 — Will, 2026-09-21: residency is a working set, in both directions
+
+Will's direction: players are a variable we control (our server, our accounts);
+NPC spawns and pathing are dynamic, so some run-to-run variation must be
+allowed; and the original client cannot have held a whole zone's assets at
+once, so assets are to be loaded **and unloaded** as needed.
+
+What that changes here:
+
+1. **Both open points are settled toward on-demand.** No playable race is
+   pinned resident; a race is loaded when its first entity needs it.
+2. **The rule gains the unload half.** The used set is reference-counted by
+   live entities. When the last entity of a race (and nothing borrowing its
+   animations) is gone, its built model *and* its retained source become
+   evictable; they are dropped after a hysteresis window (so a roamer crossing
+   the visibility edge does not thrash a 0.75 s parse) or immediately under
+   budget pressure, least-recently-used first. New **Leg 2b**, after Leg 2,
+   with its own red-first test: spawn race B, despawn it, assert the category
+   returns to its pre-B bytes.
+3. **Representation is the other half, and the disk sizes prove it.** qeynos2's
+   three archives are 9.2 MB on disk and `global_chr.s3d` 7.4 MB — *compressed,
+   textures included*. `entity_models` holds 31.8 MiB for that zone **with no
+   texture pixels in it** (EQE1 serves those from a file mapping). The source
+   data is being expanded several-fold into per-bone `shared_ptr`, `std::map`
+   and `std::string` nodes (167,284 live blocks in dreadlands). Pruning removes
+   what is not needed; it does not make what *is* needed compact. Leg 0's
+   census therefore also reports bytes-per-character against that character's
+   raw fragment bytes, so the blow-up factor is a number, and a compact
+   skeleton/animation layout gets its own plan off that number.
+4. **Measurement protocol.** Players: exactly one (Testchar), always — a
+   controlled variable, asserted in the run (`visible players == 0 others`).
+   NPCs: the entity rows (`entity_models`, `entity_instances`, `equipment`)
+   get a tolerance band **measured**, not chosen: N=5 repeat runs per audit
+   zone, band = observed spread; every other row is deterministic and keeps a
+   tight bound. A budget for an entity row is stated as "per distinct resident
+   race" plus a fixed part, so it scales with what the server happened to
+   spawn instead of being blown by it.
+
+The same working-set principle applies to the rows after this one (zone
+geometry by region visibility, decoded textures) and is taken up in their own
+plans; this unit stays on character models.
+
 ## Measurements
 
 Baseline with the navmesh counted as core (Will, 2026-09-21), `run42_*`:
