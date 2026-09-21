@@ -23,6 +23,7 @@
 // ParticleManager is not here: it is built unconditionally at init and has no
 // lazy site.
 
+#include "client/graphics/display_settings.h"  // T504: BaselineOnly()
 #include "client/graphics/overlays/overlays_component.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/renderer_context.h"
@@ -79,6 +80,7 @@ bool OverlaysComponent::ensureTumbleweedManager() {
 bool OverlaysComponent::ensureDetailManager() {
     if (ctx_.detailManager) return true;
     if (!ctx_.smgr || !ctx_.driver) return false;
+    if (eqt::ui::BaselineOnly()) return false;  // T504: non-original; and it pins the combined zone geometry
     LOG_TRACE(MOD_GRAPHICS, "Creating detail manager...");
     ctx_.detailManager = std::make_unique<Detail::DetailManager>(ctx_.smgr, ctx_.driver);
     ctx_.detailManager->setSurfaceMapsPath("data/detail/zones");

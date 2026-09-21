@@ -336,6 +336,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     if (!displaySettingsCached_) {
         LOG_TRACE(MOD_GRAPHICS, "Loading display settings from file...");
         cachedDisplaySettings_ = eqt::ui::LoadShippedDisplaySettings();
+        if (eqt::ui::BaselineOnly()) {
+            cachedDisplaySettings_.applyBaselineOnly();
+            LOG_INFO(MOD_GRAPHICS, "WILLEQ_BASELINE=1: non-original features OFF (detail objects, reactive foliage, "
+                     "boids, tumbleweeds, atmospheric particles, animated trees)");
+        }
         displaySettingsCached_ = true;
     }
 
