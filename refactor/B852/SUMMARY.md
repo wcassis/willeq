@@ -25,7 +25,7 @@ has never opened. Both failures are classic zones.
 
 | zone | expansion | status | why | issue |
 |---|---|---|---|---|
-| **soldunga** | classic | failed, exit 1 | FATAL: `Texture 'gnome_stronghold_floor_transition.bmp' not found in any EQE1 flat pack` — the pack stores the name truncated to 31 chars (`gnome_stronghold_floor_transiti`); the 33-char lookup never matches. Without `--eqe1-path` (S3D textures) the same zone loads clean in 1813 ms (captured: `/home/user/kb-evidence/b852-zone-content-sweep/soldunga_ab_without_eqe1.log`), so this is an EQE1-tree defect, not a zone defect. | **#100** |
+| ~~**soldunga**~~ | classic | ~~failed, exit 1~~ **closed by B100 (2026-09-21)** | ~~FATAL: `Texture 'gnome_stronghold_floor_transition.bmp' not found in any EQE1 flat pack` — the pack stores the name truncated to 31 chars (`gnome_stronghold_floor_transiti`); the 33-char lookup never matches.~~ B100 shipped the EQE1 v3 name table (builder/loader/verifier); the pack is now v3 and soldunga loads clean with `--eqe1-path` (see `refactor/BOARD.md` B100 strike, 2026-09-21). | **#100** |
 | **hole** | classic | failed, exit 0 | Loads and renders fine, but peak RssAnon 273,870,848 B = 261.2 MB, 5.2 MB over the 256 MB Pi ceiling (standalone re-run: 261.1 MB, stable). Next-highest zone is timorous at 247.8 MB. | **#101** |
 
 No zone died on the 4 GiB cap and no zone hit the timeout.

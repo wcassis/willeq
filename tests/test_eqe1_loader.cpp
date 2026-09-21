@@ -326,6 +326,289 @@ void testV1PayloadFormatDefaultsToETC1() {
     PASS();
 }
 
+// B100: the RED case, exactly as the old builder wrote it. For a >31-char
+// name the old eqe1_builder did `EQE1IndexEntry idx = {}` (zero-init) then
+// `strncpy(idx.name, name, 31)` — a formally VALID 31-char entry, no error
+// anywhere. The pack loads, its one entry keys on the truncated name, and
+// the client's full-name lookup misses exactly the way soldunga did:
+// gnome_stronghold_floor_transition (33) stored as
+// gnome_stronghold_floor_transiti (31) => ConstrainedTextureCache FATAL exit.
+// This pins the class (any name >31 chars truncates and its full-name
+// lookup misses), not one zone.
+void testV1TruncationHistoricalMiss() {
+    TEST(V1TruncationHistoricalMiss);
+    const willeq_test::ScopedTempDir tmp("test_eqe1_loader_b100_red");
+    const std::string tmpPathStr = (tmp / "test_v1_trunc_real.eqe1").string();
+    const char* tmpPath = tmpPathStr.c_str();
+
+    const std::string fullName = "gnome_stronghold_floor_transition";  // 33
+    ASSERT_TRUE(fullName.size() > EQE1_INLINE_NAME_LIMIT,
+                "soldunga's name must exceed the 31-char inline field");
+
+    uint32_t szEtc1 = etc1MipChainSize(4, 4, 3);
+    uint32_t indexEnd = sizeof(EQE1Header) + 1 * EQE1_INDEX_ENTRY_SIZE;
+    uint32_t off = alignTo16(indexEnd);
+
+    {
+        std::ofstream out(tmpPath, std::ios::binary);
+        EQE1Header hdr = {};
+        hdr.magic = EQE1_MAGIC;
+        hdr.version = EQE1_VERSION;
+        hdr.numEntries = 1;
+        out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+        // The old builder's exact write: zero-init + strncpy(..., 31)
+        EQE1IndexEntry e = {};
+        std::strncpy(e.name, fullName.c_str(), EQE1_NAME_SIZE - 1);
+        e.width = 4; e.height = 4; e.mipLevels = 3;
+        e.entryType = EQE1_TYPE_ETC1_RGB;
+        e.dataOffset = off; e.dataSize = szEtc1;
+        out.write(reinterpret_cast<const char*>(&e), sizeof(e));
+        std::vector<char> payload(off + szEtc1 - indexEnd, 0x5A);
+        out.write(payload.data(), payload.size());
+    }
+
+    EQE1Loader loader;
+    ASSERT_TRUE(loader.open(tmpPath),
+                "the old-style pack loads fine — that is the silence that hid it");
+    ASSERT_TRUE(loader.getEntryCount() == 1, "entry count != 1");
+    // The defect: the entry is keyed on the 31-char truncation, so the
+    // full-name lookup the client performs MISSES.
+    ASSERT_TRUE(loader.lookup(fullName) == nullptr,
+                "full 33-char name must NOT resolve in a v1 pack — that is the soldunga miss");
+    ASSERT_TRUE(loader.lookup(std::string(fullName.substr(0, 31))) != nullptr,
+                "the truncated 31-char key must be what the old builder stored");
+    PASS();
+}
+
+// B100: the GREEN case — the fix. The same name now round-trips in full via
+// the v3 name table, and the truncated prefix is NOT a lookup key. This is
+// what the rebuilt soldunga.eqe1 must do. v3 keeps the 48-byte v1/v2 entry
+// and appends an 8-byte {nameOffset,nameLength} tail; long names live in a
+// table between the index and the data section, short names stay inline.
+void testV3NameTableRoundTrip() {
+    TEST(V3NameTableRoundTrip);
+    const willeq_test::ScopedTempDir tmp("test_eqe1_loader_v3");
+    const std::string tmpPathStr = (tmp / "test_v3_pack.eqe1").string();
+    const char* tmpPath = tmpPathStr.c_str();
+
+    // 33 and 36 chars — both in the class (any name >31 chars)
+    const std::string longA = "gnome_stronghold_floor_transition";   // 33
+    const std::string longB = "a_very_long_frozenshadow_name_here_x"; // 36
+    ASSERT_TRUE(longA.size() > EQE1_INLINE_NAME_LIMIT, "longA must exceed the inline limit");
+    ASSERT_TRUE(longB.size() > EQE1_INLINE_NAME_LIMIT, "longB must exceed the inline limit");
+
+    // Two 4x4 ETC1 textures (3 mips: 4->2->1), same payload as testV2PayloadFormats
+    uint32_t szEtc1 = etc1MipChainSize(4, 4, 3);
+    // v3 stride: 48-byte entry + 8-byte name tail
+    uint32_t indexEnd = sizeof(EQE1Header) + 2 * EQE1_INDEX_ENTRY_SIZE_V3;
+    // Name table: between index and data, contiguous, NUL-free — exactly as
+    // the builder lays it out (table first, then data, 16-aligned)
+    uint32_t tableStart = indexEnd;
+    uint32_t nameAOff = tableStart;
+    uint32_t nameBOff = tableStart + (uint32_t)longA.size();
+    uint32_t tableEnd = nameBOff + (uint32_t)longB.size();
+    uint32_t offA = alignTo16(tableEnd);
+    uint32_t offB = alignTo16(offA + szEtc1);
+
+    auto makeV3Entry = [](const char* name, uint32_t nameOffset, uint32_t nameLength,
+                          uint32_t offset, uint32_t size) {
+        EQE1IndexEntry e = {};
+        if (nameLength != 0) {
+            // table-resident: the 32-byte inline field is zeroed
+        } else {
+            std::strncpy(e.name, name, EQE1_NAME_SIZE - 1);
+        }
+        e.width = 4; e.height = 4; e.mipLevels = 3;
+        e.hasAlpha = 0; e.entryType = EQE1_TYPE_ETC1_RGB;
+        e.payloadFormat = EQE1_PAYLOAD_ETC1;
+        e.dataOffset = offset; e.dataSize = size;
+        EQE1IndexEntryNameTail tail = {};
+        tail.nameOffset = nameOffset;
+        tail.nameLength = nameLength;
+        return std::make_pair(e, tail);
+    };
+
+    {
+        std::ofstream out(tmpPath, std::ios::binary);
+        EQE1Header hdr = {};
+        hdr.magic = EQE1_MAGIC;
+        hdr.version = EQE1_VERSION_V3;
+        hdr.numEntries = 2;
+        out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+        auto [eA, tA] = makeV3Entry(longA.c_str(), nameAOff, (uint32_t)longA.size(), offA, szEtc1);
+        auto [eB, tB] = makeV3Entry(longB.c_str(), nameBOff, (uint32_t)longB.size(), offB, szEtc1);
+        out.write(reinterpret_cast<const char*>(&eA), sizeof(eA));
+        out.write(reinterpret_cast<const char*>(&tA), sizeof(tA));
+        out.write(reinterpret_cast<const char*>(&eB), sizeof(eB));
+        out.write(reinterpret_cast<const char*>(&tB), sizeof(tB));
+        out.write(longA.data(), (std::streamsize)longA.size());
+        out.write(longB.data(), (std::streamsize)longB.size());
+        std::vector<char> payload(offB + szEtc1 - tableEnd, 0x5A);
+        out.write(payload.data(), payload.size());
+    }
+
+    EQE1Loader loader;
+    ASSERT_TRUE(loader.open(tmpPath), "open() failed on v3 pack");
+    ASSERT_TRUE(loader.getEntryCount() == 2, "entry count != 2");
+
+    // The FULL name round-trips — the class pin. A truncated key would miss
+    // exactly the way soldunga did.
+    auto* a = loader.lookup(longA);
+    ASSERT_TRUE(a != nullptr, "full 33-char name must round-trip (soldunga class)");
+    ASSERT_TRUE(a->dataSize == szEtc1, "dataSize mismatch for table-resident name");
+    auto* b = loader.lookup(longB);
+    ASSERT_TRUE(b != nullptr, "second table-resident name missing");
+    // The truncated prefix must NOT be a lookup key
+    ASSERT_TRUE(loader.lookup(std::string(longA.substr(0, 31))) == nullptr,
+                "truncated 31-char prefix must not be a key");
+    // Table-resident names appear in getTextureNames() in full
+    auto names = loader.getTextureNames();
+    ASSERT_TRUE(names.size() == 2, "getTextureNames count");
+    bool sawA = false, sawB = false;
+    for (const auto& n : names) {
+        if (n == longA) sawA = true;
+        if (n == longB) sawB = true;
+    }
+    ASSERT_TRUE(sawA && sawB, "getTextureNames must carry the full table-resident names");
+    PASS();
+}
+
+// B100: v3 packs may also carry short names inline (tail zeroed) — the mix
+// every real rebuilt pack has, since only >31-char names go to the table.
+void testV3MixedInlineAndTable() {
+    TEST(V3MixedInlineAndTable);
+    const willeq_test::ScopedTempDir tmp("test_eqe1_loader_v3mixed");
+    const std::string tmpPathStr = (tmp / "test_v3_mixed.eqe1").string();
+    const char* tmpPath = tmpPathStr.c_str();
+
+    const std::string longName = "gnome_stronghold_floor_transition";
+    uint32_t szEtc1 = etc1MipChainSize(4, 4, 3);
+    uint32_t indexEnd = sizeof(EQE1Header) + 2 * EQE1_INDEX_ENTRY_SIZE_V3;
+    uint32_t nameOff = indexEnd;                       // table: [indexEnd, indexEnd+len)
+    uint32_t tableEnd = nameOff + (uint32_t)longName.size();
+    uint32_t offShort = alignTo16(tableEnd);
+    uint32_t offLong = alignTo16(offShort + szEtc1);
+
+    {
+        std::ofstream out(tmpPath, std::ios::binary);
+        EQE1Header hdr = {};
+        hdr.magic = EQE1_MAGIC;
+        hdr.version = EQE1_VERSION_V3;
+        hdr.numEntries = 2;
+        out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+        EQE1IndexEntry shortE = {};
+        std::strncpy(shortE.name, "shortname", EQE1_NAME_SIZE - 1);
+        shortE.width = 4; shortE.height = 4; shortE.mipLevels = 3;
+        shortE.entryType = EQE1_TYPE_ETC1_RGB; shortE.payloadFormat = EQE1_PAYLOAD_ETC1;
+        shortE.dataOffset = offShort; shortE.dataSize = szEtc1;
+        out.write(reinterpret_cast<const char*>(&shortE), sizeof(shortE));
+        EQE1IndexEntryNameTail shortTail = {};
+        out.write(reinterpret_cast<const char*>(&shortTail), sizeof(shortTail));
+        EQE1IndexEntry longE = {};  // name field zeroed
+        longE.width = 4; longE.height = 4; longE.mipLevels = 3;
+        longE.entryType = EQE1_TYPE_ETC1_RGB; longE.payloadFormat = EQE1_PAYLOAD_ETC1;
+        longE.dataOffset = offLong; longE.dataSize = szEtc1;
+        out.write(reinterpret_cast<const char*>(&longE), sizeof(longE));
+        EQE1IndexEntryNameTail longTail = {};
+        longTail.nameOffset = nameOff;
+        longTail.nameLength = (uint32_t)longName.size();
+        out.write(reinterpret_cast<const char*>(&longTail), sizeof(longTail));
+        out.write(longName.data(), (std::streamsize)longName.size());
+        std::vector<char> payload(offLong + szEtc1 - (nameOff + longName.size()), 0x5A);
+        out.write(payload.data(), payload.size());
+    }
+
+    EQE1Loader loader;
+    ASSERT_TRUE(loader.open(tmpPath), "open() failed on mixed v3 pack");
+    ASSERT_TRUE(loader.lookup("shortname") != nullptr, "inline (short) v3 name missing");
+    ASSERT_TRUE(loader.lookup(longName) != nullptr, "table v3 name missing");
+    ASSERT_TRUE(loader.getEntryCount() == 2, "entry count != 2");
+    PASS();
+}
+
+// B100: a v1/v2 entry whose name is NOT null-terminated within the 32-byte
+// field is a name the builder truncated at 31 chars. The old read path
+// keyed the truncation silently; the loader must REJECT the pack instead,
+// so the next pack rebuild (v3) is the only path forward.
+void testV1V2TruncatedNameRejected() {
+    TEST(V1V2TruncatedNameRejected);
+    const willeq_test::ScopedTempDir tmp("test_eqe1_loader_v1trunc");
+    const std::string tmpPathStr = (tmp / "test_v1_trunc.eqe1").string();
+    const char* tmpPath = tmpPathStr.c_str();
+
+    // 32 non-NUL name bytes: exactly what the old builder wrote for a
+    // 33-char name (strncpy into char[32] with no terminator)
+    const std::string truncated = "gnome_stronghold_floor_transiti";
+    ASSERT_TRUE(truncated.size() == 31, "expected a 31-char truncated name");
+
+    uint32_t szEtc1 = etc1MipChainSize(4, 4, 3);
+    uint32_t indexEnd = sizeof(EQE1Header) + 1 * EQE1_INDEX_ENTRY_SIZE;
+    uint32_t off = alignTo16(indexEnd);
+
+    for (uint16_t version : {EQE1_VERSION, EQE1_VERSION_V2}) {
+        std::string p = (tmp / ("test_trunc_v" + std::to_string(version) + ".eqe1")).string();
+        {
+            std::ofstream out(p, std::ios::binary);
+            EQE1Header hdr = {};
+            hdr.magic = EQE1_MAGIC;
+            hdr.version = version;
+            hdr.numEntries = 1;
+            out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+            EQE1IndexEntry e = {};
+            // 31 chars + one more non-NUL byte in byte 31 => no terminator
+            std::strncpy(e.name, truncated.c_str(), 31);
+            e.name[31] = 'n';
+            e.width = 4; e.height = 4; e.mipLevels = 3;
+            e.entryType = EQE1_TYPE_ETC1_RGB;
+            e.dataOffset = off; e.dataSize = szEtc1;
+            out.write(reinterpret_cast<const char*>(&e), sizeof(e));
+            std::vector<char> payload(off + szEtc1 - indexEnd, 0x5A);
+            out.write(payload.data(), payload.size());
+        }
+        EQE1Loader loader;
+        const char* why = "pack with a truncated name must be rejected";
+        ASSERT_TRUE(!loader.open(p.c_str()), why);
+    }
+    PASS();
+}
+
+// B100: a v3 entry carrying BOTH a table reference and a non-zero inline
+// name field is malformed — reject it rather than guessing which wins.
+void testV3TableReferenceOutOfBounds() {
+    TEST(V3TableReferenceOutOfBounds);
+    const willeq_test::ScopedTempDir tmp("test_eqe1_loader_v3oob");
+    const std::string tmpPathStr = (tmp / "test_v3_oob.eqe1").string();
+    const char* tmpPath = tmpPathStr.c_str();
+
+    uint32_t szEtc1 = etc1MipChainSize(4, 4, 3);
+    uint32_t indexEnd = sizeof(EQE1Header) + 1 * EQE1_INDEX_ENTRY_SIZE_V3;
+    uint32_t off = alignTo16(indexEnd);
+
+    {
+        std::ofstream out(tmpPath, std::ios::binary);
+        EQE1Header hdr = {};
+        hdr.magic = EQE1_MAGIC;
+        hdr.version = EQE1_VERSION_V3;
+        hdr.numEntries = 1;
+        out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+        EQE1IndexEntry e = {};
+        e.width = 4; e.height = 4; e.mipLevels = 3;
+        e.entryType = EQE1_TYPE_ETC1_RGB; e.payloadFormat = EQE1_PAYLOAD_ETC1;
+        e.dataOffset = off; e.dataSize = szEtc1;
+        out.write(reinterpret_cast<const char*>(&e), sizeof(e));
+        EQE1IndexEntryNameTail tail = {};
+        tail.nameOffset = 4;      // inside the index block (before indexEnd)
+        tail.nameLength = 10;
+        out.write(reinterpret_cast<const char*>(&tail), sizeof(tail));
+        std::vector<char> payload(off + szEtc1 - indexEnd, 0x5A);
+        out.write(payload.data(), payload.size());
+    }
+    EQE1Loader loader;
+    ASSERT_TRUE(!loader.open(tmpPath),
+                "v3 pack with a name-table reference inside the index must be rejected");
+    PASS();
+}
+
 void testClose() {
     TEST(Close);
     EQE1Loader loader;
@@ -419,6 +702,11 @@ int main() {
     testGetTextureNames();
     testV2PayloadFormats();
     testV1PayloadFormatDefaultsToETC1();
+    testV1TruncationHistoricalMiss();
+    testV3NameTableRoundTrip();
+    testV3MixedInlineAndTable();
+    testV1V2TruncatedNameRejected();
+    testV3TableReferenceOutOfBounds();
     testClose();
     testMmapBackingMatchesFile();
     testMmapPointersSurviveMove();

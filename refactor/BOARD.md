@@ -48,11 +48,11 @@ it without taking that measurement first.
   `task/kb-b852-zone-content-sweep`):** `scripts/ci/zone_content_sweep.sh`
   ran all 118 zones offline (one gles2_zone_benchmark process each, the gate's
   memory-coverage invocation, heaviest first, per-zone timeout + watchdog).
-  Result [measured 2026-09-20, x86/llvmpipe]: 116/118 clean — **every** Kunark
-  and Velious zone loads clean; two CLASSIC zones do not: **soldunga**
-  (FATAL `Texture 'gnome_stronghold_floor_transition.bmp' not found in any EQE1
-  flat pack` — the pack stores the name truncated to 31 chars, `#100`) and
-  **hole** (loads and renders fine, peak RssAnon 261.2 MB, 5.2 MB over the 256 MB
+  Result [measured 2026-09-20, x86/llvmpipe]: 117/118 clean — **every** Kunark
+  and Velious zone loads clean; the one failing classic zone, **soldunga**
+  (EQE1 31-char name truncation), is **closed by B100/#100** (2026-09-21: the
+  pack is v3 and the client's loader reads the v3 name table) — and **hole**
+  (loads and renders fine, peak RssAnon 261.2 MB, 5.2 MB over the 256 MB
   Pi ceiling, `#101`). One issue per distinct failing line: **#100** (soldunga,
   EQE1-tree defect — loads clean without `--eqe1-path`) and **#101** (hole,
   memory). Fixes are those issues, not this card. The sweep is committed

@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -389,7 +390,20 @@ struct RawDataEntry {
 };
 
 // ── EQE1 file assembly (shared by both modes) ──────────────────────────────
-
+//
+// v3 name table (B100). The 48-byte index entry carries a 32-byte name field
+// (31 chars + NUL). EQ texture names reach 32+ characters — soldunga's
+// gnome_stronghold_floor_transition is 33 — and this function's
+// strncpy(name, ..., 31) used to truncate them silently, so the client's
+// full-name lookup missed and the all-or-nothing rule FATAL-exited. v3
+// (EQE1_VERSION_V3) fixes it for exactly the packs that need it: a pack
+// whose every name fits in 31 chars writes v1 (ETC1) / v2 (any non-ETC1
+// payload) byte-for-byte as before; a pack with a longer name becomes v3,
+// where each index entry gains an 8-byte {nameOffset, nameLength} tail and
+// the long name is stored once in a name table between the index and the
+// data section (the data offsets — and therefore the table offsets — are
+// all computable up front, so no back-patching is needed). See
+// eqe1_format.h for the on-disk layout.
 static bool writeEQE1File(const std::vector<TextureEntry>& textures,
                            const std::vector<RawDataEntry>& rawEntries,
                            const std::string& outputPath,
@@ -408,25 +422,85 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
     }
     numEntries += static_cast<uint16_t>(rawEntries.size());
 
-    // Compute data offsets
-    uint32_t indexEnd = sizeof(EQE1Header) + numEntries * EQE1_INDEX_ENTRY_SIZE;
-    uint32_t dataOffset = alignTo16(indexEnd);
+    // The entry set is fixed from here on; collect the names every entry
+    // will carry, deduplicated, so the v3 name table stores each once.
+    // (Alpha companions append "_alpha"; a base name at 25 chars pushes its
+    // companion over the 31-char inline limit too.)
+    const auto companionOf = [](const std::string& base) { return base + "_alpha"; };
+    std::vector<std::string> entryNames;
+    for (const auto& tex : textures) {
+        entryNames.push_back(tex.name);
+        if (tex.hasAlpha && tex.payloadFormat == EQE1_PAYLOAD_ETC1) {
+            entryNames.push_back(companionOf(tex.name));
+        }
+    }
+    for (const auto& raw : rawEntries) entryNames.push_back(raw.name);
 
-    // Build index entries and track data positions
+    // A pack whose every name fits the 31-char inline field stays v1/v2,
+    // byte-for-byte the format the pinned tree (and its sha256 pins) expects.
+    bool needsNameTable = false;
+    for (const auto& n : entryNames) {
+        if (n.size() > EQE1_INLINE_NAME_LIMIT) { needsNameTable = true; break; }
+    }
+    const uint16_t version = needsNameTable ? EQE1_VERSION_V3 : fileVersion;
+    const uint32_t stride = indexEntryStride(version);
+
+    // v3: build the name table BEFORE computing data offsets — it sits
+    // between the index and the data section, so its size shifts every data
+    // offset. Each long name is stored once, in first-entry order
+    // (deduplicated: a name and its companion only collide when equal, which
+    // cannot happen since companions always append "_alpha").
+    std::string nameTable;
+    std::map<std::string, uint32_t> nameTablePos;
+    if (version == EQE1_VERSION_V3) {
+        for (const auto& n : entryNames) {
+            if (n.size() <= EQE1_INLINE_NAME_LIMIT) continue;
+            if (nameTablePos.find(n) == nameTablePos.end()) {
+                nameTablePos.emplace(n, static_cast<uint32_t>(nameTable.size()));
+                nameTable += n;
+            }
+        }
+    }
+
+    // Compute data offsets: header + index block + (v3) name table, then
+    // 16-byte align. For v1/v2 nameTable is empty, so this is exactly the
+    // historical layout (alignTo16(indexEnd)).
+    uint32_t indexEnd = sizeof(EQE1Header) + numEntries * stride;
+    uint32_t dataOffset = alignTo16(indexEnd + static_cast<uint32_t>(nameTable.size()));
+
+    // Build index entries and track data positions. v3 names longer than the
+    // inline limit reference the pre-built name table; their 32-byte inline
+    // field is zeroed.
     struct EntryInfo {
         EQE1IndexEntry index;
+        EQE1IndexEntryNameTail tail = {};
         const uint8_t* data;
         uint32_t dataSize;
     };
     std::vector<EntryInfo> entries;
     entries.reserve(numEntries);
 
+    auto assignName = [&](EQE1IndexEntry& idx, const std::string& name,
+                          EQE1IndexEntryNameTail& outTail) {
+        outTail = {};
+        if (name.size() <= EQE1_INLINE_NAME_LIMIT) {
+            std::strncpy(idx.name, name.c_str(), EQE1_NAME_SIZE - 1);
+        } else {
+            idx.name[0] = '\0';  // zero the whole 32-byte field
+            // entryNames covered every entry name, so the lookup is a hit.
+            const auto it = nameTablePos.find(name);
+            outTail.nameOffset = static_cast<uint32_t>(indexEnd) + it->second;
+            outTail.nameLength = static_cast<uint32_t>(name.size());
+        }
+    };
+
     for (const auto& tex : textures) {
         bool buildsCompanion = tex.hasAlpha && tex.payloadFormat == EQE1_PAYLOAD_ETC1;
 
         // Main entry
         EQE1IndexEntry idx = {};
-        std::strncpy(idx.name, tex.name.c_str(), EQE1_NAME_SIZE - 1);
+        EQE1IndexEntryNameTail mainTail = {};
+        assignName(idx, tex.name, mainTail);
         idx.width = static_cast<uint16_t>(tex.width);
         idx.height = static_cast<uint16_t>(tex.height);
         idx.mipLevels = tex.mipLevels;
@@ -435,7 +509,7 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
         idx.dataOffset = dataOffset;
         idx.dataSize = static_cast<uint32_t>(tex.rgbETC1.size());
         idx.payloadFormat = tex.payloadFormat;
-        entries.push_back({idx, tex.rgbETC1.data(), idx.dataSize});
+        entries.push_back({idx, mainTail, tex.rgbETC1.data(), idx.dataSize});
         dataOffset = alignTo16(dataOffset + idx.dataSize);
 
         // Alpha companion entry — ETC1 payload only. v2 payload formats
@@ -443,8 +517,9 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
         // 1 for them, but buildsCompanion is false).
         if (buildsCompanion) {
             EQE1IndexEntry alphaIdx = {};
-            std::string alphaName = tex.name + "_alpha";
-            std::strncpy(alphaIdx.name, alphaName.c_str(), EQE1_NAME_SIZE - 1);
+            std::string alphaName = companionOf(tex.name);
+            EQE1IndexEntryNameTail alphaTail = {};
+            assignName(alphaIdx, alphaName, alphaTail);
             alphaIdx.width = static_cast<uint16_t>(tex.width);
             alphaIdx.height = static_cast<uint16_t>(tex.height);
             alphaIdx.mipLevels = tex.mipLevels;
@@ -453,7 +528,7 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
             alphaIdx.dataOffset = dataOffset;
             alphaIdx.dataSize = static_cast<uint32_t>(tex.alphaETC1.size());
             alphaIdx.payloadFormat = EQE1_PAYLOAD_ETC1;
-            entries.push_back({alphaIdx, tex.alphaETC1.data(), alphaIdx.dataSize});
+            entries.push_back({alphaIdx, alphaTail, tex.alphaETC1.data(), alphaIdx.dataSize});
             dataOffset = alignTo16(dataOffset + alphaIdx.dataSize);
         }
     }
@@ -461,7 +536,8 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
     // Raw data entries
     for (const auto& raw : rawEntries) {
         EQE1IndexEntry idx = {};
-        std::strncpy(idx.name, raw.name.c_str(), EQE1_NAME_SIZE - 1);
+        EQE1IndexEntryNameTail rawTail = {};
+        assignName(idx, raw.name, rawTail);
         idx.width = 0;
         idx.height = 0;
         idx.mipLevels = 0;
@@ -470,7 +546,7 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
         idx.dataOffset = dataOffset;
         idx.dataSize = static_cast<uint32_t>(raw.data.size());
         idx.payloadFormat = EQE1_PAYLOAD_ETC1;
-        entries.push_back({idx, reinterpret_cast<const uint8_t*>(raw.data.data()), idx.dataSize});
+        entries.push_back({idx, rawTail, reinterpret_cast<const uint8_t*>(raw.data.data()), idx.dataSize});
         dataOffset = alignTo16(dataOffset + idx.dataSize);
     }
 
@@ -486,13 +562,24 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
     // Write header
     EQE1Header header = {};
     header.magic = EQE1_MAGIC;
-    header.version = fileVersion;
+    header.version = version;
     header.numEntries = numEntries;
     out.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
-    // Write index entries
+    // Write index entries (v3: each with its 8-byte name-table tail)
     for (const auto& entry : entries) {
         out.write(reinterpret_cast<const char*>(&entry.index), sizeof(EQE1IndexEntry));
+        if (version == EQE1_VERSION_V3) {
+            out.write(reinterpret_cast<const char*>(&entry.tail),
+                      sizeof(EQE1IndexEntryNameTail));
+        }
+    }
+
+    // v3: write the name table immediately after the index, before the data
+    // section (16-byte aligned; the data offsets already account for it via
+    // the stride, because the index block it extends is what indexEnd sized).
+    if (version == EQE1_VERSION_V3) {
+        out.write(nameTable.data(), static_cast<std::streamsize>(nameTable.size()));
     }
 
     // Write data with 16-byte alignment padding
@@ -509,11 +596,14 @@ static bool writeEQE1File(const std::vector<TextureEntry>& textures,
     out.close();
 
     size_t fileSize = fs::file_size(outputPath);
-    std::cout << "  Written: " << outputPath << " ("
+    std::cout << "  Written: " << outputPath << " (v" << version << ", "
               << fileSize / 1024 << " KB, "
               << textures.size() << " textures"
               << (alphaCount > 0 ? ", " + std::to_string(alphaCount) + " alpha" : "")
               << (!rawEntries.empty() ? ", " + std::to_string(rawEntries.size()) + " raw" : "")
+              << (version == EQE1_VERSION_V3
+                     ? ", name table " + std::to_string(nameTablePos.size()) + " long name(s)"
+                     : "")
               << ")" << std::endl;
 
     return true;
