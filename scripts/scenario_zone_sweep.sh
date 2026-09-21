@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # B853 (issue #99): the LIVE zone-in sweep over Kunark and Velious zones.
+# B854 (issue #102): the same lane with a Pi client mode (--pi) -- a
+# logged-in client on the Orange Pi (483 MB, the target platform).
 #
 # B852 proved the 118 era zones load clean OFFLINE (one
 # gles2_zone_benchmark process per zone, `refactor/B852/results_118.tsv`).
@@ -7,31 +9,48 @@
 # the server's own spawns, doors and objects -- the part the offline
 # benchmark never sees.
 #
+# Two lanes, one driver:
+#   (VM lane, B853) the client runs ON THIS HOST, headless (surfaceless EGL
+#     on llvmpipe -- the client's default graphics path, no display).
+#   (Pi lane, B854 --pi) the client runs ON THE ORANGE PI under ssh
+#     (scripts/pi/env.sh's pi_remote): CI-published ARM build of fable
+#     (/mnt/projects/fable/ci-arm/by-branch/fable, BUILD_INFO names the sha),
+#     Will's Pi recipe (--drm --renderer gles2 --constrained orangepi -r 1280
+#     720), logs on the Pi's NFS review tree. ONE willeq on the Pi at a time
+#     (483 MB, single-tenant DRM master), hence the pi lock.
+#
 # What one sweep does (the card's lane discipline, all in ONE lock hold):
-#   1. take the eqemu lock (kb-b853-live-zonein-sweep), bring the stack up
+#   1. take the eqemu lock (kb-b854-pi-zone-sweep), bring the stack up
 #      ONCE (up.sh), snapshot the character rows ONCE (restore_lib.sh);
+#      Pi lane: ALSO take the pi lock, after the eqemu lock, in that order,
+#      released in reverse, on every exit path (trap).
 #   2. for each zone in the list, HEAVIEST FIRST (s3d_bytes, B852's
 #      ordering, from scripts/ci/zone_content_sweep_zones.tsv):
-#        a. bounce the zone process to a fresh `zone <short>` (the zone
-#           holds the LINKDEAD client cache -- the second trap
+#        a. (B854, the LINKDEAD trap) seed the test character at the zone's
+#           safe point FIRST, then bounce the zone process to a fresh
+#           `zone <short>` and wait for its boot marker (eqemu_zone_booted).
+#           The zone holds the LINKDEAD client cache -- the second trap
 #           scripts/camera_match_sweep.sh documents -- so a live zone never
-#           re-reads the seeded pose) and wait for its boot marker
-#           (eqemu_zone_booted);
-#        b. seed the test character at the zone's safe point -- the zone
-#           table's own safe_x/safe_y/safe_z, exactly as eqemu's own
-#           safe-return write stores them (world/worlddb.cpp: `SET zone_id,
-#           x, y, z, heading` from entry.safe_*). Never invented
-#           coordinates. The write-readback-retry loop (also from
-#           camera_match_sweep.sh) survives the late linkdead save;
-#        c. run `willeq --scenario zone_in` headless (surfaceless EGL on
-#           llvmpipe -- the client's default graphics path, no display)
-#           under a per-zone timeout AND a log-silence watchdog;
-#        d. record exit code (0/1/2/3 taxonomy), wall time, FATAL/ERROR
-#           count, first FATAL line, placeholder-model count,
-#           late-open EQE1 count and append ONE TSV row.
+#           re-reads the seeded pose; the process must start AFTER the seed.
+#        b. run `willeq --scenario zone_in` under a per-zone timeout AND a
+#           log-silence watchdog -- this host (VM lane) or the Pi (Pi lane);
+#           the Pi watchdog polls the remote log's line count over ssh.
+#        c. record the exit code (0/1/2/3 taxonomy), wall time, FATAL/ERROR
+#           count, first FATAL, the last [memledger] lifecycle point + peak
+#           RssAnon + the three largest ledger categories at that point,
+#           OOM evidence (dmesg diff, Pi lane) and append ONE TSV row.
 #           A failing zone NEVER stops the sweep.
 #   3. restore the ONE snapshot with the world DOWN (eqemu_restore_snapshot),
-#      bring the stack DOWN, release the lock -- including on failure (trap).
+#      bring the stack DOWN, release the locks (Pi first, eqemu second) --
+#      including on failure (trap).
+#
+# Lane note (both): --scenario forces Automated mode, and the client only
+# initializes the GPU render pipeline in GraphicalInteractive
+# (application.cpp: initGraphics gates to GraphicalInteractive), so neither
+# lane renders -- the Pi lane runs the exact same Automated code path as
+# B853's VM lane, on ARM hardware with 483 MB to survive in. The
+# placeholder-model and late-open-EQE1 columns are structurally 0 here; they
+# are recorded for parity with results_118.tsv only.
 #
 # Default zone set: the Kunark + Velious rows B852 swept clean
 # (refactor/B852/results_118.tsv, clean==1). A B852 red row is skipped by
@@ -42,12 +61,14 @@
 # reached; re-invoking with the remaining zones (same --out-dir) continues
 # the file. The verdict counts the whole file.
 #
-# --selftest: the card's two-zone net (stonebrunt Kunark + iceclad Velious),
+# --selftest: the two-zone net (stonebrunt Kunark + iceclad Velious),
 # written to /home/user/kb-evidence/b853-live-zonein-sweep/selftest.
+# With --pi: stonebrunt + sebilis into the B854 evidence dir.
 #
 # Exit codes: 0 every row in the TSV clean, 1 at least one non-clean row,
-# 64 lock held, 65 the stack would not come up, 66 snapshot mismatch,
-# 68 bad inputs (no binary / no zone-table row for a zone), 3 bad usage.
+# 64 lock held (either lock), 65 the stack would not come up, 66 snapshot
+# mismatch, 68 bad inputs (no binary / no zone-table row for a zone),
+# 3 bad usage.
 
 set -u
 
@@ -57,6 +78,7 @@ REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$REPO/scripts/eqemu/env.sh"
 # T493: the ONE snapshot/restore implementation.
 source "$REPO/scripts/eqemu/restore_lib.sh"
+source "$REPO/scripts/pi/env.sh"
 
 EVIDENCE="/home/user/kb-evidence/b853-live-zonein-sweep"
 OUT_DIR="$EVIDENCE/full"
@@ -73,12 +95,29 @@ WATCHDOG_S="${SWEEP_WATCHDOG_S:-150}"
 ZONE_BOOT_S="${SWEEP_ZONE_BOOT_S:-180}"
 LATE_SAVE_S="${SWEEP_LATE_SAVE_S:-10}"
 SELFTEST=0
+# ---- B854 Pi lane -----------------------------------------------------------
+PI=0
+PI_DIR="${PI_SWEEP_DIR:-/mnt/projects/fable/ci-arm/by-branch/fable}"
+PI_BIN="$PI_DIR/bin/willeq"
+PI_CFG="${PI_SWEEP_CFG:-/mnt/projects/fable/review/pi/willeq_pi.json}"
+PI_LOGS="${PI_SWEEP_LOGS:-/mnt/projects/fable/review/B854/pi/logs}"
+PI_LOG_FLAGS="${PI_SWEEP_LOG_FLAGS:---log-level=INFO}"
+# Pi watchdog default: the VM client logs per game tick (~60 Hz); the Pi
+# client is slower, so give it 120 s of silence before presuming a hang.
+PI_WATCHDOG_S="${PI_SWEEP_WATCHDOG_S:-120}"
+# Optional runtime budget in minutes for the whole Pi sweep: when the
+# elapsed time crosses 80 % of it, the loop STOPS CLEANLY at the current
+# zone boundary and prints which zones remain (resume continues the TSV).
+PI_RUNTIME_LIMIT_MIN="${PI_SWEEP_RUNTIME_LIMIT_MIN:-0}"
+SELFTEST_ZONES=""
 
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [--zones z1,z2,...] [--list FILE] [--out-dir DIR]
                         [--bin PATH] [--char NAME] [--timeout N]
                         [--watchdog N] [--selftest]
+                        [--pi] [--pi-dir DIR] [--pi-watchdog N]
+                        [--pi-runtime-limit MIN]
 
 Options:
   --zones z1,z2     sweep only these zones (comma-separated, short names);
@@ -88,10 +127,21 @@ Options:
                     swept heavy-first, other rows are ignored
   --out-dir DIR     TSV + per-zone logs (default: $OUT_DIR)
   --bin PATH        willeq binary (default: $REPO/build/bin/willeq)
-  --char NAME       test character (default: ${CHAR})
+  --char NAME       test character (default: ${CHAR}; the Pi lane uses the
+                    character named in its own config $PI_CFG)
   --timeout N       per-zone client wall-clock seconds (default $TIMEOUT_S)
   --watchdog N      client log-silence seconds before SIGKILL (default $WATCHDOG_S)
   --selftest        two-zone net (stonebrunt + iceclad) in $EVIDENCE/selftest
+  --pi              B854: run the client ON THE ORANGE PI (ssh, pi_remote):
+                    ARM build at --pi-dir, Will's Pi recipe, per-zone logs on
+                    the Pi's NFS review tree ($PI_LOGS). Takes BOTH locks:
+                    eqemu (this VM) then pi; releases pi first.
+  --pi-dir DIR      the PI-side ARM build dir (default: $PI_DIR)
+  --pi-watchdog N   Pi client log-silence seconds (default $PI_WATCHDOG_S)
+  --pi-runtime-limit MIN
+                    whole-sweep budget in minutes; the loop stops cleanly at
+                    the next zone boundary once 80 % has elapsed (default 0 =
+                    no budget; resume picks up where it stopped)
 Exit: 0 all clean, 1 a non-clean row, 64 lock held, 65 stack up failed,
       66 snapshot mismatch, 68 bad inputs, 3 bad usage.
 EOF
@@ -107,14 +157,27 @@ while [ $# -gt 0 ]; do
         --timeout) TIMEOUT_S="$2"; shift 2 ;;
         --watchdog) WATCHDOG_S="$2"; shift 2 ;;
         --selftest) SELFTEST=1; shift ;;
+        --pi) PI=1; shift ;;
+        --pi-dir) PI_DIR="$2"; PI_BIN="$PI_DIR/bin/willeq"; shift 2 ;;
+        --pi-watchdog) PI_WATCHDOG_S="$2"; shift 2 ;;
+        --pi-runtime-limit) PI_RUNTIME_LIMIT_MIN="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 3 ;;
     esac
 done
 
 if [ "$SELFTEST" -eq 1 ]; then
-    ZONES="stonebrunt,iceclad"
-    OUT_DIR="$EVIDENCE/selftest"
+    if [ "$PI" -eq 1 ]; then
+        # stonebrunt: heaviest Kunark zone (B852 s3d_bytes 7.9 MB); sebilis:
+        # mid-weight Kunark (1.7 MB) -- one heavy, one light, so the net
+        # covers both ends of the Pi memory curve.
+        SELFTEST_ZONES="stonebrunt,sebilis"
+        ZONES="$SELFTEST_ZONES"
+        OUT_DIR="/home/user/kb-evidence/b854-pi-zone-sweep/selftest"
+    else
+        ZONES="stonebrunt,iceclad"
+        OUT_DIR="$EVIDENCE/selftest"
+    fi
 fi
 if [ -z "$ZONES" ] && [ -z "$TIMELIST" ]; then
     [ -f "$B852_RESULTS" ] || { echo "FATAL: no B852 results at $B852_RESULTS (run B852 first)" >&2; exit 68; }
@@ -123,12 +186,22 @@ fi
 
 TSV="$OUT_DIR/results.tsv"
 LOGS="$OUT_DIR/logs"
+# B854: the Pi-lane TSV adds five memory/OOM columns to B853's 17. The lane
+# is single-lane per file: a TSV written by the OTHER lane (17-col header)
+# is NOT a resume target for this one -- mixing row widths in one file would
+# make the whole file un-parseable.
 TSV_HEADER='zone	expansion	s3d_bytes	status	exit_code	wall_s	fatal_count	error_count	error_map_count	first_fatal	zone_loaded_in	zone_name	spawn_count	door_count	placeholder_model_count	late_open_eqe1_count	clean'
+if [ "$PI" -eq 1 ]; then
+    TSV_HEADER="${TSV_HEADER}	last_memledger_point	peak_rss_anon_bytes	top3_memledger_categories_at_last_point	oom	oom_dmesg_line"
+fi
 
 say() { printf '[zone_sweep] %s\n' "$*" >&2; }
 
 mkdir -p "$LOGS"
-[ -x "$BIN" ] || { say "no willeq binary at $BIN (build: cmake --build build --target willeq)"; exit 68; }
+# The local binary is the VM lane's only input; the Pi lane runs the
+# CI-published ARM build on the Pi (checked in the Pi block below), so the
+# gate is lane-specific -- a Pi run does not need a local build at all.
+[ "$PI" -eq 1 ] || { [ -x "$BIN" ] || { say "no willeq binary at $BIN (build: cmake --build build --target willeq)"; exit 68; }; }
 [ -n "$ZONES" ] || [ -n "$TIMELIST" ] || { usage; exit 3; }
 
 # ---- the zone set: "zone<TAB>expansion<TAB>s3d_bytes" rows -----------------
@@ -141,6 +214,12 @@ if [ -n "$ZONES" ]; then
     for z in "${ZARR[@]}"; do
         [ -n "$z" ] || continue
         row="$(awk -F'\t' -v z="$z" 'NR>1 && $1==z {print $2 "\t" $3}' "$B852_LIST" 2>/dev/null | head -1)"
+        # The ${z}/${row} separator below is a REAL tab byte (0x09), exactly
+        # like the committed B853 line: a double-quoted string does not expand
+        # a literal backslash-t, and a mangled one would glue the zone name to
+        # its expansion in every downstream read (B854 Pi selftest, 2026-09-21:
+        # a boot log named "sebilis\tkunark", a zone boot attempted for that
+        # literal name). The --list branch gets its tabs from awk itself.
         ZONE_ROWS="${ZONE_ROWS}${z}	${row}"$'\n'
     done
 else
@@ -150,14 +229,45 @@ fi
 [ -n "$(printf '%s' "$ZONE_ROWS" | tr -d '[:space:]')" ] || { say "empty zone list"; exit 3; }
 
 ZN="$(printf '%s' "$ZONE_ROWS" | grep -c .)"
-say "sweeping ${ZN} zone(s), char=$CHAR, timeout=${TIMEOUT_S}s, watchdog=${WATCHDOG_S}s"
+LANE="vm"
+[ "$PI" -eq 1 ] && LANE="pi"
+say "sweeping ${ZN} zone(s) on the ${LANE} lane, char=$CHAR, timeout=${TIMEOUT_S}s, watchdog=${WATCHDOG_S}s"
 
-# ---- the lock, taken atomically --------------------------------------------
-if ! eqemu_lock_take "kb-b853-live-zonein-sweep"; then
+# ---- the locks, taken in order, released in reverse ------------------------
+if ! eqemu_lock_take "kb-b854-pi-zone-sweep"; then
     say "eqemu lock is HELD by: $(eqemu_lock_show) -- refusing to run (card rule: block the card, do not wait >10 min)"
     exit 64
 fi
-say "lock taken"
+say "eqemu lock taken"
+PI_LOCK_TAKEN=0
+if [ "$PI" -eq 1 ]; then
+    # The Pi is single-tenant (T503): one DRM master, 483 MB, ONE willeq at a
+    # time. This lane holds it for the whole sweep, like the eqemu lock.
+    if ! pi_lock_take "kb-b854-pi-zone-sweep"; then
+        say "pi lock is HELD by: $(pi_lock_show) -- refusing to run"
+        eqemu_lock_release
+        exit 64
+    fi
+    PI_LOCK_TAKEN=1
+    say "pi lock taken ($(pi_lock_show))"
+    # The client runs on the Pi: its binary, config and logs all live in NFS
+    # paths that exist only ON THE PI -- never on this host.
+    if ! pi_remote "test -x '$PI_BIN' && test -f '$PI_CFG' && mkdir -p '$PI_LOGS' /tmp/kbpi/cache"; then
+        say "Pi prerequisites missing: ARM binary at $PI_BIN, config at $PI_CFG (check the ci-arm by-branch/fable tree and the pi config)"
+        pi_lock_release "kb-b854-pi-zone-sweep"
+        eqemu_lock_release
+        exit 68
+    fi
+    PI_SHA="$(pi_remote "sed -n 's/^sha=//p' '$PI_DIR/BUILD_INFO' 2>/dev/null" | head -1)"
+    say "pi client: $PI_BIN (BUILD_INFO sha=${PI_SHA:-unknown})"
+    # The Pi lane runs its OWN config's character (the operator's Pi
+    # credentials file names it; never printed). Resolve it before any
+    # seeding so seed_char targets the right row.
+    pi_char="$(pi_remote "grep -o '\"character\"[[:space:]]*:[[:space:]]*\"[^\"]*\"' '$PI_CFG' | head -1 | sed 's/.*\"\([^\"]*\)\"$/\1/'" 2>/dev/null | tr -d '\r[:space:]')"
+    [ -n "$pi_char" ] && CHAR="$pi_char"
+    [ -n "$CHAR" ] || { say "could not read the Pi config's character from $PI_CFG"; pi_lock_release "kb-b854-pi-zone-sweep"; eqemu_lock_release; exit 68; }
+    say "pi character: ${CHAR}"
+fi
 
 SNAPSHOT="$OUT_DIR/snapshot_before.tsv"
 AFTER="$OUT_DIR/snapshot_after.tsv"
@@ -167,18 +277,22 @@ CLIENT_PID=""
 cleanup() {
     [ "$CLEANED" -eq 1 ] && return
     CLEANED=1
-    if [ -n "$CLIENT_PID" ]; then
-        kill "$CLIENT_PID" >/dev/null 2>&1
-        sleep 2
-        kill -9 "$CLIENT_PID" >/dev/null 2>&1
+    [ -n "$CLIENT_PID" ] && kill "$CLIENT_PID" >/dev/null 2>&1
+    [ -n "$CLIENT_PID" ] && sleep 2
+    [ -n "$CLIENT_PID" ] && kill -9 "$CLIENT_PID" >/dev/null 2>&1
+    if [ "$PI" -eq 1 ]; then
+        # A half-dead Pi client must not outlive the lock hold.
+        pi_remote "pkill -9 -f 'willeq -c ${PI_CFG}' >/dev/null 2>&1; true" >/dev/null 2>&1 || true
     fi
     # The ONE snapshot, restored with the world DOWN -- the lane's discipline
     # (T493). Runs on EVERY exit path, --selftest included.
     eqemu_restore_snapshot "$SNAPSHOT" "$AFTER" say || RESTORE_BAD=1
     bash "$REPO/scripts/eqemu/down.sh" >"$OUT_DIR/stack_down.log" 2>&1
     say "stack down"
+    # Locks released in REVERSE of acquisition: pi first, eqemu second.
+    [ "$PI_LOCK_TAKEN" -eq 1 ] && pi_lock_release "kb-b854-pi-zone-sweep"
     eqemu_lock_release
-    say "lock released"
+    say "locks released"
 }
 trap cleanup EXIT INT TERM
 
@@ -287,7 +401,10 @@ kill_zone() {
 }
 
 # ---- 3. the client config for THIS lane ------------------------------------
+# VM lane only: the Pi lane runs the client on the Pi with its own config
+# ($PI_CFG, the operator's Pi credentials -- never printed here or in logs).
 CFG="$OUT_DIR/client.json"
+if [ "$PI" -ne 1 ]; then
 cat > "$CFG" <<EOF
 {
   "clients": [
@@ -304,6 +421,7 @@ cat > "$CFG" <<EOF
   ]
 }
 EOF
+fi
 
 TSV_STARTED=0
 new_tsv() {
@@ -313,34 +431,261 @@ new_tsv() {
 # Resume: a TSV from an earlier (possibly partial) run is CONTINUED, not
 # truncated -- the verdict counts the whole file. A file without the header
 # is not a resume target: replace it, so a stray file cannot poison the run.
-if [ -f "$TSV" ] && head -1 "$TSV" | grep -qx "$TSV_HEADER"; then
-    TSV_STARTED=1
-    say "resuming: $(($(grep -c . "$TSV") - 1)) row(s) already in $TSV"
+# A file whose header belongs to the OTHER lane (17 vs 22 columns) is a
+# hard error: appending this lane's rows to it would make the file
+# un-parseable, and silently replacing it would lose the other lane's
+# measurements. Use a different --out-dir for that run.
+if [ -f "$TSV" ]; then
+    if head -1 "$TSV" | grep -qx "$TSV_HEADER"; then
+        TSV_STARTED=1
+        say "resuming: $(($(grep -c . "$TSV") - 1)) row(s) already in $TSV"
+    elif head -1 "$TSV" | grep -q 'last_memledger_point'; then
+        say "ERROR: $TSV is a Pi-lane TSV (22-column header) but this run is the ${LANE} lane -- use a different --out-dir"
+        exit 3
+    else
+        say "ERROR: $TSV has an unknown header -- use a different --out-dir (refusing to overwrite it)"
+        exit 3
+    fi
 else
     new_tsv
 fi
 
+# ---- the Pi-lane helpers (B854) ---------------------------------------------
+# The client's log streams to /tmp/kbpi/.run_<zone>.log (tmpfs, GROWS LIVE --
+# this is what the watchdog polls over ssh) and is copied to the Pi's NFS
+# review tree ($PI_LOGS/<zone>.log) at the end of the run. The NFS copy is
+# what a later re-run's resume reads; the /tmp copy is deleted per zone.
+#
+# pi_dmesg_diff <outfile> <lastmarkfile> -- OOM evidence: the dmesg lines
+# added since the LAST zone boundary, filtered to OOM-killer lines. The mark
+# file holds the dmesg line count at the previous boundary so a zone only
+# sees its own kills (the kernel ring buffer persists across zones; after a
+# Pi reboot the count resets and the diff is the whole buffer, which is
+# correct: everything since boot is "new").
+pi_dmesg_diff() {
+    local out="$1" mark="$2" now before
+    now="$(pi_remote 'sudo dmesg | wc -l' | tr -d '[:space:]')"
+    before="$(cat "$mark" 2>/dev/null || echo 0)"
+    : > "$out"
+    if [ -n "$now" ] && [ "$now" -gt "$before" ]; then
+        pi_remote "sudo dmesg | tail -n +$((before + 1))" 2>/dev/null |
+            grep -iE "oom|killed process|out of memory" > "$out" || true
+    fi
+    echo "${now:-0}" > "$mark"
+}
+
+# pi_run_line_count <short> -- the line count of the LIVE /tmp run log (the
+# watchdog's signal). Empty when the ssh call itself fails: the caller
+# distinguishes "count unchanged" (silence) from "count unknown" (NFS/ssh
+# hiccup -- do NOT start the silence clock on that).
+pi_run_line_count() {
+    pi_remote "wc -l < /tmp/kbpi/.run_${1}.log 2>/dev/null" 2>/dev/null | tr -d '[:space:]'
+}
+
+# pi_top3_categories <log> -- the three largest [memledger] CATEGORIES at the
+# LAST lifecycle point of the log, "name(bytes);name(bytes);name(bytes)".
+# The ledger line is "[memledger] point=X zone=Y seq=N enabled=1 rss_anon=...
+# <kv fields> allocs=N <category>=live/peak ..." (toLogLine, memory_ledger.cpp):
+# everything AFTER "allocs=" is a category's live/peak pair, everything before
+# it is a scalar field that would otherwise match the same shape (seq,
+# enabled, ledger_peak, malloc_inuse ...). unattributed is a bucket, not a
+# category, and is excluded (the card asks for categories).
+pi_top3_categories() {
+    local log="$1"
+    grep '\[memledger\] point=' "$log" 2>/dev/null | tail -1 |
+        sed -E 's/^.* allocs=[0-9]+//' |
+        grep -oE '[a-z_]+=[0-9]+/[0-9]+' |
+        sed -E 's/^([a-z_]+)=([0-9]+)\/[0-9]+$/\2 \1/' |
+        grep -vE '^[0-9]+ unattributed$' |
+        sort -k1,1nr | head -3 | awk '{printf "%s(%d);", $2, $1}' | sed 's/;$//'
+}
+
+# run_zone_pi <zone> <expansion> <s3d_bytes> -- the Pi client run, B854's
+# Will recipe, driven over ssh. ONE process on the Pi (its /tmp is a ~242 MB
+# tmpfs). The watchdog polls the remote /tmp log's line count every 10 s:
+# no new line for PI_WATCHDOG_S = dead, kill it THERE (a process-level
+# timeout cannot catch a loader hang that never logs, and the OOM killer
+# SIGKILLs without the client's catchable-shutdown path). An OOM kill shows
+# up as exit 137 plus a dmesg line.
+run_zone_pi() {
+    local short="$1" expansion="$2" s3d_bytes="$3"
+    local nlog="${PI_LOGS}/${short}.log"
+    local hostlog="$LOGS/${short}_pi_client.log"
+    local start end code status wall fatal_n error_n error_map first_fatal loaded zname spawns doors placeholder late clean
+    local last_point peak_rss top3 oom oomline
+    code=""
+    [ "$TSV_STARTED" -eq 1 ] || new_tsv
+
+    say "=== ${short} (${expansion:-?}, ${s3d_bytes:-?} s3d bytes) on the PI ==="
+    pi_dmesg_diff "$LOGS/${short}_dmesg.diff" "$LOGS/.dmesg_mark"
+
+    # Will's Pi recipe, verbatim from the card: the composite entities stay
+    # OFF via the orangepi preset; the data root is the ARM build's own tree
+    # (config/ + data/ ship there); the cache goes to the Pi's /tmp. The
+    # inner scenario timeout is TIMEOUT_S - 60 so the outer `timeout` (the
+    # wall-clock bound) always gets the last word. $PI_LOG_FLAGS is the
+    # card's log-flag slot (default: --log-level=INFO, which is the level
+    # that carries the [memledger] lines).
+    local remote_cmd
+    remote_cmd="mkdir -p /tmp/kbpi/cache '$PI_LOGS' && cd '$PI_DIR' && WILLEQ_DATA_ROOT='$PI_DIR' WILLEQ_CACHE_DIR=/tmp/kbpi/cache timeout -s TERM ${TIMEOUT_S} '$PI_BIN' -c '$PI_CFG' --drm --renderer gles2 --constrained orangepi -r 1280 720 --scenario zone_in --timeout $((TIMEOUT_S - 60)) $PI_LOG_FLAGS > /tmp/kbpi/.run_${short}.log 2>&1; echo \$? > /tmp/kbpi/.code_${short}; cp /tmp/kbpi/.run_${short}.log '$nlog'"
+
+    start=$(date +%s)
+    # </dev/null: a backgrounded child inherits this loop's here-string
+    # stdin, and ssh (pi_remote) relays non-TTY stdin to the remote
+    # shell -- the remote command is fully quoted, so ssh would swallow
+    # the REMAINING loop lines (the next zones) as stdin. One iteration,
+    # then read-EOF. (B854 selftest, 2026-09-21: sebilis never ran.)
+    pi_remote "$remote_cmd" </dev/null >/dev/null 2>&1 &
+    CLIENT_PID=$!
+    local last_count="" silent_since=0
+    while kill -0 "$CLIENT_PID" 2>/dev/null; do
+        sleep 10
+        local now_count
+        now_count="$(pi_run_line_count "$short")"
+        if [ -n "$now_count" ] && [ "$now_count" != "$last_count" ]; then
+            last_count="$now_count"
+            silent_since=0
+        elif [ -z "$now_count" ]; then
+            : # ssh hiccup: keep the previous silence clock
+        else
+            [ "$silent_since" -eq 0 ] && silent_since=$(date +%s)
+            if [ $(( $(date +%s) - silent_since )) -ge "$PI_WATCHDOG_S" ]; then
+                say "watchdog: $short Pi client silent for ${PI_WATCHDOG_S}s (last ${last_count:-0} log lines) -- killing it on the Pi"
+                pi_remote "pkill -9 -f 'willeq -c ${PI_CFG}' >/dev/null 2>&1; true" >/dev/null 2>&1
+                break
+            fi
+        fi
+    done
+    wait "$CLIENT_PID" 2>/dev/null
+    code="$(pi_remote "cat /tmp/kbpi/.code_${short} 2>/dev/null" | tr -d '[:space:]')"
+    [ -n "$code" ] || code=137
+    CLIENT_PID=""
+    end=$(date +%s)
+    wall=$((end - start))
+
+    # Pull the client log to this host for the evidence dir (the Pi's /tmp
+    # copy is deleted; the NFS copy stays for the operator).
+    pi_remote "cat '$nlog' 2>/dev/null" > "$hostlog" 2>/dev/null || : > "$hostlog"
+    pi_remote "rm -f /tmp/kbpi/.run_${short}.log /tmp/kbpi/.code_${short}" >/dev/null 2>&1 || true
+
+    fatal_n="$(grep -c ' \[FATAL\] ' "$hostlog" 2>/dev/null || true)"
+    error_map="$(grep -c ' \[ERROR\] \[MAP\] ' "$hostlog" 2>/dev/null || true)"
+    error_n=$(( $(grep -c ' \[ERROR\] ' "$hostlog" 2>/dev/null || true) - error_map ))
+    first_fatal="$(grep -m1 ' \[FATAL\] ' "$hostlog" 2>/dev/null | tr -d '	' | head -c 240)"
+    # Same marker as the VM lane: the game-thread zone-geometry load, named
+    # with the server's short_name -- the "did we land in the zone we
+    # seeded" assertion.
+    if grep -q "LoadZoneSources: Loaded zone '${short}'" "$hostlog" 2>/dev/null; then loaded="y"; else loaded="n"; fi
+    zname="$(grep -m1 "scenario 'zone_in' starting: zoned in to" "$hostlog" 2>/dev/null | sed -n "s/.*zoned in to '\([^']*\)'.*/\1/p")"
+    spawns="$(grep -oE 'Loaded [0-9]+ spawns in zone' "$hostlog" 2>/dev/null | grep -oE '[0-9]+' | head -1)"; spawns="${spawns:-0}"
+    doors="$(grep -oE 'Received [0-9]+ doors' "$hostlog" 2>/dev/null | grep -oE '[0-9]+' | head -1)"; doors="${doors:-0}"
+    placeholder="$( { grep -c 'has no model in any S3D archive' "$hostlog" 2>/dev/null || true; grep -c 'rendered as placeholder cubes' "$hostlog" 2>/dev/null || true; } | awk '{s+=$1} END {print s+0}' )"
+    late="$(grep -c 'EQE1: late-open' "$hostlog" 2>/dev/null || true)"
+
+    # B854's memory columns, from the client's OWN [memledger] lines (T491:
+    # the ledger prints at every lifecycle point -- startup, login_world,
+    # ready, zone_load_*, steady_60s, shutdown -- each carrying rss_anon and
+    # every category's live/peak bytes). LAST lifecycle point = the last
+    # [memledger] line of the log; peak RssAnon = the max across ALL of them
+    # (the ledger prints at a fixed point list, so the last line is not
+    # necessarily the peak); the three largest categories at that point.
+    last_point="$(grep -oE '\[memledger\] point=[a-z_0-9]+' "$hostlog" 2>/dev/null | tail -1 | sed 's/.*point=//')"
+    peak_rss="$(grep -oE 'rss_anon=[0-9]+' "$hostlog" 2>/dev/null | grep -oE '[0-9]+' | sort -n | tail -1)"
+    peak_rss="${peak_rss:-0}"
+    top3="$(pi_top3_categories "$hostlog")"
+    top3="${top3:-none}"
+
+    # OOM evidence: the dmesg diff since the last boundary (the pre-run diff
+    # already covers boot/login; this one covers everything through the end
+    # of the client process).
+    pi_dmesg_diff "$LOGS/${short}_dmesg.diff" "$LOGS/.dmesg_mark"
+    if [ -s "$LOGS/${short}_dmesg.diff" ]; then
+        oom="y"
+        oomline="$(head -1 "$LOGS/${short}_dmesg.diff" | tr '	' ' ' | head -c 240)"
+    else
+        oom="n"
+        oomline=""
+    fi
+    # A SIGKILL that dmesg does NOT attribute to the OOM killer is still a
+    # death (our own watchdog, or an unexplained kill): record which.
+    if [ "$code" -eq 137 ] && [ "$oom" = "n" ]; then
+        say "WARN: $short died 137 (SIGKILL) with no OOM line in the dmesg diff -- see $LOGS/${short}_dmesg.diff"
+    fi
+
+    if [ "$code" -ge 128 ]; then status="died_by_signal_$((code-128))"
+    else status="ran"; fi
+
+    clean=0
+    if [ "$code" -eq 0 ] && [ -n "$zname" ] && [ "$zname" = "$short" ] \
+       && [ "${fatal_n:-0}" -eq 0 ] && [ "${error_n:-0}" -eq 0 ] \
+       && [ "$loaded" = "y" ] && [ "${placeholder:-0}" -eq 0 ]; then
+        clean=1
+    fi
+    printf '%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s\n' \
+        "$short" "${expansion:-}" "${s3d_bytes:-}" "$status" "$code" "$wall" \
+        "${fatal_n:-0}" "${error_n:-0}" "${error_map:-0}" "${first_fatal:-}" "$loaded" "${zname:-}" \
+        "$spawns" "$doors" "${placeholder:-0}" "${late:-0}" "$clean" \
+        "${last_point:-none}" "$peak_rss" "$top3" "$oom" "$oomline" >> "$TSV"
+    say "row: $short exit=$code wall=${wall}s fatal=${fatal_n:-0} err=${error_n:-0} peak_rss_anon=${peak_rss}B last_point=${last_point:-none} oom=$oom clean=$clean"
+
+    # The late-save trap, the other direction: the zone writes the character
+    # back on linkdead (and again at its own shutdown). Let it land BEFORE we
+    # stop the process -- killing the zone first could race the write, and
+    # the next seed's readback-retry loop would then fight a stale row.
+    sleep "$LATE_SAVE_S"
+    # Free the zone's port NOW (see kill_zone). Runs on every exit path,
+    # including a dead client: a partially-booted zone process still holds
+    # its port.
+    kill_zone "$short"
+    [ "$clean" -eq 1 ]
+}
+
 # run_zone <zone> <expansion> <s3d_bytes>
+#
+# The PLACEMENT (boot the zone fresh, seed the character at its safe point,
+# free the port afterwards) is lane-agnostic and shared: B853's
+# boot-then-seed order, proven 46/46 on the VM lane. The character is
+# OFFLINE for the whole boot+seed window in BOTH lanes (it connects only for
+# the client run), so the LINKDEAD cache the boot-zone comment warns about
+# (a connected character's pose is never re-read by a live zone) cannot
+# affect an offline seed -- the seed's own readback-retry is what pins the
+# pose, in either order. Only the CLIENT RUN differs per lane: this host
+# (VM) or the Orange Pi (Pi).
 run_zone() {
     local short="$1" expansion="$2" s3d_bytes="$3"
-    local log="$LOGS/${short}_client.log"
     local start end code status wall fatal_n error_n error_map first_fatal loaded zname spawns doors placeholder late clean age
     code=""
     [ "$TSV_STARTED" -eq 1 ] || new_tsv
 
-    say "=== ${short} (${expansion:-?}, ${s3d_bytes:-?} s3d bytes) ==="
+    say "=== ${short} (${expansion:-?}, ${s3d_bytes:-?} s3d bytes, ${LANE} lane) ==="
     if ! boot_zone "$short"; then
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-            "$short" "$expansion" "${s3d_bytes:-}" "zone_boot_failed" "-" "-" 0 0 0 "" "n" "" 0 0 0 0 0 >> "$TSV"
+        if [ "$PI" -eq 1 ]; then
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$short" "$expansion" "${s3d_bytes:-}" "zone_boot_failed" "-" "-" 0 0 0 "" "n" "" 0 0 0 0 0 "none" 0 "none" "n" "" >> "$TSV"
+        else
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$short" "$expansion" "${s3d_bytes:-}" "zone_boot_failed" "-" "-" 0 0 0 "" "n" "" 0 0 0 0 0 >> "$TSV"
+        fi
         say "row: $short zone_boot_failed"
         return 1
     fi
     if ! seed_char "$short"; then
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-            "$short" "$expansion" "${s3d_bytes:-}" "seed_failed" "-" "-" 0 0 0 "" "n" "" 0 0 0 0 0 >> "$TSV"
+        if [ "$PI" -eq 1 ]; then
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$short" "$expansion" "${s3d_bytes:-}" "seed_failed" "-" "-" 0 0 0 "" "n" "" 0 0 0 0 0 "none" 0 "none" "n" "" >> "$TSV"
+        else
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$short" "$expansion" "${s3d_bytes:-}" "seed_failed" "-" "-" 0 0 0 "" "n" "" 0 0 0 0 0 >> "$TSV"
+        fi
         say "row: $short seed_failed"
         return 1
     fi
+
+    if [ "$PI" -eq 1 ]; then
+        run_zone_pi "$short" "$expansion" "$s3d_bytes"
+        return
+    fi
+    local log="$LOGS/${short}_client.log"
 
     : > "$log"
     start=$(date +%s)
@@ -432,8 +777,22 @@ run_zone() {
 # s3d_bytes descending; rows without a census entry (unknown bytes) sort
 # after the known ones.
 FAILURES=0
+RUN_STARTED=$(date +%s)
+STOPPED_AT_BOUNDARY=0
 while IFS=$'\t' read -r z expansion s3d; do
     [ -n "$z" ] || continue
+    # B854 runtime budget: stop CLEANLY at the zone boundary once 80 % of
+    # --pi-runtime-limit has elapsed. The TSV resumes; the remaining zones
+    # are printed below and in the verdict.
+    if [ "$PI_RUNTIME_LIMIT_MIN" -gt 0 ]; then
+        ELAPSED_MIN=$(( ($(date +%s) - RUN_STARTED) / 60 ))
+        BUDGET_80=$(( PI_RUNTIME_LIMIT_MIN * 80 / 100 ))
+        if [ "$ELAPSED_MIN" -ge "$BUDGET_80" ]; then
+            STOPPED_AT_BOUNDARY=1
+            say "runtime budget: ${ELAPSED_MIN} min elapsed >= 80% of ${PI_RUNTIME_LIMIT_MIN} min -- stopping at the zone boundary (resume with the remaining zones)"
+            break
+        fi
+    fi
     if ! run_zone "$z" "${expansion:-}" "${s3d:-}"; then
         FAILURES=$((FAILURES + 1))
     fi
@@ -445,6 +804,15 @@ ROWS=$(( $(grep -c . "$TSV") - 1 ))
 CLEAN_ROWS="$(awk -F'\t' 'NR>1 && $17=="1"' "$TSV" | wc -l)"
 say "sweep result: ${CLEAN_ROWS}/${ROWS} rows clean in ${TSV}"
 awk -F'\t' 'NR>1 && $17!="1" {printf "  %s: %s (exit %s, fatal=%s err=%s) -- %s\n", $1, $4, $5, $7, $8, ($10!=""?$10:"(no FATAL; see log)")}' "$TSV" >&2
+if [ "$STOPPED_AT_BOUNDARY" -eq 1 ]; then
+    # Remaining = requested zones (heavy-first) minus the rows already
+    # recorded in the TSV (which also covers a resumed run's earlier rows).
+    DONE="$(tail -n +2 "$TSV" | cut -f1 | tr '\n' ' ')"
+    say "zones recorded so far: ${DONE}"
+    REMAIN="$(printf '%s\n' "$ZONE_ROWS" | cut -f1 | while read -r zz; do grep -q "^${zz}\b" <(tail -n +2 "$TSV" | cut -f1) || printf '%s ' "$zz"; done)"
+    REMAIN="$(echo "$REMAIN" | sed 's/ $//; s/ /,/g')"
+    say "zones remaining (resume: --zones $REMAIN --out-dir $OUT_DIR)"
+fi
 
 if [ "$RESTORE_BAD" -eq 1 ]; then
     say "restore mismatch overrides the sweep result"
