@@ -2256,6 +2256,15 @@ IF(EQT_GRAPHICS)
     TARGET_COMPILE_DEFINITIONS(gles2_shader_diagnostic PRIVATE
         WILLEQ_EQE1_INDEX_REAL_PATH="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json")
 
+    # T504b: model data fingerprints through the production loader (headless,
+    # EDT_NULL) -- the regression net for entity source pruning.
+    ADD_EXECUTABLE(model_fingerprint tools/hwcaps/model_fingerprint.cpp)
+    TARGET_INCLUDE_DIRECTORIES(model_fingerprint PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(model_fingerprint willeq_core)
+    TARGET_COMPILE_DEFINITIONS(model_fingerprint PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
+        EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+
     # Composite entity audit tool — renders all race/gender/variant combos as PNGs
     ADD_EXECUTABLE(gles2_composite_audit
         tools/hwcaps/gles2_composite_audit.cpp

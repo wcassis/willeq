@@ -743,6 +743,9 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
 
         auto cacheIt = otherChrCaches_.find(lowerFilename);
+        if (cacheIt == otherChrCaches_.end() && lowerFilename == "global_chr.s3d"
+            && adoptGlobalChrIntoOtherCacheLocked())
+            cacheIt = otherChrCaches_.find(lowerFilename);   // T504b Leg 1 (5th site)
         if (cacheIt != otherChrCaches_.end()) {
             LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: archive cache HIT for {} (race={} gender={})",
                      lowerFilename, raceId, gender);
