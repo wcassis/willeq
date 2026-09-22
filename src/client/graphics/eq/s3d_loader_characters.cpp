@@ -133,19 +133,24 @@ std::string S3DLoader::deriveChrArchivePath(const std::string& archivePath) {
     return parent.empty() ? chrName : (parent / chrName).string();
 }
 
-bool S3DLoader::loadCharacters(const std::string& archivePath) {
+bool S3DLoader::loadCharacters(const std::string& archivePath, PfsArchive* openArchive) {
     // Character loading from _chr.s3d files
     // These contain skeleton tracks (0x10) with bone hierarchies
 
     std::string chrArchivePath = deriveChrArchivePath(archivePath);
     LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: archivePath='{}' -> chrArchivePath='{}'", archivePath, chrArchivePath);
 
-    // Open the character archive
-    PfsArchive chrArchive;
-    if (!chrArchive.open(chrArchivePath)) {
+    // Open the character archive -- unless loadZone() has it open already
+    // (T504c Leg 2b: the archive being loaded IS the character archive).
+    PfsArchive localArchive;
+    PfsArchive* archivePtr = &localArchive;
+    if (openArchive && chrArchivePath == archivePath) {
+        archivePtr = openArchive;
+    } else if (!localArchive.open(chrArchivePath)) {
         LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: failed to open '{}'", chrArchivePath);
         return false;
     }
+    PfsArchive& chrArchive = *archivePtr;
 
     // Load character textures
     loadCharacterTextures(chrArchive);

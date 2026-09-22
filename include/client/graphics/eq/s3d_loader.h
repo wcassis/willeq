@@ -364,7 +364,10 @@ private:
     bool loadTextures(PfsArchive& archive);
     bool loadObjectTextures(PfsArchive& archive);
     bool loadCharacterTextures(PfsArchive& archive);
-    bool loadCharacters(const std::string& archivePath);
+    // T504c Leg 2b: `openArchive` is loadZone()'s already-open archive; it
+    // is reused when the archive being loaded IS the character archive
+    // (every <zone>_chr / global*_chr load), instead of a second open.
+    bool loadCharacters(const std::string& archivePath, PfsArchive* openArchive = nullptr);
     S3DLoadOptions options_;   // the options of the load in progress (T504b Leg 3: characterCodeFilter)
     std::string mainWldName_;  // the WLD loadZone() parsed into zone_->wldLoader (T504c: loadCharacters reuses it)
     bool loadLights(const std::string& archivePath);

@@ -93,7 +93,18 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
     zone_->zoneName = zoneName_;
     zone_->wldLoader = wldLoader;  // Store for PVS access
 
-    if (options.computeCombinedGeometry) {
+    // T504c Leg 2b (traced, run99 gfaydark, one global_chr reload): a
+    // CHARACTER archive load paid for three things no consumer reads --
+    // the combined "zone" geometry of every character mesh (3.9 MiB),
+    // loadTextures() inflating every texture that loadCharacterTextures()
+    // then inflated again (2 x 6.7 MiB, both retained), and a second
+    // PfsArchive::open of the same file in loadCharacters() (2 x 7 MiB of
+    // stored blocks resident at once). No character-model consumer reads
+    // S3DZone::geometry or S3DZone::textures from a character archive
+    // (grep, 2026-09-22); they read characters + characterTextures.
+    const bool isCharacterArchive = (deriveChrArchivePath(archivePath) == archivePath);
+
+    if (options.computeCombinedGeometry && !isCharacterArchive) {
         zone_->geometry = wldLoader->getCombinedGeometry();
 
         if (!zone_->geometry) {
@@ -109,7 +120,7 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
     }
 
     // Load textures (optional - rendering can work with vertex colors)
-    loadTextures(archive);
+    if (!isCharacterArchive) loadTextures(archive);   // a character archive's are characterTextures
 
     // T504: the zone archive is open once, here; objects.wld and lights.wld
     // are read from it (loadObjects/loadLights used to re-open the same file
@@ -120,7 +131,7 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
 
     // Load character models (optional; _chr.s3d is a different file)
     if (options.loadCharacters) {
-        loadCharacters(archivePath);
+        loadCharacters(archivePath, isCharacterArchive ? &archive : nullptr);
     }
 
     loadLightsFromArchive(archive);

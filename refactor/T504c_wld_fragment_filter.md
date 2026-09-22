@@ -1,7 +1,21 @@
 # T504c — the entity-load transient: parse only the WLD fragments a wanted character needs
 
-**Status:** Legs 1, 1b, 2 DONE (2026-09-22). Leg 3 (0x36/0x10/0x14) and Leg 4
-(reuse across reloads) open.
+**Status:** Legs 1, 1b, 2, 2b DONE (2026-09-22). Leg 3 (0x36/0x10/0x14) and
+Leg 4 (reuse across reloads) open.
+
+**Leg 2b (traced, not planned):** the peak trace after Leg 2 (`run99`) named
+three costs of every CHARACTER-archive load that no consumer reads: the
+combined "zone" geometry of all character meshes (3.9 MiB), `loadTextures`
+inflating every texture that `loadCharacterTextures` inflated again (2 × 6.7
+MiB, both retained until the loader died) and a second `PfsArchive::open`
+of the same file in `loadCharacters` (2 × 7 MiB of blocks resident at once).
+`S3DLoader::loadZone` now recognises a character archive
+(`deriveChrArchivePath(path) == path`) and skips the first two; the third
+reuses the open archive. Measured (`run101` vs `run98`, entity_models peak
+/ steady RssAnon): gfaydark 43.6 → 25.9 (31.5 after a late reload) / 241.6
+→ 231.5; dreadlands 49.6 → 32.5 / 261.5 → 242.1; iceclad 41.6 → 24.1 / 279.1
+→ 264.4; qeynos2 46.5 → 28.9 / 214.8 → 204.6. Identity 4/4 (and the tool
+runs 224 → 154 s); render parses 0; errors 0.
 
 **Leg 2 measured (x86, baseline, `run98_leg2_*` vs `run95_resolver_*`):**
 
