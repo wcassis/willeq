@@ -29,6 +29,22 @@
 //
 // Thread-safety: charge/credit are lock-free; snapshot() is a consistent
 // enough read for a diagnostic (relaxed loads of monotonic counters).
+//
+// Diagnostic environment switches (all off by default; T504 audit rig):
+//   WILLEQ_LEDGER_OWNERS=<category>       re-point the [memledger-startup]
+//                                         owner rows at another category
+//   WILLEQ_LEDGER_TRACE=<category>[:<pt>] backtrace every allocation of that
+//                                         category from lifecycle point <pt>
+//                                         (default "ready"); [memledger-trace]
+//                                         rows per point; _DEPTH=4..14 frames
+//                                         hashed, _SORT=peak orders by each
+//                                         site's high-water mark
+//   WILLEQ_LEDGER_IDLE_EVERY=<s>          after steady_60s keep recording
+//     [WILLEQ_LEDGER_IDLE_COUNT=<n>]      points idle_<seconds since ready>
+//   B841_TRIM_READY / B841_MMAP_THRESHOLD / B841_TRIM_THRESHOLD: arena
+//                                         experiments (arenaExperiments())
+// WILLEQ_BASELINE=1 (baseline_mode.h) is the original-client feature-parity
+// switch the audit measures under.
 
 #include <array>
 #include <cstddef>
