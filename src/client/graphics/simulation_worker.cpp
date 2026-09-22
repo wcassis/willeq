@@ -75,8 +75,12 @@ void SimulationWorker::stop() {
 // ============================================================================
 
 void SimulationWorker::setZoneData(const SimulationZoneData& data) {
+    setZoneData(SimulationZoneData(data));  // one copy, then the move path
+}
+
+void SimulationWorker::setZoneData(SimulationZoneData&& data) {
     // Must be called while worker is stopped
-    zoneData_ = data;
+    zoneData_ = std::move(data);
     zoneDataValid_ = true;
 
     // Pre-allocate output buffers based on zone data sizes
@@ -107,11 +111,13 @@ void SimulationWorker::setZoneData(const SimulationZoneData& data) {
     // Initialize worker-owned occlusion culler from zone data
     if (!zoneData_.regionOccluders.empty()) {
         workerOcclusionCuller_ = std::make_unique<SoftwareOcclusionCuller>(zoneData_.occlusionConfig);
-        for (const auto& [regionIdx, triangles] : zoneData_.regionOccluders) {
-            workerOcclusionCuller_->setRegionOccluders(regionIdx, triangles);
+        const size_t occluderSets = zoneData_.regionOccluders.size();
+        for (auto& [regionIdx, triangles] : zoneData_.regionOccluders) {
+            workerOcclusionCuller_->setRegionOccluders(regionIdx, std::move(triangles));  // T504: moved
         }
+        zoneData_.regionOccluders.clear();  // the worker culler owns them now
         LOG_INFO(MOD_GRAPHICS, "SimulationWorker: occlusion culler initialized with {} region occluder sets",
-                 zoneData_.regionOccluders.size());
+                 occluderSets);
     }
 
     LOG_INFO(MOD_GRAPHICS, "SimulationWorker zone data set: {} regions, {} objects, {} zone lights, {} object lights",

@@ -152,11 +152,12 @@ SimulationZoneData SimBridgeComponent::buildSimulationZoneData() {
         zoneData.hcMap = ctx_.collisionMap;
     }
 
-    // Copy occluder data from renderer's occlusion culler (if it has occluders)
+    // Hand the occluder sets to the worker (T504: moved, not copied -- the
+    // renderer-side culler has no per-frame reader once the worker owns them).
     if (ctx_.occlusionCuller && ctx_.occlusionCuller->hasOccluders()) {
-        zoneData.regionOccluders = ctx_.occlusionCuller->getRegionOccludersMap();
+        zoneData.regionOccluders = ctx_.occlusionCuller->takeRegionOccludersMap();
         zoneData.occlusionConfig = ctx_.occlusionCuller->getConfig();
-        LOG_INFO(MOD_GRAPHICS, "SimulationWorker: copying {} region occluder sets to worker",
+        LOG_INFO(MOD_GRAPHICS, "SimulationWorker: handing {} region occluder sets to worker",
                  zoneData.regionOccluders.size());
     }
 
@@ -168,7 +169,7 @@ void SimBridgeComponent::startSimulationWorkerEarly() {
     if (!owner_.simulationWorker_ || owner_.simulationWorker_->isRunning()) return;
 
     SimulationZoneData zoneData = buildSimulationZoneData();
-    owner_.simulationWorker_->setZoneData(zoneData);
+    owner_.simulationWorker_->setZoneData(std::move(zoneData));
     owner_.simulationWorker_->start();
 
     LOG_INFO(MOD_GRAPHICS, "SimulationWorker started early for zone '{}' (BSP/regions/objects/lights)",

@@ -94,7 +94,7 @@
 
 #include "client/graphics/renderer_context.h"
 #include "client/graphics/portal_system.h"   // Portal, in drawPortalQuad()'s signature
-#include "client/hc_map.h"                   // HCMap::Triangle, cachedPlaceholderTriangles_
+#include "client/hc_map.h"                   // HCMap::Triangle
 
 #include <cstddef>
 #include <cstdint>
@@ -300,7 +300,6 @@ private:
 	std::unique_ptr<GLES2EGLHelper> gles2Helper_;  // GLES2 context for ETC1 EGL image sharing
 #endif
 	// Cached terrain triangles for placeholder rebuild
-	std::vector<HCMap::Triangle> cachedPlaceholderTriangles_;
 	bool entitiesLoaded_ = false;    // True when all entities have been loaded with models/textures
 	size_t expectedEntityCount_ = 0; // Expected number of entities from ZoneSpawns
 

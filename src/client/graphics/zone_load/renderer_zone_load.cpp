@@ -723,6 +723,12 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                     }
 
                     if (!occluders.empty()) {
+                        // T504: push_back growth + the resize() above left every
+                        // region's vector at its pre-truncation capacity, and the
+                        // move below kept it: dreadlands 30,381 kept triangles
+                        // (1.16 MiB) occupied 7.34 MiB. Right-size before handing
+                        // it over.
+                        occluders.shrink_to_fit();
                         totalOccluders += occluders.size();
                         regionsWithOccluders++;
                         ctx_.occlusionCuller->setRegionOccluders(ri, std::move(occluders));

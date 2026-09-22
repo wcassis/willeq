@@ -799,6 +799,7 @@ public:
 
     // Zone data registration (call after zone load, before start())
     void setZoneData(const SimulationZoneData& data);
+    void setZoneData(SimulationZoneData&& data);  // T504: the load path moves its one-shot copy in
     void clearZoneData();
 
     // Synchronous one-shot computation (call from loading thread before start())

@@ -186,7 +186,9 @@ inline void credit(uint8_t cat, uint64_t bytes, uint64_t requested, uint8_t sub)
 // and costs one backtrace() per traced allocation when on.
 // ---------------------------------------------------------------------------
 constexpr int kTraceFrames = 14;
-constexpr int kTraceSites = 255;          // ids 1..255; 0 = untraced
+constexpr int kTraceSites = 254;          // ids 1..254 distinct; 0 = untraced
+constexpr int kTraceOverflow = 255;       // every site the table had no room for
+int g_traceDepth = kTraceFrames;          // WILLEQ_LEDGER_TRACE_DEPTH: frames hashed
 struct TraceSite {
     std::atomic<uint64_t> hash{0};
     void* frames[kTraceFrames] = {};
@@ -195,7 +197,7 @@ struct TraceSite {
     std::atomic<int64_t> liveBlocks{0};
     std::atomic<uint64_t> allocs{0};
 };
-TraceSite g_traceSites[kTraceSites + 1];
+TraceSite g_traceSites[kTraceOverflow + 1];
 std::atomic<int> g_traceUsed{0};
 std::atomic<bool> g_traceArmed{false};
 std::atomic<uint64_t> g_traceDropped{0};   // armed but table full / reentrant
@@ -214,6 +216,10 @@ __attribute__((constructor)) void initTraceFromEnv() {
         *colon = 0;
         std::strncpy(g_traceArmPoint, colon + 1, sizeof(g_traceArmPoint) - 1);
         g_traceArmPoint[sizeof(g_traceArmPoint) - 1] = 0;
+    }
+    if (const char* d = std::getenv("WILLEQ_LEDGER_TRACE_DEPTH")) {
+        const int v = std::atoi(d);
+        if (v >= 4 && v <= kTraceFrames) g_traceDepth = v;
     }
     for (size_t i = 0; i < kCategoryCount; ++i) {
         if (std::strcmp(cat, kCategoryNames[i]) == 0) {
@@ -234,7 +240,7 @@ uint8_t traceSiteFor(uint8_t cat, uint64_t bytes) {
     if (t_inTrace) { g_traceDropped.fetch_add(1, std::memory_order_relaxed); return 0; }
     t_inTrace = true;
     void* frames[kTraceFrames];
-    const int n = backtrace(frames, kTraceFrames);
+    const int n = backtrace(frames, g_traceDepth);
     uint64_t h = 1469598103934665603ull;
     for (int i = 0; i < n; ++i) {
         h ^= reinterpret_cast<uintptr_t>(frames[i]);
@@ -263,7 +269,7 @@ uint8_t traceSiteFor(uint8_t cat, uint64_t bytes) {
         }
     }
     t_inTrace = false;
-    if (id == 0) { g_traceDropped.fetch_add(1, std::memory_order_relaxed); return 0; }
+    if (id == 0) { g_traceDropped.fetch_add(1, std::memory_order_relaxed); id = kTraceOverflow; }
     TraceSite& t = g_traceSites[id];
     t.live.fetch_add(static_cast<int64_t>(bytes), std::memory_order_relaxed);
     t.liveBlocks.fetch_add(1, std::memory_order_relaxed);
@@ -309,11 +315,13 @@ std::string traceToLogLines(const std::string& point) {
     const int used = g_traceUsed.load(std::memory_order_acquire);
     std::vector<int> ids;
     for (int i = 1; i <= used; ++i) ids.push_back(i);
+    ids.push_back(kTraceOverflow);
     std::sort(ids.begin(), ids.end(), [](int a, int b) {
         return g_traceSites[a].live.load() > g_traceSites[b].live.load();
     });
     int64_t total = 0;
     for (int i = 1; i <= used; ++i) total += g_traceSites[i].live.load();
+    total += g_traceSites[kTraceOverflow].live.load();
     std::string out = "[memledger-trace] point=" + point + " category=" + kCategoryNames[g_traceCat]
                     + " sites=" + std::to_string(used) + " live=" + std::to_string(total)
                     + " dropped=" + std::to_string(g_traceDropped.load());
@@ -327,6 +335,7 @@ std::string traceToLogLines(const std::string& point) {
         out += "\n[memledger-trace] point=" + point + " site=" + std::to_string(id)
              + " live=" + std::to_string(live) + " blocks=" + std::to_string(t.liveBlocks.load())
              + " allocs=" + std::to_string(t.allocs.load()) + " stack=";
+        if (id == kTraceOverflow) { out += "OVERFLOW(table full)"; continue; }
         // frames 0..2 are backtrace()/traceSiteFor/ledgerAlloc; 3 is the
         // malloc/new entry. Start at 3 so the entry point is visible.
         for (int f = 3; f < t.n; ++f) {

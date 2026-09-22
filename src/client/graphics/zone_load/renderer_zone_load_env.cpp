@@ -870,7 +870,7 @@ void ZoneLoadComponent::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
         SimulationZoneData zoneData = ctx_.SimBridge().buildSimulationZoneData();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: buildSimulationZoneData: regions={}, objects={}, zoneLights={}",
                   zoneData.regionBounds.size(), zoneData.objects.size(), zoneData.zoneLights.size());
-        owner_.simulationWorker_->setZoneData(zoneData);
+        owner_.simulationWorker_->setZoneData(std::move(zoneData));
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step12b: setZoneData installed on SimulationWorker");
 
         // Update frustum culler with current camera so frustum planes are valid

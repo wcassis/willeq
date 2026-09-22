@@ -432,13 +432,12 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
         ctx_.zonePlaceholderNode = nullptr;
     }
 
-    // Cache terrain triangles on first call (GetAllTerrainTriangles is expensive)
-    if (cachedPlaceholderTriangles_.empty()) {
-        cachedPlaceholderTriangles_ = ctx_.collisionMap->GetAllTerrainTriangles();
-        if (cachedPlaceholderTriangles_.empty()) return;
-    }
-
-    const auto& allTriangles = cachedPlaceholderTriangles_;
+    // T504: no cached copy of every terrain triangle. The filter below keeps
+    // ~1 % of them (clip 300 of a 5,000-unit zone), and the copy it used to
+    // filter from (dreadlands 8.9 MiB) lived from instant-scene to the first
+    // frame after the real geometry -- the whole zone-load peak. Stream them
+    // from the collision map's own arrays instead; a rebuild on player
+    // movement re-walks them (135k triangles, milliseconds).
 
     // Filter triangles to render distance from player position (Irrlicht Y-up coords)
     float clipDist = ctx_.renderDistance > 0.0f ? ctx_.renderDistance : 300.0f;
@@ -468,9 +467,9 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
     }
 
     std::vector<HCMap::Triangle> triangles;
-    triangles.reserve(allTriangles.size() / 2);
     size_t pvsCulledCount = 0;
-    for (const auto& tri : allTriangles) {
+    const size_t totalTerrainTriangles = ctx_.collisionMap->ForEachTerrainTriangle(
+        [&](const HCMap::Triangle& tri) {
         // Use triangle centroid for distance check
         float cx = (tri.v1.x + tri.v2.x + tri.v3.x) / 3.0f;
         float cy = (tri.v1.y + tri.v2.y + tri.v3.y) / 3.0f;
@@ -479,7 +478,7 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
         float dy = cy - playerIrrY;
         float dz = cz - playerIrrZ;
         if (dx * dx + dy * dy + dz * dz > clipDistSq) {
-            continue;
+            return;
         }
 
         // PVS check: convert Irrlicht Y-up centroid to EQ Z-up for BSP lookup
@@ -488,12 +487,13 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
             if (triRegion != SIZE_MAX && triRegion < camPvs.size()
                 && !camPvs[triRegion]) {
                 pvsCulledCount++;
-                continue;
+                return;
             }
         }
 
         triangles.push_back(tri);
-    }
+    });
+    if (totalTerrainTriangles == 0) return;
 
     if (triangles.empty()) {
         LOG_WARN(MOD_GRAPHICS, "Zone placeholder: 0 triangles within render distance {:.0f} of player ({:.0f},{:.0f},{:.0f})",
@@ -598,11 +598,11 @@ void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float player
         lastPlaceholderBuildPos_ = irr::core::vector3df(playerIrrX, playerIrrY, playerIrrZ);
         if (usePvsFilter) {
             LOG_INFO(MOD_GRAPHICS, "Zone placeholder: {} terrain triangles (PVS culled {}, clip {:.0f}, {} total, {:.1f} KB)",
-                     triangles.size(), pvsCulledCount, clipDist, cachedPlaceholderTriangles_.size(),
+                     triangles.size(), pvsCulledCount, clipDist, totalTerrainTriangles,
                      (triangles.size() * 3 * sizeof(irr::video::S3DVertex)) / 1024.0f);
         } else {
             LOG_INFO(MOD_GRAPHICS, "Zone placeholder: {} terrain triangles within clip {:.0f} ({} total, {:.1f} KB)",
-                     triangles.size(), clipDist, cachedPlaceholderTriangles_.size(),
+                     triangles.size(), clipDist, totalTerrainTriangles,
                      (triangles.size() * 3 * sizeof(irr::video::S3DVertex)) / 1024.0f);
         }
     }
@@ -613,14 +613,6 @@ void ZoneLifecycleComponent::destroyZonePlaceholder() {
         ctx_.zonePlaceholderNode->remove();
         ctx_.zonePlaceholderNode = nullptr;
         LOG_INFO(MOD_GRAPHICS, "Zone placeholder removed");
-    }
-    // Free cached triangles — no longer needed once real geometry takes over
-    if (!cachedPlaceholderTriangles_.empty()) {
-        LOG_DEBUG(MOD_GRAPHICS, "Releasing {} cached placeholder triangles ({:.1f} KB)",
-                  cachedPlaceholderTriangles_.size(),
-                  (cachedPlaceholderTriangles_.size() * sizeof(HCMap::Triangle)) / 1024.0f);
-        cachedPlaceholderTriangles_.clear();
-        cachedPlaceholderTriangles_.shrink_to_fit();
     }
 }
 
