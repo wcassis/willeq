@@ -189,23 +189,11 @@ void SimBridgeComponent::registerSimulationWorkerVertexAnimData() {
     for (size_t i = 0; i < ctx_.vertexAnimatedMeshes.size(); ++i) {
         const auto& vam = ctx_.vertexAnimatedMeshes[i];
         auto& vad = vertAnims[i];
+        // T504: only the timing goes to the worker (it advances a frame
+        // counter); the frame data stays in the renderer's own entry.
         if (vam.animData && !vam.animData->frames.empty()) {
             vad.delayMs = vam.animData->delayMs;
             vad.frameCount = vam.animData->frames.size();
-            vad.framePositions.resize(vam.animData->frames.size());
-            for (size_t f = 0; f < vam.animData->frames.size(); ++f) {
-                vad.framePositions[f] = vam.animData->frames[f].positions;
-            }
-            vad.vertexMapping = vam.vertexMapping;
-            vad.centerOffsetX = vam.centerOffsetX;
-            vad.centerOffsetY = vam.centerOffsetY;
-            vad.centerOffsetZ = vam.centerOffsetZ;
-            if (vam.mesh) {
-                vad.bufferVertexCounts.resize(vam.mesh->getMeshBufferCount());
-                for (irr::u32 b = 0; b < vam.mesh->getMeshBufferCount(); ++b) {
-                    vad.bufferVertexCounts[b] = vam.mesh->getMeshBuffer(b)->getVertexCount();
-                }
-            }
         }
     }
 

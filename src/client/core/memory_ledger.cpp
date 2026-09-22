@@ -25,6 +25,8 @@
 
 #if defined(__linux__)
 #include <link.h>    // T504: dl_iterate_phdr, for the gpu_driver classifier
+#include <execinfo.h> // T504: backtrace(), for the WILLEQ_LEDGER_TRACE instrument
+#include <dlfcn.h>    // T504: dladdr(), module-relative frame addresses
 #include <malloc.h>
 #include <unistd.h>
 #endif
@@ -169,6 +171,170 @@ inline void credit(uint8_t cat, uint64_t bytes, uint64_t requested, uint8_t sub)
         g_counters.subBlocks[slot].fetch_sub(1, std::memory_order_relaxed);
     }
     g_counters.totalLive.fetch_sub(bytes, std::memory_order_relaxed);
+}
+
+// ---------------------------------------------------------------------------
+// T504 stack-trace instrument. WILLEQ_LEDGER_TRACE=<category>[:<arm point>]
+// (arm point defaults to "ready") makes every allocation charged to that
+// category AFTER the arm point capture a short backtrace; the block header's
+// top byte carries the call-site id so a free credits the same site. Each
+// lifecycle point then prints the sites by live bytes as
+// [memledger-trace] lines with module-relative frame addresses
+// (module+0xoff, resolvable offline with addr2line -e <module> -f -C). It
+// exists to name what a catch-all row such as irrlicht_scene (the render
+// thread's default category) is made of; it is a diagnostic, off by default,
+// and costs one backtrace() per traced allocation when on.
+// ---------------------------------------------------------------------------
+constexpr int kTraceFrames = 14;
+constexpr int kTraceSites = 255;          // ids 1..255; 0 = untraced
+struct TraceSite {
+    std::atomic<uint64_t> hash{0};
+    void* frames[kTraceFrames] = {};
+    int n = 0;
+    std::atomic<int64_t> live{0};
+    std::atomic<int64_t> liveBlocks{0};
+    std::atomic<uint64_t> allocs{0};
+};
+TraceSite g_traceSites[kTraceSites + 1];
+std::atomic<int> g_traceUsed{0};
+std::atomic<bool> g_traceArmed{false};
+std::atomic<uint64_t> g_traceDropped{0};   // armed but table full / reentrant
+uint8_t g_traceCat = 0xFF;
+char g_traceArmPoint[32] = "ready";
+thread_local bool t_inTrace = false;
+std::mutex g_traceMutex;
+
+__attribute__((constructor)) void initTraceFromEnv() {
+    const char* want = std::getenv("WILLEQ_LEDGER_TRACE");
+    if (!want || !*want) return;
+    char cat[64];
+    std::strncpy(cat, want, sizeof(cat) - 1);
+    cat[sizeof(cat) - 1] = 0;
+    if (char* colon = std::strchr(cat, ':')) {
+        *colon = 0;
+        std::strncpy(g_traceArmPoint, colon + 1, sizeof(g_traceArmPoint) - 1);
+        g_traceArmPoint[sizeof(g_traceArmPoint) - 1] = 0;
+    }
+    for (size_t i = 0; i < kCategoryCount; ++i) {
+        if (std::strcmp(cat, kCategoryNames[i]) == 0) {
+            g_traceCat = static_cast<uint8_t>(i);
+            return;
+        }
+    }
+}
+
+inline uint8_t traceIdOf(uint32_t catWord) { return static_cast<uint8_t>(catWord >> 24); }
+inline void packTraceId(uint32_t& catWord, uint8_t id) {
+    catWord = (catWord & 0x00FFFFFFu) | (static_cast<uint32_t>(id) << 24);
+}
+
+// Called from the alloc hook. Returns the site id (0 = not traced).
+uint8_t traceSiteFor(uint8_t cat, uint64_t bytes) {
+    if (cat != g_traceCat || !g_traceArmed.load(std::memory_order_relaxed)) return 0;
+    if (t_inTrace) { g_traceDropped.fetch_add(1, std::memory_order_relaxed); return 0; }
+    t_inTrace = true;
+    void* frames[kTraceFrames];
+    const int n = backtrace(frames, kTraceFrames);
+    uint64_t h = 1469598103934665603ull;
+    for (int i = 0; i < n; ++i) {
+        h ^= reinterpret_cast<uintptr_t>(frames[i]);
+        h *= 1099511628211ull;
+    }
+    if (h == 0) h = 1;
+    // Linear probe over the used prefix; insert under the mutex.
+    int used = g_traceUsed.load(std::memory_order_acquire);
+    int id = 0;
+    for (int i = 1; i <= used; ++i) {
+        if (g_traceSites[i].hash.load(std::memory_order_acquire) == h) { id = i; break; }
+    }
+    if (id == 0) {
+        std::lock_guard<std::mutex> lock(g_traceMutex);
+        used = g_traceUsed.load(std::memory_order_acquire);
+        for (int i = 1; i <= used; ++i) {
+            if (g_traceSites[i].hash.load(std::memory_order_acquire) == h) { id = i; break; }
+        }
+        if (id == 0 && used < kTraceSites) {
+            id = used + 1;
+            TraceSite& t = g_traceSites[id];
+            std::memcpy(t.frames, frames, sizeof(void*) * static_cast<size_t>(n));
+            t.n = n;
+            t.hash.store(h, std::memory_order_release);
+            g_traceUsed.store(id, std::memory_order_release);
+        }
+    }
+    t_inTrace = false;
+    if (id == 0) { g_traceDropped.fetch_add(1, std::memory_order_relaxed); return 0; }
+    TraceSite& t = g_traceSites[id];
+    t.live.fetch_add(static_cast<int64_t>(bytes), std::memory_order_relaxed);
+    t.liveBlocks.fetch_add(1, std::memory_order_relaxed);
+    t.allocs.fetch_add(1, std::memory_order_relaxed);
+    return static_cast<uint8_t>(id);
+}
+
+inline void traceCredit(uint32_t catWord, uint64_t bytes) {
+    const uint8_t id = traceIdOf(catWord);
+    if (!id) return;
+    g_traceSites[id].live.fetch_sub(static_cast<int64_t>(bytes), std::memory_order_relaxed);
+    g_traceSites[id].liveBlocks.fetch_sub(1, std::memory_order_relaxed);
+}
+inline void traceRecharge(uint32_t catWord, uint64_t bytes) {
+    const uint8_t id = traceIdOf(catWord);
+    if (!id) return;
+    g_traceSites[id].live.fetch_add(static_cast<int64_t>(bytes), std::memory_order_relaxed);
+    g_traceSites[id].liveBlocks.fetch_add(1, std::memory_order_relaxed);
+}
+
+void traceArmAt(const std::string& point) {
+    if (g_traceCat == 0xFF || g_traceArmed.load(std::memory_order_relaxed)) return;
+    if (point == g_traceArmPoint) g_traceArmed.store(true, std::memory_order_release);
+}
+
+std::string traceFrame(void* pc) {
+    Dl_info info;
+    char buf[160];
+    if (dladdr(pc, &info) && info.dli_fname) {
+        const char* base = std::strrchr(info.dli_fname, '/');
+        base = base ? base + 1 : info.dli_fname;
+        std::snprintf(buf, sizeof(buf), "%s+0x%lx", base,
+                      static_cast<unsigned long>(reinterpret_cast<uintptr_t>(pc)
+                                                 - reinterpret_cast<uintptr_t>(info.dli_fbase)));
+    } else {
+        std::snprintf(buf, sizeof(buf), "?+0x%lx", static_cast<unsigned long>(reinterpret_cast<uintptr_t>(pc)));
+    }
+    return buf;
+}
+
+std::string traceToLogLines(const std::string& point) {
+    if (g_traceCat == 0xFF || !g_traceArmed.load(std::memory_order_relaxed)) return std::string();
+    const int used = g_traceUsed.load(std::memory_order_acquire);
+    std::vector<int> ids;
+    for (int i = 1; i <= used; ++i) ids.push_back(i);
+    std::sort(ids.begin(), ids.end(), [](int a, int b) {
+        return g_traceSites[a].live.load() > g_traceSites[b].live.load();
+    });
+    int64_t total = 0;
+    for (int i = 1; i <= used; ++i) total += g_traceSites[i].live.load();
+    std::string out = "[memledger-trace] point=" + point + " category=" + kCategoryNames[g_traceCat]
+                    + " sites=" + std::to_string(used) + " live=" + std::to_string(total)
+                    + " dropped=" + std::to_string(g_traceDropped.load());
+    int shown = 0;
+    for (int id : ids) {
+        const TraceSite& t = g_traceSites[id];
+        const int64_t live = t.live.load();
+        if (live < 16384 && shown >= 8) break;   // small sites: only the first few
+        if (shown >= 40) break;
+        ++shown;
+        out += "\n[memledger-trace] point=" + point + " site=" + std::to_string(id)
+             + " live=" + std::to_string(live) + " blocks=" + std::to_string(t.liveBlocks.load())
+             + " allocs=" + std::to_string(t.allocs.load()) + " stack=";
+        // frames 0..2 are backtrace()/traceSiteFor/ledgerAlloc; 3 is the
+        // malloc/new entry. Start at 3 so the entry point is visible.
+        for (int f = 3; f < t.n; ++f) {
+            if (f > 3) out += ' ';
+            out += traceFrame(t.frames[f]);
+        }
+    }
+    return out;
 }
 
 std::mutex g_zoneMutex;
@@ -730,6 +896,13 @@ Snapshot recordPoint(const std::string& point, const std::string& zone) {
     if (!startup.empty()) {
         LOG_INFO(MOD_MAIN, "{}", startup);
     }
+    // T504 trace instrument: report first (the arm point's own rows are
+    // empty by construction), then arm if this is the arm point.
+    const std::string trace = traceToLogLines(point);
+    if (!trace.empty()) {
+        LOG_INFO(MOD_MAIN, "{}", trace);
+    }
+    traceArmAt(point);
     return s;
 }
 
@@ -991,21 +1164,52 @@ void noteReady(double seconds) {
 
 void pollSteadyState() {
     if (!g_steadyArmed.load(std::memory_order_acquire)) return;
-    if (g_steadyDone.load(std::memory_order_relaxed)) return;
     std::chrono::steady_clock::time_point deadline;
     {
         std::lock_guard<std::mutex> lock(g_steadyMutex);
         deadline = g_steadyDeadline;
     }
     if (std::chrono::steady_clock::now() < deadline) return;
-    g_steadyDone.store(true, std::memory_order_relaxed);
+    // T504 idle-growth instrument: WILLEQ_LEDGER_IDLE_EVERY=<seconds> keeps
+    // recording points `idle_<n>` (n = seconds since ready, e.g. idle_120)
+    // after steady_60s, for WILLEQ_LEDGER_IDLE_COUNT more points (default
+    // 10). A category that grows point after point in a static scene is a
+    // leak suspect; the per-point rows name it.
+    static const double idleEvery = [] {
+        const char* v = std::getenv("WILLEQ_LEDGER_IDLE_EVERY");
+        return v ? std::atof(v) : 0.0;
+    }();
+    static const int idleCount = [] {
+        const char* v = std::getenv("WILLEQ_LEDGER_IDLE_COUNT");
+        return v ? std::atoi(v) : 10;
+    }();
+    static int idleTaken = 0;
+    static double idleSeconds = 60.0;
+    if (!g_steadyDone.load(std::memory_order_relaxed)) {
+        g_steadyDone.store(true, std::memory_order_relaxed);
+        recordPoint("steady_60s");
+        // B841: the second half of the delta. T496/T500 measured 17.4 MB of
+        // ledger frees between ready and here with a 0.09 MB RssAnon fall;
+        // this census says whether those frees landed in the top pad
+        // (trimmable), an interior free bin (fragmentation), or mmap
+        // (already returned).
+        recordArena("steady_60s");
+        idleTaken = 0;
+        idleSeconds = 60.0;
+    } else {
+        ++idleTaken;
+        idleSeconds += idleEvery;
+        const std::string name = "idle_" + std::to_string(static_cast<long>(idleSeconds));
+        recordPoint(name);
+        recordArena(name);
+    }
+    if (idleEvery > 0.0 && idleTaken < idleCount) {
+        std::lock_guard<std::mutex> lock(g_steadyMutex);
+        g_steadyDeadline = std::chrono::steady_clock::now()
+                           + std::chrono::milliseconds(static_cast<long long>(idleEvery * 1000.0));
+        return;  // stay armed for the next idle point
+    }
     g_steadyArmed.store(false, std::memory_order_relaxed);
-    recordPoint("steady_60s");
-    // B841: the second half of the delta. T496/T500 measured 17.4 MB of
-    // ledger frees between ready and here with a 0.09 MB RssAnon fall; this
-    // census says whether those frees landed in the top pad (trimmable), an
-    // interior free bin (fragmentation), or mmap (already returned).
-    recordArena("steady_60s");
 }
 
 } // namespace memory
@@ -1204,20 +1408,25 @@ void* ledgerAlloc(size_t size, size_t align, const void* caller) {
     const uint8_t sub = gl ? uint8_t{0} : eqt::memory::detail::t_sublabel;
     h->category = gl ? static_cast<uint32_t>(eqt::memory::Category::GpuDriver)
                      : static_cast<uint32_t>(eqt::memory::detail::t_category);
-    eqt::memory::packSub(h->category, sub);  // B839: upper 16 bits
+    eqt::memory::packSub(h->category, sub);  // B839: bits 16..23
     h->offset = offset;
     // The category index is the LOW half of the packed word (packSub put the
     // sub-owner in the upper 16); catOf() makes that explicit rather than
     // relying on the implicit uint32->uint8 narrowing.
-    eqt::memory::charge(eqt::memory::catOf(h->category), backendChunkBytes(base), size, sub);
+    const uint64_t chunk = backendChunkBytes(base);
+    eqt::memory::charge(eqt::memory::catOf(h->category), chunk, size, sub);
+    // T504 trace instrument: bits 24..31 = call-site id (0 when off).
+    eqt::memory::packTraceId(h->category, eqt::memory::traceSiteFor(eqt::memory::catOf(h->category), chunk));
     return user;
 }
 
 void ledgerFree(void* user) {
     if (!user) return;
     LedgerHeader* h = headerOf(user);
-    eqt::memory::credit(eqt::memory::catOf(h->category), chargedOf(user), h->requested,
+    const uint64_t charged = chargedOf(user);
+    eqt::memory::credit(eqt::memory::catOf(h->category), charged, h->requested,
                         eqt::memory::subOf(h->category));
+    eqt::memory::traceCredit(h->category, charged);
     __libc_free(static_cast<char*>(user) - h->offset);
 }
 
@@ -1245,7 +1454,10 @@ void* ledgerRealloc(void* user, size_t size, const void* caller) {
         // push (or to whichever scope happens to be open on the resizing
         // thread).
         eqt::memory::credit(eqt::memory::catOf(cat), oldCharged, oldRequested, eqt::memory::subOf(cat));
-        eqt::memory::charge(eqt::memory::catOf(cat), backendChunkBytes(nbase), size, eqt::memory::subOf(cat));
+        eqt::memory::traceCredit(cat, oldCharged);
+        const uint64_t nchunk = backendChunkBytes(nbase);
+        eqt::memory::charge(eqt::memory::catOf(cat), nchunk, size, eqt::memory::subOf(cat));
+        eqt::memory::traceRecharge(cat, nchunk);
         return nuser;
     }
     // Over-aligned block: realloc has no alignment contract beyond the
