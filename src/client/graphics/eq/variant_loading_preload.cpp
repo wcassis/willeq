@@ -155,9 +155,10 @@ bool RaceModelLoader::preloadVariantModel(uint16_t raceId, uint8_t gender,
             }
         }
 
-        // Add zone characters (immutable after zone load — safe to read)
-        if (zoneModelsLoaded_ && !zoneCharacters_.empty()) {
-            characterSources.push_back({&zoneCharacters_, &zoneTextures_});
+        // Add zone characters (T504b Leg 2: a snapshot, the store may be pruned)
+        const CharacterList zoneSnap = snapshotZoneCharacters();
+        if (zoneModelsLoaded_ && !zoneSnap.empty()) {
+            characterSources.push_back({&zoneSnap, &zoneTextures_});
         }
 
         // Helper lambda to search a character list for variant parts
@@ -344,8 +345,9 @@ bool RaceModelLoader::preloadVariantModel(uint16_t raceId, uint8_t gender,
                         }
 
                         // Fall back to global characters
-                        if (!foundSource && !globalCharacters_.empty()) {
-                            for (const auto& sourceChar : globalCharacters_) {
+                        const CharacterList globalSnap = snapshotGlobalCharacters();  // T504b Leg 2
+                        if (!foundSource && !globalSnap.empty()) {
+                            for (const auto& sourceChar : globalSnap) {
                                 if (!sourceChar) continue;
                                 std::string sourceName = sourceChar->name;
                                 std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
@@ -424,9 +426,10 @@ bool RaceModelLoader::preloadVariantModel(uint16_t raceId, uint8_t gender,
             if (result) return true;
         }
 
-        // Then try global characters
-        if (!globalCharacters_.empty()) {
-            auto result = searchCharacters(globalCharacters_, mergedTextures);
+        // Then try global characters (T504b Leg 2: a snapshot)
+        const CharacterList globalSnap2 = snapshotGlobalCharacters();
+        if (!globalSnap2.empty()) {
+            auto result = searchCharacters(globalSnap2, mergedTextures);
             if (result) return true;
         }
     }

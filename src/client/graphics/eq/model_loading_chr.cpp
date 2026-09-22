@@ -58,7 +58,7 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
         std::transform(upperCode.begin(), upperCode.end(), upperCode.begin(),
                        [](unsigned char c) { return std::toupper(c); });
 
-        for (const auto& character : zoneCharacters_) {
+        for (const auto& character : snapshotZoneCharacters()) {  // T504b Leg 2
             if (!character || character->parts.empty()) {
                 continue;
             }
@@ -169,7 +169,7 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                         std::shared_ptr<CharacterSkeleton> sourceSkel;
 
                         // 1. Search current zone characters
-                        for (const auto& sourceChar : zoneCharacters_) {
+                        for (const auto& sourceChar : snapshotZoneCharacters()) {  // T504b Leg 2
                             if (!sourceChar) continue;
                             std::string sourceName = sourceChar->name;
                             std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
@@ -247,7 +247,7 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                             if (!globalModelsLoaded_) {
                                 loadGlobalModels();
                             }
-                            for (const auto& sourceChar : globalCharacters_) {
+                            for (const auto& sourceChar : snapshotGlobalCharacters()) {  // T504b Leg 2
                                 if (!sourceChar) continue;
                                 std::string sourceName = sourceChar->name;
                                 std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
@@ -571,7 +571,8 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
                         if (!globalModelsLoaded_) {
                             loadGlobalModels();
                         }
-                        searchSources.push_back(&globalCharacters_);
+                        const CharacterList globalSnap = snapshotGlobalCharacters();  // T504b Leg 2
+                        searchSources.push_back(&globalSnap);
 
                         // Search all sources for animation source skeleton
                         for (const auto* charList : searchSources) {

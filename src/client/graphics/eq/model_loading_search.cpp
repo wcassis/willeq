@@ -883,14 +883,20 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
         }
         return total;
     };
+    // T504b Leg 2: snapshots (the stores are pruned by another thread).
+    std::vector<std::pair<int, CharacterList>> numberedSnap;
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        for (const auto& [num, chars] : numberedGlobalCharacters_) numberedSnap.emplace_back(num, chars);
+    }
     stats.sourceCharacterGlobalBytes +=
-        calcCharModels(globalCharacters_, stats.duplicateGeometryBytes,
+        calcCharModels(snapshotGlobalCharacters(), stats.duplicateGeometryBytes,
                        stats.sourceSkeletonGlobalBytes);
-    for (const auto& [num, chars] : numberedGlobalCharacters_)
+    for (const auto& [num, chars] : numberedSnap)
         stats.sourceCharacterNumberedBytes += calcCharModels(chars, stats.duplicateGeometryBytes,
                                                              stats.sourceSkeletonNumberedBytes);
     stats.sourceCharacterZoneBytes +=
-        calcCharModels(zoneCharacters_, stats.duplicateGeometryBytes,
+        calcCharModels(snapshotZoneCharacters(), stats.duplicateGeometryBytes,
                        stats.sourceSkeletonZoneBytes);
     {
         // T114: otherChrCaches_ is shared with the worker thread.
@@ -1176,10 +1182,18 @@ std::string RaceModelLoader::srcCharLogLines(const std::string& point) const {
             point, archive, all, n[Used], n[Donor], n[Unused], n[Static],
             allBytes, bytes[Used], bytes[Donor], bytes[Unused], bytes[Static], unusedNames);
     };
-    walk("global_chr.s3d", globalCharacters_);
-    for (const auto& [num, chars] : numberedGlobalCharacters_)
-        walk(fmt::format("global{}_chr.s3d", num), chars);
-    if (!zoneCharacters_.empty()) walk(currentZoneName_ + "_chr.s3d", zoneCharacters_);
+    const CharacterList globalSnap = snapshotGlobalCharacters();   // T504b Leg 2: snapshots
+    walk("global_chr.s3d", globalSnap);
+    {
+        std::vector<std::pair<int, CharacterList>> numberedSnap;
+        {
+            std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+            for (const auto& [num, chars] : numberedGlobalCharacters_) numberedSnap.emplace_back(num, chars);
+        }
+        for (const auto& [num, chars] : numberedSnap) walk(fmt::format("global{}_chr.s3d", num), chars);
+    }
+    const CharacterList zoneSnap = snapshotZoneCharacters();
+    if (!zoneSnap.empty()) walk(currentZoneName_ + "_chr.s3d", zoneSnap);
     {
         std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
         for (const auto& [name, cache] : otherChrCaches_) {
@@ -1187,7 +1201,7 @@ std::string RaceModelLoader::srcCharLogLines(const std::string& point) const {
             // globalCharacters_ (adopted, not re-parsed); counting it again
             // would double the total. Report it as shared and skip.
             const bool sharedWithGlobal = name == "global_chr.s3d" && !cache.characters.empty()
-                && !globalCharacters_.empty() && cache.characters.front() == globalCharacters_.front();
+                && !globalSnap.empty() && cache.characters.front() == globalSnap.front();
             if (sharedWithGlobal) {
                 if (!out.empty()) out += '\n';
                 out += fmt::format("[srcchar] point={} archive=other:{} shared_with=global_chr.s3d chars={}",

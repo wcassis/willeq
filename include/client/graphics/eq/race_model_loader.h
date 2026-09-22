@@ -914,6 +914,18 @@ private:
     // before parsing and get true when the entry now exists. Measured before:
     // src_char_global == src_char_other byte-identical (two full parses).
     bool adoptGlobalChrIntoOtherCacheLocked();
+
+    // T504b Leg 2: zoneCharacters_/globalCharacters_/numberedGlobalCharacters_
+    // are read by the prep worker AND the render thread and, from Leg 2 on,
+    // pruned (a writer). Every reader takes a pointer-vector snapshot under
+    // sourceStoresMutex_ (a few dozen shared_ptr copies); writers assign under
+    // it. Lock order: otherChrCacheMutex_ -> sourceStoresMutex_, never the
+    // reverse (the snapshot helpers hold only sourceStoresMutex_).
+    using CharacterList = std::vector<std::shared_ptr<CharacterModel>>;
+    CharacterList snapshotZoneCharacters() const;
+    CharacterList snapshotGlobalCharacters() const;
+    CharacterList snapshotNumberedGlobalCharacters(int num) const;
+    mutable std::mutex sourceStoresMutex_;
     void storeOtherChrCacheLocked(const std::string& lowerFilename,
                                    std::vector<std::shared_ptr<CharacterModel>> characters,
                                    std::map<std::string, std::shared_ptr<TextureInfo>> textures);

@@ -76,7 +76,7 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
                 loadGlobalModels();
             }
             // Search for animation source skeleton in global characters
-            for (const auto& sourceChar : globalCharacters_) {
+            for (const auto& sourceChar : snapshotGlobalCharacters()) {  // T504b Leg 2
                 if (!sourceChar) continue;
                 std::string sourceName = sourceChar->name;
                 std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),

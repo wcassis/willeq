@@ -136,7 +136,7 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariants(uint16_t raceId, uint8_
         std::string headMeshName = headBuf;
 
         // Search for a character model that matches this race code
-        for (const auto& character : globalCharacters_) {
+        for (const auto& character : snapshotGlobalCharacters()) {  // T504b Leg 2
             if (!character || character->parts.empty()) {
                 continue;
             }

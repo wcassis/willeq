@@ -38,7 +38,10 @@ bool RaceModelLoader::loadGlobalModels() {
         std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
         auto cacheIt = otherChrCaches_.find("global_chr.s3d");
         if (cacheIt != otherChrCaches_.end() && !cacheIt->second.characters.empty()) {
-            globalCharacters_ = cacheIt->second.characters;
+            {
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+                globalCharacters_ = cacheIt->second.characters;
+            }
             globalTextures_ = cacheIt->second.textures;
             globalModelsLoaded_.store(true, std::memory_order_release);
             LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: adopted {} global_chr.s3d characters from the other-chr cache (no second parse)",
@@ -58,7 +61,10 @@ bool RaceModelLoader::loadGlobalModels() {
         return false;
     }
 
-    globalCharacters_ = zone->characters;
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        globalCharacters_ = zone->characters;
+    }
     globalTextures_ = zone->characterTextures;
     releaseBytesIfEqe1Authoritative(globalTextures_);  // T504
     globalModelsLoaded_.store(true, std::memory_order_release);
@@ -131,7 +137,10 @@ bool RaceModelLoader::ensureNumberedGlobalCharacters(int num) {
     auto zone = loader.getZone();
     if (!zone || zone->characters.empty()) return false;
 
-    numberedGlobalCharacters_[num] = zone->characters;
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        numberedGlobalCharacters_[num] = zone->characters;
+    }
     // The textures come with the same parse; if the texture-only pass never
     // ran (or found nothing) this is the same map it would have stored.
     if (!numberedGlobalTextures_.count(num) && !zone->characterTextures.empty()) {
@@ -278,7 +287,10 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
 
     // Clear previous zone models AND cached models (so they get re-loaded with new zone textures)
     // This ensures zone-specific textures (like armor textures) are properly merged
-    zoneCharacters_.clear();
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        zoneCharacters_.clear();
+    }
     zoneTextures_.clear();
     zoneModelsLoaded_ = false;
 
@@ -321,7 +333,10 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
         return false;
     }
 
-    zoneCharacters_ = zone->characters;
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        zoneCharacters_ = zone->characters;
+    }
     zoneTextures_ = zone->characterTextures;
     currentZoneName_ = zoneName;
     zoneModelsLoaded_ = true;
@@ -453,7 +468,7 @@ bool RaceModelLoader::loadModelFromGlobalChr(uint16_t raceId, uint8_t gender) {
     // Try each race code in order
     for (const std::string& codeToTry : codesToTry) {
         // Search for a character model that matches this race code
-        for (const auto& character : globalCharacters_) {
+        for (const auto& character : snapshotGlobalCharacters()) {  // T504b Leg 2
             if (!character || character->parts.empty()) {
                 continue;
             }
@@ -560,14 +575,13 @@ bool RaceModelLoader::loadModelFromNumberedGlobal(int globalNum, uint16_t raceId
     // is the one that loads them.
     ensureNumberedGlobalCharacters(globalNum);
 
-    // Check if this numbered global is loaded
-    auto charIt = numberedGlobalCharacters_.find(globalNum);
-    if (charIt == numberedGlobalCharacters_.end()) {
+    // Check if this numbered global is loaded (T504b Leg 2: a snapshot)
+    const CharacterList characters = snapshotNumberedGlobalCharacters(globalNum);
+    if (characters.empty()) {
         return false;
     }
 
     auto texIt = numberedGlobalTextures_.find(globalNum);
-    const auto& characters = charIt->second;
     const auto& textures = (texIt != numberedGlobalTextures_.end()) ? texIt->second :
         std::map<std::string, std::shared_ptr<TextureInfo>>();
 

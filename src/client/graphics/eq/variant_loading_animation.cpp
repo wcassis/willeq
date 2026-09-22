@@ -366,7 +366,7 @@ bool RaceModelLoader::tryBuildVariantFrom(const std::vector<std::shared_ptr<Char
                         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loading global models for animation source {}", req.animationSourceCode);
                         loadGlobalModels();
                     }
-                    for (const auto& sourceChar : globalCharacters_) {
+                    for (const auto& sourceChar : snapshotGlobalCharacters()) {  // T504b Leg 2
                         if (!sourceChar) continue;
                         if (toUpper(sourceChar->name).find(req.animationSourceCode) == std::string::npos) continue;
                         if (!sourceChar->animatedSkeleton || sourceChar->animatedSkeleton->animations.empty()) continue;
@@ -542,9 +542,10 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
         }
 
         // Then add current zone characters
-        if (zoneModelsLoaded_ && !zoneCharacters_.empty()) {
-            characterSources.push_back(&zoneCharacters_);
-            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Searching zone characters ({} models) for {}", zoneCharacters_.size(), codeToTry);
+        const CharacterList zoneSnap = snapshotZoneCharacters();  // T504b Leg 2
+        if (zoneModelsLoaded_ && !zoneSnap.empty()) {
+            characterSources.push_back(&zoneSnap);
+            LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Searching zone characters ({} models) for {}", zoneSnap.size(), codeToTry);
         } else {
             LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: No zone characters loaded (zoneModelsLoaded_={})", zoneModelsLoaded_);
         }
@@ -564,10 +565,11 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
             }
         }
 
+        const CharacterList globalSnap = snapshotGlobalCharacters();  // T504b Leg 2
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Searching global characters ({} models) for {} variant (body={}, head={})",
-                  globalCharacters_.size(), codeToTry, req.bodyMeshName, req.headMeshName);
+                  globalSnap.size(), codeToTry, req.bodyMeshName, req.headMeshName);
 
-        if (tryBuildVariantFrom(globalCharacters_, /*fromGlobal=*/true, req)) {
+        if (tryBuildVariantFrom(globalSnap, /*fromGlobal=*/true, req)) {
             return true;
         }
     }

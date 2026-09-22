@@ -645,15 +645,28 @@ std::shared_ptr<RaceModelData> RaceModelLoader::buildModelDataFromCharacters(
     return nullptr;
 }
 
+RaceModelLoader::CharacterList RaceModelLoader::snapshotZoneCharacters() const {
+    std::lock_guard<std::mutex> lock(sourceStoresMutex_);
+    return zoneCharacters_;
+}
+RaceModelLoader::CharacterList RaceModelLoader::snapshotGlobalCharacters() const {
+    std::lock_guard<std::mutex> lock(sourceStoresMutex_);
+    return globalCharacters_;
+}
+RaceModelLoader::CharacterList RaceModelLoader::snapshotNumberedGlobalCharacters(int num) const {
+    std::lock_guard<std::mutex> lock(sourceStoresMutex_);
+    auto it = numberedGlobalCharacters_.find(num);
+    return it == numberedGlobalCharacters_.end() ? CharacterList{} : it->second;
+}
+
 bool RaceModelLoader::adoptGlobalChrIntoOtherCacheLocked() {
     if (otherChrCaches_.find("global_chr.s3d") != otherChrCaches_.end()) return true;
     if (!globalModelsLoaded_.load(std::memory_order_acquire)) return false;
-    // globalCharacters_ is written once, before the flag (release), and never
-    // mutated after; reading it here after the acquire is race-free.
-    if (globalCharacters_.empty()) return false;
-    storeOtherChrCacheLocked("global_chr.s3d", globalCharacters_, globalTextures_);
+    const CharacterList globals = snapshotGlobalCharacters();   // T504b Leg 2: under sourceStoresMutex_
+    if (globals.empty()) return false;
+    storeOtherChrCacheLocked("global_chr.s3d", globals, globalTextures_);
     LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: other-chr cache adopted {} global_chr.s3d characters from the global store (no second parse)",
-             globalCharacters_.size());
+             globals.size());
     return otherChrCaches_.find("global_chr.s3d") != otherChrCaches_.end();
 }
 
@@ -798,9 +811,10 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         return result;
     };
 
-    // 1. Search zoneCharacters_ (zone_chr.s3d, immutable after zone init — safe)
-    if (!modelData && !zoneCharacters_.empty()) {
-        modelData = buildModelDataFromCharacters(zoneCharacters_, mergedTextures, raceId, gender);
+    // 1. Search the zone characters (T504b Leg 2: a snapshot, the store may be pruned)
+    const CharacterList zoneSnap = snapshotZoneCharacters();
+    if (!modelData && !zoneSnap.empty()) {
+        modelData = buildModelDataFromCharacters(zoneSnap, mergedTextures, raceId, gender);
     }
 
     // 2. Search otherChrCaches_ (mutex-protected — safe)
