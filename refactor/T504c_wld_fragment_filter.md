@@ -92,6 +92,20 @@ On the Pi a reload costs 1.7-2.8 s per race (Leg 5 table), which is why
 the trade is taken by default. The prep worker's pool threads are now
 named `eq-bgpool` (they read as "willeq" in the parse census).
 
+**malloc slack (Will's ruling: a defect to explain, not a residue):** at
+steady state `malloc_slack` (mallinfo fordblks) is 17 / 47 / 54 / 40 MiB in
+gfaydark / dreadlands / iceclad / qeynos2 (`run114`), dominated by a few
+≥64 KiB free chunks (dreadlands: 5 chunks, 37 MB; iceclad: 17, 52 MB) --
+the load transients' blocks, freed mid-heap. Most of it is NOT resident:
+the heap mapping's RSS (smaps) is 214 MB in dreadlands against a 270 MB
+arena. A/B of the two B841 switches (`run115` vs `run114`; heap RSS /
+RssAnon at steady, MB): dreadlands trim-at-ready 213.9 → 208.9 / 232.7 →
+227.8, mmap-threshold 1 MiB 213.9 → 200.8 / 232.7 → 227.3; iceclad trim
+225.9 → 219.0 / 244.4 → 237.8, mmap 225.9 → 213.1 / 244.4 → 234.3. The
+fixed mmap threshold is the better lever (12-13 MB of heap per zone,
+5-10 MB of RssAnon); neither is defaulted yet -- the Pi table (Leg 5b,
+running) decides, since llvmpipe's 142-167 MB of heap dominates x86.
+
 **Also found (CI):** the branch's CI `build` job has failed since 108ba056
 (`-Werror=format-truncation` on `FormatTimestamp`'s 32-byte buffer,
 inlined into the T504 navmesh log line) and `hygiene` before that, so the
