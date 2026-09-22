@@ -1,7 +1,18 @@
 # T504d — hc_map raycast BVH compactness (plan for Will's review)
 
-**Status:** plan only, nothing implemented (Will's rev-1 rule: representation
-compactness gets its own plan). Follows T504c.
+**Status:** APPROVED by Will 2026-09-22 ("proceed with T504d"); levers 1-4
+IMPLEMENTED the same night. Measured (`run117` vs `run114`, steady_60s):
+game_state gfaydark 15.2 → 13.2 MiB, dreadlands 21.9 → 20.4; the
+`[raycastmesh]` census (gfaydark): nodes 3,083,976 → 1,982,556 B (56 → 36
+per node: no vtable, index children), raycast marks 518,548 → 129,637 (one
+byte per triangle, cleared on the 255-frame wrap), leaf refs 2,097,152 →
+1,486,704 (shrink_to_fit), and the 1,555,644-byte face-normal table is gone
+(normals computed per hit; it was built lazily on the first normal query, so
+it is a saving for the session, not always visible at steady_60s). Identity
+net: `test_hc_map` ray-set goldens (24x24 FindBestZ + LOS grid per map,
+befallen/gfaydark/dreadlands/iceclad, `tests/goldens/hc_map/`, blessed from
+the pre-change code) identical, the pinned befallen values identical,
+`test_raycast` +1 (1000 raycasts across the byte wrap). Lever 5 not taken.
 
 ## What it is
 

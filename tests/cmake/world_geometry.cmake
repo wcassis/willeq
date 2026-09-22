@@ -28,6 +28,7 @@ ADD_EXECUTABLE(test_hc_map
     ${CMAKE_SOURCE_DIR}/src/common/util/compression.cpp
 )
 TARGET_LINK_LIBRARIES(test_hc_map GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES})
+TARGET_COMPILE_DEFINITIONS(test_hc_map PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")  # T504d ray-set goldens
 GTEST_DISCOVER_TESTS(test_hc_map DISCOVERY_TIMEOUT 120)
 
 # T19: zone_lines.cpp (EQT::ZoneLines JSON parser, both the zone-specific
