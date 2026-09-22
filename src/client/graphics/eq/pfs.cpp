@@ -179,7 +179,7 @@ bool PfsArchive::parseDirectory() {
                 uint32_t filenameLength = read_val<uint32_t>(&filenameBuffer[filenamePos]);
                 filenamePos += sizeof(uint32_t);
 
-                if (filenamePos + filenameLength > filenameBuffer.size()) return false;
+                if (filenameLength == 0 || filenamePos + filenameLength > filenameBuffer.size()) return false;
                 std::string name(filenameLength - 1, '\0');
                 std::memcpy(&name[0], &filenameBuffer[filenamePos], filenameLength - 1);
                 filenamePos += filenameLength;
