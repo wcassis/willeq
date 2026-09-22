@@ -12,6 +12,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <functional>
+#include <thread>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -952,11 +954,32 @@ private:
     // merges donor animations the base build never touched, so a memo keyed
     // by race alone starved it -- STOP 1 hit, fingerprint anims shrank).
     std::set<std::string> reloadedRaceGenders_;   // under sourceStoresMutex_
+    // The memo means "reloaded, not yet built". When a built model is
+    // EVICTED (removeMeshRef at refcount 0, zone change) its sources may be
+    // pruned again, so the next request must be allowed to reload: measured
+    // without this, the player's appearance update evicted race 1, the
+    // re-preload was memo-blocked, the negative cache took it, and the
+    // entity looped on deferral (1,206 times in 60 s).
+    void forgetReloadMemo(uint32_t key);      // one (race, gender), every site
+    void forgetAllReloadMemos();
+    std::thread::id renderThread_;                 // the constructing thread (IrrlichtRenderer::init, main)
+    std::function<void(uint16_t, uint8_t)> workerPreloadRequest_;
     void recordArchiveNamesLocked(const std::string& key, const std::string& path, const CharacterList& chars);
     void computeUsedSet(std::set<const CharacterSkeleton*>& usedSkeletons,
                         std::set<const Animation*>& usedAnimations) const;
     static bool pruningEnabled();
 public:
+    // T504b (Will, 2026-09-22): the render thread NEVER parses an archive.
+    // ensureModelDataLoaded() on the render thread with the model neither
+    // loaded nor prepared hands the (race, gender) to the prep worker through
+    // this callback and returns null; lastLookupDeferred() tells the caller
+    // not to cache that null (the model arrives when the worker's result is
+    // promoted, and the entity's build step finishes it -- as a late spawn).
+    void setWorkerPreloadRequest(std::function<void(uint16_t, uint8_t)> fn) { workerPreloadRequest_ = std::move(fn); }
+    bool lastLookupDeferred() const;
+    // True when a model is loaded (after promoting any prepared one): the
+    // render-thread build may proceed without touching an archive.
+    bool isModelReady(uint16_t raceId, uint8_t gender);
     // Drop every retained source character no built model uses (see above).
     // Safe from any thread; takes the store locks itself. `why` is logged.
     void pruneSourceCharacters(const char* why);

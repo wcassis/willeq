@@ -346,6 +346,7 @@ void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
             std::lock_guard<std::mutex> lock(loadedModelsMutex_);
             loadedModels_.erase(key);
         }
+        forgetReloadMemo(key);   // T504b: its sources may be pruned again; the next request may reload
 
         // Also evict variant and animated caches for this race/gender
         // Variant keys encode raceId in upper 32 bits, gender in bits 24-31

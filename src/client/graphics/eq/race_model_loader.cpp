@@ -21,6 +21,10 @@
 #include <iostream>
 #include <chrono>
 
+namespace {
+thread_local bool t_lookupDeferred = false;   // T504b: set by ensureModelDataLoaded on a render-thread deferral
+}
+
 namespace EQT {
 namespace Graphics {
 
@@ -28,6 +32,7 @@ RaceModelLoader::RaceModelLoader(irr::scene::ISceneManager* smgr,
                                   irr::video::IVideoDriver* driver,
                                   irr::io::IFileSystem* fileSystem)
     : smgr_(smgr), driver_(driver), fileSystem_(fileSystem) {
+    renderThread_ = std::this_thread::get_id();   // T504b: see setWorkerPreloadRequest
     meshBuilder_ = std::make_unique<ZoneMeshBuilder>(smgr, driver, fileSystem);
     // P13b: deliberately did NOT tag this builder "entity_perpart" (tried it, reverted —
     // see the plan's Review "Deviations"). This ZoneMeshBuilder's loadTextureFromBMP()
@@ -144,6 +149,7 @@ void RaceModelLoader::clearCache() {
         std::lock_guard<std::mutex> lock(loadedModelsMutex_);
         loadedModels_.clear();
     }
+    forgetAllReloadMemos();   // T504b
 
     // Also clear variant caches
     for (auto& [key, mesh] : variantMeshCache_) {
@@ -275,16 +281,34 @@ void RaceModelLoader::clearMeshCaches() {
 std::shared_ptr<RaceModelData> RaceModelLoader::ensureModelDataLoaded(uint16_t raceId, uint8_t gender) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     uint32_t key = makeCacheKey(raceId, gender);
+    t_lookupDeferred = false;
     {
         // T504b Leg 2: the reload-on-miss pre-check runs OUTSIDE the lock
-        // (pruneSourceCharacters takes loadedModelsMutex_ itself); a
-        // render-thread reload is logged with its thread name (STOP 3).
+        // (pruneSourceCharacters takes loadedModelsMutex_ itself).
         bool missing;
         {
             std::lock_guard<std::mutex> lock(loadedModelsMutex_);
             missing = loadedModels_.count(key) == 0;
         }
-        if (missing) ensureSourceForRace(raceId, gender, "ensureModelDataLoaded");
+        if (missing && workerPreloadRequest_ && std::this_thread::get_id() == renderThread_) {
+            // The render thread never parses: a prepared model is promoted;
+            // anything else goes to the prep worker and this lookup is
+            // deferred (null, not cached -- see lastLookupDeferred()).
+            promotePreparedModels();
+            {
+                std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+                missing = loadedModels_.count(key) == 0;
+            }
+            if (missing) {
+                t_lookupDeferred = true;
+                workerPreloadRequest_(raceId, gender);
+                LOG_INFO(MOD_GRAPHICS, "[srcchar] defer race={} gender={} to the prep worker (render thread never parses)",
+                         raceId, gender);
+                return nullptr;
+            }
+        } else if (missing) {
+            ensureSourceForRace(raceId, gender, "ensureModelDataLoaded");
+        }
     }
 
     // Check if model data is loaded
@@ -465,7 +489,7 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
 
     // Build mesh from model data
     if (!modelData || !modelData->combinedGeometry) {
-        meshCache_[key] = nullptr;
+        if (!lastLookupDeferred()) meshCache_[key] = nullptr;   // T504b: a deferral is not a miss
         return nullptr;
     }
 
@@ -676,17 +700,36 @@ RaceModelLoader::CharacterList RaceModelLoader::snapshotNumberedGlobalCharacters
 // T504b Leg 2: source pruning + reload-on-miss
 // ---------------------------------------------------------------------------
 bool RaceModelLoader::pruningEnabled() {
-    // OFF by default until the render-thread synchronous fallback stops
-    // parsing (T504b STOP 3, measured 2026-09-22: with pruning on, the
-    // player's race is requested on eq-render before the worker's preload
-    // is promoted, and the sync chain then parses globalhum/global2-7 there;
-    // the baseline parses 5 archives, all on eq-load). WILLEQ_PRUNE_SOURCES=1
-    // opts in (the fingerprint net and the audit runs use it).
+    // ON by default (Will, 2026-09-22) now that the render thread never
+    // parses (the STOP 3 finding: with pruning the sync fallback parsed
+    // globalhum/global2-7 on eq-render; it now defers to the worker).
+    // WILLEQ_PRUNE_SOURCES=0 disables pruning for A/B measurement.
     static const bool on = [] {
         const char* v = std::getenv("WILLEQ_PRUNE_SOURCES");
-        return v && v[0] == '1';
+        return !(v && v[0] == '0');
     }();
     return on;
+}
+
+bool RaceModelLoader::lastLookupDeferred() const { return t_lookupDeferred; }
+
+void RaceModelLoader::forgetReloadMemo(uint32_t key) {
+    std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+    const std::string prefix = std::to_string(key) + "@";
+    for (auto it = reloadedRaceGenders_.begin(); it != reloadedRaceGenders_.end();) {
+        if (it->rfind(prefix, 0) == 0) it = reloadedRaceGenders_.erase(it); else ++it;
+    }
+}
+
+void RaceModelLoader::forgetAllReloadMemos() {
+    std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+    reloadedRaceGenders_.clear();
+}
+
+bool RaceModelLoader::isModelReady(uint16_t raceId, uint8_t gender) {
+    promotePreparedModels();
+    std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+    return loadedModels_.count(makeCacheKey(raceId, gender)) > 0;
 }
 
 namespace {

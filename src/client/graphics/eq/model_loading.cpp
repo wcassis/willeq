@@ -307,6 +307,7 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
         std::lock_guard<std::mutex> lock(loadedModelsMutex_);
         loadedModels_.clear();
     }
+    forgetAllReloadMemos();   // T504b
     meshCache_.clear();
     {
         std::lock_guard<std::mutex> lock(variantModelsMutex_);

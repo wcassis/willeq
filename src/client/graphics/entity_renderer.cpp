@@ -72,6 +72,18 @@ EntityRenderer::EntityRenderer(irr::scene::ISceneManager* smgr, irr::video::IVid
     : smgr_(smgr), driver_(driver), fileSystem_(fileSystem) {
     // Create the race model loader
     raceModelLoader_ = std::make_unique<RaceModelLoader>(smgr, driver, fileSystem);
+    // T504b: the render thread never parses an archive -- a model that is not
+    // loaded is requested from the prep worker (spawnId 0 = race-level
+    // request; its result is promoted like any other) and the caller waits
+    // for the next frames, as a late spawn does.
+    raceModelLoader_->setWorkerPreloadRequest([this](uint16_t raceId, uint8_t gender) {
+        if (!entityPrepWorker_) return;
+        EntityPrepWorker::PrepRequest req;
+        req.spawnId = 0;
+        req.raceId = raceId;
+        req.gender = gender;
+        entityPrepWorker_->requestPrep(req);
+    });
 
     // Create the equipment model loader
     equipmentModelLoader_ = std::make_unique<EquipmentModelLoader>(smgr, driver, fileSystem);

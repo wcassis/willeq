@@ -50,7 +50,7 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
     // and the plan Review for how this was caught (the ledger acceptance run).
     auto modelData = ensureModelDataLoaded(raceId, gender);
     if (!modelData) {
-        cache[key] = nullptr;
+        if (!lastLookupDeferred()) cache[key] = nullptr;   // T504b: a deferral is not a miss
         return nullptr;
     }
 

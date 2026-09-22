@@ -152,6 +152,27 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     // can find it, avoiding a redundant disk load on the main thread.
     if (entityPrepWorker_ && raceModelLoader_) {
         raceModelLoader_->promotePreparedModels();
+        // T504b: this is the render thread. If the model is not loaded yet,
+        // keep the placeholder, hand the entity to the prep worker and let
+        // the build step finish it when the result is promoted -- the same
+        // path a late spawn takes. The loader would otherwise parse here.
+        if (visual.usesPlaceholder && visual.sceneNode
+            && !raceModelLoader_->isModelReady(visual.raceId, visual.gender)) {
+            if (!entityPrepWorker_->isPendingForEntity(spawnId)) {
+                EntityPrepWorker::PrepRequest req;
+                req.spawnId = spawnId;
+                req.raceId = visual.raceId;
+                req.gender = visual.gender;
+                req.appearance = visual.appearance;
+                req.bspRegion = visual.cachedBspRegion;
+                entityPrepWorker_->requestPrep(req);
+            }
+            visual.buildPhase = EntityBuildPhase::Placeholder;
+            visual.entityPrepComplete = false;
+            LOG_INFO(MOD_GRAPHICS, "[srcchar] entity {} ({}) race={} gender={} deferred to the prep worker",
+                     spawnId, visual.name, visual.raceId, visual.gender);
+            return true;   // the entity exists (as its placeholder) and will be upgraded
+        }
     }
 
     // Remove con-colored placeholder cube before building real model
