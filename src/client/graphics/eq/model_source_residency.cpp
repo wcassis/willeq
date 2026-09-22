@@ -144,9 +144,8 @@ std::string RaceModelLoader::originalRuleArchiveFor(uint16_t raceId, uint8_t gen
         // built; S3DZone::allCharacterNames still lists every skeleton.
         for (const auto& archive : resolverOrder()) {
             S3DLoader loader;
-            S3DLoadOptions opts;
-            opts.characterCodeFilter = {"\x01"};
-            opts.loadObjects = false;
+            const std::vector<std::string> none{"\x01"};
+            const S3DLoadOptions opts = characterLoadOptions(&none);
             std::vector<std::string> names;
             if (loader.loadZone(clientPath_ + archive, opts) && loader.getZone())
                 for (const auto& n : loader.getZone()->allCharacterNames) names.push_back(upperOf(n));
@@ -342,9 +341,7 @@ size_t RaceModelLoader::reloadArchiveForCodesLocked(const std::string& key, cons
     // were complete on a later cache hit; every hit now checks the name
     // index first (storeLacksIndexedCodeLocked) and reloads through here.
     S3DLoader loader;
-    S3DLoadOptions opts;
-    opts.characterCodeFilter = wanted;
-    opts.loadObjects = false;
+    const S3DLoadOptions opts = characterLoadOptions(&wanted);
     if (!loader.loadZone(path, opts)) return 0;
     auto zone = loader.getZone();
     if (!zone) return 0;

@@ -127,7 +127,7 @@ bool RaceModelLoader::preloadVariantModel(uint16_t raceId, uint8_t gender,
                         if (cacheIt == otherChrCaches_.end()) {
                             std::string fullPath = clientPath_ + jsonS3dFile;
                             S3DLoader loader;
-                            if (loader.loadZone(fullPath)) {
+                            if (loader.loadZone(fullPath, characterLoadOptions())) {
                                 auto zone = loader.getZone();
                                 if (zone && !zone->characters.empty()) {
                                     // T91: was a raw otherChrCaches_[key] = ...
@@ -285,7 +285,7 @@ bool RaceModelLoader::preloadVariantModel(uint16_t raceId, uint8_t gender,
                             if (cacheIt == otherChrCaches_.end()) {
                                 std::string fullPath = clientPath_ + animSourceS3dFile;
                                 S3DLoader loader;
-                                if (loader.loadZone(fullPath)) {
+                                if (loader.loadZone(fullPath, characterLoadOptions())) {
                                     auto zone = loader.getZone();
                                     if (zone && !zone->characters.empty()) {
                                         // T91: was a raw otherChrCaches_[key] = ...

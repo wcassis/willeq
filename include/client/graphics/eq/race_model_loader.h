@@ -367,6 +367,10 @@ public:
     // The textures stay present() (names, sizes, animation info), which is what
     // every reader needs. No-op (returns 0) without EQE1 loaders.
     size_t releaseBytesIfEqe1Authoritative(std::map<std::string, std::shared_ptr<TextureInfo>>& texMap);
+    // T504c Leg 2c: the S3DLoadOptions every character-archive load uses:
+    // no objects, and texture NAMES only when an EQE1 pack is authoritative
+    // (see S3DLoadOptions::textureNamesOnly). `filter` = the wanted codes.
+    S3DLoadOptions characterLoadOptions(const std::vector<std::string>* filter = nullptr) const;
 
     // Memory stats for /pmem reporting
     struct MemoryStats {

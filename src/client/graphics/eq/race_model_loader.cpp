@@ -731,8 +731,7 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: archive cache MISS for {} — loading from disk (race={} gender={})",
                      lowerFilename, raceId, gender);
             S3DLoader loader;
-            S3DLoadOptions filtered;   // T504c Leg 2: tracks/characters of other models are not parsed
-            filtered.characterCodeFilter = wantedHere;
+            const S3DLoadOptions filtered = characterLoadOptions(&wantedHere);   // T504c Leg 2: tracks/characters of other models are not parsed
             if (!loader.loadZone(s3dPath, filtered)) {
                 // T91: route the "poisoned" empty entry through the same
                 // LRU-tracked path as a real load, so a permanently-failing
@@ -858,7 +857,7 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
                 LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: animation merge loading global_chr.s3d from disk for race={}", raceId);
                 // Load and cache global_chr.s3d for animation data
                 S3DLoader animLoader;
-                if (animLoader.loadZone(clientPath_ + globalKey)) {
+                if (animLoader.loadZone(clientPath_ + globalKey, characterLoadOptions())) {
                     auto animZone = animLoader.getZone();
                     if (animZone && !animZone->characters.empty()) {
                         storeOtherChrCacheLocked(globalKey, animZone->characters, animZone->characterTextures);

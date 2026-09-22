@@ -205,7 +205,7 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                                     // Load the chr file
                                     std::string fullPath = clientPath_ + animSourceS3d;
                                     S3DLoader loader;
-                                    if (loader.loadZone(fullPath)) {
+                                    if (loader.loadZone(fullPath, characterLoadOptions())) {
                                         auto zone = loader.getZone();
                                         if (zone && !zone->characters.empty()) {
                                             // T366 (B095): storeOtherChrCacheLocked
@@ -355,7 +355,7 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
             // Load the chr file
             std::string fullPath = clientPath_ + chrFilename;
             S3DLoader loader;
-            if (!loader.loadZone(fullPath)) {
+            if (!loader.loadZone(fullPath, characterLoadOptions())) {
                 // Cache empty entry to avoid repeated load attempts.
                 // T364 (B065): through the store helper -- a raw
                 // otherChrCaches_[key] = ... never enters chrCacheLruOrder_,
@@ -540,7 +540,7 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
                             if (otherChrCaches_.find(lowerAnimS3d) == otherChrCaches_.end()) {
                                 std::string fullPath = clientPath_ + animSourceS3d;
                                 S3DLoader loader;
-                                if (loader.loadZone(fullPath)) {
+                                if (loader.loadZone(fullPath, characterLoadOptions())) {
                                     auto zone = loader.getZone();
                                     if (zone && !zone->characters.empty()) {
                                         // T364 (B065): via the store helper so

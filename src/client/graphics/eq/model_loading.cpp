@@ -52,7 +52,7 @@ bool RaceModelLoader::loadGlobalModels() {
     }
 
     S3DLoader loader;
-    if (!loader.loadZone(globalChrPath)) {
+    if (!loader.loadZone(globalChrPath, characterLoadOptions())) {
         LOG_ERROR(MOD_GRAPHICS, "RaceModelLoader: Failed to load {}: {}", globalChrPath, loader.getError());
         return false;
     }
@@ -101,7 +101,7 @@ bool RaceModelLoader::loadNumberedGlobalModels() {
         std::string filename = clientPath_ + "global" + std::to_string(num) + "_chr.s3d";
 
         S3DLoader loader;
-        if (!loader.loadZone(filename)) {
+        if (!loader.loadZone(filename, characterLoadOptions())) {
             // Not all numbered global files may exist
             continue;
         }
@@ -151,8 +151,7 @@ bool RaceModelLoader::ensureNumberedGlobalCharacters(int num, const std::vector<
     numberedGlobalCharacterArchives_.insert(num);
 
     S3DLoader loader;
-    S3DLoadOptions opts;   // T504c Leg 2: filtered when the caller says what it wants
-    if (codeFilter) opts.characterCodeFilter = *codeFilter;
+    const S3DLoadOptions opts = characterLoadOptions(codeFilter);   // T504c Leg 2: filtered when the caller says what it wants
     if (!loader.loadZone(filename, opts)) return false;
     auto zone = loader.getZone();
     if (!zone) return false;
@@ -352,7 +351,7 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
     std::string zoneFilename = clientPath_ + zoneName + "_chr.s3d";
 
     S3DLoader loader;
-    if (!loader.loadZone(zoneFilename)) {
+    if (!loader.loadZone(zoneFilename, characterLoadOptions())) {
         // Zone-specific chr file may not exist for all zones
         return false;
     }
@@ -392,7 +391,7 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
 
 bool RaceModelLoader::loadModelFromS3D(const std::string& s3dPath, uint16_t raceId, uint8_t gender) {
     S3DLoader loader;
-    if (!loader.loadZone(s3dPath)) {
+    if (!loader.loadZone(s3dPath, characterLoadOptions())) {
         return false;
     }
 

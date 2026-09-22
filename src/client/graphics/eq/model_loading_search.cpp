@@ -245,7 +245,7 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
             // Try to load from this _chr.s3d file
             std::string fullPath = entry.path().string();
             S3DLoader loader;
-            S3DLoadOptions scanOpts;   // whole parse (T504c STOP 1)
+            S3DLoadOptions scanOpts = characterLoadOptions();   // whole parse (T504c STOP 1)
             // T366 (B095): all three inserts below go through
             // storeOtherChrCacheLocked -- the negative-cache entries as much as
             // the positive one. A raw otherChrCaches_[key] = ... never enters
@@ -531,6 +531,14 @@ size_t RaceModelLoader::releaseRawTextureData() {
     releaseMap(armorTextureCache_);
 
     return freed;
+}
+
+S3DLoadOptions RaceModelLoader::characterLoadOptions(const std::vector<std::string>* filter) const {
+    S3DLoadOptions opts;
+    opts.loadObjects = false;
+    opts.textureNamesOnly = constrainedTextureCache_ && constrainedTextureCache_->hasEQE1Loaders();
+    if (filter) opts.characterCodeFilter = *filter;
+    return opts;
 }
 
 size_t RaceModelLoader::releaseBytesIfEqe1Authoritative(

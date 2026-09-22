@@ -264,6 +264,12 @@ struct S3DLoadOptions {
     bool loadObjects = true;
     bool loadCharacters = true;
     bool computeCombinedGeometry = true;
+    // T504c Leg 2c: record character textures by NAME only (TextureInfo
+    // present() but bytesReleased) instead of inflating every BMP/DDS of the
+    // archive. Set by RaceModelLoader when an EQE1 pack is authoritative:
+    // the bytes were inflated (global_chr: 6.7 MiB, 3,233 files) and then
+    // released unread by releaseBytesIfEqe1Authoritative() on every load.
+    bool textureNamesOnly = false;
     // T504b Leg 3: build a CharacterModel (three geometry copies + two
     // skeletons each) only for skeletons whose name contains one of these
     // UPPER-CASE codes; empty = every character. S3DZone::allCharacterNames

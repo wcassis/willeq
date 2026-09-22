@@ -1,6 +1,22 @@
 # T504c — the entity-load transient: parse only the WLD fragments a wanted character needs
 
-**Status:** Legs 1, 1b, 2, 2b DONE (2026-09-22). Leg 3 (0x36/0x10/0x14) and
+**Status:** Legs 1, 1b, 2, 2b, 2c DONE (2026-09-22).
+
+**Leg 2c (names-only textures under EQE1):** every character-archive load
+inflated every BMP/DDS of the archive (global_chr: 3,233 files, 6.7 MiB)
+and `releaseBytesIfEqe1Authoritative` freed them unread moments later
+(EQE1 packs are authoritative on every audit run: "released at once" in
+the log). `S3DLoadOptions::textureNamesOnly` records the same end state
+(present(), bytesReleased) without inflating; `RaceModelLoader::
+characterLoadOptions()` sets it when the constrained texture cache has
+EQE1 loaders and is now the options of every character-archive load (17
+sites). Measured (`run103` vs `run101`, entity_models peak): gfaydark 25.9
+→ 23.1 (28.8 after the late reload); dreadlands 32.5 → 26.8; iceclad 24.1
+→ 21.2; qeynos2 28.9 → 26.0; identity 4/4; render parses 0; errors 0.
+global_chr retained at its `[srcchar] parsed` line 20.3 → 13.3 MiB; what is
+left of one filtered global_chr load is the archive's block store (7 MiB,
+`PfsArchive::open`), the inflated WLD (4 MiB) and the unfiltered 0x36/0x10
+fragments (~2 MiB, Leg 3). Leg 3 (0x36/0x10/0x14) and
 Leg 4 (reuse across reloads) open.
 
 **Leg 2b (traced, not planned):** the peak trace after Leg 2 (`run99`) named

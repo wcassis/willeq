@@ -308,7 +308,7 @@ bool RaceModelLoader::tryBuildVariantFrom(const std::vector<std::shared_ptr<Char
                         // Load the animation source S3D file
                         std::string fullPath = clientPath_ + animSourceS3dFile;
                         S3DLoader loader;
-                        if (loader.loadZone(fullPath)) {
+                        if (loader.loadZone(fullPath, characterLoadOptions())) {
                             auto zone = loader.getZone();
                             if (zone && !zone->characters.empty()) {
                                 // T91: was a raw otherChrCaches_[key] = ...
@@ -515,7 +515,7 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariantsForAnimation(uint16_t ra
                             // Load the chr file
                             std::string fullPath = clientPath_ + jsonS3dFile;
                             S3DLoader loader;
-                            if (loader.loadZone(fullPath)) {
+                            if (loader.loadZone(fullPath, characterLoadOptions())) {
                                 auto zone = loader.getZone();
                                 if (zone && !zone->characters.empty()) {
                                     // T91: was a raw otherChrCaches_[key] = ...
