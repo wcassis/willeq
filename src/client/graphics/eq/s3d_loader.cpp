@@ -4,6 +4,7 @@
 // Bodies are contiguous line ranges of that file, moved verbatim.
 
 #include "client/graphics/eq/s3d_loader.h"
+#include "client/core/memory_ledger.h"
 #include <pthread.h>  // T504: thread names
 #include "common/logging.h"
 #include <algorithm>
@@ -31,6 +32,7 @@ bool S3DLoader::loadZone(const std::string& archivePath) {
 bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& options) {
     zone_ = nullptr;
     error_.clear();
+    options_ = options;
     zoneName_ = extractZoneName(archivePath);
     {
         // T504b Leg 0: every whole-archive parse names the thread that ran
@@ -39,8 +41,10 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
         char thread[32] = "?";
         pthread_getname_np(pthread_self(), thread, sizeof(thread));
         const size_t slash = archivePath.find_last_of("/\\");
-        LOG_INFO(MOD_GRAPHICS, "[srcchar] parse archive={} thread={}",
-                 slash == std::string::npos ? archivePath : archivePath.substr(slash + 1), thread);
+        LOG_INFO(MOD_GRAPHICS, "[srcchar] parse archive={} thread={} filter={} entity_models_live={}",
+                 slash == std::string::npos ? archivePath : archivePath.substr(slash + 1), thread,
+                 options.characterCodeFilter.size(),
+                 eqt::memory::stats(eqt::memory::Category::EntityModels).liveBytes);
     }
 
     PfsArchive archive;
@@ -119,6 +123,13 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
 
     loadLightsFromArchive(archive);
 
+    {
+        const size_t slash = archivePath.find_last_of("/\\");
+        LOG_INFO(MOD_GRAPHICS, "[srcchar] parsed archive={} characters={} of {} entity_models_live={}",
+                 slash == std::string::npos ? archivePath : archivePath.substr(slash + 1),
+                 zone_ ? zone_->characters.size() : 0, zone_ ? zone_->allCharacterNames.size() : 0,
+                 eqt::memory::stats(eqt::memory::Category::EntityModels).liveBytes);
+    }
     return true;
 }
 
@@ -129,6 +140,7 @@ bool S3DLoader::loadZoneFromPreParsed(std::shared_ptr<PfsArchive> archive,
                                        const S3DLoadOptions& options) {
     zone_ = nullptr;
     error_.clear();
+    options_ = options;
     zoneName_ = zoneName;
 
     if (!archive || !wldLoader) {

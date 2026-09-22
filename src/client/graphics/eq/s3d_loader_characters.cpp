@@ -189,6 +189,19 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
 
         // Create character models from skeleton tracks
         for (const auto& [fragIdx, skeleton] : skeletonTracks) {
+            zone_->allCharacterNames.push_back(skeleton->name);
+            if (!options_.characterCodeFilter.empty()) {
+                // T504b Leg 3: an unwanted character is not BUILT (that is
+                // where the 3 geometry copies and the flattened skeleton come
+                // from); its name is recorded above for a later reload.
+                std::string upper = skeleton->name;
+                std::transform(upper.begin(), upper.end(), upper.begin(),
+                               [](unsigned char c) { return std::toupper(c); });
+                bool wanted = false;
+                for (const auto& code : options_.characterCodeFilter)
+                    if (upper.find(code) != std::string::npos) { wanted = true; break; }
+                if (!wanted) continue;
+            }
             auto character = std::make_shared<CharacterModel>();
             character->name = skeleton->name;
             character->skeleton = skeleton;

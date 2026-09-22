@@ -145,6 +145,7 @@ struct S3DZone {
 
     // Character models loaded from _chr.s3d
     std::vector<std::shared_ptr<CharacterModel>> characters;
+    std::vector<std::string> allCharacterNames;   // T504b Leg 3: every skeleton name, filtered or not
 
     // Character textures loaded from _chr.s3d
     std::map<std::string, std::shared_ptr<TextureInfo>> characterTextures;
@@ -263,6 +264,12 @@ struct S3DLoadOptions {
     bool loadObjects = true;
     bool loadCharacters = true;
     bool computeCombinedGeometry = true;
+    // T504b Leg 3: build a CharacterModel (three geometry copies + two
+    // skeletons each) only for skeletons whose name contains one of these
+    // UPPER-CASE codes; empty = every character. S3DZone::allCharacterNames
+    // still lists every skeleton the archive holds, so the caller's archive
+    // index knows what a later request could reload.
+    std::vector<std::string> characterCodeFilter;
 };
 
 // High-level S3D zone loader
@@ -358,6 +365,7 @@ private:
     bool loadObjectTextures(PfsArchive& archive);
     bool loadCharacterTextures(PfsArchive& archive);
     bool loadCharacters(const std::string& archivePath);
+    S3DLoadOptions options_;   // the options of the load in progress (T504b Leg 3: characterCodeFilter)
     bool loadLights(const std::string& archivePath);
     bool loadLightsFromArchive(PfsArchive& archive);
     void flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,

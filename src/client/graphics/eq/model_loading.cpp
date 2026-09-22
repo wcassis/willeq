@@ -127,7 +127,7 @@ bool RaceModelLoader::loadNumberedGlobalModels() {
 
 // T500 Leg B: the character half, per archive and on demand. This is what
 // loadNumberedGlobalModels() used to do eagerly for all six.
-bool RaceModelLoader::ensureNumberedGlobalCharacters(int num) {
+bool RaceModelLoader::ensureNumberedGlobalCharacters(int num, const std::vector<std::string>* codeFilter) {
     if (clientPath_.empty()) return false;
     if (numberedGlobalCharacterArchives_.count(num))
         return numberedGlobalCharacters_.count(num) > 0;
@@ -135,9 +135,15 @@ bool RaceModelLoader::ensureNumberedGlobalCharacters(int num) {
 
     const std::string filename = clientPath_ + "global" + std::to_string(num) + "_chr.s3d";
     S3DLoader loader;
+    (void)codeFilter;   // T504c STOP 1: whole parse; a filtered one changed which archive a race resolves from
     if (!loader.loadZone(filename)) return false;
     auto zone = loader.getZone();
-    if (!zone || zone->characters.empty()) return false;
+    if (!zone) return false;
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);   // every name, even when filtered
+        recordArchiveNamesLocked("global" + std::to_string(num), filename, zone->allCharacterNames);
+    }
+    if (zone->characters.empty()) return false;
 
     {
         std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
@@ -579,7 +585,8 @@ bool RaceModelLoader::loadModelFromNumberedGlobal(int globalNum, uint16_t raceId
     // T500 Leg B: the characters are no longer pre-loaded by
     // loadNumberedGlobalModels(); this is the one path that wants them, so it
     // is the one that loads them.
-    ensureNumberedGlobalCharacters(globalNum);
+    const std::vector<std::string> wantedHere = wantedCodesFor(raceId, gender);   // T504b Leg 3
+    ensureNumberedGlobalCharacters(globalNum, &wantedHere);
 
     // Check if this numbered global is loaded (T504b Leg 2: a snapshot)
     const CharacterList characters = snapshotNumberedGlobalCharacters(globalNum);

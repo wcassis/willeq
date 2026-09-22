@@ -137,7 +137,7 @@ public:
     // T500 Leg B: parse global<num>_chr.s3d's characters into
     // numberedGlobalCharacters_[num] if they are not there yet. Idempotent;
     // a failed or empty archive is remembered so it is parsed once.
-    bool ensureNumberedGlobalCharacters(int num);
+    bool ensureNumberedGlobalCharacters(int num, const std::vector<std::string>* codeFilter = nullptr);
 
     // Load zone-specific character models from zone_chr.s3d
     bool loadZoneModels(const std::string& zoneName);
@@ -985,6 +985,13 @@ private:
     double evictHysteresisSeconds_ = 60.0;
     std::function<void(uint16_t, uint8_t)> workerPreloadRequest_;
     void recordArchiveNamesLocked(const std::string& key, const std::string& path, const CharacterList& chars);
+    void recordArchiveNamesLocked(const std::string& key, const std::string& path, const std::vector<std::string>& names);
+    // The codes a request for (race, gender) can need: the gendered race
+    // code, the fallback code and each one's animation donor (upper-case).
+    // T504b Leg 3: also the S3DLoadOptions::characterCodeFilter of every
+    // race-specific archive parse, so an archive is parsed for the wanted
+    // characters only and the rest are never built.
+    std::vector<std::string> wantedCodesFor(uint16_t raceId, uint8_t gender) const;
     void computeUsedSet(std::set<const CharacterSkeleton*>& usedSkeletons,
                         std::set<const Animation*>& usedAnimations) const;
     static bool pruningEnabled();

@@ -245,13 +245,14 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
             // Try to load from this _chr.s3d file
             std::string fullPath = entry.path().string();
             S3DLoader loader;
+            S3DLoadOptions scanOpts;   // whole parse (T504c STOP 1)
             // T366 (B095): all three inserts below go through
             // storeOtherChrCacheLocked -- the negative-cache entries as much as
             // the positive one. A raw otherChrCaches_[key] = ... never enters
             // chrCacheLruOrder_, so it can never be evicted while still counting
             // against maxChrCacheEntries_ (the T91 bypass), and the third insert
             // used to open-code the helper's push/evict inline.
-            if (!loader.loadZone(fullPath)) {
+            if (!loader.loadZone(fullPath, scanOpts)) {
                 // T369 (B105) -- see the sibling warning below.
                 LOG_WARN(MOD_GRAPHICS,
                          "RaceModelLoader: '{}' is a _chr.s3d archive that yielded "
@@ -264,6 +265,13 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
             }
 
             auto zone = loader.getZone();
+            if (zone && !zone->allCharacterNames.empty()) {
+                // T504b Leg 3: a FILTERED parse may build nothing for this race
+                // yet the archive holds other characters -- the index must know
+                // their names, or a later race could never reload them.
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+                recordArchiveNamesLocked("other:" + lowerFilename, fullPath, zone->allCharacterNames);
+            }
             if (!zone || zone->characters.empty()) {
                 // T369 (B105): an archive that EXISTS on disk and is named
                 // `*_chr.s3d` yet produces no characters is a defect signal,
@@ -286,6 +294,10 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
             }
 
             // Cache this file's characters and textures for future searches
+            {
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);   // T504b Leg 3: every name
+                recordArchiveNamesLocked("other:" + lowerFilename, fullPath, zone->allCharacterNames);
+            }
             storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
 
             // Re-find: the store may have evicted this very entry (a cap of 1

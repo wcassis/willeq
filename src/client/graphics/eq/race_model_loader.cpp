@@ -753,6 +753,30 @@ void RaceModelLoader::recordArchiveNamesLocked(const std::string& key, const std
     for (const auto& cm : chars) if (cm) e.names.push_back(upperOf(cm->name));
 }
 
+void RaceModelLoader::recordArchiveNamesLocked(const std::string& key, const std::string& path,
+                                               const std::vector<std::string>& names) {
+    ArchiveIndexEntry& e = archiveIndex_[key];
+    if (!e.names.empty()) return;
+    e.path = path;
+    for (const auto& n : names) e.names.push_back(upperOf(n));
+}
+
+std::vector<std::string> RaceModelLoader::wantedCodesFor(uint16_t raceId, uint8_t gender) const {
+    std::vector<std::string> wanted;
+    const std::string base = getRaceCode(raceId);
+    if (base.empty()) return wanted;
+    const std::string raceCode = upperOf(getGenderedRaceCode(base, gender));
+    wanted.push_back(raceCode);
+    const std::string fallback = upperOf(getFallbackRaceCode(raceId, gender));
+    if (!fallback.empty() && fallback != raceCode) wanted.push_back(fallback);
+    for (const std::string& c : std::vector<std::string>{raceCode, fallback}) {
+        if (c.empty()) continue;
+        const std::string donor = upperOf(getAnimationSourceCode(c));
+        if (!donor.empty() && donor != c) wanted.push_back(donor);
+    }
+    return wanted;
+}
+
 void RaceModelLoader::computeUsedSet(std::set<const CharacterSkeleton*>& usedSkeletons,
                                      std::set<const Animation*>& usedAnimations) const {
     auto take = [&](const std::shared_ptr<RaceModelData>& m) {
@@ -841,18 +865,8 @@ void RaceModelLoader::ensureSourceForRace(uint16_t raceId, uint8_t gender, const
         if (knownMissingRaceGenders_.count(makeCacheKey(raceId, gender))) return;   // no archive has it
     }
     // The codes the search chain and the animation merge will look for.
-    std::vector<std::string> wanted;
-    const std::string base = getRaceCode(raceId);
-    if (base.empty()) return;
-    const std::string raceCode = upperOf(getGenderedRaceCode(base, gender));
-    wanted.push_back(raceCode);
-    const std::string fallback = upperOf(getFallbackRaceCode(raceId, gender));
-    if (!fallback.empty() && fallback != raceCode) wanted.push_back(fallback);
-    for (const std::string& c : std::vector<std::string>{raceCode, fallback}) {
-        if (c.empty()) continue;
-        const std::string donor = upperOf(getAnimationSourceCode(c));
-        if (!donor.empty() && donor != c) wanted.push_back(donor);
-    }
+    const std::vector<std::string> wanted = wantedCodesFor(raceId, gender);
+    if (wanted.empty()) return;
 
     // Which pruned archives hold a wanted name the store no longer has?
     std::vector<std::pair<std::string, std::string>> toReload;   // key, path
@@ -886,6 +900,9 @@ void RaceModelLoader::ensureSourceForRace(uint16_t raceId, uint8_t gender, const
         }
     }
     for (const auto& [key, path] : toReload) {
+        // T504c (STOP 1, 2026-09-22): a FILTERED parse changes which archive a
+        // race resolves from (race 120 WOE: global6_chr vs global_chr), so the
+        // reload parses whole and keeps the wanted characters afterwards.
         S3DLoader loader;
         if (!loader.loadZone(path)) continue;
         auto zone = loader.getZone();
@@ -1039,7 +1056,7 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: archive cache MISS for {} — loading from disk (race={} gender={})",
                      lowerFilename, raceId, gender);
             S3DLoader loader;
-            if (!loader.loadZone(s3dPath)) {
+            if (!loader.loadZone(s3dPath)) {   // whole parse (see T504c STOP 1: a filtered one changes the winner)
                 // T91: route the "poisoned" empty entry through the same
                 // LRU-tracked path as a real load, so a permanently-failing
                 // filename occupies (and can eventually give up) a counted
@@ -1049,11 +1066,19 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
                 return nullptr;
             }
             auto zone = loader.getZone();
+            if (zone && !zone->allCharacterNames.empty()) {
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);   // T504b Leg 3: names even when filtered to nothing
+                recordArchiveNamesLocked("other:" + lowerFilename, s3dPath, zone->allCharacterNames);
+            }
             if (!zone || zone->characters.empty()) {
                 storeOtherChrCacheLocked(lowerFilename, {}, {});
                 return nullptr;
             }
 
+            {
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);   // T504b Leg 3: every name, filtered or not
+                recordArchiveNamesLocked("other:" + lowerFilename, s3dPath, zone->allCharacterNames);
+            }
             storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
             cacheIt = otherChrCaches_.find(lowerFilename);
 
