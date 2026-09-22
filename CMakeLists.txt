@@ -277,6 +277,7 @@ SET(COMMON_SOURCES
 SET(CLIENT_CORE_SOURCES
     src/client/core/everquest.cpp
     src/client/core/memory_ledger.cpp
+    src/client/core/memory_ledger_trace.cpp
     src/client/zone/zone_dispatch.cpp
     src/client/zone/zone_handshake.cpp
     src/client/zone/zone_entry.cpp
@@ -1005,6 +1006,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
         src/client/core/memory_ledger.cpp  # T500: model_loading_search.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_trace.cpp
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/variant_loading.cpp
@@ -1997,6 +1999,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_zone_benchmark
         tools/hwcaps/gles2_zone_benchmark.cpp
         src/client/core/memory_ledger.cpp
+        src/client/core/memory_ledger_trace.cpp
         tools/hwcaps/zone_bench_options.cpp
         tools/hwcaps/zone_bench_frame.cpp
         tools/hwcaps/zone_bench_modes.cpp
@@ -2152,6 +2155,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_shader_diagnostic
         tools/hwcaps/gles2_shader_diagnostic.cpp
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
+        src/client/core/memory_ledger_trace.cpp
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
@@ -2269,6 +2273,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_composite_audit
         tools/hwcaps/gles2_composite_audit.cpp
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
+        src/client/core/memory_ledger_trace.cpp
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp

@@ -663,7 +663,6 @@ EXEMPT_GROUPS = {
     ("DoorManager", "isDoorMeshBuilt"): "B494",
     ("DoorManager", "rebuildPlaceholderDoors"): "B494",
     ("DoorManager", "recomputeAllBspRegions"): "B494",
-    ("EQE1TextureIndex", "nameCount"): "B494",
     ("EntityRenderer", "adjustOffsetX"): "B494",
     ("EntityRenderer", "adjustOffsetY"): "B494",
     ("EntityRenderer", "adjustOffsetZ"): "B494",
@@ -934,6 +933,23 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # T504: the ledger's stack-trace instrument is armed by an environment
+    # variable in a live run (WILLEQ_LEDGER_TRACE); the unit test needs the
+    # programmatic form of that switch and the report it prints.
+    ("(free)", "traceConfigure"): "seam",
+    ("(free)", "traceReport"): "observer",
+    # T504: the entity-load callers moved to the instance form
+    # (extractEquipmentModelCached, one open handle + one parsed WLD across
+    # items); the static form is the held-item test's own-handle seam and
+    # shares the body (extractFromParsed) with the live path.
+    ("EquipmentModelLoader", "extractEquipmentModelOffThread"): "seam",
+    # T504 fix 1: the custom SoundFont is loaded lazily and freed on the way
+    # back to GM; the test's window on whether it is resident right now.
+    ("MidiPlayer", "isCustomSoundFontResident"): "observer",
+    # T504b Leg 2b: the unload test's window on the evictable set, and the
+    # clock it turns forward so the hysteresis window elapses in a test.
+    ("RaceModelLoader", "evictableCountForTest"): "observer",
+    ("RaceModelLoader", "sweepEvictableForTest"): "seam",
     # T491: the memory ledger's read-back of the calling thread's current
     # MemoryScope category. (B843 gave it production callers: the S3D and
     # armor texture loaders stamp the allocating scope onto each TextureInfo.)

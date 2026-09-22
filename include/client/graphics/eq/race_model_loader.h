@@ -72,7 +72,6 @@ public:
         (*map_)[k] = std::move(v);
     }
     // identity of the underlying storage, for tallies that must count a shared map once
-    const void* storageId() const { return map_.get(); }
 private:
     static const Map& emptyMap() { static const Map e; return e; }
     std::shared_ptr<Map> map_;

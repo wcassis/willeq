@@ -122,7 +122,6 @@ public:
     void clearOccluders() { regionOccluders_.clear(); }
 
     // Get the full region occluders map (for copying to worker thread)
-    const std::unordered_map<size_t, std::vector<OccluderTriangle>>& getRegionOccludersMap() const { return regionOccluders_; }
     // T504: hand the occluder sets over (the caller becomes the owner; this
     // culler is left with none). The SimulationWorker's own culler does the
     // per-frame culling; the renderer-side culler only extracted the sets at
