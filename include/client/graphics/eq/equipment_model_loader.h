@@ -168,6 +168,14 @@ public:
     // Does NOT create Irrlicht meshes or upload textures.
     static std::shared_ptr<EquipmentModelData> extractEquipmentModelOffThread(
         const EquipmentModelRef& modelRef, int modelId);
+    // T504: same result through this loader's parse cache (one open + one
+    // parse per archive across consecutive items; see parseMutex_).
+    std::shared_ptr<EquipmentModelData> extractEquipmentModelCached(
+        const EquipmentModelRef& modelRef, int modelId);
+    // The shared body: geometry + raw textures from an open archive and a
+    // parsed WLD (no Irrlicht calls).
+    static std::shared_ptr<EquipmentModelData> extractFromParsed(
+        PfsArchive& archive, WldLoader& wldLoader, const EquipmentModelRef& modelRef, int modelId);
 
     // Getters for index access (triggers lazy-init if needed)
     const EquipmentModelRef* getModelRef(int modelId);
@@ -204,6 +212,7 @@ private:
 
     // Load a single equipment texture on demand from its indexed archive
     std::shared_ptr<TextureInfo> getEquipmentTexture(const std::string& lowerName);
+    std::shared_ptr<TextureInfo> getEquipmentTextureLocked(const std::string& lowerName);  // parseMutex_ held
 
     // Build an Irrlicht mesh from equipment geometry
     irr::scene::IMesh* buildMeshFromGeometry(
@@ -257,6 +266,32 @@ private:
 
     // Constrained texture cache for LRU tracking (non-owning, owned by IrrlichtRenderer)
     ConstrainedTextureCache* constrainedTextureCache_ = nullptr;
+
+    // T504: the last archive opened / WLD parsed by the on-demand paths.
+    // loadEquipmentModelOnDemand() used to open the whole gequip*.s3d and
+    // parse its ENTIRE WLD for ONE item, per distinct item, and
+    // getEquipmentTexture() re-opened the archive per texture (7 MiB block
+    // read + ~10 MiB parse each time; equipment ledger peak 10 MiB in every
+    // zone). Consecutive requests in a zone load mostly hit the same
+    // archive, so one open handle and one parsed WLD are kept until
+    // releaseParseCache() (called from releaseRawTextureData(), i.e. when
+    // the progressive load is done) drops them. Guarded by parseMutex_,
+    // which also serialises the two on-demand entry points (prep worker and
+    // zone-load thread).
+    std::mutex parseMutex_;
+    std::string cachedArchivePath_;
+    std::unique_ptr<PfsArchive> cachedArchive_;
+    std::string cachedWldName_;
+    std::unique_ptr<WldLoader> cachedWld_;
+    // Cache statistics, reported (INFO) by releaseParseCache().
+    size_t parseCacheRequests_ = 0, parseCacheOpens_ = 0, parseCacheParses_ = 0;
+    PfsArchive* openArchiveLocked(const std::string& archivePath);   // parseMutex_ held
+    WldLoader* parsedWldLocked(const std::string& archivePath, const std::string& wldName);  // parseMutex_ held
+public:
+    // Drop the cached archive handle and parsed WLD (see above). Safe to call
+    // any time; the next on-demand request re-opens.
+    void releaseParseCache();
+private:
 
     // T126: resolved once in setConstrainedTextureCache(), before any
     // eviction can occur -- see class doc comment and onTextureEvicted().

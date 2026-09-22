@@ -478,7 +478,7 @@ bool ZoneLoadComponent::loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx) {
                           ctx.spawnId, ctx.vis->name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
                 return;
             }
-            auto equipData2 = EquipmentModelLoader::extractEquipmentModelOffThread(*modelRef, modelId);
+            auto equipData2 = ctx.equipLoader->extractEquipmentModelCached(*modelRef, modelId);  // T504
             if (!equipData2) {
                 LOG_WARN(MOD_GRAPHICS, "Skipping equipment model: entity {} ({}) equipment {} ({}) modelId={} — entity will render unequipped for this slot",
                           ctx.spawnId, ctx.vis->name, equipmentId, isPrimary ? "primary" : "secondary", modelId);
