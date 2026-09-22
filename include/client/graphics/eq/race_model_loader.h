@@ -521,6 +521,14 @@ public:
     // split test. Carries the ledger's EntityModels live/peak read at the SAME
     // instant, so total-vs-ledger is one line, not two greps.
     std::string modelMemLogLine(const std::string& point) const;
+    // T504b Leg 0: the source-character census. One [srcchar] line per
+    // retained archive: characters parsed, how many a built model was made
+    // from (skeleton identity), how many only DONATE animations to a built
+    // model (Animation pointer identity), how many nothing references, and
+    // the bytes of each class (geometry once per distinct part + skeleton +
+    // tracks). "unused" bytes are what Leg 2 may drop; the leg is held to
+    // this number.
+    std::string srcCharLogLines(const std::string& point) const;
 
     // B843: the `[modelmem-shared] ...` lines, in Will's ruling form
     // (`X: owner_category, [claimant, claimant, ...]` per distinct block,

@@ -4,6 +4,7 @@
 // Bodies are contiguous line ranges of that file, moved verbatim.
 
 #include "client/graphics/eq/s3d_loader.h"
+#include <pthread.h>  // T504: thread names
 #include "common/logging.h"
 #include <algorithm>
 #include <iostream>
@@ -31,6 +32,16 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
     zone_ = nullptr;
     error_.clear();
     zoneName_ = extractZoneName(archivePath);
+    {
+        // T504b Leg 0: every whole-archive parse names the thread that ran
+        // it, so the census can say whether a parse ever happens on the
+        // render thread (the plan's STOP 3).
+        char thread[32] = "?";
+        pthread_getname_np(pthread_self(), thread, sizeof(thread));
+        const size_t slash = archivePath.find_last_of("/\\");
+        LOG_INFO(MOD_GRAPHICS, "[srcchar] parse archive={} thread={}",
+                 slash == std::string::npos ? archivePath : archivePath.substr(slash + 1), thread);
+    }
 
     PfsArchive archive;
     if (!archive.open(archivePath)) {

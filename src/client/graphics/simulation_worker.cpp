@@ -1,4 +1,5 @@
 #include "client/graphics/simulation_worker.h"
+#include <pthread.h>  // T504: thread names
 #include "client/graphics/portal_system.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/environment/unified_particle.h"
@@ -349,6 +350,7 @@ SimulationWorker::DebugInfo SimulationWorker::getDebugInfo() const {
 
 void SimulationWorker::workerLoop() {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::IrrlichtScene);  // T491
+    pthread_setname_np(pthread_self(), "eq-sim");  // T504
     LOG_DEBUG(MOD_GRAPHICS, "SimulationWorker thread started");
 
     while (running_.load(std::memory_order_relaxed)) {

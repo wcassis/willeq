@@ -483,6 +483,42 @@ size_t RaceModelLoader::releaseBytesIfEqe1Authoritative(
     return freed;
 }
 
+namespace {
+// Skeleton sizing, shared by getMemoryStats() ([modelmem]) and
+// srcCharLogLines() ([srcchar]) so the two tables measure alike.
+size_t skeletonBytesOf(const std::shared_ptr<CharacterSkeleton>& skel) {
+    if (!skel) return 0;
+    size_t total = sizeof(CharacterSkeleton) + skel->modelCode.capacity();
+    for (const auto& bone : skel->bones) {
+        total += sizeof(AnimatedBone) + bone.name.capacity();
+        total += bone.childIndices.capacity() * sizeof(int);
+        if (bone.poseTrack)
+            total += bone.poseTrack->frames.capacity() * sizeof(BoneTransform);
+        for (const auto& [code, track] : bone.animationTracks)
+            if (track) total += track->frames.capacity() * sizeof(BoneTransform);
+    }
+    for (const auto& [code, anim] : skel->animations)
+        if (anim) total += sizeof(Animation) + anim->tracks.size() * 64;
+    return total;
+}
+
+size_t skeletonTrackBytesOf(const std::shared_ptr<SkeletonTrack>& sk) {
+    if (!sk) return 0;
+    size_t total = sizeof(SkeletonTrack) + sk->name.capacity();
+    total += sk->bones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+    total += sk->allBones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+    total += sk->parentIndices.capacity() * sizeof(int);
+    total += sk->meshRefs.capacity() * sizeof(uint32_t);
+    for (const auto& b : sk->allBones) {
+        if (!b) continue;
+        total += sizeof(SkeletonBone) + b->name.capacity();
+        total += b->children.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+        if (b->orientation) total += sizeof(BoneOrientation);
+    }
+    return total;
+}
+} // namespace
+
 RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     MemoryStats stats;
 
@@ -628,21 +664,7 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
         compositeAnimatedMeshCache_.size() + compositeVariantAnimatedMeshCache_.size();  // P08d
 
     // --- Geometry and skeleton data in loadedModels_ ---
-    auto calcSkeletonBytes = [](const std::shared_ptr<CharacterSkeleton>& skel) -> size_t {
-        if (!skel) return 0;
-        size_t total = sizeof(CharacterSkeleton) + skel->modelCode.capacity();
-        for (const auto& bone : skel->bones) {
-            total += sizeof(AnimatedBone) + bone.name.capacity();
-            total += bone.childIndices.capacity() * sizeof(int);
-            if (bone.poseTrack)
-                total += bone.poseTrack->frames.capacity() * sizeof(BoneTransform);
-            for (const auto& [code, track] : bone.animationTracks)
-                if (track) total += track->frames.capacity() * sizeof(BoneTransform);
-        }
-        for (const auto& [code, anim] : skel->animations)
-            if (anim) total += sizeof(Animation) + anim->tracks.size() * 64;
-        return total;
-    };
+    const auto calcSkeletonBytes = &skeletonBytesOf;  // hoisted (T504b): shared with srcCharLogLines
 
     // --- T500 Leg A (d): the four terms the first pass's 48 % residual was
     // made of. Pointer sets, so a structure shared between two owners is
@@ -660,21 +682,7 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
 
     // The original (pre-flatten) skeleton every CharacterModel keeps a
     // shared_ptr to. Nothing has ever charged it.
-    auto calcSkeletonTrackBytes = [](const std::shared_ptr<SkeletonTrack>& sk) -> size_t {
-        if (!sk) return 0;
-        size_t total = sizeof(SkeletonTrack) + sk->name.capacity();
-        total += sk->bones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
-        total += sk->allBones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
-        total += sk->parentIndices.capacity() * sizeof(int);
-        total += sk->meshRefs.capacity() * sizeof(uint32_t);
-        for (const auto& b : sk->allBones) {
-            if (!b) continue;
-            total += sizeof(SkeletonBone) + b->name.capacity();
-            total += b->children.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
-            if (b->orientation) total += sizeof(BoneOrientation);
-        }
-        return total;
-    };
+    const auto calcSkeletonTrackBytes = &skeletonTrackBytesOf;  // hoisted (T504b)
 
     // T500 (e): what calcSkeletonBytes() does NOT charge. Same traversal, the
     // complement of the same structure, deduplicated by pointer so a TrackDef
@@ -1081,6 +1089,105 @@ std::string RaceModelLoader::modelMemSharedLines(const std::string& point) const
                            e.bytes + e.storageBytes, e.bytes, e.storageBytes,
                            e.owner, e.claimants);
     }
+    return out;
+}
+
+
+std::string RaceModelLoader::srcCharLogLines(const std::string& point) const {
+    // The used set: skeletons a built model holds, and every Animation those
+    // skeletons hold (a donor's animations are shared by pointer after the
+    // merge, so a source whose Animation object is in here is a donor).
+    std::set<const CharacterSkeleton*> usedSkeletons;
+    std::set<const Animation*> usedAnimations;
+    auto take = [&](const std::shared_ptr<RaceModelData>& m) {
+        if (!m || !m->skeleton) return;
+        usedSkeletons.insert(m->skeleton.get());
+        for (const auto& [code, anim] : m->skeleton->animations)
+            if (anim) usedAnimations.insert(anim.get());
+    };
+    {
+        std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+        for (const auto& [key, m] : loadedModels_) take(m);
+    }
+    {
+        std::lock_guard<std::mutex> lock(variantModelsMutex_);
+        for (const auto& [key, m] : variantModels_) take(m);
+    }
+    {
+        std::lock_guard<std::mutex> lock(preparedDataMutex_);
+        for (const auto& [key, m] : preparedModelData_) take(m);
+    }
+
+    // Bytes of one source character: each distinct part geometry once, plus
+    // its two skeletons. The same measures modelMemLogLine() uses, so the
+    // per-archive sums line up with the src_* rows there.
+    auto charBytes = [](const CharacterModel& cm) {
+        size_t b = sizeof(CharacterModel) + cm.name.capacity();
+        std::set<const ZoneGeometry*> seen;
+        for (const auto& part : cm.parts)
+            if (part && seen.insert(part.get()).second) b += part->getMemoryUsage();
+        for (const auto& p : cm.partsWithTransforms)
+            if (p.geometry && seen.insert(p.geometry.get()).second) b += p.geometry->getMemoryUsage();
+        for (const auto& p : cm.rawParts)
+            if (p.geometry && seen.insert(p.geometry.get()).second) b += p.geometry->getMemoryUsage();
+        b += cm.partsWithTransforms.capacity() * sizeof(CharacterPart);
+        b += cm.rawParts.capacity() * sizeof(CharacterPart);
+        // Container overhead (modelmem's skel_containers) is not included here.
+        if (cm.animatedSkeleton) b += skeletonBytesOf(cm.animatedSkeleton);
+        if (cm.skeleton) b += skeletonTrackBytesOf(cm.skeleton);
+        return b;
+    };
+    enum Class { Used = 0, Donor = 1, Unused = 2, Static = 3 };
+    auto classify = [&](const CharacterModel& cm) -> Class {
+        if (!cm.animatedSkeleton) return Static;   // no skeleton: nothing to key on
+        if (usedSkeletons.count(cm.animatedSkeleton.get())) return Used;
+        for (const auto& [code, anim] : cm.animatedSkeleton->animations)
+            if (anim && usedAnimations.count(anim.get())) return Donor;
+        return Unused;
+    };
+
+    std::string out;
+    size_t tChars = 0, tBytes = 0, tUnusedBytes = 0;
+    auto walk = [&](const std::string& archive,
+                    const std::vector<std::shared_ptr<CharacterModel>>& chars) {
+        size_t n[4] = {0, 0, 0, 0};
+        size_t bytes[4] = {0, 0, 0, 0};
+        std::string unusedNames;
+        for (const auto& cm : chars) {
+            if (!cm) continue;
+            const Class c = classify(*cm);
+            const size_t b = charBytes(*cm);
+            ++n[c];
+            bytes[c] += b;
+            if (c == Unused && unusedNames.size() < 200) {
+                if (!unusedNames.empty()) unusedNames += ',';
+                unusedNames += cm->name;
+            }
+        }
+        const size_t all = n[0] + n[1] + n[2] + n[3];
+        const size_t allBytes = bytes[0] + bytes[1] + bytes[2] + bytes[3];
+        tChars += all;
+        tBytes += allBytes;
+        tUnusedBytes += bytes[Unused] + bytes[Static];
+        if (!out.empty()) out += '\n';
+        out += fmt::format(
+            "[srcchar] point={} archive={} chars={} used={} donor={} unused={} static={} "
+            "bytes={} bytes_used={} bytes_donor={} bytes_unused={} bytes_static={} unused_names={}",
+            point, archive, all, n[Used], n[Donor], n[Unused], n[Static],
+            allBytes, bytes[Used], bytes[Donor], bytes[Unused], bytes[Static], unusedNames);
+    };
+    walk("global_chr.s3d", globalCharacters_);
+    for (const auto& [num, chars] : numberedGlobalCharacters_)
+        walk(fmt::format("global{}_chr.s3d", num), chars);
+    if (!zoneCharacters_.empty()) walk(currentZoneName_ + "_chr.s3d", zoneCharacters_);
+    {
+        std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
+        for (const auto& [name, cache] : otherChrCaches_) walk("other:" + name, cache.characters);
+    }
+    if (!out.empty()) out += '\n';
+    out += fmt::format("[srcchar] point={} archive=TOTAL chars={} bytes={} bytes_droppable={} "
+                       "used_skeletons={} used_animations={}",
+                       point, tChars, tBytes, tUnusedBytes, usedSkeletons.size(), usedAnimations.size());
     return out;
 }
 
