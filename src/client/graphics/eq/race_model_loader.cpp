@@ -735,7 +735,10 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: archive cache MISS for {} — loading from disk (race={} gender={})",
                      lowerFilename, raceId, gender);
             S3DLoader loader;
-            const S3DLoadOptions filtered = characterLoadOptions(&wantedHere);   // T504c Leg 2: tracks/characters of other models are not parsed
+            // T504c Leg 2: tracks/characters of other models are not parsed;
+            // Leg 4: the zone's announced race set rides along on the first parse.
+            const std::vector<std::string> prefetched = wantedWithPrefetch(raceId, gender);
+            const S3DLoadOptions filtered = characterLoadOptions(&prefetched);
             if (!loader.loadZone(s3dPath, filtered)) {
                 // T91: route the "poisoned" empty entry through the same
                 // LRU-tracked path as a real load, so a permanently-failing

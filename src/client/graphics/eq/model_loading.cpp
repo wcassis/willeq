@@ -368,6 +368,7 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
     }
     zoneTextures_ = zone->characterTextures;
     currentZoneName_ = zoneName;
+    clearPrefetchRaces();   // T504c Leg 4: the set belongs to the zone being left
     zoneModelsLoaded_ = true;
     // T504 resolver Leg 0: what the ORIGINAL client would load for this zone.
     if (!eraZonesLoaded_) { eraZones_ = LoadEraZones(); eraZonesLoaded_ = true; }

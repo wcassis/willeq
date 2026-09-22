@@ -89,9 +89,16 @@ bool ZoneLoadComponent::loadZoneStep8_Entities(ZoneLoadContext& ctx) {
             // Collect spawn IDs (iterate copy since we modify visuals)
             std::vector<uint16_t> spawnIds;
             spawnIds.reserve(ctx.totalEntities);
+            std::vector<std::pair<uint16_t, uint8_t>> raceSet;   // T504c Leg 4
             for (const auto& [spawnId, vis] : entities) {
                 spawnIds.push_back(spawnId);
+                const std::pair<uint16_t, uint8_t> pair{vis.raceId, vis.gender};
+                if (std::find(raceSet.begin(), raceSet.end(), pair) == raceSet.end()) raceSet.push_back(pair);
             }
+            // T504c Leg 4: announce the zone's race set, so the first parse of
+            // each character archive below covers every race the loop will ask
+            // for (one parse per archive per load instead of one per race).
+            if (ctx.modelLoader) ctx.modelLoader->setPrefetchRaces(raceSet);
 
             for (uint16_t spawnId : spawnIds) {
 

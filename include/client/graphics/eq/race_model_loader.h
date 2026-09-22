@@ -1040,7 +1040,18 @@ public:
     // animation donor) names a character an archive is known to hold but a
     // pruned store no longer has, re-parse that archive for it.
     void ensureSourceForRace(uint16_t raceId, uint8_t gender, const char* site = "?");
+    // T504c Leg 4: the zone load knows every (race, gender) it is about to
+    // prepare before it prepares the first one. With the set announced here,
+    // the first parse of each archive is filtered to the UNION of their wanted
+    // codes, so the later races hit the cache instead of re-parsing the
+    // archive per race (gfaydark: global_chr.s3d and gfaydark_chr.s3d were
+    // each parsed 6 times in one load). Cleared on a zone change.
+    void setPrefetchRaces(const std::vector<std::pair<uint16_t, uint8_t>>& races);
+    void clearPrefetchRaces();
 private:
+    std::vector<std::string> prefetchCodes_;   // under sourceStoresMutex_
+    // wantedCodesFor(race, gender) plus the prefetch set, without duplicates.
+    std::vector<std::string> wantedWithPrefetch(uint16_t raceId, uint8_t gender) const;
     // T504c Leg 2: re-parse one indexed archive with the wanted codes as the
     // fragment filter and append the wanted characters the store lacks.
     // Requires otherChrCacheMutex_ then sourceStoresMutex_ held. Returns the

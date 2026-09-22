@@ -119,6 +119,37 @@ std::vector<std::string> RaceModelLoader::wantedCodesFor(uint16_t raceId, uint8_
     return wanted;
 }
 
+void RaceModelLoader::setPrefetchRaces(const std::vector<std::pair<uint16_t, uint8_t>>& races) {
+    // WILLEQ_PREFETCH_RACES=0 disables the announcement (A/B: the per-race
+    // reload chain of Leg 2). Measured x86 (run114 vs run111): archive parses
+    // per load 17/10/9/17 -> 14/8/7/8, base-model preload time 406/237/225/
+    // 350 ms -> 114/189/135/114 ms; the entity_models peak during the load
+    // rises 2-8 MiB (dreadlands 19.6 -> 27.5) because the announced races'
+    // characters are held until the load completes; steady state unchanged.
+    static const bool on = [] { const char* v = std::getenv("WILLEQ_PREFETCH_RACES"); return !(v && v[0] == '0'); }();
+    if (!on) return;
+    std::vector<std::string> codes;
+    for (const auto& [race, gender] : races)
+        for (const auto& c : wantedCodesFor(race, gender))
+            if (std::find(codes.begin(), codes.end(), c) == codes.end()) codes.push_back(c);
+    std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+    prefetchCodes_ = std::move(codes);
+    LOG_INFO(MOD_GRAPHICS, "[srcchar] prefetch races={} codes={}", races.size(), prefetchCodes_.size());
+}
+
+void RaceModelLoader::clearPrefetchRaces() {
+    std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+    prefetchCodes_.clear();
+}
+
+std::vector<std::string> RaceModelLoader::wantedWithPrefetch(uint16_t raceId, uint8_t gender) const {
+    std::vector<std::string> wanted = wantedCodesFor(raceId, gender);
+    std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+    for (const auto& c : prefetchCodes_)
+        if (std::find(wanted.begin(), wanted.end(), c) == wanted.end()) wanted.push_back(c);
+    return wanted;
+}
+
 const std::vector<std::string>& RaceModelLoader::resolverOrder() {
     if (resolverOrderZone_ == currentZoneName_) return resolverOrder_;
     if (!eraZonesLoaded_) { eraZones_ = LoadEraZones(); eraZonesLoaded_ = true; }
@@ -217,10 +248,20 @@ void RaceModelLoader::pruneSourceCharacters(const char* why) {
     std::set<const CharacterSkeleton*> usedSkeletons;
     std::set<const Animation*> usedAnimations;
     computeUsedSet(usedSkeletons, usedAnimations);
+    // T504c Leg 4: characters of the zone's ANNOUNCED race set stay until the
+    // load completes (clearPrefetchRaces), or every prune between two races
+    // drops what the next race is about to ask for and the archive is
+    // parsed again (gfaydark: gfaydark_chr.s3d 6x, global_chr.s3d 6x).
+    std::vector<std::string> prefetch;
+    { std::lock_guard<std::mutex> storesLock(sourceStoresMutex_); prefetch = prefetchCodes_; }
     auto keep = [&](const std::shared_ptr<CharacterModel>& cm) {
         if (!cm) return false;
         if (!cm->animatedSkeleton) return true;   // static (no skeleton): tiny, keep
         if (usedSkeletons.count(cm->animatedSkeleton.get())) return true;
+        if (!prefetch.empty()) {
+            const std::string n = upperOf(cm->name);
+            for (const auto& code : prefetch) if (n.find(code) != std::string::npos) return true;
+        }
         for (const auto& [code, anim] : cm->animatedSkeleton->animations)
             if (anim && usedAnimations.count(anim.get())) return true;   // donor
         return false;
@@ -341,7 +382,12 @@ size_t RaceModelLoader::reloadArchiveForCodesLocked(const std::string& key, cons
     // were complete on a later cache hit; every hit now checks the name
     // index first (storeLacksIndexedCodeLocked) and reloads through here.
     S3DLoader loader;
-    const S3DLoadOptions opts = characterLoadOptions(&wanted);
+    // T504c Leg 4: the reload takes the prefetch set along (sourceStoresMutex_
+    // is held by the caller, so the member is read directly).
+    std::vector<std::string> filter = wanted;
+    for (const auto& c : prefetchCodes_)
+        if (std::find(filter.begin(), filter.end(), c) == filter.end()) filter.push_back(c);
+    const S3DLoadOptions opts = characterLoadOptions(&filter);
     if (!loader.loadZone(path, opts)) return 0;
     auto zone = loader.getZone();
     if (!zone) return 0;
@@ -349,7 +395,7 @@ size_t RaceModelLoader::reloadArchiveForCodesLocked(const std::string& key, cons
     for (const auto& cm : zone->characters) {
         if (!cm) continue;
         const std::string n = upperOf(cm->name);
-        for (const auto& code : wanted) if (n.find(code) != std::string::npos) { add.push_back(cm); break; }
+        for (const auto& code : filter) if (n.find(code) != std::string::npos) { add.push_back(cm); break; }
     }
     auto appendMissing = [&](CharacterList& list) {
         for (const auto& cm : add) {

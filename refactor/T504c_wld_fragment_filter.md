@@ -62,6 +62,36 @@ is now counted once and the split closes at +0.25 % (baseline was -0.88 %).
 (e) The boat rescale test spawned race 72 with no zone; SHIP lives in
 oot_chr.s3d, so the test now builds it in Ocean of Tears.
 
+**game_state, the largest RETAINED client term (15.8 MiB, gfaydark, trace
+`run112`):** navmesh tiles 5.2 MiB (`PathfinderNavmesh::Load`), and the
+hc_map raycast BVH 9.4 MiB (`createRaycastMesh` in hc_map.cpp: the
+MyRaycastMesh triangle copy 3.0 + 0.5, NodeAABB split index vectors 2.4 +
+1.5, raycast scratch 2.0) -- the zone's collision/LOS map, queried by
+FindBestZ/LOS. Not a defect; a representation-compactness lever (the BVH
+keeps a per-node std::vector of triangle indices plus a full triangle
+copy the zone geometry already holds) for the plan Will asked for on
+skel_containers. Everything else in game_state is under 0.2 MiB.
+
+**Leg 4 (parse each archive once per load): DONE as a race-set prefetch.**
+Not a WldLoader cache: the zone load knows every (race, gender) it will
+prepare before it prepares the first one, so `setPrefetchRaces` announces
+the set, the first parse of each archive is filtered to the UNION of their
+wanted codes, and `pruneSourceCharacters` keeps the announced characters
+until `zone_load_complete` (without that last rule the prune between two
+races dropped what the next race needed and the archive was parsed again
+-- `run113` showed the filter alone changed nothing). Measured (`run114`
+vs `run111`; archive parses / reloads / base-model preload ms /
+entity_models peak during the load): gfaydark 17 → 14 / 11 → 8 / 406 →
+114 / 15.9 → 18.6; dreadlands 10 → 8 / 2 → 0 / 237 → 189 / 19.6 → 27.5;
+iceclad 9 → 7 / 2 → 0 / 225 → 135 / 14.0 → 15.7; qeynos2 17 → 8 / 11 → 2
+/ 350 → 114 / 17.9 → 14.0. Steady state unchanged; identity 4/4; render
+parses 0. The load-time peak rises where the zone has many races
+(dreadlands +8 MiB) because their characters are held until the load
+completes; `WILLEQ_PREFETCH_RACES=0` restores the per-race chain for A/B.
+On the Pi a reload costs 1.7-2.8 s per race (Leg 5 table), which is why
+the trade is taken by default. The prep worker's pool threads are now
+named `eq-bgpool` (they read as "willeq" in the parse census).
+
 **Also found (CI):** the branch's CI `build` job has failed since 108ba056
 (`-Werror=format-truncation` on `FormatTimestamp`'s 32-byte buffer,
 inlined into the T504 navmesh log line) and `hygiene` before that, so the
