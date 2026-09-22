@@ -1,6 +1,24 @@
 # T504c — the entity-load transient: parse only the WLD fragments a wanted character needs
 
-**Status:** Legs 1, 1b, 2, 2b, 2c DONE (2026-09-22).
+**Status:** Legs 1, 1b, 2, 2b, 2c, 2d DONE (2026-09-22).
+
+**Leg 2d (PfsArchive maps the file):** `PfsArchive::open` read the whole
+archive into a heap buffer AND copied every member's deflate blocks out of
+it (global_chr.s3d 7.36 MB: a 14 MiB open peak, 7 MiB of anonymous heap
+retained while the loader lived, 3,234 allocations) on every archive open
+-- character archives, the zone archive, `_obj`, and the audio `snd*.pfs`.
+It now mmaps the file (PROT_READ, MAP_PRIVATE; heap read as the fallback)
+and records each member's block range; `get()` inflates straight from the
+mapping. Mapped pages are file-backed (RssFile), shared through the page
+cache and reclaimable. Measured (`run104` vs `run103`; entity_models peak
+/ zone_parse peak / RssAnon at entities / RssFile peak): gfaydark 23.1 →
+15.9 / 25.2 → 19.6 / 219 → 210 / 105 → 113; dreadlands 26.8 → 19.6 / 38.6
+→ 32.2 / 235 → 220 / 101 → 112; iceclad 21.2 → 14.0 / 65.8 → 58.5 / 258 →
+246 / 101 → 111; qeynos2 25.1 → 17.9 / 20.7 → 14.3 / 178 → 165 / 108 →
+118. Identity 4/4; archive/graphics/audio/WLD unit tests green; render
+parses 0; errors 0. REFUTED: the `archives` category peak (39 → 35.4 MiB)
+was NOT the block store; it is something else under that scope (next
+trace).
 
 **Leg 2c (names-only textures under EQE1):** every character-archive load
 inflated every BMP/DDS of the archive (global_chr: 3,233 files, 6.7 MiB)

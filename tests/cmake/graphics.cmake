@@ -29,6 +29,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/geometry_combiner.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_model_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_source_residency.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/era_model_sources.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading_chr.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading_search.cpp
@@ -146,6 +147,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_codes.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_model_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_source_residency.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/era_model_sources.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading_chr.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/model_loading_search.cpp

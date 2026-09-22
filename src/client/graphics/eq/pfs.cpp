@@ -5,6 +5,10 @@
 #include <cstring>
 #include <fstream>
 #include <tuple>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace EQT {
 namespace Graphics {
@@ -97,53 +101,71 @@ uint32_t inflateData(const char* buffer, uint32_t len, char* outBuffer, uint32_t
 bool PfsArchive::open(const std::string& filename) {
     close();
 
-    std::ifstream file(filename, std::ios::binary | std::ios::ate);
-    if (!file) {
-        return false;
+    // T504c Leg 2d: map the file (see the header). MAP_PRIVATE + PROT_READ:
+    // the pages are the page cache's, shared with every other mapping of the
+    // same archive and reclaimable; nothing is written.
+    int fd = ::open(filename.c_str(), O_RDONLY);
+    if (fd < 0) return false;
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size <= 0) { ::close(fd); return false; }
+    const size_t size = static_cast<size_t>(st.st_size);
+    void* mapping = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (mapping != MAP_FAILED) {
+        mapping_ = mapping;
+        mappedSize_ = size;
+        data_ = static_cast<const char*>(mapping);
+        dataSize_ = size;
+    } else {
+        heapBuffer_.resize(size);
+        if (::pread(fd, heapBuffer_.data(), size, 0) != static_cast<ssize_t>(size)) {
+            ::close(fd);
+            close();
+            return false;
+        }
+        data_ = heapBuffer_.data();
+        dataSize_ = size;
     }
+    ::close(fd);   // the mapping outlives the descriptor
 
-    std::streamsize size = file.tellg();
-    file.seekg(0, std::ios::beg);
+    if (!parseDirectory()) { close(); return false; }
+    return true;
+}
 
-    std::vector<char> buffer(static_cast<size_t>(size));
-    if (!file.read(buffer.data(), size)) {
-        return false;
-    }
-
+bool PfsArchive::parseDirectory() {
     size_t idx = 0;
 
     // Read directory offset
-    if (idx + sizeof(uint32_t) > buffer.size()) return false;
-    uint32_t dir_offset = read_val<uint32_t>(&buffer[idx]);
+    if (idx + sizeof(uint32_t) > dataSize_) return false;
+    uint32_t dir_offset = read_val<uint32_t>(&data_[idx]);
     idx += sizeof(uint32_t);
 
     // Check magic "PFS "
-    if (idx + 4 > buffer.size()) return false;
+    if (idx + 4 > dataSize_) return false;
     char magic[4];
-    std::memcpy(magic, &buffer[idx], 4);
+    std::memcpy(magic, &data_[idx], 4);
     if (magic[0] != 'P' || magic[1] != 'F' || magic[2] != 'S' || magic[3] != ' ') {
         return false;
     }
 
     // Read directory entries
-    if (dir_offset + sizeof(uint32_t) > buffer.size()) return false;
-    uint32_t dir_count = read_val<uint32_t>(&buffer[dir_offset]);
+    if (dir_offset + sizeof(uint32_t) > dataSize_) return false;
+    uint32_t dir_count = read_val<uint32_t>(&data_[dir_offset]);
 
     std::vector<std::tuple<int32_t, uint32_t, uint32_t>> directoryEntries;
     std::vector<std::tuple<int32_t, std::string>> filenameEntries;
 
     for (uint32_t i = 0; i < dir_count; ++i) {
         size_t entryOffset = dir_offset + 4 + (i * 12);
-        if (entryOffset + 12 > buffer.size()) return false;
+        if (entryOffset + 12 > dataSize_) return false;
 
-        int32_t crc = read_val<int32_t>(&buffer[entryOffset]);
-        uint32_t offset = read_val<uint32_t>(&buffer[entryOffset + 4]);
-        uint32_t entry_size = read_val<uint32_t>(&buffer[entryOffset + 8]);
+        int32_t crc = read_val<int32_t>(&data_[entryOffset]);
+        uint32_t offset = read_val<uint32_t>(&data_[entryOffset + 4]);
+        uint32_t entry_size = read_val<uint32_t>(&data_[entryOffset + 8]);
 
         // Special CRC for filename table
         if (crc == 0x61580ac9) {
             std::vector<char> filenameBuffer;
-            if (!inflateByOffset(offset, entry_size, buffer, filenameBuffer)) {
+            if (!inflateByOffset(offset, entry_size, filenameBuffer)) {
                 return false;
             }
 
@@ -172,7 +194,7 @@ bool PfsArchive::open(const std::string& filename) {
         }
     }
 
-    // Match CRCs to filenames and store files
+    // Match CRCs to filenames and record each member's block range
     for (const auto& dirEntry : directoryEntries) {
         int32_t crc = std::get<0>(dirEntry);
 
@@ -183,9 +205,21 @@ bool PfsArchive::open(const std::string& filename) {
                 uint32_t entry_size = std::get<2>(dirEntry);
                 const std::string& name = std::get<1>(fnEntry);
 
-                if (!storeBlocksByOffset(offset, entry_size, buffer, name)) {
-                    return false;
+                // Walk the block headers once to size the member's range.
+                uint32_t position = offset;
+                uint32_t inflate_total = 0;
+                while (inflate_total < entry_size) {
+                    if (position + 8 > dataSize_) return false;
+                    uint32_t deflateLength = read_val<uint32_t>(&data_[position]);
+                    uint32_t inflateLength = read_val<uint32_t>(&data_[position + 4]);
+                    inflate_total += inflateLength;
+                    position += deflateLength + 8;
                 }
+                FileEntry e;
+                e.offset = offset;
+                e.blockBytes = position - offset;
+                e.uncompressedSize = entry_size;
+                files_[name] = e;
                 break;
             }
         }
@@ -196,7 +230,14 @@ bool PfsArchive::open(const std::string& filename) {
 
 void PfsArchive::close() {
     files_.clear();
-    uncompressedSizes_.clear();
+    if (mapping_) {
+        munmap(mapping_, mappedSize_);
+        mapping_ = nullptr;
+    }
+    mappedSize_ = 0;
+    std::vector<char>().swap(heapBuffer_);
+    data_ = nullptr;
+    dataSize_ = 0;
 }
 
 bool PfsArchive::get(const std::string& filename, std::vector<char>& buffer) {
@@ -210,8 +251,7 @@ bool PfsArchive::get(const std::string& filename, std::vector<char>& buffer) {
     }
 
     buffer.clear();
-    uint32_t ucSize = uncompressedSizes_[lowerName];
-    if (!inflateByOffset(0, ucSize, it->second, buffer)) {
+    if (!inflateByOffset(it->second.offset, it->second.uncompressedSize, buffer)) {
         return false;
     }
 
@@ -251,32 +291,8 @@ bool PfsArchive::getFilenames(const std::string& extension, std::vector<std::str
     return !filenames.empty();
 }
 
-bool PfsArchive::storeBlocksByOffset(uint32_t offset, uint32_t size,
-                                     const std::vector<char>& inBuffer,
-                                     const std::string& filename) {
-    uint32_t position = offset;
-    uint32_t inflate_total = 0;
-
-    while (inflate_total < size) {
-        if (position + 8 > inBuffer.size()) return false;
-        uint32_t deflateLength = read_val<uint32_t>(&inBuffer[position]);
-        uint32_t inflateLength = read_val<uint32_t>(&inBuffer[position + 4]);
-        inflate_total += inflateLength;
-        position += deflateLength + 8;
-    }
-
-    uint32_t blockSize = position - offset;
-    std::vector<char> tbuffer(blockSize);
-    std::memcpy(tbuffer.data(), &inBuffer[offset], blockSize);
-
-    files_[filename] = tbuffer;
-    uncompressedSizes_[filename] = size;
-    return true;
-}
-
 bool PfsArchive::inflateByOffset(uint32_t offset, uint32_t size,
-                                 const std::vector<char>& inBuffer,
-                                 std::vector<char>& outBuffer) {
+                                 std::vector<char>& outBuffer) const {
     outBuffer.resize(size);
     std::memset(outBuffer.data(), 0, size);
 
@@ -284,13 +300,13 @@ bool PfsArchive::inflateByOffset(uint32_t offset, uint32_t size,
     uint32_t inflate_total = 0;
 
     while (inflate_total < size) {
-        if (position + 8 > inBuffer.size()) return false;
-        uint32_t deflateLength = read_val<uint32_t>(&inBuffer[position]);
-        uint32_t inflateLength = read_val<uint32_t>(&inBuffer[position + 4]);
+        if (position + 8 > dataSize_) return false;
+        uint32_t deflateLength = read_val<uint32_t>(&data_[position]);
+        uint32_t inflateLength = read_val<uint32_t>(&data_[position + 4]);
 
-        if (position + 8 + deflateLength > inBuffer.size()) return false;
+        if (position + 8 + deflateLength > dataSize_) return false;
 
-        inflateData(&inBuffer[position + 8], deflateLength,
+        inflateData(&data_[position + 8], deflateLength,
                    &outBuffer[inflate_total], inflateLength);
 
         inflate_total += inflateLength;

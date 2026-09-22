@@ -27,8 +27,19 @@ private:
 class PfsArchive {
 public:
     PfsArchive() = default;
-    ~PfsArchive() = default;
+    ~PfsArchive() { close(); }
+    PfsArchive(const PfsArchive&) = delete;             // owns a mapping
+    PfsArchive& operator=(const PfsArchive&) = delete;
 
+    // T504c Leg 2d: open() MAPS the file read-only (mmap, MAP_PRIVATE) and
+    // records each member's block range; nothing is copied. It used to read
+    // the whole file into a heap buffer AND copy every member's compressed
+    // blocks out of it (global_chr.s3d, 7.36 MB: a 14 MiB open peak and
+    // 7 MiB of anonymous heap for as long as the archive stayed open, on
+    // every character-archive load -- run99/run102 named it). Mapped pages
+    // are file-backed (RssFile, reclaimable), not anonymous heap. When mmap
+    // is unavailable the file is read into one heap buffer, still without
+    // the per-member copies.
     bool open(const std::string& filename);
     void close();
 
@@ -56,26 +67,32 @@ public:
     static bool listFilenames(const std::string& path, const std::string& extension,
                               std::vector<std::string>& filenames);
 
-    const std::map<std::string, std::vector<char>>& getFiles() const { return files_; }
+    // One member: where its deflate blocks sit in the mapped file.
+    struct FileEntry {
+        uint32_t offset = 0;            // first block header
+        uint32_t blockBytes = 0;        // all block headers + deflate payloads
+        uint32_t uncompressedSize = 0;
+    };
+    const std::map<std::string, FileEntry>& getFiles() const { return files_; }
 
-    // Memory usage of all cached file buffers
+    // Bytes this archive keeps addressable: the mapping (file-backed; or
+    // the heap buffer when mmap was unavailable) plus the directory.
     size_t getMemoryUsage() const {
-        size_t total = 0;
-        for (const auto& [name, data] : files_)
-            total += name.capacity() + data.capacity();
+        size_t total = mappedSize_ + heapBuffer_.capacity();
+        for (const auto& [name, e] : files_) total += name.capacity() + sizeof(FileEntry);
         return total;
     }
 
 private:
-    bool storeBlocksByOffset(uint32_t offset, uint32_t size,
-                             const std::vector<char>& buffer,
-                             const std::string& filename);
-    bool inflateByOffset(uint32_t offset, uint32_t size,
-                         const std::vector<char>& inBuffer,
-                         std::vector<char>& outBuffer);
+    bool parseDirectory();
+    bool inflateByOffset(uint32_t offset, uint32_t size, std::vector<char>& outBuffer) const;
 
-    std::map<std::string, std::vector<char>> files_;
-    std::map<std::string, uint32_t> uncompressedSizes_;
+    const char* data_ = nullptr;      // the file: mapping_ or heapBuffer_.data()
+    size_t dataSize_ = 0;
+    void* mapping_ = nullptr;
+    size_t mappedSize_ = 0;
+    std::vector<char> heapBuffer_;    // fallback when mmap fails
+    std::map<std::string, FileEntry> files_;
 };
 
 // Compression utilities
