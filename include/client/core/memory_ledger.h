@@ -456,7 +456,9 @@ std::string currentZone();
 // Steady-state point: noteReady() arms a timer (default 60 s); pollSteadyState()
 // (once per frame) records "steady_60s" exactly once after it elapses.
 void noteReady(double seconds = 60.0);
-void pollSteadyState();
+// Returns true on the call that records "steady_60s" (or an idle point), so
+// the caller can log its own steady-state tables at the same instant.
+bool pollSteadyState();
 
 // Reset every category's peak (and the total peak) to its current live value.
 void resetPeaks();

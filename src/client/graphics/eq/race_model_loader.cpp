@@ -645,6 +645,18 @@ std::shared_ptr<RaceModelData> RaceModelLoader::buildModelDataFromCharacters(
     return nullptr;
 }
 
+bool RaceModelLoader::adoptGlobalChrIntoOtherCacheLocked() {
+    if (otherChrCaches_.find("global_chr.s3d") != otherChrCaches_.end()) return true;
+    if (!globalModelsLoaded_.load(std::memory_order_acquire)) return false;
+    // globalCharacters_ is written once, before the flag (release), and never
+    // mutated after; reading it here after the acquire is race-free.
+    if (globalCharacters_.empty()) return false;
+    storeOtherChrCacheLocked("global_chr.s3d", globalCharacters_, globalTextures_);
+    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: other-chr cache adopted {} global_chr.s3d characters from the global store (no second parse)",
+             globalCharacters_.size());
+    return otherChrCaches_.find("global_chr.s3d") != otherChrCaches_.end();
+}
+
 void RaceModelLoader::storeOtherChrCacheLocked(const std::string& lowerFilename,
                                                 std::vector<std::shared_ptr<CharacterModel>> characters,
                                                 std::map<std::string, std::shared_ptr<TextureInfo>> textures) {
@@ -871,6 +883,8 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
             std::string globalKey = "global_chr.s3d";
             auto cacheIt = otherChrCaches_.find(globalKey);
+            if (cacheIt == otherChrCaches_.end() && adoptGlobalChrIntoOtherCacheLocked())
+                cacheIt = otherChrCaches_.find(globalKey);   // T504b Leg 1
             if (cacheIt != otherChrCaches_.end()) {
                 LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: animation merge using cached global_chr.s3d for race={}", raceId);
             } else if (!clientPath_.empty()) {

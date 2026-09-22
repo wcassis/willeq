@@ -1182,7 +1182,20 @@ std::string RaceModelLoader::srcCharLogLines(const std::string& point) const {
     if (!zoneCharacters_.empty()) walk(currentZoneName_ + "_chr.s3d", zoneCharacters_);
     {
         std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
-        for (const auto& [name, cache] : otherChrCaches_) walk("other:" + name, cache.characters);
+        for (const auto& [name, cache] : otherChrCaches_) {
+            // T504b Leg 1: the global entry holds the SAME objects as
+            // globalCharacters_ (adopted, not re-parsed); counting it again
+            // would double the total. Report it as shared and skip.
+            const bool sharedWithGlobal = name == "global_chr.s3d" && !cache.characters.empty()
+                && !globalCharacters_.empty() && cache.characters.front() == globalCharacters_.front();
+            if (sharedWithGlobal) {
+                if (!out.empty()) out += '\n';
+                out += fmt::format("[srcchar] point={} archive=other:{} shared_with=global_chr.s3d chars={}",
+                                   point, name, cache.characters.size());
+                continue;
+            }
+            walk("other:" + name, cache.characters);
+        }
     }
     if (!out.empty()) out += '\n';
     out += fmt::format("[srcchar] point={} archive=TOTAL chars={} bytes={} bytes_droppable={} "

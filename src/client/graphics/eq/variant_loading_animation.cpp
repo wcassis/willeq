@@ -301,6 +301,9 @@ bool RaceModelLoader::tryBuildVariantFrom(const std::vector<std::shared_ptr<Char
                     // Protected by mutex for worker thread safety
                     std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
                     auto cacheIt = otherChrCaches_.find(lowerFilename);
+                    if (cacheIt == otherChrCaches_.end() && lowerFilename == "global_chr.s3d"
+                        && adoptGlobalChrIntoOtherCacheLocked())
+                        cacheIt = otherChrCaches_.find(lowerFilename);   // T504b Leg 1
                     if (cacheIt == otherChrCaches_.end()) {
                         // Load the animation source S3D file
                         std::string fullPath = clientPath_ + animSourceS3dFile;

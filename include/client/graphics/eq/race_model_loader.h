@@ -8,6 +8,7 @@
 #include "race_codes.h"
 #include "equipment_textures.h"
 #include <irrlicht.h>
+#include <atomic>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -837,7 +838,9 @@ private:
     // Global character data loaded from global_chr.s3d
     std::vector<std::shared_ptr<CharacterModel>> globalCharacters_;
     std::map<std::string, std::shared_ptr<TextureInfo>> globalTextures_;
-    bool globalModelsLoaded_ = false;
+    // T504b Leg 1: atomic so the worker-side adopt (below) may read the flag
+    // and, once it is set, the write-once globalCharacters_ vector.
+    std::atomic<bool> globalModelsLoaded_{false};
 
     // Numbered global character data (global2-7_chr.s3d)
     std::map<int, std::vector<std::shared_ptr<CharacterModel>>> numberedGlobalCharacters_;
@@ -903,6 +906,14 @@ private:
     // searchZoneChrFilesForModel (two negative-cache inserts plus one that
     // open-coded the push/evict below). There is now exactly one
     // `otherChrCaches_[key]` in the tree and it is the line below.
+    // T504b Leg 1: global_chr.s3d is parsed ONCE per process. Whichever side
+    // parses it first publishes the same CharacterModel objects to the other
+    // store: loadGlobalModels() adopts otherChrCaches_["global_chr.s3d"] if
+    // the worker got there first and publishes its own parse there
+    // otherwise; the worker-side sites call this (otherChrCacheMutex_ held)
+    // before parsing and get true when the entry now exists. Measured before:
+    // src_char_global == src_char_other byte-identical (two full parses).
+    bool adoptGlobalChrIntoOtherCacheLocked();
     void storeOtherChrCacheLocked(const std::string& lowerFilename,
                                    std::vector<std::shared_ptr<CharacterModel>> characters,
                                    std::map<std::string, std::shared_ptr<TextureInfo>> textures);

@@ -534,6 +534,8 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
                             std::transform(lowerAnimS3d.begin(), lowerAnimS3d.end(), lowerAnimS3d.begin(),
                                            [](unsigned char c) { return std::tolower(c); });
 
+                            // T504b Leg 1: global_chr.s3d is adopted from the global store, never re-parsed.
+                            if (lowerAnimS3d == "global_chr.s3d") adoptGlobalChrIntoOtherCacheLocked();
                             // Load the file if not already cached
                             if (otherChrCaches_.find(lowerAnimS3d) == otherChrCaches_.end()) {
                                 std::string fullPath = clientPath_ + animSourceS3d;

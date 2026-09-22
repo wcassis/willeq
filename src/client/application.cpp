@@ -1047,7 +1047,18 @@ void Application::mainLoop() {
 
     while (m_running.load()) {
         try {
-            eqt::memory::pollSteadyState();  // T491: "steady_60s" once per zone-in
+            if (eqt::memory::pollSteadyState()) {  // T491: "steady_60s" once per zone-in
+                // T504b Leg 0: the source-character census at the steady
+                // point too -- the prep worker builds models after
+                // zone_load_complete, so that point under-counts "used".
+                if (m_renderer) {
+                    if (auto* er = m_renderer->getEntityRenderer()) {
+                        if (auto* rml = er->getRaceModelLoader()) {
+                            LOG_INFO(MOD_GRAPHICS, "{}", rml->srcCharLogLines("steady_60s"));
+                        }
+                    }
+                }
+            }
             // P36: SIGTERM handler (above) only sets a flag -- do the actual
             // quit request here, in ordinary (non-signal-handler) code on the
             // main thread, going through the same requestQuit() path as

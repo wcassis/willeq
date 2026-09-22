@@ -32,6 +32,21 @@ bool RaceModelLoader::loadGlobalModels() {
 
     std::string globalChrPath = clientPath_ + "global_chr.s3d";
 
+    // T504b Leg 1: if the worker already parsed global_chr.s3d into
+    // otherChrCaches_, adopt those objects instead of parsing again.
+    {
+        std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
+        auto cacheIt = otherChrCaches_.find("global_chr.s3d");
+        if (cacheIt != otherChrCaches_.end() && !cacheIt->second.characters.empty()) {
+            globalCharacters_ = cacheIt->second.characters;
+            globalTextures_ = cacheIt->second.textures;
+            globalModelsLoaded_.store(true, std::memory_order_release);
+            LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: adopted {} global_chr.s3d characters from the other-chr cache (no second parse)",
+                     globalCharacters_.size());
+            return !globalCharacters_.empty();
+        }
+    }
+
     S3DLoader loader;
     if (!loader.loadZone(globalChrPath)) {
         LOG_ERROR(MOD_GRAPHICS, "RaceModelLoader: Failed to load {}: {}", globalChrPath, loader.getError());
@@ -46,7 +61,13 @@ bool RaceModelLoader::loadGlobalModels() {
     globalCharacters_ = zone->characters;
     globalTextures_ = zone->characterTextures;
     releaseBytesIfEqe1Authoritative(globalTextures_);  // T504
-    globalModelsLoaded_ = true;
+    globalModelsLoaded_.store(true, std::memory_order_release);
+    {
+        // T504b Leg 1: publish the SAME objects to the worker's store.
+        std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
+        if (otherChrCaches_.find("global_chr.s3d") == otherChrCaches_.end())
+            storeOtherChrCacheLocked("global_chr.s3d", globalCharacters_, globalTextures_);
+    }
 
     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} character models from global_chr.s3d", globalCharacters_.size());
 

@@ -1227,14 +1227,14 @@ void noteReady(double seconds) {
     g_steadyArmed.store(true, std::memory_order_release);
 }
 
-void pollSteadyState() {
-    if (!g_steadyArmed.load(std::memory_order_acquire)) return;
+bool pollSteadyState() {
+    if (!g_steadyArmed.load(std::memory_order_acquire)) return false;
     std::chrono::steady_clock::time_point deadline;
     {
         std::lock_guard<std::mutex> lock(g_steadyMutex);
         deadline = g_steadyDeadline;
     }
-    if (std::chrono::steady_clock::now() < deadline) return;
+    if (std::chrono::steady_clock::now() < deadline) return false;
     // T504 idle-growth instrument: WILLEQ_LEDGER_IDLE_EVERY=<seconds> keeps
     // recording points `idle_<n>` (n = seconds since ready, e.g. idle_120)
     // after steady_60s, for WILLEQ_LEDGER_IDLE_COUNT more points (default
@@ -1272,9 +1272,10 @@ void pollSteadyState() {
         std::lock_guard<std::mutex> lock(g_steadyMutex);
         g_steadyDeadline = std::chrono::steady_clock::now()
                            + std::chrono::milliseconds(static_cast<long long>(idleEvery * 1000.0));
-        return;  // stay armed for the next idle point
+        return true;  // stay armed for the next idle point
     }
     g_steadyArmed.store(false, std::memory_order_relaxed);
+    return true;
 }
 
 } // namespace memory
