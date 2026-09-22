@@ -1,6 +1,19 @@
 # T504c — the entity-load transient: parse only the WLD fragments a wanted character needs
 
-**Status:** Legs 1, 1b, 2, 2b, 2c, 2d DONE (2026-09-22).
+**Status:** Legs 1, 1b, 2, 2b, 2c, 2d, 2e DONE (2026-09-22).
+
+**Leg 2e (the `archives` peak was the EQE1 index's jsoncpp DOM):** the
+`archives` ledger trace (`run105`) put 26.4 MiB / 235,907 allocations in
+libjsoncpp plus 3.9 MiB in `getMemberNames()`: `EQE1TextureIndex::load`
+built a jsoncpp DOM of the 1.9 MB `data/eqe1_texture_index.json` (1,506
+archives, 50,972 names) on every zone load and freed it on return -- the
+whole 35 MiB `archives` peak. The index now parses its own two-member
+schema with a small streaming reader straight into the flat arrays
+(escapes = the builder's; anything else is refused; names verified sorted,
+sorted through a permutation if a hand-edited file is not). Measured
+(`run106` vs `run104`, gfaydark): archives peak 35.4 → 21.6 MiB, RssAnon at
+game_zone_sources 116.9 → 106.3, at entities 209.9 → 206.7; index counts
+identical (1506 / 50972, python-checked); errors 0; render parses 0.
 
 **Leg 2d (PfsArchive maps the file):** `PfsArchive::open` read the whole
 archive into a heap buffer AND copied every member's deflate blocks out of

@@ -105,6 +105,58 @@ TEST_F(Eqe1TextureIndexResolveTest, NameInNoArchiveResolvesNothing) {
     EXPECT_EQ(r.ownerCount, 0u);
 }
 
+// T504c Leg 2e: the streaming parser. A hand-edited file out of name order
+// still resolves (sorted at load); a malformed file is refused, not guessed.
+namespace {
+std::filesystem::path writeTemp(const char* tag, const std::string& body) {
+    auto p = std::filesystem::temp_directory_path() /
+             (std::string("t504_eqe1_index_") + tag + "_" + std::to_string(::getpid()) + ".json");
+    std::ofstream out(p);
+    out << body;
+    return p;
+}
+}  // namespace
+
+TEST(Eqe1TextureIndexParse, UnsortedNamesAreSortedAtLoad) {
+    auto p = writeTemp("unsorted", R"({"entries_first_is_an_error": 0})");
+    EQE1TextureIndex bad;
+    EXPECT_FALSE(bad.load(p.string()));
+    std::filesystem::remove(p);
+
+    p = writeTemp("unsorted2", "{\n\"archives\": [\"a_chr\", \"b_chr\"],\n\"entries\": {\n"
+                              "\"zzz\": [1],\n\"aaa\": [0, 1],\n\"mmm\": [7],\n\"esc\\u0041\": [0]\n}}\n");
+    EQE1TextureIndex index;
+    ASSERT_TRUE(index.load(p.string()));
+    std::filesystem::remove(p);
+    EXPECT_EQ(index.nameCount(), 3u);          // "mmm" has no valid owner: not an entry
+    EXPECT_EQ(index.owners("aaa").size(), 2u);
+    EXPECT_EQ(index.owners("zzz").size(), 1u);
+    EXPECT_EQ(index.owners("zzz").front(), 1u);
+    EXPECT_EQ(index.owners("escA").size(), 1u);
+    EXPECT_TRUE(index.owners("mmm").empty());
+}
+
+TEST(Eqe1TextureIndexParse, MalformedFilesAreRefused) {
+    const char* bodies[] = {
+        "",
+        "{",
+        R"({"archives": ["a"]})",
+        R"({"archives": ["a"], "entries": {"x": [0}})",
+        R"({"archives": ["a"], "entries": {"x": [0]}} trailing)",
+        R"({"archives": ["a"], "entries": {"x": [-1]}})",
+        R"({"archives": ["a"], "entries": {"x": [0]}, "other": 1})",
+        R"({"archives": ["a\q"], "entries": {}})",
+    };
+    int i = 0;
+    for (const char* body : bodies) {
+        auto p = writeTemp(("bad" + std::to_string(i++)).c_str(), body);
+        EQE1TextureIndex index;
+        EXPECT_FALSE(index.load(p.string())) << body;
+        EXPECT_FALSE(index.isLoaded()) << body;
+        std::filesystem::remove(p);
+    }
+}
+
 TEST(Eqe1TextureIndexUnloaded, ResolveIsFalseBeforeLoad) {
     EQE1TextureIndex index;
     EQE1TextureIndex::Resolution r;
