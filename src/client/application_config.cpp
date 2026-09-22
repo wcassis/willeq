@@ -316,6 +316,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --log-level=LEVEL        Set log level (NONE, FATAL, ERROR, WARN, INFO, DEBUG, TRACE)\n";
             std::cout << "                           If both --log-level= and -d <n> are given, --log-level=\n";
             std::cout << "                           wins (a one-line notice is logged when they disagree)\n";
+            std::cout << "  --load-mem-audit         Log [LOAD-MEM-AUDIT] memory lines after each zone-load step and the\n";
+            std::cout << "                           [memledger] lifecycle points (needs --log-level=INFO or higher)\n";
+            std::cout << "                           Env: WILLEQ_BASELINE=1 (original-client feature parity), WILLEQ_LEDGER_TRACE=<category>[:<point>],\n";
+            std::cout << "                           WILLEQ_LEDGER_IDLE_EVERY=<s>, WILLEQ_LEDGER_OWNERS=<category>\n";
             std::cout << "  --log-module=MOD:LEVEL   Set per-module log level; comma-separated list (e.g., NET:DEBUG,GRAPHICS:TRACE)\n";
             std::cout << "                           Unparseable level names are rejected with an error (never mapped silently)\n";
             std::cout << "                           Modules: NET, NET_PACKET, LOGIN, WORLD, ZONE, ENTITY,\n";
