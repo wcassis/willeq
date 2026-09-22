@@ -991,6 +991,14 @@ private:
     std::vector<std::pair<std::string, std::vector<std::string>>> eraNameIndex_;   // archive -> upper names (census mode)
     bool eraNameIndexBuilt_ = false;
     std::string originalRuleArchiveFor(uint16_t raceId, uint8_t gender);   // census mode; "" otherwise
+    // T504 resolver: the lookup order of the original rule for the current
+    // zone -- the zone's own archive first (it is what the zone shipped
+    // with), then the archives its <zone>_chr.txt names, then the
+    // GlobalLoad.txt set in file order. Cache contents never change the
+    // answer. Empty zone (character select) = globals only.
+    const std::vector<std::string>& resolverOrder();
+    std::vector<std::string> resolverOrder_;
+    std::string resolverOrderZone_ = "\x01";   // the zone resolverOrder_ was built for
     void evictModel(uint32_t key);                 // the built model + every cache keyed by it
     std::map<uint32_t, std::chrono::steady_clock::time_point> evictable_;   // key -> when its refcount hit 0
     size_t entityModelBudgetBytes_ = 0;            // 0 = no budget pressure

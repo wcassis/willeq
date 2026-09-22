@@ -518,6 +518,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/geometry_combiner.cpp
         src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_source_residency.cpp
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
@@ -1004,6 +1005,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/geometry_combiner.cpp
         src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_source_residency.cpp
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
@@ -2062,6 +2064,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_source_residency.cpp
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
@@ -2210,6 +2213,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_source_residency.cpp
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
@@ -2329,6 +2333,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_source_residency.cpp
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp

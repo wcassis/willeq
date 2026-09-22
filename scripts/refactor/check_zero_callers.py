@@ -936,6 +936,9 @@ EXEMPT_TESTS_GROUPS = {
     # T504: the ledger's stack-trace instrument is armed by an environment
     # variable in a live run (WILLEQ_LEDGER_TRACE); the unit test needs the
     # programmatic form of that switch and the report it prints.
+    # T504: the original client's LOAD order (globals first) as opposed to the
+    # loader's lookup order (resolverOrder); the era-sources test pins it.
+    ("EraModelSources", "orderedArchives"): "observer",
     ("(free)", "traceConfigure"): "seam",
     ("(free)", "traceReport"): "observer",
     # T504: the entity-load callers moved to the instance form
