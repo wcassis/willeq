@@ -202,6 +202,7 @@ TraceSite g_traceSites[kTraceOverflow + 1];
 std::atomic<int> g_traceUsed{0};
 std::atomic<bool> g_traceArmed{false};
 std::atomic<uint64_t> g_traceDropped{0};   // armed but table full / reentrant
+std::atomic<uint64_t> g_traceRecycled{0};  // dead sites recycled for new stacks
 uint8_t g_traceCat = 0xFF;
 char g_traceArmPoint[32] = "ready";
 thread_local bool t_inTrace = false;
@@ -267,6 +268,32 @@ uint8_t traceSiteFor(uint8_t cat, uint64_t bytes) {
             t.n = n;
             t.hash.store(h, std::memory_order_release);
             g_traceUsed.store(id, std::memory_order_release);
+        } else if (id == 0) {
+            // Table full: recycle a DEAD site (no live blocks, so no header
+            // still carries its id) with the smallest peak. Transient churn
+            // sites (regex temporaries, per-frame strings) then stop
+            // starving the table of the long-lived allocations it exists to
+            // name; the recycled site's history is lost, which is what the
+            // OVERFLOW bucket would have shown for the newcomer anyway.
+            int victim = 0;
+            int64_t victimPeak = 0;
+            for (int i = 1; i <= used; ++i) {
+                TraceSite& c = g_traceSites[i];
+                if (c.liveBlocks.load(std::memory_order_relaxed) != 0) continue;
+                const int64_t pk = c.peak.load(std::memory_order_relaxed);
+                if (victim == 0 || pk < victimPeak) { victim = i; victimPeak = pk; }
+            }
+            if (victim != 0) {
+                id = victim;
+                TraceSite& t = g_traceSites[id];
+                std::memcpy(t.frames, frames, sizeof(void*) * static_cast<size_t>(n));
+                t.n = n;
+                t.live.store(0, std::memory_order_relaxed);
+                t.peak.store(0, std::memory_order_relaxed);
+                t.allocs.store(0, std::memory_order_relaxed);
+                t.hash.store(h, std::memory_order_release);
+                g_traceRecycled.fetch_add(1, std::memory_order_relaxed);
+            }
         }
     }
     t_inTrace = false;
@@ -339,7 +366,8 @@ std::string traceToLogLines(const std::string& point) {
     total += g_traceSites[kTraceOverflow].live.load();
     std::string out = "[memledger-trace] point=" + point + " category=" + kCategoryNames[g_traceCat]
                     + " sites=" + std::to_string(used) + " live=" + std::to_string(total)
-                    + " dropped=" + std::to_string(g_traceDropped.load());
+                    + " dropped=" + std::to_string(g_traceDropped.load())
+                    + " recycled=" + std::to_string(g_traceRecycled.load());
     int shown = 0;
     for (int id : ids) {
         const TraceSite& t = g_traceSites[id];
