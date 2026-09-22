@@ -194,6 +194,7 @@ struct TraceSite {
     void* frames[kTraceFrames] = {};
     int n = 0;
     std::atomic<int64_t> live{0};
+    std::atomic<int64_t> peak{0};         // high-water mark of live (transient owners)
     std::atomic<int64_t> liveBlocks{0};
     std::atomic<uint64_t> allocs{0};
 };
@@ -271,7 +272,10 @@ uint8_t traceSiteFor(uint8_t cat, uint64_t bytes) {
     t_inTrace = false;
     if (id == 0) { g_traceDropped.fetch_add(1, std::memory_order_relaxed); id = kTraceOverflow; }
     TraceSite& t = g_traceSites[id];
-    t.live.fetch_add(static_cast<int64_t>(bytes), std::memory_order_relaxed);
+    const int64_t nowLive = t.live.fetch_add(static_cast<int64_t>(bytes), std::memory_order_relaxed)
+                            + static_cast<int64_t>(bytes);
+    int64_t pk = t.peak.load(std::memory_order_relaxed);
+    while (nowLive > pk && !t.peak.compare_exchange_weak(pk, nowLive, std::memory_order_relaxed)) {}
     t.liveBlocks.fetch_add(1, std::memory_order_relaxed);
     t.allocs.fetch_add(1, std::memory_order_relaxed);
     return static_cast<uint8_t>(id);
@@ -286,8 +290,12 @@ inline void traceCredit(uint32_t catWord, uint64_t bytes) {
 inline void traceRecharge(uint32_t catWord, uint64_t bytes) {
     const uint8_t id = traceIdOf(catWord);
     if (!id) return;
-    g_traceSites[id].live.fetch_add(static_cast<int64_t>(bytes), std::memory_order_relaxed);
-    g_traceSites[id].liveBlocks.fetch_add(1, std::memory_order_relaxed);
+    TraceSite& t = g_traceSites[id];
+    const int64_t nowLive = t.live.fetch_add(static_cast<int64_t>(bytes), std::memory_order_relaxed)
+                            + static_cast<int64_t>(bytes);
+    int64_t pk = t.peak.load(std::memory_order_relaxed);
+    while (nowLive > pk && !t.peak.compare_exchange_weak(pk, nowLive, std::memory_order_relaxed)) {}
+    t.liveBlocks.fetch_add(1, std::memory_order_relaxed);
 }
 
 void traceArmAt(const std::string& point) {
@@ -316,8 +324,15 @@ std::string traceToLogLines(const std::string& point) {
     std::vector<int> ids;
     for (int i = 1; i <= used; ++i) ids.push_back(i);
     ids.push_back(kTraceOverflow);
+    // WILLEQ_LEDGER_TRACE_SORT=peak orders by each site's high-water mark
+    // (names the transient owners); default is live bytes.
+    static const bool byPeak = [] {
+        const char* v = std::getenv("WILLEQ_LEDGER_TRACE_SORT");
+        return v && std::strcmp(v, "peak") == 0;
+    }();
     std::sort(ids.begin(), ids.end(), [](int a, int b) {
-        return g_traceSites[a].live.load() > g_traceSites[b].live.load();
+        return byPeak ? g_traceSites[a].peak.load() > g_traceSites[b].peak.load()
+                      : g_traceSites[a].live.load() > g_traceSites[b].live.load();
     });
     int64_t total = 0;
     for (int i = 1; i <= used; ++i) total += g_traceSites[i].live.load();
@@ -329,11 +344,13 @@ std::string traceToLogLines(const std::string& point) {
     for (int id : ids) {
         const TraceSite& t = g_traceSites[id];
         const int64_t live = t.live.load();
-        if (live < 16384 && shown >= 8) break;   // small sites: only the first few
+        const int64_t peak = t.peak.load();
+        if ((byPeak ? peak : live) < 16384 && shown >= 8) break;   // small sites: only the first few
         if (shown >= 40) break;
         ++shown;
         out += "\n[memledger-trace] point=" + point + " site=" + std::to_string(id)
-             + " live=" + std::to_string(live) + " blocks=" + std::to_string(t.liveBlocks.load())
+             + " live=" + std::to_string(live) + " peak=" + std::to_string(peak)
+             + " blocks=" + std::to_string(t.liveBlocks.load())
              + " allocs=" + std::to_string(t.allocs.load()) + " stack=";
         if (id == kTraceOverflow) { out += "OVERFLOW(table full)"; continue; }
         // frames 0..2 are backtrace()/traceSiteFor/ledgerAlloc; 3 is the
