@@ -119,6 +119,17 @@ errors; 0 render-thread parses. qeynos2's steady RssAnon is 71 MiB against
 the 64 MiB target; the rest of the gap is the categories the plan already
 names (game_state's hc_map BVH, spatial, zone_mesh) plus glibc slack.
 
+**Leg 5c -- the glibc mmap threshold on the Pi: NO effect, not defaulted.**
+qeynos2 / gfaydark with `B841_MMAP_THRESHOLD=1048576` (`runs_mmap/`): steady
+RssAnon 71.0 → 71.1 / 92.1 → 93.7, heap RSS 58.7 → 62.1 / 70.5 → 75.9 MB,
+and the switch verifiably applied (`mmap_thr=1048576`, mmapped bytes
+4.6 → 1.1 MB). The x86 gain came from glibc's DYNAMIC threshold growing to
+32 MB on a 64-bit host (the freed 18 MB WLD buffer raised it, so the next
+big blocks landed in the arena); on 32-bit ARM the dynamic ceiling is
+512 KB, so the big transients were already mmapped and returned. A fixed
+1 MiB threshold only moves the 128 KB-1 MiB blocks INTO the arena there.
+The lever is x86-only and the target is the Pi: no default change.
+
 **Also found (CI):** the branch's CI `build` job has failed since 108ba056
 (`-Werror=format-truncation` on `FormatTimestamp`'s 32-byte buffer,
 inlined into the T504 navmesh log line) and `hygiene` before that, so the
