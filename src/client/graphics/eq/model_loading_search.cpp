@@ -662,6 +662,13 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
         stats.sharedTextureBytes.push_back(std::move(entry));
         return static_cast<int>(idx);
     };
+    // T504c: the same TextureInfo object reached through two loader maps is
+    // counted ONCE. Since T504b Leg 1 the other-chr cache's global_chr.s3d
+    // entry is ADOPTED from the global store (same shared_ptrs, no second
+    // parse), so globalTextures_ and otherChrCaches_["global_chr.s3d"].textures
+    // hold the same objects -- tex_otherchr repeated tex_global's 6.95 MiB and
+    // the split missed the ledger by 47 % (test_entity_model_sharing).
+    std::set<const TextureInfo*> countedTextures;
     auto sumMapBytes = [&](const char* claimant,
                            const std::map<std::string, std::shared_ptr<TextureInfo>>& texMap,
                            size_t& ownedTermOut) {
@@ -670,7 +677,7 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
             if (!tex) continue;
             if (tex->ownerCategory
                     == static_cast<uint8_t>(eqt::memory::Category::EntityModels)) {
-                owned += tex->rawDataBytes();
+                if (countedTextures.insert(tex.get()).second) owned += tex->rawDataBytes();
                 continue;
             }
             // Foreign-owned: left out of this tex_* term, reported ONCE in
@@ -836,10 +843,17 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     // fingerprint hold the same texture set, which is what "duplicate" means
     // here. Cheap, and it needs no lock on cachedMergedTextures_, so no new
     // lock-ordering edge is introduced into getMemoryStats().
+    // T504: RaceModelData::textures is a SharedTextureMap -- the models hold
+    // one shared snapshot (getMergedTexturesShared()), no longer a copy each
+    // -- so the storage of a map object is charged ONCE however many models
+    // point at it (12 models x 2.4 MiB was 2.2 MiB of over-count, 9 % of the
+    // split, in test_entity_model_sharing).
     std::set<std::pair<size_t, uintptr_t>> texMapFingerprints;
+    std::set<const void*> countedMapObjects;
     auto sumTextureMap = [&](const MergedTexMap& m) {
         stats.mergedTextureMapCount += 1;
         stats.mergedTextureEntryCount += m.size();
+        if (!countedMapObjects.insert(static_cast<const void*>(&m)).second) return;
         size_t bytes = m.size() * kMergedTexNodeBytes;
         uintptr_t fp = 0;
         for (const auto& [name, tex] : m) {
@@ -913,11 +927,16 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     // sizeof(CharacterPart) -- its vertices and triangles are counted nowhere.
     // The pointer set below charges each distinct geometry at most once, so the
     // term is the uncharged remainder and nothing else.
+    // T504c: a CharacterModel reached through two stores (the adopted
+    // global_chr.s3d other-chr entry shares the global store's objects, and a
+    // reload-on-miss appends the same objects to both) is counted ONCE.
+    std::set<const CharacterModel*> countedCharacters;
     auto calcCharModels = [&](const std::vector<std::shared_ptr<CharacterModel>>& chars,
                               size_t& dupGeomOut, size_t& skeletonOut) -> size_t {
         size_t total = 0;
         for (const auto& cm : chars) {
             if (!cm) continue;
+            if (!countedCharacters.insert(cm.get()).second) continue;
             total += sizeof(CharacterModel) + cm->name.capacity();
             for (const auto& part : cm->parts)
                 if (part) total += part->getMemoryUsage();

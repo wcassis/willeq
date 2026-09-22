@@ -39,10 +39,8 @@ std::string eqClientPath() {
 }
 
 // Priority order of EquipmentModelLoader::buildEquipmentIndex().
-const std::vector<std::string> kEquipArchives = {
-    "obequip_lexit.s3d", "frogequip.s3d", "lgequip_amr2.s3d", "lgequip_amr.s3d", "loyequip.s3d",
-    "vequip.s3d", "lgequip2.s3d", "lgequip.s3d", "ldonequip.s3d", "gatesequip.s3d", "gequip8.s3d",
-    "gequip6.s3d", "gequip5.s3d", "gequip4.s3d", "gequip3.s3d", "gequip2.s3d", "gequip.s3d"};
+const std::vector<std::string> kEquipArchives = {   // = EquipmentModelLoader::indexedArchiveNames() (T504c Leg 2f)
+    "gequip8.s3d", "gequip5.s3d", "gequip4.s3d", "gequip3.s3d", "gequip2.s3d", "gequip.s3d"};
 
 bool isIdentityRest(const SkeletonBone& b) {
     if (!b.orientation) return true;
@@ -180,12 +178,14 @@ TEST(EquipmentItemCensus, EveryItActorIsClassified) {
         }
     }
     for (const auto& [route, n] : routeCount) std::cout << "route " << route << " (index winners): " << n << "\n";
-    EXPECT_GT(seen.size(), 700u);
+    // T504c Leg 2f: the era set holds 459 IT actors, 34 of them skinned (the
+    // Luclin archives held most of the skinned ones); floors are sanity checks.
+    EXPECT_GT(seen.size(), 400u);
     // T476 (B660): before the 0x10 mesh list was read, 266 index items
     // resolved only by NAME (no rest pose) and 79 not at all.
     EXPECT_EQ(routeCount["name_fallback"], 0) << "items drawn without their skeleton's rest pose";
     EXPECT_EQ(routeCount["none"], 0) << "IT actors whose reference chain draws nothing";
-    EXPECT_GT(routeCount["chain_skinned"], 300);
+    EXPECT_GT(routeCount["chain_skinned"], 20);
 }
 
 }  // namespace

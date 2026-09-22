@@ -211,7 +211,11 @@ bool ZoneLoadComponent::loadZoneStep1_S3D(ZoneLoadContext& ctx) {
 
         S3DLoadOptions loadOptions;
         loadOptions.loadCharacters = false;
-        loadOptions.computeCombinedGeometry = true;
+        // T504c Leg 2g: the combined geometry is built only where it is
+        // consumed -- Step 2's no-PVS fallback (createZoneMesh). The PVS
+        // path gets a materials+bounds summary there instead (19.5 MiB of
+        // vertex+triangle copy in iceclad, built and dropped every load).
+        loadOptions.computeCombinedGeometry = false;
         loadOptions.loadObjects = !ctx_.config.constrainedConfig.skipObjectBuild;
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: loadOptions: chars={}, combinedGeom={}, objects={}",
                   loadOptions.loadCharacters, loadOptions.computeCombinedGeometry, loadOptions.loadObjects);
@@ -435,6 +439,8 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: createZoneMesh() complete (no-BSP/PVS fallback), zoneMeshNode_={}",
                           (bool)ctx_.zoneMeshNode);
             } else {
+                if (ctx_.currentZone && !ctx_.currentZone->geometry)   // T504c Leg 2g: materials + bounds only
+                    ctx_.currentZone->geometry = wldLoader->getCombinedMaterialSummary();
                 // Clean up existing mesh nodes
                 size_t oldRegionNodes = ctx_.regionMeshNodes.size();
                 if (ctx_.zoneMeshNode) { ctx_.zoneMeshNode->remove(); ctx_.zoneMeshNode = nullptr; }
@@ -880,8 +886,15 @@ void ZoneLoadComponent::loadZoneStep5_Assets(ZoneLoadContext& ctx) {
                       ctx_.config.constrainedConfig.deferredAssetLoading, (bool)computations);
         }
 
-        // Build equipment index inline (was background thread)
-        if (computations) {
+        // Build equipment index inline (was background thread).
+        // T504c Leg 2f: the index is client-tree-wide, not per zone; once the
+        // loader has it, no zone rebuilds it (every zone load used to parse
+        // the equipment WLDs again and adopt the same result).
+        const bool haveEquipmentIndex = ctx_.entityRenderer && ctx_.entityRenderer->getEquipmentModelLoader()
+                                        && ctx_.entityRenderer->getEquipmentModelLoader()->isLoaded();
+        if (computations && haveEquipmentIndex) {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: equipment index already loaded -- not rebuilt");
+        } else if (computations) {
             auto eqIdx = std::make_unique<PendingZoneComputations::EquipmentIndexData>();
             if (EquipmentModelLoader::buildEquipmentIndex(ctx.eqPath,
                     eqIdx->modelIndex, eqIdx->textureIndex)) {

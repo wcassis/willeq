@@ -590,6 +590,13 @@ public:
 
     const std::vector<std::shared_ptr<ZoneGeometry>>& getGeometries() const { return geometries_; }
     std::shared_ptr<ZoneGeometry> getCombinedGeometry() const;
+    // T504c Leg 2g: the combined geometry's MATERIALS and BOUNDS without its
+    // vertices and triangles. On the PVS path the combined geometry is read
+    // only for its texture names/animations (AnimatedTextureManager) and its
+    // bounds (zoneBounds*); the 19.5 MiB vertex+triangle copy (iceclad) was
+    // built and dropped every load. The no-PVS fallback still needs the
+    // full one (createZoneMesh).
+    std::shared_ptr<ZoneGeometry> getCombinedMaterialSummary() const;
     const std::vector<std::string>& getTextureNames() const { return textureNames_; }
     const std::vector<std::shared_ptr<Placeable>>& getPlaceables() const { return placeables_; }
     const std::map<std::string, WldObjectDef>& getObjectDefs() const { return objectDefs_; }
@@ -757,6 +764,8 @@ private:
 
     // T504c Leg 2 (see setCharacterCodeFilter)
     std::vector<std::string> codeFilter_;
+    size_t pvsArenaReserveHint_ = 0;   // T504c Leg 2g: exact PVS byte total of the 0x22 fragments, consumed by the first region
+    static size_t fragment22PvsBytes(const char* fragBuffer, uint32_t fragLength);
     bool trackNameWanted(int32_t nameRef, const char* hash) const;
 };
 

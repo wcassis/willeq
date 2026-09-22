@@ -199,6 +199,14 @@ public:
         const std::string& clientPath,
         std::map<int, EquipmentModelRef>& outModelIndex,
         std::map<std::string, EquipmentTextureRef>& outTextureIndex);
+    // T504c Leg 2f: the archives the index reads, in priority order (first
+    // holder of a model id wins). The original client's Resources/
+    // GlobalLoad.txt names GEquip, GEquip2-5 and GEquip8 (Will, 2026-09-22:
+    // load what GlobalLoad.txt loads, prune the post-Velious files); the
+    // loy/ldon/gates/frog/omens/don/dod entries it also lists are later
+    // expansions and dropped, and vequip/lgequip*/gequip6/obequip_lexit are
+    // not in GlobalLoad.txt at all. The tests iterate this list.
+    static const std::vector<std::string>& indexedArchiveNames();
 
 private:
     // Lazy-init: build equipment index on first use (if not already loaded via adoptIndex)

@@ -11,6 +11,7 @@
 // - FATAL/ERROR always output at level NONE
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <cstdint>
 #include <ctime>
@@ -709,11 +710,17 @@ inline void FormatTimestamp(char* buffer, size_t size) {
     localtime_r(&time_t_now, &tm_buf);
 #endif
 
-    int written = snprintf(buffer, size, "%04d-%02d-%02d %02d:%02d:%02d.%03d",
+    // Formatted into a local first: the callers pass a 32-byte buffer and GCC's
+    // -Wformat-truncation (an error in CI) sizes the worst case of seven ints
+    // at 77 bytes. The real output is 23 characters; the copy below is bounded.
+    char tmp[80];
+    int written = snprintf(tmp, sizeof(tmp), "%04d-%02d-%02d %02d:%02d:%02d.%03d",
         tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
         tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec,
         static_cast<int>(ms.count()));
-    (void)written; // Suppress unused warning
+    if (written < 0) written = 0;
+    const size_t n = std::min(static_cast<size_t>(written), size > 0 ? size - 1 : 0);
+    if (size > 0) { memcpy(buffer, tmp, n); buffer[n] = '\0'; }
 }
 
 // =============================================================================

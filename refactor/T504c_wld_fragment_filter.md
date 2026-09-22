@@ -1,6 +1,76 @@
 # T504c — the entity-load transient: parse only the WLD fragments a wanted character needs
 
-**Status:** Legs 1, 1b, 2, 2b, 2c, 2d, 2e DONE (2026-09-22).
+**Status:** Legs 1, 1b, 2, 2b, 2c, 2d, 2e, 2f, 2g DONE (2026-09-22).
+
+**Leg 2f (equipment index):** Step 5 rebuilt the equipment index on EVERY
+zone load by parsing 17 `*equip*.s3d` WLDs whole (17,884 skeleton and
+18,140 track fragments per load under the `archives` scope), 11 of them
+archives the original client never loads (`Resources/GlobalLoad.txt`
+names GEquip, GEquip2-5, GEquip8; loy/ldon/gates/frog/omens/don/dod are
+later expansions; vequip/lgequip*/gequip6/obequip_lexit are not listed at
+all). `EquipmentModelLoader::indexedArchiveNames()` is now the era six
+(same relative priority), the index is built once per process (Step 5
+skips it when the loader has one), and the open archive is reused for the
+parse. 622 of the 1,081 indexed models came from the pruned archives; the
+census tests iterate the loader's list (floors re-pinned to 459 / 34).
+FLAG for Will: vequip.s3d (20 models, "Velious equipment" by name) is not
+in GlobalLoad.txt either; it is pruned with the rest under the rule.
+
+**Leg 2g (zone_parse transients, iceclad trace `run108`):** (1) every 0x22
+region filled a private PVS store that `addRegion` then copied into the
+tree's growing arena -- 13 MiB of transient for a 4.6 MiB arena; the
+region now joins the tree first and appends in place, the arena is
+reserved from the 0x22 fragment sizes, and `shrinkPvsArena` copies only
+when the slack exceeds 1/8. (2) The combined zone geometry (12 + 7.5 MiB
+of vertex+triangle copy) was built on every load but read on the PVS path
+only for its texture names/animations and bounds; Step 1 no longer builds
+it, Step 2 gives the PVS path a materials+bounds summary
+(`getCombinedMaterialSummary`) and the no-PVS fallback the full one.
+
+**Legs 2f/2g measured (`run109` vs `run104`; archives peak / zone_parse
+peak / RssAnon at entities):** gfaydark 35.4 → 5.4 / 19.6 → 13.0 / 209.9 →
+202.3; dreadlands 35.5 → 5.5 / 32.2 → 23.3 / 219.9 → 208.1; iceclad 35.4 →
+5.4 / 58.5 → 58.0 / 245.5 → 231.7; qeynos2 35.4 → 5.5 / 14.3 → 11.7 / 165.4
+→ 160.3. Equipment index built once per run; render parses 0; errors 0.
+Iceclad's zone_parse peak did not move (its LIVE at entities did, 47.4 →
+34.4): re-traced in `run110`.
+
+**Visual gate (memory-coverage block) needs Will's bless:**
+`characterModelsBytes` for the fixed 5-race sample is now 1,445,267 in all
+three zones (was 23,935,538 / 23,567,212 / 23,695,017) -- the T504b source
+pruning Will approved; two gate passes bit-identical. The manifest values
+are applied BY HAND after a bless in chat (T303 rule), so the gate stays
+red until then.
+
+**Leg 2g follow-up:** the first reserve (sum of the 0x22 BODIES) over-reserved
+iceclad's 4.6 MiB PVS arena to 8.1 MiB and the shrink then copied it
+(`run110`); the reserve is now an exact pre-pass over the 0x22 fragments
+(`fragment22PvsBytes`), allocated once at its final size.
+
+**Suite triage (local run of all 4,987 tests, CI never ran them on this
+branch):** 7 failures. (a) X11NumpadE2E fails at the merge base too
+(environment). (b) HeldItemTest/EquipmentItemCensus floors re-pinned to the
+era set. (c) Race330LoaderTest expected the playable Froglok from
+globalpcfroglok_chr.s3d -- a post-Velious archive the resolver prunes; the
+test now pins that race 330 resolves to nothing in the era. (d)
+EntityModelSharingTest (the split-vs-ledger identity) was off by 47 %: two
+double counts, both ours -- the adopted global_chr.s3d other-chr entry shares
+the global store's TextureInfo/CharacterModel objects (counted in both
+maps), and RaceModelData::textures became ONE shared snapshot per merged
+map (T504) while the stats still charged a map copy per model; each object
+is now counted once and the split closes at +0.25 % (baseline was -0.88 %).
+(e) The boat rescale test spawned race 72 with no zone; SHIP lives in
+oot_chr.s3d, so the test now builds it in Ocean of Tears.
+
+**Also found (CI):** the branch's CI `build` job has failed since 108ba056
+(`-Werror=format-truncation` on `FormatTimestamp`'s 32-byte buffer,
+inlined into the T504 navmesh log line) and `hygiene` before that, so the
+test job NEVER ran on this branch. Fixed (bounded copy). Running the suite
+locally found `test_held_item_attachment` crashing: since T504b's
+render-thread deferral, a main-thread model lookup with NO prep worker
+(tests, tools) was deferred to nobody and never loaded. The worker request
+now reports acceptance; without a worker the load is synchronous, as
+before T504b.
 
 **Leg 2e (the `archives` peak was the EQE1 index's jsoncpp DOM):** the
 `archives` ledger trace (`run105`) put 26.4 MiB / 235,907 allocations in

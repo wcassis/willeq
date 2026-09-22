@@ -160,6 +160,41 @@ void WldLoader::parseFragment21(const char* fragBuffer, uint32_t fragLength, uin
     LOG_TRACE(MOD_MAP, "[BSP] Fragment 0x21: {} nodes have regionId > 0", nodesWithRegions);
 }
 
+// T504c Leg 2g: the RLE PVS byte count a 0x22 body carries, read the same
+// way parseFragment22() walks to it, so parseWldBuffer() can reserve the
+// tree's arena EXACTLY before the first region appends (the sum of the 0x22
+// bodies over-reserved iceclad's 4.6 MiB arena to 8.1 and the shrink then
+// copied it). 0 when the body is malformed.
+size_t WldLoader::fragment22PvsBytes(const char* fragBuffer, uint32_t fragLength) {
+    const char* end = fragBuffer + fragLength;
+    const char* ptr = fragBuffer;
+    if (ptr + 40 > end) return 0;
+    ptr += 4;                                              // flags
+    ptr += 4;                                              // unknown1
+    int32_t data1Size = read_val<int32_t>(ptr); ptr += 4;
+    int32_t data2Size = read_val<int32_t>(ptr); ptr += 4;
+    ptr += 4;                                              // unknown2
+    int32_t data3Size = read_val<int32_t>(ptr); ptr += 4;
+    ptr += 4;                                              // data4Size
+    ptr += 4;                                              // unknown3
+    int32_t data5Size = read_val<int32_t>(ptr); ptr += 4;
+    ptr += 4;                                              // data6Size
+    if (data1Size < 0 || data2Size < 0 || data3Size < 0 || data5Size < 0) return 0;
+    ptr += 12 * static_cast<size_t>(data1Size) + 12 * static_cast<size_t>(data2Size);
+    for (int32_t i = 0; i < data3Size; ++i) {
+        if (ptr + 8 > end) return 0;
+        ptr += 4;
+        int32_t data3Size2 = read_val<int32_t>(ptr); ptr += 4;
+        if (data3Size2 < 0) return 0;
+        ptr += static_cast<size_t>(data3Size2) * 4;
+    }
+    ptr += 7 * 4 * static_cast<size_t>(data5Size);
+    if (ptr + 2 > end) return 0;
+    const int16_t pvsSize = read_val<int16_t>(ptr);
+    if (pvsSize <= 0 || ptr + 2 + pvsSize > end) return 0;
+    return static_cast<size_t>(pvsSize);
+}
+
 void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
     // Fragment 0x22 - BSP Region
     // Defines a region in the BSP tree (water, lava, zone line, etc.)
@@ -174,6 +209,14 @@ void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uin
 
     auto region = std::make_shared<BspRegion>();
     size_t regionIndex = bspTree_->regions.size();
+    // T504c Leg 2g: the region joins the tree FIRST so its PVS bytes append
+    // straight into the tree's arena. Measured (iceclad, zone_parse trace):
+    // setPvsRle() used to fill a private per-region store and addRegion()
+    // copied it into the tree arena as it grew -- 13 MiB of transient for a
+    // 4.6 MiB arena. The arena is reserved from the 0x22 fragment sizes
+    // (parseWldBuffer) so it grows once.
+    if (pvsArenaReserveHint_ > 0) { bspTree_->reservePvsArena(pvsArenaReserveHint_); pvsArenaReserveHint_ = 0; }
+    bspTree_->addRegion(region);
 
     const char* ptr = fragBuffer;
 
@@ -241,8 +284,6 @@ void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uin
     if (region->containsPolygons && ptr + 4 <= fragBuffer + fragLength) {
         region->meshReference = read_val<int32_t>(ptr);
     }
-
-    bspTree_->addRegion(region);
 }
 
 void WldLoader::parseFragment29(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,

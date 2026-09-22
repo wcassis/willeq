@@ -1145,6 +1145,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_trace.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
         # B734: loadObjects() poses skinned objects through T476's resolver.
@@ -1220,6 +1222,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_trace.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
         # B734: loadObjects() poses skinned objects through T476's resolver.
@@ -1421,6 +1425,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_trace.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
         # B734: loadObjects() poses skinned objects through T476's resolver.
@@ -1495,6 +1501,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_trace.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
         # B734: loadObjects() poses skinned objects through T476's resolver.

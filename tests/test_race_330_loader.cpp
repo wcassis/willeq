@@ -110,21 +110,18 @@ protected:
     }
 };
 
-// The loader's s3d_file branch reaches a non-numeric global archive and
-// finds the gendered playable froglok in it.
-TEST_F(Race330LoaderTest, LoadsFrmAndFrfFromGlobalPcFroglok) {
+// T504 resolver (Will, 2026-09-22): the loader resolves models the way the
+// original client does -- the zone archive, the zone's _chr.txt list, then
+// Resources/GlobalLoad.txt's era archives -- and the post-Velious entries
+// (GlobalFroglok_chr, GlobalPCFroglok_chr, GlobalSKE_chr2, ...) are pruned.
+// The playable Froglok is a Legacy of Ykesha model: no era source holds
+// FRM/FRF, so race 330 resolves to NOTHING, deterministically, from any
+// zone. (Before the resolver the db row's s3d_file reached
+// globalpcfroglok_chr.s3d directly; that branch is gone.)
+TEST_F(Race330LoaderTest, PlayableFroglokIsOutsideTheEraAndLoadsNothing) {
     ASSERT_TRUE(loader_->isUsingOldModels());
-    auto male = loader_->ensureModelDataLoaded(330, 0);
-    ASSERT_NE(male, nullptr) << "race 330 male loaded nothing";
-    EXPECT_NE(male->raceName.find("FRM"), std::string::npos) << male->raceName;
-    ASSERT_NE(male->combinedGeometry, nullptr);
-    EXPECT_GT(male->combinedGeometry->vertices.size(), 0u);
-
-    auto female = loader_->ensureModelDataLoaded(330, 1);
-    ASSERT_NE(female, nullptr) << "race 330 female loaded nothing";
-    EXPECT_NE(female->raceName.find("FRF"), std::string::npos) << female->raceName;
-    ASSERT_NE(female->combinedGeometry, nullptr);
-    EXPECT_GT(female->combinedGeometry->vertices.size(), 0u);
+    EXPECT_EQ(loader_->ensureModelDataLoaded(330, 0), nullptr) << "FRM came from a pruned archive";
+    EXPECT_EQ(loader_->ensureModelDataLoaded(330, 1), nullptr) << "FRF came from a pruned archive";
 }
 
 // A row naming a numbered global (128 Iksar -> global4_chr.s3d) still loads

@@ -77,12 +77,13 @@ EntityRenderer::EntityRenderer(irr::scene::ISceneManager* smgr, irr::video::IVid
     // request; its result is promoted like any other) and the caller waits
     // for the next frames, as a late spawn does.
     raceModelLoader_->setWorkerPreloadRequest([this](uint16_t raceId, uint8_t gender) {
-        if (!entityPrepWorker_) return;
+        if (!entityPrepWorker_) return false;   // nobody to hand it to: load synchronously
         EntityPrepWorker::PrepRequest req;
         req.spawnId = 0;
         req.raceId = raceId;
         req.gender = gender;
         entityPrepWorker_->requestPrep(req);
+        return true;
     });
 
     // Create the equipment model loader

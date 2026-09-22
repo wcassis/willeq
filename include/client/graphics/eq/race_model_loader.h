@@ -1007,7 +1007,9 @@ private:
     std::map<uint32_t, std::chrono::steady_clock::time_point> evictable_;   // key -> when its refcount hit 0
     size_t entityModelBudgetBytes_ = 0;            // 0 = no budget pressure
     double evictHysteresisSeconds_ = 60.0;
-    std::function<void(uint16_t, uint8_t)> workerPreloadRequest_;
+    // Returns true when a worker ACCEPTED the request; false (no prep worker
+    // -- tests, tools) means the caller must load synchronously after all.
+    std::function<bool(uint16_t, uint8_t)> workerPreloadRequest_;
     void recordArchiveNamesLocked(const std::string& key, const std::string& path, const CharacterList& chars);
     void recordArchiveNamesLocked(const std::string& key, const std::string& path, const std::vector<std::string>& names);
     // The codes a request for (race, gender) can need: the gendered race
@@ -1026,7 +1028,7 @@ public:
     // this callback and returns null; lastLookupDeferred() tells the caller
     // not to cache that null (the model arrives when the worker's result is
     // promoted, and the entity's build step finishes it -- as a late spawn).
-    void setWorkerPreloadRequest(std::function<void(uint16_t, uint8_t)> fn) { workerPreloadRequest_ = std::move(fn); }
+    void setWorkerPreloadRequest(std::function<bool(uint16_t, uint8_t)> fn) { workerPreloadRequest_ = std::move(fn); }
     bool lastLookupDeferred() const;
     // True when a model is loaded (after promoting any prepared one): the
     // render-thread build may proceed without touching an archive.

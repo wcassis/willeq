@@ -299,13 +299,17 @@ std::shared_ptr<RaceModelData> RaceModelLoader::ensureModelDataLoaded(uint16_t r
                 std::lock_guard<std::mutex> lock(loadedModelsMutex_);
                 missing = loadedModels_.count(key) == 0;
             }
-            if (missing) {
+            // T504c: a request nobody accepts (no prep worker: the tests and
+            // tools build entities on their main thread) is not a deferral;
+            // the load then happens here, as it did before T504b. Found by
+            // test_held_item_attachment (createEntity never produced a node).
+            if (missing && workerPreloadRequest_(raceId, gender)) {
                 t_lookupDeferred = true;
-                workerPreloadRequest_(raceId, gender);
                 LOG_INFO(MOD_GRAPHICS, "[srcchar] defer race={} gender={} to the prep worker (render thread never parses)",
                          raceId, gender);
                 return nullptr;
             }
+            if (missing) ensureSourceForRace(raceId, gender, "ensureModelDataLoaded");
         } else if (missing) {
             ensureSourceForRace(raceId, gender, "ensureModelDataLoaded");
         }

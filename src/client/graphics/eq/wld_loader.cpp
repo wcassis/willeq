@@ -393,6 +393,12 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
 
     // Count fragment types for summary
     std::map<uint32_t, uint32_t> fragTypeCounts;
+    // T504c Leg 2g: the PVS arena's reserve -- the exact RLE byte total of
+    // the 0x22 regions, so the arena is allocated once at its final size.
+    pvsArenaReserveHint_ = 0;
+    for (const auto& [off, fh] : fragmentOffsets)
+        if (fh.id == 0x22 && fh.size >= 4 && off + fh.size <= buffer.size())
+            pvsArenaReserveHint_ += fragment22PvsBytes(&buffer[off] + 4, fh.size - 4);
     std::map<uint32_t, uint32_t> fragTypeSkipped;   // T504c Leg 2: bodies the code filter skipped
 
     // Parse all fragments

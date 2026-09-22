@@ -813,7 +813,7 @@ bool EquipmentModelLoader::indexEquipmentArchive(
     size_t modelCount = 0;
     for (const auto& wldName : wldFiles) {
         WldLoader wldLoader;
-        if (!wldLoader.parseFromArchive(archivePath, wldName)) {
+        if (!wldLoader.parseFromOpenArchive(archive, wldName)) {   // T504c Leg 2f: the archive is open
             LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader::indexEquipmentArchive: Failed to parse WLD: {}", wldName);
             continue;
         }
@@ -844,28 +844,28 @@ bool EquipmentModelLoader::indexEquipmentArchive(
     return true;
 }
 
+const std::vector<std::string>& EquipmentModelLoader::indexedArchiveNames() {
+    // Relative priority of the kept archives is what it was in the 17-entry
+    // list this replaces (first holder wins). Before Leg 2f the list also
+    // read obequip_lexit, frogequip, lgequip_amr2, lgequip_amr, loyequip,
+    // vequip, lgequip2, lgequip, ldonequip, gatesequip and gequip6 -- 622 of
+    // the 1,081 indexed models came from archives the original client never
+    // loads, and every zone load parsed all 17 WLDs whole.
+    static const std::vector<std::string> names = {
+        "gequip8.s3d", "gequip5.s3d", "gequip4.s3d",
+        "gequip3.s3d", "gequip2.s3d", "gequip.s3d"
+    };
+    return names;
+}
+
 bool EquipmentModelLoader::buildEquipmentIndex(
     const std::string& clientPath,
     std::map<int, EquipmentModelRef>& outModelIndex,
     std::map<std::string, EquipmentTextureRef>& outTextureIndex)
 {
-    // All equipment archives — lower priority first, higher priority last for duplicates
     // gequip.s3d: IT27-153, gequip2: IT11-656, gequip3: IT10000-10105
-    // gequip4: IT10015-11502, gequip5: IT10501-10523, gequip6: IT661-668, gequip8: IT10524-10733
-    // gatesequip: IT10715-10732 (Gates of Discord), ldonequip: IT10700-10713 (Lost Dungeons)
-    // lgequip/lgequip2: Luclin equipment, loyequip: Loyalty, vequip: Velious
-    // frogequip: Froglok, obequip_lexit: OoW, lgequip_amr/lgequip_amr2: Luclin armor
-    std::vector<std::string> archiveNames = {
-        "obequip_lexit.s3d", "frogequip.s3d",
-        "lgequip_amr2.s3d", "lgequip_amr.s3d",
-        "loyequip.s3d", "vequip.s3d",
-        "lgequip2.s3d", "lgequip.s3d",
-        "ldonequip.s3d", "gatesequip.s3d",
-        "gequip8.s3d", "gequip6.s3d", "gequip5.s3d", "gequip4.s3d",
-        "gequip3.s3d", "gequip2.s3d", "gequip.s3d"
-    };
-
-    for (const auto& archiveName : archiveNames) {
+    // gequip4: IT10015-11502, gequip5: IT10501-10523, gequip8: IT10524-10733
+    for (const auto& archiveName : indexedArchiveNames()) {
         std::string archivePath = clientPath + archiveName;
         indexEquipmentArchive(archivePath, outModelIndex, outTextureIndex);
     }
