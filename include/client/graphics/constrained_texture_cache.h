@@ -179,6 +179,12 @@ public:
 
     // Memory statistics
     size_t getCurrentUsage() const;
+
+    // T504: true when at least one EQE1 flat pack is registered -- the exact
+    // condition under which getOrLoad() serves every name from a pack and treats
+    // a miss as fatal, i.e. under which a caller's raw BMP/DDS bytes are never
+    // decoded. RaceModelLoader uses it to release those bytes at once.
+    bool hasEQE1Loaders() const;
     size_t getMemoryLimit() const;
     size_t getAvailableMemory() const;
     size_t getTextureCount() const;

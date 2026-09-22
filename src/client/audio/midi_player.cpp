@@ -152,37 +152,56 @@ bool MidiPlayer::init(const std::string& gmPath, const std::string& customPath, 
 
     LOG_INFO(MOD_AUDIO, "MidiPlayer: loaded GM SoundFont: {} ({}Hz)", gmPath, sampleRate_);
 
-    // Load custom SoundFont (optional)
-    if (!customPath.empty()) {
-        impl_->customSoundFont = tsf_load_filename(customPath.c_str());
-        if (impl_->customSoundFont) {
-            tsf_set_output(impl_->customSoundFont, TSF_STEREO_INTERLEAVED, sampleRate_, 0.0f);
-            configureTsfForRealtimeCallback(impl_->customSoundFont);
-            LOG_INFO(MOD_AUDIO, "MidiPlayer: loaded custom SoundFont: {}", customPath);
-        } else {
-            LOG_WARN(MOD_AUDIO, "MidiPlayer: failed to load custom SoundFont: {} (continuing with GM only)", customPath);
-        }
-    }
+    // T504: the custom SoundFont (optional) is only REMEMBERED here. It is
+    // loaded by the first selectSoundFont(Custom) -- see the header.
+    customSoundFontPath_ = customPath;
 
     initialized_ = true;
-    LOG_INFO(MOD_AUDIO, "MidiPlayer initialized with dual SoundFonts ({}Hz)", sampleRate_);
+    LOG_INFO(MOD_AUDIO, "MidiPlayer initialized with dual SoundFonts ({}Hz, custom font deferred: {})",
+             sampleRate_, customPath.empty() ? "none" : customPath);
     return true;
+}
+
+bool MidiPlayer::isCustomSoundFontResident() const {
+    return impl_->customSoundFont != nullptr;
 }
 
 void MidiPlayer::selectSoundFont(SoundFontType type) {
     if (type == activeSoundFont_) return;
 
-    if (type == SoundFontType::Custom && !impl_->customSoundFont) {
-        LOG_WARN(MOD_AUDIO, "MidiPlayer: custom SoundFont not loaded, staying on GM");
+    if (type == SoundFontType::Custom && customSoundFontPath_.empty()) {
+        LOG_WARN(MOD_AUDIO, "MidiPlayer: no custom SoundFont configured, staying on GM");
         return;
     }
 
+    // T248: stop() waits on the render barrier, so no render pass is inside the
+    // synth while the pointer is swapped and an instance is loaded or closed
+    // below; a later pass sees playing_==false and does not dereference
+    // impl_->soundFont until play() publishes it again.
     stop();
 
     if (type == SoundFontType::Custom) {
-        impl_->soundFont = impl_->customSoundFont;
+        // T504: load on demand. A failure leaves the player on GM, exactly as
+        // a failed load at init() used to.
+        tsf* custom = tsf_load_filename(customSoundFontPath_.c_str());
+        if (!custom) {
+            LOG_WARN(MOD_AUDIO, "MidiPlayer: failed to load custom SoundFont: {} (staying on GM)",
+                     customSoundFontPath_);
+            return;
+        }
+        tsf_set_output(custom, TSF_STEREO_INTERLEAVED, sampleRate_, 0.0f);
+        configureTsfForRealtimeCallback(custom);
+        impl_->customSoundFont = custom;
+        impl_->soundFont = custom;
+        LOG_INFO(MOD_AUDIO, "MidiPlayer: loaded custom SoundFont on demand: {}", customSoundFontPath_);
     } else {
         impl_->soundFont = impl_->gmSoundFont;
+        // T504: nothing renders from the custom font any more -- give it back.
+        if (impl_->customSoundFont) {
+            tsf_close(impl_->customSoundFont);
+            impl_->customSoundFont = nullptr;
+            LOG_INFO(MOD_AUDIO, "MidiPlayer: released custom SoundFont");
+        }
     }
     activeSoundFont_ = type;
 

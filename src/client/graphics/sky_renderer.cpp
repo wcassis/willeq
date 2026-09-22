@@ -81,11 +81,19 @@ bool SkyRenderer::initialize(const std::string& eqClientPath) {
         // Continue without ini - will use defaults
     }
 
+    // T504: this loader lives as long as the renderer and is only ever asked for
+    // metadata (layers, tracks, sky types, texture NAMES). The texture bytes are
+    // decoded by zone-load step 10 from its own SkyLoader, filtered to the
+    // zone's sky type -- so the 47 textures' raw bytes held here were dead
+    // weight from process start. See SkyLoader::releaseTextureData().
+    const size_t released = skyLoader_->releaseTextureData();
+
     const auto& skyData = skyLoader_->getSkyData();
     if (skyData) {
-        LOG_INFO(MOD_GRAPHICS, "SkyRenderer initialized: {} layers, {} celestial bodies",
+        LOG_INFO(MOD_GRAPHICS, "SkyRenderer initialized: {} layers, {} celestial bodies "
+                 "({} bytes of raw sky texture data released)",
                  skyData->layers.size(),
-                 skyData->celestialBodies.size());
+                 skyData->celestialBodies.size(), released);
     }
 
     initialized_ = true;

@@ -20,6 +20,14 @@ namespace EQT {
 namespace Graphics {
 
 bool S3DLoader::loadObjects(const std::string& archivePath) {
+    PfsArchive mainArchive;
+    if (!mainArchive.open(archivePath)) {
+        return false;
+    }
+    return loadObjectsFromArchive(mainArchive, archivePath);
+}
+
+bool S3DLoader::loadObjectsFromArchive(PfsArchive& mainArchive, const std::string& archivePath) {
     // Object loading involves three files:
     // 1. zonename.s3d/objects.wld - contains placement instances (0x15 fragments)
     // 2. zonename_obj.s3d/zonename_obj.wld - contains object definitions (0x14) and geometry (0x36)
@@ -41,11 +49,6 @@ bool S3DLoader::loadObjects(const std::string& archivePath) {
     std::string objWldName = zoneName_ + "_obj.wld";
 
     // First, try to load object placement data from objects.wld in main archive
-    WldLoader placementLoader;
-    PfsArchive mainArchive;
-    if (!mainArchive.open(archivePath)) {
-        return false;
-    }
 
     // Check for objects.wld in main archive
     std::vector<std::string> wldFiles;
@@ -64,15 +67,9 @@ bool S3DLoader::loadObjects(const std::string& archivePath) {
         return false;
     }
 
-    // Parse objects.wld to get placement instances
-    std::vector<char> placementBuffer;
-    if (!mainArchive.get("objects.wld", placementBuffer)) {
-        return false;
-    }
-
-    // Need to parse this WLD for 0x15 fragments only
+    // Parse objects.wld (0x15 placement fragments) from the open archive
     WldLoader objPlacementLoader;
-    if (!objPlacementLoader.parseFromArchive(archivePath, "objects.wld")) {
+    if (!objPlacementLoader.parseFromOpenArchive(mainArchive, "objects.wld")) {
         // No placements found
         return false;
     }
@@ -94,14 +91,14 @@ bool S3DLoader::loadObjects(const std::string& archivePath) {
     LOG_DEBUG(MOD_GRAPHICS, "Loaded {} object textures from _obj archive", zone_->objectTextures.size());
 
     WldLoader objDefLoader;
-    if (!objDefLoader.parseFromArchive(objArchivePath, objWldName)) {
+    if (!objDefLoader.parseFromOpenArchive(objArchive, objWldName)) {
         // Try alternative name without zone prefix
         std::vector<std::string> objWldFiles;
         objArchive.getFilenames(".wld", objWldFiles);
 
         bool loaded = false;
         for (const auto& wld : objWldFiles) {
-            if (objDefLoader.parseFromArchive(objArchivePath, wld)) {
+            if (objDefLoader.parseFromOpenArchive(objArchive, wld)) {
                 loaded = true;
                 break;
             }

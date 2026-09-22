@@ -770,17 +770,15 @@ struct SimulationZoneData {
     std::vector<ZoneLightAnimData> zoneLightAnims;
 
     // Vertex-animated mesh data (flags, banners)
+    // T504: the worker only advances a frame COUNTER per vertex-animated
+    // mesh (computeVertexAnimations); the renderer applies the frame from its
+    // own VertexAnimatedMesh entry. The frame positions, vertex mappings and
+    // buffer counts used to be copied in here per INSTANCE and never read:
+    // 555 flags in dreadlands = 9.9 MiB of dead copies filed under
+    // irrlicht_scene.
     struct VertexAnimData {
         int delayMs = 100;
         size_t frameCount = 0;
-        // Frame positions: frames[frameIdx] = flat array of float x,y,z triples
-        // positions[vertIdx*3+0] = x, [vertIdx*3+1] = y, [vertIdx*3+2] = z (EQ coords)
-        std::vector<std::vector<float>> framePositions;
-        // Per-buffer vertex mappings: vertexMapping[bufIdx][vertIdx] = animVertIdx
-        std::vector<std::vector<size_t>> vertexMapping;
-        float centerOffsetX = 0, centerOffsetY = 0, centerOffsetZ = 0;
-        // Per-buffer vertex counts (for output shadow sizing)
-        std::vector<size_t> bufferVertexCounts;
     };
     std::vector<VertexAnimData> vertexAnims;
 };
@@ -801,6 +799,7 @@ public:
 
     // Zone data registration (call after zone load, before start())
     void setZoneData(const SimulationZoneData& data);
+    void setZoneData(SimulationZoneData&& data);  // T504: the load path moves its one-shot copy in
     void clearZoneData();
 
     // Synchronous one-shot computation (call from loading thread before start())

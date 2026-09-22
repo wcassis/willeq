@@ -49,6 +49,10 @@
 #include <vector>
 #include <unistd.h>
 #include <zlib.h>
+#include <algorithm>
+#include <sstream>
+#include <iterator>
+#include <glm/glm.hpp>
 
 namespace {
 
@@ -549,3 +553,103 @@ TEST(HCMapMalformedV2, OversizedVertCountFailsLoadWithoutCrashing) {
 
     ::remove(path.c_str());
 }
+
+// ---------------------------------------------------------------------------
+// T504d: the raycast BVH's identity net. A fixed grid of FindBestZ and
+// CheckLOSWithHit queries over each fixture map, printed to 3 decimals and
+// compared to a committed golden. The BVH compaction (T504d) must leave every
+// line unchanged: the queries are pure functions of the same triangles.
+// Bless (regenerate) with WILLEQ_BLESS_HC_MAP_RAYS=1; the golden dir is
+// tests/goldens/hc_map/ (WILLEQ_HC_MAP_GOLDENS overrides).
+// ---------------------------------------------------------------------------
+namespace {
+std::string HcMapGoldenDir() {
+    if (const char* env = std::getenv("WILLEQ_HC_MAP_GOLDENS")) return env;
+    return std::string(WILLEQ_SOURCE_DIR) + "/tests/goldens/hc_map";
+}
+
+std::string RaySetReport(const HCMap& map) {
+    // XY bounds from the triangles themselves (the map exposes no XY range).
+    auto tris = map.GetTrianglesInRadius(glm::vec3(0.0f), 1.0e9f);
+    if (tris.empty()) return "";
+    float minX = 1e30f, maxX = -1e30f, minZ = 1e30f, maxZ = -1e30f;
+    for (const auto& t : tris) {
+        for (const glm::vec3* v : {&t.v1, &t.v2, &t.v3}) {
+            minX = std::min(minX, v->x); maxX = std::max(maxX, v->x);
+            minZ = std::min(minZ, v->z); maxZ = std::max(maxZ, v->z);
+        }
+    }
+    float minY = 0.0f, maxY = 0.0f;
+    map.GetVertexBounds(minY, maxY);
+    const int n = 24;
+    char line[256];
+    std::string out;
+    std::snprintf(line, sizeof(line), "bounds x=[%.3f,%.3f] y=[%.3f,%.3f] z=[%.3f,%.3f] tris=%zu\n",
+                  minX, maxX, minY, maxY, minZ, maxZ, tris.size());
+    out += line;
+    glm::vec3 prev(0.0f);
+    bool havePrev = false;
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            const float x = minX + (maxX - minX) * (i + 0.5f) / n;
+            const float z = minZ + (maxZ - minZ) * (j + 0.5f) / n;
+            glm::vec3 start(x, maxY + 10.0f, z), result(0.0f);
+            const float best = map.FindBestZ(start, &result);
+            std::snprintf(line, sizeof(line), "%d %d best=%.3f at=%.3f,%.3f,%.3f", i, j, best,
+                          result.x, result.y, result.z);
+            out += line;
+            if (havePrev) {
+                glm::vec3 hit(0.0f);
+                const glm::vec3 a(prev.x, prev.y + 2.0f, prev.z), b(result.x, result.y + 2.0f, result.z);
+                const bool los = map.CheckLOSWithHit(a, b, &hit);
+                std::snprintf(line, sizeof(line), " los=%d hit=%.3f,%.3f,%.3f", los ? 1 : 0, hit.x, hit.y, hit.z);
+                out += line;
+            }
+            out += "\n";
+            prev = result;
+            havePrev = true;
+        }
+    }
+    return out;
+}
+
+void CheckRaySetGolden(const char* zone) {
+    const std::string path = RequireMapFixture(std::string(zone) + ".map");
+    if (path.empty()) GTEST_SKIP() << "No map fixture for " << zone;
+    HCMap map;
+    ASSERT_TRUE(map.Load(path));
+    const std::string report = RaySetReport(map);
+    ASSERT_FALSE(report.empty());
+    const std::string golden = HcMapGoldenDir() + "/" + zone + "_rays.txt";
+    if (std::getenv("WILLEQ_BLESS_HC_MAP_RAYS")) {
+        std::ofstream out(golden);
+        ASSERT_TRUE(out.is_open()) << golden;
+        out << report;
+        return;
+    }
+    std::ifstream in(golden);
+    ASSERT_TRUE(in.is_open()) << "no golden at " << golden << " (bless with WILLEQ_BLESS_HC_MAP_RAYS=1)";
+    std::string expected((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (expected != report) {
+        // Name the first differing line, not the whole 577-line report.
+        std::istringstream a(expected), b(report);
+        std::string la, lb;
+        int lineNo = 0;
+        while (true) {
+            const bool ga = static_cast<bool>(std::getline(a, la));
+            const bool gb = static_cast<bool>(std::getline(b, lb));
+            ++lineNo;
+            if (!ga && !gb) break;
+            if (la != lb) {
+                FAIL() << zone << " ray set differs at line " << lineNo << "\n  golden: " << la
+                       << "\n  now:    " << lb;
+            }
+        }
+    }
+}
+}  // namespace
+
+TEST(HCMapRaySetGolden, Befallen)   { CheckRaySetGolden("befallen"); }
+TEST(HCMapRaySetGolden, Gfaydark)   { CheckRaySetGolden("gfaydark"); }
+TEST(HCMapRaySetGolden, Dreadlands) { CheckRaySetGolden("dreadlands"); }
+TEST(HCMapRaySetGolden, Iceclad)    { CheckRaySetGolden("iceclad"); }

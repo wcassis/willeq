@@ -133,19 +133,24 @@ std::string S3DLoader::deriveChrArchivePath(const std::string& archivePath) {
     return parent.empty() ? chrName : (parent / chrName).string();
 }
 
-bool S3DLoader::loadCharacters(const std::string& archivePath) {
+bool S3DLoader::loadCharacters(const std::string& archivePath, PfsArchive* openArchive) {
     // Character loading from _chr.s3d files
     // These contain skeleton tracks (0x10) with bone hierarchies
 
     std::string chrArchivePath = deriveChrArchivePath(archivePath);
     LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: archivePath='{}' -> chrArchivePath='{}'", archivePath, chrArchivePath);
 
-    // Open the character archive
-    PfsArchive chrArchive;
-    if (!chrArchive.open(chrArchivePath)) {
+    // Open the character archive -- unless loadZone() has it open already
+    // (T504c Leg 2b: the archive being loaded IS the character archive).
+    PfsArchive localArchive;
+    PfsArchive* archivePtr = &localArchive;
+    if (openArchive && chrArchivePath == archivePath) {
+        archivePtr = openArchive;
+    } else if (!localArchive.open(chrArchivePath)) {
         LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: failed to open '{}'", chrArchivePath);
         return false;
     }
+    PfsArchive& chrArchive = *archivePtr;
 
     // Load character textures
     loadCharacterTextures(chrArchive);
@@ -167,11 +172,23 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
     // Parse each WLD file for character data
     for (const auto& wld : wldFiles) {
         LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: parsing WLD '{}'", wld);
-        WldLoader chrLoader;
-        if (!chrLoader.parseFromArchive(chrArchivePath, wld)) {
+        // T504c: when the loaded archive IS the character archive (every
+        // <zone>_chr.s3d / global*_chr.s3d load), loadZone() has already
+        // parsed this very WLD into zone_->wldLoader. Measured before: each
+        // character archive's WLD was parsed TWICE per load (gfaydark_chr:
+        // 3,901 track definitions and 49,192 keyframes decoded twice, two
+        // parse results resident at once).
+        WldLoader localLoader;
+        localLoader.setCharacterCodeFilter(options_.characterCodeFilter);   // T504c Leg 2
+        WldLoader* loaderPtr = &localLoader;
+        if (chrArchivePath == archivePath && zone_ && zone_->wldLoader && wld == mainWldName_) {
+            loaderPtr = zone_->wldLoader.get();
+            LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: reusing loadZone's parse of '{}'", wld);
+        } else if (!localLoader.parseFromOpenArchive(chrArchive, wld)) {  // T504: no re-open per WLD
             LOG_WARN(MOD_GRAPHICS, "S3DLoader::loadCharacters: parseFromArchive failed for '{}'", wld);
             continue;
         }
+        WldLoader& chrLoader = *loaderPtr;
 
         const auto& skeletonTracks = chrLoader.getSkeletonTracks();
         const auto& geometries = chrLoader.getGeometries();
@@ -189,6 +206,19 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
 
         // Create character models from skeleton tracks
         for (const auto& [fragIdx, skeleton] : skeletonTracks) {
+            zone_->allCharacterNames.push_back(skeleton->name);
+            if (!options_.characterCodeFilter.empty()) {
+                // T504b Leg 3: an unwanted character is not BUILT (that is
+                // where the 3 geometry copies and the flattened skeleton come
+                // from); its name is recorded above for a later reload.
+                std::string upper = skeleton->name;
+                std::transform(upper.begin(), upper.end(), upper.begin(),
+                               [](unsigned char c) { return std::toupper(c); });
+                bool wanted = false;
+                for (const auto& code : options_.characterCodeFilter)
+                    if (upper.find(code) != std::string::npos) { wanted = true; break; }
+                if (!wanted) continue;
+            }
             auto character = std::make_shared<CharacterModel>();
             character->name = skeleton->name;
             character->skeleton = skeleton;

@@ -1,5 +1,6 @@
 #include "client/raycast_mesh.h"
 #include "common/util/ksm.h"
+#include "common/logging.h"  // T504
 #include <math.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -40,6 +41,7 @@
 namespace RAYCAST_MESH
 {
 
+typedef unsigned char RmUint8;
 typedef std::vector<RmUint32, PageAlignedAllocator<RmUint32>> TriVector;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -411,9 +413,15 @@ class NodeAABB;
 class NodeInterface
 {
 public:
-	virtual NodeAABB * getNode(void) = 0;
+	// T504d: nodes live in one pool and refer to each other by INDEX (a
+	// 32-bit index instead of a 64-bit pointer, and no vtable: 56 -> 36 bytes
+	// per node; gfaydark's 55,071 nodes 3.08 -> 1.98 MB).
+	virtual RmUint32 getNode(void) = 0;
+	virtual NodeAABB * nodeAt(RmUint32 index) = 0;
 	virtual void getFaceNormal(RmUint32 tri,RmReal *faceNormal) = 0;
 };
+
+static const RmUint32 NODE_NONE = 0xFFFFFFFF;
 
 
 class NodeAABB
@@ -421,8 +429,8 @@ class NodeAABB
 public:
 	NodeAABB(void)
 	{
-		mLeft = NULL;
-		mRight = NULL;
+		mLeft = NODE_NONE;
+		mRight = NODE_NONE;
 		mLeafTriangleIndex= TRI_EOF;
 	}
 
@@ -433,8 +441,8 @@ public:
 		NodeInterface *callback,
 		TriVector &leafTriangles)
 	{
-		mLeft = NULL;
-		mRight = NULL;
+		mLeft = NODE_NONE;
+		mRight = NODE_NONE;
 		mLeafTriangleIndex = TRI_EOF;
 		TriVector triangles;
 		triangles.reserve(tcount);
@@ -456,8 +464,8 @@ public:
 	NodeAABB(const BoundsAABB &aabb)
 	{
 		mBounds = aabb;
-		mLeft = NULL;
-		mRight = NULL;
+		mLeft = NODE_NONE;
+		mRight = NODE_NONE;
 		mLeafTriangleIndex = TRI_EOF;
 	}
 
@@ -571,16 +579,18 @@ public:
 			{
 				leftBounds.clamp(b1);
 				mLeft = callback->getNode();
-				new ( mLeft ) NodeAABB(leftBounds);
-				mLeft->split(leftTriangles,vcount,vertices,tcount,indices,depth+1,maxDepth,minLeafSize,minAxisSize,callback,leafTriangles);
+				NodeAABB *left = callback->nodeAt(mLeft);
+				new ( left ) NodeAABB(leftBounds);
+				left->split(leftTriangles,vcount,vertices,tcount,indices,depth+1,maxDepth,minLeafSize,minAxisSize,callback,leafTriangles);
 			}
 
 			if ( !rightTriangles.empty() )
 			{
 				rightBounds.clamp(b2);
 				mRight = callback->getNode();
-				new ( mRight ) NodeAABB(rightBounds);
-				mRight->split(rightTriangles,vcount,vertices,tcount,indices,depth+1,maxDepth,minLeafSize,minAxisSize,callback,leafTriangles);
+				NodeAABB *right = callback->nodeAt(mRight);
+				new ( right ) NodeAABB(rightBounds);
+				right->split(rightTriangles,vcount,vertices,tcount,indices,depth+1,maxDepth,minLeafSize,minAxisSize,callback,leafTriangles);
 			}
 		}
 	}
@@ -619,7 +629,7 @@ public:
 		}
 	}
 
-	virtual void raycast(bool &hit,
+	void raycast(bool &hit,
 						const RmReal *from,
 						const RmReal *to,
 						const RmReal *dir,
@@ -630,8 +640,8 @@ public:
 						const RmUint32 *indices,
 						RmReal &nearestDistance,
 						NodeInterface *callback,
-						RmUint32 *raycastTriangles,
-						RmUint32 raycastFrame,
+						RmUint8 *raycastTriangles,
+						RmUint8 raycastFrame,
 						const TriVector &leafTriangles,
 						RmUint32 &nearestTriIndex)
 	{
@@ -693,19 +703,19 @@ public:
 		}
 		else
 		{
-			if ( mLeft )
+			if ( mLeft != NODE_NONE )
 			{
-				mLeft->raycast(hit,from,to,dir,hitLocation,hitNormal,hitDistance,vertices,indices,nearestDistance,callback,raycastTriangles,raycastFrame,leafTriangles,nearestTriIndex);
+				callback->nodeAt(mLeft)->raycast(hit,from,to,dir,hitLocation,hitNormal,hitDistance,vertices,indices,nearestDistance,callback,raycastTriangles,raycastFrame,leafTriangles,nearestTriIndex);
 			}
-			if ( mRight )
+			if ( mRight != NODE_NONE )
 			{
-				mRight->raycast(hit,from,to,dir,hitLocation,hitNormal,hitDistance,vertices,indices,nearestDistance,callback,raycastTriangles,raycastFrame,leafTriangles,nearestTriIndex);
+				callback->nodeAt(mRight)->raycast(hit,from,to,dir,hitLocation,hitNormal,hitDistance,vertices,indices,nearestDistance,callback,raycastTriangles,raycastFrame,leafTriangles,nearestTriIndex);
 			}
 		}
 	}
 
-	NodeAABB		*mLeft;
-	NodeAABB		*mRight;
+	RmUint32		mLeft;      // NODE_NONE = no child
+	RmUint32		mRight;
 	BoundsAABB		mBounds;
 	RmUint32		mLeafTriangleIndex;
 };
@@ -753,30 +763,65 @@ public:
 		std::memcpy(mIndices, indices, sizeof(RmUint32) * 3 * tcount);
 		mTcount = tcount;
 
-		mRaycastTriangles = static_cast<RmUint32*>(KSM::AllocatePageAligned(sizeof(RmUint32) * tcount));
+		// T504d: one byte per triangle. The mark is compared to the current
+		// raycast's frame number and set; a byte wraps every 255 raycasts, at
+		// which point raycast() clears the whole array once (a memset of
+		// tcount bytes every 255 calls) -- 4 -> 1 bytes per triangle.
+		mRaycastTriangles = static_cast<RmUint8*>(KSM::AllocatePageAligned(sizeof(RmUint8) * tcount));
 		if (!mRaycastTriangles) {
 			throw std::bad_alloc();
 		}
-		std::memset(mRaycastTriangles, 0, sizeof(RmUint32) * tcount);
-
-		mFaceNormals = static_cast<RmReal*>(KSM::AllocatePageAligned(sizeof(RmReal) * 3 * tcount));
-		if (!mFaceNormals) {
-			throw std::bad_alloc();
-		}
-		std::memset(mFaceNormals, 0, sizeof(RmReal) * 3 * tcount);
+		std::memset(mRaycastTriangles, 0, sizeof(RmUint8) * tcount);
 
 		// Mark memory as mergeable for KSM
 		KSM::MarkMemoryForKSM(mVertices, sizeof(RmReal) * 3 * vcount);
 		KSM::MarkMemoryForKSM(mIndices, sizeof(RmUint32) * 3 * tcount);
-		KSM::MarkMemoryForKSM(mRaycastTriangles, sizeof(RmUint32) * tcount);
-		KSM::MarkMemoryForKSM(mFaceNormals, sizeof(RmReal) * 3 * tcount);
+		KSM::MarkMemoryForKSM(mRaycastTriangles, sizeof(RmUint8) * tcount);
 
+		// T504d: no face-normal table. It was 12 bytes per triangle (gfaydark
+		// 1.56 MB, dreadlands 2.16 MB), built whole on the first hit that asked
+		// for a normal; getFaceNormal() now computes the one normal a hit needs
+		// from the triangle's three vertices (the same computePlane()).
 		mRoot = getNode();
-		mFaceNormals = NULL;
-		new ( mRoot ) NodeAABB(mVcount,mVertices,mTcount,mIndices,maxDepth,minLeafSize,minAxisSize,this,mLeafTriangles);
+		new ( nodeAt(mRoot) ) NodeAABB(mVcount,mVertices,mTcount,mIndices,maxDepth,minLeafSize,minAxisSize,this,mLeafTriangles);
+
+		shrinkNodePool();
+		mLeafTriangles.shrink_to_fit();   // T504d: push_back growth left up to 2x slack (gfaydark 2.10 MB for 1.49)
+
+		// T504 (load-step audit): what the finished tree weighs, by part.
+		LOG_INFO(MOD_MAP, "[raycastmesh] verts={} tris={} nodes={} leaf_tri_refs={} | bytes: vertices={} indices={} "
+		         "raycast_marks={} nodes={} leaf_refs={} (T504d: no face-normal table)",
+		         mVcount, mTcount, mNodeCount, mLeafTriangles.size(),
+		         sizeof(RmReal) * 3 * (size_t)mVcount, sizeof(RmUint32) * 3 * (size_t)mTcount,
+		         sizeof(RmUint8) * (size_t)mTcount, sizeof(NodeAABB) * (size_t)mNodeCount,
+		         sizeof(RmUint32) * mLeafTriangles.capacity());
 
 		KSM::MarkMemoryForKSM(mLeafTriangles.data(), mLeafTriangles.size() * sizeof(RmUint32));
 	}
+
+	// T504 (load-step audit): mNodes is sized for a FULL binary tree of maxDepth
+	// before the build -- 98,303 nodes x 48 bytes = 4.5 MiB at the default depth
+	// 15, whatever the mesh (MEASURED: qeynos2's 132 KB map file cost +7.5 MiB of
+	// client heap, most of it this pool). The build only ever takes the next free
+	// slot (getNode()), so once it has finished the used nodes are the first
+	// mNodeCount entries: copy them into an exact-size pool and rebase the child
+	// pointers, which all point into the same array.
+	void shrinkNodePool(void)
+	{
+		if (mNodeCount == 0 || mNodeCount >= mMaxNodeCount) return;
+		NodeAABB *exact = static_cast<NodeAABB*>(KSM::AllocatePageAligned(sizeof(NodeAABB) * mNodeCount));
+		if (!exact) return;  // keep the big pool: correct, just not small
+		std::memcpy(static_cast<void*>(exact), static_cast<const void*>(mNodes), sizeof(NodeAABB) * mNodeCount);
+		// T504d: children are pool INDICES, so nothing to rebase.
+		free(mNodes);
+		mNodes = exact;
+		mMaxNodeCount = mNodeCount;
+	}
+
+	virtual const RmReal * getVertices(void) const { return mVertices; }
+	virtual RmUint32 getVertexCount(void) const { return mVcount; }
+	virtual const RmUint32 * getIndices(void) const { return mIndices; }
+	virtual RmUint32 getTriangleCount(void) const { return mTcount; }
 
 	~MyRaycastMesh(void)
 	{
@@ -784,7 +829,6 @@ public:
 		if (mVertices) { free(mVertices); }
 		if (mIndices) { free(mIndices); }
 		if (mRaycastTriangles) { free(mRaycastTriangles); }
-		if (mFaceNormals) { free(mFaceNormals); }
 	}
 
 	virtual bool raycast(const RmReal *from,const RmReal *to,RmReal *hitLocation,RmReal *hitNormal,RmReal *hitDistance)
@@ -801,9 +845,15 @@ public:
 		dir[0]*=recipDistance;
 		dir[1]*=recipDistance;
 		dir[2]*=recipDistance;
+		// T504d: one-byte frame; on wrap clear every mark once and restart at 1.
 		mRaycastFrame++;
+		if ( mRaycastFrame == 0 )
+		{
+			std::memset(mRaycastTriangles, 0, sizeof(RmUint8) * mTcount);
+			mRaycastFrame = 1;
+		}
 		RmUint32 nearestTriIndex=TRI_EOF;
-		mRoot->raycast(ret,from,to,dir,hitLocation,hitNormal,hitDistance,mVertices,mIndices,distance,this,mRaycastTriangles,mRaycastFrame,mLeafTriangles,nearestTriIndex);
+		nodeAt(mRoot)->raycast(ret,from,to,dir,hitLocation,hitNormal,hitDistance,mVertices,mIndices,distance,this,mRaycastTriangles,mRaycastFrame,mLeafTriangles,nearestTriIndex);
 		return ret;
 	}
 
@@ -814,42 +864,29 @@ public:
 
 	virtual const RmReal * getBoundMin(void) const
 	{
-		return mRoot->mBounds.mMin;
+		return mNodes[mRoot].mBounds.mMin;
 	}
 	virtual const RmReal * getBoundMax(void) const
 	{
-		return mRoot->mBounds.mMax;
+		return mNodes[mRoot].mBounds.mMax;
 	}
 
-	virtual NodeAABB * getNode(void)
+	virtual RmUint32 getNode(void)
 	{
 		assert( mNodeCount < mMaxNodeCount );
-		NodeAABB *ret = &mNodes[mNodeCount];
-		mNodeCount++;
-		return ret;
+		return mNodeCount++;
+	}
+	virtual NodeAABB * nodeAt(RmUint32 index)
+	{
+		return &mNodes[index];
 	}
 
 	virtual void getFaceNormal(RmUint32 tri,RmReal *faceNormal)
 	{
-		if ( mFaceNormals == NULL )
-		{
-			mFaceNormals = (RmReal *)::malloc(sizeof(RmReal)*3*mTcount);
-			for (RmUint32 i=0; i<mTcount; i++)
-			{
-				RmUint32 i1		= mIndices[i*3+0];
-				RmUint32 i2		= mIndices[i*3+1];
-				RmUint32 i3		= mIndices[i*3+2];
-				const RmReal*p1 = &mVertices[i1*3];
-				const RmReal*p2 = &mVertices[i2*3];
-				const RmReal*p3 = &mVertices[i3*3];
-				RmReal *dest	= &mFaceNormals[i*3];
-				computePlane(p3,p2,p1,dest);
-			}
-		}
-		const RmReal *src = &mFaceNormals[tri*3];
-		faceNormal[0] = src[0];
-		faceNormal[1] = src[1];
-		faceNormal[2] = src[2];
+		const RmUint32 i1 = mIndices[tri*3+0];
+		const RmUint32 i2 = mIndices[tri*3+1];
+		const RmUint32 i3 = mIndices[tri*3+2];
+		computePlane(&mVertices[i3*3],&mVertices[i2*3],&mVertices[i1*3],faceNormal);
 	}
 
 	virtual bool bruteForceRaycast(const RmReal *from,const RmReal *to,RmReal *hitLocation,RmReal *hitNormal,RmReal *hitDistance)
@@ -911,14 +948,13 @@ public:
 		return ret;
 	}
 
-	RmUint32		mRaycastFrame;
-	RmUint32		*mRaycastTriangles;
+	RmUint8			mRaycastFrame;
+	RmUint8			*mRaycastTriangles;
 	RmUint32		mVcount;
 	RmReal			*mVertices;
-	RmReal			*mFaceNormals;
 	RmUint32		mTcount;
 	RmUint32		*mIndices;
-	NodeAABB		*mRoot;
+	RmUint32		mRoot;      // T504d: pool index
 	RmUint32		mNodeCount;
 	RmUint32		mMaxNodeCount;
 	NodeAABB		*mNodes;

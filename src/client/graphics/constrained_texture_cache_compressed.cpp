@@ -231,6 +231,10 @@ void ConstrainedTextureCache::clearEQE1Loaders() {
     compressedEntries_.clear();
 }
 
+bool ConstrainedTextureCache::hasEQE1Loaders() const {
+    return !snapshotEQE1Loaders().empty();
+}
+
 std::vector<const EQE1Loader*> ConstrainedTextureCache::snapshotEQE1Loaders() const {
     std::lock_guard<std::mutex> lock(eqe1LoadersMutex_);
     return eqe1Loaders_;

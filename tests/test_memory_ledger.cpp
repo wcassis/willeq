@@ -1115,3 +1115,70 @@ TEST(ArenaCensus, ExperimentsAreOffUnlessTheirVariablesAreSet) {
     unsetenv("B841_MMAP_THRESHOLD");
     unsetenv("B841_TRIM_THRESHOLD");
 }
+
+// ---------------------------------------------------------------------------
+// T504: the stack-trace instrument. Off by default; once configured and
+// armed by the arm point, an allocation under the traced category shows up
+// as a call-site row whose live bytes fall to zero when the block is freed.
+// ---------------------------------------------------------------------------
+namespace {
+long traceSiteLiveAtLeast(const std::string& report, long minBytes) {
+    // Returns the largest site live= value in the report, or -1 if no site row.
+    long best = -1;
+    std::istringstream in(report);
+    std::string line;
+    while (std::getline(in, line)) {
+        auto pos = line.find(" site=");
+        if (pos == std::string::npos) continue;
+        auto lp = line.find(" live=", pos);
+        if (lp == std::string::npos) continue;
+        long v = std::atol(line.c_str() + lp + 6);
+        if (v > best) best = v;
+    }
+    (void)minBytes;
+    return best;
+}
+}  // namespace
+
+TEST(MemoryLedgerTrace, OffByDefaultAndArmedByTheArmPoint) {
+    if (!eqt::memory::enabled()) GTEST_SKIP() << "ledger off in this build";
+    EXPECT_TRUE(eqt::memory::traceReport("t0").empty());
+    eqt::memory::traceConfigure(Category::Doors, "trace_test_arm");
+    EXPECT_TRUE(eqt::memory::traceReport("t0").empty()) << "not armed until the arm point";
+    eqt::memory::recordPoint("trace_test_arm");
+    const std::string armed = eqt::memory::traceReport("t1");
+    ASSERT_NE(armed.find("[memledger-trace] point=t1 category=doors"), std::string::npos) << armed;
+}
+
+TEST(MemoryLedgerTrace, ATracedAllocationIsASiteAndItsFreeCreditsIt) {
+    if (!eqt::memory::enabled()) GTEST_SKIP() << "ledger off in this build";
+    eqt::memory::traceConfigure(Category::Doors, "trace_test_arm2");
+    eqt::memory::recordPoint("trace_test_arm2");
+    const long before = traceSiteLiveAtLeast(eqt::memory::traceReport("t2a"), 0);
+    void* p = nullptr;
+    {
+        MemoryScope scope(Category::Doors);
+        p = std::malloc(3 * 1024 * 1024);
+        ASSERT_NE(p, nullptr);
+        std::memset(p, 1, 3 * 1024 * 1024);
+    }
+    const long during = traceSiteLiveAtLeast(eqt::memory::traceReport("t2b"), 0);
+    EXPECT_GE(during, 3L * 1024 * 1024) << "the 3 MiB block must be the largest site";
+    EXPECT_GT(during, before);
+    std::free(p);
+    const std::string after = eqt::memory::traceReport("t2c");
+    // The site row survives (history), but its live bytes are back to zero.
+    std::istringstream in(after);
+    std::string line;
+    bool sawBigSite = false;
+    while (std::getline(in, line)) {
+        auto pos = line.find(" site=");
+        if (pos == std::string::npos) continue;
+        auto lp = line.find(" live=", pos);
+        long live = std::atol(line.c_str() + lp + 6);
+        EXPECT_LT(live, 3L * 1024 * 1024) << line;
+        if (line.find(" peak=") != std::string::npos
+            && std::atol(line.c_str() + line.find(" peak=") + 6) >= 3L * 1024 * 1024) sawBigSite = true;
+    }
+    EXPECT_TRUE(sawBigSite) << "the site's peak keeps the 3 MiB high-water mark: " << after;
+}

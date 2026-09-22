@@ -139,6 +139,9 @@ struct ZoneDrawEntry {
     irr::scene::IMeshBuffer* buffer;
     irr::core::matrix4 worldMat;
     irr::s32 materialOverride = -1;  // If >= 0, override buffer's MaterialType at draw time
+    // T504: POOLED zone draw -- when set, `buffer` is null and the geometry and
+    // material come from ZoneMergeBuffers via this slice.
+    const struct ZoneSlice* slice = nullptr;
 };
 
 // External subsystem memory data passed into getMemoryReport()

@@ -147,6 +147,36 @@ TEST_F(PfsArchiveRealFileTest, OpenQeynos2) {
     EXPECT_GT(archive.getFiles().size(), 0u);
 }
 
+// T504c Leg 2d: open() maps the file and copies nothing. Before, it read
+// the file into a heap buffer AND copied every member's blocks out of it
+// (~2x the archive at peak, 1x retained); now the archive keeps the
+// mapping plus a small directory. Pinned as "not more than the file plus a
+// directory's worth", and get() still inflates every member correctly.
+TEST_F(PfsArchiveRealFileTest, OpenKeepsNoCopyOfTheMembers) {
+    if (!hasEQFiles) {
+        GTEST_SKIP() << "EQ client files not available";
+    }
+    const std::string path = eqPath + "/global_chr.s3d";
+    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    ASSERT_TRUE(f.good());
+    const size_t fileSize = static_cast<size_t>(f.tellg());
+
+    PfsArchive archive;
+    ASSERT_TRUE(archive.open(path));
+    ASSERT_GT(archive.getFiles().size(), 100u);
+    EXPECT_LT(archive.getMemoryUsage(), fileSize + archive.getFiles().size() * 96);
+
+    // Every member's block range lies inside the file and inflates to its size.
+    for (const auto& [name, e] : archive.getFiles()) {
+        EXPECT_LE(static_cast<size_t>(e.offset) + e.blockBytes, fileSize) << name;
+        std::vector<char> data;
+        ASSERT_TRUE(archive.get(name, data)) << name;
+        EXPECT_EQ(data.size(), e.uncompressedSize) << name;
+    }
+    archive.close();
+    EXPECT_EQ(archive.getMemoryUsage(), 0u);
+}
+
 // Test opening freporte.s3d
 TEST_F(PfsArchiveRealFileTest, OpenFreporte) {
     if (!hasEQFiles) {

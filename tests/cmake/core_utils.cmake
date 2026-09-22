@@ -258,6 +258,7 @@ GTEST_DISCOVER_TESTS(test_config_key_reachability DISCOVERY_TIMEOUT 120)
 ADD_EXECUTABLE(test_memory_ledger
     test_memory_ledger.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
 )
 TARGET_LINK_LIBRARIES(test_memory_ledger GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} Threads::Threads)
 # B839 (issue #94): the startup sub-owner acceptance case SPAWNS the real

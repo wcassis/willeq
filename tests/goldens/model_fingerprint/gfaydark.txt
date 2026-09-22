@@ -1,0 +1,531 @@
+# model_fingerprint zone=gfaydark
+race=1 gender=0 variant=0,0 code=HUM verts=791 tris=444 geom=aca94f2e09b3db1e bones=25 skel=dfeec4c1f4f48f8a anims=l01,l02,p01 xf=f21c8fd0aefdf810
+race=1 gender=0 variant=1,1 code=HUM verts=714 tris=428 geom=c224f8e605b32193 bones=25 skel=dfeec4c1f4f48f8a anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=bbdac5cf1b1529b2
+race=1 gender=1 variant=0,0 code=HUF verts=793 tris=430 geom=752d14cdeead3e30 bones=25 skel=3452d1a2364ccbfc anims=- xf=14650fb0739d0383
+race=1 gender=1 variant=1,1 code=HUF verts=795 tris=404 geom=202d9eb51d689ab8 bones=25 skel=3452d1a2364ccbfc anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=10 gender=0 variant=0,0 code=OGM verts=726 tris=416 geom=be6821afd562084c bones=24 skel=a9fe33df455d2546 anims=- xf=14650fb0739d0383
+race=10 gender=0 variant=1,1 code=OGM verts=768 tris=418 geom=859f945a4ee53b61 bones=24 skel=a9fe33df455d2546 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t04,t05,t06 xf=30127bb209600ecd
+race=10 gender=1 variant=0,0 code=OGF verts=768 tris=418 geom=33aa769b83189299 bones=24 skel=44cae5c68100808a anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t04,t05,t06 xf=30127bb209600ecd
+race=10 gender=1 variant=1,1 code=OGF verts=804 tris=423 geom=d4fdd33be295dc6e bones=24 skel=44cae5c68100808a anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=8214fdcb4afff587
+race=100 gender=0 variant=0,0 none
+race=100 gender=1 variant=0,0 none
+race=101 gender=0 variant=0,0 none
+race=101 gender=1 variant=0,0 none
+race=102 gender=0 variant=0,0 none
+race=102 gender=1 variant=0,0 none
+race=103 gender=0 variant=0,0 none
+race=103 gender=1 variant=0,0 none
+race=104 gender=0 variant=0,0 none
+race=104 gender=1 variant=0,0 none
+race=105 gender=0 variant=0,0 none
+race=105 gender=1 variant=0,0 none
+race=106 gender=0 variant=0,0 code=FEM verts=1030 tris=490 geom=0af0e152cbcd6d9b bones=25 skel=9eab5a551ec70cd0 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=106 gender=0 variant=1,1 code=FEM verts=869 tris=464 geom=d86e6305ab36ddf6 bones=25 skel=9eab5a551ec70cd0 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=106 gender=1 variant=0,0 none
+race=107 gender=0 variant=0,0 none
+race=107 gender=1 variant=0,0 none
+race=108 gender=0 variant=0,0 code=EYE verts=34 tris=48 geom=f8c9f171cb05229f bones=2 skel=937e8033270bc49d anims=- xf=14650fb0739d0383
+race=108 gender=0 variant=1,1 none
+race=108 gender=1 variant=0,0 code=EYE verts=34 tris=48 geom=f8c9f171cb05229f bones=2 skel=937e8033270bc49d anims=- xf=14650fb0739d0383
+race=108 gender=1 variant=1,1 none
+race=109 gender=0 variant=0,0 code=WAS verts=724 tris=550 geom=074b165a50c24cf5 bones=38 skel=e0f9f8208b7699a1 anims=c05,d02,d05,l01,l02,o01,p01 xf=1f7eeba54be2c9f8
+race=109 gender=0 variant=1,1 code=WAS verts=724 tris=550 geom=074b165a50c24cf5 bones=38 skel=e0f9f8208b7699a1 anims=c05,d02,d05,l01,l02,o01,p01 xf=1f7eeba54be2c9f8
+race=109 gender=1 variant=0,0 code=WAS verts=724 tris=550 geom=074b165a50c24cf5 bones=38 skel=e0f9f8208b7699a1 anims=c05,d02,d05,l01,l02,o01,p01 xf=1f7eeba54be2c9f8
+race=109 gender=1 variant=1,1 code=WAS verts=724 tris=550 geom=074b165a50c24cf5 bones=38 skel=e0f9f8208b7699a1 anims=c05,d02,d05,l01,l02,o01,p01 xf=1f7eeba54be2c9f8
+race=11 gender=0 variant=0,0 code=HOM verts=674 tris=408 geom=4e9188746537737d bones=24 skel=74e4d43682e5c1c9 anims=l03 xf=14650fb0739d0383
+race=11 gender=0 variant=1,1 code=HOM verts=752 tris=409 geom=b5a90f69b32833db bones=24 skel=74e4d43682e5c1c9 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=73677af1e55027d2
+race=11 gender=1 variant=0,0 code=HOF verts=787 tris=462 geom=984034018f5f98d6 bones=24 skel=8d245b3e1f59e7df anims=- xf=14650fb0739d0383
+race=11 gender=1 variant=1,1 code=HOF verts=738 tris=412 geom=9dfe4e2004f2189f bones=24 skel=8d245b3e1f59e7df anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=d157b2ed7507ea05
+race=110 gender=0 variant=0,0 none
+race=110 gender=1 variant=0,0 none
+race=111 gender=0 variant=0,0 none
+race=111 gender=1 variant=0,0 none
+race=112 gender=0 variant=0,0 code=GFM verts=812 tris=476 geom=8a590eb162d6b7e4 bones=25 skel=58b2ba8148906208 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=112 gender=0 variant=1,1 code=GFM verts=767 tris=440 geom=d998a465ec0acf7a bones=25 skel=58b2ba8148906208 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=112 gender=1 variant=0,0 code=GFF verts=765 tris=393 geom=3470a356a6a3fc4c bones=24 skel=8290a4dabb801eea anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=112 gender=1 variant=1,1 code=GFF verts=765 tris=393 geom=3470a356a6a3fc4c bones=24 skel=8290a4dabb801eea anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=113 gender=0 variant=0,0 code=DRI verts=1505 tris=698 geom=d8cd9b39f76130e2 bones=29 skel=88623ffbb8b1205c anims=c01,c05,d02,d05,l01,o01,p01 xf=9fa3422dd416b9b7
+race=113 gender=0 variant=1,1 code=DRI verts=1505 tris=698 geom=d6c7222ac6375b6b bones=29 skel=88623ffbb8b1205c anims=c01,c05,d02,d05,l01,o01,p01 xf=9fa3422dd416b9b7
+race=113 gender=1 variant=0,0 code=DRI verts=1505 tris=698 geom=d8cd9b39f76130e2 bones=29 skel=88623ffbb8b1205c anims=c01,c05,d02,d05,l01,o01,p01 xf=9fa3422dd416b9b7
+race=113 gender=1 variant=1,1 code=DRI verts=1505 tris=698 geom=d6c7222ac6375b6b bones=29 skel=88623ffbb8b1205c anims=c01,c05,d02,d05,l01,o01,p01 xf=9fa3422dd416b9b7
+race=114 gender=0 variant=0,0 none
+race=114 gender=1 variant=0,0 none
+race=116 gender=0 variant=0,0 none
+race=116 gender=1 variant=0,0 none
+race=117 gender=0 variant=0,0 none
+race=117 gender=1 variant=0,0 none
+race=118 gender=0 variant=0,0 none
+race=118 gender=1 variant=0,0 none
+race=119 gender=0 variant=0,0 none
+race=119 gender=1 variant=0,0 none
+race=12 gender=0 variant=0,0 code=GNM verts=830 tris=439 geom=76a13cb64af4d9f4 bones=24 skel=2326eb070edf7765 anims=l03 xf=14650fb0739d0383
+race=12 gender=0 variant=1,1 code=GNM verts=799 tris=421 geom=712c328716bdeecf bones=24 skel=2326eb070edf7765 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=73677af1e55027d2
+race=12 gender=1 variant=0,0 code=GNF verts=742 tris=458 geom=0358b3949c97cb90 bones=23 skel=19e32c6ea4724fa3 anims=- xf=14650fb0739d0383
+race=12 gender=1 variant=1,1 code=GNF verts=691 tris=434 geom=4eb6bd4094b1aee8 bones=23 skel=19e32c6ea4724fa3 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=d157b2ed7507ea05
+race=120 gender=0 variant=0,0 code=WOE verts=920 tris=443 geom=4eccda9e0002c94b bones=28 skel=5e9a85c35a7fa727 anims=c05,d02,d05,l02,o01,p01,p03 xf=347a91bd700951f3
+race=120 gender=0 variant=1,1 code=WOE verts=920 tris=443 geom=c7ec1d88b94d3ca7 bones=28 skel=5e9a85c35a7fa727 anims=c05,d02,d05,l02,o01,p01,p03 xf=347a91bd700951f3
+race=120 gender=1 variant=0,0 code=WOE verts=920 tris=443 geom=4eccda9e0002c94b bones=28 skel=5e9a85c35a7fa727 anims=c05,d02,d05,l02,o01,p01,p03 xf=347a91bd700951f3
+race=120 gender=1 variant=1,1 code=WOE verts=920 tris=443 geom=c7ec1d88b94d3ca7 bones=28 skel=5e9a85c35a7fa727 anims=c05,d02,d05,l02,o01,p01,p03 xf=347a91bd700951f3
+race=121 gender=0 variant=0,0 none
+race=121 gender=1 variant=0,0 none
+race=122 gender=0 variant=0,0 none
+race=122 gender=1 variant=0,0 none
+race=123 gender=0 variant=0,0 code=INN verts=2252 tris=1480 geom=b760f7917d186314 bones=71 skel=509d9644c060cc12 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=fa09d860f089ed2b
+race=123 gender=0 variant=1,1 code=INN verts=2252 tris=1480 geom=b760f7917d186314 bones=71 skel=509d9644c060cc12 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=fa09d860f089ed2b
+race=123 gender=1 variant=0,0 code=INN verts=2252 tris=1480 geom=b760f7917d186314 bones=71 skel=509d9644c060cc12 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=fa09d860f089ed2b
+race=123 gender=1 variant=1,1 code=INN verts=2252 tris=1480 geom=b760f7917d186314 bones=71 skel=509d9644c060cc12 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=fa09d860f089ed2b
+race=124 gender=0 variant=0,0 code=UNI verts=1200 tris=762 geom=9040e6acc577f1fe bones=32 skel=4c0f59e846f52f15 anims=c05,d02,d05,l01,l02,o01,p01,p03 xf=b3ab9d93eb851aac
+race=124 gender=0 variant=1,1 code=UNI verts=1173 tris=757 geom=d70421846992ffde bones=32 skel=4c0f59e846f52f15 anims=c05,d02,d05,l01,l02,o01,p01,p03 xf=b3ab9d93eb851aac
+race=124 gender=1 variant=0,0 code=UNI verts=1200 tris=762 geom=9040e6acc577f1fe bones=32 skel=4c0f59e846f52f15 anims=c05,d02,d05,l01,l02,o01,p01,p03 xf=b3ab9d93eb851aac
+race=124 gender=1 variant=1,1 code=UNI verts=1173 tris=757 geom=d70421846992ffde bones=32 skel=4c0f59e846f52f15 anims=c05,d02,d05,l01,l02,o01,p01,p03 xf=b3ab9d93eb851aac
+race=125 gender=0 variant=0,0 none
+race=125 gender=1 variant=0,0 none
+race=126 gender=0 variant=0,0 none
+race=126 gender=1 variant=0,0 none
+race=127 gender=0 variant=0,0 code=IVM verts=73 tris=80 geom=2449dd4bcdfed4c2 bones=26 skel=7ff80fd6c12ba4a2 anims=- xf=14650fb0739d0383
+race=127 gender=0 variant=1,1 none
+race=127 gender=1 variant=0,0 none
+race=128 gender=0 variant=0,0 code=IKM verts=1169 tris=708 geom=036d12f7ad8b26b0 bones=39 skel=02543ae2174f68c2 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,o02,o03,p01,p02,p03,p04,p05,p06,p07,p08,s01,s02,s03,s04,s05,s06,s07,s08,s09,s10,s11,s12,s13,s14,s15,s16,s17,s18,s19,s20,s21,s22,s23,s24,s25,s26,s27,s28,t04,t05,t06,t07,t08,t09 xf=0e56b4c39e244105
+race=128 gender=0 variant=1,1 none
+race=128 gender=1 variant=0,0 code=IKF verts=2018 tris=1176 geom=661e2e3115ecbd29 bones=39 skel=bdcfa9faa4eea54d anims=c01,c05,d01,d05,l01,l02,o01,p02,s01,s02,s03,s04,t06 xf=6b0ef738f7567cdb
+race=128 gender=1 variant=1,1 none
+race=129 gender=0 variant=0,0 none
+race=129 gender=1 variant=0,0 none
+race=13 gender=0 variant=0,0 none
+race=13 gender=1 variant=0,0 none
+race=130 gender=0 variant=0,0 none
+race=130 gender=1 variant=0,0 none
+race=131 gender=0 variant=0,0 code=SRW verts=4229 tris=2942 geom=35de1c21f7c58d3d bones=99 skel=5284f27b30960215 anims=c05,c09,c10,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=694ea154cb163423
+race=131 gender=0 variant=1,1 code=SRW verts=4346 tris=3074 geom=5822607e93e97919 bones=99 skel=5284f27b30960215 anims=c05,c09,c10,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=694ea154cb163423
+race=131 gender=1 variant=0,0 code=SRW verts=4229 tris=2942 geom=35de1c21f7c58d3d bones=99 skel=5284f27b30960215 anims=c05,c09,c10,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=694ea154cb163423
+race=131 gender=1 variant=1,1 code=SRW verts=4346 tris=3074 geom=5822607e93e97919 bones=99 skel=5284f27b30960215 anims=c05,c09,c10,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=694ea154cb163423
+race=133 gender=0 variant=0,0 code=LYC verts=2128 tris=980 geom=2633903b0c71fa3a bones=26 skel=bb17f9dc2ed6d45b anims=c05,c09,c10,d01,d05,l01,l02,o01,p01,p03,p06,t06 xf=cb44e68d53ec85f0
+race=133 gender=0 variant=1,1 code=LYC verts=2128 tris=980 geom=2633903b0c71fa3a bones=26 skel=bb17f9dc2ed6d45b anims=c05,c09,c10,d01,d05,l01,l02,o01,p01,p03,p06,t06 xf=cb44e68d53ec85f0
+race=133 gender=1 variant=0,0 code=LYC verts=2128 tris=980 geom=2633903b0c71fa3a bones=26 skel=bb17f9dc2ed6d45b anims=c05,c09,c10,d01,d05,l01,l02,o01,p01,p03,p06,t06 xf=cb44e68d53ec85f0
+race=133 gender=1 variant=1,1 code=LYC verts=2128 tris=980 geom=2633903b0c71fa3a bones=26 skel=bb17f9dc2ed6d45b anims=c05,c09,c10,d01,d05,l01,l02,o01,p01,p03,p06,t06 xf=cb44e68d53ec85f0
+race=134 gender=0 variant=0,0 none
+race=134 gender=1 variant=0,0 none
+race=135 gender=0 variant=0,0 none
+race=135 gender=1 variant=0,0 none
+race=136 gender=0 variant=0,0 code=XAL verts=5830 tris=3572 geom=c41833e8878785ab bones=127 skel=5d78518575c24a42 anims=c05,d01,d05,l01,l02,o01,p01,p03,t06 xf=febdbd8378fd427a
+race=136 gender=0 variant=1,1 code=XAL verts=5830 tris=3572 geom=c41833e8878785ab bones=127 skel=5d78518575c24a42 anims=c05,d01,d05,l01,l02,o01,p01,p03,t06 xf=febdbd8378fd427a
+race=136 gender=1 variant=0,0 code=XAL verts=5830 tris=3572 geom=c41833e8878785ab bones=127 skel=5d78518575c24a42 anims=c05,d01,d05,l01,l02,o01,p01,p03,t06 xf=febdbd8378fd427a
+race=136 gender=1 variant=1,1 code=XAL verts=5830 tris=3572 geom=c41833e8878785ab bones=127 skel=5d78518575c24a42 anims=c05,d01,d05,l01,l02,o01,p01,p03,t06 xf=febdbd8378fd427a
+race=137 gender=0 variant=0,0 none
+race=137 gender=1 variant=0,0 none
+race=138 gender=0 variant=0,0 none
+race=138 gender=1 variant=0,0 none
+race=139 gender=0 variant=0,0 none
+race=139 gender=1 variant=0,0 none
+race=14 gender=0 variant=0,0 code=WER verts=1003 tris=520 geom=f70d596025a88a59 bones=28 skel=2be073a9bb403324 anims=c05,d02,d05,l02,o01,p01,p03,p06 xf=0b936f527c9007af
+race=14 gender=0 variant=1,1 code=WER verts=1003 tris=520 geom=f70d596025a88a59 bones=28 skel=2be073a9bb403324 anims=c05,d02,d05,l02,o01,p01,p03,p06 xf=0b936f527c9007af
+race=14 gender=1 variant=0,0 code=WER verts=1003 tris=520 geom=f70d596025a88a59 bones=28 skel=2be073a9bb403324 anims=c05,d02,d05,l02,o01,p01,p03,p06 xf=0b936f527c9007af
+race=14 gender=1 variant=1,1 code=WER verts=1003 tris=520 geom=f70d596025a88a59 bones=28 skel=2be073a9bb403324 anims=c05,d02,d05,l02,o01,p01,p03,p06 xf=0b936f527c9007af
+race=140 gender=0 variant=0,0 none
+race=140 gender=1 variant=0,0 none
+race=141 gender=0 variant=0,0 code=BOAT_ACTORDEF verts=76 tris=68 geom=9243e9405addab27 bones=0 skel=14650fb0739d0383 anims=- xf=14650fb0739d0383
+race=141 gender=0 variant=1,1 none
+race=141 gender=1 variant=0,0 code=BOAT_ACTORDEF verts=76 tris=68 geom=9243e9405addab27 bones=0 skel=14650fb0739d0383 anims=- xf=14650fb0739d0383
+race=141 gender=1 variant=1,1 none
+race=144 gender=0 variant=0,0 none
+race=144 gender=1 variant=0,0 none
+race=145 gender=0 variant=0,0 none
+race=145 gender=1 variant=0,0 none
+race=146 gender=0 variant=0,0 code=SSN verts=3359 tris=2402 geom=4d1ec6f1c663cbc2 bones=98 skel=661d75a36800a555 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=8489b7daa48b4b76
+race=146 gender=0 variant=1,1 code=SSN verts=3359 tris=2402 geom=4d1ec6f1c663cbc2 bones=98 skel=661d75a36800a555 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=8489b7daa48b4b76
+race=146 gender=1 variant=0,0 code=SSN verts=3359 tris=2402 geom=4d1ec6f1c663cbc2 bones=98 skel=661d75a36800a555 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=8489b7daa48b4b76
+race=146 gender=1 variant=1,1 code=SSN verts=3359 tris=2402 geom=4d1ec6f1c663cbc2 bones=98 skel=661d75a36800a555 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=8489b7daa48b4b76
+race=147 gender=0 variant=0,0 code=SIM verts=1230 tris=708 geom=c85200e075fc4c9d bones=39 skel=9f548bbf6637cb0e anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=9dd7ddc8487f54f7
+race=147 gender=0 variant=1,1 code=SIM verts=1230 tris=708 geom=86b4bbd99b014cb3 bones=39 skel=9f548bbf6637cb0e anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=9dd7ddc8487f54f7
+race=147 gender=1 variant=0,0 none
+race=148 gender=0 variant=0,0 none
+race=148 gender=1 variant=0,0 none
+race=149 gender=0 variant=0,0 none
+race=149 gender=1 variant=0,0 none
+race=15 gender=0 variant=0,0 code=BRM verts=784 tris=436 geom=6e4aed3a7ded8827 bones=25 skel=e7b3c7ee186cbe57 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=15 gender=0 variant=1,1 code=BRM verts=784 tris=436 geom=6e4aed3a7ded8827 bones=25 skel=e7b3c7ee186cbe57 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=15 gender=1 variant=0,0 code=BRF verts=923 tris=460 geom=675980247f7c54ee bones=23 skel=e0a3382ae2a9f64e anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=15 gender=1 variant=1,1 code=BRF verts=923 tris=460 geom=33d22c1bbfe29067 bones=23 skel=e0a3382ae2a9f64e anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=150 gender=0 variant=0,0 code=ERO verts=784 tris=414 geom=f701bec8671ce486 bones=25 skel=7a2f043cb971434d anims=- xf=14650fb0739d0383
+race=150 gender=0 variant=1,1 none
+race=150 gender=1 variant=0,0 code=ERO verts=784 tris=414 geom=f701bec8671ce486 bones=25 skel=7a2f043cb971434d anims=- xf=14650fb0739d0383
+race=150 gender=1 variant=1,1 none
+race=151 gender=0 variant=0,0 code=TRI verts=942 tris=458 geom=d06d7ba7009d1679 bones=27 skel=d784c110dbdf2c42 anims=- xf=14650fb0739d0383
+race=151 gender=0 variant=1,1 none
+race=151 gender=1 variant=0,0 code=TRI verts=942 tris=458 geom=d06d7ba7009d1679 bones=27 skel=d784c110dbdf2c42 anims=- xf=14650fb0739d0383
+race=151 gender=1 variant=1,1 none
+race=153 gender=0 variant=0,0 code=BRI verts=677 tris=408 geom=a7b47fe271402040 bones=24 skel=9b0f29b17bffa6ef anims=- xf=14650fb0739d0383
+race=153 gender=0 variant=1,1 none
+race=153 gender=1 variant=0,0 code=BRI verts=677 tris=408 geom=a7b47fe271402040 bones=24 skel=9b0f29b17bffa6ef anims=- xf=14650fb0739d0383
+race=153 gender=1 variant=1,1 none
+race=154 gender=0 variant=0,0 none
+race=154 gender=1 variant=0,0 none
+race=155 gender=0 variant=0,0 code=SSK verts=7961 tris=5335 geom=00f546fe4c706ee7 bones=99 skel=1c53a10d7f198aa0 anims=c05,c09,c10,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=ae45300795533830
+race=155 gender=0 variant=1,1 code=SSK verts=7961 tris=5335 geom=00f546fe4c706ee7 bones=99 skel=1c53a10d7f198aa0 anims=d05,l01,l02,o01,p01 xf=ae45300795533830
+race=155 gender=1 variant=0,0 code=SSK verts=7961 tris=5335 geom=00f546fe4c706ee7 bones=99 skel=1c53a10d7f198aa0 anims=c05,c09,c10,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=ae45300795533830
+race=155 gender=1 variant=1,1 code=SSK verts=7961 tris=5335 geom=00f546fe4c706ee7 bones=99 skel=1c53a10d7f198aa0 anims=d05,l01,l02,o01,p01 xf=ae45300795533830
+race=156 gender=0 variant=0,0 none
+race=156 gender=1 variant=0,0 none
+race=157 gender=0 variant=0,0 none
+race=157 gender=1 variant=0,0 none
+race=158 gender=0 variant=0,0 none
+race=158 gender=1 variant=0,0 none
+race=159 gender=0 variant=0,0 none
+race=159 gender=1 variant=0,0 none
+race=16 gender=0 variant=0,0 none
+race=16 gender=1 variant=0,0 none
+race=160 gender=0 variant=0,0 code=IKG verts=1265 tris=832 geom=44ed0bd6f3e43113 bones=29 skel=f241f2fb25c82dbc anims=c05,c10,d02,d05,l01,l02,o01,p01,p03,p06 xf=d2f2cf451e029a15
+race=160 gender=0 variant=1,1 code=IKG verts=1265 tris=832 geom=44ed0bd6f3e43113 bones=29 skel=f241f2fb25c82dbc anims=c05,c10,d02,d05,l01,l02,o01,p01,p03,p06 xf=d2f2cf451e029a15
+race=160 gender=1 variant=0,0 code=IKG verts=1265 tris=832 geom=44ed0bd6f3e43113 bones=29 skel=f241f2fb25c82dbc anims=c05,c10,d02,d05,l01,l02,o01,p01,p03,p06 xf=d2f2cf451e029a15
+race=160 gender=1 variant=1,1 code=IKG verts=1265 tris=832 geom=44ed0bd6f3e43113 bones=29 skel=f241f2fb25c82dbc anims=c05,c10,d02,d05,l01,l02,o01,p01,p03,p06 xf=d2f2cf451e029a15
+race=161 gender=0 variant=0,0 code=IKS verts=4479 tris=3148 geom=3a0c5ba5a56f95f0 bones=39 skel=2f21159f8ee985ec anims=d05,l01,l02,o01,o02,p01,p08 xf=ab310bd62e9f3b7e
+race=161 gender=0 variant=1,1 none
+race=161 gender=1 variant=0,0 code=IKS verts=4479 tris=3148 geom=3a0c5ba5a56f95f0 bones=39 skel=2f21159f8ee985ec anims=d05,l01,l02,o01,o02,p01,p08 xf=ab310bd62e9f3b7e
+race=161 gender=1 variant=1,1 none
+race=162 gender=0 variant=0,0 code=MEP verts=2415 tris=1348 geom=3ca6f042a7117ec5 bones=84 skel=dd2b11a0ead6d60a anims=c05,d02,d05,l01,l02,o01,p01,p02,p03 xf=48bc0963e4333140
+race=162 gender=0 variant=1,1 code=MEP verts=2415 tris=1348 geom=3ca6f042a7117ec5 bones=84 skel=dd2b11a0ead6d60a anims=c05,d02,d05,l01,l02,o01,p01,p02,p03 xf=48bc0963e4333140
+race=162 gender=1 variant=0,0 code=MEP verts=2415 tris=1348 geom=3ca6f042a7117ec5 bones=84 skel=dd2b11a0ead6d60a anims=c05,d02,d05,l01,l02,o01,p01,p02,p03 xf=48bc0963e4333140
+race=162 gender=1 variant=1,1 code=MEP verts=2415 tris=1348 geom=3ca6f042a7117ec5 bones=84 skel=dd2b11a0ead6d60a anims=c05,d02,d05,l01,l02,o01,p01,p02,p03 xf=48bc0963e4333140
+race=163 gender=0 variant=0,0 none
+race=163 gender=1 variant=0,0 none
+race=164 gender=0 variant=0,0 code=SGO verts=2596 tris=1698 geom=07d2f142dc6ccba0 bones=49 skel=78342d69d4ad2a51 anims=c05,c10,d02,d05,l01,l02,o01,p01,p03,p06 xf=7e7a033827fa966e
+race=164 gender=0 variant=1,1 code=SGO verts=2596 tris=1698 geom=abdfe0fd46ddb3df bones=49 skel=78342d69d4ad2a51 anims=c05,c10,d02,d05,l01,l02,o01,p01,p03,p06 xf=7e7a033827fa966e
+race=164 gender=1 variant=0,0 code=SGO verts=2596 tris=1698 geom=07d2f142dc6ccba0 bones=49 skel=78342d69d4ad2a51 anims=c05,c10,d02,d05,l01,l02,o01,p01,p03,p06 xf=7e7a033827fa966e
+race=164 gender=1 variant=1,1 code=SGO verts=2596 tris=1698 geom=abdfe0fd46ddb3df bones=49 skel=78342d69d4ad2a51 anims=c05,c10,d02,d05,l01,l02,o01,p01,p03,p06 xf=7e7a033827fa966e
+race=165 gender=0 variant=0,0 none
+race=165 gender=1 variant=0,0 none
+race=166 gender=0 variant=0,0 code=IKH verts=1808 tris=1061 geom=8d60c082a6ca9a49 bones=18 skel=30f149692621d34f anims=c05,d02,d05,l02,o01,p01,p03 xf=6e3176d85f0e726b
+race=166 gender=0 variant=1,1 code=IKH verts=1808 tris=1061 geom=8d60c082a6ca9a49 bones=18 skel=30f149692621d34f anims=- xf=14650fb0739d0383
+race=166 gender=1 variant=0,0 code=IKH verts=1808 tris=1061 geom=8d60c082a6ca9a49 bones=18 skel=30f149692621d34f anims=c05,d02,d05,l02,o01,p01,p03 xf=6e3176d85f0e726b
+race=166 gender=1 variant=1,1 code=IKH verts=1808 tris=1061 geom=8d60c082a6ca9a49 bones=18 skel=30f149692621d34f anims=- xf=14650fb0739d0383
+race=167 gender=0 variant=0,0 none
+race=167 gender=1 variant=0,0 none
+race=168 gender=0 variant=0,0 none
+race=168 gender=1 variant=0,0 none
+race=169 gender=0 variant=0,0 none
+race=169 gender=1 variant=0,0 none
+race=17 gender=0 variant=0,0 code=GOL verts=694 tris=398 geom=ff6a0fc3c651ad28 bones=25 skel=1a4881d405f35c4b anims=c05,d02,d05,l01,l02,o01,p01,p03 xf=4c137db5fe30fa8c
+race=17 gender=0 variant=1,1 code=GOL verts=827 tris=438 geom=eb3144ee2d6b37bb bones=25 skel=1a4881d405f35c4b anims=- xf=14650fb0739d0383
+race=17 gender=1 variant=0,0 code=GOL verts=694 tris=398 geom=ff6a0fc3c651ad28 bones=25 skel=1a4881d405f35c4b anims=c05,d02,d05,l01,l02,o01,p01,p03 xf=4c137db5fe30fa8c
+race=17 gender=1 variant=1,1 code=GOL verts=827 tris=438 geom=eb3144ee2d6b37bb bones=25 skel=1a4881d405f35c4b anims=- xf=14650fb0739d0383
+race=170 gender=0 variant=0,0 none
+race=170 gender=1 variant=0,0 none
+race=171 gender=0 variant=0,0 code=DIW verts=2938 tris=1634 geom=54b69fcb7ec1e79d bones=30 skel=d7541bd8cc87b610 anims=c05,c10,d01,d05,l01,l02,o01,p01,p03,p06 xf=06142169c7b55de2
+race=171 gender=0 variant=1,1 code=DIW verts=2938 tris=1634 geom=54b69fcb7ec1e79d bones=30 skel=d7541bd8cc87b610 anims=c05,c10,d01,d05,l01,l02,o01,p01,p03,p06 xf=06142169c7b55de2
+race=171 gender=1 variant=0,0 code=DIW verts=2938 tris=1634 geom=54b69fcb7ec1e79d bones=30 skel=d7541bd8cc87b610 anims=c05,c10,d01,d05,l01,l02,o01,p01,p03,p06 xf=06142169c7b55de2
+race=171 gender=1 variant=1,1 code=DIW verts=2938 tris=1634 geom=54b69fcb7ec1e79d bones=30 skel=d7541bd8cc87b610 anims=c05,c10,d01,d05,l01,l02,o01,p01,p03,p06 xf=06142169c7b55de2
+race=172 gender=0 variant=0,0 none
+race=172 gender=1 variant=0,0 none
+race=173 gender=0 variant=0,0 code=TOT verts=1411 tris=823 geom=82728c1575b3d127 bones=26 skel=3cf36dc0206967da anims=- xf=14650fb0739d0383
+race=173 gender=0 variant=1,1 code=TOT verts=1411 tris=823 geom=82728c1575b3d127 bones=26 skel=3cf36dc0206967da anims=- xf=14650fb0739d0383
+race=173 gender=1 variant=0,0 code=TOT verts=1411 tris=823 geom=82728c1575b3d127 bones=26 skel=3cf36dc0206967da anims=- xf=14650fb0739d0383
+race=173 gender=1 variant=1,1 code=TOT verts=1411 tris=823 geom=82728c1575b3d127 bones=26 skel=3cf36dc0206967da anims=- xf=14650fb0739d0383
+race=174 gender=0 variant=0,0 none
+race=174 gender=1 variant=0,0 none
+race=175 gender=0 variant=0,0 code=ENA verts=5765 tris=2370 geom=c27191db9e71cb46 bones=24 skel=5ceb1946e7edc0e8 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=175 gender=0 variant=1,1 code=ENA verts=5765 tris=2370 geom=c27191db9e71cb46 bones=24 skel=5ceb1946e7edc0e8 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=175 gender=1 variant=0,0 code=ENA verts=5765 tris=2370 geom=c27191db9e71cb46 bones=24 skel=5ceb1946e7edc0e8 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=175 gender=1 variant=1,1 code=ENA verts=5765 tris=2370 geom=c27191db9e71cb46 bones=24 skel=5ceb1946e7edc0e8 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=176 gender=0 variant=0,0 none
+race=176 gender=1 variant=0,0 none
+race=177 gender=0 variant=0,0 none
+race=177 gender=1 variant=0,0 none
+race=178 gender=0 variant=0,0 none
+race=178 gender=1 variant=0,0 none
+race=18 gender=0 variant=0,0 none
+race=18 gender=1 variant=0,0 none
+race=181 gender=0 variant=0,0 code=YAK verts=999 tris=464 geom=27e957090f9ed9c1 bones=26 skel=a81e783b576d7711 anims=c05,c09,c10,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=9ad9a7f727dd41dc
+race=181 gender=0 variant=1,1 code=YAK verts=1400 tris=742 geom=f5ab548402cb1ad6 bones=26 skel=a81e783b576d7711 anims=- xf=14650fb0739d0383
+race=181 gender=1 variant=0,0 code=YAK verts=999 tris=464 geom=27e957090f9ed9c1 bones=26 skel=a81e783b576d7711 anims=c05,c09,c10,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=9ad9a7f727dd41dc
+race=181 gender=1 variant=1,1 code=YAK verts=1400 tris=742 geom=f5ab548402cb1ad6 bones=26 skel=a81e783b576d7711 anims=- xf=14650fb0739d0383
+race=183 gender=0 variant=0,0 none
+race=183 gender=1 variant=0,0 none
+race=184 gender=0 variant=0,0 none
+race=184 gender=1 variant=0,0 none
+race=185 gender=0 variant=0,0 none
+race=185 gender=1 variant=0,0 none
+race=187 gender=0 variant=0,0 code=SIR verts=902 tris=485 geom=1e77ba886a209258 bones=25 skel=a5017479fec10b75 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=187 gender=0 variant=1,1 code=SIR verts=902 tris=485 geom=54ef3c684e065af7 bones=25 skel=a5017479fec10b75 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=187 gender=1 variant=0,0 code=SIR verts=902 tris=485 geom=1e77ba886a209258 bones=25 skel=a5017479fec10b75 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=187 gender=1 variant=1,1 code=SIR verts=902 tris=485 geom=54ef3c684e065af7 bones=25 skel=a5017479fec10b75 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=188 gender=0 variant=0,0 none
+race=188 gender=1 variant=0,0 none
+race=189 gender=0 variant=0,0 none
+race=189 gender=1 variant=0,0 none
+race=19 gender=0 variant=0,0 none
+race=19 gender=1 variant=0,0 none
+race=190 gender=0 variant=0,0 none
+race=190 gender=1 variant=0,0 none
+race=191 gender=0 variant=0,0 code=WLM verts=3072 tris=2050 geom=3e0f3428da4a96c3 bones=62 skel=9c6bcdd81e170045 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=c9d8efc46ae79820
+race=191 gender=0 variant=1,1 code=WLM verts=2952 tris=2006 geom=35ae0eef933841f9 bones=62 skel=9c6bcdd81e170045 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=c9d8efc46ae79820
+race=191 gender=1 variant=0,0 none
+race=193 gender=0 variant=0,0 none
+race=193 gender=1 variant=0,0 none
+race=194 gender=0 variant=0,0 none
+race=194 gender=1 variant=0,0 none
+race=195 gender=0 variant=0,0 none
+race=195 gender=1 variant=0,0 none
+race=196 gender=0 variant=0,0 none
+race=196 gender=1 variant=0,0 none
+race=198 gender=0 variant=0,0 none
+race=198 gender=1 variant=0,0 none
+race=2 gender=0 variant=0,0 code=BAM verts=896 tris=462 geom=11f84f5eba3e4488 bones=27 skel=44ecddf81a8deadf anims=l01,l02,p01 xf=7f95813207ff8670
+race=2 gender=0 variant=1,1 code=BAM verts=1095 tris=522 geom=1c29283583fd82f4 bones=26 skel=c4aefad7c702aee7 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=1e9f7d8dd3d9285a
+race=2 gender=1 variant=0,0 code=BAF verts=784 tris=414 geom=ef5eeb93f83589e1 bones=25 skel=761c3215f6f61eb8 anims=l01 xf=ad47789c3df388df
+race=2 gender=1 variant=1,1 code=BAF verts=1019 tris=488 geom=9668e1ce58e6d842 bones=25 skel=761c3215f6f61eb8 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=af006e9abfa31e01
+race=20 gender=0 variant=0,0 code=VST verts=3666 tris=2118 geom=e73bed313b43b692 bones=142 skel=78e9835a461dabfc anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=23617f559e5b117a
+race=20 gender=0 variant=1,1 code=VST verts=3666 tris=2118 geom=e73bed313b43b692 bones=142 skel=78e9835a461dabfc anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=23617f559e5b117a
+race=20 gender=1 variant=0,0 code=VST verts=3666 tris=2118 geom=e73bed313b43b692 bones=142 skel=78e9835a461dabfc anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=23617f559e5b117a
+race=20 gender=1 variant=1,1 code=VST verts=3666 tris=2118 geom=e73bed313b43b692 bones=142 skel=78e9835a461dabfc anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=23617f559e5b117a
+race=21 gender=0 variant=0,0 none
+race=21 gender=1 variant=0,0 none
+race=22 gender=0 variant=0,0 none
+race=22 gender=1 variant=0,0 none
+race=23 gender=0 variant=0,0 none
+race=23 gender=1 variant=0,0 none
+race=24 gender=0 variant=0,0 none
+race=24 gender=1 variant=0,0 none
+race=240 gender=0 variant=0,0 code=IVM verts=73 tris=80 geom=2449dd4bcdfed4c2 bones=26 skel=7ff80fd6c12ba4a2 anims=- xf=14650fb0739d0383
+race=240 gender=0 variant=1,1 none
+race=240 gender=1 variant=0,0 none
+race=25 gender=0 variant=0,0 code=FAF verts=942 tris=449 geom=5115ab5080299835 bones=27 skel=1a8a9b514ea4422b anims=c05,c09,d02,d05,l02,o01,p01,t06 xf=dc03f062909a813d
+race=25 gender=0 variant=1,1 code=FAF verts=796 tris=367 geom=5d23b4027b065f59 bones=27 skel=1a8a9b514ea4422b anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=c54a0828f6c73abc
+race=25 gender=1 variant=0,0 code=FAF verts=942 tris=449 geom=5115ab5080299835 bones=27 skel=1a8a9b514ea4422b anims=c05,c09,d02,d05,l02,o01,p01,t06 xf=dc03f062909a813d
+race=25 gender=1 variant=1,1 code=FAF verts=796 tris=367 geom=5d23b4027b065f59 bones=27 skel=1a8a9b514ea4422b anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=c54a0828f6c73abc
+race=26 gender=0 variant=0,0 none
+race=26 gender=1 variant=0,0 none
+race=27 gender=0 variant=0,0 none
+race=27 gender=1 variant=0,0 none
+race=28 gender=0 variant=0,0 none
+race=28 gender=1 variant=0,0 none
+race=29 gender=0 variant=0,0 none
+race=29 gender=1 variant=0,0 none
+race=3 gender=0 variant=0,0 code=ERM verts=862 tris=411 geom=83b3094f309b5bc7 bones=26 skel=256b6cd94120b52e anims=- xf=14650fb0739d0383
+race=3 gender=0 variant=1,1 code=ERM verts=822 tris=409 geom=56fc407aef1b68f4 bones=26 skel=256b6cd94120b52e anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=3 gender=1 variant=0,0 code=ERF verts=810 tris=427 geom=7d0f030ff0fa40c0 bones=25 skel=19fac601a9765d1c anims=- xf=14650fb0739d0383
+race=3 gender=1 variant=1,1 code=ERF verts=707 tris=379 geom=6140bb76b5f128d7 bones=25 skel=19fac601a9765d1c anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=30 gender=0 variant=0,0 none
+race=30 gender=1 variant=0,0 none
+race=31 gender=0 variant=0,0 none
+race=31 gender=1 variant=0,0 none
+race=32 gender=0 variant=0,0 none
+race=32 gender=1 variant=0,0 none
+race=33 gender=0 variant=0,0 none
+race=33 gender=1 variant=0,0 none
+race=330 gender=0 variant=0,0 none
+race=330 gender=1 variant=0,0 none
+race=34 gender=0 variant=0,0 code=BAT verts=802 tris=414 geom=35c58b7cbc4fefe6 bones=29 skel=eb15ee138d69eb86 anims=c05,d02,d05,l02,o01,p01 xf=4009bad94159ad5f
+race=34 gender=0 variant=1,1 code=BAT verts=802 tris=414 geom=35c58b7cbc4fefe6 bones=29 skel=eb15ee138d69eb86 anims=c05,d02,d05,l02,o01,p01 xf=4009bad94159ad5f
+race=34 gender=1 variant=0,0 code=BAT verts=802 tris=414 geom=35c58b7cbc4fefe6 bones=29 skel=eb15ee138d69eb86 anims=c05,d02,d05,l02,o01,p01 xf=4009bad94159ad5f
+race=34 gender=1 variant=1,1 code=BAT verts=802 tris=414 geom=35c58b7cbc4fefe6 bones=29 skel=eb15ee138d69eb86 anims=c05,d02,d05,l02,o01,p01 xf=4009bad94159ad5f
+race=35 gender=0 variant=0,0 none
+race=35 gender=1 variant=0,0 none
+race=36 gender=0 variant=0,0 none
+race=36 gender=1 variant=0,0 none
+race=367 gender=0 variant=0,0 code=SKE verts=1053 tris=498 geom=71151512814b14b1 bones=25 skel=ab9666fd7709fd49 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=de628cb42f09bd44
+race=367 gender=0 variant=1,1 code=SKE verts=1053 tris=498 geom=71151512814b14b1 bones=25 skel=ab9666fd7709fd49 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=de628cb42f09bd44
+race=367 gender=1 variant=0,0 code=SKE verts=1053 tris=498 geom=71151512814b14b1 bones=25 skel=ab9666fd7709fd49 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=de628cb42f09bd44
+race=367 gender=1 variant=1,1 code=SKE verts=1053 tris=498 geom=71151512814b14b1 bones=25 skel=ab9666fd7709fd49 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=de628cb42f09bd44
+race=37 gender=0 variant=0,0 none
+race=37 gender=1 variant=0,0 none
+race=38 gender=0 variant=0,0 code=SPI verts=1112 tris=544 geom=a11360a60af656e4 bones=38 skel=7e6ab2c3741e69f1 anims=c05,d02,d05,l02,o01,p01,p03 xf=2f4f90744b805b18
+race=38 gender=0 variant=1,1 code=SPI verts=1112 tris=544 geom=a11360a60af656e4 bones=38 skel=7e6ab2c3741e69f1 anims=c05,d02,d05,l02,o01,p01,p03 xf=2f4f90744b805b18
+race=38 gender=1 variant=0,0 code=SPI verts=1112 tris=544 geom=a11360a60af656e4 bones=38 skel=7e6ab2c3741e69f1 anims=c05,d02,d05,l02,o01,p01,p03 xf=2f4f90744b805b18
+race=38 gender=1 variant=1,1 code=SPI verts=1112 tris=544 geom=a11360a60af656e4 bones=38 skel=7e6ab2c3741e69f1 anims=c05,d02,d05,l02,o01,p01,p03 xf=2f4f90744b805b18
+race=39 gender=0 variant=0,0 none
+race=39 gender=1 variant=0,0 none
+race=4 gender=0 variant=0,0 code=ELM verts=767 tris=440 geom=0f247df52a1e230f bones=26 skel=ab01f35c5bcc21f6 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=4 gender=0 variant=1,1 code=ELM verts=797 tris=437 geom=d24984e04e6d2193 bones=26 skel=ab01f35c5bcc21f6 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=4 gender=1 variant=0,0 code=ELF verts=902 tris=485 geom=2fc3ba20b7993192 bones=25 skel=c4a4d98cd3b0bcbe anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=4 gender=1 variant=1,1 code=ELF verts=995 tris=516 geom=db827f5c9860863f bones=25 skel=c4a4d98cd3b0bcbe anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=40 gender=0 variant=0,0 none
+race=40 gender=1 variant=0,0 none
+race=41 gender=0 variant=0,0 none
+race=41 gender=1 variant=0,0 none
+race=415 gender=0 variant=0,0 none
+race=415 gender=1 variant=0,0 none
+race=42 gender=0 variant=0,0 code=WOL verts=900 tris=443 geom=295f1fb488a9890d bones=28 skel=d5e05333f0436a10 anims=c05,c10,d02,d05,l02,o01,p01,p03,p06 xf=fb65142770508b89
+race=42 gender=0 variant=1,1 code=WOL verts=903 tris=443 geom=aa04631e48c24bf7 bones=28 skel=d5e05333f0436a10 anims=c05,c10,d02,d05,l02,o01,p01,p03,p06 xf=fb65142770508b89
+race=42 gender=1 variant=0,0 code=WOL verts=900 tris=443 geom=295f1fb488a9890d bones=28 skel=d5e05333f0436a10 anims=c05,c10,d02,d05,l02,o01,p01,p03,p06 xf=fb65142770508b89
+race=42 gender=1 variant=1,1 code=WOL verts=903 tris=443 geom=aa04631e48c24bf7 bones=28 skel=d5e05333f0436a10 anims=c05,c10,d02,d05,l02,o01,p01,p03,p06 xf=fb65142770508b89
+race=43 gender=0 variant=0,0 code=BEA verts=1098 tris=479 geom=735d3ce3bb18b5ec bones=19 skel=20c14f73f691b7e3 anims=c05,c10,d02,d05,l01,l02,l09,o01,p01,p03,p06 xf=80d3aeffadd8e755
+race=43 gender=0 variant=1,1 none
+race=43 gender=1 variant=0,0 code=BEA verts=1098 tris=479 geom=735d3ce3bb18b5ec bones=19 skel=20c14f73f691b7e3 anims=c05,c10,d02,d05,l01,l02,l09,o01,p01,p03,p06 xf=80d3aeffadd8e755
+race=43 gender=1 variant=1,1 none
+race=44 gender=0 variant=0,0 code=HUM verts=791 tris=444 geom=aca94f2e09b3db1e bones=25 skel=dfeec4c1f4f48f8a anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=bbdac5cf1b1529b2
+race=44 gender=0 variant=1,1 code=FPM verts=739 tris=417 geom=9f855fdac08978ac bones=24 skel=84795cc2b16c7a05 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=b0c61c09fb0a0550
+race=44 gender=1 variant=0,0 code=HUF verts=793 tris=430 geom=752d14cdeead3e30 bones=25 skel=3452d1a2364ccbfc anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=44 gender=1 variant=1,1 code=HUF verts=795 tris=404 geom=202d9eb51d689ab8 bones=25 skel=3452d1a2364ccbfc anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=45 gender=0 variant=0,0 none
+race=45 gender=1 variant=0,0 none
+race=457 gender=0 variant=0,0 none
+race=457 gender=1 variant=0,0 none
+race=46 gender=0 variant=0,0 code=IMP verts=1636 tris=810 geom=b0ac6b792f5c8062 bones=31 skel=6fcbeba743183764 anims=d05 xf=14650fb0739d0383
+race=46 gender=0 variant=1,1 none
+race=46 gender=1 variant=0,0 code=IMP verts=1636 tris=810 geom=b0ac6b792f5c8062 bones=31 skel=6fcbeba743183764 anims=d05 xf=14650fb0739d0383
+race=46 gender=1 variant=1,1 none
+race=47 gender=0 variant=0,0 none
+race=47 gender=1 variant=0,0 none
+race=48 gender=0 variant=0,0 none
+race=48 gender=1 variant=0,0 none
+race=49 gender=0 variant=0,0 none
+race=49 gender=1 variant=0,0 none
+race=5 gender=0 variant=0,0 code=HIM verts=877 tris=460 geom=ed23b24631096a1c bones=26 skel=f1067dec67c9f772 anims=- xf=14650fb0739d0383
+race=5 gender=0 variant=1,1 code=HIM verts=794 tris=434 geom=cbbd84647986a127 bones=26 skel=f1067dec67c9f772 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=5 gender=1 variant=0,0 code=HIF verts=872 tris=454 geom=2599cc67a52bc139 bones=25 skel=5d7fec9dc98602b8 anims=- xf=14650fb0739d0383
+race=5 gender=1 variant=1,1 code=HIF verts=766 tris=408 geom=bc316cca225dd309 bones=25 skel=5d7fec9dc98602b8 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=50 gender=0 variant=0,0 none
+race=50 gender=1 variant=0,0 none
+race=51 gender=0 variant=0,0 none
+race=51 gender=1 variant=0,0 none
+race=52 gender=0 variant=0,0 none
+race=52 gender=1 variant=0,0 none
+race=53 gender=0 variant=0,0 none
+race=53 gender=1 variant=0,0 none
+race=54 gender=0 variant=0,0 code=ORC verts=965 tris=488 geom=f81cc0b856bc88ca bones=24 skel=1096618331c9066c anims=c05,c09,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=3bdc0872a1726cb6
+race=54 gender=0 variant=1,1 code=ORC verts=965 tris=488 geom=f81cc0b856bc88ca bones=24 skel=1096618331c9066c anims=c05,c09,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=3bdc0872a1726cb6
+race=54 gender=1 variant=0,0 code=ORC verts=965 tris=488 geom=f81cc0b856bc88ca bones=24 skel=1096618331c9066c anims=c05,c09,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=3bdc0872a1726cb6
+race=54 gender=1 variant=1,1 code=ORC verts=965 tris=488 geom=f81cc0b856bc88ca bones=24 skel=1096618331c9066c anims=c05,c09,d02,d05,l01,l02,o01,p01,p03,p06,t06 xf=3bdc0872a1726cb6
+race=55 gender=0 variant=0,0 none
+race=55 gender=1 variant=0,0 none
+race=56 gender=0 variant=0,0 code=PIF verts=890 tris=482 geom=026e277c788ffeac bones=30 skel=802b214a2babfefa anims=c05,c09,d02,d05,l02,o01,p01,t06 xf=f24c6bf3669c81b5
+race=56 gender=0 variant=1,1 code=PIF verts=719 tris=370 geom=6cc641896a860c05 bones=30 skel=802b214a2babfefa anims=- xf=14650fb0739d0383
+race=56 gender=1 variant=0,0 code=PIF verts=890 tris=482 geom=026e277c788ffeac bones=30 skel=802b214a2babfefa anims=c05,c09,d02,d05,l02,o01,p01,t06 xf=f24c6bf3669c81b5
+race=56 gender=1 variant=1,1 code=PIF verts=719 tris=370 geom=6cc641896a860c05 bones=30 skel=802b214a2babfefa anims=- xf=14650fb0739d0383
+race=57 gender=0 variant=0,0 none
+race=57 gender=1 variant=0,0 none
+race=58 gender=0 variant=0,0 code=SOL verts=1558 tris=834 geom=aec06f5f6a099247 bones=58 skel=e7cdb861df8b9a31 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=3693348c0dbe0bf7
+race=58 gender=0 variant=1,1 none
+race=58 gender=1 variant=0,0 code=SOL verts=1558 tris=834 geom=aec06f5f6a099247 bones=58 skel=e7cdb861df8b9a31 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=3693348c0dbe0bf7
+race=58 gender=1 variant=1,1 none
+race=59 gender=0 variant=0,0 none
+race=59 gender=1 variant=0,0 none
+race=6 gender=0 variant=0,0 code=DAM verts=812 tris=449 geom=ecdd7e55edb5105f bones=26 skel=fab1ce008c931c4a anims=- xf=14650fb0739d0383
+race=6 gender=0 variant=1,1 code=DAM verts=736 tris=422 geom=50b366c1efbeb109 bones=26 skel=fab1ce008c931c4a anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=6 gender=1 variant=0,0 code=DAF verts=1192 tris=492 geom=cfe56933acb3af05 bones=25 skel=33694d35579388ac anims=- xf=14650fb0739d0383
+race=6 gender=1 variant=1,1 code=DAF verts=943 tris=458 geom=1eddf6b4f5bf1ba0 bones=25 skel=33694d35579388ac anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=60 gender=0 variant=0,0 code=SKE verts=1053 tris=498 geom=71151512814b14b1 bones=25 skel=ab9666fd7709fd49 anims=d05,l01,l02,o01,p01,p02,p03 xf=8a3eeed512d82b04
+race=60 gender=0 variant=1,1 code=SKE verts=1053 tris=498 geom=71151512814b14b1 bones=25 skel=ab9666fd7709fd49 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=de628cb42f09bd44
+race=60 gender=1 variant=0,0 code=SKE verts=1053 tris=498 geom=71151512814b14b1 bones=25 skel=ab9666fd7709fd49 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=de628cb42f09bd44
+race=60 gender=1 variant=1,1 code=SKE verts=1053 tris=498 geom=71151512814b14b1 bones=25 skel=ab9666fd7709fd49 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=de628cb42f09bd44
+race=61 gender=0 variant=0,0 none
+race=61 gender=1 variant=0,0 none
+race=62 gender=0 variant=0,0 code=TUN verts=957 tris=478 geom=7067be42fb274058 bones=25 skel=71b5b7f382326a28 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=d55a8c19198ec058
+race=62 gender=0 variant=1,1 none
+race=62 gender=1 variant=0,0 code=TUN verts=957 tris=478 geom=7067be42fb274058 bones=25 skel=71b5b7f382326a28 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=d55a8c19198ec058
+race=62 gender=1 variant=1,1 none
+race=63 gender=0 variant=0,0 none
+race=63 gender=1 variant=0,0 none
+race=64 gender=0 variant=0,0 code=TRE verts=1178 tris=678 geom=dcc9b87dc40cc9e7 bones=41 skel=63eae2ce0c4c8348 anims=c05,d02,d05,l01,o01,p01,p03,t06 xf=520daf4566161e6d
+race=64 gender=0 variant=1,1 code=TRE verts=1178 tris=678 geom=dcc9b87dc40cc9e7 bones=41 skel=63eae2ce0c4c8348 anims=c05,d02,d05,l01,o01,p01,p03,t06 xf=520daf4566161e6d
+race=64 gender=1 variant=0,0 code=TRE verts=1178 tris=678 geom=dcc9b87dc40cc9e7 bones=41 skel=63eae2ce0c4c8348 anims=c05,d02,d05,l01,o01,p01,p03,t06 xf=520daf4566161e6d
+race=64 gender=1 variant=1,1 code=TRE verts=1178 tris=678 geom=dcc9b87dc40cc9e7 bones=41 skel=63eae2ce0c4c8348 anims=c05,d02,d05,l01,o01,p01,p03,t06 xf=520daf4566161e6d
+race=65 gender=0 variant=0,0 none
+race=65 gender=1 variant=0,0 none
+race=66 gender=0 variant=0,0 code=RAL verts=1930 tris=1048 geom=1bbd4fdf095af99a bones=31 skel=6408dbd4fea81033 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=ffed382e1bebf592
+race=66 gender=0 variant=1,1 none
+race=66 gender=1 variant=0,0 code=RAL verts=1930 tris=1048 geom=1bbd4fdf095af99a bones=31 skel=6408dbd4fea81033 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=ffed382e1bebf592
+race=66 gender=1 variant=1,1 none
+race=67 gender=0 variant=0,0 code=HUM verts=791 tris=444 geom=aca94f2e09b3db1e bones=25 skel=dfeec4c1f4f48f8a anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=bbdac5cf1b1529b2
+race=67 gender=0 variant=1,1 code=HHM verts=717 tris=417 geom=8359a20113d70779 bones=25 skel=daadd92b79a47b77 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=1efcb178213c1cac
+race=67 gender=1 variant=0,0 code=HUF verts=793 tris=430 geom=752d14cdeead3e30 bones=25 skel=3452d1a2364ccbfc anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=67 gender=1 variant=1,1 code=HUF verts=795 tris=404 geom=202d9eb51d689ab8 bones=25 skel=3452d1a2364ccbfc anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=68 gender=0 variant=0,0 none
+race=68 gender=1 variant=0,0 none
+race=69 gender=0 variant=0,0 code=WIL verts=145 tris=96 geom=b62153930ec9b5d7 bones=2 skel=be028fc359683114 anims=c05,o01,p01 xf=3e2bc5678590279b
+race=69 gender=0 variant=1,1 code=WIL verts=145 tris=96 geom=b62153930ec9b5d7 bones=2 skel=be028fc359683114 anims=c05,o01,p01 xf=3e2bc5678590279b
+race=69 gender=1 variant=0,0 code=WIL verts=145 tris=96 geom=b62153930ec9b5d7 bones=2 skel=be028fc359683114 anims=c05,o01,p01 xf=3e2bc5678590279b
+race=69 gender=1 variant=1,1 code=WIL verts=145 tris=96 geom=b62153930ec9b5d7 bones=2 skel=be028fc359683114 anims=c05,o01,p01 xf=3e2bc5678590279b
+race=7 gender=0 variant=0,0 code=HAM verts=797 tris=428 geom=ac62528d5c57cfa5 bones=26 skel=c29916b5af1c1182 anims=- xf=14650fb0739d0383
+race=7 gender=0 variant=1,1 code=HAM verts=881 tris=449 geom=80176ccae3af68d5 bones=26 skel=c29916b5af1c1182 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=7 gender=1 variant=0,0 code=HAF verts=847 tris=416 geom=063424332c3cc901 bones=25 skel=431c73316d3e0e40 anims=- xf=14650fb0739d0383
+race=7 gender=1 variant=1,1 code=HAF verts=935 tris=442 geom=eb6ef1bed580e3c1 bones=25 skel=431c73316d3e0e40 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=70 gender=0 variant=0,0 none
+race=70 gender=1 variant=0,0 none
+race=71 gender=0 variant=0,0 code=HUM verts=791 tris=444 geom=aca94f2e09b3db1e bones=25 skel=dfeec4c1f4f48f8a anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=bbdac5cf1b1529b2
+race=71 gender=0 variant=1,1 code=QCM verts=739 tris=417 geom=cbb7f460b4770e3e bones=24 skel=898f76513f7914b9 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=b0c61c09fb0a0550
+race=71 gender=1 variant=0,0 code=HUF verts=793 tris=430 geom=752d14cdeead3e30 bones=25 skel=3452d1a2364ccbfc anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=71 gender=1 variant=1,1 code=QCF verts=802 tris=427 geom=200014d9187228c4 bones=23 skel=a9d20b5094885cae anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=72 gender=0 variant=0,0 none
+race=72 gender=1 variant=0,0 none
+race=73 gender=0 variant=0,0 none
+race=73 gender=1 variant=0,0 none
+race=74 gender=0 variant=0,0 none
+race=74 gender=1 variant=0,0 none
+race=75 gender=0 variant=0,0 code=ELE verts=413 tris=246 geom=031a4fb1b7a02c80 bones=17 skel=94660f1c9b047796 anims=c05,d02,d05,l01,l02,o01,p01,t06 xf=dfd30f605bad3948
+race=75 gender=0 variant=1,1 code=ELE verts=462 tris=294 geom=81e48270a228a320 bones=17 skel=94660f1c9b047796 anims=c05,d02,d05,l01,l02,o01,p01,t06 xf=dfd30f605bad3948
+race=75 gender=1 variant=0,0 code=ELE verts=413 tris=246 geom=031a4fb1b7a02c80 bones=17 skel=94660f1c9b047796 anims=c05,d02,d05,l01,l02,o01,p01,t06 xf=dfd30f605bad3948
+race=75 gender=1 variant=1,1 code=ELE verts=462 tris=294 geom=81e48270a228a320 bones=17 skel=94660f1c9b047796 anims=c05,d02,d05,l01,l02,o01,p01,t06 xf=dfd30f605bad3948
+race=76 gender=0 variant=0,0 code=PUM verts=832 tris=484 geom=62e51a15d3d492b5 bones=29 skel=d7f8ef384d95c709 anims=c05,c10,d02,d05,l02,o01,p01,p03,p06 xf=442ff94f81144a90
+race=76 gender=0 variant=1,1 code=PUM verts=832 tris=484 geom=493c1064a6c9014f bones=29 skel=d7f8ef384d95c709 anims=c05,c10,d02,d05,l02,o01,p01,p03,p06 xf=442ff94f81144a90
+race=76 gender=1 variant=0,0 none
+race=77 gender=0 variant=0,0 code=DAM verts=812 tris=449 geom=ecdd7e55edb5105f bones=26 skel=fab1ce008c931c4a anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=77 gender=0 variant=1,1 code=NGM verts=770 tris=424 geom=eaa06b909191730c bones=25 skel=b0a920dc85b53b16 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=77 gender=1 variant=0,0 code=DAF verts=1192 tris=492 geom=cfe56933acb3af05 bones=25 skel=33694d35579388ac anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=77 gender=1 variant=1,1 code=DAF verts=943 tris=458 geom=1eddf6b4f5bf1ba0 bones=25 skel=33694d35579388ac anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=78 gender=0 variant=0,0 code=ERM verts=862 tris=411 geom=83b3094f309b5bc7 bones=26 skel=256b6cd94120b52e anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=78 gender=0 variant=1,1 code=EGM verts=768 tris=424 geom=21617e9d02147ceb bones=25 skel=d544be7cdb1afa93 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=78 gender=1 variant=0,0 code=ERF verts=810 tris=427 geom=7d0f030ff0fa40c0 bones=25 skel=19fac601a9765d1c anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=78 gender=1 variant=1,1 code=ERF verts=707 tris=379 geom=6140bb76b5f128d7 bones=25 skel=19fac601a9765d1c anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=47fb86376dbedbea
+race=79 gender=0 variant=0,0 none
+race=79 gender=1 variant=0,0 none
+race=8 gender=0 variant=0,0 code=DWM verts=760 tris=418 geom=d9970473c8a42c55 bones=24 skel=7ea48a50865f02b9 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06 xf=73677af1e55027d2
+race=8 gender=0 variant=1,1 code=DWM verts=807 tris=423 geom=8378d62b962298fa bones=24 skel=7ea48a50865f02b9 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=73677af1e55027d2
+race=8 gender=1 variant=0,0 code=DWF verts=742 tris=428 geom=49f7cdfdba4a6b43 bones=24 skel=ae7e1e48289078bc anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t04,t05,t06 xf=d05b52046a9ccf3b
+race=8 gender=1 variant=1,1 code=DWF verts=764 tris=424 geom=e747f9779c88bc30 bones=24 skel=ae7e1e48289078bc anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=d157b2ed7507ea05
+race=80 gender=0 variant=0,0 none
+race=80 gender=1 variant=0,0 none
+race=81 gender=0 variant=0,0 code=HOM verts=674 tris=408 geom=4e9188746537737d bones=24 skel=74e4d43682e5c1c9 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=73677af1e55027d2
+race=81 gender=0 variant=1,1 code=RIM verts=689 tris=408 geom=88bab44f79e80b47 bones=23 skel=6061284593694ad0 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=73677af1e55027d2
+race=81 gender=1 variant=0,0 code=HOF verts=787 tris=462 geom=984034018f5f98d6 bones=24 skel=8d245b3e1f59e7df anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=d157b2ed7507ea05
+race=81 gender=1 variant=1,1 code=HOF verts=738 tris=412 geom=9dfe4e2004f2189f bones=24 skel=8d245b3e1f59e7df anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=d157b2ed7507ea05
+race=82 gender=0 variant=0,0 code=SCA verts=1264 tris=568 geom=907bb61095015131 bones=25 skel=33090341c4738ae5 anims=c05,d02,d05,l02,o01,p01,p02,p03,t06 xf=4275a293932eecd2
+race=82 gender=0 variant=1,1 none
+race=82 gender=1 variant=0,0 code=SCA verts=1264 tris=568 geom=907bb61095015131 bones=25 skel=33090341c4738ae5 anims=c05,d02,d05,l02,o01,p01,p02,p03,t06 xf=4275a293932eecd2
+race=82 gender=1 variant=1,1 none
+race=83 gender=0 variant=0,0 none
+race=83 gender=1 variant=0,0 none
+race=85 gender=0 variant=0,0 code=SPE verts=1251 tris=555 geom=e78fc47461b2ff82 bones=27 skel=4bf934161a80f0ec anims=c05,d02,d05,l02,o01,p01 xf=73d9fc574681bc34
+race=85 gender=0 variant=1,1 none
+race=85 gender=1 variant=0,0 code=SPE verts=1251 tris=555 geom=e78fc47461b2ff82 bones=27 skel=4bf934161a80f0ec anims=c05,d02,d05,l02,o01,p01 xf=73d9fc574681bc34
+race=85 gender=1 variant=1,1 none
+race=86 gender=0 variant=0,0 none
+race=86 gender=1 variant=0,0 none
+race=87 gender=0 variant=0,0 none
+race=87 gender=1 variant=0,0 none
+race=88 gender=0 variant=0,0 none
+race=88 gender=1 variant=0,0 none
+race=89 gender=0 variant=0,0 none
+race=89 gender=1 variant=0,0 none
+race=9 gender=0 variant=0,0 code=TRM verts=715 tris=420 geom=e79046b15b588322 bones=24 skel=917192c5bca792b2 anims=l01,l02 xf=a2965e58310de20b
+race=9 gender=0 variant=1,1 code=TRM verts=794 tris=437 geom=4ed4f7e0f80be13e bones=24 skel=917192c5bca792b2 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t04,t05,t06 xf=ce2a92f78da3fa8f
+race=9 gender=1 variant=0,0 code=TRF verts=699 tris=416 geom=ed35ae33d7354bfd bones=24 skel=9edb822c3376bb7e anims=l01,l02 xf=a8d41d89f0405bdb
+race=9 gender=1 variant=1,1 code=TRF verts=790 tris=433 geom=43389a77b4f02032 bones=24 skel=9edb822c3376bb7e anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t04,t05,t06 xf=3e590f7932044cbf
+race=90 gender=0 variant=0,0 code=BAM verts=896 tris=462 geom=f3bd0bf15bc8b46c bones=26 skel=c4aefad7c702aee7 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=1e9f7d8dd3d9285a
+race=90 gender=0 variant=1,1 code=HLM verts=756 tris=412 geom=61e3a1a5df5f7794 bones=25 skel=bd29e5505a6a39d3 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=90 gender=1 variant=0,0 code=BAF verts=784 tris=414 geom=1a63a8a01f0327da bones=25 skel=761c3215f6f61eb8 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=af006e9abfa31e01
+race=90 gender=1 variant=1,1 code=HLF verts=784 tris=414 geom=197dc34d12128b27 bones=24 skel=6e5c67f0f91bc945 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=8eb6f757deec5ac7
+race=91 gender=0 variant=0,0 none
+race=91 gender=1 variant=0,0 none
+race=92 gender=0 variant=0,0 code=TRM verts=715 tris=420 geom=e79046b15b588322 bones=24 skel=917192c5bca792b2 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t04,t05,t06 xf=ce2a92f78da3fa8f
+race=92 gender=0 variant=1,1 code=GRM verts=715 tris=420 geom=69943931c58a9e02 bones=23 skel=aff212680cb75335 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=8214fdcb4afff587
+race=92 gender=1 variant=0,0 code=TRF verts=699 tris=416 geom=ed35ae33d7354bfd bones=24 skel=9edb822c3376bb7e anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t04,t05,t06 xf=3e590f7932044cbf
+race=92 gender=1 variant=1,1 code=GRF verts=699 tris=416 geom=56f6ac69252ca531 bones=23 skel=e8fb76a91bbddbba anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=8214fdcb4afff587
+race=93 gender=0 variant=0,0 code=OGM verts=726 tris=416 geom=be6821afd562084c bones=24 skel=a9fe33df455d2546 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t04,t05,t06 xf=30127bb209600ecd
+race=93 gender=0 variant=1,1 code=OKM verts=732 tris=416 geom=9ec1e92c972b6b6f bones=23 skel=b3ce11aba5cd3bbe anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=8214fdcb4afff587
+race=93 gender=1 variant=0,0 code=OGF verts=768 tris=418 geom=33aa769b83189299 bones=24 skel=44cae5c68100808a anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=8214fdcb4afff587
+race=93 gender=1 variant=1,1 code=OKF verts=769 tris=418 geom=8ad7e0911fa1d48c bones=23 skel=480599f2bf025859 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=8214fdcb4afff587
+race=94 gender=0 variant=0,0 code=DWM verts=760 tris=418 geom=d9970473c8a42c55 bones=24 skel=7ea48a50865f02b9 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=73677af1e55027d2
+race=94 gender=0 variant=1,1 code=KAM verts=761 tris=418 geom=bdba7f06dd82ae40 bones=23 skel=4483d25371100a79 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=73677af1e55027d2
+race=94 gender=1 variant=0,0 code=DWF verts=742 tris=428 geom=49f7cdfdba4a6b43 bones=24 skel=ae7e1e48289078bc anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=d157b2ed7507ea05
+race=94 gender=1 variant=1,1 code=KAF verts=742 tris=428 geom=4eaa6ebff6864d87 bones=23 skel=5d3368e3a3d0a6e6 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=d157b2ed7507ea05
+race=95 gender=0 variant=0,0 code=CAZ verts=2486 tris=1402 geom=8c2bbabac9675fca bones=33 skel=627ac0939cc39bf5 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=fe11c3a9ce48b97a
+race=95 gender=0 variant=1,1 none
+race=95 gender=1 variant=0,0 code=CAZ verts=2486 tris=1402 geom=8c2bbabac9675fca bones=33 skel=627ac0939cc39bf5 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=fe11c3a9ce48b97a
+race=95 gender=1 variant=1,1 none
+race=96 gender=0 variant=0,0 none
+race=96 gender=1 variant=0,0 none
+race=98 gender=0 variant=0,0 none
+race=98 gender=1 variant=0,0 none
+race=99 gender=0 variant=0,0 none
+race=99 gender=1 variant=0,0 none

@@ -170,8 +170,17 @@ TEST_F(ChrCacheLruTest, UnlimitedCapKeepsEveryEntry) {
 
     auto acc = loader_->getChrCacheAccountingForTest();
     EXPECT_EQ(acc.maxEntries, 0u);
-    EXPECT_GE(acc.entries, races_.size())
-        << "with no cap every distinct archive should stay cached";
+    // T504 resolver: races resolve from the original client's ordered
+    // sources (zone archive, the zone list, GlobalLoad), so several races
+    // share one archive and the entry count is the number of DISTINCT
+    // archives consulted, not the number of races (it used to be one
+    // db-specified archive per race). The invariant is: nothing evicted,
+    // every entry registered.
+    // (With the cap OFF the store helper does not push to chrCacheLruOrder_ at
+    // all, so lruOrder/untracked say nothing here.) Measured under the
+    // resolver: these five races consult three distinct archives; the capped
+    // case above holds at most two, so an unlimited cap must hold more.
+    EXPECT_GT(acc.entries, 2u) << "with no cap every distinct archive should stay cached";
 }
 
 

@@ -1,3 +1,4 @@
+#include "client/graphics/display_settings.h"  // T504: BaselineOnly()
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/weather_ambient_oracle.h"
 #include "client/graphics/weather_config_loader.h"
@@ -56,7 +57,13 @@ bool WeatherEffectsController::initialize(const std::string& eqClientPath) {
 
     // Create storm cloud layer
     LOG_TRACE(MOD_GRAPHICS, "WeatherEffects: Creating storm cloud layer (constrainedCache_={})...", (void*)constrainedCache_);
-    stormCloudLayer_ = std::make_unique<Environment::StormCloudLayer>();
+    // T504 / Will 2026-09-21: the storm cloud layer is a new willeq feature, not
+    // part of the original-client baseline. Every use below is null-guarded.
+    if (!eqt::ui::BaselineOnly()) {
+        stormCloudLayer_ = std::make_unique<Environment::StormCloudLayer>();
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "WILLEQ_BASELINE=1: storm cloud layer not created");
+    }
     if (stormCloudLayer_ && smgr_ && driver_) {
         if (constrainedCache_) stormCloudLayer_->setConstrainedTextureCache(constrainedCache_);
         LOG_TRACE(MOD_GRAPHICS, "WeatherEffects: Initializing storm cloud layer (loading 32 blend textures)...");

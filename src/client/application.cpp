@@ -1,4 +1,5 @@
 #include "client/application.h"
+#include <pthread.h>  // T504: thread names
 #include <json/json.h>  // Must be before eq.h → logging.h so JSONCPP_VERSION_STRING is defined
 #include "client/eq.h"
 #include "client/data_paths.h"
@@ -916,6 +917,7 @@ void Application::gameThreadLoop() {
     // T491: the game thread owns game state; the network tick and packet
     // dispatch re-scope themselves (Network / GameState) underneath.
     eqt::memory::setThreadCategory(eqt::memory::Category::GameState);
+    pthread_setname_np(pthread_self(), "eq-game");  // T504
     LOG_INFO(MOD_MAIN, "Game thread started");
     auto lastTick = std::chrono::steady_clock::now();
 
@@ -1041,10 +1043,22 @@ void Application::mainLoop() {
     // T491: per-frame driver/scene-manager work on the render thread is
     // Irrlicht scene memory; UI draw re-scopes itself.
     eqt::memory::setThreadCategory(eqt::memory::Category::IrrlichtScene);
+    pthread_setname_np(pthread_self(), "eq-render");  // T504
 
     while (m_running.load()) {
         try {
-            eqt::memory::pollSteadyState();  // T491: "steady_60s" once per zone-in
+            if (eqt::memory::pollSteadyState()) {  // T491: "steady_60s" once per zone-in
+                // T504b Leg 0: the source-character census at the steady
+                // point too -- the prep worker builds models after
+                // zone_load_complete, so that point under-counts "used".
+                if (m_renderer) {
+                    if (auto* er = m_renderer->getEntityRenderer()) {
+                        if (auto* rml = er->getRaceModelLoader()) {
+                            LOG_INFO(MOD_GRAPHICS, "{}", rml->srcCharLogLines("steady_60s"));
+                        }
+                    }
+                }
+            }
             // P36: SIGTERM handler (above) only sets a flag -- do the actual
             // quit request here, in ordinary (non-signal-handler) code on the
             // main thread, going through the same requestQuit() path as

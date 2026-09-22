@@ -293,21 +293,17 @@ bool EquipmentModelLoader::loadEquipmentModelOnDemand(int modelId) {
 
     const auto& ref = indexIt->second;
 
-    // Open the archive
-    PfsArchive archive;
-    if (!archive.open(ref.archivePath)) {
-        LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader: Failed to open archive for model IT{}: {}",
-                 modelId, ref.archivePath);
+    // T504: one open handle + one parsed WLD are reused across the items of
+    // the same archive (see parsedWldLocked); parseMutex_ is held for the
+    // whole build so the cache and equipmentModels_ see one writer at a time.
+    std::lock_guard<std::mutex> parseLock(parseMutex_);
+    WldLoader* wld = parsedWldLocked(ref.archivePath, ref.wldName);
+    if (!wld) {
+        LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader: Failed to open/parse {} / {} for model IT{}",
+                 ref.archivePath, ref.wldName, modelId);
         return false;
     }
-
-    // Parse WLD
-    WldLoader wldLoader;
-    if (!wldLoader.parseFromArchive(ref.archivePath, ref.wldName)) {
-        LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader: Failed to parse WLD for model IT{}: {}",
-                 modelId, ref.wldName);
-        return false;
-    }
+    WldLoader& wldLoader = *wld;
 
     // T472 (B588): the actor's own reference chain, with each mesh's centre
     // and any rest DAG transform baked in (equipment_actor_geometry.cpp).
@@ -336,7 +332,7 @@ bool EquipmentModelLoader::loadEquipmentModelOnDemand(int modelId) {
         std::string lowerName = texName;
         std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                       [](unsigned char c) { return std::tolower(c); });
-        auto tex = getEquipmentTexture(lowerName);
+        auto tex = getEquipmentTextureLocked(lowerName);  // parseMutex_ held above
         if (tex) {
             equipModel->textures[lowerName] = tex;
         }
@@ -352,6 +348,11 @@ bool EquipmentModelLoader::loadEquipmentModelOnDemand(int modelId) {
 }
 
 std::shared_ptr<TextureInfo> EquipmentModelLoader::getEquipmentTexture(const std::string& lowerName) {
+    std::lock_guard<std::mutex> parseLock(parseMutex_);
+    return getEquipmentTextureLocked(lowerName);
+}
+
+std::shared_ptr<TextureInfo> EquipmentModelLoader::getEquipmentTextureLocked(const std::string& lowerName) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::Equipment);  // T491
     // Check cache first
     auto cacheIt = textures_.find(lowerName);
@@ -365,13 +366,15 @@ std::shared_ptr<TextureInfo> EquipmentModelLoader::getEquipmentTexture(const std
         return nullptr;
     }
 
-    // Extract from archive on demand
+    // Extract from archive on demand (T504: through the cached open handle;
+    // parseMutex_ is held by the caller)
     const auto& ref = indexIt->second;
-    PfsArchive archive;
-    if (!archive.open(ref.archivePath)) {
+    PfsArchive* archivePtr = openArchiveLocked(ref.archivePath);
+    if (!archivePtr) {
         LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader: Failed to open archive for texture: {}", ref.archivePath);
         return nullptr;
     }
+    PfsArchive& archive = *archivePtr;
 
     std::vector<char> data;
     if (!archive.get(ref.entryName, data)) {
@@ -636,7 +639,52 @@ void EquipmentModelLoader::removeMeshRef(int modelId) {
     }
 }
 
+PfsArchive* EquipmentModelLoader::openArchiveLocked(const std::string& archivePath) {
+    ++parseCacheRequests_;
+    if (cachedArchive_ && cachedArchivePath_ == archivePath) return cachedArchive_.get();
+    ++parseCacheOpens_;
+    // Drop the previous archive AND its parse BEFORE opening the next one:
+    // measured with the other order, the equipment peak rose 10.3 -> 13.7
+    // MiB (old parse + new block store resident together). At most one
+    // archive's worth is ever held here.
+    cachedWld_.reset();          // a parse belongs to the archive it came from
+    cachedWldName_.clear();
+    cachedArchive_.reset();
+    cachedArchivePath_.clear();
+    auto archive = std::make_unique<PfsArchive>();
+    if (!archive->open(archivePath)) return nullptr;
+    cachedArchive_ = std::move(archive);
+    cachedArchivePath_ = archivePath;
+    return cachedArchive_.get();
+}
+
+WldLoader* EquipmentModelLoader::parsedWldLocked(const std::string& archivePath, const std::string& wldName) {
+    PfsArchive* archive = openArchiveLocked(archivePath);
+    if (!archive) return nullptr;
+    if (cachedWld_ && cachedWldName_ == wldName) return cachedWld_.get();
+    ++parseCacheParses_;
+    auto wld = std::make_unique<WldLoader>();
+    if (!wld->parseFromOpenArchive(*archive, wldName)) return nullptr;
+    cachedWld_ = std::move(wld);
+    cachedWldName_ = wldName;
+    return cachedWld_.get();
+}
+
+void EquipmentModelLoader::releaseParseCache() {
+    std::lock_guard<std::mutex> lock(parseMutex_);
+    if (parseCacheRequests_ > 0) {
+        LOG_INFO(MOD_GRAPHICS, "EquipmentModelLoader: parse cache released: {} requests, {} archive opens, {} WLD parses",
+                 parseCacheRequests_, parseCacheOpens_, parseCacheParses_);
+        parseCacheRequests_ = parseCacheOpens_ = parseCacheParses_ = 0;
+    }
+    cachedWld_.reset();
+    cachedWldName_.clear();
+    cachedArchive_.reset();
+    cachedArchivePath_.clear();
+}
+
 size_t EquipmentModelLoader::releaseRawTextureData() {
+    releaseParseCache();  // T504: the progressive load is done; drop the parse cache with the raw bytes
     size_t freed = 0;
 
     // Release from the master texture map
@@ -765,7 +813,7 @@ bool EquipmentModelLoader::indexEquipmentArchive(
     size_t modelCount = 0;
     for (const auto& wldName : wldFiles) {
         WldLoader wldLoader;
-        if (!wldLoader.parseFromArchive(archivePath, wldName)) {
+        if (!wldLoader.parseFromOpenArchive(archive, wldName)) {   // T504c Leg 2f: the archive is open
             LOG_WARN(MOD_GRAPHICS, "EquipmentModelLoader::indexEquipmentArchive: Failed to parse WLD: {}", wldName);
             continue;
         }
@@ -796,28 +844,28 @@ bool EquipmentModelLoader::indexEquipmentArchive(
     return true;
 }
 
+const std::vector<std::string>& EquipmentModelLoader::indexedArchiveNames() {
+    // Relative priority of the kept archives is what it was in the 17-entry
+    // list this replaces (first holder wins). Before Leg 2f the list also
+    // read obequip_lexit, frogequip, lgequip_amr2, lgequip_amr, loyequip,
+    // vequip, lgequip2, lgequip, ldonequip, gatesequip and gequip6 -- 622 of
+    // the 1,081 indexed models came from archives the original client never
+    // loads, and every zone load parsed all 17 WLDs whole.
+    static const std::vector<std::string> names = {
+        "gequip8.s3d", "gequip5.s3d", "gequip4.s3d",
+        "gequip3.s3d", "gequip2.s3d", "gequip.s3d"
+    };
+    return names;
+}
+
 bool EquipmentModelLoader::buildEquipmentIndex(
     const std::string& clientPath,
     std::map<int, EquipmentModelRef>& outModelIndex,
     std::map<std::string, EquipmentTextureRef>& outTextureIndex)
 {
-    // All equipment archives — lower priority first, higher priority last for duplicates
     // gequip.s3d: IT27-153, gequip2: IT11-656, gequip3: IT10000-10105
-    // gequip4: IT10015-11502, gequip5: IT10501-10523, gequip6: IT661-668, gequip8: IT10524-10733
-    // gatesequip: IT10715-10732 (Gates of Discord), ldonequip: IT10700-10713 (Lost Dungeons)
-    // lgequip/lgequip2: Luclin equipment, loyequip: Loyalty, vequip: Velious
-    // frogequip: Froglok, obequip_lexit: OoW, lgequip_amr/lgequip_amr2: Luclin armor
-    std::vector<std::string> archiveNames = {
-        "obequip_lexit.s3d", "frogequip.s3d",
-        "lgequip_amr2.s3d", "lgequip_amr.s3d",
-        "loyequip.s3d", "vequip.s3d",
-        "lgequip2.s3d", "lgequip.s3d",
-        "ldonequip.s3d", "gatesequip.s3d",
-        "gequip8.s3d", "gequip6.s3d", "gequip5.s3d", "gequip4.s3d",
-        "gequip3.s3d", "gequip2.s3d", "gequip.s3d"
-    };
-
-    for (const auto& archiveName : archiveNames) {
+    // gequip4: IT10015-11502, gequip5: IT10501-10523, gequip8: IT10524-10733
+    for (const auto& archiveName : indexedArchiveNames()) {
         std::string archivePath = clientPath + archiveName;
         indexEquipmentArchive(archivePath, outModelIndex, outTextureIndex);
     }
@@ -853,13 +901,34 @@ std::shared_ptr<EquipmentModelData> EquipmentModelLoader::extractEquipmentModelO
         return nullptr;
     }
 
-    // Parse WLD (creates own WldLoader — thread-safe)
+    // Parse WLD (creates own WldLoader — thread-safe; T504: from the open handle)
     WldLoader wldLoader;
-    if (!wldLoader.parseFromArchive(ref.archivePath, ref.wldName)) {
+    if (!wldLoader.parseFromOpenArchive(archive, ref.wldName)) {
         LOG_FATAL(MOD_GRAPHICS, "Failed to parse equipment WLD: {} in {} (model IT{})", ref.wldName, ref.archivePath, modelId);
         return nullptr;
     }
+    return extractFromParsed(archive, wldLoader, ref, modelId);
+}
 
+std::shared_ptr<EquipmentModelData> EquipmentModelLoader::extractEquipmentModelCached(
+    const EquipmentModelRef& ref, int modelId) {
+    // T504: the entity-load callers (prep worker, zone-load thread) hit the
+    // same few gequip archives item after item; one open handle + one parsed
+    // WLD are reused under parseMutex_ instead of an open + a full parse per
+    // item (~10 MiB and ~0.3 s each). Serialising the two callers here is
+    // cheaper than the parses it saves.
+    std::lock_guard<std::mutex> parseLock(parseMutex_);
+    WldLoader* wld = parsedWldLocked(ref.archivePath, ref.wldName);
+    if (!wld) {
+        LOG_FATAL(MOD_GRAPHICS, "Failed to open/parse equipment archive: {} / {} (model IT{})",
+                  ref.archivePath, ref.wldName, modelId);
+        return nullptr;
+    }
+    return extractFromParsed(*cachedArchive_, *wld, ref, modelId);
+}
+
+std::shared_ptr<EquipmentModelData> EquipmentModelLoader::extractFromParsed(
+    PfsArchive& archive, WldLoader& wldLoader, const EquipmentModelRef& ref, int modelId) {
     // T472 (B588): the actor's own reference chain, with each mesh's centre
     // and any rest DAG transform baked in (equipment_actor_geometry.cpp).
     std::shared_ptr<ZoneGeometry> combinedGeom = resolveEquipmentActorGeometry(wldLoader, ref.actorName);

@@ -1,4 +1,5 @@
 #include "client/eq.h"
+#include "client/core/memory_ledger.h"  // T504: per-load ledger points
 #include "client/movement/movement_component.h"  // T346: ApplyPositionState
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
@@ -171,17 +172,26 @@ void eqt::zone::ZoneComponent::ZoneProcessNewZone(const EQ::Net::Packet &p)
 				ctx_.self.CurrentZoneName(), ctx_.self.CurrentZoneId());
 		}
 
+		// T504 (load-step audit): the game thread's own zone loads were ONE
+		// unmeasured interval between login_world and zone_load_start
+		// (+16.5 MiB of client heap in qeynos2). One ledger point per load, so
+		// each has a row: navmesh, collision map, zone lines, zone sources.
+		eqt::memory::recordPoint("game_zone_begin", ctx_.self.CurrentZoneName());
+
 		// Load pathfinder for this zone
 		ctx_.Movement().LoadPathfinder(ctx_.self.CurrentZoneName());
+		eqt::memory::recordPoint("game_pathfinder", ctx_.self.CurrentZoneName());
 
 		// Load zone map for terrain height calculations
 		LoadZoneMap(ctx_.self.CurrentZoneName());
+		eqt::memory::recordPoint("game_zone_map", ctx_.self.CurrentZoneName());
 
 		// Load zone lines for zone transitions
 		LoadZoneLines(ctx_.self.CurrentZoneName());
 
 		// Open zone S3D archive, parse WLD, extract BSP tree
 		LoadZoneSources(ctx_.self.CurrentZoneName());
+		eqt::memory::recordPoint("game_zone_sources", ctx_.self.CurrentZoneName());
 
 		// Update zone music and sound emitters
 #ifdef WITH_AUDIO

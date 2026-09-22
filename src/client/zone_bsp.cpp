@@ -246,7 +246,15 @@ void BspTree::addRegion(std::shared_ptr<BspRegion> region) {
 }
 
 void BspTree::shrinkPvsArena() {
-    if (pvsStore_) pvsStore_->arena.shrink_to_fit();
+    // T504c Leg 2g: shrink_to_fit COPIES the arena; with the reserve from the
+    // 0x22 fragment sizes the slack is small, so copy only when it is not.
+    if (!pvsStore_) return;
+    auto& a = pvsStore_->arena;
+    if (a.capacity() > a.size() + a.size() / 8) a.shrink_to_fit();
+}
+
+void BspTree::reservePvsArena(size_t bytes) {
+    if (pvsStore_ && bytes > pvsStore_->arena.capacity()) pvsStore_->arena.reserve(bytes);
 }
 
 size_t BspTree::pvsCacheBytes() const {

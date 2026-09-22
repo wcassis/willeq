@@ -9,6 +9,7 @@
 // Siblings: variant_loading_animation.cpp (the animation-aware variant
 // loader) and variant_loading_preload.cpp (the variant cache and preloader).
 
+#include "client/core/memory_ledger.h"  // T504
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
 #include "client/graphics/eq/animation_mapping.h"
@@ -135,7 +136,7 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariants(uint16_t raceId, uint8_
         std::string headMeshName = headBuf;
 
         // Search for a character model that matches this race code
-        for (const auto& character : globalCharacters_) {
+        for (const auto& character : snapshotGlobalCharacters()) {  // T504b Leg 2
             if (!character || character->parts.empty()) {
                 continue;
             }
@@ -199,7 +200,7 @@ bool RaceModelLoader::loadModelFromGlobalChrWithVariants(uint16_t raceId, uint8_
                 auto modelData = std::make_shared<RaceModelData>();
                 modelData->combinedGeometry = combinedGeom;
                 // Use merged textures from all sources (global + numbered globals + zone)
-                modelData->textures = getMergedTextures();
+                modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
                 modelData->raceName = character->name;
                 modelData->raceId = raceId;
                 modelData->gender = gender;
@@ -243,6 +244,13 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshWithAppearance(uint16_t raceId, 
                                 textureVariant != 0 && !compositeEntityPath_.empty() && meshBuilder_;
 
     // Include texture variant in cache key
+    // T504 (load-step audit): shared MODEL data, not instance data. MEASURED
+    // qeynos2: 10.5 MiB in 47,535 allocations were filed under entity_instances
+    // from here -- not per variant and not per instance, but whole _chr archives
+    // parsed on demand as ANIMATION SOURCES (loadZone + storeOtherChrCacheLocked
+    // in loadModelFromGlobalChrWithVariantsForAnimation) and retained.
+    eqt::memory::MemoryScope modelScope(eqt::memory::Category::EntityModels);
+    if (eqt::memory::enabled()) eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex("var.model");  // T504 owner label
     uint64_t key = makeVariantCacheKey(raceId, gender, headVariant, bodyVariant, textureVariant);
 
     // Composite-eligible and non-eligible builds of the same variant key are cached
@@ -319,6 +327,7 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshWithAppearance(uint16_t raceId, 
     // RaceModelLoader::~RaceModelLoader()'s vertexMappingForAnimation_
     // destruction).
     std::lock_guard<std::mutex> animScratchLock(animScratchMutex_);
+    if (eqt::memory::enabled()) eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex("var.rawmesh");  // T504 owner label
     irr::scene::IMesh* rawMesh = nullptr;
     if (tryVariantComposite) {
         std::string modelName = modelData->raceName;
@@ -367,6 +376,7 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshWithAppearance(uint16_t raceId, 
     }
 
     // Create animated mesh using the RAW (unskinned) mesh
+    if (eqt::memory::enabled()) eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex("var.animmesh");  // T504 owner label
     EQAnimatedMesh* animMesh = new EQAnimatedMesh();
     animMesh->setBaseMesh(rawMesh);
     animMesh->setSkeleton(modelData->skeleton);

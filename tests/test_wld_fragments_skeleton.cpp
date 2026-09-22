@@ -522,3 +522,58 @@ TEST_F(WldSkeletonFragmentTest, Fragment12_TranslationYDifference) {
     // These SHOULD be different - it's a coordinate system conversion
     EXPECT_NE(eqsageY, willeqY);
 }
+
+// T504c Leg 2: the fragment-level model-code filter. With a filter, a 0x12
+// or 0x13 whose name decodes to another model is never parsed; every kept
+// 0x13 still finds its 0x12 (no dangling reference: the two share a code);
+// the skeletons (0x10) are parsed whole, so the archive's character NAMES
+// are unchanged. Without a filter the parse is byte-for-byte today's.
+TEST_F(WldSkeletonFragmentTest, TrackModelCodeDecodesLikeFragment13) {
+    EXPECT_EQ(WldLoader::trackModelCode("C01HUF_ROOT_TRACK"), "HUF");
+    EXPECT_EQ(WldLoader::trackModelCode("c01huf_root_trackdef"), "HUF");
+    EXPECT_EQ(WldLoader::trackModelCode("HUF_ROOT_TRACK"), "HUF");        // pose track
+    EXPECT_EQ(WldLoader::trackModelCode("L01HUMPE_TRACK"), "HUM");
+    EXPECT_EQ(WldLoader::trackModelCode("HUF"), "");                      // too short for a code
+    EXPECT_EQ(WldLoader::trackModelCode(""), "");
+}
+
+TEST_F(WldSkeletonFragmentTest, CodeFilterSkipsOtherModelsTracksOnly) {
+    const std::string chrPath = eqClientPath_ + "/global_chr.s3d";
+    if (!fileExists(chrPath)) GTEST_SKIP() << "global_chr.s3d not found";
+
+    WldLoader whole;
+    ASSERT_TRUE(whole.parseFromArchive(chrPath, "global_chr.wld"));
+    WldLoader filtered;
+    filtered.setCharacterCodeFilter({"HUF"});
+    ASSERT_TRUE(filtered.parseFromArchive(chrPath, "global_chr.wld"));
+
+    // Skeletons and meshes are untouched by this leg.
+    EXPECT_EQ(filtered.getSkeletonTracks().size(), whole.getSkeletonTracks().size());
+    EXPECT_EQ(filtered.getGeometries().size(), whole.getGeometries().size());
+
+    // Every kept track is HUF's (or has no code); every HUF track is kept.
+    size_t hufWhole = 0;
+    for (const auto& [idx, tr] : whole.getTrackRefs())
+        if (tr && WldLoader::trackModelCode(tr->name) == "HUF") ++hufWhole;
+    ASSERT_GT(hufWhole, 0u);
+    size_t hufFiltered = 0;
+    for (const auto& [idx, tr] : filtered.getTrackRefs()) {
+        ASSERT_TRUE(tr);
+        const std::string code = WldLoader::trackModelCode(tr->name);
+        EXPECT_TRUE(code.empty() || code == "HUF") << tr->name;
+        if (code == "HUF") ++hufFiltered;
+        // STOP 2: no kept reference dangles.
+        EXPECT_TRUE(tr->trackDefRef == 0 || filtered.getTrackDefs().count(tr->trackDefRef)) << tr->name;
+        // And it is the SAME definition (same index, same frames) as the whole parse.
+        auto wholeIt = whole.getTrackRefs().find(idx);
+        ASSERT_NE(wholeIt, whole.getTrackRefs().end());
+        EXPECT_EQ(tr->trackDefRef, wholeIt->second->trackDefRef);
+    }
+    EXPECT_EQ(hufFiltered, hufWhole);
+    EXPECT_LT(filtered.getTrackDefs().size(), whole.getTrackDefs().size());
+    for (const auto& [idx, td] : filtered.getTrackDefs()) {
+        auto wholeIt = whole.getTrackDefs().find(idx);
+        ASSERT_NE(wholeIt, whole.getTrackDefs().end());
+        EXPECT_EQ(td->frames.size(), wholeIt->second->frames.size());
+    }
+}

@@ -277,6 +277,7 @@ SET(COMMON_SOURCES
 SET(CLIENT_CORE_SOURCES
     src/client/core/everquest.cpp
     src/client/core/memory_ledger.cpp
+    src/client/core/memory_ledger_trace.cpp
     src/client/zone/zone_dispatch.cpp
     src/client/zone/zone_handshake.cpp
     src/client/zone/zone_entry.cpp
@@ -504,6 +505,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/sky_loader.cpp
         src/client/graphics/eq/dds_decoder.cpp
@@ -516,6 +518,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/geometry_combiner.cpp
         src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_source_residency.cpp
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
@@ -983,6 +986,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
@@ -1001,10 +1005,12 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/geometry_combiner.cpp
         src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_source_residency.cpp
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
         src/client/core/memory_ledger.cpp  # T500: model_loading_search.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_trace.cpp
         src/client/graphics/eq/mesh_building.cpp
         src/client/graphics/eq/animated_mesh_creation.cpp
         src/client/graphics/eq/variant_loading.cpp
@@ -1139,11 +1145,14 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_trace.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
         # B734: loadObjects() poses skinned objects through T476's resolver.
         src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
@@ -1213,11 +1222,14 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_trace.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
         # B734: loadObjects() poses skinned objects through T476's resolver.
         src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
@@ -1413,11 +1425,14 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_trace.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
         # B734: loadObjects() poses skinned objects through T476's resolver.
         src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
@@ -1486,11 +1501,14 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/wld_fragments_bsp.cpp
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
+        src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_trace.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
         src/client/graphics/eq/s3d_loader_objects.cpp
         # B734: loadObjects() poses skinned objects through T476's resolver.
         src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
@@ -1997,6 +2015,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_zone_benchmark
         tools/hwcaps/gles2_zone_benchmark.cpp
         src/client/core/memory_ledger.cpp
+        src/client/core/memory_ledger_trace.cpp
         tools/hwcaps/zone_bench_options.cpp
         tools/hwcaps/zone_bench_frame.cpp
         tools/hwcaps/zone_bench_modes.cpp
@@ -2028,6 +2047,7 @@ IF(EQT_GRAPHICS)
         # B734: loadObjects() poses skinned objects through T476's resolver.
         src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
@@ -2052,6 +2072,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_source_residency.cpp
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
@@ -2152,6 +2173,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_shader_diagnostic
         tools/hwcaps/gles2_shader_diagnostic.cpp
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
+        src/client/core/memory_ledger_trace.cpp
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
@@ -2174,6 +2196,7 @@ IF(EQT_GRAPHICS)
         # B734: loadObjects() poses skinned objects through T476's resolver.
         src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
@@ -2198,6 +2221,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_source_residency.cpp
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
@@ -2256,10 +2280,20 @@ IF(EQT_GRAPHICS)
     TARGET_COMPILE_DEFINITIONS(gles2_shader_diagnostic PRIVATE
         WILLEQ_EQE1_INDEX_REAL_PATH="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json")
 
+    # T504b: model data fingerprints through the production loader (headless,
+    # EDT_NULL) -- the regression net for entity source pruning.
+    ADD_EXECUTABLE(model_fingerprint tools/hwcaps/model_fingerprint.cpp)
+    TARGET_INCLUDE_DIRECTORIES(model_fingerprint PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(model_fingerprint willeq_core)
+    TARGET_COMPILE_DEFINITIONS(model_fingerprint PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
+        EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+
     # Composite entity audit tool — renders all race/gender/variant combos as PNGs
     ADD_EXECUTABLE(gles2_composite_audit
         tools/hwcaps/gles2_composite_audit.cpp
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
+        src/client/core/memory_ledger_trace.cpp
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
@@ -2282,6 +2316,7 @@ IF(EQT_GRAPHICS)
         # B734: loadObjects() poses skinned objects through T476's resolver.
         src/client/graphics/eq/equipment_actor_geometry.cpp
         src/client/graphics/eq/s3d_loader_characters.cpp
+        src/client/graphics/eq/era_model_sources.cpp   # T504: GlobalLoad.txt + <zone>_chr.txt sources
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
@@ -2306,6 +2341,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/software_occlusion_culler.cpp
         src/client/graphics/eq/race_model_loader.cpp
+        src/client/graphics/eq/model_source_residency.cpp
         src/client/graphics/eq/model_loading.cpp
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
