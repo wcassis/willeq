@@ -413,6 +413,14 @@ std::string toLogLine(const Snapshot& s);
 // get the same table without a second tool. Same line contract as
 // toLogLine: one owner per line, `key=value` tokens.
 std::string startupToLogLines(const std::string& point);
+
+// T504 stack-trace instrument (diagnostic, off by default). traceConfigure()
+// is the programmatic form of WILLEQ_LEDGER_TRACE=<category>[:<arm point>]:
+// from the first recordPoint(armPoint) on, every allocation charged to `cat`
+// captures a backtrace and is filed under a call-site; traceReport(point) is
+// the [memledger-trace] block recordPoint() prints (empty before arming).
+void traceConfigure(Category cat, const std::string& armPoint);
+std::string traceReport(const std::string& point);
 // Multi-line human form for /pmem (header, one row per category, totals).
 std::string toReportText(const Snapshot& s);
 // JSON object (no trailing newline). Keys: point, zone, seq, ledgerEnabled,

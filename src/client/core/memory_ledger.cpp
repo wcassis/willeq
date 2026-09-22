@@ -1208,6 +1208,17 @@ ArenaExperiments arenaExperiments() {
     return e;
 }
 
+void traceConfigure(Category cat, const std::string& armPoint) {
+    g_traceCat = static_cast<uint8_t>(cat);
+    std::strncpy(g_traceArmPoint, armPoint.c_str(), sizeof(g_traceArmPoint) - 1);
+    g_traceArmPoint[sizeof(g_traceArmPoint) - 1] = 0;
+    g_traceArmed.store(false, std::memory_order_release);
+}
+
+std::string traceReport(const std::string& point) {
+    return traceToLogLines(point);
+}
+
 void noteReady(double seconds) {
     std::lock_guard<std::mutex> lock(g_steadyMutex);
     g_steadyDeadline = std::chrono::steady_clock::now()
