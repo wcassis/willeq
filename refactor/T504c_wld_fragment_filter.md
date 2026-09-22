@@ -1,6 +1,25 @@
 # T504c — the entity-load transient: parse only the WLD fragments a wanted character needs
 
-**Status:** plan for Will's review. Nothing implemented. Follows T504b Leg 3.
+**Status:** Legs 1, 1b, 2 DONE (2026-09-22). Leg 3 (0x36/0x10/0x14) and Leg 4
+(reuse across reloads) open.
+
+**Leg 2 measured (x86, baseline, `run98_leg2_*` vs `run95_resolver_*`):**
+
+| zone | entity_models peak before → after | steady RssAnon before → after |
+|---|---|---|
+| gfaydark | 63.7 → 43.6 MiB | 265.3 → 241.6 |
+| dreadlands | 73.9 → 49.6 | 278.7 → 261.5 |
+| iceclad | 69.8 → 41.6 | 302.7 → 279.1 |
+| qeynos2 | 66.6 → 46.5 | 235.4 → 214.8 |
+
+Fingerprint goldens identical 4/4; render-thread parses 0; `dangling13=0` in
+every `[wldparse]` line; 0 errors. The Leg 3b STOP 1 (race 120 resolving from
+another archive) was a filtered cache entry served as complete on a later
+hit; every hit now checks the archive's name index and reloads (filtered)
+for a wanted code the store lacks (`storeLacksIndexedCodeLocked`,
+`reloadArchiveForCodesLocked`). The remaining peak is the unfiltered
+whole parse of the zone's own `<zone>_chr.s3d` (loadZoneModels) plus the
+0x36 meshes of every filtered parse — Leg 3.
 
 ## Why
 

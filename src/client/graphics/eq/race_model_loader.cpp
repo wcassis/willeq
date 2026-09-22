@@ -709,15 +709,31 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         if (cacheIt == otherChrCaches_.end() && lowerFilename == "global_chr.s3d"
             && adoptGlobalChrIntoOtherCacheLocked())
             cacheIt = otherChrCaches_.find(lowerFilename);   // T504b Leg 1 (5th site)
+        const std::vector<std::string> wantedHere = wantedCodesFor(raceId, gender);   // T504c Leg 2
         if (cacheIt != otherChrCaches_.end()) {
             LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: archive cache HIT for {} (race={} gender={})",
                      lowerFilename, raceId, gender);
+            // T504c Leg 2: the entry may be INCOMPLETE (a filtered parse, or
+            // pruned); serve a wanted code the archive is indexed to hold
+            // only after reloading it, so the winner never depends on what
+            // an earlier request happened to keep (the Leg 3b STOP 1).
+            std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+            const std::string key = "other:" + lowerFilename;
+            for (const auto& code : wantedHere) {
+                if (storeLacksIndexedCodeLocked(key, cacheIt->second.characters, code)) {
+                    reloadArchiveForCodesLocked(key, s3dPath, wantedHere, raceId, gender, "preloadModelData");
+                    cacheIt = otherChrCaches_.find(lowerFilename);
+                    break;
+                }
+            }
         } else {
             // Not cached — load from disk and store
             LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: archive cache MISS for {} — loading from disk (race={} gender={})",
                      lowerFilename, raceId, gender);
             S3DLoader loader;
-            if (!loader.loadZone(s3dPath)) {   // whole parse (see T504c STOP 1: a filtered one changes the winner)
+            S3DLoadOptions filtered;   // T504c Leg 2: tracks/characters of other models are not parsed
+            filtered.characterCodeFilter = wantedHere;
+            if (!loader.loadZone(s3dPath, filtered)) {
                 // T91: route the "poisoned" empty entry through the same
                 // LRU-tracked path as a real load, so a permanently-failing
                 // filename occupies (and can eventually give up) a counted
@@ -742,6 +758,10 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             }
             storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
             cacheIt = otherChrCaches_.find(lowerFilename);
+            if (!wantedHere.empty()) {
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+                archiveIndex_["other:" + lowerFilename].pruned = true;   // incomplete: reload-on-miss applies
+            }
 
             LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: cached {} characters from {} (total cached: {})",
                       cacheIt != otherChrCaches_.end() ? cacheIt->second.characters.size() : 0,

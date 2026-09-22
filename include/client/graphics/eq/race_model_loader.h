@@ -1035,6 +1035,17 @@ public:
     // pruned store no longer has, re-parse that archive for it.
     void ensureSourceForRace(uint16_t raceId, uint8_t gender, const char* site = "?");
 private:
+    // T504c Leg 2: re-parse one indexed archive with the wanted codes as the
+    // fragment filter and append the wanted characters the store lacks.
+    // Requires otherChrCacheMutex_ then sourceStoresMutex_ held. Returns the
+    // number of characters added. `key` is an archiveIndex_ key.
+    size_t reloadArchiveForCodesLocked(const std::string& key, const std::string& path,
+                                       const std::vector<std::string>& wanted,
+                                       uint16_t raceId, uint8_t gender, const char* site);
+    // True when `list` holds no character named for `code` but the indexed
+    // archive `key` does (a filtered or pruned store that must reload).
+    bool storeLacksIndexedCodeLocked(const std::string& key, const CharacterList& list,
+                                     const std::string& code) const;
     void storeOtherChrCacheLocked(const std::string& lowerFilename,
                                    std::vector<std::shared_ptr<CharacterModel>> characters,
                                    std::map<std::string, std::shared_ptr<TextureInfo>> textures);

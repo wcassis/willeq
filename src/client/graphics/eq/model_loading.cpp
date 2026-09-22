@@ -129,14 +129,31 @@ bool RaceModelLoader::loadNumberedGlobalModels() {
 // loadNumberedGlobalModels() used to do eagerly for all six.
 bool RaceModelLoader::ensureNumberedGlobalCharacters(int num, const std::vector<std::string>* codeFilter) {
     if (clientPath_.empty()) return false;
-    if (numberedGlobalCharacterArchives_.count(num))
+    const std::string filename = clientPath_ + "global" + std::to_string(num) + "_chr.s3d";
+    const std::string key = "global" + std::to_string(num);
+    if (numberedGlobalCharacterArchives_.count(num)) {
+        // T504c Leg 2: a filtered (or pruned) store reloads for a wanted
+        // code the archive is indexed to hold.
+        if (codeFilter) {
+            std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
+            std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+            auto it = numberedGlobalCharacters_.find(num);
+            const CharacterList empty;
+            const CharacterList& have = it == numberedGlobalCharacters_.end() ? empty : it->second;
+            for (const auto& code : *codeFilter)
+                if (storeLacksIndexedCodeLocked(key, have, code)) {
+                    reloadArchiveForCodesLocked(key, filename, *codeFilter, 0, 0, "ensureNumberedGlobalCharacters");
+                    break;
+                }
+        }
         return numberedGlobalCharacters_.count(num) > 0;
+    }
     numberedGlobalCharacterArchives_.insert(num);
 
-    const std::string filename = clientPath_ + "global" + std::to_string(num) + "_chr.s3d";
     S3DLoader loader;
-    (void)codeFilter;   // T504c STOP 1: whole parse; a filtered one changed which archive a race resolves from
-    if (!loader.loadZone(filename)) return false;
+    S3DLoadOptions opts;   // T504c Leg 2: filtered when the caller says what it wants
+    if (codeFilter) opts.characterCodeFilter = *codeFilter;
+    if (!loader.loadZone(filename, opts)) return false;
     auto zone = loader.getZone();
     if (!zone) return false;
     {
@@ -148,7 +165,8 @@ bool RaceModelLoader::ensureNumberedGlobalCharacters(int num, const std::vector<
     {
         std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
         numberedGlobalCharacters_[num] = zone->characters;
-        recordArchiveNamesLocked("global" + std::to_string(num), filename, zone->characters);   // T504b Leg 2
+        recordArchiveNamesLocked(key, filename, zone->characters);   // T504b Leg 2
+        if (codeFilter) archiveIndex_[key].pruned = true;            // incomplete: reload-on-miss applies
     }
     // The textures come with the same parse; if the texture-only pass never
     // ran (or found nothing) this is the same map it would have stored.

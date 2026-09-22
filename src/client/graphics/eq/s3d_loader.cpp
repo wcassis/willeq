@@ -83,6 +83,7 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
 
     // Parse WLD file
     auto wldLoader = std::make_shared<WldLoader>();
+    wldLoader->setCharacterCodeFilter(options_.characterCodeFilter);   // T504c Leg 2
     if (!wldLoader->parseFromOpenArchive(archive, mainWld)) {  // T504: archive is already open
         error_ = "Failed to parse WLD file: " + mainWld;
         return false;

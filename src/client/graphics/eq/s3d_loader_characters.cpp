@@ -174,6 +174,7 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
         // 3,901 track definitions and 49,192 keyframes decoded twice, two
         // parse results resident at once).
         WldLoader localLoader;
+        localLoader.setCharacterCodeFilter(options_.characterCodeFilter);   // T504c Leg 2
         WldLoader* loaderPtr = &localLoader;
         if (chrArchivePath == archivePath && zone_ && zone_->wldLoader && wld == mainWldName_) {
             loaderPtr = zone_->wldLoader.get();

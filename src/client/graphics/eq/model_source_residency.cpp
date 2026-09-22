@@ -291,12 +291,14 @@ void RaceModelLoader::ensureSourceForRace(uint16_t raceId, uint8_t gender, const
     const std::vector<std::string> wanted = wantedCodesFor(raceId, gender);
     if (wanted.empty()) return;
 
-    // Which pruned archives hold a wanted name the store no longer has?
+    // Which incomplete archives (pruned, or parsed with a filter) hold a
+    // wanted name the store no longer has?
     std::vector<std::pair<std::string, std::string>> toReload;   // key, path
     {
         std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
         std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
-        auto storeHas = [&](const std::string& key, const std::string& code) {
+        for (auto& [key, e] : archiveIndex_) {
+            if (!e.pruned) continue;
             const CharacterList* list = nullptr;
             if (key == "zone") list = &zoneCharacters_;
             else if (key == "global") list = &globalCharacters_;
@@ -307,62 +309,84 @@ void RaceModelLoader::ensureSourceForRace(uint16_t raceId, uint8_t gender, const
                 auto it = otherChrCaches_.find(key.substr(6));
                 if (it != otherChrCaches_.end()) list = &it->second.characters;
             }
-            if (!list) return false;
-            for (const auto& cm : *list) if (cm && upperOf(cm->name).find(code) != std::string::npos) return true;
-            return false;
-        };
-        for (auto& [key, e] : archiveIndex_) {
-            if (!e.pruned) continue;
-            bool need = false;
-            for (const auto& code : wanted) {
-                bool archiveHas = false;
-                for (const auto& n : e.names) if (n.find(code) != std::string::npos) { archiveHas = true; break; }
-                if (archiveHas && !storeHas(key, code)) { need = true; break; }
-            }
-            if (need) toReload.emplace_back(key, e.path);
+            if (!list) continue;
+            for (const auto& code : wanted)
+                if (storeLacksIndexedCodeLocked(key, *list, code)) { toReload.emplace_back(key, e.path); break; }
         }
     }
     for (const auto& [key, path] : toReload) {
-        // T504c (STOP 1, 2026-09-22): a FILTERED parse changes which archive a
-        // race resolves from (race 120 WOE: global6_chr vs global_chr), so the
-        // reload parses whole and keeps the wanted characters afterwards.
-        S3DLoader loader;
-        if (!loader.loadZone(path)) continue;
-        auto zone = loader.getZone();
-        if (!zone) continue;
-        CharacterList add;
-        for (const auto& cm : zone->characters) {
-            if (!cm) continue;
-            const std::string n = upperOf(cm->name);
-            for (const auto& code : wanted) if (n.find(code) != std::string::npos) { add.push_back(cm); break; }
-        }
         std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
         std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
-        auto appendMissing = [&](CharacterList& list) {
-            for (const auto& cm : add) {
-                bool present = false;
-                for (const auto& have : list) if (have && have->name == cm->name) { present = true; break; }
-                if (!present) list.push_back(cm);
-            }
-        };
-        if (key == "zone") appendMissing(zoneCharacters_);
-        else if (key == "global") {
-            appendMissing(globalCharacters_);
-            auto it = otherChrCaches_.find("global_chr.s3d");
-            if (it != otherChrCaches_.end()) it->second.characters = globalCharacters_;
-        } else if (key.rfind("global", 0) == 0) {
-            appendMissing(numberedGlobalCharacters_[std::atoi(key.c_str() + 6)]);
-        } else if (key.rfind("other:", 0) == 0) {
-            auto it = otherChrCaches_.find(key.substr(6));
-            if (it != otherChrCaches_.end()) {
-                if (key == "other:global_chr.s3d") { appendMissing(globalCharacters_); it->second.characters = globalCharacters_; }
-                else appendMissing(it->second.characters);
-            }
-        }
-        archiveIndex_[key].reloads++;
-        LOG_INFO(MOD_GRAPHICS, "[srcchar] reload key={} race={} gender={} added={} thread={} site={}",
-                 key, raceId, gender, add.size(), threadNameNow(), site);
+        reloadArchiveForCodesLocked(key, path, wanted, raceId, gender, site);
     }
+}
+
+bool RaceModelLoader::storeLacksIndexedCodeLocked(const std::string& key, const CharacterList& list,
+                                                  const std::string& code) const {
+    auto it = archiveIndex_.find(key);
+    if (it == archiveIndex_.end()) return false;
+    bool archiveHas = false;
+    for (const auto& n : it->second.names) if (n.find(code) != std::string::npos) { archiveHas = true; break; }
+    if (!archiveHas) return false;
+    for (const auto& cm : list) if (cm && upperOf(cm->name).find(code) != std::string::npos) return false;
+    return true;
+}
+
+size_t RaceModelLoader::reloadArchiveForCodesLocked(const std::string& key, const std::string& path,
+                                                    const std::vector<std::string>& wanted,
+                                                    uint16_t raceId, uint8_t gender, const char* site) {
+    // T504c Leg 2: the parse is FILTERED to the wanted codes (0x12/0x13
+    // bodies of other models are never read; only wanted CharacterModels
+    // are built). The T504c STOP 1 of Leg 3b (race 120 WOE resolving from a
+    // different archive) came from a filtered entry being served as if it
+    // were complete on a later cache hit; every hit now checks the name
+    // index first (storeLacksIndexedCodeLocked) and reloads through here.
+    S3DLoader loader;
+    S3DLoadOptions opts;
+    opts.characterCodeFilter = wanted;
+    opts.loadObjects = false;
+    if (!loader.loadZone(path, opts)) return 0;
+    auto zone = loader.getZone();
+    if (!zone) return 0;
+    CharacterList add;
+    for (const auto& cm : zone->characters) {
+        if (!cm) continue;
+        const std::string n = upperOf(cm->name);
+        for (const auto& code : wanted) if (n.find(code) != std::string::npos) { add.push_back(cm); break; }
+    }
+    auto appendMissing = [&](CharacterList& list) {
+        for (const auto& cm : add) {
+            bool present = false;
+            for (const auto& have : list) if (have && have->name == cm->name) { present = true; break; }
+            if (!present) list.push_back(cm);
+        }
+    };
+    if (key == "zone") appendMissing(zoneCharacters_);
+    else if (key == "global") {
+        appendMissing(globalCharacters_);
+        auto it = otherChrCaches_.find("global_chr.s3d");
+        if (it != otherChrCaches_.end()) it->second.characters = globalCharacters_;
+    } else if (key.rfind("global", 0) == 0) {
+        appendMissing(numberedGlobalCharacters_[std::atoi(key.c_str() + 6)]);
+    } else if (key.rfind("other:", 0) == 0) {
+        auto it = otherChrCaches_.find(key.substr(6));
+        if (it != otherChrCaches_.end()) {
+            if (key == "other:global_chr.s3d" && !globalCharacters_.empty()) {
+                appendMissing(globalCharacters_);
+                it->second.characters = globalCharacters_;
+            } else {
+                appendMissing(it->second.characters);
+            }
+            // The textures of a filtered parse are the archive's (textures
+            // are not filtered); a poisoned/empty entry gets them now.
+            if (it->second.textures.empty() && !zone->characterTextures.empty())
+                it->second.textures = zone->characterTextures;
+        }
+    }
+    archiveIndex_[key].reloads++;
+    LOG_INFO(MOD_GRAPHICS, "[srcchar] reload key={} race={} gender={} added={} filter={} thread={} site={}",
+             key, raceId, gender, add.size(), wanted.size(), threadNameNow(), site);
+    return add.size();
 }
 
 bool RaceModelLoader::adoptGlobalChrIntoOtherCacheLocked() {

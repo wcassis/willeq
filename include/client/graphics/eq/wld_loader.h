@@ -575,6 +575,19 @@ public:
     bool parseFromArchive(const std::string& archivePath, const std::string& wldName);
     bool parseFromOpenArchive(PfsArchive& archive, const std::string& wldName);
 
+    // T504c Leg 2: with a non-empty filter (upper-case 3-letter model codes,
+    // e.g. "HUF"), a 0x12 track definition or 0x13 track reference whose
+    // name decodes to a model code outside the set is skipped -- its body
+    // is never read, so no keyframes are allocated for it. Names that do not
+    // decode to a code are kept. Fragment indices are unchanged (a skipped
+    // fragment is simply absent from trackDefs_/trackRefs_). Set BEFORE
+    // parsing; unset = today's whole parse.
+    void setCharacterCodeFilter(std::vector<std::string> upperCodes) { codeFilter_ = std::move(upperCodes); }
+    const std::vector<std::string>& characterCodeFilter() const { return codeFilter_; }
+    // The model code a track name encodes ("C01HUF_ROOT_TRACK" / "HUF_ROOT_TRACKDEF"
+    // -> "HUF"), upper-case; empty when the name has no code. Public for the tests.
+    static std::string trackModelCode(const std::string& name);
+
     const std::vector<std::shared_ptr<ZoneGeometry>>& getGeometries() const { return geometries_; }
     std::shared_ptr<ZoneGeometry> getCombinedGeometry() const;
     const std::vector<std::string>& getTextureNames() const { return textureNames_; }
@@ -741,6 +754,10 @@ private:
     // BSP tree for zone regions (zone lines, water, lava, etc.)
     std::shared_ptr<BspTree> bspTree_;
     uint32_t totalRegionCount_ = 0;  // From WLD header, used for PVS array sizing
+
+    // T504c Leg 2 (see setCharacterCodeFilter)
+    std::vector<std::string> codeFilter_;
+    bool trackNameWanted(int32_t nameRef, const char* hash) const;
 };
 
 // Helper function to decode WLD string hash

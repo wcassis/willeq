@@ -2,6 +2,7 @@
 #include "client/graphics/eq/pfs.h"
 #include "common/logging.h"
 #include <cstring>
+#include <cctype>
 #include <cmath>
 #include <algorithm>
 #include <set>
@@ -309,6 +310,37 @@ bool WldLoader::parseFromOpenArchive(PfsArchive& archive, const std::string& wld
     return parseWldBuffer(buffer);
 }
 
+// T504c Leg 2: the same rule parseFragment13 applies to a parsed name
+// ({ANIM}{MODEL}{BONE}_TRACK, or {MODEL}{BONE}_TRACK for a pose track),
+// applied to the hash string BEFORE the body is read so an unwanted track
+// costs nothing. 0x12 names end in _TRACKDEF, 0x13 in _TRACK; find("_TRACK")
+// strips both.
+std::string WldLoader::trackModelCode(const std::string& name) {
+    std::string cleaned = name;
+    const size_t trackPos = cleaned.find("_TRACK");
+    if (trackPos != std::string::npos) cleaned = cleaned.substr(0, trackPos);
+    std::string code;
+    if (cleaned.length() >= 6 && std::isalpha(static_cast<unsigned char>(cleaned[0]))
+        && std::isdigit(static_cast<unsigned char>(cleaned[1]))
+        && std::isdigit(static_cast<unsigned char>(cleaned[2]))) {
+        code = cleaned.substr(3, 3);
+    } else if (cleaned.length() >= 4) {
+        code = cleaned.substr(0, 3);
+    }
+    std::transform(code.begin(), code.end(), code.begin(), [](unsigned char ch) { return std::toupper(ch); });
+    return code;
+}
+
+bool WldLoader::trackNameWanted(int32_t nameRef, const char* hash) const {
+    if (codeFilter_.empty()) return true;
+    if (nameRef >= 0) return true;                 // no name: keep (STOP 2 rule: never guess)
+    const std::string code = trackModelCode(std::string(&hash[-nameRef]));
+    if (code.empty()) return true;                 // no code: keep
+    for (const auto& want : codeFilter_)
+        if (want == code) return true;
+    return false;
+}
+
 bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
     if (buffer.size() < sizeof(WldHeader)) {
         LOG_WARN(MOD_GRAPHICS, "WldLoader::parseWldBuffer: buffer too small ({} < {})", buffer.size(), sizeof(WldHeader));
@@ -361,6 +393,7 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
 
     // Count fragment types for summary
     std::map<uint32_t, uint32_t> fragTypeCounts;
+    std::map<uint32_t, uint32_t> fragTypeSkipped;   // T504c Leg 2: bodies the code filter skipped
 
     // Parse all fragments
     // According to libeq/LanternExtractor, ALL fragment data starts with nameRef (4 bytes),
@@ -418,9 +451,11 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
                 parseFragment11(fragBody, fragBodySize, i + 1);
                 break;
             case 0x12:
+                if (!trackNameWanted(nameRef, hashBuffer.data())) { fragTypeSkipped[0x12]++; break; }
                 parseFragment12(fragBody, fragBodySize, i + 1, nameRef, hashBuffer.data());
                 break;
             case 0x13:
+                if (!trackNameWanted(nameRef, hashBuffer.data())) { fragTypeSkipped[0x13]++; break; }
                 parseFragment13(fragBody, fragBodySize, i + 1, nameRef, hashBuffer.data());
                 break;
             case 0x1B:
@@ -470,9 +505,17 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
         size_t frames = 0;
         for (const auto& [idx, td] : trackDefs_) if (td) frames += td->frames.size();
         auto c = [&](uint32_t t) { auto it = fragTypeCounts.find(t); return it == fragTypeCounts.end() ? 0u : it->second; };
-        LOG_INFO(MOD_GRAPHICS, "[wldparse] bytes={} fragments={} skel10={} track12={} trackref13={} actor14={} mesh36={} keyframes={} trackdef_bytes={}",
+        auto sk = [&](uint32_t t) { auto it = fragTypeSkipped.find(t); return it == fragTypeSkipped.end() ? 0u : it->second; };
+        // T504c Leg 2 (STOP 2 check): a KEPT track reference whose track
+        // definition was skipped would be a filter error -- the 0x13 and its
+        // 0x12 carry the same model code, so this must stay 0 with or without
+        // a filter. Counted here so a run can be held to it mechanically.
+        size_t dangling13 = 0;
+        for (const auto& [idx, tr] : trackRefs_)
+            if (tr && tr->trackDefRef != 0 && trackDefs_.find(tr->trackDefRef) == trackDefs_.end()) ++dangling13;
+        LOG_INFO(MOD_GRAPHICS, "[wldparse] bytes={} fragments={} skel10={} track12={} trackref13={} actor14={} mesh36={} keyframes={} trackdef_bytes={} filter={} skipped12={} skipped13={} dangling13={}",
                  buffer.size(), fragmentOffsets.size(), c(0x10), c(0x12), c(0x13), c(0x14), c(0x36), frames,
-                 frames * sizeof(BoneTransform));
+                 frames * sizeof(BoneTransform), codeFilter_.size(), sk(0x12), sk(0x13), dangling13);
     }
     LOG_DEBUG(MOD_GRAPHICS, "WldLoader::parseWldBuffer: results — geometries={} geometryByFragIndex={} textures_={} brushes_={} textureRefs_={} materials_={} brushSets_={} resolvedMaterialListCache_={} skeletonTracks={} modelRefs={} placeables={} objectDefs={} lights={}",
               geometries_.size(), geometryByFragIndex_.size(), textures_.size(), brushes_.size(), textureRefs_.size(),
