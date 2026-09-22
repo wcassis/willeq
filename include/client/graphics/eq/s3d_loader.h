@@ -335,6 +335,8 @@ public:
 
     // Load placeable objects from _obj.s3d (public for deferred loading)
     bool loadObjects(const std::string& archivePath);
+    // T504: same, from the already-open zone archive (objects.wld lives there).
+    bool loadObjectsFromArchive(PfsArchive& mainArchive, const std::string& archivePath);
 
     // T369 (B105): the character archive that pairs with a zone archive.
     // The `_chr` marker belongs to the FILENAME's stem, never to the path.

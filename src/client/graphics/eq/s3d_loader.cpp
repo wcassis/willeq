@@ -67,7 +67,7 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
 
     // Parse WLD file
     auto wldLoader = std::make_shared<WldLoader>();
-    if (!wldLoader->parseFromArchive(archivePath, mainWld)) {
+    if (!wldLoader->parseFromOpenArchive(archive, mainWld)) {  // T504: archive is already open
         error_ = "Failed to parse WLD file: " + mainWld;
         return false;
     }
@@ -94,18 +94,19 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
     // Load textures (optional - rendering can work with vertex colors)
     loadTextures(archive);
 
-    // Load placeable objects (optional)
+    // T504: the zone archive is open once, here; objects.wld and lights.wld
+    // are read from it (loadObjects/loadLights used to re-open the same file
+    // per sub-step -- five opens + 7 MiB block reads each, per zone load).
     if (options.loadObjects) {
-        loadObjects(archivePath);
+        loadObjectsFromArchive(archive, archivePath);
     }
 
-    // Load character models (optional)
+    // Load character models (optional; _chr.s3d is a different file)
     if (options.loadCharacters) {
         loadCharacters(archivePath);
     }
 
-    // Load light sources (optional)
-    loadLights(archivePath);
+    loadLightsFromArchive(archive);
 
     return true;
 }
@@ -144,9 +145,9 @@ bool S3DLoader::loadZoneFromPreParsed(std::shared_ptr<PfsArchive> archive,
     // Load textures from the already-open archive
     loadTextures(*archive);
 
-    // Load placeable objects (_obj.s3d is a separate file, opened by loadObjects internally)
+    // Load placeable objects (objects.wld from the open zone archive, then _obj.s3d)
     if (options.loadObjects) {
-        loadObjects(archivePath);
+        loadObjectsFromArchive(*archive, archivePath);
     }
 
     // Load light sources (lights.wld is in the zone archive, already open)

@@ -168,7 +168,7 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
     for (const auto& wld : wldFiles) {
         LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: parsing WLD '{}'", wld);
         WldLoader chrLoader;
-        if (!chrLoader.parseFromArchive(chrArchivePath, wld)) {
+        if (!chrLoader.parseFromOpenArchive(chrArchive, wld)) {  // T504: no re-open per WLD
             LOG_WARN(MOD_GRAPHICS, "S3DLoader::loadCharacters: parseFromArchive failed for '{}'", wld);
             continue;
         }
