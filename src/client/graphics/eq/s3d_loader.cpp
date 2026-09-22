@@ -79,6 +79,7 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
     if (mainWld.empty()) {
         mainWld = wldFiles[0];
     }
+    mainWldName_ = mainWld;
 
     // Parse WLD file
     auto wldLoader = std::make_shared<WldLoader>();
@@ -141,6 +142,7 @@ bool S3DLoader::loadZoneFromPreParsed(std::shared_ptr<PfsArchive> archive,
     zone_ = nullptr;
     error_.clear();
     options_ = options;
+    mainWldName_.clear();
     zoneName_ = zoneName;
 
     if (!archive || !wldLoader) {

@@ -366,6 +366,7 @@ private:
     bool loadCharacterTextures(PfsArchive& archive);
     bool loadCharacters(const std::string& archivePath);
     S3DLoadOptions options_;   // the options of the load in progress (T504b Leg 3: characterCodeFilter)
+    std::string mainWldName_;  // the WLD loadZone() parsed into zone_->wldLoader (T504c: loadCharacters reuses it)
     bool loadLights(const std::string& archivePath);
     bool loadLightsFromArchive(PfsArchive& archive);
     void flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,

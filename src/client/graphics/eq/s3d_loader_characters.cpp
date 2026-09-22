@@ -167,11 +167,22 @@ bool S3DLoader::loadCharacters(const std::string& archivePath) {
     // Parse each WLD file for character data
     for (const auto& wld : wldFiles) {
         LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: parsing WLD '{}'", wld);
-        WldLoader chrLoader;
-        if (!chrLoader.parseFromOpenArchive(chrArchive, wld)) {  // T504: no re-open per WLD
+        // T504c: when the loaded archive IS the character archive (every
+        // <zone>_chr.s3d / global*_chr.s3d load), loadZone() has already
+        // parsed this very WLD into zone_->wldLoader. Measured before: each
+        // character archive's WLD was parsed TWICE per load (gfaydark_chr:
+        // 3,901 track definitions and 49,192 keyframes decoded twice, two
+        // parse results resident at once).
+        WldLoader localLoader;
+        WldLoader* loaderPtr = &localLoader;
+        if (chrArchivePath == archivePath && zone_ && zone_->wldLoader && wld == mainWldName_) {
+            loaderPtr = zone_->wldLoader.get();
+            LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: reusing loadZone's parse of '{}'", wld);
+        } else if (!localLoader.parseFromOpenArchive(chrArchive, wld)) {  // T504: no re-open per WLD
             LOG_WARN(MOD_GRAPHICS, "S3DLoader::loadCharacters: parseFromArchive failed for '{}'", wld);
             continue;
         }
+        WldLoader& chrLoader = *loaderPtr;
 
         const auto& skeletonTracks = chrLoader.getSkeletonTracks();
         const auto& geometries = chrLoader.getGeometries();
