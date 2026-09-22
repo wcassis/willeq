@@ -338,92 +338,8 @@ std::shared_ptr<RaceModelData> RaceModelLoader::ensureModelDataLoaded(uint16_t r
                 }
                 if (ok) modelIt = loadedModels_.find(key);
             }
-            if (false) {   // the pre-resolver old-models chain (db s3d_file, archive index, zone, global, global2-7)
-            std::string jsonS3dFile = getRaceS3DFile(raceId);
-            if (!jsonS3dFile.empty() && !clientPath_.empty()) {
-                // Try to load from the JSON-specified zone chr file
-                // Extract zone name from s3d filename (e.g., "qeynos_chr.s3d" -> "qeynos")
-                std::string zoneName = jsonS3dFile;
-                auto chrPos = zoneName.find("_chr.s3d");
-                if (chrPos != std::string::npos) {
-                    zoneName = zoneName.substr(0, chrPos);
-                    // Check if this is a global file (different loading path)
-                    if (zoneName.find("global") == 0) {
-                        // It's a global file - try global_chr.s3d or numbered global
-                        if (zoneName == "global") {
-                            if (loadModelFromGlobalChr(raceId, gender)) {
-                                modelIt = loadedModels_.find(key);
-                            }
-                        } else {
-                            // Numbered global (e.g., global4_chr.s3d for Iksar) --
-                            // only when the stem is all digits. T267: names like
-                            // "globalpcfroglok" (race 330) used to hit stoi() here,
-                            // get globalNum 0 and load NOTHING; they are plain
-                            // archives and go through the cached-chr path below.
-                            std::string stem = zoneName.substr(6);
-                            bool numeric = !stem.empty() &&
-                                std::all_of(stem.begin(), stem.end(),
-                                            [](unsigned char c) { return std::isdigit(c); });
-                            int globalNum = numeric ? std::stoi(stem) : 0;
-                            if (numeric) {
-                                if (globalNum >= 2 && globalNum <= 7) {
-                                    if (!numberedGlobalsLoaded_) {
-                                        loadNumberedGlobalModels();
-                                    }
-                                    if (loadModelFromNumberedGlobal(globalNum, raceId, gender)) {
-                                        modelIt = loadedModels_.find(key);
-                                    }
-                                }
-                            } else if (loadModelFromCachedChr(jsonS3dFile, raceId, gender)) {
-                                modelIt = loadedModels_.find(key);
-                            }
-                        }
-                    } else {
-                        // It's a zone chr file - use cached loading to preserve otherChrCaches_
-                        if (loadModelFromCachedChr(jsonS3dFile, raceId, gender)) {
-                            modelIt = loadedModels_.find(key);
-                        }
-                    }
-                }
-            }
-
-            // 2. If not found, try archive index (targeted per-archive load)
-            if (modelIt == loadedModels_.end() && graphicsArchiveIndex_) {
-                if (loadModelFromArchiveIndex(raceId, gender)) {
-                    modelIt = loadedModels_.find(key);
-                }
-            }
-
-            // 3. If not found, try current zone's _chr.s3d file
-            if (modelIt == loadedModels_.end() && !currentZoneName_.empty()) {
-                if (loadModelFromZoneChr(currentZoneName_, raceId, gender)) {
-                    modelIt = loadedModels_.find(key);
-                }
-            }
-
-            // 4. If not found in zone, try global_chr.s3d (classic models)
-            if (modelIt == loadedModels_.end()) {
-                if (loadModelFromGlobalChr(raceId, gender)) {
-                    modelIt = loadedModels_.find(key);
-                }
-            }
-
-            // 5. If still not found, try numbered globals (global2-7_chr.s3d)
-            if (modelIt == loadedModels_.end()) {
-                if (!numberedGlobalsLoaded_) {
-                    loadNumberedGlobalModels();
-                }
-                for (int num = 2; num <= 7 && modelIt == loadedModels_.end(); ++num) {
-                    if (loadModelFromNumberedGlobal(num, raceId, gender)) {
-                        modelIt = loadedModels_.find(key);
-                    }
-                }
-            }
-
-            }   // end of the pre-resolver old-models chain (kept out of the chain)
-            // For old models mode, don't search other zone _chr.s3d files.
-            // Classic models should be in JSON-specified files, global_chr.s3d,
-            // global2-7_chr.s3d, or the current zone's _chr.s3d.
+            // Old-models mode searches nothing else: the original client's
+            // sources are the whole search space (Will, 2026-09-22).
         } else {
             // New models mode: prefer race-specific S3D files (Luclin+ models)
 
@@ -874,34 +790,7 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             if (modelData) { resolvedFrom = "era:" + archive; break; }
         }
     }
-    if (false) {   // the pre-resolver cache sweep, kept out of the chain (see step 2)
-        std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
-        for (const auto& [filename, cache] : otherChrCaches_) {
-            // Merge archive textures with existing textures (existing take priority)
-            // — same merge logic as tryLoadFromArchive
-            auto diskTextures = cache.textures;
-            for (const auto& [name, tex] : mergedTextures) {
-                diskTextures[name] = tex;
-            }
-            modelData = buildModelDataFromCharacters(cache.characters, diskTextures, raceId, gender);
-            if (modelData) {
-                resolvedFrom = "cache:" + filename;
-                LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: found race={} in cached archive '{}' (mergedTextures={} archiveTextures={} diskTextures={})",
-                          raceId, filename, mergedTextures.size(), cache.textures.size(), diskTextures.size());
-                // Add new textures from this archive to our merged set
-                for (const auto& [name, tex] : cache.textures) {
-                    if (mergedTextures.find(name) == mergedTextures.end()) {
-                        mergedTextures[name] = tex;
-                    }
-                }
-                break;
-            }
-        }
-    }
-
-    // (steps 3-5 of the old chain -- db s3d_file, global_chr, global2-7 --
-    // are covered by the resolver order above; global5-7 are not in
-    // GlobalLoad.txt and are therefore never consulted: era pruning.)
+    // global5-7 are not in GlobalLoad.txt and are never consulted (era pruning).
 
     if (!modelData) {
         // T94: record the negative result permanently and log it exactly

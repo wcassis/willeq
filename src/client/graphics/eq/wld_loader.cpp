@@ -463,6 +463,17 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
     for (const auto& [fragType, count] : fragTypeCounts) {
         LOG_TRACE(MOD_GRAPHICS, "WldLoader::parseWldBuffer: fragment type 0x{:02x} count={}", fragType, count);
     }
+    {
+        // T504c Leg 1: the character-relevant fragment counts of every parse
+        // and the keyframes the 0x12 track definitions hold -- the number a
+        // fragment-level filter is held to.
+        size_t frames = 0;
+        for (const auto& [idx, td] : trackDefs_) if (td) frames += td->frames.size();
+        auto c = [&](uint32_t t) { auto it = fragTypeCounts.find(t); return it == fragTypeCounts.end() ? 0u : it->second; };
+        LOG_INFO(MOD_GRAPHICS, "[wldparse] bytes={} fragments={} skel10={} track12={} trackref13={} actor14={} mesh36={} keyframes={} trackdef_bytes={}",
+                 buffer.size(), fragmentOffsets.size(), c(0x10), c(0x12), c(0x13), c(0x14), c(0x36), frames,
+                 frames * sizeof(BoneTransform));
+    }
     LOG_DEBUG(MOD_GRAPHICS, "WldLoader::parseWldBuffer: results — geometries={} geometryByFragIndex={} textures_={} brushes_={} textureRefs_={} materials_={} brushSets_={} resolvedMaterialListCache_={} skeletonTracks={} modelRefs={} placeables={} objectDefs={} lights={}",
               geometries_.size(), geometryByFragIndex_.size(), textures_.size(), brushes_.size(), textureRefs_.size(),
               materials_.size(), brushSets_.size(), resolvedMaterialListCache_.size(),
