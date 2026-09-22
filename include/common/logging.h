@@ -322,6 +322,18 @@ private:
             // We read the OTHER side (the one the writer flipped away from).
             int active = entry.activeIdx->load(std::memory_order_relaxed);
             int drainSide = 1 - active;
+            // T504: a thread that logs a burst and then goes QUIET never
+            // flips again (the flip only ran from its own append), so its
+            // last lines sat in the active side until its next log line --
+            // measured: a zone's `ready` block arrived 2.5 minutes late,
+            // with the shutdown lines. Under sideMutex the owner cannot be
+            // mid-append, so when the drain side is empty and the active
+            // side is not, flip it here and drain what the owner wrote.
+            if (entry.buffers[drainSide].empty() && entry.errBuffers[drainSide].empty()
+                && (!entry.buffers[active].empty() || !entry.errBuffers[active].empty())) {
+                entry.activeIdx->store(drainSide, std::memory_order_relaxed);
+                drainSide = active;
+            }
             std::string& drainBuf = entry.buffers[drainSide];
             if (!drainBuf.empty()) {
                 std::cout << drainBuf;
@@ -394,6 +406,9 @@ struct ThreadLogBuffer {
     void append(const char* ts, const char* level, const char* module,
                 const std::string& msg) {
         ensureRegistered();
+        // T504: the write itself is under sideMutex so the drain thread may
+        // flip an IDLE thread's sides (see drainAllBuffers).
+        std::lock_guard<std::mutex> writeLock(sideMutex);
         auto& data = active();
         data += '[';
         data += ts;
@@ -404,21 +419,18 @@ struct ThreadLogBuffer {
         data += "] ";
         data += msg;
         data += '\n';
-        // Attempt a self-flip so the drain thread (which only ever reads
-        // the *inactive* side) picks this line up within one drain cycle
-        // instead of only on LOG_FATAL or thread exit. See flush() for
-        // why this is safe and cheap: only this (owning) thread ever
-        // calls it, so there is no cross-thread race, and it is a no-op
-        // — no I/O, no lock — whenever the drain side still has content
-        // or the active side is empty (the common "nothing logged since
-        // last flip" case).
-        flush();
+        // Attempt a self-flip so the drain thread picks this line up within
+        // one drain cycle. Under sideMutex already (writeLock).
+        flushLocked();
     }
 
     // ERROR/FATAL: appends to stderr buffer (drained to stderr by drain thread)
     void appendError(const char* ts, const char* level, const char* module,
                      const std::string& msg) {
         ensureRegistered();
+        // T504: the write itself is under sideMutex so the drain thread may
+        // flip an IDLE thread's sides (see drainAllBuffers).
+        std::lock_guard<std::mutex> writeLock(sideMutex);
         auto& data = activeErr();
         data += '[';
         data += ts;
@@ -429,12 +441,15 @@ struct ThreadLogBuffer {
         data += "] ";
         data += msg;
         data += '\n';
-        flush();
+        flushLocked();
     }
 
     void appendEntity(const char* ts, uint16_t spawn_id,
                       const std::string& msg) {
         ensureRegistered();
+        // T504: the write itself is under sideMutex so the drain thread may
+        // flip an IDLE thread's sides (see drainAllBuffers).
+        std::lock_guard<std::mutex> writeLock(sideMutex);
         auto& data = active();
         data += '[';
         data += ts;
@@ -443,7 +458,7 @@ struct ThreadLogBuffer {
         data += "] ";
         data += msg;
         data += '\n';
-        flush();
+        flushLocked();
     }
 
     // Self-flip the active/inactive sides. Called by THIS buffer's owning
@@ -464,6 +479,12 @@ struct ThreadLogBuffer {
     // hot path is unchanged from before this fix. See T31 Review for the
     // measured cost at a raised level.
     void flush() {
+        std::lock_guard<std::mutex> lock(sideMutex);
+        flushLocked();
+    }
+
+    // The flip itself; sideMutex must be held by the caller.
+    void flushLocked() {
         int old = activeIdx.load(std::memory_order_relaxed);
         if (active().empty() && activeErr().empty()) return;
         // T114: sideMutex guards the peek at buffers[1-old]/errBuffers[1-old]
@@ -474,7 +495,6 @@ struct ThreadLogBuffer {
         // (this thread's OWN side) and the actual data += appends in
         // append()/appendError()/appendEntity() stay lock-free, since only
         // this (owning) thread ever touches the active side.
-        std::lock_guard<std::mutex> lock(sideMutex);
         // Only flip if the drain side has been drained (is empty).
         // If it still has content, skip — prevents the writer from
         // flipping back to the side the drain thread is reading.

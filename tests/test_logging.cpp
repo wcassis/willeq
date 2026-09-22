@@ -704,3 +704,64 @@ TEST_F(LoggingTest, SteadyState_NonFatalLogReachesStdoutWithoutFatalOrThreadExit
            "no thread exit). Captured stdout during the window: ["
         << content << "]";
 }
+
+// =============================================================================
+// Quiet-after-burst delivery (T504)
+// =============================================================================
+// Pins the defect the T504 audit measured: a thread that logs TWO lines
+// inside one drain cycle and then goes quiet. The first append flips the
+// sides; the second lands on the new active side while the drain side is
+// still undrained, so the owner's flip is refused -- and no later append
+// ever retries it. The second line then sits in the active side until the
+// thread's NEXT log line (measured: a zone's `ready` block arrived 2.5
+// minutes late, with the shutdown lines). The T31 test above logs one line
+// and cannot see this. Fix: the drain thread flips an idle thread's
+// non-empty active side itself (appends now write under sideMutex).
+TEST_F(LoggingTest, QuietAfterBurst_SecondLineReachesStdoutWithoutAnotherAppend) {
+    SetLogLevel(LOG_DEBUG);
+
+    char tmpl[] = "/tmp/willeq_test_logging_quiet_burst_XXXXXX";
+    int fd = mkstemp(tmpl);
+    ASSERT_GE(fd, 0);
+    close(fd);
+    fflush(stdout);
+    std::cout.flush();
+    int file_fd = open(tmpl, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    ASSERT_GE(file_fd, 0);
+    int saved_stdout = dup(1);
+    ASSERT_GE(saved_stdout, 0);
+    ASSERT_GE(dup2(file_fd, 1), 0);
+    close(file_fd);
+
+    std::atomic<bool> keep_alive{true};
+    std::thread worker([&keep_alive]() {
+        // Two lines back to back: the second is appended before the drain
+        // thread (50 ms cadence) can have drained the first.
+        LOG_INFO(MOD_MAIN, "T504_BURST_MARKER_A first line");
+        LOG_INFO(MOD_MAIN, "T504_BURST_MARKER_B second line, then silence");
+        while (keep_alive.load(std::memory_order_relaxed)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+    fflush(stdout);
+    std::cout.flush();
+    ASSERT_GE(dup2(saved_stdout, 1), 0);
+    close(saved_stdout);
+
+    keep_alive.store(false, std::memory_order_relaxed);
+    worker.join();
+
+    std::ifstream in(tmpl);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    std::string content = ss.str();
+    unlink(tmpl);
+
+    EXPECT_NE(content.find("T504_BURST_MARKER_A"), std::string::npos) << content;
+    EXPECT_NE(content.find("T504_BURST_MARKER_B"), std::string::npos)
+        << "the second line of a burst did not reach stdout within 400ms while "
+           "the thread stayed alive and quiet. Captured: [" << content << "]";
+}
