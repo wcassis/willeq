@@ -106,6 +106,19 @@ fixed mmap threshold is the better lever (12-13 MB of heap per zone,
 5-10 MB of RssAnon); neither is defaulted yet -- the Pi table (Leg 5b,
 running) decides, since llvmpipe's 142-167 MB of heap dominates x86.
 
+**Leg 5b -- the Pi, tip 8ef2e108 (orangepi preset, Lima, local lane;
+`review/T504/pi/README.md`, runs in `runs/`, Leg 5's in
+`runs_leg5_90058647/`). Peak RssAnon / steady RssAnon / base-model preload
+ms, Leg 5 → 5b:** gfaydark 116.2 → 97.8 / 107.9 → 92.1 / 15026 → 2695;
+dreadlands 156.1 → 117.0 / 136.6 → 109.5 / 4401 → 2280; iceclad 168.7 →
+119.1 / 142.7 → 111.7 / 6037 → 2943; qeynos2 124.7 → 71.5 / 111.2 → 71.0 /
+11550 → 1248. Per-category peaks: entity_models 56-62 → 12-24, zone_parse
+61/37/25/20 → 45/20/12/11, archives 34.8 → 4.9. RssFile peak +7..+15
+(the mmapped archives; file-backed). gpu_driver 18.6-19.1 unchanged; 0
+errors; 0 render-thread parses. qeynos2's steady RssAnon is 71 MiB against
+the 64 MiB target; the rest of the gap is the categories the plan already
+names (game_state's hc_map BVH, spatial, zone_mesh) plus glibc slack.
+
 **Also found (CI):** the branch's CI `build` job has failed since 108ba056
 (`-Werror=format-truncation` on `FormatTimestamp`'s 32-byte buffer,
 inlined into the T504 navmesh log line) and `hygiene` before that, so the
