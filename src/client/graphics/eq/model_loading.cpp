@@ -41,6 +41,7 @@ bool RaceModelLoader::loadGlobalModels() {
             {
                 std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
                 globalCharacters_ = cacheIt->second.characters;
+                recordArchiveNamesLocked("global", globalChrPath, globalCharacters_);   // T504b Leg 2
             }
             globalTextures_ = cacheIt->second.textures;
             globalModelsLoaded_.store(true, std::memory_order_release);
@@ -64,6 +65,7 @@ bool RaceModelLoader::loadGlobalModels() {
     {
         std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
         globalCharacters_ = zone->characters;
+        recordArchiveNamesLocked("global", globalChrPath, globalCharacters_);   // T504b Leg 2
     }
     globalTextures_ = zone->characterTextures;
     releaseBytesIfEqe1Authoritative(globalTextures_);  // T504
@@ -140,6 +142,7 @@ bool RaceModelLoader::ensureNumberedGlobalCharacters(int num) {
     {
         std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
         numberedGlobalCharacters_[num] = zone->characters;
+        recordArchiveNamesLocked("global" + std::to_string(num), filename, zone->characters);   // T504b Leg 2
     }
     // The textures come with the same parse; if the texture-only pass never
     // ran (or found nothing) this is the same map it would have stored.
@@ -290,6 +293,7 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
     {
         std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
         zoneCharacters_.clear();
+        archiveIndex_.erase("zone");   // T504b Leg 2: a new zone, a new index
     }
     zoneTextures_.clear();
     zoneModelsLoaded_ = false;
@@ -336,6 +340,7 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
     {
         std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
         zoneCharacters_ = zone->characters;
+        recordArchiveNamesLocked("zone", zoneFilename, zoneCharacters_);   // T504b Leg 2
     }
     zoneTextures_ = zone->characterTextures;
     currentZoneName_ = zoneName;

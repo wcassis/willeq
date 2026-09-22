@@ -6,6 +6,8 @@
 // - variant_loading.cpp - Head/body variant loading
 
 #include "client/graphics/eq/race_model_loader.h"
+#include <set>
+#include <pthread.h>
 #include "client/graphics/eq/race_codes.h"
 #include "client/graphics/eq/geometry_combiner.h"
 #include "client/graphics/eq/animation_mapping.h"
@@ -273,6 +275,17 @@ void RaceModelLoader::clearMeshCaches() {
 std::shared_ptr<RaceModelData> RaceModelLoader::ensureModelDataLoaded(uint16_t raceId, uint8_t gender) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     uint32_t key = makeCacheKey(raceId, gender);
+    {
+        // T504b Leg 2: the reload-on-miss pre-check runs OUTSIDE the lock
+        // (pruneSourceCharacters takes loadedModelsMutex_ itself); a
+        // render-thread reload is logged with its thread name (STOP 3).
+        bool missing;
+        {
+            std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+            missing = loadedModels_.count(key) == 0;
+        }
+        if (missing) ensureSourceForRace(raceId, gender, "ensureModelDataLoaded");
+    }
 
     // Check if model data is loaded
     auto modelIt = loadedModels_.find(key);
@@ -659,6 +672,216 @@ RaceModelLoader::CharacterList RaceModelLoader::snapshotNumberedGlobalCharacters
     return it == numberedGlobalCharacters_.end() ? CharacterList{} : it->second;
 }
 
+// ---------------------------------------------------------------------------
+// T504b Leg 2: source pruning + reload-on-miss
+// ---------------------------------------------------------------------------
+bool RaceModelLoader::pruningEnabled() {
+    // OFF by default until the render-thread synchronous fallback stops
+    // parsing (T504b STOP 3, measured 2026-09-22: with pruning on, the
+    // player's race is requested on eq-render before the worker's preload
+    // is promoted, and the sync chain then parses globalhum/global2-7 there;
+    // the baseline parses 5 archives, all on eq-load). WILLEQ_PRUNE_SOURCES=1
+    // opts in (the fingerprint net and the audit runs use it).
+    static const bool on = [] {
+        const char* v = std::getenv("WILLEQ_PRUNE_SOURCES");
+        return v && v[0] == '1';
+    }();
+    return on;
+}
+
+namespace {
+std::string upperOf(const std::string& s) {
+    std::string u = s;
+    std::transform(u.begin(), u.end(), u.begin(), [](unsigned char c) { return std::toupper(c); });
+    return u;
+}
+std::string threadNameNow() {
+    char buf[32] = "?";
+    pthread_getname_np(pthread_self(), buf, sizeof(buf));
+    return buf;
+}
+}  // namespace
+
+void RaceModelLoader::recordArchiveNamesLocked(const std::string& key, const std::string& path,
+                                               const CharacterList& chars) {
+    ArchiveIndexEntry& e = archiveIndex_[key];
+    if (!e.names.empty()) return;   // recorded at the first (full) parse
+    e.path = path;
+    for (const auto& cm : chars) if (cm) e.names.push_back(upperOf(cm->name));
+}
+
+void RaceModelLoader::computeUsedSet(std::set<const CharacterSkeleton*>& usedSkeletons,
+                                     std::set<const Animation*>& usedAnimations) const {
+    auto take = [&](const std::shared_ptr<RaceModelData>& m) {
+        if (!m || !m->skeleton) return;
+        usedSkeletons.insert(m->skeleton.get());
+        for (const auto& [code, anim] : m->skeleton->animations)
+            if (anim) usedAnimations.insert(anim.get());
+    };
+    { std::lock_guard<std::mutex> lock(loadedModelsMutex_); for (const auto& [k, m] : loadedModels_) take(m); }
+    { std::lock_guard<std::mutex> lock(variantModelsMutex_); for (const auto& [k, m] : variantModels_) take(m); }
+    { std::lock_guard<std::mutex> lock(preparedDataMutex_); for (const auto& [k, m] : preparedModelData_) take(m); }
+}
+
+void RaceModelLoader::pruneSourceCharacters(const char* why) {
+    if (!pruningEnabled()) return;
+    std::set<const CharacterSkeleton*> usedSkeletons;
+    std::set<const Animation*> usedAnimations;
+    computeUsedSet(usedSkeletons, usedAnimations);
+    auto keep = [&](const std::shared_ptr<CharacterModel>& cm) {
+        if (!cm) return false;
+        if (!cm->animatedSkeleton) return true;   // static (no skeleton): tiny, keep
+        if (usedSkeletons.count(cm->animatedSkeleton.get())) return true;
+        for (const auto& [code, anim] : cm->animatedSkeleton->animations)
+            if (anim && usedAnimations.count(anim.get())) return true;   // donor
+        return false;
+    };
+    size_t dropped = 0, kept = 0;
+    auto filter = [&](CharacterList& list) {
+        CharacterList out;
+        out.reserve(list.size());
+        for (auto& cm : list) { if (keep(cm)) out.push_back(cm); else ++dropped; }
+        kept += out.size();
+        list.swap(out);
+    };
+    {
+        std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        if (!globalCharacters_.empty()) {
+            recordArchiveNamesLocked("global", clientPath_ + "global_chr.s3d", globalCharacters_);
+            filter(globalCharacters_);
+            archiveIndex_["global"].pruned = true;
+        }
+        for (auto& [num, chars] : numberedGlobalCharacters_) {
+            const std::string key = "global" + std::to_string(num);
+            recordArchiveNamesLocked(key, clientPath_ + key + "_chr.s3d", chars);
+            filter(chars);
+            archiveIndex_[key].pruned = true;
+        }
+        if (!zoneCharacters_.empty()) {
+            recordArchiveNamesLocked("zone", clientPath_ + currentZoneName_ + "_chr.s3d", zoneCharacters_);
+            filter(zoneCharacters_);
+            archiveIndex_["zone"].pruned = true;
+        }
+        for (auto& [name, cache] : otherChrCaches_) {
+            if (cache.characters.empty()) continue;
+            const std::string key = "other:" + name;
+            recordArchiveNamesLocked(key, clientPath_ + name, cache.characters);
+            if (name == "global_chr.s3d" && !globalCharacters_.empty()
+                && !cache.characters.empty() && cache.characters.front() == globalCharacters_.front()) {
+                cache.characters = globalCharacters_;   // the shared entry: same objects, same set
+            } else {
+                filter(cache.characters);
+            }
+            archiveIndex_[key].pruned = true;
+        }
+    }
+    if (dropped > 0) {
+        LOG_INFO(MOD_GRAPHICS, "[srcchar] prune why={} dropped={} kept={} used_skeletons={} thread={}",
+                 why, dropped, kept, usedSkeletons.size(), threadNameNow());
+    }
+}
+
+void RaceModelLoader::ensureSourceForRace(uint16_t raceId, uint8_t gender, const char* site) {
+    if (!pruningEnabled()) return;
+    // Every new race request first drops what the previous builds left
+    // unused (so the render-thread sync path prunes too), then makes sure
+    // this race's sources are present.
+    pruneSourceCharacters("request");
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        const std::string memoKey = std::to_string(makeCacheKey(raceId, gender)) + "@" + site;
+        if (!reloadedRaceGenders_.insert(memoKey).second) return;   // once per race/gender/site
+    }
+    {
+        std::lock_guard<std::mutex> lock(preparedDataMutex_);
+        if (knownMissingRaceGenders_.count(makeCacheKey(raceId, gender))) return;   // no archive has it
+    }
+    // The codes the search chain and the animation merge will look for.
+    std::vector<std::string> wanted;
+    const std::string base = getRaceCode(raceId);
+    if (base.empty()) return;
+    const std::string raceCode = upperOf(getGenderedRaceCode(base, gender));
+    wanted.push_back(raceCode);
+    const std::string fallback = upperOf(getFallbackRaceCode(raceId, gender));
+    if (!fallback.empty() && fallback != raceCode) wanted.push_back(fallback);
+    for (const std::string& c : std::vector<std::string>{raceCode, fallback}) {
+        if (c.empty()) continue;
+        const std::string donor = upperOf(getAnimationSourceCode(c));
+        if (!donor.empty() && donor != c) wanted.push_back(donor);
+    }
+
+    // Which pruned archives hold a wanted name the store no longer has?
+    std::vector<std::pair<std::string, std::string>> toReload;   // key, path
+    {
+        std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        auto storeHas = [&](const std::string& key, const std::string& code) {
+            const CharacterList* list = nullptr;
+            if (key == "zone") list = &zoneCharacters_;
+            else if (key == "global") list = &globalCharacters_;
+            else if (key.rfind("global", 0) == 0) {
+                auto it = numberedGlobalCharacters_.find(std::atoi(key.c_str() + 6));
+                if (it != numberedGlobalCharacters_.end()) list = &it->second;
+            } else if (key.rfind("other:", 0) == 0) {
+                auto it = otherChrCaches_.find(key.substr(6));
+                if (it != otherChrCaches_.end()) list = &it->second.characters;
+            }
+            if (!list) return false;
+            for (const auto& cm : *list) if (cm && upperOf(cm->name).find(code) != std::string::npos) return true;
+            return false;
+        };
+        for (auto& [key, e] : archiveIndex_) {
+            if (!e.pruned) continue;
+            bool need = false;
+            for (const auto& code : wanted) {
+                bool archiveHas = false;
+                for (const auto& n : e.names) if (n.find(code) != std::string::npos) { archiveHas = true; break; }
+                if (archiveHas && !storeHas(key, code)) { need = true; break; }
+            }
+            if (need) toReload.emplace_back(key, e.path);
+        }
+    }
+    for (const auto& [key, path] : toReload) {
+        S3DLoader loader;
+        if (!loader.loadZone(path)) continue;
+        auto zone = loader.getZone();
+        if (!zone) continue;
+        CharacterList add;
+        for (const auto& cm : zone->characters) {
+            if (!cm) continue;
+            const std::string n = upperOf(cm->name);
+            for (const auto& code : wanted) if (n.find(code) != std::string::npos) { add.push_back(cm); break; }
+        }
+        std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        auto appendMissing = [&](CharacterList& list) {
+            for (const auto& cm : add) {
+                bool present = false;
+                for (const auto& have : list) if (have && have->name == cm->name) { present = true; break; }
+                if (!present) list.push_back(cm);
+            }
+        };
+        if (key == "zone") appendMissing(zoneCharacters_);
+        else if (key == "global") {
+            appendMissing(globalCharacters_);
+            auto it = otherChrCaches_.find("global_chr.s3d");
+            if (it != otherChrCaches_.end()) it->second.characters = globalCharacters_;
+        } else if (key.rfind("global", 0) == 0) {
+            appendMissing(numberedGlobalCharacters_[std::atoi(key.c_str() + 6)]);
+        } else if (key.rfind("other:", 0) == 0) {
+            auto it = otherChrCaches_.find(key.substr(6));
+            if (it != otherChrCaches_.end()) {
+                if (key == "other:global_chr.s3d") { appendMissing(globalCharacters_); it->second.characters = globalCharacters_; }
+                else appendMissing(it->second.characters);
+            }
+        }
+        archiveIndex_[key].reloads++;
+        LOG_INFO(MOD_GRAPHICS, "[srcchar] reload key={} race={} gender={} added={} thread={} site={}",
+                 key, raceId, gender, add.size(), threadNameNow(), site);
+    }
+}
+
 bool RaceModelLoader::adoptGlobalChrIntoOtherCacheLocked() {
     if (otherChrCaches_.find("global_chr.s3d") != otherChrCaches_.end()) return true;
     if (!globalModelsLoaded_.load(std::memory_order_acquire)) return false;
@@ -676,6 +899,10 @@ void RaceModelLoader::storeOtherChrCacheLocked(const std::string& lowerFilename,
     OtherChrCache& cache = otherChrCaches_[lowerFilename];
     cache.characters = std::move(characters);
     cache.textures = std::move(textures);
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);   // T504b Leg 2
+        recordArchiveNamesLocked("other:" + lowerFilename, clientPath_ + lowerFilename, cache.characters);
+    }
     releaseBytesIfEqe1Authoritative(cache.textures);  // T504: see the header
     mergedTexturesCacheValid_ = false;
 
@@ -732,6 +959,8 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             return false;
         }
     }
+
+    ensureSourceForRace(raceId, gender, "preloadModelData");   // T504b Leg 2: reload-on-miss
 
     // Collect textures from safe sources for model building.
     // zoneTextures_ is immutable after zone init (safe to read from bg thread).
@@ -1182,6 +1411,7 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         std::lock_guard<std::mutex> lock(preparedDataMutex_);
         preparedModelData_[key] = std::move(modelData);
     }
+    pruneSourceCharacters("preload");   // T504b Leg 2
 
     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: staged model for race={} gender={}", raceId, gender);
     return true;

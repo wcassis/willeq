@@ -48,6 +48,7 @@ bool RaceModelLoader::preloadVariantModel(uint16_t raceId, uint8_t gender,
         std::lock_guard<std::mutex> lock(variantModelsMutex_);
         if (variantModels_.count(variantKey) > 0) return true;
     }
+    ensureSourceForRace(raceId, gender, "preloadVariantModel");   // T504b Leg 2: reload-on-miss
 
     // Build list of race codes to try (row code, then the row's fallback_code)
     std::vector<std::string> codesToTry;

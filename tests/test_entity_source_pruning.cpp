@@ -41,7 +41,9 @@ void runZone(const std::string& zone) {
     if (!fileExists(eq + "global_chr.s3d") || !fileExists(eq + zone + "_chr.s3d"))
         GTEST_SKIP() << "EQ client tree not at " << eq;
     const std::string out = std::string(P_tmpdir) + "/model_fingerprint_" + zone + "_" + std::to_string(::getpid()) + ".txt";
-    const std::string cmd = std::string(MODEL_FINGERPRINT_BIN) + " --zone " + zone + " --eq " + eq
+    // The net exercises pruning: opt in (the client default is OFF, see
+    // RaceModelLoader::pruningEnabled()).
+    const std::string cmd = std::string("WILLEQ_PRUNE_SOURCES=1 ") + MODEL_FINGERPRINT_BIN + " --zone " + zone + " --eq " + eq
                           + " --db " + WILLEQ_DB_REAL_PATH + " --out " + out + " >/dev/null 2>&1";
     const int rc = std::system(cmd.c_str());
     ASSERT_EQ(rc, 0) << cmd;

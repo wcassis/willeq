@@ -926,6 +926,45 @@ private:
     CharacterList snapshotGlobalCharacters() const;
     CharacterList snapshotNumberedGlobalCharacters(int num) const;
     mutable std::mutex sourceStoresMutex_;
+
+    // T504b Leg 2: source pruning (refactor/T504b_entity_source_pruning.md).
+    // After a build, every store keeps the source CharacterModel of the USED
+    // set only (skeleton identity of a built model, plus the animation
+    // donors those skeletons share Animation objects with); the rest of the
+    // archive is dropped. archiveIndex_ remembers every character NAME an
+    // archive yielded, so a later request for a dropped character reloads
+    // the archive, takes the wanted characters and drops the rest again
+    // (ensureSourceForRace). Opt-in: WILLEQ_PRUNE_SOURCES=1 (see pruningEnabled()).
+    struct ArchiveIndexEntry {
+        std::vector<std::string> names;   // upper-case character names the archive yielded
+        std::string path;                 // the .s3d to reload from
+        bool pruned = false;
+        size_t reloads = 0;
+    };
+    std::map<std::string, ArchiveIndexEntry> archiveIndex_;  // "zone" | "global" | "global<N>" | "other:<file>"; under sourceStoresMutex_
+    // A (race, gender) is reloaded at most ONCE per process: the build that
+    // follows a reload either uses the characters (then they are kept) or
+    // fails (then no later request can succeed either). Without this a race
+    // with no model thrashed: reload, fail, prune, reload... (measured 1,398
+    // reloads for 380 requests in the fingerprint tool).
+    // Keyed by (race, gender, SITE): the base build, the variant build and
+    // the synchronous fallback need different sources (measured: the variant
+    // merges donor animations the base build never touched, so a memo keyed
+    // by race alone starved it -- STOP 1 hit, fingerprint anims shrank).
+    std::set<std::string> reloadedRaceGenders_;   // under sourceStoresMutex_
+    void recordArchiveNamesLocked(const std::string& key, const std::string& path, const CharacterList& chars);
+    void computeUsedSet(std::set<const CharacterSkeleton*>& usedSkeletons,
+                        std::set<const Animation*>& usedAnimations) const;
+    static bool pruningEnabled();
+public:
+    // Drop every retained source character no built model uses (see above).
+    // Safe from any thread; takes the store locks itself. `why` is logged.
+    void pruneSourceCharacters(const char* why);
+    // Reload-on-miss for one race: if a wanted code (race, fallback,
+    // animation donor) names a character an archive is known to hold but a
+    // pruned store no longer has, re-parse that archive for it.
+    void ensureSourceForRace(uint16_t raceId, uint8_t gender, const char* site = "?");
+private:
     void storeOtherChrCacheLocked(const std::string& lowerFilename,
                                    std::vector<std::shared_ptr<CharacterModel>> characters,
                                    std::map<std::string, std::shared_ptr<TextureInfo>> textures);
