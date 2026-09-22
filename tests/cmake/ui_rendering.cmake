@@ -205,6 +205,14 @@ ENDIF()
 # list. Same EDT_NULL + willeq_core gate as test_race_330_loader; opens the
 # shipped data/willeq.db and the real client tree and skips without either.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    # T504b Leg 2b: unload of despawned races (hysteresis + budget pressure)
+    ADD_EXECUTABLE(test_entity_source_unload test_entity_source_unload.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_entity_source_unload PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_entity_source_unload GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_entity_source_unload PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_entity_source_unload DISCOVERY_TIMEOUT 120)
+
     ADD_EXECUTABLE(test_variant_loader_candidates
         test_variant_loader_candidates.cpp
     )

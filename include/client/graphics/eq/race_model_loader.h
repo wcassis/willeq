@@ -11,6 +11,7 @@
 #include <atomic>
 #include <map>
 #include <memory>
+#include <chrono>
 #include <mutex>
 #include <functional>
 #include <thread>
@@ -558,6 +559,21 @@ public:
     void addMeshRef(uint16_t raceId, uint8_t gender);
     void removeMeshRef(uint16_t raceId, uint8_t gender);
 
+    // T504b Leg 2b (Will, rev 1: residency is a working set in both
+    // directions). A model whose last entity despawned is not evicted at
+    // once: it becomes EVICTABLE and is dropped by sweepEvictable() after a
+    // hysteresis window (WILLEQ_MODEL_EVICT_SECONDS, default 60 -- a roamer
+    // crossing the visibility edge must not thrash a 0.75 s archive parse),
+    // or at once, oldest first, while the entity_models ledger row is over
+    // its budget. addMeshRef() cancels a pending eviction. After an eviction
+    // the source characters are pruned too (pruneSourceCharacters), so both
+    // the built model and its retained source leave. Render thread only,
+    // like the refcounts themselves.
+    void sweepEvictable();
+    void setEntityModelBudgetBytes(size_t bytes) { entityModelBudgetBytes_ = bytes; }
+    size_t evictableCountForTest() const { return evictable_.size(); }
+    void sweepEvictableForTest(double ageSeconds);   // treats every evictable entry as ageSeconds old
+
     // Set maximum cached _chr.s3d entries (0 = unlimited)
     void setMaxChrCacheEntries(size_t max) { maxChrCacheEntries_ = max; }
 
@@ -963,6 +979,10 @@ private:
     void forgetReloadMemo(uint32_t key);      // one (race, gender), every site
     void forgetAllReloadMemos();
     std::thread::id renderThread_;                 // the constructing thread (IrrlichtRenderer::init, main)
+    void evictModel(uint32_t key);                 // the built model + every cache keyed by it
+    std::map<uint32_t, std::chrono::steady_clock::time_point> evictable_;   // key -> when its refcount hit 0
+    size_t entityModelBudgetBytes_ = 0;            // 0 = no budget pressure
+    double evictHysteresisSeconds_ = 60.0;
     std::function<void(uint16_t, uint8_t)> workerPreloadRequest_;
     void recordArchiveNamesLocked(const std::string& key, const std::string& path, const CharacterList& chars);
     void computeUsedSet(std::set<const CharacterSkeleton*>& usedSkeletons,

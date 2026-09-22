@@ -316,6 +316,7 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
 void RaceModelLoader::addMeshRef(uint16_t raceId, uint8_t gender) {
     uint32_t key = makeCacheKey(raceId, gender);
     meshRefCounts_[key]++;
+    evictable_.erase(key);   // T504b Leg 2b: a respawn within the window keeps the model
 }
 
 void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
@@ -326,6 +327,54 @@ void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
     it->second--;
     if (it->second <= 0) {
         meshRefCounts_.erase(it);
+        // T504b Leg 2b: evictable, not evicted -- sweepEvictable() drops it
+        // after the hysteresis window or under budget pressure.
+        static const double hysteresis = [] {
+            const char* v = std::getenv("WILLEQ_MODEL_EVICT_SECONDS");
+            return v ? std::atof(v) : 60.0;
+        }();
+        evictHysteresisSeconds_ = hysteresis;
+        evictable_[key] = std::chrono::steady_clock::now();
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: race {} gender {} has no entities left; evictable in {:.0f} s",
+                  raceId, gender, hysteresis);
+    }
+}
+
+void RaceModelLoader::sweepEvictable() {
+    if (evictable_.empty()) return;
+    const auto now = std::chrono::steady_clock::now();
+    std::vector<std::pair<std::chrono::steady_clock::time_point, uint32_t>> order;
+    for (const auto& [key, when] : evictable_) order.emplace_back(when, key);
+    std::sort(order.begin(), order.end());   // oldest first
+    size_t evicted = 0;
+    for (const auto& [when, key] : order) {
+        const double age = std::chrono::duration<double>(now - when).count();
+        const bool overBudget = entityModelBudgetBytes_ > 0
+            && eqt::memory::stats(eqt::memory::Category::EntityModels).liveBytes > entityModelBudgetBytes_;
+        if (age < evictHysteresisSeconds_ && !overBudget) break;   // sorted: nothing older follows
+        evictModel(key);
+        evictable_.erase(key);
+        ++evicted;
+        if (overBudget) pruneSourceCharacters("evict-budget");   // free the source before re-checking the budget
+    }
+    if (evicted > 0) {
+        pruneSourceCharacters("evict");
+        LOG_INFO(MOD_GRAPHICS, "[srcchar] evicted {} model(s) whose last entity despawned ({} still pending)",
+                 evicted, evictable_.size());
+    }
+}
+
+void RaceModelLoader::sweepEvictableForTest(double ageSeconds) {
+    const auto pretend = std::chrono::steady_clock::now()
+        - std::chrono::milliseconds(static_cast<long long>(ageSeconds * 1000.0));
+    for (auto& [key, when] : evictable_) when = pretend;
+    sweepEvictable();
+}
+
+void RaceModelLoader::evictModel(uint32_t key) {
+    const uint16_t raceId = static_cast<uint16_t>(key >> 8);
+    const uint8_t gender = static_cast<uint8_t>(key & 0xFF);
+    {
 
         // Evict meshes from caches
         auto meshIt = meshCache_.find(key);

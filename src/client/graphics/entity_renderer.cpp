@@ -546,6 +546,11 @@ void EntityRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
 
 void EntityRenderer::setConstrainedConfig(const ConstrainedRendererConfig* config) {
     constrainedConfig_ = config;
+    if (config && raceModelLoader_) {
+        // T504b Leg 2b: budget pressure evicts despawned models at once.
+        raceModelLoader_->setEntityModelBudgetBytes(
+            config->memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::EntityModels)]);
+    }
     if (config) {
         LOG_INFO(MOD_GRAPHICS, "EntityRenderer: max {} entities within {} units",
                  config->maxVisibleEntities, config->entityRenderDistance);
