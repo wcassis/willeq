@@ -2,6 +2,7 @@
 #define EQT_GRAPHICS_RACE_MODEL_LOADER_H
 
 #include "s3d_loader.h"
+#include "client/graphics/eq/era_model_sources.h"
 #include "zone_geometry.h"
 #include "composite_texture_data.h"
 #include "animated_mesh_scene_node.h"
@@ -978,6 +979,18 @@ private:
     void forgetReloadMemo(uint32_t key);      // one (race, gender), every site
     void forgetAllReloadMemos();
     std::thread::id renderThread_;                 // the constructing thread (IrrlichtRenderer::init, main)
+
+    // T504 resolver Leg 0 (instrument only): the original client's sources for
+    // the current zone (GlobalLoad.txt + <zone>_chr + <zone>_chr.txt, era-pruned)
+    // and, in census mode (WILLEQ_SRCRES_CENSUS=1), a names-only index over
+    // them so every [srcres] line can say which archive the ORIGINAL rule would
+    // resolve a race from, next to the archive today's chain used.
+    EraModelSources eraSources_;
+    std::set<std::string> eraZones_;
+    bool eraZonesLoaded_ = false;
+    std::vector<std::pair<std::string, std::vector<std::string>>> eraNameIndex_;   // archive -> upper names (census mode)
+    bool eraNameIndexBuilt_ = false;
+    std::string originalRuleArchiveFor(uint16_t raceId, uint8_t gender);   // census mode; "" otherwise
     void evictModel(uint32_t key);                 // the built model + every cache keyed by it
     std::map<uint32_t, std::chrono::steady_clock::time_point> evictable_;   // key -> when its refcount hit 0
     size_t entityModelBudgetBytes_ = 0;            // 0 = no budget pressure

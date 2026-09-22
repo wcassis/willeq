@@ -352,6 +352,12 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
     zoneTextures_ = zone->characterTextures;
     currentZoneName_ = zoneName;
     zoneModelsLoaded_ = true;
+    // T504 resolver Leg 0: what the ORIGINAL client would load for this zone.
+    if (!eraZonesLoaded_) { eraZones_ = LoadEraZones(); eraZonesLoaded_ = true; }
+    eraSources_ = LoadEraModelSources(clientPath_, zoneName, eraZones_);
+    eraNameIndex_.clear();
+    eraNameIndexBuilt_ = false;
+    LOG_INFO(MOD_GRAPHICS, "{}", eraSources_.toLogLine(zoneName));
 
     // T504 (load-step audit): what this eager whole-archive parse retains.
     size_t rawTextureBytes = 0;

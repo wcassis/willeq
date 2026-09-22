@@ -205,6 +205,12 @@ ENDIF()
 # list. Same EDT_NULL + willeq_core gate as test_race_330_loader; opens the
 # shipped data/willeq.db and the real client tree and skips without either.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    # T504: the original client's character-model sources (GlobalLoad.txt + <zone>_chr.txt), era-pruned
+    ADD_EXECUTABLE(test_era_model_sources test_era_model_sources.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_era_model_sources PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_era_model_sources GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_era_model_sources DISCOVERY_TIMEOUT 120)
+
     # T504b Leg 2b: unload of despawned races (hysteresis + budget pressure)
     ADD_EXECUTABLE(test_entity_source_unload test_entity_source_unload.cpp)
     TARGET_INCLUDE_DIRECTORIES(test_entity_source_unload PRIVATE ${IRRLICHT_INCLUDE_DIR})

@@ -777,6 +777,36 @@ std::vector<std::string> RaceModelLoader::wantedCodesFor(uint16_t raceId, uint8_
     return wanted;
 }
 
+std::string RaceModelLoader::originalRuleArchiveFor(uint16_t raceId, uint8_t gender) {
+    static const bool census = [] { const char* v = std::getenv("WILLEQ_SRCRES_CENSUS"); return v && v[0] == '1'; }();
+    if (!census) return "-";
+    if (!eraNameIndexBuilt_) {
+        // Names only: the filter matches nothing, so no CharacterModel is
+        // built; S3DZone::allCharacterNames still lists every skeleton.
+        for (const auto& archive : eraSources_.orderedArchives()) {
+            S3DLoader loader;
+            S3DLoadOptions opts;
+            opts.characterCodeFilter = {"\x01"};
+            opts.loadObjects = false;
+            std::vector<std::string> names;
+            if (loader.loadZone(clientPath_ + archive, opts) && loader.getZone())
+                for (const auto& n : loader.getZone()->allCharacterNames) names.push_back(upperOf(n));
+            eraNameIndex_.emplace_back(archive, std::move(names));
+        }
+        eraNameIndexBuilt_ = true;
+    }
+    // The original client keys the zone list by CODE; globals and the zone
+    // archive by whatever they hold. First archive holding the race code or
+    // its fallback wins.
+    const std::vector<std::string> wanted = wantedCodesFor(raceId, gender);
+    for (size_t k = 0; k < wanted.size() && k < 2; ++k) {
+        for (const auto& [archive, names] : eraNameIndex_)
+            for (const auto& n : names)
+                if (n.find(wanted[k]) != std::string::npos) return archive;
+    }
+    return "none";
+}
+
 void RaceModelLoader::computeUsedSet(std::set<const CharacterSkeleton*>& usedSkeletons,
                                      std::set<const Animation*>& usedAnimations) const {
     auto take = [&](const std::shared_ptr<RaceModelData>& m) {
@@ -1110,8 +1140,10 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
 
     // 1. Search the zone characters (T504b Leg 2: a snapshot, the store may be pruned)
     const CharacterList zoneSnap = snapshotZoneCharacters();
+    std::string resolvedFrom;   // T504 resolver Leg 0: which step/archive today's chain used
     if (!modelData && !zoneSnap.empty()) {
         modelData = buildModelDataFromCharacters(zoneSnap, mergedTextures, raceId, gender);
+        if (modelData) resolvedFrom = "zone:" + currentZoneName_ + "_chr.s3d";
     }
 
     // 2. Search otherChrCaches_ (mutex-protected — safe)
@@ -1126,6 +1158,7 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             }
             modelData = buildModelDataFromCharacters(cache.characters, diskTextures, raceId, gender);
             if (modelData) {
+                resolvedFrom = "cache:" + filename;
                 LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: found race={} in cached archive '{}' (mergedTextures={} archiveTextures={} diskTextures={})",
                           raceId, filename, mergedTextures.size(), cache.textures.size(), diskTextures.size());
                 // Add new textures from this archive to our merged set
@@ -1144,18 +1177,21 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         std::string jsonS3dFile = getRaceS3DFile(raceId);
         if (!jsonS3dFile.empty()) {
             modelData = tryLoadFromArchive(clientPath_ + jsonS3dFile);
+            if (modelData) resolvedFrom = "db:" + jsonS3dFile;
         }
     }
 
     // 4. Try global_chr.s3d (cached in otherChrCaches_)
     if (!modelData && !clientPath_.empty()) {
         modelData = tryLoadFromArchive(clientPath_ + "global_chr.s3d");
+        if (modelData) resolvedFrom = "global:global_chr.s3d";
     }
 
     // 5. Try global2-7_chr.s3d (cached in otherChrCaches_)
     if (!modelData && !clientPath_.empty()) {
         for (int num = 2; num <= 7 && !modelData; ++num) {
             modelData = tryLoadFromArchive(clientPath_ + "global" + std::to_string(num) + "_chr.s3d");
+            if (modelData) resolvedFrom = "numbered:global" + std::to_string(num) + "_chr.s3d";
         }
     }
 
@@ -1473,6 +1509,10 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: no textures to decode (geometry={}, textures={}, cache={}) for race={} gender={}",
                   (bool)modelData->combinedGeometry, modelData->textures.size(), (bool)constrainedTextureCache_, raceId, gender);
     }
+
+    // T504 resolver Leg 0: today's winner next to the original rule's winner.
+    LOG_INFO(MOD_GRAPHICS, "[srcres] race={} gender={} today={} original={}",
+             raceId, gender, resolvedFrom.empty() ? "?" : resolvedFrom, originalRuleArchiveFor(raceId, gender));
 
     // Store in staging cache
     {
