@@ -750,7 +750,7 @@ it without taking that measurement first.
   adding a Velious zone to the gate's zone set, which means blessing new
   goldens: **Will's call, not an executor's.**
 
-- **B814** (A) One category is bigger than the whole target. T491 measured → issue #8
+- ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage
   run (gfaydark, 5 races, objects + EQE1) — on its own larger than Will's
   32–64 MB RSS goal (`docs/decisions.md` 2026-09-17). Its budget is set at
@@ -765,7 +765,7 @@ it without taking that measurement first.
   the Pi**, a third of its x86 figure, and three of the five names above are
   llvmpipe (B812). See B816.
 
-- **B816** (A, *measured*) **The Orange Pi's own shrink queue.** T496 Leg A, → issue #9
+- **B816** (A, *measured*) **The Orange Pi's own shrink queue.** T496 Leg A, → issue #9 — **T504 (2026-09-23) retired the zone-load rows:** Pi steady RssAnon gfaydark/dreadlands/iceclad/qeynos2 108/137/143/111 → 92/110/112/71 MiB (review/T504/pi/README.md); audio, startup, the Lima driver and malloc_slack remain.
   four runs at 1280x720 (`--drm --constrained orangepi`), every row naming the
   zone the client's own log says it entered (B802 read-back guard):
   `review/T496/pi/table_categories.tsv`. Largest-first at **`ready`**
