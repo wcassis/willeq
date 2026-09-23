@@ -8,6 +8,7 @@
 // files; ZoneLoadContext moved to include/client/graphics/zone_load_context.h
 // so all four TUs can see it. The driver stays here.
 
+#include "client/graphics/renderer_zone_merge.h"  // T504: ZoneMergeBuffers pooled mode
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -210,7 +211,11 @@ bool ZoneLoadComponent::loadZoneStep1_S3D(ZoneLoadContext& ctx) {
 
         S3DLoadOptions loadOptions;
         loadOptions.loadCharacters = false;
-        loadOptions.computeCombinedGeometry = true;
+        // T504c Leg 2g: the combined geometry is built only where it is
+        // consumed -- Step 2's no-PVS fallback (createZoneMesh). The PVS
+        // path gets a materials+bounds summary there instead (19.5 MiB of
+        // vertex+triangle copy in iceclad, built and dropped every load).
+        loadOptions.computeCombinedGeometry = false;
         loadOptions.loadObjects = !ctx_.config.constrainedConfig.skipObjectBuild;
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: loadOptions: chars={}, combinedGeom={}, objects={}",
                   loadOptions.loadCharacters, loadOptions.computeCombinedGeometry, loadOptions.loadObjects);
@@ -319,15 +324,32 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: zone bounds: X=[{:.1f},{:.1f}] Y=[{:.1f},{:.1f}] Z=[{:.1f},{:.1f}]",
                           zbMinX, zbMaxX, zbMinY, zbMaxY, zbMinZ, zbMaxZ);
 
-                // Build portal system from BSP split planes
-                computations->portalSystem = std::make_unique<PortalSystem>();
-                computations->portalSystem->buildFromBsp(*bspTree, zbMinX, zbMinY, zbMinZ, zbMaxX, zbMaxY, zbMaxZ);
-                computations->portalOcclusionEligible = computations->portalSystem->hasPortals() &&
-                    (computations->portalSystem->getData().portals.size() > 10);
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: portal system: hasPortals={}, portalCount={}, occlusionEligible={}",
-                          computations->portalSystem->hasPortals(),
-                          computations->portalSystem->getData().portals.size(),
-                          computations->portalOcclusionEligible);
+                // Build portal system from BSP split planes -- ONLY when the preset
+                // will use it.
+                //
+                // T504 (load-step audit): this ran unconditionally and the result was
+                // kept for the whole session although stencil portal occlusion is off
+                // by default (the orangepi preset sets portalOcclusion=false) and, by
+                // this file's own heuristic below, never auto-enabled in an outdoor
+                // zone, whose "portals" are BSP adjacency artifacts. MEASURED in
+                // iceclad: 428,337 portals from 2,016,868 raw candidates, 2.7 s, and
+                // +92.9 MiB of `spatial` -- a third of the client's heap -- for a
+                // feature that was not on. /portal still works: with no portal
+                // system it requests the deferred build (togglePortalOcclusion()).
+                const bool wantPortals = ctx_.config.constrainedConfig.portalOcclusion &&
+                                         ctx_.config.constrainedConfig.enableStencilBuffer;
+                if (wantPortals) {
+                    computations->portalSystem = std::make_unique<PortalSystem>();
+                    computations->portalSystem->buildFromBsp(*bspTree, zbMinX, zbMinY, zbMinZ, zbMaxX, zbMaxY, zbMaxZ);
+                    computations->portalOcclusionEligible = computations->portalSystem->hasPortals() &&
+                        (computations->portalSystem->getData().portals.size() > 10);
+                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2: portal system: hasPortals={}, portalCount={}, occlusionEligible={}",
+                              computations->portalSystem->hasPortals(),
+                              computations->portalSystem->getData().portals.size(),
+                              computations->portalOcclusionEligible);
+                } else {
+                    LOG_INFO(MOD_GRAPHICS, "SEQ Step2: portal system NOT built (preset portalOcclusion/stencil off); /portal builds it on demand");
+                }
 
                 // Cache zone light BSP regions
                 for (size_t i = 0; i < zone->lights.size(); ++i) {
@@ -417,6 +439,8 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: createZoneMesh() complete (no-BSP/PVS fallback), zoneMeshNode_={}",
                           (bool)ctx_.zoneMeshNode);
             } else {
+                if (ctx_.currentZone && !ctx_.currentZone->geometry)   // T504c Leg 2g: materials + bounds only
+                    ctx_.currentZone->geometry = wldLoader->getCombinedMaterialSummary();
                 // Clean up existing mesh nodes
                 size_t oldRegionNodes = ctx_.regionMeshNodes.size();
                 if (ctx_.zoneMeshNode) { ctx_.zoneMeshNode->remove(); ctx_.zoneMeshNode = nullptr; }
@@ -496,8 +520,12 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                 }
             }
         } else if (ctx_.zoneBspTree && !ctx_.regionBoundingBoxes.empty() && !ctx_.portalSystem) {
-            ctx_.portalBuildPending = true;
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: portal system deferred (portalBuildPending=true)");
+            // T504: the deferred build is for presets that use portals; a preset
+            // that does not gets one only when /portal asks for it.
+            ctx_.portalBuildPending = ctx_.config.constrainedConfig.portalOcclusion &&
+                                      ctx_.config.constrainedConfig.enableStencilBuffer;
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: portal system deferred (portalBuildPending={})",
+                      ctx_.portalBuildPending);
         }
         if (ctx_.regionNeighbors.empty()) {
             ctx_.ZoneLifecycle().buildRegionNeighborMap();
@@ -549,6 +577,21 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
             size_t regionsSkipped = 0;
             size_t meshBuildFailed = 0;
             size_t nodeFailed = 0;
+            // T504 (zone draw rework): POOLED mode. With mergeZoneDraws on, the
+            // region meshes are appended straight into ZoneMergeBuffers' per-
+            // material pools and dropped -- no scene node, no SMesh, no VBO per
+            // region. MEASURED before: iceclad 17,886 nodes / 16,049 buffers of
+            // 10.6 vertices each, zone_mesh 54.9 MiB for 6.6 MiB of geometry.
+            // WILLEQ_ZONE_POOLS=0 forces the legacy per-region-node path with the
+            // same binary, so the two can be compared frame for frame.
+            const char* poolsEnv = std::getenv("WILLEQ_ZONE_POOLS");
+            const bool pooledRegions = ctx_.config.constrainedConfig.mergeZoneDraws && !(poolsEnv && (poolsEnv[0] == '0' || poolsEnv[0] == 'u'));
+            ZoneMergeBuffers* pools = nullptr;
+            size_t pooledRegionCount = 0;
+            if (pooledRegions) {
+                pools = &ctx_.ZoneLifecycle().ensureZoneMergeBuffers();
+                pools->beginPooled();
+            }
             for (size_t i = 0; i < totalRegions; ++i) {
                 auto geom = wldLoader->getGeometryForRegion(i);
                 if (!geom || geom->vertices.empty()) { ++regionsBuilt; ++regionsSkipped; continue; }
@@ -569,6 +612,26 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                     continue;
                 }
 
+                if (pooledRegions) {
+                    const irr::core::vector3df regionPos(geom->centerX, geom->centerZ, geom->centerY);
+                    if (pools->appendRegion(i, mesh, regionPos.X, regionPos.Y, regionPos.Z) > 0) {
+                        ++pooledRegionCount;
+                        if (ctx_.regionBoundingBoxes.find(i) == ctx_.regionBoundingBoxes.end()) {
+                            irr::core::aabbox3df box = mesh->getBoundingBox();
+                            box.MinEdge += regionPos;
+                            box.MaxEdge += regionPos;
+                            ctx_.regionBoundingBoxes[i] = box;
+                        }
+                    }
+                    mesh->drop();
+                    ++regionsBuilt;
+                    if (regionsBuilt % 20 == 0 && totalRegions > 0) {
+                        int pct = 63 + static_cast<int>(7.0f * regionsBuilt / totalRegions);
+                        ctx.updateProgress(pct, "Building zone meshes [" + std::to_string(regionsBuilt)
+                                            + "/" + std::to_string(totalRegions) + "]");
+                    }
+                    continue;
+                }
                 irr::scene::IMeshSceneNode* node = ctx_.smgr->addMeshSceneNode(mesh);
                 if (node) {
                     node->setPosition(irr::core::vector3df(geom->centerX, geom->centerZ, geom->centerY));
@@ -602,6 +665,11 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                     ctx.updateProgress(pct, "Building zone meshes [" + std::to_string(regionsBuilt)
                                         + "/" + std::to_string(totalRegions) + "]");
                 }
+            }
+            if (pooledRegions) {
+                pools->finishPooled();
+                LOG_INFO(MOD_GRAPHICS, "Sequential: pooled {} regions into the zone draw pools (no per-region nodes)",
+                         pooledRegionCount);
             }
             LOG_INFO(MOD_GRAPHICS, "Sequential: built {} region meshes eagerly ({} skipped, {} mesh failures, {} node failures)",
                      ctx_.regionMeshNodes.size(), regionsSkipped, meshBuildFailed, nodeFailed);
@@ -661,6 +729,12 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                     }
 
                     if (!occluders.empty()) {
+                        // T504: push_back growth + the resize() above left every
+                        // region's vector at its pre-truncation capacity, and the
+                        // move below kept it: dreadlands 30,381 kept triangles
+                        // (1.16 MiB) occupied 7.34 MiB. Right-size before handing
+                        // it over.
+                        occluders.shrink_to_fit();
                         totalOccluders += occluders.size();
                         regionsWithOccluders++;
                         ctx_.occlusionCuller->setRegionOccluders(ri, std::move(occluders));
@@ -701,6 +775,15 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                           waterAnimCount);
                 animCount += waterAnimCount;
 
+                // T504 (zone draw rework): pooled zone materials follow the frame changes.
+                if (pooledRegions) {
+                    ZoneMergeBuffers* animPools = pools;
+                    ctx_.animatedTextureManager->setFrameSwapHook(
+                        [animPools](irr::video::ITexture* from, irr::video::ITexture* to) {
+                            if (animPools->isPooled()) animPools->swapTexture(from, to);
+                        });
+                }
+
                 // Register each region mesh's buffers with the animated texture manager.
                 // PVS region meshes use addMesh (buffer materials) because they're drawn
                 // via manual draw path, not through Irrlicht's scene graph.
@@ -737,9 +820,19 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
         // destroys any built merge buffers on zone teardown, so each zone
         // visit starts from the config default again.
         ctx_.mergeZoneDrawsEnabled = ctx_.config.constrainedConfig.mergeZoneDraws;
+        // T504 diagnostic: WILLEQ_ZONE_POOLS=u = legacy region nodes with the merge
+        // OFF (every buffer drawn from its own VBO), for three-way frame compares.
+        if (const char* pe = std::getenv("WILLEQ_ZONE_POOLS"); pe && pe[0] == 'u') {
+            ctx_.mergeZoneDrawsEnabled = false;
+        }
 
         // Setup front-to-back sorting
-        if (ctx_.usePvsCulling && !ctx_.regionMeshNodes.empty() && !ctx_.config.constrainedConfig.skipManualZoneDraw) {
+        // T504 (zone draw rework): pooled regions count as zone geometry too --
+        // with no region nodes this test used to leave the zone undrawn.
+        const auto& drawPools = ctx_.ZoneLifecycle().zoneMergeBuffers();
+        const bool havePooledRegions = drawPools && drawPools->isPooled() && drawPools->pooledRegionCount() > 0;
+        if (ctx_.usePvsCulling && (!ctx_.regionMeshNodes.empty() || havePooledRegions) &&
+            !ctx_.config.constrainedConfig.skipManualZoneDraw) {
             // P32: GLES2 is the only backend now, so this was always true —
             // collapsed from an #ifdef EQT_HAS_GLES2 / EDT_BURNINGSVIDEO check.
             ctx_.manualZoneDrawEnabled = true;
@@ -793,8 +886,15 @@ void ZoneLoadComponent::loadZoneStep5_Assets(ZoneLoadContext& ctx) {
                       ctx_.config.constrainedConfig.deferredAssetLoading, (bool)computations);
         }
 
-        // Build equipment index inline (was background thread)
-        if (computations) {
+        // Build equipment index inline (was background thread).
+        // T504c Leg 2f: the index is client-tree-wide, not per zone; once the
+        // loader has it, no zone rebuilds it (every zone load used to parse
+        // the equipment WLDs again and adopt the same result).
+        const bool haveEquipmentIndex = ctx_.entityRenderer && ctx_.entityRenderer->getEquipmentModelLoader()
+                                        && ctx_.entityRenderer->getEquipmentModelLoader()->isLoaded();
+        if (computations && haveEquipmentIndex) {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step5: equipment index already loaded -- not rebuilt");
+        } else if (computations) {
             auto eqIdx = std::make_unique<PendingZoneComputations::EquipmentIndexData>();
             if (EquipmentModelLoader::buildEquipmentIndex(ctx.eqPath,
                     eqIdx->modelIndex, eqIdx->textureIndex)) {
@@ -990,6 +1090,9 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
     if (ctx_.entityRenderer) {
         if (auto* rml = ctx_.entityRenderer->getRaceModelLoader()) {
             LOG_INFO(MOD_GRAPHICS, "{}", rml->modelMemLogLine("zone_load_complete"));
+            rml->clearPrefetchRaces();   // T504c Leg 4: the announced set has been served
+            rml->pruneSourceCharacters("zone_load_complete");   // T504b Leg 2
+            LOG_INFO(MOD_GRAPHICS, "{}", rml->srcCharLogLines("zone_load_complete"));  // T504b Leg 0
             // B843: the shared texture blocks the EntityModels tally does not
             // own, in Will's ruling form (one line, every claimant named).
             // Empty on x86 offline runs where every pixel is EntityModels'.

@@ -173,6 +173,8 @@ struct BspTree {
     void addRegion(std::shared_ptr<BspRegion> region);
     // Trims the arena's growth slack once every region is in (parser end).
     void shrinkPvsArena();
+    // T504c Leg 2g: size the arena once, before the regions append into it.
+    void reservePvsArena(size_t bytes);
     // Bytes held by the decode cache right now (bounded; see PvsStore).
     size_t pvsCacheBytes() const;
     // Arena bytes (every region's RLE, back to back) plus growth slack.

@@ -33,6 +33,49 @@ struct VertexMapping {
 // update every duplicate, not just the last one registered.
 using VertexMappingList = std::vector<VertexMapping>;
 
+// T504 (load-step audit): the STORED form of the mapping. EQAnimatedMesh kept
+// the builder's std::vector<VertexMappingList> -- one heap-allocated vector per
+// original vertex. MEASURED qeynos2: the per-appearance-variant animated meshes
+// were 11.6 MiB in 51,248 allocations (~1,100 per variant, i.e. one per vertex).
+// Same content, two arrays: entries grouped by original vertex, and an offset
+// per vertex. operator[] returns the span the skinning loop iterates.
+class FlatVertexMapping {
+public:
+    struct Span {
+        const VertexMapping* first = nullptr;
+        size_t count = 0;
+        const VertexMapping* begin() const { return first; }
+        const VertexMapping* end() const { return first + count; }
+        bool empty() const { return count == 0; }
+        size_t size() const { return count; }
+    };
+    void assign(const std::vector<VertexMappingList>& lists) {
+        size_t total = 0;
+        for (const auto& l : lists) total += l.size();
+        std::vector<irr::u32>().swap(offsets_);
+        std::vector<VertexMapping>().swap(entries_);
+        if (lists.empty()) return;
+        offsets_.reserve(lists.size() + 1);
+        entries_.reserve(total);
+        for (const auto& l : lists) {
+            offsets_.push_back(static_cast<irr::u32>(entries_.size()));
+            entries_.insert(entries_.end(), l.begin(), l.end());
+        }
+        offsets_.push_back(static_cast<irr::u32>(entries_.size()));
+    }
+    size_t size() const { return offsets_.empty() ? 0 : offsets_.size() - 1; }
+    bool empty() const { return size() == 0; }
+    Span operator[](size_t i) const {
+        return Span{entries_.data() + offsets_[i], static_cast<size_t>(offsets_[i + 1] - offsets_[i])};
+    }
+    size_t memoryBytes() const {
+        return offsets_.capacity() * sizeof(irr::u32) + entries_.capacity() * sizeof(VertexMapping);
+    }
+private:
+    std::vector<irr::u32> offsets_;        // size()+1 entries
+    std::vector<VertexMapping> entries_;   // grouped by original vertex
+};
+
 // Custom animated mesh that supports EQ skeletal animation
 // This mesh stores vertex data that can be transformed by bone matrices
 class EQAnimatedMesh : public irr::scene::IAnimatedMesh {
@@ -79,16 +122,13 @@ public:
     std::shared_ptr<CharacterSkeleton> getSkeleton() const { return animator_.getSkeleton(); }
     const std::vector<VertexPiece>& getVertexPieces() const { return vertexPieces_; }
     const std::vector<irr::video::S3DVertex>& getOriginalVertices() const { return originalVertices_; }
-    const std::vector<VertexMappingList>& getVertexMapping() const { return vertexMapping_; }
+    const FlatVertexMapping& getVertexMapping() const { return vertexMapping_; }
 
     // Memory usage estimate (CPU-side working data, not counting shared skeleton/base mesh)
     size_t estimateMemoryUsage() const {
         size_t total = sizeof(EQAnimatedMesh);
         total += originalVertices_.capacity() * sizeof(irr::video::S3DVertex);
-        total += vertexMapping_.capacity() * sizeof(VertexMappingList);
-        for (const auto& list : vertexMapping_) {
-            total += list.capacity() * sizeof(VertexMapping);
-        }
+        total += vertexMapping_.memoryBytes();
         total += vertexPieces_.capacity() * sizeof(VertexPiece);
         // animatedMesh_ is an SMesh with copies of base mesh buffers
         if (animatedMesh_) {
@@ -111,7 +151,7 @@ private:
     irr::scene::SMesh* animatedMesh_;                // Mesh with animated vertices
     std::vector<VertexPiece> vertexPieces_;          // Vertex-to-bone mapping
     std::vector<irr::video::S3DVertex> originalVertices_;  // Original vertices in order
-    std::vector<VertexMappingList> vertexMapping_;   // Maps original index -> ALL destination buffer locations (P08D-RETAKE)
+    FlatVertexMapping vertexMapping_;                // Maps original index -> ALL destination buffer locations (P08D-RETAKE)
     SkeletalAnimator animator_;
     irr::core::aabbox3df boundingBox_;
     mutable int lastAppliedFrame_;

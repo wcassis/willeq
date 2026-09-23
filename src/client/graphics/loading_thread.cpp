@@ -1,4 +1,5 @@
 #include "client/graphics/loading_thread.h"
+#include <pthread.h>  // T504: thread names
 
 #include <chrono>
 #include <irrlicht.h>
@@ -142,6 +143,7 @@ void LoadingThread::threadFunc(irr::IrrlichtDevice* device,
                                 LoadingStatus& status,
                                 ActivePhaseCallback activeCallback) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::ZoneMesh);  // T491
+    pthread_setname_np(pthread_self(), "eq-load");  // T504: visible in top -H and the [srcchar] parse lines
     // Acquire GL context on this thread
     if (!acquireContext(handles)) {
         LOG_ERROR(MOD_GRAPHICS, "LoadingThread: failed to acquire GL context, aborting");

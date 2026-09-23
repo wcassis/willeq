@@ -362,37 +362,17 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
     }
 }
 
-std::shared_ptr<ZoneGeometry> WldLoader::getCombinedGeometry() const {
-    if (geometries_.empty()) {
-        LOG_DEBUG(MOD_GRAPHICS, "WldLoader::getCombinedGeometry: no geometries, returning nullptr");
-        return nullptr;
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "WldLoader::getCombinedGeometry: combining {} geometries", geometries_.size());
-    // Log materialData status of input geometries
-    size_t withMaterial = 0, withoutMaterial = 0, withEmptyNames = 0;
-    for (const auto& geom : geometries_) {
-        if (geom->materialData) {
-            withMaterial++;
-            if (geom->materialData->textureNames.empty()) withEmptyNames++;
-        } else {
-            withoutMaterial++;
-        }
-    }
-    LOG_DEBUG(MOD_GRAPHICS, "WldLoader::getCombinedGeometry: input geometries — withMaterialData={} withoutMaterialData={} withEmptyTextureNames={}",
-              withMaterial, withoutMaterial, withEmptyNames);
-
-    auto combined = std::make_shared<ZoneGeometry>();
-    combined->name = "combined";
-    auto& combinedMat = combined->mutableMaterialData();
-
-    combined->minX = combined->minY = combined->minZ = std::numeric_limits<float>::max();
-    combined->maxX = combined->maxY = combined->maxZ = std::numeric_limits<float>::lowest();
-
+namespace {
+// The material merge shared by getCombinedGeometry() and
+// getCombinedMaterialSummary(): one texture table over all geometries, with
+// each geometry's remap into it (T504c Leg 2g factored it out).
+void combineMaterials(const std::vector<std::shared_ptr<ZoneGeometry>>& geometries,
+                      ZoneGeometry& combined, std::vector<std::vector<uint32_t>>& remaps) {
+    auto& combinedMat = combined.mutableMaterialData();
     std::map<std::string, uint32_t> globalTexMap;
-    uint32_t vertexOffset = 0;
-
-    for (const auto& geom : geometries_) {
+    remaps.clear();
+    remaps.reserve(geometries.size());
+    for (const auto& geom : geometries) {
         std::vector<uint32_t> texRemap;
         for (size_t i = 0; i < geom->textureNames().size(); ++i) {
             const auto& texName = geom->textureNames()[i];
@@ -422,7 +402,71 @@ std::shared_ptr<ZoneGeometry> WldLoader::getCombinedGeometry() const {
                 texRemap.push_back(newIdx);
             }
         }
+        remaps.push_back(std::move(texRemap));
+    }
+}
 
+void extendBounds(ZoneGeometry& combined, float x, float y, float z) {
+    combined.minX = std::min(combined.minX, x);
+    combined.minY = std::min(combined.minY, y);
+    combined.minZ = std::min(combined.minZ, z);
+    combined.maxX = std::max(combined.maxX, x);
+    combined.maxY = std::max(combined.maxY, y);
+    combined.maxZ = std::max(combined.maxZ, z);
+}
+}  // namespace
+
+std::shared_ptr<ZoneGeometry> WldLoader::getCombinedMaterialSummary() const {
+    if (geometries_.empty()) return nullptr;
+    auto combined = std::make_shared<ZoneGeometry>();
+    combined->name = "combined-summary";
+    combined->minX = combined->minY = combined->minZ = std::numeric_limits<float>::max();
+    combined->maxX = combined->maxY = combined->maxZ = std::numeric_limits<float>::lowest();
+    std::vector<std::vector<uint32_t>> remaps;
+    combineMaterials(geometries_, *combined, remaps);
+    for (const auto& geom : geometries_)
+        for (const auto& v : geom->vertices)
+            extendBounds(*combined, v.x + geom->centerX, v.y + geom->centerY, v.z + geom->centerZ);
+    return combined;
+}
+
+std::shared_ptr<ZoneGeometry> WldLoader::getCombinedGeometry() const {
+    if (geometries_.empty()) {
+        LOG_DEBUG(MOD_GRAPHICS, "WldLoader::getCombinedGeometry: no geometries, returning nullptr");
+        return nullptr;
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "WldLoader::getCombinedGeometry: combining {} geometries", geometries_.size());
+    // Log materialData status of input geometries
+    size_t withMaterial = 0, withoutMaterial = 0, withEmptyNames = 0;
+    for (const auto& geom : geometries_) {
+        if (geom->materialData) {
+            withMaterial++;
+            if (geom->materialData->textureNames.empty()) withEmptyNames++;
+        } else {
+            withoutMaterial++;
+        }
+    }
+    LOG_DEBUG(MOD_GRAPHICS, "WldLoader::getCombinedGeometry: input geometries — withMaterialData={} withoutMaterialData={} withEmptyTextureNames={}",
+              withMaterial, withoutMaterial, withEmptyNames);
+
+    auto combined = std::make_shared<ZoneGeometry>();
+    combined->name = "combined";
+    combined->minX = combined->minY = combined->minZ = std::numeric_limits<float>::max();
+    combined->maxX = combined->maxY = combined->maxZ = std::numeric_limits<float>::lowest();
+
+    std::vector<std::vector<uint32_t>> remaps;
+    combineMaterials(geometries_, *combined, remaps);
+
+    size_t totalVerts = 0, totalTris = 0;
+    for (const auto& geom : geometries_) { totalVerts += geom->vertices.size(); totalTris += geom->triangles.size(); }
+    combined->vertices.reserve(totalVerts);
+    combined->triangles.reserve(totalTris);
+
+    uint32_t vertexOffset = 0;
+    for (size_t gi = 0; gi < geometries_.size(); ++gi) {
+        const auto& geom = geometries_[gi];
+        const auto& texRemap = remaps[gi];
         for (const auto& v : geom->vertices) {
             // Add mesh center to get world-space positions
             // (vertices are stored relative to center)
@@ -431,12 +475,7 @@ std::shared_ptr<ZoneGeometry> WldLoader::getCombinedGeometry() const {
             worldV.y += geom->centerY;
             worldV.z += geom->centerZ;
             combined->vertices.push_back(worldV);
-            combined->minX = std::min(combined->minX, worldV.x);
-            combined->minY = std::min(combined->minY, worldV.y);
-            combined->minZ = std::min(combined->minZ, worldV.z);
-            combined->maxX = std::max(combined->maxX, worldV.x);
-            combined->maxY = std::max(combined->maxY, worldV.y);
-            combined->maxZ = std::max(combined->maxZ, worldV.z);
+            extendBounds(*combined, worldV.x, worldV.y, worldV.z);
         }
 
         for (const auto& tri : geom->triangles) {
@@ -457,7 +496,7 @@ std::shared_ptr<ZoneGeometry> WldLoader::getCombinedGeometry() const {
     }
 
     LOG_DEBUG(MOD_GRAPHICS, "WldLoader::getCombinedGeometry: result verts={} tris={} textureNames={}",
-              combined->vertices.size(), combined->triangles.size(), combinedMat.textureNames.size());
+              combined->vertices.size(), combined->triangles.size(), combined->textureNames().size());
     return combined;
 }
 

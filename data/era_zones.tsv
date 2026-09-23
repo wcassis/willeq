@@ -1,0 +1,128 @@
+# T504 era zone allowlist (Will, 2026-09-22): the eqemu zone table (local lane, version 0) for
+# expansions 0 (classic), 1 (Kunark), 2 (Velious), minus jaggedpine, nedaria, shadowrest,
+# tutoriala, tutorialb (server-tagged classic, not original-era content); hole stays. cshome is
+# server-only (no client archive). Columns: expansion<TAB>zone_id<TAB>short_name<TAB>long_name
+expansion	zone_id	short_name	long_name
+Classic	1	qeynos	South Qeynos
+Classic	2	qeynos2	North Qeynos
+Classic	3	qrg	The Surefall Glade
+Classic	4	qeytoqrg	The Qeynos Hills
+Classic	5	highpass	Highpass Hold
+Classic	6	highkeep	High Keep
+Classic	8	freportn	North Freeport
+Classic	9	freportw	West Freeport
+Classic	10	freporte	East Freeport
+Classic	11	runnyeye	The Liberated Citadel of Runnyeye
+Classic	12	qey2hh1	The Western Plains of Karana
+Classic	13	northkarana	The Northern Plains of Karana
+Classic	14	southkarana	The Southern Plains of Karana
+Classic	15	eastkarana	Eastern Plains of Karana
+Classic	16	beholder	Gorge of King Xorbb
+Classic	17	blackburrow	Blackburrow
+Classic	18	paw	Lair of the Splitpaw
+Classic	19	rivervale	Rivervale
+Classic	20	kithicor	Kithicor Forest
+Classic	21	commons	West Commonlands
+Classic	22	ecommons	East Commonlands
+Classic	23	erudnint	The Erudin Palace
+Classic	24	erudnext	Erudin
+Classic	25	nektulos	The Nektulos Forest
+Classic	26	cshome	Sunset Home
+Classic	27	lavastorm	Lavastorm Mountains
+Classic	29	halas	Halas
+Classic	30	everfrost	Everfrost Peaks
+Classic	31	soldunga	Solusek's Eye
+Classic	32	soldungb	Nagafen's Lair
+Classic	33	misty	Misty Thicket
+Classic	34	nro	Northern Desert of Ro
+Classic	35	sro	Southern Desert of Ro
+Classic	36	befallen	Befallen
+Classic	37	oasis	Oasis of Marr
+Classic	38	tox	Toxxulia Forest
+Classic	39	hole	The Hole
+Classic	40	neriaka	Neriak - Foreign Quarter
+Classic	41	neriakb	Neriak - Commons
+Classic	42	neriakc	Neriak - 3rd Gate
+Classic	44	najena	Najena
+Classic	45	qcat	The Qeynos Aqueduct System
+Classic	46	innothule	Innothule Swamp
+Classic	47	feerrott	The Feerrott
+Classic	48	cazicthule	Accursed Temple of CazicThule
+Classic	49	oggok	Oggok
+Classic	50	rathemtn	The Rathe Mountains
+Classic	51	lakerathe	Lake Rathetear
+Classic	52	grobb	Grobb
+Classic	54	gfaydark	The Greater Faydark
+Classic	55	akanon	Ak'Anon
+Classic	56	steamfont	Steamfont Mountains
+Classic	57	lfaydark	The Lesser Faydark
+Classic	58	crushbone	Crushbone
+Classic	59	mistmoore	The Castle of Mistmoore
+Classic	60	kaladima	South Kaladim
+Classic	61	felwithea	Northern Felwithe
+Classic	62	felwitheb	Southern Felwithe
+Classic	63	unrest	The Estate of Unrest
+Classic	64	kedge	Kedge Keep
+Classic	65	guktop	The City of Guk
+Classic	66	gukbottom	The Ruins of Old Guk
+Classic	67	kaladimb	North Kaladim
+Classic	68	butcher	Butcherblock Mountains
+Classic	69	oot	Ocean of Tears
+Classic	70	cauldron	Dagnor's Cauldron
+Classic	71	airplane	The Plane of Sky
+Classic	72	fearplane	The Plane of Fear
+Classic	73	permafrost	The Permafrost Caverns
+Classic	74	kerraridge	Kerra Isle
+Classic	75	paineel	Paineel
+Classic	76	hateplane	Plane of Hate
+Classic	77	arena	The Arena
+Classic	98	erudsxing	Erud's Crossing
+Classic	186	hateplaneb	The Plane of Hate
+Kunark	78	fieldofbone	The Field of Bone
+Kunark	79	warslikswood	The Warsliks Woods
+Kunark	80	soltemple	The Temple of Solusek Ro
+Kunark	81	droga	Mines of Droga
+Kunark	82	cabwest	Cabilis West
+Kunark	83	swampofnohope	The Swamp of No Hope
+Kunark	84	firiona	Firiona Vie
+Kunark	85	lakeofillomen	Lake of Ill Omen
+Kunark	86	dreadlands	The Dreadlands
+Kunark	87	burningwood	The Burning Wood
+Kunark	88	kaesora	Kaesora
+Kunark	89	sebilis	The Ruins of Sebilis
+Kunark	90	citymist	The City of Mist
+Kunark	91	skyfire	The Skyfire Mountains
+Kunark	92	frontiermtns	Frontier Mountains
+Kunark	93	overthere	The Overthere
+Kunark	94	emeraldjungle	The Emerald Jungle
+Kunark	95	trakanon	Trakanon's Teeth
+Kunark	96	timorous	Timorous Deep
+Kunark	97	kurn	Kurn's Tower
+Kunark	102	karnor	Karnor's Castle
+Kunark	103	chardok	Chardok
+Kunark	104	dalnir	The Crypt of Dalnir
+Kunark	105	charasis	The Howling Stones
+Kunark	106	cabeast	Cabilis East
+Kunark	107	nurga	Mines of Nurga
+Kunark	108	veeshan	Veeshan's Peak
+Velious	100	stonebrunt	The Stonebrunt Mountains
+Velious	101	warrens	The Warrens
+Velious	110	iceclad	The Iceclad Ocean
+Velious	111	frozenshadow	The Tower of Frozen Shadow
+Velious	112	velketor	Velketor's Labyrinth
+Velious	113	kael	Kael Drakkel
+Velious	114	skyshrine	Skyshrine
+Velious	115	thurgadina	The City of Thurgadin
+Velious	116	eastwastes	Eastern Wastes
+Velious	117	cobaltscar	Cobaltscar
+Velious	118	greatdivide	The Great Divide
+Velious	119	wakening	The Wakening Land
+Velious	120	westwastes	The Western Wastes
+Velious	121	crystal	The Crystal Caverns
+Velious	123	necropolis	Dragon Necropolis
+Velious	124	templeveeshan	The Temple of Veeshan
+Velious	125	sirens	Siren's Grotto
+Velious	126	mischiefplane	The Plane of Mischief
+Velious	127	growthplane	The Plane of Growth
+Velious	128	sleeper	The Sleeper's Tomb
+Velious	129	thurgadinb	Icewell Keep

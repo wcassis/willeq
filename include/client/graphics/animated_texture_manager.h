@@ -1,6 +1,7 @@
 #ifndef EQT_GRAPHICS_ANIMATED_TEXTURE_MANAGER_H
 #define EQT_GRAPHICS_ANIMATED_TEXTURE_MANAGER_H
 
+#include <functional>
 #include <irrlicht.h>
 #include <map>
 #include <vector>
@@ -57,6 +58,13 @@ public:
     // This scans the node's materials and registers any that use animated textures
     void addSceneNode(irr::scene::ISceneNode* node);
 
+    // T504 (zone draw rework): POOLED zone geometry has no per-region mesh
+    // buffers to list in affectedBuffers; its materials live in
+    // ZoneMergeBuffers' table. On every frame change the hook is told to replace
+    // each of this animation's other frame textures with the new one.
+    using FrameSwapHook = std::function<void(irr::video::ITexture* from, irr::video::ITexture* to)>;
+    void setFrameSwapHook(FrameSwapHook hook) { frameSwapHook_ = std::move(hook); }
+
     // Remove all references to a scene node (call before node->remove() during eviction)
     void removeSceneNode(irr::scene::ISceneNode* node);
 
@@ -83,6 +91,7 @@ public:
                               irr::scene::IMesh* mesh);
 
 private:
+    FrameSwapHook frameSwapHook_;  // T504
     // Helper to find animated sequence by base name pattern (e.g., "water" -> water01, water02, ...)
     std::vector<std::string> findTextureSequence(const std::string& baseName,
                                                    const std::map<std::string, std::shared_ptr<TextureInfo>>& textures) const;

@@ -1,4 +1,5 @@
 #include "client/graphics/simulation_worker.h"
+#include <pthread.h>  // T504: thread names
 #include "client/graphics/portal_system.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/environment/unified_particle.h"
@@ -75,8 +76,12 @@ void SimulationWorker::stop() {
 // ============================================================================
 
 void SimulationWorker::setZoneData(const SimulationZoneData& data) {
+    setZoneData(SimulationZoneData(data));  // one copy, then the move path
+}
+
+void SimulationWorker::setZoneData(SimulationZoneData&& data) {
     // Must be called while worker is stopped
-    zoneData_ = data;
+    zoneData_ = std::move(data);
     zoneDataValid_ = true;
 
     // Pre-allocate output buffers based on zone data sizes
@@ -107,11 +112,13 @@ void SimulationWorker::setZoneData(const SimulationZoneData& data) {
     // Initialize worker-owned occlusion culler from zone data
     if (!zoneData_.regionOccluders.empty()) {
         workerOcclusionCuller_ = std::make_unique<SoftwareOcclusionCuller>(zoneData_.occlusionConfig);
-        for (const auto& [regionIdx, triangles] : zoneData_.regionOccluders) {
-            workerOcclusionCuller_->setRegionOccluders(regionIdx, triangles);
+        const size_t occluderSets = zoneData_.regionOccluders.size();
+        for (auto& [regionIdx, triangles] : zoneData_.regionOccluders) {
+            workerOcclusionCuller_->setRegionOccluders(regionIdx, std::move(triangles));  // T504: moved
         }
+        zoneData_.regionOccluders.clear();  // the worker culler owns them now
         LOG_INFO(MOD_GRAPHICS, "SimulationWorker: occlusion culler initialized with {} region occluder sets",
-                 zoneData_.regionOccluders.size());
+                 occluderSets);
     }
 
     LOG_INFO(MOD_GRAPHICS, "SimulationWorker zone data set: {} regions, {} objects, {} zone lights, {} object lights",
@@ -343,6 +350,7 @@ SimulationWorker::DebugInfo SimulationWorker::getDebugInfo() const {
 
 void SimulationWorker::workerLoop() {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::IrrlichtScene);  // T491
+    pthread_setname_np(pthread_self(), "eq-sim");  // T504
     LOG_DEBUG(MOD_GRAPHICS, "SimulationWorker thread started");
 
     while (running_.load(std::memory_order_relaxed)) {

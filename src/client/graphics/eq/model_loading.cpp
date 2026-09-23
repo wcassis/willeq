@@ -32,8 +32,27 @@ bool RaceModelLoader::loadGlobalModels() {
 
     std::string globalChrPath = clientPath_ + "global_chr.s3d";
 
+    // T504b Leg 1: if the worker already parsed global_chr.s3d into
+    // otherChrCaches_, adopt those objects instead of parsing again.
+    {
+        std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
+        auto cacheIt = otherChrCaches_.find("global_chr.s3d");
+        if (cacheIt != otherChrCaches_.end() && !cacheIt->second.characters.empty()) {
+            {
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+                globalCharacters_ = cacheIt->second.characters;
+                recordArchiveNamesLocked("global", globalChrPath, globalCharacters_);   // T504b Leg 2
+            }
+            globalTextures_ = cacheIt->second.textures;
+            globalModelsLoaded_.store(true, std::memory_order_release);
+            LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: adopted {} global_chr.s3d characters from the other-chr cache (no second parse)",
+                     globalCharacters_.size());
+            return !globalCharacters_.empty();
+        }
+    }
+
     S3DLoader loader;
-    if (!loader.loadZone(globalChrPath)) {
+    if (!loader.loadZone(globalChrPath, characterLoadOptions())) {
         LOG_ERROR(MOD_GRAPHICS, "RaceModelLoader: Failed to load {}: {}", globalChrPath, loader.getError());
         return false;
     }
@@ -43,9 +62,20 @@ bool RaceModelLoader::loadGlobalModels() {
         return false;
     }
 
-    globalCharacters_ = zone->characters;
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        globalCharacters_ = zone->characters;
+        recordArchiveNamesLocked("global", globalChrPath, globalCharacters_);   // T504b Leg 2
+    }
     globalTextures_ = zone->characterTextures;
-    globalModelsLoaded_ = true;
+    releaseBytesIfEqe1Authoritative(globalTextures_);  // T504
+    globalModelsLoaded_.store(true, std::memory_order_release);
+    {
+        // T504b Leg 1: publish the SAME objects to the worker's store.
+        std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
+        if (otherChrCaches_.find("global_chr.s3d") == otherChrCaches_.end())
+            storeOtherChrCacheLocked("global_chr.s3d", globalCharacters_, globalTextures_);
+    }
 
     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} character models from global_chr.s3d", globalCharacters_.size());
 
@@ -71,7 +101,7 @@ bool RaceModelLoader::loadNumberedGlobalModels() {
         std::string filename = clientPath_ + "global" + std::to_string(num) + "_chr.s3d";
 
         S3DLoader loader;
-        if (!loader.loadZone(filename)) {
+        if (!loader.loadZone(filename, characterLoadOptions())) {
             // Not all numbered global files may exist
             continue;
         }
@@ -82,6 +112,7 @@ bool RaceModelLoader::loadNumberedGlobalModels() {
         }
 
         numberedGlobalTextures_[num] = zone->characterTextures;
+        releaseBytesIfEqe1Authoritative(numberedGlobalTextures_[num]);  // T504
 
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} character textures from global{}_chr.s3d",
                   zone->characterTextures.size(), num);
@@ -96,23 +127,51 @@ bool RaceModelLoader::loadNumberedGlobalModels() {
 
 // T500 Leg B: the character half, per archive and on demand. This is what
 // loadNumberedGlobalModels() used to do eagerly for all six.
-bool RaceModelLoader::ensureNumberedGlobalCharacters(int num) {
+bool RaceModelLoader::ensureNumberedGlobalCharacters(int num, const std::vector<std::string>* codeFilter) {
     if (clientPath_.empty()) return false;
-    if (numberedGlobalCharacterArchives_.count(num))
+    const std::string filename = clientPath_ + "global" + std::to_string(num) + "_chr.s3d";
+    const std::string key = "global" + std::to_string(num);
+    if (numberedGlobalCharacterArchives_.count(num)) {
+        // T504c Leg 2: a filtered (or pruned) store reloads for a wanted
+        // code the archive is indexed to hold.
+        if (codeFilter) {
+            std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
+            std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+            auto it = numberedGlobalCharacters_.find(num);
+            const CharacterList empty;
+            const CharacterList& have = it == numberedGlobalCharacters_.end() ? empty : it->second;
+            for (const auto& code : *codeFilter)
+                if (storeLacksIndexedCodeLocked(key, have, code)) {
+                    reloadArchiveForCodesLocked(key, filename, *codeFilter, 0, 0, "ensureNumberedGlobalCharacters");
+                    break;
+                }
+        }
         return numberedGlobalCharacters_.count(num) > 0;
+    }
     numberedGlobalCharacterArchives_.insert(num);
 
-    const std::string filename = clientPath_ + "global" + std::to_string(num) + "_chr.s3d";
     S3DLoader loader;
-    if (!loader.loadZone(filename)) return false;
+    const S3DLoadOptions opts = characterLoadOptions(codeFilter);   // T504c Leg 2: filtered when the caller says what it wants
+    if (!loader.loadZone(filename, opts)) return false;
     auto zone = loader.getZone();
-    if (!zone || zone->characters.empty()) return false;
+    if (!zone) return false;
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);   // every name, even when filtered
+        recordArchiveNamesLocked("global" + std::to_string(num), filename, zone->allCharacterNames);
+    }
+    if (zone->characters.empty()) return false;
 
-    numberedGlobalCharacters_[num] = zone->characters;
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        numberedGlobalCharacters_[num] = zone->characters;
+        recordArchiveNamesLocked(key, filename, zone->characters);   // T504b Leg 2
+        if (codeFilter) archiveIndex_[key].pruned = true;            // incomplete: reload-on-miss applies
+    }
     // The textures come with the same parse; if the texture-only pass never
     // ran (or found nothing) this is the same map it would have stored.
     if (!numberedGlobalTextures_.count(num) && !zone->characterTextures.empty()) {
         numberedGlobalTextures_[num] = zone->characterTextures;
+        releaseBytesIfEqe1Authoritative(numberedGlobalTextures_[num]);  // T504
         mergedTexturesCacheValid_ = false;
     }
     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: Loaded {} character models from global{}_chr.s3d (on demand)",
@@ -235,6 +294,13 @@ std::shared_ptr<TextureInfo> RaceModelLoader::getArmorTexture(const std::string&
 }
 
 bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
+    // T504 (load-step audit): this is ENTITY model data. It is called from
+    // setupInstantScene() on the render thread, whose open scope is ZoneMesh, so
+    // the whole <zone>_chr.s3d parse was charged to zone_mesh -- MEASURED iceclad:
+    // zone_mesh read 11.4 MiB at zone_load_start, before any zone geometry
+    // existed, and the [modelmem] tally (25.95 MiB) was twice the entity_models
+    // row (11.41) because the other half was filed here.
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);
     if (clientPath_.empty()) {
         LOG_ERROR(MOD_GRAPHICS, "RaceModelLoader: No client path set");
         return false;
@@ -247,7 +313,11 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
 
     // Clear previous zone models AND cached models (so they get re-loaded with new zone textures)
     // This ensures zone-specific textures (like armor textures) are properly merged
-    zoneCharacters_.clear();
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        zoneCharacters_.clear();
+        archiveIndex_.erase("zone");   // T504b Leg 2: a new zone, a new index
+    }
     zoneTextures_.clear();
     zoneModelsLoaded_ = false;
 
@@ -260,6 +330,7 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
         std::lock_guard<std::mutex> lock(loadedModelsMutex_);
         loadedModels_.clear();
     }
+    forgetAllReloadMemos();   // T504b
     meshCache_.clear();
     {
         std::lock_guard<std::mutex> lock(variantModelsMutex_);
@@ -280,7 +351,7 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
     std::string zoneFilename = clientPath_ + zoneName + "_chr.s3d";
 
     S3DLoader loader;
-    if (!loader.loadZone(zoneFilename)) {
+    if (!loader.loadZone(zoneFilename, characterLoadOptions())) {
         // Zone-specific chr file may not exist for all zones
         return false;
     }
@@ -290,17 +361,38 @@ bool RaceModelLoader::loadZoneModels(const std::string& zoneName) {
         return false;
     }
 
-    zoneCharacters_ = zone->characters;
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        zoneCharacters_ = zone->characters;
+        recordArchiveNamesLocked("zone", zoneFilename, zoneCharacters_);   // T504b Leg 2
+    }
     zoneTextures_ = zone->characterTextures;
     currentZoneName_ = zoneName;
+    clearPrefetchRaces();   // T504c Leg 4: the set belongs to the zone being left
     zoneModelsLoaded_ = true;
+    // T504 resolver Leg 0: what the ORIGINAL client would load for this zone.
+    if (!eraZonesLoaded_) { eraZones_ = LoadEraZones(); eraZonesLoaded_ = true; }
+    eraSources_ = LoadEraModelSources(clientPath_, zoneName, eraZones_);
+    eraNameIndex_.clear();
+    eraNameIndexBuilt_ = false;
+    LOG_INFO(MOD_GRAPHICS, "{}", eraSources_.toLogLine(zoneName));
+
+    // T504 (load-step audit): what this eager whole-archive parse retains.
+    size_t rawTextureBytes = 0;
+    for (const auto& [name, tex] : zoneTextures_) {
+        if (tex) rawTextureBytes += tex->rawDataBytes();
+    }
+    const size_t releasedNow = releaseBytesIfEqe1Authoritative(zoneTextures_);  // T504
+    LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: zone models '{}': {} characters, {} textures with {} raw bytes "
+             "({} released at once: EQE1 authoritative)",
+             zoneFilename, zoneCharacters_.size(), zoneTextures_.size(), rawTextureBytes, releasedNow);
 
     return true;
 }
 
 bool RaceModelLoader::loadModelFromS3D(const std::string& s3dPath, uint16_t raceId, uint8_t gender) {
     S3DLoader loader;
-    if (!loader.loadZone(s3dPath)) {
+    if (!loader.loadZone(s3dPath, characterLoadOptions())) {
         return false;
     }
 
@@ -341,7 +433,7 @@ bool RaceModelLoader::loadModelFromS3D(const std::string& s3dPath, uint16_t race
         auto merged = getMergedTextures();
         for (const auto& [name, tex] : merged) {
             if (modelData->textures.find(name) == modelData->textures.end()) {
-                modelData->textures[name] = tex;
+                modelData->textures.set(name, tex);  // T504: copy-on-write
             }
         }
         modelData->raceName = character->name;
@@ -412,7 +504,7 @@ bool RaceModelLoader::loadModelFromGlobalChr(uint16_t raceId, uint8_t gender) {
     // Try each race code in order
     for (const std::string& codeToTry : codesToTry) {
         // Search for a character model that matches this race code
-        for (const auto& character : globalCharacters_) {
+        for (const auto& character : snapshotGlobalCharacters()) {  // T504b Leg 2
             if (!character || character->parts.empty()) {
                 continue;
             }
@@ -479,7 +571,7 @@ bool RaceModelLoader::loadModelFromGlobalChr(uint16_t raceId, uint8_t gender) {
                 modelData->combinedGeometry = combinedGeom;
                 modelData->rawGeometry = rawGeom;  // Store raw geometry for animation
                 // Use merged textures from all sources (global + numbered globals + zone)
-                modelData->textures = getMergedTextures();
+                modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
                 modelData->raceName = character->name;
                 modelData->raceId = raceId;
                 modelData->gender = gender;
@@ -517,16 +609,16 @@ bool RaceModelLoader::loadModelFromNumberedGlobal(int globalNum, uint16_t raceId
     // T500 Leg B: the characters are no longer pre-loaded by
     // loadNumberedGlobalModels(); this is the one path that wants them, so it
     // is the one that loads them.
-    ensureNumberedGlobalCharacters(globalNum);
+    const std::vector<std::string> wantedHere = wantedCodesFor(raceId, gender);   // T504b Leg 3
+    ensureNumberedGlobalCharacters(globalNum, &wantedHere);
 
-    // Check if this numbered global is loaded
-    auto charIt = numberedGlobalCharacters_.find(globalNum);
-    if (charIt == numberedGlobalCharacters_.end()) {
+    // Check if this numbered global is loaded (T504b Leg 2: a snapshot)
+    const CharacterList characters = snapshotNumberedGlobalCharacters(globalNum);
+    if (characters.empty()) {
         return false;
     }
 
     auto texIt = numberedGlobalTextures_.find(globalNum);
-    const auto& characters = charIt->second;
     const auto& textures = (texIt != numberedGlobalTextures_.end()) ? texIt->second :
         std::map<std::string, std::shared_ptr<TextureInfo>>();
 
@@ -602,7 +694,7 @@ bool RaceModelLoader::loadModelFromNumberedGlobal(int globalNum, uint16_t raceId
 
                 auto modelData = std::make_shared<RaceModelData>();
                 modelData->combinedGeometry = combinedGeom;
-                modelData->textures = getMergedTextures();
+                modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
                 modelData->raceName = character->name;
                 modelData->raceId = raceId;
                 modelData->gender = gender;
@@ -631,7 +723,7 @@ bool RaceModelLoader::loadModelFromNumberedGlobal(int globalNum, uint16_t raceId
             modelData->combinedGeometry = combinedGeom;
             modelData->rawGeometry = rawGeom;  // Store raw geometry for animation
             // Use merged textures from all sources (global + numbered globals + zone)
-            modelData->textures = getMergedTextures();
+            modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
             modelData->raceName = character->name;
             modelData->raceId = raceId;
             modelData->gender = gender;

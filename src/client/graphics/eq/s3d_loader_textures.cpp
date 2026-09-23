@@ -105,6 +105,19 @@ bool S3DLoader::loadCharacterTextures(PfsArchive& archive) {
 
     for (const auto& texName : texFiles) {
         std::vector<char> data;
+        if (options_.textureNamesOnly) {
+            // T504c Leg 2c: the same end state releaseBytes() leaves --
+            // present(), no bytes -- without inflating the file first.
+            auto tex = std::make_shared<TextureInfo>();
+            tex->name = texName;
+            tex->bytesReleased = true;
+            tex->ownerCategory = static_cast<uint8_t>(eqt::memory::currentCategory());
+            std::string lowerName = texName;
+            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+                          [](unsigned char c) { return std::tolower(c); });
+            zone_->characterTextures[lowerName] = tex;
+            continue;
+        }
         if (archive.get(texName, data)) {
             auto tex = std::make_shared<TextureInfo>();
             tex->name = texName;

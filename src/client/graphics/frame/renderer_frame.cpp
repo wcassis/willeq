@@ -177,6 +177,8 @@ bool FrameComponent::processFrame(float deltaTime) {
             // src/client/graphics/CLAUDE.md for the reference pointer.
 
             // Priority 5: Entity prep results
+            if (ctx_.entityRenderer && ctx_.entityRenderer->getRaceModelLoader())
+                ctx_.entityRenderer->getRaceModelLoader()->sweepEvictable();   // T504b Leg 2b (cheap when empty)
             if (!didWork && ctx_.entityPrepReady && ctx_.entityRenderer)
                 didWork = ctx_.entityRenderer->pollAndDistributePrepResults();
 

@@ -72,6 +72,19 @@ EntityRenderer::EntityRenderer(irr::scene::ISceneManager* smgr, irr::video::IVid
     : smgr_(smgr), driver_(driver), fileSystem_(fileSystem) {
     // Create the race model loader
     raceModelLoader_ = std::make_unique<RaceModelLoader>(smgr, driver, fileSystem);
+    // T504b: the render thread never parses an archive -- a model that is not
+    // loaded is requested from the prep worker (spawnId 0 = race-level
+    // request; its result is promoted like any other) and the caller waits
+    // for the next frames, as a late spawn does.
+    raceModelLoader_->setWorkerPreloadRequest([this](uint16_t raceId, uint8_t gender) {
+        if (!entityPrepWorker_) return false;   // nobody to hand it to: load synchronously
+        EntityPrepWorker::PrepRequest req;
+        req.spawnId = 0;
+        req.raceId = raceId;
+        req.gender = gender;
+        entityPrepWorker_->requestPrep(req);
+        return true;
+    });
 
     // Create the equipment model loader
     equipmentModelLoader_ = std::make_unique<EquipmentModelLoader>(smgr, driver, fileSystem);
@@ -534,6 +547,11 @@ void EntityRenderer::setEntityLight(uint16_t spawnId, uint8_t lightLevel) {
 
 void EntityRenderer::setConstrainedConfig(const ConstrainedRendererConfig* config) {
     constrainedConfig_ = config;
+    if (config && raceModelLoader_) {
+        // T504b Leg 2b: budget pressure evicts despawned models at once.
+        raceModelLoader_->setEntityModelBudgetBytes(
+            config->memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::EntityModels)]);
+    }
     if (config) {
         LOG_INFO(MOD_GRAPHICS, "EntityRenderer: max {} entities within {} units",
                  config->maxVisibleEntities, config->entityRenderDistance);

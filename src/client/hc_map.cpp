@@ -63,8 +63,34 @@ struct HCMap::impl {
 
 	// Store vertices and indices for debug visualization
 	// These are in Irrlicht coordinates (Y-up) for direct rendering
-	std::vector<glm::vec3> mesh_verts;  // Vertices in Y-up (Irrlicht) format
-	std::vector<uint32_t> indices;
+	// T504 (load-step audit): VIEWS onto the RaycastMesh's own arrays, not copies.
+	// These were two std::vectors holding the same vertices and indices the
+	// RaycastMesh had just been handed and copied -- a second full copy of the
+	// collision geometry (MEASURED raw size 2.3-4.4 MiB in iceclad / gfaydark /
+	// dreadlands) kept only for the debug overlay and the manual-mode placeholder.
+	// Valid while `rm` lives; bindViews() is called right after it is created.
+	template <typename T> struct ArrayView {
+		const T* p = nullptr;
+		size_t n = 0;
+		size_t size() const { return n; }
+		size_t capacity() const { return n; }
+		bool empty() const { return n == 0; }
+		const T& operator[](size_t i) const { return p[i]; }
+		const T* begin() const { return p; }
+		const T* end() const { return p + n; }
+	};
+	ArrayView<glm::vec3> mesh_verts;  // Vertices in Y-up (Irrlicht) format
+	ArrayView<uint32_t> indices;
+	void bindViews() {
+		mesh_verts = {};
+		indices = {};
+		if (!rm) return;
+		static_assert(sizeof(glm::vec3) == 3 * sizeof(RmReal), "vec3 must be three RmReal");
+		mesh_verts.p = reinterpret_cast<const glm::vec3*>(rm->getVertices());
+		mesh_verts.n = rm->getVertexCount();
+		indices.p = rm->getIndices();
+		indices.n = static_cast<size_t>(rm->getTriangleCount()) * 3;
+	}
 	std::vector<bool> triangleIsPlaceable;  // Per-triangle flag: true if from placeable object
 	float minZ = 0.0f;
 	float maxZ = 0.0f;
@@ -238,8 +264,6 @@ bool HCMap::Load(const std::string& filename) {
 		}
 
 		// Store vertices for debug visualization AFTER Y↔Z swap (now in Irrlicht Y-up format)
-		m_impl->mesh_verts = verts;
-		m_impl->indices = indices;
 
 		// V1 format has no placeables - all triangles are terrain
 		m_impl->triangleIsPlaceable.resize(face_count, false);
@@ -253,6 +277,7 @@ bool HCMap::Load(const std::string& filename) {
 		}
 
 		m_impl->rm = createRaycastMesh((RmUint32)verts.size(), (const RmReal*)&verts[0], face_count, &indices[0]);
+		m_impl->bindViews();  // T504
 		if (m_impl->rm) {
 			loaded = true;
 			LOG_INFO(MOD_MAP, "Loaded V1 map: {} vertices, {} faces", verts.size(), face_count);
@@ -722,8 +747,6 @@ bool HCMap::Load(const std::string& filename) {
 		}
 
 		// Store vertices for debug visualization AFTER Y↔Z swap (now in Irrlicht Y-up format)
-		m_impl->mesh_verts = verts;
-		m_impl->indices = indices;
 		m_impl->triangleIsPlaceable = triangleIsPlaceable;
 
 		// Calculate Y range for color gradient (Y is vertical in Y-up format)
@@ -738,6 +761,7 @@ bool HCMap::Load(const std::string& filename) {
 		size_t placeableCount = std::count(triangleIsPlaceable.begin(), triangleIsPlaceable.end(), true);
 		if (face_count > 0 && verts.size() > 0) {
 			m_impl->rm = createRaycastMesh((RmUint32)verts.size(), (const RmReal*)&verts[0], face_count, &indices[0]);
+			m_impl->bindViews();  // T504
 			if (m_impl->rm) {
 				loaded = true;
 				LOG_INFO(MOD_MAP, "Loaded V2 map: {} vertices, {} faces ({} placeables, {} terrain)",
@@ -908,42 +932,44 @@ std::vector<HCMap::Triangle> HCMap::GetTrianglesInRadius(const glm::vec3& center
 	return result;
 }
 
-std::vector<HCMap::Triangle> HCMap::GetAllTerrainTriangles() const {
-	std::vector<Triangle> result;
-
+size_t HCMap::ForEachTerrainTriangle(const std::function<void(const Triangle&)>& visit) const {
 	if (!m_impl || m_impl->mesh_verts.empty() || m_impl->indices.empty()) {
-		return result;
+		return 0;
 	}
 
-	size_t numTriangles = m_impl->indices.size() / 3;
-	result.reserve(numTriangles);
-
+	const size_t numTriangles = m_impl->indices.size() / 3;
+	size_t visited = 0;
+	Triangle tri;
+	tri.isPlaceable = false;
 	for (size_t i = 0; i < numTriangles; ++i) {
-		// Skip placeables — only terrain
-		bool isPlaceable = (i < m_impl->triangleIsPlaceable.size()) ? m_impl->triangleIsPlaceable[i] : false;
+		// Skip placeables -- only terrain
+		const bool isPlaceable = (i < m_impl->triangleIsPlaceable.size()) ? m_impl->triangleIsPlaceable[i] : false;
 		if (isPlaceable) continue;
 
-		uint32_t i1 = m_impl->indices[i * 3];
-		uint32_t i2 = m_impl->indices[i * 3 + 1];
-		uint32_t i3 = m_impl->indices[i * 3 + 2];
-
+		const uint32_t i1 = m_impl->indices[i * 3];
+		const uint32_t i2 = m_impl->indices[i * 3 + 1];
+		const uint32_t i3 = m_impl->indices[i * 3 + 2];
 		if (i1 >= m_impl->mesh_verts.size() || i2 >= m_impl->mesh_verts.size() || i3 >= m_impl->mesh_verts.size()) {
 			continue;
 		}
 
-		Triangle tri;
 		tri.v1 = m_impl->mesh_verts[i1];
 		tri.v2 = m_impl->mesh_verts[i2];
 		tri.v3 = m_impl->mesh_verts[i3];
-
-		glm::vec3 edge1 = tri.v2 - tri.v1;
-		glm::vec3 edge2 = tri.v3 - tri.v1;
+		const glm::vec3 edge1 = tri.v2 - tri.v1;
+		const glm::vec3 edge2 = tri.v3 - tri.v1;
 		tri.normal = glm::normalize(glm::cross(edge1, edge2));
-		tri.isPlaceable = false;
-
-		result.push_back(tri);
+		++visited;
+		visit(tri);
 	}
+	return visited;
+}
 
+std::vector<HCMap::Triangle> HCMap::GetAllTerrainTriangles() const {
+	std::vector<Triangle> result;
+	if (!m_impl || m_impl->indices.empty()) return result;
+	result.reserve(m_impl->indices.size() / 3);
+	ForEachTerrainTriangle([&result](const Triangle& t) { result.push_back(t); });
 	return result;
 }
 

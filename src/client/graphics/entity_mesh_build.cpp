@@ -123,6 +123,14 @@ bool EntityRenderer::registerEntity(uint16_t spawnId, uint16_t raceId, const std
 
 bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityInstances);  // T491
+    // T504: owner labels for WILLEQ_LEDGER_OWNERS=entity_instances (no effect
+    // otherwise -- the rows are only charged for the selected category).
+    eqt::memory::StartupScope ownerScope("ent.lookup");
+    auto entOwner = [](const char* name) {
+        if (eqt::memory::enabled()) {
+            eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex(name);
+        }
+    };
     // If entity building is disabled, keep placeholder (zero disk I/O)
     if (constrainedConfig_ && constrainedConfig_->skipEntityBuild) {
         return false;
@@ -144,6 +152,27 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
     // can find it, avoiding a redundant disk load on the main thread.
     if (entityPrepWorker_ && raceModelLoader_) {
         raceModelLoader_->promotePreparedModels();
+        // T504b: this is the render thread. If the model is not loaded yet,
+        // keep the placeholder, hand the entity to the prep worker and let
+        // the build step finish it when the result is promoted -- the same
+        // path a late spawn takes. The loader would otherwise parse here.
+        if (visual.usesPlaceholder && visual.sceneNode
+            && !raceModelLoader_->isModelReady(visual.raceId, visual.gender)) {
+            if (!entityPrepWorker_->isPendingForEntity(spawnId)) {
+                EntityPrepWorker::PrepRequest req;
+                req.spawnId = spawnId;
+                req.raceId = visual.raceId;
+                req.gender = visual.gender;
+                req.appearance = visual.appearance;
+                req.bspRegion = visual.cachedBspRegion;
+                entityPrepWorker_->requestPrep(req);
+            }
+            visual.buildPhase = EntityBuildPhase::Placeholder;
+            visual.entityPrepComplete = false;
+            LOG_INFO(MOD_GRAPHICS, "[srcchar] entity {} ({}) race={} gender={} deferred to the prep worker",
+                     spawnId, visual.name, visual.raceId, visual.gender);
+            return true;   // the entity exists (as its placeholder) and will be upgraded
+        }
     }
 
     // Remove con-colored placeholder cube before building real model
@@ -243,9 +272,11 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 
         // Use full equipment appearance if any equipment is set
         if (hasEquipment || appearance.face != 0 || appearance.texture != 0) {
+            entOwner("ent.animnode");
             animNode = raceModelLoader_->createAnimatedNodeWithEquipment(
                 raceId, gender, appearance, smgr_->getRootSceneNode(), -1, compositeEligible);
         } else {
+            entOwner("ent.animnode");
             animNode = raceModelLoader_->createAnimatedNode(
                 raceId, gender, smgr_->getRootSceneNode(), -1, compositeEligible);
         }
@@ -306,6 +337,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 				spawnId, heading, visualHeading, (void*)animNode);
 	}
 
+	entOwner("ent.setup");
 	// Scale is already set in createAnimatedNode, but apply adjustments
 	animNode->setScale(irr::core::vector3df(scale, scale, scale));
 
@@ -348,6 +380,7 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 		// Use 5.5f to place text just above the head
 		float nameHeight = 5.5f * scale;
 
+		entOwner("ent.nametag");
 		visual.nameNode = smgr_->addTextSceneNode(
 				smgr_->getGUIEnvironment()->getBuiltInFont(),
 				wname.c_str(),
@@ -363,7 +396,9 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 	}
 
 	// Attach equipment models to bone attachment points
+	entOwner("ent.equipment");
 	attachEquipment(visual);
+	entOwner("ent.after");
 
 	// If this is a corpse, set the death animation and hold on last frame.
 	// T456 (board B477): the ladder itself lives in ONE place now --

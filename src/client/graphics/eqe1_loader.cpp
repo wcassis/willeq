@@ -113,14 +113,17 @@ bool EQE1Loader::open(const std::string& filepath) {
         return false;
     }
 
-    if (header->version != EQE1_VERSION && header->version != EQE1_VERSION_V2) {
+    if (header->version != EQE1_VERSION &&
+        header->version != EQE1_VERSION_V2 &&
+        header->version != EQE1_VERSION_V3) {
         EQE1_LOG_ERROR("EQE1Loader: unsupported version %u in '%s'", header->version, filepath.c_str());
         munmap(mapping, fileSize);
         return false;
     }
 
-    uint16_t numEntries = header->numEntries;
-    size_t indexEnd = sizeof(EQE1Header) + numEntries * EQE1_INDEX_ENTRY_SIZE;
+    const uint16_t numEntries = header->numEntries;
+    const uint32_t stride = indexEntryStride(header->version);
+    size_t indexEnd = sizeof(EQE1Header) + numEntries * stride;
 
     if (fileSize < indexEnd) {
         EQE1_LOG_ERROR("EQE1Loader: truncated index (%zu < %zu) in '%s'",
@@ -129,16 +132,35 @@ bool EQE1Loader::open(const std::string& filepath) {
         return false;
     }
 
+    // v3: the name table sits between the index and the first data byte. The
+    // builder writes it immediately after the index (contiguous, NUL-free),
+    // so every table-resident reference lands in [indexEnd, dataStart).
+    // dataStart is the smallest dataOffset over the data-carrying entries;
+    // a pack with none has no data bytes, so the table may run to EOF.
+    uint32_t dataStart = static_cast<uint32_t>(fileSize);
+    if (header->version == EQE1_VERSION_V3) {
+        const auto* v3 = reinterpret_cast<const EQE1IndexEntry*>(
+            base + sizeof(EQE1Header));
+        for (uint16_t i = 0; i < numEntries; ++i) {
+            if (v3[i].dataSize != 0) {
+                dataStart = std::min(dataStart, v3[i].dataOffset);
+            }
+        }
+    }
+
     // Parse index entries — first pass: build texture and raw data maps
-    const auto* entries = reinterpret_cast<const EQE1IndexEntry*>(
-        base + sizeof(EQE1Header));
+    const auto* entriesBase = base + sizeof(EQE1Header);
 
     int textureCount = 0;
     int alphaCount = 0;
     int rawCount = 0;
 
     for (uint16_t i = 0; i < numEntries; ++i) {
-        const auto& e = entries[i];
+        const auto* entryAt = entriesBase + static_cast<size_t>(i) * stride;
+        const auto& e = *reinterpret_cast<const EQE1IndexEntry*>(entryAt);
+        const auto* tail = (header->version == EQE1_VERSION_V3)
+            ? reinterpret_cast<const EQE1IndexEntryNameTail*>(entryAt + sizeof(EQE1IndexEntry))
+            : nullptr;
 
         // Validate bounds
         if (static_cast<size_t>(e.dataOffset) + e.dataSize > fileSize) {
@@ -154,10 +176,53 @@ bool EQE1Loader::open(const std::string& filepath) {
             return false;
         }
 
-        // Extract name
-        char nameBuf[EQE1_NAME_SIZE + 1] = {};
-        std::memcpy(nameBuf, e.name, EQE1_NAME_SIZE);
-        std::string name(nameBuf);
+        // Extract name.
+        // v3 entries with a non-zero name tail carry their name in the table
+        // (the 32-byte inline field is zeroed). Every other entry — all of
+        // v1/v2, and v3's short names — must be null-terminated within the
+        // 32-byte field. Note the B100 defect (soldunga's
+        // gnome_stronghold_floor_transition stored as
+        // gnome_stronghold_floor_transiti) did NOT trip this check: the old
+        // builder zero-initialized the entry before strncpy, so a truncated
+        // name was null-PADDED and formally valid — that silence is why it
+        // hid for years. This check is the secondary net for a genuinely
+        // unterminated field (e.g. a hand-crafted or corrupted pack); the
+        // primary fix is on the write side (the builder now emits v3 for
+        // long names), pinned by testV1TruncationHistoricalMiss /
+        // testV3NameTableRoundTrip in tests/test_eqe1_loader.cpp.
+        std::string name;
+        if (tail && !eqe1NameInline(header->version, tail)) {
+            if (tail->nameLength == 0 ||
+                static_cast<size_t>(tail->nameOffset) >= fileSize ||
+                static_cast<size_t>(tail->nameOffset) + tail->nameLength > fileSize ||
+                tail->nameOffset < indexEnd) {
+                EQE1_LOG_ERROR("EQE1Loader: entry %u name-table reference out of bounds "
+                               "(offset=%u, length=%u) in '%s'",
+                               i, tail->nameOffset, tail->nameLength, filepath.c_str());
+                munmap(mapping, fileSize);
+                return false;
+            }
+            if (dataStart != 0 &&
+                (tail->nameOffset > dataStart ||
+                 static_cast<size_t>(tail->nameOffset) + tail->nameLength > dataStart)) {
+                EQE1_LOG_ERROR("EQE1Loader: entry %u name-table reference escapes the "
+                               "name table (offset=%u, length=%u) in '%s'",
+                               i, tail->nameOffset, tail->nameLength, filepath.c_str());
+                munmap(mapping, fileSize);
+                return false;
+            }
+            name.assign(reinterpret_cast<const char*>(base + tail->nameOffset),
+                        tail->nameLength);
+        } else {
+            if (e.name[EQE1_NAME_SIZE - 1] != '\0') {
+                EQE1_LOG_ERROR("EQE1Loader: entry %u name is not null-terminated within "
+                               "the %u-byte field (truncated name? pack needs a v3 "
+                               "rebuild) in '%s'", i, EQE1_NAME_SIZE, filepath.c_str());
+                munmap(mapping, fileSize);
+                return false;
+            }
+            name = e.name;
+        }
 
         if (e.entryType == EQE1_TYPE_RAW_DATA) {
             rawDataLookup_[name] = {base + e.dataOffset, e.dataSize};
@@ -197,8 +262,8 @@ bool EQE1Loader::open(const std::string& filepath) {
     entryCount_ = numEntries;
     isOpen_ = true;
 
-    EQE1_LOG_INFO("EQE1Loader: mmap'd '%s' (%d textures, %d alpha, %d raw, %zu bytes)",
-                  filepath.c_str(), textureCount, alphaCount, rawCount, fileSize);
+    EQE1_LOG_INFO("EQE1Loader: mmap'd '%s' (v%u, %d textures, %d alpha, %d raw, %zu bytes)",
+                  filepath.c_str(), header->version, textureCount, alphaCount, rawCount, fileSize);
 
     return true;
 }

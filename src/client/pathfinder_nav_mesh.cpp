@@ -447,6 +447,7 @@ void PathfinderNavmesh::Load(const std::string &path)
 			return;
 		}
 
+		uint64_t tileDataBytes = 0;  // T504: what the loaded tiles weigh
 		for (unsigned int i = 0; i < number_of_tiles; ++i)
 		{
 			uint32_t tile_ref;
@@ -468,9 +469,11 @@ void PathfinderNavmesh::Load(const std::string &path)
 			buf += data_size;
 
 			m_impl->nav_mesh->addTile(data, data_size, DT_TILE_FREE_DATA, tile_ref, 0);
+			tileDataBytes += static_cast<uint64_t>(data_size);
 		}
 
-		LOG_INFO(MOD_MAP, "Loaded Navmesh V[{}] file [{}]", version, path.c_str());
+		LOG_INFO(MOD_MAP, "Loaded Navmesh V[{}] file [{}] -- T504: {} tiles, {} bytes of tile data (inflated from {} compressed)",
+		         version, path.c_str(), number_of_tiles, tileDataBytes, data_size);
 	}
 }
 

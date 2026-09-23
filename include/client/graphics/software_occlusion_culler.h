@@ -122,7 +122,14 @@ public:
     void clearOccluders() { regionOccluders_.clear(); }
 
     // Get the full region occluders map (for copying to worker thread)
-    const std::unordered_map<size_t, std::vector<OccluderTriangle>>& getRegionOccludersMap() const { return regionOccluders_; }
+    // T504: hand the occluder sets over (the caller becomes the owner; this
+    // culler is left with none). The SimulationWorker's own culler does the
+    // per-frame culling; the renderer-side culler only extracted the sets at
+    // load, so keeping a copy here (and a second one in SimulationZoneData)
+    // tripled the 30k-triangle table.
+    std::unordered_map<size_t, std::vector<OccluderTriangle>> takeRegionOccludersMap() {
+        return std::move(regionOccluders_);
+    }
 
     // Count non-empty pixels in depth buffer and store in stats
     void computeBufferFillStats();

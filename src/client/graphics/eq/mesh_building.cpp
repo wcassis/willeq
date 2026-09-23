@@ -101,8 +101,24 @@ std::map<std::string, std::shared_ptr<TextureInfo>> RaceModelLoader::getMergedTe
     // Cache the result
     cachedMergedTextures_ = merged;
     mergedTexturesCacheValid_ = true;
+    ++mergedTexturesGeneration_;  // T504: the shared snapshot is now stale
 
     return cachedMergedTextures_;
+}
+
+std::shared_ptr<const SharedTextureMap::Map> RaceModelLoader::getMergedTexturesShared() {
+    {
+        std::lock_guard<std::mutex> lock(otherChrCacheMutex_);
+        if (mergedTexturesCacheValid_ && mergedTexturesShared_ &&
+            mergedTexturesSharedGeneration_ == mergedTexturesGeneration_) {
+            return mergedTexturesShared_;
+        }
+    }
+    auto merged = getMergedTextures();   // rebuilds if needed (takes the same mutex itself)
+    std::lock_guard<std::mutex> lock(otherChrCacheMutex_);
+    mergedTexturesShared_ = std::make_shared<const SharedTextureMap::Map>(std::move(merged));
+    mergedTexturesSharedGeneration_ = mergedTexturesGeneration_;
+    return mergedTexturesShared_;
 }
 
 irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
@@ -207,12 +223,12 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                     }
                     // Check raw data in textures map
                     auto it = textures.find(name);
-                    if (it != textures.end() && it->second && !it->second->data.empty()) {
+                    if (it != textures.end() && it->second && it->second->present()) {
                         return true;
                     }
                     // Check armor texture archives (lazy-loaded)
                     auto armorTex = getArmorTexture(name);
-                    if (armorTex && !armorTex->data.empty()) {
+                    if (armorTex && armorTex->present()) {
                         return true;
                     }
                     return false;
@@ -270,7 +286,7 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                 // Helper lambda: try to find texture data from passed map or armor index
                 auto findTextureData = [&](const std::string& name) -> std::shared_ptr<TextureInfo> {
                     auto texIt = textures.find(name);
-                    if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
+                    if (texIt != textures.end() && texIt->second && texIt->second->present()) {
                         return texIt->second;
                     }
                     // Fallback: try lazy-loading from armor texture archives
@@ -280,13 +296,13 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                 texture = meshBuilder_->getOrLoadTexture(finalTexName, isMaskedMaterial);
                 if (!texture) {
                     auto texInfo = findTextureData(finalTexName);
-                    if (texInfo && !texInfo->data.empty()) {
+                    if (texInfo && texInfo->present()) {
                         texture = meshBuilder_->loadTextureFromBMP(finalTexName, texInfo->data, isMaskedMaterial);
                     } else if (overrideApplied) {
                         texture = meshBuilder_->getOrLoadTexture(lowerTexName, isMaskedMaterial);
                         if (!texture) {
                             texInfo = findTextureData(lowerTexName);
-                            if (texInfo && !texInfo->data.empty()) {
+                            if (texInfo && texInfo->present()) {
                                 texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texInfo->data, isMaskedMaterial);
                             }
                         }

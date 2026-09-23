@@ -2,15 +2,20 @@
 #define EQT_GRAPHICS_RACE_MODEL_LOADER_H
 
 #include "s3d_loader.h"
+#include "client/graphics/eq/era_model_sources.h"
 #include "zone_geometry.h"
 #include "composite_texture_data.h"
 #include "animated_mesh_scene_node.h"
 #include "race_codes.h"
 #include "equipment_textures.h"
 #include <irrlicht.h>
+#include <atomic>
 #include <map>
 #include <memory>
+#include <chrono>
 #include <mutex>
+#include <functional>
+#include <thread>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -33,10 +38,50 @@ struct DecodedTexture {
 };
 
 // Race model data - combined geometry for a race/gender combo
+// T504 (load-step audit): RaceModelData::textures used to be a std::map BY VALUE
+// and a dozen sites assigned it `getMergedTextures()`, which returns the merged
+// map by value -- so every base model, every appearance variant and every _chr
+// model carried its own full copy of a ~1,000-node map with string keys.
+// MEASURED qeynos2: 10.5 MiB in 47,535 allocations for the variant models alone
+// (~260 KB and ~1,100 blocks each), filed under entity_instances.
+//
+// This is that map shared by pointer. Reads are unchanged (find/begin/end/size,
+// and it converts to `const Map&`). The only writers call set(), which detaches
+// a private copy first (copy-on-write). There is deliberately NO operator[]: a
+// read through it would silently detach, so a missed site fails to compile.
+class SharedTextureMap {
+public:
+    using Map = std::map<std::string, std::shared_ptr<TextureInfo>>;
+    SharedTextureMap() = default;
+    SharedTextureMap& operator=(const Map& m) { map_ = std::make_shared<Map>(m); return *this; }
+    SharedTextureMap& operator=(Map&& m) { map_ = std::make_shared<Map>(std::move(m)); return *this; }
+    SharedTextureMap& operator=(std::shared_ptr<const Map> shared) {
+        map_ = std::const_pointer_cast<Map>(std::move(shared));   // never written through: set() detaches
+        return *this;
+    }
+    const Map& get() const { return map_ ? *map_ : emptyMap(); }
+    operator const Map&() const { return get(); }
+    Map::const_iterator find(const std::string& k) const { return get().find(k); }
+    Map::const_iterator begin() const { return get().begin(); }
+    Map::const_iterator end() const { return get().end(); }
+    size_t count(const std::string& k) const { return get().count(k); }
+    size_t size() const { return get().size(); }
+    bool empty() const { return get().empty(); }
+    void set(const std::string& k, std::shared_ptr<TextureInfo> v) {
+        if (!map_) map_ = std::make_shared<Map>();
+        else if (map_.use_count() > 1) map_ = std::make_shared<Map>(*map_);
+        (*map_)[k] = std::move(v);
+    }
+    // identity of the underlying storage, for tallies that must count a shared map once
+private:
+    static const Map& emptyMap() { static const Map e; return e; }
+    std::shared_ptr<Map> map_;
+};
+
 struct RaceModelData {
     std::shared_ptr<ZoneGeometry> combinedGeometry;      // Skinned geometry (bone transforms applied)
     std::shared_ptr<ZoneGeometry> rawGeometry;           // Raw geometry (no bone transforms, for animation)
-    std::map<std::string, std::shared_ptr<TextureInfo>> textures;
+    SharedTextureMap textures;   // T504: a shared snapshot, not a private copy (see the class)
     std::string raceName;
     uint16_t raceId = 0;
     uint8_t gender = 0;
@@ -92,7 +137,7 @@ public:
     // T500 Leg B: parse global<num>_chr.s3d's characters into
     // numberedGlobalCharacters_[num] if they are not there yet. Idempotent;
     // a failed or empty archive is remembered so it is parsed once.
-    bool ensureNumberedGlobalCharacters(int num);
+    bool ensureNumberedGlobalCharacters(int num, const std::vector<std::string>* codeFilter = nullptr);
 
     // Load zone-specific character models from zone_chr.s3d
     bool loadZoneModels(const std::string& zoneName);
@@ -306,7 +351,26 @@ public:
     // Release raw texture data after GPU upload (frees CPU-side pixel data)
     // Armor texture cache is also released (reconstructible from index)
     // Returns the number of bytes freed
+    // T504: the merged texture map as ONE shared immutable snapshot (rebuilt when
+    // the merged cache is). Models keep the snapshot they were built against,
+    // exactly as they kept their private copy before.
+    std::shared_ptr<const SharedTextureMap::Map> getMergedTexturesShared();
     size_t releaseRawTextureData();
+
+    // T504 (load-step audit): release one texture map's raw file bytes AS SOON
+    // AS IT IS STORED, when an EQE1 flat pack is authoritative. On those presets
+    // ConstrainedTextureCache::getOrLoad() serves every name from a pack and a
+    // miss is a fatal exit, so the BMP/DDS bytes parsed out of the S3D archives
+    // are never decoded -- yet they were held until releaseRawTextureData() ran
+    // "after progressive load", ~140 ms AFTER the ready point, i.e. through the
+    // whole load peak (MEASURED qeynos2: 17.8 MiB freed too late to lower it).
+    // The textures stay present() (names, sizes, animation info), which is what
+    // every reader needs. No-op (returns 0) without EQE1 loaders.
+    size_t releaseBytesIfEqe1Authoritative(std::map<std::string, std::shared_ptr<TextureInfo>>& texMap);
+    // T504c Leg 2c: the S3DLoadOptions every character-archive load uses:
+    // no objects, and texture NAMES only when an EQE1 pack is authoritative
+    // (see S3DLoadOptions::textureNamesOnly). `filter` = the wanted codes.
+    S3DLoadOptions characterLoadOptions(const std::vector<std::string>* filter = nullptr) const;
 
     // Memory stats for /pmem reporting
     struct MemoryStats {
@@ -465,6 +529,14 @@ public:
     // split test. Carries the ledger's EntityModels live/peak read at the SAME
     // instant, so total-vs-ledger is one line, not two greps.
     std::string modelMemLogLine(const std::string& point) const;
+    // T504b Leg 0: the source-character census. One [srcchar] line per
+    // retained archive: characters parsed, how many a built model was made
+    // from (skeleton identity), how many only DONATE animations to a built
+    // model (Animation pointer identity), how many nothing references, and
+    // the bytes of each class (geometry once per distinct part + skeleton +
+    // tracks). "unused" bytes are what Leg 2 may drop; the leg is held to
+    // this number.
+    std::string srcCharLogLines(const std::string& point) const;
 
     // B843: the `[modelmem-shared] ...` lines, in Will's ruling form
     // (`X: owner_category, [claimant, claimant, ...]` per distinct block,
@@ -490,6 +562,21 @@ public:
     // Call removeMeshRef when removing that entity
     void addMeshRef(uint16_t raceId, uint8_t gender);
     void removeMeshRef(uint16_t raceId, uint8_t gender);
+
+    // T504b Leg 2b (Will, rev 1: residency is a working set in both
+    // directions). A model whose last entity despawned is not evicted at
+    // once: it becomes EVICTABLE and is dropped by sweepEvictable() after a
+    // hysteresis window (WILLEQ_MODEL_EVICT_SECONDS, default 60 -- a roamer
+    // crossing the visibility edge must not thrash a 0.75 s archive parse),
+    // or at once, oldest first, while the entity_models ledger row is over
+    // its budget. addMeshRef() cancels a pending eviction. After an eviction
+    // the source characters are pruned too (pruneSourceCharacters), so both
+    // the built model and its retained source leave. Render thread only,
+    // like the refcounts themselves.
+    void sweepEvictable();
+    void setEntityModelBudgetBytes(size_t bytes) { entityModelBudgetBytes_ = bytes; }
+    size_t evictableCountForTest() const { return evictable_.size(); }
+    void sweepEvictableForTest(double ageSeconds);   // treats every evictable entry as ageSeconds old
 
     // Set maximum cached _chr.s3d entries (0 = unlimited)
     void setMaxChrCacheEntries(size_t max) { maxChrCacheEntries_ = max; }
@@ -676,6 +763,9 @@ private:
 
     // Constrained texture cache for direct texture loading (non-owning)
     EQT::Graphics::ConstrainedTextureCache* constrainedTextureCache_ = nullptr;
+    std::shared_ptr<const SharedTextureMap::Map> mergedTexturesShared_;  // T504
+    uint64_t mergedTexturesGeneration_ = 0;        // bumped on every merged-map rebuild
+    uint64_t mergedTexturesSharedGeneration_ = 0;  // generation mergedTexturesShared_ was built from
 
     // Composite entity texture directory (from entity_composite_builder output)
     std::string compositeEntityPath_;
@@ -770,7 +860,9 @@ private:
     // Global character data loaded from global_chr.s3d
     std::vector<std::shared_ptr<CharacterModel>> globalCharacters_;
     std::map<std::string, std::shared_ptr<TextureInfo>> globalTextures_;
-    bool globalModelsLoaded_ = false;
+    // T504b Leg 1: atomic so the worker-side adopt (below) may read the flag
+    // and, once it is set, the write-once globalCharacters_ vector.
+    std::atomic<bool> globalModelsLoaded_{false};
 
     // Numbered global character data (global2-7_chr.s3d)
     std::map<int, std::vector<std::shared_ptr<CharacterModel>>> numberedGlobalCharacters_;
@@ -836,6 +928,141 @@ private:
     // searchZoneChrFilesForModel (two negative-cache inserts plus one that
     // open-coded the push/evict below). There is now exactly one
     // `otherChrCaches_[key]` in the tree and it is the line below.
+    // T504b Leg 1: global_chr.s3d is parsed ONCE per process. Whichever side
+    // parses it first publishes the same CharacterModel objects to the other
+    // store: loadGlobalModels() adopts otherChrCaches_["global_chr.s3d"] if
+    // the worker got there first and publishes its own parse there
+    // otherwise; the worker-side sites call this (otherChrCacheMutex_ held)
+    // before parsing and get true when the entry now exists. Measured before:
+    // src_char_global == src_char_other byte-identical (two full parses).
+    bool adoptGlobalChrIntoOtherCacheLocked();
+
+    // T504b Leg 2: zoneCharacters_/globalCharacters_/numberedGlobalCharacters_
+    // are read by the prep worker AND the render thread and, from Leg 2 on,
+    // pruned (a writer). Every reader takes a pointer-vector snapshot under
+    // sourceStoresMutex_ (a few dozen shared_ptr copies); writers assign under
+    // it. Lock order: otherChrCacheMutex_ -> sourceStoresMutex_, never the
+    // reverse (the snapshot helpers hold only sourceStoresMutex_).
+    using CharacterList = std::vector<std::shared_ptr<CharacterModel>>;
+    CharacterList snapshotZoneCharacters() const;
+    CharacterList snapshotGlobalCharacters() const;
+    CharacterList snapshotNumberedGlobalCharacters(int num) const;
+    mutable std::mutex sourceStoresMutex_;
+
+    // T504b Leg 2: source pruning (refactor/T504b_entity_source_pruning.md).
+    // After a build, every store keeps the source CharacterModel of the USED
+    // set only (skeleton identity of a built model, plus the animation
+    // donors those skeletons share Animation objects with); the rest of the
+    // archive is dropped. archiveIndex_ remembers every character NAME an
+    // archive yielded, so a later request for a dropped character reloads
+    // the archive, takes the wanted characters and drops the rest again
+    // (ensureSourceForRace). Opt-in: WILLEQ_PRUNE_SOURCES=1 (see pruningEnabled()).
+    struct ArchiveIndexEntry {
+        std::vector<std::string> names;   // upper-case character names the archive yielded
+        std::string path;                 // the .s3d to reload from
+        bool pruned = false;
+        size_t reloads = 0;
+    };
+    std::map<std::string, ArchiveIndexEntry> archiveIndex_;  // "zone" | "global" | "global<N>" | "other:<file>"; under sourceStoresMutex_
+    // A (race, gender) is reloaded at most ONCE per process: the build that
+    // follows a reload either uses the characters (then they are kept) or
+    // fails (then no later request can succeed either). Without this a race
+    // with no model thrashed: reload, fail, prune, reload... (measured 1,398
+    // reloads for 380 requests in the fingerprint tool).
+    // Keyed by (race, gender, SITE): the base build, the variant build and
+    // the synchronous fallback need different sources (measured: the variant
+    // merges donor animations the base build never touched, so a memo keyed
+    // by race alone starved it -- STOP 1 hit, fingerprint anims shrank).
+    std::set<std::string> reloadedRaceGenders_;   // under sourceStoresMutex_
+    // The memo means "reloaded, not yet built". When a built model is
+    // EVICTED (removeMeshRef at refcount 0, zone change) its sources may be
+    // pruned again, so the next request must be allowed to reload: measured
+    // without this, the player's appearance update evicted race 1, the
+    // re-preload was memo-blocked, the negative cache took it, and the
+    // entity looped on deferral (1,206 times in 60 s).
+    void forgetReloadMemo(uint32_t key);      // one (race, gender), every site
+    void forgetAllReloadMemos();
+    std::thread::id renderThread_;                 // the constructing thread (IrrlichtRenderer::init, main)
+
+    // T504 resolver Leg 0 (instrument only): the original client's sources for
+    // the current zone (GlobalLoad.txt + <zone>_chr + <zone>_chr.txt, era-pruned)
+    // and, in census mode (WILLEQ_SRCRES_CENSUS=1), a names-only index over
+    // them so every [srcres] line can say which archive the ORIGINAL rule would
+    // resolve a race from, next to the archive today's chain used.
+    EraModelSources eraSources_;
+    std::set<std::string> eraZones_;
+    bool eraZonesLoaded_ = false;
+    std::vector<std::pair<std::string, std::vector<std::string>>> eraNameIndex_;   // archive -> upper names (census mode)
+    bool eraNameIndexBuilt_ = false;
+    std::string originalRuleArchiveFor(uint16_t raceId, uint8_t gender);   // census mode; "" otherwise
+    // T504 resolver: the lookup order of the original rule for the current
+    // zone -- the zone's own archive first (it is what the zone shipped
+    // with), then the archives its <zone>_chr.txt names, then the
+    // GlobalLoad.txt set in file order. Cache contents never change the
+    // answer. Empty zone (character select) = globals only.
+    const std::vector<std::string>& resolverOrder();
+    std::vector<std::string> resolverOrder_;
+    std::string resolverOrderZone_ = "\x01";   // the zone resolverOrder_ was built for
+    void evictModel(uint32_t key);                 // the built model + every cache keyed by it
+    std::map<uint32_t, std::chrono::steady_clock::time_point> evictable_;   // key -> when its refcount hit 0
+    size_t entityModelBudgetBytes_ = 0;            // 0 = no budget pressure
+    double evictHysteresisSeconds_ = 60.0;
+    // Returns true when a worker ACCEPTED the request; false (no prep worker
+    // -- tests, tools) means the caller must load synchronously after all.
+    std::function<bool(uint16_t, uint8_t)> workerPreloadRequest_;
+    void recordArchiveNamesLocked(const std::string& key, const std::string& path, const CharacterList& chars);
+    void recordArchiveNamesLocked(const std::string& key, const std::string& path, const std::vector<std::string>& names);
+    // The codes a request for (race, gender) can need: the gendered race
+    // code, the fallback code and each one's animation donor (upper-case).
+    // T504b Leg 3: also the S3DLoadOptions::characterCodeFilter of every
+    // race-specific archive parse, so an archive is parsed for the wanted
+    // characters only and the rest are never built.
+    std::vector<std::string> wantedCodesFor(uint16_t raceId, uint8_t gender) const;
+    void computeUsedSet(std::set<const CharacterSkeleton*>& usedSkeletons,
+                        std::set<const Animation*>& usedAnimations) const;
+    static bool pruningEnabled();
+public:
+    // T504b (Will, 2026-09-22): the render thread NEVER parses an archive.
+    // ensureModelDataLoaded() on the render thread with the model neither
+    // loaded nor prepared hands the (race, gender) to the prep worker through
+    // this callback and returns null; lastLookupDeferred() tells the caller
+    // not to cache that null (the model arrives when the worker's result is
+    // promoted, and the entity's build step finishes it -- as a late spawn).
+    void setWorkerPreloadRequest(std::function<bool(uint16_t, uint8_t)> fn) { workerPreloadRequest_ = std::move(fn); }
+    bool lastLookupDeferred() const;
+    // True when a model is loaded (after promoting any prepared one): the
+    // render-thread build may proceed without touching an archive.
+    bool isModelReady(uint16_t raceId, uint8_t gender);
+    // Drop every retained source character no built model uses (see above).
+    // Safe from any thread; takes the store locks itself. `why` is logged.
+    void pruneSourceCharacters(const char* why);
+    // Reload-on-miss for one race: if a wanted code (race, fallback,
+    // animation donor) names a character an archive is known to hold but a
+    // pruned store no longer has, re-parse that archive for it.
+    void ensureSourceForRace(uint16_t raceId, uint8_t gender, const char* site = "?");
+    // T504c Leg 4: the zone load knows every (race, gender) it is about to
+    // prepare before it prepares the first one. With the set announced here,
+    // the first parse of each archive is filtered to the UNION of their wanted
+    // codes, so the later races hit the cache instead of re-parsing the
+    // archive per race (gfaydark: global_chr.s3d and gfaydark_chr.s3d were
+    // each parsed 6 times in one load). Cleared on a zone change.
+    void setPrefetchRaces(const std::vector<std::pair<uint16_t, uint8_t>>& races);
+    void clearPrefetchRaces();
+private:
+    std::vector<std::string> prefetchCodes_;   // under sourceStoresMutex_
+    // wantedCodesFor(race, gender) plus the prefetch set, without duplicates.
+    std::vector<std::string> wantedWithPrefetch(uint16_t raceId, uint8_t gender) const;
+    // T504c Leg 2: re-parse one indexed archive with the wanted codes as the
+    // fragment filter and append the wanted characters the store lacks.
+    // Requires otherChrCacheMutex_ then sourceStoresMutex_ held. Returns the
+    // number of characters added. `key` is an archiveIndex_ key.
+    size_t reloadArchiveForCodesLocked(const std::string& key, const std::string& path,
+                                       const std::vector<std::string>& wanted,
+                                       uint16_t raceId, uint8_t gender, const char* site);
+    // True when `list` holds no character named for `code` but the indexed
+    // archive `key` does (a filtered or pruned store that must reload).
+    bool storeLacksIndexedCodeLocked(const std::string& key, const CharacterList& list,
+                                     const std::string& code) const;
     void storeOtherChrCacheLocked(const std::string& lowerFilename,
                                    std::vector<std::shared_ptr<CharacterModel>> characters,
                                    std::map<std::string, std::shared_ptr<TextureInfo>> textures);

@@ -53,6 +53,23 @@ struct TextureInfo {
     // Helper to get frame count
     size_t frameCount() const { return isAnimated ? frames.size() : 1; }
 
+    // T504 (load-step audit): "this texture exists" is NOT "its file bytes are
+    // in memory". Readers used `!data.empty()` for both, which made it
+    // impossible to free the bytes before every consumer had run -- so on the
+    // EQE1 presets, where the bytes are never decoded at all (the cache serves
+    // the name from a flat pack, and a miss is fatal), whole archives' worth of
+    // raw BMP/DDS sat in the heap through the load peak. releaseBytes() frees
+    // them and keeps the texture present; ask present(), not data.empty().
+    bool bytesReleased = false;
+    bool present() const { return bytesReleased || !data.empty(); }
+    size_t releaseBytes() {
+        const size_t freed = rawDataBytes();
+        std::vector<char>().swap(data);
+        for (auto& f : frames) std::vector<char>().swap(f.data);
+        bytesReleased = true;
+        return freed;
+    }
+
     // Get total raw data bytes (for memory reporting)
     size_t rawDataBytes() const {
         size_t total = data.capacity();
@@ -128,6 +145,7 @@ struct S3DZone {
 
     // Character models loaded from _chr.s3d
     std::vector<std::shared_ptr<CharacterModel>> characters;
+    std::vector<std::string> allCharacterNames;   // T504b Leg 3: every skeleton name, filtered or not
 
     // Character textures loaded from _chr.s3d
     std::map<std::string, std::shared_ptr<TextureInfo>> characterTextures;
@@ -246,6 +264,18 @@ struct S3DLoadOptions {
     bool loadObjects = true;
     bool loadCharacters = true;
     bool computeCombinedGeometry = true;
+    // T504c Leg 2c: record character textures by NAME only (TextureInfo
+    // present() but bytesReleased) instead of inflating every BMP/DDS of the
+    // archive. Set by RaceModelLoader when an EQE1 pack is authoritative:
+    // the bytes were inflated (global_chr: 6.7 MiB, 3,233 files) and then
+    // released unread by releaseBytesIfEqe1Authoritative() on every load.
+    bool textureNamesOnly = false;
+    // T504b Leg 3: build a CharacterModel (three geometry copies + two
+    // skeletons each) only for skeletons whose name contains one of these
+    // UPPER-CASE codes; empty = every character. S3DZone::allCharacterNames
+    // still lists every skeleton the archive holds, so the caller's archive
+    // index knows what a later request could reload.
+    std::vector<std::string> characterCodeFilter;
 };
 
 // High-level S3D zone loader
@@ -318,6 +348,8 @@ public:
 
     // Load placeable objects from _obj.s3d (public for deferred loading)
     bool loadObjects(const std::string& archivePath);
+    // T504: same, from the already-open zone archive (objects.wld lives there).
+    bool loadObjectsFromArchive(PfsArchive& mainArchive, const std::string& archivePath);
 
     // T369 (B105): the character archive that pairs with a zone archive.
     // The `_chr` marker belongs to the FILENAME's stem, never to the path.
@@ -338,7 +370,12 @@ private:
     bool loadTextures(PfsArchive& archive);
     bool loadObjectTextures(PfsArchive& archive);
     bool loadCharacterTextures(PfsArchive& archive);
-    bool loadCharacters(const std::string& archivePath);
+    // T504c Leg 2b: `openArchive` is loadZone()'s already-open archive; it
+    // is reused when the archive being loaded IS the character archive
+    // (every <zone>_chr / global*_chr load), instead of a second open.
+    bool loadCharacters(const std::string& archivePath, PfsArchive* openArchive = nullptr);
+    S3DLoadOptions options_;   // the options of the load in progress (T504b Leg 3: characterCodeFilter)
+    std::string mainWldName_;  // the WLD loadZone() parsed into zone_->wldLoader (T504c: loadCharacters reuses it)
     bool loadLights(const std::string& archivePath);
     bool loadLightsFromArchive(PfsArchive& archive);
     void flattenSkeleton(const std::shared_ptr<SkeletonBone>& bone,

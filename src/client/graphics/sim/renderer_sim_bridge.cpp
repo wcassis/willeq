@@ -152,11 +152,12 @@ SimulationZoneData SimBridgeComponent::buildSimulationZoneData() {
         zoneData.hcMap = ctx_.collisionMap;
     }
 
-    // Copy occluder data from renderer's occlusion culler (if it has occluders)
+    // Hand the occluder sets to the worker (T504: moved, not copied -- the
+    // renderer-side culler has no per-frame reader once the worker owns them).
     if (ctx_.occlusionCuller && ctx_.occlusionCuller->hasOccluders()) {
-        zoneData.regionOccluders = ctx_.occlusionCuller->getRegionOccludersMap();
+        zoneData.regionOccluders = ctx_.occlusionCuller->takeRegionOccludersMap();
         zoneData.occlusionConfig = ctx_.occlusionCuller->getConfig();
-        LOG_INFO(MOD_GRAPHICS, "SimulationWorker: copying {} region occluder sets to worker",
+        LOG_INFO(MOD_GRAPHICS, "SimulationWorker: handing {} region occluder sets to worker",
                  zoneData.regionOccluders.size());
     }
 
@@ -168,7 +169,7 @@ void SimBridgeComponent::startSimulationWorkerEarly() {
     if (!owner_.simulationWorker_ || owner_.simulationWorker_->isRunning()) return;
 
     SimulationZoneData zoneData = buildSimulationZoneData();
-    owner_.simulationWorker_->setZoneData(zoneData);
+    owner_.simulationWorker_->setZoneData(std::move(zoneData));
     owner_.simulationWorker_->start();
 
     LOG_INFO(MOD_GRAPHICS, "SimulationWorker started early for zone '{}' (BSP/regions/objects/lights)",
@@ -189,23 +190,11 @@ void SimBridgeComponent::registerSimulationWorkerVertexAnimData() {
     for (size_t i = 0; i < ctx_.vertexAnimatedMeshes.size(); ++i) {
         const auto& vam = ctx_.vertexAnimatedMeshes[i];
         auto& vad = vertAnims[i];
+        // T504: only the timing goes to the worker (it advances a frame
+        // counter); the frame data stays in the renderer's own entry.
         if (vam.animData && !vam.animData->frames.empty()) {
             vad.delayMs = vam.animData->delayMs;
             vad.frameCount = vam.animData->frames.size();
-            vad.framePositions.resize(vam.animData->frames.size());
-            for (size_t f = 0; f < vam.animData->frames.size(); ++f) {
-                vad.framePositions[f] = vam.animData->frames[f].positions;
-            }
-            vad.vertexMapping = vam.vertexMapping;
-            vad.centerOffsetX = vam.centerOffsetX;
-            vad.centerOffsetY = vam.centerOffsetY;
-            vad.centerOffsetZ = vam.centerOffsetZ;
-            if (vam.mesh) {
-                vad.bufferVertexCounts.resize(vam.mesh->getMeshBufferCount());
-                for (irr::u32 b = 0; b < vam.mesh->getMeshBufferCount(); ++b) {
-                    vad.bufferVertexCounts[b] = vam.mesh->getMeshBuffer(b)->getVertexCount();
-                }
-            }
         }
     }
 

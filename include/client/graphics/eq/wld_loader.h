@@ -575,8 +575,28 @@ public:
     bool parseFromArchive(const std::string& archivePath, const std::string& wldName);
     bool parseFromOpenArchive(PfsArchive& archive, const std::string& wldName);
 
+    // T504c Leg 2: with a non-empty filter (upper-case 3-letter model codes,
+    // e.g. "HUF"), a 0x12 track definition or 0x13 track reference whose
+    // name decodes to a model code outside the set is skipped -- its body
+    // is never read, so no keyframes are allocated for it. Names that do not
+    // decode to a code are kept. Fragment indices are unchanged (a skipped
+    // fragment is simply absent from trackDefs_/trackRefs_). Set BEFORE
+    // parsing; unset = today's whole parse.
+    void setCharacterCodeFilter(std::vector<std::string> upperCodes) { codeFilter_ = std::move(upperCodes); }
+    const std::vector<std::string>& characterCodeFilter() const { return codeFilter_; }
+    // The model code a track name encodes ("C01HUF_ROOT_TRACK" / "HUF_ROOT_TRACKDEF"
+    // -> "HUF"), upper-case; empty when the name has no code. Public for the tests.
+    static std::string trackModelCode(const std::string& name);
+
     const std::vector<std::shared_ptr<ZoneGeometry>>& getGeometries() const { return geometries_; }
     std::shared_ptr<ZoneGeometry> getCombinedGeometry() const;
+    // T504c Leg 2g: the combined geometry's MATERIALS and BOUNDS without its
+    // vertices and triangles. On the PVS path the combined geometry is read
+    // only for its texture names/animations (AnimatedTextureManager) and its
+    // bounds (zoneBounds*); the 19.5 MiB vertex+triangle copy (iceclad) was
+    // built and dropped every load. The no-PVS fallback still needs the
+    // full one (createZoneMesh).
+    std::shared_ptr<ZoneGeometry> getCombinedMaterialSummary() const;
     const std::vector<std::string>& getTextureNames() const { return textureNames_; }
     const std::vector<std::shared_ptr<Placeable>>& getPlaceables() const { return placeables_; }
     const std::map<std::string, WldObjectDef>& getObjectDefs() const { return objectDefs_; }
@@ -606,6 +626,17 @@ public:
     // Preserves geometries_, geometryByFragIndex_, bspTree_, textures_, textureNames_
     // (needed by mesh cache for progressive region rebuilds).
     void releasePostLoadData();
+
+    // T504 (load-step audit): drop the per-region SOURCE geometry once every
+    // region mesh has been built. releasePostLoadData() kept it "for progressive
+    // region rebuilds" by ConstrainedMeshCache -- a class T67 deleted because it
+    // was never constructed. In automatic mode loadZoneStep4_Regions() builds
+    // every region eagerly, so after the load this is a second full copy of the
+    // zone's vertices and triangles beside the built meshes. Returns the bytes
+    // released (ZoneGeometry::getFullMemoryUsage). After this,
+    // getGeometryForRegion() returns null and rebuildRegionMesh() declines with
+    // its existing warning.
+    size_t releaseRegionGeometry();
 
     // PVS (Potentially Visible Set) accessors
     // Get the geometry associated with a BSP region (via meshReference)
@@ -730,6 +761,12 @@ private:
     // BSP tree for zone regions (zone lines, water, lava, etc.)
     std::shared_ptr<BspTree> bspTree_;
     uint32_t totalRegionCount_ = 0;  // From WLD header, used for PVS array sizing
+
+    // T504c Leg 2 (see setCharacterCodeFilter)
+    std::vector<std::string> codeFilter_;
+    size_t pvsArenaReserveHint_ = 0;   // T504c Leg 2g: exact PVS byte total of the 0x22 fragments, consumed by the first region
+    static size_t fragment22PvsBytes(const char* fragBuffer, uint32_t fragLength);
+    bool trackNameWanted(int32_t nameRef, const char* hash) const;
 };
 
 // Helper function to decode WLD string hash

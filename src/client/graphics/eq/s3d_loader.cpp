@@ -4,6 +4,8 @@
 // Bodies are contiguous line ranges of that file, moved verbatim.
 
 #include "client/graphics/eq/s3d_loader.h"
+#include "client/core/memory_ledger.h"
+#include <pthread.h>  // T504: thread names
 #include "common/logging.h"
 #include <algorithm>
 #include <iostream>
@@ -30,7 +32,20 @@ bool S3DLoader::loadZone(const std::string& archivePath) {
 bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& options) {
     zone_ = nullptr;
     error_.clear();
+    options_ = options;
     zoneName_ = extractZoneName(archivePath);
+    {
+        // T504b Leg 0: every whole-archive parse names the thread that ran
+        // it, so the census can say whether a parse ever happens on the
+        // render thread (the plan's STOP 3).
+        char thread[32] = "?";
+        pthread_getname_np(pthread_self(), thread, sizeof(thread));
+        const size_t slash = archivePath.find_last_of("/\\");
+        LOG_INFO(MOD_GRAPHICS, "[srcchar] parse archive={} thread={} filter={} entity_models_live={}",
+                 slash == std::string::npos ? archivePath : archivePath.substr(slash + 1), thread,
+                 options.characterCodeFilter.size(),
+                 eqt::memory::stats(eqt::memory::Category::EntityModels).liveBytes);
+    }
 
     PfsArchive archive;
     if (!archive.open(archivePath)) {
@@ -64,10 +79,12 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
     if (mainWld.empty()) {
         mainWld = wldFiles[0];
     }
+    mainWldName_ = mainWld;
 
     // Parse WLD file
     auto wldLoader = std::make_shared<WldLoader>();
-    if (!wldLoader->parseFromArchive(archivePath, mainWld)) {
+    wldLoader->setCharacterCodeFilter(options_.characterCodeFilter);   // T504c Leg 2
+    if (!wldLoader->parseFromOpenArchive(archive, mainWld)) {  // T504: archive is already open
         error_ = "Failed to parse WLD file: " + mainWld;
         return false;
     }
@@ -76,7 +93,18 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
     zone_->zoneName = zoneName_;
     zone_->wldLoader = wldLoader;  // Store for PVS access
 
-    if (options.computeCombinedGeometry) {
+    // T504c Leg 2b (traced, run99 gfaydark, one global_chr reload): a
+    // CHARACTER archive load paid for three things no consumer reads --
+    // the combined "zone" geometry of every character mesh (3.9 MiB),
+    // loadTextures() inflating every texture that loadCharacterTextures()
+    // then inflated again (2 x 6.7 MiB, both retained), and a second
+    // PfsArchive::open of the same file in loadCharacters() (2 x 7 MiB of
+    // stored blocks resident at once). No character-model consumer reads
+    // S3DZone::geometry or S3DZone::textures from a character archive
+    // (grep, 2026-09-22); they read characters + characterTextures.
+    const bool isCharacterArchive = (deriveChrArchivePath(archivePath) == archivePath);
+
+    if (options.computeCombinedGeometry && !isCharacterArchive) {
         zone_->geometry = wldLoader->getCombinedGeometry();
 
         if (!zone_->geometry) {
@@ -92,21 +120,29 @@ bool S3DLoader::loadZone(const std::string& archivePath, const S3DLoadOptions& o
     }
 
     // Load textures (optional - rendering can work with vertex colors)
-    loadTextures(archive);
+    if (!isCharacterArchive) loadTextures(archive);   // a character archive's are characterTextures
 
-    // Load placeable objects (optional)
+    // T504: the zone archive is open once, here; objects.wld and lights.wld
+    // are read from it (loadObjects/loadLights used to re-open the same file
+    // per sub-step -- five opens + 7 MiB block reads each, per zone load).
     if (options.loadObjects) {
-        loadObjects(archivePath);
+        loadObjectsFromArchive(archive, archivePath);
     }
 
-    // Load character models (optional)
+    // Load character models (optional; _chr.s3d is a different file)
     if (options.loadCharacters) {
-        loadCharacters(archivePath);
+        loadCharacters(archivePath, isCharacterArchive ? &archive : nullptr);
     }
 
-    // Load light sources (optional)
-    loadLights(archivePath);
+    loadLightsFromArchive(archive);
 
+    {
+        const size_t slash = archivePath.find_last_of("/\\");
+        LOG_INFO(MOD_GRAPHICS, "[srcchar] parsed archive={} characters={} of {} entity_models_live={}",
+                 slash == std::string::npos ? archivePath : archivePath.substr(slash + 1),
+                 zone_ ? zone_->characters.size() : 0, zone_ ? zone_->allCharacterNames.size() : 0,
+                 eqt::memory::stats(eqt::memory::Category::EntityModels).liveBytes);
+    }
     return true;
 }
 
@@ -117,6 +153,8 @@ bool S3DLoader::loadZoneFromPreParsed(std::shared_ptr<PfsArchive> archive,
                                        const S3DLoadOptions& options) {
     zone_ = nullptr;
     error_.clear();
+    options_ = options;
+    mainWldName_.clear();
     zoneName_ = zoneName;
 
     if (!archive || !wldLoader) {
@@ -144,9 +182,9 @@ bool S3DLoader::loadZoneFromPreParsed(std::shared_ptr<PfsArchive> archive,
     // Load textures from the already-open archive
     loadTextures(*archive);
 
-    // Load placeable objects (_obj.s3d is a separate file, opened by loadObjects internally)
+    // Load placeable objects (objects.wld from the open zone archive, then _obj.s3d)
     if (options.loadObjects) {
-        loadObjects(archivePath);
+        loadObjectsFromArchive(*archive, archivePath);
     }
 
     // Load light sources (lights.wld is in the zone archive, already open)

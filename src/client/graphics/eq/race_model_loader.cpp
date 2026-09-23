@@ -6,6 +6,8 @@
 // - variant_loading.cpp - Head/body variant loading
 
 #include "client/graphics/eq/race_model_loader.h"
+#include <set>
+#include <pthread.h>
 #include "client/graphics/eq/race_codes.h"
 #include "client/graphics/eq/geometry_combiner.h"
 #include "client/graphics/eq/animation_mapping.h"
@@ -19,6 +21,10 @@
 #include <iostream>
 #include <chrono>
 
+namespace {
+thread_local bool t_lookupDeferred = false;   // T504b: set by ensureModelDataLoaded on a render-thread deferral
+}
+
 namespace EQT {
 namespace Graphics {
 
@@ -26,6 +32,7 @@ RaceModelLoader::RaceModelLoader(irr::scene::ISceneManager* smgr,
                                   irr::video::IVideoDriver* driver,
                                   irr::io::IFileSystem* fileSystem)
     : smgr_(smgr), driver_(driver), fileSystem_(fileSystem) {
+    renderThread_ = std::this_thread::get_id();   // T504b: see setWorkerPreloadRequest
     meshBuilder_ = std::make_unique<ZoneMeshBuilder>(smgr, driver, fileSystem);
     // P13b: deliberately did NOT tag this builder "entity_perpart" (tried it, reverted —
     // see the plan's Review "Deviations"). This ZoneMeshBuilder's loadTextureFromBMP()
@@ -142,6 +149,7 @@ void RaceModelLoader::clearCache() {
         std::lock_guard<std::mutex> lock(loadedModelsMutex_);
         loadedModels_.clear();
     }
+    forgetAllReloadMemos();   // T504b
 
     // Also clear variant caches
     for (auto& [key, mesh] : variantMeshCache_) {
@@ -273,106 +281,69 @@ void RaceModelLoader::clearMeshCaches() {
 std::shared_ptr<RaceModelData> RaceModelLoader::ensureModelDataLoaded(uint16_t raceId, uint8_t gender) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityModels);  // T491
     uint32_t key = makeCacheKey(raceId, gender);
+    t_lookupDeferred = false;
+    {
+        // T504b Leg 2: the reload-on-miss pre-check runs OUTSIDE the lock
+        // (pruneSourceCharacters takes loadedModelsMutex_ itself).
+        bool missing;
+        {
+            std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+            missing = loadedModels_.count(key) == 0;
+        }
+        if (missing && workerPreloadRequest_ && std::this_thread::get_id() == renderThread_) {
+            // The render thread never parses: a prepared model is promoted;
+            // anything else goes to the prep worker and this lookup is
+            // deferred (null, not cached -- see lastLookupDeferred()).
+            promotePreparedModels();
+            {
+                std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+                missing = loadedModels_.count(key) == 0;
+            }
+            // T504c: a request nobody accepts (no prep worker: the tests and
+            // tools build entities on their main thread) is not a deferral;
+            // the load then happens here, as it did before T504b. Found by
+            // test_held_item_attachment (createEntity never produced a node).
+            if (missing && workerPreloadRequest_(raceId, gender)) {
+                t_lookupDeferred = true;
+                LOG_INFO(MOD_GRAPHICS, "[srcchar] defer race={} gender={} to the prep worker (render thread never parses)",
+                         raceId, gender);
+                return nullptr;
+            }
+            if (missing) ensureSourceForRace(raceId, gender, "ensureModelDataLoaded");
+        } else if (missing) {
+            ensureSourceForRace(raceId, gender, "ensureModelDataLoaded");
+        }
+    }
 
     // Check if model data is loaded
     auto modelIt = loadedModels_.find(key);
     if (modelIt == loadedModels_.end()) {
+        originalRuleArchiveFor(raceId, gender);   // T504 census mode only: builds/prints the holders index once per zone
         // Try to load the model from various sources
         // Search order depends on useOldModels_ flag
 
         if (useOldModels_) {
-            // Old models mode: Use JSON-configured S3D files for pre-Luclin models
-            // Search order:
-            // 1. JSON-specified S3D file (from race_models.json)
-            // 2. Current zone's _chr.s3d file
-            // 3. global_chr.s3d
-            // 4. Numbered globals (global2-7_chr.s3d)
-
-            // 1. Try JSON-specified S3D file first
-            std::string jsonS3dFile = getRaceS3DFile(raceId);
-            if (!jsonS3dFile.empty() && !clientPath_.empty()) {
-                // Try to load from the JSON-specified zone chr file
-                // Extract zone name from s3d filename (e.g., "qeynos_chr.s3d" -> "qeynos")
-                std::string zoneName = jsonS3dFile;
-                auto chrPos = zoneName.find("_chr.s3d");
-                if (chrPos != std::string::npos) {
-                    zoneName = zoneName.substr(0, chrPos);
-                    // Check if this is a global file (different loading path)
-                    if (zoneName.find("global") == 0) {
-                        // It's a global file - try global_chr.s3d or numbered global
-                        if (zoneName == "global") {
-                            if (loadModelFromGlobalChr(raceId, gender)) {
-                                modelIt = loadedModels_.find(key);
-                            }
-                        } else {
-                            // Numbered global (e.g., global4_chr.s3d for Iksar) --
-                            // only when the stem is all digits. T267: names like
-                            // "globalpcfroglok" (race 330) used to hit stoi() here,
-                            // get globalNum 0 and load NOTHING; they are plain
-                            // archives and go through the cached-chr path below.
-                            std::string stem = zoneName.substr(6);
-                            bool numeric = !stem.empty() &&
-                                std::all_of(stem.begin(), stem.end(),
-                                            [](unsigned char c) { return std::isdigit(c); });
-                            int globalNum = numeric ? std::stoi(stem) : 0;
-                            if (numeric) {
-                                if (globalNum >= 2 && globalNum <= 7) {
-                                    if (!numberedGlobalsLoaded_) {
-                                        loadNumberedGlobalModels();
-                                    }
-                                    if (loadModelFromNumberedGlobal(globalNum, raceId, gender)) {
-                                        modelIt = loadedModels_.find(key);
-                                    }
-                                }
-                            } else if (loadModelFromCachedChr(jsonS3dFile, raceId, gender)) {
-                                modelIt = loadedModels_.find(key);
-                            }
-                        }
-                    } else {
-                        // It's a zone chr file - use cached loading to preserve otherChrCaches_
-                        if (loadModelFromCachedChr(jsonS3dFile, raceId, gender)) {
-                            modelIt = loadedModels_.find(key);
-                        }
-                    }
+            // T504 resolver (Will, 2026-09-22): the original client's sources in
+            // its order -- zone archive, the zone list's archives, the
+            // GlobalLoad.txt set -- through the existing per-store builders.
+            for (const auto& archive : resolverOrder()) {
+                if (modelIt != loadedModels_.end()) break;
+                bool ok = false;
+                if (archive == eraSources_.zoneArchive && !currentZoneName_.empty()) {
+                    ok = loadModelFromZoneChr(currentZoneName_, raceId, gender);
+                } else if (archive == "global_chr.s3d") {
+                    ok = loadModelFromGlobalChr(raceId, gender);
+                } else if (archive.rfind("global", 0) == 0 && archive.size() > 12
+                           && std::isdigit(static_cast<unsigned char>(archive[6]))
+                           && archive.substr(7) == "_chr.s3d") {
+                    ok = loadModelFromNumberedGlobal(archive[6] - '0', raceId, gender);
+                } else {
+                    ok = loadModelFromCachedChr(archive, raceId, gender);
                 }
+                if (ok) modelIt = loadedModels_.find(key);
             }
-
-            // 2. If not found, try archive index (targeted per-archive load)
-            if (modelIt == loadedModels_.end() && graphicsArchiveIndex_) {
-                if (loadModelFromArchiveIndex(raceId, gender)) {
-                    modelIt = loadedModels_.find(key);
-                }
-            }
-
-            // 3. If not found, try current zone's _chr.s3d file
-            if (modelIt == loadedModels_.end() && !currentZoneName_.empty()) {
-                if (loadModelFromZoneChr(currentZoneName_, raceId, gender)) {
-                    modelIt = loadedModels_.find(key);
-                }
-            }
-
-            // 4. If not found in zone, try global_chr.s3d (classic models)
-            if (modelIt == loadedModels_.end()) {
-                if (loadModelFromGlobalChr(raceId, gender)) {
-                    modelIt = loadedModels_.find(key);
-                }
-            }
-
-            // 5. If still not found, try numbered globals (global2-7_chr.s3d)
-            if (modelIt == loadedModels_.end()) {
-                if (!numberedGlobalsLoaded_) {
-                    loadNumberedGlobalModels();
-                }
-                for (int num = 2; num <= 7 && modelIt == loadedModels_.end(); ++num) {
-                    if (loadModelFromNumberedGlobal(num, raceId, gender)) {
-                        modelIt = loadedModels_.find(key);
-                    }
-                }
-            }
-
-            // For old models mode, don't search other zone _chr.s3d files.
-            // Classic models should be in JSON-specified files, global_chr.s3d,
-            // global2-7_chr.s3d, or the current zone's _chr.s3d.
+            // Old-models mode searches nothing else: the original client's
+            // sources are the whole search space (Will, 2026-09-22).
         } else {
             // New models mode: prefer race-specific S3D files (Luclin+ models)
 
@@ -452,7 +423,7 @@ irr::scene::IMesh* RaceModelLoader::getMeshForRace(uint16_t raceId, uint8_t gend
 
     // Build mesh from model data
     if (!modelData || !modelData->combinedGeometry) {
-        meshCache_[key] = nullptr;
+        if (!lastLookupDeferred()) meshCache_[key] = nullptr;   // T504b: a deferral is not a miss
         return nullptr;
     }
 
@@ -645,12 +616,19 @@ std::shared_ptr<RaceModelData> RaceModelLoader::buildModelDataFromCharacters(
     return nullptr;
 }
 
+bool RaceModelLoader::lastLookupDeferred() const { return t_lookupDeferred; }
+
 void RaceModelLoader::storeOtherChrCacheLocked(const std::string& lowerFilename,
                                                 std::vector<std::shared_ptr<CharacterModel>> characters,
                                                 std::map<std::string, std::shared_ptr<TextureInfo>> textures) {
     OtherChrCache& cache = otherChrCaches_[lowerFilename];
     cache.characters = std::move(characters);
     cache.textures = std::move(textures);
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);   // T504b Leg 2
+        recordArchiveNamesLocked("other:" + lowerFilename, clientPath_ + lowerFilename, cache.characters);
+    }
+    releaseBytesIfEqe1Authoritative(cache.textures);  // T504: see the header
     mergedTexturesCacheValid_ = false;
 
     if (maxChrCacheEntries_ > 0) {
@@ -707,6 +685,8 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         }
     }
 
+    ensureSourceForRace(raceId, gender, "preloadModelData");   // T504b Leg 2: reload-on-miss
+
     // Collect textures from safe sources for model building.
     // zoneTextures_ is immutable after zone init (safe to read from bg thread).
     std::map<std::string, std::shared_ptr<TextureInfo>> mergedTextures = zoneTextures_;
@@ -730,15 +710,36 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
 
         auto cacheIt = otherChrCaches_.find(lowerFilename);
+        if (cacheIt == otherChrCaches_.end() && lowerFilename == "global_chr.s3d"
+            && adoptGlobalChrIntoOtherCacheLocked())
+            cacheIt = otherChrCaches_.find(lowerFilename);   // T504b Leg 1 (5th site)
+        const std::vector<std::string> wantedHere = wantedCodesFor(raceId, gender);   // T504c Leg 2
         if (cacheIt != otherChrCaches_.end()) {
             LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: archive cache HIT for {} (race={} gender={})",
                      lowerFilename, raceId, gender);
+            // T504c Leg 2: the entry may be INCOMPLETE (a filtered parse, or
+            // pruned); serve a wanted code the archive is indexed to hold
+            // only after reloading it, so the winner never depends on what
+            // an earlier request happened to keep (the Leg 3b STOP 1).
+            std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+            const std::string key = "other:" + lowerFilename;
+            for (const auto& code : wantedHere) {
+                if (storeLacksIndexedCodeLocked(key, cacheIt->second.characters, code)) {
+                    reloadArchiveForCodesLocked(key, s3dPath, wantedHere, raceId, gender, "preloadModelData");
+                    cacheIt = otherChrCaches_.find(lowerFilename);
+                    break;
+                }
+            }
         } else {
             // Not cached — load from disk and store
             LOG_INFO(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: archive cache MISS for {} — loading from disk (race={} gender={})",
                      lowerFilename, raceId, gender);
             S3DLoader loader;
-            if (!loader.loadZone(s3dPath)) {
+            // T504c Leg 2: tracks/characters of other models are not parsed;
+            // Leg 4: the zone's announced race set rides along on the first parse.
+            const std::vector<std::string> prefetched = wantedWithPrefetch(raceId, gender);
+            const S3DLoadOptions filtered = characterLoadOptions(&prefetched);
+            if (!loader.loadZone(s3dPath, filtered)) {
                 // T91: route the "poisoned" empty entry through the same
                 // LRU-tracked path as a real load, so a permanently-failing
                 // filename occupies (and can eventually give up) a counted
@@ -748,13 +749,25 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
                 return nullptr;
             }
             auto zone = loader.getZone();
+            if (zone && !zone->allCharacterNames.empty()) {
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);   // T504b Leg 3: names even when filtered to nothing
+                recordArchiveNamesLocked("other:" + lowerFilename, s3dPath, zone->allCharacterNames);
+            }
             if (!zone || zone->characters.empty()) {
                 storeOtherChrCacheLocked(lowerFilename, {}, {});
                 return nullptr;
             }
 
+            {
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);   // T504b Leg 3: every name, filtered or not
+                recordArchiveNamesLocked("other:" + lowerFilename, s3dPath, zone->allCharacterNames);
+            }
             storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
             cacheIt = otherChrCaches_.find(lowerFilename);
+            if (!wantedHere.empty()) {
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+                archiveIndex_["other:" + lowerFilename].pruned = true;   // incomplete: reload-on-miss applies
+            }
 
             LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: cached {} characters from {} (total cached: {})",
                       cacheIt != otherChrCaches_.end() ? cacheIt->second.characters.size() : 0,
@@ -782,55 +795,28 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
         return result;
     };
 
-    // 1. Search zoneCharacters_ (zone_chr.s3d, immutable after zone init — safe)
-    if (!modelData && !zoneCharacters_.empty()) {
-        modelData = buildModelDataFromCharacters(zoneCharacters_, mergedTextures, raceId, gender);
+    // 1. Search the zone characters (T504b Leg 2: a snapshot, the store may be pruned)
+    const CharacterList zoneSnap = snapshotZoneCharacters();
+    std::string resolvedFrom;   // T504 resolver Leg 0: which step/archive today's chain used
+    if (!modelData && !zoneSnap.empty()) {
+        modelData = buildModelDataFromCharacters(zoneSnap, mergedTextures, raceId, gender);
+        if (modelData) resolvedFrom = "zone:" + currentZoneName_ + "_chr.s3d";
     }
 
-    // 2. Search otherChrCaches_ (mutex-protected — safe)
-    if (!modelData) {
-        std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
-        for (const auto& [filename, cache] : otherChrCaches_) {
-            // Merge archive textures with existing textures (existing take priority)
-            // — same merge logic as tryLoadFromArchive
-            auto diskTextures = cache.textures;
-            for (const auto& [name, tex] : mergedTextures) {
-                diskTextures[name] = tex;
-            }
-            modelData = buildModelDataFromCharacters(cache.characters, diskTextures, raceId, gender);
-            if (modelData) {
-                LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: found race={} in cached archive '{}' (mergedTextures={} archiveTextures={} diskTextures={})",
-                          raceId, filename, mergedTextures.size(), cache.textures.size(), diskTextures.size());
-                // Add new textures from this archive to our merged set
-                for (const auto& [name, tex] : cache.textures) {
-                    if (mergedTextures.find(name) == mergedTextures.end()) {
-                        mergedTextures[name] = tex;
-                    }
-                }
-                break;
-            }
+    // 2. T504 resolver (Will, 2026-09-22): the original client's sources in
+    // its order -- the zone's list archives, then the GlobalLoad.txt set.
+    // tryLoadFromArchive() serves each from otherChrCaches_ or parses it;
+    // the cache sweep, the db per-race archive and the numbered-global loop
+    // that used to follow made the winner depend on what happened to be
+    // cached (race 120: global6_chr vs global_chr).
+    if (!modelData && !clientPath_.empty()) {
+        for (const auto& archive : resolverOrder()) {
+            if (archive == eraSources_.zoneArchive) continue;   // step 1 searched the zone store
+            modelData = tryLoadFromArchive(clientPath_ + archive);
+            if (modelData) { resolvedFrom = "era:" + archive; break; }
         }
     }
-
-    // 3. Try JSON-specified S3D file (cached in otherChrCaches_)
-    if (!modelData && !clientPath_.empty()) {
-        std::string jsonS3dFile = getRaceS3DFile(raceId);
-        if (!jsonS3dFile.empty()) {
-            modelData = tryLoadFromArchive(clientPath_ + jsonS3dFile);
-        }
-    }
-
-    // 4. Try global_chr.s3d (cached in otherChrCaches_)
-    if (!modelData && !clientPath_.empty()) {
-        modelData = tryLoadFromArchive(clientPath_ + "global_chr.s3d");
-    }
-
-    // 5. Try global2-7_chr.s3d (cached in otherChrCaches_)
-    if (!modelData && !clientPath_.empty()) {
-        for (int num = 2; num <= 7 && !modelData; ++num) {
-            modelData = tryLoadFromArchive(clientPath_ + "global" + std::to_string(num) + "_chr.s3d");
-        }
-    }
+    // global5-7 are not in GlobalLoad.txt and are never consulted (era pruning).
 
     if (!modelData) {
         // T94: record the negative result permanently and log it exactly
@@ -870,13 +856,15 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             std::lock_guard<std::mutex> chrLock(otherChrCacheMutex_);
             std::string globalKey = "global_chr.s3d";
             auto cacheIt = otherChrCaches_.find(globalKey);
+            if (cacheIt == otherChrCaches_.end() && adoptGlobalChrIntoOtherCacheLocked())
+                cacheIt = otherChrCaches_.find(globalKey);   // T504b Leg 1
             if (cacheIt != otherChrCaches_.end()) {
                 LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: animation merge using cached global_chr.s3d for race={}", raceId);
             } else if (!clientPath_.empty()) {
                 LOG_INFO(MOD_GRAPHICS, "RaceModelLoader: animation merge loading global_chr.s3d from disk for race={}", raceId);
                 // Load and cache global_chr.s3d for animation data
                 S3DLoader animLoader;
-                if (animLoader.loadZone(clientPath_ + globalKey)) {
+                if (animLoader.loadZone(clientPath_ + globalKey, characterLoadOptions())) {
                     auto animZone = animLoader.getZone();
                     if (animZone && !animZone->characters.empty()) {
                         storeOtherChrCacheLocked(globalKey, animZone->characters, animZone->characterTextures);
@@ -1109,7 +1097,8 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
                 continue;
             }
             const auto& rawData = texIt->second->data;
-            if (rawData.empty()) {
+            // T504: bytes released early (EQE1 serves the name) is not "empty".
+            if (!texIt->second->present()) {
                 LOG_DEBUG(MOD_GRAPHICS, "  T05: texName='{}' found but data is empty", lowerName);
                 emptyData++;
                 continue;
@@ -1144,11 +1133,16 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
                   (bool)modelData->combinedGeometry, modelData->textures.size(), (bool)constrainedTextureCache_, raceId, gender);
     }
 
+    // T504 resolver Leg 0: today's winner next to the original rule's winner.
+    LOG_INFO(MOD_GRAPHICS, "[srcres] race={} gender={} today={} original={}",
+             raceId, gender, resolvedFrom.empty() ? "?" : resolvedFrom, originalRuleArchiveFor(raceId, gender));
+
     // Store in staging cache
     {
         std::lock_guard<std::mutex> lock(preparedDataMutex_);
         preparedModelData_[key] = std::move(modelData);
     }
+    pruneSourceCharacters("preload");   // T504b Leg 2
 
     LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: staged model for race={} gender={}", raceId, gender);
     return true;

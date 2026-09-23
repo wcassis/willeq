@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <functional>
 #include <glm/glm.hpp>
 
 #define BEST_Z_INVALID -99999
@@ -53,6 +54,14 @@ public:
 	// Get all terrain triangles (excludes placeables)
 	// Coordinates are in Irrlicht format (Y-up) - ready for direct rendering
 	std::vector<Triangle> GetAllTerrainTriangles() const;
+
+	// T504: the streaming form of GetAllTerrainTriangles(). Visits every
+	// terrain triangle (Irrlicht Y-up, normal computed) without materialising
+	// the whole list -- the placeholder builder filters to the render distance
+	// and keeps ~1 % of them, so the 8.9 MiB list (dreadlands: 135,775
+	// triangles x 68 B) was pure transient held for the entire zone load.
+	// Returns the number of terrain triangles visited.
+	size_t ForEachTerrainTriangle(const std::function<void(const Triangle&)>& visit) const;
 
 	// Get the min/max Y values (Irrlicht Y-up) across all vertices
 	void GetVertexBounds(float& minY, float& maxY) const;

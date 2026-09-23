@@ -1,4 +1,5 @@
 #include "client/application.h"
+#include "client/core/memory_ledger.h"  // T504: instant_scene ledger point
 #include <json/json.h>  // Must be before eq.h → logging.h so JSONCPP_VERSION_STRING is defined
 #include "client/eq.h"
 #include "client/help/merged_help.h"
@@ -218,7 +219,9 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
     }
 
     // 3. Build HCMap placeholder + minimal collision
+    eqt::memory::recordPoint("instant_scene_begin", snap.zoneName);  // T504
     m_renderer->setupInstantScene(snap.zoneName, snap.playerX, snap.playerY, snap.playerZ);
+    eqt::memory::recordPoint("instant_scene", snap.zoneName);        // T504: placeholder mesh + 2 selectors
 
     // 4. Zone environment data
     if (!snap.zoneName.empty()) {

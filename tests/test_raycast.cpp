@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include "client/raycast_mesh.h"
 #include <cmath>
 #include <vector>
@@ -345,4 +346,25 @@ TEST(HCMapTest, CheckLOS_NoMap) {
 TEST(HCMapTest, LoadMapFile_NonexistentFile) {
 	HCMap* map = HCMap::LoadMapFile("nonexistent_zone", "/nonexistent/path");
 	EXPECT_EQ(map, nullptr);
+}
+
+// T504d: the per-triangle "already tested this raycast" mark is one byte. The
+// frame counter wraps every 255 raycasts and the marks are cleared once at
+// the wrap; a triangle must still be found on every call across several
+// wraps, and the result must not drift (same hit, same distance, same normal).
+TEST_F(RaycastMeshTest, Raycast_OneByteFrameWrapsWithoutLosingHits) {
+	RaycastMesh* mesh = createRaycastMesh(4, squareVerts.data(), 2, squareIndices.data());
+	ASSERT_NE(mesh, nullptr);
+	float from[3] = {5.0f, 5.0f, 10.0f};
+	float to[3] = {5.0f, 5.0f, -10.0f};
+	float firstNormal[3] = {0};
+	for (int i = 0; i < 1000; ++i) {   // > 3 wraps of a byte frame counter
+		float hitLocation[3] = {0}, hitNormal[3] = {0}, hitDistance = 0;
+		ASSERT_TRUE(mesh->raycast(from, to, hitLocation, hitNormal, &hitDistance)) << "raycast " << i;
+		EXPECT_NEAR(hitDistance, 10.0f, 0.001f) << "raycast " << i;
+		EXPECT_NEAR(hitLocation[2], 0.0f, 0.001f) << "raycast " << i;
+		if (i == 0) { std::copy(hitNormal, hitNormal + 3, firstNormal); }
+		for (int k = 0; k < 3; ++k) EXPECT_FLOAT_EQ(hitNormal[k], firstNormal[k]) << "raycast " << i;
+	}
+	mesh->release();
 }

@@ -513,6 +513,21 @@ std::vector<std::shared_ptr<CelestialBody>> SkyLoader::getCelestialBodiesForSkyT
     return result;
 }
 
+size_t SkyLoader::releaseTextureData() {
+    if (!skyData_) return 0;
+    size_t released = 0;
+    for (auto& [name, tex] : skyData_->textures) {
+        if (!tex) continue;
+        released += tex->rawDataBytes();
+        // swap, not clear(): clear() keeps the capacity, i.e. keeps the bytes
+        std::vector<char>().swap(tex->data);
+        for (auto& frame : tex->frames) {
+            std::vector<char>().swap(frame.data);
+        }
+    }
+    return released;
+}
+
 std::vector<std::string> SkyLoader::getTextureNamesForSkyType(int skyTypeId) const {
     std::vector<std::string> result;
     if (!skyData_) return result;

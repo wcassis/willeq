@@ -29,8 +29,20 @@ public:
     // Initialize with a single SoundFont file
     bool init(const std::string& soundFontPath, uint32_t sampleRate = 22050);
 
-    // Initialize with dual SoundFonts (GM + custom orchestral)
+    // Initialize with dual SoundFonts (GM + custom orchestral).
+    //
+    // T504 (load-step audit): the custom font is NOT loaded here. synthus2.sf2
+    // is 12.0 MB on disk and TSF holds it as float samples -- MEASURED +22.9 MiB
+    // RssAnon at process start, in every session, although only the tracks
+    // AudioManager::getSoundFontTypeForFile() names (8 Velious + 23 Luclin
+    // zones) ever render from it. init() records the path; the first
+    // selectSoundFont(Custom) loads it and selectSoundFont(GM) frees it, so the
+    // font is resident exactly while a track that needs it is selected.
     bool init(const std::string& gmPath, const std::string& customPath, uint32_t sampleRate);
+
+    // T504: true while the custom font's samples are in memory. Test hook for
+    // the lazy-load contract above; not a playback control.
+    bool isCustomSoundFontResident() const;
 
     // Replace the GM SoundFont slot.
     //
@@ -130,6 +142,7 @@ private:
     bool looping_ = false;
     uint32_t sampleRate_ = 22050;
     SoundFontType activeSoundFont_ = SoundFontType::GM;
+    std::string customSoundFontPath_;  // T504: loaded on first selectSoundFont(Custom)
 };
 
 } // namespace Audio

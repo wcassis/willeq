@@ -78,6 +78,10 @@ void eqt::movement::MovementComponent::LoadPathfinder(const std::string& zone_na
 	m_current_path.clear();
 	m_current_path_index = 0;
 	
+	// T504 / Will 2026-09-21: the navmesh IS part of the original-parity baseline --
+	// follow existed at launch; a different implementation technique of an
+	// original capability is still core. MEASURED dreadlands: +10.9 MiB of
+	// game_state from a 4.4 MB .nav file (inflated Detour tiles, stored once).
 	try {
 		// Use the IPathfinder factory method to load the navigation mesh
 		m_pathfinder.reset(IPathfinder::Load(zone_name, ctx_.Zone().NavmeshPath()));

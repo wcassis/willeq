@@ -48,15 +48,17 @@ it without taking that measurement first.
   `task/kb-b852-zone-content-sweep`):** `scripts/ci/zone_content_sweep.sh`
   ran all 118 zones offline (one gles2_zone_benchmark process each, the gate's
   memory-coverage invocation, heaviest first, per-zone timeout + watchdog).
-  Result [measured 2026-09-20, x86/llvmpipe]: 116/118 clean — **every** Kunark
-  and Velious zone loads clean; two CLASSIC zones do not: **soldunga**
-  (FATAL `Texture 'gnome_stronghold_floor_transition.bmp' not found in any EQE1
-  flat pack` — the pack stores the name truncated to 31 chars, `#100`) and
-  **hole** (loads and renders fine, peak RssAnon 261.2 MB, 5.2 MB over the 256 MB
+  Result [measured 2026-09-20, x86/llvmpipe]: 117/118 clean — **every** Kunark
+  and Velious zone loads clean; the one failing classic zone, **soldunga**
+  (EQE1 31-char name truncation), is **closed by B100/#100** (2026-09-21: the
+  pack is v3 and the client's loader reads the v3 name table) — and **hole**
+  (loads and renders fine, peak RssAnon 261.2 MB, 5.2 MB over the 256 MB
   Pi ceiling, `#101`). One issue per distinct failing line: **#100** (soldunga,
   EQE1-tree defect — loads clean without `--eqe1-path`) and **#101** (hole,
   memory). Fixes are those issues, not this card. The sweep is committed
-  (`refactor/B852/` holds the 118-row TSV + summary), with a 3-zone ctest
+  (`refactor/B852/` holds the 118-row TSV + summary; `refactor/B100/` holds the
+  1506-pack/183,058-entry v3-aware name census + captured output for the soldunga
+  closure), with a 3-zone ctest
   smoke (qeynos2/sebilis/iceclad, label `slow`) in the test job; how to run it:
   `docs/ci.md` "The zone-content sweep". Related: B813/#7 (gate zone set),
   ~~B853/#99~~ (live zone-in sweep — swept clean by B853, `refactor/B853/`:
@@ -750,7 +752,7 @@ it without taking that measurement first.
   adding a Velious zone to the gate's zone set, which means blessing new
   goldens: **Will's call, not an executor's.**
 
-- **B814** (A) One category is bigger than the whole target. T491 measured → issue #8
+- ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage
   run (gfaydark, 5 races, objects + EQE1) — on its own larger than Will's
   32–64 MB RSS goal (`docs/decisions.md` 2026-09-17). Its budget is set at
@@ -765,7 +767,7 @@ it without taking that measurement first.
   the Pi**, a third of its x86 figure, and three of the five names above are
   llvmpipe (B812). See B816.
 
-- **B816** (A, *measured*) **The Orange Pi's own shrink queue.** T496 Leg A, → issue #9
+- **B816** (A, *measured*) **The Orange Pi's own shrink queue.** T496 Leg A, → issue #9 — **T504 (2026-09-23) retired the zone-load rows:** Pi steady RssAnon gfaydark/dreadlands/iceclad/qeynos2 108/137/143/111 → 92/110/112/71 MiB (review/T504/pi/README.md); audio, startup, the Lima driver and malloc_slack remain.
   four runs at 1280x720 (`--drm --constrained orangepi`), every row naming the
   zone the client's own log says it entered (B802 read-back guard):
   `review/T496/pi/table_categories.tsv`. Largest-first at **`ready`**
@@ -9367,8 +9369,8 @@ because the Pi had no keyboard or mouse attached (B510).
   the player entity is created. Two traps: never edit a bash script while it
   is running (P5 lost its copy step to that), and copy frame dumps with
   `cp -a`, because `encode_capture.sh` derives fps from mtimes.
-- **B511** (P) **x86 live runs from an NFS worktree stall at "Finalizing
-  connection... (40%)".** The dev VM's `net.core.rmem_max` is 212,992 (the Pi's
+- ~~**B511** (P) **x86 live runs from an NFS worktree stall at "Finalizing
+  connection... (40%)".**~~ **RESOLVED by B751 / MR !29 (2026-09-23, fable 67526073):** without the capability the client now asks for `net.core.rmem_max` instead of a hard-coded 212992, and logs the granted buffer at INFO; the Pi zone-in stall this was the x86 face of is root-caused on #73 (42 % kernel drops of the zone-in burst). The setcap recipe still gives more (8 MiB forced) on a filesystem without `nosuid`. Original text: The dev VM's `net.core.rmem_max` is 212,992 (the Pi's
   is 1,048,576), and `setcap` fails on NFS ("Operation not supported"), so the
   1 MB `SO_RCVBUFFORCE` never happens. Recipe: copy the binary to a local
   filesystem, `setcap cap_net_raw,cap_net_admin+ep` it, and run it with
@@ -12259,3 +12261,33 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
 B828–B829 and B832 unused. B836–B845 used by T500 (B840, B842, B845 closed by the kanban pilot, below T501's section).
 
 B848 used by the kanban pilot (issue #4, migration card). B849 (issue #91), B850 (#92), B851 (#97), B852 (#98, the A-section entry above) and B853 (#99, swept clean 2026-09-21, `refactor/B853/`) were filed straight to GitLab issues by the orchestrator 2026-09-18/20 and have no board entry of their own (docs/issues.md: the issue is the record). B854 onwards unused.
+
+## Added 2026-09-23 by T504 (the load-step memory audit, merged as fable b09bb498; B751 as 67526073)
+
+Defects found and fixed INSIDE the audit (struck at birth; the commit is the record, the plan documents hold the measurements: `refactor/T504b_entity_source_pruning.md`, `T504c_wld_fragment_filter.md`, `T504d_hc_map_bvh_compactness.md`):
+
+- ~~**B859** (A) `ThreadLogBuffer` only flipped its double buffer on the owning thread's next append, so an idle thread's pending log lines never drained~~ -- 3278da58 (+ `LoggingTest.QuietAfterBurst_*`).
+- ~~**B860** (A) `S3DLoader` opened the same archive five times per zone load and `EquipmentModelLoader` re-parsed the same WLD per item~~ -- single open (`parseFromOpenArchive`), equipment parse cache (b0d6cff7).
+- ~~**B861** (A) every character archive's WLD was parsed TWICE per load (loadZone + loadCharacters)~~ -- b793fa99; gfaydark entity_models peak 63.7 -> 51.9.
+- ~~**B862** (A) a character-archive load built a combined "zone" geometry of all its meshes, inflated every texture twice and opened the archive a second time, none of it read~~ -- 7bfbdaa8; peak 43.6 -> 25.9 (gfaydark).
+- ~~**B863** (A) `PfsArchive::open` read the file AND copied every member's blocks (2x the archive at open, 1x retained, 3,234 allocations)~~ -- mmap, 3d5d31f2; zone_parse peak -6 MiB/zone.
+- ~~**B864** (A) `EQE1TextureIndex::load` built a 26 MiB jsoncpp DOM of the 1.9 MB index on EVERY zone load -- the whole `archives` peak~~ -- streaming parser, 329a2e1b; archives peak 35 -> 22.
+- ~~**B865** (A) the equipment index was rebuilt on every zone load from 17 archives, 11 of them outside `GlobalLoad.txt`~~ -- era six, once per process, 31c198a0; archives peak 22 -> 5.4.
+- ~~**B866** (A) every 0x22 region filled a private PVS store that `addRegion` copied into a growing arena (13 MiB transient for 4.6)~~ -- in place + exact reserve, 31c198a0.
+- ~~**B867** (A) the combined zone geometry (19.5 MiB vertex+triangle copy in iceclad) was built on the PVS path that only reads its texture names and bounds~~ -- materials+bounds summary, 31c198a0.
+- ~~**B868** (P) the branch's CI `build` job had failed since 108ba056 (`-Werror=format-truncation` in `FormatTimestamp`), so the test job never ran on it~~ -- bounded copy, 31c198a0; suite then run locally (4,987 tests).
+- ~~**B869** (A) T504b's render-thread deferral handed model lookups to a prep worker that tests and tools do not have -- never loaded (test_held_item_attachment SEGV)~~ -- the worker request reports acceptance, 31c198a0.
+- ~~**B870** (B) `[modelmem]` double-counted the adopted global_chr other-chr entry and charged a merged-texture map copy per model although models share one snapshot (split off by 47 %)~~ -- counted once, 31c198a0; split +0.25 %.
+- ~~**B871** (A) `RaceModelLoader::getMemoryStats` and three tools listed `s3d_loader.cpp` without the ledger; `test_graphics` lacked `era_model_sources.cpp`~~ -- CMake lists fixed, 3d5d31f2 / 31c198a0.
+- ~~**B872** (A) `PfsArchive` accepted a zero-length filename-table entry (`filenameLength - 1` wrapped)~~ -- 8ef2e108.
+- ~~**B873** (A) T504b's per-race prune dropped the characters the NEXT race needed, so each archive was parsed once per race (gfaydark: 6x global_chr, 6x gfaydark_chr)~~ -- race-set prefetch, cdbce199; preload time -40..-70 %.
+- ~~**B751**~~ see its own entry (#73): the Pi zone-in stall = 42 % kernel drops of the zone-in burst behind a 425 KiB fallback buffer -- MR !29.
+
+Follow-ups filed as records (not started):
+
+- **B855** (A) the inflated zone WLD is the largest remaining zone_parse transient (iceclad 17.4 MiB) -- stream or partially inflate it. -> issue #106
+- **B856** (A) libLLVM + libgallium are 33.5 MiB of file-backed RSS on the Pi even on Lima -- an LLVM-less Mesa build. -> issue #107
+- **B857** (C) skel_containers -- the largest compactness term left in entity_models; needs its own plan per Will's rev-1 rule. -> issue #108
+- **B858** (C) zone-in Phase 10 is keyed on ONE unreliable packet (our own OP_ClientUpdate); a lost datagram is a permanent stall. -> issue #109
+
+B874 onwards unused.
