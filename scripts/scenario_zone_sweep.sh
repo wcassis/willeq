@@ -169,7 +169,7 @@ done
 if [ "$SELFTEST" -eq 1 ]; then
     if [ "$PI" -eq 1 ]; then
         # stonebrunt: heaviest Kunark zone (B852 s3d_bytes 7.9 MB); sebilis:
-        # mid-weight Kunark (1.7 MB) -- one heavy, one light, so the net
+        # 3,506,579 B Kunark -- one heavy, one light, so the net
         # covers both ends of the Pi memory curve.
         SELFTEST_ZONES="stonebrunt,sebilis"
         ZONES="$SELFTEST_ZONES"
@@ -280,6 +280,8 @@ cleanup() {
     [ -n "$CLIENT_PID" ] && kill "$CLIENT_PID" >/dev/null 2>&1
     [ -n "$CLIENT_PID" ] && sleep 2
     [ -n "$CLIENT_PID" ] && kill -9 "$CLIENT_PID" >/dev/null 2>&1
+    # Clean up temp files created by the zone loop (trap clobber fix).
+    rm -f "$ZONE_TMPFILE" "$ZONE_PROCESSED_FILE" 2>/dev/null
     if [ "$PI" -eq 1 ]; then
         # A half-dead Pi client must not outlive the lock hold.
         pi_remote "pkill -9 -f 'willeq -c ${PI_CFG}' >/dev/null 2>&1; true" >/dev/null 2>&1 || true

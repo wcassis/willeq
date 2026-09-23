@@ -1,0 +1,47 @@
+zone	expansion	s3d_bytes	status	exit_code	wall_s	fatal_count	error_count	error_map_count	first_fatal	zone_loaded_in	zone_name	spawn_count	door_count	placeholder_model_count	late_open_eqe1_count	clean	last_memledger_point	peak_rss_anon_bytes	top3_memledger_categories_at_last_point	oom	oom_dmesg_line
+stonebrunt	kunark	7946269	ran	0	14	0	0	0		y	stonebrunt	1	91	0	0	1	shutdown	35643392	game_state(27795904);startup(442272);network(159112)	n	
+iceclad	velious	7594147	ran	3	135	0	0	0		y		100	41	0	0	0	shutdown	42745856	game_state(26846304);startup(442272);network(177952)	n	
+frozenshadow	velious	7449246	ran	0	14	0	0	0		y	frozenshadow	100	48	0	0	1	shutdown	19087360	game_state(11701248);startup(442272);network(178024)	n	
+thurgadina	velious	6948795	ran	0	14	0	0	0		y	thurgadina	22	37	0	0	1	shutdown	17362944	game_state(9418112);startup(442272);network(159120)	n	
+warslikswood	kunark	6525667	ran	0	14	0	0	0		y	warslikswood	12	12	0	0	1	shutdown	41320448	game_state(30016152);startup(442272);network(159112)	n	
+timorous	kunark	6086601	ran	0	14	0	0	0		y	timorous	0	47	0	0	1	shutdown	59367424	game_state(40673696);startup(442272);network(159120)	n	
+thurgadinb	velious	6085837	ran	0	14	0	0	0		y	thurgadinb	82	24	0	0	1	shutdown	11907072	game_state(6412144);startup(442272);network(171088)	n	
+greatdivide	velious	5738839	ran	0	14	0	0	0		y	greatdivide	0	29	0	0	1	shutdown	28983296	game_state(20834200);startup(442272);network(159112)	n	
+lakeofillomen	kunark	5736341	ran	0	14	0	0	0		y	lakeofillomen	30	15	0	0	1	shutdown	33390592	game_state(22272328);startup(442272);network(159112)	n	
+growthplane	velious	5644512	ran	0	14	0	0	0		y	growthplane	4	18	0	0	1	shutdown	35053568	game_state(27716712);startup(442272);network(159112)	n	
+skyshrine	velious	5509990	ran	0	14	0	0	0		y	skyshrine	73	88	0	0	1	shutdown	23625728	game_state(15720264);startup(442272);network(167624)	n	
+templeveeshan	velious	5293620	seed_failed	-	-	0	0	0		n		0	0	0	0	0	none	0	none	n	
+sleeper	velious	5222761	zone_boot_failed	-	-	0	0	0		n		0	0	0	0	0	none	0	none	n	
+cabeast	kunark	5159745	ran	0	14	0	0	0		y	cabeast	60	31	0	0	1	shutdown	16334848	game_state(8945832);startup(442272);network(162624)	n	
+cabwest	kunark	5121059	ran	0	14	0	0	0		y	cabwest	11	0	0	0	1	shutdown	15044608	game_state(7623944);startup(442272);network(159112)	n	
+dreadlands	kunark	4925937	ran	0	15	0	0	0		y	dreadlands	4	7	0	0	1	shutdown	34365440	game_state(23638880);startup(442272);network(159112)	n	
+sirens	velious	4898678	ran	0	14	0	0	0		y	sirens	0	0	0	0	1	shutdown	12787712	game_state(7518880);startup(442272);network(159112)	n	
+kael	velious	4856486	ran	0	14	0	0	0		y	kael	2	83	0	0	1	shutdown	17743872	game_state(11099664);startup(442272);network(159112)	n	
+overthere	kunark	4783737	ran	0	15	0	0	0		y	overthere	10	23	0	0	1	shutdown	52908032	game_state(44719328);startup(442272);network(159112)	n	
+citymist	kunark	4589515	ran	0	14	0	0	0		y	citymist	0	0	0	0	1	shutdown	13369344	game_state(8170176);startup(442272);network(159120)	n	
+trakanon	kunark	4565184	ran	0	15	0	0	0		y	trakanon	4	21	0	0	1	shutdown	39215104	game_state(29440608);startup(442272);network(159112)	n	
+skyfire	kunark	4400614	ran	0	14	0	0	0		y	skyfire	0	226	0	0	1	shutdown	46997504	game_state(35234984);startup(442272);network(159112)	n	
+westwastes	velious	4230134	ran	0	15	0	0	0		y	westwastes	5	63	0	0	1	shutdown	24813568	game_state(17212352);startup(442272);network(159112)	n	
+frontiermtns	kunark	4125688	ran	0	14	0	0	0		y	frontiermtns	0	3	0	0	1	shutdown	39374848	game_state(31341760);startup(442272);network(159112)	n	
+firiona	kunark	4119344	ran	0	14	0	0	0		y	firiona	34	41	0	0	1	shutdown	32935936	game_state(24504736);startup(442272);network(159112)	n	
+swampofnohope	kunark	3987542	ran	0	15	0	0	0		y	swampofnohope	19	1	0	0	1	shutdown	37363712	game_state(30061608);startup(442272);network(159112)	n	
+eastwastes	velious	3953177	ran	0	14	0	0	0		y	eastwastes	1	32	0	0	1	shutdown	30392320	game_state(20629168);startup(442272);network(159112)	n	
+veeshan	kunark	3830571	ran	0	14	0	0	0		y	veeshan	1	82	0	0	1	shutdown	17272832	game_state(10696704);startup(442272);network(159112)	n	
+burningwood	kunark	3812191	ran	0	15	0	0	0		y	burningwood	0	104	0	0	1	shutdown	26755072	game_state(18755504);startup(442272);network(159112)	n	
+fieldofbone	kunark	3761533	ran	0	14	0	0	0		y	fieldofbone	31	3	0	0	1	shutdown	26931200	game_state(20031520);startup(442272);network(159112)	n	
+cobaltscar	velious	3638451	ran	0	14	0	0	0		y	cobaltscar	24	7	0	0	1	shutdown	13225984	game_state(9871696);startup(442272);network(159112)	n	
+sebilis	kunark	3506579	ran	0	14	0	0	0		y	sebilis	24	61	0	0	1	shutdown	13320192	game_state(7333200);startup(442272);network(159120)	n	
+chardok	kunark	3412773	ran	0	14	0	0	0		y	chardok	53	26	0	0	1	shutdown	11628544	game_state(7133336);startup(442272);network(159928)	n	
+velketor	velious	3279207	ran	0	15	0	0	0		y	velketor	100	8	0	0	1	shutdown	12587008	game_state(6715784);startup(442272);network(178024)	n	
+karnor	kunark	3258251	ran	0	14	0	0	0		y	karnor	37	26	0	0	1	shutdown	11132928	game_state(5661560);startup(442272);network(159112)	n	
+emeraldjungle	kunark	3132826	ran	0	15	0	0	0		y	emeraldjungle	1	3	0	0	1	shutdown	60284928	game_state(54212504);startup(442272);network(159112)	n	
+crystal	velious	3070861	ran	0	14	0	0	0		y	crystal	35	30	0	0	1	shutdown	10350592	game_state(5587440);startup(442272);network(159112)	n	
+kurn	kunark	2824793	ran	0	14	0	0	0		y	kurn	100	9	0	0	1	shutdown	12578816	game_state(6436240);startup(442272);network(178024)	n	
+droga	kunark	2774186	ran	0	14	0	0	0		y	droga	0	0	0	0	1	shutdown	16334848	game_state(9508944);startup(442272);network(159112)	n	
+necropolis	velious	2518376	ran	0	14	0	0	0		y	necropolis	8	51	0	0	1	shutdown	16314368	game_state(11782072);startup(442272);network(159112)	n	
+warrens	kunark	2242972	ran	0	14	0	0	0		y	warrens	100	13	0	0	1	shutdown	10448896	game_state(5778528);startup(442272);network(178024)	n	
+wakening	velious	2187786	ran	0	15	0	0	0		y	wakening	4	5	0	0	1	shutdown	41697280	game_state(37830168);startup(442272);network(159120)	n	
+charasis	kunark	2159009	ran	0	14	0	0	0		y	charasis	100	46	0	0	1	shutdown	8380416	game_state(4615104);startup(442272);network(200152)	n	
+kaesora	kunark	1969412	ran	0	14	0	0	0		y	kaesora	62	16	0	0	1	shutdown	11653120	game_state(6627528);startup(442272);network(163400)	n	
+nurga	kunark	1482593	ran	0	14	0	0	0		y	nurga	0	0	0	0	1	shutdown	7917568	game_state(4706928);startup(442272);network(159120)	n	
+dalnir	kunark	1377942	ran	0	14	0	0	0		y	dalnir	91	12	0	0	1	shutdown	8130560	game_state(4816880);startup(442272);network(174560)	n	

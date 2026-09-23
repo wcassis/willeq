@@ -1,0 +1,190 @@
+[zone_sweep] sweeping 46 zone(s) on the pi lane, char=Testchar, timeout=300s, watchdog=150s
+[zone_sweep] eqemu lock taken
+[zone_sweep] pi lock taken (kb-b854-pi-zone-sweep 2026-09-23T12:52:21-04:00 from hermes-ext)
+[zone_sweep] pi client: /mnt/projects/fable/ci-arm/by-branch/fable/bin/willeq (BUILD_INFO sha=cb8eec71877db8078c261035a54d9bc902d42e1d)
+[zone_sweep] pi character: Testcaster
+[zone_sweep] bringing eqemu up
+[zone_sweep] snapshot taken (90 rows)
+[zone_sweep] resuming: 13 row(s) already in /home/user/kb-evidence/b854-pi-zone-sweep/sweep/results.tsv
+[zone_sweep] resume skip (already in TSV): stonebrunt
+[zone_sweep] resume skip (already in TSV): iceclad
+[zone_sweep] resume skip (already in TSV): frozenshadow
+[zone_sweep] resume skip (already in TSV): thurgadina
+[zone_sweep] resume skip (already in TSV): warslikswood
+[zone_sweep] resume skip (already in TSV): timorous
+[zone_sweep] resume skip (already in TSV): thurgadinb
+[zone_sweep] resume skip (already in TSV): greatdivide
+[zone_sweep] resume skip (already in TSV): lakeofillomen
+[zone_sweep] resume skip (already in TSV): growthplane
+[zone_sweep] resume skip (already in TSV): skyshrine
+[zone_sweep] resume skip (already in TSV): templeveeshan
+[zone_sweep] resume skip (already in TSV): sleeper
+[zone_sweep] === cabeast (kunark, 5159745 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> cabeast (zoneidnumber 106) safe point (-417.000,1362.000,8.000)
+[zone_sweep] === cabeast (kunark, 5159745 s3d bytes) on the PI ===
+[zone_sweep] row: cabeast exit=0 wall=14s fatal=0 err=0 peak_rss_anon=16334848B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 14 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === cabwest (kunark, 5121059 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> cabwest (zoneidnumber 82) safe point (767.000,-783.000,8.000)
+[zone_sweep] === cabwest (kunark, 5121059 s3d bytes) on the PI ===
+[zone_sweep] row: cabwest exit=0 wall=14s fatal=0 err=0 peak_rss_anon=15044608B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 15 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === dreadlands (kunark, 4925937 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> dreadlands (zoneidnumber 86) safe point (9565.000,2806.000,1050.000)
+[zone_sweep] === dreadlands (kunark, 4925937 s3d bytes) on the PI ===
+[zone_sweep] row: dreadlands exit=0 wall=15s fatal=0 err=0 peak_rss_anon=34365440B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 16 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === sirens (velious, 4898678 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> sirens (zoneidnumber 125) safe point (-33.000,196.000,4.000)
+[zone_sweep] === sirens (velious, 4898678 s3d bytes) on the PI ===
+[zone_sweep] row: sirens exit=0 wall=14s fatal=0 err=0 peak_rss_anon=12787712B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 17 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === kael (velious, 4856486 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> kael (zoneidnumber 113) safe point (-633.000,-47.000,128.000)
+[zone_sweep] === kael (velious, 4856486 s3d bytes) on the PI ===
+[zone_sweep] row: kael exit=0 wall=14s fatal=0 err=0 peak_rss_anon=17743872B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 18 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === overthere (kunark, 4783737 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> overthere (zoneidnumber 93) safe point (1450.000,-3500.000,309.000)
+[zone_sweep] === overthere (kunark, 4783737 s3d bytes) on the PI ===
+[zone_sweep] row: overthere exit=0 wall=15s fatal=0 err=0 peak_rss_anon=52908032B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 19 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === citymist (kunark, 4589515 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> citymist (zoneidnumber 90) safe point (-734.000,28.000,4.000)
+[zone_sweep] === citymist (kunark, 4589515 s3d bytes) on the PI ===
+[zone_sweep] row: citymist exit=0 wall=14s fatal=0 err=0 peak_rss_anon=13369344B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 20 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === trakanon (kunark, 4565184 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> trakanon (zoneidnumber 95) safe point (1486.000,3868.000,-336.000)
+[zone_sweep] === trakanon (kunark, 4565184 s3d bytes) on the PI ===
+[zone_sweep] row: trakanon exit=0 wall=15s fatal=0 err=0 peak_rss_anon=39215104B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 21 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === skyfire (kunark, 4400614 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> skyfire (zoneidnumber 91) safe point (-4286.000,-1140.000,38.000)
+[zone_sweep] === skyfire (kunark, 4400614 s3d bytes) on the PI ===
+[zone_sweep] row: skyfire exit=0 wall=14s fatal=0 err=0 peak_rss_anon=46997504B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 22 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === westwastes (velious, 4230134 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> westwastes (zoneidnumber 120) safe point (-3499.000,-4099.000,-18.000)
+[zone_sweep] === westwastes (velious, 4230134 s3d bytes) on the PI ===
+[zone_sweep] row: westwastes exit=0 wall=15s fatal=0 err=0 peak_rss_anon=24813568B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 23 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === frontiermtns (kunark, 4125688 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> frontiermtns (zoneidnumber 92) safe point (-4262.000,-633.000,116.000)
+[zone_sweep] === frontiermtns (kunark, 4125688 s3d bytes) on the PI ===
+[zone_sweep] row: frontiermtns exit=0 wall=14s fatal=0 err=0 peak_rss_anon=39374848B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 24 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === firiona (kunark, 4119344 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> firiona (zoneidnumber 84) safe point (1440.000,-2392.000,1.000)
+[zone_sweep] === firiona (kunark, 4119344 s3d bytes) on the PI ===
+[zone_sweep] row: firiona exit=0 wall=14s fatal=0 err=0 peak_rss_anon=32935936B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 25 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === swampofnohope (kunark, 3987542 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> swampofnohope (zoneidnumber 83) safe point (2945.000,2761.000,6.000)
+[zone_sweep] === swampofnohope (kunark, 3987542 s3d bytes) on the PI ===
+[zone_sweep] row: swampofnohope exit=0 wall=15s fatal=0 err=0 peak_rss_anon=37363712B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 26 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === eastwastes (velious, 3953177 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> eastwastes (zoneidnumber 116) safe point (-4296.000,-5049.000,147.000)
+[zone_sweep] === eastwastes (velious, 3953177 s3d bytes) on the PI ===
+[zone_sweep] row: eastwastes exit=0 wall=14s fatal=0 err=0 peak_rss_anon=30392320B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 27 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === veeshan (kunark, 3830571 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> veeshan (zoneidnumber 108) safe point (1783.000,-5.000,15.000)
+[zone_sweep] === veeshan (kunark, 3830571 s3d bytes) on the PI ===
+[zone_sweep] row: veeshan exit=0 wall=14s fatal=0 err=0 peak_rss_anon=17272832B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 28 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === burningwood (kunark, 3812191 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> burningwood (zoneidnumber 87) safe point (-821.000,-4942.000,204.000)
+[zone_sweep] === burningwood (kunark, 3812191 s3d bytes) on the PI ===
+[zone_sweep] row: burningwood exit=0 wall=15s fatal=0 err=0 peak_rss_anon=26755072B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 29 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === fieldofbone (kunark, 3761533 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> fieldofbone (zoneidnumber 78) safe point (1617.000,-1684.000,-50.000)
+[zone_sweep] === fieldofbone (kunark, 3761533 s3d bytes) on the PI ===
+[zone_sweep] row: fieldofbone exit=0 wall=14s fatal=0 err=0 peak_rss_anon=26931200B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 30 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === cobaltscar (velious, 3638451 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> cobaltscar (zoneidnumber 117) safe point (895.000,-939.000,318.000)
+[zone_sweep] === cobaltscar (velious, 3638451 s3d bytes) on the PI ===
+[zone_sweep] row: cobaltscar exit=0 wall=14s fatal=0 err=0 peak_rss_anon=13225984B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 31 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === sebilis (kunark, 3506579 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> sebilis (zoneidnumber 89) safe point (0.000,250.000,44.000)
+[zone_sweep] === sebilis (kunark, 3506579 s3d bytes) on the PI ===
+[zone_sweep] row: sebilis exit=0 wall=14s fatal=0 err=0 peak_rss_anon=13320192B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 32 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === chardok (kunark, 3412773 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> chardok (zoneidnumber 103) safe point (859.000,119.000,106.000)
+[zone_sweep] === chardok (kunark, 3412773 s3d bytes) on the PI ===
+[zone_sweep] row: chardok exit=0 wall=14s fatal=0 err=0 peak_rss_anon=11628544B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 33 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === velketor (velious, 3279207 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> velketor (zoneidnumber 112) safe point (-65.000,581.000,-152.000)
+[zone_sweep] === velketor (velious, 3279207 s3d bytes) on the PI ===
+[zone_sweep] row: velketor exit=0 wall=15s fatal=0 err=0 peak_rss_anon=12587008B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 34 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === karnor (kunark, 3258251 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> karnor (zoneidnumber 102) safe point (302.000,18.000,6.000)
+[zone_sweep] === karnor (kunark, 3258251 s3d bytes) on the PI ===
+[zone_sweep] row: karnor exit=0 wall=14s fatal=0 err=0 peak_rss_anon=11132928B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 35 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === emeraldjungle (kunark, 3132826 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> emeraldjungle (zoneidnumber 94) safe point (4648.000,-1223.000,2.000)
+[zone_sweep] === emeraldjungle (kunark, 3132826 s3d bytes) on the PI ===
+[zone_sweep] row: emeraldjungle exit=0 wall=15s fatal=0 err=0 peak_rss_anon=60284928B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 36 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === crystal (velious, 3070861 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> crystal (zoneidnumber 121) safe point (303.000,487.000,-74.000)
+[zone_sweep] === crystal (velious, 3070861 s3d bytes) on the PI ===
+[zone_sweep] row: crystal exit=0 wall=14s fatal=0 err=0 peak_rss_anon=10350592B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 37 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === kurn (kunark, 2824793 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> kurn (zoneidnumber 97) safe point (0.000,0.000,7.000)
+[zone_sweep] === kurn (kunark, 2824793 s3d bytes) on the PI ===
+[zone_sweep] row: kurn exit=0 wall=14s fatal=0 err=0 peak_rss_anon=12578816B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 38 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === droga (kunark, 2774186 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> droga (zoneidnumber 81) safe point (290.000,1375.000,6.000)
+[zone_sweep] === droga (kunark, 2774186 s3d bytes) on the PI ===
+[zone_sweep] row: droga exit=0 wall=14s fatal=0 err=0 peak_rss_anon=16334848B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 39 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === necropolis (velious, 2518376 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> necropolis (zoneidnumber 123) safe point (2000.000,-100.000,5.000)
+[zone_sweep] === necropolis (velious, 2518376 s3d bytes) on the PI ===
+[zone_sweep] row: necropolis exit=0 wall=14s fatal=0 err=0 peak_rss_anon=16314368B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 40 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === warrens (kunark, 2242972 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> warrens (zoneidnumber 101) safe point (-930.000,748.000,-37.000)
+[zone_sweep] === warrens (kunark, 2242972 s3d bytes) on the PI ===
+[zone_sweep] row: warrens exit=0 wall=14s fatal=0 err=0 peak_rss_anon=10448896B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 41 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === wakening (velious, 2187786 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> wakening (zoneidnumber 119) safe point (-5000.000,-673.000,-195.000)
+[zone_sweep] === wakening (velious, 2187786 s3d bytes) on the PI ===
+[zone_sweep] row: wakening exit=0 wall=15s fatal=0 err=0 peak_rss_anon=41697280B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 42 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === charasis (kunark, 2159009 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> charasis (zoneidnumber 105) safe point (0.000,0.000,4.000)
+[zone_sweep] === charasis (kunark, 2159009 s3d bytes) on the PI ===
+[zone_sweep] row: charasis exit=0 wall=14s fatal=0 err=0 peak_rss_anon=8380416B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 43 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === kaesora (kunark, 1969412 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> kaesora (zoneidnumber 88) safe point (40.000,370.000,102.000)
+[zone_sweep] === kaesora (kunark, 1969412 s3d bytes) on the PI ===
+[zone_sweep] row: kaesora exit=0 wall=14s fatal=0 err=0 peak_rss_anon=11653120B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 44 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === nurga (kunark, 1482593 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> nurga (zoneidnumber 107) safe point (-1762.000,-2200.000,6.000)
+[zone_sweep] === nurga (kunark, 1482593 s3d bytes) on the PI ===
+[zone_sweep] row: nurga exit=0 wall=14s fatal=0 err=0 peak_rss_anon=7917568B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 45 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] === dalnir (kunark, 1377942 s3d bytes, pi lane) ===
+[zone_sweep] seed confirmed: Testcaster -> dalnir (zoneidnumber 104) safe point (0.000,0.000,6.000)
+[zone_sweep] === dalnir (kunark, 1377942 s3d bytes) on the PI ===
+[zone_sweep] row: dalnir exit=0 wall=14s fatal=0 err=0 peak_rss_anon=8130560B last_point=shutdown oom=n clean=1
+[zone_sweep] progress: 46 row(s) recorded, 0 failure(s) in this run
+[zone_sweep] sweep result: 43/46 rows clean in /home/user/kb-evidence/b854-pi-zone-sweep/sweep/results.tsv
+  iceclad: ran (exit 3, fatal=0 err=0) -- (no FATAL; see log)
+  templeveeshan: seed_failed (exit -, fatal=0 err=0) -- (no FATAL; see log)
+  sleeper: zone_boot_failed (exit -, fatal=0 err=0) -- (no FATAL; see log)

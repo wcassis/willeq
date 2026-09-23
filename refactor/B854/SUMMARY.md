@@ -8,12 +8,12 @@
 
 ## Results
 
-| Status | Count | Zones |
-|--------|-------|-------|
-| **Clean** (exit=0, zoned in) | **43/46** | all except iceclad, templeveeshan, sleeper |
-| **Stalled** (exit=3, no ClientUpdate) | 1 | iceclad |
-| **Seed failed** | 1 | templeveeshan |
-| **Zone boot failed** | 1 | sleeper |
+|| Status | Count | Zones |
+||--------|-------|-------|
+|| **Clean** (exit=0, zoned in) | **43/46** | all except iceclad, templeveeshan, sleeper |
+|| **Stalled** (exit=3, no ClientUpdate) | 1 | iceclad |
+|| **Seed failed** | 1 | templeveeshan |
+|| **Zone boot failed** | 1 | sleeper |
 
 ### Failures
 
@@ -25,7 +25,7 @@
 
 ## Memory profile
 
-Peak RssAnon across all zones: 59.3 MB (timorous, game_state bucket).
+Peak RssAnon across all zones: 60.3 MB (emeraldjungle, game_state bucket).
 
 Top3 categories at last lifecycle point (typical for clean zones):
 - game_state: 22-46 MB (dominant)
@@ -42,58 +42,60 @@ Top3 categories at last lifecycle point (typical for clean zones):
 
 ### Kunark (28 zones)
 
-| Zone | s3d_bytes | Status | Wall | Peak RSS |
-|------|-----------|--------|------|----------|
-| stonebrunt | 7946269 | clean | 14s | 34.0 MB |
-| warslikswood | 6525667 | clean | 14s | 36.3 MB |
-| fires | 5470000 | clean | 14s | 32.1 MB |
-| cabeast | 5159745 | clean | 14s | 15.6 MB |
-| cabwest | 5121059 | clean | 14s | 14.3 MB |
-| dreadlands | 4925937 | clean | 15s | 32.7 MB |
-| overthere | 4783737 | clean | 15s | 50.5 MB |
-| citymist | 4589515 | clean | 14s | 12.8 MB |
-| trakanon | 4565184 | clean | 15s | 37.4 MB |
-| skyfire | 4400614 | clean | 14s | 44.9 MB |
-| westwastes | 4230134 | clean | 15s | 23.7 MB |
-| frontiermtns | 4125688 | clean | 14s | 37.5 MB |
-| firiona | 4119344 | clean | 14s | 31.4 MB |
-| swampofnohope | 3987542 | clean | 15s | 35.6 MB |
-| eastwastes | 3953177 | clean | 14s | 29.0 MB |
-| veeshan | 3830571 | clean | 14s | 16.5 MB |
-| burningwood | 3812191 | clean | 15s | 25.5 MB |
-| fieldofbone | 3761533 | clean | 14s | 25.7 MB |
-| sebilis | 3506579 | clean | 14s | 12.7 MB |
-| chardok | 3412773 | clean | 14s | 11.1 MB |
-| karnor | 3258251 | clean | 14s | 10.6 MB |
-| emeraldjungle | 3132826 | clean | 15s | 57.5 MB |
-| crystal | 3070861 | clean | 14s | 9.9 MB |
-| kurn | 2824793 | clean | 14s | 12.0 MB |
-| droga | 2774186 | clean | 14s | 15.6 MB |
-| kaesora | 1969412 | clean | 14s | 11.1 MB |
-| nurga | 1482593 | clean | 14s | 7.5 MB |
-| dalnir | 1377942 | clean | 14s | 7.7 MB |
+|| Zone | s3d_bytes | Status | Wall | Peak RSS |
+||------|-----------|--------|------|----------|
+|| stonebrunt | 7946269 | clean | 14s | 34.0 MB |
+|| warslikswood | 6525667 | clean | 14s | 36.3 MB |
+|| fires | 5470000 | clean | 14s | 32.1 MB |
+|| cabeast | 5159745 | clean | 14s | 15.6 MB |
+|| cabwest | 5121059 | clean | 14s | 14.3 MB |
+|| dreadlands | 4925937 | clean | 15s | 32.7 MB |
+|| overthere | 4783737 | clean | 15s | 50.5 MB |
+|| citymist | 4589515 | clean | 14s | 12.8 MB |
+|| trakanon | 4565184 | clean | 15s | 37.4 MB |
+|| skyfire | 4400614 | clean | 14s | 44.9 MB |
+|| timorous | 6086601 | clean | 14s | 56.6 MB |
+|| frontiermtns | 4125688 | clean | 14s | 37.5 MB |
+|| firiona | 4119344 | clean | 14s | 31.4 MB |
+|| swampofnohope | 3987542 | clean | 15s | 35.6 MB |
+|| lakeofillomen | 5736341 | clean | 14s | 31.8 MB |
+|| veeshan | 3830571 | clean | 14s | 16.5 MB |
+|| burningwood | 3812191 | clean | 15s | 25.5 MB |
+|| fieldofbone | 3761533 | clean | 14s | 25.7 MB |
+|| sebilis | 3506579 | clean | 14s | 12.7 MB |
+|| chardok | 3412773 | clean | 14s | 11.1 MB |
+|| karnor | 3258251 | clean | 14s | 10.6 MB |
+|| emeraldjungle | 3132826 | clean | 15s | 57.5 MB |
+|| crystal | 3070861 | clean | 14s | 9.9 MB |
+|| kurn | 2824793 | clean | 14s | 12.0 MB |
+|| droga | 2774186 | clean | 14s | 15.6 MB |
+|| kaesora | 1969412 | clean | 14s | 11.1 MB |
+|| nurga | 1482593 | clean | 14s | 7.5 MB |
+|| dalnir | 1377942 | clean | 14s | 7.7 MB |
 
 ### Velious (18 zones)
 
-| Zone | s3d_bytes | Status | Wall | Peak RSS |
-|------|-----------|--------|------|----------|
-| iceclad | 7594147 | **stall (exit 3)** | 135s | 40.8 MB |
-| frozenshadow | 7449246 | clean | 14s | 18.2 MB |
-| thurgadina | 6948795 | clean | 14s | 16.6 MB |
-| thurgadinb | 6085837 | clean | 14s | 11.3 MB |
-| greatdivide | 5738839 | clean | 14s | 20.0 MB |
-| growthplane | 5644512 | clean | 14s | 26.6 MB |
-| skyshrine | 5509990 | clean | 14s | 22.5 MB |
-| templeveeshan | 5293620 | **seed_failed** | - | - |
-| sleeper | 5222761 | **zone_boot_failed** | - | - |
-| sirens | 4898678 | clean | 14s | 12.2 MB |
-| kael | 4856486 | clean | 14s | 16.9 MB |
-| cobaltscar | 3638451 | clean | 14s | 12.6 MB |
-| velketor | 3279207 | clean | 15s | 12.0 MB |
-| necropolis | 2518376 | clean | 14s | 15.6 MB |
-| warrens | 2242972 | clean | 14s | 9.9 MB |
-| wakening | 2187786 | clean | 15s | 39.8 MB |
-| charasis | 2159009 | clean | 14s | 8.0 MB |
+|| Zone | s3d_bytes | Status | Wall | Peak RSS |
+||------|-----------|--------|------|----------|
+|| iceclad | 7594147 | **stall (exit 3)** | 135s | 40.8 MB |
+|| frozenshadow | 7449246 | clean | 14s | 18.2 MB |
+|| thurgadina | 6948795 | clean | 14s | 16.6 MB |
+|| thurgadinb | 6085837 | clean | 14s | 11.3 MB |
+|| greatdivide | 5738839 | clean | 14s | 20.0 MB |
+|| growthplane | 5644512 | clean | 14s | 26.6 MB |
+|| skyshrine | 5509990 | clean | 14s | 22.5 MB |
+|| templeveeshan | 5293620 | **seed_failed** | - | - |
+|| sleeper | 5222761 | **zone_boot_failed** | - | - |
+|| sirens | 4898678 | clean | 14s | 12.2 MB |
+|| kael | 4856486 | clean | 14s | 16.9 MB |
+|| cobaltscar | 3638451 | clean | 14s | 12.6 MB |
+|| velketor | 3279207 | clean | 15s | 12.0 MB |
+|| necropolis | 2518376 | clean | 14s | 15.6 MB |
+|| warrens | 2242972 | clean | 14s | 9.9 MB |
+|| wakening | 2187786 | clean | 15s | 39.8 MB |
+|| charasis | 2159009 | clean | 14s | 8.0 MB |
+|| westwastes | 4230134 | clean | 15s | 23.7 MB |
+|| eastwastes | 3953177 | clean | 14s | 29.0 MB |
 
 ## Notes on failures
 
@@ -106,3 +108,4 @@ Top3 categories at last lifecycle point (typical for clean zones):
 - TSV: `refactor/B854/sweep_results.tsv` (22 columns, 46 rows + header)
 - Log: `refactor/B854/sweep.log` (full sweep output)
 - Per-zone logs: `refactor/B854/logs/` (one per zone)
+- Lane restore proof: `refactor/B854/lane_restore_proof.txt`
