@@ -80,6 +80,41 @@ Alpha entries (for hasAlpha=1 textures):
   Runtime binds RGB entry as texture 0, alpha entry as texture 1
 ```
 
+### Name table (version 3)
+
+The 32-byte inline name field holds at most 31 characters + NUL. The lookup
+side keys on the FULL name (`.bmp` stripped, lowercased — nothing else), so a
+name that did not fit was silently truncated on write and never found on read:
+soldunga's `gnome_stronghold_floor_transition` (33) stored as
+`gnome_stronghold_floor_transiti` and FATAL-exited the zone load (B100,
+2026-09-21). The fix adds a v3 name table rather than canonicalizing both
+sides to 31 chars, because the format cannot carry the full name any other way
+and truncating on read would break every zone whose source names differ
+beyond 31 chars. v1/v2 packs are unchanged and remain byte-identical; only a
+pack with at least one name over 31 chars is written as v3:
+
+```
+v3 layout:
+  Header:  version field = 3 (everything else identical to v1/v2)
+  Index:   N × (48-byte v1 entry + 8-byte name tail)
+    name tail:  uint32  nameOffset   file offset of the name in the table
+                uint32  nameLength   byte length
+                (a name that fits inline: nameOffset = 0, nameLength = 0,
+                 the 32-byte field holds the name as in v1/v2)
+  Name table:  the distinct long names, concatenated, immediately after the
+    index (the builder writes it contiguous and NUL-free; each name once)
+  Data:  identical to v1/v2 (16-byte-aligned entries); dataOffset values
+    account for the index + table
+```
+
+`include/client/graphics/eqe1_format.h` is the normative definition
+(`EQE1IndexEntryNameTail`, `indexEntryStride()`); the loader rejects a v3
+name-table reference that is out of bounds or escapes the table, and a v1/v2
+entry whose name field is not null-terminated (the truncation signature of a
+pack that needs a v3 rebuild). `eqe1_builder` and
+`entity_composite_builder` emit v3 when needed and stay v1/v2 otherwise;
+`verify_eqe1` validates all three versions.
+
 ### File Mapping
 
 ```
