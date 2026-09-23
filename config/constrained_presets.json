@@ -85,9 +85,9 @@
       "memoryLedgerBudgets": {
         "unattributed": 1048576,
         "archives": 4194304,
-        "zone_parse": 33554432,
-        "zone_mesh": 29360128,
-        "spatial": 4194304,
+        "zone_parse": 34603008,
+        "zone_mesh": 30408704,
+        "spatial": 12582912,
         "textures_decoded": 20971520,
         "entity_models": 88080384,
         "objects": 41943040,
