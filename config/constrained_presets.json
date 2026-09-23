@@ -47,7 +47,7 @@
       "gpuTextureMemoryBytes": 67108864,
       "zoneGeometryMemoryBytes": 16777216,
       "placeableObjectsMemoryBytes": 25165824,
-      "s3dZoneSourceMemoryBytes": 33554432,
+      "s3dZoneSourceMemoryBytes": 34603008,
       "vboEboMemoryBytes": 41943040,
       "characterModelsMemoryBytes": 41943040,
       "eqe1MappedAddressSpaceBytes": 268435456,
