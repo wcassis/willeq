@@ -65,7 +65,7 @@ Legend: Done | Partial | Not Implemented
 | Login server authentication | Done | |
 | Server selection | Done | |
 | Character selection | Done | Auto-select from config |
-| Character creation | -- | Provisioned externally (eq-oracle Wine rig). Native creation is issue #204 (B874): the official two-page screen and progression, home city (no tutorial), post-Velious races/classes excluded |
+| Character creation | -- | Provisioned externally (eq-oracle Wine rig). Native creation is issue #204 (B888): the official two-page screen and progression, home city (no tutorial), post-Velious races/classes excluded |
 
 ### World & Zones
 | Feature | Status | Notes |
@@ -80,7 +80,7 @@ Legend: Done | Partial | Not Implemented
 | Weather (rain/snow) | Done | Particle systems, storm clouds, lightning |
 | Zone transitions | Done | |
 | Zone points | Done | |
-| Boats/transport | -- | Issue #206 (B876). T168 deleted the unreachable board/leave senders |
+| Boats/transport | -- | Issue #206 (B890). T168 deleted the unreachable board/leave senders |
 
 ### Graphics
 | Feature | Status | Notes |
@@ -101,10 +101,10 @@ Legend: Done | Partial | Not Implemented
 |---------|--------|-------|
 | Walking/running | Done | With server sync |
 | Strafing | Done | |
-| Jumping | Partial | Two unmeasured models: the headless 25-unit arc (#33, B463) and the renderer's own velocity/gravity arc. Fall damage is never sent. Issue #209 (B879) |
-| Swimming | Partial | Water detection, swim movement, sinking and animations exist (`renderer_player_physics.cpp`); the speeds and skill formula are unmeasured guesses. Issue #207 (B877) |
-| Drowning | -- | No breath state, no Air Remaining window, the environment-damage packet is only received. Issue #207 (B877) |
-| Levitation | -- | eqemu sends the levitate appearance with skip-self, so the self check never fires; must derive from own buffs. Issue #208 (B878) |
+| Jumping | Partial | Two unmeasured models: the headless 25-unit arc (#33, B463) and the renderer's own velocity/gravity arc. Fall damage is never sent. Issue #209 (B893) |
+| Swimming | Partial | Water detection, swim movement, sinking and animations exist (`renderer_player_physics.cpp`); the speeds and skill formula are unmeasured guesses. Issue #207 (B891) |
+| Drowning | -- | No breath state, no Air Remaining window, the environment-damage packet is only received. Issue #207 (B891) |
+| Levitation | -- | eqemu sends the levitate appearance with skip-self, so the self check never fires; must derive from own buffs. Issue #208 (B892) |
 | Auto-run | Done | |
 | Collision | Done | Map-based raycasting |
 | Sit/stand/crouch | Done | With animations |
@@ -129,7 +129,7 @@ Legend: Done | Partial | Not Implemented
 | Corpse looting | Done | Items and money, auto-loot option |
 | Spell casting | Done | 8 gem slots, memorize, cast, interrupt |
 | Combat abilities | Done | /useskill, /taunt, /shield; server validates |
-| Ranged auto-fire | Partial | /autofire toggle only; a single ranged shot is impossible (`UseAbility` hard-codes the melee slot) and the arrow is never drawn. Issue #216 (B886) |
+| Ranged auto-fire | Partial | /autofire toggle only; a single ranged shot is impossible (`UseAbility` hard-codes the melee slot) and the arrow is never drawn. Issue #216 (B900) |
 | Duels | Done | /duel, /duelaccept, /dueldecline |
 | Pet commands | Done | 10 commands via pet window or /pet |
 | Bind wound | Done | /bandage; server reply parsed and shown |
@@ -173,11 +173,11 @@ Legend: Done | Partial | Not Implemented
 | Cursor item | Done | T436, `EQUI_CursorAttachment.xml`: the held item's icon follows the mouse |
 | Loot window | Done | T290, center popup, scrollable |
 | Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; six of them are wired (three sliders — music volume, effects volume, clip plane — and their three value labels) and the other 108 are drawn greyed and are not hit-testable (boards B430, B431, B433) |
-| Trade | Partial | Command-driven (/trade); no window. `SetupTradeWindowCallbacks` is an empty stub. Issue #212 (B882) |
+| Trade | Partial | Command-driven (/trade); no window. `SetupTradeWindowCallbacks` is an empty stub. Issue #212 (B896) |
 | Item / spell display | Done | T421 + T425, one window for both (`EQUI_ItemDisplay.xml`); click an item slot, SHIFT+click a gem or spellbook row |
 | Pick up / put down an item | No | The static UI latches no drag and no click-to-pick-up; `SendMoveItem`/`MoveItemIntent` exist and `/equip` drives them (#151, B442; the official client is click-to-cursor, plan appended there) |
-| Tradeskill container | Partial | /recipesearch, /recipecombine; the drawn window is the post-Velious recipe window and opens for world containers only. The era container window + Combine is issue #215 (B885) |
-| Skill trainer | Partial | /train opens a session; the reply is decoded then dropped, nothing is drawn. Issue #214 (B884) |
+| Tradeskill container | Partial | /recipesearch, /recipecombine; the drawn window is the post-Velious recipe window and opens for world containers only. The era container window + Combine is issue #215 (B899) |
+| Skill trainer | Partial | /train opens a session; the reply is decoded then dropped, nothing is drawn. Issue #214 (B898) |
 
 ### Inventory
 | Feature | Status | Notes |
@@ -189,14 +189,14 @@ Legend: Done | Partial | Not Implemented
 | Equipment slots | Done | With tint colors |
 | Loot items | Done | |
 | Currency | Done | All denominations, /split |
-| Item linking | -- | Post-Velious, EXCLUDED from the baseline (#217 closed, B887) |
+| Item linking | -- | Post-Velious, EXCLUDED from the baseline (#217 closed, B901) |
 
 ### Social
 | Feature | Status | Notes |
 |---------|--------|-------|
 | /who | Done | Server who-all with count substitution |
-| Friends list | Partial | /friendswho query only; `/friends` is aliased to it where the official client's `/friends <name>` adds a friend. Issue #213 (B883) |
-| Ignore list | -- | Issue #213 (B883), one Friends window with an Ignored tab |
+| Friends list | Partial | /friendswho query only; `/friends` is aliased to it where the official client's `/friends <name>` adds a friend. Issue #213 (B897) |
+| Ignore list | -- | Issue #213 (B897), one Friends window with an Ignored tab |
 | Group | Done | /invite, /groupaccept, /disband, /decline, /groupassist |
 | Raid | Done | /raid invite/accept/leave/remove/leader/loot/looter/lock/unlock/group/status/list |
 | Guild management | Done | Invite, accept/decline, remove, demote, leader, MOTD |
@@ -222,8 +222,8 @@ Legend: Done | Partial | Not Implemented
 | Skill display | Done | Values and categories, class caps from `config/skill_caps.json` |
 | Skill activation | Done | /useskill by name or id, hotbar skill slots |
 | Tradeskills | Partial | Recipe search/combine commands; combines server-side |
-| Tracking | Partial | `/useskill tracking` sends and prints the list; no Tracking Window, no direction messages. Issue #211 (B881) |
-| Forage / Fishing | -- | Requests are sent; replies only logged. Issue #210 (B880) |
+| Tracking | Partial | `/useskill tracking` sends and prints the list; no Tracking Window, no direction messages. Issue #211 (B895) |
+| Forage / Fishing | -- | Requests are sent; replies only logged. Issue #210 (B894) |
 
 ### Audio
 | Feature | Status | Notes |

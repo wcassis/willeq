@@ -12290,22 +12290,22 @@ Follow-ups filed as records (not started):
 - **B857** (C) skel_containers -- the largest compactness term left in entity_models; needs its own plan per Will's rev-1 rule. -> issue #108
 - **B858** (C) zone-in Phase 10 is keyed on ONE unreliable packet (our own OP_ClientUpdate); a lost datagram is a permanent stall. -> issue #109
 
-B874 onwards unused.
+B874-B876 are the hermes pose-oracle ruling (docs/decisions.md 2026-09-23, issues #218-#220); B877-B887 unused (T505 renumbered its block to B888-B901 after allocating B874+ concurrently); B902 onwards unused. Allocate from the MAX `B###:` issue title on GitLab, not from this file.
 
 T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are class B on GitLab; every gap carries an oracle recipe, a repeatable CI test and parallel legs (docs/issues.md § Feature-gap issues). Filed as records (not started):
 
-- **B874** (B, feature) native character creation: the official two-page screen and progression, home city (no tutorial), post-Velious races/classes excluded. → issue #204
-- **B875** (B, feature) capability-level CI suite: a README-row → oracle → test → CI-lane matrix, nightly live + pi stages. → issue #205
-- **B876** (B, feature) boats/transport. → issue #206
-- **B877** (B, feature) swimming speeds are guesses, drowning and the Air Remaining window are missing. → issue #207
-- **B878** (B, feature) levitation never applies to the player (eqemu skip-self appearance; derive from own buffs). → issue #208
-- **B879** (B, feature) two unmeasured jump models, fall damage never sent. → issue #209
-- **B880** (B, feature) forage and fishing are sent but never measured or shown. → issue #210
-- **B881** (B, feature) tracking window and direction messages. → issue #211
-- **B882** (B, feature) player trade window (callbacks are an empty stub). → issue #212
-- **B883** (B, feature) friends window with friends + ignore lists; `/friends` alias conflict. → issue #213
-- **B884** (B, feature) skill trainer window (reply decoded then dropped). → issue #214
-- **B885** (B, feature) era tradeskill container window + Combine; recipe window is post-Velious. → issue #215
-- **B886** (B, feature) single ranged shot impossible, arrow never drawn; /autofire era uncertain. → issue #216
-- ~~**B887** (B, feature) item linking~~ -- OUT OF BASELINE (post-Velious), recorded and closed. → issue #217
+- **B888** (B, feature) native character creation: the official two-page screen and progression, home city (no tutorial), post-Velious races/classes excluded. → issue #204
+- **B889** (B, feature) capability-level CI suite: a README-row → oracle → test → CI-lane matrix, nightly live + pi stages. → issue #205
+- **B890** (B, feature) boats/transport. → issue #206
+- **B891** (B, feature) swimming speeds are guesses, drowning and the Air Remaining window are missing. → issue #207
+- **B892** (B, feature) levitation never applies to the player (eqemu skip-self appearance; derive from own buffs). → issue #208
+- **B893** (B, feature) two unmeasured jump models, fall damage never sent. → issue #209
+- **B894** (B, feature) forage and fishing are sent but never measured or shown. → issue #210
+- **B895** (B, feature) tracking window and direction messages. → issue #211
+- **B896** (B, feature) player trade window (callbacks are an empty stub). → issue #212
+- **B897** (B, feature) friends window with friends + ignore lists; `/friends` alias conflict. → issue #213
+- **B898** (B, feature) skill trainer window (reply decoded then dropped). → issue #214
+- **B899** (B, feature) era tradeskill container window + Combine; recipe window is post-Velious. → issue #215
+- **B900** (B, feature) single ranged shot impossible, arrow never drawn; /autofire era uncertain. → issue #216
+- ~~**B901** (B, feature) item linking~~ -- OUT OF BASELINE (post-Velious), recorded and closed. → issue #217
 - Feature-gap plans (oracle + test + legs) appended to existing issues: #25 lifts/switches/traps (B420), #151 item pick-up/put-down (B442), #116 spell visuals (B161), #144 Options controls (B430; #145/#146 pointed at it).
