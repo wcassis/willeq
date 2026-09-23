@@ -1,7 +1,11 @@
 // verify_eqe1 - Validates .eqe1 flat pack files for structural integrity.
 //
 // Checks header magic/version, index entry consistency, data alignment,
-// mipmap chain sizes, and alpha companion entries.
+// mipmap chain sizes, and alpha companion entries. Accepts v1/v2/v3 packs
+// (v3 = B100's name table for entry names longer than 31 chars); a v1/v2
+// entry whose name is not null-terminated within the 32-byte field is a
+// truncated name and a FAIL (rebuild the pack; the builder now emits v3
+// for such names).
 //
 // Usage:
 //   ./verify_eqe1 <file.eqe1>
@@ -9,6 +13,7 @@
 
 #include "client/graphics/eqe1_format.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -63,15 +68,17 @@ static VerifyResult verifyFile(const std::string& filepath, bool verbose) {
         return result;
     }
 
-    if (header->version != EQE1_VERSION && header->version != EQE1_VERSION_V2) {
-        fprintf(stderr, "  ERROR: Bad version: %u (expected %u or %u)\n",
-                header->version, EQE1_VERSION, EQE1_VERSION_V2);
+    if (header->version != EQE1_VERSION && header->version != EQE1_VERSION_V2 &&
+        header->version != EQE1_VERSION_V3) {
+        fprintf(stderr, "  ERROR: Bad version: %u (expected %u, %u or %u)\n",
+                header->version, EQE1_VERSION, EQE1_VERSION_V2, EQE1_VERSION_V3);
         result.errors++;
         return result;
     }
 
+    const uint32_t stride = indexEntryStride(header->version);
     uint16_t numEntries = header->numEntries;
-    size_t indexEnd = sizeof(EQE1Header) + numEntries * EQE1_INDEX_ENTRY_SIZE;
+    size_t indexEnd = sizeof(EQE1Header) + numEntries * stride;
 
     if (fileSize < indexEnd) {
         fprintf(stderr, "  ERROR: File too small for index (%zu bytes, need %zu)\n",
@@ -80,36 +87,91 @@ static VerifyResult verifyFile(const std::string& filepath, bool verbose) {
         return result;
     }
 
-    // Validate each index entry
-    const auto* entries = reinterpret_cast<const EQE1IndexEntry*>(
-        data.data() + sizeof(EQE1Header));
+    // Validate each index entry. NOTE: for v3 the index entries are
+    // 56-byte-strided (the 48-byte entry plus the 8-byte name tail), so the
+    // array below is only valid as a v1/v2 view; always address entries
+    // through entryAt(i), which strides by the version-dependent size.
+    const auto* entriesBase = data.data() + sizeof(EQE1Header);
+    auto entryAt = [&](uint16_t i) -> const EQE1IndexEntry& {
+        return *reinterpret_cast<const EQE1IndexEntry*>(
+            entriesBase + static_cast<size_t>(i) * stride);
+    };
+
+    // v3: the name table sits between the index and the data section; its end
+    // is the data section's start — the smallest dataOffset over the
+    // data-carrying entries. A pack with no data-carrying entries has no
+    // data section and therefore no room for a table.
+    uint32_t v3DataStart = 0;
+    if (header->version == EQE1_VERSION_V3) {
+        v3DataStart = static_cast<uint32_t>(fileSize);
+        for (uint16_t i = 0; i < numEntries; ++i) {
+            const auto& e = entryAt(i);
+            if (e.dataSize != 0) {
+                v3DataStart = std::min(v3DataStart, e.dataOffset);
+            }
+        }
+    }
+
+    // Read one entry's effective name. v3 entries either carry it inline
+    // (zero tail) or in the table; v1/v2 entries must be null-terminated
+    // within the 32-byte field (a truncated name is a build defect — B100).
+    // On a bad reference the error is counted here and an empty name
+    // returned so the loop can keep checking the other entries.
+    auto entryName = [&](uint16_t i) -> std::string {
+        const auto& e = entryAt(i);
+        if (header->version == EQE1_VERSION_V3) {
+            const auto* tail =
+                reinterpret_cast<const EQE1IndexEntryNameTail*>(
+                    reinterpret_cast<const uint8_t*>(&e) + sizeof(EQE1IndexEntry));
+            if (tail->nameOffset == 0 && tail->nameLength == 0) {
+                return e.name;  // inline; NUL-padded, so std::string stops there
+            }
+            if (e.name[0] != '\0') {
+                fprintf(stderr, "  ERROR: Entry %u has BOTH a name-table reference "
+                                "and an inline name\n", i);
+                result.errors++;
+            }
+            if (tail->nameLength == 0 ||
+                static_cast<size_t>(tail->nameOffset) >= fileSize ||
+                static_cast<size_t>(tail->nameOffset) + tail->nameLength > fileSize ||
+                tail->nameOffset < indexEnd ||
+                (v3DataStart != 0 &&
+                 (tail->nameOffset > v3DataStart ||
+                  static_cast<size_t>(tail->nameOffset) + tail->nameLength > v3DataStart))) {
+                fprintf(stderr, "  ERROR: Entry %u name-table reference out of bounds "
+                                "(offset=%u, length=%u)\n",
+                        i, tail->nameOffset, tail->nameLength);
+                result.errors++;
+                return std::string();
+            }
+            return std::string(reinterpret_cast<const char*>(
+                                   data.data() + tail->nameOffset),
+                               tail->nameLength);
+        }
+        for (uint32_t j = 0; j < EQE1_NAME_SIZE; ++j) {
+            if (e.name[j] == '\0') return e.name;
+        }
+        fprintf(stderr, "  ERROR: Entry %u name not null-terminated within the "
+                        "%u-byte field (truncated at 31 chars? rebuild as v3)\n",
+                i, EQE1_NAME_SIZE);
+        result.errors++;
+        return std::string();
+    };
 
     // Collect all entry names for alpha companion check
     std::set<std::string> allNames;
     for (uint16_t i = 0; i < numEntries; ++i) {
-        // Extract null-terminated name
-        char nameBuf[EQE1_NAME_SIZE + 1] = {};
-        std::memcpy(nameBuf, entries[i].name, EQE1_NAME_SIZE);
-        allNames.insert(std::string(nameBuf));
+        allNames.insert(entryName(i));
     }
 
     for (uint16_t i = 0; i < numEntries; ++i) {
-        const auto& e = entries[i];
+        const auto& e = entryAt(i);
 
-        // Extract name
+        // Extract name (table-reference / truncation errors are counted
+        // inside entryName(); the name is empty in that case)
+        std::string name = entryName(i);
         char nameBuf[EQE1_NAME_SIZE + 1] = {};
-        std::memcpy(nameBuf, e.name, EQE1_NAME_SIZE);
-        std::string name(nameBuf);
-
-        // Check null-termination within 32 bytes
-        bool nullTerminated = false;
-        for (uint32_t j = 0; j < EQE1_NAME_SIZE; ++j) {
-            if (e.name[j] == '\0') { nullTerminated = true; break; }
-        }
-        if (!nullTerminated) {
-            fprintf(stderr, "  ERROR: Entry %u name not null-terminated\n", i);
-            result.errors++;
-        }
+        std::snprintf(nameBuf, sizeof(nameBuf), "%.32s", name.c_str());
 
         // Check entry type
         if (e.entryType != EQE1_TYPE_ETC1_RGB &&
@@ -223,7 +285,7 @@ static void printUsage(const char* argv0) {
     printf("Usage: %s <file.eqe1>\n"
            "       %s --all <directory>\n"
            "       %s --verbose <file.eqe1>\n"
-           "\nValidates .eqe1 flat pack files for structural integrity.\n"
+           "\nValidates .eqe1 flat pack files (v1/v2/v3) for structural integrity.\n"
            "Exit code: 0 = OK, 1 = errors found.\n",
            argv0, argv0, argv0);
 }
@@ -294,7 +356,8 @@ int main(int argc, char** argv) {
                    result.totalDataSize / 1024);
             passedFiles++;
         } else {
-            printf("FAIL (%d errors, %d warnings)\n", result.errors, result.warnings);
+            printf("FAIL (%d errors, %d warnings)\n",
+                   result.errors, result.warnings);
         }
     }
 

@@ -1,6 +1,7 @@
 // RaceModelLoader animated mesh creation methods - split from race_model_loader.cpp
 // These methods remain part of the RaceModelLoader class
 
+#include "client/core/memory_ledger.h"  // T504
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/race_codes.h"
 #include "client/graphics/eq/animation_mapping.h"
@@ -17,6 +18,11 @@ namespace EQT {
 namespace Graphics {
 
 EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t gender, bool compositeAllowed) {
+    // T504 (load-step audit): everything built here is SHARED MODEL data (the
+    // race's model data, any archive parsed to find it or its animation source,
+    // and the per-race animated mesh) -- it is called lazily from inside entity
+    // creation, whose scope is EntityInstances, which is where it was filed.
+    eqt::memory::MemoryScope modelScope(eqt::memory::Category::EntityModels);
     uint32_t key = makeCacheKey(raceId, gender);
 
     // P08d: composite-allowed and composite-disallowed builds of the same race/gender
@@ -44,7 +50,7 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
     // and the plan Review for how this was caught (the ledger acceptance run).
     auto modelData = ensureModelDataLoaded(raceId, gender);
     if (!modelData) {
-        cache[key] = nullptr;
+        if (!lastLookupDeferred()) cache[key] = nullptr;   // T504b: a deferral is not a miss
         return nullptr;
     }
 
@@ -70,7 +76,7 @@ EQAnimatedMesh* RaceModelLoader::getAnimatedMeshForRace(uint16_t raceId, uint8_t
                 loadGlobalModels();
             }
             // Search for animation source skeleton in global characters
-            for (const auto& sourceChar : globalCharacters_) {
+            for (const auto& sourceChar : snapshotGlobalCharacters()) {  // T504b Leg 2
                 if (!sourceChar) continue;
                 std::string sourceName = sourceChar->name;
                 std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
@@ -262,7 +268,11 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNode(uint16_t raceId, ui
                                                               irr::scene::ISceneNode* parent,
                                                               irr::s32 id,
                                                               bool compositeAllowed) {
+    // T504: owner labels for WILLEQ_LEDGER_OWNERS=entity_instances -- the race's
+    // SHARED animated mesh is built lazily here, under the instance's scope.
+    if (eqt::memory::enabled()) eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex("ent.racemesh");
     EQAnimatedMesh* animMesh = getAnimatedMeshForRace(raceId, gender, compositeAllowed);
+    if (eqt::memory::enabled()) eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex("ent.nodeobj");
     if (!animMesh) {
         return nullptr;
     }
@@ -414,6 +424,7 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
     }
 
     // Get the model data to access textures
+    if (eqt::memory::enabled()) eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex("ent.nodeobj");  // T504 owner label
     // Try variant cache first (for models loaded with head/body variants)
     // Note: Model data is keyed without texture variant since geometry is the same
     std::shared_ptr<RaceModelData> modelData;

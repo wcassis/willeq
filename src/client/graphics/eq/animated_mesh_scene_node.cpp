@@ -7,6 +7,7 @@
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "common/simd_detect.h"
 #include "common/logging.h"
+#include <atomic>
 #include <iostream>
 #include <cmath>
 #include <algorithm>
@@ -132,6 +133,28 @@ void EQAnimatedMeshSceneNode::createInstanceMesh() {
 
     instanceMesh_->recalculateBoundingBox();
     boundingBox_ = instanceMesh_->getBoundingBox();
+
+    // T504 (load-step audit): how many per-instance mesh copies exist and what
+    // they weigh. Cumulative (copies are not subtracted on destruction), logged
+    // every 25th copy so one zone-in leaves a handful of lines.
+    {
+        static std::atomic<uint64_t> copies{0}, vertBytes{0}, indexBytes{0}, buffers{0};
+        uint64_t v = 0, ix = 0;
+        for (irr::u32 i = 0; i < instanceMesh_->getMeshBufferCount(); ++i) {
+            irr::scene::IMeshBuffer* mb = instanceMesh_->getMeshBuffer(i);
+            v += static_cast<uint64_t>(mb->getVertexCount()) * sizeof(irr::video::S3DVertex);
+            ix += static_cast<uint64_t>(mb->getIndexCount()) * sizeof(irr::u16);
+        }
+        vertBytes += v;
+        indexBytes += ix;
+        buffers += instanceMesh_->getMeshBufferCount();
+        const uint64_t n = ++copies;
+        if (n % 25 == 0) {
+            LOG_INFO(MOD_GRAPHICS, "[instmesh] copies={} mesh_buffers={} vertex_bytes={} index_bytes={} avg_per_copy={}",
+                     n, buffers.load(), vertBytes.load(), indexBytes.load(),
+                     (vertBytes.load() + indexBytes.load()) / n);
+        }
+    }
 }
 
 void EQAnimatedMeshSceneNode::applyAnimation() {

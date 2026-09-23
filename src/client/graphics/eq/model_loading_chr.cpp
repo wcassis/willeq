@@ -58,7 +58,7 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
         std::transform(upperCode.begin(), upperCode.end(), upperCode.begin(),
                        [](unsigned char c) { return std::toupper(c); });
 
-        for (const auto& character : zoneCharacters_) {
+        for (const auto& character : snapshotZoneCharacters()) {  // T504b Leg 2
             if (!character || character->parts.empty()) {
                 continue;
             }
@@ -122,7 +122,7 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
 
                     auto modelData = std::make_shared<RaceModelData>();
                     modelData->combinedGeometry = combinedGeom;
-                    modelData->textures = getMergedTextures();
+                    modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
                     modelData->raceName = character->name;
                     modelData->raceId = raceId;
                     modelData->gender = gender;
@@ -151,7 +151,7 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                 modelData->combinedGeometry = combinedGeom;
                 modelData->rawGeometry = rawGeom;  // Store raw geometry for animation
                 // Use merged textures from all sources (global + numbered globals + zone)
-                modelData->textures = getMergedTextures();
+                modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
                 modelData->raceName = character->name;
                 modelData->raceId = raceId;
                 modelData->gender = gender;
@@ -169,7 +169,7 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                         std::shared_ptr<CharacterSkeleton> sourceSkel;
 
                         // 1. Search current zone characters
-                        for (const auto& sourceChar : zoneCharacters_) {
+                        for (const auto& sourceChar : snapshotZoneCharacters()) {  // T504b Leg 2
                             if (!sourceChar) continue;
                             std::string sourceName = sourceChar->name;
                             std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
@@ -205,7 +205,7 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                                     // Load the chr file
                                     std::string fullPath = clientPath_ + animSourceS3d;
                                     S3DLoader loader;
-                                    if (loader.loadZone(fullPath)) {
+                                    if (loader.loadZone(fullPath, characterLoadOptions())) {
                                         auto zone = loader.getZone();
                                         if (zone && !zone->characters.empty()) {
                                             // T366 (B095): storeOtherChrCacheLocked
@@ -247,7 +247,7 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                             if (!globalModelsLoaded_) {
                                 loadGlobalModels();
                             }
-                            for (const auto& sourceChar : globalCharacters_) {
+                            for (const auto& sourceChar : snapshotGlobalCharacters()) {  // T504b Leg 2
                                 if (!sourceChar) continue;
                                 std::string sourceName = sourceChar->name;
                                 std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
@@ -355,7 +355,7 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
             // Load the chr file
             std::string fullPath = clientPath_ + chrFilename;
             S3DLoader loader;
-            if (!loader.loadZone(fullPath)) {
+            if (!loader.loadZone(fullPath, characterLoadOptions())) {
                 // Cache empty entry to avoid repeated load attempts.
                 // T364 (B065): through the store helper -- a raw
                 // otherChrCaches_[key] = ... never enters chrCacheLruOrder_,
@@ -479,7 +479,7 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
 
                     auto modelData = std::make_shared<RaceModelData>();
                     modelData->combinedGeometry = combinedGeom;
-                    modelData->textures = getMergedTextures();
+                    modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
                     modelData->raceName = character->name;
                     modelData->raceId = raceId;
                     modelData->gender = gender;
@@ -504,7 +504,7 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
                 auto modelData = std::make_shared<RaceModelData>();
                 modelData->combinedGeometry = combinedGeom;
                 modelData->rawGeometry = rawGeom;
-                modelData->textures = getMergedTextures();
+                modelData->textures = getMergedTexturesShared();  // T504: shared, not copied
                 modelData->raceName = character->name;
                 modelData->raceId = raceId;
                 modelData->gender = gender;
@@ -534,11 +534,13 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
                             std::transform(lowerAnimS3d.begin(), lowerAnimS3d.end(), lowerAnimS3d.begin(),
                                            [](unsigned char c) { return std::tolower(c); });
 
+                            // T504b Leg 1: global_chr.s3d is adopted from the global store, never re-parsed.
+                            if (lowerAnimS3d == "global_chr.s3d") adoptGlobalChrIntoOtherCacheLocked();
                             // Load the file if not already cached
                             if (otherChrCaches_.find(lowerAnimS3d) == otherChrCaches_.end()) {
                                 std::string fullPath = clientPath_ + animSourceS3d;
                                 S3DLoader loader;
-                                if (loader.loadZone(fullPath)) {
+                                if (loader.loadZone(fullPath, characterLoadOptions())) {
                                     auto zone = loader.getZone();
                                     if (zone && !zone->characters.empty()) {
                                         // T364 (B065): via the store helper so
@@ -569,7 +571,8 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
                         if (!globalModelsLoaded_) {
                             loadGlobalModels();
                         }
-                        searchSources.push_back(&globalCharacters_);
+                        const CharacterList globalSnap = snapshotGlobalCharacters();  // T504b Leg 2
+                        searchSources.push_back(&globalSnap);
 
                         // Search all sources for animation source skeleton
                         for (const auto* charList : searchSources) {

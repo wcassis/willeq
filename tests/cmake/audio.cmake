@@ -347,6 +347,7 @@ IF(WITH_AUDIO)
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
         ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_music_player_soundfont_lifetime PRIVATE
         WITH_AUDIO
@@ -365,6 +366,7 @@ IF(WITH_AUDIO)
         ${AUDIO_COMMON_TEST_SOURCES}
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_audio_startup_peak PRIVATE
         WITH_AUDIO

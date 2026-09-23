@@ -77,6 +77,41 @@ TEST_F(MidiPlayerPreallocTest, DualSoundFontInitPath_BothSlotsConfigured) {
         << "not all 16 MIDI channels were pre-created for the custom slot";
 }
 
+// T504 (load-step audit): the custom font costs +22.9 MiB RssAnon for
+// synthus2.sf2 and only the tracks getSoundFontTypeForFile() names render from
+// it, so it must be resident exactly while it is SELECTED -- not from init().
+// If someone moves the load back into init(), the first expectation fails.
+TEST_F(MidiPlayerPreallocTest, CustomSoundFontIsResidentOnlyWhileSelected) {
+    MidiPlayer player;
+    ASSERT_TRUE(player.init(testSoundFontPath(), testSoundFontPath(), 22050));
+    EXPECT_FALSE(player.isCustomSoundFontResident())
+        << "init() loaded the custom SoundFont eagerly";
+
+    player.selectSoundFont(SoundFontType::Custom);
+    ASSERT_EQ(player.getActiveSoundFont(), SoundFontType::Custom);
+    EXPECT_TRUE(player.isCustomSoundFontResident());
+
+    player.selectSoundFont(SoundFontType::GM);
+    ASSERT_EQ(player.getActiveSoundFont(), SoundFontType::GM);
+    EXPECT_FALSE(player.isCustomSoundFontResident())
+        << "switching back to GM kept the custom SoundFont in memory";
+
+    // and it comes back, configured, on the next selection
+    player.selectSoundFont(SoundFontType::Custom);
+    EXPECT_TRUE(player.isCustomSoundFontResident());
+    EXPECT_EQ(player.getConfiguredMaxVoices(), MidiPlayer::kMaxVoices);
+    EXPECT_EQ(player.getPreallocatedChannelCount(), 16);
+}
+
+TEST_F(MidiPlayerPreallocTest, CustomSoundFontThatCannotLoadLeavesThePlayerOnGm) {
+    MidiPlayer player;
+    ASSERT_TRUE(player.init(testSoundFontPath(), "/nonexistent/custom.sf2", 22050));
+    player.selectSoundFont(SoundFontType::Custom);
+    EXPECT_EQ(player.getActiveSoundFont(), SoundFontType::GM);
+    EXPECT_FALSE(player.isCustomSoundFontResident());
+    EXPECT_EQ(player.getConfiguredMaxVoices(), MidiPlayer::kMaxVoices);
+}
+
 TEST_F(MidiPlayerPreallocTest, ReloadPathConfiguresTheNewInstance) {
     MidiPlayer player;
     ASSERT_TRUE(player.init(testSoundFontPath(), 22050));

@@ -6,6 +6,7 @@
 //
 // Split out of renderer_zone_load.cpp by T166; see that file's header.
 
+#include <map>
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -154,6 +155,20 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
 
             size_t totalObjects = ctx_.deferredObjects.size();
             size_t objectsBuilt = 0;
+            // T504 (load-step audit): ONE mesh per distinct geometry. Instances share
+            // their ZoneGeometry (shared_ptr) but each built its own IMesh, CPU arrays
+            // and VBO -- MEASURED dreadlands: 814 instances of 62 geometries,
+            // 3.56 MiB of vertex+index arrays where 0.49 MiB would do (and the same
+            // again in VBOs). Vertex-ANIMATED objects (flags, banners) keep a private
+            // mesh because their vertices are rewritten every frame. The cache holds
+            // one reference per mesh and releases it when the step ends; the nodes
+            // keep the mesh alive.
+            std::map<const ZoneGeometry*, irr::scene::IMesh*> sharedObjectMeshes;
+            size_t sharedMeshHits = 0;
+            // WILLEQ_SHARE_OBJECT_MESHES=0 builds one mesh per instance again, with
+            // the same binary, for frame-for-frame comparison.
+            const char* shareEnv = std::getenv("WILLEQ_SHARE_OBJECT_MESHES");
+            const bool shareObjectMeshes = !(shareEnv && shareEnv[0] == '0');
 
             for (size_t oi = 0; oi < totalObjects; ++oi) {
             
@@ -170,9 +185,21 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
 
                 const std::string& objName = objInstance.placeable->getName();
 
-                // Build mesh
+                // Build mesh (or reuse the one already built for this geometry)
                 irr::scene::IMesh* objMesh = nullptr;
-                if (!ctx_.currentZone->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
+                const bool vertexAnimatedObject = objInstance.geometry->animatedVertices &&
+                                                  objInstance.geometry->animatedVertices->frames.size() >= 2;
+                if (shareObjectMeshes && !vertexAnimatedObject) {
+                    auto sharedIt = sharedObjectMeshes.find(objInstance.geometry.get());
+                    if (sharedIt != sharedObjectMeshes.end()) {
+                        objMesh = sharedIt->second;
+                        objMesh->grab();   // balanced by the objMesh->drop() at the end of this iteration
+                        ++sharedMeshHits;
+                    }
+                }
+                if (objMesh) {
+                    // shared mesh reused
+                } else if (!ctx_.currentZone->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
                     objMesh = objBuilder.buildTexturedMesh(*objInstance.geometry, ctx_.currentZone->objectTextures);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built textured mesh, texNames={}",
                               oi, objName, objInstance.geometry->textureNames().size());
@@ -195,6 +222,11 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                     deferred.meshBuilt = true; ++objectsBuilt; continue;
                 }
 
+                if (shareObjectMeshes && !vertexAnimatedObject &&
+                    sharedObjectMeshes.find(objInstance.geometry.get()) == sharedObjectMeshes.end()) {
+                    objMesh->grab();   // the cache's reference, dropped after the loop
+                    sharedObjectMeshes[objInstance.geometry.get()] = objMesh;
+                }
                 irr::scene::IMeshSceneNode* objNode = ctx_.smgr->addMeshSceneNode(objMesh);
                 if (!objNode) {
                     LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' addMeshSceneNode failed — mesh dropped", oi, objName);
@@ -450,7 +482,34 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                                         + "/" + std::to_string(totalObjects) + "]");
                 }
             }
+            LOG_INFO(MOD_GRAPHICS, "[objmesh] shared meshes: {} built, {} instances reused one", sharedObjectMeshes.size(), sharedMeshHits);
+            for (auto& [geom, mesh] : sharedObjectMeshes) mesh->drop();
+            sharedObjectMeshes.clear();
             LOG_INFO(MOD_GRAPHICS, "Sequential: built all {} object meshes eagerly", objectsBuilt);
+            // T504 (load-step audit): every placeable INSTANCE builds its own mesh
+            // from a geometry that instances share. How much is duplicated?
+            {
+                std::map<const ZoneGeometry*, size_t> instancesPerGeometry;
+                uint64_t instanceVertexBytes = 0, distinctVertexBytes = 0;
+                uint64_t instanceIndexBytes = 0, distinctIndexBytes = 0;
+                for (const auto& inst : ctx_.currentZone->objects) {
+                    if (!inst.geometry || !inst.placeable) continue;
+                    const uint64_t vb = static_cast<uint64_t>(inst.geometry->vertices.size()) * sizeof(irr::video::S3DVertex);
+                    const uint64_t ib = static_cast<uint64_t>(inst.geometry->triangles.size()) * 3 * sizeof(irr::u16);
+                    instanceVertexBytes += vb;
+                    instanceIndexBytes += ib;
+                    if (instancesPerGeometry[inst.geometry.get()]++ == 0) {
+                        distinctVertexBytes += vb;
+                        distinctIndexBytes += ib;
+                    }
+                }
+                size_t instances = 0;
+                for (const auto& [g, n] : instancesPerGeometry) instances += n;
+                LOG_INFO(MOD_GRAPHICS, "[objmesh] instances={} distinct_geometries={} | per-instance meshes: {} B vertices + {} B indices; "
+                         "one mesh per distinct geometry would be {} B + {} B",
+                         instances, instancesPerGeometry.size(), instanceVertexBytes, instanceIndexBytes,
+                         distinctVertexBytes, distinctIndexBytes);
+            }
         }
         {
             int fireSrcCount = 0;

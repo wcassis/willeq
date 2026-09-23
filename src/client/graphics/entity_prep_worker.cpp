@@ -415,7 +415,7 @@ void EntityPrepWorker::prepEquipmentModels(const PrepRequest& req, PrepResult& r
         }
 
         // Extract equipment model off-thread (opens S3D, parses WLD, extracts geometry)
-        auto equipData = EquipmentModelLoader::extractEquipmentModelOffThread(*modelRef, modelId);
+        auto equipData = equipLoader_->extractEquipmentModelCached(*modelRef, modelId);  // T504
         if (!equipData) {
             LOG_DEBUG(MOD_GRAPHICS, "EntityPrepWorker: failed to extract equip model IT{}",
                       modelId);

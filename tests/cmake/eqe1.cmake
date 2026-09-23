@@ -87,3 +87,25 @@ IF(TARGET gles2_zone_benchmark)
                 $<TARGET_FILE:gles2_zone_benchmark>)
     SET_TESTS_PROPERTIES(test_eqe1_totalestimate_accounting PROPERTIES SKIP_RETURN_CODE 125)
 ENDIF()
+
+# B852 (issue #98): the offline zone-content sweep's smoke leg.
+# Will, 2026-09-20: "velious and kunark zones are part of the willeq target,
+# so we need to verify that content works." The full 118-zone sweep is a
+# human/orchestrator tool (scripts/ci/zone_content_sweep.sh, docs/ci.md);
+# ctest carries the 3-zone smoke (one classic, one Kunark, one Velious) so a
+# loader regression that breaks any expansion is caught on every push. The
+# script drives gles2_zone_benchmark (build/ or build-gles2/, whichever the
+# tree has) over the smoke list and fails on any non-clean TSV row.
+# Missing benchmark or missing EQ assets: exit 125 -> ctest SKIP, printed
+# loudly to stderr (the card's "SKIPs loudly" rule); CI's test job sets
+# WILLEQ_REQUIRE_ASSETS=1 and re-makes the symlinks, so a red there is real.
+# Label `slow`: three full zone loads (llvmpipe) are a matter of tens of
+# seconds idle but more under load; RUN_SERIAL keeps it off the parallel
+# pool, same rationale as visual_gate's T261 note above.
+ADD_TEST(NAME zone_content_sweep_smoke
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/ci/zone_content_sweep_smoke.sh)
+SET_TESTS_PROPERTIES(zone_content_sweep_smoke PROPERTIES
+    LABELS "slow"
+    SKIP_RETURN_CODE 125
+    RUN_SERIAL TRUE
+    TIMEOUT 900)

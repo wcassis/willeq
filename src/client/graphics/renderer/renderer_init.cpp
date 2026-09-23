@@ -1,4 +1,5 @@
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/core/memory_ledger.h"  // T504: startup owner labels
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -276,6 +277,16 @@ IrrlichtRenderer::~IrrlichtRenderer() {
 }
 
 bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
+    // T504 (load-step audit): B839 named startup.graphics as ONE owner (8.6 MiB of
+    // the client's own heap on x86). Re-label as init proceeds so the breakdown
+    // names the device, the UI, the shaders, the sky, the worker, weather and
+    // particles separately. The enclosing StartupScope restores the label on exit.
+    auto startupOwner = [](const char* name) {
+        if (eqt::memory::enabled()) {
+            eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex(name);
+        }
+    };
+    startupOwner("gfx.config");
     config_ = config;
 
     // Apply constrained rendering configuration
@@ -325,6 +336,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     if (!displaySettingsCached_) {
         LOG_TRACE(MOD_GRAPHICS, "Loading display settings from file...");
         cachedDisplaySettings_ = eqt::ui::LoadShippedDisplaySettings();
+        if (eqt::ui::BaselineOnly()) {
+            cachedDisplaySettings_.applyBaselineOnly();
+            LOG_INFO(MOD_GRAPHICS, "WILLEQ_BASELINE=1: non-original features OFF (detail objects, reactive foliage, "
+                     "boids, tumbleweeds, atmospheric particles, animated trees, fire glow; storm clouds skipped at creation)");
+        }
         displaySettingsCached_ = true;
     }
 
@@ -393,6 +409,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY={}", std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(not set)");
     }
 
+    startupOwner("gfx.device");
     LOG_TRACE(MOD_GRAPHICS, "Creating Irrlicht device (createDeviceEx)...");
     device_ = irr::createDeviceEx(params);
 
@@ -441,6 +458,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     }
     LOG_TRACE(MOD_GRAPHICS, "Creating software cursor...");
     createSoftwareCursor();
+    startupOwner("gfx.ui");
 
     // U01: Initialize batched text renderer
     textBatch_ = std::make_unique<TextBatch>();
@@ -505,6 +523,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         // this avoids).
         regionMeshTextureGuard_ = std::make_unique<RegionMeshTextureGuard>(
             regionMeshNodes_, constrainedTextureCache_->getPlaceholderTexture());
+        // T504: the same guard covers the pooled zone draw materials.
+        regionMeshTextureGuard_->setPoolSwap([this](irr::video::ITexture* from, irr::video::ITexture* to) {
+            const auto& pools = ZoneLifecycle().zoneMergeBuffers();
+            return (pools && pools->isPooled()) ? pools->swapTexture(from, to) : 0;
+        });
         constrainedTextureCache_->addEvictionListener(regionMeshTextureGuard_.get());
 
         // P10b: softwareCursorTexture_ was already set by createSoftwareCursor()
@@ -520,6 +543,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         constrainedTextureCache_->addEvictionListener(ZoneStream().objectNodeTextureGuard().get());
     }
 
+    startupOwner("gfx.shaders_guards");
     // Create event receiver
     LOG_TRACE(MOD_GRAPHICS, "Creating event receiver...");
     eventReceiver_ = std::make_unique<RendererEventReceiver>();
@@ -583,6 +607,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         constrainedTextureCache_->addEvictionListener(entityMeshTextureGuard_.get());
     }
 
+    startupOwner("gfx.sky");
     // Create sky renderer (skyRendering preset flag controls whether it renders, not whether it exists)
     LOG_TRACE(MOD_GRAPHICS, "Creating sky renderer...");
     skyRenderer_ = std::make_unique<SkyRenderer>(smgr_, driver_, device_->getFileSystem());
@@ -600,6 +625,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // lazy site too are built through OverlaysComponent's ensure*() bodies
     // (overlays_env_managers.cpp), so the two constructions cannot diverge.
     Overlays().ensureDetailManager();
+    startupOwner("gfx.sim_worker");
 
     // Create simulation worker (zone data configured later via setZoneData())
     simulationWorker_ = std::make_unique<SimulationWorker>();
@@ -619,6 +645,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // plain default-constructed members needing no init here — their
     // per-zone config load happens in loadZoneStep11_Env() same as before.
 
+    startupOwner("gfx.weather");
     // Create weather system (needed before zone loading)
     if (!weatherSystem_) {
         LOG_TRACE(MOD_GRAPHICS, "Creating weather system...");
@@ -633,6 +660,7 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     auto displaySettings = getDisplaySettings();
 
     // Always create particle manager — needed for unified fire system even when
+    startupOwner("gfx.particles");
     // atmospheric particles (dust, pollen, fireflies) are disabled
     if (!particleManager_) {
         LOG_TRACE(MOD_GRAPHICS, "Creating particle manager...");

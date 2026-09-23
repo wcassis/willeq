@@ -68,10 +68,7 @@ std::string eqClientPath() {
 }
 
 // The seventeen archives EquipmentModelLoader::buildEquipmentIndex() reads.
-const std::vector<std::string> kEquipArchives = {
-    "obequip_lexit.s3d", "frogequip.s3d", "lgequip_amr2.s3d", "lgequip_amr.s3d", "loyequip.s3d",
-    "vequip.s3d", "lgequip2.s3d", "lgequip.s3d", "ldonequip.s3d", "gatesequip.s3d", "gequip8.s3d",
-    "gequip6.s3d", "gequip5.s3d", "gequip4.s3d", "gequip3.s3d", "gequip2.s3d", "gequip.s3d"};
+const std::vector<std::string>& kEquipArchives = EquipmentModelLoader::indexedArchiveNames();   // T504c Leg 2f: one owner
 
 struct V3 { float x, y, z; };
 
@@ -234,7 +231,10 @@ TEST_F(HeldItemTest, EveryActorWhoseReferenceChainDrawsIsIndexed) {
     }
     std::ostringstream list;
     for (const auto& s : missing) list << " " << s;
-    EXPECT_GT(chainActors, 700) << "the census found too few actors to mean anything";
+    // T504c Leg 2f: the era set (GlobalLoad.txt's six gequip archives) holds
+    // 459 models, 427 of them drawn through the chain (the 17-archive set had
+    // over 700). The floor is a sanity check, not a target.
+    EXPECT_GT(chainActors, 400) << "the census found too few actors to mean anything";
     EXPECT_TRUE(missing.empty()) << missing.size() << " drawable actors are not indexed:" << list.str();
     EXPECT_TRUE(index.count(48)) << "IT48, the Gloomingdeep Lantern";
 }
@@ -657,7 +657,8 @@ TEST_F(HeldItemTest, EverySkinnedItemIsPlacedByItsSkeletonRestPose) {
     }
     std::ostringstream list;
     for (size_t i = 0; i < wrong.size() && i < 20; ++i) list << " " << wrong[i];
-    EXPECT_GT(skinned, 200) << "the census found too few skinned items to mean anything";
+    // T504c Leg 2f: the era set has 19 skinned items (the Luclin archives held most).
+    EXPECT_GT(skinned, 10) << "the census found too few skinned items to mean anything";
     EXPECT_TRUE(wrong.empty()) << wrong.size() << " of " << skinned
                                << " skinned items ignore their skeleton's rest pose:" << list.str();
 }

@@ -94,7 +94,7 @@
 
 #include "client/graphics/renderer_context.h"
 #include "client/graphics/portal_system.h"   // Portal, in drawPortalQuad()'s signature
-#include "client/hc_map.h"                   // HCMap::Triangle, cachedPlaceholderTriangles_
+#include "client/hc_map.h"                   // HCMap::Triangle
 
 #include <cstddef>
 #include <cstdint>
@@ -271,6 +271,9 @@ public:
 	float& zoneMaxClip() { return zoneMaxClip_; }
 	float const& zoneMaxClip() const { return zoneMaxClip_; }
 	std::unique_ptr<ZoneMergeBuffers> const& zoneMergeBuffers() const { return zoneMergeBuffers_; }
+	// T504 (zone draw rework): the loader fills the pools at step 4, before any
+	// frame is drawn, so it needs the object to exist.
+	ZoneMergeBuffers& ensureZoneMergeBuffers();
 	irr::scene::ITriangleSelector*& zoneTriangleSelector() { return zoneTriangleSelector_; }
 	irr::scene::ITriangleSelector* const& zoneTriangleSelector() const { return zoneTriangleSelector_; }
 
@@ -297,7 +300,6 @@ private:
 	std::unique_ptr<GLES2EGLHelper> gles2Helper_;  // GLES2 context for ETC1 EGL image sharing
 #endif
 	// Cached terrain triangles for placeholder rebuild
-	std::vector<HCMap::Triangle> cachedPlaceholderTriangles_;
 	bool entitiesLoaded_ = false;    // True when all entities have been loaded with models/textures
 	size_t expectedEntityCount_ = 0; // Expected number of entities from ZoneSpawns
 

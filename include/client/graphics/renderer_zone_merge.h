@@ -64,6 +64,19 @@ namespace Graphics {
 
 struct ZoneDrawEntry;  // defined in irrlicht_renderer.h
 
+// T504 (load-step audit, zone draw rework): one region buffer's worth of
+// geometry inside the pooled merge buffers. In POOLED mode this 16-byte record
+// replaces, per region buffer, a scene node + SMesh + SMeshBuffer (312 B) + a
+// material copy (176 B) + a VBO/EBO pair -- MEASURED iceclad: 16,049 buffers of
+// 10.6 vertices each, zone_mesh 54.9 MiB for 6.6 MiB of geometry.
+struct ZoneSlice {
+    uint32_t regionIdx;
+    uint16_t materialId;   // index into ZoneMergeBuffers' material table
+    uint16_t generation;   // which <=65535-vertex buffer of that material
+    int32_t indexOffset;   // into that generation's template index array
+    int32_t indexCount;
+};
+
 class ZoneMergeBuffers {
 public:
     // Declared (not defaulted) here and defined in renderer_zone_merge.cpp --
@@ -109,6 +122,30 @@ public:
 
     bool isBuilt() const { return built_; }
 
+    // ---- T504 POOLED mode -------------------------------------------------
+    // The region meshes are appended straight into the per-material pools at
+    // zone load and then dropped: no per-region scene node, mesh or VBO ever
+    // exists. The material table is the state carrier the region buffers used
+    // to be (animated textures, shader swaps and the eviction guard act on it).
+    void beginPooled();
+    // Appends every EVT_STANDARD buffer of `mesh`, baking (px,py,pz) into the
+    // vertices. Returns the number of slices added (0: nothing drawable).
+    int appendRegion(size_t regionIdx, irr::scene::IMesh* mesh, float px, float py, float pz);
+    void finishPooled();
+    bool isPooled() const { return pooled_; }
+    size_t pooledRegionCount() const { return regionSpans_.size(); }
+    // The contiguous slices of one region (nullptr/0 when it has none).
+    const ZoneSlice* slicesForRegion(size_t regionIdx, size_t& countOut) const;
+    size_t materialCount() const;
+    irr::video::SMaterial& material(size_t id);
+    // Eviction guard / animated textures: replace a texture in every pool
+    // material. Returns the number of materials changed.
+    int swapTexture(irr::video::ITexture* from, irr::video::ITexture* to);
+    // World-space triangles of one region, for collision. fn(const float* a,
+    // const float* b, const float* c), each a pointer to x,y,z.
+    void forEachRegionTriangle(size_t regionIdx,
+                               const std::function<void(const float*, const float*, const float*)>& fn) const;
+
     // Total bytes resident in the merge buffers (for /pmem-style reporting
     // and the P10 bless-package memory-overhead numbers). Zero if !isBuilt().
     size_t totalBytes() const { return totalBytes_; }
@@ -132,6 +169,15 @@ private:
     std::map<const void*, RegionBufferRange> ranges_;
     bool built_ = false;
     size_t totalBytes_ = 0;
+
+    // T504 pooled mode
+    struct RegionSpan { uint32_t regionIdx; uint32_t first; uint32_t count; };
+    struct PoolMaterials;                       // vector<SMaterial>, out of line
+    bool pooled_ = false;
+    PoolMaterials* poolMaterials_ = nullptr;
+    std::vector<std::vector<MergedGeneration*>> poolBuckets_;  // [materialId][generation]
+    std::vector<ZoneSlice> slices_;             // grouped by region, regions ascending
+    std::vector<RegionSpan> regionSpans_;       // sorted by regionIdx
 };
 
 // P10b root-cause fix: ConstrainedTextureCache::clearTextureReferences()
@@ -201,10 +247,17 @@ public:
                             irr::video::ITexture* placeholder);
 
     void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) override;
+    // T504 (zone draw rework): in POOLED mode the zone's materials live in
+    // ZoneMergeBuffers' table, not on region mesh buffers. The hook swaps an
+    // evicted texture there too; like the rest of this guard it must not call
+    // back into the cache.
+    using PoolSwapFn = std::function<int(irr::video::ITexture* from, irr::video::ITexture* to)>;
+    void setPoolSwap(PoolSwapFn fn) { poolSwap_ = std::move(fn); }
 
 private:
     const std::map<size_t, irr::scene::IMeshSceneNode*>& regionMeshNodes_;
     irr::video::ITexture* placeholder_;
+    PoolSwapFn poolSwap_;
 };
 
 // P10b: found while verifying the qeynos2 automatic-deferred-loading combo

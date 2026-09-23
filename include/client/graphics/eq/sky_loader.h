@@ -123,6 +123,14 @@ public:
     // Returns lowercase names matching the key format in skyData_->textures
     std::vector<std::string> getTextureNamesForSkyType(int skyTypeId) const;
 
+    // T504 (load-step audit): drop every texture's raw file bytes, keeping the
+    // names, sizes, layers, tracks and sky types. The loader a SkyRenderer keeps
+    // for the life of the process is only ever asked for metadata -- zone-load
+    // step 10 decodes sky textures from its OWN freshly loaded SkyLoader -- yet
+    // it held all 47 textures' bytes: MEASURED 5.42 MiB live at startup, before
+    // any zone (and any sky type) is known. Returns the bytes released.
+    size_t releaseTextureData();
+
     // Check if loaded successfully
     bool isLoaded() const { return skyData_ != nullptr; }
 

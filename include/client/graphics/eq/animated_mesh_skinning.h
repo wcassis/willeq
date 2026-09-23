@@ -17,7 +17,7 @@ void applyBoneTransformsToMeshImpl(
     const std::vector<AnimatedBoneState>& boneStates,
     const std::vector<VertexPiece>& vertexPieces,
     const std::vector<irr::video::S3DVertex>& originalVertices,
-    const std::vector<VertexMappingList>& vertexMapping,
+    const FlatVertexMapping& vertexMapping,
     irr::scene::IMesh* baseMesh,
     float extraRotCos,
     float extraRotSin);

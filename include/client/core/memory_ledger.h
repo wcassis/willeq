@@ -29,6 +29,22 @@
 //
 // Thread-safety: charge/credit are lock-free; snapshot() is a consistent
 // enough read for a diagnostic (relaxed loads of monotonic counters).
+//
+// Diagnostic environment switches (all off by default; T504 audit rig):
+//   WILLEQ_LEDGER_OWNERS=<category>       re-point the [memledger-startup]
+//                                         owner rows at another category
+//   WILLEQ_LEDGER_TRACE=<category>[:<pt>] backtrace every allocation of that
+//                                         category from lifecycle point <pt>
+//                                         (default "ready"); [memledger-trace]
+//                                         rows per point; _DEPTH=4..14 frames
+//                                         hashed, _SORT=peak orders by each
+//                                         site's high-water mark
+//   WILLEQ_LEDGER_IDLE_EVERY=<s>          after steady_60s keep recording
+//     [WILLEQ_LEDGER_IDLE_COUNT=<n>]      points idle_<seconds since ready>
+//   B841_TRIM_READY / B841_MMAP_THRESHOLD / B841_TRIM_THRESHOLD: arena
+//                                         experiments (arenaExperiments())
+// WILLEQ_BASELINE=1 (baseline_mode.h) is the original-client feature-parity
+// switch the audit measures under.
 
 #include <array>
 #include <cstddef>
@@ -69,6 +85,17 @@ enum class Category : uint8_t {
     GameState,          // entities/inventory/spells on the game thread
     IrrlichtScene,      // scene manager, environment, sky, lights, particles,
                         // simulation worker, per-frame driver work
+    GpuDriver,          // T504: a block whose malloc/new CALLER is inside the GL
+                        // stack's own code (Mesa/gallium, LLVM, EGL/GLES, DRM) --
+                        // pseudo-VRAM. On llvmpipe this is where the "GPU's"
+                        // textures, vertex buffers and shader JIT live, inside
+                        // our process; on Lima it is the driver's CPU-side state
+                        // (texture storage is in GEM buffer objects). It is
+                        // classified by return address, whatever MemoryScope is
+                        // open, so no other category is contaminated by the
+                        // platform's rasteriser. Reported on its own line and
+                        // NOT counted against the 64 MB client budget (Will,
+                        // 2026-09-20).
     Count
 };
 
@@ -96,6 +123,7 @@ inline const char* const kCategoryNames[kCategoryCount] = {
     "network",
     "game_state",
     "irrlicht_scene",
+    "gpu_driver",
 };
 
 inline const char* categoryName(Category c) {
@@ -401,6 +429,14 @@ std::string toLogLine(const Snapshot& s);
 // get the same table without a second tool. Same line contract as
 // toLogLine: one owner per line, `key=value` tokens.
 std::string startupToLogLines(const std::string& point);
+
+// T504 stack-trace instrument (diagnostic, off by default). traceConfigure()
+// is the programmatic form of WILLEQ_LEDGER_TRACE=<category>[:<arm point>]:
+// from the first recordPoint(armPoint) on, every allocation charged to `cat`
+// captures a backtrace and is filed under a call-site; traceReport(point) is
+// the [memledger-trace] block recordPoint() prints (empty before arming).
+void traceConfigure(Category cat, const std::string& armPoint);
+std::string traceReport(const std::string& point);
 // Multi-line human form for /pmem (header, one row per category, totals).
 std::string toReportText(const Snapshot& s);
 // JSON object (no trailing newline). Keys: point, zone, seq, ledgerEnabled,
@@ -420,7 +456,9 @@ std::string currentZone();
 // Steady-state point: noteReady() arms a timer (default 60 s); pollSteadyState()
 // (once per frame) records "steady_60s" exactly once after it elapses.
 void noteReady(double seconds = 60.0);
-void pollSteadyState();
+// Returns true on the call that records "steady_60s" (or an idle point), so
+// the caller can log its own steady-state tables at the same instant.
+bool pollSteadyState();
 
 // Reset every category's peak (and the total peak) to its current live value.
 void resetPeaks();

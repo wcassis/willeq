@@ -452,21 +452,60 @@ static std::vector<uint8_t> generateMipChain(const uint8_t* rgba, int width, int
         }
     }
 
+    std::string baseName = fs::path(outputPath).stem().string();
+    std::string mainName = baseName;
+
+    // B100: sheet names are pack stems and can exceed the 32-byte inline
+    // name field (a truncated one silently broke the name-to-pack round
+    // trip the same way eqe1_builder's truncation broke soldunga). A pack
+    // with a name longer than the inline limit is written as v3: the long
+    // name moves to a name table between the index and the data section
+    // (tools/eqe1_builder.cpp writeEQE1File is the canonical example; the
+    // layout is eqe1_format.h). Every shipped sheet name fits, so this
+    // branch keeps the v1 output byte-for-byte for them.
+    std::string alphaName;
+    if (hasAlpha) alphaName = baseName + "_alpha";
+    const bool needsNameTable =
+        mainName.size() > EQE1_INLINE_NAME_LIMIT ||
+        (!alphaName.empty() && alphaName.size() > EQE1_INLINE_NAME_LIMIT);
+    const uint16_t version = needsNameTable ? EQE1_VERSION_V3 : EQE1_VERSION;
+    const uint32_t stride = indexEntryStride(version);
     uint16_t numEntries = hasAlpha ? 2 : 1;
-    uint32_t indexEnd = sizeof(EQE1Header) + numEntries * EQE1_INDEX_ENTRY_SIZE;
-    uint32_t dataOff = alignTo16(indexEnd);
+    uint32_t indexEnd = sizeof(EQE1Header) + numEntries * stride;
+    // Pre-compute the v3 name-table size so the data offsets account for it
+    // (the table is written between the index and the data section). assignName
+    // below appends in the same main-then-alpha order, so the offsets line up.
+    uint32_t nameTableSize = 0;
+    if (version == EQE1_VERSION_V3) {
+        if (mainName.size() > EQE1_INLINE_NAME_LIMIT) nameTableSize += mainName.size();
+        if (!alphaName.empty() && alphaName.size() > EQE1_INLINE_NAME_LIMIT)
+            nameTableSize += alphaName.size();
+    }
+    uint32_t dataOff = alignTo16(indexEnd + nameTableSize);
 
     EQE1Header header = {};
     header.magic = EQE1_MAGIC;
-    header.version = EQE1_VERSION;
+    header.version = version;
     header.numEntries = numEntries;
 
-    std::string baseName = fs::path(outputPath).stem().string();
-    std::string mainName = baseName;
-    if (mainName.size() >= EQE1_NAME_SIZE) mainName.resize(EQE1_NAME_SIZE - 1);
+    // One or two names, each stored at most once in the table.
+    std::string nameTable;
+    auto assignName = [&](EQE1IndexEntry& idx, EQE1IndexEntryNameTail& tail,
+                          const std::string& name) {
+        tail = {};
+        if (name.size() <= EQE1_INLINE_NAME_LIMIT) {
+            std::strncpy(idx.name, name.c_str(), EQE1_NAME_SIZE - 1);
+        } else {
+            idx.name[0] = '\0';
+            tail.nameOffset = indexEnd + nameTable.size();
+            tail.nameLength = static_cast<uint32_t>(name.size());
+            nameTable += name;
+        }
+    };
 
     EQE1IndexEntry idx = {};
-    std::strncpy(idx.name, mainName.c_str(), EQE1_NAME_SIZE - 1);
+    EQE1IndexEntryNameTail mainTail = {};
+    assignName(idx, mainTail, mainName);
     idx.width = static_cast<uint16_t>(sheetW);
     idx.height = static_cast<uint16_t>(sheetH);
     idx.mipLevels = mipLevels;
@@ -476,12 +515,11 @@ static std::vector<uint8_t> generateMipChain(const uint8_t* rgba, int width, int
     idx.dataSize = static_cast<uint32_t>(etc1Data.size());
 
     EQE1IndexEntry alphaIdx = {};
+    EQE1IndexEntryNameTail alphaTail = {};
     uint32_t alphaDataOff = 0;
     if (hasAlpha) {
         alphaDataOff = alignTo16(dataOff + idx.dataSize);
-        std::string alphaName = baseName + "_alpha";
-        if (alphaName.size() >= EQE1_NAME_SIZE) alphaName.resize(EQE1_NAME_SIZE - 1);
-        std::strncpy(alphaIdx.name, alphaName.c_str(), EQE1_NAME_SIZE - 1);
+        assignName(alphaIdx, alphaTail, alphaName);
         alphaIdx.width = static_cast<uint16_t>(sheetW);
         alphaIdx.height = static_cast<uint16_t>(sheetH);
         alphaIdx.mipLevels = alphaMipLevels;
@@ -496,8 +534,21 @@ static std::vector<uint8_t> generateMipChain(const uint8_t* rgba, int width, int
 
     out.write(reinterpret_cast<const char*>(&header), sizeof(header));
     out.write(reinterpret_cast<const char*>(&idx), sizeof(idx));
+    if (version == EQE1_VERSION_V3) {
+        out.write(reinterpret_cast<const char*>(&mainTail),
+                  sizeof(EQE1IndexEntryNameTail));
+    }
     if (hasAlpha) {
         out.write(reinterpret_cast<const char*>(&alphaIdx), sizeof(alphaIdx));
+        if (version == EQE1_VERSION_V3) {
+            out.write(reinterpret_cast<const char*>(&alphaTail),
+                      sizeof(EQE1IndexEntryNameTail));
+        }
+    }
+    // v3: name table between the index and the data section (dataOff already
+    // accounts for the extended entries via the v3 stride).
+    if (version == EQE1_VERSION_V3) {
+        out.write(nameTable.data(), static_cast<std::streamsize>(nameTable.size()));
     }
 
     auto padTo = [&out](uint32_t target) {
@@ -516,7 +567,7 @@ static std::vector<uint8_t> generateMipChain(const uint8_t* rgba, int width, int
     }
     out.close();
 
-    std::cout << "    EQE1: " << outputPath << " ("
+    std::cout << "    EQE1: " << outputPath << " (v" << version << ", "
               << fs::file_size(outputPath) / 1024 << " KB, "
               << sheetW << "x" << sheetH << ", "
               << (int)mipLevels << " mips"

@@ -5,6 +5,7 @@
 // refactor/J29_model_loading_split.md (move-only, no behaviour change).
 
 #include "client/graphics/eq/race_model_loader.h"
+#include "client/graphics/constrained_texture_cache.h"  // T504: snapshotEQE1Loaders()
 #include "client/willeq_database.h"
 #include "client/graphics/eq/race_codes.h"
 #include "client/graphics/eq/geometry_combiner.h"
@@ -107,7 +108,7 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
                     auto merged = getMergedTextures();
                     for (const auto& [name, tex] : merged) {
                         if (modelData->textures.find(name) == modelData->textures.end()) {
-                            modelData->textures[name] = tex;
+                            modelData->textures.set(name, tex);  // T504: copy-on-write
                         }
                     }
                     modelData->raceName = character->name;
@@ -142,7 +143,7 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
                 auto merged = getMergedTextures();
                 for (const auto& [name, tex] : merged) {
                     if (modelData->textures.find(name) == modelData->textures.end()) {
-                        modelData->textures[name] = tex;
+                        modelData->textures.set(name, tex);  // T504: copy-on-write
                     }
                 }
                 modelData->raceName = character->name;
@@ -244,13 +245,14 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
             // Try to load from this _chr.s3d file
             std::string fullPath = entry.path().string();
             S3DLoader loader;
+            S3DLoadOptions scanOpts = characterLoadOptions();   // whole parse (T504c STOP 1)
             // T366 (B095): all three inserts below go through
             // storeOtherChrCacheLocked -- the negative-cache entries as much as
             // the positive one. A raw otherChrCaches_[key] = ... never enters
             // chrCacheLruOrder_, so it can never be evicted while still counting
             // against maxChrCacheEntries_ (the T91 bypass), and the third insert
             // used to open-code the helper's push/evict inline.
-            if (!loader.loadZone(fullPath)) {
+            if (!loader.loadZone(fullPath, scanOpts)) {
                 // T369 (B105) -- see the sibling warning below.
                 LOG_WARN(MOD_GRAPHICS,
                          "RaceModelLoader: '{}' is a _chr.s3d archive that yielded "
@@ -263,6 +265,13 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
             }
 
             auto zone = loader.getZone();
+            if (zone && !zone->allCharacterNames.empty()) {
+                // T504b Leg 3: a FILTERED parse may build nothing for this race
+                // yet the archive holds other characters -- the index must know
+                // their names, or a later race could never reload them.
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+                recordArchiveNamesLocked("other:" + lowerFilename, fullPath, zone->allCharacterNames);
+            }
             if (!zone || zone->characters.empty()) {
                 // T369 (B105): an archive that EXISTS on disk and is named
                 // `*_chr.s3d` yet produces no characters is a defect signal,
@@ -285,6 +294,10 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
             }
 
             // Cache this file's characters and textures for future searches
+            {
+                std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);   // T504b Leg 3: every name
+                recordArchiveNamesLocked("other:" + lowerFilename, fullPath, zone->allCharacterNames);
+            }
             storeOtherChrCacheLocked(lowerFilename, zone->characters, zone->characterTextures);
 
             // Re-find: the store may have evicted this very entry (a cap of 1
@@ -315,6 +328,7 @@ bool RaceModelLoader::searchZoneChrFilesForModel(uint16_t raceId, uint8_t gender
 void RaceModelLoader::addMeshRef(uint16_t raceId, uint8_t gender) {
     uint32_t key = makeCacheKey(raceId, gender);
     meshRefCounts_[key]++;
+    evictable_.erase(key);   // T504b Leg 2b: a respawn within the window keeps the model
 }
 
 void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
@@ -325,6 +339,54 @@ void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
     it->second--;
     if (it->second <= 0) {
         meshRefCounts_.erase(it);
+        // T504b Leg 2b: evictable, not evicted -- sweepEvictable() drops it
+        // after the hysteresis window or under budget pressure.
+        static const double hysteresis = [] {
+            const char* v = std::getenv("WILLEQ_MODEL_EVICT_SECONDS");
+            return v ? std::atof(v) : 60.0;
+        }();
+        evictHysteresisSeconds_ = hysteresis;
+        evictable_[key] = std::chrono::steady_clock::now();
+        LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader: race {} gender {} has no entities left; evictable in {:.0f} s",
+                  raceId, gender, hysteresis);
+    }
+}
+
+void RaceModelLoader::sweepEvictable() {
+    if (evictable_.empty()) return;
+    const auto now = std::chrono::steady_clock::now();
+    std::vector<std::pair<std::chrono::steady_clock::time_point, uint32_t>> order;
+    for (const auto& [key, when] : evictable_) order.emplace_back(when, key);
+    std::sort(order.begin(), order.end());   // oldest first
+    size_t evicted = 0;
+    for (const auto& [when, key] : order) {
+        const double age = std::chrono::duration<double>(now - when).count();
+        const bool overBudget = entityModelBudgetBytes_ > 0
+            && eqt::memory::stats(eqt::memory::Category::EntityModels).liveBytes > entityModelBudgetBytes_;
+        if (age < evictHysteresisSeconds_ && !overBudget) break;   // sorted: nothing older follows
+        evictModel(key);
+        evictable_.erase(key);
+        ++evicted;
+        if (overBudget) pruneSourceCharacters("evict-budget");   // free the source before re-checking the budget
+    }
+    if (evicted > 0) {
+        pruneSourceCharacters("evict");
+        LOG_INFO(MOD_GRAPHICS, "[srcchar] evicted {} model(s) whose last entity despawned ({} still pending)",
+                 evicted, evictable_.size());
+    }
+}
+
+void RaceModelLoader::sweepEvictableForTest(double ageSeconds) {
+    const auto pretend = std::chrono::steady_clock::now()
+        - std::chrono::milliseconds(static_cast<long long>(ageSeconds * 1000.0));
+    for (auto& [key, when] : evictable_) when = pretend;
+    sweepEvictable();
+}
+
+void RaceModelLoader::evictModel(uint32_t key) {
+    const uint16_t raceId = static_cast<uint16_t>(key >> 8);
+    const uint8_t gender = static_cast<uint8_t>(key & 0xFF);
+    {
 
         // Evict meshes from caches
         auto meshIt = meshCache_.find(key);
@@ -345,6 +407,7 @@ void RaceModelLoader::removeMeshRef(uint16_t raceId, uint8_t gender) {
             std::lock_guard<std::mutex> lock(loadedModelsMutex_);
             loadedModels_.erase(key);
         }
+        forgetReloadMemo(key);   // T504b: its sources may be pruned again; the next request may reload
 
         // Also evict variant and animated caches for this race/gender
         // Variant keys encode raceId in upper 32 bits, gender in bits 24-31
@@ -437,13 +500,7 @@ size_t RaceModelLoader::releaseRawTextureData() {
         for (auto& [name, tex] : texMap) {
             if (!tex) continue;
             if (deferredNames.count(name)) continue;
-            freed += tex->rawDataBytes();
-            tex->data.clear();
-            tex->data.shrink_to_fit();
-            for (auto& frame : tex->frames) {
-                frame.data.clear();
-                frame.data.shrink_to_fit();
-            }
+            freed += tex->releaseBytes();  // T504: stays present()
         }
     };
 
@@ -475,6 +532,62 @@ size_t RaceModelLoader::releaseRawTextureData() {
 
     return freed;
 }
+
+S3DLoadOptions RaceModelLoader::characterLoadOptions(const std::vector<std::string>* filter) const {
+    S3DLoadOptions opts;
+    opts.loadObjects = false;
+    opts.textureNamesOnly = constrainedTextureCache_ && constrainedTextureCache_->hasEQE1Loaders();
+    if (filter) opts.characterCodeFilter = *filter;
+    return opts;
+}
+
+size_t RaceModelLoader::releaseBytesIfEqe1Authoritative(
+        std::map<std::string, std::shared_ptr<TextureInfo>>& texMap) {
+    if (!constrainedTextureCache_ || !constrainedTextureCache_->hasEQE1Loaders()) {
+        return 0;  // S3D textures are the source: the bytes are needed
+    }
+    size_t freed = 0;
+    for (auto& [name, tex] : texMap) {
+        if (tex && !tex->bytesReleased) freed += tex->releaseBytes();
+    }
+    return freed;
+}
+
+namespace {
+// Skeleton sizing, shared by getMemoryStats() ([modelmem]) and
+// srcCharLogLines() ([srcchar]) so the two tables measure alike.
+size_t skeletonBytesOf(const std::shared_ptr<CharacterSkeleton>& skel) {
+    if (!skel) return 0;
+    size_t total = sizeof(CharacterSkeleton) + skel->modelCode.capacity();
+    for (const auto& bone : skel->bones) {
+        total += sizeof(AnimatedBone) + bone.name.capacity();
+        total += bone.childIndices.capacity() * sizeof(int);
+        if (bone.poseTrack)
+            total += bone.poseTrack->frames.capacity() * sizeof(BoneTransform);
+        for (const auto& [code, track] : bone.animationTracks)
+            if (track) total += track->frames.capacity() * sizeof(BoneTransform);
+    }
+    for (const auto& [code, anim] : skel->animations)
+        if (anim) total += sizeof(Animation) + anim->tracks.size() * 64;
+    return total;
+}
+
+size_t skeletonTrackBytesOf(const std::shared_ptr<SkeletonTrack>& sk) {
+    if (!sk) return 0;
+    size_t total = sizeof(SkeletonTrack) + sk->name.capacity();
+    total += sk->bones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+    total += sk->allBones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+    total += sk->parentIndices.capacity() * sizeof(int);
+    total += sk->meshRefs.capacity() * sizeof(uint32_t);
+    for (const auto& b : sk->allBones) {
+        if (!b) continue;
+        total += sizeof(SkeletonBone) + b->name.capacity();
+        total += b->children.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
+        if (b->orientation) total += sizeof(BoneOrientation);
+    }
+    return total;
+}
+} // namespace
 
 RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     MemoryStats stats;
@@ -549,6 +662,13 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
         stats.sharedTextureBytes.push_back(std::move(entry));
         return static_cast<int>(idx);
     };
+    // T504c: the same TextureInfo object reached through two loader maps is
+    // counted ONCE. Since T504b Leg 1 the other-chr cache's global_chr.s3d
+    // entry is ADOPTED from the global store (same shared_ptrs, no second
+    // parse), so globalTextures_ and otherChrCaches_["global_chr.s3d"].textures
+    // hold the same objects -- tex_otherchr repeated tex_global's 6.95 MiB and
+    // the split missed the ledger by 47 % (test_entity_model_sharing).
+    std::set<const TextureInfo*> countedTextures;
     auto sumMapBytes = [&](const char* claimant,
                            const std::map<std::string, std::shared_ptr<TextureInfo>>& texMap,
                            size_t& ownedTermOut) {
@@ -557,7 +677,7 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
             if (!tex) continue;
             if (tex->ownerCategory
                     == static_cast<uint8_t>(eqt::memory::Category::EntityModels)) {
-                owned += tex->rawDataBytes();
+                if (countedTextures.insert(tex.get()).second) owned += tex->rawDataBytes();
                 continue;
             }
             // Foreign-owned: left out of this tex_* term, reported ONCE in
@@ -621,21 +741,7 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
         compositeAnimatedMeshCache_.size() + compositeVariantAnimatedMeshCache_.size();  // P08d
 
     // --- Geometry and skeleton data in loadedModels_ ---
-    auto calcSkeletonBytes = [](const std::shared_ptr<CharacterSkeleton>& skel) -> size_t {
-        if (!skel) return 0;
-        size_t total = sizeof(CharacterSkeleton) + skel->modelCode.capacity();
-        for (const auto& bone : skel->bones) {
-            total += sizeof(AnimatedBone) + bone.name.capacity();
-            total += bone.childIndices.capacity() * sizeof(int);
-            if (bone.poseTrack)
-                total += bone.poseTrack->frames.capacity() * sizeof(BoneTransform);
-            for (const auto& [code, track] : bone.animationTracks)
-                if (track) total += track->frames.capacity() * sizeof(BoneTransform);
-        }
-        for (const auto& [code, anim] : skel->animations)
-            if (anim) total += sizeof(Animation) + anim->tracks.size() * 64;
-        return total;
-    };
+    const auto calcSkeletonBytes = &skeletonBytesOf;  // hoisted (T504b): shared with srcCharLogLines
 
     // --- T500 Leg A (d): the four terms the first pass's 48 % residual was
     // made of. Pointer sets, so a structure shared between two owners is
@@ -653,21 +759,7 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
 
     // The original (pre-flatten) skeleton every CharacterModel keeps a
     // shared_ptr to. Nothing has ever charged it.
-    auto calcSkeletonTrackBytes = [](const std::shared_ptr<SkeletonTrack>& sk) -> size_t {
-        if (!sk) return 0;
-        size_t total = sizeof(SkeletonTrack) + sk->name.capacity();
-        total += sk->bones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
-        total += sk->allBones.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
-        total += sk->parentIndices.capacity() * sizeof(int);
-        total += sk->meshRefs.capacity() * sizeof(uint32_t);
-        for (const auto& b : sk->allBones) {
-            if (!b) continue;
-            total += sizeof(SkeletonBone) + b->name.capacity();
-            total += b->children.capacity() * sizeof(std::shared_ptr<SkeletonBone>);
-            if (b->orientation) total += sizeof(BoneOrientation);
-        }
-        return total;
-    };
+    const auto calcSkeletonTrackBytes = &skeletonTrackBytesOf;  // hoisted (T504b)
 
     // T500 (e): what calcSkeletonBytes() does NOT charge. Same traversal, the
     // complement of the same structure, deduplicated by pointer so a TrackDef
@@ -751,10 +843,17 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     // fingerprint hold the same texture set, which is what "duplicate" means
     // here. Cheap, and it needs no lock on cachedMergedTextures_, so no new
     // lock-ordering edge is introduced into getMemoryStats().
+    // T504: RaceModelData::textures is a SharedTextureMap -- the models hold
+    // one shared snapshot (getMergedTexturesShared()), no longer a copy each
+    // -- so the storage of a map object is charged ONCE however many models
+    // point at it (12 models x 2.4 MiB was 2.2 MiB of over-count, 9 % of the
+    // split, in test_entity_model_sharing).
     std::set<std::pair<size_t, uintptr_t>> texMapFingerprints;
+    std::set<const void*> countedMapObjects;
     auto sumTextureMap = [&](const MergedTexMap& m) {
         stats.mergedTextureMapCount += 1;
         stats.mergedTextureEntryCount += m.size();
+        if (!countedMapObjects.insert(static_cast<const void*>(&m)).second) return;
         size_t bytes = m.size() * kMergedTexNodeBytes;
         uintptr_t fp = 0;
         for (const auto& [name, tex] : m) {
@@ -828,11 +927,16 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
     // sizeof(CharacterPart) -- its vertices and triangles are counted nowhere.
     // The pointer set below charges each distinct geometry at most once, so the
     // term is the uncharged remainder and nothing else.
+    // T504c: a CharacterModel reached through two stores (the adopted
+    // global_chr.s3d other-chr entry shares the global store's objects, and a
+    // reload-on-miss appends the same objects to both) is counted ONCE.
+    std::set<const CharacterModel*> countedCharacters;
     auto calcCharModels = [&](const std::vector<std::shared_ptr<CharacterModel>>& chars,
                               size_t& dupGeomOut, size_t& skeletonOut) -> size_t {
         size_t total = 0;
         for (const auto& cm : chars) {
             if (!cm) continue;
+            if (!countedCharacters.insert(cm.get()).second) continue;
             total += sizeof(CharacterModel) + cm->name.capacity();
             for (const auto& part : cm->parts)
                 if (part) total += part->getMemoryUsage();
@@ -868,14 +972,20 @@ RaceModelLoader::MemoryStats RaceModelLoader::getMemoryStats() const {
         }
         return total;
     };
+    // T504b Leg 2: snapshots (the stores are pruned by another thread).
+    std::vector<std::pair<int, CharacterList>> numberedSnap;
+    {
+        std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+        for (const auto& [num, chars] : numberedGlobalCharacters_) numberedSnap.emplace_back(num, chars);
+    }
     stats.sourceCharacterGlobalBytes +=
-        calcCharModels(globalCharacters_, stats.duplicateGeometryBytes,
+        calcCharModels(snapshotGlobalCharacters(), stats.duplicateGeometryBytes,
                        stats.sourceSkeletonGlobalBytes);
-    for (const auto& [num, chars] : numberedGlobalCharacters_)
+    for (const auto& [num, chars] : numberedSnap)
         stats.sourceCharacterNumberedBytes += calcCharModels(chars, stats.duplicateGeometryBytes,
                                                              stats.sourceSkeletonNumberedBytes);
     stats.sourceCharacterZoneBytes +=
-        calcCharModels(zoneCharacters_, stats.duplicateGeometryBytes,
+        calcCharModels(snapshotZoneCharacters(), stats.duplicateGeometryBytes,
                        stats.sourceSkeletonZoneBytes);
     {
         // T114: otherChrCaches_ is shared with the worker thread.
@@ -1074,6 +1184,126 @@ std::string RaceModelLoader::modelMemSharedLines(const std::string& point) const
                            e.bytes + e.storageBytes, e.bytes, e.storageBytes,
                            e.owner, e.claimants);
     }
+    return out;
+}
+
+
+std::string RaceModelLoader::srcCharLogLines(const std::string& point) const {
+    // The used set: skeletons a built model holds, and every Animation those
+    // skeletons hold (a donor's animations are shared by pointer after the
+    // merge, so a source whose Animation object is in here is a donor).
+    std::set<const CharacterSkeleton*> usedSkeletons;
+    std::set<const Animation*> usedAnimations;
+    auto take = [&](const std::shared_ptr<RaceModelData>& m) {
+        if (!m || !m->skeleton) return;
+        usedSkeletons.insert(m->skeleton.get());
+        for (const auto& [code, anim] : m->skeleton->animations)
+            if (anim) usedAnimations.insert(anim.get());
+    };
+    {
+        std::lock_guard<std::mutex> lock(loadedModelsMutex_);
+        for (const auto& [key, m] : loadedModels_) take(m);
+    }
+    {
+        std::lock_guard<std::mutex> lock(variantModelsMutex_);
+        for (const auto& [key, m] : variantModels_) take(m);
+    }
+    {
+        std::lock_guard<std::mutex> lock(preparedDataMutex_);
+        for (const auto& [key, m] : preparedModelData_) take(m);
+    }
+
+    // Bytes of one source character: each distinct part geometry once, plus
+    // its two skeletons. The same measures modelMemLogLine() uses, so the
+    // per-archive sums line up with the src_* rows there.
+    auto charBytes = [](const CharacterModel& cm) {
+        size_t b = sizeof(CharacterModel) + cm.name.capacity();
+        std::set<const ZoneGeometry*> seen;
+        for (const auto& part : cm.parts)
+            if (part && seen.insert(part.get()).second) b += part->getMemoryUsage();
+        for (const auto& p : cm.partsWithTransforms)
+            if (p.geometry && seen.insert(p.geometry.get()).second) b += p.geometry->getMemoryUsage();
+        for (const auto& p : cm.rawParts)
+            if (p.geometry && seen.insert(p.geometry.get()).second) b += p.geometry->getMemoryUsage();
+        b += cm.partsWithTransforms.capacity() * sizeof(CharacterPart);
+        b += cm.rawParts.capacity() * sizeof(CharacterPart);
+        // Container overhead (modelmem's skel_containers) is not included here.
+        if (cm.animatedSkeleton) b += skeletonBytesOf(cm.animatedSkeleton);
+        if (cm.skeleton) b += skeletonTrackBytesOf(cm.skeleton);
+        return b;
+    };
+    enum Class { Used = 0, Donor = 1, Unused = 2, Static = 3 };
+    auto classify = [&](const CharacterModel& cm) -> Class {
+        if (!cm.animatedSkeleton) return Static;   // no skeleton: nothing to key on
+        if (usedSkeletons.count(cm.animatedSkeleton.get())) return Used;
+        for (const auto& [code, anim] : cm.animatedSkeleton->animations)
+            if (anim && usedAnimations.count(anim.get())) return Donor;
+        return Unused;
+    };
+
+    std::string out;
+    size_t tChars = 0, tBytes = 0, tUnusedBytes = 0;
+    auto walk = [&](const std::string& archive,
+                    const std::vector<std::shared_ptr<CharacterModel>>& chars) {
+        size_t n[4] = {0, 0, 0, 0};
+        size_t bytes[4] = {0, 0, 0, 0};
+        std::string unusedNames;
+        for (const auto& cm : chars) {
+            if (!cm) continue;
+            const Class c = classify(*cm);
+            const size_t b = charBytes(*cm);
+            ++n[c];
+            bytes[c] += b;
+            if (c == Unused && unusedNames.size() < 200) {
+                if (!unusedNames.empty()) unusedNames += ',';
+                unusedNames += cm->name;
+            }
+        }
+        const size_t all = n[0] + n[1] + n[2] + n[3];
+        const size_t allBytes = bytes[0] + bytes[1] + bytes[2] + bytes[3];
+        tChars += all;
+        tBytes += allBytes;
+        tUnusedBytes += bytes[Unused] + bytes[Static];
+        if (!out.empty()) out += '\n';
+        out += fmt::format(
+            "[srcchar] point={} archive={} chars={} used={} donor={} unused={} static={} "
+            "bytes={} bytes_used={} bytes_donor={} bytes_unused={} bytes_static={} unused_names={}",
+            point, archive, all, n[Used], n[Donor], n[Unused], n[Static],
+            allBytes, bytes[Used], bytes[Donor], bytes[Unused], bytes[Static], unusedNames);
+    };
+    const CharacterList globalSnap = snapshotGlobalCharacters();   // T504b Leg 2: snapshots
+    walk("global_chr.s3d", globalSnap);
+    {
+        std::vector<std::pair<int, CharacterList>> numberedSnap;
+        {
+            std::lock_guard<std::mutex> storesLock(sourceStoresMutex_);
+            for (const auto& [num, chars] : numberedGlobalCharacters_) numberedSnap.emplace_back(num, chars);
+        }
+        for (const auto& [num, chars] : numberedSnap) walk(fmt::format("global{}_chr.s3d", num), chars);
+    }
+    const CharacterList zoneSnap = snapshotZoneCharacters();
+    if (!zoneSnap.empty()) walk(currentZoneName_ + "_chr.s3d", zoneSnap);
+    {
+        std::lock_guard<std::mutex> chrCacheLock(otherChrCacheMutex_);
+        for (const auto& [name, cache] : otherChrCaches_) {
+            // T504b Leg 1: the global entry holds the SAME objects as
+            // globalCharacters_ (adopted, not re-parsed); counting it again
+            // would double the total. Report it as shared and skip.
+            const bool sharedWithGlobal = name == "global_chr.s3d" && !cache.characters.empty()
+                && !globalSnap.empty() && cache.characters.front() == globalSnap.front();
+            if (sharedWithGlobal) {
+                if (!out.empty()) out += '\n';
+                out += fmt::format("[srcchar] point={} archive=other:{} shared_with=global_chr.s3d chars={}",
+                                   point, name, cache.characters.size());
+                continue;
+            }
+            walk("other:" + name, cache.characters);
+        }
+    }
+    if (!out.empty()) out += '\n';
+    out += fmt::format("[srcchar] point={} archive=TOTAL chars={} bytes={} bytes_droppable={} "
+                       "used_skeletons={} used_animations={}",
+                       point, tChars, tBytes, tUnusedBytes, usedSkeletons.size(), usedAnimations.size());
     return out;
 }
 

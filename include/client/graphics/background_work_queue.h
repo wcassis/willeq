@@ -2,6 +2,7 @@
 #define EQT_GRAPHICS_BACKGROUND_WORK_QUEUE_H
 
 #include <atomic>
+#include <pthread.h>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -159,6 +160,7 @@ private:
     void submitToPool(Request request, uint32_t priority);
 
     void workerLoop() {
+        pthread_setname_np(pthread_self(), "eq-prep");  // T504: the entity prep worker (own-thread mode)
         while (true) {
             Request req;
             {

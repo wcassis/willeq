@@ -399,6 +399,11 @@ TEST(GuildInviteAcceptWire, AcceptAndDeclineAreDistinguishableOnTheWire) {
 TEST_F(EntityRescaleNodeTest, ResizingABoatLeavesItsDeckSurfaceWhereItWas) {
     constexpr uint16_t kBoat = 41;
     constexpr uint16_t kShipRace = 72;
+    // T504 resolver: models come from the zone's sources, as in the original
+    // client; race 72's SHIP lives in oot_chr.s3d, so this entity is built in
+    // Ocean of Tears (the directory scan that used to find it from any zone
+    // is gone).
+    entities_->setCurrentZone("oot");
     ASSERT_TRUE(entities_->createEntity(kBoat, kShipRace, "Barrel_Barge", 100.f, 200.f, 30.f, 0.f,
                                         /*isPlayer=*/false, /*gender=*/0,
                                         EQT::Graphics::EntityAppearance(), /*isNPC=*/true,

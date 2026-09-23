@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "client/core/baseline_mode.h"
+#include <cstdlib>
 #include <cstdint>
 
 namespace eqt {
@@ -18,6 +20,14 @@ enum class EffectQuality {
     Medium = 2,
     High = 3
 };
+
+// T504 / Will 2026-09-21: "Baseline is feature parity with the original client."
+// The detail system, boids, tumbleweeds, atmospheric particles and the other
+// non-original features are measured SEPARATELY, on top of a baseline that does
+// not contain them. WILLEQ_BASELINE=1 runs that baseline: the non-original
+// switches below are forced off and the DetailManager is never created (it holds
+// the zone's combined geometry, which pinned a baseline structure in memory).
+inline bool BaselineOnly() { return ::eqt::BaselineOnly(); }  // see client/core/baseline_mode.h
 
 struct DisplaySettings {
     float renderDistance = 300.0f;
@@ -41,6 +51,22 @@ struct DisplaySettings {
     bool detailPlants = true;
     bool detailRocks = true;
     bool detailDebris = true;
+
+    // Force every NON-ORIGINAL feature off (see BaselineOnly()).
+    void applyBaselineOnly() {
+        atmosphericParticles = false;
+        ambientCreatures = false;
+        reactiveFoliage = false;
+        rollingObjects = false;
+        animatedTrees = false;
+        enableFireGlowLighting = false;   // Will 2026-09-21: fire glow is a new willeq feature
+        enableFireGlowIcospheres = false;
+        maxFireGlowLights = 0;
+        detailObjectsEnabled = false;
+        detailGrass = detailPlants = detailRocks = detailDebris = false;
+        detailDensity = 0.0f;
+        environmentDensity = 0.0f;
+    }
 };
 
 } // namespace ui
