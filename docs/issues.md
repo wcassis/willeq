@@ -2,9 +2,10 @@
 
 Will's 2026-09-17 ruling (B848, issue #4): a GitLab issue is the durable
 record for one work item; a hermes kanban card is an execution LEG of it;
-the MR that lands the fix closes the issue. `refactor/BOARD.md` remains the
-board of record for classes B and P until they migrate too; class A and C
-entries there carry a `→ issue #N` pointer to their issue. The live A/C count
+the MR that lands the fix closes the issue. Classes A, B and C are all on GitLab now (B migrated 2026-09-23 by T505,
+Will's ruling: feature gaps and unreached code stay class B); `refactor/BOARD.md`
+remains the board of record for class P only until it migrates too. Every
+migrated entry there carries a `→ issue #N` pointer to its issue. The live A/C count
 is not quoted here (it drifts with every new classed entry) --
 `scripts/gitlab/board_to_issues.py --dry-run` prints it and its red
 cross-check asserts the parser's count matches a format-agnostic recount of
@@ -32,8 +33,10 @@ Its regression net is the `BoardToIssuesHygiene` ctest test (label `hygiene`,
 
 ## Labels
 
-- `class::A` live defect, `class::B` unreached or hygiene, `class::C` needs
-  Will's decision, `class::P` process — the class letter from BOARD.md.
+- `class::A` live defect, `class::B` unreached code, hygiene, or a FEATURE GAP
+  against the official client (Will 2026-09-23: gaps use B, no new class),
+  `class::C` needs Will's decision, `class::P` process — the class letter from
+  BOARD.md.
 - `status::triage|ready|running|review|blocked|done` — mirrors the kanban
   columns; move it as the work moves. Every issue the migration script
   creates carries `status::triage` from the start (B849);
@@ -59,3 +62,18 @@ Its regression net is the `BoardToIssuesHygiene` ctest test (label `hygiene`,
   evidence on `fable`, and the board keeps the struck entry as history
   (B849: a closed issue behind an unstruck entry is a skip, never a
   re-create).
+
+## Feature-gap issues (Will's 2026-09-23 rulings, T505)
+
+Every gap between willeq and the official client in the Classic/Kunark/Velious
+baseline is a `class::B` issue titled `B###: <gap>` whose body carries, in
+this order: the gap, the official client's UI/visual behaviour (the MINIMUM
+willeq must meet -- post-Velious UI is excluded from the baseline), the
+repeatable ORACLE measurement recipe on the eq-oracle rig, the slash-command
+surface (commands stay first-class for scripting), implementation notes, the
+REPEATABLE TEST that pins the feature in CI (a feature is not done until that
+test exists and is green), and the parallel kanban legs. The umbrella for the
+CI capability suite is issue B-numbered in the same series. Native character
+creation follows the official client's screens and progression, sends the
+character to its home city (no tutorial), and excludes post-Velious races and
+classes.

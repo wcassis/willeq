@@ -579,7 +579,7 @@ it without taking that measurement first.
   `FpTunablesTest.TheDefaultsAreTodaysMeasuredNumbers`. **The second race is a
   NEGATIVE and it is B470, not part of this closure.**
 
-- **B470** (B) `include/client/graphics/first_person_eye.h` — **ONE GLOBAL
+- **B470** (B) `include/client/graphics/first_person_eye.h` — **ONE GLOBAL → issue #113
   `kEyeHeightFractionOfSkull` CANNOT SATISFY EVERY RACE, MEASURED.** T431 solved
   the parameter against the official client for two races at the same spot and
   method: **Human male 0.43–0.45** (eye 6.02 ± 0.08 above its own feet) and
@@ -597,7 +597,7 @@ it without taking that measurement first.
   cannot be reported closed on arithmetic. Prov: T431 Review §3;
   `review/T431/sweeps/dwarf_eye{,2}/curve.tsv`.
 
-- **B471** (B) `include/client/graphics/first_person_eye.h`
+- **B471** (B) `include/client/graphics/first_person_eye.h` → issue #114
   `kSitEyeDropFractionOfHeight` — the SEATED eye has never been A/B'd against
   the official client, and T431 widened the disagreement it inherited. T301
   Leg A reports the sit drop two ways that are consistent only if the standing
@@ -814,7 +814,7 @@ it without taking that measurement first.
   `src/client/audio/midi_player.cpp:92-106`, pinned by
   `tests/test_music_player_soundfont_lifetime.cpp`.
 
-- **B818** (B, *items 1a/2/3/5 resolved by T496 Leg D -- see B819/B830/B831*) **Owed from T496, deliberately not taken there.** (1) The three
+- **B818** (B, *items 1a/2/3/5 resolved by T496 Leg D -- see B819/B830/B831*) **Owed from T496, deliberately not taken there.** (1) The three → issue #115
   Mali budgets B812 now has numbers for (`startup` 26.82 MiB,
   `textures_driver` ≤ 0.67 MiB, `irrlicht_scene` ≤ 1.45 MiB) are **stable
   across four Pi runs and ready to enter the orangepi preset's
@@ -1086,7 +1086,7 @@ it without taking that measurement first.
   `SpellDatabase` instance. Pre-fix-failing test: two spells of different
   resist types must produce different particle colours. Found by T380.
 
-- **B161** (B) `include/client/graphics/spell_visual_fx.h` — seven public
+- **B161** (B) `include/client/graphics/spell_visual_fx.h` — seven public → issue #116
   methods with **zero callers in `src/`/`include/`** (T381: `tools/` was never
   grepped for these either — re-run the census including it before deleting
   anything, see B166; `model_viewer.cpp` calls `createProjectile`,
@@ -1237,7 +1237,7 @@ it without taking that measurement first.
   makes the data AVAILABLE -- nothing consumes `travel_type` yet; the
   projectile question is still B165, whose decision waits on B162's oracle.**
 
-- **B165** (B) **ANNOTATED by T389 (2026-09-05): the oracle says both impact
+- **B165** (B) **ANNOTATED by T389 (2026-09-05): the oracle says both impact → issue #117
   gates and the cast-glow gate are correct as written, so only the travel gate
   is still a question.** T389 measured that `EmptyRecord` and `NoAffectIndex`
   draw the SAME generic effect on the official client (see B022), and both are
@@ -1274,7 +1274,7 @@ it without taking that measurement first.
   B227's unmeasured travel capture. T417 could not help there either, because
   it never held the lock.
 
-- **B195** (B) `include/client/graphics/spell_visual_fx.h`
+- **B195** (B) `include/client/graphics/spell_visual_fx.h` → issue #118
   `SpellVisualFX::removeBuffAura(entity_id, spell_id)` and
   `SpellVisualFX::removeAllForEntity(entity_id)` have **ZERO callers** in
   `src/`, `include/`, `tests/`, `tools/`, `benchmarks/` or `docker/` (T388
@@ -4115,7 +4115,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   `willeq.eqe1`) and the +239 and +19,104 are the same bless, not two.
 
   **WILL RULED 2026-09-06:** BLESSED — applied at the T406 merge with the final measured numbers.~~ **APPLIED at the T406 merge: manifest eqe1MappedBytes = 137,128,478 / 135,794,570 / 130,279,066 (Will's bless 2026-09-06); the standalone gate PASSES on the tip.**
-- **B241** (B) `scripts/build_willeq_pack.sh` / `tools/ui_atlas_builder.cpp`
+- **B241** (B) `scripts/build_willeq_pack.sh` / `tools/ui_atlas_builder.cpp` → issue #119
   -- **`willeq.eqe1` is reproducible from the tree PLUS the official client
   tree, not from the tree alone.** B230 closed on a byte-identical rebuild
   whose inputs were entirely checked in; T398 Leg B then made the four coin
@@ -4324,7 +4324,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
 
 ## Added 2026-09-06 by T408 (the baked vertex lighting)
 
-- **B325** (B) `include/client/graphics/zone_shader.h` `kBakedLightMode` /
+- **B325** (B) `include/client/graphics/zone_shader.h` `kBakedLightMode` / → issue #120
   `src/client/graphics/slash/renderer_slash_commands.cpp` `/bakedlight` --
   **the zone's baked per-vertex lighting is LOADED and shipped in every zone
   vertex, and the committed composition ignores it.** That is deliberate and
@@ -4352,7 +4352,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   +34/+71/+32% (B431) -- so a lamp-shaped term is back on the table for that spot,
   which is what B110 originally proposed and T408 measured away in grey.
 
-- **B326** (B) `src/client/graphics/eq/zone_geometry.cpp`
+- **B326** (B) `src/client/graphics/eq/zone_geometry.cpp` → issue #121
   `ZoneMeshBuilder::buildTexturedMeshFromUploaded` / `buildCompositeMesh` /
   `zone_geometry_atlased.cpp` `buildAtlasedMesh` -- **three of the four zone
   mesh builders have ZERO callers, and T408 wired the baked colours into only
@@ -4712,7 +4712,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   or the other. **The gate was NOT re-blessed** (that is B240's, and the cost
   is now large enough to be its own question -> new **B287**).
 
-- **B267** (B) `tools/particle_atlas_builder.cpp` -- **a 118-line target that
+- **B267** (B) `tools/particle_atlas_builder.cpp` -- **a 118-line target that → issue #122
   is now a strict subset of another one.** T400 created it to regenerate the
   single file `data/textures/particle_atlas.bmp`; T403's `generate_textures`
   writes all 64 including that one, through the same `tools/bmp32_writer.h`,
@@ -4880,7 +4880,7 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   serve spells whose oracle populations differ 20x is **B377**. Pinned by
   `tests/test_spell_burst_oracle_match.cpp` (9 tests, 8 red pre-fix).
 
-- **B227** (B) the projectile question (does the official client draw a Frost
+- **B227** (B) the projectile question (does the official client draw a Frost → issue #123
   Bolt travelling between caster and target, and over how many frames) is
   **still unmeasured after four attempts** -- T389 could not frame one. The
   four failure modes, so the next unit does not repeat them: (1) a GM
@@ -5320,7 +5320,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   along; the doc was aspirational, not stale, and is now true. Pinned by
   `tests/test_sfx_cache_eviction.cpp`, 6 cases, two independent pre-fix plants.
 
-- **B293** (B) `include/client/graphics/environment/particle_manager.h`
+- **B293** (B) `include/client/graphics/environment/particle_manager.h` → issue #124
   `ParticleManager::entityDirCallback_` -- installed by TWO callers
   (`src/client/graphics/renderer/renderer_entities.cpp` and
   `tools/model_viewer/model_viewer_spell_test.cpp`) and invoked by none, so
@@ -5358,7 +5358,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   left dangling by `6914d99b` -- an unfinished tombstone is what made the flag
   look deliberate.
 
-- **B295** (B) `include/client/graphics/graphics_archive_index.h`
+- **B295** (B) `include/client/graphics/graphics_archive_index.h` → issue #125
   `GraphicsArchiveIndex::lazyMode_` -- `buildIndex(eqPath, lazyMode, tick)`
   stores its `lazyMode` argument and never reads it, so the lazy/eager choice
   its callers make is discarded. Closes when the parameter is honoured or
@@ -5461,7 +5461,7 @@ T407 deleted eleven (see below). The rest are boarded here.
   `ConfigKeyReachability.EveryShippedConfigKeyIsNamedByCode`, the KEY-level
   companion to B245's file-level census.
 
-- **B298** (B) ~~`include/client/inventory/item_instance.h`~~,
+- **B298** (B) ~~`include/client/inventory/item_instance.h`~~, → issue #126
   `include/client/spell/spell_data.h`, `include/client/skill/skill_data.h`,
   `include/client/state/entity_manager.h` -- **server- and DB-sourced data
   parsed and never shown.**
@@ -6133,7 +6133,7 @@ client uses every field.
   texture with axis-aligned rects, i.e. it already matches. Evidence and the
   scan script: `review/T427/legA/`.
 
-- **B331** (B) `include/client/graphics/weather_quality_preset.h` -- **lightning
+- **B331** (B) `include/client/graphics/weather_quality_preset.h` -- **lightning → issue #127
   has no branches to bound.** `WeatherPresetValues::maxBranchLevel` carried
   0/2/4/6 per quality preset and the shipped `storm.maxBranchLevel` key carried
   4; there is no lightning-bolt branch generator anywhere in the tree, and
@@ -6142,7 +6142,7 @@ client uses every field.
   the comment and the key. Closes when a branching bolt lands and re-adds all of
   them together. Found by T414 Leg A.
 
-- **B332** (B) `include/client/graphics/constrained_renderer_config.h` --
+- **B332** (B) `include/client/graphics/constrained_renderer_config.h` -- → issue #128
   **`enableItemIcons` promised a RAM saving that nothing could deliver.** The
   `orangepi` preset set it false in code and `constrained_presets.json` set it in
   two presets; there is no item/spell icon texture loading in the tree at all --
@@ -6151,7 +6151,7 @@ client uses every field.
   atlas". T414 Leg A deleted the field, the parse and the shipped keys. Closes
   when an icon atlas exists and the flag gates its load. Found by T414 Leg A.
 
-- **B333** (B) `include/client/graphics/constrained_renderer_config.h` --
+- **B333** (B) `include/client/graphics/constrained_renderer_config.h` -- → issue #129
   **`frontToBackSorting` was a second, dead spelling of a live feature.** The
   preset key parsed into a field nothing read. The real front-to-back zone draw
   is `manualZoneDrawEnabled_` (`/sort`, `RenderPassTimer::OnRenderPassPreRender`);
@@ -6159,7 +6159,7 @@ client uses every field.
   if a preset should be able to preset `/sort` -- then it wires to
   `manualZoneDrawEnabled_`, not to a new flag. Found by T414 Leg A.
 
-- **B334** (B) `include/client/graphics/detail/detail_types.h` --
+- **B334** (B) `include/client/graphics/detail/detail_types.h` -- → issue #130
   **`DetailType::windHeightBias` has no vertex to act on.** The key was parsed
   per detail type and the field never read. `DetailChunk` builds a crossed quad
   with only BASE and TOP vertices and pushes `windInfluence_` = 0 at the base and
@@ -6168,7 +6168,7 @@ client uses every field.
   when the detail quad gains a mid vertex (or a vertex shader takes the bias as
   a uniform) and the key returns with a test. Found by T414 Leg A.
 
-- **B335** (B) `config/weather_effects.json` `storm` -- **four shipped storm keys
+- **B335** (B) `config/weather_effects.json` `storm` -- **four shipped storm keys → issue #131
   with no field at all.** `fogDensityMultiplier`, `fogColorR`, `fogColorG`,
   `fogColorB` and `lightningIntensityThreshold` were in the shipped file;
   `WeatherEffectsConfig::Storm` has no such members, and the loader's only
@@ -6207,7 +6207,7 @@ client uses every field.
   -- see **B460**. The oracle's own detail draw distance remains unmeasured
   too, so 150 is fable's number, not EverQuest's.
 
-- **B337** (B) `include/client/graphics/eq/race_model_loader.h`,
+- **B337** (B) `include/client/graphics/eq/race_model_loader.h`, → issue #132
   `equipment_model_loader.h`, `include/client/graphics/tree_identifier.h` --
   **diagnostic aggregates filled and never printed.** `MemoryStats::
   loadedModelCount` / `variantMeshCacheCount` / `animatedMeshCacheCount` /
@@ -6235,25 +6235,25 @@ client uses every field.
   only thing deleted) so it stays the sole consumer of
   `config_.enableCompressedTextures`.
 
-- **B339** (B) `include/client/graphics/weather_effects_controller.h`
+- **B339** (B) `include/client/graphics/weather_effects_controller.h` → issue #133
   `targetIntensity_` -- commented "For smooth transitions", written on every
   intensity change and on reset, read by nothing: weather intensity is applied
   outright, never interpolated toward a target. Closes when the transition
   exists or the member goes. Found by T414 Leg C.
 
-- **B340** (B) `include/client/graphics/zone_lifecycle/zone_lifecycle_component.h`
+- **B340** (B) `include/client/graphics/zone_lifecycle/zone_lifecycle_component.h` → issue #134
   `entitiesLoaded_` / `expectedEntityCount_` -- **the header already documents
   them as write-only.** L09 deleted their zero-caller accessors and left the
   members and their four writes behind. Closes when they go with the writes, or
   a consumer for the zone-in entity gate appears. Found by T414 Leg C.
 
-- **B341** (B) `include/client/graphics/overlays/overlays_component.h`
+- **B341** (B) `include/client/graphics/overlays/overlays_component.h` → issue #135
   `currentTargetInfo_` / `currentTargetLevel_` -- target-overlay state cached
   when the target changes and never read by the draw. The target outline and
   name plate get their data elsewhere. Closes when the overlay draws from them
   or they go. Found by T414 Leg C.
 
-- **B342** (B) `include/client/inventory/inventory_manager.h` and
+- **B342** (B) `include/client/inventory/inventory_manager.h` and → issue #136
   `include/client/graphics/environment/particle_manager.h` -- **four registered
   callbacks that are never invoked.** `InventoryManager::moveItemCallback_`,
   `deleteItemCallback_`, `equipmentChangedCallback_` and
@@ -6262,12 +6262,12 @@ client uses every field.
   registrant believes it is wired. Closes when each is called or the setter and
   member go together. Found by T414 Leg C.
 
-- **B343** (B) `include/client/graphics/ui/character_model_view.h`
+- **B343** (B) `include/client/graphics/ui/character_model_view.h` → issue #137
   `inventoryManager_` and `include/client/graphics/eq/animated_mesh_scene_node.h`
   `sceneManager_` -- stored collaborator pointers with no reader. Closes when
   each is used or dropped from the constructor/setter. Found by T414 Leg C.
 
-- **B344** (B) `include/client/bridge/bridge_component.h`
+- **B344** (B) `include/client/bridge/bridge_component.h` → issue #138
   `m_audio_config_vendor_music`, `include/client/player/player_component.h`
   `m_duel_target_id`, `include/client/skill/skill_manager.h` `m_player_race` --
   three pieces of state stored at the point a decision is made and never
@@ -6276,7 +6276,7 @@ client uses every field.
   player race is stored for skill gating that does not gate on race. Closes per
   member. Found by T414 Leg C.
 
-- **B345** (B) `include/client/graphics/camera_controller.h`
+- **B345** (B) `include/client/graphics/camera_controller.h` → issue #139
   `orbitAngleInitialized_`, `include/client/output/console_renderer.h`
   `m_curEnd` / `m_playerHeading` / `m_startTime`,
   `include/client/input/hotkey_manager.h` `ConflictInfo::binding1` / `binding2`
@@ -6285,7 +6285,7 @@ client uses every field.
   binding strings a hotkey conflict report never formats. Closes per class.
   Found by T414 Leg C.
 
-- **B346** (B) simulation/renderer per-frame payload fields with no consumer --
+- **B346** (B) simulation/renderer per-frame payload fields with no consumer -- → issue #140
   `SimulationWorker`'s `EntityResult::shouldDeactivate` (set by the worker,
   ignored by the drain) and `SimulationInput::cameraTarget`,
   `EntityVisual::corpseYOffset` (computed per corpse, never applied to the
@@ -6806,7 +6806,7 @@ client uses every field.
 
 ## Added 2026-09-06 by T421
 
-- **B375** (B) ~~`include/client/inventory/item_instance.h`~~ -- **STRUCK by
+- **B375** (B) ~~`include/client/inventory/item_instance.h`~~ -- **STRUCK by → issue #141
   T425 Leg B** (`73c79386`). Each of the nine was resolved against
   eqemu's `titanium.cpp` `SerializeItem()`, the wire this client actually
   reads, one verdict per member:
@@ -6915,7 +6915,7 @@ client uses every field.
   **WILL 2026-09-07:** LOW priority — favourites/recipe search did not exist launch→Velious (era rule).
 ## Added 2026-09-06 by T422 (spell effects matched live against the oracle)
 
-- **B395** (B) `src/client/graphics/sim/renderer_sim_bridge.cpp`
+- **B395** (B) `src/client/graphics/sim/renderer_sim_bridge.cpp` → issue #142
   `SimBridgeComponent::postSimulationInput` -- ~~`global.maxParticles` in
   `config/spell_effects.json` had NO CONSUMER.~~ **CLOSED by T422 (this
   commit).** The line read `pi.poolSize = 0; // Worker determines pool size
@@ -7170,7 +7170,7 @@ client uses every field.
   form). Closes when both composers take their formats from the string table.
   Found by T425 Leg A.
 
-- **B391** (B) `src/client/spell/spell_display_text.cpp`,
+- **B391** (B) `src/client/spell/spell_display_text.cpp`, → issue #143
   `include/client/spell/spell_data.h` `reagent_id` -- **the one spell-display
   line the oracle has that fable cannot draw.** eqstr 6732 is
   `Reagents Needed: %1` (6731 `Reagents Available: %1`), and `%1` is an item
@@ -7394,7 +7394,7 @@ client uses every field.
   Greater Faydark's lifts to Kelethin. Baseline: the official client. → T433
   (survey + oracle capture), then the implementation units it names.
 
-- **B430** (B) **The Options window's General page is nineteen checkboxes with
+- **B430** (B) **The Options window's General page is nineteen checkboxes with → issue #144
   no setting behind any of them.** T434 drew the whole page at the oracle's
   offsets (`options_layout.h`, from `EQUI_OptionsWindow.xml`) and wired only
   what exists, so `OGP_FastItemDestroyCheckbox` .. `OGP_AutoConsentGuildCheckbox`
@@ -7409,7 +7409,7 @@ client uses every field.
   no caller outside its own class) -- each needs an intent or a config field,
   which is why none was invented here. Prov: T434.
 
-- **B431** (B) **The Options window's Display page has one wired control out
+- **B431** (B) **The Options window's Display page has one wired control out → issue #145
   of forty-seven.** `ODP_ClipPlaneSlider` drives `setRenderDistance()`; every
   other control on `OptionsDisplayPage` is greyed. The near ones:
   `ODP_PCNamesCheckbox`/`ODP_NPCNamesCheckbox` -- fable has ONE nametag
@@ -7471,7 +7471,7 @@ client uses every field.
   on this host, so there is no ALSA stream to capture.
   `review/T449/README.md` §4.
 
-- **B433** (B) **The Options window's Mouse, Keys, Filters, Colors and Mail
+- **B433** (B) **The Options window's Mouse, Keys, Filters, Colors and Mail → issue #146
   pages are drawn and entirely inert.** Every control on all five is
   `OptionsLayout::Setting::None`. Per page: MOUSE -- fable's player mouse-look
   multiplies by hardcoded `0.5f`/`0.3f` in `renderer_player_physics.cpp` and
@@ -7591,7 +7591,7 @@ client uses every field.
   gate -- true for Meditate(31) alone, so a predicate over it would have
   refused every OTHER skill while sitting, the T325 over-strictness again.
 
-- **B417** (B) `src/client/commands/consider_text.cpp` -- **the `/con`
+- **B417** (B) `src/client/commands/consider_text.cpp` -- **the `/con` → issue #147
   difficulty tail is fable's wording, not the oracle's.** eqstr 12239 is
   `%1 %2 -- %3`; T429 fills `%1` and `%2` from the table (name, and
   12212..12220 for the faction phrase) but fills `%3` with fable's own
@@ -7822,7 +7822,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `diagnostics_debug.cpp:296`. The reachability pattern again. Found by T433
   Leg A.2.~~ **CLOSED by T435 Leg A** (`refactor/T435_door_collision.md`). The writer now exists: `DoorManager::computeDoorCollision()` bakes a door's world-space triangles in both settled poses, `markCollisionDirty()` marks it at every point the geometry can change (createDoor, registerDoor, buildDoorMesh, rebuildSingleDoor, rebuildPlaceholderDoors, recomputeAllBspRegions, and every frame a door is animating), `clearDoors()` retracts it, and `PlayerCameraComponent::syncDoorCollision()` -- called once per frame right after `DoorManager::update()` in `src/client/graphics/frame/renderer_frame_input.cpp` -- drains that into `ctx_.doorCollisionData`. All three `doorCollisionData.clear()` sites now call `markAllCollisionDirty()` so the map and the dirty set cannot desync. `hasCollision` is assigned from the OPENTYPE by `DoorOpentypeHasCollision()` (`src/client/graphics/door_collision.cpp`), never from the name -- see the T435 Review for the table and its evidence. The door half of the ray test moved out of `PlayerCameraComponent` into the free `RayTestDoorCollision()` in the same TU, so it is testable without a renderer. Pinned by `tests/test_door_collision.cpp` (17 cases: 8 red pre-fix). The stale `getDoorSceneNodes()` "for collision detection" comment is corrected in place.
 
-- **B427** (B, unmeasured decision) **opentypes 50/53/54 are dropped on the
+- **B427** (B, unmeasured decision) **opentypes 50/53/54 are dropped on the → issue #148
   floor with nothing behind the decision.** `INVISIBLE_OPENTYPES = {50, 53, 54}`
   (`door_manager.cpp:22`) makes `createDoor()`/`registerDoor()` return before
   any mesh, node, collision or state exists — **1,310 era rows**, including 926
@@ -7853,7 +7853,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   lifts (`FAYLEVATOR` 69/77/80). `DoorState::invertState` is populated from the
   spawn packet and then used by nothing on this path. Found by T433 Leg A.3.~~ **CLOSED by T435 Leg B** (`refactor/T435_door_collision.md`), **and this entry had the direction backwards.** `is_open = (action == 0x03)` is the INVERTED-door mapping: `/mnt/projects/akk-stack/code/zone/doors.cpp:37-40` defines `OPEN_DOOR 0x02`, `CLOSE_DOOR 0x03`, `OPEN_INVDOOR 0x03`, `CLOSE_INVDOOR 0x02`, so 0x03 means OPEN only for an `invert_state = 1` door. fable therefore read the three Kelethin `FAYLEVATOR` lifts RIGHT by accident and read every ordinary door in the game BACKWARDS -- the far larger defect. `src/client/entities/entities_component_world.cpp` now branches on `door->invertState`. Pinned by `tests/test_door_invert_state.cpp` (5 cases: the 3 normal-door ones red pre-fix, the 2 inverted-door ones green before and after).
 
-- **B426** (B, feature — needs B421) **switches, levers, traps and teleporters
+- **B426** (B, feature — needs B421) **switches, levers, traps and teleporters → issue #149
   are all 0-degree no-ops.** The client's whole job for each of these is
   animation + sound; the mechanism is server-side and already reaches fable.
   (a) *Chains*: eqemu resolves `triggerdoor` itself (`doors.cpp:520-540`), so
@@ -7881,7 +7881,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 ### Added by T436 (2026-09-07)
 
-- **B440** (B) `include/client/graphics/ui/cursor_attachment_layout.h`,
+- **B440** (B) `include/client/graphics/ui/cursor_attachment_layout.h`, → issue #150
   `/mnt/projects/EverQuestP1999/uifiles/default/EQUI_CursorAttachment.xml` --
   **two of the CursorAttachment screen's three pieces have no fable producer.**
   The oracle's screen is `CA_Anim`, `CA_Anim2` and `CA_SpellGem`, all three at
@@ -7906,7 +7906,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   rather than wired to a guess, the T363 rule T434 made mechanical. Closes on a
   decision about what gesture supplies the triple. Found by T436.
 
-- **B442** (B) `src/client/graphics/ui/static_ui_input.cpp`
+- **B442** (B) `src/client/graphics/ui/static_ui_input.cpp` → issue #151
   (`StaticUIInput::processCommerceInput`, the bank-slot arm) -- **a bank slot
   can be hovered and cannot be used.** Moving an item into or out of the bank
   is a `MoveItem` between the bank slot and the cursor, and fable's static UI
@@ -7918,7 +7918,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   cursor. Closes when the inventory/bank/cursor click model has a pick-up and a
   put-down. Found by T436.
 
-- **B443** (B) `src/client/graphics/ui/merchant_panel.cpp`
+- **B443** (B) `src/client/graphics/ui/merchant_panel.cpp` → issue #152
   (`renderMerchantPopup`, the trade button) -- **which of Buy and Sell the
   merchant window shows is a design choice, not a measurement.**
   `EQUI_MerchantWnd.xml` gives `MW_Buy_Button` and `MW_Sell_Button`
@@ -8008,7 +8008,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   against the oracle at the lamp spot with the night base held at T428's value.
   Prov: T428 Review §0, §2; B280; B067; T408 Review §4.
 
-- **B447** (B, unmeasured decision) `include/client/graphics/vision_ambient.h`
+- **B447** (B, unmeasured decision) `include/client/graphics/vision_ambient.h` → issue #153
   `kUltravisionAmbientGain` x `kUltravisionTint` -- **Ultravision now lifts
   DAYLIGHT by ~2.5%, and whether the official client does that is unmeasured.**
   Reaching the oracle's x2.7995 R at night needs a floor of
@@ -8051,7 +8051,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 ### Added by T439 (2026-09-07)
 
-- **B449** (B) `src/client/commands/commands_spells.cpp` (`/volume`) --
+- **B449** (B) `src/client/commands/commands_spells.cpp` (`/volume`) -- → issue #154
   **MASTER volume is the one volume fable can change that nothing publishes
   back, because the Options window has no slider for it.** T439 closed B432 by
   making the music and effects volumes a round trip (an absolute intent out,
@@ -8190,7 +8190,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `SpellColourFromSpriteArt.WhirlingWindDrawsItsOwnArtUntintedAndIsStillBlue`,
   which fails if the residual ever closes. Found by T441.
 
-- **B456** (B) `src/client/graphics/spell_visual_fx.cpp`
+- **B456** (B) `src/client/graphics/spell_visual_fx.cpp` → issue #155
   `createCastGlow()` / `createSpellComplete()` / `createProjectile()` --
   **three stages now draw the official client's sprite art, and none of the
   three has been seen on screen.** Until T441 only the Target stage's names
@@ -8297,7 +8297,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   created by GM command first. Class C because "should fable draw a guild
   line, and where" is a look decision once the format is known. Found by T443.
 
-- **B460** (B) `refactor/TESTING_CHARTER.md` / the oracle capture set --
+- **B460** (B) `refactor/TESTING_CHARTER.md` / the oracle capture set -- → issue #156
   **what the official client does when ESC is pressed with a merchant, a bank
   or a tradeskill container open has never been measured.** T436 gave the
   merchant and bank an ESC arm and T443 gave the container one, all three in
@@ -8337,7 +8337,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `findGroundZBspFiltered()` derives it from the PLAYER's own point, and the
   lift sits in region 1883. Found by T438.
 
-- **B462** (B, unmeasured decision) **the opentype-100 spin rate is assumed,
+- **B462** (B, unmeasured decision) **the opentype-100 spin rate is assumed, → issue #157
   not measured.** T438 measured a 105 spinner (steamfont `WMBLADE`) at a full
   360 degrees in 4.267 s = **84.4 deg/s**, and `DoorMotion::kSpinDegreesPerSecond`
   applies it to opentypes 100 and 105 alike because fable already used one
@@ -8399,7 +8399,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   when a live A/B at 11:00 with and without Ultravision says whether the
   oracle lifts a daylight frame. Found by T445.
 
-- **B466** (B) `tools/hwcaps/gles2_zone_benchmark.cpp`,
+- **B466** (B) `tools/hwcaps/gles2_zone_benchmark.cpp`, → issue #158
   `src/client/graphics/detail/` -- **the detail (foliage) system has no
   coverage in any performance lane, so its frame cost cannot be measured.**
   The visual gate is the only automated frame-cost instrument in the tree and
@@ -8511,7 +8511,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
 
 ## Added 2026-09-07 by T451 (the loader/editor splits)
 
-- **B469** (B) `tools/zone_line_editor.cpp`, `tools/zone_line_editor/` -- **the
+- **B469** (B) `tools/zone_line_editor.cpp`, `tools/zone_line_editor/` -- **the → issue #159
   zone line editor's SAVE path cannot be exercised without a human at a
   keyboard, so it has no regression net of any kind.** `saveZoneLineData()` is
   reachable only from `handleInput()`'s Ctrl+S arm, and the editor takes input
@@ -8570,7 +8570,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `metadata.version` still 7 and not touched. New converse net:
   `WilleqDatabaseShippedContent.EveryTableTheDatabaseShipsIsOneTheClientQueries`.
 
-- **B475** (B, hygiene) `src/client/graphics/eq/model_loading.cpp`
+- **B475** (B, hygiene) `src/client/graphics/eq/model_loading.cpp` → issue #160
   `RaceModelLoader::getArmorTexture()` -- **each lookup opens and fully
   inflates a whole armor archive to extract one texture, and an entity needs
   about twelve of them from the same archive.** `PfsArchive::open()` inflates
@@ -8776,7 +8776,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   (spells_new.classes12 = 255 ...)`. `refactor/T506_cast_lands_default_spell.md`
   (evidence: `refactor/B484/`).
 
-- **B485** (B) `scripts/scenario.sh`, `src/client/scenario/scenario_two_client_survive.cpp`
+- **B485** (B) `scripts/scenario.sh`, `src/client/scenario/scenario_two_client_survive.cpp` → issue #161
   -- **`two_client_survive`'s peer terminates 0.15 s after it zones in, so the
   observer's hold can only ever be satisfied by the server's LINKDEAD
   retention.** The peer is launched as `--scenario zone_in`, which reaches its
@@ -8790,7 +8790,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `--scenario-hold`, or the peer running `two_client_survive` itself).
   `review/T449/scenario/two_client_survive_*.log`. Found by T449.
 
-- **B486** (B) `src/client/scenario/scenario_cast_lands.cpp` -- **a `cast_lands`
+- **B486** (B) `src/client/scenario/scenario_cast_lands.cpp` -- **a `cast_lands` → issue #162
   re-run inside the buff's own duration can never pass.** Re-casting the same
   spell refreshes the slot it already occupies, so the baseline multiset does
   not move and the scenario reports `spell 288 never landed after 3 gem casts
@@ -8801,7 +8801,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   288 (buffduration 270 ticks) twice inside its own duration.
   `review/T449/logs/cast_lands_direct_spell288_lvl1.log`. Found by T449.
 
-- **B487** (B) `src/client/input/hotkey_manager.cpp`, `config/hotkeys.json` --
+- **B487** (B) `src/client/input/hotkey_manager.cpp`, `config/hotkeys.json` -- → issue #163
   **the chat input stays open after a line is submitted, so the next hotkey
   press lands as TEXT in the chat bar.** The client's own startup warnings name
   the cause and print them every run: `ConfirmDialog and SubmitInput both bound
@@ -8843,7 +8843,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   B453's `/dumpscene` unblock stands: airplane loads its map (7611 BSP regions)
   and navmesh cleanly. Evidence: `refactor/B488/`.**
 
-- **B489** (B) `src/client/graphics/ui/static_ui_input.cpp` -- **nothing in
+- **B489** (B) `src/client/graphics/ui/static_ui_input.cpp` -- **nothing in → issue #164
   fable's inventory UI picks an item up to the cursor.** A left-click on an
   inventory slot opens T421's item display window; the only producer of a
   cursor item is the server's `InventorySlotChanged` for slot 30/33 (a
@@ -8886,7 +8886,7 @@ Each entry closes when every row it owns is either wired (with the caller named)
 or deleted, and its rows removed from `EXEMPT`. A row deleted individually is
 fine — the table fails on a stale entry, so it cannot rot.
 
-- **B490** (B, unreached) **The environment/particle subsystem's query and
+- **B490** (B, unreached) **The environment/particle subsystem's query and → issue #165
   control API: 35 zero-caller public functions across 11 headers under
   `include/client/graphics/environment/`.** Emitter, flock, boids, overlay and
   storm-cloud accessors and setters that no renderer pass, no config load and
@@ -8899,7 +8899,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   `ParticleEmitter::spawnRadius_`, which are the same subsystem's unread
   members. Found by T455.
 
-- **B491** (B, unreached) **The S3D/WLD asset-loader query API: 49 zero-caller
+- **B491** (B, unreached) **The S3D/WLD asset-loader query API: 49 zero-caller → issue #166
   public functions across 10 headers under
   `include/client/graphics/eq/`.** Loader accessors
   (`S3DLoader::getGeometry()` / `getObjects()` / `getObjectCount()` /
@@ -8912,7 +8912,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   the interesting one: it is a complete blend-and-trigger feature with no
   caller at all, which is the T39/B024 shape. Found by T455.
 
-- **B492** (B, unreached) **The detail/foliage subsystem's query and control
+- **B492** (B, unreached) **The detail/foliage subsystem's query and control → issue #167
   API: 24 zero-caller public functions across 8 headers under
   `include/client/graphics/detail/`.** `DetailManager::adjustDensity()` (its
   comment says "For keyboard +/- controls" and no key is bound to it),
@@ -8923,7 +8923,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   `SeasonalController::hasOverride()` / `getOverride()`. Related to the closed
   B330-B336 field rows in the same subsystem. Found by T455.
 
-- **B493** (B, unreached) **The paperdoll's input API and the output-renderer
+- **B493** (B, unreached) **The paperdoll's input API and the output-renderer → issue #168
   factory: 15 zero-caller public functions across
   `include/client/graphics/ui/character_model_view.h` and
   `include/client/output/`.** `CharacterModelView::onMouseDown()` /
@@ -8934,7 +8934,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   `createRenderer()` (`output_renderer.h`) and
   `GraphicalRenderer::getRenderQuality()`. Found by T455.
 
-- **B494** (B, unreached) **Renderer component and helper API: 127 zero-caller
+- **B494** (B, unreached) **Renderer component and helper API: 127 zero-caller → issue #169
   public functions across 28 headers under `include/client/graphics/`** — the
   largest group, and the one T448's ten deletions did not reach.
   `EntityRenderer` alone has 33: the whole debug offset/rotation control set
@@ -8956,7 +8956,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   they are the leak fix if the creation path is wired. Split this entry before
   working it. Found by T455.
 
-- **B495** (B, unreached) **InventoryManager's bank/cursor/callback API and the
+- **B495** (B, unreached) **InventoryManager's bank/cursor/callback API and the → issue #170
   unreached `inventory_constants.h` helpers: 41 zero-caller public functions
   across 3 headers.** `getBankItems()`, `getSharedBankItems()`,
   `getSellableItems()`, `isBankBag()`, `getBankBagSize()`, `isBankBagEmpty()`,
@@ -8969,7 +8969,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   windows read `GameState`, not the manager, which is why a whole bank API can
   sit here with a working bank window. Found by T455.
 
-- **B496** (B, unreached) **GameState module setters and getters with no
+- **B496** (B, unreached) **GameState module setters and getters with no → issue #171
   caller: 30 zero-caller public functions across 7 headers under
   `include/client/state/`.** `PlayerState`'s seven stat setters
   (`setSTR/STA/CHA/DEX/INT/AGI/WIS`) — the server sends the values and nothing
@@ -8981,7 +8981,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   `memorizingSpellId()`; `InventoryState`'s three equipment-total getters;
   `GroupState::updateMemberStats()`. Found by T455.
 
-- **B497** (B, unreached) **Top-level manager API with no caller: 26
+- **B497** (B, unreached) **Top-level manager API with no caller: 26 → issue #172
   zero-caller public functions across 9 headers directly under
   `include/client/`.** `Application::getGameMode()` / `getActionDispatcher()` /
   `getCommandProcessor()` / `getEverQuestClient()` — four component accessors
@@ -8994,7 +8994,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   `WilleqDatabase::getAnimationSound()`; `GetChatTypeName()`;
   `getCombatSkillAnimation()`. Found by T455.
 
-- **B498** (B, unreached) **The input-injection API: 15 zero-caller public
+- **B498** (B, unreached) **The input-injection API: 15 zero-caller public → issue #173
   functions across `include/client/input/`.** `NullInputHandler`'s eleven
   `inject*` methods (`injectSpellCast()`, `injectHotbar()`, `injectTarget()`,
   `injectLoot()`, `injectChatMessage()`, `injectMoveCommand()`,
@@ -9008,7 +9008,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   — do not delete it without reading `include/client/scenario/scenario.h`
   first. Found by T455.
 
-- **B499** (B, unreached) **Audio query API with no caller: 12 zero-caller
+- **B499** (B, unreached) **Audio query API with no caller: 12 zero-caller → issue #174
   public functions across 7 headers under `include/client/audio/`.**
   `AudioManager::isAutoAttackMusicPlaying()` / `isVendorBankMusicPlaying()` /
   `isUse3DAudio()`, `AudioMixer::getSfxVolume()`, `EffLoader::getMp3Index()`,
@@ -9018,7 +9018,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   `isSoftwareRendering()`, `reinitializeOpenAL()`) — the client uses miniaudio,
   so those three are residue from a backend that is gone. Found by T455.
 
-- **B500** (B, unreached) **The `IGameMode` implementations' accessors: 10
+- **B500** (B, unreached) **The `IGameMode` implementations' accessors: 10 → issue #175
   zero-caller public functions across the three mode headers.**
   `AutomatedMode::getGameState()` / `queueCommand()` / `getNextCommand()` /
   `hasPendingCommands()` / `setEventCallback()` — a whole command queue that
@@ -9029,7 +9029,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   `ConsoleRenderer` members, which is the same corner of the tree. Found by
   T455.
 
-- **B501** (B, unreached) **`common/` utility API with no caller: 12
+- **B501** (B, unreached) **`common/` utility API with no caller: 12 → issue #176
   zero-caller public functions across 5 headers.**
   `PerformanceMetrics::getTimings()` / `resetGameplay()` / `getElapsedMs()` /
   `markZoneLoadStart()` / `markZoneLoadEnd()` / `getCategoryName()` — a
@@ -9043,7 +9043,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   helper across a `_WIN32` / Linux `#ifdef` and a partial deletion there is
   not mechanical. Found by T455.
 
-- **B502** (B, unreached) **Gameplay-domain manager API with no caller: 21
+- **B502** (B, unreached) **Gameplay-domain manager API with no caller: 21 → issue #177
   zero-caller public functions across 9 headers
   (`skill/`, `spell/`, `chat/`, `movement/`, `player/`).**
   `SkillManager::isSkillReady()` / `getSkillsByCategory()` /
@@ -9377,7 +9377,7 @@ because the Pi had no keyboard or mouse attached (B510).
   `WILLEQ_DATA_ROOT` and the working directory set to the slot.
 ### Added by T456 (2026-09-08)
 
-- **B479** (B) `src/client/graphics/entity_renderer.cpp:370`
+- **B479** (B) `src/client/graphics/entity_renderer.cpp:370` → issue #178
   `EntityRenderer::markEntityAsCorpse()` -- **the client synthesises a corpse
   display name that does not match the one the server uses.** It appends
   `"'s corpse"` to the visual's name, with NO entity id, guarded by a
@@ -9397,7 +9397,7 @@ because the Pi had no keyboard or mouse attached (B510).
   first**: what the official client puts on the nameplate of a corpse it
   watched die is measurable and has not been measured. Found by T456.
 
-- **B480** (B, hygiene) `data/equipment_models.json` (1.1 MB, tracked) and
+- **B480** (B, hygiene) `data/equipment_models.json` (1.1 MB, tracked) and → issue #179
   `tools/equipment_index_builder` -- **an input and its builder that now feed
   nothing.** T454 dropped `equipment_textures` and T456 dropped
   `equipment_models`, so `loadEquipmentModels()` is gone and this JSON is no
@@ -9522,7 +9522,7 @@ because the Pi had no keyboard or mouse attached (B510).
   not seen live. Confirm by: zone in, `/camera user1`, zone through a zone line,
   `/camera` and read `UI_<char>_<server>.ini`. Found by T461.
 
-- **B533** (B, unreached) **What T461's deletion of the free-fly camera left
+- **B533** (B, unreached) **What T461's deletion of the free-fly camera left → issue #180
   write-only.** T461 deleted `CameraController::update()` with the Free mode it
   was the body of. That made two SETTERS pointless: `setMoveSpeed()` and
   `setMouseSensitivity()` are still called once from `IrrlichtRenderer`'s init
@@ -9539,7 +9539,7 @@ because the Pi had no keyboard or mouse attached (B510).
   `camera_controller.*` and the two init lines. Not done by T461 because those
   lines were T460's territory in that wave. Found by T461.
 
-- **B534** (B, unreached) **The output-layer camera route is a second, stale
+- **B534** (B, unreached) **The output-layer camera route is a second, stale → issue #181
   camera vocabulary.** `output::CameraMode` (`include/client/output/output_renderer.h`)
   is still `Free, Follow, FirstPerson`; `GraphicalMode::processInput()` consumes
   `InputAction::ToggleCameraMode` into `GraphicalMode::cycleCameraMode()`, which
@@ -9621,7 +9621,7 @@ because the Pi had no keyboard or mouse attached (B510).
   appears on the Camera, UI or Commands pages. So neither of fable's F11 meanings
   is the official one. Re-classed to the decision in B582.
 
-- **B562** (B) **The shipped `config/hotkeys.json` binds eight actions the
+- **B562** (B) **The shipped `config/hotkeys.json` binds eight actions the → issue #182
   compiled-in defaults do not**: `CancelDialog`, `CancelInput`,
   `ChatAutocomplete`, `ConfirmDialog`, `ResetUIDefaults`, `SaveUILayout`,
   `ToggleUILock` (all Global) and `ToggleZoneLights` (Ctrl+F4). B535's converse:
@@ -9769,7 +9769,7 @@ B591–B599 unused.
 
 ## Added 2026-09-13 by T468 (door texture guard)
 
-- **B620** (B, *unconfirmed live*) **A zone-geometry texture evicted by the LRU
+- **B620** (B, *unconfirmed live*) **A zone-geometry texture evicted by the LRU → issue #183
   stays the placeholder for the rest of the zone, and a door's cached mesh
   hands that placeholder to later doors.**
   - `RegionMeshTextureGuard` and (since T468, registered) `DoorTextureGuard`
@@ -10070,7 +10070,7 @@ B712–B719 unused.
 
 ## Added 2026-09-13 by T458 (tests-only callers)
 
-- **B600** (B, unreached) **The audio sound-category layer is never
+- **B600** (B, unreached) **The audio sound-category layer is never → issue #184
   constructed.** `CombatMusicManager` (`combat_music.cpp` IS in the client's
   `AUDIO_SOURCES`) is named by no file outside its own header and `.cpp`;
   `CreatureSounds`, `UISounds`, `PlayerSounds` and `WeatherAudio` are worse --
@@ -10085,7 +10085,7 @@ B712–B719 unused.
   `EXEMPT_TESTS_GROUPS`. Wire or delete per class; `WaterSounds`, the one
   that was pure residue, T458 deleted. Found by T458.
 
-- **B601** (B, unreached) **GameState module mutators with no production
+- **B601** (B, unreached) **GameState module mutators with no production → issue #185
   writer.** `CombatState::updateTargetHP/updateTargetLevel`,
   `GroupState::findMemberBySpawnId/setMemberInZone/updateMemberSpawnId`,
   `InventoryState::setBagInfo/setCursorQueueSize/setEquipmentStats`,
@@ -10099,7 +10099,7 @@ B712–B719 unused.
   change leaves stale module state without `resetForZoneChange()`.
   `WriteOnlyFields` covers the first half. Found by T458.
 
-- **B602** (B, unreached) **EntityManager's query and mutation API with no
+- **B602** (B, unreached) **EntityManager's query and mutation API with no → issue #186
   production caller.** `findEntityByExactName`, `findPetByOwner`,
   `forEachEntity`, `forEachEntityMutable`, `getAllPets`,
   `getEntitiesInRange`, `getNearestCorpse`, `getPetOwnerId`, `markAsCorpse`,
@@ -10108,7 +10108,7 @@ B712–B719 unused.
   `findEntityByName` the one name resolver; these are the rest of the
   surface. Found by T458.
 
-- **B603** (B, unreached) **Gameplay-manager control API with no production
+- **B603** (B, unreached) **Gameplay-manager control API with no production → issue #187
   caller.** `CombatManager::EnableAutoLoot/GetHighestPriorityTarget/
   SetAggroRadius/SetFleeThreshold/ToggleAutoFire`,
   `SpellManager::beginCastById/setOnCastComplete/setOnSpellFade/swapGems`
@@ -10139,7 +10139,7 @@ B712–B719 unused.
   `tests/test_spell_interrupt_wire.cpp` (6 of 10 red before the fix). The live
   proof is **B630**; a residual path is **B631**.
 
-- **B605** (B, unreached) **Input, command and console API with no production
+- **B605** (B, unreached) **Input, command and console API with no production → issue #188
   caller.** `CommandProcessor::setDefaultChannel/setEchoEnabled/
   unregisterCommand`, `HotkeyManager::isMovementKey/modeNameToEnum`,
   `HotkeyBinding::toString`, `ConsoleRenderer::setStatusUpdateInterval` (the
@@ -10147,7 +10147,7 @@ B712–B719 unused.
   `focusTextEntry` -- 8 rows. The hotkey rows sit beside T466's territory
   (`hotkey_manager.cpp`) and were not touched. Found by T458.
 
-- **B606** (B, unreached) **Renderer, asset and data API with no production
+- **B606** (B, unreached) **Renderer, asset and data API with no production → issue #189
   caller.** `IrrlichtRenderer::setNewUIEnabled`,
   `EntityRenderer::loadEquipmentModels/loadGlobalCharacters` (not called even
   by the zero-caller `loadGlobalAssets`, B494, which T468 deleted; since T485
@@ -10688,7 +10688,7 @@ unused.
   sweep in Chase (the four values are the fitted character's, `/camera get`
   prints the scale). Found by T474.
 
-- **B682** (B) **Two Chase behaviours changed shape when the follow camera became a
+- **B682** (B) **Two Chase behaviours changed shape when the follow camera became a → issue #190
   rig.** (1) The follow camera eased back out after a wall pull-in at 30 units/s
   (`ZOOM_RECOVERY_SPEED`); a rig is placed exactly every frame, so the Chase
   camera now snaps back when the wall clears. (2) The ceiling clamp's floor was
@@ -11001,7 +11001,7 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   during the object build. warslikswood and most thedeep runs could not zone in on
   either build (B751), so their cost is still unmeasured. Found by T479.
 
-- **B736** (B, *unconfirmed*) **`S3DLoader::loadZone()` rejects 20 chr archives
+- **B736** (B, *unconfirmed*) **`S3DLoader::loadZone()` rejects 20 chr archives → issue #191
   with "No geometry"** -- global3_chr.s3d and nineteen `global*_chr2.s3d` -- so any
   model or texture only they hold is unreachable through `RaceModelLoader`.
   Measured by the T479 dump (`LOAD_FAILED` rows); not checked whether they hold
@@ -11121,7 +11121,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   world/zone process survived it. `--legacy` runs the pre-T493 restore and
   FAILS (exit 66), so the net is known to test something. Real end-to-end proof:
   `scenario.sh zone_in` exit 0, byte-identical, 44 s total.
-- **B785** (B) `review/T478/scripts/t478_o.sh` (and T466's and T377's copies of
+- **B785** (B) `review/T478/scripts/t478_o.sh` (and T466's and T377's copies of → issue #192
   it) -- **the oracle driver stamps its marks with `date -u` while every willeq
   `run.log` stamps LOCAL time**, and the two are the halves of every joined
   corpus. Both hosts are UTC today, so nothing measured so far is wrong; the
@@ -11136,7 +11136,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   that is prerequisite #1" (wine has run the client on the dev host since T310
   and on hermes-ext since 2026-09-13). `env.sh` beside them is correct, which is
   what makes the prose dangerous. Found by T492.
-- **B787** (B) **willeq at `-d 4 --log-level=DEBUG` is 90% per-frame GRAPHICS
+- **B787** (B) **willeq at `-d 4 --log-level=DEBUG` is 90% per-frame GRAPHICS → issue #193
   visibility counts.** MEASURED T492 on hermes-ext: 60,891 of 67,407 lines in the
   first 90 s of a session are `[DEBUG] [GRAPHICS]` `ObjectVis/ZoneLightVis/
   ObjLightVis/EntityVis/RegionVis` lines, one set per frame -- 6.7 MB of log for
@@ -11144,7 +11144,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   benchmark's agent loop, any live-unit grep) has to read past. The counts are a
   profiling aid, not per-frame news; TRACE is the level for them. T492 works
   around it with `--log-module=GRAPHICS:INFO`. Found by T492.
-- **B788** (B) `/mnt/projects/eq-oracle/scripts/enter-world.sh` -- **the Enter
+- **B788** (B) `/mnt/projects/eq-oracle/scripts/enter-world.sh` -- **the Enter → issue #194
   World flow has no settle and its "4 attempts" are not the budget they look
   like.** `wait_for_text <n>` is n OCR POLLS, not n seconds, and each poll is an
   `import` + `convert` + `tesseract` over a 3D scene under llvmpipe, so one
@@ -11244,7 +11244,7 @@ Runs, tables and scripts: `review/T481/` (`pi/table_all_runs.tsv`, `pi/raw/<run>
   crops: fable (88.02,35.37,38.03) with **zero magenta pixels** (none with R,B >
   120, G < 80), official (16.39,30.94,23.83). Fix, tests and after-values are on
   B789.
-- **B791** (B) **nothing hides fable's renderer command replies without hiding
+- **B791** (B) **nothing hides fable's renderer command replies without hiding → issue #195
   the whole UI.** Every registry-3 command answers through `chat()`, which puts
   it in the in-game chat window -- so a captured fable frame with the UI on
   carries `Screenshot saved: <path>`, `[CAMERA-GET]` dumps and combat lines that
@@ -11607,7 +11607,7 @@ WLD tally, parse peak/retained heap): `review/T490/x86/pvs_census.tsv`, taken by
   disagrees. **Every table must carry the zone the client actually entered, not
   the one requested.** Found by T490.
 
-- **B803** (B, *measured*) **`orangepi.s3dZoneSourceMemoryBytes` (24 MiB) does
+- **B803** (B, *measured*) **`orangepi.s3dZoneSourceMemoryBytes` (24 MiB) does → issue #196
   not describe the largest zone in the game.** T293 derived it from gfaydark
   (7.52 MiB x 2.34 x 1.25); iceclad's WLD tally at the T490 tip is 25,737,912 B
   = 24.55 MiB, 572,088 B over, and its retained parse heap is 27.53 MiB. Nothing
@@ -11700,7 +11700,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   comment-filtered grep for `get{Red,Green,Blue,Alpha}() -` over `src/`,
   `include/` and `tools/` returns exactly ten hits -- the nine lerp lines T495
   replaced and this one.
-- **B807** (B) **the T492 corpus pairs fable sky frames with official frames
+- **B807** (B) **the T492 corpus pairs fable sky frames with official frames → issue #197
   that contain no sky**, so the corpus cannot answer "what colour should the sky
   be". MEASURED T495: the official frames B789 and B790 name as their pairs
   (`players/p1/frames/15:38:09.793_F_sky_p2_overhead_window.png` and
@@ -11729,7 +11729,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
 
 ## Added 2026-09-17 by T494 (the /equip slot convention, B796)
 
-- **B809** (B) **eqemu never broadcasts a WEAPON `OP_WearChange` when a weapon
+- **B809** (B) **eqemu never broadcasts a WEAPON `OP_WearChange` when a weapon → issue #198
   is equipped by `OP_MoveItem`, so another player's weapon does not appear in
   fable until they respawn.** `/mnt/projects/akk-stack/code/zone/inventory.cpp:2205` computes the material
   slot with `Client::SlotConvert2()`, and that switch
@@ -11751,7 +11751,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   `slotPrimary -> weaponPrimary`, `slotSecondary -> weaponSecondary`) or to
   accept it as era behaviour -- the official client has the same server. Found
   by T494.
-- **B810** (B) **`LootItemIntent`'s corpse slot numbers have the SAME
+- **B810** (B) **`LootItemIntent`'s corpse slot numbers have the SAME → issue #199
   Titanium/server split B796 was, and nothing converts them either.** The
   server's pair is `titanium.cpp:3641` `ServerToTitaniumCorpseSlot()` /
   `:3727` `TitaniumToServerCorpseSlot()`, and it is NOT the same table as the
@@ -11808,7 +11808,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
 
 ## Added 2026-09-17 by T497 (readiness that docker-proxy cannot fake)
 
-- **B820** (B) **Every readiness probe in the lane tests TCP, and the CLIENT
+- **B820** (B) **Every readiness probe in the lane tests TCP, and the CLIENT → issue #200
   speaks UDP.** Even the fixed `eqemu_stack_ready` proves "the server links are
   up", not "a client can log in": TCP 5998 is the loginserver's **servertalk**
   listener for WORLD SERVERS
@@ -11929,7 +11929,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
 
 ## Added 2026-09-17 by T499 (the B795 re-check of every archived oracle frame)
 
-- **B833** (B) **6 of the 24 scored rows in T492's delivered corpus
+- **B833** (B) **6 of the 24 scored rows in T492's delivered corpus → issue #201
   (`review/T492/llmbench/verify_labels.tsv`) were scored on an official frame
   with the Tip of the Day dialog in it.** [measured T499] The camera check in
   `scripts/llmbench/verify_labels.py` scores the official p1 frame against
@@ -11952,7 +11952,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   Not class A: the score decided a corpus LABEL, not a shipped constant, and
   `review/T492/README.md` says the corpus is not blessed until Will has looked
   at the sheets. Found by T499.
-- **B834** (B) **The tip window is not only "Tip of the Day" at login -- it has
+- **B834** (B) **The tip window is not only "Tip of the Day" at login -- it has → issue #202
   context-sensitive variants that pop at the SAME rect after an in-world
   action, and nothing has ever verified that `[Tips] ShowTips=0` suppresses
   them.** [measured T499] The same 360x300 window at (664,234) carries a
@@ -12017,14 +12017,14 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   on fable at `src/client/graphics/eq/model_loading.cpp:98` and pinned by
   `tests/test_entity_model_sharing.cpp:237`; no issue was ever opened for it,
   so there is no record to close -- the Pi half remains open as B843.
-- **B838** (B) **`zone_mesh` after the VBO upload: 21.80 MB live at `ready` on
+- **B838** (B) **`zone_mesh` after the VBO upload: 21.80 MB live at `ready` on → issue #203
   the Pi that the draw does not read.** [measured T496/T500] After
   `uploadMeshHardwareBuffers()` the draw binds the VBO only, but the CPU arrays
   are still read by `ZoneMergeBuffers::build()` (first frame after loading;
   `mergeZoneDraws: true` on orangepi), `createTriangleSelector()` (load step 9)
   and the client-array fallback. Largest-looking, smallest real win, highest
   risk. Needs the merge/selector ordering settled first. Deferred by T500.
-- **B839** (B) **`startup` is 28.12 MB live at every point on the Pi and has NO
+- **B839** (B) **`startup` is 28.12 MB live at every point on the Pi and has NO → issue #94
   Pi-side attribution.** [measured T496 Leg D, re-measured T500: 28,134,104 B
   at `ready`, qeynos2, and it does not move between `startup` and
   `steady_60s`.] The x86 heads (cursor 8.70 MB, loading screen 7.47 MB) were
@@ -12290,4 +12290,22 @@ Follow-ups filed as records (not started):
 - **B857** (C) skel_containers -- the largest compactness term left in entity_models; needs its own plan per Will's rev-1 rule. -> issue #108
 - **B858** (C) zone-in Phase 10 is keyed on ONE unreliable packet (our own OP_ClientUpdate); a lost datagram is a permanent stall. -> issue #109
 
-B874 onwards unused.
+B874-B876 are the hermes pose-oracle ruling (docs/decisions.md 2026-09-23, issues #218-#220); B877-B887 unused (T505 renumbered its block to B888-B901 after allocating B874+ concurrently); B902 onwards unused. Allocate from the MAX `B###:` issue title on GitLab, not from this file.
+
+T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are class B on GitLab; every gap carries an oracle recipe, a repeatable CI test and parallel legs (docs/issues.md § Feature-gap issues). Filed as records (not started):
+
+- **B888** (B, feature) native character creation: the official two-page screen and progression, home city (no tutorial), post-Velious races/classes excluded. → issue #204
+- **B889** (B, feature) capability-level CI suite: a README-row → oracle → test → CI-lane matrix, nightly live + pi stages. → issue #205
+- **B890** (B, feature) boats/transport. → issue #206
+- **B891** (B, feature) swimming speeds are guesses, drowning and the Air Remaining window are missing. → issue #207
+- **B892** (B, feature) levitation never applies to the player (eqemu skip-self appearance; derive from own buffs). → issue #208
+- **B893** (B, feature) two unmeasured jump models, fall damage never sent. → issue #209
+- **B894** (B, feature) forage and fishing are sent but never measured or shown. → issue #210
+- **B895** (B, feature) tracking window and direction messages. → issue #211
+- **B896** (B, feature) player trade window (callbacks are an empty stub). → issue #212
+- **B897** (B, feature) friends window with friends + ignore lists; `/friends` alias conflict. → issue #213
+- **B898** (B, feature) skill trainer window (reply decoded then dropped). → issue #214
+- **B899** (B, feature) era tradeskill container window + Combine; recipe window is post-Velious. → issue #215
+- **B900** (B, feature) single ranged shot impossible, arrow never drawn; /autofire era uncertain. → issue #216
+- ~~**B901** (B, feature) item linking~~ -- OUT OF BASELINE (post-Velious), recorded and closed. → issue #217
+- Feature-gap plans (oracle + test + legs) appended to existing issues: #25 lifts/switches/traps (B420), #151 item pick-up/put-down (B442), #116 spell visuals (B161), #144 Options controls (B430; #145/#146 pointed at it).
