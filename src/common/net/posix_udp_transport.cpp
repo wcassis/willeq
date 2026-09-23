@@ -3,6 +3,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <cstdio>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -56,18 +57,35 @@ bool PosixUdpTransport::open(const std::string& addr, int port)
 	}
 
 	// Increase receive buffer to handle packet bursts during zone loading.
-	// Try SO_RCVBUFFORCE first (requires CAP_NET_ADMIN), fall back to SO_RCVBUF.
-	int rcvbuf_size = 512 * 1024;
-	if (setsockopt(m_fd, SOL_SOCKET, SO_RCVBUFFORCE, &rcvbuf_size, sizeof(rcvbuf_size)) < 0) {
-		rcvbuf_size = 212992;
-		if (setsockopt(m_fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf_size, sizeof(rcvbuf_size)) < 0) {
+	// 895aad1e (2026-01) asked for 512 KiB via SO_RCVBUFFORCE (CAP_NET_ADMIN,
+	// see CLAUDE.md's setcap recipe) and fell back to a hard-coded 212992.
+	// B751 (#73, measured 2026-09-23): a hole zone-in on the Orange Pi is
+	// ~2,600 datagrams; the kernel dropped 42 % of them for receive-buffer
+	// overflow at the 1 MiB the forced request (kernel-doubled) yields, and
+	// every unreliable packet in the burst -- including the one Phase 10
+	// waits for -- was lost. So: ask for 8 MiB with the capability; without
+	// it, ask for net.core.rmem_max (what the kernel allows, not 212992);
+	// and say at INFO what was actually granted, so a run's log shows it.
+	int requested = 8 * 1024 * 1024;
+	bool forced = setsockopt(m_fd, SOL_SOCKET, SO_RCVBUFFORCE, &requested, sizeof(requested)) == 0;
+	if (!forced) {
+		int rmem_max = 212992;
+		if (FILE* f = fopen("/proc/sys/net/core/rmem_max", "r")) {
+			if (fscanf(f, "%d", &rmem_max) != 1) rmem_max = 212992;
+			fclose(f);
+		}
+		requested = rmem_max;
+		if (setsockopt(m_fd, SOL_SOCKET, SO_RCVBUF, &requested, sizeof(requested)) < 0) {
 			LOG_WARN(MOD_NET, "PosixUdpTransport: failed to set SO_RCVBUF: {}", strerror(errno));
 		}
 	}
 
+	int rcvbuf_size = 0;
 	socklen_t optlen = sizeof(rcvbuf_size);
 	getsockopt(m_fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf_size, &optlen);
-	LOG_TRACE(MOD_NET, "PosixUdpTransport: fd={} rcvbuf_size={}", m_fd, rcvbuf_size);
+	LOG_INFO(MOD_NET, "PosixUdpTransport: fd={} rcvbuf={} bytes ({}; asked {})", m_fd, rcvbuf_size,
+	         forced ? "SO_RCVBUFFORCE, CAP_NET_ADMIN" : "SO_RCVBUF, no CAP_NET_ADMIN: capped by net.core.rmem_max",
+	         requested);
 
 	// Connect (so send()/recv() work without per-packet address)
 	if (::connect(m_fd, result->ai_addr, result->ai_addrlen) < 0) {
