@@ -12024,7 +12024,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   `mergeZoneDraws: true` on orangepi), `createTriangleSelector()` (load step 9)
   and the client-array fallback. Largest-looking, smallest real win, highest
   risk. Needs the merge/selector ordering settled first. Deferred by T500.
-- **B839** (B) **`startup` is 28.12 MB live at every point on the Pi and has NO
+- **B839** (B) **`startup` is 28.12 MB live at every point on the Pi and has NO → issue #94
   Pi-side attribution.** [measured T496 Leg D, re-measured T500: 28,134,104 B
   at `ready`, qeynos2, and it does not move between `startup` and
   `steady_60s`.] The x86 heads (cursor 8.70 MB, loading screen 7.47 MB) were
@@ -12291,3 +12291,21 @@ Follow-ups filed as records (not started):
 - **B858** (C) zone-in Phase 10 is keyed on ONE unreliable packet (our own OP_ClientUpdate); a lost datagram is a permanent stall. -> issue #109
 
 B874 onwards unused.
+
+T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are class B on GitLab; every gap carries an oracle recipe, a repeatable CI test and parallel legs (docs/issues.md § Feature-gap issues). Filed as records (not started):
+
+- **B874** (B, feature) native character creation: the official two-page screen and progression, home city (no tutorial), post-Velious races/classes excluded. → issue #204
+- **B875** (B, feature) capability-level CI suite: a README-row → oracle → test → CI-lane matrix, nightly live + pi stages. → issue #205
+- **B876** (B, feature) boats/transport. → issue #206
+- **B877** (B, feature) swimming speeds are guesses, drowning and the Air Remaining window are missing. → issue #207
+- **B878** (B, feature) levitation never applies to the player (eqemu skip-self appearance; derive from own buffs). → issue #208
+- **B879** (B, feature) two unmeasured jump models, fall damage never sent. → issue #209
+- **B880** (B, feature) forage and fishing are sent but never measured or shown. → issue #210
+- **B881** (B, feature) tracking window and direction messages. → issue #211
+- **B882** (B, feature) player trade window (callbacks are an empty stub). → issue #212
+- **B883** (B, feature) friends window with friends + ignore lists; `/friends` alias conflict. → issue #213
+- **B884** (B, feature) skill trainer window (reply decoded then dropped). → issue #214
+- **B885** (B, feature) era tradeskill container window + Combine; recipe window is post-Velious. → issue #215
+- **B886** (B, feature) single ranged shot impossible, arrow never drawn; /autofire era uncertain. → issue #216
+- ~~**B887** (B, feature) item linking~~ -- OUT OF BASELINE (post-Velious), recorded and closed. → issue #217
+- Feature-gap plans (oracle + test + legs) appended to existing issues: #25 lifts/switches/traps (B420), #151 item pick-up/put-down (B442), #116 spell visuals (B161), #144 Options controls (B430; #145/#146 pointed at it).
