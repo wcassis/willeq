@@ -791,10 +791,23 @@ FAILURES=0
 RUN_STARTED=$(date +%s)
 STOPPED_AT_BOUNDARY=0
 mapfile -t ZONE_LINES < "$ZONE_TMPFILE"
+# Resume: skip zones already present in the TSV (first column).
+# On resume, the heaviest zones may already have rows from a previous run;
+# only process zones NOT already in the TSV.
+ZONE_PROCESSED_FILE="$(mktemp)"
+trap 'rm -f "$ZONE_TMPFILE" "$ZONE_PROCESSED_FILE"' EXIT
+if [ -f "$TSV" ] && [ "$(grep -c . "$TSV")" -gt 1 ]; then
+    tail -n +2 "$TSV" | cut -f1 | sort -u > "$ZONE_PROCESSED_FILE"
+fi
 for (( idx=0; idx<ZONE_COUNT; idx++ )); do
     if [ "$STOPPED_AT_BOUNDARY" -eq 1 ]; then continue; fi
     IFS=$'\t' read -r z expansion s3d <<< "${ZONE_LINES[$idx]}"
     [ -n "$z" ] || continue
+    # Skip zones already in the TSV (resume)
+    if [ -s "$ZONE_PROCESSED_FILE" ] && grep -q "^${z}$" "$ZONE_PROCESSED_FILE" 2>/dev/null; then
+        say "resume skip (already in TSV): $z"
+        continue
+    fi
     # B854 runtime budget: stop CLEANLY at the zone boundary once 80 % of
     # --pi-runtime-limit has elapsed. The TSV resumes; the remaining zones
     # are printed below and in the verdict.
