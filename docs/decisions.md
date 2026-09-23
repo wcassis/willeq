@@ -1270,3 +1270,27 @@ tickets end to end** — merging an MR into `fable` once its pipeline is green
 (and, for kanban work, QA and review have passed), resuming the shepherd,
 unblocking waves — and does not hand those back as questions. Only class C
 (product/design) goes to Will.
+
+2026-09-23 (B653 chase-oracle, will's ruling in chat): **camera-pose oracle
+verification moves off pixel-similarity floors to authoritative numeric pose.**
+The chase-oracle card's check-3 "re-grab floor in 0.02-0.08" band is SUPERSEDED
+(its h288 0.2550/0.2676 over-band is heading/character-dependent idle animation,
+not camera noise — it cannot be banded away). New machinery, one ruling, three
+builds:
+1. **Pose logging (B874)**: server-authoritative (pos, heading, movestate) per
+   client from eqemu, plus fable's exact float camera state (`--pose-log`), both
+   as TSVs.
+2. **Chase-constants fit (B875)**: the official client's chase-cam constants
+   fitted ONE TIME from official stills recovered by PnP against known zone
+   geometry at logged (pos, heading) pairs; pinned by ctest (a ratchet, not a
+   comment). If the fit shows fable's constants wrong, that is a separate card
+   and a product call.
+3. **Pose-oracle checker (B876)**: expected chase camera = f(logged official
+   pose, fitted constants); measured = fable's logged camera; verdicts are
+   angular (<= 0.5 deg) and distance (<= 1 % of fitted) deltas. Idle frames are
+   labeled from the movestate log, never cited as camera evidence.
+Pixel comparison survives ONLY in the appearance lane (B281/B448), where the
+floor is SELF-CALIBRATING (recomputed per session from >= 3 re-grabs at the
+same commanded pose; 2x-floor on the static-geometry crop), never a hand-typed
+band. A pixel-similarity band is not a spec for camera pose; it was the wrong
+medium, and this ruling closes that lane.
