@@ -3,7 +3,8 @@
 
 Will's 2026-09-17 ruling (card B848, issue #4): GitLab issues are the durable
 record per work item; hermes kanban cards are execution legs; MRs close issues.
-Class B and P stay in BOARD.md for now -- migrate A and C first.
+Classes A and C migrated 2026-09-18, class B 2026-09-23 (T505, 91 issues);
+class P stays in BOARD.md for now.
 
 A LIVE entry is a bullet `- **B###** (X)` that is NOT wrapped in `~~` -- the
 class parenthetical may also be written `(class X, ...)` (B504 is the live
