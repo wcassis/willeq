@@ -57,6 +57,7 @@ hermes-ext worker therefore runs a Pi leg entirely over ssh — NFS paths exist 
 | `build` | the Release recipe from `CLAUDE.md`, `-j8` | 1,237 s (20.6 min) | 6 s |
 | `test` | full `ctest -j6`, minus two cases, then one of them with retries | 116 s (4,908 tests) | 116 s |
 | `gate` | `visual_gate` (T80/T291) over `build-gles2/bin/gles2_zone_benchmark` | 363 s | 18 s |
+| | B813 (2026-09-20): now over FIVE zones (qeynos2, gfaydark, befallen + iceclad + timorous) | — | 40 s (measured back-to-back on a quiet hermes-ext: 10.6 s wall for three zones, 19.6 s wall for five; +9.0 s wall) |
 
 (T502's own measurements on hermes-ext; `test` does the same work either way —
 only the two build trees are warm or cold. A cold `gate` includes building the

@@ -737,7 +737,7 @@ it without taking that measurement first.
   charges every byte of it. The *second* half of B812 (hook cost on ARM) is
   **NOT closed**: see B818.
 
-- **B813** (A, half struck; resolves T490's B803 origin entry) `s3dZoneSourceMemoryBytes` did not describe the → issue #7
+- **B813** (A, gate coverage struck by B813 / t_9bab9dd4, 2026-09-20; resolves T490's B803 origin entry) `s3dZoneSourceMemoryBytes` did not describe the → issue #7
   worst zone. ~~24 MiB~~ **→ 32 MiB in T491 (2026-09-17)**: the T293 figure was
   extrapolated from the three golden zones, and T490 then MEASURED iceclad's
   S3D zone source at **24.55 MiB**, over the old budget on its own. Re-derived
@@ -746,11 +746,15 @@ it without taking that measurement first.
   `config/constrained_presets.json` and the compiled-in `fromPreset` default,
   pinned by `test_constrained_renderer.cpp` and pinned EQUAL to the ledger's
   `zone_parse` budget (they bound the same bytes by two methods).
-  **STILL OPEN:** the gate only applies any of these budgets to the zones it
-  RUNS — qeynos2, gfaydark, befallen and the gfaydark coverage run — so **no CI
-  assertion covers iceclad or any Velious zone today**. Closing that means
-  adding a Velious zone to the gate's zone set, which means blessing new
-  goldens: **Will's call, not an executor's.**
+  **Struck 2026-09-20 (B813):** the gate now RUNS a Velious zone (iceclad)
+  and a Kunark zone (timorous) alongside the three classic zones, so every
+  ledger budget applies to both in CI. **OPEN FINDING from B813 (Will's
+  number to move, not an executor's):** on the two new zones the allocator
+  ledger charges more than the T491 budgets derived from the three small
+  classic zones — iceclad `zone_parse` 32.3 MiB vs the 32 MiB budget (1.08%
+  over its own named worst case), iceclad `zone_mesh` 2.1× and `spatial` 2.1×
+  budget, timorous `zone_mesh` 2.5× and `spatial` 2.8×. Evidence:
+  `refactor/B813/README.md`.
 
 - ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage

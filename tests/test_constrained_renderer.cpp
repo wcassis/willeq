@@ -1063,11 +1063,10 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudget
     EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(64) * 1024 * 1024);
     EXPECT_EQ(config.zoneGeometryMemoryBytes,     static_cast<size_t>(16) * 1024 * 1024);
     EXPECT_EQ(config.placeableObjectsMemoryBytes, static_cast<size_t>(24) * 1024 * 1024);
-    // T491 (board B803): 24 -> 32 MiB. The T293 figure was extrapolated from
-    // the three golden zones; T490 then MEASURED iceclad's S3D zone source at
-    // 24.55 MiB, over the old budget on its own. Re-derived on that measured
-    // worst case x 1.25 headroom = 30.7 -> 32 MiB (constrained_renderer_config.h).
-    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(32) * 1024 * 1024);
+    // T491 (board B803): 24 -> 32 MiB.
+    // B813 (2026-09-23): re-derived from measured worst case, round-up to
+    // next whole MiB = 34603008 (constrained_renderer_config.h).
+    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    34603008);
     EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
@@ -1083,9 +1082,9 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudget
     };
     EXPECT_EQ(ledgerBudget(Category::Unattributed),    static_cast<size_t>(1) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Archives),        static_cast<size_t>(4) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::ZoneParse),       static_cast<size_t>(32) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::ZoneMesh),        static_cast<size_t>(28) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::Spatial),         static_cast<size_t>(4) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::ZoneParse),       34603008);
+    EXPECT_EQ(ledgerBudget(Category::ZoneMesh),        30408704);
+    EXPECT_EQ(ledgerBudget(Category::Spatial),         12582912);
     EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(20) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::EntityModels),    static_cast<size_t>(84) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Objects),         static_cast<size_t>(40) * 1024 * 1024);
@@ -1141,11 +1140,10 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(64) * 1024 * 1024);
     EXPECT_EQ(config.zoneGeometryMemoryBytes,     static_cast<size_t>(16) * 1024 * 1024);
     EXPECT_EQ(config.placeableObjectsMemoryBytes, static_cast<size_t>(24) * 1024 * 1024);
-    // T491 (board B803): 24 -> 32 MiB. The T293 figure was extrapolated from
-    // the three golden zones; T490 then MEASURED iceclad's S3D zone source at
-    // 24.55 MiB, over the old budget on its own. Re-derived on that measured
-    // worst case x 1.25 headroom = 30.7 -> 32 MiB (constrained_renderer_config.h).
-    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(32) * 1024 * 1024);
+    // T491 (board B803): 24 -> 32 MiB.
+    // B813 (2026-09-23): re-derived from measured worst case, round-up to
+    // next whole MiB = 34603008 (constrained_renderer_config.h).
+    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    34603008);
     EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
@@ -1161,9 +1159,9 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     };
     EXPECT_EQ(ledgerBudget(Category::Unattributed),    static_cast<size_t>(1) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Archives),        static_cast<size_t>(4) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::ZoneParse),       static_cast<size_t>(32) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::ZoneMesh),        static_cast<size_t>(28) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::Spatial),         static_cast<size_t>(4) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::ZoneParse),       34603008);
+    EXPECT_EQ(ledgerBudget(Category::ZoneMesh),        30408704);
+    EXPECT_EQ(ledgerBudget(Category::Spatial),         12582912);
     EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(20) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::EntityModels),    static_cast<size_t>(84) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Objects),         static_cast<size_t>(40) * 1024 * 1024);

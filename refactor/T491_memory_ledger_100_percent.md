@@ -296,7 +296,10 @@ time, so its allocations are attributed by the scope that called into it
   Pi-dependent number above is flagged **[assumed]** and boarded as **B812**.
 - **No Velious zone in the gate.** The gate asserts only the zones it runs, so
   iceclad is uncovered; adding one means blessing new goldens, which is Will's
-  call. Open half of **B813**.
+  call. **STRUCK by B813 (t_9bab9dd4, 2026-09-20)**: under Will's 2026-09-20
+  ruling on issue #7, iceclad and timorous now run in the gate
+  (`refactor/B813/README.md`). Their ledger overruns are B813's open finding —
+  a budget question for Will, not a B813 defect.
 
 ### 11. Verification bar [measured]
 
