@@ -776,10 +776,24 @@ run_zone() {
 # ---- 4. the loop: heavy-first, a failure never stops the sweep -------------
 # s3d_bytes descending; rows without a census entry (unknown bytes) sort
 # after the known ones.
+#
+# B854 selftest fix (2026-09-21): the zone loop used <<< "$ZONE_ROWS", a
+# here-string that feeds stdin. Any foreground pi_remote call inside run_zone
+# (ssh) inherits that stdin and relays it to the remote shell, swallowing
+# remaining loop lines. The fix: write sorted rows to a temp file and read
+# the index with mapfile — the loop body never touches stdin.
+ZONE_TMPFILE="$(mktemp)"
+trap 'rm -f "$ZONE_TMPFILE"' EXIT
+printf '%s' "$ZONE_ROWS" | sort -t"$(printf '\t')" -k3,3nr > "$ZONE_TMPFILE"
+ZONE_COUNT="$(grep -c . "$ZONE_TMPFILE")"
+
 FAILURES=0
 RUN_STARTED=$(date +%s)
 STOPPED_AT_BOUNDARY=0
-while IFS=$'\t' read -r z expansion s3d; do
+mapfile -t ZONE_LINES < "$ZONE_TMPFILE"
+for (( idx=0; idx<ZONE_COUNT; idx++ )); do
+    if [ "$STOPPED_AT_BOUNDARY" -eq 1 ]; then continue; fi
+    IFS=$'\t' read -r z expansion s3d <<< "${ZONE_LINES[$idx]}"
     [ -n "$z" ] || continue
     # B854 runtime budget: stop CLEANLY at the zone boundary once 80 % of
     # --pi-runtime-limit has elapsed. The TSV resumes; the remaining zones
@@ -790,14 +804,14 @@ while IFS=$'\t' read -r z expansion s3d; do
         if [ "$ELAPSED_MIN" -ge "$BUDGET_80" ]; then
             STOPPED_AT_BOUNDARY=1
             say "runtime budget: ${ELAPSED_MIN} min elapsed >= 80% of ${PI_RUNTIME_LIMIT_MIN} min -- stopping at the zone boundary (resume with the remaining zones)"
-            break
+            continue
         fi
     fi
     if ! run_zone "$z" "${expansion:-}" "${s3d:-}"; then
         FAILURES=$((FAILURES + 1))
     fi
     say "progress: $(($(grep -c . "$TSV") - 1)) row(s) recorded, ${FAILURES} failure(s) in this run"
-done <<< "$(sort -t"$(printf '\t')" -k3,3nr <<< "$ZONE_ROWS")"
+done
 
 # ---- 5. verdict -------------------------------------------------------------
 ROWS=$(( $(grep -c . "$TSV") - 1 ))
