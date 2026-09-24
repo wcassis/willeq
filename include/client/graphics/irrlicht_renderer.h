@@ -338,6 +338,22 @@ public:
     CameraMode getCameraMode() const { return PlayerCamera().cameraMode(); }
     std::string getCameraModeString() const { return playerCamera_->getCameraModeString(); }
 
+    // B874: pose-log accessors for Application::render().
+    // Returns camera position/target in Irrlicht frame, and player pose.
+    void getPoseData(irr::core::vector3df& camPos, irr::core::vector3df& camTarget,
+                     float& playerX, float& playerY, float& playerZ,
+                     uint16_t& heading512, int& camModeNum, int& moveState) const;
+    // Timestamp (ms) and frame counter from the device/timer.
+    int64_t getTimerMs() const { return ctx_.device->getTimer()->getTime(); }
+    int getFrameNumber() const { return static_cast<int>(ctx_.frameNumber); }
+    // Stable camera mode string pointer for TSV (no alloc).
+    const char* getCameraModeStringPtr() const;
+    // Stable movement state string pointer for TSV (no alloc).
+    const char* getMovementStatePtr() const;
+    // Direct access to PlayerCameraComponent movement state (for pose-logger).
+    bool isPlayerSwimming() const { return playerCamera_ && playerCamera_->isSwimming(); }
+    bool isPlayerMoving() const;
+
     // Process input and render a single frame; false means stop.
     // L11 (Batch L): FrameComponent owns the loop and all four phases. This
     // forwarder stays for application_frame.cpp:181, run() below and two

@@ -154,6 +154,13 @@ struct ApplicationConfig {
     // complete no-op when dumpFramesDir is empty or dumpFramesEvery is 0.
     int dumpFramesMaxCount = 600;
 
+    // B874 Deliverable B: --pose-log <path> TSV writer. Every rendered frame
+    // (N=1 default), one line of exact-float camera/player pose data.
+    // Zero cost when off (no file handle open).
+    std::string poseLogPath;
+    int poseLogEvery = 0;  // 0 = disabled
+    int poseLogMaxCount = 600;
+
     // T310 Leg A: --fpcam name=value[,name=value...] (repeatable) -- the
     // startup form of the /fpcam command, so a camera sweep can launch a
     // fresh process per candidate value instead of typing into a running one.
@@ -694,6 +701,12 @@ private:
     // T64: video-capture frame-dump state (render thread only, see render()).
     uint64_t m_dumpFrameCounter = 0;   // increments every processFrame() call
     uint64_t m_dumpFrameIndex = 0;     // increments only when a PNG is written
+
+    // B874: pose-log state (render thread only, see render()).
+    std::string m_poseLogPath;
+    uint64_t m_poseLogCounter = 0;
+    uint64_t m_poseLogIndex = 0;
+    std::FILE* m_poseLogFile = nullptr;
 };
 
 } // namespace eqt

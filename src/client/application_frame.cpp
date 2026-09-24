@@ -213,6 +213,76 @@ void Application::render(float deltaTime) {
                     }
                 }
             }
+
+            // B874: pose-log TSV writer. Exact-float camera/player pose every Nth frame.
+            if (!m_config.poseLogPath.empty() && m_config.poseLogEvery > 0
+                && m_poseLogIndex < static_cast<uint64_t>(m_config.poseLogMaxCount)) {
+                // Zero cost when off: file open only happens once at first write.
+                if (m_poseLogFile == nullptr && !m_poseLogPath.empty()) {
+                    m_poseLogFile = std::fopen(m_poseLogPath.c_str(), "w");
+                    if (m_poseLogFile) {
+                        // TSV header: 13 columns documented in task t_ddd5d038.
+                        std::fprintf(m_poseLogFile,
+                            "# ts_unix_ms  frame  cameramode  "
+                            "camX  camY  camZ  "
+                            "targetX  targetY  targetZ  "
+                            "playerX  playerY  playerZ  "
+                            "heading0_512  movestate\n");
+                        std::fflush(m_poseLogFile);
+                    } else {
+                        LOG_ERROR(MOD_GRAPHICS, "pose-log: failed to open '{}'", m_poseLogPath);
+                    }
+                }
+
+                if (m_poseLogFile) {
+                    ++m_poseLogCounter;
+                    if (m_poseLogCounter % static_cast<uint64_t>(m_config.poseLogEvery) == 0) {
+                        // Grab pose from the renderer.
+                        irr::core::vector3df camPos, camTarget;
+                        float playerX, playerY, playerZ;
+                        uint16_t heading512 = 0;
+                        int camModeNum = 0;
+                        int moveState = 0;
+                        m_renderer->getPoseData(camPos, camTarget,
+                            playerX, playerY, playerZ,
+                            heading512, camModeNum, moveState);
+
+                        // Timestamp from device timer (ms).
+                        int64_t tsMs = static_cast<int64_t>(m_renderer->getTimerMs());
+                        int frameNum = static_cast<int>(m_renderer->getFrameNumber());
+
+                        // Camera mode name from renderer.
+                        const char* camModeStr = m_renderer->getCameraModeStringPtr();
+
+                        // Movement state string.
+                        const char* movStateStr = m_renderer->getMovementStatePtr();
+
+                        // Write one TSV line per frame.
+                        std::fprintf(m_poseLogFile,
+                            "%lld  %d  %s  "
+                            "%.6f  %.6f  %.6f  "
+                            "%.6f  %.6f  %.6f  "
+                            "%.6f  %.6f  %.6f  "
+                            "%d  %s\n",
+                            static_cast<long long>(tsMs),
+                            frameNum,
+                            camModeStr,
+                            camPos.X, camPos.Y, camPos.Z,
+                            camTarget.X, camTarget.Y, camTarget.Z,
+                            playerX, playerY, playerZ,
+                            heading512,
+                            movStateStr);
+                        std::fflush(m_poseLogFile);
+
+                        ++m_poseLogIndex;
+                        if (m_poseLogIndex >= static_cast<uint64_t>(m_config.poseLogMaxCount)) {
+                            LOG_INFO(MOD_GRAPHICS, "pose-log: reached --pose-log cap ({}), stopping capture", m_config.poseLogMaxCount);
+                            std::fclose(m_poseLogFile);
+                            m_poseLogFile = nullptr;
+                        }
+                    }
+                }
+            }
             m_lastGraphicsUpdate = now;
         }
     }

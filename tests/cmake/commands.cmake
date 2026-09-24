@@ -634,3 +634,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_corpse_coin PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_corpse_coin DISCOVERY_TIMEOUT 120)
+
+# B874: parseArguments()-only coverage for the --pose-log TSV pose-logger's
+# CLI flags. Static method, no renderer/GL context needed -- see the file
+# header comment for what is and isn't covered here.
+ADD_EXECUTABLE(test_pose_log_flags
+    test_pose_log_flags.cpp
+)
+TARGET_LINK_LIBRARIES(test_pose_log_flags GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_pose_log_flags PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_pose_log_flags DISCOVERY_TIMEOUT 120)

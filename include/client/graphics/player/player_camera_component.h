@@ -295,6 +295,15 @@ public:
 	// cancel-on-movement-key.
 	void toggleAutorun() { playerMovement_.autorun = !playerMovement_.autorun; }
 	bool autorun() const { return playerMovement_.autorun; }
+
+	// B874: pose-log public accessors for PlayerMovementState fields.
+	bool isJumping() const { return playerMovement_.isJumping; }
+	bool isMoving() const {
+		return playerMovement_.moveForward || playerMovement_.moveBackward ||
+			playerMovement_.strafeLeft || playerMovement_.strafeRight ||
+			playerMovement_.turnLeft || playerMovement_.turnRight;
+	}
+
 	void resetVisionToBase();
 	VisionType getBaseVision() const { return baseVision_; }
 

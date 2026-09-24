@@ -1072,6 +1072,66 @@ void IrrlichtRenderer::setNightAmbientProbe(AmbientRGB night) {
     markSceneAmbientDirty();
 }
 
+// B874: pose-log accessor implementations.
+// getPoseData -- fills output params from camera + player state.
+void IrrlichtRenderer::getPoseData(
+    irr::core::vector3df& camPos, irr::core::vector3df& camTarget,
+    float& playerX, float& playerY, float& playerZ,
+    uint16_t& heading512, int& camModeNum, int& moveState) const {
+    camPos = irr::core::vector3df(0, 0, 0);
+    camTarget = irr::core::vector3df(0, 0, 0);
+    playerX = playerY = playerZ = 0;
+    heading512 = 0;
+    camModeNum = static_cast<int>(playerCamera_->cameraMode());
+    moveState = 0;
+
+    if (!playerCamera_ || !ctx_.camera) return;
+
+    // Camera position and target from Irrlicht camera node (Irrlicht frame).
+    camPos = ctx_.camera->getPosition();
+    camTarget = ctx_.camera->getTarget();
+
+    // Player position from renderer context (EQ frame).
+    playerX = ctx_.playerX;
+    playerY = ctx_.playerY;
+    playerZ = ctx_.playerZ;
+
+    // Heading from renderer context.
+    heading512 = static_cast<uint16_t>(ctx_.playerHeading * 512.0f / 360.0f);
+
+    // Movement state from player camera component (direct member, not via PlayerModeConfig).
+    int state = 0;  // 0=idle, 1=move, 2=jump, 3=swim
+    if (playerCamera_->isSwimming()) {
+        state = 3;
+    } else if (playerCamera_->isJumping()) {
+        state = 2;
+    } else if (playerCamera_->isMoving()) {
+        state = 1;
+    }
+    moveState = state;
+}
+
+// Stable camera mode string pointer -- no heap alloc.
+const char* IrrlichtRenderer::getCameraModeStringPtr() const {
+    return playerCamera_->getCameraModeString().c_str();
+}
+
+// Stable movement state string pointer -- no heap alloc.
+const char* IrrlichtRenderer::getMovementStatePtr() const {
+    // Static cache to avoid repeated std::string construction per frame.
+    static const char* s_states[] = {"idle", "move", "jump", "swim"};
+    if (isPlayerSwimming()) return s_states[3];
+    if (playerCamera_ && playerCamera_->isJumping()) return s_states[2];
+    if (isPlayerMoving()) return s_states[1];
+    return s_states[0];
+}
+
+// isPlayerMoving implementation.
+bool IrrlichtRenderer::isPlayerMoving() const {
+    if (!playerCamera_) return false;
+    return playerCamera_->isMoving();
+}
+
 
 } // namespace Graphics
 } // namespace EQT
