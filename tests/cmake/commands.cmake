@@ -635,9 +635,12 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_corpse_coin DISCOVERY_TIMEOUT 120)
 
-# B874: parseArguments()-only coverage for the --pose-log TSV pose-logger's
-# CLI flags. Static method, no renderer/GL context needed -- see the file
-# header comment for what is and isn't covered here.
+# B874: the --pose-log TSV pose-logger. Two halves in one binary:
+# the CLI flags (--pose-log/--pose-every/--pose-max-frames, a static
+# parseArguments() call) and the row format
+# (include/client/graphics/pose_log_format.h) -- the 14-column TSV the
+# B875/B876 pose-oracle chain consumes, asserted here without a renderer
+# (the GATHER/FORMAT split is the FPCAM-DUMP precedent).
 ADD_EXECUTABLE(test_pose_log_flags
     test_pose_log_flags.cpp
 )

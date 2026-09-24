@@ -61,6 +61,13 @@ const Waiver kWaivers[] = {
     {"tests/test_video_capture_flags.cpp", "capture",
      "a command-line VALUE parsed into ApplicationConfig and compared back; "
      "no file or directory is ever created"},
+    {"tests/test_pose_log_flags.cpp", "pose_log.tsv",
+     "a command-line VALUE parsed into ApplicationConfig and compared back "
+     "(--pose-log); no file is ever created -- the row-format tests write "
+     "under a getpid()-stemed name instead"},
+    {"tests/test_pose_log_flags.cpp", "capture",
+     "a command-line VALUE parsed into ApplicationConfig and compared back "
+     "(--dump-frames-dir); no file or directory is ever created"},
     {"tests/test_zone_component.cpp", "k09-navmesh",
      "a setter/getter round trip on ZoneComponent's navmesh path string; the "
      "path is never opened"},
