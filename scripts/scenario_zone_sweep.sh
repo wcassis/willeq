@@ -271,6 +271,10 @@ fi
 
 SNAPSHOT="$OUT_DIR/snapshot_before.tsv"
 AFTER="$OUT_DIR/snapshot_after.tsv"
+# Initialized empty so an early exit (exit 65/68, before the zone loop assigns
+# them) cannot abort cleanup() under set -u; cleanup() guards the rm.
+ZONE_TMPFILE=""
+ZONE_PROCESSED_FILE=""
 CLEANED=0
 RESTORE_BAD=0
 CLIENT_PID=""
@@ -281,7 +285,10 @@ cleanup() {
     [ -n "$CLIENT_PID" ] && sleep 2
     [ -n "$CLIENT_PID" ] && kill -9 "$CLIENT_PID" >/dev/null 2>&1
     # Clean up temp files created by the zone loop (trap clobber fix).
-    rm -f "$ZONE_TMPFILE" "$ZONE_PROCESSED_FILE" 2>/dev/null
+    # Guarded: the vars are initialized empty above so early exits (65/68)
+    # before the zone loop cannot abort this cleanup under set -u.
+    [ -n "$ZONE_TMPFILE" ] && rm -f "$ZONE_TMPFILE" 2>/dev/null
+    [ -n "$ZONE_PROCESSED_FILE" ] && rm -f "$ZONE_PROCESSED_FILE" 2>/dev/null
     if [ "$PI" -eq 1 ]; then
         # A half-dead Pi client must not outlive the lock hold.
         pi_remote "pkill -9 -f 'willeq -c ${PI_CFG}' >/dev/null 2>&1; true" >/dev/null 2>&1 || true
@@ -785,7 +792,6 @@ run_zone() {
 # remaining loop lines. The fix: write sorted rows to a temp file and read
 # the index with mapfile — the loop body never touches stdin.
 ZONE_TMPFILE="$(mktemp)"
-trap 'rm -f "$ZONE_TMPFILE"' EXIT
 printf '%s' "$ZONE_ROWS" | sort -t"$(printf '\t')" -k3,3nr > "$ZONE_TMPFILE"
 ZONE_COUNT="$(grep -c . "$ZONE_TMPFILE")"
 
@@ -797,7 +803,8 @@ mapfile -t ZONE_LINES < "$ZONE_TMPFILE"
 # On resume, the heaviest zones may already have rows from a previous run;
 # only process zones NOT already in the TSV.
 ZONE_PROCESSED_FILE="$(mktemp)"
-trap 'rm -f "$ZONE_TMPFILE" "$ZONE_PROCESSED_FILE"' EXIT
+# Both temp files are removed by cleanup() (the single `trap cleanup EXIT INT
+# TERM` above) — no bare EXIT trap here, which would clobber it.
 if [ -f "$TSV" ] && [ "$(grep -c . "$TSV")" -gt 1 ]; then
     tail -n +2 "$TSV" | cut -f1 | sort -u > "$ZONE_PROCESSED_FILE"
 fi
