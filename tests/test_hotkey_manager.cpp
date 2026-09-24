@@ -1095,6 +1095,18 @@ TEST_F(HotkeyOracleWindowKeysTest, T471_TheShippedHotkeysJsonCarriesTheMeasuredC
 // binding -- action, mode, key and modifiers -- through the exact sequence
 // Application::loadConfigFile() runs.
 //
+// B562 (board; GitLab #182) made the comparison go BOTH ways. The converse was
+// the defect: the file bound actions the defaults did not -- seven of them
+// (CancelDialog, CancelInput, ChatAutocomplete, ConfirmDialog,
+// ResetUIDefaults, SaveUILayout, ToggleUILock) in the global section, and
+// ToggleZoneLights (Ctrl+F4) in the player section -- so when the file could
+// not be read those keys silently vanished; two further file-only camera
+// aliases (T466-measured Shift+Plus, NumpadSubtract) surfaced in the same
+// sweep and went into the defaults with them. The second loop below fails on
+// any file binding the defaults drop; the two loops keep the tables in
+// lock-step for good, and neither hardcodes an action list -- a new binding
+// on either side is measured, not quoted.
+//
 // MEASURED before T464: five defaults were absent from the file -- Alt+C
 // (ToggleCombatAbilities), L (CycleObjectLights), F10 (MusicVolumeDown),
 // Shift+F10 (EffectsVolumeDown) and Shift+F11 (EffectsVolumeUp) -- so those
@@ -1162,6 +1174,21 @@ TEST(HotkeyShippedFileTest, T464_TheShippedFileCarriesEveryDefaultBinding) {
     }
     EXPECT_EQ(exempted, 1u) << "the F11 exemption no longer matches a default; "
                                "if B561 was settled, delete the exemption";
+
+    // B562, the converse: the file must not bind anything the defaults do not.
+    // A file-only binding is silently dead in the fallback (no-file) run, so
+    // it is the same class of defect as a default the file drops.
+    for (const auto& p : production) {
+        if (IsTheOracleOwedF11Conflict(p)) {
+            continue;
+        }
+        EXPECT_TRUE(Contains(defaults, p))
+            << "config/hotkeys.json binds "
+            << HotkeyManager::actionEnumToName(p.action) << " = "
+            << HotkeyManager::bindingToString(p)
+            << " but setupDefaults() does not -- the binding vanishes when the "
+               "file cannot be read";
+    }
     mgr.resetToDefaults();
 }
 

@@ -468,6 +468,29 @@ void HotkeyManager::setupDefaults() {
     // scrolling a loot list does not also strafe the player.
     addBinding(HotkeyAction::ScrollUIUp, HotkeyMode::Global, irr::KEY_PRIOR);
     addBinding(HotkeyAction::ScrollUIDown, HotkeyMode::Global, irr::KEY_NEXT);
+    // B562 (board; GitLab #182): the shipped config/hotkeys.json binds these
+    // Global actions, so the compiled-in defaults must carry the same keys --
+    // when the file cannot be read (loadFromFile() logs an ERROR) the defaults
+    // stay in effect, and the keys must not vanish. Same keys as the file;
+    // adding them here does not rebind anything the file loads.
+    // ToggleZoneLights is the ONE of the eight with a dispatch consumer
+    // (RendererEventReceiver -> RA::ToggleZoneLights ->
+    // DiagnosticsComponent::toggleZoneLights). The other seven fall to the
+    // switch's default: they are bound, parseable and testable, but have no
+    // consumer -- noted in the B562 MR, not invented here.
+    addBinding(HotkeyAction::ToggleUILock, HotkeyMode::Global, irr::KEY_KEY_L, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::SaveUILayout, HotkeyMode::Global, irr::KEY_KEY_S, ModifierFlags::Ctrl);
+    addBinding(HotkeyAction::ResetUIDefaults, HotkeyMode::Global, irr::KEY_KEY_R, ModifierFlags::Ctrl | ModifierFlags::Shift);
+    addBinding(HotkeyAction::ConfirmDialog, HotkeyMode::Global, irr::KEY_RETURN);
+    addBinding(HotkeyAction::ConfirmDialog, HotkeyMode::Global, irr::KEY_KEY_Y);
+    addBinding(HotkeyAction::CancelDialog, HotkeyMode::Global, irr::KEY_ESCAPE);
+    addBinding(HotkeyAction::CancelDialog, HotkeyMode::Global, irr::KEY_KEY_N);
+    addBinding(HotkeyAction::CancelInput, HotkeyMode::Global, irr::KEY_ESCAPE);
+    addBinding(HotkeyAction::ChatAutocomplete, HotkeyMode::Global, irr::KEY_TAB);
+    // The file's one NON-Global of the eight: it sits in the player section
+    // (below CameraPitchDown), and getAction() runs Global first, so the
+    // default must match that mode exactly or the tables disagree.
+    addBinding(HotkeyAction::ToggleZoneLights, HotkeyMode::Player, irr::KEY_F4, ModifierFlags::Ctrl);
 
     // === Player Mode - Movement ===
     addBinding(HotkeyAction::MoveForward, HotkeyMode::Player, irr::KEY_KEY_W);
@@ -577,6 +600,11 @@ void HotkeyManager::setupDefaults() {
     // === Player Mode - Camera ===
     addBinding(HotkeyAction::CameraZoomIn, HotkeyMode::Player, irr::KEY_PLUS);
     addBinding(HotkeyAction::CameraZoomOut, HotkeyMode::Player, irr::KEY_MINUS);
+    // B562: T466's oracle Camera page also measured Shift+Plus / NumpadSubtract
+    // (the shipped file carries them, T471); the defaults must, or the
+    // fallback run (file unreadable) loses them.
+    addBinding(HotkeyAction::CameraZoomIn, HotkeyMode::Player, irr::KEY_PLUS, ModifierFlags::Shift);
+    addBinding(HotkeyAction::CameraZoomOut, HotkeyMode::Player, irr::KEY_SUBTRACT);
     // T461: F9 is Will's ruling and REPLACES Ctrl+F5, with no alias. The
     // official action is TOGGLECAM ("Toggle camera view", eqstr_us.txt 6536),
     // and T466 MEASURED F9 as its key on the official client.
