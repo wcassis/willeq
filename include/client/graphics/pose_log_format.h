@@ -1,12 +1,13 @@
 // B874 (round 2) -- the --pose-log TSV row format, split from the writer.
 //
 // The writer (Application::render(), application_frame.cpp) gathers one
-// PoseLogSnapshot per frame and hands it to poseLogRow(); the file I/O never
-// sees the format. That split is the FPCAM-DUMP precedent (GATHER from
-// FORMAT) and it is what makes the row testable without a renderer or a GL
-// context: tests/test_pose_log_flags.cpp feeds the format the same values a
-// frame would and asserts the TSV parses (14 tab-separated columns, the
-// space-carrying camera-mode field, the EQ-frame heading).
+// PoseLogRow every Nth rendered frame and hands it to poseLogRow() with a
+// wall-clock ts; the file I/O never sees the format. That split is the
+// FPCAM-DUMP precedent (GATHER from FORMAT) and it is what makes the row
+// testable without a renderer or a GL context: tests/test_pose_log_flags.cpp
+// feeds the format the same values a frame would and asserts the TSV parses
+// (14 tab-separated columns, the space-carrying camera-mode field, the
+// EQ-frame heading).
 //
 // The columns (Deliverable B spec, card t_c1c2b63b; the row has 14 fields
 // -- the B874 cards' "13 columns" is a miscount of this very row.
