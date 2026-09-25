@@ -55,7 +55,7 @@ import sys
 # Binaries deliberately allowed in bin/ with no producing target. Empty is the
 # intended steady state; an entry needs a reason and the unit that decided it.
 ALLOWLIST = {
-    # "some_binary": "why, and the unit that decided it",
+    "test_pose_log_flags": "B874 unit test, built on fable merge (MR !33 only); not on this branch's CMake graph",
 }
 
 
