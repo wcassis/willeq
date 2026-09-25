@@ -1072,6 +1072,51 @@ void IrrlichtRenderer::setNightAmbientProbe(AmbientRGB night) {
     markSceneAmbientDirty();
 }
 
+// B874: pose-log accessor implementation.
+// getPoseData -- gathers one PoseLogRow. All X/Y/Z columns are the EQ Z-up
+// frame: the camera node values are converted out of the Irrlicht Y-up frame
+// with the same (x,z,y) swap as CameraController::getPositionEQ()
+// (camera_controller.cpp), and the player values come straight from
+// ctx_.playerX/Y/Z. heading0_512 is ctx_.playerHeading as-is -- it is
+// ALREADY in EQ 0-512 units (renderer_player_physics.cpp normalizes it), so
+// it must not be rescaled. cameraMode and movementState are one reading of
+// PlayerCameraComponent each; pose_log_format.h turns them into the row's
+// string fields, so the two state sources cannot diverge.
+void IrrlichtRenderer::getPoseData(EQT::Graphics::PoseLogRow& row) const {
+    row = EQT::Graphics::PoseLogRow{};
+    if (!playerCamera_ || !ctx_.camera) return;
+
+    // Camera position and target, converted to the EQ frame.
+    const irr::core::vector3df pos = ctx_.camera->getPosition();
+    const irr::core::vector3df target = ctx_.camera->getTarget();
+    row.camX = pos.X;
+    row.camY = pos.Z;  // Irrlicht Y-up -> EQ Z-up: (x, z, y)
+    row.camZ = pos.Y;
+    row.targetX = target.X;
+    row.targetY = target.Z;
+    row.targetZ = target.Y;
+
+    // Player position (EQ frame) and heading (EQ 0-512 units, as-is).
+    row.playerX = ctx_.playerX;
+    row.playerY = ctx_.playerY;
+    row.playerZ = ctx_.playerZ;
+    float heading = ctx_.playerHeading;
+    while (heading < 0) heading += 512.0f;
+    while (heading >= 512.0f) heading -= 512.0f;
+    row.heading0_512 = static_cast<uint16_t>(heading);
+
+    row.cameraMode = playerCamera_->cameraMode();
+
+    // 0=idle, 1=move, 2=jump, 3=swim.
+    if (playerCamera_->isSwimming()) {
+        row.movementState = 3;
+    } else if (playerCamera_->isJumping()) {
+        row.movementState = 2;
+    } else if (playerCamera_->isMoving()) {
+        row.movementState = 1;
+    }
+}
+
 
 } // namespace Graphics
 } // namespace EQT

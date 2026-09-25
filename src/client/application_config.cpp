@@ -262,6 +262,20 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.dumpFramesMaxCount = std::atoi(argv[++i]);
             }
+        } else if (arg == "--pose-log") {
+            if (i + 1 < argc) {
+                config.poseLogPath = argv[++i];
+                config.poseLogEvery = 1;  // every frame default
+                config.poseLogMaxCount = 600;
+            }
+        } else if (arg == "--pose-every") {
+            if (i + 1 < argc) {
+                config.poseLogEvery = std::atoi(argv[++i]);
+            }
+        } else if (arg == "--pose-max-frames") {
+            if (i + 1 < argc) {
+                config.poseLogMaxCount = std::atoi(argv[++i]);
+            }
         } else if (arg == "--help" || arg == "-h") {
             config.showHelp = true;
             std::cout << "Usage: " << argv[0] << " [options]\n";
@@ -285,6 +299,9 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --dump-frames-dir <dir>  Video-capture evidence tool: write numbered PNG frames to <dir> (needs --dump-every)\n";
             std::cout << "  --dump-every <N>         Video-capture: dump every Nth rendered frame\n";
             std::cout << "  --dump-max-frames <N>    Video-capture: stop after N frames written (default 600)\n";
+            std::cout << "  --pose-log <file>        Pose-logger: write exact-float camera/player pose to 14-column TSV (every frame default)\n";
+            std::cout << "  --pose-every <N>         Pose-logger: write one row every Nth rendered frame (default 1)\n";
+            std::cout << "  --pose-max-frames <N>    Pose-logger: stop after N rows written (default 600)\n";
 #ifdef EQT_HAS_GRAPHICS
             std::cout << "  -ng, --no-graphics       Disable graphical rendering\n";
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";

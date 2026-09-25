@@ -51,6 +51,7 @@
 #include "client/input/hotkey_manager.h"
 
 #include "client/graphics/renderer_context.h"
+#include "client/graphics/pose_log_format.h"
 #include "client/graphics/eqe1/eqe1_archive_component.h"
 #include "client/graphics/overlays/overlays_component.h"
 #include "client/graphics/diagnostics/diagnostics_component.h"
@@ -337,6 +338,14 @@ public:
     }
     CameraMode getCameraMode() const { return PlayerCamera().cameraMode(); }
     std::string getCameraModeString() const { return playerCamera_->getCameraModeString(); }
+
+    // B874: pose-log accessor for Application::render(). Gathers one
+    // EQT::Graphics::PoseLogRow (all X/Y/Z columns in the EQ Z-up frame, see
+    // include/client/graphics/pose_log_format.h); the row is FORMATTED there,
+    // so the int state and the string field cannot diverge.
+    void getPoseData(EQT::Graphics::PoseLogRow& row) const;
+    // The render-thread frame counter for the row's frame column.
+    int getFrameNumber() const { return static_cast<int>(ctx_.frameNumber); }
 
     // Process input and render a single frame; false means stop.
     // L11 (Batch L): FrameComponent owns the loop and all four phases. This

@@ -26,6 +26,7 @@
 #include <thread>
 #include <algorithm>
 #include <set>
+#include <chrono>
 #include <cctype>
 #include <sys/stat.h>
 
@@ -45,6 +46,7 @@
 #include "client/hotbar/hotbar_model.h"
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/pose_log_format.h"
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/constrained_texture_cache.h"
@@ -210,6 +212,47 @@ void Application::render(float deltaTime) {
                     if (m_dumpFrameIndex >= static_cast<uint64_t>(m_config.dumpFramesMaxCount)) {
                         LOG_INFO(MOD_GRAPHICS, "Frame dump: reached --dump-max-frames cap ({}), stopping capture",
                             m_config.dumpFramesMaxCount);
+                    }
+                }
+            }
+
+            // B874: pose-log TSV writer. One 14-column TSV row per Nth
+            // rendered frame; the row format lives in
+            // include/client/graphics/pose_log_format.h (tabs on purpose --
+            // the camera-mode field carries spaces). The file is opened
+            // lazily on the first row, so off-by-default is zero cost.
+            if (!m_config.poseLogPath.empty() && m_config.poseLogEvery > 0
+                && m_poseLogIndex < static_cast<uint64_t>(m_config.poseLogMaxCount)) {
+                if (m_poseLogFile == nullptr && !m_config.poseLogPath.empty()) {
+                    m_poseLogFile = EQT::Graphics::poseLogOpen(m_config.poseLogPath);
+                    if (m_poseLogFile == nullptr) {
+                        LOG_ERROR(MOD_GRAPHICS, "pose-log: failed to open '{}'", m_config.poseLogPath);
+                    }
+                }
+
+                if (m_poseLogFile) {
+                    ++m_poseLogCounter;
+                    if (m_poseLogCounter % static_cast<uint64_t>(m_config.poseLogEvery) == 0) {
+                        EQT::Graphics::PoseLogRow row;
+                        m_renderer->getPoseData(row);
+                        row.frame = m_renderer->getFrameNumber();
+
+                        // Real wall clock (unix epoch ms): ITimer::getTime()
+                        // is virtual time starting at 0, which the column
+                        // contract (Deliverable A's ts is comparable to host
+                        // time) does not allow.
+                        const int64_t tsMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::system_clock::now().time_since_epoch()).count();
+
+                        EQT::Graphics::poseLogRow(m_poseLogFile, tsMs, row);
+                        std::fflush(m_poseLogFile);
+
+                        ++m_poseLogIndex;
+                        if (m_poseLogIndex >= static_cast<uint64_t>(m_config.poseLogMaxCount)) {
+                            LOG_INFO(MOD_GRAPHICS, "pose-log: reached --pose-max-frames cap ({}), stopping capture",
+                                m_config.poseLogMaxCount);
+                            EQT::Graphics::poseLogClose(m_poseLogFile);
+                        }
                     }
                 }
             }
