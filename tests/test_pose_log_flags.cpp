@@ -351,13 +351,12 @@ TEST(PoseLogWriter, FileAppearsAtConfigPath) {
     const willeq_test::ScopedTempDir tmp("t874_writer_path");  // B571
     const std::string path = (tmp / "pose_log.tsv").string();
 
-    // Simulate exactly what the render-thread writer does: open, header, rows, flush, close.
-    std::FILE* f = std::fopen(path.c_str(), "w");
+    // Use the SAME unit the writer uses: poseLogOpen (fopen + header + flush),
+    // poseLogRow for data, poseLogClose to finalize. This ensures a wiring
+    // regression (re-pointed member, unreachable block, wrong path) makes this
+    // test fail — the mechanism that let finding #10 survive two rounds.
+    std::FILE* f = EQT::Graphics::poseLogOpen(path);
     ASSERT_NE(f, nullptr) << "writer must open the path from config";
-
-    // Header must appear first.
-    std::fputs(EQT::Graphics::poseLogHeaderLine(), f);
-    std::fflush(f);
 
     // Write two rows (one idle, one moving).
     int64_t ts = 1758000000000LL;
@@ -372,8 +371,7 @@ TEST(PoseLogWriter, FileAppearsAtConfigPath) {
     ts += 16;
     EQT::Graphics::poseLogRow(f, ts, r2);
 
-    std::fflush(f);
-    std::fclose(f);
+    EQT::Graphics::poseLogClose(f);
 
     // File must exist and contain header + 2 rows.
     std::ifstream in(path);

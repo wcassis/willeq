@@ -27,6 +27,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <string>
 
 #include "client/graphics/player/camera_mode.h"
 
@@ -72,6 +73,27 @@ inline void poseLogRow(std::FILE* out, int64_t tsUnixMs, const PoseLogRow& row) 
         row.playerX, row.playerY, row.playerZ,
         static_cast<int>(row.heading0_512),
         row.movementState);
+}
+
+// Open the pose-log file: fopen "w", write the header line, flush, and return
+// the FILE*. Returns nullptr on failure (caller must log/handle). The writer
+// (Application::render()) calls this instead of inlining fopen+header, so the
+// unit is the writer's open path, not a parallel re-implementation (B874, round 4).
+inline std::FILE* poseLogOpen(const std::string& path) {
+    std::FILE* f = std::fopen(path.c_str(), "w");
+    if (f != nullptr) {
+        std::fputs(poseLogHeaderLine(), f);
+        std::fflush(f);
+    }
+    return f;
+}
+
+// Close the pose-log file and reset the handle to nullptr.
+inline void poseLogClose(std::FILE*& f) {
+    if (f) {
+        std::fclose(f);
+        f = nullptr;
+    }
 }
 
 }  // namespace Graphics

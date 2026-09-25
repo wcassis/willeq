@@ -224,11 +224,8 @@ void Application::render(float deltaTime) {
             if (!m_config.poseLogPath.empty() && m_config.poseLogEvery > 0
                 && m_poseLogIndex < static_cast<uint64_t>(m_config.poseLogMaxCount)) {
                 if (m_poseLogFile == nullptr && !m_config.poseLogPath.empty()) {
-                    m_poseLogFile = std::fopen(m_config.poseLogPath.c_str(), "w");
-                    if (m_poseLogFile) {
-                        std::fputs(EQT::Graphics::poseLogHeaderLine(), m_poseLogFile);
-                        std::fflush(m_poseLogFile);
-                    } else {
+                    m_poseLogFile = EQT::Graphics::poseLogOpen(m_config.poseLogPath);
+                    if (m_poseLogFile == nullptr) {
                         LOG_ERROR(MOD_GRAPHICS, "pose-log: failed to open '{}'", m_config.poseLogPath);
                     }
                 }
@@ -252,9 +249,9 @@ void Application::render(float deltaTime) {
 
                         ++m_poseLogIndex;
                         if (m_poseLogIndex >= static_cast<uint64_t>(m_config.poseLogMaxCount)) {
-                            LOG_INFO(MOD_GRAPHICS, "pose-log: reached --pose-max-frames cap ({}), stopping capture", m_config.poseLogMaxCount);
-                            std::fclose(m_poseLogFile);
-                            m_poseLogFile = nullptr;
+                            LOG_INFO(MOD_GRAPHICS, "pose-log: reached --pose-max-frames cap ({}), stopping capture",
+                                m_config.poseLogMaxCount);
+                            EQT::Graphics::poseLogClose(m_poseLogFile);
                         }
                     }
                 }
