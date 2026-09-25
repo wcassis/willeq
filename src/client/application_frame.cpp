@@ -223,13 +223,13 @@ void Application::render(float deltaTime) {
             // lazily on the first row, so off-by-default is zero cost.
             if (!m_config.poseLogPath.empty() && m_config.poseLogEvery > 0
                 && m_poseLogIndex < static_cast<uint64_t>(m_config.poseLogMaxCount)) {
-                if (m_poseLogFile == nullptr && !m_poseLogPath.empty()) {
-                    m_poseLogFile = std::fopen(m_poseLogPath.c_str(), "w");
+                if (m_poseLogFile == nullptr && !m_config.poseLogPath.empty()) {
+                    m_poseLogFile = std::fopen(m_config.poseLogPath.c_str(), "w");
                     if (m_poseLogFile) {
                         std::fputs(EQT::Graphics::poseLogHeaderLine(), m_poseLogFile);
                         std::fflush(m_poseLogFile);
                     } else {
-                        LOG_ERROR(MOD_GRAPHICS, "pose-log: failed to open '{}'", m_poseLogPath);
+                        LOG_ERROR(MOD_GRAPHICS, "pose-log: failed to open '{}'", m_config.poseLogPath);
                     }
                 }
 

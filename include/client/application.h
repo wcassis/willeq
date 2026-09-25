@@ -706,7 +706,6 @@ private:
     uint64_t m_dumpFrameIndex = 0;     // increments only when a PNG is written
 
     // B874: pose-log state (render thread only, see render()).
-    std::string m_poseLogPath;
     uint64_t m_poseLogCounter = 0;
     uint64_t m_poseLogIndex = 0;
     std::FILE* m_poseLogFile = nullptr;

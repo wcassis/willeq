@@ -645,6 +645,7 @@ ADD_EXECUTABLE(test_pose_log_flags
     test_pose_log_flags.cpp
 )
 TARGET_LINK_LIBRARIES(test_pose_log_flags GTest::gtest_main willeq_core)
+TARGET_INCLUDE_DIRECTORIES(test_pose_log_flags PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_pose_log_flags PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()

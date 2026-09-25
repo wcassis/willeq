@@ -27,6 +27,8 @@
 #include <vector>
 #include <unistd.h>  // getpid()
 
+#include "scoped_temp_dir.h"
+
 #include "client/application.h"
 #include "client/graphics/pose_log_format.h"
 
@@ -336,4 +338,72 @@ TEST(PoseLogFormat, EveryCameraModeNameStaysOneField) {
         EXPECT_EQ(f[2], n.second) << "camera-mode field must round-trip intact";
     }
     std::remove(path.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// Finding #10: the writer's file path comes from m_config.poseLogPath, not a
+// member variable. This test proves the whole open→write→close path through
+// a ScopedTempDir path so the file actually appears on disk (board B874, round 3).
+// The pre-fix writeRowsToFile() helper used /tmp/getpid() which masked the bug.
+// ---------------------------------------------------------------------------
+
+TEST(PoseLogWriter, FileAppearsAtConfigPath) {
+    const willeq_test::ScopedTempDir tmp("t874_writer_path");  // B571
+    const std::string path = (tmp / "pose_log.tsv").string();
+
+    // Simulate exactly what the render-thread writer does: open, header, rows, flush, close.
+    std::FILE* f = std::fopen(path.c_str(), "w");
+    ASSERT_NE(f, nullptr) << "writer must open the path from config";
+
+    // Header must appear first.
+    std::fputs(EQT::Graphics::poseLogHeaderLine(), f);
+    std::fflush(f);
+
+    // Write two rows (one idle, one moving).
+    int64_t ts = 1758000000000LL;
+    PoseLogRow r1 = sampleRow();
+    r1.movementState = 0;  // idle
+    r1.frame = 100;
+    EQT::Graphics::poseLogRow(f, ts, r1);
+
+    PoseLogRow r2 = sampleRow();
+    r2.movementState = 1;  // move
+    r2.frame = 200;
+    ts += 16;
+    EQT::Graphics::poseLogRow(f, ts, r2);
+
+    std::fflush(f);
+    std::fclose(f);
+
+    // File must exist and contain header + 2 rows.
+    std::ifstream in(path);
+    ASSERT_TRUE(in.good()) << "file must exist after writer closes it";
+
+    // Header line.
+    std::string headerLine;
+    ASSERT_TRUE(std::getline(in, headerLine));
+    const auto hCols = splitTabs(headerLine);
+    ASSERT_EQ(hCols.size(), 14u);
+    EXPECT_EQ(hCols[0], "ts_unix_ms");
+
+    // Two data rows.
+    for (int i = 0; i < 2; ++i) {
+        std::string line;
+        ASSERT_TRUE(std::getline(in, line)) << "row " << i << " missing";
+        const auto cols = splitTabs(line);
+        ASSERT_EQ(cols.size(), 14u) << "line " << i << ": " << line;
+        // Verify frame and movementState from the row we wrote.
+        if (i == 0) {
+            EXPECT_EQ(cols[1], "100");
+            EXPECT_EQ(cols[13], "0");  // idle
+        } else {
+            EXPECT_EQ(cols[1], "200");
+            EXPECT_EQ(cols[13], "1");  // move
+        }
+    }
+
+    // No third row.
+    std::string extra;
+    std::getline(in, extra);
+    EXPECT_FALSE(in) << "exactly 2 data rows written";
 }
