@@ -1,0 +1,20 @@
+# B854: Lane Restore Proof (2026-09-23)
+# Restored from /home/user/kb-evidence/b854-pi-zone-sweep/sweep/snapshot_before.tsv
+# Per T493 recipe: world stopped, batch-restore, diff, down.sh, lock release
+
+RESTORE_STATUS=0
+WORLD_STOPPED=yes
+STACK_DOWN=yes
+PI_LOCK_RELEASED=yes
+EQEMU_LOCK_RELEASED=yes
+
+## Evidence
+# - eqemu lock was orphaned: kb-b854-pi-zone-sweep 2026-09-23T16:52:18Z from hermes-ext
+# - pi lock was orphaned: same owner
+# - Dev run was dead (trap clobber: cleanup() never ran on normal completion)
+# - Snapshot had 90 rows from 2026-09-23 16:52
+# - Restore exit code: 0
+
+## Final lock state (post-release)
+empty
+empty

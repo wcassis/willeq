@@ -1,0 +1,283 @@
+[2026-09-23 13:01:50.777] [INFO ] [MAIN] Starting WillEQ with debug level 0, config file: /mnt/projects/fable/review/pi/willeq_pi.json, pathfinding: enabled
+[2026-09-23 13:01:50.778] [INFO ] [MAIN] Log level: INFO  (use --log-level=LEVEL to change)
+[2026-09-23 13:01:50.778] [INFO ] [MAIN] Loading config file: /mnt/projects/fable/review/pi/willeq_pi.json
+[2026-09-23 13:01:50.784] [INFO ] [INPUT] HotkeyManager: Loaded 115 bindings from config/hotkeys.json
+[2026-09-23 13:01:50.798] [INFO ] [MAIN] Game thread started
+[2026-09-23 13:01:50.784] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: CancelDialog and CancelInput both bound to Escape in global mode
+[2026-09-23 13:01:50.784] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: CancelDialog and ClearTarget both bound to Escape (global conflicts with player)
+[2026-09-23 13:01:50.784] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: CancelInput and ClearTarget both bound to Escape (global conflicts with player)
+[2026-09-23 13:01:50.784] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: ChatAutocomplete and CycleTargets both bound to Tab (global conflicts with player)
+[2026-09-23 13:01:50.784] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: ConfirmDialog and SubmitInput both bound to Return in global mode
+[2026-09-23 13:01:50.784] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: ConfirmDialog and OpenChat both bound to Return (global conflicts with player)
+[2026-09-23 13:01:50.784] [WARN ] [INPUT] HotkeyManager: Hotkey conflict: SubmitInput and OpenChat both bound to Return (global conflicts with player)
+[2026-09-23 13:01:50.784] [INFO ] [MAIN] Initializing application...
+[2026-09-23 13:01:50.785] [INFO ] [MAIN] Config: host=172.16.200.99, server=WillEQ, character=Testcaster
+[2026-09-23 13:01:50.789] [INFO ] [MAIN] WilleqDatabase: opened data/willeq.db (version 7)
+[2026-09-23 13:01:50.789] [INFO ] [MAIN] WilleqDatabase opened: data/willeq.db (cache: 9196 bytes)
+[2026-09-23 13:01:50.789] [INFO ] [MAIN] StringDatabase: initialized from SQLite
+[2026-09-23 13:01:50.789] [INFO ] [MAIN] Loaded strings from SQLite (5901 eqstr, 8305 dbstr)
+[2026-09-23 13:01:50.790] [INFO ] [SPELL] SpellDatabase: initialized from SQLite (8066 spells, cache capacity 256)
+[2026-09-23 13:01:50.790] [INFO ] [SPELL] Spell database initialized from SQLite (8066 spells)
+[2026-09-23 13:01:50.792] [INFO ] [MAIN] Creating game mode with renderer type: GPU
+[2026-09-23 13:01:50.792] [INFO ] [MAIN] Console bridge attached (headless mode)
+[2026-09-23 13:01:50.792] [INFO ] [SCENARIO] scenario lane armed: name='zone_in' timeout=240s start-deadline=120s hold=300s
+[2026-09-23 13:01:50.792] [INFO ] [MAIN] Connecting to login server (172.16.200.99:5998)...
+[2026-09-23 13:01:50.792] [INFO ] [MAIN] [LOADING][Phase 1/15] (2%) Connecting to login server...
+[2026-09-23 13:01:50.793] [INFO ] [NET] PosixUdpTransport: fd=4 rcvbuf=2097152 bytes (SO_RCVBUF, no CAP_NET_ADMIN: capped by net.core.rmem_max; asked 1048576)
+[2026-09-23 13:01:50.793] [INFO ] [NET] PosixUdpTransport: connected to 172.16.200.99:5998 fd=4
+[2026-09-23 13:01:50.793] [INFO ] [WORLD] Connecting...
+[2026-09-23 13:01:50.793] [INFO ] [MAIN] Application initialized successfully
+[2026-09-23 13:01:50.793] [INFO ] [MAIN] [memledger] point=startup zone=- seq=0 enabled=1 rss_anon=1163264 rss_file=8417280 rss_shmem=0 vm_rss=9580544 ledger=491040 ledger_peak=491488 unattributed=672224 unattributed_pct=57.8 malloc_arena=557056 malloc_inuse=504208 malloc_slack=52848 heap_uncharged=13168 unaccounted=606208 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=3379 unattributed=50704/50704 startup=439672/440120 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=0/0 game_state=0/0 irrlicht_scene=0/0 gpu_driver=664/664
+[2026-09-23 13:01:50.793] [INFO ] [MAIN] [memledger-startup] point=startup owner=TOTAL live=439736 blocks=1009
+[memledger-startup] point=startup owner=startup.willeq_db live=155256 blocks=244
+[memledger-startup] point=startup owner=startup.spells live=120928 blocks=30
+[memledger-startup] point=startup owner=startup.login live=75888 blocks=12
+[memledger-startup] point=startup owner=startup.application live=52768 blocks=486
+[memledger-startup] point=startup owner=startup.client live=19504 blocks=74
+[memledger-startup] point=startup owner=startup.cli live=10216 blocks=146
+[memledger-startup] point=startup owner=startup.mode live=5176 blocks=17
+[2026-09-23 13:01:50.798] [INFO ] [MAIN] [memmap] point=startup owner=TOTAL anon=1167360 rss=9584640 maps=53
+[memmap] point=startup owner=[heap] anon=434176 rss=434176 size=557056 maps=1
+[memmap] point=startup owner=file:willeq anon=237568 rss=6205440 size=11702272 maps=3
+[memmap] point=startup owner=so:libcrypto.so.3 anon=192512 rss=651264 size=2580480 maps=3
+[memmap] point=startup owner=[anon] anon=131072 rss=131072 size=8609792 maps=7
+[memmap] point=startup owner=so:libGLdispatch.so.0.0.0 anon=61440 rss=208896 size=1196032 maps=3
+[memmap] point=startup owner=[stack] anon=16384 rss=16384 size=135168 maps=1
+[memmap] point=startup owner=so:libc.so.6 anon=12288 rss=1110016 size=1114112 maps=3
+[memmap] point=startup owner=so:ld-linux-armhf.so.3 anon=12288 rss=126976 size=126976 maps=3
+[memmap] point=startup owner=so:libexpat.so.1.9.1 anon=12288 rss=77824 size=110592 maps=3
+[memmap] point=startup owner=so:libm.so.6 anon=8192 rss=122880 size=270336 maps=3
+[memmap] point=startup owner=so:libgcc_s.so.1 anon=8192 rss=98304 size=106496 maps=3
+[memmap] point=startup owner=so:libGLESv2.so.2.1.0 anon=8192 rss=86016 size=90112 maps=3
+[memmap] point=startup owner=so:libz.so.1.3 anon=8192 rss=73728 size=73728 maps=3
+[memmap] point=startup owner=so:libdrm.so.2.125.0 anon=8192 rss=57344 size=61440 maps=3
+[memmap] point=startup owner=so:libEGL.so.1.1.0 anon=8192 rss=53248 size=53248 maps=3
+[memmap] point=startup owner=so:libgbm.so.1.0.0 anon=8192 rss=16384 size=16384 maps=3
+[memmap] point=startup owner=file:willeq.db anon=0 rss=106496 size=1048576 maps=1
+[memmap] point=startup owner=[vvar] anon=0 rss=4096 size=4096 maps=1
+[memmap] point=startup owner=[vdso] anon=0 rss=4096 size=4096 maps=1
+[2026-09-23 13:01:50.798] [INFO ] [MAIN] Starting main loop...
+[2026-09-23 13:01:50.798] [INFO ] [MAIN] Starting game thread
+[2026-09-23 13:01:50.798] [INFO ] [MAIN] Entering render loop (main thread)
+[2026-09-23 13:01:51.297] [INFO ] [WORLD] Login connected.
+[2026-09-23 13:01:51.348] [INFO ] [MAIN] [LOADING][Phase 2/15] (5%) Authenticating...
+[2026-09-23 13:01:51.415] [INFO ] [WORLD] Logged in successfully with dbid 1 and key U8JRCY1WF0
+[2026-09-23 13:01:51.481] [INFO ] [WORLD] Found world server WillEQ, attempting to login.
+[2026-09-23 13:01:51.514] [INFO ] [WORLD] Connecting to world server WillEQ at 172.16.200.99:9000
+[2026-09-23 13:01:51.514] [INFO ] [MAIN] [LOADING][Phase 3/15] (10%) Connecting to world server...
+[2026-09-23 13:01:51.514] [INFO ] [NET] PosixUdpTransport: fd=5 rcvbuf=2097152 bytes (SO_RCVBUF, no CAP_NET_ADMIN: capped by net.core.rmem_max; asked 1048576)
+[2026-09-23 13:01:51.514] [INFO ] [NET] PosixUdpTransport: connected to 172.16.200.99:9000 fd=5
+[2026-09-23 13:01:52.017] [INFO ] [WORLD] Sending login info: dbid=1, key=U8JRCY1WF0, zoning=0
+[2026-09-23 13:01:52.278] [INFO ] [MAIN] [LOADING][Phase 4/15] (15%) Loading characters...
+[2026-09-23 13:01:52.279] [INFO ] [MAIN] [memledger] point=login_world zone=- seq=0 enabled=1 rss_anon=1409024 rss_file=8798208 rss_shmem=0 vm_rss=10207232 ledger=676944 ledger_peak=694832 unattributed=732080 unattributed_pct=52.0 malloc_arena=823296 malloc_inuse=699680 malloc_slack=123616 heap_uncharged=22736 unaccounted=585728 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=10731 unattributed=50704/50704 startup=444568/539408 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=180712/198600 game_state=296/368 irrlicht_scene=0/0 gpu_driver=664/664
+[2026-09-23 13:01:52.279] [INFO ] [MAIN] [memledger-startup] point=login_world owner=TOTAL live=444568 blocks=1007
+[memledger-startup] point=login_world owner=startup.willeq_db live=155256 blocks=244
+[memledger-startup] point=login_world owner=startup.spells live=120928 blocks=30
+[memledger-startup] point=login_world owner=startup.login live=70576 blocks=8
+[memledger-startup] point=login_world owner=startup.application live=62952 blocks=489
+[memledger-startup] point=login_world owner=startup.client live=19504 blocks=74
+[memledger-startup] point=login_world owner=startup.cli live=10176 blocks=145
+[memledger-startup] point=login_world owner=startup.mode live=5176 blocks=17
+[2026-09-23 13:01:52.361] [INFO ] [MAIN] [LOADING][Phase 5/15] (20%) Connecting to zone...
+[2026-09-23 13:01:52.362] [INFO ] [NET] PosixUdpTransport: fd=6 rcvbuf=2097152 bytes (SO_RCVBUF, no CAP_NET_ADMIN: capped by net.core.rmem_max; asked 1048576)
+[2026-09-23 13:01:52.362] [INFO ] [NET] PosixUdpTransport: connected to 172.16.200.99:7020 fd=6
+[2026-09-23 13:01:53.153] [INFO ] [MAIN] [LOADING][Phase 6/15] (25%) Receiving player data...
+[2026-09-23 13:01:53.162] [INFO ] [MAIN] SkillCapTable: loaded 603 (class, skill) rows from 'config/skill_caps.json'
+[2026-09-23 13:01:53.164] [INFO ] [MAIN] Loaded 100 skills from PlayerProfile (36 non-zero)
+[2026-09-23 13:01:53.165] [INFO ] [MAIN] [LOADING][Phase 7/15] (30%) Receiving zone data...
+[2026-09-23 13:01:53.165] [INFO ] [ZONE] Loaded 5 spawns in zone
+[2026-09-23 13:01:53.171] [INFO ] [ZONE] Weather packet: type=255, intensity=0
+[2026-09-23 13:01:53.172] [INFO ] [MAIN] [STATS] HP=315/315 Mana=614/614 End=72/72
+[2026-09-23 13:01:53.172] [INFO ] [MAIN] [STATS] HP=315/315 Mana=614/614 End=72/72
+[2026-09-23 13:01:53.199] [INFO ] [MAIN] [memledger] point=game_zone_begin zone=westwastes seq=0 enabled=1 rss_anon=1630208 rss_file=9043968 rss_shmem=0 vm_rss=10674176 ledger=745584 ledger_peak=1015944 unattributed=884624 unattributed_pct=54.3 malloc_arena=1056768 malloc_inuse=782576 malloc_slack=274192 heap_uncharged=36992 unaccounted=573440 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=21379 unattributed=50704/50704 startup=444568/539408 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=162464/429952 game_state=87184/225304 irrlicht_scene=0/0 gpu_driver=664/664
+[2026-09-23 13:01:53.199] [INFO ] [MAIN] [memledger-startup] point=game_zone_begin owner=TOTAL live=444568 blocks=1007
+[memledger-startup] point=game_zone_begin owner=startup.willeq_db live=155256 blocks=244
+[memledger-startup] point=game_zone_begin owner=startup.spells live=120928 blocks=30
+[memledger-startup] point=game_zone_begin owner=startup.login live=70576 blocks=8
+[memledger-startup] point=game_zone_begin owner=startup.application live=62952 blocks=489
+[memledger-startup] point=game_zone_begin owner=startup.client live=19504 blocks=74
+[memledger-startup] point=game_zone_begin owner=startup.cli live=10176 blocks=145
+[memledger-startup] point=game_zone_begin owner=startup.mode live=5176 blocks=17
+[2026-09-23 13:01:53.813] [INFO ] [MAP] Loaded Navmesh V[2] file [/mnt/projects/maps/nav/westwastes.nav] -- T504: 1063 tiles, 9307268 bytes of tile data (inflated from 3659799 compressed)
+[2026-09-23 13:01:53.818] [INFO ] [MAIN] [memledger] point=game_pathfinder zone=westwastes seq=0 enabled=1 rss_anon=10895360 rss_file=9109504 rss_shmem=0 vm_rss=20004864 ledger=10275656 ledger_peak=23182712 unattributed=619704 unattributed_pct=5.7 malloc_arena=10448896 malloc_inuse=10313344 malloc_slack=135552 heap_uncharged=37688 unaccounted=446464 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=22492 unattributed=50704/50704 startup=444568/539408 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=161960/429952 game_state=9617760/22524816 irrlicht_scene=0/0 gpu_driver=664/664
+[2026-09-23 13:01:53.818] [INFO ] [MAIN] [memledger-startup] point=game_pathfinder owner=TOTAL live=444568 blocks=1007
+[memledger-startup] point=game_pathfinder owner=startup.willeq_db live=155256 blocks=244
+[memledger-startup] point=game_pathfinder owner=startup.spells live=120928 blocks=30
+[memledger-startup] point=game_pathfinder owner=startup.login live=70576 blocks=8
+[memledger-startup] point=game_pathfinder owner=startup.application live=62952 blocks=489
+[memledger-startup] point=game_pathfinder owner=startup.client live=19504 blocks=74
+[memledger-startup] point=game_pathfinder owner=startup.cli live=10176 blocks=145
+[memledger-startup] point=game_pathfinder owner=startup.mode live=5176 blocks=17
+[2026-09-23 13:01:54.855] [INFO ] [MAP] [raycastmesh] verts=100052 tris=82970 nodes=44303 leaf_tri_refs=254258 | bytes: vertices=1200624 indices=995640 raycast_marks=82970 nodes=1594908 leaf_refs=1017032 (T504d: no face-normal table)
+[2026-09-23 13:01:54.855] [INFO ] [MAP] Loaded V2 map: 100052 vertices, 82970 faces (23184 placeables, 59786 terrain)
+[2026-09-23 13:01:54.857] [INFO ] [MAP] Successfully loaded map for zone: westwastes
+[2026-09-23 13:01:54.857] [INFO ] [MAIN] [memledger] point=game_zone_map zone=westwastes seq=0 enabled=1 rss_anon=16691200 rss_file=9121792 rss_shmem=0 vm_rss=25812992 ledger=15212440 ledger_peak=25069968 unattributed=1478760 unattributed_pct=8.9 malloc_arena=16113664 malloc_inuse=15268784 malloc_slack=844880 heap_uncharged=56344 unaccounted=577536 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=222574 unattributed=50704/50704 startup=444568/539408 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=161960/429952 game_state=14554544/24412072 irrlicht_scene=0/0 gpu_driver=664/664
+[2026-09-23 13:01:54.858] [INFO ] [MAIN] [memledger-startup] point=game_zone_map owner=TOTAL live=444568 blocks=1007
+[memledger-startup] point=game_zone_map owner=startup.willeq_db live=155256 blocks=244
+[memledger-startup] point=game_zone_map owner=startup.spells live=120928 blocks=30
+[memledger-startup] point=game_zone_map owner=startup.login live=70576 blocks=8
+[memledger-startup] point=game_zone_map owner=startup.application live=62952 blocks=489
+[memledger-startup] point=game_zone_map owner=startup.client live=19504 blocks=74
+[memledger-startup] point=game_zone_map owner=startup.cli live=10176 blocks=145
+[memledger-startup] point=game_zone_map owner=startup.mode live=5176 blocks=17
+[2026-09-23 13:01:54.861] [INFO ] [MAP] Loaded 0 zone lines from zone-specific file
+[2026-09-23 13:01:54.908] [INFO ] [MAP] Loaded 5 pre-extracted zone lines for westwastes from data/zone_lines.json
+[2026-09-23 13:01:55.567] [INFO ] [GRAPHICS] [wldparse] bytes=5111652 fragments=14236 skel10=0 track12=0 trackref13=0 actor14=1 mesh36=5092 keyframes=0 trackdef_bytes=0 filter=0 skipped12=0 skipped13=0 dangling13=0
+[2026-09-23 13:01:55.599] [INFO ] [MAIN] LoadZoneSources: Loaded zone 'westwastes' in 690ms (8919 BSP regions, 17837 nodes)
+[2026-09-23 13:01:55.599] [INFO ] [MAIN] [memledger] point=game_zone_sources zone=westwastes seq=0 enabled=1 rss_anon=24813568 rss_file=9244672 rss_shmem=0 vm_rss=34058240 ledger=17656448 ledger_peak=29391272 unattributed=7157120 unattributed_pct=28.8 malloc_arena=24395776 malloc_inuse=17794016 malloc_slack=6601760 heap_uncharged=137568 unaccounted=417792 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=286557 unattributed=50704/50704 startup=444568/539408 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=161960/429952 game_state=16998552/28733376 irrlicht_scene=0/0 gpu_driver=664/664
+[2026-09-23 13:01:55.599] [INFO ] [MAIN] [memledger-startup] point=game_zone_sources owner=TOTAL live=444568 blocks=1007
+[memledger-startup] point=game_zone_sources owner=startup.willeq_db live=155256 blocks=244
+[memledger-startup] point=game_zone_sources owner=startup.spells live=120928 blocks=30
+[memledger-startup] point=game_zone_sources owner=startup.login live=70576 blocks=8
+[memledger-startup] point=game_zone_sources owner=startup.application live=62952 blocks=489
+[memledger-startup] point=game_zone_sources owner=startup.client live=19504 blocks=74
+[memledger-startup] point=game_zone_sources owner=startup.cli live=10176 blocks=145
+[memledger-startup] point=game_zone_sources owner=startup.mode live=5176 blocks=17
+[2026-09-23 13:01:55.601] [INFO ] [ZONE] [ZONE] Entering westwastes at (-4099, -3499, -18)
+[2026-09-23 13:01:55.630] [INFO ] [MAIN] [LOADING][Phase 8/15] (35%) Synchronizing...
+[2026-09-23 13:01:55.631] [INFO ] [ZONE] Zone Request phase complete, sending ReqClientSpawn
+[2026-09-23 13:01:55.673] [INFO ] [ENTITY] Received 63 doors (5042 bytes)
+[2026-09-23 13:01:55.734] [INFO ] [ZONE] Server assigned new spawn ID: 276 (was 276)
+[2026-09-23 13:01:55.749] [INFO ] [MAIN] [LOADING][Phase 9/15] (40%) Finalizing connection...
+[2026-09-23 13:01:55.832] [INFO ] [ZONE] Weather packet: type=0, intensity=0
+[2026-09-23 13:01:55.835] [INFO ] [ZONE] *** RECEIVED OUR OWN ClientUpdate! spawn_id=276 ***
+[2026-09-23 13:01:55.835] [INFO ] [MAIN] [LOADING][Phase 10/15] (45%) Player confirmed...
+[2026-09-23 13:01:55.835] [INFO ] [ZONE] Zone connection complete! Player position confirmed (spawn_id=276).
+[2026-09-23 13:01:55.835] [INFO ] [MAIN] [LOADING] Game state setup complete. Spawn ID: 276, Zone: westwastes
+[2026-09-23 13:01:55.835] [INFO ] [MAIN] [LOADING][Phase 15/15] (100%) Ready!
+[2026-09-23 13:01:55.835] [INFO ] [MAIN] [memledger] point=ready zone=westwastes seq=0 enabled=1 rss_anon=24813568 rss_file=9244672 rss_shmem=0 vm_rss=34058240 ledger=17832768 ledger_peak=29391272 unattributed=6980800 unattributed_pct=28.1 malloc_arena=24395776 malloc_inuse=17964712 malloc_slack=6431064 heap_uncharged=131944 unaccounted=417792 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=294742 unattributed=50704/50704 startup=442416/539408 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=175024/429952 game_state=17163960/28733376 irrlicht_scene=0/0 gpu_driver=664/664
+[2026-09-23 13:01:55.836] [INFO ] [MAIN] [memledger-startup] point=ready owner=TOTAL live=442416 blocks=1003
+[memledger-startup] point=ready owner=startup.willeq_db live=155256 blocks=244
+[memledger-startup] point=ready owner=startup.spells live=120928 blocks=30
+[memledger-startup] point=ready owner=startup.login live=68424 blocks=4
+[memledger-startup] point=ready owner=startup.application live=62952 blocks=489
+[memledger-startup] point=ready owner=startup.client live=19504 blocks=74
+[memledger-startup] point=ready owner=startup.cli live=10176 blocks=145
+[memledger-startup] point=ready owner=startup.mode live=5176 blocks=17
+[2026-09-23 13:01:55.838] [INFO ] [MAIN] [memarena] point=ready ok=1 ordblks=393 smblks=0 fordblks=6431008 fsmblks=0 keepcost=83296 hblks=6 hblkhd=6205440 arena=18190336 uordblks=11759328 mmap_thr=0 trim_pages=0 le128=173/6893 128-256=24/4344 256-512=31/9383 512-1k=2/1994 1k-2k=1/1497 2k-4k=31/109127 4k-8k=44/257540 8k-16k=22/266830 16k-32k=27/637131 32k-64k=19/823043 ge64k=17/4226201
+[2026-09-23 13:01:55.843] [INFO ] [MAIN] [memmap] point=ready owner=TOTAL anon=24813568 rss=34058240 maps=65
+[memmap] point=ready owner=[heap] anon=17842176 rss=17842176 size=18190336 maps=3
+[memmap] point=ready owner=[anon] anon=6369280 rss=6369280 size=23207936 maps=17
+[memmap] point=ready owner=file:willeq anon=237568 rss=6828032 size=11702272 maps=3
+[memmap] point=ready owner=so:libcrypto.so.3 anon=192512 rss=778240 size=2580480 maps=3
+[memmap] point=ready owner=so:libGLdispatch.so.0.0.0 anon=61440 rss=208896 size=1196032 maps=3
+[memmap] point=ready owner=[stack] anon=16384 rss=16384 size=135168 maps=1
+[memmap] point=ready owner=so:libc.so.6 anon=12288 rss=1110016 size=1114112 maps=3
+[memmap] point=ready owner=so:ld-linux-armhf.so.3 anon=12288 rss=126976 size=126976 maps=3
+[memmap] point=ready owner=so:libexpat.so.1.9.1 anon=12288 rss=77824 size=110592 maps=3
+[memmap] point=ready owner=so:libm.so.6 anon=8192 rss=200704 size=270336 maps=3
+[memmap] point=ready owner=so:libgcc_s.so.1 anon=8192 rss=98304 size=106496 maps=3
+[memmap] point=ready owner=so:libGLESv2.so.2.1.0 anon=8192 rss=86016 size=90112 maps=3
+[memmap] point=ready owner=so:libz.so.1.3 anon=8192 rss=73728 size=73728 maps=3
+[memmap] point=ready owner=so:libdrm.so.2.125.0 anon=8192 rss=57344 size=61440 maps=3
+[memmap] point=ready owner=so:libEGL.so.1.1.0 anon=8192 rss=53248 size=53248 maps=3
+[memmap] point=ready owner=so:libgbm.so.1.0.0 anon=8192 rss=16384 size=16384 maps=3
+[memmap] point=ready owner=file:willeq.db anon=0 rss=106496 size=1048576 maps=1
+[memmap] point=ready owner=[vvar] anon=0 rss=4096 size=4096 maps=1
+[memmap] point=ready owner=[vdso] anon=0 rss=4096 size=4096 maps=1
+[2026-09-23 13:01:55.906] [INFO ] [SCENARIO] scenario 'zone_in' starting: zoned in to 'westwastes' after 5.10775s
+[2026-09-23 13:01:55.906] [INFO ] [SCENARIO] VERDICT pass (exit 0) after 5.10775s: zoned in to 'westwastes' (other players in zone: 0, sinceStart=0s)
+[2026-09-23 13:01:55.907] [INFO ] [ZONE] [ZONE] westwastes loaded
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [STATS] HP=315/315 Mana=614/614 End=72/72
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] ------------------------------------------------
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] Developer Tools Menu
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] Show Menu | #dev
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] Toggle Menu | Disable
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] Toggle Window | Disable
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] Search | Corpses | Doors | Items | NPC | Objects | Players | Zones
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] Show | Zone Points | Zone Global Loot | Content Flags
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] Reload | Reload Menu (#reload)
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] Note: You can search for commands with #help [Search String]
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] ------------------------------------------------
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] Current Expansion | Dragons of Norrath (9)
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] Current Zone | [westwastes] (The Western Wastes) version [0] instance_id [0] min/max expansion (-1/-1) content_flags []
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [SYS] ------------------------------------------------
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [STATS] HP=20/20 Mana=614/614 End=72/72
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [STATS] HP=20/20 Mana=614/614 End=72/72
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [STATS] HP=20/20 Mana=614/614 End=72/72
+[2026-09-23 13:01:55.907] [INFO ] [MAIN] [STATS] HP=20/20 Mana=614/614 End=72/72
+[2026-09-23 13:01:55.908] [INFO ] [MAIN] Game thread stopped
+[2026-09-23 13:01:55.844] [INFO ] [MAIN] Publishing full state snapshot to bridge
+[2026-09-23 13:01:55.850] [INFO ] [MAIN] State snapshot published
+[2026-09-23 13:01:55.852] [INFO ] [MAIN] ------------------------------------------------
+[2026-09-23 13:01:55.852] [INFO ] [MAIN] Developer Tools Menu
+[2026-09-23 13:01:55.853] [INFO ] [MAIN] Show Menu | #dev
+[2026-09-23 13:01:55.853] [INFO ] [MAIN] Toggle Menu | Disable
+[2026-09-23 13:01:55.853] [INFO ] [MAIN] Toggle Window | Disable
+[2026-09-23 13:01:55.853] [INFO ] [MAIN] Search | Corpses | Doors | Items | NPC | Objects | Players | Zones
+[2026-09-23 13:01:55.853] [INFO ] [MAIN] Show | Zone Points | Zone Global Loot | Content Flags
+[2026-09-23 13:01:55.853] [INFO ] [MAIN] Reload | Reload Menu (#reload)
+[2026-09-23 13:01:55.853] [INFO ] [MAIN] Note: You can search for commands with #help [Search String]
+[2026-09-23 13:01:55.853] [INFO ] [MAIN] ------------------------------------------------
+[2026-09-23 13:01:55.853] [INFO ] [MAIN] Current Expansion | Dragons of Norrath (9)
+[2026-09-23 13:01:55.853] [INFO ] [MAIN] Current Zone | [westwastes] (The Western Wastes) version [0] instance_id [0] min/max expansion (-1/-1) content_flags []
+[2026-09-23 13:01:55.853] [INFO ] [MAIN] ------------------------------------------------
+[2026-09-23 13:01:55.905] [INFO ] [MAIN] Fully connected to zone!
+SCENARIO zone_in pass exit=0 reason=zoned in to 'westwastes' (other players in zone: 0, sinceStart=0s)
+[2026-09-23 13:01:55.919] [INFO ] [MAIN] Game thread joined
+[2026-09-23 13:01:55.919] [INFO ] [MAIN] Main loop exited
+[2026-09-23 13:01:55.919] [INFO ] [MAIN] Shutting down application...
+[2026-09-23 13:01:55.919] [INFO ] [MAIN] [memledger] point=shutdown zone=- seq=0 enabled=1 rss_anon=24809472 rss_file=9715712 rss_shmem=0 vm_rss=34525184 ledger=17865104 ledger_peak=29391272 unattributed=6944368 unattributed_pct=28.0 malloc_arena=24395776 malloc_inuse=17896400 malloc_slack=6499376 heap_uncharged=31296 unaccounted=413696 target=67108864 over_target=0 ceiling=268435456 over_ceiling=0 allocs=303161 unattributed=50704/50704 startup=442272/539408 archives=0/0 zone_parse=0/0 zone_mesh=0/0 spatial=0/0 textures_decoded=0/0 textures_driver=0/0 entity_models=0/0 entity_instances=0/0 doors=0/0 objects=0/0 equipment=0/0 ui=0/0 audio=0/0 network=159112/429952 game_state=17212352/28733376 irrlicht_scene=0/64 gpu_driver=664/664
+[2026-09-23 13:01:55.919] [INFO ] [MAIN] [memledger-startup] point=shutdown owner=TOTAL live=442272 blocks=1000
+[memledger-startup] point=shutdown owner=startup.willeq_db live=155256 blocks=244
+[memledger-startup] point=shutdown owner=startup.spells live=120928 blocks=30
+[memledger-startup] point=shutdown owner=startup.login live=68424 blocks=4
+[memledger-startup] point=shutdown owner=startup.application live=62808 blocks=486
+[memledger-startup] point=shutdown owner=startup.client live=19504 blocks=74
+[memledger-startup] point=shutdown owner=startup.cli live=10176 blocks=145
+[memledger-startup] point=shutdown owner=startup.mode live=5176 blocks=17
+[2026-09-23 13:01:55.919] [INFO ] [MAIN] 
+================================================================================
+                         PERFORMANCE METRICS REPORT
+================================================================================
+
+STARTUP TIMINGS
+--------------------------------------------------------------------------------
+  Config Loading                                 6 ms
+  Client Creation                                4 ms
+  TOTAL                                         10 ms
+
+ZONING TIMINGS
+--------------------------------------------------------------------------------
+  (no zoning timings recorded)
+
+GAMEPLAY STATISTICS
+--------------------------------------------------------------------------------
+  (no gameplay statistics recorded)
+
+SUMMARY
+--------------------------------------------------------------------------------
+  Total elapsed time:    5141 ms (5.1 sec)
+  Startup time:          10 ms
+  Zoning time:           0 ms
+================================================================================
+
+[2026-09-23 13:01:55.920] [INFO ] [MAIN] 
+================================================================================
+                         PERFORMANCE METRICS REPORT
+================================================================================
+
+STARTUP TIMINGS
+--------------------------------------------------------------------------------
+  Config Loading                                 6 ms
+  Client Creation                                4 ms
+  TOTAL                                         10 ms
+
+ZONING TIMINGS
+--------------------------------------------------------------------------------
+  (no zoning timings recorded)
+
+GAMEPLAY STATISTICS
+--------------------------------------------------------------------------------
+  (no gameplay statistics recorded)
+
+SUMMARY
+--------------------------------------------------------------------------------
+  Total elapsed time:    5142 ms (5.1 sec)
+  Startup time:          10 ms
+  Zoning time:           0 ms
+================================================================================
+
+[2026-09-23 13:01:55.936] [INFO ] [MAIN] Application shutdown complete
+[2026-09-23 13:01:55.936] [INFO ] [SCENARIO] scenario 'zone_in' -> exit 0 (pass): zoned in to 'westwastes' (other players in zone: 0, sinceStart=0s)
+[2026-09-23 13:01:55.919] [INFO ] [MAIN] Render loop exited, joining game thread
