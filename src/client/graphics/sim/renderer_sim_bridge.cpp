@@ -155,10 +155,10 @@ SimulationZoneData SimBridgeComponent::buildSimulationZoneData() {
     // Hand the occluder sets to the worker (T504: moved, not copied -- the
     // renderer-side culler has no per-frame reader once the worker owns them).
     if (ctx_.occlusionCuller && ctx_.occlusionCuller->hasOccluders()) {
-        zoneData.regionOccluders = ctx_.occlusionCuller->takeRegionOccludersMap();
+        zoneData.regionOccluders = ctx_.occlusionCuller->takeRegionOccluders();
         zoneData.occlusionConfig = ctx_.occlusionCuller->getConfig();
         LOG_INFO(MOD_GRAPHICS, "SimulationWorker: handing {} region occluder sets to worker",
-                 zoneData.regionOccluders.size());
+                 zoneData.regionOccluders.regionCount());
     }
 
     return zoneData;

@@ -738,8 +738,9 @@ struct SimulationZoneData {
     std::shared_ptr<const ::HCMap> hcMap;
 
     // Region occluder triangles for software occlusion culling
-    // Keyed by region index → vector of wall triangles
-    std::unordered_map<size_t, std::vector<OccluderTriangle>> regionOccluders;
+    // One flat table for the whole zone (RegionOccluderTable), moved in from
+    // the renderer-side culler and moved on to the worker's.
+    RegionOccluderTable regionOccluders;
 
     // Occlusion culler config
     OcclusionCullerConfig occlusionConfig;

@@ -10,7 +10,65 @@ namespace Graphics {
 
 static constexpr float kNearPlane = 0.5f;
 
-const std::vector<OccluderTriangle> SoftwareOcclusionCuller::emptyOccluders_;
+// ---- RegionOccluderTable ---------------------------------------------------
+
+void RegionOccluderTable::set(size_t regionIdx, const std::vector<OccluderTriangle>& triangles) {
+    if (triangles.empty()) return;
+    const uint32_t key = static_cast<uint32_t>(regionIdx);
+    if (starts_.empty()) starts_.push_back(0);
+
+    // Fast path: ascending order (both zone loaders).
+    if (regions_.empty() || regions_.back() < key) {
+        regions_.push_back(key);
+        triangles_.insert(triangles_.end(), triangles.begin(), triangles.end());
+        starts_.push_back(static_cast<uint32_t>(triangles_.size()));
+        return;
+    }
+
+    // General path: replace or insert in the middle, keeping regions_ sorted.
+    auto it = std::lower_bound(regions_.begin(), regions_.end(), key);
+    const size_t slot = static_cast<size_t>(it - regions_.begin());
+    const uint32_t begin = starts_[slot];
+    uint32_t oldCount = 0;
+    if (it != regions_.end() && *it == key) {
+        oldCount = starts_[slot + 1] - begin;
+        triangles_.erase(triangles_.begin() + begin, triangles_.begin() + begin + oldCount);
+    } else {
+        regions_.insert(it, key);
+        starts_.insert(starts_.begin() + slot + 1, begin);
+    }
+    triangles_.insert(triangles_.begin() + begin, triangles.begin(), triangles.end());
+    const int64_t delta = static_cast<int64_t>(triangles.size()) - static_cast<int64_t>(oldCount);
+    for (size_t s = slot + 1; s < starts_.size(); ++s) {
+        starts_[s] = static_cast<uint32_t>(static_cast<int64_t>(starts_[s]) + delta);
+    }
+}
+
+OccluderSpan RegionOccluderTable::find(size_t regionIdx) const {
+    OccluderSpan span;
+    if (regions_.empty() || regionIdx > UINT32_MAX) return span;
+    const uint32_t key = static_cast<uint32_t>(regionIdx);
+    auto it = std::lower_bound(regions_.begin(), regions_.end(), key);
+    if (it == regions_.end() || *it != key) return span;
+    const size_t slot = static_cast<size_t>(it - regions_.begin());
+    span.first = triangles_.data() + starts_[slot];
+    span.count = starts_[slot + 1] - starts_[slot];
+    return span;
+}
+
+void RegionOccluderTable::shrinkToFit() {
+    regions_.shrink_to_fit();
+    starts_.shrink_to_fit();
+    triangles_.shrink_to_fit();
+}
+
+void RegionOccluderTable::clear() {
+    std::vector<uint32_t>().swap(regions_);
+    std::vector<uint32_t>().swap(starts_);
+    std::vector<OccluderTriangle>().swap(triangles_);
+}
+
+// ---- SoftwareOcclusionCuller -----------------------------------------------
 
 SoftwareOcclusionCuller::SoftwareOcclusionCuller()
     : SoftwareOcclusionCuller(OcclusionCullerConfig{}) {}
@@ -21,18 +79,12 @@ SoftwareOcclusionCuller::SoftwareOcclusionCuller(const OcclusionCullerConfig& co
 {
 }
 
-void SoftwareOcclusionCuller::setRegionOccluders(size_t regionIdx, std::vector<OccluderTriangle> triangles) {
-    if (!triangles.empty()) {
-        regionOccluders_[regionIdx] = std::move(triangles);
-    }
+void SoftwareOcclusionCuller::setRegionOccluders(size_t regionIdx, const std::vector<OccluderTriangle>& triangles) {
+    regionOccluders_.set(regionIdx, triangles);
 }
 
-const std::vector<OccluderTriangle>& SoftwareOcclusionCuller::getRegionOccluders(size_t regionIdx) const {
-    auto it = regionOccluders_.find(regionIdx);
-    if (it != regionOccluders_.end()) {
-        return it->second;
-    }
-    return emptyOccluders_;
+OccluderSpan SoftwareOcclusionCuller::getRegionOccluders(size_t regionIdx) const {
+    return regionOccluders_.find(regionIdx);
 }
 
 void SoftwareOcclusionCuller::setCamera(float camX, float camY, float camZ,

@@ -949,6 +949,11 @@ EXEMPT_TESTS_GROUPS = {
     # T504 fix 1: the custom SoundFont is loaded lazily and freed on the way
     # back to GM; the test's window on whether it is resident right now.
     ("MidiPlayer", "isCustomSoundFontResident"): "observer",
+    # Spatial budget overrun (B813 follow-up): the occluder table's reserved
+    # heap bytes. test_region_occluders asserts it is exactly 40 B/triangle +
+    # 8 B/region -- the net that keeps the per-region-block layout from
+    # returning. The gate's ledger measures the same bytes in production.
+    ("RegionOccluderTable", "reservedBytes"): "observer",
     # T504b Leg 2b: the unload test's window on the evictable set, and the
     # clock it turns forward so the hysteresis window elapses in a test.
     ("RaceModelLoader", "evictableCountForTest"): "observer",

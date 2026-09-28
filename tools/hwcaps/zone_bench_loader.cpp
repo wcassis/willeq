@@ -23,6 +23,7 @@
 #include "client/zone_bsp.h"
 
 #include "client/graphics/software_occlusion_culler.h"
+#include "client/graphics/region_occluders.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eqe1_loader.h"
@@ -206,8 +207,16 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     // (renderer_zone_load.cpp loadZoneSequential) -- same [memledger] line,
     // same schema -- so scripts/ci/memory_cap_hunt.sh and the gate read both.
     eqt::memory::setCurrentZone(config.zoneName);
+    // The owner rows (WILLEQ_LEDGER_OWNERS=<category>) are only printed on a
+    // diagnostic run: recordPoint() arms them, and the gate never sets the
+    // variable, so its invocation is unchanged.
+    const bool ownerRows = std::getenv("WILLEQ_LEDGER_OWNERS") != nullptr;
     auto ledgerPoint = [&](const char* point) {
         printf("%s\n", eqt::memory::toLogLine(eqt::memory::snapshot(point)).c_str());
+        if (ownerRows) {
+            eqt::memory::recordPoint(point);
+            printf("%s\n", eqt::memory::startupToLogLines(point).c_str());
+        }
         fflush(stdout);
     };
     auto mappingPoint = [&](const char* point) {
@@ -595,11 +604,20 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     ledgerPoint("objects");
     // ── Step 9: Set up frustum culler ──
     eqt::memory::MemoryScope spatialScope(eqt::memory::Category::Spatial);  // T491
+    // Owner labels for WILLEQ_LEDGER_OWNERS=spatial (no effect otherwise --
+    // the rows are only charged for the selected category).
+    eqt::memory::StartupScope spatialOwner("sp.frustum");
+    auto spatialOwnerLabel = [](const char* name) {
+        if (eqt::memory::enabled()) {
+            eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex(name);
+        }
+    };
     data->frustumCuller = std::make_unique<FrustumCuller>();
     data->frustumCuller->setEnabled(true);
 
     // ── Step 10: Extract occluder triangles for software occlusion culling ──
     {
+        spatialOwnerLabel("sp.occ_culler");
         OcclusionCullerConfig occConfig;
         occConfig.width = 64;
         occConfig.height = 32;
@@ -620,6 +638,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         occConfig.minOccluderArea = 20.0f;
         occConfig.maxTrianglesPerRegion = 12;
         data->occlusionCuller = std::make_unique<SoftwareOcclusionCuller>(occConfig);
+        spatialOwnerLabel("sp.occluder_sets");
 
         int totalOccluders = 0;
         int regionsWithOccluders = 0;
@@ -628,55 +647,17 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
             auto geom = wldLoader->getGeometryForRegion(i);
             if (!geom || geom->vertices.empty() || geom->triangles.empty()) continue;
 
-            // Extract large triangles as occluders
-            std::vector<OccluderTriangle> occluders;
-            for (const auto& tri : geom->triangles) {
-                if (tri.v1 >= geom->vertices.size() ||
-                    tri.v2 >= geom->vertices.size() ||
-                    tri.v3 >= geom->vertices.size()) continue;
-
-                const auto& va = geom->vertices[tri.v1];
-                const auto& vb = geom->vertices[tri.v2];
-                const auto& vc = geom->vertices[tri.v3];
-
-                // World-space positions (add region center offset)
-                float ax = geom->centerX + va.x, ay = geom->centerY + va.y, az = geom->centerZ + va.z;
-                float bx = geom->centerX + vb.x, by = geom->centerY + vb.y, bz = geom->centerZ + vb.z;
-                float cx = geom->centerX + vc.x, cy = geom->centerY + vc.y, cz = geom->centerZ + vc.z;
-
-                // Cross product for area
-                float ex = bx - ax, ey = by - ay, ez = bz - az;
-                float fx = cx - ax, fy = cy - ay, fz = cz - az;
-                float nx = ey * fz - ez * fy;
-                float ny = ez * fx - ex * fz;
-                float nz = ex * fy - ey * fx;
-                float area = 0.5f * std::sqrt(nx * nx + ny * ny + nz * nz);
-
-                if (area < occConfig.minOccluderArea) continue;
-
-                OccluderTriangle ot;
-                ot.v0[0] = ax; ot.v0[1] = ay; ot.v0[2] = az;
-                ot.v1[0] = bx; ot.v1[1] = by; ot.v1[2] = bz;
-                ot.v2[0] = cx; ot.v2[1] = cy; ot.v2[2] = cz;
-                ot.area = area;
-                occluders.push_back(ot);
-            }
-
-            // Keep only the largest triangles per region
-            if (static_cast<int>(occluders.size()) > occConfig.maxTrianglesPerRegion) {
-                std::sort(occluders.begin(), occluders.end(),
-                          [](const OccluderTriangle& a, const OccluderTriangle& b) {
-                              return a.area > b.area;
-                          });
-                occluders.resize(occConfig.maxTrianglesPerRegion);
-            }
-
+            // Extract large triangles as occluders -- the client's own
+            // selection (region_occluders.h), so the gate measures what ships.
+            const std::vector<OccluderTriangle> occluders = SelectRegionOccluders(
+                *geom, occConfig.minOccluderArea, occConfig.maxTrianglesPerRegion);
             if (!occluders.empty()) {
                 totalOccluders += occluders.size();
                 regionsWithOccluders++;
-                data->occlusionCuller->setRegionOccluders(i, std::move(occluders));
+                data->occlusionCuller->setRegionOccluders(i, occluders);
             }
         }
+        data->occlusionCuller->finishOccluders();
 
         printf("  Occlusion culler: %d occluder triangles from %d regions (64x32 depth buffer)\n",
                totalOccluders, regionsWithOccluders);
