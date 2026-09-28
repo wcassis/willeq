@@ -39,7 +39,7 @@ it without taking that measurement first.
 
 ## A — live defects
 
-- **B852** (A) **Nothing verifies that Kunark and Velious zones load.** The CI
+- ~~**B852** (A) **Nothing verifies that Kunark and Velious zones load.** The CI
   gate renders three classic zones and nothing else; no test, script or gate
   opened a single Kunark or Velious zone. Will, 2026-09-20: "velious and
   kunark zones are part of the willeq target, so we need to verify that
@@ -63,7 +63,18 @@ it without taking that measurement first.
   `docs/ci.md` "The zone-content sweep". Related: B813/#7 (gate zone set),
   ~~B853/#99~~ (live zone-in sweep — swept clean by B853, `refactor/B853/`:
   all 46 Kunark/Velious zones B852 proved load clean now reach
-  `IsFullyZonedIn()` live with the server's own spawns and doors, 2026-09-21).
+  `IsFullyZonedIn()` live with the server's own spawns and doors, 2026-09-21).~~
+  **STRUCK (2026-09-28 audit-hygiene pass): everything under this card is
+  closed.** #98 (this card) closed; #100 (soldunga) fixed by MR !27 (B100
+  EQE1 v3 name table); #101 (hole) closed 2026-09-23 on post-T504 evidence —
+  T504's rendered Pi run measured hole's peak at **116.4 MiB**
+  (`/mnt/projects/fable/review/T504/pi/runs_cap/hole/samples.tsv`, max
+  `rss_anon_kb` 119224 = 116.43 MiB), well under the 256 MB ceiling, against
+  this card's original x86/llvmpipe 261.2 MB (pre-T504). **The 261.2 MB
+  figure and this card's whole sweep predate T504's entity/archive/texture
+  memory work; nothing in CI pins hole's (or any B852-swept zone's) memory
+  number going forward** — a regression net for it, if wanted, needs a
+  GitLab issue of its own.
 
 - ~~**B001** (A) `src/client/movement/movement_state.cpp`
   `eqt::movement::MovementComponent::SetPositionState` (K07 moved it) —
@@ -9625,7 +9636,7 @@ because the Pi had no keyboard or mouse attached (B510).
   appears on the Camera, UI or Commands pages. So neither of fable's F11 meanings
   is the official one. Re-classed to the decision in B582.
 
-- **B562** (B) **The shipped `config/hotkeys.json` binds eight actions the → issue #182
+- ~~**B562** (B) **The shipped `config/hotkeys.json` binds eight actions the → issue #182
   compiled-in defaults do not**: `CancelDialog`, `CancelInput`,
   `ChatAutocomplete`, `ConfirmDialog`, `ResetUIDefaults`, `SaveUILayout`,
   `ToggleUILock` (all Global) and `ToggleZoneLights` (Ctrl+F4). B535's converse:
@@ -9634,7 +9645,19 @@ because the Pi had no keyboard or mouse attached (B510).
   (`addBinding(HotkeyAction::X` in `setupDefaults()` vs the file's keys). Fix
   shape: add them to `setupDefaults()` (some may be dead actions -- check each
   has a consumer first) and extend the T464 test to compare both directions.
-  Found by T464.
+  Found by T464.~~ **STRUCK (2026-09-28 audit-hygiene pass): fixed by MR !34
+  (`src/client/input/hotkey_manager.cpp` `setupDefaults()` now carries all
+  eight bindings), pinned by
+  `T464_TheShippedFileCarriesEveryDefaultBinding`, issue #182 closed.**
+
+- **(B, needs a GitLab issue)** MR !34's fix commit notes that 7 of the 8
+  actions it added to `setupDefaults()` still have no dispatch consumer:
+  `hotkey_manager.cpp:476` says "ToggleZoneLights is the ONE of the eight
+  with a dispatch consumer" (`RendererEventReceiver` -> `RA::ToggleZoneLights`).
+  `CancelDialog`, `CancelInput`, `ChatAutocomplete`, `ConfirmDialog`,
+  `ResetUIDefaults`, `SaveUILayout` and `ToggleUILock` are bound keys with
+  nothing behind them -- the B562 fix made the binding table match the
+  shipped file, it did not wire the seven actions to anything. Remains open.
 
 - **B563** (P) **The region box a camera or sim reads is built in one place
   and re-derived in a test.** `tests/test_camera_bsp_ceiling.cpp` copies
