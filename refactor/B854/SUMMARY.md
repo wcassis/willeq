@@ -1,9 +1,23 @@
 # B854: Kunark and Velious zone-in sweep on the Orange Pi
 
+**CAVEAT (added 2026-09-28 audit-hygiene pass): this sweep ran
+`--scenario zone_in`, which forces the client's headless Automated mode — no
+graphics were initialised.** Every per-zone log shows `Console bridge attached
+(headless mode)` at startup (e.g. `refactor/B854/logs/timorous_pi_client.log:22`),
+and the memledger `point=ready` line for that same zone shows
+`zone_mesh=0/0 textures_decoded=0/0 entity_models=0/0 irrlicht_scene=0/0`
+(`refactor/B854/logs/timorous_pi_client.log:146`). **This sweep therefore
+proves only PROTOCOL zone-in on the Pi.** The "Lane: DRM/GLES2 1280x720" label
+below and the memory figures in this document are NOT rendered-client figures
+and say nothing about the 64 MB rendered-client contract — a rendered Pi sweep
+is still owed (issue #102).
+
 **Date**: 2026-09-23  
 **Binary**: fable ARM build sha cb8eec71877db8078c261035a54d9bc902d42e1d  
 **Character**: Testcaster  
-**Lane**: Pi (Orange Pi, 483 MB, DRM/GLES2, 1280x720)  
+**Lane**: Pi (Orange Pi, 483 MB, DRM/GLES2, 1280x720) — **label is aspirational
+only; the run was headless/Automated-mode with no graphics initialised, see
+caveat above**  
 **Total zones**: 46 (28 Kunark + 18 Velious)
 
 ## Results
@@ -24,6 +38,11 @@
 3. **sleeper** (velious, 5222761 s3d bytes): zone_boot_failed. Zone process would not boot within timeout.
 
 ## Memory profile
+
+**CAVEAT: figures below are from the headless/Automated `zone_in` scenario
+(see caveat at top of this document) — no graphics, no mesh/texture/entity-model
+loading. They are NOT comparable to a rendered client's memory footprint and do
+not speak to the 64 MB contract.**
 
 Peak RssAnon across all zones: 60.3 MB (emeraldjungle, game_state bucket).
 
