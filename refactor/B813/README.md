@@ -192,6 +192,60 @@ image, draw/state/poly, p95 and baseline-memory checks passed on both zones.
 Each overrun is to be fixed in code (attribute and cut the bytes), never by
 moving the budget. Suggested issue text is on the B813 board entry.
 
+## 2026-09-28 — spatial fixed (rows 2 and 4)
+
+Branch `task/spatial-budget-overrun`. Measured on dev-u24 (llvmpipe, Mesa
+25.2.8), Release `build-gles2`, `visual_gate.py` over all five zones, before
+= `ca81e635`. No budget, zone list or golden changed.
+
+**What `spatial` was.** The gate measures `gles2_zone_benchmark`, and its
+`spatial` scope covers the frustum culler and the software-occlusion occluder
+extraction (`tools/hwcaps/zone_bench_loader.cpp`). A diagnostic run with
+`WILLEQ_LEDGER_OWNERS=spatial` (the loader now labels `sp.frustum`,
+`sp.occ_culler`, `sp.occluder_sets`, and prints the owner rows only when that
+variable is set) split it:
+
+| zone | owner | before | after |
+|---|---|---:|---:|
+| iceclad | `sp.occluder_sets` | 8,671,888 B / 35,568 blocks | 2,777,792 B / 4 blocks |
+| timorous | `sp.occluder_sets` | 11,593,360 B / 26,276 blocks | 3,011,360 B / 4 blocks |
+| gfaydark | `sp.occluder_sets` | 2,803,184 B / 3,122 blocks | 612,832 B / 4 blocks |
+| all three | `sp.occ_culler` + `sp.frustum` | 8.5–12.3 KB | unchanged |
+
+The occluder triangle and region counts are identical before and after
+(iceclad 65,880 / 17,783, timorous 72,649 / 13,137, gfaydark 15,001 / 1,560).
+So 99.9 % of the category was the occluder table: `unordered_map<size_t,
+vector<OccluderTriangle>>`, one hash node and one heap vector per region
+(iceclad 17,783 regions for 65,880 triangles = 2.64 MB of payload). The
+benchmark's copy of the extraction loop also kept each vector's
+pre-truncation capacity. T504 had fixed that in the client's copy but not in
+the benchmark's. It was not the BSP, and not a collision copy.
+
+**Fix.** `RegionOccluderTable` (`include/client/graphics/software_occlusion_culler.h`)
+holds the zone in three flat arrays (region ids, offsets, triangles): 40 B per
+triangle + 8 B per region. `SelectRegionOccluders()`
+(`include/client/graphics/region_occluders.h`) is the one selection both loaders
+call, so they cannot drift again. The SimulationWorker handoff moves the whole
+table. The selection, its order and the per-frame reads are unchanged.
+`test_region_occluders` (7 tests) pins the byte bound, the selection and the
+shared call. With `shrinkToFit()` disabled, the byte-bound test fails.
+
+| zone | `spatial` live before | after | budget share |
+|---|---:|---:|---:|
+| qeynos2 | 736,160 | 372,432 | 9 % |
+| gfaydark | 2,813,552 | 621,312 | 15 % |
+| befallen | 446,400 | 238,512 | 6 % |
+| iceclad | 8,682,208 | 2,786,288 | 66 % |
+| timorous | 11,607,136 | 3,019,840 | 72 % |
+
+(Larger of the golden run and the coverage run.) Every image, draw/state/poly
+and baseline-memory check passed on all five zones. iceclad's p95 CPU check is
+noisy on a loaded host: the before binary measured 9.513 against a 9.530
+ceiling. In an interleaved A/B of 6 runs each (`ca81e635` vs fix, same host),
+the median was 10.94 ms for the base binary and 10.75 ms for the fix, so the
+change does not regress it. Rows 1 and 3 (`zone_parse`, `zone_mesh`) are
+untouched and still open, so iceclad and timorous stay in `gate-kunark-velious`.
+
 ## Gate wall time [measured]
 
 Back-to-back on a quiet hermes-ext, same session, `build-gles2` warm:

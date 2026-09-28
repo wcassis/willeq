@@ -106,9 +106,9 @@ non-blocking gate** (Will, 2026-09-28; `docs/decisions.md`). The manifest's
 five zones are split by `visual_gate.py --zones`: `gate` verifies qeynos2,
 gfaydark and befallen exactly as before B813; `gate-kunark-velious` verifies
 iceclad and timorous with the **same** assertions and the **same** budgets.
-Those two zones overrun three ledger budgets in four places (iceclad
-`zone_parse` and `spatial`, timorous `zone_mesh` and `spatial`;
-`refactor/B813/README.md`), which are open defects
+Those two zones overrun two ledger budgets (iceclad `zone_parse`, timorous
+`zone_mesh`; `refactor/B813/README.md` — their `spatial` overruns were fixed
+in code on 2026-09-28), which are open defects
 to be fixed in code — a raise of those budgets was reversed on 2026-09-28. So a
 pipeline shows that job red (a yellow "!" in GitLab) and still passes. When a
 fix makes it green, move the zone back into `gate`'s `--zones` list; never
