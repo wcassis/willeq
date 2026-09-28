@@ -136,10 +136,61 @@ do not exercise the term T490 is chasing". All other budgeted categories
 objects 3–31%, s3d zone source estimate 69–81%, total estimate 57–67%,
 eqe1 mapped 50–52%) are inside their budgets on both zones [measured].
 
-Consequence until Will re-derives: the `gate` job's 3-in-script retry will
-fail all three attempts (the failures are deterministic, not load), and
-`tests/cmake/hygiene.cmake`'s `VisualGateLedgerAssertions` (synthetic-dict
-test) still passes — it does not know about these zones.
+~~Consequence until Will re-derives~~ — **superseded 2026-09-28, see the
+next section.** Will does not re-derive these budgets upward: budgets are
+prescriptive and ratchet DOWN only.
+
+## 2026-09-28 — the 2026-09-23 raise is reversed; the overruns are defects
+
+Commit e3a14c2a (2026-09-23) raised three `memoryLedgerBudgets` citing "Will's
+2026-09-23 ruling", and 6eb9b454 synced the compiled `fromPreset(OrangePi)`
+mirror, `s3dZoneSourceMemoryBytes` and `test_constrained_renderer.cpp`. **Will
+confirmed on 2026-09-28 that no such ruling was made** (`docs/decisions.md`
+2026-09-28). Branch `task/B813-budget-revert` restores the pre-e3a14c2a values
+everywhere they live (preset JSON, `constrained_renderer_config.cpp`, the two
+T293 pins in `test_constrained_renderer.cpp`):
+
+| value | raised to | restored |
+|---|---|---|
+| `zone_parse` | 34,603,008 | 33,554,432 (32 MiB) |
+| `zone_mesh` | 30,408,704 | 29,360,128 (28 MiB) |
+| `spatial` | 12,582,912 | 4,194,304 (4 MiB) |
+| `s3dZoneSourceMemoryBytes` | 34,603,008 | 33,554,432 (32 MiB; B803 pin `zone_parse == s3dZoneSource` still holds) |
+
+Not touched: the five-zone manifest, the post-T504 `characterModelsBytes`
+baselines e3a14c2a set for iceclad/timorous (those went DOWN), every image
+golden, and every other budget.
+
+**CI after the revert.** `visual_gate.py --zones` selects a subset of the
+manifest's zones and changes nothing else. `gate` (blocking, 3 in-script
+attempts) runs `--zones qeynos2,gfaydark,befallen`, exactly the pre-B813 gate.
+`gate-kunark-velious` (`allow_failure: true`, one attempt) runs
+`--zones iceclad,timorous` with the same assertions and the same budgets, so
+their overruns are printed red on every pipeline without blocking `fable`.
+`VisualGateLedgerAssertions` fails if the two `--zones` lists stop
+partitioning the manifest's zones. No waiver list, no per-zone budget.
+
+**The overruns — OPEN DEFECTS, NEED GITLAB ISSUES.** Measured 2026-09-28 on
+the revert branch: `visual_gate.py --zones iceclad,timorous`, Release
+`build-gles2`, dev host `dev-u24` (llvmpipe, Mesa 25.2.8, the blessed
+glVersion), not hermes-ext. The gate checks LIVE bytes; the value shown is the
+larger of the golden run and the coverage run. e3a14c2a's message recorded
+PEAKS, which are close to these and listed only three lines. It left out
+iceclad `spatial`.
+
+| # | zone | category | live (measured) | e3a14c2a peak | budget | over |
+|---|---|---|---|---|---|---|
+| 1 | iceclad | `zone_parse` | 33,925,296 | 33,925,328 | 33,554,432 | +1.11 % |
+| 2 | iceclad | `spatial` | 8,682,512 | (not listed) | 4,194,304 | +107 % (2.07×) |
+| 3 | timorous | `zone_mesh` | 29,415,360 | 29,415,872 | 29,360,128 | +0.19 % |
+| 4 | timorous | `spatial` | 11,606,448 | 11,606,592 | 4,194,304 | +177 % (2.77×) |
+
+That run failed on exactly these eight lines (4 × golden + coverage run). All
+image, draw/state/poly, p95 and baseline-memory checks passed on both zones.
+`--zones qeynos2,gfaydark,befallen` on the same build: **VISUAL GATE: PASS**.
+
+Each overrun is to be fixed in code (attribute and cut the bytes), never by
+moving the budget. Suggested issue text is on the B813 board entry.
 
 ## Gate wall time [measured]
 

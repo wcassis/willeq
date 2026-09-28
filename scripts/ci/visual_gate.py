@@ -84,6 +84,10 @@ checks them against three independent assertions:
 Usage:
   visual_gate.py --bless    Regenerate goldens + manifest baselines + contact sheet.
   visual_gate.py            Compare against the committed goldens/manifest.
+  visual_gate.py --zones a,b
+                            Verify only zones a and b (CI splits the blocking
+                            and non-blocking gate jobs this way; see
+                            select_zones() and docs/ci.md).
 
 Exit code is nonzero on any failure (or when build-gles2/ is missing --
 see the ctest wrapper, scripts/ci/visual_gate.sh, for the SKIP path).
@@ -1086,10 +1090,51 @@ and are pending Will's visual sign-off. This page does not constitute approval.<
     print(f"[bless] contact sheet: {out_path}")
 
 
+def select_zones(manifest, names):
+    """B813 revert (Will, 2026-09-28): verify only the named subset of the
+    manifest's zones, in BOTH the golden-image list and memoryCoverage.zones.
+
+    This is how .gitlab-ci.yml splits the gate into the blocking `gate` job
+    (the three classic zones) and the non-blocking `gate-kunark-velious` job
+    (iceclad + timorous, which overrun the zone_parse / zone_mesh / spatial
+    ledger budgets -- open defects,
+    docs/decisions.md 2026-09-28). It selects zones; it changes NO budget,
+    NO baseline and NO assertion for a zone it runs. An unknown name is an
+    error, never a silent no-op, and scripts/ci/test_visual_gate_ledger.py
+    checks that the two CI jobs' --zones lists partition the manifest's
+    zones exactly, so no zone can drop out of CI by editing one list.
+
+    Returns (filtered_manifest, skipped_zone_names). Raises ValueError.
+    """
+    wanted = [n.strip() for n in names.split(",") if n.strip()]
+    if not wanted:
+        raise ValueError("--zones given an empty list")
+    known = [z["zone"] for z in manifest["zones"]]
+    unknown = [n for n in wanted if n not in known]
+    if unknown:
+        raise ValueError(f"--zones names zone(s) not in the manifest: {', '.join(unknown)} "
+                         f"(manifest zones: {', '.join(known)})")
+    out = dict(manifest)
+    out["zones"] = [z for z in manifest["zones"] if z["zone"] in wanted]
+    coverage = manifest.get("memoryCoverage")
+    if coverage:
+        out["memoryCoverage"] = dict(coverage)
+        out["memoryCoverage"]["zones"] = [z for z in coverage["zones"] if z["zone"] in wanted]
+    skipped = [n for n in known if n not in wanted]
+    return out, skipped
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--bless", action="store_true", help="Regenerate goldens + manifest + contact sheet")
+    parser.add_argument("--zones", default=None,
+                        help="Comma-separated subset of the manifest's zones to VERIFY "
+                             "(default: all). Not valid with --bless. See select_zones().")
     args = parser.parse_args()
+
+    if args.bless and args.zones is not None:
+        print("ERROR: --zones cannot be combined with --bless (a bless always covers every zone)")
+        return 2
 
     if not BENCH_BIN.exists():
         print(f"SKIP: {BENCH_BIN} not found (build-gles2/ absent -- run scripts/build-gles2-x86.sh first)")
@@ -1098,6 +1143,14 @@ def main():
     manifest = load_manifest()
     if args.bless:
         return bless(manifest)
+    if args.zones is not None:
+        try:
+            manifest, skipped = select_zones(manifest, args.zones)
+        except ValueError as e:
+            print(f"ERROR: {e}")
+            return 2
+        print(f"[verify] --zones: verifying {', '.join(z['zone'] for z in manifest['zones'])}; "
+              f"NOT verified by this invocation: {', '.join(skipped) or '(none)'}")
     return verify(manifest)
 
 

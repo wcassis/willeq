@@ -170,7 +170,44 @@ def main():
     assert f == [], f
     assert "WITHIN the 64 MiB target" in out, out
 
-    print("test_visual_gate_ledger: 14 checks OK")
+    # 10. B813 revert (Will, 2026-09-28): --zones selects zones and nothing
+    #     else. An unknown or empty list is an error, and the filter applies to
+    #     BOTH the golden-image zones and memoryCoverage.zones.
+    manifest = {"zones": [{"zone": "a"}, {"zone": "b"}, {"zone": "c"}],
+                "memoryCoverage": {"zones": [{"zone": "a"}, {"zone": "c"}]},
+                "benchmark": {}}
+    sel, skipped = gate.select_zones(manifest, "c,a")
+    assert [z["zone"] for z in sel["zones"]] == ["a", "c"], sel
+    assert [z["zone"] for z in sel["memoryCoverage"]["zones"]] == ["a", "c"], sel
+    assert skipped == ["b"], skipped
+    assert [z["zone"] for z in manifest["zones"]] == ["a", "b", "c"], "input mutated"
+    for bad in ("", "a,nope"):
+        try:
+            gate.select_zones(manifest, bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"select_zones accepted {bad!r}")
+
+    # 11. The two CI gate jobs' --zones lists PARTITION the manifest's zones:
+    #     every zone is verified by exactly one job, so no zone can leave CI
+    #     by editing one list. (The blocking/non-blocking split is Will's
+    #     2026-09-28 ruling; docs/decisions.md, docs/ci.md.)
+    import json
+    import re
+    root = GATE.parents[2]
+    ci_text = (root / ".gitlab-ci.yml").read_text()
+    lists = re.findall(r"visual_gate\.sh --zones ([A-Za-z0-9_,]+)", ci_text)
+    assert len(lists) == 2, f"expected exactly two --zones gate invocations in .gitlab-ci.yml, got {lists}"
+    ci_zones = [z for lst in lists for z in lst.split(",")]
+    real = json.loads((root / "tests" / "goldens" / "manifest.json").read_text())
+    manifest_zones = [z["zone"] for z in real["zones"]]
+    coverage_zones = [z["zone"] for z in real.get("memoryCoverage", {}).get("zones", [])]
+    assert len(ci_zones) == len(set(ci_zones)), f"a zone is in both CI gate jobs: {lists}"
+    assert sorted(ci_zones) == sorted(manifest_zones), (lists, manifest_zones)
+    assert set(coverage_zones) <= set(ci_zones), (lists, coverage_zones)
+
+    print("test_visual_gate_ledger: 16 checks OK")
     return 0
 
 

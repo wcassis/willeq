@@ -57,7 +57,8 @@ hermes-ext worker therefore runs a Pi leg entirely over ssh — NFS paths exist 
 | `build` | the Release recipe from `CLAUDE.md`, `-j8` | 1,237 s (20.6 min) | 6 s |
 | `test` | full `ctest -j6`, minus two cases, then one of them with retries | 116 s (4,908 tests) | 116 s |
 | `gate` | `visual_gate` (T80/T291) over `build-gles2/bin/gles2_zone_benchmark` | 363 s | 18 s |
-| | B813 (2026-09-20): now over FIVE zones (qeynos2, gfaydark, befallen + iceclad + timorous) | — | 40 s (measured back-to-back on a quiet hermes-ext: 10.6 s wall for three zones, 19.6 s wall for five; +9.0 s wall) |
+| | B813 (2026-09-20): the manifest names FIVE zones (qeynos2, gfaydark, befallen + iceclad + timorous). Since 2026-09-28 `gate` verifies only the three classic ones (`--zones`) | — | 40 s for all five in one job (measured back-to-back on a quiet hermes-ext: 10.6 s wall for three zones, 19.6 s wall for five; +9.0 s wall) |
+| `gate-kunark-velious` | the same `visual_gate` over iceclad + timorous, **`allow_failure: true`**, one attempt (2026-09-28) | — | not yet measured as its own job |
 
 (T502's own measurements on hermes-ext; `test` does the same work either way —
 only the two build trees are warm or cold. A cold `gate` includes building the
@@ -100,6 +101,21 @@ the job has to install for itself: hermes-ext's `python3` is 3.12 with no PIL an
   host's existing `~/.venvs/ci` (3.11) driving the 3.12 interpreter, and exports
   `PYTHONPATH`. It is a no-op on every later run.
 
+**`gate-kunark-velious` IS `allow_failure: true`, and that is the only
+non-blocking gate** (Will, 2026-09-28; `docs/decisions.md`). The manifest's
+five zones are split by `visual_gate.py --zones`: `gate` verifies qeynos2,
+gfaydark and befallen exactly as before B813; `gate-kunark-velious` verifies
+iceclad and timorous with the **same** assertions and the **same** budgets.
+Those two zones overrun three ledger budgets in four places (iceclad
+`zone_parse` and `spatial`, timorous `zone_mesh` and `spatial`;
+`refactor/B813/README.md`), which are open defects
+to be fixed in code — a raise of those budgets was reversed on 2026-09-28. So a
+pipeline shows that job red (a yellow "!" in GitLab) and still passes. When a
+fix makes it green, move the zone back into `gate`'s `--zones` list; never
+widen a budget to get there. `--zones` only selects zones — there is no waiver
+list and no per-zone budget — and the hygiene test `VisualGateLedgerAssertions`
+fails unless the two jobs' lists partition the manifest's zones exactly.
+
 ## Reading a pipeline (worker or human)
 
 A human: the pipeline list is linked from the project page, and every job page
@@ -116,8 +132,9 @@ the log over REST, which is also the only way to get a failing job's output:
       https://gitlab.goldfarm.local/api/v4/projects/1/jobs/<id>/trace
 
 Each job also uploads its logs as artifacts, kept **7 days**: `hygiene-ctest.log`,
-`ctest.log` + `build/Testing/Temporary/LastTest.log`, and `gate.log` +
-`build-gles2/ci_artifacts/` (the gate's diff images).
+`ctest.log` + `build/Testing/Temporary/LastTest.log`, `gate.log` +
+`build-gles2/ci_artifacts/` (the gate's diff images), and
+`gate-kunark-velious.log`.
 
 ## Scope: which pushes build
 
@@ -195,7 +212,8 @@ frames. Never re-bless goldens to make CI green.
 
 ## The zone-content sweep (B852, issue #98)
 
-The gate above renders three classic zones. Will's 2026-09-20 ruling
+The blocking `gate` renders three classic zones and the non-blocking
+`gate-kunark-velious` two more (iceclad, timorous). Will's 2026-09-20 ruling
 (`docs/decisions.md`): "velious and kunark zones are part of the willeq target,
 so we need to verify that content works." The zone set behind that ruling is
 the 118-zone T490 census (`refactor/T490_every_classic_zone_fits_the_pi.md`:

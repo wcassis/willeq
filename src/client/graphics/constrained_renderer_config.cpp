@@ -328,7 +328,7 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.gpuTextureMemoryBytes         = 64 * 1024 * 1024;   // 64MB
             config.zoneGeometryMemoryBytes       = 16 * 1024 * 1024;   // 16MB
             config.placeableObjectsMemoryBytes   = 24 * 1024 * 1024;   // 24MB
-            config.s3dZoneSourceMemoryBytes      = 34603008;         // 33 MiB (B813: 2026-09-23 re-derive round-up)
+            config.s3dZoneSourceMemoryBytes      = 32 * 1024 * 1024;   // 32MB (T491/B803: iceclad measures 24.55 MiB)
             config.vboEboMemoryBytes             = 40 * 1024 * 1024;   // 40MB
             config.characterModelsMemoryBytes    = 40 * 1024 * 1024;   // 40MB
             // Address space, not RAM -- see the field's comment.
@@ -372,21 +372,18 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
                 4 * 1024 * 1024;
             // measured worst 8.52 MiB over the three golden zones, but
             // those are the SMALL zones: T490 measured iceclad's S3D zone
-            // source at 24.55 MiB. Pinned to s3dZoneSourceMemoryBytes (B813:
-            // 2026-09-23 re-derive round-up to 33 MiB) because zone_parse
-            // holds exactly that data
+            // source at 24.55 MiB. Pinned to s3dZoneSourceMemoryBytes (32 MiB,
+            // board B803) because zone_parse holds exactly that data
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::ZoneParse)] =
-                34603008;
-            // measured worst 20.26 MiB (befallen) x 1.25 = 25.3 -> 30408704 (B813:
-            // 2026-09-23 re-derive round-up from 28 MiB)
+                32 * 1024 * 1024;
+            // measured worst 20.26 MiB (befallen) x 1.25 = 25.3 -> 28
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::ZoneMesh)] =
-                30408704;
-            // measured worst 2.68 MiB (gfaydark) x 1.25 = 3.4 -> 12582912 (B813:
-            // 2026-09-23 re-derive round-up from 4 MiB)
+                28 * 1024 * 1024;
+            // measured worst 2.68 MiB (gfaydark) x 1.25 = 3.4 -> 4.
             // ⚠ iceclad is 37,609 BSP regions against gfaydark's; this budget is
             // derived from zones that do not exercise the term T490 is chasing
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Spatial)] =
-                12582912;
+                4 * 1024 * 1024;
             // measured worst 13.04 MiB (coverage) x 1.25 = 16.3 -> 20
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::TexturesDecoded)] =
                 20 * 1024 * 1024;
