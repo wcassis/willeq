@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 namespace EQT {
 namespace Graphics {
@@ -15,6 +16,68 @@ namespace Graphics {
 struct OccluderTriangle {
     float v0[3], v1[3], v2[3];
     float area;  // World-space area in square EQ units
+};
+
+// A read-only view of one region's occluders (a pointer + count into a
+// RegionOccluderTable). It has the vector subset every reader uses --
+// range-for, empty(), size(), operator[] -- so `const auto& occ =
+// culler.getRegionOccluders(i);` keeps compiling (the temporary is
+// lifetime-extended). Invalidated by any write to the table.
+struct OccluderSpan {
+    const OccluderTriangle* first = nullptr;
+    size_t count = 0;
+    const OccluderTriangle* begin() const { return first; }
+    const OccluderTriangle* end() const { return first + count; }
+    bool empty() const { return count == 0; }
+    size_t size() const { return count; }
+    const OccluderTriangle& operator[](size_t i) const { return first[i]; }
+};
+
+// Every region's occluder triangles in ONE flat array, indexed by a sorted
+// region-id list (CSR layout).
+//
+// Spatial budget overrun (B813 follow-up, 2026-09-28): the previous storage
+// was an unordered_map<size_t, vector<OccluderTriangle>> -- one hash node
+// plus one heap vector per region. MEASURED in the CI gate (orangepi preset
+// ledger, `spatial` category): iceclad 65,880 triangles (2.64 MB of payload)
+// held 8,671,888 B in 35,568 blocks; timorous 72,649 triangles (2.91 MB) held
+// 11,593,360 B in 26,276 blocks. Two blocks per region carry a node, a vector
+// header, glibc's chunk word and the ledger header, and the benchmark's copy
+// of the extraction loop also kept each vector's pre-truncation capacity.
+// Here the whole zone is three allocations: 40 B per triangle plus 8 B per
+// region, pinned by tests/test_region_occluders.cpp.
+class RegionOccluderTable {
+public:
+    // Store `triangles` for `regionIdx`, replacing any earlier set. An empty
+    // set is ignored (the old map did the same). Ascending region order --
+    // what both zone loaders produce -- appends in O(n); any other order
+    // takes a correct but O(total) insert.
+    void set(size_t regionIdx, const std::vector<OccluderTriangle>& triangles);
+
+    // The region's occluders, in the order they were set; empty if none.
+    OccluderSpan find(size_t regionIdx) const;
+
+    // Drop the growth slack left by set(). Call once the zone's sets are all
+    // in; until then the arrays may hold up to 2x their size.
+    void shrinkToFit();
+
+    bool empty() const { return regions_.empty(); }
+    size_t regionCount() const { return regions_.size(); }
+    size_t triangleCount() const { return triangles_.size(); }
+    void clear();
+
+    // Heap bytes the three arrays reserve (capacity, not size) -- what the
+    // ledger charges, minus per-block overhead.
+    size_t reservedBytes() const {
+        return triangles_.capacity() * sizeof(OccluderTriangle) +
+               regions_.capacity() * sizeof(uint32_t) +
+               starts_.capacity() * sizeof(uint32_t);
+    }
+
+private:
+    std::vector<uint32_t> regions_;             // ascending region ids
+    std::vector<uint32_t> starts_;              // regions_.size() + 1 offsets into triangles_
+    std::vector<OccluderTriangle> triangles_;
 };
 
 // Configuration for the software occlusion culler
@@ -56,11 +119,16 @@ public:
     explicit SoftwareOcclusionCuller(const OcclusionCullerConfig& config);
     ~SoftwareOcclusionCuller() = default;
 
-    // Store occluder triangles for a region (called at zone load time)
-    void setRegionOccluders(size_t regionIdx, std::vector<OccluderTriangle> triangles);
+    // Store occluder triangles for a region (called at zone load time, in
+    // ascending region order). Call finishOccluders() after the last one.
+    void setRegionOccluders(size_t regionIdx, const std::vector<OccluderTriangle>& triangles);
+    void finishOccluders() { regionOccluders_.shrinkToFit(); }
 
-    // Get occluder triangles for a region
-    const std::vector<OccluderTriangle>& getRegionOccluders(size_t regionIdx) const;
+    // Get occluder triangles for a region (empty if none)
+    OccluderSpan getRegionOccluders(size_t regionIdx) const;
+
+    // Install a whole table at once (the SimulationWorker's handoff).
+    void setRegionOccluderTable(RegionOccluderTable table) { regionOccluders_ = std::move(table); }
 
     // Set camera state from FrustumCuller basis vectors.
     // All in EQ coordinates (Z-up).
@@ -121,14 +189,15 @@ public:
     // Clear all occluder data (call when changing zones)
     void clearOccluders() { regionOccluders_.clear(); }
 
-    // Get the full region occluders map (for copying to worker thread)
     // T504: hand the occluder sets over (the caller becomes the owner; this
     // culler is left with none). The SimulationWorker's own culler does the
     // per-frame culling; the renderer-side culler only extracted the sets at
     // load, so keeping a copy here (and a second one in SimulationZoneData)
     // tripled the 30k-triangle table.
-    std::unordered_map<size_t, std::vector<OccluderTriangle>> takeRegionOccludersMap() {
-        return std::move(regionOccluders_);
+    RegionOccluderTable takeRegionOccluders() {
+        RegionOccluderTable out = std::move(regionOccluders_);
+        regionOccluders_.clear();
+        return out;
     }
 
     // Count non-empty pixels in depth buffer and store in stats
@@ -179,10 +248,7 @@ private:
     float tanHalfFovV_ = 1.0f;  // tan(fovV / 2)
 
     // Per-region occluder storage (populated at zone load)
-    std::unordered_map<size_t, std::vector<OccluderTriangle>> regionOccluders_;
-
-    // Empty vector for getRegionOccluders when region not found
-    static const std::vector<OccluderTriangle> emptyOccluders_;
+    RegionOccluderTable regionOccluders_;
 };
 
 } // namespace Graphics

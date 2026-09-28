@@ -77,3 +77,15 @@ ENDIF()
 ADD_EXECUTABLE(test_pathfinder ${TEST_PATHFINDER_SOURCES})
 TARGET_LINK_LIBRARIES(test_pathfinder ${TEST_PATHFINDER_LIBS})
 GTEST_DISCOVER_TESTS(test_pathfinder DISCOVERY_TIMEOUT 120)
+
+# Spatial budget overrun (B813 follow-up): the software-occlusion occluder
+# table is held once, flat (40 B per triangle + 8 B per region), and both zone
+# loaders select occluders through the one shared body. Device-free: the
+# culler TU plus a header-only template.
+ADD_EXECUTABLE(test_region_occluders
+    test_region_occluders.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/software_occlusion_culler.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_region_occluders PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+TARGET_LINK_LIBRARIES(test_region_occluders GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_region_occluders DISCOVERY_TIMEOUT 120)

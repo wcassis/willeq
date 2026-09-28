@@ -1096,8 +1096,8 @@ def select_zones(manifest, names):
 
     This is how .gitlab-ci.yml splits the gate into the blocking `gate` job
     (the three classic zones) and the non-blocking `gate-kunark-velious` job
-    (iceclad + timorous, which overrun the zone_parse / zone_mesh / spatial
-    ledger budgets -- open defects,
+    (iceclad + timorous, which overrun the zone_parse / zone_mesh ledger
+    budgets -- open defects,
     docs/decisions.md 2026-09-28). It selects zones; it changes NO budget,
     NO baseline and NO assertion for a zone it runs. An unknown name is an
     error, never a silent no-op, and scripts/ci/test_visual_gate_ledger.py

@@ -171,8 +171,9 @@ test:
 # split across TWO jobs by visual_gate.py --zones. `gate` (blocking) runs the
 # three classic zones exactly as before. `gate-kunark-velious` runs iceclad +
 # timorous with the SAME assertions and the SAME budgets, and is
-# allow_failure: true because those two zones overrun three ledger budgets
-# (zone_parse, zone_mesh, spatial; four zone/category lines) -- open defects to be fixed in code, NOT
+# allow_failure: true because those two zones overrun two ledger budgets
+# (iceclad zone_parse, timorous zone_mesh; their spatial overruns were fixed
+# in code 2026-09-28) -- open defects to be fixed in code, NOT
 # budgets to raise. Its red is visible on every pipeline but does not block.
 # No waiver list, no per-zone budget: the two --zones lists below must
 # partition the manifest's zones exactly (checked by the hygiene test

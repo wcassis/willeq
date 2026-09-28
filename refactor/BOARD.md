@@ -782,16 +782,28 @@ it without taking that measurement first.
      (+1.11 %). The allocator charges more to the parse than the 24.55 MiB
      S3D-source estimate the budget is pinned to (B803). Find the ~0.35 MiB
      and cut it, or show that the estimate is short and fix the estimate.
-  2. **iceclad `spatial` over budget**: 8,682,512 B vs 4,194,304 (2.07×).
+  2. ~~**iceclad `spatial` over budget**: 8,682,512 B vs 4,194,304 (2.07×).
      e3a14c2a's message did not list this one; its 12 MiB raise covered it
-     silently.
+     silently.~~ **FIXED 2026-09-28 (branch `task/spatial-budget-overrun`):
+     2,786,288 B (66 %).** 99.9 % of the category was the software-occlusion
+     occluder table (one hash node + one heap vector per region, and the
+     benchmark's copy of the loop kept each vector's pre-truncation capacity),
+     not BSP or collision data. See #4 and `refactor/B813/README.md`
+     "2026-09-28 — spatial fixed".
   3. **timorous `zone_mesh` over budget**: 29,415,360 B vs 29,360,128
      (+0.19 %). Post-T504 the mesh build is a hair over. Look first for a
      transient or duplicate in the mesh build.
-  4. **timorous `spatial` over budget**: 11,606,448 B vs 4,194,304 (2.77×).
+  4. ~~**timorous `spatial` over budget**: 11,606,448 B vs 4,194,304 (2.77×).
      With #2: the BSP/PVS structures scale with region count (iceclad has
      37,609 regions), and the budget came from zones that do not exercise
-     that term. The fix is a change of representation, not of the number.
+     that term. The fix is a change of representation, not of the number.~~
+     **FIXED 2026-09-28 with #2: 3,019,840 B (72 %).** It was a change of
+     representation: `RegionOccluderTable` (`software_occlusion_culler.h`)
+     holds a zone's occluders in three flat arrays, and both zone loaders
+     select them through one body (`region_occluders.h`);
+     `test_region_occluders` pins 40 B/triangle + 8 B/region and the shared
+     call. iceclad and timorous stay in `gate-kunark-velious` until #1 and #3
+     are fixed too.
 
 - ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage

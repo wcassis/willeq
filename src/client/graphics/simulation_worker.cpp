@@ -112,11 +112,10 @@ void SimulationWorker::setZoneData(SimulationZoneData&& data) {
     // Initialize worker-owned occlusion culler from zone data
     if (!zoneData_.regionOccluders.empty()) {
         workerOcclusionCuller_ = std::make_unique<SoftwareOcclusionCuller>(zoneData_.occlusionConfig);
-        const size_t occluderSets = zoneData_.regionOccluders.size();
-        for (auto& [regionIdx, triangles] : zoneData_.regionOccluders) {
-            workerOcclusionCuller_->setRegionOccluders(regionIdx, std::move(triangles));  // T504: moved
-        }
-        zoneData_.regionOccluders.clear();  // the worker culler owns them now
+        const size_t occluderSets = zoneData_.regionOccluders.regionCount();
+        // T504: moved, not copied -- the worker culler owns them now.
+        workerOcclusionCuller_->setRegionOccluderTable(std::move(zoneData_.regionOccluders));
+        zoneData_.regionOccluders.clear();
         LOG_INFO(MOD_GRAPHICS, "SimulationWorker: occlusion culler initialized with {} region occluder sets",
                  occluderSets);
     }
