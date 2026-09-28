@@ -74,7 +74,9 @@ Additional context is in subdirectory CLAUDE.md files:
   stages: `hygiene` (no C++ build, so a doc/size/citation break fails in under a
   minute), `build`, `test` (the intermittent `RDPServerFrameTest.UpdateFrameMultipleTimes`
   is re-run with `--repeat until-pass:3`) and `gate` (`visual_gate`, 3 in-script
-  retries, never `allow_failure`). The jobs execute on **hermes-ext** and refuse
+  retries, never `allow_failure`; iceclad/timorous run in the separate
+  `allow_failure` job `gate-kunark-velious` — open budget overruns, Will
+  2026-09-28, `docs/ci.md`). The jobs execute on **hermes-ext** and refuse
   any other host — a hermes kanban worker is capped at 4 GiB and is OOM-killed
   while linking, which is what CI exists to stop, and Will's 2026-09-17 ruling
   keeps builds off the Inspur inference box. Pushing a branch is therefore the

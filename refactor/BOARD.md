@@ -755,6 +755,32 @@ it without taking that measurement first.
   over its own named worst case), iceclad `zone_mesh` 2.1× and `spatial` 2.1×
   budget, timorous `zone_mesh` 2.5× and `spatial` 2.8×. Evidence:
   `refactor/B813/README.md`.
+  **2026-09-28 — the budget raise is REVERSED (Will).** Commit e3a14c2a
+  raised `zone_parse` 32→33 MiB, `zone_mesh` 28→29 MiB and `spatial` 4→12 MiB
+  (and 6eb9b454 followed in `fromPreset` + `test_constrained_renderer.cpp`,
+  plus `s3dZoneSourceMemoryBytes` 32→33 MiB) citing a 2026-09-23 "ruling" Will
+  confirms he never made. All four values are back at their pre-e3a14c2a
+  numbers (branch `task/B813-budget-revert`; `docs/decisions.md` 2026-09-28).
+  Budgets ratchet DOWN only. The five-zone gate stays, split in CI:
+  `gate` (blocking) = qeynos2/gfaydark/befallen, `gate-kunark-velious`
+  (`allow_failure: true`) = iceclad/timorous, same assertions, same budgets
+  (`docs/ci.md`). **Four OPEN DEFECTS, fix in code — NEED GITLAB ISSUES
+  (not filed by the reverting card).** Live bytes measured 2026-09-28 on the
+  revert branch (`refactor/B813/README.md` "2026-09-28"):
+  1. **iceclad `zone_parse` over budget**: 33,925,296 B vs 33,554,432
+     (+1.11 %). The allocator charges more to the parse than the 24.55 MiB
+     S3D-source estimate the budget is pinned to (B803). Find the ~0.35 MiB
+     and cut it, or show that the estimate is short and fix the estimate.
+  2. **iceclad `spatial` over budget**: 8,682,512 B vs 4,194,304 (2.07×).
+     e3a14c2a's message did not list this one; its 12 MiB raise covered it
+     silently.
+  3. **timorous `zone_mesh` over budget**: 29,415,360 B vs 29,360,128
+     (+0.19 %). Post-T504 the mesh build is a hair over. Look first for a
+     transient or duplicate in the mesh build.
+  4. **timorous `spatial` over budget**: 11,606,448 B vs 4,194,304 (2.77×).
+     With #2: the BSP/PVS structures scale with region count (iceclad has
+     37,609 regions), and the budget came from zones that do not exercise
+     that term. The fix is a change of representation, not of the number.
 
 - ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage

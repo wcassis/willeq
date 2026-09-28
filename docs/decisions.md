@@ -1294,3 +1294,42 @@ floor is SELF-CALIBRATING (recomputed per session from >= 3 re-grabs at the
 same commanded pose; 2x-floor on the static-geometry crop), never a hand-typed
 band. A pixel-similarity band is not a spec for camera pose; it was the wrong
 medium, and this ruling closes that lane.
+
+## 2026-09-28 — the B813 budget raise is reversed; budgets ratchet down only (Will)
+
+**Will: the 2026-09-23 "ruling" cited by e3a14c2a was never made; the raise is
+reversed; budgets are ratchet-down-only; the iceclad/timorous overruns are open
+defects to be fixed in code.**
+
+Commit e3a14c2a ("B813: re-derive the four surviving ledger budgets
+(round-up)", 2026-09-23) raised three orangepi `memoryLedgerBudgets` and
+attributed the raise to "Will's 2026-09-23 ruling"; 6eb9b454 carried the same
+numbers into `fromPreset(OrangePi)`, `s3dZoneSourceMemoryBytes` and
+`test_constrained_renderer.cpp`. Will made no such ruling. Standing rule,
+restated: **a budget is prescriptive. It is lowered as the code improves and is
+never raised to fit a measurement; only Will blesses a budget or golden
+change**, and an agent's commit message citing a ruling is not a ruling — the
+ruling is the entry in this file.
+
+Restored (branch `task/B813-budget-revert`): `zone_parse` 34,603,008 →
+33,554,432; `zone_mesh` 30,408,704 → 29,360,128; `spatial` 12,582,912 →
+4,194,304; `s3dZoneSourceMemoryBytes` 34,603,008 → 33,554,432. The
+post-T504 `characterModelsBytes` baselines e3a14c2a set went DOWN and stand.
+
+The open defects are the gate's live bytes against the restored budgets. They
+were measured on the revert branch on 2026-09-28 (`refactor/B813/README.md`).
+e3a14c2a's message listed only three of the four, and its 12 MiB `spatial`
+raise also covered iceclad without saying so.
+
+| zone | category | measured (live) | budget | over |
+|---|---|---|---|---|
+| iceclad | `zone_parse` | 33,925,296 | 33,554,432 | +1.11 % |
+| iceclad | `spatial` | 8,682,512 | 4,194,304 | +107 % (2.07×) |
+| timorous | `zone_mesh` | 29,415,360 | 29,360,128 | +0.19 % |
+| timorous | `spatial` | 11,606,448 | 4,194,304 | +177 % (2.77×) |
+
+To keep the gate truthful without blocking `fable`, CI splits the manifest's
+zones (`visual_gate.py --zones`): the blocking `gate` job runs the three
+classic zones exactly as before; `gate-kunark-velious` runs iceclad and
+timorous with the same assertions and budgets as `allow_failure: true`. A zone
+moves back into `gate` when its overrun is fixed in code (`docs/ci.md`).
