@@ -6,7 +6,7 @@ cells for every row, not just the zone-name sets.
 """
 import re, sys, os
 
-BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "refactor", "B854")
+BASE = os.path.dirname(os.path.abspath(__file__))
 tsv = open(f"{BASE}/logs/sweep_results.tsv").read().splitlines()
 rows = {}
 for ln in tsv[1:]:

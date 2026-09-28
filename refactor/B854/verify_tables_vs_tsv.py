@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-command set comparison: SUMMARY.md per-expansion tables vs sweep_results.tsv."""
 import sys, re, os
-BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "refactor", "B854")
+BASE = os.path.dirname(os.path.abspath(__file__))
 tsv = open(f"{BASE}/logs/sweep_results.tsv").read().splitlines()
 tsv_zones = {}
 for ln in tsv[1:]:
