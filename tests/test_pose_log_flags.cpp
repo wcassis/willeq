@@ -13,9 +13,12 @@
 //    the file it wrote parses as the documented 14-column TSV (tab split,
 //    the space-carrying camera-mode field intact, sane magnitudes, the EQ
 //    0-512 heading range). The render-thread writer around it (file open,
-//    every-Nth counter, the wall-clock ts) is exercised by the visual gate
-//    run, not ctest: a headless EGL frame run would need a zone, which the
-//    B874 live lane owns.
+//    every-Nth counter, the wall-clock ts) is PoseLogWriter
+//    (pose_log_writer.h); its bookkeeping is pinned here against a fake
+//    source, and the GATHER -- a real renderer's getPoseData() through real
+//    processFrame() calls -- by tests/test_pose_log_e2e.cpp. (This comment
+//    used to say the visual gate exercised the writer; the gate never passes
+//    --pose-log, so nothing did.)
 
 #include <gtest/gtest.h>
 
@@ -31,6 +34,7 @@
 
 #include "client/application.h"
 #include "client/graphics/pose_log_format.h"
+#include "client/graphics/pose_log_writer.h"
 
 using eqt::Application;
 using eqt::ApplicationConfig;
@@ -229,17 +233,21 @@ TEST(PoseLogFormat, DataRowRoundTripsAllFourteenColumns) {
     EXPECT_EQ(f[9], "1044.500000");
     EXPECT_EQ(f[10], "19.750000");
     EXPECT_EQ(f[11], "-370.500000");
-    // heading is the 0-512 value as-is (not degrees, not rescaled).
-    EXPECT_EQ(f[12], "316");
+    // heading is the 0-512 value as-is (not degrees, not rescaled), as an
+    // exact float since the B874 audit (a uint16_t column quantised it).
+    EXPECT_EQ(f[12], "316.000000");
     std::remove(path.c_str());
 }
 
 // The heading column is the EQ 0-512 unit: every value the writer can emit
 // lands in [0, 511], and 359-equivalents do NOT saturate to 512 (finding 1:
 // the pre-fix code re-scaled 0-512 as if it were degrees, x512/360).
-TEST(PoseLogFormat, HeadingColumnStaysInZeroToFiveHundredEleven) {
+TEST(PoseLogFormat, HeadingColumnStaysInZeroToFiveHundredTwelve) {
+    // Fractional values on purpose: the pre-audit uint16_t column truncated
+    // 123.75 to 123 (0.70 deg per unit, coarser than B876's 0.5 deg verdict).
+    const std::vector<float> headings = {0.0f, 1.0f, 123.75f, 255.5f, 316.0f, 500.25f, 511.9f};
     std::vector<std::pair<int64_t, PoseLogRow>> rows;
-    for (uint16_t h : {0u, 1u, 127u, 255u, 316u, 500u, 511u}) {
+    for (float h : headings) {
         PoseLogRow r = sampleRow();
         r.heading0_512 = h;
         rows.push_back({1, r});
@@ -249,15 +257,14 @@ TEST(PoseLogFormat, HeadingColumnStaysInZeroToFiveHundredEleven) {
     ASSERT_TRUE(in.good());
     std::string line;
     ASSERT_TRUE(std::getline(in, line));  // header
-    for (uint16_t h : {0u, 1u, 127u, 255u, 316u, 500u, 511u}) {
+    for (float h : headings) {
         ASSERT_TRUE(std::getline(in, line));
         const auto f = splitTabs(line);
         ASSERT_EQ(f.size(), 14u);
-        const long v = std::atol(f[12].c_str());
-        EXPECT_EQ(v, static_cast<long>(h))
-            << "heading " << h << " must round-trip unchanged";
-        EXPECT_GE(v, 0);
-        EXPECT_LE(v, 511);
+        const double v = std::atof(f[12].c_str());
+        EXPECT_NEAR(v, h, 1e-4) << "heading " << h << " must round-trip unchanged";
+        EXPECT_GE(v, 0.0);
+        EXPECT_LT(v, 512.0);
     }
     std::remove(path.c_str());
 }
@@ -404,4 +411,144 @@ TEST(PoseLogWriter, FileAppearsAtConfigPath) {
     std::string extra;
     std::getline(in, extra);
     EXPECT_FALSE(in) << "exactly 2 data rows written";
+}
+
+// ---------------------------------------------------------------------------
+// B874 audit: nothing about --pose-log may be SILENT. A QA capture ran with
+// the logger effectively off and produced nothing, with no message. Every
+// combination that would do that is now a parse error or a startup error.
+// ---------------------------------------------------------------------------
+
+TEST(PoseLogFlags, KnobsBeforePoseLogAreNotClobbered) {
+    // --pose-log used to reset every/max to 1/600, so the knobs only worked
+    // when they came AFTER it.
+    ApplicationConfig config = parse({"--pose-every", "5", "--pose-max-frames", "40",
+                                      "--pose-log", "pl.tsv"});
+    EXPECT_FALSE(config.parseError);
+    EXPECT_EQ(config.poseLogPath, "pl.tsv");
+    EXPECT_EQ(config.poseLogEvery, 5);
+    EXPECT_EQ(config.poseLogMaxCount, 40);
+}
+
+TEST(PoseLogFlags, NonPositiveOrGarbageIntervalIsAParseError) {
+    for (const char* bad : {"0", "-3", "abc", "", "4x"}) {
+        ApplicationConfig config = parse({"--pose-log", "pl.tsv", "--pose-every", bad});
+        EXPECT_TRUE(config.parseError) << "--pose-every '" << bad << "' must be refused";
+        config = parse({"--pose-log", "pl.tsv", "--pose-max-frames", bad});
+        EXPECT_TRUE(config.parseError) << "--pose-max-frames '" << bad << "' must be refused";
+    }
+}
+
+TEST(PoseLogFlags, MissingValuesAreParseErrors) {
+    EXPECT_TRUE(parse({"--pose-log"}).parseError);
+    EXPECT_TRUE(parse({"--pose-log", "pl.tsv", "--pose-every"}).parseError);
+    EXPECT_TRUE(parse({"--pose-log", "pl.tsv", "--pose-max-frames"}).parseError);
+}
+
+TEST(PoseLogFlags, KnobsWithoutPoseLogAreAParseError) {
+    EXPECT_TRUE(parse({"--pose-every", "2"}).parseError);
+    EXPECT_TRUE(parse({"--pose-max-frames", "10"}).parseError);
+    // ... and no knob at all is simply off, not an error.
+    EXPECT_FALSE(parse({}).parseError);
+}
+
+TEST(PoseLogFlags, PoseLogWithoutARendererIsAParseError) {
+    // One row per RENDERED frame: a run with no renderer writes nothing.
+    for (const char* mode : {"--no-graphics", "--headless", "--automated"}) {
+        EXPECT_TRUE(parse({"--pose-log", "pl.tsv", mode}).parseError) << mode;
+        EXPECT_TRUE(parse({mode, "--pose-log", "pl.tsv"}).parseError) << mode;
+    }
+    EXPECT_TRUE(parse({"--pose-log", "pl.tsv", "--scenario", "zone_in"}).parseError);
+}
+
+TEST(PoseLogFlags, AbsentIntervalDefaultsToEveryFrame) {
+    ApplicationConfig config = parse({"--pose-log", "pl.tsv"});
+    EXPECT_FALSE(config.parseError);
+    EXPECT_EQ(config.poseLogEvery, 1) << "documented default, not 0 (= off)";
+    EXPECT_EQ(config.poseLogMaxCount, 600);
+}
+
+TEST(PoseLogPreflight, OffIsFine) {
+    std::string err;
+    EXPECT_TRUE(Application::preflightPoseLog(parse({}), err)) << err;
+}
+
+TEST(PoseLogPreflight, UnwritablePathIsRefusedWithTheReason) {
+    const willeq_test::ScopedTempDir tmp("t874_preflight_bad");  // B571
+    // A directory that does not exist: fopen("w") cannot create the file.
+    const std::string path = (tmp / "no_such_dir" / "pose.tsv").string();
+    ApplicationConfig config = parse({"--pose-log", path});
+    ASSERT_FALSE(config.parseError);
+    std::string err;
+    EXPECT_FALSE(Application::preflightPoseLog(config, err));
+    EXPECT_NE(err.find(path), std::string::npos) << err;
+    EXPECT_NE(err.find("No such file"), std::string::npos) << "names the errno: " << err;
+    // A directory given as the file is refused too.
+    config = parse({"--pose-log", tmp.path().string()});
+    err.clear();
+    EXPECT_FALSE(Application::preflightPoseLog(config, err));
+    EXPECT_FALSE(err.empty());
+}
+
+TEST(PoseLogPreflight, WritablePathLeavesAHeaderOnlyFile) {
+    const willeq_test::ScopedTempDir tmp("t874_preflight_ok");  // B571
+    const std::string path = (tmp / "pose.tsv").string();
+    std::string err;
+    ASSERT_TRUE(Application::preflightPoseLog(parse({"--pose-log", path}), err)) << err;
+    std::ifstream in(path);
+    std::string header, extra;
+    ASSERT_TRUE(std::getline(in, header));
+    EXPECT_EQ(header + "\n", EQT::Graphics::poseLogHeaderLine());
+    EXPECT_FALSE(std::getline(in, extra)) << "the probe writes no data row";
+}
+
+// PoseLogWriter's bookkeeping against a fake source. The GATHER is the e2e
+// test's job (tests/test_pose_log_e2e.cpp); this pins cadence and cap.
+namespace {
+struct FakeSource {
+    int frame = 0;
+    void getPoseData(PoseLogRow& r) const { r = sampleRow(); }
+    int getFrameNumber() const { return frame; }
+};
+}  // namespace
+
+TEST(PoseLogWriter, CadenceAndCapWithAFakeSource) {
+    const willeq_test::ScopedTempDir tmp("t874_writer_cadence");  // B571
+    const std::string path = (tmp / "pose.tsv").string();
+    EQT::Graphics::PoseLogWriter w;
+    std::string err;
+    ASSERT_TRUE(w.open(path, 2, 3, &err)) << err;
+    FakeSource src;
+    int written = 0;
+    for (int i = 1; i <= 10; ++i) {
+        src.frame = i;
+        if (w.onRenderedFrame(src)) ++written;
+    }
+    EXPECT_EQ(written, 3) << "every 2nd frame, capped at 3 rows";
+    EXPECT_TRUE(w.capReached());
+    EXPECT_FALSE(w.active());
+    std::ifstream in(path);
+    std::string line;
+    ASSERT_TRUE(std::getline(in, line));  // header
+    for (int want : {2, 4, 6}) {
+        ASSERT_TRUE(std::getline(in, line));
+        EXPECT_EQ(splitTabs(line)[1], std::to_string(want));
+    }
+    EXPECT_FALSE(std::getline(in, line));
+}
+
+TEST(PoseLogWriter, BadArgumentsAndUnopenablePathsFailLoudly) {
+    const willeq_test::ScopedTempDir tmp("t874_writer_bad");  // B571
+    EQT::Graphics::PoseLogWriter w;
+    std::string err;
+    EXPECT_FALSE(w.open((tmp / "a.tsv").string(), 0, 10, &err));
+    EXPECT_FALSE(err.empty());
+    err.clear();
+    EXPECT_FALSE(w.open((tmp / "a.tsv").string(), 1, 0, &err));
+    EXPECT_FALSE(err.empty());
+    err.clear();
+    EXPECT_FALSE(w.open((tmp / "missing" / "a.tsv").string(), 1, 10, &err));
+    EXPECT_NE(err.find("cannot open"), std::string::npos) << err;
+    FakeSource src;
+    EXPECT_FALSE(w.onRenderedFrame(src)) << "a writer that never opened writes nothing";
 }

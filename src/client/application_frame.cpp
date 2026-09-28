@@ -219,42 +219,26 @@ void Application::render(float deltaTime) {
             // B874: pose-log TSV writer. One 14-column TSV row per Nth
             // rendered frame; the row format lives in
             // include/client/graphics/pose_log_format.h (tabs on purpose --
-            // the camera-mode field carries spaces). The file is opened
-            // lazily on the first row, so off-by-default is zero cost.
-            if (!m_config.poseLogPath.empty() && m_config.poseLogEvery > 0
-                && m_poseLogIndex < static_cast<uint64_t>(m_config.poseLogMaxCount)) {
-                if (m_poseLogFile == nullptr && !m_config.poseLogPath.empty()) {
-                    m_poseLogFile = EQT::Graphics::poseLogOpen(m_config.poseLogPath);
-                    if (m_poseLogFile == nullptr) {
-                        LOG_ERROR(MOD_GRAPHICS, "pose-log: failed to open '{}'", m_config.poseLogPath);
-                    }
+            // the camera-mode field carries spaces) and the whole per-frame
+            // body (cadence, gather, wall-clock ts, cap) in
+            // include/client/graphics/pose_log_writer.h, which
+            // tests/test_pose_log_e2e.cpp drives on a real renderer. The file
+            // is opened on the first gameplay frame (main() already proved
+            // the path writable), so off-by-default is one string test.
+            if (result && !m_config.poseLogPath.empty() && !m_poseLogOpenTried) {
+                m_poseLogOpenTried = true;
+                std::string err;
+                if (m_poseLog.open(m_config.poseLogPath, m_config.poseLogEvery,
+                                   m_config.poseLogMaxCount, &err)) {
+                    LOG_INFO(MOD_GRAPHICS, "pose-log: writing '{}' every {} frame(s), capped at {} row(s)",
+                             m_config.poseLogPath, m_config.poseLogEvery, m_config.poseLogMaxCount);
+                } else {
+                    LOG_ERROR(MOD_GRAPHICS, "pose-log: {} -- NO pose rows will be written", err);
                 }
-
-                if (m_poseLogFile) {
-                    ++m_poseLogCounter;
-                    if (m_poseLogCounter % static_cast<uint64_t>(m_config.poseLogEvery) == 0) {
-                        EQT::Graphics::PoseLogRow row;
-                        m_renderer->getPoseData(row);
-                        row.frame = m_renderer->getFrameNumber();
-
-                        // Real wall clock (unix epoch ms): ITimer::getTime()
-                        // is virtual time starting at 0, which the column
-                        // contract (Deliverable A's ts is comparable to host
-                        // time) does not allow.
-                        const int64_t tsMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::system_clock::now().time_since_epoch()).count();
-
-                        EQT::Graphics::poseLogRow(m_poseLogFile, tsMs, row);
-                        std::fflush(m_poseLogFile);
-
-                        ++m_poseLogIndex;
-                        if (m_poseLogIndex >= static_cast<uint64_t>(m_config.poseLogMaxCount)) {
-                            LOG_INFO(MOD_GRAPHICS, "pose-log: reached --pose-max-frames cap ({}), stopping capture",
-                                m_config.poseLogMaxCount);
-                            EQT::Graphics::poseLogClose(m_poseLogFile);
-                        }
-                    }
-                }
+            }
+            if (result && m_poseLog.onRenderedFrame(*m_renderer) && m_poseLog.capReached()) {
+                LOG_INFO(MOD_GRAPHICS, "pose-log: reached --pose-max-frames cap ({}), stopping capture",
+                         m_config.poseLogMaxCount);
             }
             m_lastGraphicsUpdate = now;
         }

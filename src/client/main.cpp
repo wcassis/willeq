@@ -138,6 +138,17 @@ static bool parseCliAndLoadConfig(int argc, char* argv[],
         return false;
     }
 
+    // B874 audit: an unwritable --pose-log path is a startup error, not a
+    // per-frame LOG_ERROR in a capture that writes nothing.
+    {
+        std::string poseErr;
+        if (!eqt::Application::preflightPoseLog(config, poseErr)) {
+            std::cerr << "--pose-log: " << poseErr << "\n";
+            exitCode = 1;
+            return false;
+        }
+    }
+
     // T410 (board B138): validate --scenario before anything else starts.
     // An unknown name is "could not start", exit 3 -- the same code a missing
     // server gets, because in both cases the scenario never ran. Reporting it

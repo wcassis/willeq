@@ -650,3 +650,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_pose_log_flags PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_pose_log_flags DISCOVERY_TIMEOUT 120)
+
+# B874 audit: --pose-log END TO END -- a real IrrlichtRenderer on the
+# headless GLES2 device, a commanded pose, real processFrame() calls and the
+# same PoseLogWriter::onRenderedFrame() Application::render() makes, then the
+# file parsed column by column in the documented units. The GATHER half the
+# flags binary above cannot reach. Graphics tree only; the CI `test` job runs
+# it (same device as test_alpha_blend_companion).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_pose_log_e2e
+        test_pose_log_e2e.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_pose_log_e2e GTest::gtest_main willeq_core)
+    TARGET_INCLUDE_DIRECTORIES(test_pose_log_e2e PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${IRRLICHT_INCLUDE_DIR})
+    TARGET_COMPILE_DEFINITIONS(test_pose_log_e2e PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_pose_log_e2e DISCOVERY_TIMEOUT 120)
+ENDIF()
