@@ -110,7 +110,12 @@ ParsedFile ReadTsv(const std::string& path) {
 
 double D(const std::string& s) { return std::strtod(s.c_str(), nullptr); }
 
-int64_t NowMs() { return PoseLogWriter::unixMsNow(); }
+// The test's OWN wall clock -- deliberately not PoseLogWriter::unixMsNow(),
+// or a writer that switched clocks would move the bounds with it.
+int64_t NowMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
 
 class PoseLogE2ETest : public ::testing::Test {
 protected:
