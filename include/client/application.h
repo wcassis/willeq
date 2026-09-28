@@ -9,6 +9,7 @@
 #include "client/input/input_handler.h"
 
 #include "client/graphics/loading_thread.h"
+#include "client/graphics/pose_log_writer.h"  // B874: header-only, no Irrlicht
 #include "client/zone_load_snapshot.h"
 #include "client/scenario/scenario_runner.h"
 
@@ -159,7 +160,11 @@ struct ApplicationConfig {
     // TSV row of exact-float camera/player pose data; poseLogMaxCount caps
     // the rows (--pose-max-frames, 600 by default). Zero cost when off (no
     // file handle open). Row format:
-    // include/client/graphics/pose_log_format.h.
+    // include/client/graphics/pose_log_format.h. Nothing here is silent:
+    // parseArguments() rejects a non-positive or missing --pose-every /
+    // --pose-max-frames value, either knob without --pose-log, and
+    // --pose-log in a run with no renderer; main() refuses a path it cannot
+    // open (Application::preflightPoseLog) before anything connects.
     std::string poseLogPath;
     int poseLogEvery = 0;  // 0 = disabled
     int poseLogMaxCount = 600;
@@ -384,6 +389,16 @@ public:
      * @return Parsed configuration
      */
     static ApplicationConfig parseArguments(int argc, char* argv[]);
+
+    /**
+     * B874 audit: refuse a --pose-log path that cannot be written, BEFORE
+     * anything connects. Opens it exactly as the render loop will (truncate,
+     * header) and closes it again. Returns true when pose logging is off or
+     * the path opened; false with the reason in `err` otherwise. main()
+     * prints `err` and exits 1 -- a capture that would silently write nothing
+     * must not start.
+     */
+    static bool preflightPoseLog(const ApplicationConfig& config, std::string& err);
 
     /**
      * Load configuration from a JSON file.
@@ -705,10 +720,12 @@ private:
     uint64_t m_dumpFrameCounter = 0;   // increments every processFrame() call
     uint64_t m_dumpFrameIndex = 0;     // increments only when a PNG is written
 
-    // B874: pose-log state (render thread only, see render()).
-    uint64_t m_poseLogCounter = 0;
-    uint64_t m_poseLogIndex = 0;
-    std::FILE* m_poseLogFile = nullptr;
+    // B874: pose-log state (render thread only, see render()). The writer is
+    // the whole per-frame body (include/client/graphics/pose_log_writer.h);
+    // m_poseLogOpenTried makes an open failure log ONCE instead of once per
+    // frame (main() has already refused an unwritable path at startup).
+    EQT::Graphics::PoseLogWriter m_poseLog;
+    bool m_poseLogOpenTried = false;
 };
 
 } // namespace eqt

@@ -1096,14 +1096,16 @@ void IrrlichtRenderer::getPoseData(EQT::Graphics::PoseLogRow& row) const {
     row.targetY = target.Z;
     row.targetZ = target.Y;
 
-    // Player position (EQ frame) and heading (EQ 0-512 units, as-is).
+    // Player position (client-internal EQ frame) and heading (EQ 0-512
+    // units, exact float, wrapped into [0, 512) -- never truncated: the
+    // uint16_t cast that stood here quantised it to 0.70 deg).
     row.playerX = ctx_.playerX;
     row.playerY = ctx_.playerY;
     row.playerZ = ctx_.playerZ;
-    float heading = ctx_.playerHeading;
-    while (heading < 0) heading += 512.0f;
-    while (heading >= 512.0f) heading -= 512.0f;
-    row.heading0_512 = static_cast<uint16_t>(heading);
+    float heading = std::fmod(ctx_.playerHeading, 512.0f);
+    if (heading < 0.0f) heading += 512.0f;
+    if (heading >= 512.0f) heading = 0.0f;  // -tiny + 512 rounds up to 512
+    row.heading0_512 = heading;
 
     row.cameraMode = playerCamera_->cameraMode();
 

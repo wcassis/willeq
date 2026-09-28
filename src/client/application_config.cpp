@@ -66,6 +66,10 @@ namespace eqt {
 
 ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
     ApplicationConfig config;
+    // B874 audit: the pose-log knobs as given (0 = not given); resolved
+    // against --pose-log after the loop so flag order cannot matter.
+    int poseEveryArg = 0;
+    int poseMaxArg = 0;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -263,18 +267,29 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                 config.dumpFramesMaxCount = std::atoi(argv[++i]);
             }
         } else if (arg == "--pose-log") {
+            // B874 audit: order-independent. This used to RESET every/max to
+            // 1/600, so `--pose-every 5 --pose-log f` silently logged every
+            // frame; the defaults are applied after the loop instead.
             if (i + 1 < argc) {
                 config.poseLogPath = argv[++i];
-                config.poseLogEvery = 1;  // every frame default
-                config.poseLogMaxCount = 600;
             }
-        } else if (arg == "--pose-every") {
-            if (i + 1 < argc) {
-                config.poseLogEvery = std::atoi(argv[++i]);
+            if (config.poseLogPath.empty()) {
+                std::cerr << "--pose-log needs a file path\n";
+                config.parseError = true;
             }
-        } else if (arg == "--pose-max-frames") {
-            if (i + 1 < argc) {
-                config.poseLogMaxCount = std::atoi(argv[++i]);
+        } else if (arg == "--pose-every" || arg == "--pose-max-frames") {
+            // A pose-log knob is a positive integer or a fail-fast error:
+            // atoi()'s 0 for "0", "" or "abc" used to disable the writer
+            // without a word (poseLogEvery 0 = off).
+            int* target = (arg == "--pose-every") ? &poseEveryArg : &poseMaxArg;
+            const char* value = (i + 1 < argc) ? argv[++i] : "";
+            char* end = nullptr;
+            const long n = std::strtol(value, &end, 10);
+            if (*value == '\0' || end == nullptr || *end != '\0' || n < 1 || n > 1000000000L) {
+                std::cerr << arg << " needs a positive integer, got '" << value << "'\n";
+                config.parseError = true;
+            } else {
+                *target = static_cast<int>(n);
             }
         } else if (arg == "--help" || arg == "-h") {
             config.showHelp = true;
@@ -299,9 +314,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --dump-frames-dir <dir>  Video-capture evidence tool: write numbered PNG frames to <dir> (needs --dump-every)\n";
             std::cout << "  --dump-every <N>         Video-capture: dump every Nth rendered frame\n";
             std::cout << "  --dump-max-frames <N>    Video-capture: stop after N frames written (default 600)\n";
-            std::cout << "  --pose-log <file>        Pose-logger: write exact-float camera/player pose to 14-column TSV (every frame default)\n";
-            std::cout << "  --pose-every <N>         Pose-logger: write one row every Nth rendered frame (default 1)\n";
-            std::cout << "  --pose-max-frames <N>    Pose-logger: stop after N rows written (default 600)\n";
+            std::cout << "  --pose-log <file>        Pose-logger: write exact-float camera/player pose to 14-column TSV (every frame default;\n";
+            std::cout << "                           needs graphics; an unwritable <file> is a startup error)\n";
+            std::cout << "  --pose-every <N>         Pose-logger: write one row every Nth rendered frame (N >= 1, default 1; needs --pose-log)\n";
+            std::cout << "  --pose-max-frames <N>    Pose-logger: stop after N rows written (N >= 1, default 600; needs --pose-log)\n";
 #ifdef EQT_HAS_GRAPHICS
             std::cout << "  -ng, --no-graphics       Disable graphical rendering\n";
             std::cout << "  -r, --resolution <W> <H> Set graphics resolution (default: 800 600)\n";
@@ -350,7 +366,40 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
         }
     }
 
+    // B874 audit: resolve the pose-log knobs, and refuse every combination
+    // that would run a capture which silently writes nothing.
+    if (!config.showHelp) {
+        if (config.poseLogPath.empty()) {
+            if (poseEveryArg > 0 || poseMaxArg > 0) {
+                std::cerr << "--pose-every/--pose-max-frames have no effect without --pose-log <file>\n";
+                config.parseError = true;
+            }
+        } else {
+            config.poseLogEvery = poseEveryArg > 0 ? poseEveryArg : 1;  // every frame default
+            if (poseMaxArg > 0) config.poseLogMaxCount = poseMaxArg;
+#ifdef EQT_HAS_GRAPHICS
+            const bool renders = config.graphicsEnabled;
+#else
+            const bool renders = false;
+#endif
+            if (!renders) {
+                std::cerr << "--pose-log needs the renderer: it writes one row per RENDERED frame, and "
+                             "this run has none (--no-graphics/--headless/--automated/--scenario, or a "
+                             "build without graphics)\n";
+                config.parseError = true;
+            }
+        }
+    }
+
     return config;
+}
+
+bool Application::preflightPoseLog(const ApplicationConfig& config, std::string& err) {
+    if (config.poseLogPath.empty()) return true;
+    EQT::Graphics::PoseLogWriter probe;
+    // The same open the render loop makes; the probe's destructor closes it,
+    // leaving a header-only file the first gameplay frame truncates again.
+    return probe.open(config.poseLogPath, config.poseLogEvery, config.poseLogMaxCount, &err);
 }
 
 bool Application::loadConfigFile(const std::string& configFile, ApplicationConfig& config) {
