@@ -44,8 +44,26 @@ Exit 0 clean, 1 if bin/ holds an orphan, 125 to SKIP when there is no
 configured build tree to inspect (matches this repo's SKIP_RETURN_CODE
 convention, see visual_gate in tests/CMakeLists.txt), 2 on a usage or
 environment error -- never a silent pass.
+
+B907 (issue #227, 2026-09-29): cmake never prunes bin/ (see above), and this
+runner keeps ONE warm build tree across every branch's pipeline
+(`.gitlab-ci.yml`'s `GIT_CLEAN_FLAGS`, docs/ci.md). A binary built by branch
+A's pipeline was still sitting in bin/ when branch B's pipeline reconfigured
+and built next; B's CMake graph has no such target, so this check correctly
+failed B's pipeline on A's leftover binary. The check was always RIGHT to fail
+on that -- what was missing was anything that removed the leftover before the
+check ran. `--prune` is that removal: same target discovery as the check
+(`_discover()` below), run once, right after the CI `build` job's cmake
+configure step and before the build/test steps, so a stale binary from the
+PREVIOUS branch's pipeline is gone before this pipeline's own build can even
+create a fresh one. The plain (no `--prune`) check stays registered in ctest
+unchanged, so a developer's local warm tree still gets the same warning it
+always did, and CI's `test` stage still fails outright if an orphan survives
+the prune -- which would mean the prune itself is broken, not that the
+allowlist needs an entry.
 """
 
+import argparse
 import glob
 import json
 import os
@@ -57,10 +75,7 @@ import sys
 ALLOWLIST = {}
 
 
-def _find_build_tree(repo: str) -> str:
-    """The configured build tree to inspect. argv[1] wins, else <repo>/build."""
-    if len(sys.argv) > 1:
-        return os.path.abspath(sys.argv[1])
+def _default_build_tree(repo: str) -> str:
     return os.path.join(repo, "build")
 
 
@@ -69,28 +84,64 @@ def _latest_codemodel(reply_dir: str):
     indices = sorted(glob.glob(os.path.join(reply_dir, "index-*.json")))
     if not indices:
         return None
-    index = json.load(open(indices[-1]))
+    with open(indices[-1]) as f:
+        index = json.load(f)
     for entry in index.get("reply", {}).values():
         if isinstance(entry, dict) and entry.get("kind") == "codemodel":
             return os.path.join(reply_dir, entry["jsonFile"])
     return None
 
 
-def main() -> int:
-    repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    build = _find_build_tree(repo)
+class Discovery:
+    """Result of _discover(): status is one of
 
-    # No configured build tree -> nothing to inspect. SKIP, do not fail: this
-    # check is meaningless without a build, and ctest may run in a fresh tree.
+      "no_tree"        -- no CMakeCache.txt at all: not a configured build tree
+      "no_bin"         -- a real build tree, but bin/ does not exist yet
+      "bin_escapes"    -- bin/ resolves outside the build tree (refuse)
+      "codemodel_error" -- the file API could not produce a usable reply
+      "ok"             -- claimed/bin_dir are populated and usable
+
+    Only "ok" carries a non-None `claimed`.
+    """
+
+    def __init__(self, status, message, claimed=None, bin_dir=None):
+        self.status = status
+        self.message = message
+        self.claimed = claimed
+        self.bin_dir = bin_dir
+
+
+def _discover(build: str) -> Discovery:
+    """THE single source of truth for "which binaries does the current CMake
+    graph claim under bin/". Both the read-only check and --prune call this
+    and this alone, so they can never disagree about what an orphan is.
+    """
     if not os.path.isfile(os.path.join(build, "CMakeCache.txt")):
-        print(f"SKIP -- no configured build tree at {build} "
-              f"(no CMakeCache.txt); nothing to inspect")
-        return 125
+        return Discovery(
+            "no_tree",
+            f"no configured build tree at {build} (no CMakeCache.txt); "
+            f"nothing to inspect",
+        )
 
     bin_dir = os.path.join(build, "bin")
     if not os.path.isdir(bin_dir):
-        print(f"SKIP -- {bin_dir} does not exist; no binaries built yet")
-        return 125
+        return Discovery(
+            "no_bin", f"{bin_dir} does not exist; no binaries built yet",
+            bin_dir=bin_dir,
+        )
+
+    # Guard against a bin/ that is a symlink (or a build dir argument) pointing
+    # somewhere outside the tree we just confirmed is configured here -- a
+    # prune must never be able to walk out of <build>/bin.
+    build_real = os.path.realpath(build)
+    bin_real = os.path.realpath(bin_dir)
+    if os.path.commonpath([build_real, bin_real]) != build_real:
+        return Discovery(
+            "bin_escapes",
+            f"{bin_dir} resolves to {bin_real}, which is outside its own "
+            f"build tree {build_real}; refusing",
+            bin_dir=bin_dir,
+        )
 
     # Ensure the file API codemodel query exists (idempotent). CMake writes the
     # matching reply on its next reconfigure; we bootstrap one below if absent.
@@ -109,25 +160,36 @@ def main() -> int:
             subprocess.run(["cmake", build], check=True,
                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-            print(f"ERROR could not reconfigure to obtain file API reply: {exc}")
-            return 2
+            return Discovery(
+                "codemodel_error",
+                f"could not reconfigure to obtain file API reply: {exc}",
+                bin_dir=bin_dir,
+            )
         codemodel = _latest_codemodel(reply_dir)
     if codemodel is None:
-        print("ERROR file API produced no codemodel reply -- nothing checked")
-        return 2
+        return Discovery(
+            "codemodel_error",
+            "file API produced no codemodel reply -- nothing checked",
+            bin_dir=bin_dir,
+        )
 
-    cm = json.load(open(codemodel))
+    with open(codemodel) as f:
+        cm = json.load(f)
     configs = cm.get("configurations", [])
     if not configs:
-        print("ERROR codemodel has no configurations -- nothing checked")
-        return 2
+        return Discovery(
+            "codemodel_error",
+            "codemodel has no configurations -- nothing checked",
+            bin_dir=bin_dir,
+        )
 
     # Every artifact any target lands under bin/ is "claimed". Basenames, so
     # OUTPUT_NAME / per-config names are honoured -- we trust CMake's own path.
     claimed = set()
     for cfg in configs:
         for t in cfg.get("targets", []):
-            tj = json.load(open(os.path.join(reply_dir, t["jsonFile"])))
+            with open(os.path.join(reply_dir, t["jsonFile"])) as f:
+                tj = json.load(f)
             for art in tj.get("artifacts", []):
                 p = art.get("path", "")
                 norm = p.replace("\\", "/")
@@ -135,17 +197,36 @@ def main() -> int:
                     claimed.add(os.path.basename(norm))
 
     if not claimed:
-        print("ERROR codemodel lists no bin/ artifacts -- refusing to call "
-              "every binary an orphan; check the build configuration")
+        return Discovery(
+            "codemodel_error",
+            "codemodel lists no bin/ artifacts -- refusing to call every "
+            "binary an orphan; check the build configuration",
+            bin_dir=bin_dir,
+        )
+
+    return Discovery("ok", None, claimed=claimed, bin_dir=bin_dir)
+
+
+def _present_files(bin_dir: str):
+    return [f for f in os.listdir(bin_dir)
+            if os.path.isfile(os.path.join(bin_dir, f))]
+
+
+def run_check(build: str) -> int:
+    d = _discover(build)
+    if d.status in ("no_tree", "no_bin"):
+        print(f"SKIP -- {d.message}")
+        return 125
+    if d.status in ("bin_escapes", "codemodel_error"):
+        print(f"ERROR {d.message}")
         return 2
 
-    present = [f for f in os.listdir(bin_dir)
-               if os.path.isfile(os.path.join(bin_dir, f))]
+    present = _present_files(d.bin_dir)
     orphans = sorted(f for f in present
-                     if f not in claimed and f not in ALLOWLIST)
+                     if f not in d.claimed and f not in ALLOWLIST)
 
-    print(f"checked {len(present)} file(s) in {bin_dir} against "
-          f"{len(claimed)} target artifact(s); {len(ALLOWLIST)} allowlisted")
+    print(f"checked {len(present)} file(s) in {d.bin_dir} against "
+          f"{len(d.claimed)} target artifact(s); {len(ALLOWLIST)} allowlisted")
     if orphans:
         print("")
         print("FAIL -- these binaries in bin/ are produced by no current CMake "
@@ -163,6 +244,70 @@ def main() -> int:
 
     print("PASS -- every binary in bin/ is produced by a current CMake target.")
     return 0
+
+
+def run_prune(build: str, *, delete: bool = True) -> int:
+    """Remove every file directly under <build>/bin/ that _discover() does not
+    claim. `delete=False` is the RED-proof knob (see
+    scripts/ci/test_check_build_tree_orphans.py): it runs the identical
+    discovery and reporting but skips the os.remove call, so the test can
+    assert the orphan is still there and would have been named.
+
+    Never touches anything outside <build>/bin/: every path removed is
+    os.path.join(bin_dir, <a bare os.listdir() entry>), so there is no
+    traversal, no recursion into subdirectories, and no symlink target
+    resolution that could point elsewhere.
+    """
+    d = _discover(build)
+    if d.status == "no_tree":
+        print(f"ERROR refusing to prune: {d.message}")
+        return 2
+    if d.status == "no_bin":
+        print(f"note: {d.message}; nothing to prune")
+        return 0
+    if d.status in ("bin_escapes", "codemodel_error"):
+        print(f"ERROR refusing to prune: {d.message}")
+        return 2
+
+    present = _present_files(d.bin_dir)
+    orphans = sorted(f for f in present
+                     if f not in d.claimed and f not in ALLOWLIST)
+
+    if not orphans:
+        print(f"PRUNE -- checked {len(present)} file(s) in {d.bin_dir}; "
+              f"none orphaned")
+        return 0
+
+    print(f"PRUNE -- checked {len(present)} file(s) in {d.bin_dir} against "
+          f"{len(d.claimed)} target artifact(s); {len(orphans)} orphan(s):")
+    for o in orphans:
+        path = os.path.join(d.bin_dir, o)
+        if delete:
+            os.remove(path)
+            print(f"  removed {o}")
+        else:
+            print(f"  would remove {o} (delete=False)")
+    return 0
+
+
+def main() -> int:
+    repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("build_dir", nargs="?", default=None,
+                     help="configured build tree to inspect "
+                          "(default: <repo>/build)")
+    ap.add_argument("--prune", action="store_true",
+                     help="delete orphaned binaries from <build>/bin/ "
+                          "instead of just reporting them")
+    args = ap.parse_args()
+
+    build = (os.path.abspath(args.build_dir) if args.build_dir
+             else _default_build_tree(repo))
+
+    if args.prune:
+        return run_prune(build)
+    return run_check(build)
 
 
 if __name__ == "__main__":
