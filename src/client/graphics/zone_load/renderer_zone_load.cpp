@@ -49,6 +49,7 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <set>
 #include <sstream>
 
@@ -289,6 +290,9 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                       (bool)bspTree, bspTree ? bspTree->regions.size() : 0,
                       wldLoader->hasPvsData());
             if (bspTree && !bspTree->regions.empty() && wldLoader->hasPvsData()) {
+                // B909: owner labels for WILLEQ_LEDGER_OWNERS=spatial (no effect
+                // otherwise -- the rows are printed only for the owner category).
+                eqt::memory::StartupScope boundsOwner("sp.region_bounds");
                 // Compute region bounding boxes
                 size_t regionsSkipped = 0;
                 for (size_t i = 0; i < bspTree->regions.size(); ++i) {
@@ -340,6 +344,7 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                 const bool wantPortals = ctx_.config.constrainedConfig.portalOcclusion &&
                                          ctx_.config.constrainedConfig.enableStencilBuffer;
                 if (wantPortals) {
+                    eqt::memory::StartupScope portalOwner("sp.portals");  // B909
                     computations->portalSystem = std::make_unique<PortalSystem>();
                     computations->portalSystem->buildFromBsp(*bspTree, zbMinX, zbMinY, zbMinZ, zbMaxX, zbMaxY, zbMaxZ);
                     computations->portalOcclusionEligible = computations->portalSystem->hasPortals() &&
@@ -353,6 +358,7 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                 }
 
                 // Cache zone light BSP regions
+                eqt::memory::StartupScope lightOwner("sp.light_regions");  // B909
                 for (size_t i = 0; i < zone->lights.size(); ++i) {
                     const auto& light = zone->lights[i];
                     size_t regionIdx = bspTree->findRegionIndexForPoint(light->x, light->y, light->z);
@@ -362,6 +368,7 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
             }
 
             // Index objects with BSP regions
+            eqt::memory::StartupScope objectOwner("sp.object_regions");  // B909
             if (!skipObjectBuild) {
                 auto bspTree2 = wldLoader->getBspTree();
                 if (bspTree2) {
@@ -529,6 +536,7 @@ void ZoneLoadComponent::loadZoneStep2_BSP(ZoneLoadContext& ctx) {
                       ctx_.portalBuildPending);
         }
         if (ctx_.regionNeighbors.empty()) {
+            eqt::memory::StartupScope neighborOwner("sp.region_neighbors");  // B909
             ctx_.ZoneLifecycle().buildRegionNeighborMap();
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step2 Install: built region neighbor map, {} entries", ctx_.regionNeighbors.size());
         }
@@ -585,6 +593,10 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
             // 10.6 vertices each, zone_mesh 54.9 MiB for 6.6 MiB of geometry.
             // WILLEQ_ZONE_POOLS=0 forces the legacy per-region-node path with the
             // same binary, so the two can be compared frame for frame.
+            // B909: owner labels for WILLEQ_LEDGER_OWNERS=zone_mesh (the same
+            // names the benchmark uses where the two build the same thing).
+            std::optional<eqt::memory::StartupScope> meshOwner;
+            meshOwner.emplace("zm.build");
             const char* poolsEnv = std::getenv("WILLEQ_ZONE_POOLS");
             const bool pooledRegions = ctx_.config.constrainedConfig.mergeZoneDraws && !(poolsEnv && (poolsEnv[0] == '0' || poolsEnv[0] == 'u'));
             ZoneMergeBuffers* pools = nullptr;
@@ -675,7 +687,11 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
             LOG_INFO(MOD_GRAPHICS, "Sequential: built {} region meshes eagerly ({} skipped, {} mesh failures, {} node failures)",
                      ctx_.regionMeshNodes.size(), regionsSkipped, meshBuildFailed, nodeFailed);
 
-            // Extract occluder triangles for software occlusion culling
+            // Extract occluder triangles for software occlusion culling.
+            // B909: in the CLIENT this table is charged to zone_mesh (Step 4's
+            // scope); the benchmark builds the same table under spatial.
+            meshOwner.reset();
+            meshOwner.emplace("zm.occluders");
             if (ctx_.occlusionCuller) {
                 auto occStart = std::chrono::steady_clock::now();
                 int totalOccluders = 0;
@@ -709,6 +725,8 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
 
             // Initialize animated texture manager for PVS region meshes
             // Discover animations from combined geometry, then register each region mesh's buffers
+            meshOwner.reset();
+            meshOwner.emplace("zm.anim_textures");  // B909
             if (ctx_.currentZone && ctx_.currentZone->geometry && !ctx_.currentZone->textures.empty()) {
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step4: creating AnimatedTextureManager for PVS region meshes "
                           "(geometry texNames={}, texAnimations={}, zoneTextures={})",

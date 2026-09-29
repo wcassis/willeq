@@ -36,6 +36,13 @@
 #          [--cap 300] [--stall 180] [--hold 75] [--no-retry]
 #          [--pi-dir /mnt/projects/fable/ci-arm/<sha>] [-r "1280 720"]
 #          [--char-level N --char-exp E]   (the eligibility leg; see CHAR_LEVEL)
+#          [--owner NAME] [--tour FILE] [--env K=V]... [--drive-keys]
+#          [--allow-vm-lane]   (B909's A/B, scripts/pi/collision_ab.sh:
+#          --tour replaces the /loc-wait-/q script, --env adds client
+#          environment, --drive-keys plays scripts/pi/uinput_drive.py's fixed
+#          keyboard sequence so the renderer's collision rays run,
+#          --allow-vm-lane lets EQEMU_HOST name the eqemu VM -- the Pi reaches
+#          it, measured 2026-09-29: 0.7 ms, TCP 22 open)
 # Exit: 0 every first-attempt row passed, 1 a row failed, 64 a lock is held,
 #       65 the stack/lane would not come up, 66 snapshot mismatch,
 #       68 bad inputs (no build, Pi unreachable).
@@ -73,6 +80,10 @@ LATE_SAVE_S=10
 # ZonePC zone_mode [3] = ZoneToBindPoint, "Death Only", zone/client.h).
 CHAR_LEVEL=""
 CHAR_EXP=""
+TOUR_IN=""
+EXTRA_ENV=""
+DRIVE_KEYS=0
+ALLOW_VM=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --zones) ZONES="$2"; shift 2 ;;
@@ -85,6 +96,11 @@ while [ $# -gt 0 ]; do
         -r) RES="$2"; shift 2 ;;
         --char-level) CHAR_LEVEL="$2"; shift 2 ;;
         --char-exp) CHAR_EXP="$2"; shift 2 ;;
+        --owner) OWNER="$2"; shift 2 ;;
+        --tour) TOUR_IN="$2"; shift 2 ;;
+        --env) case "$2" in [A-Z_]*=*) EXTRA_ENV="$EXTRA_ENV '$2'";; *) echo "bad --env $2" >&2; exit 64;; esac; shift 2 ;;
+        --drive-keys) DRIVE_KEYS=1; shift ;;
+        --allow-vm-lane) ALLOW_VM=1; shift ;;
         -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
@@ -131,7 +147,9 @@ pi_remote true </dev/null || { say "the Pi ($PI_HOST) is unreachable"; exit 68; 
 # review/pi/willeq_pi.json hardcodes 172.16.200.99). The Pi reaches this
 # host on its first address.
 if eqemu_is_local; then CLIENT_HOST="$(hostname -I | awk '{print $1}')"; else CLIENT_HOST="$EQEMU_HOST"; fi
-[ "$CLIENT_HOST" != "172.16.200.99" ] || { say "refusing: this sweep never uses the VM lane"; exit 65; }
+if [ "$CLIENT_HOST" = "172.16.200.99" ] && [ "$ALLOW_VM" -ne 1 ]; then
+    say "refusing: the VM lane needs --allow-vm-lane"; exit 65
+fi
 CFG="$OUT/client.json"
 cat > "$CFG" <<EOF
 {
@@ -155,7 +173,11 @@ EOF
 # idle rendering -- past the ledger's steady_60s point, which fires 60 s
 # after ready -- then /q.
 TOUR="$OUT/tour.txt"
-printf '/loc\nwait %s\n/loc\n/q\n' "$HOLD_S" > "$TOUR"
+if [ -n "$TOUR_IN" ]; then
+    cp "$TOUR_IN" "$TOUR"
+else
+    printf '/loc\nwait %s\n/loc\n/q\n' "$HOLD_S" > "$TOUR"
+fi
 
 # ---- locks (eqemu first, Pi second) -----------------------------------------
 if ! eqemu_lock_take "$OWNER"; then
@@ -185,7 +207,7 @@ PI_BIN_DIR="/home/${PI_USER}/pi-rendered-sweep"
 PI_BIN="$PI_BIN_DIR/willeq"
 PI_TMP="/tmp/prs"
 pi_kill_client() {
-    pi_remote "pkill -TERM -f '^${PI_BIN} ' >/dev/null 2>&1; sleep 3; pkill -KILL -f '^${PI_BIN} ' >/dev/null 2>&1; pkill -KILL -f rendered_zone_run.py >/dev/null 2>&1; true" </dev/null >/dev/null 2>&1
+    pi_remote "pkill -TERM -f '^${PI_BIN} ' >/dev/null 2>&1; sleep 3; pkill -KILL -f '^${PI_BIN} ' >/dev/null 2>&1; pkill -KILL -f '[r]endered_zone_run[.]py' >/dev/null 2>&1; sudo -n pkill -KILL -f '[u]input_drive[.]py' >/dev/null 2>&1; true" </dev/null >/dev/null 2>&1
 }
 cleanup() {
     [ "$CLEANED" -eq 1 ] && return
@@ -222,6 +244,7 @@ pi_remote "mkdir -p '$PI_BIN_DIR' && cp '$PI_SHA_DIR/bin/willeq' '$PI_BIN' && su
     echo "pi_meminfo=$(pi_remote "grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree|CmaTotal|CmaFree' /proc/meminfo" </dev/null | tr -s ' ' | tr '\n' ';')"
     echo "worktree_commit=$(git -C "$REPO" rev-parse HEAD)"
     echo "resolution=$RES cap_s=$CAP_S stall_s=$STALL_S hold_s=$HOLD_S"
+    echo "lane=$EQEMU_HOST tour=${TOUR_IN:-default} extra_env=${EXTRA_ENV:-none} drive_keys=$DRIVE_KEYS"
 } > "$OUT/binary_identity.txt"
 say "$(tr '\n' ' ' < "$OUT/binary_identity.txt")"
 
@@ -268,14 +291,25 @@ run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     fi
     before="$(dmesg_count)"
     pidir="$PI_TMP/$z"
+    # --drive-keys: the virtual keyboard must EXIST before the client's evdev
+    # scan. Every pkill of it uses the bracket pattern '[u]input_drive[.]py':
+    # a plain 'uinput_drive.py' matches THIS remote shell's own command line
+    # and kills it (ssh exit 255 before the copy -- the B909 smoke leg).
+    # scan, so it starts first; it plays its sequence after the ready point
+    # and removes itself at the client's shutdown point (or its cap).
+    local drive=""
+    [ "$DRIVE_KEYS" -eq 1 ] && drive="sudo -n python3 '$REPO/scripts/pi/uinput_drive.py' --client-log '$pidir/client.log' \
+--events '$pidir/keys.tsv' --cap $CAP_S > '$pidir/keys.out' 2>&1 & sleep 2; "
     # shellcheck disable=SC2086
-    local remote="rm -rf '$pidir' && mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && \
-TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' \
+    local remote="rm -rf '$pidir' && mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && ${drive}\
+env TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTRA_ENV \
 python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S -- \
 '$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
 --eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
 --dump-frames-dir '$pidir/frames' --dump-every 100 --dump-max-frames 3 \
-> '$pidir/runner.out' 2>&1; cp -r '$pidir/.' '$dir/'; rm -rf '$pidir'"
+> '$pidir/runner.out' 2>&1; cp -r '$pidir/.' '$dir/'; \
+sudo -n pkill -TERM -f '[u]input_drive[.]py' >/dev/null 2>&1; sleep 1; cp '$pidir/keys.tsv' '$pidir/keys.out' '$dir/' 2>/dev/null; \
+sudo -n rm -rf '$pidir'; true"
     timeout $((CAP_S + 120)) bash -c 'source "$1"; pi_remote "$2" </dev/null' _ "$REPO/scripts/pi/env.sh" "$remote"
     rc=$?
     [ "$rc" -eq 0 ] || { say "WARN: the Pi leg returned $rc (ssh/timeout) -- killing any leftover client"; pi_kill_client; }

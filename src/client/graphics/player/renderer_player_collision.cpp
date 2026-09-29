@@ -216,7 +216,7 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
         if (!triangles.empty()) {
             totalRegionTriangles += triangles.size();
             regionsAdded++;
-            ctx_.regionWorldTriangles[regionIdx] = std::move(triangles);
+            ctx_.regionWorldTriangles.setOwned(regionIdx, std::move(triangles));
         }
     }
 
@@ -224,25 +224,27 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
     // world-space triangles come out of the zone draw pools (their vertices were
     // baked with the region position at load, which is all extractWorldTriangles
     // applies to a region node).
+    //
+    // B909: the pools ARE the collision triangles -- they are read in place
+    // (RegionWorldTriangles::setSource), not copied. The copy this replaced
+    // was 36 B per triangle plus a vector and a map node per region, a second
+    // copy of the pools' own vertices (refactor/B909/README.md).
+    bool fromPools = false;
     if (const auto& pools = ctx_.ZoneLifecycle().zoneMergeBuffers(); pools && pools->isPooled()) {
-        for (const auto& [regionIdx, bbox] : ctx_.regionBoundingBoxes) {
-            std::vector<irr::core::triangle3df> triangles;
-            pools->forEachRegionTriangle(regionIdx, [&](const float* a, const float* b, const float* c) {
-                triangles.emplace_back(irr::core::vector3df(a[0], a[1], a[2]),
-                                       irr::core::vector3df(b[0], b[1], b[2]),
-                                       irr::core::vector3df(c[0], c[1], c[2]));
+        ctx_.regionWorldTriangles.setSource(pools.get());
+        fromPools = true;
+        for (size_t regionIdx : pools->regionsWithTriangles()) {
+            pools->forEachRegionTriangle(regionIdx, [&](const float*, const float*, const float*) {
+                ++totalRegionTriangles;
             });
-            if (!triangles.empty()) {
-                totalRegionTriangles += triangles.size();
-                regionsAdded++;
-                triangles.shrink_to_fit();
-                ctx_.regionWorldTriangles[regionIdx] = std::move(triangles);
-            }
+            regionsAdded++;
         }
     }
 
-    LOG_INFO(MOD_GRAPHICS, "Collision setup: {} regions (total {} world-space triangles)",
-             regionsAdded, totalRegionTriangles);
+    // B909: the bytes the set holds for triangles (0 when it reads the pools).
+    LOG_INFO(MOD_GRAPHICS, "Collision setup: {} regions (total {} world-space triangles, {} bytes held{})",
+             regionsAdded, totalRegionTriangles, ctx_.regionWorldTriangles.ownedTriangleBytes(),
+             fromPools ? ", read from the zone draw pools" : "");
 
     ctx_.collisionManager = ctx_.smgr->getSceneCollisionManager();
 
@@ -308,6 +310,16 @@ bool PlayerCameraComponent::rayIntersectTriangles(const irr::core::vector3df& ra
     // T435: the Moller-Trumbore body moved to door_collision.cpp so the door
     // query can run without a renderer. This static member is kept because
     // renderer_zone_load_env.cpp calls it by that name.
+    return RayIntersectTriangles(rayOrigin, rayDir, rayLen, triangles,
+                                 hitPoint, hitTriangle, hitDistSq);
+}
+
+bool PlayerCameraComponent::rayIntersectTriangles(const irr::core::vector3df& rayOrigin,
+                                              const irr::core::vector3df& rayDir, float rayLen,
+                                              const RegionTrianglesView& triangles,
+                                              irr::core::vector3df& hitPoint,
+                                              irr::core::triangle3df& hitTriangle,
+                                              float& hitDistSq) {
     return RayIntersectTriangles(rayOrigin, rayDir, rayLen, triangles,
                                  hitPoint, hitTriangle, hitDistSq);
 }
@@ -403,12 +415,11 @@ bool PlayerCameraComponent::checkCollisionBspFiltered(const irr::core::vector3df
 
     // Test source region triangles (direct, no matrix math)
     if (srcRegion != SIZE_MAX) {
-        auto it = ctx_.regionWorldTriangles.find(srcRegion);
-        if (it != ctx_.regionWorldTriangles.end()) {
+        if (const auto tris = ctx_.regionWorldTriangles.find(srcRegion)) {
             irr::core::vector3df hp;
             irr::core::triangle3df ht;
             float distSq;
-            if (rayIntersectTriangles(start, rayDir, rayLen, it->second, hp, ht, distSq)) {
+            if (rayIntersectTriangles(start, rayDir, rayLen, tris, hp, ht, distSq)) {
                 if (distSq < closestDistSq) {
                     closestDistSq = distSq;
                     bestHit = hp;
@@ -421,12 +432,11 @@ bool PlayerCameraComponent::checkCollisionBspFiltered(const irr::core::vector3df
 
     // Test destination region triangles (if different from source)
     if (dstRegion != SIZE_MAX && dstRegion != srcRegion) {
-        auto it = ctx_.regionWorldTriangles.find(dstRegion);
-        if (it != ctx_.regionWorldTriangles.end()) {
+        if (const auto tris = ctx_.regionWorldTriangles.find(dstRegion)) {
             irr::core::vector3df hp;
             irr::core::triangle3df ht;
             float distSq;
-            if (rayIntersectTriangles(start, rayDir, rayLen, it->second, hp, ht, distSq)) {
+            if (rayIntersectTriangles(start, rayDir, rayLen, tris, hp, ht, distSq)) {
                 if (distSq < closestDistSq) {
                     closestDistSq = distSq;
                     bestHit = hp;
@@ -511,10 +521,9 @@ GroundZ PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float cu
 
     // Test query region world triangles (direct, no matrix math)
     if (queryRegion != SIZE_MAX) {
-        auto it = ctx_.regionWorldTriangles.find(queryRegion);
-        if (it != ctx_.regionWorldTriangles.end()) {
+        if (const auto tris = ctx_.regionWorldTriangles.find(queryRegion)) {
             float distSq;
-            if (rayIntersectTriangles(nearStart, rayDir, nearRayLen, it->second, hitPoint, hitTriangle, distSq)) {
+            if (rayIntersectTriangles(nearStart, rayDir, nearRayLen, tris, hitPoint, hitTriangle, distSq)) {
                 if (distSq < closestDistSq) {
                     closestDistSq = distSq;
                     bestHit = hitPoint;
@@ -561,10 +570,9 @@ GroundZ PlayerCameraComponent::findGroundZBspFiltered(float x, float y, float cu
     bestHit = irr::core::vector3df();
 
     if (queryRegion != SIZE_MAX) {
-        auto it = ctx_.regionWorldTriangles.find(queryRegion);
-        if (it != ctx_.regionWorldTriangles.end()) {
+        if (const auto tris = ctx_.regionWorldTriangles.find(queryRegion)) {
             float distSq;
-            if (rayIntersectTriangles(rayStart, rayDir, fullRayLen, it->second, hitPoint, hitTriangle, distSq)) {
+            if (rayIntersectTriangles(rayStart, rayDir, fullRayLen, tris, hitPoint, hitTriangle, distSq)) {
                 if (distSq < closestDistSq) {
                     closestDistSq = distSq;
                     bestHit = hitPoint;

@@ -16,6 +16,8 @@
 #include <map>
 #include <vector>
 
+#include "client/graphics/region_world_triangles.h"
+
 namespace EQT {
 namespace Graphics {
 
@@ -56,6 +58,14 @@ void AppendMeshWorldTriangles(irr::scene::IMesh* mesh,
 bool RayIntersectTriangles(const irr::core::vector3df& rayOrigin,
                            const irr::core::vector3df& rayDir, float rayLen,
                            const std::vector<irr::core::triangle3df>& triangles,
+                           irr::core::vector3df& hitPoint,
+                           irr::core::triangle3df& hitTriangle,
+                           float& hitDistSq);
+// B909: the same test over one region of RegionWorldTriangles (owned or a
+// view onto the zone draw pools) -- identical arithmetic, identical results.
+bool RayIntersectTriangles(const irr::core::vector3df& rayOrigin,
+                           const irr::core::vector3df& rayDir, float rayLen,
+                           const RegionTrianglesView& triangles,
                            irr::core::vector3df& hitPoint,
                            irr::core::triangle3df& hitTriangle,
                            float& hitDistSq);

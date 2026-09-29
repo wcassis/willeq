@@ -160,7 +160,13 @@ inline thread_local uint8_t t_sublabel = 0;
 // sub-owners get 2..kStartupSublabelSlots-1 in first-open order.
 constexpr uint8_t kStartupSublabelNone = 0;   // no sub-owner open
 constexpr uint8_t kStartupSublabelMisc = 1;   // the catch-all sub-owner
-constexpr uint8_t kStartupSublabelSlots = 32; // total rows incl. the two above
+// B909: 32 -> 64. The table is shared by EVERY owner category (T504 re-pointed
+// it with WILLEQ_LEDGER_OWNERS) and filled in first-open order: by the time
+// a zone loads, the startup, gfx.* and ent.* labels had taken the 30 named
+// slots, so a label opened at Step 9 got kStartupSublabelNone and its 8.1 MB
+// landed in "misc" (measured, gfaydark spatial, 2026-09-29). The header
+// carries the index in 8 bits, so any value up to 255 is representable.
+constexpr uint8_t kStartupSublabelSlots = 64; // total rows incl. the two above
 
 // RAII scope: every allocation on this thread until the scope ends is charged
 // to `c`. Nests; the previous category is restored on exit. A block freed

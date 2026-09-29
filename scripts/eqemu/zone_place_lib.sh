@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The zone PLACEMENT helpers shared by the live zone sweeps -- sourced, not
 # executed. Extracted verbatim from scripts/scenario_zone_sweep.sh (B853/B854)
-# so the headless sweep and the rendered Pi sweep
-# (scripts/pi_rendered_zone_sweep.sh, #102) run ONE implementation of
+# so the headless sweep, the rendered Pi sweep
+# (scripts/pi_rendered_zone_sweep.sh, #102) and the client ledger rig
+# (scripts/client_ledger_capture.sh, B909) run ONE implementation of
 # boot-then-seed-then-free-the-port, not two copies that drift.
 #
 # Requires, from the caller: scripts/eqemu/env.sh and restore_lib.sh sourced

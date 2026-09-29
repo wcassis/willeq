@@ -102,3 +102,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_zone_source_release GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_zone_source_release DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B909 (GitLab #229): the zone's collision triangles are held once -- a pooled
+# zone's set reads the draw pools in place, with bit-identical ray results.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_region_world_triangles
+        test_region_world_triangles.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_region_world_triangles PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    TARGET_INCLUDE_DIRECTORIES(test_region_world_triangles PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_region_world_triangles GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_region_world_triangles DISCOVERY_TIMEOUT 120)
+ENDIF()

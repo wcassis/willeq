@@ -128,6 +128,12 @@ public:
 	                                  const std::vector<irr::core::triangle3df>& triangles,
 	                                  irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle,
 	                                  float& hitDistSq);
+	// B909: the same test over one region of RegionWorldTriangles.
+	static bool rayIntersectTriangles(const irr::core::vector3df& rayOrigin,
+	                                  const irr::core::vector3df& rayDir, float rayLen,
+	                                  const RegionTrianglesView& triangles,
+	                                  irr::core::vector3df& hitPoint, irr::core::triangle3df& hitTriangle,
+	                                  float& hitDistSq);
 	// Extract world-space triangles from a mesh node (called once at build time)
 	static std::vector<irr::core::triangle3df> extractWorldTriangles(
 		irr::scene::ISceneManager* smgr, irr::scene::IMeshSceneNode* node);

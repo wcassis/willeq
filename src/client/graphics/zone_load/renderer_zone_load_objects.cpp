@@ -592,9 +592,15 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
         auto stepStart = std::chrono::steady_clock::now();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: smgr_={}, regionWorldTriangles_={}, objectNodes_={}, zoneBspTree_={}",
                   (bool)ctx_.smgr, ctx_.regionWorldTriangles.size(), ctx_.objectNodes.size(), (bool)ctx_.zoneBspTree);
-        ctx_.PlayerCamera().setupMinimalZoneCollision();
+        {
+            // B909: owner labels for WILLEQ_LEDGER_OWNERS=spatial (no effect
+            // otherwise -- the rows are printed only for the owner category).
+            eqt::memory::StartupScope regionTriOwner("sp.region_tris");
+            ctx_.PlayerCamera().setupMinimalZoneCollision();
+        }
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: setupMinimalZoneCollision complete, regionWorldTriangles_={}",
                   ctx_.regionWorldTriangles.size());
+        eqt::memory::StartupScope objectTriOwner("sp.object_tris");  // B909
 
         // Add eagerly-built objects as pre-transformed world-space triangles per BSP region
         size_t objectsAdded = 0;
