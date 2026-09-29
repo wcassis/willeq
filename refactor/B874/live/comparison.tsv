@@ -1,0 +1,47 @@
+check	log_value	independent_value	source	delta	verdict
+header	exact	14-column spec	pose_log_format.h poseLogHeaderLine()		PASS
+rows have 14 columns	539/539	all	format spec	0	PASS
+script commands executed	12		client log 'Script: executing'		INFO
+server #loc replies	3		client log		INFO
+ts inside the run's wall-clock window	1790648673365..1790648683953	1790648668797..1790648684990	host clock (date +%s%3N) around the client		PASS
+ts non-decreasing	0 backwards steps	0			PASS
+frame strictly increasing	1..539	increasing			PASS
+rows / time span	539	10.59 s			INFO
+stationary Chase rows	129	>= 10	rows between /camera chase + 1 s and /turn		PASS
+stationary: pose constant	max spread 0.0000	0	the log's own window	0.0000	PASS
+stationary: movestate	[0]	[0]	no input		PASS
+seed: server_x = playerY	-74.0000	-74.0	character_data (seeded before login, read back)	+0.0000	PASS
+seed: server_y = playerX	428.0000	428.0	character_data (seeded before login, read back)	+0.0000	PASS
+seed: z	2.3694	3.0	character_data (seeded before login, read back)	-0.6306	PASS
+seed: (128 - heading0_512) mod 512	100.0000 (heading0_512 28.0000)	100.0	character_data (seeded before login, read back)	+0.0000	PASS
+#loc (stationary): server_x = playerY	-74.0000	-74.0	server #loc reply (GetPosition, live)	+0.0000	PASS
+#loc (stationary): server_y = playerX	428.0000	428.0	server #loc reply (GetPosition, live)	+0.0000	PASS
+#loc (stationary): z	2.3694	3.0	server #loc reply (GetPosition, live)	-0.6306	PASS
+#loc (stationary): (128 - heading0_512) mod 512	100.0000 (heading0_512 28.0000)	100.0	server #loc reply (GetPosition, live)	+0.0000	PASS
+chase: camera->look-at distance (max)	4.0002	4.0 x eye scale	kChaseRig		INFO
+chase: pitch (worst |delta|, deg)	0.0000	6.0	kChaseRig.pitchDeg	0.0000	PASS
+chase: behind the heading (worst |az|, deg)	0.0001	0.0	kChaseRig.azimuthDeg	0.0001	PASS
+chase: eye scale / feetZ from /camera get	1.0000 / -0.7500		client log [CAMERA-GET]		INFO
+chase: feetZ - playerZ	-3.1194		client log vs pose log		INFO
+chase: camera + look-at vs kChaseRig x eye scale (worst |delta|)	cam=(426.660,-77.746,6.668) tgt=(428.000,-74.000,6.250)	dist 4.000, look-at feetZ+7.000	kChaseRig (camera_rig.h:141) + /camera get scale	0.0003	PASS
+after /turn 90: heading0_512	28.0000	before 28.0000	pose log		INFO
+#loc (after /turn): server_x = playerY	-74.0000	-74.0	server #loc reply (GetPosition, live) vs the last row logged before it	+0.0000	PASS
+#loc (after /turn): server_y = playerX	428.0000	428.0	server #loc reply (GetPosition, live) vs the last row logged before it	+0.0000	PASS
+#loc (after /turn): z	2.3694	3.0	server #loc reply (GetPosition, live) vs the last row logged before it	-0.6306	PASS
+#loc (after /turn): (128 - heading0_512) mod 512	100.0000 (heading0_512 28.0000)	0.0	server #loc reply (GetPosition, live) vs the last row logged before it	+100.0000	FAIL
+movement: movestate changes after /move	[0]	contains a non-zero state	the /move step		FAIL
+movement: player displacement after /move	10.467	>= 5 (commanded 15)	the /move step		PASS
+coverage: log still writing at the 2nd /camera get	1790648683953	>= 1790648682273	client log		PASS
+#loc (after /move): server_x = playerY	-74.0000	-74.0	server #loc reply (GetPosition, live) vs the last row logged before it	+0.0000	PASS
+#loc (after /move): server_y = playerX	438.4667	438.47	server #loc reply (GetPosition, live) vs the last row logged before it	-0.0033	PASS
+#loc (after /move): z	2.8094	3.44	server #loc reply (GetPosition, live) vs the last row logged before it	-0.6306	PASS
+#loc (after /move): (128 - heading0_512) mod 512	0.0000 (heading0_512 128.0000)	0.0	server #loc reply (GetPosition, live) vs the last row logged before it	+0.0000	PASS
+#save reply (server wrote the character)	successfully saved	successfully saved	client log (zone/gm_commands/save.cpp)		PASS
+after quit: server_x = playerY	-74.0000	-74.0	character_data straight after the client left (world up)	+0.0000	PASS
+after quit: server_y = playerX	438.4667	438.467	character_data straight after the client left (world up)	-0.0003	PASS
+after quit: z	2.8094	3.44004	character_data straight after the client left (world up)	-0.6306	PASS
+after quit: (128 - heading0_512) mod 512	0.0000 (heading0_512 128.0000)	0.0	character_data straight after the client left (world up)	+0.0000	PASS
+final: server_x = playerY	-74.0000	-74.0	character_data after the zone's shutdown save	+0.0000	PASS
+final: server_y = playerX	438.4667	438.467	character_data after the zone's shutdown save	-0.0003	PASS
+final: z	2.8094	3.44004	character_data after the zone's shutdown save	-0.6306	PASS
+final: (128 - heading0_512) mod 512	0.0000 (heading0_512 128.0000)	0.0	character_data after the zone's shutdown save	+0.0000	PASS

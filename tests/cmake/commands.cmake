@@ -667,3 +667,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_pose_log_e2e DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B874 / #218: --pose-log from a ZONED-IN client against the server's own
+# view (#loc, #save'd character_data) and kChaseRig. It takes the eqemu lock,
+# brings the lane up and down itself, and exits non-zero on any failed check
+# (scripts/pose_live_capture.sh). Live, so registered only under
+# -DEQT_LIVE_TESTS=ON (T164), like every other server-backed test.
+IF(EQT_LIVE_TESTS AND EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_TEST(NAME PoseLogLiveCapture
+             COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/pose_live_capture.sh)
+    SET_TESTS_PROPERTIES(PoseLogLiveCapture PROPERTIES
+        LABELS "live"
+        TIMEOUT 900
+        ENVIRONMENT "WILLEQ_BIN=$<TARGET_FILE:willeq>")
+ENDIF()
