@@ -708,7 +708,10 @@ private:
     void parseFragment37(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                          int32_t nameRef, const char* hash);
     void parseFragment21(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex);
-    void parseFragment22(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex);
+    // B903: `regionPool` (parseWldBuffer's, sized from the 0x22 count) holds
+    // every region in one block; null = a region of its own.
+    void parseFragment22(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
+                         BspRegionPool* regionPool = nullptr);
     void parseFragment29(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                          int32_t nameRef, const char* hash);
 

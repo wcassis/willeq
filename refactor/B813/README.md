@@ -245,6 +245,74 @@ ceiling. In an interleaved A/B of 6 runs each (`ca81e635` vs fix, same host),
 the median was 10.94 ms for the base binary and 10.75 ms for the fix, so the
 change does not regress it. Rows 1 and 3 (`zone_parse`, `zone_mesh`) are
 untouched and still open, so iceclad and timorous stay in `gate-kunark-velious`.
+(Superseded 2026-09-29: see the next section.)
+
+## 2026-09-29 — zone_parse and zone_mesh fixed (rows 1 and 3; B903 #223, B904 #224)
+
+Branch `task/B903-B904-gate-overruns`, same host and recipe as above, before =
+`678e6fc2`. No budget, zone list, golden or baselined memory field changed
+(every T69/T80 baseline field bit-identical before/after in all five zones).
+
+**zone_parse (iceclad), split by `WILLEQ_LEDGER_TRACE=zone_parse:startup`**
+(the category is one `S3DLoader::loadZone` call, so the trace splits it by
+call site), before → after, bytes / blocks:
+
+| owner | before | after |
+|---|---:|---:|
+| region source geometry (vertices, ZoneGeometry, triangles, colours, names, frag map, vector) | 18,820,960 / 107,317 | unchanged |
+| `BspRegion`, one make_shared each | 5,415,728 / 37,609 | ~3.6 MB in 37 slabs of 1,024 regions |
+| PVS RLE arena | 4,833,280 / 1 | unchanged |
+| BSP nodes | 2,109,440 / 1 | unchanged |
+| `regions` handle array (doubling growth) | 1,052,672 / 1 | 602,112 / 1 |
+| raw zone textures | 1,513,120 / 32 | unchanged |
+
+Fix: `BspRegionPool` (`include/client/zone_bsp.h`), used by the WLD parser
+(`parseWldBuffer` counts the 0x22 fragments; `parseFragment22` takes from the
+pool and reserves `regions` exactly). Slabs are 96 KiB so they stay under
+glibc's mmap threshold: one 3.6 MB block was an mmap and pushed iceclad's
+non-heap anon to 27.5 MB, over the gate's 24 MiB bound (measured, then fixed).
+Not a `BspTree` member, because `sizeof(BspTree)` is in the baselined
+`s3dZoneSourceBytes`. Client and benchmark share the parser.
+
+**What is left.** 55 % of iceclad's `zone_parse` is the per-region source
+geometry. The client frees it at Step 13 (`releaseRegionGeometry`, T504); the
+benchmark never runs that release, so the gate measures a state the client does
+not reach. Mirroring the client's Step-13 release in the benchmark (experiment,
+not committed) takes `zone_parse` iceclad 31.7 → 11.3 MB, timorous 25.9 → 5.5,
+qeynos2 → 0.67, gfaydark → 0.76, befallen → 1.2 — but it lowers the
+exact-match `s3dZoneSourceBytes` and `totalEstimate` baselines in all five
+zones, so it is a bless decision for Will, not taken here.
+
+**zone_mesh, `WILLEQ_LEDGER_OWNERS=zone_mesh`** (new `zm.*` labels in
+`zone_bench_loader.cpp`), coverage run, before → after:
+
+| zone | `zm.build` | `zm.region_table` | `zm.hw_buffers` |
+|---|---:|---:|---:|
+| timorous | 26,732,368 → 20,884,880 (69,090 blocks) | 1,477,312 (13,189) | 1,211,376 → 1,231,280 (15,675) |
+| iceclad | 19,218,608 → 15,811,840 (76,269) | 2,003,488 (17,886) | 1,262,192 → 1,252,624 (16,050) |
+| gfaydark | 8,701,344 → 6,371,600 (11,655) | 178,864 (1,597) | 229,600 → 234,688 (2,866) |
+
+Block counts are unchanged: the waste was capacity, not blocks. Every
+`ZoneMeshBuilder` path fills `SMeshBuffer`s by push_back and
+`irr::core::array` roughly doubles small arrays (6, 13, 27, 55, ...);
+`finishMeshBuffer()`/`finishMesh()` (`zone_geometry.h`) reallocate the vertex,
+index and buffer-pointer arrays to size. Shared by the client's region, object,
+door and character builds. The remaining `zm.build` is ~5.3 MB of 336-byte
+`SMeshBuffer` objects (one per region buffer; the benchmark's unpooled draw
+path) and the vertex/index data itself.
+
+| zone | `zone_parse` before → after | `zone_mesh` before → after |
+|---|---:|---:|
+| qeynos2 | 8,161,216 → 8,029,552 | 4,136,960 → 3,520,592 |
+| gfaydark | 7,984,992 → 7,826,784 | 9,065,776 → 6,740,848 |
+| befallen | 5,669,360 → 5,474,736 | 6,625,776 → 5,770,960 |
+| iceclad | 33,925,312 → 31,673,040 (94 %) | 22,481,120 → 19,064,224 |
+| timorous | 27,020,240 → 25,877,552 | 29,415,520 → 23,586,688 (80 %) |
+
+(Coverage invocation, the larger of the two runs.) `visual_gate.sh --zones
+qeynos2,gfaydark,befallen,iceclad,timorous`: PASS — every image, metric, p95,
+baseline and budget check; iceclad p95 5.72 ms vs 9.53. CI: `gate` runs all
+five zones again and `gate-kunark-velious` is removed.
 
 ## Gate wall time [measured]
 

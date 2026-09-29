@@ -210,6 +210,19 @@ irr::video::SColor normalToColor(float nx, float ny, float nz);
 // Management" section for the removed cache's history/reference pointer.
 size_t estimateMeshSizeBytes(irr::scene::IMeshSceneNode* node);
 
+// B904: finish one built mesh buffer -- reallocate its vertex and index
+// arrays to exactly their element counts, then recompute its bounding box.
+// Every ZoneMeshBuilder path grows these arrays by push_back, and
+// irr::core::array's default strategy roughly doubles a small array (6, 13,
+// 27, 55, ...), so a finished buffer held up to twice its data for the life
+// of the mesh (timorous: 15,674 region buffers). Contents are unchanged.
+// Returns the bytes of capacity released (element slack, not chunk bytes).
+size_t finishMeshBuffer(irr::scene::SMeshBuffer* buffer);
+
+// B904: the same for a finished SMesh's buffer-pointer array, then its
+// bounding box. Returns the bytes of capacity released.
+size_t finishMesh(irr::scene::SMesh* mesh);
+
 } // namespace Graphics
 } // namespace EQT
 

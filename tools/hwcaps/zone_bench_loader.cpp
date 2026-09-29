@@ -357,6 +357,14 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
 
     // ── Step 7: Build per-region meshes ──
     eqt::memory::MemoryScope meshScope(eqt::memory::Category::ZoneMesh);  // T491
+    // B904: owner labels for WILLEQ_LEDGER_OWNERS=zone_mesh (no effect
+    // otherwise -- the rows are only charged for the selected category).
+    eqt::memory::StartupScope meshOwner("zm.build");
+    auto meshOwnerLabel = [](const char* name) {
+        if (eqt::memory::enabled()) {
+            eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex(name);
+        }
+    };
     auto meshStart = std::chrono::steady_clock::now();
 
     ZoneMeshBuilder builder(data->smgr, data->driver, data->device->getFileSystem());
@@ -386,6 +394,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         }
 
         irr::scene::IMesh* mesh = nullptr;
+        meshOwnerLabel("zm.build");
         if (!data->zone->textures.empty() && !geom->textureNames().empty()) {
             mesh = builder.buildTexturedMesh(*geom, data->zone->textures);
         } else {
@@ -395,7 +404,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         if (!mesh) continue;
 
         // Upload VBOs
+        meshOwnerLabel("zm.hw_buffers");
         uploadMeshHWBuffers(data->driver, mesh);
+        meshOwnerLabel("zm.region_table");
 
         // Compute EQ-coord bounding box from geometry
         float vMinX = std::numeric_limits<float>::max();
@@ -431,6 +442,7 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     data->boundsMaxX = zbMaxX; data->boundsMaxY = zbMaxY; data->boundsMaxZ = zbMaxZ;
 
     // Upload any pending textures from constrained cache
+    meshOwnerLabel("zm.texture_upload");
     int uploaded = data->textureCache->uploadAllPending();
 
     auto meshEnd = std::chrono::steady_clock::now();

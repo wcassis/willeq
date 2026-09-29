@@ -1333,3 +1333,8 @@ zones (`visual_gate.py --zones`): the blocking `gate` job runs the three
 classic zones exactly as before; `gate-kunark-velious` runs iceclad and
 timorous with the same assertions and budgets as `allow_failure: true`. A zone
 moves back into `gate` when its overrun is fixed in code (`docs/ci.md`).
+
+**Note 2026-09-29 (B903/B904):** both overruns were fixed in code (iceclad
+`zone_parse` 31,673,040 B, timorous `zone_mesh` 23,586,688 B; no budget
+changed), so `gate` runs all five zones again and `gate-kunark-velious` is
+gone. `refactor/B813/README.md` "2026-09-29".

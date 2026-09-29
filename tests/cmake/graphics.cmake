@@ -84,6 +84,8 @@ IF(EQT_GRAPHICS)
     IF(EQT_GLES2)
         TARGET_SOURCES(test_graphics PRIVATE ${CMAKE_SOURCE_DIR}/src/client/graphics/gpu_upload_thread.cpp)
     ENDIF()
+    # B904: built meshes hold exactly their data (ZoneMeshBuilder capacity).
+    TARGET_SOURCES(test_graphics PRIVATE test_zone_mesh_capacity.cpp)
     TARGET_INCLUDE_DIRECTORIES(test_graphics PRIVATE ${IRRLICHT_INCLUDE_DIR})
     # T270: the race-code tests read the shipped race_models rows instead of
     # restating a hardcoded numbering (they skip if the db is absent).
