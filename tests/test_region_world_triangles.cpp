@@ -171,11 +171,55 @@ TEST(RegionWorldTriangles, ThePoolsAnswerForAPlayerRegionAlsoBuiltAsANode) {
     set.setOwned(99, {triangle3df(vector3df(0, 0, 0), vector3df(1, 0, 0), vector3df(0, 0, 1))});
     set.setSource(&f.pools);
     size_t viewTris = 0, poolTris = 0;
-    set.find(7).forEachTriangle([&](const triangle3df&) { ++viewTris; });
+    set.find(7).forEachTriangle([&](const vector3df&, const vector3df&, const vector3df&) { ++viewTris; });
     f.pools.forEachRegionTriangle(7, [&](const float*, const float*, const float*) { ++poolTris; });
     EXPECT_EQ(viewTris, poolTris);
     EXPECT_GT(poolTris, 1u);
     EXPECT_TRUE(static_cast<bool>(set.find(99))) << "a region the pools do not cover stays owned";
+}
+
+// The hot path (regionRuns, batches of 16 runs) visits exactly the triangles
+// forEachRegionTriangle visits, in the same order, with the same floats --
+// including a region whose run count crosses the batch boundary.
+TEST(RegionWorldTriangles, RunBatchesVisitTheSameTrianglesInTheSameOrder) {
+    std::mt19937 rng(9091);
+    std::uniform_real_distribution<float> d(-20.0f, 20.0f);
+    ZoneMergeBuffers pools;
+    pools.beginPooled();
+    auto* mesh = new irr::scene::SMesh();
+    for (int b = 0; b < 37; ++b) {   // 37 distinct materials -> 37 runs: 16 + 16 + 5
+        auto* buf = new irr::scene::SMeshBuffer();
+        buf->Material.MaterialTypeParam = static_cast<float>(b);
+        for (int t = 0; t < 5 + b; ++t) {
+            for (int k = 0; k < 3; ++k) {
+                irr::video::S3DVertex v;
+                v.Pos = vector3df(d(rng), d(rng), d(rng));
+                buf->Indices.push_back(static_cast<irr::u16>(buf->Vertices.size()));
+                buf->Vertices.push_back(v);
+            }
+        }
+        mesh->addMeshBuffer(buf);
+        buf->drop();
+    }
+    pools.appendRegion(5, mesh, 1.0f, 2.0f, 3.0f);
+    mesh->drop();
+    pools.finishPooled();
+
+    TriangleRun probe[64];
+    const size_t runs = pools.regionRuns(5, 0, probe, 64);
+    ASSERT_GT(runs, 32u) << "the fixture must cross two batch boundaries";
+
+    std::vector<float> want, got;
+    pools.forEachRegionTriangle(5, [&](const float* a, const float* b, const float* c) {
+        want.insert(want.end(), {a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]});
+    });
+    RegionWorldTriangles set;
+    set.setSource(&pools);
+    set.find(5).forEachTriangle([&](const vector3df& a, const vector3df& b, const vector3df& c) {
+        got.insert(got.end(), {a.X, a.Y, a.Z, b.X, b.Y, b.Z, c.X, c.Y, c.Z});
+    });
+    ASSERT_EQ(got.size(), want.size());
+    EXPECT_EQ(0, std::memcmp(got.data(), want.data(), got.size() * sizeof(float)));
 }
 
 // The production call site: the pooled branch of setupMinimalZoneCollision()

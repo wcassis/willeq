@@ -29,6 +29,7 @@
 
 #include <irrlicht.h>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <vector>
@@ -36,13 +37,28 @@
 namespace EQT {
 namespace Graphics {
 
+// One contiguous run of a region's triangles: `indexCount` indices into
+// `vertices`, three per triangle (a trailing partial triangle is ignored,
+// exactly as forEachRegionTriangle() ignores it).
+struct TriangleRun {
+    const irr::video::S3DVertex* vertices = nullptr;
+    const uint16_t* indices = nullptr;
+    size_t indexCount = 0;
+};
+
 // Anything that can enumerate one region's world-space triangles, in a fixed
-// order, as three pointers to x,y,z (Irrlicht Y-up).
+// order (Irrlicht Y-up).
 class RegionTriangleSource {
 public:
     using TriangleFn = std::function<void(const float*, const float*, const float*)>;
     virtual ~RegionTriangleSource() = default;
+    // Convenience form, one std::function call per triangle. NOT for a ray
+    // loop: the Pi A/B measured it (refactor/B909/README.md, "Orange Pi").
     virtual void forEachRegionTriangle(size_t regionIdx, const TriangleFn& fn) const = 0;
+    // The hot-path form: copies up to `maxOut` of the region's runs, starting
+    // at run `first`, into `out`; returns how many it wrote (0 = no more).
+    // The triangles of the runs, in order, are exactly forEachRegionTriangle's.
+    virtual size_t regionRuns(size_t regionIdx, size_t first, TriangleRun* out, size_t maxOut) const = 0;
     // Regions this source has at least one triangle for, ascending.
     virtual std::vector<size_t> regionsWithTriangles() const = 0;
 };
@@ -57,18 +73,30 @@ public:
         : source_(source), regionIdx_(regionIdx) {}
     explicit operator bool() const { return owned_ || source_; }
 
-    // fn(const irr::core::triangle3df&) for every triangle, in storage order.
+    // fn(const vector3df& a, const vector3df& b, const vector3df& c) for every
+    // triangle, in storage order. Inlined into the caller: for a pooled region
+    // the loop reads the pool's vertices through its indices directly (one
+    // virtual call per 16 runs), with no per-triangle call or copy.
     template <class Fn>
     void forEachTriangle(Fn&& fn) const {
         if (owned_) {
-            for (const auto& t : *owned_) fn(t);
+            for (const auto& t : *owned_) fn(t.pointA, t.pointB, t.pointC);
         } else if (source_) {
-            source_->forEachRegionTriangle(regionIdx_, [&](const float* a, const float* b, const float* c) {
-                const irr::core::triangle3df t(irr::core::vector3df(a[0], a[1], a[2]),
-                                               irr::core::vector3df(b[0], b[1], b[2]),
-                                               irr::core::vector3df(c[0], c[1], c[2]));
-                fn(t);
-            });
+            constexpr size_t kBatch = 16;
+            TriangleRun runs[kBatch];
+            size_t first = 0;
+            for (;;) {
+                const size_t n = source_->regionRuns(regionIdx_, first, runs, kBatch);
+                for (size_t k = 0; k < n; ++k) {
+                    const TriangleRun& r = runs[k];
+                    for (size_t i = 0; i + 2 < r.indexCount; i += 3) {
+                        fn(r.vertices[r.indices[i]].Pos, r.vertices[r.indices[i + 1]].Pos,
+                           r.vertices[r.indices[i + 2]].Pos);
+                    }
+                }
+                if (n < kBatch) break;
+                first += n;
+            }
         }
     }
 

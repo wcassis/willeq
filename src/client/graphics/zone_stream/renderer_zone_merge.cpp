@@ -335,6 +335,21 @@ void ZoneMergeBuffers::forEachRegionTriangle(
     }
 }
 
+size_t ZoneMergeBuffers::regionRuns(size_t regionIdx, size_t first, TriangleRun* out,
+                                    size_t maxOut) const {
+    size_t n = 0;
+    const ZoneSlice* s = slicesForRegion(regionIdx, n);
+    size_t written = 0;
+    for (size_t k = first; k < n && written < maxOut; ++k) {
+        const MergedGeneration* gen = poolBuckets_[s[k].materialId][s[k].generation];
+        TriangleRun& r = out[written++];
+        r.vertices = static_cast<const irr::video::S3DVertex*>(gen->buf->getVertices());
+        r.indices = gen->templateIndices.data() + s[k].indexOffset;
+        r.indexCount = s[k].indexCount > 0 ? static_cast<size_t>(s[k].indexCount) : 0;
+    }
+    return written;
+}
+
 std::vector<size_t> ZoneMergeBuffers::regionsWithTriangles() const {
     // A region counts iff forEachRegionTriangle() would call its fn at least
     // once -- the same test the pre-B909 copy applied (it kept a region only

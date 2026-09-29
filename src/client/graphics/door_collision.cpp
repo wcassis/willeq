@@ -100,13 +100,14 @@ namespace {
 // an owned vector and a pool view run the SAME arithmetic (B909).
 inline void MollerTrumboreStep(const irr::core::vector3df& rayOrigin,
                                const irr::core::vector3df& rayDir,
-                               const irr::core::triangle3df& tri,
+                               const irr::core::vector3df& v0,
+                               const irr::core::vector3df& v1,
+                               const irr::core::vector3df& v2,
                                float& closestT, irr::core::vector3df& hitPoint,
                                irr::core::triangle3df& hitTriangle, bool& anyHit) {
     constexpr float EPSILON = 0.000001f;
-    const irr::core::vector3df& v0 = tri.pointA;
-    const irr::core::vector3df edge1 = tri.pointB - v0;
-    const irr::core::vector3df edge2 = tri.pointC - v0;
+    const irr::core::vector3df edge1 = v1 - v0;
+    const irr::core::vector3df edge2 = v2 - v0;
 
     const irr::core::vector3df h = rayDir.crossProduct(edge2);
     float a = edge1.dotProduct(h);
@@ -125,7 +126,7 @@ inline void MollerTrumboreStep(const irr::core::vector3df& rayOrigin,
     if (t > EPSILON && t < closestT) {
         closestT = t;
         hitPoint = rayOrigin + rayDir * t;
-        hitTriangle = tri;
+        hitTriangle = irr::core::triangle3df(v0, v1, v2);
         anyHit = true;
     }
 }
@@ -141,7 +142,8 @@ bool RayIntersectTriangles(const irr::core::vector3df& rayOrigin,
     bool anyHit = false;
     float closestT = rayLen + 1.0f;
     for (const auto& tri : triangles) {
-        MollerTrumboreStep(rayOrigin, rayDir, tri, closestT, hitPoint, hitTriangle, anyHit);
+        MollerTrumboreStep(rayOrigin, rayDir, tri.pointA, tri.pointB, tri.pointC,
+                           closestT, hitPoint, hitTriangle, anyHit);
     }
     if (anyHit) {
         hitDistSq = hitPoint.getDistanceFromSQ(rayOrigin);
@@ -157,8 +159,9 @@ bool RayIntersectTriangles(const irr::core::vector3df& rayOrigin,
                            float& hitDistSq) {
     bool anyHit = false;
     float closestT = rayLen + 1.0f;
-    triangles.forEachTriangle([&](const irr::core::triangle3df& tri) {
-        MollerTrumboreStep(rayOrigin, rayDir, tri, closestT, hitPoint, hitTriangle, anyHit);
+    triangles.forEachTriangle([&](const irr::core::vector3df& a, const irr::core::vector3df& b,
+                                  const irr::core::vector3df& c) {
+        MollerTrumboreStep(rayOrigin, rayDir, a, b, c, closestT, hitPoint, hitTriangle, anyHit);
     });
     if (anyHit) {
         hitDistSq = hitPoint.getDistanceFromSQ(rayOrigin);

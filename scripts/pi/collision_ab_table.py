@@ -146,14 +146,14 @@ def main():
             pk = [r["rss_peak"] for r in runs if r["rss_peak"]]
             st = [r["rss_steady"] for r in runs if r["rss_steady"]]
             ok = sum(1 for r in runs if r["ok"])
-            meds[side] = (med(mv), med(mf))
+            meds[side] = (med(mv), med(mf), med(pm))
             rng = lambda xs: (f"{min(xs):,}" if len(xs) and min(xs) == max(xs) else
                               (f"{min(xs):,}–{max(xs):,}" if xs else "n/a"))
             fmt = lambda v, p=0: (f"{v:,.{p}f}" if v is not None else "n/a")
             md.append(f"| {z} | {side} | {ok}/{len(runs)} | {len(mv)}/{len(iv)} | {fmt(med(mv))} | {fmt(med(mf), 1)} | "
                       f"{fmt(med(pm))} / {fmt(med(pim))} | {fmt(med(iv))} | {fmt(med(ifp), 1)} | {rng(spr)} | {rng(sps)} | "
                       f"{rng(pk)} | {rng(st)} |")
-        (a_t, a_f), (b_t, b_f) = meds["A"], meds["B"]
+        (a_t, a_f, a_p), (b_t, b_f, b_p) = meds["A"], meds["B"]
         if a_t and b_t:
             d = 100.0 * (b_t - a_t) / a_t
             flag = []
@@ -161,8 +161,18 @@ def main():
                 flag.append("B SLOWER THAN A BY >3 %")
             if a_f and b_f and a_f >= 30 > b_f:
                 flag.append("B DROPS UNDER 30 fps WHERE A HOLDS")
+            # Total Frame includes the frame limiter's wait (the orangepi
+            # preset targets 30 fps), so a small cost can hide under it. The
+            # Player Movement phase is where the collision rays run: its
+            # B-minus-A delta, as a share of A's frame, is the uncapped cost.
+            pm_txt = ""
+            if a_p is not None and b_p is not None:
+                pm_share = 100.0 * (b_p - a_p) / a_t
+                pm_txt = f"; Player Movement A {a_p:,.0f} us, B {b_p:,.0f} us ({pm_share:+.2f} % of A's frame)"
+                if pm_share > 3.0:
+                    flag.append("B's collision phase costs >3 % of a frame more than A's")
             verdicts.append(f"- {z}: B vs A median moving frame time {d:+.2f} % "
-                            f"(A {a_t:,.0f} us / {a_f:.1f} fps, B {b_t:,.0f} us / {b_f:.1f} fps)"
+                            f"(A {a_t:,.0f} us / {a_f:.1f} fps, B {b_t:,.0f} us / {b_f:.1f} fps){pm_txt}"
                             f"{' -- ' + '; '.join(flag) if flag else ''}")
         else:
             verdicts.append(f"- {z}: no moving-window blocks on one side -- no verdict")

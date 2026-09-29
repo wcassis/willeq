@@ -150,6 +150,9 @@ public:
                                const std::function<void(const float*, const float*, const float*)>& fn) const override;
     // B909: pooled regions with at least one whole triangle, ascending.
     std::vector<size_t> regionsWithTriangles() const override;
+    // B909: the hot-path form (region_world_triangles.h) -- the region's
+    // slices as (pool vertices, template indices, count), no per-triangle call.
+    size_t regionRuns(size_t regionIdx, size_t first, TriangleRun* out, size_t maxOut) const override;
 
     // Total bytes resident in the merge buffers (for /pmem-style reporting
     // and the P10 bless-package memory-overhead numbers). Zero if !isBuilt().
