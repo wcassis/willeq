@@ -12415,14 +12415,26 @@ T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are cla
 
 Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the Orange Pi (fable 3c6ea8b3, binary sha256 6888f621...). Issues filed 2026-09-29 (B917-B922; the spatial entry is B909, issue #229).
 
-- **B917** (A, client) → issue #236. A server-directed zone move DURING the initial zone load kills the client.
-  - The follow-on zone load logs `[FATAL] Failed to load zone S3D archive: qeynos.s3d (Failed to open archive: qeynos.s3d)`, or the same with an EMPTY name (`.s3d`), then `loadZoneGraphicsOnThread: sequential loader failed — requesting quit`.
-  - Seen 5 times on the Pi: growthplane, templeveeshan, veeshan x2 and charasis (kicks or deaths before `ready`). Logs are under `review/B854-rendered/sweep-full/zones/`.
-  - The same qeynos load succeeds at login, and a move AFTER `ready` is handled cleanly (chardok; charasis at level 60).
-  - Suspect: the archive name/path is not resolved against the client path, or not captured, when a zone change lands mid-load.
-- **B918** (A, client) → issue #237. The client exits **0** after a FATAL loader failure (`checkLoadingComplete: loading thread failed — shutting down`).
-  - Seen in all 5 runs above.
-  - The scenario lane's exit-code taxonomy covers `--scenario` only. A normal or `--script` run that dies on a FATAL is indistinguishable from a clean `/q` to any wrapper.
+- ~~**B917** (A, client) → issue #236. A server-directed zone move DURING the initial zone load kills the client.~~
+  **CLOSED by `task/B917-B918-midload-zone-change` (2026-09-29).** Root cause: ONE
+  shared `ZoneLoadSnapshot` -- the game thread overwrote it on the mid-load
+  zone change (the running loader read it by reference), then finalised the
+  FIRST load as the second (`Ready!` with nothing built, BSP tree mislabelled)
+  and CLEARED it while the render thread started the second load from it
+  (`.s3d` / `qeynos.s3d`). User-reachable: death while zoning in, a GM
+  summon, a kick. Fix: `eqt::ZoneLoadHandoff` (post / take / generation /
+  finalise only the awaited load). Pinned by `tests/test_zone_load_handoff.cpp`
+  (RED without the fix). **Live, local lane, rendered x86**: reproduced 2/2
+  pre-fix (`--cpus 0`; `.s3d` FATAL, exit 0), fixed 3/3 end in qeynos
+  rendered with a clean `/q`. Not run on the Pi. `refactor/B917/README.md`.
+- ~~**B918** (A, client) → issue #237. The client exits **0** after a FATAL loader failure.~~
+  **CLOSED by the same branch.** Outside `--scenario` a FATAL-ended run now
+  exits **4** (`kClientFatalExit`, `eqt::scenario::ProcessExitCode()`), a clean
+  `/q` 0; `--scenario` stays 0..3. Covers the loading-thread failure and
+  `LoadZoneSources()`'s six FATAL-then-quit sites (found live: a relic seed
+  exited 0). Pinned offline (RED without); **live**: the relic
+  LoadZoneSources FATAL exits 4 (was 0). The loading-thread FATAL -> 4 is
+  offline-only (the B917 fix removed its only known live trigger).
 - **B909** (A, memory) → issue #229. The live `spatial` ledger category is over its orangepi budget (4 MiB) at `ready` in 25 of 45 rendered Pi zones.
   - Worst: growthplane 42.1 MB, trakanon 29.0, overthere 18.0, emeraldjungle 14.6, skyfire 13.3.
   - The CI gate asserts the budget over five zones in the offline benchmark only.

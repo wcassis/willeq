@@ -933,6 +933,10 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # B918: the process-wide FATAL-exit record is a one-way latch in a real
+    # run (set once, read by main()); a test that trips it on purpose must
+    # clear it so later cases in the same binary start clean.
+    ("(free)", "ResetFatalExitForTest"): "seam",
     # T504: the ledger's stack-trace instrument is armed by an environment
     # variable in a live run (WILLEQ_LEDGER_TRACE); the unit test needs the
     # programmatic form of that switch and the report it prints.

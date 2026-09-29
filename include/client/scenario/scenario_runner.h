@@ -26,6 +26,30 @@ enum ScenarioExitCode : int {
 const char* ScenarioExitCodeName(int code);
 
 /**
+ * B918 (issue #237): the exit code of a run OUTSIDE --scenario that ended
+ * because of a FATAL that takes the ordinary quit path (today: the zone
+ * loading thread failing -- checkLoadingComplete's "loading thread failed" --
+ * and ZoneComponent::LoadZoneSources(); include/client/fatal_exit.h). The
+ * FATALs that std::exit(1) were already non-zero.
+ * Before this such a run returned 0, indistinguishable from a clean /q or
+ * /camp. 4 collides with nothing: the scenario taxonomy above is 0..3, 1 is
+ * main()'s own bad-arguments / failed-initialize code, and
+ * scripts/scenario.sh + the eqemu selftests use 64..72.
+ */
+constexpr int kClientFatalExit = 4;
+
+/**
+ * main()'s exit code, decided in one place.
+ *  - --scenario: the scenario taxonomy wins and nothing outside 0..3 is ever
+ *    returned. A FATAL that ended the run before a verdict already reads as
+ *    kScenarioTimeout (the unfinished-run code); a pass can never be reported
+ *    for a run that died on a FATAL.
+ *  - otherwise: kClientFatalExit when the run ended on a FATAL, else 0 (a
+ *    clean /q, /camp, window close or SIGTERM).
+ */
+int ProcessExitCode(bool scenarioRequested, int scenarioCode, bool fatalShutdown);
+
+/**
  * Drives one scenario.
  *
  * Tick() is the automation callback: it returns FALSE once there is a

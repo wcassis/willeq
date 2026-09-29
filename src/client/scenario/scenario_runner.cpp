@@ -16,6 +16,16 @@ const char* ScenarioExitCodeName(int code) {
     }
 }
 
+int ProcessExitCode(bool scenarioRequested, int scenarioCode, bool fatalShutdown) {
+    if (scenarioRequested) {
+        // The taxonomy is closed (0..3). A run that died on a FATAL must not
+        // read as a pass; the unfinished-run code is what it is.
+        if (fatalShutdown && scenarioCode == kScenarioPass) return kScenarioTimeout;
+        return scenarioCode;
+    }
+    return fatalShutdown ? kClientFatalExit : 0;
+}
+
 ScenarioRunner::ScenarioRunner(std::unique_ptr<IScenario> scenario, IScenarioWorld& world,
                                double timeoutSeconds, double startDeadlineSeconds)
     : scenario_(std::move(scenario)),

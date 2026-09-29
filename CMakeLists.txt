@@ -354,6 +354,10 @@ SET(CLIENT_CORE_SOURCES
     src/client/hc_map.cpp
     src/client/zone_bsp.cpp
     src/client/zone_lines.cpp
+    # B917: the game/render-thread zone-load handoff (device-free)
+    src/client/zone_load_handoff.cpp
+    # B918: the process-wide FATAL-exit record main() turns into exit code 4
+    src/client/fatal_exit.cpp
     # P28: PfsArchive/WldLoader have no renderer dependency (zone_bsp.h: "no
     # graphics dependencies") and are used unconditionally by base game logic
     # regardless of EQT_GRAPHICS — audio_manager.cpp scans sound archives via
