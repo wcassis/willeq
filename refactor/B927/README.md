@@ -45,7 +45,7 @@ and `steady`. Nothing in the benchmark calls `resetPeaks()`, so each
 category's `peak` is the process high-water mark and includes every transient
 between the points.
 
-### FINDING (needs a GitLab issue, B-unassigned): mid-load `zone_parse` is far above the budget, before and after this change
+### FINDING (B928, issue #246): mid-load `zone_parse` is far above the budget, before and after this change
 
 The code goes over the budget during the load, and the gate never looks there.
 In the census, 12 of 117 zones hold more than 14 MiB of live `zone_parse` at
@@ -94,7 +94,7 @@ python3 refactor/B927/zone_parse_census.py build-gles2/b927_sweep/shard{0,1,2,3}
 The result is 117/118 clean. The exception is **soldunga**, which fails at 2 s:
 `FATAL Texture 'gnome_stronghold_floor_transition.bmp' not found in any EQE1
 flat pack`. That is the B852 failure B910/#100 was said to have closed. It is
-a FINDING: it needs a GitLab issue, B-unassigned, to reopen #100 or file a
+a FINDING, filed as B930 (issue #248): to reopen #100 or file a
 regression. soldunga has no memory JSON, so its `zone_parse` is unmeasured.
 Its `.s3d` is small, so it is not a worst-case candidate.
 
@@ -214,7 +214,7 @@ not the derivations in the budget comments. A candidate derived from the
 five-race coverage sample (`entity_models`, `characterModelsBytes`) inherits
 that sample's coverage limit (manifest note, T303).
 
-### FINDING (needs a GitLab issue, B-unassigned): growthplane is over the `placeableObjectsMemoryBytes` budget
+### FINDING (B929, issue #247): growthplane is over the `placeableObjectsMemoryBytes` budget
 
 In the census, growthplane's `placeableObjectsBytes` is 28,687,788 against
 25,165,824 (114 %). The gate never runs growthplane, so no CI assertion
@@ -243,7 +243,7 @@ load-sensitive: 9.4 to 18.4 ms across runs on this shared host, where the
 118-zone sweep and a `-j8` build were running.
 
 Pipeline 282 passed the gate at `3a2762e2` on hermes-ext. **FINDING (needs a
-GitLab issue, B-unassigned):** on dev-u24 the memory-coverage iceclad slack
+GitLab issue; filed as B931, issue #249):** on dev-u24 the memory-coverage iceclad slack
 (35.4 %) is over `LEDGER_SLACK_MAX_PCT` (35.0 %) at `3a2762e2` itself, with
 no change applied. The CI pipeline on this branch is the authoritative gate
 run.
