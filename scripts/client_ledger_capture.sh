@@ -45,6 +45,7 @@
 #
 # Usage: scripts/client_ledger_capture.sh [--zones z1,z2] [--modes m1,m2]
 #            [--out DIR] [--owner NAME] [--bin PATH] [--hold S] [--no-audio]
+#            [--res W H]   (default 1280 720, the Pi recipe)
 #   Lane: EQEMU_HOST as every scripts/eqemu tool reads it (default the VM).
 
 set -u
@@ -62,6 +63,7 @@ OUT=""
 SRC_BIN="${WILLEQ_BIN:-$REPO/build/bin/willeq}"
 HOLD_S=75          # seconds after zone-in before /q: ready arms steady_60s
 AUDIO=1
+RES_W=1280; RES_H=720   # Will's Pi recipe
 ZONE_BOOT_S="${ZONE_BOOT_S:-150}"
 LATE_SAVE_S=10
 while [ $# -gt 0 ]; do
@@ -73,6 +75,7 @@ while [ $# -gt 0 ]; do
         --bin) SRC_BIN="$2"; shift 2 ;;
         --hold) HOLD_S="$2"; shift 2 ;;
         --no-audio) AUDIO=0; shift ;;
+        --res) RES_W="$2"; RES_H="$3"; shift 3 ;;
         -h|--help) sed -n '2,50p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 3 ;;
     esac
@@ -147,7 +150,7 @@ say "lane EQEMU_HOST=$EQEMU_HOST, client config host $CLIENT_HOST (verified)"
 {
     echo "host=$(hostname) commit=$(git -C "$REPO" rev-parse HEAD) dirty=$(git -C "$REPO" status --porcelain -- src include | wc -l)"
     echo "binary=$SRC_BIN sha256=$(sha256sum "$SRC_BIN" | cut -d' ' -f1)"
-    echo "lane=$EQEMU_HOST zones=$ZONES modes=$MODES hold_s=$HOLD_S audio=$AUDIO"
+    echo "lane=$EQEMU_HOST zones=$ZONES modes=$MODES hold_s=$HOLD_S audio=$AUDIO res=${RES_W}x${RES_H}"
     echo "start_utc=$(date -u +%FT%TZ)"
 } > "$OUT/run_meta.txt"
 
@@ -213,7 +216,7 @@ wait ${HOLD_S}
 EOF
     local -a envs=( "WILLEQ_BASELINE=1" "WILLEQ_LEDGER_OWNERS=${mode}" "TZ=UTC" )
     [ "$mode" = zone_parse ] && envs+=( "WILLEQ_LEDGER_TRACE=zone_parse:startup" "WILLEQ_LEDGER_TRACE_DEPTH=8" )
-    local -a args=( -c "$CFG" --renderer gles2 --constrained orangepi -r 1280 720
+    local -a args=( -c "$CFG" --renderer gles2 --constrained orangepi -r "$RES_W" "$RES_H"
                     --eqe1-path "$EQE1_PATH" --log-level=INFO --script "$tour" )
     [ "$AUDIO" -eq 1 ] || args+=( --no-audio )
     printf '%s\n' "${envs[@]}" > "$dir/env.txt"
