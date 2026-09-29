@@ -1,0 +1,45 @@
+376:[2026-09-29 04:22:50.206] [INFO ] [MAIN] Script: executing '/camera chase' (step 1/23)
+381:[2026-09-29 04:22:50.223] [INFO ] [MAIN] Script: wait 1.5s (step 2/23)
+1530:[2026-09-29 04:22:51.505] [INFO ] [MAIN] Camera mode: Chase Camera
+1649:[2026-09-29 04:22:51.509] [INFO ] [GRAPHICS] pose-log: writing '/mnt/projects/fable/review/B874-live/run-20260929T042131Z/pose.tsv' every 1 frame(s), capped at 600 row(s)
+1656:[2026-09-29 04:22:51.724] [INFO ] [MAIN] Script: executing '/camera chase' (step 3/23)
+1657:[2026-09-29 04:22:51.741] [INFO ] [MAIN] Script: wait 0.5s (step 4/23)
+1659:[2026-09-29 04:22:52.243] [INFO ] [MAIN] Script: executing '/say #loc' (step 5/23)
+1660:[2026-09-29 04:22:52.260] [INFO ] [MAIN] Script: wait 2.5s (step 6/23)
+1662:[2026-09-29 04:22:52.298] [INFO ] [MAIN] Location for Yourself | XYZ: -74.00, 428.00, 3.00 Heading: 100.00
+1672:[2026-09-29 04:22:52.574] [INFO ] [MAIN] Camera mode: Chase Camera
+1694:[2026-09-29 04:22:54.777] [INFO ] [MAIN] [CAMERA-GET] mode="Chase Camera" view=3
+1695:[2026-09-29 04:22:54.763] [INFO ] [MAIN] Script: executing '/camera get' (step 7/23)
+1696:[2026-09-29 04:22:54.777] [INFO ] [MAIN] [CAMERA-GET] az=0.000 pitch=6.000 dist=4.000 height=7.000 units=deg,deg,eq_units,eq_units az_frame=player_heading
+1697:[2026-09-29 04:22:54.777] [INFO ] [MAIN] [CAMERA-GET] player=(428.000,-74.000,2.369) feetZ=-0.750 heading=28.000 frame=eq_client
+1698:[2026-09-29 04:22:54.777] [INFO ] [MAIN] [CAMERA-GET] ideal camPos=(426.660,-77.746,6.668) target=(428.000,-74.000,6.250) frame=eq_client
+1699:[2026-09-29 04:22:54.777] [INFO ] [MAIN] [CAMERA-GET] node camPos=(426.660,-77.746,6.668) target=(428.000,-74.000,6.250) frame=eq_client
+1700:[2026-09-29 04:22:54.777] [INFO ] [MAIN] [CAMERA-GET] chase eye_above_feet=6.023 fit_eye_above_feet=6.023 scale=1.0000
+1701:[2026-09-29 04:22:54.780] [INFO ] [MAIN] Script: wait 0.3s (step 8/23)
+1702:[90m[04:22:55] [0m[93m[System] Turned to heading 90.0 degrees[0m
+1704:[2026-09-29 04:22:55.092] [INFO ] [MAIN] Script: executing '/turn 90' (step 9/23)
+1705:[2026-09-29 04:22:55.092] [INFO ] [MAIN] Turned to heading 90.0 degrees
+1706:[2026-09-29 04:22:55.109] [INFO ] [MAIN] Script: wait 1.0s (step 10/23)
+1715:[2026-09-29 04:22:56.117] [INFO ] [MAIN] Script: executing '/say #loc' (step 11/23)
+1716:[2026-09-29 04:22:56.134] [INFO ] [MAIN] Script: wait 0.5s (step 12/23)
+1718:[2026-09-29 04:22:56.189] [INFO ] [MAIN] Location for Yourself | XYZ: -74.00, 428.00, 3.00 Heading: 0.00
+1723:[2026-09-29 04:22:56.635] [INFO ] [MAIN] Script: executing '/move 443 -74 3' (step 13/23)
+1725:[2026-09-29 04:22:56.653] [INFO ] [MAIN] Script: wait 3.0s (step 14/23)
+1735:[2026-09-29 04:22:59.653] [INFO ] [MAIN] Script: executing '/say #loc' (step 15/23)
+1736:[2026-09-29 04:22:59.670] [INFO ] [MAIN] Script: wait 0.5s (step 16/23)
+1738:[2026-09-29 04:22:59.738] [INFO ] [MAIN] Location for Yourself | XYZ: -74.00, 438.52, 3.44 Heading: 0.00
+1743:[2026-09-29 04:23:00.183] [INFO ] [MAIN] Script: executing '/camera get' (step 17/23)
+1744:[2026-09-29 04:23:00.194] [INFO ] [MAIN] [CAMERA-GET] mode="Chase Camera" view=3
+1745:[2026-09-29 04:23:00.200] [INFO ] [MAIN] Script: wait 0.3s (step 18/23)
+1746:[2026-09-29 04:23:00.194] [INFO ] [MAIN] [CAMERA-GET] az=0.000 pitch=6.000 dist=4.000 height=7.000 units=deg,deg,eq_units,eq_units az_frame=player_heading
+1747:[2026-09-29 04:23:00.194] [INFO ] [MAIN] [CAMERA-GET] player=(438.515,-74.000,2.811) feetZ=-0.308 heading=128.000 frame=eq_client
+1748:[2026-09-29 04:23:00.194] [INFO ] [MAIN] [CAMERA-GET] ideal camPos=(434.537,-74.000,7.110) target=(438.515,-74.000,6.692) frame=eq_client
+1749:[2026-09-29 04:23:00.194] [INFO ] [MAIN] [CAMERA-GET] node camPos=(434.537,-74.000,7.110) target=(438.515,-74.000,6.692) frame=eq_client
+1750:[2026-09-29 04:23:00.194] [INFO ] [MAIN] [CAMERA-GET] chase eye_above_feet=6.023 fit_eye_above_feet=6.023 scale=1.0000
+1754:[2026-09-29 04:23:00.509] [INFO ] [MAIN] Script: executing '/target Testchar' (step 19/23)
+1756:[2026-09-29 04:23:00.526] [INFO ] [MAIN] Script: wait 0.3s (step 20/23)
+1758:[2026-09-29 04:23:00.836] [INFO ] [MAIN] Script: executing '/say #save' (step 21/23)
+1760:[2026-09-29 04:23:00.854] [INFO ] [MAIN] Script: wait 1.0s (step 22/23)
+1766:[2026-09-29 04:23:00.896] [INFO ] [MAIN] You have been successfully saved.
+1769:[2026-09-29 04:23:01.867] [INFO ] [MAIN] Script: complete (23 steps)
+1771:[2026-09-29 04:23:01.867] [INFO ] [MAIN] Script: executing '/q' (step 23/23)

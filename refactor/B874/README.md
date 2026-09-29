@@ -6,9 +6,11 @@ rendered client driven by `--script` wrote a real `--pose-log`, checked by
 against the server's own view (`#loc`, `#save`d `character_data`) and
 kChaseRig. Position and heading agree with the server to <= 0.005 units
 through the documented transform; two findings (the rendered heading ignores
-`/turn`, movestate stays idle on a `/move` walk) keep that test red. Still
-owed: Deliverable A, the server-authoritative pose log for the OFFICIAL
-client. The section below is the earlier no-server run.
+`/turn`, movestate stays idle on a `/move` walk) kept that test red (37/2).
+**Both were fixed as B911/B912 (GitLab #230/#231) and the rerun on the VM
+lane is 39/0: `live/run-20260929T042131Z/README.md`.** Still owed:
+Deliverable A, the server-authoritative pose log for the OFFICIAL client. The
+section below is the earlier no-server run.
 
 `pose_e2e_chase_excerpt.tsv` is the header plus the first 20 of 24 rows of a
 real `--pose-log` TSV, copied byte-for-byte out of a run. Nothing in it was

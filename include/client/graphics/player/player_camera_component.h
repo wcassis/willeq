@@ -179,7 +179,8 @@ public:
 	std::vector<std::string> buildFirstPersonCameraDumpLines() const;
 
 	// setPlayerSpawnId, setPlayerPosition, setCameraMode, getCameraModeString,
-	// setSwimmingState and setVisionType ALSO survive as one-line forwarders on
+	// setSwimmingState, setVisionType and (B912) setPlayerGameDrivenMoving ALSO
+	// survive as one-line forwarders on
 	// IrrlichtRenderer, because irrlicht_bridge.cpp, application_zone_loading.cpp
 	// and two tests call them on an IrrlichtRenderer receiver and must not learn
 	// a component exists (the K11 rule). Each forwarder names its caller in
@@ -298,11 +299,22 @@ public:
 
 	// B874: pose-log public accessors for PlayerMovementState fields.
 	bool isJumping() const { return playerMovement_.isJumping; }
+	// B912 (GitLab #231): the player is moving if the KEYBOARD is moving it
+	// (the per-frame input poll's flags, unchanged) OR the GAME thread is
+	// walking it (/move, /moveto, /follow -- setPlayerGameDrivenMoving()).
 	bool isMoving() const {
 		return playerMovement_.moveForward || playerMovement_.moveBackward ||
 			playerMovement_.strafeLeft || playerMovement_.strafeRight ||
-			playerMovement_.turnLeft || playerMovement_.turnRight;
+			playerMovement_.turnLeft || playerMovement_.turnRight ||
+			gameDrivenMoving_;
 	}
+	// B912: written ONLY by the renderer-bridge PlayerMoved arm
+	// (IrrlichtBridge -> IrrlichtRenderer forwarder) from
+	// PlayerMovedData::isMoving, and latched until the next PlayerMoved: the
+	// game thread publishes true on every integrator tick of a command walk and
+	// false when StopMovement() ends it; every discrete relocation publishes
+	// false. It moves nothing -- the pose itself arrives via setPlayerPosition().
+	void setPlayerGameDrivenMoving(bool moving) { gameDrivenMoving_ = moving; }
 
 	void resetVisionToBase();
 	VisionType getBaseVision() const { return baseVision_; }
@@ -446,6 +458,8 @@ private:
 	float liftRideSyncAccum_ = 0.0f;
 
 	bool playerPositionIsSeed_ = false;
+	// B912: see setPlayerGameDrivenMoving().
+	bool gameDrivenMoving_ = false;
 
 	// Debug visualization for collision rays. The nested type moved with the
 	// member: nothing outside this family ever named either (K05 j).

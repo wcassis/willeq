@@ -69,6 +69,23 @@ public:
 	// (was eq_movement_update.cpp).
 	void UpdateMovement();
 	void SendPositionUpdate();
+
+	// B911/B912 (GitLab #230/#231): true while the GAME THREAD is walking the
+	// player -- a /move, /moveto or /follow target or path, or an auto-attack
+	// chase. The same predicate UpdateMovement() gates its integrator on.
+	// Keyboard movement never sets it (the renderer moves the player itself
+	// and only reports back through PlayerPositionChanged).
+	bool HasCommandMovement() const;
+	// B911/B912: hand the renderer the player's current pose from the one
+	// store, as the renderer-bridge PlayerMoved every other game-side mover
+	// publishes (heading in the EQ 0..512 unit, PlayerMovedData's contract).
+	// isMoving = HasCommandMovement(), so the renderer can tell a walk the game
+	// thread is driving from a still pose. Game thread only; no-op without a
+	// bridge. The per-tick integrator, StopMovement() after a command walk and
+	// /turn and /face (EqActionHandler::setHeading) are its callers. dx/dy/dz
+	// ride along verbatim (the integrator passes its step direction; nothing
+	// on the renderer side reads them today).
+	void PublishSelfPoseToRenderer(float dx = 0.0f, float dy = 0.0f, float dz = 0.0f);
 	float CalculateDistance(float x1, float y1, float z1, float x2, float y2, float z2) const;
 	float CalculateDistance2D(float x1, float y1, float x2, float y2) const;
 

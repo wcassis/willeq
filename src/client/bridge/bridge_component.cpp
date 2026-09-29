@@ -686,7 +686,11 @@ void eqt::bridge::BridgeComponent::OnSpawnMovedGraphics(uint16_t spawn_id, float
 		pdata.x = x; pdata.y = y; pdata.z = z;
 		pdata.heading = heading_512;
 		pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
-		pdata.isMoving = (dx != 0 || dy != 0 || dz != 0);
+		// B912: isMoving on the renderer bridge means "the GAME thread is
+		// walking us" (MovementComponent::PublishSelfPoseToRenderer); the
+		// renderer latches it until the next PlayerMoved. A server self-update
+		// carrying velocity is not such a walk, and would latch it on.
+		pdata.isMoving = ctx_.Movement().HasCommandMovement();
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
 	}
