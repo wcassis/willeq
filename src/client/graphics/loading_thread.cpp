@@ -143,6 +143,9 @@ void LoadingThread::threadFunc(irr::IrrlichtDevice* device,
                                 LoadingStatus& status,
                                 ActivePhaseCallback activeCallback) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::ZoneMesh);  // T491
+    // B909: the owner row for what the loading thread charges to its DEFAULT
+    // category (a step with no scope of its own) under WILLEQ_LEDGER_OWNERS=zone_mesh.
+    eqt::memory::StartupScope threadOwner("zm.load_thread_default");
     pthread_setname_np(pthread_self(), "eq-load");  // T504: visible in top -H and the [srcchar] parse lines
     // Acquire GL context on this thread
     if (!acquireContext(handles)) {
