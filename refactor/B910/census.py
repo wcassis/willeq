@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""B100 census: pack/entry/version census + v3-aware truncation census.
+"""B910 census (renamed from B100 on 2026-09-29, B908): pack/entry/version
+census + v3-aware truncation census.
 
 Self-contained evidence for commit 76bc3a14's claim that soldunga's
 gnome_stronghold_floor_transition (33 chars) was the ONLY truncated name in

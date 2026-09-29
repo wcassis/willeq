@@ -391,7 +391,7 @@ struct RawDataEntry {
 
 // ── EQE1 file assembly (shared by both modes) ──────────────────────────────
 //
-// v3 name table (B100). The 48-byte index entry carries a 32-byte name field
+// v3 name table (B910, filed as B100). The 48-byte index entry carries a 32-byte name field
 // (31 chars + NUL). EQ texture names reach 32+ characters — soldunga's
 // gnome_stronghold_floor_transition is 33 — and this function's
 // strncpy(name, ..., 31) used to truncate them silently, so the client's

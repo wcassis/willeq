@@ -455,7 +455,7 @@ static std::vector<uint8_t> generateMipChain(const uint8_t* rgba, int width, int
     std::string baseName = fs::path(outputPath).stem().string();
     std::string mainName = baseName;
 
-    // B100: sheet names are pack stems and can exceed the 32-byte inline
+    // B910 (filed as B100): sheet names are pack stems and can exceed the 32-byte inline
     // name field (a truncated one silently broke the name-to-pack round
     // trip the same way eqe1_builder's truncation broke soldunga). A pack
     // with a name longer than the inline limit is written as v3: the long

@@ -1,4 +1,8 @@
-# B100 — EQE1 31-char name truncation: the pack census
+# B910 — EQE1 31-char name truncation: the pack census
+
+Renamed from B100 on 2026-09-29 (B908): B100 is the struck InputAction entry;
+this work was filed under the GitLab issue number #100 by mistake. MR !27 and
+its commits still say B100.
 
 Card: kanban t_89745f84 (rework of t_987c6cd0, MR !27,
 `task/kb-b100-eqe1-name-truncation` @ `76bc3a14`). Issue: #100.
@@ -10,7 +14,7 @@ this host against the shared live tree; re-running it reproduces every number
 in the file:
 
 ```
-python3 refactor/B100/census.py
+python3 refactor/B910/census.py
 ```
 
 ## What the census establishes
@@ -54,7 +58,8 @@ the tail, which is what makes the v3-aware census sound.
 
 ## Boundary
 
-This commit adds ONLY the census evidence (`refactor/B100/`). It does not touch
+This commit adds ONLY the census evidence (`refactor/B910/`, then
+`refactor/B100/`; renamed to `refactor/B910/` by B908). It does not touch
 the code (`eqe1_format.h`, `eqe1_loader.cpp`, `eqe1_builder.cpp`,
 `composite_texture_io.cpp`, `verify_eqe1.cpp`, tests), the pack
 (`soldunga.eqe1` / `willeq.eqe1`), the sha pin
