@@ -301,3 +301,19 @@ ADD_TEST(NAME BoardDirNumbers
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_board_dir_numbers.py
             --repo ${CMAKE_SOURCE_DIR})
 SET_TESTS_PROPERTIES(BoardDirNumbers PROPERTIES LABELS "hygiene")
+
+# B907 (issue #227): the CI runner keeps one warm build tree across every
+# branch's pipeline (docs/ci.md), so a binary left in bin/ by branch A's
+# pipeline made check_build_tree_orphans (above, T175) correctly fail branch
+# B's pipeline next. check_build_tree_orphans.py's --prune mode removes such a
+# leftover, using the SAME target-discovery function (_discover()) the
+# read-only check itself uses -- this is that mode's own regression net.
+# Builds a fake CMake file-API reply by hand in a fresh
+# tempfile.TemporaryDirectory() per test (unique per process, so it is safe
+# under `ctest -jN` across worktree slots -- no ScopedTempDir needed, this is
+# pure Python, not one of the C++ binaries test_tmp_path_census.cpp scans).
+# Pure source scan, no artefact/server/display, same "hygiene" label as its
+# neighbours.
+ADD_TEST(NAME CheckBuildTreeOrphansPrune
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_check_build_tree_orphans.py -v)
+SET_TESTS_PROPERTIES(CheckBuildTreeOrphansPrune PROPERTIES LABELS "hygiene")
