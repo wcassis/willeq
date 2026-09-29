@@ -50,13 +50,14 @@ it without taking that measurement first.
   memory-coverage invocation, heaviest first, per-zone timeout + watchdog).
   Result [measured 2026-09-20, x86/llvmpipe]: 117/118 clean — **every** Kunark
   and Velious zone loads clean; the one failing classic zone, **soldunga**
-  (EQE1 31-char name truncation), is **closed by B100/#100** (2026-09-21: the
+  (EQE1 31-char name truncation), is **closed by B910/#100** (2026-09-21: the
   pack is v3 and the client's loader reads the v3 name table) — and **hole**
   (loads and renders fine, peak RssAnon 261.2 MB, 5.2 MB over the 256 MB
   Pi ceiling, `#101`). One issue per distinct failing line: **#100** (soldunga,
   EQE1-tree defect — loads clean without `--eqe1-path`) and **#101** (hole,
   memory). Fixes are those issues, not this card. The sweep is committed
-  (`refactor/B852/` holds the 118-row TSV + summary; `refactor/B100/` holds the
+  (`refactor/B852/` holds the 118-row TSV + summary; `refactor/B910/` (renamed
+  from `refactor/B100/` by B908) holds the
   1506-pack/183,058-entry v3-aware name census + captured output for the soldunga
   closure), with a 3-zone ctest
   smoke (qeynos2/sebilis/iceclad, label `slow`) in the test job; how to run it:
@@ -65,8 +66,9 @@ it without taking that measurement first.
   all 46 Kunark/Velious zones B852 proved load clean now reach
   `IsFullyZonedIn()` live with the server's own spawns and doors, 2026-09-21).~~
   **STRUCK (2026-09-28 audit-hygiene pass): everything under this card is
-  closed.** #98 (this card) closed; #100 (soldunga) fixed by MR !27 (B100
-  EQE1 v3 name table); #101 (hole) closed 2026-09-23 on post-T504 evidence —
+  closed.** #98 (this card) closed; #100 (soldunga) fixed by MR !27 (filed as
+  B100 by mistake — the issue number, not the board number; renamed to B910 by
+  B908, EQE1 v3 name table); #101 (hole) closed 2026-09-23 on post-T504 evidence —
   T504's rendered Pi run measured hole's peak at **116.4 MiB**
   (`/mnt/projects/fable/review/T504/pi/runs_cap/hole/samples.tsv`, max
   `rss_anon_kb` 119224 = 116.43 MiB), well under the 256 MB ceiling, against

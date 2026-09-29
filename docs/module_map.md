@@ -432,7 +432,7 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (18 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
+`hygiene` (19 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
 reachability ratchet), T450's `DbReproducible`, T455's
@@ -460,7 +460,11 @@ committed TSVs) and B793's `LlmBenchTimelineHeldFromSnapshot`
 claims against the committed T492 reference inventory snapshot — every
 claim is the snapshot's, the unestablishable `/equip` after-state is not
 claimed, a missing snapshot is a hard error; pure python over committed
-TSVs) -- the three
+TSVs) and B908's `BoardDirNumbers`
+(`scripts/refactor/check_board_dir_numbers.py`, the refactor/B###/-directory-
+vs-BOARD.md-header collision net — a directory's declared subject must share
+a keyword with every BOARD.md header naming its number; pure source/doc scan)
+-- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two
 halves of the reachability ratchet, a field written and never read and a

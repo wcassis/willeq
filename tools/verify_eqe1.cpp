@@ -2,7 +2,7 @@
 //
 // Checks header magic/version, index entry consistency, data alignment,
 // mipmap chain sizes, and alpha companion entries. Accepts v1/v2/v3 packs
-// (v3 = B100's name table for entry names longer than 31 chars); a v1/v2
+// (v3 = B910's name table, filed as B100, for entry names longer than 31 chars); a v1/v2
 // entry whose name is not null-terminated within the 32-byte field is a
 // truncated name and a FAIL (rebuild the pack; the builder now emits v3
 // for such names).
@@ -114,7 +114,8 @@ static VerifyResult verifyFile(const std::string& filepath, bool verbose) {
 
     // Read one entry's effective name. v3 entries either carry it inline
     // (zero tail) or in the table; v1/v2 entries must be null-terminated
-    // within the 32-byte field (a truncated name is a build defect — B100).
+    // within the 32-byte field (a truncated name is a build defect — B910,
+    // filed as B100).
     // On a bad reference the error is counted here and an empty name
     // returned so the loop can keep checking the other entries.
     auto entryName = [&](uint16_t i) -> std::string {

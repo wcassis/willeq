@@ -288,3 +288,16 @@ SET_TESTS_PROPERTIES(LlmBenchHeldBeforeAfterHygiene PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME LlmBenchTimelineHeldFromSnapshot
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/llmbench/test_timeline_held_snapshot.py -v)
 SET_TESTS_PROPERTIES(LlmBenchTimelineHeldFromSnapshot PROPERTIES LABELS "hygiene")
+
+# B908 (issue #228): "B100" named two different items -- the struck
+# InputAction entry (T368) and the soldunga EQE1 name-truncation work, filed
+# under GitLab issue #100 by mistake and renumbered to B910. Nothing checked
+# that a refactor/B###/ directory's declared subject agreed with the
+# BOARD.md header(s) naming the same number; check_board_dir_numbers.py is
+# the net -- RED on the pre-B908 tree (refactor/B100/ vs the unrelated B100
+# InputAction header), GREEN after the soldunga work moved to refactor/B910/.
+# Pure source/doc scan, no artefact/server/display, same "hygiene" label.
+ADD_TEST(NAME BoardDirNumbers
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_board_dir_numbers.py
+            --repo ${CMAKE_SOURCE_DIR})
+SET_TESTS_PROPERTIES(BoardDirNumbers PROPERTIES LABELS "hygiene")

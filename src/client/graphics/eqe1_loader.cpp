@@ -180,7 +180,7 @@ bool EQE1Loader::open(const std::string& filepath) {
         // v3 entries with a non-zero name tail carry their name in the table
         // (the 32-byte inline field is zeroed). Every other entry — all of
         // v1/v2, and v3's short names — must be null-terminated within the
-        // 32-byte field. Note the B100 defect (soldunga's
+        // 32-byte field. Note the B910 defect (filed as B100; soldunga's
         // gnome_stronghold_floor_transition stored as
         // gnome_stronghold_floor_transiti) did NOT trip this check: the old
         // builder zero-initialized the entry before strncpy, so a truncated

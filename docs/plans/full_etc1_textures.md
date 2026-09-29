@@ -86,8 +86,8 @@ The 32-byte inline name field holds at most 31 characters + NUL. The lookup
 side keys on the FULL name (`.bmp` stripped, lowercased — nothing else), so a
 name that did not fit was silently truncated on write and never found on read:
 soldunga's `gnome_stronghold_floor_transition` (33) stored as
-`gnome_stronghold_floor_transiti` and FATAL-exited the zone load (B100,
-2026-09-21). The fix adds a v3 name table rather than canonicalizing both
+`gnome_stronghold_floor_transiti` and FATAL-exited the zone load (B910,
+filed as B100; 2026-09-21). The fix adds a v3 name table rather than canonicalizing both
 sides to 31 chars, because the format cannot carry the full name any other way
 and truncating on read would break every zone whose source names differ
 beyond 31 chars. v1/v2 packs are unchanged and remain byte-identical; only a

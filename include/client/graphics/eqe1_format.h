@@ -23,8 +23,8 @@ static constexpr uint16_t EQE1_VERSION = 1;
 // so a v1 loader path only needs to accept both version numbers.
 static constexpr uint16_t EQE1_VERSION_V2 = 2;
 
-// v3 (B100): full-length entry names, for entry names longer than 31
-// characters.
+// v3 (B910, filed as B100): full-length entry names, for entry names longer
+// than 31 characters.
 //
 // The v1/v2 index entry carries its name in a fixed 32-byte field
 // (31 chars + NUL), but EQ asset names reach 32+ characters (soldunga's
