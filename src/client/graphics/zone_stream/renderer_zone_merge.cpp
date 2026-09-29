@@ -335,6 +335,23 @@ void ZoneMergeBuffers::forEachRegionTriangle(
     }
 }
 
+std::vector<size_t> ZoneMergeBuffers::regionsWithTriangles() const {
+    // A region counts iff forEachRegionTriangle() would call its fn at least
+    // once -- the same test the pre-B909 copy applied (it kept a region only
+    // when its triangle vector was non-empty).
+    std::vector<size_t> out;
+    out.reserve(regionSpans_.size());
+    for (const RegionSpan& span : regionSpans_) {
+        for (uint32_t k = 0; k < span.count; ++k) {
+            if (slices_[span.first + k].indexCount >= 3) {
+                out.push_back(span.regionIdx);
+                break;
+            }
+        }
+    }
+    return out;
+}
+
 int ZoneMergeBuffers::renderMerged(irr::video::IVideoDriver* driver,
                                     const std::vector<ZoneDrawEntry>& sortedEntries) {
     if (!built_ || sortedEntries.empty() || !driver) return 0;

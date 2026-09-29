@@ -95,6 +95,42 @@ void AppendMeshWorldTriangles(irr::scene::IMesh* mesh,
     }
 }
 
+namespace {
+// One Moller-Trumbore step, shared by both RayIntersectTriangles overloads so
+// an owned vector and a pool view run the SAME arithmetic (B909).
+inline void MollerTrumboreStep(const irr::core::vector3df& rayOrigin,
+                               const irr::core::vector3df& rayDir,
+                               const irr::core::triangle3df& tri,
+                               float& closestT, irr::core::vector3df& hitPoint,
+                               irr::core::triangle3df& hitTriangle, bool& anyHit) {
+    constexpr float EPSILON = 0.000001f;
+    const irr::core::vector3df& v0 = tri.pointA;
+    const irr::core::vector3df edge1 = tri.pointB - v0;
+    const irr::core::vector3df edge2 = tri.pointC - v0;
+
+    const irr::core::vector3df h = rayDir.crossProduct(edge2);
+    float a = edge1.dotProduct(h);
+    if (a > -EPSILON && a < EPSILON) return;  // Parallel
+
+    float f = 1.0f / a;
+    const irr::core::vector3df s = rayOrigin - v0;
+    float u = f * s.dotProduct(h);
+    if (u < 0.0f || u > 1.0f) return;
+
+    const irr::core::vector3df q = s.crossProduct(edge1);
+    float v = f * rayDir.dotProduct(q);
+    if (v < 0.0f || u + v > 1.0f) return;
+
+    float t = f * edge2.dotProduct(q);
+    if (t > EPSILON && t < closestT) {
+        closestT = t;
+        hitPoint = rayOrigin + rayDir * t;
+        hitTriangle = tri;
+        anyHit = true;
+    }
+}
+}  // namespace
+
 bool RayIntersectTriangles(const irr::core::vector3df& rayOrigin,
                            const irr::core::vector3df& rayDir, float rayLen,
                            const std::vector<irr::core::triangle3df>& triangles,
@@ -102,37 +138,28 @@ bool RayIntersectTriangles(const irr::core::vector3df& rayOrigin,
                            irr::core::triangle3df& hitTriangle,
                            float& hitDistSq) {
     // Moller-Trumbore ray-triangle intersection -- no matrix math.
-    constexpr float EPSILON = 0.000001f;
     bool anyHit = false;
     float closestT = rayLen + 1.0f;
-
     for (const auto& tri : triangles) {
-        const irr::core::vector3df& v0 = tri.pointA;
-        const irr::core::vector3df edge1 = tri.pointB - v0;
-        const irr::core::vector3df edge2 = tri.pointC - v0;
-
-        const irr::core::vector3df h = rayDir.crossProduct(edge2);
-        float a = edge1.dotProduct(h);
-        if (a > -EPSILON && a < EPSILON) continue;  // Parallel
-
-        float f = 1.0f / a;
-        const irr::core::vector3df s = rayOrigin - v0;
-        float u = f * s.dotProduct(h);
-        if (u < 0.0f || u > 1.0f) continue;
-
-        const irr::core::vector3df q = s.crossProduct(edge1);
-        float v = f * rayDir.dotProduct(q);
-        if (v < 0.0f || u + v > 1.0f) continue;
-
-        float t = f * edge2.dotProduct(q);
-        if (t > EPSILON && t < closestT) {
-            closestT = t;
-            hitPoint = rayOrigin + rayDir * t;
-            hitTriangle = tri;
-            anyHit = true;
-        }
+        MollerTrumboreStep(rayOrigin, rayDir, tri, closestT, hitPoint, hitTriangle, anyHit);
     }
+    if (anyHit) {
+        hitDistSq = hitPoint.getDistanceFromSQ(rayOrigin);
+    }
+    return anyHit;
+}
 
+bool RayIntersectTriangles(const irr::core::vector3df& rayOrigin,
+                           const irr::core::vector3df& rayDir, float rayLen,
+                           const RegionTrianglesView& triangles,
+                           irr::core::vector3df& hitPoint,
+                           irr::core::triangle3df& hitTriangle,
+                           float& hitDistSq) {
+    bool anyHit = false;
+    float closestT = rayLen + 1.0f;
+    triangles.forEach([&](const irr::core::triangle3df& tri) {
+        MollerTrumboreStep(rayOrigin, rayDir, tri, closestT, hitPoint, hitTriangle, anyHit);
+    });
     if (anyHit) {
         hitDistSq = hitPoint.getDistanceFromSQ(rayOrigin);
     }

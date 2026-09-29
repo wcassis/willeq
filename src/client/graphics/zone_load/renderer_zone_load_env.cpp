@@ -395,10 +395,9 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
 
                 // Test query region world triangles (direct, no matrix math)
                 if (queryRegion != SIZE_MAX) {
-                    auto it = ctx_.regionWorldTriangles.find(queryRegion);
-                    if (it != ctx_.regionWorldTriangles.end()) {
+                    if (const auto tris = ctx_.regionWorldTriangles.find(queryRegion)) {
                         float distSq;
-                        if (PlayerCameraComponent::rayIntersectTriangles(rayStart, rayDir, rayLen, it->second, hitPoint, hitTri, distSq)) {
+                        if (PlayerCameraComponent::rayIntersectTriangles(rayStart, rayDir, rayLen, tris, hitPoint, hitTri, distSq)) {
                             if (distSq < closestDistSq) {
                                 closestDistSq = distSq;
                                 outY = hitPoint.Y;

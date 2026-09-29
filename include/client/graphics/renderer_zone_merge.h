@@ -44,6 +44,7 @@
 // objects/placeables are always excluded (out of scope, matches the P09
 // prototype -- build() only reads region mesh nodes).
 
+#include "client/graphics/region_world_triangles.h"
 #include "client/graphics/constrained_texture_cache.h"  // TextureEvictionListener
 
 #include <cstdint>
@@ -77,7 +78,9 @@ struct ZoneSlice {
     int32_t indexCount;
 };
 
-class ZoneMergeBuffers {
+// B909: the pools are also the zone's collision triangles in pooled mode
+// (RegionTriangleSource, region_world_triangles.h) -- held once, not copied.
+class ZoneMergeBuffers : public RegionTriangleSource {
 public:
     // Declared (not defaulted) here and defined in renderer_zone_merge.cpp --
     // buckets_/ranges_ hold incomplete nested types (MergedGeneration,
@@ -144,7 +147,9 @@ public:
     // World-space triangles of one region, for collision. fn(const float* a,
     // const float* b, const float* c), each a pointer to x,y,z.
     void forEachRegionTriangle(size_t regionIdx,
-                               const std::function<void(const float*, const float*, const float*)>& fn) const;
+                               const std::function<void(const float*, const float*, const float*)>& fn) const override;
+    // B909: pooled regions with at least one whole triangle, ascending.
+    std::vector<size_t> regionsWithTriangles() const override;
 
     // Total bytes resident in the merge buffers (for /pmem-style reporting
     // and the P10 bless-package memory-overhead numbers). Zero if !isBuilt().

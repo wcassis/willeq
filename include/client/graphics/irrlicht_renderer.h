@@ -1044,7 +1044,7 @@ private:
 
     // BSP-filtered collision: pre-transformed world-space triangles — no matrix math per query
     // All collision paths (movement, detail, footprints, LOS) use direct Möller–Trumbore intersection
-    std::map<size_t, std::vector<irr::core::triangle3df>> regionWorldTriangles_;  // Zone geometry per BSP region
+    RegionWorldTriangles regionWorldTriangles_;  // Zone geometry per BSP region, held once (B909)
     std::map<size_t, std::vector<irr::core::triangle3df>> objectWorldTriangles_;  // Placeable objects per BSP region
 
     // Pre-baked door collision: open + closed world-space triangles per door
