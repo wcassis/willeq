@@ -9,8 +9,12 @@ and the memledger `point=ready` line for that same zone shows
 (`refactor/B854/logs/timorous_pi_client.log:146`). **This sweep therefore
 proves only PROTOCOL zone-in on the Pi.** The "Lane: DRM/GLES2 1280x720" label
 below and the memory figures in this document are NOT rendered-client figures
-and say nothing about the 64 MB rendered-client contract — a rendered Pi sweep
-is still owed (issue #102).
+and say nothing about the 64 MB rendered-client contract. **The rendered Pi
+sweep is `refactor/B854/RENDERED_SWEEP.md` (2026-09-29):**
+- 45/46 zones rendered and measured to steady state; charasis is the exception;
+- no OOM;
+- 0/45 over 256 MB, and 44/45 over 64 MB at peak RssAnon (worst: growthplane 159.2 MB);
+- a client FATAL-then-exit-0 when the server moves the character during the initial zone load.
 
 **Date**: 2026-09-23  
 **Binary**: fable ARM build sha cb8eec71877db8078c261035a54d9bc902d42e1d  

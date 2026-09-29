@@ -1,0 +1,325 @@
+#!/usr/bin/env bash
+# #102 (B854 reopened): the RENDERED Kunark + Velious zone sweep on the
+# Orange Pi, with the memory ledger, on the orangepi preset.
+#
+# Why a sibling of scripts/scenario_zone_sweep.sh: that sweep's --pi mode runs
+# `--scenario zone_in`, and --scenario forces the headless Automated lane --
+# no GPU pipeline is ever initialised (refactor/B854/SUMMARY.md's caveat), so
+# its memory figures are not rendered-client figures. This sweep drives a
+# RENDERED client the way scripts/pose_live_capture.sh does: `--script`
+# (a command line, which the client holds until fully zoned in, then
+# `wait N`, then `/q`), on the Pi's DRM/KMS GLES2 device.
+#
+# One sweep, all inside ONE hold of BOTH locks (eqemu first, Pi second,
+# released in reverse on every exit path):
+#   1. stage the client on the Pi: copy the CI-published ARM build's binary
+#      to the Pi's ext4 home (NOT /tmp: tmpfs is mounted nosuid there, which
+#      makes the kernel ignore file capabilities) and `setcap
+#      cap_net_raw,cap_net_admin+ep` it (CLAUDE.md "Linux Capabilities";
+#      B751/#73: without CAP_NET_ADMIN the zone-in burst overflows the
+#      socket buffer). getcap/sysctl are recorded in the evidence.
+#   2. local eqemu lane up (EQEMU_HOST=local, clients reach 10.0.30.23),
+#      snapshot the character rows ONCE (restore_lib.sh).
+#   3. per zone, HEAVIEST FIRST (timorous, iceclad, growthplane,
+#      emeraldjungle -- the Pi OOM history, B800/B750 -- then the rest by
+#      s3d_bytes): boot the zone fresh, seed the character at its safe point
+#      (scripts/eqemu/zone_place_lib.sh, shared with the headless sweep),
+#      run scripts/pi/rendered_zone_run.py ON THE PI (dead-client watchdog:
+#      --stall s without a log line, --cap s overall), diff the Pi's dmesg,
+#      summarize into ONE TSV row (scripts/pi/rendered_zone_summarize.py),
+#      free the zone's port. A failing zone NEVER stops the sweep.
+#   4. every failed zone is retried ONCE at the end, into a SEPARATE TSV.
+#   5. restore the snapshot with the world DOWN, down.sh, release the Pi
+#      lock then the eqemu lock, print both lock-show lines.
+#
+# Usage: scripts/pi_rendered_zone_sweep.sh [--zones z1,z2] [--out DIR]
+#          [--cap 300] [--stall 180] [--hold 75] [--no-retry]
+#          [--pi-dir /mnt/projects/fable/ci-arm/<sha>] [-r "1280 720"]
+#          [--char-level N --char-exp E]   (the eligibility leg; see CHAR_LEVEL)
+# Exit: 0 every first-attempt row passed, 1 a row failed, 64 a lock is held,
+#       65 the stack/lane would not come up, 66 snapshot mismatch,
+#       68 bad inputs (no build, Pi unreachable).
+
+set -u
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export EQEMU_HOST="${EQEMU_HOST:-local}"
+source "$REPO/scripts/eqemu/env.sh"
+source "$REPO/scripts/eqemu/restore_lib.sh"
+source "$REPO/scripts/pi/env.sh"
+
+OWNER="pi-rendered-sweep"
+ZONES=""
+OUT=""
+CAP_S=300
+STALL_S=180
+HOLD_S=240
+RETRY=1
+RES="1280 720"
+PI_DIR="/mnt/projects/fable/ci-arm/by-branch/fable"
+PI_EQE1="${PI_EQE1_PATH:-/mnt/projects/EverQuest_ETC1}"
+PI_EQ="${PI_EQ_PATH:-/mnt/projects/EverQuestP1999}"
+ZONE_BOOT_S=180
+LATE_SAVE_S=10
+# --char-level N: the ELIGIBILITY leg. The server kicks an under-level
+# character out of a min_level zone (zone/zoning.cpp CanEnterZone: veeshan
+# 55, growthplane/templeveeshan/sleeper 46) into qeynos, so that zone's
+# rendered load is never tested. Set after the snapshot, so the snapshot's
+# restore puts the level back (level is one of its columns).
+# The server RE-DERIVES level from exp at zone-in (measured: chardok's log
+# "SetLevel Setting Level for [Testchar] to [49]" with level=20 in the row),
+# so the leg sets exp too: zone/exp.cpp GetEXPForLevel(60) = 59^3 * 3000 =
+# 616,137,000 before race/class modifiers. exp is also a snapshot column.
+# The level-49 character also DIES at some safe points (chardok, charasis:
+# ZonePC zone_mode [3] = ZoneToBindPoint, "Death Only", zone/client.h).
+CHAR_LEVEL=""
+CHAR_EXP=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --zones) ZONES="$2"; shift 2 ;;
+        --out) OUT="$2"; shift 2 ;;
+        --cap) CAP_S="$2"; shift 2 ;;
+        --stall) STALL_S="$2"; shift 2 ;;
+        --hold) HOLD_S="$2"; shift 2 ;;
+        --no-retry) RETRY=0; shift ;;
+        --pi-dir) PI_DIR="$2"; shift 2 ;;
+        -r) RES="$2"; shift 2 ;;
+        --char-level) CHAR_LEVEL="$2"; shift 2 ;;
+        --char-exp) CHAR_EXP="$2"; shift 2 ;;
+        -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
+        *) echo "unknown option: $1" >&2; exit 64 ;;
+    esac
+done
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+[ -n "$OUT" ] || OUT="/mnt/projects/fable/review/B854-rendered/sweep-${STAMP}"
+LOGS="$OUT/zones"
+mkdir -p "$LOGS"
+TSV="$OUT/results.tsv"
+RETRY_TSV="$OUT/results_retry.tsv"
+RIG_LOG="$OUT/sweep.log"
+say() { printf '[pi_rendered_sweep %s] %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$RIG_LOG" >&2; }
+CHAR="${EQ_TEST_CHARACTER}"
+
+# ---- the zone set: B854's 46 Kunark + Velious rows, heavy four first --------
+CENSUS="$REPO/scripts/ci/zone_content_sweep_zones.tsv"
+if [ -z "$ZONES" ]; then
+    ZONES="$(awk -F'\t' 'NR>1 {print $1}' "$REPO/refactor/B854/sweep_results.tsv" | tr '\n' ',' | sed 's/,$//')"
+fi
+HEAVY="timorous iceclad growthplane emeraldjungle"
+ORDERED="$(
+    for z in $HEAVY; do case ",$ZONES," in *",$z,"*) echo "$z";; esac; done
+    tr ',' '\n' <<< "$ZONES" | grep . | while read -r z; do
+        case " $HEAVY " in *" $z "*) continue;; esac
+        b="$(awk -F'\t' -v z="$z" 'NR>1 && $1==z {print $3; exit}' "$CENSUS")"
+        printf '%s\t%s\n' "${b:-0}" "$z"
+    done | sort -t"$(printf '\t')" -k1,1nr | cut -f2
+)"
+mapfile -t ZONE_LIST <<< "$ORDERED"
+say "zones (${#ZONE_LIST[@]}, run order): ${ZONE_LIST[*]}"
+zone_meta() {  # zone_meta <zone> -> "expansion<TAB>s3d_bytes"
+    awk -F'\t' -v z="$1" 'NR>1 && $1==z {print $2 "\t" $3; exit}' "$CENSUS"
+}
+
+# ---- inputs -----------------------------------------------------------------
+PI_SHA_DIR="$(readlink -f "$PI_DIR")"
+[ -x "$PI_SHA_DIR/bin/willeq" ] || { say "no ARM build at $PI_SHA_DIR/bin/willeq"; exit 68; }
+BUILD_SHA="$(sed -n 's/^sha=//p' "$PI_SHA_DIR/BUILD_INFO")"
+BIN_SHA256="$(sha256sum "$PI_SHA_DIR/bin/willeq" | cut -d' ' -f1)"
+say "ARM build: $PI_SHA_DIR (BUILD_INFO sha=$BUILD_SHA, sha256=$BIN_SHA256)"
+pi_remote true </dev/null || { say "the Pi ($PI_HOST) is unreachable"; exit 68; }
+
+# The client config: this lane's server, derived (never the VM's address --
+# review/pi/willeq_pi.json hardcodes 172.16.200.99). The Pi reaches this
+# host on its first address.
+if eqemu_is_local; then CLIENT_HOST="$(hostname -I | awk '{print $1}')"; else CLIENT_HOST="$EQEMU_HOST"; fi
+[ "$CLIENT_HOST" != "172.16.200.99" ] || { say "refusing: this sweep never uses the VM lane"; exit 65; }
+CFG="$OUT/client.json"
+cat > "$CFG" <<EOF
+{
+  "clients": [
+    {
+      "host": "${CLIENT_HOST}",
+      "port": ${LOGIN_PORT},
+      "user": "${EQ_TEST_ACCOUNT}",
+      "pass": "${EQ_TEST_PASSWORD}",
+      "server": "${EQ_TEST_SERVER_LONGNAME}",
+      "character": "${CHAR}",
+      "eq_client_path": "${PI_EQ}",
+      "maps_path": "/mnt/projects/maps/base",
+      "navmesh_path": "/mnt/projects/maps/nav"
+    }
+  ]
+}
+EOF
+# The drive: a held command (the client holds a COMMAND line until fully
+# zoned in; a leading `wait` would start counting at launch), HOLD_S of
+# idle rendering -- past the ledger's steady_60s point, which fires 60 s
+# after ready -- then /q.
+TOUR="$OUT/tour.txt"
+printf '/loc\nwait %s\n/loc\n/q\n' "$HOLD_S" > "$TOUR"
+
+# ---- locks (eqemu first, Pi second) -----------------------------------------
+if ! eqemu_lock_take "$OWNER"; then
+    say "eqemu lock is HELD by: $(eqemu_lock_show) -- refusing to run"
+    exit 64
+fi
+say "eqemu lock taken: $(eqemu_lock_show)"
+PI_LOCK_TAKEN=0
+for i in $(seq 1 30); do   # up to 15 min for a held Pi lock to free
+    if pi_lock_take "$OWNER" </dev/null; then PI_LOCK_TAKEN=1; break; fi
+    say "pi lock held by '$(pi_lock_show </dev/null)' -- waiting ($i/30)"
+    sleep 30
+done
+if [ "$PI_LOCK_TAKEN" -ne 1 ]; then
+    say "pi lock never freed in 15 min -- STOP"
+    eqemu_lock_release
+    exit 64
+fi
+say "pi lock taken: $(pi_lock_show </dev/null)"
+
+BEFORE="$OUT/snapshot_before.tsv"
+AFTER="$OUT/snapshot_after.tsv"
+CLEANED=0
+RESTORE_BAD=0
+SNAP_TAKEN=0
+PI_BIN_DIR="/home/${PI_USER}/pi-rendered-sweep"
+PI_BIN="$PI_BIN_DIR/willeq"
+PI_TMP="/tmp/prs"
+pi_kill_client() {
+    pi_remote "pkill -TERM -f '^${PI_BIN} ' >/dev/null 2>&1; sleep 3; pkill -KILL -f '^${PI_BIN} ' >/dev/null 2>&1; pkill -KILL -f rendered_zone_run.py >/dev/null 2>&1; true" </dev/null >/dev/null 2>&1
+}
+cleanup() {
+    [ "$CLEANED" -eq 1 ] && return
+    CLEANED=1
+    say "cleanup: stopping any Pi client, restoring, lane down, releasing locks"
+    pi_kill_client
+    pi_remote "rm -rf '$PI_TMP'" </dev/null >/dev/null 2>&1
+    if [ "$SNAP_TAKEN" -eq 1 ]; then
+        eqemu_restore_snapshot "$BEFORE" "$AFTER" say || RESTORE_BAD=1
+    fi
+    bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/server.log" 2>&1
+    say "stack down"
+    [ "$PI_LOCK_TAKEN" -eq 1 ] && pi_lock_release "$OWNER" </dev/null
+    eqemu_lock_release
+    say "locks released; eqemu lock now: '$(eqemu_lock_show)'; pi lock now: '$(pi_lock_show </dev/null)'"
+}
+trap 'cleanup; exit 130' INT TERM
+trap cleanup EXIT
+
+# ---- 1. stage the capable client on the Pi -----------------------------------
+pi_remote "mkdir -p '$PI_BIN_DIR' && cp '$PI_SHA_DIR/bin/willeq' '$PI_BIN' && sudo -n setcap cap_net_raw,cap_net_admin+ep '$PI_BIN'" </dev/null \
+    || say "WARNING: staging/setcap on the Pi failed -- the run goes ahead; the rcvbuf column shows what the client got"
+{
+    echo "host_utc=$(date -u +%FT%TZ)"
+    echo "build_dir=$PI_SHA_DIR"
+    echo "build_sha=$BUILD_SHA"
+    echo "published_sha256=$BIN_SHA256"
+    echo "pi_copy_sha256=$(pi_remote "sha256sum '$PI_BIN' | cut -d' ' -f1" </dev/null)"
+    echo "pi_getcap=$(pi_remote "getcap '$PI_BIN'" </dev/null)"
+    echo "published_getcap=$(pi_remote "getcap '$PI_SHA_DIR/bin/willeq'; echo rc=\$?" </dev/null | tr '\n' ' ')"
+    echo "pi_tmp_mount=$(pi_remote "findmnt -no OPTIONS /tmp" </dev/null)"
+    echo "pi_rmem=$(pi_remote "sysctl -n net.core.rmem_max net.core.rmem_default" </dev/null | tr '\n' ' ')"
+    echo "pi_kernel=$(pi_remote "uname -r" </dev/null)"
+    echo "pi_meminfo=$(pi_remote "grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree|CmaTotal|CmaFree' /proc/meminfo" </dev/null | tr -s ' ' | tr '\n' ';')"
+    echo "worktree_commit=$(git -C "$REPO" rev-parse HEAD)"
+    echo "resolution=$RES cap_s=$CAP_S stall_s=$STALL_S hold_s=$HOLD_S"
+} > "$OUT/binary_identity.txt"
+say "$(tr '\n' ' ' < "$OUT/binary_identity.txt")"
+
+# ---- 2. lane up + snapshot -----------------------------------------------------
+say "up.sh (EQEMU_HOST=$EQEMU_HOST, client host $CLIENT_HOST)"
+if ! timeout 300 bash "$REPO/scripts/eqemu/up.sh" >"$OUT/server.log" 2>&1; then
+    say "up.sh failed -- see $OUT/server.log"
+    exit 65
+fi
+eqemu_stack_ready || { say "eqemu_stack_ready is false after up.sh"; exit 65; }
+eqemu_snapshot "$BEFORE"
+SNAP_TAKEN=1
+say "snapshot taken ($(wc -l < "$BEFORE") rows)"
+source "$REPO/scripts/eqemu/zone_place_lib.sh"
+if [ -n "$CHAR_LEVEL" ]; then
+    eqemu_sql "UPDATE character_data SET level=${CHAR_LEVEL}${CHAR_EXP:+, exp=${CHAR_EXP}} WHERE name='${CHAR}';" >/dev/null
+    got_level="$(eqemu_sql "SELECT level FROM character_data WHERE name='${CHAR}';" | tail -1 | tr -d '[:space:]')"
+    got_exp="$(eqemu_sql "SELECT exp FROM character_data WHERE name='${CHAR}';" | tail -1 | tr -d '[:space:]')"
+    say "ELIGIBILITY LEG: ${CHAR} level set to ${got_level} exp ${got_exp} (asked ${CHAR_LEVEL}/${CHAR_EXP:-unchanged}); the snapshot restore puts both back"
+    echo "eligibility_leg_char_level=${got_level} exp=${got_exp}" >> "$OUT/binary_identity.txt"
+    [ "$got_level" = "$CHAR_LEVEL" ] || { say "level did not read back"; exit 65; }
+fi
+
+# ---- 3. one zone ----------------------------------------------------------------
+dmesg_count() { pi_remote "sudo -n dmesg | wc -l" </dev/null | tr -d '[:space:]'; }
+fail_row() {  # fail_row <tsv> <zone> <attempt> <signature>
+    local meta dir; meta="$(zone_meta "$2")"
+    dir="$LOGS/$2"; [ "$3" = retry ] && dir="$LOGS/${2}_retry"
+    python3 "$REPO/scripts/pi/rendered_zone_summarize.py" --run "$dir" \
+        --zone "$2" --attempt "$3" --tsv "$1" --expansion "${meta%%	*}" --s3d-bytes "${meta##*	}" \
+        --preset-signature "$4" 2>&1 | tee -a "$RIG_LOG" >&2
+}
+run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
+    local z="$1" attempt="$2" tsv="$3" meta exp s3d dir pidir before after rc
+    meta="$(zone_meta "$z")"; exp="${meta%%	*}"; s3d="${meta##*	}"
+    dir="$LOGS/$z"; [ "$attempt" = retry ] && dir="$LOGS/${z}_retry"
+    rm -rf "$dir"; mkdir -p "$dir"
+    say "=== $z ($exp, $s3d s3d bytes, $attempt) ==="
+    if ! boot_zone "$z"; then
+        fail_row "$tsv" "$z" "$attempt" "zone_boot_failed"; say "row: $z zone_boot_failed"; return 1
+    fi
+    if ! seed_char "$z"; then
+        fail_row "$tsv" "$z" "$attempt" "seed_failed"; kill_zone "$z"; say "row: $z seed_failed"; return 1
+    fi
+    before="$(dmesg_count)"
+    pidir="$PI_TMP/$z"
+    # shellcheck disable=SC2086
+    local remote="rm -rf '$pidir' && mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && \
+TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' \
+python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S -- \
+'$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
+--eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
+--dump-frames-dir '$pidir/frames' --dump-every 100 --dump-max-frames 3 \
+> '$pidir/runner.out' 2>&1; cp -r '$pidir/.' '$dir/'; rm -rf '$pidir'"
+    timeout $((CAP_S + 120)) bash -c 'source "$1"; pi_remote "$2" </dev/null' _ "$REPO/scripts/pi/env.sh" "$remote"
+    rc=$?
+    [ "$rc" -eq 0 ] || { say "WARN: the Pi leg returned $rc (ssh/timeout) -- killing any leftover client"; pi_kill_client; }
+    after="$(dmesg_count)"
+    : > "$dir/dmesg_oom.txt"
+    if [ -n "$after" ] && [ -n "$before" ] && [ "$after" -gt "$before" ]; then
+        pi_remote "sudo -n dmesg -T | tail -n +$((before + 1))" </dev/null > "$dir/dmesg_new.txt" 2>/dev/null
+        grep -iE "oom|killed process|out of memory" "$dir/dmesg_new.txt" > "$dir/dmesg_oom.txt" || true
+    fi
+    python3 "$REPO/scripts/pi/rendered_zone_summarize.py" --run "$dir" --zone "$z" --attempt "$attempt" \
+        --expansion "$exp" --s3d-bytes "$s3d" --dmesg "$dir/dmesg_oom.txt" --tsv "$tsv" 2>&1 | tee -a "$RIG_LOG" >&2
+    sleep "$LATE_SAVE_S"
+    kill_zone "$z"
+    # The server may have moved the character to ANOTHER zone (a min-level
+    # or flag kick sends it to qeynos). That zone's process -- one of the
+    # static fleet, which kill_zone above does not touch -- now holds the
+    # character LINKDEAD and writes it back over the NEXT zone's seed
+    # (measured 2026-09-29: burningwood, run straight after the veeshan
+    # kick, twice). Stop the zone the client actually landed in too.
+    local landed
+    landed="$(tail -1 "$tsv" | cut -f11)"
+    if [ -n "$landed" ] && [ "$landed" != "$z" ]; then
+        say "the client landed in '$landed', not '$z' -- stopping that zone too (its linkdead write-back would clobber the next seed)"
+        sleep "$LATE_SAVE_S"
+        kill_zone "$landed"
+    fi
+    tail -1 "$tsv" | cut -f5 | grep -qx pass
+}
+
+SWEEP_T0=$(date +%s)
+FAILED=()
+for z in "${ZONE_LIST[@]}"; do
+    [ -n "$z" ] || continue
+    run_one "$z" first "$TSV" || FAILED+=("$z")
+    say "progress: $(( $(grep -c . "$TSV") - 1 ))/${#ZONE_LIST[@]} rows, ${#FAILED[@]} failed, $(( ($(date +%s) - SWEEP_T0) / 60 )) min"
+done
+if [ "$RETRY" -eq 1 ] && [ "${#FAILED[@]}" -gt 0 ]; then
+    say "retrying ${#FAILED[@]} failed zone(s) ONCE: ${FAILED[*]}"
+    for z in "${FAILED[@]}"; do run_one "$z" retry "$RETRY_TSV" || true; done
+fi
+say "first attempt: $(awk -F'\t' 'NR>1 && $5=="pass"' "$TSV" | wc -l)/$(( $(grep -c . "$TSV") - 1 )) pass"
+[ -f "$RETRY_TSV" ] && say "retry: $(awk -F'\t' 'NR>1 && $5=="pass"' "$RETRY_TSV" | wc -l)/$(( $(grep -c . "$RETRY_TSV") - 1 )) pass"
+
+cleanup
+[ "$RESTORE_BAD" -eq 1 ] && { say "restore mismatch"; exit 66; }
+[ "${#FAILED[@]}" -eq 0 ] && exit 0
+exit 1

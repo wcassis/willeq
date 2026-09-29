@@ -49,6 +49,12 @@ hermes-ext worker therefore runs a Pi leg entirely over ssh — NFS paths exist 
     pi_remote "cd $D && WILLEQ_DATA_ROOT=$D WILLEQ_CACHE_DIR=/tmp/<slug>/cache $D/bin/willeq --drm --renderer gles2 --constrained orangepi -r 1280 720 -c <config> > /tmp/<slug>/willeq.log 2>&1"
     pi_remote cat /tmp/<slug>/willeq.log > evidence.log;  pi_lock_release kb-<slug>
 
+That recipe runs WITHOUT `CAP_NET_ADMIN` (the NFS binary cannot carry it; B751/#73's zone-in burst needs the
+forced receive buffer). For a live zone-in, copy the binary to the Pi's ext4 home (NOT `/tmp`: tmpfs mounted
+`nosuid` ignores file capabilities) and `sudo setcap cap_net_raw,cap_net_admin+ep` it. The client logs the
+buffer it actually got (`rcvbuf=... SO_RCVBUFFORCE`). `scripts/pi_rendered_zone_sweep.sh` does exactly this
+for the rendered Kunark + Velious sweep (#102, `refactor/B854/RENDERED_SWEEP.md`).
+
 ## The stages
 
 | Stage | What it does | Cold | Warm |
