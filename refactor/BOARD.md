@@ -785,8 +785,8 @@ it without taking that measurement first.
      One heap block per BSP region (37,609) + a doubling-grown handle array;
      now 1,024-region slabs (`BspRegionPool`, `zone_bsp.h`) and an exact
      reserve. 55 % of what remains (18.8 MB) is per-region source geometry the
-     CLIENT frees at Step 13 but the benchmark never does -- releasing it moves
-     the baselined `s3dZoneSourceBytes`, so it waits on Will (#5 below).
+     CLIENT frees at Step 13 but the benchmark never did -- released since
+     B914 (#5 below): 11,329,984 B (34 %).
   2. ~~**iceclad `spatial` over budget**: 8,682,512 B vs 4,194,304 (2.07×).
      e3a14c2a's message did not list this one; its 12 MiB raise covered it
      silently.~~ **FIXED 2026-09-28 (branch `task/spatial-budget-overrun`):
@@ -810,14 +810,30 @@ it without taking that measurement first.
      `test_region_occluders` pins 40 B/triangle + 8 B/region and the shared
      call. With #1 and #3 fixed (2026-09-29) iceclad and timorous are back in
      the one blocking `gate` job and `gate-kunark-velious` is gone.
-  5. (C, *measured*, NEEDS A GITLAB ISSUE -- no B number allocated) the benchmark never runs the client's Step-13
-     release (`releaseTexturePixelData`, `releasePostLoadData`,
+  5. ~~the benchmark never runs the client's Step-13 release
+     (`releaseTexturePixelData`, `releasePostLoadData`,
      `releaseRegionGeometry`), so its `zone_parse` holds a second copy of every
-     region's source geometry the client drops: iceclad 31.7 → 11.3 MB,
-     timorous 25.9 → 5.5 MB when mirrored (experiment, not committed). It
-     lowers the exact-match `s3dZoneSourceBytes`/`totalEstimate` baselines in
-     all five zones, so it needs Will's bless. `refactor/B813/README.md`
-     "2026-09-29".
+     region's source geometry the client drops.~~ **DONE 2026-09-29 as B914**
+     (Will approved; see the B914 entry below).
+
+- ~~**B914** (A) The gate benchmark never ran the client's Step-13 zone source
+  release, so the gate measured region source geometry the client frees at the
+  end of a zone load.~~ **DONE 2026-09-29** (branch
+  `task/B914-bench-region-release`, Will approved the change the same day). The client's four
+  inline releases are now one function, `S3DZone::releaseSourceAfterLoad()`
+  (`s3d_loader.h`/`.cpp`), called by `loadZoneStep13_Cleanup()` and by the
+  benchmark's `loadZone()` at the equivalent point. Ledger `zone_parse`
+  iceclad 31,673,040 → 11,329,984 B (94 % → 34 %), timorous 25,877,552 →
+  5,529,168 B. All image goldens are bit-identical and every metric and p95
+  check passes. **No manifest field moved:** `s3dZoneSourceBytes`/`totalEstimate`
+  were never blessed into `zones[].memory`, so B903's "lowers the exact-match
+  baselines" did not apply. No budget changed. `test_zone_source_release`
+  pins the shared call. Full table: `refactor/B914/README.md`.
+  Unnumbered follow-up (B, *measured*, needs a GitLab issue):
+  `WldLoader::releaseRegionGeometry()`'s return value, which the client logs
+  at Step 13, counts the shared `materialData` once per geometry. iceclad
+  reports 63.5 MB, but `s3dZoneSourceBytes` fell only 16.7 MB for the whole
+  release.
 
 - ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage
