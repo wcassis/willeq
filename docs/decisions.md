@@ -1359,3 +1359,14 @@ the texture-cache fields, and `verify()` skips a baseline field the manifest doe
 not carry. The gate checks those fields against their budgets and passed three
 times on the unchanged manifest. Blessing the T69 baseline fields is a separate
 decision and is not taken here.
+
+## 2026-09-29 — iceclad/timorous coverage baselines blessed; `zone_parse` ratchets down (Will, B927)
+
+**Will, in chat: "bless iceclad and timorous".** The memory-coverage
+`characterModelsBytes` baselines for the two B813 gate zones, iceclad
+1,522,794 and timorous 1,465,276 (`tests/goldens/manifest.json`), are blessed
+as they stand. Commit e3a14c2a set them and attributed them to a bless in chat
+on 2026-09-23. That bless was never given (the 2026-09-28 entry above), so the
+attribution was false. The values went down and the revert kept them. No value
+changed on 2026-09-29, no image golden moved, and the manifest `note` now
+records the true history. History was not rewritten.

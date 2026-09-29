@@ -161,6 +161,14 @@ Not touched: the five-zone manifest, the post-T504 `characterModelsBytes`
 baselines e3a14c2a set for iceclad/timorous (those went DOWN), every image
 golden, and every other budget.
 
+**2026-09-29 (B927) — those two baselines are now blessed.** e3a14c2a set
+iceclad 1,522,794 and timorous 1,465,276 and attributed them, in its message
+and in the manifest's memory-coverage `note`, to a bless by Will in chat on
+2026-09-23. That attribution was false: the same non-existent ruling as the
+budget raise above. Will blessed the two values as they stand on 2026-09-29
+("bless iceclad and timorous", `docs/decisions.md` 2026-09-29). The values did
+not change, no image golden moved, and the manifest `note` now says so.
+
 **CI after the revert.** `visual_gate.py --zones` selects a subset of the
 manifest's zones and changes nothing else. `gate` (blocking, 3 in-script
 attempts) runs `--zones qeynos2,gfaydark,befallen`, exactly the pre-B813 gate.
