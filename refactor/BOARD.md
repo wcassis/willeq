@@ -785,8 +785,8 @@ it without taking that measurement first.
      One heap block per BSP region (37,609) + a doubling-grown handle array;
      now 1,024-region slabs (`BspRegionPool`, `zone_bsp.h`) and an exact
      reserve. 55 % of what remains (18.8 MB) is per-region source geometry the
-     CLIENT frees at Step 13 but the benchmark never does -- releasing it moves
-     the baselined `s3dZoneSourceBytes`, so it waits on Will (#5 below).
+     CLIENT frees at Step 13 but the benchmark never did -- released since
+     B914 (#5 below): 11,329,984 B (34 %).
   2. ~~**iceclad `spatial` over budget**: 8,682,512 B vs 4,194,304 (2.07×).
      e3a14c2a's message did not list this one; its 12 MiB raise covered it
      silently.~~ **FIXED 2026-09-28 (branch `task/spatial-budget-overrun`):
@@ -810,14 +810,30 @@ it without taking that measurement first.
      `test_region_occluders` pins 40 B/triangle + 8 B/region and the shared
      call. With #1 and #3 fixed (2026-09-29) iceclad and timorous are back in
      the one blocking `gate` job and `gate-kunark-velious` is gone.
-  5. (C, *measured*, NEEDS A GITLAB ISSUE -- no B number allocated) the benchmark never runs the client's Step-13
-     release (`releaseTexturePixelData`, `releasePostLoadData`,
+  5. ~~the benchmark never runs the client's Step-13 release
+     (`releaseTexturePixelData`, `releasePostLoadData`,
      `releaseRegionGeometry`), so its `zone_parse` holds a second copy of every
-     region's source geometry the client drops: iceclad 31.7 → 11.3 MB,
-     timorous 25.9 → 5.5 MB when mirrored (experiment, not committed). It
-     lowers the exact-match `s3dZoneSourceBytes`/`totalEstimate` baselines in
-     all five zones, so it needs Will's bless. `refactor/B813/README.md`
-     "2026-09-29".
+     region's source geometry the client drops.~~ **DONE 2026-09-29 as B914**
+     (Will approved; see the B914 entry below).
+
+- ~~**B914** (A) The gate benchmark never ran the client's Step-13 zone source
+  release, so the gate measured region source geometry the client frees at the
+  end of a zone load.~~ **DONE 2026-09-29** (branch
+  `task/B914-bench-region-release`, Will approved the change the same day). The client's four
+  inline releases are now one function, `S3DZone::releaseSourceAfterLoad()`
+  (`s3d_loader.h`/`.cpp`), called by `loadZoneStep13_Cleanup()` and by the
+  benchmark's `loadZone()` at the equivalent point. Ledger `zone_parse`
+  iceclad 31,673,040 → 11,329,984 B (94 % → 34 %), timorous 25,877,552 →
+  5,529,168 B. All image goldens are bit-identical and every metric and p95
+  check passes. **No manifest field moved:** `s3dZoneSourceBytes`/`totalEstimate`
+  were never blessed into `zones[].memory`, so B903's "lowers the exact-match
+  baselines" did not apply. No budget changed. `test_zone_source_release`
+  pins the shared call. Full table: `refactor/B914/README.md`.
+  Unnumbered follow-up (B, *measured*, needs a GitLab issue):
+  `WldLoader::releaseRegionGeometry()`'s return value, which the client logs
+  at Step 13, counts the shared `materialData` once per geometry. iceclad
+  reports 63.5 MB, but `s3dZoneSourceBytes` fell only 16.7 MB for the whole
+  release.
 
 - ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage
@@ -12369,7 +12385,13 @@ Follow-ups filed as records (not started):
 - **B857** (C) skel_containers -- the largest compactness term left in entity_models; needs its own plan per Will's rev-1 rule. -> issue #108
 - **B858** (C) zone-in Phase 10 is keyed on ONE unreliable packet (our own OP_ClientUpdate); a lost datagram is a permanent stall. -> issue #109
 
-B874-B876 are the hermes pose-oracle ruling (docs/decisions.md 2026-09-23, issues #218-#220); B877-B887 unused (T505 renumbered its block to B888-B901 after allocating B874+ concurrently); B902 onwards unused. Allocate from the MAX `B###:` issue title on GitLab, not from this file.
+- **B874** (B) `--pose-log` (Deliverable B, issue #218). PROVEN LIVE 2026-09-29 (`refactor/B874/live/README.md`): a zoned-in rendered client driven by `--script` wrote the log, and `scripts/pose_live_capture.sh` (ctest `PoseLogLiveCapture`, label `live`) checks it against the server's `#loc`, a `#save`d `character_data` row and kChaseRig -- position and heading agree through the documented transform. The test was RED on two findings it measured -- the rendered heading ignored `/turn`, movestate read idle through a `/move` walk -- now B911/B912 below, both fixed; the rerun on the VM lane is 39 PASS / 0 FAIL (`refactor/B874/live/run-20260929T042131Z/`). Also measured: client z 0.63 below the server's, and nothing but `#save` wrote the moved pose to `character_data`. OWED: Deliverable A -- a server-authoritative pose log for the OFFICIAL client (B875/B876).
+
+- ~~**B911** (A) `/turn` (and `/face`) changed the server's heading but not the rendered one. `EqActionHandler::setHeading()` wrote the store and the wire; the store's `PlayerMoved` goes to the STATE layer's EventBus, which never reaches the renderer.~~ **FIXED + VERIFIED LIVE** (task/B911-B912-command-movement-render): it now publishes the renderer-bridge `PlayerMoved` through `MovementComponent::PublishSelfPoseToRenderer()`. Pinned by `tests/test_command_movement_render.cpp` (`TurnCommandReachesTheRenderedHeading`, `FaceLocationCommandReachesTheRenderedHeading`; red without the fix: rendered 28 vs game 128, the live numbers). Live: rendered heading 128 7 ms after `/turn 90`, `#loc` check delta 0. -> issue #230
+- ~~**B912** (A) a command-driven walk (`/move`, `/moveto`, `/follow`) logged movestate 0 in every row, and the walk's end (and the arrival snap onto the target) never reached the renderer. `IrrlichtBridge` dropped `PlayerMovedData::isMoving`; `StopMovement()` published nothing.~~ **FIXED + VERIFIED LIVE**: the bridge hands `isMoving` to `PlayerCameraComponent::setPlayerGameDrivenMoving()` (latched until the next `PlayerMoved`; `isMoving()` = keyboard flags OR it), `StopMovement()` publishes the final pose with isMoving false after a command walk (`HasCommandMovement()`, asked before the clear, so keyboard movement is untouched), and a server self-update no longer carries velocity-as-isMoving. Pinned by `MoveCommandIsNonIdleWhileMovingAndIdleAfter` (red with either half reverted). Keyboard movement was never affected: `KeyboardMovementIsNonIdleWhileHeldAndIdleAfter` passes before and after (code + offline real-renderer test; NOT measured live -- the rig drives only `--script`). The "14 distinct positions" was not coarse stepping: one new position per rendered frame for the whole (0.23 s) walk. Live: movestate 1 on exactly the 15 walking rows, 0 on all 299 after. -> issue #231
+- **(B-unassigned, needs a GitLab issue)** Open questions left by B911/B912, none implemented: (1) render-side interpolation of a command walk when the renderer runs faster than the game tick (today both are ~60 Hz on x86 so every frame gets a new position; on a slower game tick positions would repeat) -- a behaviour decision; (2) the player model's animation during a command walk: the renderer's `updatePlayerMovementAnimation()` keys on keyboard input only, so from code the model likely does not play its walk cycle -- unmeasured, needs a video; (3) `MovementComponent::Face()` (auto-attack facing, `CombatManager`) still changes the heading without a renderer publish -- same class as B911, left alone because it can fire while the keyboard owns the pose; (4) a pathed `/move` stops up to 5 units short (`UpdateMovement`'s `waypoint_reached` radius; live 4.49 and 4.53 units) -- B874 finding 4's cause.
+
+B874-B876 are the hermes pose-oracle ruling (docs/decisions.md 2026-09-23, issues #218-#220); B877-B887 unused (T505 renumbered its block to B888-B901 after allocating B874+ concurrently); B902 onwards are allocated on GitLab (B911/B912 above are #230/#231). Allocate from the MAX `B###:` issue title on GitLab, not from this file.
 
 T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are class B on GitLab; every gap carries an oracle recipe, a repeatable CI test and parallel legs (docs/issues.md § Feature-gap issues). Filed as records (not started):
 

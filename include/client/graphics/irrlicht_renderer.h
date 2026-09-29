@@ -274,12 +274,14 @@ public:
 
     bool isFirstPersonMode() const { return PlayerCamera().cameraMode() == CameraMode::FirstPerson; }
 
-    // L05: the player family is PlayerCameraComponent. These four stay as
+    // L05: the player family is PlayerCameraComponent. These stay as
     // forwarders for named out-of-renderer callers; see that header (T448).
     void setPlayerSpawnId(uint16_t spawnId) { playerCamera_->setPlayerSpawnId(spawnId); }
     void setVisionType(VisionType vision) { playerCamera_->setVisionType(vision); }
     void setPlayerPosition(float x, float y, float z, float heading) { playerCamera_->setPlayerPosition(x, y, z, heading); }
     void setSwimmingState(bool swimming, float swimSpeed = 20.0f, bool levitating = false) { playerCamera_->setSwimmingState(swimming, swimSpeed, levitating); }
+    // B912: caller irrlicht_bridge.cpp (the PlayerMoved arm, PlayerMovedData::isMoving).
+    void setPlayerGameDrivenMoving(bool moving) { playerCamera_->setPlayerGameDrivenMoving(moving); }
 
     VisionType getVisionType() const { return currentVision_; }
 

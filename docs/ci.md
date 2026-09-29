@@ -110,6 +110,14 @@ there is no waiver list and no per-zone budget — and the hygiene test
 `VisualGateLedgerAssertions` fails unless the job's one list equals the
 manifest's zones exactly and the job blocks.
 
+**The gate measures the client's post-load state, not the parse peak**
+(B914, 2026-09-29). The benchmark's `loadZone()` ends with the same zone-source
+release the client runs at Step 13, through the same function,
+`S3DZone::releaseSourceAfterLoad()`. So the memory JSON's `s3dZoneSourceBytes`,
+`totalEstimate` and the ledger's `zone_parse` live bytes no longer count region
+source geometry and texture pixels the client has already freed. The
+parse-time high-water mark is still in each category's `peak`.
+
 ## Reading a pipeline (worker or human)
 
 A human: the pipeline list is linked from the project page, and every job page

@@ -489,6 +489,12 @@ void eqt::movement::MovementComponent::Test_SnapToMovementTargetForSeam()
 void eqt::movement::MovementComponent::StopMovement()
 {
 	if (ctx_.game_state.player().isMoving()) {
+		// B912: asked BEFORE the path and target are cleared. isMoving() alone
+		// cannot tell a command walk from keyboard movement -- the renderer's
+		// PlayerPositionChanged intent sets it too (OnGraphicsMovement) -- and
+		// only a walk the GAME thread drove has a renderer that needs telling.
+		const bool was_command_walk = HasCommandMovement();
+
 		ctx_.game_state.player().setMoving(false);
 		ctx_.game_state.player().setAnimation(ANIM_STAND);
 
@@ -500,6 +506,16 @@ void eqt::movement::MovementComponent::StopMovement()
 		ctx_.game_state.player().clearMovementTarget();
 
 		SendPositionUpdate();
+
+		// B912 (GitLab #231): the walk is over; say so to the renderer, with
+		// the pose it ended at. Before this nothing did: the integrator's last
+		// tick had published isMoving=true, and the arrival branch's snap onto
+		// the target (UpdateMovement, "Reached target") never reached the
+		// renderer at all. Keyboard movement is untouched: its renderer owns
+		// the pose and is never handed one back from here.
+		if (was_command_walk) {
+			PublishSelfPoseToRenderer();
+		}
 
 		if (EverQuest::GetDebugLevel() >= 1) {
 			std::cout << "Movement stopped" << std::endl;
