@@ -25,6 +25,24 @@ const std::vector<ObjectInstance> S3DLoader::emptyObjects_;
 const std::vector<std::shared_ptr<CharacterModel>> S3DLoader::emptyCharacters_;
 const std::vector<std::shared_ptr<ZoneLight>> S3DLoader::emptyLights_;
 
+// B914: the one end-of-load source release; see the declaration.
+S3DZone::PostLoadRelease S3DZone::releaseSourceAfterLoad(bool releaseTexturePixels) {
+    PostLoadRelease r;
+    if (releaseTexturePixels) {
+        r.texturePixelBytes = releaseTexturePixelData();
+        r.texturePixelsReleased = true;
+    }
+    clearCharacterData();
+    if (wldLoader) {
+        wldLoader->releasePostLoadData();
+        // T504: every region mesh is built by now; the per-region source
+        // geometry is a second copy of the zone's vertices and triangles.
+        r.regionGeometryBytes = wldLoader->releaseRegionGeometry();
+        r.wldReleased = true;
+    }
+    return r;
+}
+
 bool S3DLoader::loadZone(const std::string& archivePath) {
     return loadZone(archivePath, S3DLoadOptions{});
 }

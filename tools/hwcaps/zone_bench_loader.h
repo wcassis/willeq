@@ -460,6 +460,12 @@ void collectObjectDrawEntries(
 // and implemented in zone_bench_histogram.h/.cpp (file-size budget; only
 // needs ZoneBenchData's public members, see there for the full comment).
 
+// B914: both portal diagnostics below read the per-region SOURCE geometry,
+// which loadZone() now releases at its end exactly as the client does
+// (S3DZone::releaseSourceAfterLoad). Their callers in gles2_zone_benchmark.cpp
+// are commented out; reviving one means running it inside loadZone(), before
+// that release, not afterwards.
+//
 // Analyze portals: for each portal, compute geometry contact ratio
 // (fraction of portal perimeter that touches nearby region geometry).
 // Outputs a report to stdout and optionally to a CSV file.

@@ -89,3 +89,16 @@ ADD_EXECUTABLE(test_region_occluders
 TARGET_COMPILE_DEFINITIONS(test_region_occluders PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
 TARGET_LINK_LIBRARIES(test_region_occluders GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_region_occluders DISCOVERY_TIMEOUT 120)
+
+# B914: the gate's benchmark releases the zone source the client releases at
+# the end of a load (Step 13), through the one shared S3DZone function. Loads
+# befallen.s3d (asset-gated, tests/asset_requirement.h) plus a source census.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_source_release
+        test_zone_source_release.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_zone_source_release PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    TARGET_INCLUDE_DIRECTORIES(test_zone_source_release PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zone_source_release GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_source_release DISCOVERY_TIMEOUT 120)
+ENDIF()

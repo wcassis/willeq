@@ -1138,26 +1138,27 @@ void ZoneLoadComponent::loadZoneStep13_Cleanup(ZoneLoadContext& ctx) {
                   "pendingZoneComputations_={}",
                   ctx_.config.constrainedConfig.releaseTextureDataAfterUpload,
                   (bool)ctx_.currentZone, (bool)pendingZoneComputations_);
-        if (ctx_.config.constrainedConfig.releaseTextureDataAfterUpload && ctx_.currentZone) {
-            size_t freed = ctx_.currentZone->releaseTexturePixelData();
-            LOG_INFO(MOD_GRAPHICS, "Sequential: released {:.1f}MB texture pixel data", freed / (1024.0f * 1024.0f));
-        } else {
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: texture pixel data retained (releaseTextureDataAfterUpload={}, currentZone_={})",
-                      ctx_.config.constrainedConfig.releaseTextureDataAfterUpload, (bool)ctx_.currentZone);
-        }
+        // B914: one shared release -- the gate's benchmark calls the same
+        // S3DZone::releaseSourceAfterLoad() at the same point of its load.
         if (ctx_.currentZone) {
-            ctx_.currentZone->clearCharacterData();
+            const auto rel = ctx_.currentZone->releaseSourceAfterLoad(
+                ctx_.config.constrainedConfig.releaseTextureDataAfterUpload);
+            if (rel.texturePixelsReleased) {
+                LOG_INFO(MOD_GRAPHICS, "Sequential: released {:.1f}MB texture pixel data",
+                         rel.texturePixelBytes / (1024.0f * 1024.0f));
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: texture pixel data retained (releaseTextureDataAfterUpload=false)");
+            }
             LOG_INFO(MOD_GRAPHICS, "Sequential: released zone character data");
-        }
-        if (ctx_.currentZone && ctx_.currentZone->wldLoader) {
-            ctx_.currentZone->wldLoader->releasePostLoadData();
-            LOG_INFO(MOD_GRAPHICS, "Sequential: released WLD post-load data");
-            // T504: every region mesh is built by now (this is the automatic,
-            // eager path); the per-region source geometry is a second copy.
-            const size_t regionGeomFreed = ctx_.currentZone->wldLoader->releaseRegionGeometry();
-            LOG_INFO(MOD_GRAPHICS, "Sequential: released {} bytes of per-region source geometry", regionGeomFreed);
-        } else if (ctx_.currentZone && !ctx_.currentZone->wldLoader) {
-            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: wldLoader is null, skipping releasePostLoadData");
+            if (rel.wldReleased) {
+                LOG_INFO(MOD_GRAPHICS, "Sequential: released WLD post-load data");
+                LOG_INFO(MOD_GRAPHICS, "Sequential: released {} bytes of per-region source geometry",
+                         rel.regionGeometryBytes);
+            } else {
+                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: wldLoader is null, skipping releasePostLoadData");
+            }
+        } else {
+            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: no currentZone, nothing to release");
         }
         pendingZoneComputations_.reset();
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step13: pendingZoneComputations_ released");
