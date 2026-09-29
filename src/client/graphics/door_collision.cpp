@@ -157,7 +157,7 @@ bool RayIntersectTriangles(const irr::core::vector3df& rayOrigin,
                            float& hitDistSq) {
     bool anyHit = false;
     float closestT = rayLen + 1.0f;
-    triangles.forEach([&](const irr::core::triangle3df& tri) {
+    triangles.forEachTriangle([&](const irr::core::triangle3df& tri) {
         MollerTrumboreStep(rayOrigin, rayDir, tri, closestT, hitPoint, hitTriangle, anyHit);
     });
     if (anyHit) {

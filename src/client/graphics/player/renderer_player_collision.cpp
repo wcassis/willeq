@@ -229,8 +229,10 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
     // (RegionWorldTriangles::setSource), not copied. The copy this replaced
     // was 36 B per triangle plus a vector and a map node per region, a second
     // copy of the pools' own vertices (refactor/B909/README.md).
+    bool fromPools = false;
     if (const auto& pools = ctx_.ZoneLifecycle().zoneMergeBuffers(); pools && pools->isPooled()) {
         ctx_.regionWorldTriangles.setSource(pools.get());
+        fromPools = true;
         for (size_t regionIdx : pools->regionsWithTriangles()) {
             pools->forEachRegionTriangle(regionIdx, [&](const float*, const float*, const float*) {
                 ++totalRegionTriangles;
@@ -239,8 +241,10 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
         }
     }
 
-    LOG_INFO(MOD_GRAPHICS, "Collision setup: {} regions (total {} world-space triangles)",
-             regionsAdded, totalRegionTriangles);
+    // B909: the bytes the set holds for triangles (0 when it reads the pools).
+    LOG_INFO(MOD_GRAPHICS, "Collision setup: {} regions (total {} world-space triangles, {} bytes held{})",
+             regionsAdded, totalRegionTriangles, ctx_.regionWorldTriangles.ownedTriangleBytes(),
+             fromPools ? ", read from the zone draw pools" : "");
 
     ctx_.collisionManager = ctx_.smgr->getSceneCollisionManager();
 

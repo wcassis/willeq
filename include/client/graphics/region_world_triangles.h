@@ -59,7 +59,7 @@ public:
 
     // fn(const irr::core::triangle3df&) for every triangle, in storage order.
     template <class Fn>
-    void forEach(Fn&& fn) const {
+    void forEachTriangle(Fn&& fn) const {
         if (owned_) {
             for (const auto& t : *owned_) fn(t);
         } else if (source_) {

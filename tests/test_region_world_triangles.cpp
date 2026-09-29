@@ -171,7 +171,7 @@ TEST(RegionWorldTriangles, ThePoolsAnswerForAPlayerRegionAlsoBuiltAsANode) {
     set.setOwned(99, {triangle3df(vector3df(0, 0, 0), vector3df(1, 0, 0), vector3df(0, 0, 1))});
     set.setSource(&f.pools);
     size_t viewTris = 0, poolTris = 0;
-    set.find(7).forEach([&](const triangle3df&) { ++viewTris; });
+    set.find(7).forEachTriangle([&](const triangle3df&) { ++viewTris; });
     f.pools.forEachRegionTriangle(7, [&](const float*, const float*, const float*) { ++poolTris; });
     EXPECT_EQ(viewTris, poolTris);
     EXPECT_GT(poolTris, 1u);
