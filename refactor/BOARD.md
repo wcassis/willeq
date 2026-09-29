@@ -12422,8 +12422,8 @@ T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are cla
   renderer places in Chase mode, 4 headings x 2 positions, and its FOV) compare
   against committed literals in `tests/chase_rig_expected.h`, so a 0.001 edit of
   any constant is red (RED runs in `refactor/B875/README.md`). The values are
-  corroborated at rest only by one live FABLE run (`refactor/B874/live/` on
-  branch `task/pose-live-capture`: pitch 6.0000, azimuth 0.0001, distance
+  corroborated at rest only by one live FABLE run (`refactor/B874/live/`,
+  run-20260929T022314Z: pitch 6.0000, azimuth 0.0001, distance
   4.0002). This catches drift; it does not prove oracle parity.
   **Owed:** the official-client fit itself -- manual correspondences on static
   geometry from official stills at server-logged poses (needs #218 deliverable

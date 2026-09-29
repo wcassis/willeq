@@ -47,7 +47,7 @@ fit is then refused, not tuned.
    client area only, UI hidden if the client allows it.
 2. **Server-side pose for the official client at each still** — issue #218
    deliverable A (the server `MOD_MOVEMENT` log / `#loc` / `character_data`,
-   as `refactor/B874/live/` did for fable on branch `task/pose-live-capture`).
+   as `refactor/B874/live/` did for fable).
    The pose used is the one the SERVER logged at the still's timestamp, never
    the one that was commanded. Converted to the client frame with the
    documented transform (`pose_log_format.h`): `playerX = server_y`,

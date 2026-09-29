@@ -17,7 +17,7 @@ horizontal FOV 62.8.
   against official stills — a fit T478 (board B721) found crop-dependent and
   left NOT SETTLED. That sweep is not a camera-pose measurement.
 - They are corroborated **at rest** by one real zoned-in **fable** run:
-  `refactor/B874/live/` on branch `task/pose-live-capture`, run
+  `refactor/B874/live/` (merged to fable from `task/pose-live-capture`), run
   `run-20260929T022314Z` — pitch 6.0000, azimuth 0.0001 deg, distance 4.0002
   against kChaseRig over 129 stationary rows. That run measured fable against
   its own constants.

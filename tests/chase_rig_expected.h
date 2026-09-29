@@ -15,7 +15,7 @@
 // sweep of fable's own renders against official-client stills, a fit T478
 // (board B721) found depends on the scoring crop and left NOT SETTLED. They
 // are corroborated AT REST by one real zoned-in fable run
-// (refactor/B874/live/ on branch task/pose-live-capture, run
+// (refactor/B874/live/, merged to fable from task/pose-live-capture; run
 // run-20260929T022314Z: pitch 6.0000, azimuth 0.0001 deg, distance 4.0002
 // against kChaseRig over 129 stationary rows) -- which measured FABLE against
 // its own constants, not the official client.
