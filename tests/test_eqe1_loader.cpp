@@ -326,7 +326,7 @@ void testV1PayloadFormatDefaultsToETC1() {
     PASS();
 }
 
-// B100: the RED case, exactly as the old builder wrote it. For a >31-char
+// B910 (filed as B100): the RED case, exactly as the old builder wrote it. For a >31-char
 // name the old eqe1_builder did `EQE1IndexEntry idx = {}` (zero-init) then
 // `strncpy(idx.name, name, 31)` — a formally VALID 31-char entry, no error
 // anywhere. The pack loads, its one entry keys on the truncated name, and
@@ -380,7 +380,7 @@ void testV1TruncationHistoricalMiss() {
     PASS();
 }
 
-// B100: the GREEN case — the fix. The same name now round-trips in full via
+// B910 (filed as B100): the GREEN case — the fix. The same name now round-trips in full via
 // the v3 name table, and the truncated prefix is NOT a lookup key. This is
 // what the rebuilt soldunga.eqe1 must do. v3 keeps the 48-byte v1/v2 entry
 // and appends an 8-byte {nameOffset,nameLength} tail; long names live in a
@@ -473,7 +473,7 @@ void testV3NameTableRoundTrip() {
     PASS();
 }
 
-// B100: v3 packs may also carry short names inline (tail zeroed) — the mix
+// B910 (filed as B100): v3 packs may also carry short names inline (tail zeroed) — the mix
 // every real rebuilt pack has, since only >31-char names go to the table.
 void testV3MixedInlineAndTable() {
     TEST(V3MixedInlineAndTable);
@@ -526,7 +526,7 @@ void testV3MixedInlineAndTable() {
     PASS();
 }
 
-// B100: a v1/v2 entry whose name is NOT null-terminated within the 32-byte
+// B910 (filed as B100): a v1/v2 entry whose name is NOT null-terminated within the 32-byte
 // field is a name the builder truncated at 31 chars. The old read path
 // keyed the truncation silently; the loader must REJECT the pack instead,
 // so the next pack rebuild (v3) is the only path forward.
@@ -572,7 +572,7 @@ void testV1V2TruncatedNameRejected() {
     PASS();
 }
 
-// B100: a v3 entry carrying BOTH a table reference and a non-zero inline
+// B910 (filed as B100): a v3 entry carrying BOTH a table reference and a non-zero inline
 // name field is malformed — reject it rather than guessing which wins.
 void testV3TableReferenceOutOfBounds() {
     TEST(V3TableReferenceOutOfBounds);
