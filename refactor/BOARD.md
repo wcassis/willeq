@@ -12385,6 +12385,8 @@ Follow-ups filed as records (not started):
 - **B857** (C) skel_containers -- the largest compactness term left in entity_models; needs its own plan per Will's rev-1 rule. -> issue #108
 - **B858** (C) zone-in Phase 10 is keyed on ONE unreliable packet (our own OP_ClientUpdate); a lost datagram is a permanent stall. -> issue #109
 
+- **B874** (B) `--pose-log` (Deliverable B, issue #218). PROVEN LIVE 2026-09-29 (`refactor/B874/live/README.md`): a zoned-in rendered client driven by `--script` wrote the log, and `scripts/pose_live_capture.sh` (ctest `PoseLogLiveCapture`, label `live`) checks it against the server's `#loc`, a `#save`d `character_data` row and kChaseRig -- position and heading agree through the documented transform. The test stays RED on two findings it measured: the rendered heading ignores `/turn` (the server takes it), and movestate reads idle through a `/move` walk. Also measured: client z 0.63 below the server's, and nothing but `#save` wrote the moved pose to `character_data`. OWED: Deliverable A -- a server-authoritative pose log for the OFFICIAL client (B875/B876).
+
 B874-B876 are the hermes pose-oracle ruling (docs/decisions.md 2026-09-23, issues #218-#220); B877-B887 unused (T505 renumbered its block to B888-B901 after allocating B874+ concurrently); B902 onwards unused. Allocate from the MAX `B###:` issue title on GitLab, not from this file.
 
 T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are class B on GitLab; every gap carries an oracle recipe, a repeatable CI test and parallel legs (docs/issues.md § Feature-gap issues). Filed as records (not started):
