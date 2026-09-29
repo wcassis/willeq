@@ -29,7 +29,11 @@
 # through eq_container_pkill (board B798's guard); the pattern is safe because
 # the literal "(" is not one of the alternatives.
 boot_zone() {
-    local short="$1" bootlog="$LOGS/zone_${short}_boot.log"
+    # Two statements: `local a=1 b=$a` expands $a BEFORE a is set, which is an
+    # unbound-variable abort under `set -u` (B909 smoke run, 2026-09-29) and a
+    # log named zone__boot.log without it.
+    local short="$1"
+    local bootlog="$LOGS/zone_${short}_boot.log"
     # If a process for this zone is already running, bounce it; otherwise just
     # start it. Either way we end with a freshly-booted process for this zone.
     if server_process_running zone >/dev/null 2>&1; then

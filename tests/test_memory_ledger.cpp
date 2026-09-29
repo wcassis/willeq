@@ -1182,3 +1182,34 @@ TEST(MemoryLedgerTrace, ATracedAllocationIsASiteAndItsFreeCreditsIt) {
     }
     EXPECT_TRUE(sawBigSite) << "the site's peak keeps the 3 MiB high-water mark: " << after;
 }
+
+// B909: the owner-row table is shared by every label the process opens, in
+// first-open order. The live client opens ~30 startup/gfx/ent labels before a
+// zone loads, so with 32 slots a label opened at zone-load Step 9 got no row
+// and its bytes (8.1 MB of `spatial` in gfaydark) were reported as "misc".
+// Pin: the 45th distinct label opened in one process still gets its own row.
+TEST(MemoryLedger, ALateLabelStillGetsItsOwnOwnerRow) {
+    if (!eqt::memory::enabled()) GTEST_SKIP() << "ledger off in this build";
+    eqt::memory::recordPoint("b909_arm");  // arms the owner rows
+    std::vector<std::string> names;
+    for (int i = 0; i < 45; ++i) names.push_back("b909.lbl" + std::to_string(i));
+    void* p = nullptr;
+    {
+        MemoryScope scope(Category::Startup);
+        for (size_t i = 0; i + 1 < names.size(); ++i) {
+            eqt::memory::StartupScope s(names[i].c_str());
+        }
+        eqt::memory::StartupScope last(names.back().c_str());
+        p = std::malloc(64 * 1024);
+        ASSERT_NE(p, nullptr);
+    }
+    bool found = false;
+    for (const auto& row : eqt::memory::startupBreakdown()) {
+        if (row.name == names.back()) {
+            found = true;
+            EXPECT_GE(row.liveBytes, 64u * 1024u) << row.name;
+        }
+    }
+    std::free(p);
+    EXPECT_TRUE(found) << "label " << names.back() << " fell into the catch-all row";
+}
