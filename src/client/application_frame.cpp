@@ -152,10 +152,12 @@ void Application::render(float deltaTime) {
                 return;
             }
 
-            // Game thread flagged zone load ready — start loading thread
-            if (m_zoneLoadReady.load(std::memory_order_acquire)) {
+            // Game thread posted a zone load — start the loading thread. B917:
+            // startLoadingThread() TAKES the snapshot out of the handoff, so a
+            // request posted while the previous load was still running is
+            // simply still pending here once that load has been joined.
+            if (m_zoneLoadHandoff.hasPending()) {
                 startLoadingThread();
-                m_zoneLoadReady.store(false, std::memory_order_release);
                 m_lastGraphicsUpdate = now;
                 return;  // Loading thread now owns GL context
             }

@@ -11,6 +11,8 @@
 #include "client/graphics/loading_thread.h"
 #include "client/graphics/pose_log_writer.h"  // B874: header-only, no Irrlicht
 #include "client/zone_load_snapshot.h"
+#include "client/zone_load_handoff.h"
+#include "client/fatal_exit.h"
 #include "client/scenario/scenario_runner.h"
 
 #include <memory>
@@ -353,6 +355,22 @@ public:
     std::string scenarioName() const;
 
     /**
+     * B918 (issue #237): true when the run ended because of a FATAL that
+     * takes the ordinary quit path -- the zone loading thread failing, or
+     * LoadZoneSources() failing (eqt::RecordFatalExit(), fatal_exit.h).
+     * main() turns it into a non-zero exit code via
+     * eqt::scenario::ProcessExitCode(); before this both returned 0 outside
+     * --scenario, the same as a clean /q.
+     */
+    bool fatalShutdown() const {
+        return m_zoneLoadHandoff.loaderFailed() || eqt::FatalExitRecorded();
+    }
+    std::string fatalShutdownReason() const {
+        return m_zoneLoadHandoff.loaderFailed() ? m_zoneLoadHandoff.loaderFailureReason()
+                                                : eqt::FatalExitReason();
+    }
+
+    /**
      * T29 — the single unified slash-command dispatch entry point.
      *
      * Both automation front doors (piped/scripted stdin via
@@ -658,7 +676,15 @@ private:
 #endif
     EQT::Graphics::LoadingStatus m_loadingStatus;
     EQT::Graphics::GLContextHandles m_glHandles;
-    eqt::ZoneLoadSnapshot m_zoneLoadSnapshot;
+    // B917: the snapshot the CURRENT loading thread builds from, and the
+    // generation it was posted under. Owned by the render thread: written in
+    // startLoadingThread() (taken out of m_zoneLoadHandoff) before the loading
+    // thread starts, read by that thread only, released in
+    // checkLoadingComplete() after the join. The game thread never touches it
+    // -- a zone change that lands mid-load posts a NEW snapshot into the
+    // handoff instead of overwriting this one (the B917 race).
+    eqt::ZoneLoadSnapshot m_activeLoadSnapshot;
+    uint64_t m_activeLoadGeneration = 0;
 #ifdef EQT_HAS_GRAPHICS
     irr::gui::IGUIFont* m_loadingScreenFont = nullptr;  // Cached for render thread loading screen
 #endif
@@ -673,16 +699,14 @@ private:
     // D21b: Game thread
     std::unique_ptr<std::thread> m_gameThread;
 
-    // D21b: Zone load handoff (game thread creates snapshot, render thread starts loading)
-    std::mutex m_zoneLoadMutex;
-    std::atomic<bool> m_zoneLoadReady{false};          // Set by game thread, consumed by render thread
-    std::atomic<bool> m_graphicsCompleteReady{false};  // Set by render thread, consumed by game thread
-    std::shared_ptr<EQT::Graphics::BspTree> m_pendingBspTree;  // Protected by m_zoneLoadMutex
-    // T260: zone the pending tree was built for (the completed load's snapshot
-    // zoneName, captured with the tree). Handed to EverQuest::SetZoneBspTree()
-    // so a finalization that lands after a fast re-zone is recognised as the
-    // PREVIOUS zone's tree and rejected instead of tagged with the new zone.
-    std::string m_pendingBspTreeZone;  // Protected by m_zoneLoadMutex
+    // D21b: Zone load handoff (game thread posts a snapshot, render thread
+    // takes it and starts the loading thread, publishes the completion with
+    // the BSP tree, game thread finalises it). B917 replaced the shared
+    // snapshot + two flags + pending BSP tree that used to live here: see
+    // include/client/zone_load_handoff.h. The completion carries the zone the
+    // loader actually BUILT (T260's label), taken from the loader's own
+    // snapshot rather than from a slot the game thread may have overwritten.
+    eqt::ZoneLoadHandoff m_zoneLoadHandoff;
 
     // Timing
     std::chrono::steady_clock::time_point m_lastGraphicsUpdate;

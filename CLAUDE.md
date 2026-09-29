@@ -511,6 +511,13 @@ may be returned from a scenario run):
 | 2 | timeout — zoned in, but no verdict inside `--timeout` (**also what an unfinished run reports**, so an external `/quit`, a SIGTERM or a crash can never masquerade as success) |
 | 3 | could-not-start — never reached a zone (server down, bad login, unknown scenario name) |
 
+**Outside `--scenario`** a run returns 0 for a clean `/q`, `/camp`, window close
+or SIGTERM, and **4** (`kClientFatalExit`) when it ended on a FATAL (loader
+thread or `LoadZoneSources()`, `fatal_exit.h`; B918 — 1 stays bad arguments /
+failed initialize); a `--scenario` run
+never leaves 0..3 (a FATAL before a verdict reads as 2).
+The one decision is `eqt::scenario::ProcessExitCode()`.
+
 `scripts/scenario.sh` adds operator codes on top: 64 lock held by another session
 (or a bad option), 65 the server would not come up, 66 the snapshot did not
 restore. `--selftest` adds 67 (the client never reached the world), 68 (the

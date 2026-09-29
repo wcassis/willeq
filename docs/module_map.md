@@ -110,9 +110,17 @@ and have no such header. The count is netted by the `DocCounts` test (T373).
 |---|---|---|
 | src/client/application.cpp | 1040 | Core: initialize, run, shutdown, requestQuit, gameThreadLoop, mainLoop. **G04**: `initialize()` is a 26-line ordered list of 17 `bool initX(const ApplicationConfig&)` subsystem steps (fp-cam overrides, config validation, frame-dump dir, required files, signal handlers, EverQuest client, spell system, action layer, scripted tour, game mode, input bridge, command-output routing, graphics [constrained config + renderer/InitGraphics], console bridge, login connection). The order is load-bearing and pinned by `tests/test_application_init_order.cpp` against `tests/goldens/application_init_order_g04.txt` |
 | application_commands.cpp | 552 | processNetworkEvents/processInput, processPreConnectionLifecycleCommands, loadScriptFile/updateScript, dispatchToActionOrRenderer (the renderer-catalog gate), printCommandResult, wireUnifiedCommandDispatch, `Application::DispatchSlashCommand` |
-| application_zone_loading.cpp | 370 | start/joinLoadingThread, checkLoadingComplete, loadZoneGraphicsOnThread (registers snapshot entities into the EntityRenderer), setupRDPAudio, updateLoadingProgress. T470 (B622) deleted the uncalled synchronous `loadZoneGraphics()` |
+| application_zone_loading.cpp | 401 | start/joinLoadingThread, checkLoadingComplete, loadZoneGraphicsOnThread (registers snapshot entities into the EntityRenderer), setupRDPAudio, updateLoadingProgress. T470 (B622) deleted the uncalled synchronous `loadZoneGraphics()`. B917: the loader reads its own `m_activeLoadSnapshot`, taken out of `eqt::ZoneLoadHandoff` |
 | application_config.cpp | 434 | parseArguments, loadConfigFile |
 | application_frame.cpp | 224 | updateGameState, render |
+
+The zone-load handoff between the game thread and the render thread (B917) is
+`eqt::ZoneLoadHandoff` in `src/client/zone_load_handoff.cpp`
+(`include/client/zone_load_handoff.h`): post / take / finishLoad /
+takeApplicableCompletion, plus the B918 loader-failure record main() turns into
+exit code 4. Device-free; `tests/test_zone_load_handoff.cpp` drives it. Its
+B918 sibling `src/client/fatal_exit.cpp` (`include/client/fatal_exit.h`) is the
+process-wide record for the other FATAL-then-quit sites (`LoadZoneSources()`).
 
 Steps 1-17 above are all defined in `application.cpp` itself and therefore
 inlined by the G04 golden. The 18th, **`initScenario()`** (T410), is defined in

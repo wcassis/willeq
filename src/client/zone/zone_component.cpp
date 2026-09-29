@@ -18,6 +18,7 @@
 // intentionally left in eq.cpp.
 
 #include "client/eq.h"
+#include "client/fatal_exit.h"  // B918: LoadZoneSources' FATAL-then-quit sites
 #include "client/hc_map.h"
 #include "client/pathfinder_interface.h"
 #include "client/spell/buff_manager.h"
@@ -790,12 +791,14 @@ void eqt::zone::ZoneComponent::LoadZoneSources(const std::string& zone_name)
 {
 	if (zone_name.empty()) {
 		LOG_FATAL(MOD_MAIN, "LoadZoneSources: Zone name is empty");
+		eqt::RecordFatalExit("LoadZoneSources failed for zone '" + zone_name + "'");  // B918
 		ctx_.lifecycle.RequestQuit();
 		return;
 	}
 
 	if (ctx_.eq_client_path.empty()) {
 		LOG_FATAL(MOD_MAIN, "LoadZoneSources: EQ client path is empty");
+		eqt::RecordFatalExit("LoadZoneSources failed for zone '" + zone_name + "'");  // B918
 		ctx_.lifecycle.RequestQuit();
 		return;
 	}
@@ -818,6 +821,7 @@ void eqt::zone::ZoneComponent::LoadZoneSources(const std::string& zone_name)
 	if (!m_zone_archive->open(archivePath)) {
 		LOG_FATAL(MOD_MAIN, "LoadZoneSources: Failed to open zone archive: {}", archivePath);
 		m_zone_archive.reset();
+		eqt::RecordFatalExit("LoadZoneSources failed for zone '" + zone_name + "'");  // B918
 		ctx_.lifecycle.RequestQuit();
 		return;
 	}
@@ -842,6 +846,7 @@ void eqt::zone::ZoneComponent::LoadZoneSources(const std::string& zone_name)
 	if (mainWld.empty()) {
 		LOG_FATAL(MOD_MAIN, "LoadZoneSources: No WLD file found in archive: {}", archivePath);
 		m_zone_archive.reset();
+		eqt::RecordFatalExit("LoadZoneSources failed for zone '" + zone_name + "'");  // B918
 		ctx_.lifecycle.RequestQuit();
 		return;
 	}
@@ -852,6 +857,7 @@ void eqt::zone::ZoneComponent::LoadZoneSources(const std::string& zone_name)
 		LOG_FATAL(MOD_MAIN, "LoadZoneSources: Failed to parse WLD '{}' from archive: {}", mainWld, archivePath);
 		m_zone_wld.reset();
 		m_zone_archive.reset();
+		eqt::RecordFatalExit("LoadZoneSources failed for zone '" + zone_name + "'");  // B918
 		ctx_.lifecycle.RequestQuit();
 		return;
 	}
@@ -864,6 +870,7 @@ void eqt::zone::ZoneComponent::LoadZoneSources(const std::string& zone_name)
 		m_zone_bsp_tree_zone_name.clear();
 		m_zone_wld.reset();
 		m_zone_archive.reset();
+		eqt::RecordFatalExit("LoadZoneSources failed for zone '" + zone_name + "'");  // B918
 		ctx_.lifecycle.RequestQuit();
 		return;
 	}

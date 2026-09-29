@@ -1,0 +1,7 @@
+# Held until fully connected (Application::updateScript) -- which is BEFORE
+# the zone graphics load starts -- so the #zone lands mid-load.
+/say #zone qeynos
+wait 40
+/loc
+wait 1
+/q

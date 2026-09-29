@@ -248,7 +248,7 @@ Zone loading runs on a dedicated **LoadingThread** that owns the GL context duri
 - Network runs on the game thread, rendering on the main thread (D21b)
 - GL context is exclusively owned by one thread at a time (never shared)
 - Loading thread renders the loading screen directly (no cross-thread render requests)
-- Zone load snapshot created on game thread, loading thread started on render thread (D21b mutex handoff)
+- Zone load snapshot created on game thread, loading thread started on render thread (D21b handoff). Since B917 the handoff is `eqt::ZoneLoadHandoff` (`include/client/zone_load_handoff.h`): the render thread TAKES the snapshot (the loader reads a private copy), every load carries a generation, and the game thread finalises only the load it is waiting for — a zone change that lands mid-load (death to bind, a kick, a GM summon) is queued behind the running load, which is finished and discarded
 
 ## Model Loading Order
 
