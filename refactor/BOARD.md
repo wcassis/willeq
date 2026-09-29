@@ -12410,3 +12410,29 @@ T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are cla
 - **B900** (B, feature) single ranged shot impossible, arrow never drawn; /autofire era uncertain. → issue #216
 - ~~**B901** (B, feature) item linking~~ -- OUT OF BASELINE (post-Velious), recorded and closed. → issue #217
 - Feature-gap plans (oracle + test + legs) appended to existing issues: #25 lifts/switches/traps (B420), #151 item pick-up/put-down (B442), #116 spell visuals (B161), #144 Options controls (B430; #145/#146 pointed at it).
+
+## Added 2026-09-29 by task/chase-constants-pin (B875 re-audit; issue #219 stays open)
+
+- **B875** (B, ORACLE-OWED) **Chase camera constants: fitted ONCE from the official client, pinned by ctest.** → issue #219
+  **Pinned now -- fable's CURRENT constants, NOT an official-client measurement:**
+  `ChaseRigPinned` (`tests/test_chase_rig_pinned.cpp`, device-free: kChaseRig's
+  four fields, kChaseFitEyeAboveFeet, the 62.8 horizontal FOV, the race scale at
+  a second eye, the production pose at 4 headings x 2 positions x 2 eyes) and
+  `ChaseRigPinnedE2E` (`tests/test_pose_log_e2e.cpp`: the camera a real headless
+  renderer places in Chase mode, 4 headings x 2 positions, and its FOV) compare
+  against committed literals in `tests/chase_rig_expected.h`, so a 0.001 edit of
+  any constant is red (RED runs in `refactor/B875/README.md`). The values are
+  corroborated at rest only by one live FABLE run (`refactor/B874/live/`,
+  run-20260929T022314Z: pitch 6.0000, azimuth 0.0001, distance
+  4.0002). This catches drift; it does not prove oracle parity.
+  **Owed:** the official-client fit itself -- manual correspondences on static
+  geometry from official stills at server-logged poses (needs #218 deliverable
+  A and the oracle rig), designed in `refactor/B875/FIT_PLAN.md`; the solver
+  (`tools/chase_fit/`, `chase_rig_fit`) is validated offline on a synthetic
+  camera that is not kChaseRig (`tests/test_chase_rig_fit.cpp`).
+  **MR !31 (`task/kb-chase-oracle-session`) must NOT be merged as it is:** its
+  `refactor/B875/chase_fit_golden.json` is circular (points projected with the
+  reference camera, then "fit" to the reference; it cites a pose no capture was
+  taken at) and its `ChaseConstantsFitPinned` test checks only the JSON's
+  structure (green with the distance at 4.001). Both are superseded by the tests
+  above.
