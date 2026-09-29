@@ -249,6 +249,103 @@ in the summaries.
   recorded per run (`zone_link_lost=` in `result.txt`, and in the summaries).
   The cause is not investigated: B925 (issue #244).
 
+## Orange Pi A/B (the merge gate for the collision change), 2026-09-29
+
+Lane: the eqemu VM (the Pi reaches 172.16.200.99: 0.7 ms, and every leg zoned
+in). Lock owner `b909-pi-ab` for both the eqemu and Pi locks. Rig:
+`scripts/pi/collision_ab.sh` runs `scripts/pi_rendered_zone_sweep.sh` once
+per leg, alternating A B / B A / A B, three rounds, zones timorous, iceclad,
+growthplane and gfaydark. Every leg is identical: orangepi preset on
+DRM/GLES2 at 1280x720, `WILLEQ_BASELINE=1`, `WILLEQ_LEDGER_OWNERS=spatial`,
+level 60 (growthplane kicks lower levels; the snapshot restore puts it back),
+the binary staged on the Pi's ext4 home and setcap'd, and the tour
+`/frametiming`, `wait 240`, `/loc`, `/q`.
+
+**Movement.** `/move`, `/jump` and `/turn` go through the game thread, which
+takes ground from the zone map. The renderer's collision rays (the code this
+unit changed) run only for KEYBOARD movement. So `scripts/pi/uinput_drive.py`
+creates a `/dev/uinput` keyboard before the client starts and plays one fixed
+sequence 10 s after `ready`: (W 3 s, Space, W 1 s, S 2 s, D 0.6 s, Space) ×5,
+about 36 s. The same sequence runs in every leg. Proof that it drives the
+rays: the client's "Player Movement" phase rises from ~190 µs idle to
+~390–5,300 µs while the keys are held.
+
+**Metric.** The client's `/frametiming` block (a 60-frame mean): "Total Frame"
+and "Player Movement", the phase that holds the collision and ground rays.
+"Moving" = blocks wholly inside the key sequence, "idle" = after it. Medians
+are pooled over the three legs of a side.
+
+Binaries (sha256 of the published, stripped ARM `bin/willeq`):
+
+| | commit | sha256 |
+|---|---|---|
+| A (baseline) | fable `b1132c3f` (CI publish, `ci-arm/b1132c3f…`) | `477436330f14f53f23566c570a9e6673260d85e9ab3c91a0dfeccb00ce9eac4e` |
+| B (held-once, std::function view) | `753955a1` | `a4eeb74085dbfe709fa35b5177a2f1c10dc84a9f5bf4cfddf0804982a7d3c820` |
+| C (held-once, direct run loop) | `506f9de2` | `22e38e75af127fc5e083e5451b37dc3915170f54cbfe63a639aacf71e5352536` |
+
+**A vs B** (`review/B909/pi-ab/table.md`, 07:12 → 08:41 UTC). Moving median
+frame time, B vs A: gfaydark −0.01 %, growthplane **+3.76 %** (26.9 → 26.0 fps),
+iceclad −20.9 %, timorous +1.69 %. Player Movement moving median, B − A:
++45, +124, +44 and +4 µs. growthplane crosses the 3 % rule, so the view was
+changed: `RegionTriangleSource::regionRuns()` now hands out (pool vertices,
+template indices, count) in batches of 16, and
+`RegionTrianglesView::forEachTriangle` is an inlined index loop with no
+per-triangle `std::function` call and no per-triangle `triangle3df`. The
+Moller–Trumbore step takes the three vertices and builds the hit triangle
+only on a hit. The arithmetic is identical. Identity and RED:
+`test_region_world_triangles` passes 5 of 5, including the 12,000-ray
+bit-identity test and the new `RunBatchesVisitTheSameTrianglesInTheSameOrder`
+(37 runs, crossing two batch boundaries). Truncating the loop to one batch
+fails the batch test. Swapping two vertices in the loop fails both tests.
+
+**A vs C, the result that gates the merge** (`review/B909/pi-ac/table.md`,
+08:41 → 10:09 UTC, 3 legs each, all 24 zone runs reached `steady_60s`):
+
+| zone | side | moving frame µs (fps) | idle frame µs (fps) | Player Movement µs moving / idle | `spatial` @ready = @steady | peak RssAnon | RssAnon @steady |
+|---|---|---:|---:|---:|---:|---:|---:|
+| gfaydark | A | 33,301 (30.0) | 33,313 (30.0) | 392 / 192 | 8,273,728–8,274,152 | 102.6–103.5 MB | 97.0–98.3 MB |
+| gfaydark | C | 33,304 (30.0) | 33,313 (30.0) | 435 / 191 | 5,519,064–5,519,240 | 99.5–100.9 MB | 94.4–98.4 MB |
+| growthplane | A | 37,116 (26.9) | 35,764 (28.0) | 417 / 165 | 44,097,376–44,097,424 | 176.0–176.2 MB | 168.6–168.8 MB |
+| growthplane | C | 37,943 (26.4) | 36,988 (27.1) | 476 / 165 | 40,709,192–40,709,216 | 172.7–172.8 MB | 163.6–165.5 MB |
+| iceclad | A | 26,523 (37.7) | 26,328 (38.0) | 3,012 / 3,032 | 7,093,928–7,094,000 | 136.0–136.1 MB | 129.2 MB |
+| iceclad | C | 33,318 (30.0) | 65,434 (15.3) | 3,067 / 1,298 | 1,533,840–1,533,944 | 130.5–135.1 MB | 112.3–124.1 MB |
+| timorous | A | 38,010 (26.3) | 35,797 (27.9) | 5,016 / 1,994 | 12,906,968–12,906,984 | 163.0–165.8 MB | 150.9–158.1 MB |
+| timorous | C | 35,888 (27.9) | 35,526 (28.1) | 5,346 / 5,346 | 4,673,984–4,674,008 | 161.1–165.4 MB | 145.5–157.4 MB |
+
+(MB = 10^6 bytes, from the byte values in the table file.)
+
+Verdict, C vs A:
+- **gfaydark +0.01 %, growthplane +2.23 %, timorous −5.6 %**: inside the 3 %
+  rule. No zone drops under 30 fps that A holds above it.
+- **iceclad +25.6 % is not a binary effect.** iceclad's zone link drops in
+  every run on both sides (B925, #244). After the reconnect, the client lands
+  in one of three frame-rate modes, 15, 30 or 38 fps, per run and on either
+  binary. In A vs B the sign was reversed: B −20.9 %, 38 fps against A's 30.
+  Player Movement, which does not depend on those modes, is +55 µs (+1.8 %).
+- **The collision phase itself**, C − A while moving: +43, +59, +55 and
+  +330 µs. That is 0.13–0.87 % of A's frame. The remaining cost is reading
+  36-byte pool vertices through an index list instead of a packed triangle
+  array. timorous's +330 is partly a state that appears on both sides: in some
+  runs (A r2, C r1 and r2) Player Movement stays at the moving level after the
+  keys stop.
+- **Memory on the Pi.** `spatial` A → C: gfaydark −2.75 MB, growthplane
+  −3.39 MB, iceclad −5.56 MB, timorous −8.23 MB. Peak and steady RssAnon fall
+  or overlap in every zone.
+- **Already under 30 fps on A (pre-existing, not this change):** growthplane
+  (26.9 moving) and timorous (26.3 moving). Under the owner's rule this is a
+  client defect. It needs a number and is noted on the board.
+- **The Pi's own `spatial` split (C, steady_60s):** growthplane
+  `sp.object_tris` 40,188,128 B is by far the largest `spatial` owner on the
+  Pi. It is the item already open under B909/#229 (object collision triangles
+  pre-transformed per instance). The other zones:
+  gfaydark `sp.object_tris` 5.23 MB, iceclad `sp.region_bounds` 1.14 MB,
+  timorous `sp.object_tris` 3.74 MB + `sp.region_bounds` 0.84 MB.
+  `sp.region_tris` is 12–49 kB in every zone.
+
+Lock cleanup: every one of the 12 legs (plus both smoke legs) ended with
+"locks released; eqemu lock now: ''; pi lock now: ''", and the snapshot was
+restored byte-identically each time.
+
 ## Part 3: pinning it in CI terms
 
 The gate cannot see the client-only owners (B923, issue #242).
@@ -274,9 +371,9 @@ zone-link drop costs about 4 extra minutes per run.
 
 ## Not verified
 
-- **The Orange Pi was not measured.** Everything here is x86 and llvmpipe.
-  The collision copy is CPU heap on both platforms, so the saving should carry
-  over, but the Pi table is owed (`docs/decisions.md` 2026-09-17).
+- The ledger TABLES in Results 1-4 are x86/llvmpipe only. The Pi was measured
+  only for the collision change's A/B (spatial, RssAnon, frame time; section
+  "Orange Pi A/B"), not for every budgeted category.
 - `ClientLedgerLive` was not run through `ctest`. Its script was run with the
   same arguments except `--zones`.
 - `archives` (+0.83 MB against the benchmark) and the client's

@@ -856,7 +856,9 @@ it without taking that measurement first.
      per instance, 36 B per triangle. 5.26 MB in gfaydark, 3.76 MB in
      dreadlands and timorous. It is the largest remaining `spatial` owner. A
      held-once form transforms at query time, so its arithmetic differs from
-     today's; bit-identical collision is not automatic.
+     today's; bit-identical collision is not automatic. **On the Orange Pi it is
+     the largest `spatial` owner of all: growthplane 40,188,128 B** (B909 Pi
+     A/B, `refactor/B909/README.md` "Orange Pi A/B").
   2. **(B909, #229)** `sp.region_bounds`,
      `ctx_.regionBoundingBoxes`, is a `std::map<size_t, aabbox3df>` with one
      node per region: 1.72 MB in iceclad and 1.27 MB in timorous. A sorted
@@ -874,8 +876,23 @@ it without taking that measurement first.
      every run. The client logs "Zone connection lost" 72–75 s after launch,
      after UDP sends to the zone port are refused. `/q` is then held until the
      rig's 330 s deadline. Cause not investigated.
-  6. The Orange Pi table for all of the above is owed (`docs/decisions.md`
-     2026-09-17).
+  6. ~~The Orange Pi table is owed.~~ **Pi A/B done 2026-09-29** (merge gate
+     for the collision change; `refactor/B909/README.md` "Orange Pi A/B").
+     fable `b1132c3f` vs this branch `506f9de2`, 3 interleaved legs per side,
+     keyboard-driven movement via `scripts/pi/uinput_drive.py`. Pi `spatial`
+     fell by 2.75 / 3.39 / 5.56 / 8.23 MB (gfaydark / growthplane / iceclad /
+     timorous). Moving frame time was within +2.23 % in gfaydark, growthplane
+     and timorous. iceclad's frame rate is bimodal on both binaries after the
+     B925 reconnect. The first view (a `std::function` per triangle) cost
+     +3.76 % in growthplane and was replaced by a direct index loop.
+     The per-category Pi ledger table (every budget, not only `spatial`) is
+     still owed (`docs/decisions.md` 2026-09-17).
+  7. **(B-unassigned, needs a GitLab issue)** on the Pi, growthplane (26.9 fps)
+     and timorous (26.3 fps) render under 30 fps while the player moves, on
+     fable `b1132c3f` itself (the A side of the B909 A/B, 1280x720, orangepi
+     preset, level 60, keyboard sequence). The owner's rule makes that a client
+     defect. It is not caused by B909; the collision phase is 0.4 ms and 5.0 ms
+     of a 37-38 ms frame.
 
 - ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage
