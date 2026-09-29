@@ -108,6 +108,10 @@ load is still in progress, the renderer's follow-on zone load fails:
 This was seen 5 times (growthplane, templeveeshan, veeshan x2, charasis). A move AFTER `ready` (chardok,
 charasis at level 60) is handled cleanly.
 
+**Fixed 2026-09-29 as B917 (#236) and B918 (#237)** (`refactor/B917/README.md`): the name was not
+unresolved, the shared load snapshot was cleared under the follow-on load; a FATAL-ended run now exits 4.
+Verified live on x86, not re-run on the Pi.
+
 ## Other findings
 
 - **Where the bytes are, per the ledger at `ready`.**

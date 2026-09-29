@@ -106,6 +106,15 @@ the job has to install for itself: hermes-ext's `python3` is 3.12 with no PIL an
   host's existing `~/.venvs/ci` (3.11) driving the 3.12 interpreter, and exports
   `PYTHONPATH`. It is a no-op on every later run.
 
+**`build-gles2/` is not in scope for the B907 prune.** No orphan check is
+registered against it: `scripts/build-gles2-x86.sh` configures that tree with
+`-DEQT_BUILD_TESTS=OFF`, so `tests/CMakeLists.txt` (and with it
+`check_build_tree_orphans`) is never included there at all, and the gate's own
+prepare step only ever builds two named targets (`willeq`,
+`gles2_zone_benchmark`) incrementally by name rather than the whole graph.
+There is therefore nothing for a prune to be a regression net FOR in that
+tree; not adding one there is a scope decision, not an oversight.
+
 **The gate is one blocking job over all five manifest zones.** From
 2026-09-28 to 2026-09-29 iceclad and timorous ran in a separate
 `allow_failure` job, `gate-kunark-velious`, while they overran two ledger
@@ -175,6 +184,88 @@ evidence about an *incremental* build, not a clean one. To force a cold run:
 
 Do the cold run before trusting a green pipeline on anything that changed the
 build system itself.
+
+### A prior branch's leftover binary is pruned, not just detected (B907)
+
+The warm tree has a second concrete failure mode beyond the input-stamp one
+below: `cmake never prunes bin/` (`scripts/ci/check_build_tree_orphans.py`'s
+own long-standing docstring, T175). Deleting a target from `CMakeLists.txt`
+leaves its last-built binary sitting in `build/bin/` forever — a fresh
+`cmake --build` does not touch it. On a per-branch build tree that binary is
+merely embarrassing; on this runner's ONE shared warm tree it is toxic across
+branches: MR !47 (pipeline 313, job 1443) failed on `test_region_world_triangles`,
+a binary built by the unmerged branch `task/B909-client-spatial-ledger`'s
+pipeline and still present when !47's own pipeline reconfigured next. The
+`check_build_tree_orphans` ctest test (in the `test` stage) was correctly
+reporting that condition — it is the CI *feed* into that check that was
+polluted, not the check.
+
+The `build` job now runs
+`scripts/ci/check_build_tree_orphans.py --prune build`
+immediately after that job's own `cmake -S . -B build …` reconfigure and
+before `cmake --build`. `--prune` shares its target discovery with the
+read-only check byte-for-byte (`_discover()` in the script — one function,
+called by both `run_check()` and `run_prune()`, so the two can never disagree
+about what an orphan is) and deletes every orphan it finds, printing each one
+removed. It refuses outright (exit 2, deletes nothing) on a directory with no
+`CMakeCache.txt`, or whose `bin/` resolves (`os.path.realpath`) outside the
+build tree itself; a `bin/` that does not exist yet is a silent no-op success,
+not a refusal. Every path it removes is `os.path.join(<build>/bin, <a bare
+os.listdir() entry>)` — no recursion, no traversal, nothing outside
+`<build>/bin/` is ever touched.
+
+**The plain `check_build_tree_orphans` ctest test is UNCHANGED in meaning.**
+It still runs in the `test` stage exactly as before, over the SAME `build/`
+tree the `build` job just pruned — a developer's local warm tree still gets
+the original warning with no `--prune` involved, and if an orphan somehow
+survives the CI prune (meaning the prune itself broke, not that the allowlist
+needs an entry), the `test` stage still fails outright on it. The `ALLOWLIST`
+in the script stays EMPTY; a worker "fix" that added a shim entry there was
+reverted — an allowlist entry hides a real orphan instead of explaining why CI
+produced one, and B907 is why one showed up at all.
+
+`--prune`'s own regression net is `scripts/ci/test_check_build_tree_orphans.py`
+(ctest `CheckBuildTreeOrphansPrune`, hygiene label): a hand-built fake CMake
+file-API reply in a fresh temp directory per test, asserting an orphan is
+removed, a claimed binary is kept, a non-CMake-tree and an escaping `bin/` are
+both refused untouched, nothing outside `bin/` is ever touched, and the
+read-only check still fails before the prune runs and passes after. RED is
+proven with `run_prune(..., delete=False)`: discovery still finds the orphan,
+but it survives because the delete step itself was skipped — isolating that
+it is the `os.remove()` call, not the shared discovery, that makes the real
+path an actual prune.
+
+**Stale ctest registrations were considered and ruled out as a second
+mechanism.** `CTestTestfile.cmake` is not incremental — CMake regenerates it
+whole on every reconfigure from the CURRENT `add_test()`/`ADD_TEST()` calls in
+the CMakeLists graph, so a test `add_test`-registered by a since-reverted
+branch simply does not appear in it after the next branch's reconfigure; there
+is no separate stale-registration failure mode alongside the stale-binary one.
+Verified empirically (2026-09-29): a two-`add_test()` CMakeLists reconfigured,
+then trimmed to one and reconfigured again in the SAME build directory —
+`CTestTestfile.cmake` held only the one that survived, with no trace of the
+dropped one. Binaries and CMake's own bookkeeping of what to run behave
+differently precisely because cmake **regenerates a file** (the ctest driver)
+but **never deletes a file it once wrote to bin/**.
+
+**Why not the other fixes on the table:**
+
+- *Allowlist the binary.* Hides the exact condition the check exists to catch
+  (a binary from sources nobody's CMakeLists claims); already tried and
+  reverted once (this unit).
+- *Weaken or disable the check.* The check is right for what it catches — a
+  stale binary that still runs and passes. B907 is a CI feed problem, not a
+  check problem.
+- *Cold builds by default (`GIT_CLEAN_FLAGS=-ffdx`).* Removes the pollution
+  by removing the warm tree entirely, but a from-scratch Release build on
+  hermes-ext is ~20-30 minutes (measured above) against a warm pipeline's
+  ~3 minutes-to-seconds; every pipeline paying that cost defeats the reason
+  the warm tree exists at all.
+- *A build directory per branch.* Also removes cross-branch pollution, and
+  keeps the warm-tree speed *within* a branch, but multiplies disk use by the
+  number of branches with pipeline history on a `concurrent = 1` runner that
+  already has no ccache and no ninja, with no expiry mechanism proposed. Not
+  chosen; revisit only if `--prune` itself proves insufficient.
 
 ### Device-source changes are caught by the input stamp, not by a cold run
 

@@ -107,6 +107,15 @@ build:
         JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh --irrlicht-only
       fi
     - nice -n 10 cmake -S . -B build -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_GLES2_IRRLICHT_DIR=$PWD/third_party/irrlicht-gles2-x86
+    # B907 (issue #227): this is a WARM tree shared with every other branch's
+    # pipeline (GIT_CLEAN_FLAGS keeps build/ across runs). A binary another
+    # branch's pipeline built into build/bin/ has no target in THIS branch's
+    # just-regenerated CMake graph, and cmake never prunes bin/ on its own --
+    # so it survives into this build and fails the `test` stage's
+    # check_build_tree_orphans a moment later. Prune right after the
+    # reconfigure above (so the graph is current) and before the build, using
+    # the exact discovery check_build_tree_orphans uses read-only.
+    - nice -n 10 python3 scripts/ci/check_build_tree_orphans.py --prune build
     - nice -n 10 cmake --build build -j $JOBS 2>&1 | tail -n 200
 
 # Stage 3: the full suite, minus the two documented special cases:

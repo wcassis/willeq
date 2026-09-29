@@ -979,39 +979,43 @@ void Application::gameThreadLoop() {
 #ifdef EQT_HAS_GRAPHICS
             // Zone load requested (initial zone-in or re-zone).
             // Create snapshot, flag render thread to start loading thread.
+            // B917: the snapshot is POSTED into the handoff, never written
+            // over the one a running load reads -- a zone change that lands
+            // mid-load (death to bind, a kick, a GM summon) queues behind it.
             if (m_eqClient && m_eqClient->ConsumeZoneLoadRequest()) {
                 LOG_INFO(MOD_MAIN, "Game thread: zone load requested, creating snapshot...");
-                {
-                    std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
-                    m_zoneLoadSnapshot = m_eqClient->Bridge().CreateZoneLoadSnapshot();
-                }
-                LOG_INFO(MOD_MAIN, "Game thread: snapshot created (zone='{}', entities={}, doors={})",
-                         m_zoneLoadSnapshot.zoneName, m_zoneLoadSnapshot.entities.size(),
-                         m_zoneLoadSnapshot.doors.size());
-                m_zoneLoadReady.store(true, std::memory_order_release);
+                eqt::ZoneLoadSnapshot snap = m_eqClient->Bridge().CreateZoneLoadSnapshot();
+                const std::string zone = snap.zoneName;
+                const size_t entities = snap.entities.size();
+                const size_t doors = snap.doors.size();
+                const uint64_t gen = m_zoneLoadHandoff.post(std::move(snap));
+                LOG_INFO(MOD_MAIN, "Game thread: snapshot created (zone='{}', entities={}, doors={}, load #{})",
+                         zone, entities, doors, gen);
             }
 
-            // Pick up graphics complete signal from render thread
-            if (m_graphicsCompleteReady.load(std::memory_order_acquire)) {
-                LOG_INFO(MOD_MAIN, "Game thread: graphicsCompleteReady=true, finalizing zone load...");
-                if (m_eqClient) {
-                    {
-                        std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
-                        m_eqClient->Bridge().SetZoneBspTree(std::move(m_pendingBspTree), m_pendingBspTreeZone);
+            // Pick up the render thread's completed load. B917: only the load
+            // the game is WAITING for is finalised; one superseded by a later
+            // request, or finishing after the game began leaving its zone, is
+            // dropped (and its BSP tree with it) -- finalising it reported the
+            // destination zone "Ready!" with no graphics built.
+            if (m_zoneLoadHandoff.hasCompletion()) {
+                // The GRAPHICS_* phases are the ones between OnGameStateComplete()
+                // posting the request and OnGraphicsComplete(); a zone change
+                // resets the phase to the handshake ones below them.
+                const LoadingPhase phase = m_eqClient ? m_eqClient->GetLoadingPhase()
+                                                      : LoadingPhase::DISCONNECTED;
+                const bool awaiting =
+                    static_cast<int>(phase) >= static_cast<int>(LoadingPhase::GRAPHICS_LOADING_ZONE) &&
+                    phase != LoadingPhase::COMPLETE;
+                if (auto done = m_zoneLoadHandoff.takeApplicableCompletion(awaiting)) {
+                    LOG_INFO(MOD_MAIN, "Game thread: zone load #{} ('{}') complete, finalizing zone load...",
+                             done->generation, done->zoneName);
+                    if (m_eqClient) {
+                        m_eqClient->Bridge().SetZoneBspTree(std::move(done->bspTree), done->zoneName);
+                        m_eqClient->OnGraphicsComplete();
                     }
-                    m_eqClient->OnGraphicsComplete();
+                    LOG_INFO(MOD_MAIN, "Game thread: OnGraphicsComplete done");
                 }
-                // P04 (memory audit fix): the loading thread has been joined
-                // (checkLoadingComplete joins BEFORE setting the flag we just
-                // consumed), so nothing reads the snapshot anymore. Release its
-                // entity/door/zone-line copies now instead of holding them
-                // until the next zone's snapshot overwrites them.
-                {
-                    std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
-                    m_zoneLoadSnapshot = eqt::ZoneLoadSnapshot{};
-                }
-                m_graphicsCompleteReady.store(false, std::memory_order_release);
-                LOG_INFO(MOD_MAIN, "Game thread: OnGraphicsComplete done");
             }
 #endif
 

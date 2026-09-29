@@ -104,10 +104,20 @@ int main(int argc, char* argv[]) {
     // 2 timeout, 3 could-not-start. Read AFTER shutdown() on purpose: the
     // runner outlives the game mode, so a client stopped by anything other
     // than the runner itself (SIGTERM, /quit, an early camp) reports the
-    // unfinished-run code rather than a false 0. Every non-scenario run
-    // still returns 0 exactly as it did before this existed.
+    // unfinished-run code rather than a false 0.
+    // B918 (issue #237): a non-scenario run returns 0 for a clean /q, /camp,
+    // window close or SIGTERM, and kClientFatalExit (4) when it ended on a
+    // FATAL (the zone loading thread, LoadZoneSources()) -- which used to
+    // return 0 too. The one decision is eqt::scenario::ProcessExitCode()
+    // (scenario_runner.h).
+    const bool fatal = app.fatalShutdown();
+    exitCode = eqt::scenario::ProcessExitCode(
+        app.scenarioRequested(), app.scenarioRequested() ? app.scenarioExitCode() : 0, fatal);
+    if (fatal) {
+        LOG_FATAL(MOD_MAIN, "exiting {} after a FATAL: {}", exitCode, app.fatalShutdownReason());
+        std::cerr << "FATAL exit=" << exitCode << " reason=" << app.fatalShutdownReason() << "\n";
+    }
     if (app.scenarioRequested()) {
-        exitCode = app.scenarioExitCode();
         LOG_INFO(MOD_SCENARIO, "scenario '{}' -> exit {} ({}): {}",
             app.scenarioName(), exitCode,
             eqt::scenario::ScenarioExitCodeName(exitCode), app.scenarioReason());

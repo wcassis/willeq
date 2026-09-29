@@ -73,18 +73,25 @@ void Application::startLoadingThread() {
         return;
     }
 
+    // B917: take the posted snapshot OUT of the handoff. From here until
+    // checkLoadingComplete() releases it, m_activeLoadSnapshot is this load's
+    // private copy -- a zone change the game thread handles mid-load posts a
+    // new snapshot into the (now empty) handoff slot and never touches this.
+    if (!m_zoneLoadHandoff.take(m_activeLoadSnapshot, m_activeLoadGeneration)) {
+        return;
+    }
+    LOG_INFO(MOD_GRAPHICS, "startLoadingThread: zone load #{} for '{}'",
+             m_activeLoadGeneration, m_activeLoadSnapshot.zoneName);
+
     // T432 (board B275): zone-in is where the character name and the server
     // name are both known on this (the render) thread -- the snapshot the
     // game thread just published carries the name, and m_config carries the
     // server. Hand them to the renderer; its frame tick loads the saved
     // window states and camera mode on the next frame. Cheap and idempotent:
     // a re-zone hands over the same pair and the renderer ignores it.
-    {
-        std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
-        if (!m_zoneLoadSnapshot.playerName.empty()) {
-            m_renderer->setUiPreferencesIdentity(m_zoneLoadSnapshot.playerName,
-                                                 m_config.server);
-        }
+    if (!m_activeLoadSnapshot.playerName.empty()) {
+        m_renderer->setUiPreferencesIdentity(m_activeLoadSnapshot.playerName,
+                                             m_config.server);
     }
 
     // Extract GL handles while main thread still owns context
@@ -141,22 +148,35 @@ bool Application::checkLoadingComplete() {
         LOG_INFO(MOD_GRAPHICS, "checkLoadingComplete: loading thread signaled done, joining...");
         joinLoadingThread();
 
-        // Check if loading failed — if so, quit instead of finalizing
-        if (m_loadingStatus.quitRequested.load(std::memory_order_acquire)) {
-            LOG_FATAL(MOD_GRAPHICS, "checkLoadingComplete: loading thread failed — shutting down");
+        // Check if loading failed — if so, quit instead of finalizing.
+        // B918: recorded in the handoff, which main() reads to return
+        // kClientFatalExit instead of 0.
+        const bool failed = m_loadingStatus.quitRequested.load(std::memory_order_acquire);
+        std::shared_ptr<EQT::Graphics::BspTree> bsp;
+        if (!failed && m_renderer) {
+            LOG_INFO(MOD_GRAPHICS, "checkLoadingComplete: joined, extracting BSP tree...");
+            bsp = m_renderer->getZoneBspTree();
+        }
+        // D21b + B917: publish the completion for the game thread, tagged with
+        // THIS load's generation and the zone it actually built (T260's label,
+        // from the loader's own snapshot -- never from a slot a mid-load zone
+        // change can have overwritten).
+        const bool published = m_zoneLoadHandoff.finishLoad(
+            m_activeLoadGeneration, failed, m_activeLoadSnapshot.zoneName, std::move(bsp),
+            failed ? "zone loading thread failed for '" + m_activeLoadSnapshot.zoneName + "'"
+                   : std::string());
+        // P04: the snapshot's entity/door/zone-line copies are dead once the
+        // loader is joined; release them now rather than at the next load.
+        m_activeLoadSnapshot = eqt::ZoneLoadSnapshot{};
+
+        if (!published) {
+            LOG_FATAL(MOD_GRAPHICS, "checkLoadingComplete: loading thread failed — shutting down "
+                      "(B918: non-zero exit, {} outside --scenario)", eqt::scenario::kClientFatalExit);
             m_running.store(false);
             return true;
         }
-
-        LOG_INFO(MOD_GRAPHICS, "checkLoadingComplete: joined, extracting BSP tree...");
-        // D21b: Signal game thread to finalize (BSP tree + OnGraphicsComplete)
-        if (m_renderer) {
-            std::lock_guard<std::mutex> lock(m_zoneLoadMutex);
-            m_pendingBspTree = m_renderer->getZoneBspTree();
-            m_pendingBspTreeZone = m_zoneLoadSnapshot.zoneName;  // T260
-        }
-        LOG_INFO(MOD_GRAPHICS, "checkLoadingComplete: setting graphicsCompleteReady=true");
-        m_graphicsCompleteReady.store(true, std::memory_order_release);
+        LOG_INFO(MOD_GRAPHICS, "checkLoadingComplete: zone load #{} published for the game thread",
+                 m_activeLoadGeneration);
         return true;
     }
     return false;
@@ -165,14 +185,22 @@ bool Application::checkLoadingComplete() {
 void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status) {
     if (!m_renderer || !m_eqClient) {
         LOG_FATAL(MOD_GRAPHICS, "loadZoneGraphicsOnThread: renderer or eqClient is null");
+        status.quitRequested.store(true, std::memory_order_release);  // B918: never "ready"
         return;
     }
-    const auto& snap = m_zoneLoadSnapshot;
+    // B917: this load's PRIVATE snapshot (taken out of the handoff by
+    // startLoadingThread()). Until B917 this read the one shared member the
+    // game thread overwrote on a mid-load zone change and cleared when it
+    // finalised the previous load -- the ".s3d" / "qeynos.s3d" FATALs.
+    const auto& snap = m_activeLoadSnapshot;
     LOG_INFO(MOD_GRAPHICS, "loadZoneGraphicsOnThread: starting (zone='{}', entities={}, doors={}, player='{}')",
              snap.zoneName, snap.entities.size(), snap.doors.size(), snap.playerName);
 
     if (snap.zoneName.empty()) {
         LOG_FATAL(MOD_GRAPHICS, "loadZoneGraphicsOnThread: snapshot has empty zone name — aborting");
+        // B918: this used to return with quitRequested unset, so the game
+        // thread finalised a zone that had not been loaded at all.
+        status.quitRequested.store(true, std::memory_order_release);
         return;
     }
 

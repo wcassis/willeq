@@ -1,0 +1,2 @@
+host=dev-u24 commit=b1132c3f6473de884b10cfe2fc387ffe983aff00 lane=local
+start=charasis dest=qeynos cpus=0 client_rc=0

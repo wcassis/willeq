@@ -309,3 +309,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_self_death_sequence PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()
 GTEST_DISCOVER_TESTS(test_self_death_sequence DISCOVERY_TIMEOUT 120)
+
+# B917 (issue #236) + B918 (issue #237): a server-directed zone change that
+# lands DURING a zone load, and the exit code of a run that dies on a loader
+# FATAL. Drives eqt::ZoneLoadHandoff (include/client/zone_load_handoff.h) in
+# the order Application does, with a real loading thread that opens the zone
+# archive through the real S3DLoader. The destination-load case is asset-gated
+# (data/eq_client, or EQ_CLIENT_PATH; a FAIL under WILLEQ_REQUIRE_ASSETS=1);
+# the loader-failure and exit-code cases need nothing. No server, no device.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_load_handoff
+        test_zone_load_handoff.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_load_handoff PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_zone_load_handoff GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_load_handoff DISCOVERY_TIMEOUT 120)
+ENDIF()
