@@ -835,6 +835,30 @@ it without taking that measurement first.
   reports 63.5 MB, but `s3dZoneSourceBytes` fell only 16.7 MB for the whole
   release.
 
+- ~~**B927** (B) Two of Will's 2026-09-29 rulings had not been applied: "bless
+  iceclad and timorous" and "ratchet the zone_parse budget down".~~ **DONE
+  2026-09-29** (branch `task/B927-bless-and-zone-parse-ratchet`,
+  `refactor/B927/README.md`, `docs/decisions.md` 2026-09-29).
+  (1) The memory-coverage `characterModelsBytes` baselines iceclad 1,522,794
+  and timorous 1,465,276 are blessed as they stand. The manifest `note` no
+  longer attributes them to the 2026-09-23 bless that never happened
+  (e3a14c2a).
+  (2) `zone_parse` and `s3dZoneSourceMemoryBytes` go from 32 MiB to 14 MiB, and
+  the B803 pin holds. Derivation: the worst figure after the end-of-load
+  release, taken over a 118-zone census (`zone_parse_census.tsv`), the x86
+  client and the Pi client, is 11,714,736 B (x86 client, iceclad) × 1.25 →
+  14 MiB. The gate's iceclad reading is 77 % of the new budget.
+  **Three FINDINGS, each needing a GitLab issue (B-unassigned):**
+  (a) the gate asserts only the end-of-run point, while mid-load `zone_parse`
+  reaches 31.7 MB live and a 50.1 MB high-water mark in iceclad; both iceclad
+  and timorous are above even the old 32 MiB;
+  (b) growthplane `placeableObjectsBytes` is 28,687,788 against 24 MiB, a
+  zone the gate does not run;
+  (c) soldunga FATALs again on the EQE1 name `gnome_stronghold_floor_transition.bmp`,
+  which is #100/B910's defect.
+  The README carries a report-only table of every other budget against its
+  measured worst.
+
 - **B909** (A) The client binary's own memory ledger had never been measured, and
   its `spatial` is over budget (GitLab #229). **Measured 2026-09-29** on branch
   `task/B909-client-spatial-ledger` (`refactor/B909/README.md`). The live

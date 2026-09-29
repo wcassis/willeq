@@ -131,7 +131,11 @@ release the client runs at Step 13, through the same function,
 `S3DZone::releaseSourceAfterLoad()`. So the memory JSON's `s3dZoneSourceBytes`,
 `totalEstimate` and the ledger's `zone_parse` live bytes no longer count region
 source geometry and texture pixels the client has already freed. The
-parse-time high-water mark is still in each category's `peak`.
+parse-time high-water mark is still in each category's `peak`, but **no budget
+is asserted against `peak` or against any mid-load point**: every budget is
+checked once, at the end of the run. B927 derived the `zone_parse` budget from
+that point, and mid-load `zone_parse` is several times higher
+(`refactor/B927/README.md`).
 
 ## Reading a pipeline (worker or human)
 

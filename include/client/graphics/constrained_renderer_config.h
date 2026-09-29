@@ -152,9 +152,12 @@ struct ConstrainedRendererConfig {
     // 2026-09-17) a single category holding 32 MiB is itself the shrink work,
     // and the memory ledger's zone_parse/zone_mesh categories measure it at
     // the allocator rather than by this estimate.
-    // ⚠ The gate only applies this budget to the zones it RUNS (the three
-    // goldens + the memory-coverage zone), so no CI assertion covers iceclad
-    // today -- that is the open half of B803.
+    // B927 (2026-09-29, Will: "ratchet the zone_parse budget down"): 32 ->
+    // 14 MiB on the orangepi preset. Since B914 the gate measures after the
+    // end-of-load source release; the worst figure at that point over the 118
+    // era zones, the x86 client and the Pi client is 11.17 MiB (x86 client,
+    // iceclad), x 1.25 -> 14 MiB. The gate now runs iceclad (B813), so CI
+    // covers the worst zone. Derivation: constrained_renderer_config.cpp.
     size_t s3dZoneSourceMemoryBytes = 0;
 
     // GPU hardware buffers (VBO/EBO). Measured to be exactly the GPU mirror

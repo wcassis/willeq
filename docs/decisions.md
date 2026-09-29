@@ -1370,3 +1370,18 @@ on 2026-09-23. That bless was never given (the 2026-09-28 entry above), so the
 attribution was false. The values went down and the revert kept them. No value
 changed on 2026-09-29, no image golden moved, and the manifest `note` now
 records the true history. History was not rewritten.
+
+**Will, in chat: "ratchet the zone_parse budget down".** The orangepi
+`memoryLedgerBudgets.zone_parse` and `s3dZoneSourceMemoryBytes` go from 32 MiB
+to **14 MiB** (14,680,064 B). They stay pinned equal (B803): after B914 the two
+still track each other, with `zone_parse` 1.05–1.38× `s3dZoneSourceBytes` in
+all 117 measured zones. Derivation, by the in-tree rule (measured worst ×
+1.25, rounded up to a whole MiB): the worst figure at the point the gate
+asserts (end of run, after the end-of-load source release) is the x86 client's
+iceclad, 11,714,736 B (B909). That was taken over a new 118-zone census
+(`refactor/B927/zone_parse_census.tsv`, benchmark worst iceclad 11,329,968 B),
+the x86 client and the Pi client (B854: iceclad 9.8 MiB).
+11,714,736 × 1.25 = 13.97 MiB → 14 MiB. The budget bounds what a zone KEEPS;
+mid-load `zone_parse` reaches 31.7 MB live and a 50.1 MB high-water mark
+(iceclad) and is not asserted. That is an open finding
+(`refactor/B927/README.md`). No other budget changed.

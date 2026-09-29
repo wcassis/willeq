@@ -29,6 +29,10 @@
 # --objects / --entities / --test-races) with a fixed tiny frame count, so
 # the run loads the whole zone plus its objects and a handful of character
 # models and renders a few frames -- content, not a performance benchmark.
+# B927: each zone's memory JSON (the same file visual_gate.py asserts the
+# budgets against) is kept beside its log as logs/<zone>.mem.json, so the
+# per-category ledger live bytes at the asserted point and s3dZoneSourceBytes
+# can be tabulated for every zone (refactor/B927/zone_parse_census.py).
 #
 # Watchdog: a child that stops writing to its log for WATCHDOG_S seconds is
 # presumed dead/hung (the process-level timeout alone cannot catch a zone
@@ -149,6 +153,7 @@ run_one() {
         --entities "$ENTITIES" \
         --test-races "$RACES" \
         --occluder-budget "$OCCLUDER_BUDGET" \
+        --memory-json "$OUT_DIR/logs/$zone.mem.json" \
         --log-level=INFO \
         > "$log" 2>&1 &
     local child=$!
