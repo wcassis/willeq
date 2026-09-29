@@ -282,6 +282,12 @@ not committed) takes `zone_parse` iceclad 31.7 → 11.3 MB, timorous 25.9 → 5.
 qeynos2 → 0.67, gfaydark → 0.76, befallen → 1.2 — but it lowers the
 exact-match `s3dZoneSourceBytes` and `totalEstimate` baselines in all five
 zones, so it is a bless decision for Will, not taken here.
+**Superseded 2026-09-29 by B914 (`refactor/B914/README.md`):** Will approved
+the change. The benchmark now calls the client's Step-13 release through one
+shared function, `S3DZone::releaseSourceAfterLoad()`. The measured values are
+the ones above (iceclad 11,329,984 B, timorous 5,529,168 B). The "baselines"
+premise was wrong: the committed manifest never blessed `s3dZoneSourceBytes`
+or `totalEstimate`, so no manifest field moved.
 
 **zone_mesh, `WILLEQ_LEDGER_OWNERS=zone_mesh`** (new `zm.*` labels in
 `zone_bench_loader.cpp`), coverage run, before → after:
