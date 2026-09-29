@@ -214,8 +214,11 @@ def cmd_table(a):
             at = {n: (last_point(points, n, zone) or (None, None, None))[2] for n in POINTS}
             pt_max = max([p[2] for p in points if p[1] == zone] or [0])
             peak = max(samples + [pt_max]) if (samples or pt_max) else 0
+            gpu = {n: ((last_point(points, n, zone) or (None, None, None, {}))[3].get("gpu_driver", (0, 0))[0])
+                   for n in ("ready", "steady_60s")}
             rss_rows.append((zone, mode, peak, max(samples or [0]), pt_max,
-                             at["zone_load_complete"], at["ready"], at["steady_60s"], len(samples)))
+                             at["zone_load_complete"], at["ready"], at["steady_60s"], len(samples),
+                             gpu["ready"], gpu["steady_60s"]))
             peaks.setdefault(zone, []).append(rss_rows[-1])
             for point, owner, live, blocks in owners:
                 if point in POINTS:
@@ -236,7 +239,8 @@ def cmd_table(a):
     w("owners.tsv", ["zone", "run", "point", "owner", "live", "blocks"], ow_rows)
     w("trace.tsv", ["zone", "run", "point", "site", "live", "blocks", "first_frame", "stack"], tr_rows)
     w("rss.tsv", ["zone", "run", "peak_rss_anon", "peak_sampled", "peak_at_points",
-                  "rss_anon_zone_load_complete", "rss_anon_ready", "rss_anon_steady_60s", "samples"], rss_rows)
+                  "rss_anon_zone_load_complete", "rss_anon_ready", "rss_anon_steady_60s", "samples",
+                  "gpu_driver_ready", "gpu_driver_steady_60s"], rss_rows)
 
     md = []
     md.append(f"Source: `{run}` (client), `{a.bench}` (benchmark). Client value = the LARGEST of "
@@ -270,12 +274,13 @@ def cmd_table(a):
                       f"{pct(st)} | {fmt(spread)} | {fmt(bench)} | {pct(bench)} | "
                       f"{fmt(st - bench) if (st is not None and bench is not None) else 'n/a'} |")
         md.append("\n| run | peak RssAnon (2 s samples + points) | zone_load_complete | ready | steady_60s | "
-                  "peak vs 64 MB | peak vs 256 MB |")
-        md.append("|---|---:|---:|---:|---:|---:|---:|")
+                  "peak vs 64 MB | peak vs 256 MB | gpu_driver ready | gpu_driver steady_60s |")
+        md.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
         for r in peaks.get(zone, []):
             md.append(f"| {r[1]} | {r[2]:,} ({r[2] / MIB:.1f} MiB) | {r[5] or 0:,} | {r[6] or 0:,} | "
                       f"{r[7] or 0:,} | {'+' if r[2] > TARGET else ''}{(r[2] - TARGET) / MIB:.1f} MiB | "
-                      f"{'OVER' if r[2] > CEILING else 'under'} by {abs(r[2] - CEILING) / MIB:.1f} MiB |")
+                      f"{'OVER' if r[2] > CEILING else 'under'} by {abs(r[2] - CEILING) / MIB:.1f} MiB | "
+                      f"{r[9]:,} | {r[10]:,} |")
         for (z, mode), by_point in sorted(owner_tab.items()):
             if z != zone:
                 continue

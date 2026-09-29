@@ -835,6 +835,47 @@ it without taking that measurement first.
   reports 63.5 MB, but `s3dZoneSourceBytes` fell only 16.7 MB for the whole
   release.
 
+- **B909** (A) The client binary's own memory ledger had never been measured, and
+  its `spatial` is over budget (GitLab #229). **Measured 2026-09-29** on branch
+  `task/B909-client-spatial-ledger` (`refactor/B909/README.md`). The live
+  rendered client ran under the orangepi preset with `WILLEQ_BASELINE=1` on the
+  eqemu VM lane, in gfaydark, dreadlands, iceclad and timorous.
+  `scripts/client_ledger_capture.sh` + `scripts/client_ledger_table.py`.
+  Client `spatial` was 8.49 / 9.35 / 8.13 / 13.76 MB against a 4 MiB budget.
+  The benchmark, which is what the gate measures, reported 0.62–3.02 MB.
+  **Collision copy FIXED here:** a pooled zone's collision triangles are read
+  from the zone draw pools instead of copied (`RegionWorldTriangles`,
+  `test_region_world_triangles`, bit-identical ray results). That frees
+  2.8–8.6 MB per zone. `spatial` after: gfaydark 5,674,240 (135 %),
+  dreadlands 4,194,576 (over by 272 B), iceclad 2,152,000 (51 %), timorous
+  5,162,576 (123 %). Every other budgeted category is inside its budget in all
+  four zones. **STILL OPEN**, each needs a GitLab issue:
+  1. **(B-unassigned, needs a GitLab issue)** `sp.object_tris`,
+     `ctx_.objectWorldTriangles`: placeable objects' triangles pre-transformed
+     per instance, 36 B per triangle. 5.26 MB in gfaydark, 3.76 MB in
+     dreadlands and timorous. It is the largest remaining `spatial` owner. A
+     held-once form transforms at query time, so its arithmetic differs from
+     today's; bit-identical collision is not automatic.
+  2. **(B-unassigned, needs a GitLab issue)** `sp.region_bounds`,
+     `ctx_.regionBoundingBoxes`, is a `std::map<size_t, aabbox3df>` with one
+     node per region: 1.72 MB in iceclad and 1.27 MB in timorous. A sorted
+     flat array would be about 24 B per region plus the index.
+  3. **(B-unassigned, needs a GitLab issue)** the gate cannot see any of this.
+     The benchmark builds neither collision copy, and it charges the occluder
+     table to `spatial` where the client charges it to `zone_mesh`. The
+     proposed net is `ClientLedgerLive` (label `live`, `tests/cmake/commands.cmake`).
+  4. **(B-unassigned, needs a GitLab issue)** `gpu_driver` (llvmpipe) grows
+     after `ready` by a different amount in each run, up to 325.5 MB at
+     `steady_60s`. In one smoke run it reached 2.42 GB (about 0.9 MB per frame
+     for 50 s, then a plateau). RssAnon peaks above the 256 MB failing bound in
+     8 of 16 client runs. Unexplained. x86 only so far; the Pi is not measured.
+  5. **(B-unassigned, needs a GitLab issue)** the iceclad zone link drops on
+     every run. The client logs "Zone connection lost" 72–75 s after launch,
+     after UDP sends to the zone port are refused. `/q` is then held until the
+     rig's 330 s deadline. Cause not investigated.
+  6. The Orange Pi table for all of the above is owed (`docs/decisions.md`
+     2026-09-17).
+
 - ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage
   run (gfaydark, 5 races, objects + EQE1) — on its own larger than Will's
