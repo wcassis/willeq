@@ -93,6 +93,26 @@ size_t estimateMeshSizeBytes(irr::scene::IMeshSceneNode* node) {
     return total;
 }
 
+size_t finishMeshBuffer(irr::scene::SMeshBuffer* buffer) {
+    if (!buffer) return 0;
+    const size_t slack =
+        (buffer->Vertices.allocated_size() - buffer->Vertices.size()) * sizeof(irr::video::S3DVertex) +
+        (buffer->Indices.allocated_size() - buffer->Indices.size()) * sizeof(irr::u16);
+    buffer->Vertices.reallocate(buffer->Vertices.size());
+    buffer->Indices.reallocate(buffer->Indices.size());
+    buffer->recalculateBoundingBox();
+    return slack;
+}
+
+size_t finishMesh(irr::scene::SMesh* mesh) {
+    if (!mesh) return 0;
+    const size_t slack =
+        (mesh->MeshBuffers.allocated_size() - mesh->MeshBuffers.size()) * sizeof(irr::scene::IMeshBuffer*);
+    mesh->MeshBuffers.reallocate(mesh->MeshBuffers.size());
+    mesh->recalculateBoundingBox();
+    return slack;
+}
+
 
 namespace {
 // T408 (B110): unpack the WLD's baked per-vertex light into an Irrlicht vertex
@@ -187,12 +207,12 @@ irr::scene::IMesh* ZoneMeshBuilder::buildMesh(const ZoneGeometry& geometry) {
             buffer->Indices.push_back(globalToLocal[tri.v3]);
         }
 
-        buffer->recalculateBoundingBox();
+        finishMeshBuffer(buffer);  // B904: exact-size arrays
         mesh->addMeshBuffer(buffer);
         buffer->drop();
     }
 
-    mesh->recalculateBoundingBox();
+    finishMesh(mesh);  // B904
     return mesh;
 }
 
@@ -268,12 +288,12 @@ irr::scene::IMesh* ZoneMeshBuilder::buildColoredMesh(const ZoneGeometry& geometr
             buffer->Indices.push_back(globalToLocal[tri.v3]);
         }
 
-        buffer->recalculateBoundingBox();
+        finishMeshBuffer(buffer);  // B904: exact-size arrays
         mesh->addMeshBuffer(buffer);
         buffer->drop();
     }
 
-    mesh->recalculateBoundingBox();
+    finishMesh(mesh);  // B904
     return mesh;
 }
 
@@ -590,13 +610,13 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                 }
             }
 
-            buffer->recalculateBoundingBox();
+            finishMeshBuffer(buffer);  // B904: exact-size arrays
             mesh->addMeshBuffer(buffer);
             buffer->drop();
         }
     }
 
-    mesh->recalculateBoundingBox();
+    finishMesh(mesh);  // B904
     return mesh;
 }
 
@@ -743,13 +763,13 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMeshFromUploaded(
                 }
             }
 
-            buffer->recalculateBoundingBox();
+            finishMeshBuffer(buffer);  // B904: exact-size arrays
             mesh->addMeshBuffer(buffer);
             buffer->drop();
         }
     }
 
-    mesh->recalculateBoundingBox();
+    finishMesh(mesh);  // B904
     return mesh;
 }
 
@@ -887,7 +907,7 @@ irr::scene::IMesh* ZoneMeshBuilder::buildCompositeMesh(
 
                 if (buffer->Vertices.size() >= 65535) {
                     // Hit 16-bit index limit — finalize this buffer and start a new one
-                    buffer->recalculateBoundingBox();
+                    finishMeshBuffer(buffer);  // B904: exact-size arrays
                     mesh->addMeshBuffer(buffer);
                     buffer->drop();
 
@@ -939,7 +959,7 @@ irr::scene::IMesh* ZoneMeshBuilder::buildCompositeMesh(
     }
 
     if (buffer->Vertices.size() > 0) {
-        buffer->recalculateBoundingBox();
+        finishMeshBuffer(buffer);  // B904: exact-size arrays
         mesh->addMeshBuffer(buffer);
     }
     buffer->drop();
@@ -949,7 +969,7 @@ irr::scene::IMesh* ZoneMeshBuilder::buildCompositeMesh(
                   unmappedTriangles);
     }
 
-    mesh->recalculateBoundingBox();
+    finishMesh(mesh);  // B904
     LOG_DEBUG(MOD_GRAPHICS, "ZoneMeshBuilder::buildCompositeMesh: built mesh with {} buffers, {} total vertices",
               mesh->getMeshBufferCount(),
               mesh->getMeshBufferCount() > 0 ? mesh->getMeshBuffer(0)->getVertexCount() : 0);

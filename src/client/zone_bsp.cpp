@@ -6,6 +6,7 @@
 #include "client/zone_bsp.h"
 #include "common/logging.h"
 
+#include <algorithm>
 #include <array>
 #include <mutex>
 #include <unordered_map>
@@ -236,6 +237,20 @@ size_t BspRegion::pvsMemoryBytes() const {
         if (it != pvsStore_->pinned.end()) total += sizeof(std::vector<bool>) + (it->second->capacity() + 7) / 8;
     }
     return total;
+}
+
+std::shared_ptr<BspRegion> BspRegionPool::next() {
+    if ((!slab_ || used_ == slab_->size()) && remaining_ > 0) {
+        const size_t n = std::min(remaining_, kSlabRegions);
+        slab_ = std::make_shared<std::vector<BspRegion>>(n);
+        used_ = 0;
+        remaining_ -= n;
+    }
+    if (slab_ && used_ < slab_->size()) {
+        // Aliasing constructor: shares the slab's ownership, points at a slot.
+        return std::shared_ptr<BspRegion>(slab_, &(*slab_)[used_++]);
+    }
+    return std::make_shared<BspRegion>();
 }
 
 BspTree::BspTree() : pvsStore_(std::make_shared<PvsStore>()) {}

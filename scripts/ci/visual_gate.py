@@ -1094,15 +1094,14 @@ def select_zones(manifest, names):
     """B813 revert (Will, 2026-09-28): verify only the named subset of the
     manifest's zones, in BOTH the golden-image list and memoryCoverage.zones.
 
-    This is how .gitlab-ci.yml splits the gate into the blocking `gate` job
-    (the three classic zones) and the non-blocking `gate-kunark-velious` job
-    (iceclad + timorous, which overrun the zone_parse / zone_mesh ledger
-    budgets -- open defects,
-    docs/decisions.md 2026-09-28). It selects zones; it changes NO budget,
+    .gitlab-ci.yml's one blocking `gate` job names all five manifest zones
+    (from 2026-09-28 until B903/B904 fixed their overruns on 2026-09-29,
+    iceclad + timorous ran in a separate non-blocking job; docs/decisions.md
+    2026-09-28). It selects zones; it changes NO budget,
     NO baseline and NO assertion for a zone it runs. An unknown name is an
     error, never a silent no-op, and scripts/ci/test_visual_gate_ledger.py
-    checks that the two CI jobs' --zones lists partition the manifest's
-    zones exactly, so no zone can drop out of CI by editing one list.
+    checks that the CI job's --zones list equals the manifest's zones
+    exactly, so no zone can drop out of CI by editing the list.
 
     Returns (filtered_manifest, skipped_zone_names). Raises ValueError.
     """

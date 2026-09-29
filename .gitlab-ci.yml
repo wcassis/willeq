@@ -167,17 +167,13 @@ test:
 # assertion is load-sensitive (see tests/cmake/eqe1.cmake), so the retry is
 # inside the script: up to 3 attempts, and the gate must pass one of them.
 #
-# B813 revert (Will, 2026-09-28; docs/decisions.md): the manifest's zones are
-# split across TWO jobs by visual_gate.py --zones. `gate` (blocking) runs the
-# three classic zones exactly as before. `gate-kunark-velious` runs iceclad +
-# timorous with the SAME assertions and the SAME budgets, and is
-# allow_failure: true because those two zones overrun two ledger budgets
-# (iceclad zone_parse, timorous zone_mesh; their spatial overruns were fixed
-# in code 2026-09-28) -- open defects to be fixed in code, NOT
-# budgets to raise. Its red is visible on every pipeline but does not block.
-# No waiver list, no per-zone budget: the two --zones lists below must
-# partition the manifest's zones exactly (checked by the hygiene test
-# VisualGateLedgerAssertions, scripts/ci/test_visual_gate_ledger.py).
+# B813 revert (Will, 2026-09-28; docs/decisions.md): budgets ratchet down
+# only. iceclad and timorous ran in a separate allow_failure job while they
+# overran two ledger budgets; B903/B904 (2026-09-29) fixed both in code, so the
+# ONE blocking job runs all five manifest zones again. --zones stays explicit:
+# the list must equal the manifest's zones exactly (checked by the hygiene test
+# VisualGateLedgerAssertions, scripts/ci/test_visual_gate_ledger.py). No waiver
+# list, no per-zone budget.
 .visual_gate_prepare:
   script:
     # visual_gate.py needs PIL; hermes-ext's python3.12 has no Pillow and no
@@ -208,7 +204,7 @@ gate:
       set +e
       for attempt in 1 2 3; do
         echo "=== visual_gate attempt $attempt/3 ==="
-        nice -n 10 bash scripts/ci/visual_gate.sh --zones qeynos2,gfaydark,befallen 2>&1 | tee -a gate.log
+        nice -n 10 bash scripts/ci/visual_gate.sh --zones qeynos2,gfaydark,befallen,iceclad,timorous 2>&1 | tee -a gate.log
         rc=${PIPESTATUS[0]}
         [ "$rc" -eq 0 ] && break
         echo "attempt $attempt failed (rc=$rc)" | tee -a gate.log
@@ -220,22 +216,3 @@ gate:
     paths:
       - gate.log
       - build-gles2/ci_artifacts/
-
-# NON-BLOCKING by Will's 2026-09-28 ruling (see the block above `gate`). One
-# attempt: its known failures are deterministic ledger overruns, so a retry
-# only triples the wall time. Same stage as `gate`; the runner is concurrent=1,
-# so the two run one after the other against the same warm build-gles2/ (the
-# second one's incremental build is a no-op). build-gles2/ci_artifacts/ is
-# shared and not collected here -- the log carries every overrun line.
-gate-kunark-velious:
-  extends: .goldfarm
-  stage: gate
-  allow_failure: true
-  script:
-    - !reference [.visual_gate_prepare, script]
-    - nice -n 10 bash scripts/ci/visual_gate.sh --zones iceclad,timorous 2>&1 | tee gate-kunark-velious.log
-  artifacts:
-    when: always
-    expire_in: 7 days
-    paths:
-      - gate-kunark-velious.log
