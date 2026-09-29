@@ -778,10 +778,13 @@ it without taking that measurement first.
   (`docs/ci.md`). **Four OPEN DEFECTS, fix in code — NEED GITLAB ISSUES
   (not filed by the reverting card).** Live bytes measured 2026-09-28 on the
   revert branch (`refactor/B813/README.md` "2026-09-28"):
-  1. **iceclad `zone_parse` over budget**: 33,925,296 B vs 33,554,432
-     (+1.11 %). The allocator charges more to the parse than the 24.55 MiB
-     S3D-source estimate the budget is pinned to (B803). Find the ~0.35 MiB
-     and cut it, or show that the estimate is short and fix the estimate.
+  1. ~~**iceclad `zone_parse` over budget**: 33,925,296 B vs 33,554,432
+     (+1.11 %).~~ **FIXED 2026-09-29 (B903, #223): 31,673,040 B (94 %).**
+     One heap block per BSP region (37,609) + a doubling-grown handle array;
+     now 1,024-region slabs (`BspRegionPool`, `zone_bsp.h`) and an exact
+     reserve. 55 % of what remains (18.8 MB) is per-region source geometry the
+     CLIENT frees at Step 13 but the benchmark never does -- releasing it moves
+     the baselined `s3dZoneSourceBytes`, so it waits on Will (#5 below).
   2. ~~**iceclad `spatial` over budget**: 8,682,512 B vs 4,194,304 (2.07×).
      e3a14c2a's message did not list this one; its 12 MiB raise covered it
      silently.~~ **FIXED 2026-09-28 (branch `task/spatial-budget-overrun`):
@@ -790,9 +793,10 @@ it without taking that measurement first.
      benchmark's copy of the loop kept each vector's pre-truncation capacity),
      not BSP or collision data. See #4 and `refactor/B813/README.md`
      "2026-09-28 — spatial fixed".
-  3. **timorous `zone_mesh` over budget**: 29,415,360 B vs 29,360,128
-     (+0.19 %). Post-T504 the mesh build is a hair over. Look first for a
-     transient or duplicate in the mesh build.
+  3. ~~**timorous `zone_mesh` over budget**: 29,415,360 B vs 29,360,128
+     (+0.19 %).~~ **FIXED 2026-09-29 (B904, #224): 23,586,688 B (80 %).**
+     Irrlicht `core::array` push_back growth slack kept in every finished mesh
+     buffer; `finishMeshBuffer()`/`finishMesh()` (`zone_geometry.h`) fit them.
   4. ~~**timorous `spatial` over budget**: 11,606,448 B vs 4,194,304 (2.77×).
      With #2: the BSP/PVS structures scale with region count (iceclad has
      37,609 regions), and the budget came from zones that do not exercise
@@ -802,8 +806,16 @@ it without taking that measurement first.
      holds a zone's occluders in three flat arrays, and both zone loaders
      select them through one body (`region_occluders.h`);
      `test_region_occluders` pins 40 B/triangle + 8 B/region and the shared
-     call. iceclad and timorous stay in `gate-kunark-velious` until #1 and #3
-     are fixed too.
+     call. With #1 and #3 fixed (2026-09-29) iceclad and timorous are back in
+     the one blocking `gate` job and `gate-kunark-velious` is gone.
+  5. (C, *measured*, NEEDS A GITLAB ISSUE -- no B number allocated) the benchmark never runs the client's Step-13
+     release (`releaseTexturePixelData`, `releasePostLoadData`,
+     `releaseRegionGeometry`), so its `zone_parse` holds a second copy of every
+     region's source geometry the client drops: iceclad 31.7 → 11.3 MB,
+     timorous 25.9 → 5.5 MB when mirrored (experiment, not committed). It
+     lowers the exact-match `s3dZoneSourceBytes`/`totalEstimate` baselines in
+     all five zones, so it needs Will's bless. `refactor/B813/README.md`
+     "2026-09-29".
 
 - ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage

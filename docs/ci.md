@@ -57,8 +57,7 @@ hermes-ext worker therefore runs a Pi leg entirely over ssh — NFS paths exist 
 | `build` | the Release recipe from `CLAUDE.md`, `-j8` | 1,237 s (20.6 min) | 6 s |
 | `test` | full `ctest -j6`, minus two cases, then one of them with retries | 116 s (4,908 tests) | 116 s |
 | `gate` | `visual_gate` (T80/T291) over `build-gles2/bin/gles2_zone_benchmark` | 363 s | 18 s |
-| | B813 (2026-09-20): the manifest names FIVE zones (qeynos2, gfaydark, befallen + iceclad + timorous). Since 2026-09-28 `gate` verifies only the three classic ones (`--zones`) | — | 40 s for all five in one job (measured back-to-back on a quiet hermes-ext: 10.6 s wall for three zones, 19.6 s wall for five; +9.0 s wall) |
-| `gate-kunark-velious` | the same `visual_gate` over iceclad + timorous, **`allow_failure: true`**, one attempt (2026-09-28) | — | not yet measured as its own job |
+| | B813 (2026-09-20): the manifest names FIVE zones (qeynos2, gfaydark, befallen + iceclad + timorous); `gate` verifies all five (`--zones`, B903/B904 2026-09-29) | — | 40 s for all five in one job (measured back-to-back on a quiet hermes-ext: 10.6 s wall for three zones, 19.6 s wall for five; +9.0 s wall) |
 
 (T502's own measurements on hermes-ext; `test` does the same work either way —
 only the two build trees are warm or cold. A cold `gate` includes building the
@@ -101,20 +100,15 @@ the job has to install for itself: hermes-ext's `python3` is 3.12 with no PIL an
   host's existing `~/.venvs/ci` (3.11) driving the 3.12 interpreter, and exports
   `PYTHONPATH`. It is a no-op on every later run.
 
-**`gate-kunark-velious` IS `allow_failure: true`, and that is the only
-non-blocking gate** (Will, 2026-09-28; `docs/decisions.md`). The manifest's
-five zones are split by `visual_gate.py --zones`: `gate` verifies qeynos2,
-gfaydark and befallen exactly as before B813; `gate-kunark-velious` verifies
-iceclad and timorous with the **same** assertions and the **same** budgets.
-Those two zones overrun two ledger budgets (iceclad `zone_parse`, timorous
-`zone_mesh`; `refactor/B813/README.md` — their `spatial` overruns were fixed
-in code on 2026-09-28), which are open defects
-to be fixed in code — a raise of those budgets was reversed on 2026-09-28. So a
-pipeline shows that job red (a yellow "!" in GitLab) and still passes. When a
-fix makes it green, move the zone back into `gate`'s `--zones` list; never
-widen a budget to get there. `--zones` only selects zones — there is no waiver
-list and no per-zone budget — and the hygiene test `VisualGateLedgerAssertions`
-fails unless the two jobs' lists partition the manifest's zones exactly.
+**The gate is one blocking job over all five manifest zones.** From
+2026-09-28 to 2026-09-29 iceclad and timorous ran in a separate
+`allow_failure` job, `gate-kunark-velious`, while they overran two ledger
+budgets (iceclad `zone_parse`, timorous `zone_mesh`; `refactor/B813/README.md`).
+B903/B904 fixed both in code and removed that job — the budgets were never
+widened (Will, 2026-09-28; `docs/decisions.md`). `--zones` only selects zones —
+there is no waiver list and no per-zone budget — and the hygiene test
+`VisualGateLedgerAssertions` fails unless the job's one list equals the
+manifest's zones exactly and the job blocks.
 
 ## Reading a pipeline (worker or human)
 
@@ -133,8 +127,7 @@ the log over REST, which is also the only way to get a failing job's output:
 
 Each job also uploads its logs as artifacts, kept **7 days**: `hygiene-ctest.log`,
 `ctest.log` + `build/Testing/Temporary/LastTest.log`, `gate.log` +
-`build-gles2/ci_artifacts/` (the gate's diff images), and
-`gate-kunark-velious.log`.
+`build-gles2/ci_artifacts/` (the gate's diff images).
 
 ## Scope: which pushes build
 
@@ -212,8 +205,8 @@ frames. Never re-bless goldens to make CI green.
 
 ## The zone-content sweep (B852, issue #98)
 
-The blocking `gate` renders three classic zones and the non-blocking
-`gate-kunark-velious` two more (iceclad, timorous). Will's 2026-09-20 ruling
+The blocking `gate` renders five zones: three classic ones plus iceclad and
+timorous. Will's 2026-09-20 ruling
 (`docs/decisions.md`): "velious and kunark zones are part of the willeq target,
 so we need to verify that content works." The zone set behind that ruling is
 the 118-zone T490 census (`refactor/T490_every_classic_zone_fits_the_pi.md`:
