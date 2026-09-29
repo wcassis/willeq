@@ -440,7 +440,7 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (19 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
+`hygiene` (20 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
 reachability ratchet), T450's `DbReproducible`, T455's
@@ -472,6 +472,14 @@ TSVs) and B908's `BoardDirNumbers`
 (`scripts/refactor/check_board_dir_numbers.py`, the refactor/B###/-directory-
 vs-BOARD.md-header collision net — a directory's declared subject must share
 a keyword with every BOARD.md header naming its number; pure source/doc scan)
+and B907's `CheckBuildTreeOrphansPrune`
+(`scripts/ci/test_check_build_tree_orphans.py`, the regression net for
+`check_build_tree_orphans.py --prune` — the CI warm-tree orphan prune added to
+stop one branch's leftover binary failing the NEXT branch's pipeline; asserts
+an orphan is removed, a claimed binary is kept, a non-build-tree and an
+escaping `bin/` are both refused untouched, and nothing outside `<build>/bin/`
+is ever touched; pure Python against a hand-built fake CMake file-API reply,
+no real `cmake` invocation)
 -- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two
