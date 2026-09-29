@@ -1067,7 +1067,11 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudget
     // the three golden zones; T490 then MEASURED iceclad's S3D zone source at
     // 24.55 MiB, over the old budget on its own. Re-derived on that measured
     // worst case x 1.25 headroom = 30.7 -> 32 MiB (constrained_renderer_config.h).
-    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(32) * 1024 * 1024);
+    // B927 (2026-09-29, Will: "ratchet the zone_parse budget down"): 32 -> 14
+    // MiB. Worst after the end-of-load release over the 118 era zones, the x86
+    // client and the Pi client: 11,714,736 B (x86 client, iceclad) x 1.25 =
+    // 13.97 -> 14 MiB (refactor/B927/README.md).
+    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(14) * 1024 * 1024);
     EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
@@ -1083,7 +1087,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudget
     };
     EXPECT_EQ(ledgerBudget(Category::Unattributed),    static_cast<size_t>(1) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Archives),        static_cast<size_t>(4) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::ZoneParse),       static_cast<size_t>(32) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::ZoneParse),       static_cast<size_t>(14) * 1024 * 1024);  // B927
     EXPECT_EQ(ledgerBudget(Category::ZoneMesh),        static_cast<size_t>(28) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Spatial),         static_cast<size_t>(4) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(20) * 1024 * 1024);
@@ -1145,7 +1149,11 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     // the three golden zones; T490 then MEASURED iceclad's S3D zone source at
     // 24.55 MiB, over the old budget on its own. Re-derived on that measured
     // worst case x 1.25 headroom = 30.7 -> 32 MiB (constrained_renderer_config.h).
-    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(32) * 1024 * 1024);
+    // B927 (2026-09-29, Will: "ratchet the zone_parse budget down"): 32 -> 14
+    // MiB. Worst after the end-of-load release over the 118 era zones, the x86
+    // client and the Pi client: 11,714,736 B (x86 client, iceclad) x 1.25 =
+    // 13.97 -> 14 MiB (refactor/B927/README.md).
+    EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(14) * 1024 * 1024);
     EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
@@ -1161,7 +1169,7 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     };
     EXPECT_EQ(ledgerBudget(Category::Unattributed),    static_cast<size_t>(1) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Archives),        static_cast<size_t>(4) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::ZoneParse),       static_cast<size_t>(32) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::ZoneParse),       static_cast<size_t>(14) * 1024 * 1024);  // B927
     EXPECT_EQ(ledgerBudget(Category::ZoneMesh),        static_cast<size_t>(28) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Spatial),         static_cast<size_t>(4) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(20) * 1024 * 1024);

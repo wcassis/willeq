@@ -1,0 +1,2107 @@
+zone	category	budget	asserted_live	peak_high_water
+stonebrunt	unattributed	1048576	86208	86208
+stonebrunt	archives	4194304	1327952	1329360
+stonebrunt	zone_parse	33554432	4945856	20580912
+stonebrunt	zone_mesh	29360128	8030976	8059936
+stonebrunt	spatial	4194304	1239488	3485520
+stonebrunt	textures_decoded	20971520	136704	136912
+stonebrunt	entity_models	88080384	4320784	23850224
+stonebrunt	objects	41943040	2135904	22347296
+stonebrunt	audio	33554432	0	0
+stonebrunt	estimate:s3dZoneSourceBytes		4650451	
+stonebrunt	estimate:zoneGeometryBytes		4390356	
+stonebrunt	estimate:placeableObjectsBytes		1685208	
+stonebrunt	estimate:characterModelsBytes		1445267	
+stonebrunt	estimate:gpuTextureBytes		12947160	
+stonebrunt	estimate:vboEboBytes		6174798	
+stonebrunt	estimate:textureCacheBytesUsed		8610536	
+stonebrunt	estimate:eqe1MappedBytes		133498504	
+stonebrunt	estimate:totalEstimate		35133240	
+thurgadina	unattributed	1048576	86208	86208
+thurgadina	archives	4194304	1378592	1380000
+thurgadina	zone_parse	33554432	2731200	17375104
+thurgadina	zone_mesh	29360128	11165296	11198352
+thurgadina	spatial	4194304	608496	1686928
+thurgadina	textures_decoded	20971520	316432	316640
+thurgadina	entity_models	88080384	4193008	23848384
+thurgadina	objects	41943040	6465104	26879280
+thurgadina	audio	33554432	0	0
+thurgadina	estimate:s3dZoneSourceBytes		2465800	
+thurgadina	estimate:zoneGeometryBytes		3738018	
+thurgadina	estimate:placeableObjectsBytes		4991562	
+thurgadina	estimate:characterModelsBytes		1445267	
+thurgadina	estimate:gpuTextureBytes		10179160	
+thurgadina	estimate:vboEboBytes		8828814	
+thurgadina	estimate:textureCacheBytesUsed		6808280	
+thurgadina	estimate:eqe1MappedBytes		133436600	
+thurgadina	estimate:totalEstimate		35488621	
+freporte	unattributed	1048576	86208	86208
+freporte	archives	4194304	1351456	1352848
+freporte	zone_parse	33554432	3009792	15870288
+freporte	zone_mesh	29360128	10580048	10595536
+freporte	spatial	4194304	826560	2148672
+freporte	textures_decoded	20971520	177552	177760
+freporte	entity_models	88080384	4429056	23852064
+freporte	objects	41943040	6022704	24997136
+freporte	audio	33554432	0	0
+freporte	estimate:s3dZoneSourceBytes		2729113	
+freporte	estimate:zoneGeometryBytes		3692610	
+freporte	estimate:placeableObjectsBytes		3972936	
+freporte	estimate:characterModelsBytes		1477498	
+freporte	estimate:gpuTextureBytes		10148048	
+freporte	estimate:vboEboBytes		7764780	
+freporte	estimate:textureCacheBytesUsed		10036064	
+freporte	estimate:eqe1MappedBytes		131326780	
+freporte	estimate:totalEstimate		33624985	
+runnyeye	unattributed	1048576	86208	86208
+runnyeye	archives	4194304	1296096	1297504
+runnyeye	zone_parse	33554432	802336	10315024
+runnyeye	zone_mesh	29360128	4942864	4954960
+runnyeye	spatial	4194304	521936	1309984
+runnyeye	textures_decoded	20971520	130112	130336
+runnyeye	entity_models	88080384	4285424	23850592
+runnyeye	objects	41943040	3418896	17030880
+runnyeye	audio	33554432	0	0
+runnyeye	estimate:s3dZoneSourceBytes		648763	
+runnyeye	estimate:zoneGeometryBytes		1833876	
+runnyeye	estimate:placeableObjectsBytes		2233542	
+runnyeye	estimate:characterModelsBytes		1445267	
+runnyeye	estimate:gpuTextureBytes		7965288	
+runnyeye	estimate:vboEboBytes		4166652	
+runnyeye	estimate:textureCacheBytesUsed		7637568	
+runnyeye	estimate:eqe1MappedBytes		127916844	
+runnyeye	estimate:totalEstimate		22133388	
+skyshrine	unattributed	1048576	86208	86208
+skyshrine	archives	4194304	1399312	1400704
+skyshrine	zone_parse	33554432	1978720	15444592
+skyshrine	zone_mesh	29360128	10467664	10481296
+skyshrine	spatial	4194304	1324816	3485008
+skyshrine	textures_decoded	20971520	215744	215968
+skyshrine	entity_models	88080384	4288704	26897568
+skyshrine	objects	41943040	9086352	26967984
+skyshrine	audio	33554432	0	0
+skyshrine	estimate:s3dZoneSourceBytes		1624693	
+skyshrine	estimate:zoneGeometryBytes		4064334	
+skyshrine	estimate:placeableObjectsBytes		7467708	
+skyshrine	estimate:characterModelsBytes		1445267	
+skyshrine	estimate:gpuTextureBytes		6528448	
+skyshrine	estimate:vboEboBytes		11631276	
+skyshrine	estimate:textureCacheBytesUsed		4349096	
+skyshrine	estimate:eqe1MappedBytes		134669848	
+skyshrine	estimate:totalEstimate		36601726	
+cabeast	unattributed	1048576	86208	86208
+cabeast	archives	4194304	1291200	1292608
+cabeast	zone_parse	33554432	3206720	16097136
+cabeast	zone_mesh	29360128	10006576	10020544
+cabeast	spatial	4194304	738224	1834976
+cabeast	textures_decoded	20971520	127824	128032
+cabeast	entity_models	88080384	4167200	23848768
+cabeast	objects	41943040	2192656	16493024
+cabeast	audio	33554432	0	0
+cabeast	estimate:s3dZoneSourceBytes		2941652	
+cabeast	estimate:zoneGeometryBytes		3187176	
+cabeast	estimate:placeableObjectsBytes		1615830	
+cabeast	estimate:characterModelsBytes		1477449	
+cabeast	estimate:gpuTextureBytes		3105032	
+cabeast	estimate:vboEboBytes		4902240	
+cabeast	estimate:textureCacheBytesUsed		2039096	
+cabeast	estimate:eqe1MappedBytes		127641148	
+cabeast	estimate:totalEstimate		21069379	
+kael	unattributed	1048576	86208	86208
+kael	archives	4194304	1348832	1350224
+kael	zone_parse	33554432	2556384	14264432
+kael	zone_mesh	29360128	8624992	8722864
+kael	spatial	4194304	1135088	3131840
+kael	textures_decoded	20971520	91824	92032
+kael	entity_models	88080384	4279168	23853248
+kael	objects	41943040	3939584	18706128
+kael	audio	33554432	0	0
+kael	estimate:s3dZoneSourceBytes		2260742	
+kael	estimate:zoneGeometryBytes		3131670	
+kael	estimate:placeableObjectsBytes		2899956	
+kael	estimate:characterModelsBytes		1445267	
+kael	estimate:gpuTextureBytes		6846816	
+kael	estimate:vboEboBytes		6130860	
+kael	estimate:textureCacheBytesUsed		4521768	
+kael	estimate:eqe1MappedBytes		131579656	
+kael	estimate:totalEstimate		26555311	
+citymist	unattributed	1048576	86208	86208
+citymist	archives	4194304	1291968	1293376
+citymist	zone_parse	33554432	2881520	11746544
+citymist	zone_mesh	29360128	5889696	5904064
+citymist	spatial	4194304	647952	1458304
+citymist	textures_decoded	20971520	148576	148784
+citymist	entity_models	88080384	4136000	23849216
+citymist	objects	41943040	3774144	17083680
+citymist	audio	33554432	0	0
+citymist	estimate:s3dZoneSourceBytes		2708619	
+citymist	estimate:zoneGeometryBytes		2075748	
+citymist	estimate:placeableObjectsBytes		3238782	
+citymist	estimate:characterModelsBytes		1445267	
+citymist	estimate:gpuTextureBytes		4508176	
+citymist	estimate:vboEboBytes		5413764	
+citymist	estimate:textureCacheBytesUsed		2990992	
+citymist	estimate:eqe1MappedBytes		126175376	
+citymist	estimate:totalEstimate		23230356	
+qeynos2	unattributed	1048576	86208	86208
+qeynos2	archives	4194304	1329792	1331200
+qeynos2	zone_parse	33554432	673200	8176800
+qeynos2	zone_mesh	29360128	3521072	3535120
+qeynos2	spatial	4194304	372432	1160480
+qeynos2	textures_decoded	20971520	149936	150144
+qeynos2	entity_models	88080384	4265776	23849648
+qeynos2	objects	41943040	2161216	13985360
+qeynos2	audio	33554432	0	0
+qeynos2	estimate:s3dZoneSourceBytes		571475	
+qeynos2	estimate:zoneGeometryBytes		1269654	
+qeynos2	estimate:placeableObjectsBytes		1365564	
+qeynos2	estimate:characterModelsBytes		1445267	
+qeynos2	estimate:gpuTextureBytes		9322992	
+qeynos2	estimate:vboEboBytes		2734452	
+qeynos2	estimate:textureCacheBytesUsed		8907864	
+qeynos2	estimate:eqe1MappedBytes		126860164	
+qeynos2	estimate:totalEstimate		20549404	
+firiona	unattributed	1048576	86208	86208
+firiona	archives	4194304	1371632	1373040
+firiona	zone_parse	33554432	2730672	17216816
+firiona	zone_mesh	29360128	9065616	9085840
+firiona	spatial	4194304	1142384	2593216
+firiona	textures_decoded	20971520	215744	215952
+firiona	entity_models	88080384	4454704	26235008
+firiona	objects	41943040	6940656	23851168
+firiona	audio	33554432	0	0
+firiona	estimate:s3dZoneSourceBytes		2487169	
+firiona	estimate:zoneGeometryBytes		5239836	
+firiona	estimate:placeableObjectsBytes		5696664	
+firiona	estimate:characterModelsBytes		1445267	
+firiona	estimate:gpuTextureBytes		6206112	
+firiona	estimate:vboEboBytes		11035734	
+firiona	estimate:textureCacheBytesUsed		4104008	
+firiona	estimate:eqe1MappedBytes		130988064	
+firiona	estimate:totalEstimate		35950782	
+swampofnohope	unattributed	1048576	86208	86208
+swampofnohope	archives	4194304	1290896	1292400
+swampofnohope	zone_parse	33554432	1541680	12614368
+swampofnohope	zone_mesh	29360128	7639632	7697200
+swampofnohope	spatial	4194304	909120	1939152
+swampofnohope	textures_decoded	20971520	157648	157872
+swampofnohope	entity_models	88080384	4454768	25350560
+swampofnohope	objects	41943040	4156720	18468464
+swampofnohope	audio	33554432	0	0
+swampofnohope	estimate:s3dZoneSourceBytes		1387126	
+swampofnohope	estimate:zoneGeometryBytes		4746024	
+swampofnohope	estimate:placeableObjectsBytes		3186444	
+swampofnohope	estimate:characterModelsBytes		1445267	
+swampofnohope	estimate:gpuTextureBytes		5927544	
+swampofnohope	estimate:vboEboBytes		8031702	
+swampofnohope	estimate:textureCacheBytesUsed		3908920	
+swampofnohope	estimate:eqe1MappedBytes		126682464	
+swampofnohope	estimate:totalEstimate		28564107	
+veeshan	unattributed	1048576	86208	86208
+veeshan	archives	4194304	1334384	1335776
+veeshan	zone_parse	33554432	3498512	15233984
+veeshan	zone_mesh	29360128	8938992	9026912
+veeshan	spatial	4194304	935488	2429440
+veeshan	textures_decoded	20971520	180256	180464
+veeshan	entity_models	88080384	4385248	23852320
+veeshan	objects	41943040	3104704	18818496
+veeshan	audio	33554432	0	0
+veeshan	estimate:s3dZoneSourceBytes		3194692	
+veeshan	estimate:zoneGeometryBytes		2589762	
+veeshan	estimate:placeableObjectsBytes		2086614	
+veeshan	estimate:characterModelsBytes		1445267	
+veeshan	estimate:gpuTextureBytes		5267576	
+veeshan	estimate:vboEboBytes		4775610	
+veeshan	estimate:textureCacheBytesUsed		3517616	
+veeshan	estimate:eqe1MappedBytes		127857272	
+veeshan	estimate:totalEstimate		23199521	
+neriakc	unattributed	1048576	86208	86208
+neriakc	archives	4194304	1308064	1309472
+neriakc	zone_parse	33554432	1377216	10656064
+neriakc	zone_mesh	29360128	8336256	8349792
+neriakc	spatial	4194304	535232	1453984
+neriakc	textures_decoded	20971520	171760	171984
+neriakc	entity_models	88080384	4190656	23848624
+neriakc	objects	41943040	2341360	17828784
+neriakc	audio	33554432	0	0
+neriakc	estimate:s3dZoneSourceBytes		1186717	
+neriakc	estimate:zoneGeometryBytes		3370128	
+neriakc	estimate:placeableObjectsBytes		1627704	
+neriakc	estimate:characterModelsBytes		1445267	
+neriakc	estimate:gpuTextureBytes		9348672	
+neriakc	estimate:vboEboBytes		5097066	
+neriakc	estimate:textureCacheBytesUsed		9108296	
+neriakc	estimate:eqe1MappedBytes		128543568	
+neriakc	estimate:totalEstimate		25915554	
+halas	unattributed	1048576	86208	86208
+halas	archives	4194304	1311504	1312912
+halas	zone_parse	33554432	1322624	8257136
+halas	zone_mesh	29360128	4743744	4792656
+halas	spatial	4194304	525568	1490000
+halas	textures_decoded	20971520	176016	176224
+halas	entity_models	88080384	4230080	23849552
+halas	objects	41943040	2540640	17120080
+halas	audio	33554432	0	0
+halas	estimate:s3dZoneSourceBytes		1218300	
+halas	estimate:zoneGeometryBytes		1580814	
+halas	estimate:placeableObjectsBytes		1655040	
+halas	estimate:characterModelsBytes		1459690	
+halas	estimate:gpuTextureBytes		11074224	
+halas	estimate:vboEboBytes		3335088	
+halas	estimate:textureCacheBytesUsed		10298488	
+halas	estimate:eqe1MappedBytes		128546168	
+halas	estimate:totalEstimate		24163156	
+unrest	unattributed	1048576	86208	86208
+unrest	archives	4194304	1295936	1297344
+unrest	zone_parse	33554432	2194000	9596512
+unrest	zone_mesh	29360128	5402032	5409280
+unrest	spatial	4194304	410992	1199040
+unrest	textures_decoded	20971520	95792	96000
+unrest	entity_models	88080384	4204864	23850352
+unrest	objects	41943040	772032	12374864
+unrest	audio	33554432	0	0
+unrest	estimate:s3dZoneSourceBytes		2025916	
+unrest	estimate:zoneGeometryBytes		1987212	
+unrest	estimate:placeableObjectsBytes		525930	
+unrest	estimate:characterModelsBytes		1445267	
+unrest	estimate:gpuTextureBytes		5613728	
+unrest	estimate:vboEboBytes		2612376	
+unrest	estimate:textureCacheBytesUsed		5209440	
+unrest	estimate:eqe1MappedBytes		124774216	
+unrest	estimate:totalEstimate		18050429	
+crystal	unattributed	1048576	86208	86208
+crystal	archives	4194304	1300416	1301824
+crystal	zone_parse	33554432	923936	7906768
+crystal	zone_mesh	29360128	5374080	5394704
+crystal	spatial	4194304	604400	1392448
+crystal	textures_decoded	20971520	66976	67184
+crystal	entity_models	88080384	4202464	23849840
+crystal	objects	41943040	7603728	16219968
+crystal	audio	33554432	0	0
+crystal	estimate:s3dZoneSourceBytes		781890	
+crystal	estimate:zoneGeometryBytes		2207904	
+crystal	estimate:placeableObjectsBytes		7146348	
+crystal	estimate:characterModelsBytes		1445267	
+crystal	estimate:gpuTextureBytes		2843728	
+crystal	estimate:vboEboBytes		9453486	
+crystal	estimate:textureCacheBytesUsed		1878104	
+crystal	estimate:eqe1MappedBytes		122971548	
+crystal	estimate:totalEstimate		27718623	
+feerrott	unattributed	1048576	86208	86208
+feerrott	archives	4194304	1308736	1310144
+feerrott	zone_parse	33554432	537616	5449520
+feerrott	zone_mesh	29360128	2907536	2943248
+feerrott	spatial	4194304	369072	1157120
+feerrott	textures_decoded	20971520	79856	80064
+feerrott	entity_models	88080384	4655312	26288944
+feerrott	objects	41943040	8206496	16659280
+feerrott	audio	33554432	0	0
+feerrott	estimate:s3dZoneSourceBytes		479221	
+feerrott	estimate:zoneGeometryBytes		1774842	
+feerrott	estimate:placeableObjectsBytes		5082282	
+feerrott	estimate:characterModelsBytes		1445267	
+feerrott	estimate:gpuTextureBytes		5331952	
+feerrott	estimate:vboEboBytes		6956358	
+feerrott	estimate:textureCacheBytesUsed		4873080	
+feerrott	estimate:eqe1MappedBytes		122932568	
+feerrott	estimate:totalEstimate		24909922	
+kaladimb	unattributed	1048576	86208	86208
+kaladimb	archives	4194304	1267136	1268544
+kaladimb	zone_parse	33554432	683552	6630832
+kaladimb	zone_mesh	29360128	4158880	4169664
+kaladimb	spatial	4194304	298304	1086352
+kaladimb	textures_decoded	20971520	133280	133488
+kaladimb	entity_models	88080384	4142336	23849456
+kaladimb	objects	41943040	1515760	11476960
+kaladimb	audio	33554432	0	0
+kaladimb	estimate:s3dZoneSourceBytes		571069	
+kaladimb	estimate:zoneGeometryBytes		1713786	
+kaladimb	estimate:placeableObjectsBytes		1064364	
+kaladimb	estimate:characterModelsBytes		1445267	
+kaladimb	estimate:gpuTextureBytes		7405704	
+kaladimb	estimate:vboEboBytes		2877384	
+kaladimb	estimate:textureCacheBytesUsed		7165352	
+kaladimb	estimate:eqe1MappedBytes		122413112	
+kaladimb	estimate:totalEstimate		18917574	
+eastkarana	unattributed	1048576	86208	86208
+eastkarana	archives	4194304	1333056	1334480
+eastkarana	zone_parse	33554432	337776	4289776
+eastkarana	zone_mesh	29360128	1322224	1348576
+eastkarana	spatial	4194304	233968	1022016
+eastkarana	textures_decoded	20971520	129056	129264
+eastkarana	entity_models	88080384	4290080	23849456
+eastkarana	objects	41943040	5561072	14735024
+eastkarana	audio	33554432	0	0
+eastkarana	estimate:s3dZoneSourceBytes		286416	
+eastkarana	estimate:zoneGeometryBytes		577998	
+eastkarana	estimate:placeableObjectsBytes		3426654	
+eastkarana	estimate:characterModelsBytes		1445267	
+eastkarana	estimate:gpuTextureBytes		7648544	
+eastkarana	estimate:vboEboBytes		4103886	
+eastkarana	estimate:textureCacheBytesUsed		7298920	
+eastkarana	estimate:eqe1MappedBytes		124511172	
+eastkarana	estimate:totalEstimate		21328765	
+necropolis	unattributed	1048576	86208	86208
+necropolis	archives	4194304	1384928	1386336
+necropolis	zone_parse	33554432	1721504	9030832
+necropolis	zone_mesh	29360128	5133856	5182112
+necropolis	spatial	4194304	792048	1733760
+necropolis	textures_decoded	20971520	113520	113728
+necropolis	entity_models	88080384	4391424	28571136
+necropolis	objects	41943040	3949824	13586784
+necropolis	audio	33554432	0	0
+necropolis	estimate:s3dZoneSourceBytes		1598714	
+necropolis	estimate:zoneGeometryBytes		1809192	
+necropolis	estimate:placeableObjectsBytes		3489828	
+necropolis	estimate:characterModelsBytes		1445267	
+necropolis	estimate:gpuTextureBytes		5012728	
+necropolis	estimate:vboEboBytes		5398254	
+necropolis	estimate:textureCacheBytesUsed		3298128	
+necropolis	estimate:eqe1MappedBytes		129753472	
+necropolis	estimate:totalEstimate		22593983	
+erudnint	unattributed	1048576	86208	86208
+erudnint	archives	4194304	1259600	1261008
+erudnint	zone_parse	33554432	839296	6496544
+erudnint	zone_mesh	29360128	4923632	4952192
+erudnint	spatial	4194304	315008	1103056
+erudnint	textures_decoded	20971520	69104	69328
+erudnint	entity_models	88080384	4148960	23850256
+erudnint	objects	41943040	2530304	11207312
+erudnint	audio	33554432	0	0
+erudnint	estimate:s3dZoneSourceBytes		728626	
+erudnint	estimate:zoneGeometryBytes		1820358	
+erudnint	estimate:placeableObjectsBytes		1855398	
+erudnint	estimate:characterModelsBytes		1445267	
+erudnint	estimate:gpuTextureBytes		4032008	
+erudnint	estimate:vboEboBytes		3774990	
+erudnint	estimate:textureCacheBytesUsed		3813496	
+erudnint	estimate:eqe1MappedBytes		121310912	
+erudnint	estimate:totalEstimate		17496647	
+qey2hh1	unattributed	1048576	86208	86208
+qey2hh1	archives	4194304	1337568	1338976
+qey2hh1	zone_parse	33554432	304064	3607440
+qey2hh1	zone_mesh	29360128	1869024	1894608
+qey2hh1	spatial	4194304	331088	1119136
+qey2hh1	textures_decoded	20971520	145280	145488
+qey2hh1	entity_models	88080384	4291520	23849408
+qey2hh1	objects	41943040	14077840	23729200
+qey2hh1	audio	33554432	0	0
+qey2hh1	estimate:s3dZoneSourceBytes		257517	
+qey2hh1	estimate:zoneGeometryBytes		722112	
+qey2hh1	estimate:placeableObjectsBytes		8800536	
+qey2hh1	estimate:characterModelsBytes		1445267	
+qey2hh1	estimate:gpuTextureBytes		8555480	
+qey2hh1	estimate:vboEboBytes		9621882	
+qey2hh1	estimate:textureCacheBytesUsed		8140312	
+qey2hh1	estimate:eqe1MappedBytes		125640200	
+qey2hh1	estimate:totalEstimate		33242794	
+oggok	unattributed	1048576	86208	86208
+oggok	archives	4194304	1270256	1271664
+oggok	zone_parse	33554432	685072	5138176
+oggok	zone_mesh	29360128	2811264	2816880
+oggok	spatial	4194304	430032	1218080
+oggok	textures_decoded	20971520	60576	60800
+oggok	entity_models	88080384	4163968	23850864
+oggok	objects	41943040	1487344	8438944
+oggok	audio	33554432	0	0
+oggok	estimate:s3dZoneSourceBytes		565288	
+oggok	estimate:zoneGeometryBytes		1081128	
+oggok	estimate:placeableObjectsBytes		998472	
+oggok	estimate:characterModelsBytes		1445267	
+oggok	estimate:gpuTextureBytes		3813320	
+oggok	estimate:vboEboBytes		2178834	
+oggok	estimate:textureCacheBytesUsed		3485560	
+oggok	estimate:eqe1MappedBytes		119824016	
+oggok	estimate:totalEstimate		13922309	
+erudsxing	unattributed	1048576	86208	86208
+erudsxing	archives	4194304	1298256	1299664
+erudsxing	zone_parse	33554432	256432	3582448
+erudsxing	zone_mesh	29360128	1248192	1254560
+erudsxing	spatial	4194304	162720	950768
+erudsxing	textures_decoded	20971520	48240	48448
+erudsxing	entity_models	88080384	4288720	23850304
+erudsxing	objects	41943040	307904	4877040
+erudsxing	audio	33554432	0	0
+erudsxing	estimate:s3dZoneSourceBytes		214114	
+erudsxing	estimate:zoneGeometryBytes		429288	
+erudsxing	estimate:placeableObjectsBytes		160608	
+erudsxing	estimate:characterModelsBytes		1477498	
+erudsxing	estimate:gpuTextureBytes		3179472	
+erudsxing	estimate:vboEboBytes		689130	
+erudsxing	estimate:textureCacheBytesUsed		2982824	
+erudsxing	estimate:eqe1MappedBytes		118986904	
+erudsxing	estimate:totalEstimate		9990110	
+oot	unattributed	1048576	86208	86208
+oot	archives	4194304	1320512	1321920
+oot	zone_parse	33554432	878784	8708928
+oot	zone_mesh	29360128	5810464	5855744
+oot	spatial	4194304	688144	1935296
+oot	textures_decoded	20971520	89792	89984
+oot	entity_models	88080384	4598704	23848960
+oot	objects	41943040	2322224	13042496
+oot	audio	33554432	0	0
+oot	estimate:s3dZoneSourceBytes		766993	
+oot	estimate:zoneGeometryBytes		2816580	
+oot	estimate:placeableObjectsBytes		1365024	
+oot	estimate:characterModelsBytes		1544392	
+oot	estimate:gpuTextureBytes		5900264	
+oot	estimate:vboEboBytes		4280838	
+oot	estimate:textureCacheBytesUsed		5419528	
+oot	estimate:eqe1MappedBytes		123289356	
+oot	estimate:totalEstimate		20514091	
+lakerathe	unattributed	1048576	86208	86208
+lakerathe	archives	4194304	1331408	1332816
+lakerathe	zone_parse	33554432	996352	6139056
+lakerathe	zone_mesh	29360128	3038400	3060768
+lakerathe	spatial	4194304	557072	1345120
+lakerathe	textures_decoded	20971520	121536	121744
+lakerathe	entity_models	88080384	4318048	23850048
+lakerathe	objects	41943040	1882944	12243856
+lakerathe	audio	33554432	0	0
+lakerathe	estimate:s3dZoneSourceBytes		906448	
+lakerathe	estimate:zoneGeometryBytes		1694370	
+lakerathe	estimate:placeableObjectsBytes		1198632	
+lakerathe	estimate:characterModelsBytes		1445267	
+lakerathe	estimate:gpuTextureBytes		7375384	
+lakerathe	estimate:vboEboBytes		2992236	
+lakerathe	estimate:textureCacheBytesUsed		6894648	
+lakerathe	estimate:eqe1MappedBytes		124318264	
+lakerathe	estimate:totalEstimate		19452337	
+tox	unattributed	1048576	86208	86208
+tox	archives	4194304	1285552	1286960
+tox	zone_parse	33554432	502512	3586992
+tox	zone_mesh	29360128	1907984	1931456
+tox	spatial	4194304	377936	1165984
+tox	textures_decoded	20971520	64672	64880
+tox	entity_models	88080384	4209616	23850752
+tox	objects	41943040	3919616	10392400
+tox	audio	33554432	0	0
+tox	estimate:s3dZoneSourceBytes		453360	
+tox	estimate:zoneGeometryBytes		1069470	
+tox	estimate:placeableObjectsBytes		2126412	
+tox	estimate:characterModelsBytes		1445267	
+tox	estimate:gpuTextureBytes		4731024	
+tox	estimate:vboEboBytes		3295116	
+tox	estimate:textureCacheBytesUsed		4206584	
+tox	estimate:eqe1MappedBytes		120806144	
+tox	estimate:totalEstimate		16960649	
+steamfont	unattributed	1048576	86208	86208
+steamfont	archives	4194304	1289584	1290992
+steamfont	zone_parse	33554432	277248	2932416
+steamfont	zone_mesh	29360128	1901104	1926448
+steamfont	spatial	4194304	252992	1041040
+steamfont	textures_decoded	20971520	59200	59408
+steamfont	entity_models	88080384	4653680	23850720
+steamfont	objects	41943040	2334496	7794416
+steamfont	audio	33554432	0	0
+steamfont	estimate:s3dZoneSourceBytes		243257	
+steamfont	estimate:zoneGeometryBytes		1181286	
+steamfont	estimate:placeableObjectsBytes		1342938	
+steamfont	estimate:characterModelsBytes		1477498	
+steamfont	estimate:gpuTextureBytes		3769536	
+steamfont	estimate:vboEboBytes		2623458	
+steamfont	estimate:textureCacheBytesUsed		3485480	
+steamfont	estimate:eqe1MappedBytes		119674548	
+steamfont	estimate:totalEstimate		14477973	
+soltemple	unattributed	1048576	86208	86208
+soltemple	archives	4194304	1207984	1209392
+soltemple	zone_parse	33554432	342704	3125232
+soltemple	zone_mesh	29360128	2117184	2140224
+soltemple	spatial	4194304	128528	916576
+soltemple	textures_decoded	20971520	49600	49808
+soltemple	entity_models	88080384	4076128	23851136
+soltemple	objects	41943040	1567920	7357056
+soltemple	audio	33554432	0	0
+soltemple	estimate:s3dZoneSourceBytes		290317	
+soltemple	estimate:zoneGeometryBytes		911916	
+soltemple	estimate:placeableObjectsBytes		1182504	
+soltemple	estimate:characterModelsBytes		1445267	
+soltemple	estimate:gpuTextureBytes		2982864	
+soltemple	estimate:vboEboBytes		2193654	
+soltemple	estimate:textureCacheBytesUsed		2786216	
+soltemple	estimate:eqe1MappedBytes		116503036	
+soltemple	estimate:totalEstimate		12846522	
+sro	unattributed	1048576	86208	86208
+sro	archives	4194304	1298800	1300208
+sro	zone_parse	33554432	192016	1471408
+sro	zone_mesh	29360128	728000	737296
+sro	spatial	4194304	154336	942384
+sro	textures_decoded	20971520	81664	81888
+sro	entity_models	88080384	4241072	23848480
+sro	objects	41943040	3194848	8768432
+sro	audio	33554432	0	0
+sro	estimate:s3dZoneSourceBytes		170617	
+sro	estimate:zoneGeometryBytes		474234	
+sro	estimate:placeableObjectsBytes		2042862	
+sro	estimate:characterModelsBytes		1445267	
+sro	estimate:gpuTextureBytes		5375720	
+sro	estimate:vboEboBytes		2616330	
+sro	estimate:textureCacheBytesUsed		4960552	
+sro	estimate:eqe1MappedBytes		120731528	
+sro	estimate:totalEstimate		15965030	
+qeynos	unattributed	1048576	86208	86208
+qeynos	archives	4194304	1361120	1362528
+qeynos	zone_parse	33554432	2318160	15395248
+qeynos	zone_mesh	29360128	6975888	7000592
+qeynos	spatial	4194304	767680	2194512
+qeynos	textures_decoded	20971520	278320	278528
+qeynos	entity_models	88080384	4309056	23847328
+qeynos	objects	41943040	3036464	24857488
+qeynos	audio	33554432	0	0
+qeynos	estimate:s3dZoneSourceBytes		2120191	
+qeynos	estimate:zoneGeometryBytes		2208042	
+qeynos	estimate:placeableObjectsBytes		2082588	
+qeynos	estimate:characterModelsBytes		1477498	
+qeynos	estimate:gpuTextureBytes		16797104	
+qeynos	estimate:vboEboBytes		4389864	
+qeynos	estimate:textureCacheBytesUsed		16250840	
+qeynos	estimate:eqe1MappedBytes		137381140	
+qeynos	estimate:totalEstimate		32915287	
+highkeep	unattributed	1048576	86208	86208
+highkeep	archives	4194304	1336928	1338336
+highkeep	zone_parse	33554432	511536	11100480
+highkeep	zone_mesh	29360128	3529136	3581808
+highkeep	spatial	4194304	272224	1060272
+highkeep	textures_decoded	20971520	149712	149920
+highkeep	entity_models	88080384	4257200	23850208
+highkeep	objects	41943040	3329104	17883152
+highkeep	audio	33554432	0	0
+highkeep	estimate:s3dZoneSourceBytes		409265	
+highkeep	estimate:zoneGeometryBytes		1335684	
+highkeep	estimate:placeableObjectsBytes		2156586	
+highkeep	estimate:characterModelsBytes		1445267	
+highkeep	estimate:gpuTextureBytes		8394544	
+highkeep	estimate:vboEboBytes		3591504	
+highkeep	estimate:textureCacheBytesUsed		8132328	
+highkeep	estimate:eqe1MappedBytes		130493764	
+highkeep	estimate:totalEstimate		21172850	
+timorous	unattributed	1048576	86208	86208
+timorous	archives	4194304	1319824	1321232
+timorous	zone_parse	33554432	5529152	38544176
+timorous	zone_mesh	29360128	23585888	23594000
+timorous	spatial	4194304	3019840	6897872
+timorous	textures_decoded	20971520	191344	191552
+timorous	entity_models	88080384	4253792	26148240
+timorous	objects	41943040	4925152	38527104
+timorous	audio	33554432	0	0
+timorous	estimate:s3dZoneSourceBytes		5083275	
+timorous	estimate:zoneGeometryBytes		12758982	
+timorous	estimate:placeableObjectsBytes		3990714	
+timorous	estimate:characterModelsBytes		1465276	
+timorous	estimate:gpuTextureBytes		4557552	
+timorous	estimate:vboEboBytes		16848930	
+timorous	estimate:textureCacheBytesUsed		3092488	
+timorous	estimate:eqe1MappedBytes		134169640	
+timorous	estimate:totalEstimate		48544729	
+greatdivide	unattributed	1048576	86208	86208
+greatdivide	archives	4194304	1376592	1378000
+greatdivide	zone_parse	33554432	2837136	16303184
+greatdivide	zone_mesh	29360128	8391920	8402608
+greatdivide	spatial	4194304	1179296	3399408
+greatdivide	textures_decoded	20971520	114816	115024
+greatdivide	entity_models	88080384	4309872	23849728
+greatdivide	objects	41943040	3609440	20667360
+greatdivide	audio	33554432	0	0
+greatdivide	estimate:s3dZoneSourceBytes		2608657	
+greatdivide	estimate:zoneGeometryBytes		4913718	
+greatdivide	estimate:placeableObjectsBytes		3070884	
+greatdivide	estimate:characterModelsBytes		1445267	
+greatdivide	estimate:gpuTextureBytes		7480944	
+greatdivide	estimate:vboEboBytes		8083836	
+greatdivide	estimate:textureCacheBytesUsed		4951824	
+greatdivide	estimate:eqe1MappedBytes		133941248	
+greatdivide	estimate:totalEstimate		31443306	
+guktop	unattributed	1048576	86208	86208
+guktop	archives	4194304	1300800	1302192
+guktop	zone_parse	33554432	1005072	11059904
+guktop	zone_mesh	29360128	5902624	5917696
+guktop	spatial	4194304	620208	1698000
+guktop	textures_decoded	20971520	142400	142608
+guktop	entity_models	88080384	4178400	23852144
+guktop	objects	41943040	1887888	15023472
+guktop	audio	33554432	0	0
+guktop	estimate:s3dZoneSourceBytes		776179	
+guktop	estimate:zoneGeometryBytes		2269656	
+guktop	estimate:placeableObjectsBytes		1301682	
+guktop	estimate:characterModelsBytes		1445267	
+guktop	estimate:gpuTextureBytes		8197728	
+guktop	estimate:vboEboBytes		3670572	
+guktop	estimate:textureCacheBytesUsed		8001056	
+guktop	estimate:eqe1MappedBytes		126389088	
+guktop	estimate:totalEstimate		21501084	
+cabwest	unattributed	1048576	86208	86208
+cabwest	archives	4194304	1298656	1300080
+cabwest	zone_parse	33554432	3126608	16102448
+cabwest	zone_mesh	29360128	10013024	10026976
+cabwest	spatial	4194304	738656	1834928
+cabwest	textures_decoded	20971520	109376	109600
+cabwest	entity_models	88080384	4199088	25807392
+cabwest	objects	41943040	1173120	16088272
+cabwest	audio	33554432	0	0
+cabwest	estimate:s3dZoneSourceBytes		2900369	
+cabwest	estimate:zoneGeometryBytes		3189270	
+cabwest	estimate:placeableObjectsBytes		869484	
+cabwest	estimate:characterModelsBytes		1477449	
+cabwest	estimate:gpuTextureBytes		3085192	
+cabwest	estimate:vboEboBytes		4157988	
+cabwest	estimate:textureCacheBytesUsed		2024040	
+cabwest	estimate:eqe1MappedBytes		128821728	
+cabwest	estimate:totalEstimate		19519752	
+freportw	unattributed	1048576	86208	86208
+freportw	archives	4194304	1357584	1358976
+freportw	zone_parse	33554432	2829264	14010544
+freportw	zone_mesh	29360128	8270432	8365328
+freportw	spatial	4194304	678128	1466176
+freportw	textures_decoded	20971520	156144	156352
+freportw	entity_models	88080384	4316560	23852112
+freportw	objects	41943040	4632896	21545168
+freportw	audio	33554432	0	0
+freportw	estimate:s3dZoneSourceBytes		2563583	
+freportw	estimate:zoneGeometryBytes		2955030	
+freportw	estimate:placeableObjectsBytes		3064584	
+freportw	estimate:characterModelsBytes		1445267	
+freportw	estimate:gpuTextureBytes		9582472	
+freportw	estimate:vboEboBytes		6118848	
+freportw	estimate:textureCacheBytesUsed		9167344	
+freportw	estimate:eqe1MappedBytes		129651036	
+freportw	estimate:totalEstimate		29569784	
+trakanon	unattributed	1048576	86208	86208
+trakanon	archives	4194304	1292976	1294384
+trakanon	zone_parse	33554432	1688112	16330048
+trakanon	zone_mesh	29360128	8883808	8934064
+trakanon	spatial	4194304	1169600	3414832
+trakanon	textures_decoded	20971520	141088	141392
+trakanon	entity_models	88080384	4153472	24612880
+trakanon	objects	41943040	23556912	40888704
+trakanon	audio	33554432	0	0
+trakanon	estimate:s3dZoneSourceBytes		1539590	
+trakanon	estimate:zoneGeometryBytes		6230640	
+trakanon	estimate:placeableObjectsBytes		20312166	
+trakanon	estimate:characterModelsBytes		1445267	
+trakanon	estimate:gpuTextureBytes		6022480	
+trakanon	estimate:vboEboBytes		26642040	
+trakanon	estimate:textureCacheBytesUsed		3985864	
+trakanon	estimate:eqe1MappedBytes		129434756	
+trakanon	estimate:totalEstimate		66032183	
+gukbottom	unattributed	1048576	86208	86208
+gukbottom	archives	4194304	1297088	1298480
+gukbottom	zone_parse	33554432	1025024	9871360
+gukbottom	zone_mesh	29360128	6152960	6164224
+gukbottom	spatial	4194304	619168	1487840
+gukbottom	textures_decoded	20971520	120480	120800
+gukbottom	entity_models	88080384	4192560	23852304
+gukbottom	objects	41943040	2225216	14164592
+gukbottom	audio	33554432	0	0
+gukbottom	estimate:s3dZoneSourceBytes		807239	
+gukbottom	estimate:zoneGeometryBytes		2405190	
+gukbottom	estimate:placeableObjectsBytes		1562106	
+gukbottom	estimate:characterModelsBytes		1445267	
+gukbottom	estimate:gpuTextureBytes		6897408	
+gukbottom	estimate:vboEboBytes		4066530	
+gukbottom	estimate:textureCacheBytesUsed		6613352	
+gukbottom	estimate:eqe1MappedBytes		124766424	
+gukbottom	estimate:totalEstimate		21023740	
+neriaka	unattributed	1048576	86208	86208
+neriaka	archives	4194304	1338064	1339472
+neriaka	zone_parse	33554432	696640	7983024
+neriaka	zone_mesh	29360128	3978544	4034272
+neriaka	spatial	4194304	324448	1112496
+neriaka	textures_decoded	20971520	221936	222144
+neriaka	entity_models	88080384	4248832	23849648
+neriaka	objects	41943040	3437744	17574960
+neriaka	audio	33554432	0	0
+neriaka	estimate:s3dZoneSourceBytes		582282	
+neriaka	estimate:zoneGeometryBytes		1614984	
+neriaka	estimate:placeableObjectsBytes		2303850	
+neriaka	estimate:characterModelsBytes		1445267	
+neriaka	estimate:gpuTextureBytes		12976168	
+neriaka	estimate:vboEboBytes		4018068	
+neriaka	estimate:textureCacheBytesUsed		12353384	
+neriaka	estimate:eqe1MappedBytes		129342020	
+neriaka	estimate:totalEstimate		26780619	
+neriakb	unattributed	1048576	86208	86208
+neriakb	archives	4194304	1302000	1303408
+neriakb	zone_parse	33554432	1119408	9413824
+neriakb	zone_mesh	29360128	6693696	6706656
+neriakb	spatial	4194304	398224	1186272
+neriakb	textures_decoded	20971520	189232	189456
+neriakb	entity_models	88080384	4188912	23849136
+neriakb	objects	41943040	2275552	17328112
+neriakb	audio	33554432	0	0
+neriakb	estimate:s3dZoneSourceBytes		985688	
+neriakb	estimate:zoneGeometryBytes		2672166	
+neriakb	estimate:placeableObjectsBytes		1580850	
+neriakb	estimate:characterModelsBytes		1445267	
+neriakb	estimate:gpuTextureBytes		11080400	
+neriakb	estimate:vboEboBytes		4352250	
+neriakb	estimate:textureCacheBytesUsed		10512272	
+neriakb	estimate:eqe1MappedBytes		128955628	
+neriakb	estimate:totalEstimate		25956621	
+burningwood	unattributed	1048576	86208	86208
+burningwood	archives	4194304	1280080	1281488
+burningwood	zone_parse	33554432	1444256	13236560
+burningwood	zone_mesh	29360128	7557056	7613840
+burningwood	spatial	4194304	859760	1717152
+burningwood	textures_decoded	20971520	157600	157808
+burningwood	entity_models	88080384	4141600	24595632
+burningwood	objects	41943040	7126512	20383136
+burningwood	audio	33554432	0	0
+burningwood	estimate:s3dZoneSourceBytes		1324350	
+burningwood	estimate:zoneGeometryBytes		5049228	
+burningwood	estimate:placeableObjectsBytes		4984338	
+burningwood	estimate:characterModelsBytes		1445267	
+burningwood	estimate:gpuTextureBytes		5308352	
+burningwood	estimate:vboEboBytes		10132800	
+burningwood	estimate:textureCacheBytesUsed		3505256	
+burningwood	estimate:eqe1MappedBytes		125696752	
+burningwood	estimate:totalEstimate		32084335	
+sebilis	unattributed	1048576	86208	86208
+sebilis	archives	4194304	1312240	1313648
+sebilis	zone_parse	33554432	1372432	9976048
+sebilis	zone_mesh	29360128	7474112	7490976
+sebilis	spatial	4194304	697552	1537424
+sebilis	textures_decoded	20971520	150176	150384
+sebilis	entity_models	88080384	4167040	23849264
+sebilis	objects	41943040	2724192	13629168
+sebilis	audio	33554432	0	0
+sebilis	estimate:s3dZoneSourceBytes		1168037	
+sebilis	estimate:zoneGeometryBytes		2892006	
+sebilis	estimate:placeableObjectsBytes		2018118	
+sebilis	estimate:characterModelsBytes		1445267	
+sebilis	estimate:gpuTextureBytes		4135280	
+sebilis	estimate:vboEboBytes		5009358	
+sebilis	estimate:textureCacheBytesUsed		2725800	
+sebilis	estimate:eqe1MappedBytes		122412644	
+sebilis	estimate:totalEstimate		20508066	
+soldungb	unattributed	1048576	86208	86208
+soldungb	archives	4194304	1318256	1319664
+soldungb	zone_parse	33554432	803648	7721968
+soldungb	zone_mesh	29360128	5186672	5196624
+soldungb	spatial	4194304	597344	1385392
+soldungb	textures_decoded	20971520	138144	138352
+soldungb	entity_models	88080384	4235680	23848960
+soldungb	objects	41943040	1978000	13688416
+soldungb	audio	33554432	0	0
+soldungb	estimate:s3dZoneSourceBytes		655792	
+soldungb	estimate:zoneGeometryBytes		1945578	
+soldungb	estimate:placeableObjectsBytes		1340628	
+soldungb	estimate:characterModelsBytes		1445267	
+soldungb	estimate:gpuTextureBytes		7662544	
+soldungb	estimate:vboEboBytes		3385440	
+soldungb	estimate:textureCacheBytesUsed		7203648	
+soldungb	estimate:eqe1MappedBytes		126189196	
+soldungb	estimate:totalEstimate		20275249	
+karnor	unattributed	1048576	86208	86208
+karnor	archives	4194304	1267152	1268560
+karnor	zone_parse	33554432	1624224	9671952
+karnor	zone_mesh	29360128	6551280	6557744
+karnor	spatial	4194304	491744	1361776
+karnor	textures_decoded	20971520	81968	82176
+karnor	entity_models	88080384	4136896	29193824
+karnor	objects	41943040	1556352	10504528
+karnor	audio	33554432	0	0
+karnor	estimate:s3dZoneSourceBytes		1456016	
+karnor	estimate:zoneGeometryBytes		2617332	
+karnor	estimate:placeableObjectsBytes		1111608	
+karnor	estimate:characterModelsBytes		1445267	
+karnor	estimate:gpuTextureBytes		3103480	
+karnor	estimate:vboEboBytes		3828174	
+karnor	estimate:textureCacheBytesUsed		2026272	
+karnor	estimate:eqe1MappedBytes		125048552	
+karnor	estimate:totalEstimate		17401877	
+felwithea	unattributed	1048576	86208	86208
+felwithea	archives	4194304	1277376	1278784
+felwithea	zone_parse	33554432	1008656	6861968
+felwithea	zone_mesh	29360128	3727152	3739136
+felwithea	spatial	4194304	352160	1140208
+felwithea	textures_decoded	20971520	119648	119952
+felwithea	entity_models	88080384	4163472	23850208
+felwithea	objects	41943040	1152064	10814224
+felwithea	audio	33554432	0	0
+felwithea	estimate:s3dZoneSourceBytes		870964	
+felwithea	estimate:zoneGeometryBytes		1306926	
+felwithea	estimate:placeableObjectsBytes		820608	
+felwithea	estimate:characterModelsBytes		1445267	
+felwithea	estimate:gpuTextureBytes		7410992	
+felwithea	estimate:vboEboBytes		2226768	
+felwithea	estimate:textureCacheBytesUsed		6842888	
+felwithea	estimate:eqe1MappedBytes		122977076	
+felwithea	estimate:totalEstimate		17921525	
+crushbone	unattributed	1048576	86208	86208
+crushbone	archives	4194304	1265472	1266896
+crushbone	zone_parse	33554432	1257056	7069216
+crushbone	zone_mesh	29360128	4111360	4117488
+crushbone	spatial	4194304	475232	1347872
+crushbone	textures_decoded	20971520	96176	96384
+crushbone	entity_models	88080384	4154000	23849824
+crushbone	objects	41943040	837440	10878048
+crushbone	audio	33554432	0	0
+crushbone	estimate:s3dZoneSourceBytes		1148058	
+crushbone	estimate:zoneGeometryBytes		1377396	
+crushbone	estimate:placeableObjectsBytes		528588	
+crushbone	estimate:characterModelsBytes		1445267	
+crushbone	estimate:gpuTextureBytes		5463360	
+crushbone	estimate:vboEboBytes		2005218	
+crushbone	estimate:textureCacheBytesUsed		5135600	
+crushbone	estimate:eqe1MappedBytes		122260800	
+crushbone	estimate:totalEstimate		15807887	
+droga	unattributed	1048576	86208	86208
+droga	archives	4194304	1289440	1290832
+droga	zone_parse	33554432	3418080	15318912
+droga	zone_mesh	29360128	9018736	9106656
+droga	spatial	4194304	534432	1322480
+droga	textures_decoded	20971520	66640	66848
+droga	entity_models	88080384	4275152	23851440
+droga	objects	41943040	3400720	15307360
+droga	audio	33554432	0	0
+droga	estimate:s3dZoneSourceBytes		3143061	
+droga	estimate:zoneGeometryBytes		2763126	
+droga	estimate:placeableObjectsBytes		2394072	
+droga	estimate:characterModelsBytes		1454681	
+droga	estimate:gpuTextureBytes		759904	
+droga	estimate:vboEboBytes		5256432	
+droga	estimate:textureCacheBytesUsed		468080	
+droga	estimate:eqe1MappedBytes		122974968	
+droga	estimate:totalEstimate		19611276	
+grobb	unattributed	1048576	86208	86208
+grobb	archives	4194304	1260176	1261584
+grobb	zone_parse	33554432	897776	6543856
+grobb	zone_mesh	29360128	4452704	4499088
+grobb	spatial	4194304	453184	1297376
+grobb	textures_decoded	20971520	86576	86784
+grobb	entity_models	88080384	4609328	24593936
+grobb	objects	41943040	998048	10404896
+grobb	audio	33554432	0	0
+grobb	estimate:s3dZoneSourceBytes		800849	
+grobb	estimate:zoneGeometryBytes		1613250	
+grobb	estimate:placeableObjectsBytes		675684	
+grobb	estimate:characterModelsBytes		1477498	
+grobb	estimate:gpuTextureBytes		5059248	
+grobb	estimate:vboEboBytes		2388168	
+grobb	estimate:textureCacheBytesUsed		4622192	
+grobb	estimate:eqe1MappedBytes		121273724	
+grobb	estimate:totalEstimate		15854697	
+qeytoqrg	unattributed	1048576	86208	86208
+qeytoqrg	archives	4194304	1319712	1321120
+qeytoqrg	zone_parse	33554432	367600	4020608
+qeytoqrg	zone_mesh	29360128	1336944	1355104
+qeytoqrg	spatial	4194304	200976	989024
+qeytoqrg	textures_decoded	20971520	75824	76032
+qeytoqrg	entity_models	88080384	4275824	23850160
+qeytoqrg	objects	41943040	1482416	7385824
+qeytoqrg	audio	33554432	0	0
+qeytoqrg	estimate:s3dZoneSourceBytes		317848	
+qeytoqrg	estimate:zoneGeometryBytes		693930	
+qeytoqrg	estimate:placeableObjectsBytes		921300	
+qeytoqrg	estimate:characterModelsBytes		1445267	
+qeytoqrg	estimate:gpuTextureBytes		4698232	
+qeytoqrg	estimate:vboEboBytes		1714464	
+qeytoqrg	estimate:textureCacheBytesUsed		4501584	
+qeytoqrg	estimate:eqe1MappedBytes		120814968	
+qeytoqrg	estimate:totalEstimate		13631041	
+mistmoore	unattributed	1048576	86208	86208
+mistmoore	archives	4194304	1291712	1293120
+mistmoore	zone_parse	33554432	1138912	7316096
+mistmoore	zone_mesh	29360128	5317120	5324624
+mistmoore	spatial	4194304	315376	1103424
+mistmoore	textures_decoded	20971520	98832	99040
+mistmoore	entity_models	88080384	4348112	23849792
+mistmoore	objects	41943040	1823584	11727536
+mistmoore	audio	33554432	0	0
+mistmoore	estimate:s3dZoneSourceBytes		1011719	
+mistmoore	estimate:zoneGeometryBytes		1964928	
+mistmoore	estimate:placeableObjectsBytes		1230828	
+mistmoore	estimate:characterModelsBytes		1445267	
+mistmoore	estimate:gpuTextureBytes		5542496	
+mistmoore	estimate:vboEboBytes		3294990	
+mistmoore	estimate:textureCacheBytesUsed		5214736	
+mistmoore	estimate:eqe1MappedBytes		122759084	
+mistmoore	estimate:totalEstimate		18330228	
+wakening	unattributed	1048576	86208	86208
+wakening	archives	4194304	1369600	1371024
+wakening	zone_parse	33554432	588512	5414928
+wakening	zone_mesh	29360128	3306512	3314384
+wakening	spatial	4194304	466640	1254688
+wakening	textures_decoded	20971520	89856	90064
+wakening	entity_models	88080384	4344256	27334752
+wakening	objects	41943040	2920448	10508992
+wakening	audio	33554432	0	0
+wakening	estimate:s3dZoneSourceBytes		530885	
+wakening	estimate:zoneGeometryBytes		2225520	
+wakening	estimate:placeableObjectsBytes		2329746	
+wakening	estimate:characterModelsBytes		1445267	
+wakening	estimate:gpuTextureBytes		4400424	
+wakening	estimate:vboEboBytes		4654500	
+wakening	estimate:textureCacheBytesUsed		2913408	
+wakening	estimate:eqe1MappedBytes		129511464	
+wakening	estimate:totalEstimate		19426342	
+ecommons	unattributed	1048576	86208	86208
+ecommons	archives	4194304	1328288	1329696
+ecommons	zone_parse	33554432	572256	3474704
+ecommons	zone_mesh	29360128	1171936	1188928
+ecommons	spatial	4194304	248832	1036880
+ecommons	textures_decoded	20971520	96272	96480
+ecommons	entity_models	88080384	4288976	23849888
+ecommons	objects	41943040	7251072	14256576
+ecommons	audio	33554432	0	0
+ecommons	estimate:s3dZoneSourceBytes		513353	
+ecommons	estimate:zoneGeometryBytes		629370	
+ecommons	estimate:placeableObjectsBytes		4701474	
+ecommons	estimate:characterModelsBytes		1445267	
+ecommons	estimate:gpuTextureBytes		5638112	
+ecommons	estimate:vboEboBytes		5430078	
+ecommons	estimate:textureCacheBytesUsed		5354056	
+ecommons	estimate:eqe1MappedBytes		121942956	
+ecommons	estimate:totalEstimate		22197654	
+northkarana	unattributed	1048576	86208	86208
+northkarana	archives	4194304	1316960	1318368
+northkarana	zone_parse	33554432	240832	3227136
+northkarana	zone_mesh	29360128	1412832	1438736
+northkarana	spatial	4194304	234912	1022960
+northkarana	textures_decoded	20971520	101360	101568
+northkarana	entity_models	88080384	4345088	23848928
+northkarana	objects	41943040	7092224	14464080
+northkarana	audio	33554432	0	0
+northkarana	estimate:s3dZoneSourceBytes		202318	
+northkarana	estimate:zoneGeometryBytes		570900	
+northkarana	estimate:placeableObjectsBytes		4417530	
+northkarana	estimate:characterModelsBytes		1445267	
+northkarana	estimate:gpuTextureBytes		6053192	
+northkarana	estimate:vboEboBytes		5087664	
+northkarana	estimate:textureCacheBytesUsed		5725432	
+northkarana	estimate:eqe1MappedBytes		122684440	
+northkarana	estimate:totalEstimate		21616871	
+qcat	unattributed	1048576	86208	86208
+qcat	archives	4194304	1315728	1317136
+qcat	zone_parse	33554432	472400	4039472
+qcat	zone_mesh	29360128	2231632	2237184
+qcat	spatial	4194304	281888	1069936
+qcat	textures_decoded	20971520	56080	56272
+qcat	entity_models	88080384	4267760	23850160
+qcat	objects	41943040	553296	5833584
+qcat	audio	33554432	0	0
+qcat	estimate:s3dZoneSourceBytes		380227	
+qcat	estimate:zoneGeometryBytes		770244	
+qcat	estimate:placeableObjectsBytes		353424	
+qcat	estimate:characterModelsBytes		1445267	
+qcat	estimate:gpuTextureBytes		3146952	
+qcat	estimate:vboEboBytes		1222902	
+qcat	estimate:textureCacheBytesUsed		2993984	
+qcat	estimate:eqe1MappedBytes		119643352	
+qcat	estimate:totalEstimate		11159016	
+nro	unattributed	1048576	86208	86208
+nro	archives	4194304	1332160	1333568
+nro	zone_parse	33554432	615248	3079792
+nro	zone_mesh	29360128	1239488	1255456
+nro	spatial	4194304	231456	1019504
+nro	textures_decoded	20971520	92368	92576
+nro	entity_models	88080384	4520064	23850080
+nro	objects	41943040	1622128	8753632
+nro	audio	33554432	0	0
+nro	estimate:s3dZoneSourceBytes		557461	
+nro	estimate:zoneGeometryBytes		673374	
+nro	estimate:placeableObjectsBytes		1104822	
+nro	estimate:characterModelsBytes		1445267	
+nro	estimate:gpuTextureBytes		6621160	
+nro	estimate:vboEboBytes		1877430	
+nro	estimate:textureCacheBytesUsed		6074920	
+nro	estimate:eqe1MappedBytes		122047424	
+nro	estimate:totalEstimate		16119514	
+dalnir	unattributed	1048576	86208	86208
+dalnir	archives	4194304	1281168	1282576
+dalnir	zone_parse	33554432	802384	4658784
+dalnir	zone_mesh	29360128	3286048	3295600
+dalnir	spatial	4194304	258160	1046208
+dalnir	textures_decoded	20971520	140416	140624
+dalnir	entity_models	88080384	4138800	26872496
+dalnir	objects	41943040	1308320	7088768
+dalnir	audio	33554432	0	0
+dalnir	estimate:s3dZoneSourceBytes		695289	
+dalnir	estimate:zoneGeometryBytes		1130844	
+dalnir	estimate:placeableObjectsBytes		962550	
+dalnir	estimate:characterModelsBytes		1445267	
+dalnir	estimate:gpuTextureBytes		3297704	
+dalnir	estimate:vboEboBytes		2192628	
+dalnir	estimate:textureCacheBytesUsed		2156840	
+dalnir	estimate:eqe1MappedBytes		120703608	
+dalnir	estimate:totalEstimate		13564282	
+beholder	unattributed	1048576	86208	86208
+beholder	archives	4194304	1292688	1294096
+beholder	zone_parse	33554432	189568	2001600
+beholder	zone_mesh	29360128	959728	964480
+beholder	spatial	4194304	126928	914976
+beholder	textures_decoded	20971520	24736	24944
+beholder	entity_models	88080384	4247552	23855904
+beholder	objects	41943040	376976	2954256
+beholder	audio	33554432	0	0
+beholder	estimate:s3dZoneSourceBytes		167176	
+beholder	estimate:zoneGeometryBytes		582000	
+beholder	estimate:placeableObjectsBytes		230724	
+beholder	estimate:characterModelsBytes		1445267	
+beholder	estimate:gpuTextureBytes		1540584	
+beholder	estimate:vboEboBytes		911958	
+beholder	estimate:textureCacheBytesUsed		1431344	
+beholder	estimate:eqe1MappedBytes		117082088	
+beholder	estimate:totalEstimate		8717709	
+innothule	unattributed	1048576	86208	86208
+innothule	archives	4194304	1280672	1282080
+innothule	zone_parse	33554432	324160	3427856
+innothule	zone_mesh	29360128	2210080	2222240
+innothule	spatial	4194304	273936	1061984
+innothule	textures_decoded	20971520	31504	31712
+innothule	entity_models	88080384	4351104	24653904
+innothule	objects	41943040	7483744	11934560
+innothule	audio	33554432	0	0
+innothule	estimate:s3dZoneSourceBytes		291206	
+innothule	estimate:zoneGeometryBytes		1630194	
+innothule	estimate:placeableObjectsBytes		4852548	
+innothule	estimate:characterModelsBytes		1445267	
+innothule	estimate:gpuTextureBytes		2272600	
+innothule	estimate:vboEboBytes		6581976	
+innothule	estimate:textureCacheBytesUsed		1944840	
+innothule	estimate:eqe1MappedBytes		117735168	
+innothule	estimate:totalEstimate		20913791	
+arena	unattributed	1048576	86208	86208
+arena	archives	4194304	1255536	1256944
+arena	zone_parse	33554432	38752	504432
+arena	zone_mesh	29360128	314592	320176
+arena	spatial	4194304	56288	844336
+arena	textures_decoded	20971520	33680	33888
+arena	entity_models	88080384	4184048	23856848
+arena	objects	41943040	236016	2172256
+arena	audio	33554432	0	0
+arena	estimate:s3dZoneSourceBytes		30390	
+arena	estimate:zoneGeometryBytes		176364	
+arena	estimate:placeableObjectsBytes		155994	
+arena	estimate:characterModelsBytes		1445267	
+arena	estimate:gpuTextureBytes		1781104	
+arena	estimate:vboEboBytes		431592	
+arena	estimate:textureCacheBytesUsed		1671864	
+arena	estimate:eqe1MappedBytes		116597968	
+arena	estimate:totalEstimate		7860711	
+iceclad	unattributed	1048576	86208	86208
+iceclad	archives	4194304	1291136	1292544
+iceclad	zone_parse	33554432	11329968	50071136
+iceclad	zone_mesh	29360128	19064528	19069568
+iceclad	spatial	4194304	2786288	8130224
+iceclad	textures_decoded	20971520	83616	83824
+iceclad	entity_models	88080384	4495440	23848624
+iceclad	objects	41943040	487984	50055344
+iceclad	audio	33554432	0	0
+iceclad	estimate:s3dZoneSourceBytes		10568328	
+iceclad	estimate:zoneGeometryBytes		6926622	
+iceclad	estimate:placeableObjectsBytes		389688	
+iceclad	estimate:characterModelsBytes		1522794	
+iceclad	estimate:gpuTextureBytes		3977608	
+iceclad	estimate:vboEboBytes		7415544	
+iceclad	estimate:textureCacheBytesUsed		2616280	
+iceclad	estimate:eqe1MappedBytes		139111816	
+iceclad	estimate:totalEstimate		34640584	
+warslikswood	unattributed	1048576	86208	86208
+warslikswood	archives	4194304	1292480	1293984
+warslikswood	zone_parse	33554432	5073232	26232944
+warslikswood	zone_mesh	29360128	12137440	12237456
+warslikswood	spatial	4194304	1387584	3502416
+warslikswood	textures_decoded	20971520	172704	172912
+warslikswood	entity_models	88080384	4147520	25967104
+warslikswood	objects	41943040	8933296	30606144
+warslikswood	audio	33554432	0	0
+warslikswood	estimate:s3dZoneSourceBytes		4749353	
+warslikswood	estimate:zoneGeometryBytes		7058064	
+warslikswood	estimate:placeableObjectsBytes		6979470	
+warslikswood	estimate:characterModelsBytes		1445267	
+warslikswood	estimate:gpuTextureBytes		5420496	
+warslikswood	estimate:vboEboBytes		14136768	
+warslikswood	estimate:textureCacheBytesUsed		3571704	
+warslikswood	estimate:eqe1MappedBytes		132089332	
+warslikswood	estimate:totalEstimate		43629418	
+thurgadinb	unattributed	1048576	86208	86208
+thurgadinb	archives	4194304	1393984	1395392
+thurgadinb	zone_parse	33554432	1850368	13461856
+thurgadinb	zone_mesh	29360128	6723888	6735056
+thurgadinb	spatial	4194304	506976	1460032
+thurgadinb	textures_decoded	20971520	201632	201936
+thurgadinb	entity_models	88080384	4240208	23848832
+thurgadinb	objects	41943040	2413360	18307216
+thurgadinb	audio	33554432	0	0
+thurgadinb	estimate:s3dZoneSourceBytes		1674369	
+thurgadinb	estimate:zoneGeometryBytes		2379552	
+thurgadinb	estimate:placeableObjectsBytes		1787658	
+thurgadinb	estimate:characterModelsBytes		1445267	
+thurgadinb	estimate:gpuTextureBytes		5812744	
+thurgadinb	estimate:vboEboBytes		4266444	
+thurgadinb	estimate:textureCacheBytesUsed		3888056	
+thurgadinb	estimate:eqe1MappedBytes		131740724	
+thurgadinb	estimate:totalEstimate		21206034	
+lakeofillomen	unattributed	1048576	86208	86208
+lakeofillomen	archives	4194304	1300352	1301856
+lakeofillomen	zone_parse	33554432	3299168	21662544
+lakeofillomen	zone_mesh	29360128	11692208	11791632
+lakeofillomen	spatial	4194304	1251024	3656656
+lakeofillomen	textures_decoded	20971520	208688	208896
+lakeofillomen	entity_models	88080384	4307120	26221552
+lakeofillomen	objects	41943040	11243216	31316480
+lakeofillomen	audio	33554432	0	0
+lakeofillomen	estimate:s3dZoneSourceBytes		3035865	
+lakeofillomen	estimate:zoneGeometryBytes		7275276	
+lakeofillomen	estimate:placeableObjectsBytes		8963676	
+lakeofillomen	estimate:characterModelsBytes		1445267	
+lakeofillomen	estimate:gpuTextureBytes		5661784	
+lakeofillomen	estimate:vboEboBytes		16338186	
+lakeofillomen	estimate:textureCacheBytesUsed		3735976	
+lakeofillomen	estimate:eqe1MappedBytes		130866904	
+lakeofillomen	estimate:totalEstimate		46560054	
+templeveeshan	unattributed	1048576	86208	86208
+templeveeshan	archives	4194304	1392208	1393696
+templeveeshan	zone_parse	33554432	1831056	11280624
+templeveeshan	zone_mesh	29360128	6446560	6458304
+templeveeshan	spatial	4194304	850144	1789056
+templeveeshan	textures_decoded	20971520	63808	64016
+templeveeshan	entity_models	88080384	4362192	29806864
+templeveeshan	objects	41943040	3315792	14860512
+templeveeshan	audio	33554432	0	0
+templeveeshan	estimate:s3dZoneSourceBytes		1583195	
+templeveeshan	estimate:zoneGeometryBytes		2354088	
+templeveeshan	estimate:placeableObjectsBytes		2587620	
+templeveeshan	estimate:characterModelsBytes		1445267	
+templeveeshan	estimate:gpuTextureBytes		4643104	
+templeveeshan	estimate:vboEboBytes		5040942	
+templeveeshan	estimate:textureCacheBytesUsed		3062648	
+templeveeshan	estimate:eqe1MappedBytes		136510208	
+templeveeshan	estimate:totalEstimate		21494216	
+dreadlands	unattributed	1048576	86208	86208
+dreadlands	archives	4194304	1324656	1326064
+dreadlands	zone_parse	33554432	3388704	21246096
+dreadlands	zone_mesh	29360128	12417616	12432528
+dreadlands	spatial	4194304	1251840	2677392
+dreadlands	textures_decoded	20971520	159584	159792
+dreadlands	entity_models	88080384	4486672	28606592
+dreadlands	objects	41943040	4778672	22971008
+dreadlands	audio	33554432	0	0
+dreadlands	estimate:s3dZoneSourceBytes		3192214	
+dreadlands	estimate:zoneGeometryBytes		8910618	
+dreadlands	estimate:placeableObjectsBytes		3844308	
+dreadlands	estimate:characterModelsBytes		1445267	
+dreadlands	estimate:gpuTextureBytes		5258528	
+dreadlands	estimate:vboEboBytes		12854160	
+dreadlands	estimate:textureCacheBytesUsed		3498472	
+dreadlands	estimate:eqe1MappedBytes		131527328	
+dreadlands	estimate:totalEstimate		39345095	
+overthere	unattributed	1048576	86208	86208
+overthere	archives	4194304	1331824	1333232
+overthere	zone_parse	33554432	3834960	19259152
+overthere	zone_mesh	29360128	8647200	8671232
+overthere	spatial	4194304	1148880	2521712
+overthere	textures_decoded	20971520	230640	230864
+overthere	entity_models	88080384	4449232	25845120
+overthere	objects	41943040	16290224	35141808
+overthere	audio	33554432	0	0
+overthere	estimate:s3dZoneSourceBytes		3548181	
+overthere	estimate:zoneGeometryBytes		4790922	
+overthere	estimate:placeableObjectsBytes		13294668	
+overthere	estimate:characterModelsBytes		1477498	
+overthere	estimate:gpuTextureBytes		7350512	
+overthere	estimate:vboEboBytes		18184824	
+overthere	estimate:textureCacheBytesUsed		4858480	
+overthere	estimate:eqe1MappedBytes		130050688	
+overthere	estimate:totalEstimate		52486605	
+everfrost	unattributed	1048576	86208	86208
+everfrost	archives	4194304	1305824	1307232
+everfrost	zone_parse	33554432	1090304	11833152
+everfrost	zone_mesh	29360128	7508864	7518592
+everfrost	spatial	4194304	817664	1863616
+everfrost	textures_decoded	20971520	73664	73872
+everfrost	entity_models	88080384	4243568	23850144
+everfrost	objects	41943040	2037840	14820304
+everfrost	audio	33554432	0	0
+everfrost	estimate:s3dZoneSourceBytes		981010	
+everfrost	estimate:zoneGeometryBytes		5381562	
+everfrost	estimate:placeableObjectsBytes		1183938	
+everfrost	estimate:characterModelsBytes		1445267	
+everfrost	estimate:gpuTextureBytes		4608168	
+everfrost	estimate:vboEboBytes		6664734	
+everfrost	estimate:textureCacheBytesUsed		4367816	
+everfrost	estimate:eqe1MappedBytes		124433012	
+everfrost	estimate:totalEstimate		24104679	
+westwastes	unattributed	1048576	86208	86208
+westwastes	archives	4194304	1396032	1397440
+westwastes	zone_parse	33554432	2465216	14993376
+westwastes	zone_mesh	29360128	8551648	8564256
+westwastes	spatial	4194304	1031728	2136800
+westwastes	textures_decoded	20971520	149808	150016
+westwastes	entity_models	88080384	4368096	27390272
+westwastes	objects	41943040	2989360	18270832
+westwastes	audio	33554432	0	0
+westwastes	estimate:s3dZoneSourceBytes		2243245	
+westwastes	estimate:zoneGeometryBytes		4395264	
+westwastes	estimate:placeableObjectsBytes		2778396	
+westwastes	estimate:characterModelsBytes		1445267	
+westwastes	estimate:gpuTextureBytes		7287064	
+westwastes	estimate:vboEboBytes		7272894	
+westwastes	estimate:textureCacheBytesUsed		4814352	
+westwastes	estimate:eqe1MappedBytes		134223852	
+westwastes	estimate:totalEstimate		29262130	
+paineel	unattributed	1048576	86208	86208
+paineel	archives	4194304	1277360	1278768
+paineel	zone_parse	33554432	3544192	19109456
+paineel	zone_mesh	29360128	12078672	12086640
+paineel	spatial	4194304	567936	1616128
+paineel	textures_decoded	20971520	72416	72624
+paineel	entity_models	88080384	4174016	23849600
+paineel	objects	41943040	4676944	22637744
+paineel	audio	33554432	0	0
+paineel	estimate:s3dZoneSourceBytes		3296350	
+paineel	estimate:zoneGeometryBytes		4484874	
+paineel	estimate:placeableObjectsBytes		3826218	
+paineel	estimate:characterModelsBytes		1445267	
+paineel	estimate:gpuTextureBytes		4523432	
+paineel	estimate:vboEboBytes		8410326	
+paineel	estimate:textureCacheBytesUsed		4283080	
+paineel	estimate:eqe1MappedBytes		126522460	
+paineel	estimate:totalEstimate		29826467	
+eastwastes	unattributed	1048576	86208	86208
+eastwastes	archives	4194304	1409088	1410496
+eastwastes	zone_parse	33554432	3849664	21308064
+eastwastes	zone_mesh	29360128	10495936	10506064
+eastwastes	spatial	4194304	1396224	2771296
+eastwastes	textures_decoded	20971520	87408	87616
+eastwastes	entity_models	88080384	4412784	30737520
+eastwastes	objects	41943040	627904	21295632
+eastwastes	audio	33554432	0	0
+eastwastes	estimate:s3dZoneSourceBytes		3496043	
+eastwastes	estimate:zoneGeometryBytes		5663748	
+eastwastes	estimate:placeableObjectsBytes		504162	
+eastwastes	estimate:characterModelsBytes		1445267	
+eastwastes	estimate:gpuTextureBytes		4656464	
+eastwastes	estimate:vboEboBytes		6267144	
+eastwastes	estimate:textureCacheBytesUsed		3101632	
+eastwastes	estimate:eqe1MappedBytes		137848384	
+eastwastes	estimate:totalEstimate		25872828	
+fieldofbone	unattributed	1048576	86208	86208
+fieldofbone	archives	4194304	1345616	1347024
+fieldofbone	zone_parse	33554432	1032560	10753488
+fieldofbone	zone_mesh	29360128	6770176	6835184
+fieldofbone	spatial	4194304	654496	1591648
+fieldofbone	textures_decoded	20971520	188624	188816
+fieldofbone	entity_models	88080384	4251472	27296032
+fieldofbone	objects	41943040	3264352	15765280
+fieldofbone	audio	33554432	0	0
+fieldofbone	estimate:s3dZoneSourceBytes		928191	
+fieldofbone	estimate:zoneGeometryBytes		4379952	
+fieldofbone	estimate:placeableObjectsBytes		2369622	
+fieldofbone	estimate:characterModelsBytes		1445267	
+fieldofbone	estimate:gpuTextureBytes		6894096	
+fieldofbone	estimate:vboEboBytes		6848808	
+fieldofbone	estimate:textureCacheBytesUsed		4553288	
+fieldofbone	estimate:eqe1MappedBytes		128070628	
+fieldofbone	estimate:totalEstimate		26705936	
+southkarana	unattributed	1048576	86208	86208
+southkarana	archives	4194304	1304912	1306320
+southkarana	zone_parse	33554432	403728	5844224
+southkarana	zone_mesh	29360128	2216032	2245824
+southkarana	spatial	4194304	342352	1130400
+southkarana	textures_decoded	20971520	112400	112608
+southkarana	entity_models	88080384	4248608	23849984
+southkarana	objects	41943040	12895200	21878368
+southkarana	audio	33554432	0	0
+southkarana	estimate:s3dZoneSourceBytes		345855	
+southkarana	estimate:zoneGeometryBytes		1080876	
+southkarana	estimate:placeableObjectsBytes		7774110	
+southkarana	estimate:characterModelsBytes		1445267	
+southkarana	estimate:gpuTextureBytes		6719688	
+southkarana	estimate:vboEboBytes		8954220	
+southkarana	estimate:textureCacheBytesUsed		6413768	
+southkarana	estimate:eqe1MappedBytes		124233016	
+southkarana	estimate:totalEstimate		30160016	
+highpass	unattributed	1048576	86208	86208
+highpass	archives	4194304	1329808	1331216
+highpass	zone_parse	33554432	698960	7139840
+highpass	zone_mesh	29360128	3870800	3922496
+highpass	spatial	4194304	476368	1264416
+highpass	textures_decoded	20971520	120464	120672
+highpass	entity_models	88080384	4264640	23850080
+highpass	objects	41943040	3368208	13126512
+highpass	audio	33554432	0	0
+highpass	estimate:s3dZoneSourceBytes		588482	
+highpass	estimate:zoneGeometryBytes		1398066	
+highpass	estimate:placeableObjectsBytes		2122926	
+highpass	estimate:characterModelsBytes		1445267	
+highpass	estimate:gpuTextureBytes		6744664	
+highpass	estimate:vboEboBytes		3620226	
+highpass	estimate:textureCacheBytesUsed		6526152	
+highpass	estimate:eqe1MappedBytes		123813064	
+highpass	estimate:totalEstimate		19759631	
+emeraldjungle	unattributed	1048576	86208	86208
+emeraldjungle	archives	4194304	1319760	1321264
+emeraldjungle	zone_parse	33554432	675280	8643232
+emeraldjungle	zone_mesh	29360128	5436032	5464848
+emeraldjungle	spatial	4194304	640704	1539936
+emeraldjungle	textures_decoded	20971520	105024	105232
+emeraldjungle	entity_models	88080384	4220272	30679408
+emeraldjungle	objects	41943040	14584640	25972544
+emeraldjungle	audio	33554432	0	0
+emeraldjungle	estimate:s3dZoneSourceBytes		580242	
+emeraldjungle	estimate:zoneGeometryBytes		4169838	
+emeraldjungle	estimate:placeableObjectsBytes		11630820	
+emeraldjungle	estimate:characterModelsBytes		1445267	
+emeraldjungle	estimate:gpuTextureBytes		4701416	
+emeraldjungle	estimate:vboEboBytes		15899892	
+emeraldjungle	estimate:textureCacheBytesUsed		3094232	
+emeraldjungle	estimate:eqe1MappedBytes		128733780	
+emeraldjungle	estimate:totalEstimate		42267475	
+permafrost	unattributed	1048576	86208	86208
+permafrost	archives	4194304	1301408	1302816
+permafrost	zone_parse	33554432	1008912	6870992
+permafrost	zone_mesh	29360128	4028768	4074848
+permafrost	spatial	4194304	401280	1189328
+permafrost	textures_decoded	20971520	81840	82112
+permafrost	entity_models	88080384	4290112	23850768
+permafrost	objects	41943040	1887040	11399680
+permafrost	audio	33554432	0	0
+permafrost	estimate:s3dZoneSourceBytes		885104	
+permafrost	estimate:zoneGeometryBytes		1373190	
+permafrost	estimate:placeableObjectsBytes		1300764	
+permafrost	estimate:characterModelsBytes		1445267	
+permafrost	estimate:gpuTextureBytes		4534736	
+permafrost	estimate:vboEboBytes		2773188	
+permafrost	estimate:textureCacheBytesUsed		4272496	
+permafrost	estimate:eqe1MappedBytes		123789172	
+permafrost	estimate:totalEstimate		16152249	
+paw	unattributed	1048576	86208	86208
+paw	archives	4194304	1289552	1290960
+paw	zone_parse	33554432	500640	5484432
+paw	zone_mesh	29360128	3123424	3130000
+paw	spatial	4194304	342176	1130224
+paw	textures_decoded	20971520	52288	52496
+paw	entity_models	88080384	4228896	23850192
+paw	objects	41943040	1490016	8629712
+paw	audio	33554432	0	0
+paw	estimate:s3dZoneSourceBytes		422415	
+paw	estimate:zoneGeometryBytes		1177224	
+paw	estimate:placeableObjectsBytes		910086	
+paw	estimate:characterModelsBytes		1445267	
+paw	estimate:gpuTextureBytes		3266936	
+paw	estimate:vboEboBytes		2186544	
+paw	estimate:textureCacheBytesUsed		3113992	
+paw	estimate:eqe1MappedBytes		121044012	
+paw	estimate:totalEstimate		13248472	
+butcher	unattributed	1048576	86208	86208
+butcher	archives	4194304	1325744	1327152
+butcher	zone_parse	33554432	912992	7998240
+butcher	zone_mesh	29360128	5378656	5426528
+butcher	spatial	4194304	635424	1505776
+butcher	textures_decoded	20971520	142928	143136
+butcher	entity_models	88080384	4371680	23849264
+butcher	objects	41943040	7237568	19739808
+butcher	audio	33554432	0	0
+butcher	estimate:s3dZoneSourceBytes		823608	
+butcher	estimate:zoneGeometryBytes		3194052	
+butcher	estimate:placeableObjectsBytes		4565718	
+butcher	estimate:characterModelsBytes		1477498	
+butcher	estimate:gpuTextureBytes		8249608	
+butcher	estimate:vboEboBytes		7859004	
+butcher	estimate:textureCacheBytesUsed		7921848	
+butcher	estimate:eqe1MappedBytes		126919928	
+butcher	estimate:totalEstimate		30009488	
+kaladima	unattributed	1048576	86208	86208
+kaladima	archives	4194304	1259648	1261072
+kaladima	zone_parse	33554432	528784	5715408
+kaladima	zone_mesh	29360128	3219744	3230928
+kaladima	spatial	4194304	224784	1012832
+kaladima	textures_decoded	20971520	127824	128032
+kaladima	entity_models	88080384	4132208	23849664
+kaladima	objects	41943040	1821232	11025872
+kaladima	audio	33554432	0	0
+kaladima	estimate:s3dZoneSourceBytes		435516	
+kaladima	estimate:zoneGeometryBytes		1323036	
+kaladima	estimate:placeableObjectsBytes		1305372	
+kaladima	estimate:characterModelsBytes		1445267	
+kaladima	estimate:gpuTextureBytes		7716864	
+kaladima	estimate:vboEboBytes		2727642	
+kaladima	estimate:textureCacheBytesUsed		7258032	
+kaladima	estimate:eqe1MappedBytes		121812624	
+kaladima	estimate:totalEstimate		18793697	
+kedge	unattributed	1048576	86208	86208
+kedge	archives	4194304	1234544	1235952
+kedge	zone_parse	33554432	401408	4310224
+kedge	zone_mesh	29360128	1470496	1473856
+kedge	spatial	4194304	202416	990464
+kedge	textures_decoded	20971520	19328	19536
+kedge	entity_models	88080384	4117936	23850736
+kedge	objects	41943040	1216816	6787152
+kedge	audio	33554432	0	0
+kedge	estimate:s3dZoneSourceBytes		290999	
+kedge	estimate:zoneGeometryBytes		529110	
+kedge	estimate:placeableObjectsBytes		854550	
+kedge	estimate:characterModelsBytes		1445267	
+kedge	estimate:gpuTextureBytes		1136320	
+kedge	estimate:vboEboBytes		1482894	
+kedge	estimate:textureCacheBytesUsed		1070784	
+kedge	estimate:eqe1MappedBytes		118082696	
+kedge	estimate:totalEstimate		9579140	
+warrens	unattributed	1048576	86208	86208
+warrens	archives	4194304	1286512	1287920
+warrens	zone_parse	33554432	831744	6977600
+warrens	zone_mesh	29360128	5488480	5494128
+warrens	spatial	4194304	450976	1239024
+warrens	textures_decoded	20971520	53936	54160
+warrens	entity_models	88080384	4211664	23850784
+warrens	objects	41943040	1430000	9335264
+warrens	audio	33554432	0	0
+warrens	estimate:s3dZoneSourceBytes		732002	
+warrens	estimate:zoneGeometryBytes		2160036	
+warrens	estimate:placeableObjectsBytes		1179060	
+warrens	estimate:characterModelsBytes		1445267	
+warrens	estimate:gpuTextureBytes		3103192	
+warrens	estimate:vboEboBytes		3438330	
+warrens	estimate:textureCacheBytesUsed		2906520	
+warrens	estimate:eqe1MappedBytes		120413332	
+warrens	estimate:totalEstimate		15897887	
+charasis	unattributed	1048576	86208	86208
+charasis	archives	4194304	1260176	1261568
+charasis	zone_parse	33554432	959616	6477360
+charasis	zone_mesh	29360128	3996720	4045584
+charasis	spatial	4194304	361408	1149456
+charasis	textures_decoded	20971520	68864	69088
+charasis	entity_models	88080384	4292832	24554528
+charasis	objects	41943040	3268944	10072480
+charasis	audio	33554432	0	0
+charasis	estimate:s3dZoneSourceBytes		785168	
+charasis	estimate:zoneGeometryBytes		1445418	
+charasis	estimate:placeableObjectsBytes		2572332	
+charasis	estimate:characterModelsBytes		1445267	
+charasis	estimate:gpuTextureBytes		2819928	
+charasis	estimate:vboEboBytes		4116984	
+charasis	estimate:textureCacheBytesUsed		1859032	
+charasis	estimate:eqe1MappedBytes		120459420	
+charasis	estimate:totalEstimate		17025097	
+kithicor	unattributed	1048576	86208	86208
+kithicor	archives	4194304	1334112	1335520
+kithicor	zone_parse	33554432	363376	3488976
+kithicor	zone_mesh	29360128	1162032	1176432
+kithicor	spatial	4194304	266768	1054816
+kithicor	textures_decoded	20971520	90160	90384
+kithicor	entity_models	88080384	4513424	24116416
+kithicor	objects	41943040	7137744	14052208
+kithicor	audio	33554432	0	0
+kithicor	estimate:s3dZoneSourceBytes		323249	
+kithicor	estimate:zoneGeometryBytes		592194	
+kithicor	estimate:placeableObjectsBytes		4594068	
+kithicor	estimate:characterModelsBytes		1445267	
+kithicor	estimate:gpuTextureBytes		5485160	
+kithicor	estimate:vboEboBytes		5285496	
+kithicor	estimate:textureCacheBytesUsed		5026288	
+kithicor	estimate:eqe1MappedBytes		122192328	
+kithicor	estimate:totalEstimate		21565434	
+qrg	unattributed	1048576	86208	86208
+qrg	archives	4194304	1318160	1319568
+qrg	zone_parse	33554432	340288	3840560
+qrg	zone_mesh	29360128	1921952	1946720
+qrg	spatial	4194304	265184	1053232
+qrg	textures_decoded	20971520	50560	50768
+qrg	entity_models	88080384	4308128	23849968
+qrg	objects	41943040	512736	6726512
+qrg	audio	33554432	0	0
+qrg	estimate:s3dZoneSourceBytes		286262	
+qrg	estimate:zoneGeometryBytes		731832	
+qrg	estimate:placeableObjectsBytes		296538	
+qrg	estimate:characterModelsBytes		1445267	
+qrg	estimate:gpuTextureBytes		3335304	
+qrg	estimate:vboEboBytes		1127604	
+qrg	estimate:textureCacheBytesUsed		3029384	
+qrg	estimate:eqe1MappedBytes		120599992	
+qrg	estimate:totalEstimate		11062807	
+najena	unattributed	1048576	86208	86208
+najena	archives	4194304	1282304	1283712
+najena	zone_parse	33554432	455936	3900032
+najena	zone_mesh	29360128	2116976	2152048
+najena	spatial	4194304	188064	976112
+najena	textures_decoded	20971520	90672	90880
+najena	entity_models	88080384	4174800	23850880
+najena	objects	41943040	3496224	10457664
+najena	audio	33554432	0	0
+najena	estimate:s3dZoneSourceBytes		365626	
+najena	estimate:zoneGeometryBytes		848130	
+najena	estimate:placeableObjectsBytes		2627382	
+najena	estimate:characterModelsBytes		1445267	
+najena	estimate:gpuTextureBytes		5343384	
+najena	estimate:vboEboBytes		3574746	
+najena	estimate:textureCacheBytesUsed		4971872	
+najena	estimate:eqe1MappedBytes		121140776	
+najena	estimate:totalEstimate		18044535	
+nurga	unattributed	1048576	86208	86208
+nurga	archives	4194304	1276640	1278048
+nurga	zone_parse	33554432	1137376	5342976
+nurga	zone_mesh	29360128	3270864	3274544
+nurga	spatial	4194304	232176	1020224
+nurga	textures_decoded	20971520	42864	43072
+nurga	entity_models	88080384	4282656	23850496
+nurga	objects	41943040	592736	5815440
+nurga	audio	33554432	0	0
+nurga	estimate:s3dZoneSourceBytes		1033044	
+nurga	estimate:zoneGeometryBytes		1046820	
+nurga	estimate:placeableObjectsBytes		449928	
+nurga	estimate:characterModelsBytes		1454681	
+nurga	estimate:gpuTextureBytes		738504	
+nurga	estimate:vboEboBytes		1595982	
+nurga	estimate:textureCacheBytesUsed		450376	
+nurga	estimate:eqe1MappedBytes		118961764	
+nurga	estimate:totalEstimate		10158959	
+befallen	unattributed	1048576	86208	86208
+befallen	archives	4194304	1279552	1280960
+befallen	zone_parse	33554432	1195120	7635152
+befallen	zone_mesh	29360128	5770976	5773792
+befallen	spatial	4194304	238512	1026560
+befallen	textures_decoded	20971520	52160	52368
+befallen	entity_models	88080384	4452784	23849904
+befallen	objects	41943040	2835936	10174640
+befallen	audio	33554432	0	0
+befallen	estimate:s3dZoneSourceBytes		1087667	
+befallen	estimate:zoneGeometryBytes		1729050	
+befallen	estimate:placeableObjectsBytes		2168052	
+befallen	estimate:characterModelsBytes		1445267	
+befallen	estimate:gpuTextureBytes		2633520	
+befallen	estimate:vboEboBytes		3996336	
+befallen	estimate:textureCacheBytesUsed		2480552	
+befallen	estimate:eqe1MappedBytes		120010752	
+befallen	estimate:totalEstimate		16899892	
+lfaydark	unattributed	1048576	86208	86208
+lfaydark	archives	4194304	1292016	1293424
+lfaydark	zone_parse	33554432	293504	2943248
+lfaydark	zone_mesh	29360128	1986144	1993808
+lfaydark	spatial	4194304	181600	969648
+lfaydark	textures_decoded	20971520	107488	107696
+lfaydark	entity_models	88080384	4223840	23848560
+lfaydark	objects	41943040	7923472	15737520
+lfaydark	audio	33554432	0	0
+lfaydark	estimate:s3dZoneSourceBytes		264124	
+lfaydark	estimate:zoneGeometryBytes		1651176	
+lfaydark	estimate:placeableObjectsBytes		4619028	
+lfaydark	estimate:characterModelsBytes		1445267	
+lfaydark	estimate:gpuTextureBytes		6162568	
+lfaydark	estimate:vboEboBytes		6369438	
+lfaydark	estimate:textureCacheBytesUsed		5878512	
+lfaydark	estimate:eqe1MappedBytes		122447544	
+lfaydark	estimate:totalEstimate		24351601	
+lavastorm	unattributed	1048576	86208	86208
+lavastorm	archives	4194304	1301264	1302672
+lavastorm	zone_parse	33554432	257584	2342048
+lavastorm	zone_mesh	29360128	1033936	1046176
+lavastorm	spatial	4194304	208096	996144
+lavastorm	textures_decoded	20971520	19584	19856
+lavastorm	entity_models	88080384	4644576	23856496
+lavastorm	objects	41943040	1176688	4248816
+lavastorm	audio	33554432	0	0
+lavastorm	estimate:s3dZoneSourceBytes		221276	
+lavastorm	estimate:zoneGeometryBytes		559554	
+lavastorm	estimate:placeableObjectsBytes		639780	
+lavastorm	estimate:characterModelsBytes		1445267	
+lavastorm	estimate:gpuTextureBytes		1660672	
+lavastorm	estimate:vboEboBytes		1298568	
+lavastorm	estimate:textureCacheBytesUsed		1354792	
+lavastorm	estimate:eqe1MappedBytes		117118732	
+lavastorm	estimate:totalEstimate		9665117	
+frozenshadow	unattributed	1048576	86208	86208
+frozenshadow	archives	4194304	1396592	1398112
+frozenshadow	zone_parse	33554432	2089408	18256624
+frozenshadow	zone_mesh	29360128	8883152	8979488
+frozenshadow	spatial	4194304	664048	1582560
+frozenshadow	textures_decoded	20971520	206896	207104
+frozenshadow	entity_models	88080384	4226352	23848672
+frozenshadow	objects	41943040	7996128	28654128
+frozenshadow	audio	33554432	0	0
+frozenshadow	estimate:s3dZoneSourceBytes		1816938	
+frozenshadow	estimate:zoneGeometryBytes		3283344	
+frozenshadow	estimate:placeableObjectsBytes		6480570	
+frozenshadow	estimate:characterModelsBytes		1445267	
+frozenshadow	estimate:gpuTextureBytes		5995360	
+frozenshadow	estimate:vboEboBytes		9863148	
+frozenshadow	estimate:textureCacheBytesUsed		4020752	
+frozenshadow	estimate:eqe1MappedBytes		132207976	
+frozenshadow	estimate:totalEstimate		32724627	
+freportn	unattributed	1048576	86208	86208
+freportn	archives	4194304	1317248	1318656
+freportn	zone_parse	33554432	1553232	13362592
+freportn	zone_mesh	29360128	7377344	7394528
+freportn	spatial	4194304	565312	1506144
+freportn	textures_decoded	20971520	179344	179552
+freportn	entity_models	88080384	4209680	23848352
+freportn	objects	41943040	3500448	20765056
+freportn	audio	33554432	0	0
+freportn	estimate:s3dZoneSourceBytes		1361075	
+freportn	estimate:zoneGeometryBytes		2645322	
+freportn	estimate:placeableObjectsBytes		2339328	
+freportn	estimate:characterModelsBytes		1445267	
+freportn	estimate:gpuTextureBytes		11352280	
+freportn	estimate:vboEboBytes		5083884	
+freportn	estimate:textureCacheBytesUsed		11024560	
+freportn	estimate:eqe1MappedBytes		130385488	
+freportn	estimate:totalEstimate		28067156	
+hole	unattributed	1048576	86208	86208
+hole	archives	4194304	1268176	1269568
+hole	zone_parse	33554432	4138672	29551808
+hole	zone_mesh	29360128	22183168	22190496
+hole	spatial	4194304	1171904	3007056
+hole	textures_decoded	20971520	97904	98112
+hole	entity_models	88080384	4127824	23853488
+hole	objects	41943040	11584112	38779968
+hole	audio	33554432	0	0
+hole	estimate:s3dZoneSourceBytes		3777171	
+hole	estimate:zoneGeometryBytes		8413380	
+hole	estimate:placeableObjectsBytes		9450702	
+hole	estimate:characterModelsBytes		1445267	
+hole	estimate:gpuTextureBytes		6708720	
+hole	estimate:vboEboBytes		17963316	
+hole	estimate:textureCacheBytesUsed		6096872	
+hole	estimate:eqe1MappedBytes		132633124	
+hole	estimate:totalEstimate		51598556	
+growthplane	unattributed	1048576	86208	86208
+growthplane	archives	4194304	1302464	1303872
+growthplane	zone_parse	33554432	1388752	12270816
+growthplane	zone_mesh	29360128	6989648	7039904
+growthplane	spatial	4194304	926880	2054112
+growthplane	textures_decoded	20971520	64800	64992
+growthplane	entity_models	88080384	4199168	23850736
+growthplane	objects	41943040	33010832	47814736
+growthplane	audio	33554432	0	0
+growthplane	estimate:s3dZoneSourceBytes		1283731	
+growthplane	estimate:zoneGeometryBytes		4905918	
+growthplane	estimate:placeableObjectsBytes		28687788	
+growthplane	estimate:characterModelsBytes		1445267	
+growthplane	estimate:gpuTextureBytes		5863672	
+growthplane	estimate:vboEboBytes		33692940	
+growthplane	estimate:textureCacheBytesUsed		3866120	
+growthplane	estimate:eqe1MappedBytes		130959908	
+growthplane	estimate:totalEstimate		79719316	
+sleeper	unattributed	1048576	86208	86208
+sleeper	archives	4194304	1332128	1333536
+sleeper	zone_parse	33554432	2239312	11316624
+sleeper	zone_mesh	29360128	4342912	4392688
+sleeper	spatial	4194304	600576	1402688
+sleeper	textures_decoded	20971520	91792	92000
+sleeper	entity_models	88080384	4256704	24186816
+sleeper	objects	41943040	1384688	13943872
+sleeper	audio	33554432	0	0
+sleeper	estimate:s3dZoneSourceBytes		2072301	
+sleeper	estimate:zoneGeometryBytes		1324536	
+sleeper	estimate:placeableObjectsBytes		1062432	
+sleeper	estimate:characterModelsBytes		1445267	
+sleeper	estimate:gpuTextureBytes		4931336	
+sleeper	estimate:vboEboBytes		2486202	
+sleeper	estimate:textureCacheBytesUsed		3247512	
+sleeper	estimate:eqe1MappedBytes		126795568	
+sleeper	estimate:totalEstimate		17162074	
+sirens	unattributed	1048576	86208	86208
+sirens	archives	4194304	1318624	1320016
+sirens	zone_parse	33554432	1429728	11491936
+sirens	zone_mesh	29360128	5968320	5977376
+sirens	spatial	4194304	656096	1534928
+sirens	textures_decoded	20971520	59760	60064
+sirens	entity_models	88080384	4241328	23851296
+sirens	objects	41943040	3958560	15971664
+sirens	audio	33554432	0	0
+sirens	estimate:s3dZoneSourceBytes		1196861	
+sirens	estimate:zoneGeometryBytes		2344194	
+sirens	estimate:placeableObjectsBytes		3605262	
+sirens	estimate:characterModelsBytes		1445267	
+sirens	estimate:gpuTextureBytes		4691464	
+sirens	estimate:vboEboBytes		6048690	
+sirens	estimate:textureCacheBytesUsed		3083952	
+sirens	estimate:eqe1MappedBytes		126723644	
+sirens	estimate:totalEstimate		23171738	
+skyfire	unattributed	1048576	86208	86208
+skyfire	archives	4194304	1292912	1294320
+skyfire	zone_parse	33554432	2919952	21955264
+skyfire	zone_mesh	29360128	11541376	11551312
+skyfire	spatial	4194304	1754688	4805840
+skyfire	textures_decoded	20971520	97776	97984
+skyfire	entity_models	88080384	4371520	23850960
+skyfire	objects	41943040	11192288	29594112
+skyfire	audio	33554432	0	0
+skyfire	estimate:s3dZoneSourceBytes		2671567	
+skyfire	estimate:zoneGeometryBytes		7652148	
+skyfire	estimate:placeableObjectsBytes		8738220	
+skyfire	estimate:characterModelsBytes		1445267	
+skyfire	estimate:gpuTextureBytes		3566680	
+skyfire	estimate:vboEboBytes		16489602	
+skyfire	estimate:textureCacheBytesUsed		2338656	
+skyfire	estimate:eqe1MappedBytes		126630008	
+skyfire	estimate:totalEstimate		44403484	
+frontiermtns	unattributed	1048576	86208	86208
+frontiermtns	archives	4194304	1290528	1292032
+frontiermtns	zone_parse	33554432	1978032	14466944
+frontiermtns	zone_mesh	29360128	8247520	8304992
+frontiermtns	spatial	4194304	989872	1949824
+frontiermtns	textures_decoded	20971520	206720	206928
+frontiermtns	entity_models	88080384	4145248	24261744
+frontiermtns	objects	41943040	8663952	23431760
+frontiermtns	audio	33554432	0	0
+frontiermtns	estimate:s3dZoneSourceBytes		1838374	
+frontiermtns	estimate:zoneGeometryBytes		5339790	
+frontiermtns	estimate:placeableObjectsBytes		7134054	
+frontiermtns	estimate:characterModelsBytes		1445267	
+frontiermtns	estimate:gpuTextureBytes		7067984	
+frontiermtns	estimate:vboEboBytes		12573078	
+frontiermtns	estimate:textureCacheBytesUsed		4700216	
+frontiermtns	estimate:eqe1MappedBytes		126946624	
+frontiermtns	estimate:totalEstimate		39238547	
+akanon	unattributed	1048576	86208	86208
+akanon	archives	4194304	1308208	1309600
+akanon	zone_parse	33554432	1270096	9994976
+akanon	zone_mesh	29360128	6729232	6737024
+akanon	spatial	4194304	633200	1421248
+akanon	textures_decoded	20971520	88208	88416
+akanon	entity_models	88080384	4200288	23851216
+akanon	objects	41943040	1825600	14456544
+akanon	audio	33554432	0	0
+akanon	estimate:s3dZoneSourceBytes		1058651	
+akanon	estimate:zoneGeometryBytes		2651274	
+akanon	estimate:placeableObjectsBytes		1063110	
+akanon	estimate:characterModelsBytes		1445267	
+akanon	estimate:gpuTextureBytes		5769056	
+akanon	estimate:vboEboBytes		3813618	
+akanon	estimate:textureCacheBytesUsed		5375768	
+akanon	estimate:eqe1MappedBytes		125988808	
+akanon	estimate:totalEstimate		19640976	
+erudnext	unattributed	1048576	86208	86208
+erudnext	archives	4194304	1295056	1296464
+erudnext	zone_parse	33554432	2231648	11549936
+erudnext	zone_mesh	29360128	7412096	7420784
+erudnext	spatial	4194304	622976	1619248
+erudnext	textures_decoded	20971520	80400	80608
+erudnext	entity_models	88080384	4250352	23848944
+erudnext	objects	41943040	1361456	13709328
+erudnext	audio	33554432	0	0
+erudnext	estimate:s3dZoneSourceBytes		2040165	
+erudnext	estimate:zoneGeometryBytes		2483400	
+erudnext	estimate:placeableObjectsBytes		1054308	
+erudnext	estimate:characterModelsBytes		1486369	
+erudnext	estimate:gpuTextureBytes		4960528	
+erudnext	estimate:vboEboBytes		3636942	
+erudnext	estimate:textureCacheBytesUsed		4742016	
+erudnext	estimate:eqe1MappedBytes		125389468	
+erudnext	estimate:totalEstimate		19501712	
+cobaltscar	unattributed	1048576	86208	86208
+cobaltscar	archives	4194304	1295616	1297024
+cobaltscar	zone_parse	33554432	558720	6897360
+cobaltscar	zone_mesh	29360128	2689632	2711808
+cobaltscar	spatial	4194304	286960	1075008
+cobaltscar	textures_decoded	20971520	71056	71264
+cobaltscar	entity_models	88080384	4206448	23851648
+cobaltscar	objects	41943040	1847328	9961216
+cobaltscar	audio	33554432	0	0
+cobaltscar	estimate:s3dZoneSourceBytes		494728	
+cobaltscar	estimate:zoneGeometryBytes		1624818	
+cobaltscar	estimate:placeableObjectsBytes		1639956	
+cobaltscar	estimate:characterModelsBytes		1445267	
+cobaltscar	estimate:gpuTextureBytes		6866256	
+cobaltscar	estimate:vboEboBytes		3364008	
+cobaltscar	estimate:textureCacheBytesUsed		4534728	
+cobaltscar	estimate:eqe1MappedBytes		124860924	
+cobaltscar	estimate:totalEstimate		19275033	
+chardok	unattributed	1048576	86208	86208
+chardok	archives	4194304	1275824	1277216
+chardok	zone_parse	33554432	1305280	7958208
+chardok	zone_mesh	29360128	6028144	6038256
+chardok	spatial	4194304	670480	1482272
+chardok	textures_decoded	20971520	92144	92352
+chardok	entity_models	88080384	4134704	24364032
+chardok	objects	41943040	3455312	11952432
+chardok	audio	33554432	0	0
+chardok	estimate:s3dZoneSourceBytes		1095746	
+chardok	estimate:zoneGeometryBytes		2199990	
+chardok	estimate:placeableObjectsBytes		2648658	
+chardok	estimate:characterModelsBytes		1445267	
+chardok	estimate:gpuTextureBytes		2855944	
+chardok	estimate:vboEboBytes		4947882	
+chardok	estimate:textureCacheBytesUsed		1872352	
+chardok	estimate:eqe1MappedBytes		123726164	
+chardok	estimate:totalEstimate		19033487	
+velketor	unattributed	1048576	86208	86208
+velketor	archives	4194304	1372560	1373968
+velketor	zone_parse	33554432	2091840	11195936
+velketor	zone_mesh	29360128	6738096	6745040
+velketor	spatial	4194304	675040	1658992
+velketor	textures_decoded	20971520	56000	56192
+velketor	entity_models	88080384	4335136	23851040
+velketor	objects	41943040	840352	11872848
+velketor	audio	33554432	0	0
+velketor	estimate:s3dZoneSourceBytes		1898407	
+velketor	estimate:zoneGeometryBytes		2687694	
+velketor	estimate:placeableObjectsBytes		692760	
+velketor	estimate:characterModelsBytes		1445267	
+velketor	estimate:gpuTextureBytes		4085696	
+velketor	estimate:vboEboBytes		3479688	
+velketor	estimate:textureCacheBytesUsed		2683752	
+velketor	estimate:eqe1MappedBytes		127846512	
+velketor	estimate:totalEstimate		18129512	
+rivervale	unattributed	1048576	86208	86208
+rivervale	archives	4194304	1301728	1303136
+rivervale	zone_parse	33554432	1305088	7261392
+rivervale	zone_mesh	29360128	4357600	4408096
+rivervale	spatial	4194304	384528	1172576
+rivervale	textures_decoded	20971520	123568	123776
+rivervale	entity_models	88080384	4204128	23849552
+rivervale	objects	41943040	3311296	13961120
+rivervale	audio	33554432	0	0
+rivervale	estimate:s3dZoneSourceBytes		1196798	
+rivervale	estimate:zoneGeometryBytes		1516782	
+rivervale	estimate:placeableObjectsBytes		2127840	
+rivervale	estimate:characterModelsBytes		1445267	
+rivervale	estimate:gpuTextureBytes		7004064	
+rivervale	estimate:vboEboBytes		3743856	
+rivervale	estimate:textureCacheBytesUsed		6741848	
+rivervale	estimate:eqe1MappedBytes		124591496	
+rivervale	estimate:totalEstimate		20874607	
+cazicthule	unattributed	1048576	86208	86208
+cazicthule	archives	4194304	1286832	1288224
+cazicthule	zone_parse	33554432	1510448	9699408
+cazicthule	zone_mesh	29360128	6500560	6506448
+cazicthule	spatial	4194304	785280	1587312
+cazicthule	textures_decoded	20971520	77568	77776
+cazicthule	entity_models	88080384	4178416	23851040
+cazicthule	objects	41943040	1883200	13330432
+cazicthule	audio	33554432	0	0
+cazicthule	estimate:s3dZoneSourceBytes		1241024	
+cazicthule	estimate:zoneGeometryBytes		2376246	
+cazicthule	estimate:placeableObjectsBytes		1232532	
+cazicthule	estimate:characterModelsBytes		1445267	
+cazicthule	estimate:gpuTextureBytes		4774896	
+cazicthule	estimate:vboEboBytes		3708012	
+cazicthule	estimate:textureCacheBytesUsed		4403408	
+cazicthule	estimate:eqe1MappedBytes		123724848	
+cazicthule	estimate:totalEstimate		18617977	
+kurn	unattributed	1048576	86208	86208
+kurn	archives	4194304	1271664	1273056
+kurn	zone_parse	33554432	1353616	9874240
+kurn	zone_mesh	29360128	7846464	7854560
+kurn	spatial	4194304	693792	1485984
+kurn	textures_decoded	20971520	79408	79616
+kurn	entity_models	88080384	4151632	23850176
+kurn	objects	41943040	1614912	11524992
+kurn	audio	33554432	0	0
+kurn	estimate:s3dZoneSourceBytes		1162014	
+kurn	estimate:zoneGeometryBytes		3077202	
+kurn	estimate:placeableObjectsBytes		1123134	
+kurn	estimate:characterModelsBytes		1445267	
+kurn	estimate:gpuTextureBytes		4047280	
+kurn	estimate:vboEboBytes		4299570	
+kurn	estimate:textureCacheBytesUsed		2659056	
+kurn	estimate:eqe1MappedBytes		122540480	
+kurn	estimate:totalEstimate		18994467	
+gfaydark	unattributed	1048576	86208	86208
+gfaydark	archives	4194304	1301760	1303168
+gfaydark	zone_parse	33554432	757792	9867632
+gfaydark	zone_mesh	29360128	6741056	6787952
+gfaydark	spatial	4194304	621328	1496480
+gfaydark	textures_decoded	20971520	111488	111696
+gfaydark	entity_models	88080384	4225472	23848320
+gfaydark	objects	41943040	9804128	22743216
+gfaydark	audio	33554432	0	0
+gfaydark	estimate:s3dZoneSourceBytes		680709	
+gfaydark	estimate:zoneGeometryBytes		4991634	
+gfaydark	estimate:placeableObjectsBytes		5624100	
+gfaydark	estimate:characterModelsBytes		1445267	
+gfaydark	estimate:gpuTextureBytes		6479352	
+gfaydark	estimate:vboEboBytes		10714968	
+gfaydark	estimate:textureCacheBytesUsed		6282704	
+gfaydark	estimate:eqe1MappedBytes		125526256	
+gfaydark	estimate:totalEstimate		33776030	
+airplane	unattributed	1048576	86208	86208
+airplane	archives	4194304	1270272	1271680
+airplane	zone_parse	33554432	3167136	10953040
+airplane	zone_mesh	29360128	2260816	2264976
+airplane	spatial	4194304	399296	1187344
+airplane	textures_decoded	20971520	34864	35072
+airplane	entity_models	88080384	4201824	23855792
+airplane	objects	41943040	181936	10943648
+airplane	audio	33554432	0	0
+airplane	estimate:s3dZoneSourceBytes		3024201	
+airplane	estimate:zoneGeometryBytes		1378200	
+airplane	estimate:placeableObjectsBytes		136998	
+airplane	estimate:characterModelsBytes		1445267	
+airplane	estimate:gpuTextureBytes		2185264	
+airplane	estimate:vboEboBytes		1614432	
+airplane	estimate:textureCacheBytesUsed		2010456	
+airplane	estimate:eqe1MappedBytes		121566384	
+airplane	estimate:totalEstimate		13624362	
+kerraridge	unattributed	1048576	86208	86208
+kerraridge	archives	4194304	1253056	1254464
+kerraridge	zone_parse	33554432	1518080	7137360
+kerraridge	zone_mesh	29360128	3725872	3733264
+kerraridge	spatial	4194304	439152	1227200
+kerraridge	textures_decoded	20971520	88880	89088
+kerraridge	entity_models	88080384	4142272	23849920
+kerraridge	objects	41943040	1195072	9889968
+kerraridge	audio	33554432	0	0
+kerraridge	estimate:s3dZoneSourceBytes		1436238	
+kerraridge	estimate:zoneGeometryBytes		1239060	
+kerraridge	estimate:placeableObjectsBytes		766740	
+kerraridge	estimate:characterModelsBytes		1445267	
+kerraridge	estimate:gpuTextureBytes		4868048	
+kerraridge	estimate:vboEboBytes		2105034	
+kerraridge	estimate:textureCacheBytesUsed		4518400	
+kerraridge	estimate:eqe1MappedBytes		121059776	
+kerraridge	estimate:totalEstimate		15700387	
+blackburrow	unattributed	1048576	86208	86208
+blackburrow	archives	4194304	1292560	1293984
+blackburrow	zone_parse	33554432	810304	5913568
+blackburrow	zone_mesh	29360128	4130944	4137216
+blackburrow	spatial	4194304	459696	1247744
+blackburrow	textures_decoded	20971520	79936	80864
+blackburrow	entity_models	88080384	4201200	23850624
+blackburrow	objects	41943040	1287456	9325216
+blackburrow	audio	33554432	0	0
+blackburrow	estimate:s3dZoneSourceBytes		690086	
+blackburrow	estimate:zoneGeometryBytes		1528590	
+blackburrow	estimate:placeableObjectsBytes		795264	
+blackburrow	estimate:characterModelsBytes		1445267	
+blackburrow	estimate:gpuTextureBytes		4753104	
+blackburrow	estimate:vboEboBytes		2423088	
+blackburrow	estimate:textureCacheBytesUsed		4381592	
+blackburrow	estimate:eqe1MappedBytes		121577836	
+blackburrow	estimate:totalEstimate		15475399	
+commons	unattributed	1048576	86208	86208
+commons	archives	4194304	1328272	1329680
+commons	zone_parse	33554432	288064	3409568
+commons	zone_mesh	29360128	1075296	1090000
+commons	spatial	4194304	230000	1018048
+commons	textures_decoded	20971520	85968	86176
+commons	entity_models	88080384	4279200	23850144
+commons	objects	41943040	6214432	14128176
+commons	audio	33554432	0	0
+commons	estimate:s3dZoneSourceBytes		247485	
+commons	estimate:zoneGeometryBytes		569052	
+commons	estimate:placeableObjectsBytes		3909252	
+commons	estimate:characterModelsBytes		1445267	
+commons	estimate:gpuTextureBytes		5299272	
+commons	estimate:vboEboBytes		4577538	
+commons	estimate:textureCacheBytesUsed		4971512	
+commons	estimate:eqe1MappedBytes		123143668	
+commons	estimate:totalEstimate		19887866	
+kaesora	unattributed	1048576	86208	86208
+kaesora	archives	4194304	1252352	1253760
+kaesora	zone_parse	33554432	1752848	9431968
+kaesora	zone_mesh	29360128	6210768	6218784
+kaesora	spatial	4194304	421392	1209440
+kaesora	textures_decoded	20971520	91488	91696
+kaesora	entity_models	88080384	4112960	27314752
+kaesora	objects	41943040	1939840	9922608
+kaesora	audio	33554432	0	0
+kaesora	estimate:s3dZoneSourceBytes		1604932	
+kaesora	estimate:zoneGeometryBytes		1978992	
+kaesora	estimate:placeableObjectsBytes		1349070	
+kaesora	estimate:characterModelsBytes		1445267	
+kaesora	estimate:gpuTextureBytes		2425120	
+kaesora	estimate:vboEboBytes		3427296	
+kaesora	estimate:textureCacheBytesUsed		1573056	
+kaesora	estimate:eqe1MappedBytes		120675068	
+kaesora	estimate:totalEstimate		16070677	
+rathemtn	unattributed	1048576	86208	86208
+rathemtn	archives	4194304	1329728	1331136
+rathemtn	zone_parse	33554432	1159728	7893296
+rathemtn	zone_mesh	29360128	3628928	3673632
+rathemtn	spatial	4194304	690048	1478096
+rathemtn	textures_decoded	20971520	126288	126480
+rathemtn	entity_models	88080384	5064864	35929136
+rathemtn	objects	41943040	7763568	19784960
+rathemtn	audio	33554432	0	0
+rathemtn	estimate:s3dZoneSourceBytes		1069822	
+rathemtn	estimate:zoneGeometryBytes		1808808	
+rathemtn	estimate:placeableObjectsBytes		4612302	
+rathemtn	estimate:characterModelsBytes		1477498	
+rathemtn	estimate:gpuTextureBytes		7233528	
+rathemtn	estimate:vboEboBytes		6520344	
+rathemtn	estimate:textureCacheBytesUsed		6774632	
+rathemtn	estimate:eqe1MappedBytes		125397512	
+rathemtn	estimate:totalEstimate		26562302	
+nektulos	unattributed	1048576	86208	86208
+nektulos	archives	4194304	1292480	1293888
+nektulos	zone_parse	33554432	301920	2853152
+nektulos	zone_mesh	29360128	1250512	1265840
+nektulos	spatial	4194304	226544	1014592
+nektulos	textures_decoded	20971520	55920	56112
+nektulos	entity_models	88080384	5083088	36865552
+nektulos	objects	41943040	2733088	7414944
+nektulos	audio	33554432	0	0
+nektulos	estimate:s3dZoneSourceBytes		267494	
+nektulos	estimate:zoneGeometryBytes		653958	
+nektulos	estimate:placeableObjectsBytes		1548108	
+nektulos	estimate:characterModelsBytes		1445267	
+nektulos	estimate:gpuTextureBytes		3780376	
+nektulos	estimate:vboEboBytes		2301300	
+nektulos	estimate:textureCacheBytesUsed		3408912	
+nektulos	estimate:eqe1MappedBytes		119274316	
+nektulos	estimate:totalEstimate		13836503	
+cauldron	unattributed	1048576	86208	86208
+cauldron	archives	4194304	1288608	1290016
+cauldron	zone_parse	33554432	545552	4101488
+cauldron	zone_mesh	29360128	2146224	2151792
+cauldron	spatial	4194304	289200	1077248
+cauldron	textures_decoded	20971520	36960	37168
+cauldron	entity_models	88080384	4226928	23850656
+cauldron	objects	41943040	532128	5323312
+cauldron	audio	33554432	0	0
+cauldron	estimate:s3dZoneSourceBytes		493404	
+cauldron	estimate:zoneGeometryBytes		1300926	
+cauldron	estimate:placeableObjectsBytes		321294	
+cauldron	estimate:characterModelsBytes		1445267	
+cauldron	estimate:gpuTextureBytes		2403736	
+cauldron	estimate:vboEboBytes		1721454	
+cauldron	estimate:textureCacheBytesUsed		2207088	
+cauldron	estimate:eqe1MappedBytes		118653216	
+cauldron	estimate:totalEstimate		11526081	
+felwitheb	unattributed	1048576	86208	86208
+felwitheb	archives	4194304	1259184	1260592
+felwitheb	zone_parse	33554432	868704	4438784
+felwitheb	zone_mesh	29360128	2791648	2796240
+felwitheb	spatial	4194304	186576	974624
+felwitheb	textures_decoded	20971520	55792	56096
+felwitheb	entity_models	88080384	4152752	23849968
+felwitheb	objects	41943040	894112	6971728
+felwitheb	audio	33554432	0	0
+felwitheb	estimate:s3dZoneSourceBytes		769030	
+felwitheb	estimate:zoneGeometryBytes		1023984	
+felwitheb	estimate:placeableObjectsBytes		655410	
+felwitheb	estimate:characterModelsBytes		1445267	
+felwitheb	estimate:gpuTextureBytes		3802344	
+felwitheb	estimate:vboEboBytes		1778628	
+felwitheb	estimate:textureCacheBytesUsed		3365312	
+felwitheb	estimate:eqe1MappedBytes		119166472	
+felwitheb	estimate:totalEstimate		13314663	
+misty	unattributed	1048576	86208	86208
+misty	archives	4194304	1306256	1307664
+misty	zone_parse	33554432	120336	1828304
+misty	zone_mesh	29360128	769872	778960
+misty	spatial	4194304	134672	922720
+misty	textures_decoded	20971520	76608	76880
+misty	entity_models	88080384	4252352	23850048
+misty	objects	41943040	2779856	7621088
+misty	audio	33554432	0	0
+misty	estimate:s3dZoneSourceBytes		99636	
+misty	estimate:zoneGeometryBytes		458220	
+misty	estimate:placeableObjectsBytes		1731948	
+misty	estimate:characterModelsBytes		1445267	
+misty	estimate:gpuTextureBytes		4698464	
+misty	estimate:vboEboBytes		2289402	
+misty	estimate:textureCacheBytesUsed		4370704	
+misty	estimate:eqe1MappedBytes		119712772	
+misty	estimate:totalEstimate		14562937	
+oasis	unattributed	1048576	86208	86208
+oasis	archives	4194304	1322704	1324112
+oasis	zone_parse	33554432	412288	2631424
+oasis	zone_mesh	29360128	1335600	1352224
+oasis	spatial	4194304	262576	1050624
+oasis	textures_decoded	20971520	71696	71904
+oasis	entity_models	88080384	4305856	23850784
+oasis	objects	41943040	1297504	7457808
+oasis	audio	33554432	0	0
+oasis	estimate:s3dZoneSourceBytes		370373	
+oasis	estimate:zoneGeometryBytes		714276	
+oasis	estimate:placeableObjectsBytes		865494	
+oasis	estimate:characterModelsBytes		1445267	
+oasis	estimate:gpuTextureBytes		4741976	
+oasis	estimate:vboEboBytes		1679004	
+oasis	estimate:textureCacheBytesUsed		4457920	
+oasis	estimate:eqe1MappedBytes		120699920	
+oasis	estimate:totalEstimate		13656390	

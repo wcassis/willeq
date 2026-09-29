@@ -328,7 +328,10 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             config.gpuTextureMemoryBytes         = 64 * 1024 * 1024;   // 64MB
             config.zoneGeometryMemoryBytes       = 16 * 1024 * 1024;   // 16MB
             config.placeableObjectsMemoryBytes   = 24 * 1024 * 1024;   // 24MB
-            config.s3dZoneSourceMemoryBytes      = 32 * 1024 * 1024;   // 32MB (T491/B803: iceclad measures 24.55 MiB)
+            // B927 (2026-09-29, Will: "ratchet the zone_parse budget down"):
+            // 32 -> 14 MiB, pinned equal to the ledger's zone_parse budget
+            // below (board B803); the derivation is on that line.
+            config.s3dZoneSourceMemoryBytes      = 14 * 1024 * 1024;   // 14MB
             config.vboEboMemoryBytes             = 40 * 1024 * 1024;   // 40MB
             config.characterModelsMemoryBytes    = 40 * 1024 * 1024;   // 40MB
             // Address space, not RAM -- see the field's comment.
@@ -370,12 +373,20 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // measured worst 1.24 MiB (coverage run) x 1.25 = 1.6 -> 4
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Archives)] =
                 4 * 1024 * 1024;
-            // measured worst 8.52 MiB over the three golden zones, but
-            // those are the SMALL zones: T490 measured iceclad's S3D zone
-            // source at 24.55 MiB. Pinned to s3dZoneSourceMemoryBytes (32 MiB,
-            // board B803) because zone_parse holds exactly that data
+            // B927 (2026-09-29, Will: "ratchet the zone_parse budget down"):
+            // 32 -> 14 MiB. Measured worst at the point the gate asserts
+            // (after the end-of-load source release, B914) over all 118 era
+            // zones (refactor/B927/zone_parse_census.tsv, x86 benchmark:
+            // iceclad 11,329,968 B), the x86 CLIENT (refactor/B909: iceclad
+            // steady 11,714,736 B) and the Orange Pi client (refactor/B854:
+            // iceclad 9.8 MiB at ready). Worst = x86 client, iceclad,
+            // 11,714,736 B = 11.17 MiB x 1.25 = 13.97 -> 14 MiB.
+            // NOT a mid-load bound: during the load iceclad holds 31.7 MB live
+            // and peaks at 50.1 MB (refactor/B927/README.md, a finding).
+            // Pinned to s3dZoneSourceMemoryBytes (board B803) because
+            // zone_parse holds exactly that data.
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::ZoneParse)] =
-                32 * 1024 * 1024;
+                14 * 1024 * 1024;
             // measured worst 20.26 MiB (befallen) x 1.25 = 25.3 -> 28
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::ZoneMesh)] =
                 28 * 1024 * 1024;
