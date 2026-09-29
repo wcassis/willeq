@@ -207,7 +207,7 @@ PI_BIN_DIR="/home/${PI_USER}/pi-rendered-sweep"
 PI_BIN="$PI_BIN_DIR/willeq"
 PI_TMP="/tmp/prs"
 pi_kill_client() {
-    pi_remote "pkill -TERM -f '^${PI_BIN} ' >/dev/null 2>&1; sleep 3; pkill -KILL -f '^${PI_BIN} ' >/dev/null 2>&1; pkill -KILL -f rendered_zone_run.py >/dev/null 2>&1; sudo -n pkill -KILL -f uinput_drive.py >/dev/null 2>&1; true" </dev/null >/dev/null 2>&1
+    pi_remote "pkill -TERM -f '^${PI_BIN} ' >/dev/null 2>&1; sleep 3; pkill -KILL -f '^${PI_BIN} ' >/dev/null 2>&1; pkill -KILL -f '[r]endered_zone_run[.]py' >/dev/null 2>&1; sudo -n pkill -KILL -f '[u]input_drive[.]py' >/dev/null 2>&1; true" </dev/null >/dev/null 2>&1
 }
 cleanup() {
     [ "$CLEANED" -eq 1 ] && return
@@ -292,6 +292,9 @@ run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     before="$(dmesg_count)"
     pidir="$PI_TMP/$z"
     # --drive-keys: the virtual keyboard must EXIST before the client's evdev
+    # scan. Every pkill of it uses the bracket pattern '[u]input_drive[.]py':
+    # a plain 'uinput_drive.py' matches THIS remote shell's own command line
+    # and kills it (ssh exit 255 before the copy -- the B909 smoke leg).
     # scan, so it starts first; it plays its sequence after the ready point
     # and removes itself at the client's shutdown point (or its cap).
     local drive=""
@@ -304,8 +307,9 @@ python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --st
 '$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
 --eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
 --dump-frames-dir '$pidir/frames' --dump-every 100 --dump-max-frames 3 \
-> '$pidir/runner.out' 2>&1; sudo -n pkill -TERM -f uinput_drive.py >/dev/null 2>&1; sleep 1; \
-cp -r '$pidir/.' '$dir/'; sudo -n rm -rf '$pidir'"
+> '$pidir/runner.out' 2>&1; cp -r '$pidir/.' '$dir/'; \
+sudo -n pkill -TERM -f '[u]input_drive[.]py' >/dev/null 2>&1; sleep 1; cp '$pidir/keys.tsv' '$pidir/keys.out' '$dir/' 2>/dev/null; \
+sudo -n rm -rf '$pidir'; true"
     timeout $((CAP_S + 120)) bash -c 'source "$1"; pi_remote "$2" </dev/null' _ "$REPO/scripts/pi/env.sh" "$remote"
     rc=$?
     [ "$rc" -eq 0 ] || { say "WARN: the Pi leg returned $rc (ssh/timeout) -- killing any leftover client"; pi_kill_client; }
