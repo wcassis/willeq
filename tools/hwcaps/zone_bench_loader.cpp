@@ -989,6 +989,20 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     ledgerPoint("entities");
     mappingPoint("bench_entities");
 
+    // ── Step 13 (B914): the client's end-of-load source release ──
+    // The client's loadZoneStep13_Cleanup() calls this same function after
+    // its last build step, so without it the gate measured source geometry
+    // the client has already freed. Nothing after this point reads it: every
+    // region mesh, AABB and occluder was built above, and the frames read only
+    // the meshes, the BSP tree and S3DZone::lights.
+    const auto released = data->zone->releaseSourceAfterLoad(
+        constrainedConfig.releaseTextureDataAfterUpload);
+    printf("  Released zone source after load: %zu bytes of region source geometry, "
+           "%zu bytes of texture pixels%s\n",
+           released.regionGeometryBytes, released.texturePixelBytes,
+           released.texturePixelsReleased ? "" : " (retained: preset keeps them)");
+    ledgerPoint("zone_load_complete");
+
     // ── Summary ──
     auto totalEnd = std::chrono::steady_clock::now();
     printf("Zone loaded in %.0f ms\n",

@@ -257,6 +257,23 @@ struct S3DZone {
         releaseMap(characterTextures);
         return freed;
     }
+
+    // B914: the zone-SOURCE release that ends a zone load -- the client's
+    // Step 13 (ZoneLoadComponent::loadZoneStep13_Cleanup) and the gate's
+    // benchmark (tools/hwcaps/zone_bench_loader.cpp) both call THIS, so the
+    // gate measures the state the client actually holds after a load. In
+    // order: raw texture pixels (only when the preset sets
+    // releaseTextureDataAfterUpload), the zone's character models, the WLD
+    // loader's post-load tables (releasePostLoadData) and its per-region
+    // source geometry (releaseRegionGeometry, T504). Call it only once every
+    // region mesh is built: getGeometryForRegion() returns null afterwards.
+    struct PostLoadRelease {
+        bool texturePixelsReleased = false;
+        size_t texturePixelBytes = 0;     // releaseTexturePixelData()
+        bool wldReleased = false;         // false when there is no wldLoader
+        size_t regionGeometryBytes = 0;   // WldLoader::releaseRegionGeometry()
+    };
+    PostLoadRelease releaseSourceAfterLoad(bool releaseTexturePixels);
 };
 
 // Options for selective zone loading
