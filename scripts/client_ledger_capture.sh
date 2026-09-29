@@ -46,6 +46,9 @@
 # Usage: scripts/client_ledger_capture.sh [--zones z1,z2] [--modes m1,m2]
 #            [--out DIR] [--owner NAME] [--bin PATH] [--hold S] [--no-audio]
 #            [--res W H]   (default 1280 720, the Pi recipe)
+#            [--assert-budgets]  also exit 1 if any budgeted category of any
+#                                run is over its orangepi budget at ready or
+#                                steady_60s (the `ClientLedgerLive` ctest)
 #   Lane: EQEMU_HOST as every scripts/eqemu tool reads it (default the VM).
 
 set -u
@@ -63,6 +66,7 @@ OUT=""
 SRC_BIN="${WILLEQ_BIN:-$REPO/build/bin/willeq}"
 HOLD_S=75          # seconds after zone-in before /q: ready arms steady_60s
 AUDIO=1
+ASSERT=0   # --assert-budgets: the live ctest mode (client_ledger_table.py check)
 RES_W=1280; RES_H=720   # Will's Pi recipe
 ZONE_BOOT_S="${ZONE_BOOT_S:-150}"
 LATE_SAVE_S=10
@@ -75,6 +79,7 @@ while [ $# -gt 0 ]; do
         --bin) SRC_BIN="$2"; shift 2 ;;
         --hold) HOLD_S="$2"; shift 2 ;;
         --no-audio) AUDIO=0; shift ;;
+        --assert-budgets) ASSERT=1; shift ;;
         --res) RES_W="$2"; RES_H="$3"; shift 3 ;;
         -h|--help) sed -n '2,50p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 3 ;;
@@ -254,8 +259,14 @@ EOF
     grep -q '\[memledger\] point=steady_60s ' "$log" && steady=1
     local landed=n
     grep -q "LoadZoneSources: Loaded zone '${zone}'" "$log" && landed=y
-    printf 'zone=%s mode=%s rc=%s wall_s=%s ready=%s steady_60s=%s landed=%s watchdog=%s start_utc=%s\n' \
-        "$zone" "$mode" "$rc" "$(( $(date +%s) - start ))" "$ready" "$steady" "$landed" "${killed:-none}" \
+    # The zone link dropping mid-run (measured: the iceclad zone port refusing
+    # ~50 s after zone-in, B909) leaves `/q` held "waiting for connection"
+    # until the 330 s deadline. Recorded so a steady_60s taken while the
+    # client was reconnecting is visible in the table, not silent.
+    local lost
+    lost="$(grep -m1 'Zone connection lost' "$log" | sed -E 's/^\[([^]]*)\].*/\1/' | tr ' ' 'T')"
+    printf 'zone=%s mode=%s rc=%s wall_s=%s ready=%s steady_60s=%s landed=%s watchdog=%s zone_link_lost=%s start_utc=%s\n' \
+        "$zone" "$mode" "$rc" "$(( $(date +%s) - start ))" "$ready" "$steady" "$landed" "${killed:-none}" "${lost:-no}" \
         "$(date -u -d @"$start" +%FT%TZ)" > "$dir/result.txt"
     say "[$zone/$mode] $(cat "$dir/result.txt")"
     [ "$steady" -eq 1 ] && [ "$landed" = y ]
@@ -281,7 +292,12 @@ for zone in ${ZONES//,/ }; do
 done
 
 say "runs failed: $FAILS (evidence in $OUT)"
+CHECK_RC=0
+if [ "$ASSERT" -eq 1 ]; then
+    python3 "$REPO/scripts/client_ledger_table.py" check --run "$OUT" 2>&1 | tee -a "$RIG_LOG"
+    CHECK_RC=${PIPESTATUS[0]}
+fi
 cleanup   # prints the lock state as its last line
 [ "$RESTORE_BAD" -eq 1 ] && exit 66
-[ "$FAILS" -eq 0 ] && exit 0
-exit 1
+[ "$FAILS" -eq 0 ] || exit 1
+exit "$CHECK_RC"

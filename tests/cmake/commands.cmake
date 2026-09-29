@@ -694,3 +694,21 @@ IF(EQT_LIVE_TESTS AND EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         TIMEOUT 900
         ENVIRONMENT "WILLEQ_BIN=$<TARGET_FILE:willeq>")
 ENDIF()
+
+# B909 / #229: the CLIENT's own memory ledger against its budgets. Runs the
+# rendered client (orangepi preset, WILLEQ_BASELINE=1) zoned into iceclad
+# (Velious) past steady_60s and asserts every budgeted memoryLedgerBudgets
+# category at `ready` and `steady_60s` (scripts/client_ledger_capture.sh
+# --assert-budgets). The gate measures the benchmark, which does not build
+# everything the client does (refactor/B909/README.md). Needs the eqemu lane,
+# so live-only (T164) and never in the default suite.
+IF(EQT_LIVE_TESTS AND EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_TEST(NAME ClientLedgerLive
+             COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/client_ledger_capture.sh
+                     --zones iceclad --modes spatial --assert-budgets
+                     --owner ctest-client-ledger)
+    SET_TESTS_PROPERTIES(ClientLedgerLive PROPERTIES
+        LABELS "live"
+        TIMEOUT 900
+        ENVIRONMENT "WILLEQ_BIN=$<TARGET_FILE:willeq>")
+ENDIF()

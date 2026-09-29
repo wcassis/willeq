@@ -11,6 +11,11 @@ Two subcommands, both reading only files a real run wrote:
             (dreadlands) runs with no camera poses and one dumped frame. The
             memory JSONs land in --out; nothing under tests/goldens is touched.
 
+  check  -- the assertion a `live` ctest runs (Part 3): every budgeted
+            category of every run in a capture dir, at `ready` and at
+            `steady_60s`, against its orangepi budget. Exit 0 all inside,
+            1 a category over budget, 3 a run without a steady_60s point.
+
   table  -- parse a scripts/client_ledger_capture.sh evidence dir (the
             client's own [memledger] / [memledger-startup] / [memledger-trace]
             lines and the 2 s RssAnon samples) plus a `bench` dir, and write:
@@ -189,7 +194,8 @@ def cmd_table(a):
             points, owners, traces = parse_run(log)
             result = (mdir / "result.txt").read_text().strip() if (mdir / "result.txt").exists() else ""
             ok = "steady_60s=1" in result and "landed=y" in result
-            runs_ok.setdefault(zone, []).append((mode, ok, result))
+            lost = next((l[1:24] for l in open(log, errors="replace") if "Zone connection lost" in l), None)
+            runs_ok.setdefault(zone, []).append((mode, ok, lost))
             for point, z, rss, cats in points:
                 for c, (live, peak) in cats.items():
                     pt_rows.append((zone, mode, point, z, rss, c, live, peak))
@@ -240,7 +246,9 @@ def cmd_table(a):
     for zone in zones:
         md.append(f"\n### {zone}\n")
         ok = runs_ok.get(zone, [])
-        md.append("Runs: " + "; ".join(f"{m} {'OK' if o else 'INCOMPLETE'}" for m, o, _ in ok) + "\n")
+        md.append("Runs: " + "; ".join(
+            f"{m} {'OK' if o else 'INCOMPLETE'}" + (f" (zone link lost {lo})" if lo else "")
+            for m, o, lo in ok) + "\n")
         md.append("| category | budget | client zone_load_complete | client ready | % | client steady_60s | % | "
                   "run spread (steady) | benchmark | % | client steady − bench |")
         md.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
@@ -295,6 +303,32 @@ def cmd_table(a):
     return 0
 
 
+def cmd_check(a):
+    run = Path(a.run)
+    bud = budgets()
+    over, incomplete, checked = 0, 0, 0
+    for log in sorted(run.glob("*/*/client.log")):
+        zone, mode = log.parent.parent.name, log.parent.name
+        points, _, _ = parse_run(log)
+        for name in ("ready", "steady_60s"):
+            p = last_point(points, name, zone)
+            if not p:
+                print(f"[check] {zone}/{mode}: no {name} point -- incomplete run")
+                incomplete += 1
+                continue
+            for c, b in bud.items():
+                live = p[3].get(c, (0, 0))[0]
+                checked += 1
+                verdict = "OVER" if live > b else "ok"
+                if live > b:
+                    over += 1
+                print(f"[check] {zone}/{mode} {name} {c}: {live:,} / {b:,} ({100.0 * live / b:.1f}%) {verdict}")
+    print(f"[check] {checked} category checks, {over} over budget, {incomplete} missing points")
+    if incomplete or not checked:
+        return 3
+    return 1 if over else 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -310,8 +344,10 @@ def main():
     t.add_argument("--bin", help="the willeq binary that ran (symbolises trace frames)")
     t.add_argument("--zones")
     t.add_argument("--out")
+    c = sub.add_parser("check")
+    c.add_argument("--run", required=True)
     a = ap.parse_args()
-    return cmd_bench(a) if a.cmd == "bench" else cmd_table(a)
+    return {"bench": cmd_bench, "table": cmd_table, "check": cmd_check}[a.cmd](a)
 
 
 if __name__ == "__main__":
