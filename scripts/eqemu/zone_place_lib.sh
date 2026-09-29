@@ -1,24 +1,17 @@
 #!/usr/bin/env bash
-# B909: the ONE "put the test character in zone X" implementation, moved
-# verbatim out of scripts/scenario_zone_sweep.sh (B853/B854) so the client
-# ledger rig (scripts/client_ledger_capture.sh) places the character exactly
-# as the zone-in sweep does instead of carrying a second copy.
+# The zone PLACEMENT helpers shared by the live zone sweeps -- sourced, not
+# executed. Extracted verbatim from scripts/scenario_zone_sweep.sh (B853/B854)
+# so the headless sweep, the rendered Pi sweep
+# (scripts/pi_rendered_zone_sweep.sh, #102) and the client ledger rig
+# (scripts/client_ledger_capture.sh, B909) run ONE implementation of
+# boot-then-seed-then-free-the-port, not two copies that drift.
 #
-# Sourced, never executed. Requires scripts/eqemu/env.sh and
-# scripts/eqemu/restore_lib.sh (eqemu_sql) to have been sourced first, and
-# these caller globals:
-#   LOGS         directory for the per-zone boot logs
+# Requires, from the caller: scripts/eqemu/env.sh and restore_lib.sh sourced
+# (eq_container_pkill, server_exec, server_exec_bg, eqemu_zone_booted,
+# eqemu_sql), a `say` function, and these globals:
+#   LOGS         directory for per-zone boot logs
 #   ZONE_BOOT_S  seconds to wait for a zone's boot marker
-#   CHAR         the character_data.name to move
-#   say          a logging function (say <text>)
-#
-# The traps these encode (full notes at each function):
-#   * a live zone holds the LINKDEAD client cache and never re-reads a seeded
-#     pose, so the zone process must start fresh (boot_zone);
-#   * character_data.zone_id is the zone's zoneidnumber, NOT zone.id
-#     (seed_char, the 2026-09-21 column trap);
-#   * the world assigns zone ports from a small fixed range, so a zone we
-#     started is stopped again when we are done with it (kill_zone).
+#   CHAR         the character to place
 
 # boot_zone <short> -- make sure a zone process for THIS zone is running and
 # freshly booted. It holds the LINKDEAD client cache (camera_match_sweep.sh's
@@ -29,9 +22,9 @@
 # through eq_container_pkill (board B798's guard); the pattern is safe because
 # the literal "(" is not one of the alternatives.
 boot_zone() {
-    # Two statements: `local a=1 b=$a` expands $a BEFORE a is set, which is an
-    # unbound-variable abort under `set -u` (B909 smoke run, 2026-09-29) and a
-    # log named zone__boot.log without it.
+    # Two statements: `local a=.. b=${a}` expands b BEFORE a is assigned, so
+    # under set -u it only worked while a caller's own `local short` leaked
+    # in by dynamic scope (scenario_zone_sweep.sh's run_zone).
     local short="$1"
     local bootlog="$LOGS/zone_${short}_boot.log"
     # If a process for this zone is already running, bounce it; otherwise just

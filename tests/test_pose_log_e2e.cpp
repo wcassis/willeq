@@ -48,6 +48,7 @@
 #include <string>
 #include <vector>
 
+#include "chase_rig_expected.h"
 #include "scoped_temp_dir.h"
 
 #include "client/bridge/game_state_bridge.h"
@@ -299,6 +300,107 @@ TEST_F(PoseLogE2ETest, EveryNthFrameCapAndModeFollowTheRenderLoop) {
         ASSERT_EQ(r.size(), 14u);
         EXPECT_NEAR(D(r[12]), kHeading, 1e-3);
     }
+}
+
+// ---------------------------------------------------------------------------
+// B875 (issue #219): ChaseRigPinnedE2E -- the renderer half of the Chase pin
+// (the device-free half is tests/test_chase_rig_pinned.cpp). The test above
+// derives its expectation FROM kChaseRig, so it stays green whatever
+// kChaseRig says; these compare the camera the real renderer places against
+// the COMMITTED literals in tests/chase_rig_expected.h, so an edit to the rig,
+// to its wiring into PlayerCameraComponent, or to the projection is red.
+//
+// Those literals are fable's CURRENT constants, not an official-client
+// measurement (chase_rig_expected.h says why): this catches drift, it does not
+// prove oracle parity.
+//
+// No player model is loaded, so the eye is the fitted one and the race scale
+// is the identity here; the scale itself is pinned device-free at a second
+// eye height (ChaseRigPinned.ProductionPoseEqualsTheClosedFormOfTheExpectedValues).
+// ---------------------------------------------------------------------------
+
+class ChaseRigPinnedE2E : public PoseLogE2ETest {
+protected:
+    // Command a pose through the production entry point, draw two frames and
+    // read back the pose those frames were drawn with (the gather the
+    // --pose-log writer uses).
+    PoseLogRow DrawAt(float x, float y, float z, float heading) {
+        renderer_->setPlayerPosition(x, y, z, heading);
+        for (int i = 0; i < 2; ++i) {
+            EXPECT_TRUE(renderer_->processFrame(1.0f / 60.0f)) << "frame " << i;
+        }
+        PoseLogRow row;
+        renderer_->getPoseData(row);
+        return row;
+    }
+};
+
+TEST_F(ChaseRigPinnedE2E, RenderedChaseCameraEqualsTheClosedFormOfTheCommittedValues) {
+    namespace ex = chase_rig_expected;
+    renderer_->setPlayerPosition(kX, kY, kZ, kHeading);
+    RunSlashCommand("/camera chase");
+    ASSERT_EQ(renderer_->getCameraMode(), CameraMode::Chase);
+
+    struct Where { float x, y, z; };
+    const Where positions[] = {{kX, kY, kZ}, {-150.75f, 212.5f, -12.25f}};
+    const float headings[] = {0.0f, 123.25f, 256.0f, 400.5f};
+    // float rounding in the production path at these magnitudes is ~3e-5;
+    // 1e-4 turns a 0.001 change of distance or height, or a 0.01 degree change
+    // of pitch or azimuth, red (refactor/B875/README.md has the RED runs).
+    constexpr double kTol = 1e-4;
+    constexpr double kAngleTolDeg = 2e-3;
+
+    for (const Where& w : positions) {
+        for (float h : headings) {
+            SCOPED_TRACE(::testing::Message() << "pos (" << w.x << ", " << w.y << ", " << w.z
+                                              << ") heading " << h);
+            const PoseLogRow r = DrawAt(w.x, w.y, w.z, h);
+            ASSERT_EQ(r.cameraMode, CameraMode::Chase);
+            ASSERT_NEAR(r.playerX, w.x, 1e-4);
+            ASSERT_NEAR(r.playerY, w.y, 1e-4);
+            ASSERT_NEAR(r.playerZ, w.z, 1e-4) << "no zone: the feet stay where commanded";
+
+            // The closed form of the committed values, double precision.
+            const double hr = h / 512.0 * 2.0 * kPi + ex::kAzimuthDeg * kPi / 180.0;
+            const double pr = ex::kPitchDeg * kPi / 180.0;
+            const double horiz = ex::kDistance * std::cos(pr);
+            const double tz = w.z + ex::kHeight;
+            EXPECT_NEAR(r.targetX, w.x, kTol) << "targetX";
+            EXPECT_NEAR(r.targetY, w.y, kTol) << "targetY";
+            EXPECT_NEAR(r.targetZ, tz, kTol) << "targetZ = feet + height";
+            EXPECT_NEAR(r.camX, w.x - std::sin(hr) * horiz, kTol) << "camX";
+            EXPECT_NEAR(r.camY, w.y - std::cos(hr) * horiz, kTol) << "camY";
+            EXPECT_NEAR(r.camZ, tz + ex::kDistance * std::sin(pr), kTol) << "camZ";
+
+            // The same, recovered as rig geometry, so a failure names the constant.
+            const double dx = r.camX - r.targetX, dy = r.camY - r.targetY, dz = r.camZ - r.targetZ;
+            const double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+            const double pitchDeg = std::atan2(dz, std::sqrt(dx * dx + dy * dy)) * 180.0 / kPi;
+            // Behind = -forward: the camera offset points along -(sin a, cos a).
+            double azDeg = (std::atan2(-dx, -dy) - h / 512.0 * 2.0 * kPi) * 180.0 / kPi;
+            azDeg = std::remainder(azDeg, 360.0);
+            EXPECT_NEAR(dist, ex::kDistance, kTol) << "recovered distance";
+            EXPECT_NEAR(pitchDeg, ex::kPitchDeg, kAngleTolDeg) << "recovered pitch (deg)";
+            EXPECT_NEAR(azDeg, ex::kAzimuthDeg, kAngleTolDeg) << "recovered azimuth (deg)";
+            EXPECT_NEAR(r.targetZ - r.playerZ, ex::kHeight, kTol) << "recovered look-at height";
+        }
+    }
+}
+
+TEST_F(ChaseRigPinnedE2E, RenderedChaseFieldOfViewIsTheCommittedValue) {
+    namespace ex = chase_rig_expected;
+    renderer_->setPlayerPosition(kX, kY, kZ, kHeading);
+    RunSlashCommand("/camera chase");
+    ASSERT_EQ(renderer_->getCameraMode(), CameraMode::Chase);
+    ASSERT_TRUE(renderer_->processFrame(1.0f / 60.0f));
+
+    irr::scene::ICameraSceneNode* cam = renderer_->getDevice()->getSceneManager()->getActiveCamera();
+    ASSERT_NE(cam, nullptr);
+    // Irrlicht holds the VERTICAL angle; the committed value is horizontal.
+    const double hfovDeg =
+        2.0 * std::atan(std::tan(cam->getFOV() / 2.0) * cam->getAspectRatio()) * 180.0 / kPi;
+    EXPECT_NEAR(hfovDeg, ex::kHorizontalFovDeg, 1e-3) << "Chase horizontal FOV (deg)";
+    EXPECT_NEAR(cam->getAspectRatio(), 320.0 / 240.0, 1e-4) << "the harness's 320x240 device";
 }
 
 }  // namespace

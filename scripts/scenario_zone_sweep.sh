@@ -50,7 +50,9 @@
 # lane renders -- the Pi lane runs the exact same Automated code path as
 # B853's VM lane, on ARM hardware with 483 MB to survive in. The
 # placeholder-model and late-open-EQE1 columns are structurally 0 here; they
-# are recorded for parity with results_118.tsv only.
+# are recorded for parity with results_118.tsv only. The RENDERED Pi sweep
+# (#102) is scripts/pi_rendered_zone_sweep.sh, which drives the client with
+# --script instead (refactor/B854/RENDERED_SWEEP.md).
 #
 # Default zone set: the Kunark + Velious rows B852 swept clean
 # (refactor/B852/results_118.tsv, clean==1). A B852 red row is skipped by
@@ -318,10 +320,10 @@ eqemu_snapshot "$SNAPSHOT"
 say "snapshot taken ($(wc -l < "$SNAPSHOT") rows)"
 
 # ---- the per-zone helpers ---------------------------------------------------
-# boot_zone / seed_char / kill_zone live in scripts/eqemu/zone_seed_lib.sh
-# (B909 moved them there verbatim so the client ledger rig shares them);
-# they read this script's LOGS, ZONE_BOOT_S, CHAR and say().
-source "$REPO/scripts/eqemu/zone_seed_lib.sh"
+# boot_zone / seed_char / kill_zone: ONE implementation, shared with the
+# rendered Pi sweep (scripts/pi_rendered_zone_sweep.sh) -- see the lib for
+# the LINKDEAD, column and port-range traps each one encodes.
+source "$REPO/scripts/eqemu/zone_place_lib.sh"
 
 # ---- 3. the client config for THIS lane ------------------------------------
 # VM lane only: the Pi lane runs the client on the Pi with its own config

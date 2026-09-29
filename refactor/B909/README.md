@@ -14,7 +14,8 @@ compares it with the benchmark per category.
   (`--renderer gles2 --constrained orangepi -r 1280 720 --eqe1-path ...`,
   surfaceless EGL on llvmpipe, audio on, `WILLEQ_BASELINE=1`) driven by
   `--script` (`wait 75`, `/q`). The character is placed with the zone-in sweep's
-  own helpers, now shared in `scripts/eqemu/zone_seed_lib.sh`: bounce the zone
+  own helpers, shared in `scripts/eqemu/zone_place_lib.sh` (the one
+  placement library; the zone-in sweep and the rendered Pi sweep source it too): bounce the zone
   process, seed `character_data` at the zone's safe point, read back. The rig
   takes one lock, one snapshot, one restore with the world down, `down.sh`, and
   releases the lock. It prints the lock state last. Watchdog: `ready` within
@@ -189,7 +190,7 @@ copy overwrote that region the same way.
 - `sp.region_bounds` is `std::map<size_t, aabbox3df>`, one node per region,
   1.72 MB in iceclad.
 
-Both are boarded.
+Both stay under B909 (issue #229, the client-spatial umbrella).
 
 ## Result 3: RssAnon against 64 MB and 256 MB
 
@@ -214,7 +215,7 @@ process: 140–206 MB at `ready`. Will's 2026-09-20 ruling excludes it from the
 different amounts in different runs, up to 325,525,568 B at `steady_60s` in
 gfaydark. In one smoke run (`smoke-2`, gfaydark) it grew about 0.9 MB per
 frame for 50 s and plateaued at 2,416,143,488 B, with RssAnon 2.34 GB. That is
-unexplained and boarded. RssAnon on x86 is therefore not a usable yardstick
+unexplained: B924 (issue #243). RssAnon on x86 is therefore not a usable yardstick
 for the client's own bytes. The ledger categories are.
 
 ## Result 4: `zone_parse` call sites (trace, `steady_60s`)
@@ -236,8 +237,9 @@ in the summaries.
   `MemoryLedger.ALateLabelStillGetsItsOwnOwnerRow` pins it (RED at 32:
   "label b909.lbl44 fell into the catch-all row").
 - **`boot_zone` aborted under `set -u`.** `local a=$1 b=…${a}` expands `${a}`
-  before it is set. The first smoke run hit this in the shared lib. It is fixed
-  there, and it is the same code the zone-in sweep runs.
+  before it is set. The first smoke run hit this. B854's merge into `fable`
+  fixed the same line independently in `zone_place_lib.sh`, which is now the
+  only copy.
 - **iceclad's zone link dropped in all four iceclad runs**: the client logs
   "Zone connection lost" 72–75 s after launch, and in the run inspected
   (`before/iceclad/zone_mesh`) UDP sends to the zone port were refused from
@@ -245,10 +247,11 @@ in the summaries.
   refused, and `/q` is then held "waiting for connection" until the 330 s
   deadline. The zone categories had loaded by then and did not move. It is
   recorded per run (`zone_link_lost=` in `result.txt`, and in the summaries).
-  The cause is not investigated. Boarded.
+  The cause is not investigated: B925 (issue #244).
 
 ## Part 3: pinning it in CI terms
 
+The gate cannot see the client-only owners (B923, issue #242).
 `ClientLedgerLive` (`tests/cmake/commands.cmake`) is registered only under
 `-DEQT_LIVE_TESTS=ON` with label `live`, so it is never in the default suite.
 It runs `client_ledger_capture.sh --zones iceclad --modes spatial

@@ -27,7 +27,7 @@
 # one independent measurement per mode (run-to-run agreement is checked by the
 # table script).
 #
-# Placement is scripts/eqemu/zone_seed_lib.sh (boot_zone/seed_char/kill_zone,
+# Placement is scripts/eqemu/zone_place_lib.sh (boot_zone/seed_char/kill_zone,
 # the zone-in sweep's own helpers); the lock, the ONE snapshot and the ONE
 # restore-with-the-world-down are the lane's (restore_lib.sh). Every exit path
 # restores, brings the stack down, releases the lock and prints the lock state
@@ -56,7 +56,7 @@ set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO/scripts/eqemu/env.sh"
 source "$REPO/scripts/eqemu/restore_lib.sh"
-source "$REPO/scripts/eqemu/zone_seed_lib.sh"
+source "$REPO/scripts/eqemu/zone_place_lib.sh"
 export EQEMU_HOST
 
 ZONES="gfaydark,dreadlands,iceclad,timorous"

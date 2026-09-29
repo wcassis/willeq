@@ -1,0 +1,14 @@
+host_utc=2026-09-29T05:36:57Z
+build_dir=/mnt/projects/fable/ci-arm/0effd2fbb7c17739adcc05f7c3dc98f5a16289aa
+build_sha=0effd2fbb7c17739adcc05f7c3dc98f5a16289aa
+published_sha256=6888f621fef9cc1cb95ca4b3d45167f7d9111b2962e73cf8cf1364afb8682526
+pi_copy_sha256=6888f621fef9cc1cb95ca4b3d45167f7d9111b2962e73cf8cf1364afb8682526
+pi_getcap=/home/user/pi-rendered-sweep/willeq cap_net_admin,cap_net_raw=ep
+published_getcap=rc=0 
+pi_tmp_mount=rw,nosuid,relatime
+pi_rmem=1048576 180224 
+pi_kernel=6.12.58-current-sunxi
+pi_meminfo=MemTotal: 494900 kB;MemAvailable: 388396 kB;SwapTotal: 247448 kB;SwapFree: 210104 kB;CmaTotal: 106496 kB;CmaFree: 520 kB;
+worktree_commit=3c6ea8b3ae101b5b0b1cc49d5a543867063575df
+resolution=1280 720 cap_s=300 stall_s=180 hold_s=240
+eligibility_leg_char_level=60 exp=620000000

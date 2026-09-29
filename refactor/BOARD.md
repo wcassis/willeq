@@ -849,27 +849,28 @@ it without taking that measurement first.
   2.8–8.6 MB per zone. `spatial` after: gfaydark 5,674,240 (135 %),
   dreadlands 4,194,576 (over by 272 B), iceclad 2,152,000 (51 %), timorous
   5,162,576 (123 %). Every other budgeted category is inside its budget in all
-  four zones. **STILL OPEN**, each needs a GitLab issue:
-  1. **(B-unassigned, needs a GitLab issue)** `sp.object_tris`,
+  four zones. **STILL OPEN** (#1 and #2 stay under B909 / issue #229, the
+  client-spatial umbrella; #3-#5 have their own numbers):
+  1. **(B909, #229)** `sp.object_tris`,
      `ctx_.objectWorldTriangles`: placeable objects' triangles pre-transformed
      per instance, 36 B per triangle. 5.26 MB in gfaydark, 3.76 MB in
      dreadlands and timorous. It is the largest remaining `spatial` owner. A
      held-once form transforms at query time, so its arithmetic differs from
      today's; bit-identical collision is not automatic.
-  2. **(B-unassigned, needs a GitLab issue)** `sp.region_bounds`,
+  2. **(B909, #229)** `sp.region_bounds`,
      `ctx_.regionBoundingBoxes`, is a `std::map<size_t, aabbox3df>` with one
      node per region: 1.72 MB in iceclad and 1.27 MB in timorous. A sorted
      flat array would be about 24 B per region plus the index.
-  3. **(B-unassigned, needs a GitLab issue)** the gate cannot see any of this.
+  3. **B923 (#242)** the gate cannot see any of this.
      The benchmark builds neither collision copy, and it charges the occluder
      table to `spatial` where the client charges it to `zone_mesh`. The
      proposed net is `ClientLedgerLive` (label `live`, `tests/cmake/commands.cmake`).
-  4. **(B-unassigned, needs a GitLab issue)** `gpu_driver` (llvmpipe) grows
+  4. **B924 (#243)** `gpu_driver` (llvmpipe) grows
      after `ready` by a different amount in each run, up to 325.5 MB at
      `steady_60s`. In one smoke run it reached 2.42 GB (about 0.9 MB per frame
      for 50 s, then a plateau). RssAnon peaks above the 256 MB failing bound in
      8 of 16 client runs. Unexplained. x86 only so far; the Pi is not measured.
-  5. **(B-unassigned, needs a GitLab issue)** the iceclad zone link drops on
+  5. **B925 (#244)** the iceclad zone link drops on
      every run. The client logs "Zone connection lost" 72–75 s after launch,
      after UDP sends to the zone port are refused. `/q` is then held until the
      rig's 330 s deadline. Cause not investigated.
@@ -12451,3 +12452,63 @@ T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are cla
 - **B900** (B, feature) single ranged shot impossible, arrow never drawn; /autofire era uncertain. → issue #216
 - ~~**B901** (B, feature) item linking~~ -- OUT OF BASELINE (post-Velious), recorded and closed. → issue #217
 - Feature-gap plans (oracle + test + legs) appended to existing issues: #25 lifts/switches/traps (B420), #151 item pick-up/put-down (B442), #116 spell visuals (B161), #144 Options controls (B430; #145/#146 pointed at it).
+
+## Added 2026-09-29 by the rendered Pi sweep (#102, branch task/B854-rendered-pi-sweep)
+
+Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the Orange Pi (fable 3c6ea8b3, binary sha256 6888f621...). Issues filed 2026-09-29 (B917-B922; the spatial entry is B909, issue #229).
+
+- **B917** (A, client) → issue #236. A server-directed zone move DURING the initial zone load kills the client.
+  - The follow-on zone load logs `[FATAL] Failed to load zone S3D archive: qeynos.s3d (Failed to open archive: qeynos.s3d)`, or the same with an EMPTY name (`.s3d`), then `loadZoneGraphicsOnThread: sequential loader failed — requesting quit`.
+  - Seen 5 times on the Pi: growthplane, templeveeshan, veeshan x2 and charasis (kicks or deaths before `ready`). Logs are under `review/B854-rendered/sweep-full/zones/`.
+  - The same qeynos load succeeds at login, and a move AFTER `ready` is handled cleanly (chardok; charasis at level 60).
+  - Suspect: the archive name/path is not resolved against the client path, or not captured, when a zone change lands mid-load.
+- **B918** (A, client) → issue #237. The client exits **0** after a FATAL loader failure (`checkLoadingComplete: loading thread failed — shutting down`).
+  - Seen in all 5 runs above.
+  - The scenario lane's exit-code taxonomy covers `--scenario` only. A normal or `--script` run that dies on a FATAL is indistinguishable from a clean `/q` to any wrapper.
+- **B909** (A, memory) → issue #229. The live `spatial` ledger category is over its orangepi budget (4 MiB) at `ready` in 25 of 45 rendered Pi zones.
+  - Worst: growthplane 42.1 MB, trakanon 29.0, overthere 18.0, emeraldjungle 14.6, skyfire 13.3.
+  - The CI gate asserts the budget over five zones in the offline benchmark only.
+  - No other budgeted category was over at `ready` in any zone.
+  - This is a defect to fix in code. The budget is NOT to be raised (docs/decisions.md 2026-09-28).
+- **B919** (A, memory) → issue #238. The rendered Pi client is over the 64 MB design yardstick in 44/45 zones at peak RssAnon: median 98.0 MB, worst growthplane 159.2 MB.
+  - Only nurga is under (60.3 MB).
+  - At `steady_60s` the median is 89.4 MB and 41/45 are over.
+  - The largest ledger categories at `ready` are `gpu_driver` (18.4 to 20.2 MB; #1 in 30/45 zones) and `game_state` (up to 51.2 MB, emeraldjungle; #1 in 11).
+  - It is under the 256 MB failing bound everywhere: worst VmHWM 218.7 MB, and no OOM.
+  - The shrink queue for the Pi should be planned from these rows (docs/decisions.md 2026-09-17 addendum).
+- **B920** (A, tooling) → issue #239. The CI-published ARM binary (`ci-arm/<sha>/bin/willeq`, on NFS) carries no file capability.
+  - The documented setcap recipe fails silently if the copy goes to the Pi's `/tmp`: tmpfs is mounted `nosuid` there, so file capabilities are ignored.
+  - What works: copy to the Pi's ext4 home, then `sudo setcap cap_net_raw,cap_net_admin+ep`. `scripts/pi_rendered_zone_sweep.sh` does this, and all 57 runs got a 16 MiB forced rcvbuf.
+  - Every Pi recipe (`docs/ci.md` "The ARM runner and Pi runs", CLAUDE.md) should say so, or `scripts/pi/` should own a staging helper.
+- **B921** (B, rig/content) → issue #240. charasis's safe point (0,0,4) is lethal to Testchar at level 49 and at level 60.
+  - The server logs `ZonePC ... zone_mode [3]` (ZoneToBindPoint, "Death Only") 1 to 8 s after `ready`, in all 4 attempts.
+  - So charasis's rendered steady state is unmeasured. It needs a survivable seed point or a protected character.
+  - Also unexplained: the mid-load kicks of growthplane and templeveeshan on their first attempt, at level 49 against min_level 46. Both passed on retry.
+- **B922** (C, tooling) → issue #241. `eqemu_lock_release` (`scripts/eqemu/env.sh`) removes the lock without checking the owner. `pi_lock_release` does check.
+  - A late cleanup from one run can drop a lock another run has just taken. Two back-to-back smoke runs came within a second of this on 2026-09-29.
+
+## Added 2026-09-29 by task/chase-constants-pin (B875 re-audit; issue #219 stays open)
+
+- **B875** (B, ORACLE-OWED) **Chase camera constants: fitted ONCE from the official client, pinned by ctest.** → issue #219
+  **Pinned now -- fable's CURRENT constants, NOT an official-client measurement:**
+  `ChaseRigPinned` (`tests/test_chase_rig_pinned.cpp`, device-free: kChaseRig's
+  four fields, kChaseFitEyeAboveFeet, the 62.8 horizontal FOV, the race scale at
+  a second eye, the production pose at 4 headings x 2 positions x 2 eyes) and
+  `ChaseRigPinnedE2E` (`tests/test_pose_log_e2e.cpp`: the camera a real headless
+  renderer places in Chase mode, 4 headings x 2 positions, and its FOV) compare
+  against committed literals in `tests/chase_rig_expected.h`, so a 0.001 edit of
+  any constant is red (RED runs in `refactor/B875/README.md`). The values are
+  corroborated at rest only by one live FABLE run (`refactor/B874/live/`,
+  run-20260929T022314Z: pitch 6.0000, azimuth 0.0001, distance
+  4.0002). This catches drift; it does not prove oracle parity.
+  **Owed:** the official-client fit itself -- manual correspondences on static
+  geometry from official stills at server-logged poses (needs #218 deliverable
+  A and the oracle rig), designed in `refactor/B875/FIT_PLAN.md`; the solver
+  (`tools/chase_fit/`, `chase_rig_fit`) is validated offline on a synthetic
+  camera that is not kChaseRig (`tests/test_chase_rig_fit.cpp`).
+  **MR !31 (`task/kb-chase-oracle-session`) must NOT be merged as it is:** its
+  `refactor/B875/chase_fit_golden.json` is circular (points projected with the
+  reference camera, then "fit" to the reference; it cites a pose no capture was
+  taken at) and its `ChaseConstantsFitPinned` test checks only the JSON's
+  structure (green with the distance at 4.001). Both are superseded by the tests
+  above.

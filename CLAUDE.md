@@ -608,6 +608,11 @@ and a zone load that hangs at 40%. The client requests 1 MB via
 `SO_RCVBUFFORCE`; without `CAP_NET_ADMIN` it falls back to `net.core.rmem_max`
 (typically 212 KB) and failures become intermittent.
 
+On the Pi: the CI-published binary (NFS) carries no capability, and `setcap`
+does not stick on NFS or on the Pi's `/tmp` (tmpfs, `nosuid`). Copy it to the
+Pi's ext4 home and `setcap` it there (`scripts/pi_rendered_zone_sweep.sh`,
+`refactor/B854/RENDERED_SWEEP.md`).
+
 ### Orange Pi (ARM) Cross-Compilation
 
 The client cross-compiles for Orange Pi One (Allwinner H3, ARMv7-A Cortex-A7,
