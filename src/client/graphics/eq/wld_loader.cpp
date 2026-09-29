@@ -396,9 +396,16 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
     // T504c Leg 2g: the PVS arena's reserve -- the exact RLE byte total of
     // the 0x22 regions, so the arena is allocated once at its final size.
     pvsArenaReserveHint_ = 0;
-    for (const auto& [off, fh] : fragmentOffsets)
-        if (fh.id == 0x22 && fh.size >= 4 && off + fh.size <= buffer.size())
+    // B903: and the region count -- exactly the 0x22 fragments whose body
+    // passes parseFragment22's 40-byte minimum -- so the regions are one block.
+    size_t regionCount = 0;
+    for (const auto& [off, fh] : fragmentOffsets) {
+        if (fh.id != 0x22) continue;
+        if (fh.size >= 4 && off + fh.size <= buffer.size())
             pvsArenaReserveHint_ += fragment22PvsBytes(&buffer[off] + 4, fh.size - 4);
+        if (fh.size >= 4 + 40) ++regionCount;
+    }
+    BspRegionPool regionPool(regionCount);
     std::map<uint32_t, uint32_t> fragTypeSkipped;   // T504c Leg 2: bodies the code filter skipped
 
     // Parse all fragments
@@ -490,7 +497,7 @@ bool WldLoader::parseWldBuffer(const std::vector<char>& buffer) {
                 parseFragment21(fragBody, fragBodySize, i + 1);
                 break;
             case 0x22:
-                parseFragment22(fragBody, fragBodySize, i + 1);
+                parseFragment22(fragBody, fragBodySize, i + 1, &regionPool);
                 break;
             case 0x29:
                 parseFragment29(fragBody, fragBodySize, i + 1, nameRef, hashBuffer.data());

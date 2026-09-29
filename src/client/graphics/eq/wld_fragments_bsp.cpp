@@ -195,7 +195,8 @@ size_t WldLoader::fragment22PvsBytes(const char* fragBuffer, uint32_t fragLength
     return static_cast<size_t>(pvsSize);
 }
 
-void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex) {
+void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
+                                BspRegionPool* regionPool) {
     // Fragment 0x22 - BSP Region
     // Defines a region in the BSP tree (water, lava, zone line, etc.)
     if (fragLength < 40) {
@@ -207,7 +208,10 @@ void WldLoader::parseFragment22(const char* fragBuffer, uint32_t fragLength, uin
         bspTree_ = std::make_shared<BspTree>();
     }
 
-    auto region = std::make_shared<BspRegion>();
+    // B903: every region comes from the parse's one-block pool, and the
+    // handle array is sized to the pool's exact count up front.
+    if (regionPool && bspTree_->regions.empty()) bspTree_->regions.reserve(regionPool->size());
+    auto region = regionPool ? regionPool->next() : std::make_shared<BspRegion>();
     size_t regionIndex = bspTree_->regions.size();
     // T504c Leg 2g: the region joins the tree FIRST so its PVS bytes append
     // straight into the tree's arena. Measured (iceclad, zone_parse trace):

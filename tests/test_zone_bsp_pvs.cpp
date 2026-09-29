@@ -207,6 +207,72 @@ TEST(ZoneBspPvsCache, DecodingEveryRegionRetainsAtMostTheSlotCount) {
     EXPECT_EQ(&a.bits(), &b.bits());
 }
 
+// ── 2b. Regions are one block (B903) ───────────────────────────────────────
+// Each region used to be its own make_shared heap block and `regions` grew by
+// doubling: iceclad's 37,609 regions were 37,609 blocks (5.4 MB of zone_parse)
+// plus a 65,536-slot pointer array. The parser now takes every region from a
+// BspRegionPool of 1,024-region slabs; each handle aliases its slab.
+
+TEST(ZoneBspRegionPool, PooledRegionsAreContiguousAndBehaveAsBefore) {
+    const uint32_t n = 1000;
+    BspRegionPool pool(n);
+    auto tree = std::make_shared<BspTree>();
+    tree->regions.reserve(pool.size());
+    for (uint32_t i = 0; i < n; ++i) {
+        auto r = pool.next();
+        r->meshReference = static_cast<int32_t>(i);
+        const uint8_t rle[] = {0x3F, static_cast<uint8_t>(i & 0xFF), static_cast<uint8_t>(i >> 8), 0xC1};
+        tree->addRegion(r);
+        r->setPvsRle(rle, sizeof(rle), n);
+    }
+    for (uint32_t i = 1; i < n; ++i) {
+        ASSERT_EQ(tree->regions[i].get(), tree->regions[0].get() + i) << "region " << i << " is not in the pool";
+    }
+    for (uint32_t i = 0; i < n; i += 97) {
+        EXPECT_EQ(tree->regions[i]->meshReference, static_cast<int32_t>(i));
+        EXPECT_TRUE(tree->regions[i]->pvsContains(i));
+        EXPECT_FALSE(tree->regions[i]->pvsContains((i + 1) % n));
+    }
+}
+
+TEST(ZoneBspRegionPool, SlabsAreFewAndStayOnTheHeap) {
+    // A slab must stay under glibc's default mmap threshold (128 KiB): a
+    // single mmapped block counts against the gate's non-heap anon bound.
+    EXPECT_LT(BspRegionPool::kSlabRegions * sizeof(BspRegion) + 64, 128u * 1024u);
+    const size_t n = 2500;
+    BspRegionPool pool(n);
+    std::vector<std::shared_ptr<BspRegion>> rs;
+    for (size_t i = 0; i < n; ++i) rs.push_back(pool.next());
+    size_t breaks = 0;
+    for (size_t i = 1; i < n; ++i) if (rs[i].get() != rs[i - 1].get() + 1) ++breaks;
+    EXPECT_EQ(breaks, 2u) << "2,500 regions are three slabs";
+}
+
+TEST(ZoneBspRegionPool, AHandleKeepsItsRegionAliveAfterPoolAndTree) {
+    std::shared_ptr<BspRegion> kept;
+    {
+        BspRegionPool pool(4);
+        auto tree = std::make_shared<BspTree>();
+        for (int i = 0; i < 4; ++i) tree->addRegion(pool.next());
+        tree->regions[2]->meshReference = 42;
+        kept = tree->regions[2];
+    }
+    ASSERT_NE(kept, nullptr);
+    EXPECT_EQ(kept->meshReference, 42);
+}
+
+TEST(ZoneBspRegionPool, PastTheCountAndWithNoCountRegionsStillWork) {
+    BspRegionPool empty(0);
+    EXPECT_EQ(empty.size(), 0u);
+    ASSERT_NE(empty.next(), nullptr);
+    BspRegionPool one(1);
+    auto a = one.next();
+    auto b = one.next();                 // one past the count: its own block
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    EXPECT_NE(a.get(), b.get());
+}
+
 // ── 3. Real zones ──────────────────────────────────────────────────────────
 
 class ZoneBspPvsRealZones : public ::testing::Test {
@@ -265,6 +331,13 @@ protected:
             if (r && r->hasPvs()) { ++withPvs; rleBytes += r->pvsMemoryBytes(); }
         }
         EXPECT_GT(withPvs, 0u);
+        // B903: the parser takes every region from one exactly-sized block.
+        EXPECT_EQ(tree->regions.capacity(), regions) << zone << ": region handle array has growth slack or an over-count";
+        size_t breaks = 0;
+        for (size_t i = 1; i < regions; ++i)
+            if (tree->regions[i].get() != tree->regions[i - 1].get() + 1) ++breaks;
+        const size_t slabs = (regions + BspRegionPool::kSlabRegions - 1) / BspRegionPool::kSlabRegions;
+        EXPECT_EQ(breaks + 1, slabs) << zone << ": regions are not in 1,024-region slabs (separate heap blocks again?)";
         const size_t denseBytes = regions * regions / 8;
         const size_t tallied = loader->getMemoryUsage();
 

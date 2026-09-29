@@ -130,6 +130,30 @@ private:
     bool pvsPinned_ = false;   // the store holds a pinned bitset under pvsKey_
 };
 
+// B903: `count` regions allocated in a few large slabs instead of one heap
+// block each. A region used to be its own make_shared block -- iceclad's
+// 37,609 regions were 37,609 blocks, 5.4 MB of zone_parse for 3.6 MB of
+// BspRegion. The WLD parser counts the 0x22 fragments first, then takes each
+// region from here. A slab holds kSlabRegions regions (96 KiB): under glibc's
+// mmap threshold, so the regions stay on the heap -- one 3.6 MB block would be
+// a private mmap and count against the gate's non-heap anonymous bound. Every
+// handle aliases its slab's ownership, so a slab lives while any of its
+// regions does. Past `count`, next() falls back to a region of its own.
+// Deliberately NOT a BspTree member: WldLoader::getMemoryUsage() tallies
+// sizeof(BspTree) into the gate's baselined s3dZoneSourceBytes.
+class BspRegionPool {
+public:
+    static constexpr size_t kSlabRegions = 1024;
+    explicit BspRegionPool(size_t count) : remaining_(count), count_(count) {}
+    std::shared_ptr<BspRegion> next();
+    size_t size() const { return count_; }
+private:
+    std::shared_ptr<std::vector<BspRegion>> slab_;
+    size_t used_ = 0;
+    size_t remaining_;   // regions not yet given a slab
+    size_t count_;
+};
+
 // Decodes a fragment-0x22 RLE PVS string into a dense bitset of numRegions
 // bits. Exposed for tests; production goes through BspRegion::pvs().
 std::vector<bool> decodeRlePvs(const uint8_t* data, size_t dataSize, uint32_t numRegions);
