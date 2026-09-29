@@ -386,11 +386,9 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	
 	// Only process console-based target movement if we have an active target or path
 	// Skip this if we're in graphics Player mode without a console movement command
-	bool has_console_movement = !ctx_.game_state.player().followTarget().empty() || !m_current_path.empty() ||
-	                            ctx_.game_state.combat().inCombatMovement() ||
-	                            (ctx_.game_state.player().targetX() != 0.0f || ctx_.game_state.player().targetY() != 0.0f || ctx_.game_state.player().targetZ() != 0.0f);
-
-	if (!has_console_movement) {
+	// B911/B912: the predicate is HasCommandMovement() (below), shared with
+	// PublishSelfPoseToRenderer() and StopMovement(), unchanged in content.
+	if (!HasCommandMovement()) {
 		// No console-based movement active, skip target processing
 		return;
 	}
@@ -493,19 +491,9 @@ void eqt::movement::MovementComponent::UpdateMovement()
 	ctx_.self.SetHeadingLocal(CalculateHeading(old_x, old_y, ctx_.self.PosX(), ctx_.self.PosY()));
 
 	// Update bridge position for console-driven movement (moveto, follow, etc.)
-	if (ctx_.bridge) {
-		eqt::state::PlayerMovedData pdata;
-		pdata.x = ctx_.self.PosX(); pdata.y = ctx_.self.PosY(); pdata.z = ctx_.self.PosZ();
-		// T460 (B521): the renderer bridge's PlayerMovedData::heading is the
-		// EQ 0..512 unit (IrrlichtRenderer::setPlayerPosition), not degrees.
-		// Publishing HeadingDeg() raw aimed the camera at deg*360/512 on every
-		// tick of a /moveto, /follow or auto-attack chase.
-		pdata.heading = ctx_.self.HeadingDeg() * 512.0f / 360.0f;
-		pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
-		pdata.isMoving = true;
-		ctx_.bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
-	}
+	// B912: through the one helper, so the tick, the stop and /turn publish
+	// the same payload; isMoving is true here (HasCommandMovement() held above).
+	PublishSelfPoseToRenderer(dx, dy, dz);
 
 	// Set animation based on actual movement distance
 	// Don't change animation if we're jumping
@@ -574,6 +562,46 @@ void eqt::movement::MovementComponent::UpdateMovement()
 		SendPositionUpdate();
 		m_last_position_update_time = now_movement;
 	}
+}
+
+// B911/B912: the predicate UpdateMovement() has always gated its integrator on
+// (it was the local `has_console_movement`), named so the stop and the publish
+// below ask the same question.
+bool eqt::movement::MovementComponent::HasCommandMovement() const
+{
+	return !ctx_.game_state.player().followTarget().empty() || !m_current_path.empty() ||
+	       ctx_.game_state.combat().inCombatMovement() ||
+	       (ctx_.game_state.player().targetX() != 0.0f || ctx_.game_state.player().targetY() != 0.0f ||
+	        ctx_.game_state.player().targetZ() != 0.0f);
+}
+
+// B911/B912 (GitLab #230/#231). The game thread's own movers -- the per-tick
+// integrator, StopMovement() at the end of a command walk, /turn and /face --
+// change the player's pose in the ONE store (PlayerFacade over
+// GameState::player()), and PlayerState's own PlayerMoved goes to the STATE
+// layer's EventBus, which never reaches the renderer (T58; zone_component.cpp
+// and bridge_component_intents.cpp say the same at their hand-rolled
+// publishes). So a game-side pose change reaches the renderer only if it is
+// published here, on the renderer bridge. The live pose capture measured the
+// two holes this closes: `/turn 90` changed the server's heading and not the
+// rendered one (B911), and a `/move` walk logged movestate 0 because the
+// renderer dropped isMoving and the stop published nothing (B912).
+void eqt::movement::MovementComponent::PublishSelfPoseToRenderer(float dx, float dy, float dz)
+{
+	if (!ctx_.bridge) {
+		return;
+	}
+	eqt::state::PlayerMovedData pdata;
+	pdata.x = ctx_.self.PosX(); pdata.y = ctx_.self.PosY(); pdata.z = ctx_.self.PosZ();
+	// T460 (B521): the renderer bridge's PlayerMovedData::heading is the
+	// EQ 0..512 unit (IrrlichtRenderer::setPlayerPosition), not degrees.
+	// Publishing HeadingDeg() raw aimed the camera at deg*360/512 on every
+	// tick of a /moveto, /follow or auto-attack chase.
+	pdata.heading = ctx_.self.HeadingDeg() * 512.0f / 360.0f;
+	pdata.dx = dx; pdata.dy = dy; pdata.dz = dz;
+	pdata.isMoving = HasCommandMovement();
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::PlayerMoved, std::move(pdata)));
 }
 
 

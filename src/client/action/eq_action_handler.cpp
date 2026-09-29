@@ -127,6 +127,12 @@ void EqActionHandler::setHeading(float heading) {
     while (normalizedHeading >= 360.0f) normalizedHeading -= 360.0f;
     m_eq.SetHeading(normalizedHeading);
     m_eq.Movement().SendPositionUpdate();
+    // B911 (GitLab #230): and the renderer. SetHeading() writes the one store
+    // and fires PlayerMoved on the STATE layer's EventBus only, which never
+    // reaches the renderer, so `/turn 90` turned the server (live `#loc`:
+    // heading 0) and left the rendered player and camera at the old heading.
+    // Same renderer-bridge PlayerMoved the other game-side movers publish.
+    m_eq.Movement().PublishSelfPoseToRenderer();
 }
 
 void EqActionHandler::jump() {

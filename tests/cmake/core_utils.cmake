@@ -201,6 +201,30 @@ TARGET_INCLUDE_DIRECTORIES(test_camera_modes PRIVATE ${CMAKE_SOURCE_DIR}/include
 TARGET_LINK_LIBRARIES(test_camera_modes GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_camera_modes DISCOVERY_TIMEOUT 120)
 
+# B875 (issue #219): ChaseRigPinned, the device-free half of the Chase camera
+# pin (the renderer half is ChaseRigPinnedE2E in test_pose_log_e2e). Pins
+# fable's CURRENT constants against drift -- not an official-client
+# measurement; see tests/chase_rig_expected.h.
+ADD_EXECUTABLE(test_chase_rig_pinned
+    test_chase_rig_pinned.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/player/camera_rig.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_chase_rig_pinned PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR})
+TARGET_LINK_LIBRARIES(test_chase_rig_pinned GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_chase_rig_pinned DISCOVERY_TIMEOUT 120)
+
+# B875: the Chase-rig solver (tools/chase_fit/), validated non-circularly on a
+# synthetic scene whose ground-truth camera is NOT kChaseRig. camera_rig.cpp
+# is linked only to pin the solver's pose model to the production one.
+ADD_EXECUTABLE(test_chase_rig_fit
+    test_chase_rig_fit.cpp
+    ${CMAKE_SOURCE_DIR}/tools/chase_fit/chase_rig_fit.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/player/camera_rig.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_chase_rig_fit PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/tools ${CMAKE_CURRENT_SOURCE_DIR})
+TARGET_LINK_LIBRARIES(test_chase_rig_fit GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_chase_rig_fit DISCOVERY_TIMEOUT 120)
+
 # T397 Leg A (board B221): eqt::ResolveDataPath() plus the consumer that made
 # it necessary -- SpellEffectsConfig::load("config/spell_effects.json"), whose
 # CWD-relative literal silently produced a DIFFERENT spell effect from any

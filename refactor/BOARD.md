@@ -785,8 +785,8 @@ it without taking that measurement first.
      One heap block per BSP region (37,609) + a doubling-grown handle array;
      now 1,024-region slabs (`BspRegionPool`, `zone_bsp.h`) and an exact
      reserve. 55 % of what remains (18.8 MB) is per-region source geometry the
-     CLIENT frees at Step 13 but the benchmark never does -- releasing it moves
-     the baselined `s3dZoneSourceBytes`, so it waits on Will (#5 below).
+     CLIENT frees at Step 13 but the benchmark never did -- released since
+     B914 (#5 below): 11,329,984 B (34 %).
   2. ~~**iceclad `spatial` over budget**: 8,682,512 B vs 4,194,304 (2.07×).
      e3a14c2a's message did not list this one; its 12 MiB raise covered it
      silently.~~ **FIXED 2026-09-28 (branch `task/spatial-budget-overrun`):
@@ -810,14 +810,30 @@ it without taking that measurement first.
      `test_region_occluders` pins 40 B/triangle + 8 B/region and the shared
      call. With #1 and #3 fixed (2026-09-29) iceclad and timorous are back in
      the one blocking `gate` job and `gate-kunark-velious` is gone.
-  5. (C, *measured*, NEEDS A GITLAB ISSUE -- no B number allocated) the benchmark never runs the client's Step-13
-     release (`releaseTexturePixelData`, `releasePostLoadData`,
+  5. ~~the benchmark never runs the client's Step-13 release
+     (`releaseTexturePixelData`, `releasePostLoadData`,
      `releaseRegionGeometry`), so its `zone_parse` holds a second copy of every
-     region's source geometry the client drops: iceclad 31.7 → 11.3 MB,
-     timorous 25.9 → 5.5 MB when mirrored (experiment, not committed). It
-     lowers the exact-match `s3dZoneSourceBytes`/`totalEstimate` baselines in
-     all five zones, so it needs Will's bless. `refactor/B813/README.md`
-     "2026-09-29".
+     region's source geometry the client drops.~~ **DONE 2026-09-29 as B914**
+     (Will approved; see the B914 entry below).
+
+- ~~**B914** (A) The gate benchmark never ran the client's Step-13 zone source
+  release, so the gate measured region source geometry the client frees at the
+  end of a zone load.~~ **DONE 2026-09-29** (branch
+  `task/B914-bench-region-release`, Will approved the change the same day). The client's four
+  inline releases are now one function, `S3DZone::releaseSourceAfterLoad()`
+  (`s3d_loader.h`/`.cpp`), called by `loadZoneStep13_Cleanup()` and by the
+  benchmark's `loadZone()` at the equivalent point. Ledger `zone_parse`
+  iceclad 31,673,040 → 11,329,984 B (94 % → 34 %), timorous 25,877,552 →
+  5,529,168 B. All image goldens are bit-identical and every metric and p95
+  check passes. **No manifest field moved:** `s3dZoneSourceBytes`/`totalEstimate`
+  were never blessed into `zones[].memory`, so B903's "lowers the exact-match
+  baselines" did not apply. No budget changed. `test_zone_source_release`
+  pins the shared call. Full table: `refactor/B914/README.md`.
+  Unnumbered follow-up (B, *measured*, needs a GitLab issue):
+  `WldLoader::releaseRegionGeometry()`'s return value, which the client logs
+  at Step 13, counts the shared `materialData` once per geometry. iceclad
+  reports 63.5 MB, but `s3dZoneSourceBytes` fell only 16.7 MB for the whole
+  release.
 
 - ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage
@@ -12369,7 +12385,13 @@ Follow-ups filed as records (not started):
 - **B857** (C) skel_containers -- the largest compactness term left in entity_models; needs its own plan per Will's rev-1 rule. -> issue #108
 - **B858** (C) zone-in Phase 10 is keyed on ONE unreliable packet (our own OP_ClientUpdate); a lost datagram is a permanent stall. -> issue #109
 
-B874-B876 are the hermes pose-oracle ruling (docs/decisions.md 2026-09-23, issues #218-#220); B877-B887 unused (T505 renumbered its block to B888-B901 after allocating B874+ concurrently); B902 onwards unused. Allocate from the MAX `B###:` issue title on GitLab, not from this file.
+- **B874** (B) `--pose-log` (Deliverable B, issue #218). PROVEN LIVE 2026-09-29 (`refactor/B874/live/README.md`): a zoned-in rendered client driven by `--script` wrote the log, and `scripts/pose_live_capture.sh` (ctest `PoseLogLiveCapture`, label `live`) checks it against the server's `#loc`, a `#save`d `character_data` row and kChaseRig -- position and heading agree through the documented transform. The test was RED on two findings it measured -- the rendered heading ignored `/turn`, movestate read idle through a `/move` walk -- now B911/B912 below, both fixed; the rerun on the VM lane is 39 PASS / 0 FAIL (`refactor/B874/live/run-20260929T042131Z/`). Also measured: client z 0.63 below the server's, and nothing but `#save` wrote the moved pose to `character_data`. OWED: Deliverable A -- a server-authoritative pose log for the OFFICIAL client (B875/B876).
+
+- ~~**B911** (A) `/turn` (and `/face`) changed the server's heading but not the rendered one. `EqActionHandler::setHeading()` wrote the store and the wire; the store's `PlayerMoved` goes to the STATE layer's EventBus, which never reaches the renderer.~~ **FIXED + VERIFIED LIVE** (task/B911-B912-command-movement-render): it now publishes the renderer-bridge `PlayerMoved` through `MovementComponent::PublishSelfPoseToRenderer()`. Pinned by `tests/test_command_movement_render.cpp` (`TurnCommandReachesTheRenderedHeading`, `FaceLocationCommandReachesTheRenderedHeading`; red without the fix: rendered 28 vs game 128, the live numbers). Live: rendered heading 128 7 ms after `/turn 90`, `#loc` check delta 0. -> issue #230
+- ~~**B912** (A) a command-driven walk (`/move`, `/moveto`, `/follow`) logged movestate 0 in every row, and the walk's end (and the arrival snap onto the target) never reached the renderer. `IrrlichtBridge` dropped `PlayerMovedData::isMoving`; `StopMovement()` published nothing.~~ **FIXED + VERIFIED LIVE**: the bridge hands `isMoving` to `PlayerCameraComponent::setPlayerGameDrivenMoving()` (latched until the next `PlayerMoved`; `isMoving()` = keyboard flags OR it), `StopMovement()` publishes the final pose with isMoving false after a command walk (`HasCommandMovement()`, asked before the clear, so keyboard movement is untouched), and a server self-update no longer carries velocity-as-isMoving. Pinned by `MoveCommandIsNonIdleWhileMovingAndIdleAfter` (red with either half reverted). Keyboard movement was never affected: `KeyboardMovementIsNonIdleWhileHeldAndIdleAfter` passes before and after (code + offline real-renderer test; NOT measured live -- the rig drives only `--script`). The "14 distinct positions" was not coarse stepping: one new position per rendered frame for the whole (0.23 s) walk. Live: movestate 1 on exactly the 15 walking rows, 0 on all 299 after. -> issue #231
+- **(B-unassigned, needs a GitLab issue)** Open questions left by B911/B912, none implemented: (1) render-side interpolation of a command walk when the renderer runs faster than the game tick (today both are ~60 Hz on x86 so every frame gets a new position; on a slower game tick positions would repeat) -- a behaviour decision; (2) the player model's animation during a command walk: the renderer's `updatePlayerMovementAnimation()` keys on keyboard input only, so from code the model likely does not play its walk cycle -- unmeasured, needs a video; (3) `MovementComponent::Face()` (auto-attack facing, `CombatManager`) still changes the heading without a renderer publish -- same class as B911, left alone because it can fire while the keyboard owns the pose; (4) a pathed `/move` stops up to 5 units short (`UpdateMovement`'s `waypoint_reached` radius; live 4.49 and 4.53 units) -- B874 finding 4's cause.
+
+B874-B876 are the hermes pose-oracle ruling (docs/decisions.md 2026-09-23, issues #218-#220); B877-B887 unused (T505 renumbered its block to B888-B901 after allocating B874+ concurrently); B902 onwards are allocated on GitLab (B911/B912 above are #230/#231). Allocate from the MAX `B###:` issue title on GitLab, not from this file.
 
 T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are class B on GitLab; every gap carries an oracle recipe, a repeatable CI test and parallel legs (docs/issues.md § Feature-gap issues). Filed as records (not started):
 
@@ -12391,34 +12413,60 @@ T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are cla
 
 ## Added 2026-09-29 by the rendered Pi sweep (#102, branch task/B854-rendered-pi-sweep)
 
-Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the Orange Pi (fable 3c6ea8b3, binary sha256 6888f621...). None of them has a B number. Allocate one from the max `B###:` GitLab title when filing. Each one **needs a GitLab issue**.
+Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the Orange Pi (fable 3c6ea8b3, binary sha256 6888f621...). Issues filed 2026-09-29 (B917-B922; the spatial entry is B909, issue #229).
 
-- **B-unassigned** (A, client) **needs a GitLab issue.** A server-directed zone move DURING the initial zone load kills the client.
+- **B917** (A, client) → issue #236. A server-directed zone move DURING the initial zone load kills the client.
   - The follow-on zone load logs `[FATAL] Failed to load zone S3D archive: qeynos.s3d (Failed to open archive: qeynos.s3d)`, or the same with an EMPTY name (`.s3d`), then `loadZoneGraphicsOnThread: sequential loader failed — requesting quit`.
   - Seen 5 times on the Pi: growthplane, templeveeshan, veeshan x2 and charasis (kicks or deaths before `ready`). Logs are under `review/B854-rendered/sweep-full/zones/`.
   - The same qeynos load succeeds at login, and a move AFTER `ready` is handled cleanly (chardok; charasis at level 60).
   - Suspect: the archive name/path is not resolved against the client path, or not captured, when a zone change lands mid-load.
-- **B-unassigned** (A, client) **needs a GitLab issue.** The client exits **0** after a FATAL loader failure (`checkLoadingComplete: loading thread failed — shutting down`).
+- **B918** (A, client) → issue #237. The client exits **0** after a FATAL loader failure (`checkLoadingComplete: loading thread failed — shutting down`).
   - Seen in all 5 runs above.
   - The scenario lane's exit-code taxonomy covers `--scenario` only. A normal or `--script` run that dies on a FATAL is indistinguishable from a clean `/q` to any wrapper.
-- **B-unassigned** (A, memory) **needs a GitLab issue.** The live `spatial` ledger category is over its orangepi budget (4 MiB) at `ready` in 25 of 45 rendered Pi zones.
+- **B909** (A, memory) → issue #229. The live `spatial` ledger category is over its orangepi budget (4 MiB) at `ready` in 25 of 45 rendered Pi zones.
   - Worst: growthplane 42.1 MB, trakanon 29.0, overthere 18.0, emeraldjungle 14.6, skyfire 13.3.
   - The CI gate asserts the budget over five zones in the offline benchmark only.
   - No other budgeted category was over at `ready` in any zone.
   - This is a defect to fix in code. The budget is NOT to be raised (docs/decisions.md 2026-09-28).
-- **B-unassigned** (A, memory) **needs a GitLab issue.** The rendered Pi client is over the 64 MB design yardstick in 44/45 zones at peak RssAnon: median 98.0 MB, worst growthplane 159.2 MB.
+- **B919** (A, memory) → issue #238. The rendered Pi client is over the 64 MB design yardstick in 44/45 zones at peak RssAnon: median 98.0 MB, worst growthplane 159.2 MB.
   - Only nurga is under (60.3 MB).
   - At `steady_60s` the median is 89.4 MB and 41/45 are over.
   - The largest ledger categories at `ready` are `gpu_driver` (18.4 to 20.2 MB; #1 in 30/45 zones) and `game_state` (up to 51.2 MB, emeraldjungle; #1 in 11).
   - It is under the 256 MB failing bound everywhere: worst VmHWM 218.7 MB, and no OOM.
   - The shrink queue for the Pi should be planned from these rows (docs/decisions.md 2026-09-17 addendum).
-- **B-unassigned** (A, tooling) **needs a GitLab issue.** The CI-published ARM binary (`ci-arm/<sha>/bin/willeq`, on NFS) carries no file capability.
+- **B920** (A, tooling) → issue #239. The CI-published ARM binary (`ci-arm/<sha>/bin/willeq`, on NFS) carries no file capability.
   - The documented setcap recipe fails silently if the copy goes to the Pi's `/tmp`: tmpfs is mounted `nosuid` there, so file capabilities are ignored.
   - What works: copy to the Pi's ext4 home, then `sudo setcap cap_net_raw,cap_net_admin+ep`. `scripts/pi_rendered_zone_sweep.sh` does this, and all 57 runs got a 16 MiB forced rcvbuf.
   - Every Pi recipe (`docs/ci.md` "The ARM runner and Pi runs", CLAUDE.md) should say so, or `scripts/pi/` should own a staging helper.
-- **B-unassigned** (B, rig/content) **needs a GitLab issue.** charasis's safe point (0,0,4) is lethal to Testchar at level 49 and at level 60.
+- **B921** (B, rig/content) → issue #240. charasis's safe point (0,0,4) is lethal to Testchar at level 49 and at level 60.
   - The server logs `ZonePC ... zone_mode [3]` (ZoneToBindPoint, "Death Only") 1 to 8 s after `ready`, in all 4 attempts.
   - So charasis's rendered steady state is unmeasured. It needs a survivable seed point or a protected character.
   - Also unexplained: the mid-load kicks of growthplane and templeveeshan on their first attempt, at level 49 against min_level 46. Both passed on retry.
-- **B-unassigned** (C, tooling) **needs a GitLab issue.** `eqemu_lock_release` (`scripts/eqemu/env.sh`) removes the lock without checking the owner. `pi_lock_release` does check.
+- **B922** (C, tooling) → issue #241. `eqemu_lock_release` (`scripts/eqemu/env.sh`) removes the lock without checking the owner. `pi_lock_release` does check.
   - A late cleanup from one run can drop a lock another run has just taken. Two back-to-back smoke runs came within a second of this on 2026-09-29.
+
+## Added 2026-09-29 by task/chase-constants-pin (B875 re-audit; issue #219 stays open)
+
+- **B875** (B, ORACLE-OWED) **Chase camera constants: fitted ONCE from the official client, pinned by ctest.** → issue #219
+  **Pinned now -- fable's CURRENT constants, NOT an official-client measurement:**
+  `ChaseRigPinned` (`tests/test_chase_rig_pinned.cpp`, device-free: kChaseRig's
+  four fields, kChaseFitEyeAboveFeet, the 62.8 horizontal FOV, the race scale at
+  a second eye, the production pose at 4 headings x 2 positions x 2 eyes) and
+  `ChaseRigPinnedE2E` (`tests/test_pose_log_e2e.cpp`: the camera a real headless
+  renderer places in Chase mode, 4 headings x 2 positions, and its FOV) compare
+  against committed literals in `tests/chase_rig_expected.h`, so a 0.001 edit of
+  any constant is red (RED runs in `refactor/B875/README.md`). The values are
+  corroborated at rest only by one live FABLE run (`refactor/B874/live/`,
+  run-20260929T022314Z: pitch 6.0000, azimuth 0.0001, distance
+  4.0002). This catches drift; it does not prove oracle parity.
+  **Owed:** the official-client fit itself -- manual correspondences on static
+  geometry from official stills at server-logged poses (needs #218 deliverable
+  A and the oracle rig), designed in `refactor/B875/FIT_PLAN.md`; the solver
+  (`tools/chase_fit/`, `chase_rig_fit`) is validated offline on a synthetic
+  camera that is not kChaseRig (`tests/test_chase_rig_fit.cpp`).
+  **MR !31 (`task/kb-chase-oracle-session`) must NOT be merged as it is:** its
+  `refactor/B875/chase_fit_golden.json` is circular (points projected with the
+  reference camera, then "fit" to the reference; it cites a pose no capture was
+  taken at) and its `ChaseConstantsFitPinned` test checks only the JSON's
+  structure (green with the distance at 4.001). Both are superseded by the tests
+  above.

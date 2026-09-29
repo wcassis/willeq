@@ -1,0 +1,4 @@
+host=dev-u24 commit=ab582ef52ab8d1171f56673edc046f32f824df47 lane=local
+run_start_utc=2026-09-29T02:24:28Z run_end_utc=2026-09-29T02:24:44Z
+client_rc=0 verdict=1
+pose_rows=539 pose_sha256=609605c45137ab627a1256cb5ecb2008f0f110d823304f80ca2df19cc9c4803f

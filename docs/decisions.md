@@ -1338,3 +1338,24 @@ moves back into `gate` when its overrun is fixed in code (`docs/ci.md`).
 `zone_parse` 31,673,040 B, timorous `zone_mesh` 23,586,688 B; no budget
 changed), so `gate` runs all five zones again and `gate-kunark-velious` is
 gone. `refactor/B813/README.md` "2026-09-29".
+
+## 2026-09-29 — the gate benchmark mirrors the client's end-of-load source release (Will, B914)
+
+**Will approved mirroring the client's end-of-load region source release in the
+gate benchmark ("go ahead with the benchmark change, I'll bless the new
+baselines"); table in `refactor/B914/README.md`; no image golden and no budget
+changed.**
+
+The client's Step-13 release and the benchmark now call one function,
+`S3DZone::releaseSourceAfterLoad()`, so the gate measures what the client holds
+after a load. Measured on the gate's five zones: ledger `zone_parse` iceclad
+31,673,040 → 11,329,984 B and timorous 25,877,552 → 5,529,168 B.
+In each zone `s3dZoneSourceBytes` and `totalEstimate` fall by the same number of
+bytes (iceclad −16,693,802).
+
+**No manifest baseline had to be re-blessed.** The fields that moved were never
+blessed into `tests/goldens/manifest.json`. Its `zones[].memory` blocks hold only
+the texture-cache fields, and `verify()` skips a baseline field the manifest does
+not carry. The gate checks those fields against their budgets and passed three
+times on the unchanged manifest. Blessing the T69 baseline fields is a separate
+decision and is not taken here.

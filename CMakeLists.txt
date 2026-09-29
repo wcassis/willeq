@@ -1805,6 +1805,16 @@ IF(EQT_GRAPHICS)
     ENDIF()
 ENDIF()
 
+# B875 (issue #219): the solver for the owed one-time fit of the official
+# client's Chase constants from MANUAL correspondences
+# (refactor/B875/FIT_PLAN.md). Device-free; tests/test_chase_rig_fit.cpp
+# validates it on synthetic data from a camera that is NOT kChaseRig.
+ADD_EXECUTABLE(chase_rig_fit
+    tools/chase_fit/chase_rig_fit_main.cpp
+    tools/chase_fit/chase_rig_fit.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(chase_rig_fit PRIVATE ${CMAKE_SOURCE_DIR}/tools)
+
 # T398: dump_icon_sheet was never a CMake target, so the tree's only TGA
 # decoder compiled nowhere. Both it and ui_atlas_builder now share
 # tools/tga_reader.h, and both are built.
