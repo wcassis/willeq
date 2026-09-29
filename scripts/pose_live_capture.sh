@@ -12,7 +12,7 @@
 #
 # What it does, in order (every step has a deadline; none waits >120 s
 # without progress):
-#   1. lock (atomic, owner `pose-live-capture`; held lock = exit 64)
+#   1. lock (atomic, owner `pose-live-capture` or --owner; held lock = exit 64)
 #   2. up.sh, then snapshot the character rows (restore_lib.sh)
 #   3. WORLD DOWN, seed the commanded pose into character_data, read it back,
 #      world up again, boot the pose's zone
@@ -31,16 +31,23 @@
 # 65 the server would not come up / the pose would not seed / lane mismatch;
 # 66 the snapshot did not restore.
 #
-# Usage: scripts/pose_live_capture.sh [--out DIR] [--max-rows N]
-#   EQEMU_HOST defaults to `local` (the lane this rig was proven on); the
-#   client config is derived from it and its host is checked before launch.
+# Usage: scripts/pose_live_capture.sh [--out DIR] [--max-rows N] [--owner NAME]
+#   The lane is EQEMU_HOST, exactly as every other scripts/eqemu/ tool reads
+#   it (B911/B912 generalised this; it used to force `local`): unset means
+#   env.sh's default, the eqemu VM; `EQEMU_HOST=local` selects a stack on this
+#   machine. The client config is DERIVED from the selected lane and its host
+#   is checked against that lane's address before anything is launched -- a
+#   past run pointed a client at the wrong lane by accident
+#   (feedback-lane-safe-defaults): local = one of this machine's own
+#   addresses, VM = EQEMU_HOST itself and NOT an address of this machine.
+#   --owner names the eqemu lock holder (default pose-live-capture).
 
 set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export EQEMU_HOST="${EQEMU_HOST:-local}"
 source "$REPO/scripts/eqemu/env.sh"
 source "$REPO/scripts/eqemu/restore_lib.sh"
+export EQEMU_HOST
 
 OWNER="pose-live-capture"
 CHAR="${EQ_TEST_CHARACTER}"          # Testchar (willeq_test, GM status)
@@ -61,6 +68,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --out) OUT="$2"; shift 2 ;;
         --max-rows) MAX_ROWS="$2"; shift 2 ;;
+        --owner) OWNER="$2"; shift 2 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -120,7 +128,13 @@ if eqemu_is_local; then
     hostname -I | tr ' ' '\n' | grep -qx "$cfg_host" && lane_ok=1
     [ "$cfg_host" = 127.0.0.1 ] && lane_ok=1
 else
+    # The VM lane: the config must name EQEMU_HOST itself, and EQEMU_HOST must
+    # not be one of THIS machine's addresses (that would be the local lane
+    # under another name, and a local stack may belong to another session).
     [ "$cfg_host" = "$EQEMU_HOST" ] && lane_ok=1
+    if hostname -I | tr ' ' '\n' | grep -qx "$cfg_host" || [ "$cfg_host" = 127.0.0.1 ]; then
+        lane_ok=0
+    fi
 fi
 if [ "$lane_ok" -ne 1 ]; then
     say "LANE MISMATCH: config host $cfg_host is not this lane's server (EQEMU_HOST=$EQEMU_HOST) -- refusing"

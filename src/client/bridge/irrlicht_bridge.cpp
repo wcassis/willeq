@@ -23,6 +23,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         if (renderer_) {
             auto& d = std::get<state::PlayerMovedData>(event.data);
             renderer_->setPlayerPosition(d.x, d.y, d.z, d.heading);
+            // B912 (GitLab #231): the flag was dropped here, so a walk the
+            // game thread drives (/move, /moveto, /follow) was invisible to
+            // everything renderer-side that asks "is the player moving".
+            renderer_->setPlayerGameDrivenMoving(d.isMoving);
         }
         break;
     case state::GameEventType::PlayerStatsChanged:

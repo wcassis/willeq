@@ -94,5 +94,6 @@ High-frequency events are deduplicated before delivery:
 
 - **EverQuest has zero graphics dependencies**: No `m_renderer` member, no graphics includes
 - **Bridge is the only crossing point**: every former direct `m_renderer->` call was replaced with an event
+- **A game-side pose change reaches the renderer only as a renderer-bridge `PlayerMoved`** (B911/B912). `PlayerFacade::SetPosition/SetHeading` fire `PlayerMoved` on the STATE layer's `EventBus`, which never reaches the renderer. Game-thread movers publish through `MovementComponent::PublishSelfPoseToRenderer()` (`/turn`, `/face`, the command-walk tick and its `StopMovement()`); `PlayerMovedData::isMoving` there means "the game thread is walking the player" and the renderer latches it until the next `PlayerMoved`
 - **Events are immutable**: Safe to read from any thread after drain
 - **Multi-renderer support**: Any `GameStateBridge` subclass can consume events (Irrlicht, Console, future RDP)

@@ -1,0 +1,24 @@
+# held until fully zoned in (Application::updateScript), then:
+/camera chase
+wait 1.5
+/camera chase
+wait 0.5
+/say #loc
+wait 2.5
+/camera get
+wait 0.3
+/turn 90
+wait 1
+/say #loc
+wait 0.5
+/move 443 -74 3
+wait 3
+/say #loc
+wait 0.5
+/camera get
+wait 0.3
+/target Testchar
+wait 0.3
+/say #save
+wait 1
+/q

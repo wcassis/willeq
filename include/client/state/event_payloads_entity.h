@@ -33,6 +33,10 @@ struct PlayerMovedData {
     float x, y, z;
     float heading;
     float dx, dy, dz;  // Velocity
+    // On the RENDERER bridge (B912): true while the game thread is walking the
+    // player (MovementComponent::HasCommandMovement()); IrrlichtBridge hands it
+    // to the renderer, which latches it until the next PlayerMoved. Every
+    // discrete relocation publishes false.
     bool isMoving;
 };
 

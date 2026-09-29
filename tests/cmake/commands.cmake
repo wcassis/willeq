@@ -666,6 +666,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_COMPILE_DEFINITIONS(test_pose_log_e2e PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_pose_log_e2e DISCOVERY_TIMEOUT 120)
+
+    # B911/B912 (GitLab #230/#231): a pose change the GAME thread makes
+    # (/turn, /face, a /move walk and its end) reaches the renderer through the
+    # bridge -- bare EverQuest + real IrrlichtBridge + real renderer on the
+    # same headless device; keyboard movement as the control.
+    ADD_EXECUTABLE(test_command_movement_render
+        test_command_movement_render.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_command_movement_render GTest::gtest_main willeq_core)
+    TARGET_INCLUDE_DIRECTORIES(test_command_movement_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${IRRLICHT_INCLUDE_DIR})
+    TARGET_COMPILE_DEFINITIONS(test_command_movement_render PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_command_movement_render DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # B874 / #218: --pose-log from a ZONED-IN client against the server's own
