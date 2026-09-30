@@ -20,14 +20,19 @@ What it does:
   * dead-client watchdog: no new output line for --stall seconds -> SIGTERM,
     5 s, SIGKILL; overall wall cap --cap seconds -> the same. The reason is
     recorded; the client's own exit status is recorded either way;
-  * writes <out>/summary.json.
+  * writes <out>/summary.json;
+  * B932, opt-in: --snap-points p1,p2 writes <out>/snap_<point>.json at each
+    named [memledger] point -- scripts/pi/proc_mem_snapshot.py's status +
+    per-mapped-file Rss/Anonymous + the mapped .so list, i.e. the proof of
+    which GL driver libraries the process really loaded.
 
 It never interprets the run (pass/fail is the host-side summarizer's job,
 scripts/pi/rendered_zone_summarize.py), so a change of criterion never
 needs a Pi re-run.
 
 usage: rendered_zone_run.py --out DIR [--cap 300] [--stall 180]
-                            [--sample-ms 20] -- <client argv...>
+                            [--sample-ms 20] [--snap-points startup,ready]
+                            -- <client argv...>
 """
 import argparse
 import json
@@ -67,6 +72,7 @@ def main():
     # --stop-point ledger line. The script's own /q is the fallback.
     ap.add_argument("--stop-point", default="steady_60s")
     ap.add_argument("--stop-delay", type=float, default=5.0)
+    ap.add_argument("--snap-points", default="")
     ap.add_argument("cmd", nargs=argparse.REMAINDER)
     a = ap.parse_args()
     cmd = a.cmd[1:] if a.cmd and a.cmd[0] == "--" else a.cmd
@@ -89,6 +95,25 @@ def main():
                             stderr=subprocess.STDOUT, bufsize=0, cwd=a.out)
     last_line = [time.time()]
     lines = [0]
+    snap_points = set(p for p in a.snap_points.split(",") if p)
+
+    def snap(point):
+        # A capability binary is non-dumpable: its /proc/<pid>/smaps is
+        # root-owned, so the snapshot runs under sudo -n (the sweep's Pi
+        # user has it). /proc/<pid>/status stays world-readable.
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "proc_mem_snapshot.py")
+        t = time.time()
+        try:
+            out = subprocess.run(["sudo", "-n", "python3", script, str(proc.pid), "--label", point],
+                                 capture_output=True, timeout=30)
+            if out.returncode != 0:
+                raise OSError(out.stderr.decode("utf-8", "replace")[-300:])
+            d = json.loads(out.stdout)
+            d["epoch"] = t
+            with open(os.path.join(a.out, "snap_%s.json" % point), "w") as f:
+                json.dump(d, f, indent=1)
+        except (OSError, ValueError, subprocess.SubprocessError) as e:
+            summary.setdefault("snap_errors", []).append("%s: %s" % (point, e))
 
     def pump():
         with open(os.path.join(a.out, "client.log"), "w", buffering=1) as log:
@@ -109,6 +134,9 @@ def main():
                     if m:
                         summary["points"].append({"point": m.group(1), "epoch": now,
                                                   "mem_available_kb": mem_available_kb()})
+                        if m.group(1) in snap_points:
+                            snap_points.discard(m.group(1))
+                            threading.Thread(target=snap, args=(m.group(1),), daemon=True).start()
                         if m.group(1) == a.stop_point and not summary["stop_reason"]:
                             summary["stop_reason"] = "SIGTERM %.0f s after %s" % (a.stop_delay, a.stop_point)
                             threading.Timer(a.stop_delay, lambda: proc.poll() is None

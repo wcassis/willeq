@@ -1385,3 +1385,35 @@ the x86 client and the Pi client (B854: iceclad 9.8 MiB).
 mid-load `zone_parse` reaches 31.7 MB live and a 50.1 MB high-water mark
 (iceclad) and is not asserted. That is an open finding
 (`refactor/B927/README.md`). No other budget changed.
+
+## 2026-09-29 — 64 MB excludes driver memory; try the LLVM-less Mesa build (Will; recorded 2026-09-30 by B932)
+
+**Will, in chat: "64 MB excludes driver memory; try the LLVM-less Mesa build".**
+
+**Interpretation, as relayed to B932 by the orchestrator.** The 64 MB figure
+of the 2026-09-17 entry is judged on **willeq's own memory**: `RssAnon` minus
+the memory ledger's `gpu_driver` category (the GL driver's heap, which is
+inside `RssAnon`). The driver libraries' file-backed resident pages (libLLVM,
+libgallium, libEGL_mesa, ... in `RssFile`) are also outside it. Driver memory
+is **still fully accounted**, as its own rows: the ledger's `gpu_driver`
+category and the `[memmap]` `so:` owner rows stay, and the 100 % accounting
+rule (2026-09-14) is unchanged. What changes is only which number the 64 MB
+target is read against. Nothing CI asserts changed: 256 MB stays the failing
+bound and 64 MB stays printed, not asserted.
+
+Note for readers of that number: the driver .so's own copy-on-write pages
+(relocated data, the `anon=` column of a `[memmap] owner=so:...` row, e.g.
+libLLVM ~5.3 MB on the Pi) are in `RssAnon` and are NOT in `gpu_driver`, so
+`RssAnon − gpu_driver` still carries them. B932 measures them per library.
+
+The second half, "try the LLVM-less Mesa build", is B932
+(`refactor/B932/README.md`): Mesa 25.2.8 built without LLVM, measured on the
+Orange Pi against the stock Ubuntu Mesa.
+
+## 2026-09-29 — memory first, frame rate second (Will; recorded 2026-09-30 by B932)
+
+**Will, in chat: "memory first, frame rate second".** When a change trades
+memory against frame rate on the target (the Orange Pi), memory wins. Frame
+rate is still measured and reported beside every memory change; the project's
+standing rule that under 30 fps on the Pi is a client defect is not withdrawn,
+only ranked below memory.

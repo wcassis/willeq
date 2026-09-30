@@ -10,6 +10,7 @@
 | `Dockerfile.arm64-noble` | Rock64 (RK3328) | aarch64 (64-bit) | Same GLES2 path, 64-bit |
 | `Dockerfile` | Desktop | x86_64 | Multi-stage: builder, runtime, vnc |
 | `Dockerfile.arm-cross` | ARM (legacy) | armhf | Superseded by arm-noble |
+| `Dockerfile.mesa-nollvm-armhf` | Orange Pi One | armhf (32-bit) | B932: builds Mesa 25.2.8 without LLVM (Lima only) into a side prefix; driven by `scripts/pi/build_mesa_nollvm.sh`, measured in `refactor/B932/README.md` |
 
 **Build command**: `scripts/build-arm-noble.sh`
 ```bash

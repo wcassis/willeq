@@ -859,6 +859,21 @@ it without taking that measurement first.
   The README carries a report-only table of every other budget against its
   measured worst.
 
+- ~~**B932** (A) Nobody had measured an LLVM-less Mesa on the Orange Pi (Will,
+  2026-09-29: "try the LLVM-less Mesa build").~~ **MEASURED 2026-09-30**
+  (issue #250, branch `task/B932-llvmless-mesa`, `refactor/B932/README.md`).
+  Mesa 25.2.8 from Ubuntu's own source package was built with
+  `-Dllvm=disabled -Dgallium-drivers=lima` (`scripts/pi/build_mesa_nollvm.sh`)
+  into `/home/user/mesa-nollvm` on the Pi. The system Mesa is untouched. The
+  build is selected by a DT_RPATH on a copy of the binary, which survives
+  setcap, and every run's maps prove it. kmscube VmRSS goes 55.9 → 17.3 MiB.
+  In the rendered client, RssFile falls 25-30 MiB in all five zones, RssAnon
+  falls 6.7 MiB at startup (the libLLVM/libgallium COW pages), and
+  `gpu_driver` does not move. fps is identical, and 72/72 fixed-pose frames
+  are pixel-identical. Findings: B933 → #251 (the printed 64 MB gap still
+  counts `gpu_driver`), B934 → #252 (a cold shader cache adds 2.8 MiB of
+  `gpu_driver`), B935 → #253 (class C: how the Pi gets the build).
+
 - **B909** (A) The client binary's own memory ledger had never been measured, and
   its `spatial` is over budget (GitLab #229). **Measured 2026-09-29** on branch
   `task/B909-client-spatial-ledger` (`refactor/B909/README.md`). The live

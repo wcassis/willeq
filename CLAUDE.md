@@ -112,10 +112,15 @@ reason at the top of this file. Cut narrative before you cut a rule.
   allocator entry points and charges every block's whole glibc chunk to the
   calling thread's `MemoryScope` category; `scripts/ci/visual_gate.py` gates the
   unattributed and slack shares and every category against its budget.
-- **32–64 MB RSS is the SECONDARY goal** (`docs/decisions.md` 2026-09-17). The
-  256 MB envelope stays the FAILING bound in CI; 64 MB is printed, never
-  asserted, with the gap broken down by bucket (`eqt::memory::gapToTarget`).
-  The original client ran these assets in 32 MB total.
+- **32–64 MB is the SECONDARY goal** (`docs/decisions.md` 2026-09-17), and
+  **it is judged on willeq's own memory: `RssAnon` minus the ledger's
+  `gpu_driver`** — "64 MB excludes driver memory" (Will, 2026-09-29). Driver
+  .so file pages are outside it too, but every driver byte is still reported
+  as its own row. The 256 MB envelope on `RssAnon` stays the FAILING bound in
+  CI; 64 MB is printed, never asserted, with the gap broken down by bucket
+  (`eqt::memory::gapToTarget`) — that printed gap is still taken on the whole
+  `RssAnon` (board B933). **Memory first, frame rate second** (Will,
+  2026-09-29). The original client ran these assets in 32 MB total.
 - **Development may be done on x86, but the final numbers are required on BOTH
   platforms**, and a shrink unit is planned off the Orange Pi's own ledger
   output, not the x86 one — the two queues disagree by more than an order of
