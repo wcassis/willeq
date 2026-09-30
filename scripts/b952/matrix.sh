@@ -14,7 +14,16 @@ BIN="$1"; OUT="$2"; SET="$3"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN="$HERE/impostor_run.sh"
 mkdir -p "$OUT"
-run() { bash "$RUN" "$BIN" "$OUT" "$@"; }
+run() {
+    bash "$RUN" "$BIN" "$OUT" "$@"
+    # A render into an incomplete FBO leaves the impostor blank: every number
+    # after that describes nothing, so the matrix stops (the Pi's first
+    # shared-FBO session was voided by exactly this, before the MSAA fix).
+    if grep -q -E 'incomplete_fbo=[1-9]' "$OUT/$1.log" 2>/dev/null; then
+        echo "ABORT: $1 rendered into an incomplete FBO" >&2
+        exit 3
+    fi
+}
 
 if [ "$SET" = full ]; then
     for zone in qeynos2 gfaydark; do
@@ -33,9 +42,10 @@ if [ "$SET" = full ]; then
     done
 elif [ "$SET" = pi ]; then
     # Ten runs; with the two pixel_test.sh runs that is the twelve the Pi
-    # protocol allows in a session. Heaviest first: an OOM shows on run one.
-    run qeynos2_n200_s256_unique_far_fboper qeynos2 200 256 unique far --impostor-fbo per
+    # protocol allows in a session. Heaviest shared-FBO run first: an OOM or an
+    # incomplete FBO shows on run one.
     run qeynos2_n200_s256_unique_far qeynos2 200 256 unique far
+    run qeynos2_n200_s256_unique_far_fboper qeynos2 200 256 unique far --impostor-fbo per
     run qeynos2_n200_s128_unique_far qeynos2 200 128 unique far
     run qeynos2_n200_s64_unique_far qeynos2 200 64 unique far
     run qeynos2_n200_s128_shared_far qeynos2 200 128 shared far

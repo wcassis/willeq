@@ -141,6 +141,39 @@ Diff diffImages(irr::video::IImage* a, irr::video::IImage* b, irr::video::IImage
     return d;
 }
 
+// The frame's pixels as an image that OWNS its memory. Not
+// driver->createScreenShot(): COpenGLES2Driver::createScreenShot() hands its
+// pixel buffer to createImageFromData(..., ownForeignMemory=true,
+// deleteMemory=false), so every call leaks width*height*4 bytes (B952 found
+// it: this test grew RssAnon 9.6 MB per variant on x86 and the Pi OOM-killed
+// it at anon-rss 289 MB -- see refactor/B952/README.md, filed separately).
+irr::video::IImage* readFrame(ZoneBenchData& data) {
+#ifdef EQT_HAS_GLES2
+    const auto size = data.driver->getScreenSize();
+    const irr::u32 w = size.Width, h = size.Height;
+    std::vector<irr::u8> px(static_cast<size_t>(w) * h * 4);
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+    irr::video::IImage* img = data.driver->createImage(irr::video::ECF_A8R8G8B8, size);
+    if (!img) return nullptr;
+    auto* dst = static_cast<irr::u8*>(img->lock());
+    for (irr::u32 y = 0; y < h; ++y) {
+        const irr::u8* src = px.data() + static_cast<size_t>(h - 1 - y) * w * 4;  // GL rows are bottom-up
+        irr::u8* row = dst + static_cast<size_t>(y) * img->getPitch();
+        for (irr::u32 x = 0; x < w; ++x) {
+            row[x * 4 + 0] = src[x * 4 + 2];  // B
+            row[x * 4 + 1] = src[x * 4 + 1];  // G
+            row[x * 4 + 2] = src[x * 4 + 0];  // R
+            row[x * 4 + 3] = src[x * 4 + 3];  // A
+        }
+    }
+    img->unlock();
+    return img;
+#else
+    (void)data;
+    return nullptr;
+#endif
+}
+
 // One frame with only `draw` in it, read back before endScene().
 template <typename Fn>
 irr::video::IImage* renderFrame(ZoneBenchData& data, const CameraState& cam, Fn&& draw) {
@@ -150,7 +183,7 @@ irr::video::IImage* renderFrame(ZoneBenchData& data, const CameraState& cam, Fn&
     data.driver->beginScene(true, true, irr::video::SColor(255, 40, 40, 60));
     if (data.zoneShader) data.zoneShader->beginFrame();
     draw();
-    irr::video::IImage* shot = data.driver->createScreenShot();
+    irr::video::IImage* shot = readFrame(data);
     data.driver->endScene();
     return shot;
 }
@@ -349,6 +382,20 @@ int runImpostorPixelTest(ZoneBenchData& data, float eqX, float eqY, float eqZ, f
             }
             for (auto* p : panels) p->drop();
             bg->drop();
+            {
+                // Growth across the loop: the Pi OOM-killed this test at
+                // anon-rss 289 MB (B952 session 3), so every variant prints it.
+                using eqt::memory::Category;
+                const auto snap = eqt::memory::snapshot("impostor_pixel");
+                auto live = [&](Category c) {
+                    return static_cast<unsigned long long>(snap.categories[static_cast<size_t>(c)].liveBytes);
+                };
+                printf("[impostor-pixel-mem] dist=%.0f race=%d gender=%d rss_anon=%llu gpu_driver=%llu "
+                       "textures_driver=%llu irrlicht_scene=%llu unattributed=%llu\n",
+                       D, ent.raceId, ent.gender, static_cast<unsigned long long>(snap.rssAnonBytes),
+                       live(Category::GpuDriver), live(Category::TexturesDriver),
+                       live(Category::IrrlichtScene), live(Category::Unattributed));
+            }
         }
     }
     cache.clear(data);
