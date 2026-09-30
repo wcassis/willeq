@@ -17,7 +17,8 @@
 //   driver_*  -- through COpenGLES2Driver (setMaterial + drawVertexPrimitiveList,
 //                the billboard's exact call shape), with the texture uploaded by
 //                driver->addTexture(IImage) ("upload") or by raw glTexImage2D +
-//                gles2WrapTexture ("wrapped", the impostor's shape).
+//                gles2WrapTexture ("wrapped", the impostor's shape), or rendered
+//                into an addRenderTargetTexture() ("rtt", the capture's kind).
 //   raw_*     -- this tool's own GL programs: the driver's two ALPHA3D fragment
 //                shaders (copied verbatim), and no-discard diagnostics that
 //                write the sampled alpha / the comparison / the threshold as a
@@ -223,13 +224,13 @@ struct Probe {
 
     // The billboard's call shape (zone_bench_impostor.cpp drawImpostorBillboard):
     // EVT_STANDARD vertices, 16-bit indices, drawVertexPrimitiveList.
-    void driverDraw(irr::video::ITexture* tex, irr::video::E_MATERIAL_TYPE type) {
+    void driverDraw(irr::video::ITexture* tex, irr::video::E_MATERIAL_TYPE type, float e = 0.5f) {
         const irr::video::SColor white(255, 255, 255, 255);
         irr::video::S3DVertex q[4] = {
-            irr::video::S3DVertex(-0.5f, -0.5f, 0.5f, 0, 0, 1, white, 0.0f, 0.0f),
-            irr::video::S3DVertex(0.5f, -0.5f, 0.5f, 0, 0, 1, white, 1.0f, 0.0f),
-            irr::video::S3DVertex(0.5f, 0.5f, 0.5f, 0, 0, 1, white, 1.0f, 1.0f),
-            irr::video::S3DVertex(-0.5f, 0.5f, 0.5f, 0, 0, 1, white, 0.0f, 1.0f),
+            irr::video::S3DVertex(-e, -e, 0.5f, 0, 0, 1, white, 0.0f, 0.0f),
+            irr::video::S3DVertex(e, -e, 0.5f, 0, 0, 1, white, 1.0f, 0.0f),
+            irr::video::S3DVertex(e, e, 0.5f, 0, 0, 1, white, 1.0f, 1.0f),
+            irr::video::S3DVertex(-e, e, 0.5f, 0, 0, 1, white, 0.0f, 1.0f),
         };
         const irr::u16 idx[6] = {0, 1, 2, 0, 2, 3};
         irr::video::SMaterial m;
@@ -383,6 +384,23 @@ int main(int argc, char** argv) {
     printf("[alpha-probe] renderer=\"%s\" version=\"%s\" screen=%dx%d\n",
            reinterpret_cast<const char*>(glGetString(GL_RENDERER)),
            reinterpret_cast<const char*>(glGetString(GL_VERSION)), pr.W, pr.H);
+    // Which Mesa is mapped (the Pi has the system Mesa and the LLVM-less
+    // prefix, both 25.2.8, so the version string cannot tell them apart).
+    if (FILE* maps = fopen("/proc/self/maps", "r")) {
+        char line[512];
+        std::string gallium, llvm;
+        while (fgets(line, sizeof(line), maps)) {
+            const char* path = strchr(line, '/');
+            if (!path) continue;
+            if (gallium.empty() && strstr(path, "libgallium")) gallium = path;
+            if (llvm.empty() && strstr(path, "libLLVM")) llvm = path;
+        }
+        fclose(maps);
+        if (!gallium.empty() && gallium.back() == '\n') gallium.pop_back();
+        if (!llvm.empty() && llvm.back() == '\n') llvm.pop_back();
+        printf("[alpha-probe] mapped gallium=%s llvm=%s\n", gallium.empty() ? "-" : gallium.c_str(),
+               llvm.empty() ? "-" : llvm.c_str());
+    }
 
     // The texture, as RGBA bytes (left half opaque model colour, right half 0).
     std::vector<unsigned char> rgba(kTex * kTex * 4, 0);
@@ -426,18 +444,30 @@ int main(int argc, char** argv) {
     irr::video::ITexture* wrapped = static_cast<irr::video::ITexture*>(
         gles2WrapTexture(pr.driver, "b958_probe_wrapped", rawTex, kTex, kTex, kTex * kTex * 4));
 
+    // (3) a render target (the impostor capture's kind of texture): the
+    // uploaded texture copied into it full-frame with EMT_SOLID, which writes
+    // the texel alpha through unchanged (blending is off).
+    irr::video::ITexture* rtt =
+        pr.driver->addRenderTargetTexture(irr::core::dimension2d<irr::u32>(kTex, kTex), "b958_probe_rtt");
+    if (rtt && pr.driver->setRenderTarget(rtt, true, true, irr::video::SColor(0, 0, 0, 0))) {
+        pr.driverDraw(uploaded, irr::video::EMT_SOLID, 1.0f);
+        pr.driver->setRenderTarget(nullptr, false, false);
+    } else {
+        rtt = nullptr;
+    }
+
     struct { const char* name; irr::video::E_MATERIAL_TYPE type; } kDriverDraws[] = {
         {"driver_alpha_ref", irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF},
         {"driver_alpha_blend", irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL},
         {"driver_solid", irr::video::EMT_SOLID},
     };
     for (const auto& d : kDriverDraws) {
-        for (int t = 0; t < 2; ++t) {
-            irr::video::ITexture* tex = t == 0 ? uploaded : wrapped;
+        for (int t = 0; t < 3; ++t) {
+            irr::video::ITexture* tex = t == 0 ? uploaded : (t == 1 ? wrapped : rtt);
             if (!tex) continue;
             pr.begin();
             pr.driverDraw(tex, d.type);
-            pr.report(d.name, t == 0 ? "upload" : "wrapped", "builtin");
+            pr.report(d.name, t == 0 ? "upload" : (t == 1 ? "wrapped" : "rtt"), "builtin");
             pr.end();
         }
     }
