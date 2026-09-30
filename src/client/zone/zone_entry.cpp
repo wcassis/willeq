@@ -7,6 +7,7 @@
 #include "client/pathfinder_nav_mesh.h"
 #endif
 #include "client/hc_map.h"
+#include "client/raycast_mesh.h"  // B951: owner rows for the collision map arrays
 #include "client/combat.h"
 #include "client/corpse_predicate.h"  // T185: player-corpse rename on the death path
 #include "client/trade_manager.h"
@@ -188,9 +189,18 @@ void eqt::zone::ZoneComponent::ZoneProcessNewZone(const EQ::Net::Packet &p)
 		}
 		eqt::memory::recordPoint("game_pathfinder", ctx_.self.CurrentZoneName());
 
-		// Load zone map for terrain height calculations
+		// Load zone map for terrain height calculations. B951 (GitLab #269):
+		// the raycast mesh's final arrays get their own gs.collision_map.*
+		// rows (the hooks open/close a sub-owner exactly like StartupScope).
 		{
 			eqt::memory::StartupScope owner("gs.collision_map");
+			setRaycastMeshOwnerHooks(
+				[](const char* name) -> unsigned {
+					const unsigned prev = eqt::memory::detail::t_sublabel;
+					eqt::memory::detail::t_sublabel = eqt::memory::startupSublabelIndex(name);
+					return prev;
+				},
+				[](unsigned prev) { eqt::memory::detail::t_sublabel = static_cast<uint8_t>(prev); });
 			LoadZoneMap(ctx_.self.CurrentZoneName());
 		}
 		eqt::memory::recordPoint("game_zone_map", ctx_.self.CurrentZoneName());

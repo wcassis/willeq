@@ -91,6 +91,10 @@ HCMap loads map files and stores geometry in Y-up format for internal raycast qu
 - **File format**: V2 files have INVERSEXY applied (X/Y swapped), V1 files use Z-up directly
 - **Internal storage**: Y-up (after Y↔Z swap during loading)
 - **Used by**: `RaycastMesh` collision queries, `GetTrianglesInRadius()` for debug overlays
+- **Triangle order** (B951): the mesh stores triangles in its AABB tree's leaf
+  order, not the file's, so `GetTrianglesInRadius()` / `ForEachTerrainTriangle()`
+  return the same triangles (bit for bit, same winding) in a different order;
+  vertices are renumbered too. `raycast()` is const and re-entrant.
 
 **Important**: `FindBestZ()` and `CheckLOS()` **accept EQ coordinates** (Z-up) as input/output and convert internally:
 ```cpp

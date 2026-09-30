@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <algorithm>
 #include <new>
 #include <utility>
 #include <vector>
@@ -73,7 +74,17 @@ typedef std::vector<RmUint32> TriVector;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define RAYAABB_EPSILON 0.00001f
 //! Integer representation of a RmRealing-point value.
-#define IR(x)	((RmUint32&)x)
+// B951: read through memcpy. The original `((RmUint32&)x)` cast read a float
+// object through an integer lvalue -- undefined under strict aliasing, and
+// once this function inlined into the new traversal GCC warned it could read
+// MaxT "uninitialized" (the integer load was no longer ordered after the
+// float stores). Same bits, defined behaviour.
+static inline RmUint32 IR(RmReal x)
+{
+	RmUint32 u;
+	memcpy(&u, &x, sizeof(u));
+	return u;
+}
 
 bool intersectRayAABB(const RmReal MinB[3],const RmReal MaxB[3],const RmReal origin[3],const RmReal dir[3],RmReal coord[3])
 {
@@ -415,15 +426,18 @@ public:
 
 class NodeAABB;
 
+// B951: the BUILD-time tree. NodeAABB below is the original node and split,
+// unchanged, so the finished mesh has exactly the original tree's nodes,
+// bounds and leaf sets; MyRaycastMesh re-lays it out (a node word stream) and frees
+// this pool. Nodes live in one pool and refer to each other by INDEX
+// (T504d); the build allocates a node's left child immediately before
+// recursing into it, so the pool is in PRE-ORDER and a left child is always
+// the next node -- the packed layout relies on that.
 class NodeInterface
 {
 public:
-	// T504d: nodes live in one pool and refer to each other by INDEX (a
-	// 32-bit index instead of a 64-bit pointer, and no vtable: 56 -> 36 bytes
-	// per node; gfaydark's 55,071 nodes 3.08 -> 1.98 MB).
 	virtual RmUint32 getNode(void) = 0;
 	virtual NodeAABB * nodeAt(RmUint32 index) = 0;
-	virtual void getFaceNormal(RmUint32 tri,RmReal *faceNormal) = 0;
 };
 
 static const RmUint32 NODE_NONE = 0xFFFFFFFF;
@@ -644,116 +658,117 @@ public:
 		}
 	}
 
-	void raycast(bool &hit,
-						const RmReal *from,
-						const RmReal *to,
-						const RmReal *dir,
-						RmReal *hitLocation,
-						RmReal *hitNormal,
-						RmReal *hitDistance,
-						const RmReal *vertices,
-						const RmUint32 *indices,
-						RmReal &nearestDistance,
-						NodeInterface *callback,
-						RmUint8 *raycastTriangles,
-						RmUint8 raycastFrame,
-						const TriVector &leafTriangles,
-						RmUint32 &nearestTriIndex)
-	{
-		RmReal sect[3];
-		RmReal nd = nearestDistance;
-		if ( !intersectLineSegmentAABB(mBounds.mMin,mBounds.mMax,from,dir,nd,sect) )
-		{
-			return;
-		}
-		if ( mLeafTriangleIndex != TRI_EOF )
-		{
-			const RmUint32 *scan = &leafTriangles[mLeafTriangleIndex];
-			RmUint32 count = *scan++;
-			for (RmUint32 i=0; i<count; i++)
-			{
-				RmUint32 tri = *scan++;
-				if ( raycastTriangles[tri] != raycastFrame )
-				{
-					raycastTriangles[tri] = raycastFrame;
-					RmUint32 i1 = indices[tri*3+0];
-					RmUint32 i2 = indices[tri*3+1];
-					RmUint32 i3 = indices[tri*3+2];
-
-					const RmReal *p1 = &vertices[i1*3];
-					const RmReal *p2 = &vertices[i2*3];
-					const RmReal *p3 = &vertices[i3*3];
-
-					RmReal t;
-					if ( rayIntersectsTriangle(from,dir,p1,p2,p3,t))
-					{
-						bool accept = false;
-						if ( t == nearestDistance && tri < nearestTriIndex )
-						{
-							accept = true;
-						}
-						if ( t < nearestDistance || accept )
-						{
-							nearestDistance = t;
-							if ( hitLocation )
-							{
-								hitLocation[0] = from[0]+dir[0]*t;
-								hitLocation[1] = from[1]+dir[1]*t;
-								hitLocation[2] = from[2]+dir[2]*t;
-							}
-							if ( hitNormal )
-							{
-								callback->getFaceNormal(tri,hitNormal);
-							}
-							if ( hitDistance )
-							{
-								*hitDistance = t;
-							}
-							nearestTriIndex = tri;
-							hit = true;
-						}
-					}
-				}
-			}
-		}
-		else
-		{
-			if ( mLeft != NODE_NONE )
-			{
-				callback->nodeAt(mLeft)->raycast(hit,from,to,dir,hitLocation,hitNormal,hitDistance,vertices,indices,nearestDistance,callback,raycastTriangles,raycastFrame,leafTriangles,nearestTriIndex);
-			}
-			if ( mRight != NODE_NONE )
-			{
-				callback->nodeAt(mRight)->raycast(hit,from,to,dir,hitLocation,hitNormal,hitDistance,vertices,indices,nearestDistance,callback,raycastTriangles,raycastFrame,leafTriangles,nearestTriIndex);
-			}
-		}
-	}
-
 	RmUint32		mLeft;      // NODE_NONE = no child
 	RmUint32		mRight;
 	BoundsAABB		mBounds;
 	RmUint32		mLeafTriangleIndex;
 };
 
-class MyRaycastMesh : public RaycastMesh, public NodeInterface
+// ---------------------------------------------------------------------------
+// B951 (GitLab #269): the finished mesh's compact layout.
+//
+// Measured before (emeraldjungle, 618,240 triangles, 46,579 nodes): vertices
+// 4.40 MB, indices 7.42 MB (3 x uint32 per triangle for 19-bit vertex
+// numbers), leaf triangle lists 3.77 MB (a uint32 count per leaf plus a uint32
+// per reference; 918,775 references = each triangle listed by 1.49 leaves on
+// average, 2.1-2.7 in timorous/growthplane/gfaydark), nodes 1.68 MB (36 bytes)
+// and a one-byte raycast mark per triangle 0.62 MB. Now:
+//
+//   * triangles are STORED ONCE, in leaf order: the first leaf (pre-order)
+//     that lists a triangle owns it, so a leaf is the range of triangles it
+//     owns plus a range of references to triangles an earlier leaf owns (the
+//     ones that straddle a split);
+//   * a triangle is three uint16 offsets from a base vertex number shared by
+//     a block of 64 stored triangles (6 bytes; a triangle using a vertex
+//     below its block's base is escaped to three plain uint32), and a
+//     reference is ceil(bits(triangleCount-1)/8) bytes;
+//   * vertices are renumbered in first-use order of the stored triangles
+//     (values and count unchanged): a leaf's vertices sit together;
+//   * a node is its exact float bounds plus ONE word (28 bytes): the left child
+//     is always the next node (pre-order build), the word is the right child
+//     or, for a leaf, its ordinal in two per-leaf range tables;
+//   * no raycast marks. The old mark stopped a ray from re-testing a triangle
+//     a previous leaf had tested; a re-test returns the same t, so it can never
+//     change the nearest hit (a tie keeps the same location and distance).
+//     Dropping it also makes raycast() re-entrant: the render thread (player
+//     collision) and the game thread (FixZ, spell LOS) cast into the SAME map,
+//     and the shared mark/frame counter was a data race that could skip a
+//     triangle neither thread had tested.
+//
+// The tree itself (which nodes, their bounds, which triangles each leaf
+// lists) is built by the unchanged NodeAABB code above, so a ray visits the
+// same boxes in the same order and tests the same triangle set in each leaf.
+//
+// Measured on the Pi and kept OUT, because they made rays slower (numbers in
+// refactor/B951/README.md): bit-packed per-triangle deltas (5 bytes instead of
+// 6; the 64-bit unpacking made cache-warm rays 17 % slower in emeraldjungle)
+// and child bounds derived from the parent's (nodes to ~40 %; the per-node
+// decode made cache-warm rays 11-31 % slower).
+// ---------------------------------------------------------------------------
+
+static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "the leaf references are read as little-endian words");
+
+struct PackedNode
+{
+	RmReal		mMin[3];
+	RmReal		mMax[3];
+	RmUint32	mData;
+};
+static_assert(sizeof(PackedNode) == 28, "PackedNode is 6 floats + one word");
+
+static const RmUint32 PN_LEAF      = 0x80000000u;  // mData low 31 bits = leaf ordinal
+static const RmUint32 PN_HAS_LEFT  = 0x40000000u;  // left child = this node + 1
+static const RmUint32 PN_HAS_RIGHT = 0x20000000u;  // mData low 29 bits = right child
+static const RmUint32 PN_INDEX     = 0x1FFFFFFFu;
+
+static inline RmUint32 bitsFor(RmUint32 count)
+{
+	// bits needed to number `count` things (0..count-1); at least 1
+	if (count <= 2) return 1;
+	RmUint32 n = count - 1;
+	RmUint32 b = 0;
+	while (n) { ++b; n >>= 1; }
+	return b;
+}
+
+// Stored triangles: kTriBlock per base vertex number, uint16 offsets from it;
+// 0xFFFF as the first offset marks an escaped triangle.
+static const RmUint32 kTriBlock = 64;
+static const uint16_t kEscape = 0xFFFFu;
+static const RmUint32 kOffsetMax = 0xFFFEu;
+
+static RmOwnerOpen g_ownerOpen = nullptr;
+static RmOwnerClose g_ownerClose = nullptr;
+
+// Everything allocated while one of these is alive is charged to the named
+// memory-ledger owner row (when the client installed the hooks). The ledger
+// keeps 23 characters of a name, so the rows are gs.collision_map.{verts,
+// tris,refs,nodes,leaves,flags}; what the mesh holds outside them (the object
+// itself) stays in the caller's gs.collision_map row.
+class OwnerLabel
 {
 public:
-
-	// B941: the mesh OWNS its vertex and index arrays as vectors the caller
-	// moved in (createRaycastMesh(std::vector&&, ...)); the pointer factory
-	// copies into vectors first. No second copy of the geometry is made here.
-	MyRaycastMesh(std::vector<RmReal> &&vertices,std::vector<RmUint32> &&indices,RmUint32 maxDepth,RmUint32 minLeafSize,RmReal minAxisSize)
-		: mVertexStore(std::move(vertices)), mIndexStore(std::move(indices))
+	explicit OwnerLabel(const char *name) : mOn(g_ownerOpen != nullptr && g_ownerClose != nullptr), mToken(0)
 	{
-		mRaycastFrame = 0;
-		if ( maxDepth < 2 )
-		{
-			maxDepth = 2;
-		}
-		if ( maxDepth > 15 )
-		{
-			maxDepth = 15;
-		}
+		if (mOn) mToken = g_ownerOpen(name);
+	}
+	~OwnerLabel(void)
+	{
+		if (mOn) g_ownerClose(mToken);
+	}
+	OwnerLabel(const OwnerLabel&) = delete;
+	OwnerLabel& operator=(const OwnerLabel&) = delete;
+private:
+	bool		mOn;
+	unsigned	mToken;
+};
+
+// The build-time node pool (a full tree of maxDepth, freed after the re-layout).
+class TreeBuilder : public NodeInterface
+{
+public:
+	explicit TreeBuilder(RmUint32 maxDepth)
+	{
 		RmUint32 pow2Table[16] = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 65536 };
 		mMaxNodeCount = 0;
 		for (RmUint32 i=0; i<=maxDepth; i++)
@@ -765,113 +780,9 @@ public:
 			throw std::bad_alloc();
 		}
 		mNodeCount = 0;
-
-		mVcount = static_cast<RmUint32>(mVertexStore.size() / 3);
-		mTcount = static_cast<RmUint32>(mIndexStore.size() / 3);
-		mVertices = mVertexStore.data();
-		mIndices = mIndexStore.data();
-
-		// T504d: one byte per triangle. The mark is compared to the current
-		// raycast's frame number and set; a byte wraps every 255 raycasts, at
-		// which point raycast() clears the whole array once (a memset of
-		// tcount bytes every 255 calls) -- 4 -> 1 bytes per triangle.
-		mMarkStore.assign(mTcount, 0);
-		mRaycastTriangles = mMarkStore.data();
-
-		// T504d: no face-normal table. It was 12 bytes per triangle (gfaydark
-		// 1.56 MB, dreadlands 2.16 MB), built whole on the first hit that asked
-		// for a normal; getFaceNormal() now computes the one normal a hit needs
-		// from the triangle's three vertices (the same computePlane()).
-		mRoot = getNode();
-		new ( nodeAt(mRoot) ) NodeAABB(mVcount,mVertices,mTcount,mIndices,maxDepth,minLeafSize,minAxisSize,this,mLeafTriangles);
-
-		shrinkNodePool();
-		mLeafTriangles.shrink_to_fit();   // T504d: push_back growth left up to 2x slack (gfaydark 2.10 MB for 1.49)
-		// B941: the caller's growth slack goes too, now that the build's own
-		// transients are freed (one array is copied at a time).
-		mVertexStore.shrink_to_fit();
-		mIndexStore.shrink_to_fit();
-		mVertices = mVertexStore.data();
-		mIndices = mIndexStore.data();
-
-		// T504 (load-step audit): what the finished tree weighs, by part.
-		LOG_INFO(MOD_MAP, "[raycastmesh] verts={} tris={} nodes={} leaf_tri_refs={} | bytes: vertices={} indices={} "
-		         "raycast_marks={} nodes={} leaf_refs={} (T504d: no face-normal table)",
-		         mVcount, mTcount, mNodeCount, mLeafTriangles.size(),
-		         sizeof(RmReal) * mVertexStore.capacity(), sizeof(RmUint32) * mIndexStore.capacity(),
-		         mMarkStore.capacity(), sizeof(NodeAABB) * (size_t)mNodeCount,
-		         sizeof(RmUint32) * mLeafTriangles.capacity());
 	}
-
-	// T504 (load-step audit): mNodes is sized for a FULL binary tree of maxDepth
-	// before the build -- 98,303 nodes x 48 bytes = 4.5 MiB at the default depth
-	// 15, whatever the mesh (MEASURED: qeynos2's 132 KB map file cost +7.5 MiB of
-	// client heap, most of it this pool). The build only ever takes the next free
-	// slot (getNode()), so once it has finished the used nodes are the first
-	// mNodeCount entries: copy them into an exact-size pool and rebase the child
-	// pointers, which all point into the same array.
-	void shrinkNodePool(void)
-	{
-		if (mNodeCount == 0 || mNodeCount >= mMaxNodeCount) return;
-		NodeAABB *exact = static_cast<NodeAABB*>(malloc(sizeof(NodeAABB) * mNodeCount));
-		if (!exact) return;  // keep the big pool: correct, just not small
-		std::memcpy(static_cast<void*>(exact), static_cast<const void*>(mNodes), sizeof(NodeAABB) * mNodeCount);
-		// T504d: children are pool INDICES, so nothing to rebase.
-		free(mNodes);
-		mNodes = exact;
-		mMaxNodeCount = mNodeCount;
-	}
-
-	virtual const RmReal * getVertices(void) const { return mVertices; }
-	virtual RmUint32 getVertexCount(void) const { return mVcount; }
-	virtual const RmUint32 * getIndices(void) const { return mIndices; }
-	virtual RmUint32 getTriangleCount(void) const { return mTcount; }
-
-	~MyRaycastMesh(void)
-	{
-		if (mNodes) { free(mNodes); }
-	}
-
-	virtual bool raycast(const RmReal *from,const RmReal *to,RmReal *hitLocation,RmReal *hitNormal,RmReal *hitDistance)
-	{
-		bool ret = false;
-
-		RmReal dir[3];
-		dir[0] = to[0] - from[0];
-		dir[1] = to[1] - from[1];
-		dir[2] = to[2] - from[2];
-		RmReal distance = sqrtf( dir[0]*dir[0] + dir[1]*dir[1]+dir[2]*dir[2] );
-		if ( distance < 0.0000000001f ) return false;
-		RmReal recipDistance = 1.0f / distance;
-		dir[0]*=recipDistance;
-		dir[1]*=recipDistance;
-		dir[2]*=recipDistance;
-		// T504d: one-byte frame; on wrap clear every mark once and restart at 1.
-		mRaycastFrame++;
-		if ( mRaycastFrame == 0 )
-		{
-			std::memset(mRaycastTriangles, 0, sizeof(RmUint8) * mTcount);
-			mRaycastFrame = 1;
-		}
-		RmUint32 nearestTriIndex=TRI_EOF;
-		nodeAt(mRoot)->raycast(ret,from,to,dir,hitLocation,hitNormal,hitDistance,mVertices,mIndices,distance,this,mRaycastTriangles,mRaycastFrame,mLeafTriangles,nearestTriIndex);
-		return ret;
-	}
-
-	virtual void release(void)
-	{
-		delete this;
-	}
-
-	virtual const RmReal * getBoundMin(void) const
-	{
-		return mNodes[mRoot].mBounds.mMin;
-	}
-	virtual const RmReal * getBoundMax(void) const
-	{
-		return mNodes[mRoot].mBounds.mMax;
-	}
-
+	~TreeBuilder(void) { release(); }
+	void release(void) { if (mNodes) { free(mNodes); mNodes = nullptr; } }
 	virtual RmUint32 getNode(void)
 	{
 		assert( mNodeCount < mMaxNodeCount );
@@ -881,16 +792,449 @@ public:
 	{
 		return &mNodes[index];
 	}
+	NodeAABB	*mNodes;
+	RmUint32	mNodeCount;
+	RmUint32	mMaxNodeCount;
+};
 
-	virtual void getFaceNormal(RmUint32 tri,RmReal *faceNormal)
+class MyRaycastMesh : public RaycastMesh
+{
+public:
+
+	MyRaycastMesh(std::vector<RmReal> &&vertices,std::vector<RmUint32> &&indices,RmUint32 flagBegin,RmUint32 flagEnd,RmUint32 maxDepth,RmUint32 minLeafSize,RmReal minAxisSize)
 	{
-		const RmUint32 i1 = mIndices[tri*3+0];
-		const RmUint32 i2 = mIndices[tri*3+1];
-		const RmUint32 i3 = mIndices[tri*3+2];
-		computePlane(&mVertices[i3*3],&mVertices[i2*3],&mVertices[i1*3],faceNormal);
+		if ( maxDepth < 2 )
+		{
+			maxDepth = 2;
+		}
+		if ( maxDepth > 15 )
+		{
+			maxDepth = 15;
+		}
+		mVcount = static_cast<RmUint32>(vertices.size() / 3);
+		mTcount = static_cast<RmUint32>(indices.size() / 3);
+
+		// 1. The original tree, built by the original code.
+		TreeBuilder builder(maxDepth);
+		TriVector leafTriangles;   // per leaf: count, then that many triangle numbers
+		{
+			const RmUint32 root = builder.getNode();
+			new ( builder.nodeAt(root) ) NodeAABB(mVcount,vertices.data(),mTcount,indices.data(),maxDepth,minLeafSize,minAxisSize,&builder,leafTriangles);
+		}
+		const RmUint32 nodeCount = builder.mNodeCount;
+
+		// 2. Leaf ordinals (pre-order) and the stored triangle numbering: the
+		//    first leaf that lists a triangle owns it.
+		RmUint32 leafCount = 0;
+		for (RmUint32 n = 0; n < nodeCount; ++n)
+		{
+			if (builder.mNodes[n].mLeafTriangleIndex != TRI_EOF) ++leafCount;
+		}
+		std::vector<RmUint32> newId(mTcount, TRI_EOF);
+		RmUint32 refCount = 0;
+		{
+			OwnerLabel owner("gs.collision_map.leaves");
+			mLeafRanges.assign(2 * (static_cast<size_t>(leafCount) + 1), 0);
+		}
+		{
+			RmUint32 next = 0;
+			RmUint32 leaf = 0;
+			for (RmUint32 n = 0; n < nodeCount; ++n)
+			{
+				const NodeAABB &nd = builder.mNodes[n];
+				if (nd.mLeafTriangleIndex == TRI_EOF) continue;
+				mLeafRanges[2 * leaf] = next;
+				mLeafRanges[2 * leaf + 1] = refCount;
+				const RmUint32 *list = &leafTriangles[nd.mLeafTriangleIndex];
+				const RmUint32 count = *list++;
+				for (RmUint32 i = 0; i < count; ++i)
+				{
+					if (newId[list[i]] == TRI_EOF) newId[list[i]] = next++;
+					else ++refCount;
+				}
+				++leaf;
+			}
+			mLeafRanges[2 * static_cast<size_t>(leafCount)] = next;
+			mLeafRanges[2 * static_cast<size_t>(leafCount) + 1] = refCount;
+			// A triangle no leaf lists (never the case for a finite mesh) is kept
+			// after the last leaf's range: stored, never tested -- as before.
+			for (RmUint32 t = 0; t < mTcount; ++t)
+			{
+				if (newId[t] == TRI_EOF) newId[t] = next++;
+			}
+		}
+
+		// 3. Nodes: the exact float bounds plus ONE word (28 bytes, was 36).
+		//    The build pool is pre-order, so a left child is always the next
+		//    node; the word is the right child's index or the leaf's ordinal.
+		{
+			OwnerLabel owner("gs.collision_map.nodes");
+			mNodes.resize(nodeCount);
+		}
+		{
+			RmUint32 leaf = 0;
+			for (RmUint32 n = 0; n < nodeCount; ++n)
+			{
+				const NodeAABB &src = builder.mNodes[n];
+				PackedNode &dst = mNodes[n];
+				for (int k = 0; k < 3; ++k)
+				{
+					dst.mMin[k] = src.mBounds.mMin[k];
+					dst.mMax[k] = src.mBounds.mMax[k];
+				}
+				if (src.mLeafTriangleIndex != TRI_EOF)
+				{
+					dst.mData = PN_LEAF | leaf++;
+					continue;
+				}
+				dst.mData = 0;
+				if (src.mLeft != NODE_NONE)
+				{
+					assert(src.mLeft == n + 1);
+					dst.mData |= PN_HAS_LEFT;
+				}
+				if (src.mRight != NODE_NONE)
+				{
+					assert(src.mRight <= PN_INDEX);
+					dst.mData |= PN_HAS_RIGHT | src.mRight;
+				}
+			}
+		}
+
+		// 4. References, packed at the width the triangle count needs.
+		{
+			OwnerLabel owner("gs.collision_map.refs");
+			mRefWidth = (bitsFor(mTcount) + 7) / 8;
+			mRefMask = mRefWidth >= 4 ? 0xFFFFFFFFu : ((1u << (8 * mRefWidth)) - 1u);
+			mRefBytes.assign(static_cast<size_t>(refCount) * mRefWidth + 3, 0);  // +3: a 4-byte load at the last one
+		}
+		{
+			RmUint32 leaf = 0;
+			RmUint32 r = 0;
+			for (RmUint32 n = 0; n < nodeCount; ++n)
+			{
+				const NodeAABB &nd = builder.mNodes[n];
+				if (nd.mLeafTriangleIndex == TRI_EOF) continue;
+				const RmUint32 *list = &leafTriangles[nd.mLeafTriangleIndex];
+				const RmUint32 count = *list++;
+				for (RmUint32 i = 0; i < count; ++i)
+				{
+					const RmUint32 id = newId[list[i]];
+					if (id >= mLeafRanges[2 * leaf] && id < mLeafRanges[2 * leaf + 2]) continue;  // owned here
+					memcpy(&mRefBytes[static_cast<size_t>(r) * mRefWidth], &id, mRefWidth);
+					++r;
+				}
+				++leaf;
+			}
+			assert(r == refCount);
+			(void)r;
+		}
+		builder.release();
+		TriVector().swap(leafTriangles);
+
+		// 5. Vertex renumbering: first use in stored-triangle order; a vertex
+		//    no triangle uses keeps a slot at the end (the count and the bounds
+		//    are unchanged).
+		std::vector<RmUint32> vmap(mVcount, TRI_EOF);
+		{
+			std::vector<RmUint32> order(mTcount);
+			for (RmUint32 t = 0; t < mTcount; ++t) order[newId[t]] = t;
+			RmUint32 nv = 0;
+			for (RmUint32 k = 0; k < mTcount; ++k)
+			{
+				const RmUint32 *tri = &indices[static_cast<size_t>(order[k]) * 3];
+				for (int j = 0; j < 3; ++j)
+				{
+					if (vmap[tri[j]] == TRI_EOF) vmap[tri[j]] = nv++;
+				}
+			}
+			for (RmUint32 v = 0; v < mVcount; ++v)
+			{
+				if (vmap[v] == TRI_EOF) vmap[v] = nv++;
+			}
+		}
+
+		// 6. Triangles, and the one caller flag bit each. Stored triangles come
+		//    in blocks of kTriBlock (by stored number); a block has one base
+		//    vertex number and each triangle three uint16 offsets from it.
+		//    Vertices are in first-use order, so a block's triangles use the
+		//    vertices just introduced plus shared ones from nearby leaves; the
+		//    base is set so every index up to the block's highest fits, and a
+		//    triangle with a vertex below the base (a vertex shared with a leaf
+		//    far back in the order) is escaped: first offset 0xFFFF, the other
+		//    two an index into mTriWide (three plain uint32).
+		const RmUint32 blockCount = (mTcount + kTriBlock - 1) / kTriBlock;
+		{
+			OwnerLabel owner("gs.collision_map.tris");
+			mTri16.assign(static_cast<size_t>(mTcount) * 3, 0);
+			mBlockBase.assign(blockCount, 0);
+		}
+		{
+			OwnerLabel owner("gs.collision_map.flags");
+			mFlagBits.assign((static_cast<size_t>(mTcount) + 7) / 8, 0);
+		}
+		{
+			// highest vertex number per block -> the block's base
+			std::vector<RmUint32> order(mTcount);
+			for (RmUint32 t = 0; t < mTcount; ++t) order[newId[t]] = t;
+			RmUint32 wide = 0;
+			for (RmUint32 blk = 0; blk < blockCount; ++blk)
+			{
+				RmUint32 hi = 0;
+				const RmUint32 first = blk * kTriBlock;
+				const RmUint32 last = std::min(mTcount, first + kTriBlock);
+				for (RmUint32 id = first; id < last; ++id)
+				{
+					const RmUint32 *tri = &indices[static_cast<size_t>(order[id]) * 3];
+					for (int j = 0; j < 3; ++j) hi = std::max(hi, vmap[tri[j]]);
+				}
+				const RmUint32 base = hi > kOffsetMax ? hi - kOffsetMax : 0;
+				mBlockBase[blk] = base;
+				for (RmUint32 id = first; id < last; ++id)
+				{
+					const RmUint32 *tri = &indices[static_cast<size_t>(order[id]) * 3];
+					if (vmap[tri[0]] < base || vmap[tri[1]] < base || vmap[tri[2]] < base) ++wide;
+				}
+			}
+			OwnerLabel owner("gs.collision_map.tris");
+			mTriWide.reserve(static_cast<size_t>(wide) * 3);
+		}
+		for (RmUint32 t = 0; t < mTcount; ++t)
+		{
+			const RmUint32 a = vmap[indices[static_cast<size_t>(t) * 3 + 0]];
+			const RmUint32 b = vmap[indices[static_cast<size_t>(t) * 3 + 1]];
+			const RmUint32 c = vmap[indices[static_cast<size_t>(t) * 3 + 2]];
+			const RmUint32 id = newId[t];
+			const RmUint32 base = mBlockBase[id / kTriBlock];
+			uint16_t *o = &mTri16[static_cast<size_t>(id) * 3];
+			if (a < base || b < base || c < base)
+			{
+				const RmUint32 e = static_cast<RmUint32>(mTriWide.size() / 3);
+				o[0] = kEscape;
+				o[1] = static_cast<uint16_t>(e & 0xFFFFu);
+				o[2] = static_cast<uint16_t>(e >> 16);
+				mTriWide.push_back(a);
+				mTriWide.push_back(b);
+				mTriWide.push_back(c);
+			}
+			else
+			{
+				o[0] = static_cast<uint16_t>(a - base);
+				o[1] = static_cast<uint16_t>(b - base);
+				o[2] = static_cast<uint16_t>(c - base);
+			}
+			if (t >= flagBegin && t < flagEnd) mFlagBits[id >> 3] |= static_cast<unsigned char>(1u << (id & 7));
+		}
+		mWideCount = static_cast<RmUint32>(mTriWide.size() / 3);
+		std::vector<RmUint32>().swap(newId);
+		std::vector<RmUint32>().swap(indices);
+
+		// 7. Vertices in the new numbering (same values).
+		{
+			OwnerLabel owner("gs.collision_map.verts");
+			mVertices.resize(static_cast<size_t>(mVcount) * 3);
+		}
+		for (RmUint32 v = 0; v < mVcount; ++v)
+		{
+			const RmUint32 nv = vmap[v];
+			mVertices[static_cast<size_t>(nv) * 3 + 0] = vertices[static_cast<size_t>(v) * 3 + 0];
+			mVertices[static_cast<size_t>(nv) * 3 + 1] = vertices[static_cast<size_t>(v) * 3 + 1];
+			mVertices[static_cast<size_t>(nv) * 3 + 2] = vertices[static_cast<size_t>(v) * 3 + 2];
+		}
+		std::vector<RmReal>().swap(vertices);
+
+		const Bytes b = getBytes();
+		LOG_INFO(MOD_MAP, "[raycastmesh] verts={} tris={} nodes={} leaves={} triangle_refs={} escaped_triangles={} "
+		         "| bytes: vertices={} triangles={} triangle_refs={} nodes={} leaves={} flags={} total={} (B951 packed layout)",
+		         mVcount, mTcount, nodeCount, leafCount, refCount, mWideCount,
+		         b.vertices, b.triangles, b.triangleRefs, b.nodes, b.leaves, b.flags, b.total());
+		(void)b;
 	}
 
-	virtual bool bruteForceRaycast(const RmReal *from,const RmReal *to,RmReal *hitLocation,RmReal *hitNormal,RmReal *hitDistance)
+	virtual const RmReal * getVertices(void) const { return mVertices.data(); }
+	virtual RmUint32 getVertexCount(void) const { return mVcount; }
+	virtual RmUint32 getTriangleCount(void) const { return mTcount; }
+
+	inline void triangleAt(RmUint32 tri, RmUint32 &a, RmUint32 &b, RmUint32 &c) const
+	{
+		const uint16_t *o = &mTri16[static_cast<size_t>(tri) * 3];
+		if (o[0] == kEscape)
+		{
+			const RmUint32 *e = &mTriWide[(static_cast<size_t>(o[1]) | (static_cast<size_t>(o[2]) << 16)) * 3];
+			a = e[0];
+			b = e[1];
+			c = e[2];
+			return;
+		}
+		const RmUint32 base = mBlockBase[tri / kTriBlock];
+		a = base + o[0];
+		b = base + o[1];
+		c = base + o[2];
+	}
+
+	inline RmUint32 refAt(RmUint32 r) const
+	{
+		RmUint32 v;
+		memcpy(&v, mRefBytes.data() + static_cast<size_t>(r) * mRefWidth, 4);
+		return v & mRefMask;
+	}
+
+	virtual void getTriangle(RmUint32 tri, RmUint32 *indices3) const
+	{
+		triangleAt(tri, indices3[0], indices3[1], indices3[2]);
+	}
+
+	virtual bool getTriangleFlag(RmUint32 tri) const
+	{
+		return (mFlagBits[tri >> 3] >> (tri & 7)) & 1u;
+	}
+
+	virtual Bytes getBytes(void) const
+	{
+		Bytes b;
+		b.vertices = mVertices.capacity() * sizeof(RmReal);
+		b.triangles = mTri16.capacity() * sizeof(uint16_t) + mTriWide.capacity() * sizeof(RmUint32)
+		            + mBlockBase.capacity() * sizeof(RmUint32);
+		b.triangleRefs = mRefBytes.capacity();
+		b.nodes = mNodes.capacity() * sizeof(PackedNode);
+		b.leaves = mLeafRanges.capacity() * sizeof(RmUint32);
+		b.flags = mFlagBits.capacity();
+		return b;
+	}
+
+	~MyRaycastMesh(void)
+	{
+	}
+
+	// The original NodeAABB::raycast walk, iteratively: a node's box against
+	// the segment shortened to the nearest hit so far, then the leaf's
+	// triangles, or the left subtree and then the right one (the right child
+	// waits on a stack). Same nodes,
+	// same order, same per-node test as the recursive original; the query
+	// state lives in locals rather than being threaded through every call.
+	virtual bool raycast(const RmReal *from,const RmReal *to,RmReal *hitLocation,RmReal *hitNormal,RmReal *hitDistance) const
+	{
+		RmReal dir[3];
+		dir[0] = to[0] - from[0];
+		dir[1] = to[1] - from[1];
+		dir[2] = to[2] - from[2];
+		RmReal distance = sqrtf( dir[0]*dir[0] + dir[1]*dir[1]+dir[2]*dir[2] );
+		if ( distance < 0.0000000001f ) return false;
+		RmReal recipDistance = 1.0f / distance;
+		dir[0]*=recipDistance;
+		dir[1]*=recipDistance;
+		dir[2]*=recipDistance;
+
+		RmReal nearestDistance = distance;
+		RmUint32 nearestTriIndex = TRI_EOF;
+		bool hit = false;
+		const RmReal *vertices = mVertices.data();
+		const PackedNode *nodes = mNodes.data();
+		const RmUint32 *ranges = mLeafRanges.data();
+
+		RmUint32 stack[40];   // pending right children; depth <= 16 (maxDepth 15)
+		RmUint32 top = 0;
+		RmUint32 n = 0;
+		for (;;)
+		{
+			const PackedNode &nd = nodes[n];
+			RmReal sect[3];
+			RmReal dist = nearestDistance;
+			bool descend = false;
+			if ( intersectLineSegmentAABB(nd.mMin,nd.mMax,from,dir,dist,sect) )
+			{
+				if ( nd.mData & PN_LEAF )
+				{
+					const RmUint32 *range = &ranges[2 * static_cast<size_t>(nd.mData & ~PN_LEAF)];  // owned, refs, next owned, next refs
+					RmUint32 tri = range[0];
+					const RmUint32 ownedEnd = range[2];
+					RmUint32 r = range[1];
+					const RmUint32 refEnd = range[3];
+					for (;;)
+					{
+						RmUint32 t;
+						if ( tri < ownedEnd ) t = tri++;
+						else if ( r < refEnd ) t = refAt(r++);
+						else break;
+						RmUint32 i1, i2, i3;
+						triangleAt(t, i1, i2, i3);
+						const RmReal *p1 = &vertices[static_cast<size_t>(i1) * 3];
+						const RmReal *p2 = &vertices[static_cast<size_t>(i2) * 3];
+						const RmReal *p3 = &vertices[static_cast<size_t>(i3) * 3];
+						RmReal tt;
+						if ( rayIntersectsTriangle(from,dir,p1,p2,p3,tt) )
+						{
+							bool accept = false;
+							if ( tt == nearestDistance && t < nearestTriIndex )
+							{
+								accept = true;
+							}
+							if ( tt < nearestDistance || accept )
+							{
+								nearestDistance = tt;
+								if ( hitLocation )
+								{
+									hitLocation[0] = from[0]+dir[0]*tt;
+									hitLocation[1] = from[1]+dir[1]*tt;
+									hitLocation[2] = from[2]+dir[2]*tt;
+								}
+								if ( hitNormal )
+								{
+									getFaceNormal(t,hitNormal);
+								}
+								if ( hitDistance )
+								{
+									*hitDistance = tt;
+								}
+								nearestTriIndex = t;
+								hit = true;
+							}
+						}
+					}
+				}
+				else
+				{
+					if ( nd.mData & PN_HAS_RIGHT )
+					{
+						stack[top++] = nd.mData & PN_INDEX;
+					}
+					if ( nd.mData & PN_HAS_LEFT )
+					{
+						++n;
+						descend = true;
+					}
+				}
+			}
+			if ( descend ) continue;
+			if ( top == 0 ) break;
+			n = stack[--top];
+		}
+		return hit;
+	}
+
+	virtual void release(void)
+	{
+		delete this;
+	}
+
+	virtual const RmReal * getBoundMin(void) const
+	{
+		return mNodes[0].mMin;
+	}
+	virtual const RmReal * getBoundMax(void) const
+	{
+		return mNodes[0].mMax;
+	}
+
+	void getFaceNormal(RmUint32 tri,RmReal *faceNormal) const
+	{
+		RmUint32 i1, i2, i3;
+		triangleAt(tri, i1, i2, i3);
+		const RmReal *vertices = mVertices.data();
+		computePlane(&vertices[static_cast<size_t>(i3)*3],&vertices[static_cast<size_t>(i2)*3],&vertices[static_cast<size_t>(i1)*3],faceNormal);
+	}
+
+	virtual bool bruteForceRaycast(const RmReal *from,const RmReal *to,RmReal *hitLocation,RmReal *hitNormal,RmReal *hitDistance) const
 	{
 		bool ret = false;
 
@@ -906,19 +1250,17 @@ public:
 		dir[0]*=recipDistance;
 		dir[1]*=recipDistance;
 		dir[2]*=recipDistance;
-		const RmUint32 *indices = mIndices;
-		const RmReal *vertices = mVertices;
+		const RmReal *vertices = mVertices.data();
 		RmReal nearestDistance = distance;
 
 		for (RmUint32 tri=0; tri<mTcount; tri++)
 		{
-			RmUint32 i1 = indices[tri*3+0];
-			RmUint32 i2 = indices[tri*3+1];
-			RmUint32 i3 = indices[tri*3+2];
+			RmUint32 i1, i2, i3;
+			triangleAt(tri, i1, i2, i3);
 
-			const RmReal *p1 = &vertices[i1*3];
-			const RmReal *p2 = &vertices[i2*3];
-			const RmReal *p3 = &vertices[i3*3];
+			const RmReal *p1 = &vertices[static_cast<size_t>(i1)*3];
+			const RmReal *p2 = &vertices[static_cast<size_t>(i2)*3];
+			const RmReal *p3 = &vertices[static_cast<size_t>(i3)*3];
 
 			RmReal t;
 			if ( rayIntersectsTriangle(from,dir,p1,p2,p3,t))
@@ -949,20 +1291,19 @@ public:
 		return ret;
 	}
 
-	std::vector<RmReal>		mVertexStore;   // B941: owned (moved in)
-	std::vector<RmUint32>	mIndexStore;
-	std::vector<RmUint8>	mMarkStore;
-	RmUint8			mRaycastFrame;
-	RmUint8			*mRaycastTriangles;
+	std::vector<RmReal>			mVertices;    // 3 per vertex, first-use order
+	std::vector<uint16_t>		mTri16;       // 3 offsets per stored triangle (from its block's base)
+	std::vector<RmUint32>		mBlockBase;   // one base vertex number per kTriBlock stored triangles
+	std::vector<RmUint32>		mTriWide;     // 3 per escaped triangle
+	std::vector<unsigned char>	mRefBytes;    // mRefWidth bytes per leaf reference
+	std::vector<PackedNode>		mNodes;       // pre-order; node 0 is the root
+	std::vector<RmUint32>		mLeafRanges;  // leaf L owns stored triangles [r[2L], r[2L+2]) and references [r[2L+1], r[2L+3])
+	std::vector<unsigned char>	mFlagBits;    // one caller flag bit per stored triangle
+	RmUint32		mWideCount;
+	RmUint32		mRefWidth;
+	RmUint32		mRefMask;
 	RmUint32		mVcount;
-	RmReal			*mVertices;
 	RmUint32		mTcount;
-	RmUint32		*mIndices;
-	RmUint32		mRoot;      // T504d: pool index
-	RmUint32		mNodeCount;
-	RmUint32		mMaxNodeCount;
-	NodeAABB		*mNodes;
-	TriVector		mLeafTriangles;
 };
 
 }; // namespace RAYCAST_MESH
@@ -979,16 +1320,24 @@ RaycastMesh * createRaycastMesh(RmUint32 vcount,
 {
 	std::vector<RmReal> v(vertices, vertices + 3 * (size_t)vcount);
 	std::vector<RmUint32> t(indices, indices + 3 * (size_t)tcount);
-	auto m = new MyRaycastMesh(std::move(v), std::move(t), maxDepth, minLeafSize, minAxisSize);
+	auto m = new MyRaycastMesh(std::move(v), std::move(t), 0, 0, maxDepth, minLeafSize, minAxisSize);
 	return static_cast<RaycastMesh*>(m);
 }
 
 RaycastMesh * createRaycastMesh(std::vector<RmReal> &&vertices,
 								std::vector<RmUint32> &&indices,
+								RmUint32 flagBegin,
+								RmUint32 flagEnd,
 								RmUint32 maxDepth,
 								RmUint32 minLeafSize,
 								RmReal	minAxisSize)
 {
-	auto m = new MyRaycastMesh(std::move(vertices), std::move(indices), maxDepth, minLeafSize, minAxisSize);
+	auto m = new MyRaycastMesh(std::move(vertices), std::move(indices), flagBegin, flagEnd, maxDepth, minLeafSize, minAxisSize);
 	return static_cast<RaycastMesh*>(m);
+}
+
+void setRaycastMeshOwnerHooks(RmOwnerOpen open, RmOwnerClose close)
+{
+	g_ownerOpen = open;
+	g_ownerClose = close;
 }
