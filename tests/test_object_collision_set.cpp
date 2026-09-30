@@ -132,7 +132,11 @@ protected:
             const bool animated = (i % 37) == 5;
             irr::scene::IMesh* mesh = nullptr;
             if (animated) {
-                auto* m = makeObjectMesh(rng_, 8, 1, false, 3.0f);
+                // A PRIVATE mesh per animated placement (as the loader builds
+                // them), but of only two geometries: equal content, as every
+                // placement of one animated plant has at load.
+                std::mt19937 geometry(700 + static_cast<unsigned>(animatedMeshes_.size() % 2));
+                auto* m = makeObjectMesh(geometry, 8, 1, false, 3.0f);
                 animatedMeshes_.push_back(m);
                 mesh = m;
             } else {
@@ -240,8 +244,10 @@ TEST_F(ObjectCollisionSetTest, SameRegionsAndTrianglesAsTheOldCopy) {
     EXPECT_EQ(set_.regionCount(), old_.size());
     for (const auto& [region, tris] : old_) EXPECT_TRUE(set_.hasRegion(region)) << region;
     EXPECT_FALSE(set_.hasRegion(3));
-    // 5 shared meshes + one private snapshot per animated instance.
-    EXPECT_EQ(set_.meshCount(), meshes_.size() + animatedMeshes_.size());
+    // 5 shared meshes + one snapshot per animated GEOMETRY (2), not one per
+    // animated placement.
+    ASSERT_GT(animatedMeshes_.size(), 2u);
+    EXPECT_EQ(set_.meshCount(), meshes_.size() + 2);
 }
 
 // The premise: transforming a mesh's object-space vertices with
@@ -335,9 +341,13 @@ TEST_F(ObjectCollisionSetTest, EveryRayGivesBitIdenticalResultsToTheOldCopy) {
 TEST_F(ObjectCollisionSetTest, HoldsEachMeshOnceNotACopyPerInstance) {
     const size_t oldBytes = oldTriangles_ * sizeof(triangle3df);
     EXPECT_EQ(sizeof(triangle3df), 36u);
+    // The two animated GEOMETRIES' snapshots (the fixture's animated placements
+    // alternate between two), never one per animated placement.
     size_t snapshotTris = 0;
-    for (auto* m : animatedMeshes_)
+    for (size_t k = 0; k < 2 && k < animatedMeshes_.size(); ++k) {
+        auto* m = animatedMeshes_[k];
         for (irr::u32 b = 0; b < m->getMeshBufferCount(); ++b) snapshotTris += m->getMeshBuffer(b)->getIndexCount() / 3;
+    }
     // Per instance: a matrix, a box, a region and a slot -- bounded; plus each
     // snapshot's own triangles (12 B per vertex) and a small table per mesh.
     const size_t bound = set_.instanceCount() * 128 + snapshotTris * 36 + set_.meshCount() * 128 +

@@ -18,10 +18,13 @@
 //     the mesh so it outlives any node that drops it;
 //   * per instance: the world matrix the selector used, a world AABB and the
 //     mesh slot, grouped by BSP region (sorted, no per-region node).
-// A vertex-ANIMATED object (flag, banner) has a private mesh whose vertices are
-// rewritten every frame; for it the set keeps a private object-space snapshot
-// taken at the point the old copy was taken, so its collision is the same
-// frozen load-time pose it always was.
+// A vertex-ANIMATED object (flag, banner, and in Kunark/Velious zones the
+// swaying grass and plants: 4,314 of growthplane's 4,333 placements) has a
+// private mesh whose vertices are rewritten every frame; for it the set keeps
+// an object-space snapshot taken at the point the old copy was taken, so its
+// collision is the same frozen load-time pose it always was. Snapshots are
+// shared by CONTENT: every placement of one animated geometry has the same
+// load-time vertices, so growthplane's 4,314 snapshots are 4.
 //
 // Identical results. A ray against a region skips every instance whose world
 // AABB (inflated, conservative) its segment cannot reach, then transforms the
@@ -110,6 +113,7 @@ private:
         uint32_t triangles = 0;
         irr::core::aabbox3df objectBox;       // over the triangles' vertices
         std::vector<irr::core::vector3df> snapshot;   // 3 per triangle
+        uint64_t snapshotHash = 0;            // FNV-1a of the snapshot's bytes
     };
     struct Instance {
         irr::core::matrix4 world;

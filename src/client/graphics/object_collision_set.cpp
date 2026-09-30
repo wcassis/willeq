@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace EQT {
 namespace Graphics {
@@ -126,6 +127,22 @@ uint32_t ObjectCollisionSet::meshSlot(irr::scene::IMesh* mesh, bool snapshot) {
         }
     }
     if (snapshot) {
+        // Share a snapshot by CONTENT: every placement of one animated
+        // geometry has the same load-time vertices (growthplane: 4,314
+        // placements of 4 grass/plant geometries). Same bytes = same
+        // triangles, so sharing cannot change a result.
+        const auto* bytes = reinterpret_cast<const uint8_t*>(m.snapshot.data());
+        const size_t n = m.snapshot.size() * sizeof(vector3df);
+        uint64_t h = 1469598103934665603ull;
+        for (size_t i = 0; i < n; ++i) h = (h ^ bytes[i]) * 1099511628211ull;
+        m.snapshotHash = h;
+        for (uint32_t i = 0; i < meshes_.size(); ++i) {
+            const Mesh& other = meshes_[i];
+            if (!other.mesh && other.snapshotHash == h && other.snapshot.size() == m.snapshot.size() &&
+                std::memcmp(other.snapshot.data(), bytes, n) == 0) {
+                return i;
+            }
+        }
         m.snapshot.shrink_to_fit();
         Run r;
         r.vertices = nullptr;   // = this mesh's snapshot, resolved at query time
