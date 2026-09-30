@@ -127,3 +127,15 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_object_collision_set GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_object_collision_set DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B936 (GitLab #254): placed objects hold one mesh per geometry, the
+# vertex-animated (keyframe) ones included; one pose routine.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_placed_object_meshes
+        test_placed_object_meshes.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_placed_object_meshes PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    TARGET_INCLUDE_DIRECTORIES(test_placed_object_meshes PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_placed_object_meshes GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_placed_object_meshes DISCOVERY_TIMEOUT 120)
+ENDIF()

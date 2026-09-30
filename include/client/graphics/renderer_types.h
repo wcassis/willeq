@@ -29,6 +29,7 @@
 #include "client/state/entity_pose_state.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
+#include "client/graphics/placed_object_meshes.h"
 #include "client/graphics/camera_controller.h"
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/eq/equipment_model_loader.h"
@@ -288,23 +289,8 @@ struct ObjectLight {
     size_t bspRegion = SIZE_MAX; // BSP region for PVS culling
 };
 
-// Vertex animated mesh (flags, banners, etc.)
-struct VertexAnimatedMesh {
-    irr::scene::IMeshSceneNode* node = nullptr;
-    irr::scene::IMesh* mesh = nullptr;
-    std::shared_ptr<MeshAnimatedVertices> animData;
-    float elapsedMs = 0;
-    int currentFrame = 0;
-    std::string objectName;  // For debugging
-    // Mapping from mesh buffer vertex index to animation vertex index
-    // Indexed by [bufferIndex][vertexIndex] -> animationVertexIndex
-    std::vector<std::vector<size_t>> vertexMapping;
-    // Center offset (EQ coords) - animation frames are relative to center,
-    // but mesh vertices have center baked in. Add this to animation positions.
-    float centerOffsetX = 0.0f;
-    float centerOffsetY = 0.0f;
-    float centerOffsetZ = 0.0f;
-};
+// VertexAnimatedMesh (one keyframe-animated object mesh) lives in
+// client/graphics/placed_object_meshes.h since B936.
 
 // Player movement state for EQ-style controls
 struct PlayerMovementState {

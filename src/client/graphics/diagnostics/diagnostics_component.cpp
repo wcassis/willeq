@@ -695,9 +695,11 @@ MemoryReportBreakdown DiagnosticsComponent::getMemoryReportBreakdown(const Memor
         b.zoneGeometryBytes = ctx_.usePvsCulling ? pvsBytes : zoneMeshBytes;
         b.totalEstimate += zoneMeshBytes + pvsBytes;
 
-        // Placeable objects
+        // Placeable objects. Placements share one mesh per geometry (T504,
+        // B936), so a mesh is counted ONCE, not once per node drawing it.
+        std::set<const irr::scene::IMesh*> countedObjectMeshes;
         for (auto* node : ctx_.objectNodes) {
-            if (node && node->getMesh()) {
+            if (node && node->getMesh() && countedObjectMeshes.insert(node->getMesh()).second) {
                 auto* mesh = node->getMesh();
                 for (uint32_t i = 0; i < mesh->getMeshBufferCount(); ++i) {
                     auto* buf = mesh->getMeshBuffer(i);

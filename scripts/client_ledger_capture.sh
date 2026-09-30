@@ -19,6 +19,7 @@
 # One run per (zone, mode). A mode picks the ONE category whose owner rows the
 # client prints ([memledger-startup] lines, WILLEQ_LEDGER_OWNERS=<category>):
 #   spatial, zone_mesh  -- the B909 labels (sp.*, zm.*) name the owners
+#   objects             -- the B936 labels (obj.meshes, obj.instances, obj.anim)
 #   zone_parse          -- the shared S3D/WLD parser carries no labels, so this
 #                          mode ALSO sets WILLEQ_LEDGER_TRACE=zone_parse:startup
 #                          and the [memledger-trace] rows split it by call site
@@ -95,7 +96,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 for m in ${MODES//,/ }; do
-    case "$m" in spatial|zone_mesh|zone_parse) ;; *) echo "unknown mode: $m" >&2; exit 3 ;; esac
+    case "$m" in spatial|zone_mesh|zone_parse|objects) ;; *) echo "unknown mode: $m" >&2; exit 3 ;; esac
 done
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"

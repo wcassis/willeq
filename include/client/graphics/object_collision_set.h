@@ -20,8 +20,9 @@
 //     mesh slot, grouped by BSP region (sorted, no per-region node).
 // A vertex-ANIMATED object (flag, banner, and in Kunark/Velious zones the
 // swaying grass and plants: 4,314 of growthplane's 4,333 placements) has a
-// private mesh whose vertices are rewritten every frame; for it the set keeps
-// an object-space snapshot taken at the point the old copy was taken, so its
+// mesh whose vertices are rewritten on every keyframe change (one mesh per
+// geometry since B936, placed_object_meshes.h); for it the set keeps an
+// object-space snapshot taken at the point the old copy was taken, so its
 // collision is the same frozen load-time pose it always was. Snapshots are
 // shared by CONTENT: every placement of one animated geometry has the same
 // load-time vertices, so growthplane's 4,314 snapshots are 4.
