@@ -81,3 +81,21 @@ budget once the object copy is gone.
    Bar: `spatial` < 4 MiB in every measured zone on both platforms, rays
    identical, Pi moving frame time within 3 % of fable or better.
 6. Locks released, stacks down, on success and on failure.
+
+## Review
+
+Done; evidence and numbers in `refactor/B909b/README.md`. Deviations from
+the plan:
+- The hypothesis held for gfaydark only. In growthplane, trakanon and overthere
+  86–99 % of placements are vertex-animated with a PRIVATE mesh each, so the
+  per-mesh sharing alone left growthplane at 30.2 MB. Snapshots are now shared
+  by content (same bytes, same triangles), which brought every measured zone
+  under 1.3 MB. The private meshes themselves are a problem for `objects`:
+  B936 (#254).
+- The owner row is renamed `sp.object_tris` → `sp.object_instances`, because it
+  no longer holds triangles for shared meshes.
+- trakanon's first three Pi rounds read +3.26 % moving (multimodal frame
+  rate on both binaries), so four more rounds were run: +2.38 % over all 7 + 7
+  legs, with the collision phase −55 µs.
+- Local `visual_gate` fails memory-coverage slack on this host (B937, #255);
+  the CI gate passed the same commit.
