@@ -2219,6 +2219,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
+        src/client/graphics/placed_object_meshes.cpp   # B936: zone_bench_loader's object mesh table
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
@@ -2339,6 +2340,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
+        src/client/graphics/placed_object_meshes.cpp   # B936: zone_bench_loader's object mesh table
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
