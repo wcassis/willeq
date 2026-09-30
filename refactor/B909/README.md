@@ -191,6 +191,9 @@ copy overwrote that region the same way.
   1.72 MB in iceclad.
 
 Both stay under B909 (issue #229, the client-spatial umbrella).
+**Update (B909b):** `sp.object_tris` is fixed with bit-identical rays;
+the client's `spatial` is 0.6–1.2 MB in the zones B909b measured on x86 and
+on the Pi (`refactor/B909b/README.md`). `sp.region_bounds` is unchanged.
 
 ## Result 3: RssAnon against 64 MB and 256 MB
 

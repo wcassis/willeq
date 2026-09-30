@@ -175,7 +175,7 @@ GroundZ PlayerCameraComponent::findGroundZ(float x, float y, float currentZ) {
 void PlayerCameraComponent::setupMinimalZoneCollision() {
     // Clean up old collision data
     ctx_.regionWorldTriangles.clear();
-    ctx_.objectWorldTriangles.clear();
+    ctx_.objectCollision.clear();
     ctx_.doorCollisionData.clear();
     // T435 (B425): a clear without this silently strands every already-created
     // door outside collision for the rest of the zone.
@@ -332,12 +332,11 @@ bool PlayerCameraComponent::rayTestDoorsAndObjects(const irr::core::vector3df& r
                                                 float& hitDistSq) {
     bool anyHit = false;
 
-    // Test objects in this BSP region
-    auto objIt = ctx_.objectWorldTriangles.find(bspRegion);
-    if (objIt != ctx_.objectWorldTriangles.end()) {
-        if (rayIntersectTriangles(rayOrigin, rayDir, rayLen, objIt->second, hitPoint, hitTriangle, hitDistSq)) {
-            anyHit = true;
-        }
+    // Test objects in this BSP region. B909b: each distinct object mesh is
+    // held once and transformed per instance at query time, with the same
+    // arithmetic the old per-instance world-space copy was built with.
+    if (ctx_.objectCollision.rayIntersect(bspRegion, rayOrigin, rayDir, rayLen, hitPoint, hitTriangle, hitDistSq)) {
+        anyHit = true;
     }
 
     // Test doors in this BSP region. T435 (board B425): until this unit

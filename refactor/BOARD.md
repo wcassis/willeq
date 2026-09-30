@@ -899,18 +899,25 @@ it without taking that measurement first.
   5,162,576 (123 %). Every other budgeted category is inside its budget in all
   four zones. **STILL OPEN** (#1 and #2 stay under B909 / issue #229, the
   client-spatial umbrella; #3-#5 have their own numbers):
-  1. **(B909, #229)** `sp.object_tris`,
-     `ctx_.objectWorldTriangles`: placeable objects' triangles pre-transformed
-     per instance, 36 B per triangle. 5.26 MB in gfaydark, 3.76 MB in
-     dreadlands and timorous. It is the largest remaining `spatial` owner. A
-     held-once form transforms at query time, so its arithmetic differs from
-     today's; bit-identical collision is not automatic. **On the Orange Pi it is
-     the largest `spatial` owner of all: growthplane 40,188,128 B** (B909 Pi
-     A/B, `refactor/B909/README.md` "Orange Pi A/B").
+  1. ~~**(B909, #229)** `sp.object_tris`, placeable objects' triangles
+     pre-transformed per instance.~~ **FIXED by B909b**
+     (`refactor/B909b/README.md`, branch `task/B909b-object-tris`):
+     `ObjectCollisionSet` holds each distinct object mesh once (read in place,
+     charged to `objects`; vertex-animated meshes as content-shared
+     snapshots) plus a matrix and box per placement, with bit-identical rays
+     (`test_object_collision_set`). Client `spatial` after, x86: gfaydark
+     0.74 MB, growthplane 1.24, trakanon 0.93, overthere 1.11; Pi: gfaydark
+     0.58, growthplane 0.97, trakanon 0.71, all under 4 MiB. The measured
+     cause in Kunark/Velious: 86–99 % of placements are vertex-animated
+     grass/plants with a private mesh each, which is now **B936** (#254) for
+     `objects`.
   2. **(B909, #229)** `sp.region_bounds`,
      `ctx_.regionBoundingBoxes`, is a `std::map<size_t, aabbox3df>` with one
      node per region: 1.72 MB in iceclad and 1.27 MB in timorous. A sorted
-     flat array would be about 24 B per region plus the index.
+     flat array would be about 24 B per region plus the index. B909b left it
+     (readers in eight TUs, a camera-controller pointer, a frame-render
+     golden); it no longer holds `spatial` over budget in the zones B909b
+     measured.
   3. **B923 (#242)** the gate cannot see any of this.
      The benchmark builds neither collision copy, and it charges the occluder
      table to `spatial` where the client charges it to `zone_mesh`. The
@@ -941,6 +948,18 @@ it without taking that measurement first.
      preset, level 60, keyboard sequence). The owner's rule makes that a client
      defect. It is not caused by B909; the collision phase is 0.4 ms and 5.0 ms
      of a 37-38 ms frame.
+
+- **B936** (A, memory) → issue #254. Vertex-animated placed objects keep a
+  private `IMesh` per placement (T504 excludes them from mesh sharing because
+  their vertices are rewritten every frame). In Kunark/Velious zones that is
+  86–99 % of the placements: growthplane 4,314 of 4,333 are CMPLANT101/102 and
+  DRGRASS101/102, 4 geometries. Client `objects` @steady_60s: growthplane
+  47,107,104 B on x86 (over its 40 MiB budget) and 40.3 MB on the Pi; trakanon
+  27.5 / 23.4 MB. Measured by B909b (`refactor/B909b/README.md`, step 1).
+- **B937** (B) → issue #255. Local `visual_gate` on `dev-u24` fails the
+  memory-coverage iceclad allocator-slack bound (35.4 % vs 35.0 %, twice) on
+  a commit the CI runner passes (33.2 %); the benchmark holds no B909b code.
+  fable itself not yet gated locally, so host-only is not yet proven.
 
 - ~~**B814** (A) One category is bigger than the whole target. T491 measured~~ → issue #8 **CLOSED 2026-09-23 by T504** (fable b09bb498): entity_models peak 64-74 → 14-20 MiB on x86, 56-62 → 12-24 on the Pi; the memory-coverage characterModelsBytes 23.9 MB → 1,445,267 (Will blessed 2026-09-22). Evidence on the issue; plans refactor/T504b_entity_source_pruning.md, T504c_wld_fragment_filter.md.
   `entity_models` at **64.56 MiB live / 77.29 MiB peak** on the memory-coverage
