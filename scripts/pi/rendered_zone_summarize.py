@@ -16,6 +16,12 @@ and irrlicht_scene all non-zero at ready, and at least one dumped frame is a
 real non-blank image); no OOM line; no FATAL; the client exited 0 on its
 scripted /q without a watchdog kill. ERROR lines are counted and their
 signatures recorded, but are not by themselves a failure.
+
+B935: the row always records which libgallium the run's maps snapshots
+(snap_*.json) show and whether libLLVM was mapped. With --expect-mesa
+nollvm|system it also FAILS a run whose loaded driver is not the one asked
+for (mesa_mismatch -- the sweep aborts on it) or that has no snapshot proving
+it (mesa_unproven).
 """
 import argparse
 import glob
@@ -37,7 +43,41 @@ HEADER = ("zone expansion s3d_bytes attempt verdict signature exit_code kill_rea
           "rss_anon_ready rss_anon_steady peak_rss_anon peak_rss_anon_point vm_hwm "
           "owned_peak over_64MB_owned_peak over_256MB_peak driver_so_anon_ready driver_so_rss_ready "
           "sys_mem_used_delta_steady top5_ready top5_steady oom oom_line fatal_count "
-          "error_count first_fatal error_signatures rcvbuf").split()
+          "error_count first_fatal error_signatures rcvbuf "
+          # B935: appended at the END so the sweep's cut -f5 / -f11 stay put
+          "mesa_expected mesa_gallium llvm_mapped mesa_check").split()
+
+
+def mesa_proof(run, expect, prefix):
+    """B935: which GL driver the process REALLY loaded, from the maps
+    snapshots rendered_zone_run.py --snap-points wrote (snap_<point>.json).
+    Returns (gallium paths, llvm_mapped y/n/'', check). check is '' when no
+    expectation was given, 'ok', 'mismatch (...)' or 'unproven (...)'."""
+    snaps = []
+    for p in sorted(glob.glob(os.path.join(run, "snap_*.json"))):
+        try:
+            snaps.append(json.load(open(p)))
+        except (OSError, ValueError):
+            pass
+    gallium = sorted({g for s in snaps for g in s.get("gallium", [])})
+    llvm = ("y" if any(s.get("llvm_mapped") for s in snaps) else "n") if snaps else ""
+    if not expect:
+        return gallium, llvm, ""
+    if not snaps:
+        return gallium, llvm, "unproven (no maps snapshot in the run dir)"
+    if not gallium:
+        return gallium, llvm, "unproven (no libgallium mapped at any snapshot)"
+    if expect == "nollvm":
+        want = prefix.rstrip("/") + "/lib/"
+        bad = [g for g in gallium if not g.startswith(want)]
+        if bad or llvm == "y":
+            return gallium, llvm, "mismatch (asked for the shipped prefix %s; mapped %s; libLLVM %s)" % (
+                want, ",".join(gallium), "MAPPED" if llvm == "y" else "absent")
+    elif expect == "system":
+        bad = [g for g in gallium if not g.startswith("/usr/lib/")]
+        if bad:
+            return gallium, llvm, "mismatch (asked for the system Mesa; mapped %s)" % ",".join(gallium)
+    return gallium, llvm, "ok"
 
 
 def parse_kv(s):
@@ -114,6 +154,11 @@ def main():
     ap.add_argument("--preset-signature", default="",
                     help="the zone never reached a client run (zone_boot_failed / seed_failed): "
                          "write a fail row with this signature")
+    ap.add_argument("--expect-mesa", choices=("nollvm", "system"), default="",
+                    help="B935: the Mesa the rig asked for; a run whose maps show another "
+                         "(or cannot show one) FAILS with mesa_mismatch / mesa_unproven")
+    ap.add_argument("--mesa-prefix", default="",
+                    help="B935: the shipped prefix path on the Pi (for --expect-mesa nollvm)")
     a = ap.parse_args()
     os.makedirs(a.run, exist_ok=True)
 
@@ -219,7 +264,9 @@ def main():
     rc = summ.get("returncode", "none")
     kill = summ.get("kill_reason", "") if summ else "no summary.json (runner never finished)"
     rendered = zm > 0 and tx > 0 and irr > 0 and n_good >= 1
+    gallium, llvm, mesa_check = mesa_proof(a.run, a.expect_mesa, a.mesa_prefix)
     checks = [
+        (mesa_check.startswith("mismatch"), "mesa_" + mesa_check),
         (oom == "y", "oom_kill"),
         (not ready, "no_ready (phase %s; %s)" % (phase, kill or ("exit %s" % rc))),
         (bool(ready) and ready_zone != a.zone, "wrong_zone (%s)" % ready_zone),
@@ -230,6 +277,7 @@ def main():
          % (zm, tx, irr, n_good, n_png)),
         (bool(fatal), "fatal"),
         (bool(ready) and steady is not None and (rc != 0 or kill), "unclean_exit (rc=%s %s)" % (rc, kill)),
+        (mesa_check.startswith("unproven"), "mesa_" + mesa_check),
     ]
     sig = a.preset_signature or next((s for bad, s in checks if bad), "")
     if a.preset_signature:
@@ -257,6 +305,8 @@ def main():
         "fatal_count": len(fatal), "error_count": len(errors),
         "first_fatal": (re.sub(r"^\S+ ", "", fatal[0])[:200] if fatal else ""),
         "error_signatures": sig_txt, "rcvbuf": rcv[:160],
+        "mesa_expected": a.expect_mesa, "mesa_gallium": ",".join(gallium), "llvm_mapped": llvm,
+        "mesa_check": mesa_check,
     }
     clean = {k: str(v).replace("\t", " ").replace("\n", " ") for k, v in row.items()}
     new = not os.path.exists(a.tsv) or os.path.getsize(a.tsv) == 0
@@ -268,9 +318,10 @@ def main():
         json.dump({"row": row, "frames": fdetail, "fps_after_ready": fps,
                    "points": {k: {"epoch": v[0], "rss_anon": v[1].get("rss_anon"), "categories": v[2]}
                               for k, v in pts.items()}}, f, indent=1)
-    print("%s %s %s peak_rss_anon=%.1fMB steady=%.1fMB fps_med=%s frames=%d/%d %s"
+    print("%s %s %s peak_rss_anon=%.1fMB steady=%.1fMB fps_med=%s frames=%d/%d libgallium=%s libLLVM=%s mesa=%s %s"
           % (a.zone, a.attempt, verdict, peak / 1048576.0, rss_steady / 1048576.0,
-             row["fps_median"], n_good, n_png, sig))
+             row["fps_median"], n_good, n_png, ",".join(gallium) or "-", llvm or "-",
+             (a.expect_mesa + ":" + mesa_check) if a.expect_mesa else "-", sig))
 
 
 if __name__ == "__main__":

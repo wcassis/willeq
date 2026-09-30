@@ -897,6 +897,16 @@ it without taking that measurement first.
   on the owned side, and the 256 MB bound is unchanged. Pinned by
   `MemoryLedger.TargetGapExcludesGpuDriver` and `test_visual_gate_ledger.py`
   check 7b.
+- ~~**B935** (C) How the Pi gets the LLVM-less Mesa (GitLab #253).~~ **Decided**
+  by Will on 2026-09-30, "ship the prefix" (`docs/decisions.md`), and
+  **implemented** on branch `task/B935-ship-mesa-prefix`
+  (`refactor/B935/README.md`). The prefix is a pinned deterministic tarball
+  (`scripts/pi/mesa_nollvm.sha256`, store `ci-arm/mesa/<version>/`). CI
+  publishes `ci-arm/<sha>/bin/willeq-nollvm` with an absolute DT_RPATH to the
+  prefix's one Pi path. `$ORIGIN` is dropped under setcap's secure mode
+  (measured), and the prefix is not relocatable. The Pi rigs run it by
+  default, `WILLEQ_MESA=system` opts out, and every sweep row proves the
+  loaded libgallium from maps (exit 67 on a mismatch).
 
 - **B909** (A) The client binary's own memory ledger had never been measured, and
   its `spatial` is over budget (GitLab #229). **Measured 2026-09-29** on branch
