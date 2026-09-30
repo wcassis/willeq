@@ -2068,6 +2068,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/eq/s3d_loader_skinning.cpp
         src/client/graphics/eq/zone_geometry.cpp
         src/client/graphics/eq/zone_geometry_atlased.cpp
+        # B936: the client's per-geometry object mesh table + keyframe pose.
+        src/client/graphics/placed_object_meshes.cpp
         src/client/graphics/eq/dds_decoder.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/constrained_texture_cache.cpp
