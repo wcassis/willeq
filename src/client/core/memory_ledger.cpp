@@ -373,8 +373,18 @@ Snapshot snapshot(const std::string& point, const std::string& zone) {
     }
     // T491 addendum (2026-09-17): both lines, on every point.
     if (s.rssAnonBytes > s.rssCeilingBytes) s.overCeilingBytes = s.rssAnonBytes - s.rssCeilingBytes;
-    if (s.rssAnonBytes > s.rssTargetBytes) s.overTargetBytes = s.rssAnonBytes - s.rssTargetBytes;
+    // B933: the 64 MB target is read against willeq-owned memory, RssAnon minus
+    // gpu_driver; the ceiling above stays on the whole RssAnon.
+    s.gpuDriverBytes = s.categories[static_cast<size_t>(Category::GpuDriver)].liveBytes;
+    finishTargetGap(s);
     return s;
+}
+
+void finishTargetGap(Snapshot& s) {
+    s.ownedBytes = s.rssAnonBytes > s.gpuDriverBytes ? s.rssAnonBytes - s.gpuDriverBytes : 0;
+    s.overTargetBytes = s.ownedBytes > s.rssTargetBytes ? s.ownedBytes - s.rssTargetBytes : 0;
+    s.overTargetRssAnonBytes =
+        s.rssAnonBytes > s.rssTargetBytes ? s.rssAnonBytes - s.rssTargetBytes : 0;
 }
 
 std::vector<GapRow> gapToTarget(const Snapshot& s) {
@@ -385,6 +395,7 @@ std::vector<GapRow> gapToTarget(const Snapshot& s) {
         GapRow r;
         r.bucket = name;
         r.liveBytes = live;
+        r.excludedFromGap = (name == std::string("gpu_driver"));
         r.pctOfRssAnon = s.rssAnonBytes
                              ? 100.0 * static_cast<double>(live) / static_cast<double>(s.rssAnonBytes)
                              : 0.0;
@@ -426,7 +437,12 @@ std::string toLogLine(const Snapshot& s) {
     // every line, so a cap-hunt log answers "how far past 64 MB" without a
     // second tool.
     appendKV(out, "target", s.rssTargetBytes);
+    // B933: over_target is on owned = RssAnon - gpu_driver (64 MB excludes
+    // driver memory); over_target_rss_anon is the old whole-RssAnon figure.
+    appendKV(out, "gpu_driver", s.gpuDriverBytes);
+    appendKV(out, "owned", s.ownedBytes);
     appendKV(out, "over_target", s.overTargetBytes);
+    appendKV(out, "over_target_rss_anon", s.overTargetRssAnonBytes);
     appendKV(out, "ceiling", s.rssCeilingBytes);
     appendKV(out, "over_ceiling", s.overCeilingBytes);
     appendKV(out, "allocs", s.allocCount);
@@ -484,26 +500,39 @@ std::string toReportText(const Snapshot& s) {
              s.unaccountedBytes / 1048576.0, s.unaccountedPct);
     out += buf;
     // T491 addendum (Will, 2026-09-17): both lines, and the gap to the target.
+    // B933: the target is read against owned = RssAnon - gpu_driver.
     snprintf(buf, sizeof(buf),
-             "  RssAnon %.1f MiB vs TARGET %.0f MiB (%s%.1f MiB) vs ceiling %.0f MiB (%s%.1f MiB)\n",
-             s.rssAnonBytes / 1048576.0, s.rssTargetBytes / 1048576.0,
+             "  RssAnon %.1f MiB, gpu_driver %.1f MiB, owned(RssAnon-gpu_driver) %.1f MiB "
+             "vs TARGET %.0f MiB (%s%.1f MiB; whole-RssAnon gap %.1f MiB, driver included) "
+             "vs ceiling %.0f MiB on whole RssAnon (%s%.1f MiB)\n",
+             s.rssAnonBytes / 1048576.0, s.gpuDriverBytes / 1048576.0, s.ownedBytes / 1048576.0,
+             s.rssTargetBytes / 1048576.0,
              s.overTargetBytes ? "over by " : "under, headroom ",
-             (s.overTargetBytes ? s.overTargetBytes : s.rssTargetBytes - s.rssAnonBytes) / 1048576.0,
+             (s.overTargetBytes ? s.overTargetBytes : s.rssTargetBytes - s.ownedBytes) / 1048576.0,
+             s.overTargetRssAnonBytes / 1048576.0,
              s.rssCeilingBytes / 1048576.0,
              s.overCeilingBytes ? "over by " : "under, headroom ",
              (s.overCeilingBytes ? s.overCeilingBytes : s.rssCeilingBytes - s.rssAnonBytes) / 1048576.0);
     out += buf;
     if (s.overTargetBytes) {
         snprintf(buf, sizeof(buf),
-                 "  to reach the %.0f MiB target, shrink %.1f MiB; biggest buckets first:\n",
+                 "  to reach the %.0f MiB target, shrink %.1f MiB of owned memory (gpu_driver is "
+                 "excluded from the gap); biggest buckets first:\n",
                  s.rssTargetBytes / 1048576.0, s.overTargetBytes / 1048576.0);
         out += buf;
         const auto rows = gapToTarget(s);
-        for (size_t i = 0; i < rows.size() && i < 8; ++i) {
+        size_t shown = 0;
+        for (size_t i = 0; i < rows.size() && shown < 8; ++i) {
+            if (rows[i].excludedFromGap) continue;   // listed on its own line below
+            ++shown;
             snprintf(buf, sizeof(buf), "    %-18s %10.2f MiB  %5.1f%% of RssAnon\n",
                      rows[i].bucket.c_str(), rows[i].liveBytes / 1048576.0, rows[i].pctOfRssAnon);
             out += buf;
         }
+        snprintf(buf, sizeof(buf),
+                 "    %-18s %10.2f MiB  EXCLUDED from the gap (driver memory, still reported)\n",
+                 "gpu_driver", s.gpuDriverBytes / 1048576.0);
+        out += buf;
     }
     return out;
 }
@@ -544,7 +573,10 @@ std::string toJson(const Snapshot& s) {
     out += std::string("\"unaccountedPct\":") + pct + ",";
     // T491 addendum (2026-09-17): the gate prints the gap to 64 MB from these.
     out += "\"rssTargetBytes\":" + std::to_string(s.rssTargetBytes) + ",";
+    out += "\"gpuDriverBytes\":" + std::to_string(s.gpuDriverBytes) + ",";
+    out += "\"ownedBytes\":" + std::to_string(s.ownedBytes) + ",";
     out += "\"overTargetBytes\":" + std::to_string(s.overTargetBytes) + ",";
+    out += "\"overTargetRssAnonBytes\":" + std::to_string(s.overTargetRssAnonBytes) + ",";
     out += "\"rssCeilingBytes\":" + std::to_string(s.rssCeilingBytes) + ",";
     out += "\"overCeilingBytes\":" + std::to_string(s.overCeilingBytes);
     out += "}";

@@ -24,7 +24,8 @@ import os
 import re
 import statistics
 
-RSS_TARGET = 64 * 1024 * 1024       # the design yardstick (printed, not a gate)
+RSS_TARGET = 64 * 1024 * 1024       # the design yardstick (printed, not a gate); judged on
+                                    # OWNED = RssAnon - gpu_driver (Will, 2026-09-29, B933)
 RSS_CEILING = 256 * 1024 * 1024     # the failing bound
 DRIVER_SO = re.compile(r"owner=(so:(libLLVM|libgallium|libEGL|libGLES|libGLdispatch|libdrm|libgbm|libglapi)[^ ]*"
                        r"|[^ ]*(/dev/dri|renderD|card[0-9])[^ ]*)")
@@ -34,7 +35,7 @@ HEADER = ("zone expansion s3d_bytes attempt verdict signature exit_code kill_rea
           "stats_blocks frames_rendered_min fps_median fps_min dumped_frames nonblank_frames "
           "zone_mesh_ready textures_ready irrlicht_scene_ready gpu_driver_ready "
           "rss_anon_ready rss_anon_steady peak_rss_anon peak_rss_anon_point vm_hwm "
-          "over_64MB_peak over_256MB_peak driver_so_anon_ready driver_so_rss_ready "
+          "owned_peak over_64MB_owned_peak over_256MB_peak driver_so_anon_ready driver_so_rss_ready "
           "sys_mem_used_delta_steady top5_ready top5_steady oom oom_line fatal_count "
           "error_count first_fatal error_signatures rcvbuf").split()
 
@@ -178,6 +179,14 @@ def main():
                         break
                     sampled = max(sampled, int(c[1]) * 1024)
     peak = max(ledger_max, sampled)
+    # B933: the 64 MB target is read on owned = RssAnon - gpu_driver. Ledger
+    # points subtract their own gpu_driver; a 2 s RssAnon sample has no ledger
+    # row of its own, so it subtracts the gpu_driver at ready (the driver heap
+    # is built by then), else the largest seen before the move.
+    owned_pts = [int(p[1].get("rss_anon", 0)) - p[2].get("gpu_driver", 0)
+                 for p in pts.values() if p[0] < move_epoch]
+    gpu_for_samples = gpu or max([p[2].get("gpu_driver", 0) for p in pts.values()] + [0])
+    owned_peak = max(0, max(owned_pts + [sampled - gpu_for_samples if sampled else 0]))
     peak_point = ""
     if summ.get("peak_rss_anon_epoch"):
         pe = summ["peak_rss_anon_epoch"]
@@ -239,7 +248,8 @@ def main():
         "zone_mesh_ready": zm, "textures_ready": tx, "irrlicht_scene_ready": irr, "gpu_driver_ready": gpu,
         "rss_anon_ready": rss_ready, "rss_anon_steady": rss_steady, "peak_rss_anon": peak,
         "peak_rss_anon_point": peak_point, "vm_hwm": vm_hwm,
-        "over_64MB_peak": max(0, peak - RSS_TARGET), "over_256MB_peak": max(0, peak - RSS_CEILING),
+        "owned_peak": owned_peak,
+        "over_64MB_owned_peak": max(0, owned_peak - RSS_TARGET), "over_256MB_peak": max(0, peak - RSS_CEILING),
         "driver_so_anon_ready": d_anon, "driver_so_rss_ready": d_rss,
         "sys_mem_used_delta_steady": sys_delta,
         "top5_ready": top5(ready[2]) if ready else "", "top5_steady": top5(steady[2]) if steady else "",

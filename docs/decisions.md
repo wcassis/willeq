@@ -1401,6 +1401,16 @@ rule (2026-09-14) is unchanged. What changes is only which number the 64 MB
 target is read against. Nothing CI asserts changed: 256 MB stays the failing
 bound and 64 MB stays printed, not asserted.
 
+**Implemented by B933 (#251).** Every printed gap now uses this figure and says
+so: `over_target=` / `overTargetBytes` / `gapToTarget` / `visual_gate.py`'s
+`[rss-target]` line / the Pi rig's `owned_peak` and `over_64MB_owned_peak`
+columns are on `owned=RssAnon-gpu_driver`; `over_target_rss_anon=` is the old
+whole-RssAnon figure; `gpu_driver` is printed as its own row marked EXCLUDED.
+The driver .so COW pages are decided to stay on the owned side (they are not in
+`gpu_driver`, and B932 reports them per library). The 256 MB failing bound is
+still on whole RssAnon. Measure the current figures with
+`scripts/pi/rendered_sweep_report.py` (Pi) or `scripts/ci/visual_gate.py`.
+
 Note for readers of that number: the driver .so's own copy-on-write pages
 (relocated data, the `anon=` column of a `[memmap] owner=so:...` row, e.g.
 libLLVM ~5.3 MB on the Pi) are in `RssAnon` and are NOT in `gpu_driver`, so

@@ -194,7 +194,7 @@ def main():
         owned_b = [r["owned_max"] for r in rows if r["zone"] == z and r["side"] == "B" and r["verdict"] == "pass"]
         if owned_b:
             owned_a = [r["owned_max"] for r in rows if r["zone"] == z and r["side"] == "A" and r["verdict"] == "pass"]
-            print("| %s | owned max (worst run) minus 64 MiB | %s | %s | |" % (
+            print("| %s | owned=RssAnon-gpu_driver max (worst run) minus 64 MiB | %s | %s | |" % (
                 z, "%+.1f" % ((max(owned_a) - TARGET) / MB) if owned_a else "-",
                 "%+.1f" % ((max(owned_b) - TARGET) / MB)))
 

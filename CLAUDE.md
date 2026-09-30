@@ -118,8 +118,11 @@ reason at the top of this file. Cut narrative before you cut a rule.
   .so file pages are outside it too, but every driver byte is still reported
   as its own row. The 256 MB envelope on `RssAnon` stays the FAILING bound in
   CI; 64 MB is printed, never asserted, with the gap broken down by bucket
-  (`eqt::memory::gapToTarget`) — that printed gap is still taken on the whole
-  `RssAnon` (board B933). **Memory first, frame rate second** (Will,
+  (`eqt::memory::gapToTarget`), taken on **owned = RssAnon − gpu_driver**
+  (label `owned=RssAnon-gpu_driver`; `over_target` on the `[memledger]` line,
+  `over_target_rss_anon` is the whole-RssAnon figure; `gpu_driver` is listed
+  as EXCLUDED, never a shrink bucket; the driver .so COW pages stay on the
+  owned side; B933). **Memory first, frame rate second** (Will,
   2026-09-29). The original client ran these assets in 32 MB total.
 - **Development may be done on x86, but the final numbers are required on BOTH
   platforms**, and a shrink unit is planned off the Orange Pi's own ledger
