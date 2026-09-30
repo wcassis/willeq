@@ -317,12 +317,13 @@ bool COpenGLES2Driver::initDriver()
                                           extensions_.glProgramBinaryOES);
     }
 
-    // Initialize shaders
-    // GL_OES_standard_derivatives enables fwidth()-based adaptive alpha threshold
-    // for smoother vegetation edges. Tested and confirmed working on Mali 400 / Lima
-    // (Mesa 25.2.8, Ubuntu Noble) via gles2_derivatives_test — all 4 tests pass,
-    // dFdx/dFdy/fwidth return correct values, no NaN.
-    if (!shaderManager_.init(extensions_.hasStandardDerivatives)) {
+    // Initialize shaders. B958 (GitLab #276): the alpha-test programs no longer
+    // switch to an fwidth() threshold when GL_OES_standard_derivatives is
+    // exposed. fwidth() itself is correct on Lima (gles2_derivatives_test), but
+    // Lima miscompiles a DISCARD whose condition depends on it -- the test runs
+    // inverted -- so every device now compiles the same constant-threshold FS
+    // (COGLES2Shaders.cpp, tools/hwcaps/gles2_alpha_test_probe.cpp).
+    if (!shaderManager_.init()) {
         os::Printer::log("GLES2: Shader initialization failed", ELL_ERROR);
         return false;
     }

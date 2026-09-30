@@ -164,7 +164,23 @@ void main() {
 // Shader source: AlphaTest3D (Phase 3) — same as Solid3D + discard
 // ============================================================================
 
-static const char* ALPHA3D_FS_BASE = R"(
+// B958 (GitLab #276): ONE alpha-test FS for every device, the constant 0.5
+// threshold. The fwidth() "adaptive threshold" variant that used to be picked
+// whenever GL_OES_standard_derivatives was exposed --
+//     float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
+//     if (texColor.a < threshold) discard;
+// -- is MISCOMPILED by Lima (Mesa 25.2.8, the shipped LLVM-less prefix and the
+// system build alike): the discard runs for exactly the fragments that should
+// be KEPT, so an alpha-tested quad drew its transparent texels (as black) and
+// dropped its opaque ones. Measured with tools/hwcaps/gles2_alpha_test_probe
+// on the Orange Pi: the threshold (0.5) and the comparison written to colour
+// are both right, fwidth() is right (0 on flat alpha), a fresh compile and a
+// program-binary reload are equally wrong, and this constant-threshold FS is
+// right -- refactor/B958/README.md. llvmpipe runs both correctly, which is how
+// one driver drew impostors on x86 and inverted them on the Pi. The zone
+// shaders already use the constant-threshold sources on every GLES2 build
+// (zone_shader.cpp), so the built-in and the zone alpha tests now agree.
+static const char* ALPHA3D_FS = R"(
 precision mediump float;
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
@@ -174,26 +190,6 @@ varying float vFogFactor;
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     if (texColor.a < 0.5) discard;
-    vec4 lit = texColor * vColor;
-    gl_FragColor = mix(uFogColor, lit, vFogFactor);
-}
-)";
-
-// Derivatives variant — adaptive alpha threshold for smoother vegetation edges.
-// Clamp threshold to [0.1, 0.5] so binary alpha masks (0/1 with no gradient) still
-// discard transparent pixels even when fwidth() returns ~1.0 at hard edges.
-static const char* ALPHA3D_FS_DERIVATIVES = R"(
-#extension GL_OES_standard_derivatives : enable
-precision mediump float;
-uniform sampler2D uTexture;
-uniform vec4 uFogColor;
-varying vec4 vColor;
-varying vec2 vTexCoord;
-varying float vFogFactor;
-void main() {
-    vec4 texColor = texture2D(uTexture, vTexCoord);
-    float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
-    if (texColor.a < threshold) discard;
     vec4 lit = texColor * vColor;
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
 }
@@ -266,7 +262,8 @@ void main() {
 // Shader source: AtlasAlpha3D (Phase 4) — dual sample RGB + alpha pages
 // ============================================================================
 
-static const char* ATLAS_ALPHA3D_FS_BASE = R"(
+// B958: constant threshold on every device, for the same reason as ALPHA3D_FS.
+static const char* ATLAS_ALPHA3D_FS = R"(
 precision mediump float;
 uniform sampler2D uTexture;
 uniform sampler2D uAlphaTexture;
@@ -277,28 +274,6 @@ varying float vFogFactor;
 void main() {
     float alpha = texture2D(uAlphaTexture, vTexCoord).r;
     if (alpha < 0.5) discard;
-    vec4 texColor = texture2D(uTexture, vTexCoord);
-    vec4 lit = texColor * vColor;
-    gl_FragColor = mix(uFogColor, lit, vFogFactor);
-}
-)";
-
-// Derivatives variant — adaptive alpha threshold for smoother vegetation edges.
-// Clamp threshold to [0.1, 0.5] so ETC1-compressed binary alpha still discards
-// transparent pixels even when fwidth() returns ~1.0 at hard edges.
-static const char* ATLAS_ALPHA3D_FS_DERIVATIVES = R"(
-#extension GL_OES_standard_derivatives : enable
-precision mediump float;
-uniform sampler2D uTexture;
-uniform sampler2D uAlphaTexture;
-uniform vec4 uFogColor;
-varying vec4 vColor;
-varying vec2 vTexCoord;
-varying float vFogFactor;
-void main() {
-    float alpha = texture2D(uAlphaTexture, vTexCoord).r;
-    float threshold = clamp(0.5 - fwidth(alpha), 0.1, 0.5);
-    if (alpha < threshold) discard;
     vec4 texColor = texture2D(uTexture, vTexCoord);
     vec4 lit = texColor * vColor;
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -594,15 +569,8 @@ void COGLES2ShaderManager::cacheUniforms(EOGLES2ShaderProgram prog)
     u.uColor = glGetUniformLocation(p, "uColor");
 }
 
-bool COGLES2ShaderManager::init(bool hasStandardDerivatives)
+bool COGLES2ShaderManager::init()
 {
-    // Select alpha-test FS variants based on extension availability
-    const char* alpha3dFS = hasStandardDerivatives ? ALPHA3D_FS_DERIVATIVES : ALPHA3D_FS_BASE;
-    const char* atlasAlpha3dFS = hasStandardDerivatives ? ATLAS_ALPHA3D_FS_DERIVATIVES : ATLAS_ALPHA3D_FS_BASE;
-
-    if (hasStandardDerivatives)
-        os::Printer::log("GLES2: Using fwidth() alpha threshold (standard_derivatives)", ELL_INFORMATION);
-
     // Phase 1: Color2D (required for loading screen)
     programs_[EOGLES2SP_COLOR2D] = buildProgram(COLOR2D_VS, COLOR2D_FS);
     if (programs_[EOGLES2SP_COLOR2D]) {
@@ -631,7 +599,7 @@ bool COGLES2ShaderManager::init(bool hasStandardDerivatives)
         os::Printer::log("GLES2: Solid3D shader FAILED (3D rendering disabled)", ELL_WARNING);
     }
 
-    programs_[EOGLES2SP_ALPHA3D] = buildProgram(SOLID3D_VS, alpha3dFS);
+    programs_[EOGLES2SP_ALPHA3D] = buildProgram(SOLID3D_VS, ALPHA3D_FS);
     if (programs_[EOGLES2SP_ALPHA3D]) {
         cacheUniforms(EOGLES2SP_ALPHA3D);
         os::Printer::log("GLES2: AlphaTest3D shader compiled", ELL_INFORMATION);
@@ -648,7 +616,7 @@ bool COGLES2ShaderManager::init(bool hasStandardDerivatives)
         os::Printer::log("GLES2: AtlasSolid3D shader FAILED", ELL_WARNING);
     }
 
-    programs_[EOGLES2SP_ATLAS_ALPHA3D] = buildProgram(ATLAS_SOLID3D_VS, atlasAlpha3dFS);
+    programs_[EOGLES2SP_ATLAS_ALPHA3D] = buildProgram(ATLAS_SOLID3D_VS, ATLAS_ALPHA3D_FS);
     if (programs_[EOGLES2SP_ATLAS_ALPHA3D]) {
         cacheUniforms(EOGLES2SP_ATLAS_ALPHA3D);
         os::Printer::log("GLES2: AtlasAlpha3D shader compiled", ELL_INFORMATION);
