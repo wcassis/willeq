@@ -9,7 +9,8 @@
 # drawn by --adaptive-lod with the distance tier at --lod-dist 80. The
 # manifest's productionConfig flags (the orangepi preset mirror) are applied.
 # Environment: B952_FRAMES (default 150), B952_WARMUP (default 10),
-# B952_RES ("800 600"), B952_DRM=1 on the Pi, PI_EQ_PATH / PI_EQE1_PATH.
+# B952_RES ("800 600"), B952_DRM=1 on the Pi, B952_TIMEOUT (900 s, the
+# stall bound), PI_EQ_PATH / PI_EQE1_PATH.
 #
 # Writes <out-dir>/<label>.log, .json (--memory-json), .csv, and .maps (the
 # mapped GL libraries, taken while the run is up: the proof of which Mesa ran).
@@ -25,8 +26,12 @@ RES="${B952_RES:-800 600}"
 DRM=()
 [ "${B952_DRM:-0}" = 1 ] && DRM=(--drm)
 mkdir -p "$OUT"
+# Shipped data (willeq.db, config/) resolves relative to the CWD first
+# (include/client/data_paths.h): run from the repo root, caches off the checkout.
+cd "$REPO" || exit 1
+export WILLEQ_CACHE_DIR="${WILLEQ_CACHE_DIR:-$OUT/cache}"
 # shellcheck disable=SC2086
-"$BIN" --zone "$ZONE" --eq-path "$EQ" --eqe1-path "$EQE1" "${DRM[@]}" --res $RES \
+timeout "${B952_TIMEOUT:-900}" "$BIN" --zone "$ZONE" --eq-path "$EQ" --eqe1-path "$EQE1" "${DRM[@]}" --res $RES \
     --frames "$FRAMES" --warmup "$WARMUP" \
     --path-file "$REPO/benchmarks/paths/${ZONE}_impostor_fixedpose_300f.path" \
     --adaptive-lighting --zone-pp-budget 20 --pp-budget-mode count --player-light-level 9 \
@@ -35,12 +40,15 @@ mkdir -p "$OUT"
     --impostor-size "$SIZE" --impostor-mode "$MODE" \
     --memory-json "$OUT/$LABEL.json" --csv "$OUT/$LABEL.csv" "$@" > "$OUT/$LABEL.log" 2>&1 &
 pid=$!
+# the benchmark is timeout's child: its maps, not timeout's
+bpid=""
 for _ in $(seq 1 600); do
-    grep -q -E 'libgallium|swrast|llvmpipe' "/proc/$pid/maps" 2>/dev/null && break
+    [ -z "$bpid" ] && bpid="$(pgrep -P "$pid" | head -1)"
+    [ -n "$bpid" ] && grep -q -E 'libgallium|swrast|llvmpipe' "/proc/$bpid/maps" 2>/dev/null && break
     kill -0 "$pid" 2>/dev/null || break
     sleep 0.5
 done
-grep -E '\.so' "/proc/$pid/maps" 2>/dev/null | awk '{print $6}' | sort -u > "$OUT/$LABEL.maps"
+grep -E '\.so' "/proc/${bpid:-$pid}/maps" 2>/dev/null | awk '{print $6}' | sort -u > "$OUT/$LABEL.maps"
 wait "$pid"
 rc=$?
 echo "$LABEL exit=$rc gallium=$(grep -c libgallium "$OUT/$LABEL.maps") llvm=$(grep -c libLLVM "$OUT/$LABEL.maps")"

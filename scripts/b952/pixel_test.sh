@@ -19,6 +19,10 @@ EQE1="${PI_EQE1_PATH:-/mnt/projects/EverQuest_ETC1}"
 DRM=()
 [ "${B952_DRM:-0}" = 1 ] && DRM=(--drm)
 mkdir -p "$OUT"
+# Shipped data (willeq.db, config/) resolves relative to the CWD first
+# (include/client/data_paths.h): run from the repo root, caches off the checkout.
+cd "$REPO" || exit 1
+export WILLEQ_CACHE_DIR="${WILLEQ_CACHE_DIR:-$OUT/cache}"
 "$BIN" --zone qeynos2 --eq-path "$EQ" --eqe1-path "$EQE1" "${DRM[@]}" --res "$W" "$H" \
     --frames 20 --warmup 2 \
     --path-file "$REPO/benchmarks/paths/qeynos2_impostor_fixedpose_300f.path" \

@@ -114,6 +114,8 @@ private:
     std::map<uint64_t, ImpostorEntry> entries_;
     std::map<int, uint64_t> entityKey_;
     irr::video::ITexture* scratch_ = nullptr;
+    int scratchSamples_ = 0;      // >0: the scratch colour is EXT_multisampled_render_to_texture
+    void* msAttach_ = nullptr;    // glFramebufferTexture2DMultisampleEXT
     int serial_ = 0;
 };
 

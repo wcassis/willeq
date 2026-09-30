@@ -287,8 +287,11 @@ int runImpostorPixelTest(ZoneBenchData& data, float eqX, float eqY, float eqZ, f
                 cache.cfg = c;
                 setupCamera(data, cam.eqX, cam.eqY, cam.eqZ, cam.dirX, cam.dirY, cam.dirZ);
                 ImpostorEntry* e = cache.acquire(data, vi, cam);
-                if (!e) {
-                    fprintf(stderr, "ERROR: impostor creation failed (size %d)\n", s);
+                if (!e || cache.stats.incompleteFbo > 0) {
+                    // An impostor rendered into an incomplete FBO is blank:
+                    // every number below would describe nothing.
+                    fprintf(stderr, "ERROR: impostor creation failed (size %d, incomplete FBO renders %d)\n",
+                            s, cache.stats.incompleteFbo);
                     return 1;
                 }
                 // The impostor texture itself (RGBA, alpha kept), for the texel census.

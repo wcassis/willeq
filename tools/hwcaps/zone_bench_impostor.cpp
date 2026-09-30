@@ -18,7 +18,9 @@
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 
 #ifdef EQT_HAS_GLES2
+#include <EGL/egl.h>
 #include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 // The driver's own bridges (docker/irrlicht-drm/COpenGLES2Driver.cpp): wrap a
 // GL texture name as an ITexture the material system can bind, and the
 // driver's texture-byte tally (the same one zone_bench_memory.cpp reports).
@@ -194,7 +196,29 @@ bool ImpostorCache::ensureScratch(ZoneBenchData& data) {
     irr::core::dimension2d<irr::u32> dim(cfg.size, cfg.size);
     eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDriver);
     scratch_ = data.driver->addRenderTargetTexture(dim, name);
-    return scratch_ != nullptr;
+    if (!scratch_) return false;
+#ifdef EQT_HAS_GLES2
+    // COGLES2Texture::createRenderTarget() attaches the colour through
+    // GL_EXT_multisampled_render_to_texture when the driver has it (Lima
+    // does, llvmpipe does not), with a multisampled DEPTH16. A plain
+    // glFramebufferTexture2D swap is then FBO-incomplete (sample mismatch --
+    // measured on the Pi, every impostor render), so the swap must use the
+    // same entry point and sample count. Read both once, from the scratch.
+    const char* ext = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
+    if (ext && strstr(ext, "GL_EXT_multisampled_render_to_texture")) {
+        msAttach_ = reinterpret_cast<void*>(eglGetProcAddress("glFramebufferTexture2DMultisampleEXT"));
+        data.driver->setRenderTarget(scratch_, false, false);
+        GLint samples = 0;
+        glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                              GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_SAMPLES_EXT, &samples);
+        while (glGetError() != GL_NO_ERROR) {}
+        data.driver->setRenderTarget(nullptr, false, false);
+        scratchSamples_ = samples;
+    }
+    printf("[impostor] scratch %dx%d: colour samples=%d (%s)\n", cfg.size, cfg.size, scratchSamples_,
+           scratchSamples_ > 0 ? "EXT_multisampled_render_to_texture" : "single-sample");
+#endif
+    return true;
 }
 
 size_t ImpostorCache::textureBytes() const {
@@ -340,7 +364,12 @@ void ImpostorCache::render(ZoneBenchData& data, ImpostorEntry& e, int entityIdx,
         // attachment, then bind again with the clears (the clears must hit the
         // swapped attachment, not the previous one).
         data.driver->setRenderTarget(scratch_, false, false);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, e.glTex, 0);
+        if (scratchSamples_ > 0 && msAttach_) {
+            reinterpret_cast<PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXTPROC>(msAttach_)(
+                GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, e.glTex, 0, scratchSamples_);
+        } else {
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, e.glTex, 0);
+        }
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             if (stats.incompleteFbo++ == 0)
                 printf("[impostor] WARNING: scratch FBO incomplete with a swapped colour "
