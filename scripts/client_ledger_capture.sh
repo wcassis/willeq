@@ -52,6 +52,9 @@
 #            [--assert-budgets]  also exit 1 if any budgeted category of any
 #                                run is over its orangepi budget at ready or
 #                                steady_60s (the `ClientLedgerLive` ctest)
+#            [--tour FILE]  the client --script (default: wait HOLD, /q)
+#            [--client-arg ARG]...  extra client arguments (B941 used
+#                                --log-module=PATHFIND:DEBUG)
 #            [--char-level N --char-exp E]  the eligibility leg of
 #                                scripts/pi_rendered_zone_sweep.sh: set the
 #                                character's level/exp after the snapshot, so a
@@ -81,6 +84,7 @@ AUDIO=1
 ASSERT=0   # --assert-budgets: the live ctest mode (client_ledger_table.py check)
 RES_W=1280; RES_H=720   # Will's Pi recipe
 CHAR_LEVEL=""; CHAR_EXP=""   # B909b: the eligibility leg (see --char-level)
+TOUR_FILE=""; EXTRA_ARGS=()  # B941: --tour / --client-arg (a live pathing check)
 ZONE_BOOT_S="${ZONE_BOOT_S:-150}"
 LATE_SAVE_S=10
 while [ $# -gt 0 ]; do
@@ -96,6 +100,8 @@ while [ $# -gt 0 ]; do
         --res) RES_W="$2"; RES_H="$3"; shift 3 ;;
         --char-level) CHAR_LEVEL="$2"; shift 2 ;;
         --char-exp) CHAR_EXP="$2"; shift 2 ;;
+        --tour) TOUR_FILE="$2"; shift 2 ;;
+        --client-arg) EXTRA_ARGS+=( "$2" ); shift 2 ;;
         -h|--help) sed -n '2,56p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 3 ;;
     esac
@@ -246,16 +252,21 @@ run_one() {
     local zone="$1" mode="$2" dir="$OUT/$1/$2"
     mkdir -p "$dir"
     local log="$dir/client.log" samples="$dir/rss_samples.tsv" tour="$dir/tour.txt"
-    cat > "$tour" <<EOF
+    if [ -n "$TOUR_FILE" ]; then
+        cp "$TOUR_FILE" "$tour"
+    else
+        cat > "$tour" <<EOF
 # held until fully zoned in (Application::updateScript), then idle past steady_60s
 wait ${HOLD_S}
 /q
 EOF
+    fi
     local -a envs=( "WILLEQ_BASELINE=1" "WILLEQ_LEDGER_OWNERS=${mode}" "TZ=UTC" )
     [ "$mode" = zone_parse ] && envs+=( "WILLEQ_LEDGER_TRACE=zone_parse:startup" "WILLEQ_LEDGER_TRACE_DEPTH=8" )
     local -a args=( -c "$CFG" --renderer gles2 --constrained orangepi -r "$RES_W" "$RES_H"
                     --eqe1-path "$EQE1_PATH" --log-level=INFO --script "$tour" )
     [ "$AUDIO" -eq 1 ] || args+=( --no-audio )
+    [ "${#EXTRA_ARGS[@]}" -gt 0 ] && args+=( "${EXTRA_ARGS[@]}" )
     printf '%s\n' "${envs[@]}" > "$dir/env.txt"
     printf '%q ' "$BIN" "${args[@]}" > "$dir/command_line.txt"; echo >> "$dir/command_line.txt"
     say "[$zone/$mode] launching"

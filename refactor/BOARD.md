@@ -9261,15 +9261,12 @@ fine — the table fails on a stale entry, so it cannot rot.
   zero-caller public functions across 5 headers.**
   `PerformanceMetrics::getTimings()` / `resetGameplay()` / `getElapsedMs()` /
   `markZoneLoadStart()` / `markZoneLoadEnd()` / `getCategoryName()` — a
-  zone-load timing channel nothing marks; the KSM heap helpers
-  (`MarkHeapStart()`, `MeasureHeapUsage()`, `CheckPageAlignment()`,
-  `PageAlignVectorAligned()` — note `PageAlignedAllocator::allocate()` /
-  `deallocate()` are NOT dead, they are standard-library customisation points
-  and the census excludes them by rule); `ClampLower()`; `Random::Shuffle()`;
+  zone-load timing channel nothing marks; `ClampLower()`; `Random::Shuffle()`;
   `Logger::GetMutex()`. This is the remaining `common/util` residue after
-  T455 deleted `strings` and `file`; it is left because `ksm.h` pairs every
-  helper across a `_WIN32` / Linux `#ifdef` and a partial deletion there is
-  not mechanical. Found by T455.
+  T455 deleted `strings` and `file`. ~~The KSM heap helpers
+  (`MarkHeapStart()`, `MeasureHeapUsage()`, `PageAlignVectorAligned()`)~~:
+  B941 (#259) deleted the whole `ksm.h` header when its last user,
+  `RaycastMesh`, moved to plain vectors. Found by T455.
 
 - **B502** (B, unreached) **Gameplay-domain manager API with no caller: 21 → issue #177
   zero-caller public functions across 9 headers

@@ -43,7 +43,6 @@ public:
     bool read(void* dst, size_t n);
 
     uint32_t compressedBytes() const { return compressedSize_; }
-    uint32_t inflatedBytes() const { return inflatedSize_; }
 
 private:
     bool refill();
