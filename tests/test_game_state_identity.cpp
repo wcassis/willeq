@@ -4,8 +4,9 @@
 // memory category. Every query they answer must be BIT-IDENTICAL to what the
 // old representation answered:
 //
-//   * collision map: every triangle's three vertices (the triangle list in
-//     index order, raw float bits), 4000 FindBestZ ground-height queries and
+//   * collision map: every triangle's three vertices (raw float bits, as a
+//     sorted multiset since B951 stores triangles in leaf order), 4000
+//     FindBestZ ground-height queries and
 //     4000 CheckLOS / CheckLOSWithHit line-of-sight queries at deterministic
 //     pseudo-random points;
 //   * navmesh: every detail triangle (raw bits + area), 1500 smoothed
@@ -32,6 +33,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -89,20 +91,44 @@ bool Exists(const std::string& p) { std::ifstream f(p, std::ios::binary); return
 // ---------------------------------------------------------------------------
 struct MapBounds { float minX, maxX, minY, maxY, minZ, maxZ; };  // Irrlicht Y-up
 
-// Every triangle, in index order, raw bits. Returns the bounds too.
+// One triangle as raw bits: v1, v2, v3 (x, y, z each) and the placeable flag.
+using TriBits = std::array<uint32_t, 10>;
+
+std::vector<TriBits> SortedTriangleBits(const std::vector<HCMap::Triangle>& all) {
+    std::vector<TriBits> recs;
+    recs.reserve(all.size());
+    for (const auto& t : all) {
+        TriBits r{};
+        std::memcpy(&r[0], &t.v1, 12);
+        std::memcpy(&r[3], &t.v2, 12);
+        std::memcpy(&r[6], &t.v3, 12);
+        r[9] = t.isPlaceable ? 1u : 0u;
+        recs.push_back(r);
+    }
+    std::sort(recs.begin(), recs.end());
+    return recs;
+}
+
+// Every triangle's raw bits + placeable flag, as a MULTISET: the records are
+// sorted before they are folded in. B951 (#269) stores the triangles in leaf
+// order, so the ORDER GetTrianglesInRadius returns them in is no longer the
+// file's; everything a query or a consumer depends on is the set (each
+// triangle's three vertices in their own winding order, its flag, and how
+// many times it occurs), which this digest still covers bit for bit. The
+// pinned values were taken with the pre-B951 code (fable 267e5a36). Returns
+// the bounds too.
 uint64_t TriangleDigest(const HCMap& map, MapBounds& b, size_t& tris) {
     const auto all = map.GetTrianglesInRadius(glm::vec3(0.0f), 1.0e9f);
-    Fnv d;
     b = {1e30f, -1e30f, 1e30f, -1e30f, 1e30f, -1e30f};
     for (const auto& t : all) {
-        d.v3(t.v1); d.v3(t.v2); d.v3(t.v3);
-        d.u(t.isPlaceable ? 1u : 0u);
         for (const glm::vec3* v : {&t.v1, &t.v2, &t.v3}) {
             b.minX = std::min(b.minX, v->x); b.maxX = std::max(b.maxX, v->x);
             b.minY = std::min(b.minY, v->y); b.maxY = std::max(b.maxY, v->y);
             b.minZ = std::min(b.minZ, v->z); b.maxZ = std::max(b.maxZ, v->z);
         }
     }
+    Fnv d;
+    for (const auto& r : SortedTriangleBits(all)) d.bytes(r.data(), sizeof(uint32_t) * r.size());
     tris = all.size();
     return d.h;
 }
@@ -198,7 +224,10 @@ void NavDigests(PathfinderNavmesh& nav, const MapBounds& b, uint64_t& triDigest,
 }
 #endif
 
-// The OLD code's digests (fable 0b84eef6, before B941). "-" = not pinned.
+// The OLD code's digests. Query + navmesh columns: fable 0b84eef6 (before
+// B941). Triangle column: the sorted (multiset) digest above, taken with
+// fable 267e5a36 (before B951; B941 left every triangle bit-identical, so it
+// is also the pre-B941 set). "-" = not pinned.
 struct ZoneGolden {
     const char* zone;
     const char* triDigest;
@@ -208,17 +237,17 @@ struct ZoneGolden {
 };
 const ZoneGolden kGoldens[] = {
     // B941-GOLDENS-BEGIN
-    {"befallen", "930f302f6f764e4f", "43950f532ec6c1e8", "106c12499932eded", "c6802350188d5c05"},  // tris=43018
-    {"gfaydark", "3cca3ce0e4f91817", "3f8b44b03c2042b8", "ba76b4f659466d99", "c0e61d3b8df60282"},  // tris=129637
-    {"iceclad", "9f172c1bb383e50a", "2f53d2a239076ce6", "1b28b12123f1d520", "bee4dce263885fd2"},  // tris=122148
-    {"emeraldjungle", "81acf307bab69c37", "61cf6574dd71ae1e", "36969ab938eeeccc", "14a510ed78b1bf61"},  // tris=618240
-    {"wakening", "8e600d6eccef6a93", "d8281d24b891f527", "4ce4fb0a06e4998d", "a1687f3c2a118ec1"},  // tris=382855
-    {"timorous", "7b5895c395de9c5c", "9267953703bb2046", "f274e7f013024a21", "5fc1f3a302b08a54"},  // tris=257769
-    {"growthplane", "bc8296a5a3f3eeab", "5d2a8d50340baec5", "10515ddd8f88ef6f", "7e5dc6a8054a3369"},  // tris=107397
-    {"overthere", "ac5f3adb4d3133d3", "57787bac2c5d178f", "c58423f1431d03d2", "e1f56e5862ecd2d9"},  // tris=145391
-    {"skyfire", "40e2fbad9d3fdf08", "833e35196acf2756", "f3b670066d3eaab7", "7732a6353a7328ea"},  // tris=309460
-    {"warslikswood", "01c77d00186e3931", "a31b84278855fa67", "0ee0164b4202c602", "139a5c56b5a62b11"},  // tris=312409
-    {"sky", "f3081c248c63a24e", "6403e7684bd04812", "-", "-"},  // tris=25832
+    {"befallen", "eb4b0b95df4e68df", "43950f532ec6c1e8", "106c12499932eded", "c6802350188d5c05"},  // tris=43018
+    {"gfaydark", "ce18246f8faf5273", "3f8b44b03c2042b8", "ba76b4f659466d99", "c0e61d3b8df60282"},  // tris=129637
+    {"iceclad", "d0861e9cec670bee", "2f53d2a239076ce6", "1b28b12123f1d520", "bee4dce263885fd2"},  // tris=122148
+    {"emeraldjungle", "36f2e55484ea526b", "61cf6574dd71ae1e", "36969ab938eeeccc", "14a510ed78b1bf61"},  // tris=618240
+    {"wakening", "157aa94ab55e096f", "d8281d24b891f527", "4ce4fb0a06e4998d", "a1687f3c2a118ec1"},  // tris=382855
+    {"timorous", "f4ee79871d4ba560", "9267953703bb2046", "f274e7f013024a21", "5fc1f3a302b08a54"},  // tris=257769
+    {"growthplane", "0381beee0d14e403", "5d2a8d50340baec5", "10515ddd8f88ef6f", "7e5dc6a8054a3369"},  // tris=107397
+    {"overthere", "434909bd49b81783", "57787bac2c5d178f", "c58423f1431d03d2", "e1f56e5862ecd2d9"},  // tris=145391
+    {"skyfire", "453f9bb23f56224c", "833e35196acf2756", "f3b670066d3eaab7", "7732a6353a7328ea"},  // tris=309460
+    {"warslikswood", "b39a2a60ef368369", "a31b84278855fa67", "0ee0164b4202c602", "139a5c56b5a62b11"},  // tris=312409
+    {"sky", "d9529f0737b30aca", "6403e7684bd04812", "-", "-"},  // tris=25832
     // B941-GOLDENS-END
 };
 
@@ -262,7 +291,7 @@ void CheckZone(const std::string& zone) {
     }
     const ZoneGolden* g = FindGolden(zone);
     ASSERT_NE(g, nullptr) << zone << " has no pinned digest";
-    EXPECT_EQ(Hex(triD), g->triDigest) << zone << ": collision triangles differ from the pre-B941 map";
+    EXPECT_EQ(Hex(triD), g->triDigest) << zone << ": the collision triangle multiset differs from the pre-B951 map";
     EXPECT_EQ(Hex(qD), g->queryDigest) << zone << ": FindBestZ/CheckLOS results differ from the pre-B941 map";
     // A host with the .map but no .nav (or a build without Detour) checks
     // the collision map only; the navmesh half needs the .nav to exist.
@@ -551,18 +580,28 @@ TEST(GameStateIdentity, SyntheticV2MatchesTheOldTriangleSoup) {
     const Soup old = OldEmit(m);
     const auto tris = map.GetTrianglesInRadius(glm::vec3(0.0f), 1.0e9f);
     ASSERT_EQ(tris.size(), old.idx.size() / 3);
-    auto same = [](const glm::vec3& a, const glm::vec3& b) { return std::memcmp(&a, &b, sizeof(a)) == 0; };
-    for (size_t i = 0; i < tris.size(); ++i) {
-        const glm::vec3& a = old.verts[old.idx[i * 3]];
-        const glm::vec3& b = old.verts[old.idx[i * 3 + 1]];
-        const glm::vec3& c = old.verts[old.idx[i * 3 + 2]];
-        ASSERT_TRUE(same(tris[i].v1, a) && same(tris[i].v2, b) && same(tris[i].v3, c)) << "triangle " << i;
-        EXPECT_EQ(tris[i].isPlaceable, i >= old.placeBegin && i < old.placeEnd) << "triangle " << i;
+    // B951: the map stores triangles in leaf order, so the comparison is the
+    // multiset of (three raw vertices, placeable flag) records.
+    std::vector<HCMap::Triangle> oldTris;
+    for (size_t i = 0; i < old.idx.size() / 3; ++i) {
+        HCMap::Triangle t{};
+        t.v1 = old.verts[old.idx[i * 3]];
+        t.v2 = old.verts[old.idx[i * 3 + 1]];
+        t.v3 = old.verts[old.idx[i * 3 + 2]];
+        t.isPlaceable = i >= old.placeBegin && i < old.placeEnd;
+        oldTris.push_back(t);
+    }
+    const auto got = SortedTriangleBits(tris);
+    const auto want = SortedTriangleBits(oldTris);
+    ASSERT_EQ(got.size(), want.size());
+    for (size_t i = 0; i < got.size(); ++i) {
+        ASSERT_EQ(got[i], want[i]) << "sorted triangle record " << i;
     }
     // The dedup must actually have happened (fewer stored vertices than the soup).
     EXPECT_LT(map.GetMemoryStats().vertexCount, old.verts.size());
 
     // Rays: the old soup through the SAME tree code (pointer factory) vs the map.
+    auto same = [](const glm::vec3& a, const glm::vec3& b) { return std::memcmp(&a, &b, sizeof(a)) == 0; };
     std::vector<float> flat;
     for (const auto& v : old.verts) { flat.push_back(v.x); flat.push_back(v.y); flat.push_back(v.z); }
     RaycastMesh* ref = createRaycastMesh((RmUint32)old.verts.size(), flat.data(), (RmUint32)(old.idx.size() / 3), old.idx.data());
