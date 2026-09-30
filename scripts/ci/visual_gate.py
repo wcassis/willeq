@@ -704,6 +704,12 @@ def report_mapping_owners(label_prefix, mappings):
               f"{o.get('sizeBytes', 0) / 1048576:.1f} MiB mapped)")
 
 
+def owned_bytes(rss_anon, gpu_driver):
+    """B933: willeq-owned memory, the figure the 64 MB target is read against.
+    Mirrors eqt::memory::finishTargetGap (clamped at 0)."""
+    return max(0, rss_anon - gpu_driver)
+
+
 def report_rss_target_gap(label_prefix, ledger, failures):
     """T491 addendum (Will, 2026-09-17): assert the 256 MB INTERIM CEILING and
     PRINT the gap to the 64 MB target, broken down by bucket, largest first.
@@ -718,6 +724,12 @@ def report_rss_target_gap(label_prefix, ledger, failures):
     rss_anon = ledger.get("rssAnonBytes", 0)
     if not rss_anon:
         return
+    # B933 (Will, 2026-09-29: "64 MB excludes driver memory"): the target is
+    # judged on willeq-OWNED memory, RssAnon - gpu_driver. Taken from the
+    # categories here, not from the JSON's overTargetBytes, so a benchmark
+    # built before B933 prints the same figure. The ceiling stays on RssAnon.
+    gpu_driver = ledger.get("categories", {}).get("gpu_driver", {}).get("live", 0)
+    owned = owned_bytes(rss_anon, gpu_driver)
     ceiling = ledger.get("rssCeilingBytes", RSS_CEILING_BYTES)
     target = ledger.get("rssTargetBytes", RSS_TARGET_BYTES)
     if rss_anon > ceiling:
@@ -729,18 +741,23 @@ def report_rss_target_gap(label_prefix, ledger, failures):
     buckets.append((ledger.get("heapUnchargedBytes", 0), "heap_uncharged"))
     buckets.append((ledger.get("mallocSlackBytes", 0), "malloc_slack"))
     buckets.append((ledger.get("unaccountedBytes", 0), "unaccounted"))
-    buckets = sorted(((b, n) for b, n in buckets if b), reverse=True)
-    if rss_anon <= target:
-        print(f"  [rss-target] {label_prefix}: RssAnon {rss_anon / 1048576:.1f} MiB is "
+    buckets = sorted(((b, n) for b, n in buckets if b and n != "gpu_driver"), reverse=True)
+    if owned <= target:
+        print(f"  [rss-target] {label_prefix}: owned (RssAnon-gpu_driver) {owned / 1048576:.1f} MiB "
+              f"(RssAnon {rss_anon / 1048576:.1f}, gpu_driver {gpu_driver / 1048576:.1f}) is "
               f"WITHIN the {target / 1048576:.0f} MiB target")
         return
-    gap = rss_anon - target
-    print(f"  [rss-target] {label_prefix}: RssAnon {rss_anon / 1048576:.1f} MiB, "
-          f"target {target / 1048576:.0f} MiB, must shrink {gap / 1048576:.1f} MiB; "
-          f"ceiling {ceiling / 1048576:.0f} MiB "
+    gap = owned - target
+    print(f"  [rss-target] {label_prefix}: owned (RssAnon-gpu_driver) {owned / 1048576:.1f} MiB "
+          f"(RssAnon {rss_anon / 1048576:.1f}, gpu_driver {gpu_driver / 1048576:.1f}), "
+          f"target {target / 1048576:.0f} MiB, must shrink {gap / 1048576:.1f} MiB of owned memory "
+          f"(whole-RssAnon gap {max(0, rss_anon - target) / 1048576:.1f} MiB, driver included); "
+          f"ceiling {ceiling / 1048576:.0f} MiB on whole RssAnon "
           f"({'OVER' if rss_anon > ceiling else 'headroom ' + format((ceiling - rss_anon) / 1048576, '.1f') + ' MiB'})")
     for b, n in buckets[:8]:
         print(f"      {n:<18} {b / 1048576:9.2f} MiB  {100.0 * b / rss_anon:5.1f}% of RssAnon")
+    print(f"      {'gpu_driver':<18} {gpu_driver / 1048576:9.2f} MiB  EXCLUDED from the gap "
+          f"(driver memory, still reported)")
 
 
 def assert_memory_ledger(label_prefix, memory, failures, max_unattributed_pct=None):

@@ -353,7 +353,15 @@ struct Snapshot {
     uint64_t rssCeilingBytes = kRssCeilingBytes;
     uint64_t rssTargetBytes = kRssTargetBytes;
     uint64_t overCeilingBytes = 0;           // max(0, rssAnon - ceiling)
-    uint64_t overTargetBytes = 0;            // max(0, rssAnon - target)
+    // B933 (Will, 2026-09-29: "64 MB excludes driver memory"): the target is
+    // judged on willeq-OWNED memory = RssAnon - the ledger's gpu_driver
+    // category (clamped at 0). The driver .so files' own copy-on-write pages
+    // stay on the OWNED side (they are in RssAnon and not in gpu_driver);
+    // B932 measures them per library. The 256 MB ceiling stays on whole RssAnon.
+    uint64_t gpuDriverBytes = 0;             // categories[GpuDriver].liveBytes
+    uint64_t ownedBytes = 0;                 // max(0, rssAnon - gpuDriverBytes)
+    uint64_t overTargetBytes = 0;            // max(0, ownedBytes - target)
+    uint64_t overTargetRssAnonBytes = 0;     // max(0, rssAnon - target): the old figure, driver included
 };
 
 // T491 addendum: the categories that would have to shrink to reach the 64 MB
@@ -366,8 +374,17 @@ struct GapRow {
     std::string bucket;   // category name, or one of the three non-category buckets
     uint64_t liveBytes = 0;
     double pctOfRssAnon = 0.0;
+    // B933: gpu_driver is listed (every driver byte stays reported) but is NOT
+    // part of the gap to the target, so it is flagged and callers must not sum
+    // it into "bytes to shrink".
+    bool excludedFromGap = false;
 };
 std::vector<GapRow> gapToTarget(const Snapshot& s);
+
+// B933: derive ownedBytes / overTargetBytes / overTargetRssAnonBytes from a
+// snapshot's rssAnonBytes, gpuDriverBytes and rssTargetBytes. snapshot() calls
+// it; a test that fills those three fields by hand calls it to pin the arithmetic.
+void finishTargetGap(Snapshot& s);
 
 // ---------------------------------------------------------------------------
 // T491 addendum (2026-09-17, from T490's measurement, board B801): the gap to

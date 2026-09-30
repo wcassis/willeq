@@ -50,7 +50,8 @@ def ledger_dict(rss_anon, ledger_total, cats, slack=0, uncharged=0):
         "mallocSlackBytes": slack,
         "rssTargetBytes": 64 * MIB,
         "rssCeilingBytes": 256 * MIB,
-        "overTargetBytes": max(0, rss_anon - 64 * MIB),
+        # B933: the target gap is on owned = RssAnon - gpu_driver.
+        "overTargetBytes": max(0, rss_anon - cats.get("gpu_driver", 0) - 64 * MIB),
         "overCeilingBytes": max(0, rss_anon - 256 * MIB),
         "categories": {k: {"live": v, "peak": v, "allocs": 1} for k, v in cats.items()},
     }
@@ -158,6 +159,31 @@ def main():
     assert "must shrink 36.0 MiB" in out, out
     order = [ln.split()[0] for ln in out.splitlines() if ln.startswith("      ")]
     assert order[:3] == ["zone_mesh", "zone_parse", "ui"], order
+
+    # 7b. B933 (Will, 2026-09-29: "64 MB excludes driver memory"): the same
+    #     100 MiB RssAnon with 19 MiB of gpu_driver is 81 MiB OWNED, so the gap
+    #     is 17.0 MiB, the label says owned=RssAnon-gpu_driver, gpu_driver is
+    #     shown as EXCLUDED and is not a shrink bucket, and the whole-RssAnon
+    #     figure is printed under its own name.
+    mem = {"ledger": ledger_dict(100 * MIB, 95 * MIB,
+                                 {"zone_mesh": 50 * MIB, "gpu_driver": 19 * MIB,
+                                  "zone_parse": 20 * MIB, "ui": 5 * MIB},
+                                 slack=3 * MIB)}
+    f, out = run(gate, mem)
+    assert f == [], f
+    assert gate.owned_bytes(100 * MIB, 19 * MIB) == 81 * MIB
+    assert gate.owned_bytes(10 * MIB, 19 * MIB) == 0
+    assert "owned (RssAnon-gpu_driver) 81.0 MiB" in out, out
+    assert "must shrink 17.0 MiB of owned memory" in out, out
+    assert "whole-RssAnon gap 36.0 MiB, driver included" in out, out
+    assert "gpu_driver" in out and "EXCLUDED from the gap" in out, out
+    order = [ln.split()[0] for ln in out.splitlines() if ln.startswith("      ")]
+    assert order[-1] == "gpu_driver" and "gpu_driver" not in order[:-1], order
+    # driver bigger than the gap: within target on owned memory, still under the ceiling
+    mem = {"ledger": ledger_dict(80 * MIB, 78 * MIB, {"zone_mesh": 40 * MIB, "gpu_driver": 19 * MIB},
+                                 slack=MIB)}
+    f, out = run(gate, mem)
+    assert f == [] and "WITHIN the 64 MiB target" in out and "owned (RssAnon-gpu_driver) 61.0 MiB" in out, out
 
     # 8. T491 addendum: over the 256 MB interim ceiling IS a failure
     mem = {"ledger": ledger_dict(300 * MIB, 295 * MIB, {"zone_mesh": 290 * MIB}, slack=3 * MIB)}

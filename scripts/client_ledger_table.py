@@ -274,11 +274,15 @@ def cmd_table(a):
                       f"{pct(st)} | {fmt(spread)} | {fmt(bench)} | {pct(bench)} | "
                       f"{fmt(st - bench) if (st is not None and bench is not None) else 'n/a'} |")
         md.append("\n| run | peak RssAnon (2 s samples + points) | zone_load_complete | ready | steady_60s | "
-                  "peak vs 64 MB | peak vs 256 MB | gpu_driver ready | gpu_driver steady_60s |")
+                  "owned peak (RssAnon-gpu_driver) vs 64 MB | peak RssAnon vs 256 MB | gpu_driver ready | gpu_driver steady_60s |")
         md.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
         for r in peaks.get(zone, []):
+            # B933: the 64 MB target is on owned = RssAnon - gpu_driver. A 2 s
+            # RssAnon sample has no ledger row, so the peak subtracts the
+            # gpu_driver at ready (else steady_60s).
+            owned = max(0, r[2] - (r[9] or r[10]))
             md.append(f"| {r[1]} | {r[2]:,} ({r[2] / MIB:.1f} MiB) | {r[5] or 0:,} | {r[6] or 0:,} | "
-                      f"{r[7] or 0:,} | {'+' if r[2] > TARGET else ''}{(r[2] - TARGET) / MIB:.1f} MiB | "
+                      f"{r[7] or 0:,} | owned {owned / MIB:.1f} MiB, {'+' if owned > TARGET else ''}{(owned - TARGET) / MIB:.1f} MiB | "
                       f"{'OVER' if r[2] > CEILING else 'under'} by {abs(r[2] - CEILING) / MIB:.1f} MiB | "
                       f"{r[9]:,} | {r[10]:,} |")
         for (z, mode), by_point in sorted(owner_tab.items()):

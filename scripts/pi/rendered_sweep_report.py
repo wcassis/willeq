@@ -45,14 +45,21 @@ def table(rows, title):
     return "\n".join(out)
 
 
+OWNED_KEYS = ("owned_peak",)   # B933: the only keys the 64 MB target is counted on
+
+
 def dist(rows, key, label):
-    v = sorted(int(r[key]) for r in rows if r[key] not in ("", "0"))
+    v = sorted(int(r[key]) for r in rows if r.get(key) not in (None, "", "0"))
     if not v:
         return "- %s: no data" % label
-    over64 = sum(x > 64 * MB for x in v)
     over256 = sum(x > 256 * MB for x in v)
-    return ("- %s (n=%d): min %.1f, median %.1f, max %.1f MB; over 64 MB: %d/%d; over 256 MB: %d/%d"
-            % (label, len(v), v[0] / MB, statistics.median(v) / MB, v[-1] / MB, over64, len(v), over256, len(v)))
+    # B933 (Will, 2026-09-29: "64 MB excludes driver memory"): "over 64 MB" is
+    # counted only on OWNED memory (RssAnon - gpu_driver); a whole-RssAnon
+    # figure is counted against the 256 MB failing bound only.
+    over64 = ("over 64 MB (owned=RssAnon-gpu_driver): %d/%d; " % (sum(x > 64 * MB for x in v), len(v))
+              if key in OWNED_KEYS else "")
+    return ("- %s (n=%d): min %.1f, median %.1f, max %.1f MB; %sover 256 MB (whole RssAnon): %d/%d"
+            % (label, len(v), v[0] / MB, statistics.median(v) / MB, v[-1] / MB, over64, over256, len(v)))
 
 
 def main():
@@ -82,6 +89,7 @@ def main():
     print("- zones with a verified own-zone ready row (any attempt/leg): %d/%d; of those passing: %d"
           % (len(ran), len(first), sum(r["verdict"] == "pass" for r in ran)))
     print(dist(ran, "peak_rss_anon", "peak RssAnon (verified rows)"))
+    print(dist(ran, "owned_peak", "peak OWNED = RssAnon - gpu_driver (verified rows)"))
     print(dist(ran, "rss_anon_ready", "RssAnon at ready (verified rows)"))
     print(dist([r for r in ran if r["reached_steady"] == "y"], "rss_anon_steady", "RssAnon at steady_60s (verified rows)"))
     print(dist(ran, "vm_hwm", "VmHWM, peak total RSS incl. file-backed (verified rows)"))
@@ -95,7 +103,7 @@ def main():
              "file-backed, INSIDE VmHWM, not RssAnon"),
             ("sys_mem_used_delta_steady", "system MemAvailable drop, launch -> steady (ready if no steady)",
              "system-wide: process RSS + page cache + kernel/GEM buffers the process RSS never shows")):
-        print(dist(ran, key, label).split("; over 64 MB")[0] + " [" + note + "]")
+        print(dist(ran, key, label).split("; over 256 MB")[0] + " [" + note + "]")
     worst = sorted(ran, key=lambda r: -int(r["peak_rss_anon"] or 0))[:5]
     print("\nWorst five by peak RssAnon: " + ", ".join(
         "%s %s MB (steady %s)" % (r["zone"], mb(r["peak_rss_anon"]), mb(r["rss_anon_steady"])) for r in worst))
