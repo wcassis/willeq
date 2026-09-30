@@ -176,6 +176,7 @@ int main(int argc, char** argv) {
     benchConfig.animate = opts.animate;
     benchConfig.compositeEntities = opts.compositeEntities;
     benchConfig.loadObjects = opts.loadObjects;
+    benchConfig.objectAnimFrame = opts.objectAnimFrame;
     benchConfig.shaderDebugMode = opts.shaderDebugMode;
     benchConfig.loadMemAudit = opts.loadMemAudit;
     benchConfig.occluderBudget = opts.occluderBudget;

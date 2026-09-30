@@ -835,6 +835,21 @@ it without taking that measurement first.
   reports 63.5 MB, but `s3dZoneSourceBytes` fell only 16.7 MB for the whole
   release.
 
+- ~~**B943** (B) Six orangepi budgets sat far above anything measured.~~ **DONE
+  2026-09-30** (branch `task/B943-ratchet-six-budgets`, issue #261,
+  `refactor/B943/README.md`, `docs/decisions.md` 2026-09-30). Will: "lower the
+  seven budgets, hold audio". `archives` 4 -> 3, `textures_decoded` 20 -> 2,
+  `entity_models` 84 -> 38, `gpuTextureBytes` 64 -> 38, `textureCacheBytesUsed`
+  (`textureMemoryBytes`) 64 -> 51, `characterModelsBytes` 40 -> 2 MiB (measured
+  worst x 1.25, whole MiB; `refactor/B943/budget_ratchet_census.py`). The
+  first derivation (21 and 20 MiB, from the EQE1-path census) was wrong for
+  the two texture budgets: the gate's qeynos2 golden run is S3D-path and holds
+  31.7 / 42.2 MB, and 20 MiB crashes it (B944, #262). **`audio`
+  held at 32 MiB** on Will's word: its only Pi figure (25.7 MB) is a 2026-09-17
+  qeynos2 reading that predates T504, and the rendered sweep had no classic
+  zone. `textureMemoryBytes` is the real cache eviction ceiling, so that one is
+  a behaviour change; Pi behaviour under 51 MiB is unverified.
+
 - ~~**B927** (B) Two of Will's 2026-09-29 rulings had not been applied: "bless
   iceclad and timorous" and "ratchet the zone_parse budget down".~~ **DONE
   2026-09-29** (branch `task/B927-bless-and-zone-parse-ratchet`,
@@ -973,8 +988,10 @@ it without taking that measurement first.
   40.3 → 6.7, trakanon 23.4 → 5.5. Pi moving frame rate growthplane 25.7 →
   62.1 fps, trakanon 37.5 → 61.2 (the per-placement keyframe rewrite was
   23.5 ms of growthplane's frame). The benchmark half (#247) is branch
-  `task/B936b-bench-shared-objects`, which waits for Will's re-bless of the
-  five memory-coverage `placeableObjectsBytes` baselines.
+  `task/B936b-bench-shared-objects` (MR !55); the five memory-coverage
+  `placeableObjectsBytes` baselines were BLESSED by Will in chat 2026-09-30
+  ("bless placeableObjectsBytes", `docs/decisions.md`). #247 acceptance 1 is in;
+  acceptance 2 (the census job) remains.
 - **B938** (A, memory) → issue #256. After B936 the per-placement scene node
   (`obj.instances`, about 2.2 KB per placed object on x86, 1.5 KB on the Pi)
   is 88–98 % of `objects`: 9.6 MB of growthplane's 9.7 MB on x86.
@@ -9271,15 +9288,12 @@ fine — the table fails on a stale entry, so it cannot rot.
   zero-caller public functions across 5 headers.**
   `PerformanceMetrics::getTimings()` / `resetGameplay()` / `getElapsedMs()` /
   `markZoneLoadStart()` / `markZoneLoadEnd()` / `getCategoryName()` — a
-  zone-load timing channel nothing marks; the KSM heap helpers
-  (`MarkHeapStart()`, `MeasureHeapUsage()`, `CheckPageAlignment()`,
-  `PageAlignVectorAligned()` — note `PageAlignedAllocator::allocate()` /
-  `deallocate()` are NOT dead, they are standard-library customisation points
-  and the census excludes them by rule); `ClampLower()`; `Random::Shuffle()`;
+  zone-load timing channel nothing marks; `ClampLower()`; `Random::Shuffle()`;
   `Logger::GetMutex()`. This is the remaining `common/util` residue after
-  T455 deleted `strings` and `file`; it is left because `ksm.h` pairs every
-  helper across a `_WIN32` / Linux `#ifdef` and a partial deletion there is
-  not mechanical. Found by T455.
+  T455 deleted `strings` and `file`. ~~The KSM heap helpers
+  (`MarkHeapStart()`, `MeasureHeapUsage()`, `PageAlignVectorAligned()`)~~:
+  B941 (#259) deleted the whole `ksm.h` header when its last user,
+  `RaycastMesh`, moved to plain vectors. Found by T455.
 
 - **B502** (B, unreached) **Gameplay-domain manager API with no caller: 21 → issue #177
   zero-caller public functions across 9 headers
@@ -12599,6 +12613,7 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   - Only nurga is under (60.3 MB).
   - At `steady_60s` the median is 89.4 MB and 41/45 are over.
   - The largest ledger categories at `ready` are `gpu_driver` (18.4 to 20.2 MB; #1 in 30/45 zones) and `game_state` (up to 51.2 MB, emeraldjungle; #1 in 11).
+    B941 (#259) shrinks `game_state` on its branch (emeraldjungle 53.6 → 34.8 MB on the Pi); these figures are the pre-B941 sweep.
   - It is under the 256 MB failing bound everywhere: worst VmHWM 218.7 MB, and no OOM.
   - The shrink queue for the Pi should be planned from these rows (docs/decisions.md 2026-09-17 addendum).
 - **B920** (A, tooling) → issue #239. The CI-published ARM binary (`ci-arm/<sha>/bin/willeq`, on NFS) carries no file capability.
@@ -12637,3 +12652,12 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   taken at) and its `ChaseConstantsFitPinned` test checks only the JSON's
   structure (green with the distance at 4.001). Both are superseded by the tests
   above.
+
+## Added 2026-09-30 by task/B941-game-state-memory (issue #259)
+
+- **B941** (A, memory) → issue #259. `game_state` was the largest owned category on the Pi (emeraldjungle 53.6 MB at `ready`): the collision map (`HCMap` + `RaycastMesh`) and the Detour navmesh. **Fixed on the branch, MR pending review**: placed-model collision triangles are indexed per placement instead of a triangle soup, both loads stream and free their buffers, the navmesh's unused `dtLink` tail is trimmed, refused navmesh tiles are freed. Queries bit-identical (`GameStateIdentity.*`, x86).
+  - Pi A/B `game_state` at `ready`: emeraldjungle 53.6 → 34.8 MB, growthplane 26.3 → 22.7, gfaydark 13.8 → 11.5, timorous 35.2 → 30.5; owned at `steady_60s` emeraldjungle 102.4 → 83.5 MB.
+  - Owner rows `gs.*` under `WILLEQ_LEDGER_OWNERS=game_state`. Evidence and "Not verified": `refactor/B941/README.md`.
+  - Open: the Pi's timorous Player Movement phase was measured on one leg per side (821 vs 1,986 us); the zone would not reach `ready` on either side in eight more attempts.
+- **B942** (A, pathing) → issue #260. `PathfinderNavmesh::FindPath` passed capacity 2048 for 256-entry straight-path stack arrays. Fixed on the B941 branch. No repeatable test yet (needs a navmesh path crossing more than 255 poly edges).
+- **B945** (A, memory) → issue #263. Timorous `game_state` `misc` is 6.2 MB at `ready` on x86; 3.1 MB of it is one `GameEvent` staging buffer the game thread keeps after the zone-in burst.

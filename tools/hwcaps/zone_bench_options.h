@@ -116,6 +116,7 @@ struct Options {
     // Zone objects
     bool loadObjects = false;     // Load zone objects (trees, lamps, etc.)
     float objectRenderDist = 300.0f;
+    int objectAnimFrame = -1;     // B936: --object-anim-frame N (-1 = geometry pose)
 
     // Analysis modes (portal culling DOES NOT WORK and has NEVER WORKED with WillEQ)
     // bool analyzePortals = false;

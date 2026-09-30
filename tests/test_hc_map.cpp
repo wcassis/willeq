@@ -214,7 +214,10 @@ TEST(HCMapRealFixtures, BefallenV2_LoadsAndReportsPinnedStats) {
     // Pinned via discovery run (2026-07-31): befallen.map's first 4 bytes
     // are 0x02000000 -- it is V2, not V1, despite being a "classic" zone.
     auto stats = map.GetMemoryStats();
-    EXPECT_EQ(stats.vertexCount, 69534u);
+    // B941 (#259): STORED vertices -- a placed model's vertices are held once
+    // per placement, not three per triangle (was 69534). Faces, bounds and
+    // every query are unchanged (tests/test_game_state_identity.cpp).
+    EXPECT_EQ(stats.vertexCount, 23382u);
     EXPECT_EQ(stats.faceCount, 43018u);
 
     float minY, maxY, minZ, maxZ;
@@ -286,7 +289,7 @@ TEST(HCMapRealFixtures, Qeynos2V2_LoadsAndFindsZ) {
     ASSERT_TRUE(map.IsLoaded());
 
     auto stats = map.GetMemoryStats();
-    EXPECT_EQ(stats.vertexCount, 32276u);
+    EXPECT_EQ(stats.vertexCount, 13432u);  // B941: stored once per placement (was 32276)
     EXPECT_EQ(stats.faceCount, 24285u);
 
     float minY, maxY;

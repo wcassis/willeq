@@ -49,6 +49,11 @@ struct BenchConfig {
     bool animate = false;        // Enable skeletal animation on entities
     bool compositeEntities = false; // Use composite textures for entities (single draw per entity)
     bool loadObjects = false;    // Load zone objects (trees, lamps, etc.)
+    // B936: pose every vertex-animated (keyframe) object at keyframe
+    // (N mod its frame count) before upload -- a fixed, deterministic
+    // animation time for pixel comparisons. -1 = the geometry's own pose (no
+    // keyframe applied), which is what the benchmark always drew before.
+    int objectAnimFrame = -1;
     // H02d: shader debug mode (0=off, >0=ZoneShaderManager debug mode; see
     // zone_shader.cpp FRAGMENT_SHADER_DEBUG_SRC for the mode list). When set,
     // all per-pixel zone/object draw entries render via the debug

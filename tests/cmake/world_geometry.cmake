@@ -31,6 +31,27 @@ TARGET_LINK_LIBRARIES(test_hc_map GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES}
 TARGET_COMPILE_DEFINITIONS(test_hc_map PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")  # T504d ray-set goldens
 GTEST_DISCOVER_TESTS(test_hc_map DISCOVERY_TIMEOUT 120)
 
+# B941 (GitLab #259): the collision map and navmesh re-representation is
+# bit-identical -- triangle lists, FindBestZ / CheckLOS and FindPath /
+# FindRoute digests over real zones (skip when /mnt/projects/maps is absent)
+# against the pre-B941 code, plus a synthetic V2 map that always runs.
+SET(TEST_GAME_STATE_IDENTITY_SOURCES
+    test_game_state_identity.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/hc_map.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/raycast_mesh.cpp
+    ${CMAKE_SOURCE_DIR}/src/common/util/compression.cpp
+)
+SET(TEST_GAME_STATE_IDENTITY_LIBS GTest::gtest_main ${FMT_LIB} ${ZLIB_LIBRARIES})
+IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
+    LIST(APPEND TEST_GAME_STATE_IDENTITY_SOURCES
+        ${CMAKE_SOURCE_DIR}/src/client/pathfinder_nav_mesh.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/navmesh_load.cpp)
+    LIST(APPEND TEST_GAME_STATE_IDENTITY_LIBS ${RECAST_LIBRARY} ${DETOUR_LIBRARY})
+ENDIF()
+ADD_EXECUTABLE(test_game_state_identity ${TEST_GAME_STATE_IDENTITY_SOURCES})
+TARGET_LINK_LIBRARIES(test_game_state_identity ${TEST_GAME_STATE_IDENTITY_LIBS})
+GTEST_DISCOVER_TESTS(test_game_state_identity DISCOVERY_TIMEOUT 120)
+
 # T19: zone_lines.cpp (EQT::ZoneLines JSON parser, both the zone-specific
 # data/zone_lines/*.json format and the legacy data/zone_lines.json format)
 # unit tests. Real fixtures are checked-in repo data (no external
@@ -69,6 +90,7 @@ SET(TEST_PATHFINDER_LIBS GTest::gtest_main ${FMT_LIB})
 IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
     LIST(APPEND TEST_PATHFINDER_SOURCES
         ${CMAKE_SOURCE_DIR}/src/client/pathfinder_nav_mesh.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/navmesh_load.cpp
         ${CMAKE_SOURCE_DIR}/src/common/util/compression.cpp
     )
     LIST(APPEND TEST_PATHFINDER_LIBS ${RECAST_LIBRARY} ${DETOUR_LIBRARY} ${ZLIB_LIBRARIES})
