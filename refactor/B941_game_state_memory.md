@@ -73,4 +73,17 @@ every exit path.
 
 ## Review
 
-(filled at hand-back — see `refactor/B941/README.md`)
+Evidence, tables and the "Not verified" list: `refactor/B941/README.md`.
+
+- Deviation: `include/common/util/ksm.h` deleted (its last user was
+  `RaycastMesh`; ZeroCallers flagged its helpers), with its three B501
+  EXEMPT rows in `scripts/refactor/check_zero_callers.py`.
+- Deviation: `tests/test_hc_map.cpp` pinned the STORED vertex count of
+  befallen / qeynos2, which this unit changes by design; the two numbers were
+  updated (faces, bounds and pinned queries unchanged). No budget, golden,
+  gate baseline or gate assertion was touched.
+- Deviation: `scripts/client_ledger_capture.sh` now loads the collision map
+  and navmesh (it loaded neither, so x86 `game_state` was ~0.3 MB) and gained
+  `--tour` / `--client-arg`; `scripts/build-gles2-x86.sh` calls its stamp
+  script by absolute path (it failed with exit 127 outside the repo root).
+- B942 (#260) fixed on the branch; B945 (#263) filed, not fixed.
