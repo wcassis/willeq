@@ -1,0 +1,29 @@
+budget	now MiB	worst benchmark	worst x86 client	worst Pi client	worst gate run	worst B	worst source	x1.25 B	new MiB	new B	verdict
+memoryLedgerBudgets.archives	4	1,409,088 (eastwastes)	2,163,296 (timorous (summary_after.md))	2,010,568 (eastwastes @zone_load_complete)	1,329,808 (qeynos2_coverage)	2,163,296	x86 client: timorous (summary_after.md)	2,704,120	3	3,145,728	LOWER
+memoryLedgerBudgets.textures_decoded	20	316,432 (thurgadina)	1,056,288 (timorous (summary_after.md))	899,208 (chardok @steady_60s)	191,344 (timorous_coverage)	1,056,288	x86 client: timorous (summary_after.md)	1,320,360	2	2,097,152	LOWER
+memoryLedgerBudgets.entity_models	84	5,083,088 (nektulos)	17,491,440 (dreadlands (summary_after.md))	31,563,888 (charasis_retry @zone_load_complete)	4,494,112 (iceclad_coverage)	31,563,888	Pi client: charasis_retry @zone_load_complete	39,454,860	38	39,845,888	LOWER
+gpuTextureBytes	64	16,797,104 (qeynos)	-	-	31,735,808 (qeynos2)	31,735,808	gate: qeynos2	39,669,760	38	39,845,888	LOWER
+textureCacheBytesUsed	64	16,250,840 (qeynos)	-	-	42,226,984 (qeynos2)	42,226,984	gate: qeynos2	52,783,730	51	53,477,376	LOWER
+characterModelsBytes	40	1,544,392 (oot)	-	-	1,522,794 (iceclad_coverage)	1,544,392	benchmark: oot	1,930,490	2	2,097,152	LOWER
+
+headroom against the new budget at the asserted point (census)
+category	zones	over budget	worst zone %	qeynos2 %	gfaydark %	befallen %	iceclad %	timorous %
+archives	117	0	44.8 (eastwastes)	42.3	41.4	40.7	41.0	42.0
+textures_decoded	117	0	15.1 (thurgadina)	7.1	5.3	2.5	4.0	9.1
+entity_models	117	0	12.8 (nektulos)	10.7	10.6	11.2	11.3	10.7
+estimate:gpuTextureBytes	117	0	42.2 (qeynos)	23.4	16.3	6.6	10.0	11.4
+estimate:textureCacheBytesUsed	117	0	30.4 (qeynos)	16.7	11.7	4.6	4.9	5.8
+estimate:characterModelsBytes	117	0	73.6 (oot)	68.9	68.9	68.9	72.6	69.9
+
+gate invocations (golden + coverage JSON) against the new budget, % of budget
+file	archives	textures_decoded	entity_models	estimate:gpuTextureBytes	estimate:textureCacheBytesUsed	estimate:characterModelsBytes
+befallen_coverage_mem.json	40.7	2.5	11.2	6.6	4.6	68.9
+befallen_mem.json	n/a (0)	0.1	n/a (0)	5.6	5.4	n/a (0)
+gfaydark_coverage_mem.json	41.4	5.3	10.6	16.3	11.7	68.9
+gfaydark_mem.json	n/a (0)	0.2	n/a (0)	21.2	20.9	n/a (0)
+iceclad_coverage_mem.json	41.0	4.0	11.3	10.0	4.9	72.6
+iceclad_mem.json	n/a (0)	0.1	n/a (0)	7.4	7.2	n/a (0)
+qeynos2_coverage_mem.json	42.3	7.2	10.7	23.4	16.7	68.9
+qeynos2_mem.json	n/a (0)	0.5	n/a (0)	79.6	79.0	n/a (0)
+timorous_coverage_mem.json	42.0	9.1	10.7	11.4	5.8	69.9
+timorous_mem.json	n/a (0)	0.2	n/a (0)	6.2	6.0	n/a (0)

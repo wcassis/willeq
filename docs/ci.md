@@ -137,6 +137,13 @@ checked once, at the end of the run. B927 derived the `zone_parse` budget from
 that point, and mid-load `zone_parse` is several times higher
 (`refactor/B927/README.md`).
 
+B943 (2026-09-30) ratcheted six more orangepi budgets to the same convention
+(measured worst x 1.25, whole MiB): `archives` 3, `textures_decoded` 2,
+`entity_models` 38, `gpuTextureBytes` 38, `textureCacheBytesUsed` 51 and
+`characterModelsBytes` 2 MiB; `audio` was held at 32 (`refactor/B943/README.md`).
+The table is in `config/constrained_presets.json` and pinned in
+`tests/test_constrained_renderer.cpp`; do not copy the numbers here.
+
 ## Reading a pipeline (worker or human)
 
 A human: the pipeline list is linked from the project page, and every job page

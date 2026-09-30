@@ -1427,3 +1427,35 @@ memory against frame rate on the target (the Orange Pi), memory wins. Frame
 rate is still measured and reported beside every memory change; the project's
 standing rule that under 30 fps on the Pi is a client defect is not withdrawn,
 only ranked below memory.
+
+## 2026-09-30 — six more orangepi budgets ratchet down, audio held (Will, B943)
+
+**Will, in chat: "lower the seven budgets, hold audio".** Seven categories had
+a convention value below their budget in B927's report table (`refactor/B927/README.md`,
+"Every other budgeted category"). `zone_parse` was already done (B927). Six moved
+here, by the in-tree rule (measured worst x 1.25, rounded up to a whole MiB).
+**`audio` stays at 32 MiB**: the only Pi worst on record (25,725,824 B, qeynos2,
+T496) predates T504 and the B854 rendered sweep covered no classic zone, so
+there is no current figure to derive from.
+
+| budget (orangepi) | was | measured worst (source) | x 1.25 | now |
+|---|---:|---|---:|---:|
+| `memoryLedgerBudgets.archives` | 4 MiB | 2,163,296 (x86 client, timorous, B909; Pi 2,010,568 eastwastes) | 2,704,120 | **3 MiB** |
+| `memoryLedgerBudgets.textures_decoded` | 20 MiB | 1,056,288 (x86 client, timorous; Pi 899,208 chardok) | 1,320,360 | **2 MiB** |
+| `memoryLedgerBudgets.entity_models` | 84 MiB | 31,563,888 (Pi client, charasis_retry, B854 ledger; x86 client 17,491,440 dreadlands) | 39,454,860 | **38 MiB** |
+| `gpuTextureMemoryBytes` (`gpuTextureBytes`) | 64 MiB | 31,735,808 (gate golden run, qeynos2, S3D path; EQE1 census 16,797,104 qeynos) | 39,669,760 | **38 MiB** |
+| `textureMemoryBytes` (`textureCacheBytesUsed`) | 64 MiB | 42,226,984 (gate golden run, qeynos2, S3D path; EQE1 census 16,250,840 qeynos) | 52,783,730 | **51 MiB** |
+| `characterModelsMemoryBytes` (`characterModelsBytes`) | 40 MiB | 1,544,392 (benchmark census, oot) | 1,930,490 | **2 MiB** |
+
+The first derivation used only the 118-zone census, whose runs use the EQE1
+path (qeynos 16.8 / 16.3 MB), and gave 21 and 20 MiB. The gate's own qeynos2
+golden invocation loads S3D textures and holds 31.7 / 42.2 MB, and at
+`textureMemoryBytes` = 20 MiB it segfaults (B944, #262): the values above are
+the corrected ones. `textureMemoryBytes` is also the texture cache's real
+eviction ceiling, so it changes behaviour, not only an assertion. The blessed memory-coverage
+`characterModelsBytes` baselines in `tests/goldens/manifest.json` did not move;
+only the budget the estimate is checked against did. All 117 measured zones and
+the five gate zones, golden and coverage invocations, stay under every new
+budget at the asserted point (worst 79.6 % of the GPU texture budget, qeynos2
+golden). Recomputation:
+`refactor/B943/budget_ratchet_census.py`; write-up `refactor/B943/README.md`.
