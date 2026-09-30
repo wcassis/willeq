@@ -37,6 +37,8 @@
 #          [--pi-dir /mnt/projects/fable/ci-arm/<sha>] [-r "1280 720"]
 #          [--char-level N --char-exp E]   (the eligibility leg; see CHAR_LEVEL)
 #          [--owner NAME] [--tour FILE] [--env K=V]... [--drive-keys]
+#          [--snap-points startup,ready,steady_60s]   (B932: a smaps/maps
+#          snapshot at each named ledger point, rendered_zone_run.py)
 #          [--allow-vm-lane]   (B909's A/B, scripts/pi/collision_ab.sh:
 #          --tour replaces the /loc-wait-/q script, --env adds client
 #          environment, --drive-keys plays scripts/pi/uinput_drive.py's fixed
@@ -84,6 +86,7 @@ TOUR_IN=""
 EXTRA_ENV=""
 DRIVE_KEYS=0
 ALLOW_VM=0
+SNAP_POINTS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --zones) ZONES="$2"; shift 2 ;;
@@ -101,7 +104,8 @@ while [ $# -gt 0 ]; do
         --env) case "$2" in [A-Z_]*=*) EXTRA_ENV="$EXTRA_ENV '$2'";; *) echo "bad --env $2" >&2; exit 64;; esac; shift 2 ;;
         --drive-keys) DRIVE_KEYS=1; shift ;;
         --allow-vm-lane) ALLOW_VM=1; shift ;;
-        -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
+        --snap-points) SNAP_POINTS="$2"; shift 2 ;;
+        -h|--help) sed -n '2,50p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -244,7 +248,7 @@ pi_remote "mkdir -p '$PI_BIN_DIR' && cp '$PI_SHA_DIR/bin/willeq' '$PI_BIN' && su
     echo "pi_meminfo=$(pi_remote "grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree|CmaTotal|CmaFree' /proc/meminfo" </dev/null | tr -s ' ' | tr '\n' ';')"
     echo "worktree_commit=$(git -C "$REPO" rev-parse HEAD)"
     echo "resolution=$RES cap_s=$CAP_S stall_s=$STALL_S hold_s=$HOLD_S"
-    echo "lane=$EQEMU_HOST tour=${TOUR_IN:-default} extra_env=${EXTRA_ENV:-none} drive_keys=$DRIVE_KEYS"
+    echo "lane=$EQEMU_HOST tour=${TOUR_IN:-default} extra_env=${EXTRA_ENV:-none} drive_keys=$DRIVE_KEYS snap_points=${SNAP_POINTS:-none}"
 } > "$OUT/binary_identity.txt"
 say "$(tr '\n' ' ' < "$OUT/binary_identity.txt")"
 
@@ -303,7 +307,7 @@ run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     # shellcheck disable=SC2086
     local remote="rm -rf '$pidir' && mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && ${drive}\
 env TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTRA_ENV \
-python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S -- \
+python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} -- \
 '$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
 --eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
 --dump-frames-dir '$pidir/frames' --dump-every 100 --dump-max-frames 3 \
