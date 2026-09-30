@@ -1660,7 +1660,9 @@ void COpenGLES2Driver::removeTexture(ITexture* texture)
     // Unbind if currently bound
     COGLES2Texture* gles2Tex = static_cast<COGLES2Texture*>(texture);
     if (gles2Tex) {
-        GLuint name = gles2Tex->getOpenGLTextureName();
+        // B944: the STORED name -- removing an evicted texture must never
+        // re-upload it (getOpenGLTextureName() would).
+        GLuint name = gles2Tex->getStoredTextureName();
         for (int i = 0; i < 2; i++) {
             if (state_.boundTexture[i] == name)
                 state_.boundTexture[i] = 0;
@@ -2275,6 +2277,52 @@ void gles2SetAlphaCompanion(void* mainTexture, void* companionTexture)
     auto* t = static_cast<irr::video::COGLES2Texture*>(
         static_cast<irr::video::ITexture*>(mainTexture));
     t->setAlphaCompanion(static_cast<irr::video::ITexture*>(companionTexture));
+}
+
+// B944 (GitLab #262): texture residency for ConstrainedTextureCache's
+// eviction. The cache releases a texture's GL storage instead of destroying
+// the object, so no holder of the ITexture* ever dangles; the first bind of an
+// evicted texture calls the owner's restore function (see COGLES2Texture's
+// "Residency" block). Every function takes an ITexture* the caller has already
+// checked is an EDT_OGLES2 texture.
+static irr::video::COGLES2Texture* asGles2Texture(void* tex)
+{
+    return static_cast<irr::video::COGLES2Texture*>(static_cast<irr::video::ITexture*>(tex));
+}
+
+void gles2TextureReleaseStorage(void* texture)
+{
+    if (texture) asGles2Texture(texture)->releaseStorage();
+}
+
+void gles2TextureAdoptStorage(void* texture, unsigned int glTexName, unsigned int gpuBytes)
+{
+    if (texture) asGles2Texture(texture)->adoptStorage((GLuint)glTexName, gpuBytes);
+}
+
+// Move `donor`'s GL storage into `texture` (the restore path uploads into a
+// throwaway texture through the normal upload code and moves the result).
+// The donor keeps nothing; destroying it afterwards deletes no GL object.
+bool gles2TextureTransferStorage(void* texture, void* donor)
+{
+    if (!texture || !donor) return false;
+    irr::u32 bytes = 0;
+    GLuint name = asGles2Texture(donor)->takeStorage(&bytes);
+    if (!name) return false;
+    asGles2Texture(texture)->adoptStorage(name, bytes);
+    return true;
+}
+
+void gles2TextureSetResidencyOwner(void* texture, bool (*restoreFn)(void* ctx, void* texture),
+                                   void* ctx)
+{
+    if (!texture) return;
+    asGles2Texture(texture)->setResidencyOwner(restoreFn, ctx);
+}
+
+bool gles2TextureIsEvicted(void* texture)
+{
+    return texture && asGles2Texture(texture)->isEvicted();
 }
 
 void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,

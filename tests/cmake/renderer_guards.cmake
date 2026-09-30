@@ -35,6 +35,26 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_constrained_texture_cache DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B944 (GitLab #262): eviction under the ceiling keeps the ITexture object and
+# the driver's first bind restores it. Live consumers (materials the cache does
+# not know) are driven past the ceiling; the objects must stay valid, the
+# accounting must count resident storage only, and a draw must restore the
+# same pixels. Real EDT_OGLES2 surfaceless device; the ETC1 half also needs
+# qeynos2_obj.eqe1. Self-skips when either is unavailable.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_texture_eviction_residency
+        test_texture_eviction_residency.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_texture_eviction_residency PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    # ZoneMeshBuilder's layout depends on EQT_HAS_TEXTURE_ATLAS, which
+    # willeq_core compiles with (PRIVATE); a test that constructs one must
+    # agree or it gets a smaller object than the core's constructor writes
+    # (ASan: stack-buffer-overflow in ZoneMeshBuilder::ZoneMeshBuilder).
+    TARGET_COMPILE_DEFINITIONS(test_texture_eviction_residency PRIVATE EQT_HAS_TEXTURE_ATLAS)
+    TARGET_LINK_LIBRARIES(test_texture_eviction_residency GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_texture_eviction_residency DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T123: ObjectNodeTextureGuard regression coverage — a detached object node's
 # node-level Materials copy (what CMeshSceneNode::render() actually reads,
 # ReadOnlyMaterials=false default) must not go dangling after

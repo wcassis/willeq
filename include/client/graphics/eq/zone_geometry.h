@@ -91,6 +91,11 @@ public:
     // Clear texture cache (forces fresh texture lookups on next build)
     void clearTextureCache();
 
+    // B944: drop every name mapped to `texture`, which ConstrainedTextureCache
+    // is about to destroy -- this map is raw pointers registered by the cache
+    // itself (registerUploadedTexture), so the cache scrubs it the same way.
+    void forgetTexture(const irr::video::ITexture* texture);
+
     // Constrained rendering support
     // Set optional constrained texture cache for memory-limited rendering
     // When set, textures are loaded through the cache with downsampling and 16-bit conversion

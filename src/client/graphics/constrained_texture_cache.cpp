@@ -80,6 +80,17 @@ void ConstrainedTextureCache::splitCacheKey(const std::string& key, std::string&
 ConstrainedTextureCache::ConstrainedTextureCache(const ConstrainedRendererConfig& config)
     : config_(config)
 {
+    // B944 (GitLab #262): a TEST knob, never set by any shipped path -- force
+    // the eviction ceiling low under the real preset so eviction can be
+    // exercised live (refactor/B944/evict_client_capture.sh). Loud on purpose.
+    if (const char* forced = std::getenv("WILLEQ_TEXTURE_MEMORY_BYTES")) {
+        const unsigned long long bytes = std::strtoull(forced, nullptr, 10);
+        if (bytes > 0) {
+            LOG_WARN(MOD_GRAPHICS, "Constrained cache: WILLEQ_TEXTURE_MEMORY_BYTES={} overrides the "
+                     "preset's textureMemoryBytes {} (test knob)", bytes, config_.textureMemoryBytes);
+            config_.textureMemoryBytes = static_cast<size_t>(bytes);
+        }
+    }
 }
 
 void ConstrainedTextureCache::setDriver(irr::video::IVideoDriver* driver) {
@@ -100,6 +111,13 @@ ConstrainedTextureCache::~ConstrainedTextureCache() {
         dumpEQE1RequestLog(std::string(dir) + "/eqe1_requests_FINAL.tsv");
     }
     clear();
+    // B944: deliberately NOTHING here touches what clear() preserved (the
+    // protected entries). At client shutdown the renderer has already dropped
+    // the Irrlicht device, and with it every texture object -- the first
+    // version of this unit cleared their residency back-pointers here and the
+    // ASan client read freed memory doing it. None of them needs it: a
+    // protected entry is never evicted (evictUntilAvailable() skips it), so it
+    // never carries a residency owner.
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +126,9 @@ ConstrainedTextureCache::~ConstrainedTextureCache() {
 
 void ConstrainedTextureCache::touchInternal(const std::string& name) {
     auto it = cache_.find(name);
-    if (it != cache_.end()) {
+    // B944: an evicted entry is not in lruOrder_ (its iterator is stale); it
+    // re-enters the list when its storage is restored on first bind.
+    if (it != cache_.end() && it->second.resident) {
         lruOrder_.erase(it->second.lruIterator);
         lruOrder_.push_back(name);
         it->second.lruIterator = std::prev(lruOrder_.end());
@@ -325,36 +345,17 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
         return nullptr;
     }
 
-    // Convert RGBA → ARGB (Irrlicht's native format)
-    std::vector<uint8_t> argbData(entry.rgbaPixels.size());
-    for (size_t i = 0; i < entry.rgbaPixels.size(); i += 4) {
-        argbData[i + 0] = entry.rgbaPixels[i + 2];  // B
-        argbData[i + 1] = entry.rgbaPixels[i + 1];  // G
-        argbData[i + 2] = entry.rgbaPixels[i + 0];  // R
-        argbData[i + 3] = entry.rgbaPixels[i + 3];  // A
-    }
-
-    irr::core::dimension2d<irr::u32> size(entry.width, entry.height);
-    // T491: from here the bytes are the driver's (IImage copy, COGLES2Texture
-    // and its mip/lock buffers), not the cache's decoded entry.
-    eqt::memory::MemoryScope driverScope(eqt::memory::Category::TexturesDriver);
-    irr::video::IImage* image = driver_->createImageFromData(
-        irr::video::ECF_A8R8G8B8, size, argbData.data(), false);
-
-    irr::video::ITexture* texture = nullptr;
-    if (image) {
-        // P46d: MUST use internalKey (not the plain `name`), not just for
-        // this class's own bookkeeping: COpenGLES2Driver::addTexture()
-        // itself deduplicates by name (`findTexture(name)`; if a texture
-        // with that name already exists, it returns the EXISTING texture
-        // UNCHANGED, silently discarding the new image data). Passing the
-        // plain name for both the unmasked and masked variant made the
-        // masked upload a no-op that returned the SAME (unmasked) GPU
-        // texture — caught by this unit's own discard-fire re-verification,
-        // which found identical pointers for both uploads until this fix.
-        texture = driver_->addTexture(internalKey.c_str(), image);
-        image->drop();
-    }
+    // P46d: MUST use internalKey (not the plain `name`), not just for this
+    // class's own bookkeeping: COpenGLES2Driver::addTexture() itself
+    // deduplicates by name (`findTexture(name)`; if a texture with that name
+    // already exists, it returns the EXISTING texture UNCHANGED, silently
+    // discarding the new image data). Passing the plain name for both the
+    // unmasked and masked variant made the masked upload a no-op that
+    // returned the SAME (unmasked) GPU texture — caught by this unit's own
+    // discard-fire re-verification, which found identical pointers for both
+    // uploads until this fix.
+    irr::video::ITexture* texture =
+        createDecodedTexture(internalKey, entry.rgbaPixels, entry.width, entry.height);
 
     bool hasAlpha = entry.hasAlpha;
     int width = entry.width;
@@ -368,29 +369,6 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
         return nullptr;
     }
 
-#ifdef EQT_HAS_DRM
-    // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround).
-    // P42 (P38 finding, refactor/perf_truth_audit.md): this used to branch on
-    // config_.enableMipmaps to request GL_LINEAR_MIPMAP_LINEAR here, but
-    // COpenGLES2Driver::applyMaterialRenderState() unconditionally
-    // overwrites MIN_FILTER to plain GL_LINEAR/GL_NEAREST on every single
-    // draw before this texture is ever sampled -- the mipmap filter mode
-    // set here was always stomped before use, a total no-op (and, while
-    // live, requested filtering against an incomplete mip chain -- no code
-    // path here ever called glGenerateMipmap). Simplified to the filter
-    // that actually took effect; no behavior change, this branch never
-    // affected rendering.
-    {
-        irr::u32 glName = texture->getDriverTextureHandle();
-        if (glName != 0) {
-            glBindTexture(GL_TEXTURE_2D, glName);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glBindTexture(GL_TEXTURE_2D, 0);
-        }
-    }
-#endif
-
     // Register in LRU cache (P46d: under internalKey — see cacheKey())
     lruOrder_.push_back(internalKey);
     CachedTexture cached;
@@ -398,6 +376,9 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     cached.sizeBytes = textureSize;
     cached.hasAlpha = hasAlpha;
     cached.lruIterator = std::prev(lruOrder_.end());
+    // B944: an eviction can restore this from a registered
+    // TextureSourceProvider (the raw bytes are the caller's and are gone).
+    cached.source = CachedTexture::Source::Decoded;
 
     // P13: consume this name's pending ledger tag (set by getOrLoad) and
     // record the upload row. No-op when disabled.
@@ -440,6 +421,63 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
 
     LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' uploaded ({}x{}, {} bytes, alpha={}{})",
               name, width, height, textureSize, hasAlpha, applyPaletteMask ? ", masked variant" : "");
+    return texture;
+}
+
+// B944: the driver half of uploadTexture()'s decode path, shared with the
+// eviction restore so a restored texture goes through the SAME conversion,
+// upload and filter setup as the first one. `glName` is the driver-side name
+// (addTexture dedups by it, see the P46d note in uploadTexture()).
+irr::video::ITexture* ConstrainedTextureCache::createDecodedTexture(const std::string& glName,
+                                                                    const std::vector<uint8_t>& rgbaPixels,
+                                                                    int width, int height) {
+    // Convert RGBA → ARGB (Irrlicht's native format)
+    std::vector<uint8_t> argbData(rgbaPixels.size());
+    for (size_t i = 0; i < rgbaPixels.size(); i += 4) {
+        argbData[i + 0] = rgbaPixels[i + 2];  // B
+        argbData[i + 1] = rgbaPixels[i + 1];  // G
+        argbData[i + 2] = rgbaPixels[i + 0];  // R
+        argbData[i + 3] = rgbaPixels[i + 3];  // A
+    }
+
+    irr::core::dimension2d<irr::u32> size(width, height);
+    // T491: from here the bytes are the driver's (IImage copy, COGLES2Texture
+    // and its mip/lock buffers), not the cache's decoded entry.
+    eqt::memory::MemoryScope driverScope(eqt::memory::Category::TexturesDriver);
+    irr::video::IImage* image = driver_->createImageFromData(
+        irr::video::ECF_A8R8G8B8, size, argbData.data(), false);
+
+    irr::video::ITexture* texture = nullptr;
+    if (image) {
+        texture = driver_->addTexture(glName.c_str(), image);
+        image->drop();
+    }
+    if (!texture) {
+        return nullptr;
+    }
+
+#ifdef EQT_HAS_DRM
+    // Set bilinear filtering directly on GL texture (Lima/Mali400 workaround).
+    // P42 (P38 finding, refactor/perf_truth_audit.md): this used to branch on
+    // config_.enableMipmaps to request GL_LINEAR_MIPMAP_LINEAR here, but
+    // COpenGLES2Driver::applyMaterialRenderState() unconditionally
+    // overwrites MIN_FILTER to plain GL_LINEAR/GL_NEAREST on every single
+    // draw before this texture is ever sampled -- the mipmap filter mode
+    // set here was always stomped before use, a total no-op (and, while
+    // live, requested filtering against an incomplete mip chain -- no code
+    // path here ever called glGenerateMipmap). Simplified to the filter
+    // that actually took effect; no behavior change, this branch never
+    // affected rendering.
+    {
+        irr::u32 glTexName = texture->getDriverTextureHandle();
+        if (glTexName != 0) {
+            glBindTexture(GL_TEXTURE_2D, glTexName);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+    }
+#endif
     return texture;
 }
 
@@ -523,8 +561,10 @@ bool ConstrainedTextureCache::registerTexture(const std::string& name,
             touchInternal(name);
             return true;
         }
-        // Different texture under same name — evict the old one first
-        evictTexture(name);
+        // Different texture under same name — destroy the old one first
+        // (B944: a REPLACEMENT, so the old object really goes; evictTexture()
+        // would only release its storage and keep it under this key).
+        destroyEntry(name);
     }
 
     // Too large to ever fit
@@ -618,9 +658,6 @@ void ConstrainedTextureCache::clear() {
         if (protectedTextures_.find(pair.first) != protectedTextures_.end()) {
             continue;
         }
-        for (auto* listener : evictionListeners_) {
-            listener->onTextureEvicted(pair.first, pair.second.texture);
-        }
         // T119: clear() is the zone-unload hook and, until this fix, was the
         // one texture-destruction path in this class that did NOT call
         // clearTextureReferences() before driver_->removeTexture() --
@@ -640,10 +677,13 @@ void ConstrainedTextureCache::clear() {
         // exact mechanism that already solves this for eviction; mirroring
         // it here closes the same gap for zone unload without touching
         // ownership/refcounting semantics or GL teardown order.
-        if (pair.second.texture) {
-            clearTextureReferences(pair.second.texture);
-            driver_->removeTexture(pair.second.texture);
-        }
+        //
+        // B944: the listeners, the scene scrub and the removal now live in
+        // destroyTextures(), shared with destroyEntry(), and cover the ETC1
+        // alpha COMPANION too -- clear() used to remove only the main texture,
+        // so every zone unload leaked each companion (its GL storage and its
+        // driver object) for the life of the process.
+        destroyTextures(pair.first, pair.second, /*scrubMeshBuilder=*/false);
     }
     // T205: preserve protected entries across the zone-unload wipe.
     //
@@ -675,8 +715,19 @@ void ConstrainedTextureCache::clear() {
     cache_.clear();
     lruOrder_.clear();
     currentUsage_ = 0;
+    // B944: every shell left in the map was destroyed above (protected ones
+    // are re-registered below with their own entry, never through this map).
+    evictedOwner_.clear();
 
     for (auto& [name, entry] : preserved) {
+        if (!entry.resident) {
+            // B944: protected AFTER it was evicted -- still a valid object;
+            // it re-enters the LRU and the usage when its first bind restores it.
+            cache_.emplace(name, entry);
+            evictedOwner_[entry.texture] = name;
+            if (entry.alphaTexture) evictedOwner_[entry.alphaTexture] = name;
+            continue;
+        }
         currentUsage_ += entry.sizeBytes;
         lruOrder_.push_back(name);
         // T486 (2026-09-14 audit, item 1): the copied entry still holds its
@@ -763,6 +814,8 @@ void ConstrainedTextureCache::resetStatistics() {
     cacheHits_ = 0;
     cacheMisses_ = 0;
     evictionCount_ = 0;
+    restoreCount_ = 0;         // B944
+    restoreFailureCount_ = 0;
 }
 
 bool ConstrainedTextureCache::dumpLedger(const std::string& path, const std::string& runLabel) {

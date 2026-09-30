@@ -200,7 +200,9 @@ print exactly one line. `docker restart` does NOT bring loginserver back
   Clean shutdown (down.sh) + restore configs at end.
 - Client: build-gles2/bin/willeq (EGL surfaceless, no X needed); ALWAYS pass
   `--eqe1-path` on any run whose pixels will be judged — the S3D path thrashes
-  the constrained texture budget and paints placeholders (T226, not a defect);
+  the constrained texture budget (T226). Since B944 an evicted zone, object or
+  sky texture is restored on its next bind instead of painted as the
+  placeholder, but an evicted S3D-path character/equipment texture still is;
   account willeq_test / Testchar (GM); EQ data
   /mnt/projects/EverQuestP1999; sheets /mnt/projects/EverQuest_ETC1.
   Assets are read from NFS everywhere (never copy to Pi-local).

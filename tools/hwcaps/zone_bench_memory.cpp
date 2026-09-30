@@ -131,6 +131,14 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
         snap.textureCacheBytesUsed = data.textureCache->getCurrentUsage();
         snap.textureCacheBytesLimit = data.textureCache->getMemoryLimit();
         snap.textureCacheCount = data.textureCache->getTextureCount();
+        // B944: the eviction/restore traffic behind those numbers, on stdout
+        // only (the memory JSON's schema is the gate's and is unchanged).
+        printf("[texture-cache] entries=%zu resident=%zu evictions=%zu restores=%zu "
+               "restore_failures=%zu used=%zu limit=%zu\n",
+               snap.textureCacheCount, data.textureCache->getResidentTextureCount(),
+               data.textureCache->getEvictionCount(), data.textureCache->getRestoreCount(),
+               data.textureCache->getRestoreFailureCount(), snap.textureCacheBytesUsed,
+               snap.textureCacheBytesLimit);
 
         // Framebuffer budget/usage: same ConstrainedRendererConfig (OrangePi
         // preset) the loader built the texture cache from -- see block

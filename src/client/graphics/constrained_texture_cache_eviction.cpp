@@ -103,41 +103,33 @@ bool ConstrainedTextureCache::evictUntilAvailable(size_t bytesNeeded) {
 
 void ConstrainedTextureCache::evictTexture(const std::string& name) {
     auto it = cache_.find(name);
-    if (it == cache_.end()) return;
+    if (it == cache_.end() || !it->second.resident) return;
 
-    irr::video::ITexture* texture = it->second.texture;
-    size_t sizeBytes = it->second.sizeBytes;
-
-    LOG_DEBUG(MOD_GRAPHICS, "Evicting texture '{}' ({} bytes)", name, sizeBytes);
+    LOG_DEBUG(MOD_GRAPHICS, "Evicting texture '{}' ({} bytes)", name, it->second.sizeBytes);
 
     // P13: record the eviction (name/bytes/category) and thrash-detect any
     // later re-upload of this same name. No-op when disabled.
     if (ledgerEnabled_) {
-        ledger_.recordEviction(name, sizeBytes, it->second.category);
+        ledger_.recordEviction(name, it->second.sizeBytes, it->second.category);
     }
-
-    // Notify listeners before clearing references and removing texture
-    for (auto* listener : evictionListeners_) {
-        listener->onTextureEvicted(name, texture);
-    }
-
-    // CRITICAL: Clear all references to this texture from mesh materials BEFORE removing
-    // This prevents crashes from dangling texture pointers during rendering
-    if (texture) {
-        clearTextureReferences(texture);
-        driver_->removeTexture(texture);
-    }
-
-    // Update memory tracking
-    currentUsage_ -= sizeBytes;
-
-    // Remove from LRU list
-    lruOrder_.erase(it->second.lruIterator);
-
-    // Remove from cache
-    cache_.erase(it);
-
     ++evictionCount_;
+
+    // B944 (GitLab #262): give back the STORAGE and keep the object, so no
+    // holder of this ITexture* is left with a dangling pointer; its first
+    // bind restores it. Before B944 every eviction destroyed the object, and
+    // any holder the guards below did not reach -- the benchmark's region
+    // meshes (no guard at all), ZoneMeshBuilder's name map, RaceModelLoader's
+    // cached meshes -- dereferenced freed memory.
+    if (canReleaseStorage(name, it->second)) {
+        releaseStorage(name, it->second);
+        return;
+    }
+
+    // Pre-B944 path, for an entry with nothing to restore from: destroy it.
+    // The listeners and clearTextureReferences() swap every holder they reach
+    // to the placeholder (a wrong draw, never a freed pointer, for what they
+    // reach) -- see destroyTextures().
+    destroyEntry(name);
 }
 
 size_t ConstrainedTextureCache::calculateTextureSize(int width, int height) const {

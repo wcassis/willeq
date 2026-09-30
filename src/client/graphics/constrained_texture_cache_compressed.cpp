@@ -228,7 +228,21 @@ void ConstrainedTextureCache::clearEQE1Loaders() {
         std::lock_guard<std::mutex> lock(eqe1LoadersMutex_);
         eqe1Loaders_.clear();
     }
+    std::lock_guard<std::mutex> lock(mutex_);
     compressedEntries_.clear();
+    // B944: an entry's restore source points INTO a loader's mapping, and the
+    // caller (unloadZone) destroys every non-persistent loader right after
+    // this. Only protected entries -- process-lifetime textures from the
+    // persistent willeq.eqe1 -- keep theirs; the rest are destroyed by the
+    // clear() that follows, and until then an evicted one simply cannot be
+    // restored (it binds GL name 0), rather than reading unmapped memory.
+    for (auto& [key, entry] : cache_) {
+        if (entry.source == CachedTexture::Source::Compressed &&
+            protectedTextures_.find(key) == protectedTextures_.end()) {
+            entry.source = CachedTexture::Source::None;
+            entry.compressed = CompressedEntry{};
+        }
+    }
 }
 
 bool ConstrainedTextureCache::hasEQE1Loaders() const {
@@ -387,6 +401,112 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
         return nullptr;
     }
 
+    unsigned int texId = 0;
+    unsigned int alphaTexId = 0;
+    if (!createETC1Storage(name, entry, texId, alphaTexId)) {
+        return nullptr;
+    }
+
+    // Wrap GL handle in ITexture* via driver (gles2WrapTexture declared at file scope above).
+    // P46d: use cacheEntryKey, not the plain `name` -- COpenGLES2Driver::
+    // wrapExternalTexture() does the same name-based dedup as addTexture()
+    // (findTexture(name); if found, returns the EXISTING texture, silently
+    // discarding this upload). See uploadTexture()'s identical fix/comment.
+    irr::video::ITexture* texture = static_cast<irr::video::ITexture*>(
+        gles2WrapTexture(driver_, cacheEntryKey.c_str(), texId,
+                         entry.width, entry.height,
+                         static_cast<unsigned int>(gpuSize)));
+
+    if (!texture) {
+        glDeleteTextures(1, &texId);
+        if (alphaTexId) glDeleteTextures(1, &alphaTexId);
+        LOG_WARN(MOD_GRAPHICS, "Constrained cache: wrapTexture failed for ETC1 '{}'", name);
+        return nullptr;
+    }
+
+    // Wrap alpha companion texture if present
+    irr::video::ITexture* alphaTexture = nullptr;
+    if (alphaTexId) {
+        std::string alphaName = cacheEntryKey + "_alpha";
+        alphaTexture = static_cast<irr::video::ITexture*>(
+            gles2WrapTexture(driver_, alphaName.c_str(), alphaTexId,
+                             entry.width, entry.height,
+                             static_cast<unsigned int>(
+                                 EQT::Graphics::etc1MipChainSize(entry.width, entry.height, entry.mipLevels))));
+        if (!alphaTexture) {
+            glDeleteTextures(1, &alphaTexId);
+            LOG_WARN(MOD_GRAPHICS, "Constrained cache: wrapTexture failed for ETC1 alpha '{}'", alphaName);
+        }
+    }
+
+    // T411 (board B261): the ONE place the pair is known. Recording it on the
+    // texture is what makes an ETC1 alpha visible to the alpha-BLEND shaders
+    // (SOLID3D_FS, UI2D_FS, the particle point sprite); before this only the
+    // alpha-TEST variants saw it, and only where a consumer had remembered to
+    // call setTexture(1, getAlphaTexture(...)).
+    gles2SetAlphaCompanion(texture, alphaTexture);
+
+    // Register in LRU cache (P46d: under cacheEntryKey — see cacheKey())
+    lruOrder_.push_back(cacheEntryKey);
+    CachedTexture cached;
+    cached.texture = texture;
+    cached.alphaTexture = alphaTexture;
+    cached.sizeBytes = gpuSize;
+    cached.hasAlpha = entry.hasAlpha;
+    cached.isETC1 = true;  // H02d: companion-based alpha pipeline
+    cached.lruIterator = std::prev(lruOrder_.end());
+    // B944: the pack entry is where an eviction restores from (the pack is
+    // mapped, so this costs a struct, not the pixels).
+    cached.source = CachedTexture::Source::Compressed;
+    cached.compressed = entry;
+
+    if (ledgerEnabled_) {
+        std::string ledgerCategory = "uncategorized";
+        std::string ledgerCallsite;
+        auto tagIt = pendingLedgerTag_.find(cacheEntryKey);
+        if (tagIt != pendingLedgerTag_.end()) {
+            ledgerCategory = tagIt->second.first;
+            ledgerCallsite = tagIt->second.second;
+            pendingLedgerTag_.erase(tagIt);
+        }
+        cached.category = ledgerCategory;
+        ledger_.recordUpload(name, entry.width, entry.height, gpuSize,
+                              entry.hasAlpha ? "ETC1+alpha" : "ETC1",
+                              ledgerCategory, ledgerCallsite);
+    }
+
+    cache_[cacheEntryKey] = cached;
+    currentUsage_ += gpuSize;
+    ++compressedUploadCount_;
+
+    // Register in mesh builder for entity texture lookups
+    if (meshBuilder_) {
+        meshBuilder_->registerUploadedTexture(name, texture, entry.hasAlpha);
+    }
+
+    LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] ETC1 texture '{}' uploaded ({}x{}, {} mips, {} bytes{})",
+              name, entry.width, entry.height, entry.mipLevels, gpuSize,
+              entry.hasAlpha ? ", +alpha" : "");
+    return texture;
+#else
+    // Non-GLES2 builds: ETC1 not supported, fall through to BMP decode
+    (void)name;
+    (void)cacheEntryKey;
+    (void)entry;
+    LOG_WARN(MOD_GRAPHICS, "Constrained cache: ETC1 upload not available (non-GLES2 build) for '{}'", name);
+    return nullptr;
+#endif
+}
+
+// B944: the GL half of uploadCompressedETC1(), shared with the eviction
+// restore (constrained_texture_cache_residency.cpp) so a restored texture is
+// built by the SAME code as the first upload -- same levels, same filters.
+// Leaves GL_TEXTURE_2D on the active unit bound to 0, as it always did.
+bool ConstrainedTextureCache::createETC1Storage(const std::string& name, const CompressedEntry& entry,
+                                                unsigned int& texIdOut, unsigned int& alphaTexIdOut) {
+    texIdOut = 0;
+    alphaTexIdOut = 0;
+#ifdef EQT_EQE1_UPLOAD_AVAILABLE
     // Generate GL texture and upload ETC1 mip chain
     static constexpr uint32_t GL_ETC1_RGB8 = 0x8D64;  // GL_ETC1_RGB8_OES
 
@@ -394,7 +514,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     glGenTextures(1, &texId);
     if (texId == 0) {
         LOG_ERROR(MOD_GRAPHICS, "Constrained cache: glGenTextures failed for '{}'", name);
-        return nullptr;
+        return false;
     }
 
     glBindTexture(GL_TEXTURE_2D, texId);
@@ -512,90 +632,13 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    // Wrap GL handle in ITexture* via driver (gles2WrapTexture declared at file scope above).
-    // P46d: use cacheEntryKey, not the plain `name` -- COpenGLES2Driver::
-    // wrapExternalTexture() does the same name-based dedup as addTexture()
-    // (findTexture(name); if found, returns the EXISTING texture, silently
-    // discarding this upload). See uploadTexture()'s identical fix/comment.
-    irr::video::ITexture* texture = static_cast<irr::video::ITexture*>(
-        gles2WrapTexture(driver_, cacheEntryKey.c_str(), texId,
-                         entry.width, entry.height,
-                         static_cast<unsigned int>(gpuSize)));
-
-    if (!texture) {
-        glDeleteTextures(1, &texId);
-        if (alphaTexId) glDeleteTextures(1, &alphaTexId);
-        LOG_WARN(MOD_GRAPHICS, "Constrained cache: wrapTexture failed for ETC1 '{}'", name);
-        return nullptr;
-    }
-
-    // Wrap alpha companion texture if present
-    irr::video::ITexture* alphaTexture = nullptr;
-    if (alphaTexId) {
-        std::string alphaName = cacheEntryKey + "_alpha";
-        alphaTexture = static_cast<irr::video::ITexture*>(
-            gles2WrapTexture(driver_, alphaName.c_str(), alphaTexId,
-                             entry.width, entry.height,
-                             static_cast<unsigned int>(
-                                 EQT::Graphics::etc1MipChainSize(entry.width, entry.height, entry.mipLevels))));
-        if (!alphaTexture) {
-            glDeleteTextures(1, &alphaTexId);
-            LOG_WARN(MOD_GRAPHICS, "Constrained cache: wrapTexture failed for ETC1 alpha '{}'", alphaName);
-        }
-    }
-
-    // T411 (board B261): the ONE place the pair is known. Recording it on the
-    // texture is what makes an ETC1 alpha visible to the alpha-BLEND shaders
-    // (SOLID3D_FS, UI2D_FS, the particle point sprite); before this only the
-    // alpha-TEST variants saw it, and only where a consumer had remembered to
-    // call setTexture(1, getAlphaTexture(...)).
-    gles2SetAlphaCompanion(texture, alphaTexture);
-
-    // Register in LRU cache (P46d: under cacheEntryKey — see cacheKey())
-    lruOrder_.push_back(cacheEntryKey);
-    CachedTexture cached;
-    cached.texture = texture;
-    cached.alphaTexture = alphaTexture;
-    cached.sizeBytes = gpuSize;
-    cached.hasAlpha = entry.hasAlpha;
-    cached.isETC1 = true;  // H02d: companion-based alpha pipeline
-    cached.lruIterator = std::prev(lruOrder_.end());
-
-    if (ledgerEnabled_) {
-        std::string ledgerCategory = "uncategorized";
-        std::string ledgerCallsite;
-        auto tagIt = pendingLedgerTag_.find(cacheEntryKey);
-        if (tagIt != pendingLedgerTag_.end()) {
-            ledgerCategory = tagIt->second.first;
-            ledgerCallsite = tagIt->second.second;
-            pendingLedgerTag_.erase(tagIt);
-        }
-        cached.category = ledgerCategory;
-        ledger_.recordUpload(name, entry.width, entry.height, gpuSize,
-                              entry.hasAlpha ? "ETC1+alpha" : "ETC1",
-                              ledgerCategory, ledgerCallsite);
-    }
-
-    cache_[cacheEntryKey] = cached;
-    currentUsage_ += gpuSize;
-    ++compressedUploadCount_;
-
-    // Register in mesh builder for entity texture lookups
-    if (meshBuilder_) {
-        meshBuilder_->registerUploadedTexture(name, texture, entry.hasAlpha);
-    }
-
-    LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] ETC1 texture '{}' uploaded ({}x{}, {} mips, {} bytes{})",
-              name, entry.width, entry.height, entry.mipLevels, gpuSize,
-              entry.hasAlpha ? ", +alpha" : "");
-    return texture;
+    texIdOut = texId;
+    alphaTexIdOut = alphaTexId;
+    return true;
 #else
-    // Non-GLES2 builds: ETC1 not supported, fall through to BMP decode
     (void)name;
-    (void)cacheEntryKey;
     (void)entry;
-    LOG_WARN(MOD_GRAPHICS, "Constrained cache: ETC1 upload not available (non-GLES2 build) for '{}'", name);
-    return nullptr;
+    return false;
 #endif
 }
 
@@ -608,24 +651,6 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
 #ifdef EQT_EQE1_UPLOAD_AVAILABLE
     auto payloadFmt = static_cast<EQT::Graphics::EQE1PayloadFormat>(entry.payloadFormat);
 
-    GLenum glFormat = GL_RGBA;
-    GLenum glType = GL_UNSIGNED_BYTE;
-    switch (payloadFmt) {
-        case EQT::Graphics::EQE1_PAYLOAD_RGB565:
-            glFormat = GL_RGB;
-            glType = GL_UNSIGNED_SHORT_5_6_5;
-            break;
-        case EQT::Graphics::EQE1_PAYLOAD_RGBA4444:
-            glFormat = GL_RGBA;
-            glType = GL_UNSIGNED_SHORT_4_4_4_4;
-            break;
-        case EQT::Graphics::EQE1_PAYLOAD_RGBA8888:
-        default:
-            glFormat = GL_RGBA;
-            glType = GL_UNSIGNED_BYTE;
-            break;
-    }
-
     // Budget check — use the uncompressed payload's actual byte size, not ETC1's.
     size_t gpuSize = EQT::Graphics::payloadMipChainSize(entry.width, entry.height,
                                                          entry.mipLevels, payloadFmt);
@@ -635,39 +660,10 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
         return nullptr;
     }
 
-    GLuint texId = 0;
-    glGenTextures(1, &texId);
-    if (texId == 0) {
-        LOG_ERROR(MOD_GRAPHICS, "Constrained cache: glGenTextures failed for '{}'", name);
+    unsigned int texId = 0;
+    if (!createV2Storage(name, entry, texId)) {
         return nullptr;
     }
-
-    glBindTexture(GL_TEXTURE_2D, texId);
-
-    // Upload uncompressed mip chain via glTexImage2D (not compressed — no
-    // glCompressedTexImage2D indirection or function-pointer lookup needed).
-    uint32_t offset = 0;
-    uint16_t w = entry.width, h = entry.height;
-    for (uint8_t level = 0; level < entry.mipLevels; ++level) {
-        uint32_t levelSize = EQT::Graphics::payloadDataSize(w, h, payloadFmt);
-        glTexImage2D(GL_TEXTURE_2D, level, glFormat, w, h, 0, glFormat, glType,
-                     entry.etc1Data + offset);
-        offset += levelSize;
-        w = std::max<uint16_t>(1, w / 2);
-        h = std::max<uint16_t>(1, h / 2);
-    }
-
-    // Same filtering policy as the main ETC1 texture unit (unit 0) — v2
-    // payloads have no companion, so there is only ever a "main" unit here.
-    // T275: plain GL_LINEAR, for the mipmap-completeness reason spelled out
-    // in uploadCompressedETC1() above — these chains are generated by the
-    // same builder and stop just as short of 1x1.
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-    glBindTexture(GL_TEXTURE_2D, 0);
 
     // P46d: cacheEntryKey, not `name` — see uploadCompressedETC1()'s identical fix.
     irr::video::ITexture* texture = static_cast<irr::video::ITexture*>(
@@ -693,6 +689,8 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
     cached.hasAlpha = entry.hasAlpha;
     cached.isETC1 = false;
     cached.lruIterator = std::prev(lruOrder_.end());
+    cached.source = CachedTexture::Source::Compressed;  // B944: restore source
+    cached.compressed = entry;
 
     static const char* kPayloadNames[] = {"etc1", "rgb565", "rgba4444", "rgba8888"};
     if (ledgerEnabled_) {
@@ -729,6 +727,75 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
     (void)entry;
     LOG_WARN(MOD_GRAPHICS, "Constrained cache: v2 payload upload not available (non-GLES2 build) for '{}'", name);
     return nullptr;
+#endif
+}
+
+// B944: the GL half of uploadCompressedV2(), shared with the eviction restore
+// (see createETC1Storage()). Leaves GL_TEXTURE_2D on the active unit bound to 0.
+bool ConstrainedTextureCache::createV2Storage(const std::string& name, const CompressedEntry& entry,
+                                              unsigned int& texIdOut) {
+    texIdOut = 0;
+#ifdef EQT_EQE1_UPLOAD_AVAILABLE
+    auto payloadFmt = static_cast<EQT::Graphics::EQE1PayloadFormat>(entry.payloadFormat);
+
+    GLenum glFormat = GL_RGBA;
+    GLenum glType = GL_UNSIGNED_BYTE;
+    switch (payloadFmt) {
+        case EQT::Graphics::EQE1_PAYLOAD_RGB565:
+            glFormat = GL_RGB;
+            glType = GL_UNSIGNED_SHORT_5_6_5;
+            break;
+        case EQT::Graphics::EQE1_PAYLOAD_RGBA4444:
+            glFormat = GL_RGBA;
+            glType = GL_UNSIGNED_SHORT_4_4_4_4;
+            break;
+        case EQT::Graphics::EQE1_PAYLOAD_RGBA8888:
+        default:
+            glFormat = GL_RGBA;
+            glType = GL_UNSIGNED_BYTE;
+            break;
+    }
+
+    GLuint texId = 0;
+    glGenTextures(1, &texId);
+    if (texId == 0) {
+        LOG_ERROR(MOD_GRAPHICS, "Constrained cache: glGenTextures failed for '{}'", name);
+        return false;
+    }
+
+    glBindTexture(GL_TEXTURE_2D, texId);
+
+    // Upload uncompressed mip chain via glTexImage2D (not compressed — no
+    // glCompressedTexImage2D indirection or function-pointer lookup needed).
+    uint32_t offset = 0;
+    uint16_t w = entry.width, h = entry.height;
+    for (uint8_t level = 0; level < entry.mipLevels; ++level) {
+        uint32_t levelSize = EQT::Graphics::payloadDataSize(w, h, payloadFmt);
+        glTexImage2D(GL_TEXTURE_2D, level, glFormat, w, h, 0, glFormat, glType,
+                     entry.etc1Data + offset);
+        offset += levelSize;
+        w = std::max<uint16_t>(1, w / 2);
+        h = std::max<uint16_t>(1, h / 2);
+    }
+
+    // Same filtering policy as the main ETC1 texture unit (unit 0) — v2
+    // payloads have no companion, so there is only ever a "main" unit here.
+    // T275: plain GL_LINEAR, for the mipmap-completeness reason spelled out
+    // in uploadCompressedETC1() above — these chains are generated by the
+    // same builder and stop just as short of 1x1.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    texIdOut = texId;
+    return true;
+#else
+    (void)name;
+    (void)entry;
+    return false;
 #endif
 }
 

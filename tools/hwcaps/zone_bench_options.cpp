@@ -63,6 +63,7 @@ void printUsage(const char* prog) {
     printf("  --direct-gl          Bypass Irrlicht for entities (direct GL calls)\n");
     printf("  --lod-entities       LOD tiers: composite near + batched billboards far\n");
     printf("  --adaptive-lod       Predictive LOD: billboard excess entities to stay in budget\n");
+    printf("  --texture-memory-bytes N  Override the texture cache's eviction ceiling (textureMemoryBytes) for this run (B944 test knob; default: the preset's)\n");
     printf("  --occluder-budget N  Software-occlusion region budget (maxOccluderRegions); N or \"uncapped\" (default: resolved from the loader's ConstrainedRendererConfig, orangepi preset -> 256, P14/P39-blessed; P42)\n");
     printf("  --gl-counters        P38: record driver glBindTexture/glTexParameteri calls per frame (tex_binds/tex_param_calls CSV columns; off by default, zero overhead when absent)\n");
     printf("  --gpu-sync-probe     P52: per-phase GPU-sync timer queries + CPU sync-point attribution (gpu_*_ns/swap_buffers_ms/flip_wait_ms/finish_readpixels_ms CSV columns; off by default, zero overhead when absent)\n");
@@ -340,6 +341,8 @@ Options parseArgs(int argc, char** argv) {
             if (strcmp(v, "uncapped") == 0) opts.occluderBudget = 1 << 20;
             else opts.occluderBudget = atoi(v);
         }
+        else if (strcmp(argv[i], "--texture-memory-bytes") == 0 && i + 1 < argc)
+            opts.textureMemoryBytes = static_cast<size_t>(strtoull(argv[++i], nullptr, 10));
         else if (strcmp(argv[i], "--shader-debug") == 0 && i + 1 < argc) opts.shaderDebugMode = atoi(argv[++i]);
         else if (strcmp(argv[i], "--material-counts") == 0) opts.materialCounts = true;
         else if (strcmp(argv[i], "--lighting-model") == 0 && i + 1 < argc) {

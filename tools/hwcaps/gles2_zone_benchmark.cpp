@@ -181,6 +181,7 @@ int main(int argc, char** argv) {
     benchConfig.loadMemAudit = opts.loadMemAudit;
     benchConfig.occluderBudget = opts.occluderBudget;
     benchConfig.noEntityShaderPromotion = opts.noEntityShaderPromotion;
+    benchConfig.textureMemoryBytesOverride = opts.textureMemoryBytes;
 
 #ifdef EQT_HAS_GLES2
     // P52: must enable before loadZone() creates the driver (capability

@@ -21,9 +21,18 @@ namespace Graphics {
 class ZoneMeshBuilder;
 class EQE1Loader;
 
-// Listener interface for texture eviction notifications.
+// Listener interface for texture DESTRUCTION notifications.
 // Subsystems that register textures with the cache can implement this
-// to null out local pointers when their textures are evicted.
+// to null out local pointers when their textures are destroyed.
+//
+// B944: since GitLab #262 an LRU eviction of a restorable texture does NOT
+// fire this -- the object survives (its storage is released and restored on
+// the next bind), so holders keep a valid pointer and must NOT swap it for the
+// placeholder. The callback fires when the object really goes: clear() (zone
+// unload), a registerTexture() replacement, and an eviction of an entry the
+// cache cannot restore (see ConstrainedTextureCache::evictTexture()). For an
+// ETC1 texture it fires twice, once for the main texture and once (name +
+// "_alpha") for its alpha companion.
 //
 // P10b: the texture pointer is passed alongside the name (in addition to
 // the pre-existing name-only contract) because the pointer is still valid
@@ -39,6 +48,25 @@ class TextureEvictionListener {
 public:
     virtual ~TextureEvictionListener() = default;
     virtual void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) = 0;
+};
+
+// B944 (GitLab #262): where an evicted DECODE-path texture's bytes come back
+// from. An EQE1 entry restores from its (mapped) flat pack and needs none of
+// this; a texture the cache decoded from raw BMP/DDS bytes (the S3D path) was
+// handed those bytes by a caller that has since released them, so an eviction
+// can only give its storage back if something can produce the same bytes
+// again by name. ArchiveTextureSource (archive_texture_source.h) re-reads them
+// from the mapped S3D archives. A decode-path entry no provider can serve is
+// evicted the pre-B944 way (destroyed, holders swapped to the placeholder by
+// the guards) -- see ConstrainedTextureCache::evictTexture().
+//
+// Both calls happen under the cache's mutex, on whichever thread evicts or
+// restores; an implementation must not call back into the cache.
+class TextureSourceProvider {
+public:
+    virtual ~TextureSourceProvider() = default;
+    virtual bool hasSource(const std::string& name) = 0;
+    virtual bool readSource(const std::string& name, std::vector<char>& out) = 0;
 };
 
 // Decoded texture pixels waiting for GPU upload
@@ -61,6 +89,21 @@ struct DecodedEntry {
 
 // LRU texture cache with memory budget enforcement
 // Used for resource-constrained rendering modes (Voodoo1, etc.)
+//
+// B944 (GitLab #262) -- EVICTION KEEPS THE OBJECT. When the ceiling
+// (config.textureMemoryBytes) forces a texture out, the cache releases its GL
+// storage (and its ETC1 alpha companion's) and keeps the ITexture itself: the
+// entry stays in the map as a non-resident "shell" with its name, size and
+// restore source. Every raw ITexture* a material, mesh cache or manager holds
+// therefore stays valid across an eviction, and the driver's first bind of the
+// shell (COGLES2Texture::getOpenGLTextureName()) calls back into this cache,
+// which re-uploads the same pixels -- evicting something older if it must --
+// and hands the new GL name back. Only resident entries count toward
+// getCurrentUsage() and sit in the LRU list. An object is destroyed only by
+// clear() (zone unload), by a registerTexture() replacement, or by the
+// pre-B944 fallback for an entry that cannot be restored (no GLES2 storage to
+// release, or no source to restore from) -- and those three still notify the
+// TextureEvictionListeners, whose guards swap holders to the placeholder.
 class ConstrainedTextureCache {
 public:
     // Construct with config only (no driver needed). Call setDriver() later
@@ -187,7 +230,20 @@ public:
     bool hasEQE1Loaders() const;
     size_t getMemoryLimit() const;
     size_t getAvailableMemory() const;
+    // Entries, resident or evicted (an evicted entry is still a live object).
     size_t getTextureCount() const;
+    // B944: entries whose GL storage is resident, and the restore statistics.
+    size_t getResidentTextureCount() const;
+    size_t getRestoreCount() const;
+    size_t getRestoreFailureCount() const;
+    // B944: true when `name` is cached AND its storage is resident; false for
+    // an evicted entry or an unknown name.
+    bool isResident(const std::string& name, bool applyPaletteMask = false) const;
+
+    // B944: register/unregister a source for evicted decode-path textures
+    // (see TextureSourceProvider). Non-owning; unregister before destroying.
+    void addSourceProvider(TextureSourceProvider* provider);
+    void removeSourceProvider(TextureSourceProvider* provider);
 
     // Cache statistics
     size_t getCacheHits() const;
@@ -201,9 +257,12 @@ public:
     // Reset statistics
     void resetStatistics();
 
-    // Freeze/unfreeze the cache
-    // When frozen, no evictions occur (prevents crashes from dangling texture pointers)
-    // Call freeze() after zone load is complete to protect zone textures
+    // Freeze/unfreeze the cache.
+    // B944: this flag is consulted by NOTHING -- evictUntilAvailable() evicts
+    // whether or not the cache is frozen, and nothing calls freeze(). The old
+    // comment here ("when frozen, no evictions occur (prevents crashes from
+    // dangling texture pointers)") was false; eviction is made safe by keeping
+    // the object (see the class comment), not by freezing.
     void freeze();
     void unfreeze();
     bool isFrozen() const;
@@ -350,6 +409,17 @@ private:
                                               const std::string& cacheEntryKey,
                                               const CompressedEntry& entry);
 
+    // B944: the GL halves of the three upload paths, shared with the eviction
+    // restore so a restored texture is built by the same code as the first
+    // upload. Caller holds mutex_ and owns a GL context.
+    bool createETC1Storage(const std::string& name, const CompressedEntry& entry,
+                           unsigned int& texIdOut, unsigned int& alphaTexIdOut);
+    bool createV2Storage(const std::string& name, const CompressedEntry& entry,
+                         unsigned int& texIdOut);
+    irr::video::ITexture* createDecodedTexture(const std::string& glName,
+                                               const std::vector<uint8_t>& rgbaPixels,
+                                               int width, int height);
+
     // P46d: internal cache/decodedEntries_/compressedEntries_ map key for
     // (name, applyPaletteMask). Identity when applyPaletteMask is false (the
     // overwhelming majority of calls) — cacheKey(x, false) == x always, which
@@ -410,8 +480,25 @@ private:
     // Returns true if successful, false if cannot free enough space
     bool evictUntilAvailable(size_t bytesNeeded);
 
-    // Evict a single texture by name
+    // Evict a single texture by name. B944: releases the storage and keeps
+    // the object when canReleaseStorage(); otherwise destroyEntry().
     void evictTexture(const std::string& name);
+
+    // ---- B944 residency (constrained_texture_cache_residency.cpp) ----------
+    struct CachedTexture;
+    bool canReleaseStorage(const std::string& key, const CachedTexture& entry);
+    void releaseStorage(const std::string& key, CachedTexture& entry);
+    // Destroy an entry's objects and drop it from the map (clear(), a
+    // registerTexture() replacement, an eviction that cannot restore).
+    void destroyEntry(const std::string& key);
+    // The destruction itself: listeners, scene scrub, ZoneMeshBuilder's map
+    // (scrubMeshBuilder; not from clear(), see the .cpp), driver removal --
+    // for the main texture AND its alpha companion.
+    void destroyTextures(const std::string& key, CachedTexture& entry, bool scrubMeshBuilder);
+    // The driver's restore callback (COGLES2Texture::ensureResident()).
+    static bool restoreHook(void* ctx, void* texture);
+    bool restoreEvicted(irr::video::ITexture* texture);
+    bool rebuildStorage(const std::string& key, CachedTexture& entry);
 
     // Calculate texture size in bytes (after processing)
     size_t calculateTextureSize(int width, int height) const;
@@ -470,7 +557,16 @@ private:
         // eviction-ledger row can carry the same category as the original
         // upload row for that name.
         std::string category;
+        // Valid only while `resident` (an evicted entry is not in lruOrder_).
         std::list<std::string>::iterator lruIterator;
+        // B944: false once evict released the GL storage; the object lives on.
+        bool resident = true;
+        // B944: what a restore re-uploads from. Compressed = `compressed`
+        // (pointers into a mapped EQE1 pack); Decoded = a TextureSourceProvider
+        // by name; None = nothing (external registerTexture(), DDS direct).
+        enum class Source : uint8_t { None, Compressed, Decoded };
+        Source source = Source::None;
+        CompressedEntry compressed{};
     };
 
     // Protects all state except decodedQueue_ (which has its own decodedQueueMutex_)
@@ -512,6 +608,14 @@ private:
 
     // Eviction listeners (non-owning)
     std::vector<TextureEvictionListener*> evictionListeners_;
+
+    // B944: evicted texture object (main or alpha companion) -> its cache
+    // key, for the driver's restore callback. Guarded by mutex_.
+    std::map<const irr::video::ITexture*, std::string> evictedOwner_;
+    std::vector<TextureSourceProvider*> sourceProviders_;  // non-owning
+    size_t restoreCount_ = 0;
+    size_t restoreFailureCount_ = 0;
+    std::set<std::string> restoreFailureLogged_;  // one WARN per key
 
     // EQE1 flat pack loaders (non-owning, populated per zone).
     // P04: guarded by eqe1LoadersMutex_ (NOT mutex_) — addEQE1Loader is called

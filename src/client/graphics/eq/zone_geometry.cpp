@@ -1044,6 +1044,14 @@ void ZoneMeshBuilder::setConstrainedTextureCache(ConstrainedTextureCache* cache)
     constrainedCache_ = cache;
 }
 
+void ZoneMeshBuilder::forgetTexture(const irr::video::ITexture* texture) {
+    if (!texture) return;
+    for (auto it = textureCache_.begin(); it != textureCache_.end(); ) {
+        if (it->second == texture) it = textureCache_.erase(it);
+        else ++it;
+    }
+}
+
 void ZoneMeshBuilder::clearTextureCache() {
     textureCache_.clear();
     pendingTextures_.clear();

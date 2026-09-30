@@ -625,11 +625,14 @@ void RegionMeshTextureGuard::onTextureEvicted(const std::string& name,
         // whispered at DEBUG, under a "[mergedraws]" tag that says nothing
         // about a rendering defect; name the texture and say what it looks
         // like, at WARN, so a normal-log-level run reports it.
-        LOG_WARN(MOD_GRAPHICS, "RegionMeshTextureGuard: evicted texture '{}' was still referenced by {} "
+        // B944: since GitLab #262 this fires only when the texture is really
+        // DESTROYED -- an eviction the cache can restore keeps the object and
+        // never reaches a listener -- so this is an eviction with no restore
+        // source (or clear()/replacement), and it stays until a reload.
+        LOG_WARN(MOD_GRAPHICS, "RegionMeshTextureGuard: destroyed texture '{}' was still referenced by {} "
                  "live region-mesh material(s) of the current zone -> replaced with the placeholder "
-                 "checkerboard (magenta/dark-grey). The constrained texture budget is smaller than "
-                 "this zone's working set; the geometry using '{}' now renders the placeholder "
-                 "until the texture is re-uploaded.", name, swapped, name);
+                 "checkerboard (magenta/dark-grey). The cache evicted it with no source to restore it "
+                 "from; the geometry using '{}' now renders the placeholder.", name, swapped, name);
     }
 }
 

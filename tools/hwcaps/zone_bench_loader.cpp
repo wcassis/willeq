@@ -19,6 +19,7 @@
 #include "client/graphics/zone_shader.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/constrained_texture_cache.h"
+#include "client/graphics/archive_texture_source.h"
 #include "client/graphics/frustum_culler.h"
 #include "client/graphics/portal_system.h"
 #include "client/zone_bsp.h"
@@ -284,10 +285,23 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     auto constrainedConfig = ConstrainedRendererConfig::fromPreset(
         ConstrainedRenderingPreset::OrangePi);
     constrainedConfig.eqe1Path = config.eqe1Path;
+    if (config.textureMemoryBytesOverride > 0) {  // B944: test knob, see BenchConfig
+        printf("  textureMemoryBytes override: %zu (preset %zu)\n",
+               config.textureMemoryBytesOverride, constrainedConfig.textureMemoryBytes);
+        constrainedConfig.textureMemoryBytes = config.textureMemoryBytesOverride;
+    }
 
     // ── Step 4: Set up texture cache ──
     data->textureCache = std::make_unique<ConstrainedTextureCache>(constrainedConfig);
     data->textureCache->setDriver(data->driver);
+    // B944: an evicted S3D-path texture is restored from the archive it came
+    // from (the zone's, and its objects' when --objects loads them), exactly
+    // as the client registers them (ZoneLoadComponent). Mapped, file-backed;
+    // nothing is read unless the cache actually restores something.
+    data->textureSource = std::make_unique<ArchiveTextureSource>();
+    data->textureSource->addArchive(archivePath);
+    data->textureSource->addArchive(config.eqPath + "/" + config.zoneName + "_obj.s3d");
+    data->textureCache->addSourceProvider(data->textureSource.get());
 
     // ── Step 4b: Load EQE1 flat packs (zone-specific only) ──
     if (!config.eqe1Path.empty()) {

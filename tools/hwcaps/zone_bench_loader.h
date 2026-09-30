@@ -19,6 +19,7 @@ namespace EQT::Graphics {
     struct ZoneGeometry;
     class ZoneShaderManager;
     class ConstrainedTextureCache;
+    class ArchiveTextureSource;
     class FrustumCuller;
     class PortalSystem;
     class SoftwareOcclusionCuller;
@@ -75,6 +76,11 @@ struct BenchConfig {
     // bless pair isolating the P37/P46A alpha cutout. See
     // zone_bench_loader.cpp's applyEntityShaderMaterialPromotion() call site.
     bool noEntityShaderPromotion = false;
+    // B944: override ConstrainedRendererConfig::textureMemoryBytes (the
+    // texture cache's eviction ceiling) for this run only. 0 = the preset's
+    // own value. A test knob for driving the cache past its ceiling; it never
+    // changes the shipped preset.
+    size_t textureMemoryBytesOverride = 0;
 };
 
 // Per-region data stored for rendering
@@ -126,7 +132,10 @@ struct ZoneBenchData {
     float playerLightColor[3] = {0.0f, 0.0f, 0.0f};
     float playerLightAtten[3] = {1.0f, 0.0f, 0.0f};
 
-    // Texture systems
+    // Texture systems. B944: the restore source for decode-path textures the
+    // cache evicts (the zone's own archives); declared first so it outlives
+    // the cache.
+    std::unique_ptr<EQT::Graphics::ArchiveTextureSource> textureSource;
     std::unique_ptr<EQT::Graphics::ConstrainedTextureCache> textureCache;
 
     // Entity models

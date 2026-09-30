@@ -8,6 +8,7 @@
 // files; ZoneLoadContext moved to include/client/graphics/zone_load_context.h
 // so all four TUs can see it. The driver stays here.
 
+#include "client/graphics/archive_texture_source.h"
 #include "client/graphics/renderer_zone_merge.h"  // T504: ZoneMergeBuffers pooled mode
 #include "client/graphics/region_occluders.h"
 #include "client/graphics/irrlicht_renderer.h"
@@ -78,7 +79,12 @@ namespace Graphics {
 ZoneLoadComponent::ZoneLoadComponent(RendererContext& ctx, IrrlichtRenderer& owner)
     : ctx_(ctx), owner_(owner) {}
 
-ZoneLoadComponent::~ZoneLoadComponent() = default;
+ZoneLoadComponent::~ZoneLoadComponent() {
+    // B944: the cache outlives the renderer (Application declares it first).
+    if (zoneTextureSourceCache_ && zoneTextureSource_) {
+        zoneTextureSourceCache_->removeSourceProvider(zoneTextureSource_.get());
+    }
+}
 
 void ZoneLoadComponent::loadZoneStep0_EQE1(ZoneLoadContext& ctx) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::Archives);  // T491
@@ -230,6 +236,24 @@ bool ZoneLoadComponent::loadZoneStep1_S3D(ZoneLoadContext& ctx) {
             return false;
         }
         ctx_.currentZone = loader.getZone();
+        // B944 (GitLab #262): an S3D-path texture the constrained cache evicts
+        // is restored from the archive it came from -- this zone's, its
+        // objects' and the sky's. Registering is free (nothing opens until a
+        // restore needs it); on the EQE1 path every entry restores from its
+        // pack instead. Character and equipment textures on the S3D path are
+        // NOT covered (they come from many *_chr / gequip archives); an
+        // eviction of one still destroys it (see refactor/B944/README.md).
+        if (ctx_.constrainedTextureCache) {
+            if (zoneTextureSourceCache_ && zoneTextureSource_) {
+                zoneTextureSourceCache_->removeSourceProvider(zoneTextureSource_.get());
+            }
+            zoneTextureSource_ = std::make_unique<ArchiveTextureSource>();
+            zoneTextureSource_->addArchive(zonePath);
+            zoneTextureSource_->addArchive(ctx.eqPath + ctx_.currentZoneName + "_obj.s3d");
+            zoneTextureSource_->addArchive(ctx.eqPath + "sky.s3d");  // Step 10's sky textures
+            zoneTextureSourceCache_ = ctx_.constrainedTextureCache;
+            zoneTextureSourceCache_->addSourceProvider(zoneTextureSource_.get());
+        }
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step1: S3D loaded: objects={}, lights={}, textures={}, "
                   "wldLoader={}, geometry={}",
                   ctx_.currentZone ? ctx_.currentZone->objects.size() : 0,
