@@ -108,4 +108,24 @@ gate input.
 
 ## Review
 
-(filled at hand-back; numbers in `refactor/B936/README.md`)
+Done; evidence and numbers in `refactor/B936/README.md`. Against the bar:
+client `objects` under 40 MiB in every measured zone on both platforms
+(x86 growthplane 9.7 MB, Pi 6.7 MB); benchmark `placeableObjectsBytes`
+under 24 MiB in every measured zone on both platforms (growthplane 111,348 B,
+branch B); Pi frame time better than fable (growthplane −58.6 %, trakanon
+−38.7 %, gfaydark +0.03 %); private vs shared meshes 0 differing pixels at
+three keyframes. Deviations from the plan:
+- The file territory names `vertex_anim_mesh.*`; the TU became
+  `placed_object_meshes.*` because it also holds the per-geometry mesh table
+  (`PlacedObjectMeshes`), and `VertexAnimatedMesh` moved into it from
+  `renderer_types.h` so the benchmark does not need that header.
+- `/pmem`'s placeable-objects estimate counted a shared mesh once per node
+  (since T504); fixed here (one line of `diagnostics_component.cpp`).
+- `scripts/pi/collision_ab_table.py` gained `--category` and the
+  gpu_driver / owned / "SimWorker Apply" columns.
+- The benchmark also logs every 250th animated placement's position (to aim
+  the parity poses: the gate manifest's poses show no animated object).
+- overthere was not measured on the Pi: no leg reached `ready` on either
+  binary (B940, #258).
+- The oracle's placement phase (#254 acceptance 1) was not measured (B939,
+  #257); fable's in-phase behaviour is kept and pinned by a census test.

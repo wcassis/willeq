@@ -20,7 +20,13 @@ Per zone and side it reports, pooled over that side's legs:
 The verdict line per zone: B vs A median moving frame time, and whether
 either side's median moving fps is under 30.
 
-usage: collision_ab_table.py AB_DIR [--out FILE.md]
+B936: --category CAT reports that ledger category (and its owner rows)
+instead of `spatial` (the rig's --ledger-owners), plus gpu_driver at
+steady_60s, owned = RssAnon - gpu_driver against 64 MiB, and the
+"SimWorker Apply" phase (where the renderer applies the worker's results,
+the keyframe vertex rewrite included) next to Player Movement.
+
+usage: collision_ab_table.py AB_DIR [--out FILE.md] [--category CAT]
 """
 import argparse
 import re
@@ -31,13 +37,17 @@ from pathlib import Path
 BLOCK_RE = re.compile(r"^(\d+\.\d+) .*=== FRAME TIMING BREAKDOWN \((\d+) frames, ([\d.]+) fps estimate\)")
 TOTAL_RE = re.compile(r"Total Frame:\s+([\d.]+) us")
 MOVE_RE = re.compile(r"Player Movement:\s+([\d.]+) us")
-LEDGER_RE = re.compile(r"^(\d+\.\d+) .*\[memledger\] point=(\S+) zone=(\S+) .*?rss_anon=(\d+) .* spatial=(\d+)/")
+CATEGORY = "spatial"
+LEDGER_RE = None  # built in main() for CATEGORY
+GPU_RE = re.compile(r" gpu_driver=(\d+)/")
+APPLY_RE = re.compile(r"SimWorker Apply:\s+([\d.]+) us")
 OWNER_RE = re.compile(r"\[memledger-startup\] point=(ready|steady_60s) owner=(\S+) live=(\d+) blocks=(\d+)")
 
 
 def parse_zone(d, zone):
     log = d / "client.log"
     out = {"moving": [], "idle": [], "move_us": [], "idle_move_us": [], "spatial": {}, "owners": {},
+           "apply_mov": [], "apply_idle": [], "gpu_steady": None,
            "rss_steady": None, "rss_peak": None, "keys": 0, "ready": None, "ok": False}
     if not log.exists():
         return out
@@ -64,6 +74,8 @@ def parse_zone(d, zone):
                     out["ready"] = float(m.group(1))
                 if pt == "steady_60s":
                     out["rss_steady"] = int(m.group(4))
+                    g = GPU_RE.search(line)
+                    out["gpu_steady"] = int(g.group(1)) if g else None
                     out["ok"] = True
             continue
         m = OWNER_RE.search(line)
@@ -73,13 +85,17 @@ def parse_zone(d, zone):
         m = BLOCK_RE.search(line)
         if m:
             t, fps = float(m.group(1)), float(m.group(3))
-            total = move = None
-            for nxt in lines[i + 1:i + 6]:
-                mt, mm = TOTAL_RE.search(nxt), MOVE_RE.search(nxt)
-                if mt:
+            total = move = apply_us = None
+            for nxt in lines[i + 1:i + 60]:
+                if "FRAME TIMING BREAKDOWN" in nxt:
+                    break
+                mt, mm, ma = TOTAL_RE.search(nxt), MOVE_RE.search(nxt), APPLY_RE.search(nxt)
+                if mt and total is None:
                     total = float(mt.group(1))
-                if mm:
+                if mm and move is None:
                     move = float(mm.group(1))
+                if ma and apply_us is None:
+                    apply_us = float(ma.group(1))
             if total is None or out["ready"] is None or t < out["ready"]:
                 continue
             # A block covers the 60 frames BEFORE its line: count it for the
@@ -89,10 +105,14 @@ def parse_zone(d, zone):
                 out["moving"].append((total, fps))
                 if move is not None:
                     out["move_us"].append(move)
+                if apply_us is not None:
+                    out["apply_mov"].append(apply_us)
             elif seq_end and t - span >= seq_end + 1.0:
                 out["idle"].append((total, fps))
                 if move is not None:
                     out["idle_move_us"].append(move)
+                if apply_us is not None:
+                    out["apply_idle"].append(apply_us)
     sp = d / "samples.tsv"
     if sp.exists():
         vals = []
@@ -112,7 +132,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("ab_dir")
     ap.add_argument("--out")
+    ap.add_argument("--category", default="spatial")
     a = ap.parse_args()
+    global CATEGORY, LEDGER_RE
+    CATEGORY = a.category
+    LEDGER_RE = re.compile(r"^(\d+\.\d+) .*\[memledger\] point=(\S+) zone=(\S+) .*?rss_anon=(\d+) .* "
+                           + re.escape(CATEGORY) + r"=(\d+)/")
     root = Path(a.ab_dir)
     legs = sorted(p for p in root.iterdir() if p.is_dir() and re.match(r"r\d+_[AB]$", p.name))
     zones = []
@@ -128,8 +153,8 @@ def main():
     md = [f"Source: `{root}`. Frame time = median of the client's `/frametiming` 60-frame blocks "
           "(\"Total Frame\", us); moving = wholly inside the key sequence, idle = after it. "
           "fps = median of the blocks' fps estimates.\n"]
-    md.append("| zone | side | runs ok | blocks mov/idle | moving frame us | moving fps | Player Movement us (mov / idle) | idle frame us | idle fps | spatial @ready | spatial @steady | peak RssAnon | RssAnon @steady |")
-    md.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    md.append(f"| zone | side | runs ok | blocks mov/idle | moving frame us | moving fps | Player Movement us (mov / idle) | SimWorker Apply us (mov / idle) | idle frame us | idle fps | {CATEGORY} @ready | {CATEGORY} @steady | peak RssAnon | RssAnon @steady | gpu_driver @steady | owned = RssAnon - gpu_driver @steady | owned - 64 MiB |")
+    md.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     verdicts = []
     for z in zones:
         meds = {}
@@ -146,13 +171,18 @@ def main():
             pk = [r["rss_peak"] for r in runs if r["rss_peak"]]
             st = [r["rss_steady"] for r in runs if r["rss_steady"]]
             ok = sum(1 for r in runs if r["ok"])
+            am = [x for r in runs for x in r["apply_mov"]]
+            ai = [x for r in runs for x in r["apply_idle"]]
+            gp = [r["gpu_steady"] for r in runs if r["gpu_steady"]]
+            ow = [r["rss_steady"] - r["gpu_steady"] for r in runs if r["rss_steady"] and r["gpu_steady"]]
+            over = [o - 64 * 1024 * 1024 for o in ow]
             meds[side] = (med(mv), med(mf), med(pm))
             rng = lambda xs: (f"{min(xs):,}" if len(xs) and min(xs) == max(xs) else
                               (f"{min(xs):,}–{max(xs):,}" if xs else "n/a"))
             fmt = lambda v, p=0: (f"{v:,.{p}f}" if v is not None else "n/a")
             md.append(f"| {z} | {side} | {ok}/{len(runs)} | {len(mv)}/{len(iv)} | {fmt(med(mv))} | {fmt(med(mf), 1)} | "
-                      f"{fmt(med(pm))} / {fmt(med(pim))} | {fmt(med(iv))} | {fmt(med(ifp), 1)} | {rng(spr)} | {rng(sps)} | "
-                      f"{rng(pk)} | {rng(st)} |")
+                      f"{fmt(med(pm))} / {fmt(med(pim))} | {fmt(med(am))} / {fmt(med(ai))} | {fmt(med(iv))} | {fmt(med(ifp), 1)} | {rng(spr)} | {rng(sps)} | "
+                      f"{rng(pk)} | {rng(st)} | {rng(gp)} | {rng(ow)} | {rng(over)} |")
         (a_t, a_f, a_p), (b_t, b_f, b_p) = meds["A"], meds["B"]
         if a_t and b_t:
             d = 100.0 * (b_t - a_t) / a_t
@@ -177,7 +207,7 @@ def main():
         else:
             verdicts.append(f"- {z}: no moving-window blocks on one side -- no verdict")
     md.append("\n" + "\n".join(verdicts))
-    md.append("\nspatial owner rows at steady_60s (per leg):\n")
+    md.append(f"\n{CATEGORY} owner rows at steady_60s (per leg):\n")
     md.append("| zone | leg | owner rows |")
     md.append("|---|---|---|")
     for z in zones:

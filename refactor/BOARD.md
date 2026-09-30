@@ -909,8 +909,8 @@ it without taking that measurement first.
      0.74 MB, growthplane 1.24, trakanon 0.93, overthere 1.11; Pi: gfaydark
      0.58, growthplane 0.97, trakanon 0.71, all under 4 MiB. The measured
      cause in Kunark/Velious: 86–99 % of placements are vertex-animated
-     grass/plants with a private mesh each, which is now **B936** (#254) for
-     `objects`.
+     grass/plants with a private mesh each, which was **B936** (#254) for
+     `objects` -- fixed by B936 (one mesh per geometry).
   2. **(B909, #229)** `sp.region_bounds`,
      `ctx_.regionBoundingBoxes`, is a `std::map<size_t, aabbox3df>` with one
      node per region: 1.72 MB in iceclad and 1.27 MB in timorous. A sorted
@@ -947,15 +947,34 @@ it without taking that measurement first.
      fable `b1132c3f` itself (the A side of the B909 A/B, 1280x720, orangepi
      preset, level 60, keyboard sequence). The owner's rule makes that a client
      defect. It is not caused by B909; the collision phase is 0.4 ms and 5.0 ms
-     of a 37-38 ms frame.
+     of a 37-38 ms frame. **B936 (2026-09-30)**: growthplane's frame was
+     mostly the per-placement keyframe rewrite ("SimWorker Apply" 23.5 ms of
+     38.9 ms); with one mesh per geometry it moves at 62.1 fps on the Pi.
+     timorous was not measured.
 
-- **B936** (A, memory) → issue #254. Vertex-animated placed objects keep a
-  private `IMesh` per placement (T504 excludes them from mesh sharing because
-  their vertices are rewritten every frame). In Kunark/Velious zones that is
-  86–99 % of the placements: growthplane 4,314 of 4,333 are CMPLANT101/102 and
-  DRGRASS101/102, 4 geometries. Client `objects` @steady_60s: growthplane
-  47,107,104 B on x86 (over its 40 MiB budget) and 40.3 MB on the Pi; trakanon
-  27.5 / 23.4 MB. Measured by B909b (`refactor/B909b/README.md`, step 1).
+- ~~**B936** (A, memory) → issue #254. Vertex-animated placed objects keep a
+  private `IMesh` per placement.~~ **FIXED by B936** (branch
+  `task/B936-shared-animated-placeables`, `refactor/B936/README.md`): every
+  placement of a keyframe-animated geometry is on the same keyframe at every
+  instant, so `PlacedObjectMeshes` shares one mesh per geometry (animated or
+  not) and poses it once per keyframe change (`applyVertexAnimFrame()`);
+  `test_placed_object_meshes`. Client `objects` @steady_60s, x86: growthplane
+  47.1 → 9.7 MB, trakanon 27.5 → 7.6, overthere 21.9 → 7.9; Pi: growthplane
+  40.3 → 6.7, trakanon 23.4 → 5.5. Pi moving frame rate growthplane 25.7 →
+  62.1 fps, trakanon 37.5 → 61.2 (the per-placement keyframe rewrite was
+  23.5 ms of growthplane's frame). The benchmark half (#247) is branch
+  `task/B936b-bench-shared-objects`, which waits for Will's re-bless of the
+  five memory-coverage `placeableObjectsBytes` baselines.
+- **B938** (A, memory) → issue #256. After B936 the per-placement scene node
+  (`obj.instances`, about 2.2 KB per placed object on x86, 1.5 KB on the Pi)
+  is 88–98 % of `objects`: 9.6 MB of growthplane's 9.7 MB on x86.
+- **B939** (B) → issue #257. The placement phase of keyframe-animated
+  objects was never measured against the official client (#254 acceptance 1);
+  fable animates them in phase and B936 keeps that. The baked load pose is not
+  keyframe 0.
+- **B940** (A) → issue #258. overthere never reaches `ready` on the Pi: the
+  zone port refuses UDP about 38 s into zone-in, during entity preparation,
+  6 of 6 legs on fable and on B936. Same shape as B925 (#244).
 - **B937** (B) → issue #255. Local `visual_gate` on `dev-u24` fails the
   memory-coverage iceclad allocator-slack bound (35.4 % vs 35.0 %, twice) on
   a commit the CI runner passes (33.2 %); the benchmark holds no B909b code.
