@@ -1119,8 +1119,11 @@ bool RaceModelLoader::preloadModelData(uint16_t raceId, uint8_t gender, int text
             // punched transparent; every unmasked sibling texture decodes
             // exactly as before.
             bool isMaskedMaterial = texIdx < combinedTextureMasked.size() && combinedTextureMasked[texIdx];
+            // B947: with the archive member the bytes came from, so an
+            // evicted per-part texture restores instead of being destroyed.
+            const TextureOrigin origin = texIt->second->origin();
             constrainedTextureCache_->getOrLoad(lowerName, rawData, "entity_perpart", "preloadModelData:T05",
-                                                 isMaskedMaterial);
+                                                 isMaskedMaterial, &origin);
             ++decoded;
         }
         LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader::preloadModelData: decoded {} textures for race={} gender={} (notFound={} null={} empty={})",

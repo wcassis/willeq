@@ -69,6 +69,7 @@ bool SkyLoader::loadTextures(const std::string& archivePath) {
             auto tex = std::make_shared<TextureInfo>();
             tex->name = filename;
             tex->data = std::move(data);
+            tex->sourceArchive = archive.sharedPath();  // B947: restore origin
 
             // Store with lowercase key for case-insensitive lookup
             std::string lowerName = filename;
@@ -90,6 +91,7 @@ bool SkyLoader::loadTextures(const std::string& archivePath) {
             auto tex = std::make_shared<TextureInfo>();
             tex->name = filename;
             tex->data = std::move(data);
+            tex->sourceArchive = archive.sharedPath();  // B947: restore origin
 
             std::string lowerName = filename;
             std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
@@ -110,6 +112,7 @@ bool SkyLoader::loadTextures(const std::string& archivePath) {
             auto tex = std::make_shared<TextureInfo>();
             tex->name = filename;
             tex->data = std::move(data);
+            tex->sourceArchive = archive.sharedPath();  // B947: restore origin
 
             std::string lowerName = filename;
             std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),

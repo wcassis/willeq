@@ -250,12 +250,22 @@ it without taking that measurement first.
   pixel-identical to the goldens; `clear()` also stops leaking every ETC1
   alpha companion. Regression net: `tests/test_texture_eviction_residency.cpp`
   (ASan-clean). No budget, golden or gate assertion changed.
-- **B947** (A) → issue #265. S3D-path character/equipment textures have no
-  restore source (B944 covers EQE1 fully and the S3D zone/objects/sky
-  archives), so their eviction still destroys them and `RaceModelLoader`'s
-  cached meshes keep the freed pointer -- the holder B944's pre-fix ASan run
-  caught. Not the shipped path. Confirmed by B944 (code reading + the EQE1
-  measurement of the same holder).
+- ~~**B947** (A) → issue #265. S3D-path character/equipment textures had no
+  restore source, so their eviction destroyed them and `RaceModelLoader`'s
+  cached meshes kept the freed pointer.~~ **DONE 2026-09-30** (branch
+  `task/B947-char-texture-restore`, `refactor/B947/README.md`). Every
+  decode-path upload now carries a `TextureOrigin` (the archive member the S3D
+  loaders read it from, or the file) plus a size + FNV-1a-64 digest, and a
+  restore re-decodes only those bytes; a GLES2 entry with no source is PINNED
+  (resident, never evicted again), never destroyed -- the destroy path is left
+  only for the EDT_NULL test driver. Live, ASan, 8 MiB forced ceiling, S3D
+  path: the tip's cache had 273 (qeynos2) / 216 (gfaydark) fewer entries at
+  unload than this branch's -- the textures its evictions destroyed -- and this
+  branch ran 0 ASan errors, 0 pinned, 0 restore failures on S3D and EQE1.
+  Nets: `tests/test_texture_eviction_character_restore.cpp` (a real cached
+  animated human mesh below its working set re-binds pixel-identical; red and
+  ASan heap-use-after-free with the destroy path forced) and
+  `tests/test_texture_eviction_residency.cpp`.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 

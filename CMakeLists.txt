@@ -1006,6 +1006,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/constrained_texture_cache_eviction.cpp
         src/client/graphics/constrained_texture_cache_compressed.cpp
         src/client/graphics/constrained_texture_cache_residency.cpp
+        src/client/graphics/archive_texture_source.cpp
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/eq/race_codes.cpp
@@ -1173,6 +1174,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_texture_cache_eviction.cpp
         src/client/graphics/constrained_texture_cache_compressed.cpp
         src/client/graphics/constrained_texture_cache_residency.cpp
+        src/client/graphics/archive_texture_source.cpp
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
@@ -1251,6 +1253,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_texture_cache_eviction.cpp
         src/client/graphics/constrained_texture_cache_compressed.cpp
         src/client/graphics/constrained_texture_cache_residency.cpp
+        src/client/graphics/archive_texture_source.cpp
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
@@ -1455,6 +1458,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_texture_cache_eviction.cpp
         src/client/graphics/constrained_texture_cache_compressed.cpp
         src/client/graphics/constrained_texture_cache_residency.cpp
+        src/client/graphics/archive_texture_source.cpp
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/background_thread_pool.cpp
@@ -1532,6 +1536,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/constrained_texture_cache_eviction.cpp
         src/client/graphics/constrained_texture_cache_compressed.cpp
         src/client/graphics/constrained_texture_cache_residency.cpp
+        src/client/graphics/archive_texture_source.cpp
         src/client/graphics/texture_upload_ledger.cpp
         src/client/graphics/eqe1_loader.cpp
         src/client/graphics/load_mem_audit.cpp

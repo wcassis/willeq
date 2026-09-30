@@ -299,7 +299,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildColoredMesh(const ZoneGeometry& geometr
 
 irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& name,
                                                           const std::vector<char>& data,
-                                                          bool applyPaletteMask) {
+                                                          bool applyPaletteMask,
+                                                          const TextureOrigin* origin) {
     // Note: fileSystem_ is not actually used in this function - textures are loaded
     // from raw byte data, not from the filesystem. Only driver_ is required.
     if (data.empty() || !driver_) {
@@ -317,7 +318,8 @@ irr::video::ITexture* ZoneMeshBuilder::loadTextureFromBMP(const std::string& nam
         // this call site is ZoneMeshBuilder's general-purpose one, used by
         // mesh_building.cpp's composite-deferred on-demand fallback and
         // animated_mesh_creation.cpp's equipment texture-variant swap).
-        irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data, uploadCategory_, "loadTextureFromBMP", applyPaletteMask);
+        irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data, uploadCategory_, "loadTextureFromBMP",
+                                                                     applyPaletteMask, origin);
         if (!texture) {
             // Not yet uploaded — upload now (requires GL context on this thread)
             texture = constrainedCache_->uploadTexture(name, applyPaletteMask);
@@ -411,7 +413,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
                 // Try to load texture
                 auto texIt = textures.find(lowerTexName);
                 if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
-                    texture = loadTextureFromBMP(texName, texIt->second->data);
+                    const TextureOrigin origin = texIt->second->origin();  // B947
+                    texture = loadTextureFromBMP(texName, texIt->second->data, false, &origin);
                     if (!texture) {
                         // T92: was LOG_DEBUG — the sole reason zone-geometry
                         // texture failures (the magenta/checkerboard wall and
@@ -1009,7 +1012,9 @@ irr::video::ITexture* ZoneMeshBuilder::getOrLoadTexture(const std::string& name,
     auto pendingIt = pendingTextures_.find(name);
     if (pendingIt != pendingTextures_.end() && pendingIt->second && !pendingIt->second->data.empty()) {
         // Load the texture now
-        irr::video::ITexture* texture = loadTextureFromBMP(name, pendingIt->second->data, applyPaletteMask);
+        const TextureOrigin origin = pendingIt->second->origin();  // B947
+        irr::video::ITexture* texture = loadTextureFromBMP(name, pendingIt->second->data, applyPaletteMask,
+                                                           &origin);
 
         // Remove from pending (data no longer needed)
         pendingTextures_.erase(pendingIt);

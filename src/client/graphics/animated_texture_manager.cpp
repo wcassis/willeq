@@ -51,7 +51,8 @@ void AnimatedTextureManager::onTextureEvicted(const std::string& name, irr::vide
 }
 
 irr::video::ITexture* AnimatedTextureManager::loadTexture(const std::string& name,
-                                                           const std::vector<char>& data) {
+                                                           const TextureInfo& info) {
+    const std::vector<char>& data = info.data;
     // Check local cache first
     auto it = textureCache_.find(name);
     if (it != textureCache_.end()) {
@@ -63,7 +64,9 @@ irr::video::ITexture* AnimatedTextureManager::loadTexture(const std::string& nam
     }
 
     // Use constrained cache: decode + upload
-    irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data);
+    // B947: with the archive origin, so an evicted frame can be restored.
+    const TextureOrigin origin = info.origin();
+    irr::video::ITexture* texture = constrainedCache_->getOrLoad(name, data, "uncategorized", "", false, &origin);
     if (!texture) {
         // Decoded but not yet uploaded — promote to GPU
         texture = constrainedCache_->uploadTexture(name);
@@ -128,7 +131,7 @@ int AnimatedTextureManager::initialize(const ZoneGeometry& geometry,
 
             auto texIt = textures.find(lowerFrameName);
             if (texIt != textures.end() && texIt->second) {
-                irr::video::ITexture* frameTex = loadTexture(frameName, texIt->second->data);
+                irr::video::ITexture* frameTex = loadTexture(frameName, *texIt->second);
                 if (frameTex) {
                     state.frameTextures.push_back(frameTex);
                     LOG_TRACE(MOD_GRAPHICS, "    frame '{}': loaded OK", frameName);
@@ -279,7 +282,7 @@ void AnimatedTextureManager::addMesh(const ZoneGeometry& geometry,
 
             auto texIt = textures.find(lowerFrameName);
             if (texIt != textures.end() && texIt->second) {
-                irr::video::ITexture* frameTex = loadTexture(frameName, texIt->second->data);
+                irr::video::ITexture* frameTex = loadTexture(frameName, *texIt->second);
                 if (frameTex) {
                     state.frameTextures.push_back(frameTex);
                     LOG_TRACE(MOD_GRAPHICS, "    frame '{}': loaded OK", frameName);
@@ -539,7 +542,7 @@ int AnimatedTextureManager::detectWaterAnimations(
         for (const std::string& frameName : frames) {
             auto texIt = textures.find(frameName);
             if (texIt != textures.end() && texIt->second) {
-                irr::video::ITexture* frameTex = loadTexture(frameName, texIt->second->data);
+                irr::video::ITexture* frameTex = loadTexture(frameName, *texIt->second);
                 if (frameTex) {
                     state.frameTextures.push_back(frameTex);
                 }

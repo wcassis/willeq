@@ -548,7 +548,8 @@ irr::scene::IMesh* ZoneMeshBuilder::buildAtlasedMesh(
                     // Synchronous path: load texture now
                     auto texIt = textures.find(lowerTexName);
                     if (texIt != textures.end() && texIt->second && !texIt->second->data.empty()) {
-                        texture = loadTextureFromBMP(texName, texIt->second->data);
+                        const TextureOrigin origin = texIt->second->origin();  // B947
+                        texture = loadTextureFromBMP(texName, texIt->second->data, false, &origin);
                     }
                     if (!texture && constrainedCache_) {
                         texture = constrainedCache_->getTexture(lowerTexName);

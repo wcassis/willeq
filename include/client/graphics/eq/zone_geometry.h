@@ -8,6 +8,8 @@
 #include <map>
 #include <set>
 
+#include "client/graphics/texture_origin.h"
+
 namespace EQT {
 namespace Graphics {
 
@@ -68,8 +70,11 @@ public:
     // textureMasked() flag) that this specific texture is WLD-masked. Same
     // contract as ConstrainedTextureCache::getOrLoad() (see P46 there);
     // default false preserves pre-P50 behavior byte-for-byte.
+    // B947: origin (the TextureInfo's, when there is one) is handed to the
+    // cache so an evicted texture restores from the same bytes.
     irr::video::ITexture* loadTextureFromBMP(const std::string& name, const std::vector<char>& data,
-                                              bool applyPaletteMask = false);
+                                              bool applyPaletteMask = false,
+                                              const TextureOrigin* origin = nullptr);
 
     // Performance: Lazy texture loading
     // Register texture data for deferred loading (doesn't create Irrlicht texture yet)

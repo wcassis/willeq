@@ -622,7 +622,8 @@ bool ParticleManager::loadParticleAtlas(const std::string& path) {
     std::vector<char> data(fileSize);
     if (!file.read(data.data(), fileSize)) return false;
 
-    atlasTexture_ = constrainedCache_->getOrLoad("particle_atlas", data);
+    const TextureOrigin origin = TextureOrigin::plainFile(path);  // B947: restore origin
+    atlasTexture_ = constrainedCache_->getOrLoad("particle_atlas", data, "uncategorized", "", false, &origin);
     if (!atlasTexture_) atlasTexture_ = constrainedCache_->uploadTexture("particle_atlas");
     return atlasTexture_ != nullptr;
 }
@@ -641,8 +642,9 @@ bool ParticleManager::loadSpellSpriteAtlas(const std::string& path) {
     std::vector<char> data(fileSize);
     if (!file.read(data.data(), fileSize)) return false;
 
+    const TextureOrigin origin = TextureOrigin::plainFile(path);  // B947: restore origin
     spellSpriteAtlasTexture_ =
-        constrainedCache_->getOrLoad("spell_sprite_atlas", data);
+        constrainedCache_->getOrLoad("spell_sprite_atlas", data, "uncategorized", "", false, &origin);
     if (!spellSpriteAtlasTexture_) {
         spellSpriteAtlasTexture_ =
             constrainedCache_->uploadTexture("spell_sprite_atlas");

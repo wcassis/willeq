@@ -125,7 +125,9 @@ bool ZoneLoadComponent::loadZoneStep10_Sky(ZoneLoadContext& ctx) {
                         std::string lowerName = texName;
                         std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                        [](unsigned char c) { return std::tolower(c); });
-                        ctx_.constrainedTextureCache->getOrLoad(lowerName, texInfo->data, "sky", "loadZoneStep10_Sky");
+                        const TextureOrigin origin = texInfo->origin();  // B947: restore origin
+                        ctx_.constrainedTextureCache->getOrLoad(lowerName, texInfo->data, "sky", "loadZoneStep10_Sky",
+                                                                false, &origin);
                         loadedSkyTextureNames.push_back(texName);  // Save for upload step after skyLoader is moved
                         ++skyTexLoaded;
                     }

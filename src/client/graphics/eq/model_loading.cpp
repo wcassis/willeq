@@ -280,6 +280,7 @@ std::shared_ptr<TextureInfo> RaceModelLoader::getArmorTexture(const std::string&
         auto tex = std::make_shared<TextureInfo>();
         tex->name = lowerName;
         tex->data = std::move(data);
+        tex->sourceArchive = archive.sharedPath();  // B947: restore origin
         // B843: stamp the allocating scope, like loadCharacterTextures() does.
         tex->ownerCategory = static_cast<uint8_t>(eqt::memory::currentCategory());
         armorTextureCache_[lowerName] = tex;

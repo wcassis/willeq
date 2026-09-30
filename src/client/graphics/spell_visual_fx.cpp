@@ -234,7 +234,8 @@ irr::video::ITexture* SpellVisualFX::loadDDSTexture(const std::string& path, con
     }
 
     // Route through constrained cache
-    irr::video::ITexture* texture = m_constrained_cache->getOrLoad(name, data);
+    const EQT::Graphics::TextureOrigin origin = EQT::Graphics::TextureOrigin::plainFile(path);  // B947: restore origin
+    irr::video::ITexture* texture = m_constrained_cache->getOrLoad(name, data, "uncategorized", "", false, &origin);
     if (!texture) {
         texture = m_constrained_cache->uploadTexture(name);
     }
@@ -262,7 +263,9 @@ void SpellVisualFX::loadFallbackTexture()
     std::vector<char> data(fileSize);
     file.read(data.data(), fileSize);
 
-    m_particle_texture = m_constrained_cache->getOrLoad("spell_particle_fallback", data);
+    const EQT::Graphics::TextureOrigin origin = EQT::Graphics::TextureOrigin::plainFile(path);  // B947: restore origin
+    m_particle_texture = m_constrained_cache->getOrLoad("spell_particle_fallback", data, "uncategorized", "",
+                                                        false, &origin);
     if (!m_particle_texture) m_particle_texture = m_constrained_cache->uploadTexture("spell_particle_fallback");
     if (!m_particle_texture) {
         LOG_FATAL(MOD_SPELL, "Failed to load required texture: {}", path);
