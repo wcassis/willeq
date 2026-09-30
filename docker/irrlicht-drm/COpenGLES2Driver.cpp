@@ -1774,9 +1774,15 @@ IImage* COpenGLES2Driver::createScreenShot(video::ECOLOR_FORMAT format,
         pixels[i * 4 + 3] = a;  // A
     }
 
+    // B954 (#272): ownForeignMemory=true AND deleteMemory=true -- the image
+    // takes the buffer and frees it with delete[] (CImage::~CImage). With
+    // deleteMemory=false (the pre-B954 call) CImage never freed `pixels`, so
+    // every screenshot leaked one whole frame: ~1.9 MB per RDP frame at
+    // 800x600. Pinned by tests/test_screenshot_leak.cpp.
     IImage* image = createImageFromData(ECF_A8R8G8B8, core::dimension2d<u32>(w, h),
-                                         pixels, true, false);
-    // pixels ownership transferred to image (or deleted if image creation failed)
+                                         pixels, true, true);
+    if (!image)
+        delete[] pixels;
     return image;
 }
 

@@ -584,6 +584,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_alpha_blend_companion DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B954 (GitLab #272): COpenGLES2Driver::createScreenShot() frees the frame it
+# returns -- N screenshots on a headless GLES2 device grow the heap by less than
+# one frame. Same headless-GLES2 idiom and self-skip as the test above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_screenshot_leak
+        test_screenshot_leak.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_screenshot_leak PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_screenshot_leak GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_screenshot_leak DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T484 (board B726): the sky dome's time-of-day vertex tint reaches SOLID3D_FS
 # in R,G,B order. Real sky.s3d / sky.ini / sky.eqe1 through the real
 # SkyRenderer on a headless GLES2 device; self-skips without the device or the
