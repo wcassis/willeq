@@ -60,6 +60,7 @@
 #endif
 #include "client/graphics/zone_load/zone_load_component.h"
 #include "client/graphics/zone_load/zone_load_context.h"
+#include "client/graphics/placed_object_meshes.h"
 
 namespace EQT {
 namespace Graphics {
@@ -159,16 +160,20 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
             // their ZoneGeometry (shared_ptr) but each built its own IMesh, CPU arrays
             // and VBO -- MEASURED dreadlands: 814 instances of 62 geometries,
             // 3.56 MiB of vertex+index arrays where 0.49 MiB would do (and the same
-            // again in VBOs). Vertex-ANIMATED objects (flags, banners) keep a private
-            // mesh because their vertices are rewritten every frame. The cache holds
-            // one reference per mesh and releases it when the step ends; the nodes
-            // keep the mesh alive.
-            std::map<const ZoneGeometry*, irr::scene::IMesh*> sharedObjectMeshes;
-            size_t sharedMeshHits = 0;
-            // WILLEQ_SHARE_OBJECT_MESHES=0 builds one mesh per instance again, with
-            // the same binary, for frame-for-frame comparison.
+            // again in VBOs). The cache holds one reference per mesh and releases it
+            // when the step ends; the nodes keep the mesh alive.
+            // B936 (#254): vertex-ANIMATED geometries are shared too. T504 kept them
+            // private "because their vertices are rewritten every frame", but every
+            // placement of a geometry shows the same keyframe at every instant
+            // (placed_object_meshes.h), so the private copies always held the same
+            // bytes: growthplane had 4,314 of them for 4 geometries (47.1 MB of
+            // `objects` on x86). One mesh per geometry is posed once per keyframe
+            // change and registered once (PlacedObjectMeshes).
+            // WILLEQ_SHARE_OBJECT_MESHES=0 builds one mesh per instance again (animated
+            // ones included, each registered and posed on its own: fable's pre-T504
+            // layout), with the same binary, for frame-for-frame comparison.
             const char* shareEnv = std::getenv("WILLEQ_SHARE_OBJECT_MESHES");
-            const bool shareObjectMeshes = !(shareEnv && shareEnv[0] == '0');
+            PlacedObjectMeshes placedMeshes(!(shareEnv && shareEnv[0] == '0'));
 
             for (size_t oi = 0; oi < totalObjects; ++oi) {
             
@@ -187,26 +192,24 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
 
                 // Build mesh (or reuse the one already built for this geometry)
                 irr::scene::IMesh* objMesh = nullptr;
-                const bool vertexAnimatedObject = objInstance.geometry->animatedVertices &&
-                                                  objInstance.geometry->animatedVertices->frames.size() >= 2;
-                if (shareObjectMeshes && !vertexAnimatedObject) {
-                    auto sharedIt = sharedObjectMeshes.find(objInstance.geometry.get());
-                    if (sharedIt != sharedObjectMeshes.end()) {
-                        objMesh = sharedIt->second;
-                        objMesh->grab();   // balanced by the objMesh->drop() at the end of this iteration
-                        ++sharedMeshHits;
+                const bool vertexAnimatedObject = isVertexAnimatedGeometry(*objInstance.geometry);
+                // B936: owner rows for WILLEQ_LEDGER_OWNERS=objects (no effect
+                // otherwise). obj.meshes = the shared mesh arrays (built once per
+                // geometry); obj.instances = the per-placement node, its
+                // transform and material copies; obj.anim = the keyframe binding
+                // (once per animated mesh).
+                eqt::memory::StartupScope meshOwner("obj.meshes");
+                // One reference for this iteration, balanced by the
+                // objMesh->drop() at its end.
+                objMesh = placedMeshes.acquire(*objInstance.geometry, [&]() -> irr::scene::IMesh* {
+                    if (!ctx_.currentZone->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
+                        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built textured mesh, texNames={}",
+                                  oi, objName, objInstance.geometry->textureNames().size());
+                        return objBuilder.buildTexturedMesh(*objInstance.geometry, ctx_.currentZone->objectTextures);
                     }
-                }
-                if (objMesh) {
-                    // shared mesh reused
-                } else if (!ctx_.currentZone->objectTextures.empty() && !objInstance.geometry->textureNames().empty()) {
-                    objMesh = objBuilder.buildTexturedMesh(*objInstance.geometry, ctx_.currentZone->objectTextures);
-                    LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built textured mesh, texNames={}",
-                              oi, objName, objInstance.geometry->textureNames().size());
-                } else {
-                    objMesh = objBuilder.buildColoredMesh(*objInstance.geometry);
                     LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' built colored mesh (no textures)", oi, objName);
-                }
+                    return objBuilder.buildColoredMesh(*objInstance.geometry);
+                });
 
                 // Missing textures are not re-textured later (T04 made the cache
                 // synchronous; T475 deleted the dead pendingTextureObjects queue).
@@ -222,11 +225,7 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                     deferred.meshBuilt = true; ++objectsBuilt; continue;
                 }
 
-                if (shareObjectMeshes && !vertexAnimatedObject &&
-                    sharedObjectMeshes.find(objInstance.geometry.get()) == sharedObjectMeshes.end()) {
-                    objMesh->grab();   // the cache's reference, dropped after the loop
-                    sharedObjectMeshes[objInstance.geometry.get()] = objMesh;
-                }
+                eqt::memory::StartupScope instanceOwner("obj.instances");
                 irr::scene::IMeshSceneNode* objNode = ctx_.smgr->addMeshSceneNode(objMesh);
                 if (!objNode) {
                     LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' addMeshSceneNode failed — mesh dropped", oi, objName);
@@ -264,74 +263,19 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 // and animatedTextureManager_ are not yet created (Step 11).
                 // A fixup pass after Step 11 applies these to objects.
 
-                // Register vertex-animated objects (flags, banners)
-                if (objInstance.geometry && objInstance.geometry->animatedVertices &&
-                    objInstance.geometry->animatedVertices->frames.size() >= 2) {
-                    auto& animData = objInstance.geometry->animatedVertices;
-                    irr::scene::IMesh* objMesh = objNode->getMesh();
-                    if (objMesh) {
-                        VertexAnimatedMesh vam;
-                        vam.node = objNode;
-                        vam.mesh = objMesh;
-                        vam.animData = animData;
-                        vam.objectName = objName;
-
-                        // Compute center offset: geometry vertices have center baked in,
-                        // animation frame positions are raw. Offset = geomVertex - animFrame0.
-                        const auto& frame0 = animData->frames[0];
-                        size_t animVertCount = frame0.positions.size() / 3;
-                        if (!objInstance.geometry->vertices.empty() && animVertCount > 0) {
-                            const auto& gv = objInstance.geometry->vertices[0];
-                            vam.centerOffsetX = gv.x - frame0.positions[0];
-                            vam.centerOffsetY = gv.y - frame0.positions[1];
-                            vam.centerOffsetZ = gv.z - frame0.positions[2];
-                            LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj '{}' vertex anim center offset: "
-                                      "({:.2f},{:.2f},{:.2f}) from geom({:.2f},{:.2f},{:.2f}) - anim({:.2f},{:.2f},{:.2f})",
-                                      objName, vam.centerOffsetX, vam.centerOffsetY, vam.centerOffsetZ,
-                                      gv.x, gv.y, gv.z,
-                                      frame0.positions[0], frame0.positions[1], frame0.positions[2]);
-                        } else {
-                            vam.centerOffsetX = 0;
-                            vam.centerOffsetY = 0;
-                            vam.centerOffsetZ = 0;
+                // Register vertex-animated objects (flags, banners, grass, plants):
+                // ONE entry per mesh (B936), however many placements draw it.
+                if (vertexAnimatedObject && objNode->getMesh()) {
+                    eqt::memory::StartupScope animOwner("obj.anim");
+                    size_t mappedVerts = 0;
+                    if (placedMeshes.registerAnimated(*objInstance.geometry, objNode->getMesh(), objName,
+                                                      ctx_.vertexAnimatedMeshes, &mappedVerts)) {
+                        const auto& animData = objInstance.geometry->animatedVertices;
+                        if (objInstance.geometry->vertices.empty() || animData->frames[0].positions.size() < 3) {
                             LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj '{}' vertex anim: cannot compute center offset "
                                      "(verts={}, animVerts={})", objName,
-                                     objInstance.geometry->vertices.size(), animVertCount);
+                                     objInstance.geometry->vertices.size(), animData->frames[0].positions.size() / 3);
                         }
-
-                        // Build vertex mapping: for each mesh buffer vertex, find the
-                        // corresponding geometry vertex index (= animation vertex index)
-                        // by matching positions (EQ coords → Irrlicht coords: x,z,y)
-                        size_t expectedVerts = animData->frames[0].positions.size() / 3;
-                        vam.vertexMapping.resize(objMesh->getMeshBufferCount());
-                        size_t mappedVerts = 0;
-                        for (irr::u32 b = 0; b < objMesh->getMeshBufferCount(); ++b) {
-                            irr::scene::IMeshBuffer* buf = objMesh->getMeshBuffer(b);
-                            auto* vertices = static_cast<irr::video::S3DVertex*>(buf->getVertices());
-                            irr::u32 vertCount = buf->getVertexCount();
-                            vam.vertexMapping[b].resize(vertCount, SIZE_MAX);
-
-                            for (irr::u32 v = 0; v < vertCount; ++v) {
-                                // Match by position: mesh stores (x, z, y) from geometry (x, y, z)
-                                float mx = vertices[v].Pos.X;
-                                float my = vertices[v].Pos.Y;  // = geom z
-                                float mz = vertices[v].Pos.Z;  // = geom y
-                                for (size_t gi = 0; gi < objInstance.geometry->vertices.size(); ++gi) {
-                                    const auto& gv = objInstance.geometry->vertices[gi];
-                                    if (std::abs(gv.x - mx) < 0.01f &&
-                                        std::abs(gv.z - my) < 0.01f &&
-                                        std::abs(gv.y - mz) < 0.01f) {
-                                        if (gi < expectedVerts) {
-                                            vam.vertexMapping[b][v] = gi;
-                                            mappedVerts++;
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        ctx_.vertexAnimatedMeshes.push_back(std::move(vam));
                         LOG_INFO(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' registered as vertex-animated "
                                  "({} frames, {}ms delay, {} mapped/{} total verts)",
                                  oi, objName, animData->frames.size(), animData->delayMs,
@@ -482,9 +426,26 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                                         + "/" + std::to_string(totalObjects) + "]");
                 }
             }
-            LOG_INFO(MOD_GRAPHICS, "[objmesh] shared meshes: {} built, {} instances reused one", sharedObjectMeshes.size(), sharedMeshHits);
-            for (auto& [geom, mesh] : sharedObjectMeshes) mesh->drop();
-            sharedObjectMeshes.clear();
+            LOG_INFO(MOD_GRAPHICS, "[objmesh] shared meshes: {} built, {} instances reused one (sharing {})",
+                     placedMeshes.meshesBuilt(), placedMeshes.placementsReusingAMesh(),
+                     placedMeshes.sharing() ? "on" : "OFF (WILLEQ_SHARE_OBJECT_MESHES=0)");
+            {
+                // B936: the shared block is reported ONCE with its claimants
+                // (CLAUDE.md's shared-block rule). The mesh arrays are charged to
+                // `objects` (owner row obj.meshes when WILLEQ_LEDGER_OWNERS=objects).
+                uint64_t animArrayBytes = 0;
+                for (const auto& vam : ctx_.vertexAnimatedMeshes) {
+                    for (irr::u32 b = 0; vam.mesh && b < vam.mesh->getMeshBufferCount(); ++b) {
+                        const auto* buf = vam.mesh->getMeshBuffer(b);
+                        animArrayBytes += static_cast<uint64_t>(buf->getVertexCount()) * sizeof(irr::video::S3DVertex) +
+                                          static_cast<uint64_t>(buf->getIndexCount()) * sizeof(irr::u16);
+                    }
+                }
+                LOG_INFO(MOD_GRAPHICS, "[objmesh] vertex-animated: {} placements draw {} meshes ({} B of vertex+index "
+                         "arrays, held once; claimants: object draw, keyframe pose, object collision snapshot)",
+                         placedMeshes.animatedPlacements(), ctx_.vertexAnimatedMeshes.size(), animArrayBytes);
+            }
+            placedMeshes.release();
             LOG_INFO(MOD_GRAPHICS, "Sequential: built all {} object meshes eagerly", objectsBuilt);
             // T504 (load-step audit): every placeable INSTANCE builds its own mesh
             // from a geometry that instances share. How much is duplicated?
@@ -609,8 +570,9 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
 
         size_t objectsAdded = 0;
         if (ctx_.smgr) {
-            // Vertex-animated meshes are rewritten every frame; their collision
-            // is snapshotted here, the load-time pose the old copy held.
+            // Vertex-animated meshes are rewritten on every keyframe change; their
+            // collision is snapshotted here, the load-time pose the old copy held.
+            // B936: one mesh per animated geometry, so one entry per mesh here.
             std::vector<const irr::scene::IMesh*> animatedMeshes;
             for (const auto& vam : ctx_.vertexAnimatedMeshes) animatedMeshes.push_back(vam.mesh);
             ctx_.objectCollision.clear();

@@ -288,14 +288,16 @@ struct ObjectLight {
     size_t bspRegion = SIZE_MAX; // BSP region for PVS culling
 };
 
-// Vertex animated mesh (flags, banners, etc.)
+// A keyframe-animated object mesh (flags, banners, Kunark/Velious grass and
+// plants). B936: ONE entry per MESH, which every placement of the geometry
+// draws (placed_object_meshes.h says why that is exact); `placements` counts
+// them. The pose routine is applyVertexAnimFrame().
 struct VertexAnimatedMesh {
-    irr::scene::IMeshSceneNode* node = nullptr;
     irr::scene::IMesh* mesh = nullptr;
+    size_t placements = 0;   // scene nodes drawing this mesh
     std::shared_ptr<MeshAnimatedVertices> animData;
-    float elapsedMs = 0;
     int currentFrame = 0;
-    std::string objectName;  // For debugging
+    std::string objectName;  // first placement's name, for the log
     // Mapping from mesh buffer vertex index to animation vertex index
     // Indexed by [bufferIndex][vertexIndex] -> animationVertexIndex
     std::vector<std::vector<size_t>> vertexMapping;

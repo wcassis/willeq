@@ -631,6 +631,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/door_collision.cpp
         src/client/graphics/region_world_triangles.cpp
         src/client/graphics/object_collision_set.cpp
+        src/client/graphics/placed_object_meshes.cpp
         src/client/graphics/door_motion.cpp
         src/client/graphics/door_manager_collision.cpp
         src/client/graphics/door_manager_animation.cpp

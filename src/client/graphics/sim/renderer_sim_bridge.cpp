@@ -4,6 +4,7 @@
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/sky_renderer.h"
 #include "client/graphics/environment/spell_effects_config.h"
+#include "client/graphics/placed_object_meshes.h"
 #include "common/logging.h"
 #include <fmt/format.h>
 #include <algorithm>
@@ -881,39 +882,18 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
         ctx_.detailManager->applyWorkerResults(results->detailOutput);
     }
 
-    // Apply vertex animation results (frame index computed by worker)
+    // Apply vertex animation results (frame index computed by worker). B936:
+    // one entry per animated MESH, drawn by every placement of its geometry,
+    // so this poses each geometry once (growthplane: 4 meshes, where fable
+    // rewrote 4,314 private copies). The old per-placement `node->isVisible()`
+    // skip is gone with the per-placement entry; it never skipped anything in
+    // practice (objects leave the scene graph by remove(), which keeps
+    // isVisible() true; only the diagnostics hide-all toggles cleared it).
     if (!results->vertexAnims.empty() && !ctx_.vertexAnimatedMeshes.empty()) {
         for (size_t i = 0; i < results->vertexAnims.size() && i < ctx_.vertexAnimatedMeshes.size(); ++i) {
             const auto& vr = results->vertexAnims[i];
-            auto& vam = ctx_.vertexAnimatedMeshes[i];
             if (!vr.frameChanged) continue;
-            if (!vam.mesh || !vam.animData || vam.animData->frames.empty()) continue;
-
-            vam.currentFrame = vr.currentFrame;
-
-            // Skip expensive per-vertex work for non-visible meshes
-            if (vam.node && !vam.node->isVisible()) continue;
-
-            const VertexAnimFrame& frame = vam.animData->frames[vam.currentFrame];
-            size_t expectedVerts = frame.positions.size() / 3;
-
-            for (irr::u32 b = 0; b < vam.mesh->getMeshBufferCount(); ++b) {
-                irr::scene::IMeshBuffer* buffer = vam.mesh->getMeshBuffer(b);
-                irr::video::S3DVertex* vertices = static_cast<irr::video::S3DVertex*>(buffer->getVertices());
-                irr::u32 vertexCount = buffer->getVertexCount();
-                if (b >= vam.vertexMapping.size() || vam.vertexMapping[b].size() != vertexCount) continue;
-                for (irr::u32 v = 0; v < vertexCount; ++v) {
-                    size_t animIdx = vam.vertexMapping[b][v];
-                    if (animIdx == SIZE_MAX || animIdx >= expectedVerts) continue;
-                    float eqX = frame.positions[animIdx * 3 + 0] + vam.centerOffsetX;
-                    float eqY = frame.positions[animIdx * 3 + 1] + vam.centerOffsetY;
-                    float eqZ = frame.positions[animIdx * 3 + 2] + vam.centerOffsetZ;
-                    vertices[v].Pos.X = eqX;
-                    vertices[v].Pos.Y = eqZ;
-                    vertices[v].Pos.Z = eqY;
-                }
-                buffer->setDirty(irr::scene::EBT_VERTEX);
-            }
+            applyVertexAnimFrame(ctx_.vertexAnimatedMeshes[i], vr.currentFrame);
         }
     }
 

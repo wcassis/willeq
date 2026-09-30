@@ -20,7 +20,9 @@
 #     row back), because growthplane kicks an under-level character (min 46).
 #
 # Usage: scripts/pi/collision_ab.sh --a DIR --b DIR [--zones z1,z2]
-#            [--rounds 3] [--out DIR] [--owner NAME]
+#            [--rounds 3] [--out DIR] [--owner NAME] [--ledger-owners CAT]
+#   --ledger-owners picks the WILLEQ_LEDGER_OWNERS category whose owner rows
+#   every leg prints (default spatial; B936 used objects).
 #   EQEMU_HOST selects the lane as everywhere else; the VM lane is passed
 #   through with --allow-vm-lane.
 # Exit: 0 every leg exited 0, 1 otherwise (legs keep going either way).
@@ -28,6 +30,7 @@
 set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 A=""; B=""; ZONES="timorous,iceclad,growthplane,gfaydark"; ROUNDS=3; OUT=""; OWNER="b909-pi-ab"
+LEDGER_OWNERS="spatial"
 while [ $# -gt 0 ]; do
     case "$1" in
         --a) A="$2"; shift 2 ;;
@@ -36,6 +39,7 @@ while [ $# -gt 0 ]; do
         --rounds) ROUNDS="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         --owner) OWNER="$2"; shift 2 ;;
+        --ledger-owners) LEDGER_OWNERS="$2"; shift 2 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -47,7 +51,7 @@ printf '/frametiming\nwait 240\n/loc\n/q\n' > "$TOUR"
 {
     echo "A=$(readlink -f "$A") sha256=$(sha256sum "$A/bin/willeq" | cut -d' ' -f1) $(grep '^sha=' "$A/BUILD_INFO" 2>/dev/null)"
     echo "B=$(readlink -f "$B") sha256=$(sha256sum "$B/bin/willeq" | cut -d' ' -f1) $(grep '^sha=' "$B/BUILD_INFO" 2>/dev/null)"
-    echo "zones=$ZONES rounds=$ROUNDS lane=${EQEMU_HOST:-default} start_utc=$(date -u +%FT%TZ)"
+    echo "zones=$ZONES rounds=$ROUNDS ledger_owners=$LEDGER_OWNERS lane=${EQEMU_HOST:-default} start_utc=$(date -u +%FT%TZ)"
 } > "$OUT/ab_meta.txt"
 cat "$OUT/ab_meta.txt"
 
@@ -62,7 +66,7 @@ for r in $(seq 1 "$ROUNDS"); do
         echo "[collision_ab $(date -u +%T)] round $r side $side -> $leg"
         bash "$REPO/scripts/pi_rendered_zone_sweep.sh" --zones "$ZONES" --out "$leg" --pi-dir "$dir" \
             --owner "$OWNER" --no-retry --tour "$TOUR" --drive-keys "${VM_FLAG[@]}" \
-            --env WILLEQ_BASELINE=1 --env WILLEQ_LEDGER_OWNERS=spatial \
+            --env WILLEQ_BASELINE=1 --env WILLEQ_LEDGER_OWNERS="$LEDGER_OWNERS" \
             --char-level 60 --char-exp 620000000 \
             > "$leg.out" 2>&1
         rc=$?
