@@ -328,8 +328,10 @@ TEST(MemoryLedger, ReportsCarryTheTargetAndTheCeiling) {
     const auto s = eqt::memory::snapshot("target_test");
     EXPECT_EQ(s.rssTargetBytes, 64ull * 1024 * 1024);
     EXPECT_EQ(s.rssCeilingBytes, 256ull * 1024 * 1024);
-    EXPECT_EQ(s.overTargetBytes,
-              s.rssAnonBytes > s.rssTargetBytes ? s.rssAnonBytes - s.rssTargetBytes : 0u);
+    // B933: the target gap is on owned = RssAnon - gpu_driver.
+    const uint64_t owned = s.rssAnonBytes > s.gpuDriverBytes ? s.rssAnonBytes - s.gpuDriverBytes : 0u;
+    EXPECT_EQ(s.ownedBytes, owned);
+    EXPECT_EQ(s.overTargetBytes, owned > s.rssTargetBytes ? owned - s.rssTargetBytes : 0u);
     EXPECT_EQ(s.overCeilingBytes,
               s.rssAnonBytes > s.rssCeilingBytes ? s.rssAnonBytes - s.rssCeilingBytes : 0u);
     const std::string line = eqt::memory::toLogLine(s);
@@ -343,6 +345,61 @@ TEST(MemoryLedger, ReportsCarryTheTargetAndTheCeiling) {
                             "\"heapUnchargedBytes\""}) {
         EXPECT_NE(json.find(key), std::string::npos) << key << " missing from " << json;
     }
+}
+
+// B933 (Will, 2026-09-29: "64 MB excludes driver memory"): the gap to the 64 MB
+// target is taken on owned = RssAnon - gpu_driver; the 256 MB ceiling stays on
+// whole RssAnon. Pinned on hand-built numbers so it does not depend on this
+// process's own RSS.
+TEST(MemoryLedger, TargetGapExcludesGpuDriver) {
+    constexpr uint64_t MiB = 1024ull * 1024;
+    eqt::memory::Snapshot s;
+    s.rssAnonBytes = 100 * MiB;
+    s.categories[static_cast<size_t>(Category::GpuDriver)].liveBytes = 19 * MiB;
+    s.gpuDriverBytes = 19 * MiB;
+    eqt::memory::finishTargetGap(s);
+    EXPECT_EQ(s.ownedBytes, 81 * MiB);
+    EXPECT_EQ(s.overTargetBytes, 17 * MiB);            // 100 - 19 - 64
+    EXPECT_EQ(s.overTargetRssAnonBytes, 36 * MiB);     // the old whole-RssAnon figure
+    // Driver larger than the whole gap: owned is under the target, gap is 0.
+    s.rssAnonBytes = 80 * MiB;
+    eqt::memory::finishTargetGap(s);
+    EXPECT_EQ(s.ownedBytes, 61 * MiB);
+    EXPECT_EQ(s.overTargetBytes, 0u);
+    EXPECT_EQ(s.overTargetRssAnonBytes, 16 * MiB);
+    // gpu_driver larger than RssAnon clamps at 0, never wraps.
+    s.rssAnonBytes = 10 * MiB;
+    eqt::memory::finishTargetGap(s);
+    EXPECT_EQ(s.ownedBytes, 0u);
+    EXPECT_EQ(s.overTargetBytes, 0u);
+
+    // The printed forms carry the label and the driver row; the ceiling is untouched.
+    s.rssAnonBytes = 100 * MiB;
+    s.ledgerEnabled = true;
+    s.overCeilingBytes = 0;
+    eqt::memory::finishTargetGap(s);
+    const std::string line = eqt::memory::toLogLine(s);
+    EXPECT_NE(line.find(" owned=" + std::to_string(81 * MiB)), std::string::npos) << line;
+    EXPECT_NE(line.find(" over_target=" + std::to_string(17 * MiB)), std::string::npos) << line;
+    EXPECT_NE(line.find(" over_target_rss_anon=" + std::to_string(36 * MiB)), std::string::npos) << line;
+    const std::string report = eqt::memory::toReportText(s);
+    EXPECT_NE(report.find("owned(RssAnon-gpu_driver)"), std::string::npos) << report;
+    EXPECT_NE(report.find("EXCLUDED from the gap"), std::string::npos) << report;
+    const std::string json = eqt::memory::toJson(s);
+    EXPECT_NE(json.find("\"ownedBytes\":" + std::to_string(81 * MiB)), std::string::npos) << json;
+    EXPECT_NE(json.find("\"overTargetBytes\":" + std::to_string(17 * MiB)), std::string::npos) << json;
+
+    // gapToTarget lists gpu_driver but flags it as excluded.
+    eqt::memory::Snapshot g;
+    g.rssAnonBytes = 100 * MiB;
+    g.categories[static_cast<size_t>(Category::GpuDriver)].liveBytes = 19 * MiB;
+    g.categories[static_cast<size_t>(Category::ZoneMesh)].liveBytes = 30 * MiB;
+    bool sawDriver = false;
+    for (const auto& r : eqt::memory::gapToTarget(g)) {
+        EXPECT_EQ(r.excludedFromGap, r.bucket == "gpu_driver") << r.bucket;
+        if (r.bucket == "gpu_driver") sawDriver = true;
+    }
+    EXPECT_TRUE(sawDriver);
 }
 
 TEST(MemoryLedger, GapToTargetRanksBucketsLargestFirstAndIncludesNonCategories) {

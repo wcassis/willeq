@@ -873,6 +873,15 @@ it without taking that measurement first.
   are pixel-identical. Findings: B933 → #251 (the printed 64 MB gap still
   counts `gpu_driver`), B934 → #252 (a cold shader cache adds 2.8 MiB of
   `gpu_driver`), B935 → #253 (class C: how the Pi gets the build).
+- ~~**B933** (A) The printed 64 MB gap still counted `gpu_driver`, against Will's
+  2026-09-29 ruling (GitLab #251).~~ **Closed** on branch
+  `task/B933-gap-excludes-driver`: `over_target` / `overTargetBytes` /
+  `gapToTarget` / `visual_gate.py` `[rss-target]` / the Pi rig tables are on
+  `owned=RssAnon-gpu_driver`, `gpu_driver` is a listed-but-EXCLUDED row, the
+  whole-RssAnon figure is `over_target_rss_anon`, the driver .so COW pages stay
+  on the owned side, and the 256 MB bound is unchanged. Pinned by
+  `MemoryLedger.TargetGapExcludesGpuDriver` and `test_visual_gate_ledger.py`
+  check 7b.
 
 - **B909** (A) The client binary's own memory ledger had never been measured, and
   its `spatial` is over budget (GitLab #229). **Measured 2026-09-29** on branch
