@@ -1,11 +1,12 @@
 #include "client/raycast_mesh.h"
-#include "common/util/ksm.h"
 #include "common/logging.h"  // T504
 #include <math.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <new>
+#include <utility>
 #include <vector>
 
 // This code snippet allows you to create an axis aligned bounding volume tree for a triangle mesh so that you can do
@@ -42,7 +43,11 @@ namespace RAYCAST_MESH
 {
 
 typedef unsigned char RmUint8;
-typedef std::vector<RmUint32, PageAlignedAllocator<RmUint32>> TriVector;
+// B941: plain vectors. These were page-aligned (posix_memalign(4096) for every
+// node's left/right triangle list during the build, for a KSM merge that never
+// applies to a single client process): each small list cost a page-aligned
+// chunk and left the arena fragmented after the build.
+typedef std::vector<RmUint32> TriVector;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /**
@@ -450,13 +455,23 @@ public:
 		{
 			triangles.push_back(i);
 		}
-		mBounds.setMin( vertices );
-		mBounds.setMax( vertices );
-		const RmReal *vtx = vertices+3;
-		for (RmUint32 i=1; i<vcount; i++)
+		if ( vcount == 0 )
 		{
-			mBounds.include( vtx );
-			vtx+=3;
+			// B941: an empty mesh (a zero-face map) has no vertex to seed the
+			// bounds from; the old page-aligned copy handed a dangling pointer here.
+			mBounds.setMin( 0.0f, 0.0f, 0.0f );
+			mBounds.setMax( 0.0f, 0.0f, 0.0f );
+		}
+		else
+		{
+			mBounds.setMin( vertices );
+			mBounds.setMax( vertices );
+			const RmReal *vtx = vertices+3;
+			for (RmUint32 i=1; i<vcount; i++)
+			{
+				mBounds.include( vtx );
+				vtx+=3;
+			}
 		}
 		split(triangles,vcount,vertices,tcount,indices,0,maxDepth,minLeafSize,minAxisSize,callback,leafTriangles);
 	}
@@ -724,7 +739,11 @@ class MyRaycastMesh : public RaycastMesh, public NodeInterface
 {
 public:
 
-	MyRaycastMesh(RmUint32 vcount,const RmReal *vertices,RmUint32 tcount,const RmUint32 *indices,RmUint32 maxDepth,RmUint32 minLeafSize,RmReal minAxisSize)
+	// B941: the mesh OWNS its vertex and index arrays as vectors the caller
+	// moved in (createRaycastMesh(std::vector&&, ...)); the pointer factory
+	// copies into vectors first. No second copy of the geometry is made here.
+	MyRaycastMesh(std::vector<RmReal> &&vertices,std::vector<RmUint32> &&indices,RmUint32 maxDepth,RmUint32 minLeafSize,RmReal minAxisSize)
+		: mVertexStore(std::move(vertices)), mIndexStore(std::move(indices))
 	{
 		mRaycastFrame = 0;
 		if ( maxDepth < 2 )
@@ -741,42 +760,23 @@ public:
 		{
 			mMaxNodeCount+=pow2Table[i];
 		}
-		// Allocate page-aligned memory
-		mNodes = static_cast<NodeAABB*>(KSM::AllocatePageAligned(sizeof(NodeAABB) * mMaxNodeCount));
+		mNodes = static_cast<NodeAABB*>(calloc(mMaxNodeCount, sizeof(NodeAABB)));
 		if (!mNodes) {
 			throw std::bad_alloc();
 		}
 		mNodeCount = 0;
-		KSM::CheckPageAlignment(mNodes);
 
-		mVertices = static_cast<RmReal*>(KSM::AllocatePageAligned(sizeof(RmReal) * 3 * vcount));
-		if (!mVertices) {
-			throw std::bad_alloc();
-		}
-		std::memcpy(mVertices, vertices, sizeof(RmReal) * 3 * vcount);
-		mVcount = vcount;
-
-		mIndices = static_cast<RmUint32*>(KSM::AllocatePageAligned(sizeof(RmUint32) * 3 * tcount));
-		if (!mIndices) {
-			throw std::bad_alloc();
-		}
-		std::memcpy(mIndices, indices, sizeof(RmUint32) * 3 * tcount);
-		mTcount = tcount;
+		mVcount = static_cast<RmUint32>(mVertexStore.size() / 3);
+		mTcount = static_cast<RmUint32>(mIndexStore.size() / 3);
+		mVertices = mVertexStore.data();
+		mIndices = mIndexStore.data();
 
 		// T504d: one byte per triangle. The mark is compared to the current
 		// raycast's frame number and set; a byte wraps every 255 raycasts, at
 		// which point raycast() clears the whole array once (a memset of
 		// tcount bytes every 255 calls) -- 4 -> 1 bytes per triangle.
-		mRaycastTriangles = static_cast<RmUint8*>(KSM::AllocatePageAligned(sizeof(RmUint8) * tcount));
-		if (!mRaycastTriangles) {
-			throw std::bad_alloc();
-		}
-		std::memset(mRaycastTriangles, 0, sizeof(RmUint8) * tcount);
-
-		// Mark memory as mergeable for KSM
-		KSM::MarkMemoryForKSM(mVertices, sizeof(RmReal) * 3 * vcount);
-		KSM::MarkMemoryForKSM(mIndices, sizeof(RmUint32) * 3 * tcount);
-		KSM::MarkMemoryForKSM(mRaycastTriangles, sizeof(RmUint8) * tcount);
+		mMarkStore.assign(mTcount, 0);
+		mRaycastTriangles = mMarkStore.data();
 
 		// T504d: no face-normal table. It was 12 bytes per triangle (gfaydark
 		// 1.56 MB, dreadlands 2.16 MB), built whole on the first hit that asked
@@ -787,16 +787,20 @@ public:
 
 		shrinkNodePool();
 		mLeafTriangles.shrink_to_fit();   // T504d: push_back growth left up to 2x slack (gfaydark 2.10 MB for 1.49)
+		// B941: the caller's growth slack goes too, now that the build's own
+		// transients are freed (one array is copied at a time).
+		mVertexStore.shrink_to_fit();
+		mIndexStore.shrink_to_fit();
+		mVertices = mVertexStore.data();
+		mIndices = mIndexStore.data();
 
 		// T504 (load-step audit): what the finished tree weighs, by part.
 		LOG_INFO(MOD_MAP, "[raycastmesh] verts={} tris={} nodes={} leaf_tri_refs={} | bytes: vertices={} indices={} "
 		         "raycast_marks={} nodes={} leaf_refs={} (T504d: no face-normal table)",
 		         mVcount, mTcount, mNodeCount, mLeafTriangles.size(),
-		         sizeof(RmReal) * 3 * (size_t)mVcount, sizeof(RmUint32) * 3 * (size_t)mTcount,
-		         sizeof(RmUint8) * (size_t)mTcount, sizeof(NodeAABB) * (size_t)mNodeCount,
+		         sizeof(RmReal) * mVertexStore.capacity(), sizeof(RmUint32) * mIndexStore.capacity(),
+		         mMarkStore.capacity(), sizeof(NodeAABB) * (size_t)mNodeCount,
 		         sizeof(RmUint32) * mLeafTriangles.capacity());
-
-		KSM::MarkMemoryForKSM(mLeafTriangles.data(), mLeafTriangles.size() * sizeof(RmUint32));
 	}
 
 	// T504 (load-step audit): mNodes is sized for a FULL binary tree of maxDepth
@@ -809,7 +813,7 @@ public:
 	void shrinkNodePool(void)
 	{
 		if (mNodeCount == 0 || mNodeCount >= mMaxNodeCount) return;
-		NodeAABB *exact = static_cast<NodeAABB*>(KSM::AllocatePageAligned(sizeof(NodeAABB) * mNodeCount));
+		NodeAABB *exact = static_cast<NodeAABB*>(malloc(sizeof(NodeAABB) * mNodeCount));
 		if (!exact) return;  // keep the big pool: correct, just not small
 		std::memcpy(static_cast<void*>(exact), static_cast<const void*>(mNodes), sizeof(NodeAABB) * mNodeCount);
 		// T504d: children are pool INDICES, so nothing to rebase.
@@ -826,9 +830,6 @@ public:
 	~MyRaycastMesh(void)
 	{
 		if (mNodes) { free(mNodes); }
-		if (mVertices) { free(mVertices); }
-		if (mIndices) { free(mIndices); }
-		if (mRaycastTriangles) { free(mRaycastTriangles); }
 	}
 
 	virtual bool raycast(const RmReal *from,const RmReal *to,RmReal *hitLocation,RmReal *hitNormal,RmReal *hitDistance)
@@ -948,6 +949,9 @@ public:
 		return ret;
 	}
 
+	std::vector<RmReal>		mVertexStore;   // B941: owned (moved in)
+	std::vector<RmUint32>	mIndexStore;
+	std::vector<RmUint8>	mMarkStore;
 	RmUint8			mRaycastFrame;
 	RmUint8			*mRaycastTriangles;
 	RmUint32		mVcount;
@@ -973,6 +977,18 @@ RaycastMesh * createRaycastMesh(RmUint32 vcount,
 								RmUint32 minLeafSize,
 								RmReal	minAxisSize)
 {
-	auto m = new MyRaycastMesh(vcount, vertices, tcount, indices, maxDepth, minLeafSize, minAxisSize);
+	std::vector<RmReal> v(vertices, vertices + 3 * (size_t)vcount);
+	std::vector<RmUint32> t(indices, indices + 3 * (size_t)tcount);
+	auto m = new MyRaycastMesh(std::move(v), std::move(t), maxDepth, minLeafSize, minAxisSize);
+	return static_cast<RaycastMesh*>(m);
+}
+
+RaycastMesh * createRaycastMesh(std::vector<RmReal> &&vertices,
+								std::vector<RmUint32> &&indices,
+								RmUint32 maxDepth,
+								RmUint32 minLeafSize,
+								RmReal	minAxisSize)
+{
+	auto m = new MyRaycastMesh(std::move(vertices), std::move(indices), maxDepth, minLeafSize, minAxisSize);
 	return static_cast<RaycastMesh*>(m);
 }

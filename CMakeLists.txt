@@ -484,7 +484,7 @@ SET(CLIENT_CORE_SOURCES
 
 # Navmesh pathfinding (optional)
 IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
-    LIST(APPEND CLIENT_CORE_SOURCES src/client/pathfinder_nav_mesh.cpp)
+    LIST(APPEND CLIENT_CORE_SOURCES src/client/pathfinder_nav_mesh.cpp src/client/navmesh_load.cpp)
 ENDIF()
 
 # Waypoint pathfinding (optional, requires Boost)
@@ -2126,7 +2126,7 @@ IF(EQT_GRAPHICS)
     ENDIF()
     # Optionally add navmesh source
     IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
-        TARGET_SOURCES(gles2_zone_benchmark PRIVATE src/client/pathfinder_nav_mesh.cpp)
+        TARGET_SOURCES(gles2_zone_benchmark PRIVATE src/client/pathfinder_nav_mesh.cpp src/client/navmesh_load.cpp)
     ENDIF()
     TARGET_INCLUDE_DIRECTORIES(gles2_zone_benchmark PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -2274,7 +2274,7 @@ IF(EQT_GRAPHICS)
         TARGET_SOURCES(gles2_shader_diagnostic PRIVATE src/client/graphics/gpu_upload_thread.cpp)
     ENDIF()
     IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
-        TARGET_SOURCES(gles2_shader_diagnostic PRIVATE src/client/pathfinder_nav_mesh.cpp)
+        TARGET_SOURCES(gles2_shader_diagnostic PRIVATE src/client/pathfinder_nav_mesh.cpp src/client/navmesh_load.cpp)
     ENDIF()
     TARGET_INCLUDE_DIRECTORIES(gles2_shader_diagnostic PRIVATE
         ${CMAKE_SOURCE_DIR}/include
@@ -2395,7 +2395,7 @@ IF(EQT_GRAPHICS)
         TARGET_SOURCES(gles2_composite_audit PRIVATE src/client/graphics/gpu_upload_thread.cpp)
     ENDIF()
     IF(RECAST_LIBRARY AND DETOUR_LIBRARY)
-        TARGET_SOURCES(gles2_composite_audit PRIVATE src/client/pathfinder_nav_mesh.cpp)
+        TARGET_SOURCES(gles2_composite_audit PRIVATE src/client/pathfinder_nav_mesh.cpp src/client/navmesh_load.cpp)
     ENDIF()
     TARGET_INCLUDE_DIRECTORIES(gles2_composite_audit PRIVATE
         ${CMAKE_SOURCE_DIR}/include
