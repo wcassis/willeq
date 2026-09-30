@@ -8,6 +8,7 @@
 #include <iostream>
 #include <fstream>
 #include <memory>
+#include <cstdint>
 #include <cstdio>
 #include <vector>
 #include <cerrno>
@@ -16,6 +17,8 @@
 #include <algorithm>
 #include <limits>
 #include <map>
+#include <tuple>
+#include <utility>
 
 // T20: every count and length inside a V2 map's decompressed payload is
 // untrusted file data, and the readers below advance a raw pointer. Before
@@ -91,7 +94,13 @@ struct HCMap::impl {
 		indices.p = rm->getIndices();
 		indices.n = static_cast<size_t>(rm->getTriangleCount()) * 3;
 	}
-	std::vector<bool> triangleIsPlaceable;  // Per-triangle flag: true if from placeable object
+	// B941: the placeable triangles are ONE contiguous run -- a V2 map emits
+	// its main terrain first, then every placement and placement-group
+	// triangle, then the terrain tiles -- so the per-triangle flag vector
+	// (vector<bool>, one bit per triangle) is two indices. [begin, end).
+	size_t placeableBegin = 0;
+	size_t placeableEnd = 0;
+	bool isPlaceable(size_t tri) const { return tri >= placeableBegin && tri < placeableEnd; }
 	float minZ = 0.0f;
 	float maxZ = 0.0f;
 
@@ -209,8 +218,11 @@ bool HCMap::Load(const std::string& filename) {
 			return false;
 		}
 
-		std::vector<glm::vec3> verts;
+		// B941: flat float triples, moved into the raycast mesh (no copy).
+		std::vector<float> verts;
 		std::vector<uint32_t> indices;
+		verts.reserve(static_cast<size_t>(face_count) * 9);
+		indices.reserve(static_cast<size_t>(face_count) * 3);
 		for (uint32_t i = 0; i < face_count; ++i) {
 			glm::vec3 a;
 			glm::vec3 b;
@@ -244,43 +256,36 @@ bool HCMap::Load(const std::string& filename) {
 				return false;
 			}
 
-			size_t sz = verts.size();
-			verts.push_back(a);
-			indices.push_back((uint32_t)sz);
-
-			verts.push_back(b);
-			indices.push_back((uint32_t)sz + 1);
-
-			verts.push_back(c);
-			indices.push_back((uint32_t)sz + 2);
+			const uint32_t sz = (uint32_t)(verts.size() / 3);
+			// Swap Y and Z to convert from EQ's Z-up to the internal Y-up format
+			// (the transformation EQEmu's map.cpp does).
+			for (const glm::vec3* v : {&a, &b, &c}) {
+				verts.push_back(v->x);
+				verts.push_back(v->z);
+				verts.push_back(v->y);
+			}
+			indices.push_back(sz);
+			indices.push_back(sz + 1);
+			indices.push_back(sz + 2);
 		}
 
-		// Swap Y and Z coordinates to convert from EQ's Z-up to internal Y-up format
-		// This matches the transformation done by EQEmu server in map.cpp
-		for (auto &v : verts) {
-			float t = v.y;
-			v.y = v.z;
-			v.z = t;
-		}
-
-		// Store vertices for debug visualization AFTER Y↔Z swap (now in Irrlicht Y-up format)
-
-		// V1 format has no placeables - all triangles are terrain
-		m_impl->triangleIsPlaceable.resize(face_count, false);
+		// V1 format has no placeables - all triangles are terrain (empty range)
+		m_impl->placeableBegin = m_impl->placeableEnd = 0;
 
 		// Calculate Y range for color gradient (Y is vertical in Y-up format)
 		m_impl->minZ = std::numeric_limits<float>::max();
 		m_impl->maxZ = std::numeric_limits<float>::lowest();
-		for (const auto& v : verts) {
-			if (v.y < m_impl->minZ) m_impl->minZ = v.y;
-			if (v.y > m_impl->maxZ) m_impl->maxZ = v.y;
+		for (size_t i = 1; i < verts.size(); i += 3) {
+			if (verts[i] < m_impl->minZ) m_impl->minZ = verts[i];
+			if (verts[i] > m_impl->maxZ) m_impl->maxZ = verts[i];
 		}
 
-		m_impl->rm = createRaycastMesh((RmUint32)verts.size(), (const RmReal*)&verts[0], face_count, &indices[0]);
+		const size_t vertexCount = verts.size() / 3;
+		m_impl->rm = createRaycastMesh(std::move(verts), std::move(indices));
 		m_impl->bindViews();  // T504
 		if (m_impl->rm) {
 			loaded = true;
-			LOG_INFO(MOD_MAP, "Loaded V1 map: {} vertices, {} faces", verts.size(), face_count);
+			LOG_INFO(MOD_MAP, "Loaded V1 map: {} vertices, {} faces", vertexCount, face_count);
 		}
 	}
 	else if (version == 0x02000000) {
@@ -306,16 +311,19 @@ bool HCMap::Load(const std::string& filename) {
 
 		LOG_DEBUG(MOD_MAP, "V2 map: compressed size = {}, uncompressed size = {}", data_size, buffer_size);
 
-		std::vector<char> compressed_data(data_size);
-		if (fread(&compressed_data[0], data_size, 1, f) != 1) {
-			fclose(f);
-			delete m_impl;
-			m_impl = nullptr;
-			return false;
-		}
-
 		std::vector<char> buffer(buffer_size);
-		uint32_t decompressed_size = EQ::InflateData(&compressed_data[0], data_size, &buffer[0], buffer_size);
+		uint32_t decompressed_size = 0;
+		{
+			// B941: the compressed bytes live only as long as the inflate.
+			std::vector<char> compressed_data(data_size);
+			if (fread(&compressed_data[0], data_size, 1, f) != 1) {
+				fclose(f);
+				delete m_impl;
+				m_impl = nullptr;
+				return false;
+			}
+			decompressed_size = EQ::InflateData(&compressed_data[0], data_size, &buffer[0], buffer_size);
+		}
 
 		if (decompressed_size == 0) {
 			LOG_ERROR(MOD_MAP, "Failed to decompress V2 map data");
@@ -346,11 +354,24 @@ bool HCMap::Load(const std::string& filename) {
 		LOG_DEBUG(MOD_MAP, "V2 map counts: verts={}, indices={}, models={}, placements={}, tiles={}",
 			vert_count, ind_count, model_count, plac_count, tile_count);
 
-		std::vector<glm::vec3> verts;
-		verts.reserve(vert_count);
+		// B941 (GitLab #259): flat float triples, handed to the raycast mesh by
+		// move. Every vertex is stored ONCE per placement: a placed model's
+		// triangles index the placement's transformed copy of each model vertex
+		// they use, instead of each triangle carrying three private vertices
+		// (emeraldjungle: 1,683,062 -> see the [raycastmesh] line). Triangle
+		// order and every vertex VALUE are unchanged -- each vertex goes through
+		// exactly the per-vertex transform the old per-triangle loop applied --
+		// so every query is bit-identical (tests/test_game_state_identity.cpp).
+		std::vector<float> verts;
+		verts.reserve(static_cast<size_t>(vert_count) * 3);
 		std::vector<uint32_t> indices;
 		indices.reserve(ind_count);
-		std::vector<bool> triangleIsPlaceable;  // Track which triangles are from placeables
+		auto vertexCount = [&verts]() { return static_cast<uint32_t>(verts.size() / 3); };
+		auto pushVertex = [&verts](float x, float y, float z) {
+			verts.push_back(x);
+			verts.push_back(y);
+			verts.push_back(z);
+		};
 
 		// Read main vertices
 		// Note: Map file has INVERSEXY applied (X and Y are swapped), so we swap them back
@@ -358,7 +379,7 @@ bool HCMap::Load(const std::string& filename) {
 			float x = read_val<float>(buf, end);
 			float y = read_val<float>(buf, end);
 			float z = read_val<float>(buf, end);
-			verts.emplace_back(y, x, z);  // Swap X/Y to undo INVERSEXY
+			pushVertex(y, x, z);  // Swap X/Y to undo INVERSEXY
 		}
 
 		// Read main indices
@@ -366,9 +387,9 @@ bool HCMap::Load(const std::string& filename) {
 			indices.push_back(read_val<uint32_t>(buf, end));
 		}
 
-		// Mark main geometry triangles as terrain (not placeables)
-		size_t mainTerrainTriangles = ind_count / 3;
-		triangleIsPlaceable.resize(mainTerrainTriangles, false);
+		// Main geometry triangles are terrain; the placeables start here.
+		const size_t mainTerrainTriangles = ind_count / 3;
+		size_t placeableTriangles = 0;
 
 		// Skip non-collidable geometry
 		skip_bytes(buf, end, static_cast<size_t>(nc_vert_count) * sizeof(float) * 3);
@@ -398,6 +419,11 @@ bool HCMap::Load(const std::string& filename) {
 				uint32_t v3 = read_val<uint32_t>(buf, end);
 				uint8_t vis = read_val<uint8_t>(buf, end);
 
+				// B941: a poly index outside its model used to read past the
+				// model's vertex array; it now fails the load (T20's rule).
+				if (v1 >= model_vert_count || v2 >= model_vert_count || v3 >= model_vert_count) {
+					throw MapParseError("model poly references a vertex outside its model");
+				}
 				ModelEntry::Poly p;
 				p.v1 = v1;
 				p.v2 = v2;
@@ -406,8 +432,51 @@ bool HCMap::Load(const std::string& filename) {
 				me->polys.push_back(p);
 			}
 
+			// B941: many model vertex lists repeat a position (split per
+			// texture/normal in the source mesh). Point every poly at the FIRST
+			// vertex with the same bits: the transform is a pure function of
+			// the bits, so the emitted value is identical and the placement
+			// stores it once.
+			{
+				std::map<std::tuple<uint32_t, uint32_t, uint32_t>, uint32_t> firstWithBits;
+				std::vector<uint32_t> canon(me->verts.size());
+				for (uint32_t j = 0; j < me->verts.size(); ++j) {
+					uint32_t b[3];
+					std::memcpy(b, &me->verts[j], sizeof(b));
+					canon[j] = firstWithBits.emplace(std::make_tuple(b[0], b[1], b[2]), j).first->second;
+				}
+				for (auto& p : me->polys) {
+					p.v1 = canon[p.v1];
+					p.v2 = canon[p.v2];
+					p.v3 = canon[p.v3];
+				}
+			}
+
 			models[name] = std::move(me);
 		}
+
+		// Emits one placement of `model`: each model vertex a visible poly uses
+		// is transformed by `xform` once (first use) and indexed after that.
+		std::vector<uint32_t> remap;
+		auto emitPlacement = [&](const ModelEntry& model, const auto& xform) {
+			remap.assign(model.verts.size(), UINT32_MAX);
+			for (const auto& poly : model.polys) {
+				if (poly.vis == 0)
+					continue;
+				for (const uint32_t mv : {poly.v1, poly.v2, poly.v3}) {
+					if (remap[mv] == UINT32_MAX) {
+						glm::vec3 v = model.verts[mv];
+						xform(v);
+						remap[mv] = vertexCount();
+						// Placeables use original order (not X/Y swapped like terrain)
+						// to align with S3D rendered objects
+						pushVertex(v.x, v.y, v.z);
+					}
+					indices.push_back(remap[mv]);
+				}
+				++placeableTriangles;
+			}
+		};
 
 		// Read placements - these are placeable objects
 		for (uint32_t i = 0; i < plac_count; ++i) {
@@ -425,45 +494,15 @@ bool HCMap::Load(const std::string& filename) {
 			float y_scale = read_val<float>(buf, end);
 			float z_scale = read_val<float>(buf, end);
 
-			if (models.count(name) == 0)
+			auto it = models.find(name);
+			if (it == models.end())
 				continue;
 
-			auto &model = models[name];
-			auto &mod_polys = model->polys;
-			auto &mod_verts = model->verts;
-			for (uint32_t j = 0; j < mod_polys.size(); ++j) {
-				auto &current_poly = mod_polys[j];
-				if (current_poly.vis == 0)
-					continue;
-				auto v1 = mod_verts[current_poly.v1];
-				auto v2 = mod_verts[current_poly.v2];
-				auto v3 = mod_verts[current_poly.v3];
-
-				RotateVertex(v1, x_rot, y_rot, z_rot);
-				RotateVertex(v2, x_rot, y_rot, z_rot);
-				RotateVertex(v3, x_rot, y_rot, z_rot);
-
-				ScaleVertex(v1, x_scale, y_scale, z_scale);
-				ScaleVertex(v2, x_scale, y_scale, z_scale);
-				ScaleVertex(v3, x_scale, y_scale, z_scale);
-
-				TranslateVertex(v1, x, y, z);
-				TranslateVertex(v2, x, y, z);
-				TranslateVertex(v3, x, y, z);
-
-				// Placeables use original order (not X/Y swapped like terrain)
-				// to align with S3D rendered objects
-				verts.emplace_back(v1.x, v1.y, v1.z);
-				verts.emplace_back(v2.x, v2.y, v2.z);
-				verts.emplace_back(v3.x, v3.y, v3.z);
-
-				indices.emplace_back((uint32_t)verts.size() - 3);
-				indices.emplace_back((uint32_t)verts.size() - 2);
-				indices.emplace_back((uint32_t)verts.size() - 1);
-
-				// Mark this triangle as a placeable
-				triangleIsPlaceable.push_back(true);
-			}
+			emitPlacement(*it->second, [&](glm::vec3& v) {
+				RotateVertex(v, x_rot, y_rot, z_rot);
+				ScaleVertex(v, x_scale, y_scale, z_scale);
+				TranslateVertex(v, x, y, z);
+			});
 		}
 
 		// Read placement groups (complex object placements) - also placeables
@@ -501,94 +540,36 @@ bool HCMap::Load(const std::string& filename) {
 				float p_y_scale = read_val<float>(buf, end);
 				float p_z_scale = read_val<float>(buf, end);
 
-				if (models.count(name) == 0)
+				auto it = models.find(name);
+				if (it == models.end())
 					continue;
 
-				auto &model = models[name];
+				glm::vec3 correction(p_x, p_y, p_z);
+				RotateVertex(correction, x_rot * 3.14159f / 180.0f, 0, 0);
 
-				for (size_t k = 0; k < model->polys.size(); ++k) {
-					auto &poly = model->polys[k];
-					if (poly.vis == 0)
-						continue;
-					glm::vec3 v1, v2, v3;
-
-					v1 = model->verts[poly.v1];
-					v2 = model->verts[poly.v2];
-					v3 = model->verts[poly.v3];
-
-					ScaleVertex(v1, p_x_scale, p_y_scale, p_z_scale);
-					ScaleVertex(v2, p_x_scale, p_y_scale, p_z_scale);
-					ScaleVertex(v3, p_x_scale, p_y_scale, p_z_scale);
-
-					TranslateVertex(v1, p_x, p_y, p_z);
-					TranslateVertex(v2, p_x, p_y, p_z);
-					TranslateVertex(v3, p_x, p_y, p_z);
-
-					RotateVertex(v1, x_rot * 3.14159f / 180.0f, 0, 0);
-					RotateVertex(v2, x_rot * 3.14159f / 180.0f, 0, 0);
-					RotateVertex(v3, x_rot * 3.14159f / 180.0f, 0, 0);
-
-					RotateVertex(v1, 0, y_rot * 3.14159f / 180.0f, 0);
-					RotateVertex(v2, 0, y_rot * 3.14159f / 180.0f, 0);
-					RotateVertex(v3, 0, y_rot * 3.14159f / 180.0f, 0);
-
-					glm::vec3 correction(p_x, p_y, p_z);
-					RotateVertex(correction, x_rot * 3.14159f / 180.0f, 0, 0);
-
-					TranslateVertex(v1, -correction.x, -correction.y, -correction.z);
-					TranslateVertex(v2, -correction.x, -correction.y, -correction.z);
-					TranslateVertex(v3, -correction.x, -correction.y, -correction.z);
-
-					RotateVertex(v1, p_x_rot, 0, 0);
-					RotateVertex(v2, p_x_rot, 0, 0);
-					RotateVertex(v3, p_x_rot, 0, 0);
-
-					RotateVertex(v1, 0, -p_y_rot, 0);
-					RotateVertex(v2, 0, -p_y_rot, 0);
-					RotateVertex(v3, 0, -p_y_rot, 0);
-
-					RotateVertex(v1, 0, 0, p_z_rot);
-					RotateVertex(v2, 0, 0, p_z_rot);
-					RotateVertex(v3, 0, 0, p_z_rot);
-
-					TranslateVertex(v1, correction.x, correction.y, correction.z);
-					TranslateVertex(v2, correction.x, correction.y, correction.z);
-					TranslateVertex(v3, correction.x, correction.y, correction.z);
-
-					RotateVertex(v1, 0, 0, z_rot * 3.14159f / 180.0f);
-					RotateVertex(v2, 0, 0, z_rot * 3.14159f / 180.0f);
-					RotateVertex(v3, 0, 0, z_rot * 3.14159f / 180.0f);
-
-					ScaleVertex(v1, x_scale, y_scale, z_scale);
-					ScaleVertex(v2, x_scale, y_scale, z_scale);
-					ScaleVertex(v3, x_scale, y_scale, z_scale);
-
-					TranslateVertex(v1, x_tile, y_tile, z_tile);
-					TranslateVertex(v2, x_tile, y_tile, z_tile);
-					TranslateVertex(v3, x_tile, y_tile, z_tile);
-
-					TranslateVertex(v1, x, y, z);
-					TranslateVertex(v2, x, y, z);
-					TranslateVertex(v3, x, y, z);
-
-					// Placeables use original order (not X/Y swapped like terrain)
-					// to align with S3D rendered objects
-					verts.emplace_back(v1.x, v1.y, v1.z);
-					verts.emplace_back(v2.x, v2.y, v2.z);
-					verts.emplace_back(v3.x, v3.y, v3.z);
-
-					indices.emplace_back((uint32_t)verts.size() - 3);
-					indices.emplace_back((uint32_t)verts.size() - 2);
-					indices.emplace_back((uint32_t)verts.size() - 1);
-
-					// Mark this triangle as a placeable
-					triangleIsPlaceable.push_back(true);
-				}
+				// The old per-triangle sequence, applied to one vertex.
+				emitPlacement(*it->second, [&](glm::vec3& v) {
+					ScaleVertex(v, p_x_scale, p_y_scale, p_z_scale);
+					TranslateVertex(v, p_x, p_y, p_z);
+					RotateVertex(v, x_rot * 3.14159f / 180.0f, 0, 0);
+					RotateVertex(v, 0, y_rot * 3.14159f / 180.0f, 0);
+					TranslateVertex(v, -correction.x, -correction.y, -correction.z);
+					RotateVertex(v, p_x_rot, 0, 0);
+					RotateVertex(v, 0, -p_y_rot, 0);
+					RotateVertex(v, 0, 0, p_z_rot);
+					TranslateVertex(v, correction.x, correction.y, correction.z);
+					RotateVertex(v, 0, 0, z_rot * 3.14159f / 180.0f);
+					ScaleVertex(v, x_scale, y_scale, z_scale);
+					TranslateVertex(v, x_tile, y_tile, z_tile);
+					TranslateVertex(v, x, y, z);
+				});
 			}
 		}
+		remap.clear();
+		remap.shrink_to_fit();
+		models.clear();  // B941: model templates are parse-time only
 
 		// Read terrain tiles - these are NOT placeables
-		size_t triangleCountBeforeTiles = triangleIsPlaceable.size();
 		uint32_t ter_quad_count = (quads_per_tile * quads_per_tile);
 		uint32_t ter_vert_count = ((quads_per_tile + 1) * (quads_per_tile + 1));
 		std::vector<uint8_t> flags;
@@ -621,12 +602,12 @@ bool HCMap::Load(const std::string& filename) {
 				float QuadVertex4Y = QuadVertex3Y;
 				float QuadVertex4Z = QuadVertex1Z;
 
-				uint32_t current_vert = (uint32_t)verts.size() + 3;
+				uint32_t current_vert = vertexCount() + 3;
 				// Swap X/Y to undo INVERSEXY (same as main vertices)
-				verts.emplace_back(QuadVertex1Y, QuadVertex1X, QuadVertex1Z);
-				verts.emplace_back(QuadVertex2Y, QuadVertex2X, QuadVertex2Z);
-				verts.emplace_back(QuadVertex3Y, QuadVertex3X, QuadVertex3Z);
-				verts.emplace_back(QuadVertex4Y, QuadVertex4X, QuadVertex4Z);
+				pushVertex(QuadVertex1Y, QuadVertex1X, QuadVertex1Z);
+				pushVertex(QuadVertex2Y, QuadVertex2X, QuadVertex2Z);
+				pushVertex(QuadVertex3Y, QuadVertex3X, QuadVertex3Z);
+				pushVertex(QuadVertex4Y, QuadVertex4X, QuadVertex4Z);
 
 				indices.emplace_back(current_vert);
 				indices.emplace_back(current_vert - 2);
@@ -673,52 +654,23 @@ bool HCMap::Load(const std::string& filename) {
 					float QuadVertex4Y = QuadVertex1Y + units_per_vertex;
 					float QuadVertex4Z = floats[quad + row_number + 1];
 
-					uint32_t i1, i2, i3, i4;
 					// Note: Tuple keys use file coordinates for deduplication,
-					// but emplace uses swapped X/Y to undo INVERSEXY
-					std::tuple<float, float, float> t = std::make_tuple(QuadVertex1X, QuadVertex1Y, QuadVertex1Z);
-					auto iter = cur_verts.find(t);
-					if (iter != cur_verts.end()) {
-						i1 = iter->second;
-					}
-					else {
-						i1 = (uint32_t)verts.size();
-						verts.emplace_back(QuadVertex1Y, QuadVertex1X, QuadVertex1Z);
-						cur_verts[t] = i1;
-					}
-
-					t = std::make_tuple(QuadVertex2X, QuadVertex2Y, QuadVertex2Z);
-					iter = cur_verts.find(t);
-					if (iter != cur_verts.end()) {
-						i2 = iter->second;
-					}
-					else {
-						i2 = (uint32_t)verts.size();
-						verts.emplace_back(QuadVertex2Y, QuadVertex2X, QuadVertex2Z);
-						cur_verts[t] = i2;
-					}
-
-					t = std::make_tuple(QuadVertex3X, QuadVertex3Y, QuadVertex3Z);
-					iter = cur_verts.find(t);
-					if (iter != cur_verts.end()) {
-						i3 = iter->second;
-					}
-					else {
-						i3 = (uint32_t)verts.size();
-						verts.emplace_back(QuadVertex3Y, QuadVertex3X, QuadVertex3Z);
-						cur_verts[t] = i3;
-					}
-
-					t = std::make_tuple(QuadVertex4X, QuadVertex4Y, QuadVertex4Z);
-					iter = cur_verts.find(t);
-					if (iter != cur_verts.end()) {
-						i4 = iter->second;
-					}
-					else {
-						i4 = (uint32_t)verts.size();
-						verts.emplace_back(QuadVertex4Y, QuadVertex4X, QuadVertex4Z);
-						cur_verts[t] = i4;
-					}
+					// but the stored vertex swaps X/Y to undo INVERSEXY
+					auto vertexFor = [&](float qx, float qy, float qz) {
+						const std::tuple<float, float, float> t = std::make_tuple(qx, qy, qz);
+						auto iter = cur_verts.find(t);
+						if (iter != cur_verts.end()) {
+							return iter->second;
+						}
+						const uint32_t idx = vertexCount();
+						pushVertex(qy, qx, qz);
+						cur_verts[t] = idx;
+						return idx;
+					};
+					const uint32_t i1 = vertexFor(QuadVertex1X, QuadVertex1Y, QuadVertex1Z);
+					const uint32_t i2 = vertexFor(QuadVertex2X, QuadVertex2Y, QuadVertex2Z);
+					const uint32_t i3 = vertexFor(QuadVertex3X, QuadVertex3Y, QuadVertex3Z);
+					const uint32_t i4 = vertexFor(QuadVertex4X, QuadVertex4Y, QuadVertex4Z);
 
 					indices.emplace_back(i4);
 					indices.emplace_back(i2);
@@ -731,41 +683,37 @@ bool HCMap::Load(const std::string& filename) {
 			}
 		}
 
-		// Mark terrain tile triangles as non-placeables
-		size_t totalTriangles = indices.size() / 3;
-		size_t tileTriangles = totalTriangles - triangleIsPlaceable.size();
-		for (size_t i = 0; i < tileTriangles; ++i) {
-			triangleIsPlaceable.push_back(false);
-		}
+		// B941: the inflated payload is fully consumed.
+		std::vector<char>().swap(buffer);
+
+		// The placeable run: after the main terrain, before the tiles.
+		m_impl->placeableBegin = mainTerrainTriangles;
+		m_impl->placeableEnd = mainTerrainTriangles + placeableTriangles;
 
 		// Swap Y and Z coordinates to convert from EQ's Z-up to internal Y-up format
 		// This matches the transformation done by EQEmu server in map.cpp
-		for (auto &v : verts) {
-			float t = v.y;
-			v.y = v.z;
-			v.z = t;
+		for (size_t i = 0; i + 2 < verts.size(); i += 3) {
+			std::swap(verts[i + 1], verts[i + 2]);
 		}
-
-		// Store vertices for debug visualization AFTER Y↔Z swap (now in Irrlicht Y-up format)
-		m_impl->triangleIsPlaceable = triangleIsPlaceable;
 
 		// Calculate Y range for color gradient (Y is vertical in Y-up format)
 		m_impl->minZ = std::numeric_limits<float>::max();
 		m_impl->maxZ = std::numeric_limits<float>::lowest();
-		for (const auto& v : verts) {
-			if (v.y < m_impl->minZ) m_impl->minZ = v.y;
-			if (v.y > m_impl->maxZ) m_impl->maxZ = v.y;
+		for (size_t i = 1; i < verts.size(); i += 3) {
+			if (verts[i] < m_impl->minZ) m_impl->minZ = verts[i];
+			if (verts[i] > m_impl->maxZ) m_impl->maxZ = verts[i];
 		}
 
 		uint32_t face_count = indices.size() / 3;
-		size_t placeableCount = std::count(triangleIsPlaceable.begin(), triangleIsPlaceable.end(), true);
-		if (face_count > 0 && verts.size() > 0) {
-			m_impl->rm = createRaycastMesh((RmUint32)verts.size(), (const RmReal*)&verts[0], face_count, &indices[0]);
+		const size_t vertCountTotal = verts.size() / 3;
+		if (face_count > 0 && vertCountTotal > 0) {
+			indices.resize(static_cast<size_t>(face_count) * 3);  // a trailing partial triangle is not a face
+			m_impl->rm = createRaycastMesh(std::move(verts), std::move(indices));
 			m_impl->bindViews();  // T504
 			if (m_impl->rm) {
 				loaded = true;
 				LOG_INFO(MOD_MAP, "Loaded V2 map: {} vertices, {} faces ({} placeables, {} terrain)",
-				         verts.size(), face_count, placeableCount, face_count - placeableCount);
+				         vertCountTotal, face_count, placeableTriangles, face_count - placeableTriangles);
 			}
 		}
 		} catch (const MapParseError& e) {
@@ -923,7 +871,7 @@ std::vector<HCMap::Triangle> HCMap::GetTrianglesInRadius(const glm::vec3& center
 			tri.normal = glm::normalize(glm::cross(edge1, edge2));
 
 			// Set placeable flag if we have the data
-			tri.isPlaceable = (i < m_impl->triangleIsPlaceable.size()) ? m_impl->triangleIsPlaceable[i] : false;
+			tri.isPlaceable = m_impl->isPlaceable(i);
 
 			result.push_back(tri);
 		}
@@ -943,7 +891,7 @@ size_t HCMap::ForEachTerrainTriangle(const std::function<void(const Triangle&)>&
 	tri.isPlaceable = false;
 	for (size_t i = 0; i < numTriangles; ++i) {
 		// Skip placeables -- only terrain
-		const bool isPlaceable = (i < m_impl->triangleIsPlaceable.size()) ? m_impl->triangleIsPlaceable[i] : false;
+		const bool isPlaceable = m_impl->isPlaceable(i);
 		if (isPlaceable) continue;
 
 		const uint32_t i1 = m_impl->indices[i * 3];
@@ -1007,7 +955,6 @@ HCMap::MemoryStats HCMap::GetMemoryStats() const {
 	stats.vertexCount = m_impl->mesh_verts.size();
 	stats.faceCount = m_impl->indices.size() / 3;
 	stats.totalBytes = m_impl->mesh_verts.capacity() * sizeof(glm::vec3)
-	                  + m_impl->indices.capacity() * sizeof(uint32_t)
-	                  + m_impl->triangleIsPlaceable.capacity() / 8;  // vector<bool> packs bits
+	                  + m_impl->indices.capacity() * sizeof(uint32_t);
 	return stats;
 }

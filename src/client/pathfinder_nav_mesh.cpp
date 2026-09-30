@@ -1,4 +1,5 @@
 #include "client/pathfinder_nav_mesh.h"
+#include "client/navmesh_load.h"
 #include "common/util/compression.h"
 #include "common/logging.h"
 
@@ -202,9 +203,14 @@ IPathfinder::IPath PathfinderNavmesh::FindPath(const glm::vec3 &start, const glm
 		unsigned char straight_path_flags[max_polys];
 		dtPolyRef straight_path_polys[max_polys];
 
+		// B942 (GitLab #260): the capacity passed is the arrays' own. It was
+		// 2048 for 256-entry stack arrays, so a path of more than 256 straight
+		// points (ALL_CROSSINGS emits one per poly edge crossed: npoly can be
+		// 256, plus start and end) wrote past them on the stack. Detour now
+		// truncates at 256 and reports DT_BUFFER_TOO_SMALL (a success status).
 		auto status = m_impl->query->findStraightPath(&current_location[0], &epos[0], path, npoly,
 			(float*)&straight_path[0], straight_path_flags,
-			straight_path_polys, &n_straight_polys, 2048, DT_STRAIGHTPATH_AREA_CROSSINGS | DT_STRAIGHTPATH_ALL_CROSSINGS);
+			straight_path_polys, &n_straight_polys, max_polys, DT_STRAIGHTPATH_AREA_CROSSINGS | DT_STRAIGHTPATH_ALL_CROSSINGS);
 
 		if (dtStatusFailed(status)) {
 			return IPath();
@@ -379,102 +385,83 @@ void PathfinderNavmesh::Load(const std::string &path)
 {
 	Clear();
 
-	FILE *f = fopen(path.c_str(), "rb");
-	if (f) {
-		char magic[9] = { 0 };
-		if (fread(magic, 9, 1, f) != 1) {
-			fclose(f);
-			return;
-		}
+	// B941 (GitLab #259): the tiles are inflated one at a time straight into
+	// their own Detour allocations. The old load held the whole compressed
+	// file, the whole inflated payload AND a copy of every tile at once --
+	// emeraldjungle 7.9 + 19.4 + 19.4 MB at the peak for 19.4 MB kept.
+	NavmeshStreamReader reader;
+	if (!reader.open(path)) {
+		return;
+	}
 
-		if (strncmp(magic, "EQNAVMESH", 9) != 0)
-		{
-			fclose(f);
-			return;
-		}
+	uint32_t number_of_tiles = 0;
+	dtNavMeshParams params;
+	if (!reader.read(&number_of_tiles, sizeof(number_of_tiles)) || !reader.read(&params, sizeof(params))) {
+		LOG_ERROR(MOD_MAP, "Navmesh [{}]: truncated header", path);
+		return;
+	}
 
-		uint32_t version = 0;
-		if (fread(&version, sizeof(uint32_t), 1, f) != 1) {
-			fclose(f);
-			return;
-		}
+	m_impl->nav_mesh = dtAllocNavMesh();
+	dtStatus status = m_impl->nav_mesh->init(&params);
+	if (dtStatusFailed(status))
+	{
+		dtFreeNavMesh(m_impl->nav_mesh);
+		m_impl->nav_mesh = nullptr;
+		return;
+	}
 
-		if (version != 2) {
-			fclose(f);
-			return;
-		}
-
-		uint32_t data_size;
-		if (fread(&data_size, sizeof(data_size), 1, f) != 1) {
-			fclose(f);
-			return;
-		}
-
-		uint32_t buffer_size;
-		if (fread(&buffer_size, sizeof(buffer_size), 1, f) != 1) {
-			fclose(f);
-			return;
-		}
-
-		std::vector<char> data;
-		data.resize(data_size);
-		if (fread(&data[0], data_size, 1, f) != 1) {
-			fclose(f);
-			return;
-		}
-
-		std::vector<char> buffer;
-		buffer.resize(buffer_size);
-		uint32_t v = EQ::InflateData(&data[0], data_size, &buffer[0], buffer_size);
-		fclose(f);
-
-		char *buf = &buffer[0];
-		m_impl->nav_mesh = dtAllocNavMesh();
-
-		uint32_t number_of_tiles;
-		memcpy(&number_of_tiles, buf, sizeof(number_of_tiles));
-		buf += sizeof(uint32_t);
-
-		dtNavMeshParams params;
-		memcpy(&params, buf, sizeof(params));
-		buf += sizeof(dtNavMeshParams);
-
-		dtStatus status = m_impl->nav_mesh->init(&params);
-		if (dtStatusFailed(status))
-		{
+	uint64_t tileDataBytes = 0;  // T504: what the loaded tiles weigh
+	uint32_t refusedTiles = 0;
+	uint64_t refusedBytes = 0;
+	for (unsigned int i = 0; i < number_of_tiles; ++i)
+	{
+		uint32_t tile_ref = 0;
+		int32_t data_size = 0;
+		if (!reader.read(&tile_ref, sizeof(tile_ref)) || !reader.read(&data_size, sizeof(data_size))) {
+			LOG_ERROR(MOD_MAP, "Navmesh [{}]: truncated at tile {}", path, i);
 			dtFreeNavMesh(m_impl->nav_mesh);
 			m_impl->nav_mesh = nullptr;
 			return;
 		}
 
-		uint64_t tileDataBytes = 0;  // T504: what the loaded tiles weigh
-		for (unsigned int i = 0; i < number_of_tiles; ++i)
-		{
-			uint32_t tile_ref;
-			memcpy(&tile_ref, buf, sizeof(tile_ref));
-			buf += sizeof(uint32_t);
-
-			int32_t data_size;
-			memcpy(&data_size, buf, sizeof(data_size));
-			buf += sizeof(uint32_t);
-
-			if (!tile_ref || !data_size) {
-				dtFreeNavMesh(m_impl->nav_mesh);
-				m_impl->nav_mesh = nullptr;
-				return;
-			}
-
-			unsigned char* data = (unsigned char*)dtAlloc(data_size, DT_ALLOC_PERM);
-			memcpy(data, buf, data_size);
-			buf += data_size;
-
-			m_impl->nav_mesh->addTile(data, data_size, DT_TILE_FREE_DATA, tile_ref, 0);
-			tileDataBytes += static_cast<uint64_t>(data_size);
+		if (!tile_ref || data_size <= 0) {
+			dtFreeNavMesh(m_impl->nav_mesh);
+			m_impl->nav_mesh = nullptr;
+			return;
 		}
 
-		LOG_INFO(MOD_MAP, "Loaded Navmesh V[{}] file [{}] -- T504: {} tiles, {} bytes of tile data (inflated from {} compressed)",
-		         version, path.c_str(), number_of_tiles, tileDataBytes, data_size);
+		unsigned char* data = (unsigned char*)dtAlloc(data_size, DT_ALLOC_PERM);
+		if (!data || !reader.read(data, static_cast<size_t>(data_size))) {
+			if (data) dtFree(data);
+			LOG_ERROR(MOD_MAP, "Navmesh [{}]: truncated in tile {} data", path, i);
+			dtFreeNavMesh(m_impl->nav_mesh);
+			m_impl->nav_mesh = nullptr;
+			return;
+		}
+
+		// B941: a tile Detour REFUSES (a second tile at an occupied grid cell
+		// -- measured: 90 of overthere's 16,384) stays the caller's to free.
+		// The old load ignored the status and leaked the blob for the zone's
+		// lifetime; the navmesh never contained it, so no query changes.
+		if (dtStatusFailed(m_impl->nav_mesh->addTile(data, data_size, DT_TILE_FREE_DATA, tile_ref, 0))) {
+			dtFree(data);
+			++refusedTiles;
+			refusedBytes += static_cast<uint64_t>(data_size);
+			continue;
+		}
+		tileDataBytes += static_cast<uint64_t>(data_size);
 	}
+
+	// B941: every tile is connected now, so each tile's unused dtLink tail
+	// can go (navmesh_link_trim.cpp).
+	const NavmeshLinkTrim trim = TrimUnusedNavmeshLinks(m_impl->nav_mesh);
+
+	LOG_INFO(MOD_MAP, "Loaded Navmesh V[2] file [{}] -- T504: {} tiles, {} bytes of tile data (inflated from {} compressed)",
+	         path.c_str(), number_of_tiles, tileDataBytes, reader.compressedBytes());
+	LOG_INFO(MOD_MAP, "[navmesh] B941: links used={} of capacity={} ({} tiles trimmed, {} skipped) | tile bytes {} -> {} "
+	         "| {} tiles refused by Detour ({} bytes, freed)",
+	         trim.linksUsed, trim.linksCapacity, trim.tilesTrimmed, trim.tilesSkipped,
+	         tileDataBytes, tileDataBytes - trim.bytesFreed, refusedTiles, refusedBytes);
 }
 
 dtStatus PathfinderNavmesh::GetPolyHeightNoConnections(dtPolyRef ref, const float *pos, float *height) const

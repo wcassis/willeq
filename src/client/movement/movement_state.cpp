@@ -34,6 +34,7 @@
 #endif
 #include "client/skill/skill_manager.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/core/memory_ledger.h"  // B941: gs.nav_query owner row
 #include "client/position_frames.h"
 // P28: wld_loader.h (and the zone_bsp.h BspTree/RegionType it pulls in) has no
 // renderer dependency — UpdateWaterState() below needs the complete BspTree
@@ -91,8 +92,14 @@ void eqt::movement::MovementComponent::LoadPathfinder(const std::string& zone_na
 			// This is a bit of a hack but helps us understand what type we got
 			PathfinderOptions test_opts;
 			bool partial = false, stuck = false;
-			auto test_path = m_pathfinder->FindPath(
-				glm::vec3(0, 0, 0), glm::vec3(1, 1, 1), partial, stuck, test_opts);
+			// B941: this first query allocates the Detour query object and its
+			// node pool (kept for the zone) -- its own owner row.
+			IPathfinder::IPath test_path;
+			{
+				eqt::memory::StartupScope queryOwner("gs.nav_query");
+				test_path = m_pathfinder->FindPath(
+					glm::vec3(0, 0, 0), glm::vec3(1, 1, 1), partial, stuck, test_opts);
+			}
 
 			if (EverQuest::GetDebugLevel() >= 2) {
 				LOG_DEBUG(MOD_MAIN, "Loaded pathfinder for zone: {} (type: {})",

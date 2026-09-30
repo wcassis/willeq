@@ -9,6 +9,8 @@
 // This implementation provides optimized raycasting for triangle meshes
 // using an axis-aligned bounding box (AABB) tree spatial data structure.
 
+#include <vector>
+
 typedef float RmReal;
 typedef unsigned int RmUint32;
 
@@ -58,6 +60,18 @@ RaycastMesh * createRaycastMesh(RmUint32 vcount,
 								const RmReal *vertices,
 								RmUint32 tcount,
 								const RmUint32 *indices,
+								RmUint32 maxDepth = 15,
+								RmUint32 minLeafSize = 4,
+								RmReal minAxisSize = 0.01f);
+
+// B941 (GitLab #259): the same mesh, built from arrays the caller MOVES in.
+// The pointer form above copies both arrays, so a caller that built them for
+// the mesh (HCMap) held the collision geometry twice at the load peak. The
+// mesh keeps these vectors (trimmed to size) as its own storage; the tree and
+// every query are identical to the pointer form's. vertices.size() must be a
+// multiple of 3, indices.size() a multiple of 3.
+RaycastMesh * createRaycastMesh(std::vector<RmReal> &&vertices,
+								std::vector<RmUint32> &&indices,
 								RmUint32 maxDepth = 15,
 								RmUint32 minLeafSize = 4,
 								RmReal minAxisSize = 0.01f);
