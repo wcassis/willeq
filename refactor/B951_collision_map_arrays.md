@@ -81,4 +81,7 @@ Pi frame time within 3 % of fable or better, collision phase not slower.
 
 ## Review
 
-(filled at hand-back; see `refactor/B951/README.md`)
+Filled in `refactor/B951/README.md` (per-array attribution before/after, x86
+owner tables, Pi A/B, ray benchmarks, identity, "Not verified"). Deviation:
+the "well under 2x the `.map`" bar is NOT met (emeraldjungle 3.0x); the two
+layouts that would go further made Pi rays slower and are put to Will as B957.
