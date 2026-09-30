@@ -83,8 +83,10 @@ mostly a 3.1 MB `GameEvent` staging buffer kept after the zone-in burst
   navmesh detail triangle, 1500 smoothed `FindPath` (the client's /follow
   options) + 500 `FindRoute`. Digests pinned from the pre-B941 code: **all
   11 identical, bit for bit** (x86). The B942 capacity fix leaves them
-  unchanged (no sampled path reached 256 points). Skips where
-  `/mnt/projects/maps` is absent (the CI runner).
+  unchanged (no sampled path reached 256 points). A zone whose `.map` is
+  absent skips; a host with the maps but no `.nav` (the CI runner, measured
+  in pipeline 358) checks the collision map half and says the navmesh half
+  was not checked.
 - `SyntheticV2MatchesTheOldTriangleSoup` (always runs): a synthetic V2 map
   (duplicated model positions, +0/-0, invisible polys, a missing model, a
   placement group, flat + bumpy tiles) against an in-test copy of the OLD

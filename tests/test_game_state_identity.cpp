@@ -264,7 +264,12 @@ void CheckZone(const std::string& zone) {
     ASSERT_NE(g, nullptr) << zone << " has no pinned digest";
     EXPECT_EQ(Hex(triD), g->triDigest) << zone << ": collision triangles differ from the pre-B941 map";
     EXPECT_EQ(Hex(qD), g->queryDigest) << zone << ": FindBestZ/CheckLOS results differ from the pre-B941 map";
-    if (std::string(g->navTriDigest) != "-") {
+    // A host with the .map but no .nav (or a build without Detour) checks
+    // the collision map only; the navmesh half needs the .nav to exist.
+    if (navTri == "-") {
+        std::printf("%s: no navmesh here (%s) -- collision map checked, navmesh not\n", zone.c_str(),
+                    NavDir().c_str());
+    } else if (std::string(g->navTriDigest) != "-") {
         EXPECT_EQ(navTri, g->navTriDigest) << zone << ": navmesh detail triangles differ";
         EXPECT_EQ(navPath, g->navPathDigest) << zone << ": navmesh FindPath/FindRoute results differ";
     }
