@@ -90,7 +90,11 @@ mostly a 3.1 MB `GameEvent` staging buffer kept after the zone-in burst
   placement group, flat + bumpy tiles) against an in-test copy of the OLD
   soup emission: every triangle bit-identical, 3000 ground + LOS rays
   identical against a reference tree built from the soup.
-- ARM: see "Not verified" / the arm-identity run below.
+- **ARM (the Pi itself)**: the identity test cross-built against the OLD and
+  the NEW sources and run on the Pi (`review/B941/arm-identity/`): **all 11
+  zones' digests identical old vs new**. ARM's bits differ from x86's for the
+  old code too (VFPv4 fused multiply-add), so the committed x86 goldens do
+  not apply on ARM and the synthetic test's in-file reference is x86-only.
 
 ## Measurements after
 
@@ -129,9 +133,12 @@ emeraldjungle 1.40 -> 1.15 s, timorous 1.95 -> 0.96 s; map 5.92 -> 4.86 s,
 **Player Movement phase (collision rays), Pi, median us:** emeraldjungle
 248 -> 268, growthplane 304 -> 315, gfaydark 424 -> 413, timorous (one leg
 each) 821 -> 1,986. The frame totals are unchanged (vsync-bound 30/60 fps).
-x86 raycast microbenchmark (200 k FindBestZ + 200 k short LOS, old vs new
-code, `review/B941/arm-identity/bench.cpp`): timorous 1,770 -> 1,813 ns /
-733 -> 771 ns (+2-5 %), emeraldjungle 355 -> 307 ns / 295 -> 281 ns (faster).
+Raycast microbenchmark (200 k FindBestZ + 200 k short LOS, old vs new code,
+`review/B941/arm-identity/bench.cpp`): **on the Pi new is 1-3 % faster**
+(timorous FindBestZ 13.4 -> 13.2 us, LOS 4.85 -> 4.80 us; emeraldjungle 2.28
+-> 2.22 us, 1.90 -> 1.89 us); on x86 timorous +2-5 %, emeraldjungle faster.
+So the one-leg timorous Player Movement gap is not the collision map's ray
+cost.
 
 ### Live pathing (x86, VM lane, gfaydark, `review/B941/x86-path-{before,after}/`)
 
@@ -143,14 +150,14 @@ wait 30 s, `/loc`. Before: "Found path with 16 waypoints", moved (-20.0,
 ## Not verified
 
 - **Pi Player Movement in timorous**: one leg per side (821 vs 1,986 us); the
-  zone would not reach `ready` in 8 further attempts on either side, so
-  whether B941 costs collision time there is unresolved. The other three
+  zone would not reach `ready` in 8 further attempts on either side. The Pi
+  ray micro-benchmark says the collision map's rays are not slower, so the
+  live gap is unexplained (where the player walked, entities in range), not
+  attributed. The other three
   zones are within +20 us (<= 0.12 % of a frame). Frame time is within 0.5 %
   everywhere measured.
-- **ARM bit-identity** of the query digests: the ctest runs on x86 only. An
-  ARM cross-build of the identity test (old and new code) was staged in
-  `review/B941/arm-identity/`; its result is in that directory's README if the
-  Pi lock was obtained (see the final report).
+- ARM identity is proven by a one-off cross-build run on the Pi, not by a
+  ctest: no ARM test lane exists (the sysroot has no gtest).
 - The x86 `gate` CPU-p95 check for iceclad failed once under load (other runs
   on the host) and passed standalone; not a memory result.
 - No V1-map vertex dedup (6 V1 files exist, none a heavy zone).
