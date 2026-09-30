@@ -158,7 +158,7 @@ irr::video::IImage* readFrame(ZoneBenchData& data) {
     auto* dst = static_cast<irr::u8*>(img->lock());
     for (irr::u32 y = 0; y < h; ++y) {
         const irr::u8* src = px.data() + static_cast<size_t>(h - 1 - y) * w * 4;  // GL rows are bottom-up
-        irr::u8* row = dst + static_cast<size_t>(y) * img->getPitch();
+        irr::u8* row = dst + static_cast<size_t>(y) * w * 4;  // CImage: pitch = width x 4 for A8R8G8B8
         for (irr::u32 x = 0; x < w; ++x) {
             row[x * 4 + 0] = src[x * 4 + 2];  // B
             row[x * 4 + 1] = src[x * 4 + 1];  // G
