@@ -49,12 +49,54 @@ public:
     virtual void regenerateMipMapLevels(void* mipmapData=0);
     virtual bool isRenderTarget() const { return IsRenderTarget; }
 
-    // Driver-specific texture handle
-    virtual u32 getDriverTextureHandle() const { return TextureName; }
+    // Driver-specific texture handle. B944: restores an evicted texture's GL
+    // storage first (see "Residency" below), so a raw-GL consumer that binds
+    // this handle itself (ParticleManager) never gets a stale name.
+    virtual u32 getDriverTextureHandle() const { return getOpenGLTextureName(); }
 
-    // GLES2-specific
-    GLuint getOpenGLTextureName() const { return TextureName; }
+    // GLES2-specific. B944: this is THE accessor every bind path in
+    // COpenGLES2Driver goes through, so it is where an evicted texture is made
+    // resident again, on first use, before its name is handed out.
+    GLuint getOpenGLTextureName() const
+    {
+        if (Evicted)
+            ensureResident();
+        return TextureName;
+    }
     GLuint getFBO() const { return FBO; }
+
+    // ---- Residency (B944, GitLab #262) ------------------------------------
+    //
+    // ConstrainedTextureCache evicts a texture under its memory ceiling by
+    // releasing the GL STORAGE, not the object. This object stays alive, with
+    // its name, size and alpha-companion link, for as long as the cache
+    // entry does, so every raw ITexture* a material, a mesh cache or a
+    // manager holds stays a valid pointer across an eviction (before B944 the
+    // object itself was destroyed and every such holder dangled -- the
+    // gles2_zone_benchmark SIGSEGV in ZoneBench::textureGroupId). The first
+    // bind afterwards calls the owner's restore function, which re-uploads the
+    // same pixels and hands the new GL name back through adoptStorage().
+    //
+    //   releaseStorage()   delete the GL texture; GpuBytes 0; marks Evicted
+    //   adoptStorage()     take a freshly uploaded GL name; clears Evicted
+    //   takeStorage()      give this texture's GL name away (the restore path
+    //                      uploads into a throwaway texture and moves the
+    //                      storage into the evicted one); the destructor then
+    //                      deletes nothing
+    //   getStoredTextureName()  the name WITHOUT restoring -- for teardown
+    //                      paths (removeTexture) that must never upload
+    // `texture` is this object as an ITexture* (converted to void*).
+    typedef bool (*ResidencyRestoreFn)(void* ctx, void* texture);
+    void setResidencyOwner(ResidencyRestoreFn fn, void* ctx)
+    {
+        RestoreFn = fn;
+        RestoreCtx = ctx;
+    }
+    bool isEvicted() const { return Evicted; }
+    GLuint getStoredTextureName() const { return TextureName; }
+    void releaseStorage();
+    void adoptStorage(GLuint glTexName, u32 gpuBytes);
+    GLuint takeStorage(u32* gpuBytesOut);
 
     // Upload raw ETC1 compressed data (native, no conversion)
     void uploadETC1(const void* data, u32 dataSize, u32 width, u32 height);
@@ -71,9 +113,10 @@ public:
     // is what made an ETC1 alpha invisible to every alpha-BLEND draw (B261).
     //
     // Raw, non-grabbed pointer. Safe because the cache creates the pair
-    // together and never destroys the companion before the main texture:
-    // ConstrainedTextureCache::evictTexture() removes only the main texture,
-    // so the companion always OUTLIVES the object holding this pointer.
+    // together and destroys them together (B944: ConstrainedTextureCache's
+    // destroyEntry() removes the companion right after the main texture; an
+    // eviction releases both STORAGES and keeps both objects), so the
+    // companion never dies while the object holding this pointer lives.
     void setAlphaCompanion(ITexture* companion) { AlphaCompanion = companion; }
     ITexture* getAlphaCompanion() const { return AlphaCompanion; }
 
@@ -112,6 +155,13 @@ public:
 private:
     void uploadImage(IImage* image);
     void createRenderTarget(const core::dimension2d<u32>& size);
+    void ensureResident() const;
+
+    // B944 residency state (see "Residency" above).
+    bool Evicted = false;
+    mutable bool Restoring = false;
+    ResidencyRestoreFn RestoreFn = nullptr;
+    void* RestoreCtx = nullptr;
 
     COpenGLES2Driver* Driver;
     GLuint TextureName;

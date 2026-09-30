@@ -139,6 +139,8 @@ namespace Graphics {
 
 class IrrlichtRenderer;
 struct LoadingStatus;
+class ArchiveTextureSource;
+class ConstrainedTextureCache;
 
 class ZoneLoadComponent {
 public:
@@ -227,6 +229,14 @@ private:
 	std::unique_ptr<GraphicsArchiveIndex> graphicsArchiveIndex_;  // Race-to-archive index for deferred loading
 	TreeIdentifier treeIdentifier_;  // Tree mesh classification (isTreeMesh)
 	std::vector<size_t> zoneLightRegions_;  // Cached BSP region index for each light (SIZE_MAX = no region)
+
+	// B944 (GitLab #262): the restore source for S3D-path textures the
+	// constrained cache evicts -- this zone's own archives, re-registered by
+	// Step 1 every load. `zoneTextureSourceCache_` is the cache it is
+	// registered with (it outlives the renderer, Application's member order),
+	// so the destructor can unregister without going through ctx_.
+	std::unique_ptr<ArchiveTextureSource> zoneTextureSource_;
+	ConstrainedTextureCache* zoneTextureSourceCache_ = nullptr;
 };
 
 } // namespace Graphics

@@ -121,6 +121,59 @@ COGLES2Texture::~COGLES2Texture()
 }
 
 // ============================================================================
+// Residency (B944) -- see the header's "Residency" block
+// ============================================================================
+
+void COGLES2Texture::releaseStorage()
+{
+    if (IsRenderTarget || Evicted)
+        return;
+    if (TextureName)
+        glDeleteTextures(1, &TextureName);
+    TextureName = 0;
+    GpuBytes = 0;
+    Evicted = true;
+    // The next storage is a NEW GL object with the upload's default
+    // parameters; the P42 dedup cache describes the deleted one.
+    TexParamsCached = false;
+    delete[] LockBuffer;
+    LockBuffer = nullptr;
+}
+
+void COGLES2Texture::adoptStorage(GLuint glTexName, u32 gpuBytes)
+{
+    if (TextureName && TextureName != glTexName)
+        glDeleteTextures(1, &TextureName);
+    TextureName = glTexName;
+    GpuBytes = gpuBytes;
+    Evicted = (glTexName == 0);
+    TexParamsCached = false;
+}
+
+GLuint COGLES2Texture::takeStorage(u32* gpuBytesOut)
+{
+    GLuint name = TextureName;
+    if (gpuBytesOut)
+        *gpuBytesOut = GpuBytes;
+    TextureName = 0;
+    GpuBytes = 0;
+    TexParamsCached = false;
+    return name;
+}
+
+void COGLES2Texture::ensureResident() const
+{
+    // One attempt per bind. Restoring guards re-entry (the restore path binds
+    // and uploads, and must never recurse into itself for the same object).
+    if (!Evicted || Restoring || !RestoreFn)
+        return;
+    Restoring = true;
+    ITexture* self = const_cast<COGLES2Texture*>(this);
+    RestoreFn(RestoreCtx, static_cast<void*>(self));
+    Restoring = false;
+}
+
+// ============================================================================
 // Upload from IImage
 // ============================================================================
 
@@ -377,6 +430,8 @@ void* COGLES2Texture::lock(E_TEXTURE_LOCK_MODE mode, u32 mipmapLevel)
 {
     if (LockBuffer)
         return LockBuffer;
+    if (Evicted)
+        ensureResident();  // B944: read back the texture's pixels, not GL name 0
 
     u32 w = TextureSize.Width;
     u32 h = TextureSize.Height;

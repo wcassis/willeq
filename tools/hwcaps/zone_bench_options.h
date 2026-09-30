@@ -45,6 +45,9 @@ struct Options {
     // P14/P39-blessed) instead of a hardcoded 16 that had drifted from
     // production (see zone_bench_loader.cpp's Step 10).
     int occluderBudget = -1;
+    // B944: --texture-memory-bytes N overrides the texture cache's eviction
+    // ceiling (textureMemoryBytes) for this run. 0 = the preset's value.
+    size_t textureMemoryBytes = 0;
 
     // Benchmark
     int frames = 300;

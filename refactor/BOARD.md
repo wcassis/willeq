@@ -233,6 +233,30 @@ it without taking that measurement first.
   changed. Prov: archived board, "static-panel UI surface still untested
   after T54"; `refactor/T351_inventory_popup_frame.md` Review.
 
+- ~~**B944** (A) An eviction under the texture-cache ceiling destroyed the
+  texture while holders kept raw pointers.~~ **DONE 2026-09-30** (branch
+  `task/B944-texture-eviction`, issue #262, `refactor/B944/README.md`). The
+  gate's qeynos2 golden run at a 20 MiB ceiling SIGSEGVed in
+  `ZoneBench::textureGroupId` (the benchmark's region materials held evicted,
+  freed textures), and the CLIENT did too: an ASan build on the shipped EQE1
+  path read a freed texture in `RaceModelLoader::createAnimatedNodeWithEquipment`
+  (a cached `EQAnimatedMesh` material) on the first frame after zone-in; where
+  it did not crash the guards painted the placeholder for the rest of the zone.
+  **Eviction now releases the GL storage and keeps the object; the driver's
+  first bind restores it** (`COGLES2Texture` "Residency",
+  `constrained_texture_cache_residency.cpp`), from the mapped EQE1 pack or,
+  on the S3D path, an `ArchiveTextureSource` over the zone/objects/sky
+  archives. The 20 MiB golden run now exits 0 with all three frames
+  pixel-identical to the goldens; `clear()` also stops leaking every ETC1
+  alpha companion. Regression net: `tests/test_texture_eviction_residency.cpp`
+  (ASan-clean). No budget, golden or gate assertion changed.
+- **B947** (A) → issue #265. S3D-path character/equipment textures have no
+  restore source (B944 covers EQE1 fully and the S3D zone/objects/sky
+  archives), so their eviction still destroys them and `RaceModelLoader`'s
+  cached meshes keep the freed pointer -- the holder B944's pre-fix ASan run
+  caught. Not the shipped path. Confirmed by B944 (code reading + the EQE1
+  measurement of the same holder).
+
 ## B — implemented-but-unreached, and hygiene needing a code change
 
 - ~~**B005** (B) the `UCSConnection` TU and header (under `src/client/` and
@@ -556,6 +580,22 @@ it without taking that measurement first.
 - ~~**B019** (B) `include/client/eq.h` `EverQuest::m_guild_name` — declared and
   default-initialised, **zero references anywhere**.~~ **CLOSED by K15**:
   re-measured at `7c125b28`, still zero references; deleted. Prov: K01 Review.
+
+- **B948** (B) → issue #266. `gpuTextureBytes` counts every ETC1 alpha chain
+  twice: `uploadCompressedETC1()` wraps the main texture with main+alpha bytes
+  and the `_alpha` companion with the alpha bytes again. Moves a gated number
+  down only when fixed. Confirmed by B944 (code reading; the census's EQE1
+  `gpuTextureBytes` exceeds `textureCacheBytesUsed`).
+- **B949** (B) → issue #267. The texture cache's LRU is touched on lookup and
+  restore, never on draw, so eviction order is load order and an on-screen
+  texture can be evicted first and restored on its next bind (thrash;
+  performance, secondary). Measured by B944: 85 evictions / 21 restores on the
+  qeynos2 golden run at 20 MiB.
+- **B950** (B) → issue #268. `ZoneMeshBuilder`'s layout depends on
+  `EQT_HAS_TEXTURE_ATLAS`, a PRIVATE define of `willeq_core`;
+  `tests/test_placed_object_meshes.cpp` constructs one without it (B944's own
+  test hit the resulting ASan stack-buffer-overflow and defines it). Confirmed
+  by B944 for its own test; the other by construction.
 
 ## C — needs Will's decision
 

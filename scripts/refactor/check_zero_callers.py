@@ -953,6 +953,11 @@ EXEMPT_TESTS_GROUPS = {
     # T504 fix 1: the custom SoundFont is loaded lazily and freed on the way
     # back to GM; the test's window on whether it is resident right now.
     ("MidiPlayer", "isCustomSoundFontResident"): "observer",
+    # B944: whether one cache entry's GL storage is resident right now (an
+    # evicted entry keeps its object and restores on the next bind).
+    # test_texture_eviction_residency asserts eviction and restore through it;
+    # production only needs the counts (getResidentTextureCount()).
+    ("ConstrainedTextureCache", "isResident"): "observer",
     # Spatial budget overrun (B813 follow-up): the occluder table's reserved
     # heap bytes. test_region_occluders asserts it is exactly 40 B/triangle +
     # 8 B/region -- the net that keeps the per-region-block layout from
