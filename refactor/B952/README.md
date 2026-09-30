@@ -95,7 +95,7 @@ loaded); session 2's shared-FBO rows rendered into an incomplete FBO (the plain
 `glFramebufferTexture2D` swap against Lima's multisampled scratch --
 `incomplete_fbo=200`, blank impostors; fixed in `9dd2c020`, llvmpipe was never
 affected); session 3's pixel tests were OOM-killed by the `createScreenShot()`
-leak (**#272, B954**). The Pi pixel evidence is session 4 (below).
+leak (**#272, B954**). Session 4 ran the pixel test (below).
 
 ## x86 (llvmpipe, dev-u24)
 
@@ -155,6 +155,24 @@ larger than the model's: its silhouette pixels count too.)
 - `--impostor-fbo per` gives bit-identical numbers to the shared scratch on x86
   (checked on race 1 at every distance/size): the swap changes memory, not
   pixels.
+
+### The Pi pixel test (session 4)
+
+Same test on Lima (`review/B952/pi/pixel/`, both resolutions, 26 variants,
+4-sample EXT_multisampled_render_to_texture scratch, `incomplete_fbo=0`, RssAnon
+flat across all 78 iterations: 63,959,040 B at 800x600, 64,004,096 B at 1280x720): **the diff numbers are void** --
+the impostor billboard renders inverted on Lima. Every impostor panel holds
+only the background and black: the quad is drawn black exactly where the
+impostor texture is transparent and the model's texels are never drawn (race 1
+gender 0, 80 units, 128^2: full-model footprint 298 px, impostor footprint 523
+px, overlap 1 px). The texture itself is right: the Pi readback
+(`texture_128_r001g0.png`) is the model with binary alpha (10,379 texels at 0,
+6,005 at 255 -- x86: 10,353 / 6,031), and at 80 units the test re-uploads the
+texture from that CPU readback before drawing, with the same inverted frame.
+So the defect is in drawing/sampling the alpha-tested RGBA quad on Lima, not in
+the capture. Filed as **#276 (B958)**. The Pi model heights are valid (they
+come from the full-model frame) and equal the x86 ones: 87/43/21 px at
+800x600 and 104/52/25 px at 1280x720 for 40/80/160 units (medians).
 
 **Size arithmetic (no verdict).** The capture maps 1.04 x the model's height
 onto the texture's rows: 61.5 / 123 / 246 texel rows for 64 / 128 / 256.
@@ -239,7 +257,8 @@ marginal above), which the row does not see.
 7. **Driver shape to use**: the shared scratch with the colour swap (this
    unit), with the scratch's sample count; never one `addRenderTargetTexture()`
    per impostor (2.3x on Lima). `COpenGLES2Driver::createScreenShot()` must be
-   fixed (#272) before any capture code reads frames back.
+   fixed (#272) before any capture code reads frames back, and the billboard
+   draw must render on Lima first (#276) -- today it does not.
 
 ## Findings filed
 
@@ -248,6 +267,9 @@ marginal above), which the row does not see.
 - **#273 (B955, A)** GPU buffer memory on the Pi (Lima GEM/shmem) is on no
   ledger row and outside `owned`; no DRM fdinfo memory keys.
 - **#274 (B956, B)** the impostor dark silhouette fringe.
+- **#276 (B958, B)** impostor billboards render inverted on Lima (the
+  transparent texels are drawn, the model's are not); texture content verified
+  correct. Blocks any Pi pixel evidence and the production port on the Pi.
 
 ## Deviations
 
@@ -260,7 +282,8 @@ marginal above), which the row does not see.
 - **Four Pi sessions, not two.** Sessions 1 (10 runs, no `willeq.db`) and 2
   (10 runs + 1 pixel test, incomplete FBO) were voided and are kept as such;
   session 3 (10 runs + 2 pixel tests OOM-killed by #272) supplied the tables;
-  session 4 (2 pixel tests) the Pi pixel evidence. Each session stayed within
+  session 4 (2 pixel tests, ARM build of `40c25456`, job 1740) found #276 and
+  gave the Pi model heights. Each session stayed within
   12 invocations; the Pi lock was taken and released around each.
 - **The ARM benchmark binary** is not published by CI (`ci-arm/<sha>/` carries
   only `willeq`): it was copied from the `build-arm` job's own tree on dev-u24

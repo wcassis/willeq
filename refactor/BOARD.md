@@ -620,6 +620,12 @@ it without taking that measurement first.
   fringe: bilinear sampling against the capture's (0,0,0,0) clear with the
   built-in shader's hard 0.5 alpha test. Measured by B952 (the largest
   single-pixel difference is background-vs-near-black, 60, at every size).
+- **B958** (B) → issue #276. Benchmark impostor billboards render inverted on
+  Lima (Orange Pi): the quad is drawn where the impostor texture is
+  transparent and the model's texels are never drawn; the texture content is
+  right (Pi readback, and a CPU re-upload renders the same). Measured by B952's
+  Pi pixel test; llvmpipe renders the same code correctly. Blocks the
+  impostor port on the Pi.
 
 ## C — needs Will's decision
 
