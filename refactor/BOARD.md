@@ -963,8 +963,10 @@ it without taking that measurement first.
   40.3 → 6.7, trakanon 23.4 → 5.5. Pi moving frame rate growthplane 25.7 →
   62.1 fps, trakanon 37.5 → 61.2 (the per-placement keyframe rewrite was
   23.5 ms of growthplane's frame). The benchmark half (#247) is branch
-  `task/B936b-bench-shared-objects`, which waits for Will's re-bless of the
-  five memory-coverage `placeableObjectsBytes` baselines.
+  `task/B936b-bench-shared-objects` (MR !55); the five memory-coverage
+  `placeableObjectsBytes` baselines were BLESSED by Will in chat 2026-09-30
+  ("bless placeableObjectsBytes", `docs/decisions.md`). #247 acceptance 1 is in;
+  acceptance 2 (the census job) remains.
 - **B938** (A, memory) → issue #256. After B936 the per-placement scene node
   (`obj.instances`, about 2.2 KB per placed object on x86, 1.5 KB on the Pi)
   is 88–98 % of `objects`: 9.6 MB of growthplane's 9.7 MB on x86.
