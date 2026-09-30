@@ -49,6 +49,12 @@
 #            [--assert-budgets]  also exit 1 if any budgeted category of any
 #                                run is over its orangepi budget at ready or
 #                                steady_60s (the `ClientLedgerLive` ctest)
+#            [--char-level N --char-exp E]  the eligibility leg of
+#                                scripts/pi_rendered_zone_sweep.sh: set the
+#                                character's level/exp after the snapshot, so a
+#                                min-level zone (growthplane, min 46) does not
+#                                kick it; the snapshot restore puts both back
+#                                (B909b)
 #   Lane: EQEMU_HOST as every scripts/eqemu tool reads it (default the VM).
 
 set -u
@@ -68,6 +74,7 @@ HOLD_S=75          # seconds after zone-in before /q: ready arms steady_60s
 AUDIO=1
 ASSERT=0   # --assert-budgets: the live ctest mode (client_ledger_table.py check)
 RES_W=1280; RES_H=720   # Will's Pi recipe
+CHAR_LEVEL=""; CHAR_EXP=""   # B909b: the eligibility leg (see --char-level)
 ZONE_BOOT_S="${ZONE_BOOT_S:-150}"
 LATE_SAVE_S=10
 while [ $# -gt 0 ]; do
@@ -81,7 +88,9 @@ while [ $# -gt 0 ]; do
         --no-audio) AUDIO=0; shift ;;
         --assert-budgets) ASSERT=1; shift ;;
         --res) RES_W="$2"; RES_H="$3"; shift 3 ;;
-        -h|--help) sed -n '2,50p' "$0"; exit 0 ;;
+        --char-level) CHAR_LEVEL="$2"; shift 2 ;;
+        --char-exp) CHAR_EXP="$2"; shift 2 ;;
+        -h|--help) sed -n '2,56p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 3 ;;
     esac
 done
@@ -205,6 +214,15 @@ fi
 eqemu_stack_ready || { say "eqemu_stack_ready is false after up.sh"; exit 65; }
 eqemu_snapshot "$BEFORE"
 say "snapshot taken ($(wc -l < "$BEFORE") rows)"
+if [ -n "$CHAR_LEVEL" ]; then
+    # Same statement as scripts/pi_rendered_zone_sweep.sh's eligibility leg;
+    # level and exp are snapshot columns, so the restore puts them back.
+    eqemu_sql "UPDATE character_data SET level=${CHAR_LEVEL}${CHAR_EXP:+, exp=${CHAR_EXP}} WHERE name='${CHAR}';" >/dev/null
+    got_level="$(eqemu_sql "SELECT level FROM character_data WHERE name='${CHAR}';" | tail -1 | tr -d '[:space:]')"
+    say "ELIGIBILITY LEG: ${CHAR} level set to ${got_level} (asked ${CHAR_LEVEL}/${CHAR_EXP:-exp unchanged}); the snapshot restore puts it back"
+    echo "eligibility_leg_char_level=${got_level} exp=${CHAR_EXP:-unchanged}" >> "$OUT/run_meta.txt"
+    [ "$got_level" = "$CHAR_LEVEL" ] || { say "level did not read back"; exit 65; }
+fi
 
 # ---- 3. one rendered run --------------------------------------------------------
 # run_one <zone> <mode>: writes $OUT/<zone>/<mode>/{client.log,rss_samples.tsv,

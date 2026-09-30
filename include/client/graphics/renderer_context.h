@@ -24,6 +24,7 @@
 
 #include "client/graphics/renderer_types.h"   // RendererConfig, ObjectLight, S3DZone, irr, std containers
 #include "client/graphics/renderer_draw_types.h"  // L12: SortedRegionEntry (sortedZoneDrawList)
+#include "client/graphics/object_collision_set.h"  // B909b: objectCollision
 
 #include <cstdint>
 #include <map>
@@ -176,7 +177,7 @@ struct RendererContext {
 	bool& fireGlowIcospheresEnabled;  // 10: zone_load 7,diagnostics 1,frame 1,overlays 1
 	std::vector<irr::core::vector3df>& zoneLightPositions;  // 10: sim 6,zone_load 3,zone_lifecycle 1
 	bool& fireGlowLightingEnabled;  // 9: zone_load 5,overlays 2,diagnostics 1,frame 1
-	std::map<size_t, std::vector<irr::core::triangle3df>>& objectWorldTriangles;  // 9: player 4,zone_load 3,zone_lifecycle 2
+	ObjectCollisionSet& objectCollision;  // B909b: placed objects, each distinct mesh held once. 9: zone_load 5,player 2,zone_lifecycle 2
 	int& maxFireGlowLights;  // 7: zone_load 5,diagnostics 1,overlays 1
 	bool& mergeZoneDrawsEnabled;  // 7: diagnostics 5,zone_lifecycle 1,zone_load 1
 	std::vector<SortedRegionEntry>& sortedZoneDrawList;  // 7: sim 3,zone_lifecycle 3,frame 1

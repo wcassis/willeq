@@ -114,3 +114,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_region_world_triangles GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_region_world_triangles DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B909b (GitLab #229): placed objects' collision holds each distinct mesh once
+# (a matrix + box per instance), with bit-identical ray results to the old
+# per-instance world-space copy.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_object_collision_set
+        test_object_collision_set.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_object_collision_set PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    TARGET_INCLUDE_DIRECTORIES(test_object_collision_set PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_object_collision_set GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_object_collision_set DISCOVERY_TIMEOUT 120)
+ENDIF()

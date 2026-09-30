@@ -147,7 +147,7 @@ void ZoneLifecycleComponent::unloadZone() {
 
     // Now safe to remove zone collision data
     ctx_.regionWorldTriangles.clear();
-    ctx_.objectWorldTriangles.clear();
+    ctx_.objectCollision.clear();
     ctx_.doorCollisionData.clear();
     // T435 (B425): keep DoorManager's dirty set in step with the map it feeds.
     if (ctx_.doorManager) ctx_.doorManager->markAllCollisionDirty();
@@ -699,7 +699,7 @@ void ZoneLifecycleComponent::setupHCMapCollision() {
 
     // Clean up all collision data
     ctx_.regionWorldTriangles.clear();
-    ctx_.objectWorldTriangles.clear();
+    ctx_.objectCollision.clear();
     ctx_.doorCollisionData.clear();
     // T435 (B425): keep DoorManager's dirty set in step with the map it feeds.
     if (ctx_.doorManager) ctx_.doorManager->markAllCollisionDirty();

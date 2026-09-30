@@ -1045,7 +1045,7 @@ private:
     // BSP-filtered collision: pre-transformed world-space triangles — no matrix math per query
     // All collision paths (movement, detail, footprints, LOS) use direct Möller–Trumbore intersection
     RegionWorldTriangles regionWorldTriangles_;  // Zone geometry per BSP region, held once (B909)
-    std::map<size_t, std::vector<irr::core::triangle3df>> objectWorldTriangles_;  // Placeable objects per BSP region
+    ObjectCollisionSet objectCollision_;  // Placeable objects per BSP region, each distinct mesh held once (B909b)
 
     // Pre-baked door collision: open + closed world-space triangles per door
     // During animation (opening/closing), door has no collision (walk-through, matching original EQ behavior)

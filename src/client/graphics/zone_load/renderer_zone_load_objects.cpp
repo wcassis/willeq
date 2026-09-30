@@ -600,31 +600,47 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
         }
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: setupMinimalZoneCollision complete, regionWorldTriangles_={}",
                   ctx_.regionWorldTriangles.size());
-        eqt::memory::StartupScope objectTriOwner("sp.object_tris");  // B909
+        // B909b: the owner row of the placed-object collision set (instances,
+        // region index, snapshots). It used to hold a world-space copy of
+        // every instance's triangles; it now holds each distinct mesh once
+        // (read in place from the mesh the draw path holds, charged to
+        // `objects`) plus a matrix and a box per instance.
+        eqt::memory::StartupScope objectTriOwner("sp.object_instances");
 
-        // Add eagerly-built objects as pre-transformed world-space triangles per BSP region
         size_t objectsAdded = 0;
-        size_t totalObjectTriangles = 0;
         if (ctx_.smgr) {
+            // Vertex-animated meshes are rewritten every frame; their collision
+            // is snapshotted here, the load-time pose the old copy held.
+            std::vector<const irr::scene::IMesh*> animatedMeshes;
+            for (const auto& vam : ctx_.vertexAnimatedMeshes) animatedMeshes.push_back(vam.mesh);
+            ctx_.objectCollision.clear();
             for (size_t oi = 0; oi < ctx_.objectNodes.size(); ++oi) {
                 auto* node = ctx_.objectNodes[oi];
                 if (node && node->getMesh()) {
-                    auto triangles = PlayerCameraComponent::extractWorldTriangles(ctx_.smgr, node);
-                    if (!triangles.empty()) {
-                        size_t region = (oi < ctx_.objectRegions.size()) ? ctx_.objectRegions[oi] : SIZE_MAX;
-                        auto& regionTris = ctx_.objectWorldTriangles[region];
-                        totalObjectTriangles += triangles.size();
-                        regionTris.insert(regionTris.end(), triangles.begin(), triangles.end());
+                    size_t region = (oi < ctx_.objectRegions.size()) ? ctx_.objectRegions[oi] : SIZE_MAX;
+                    irr::scene::IMesh* mesh = node->getMesh();
+                    const bool animated = std::find(animatedMeshes.begin(), animatedMeshes.end(), mesh) !=
+                                          animatedMeshes.end();
+                    if (ctx_.objectCollision.addInstance(region, mesh,
+                                                         SelectorWorldMatrix(node->getAbsoluteTransformation()),
+                                                         animated)) {
                         objectsAdded++;
                     }
                 }
             }
-            LOG_INFO(MOD_GRAPHICS, "Sequential: {} objects -> {} world-space triangles across {} regions",
-                     objectsAdded, totalObjectTriangles, ctx_.objectWorldTriangles.size());
+            ctx_.objectCollision.finish();
+            const auto& oc = ctx_.objectCollision;
+            LOG_INFO(MOD_GRAPHICS, "Sequential: {} objects -> {} world-space-equivalent triangles across {} regions; "
+                     "held once: {} distinct meshes, {} mesh triangles, {} bytes owned (instances + index), "
+                     "{} bytes of mesh arrays read in place (charged to objects; claimants: object draw + collision); "
+                     "a per-instance copy would be {} bytes",
+                     objectsAdded, oc.worldTriangleCount(), oc.regionCount(), oc.meshCount(),
+                     oc.meshTriangleCount(), oc.ownedBytes(), oc.sharedMeshBytes(),
+                     oc.worldTriangleCount() * sizeof(irr::core::triangle3df));
         }
         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: collision setup complete, "
-                  "regionWorldTriangles_={}, objectWorldTriangles_={}, doorCollisionData_={}, bspFiltered={}",
-                  ctx_.regionWorldTriangles.size(), ctx_.objectWorldTriangles.size(),
+                  "regionWorldTriangles_={}, objectCollision_ regions={}, doorCollisionData_={}, bspFiltered={}",
+                  ctx_.regionWorldTriangles.size(), ctx_.objectCollision.regionCount(),
                   ctx_.doorCollisionData.size(), (bool)(ctx_.zoneBspTree && !ctx_.regionWorldTriangles.empty()));
         ctx_.ZoneStream().logAssetBuildTime("seq_collision", 0, stepStart);
     }

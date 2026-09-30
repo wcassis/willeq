@@ -1,6 +1,7 @@
 // door_collision.cpp -- see include/client/graphics/door_collision.h.
 // T435, board B425.
 #include "client/graphics/door_collision.h"
+#include "client/graphics/moller_trumbore.h"
 
 #include <cmath>
 
@@ -95,42 +96,9 @@ void AppendMeshWorldTriangles(irr::scene::IMesh* mesh,
     }
 }
 
-namespace {
-// One Moller-Trumbore step, shared by both RayIntersectTriangles overloads so
-// an owned vector and a pool view run the SAME arithmetic (B909).
-inline void MollerTrumboreStep(const irr::core::vector3df& rayOrigin,
-                               const irr::core::vector3df& rayDir,
-                               const irr::core::vector3df& v0,
-                               const irr::core::vector3df& v1,
-                               const irr::core::vector3df& v2,
-                               float& closestT, irr::core::vector3df& hitPoint,
-                               irr::core::triangle3df& hitTriangle, bool& anyHit) {
-    constexpr float EPSILON = 0.000001f;
-    const irr::core::vector3df edge1 = v1 - v0;
-    const irr::core::vector3df edge2 = v2 - v0;
-
-    const irr::core::vector3df h = rayDir.crossProduct(edge2);
-    float a = edge1.dotProduct(h);
-    if (a > -EPSILON && a < EPSILON) return;  // Parallel
-
-    float f = 1.0f / a;
-    const irr::core::vector3df s = rayOrigin - v0;
-    float u = f * s.dotProduct(h);
-    if (u < 0.0f || u > 1.0f) return;
-
-    const irr::core::vector3df q = s.crossProduct(edge1);
-    float v = f * rayDir.dotProduct(q);
-    if (v < 0.0f || u + v > 1.0f) return;
-
-    float t = f * edge2.dotProduct(q);
-    if (t > EPSILON && t < closestT) {
-        closestT = t;
-        hitPoint = rayOrigin + rayDir * t;
-        hitTriangle = irr::core::triangle3df(v0, v1, v2);
-        anyHit = true;
-    }
-}
-}  // namespace
+// The Moller-Trumbore step both RayIntersectTriangles overloads run (so an
+// owned vector and a pool view run the SAME arithmetic, B909) lives in
+// moller_trumbore.h since B909b, shared with ObjectCollisionSet.
 
 bool RayIntersectTriangles(const irr::core::vector3df& rayOrigin,
                            const irr::core::vector3df& rayDir, float rayLen,

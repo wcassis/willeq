@@ -219,7 +219,7 @@ IrrlichtRenderer::IrrlichtRenderer()
         zoneMeshNode_, regionWorldTriangles_, deferredObjects_,
         zonePlaceholderNode_, playerHeading_, regionNeighbors_, objectRegions_,
         zoneReady_, currentVision_, weatherSystem_, vertexAnimatedMeshes_, objectLightInSceneGraph_,
-        fireGlowIcospheresEnabled_, zoneLightPositions_, fireGlowLightingEnabled_, objectWorldTriangles_,
+        fireGlowIcospheresEnabled_, zoneLightPositions_, fireGlowLightingEnabled_, objectCollision_,
         maxFireGlowLights_, mergeZoneDrawsEnabled_, sortedZoneDrawList_, occlusionCulledRegions_, collisionManager_,
         zoneBoundsMinX_, zoneBoundsMinY_, zoneBoundsMaxX_, zoneBoundsMaxY_, frameNumber_,
         zoneBoundsValid_, isIndoorZone_, entityPrepScanCounter_, objectBoundingBoxes_, regionPvsDepthMap_,
