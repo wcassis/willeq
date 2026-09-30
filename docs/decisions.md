@@ -1386,6 +1386,25 @@ mid-load `zone_parse` reaches 31.7 MB live and a 50.1 MB high-water mark
 (iceclad) and is not asserted. That is an open finding
 (`refactor/B927/README.md`). No other budget changed.
 
+## 2026-09-30 — placeableObjectsBytes coverage baselines blessed (Will, B936b / #247)
+
+**Will, in chat: "bless placeableObjectsBytes".** The benchmark now builds each
+distinct placeable mesh once and shares it across placements, as production does
+(B936), so the memory-coverage `placeableObjectsBytes` baselines in
+`tests/goldens/manifest.json` move down. Values are the measured ones
+(`refactor/B936/README.md`, `review/B936/bench_coverage/`), set by B936b:
+
+| zone | old | new |
+|---|---|---|
+| qeynos2 | 1,365,564 | 145,812 |
+| gfaydark | 5,624,100 | 266,388 |
+| befallen | 2,168,052 | 130,968 |
+| iceclad | 389,688 | 215,112 |
+| timorous | 3,990,714 | 981,756 |
+
+No image golden changed and no budget changed. Issue #247 acceptance 1 (the
+benchmark shares objects) is in; acceptance 2 (the census job) remains.
+
 ## 2026-09-29 — 64 MB excludes driver memory; try the LLVM-less Mesa build (Will; recorded 2026-09-30 by B932)
 
 **Will, in chat: "64 MB excludes driver memory; try the LLVM-less Mesa build".**

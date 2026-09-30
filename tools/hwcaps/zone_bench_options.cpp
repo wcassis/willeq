@@ -99,6 +99,12 @@ void printUsage(const char* prog) {
     printf("\nObject options:\n");
     printf("  --objects            Load zone objects (trees, lamps, fences)\n");
     printf("  --object-dist F      Object render distance (default: 300)\n");
+    printf("  --object-anim-frame N  B936: pose every keyframe-animated object (grass,\n");
+    printf("                       plants, flags) at keyframe N mod its frame count, once,\n");
+    printf("                       before upload -- a fixed animation time for pixel\n");
+    printf("                       comparisons (default: no keyframe, the geometry pose).\n");
+    printf("                       WILLEQ_SHARE_OBJECT_MESHES=0 builds a mesh per placement\n");
+    printf("                       (the pre-T504 layout) for an A/B in one binary.\n");
     // Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.
     // printf("\nAnalysis modes:\n");
     // printf("  --analyze-portals    Analyze portal geometry contact and exit\n");
@@ -258,6 +264,7 @@ Options parseArgs(int argc, char** argv) {
         // else if (strcmp(argv[i], "--detect-portals") == 0) opts.detectPortals = true;
         // else if (strcmp(argv[i], "--portal-csv") == 0 && i + 1 < argc) opts.portalCsvFile = argv[++i];
         else if (strcmp(argv[i], "--objects") == 0) opts.loadObjects = true;
+        else if (strcmp(argv[i], "--object-anim-frame") == 0 && i + 1 < argc) opts.objectAnimFrame = atoi(argv[++i]);
         else if (strcmp(argv[i], "--tree-test") == 0) { opts.treeTest = true; opts.loadObjects = true; }
         else if (strcmp(argv[i], "--composite-entity-test") == 0) {
             opts.compositeEntityTest = true;

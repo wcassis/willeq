@@ -15,6 +15,7 @@
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
+#include "client/graphics/placed_object_meshes.h"
 #include "client/graphics/zone_shader.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/constrained_texture_cache.h"
@@ -478,28 +479,67 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                 }
 
                 int objCount = 0, objBuffers = 0;
+                // B936 (#247): ONE mesh per geometry, as the client builds them
+                // (T504 for static objects, B936 for the keyframe-animated
+                // grass and plants). This loop used to build a private mesh
+                // for every placement, which is why growthplane's
+                // placeableObjectsBytes read 28.7 MB (4,333 placements of 11
+                // geometries). WILLEQ_SHARE_OBJECT_MESHES=0 builds the
+                // per-placement layout again, as the client's switch does.
+                const char* shareEnv = std::getenv("WILLEQ_SHARE_OBJECT_MESHES");
+                EQT::Graphics::PlacedObjectMeshes placedMeshes(!(shareEnv && shareEnv[0] == '0'));
+                std::vector<EQT::Graphics::VertexAnimatedMesh> vertexAnims;
+                // Object textures merged with zone textures (built once; it
+                // used to be copied per placement).
+                auto mergedTextures = objZone->objectTextures;
+                for (const auto& [name, tex] : objZone->textures) {
+                    if (mergedTextures.find(name) == mergedTextures.end()) {
+                        mergedTextures[name] = tex;
+                    }
+                }
                 for (const auto& instance : objZone->objects) {
                     if (!instance.geometry || instance.geometry->vertices.empty()) continue;
 
                     const std::string& objName = instance.placeable ? instance.placeable->getName() : "";
 
-                    // Build mesh — use object textures merged with zone textures
-                    auto mergedTextures = objZone->objectTextures;
-                    for (const auto& [name, tex] : objZone->textures) {
-                        if (mergedTextures.find(name) == mergedTextures.end()) {
-                            mergedTextures[name] = tex;
-                        }
-                    }
-
-                    irr::scene::IMesh* objMesh = nullptr;
-                    if (!mergedTextures.empty() && !instance.geometry->textureNames().empty()) {
-                        objMesh = objBuilder.buildTexturedMesh(*instance.geometry, mergedTextures);
-                    } else {
-                        objMesh = objBuilder.buildColoredMesh(*instance.geometry);
-                    }
+                    bool builtNow = false;
+                    irr::scene::IMesh* objMesh = placedMeshes.acquire(*instance.geometry, [&]() -> irr::scene::IMesh* {
+                        builtNow = true;
+                        if (!mergedTextures.empty() && !instance.geometry->textureNames().empty())
+                            return objBuilder.buildTexturedMesh(*instance.geometry, mergedTextures);
+                        return objBuilder.buildColoredMesh(*instance.geometry);
+                    });
                     if (!objMesh) continue;
 
-                    uploadMeshHWBuffers(data->driver, objMesh);
+                    if (builtNow) {
+                        // B936: a keyframe-animated geometry is registered once
+                        // per mesh; with --object-anim-frame N it is posed at a
+                        // fixed keyframe BEFORE the upload, through the client's
+                        // own pose routine.
+                        if (EQT::Graphics::isVertexAnimatedGeometry(*instance.geometry)) {
+                            auto* vam = placedMeshes.registerAnimated(*instance.geometry, objMesh, objName, vertexAnims);
+                            if (vam && config.objectAnimFrame >= 0) {
+                                const int frames = static_cast<int>(vam->animData->frames.size());
+                                EQT::Graphics::applyVertexAnimFrame(*vam, config.objectAnimFrame % frames);
+                            }
+                        }
+                        // Disable backface culling on object materials (matching production)
+                        for (irr::u32 mi = 0; mi < objMesh->getMeshBufferCount(); ++mi) {
+                            objMesh->getMeshBuffer(mi)->getMaterial().BackfaceCulling = false;
+                        }
+                        uploadMeshHWBuffers(data->driver, objMesh);
+                    } else if (EQT::Graphics::isVertexAnimatedGeometry(*instance.geometry)) {
+                        placedMeshes.registerAnimated(*instance.geometry, objMesh, objName, vertexAnims);
+                    }
+                    // B936: where the keyframe-animated placements are (every
+                    // 250th, EQ coords), so a pixel comparison can aim a
+                    // --camera-pose at them.
+                    if (instance.placeable && EQT::Graphics::isVertexAnimatedGeometry(*instance.geometry) &&
+                        (placedMeshes.animatedPlacements() - 1) % 250 == 0) {
+                        printf("  Animated placement #%zu '%s' at EQ (%.1f, %.1f, %.1f)\n",
+                               placedMeshes.animatedPlacements() - 1, objName.c_str(),
+                               instance.placeable->getX(), instance.placeable->getY(), instance.placeable->getZ());
+                    }
 
                     // Build world transform matrix (EQ → Irrlicht coordinate swap)
                     const auto& p = instance.placeable;
@@ -521,11 +561,6 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                         p->getX(), p->getZ(), p->getY()));
 
                     mat = transMat * rotMat * scaleMat;
-
-                    // Disable backface culling on object materials (matching production)
-                    for (irr::u32 mi = 0; mi < objMesh->getMeshBufferCount(); ++mi) {
-                        objMesh->getMeshBuffer(mi)->getMaterial().BackfaceCulling = false;
-                    }
 
                     ZoneBenchData::PlacedObject obj;
                     obj.mesh = objMesh;
@@ -592,6 +627,12 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                 printf("  Objects built: %d objects, %d buffers, %d textures (%.0f ms)\n",
                        objCount, objBuffers, objUploaded,
                        std::chrono::duration<double, std::milli>(objEnd - objStart).count());
+                printf("  Object meshes: %zu built, %zu placements reused one (sharing %s); "
+                       "keyframe-animated: %zu placements draw %zu meshes, anim frame %d\n",
+                       placedMeshes.meshesBuilt(), placedMeshes.placementsReusingAMesh(),
+                       placedMeshes.sharing() ? "on" : "OFF", placedMeshes.animatedPlacements(),
+                       vertexAnims.size(), config.objectAnimFrame);
+                placedMeshes.release();   // the placements keep their references
             }
         } else {
             printf("  Objects: none (no _obj.s3d or objects.wld)\n");

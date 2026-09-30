@@ -70,6 +70,7 @@
 #include "zone_bench_memory.h"
 
 #include <cstdio>
+#include <set>
 
 #include <irrlicht.h>
 
@@ -158,8 +159,12 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
     }
     snap.totalEstimate += snap.zoneGeometryBytes;
 
+    // B936: placements share one mesh per geometry; a shared mesh is counted
+    // ONCE (the shared-block rule), not once per placement drawing it.
+    std::set<const irr::scene::IMesh*> countedObjectMeshes;
     for (auto& obj : data.objects) {
-        snap.placeableObjectsBytes += sumMeshBufferBytes(obj.mesh);
+        if (countedObjectMeshes.insert(obj.mesh).second)
+            snap.placeableObjectsBytes += sumMeshBufferBytes(obj.mesh);
     }
     snap.totalEstimate += snap.placeableObjectsBytes;
 
