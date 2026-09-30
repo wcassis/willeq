@@ -125,7 +125,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_Backend) {
     EXPECT_EQ(config.renderingBackend, RenderingBackend::GLES2);
     EXPECT_TRUE(config.useDRM);
     EXPECT_EQ(config.framebufferMemoryBytes, 10 * 1024 * 1024);  // 10MB
-    EXPECT_EQ(config.textureMemoryBytes, 64 * 1024 * 1024);      // 64MB
+    EXPECT_EQ(config.textureMemoryBytes, 51 * 1024 * 1024);      // 51MB (B943)
     EXPECT_EQ(config.colorDepthBits, 16);
     EXPECT_EQ(config.maxTextureDimension, 512);
     // Rendering feature defaults
@@ -400,7 +400,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_GpuFeatures) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
 
     EXPECT_EQ(config.framebufferMemoryBytes, 10 * 1024 * 1024);  // 10MB
-    EXPECT_EQ(config.textureMemoryBytes, 64 * 1024 * 1024);      // 64MB
+    EXPECT_EQ(config.textureMemoryBytes, 51 * 1024 * 1024);      // 51MB (B943)
     EXPECT_EQ(config.maxTextureDimension, 512);
     EXPECT_EQ(config.colorDepthBits, 16);
     EXPECT_FLOAT_EQ(config.clipDistance, 300.0f);
@@ -1060,7 +1060,7 @@ TEST_F(ConstrainedRendererConfigTest, CompressedSize_NPOT) {
 TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudgets) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
 
-    EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(64) * 1024 * 1024);
+    EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(38) * 1024 * 1024);  // B943: 64 -> 38
     EXPECT_EQ(config.zoneGeometryMemoryBytes,     static_cast<size_t>(16) * 1024 * 1024);
     EXPECT_EQ(config.placeableObjectsMemoryBytes, static_cast<size_t>(24) * 1024 * 1024);
     // T491 (board B803): 24 -> 32 MiB. The T293 figure was extrapolated from
@@ -1073,7 +1073,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudget
     // 13.97 -> 14 MiB (refactor/B927/README.md).
     EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(14) * 1024 * 1024);
     EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
-    EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(40) * 1024 * 1024);
+    EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(2) * 1024 * 1024);   // B943: 40 -> 2
     EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
 
     // T491 (2026-09-14, Will's 100%-accounting ruling): the ALLOCATOR-level
@@ -1086,12 +1086,12 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudget
         return config.memoryLedgerBudgetBytes[static_cast<size_t>(c)];
     };
     EXPECT_EQ(ledgerBudget(Category::Unattributed),    static_cast<size_t>(1) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::Archives),        static_cast<size_t>(4) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::Archives),        static_cast<size_t>(3) * 1024 * 1024);   // B943: 4 -> 3
     EXPECT_EQ(ledgerBudget(Category::ZoneParse),       static_cast<size_t>(14) * 1024 * 1024);  // B927
     EXPECT_EQ(ledgerBudget(Category::ZoneMesh),        static_cast<size_t>(28) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Spatial),         static_cast<size_t>(4) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(20) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::EntityModels),    static_cast<size_t>(84) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(2) * 1024 * 1024);   // B943: 20 -> 2
+    EXPECT_EQ(ledgerBudget(Category::EntityModels),    static_cast<size_t>(38) * 1024 * 1024);  // B943: 84 -> 38
     EXPECT_EQ(ledgerBudget(Category::Objects),         static_cast<size_t>(40) * 1024 * 1024);
     // T496 Leg D: the first budget in this table derived from a PI measurement
     // (24.53 MiB steady, x1.25 -> 32). See B830.
@@ -1142,7 +1142,8 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
     bool applied = config.loadJsonOverrides("orangepi", WILLEQ_CONSTRAINED_PRESETS_JSON);
     EXPECT_TRUE(applied);
-    EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(64) * 1024 * 1024);
+    EXPECT_EQ(config.textureMemoryBytes,          static_cast<size_t>(51) * 1024 * 1024);  // B943: 64 -> 51
+    EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(38) * 1024 * 1024);  // B943: 64 -> 38
     EXPECT_EQ(config.zoneGeometryMemoryBytes,     static_cast<size_t>(16) * 1024 * 1024);
     EXPECT_EQ(config.placeableObjectsMemoryBytes, static_cast<size_t>(24) * 1024 * 1024);
     // T491 (board B803): 24 -> 32 MiB. The T293 figure was extrapolated from
@@ -1155,7 +1156,7 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     // 13.97 -> 14 MiB (refactor/B927/README.md).
     EXPECT_EQ(config.s3dZoneSourceMemoryBytes,    static_cast<size_t>(14) * 1024 * 1024);
     EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
-    EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(40) * 1024 * 1024);
+    EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(2) * 1024 * 1024);   // B943: 40 -> 2
     EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
 
     // T491 (2026-09-14, Will's 100%-accounting ruling): the ALLOCATOR-level
@@ -1168,12 +1169,12 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
         return config.memoryLedgerBudgetBytes[static_cast<size_t>(c)];
     };
     EXPECT_EQ(ledgerBudget(Category::Unattributed),    static_cast<size_t>(1) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::Archives),        static_cast<size_t>(4) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::Archives),        static_cast<size_t>(3) * 1024 * 1024);   // B943: 4 -> 3
     EXPECT_EQ(ledgerBudget(Category::ZoneParse),       static_cast<size_t>(14) * 1024 * 1024);  // B927
     EXPECT_EQ(ledgerBudget(Category::ZoneMesh),        static_cast<size_t>(28) * 1024 * 1024);
     EXPECT_EQ(ledgerBudget(Category::Spatial),         static_cast<size_t>(4) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(20) * 1024 * 1024);
-    EXPECT_EQ(ledgerBudget(Category::EntityModels),    static_cast<size_t>(84) * 1024 * 1024);
+    EXPECT_EQ(ledgerBudget(Category::TexturesDecoded), static_cast<size_t>(2) * 1024 * 1024);   // B943: 20 -> 2
+    EXPECT_EQ(ledgerBudget(Category::EntityModels),    static_cast<size_t>(38) * 1024 * 1024);  // B943: 84 -> 38
     EXPECT_EQ(ledgerBudget(Category::Objects),         static_cast<size_t>(40) * 1024 * 1024);
     // T496 Leg D: the first budget in this table derived from a PI measurement
     // (24.53 MiB steady, x1.25 -> 32). See B830.

@@ -126,6 +126,13 @@ struct ConstrainedRendererConfig {
     // Neither strictly contains the other, so both are budgeted separately.
     // Derived: 2.0x the worst measured (31.7 MB, qeynos2/S3D), which also
     // lands exactly on textureMemoryBytes -- the cache is its dominant feeder.
+    // B943 (2026-09-30, Will: "lower the seven budgets, hold audio"): the
+    // orangepi preset is now 38 MiB (textureMemoryBytes 51 MiB). Worst
+    // gpuTextureBytes 31,735,808 B x 1.25 = 37.83 MiB -> 38 MiB and
+    // textureCacheBytesUsed 42,226,984 B x 1.25 = 50.34 MiB -> 51 MiB, both
+    // the gate's qeynos2 golden invocation (S3D path; the EQE1-path census
+    // tops out at 16.8 / 16.3 MB). Read refactor/B943/README.md; the
+    // two-feeder argument above is the T293 history.
     size_t gpuTextureMemoryBytes = 0;
 
     // Zone region/single-mesh vertex+index bytes held CPU-side.
@@ -175,6 +182,11 @@ struct ConstrainedRendererConfig {
     // the largest zone _chr on disk (griegsend_chr.s3d 10.45 MB vs
     // qeynos2_chr.s3d 2.44 MB) = 38.5 MiB -> 40 MiB. 40 resident races is
     // ~3x the 14 distinct models T289 measured live in befallen on the Pi.
+    // B943 (2026-09-30, Will: "lower the seven budgets, hold audio"): the
+    // orangepi preset is now 2 MiB. The T293 derivation above is history.
+    // Worst characterModelsBytes over the 118 era zones 1,544,392 B (oot,
+    // refactor/B927/category_census.tsv; a five-race coverage sample, so
+    // races beyond it are unmeasured) x 1.25 = 1.84 -> 2 MiB.
     size_t characterModelsMemoryBytes = 0;
 
     // T491: per-category budgets for the allocator-level memory ledger

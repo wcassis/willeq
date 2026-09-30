@@ -835,6 +835,21 @@ it without taking that measurement first.
   reports 63.5 MB, but `s3dZoneSourceBytes` fell only 16.7 MB for the whole
   release.
 
+- ~~**B943** (B) Six orangepi budgets sat far above anything measured.~~ **DONE
+  2026-09-30** (branch `task/B943-ratchet-six-budgets`, issue #261,
+  `refactor/B943/README.md`, `docs/decisions.md` 2026-09-30). Will: "lower the
+  seven budgets, hold audio". `archives` 4 -> 3, `textures_decoded` 20 -> 2,
+  `entity_models` 84 -> 38, `gpuTextureBytes` 64 -> 38, `textureCacheBytesUsed`
+  (`textureMemoryBytes`) 64 -> 51, `characterModelsBytes` 40 -> 2 MiB (measured
+  worst x 1.25, whole MiB; `refactor/B943/budget_ratchet_census.py`). The
+  first derivation (21 and 20 MiB, from the EQE1-path census) was wrong for
+  the two texture budgets: the gate's qeynos2 golden run is S3D-path and holds
+  31.7 / 42.2 MB, and 20 MiB crashes it (B944, #262). **`audio`
+  held at 32 MiB** on Will's word: its only Pi figure (25.7 MB) is a 2026-09-17
+  qeynos2 reading that predates T504, and the rendered sweep had no classic
+  zone. `textureMemoryBytes` is the real cache eviction ceiling, so that one is
+  a behaviour change; Pi behaviour under 51 MiB is unverified.
+
 - ~~**B927** (B) Two of Will's 2026-09-29 rulings had not been applied: "bless
   iceclad and timorous" and "ratchet the zone_parse budget down".~~ **DONE
   2026-09-29** (branch `task/B927-bless-and-zone-parse-ratchet`,

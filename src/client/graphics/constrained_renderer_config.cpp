@@ -275,12 +275,19 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // 1280x720 request to 1072x720.
             // The budget is NOT raised to cover the 32-bit case -- 16-bit is the
             // shipped configuration and Mali 400 has no reason to want 32.
-            // 64MB texture budget: 512x512 textures with mipmaps = ~349KB each, ~187 textures
+            // B943 (2026-09-30, Will: "lower the seven budgets, hold audio"):
+            // 64 -> 51 MiB. Measured worst textureCacheBytesUsed: 42,226,984 B
+            // (the gate's qeynos2 golden invocation, S3D path; the 118-zone
+            // EQE1-path census tops out at 16,250,840 qeynos) x 1.25 = 50.34
+            // MiB -> 51 MiB (refactor/B943/README.md). This is ALSO the
+            // cache's real eviction ceiling (ConstrainedTextureCache), not
+            // only an asserted budget: 20 MiB, the EQE1 census figure, makes
+            // that qeynos2 run segfault (B944).
             // P32: renderer-independent preset (see Voodoo1 comment above) —
             // GLES2 is the only backend, no #ifdef needed.
             config.useDRM = true;
             config.framebufferMemoryBytes = 10 * 1024 * 1024;  // 10MB
-            config.textureMemoryBytes = 64 * 1024 * 1024;      // 64MB
+            config.textureMemoryBytes = 51 * 1024 * 1024;      // 51MB
             config.colorDepthBits = 16;
             config.maxTextureDimension = 512;
             // Render distance and geometry budgets
@@ -325,7 +332,10 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // 32-bit address-space ceiling). Full derivation table in
             // docs/decisions.md and constrained_renderer_config.h's block
             // comment on these fields. Discharges the block T69 left open.
-            config.gpuTextureMemoryBytes         = 64 * 1024 * 1024;   // 64MB
+            // B943: 64 -> 38 MiB. Worst gpuTextureBytes 31,735,808 B (the gate's
+            // qeynos2 golden invocation, S3D path; the 118-zone EQE1-path
+            // census tops out at 16,797,104 qeynos) x 1.25 = 37.83 MiB -> 38.
+            config.gpuTextureMemoryBytes         = 38 * 1024 * 1024;   // 38MB
             config.zoneGeometryMemoryBytes       = 16 * 1024 * 1024;   // 16MB
             config.placeableObjectsMemoryBytes   = 24 * 1024 * 1024;   // 24MB
             // B927 (2026-09-29, Will: "ratchet the zone_parse budget down"):
@@ -333,7 +343,11 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // below (board B803); the derivation is on that line.
             config.s3dZoneSourceMemoryBytes      = 14 * 1024 * 1024;   // 14MB
             config.vboEboMemoryBytes             = 40 * 1024 * 1024;   // 40MB
-            config.characterModelsMemoryBytes    = 40 * 1024 * 1024;   // 40MB
+            // B943: 40 -> 2 MiB. Worst characterModelsBytes 1,544,392 B (oot,
+            // 118-zone census; the T303 five-race coverage sample, so it
+            // inherits that sample's limit) x 1.25 = 1.84 -> 2 MiB. The blessed
+            // coverage BASELINES in tests/goldens/manifest.json are unchanged.
+            config.characterModelsMemoryBytes    = 2 * 1024 * 1024;    // 2MB
             // Address space, not RAM -- see the field's comment.
             config.eqe1MappedAddressSpaceBytes   = 256 * 1024 * 1024;  // 256MB
             // T491 (2026-09-14, Will's 100%-accounting ruling): per-category
@@ -370,9 +384,13 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // a NEW unscoped subsystem is red. Ratchet DOWN, never up.
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Unattributed)] =
                 1 * 1024 * 1024;
-            // measured worst 1.24 MiB (coverage run) x 1.25 = 1.6 -> 4
+            // B943 (2026-09-30, Will: "lower the seven budgets, hold audio"):
+            // 4 -> 3 MiB. Measured worst 2,163,296 B (x86 client, timorous,
+            // refactor/B909; Pi client 2,010,568 eastwastes; benchmark
+            // 1,409,088 eastwastes) x 1.25 = 2.58 MiB -> 3 MiB.
+            // (T491: 1.24 MiB coverage run x 1.25 = 1.6 -> 4.)
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Archives)] =
-                4 * 1024 * 1024;
+                3 * 1024 * 1024;
             // B927 (2026-09-29, Will: "ratchet the zone_parse budget down"):
             // 32 -> 14 MiB. Measured worst at the point the gate asserts
             // (after the end-of-load source release, B914) over all 118 era
@@ -395,15 +413,20 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // derived from zones that do not exercise the term T490 is chasing
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Spatial)] =
                 4 * 1024 * 1024;
-            // measured worst 13.04 MiB (coverage) x 1.25 = 16.3 -> 20
+            // B943: 20 -> 2 MiB. Measured worst 1,056,288 B (x86 client,
+            // timorous; Pi 899,208 chardok; benchmark 316,432 thurgadina) x
+            // 1.25 = 1.26 MiB -> 2 MiB. (T491: 13.04 MiB coverage x 1.25 -> 20.)
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::TexturesDecoded)] =
-                20 * 1024 * 1024;
-            // measured worst 64.56 MiB (coverage, 5 races) x 1.25 =
-            // 80.7 -> 84. ⚠ This ONE category is larger than Will's whole
-            // 32-64 MB RSS target: it is the #1 shrink item, and the budget
-            // records where it is today, not where it belongs
+                2 * 1024 * 1024;
+            // B943: 84 -> 38 MiB. Measured worst 31,563,888 B (Pi client,
+            // charasis_retry at zone_load_complete, refactor/B943 census over
+            // the B854 details.json ledgers; x86 client 17,491,440 dreadlands;
+            // benchmark 5,083,088 nektulos) x 1.25 = 37.6 MiB -> 38 MiB.
+            // This is a bound on the asserted point, not on the transient
+            // high-water mark (nektulos peaks at 36.9 MB). (T491: 64.56 MiB
+            // coverage, 5 races x 1.25 -> 84.)
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::EntityModels)] =
-                84 * 1024 * 1024;
+                38 * 1024 * 1024;
             // measured worst 28.91 MiB (coverage) x 1.25 = 36.1 -> 40
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Objects)] =
                 40 * 1024 * 1024;
