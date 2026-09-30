@@ -14,8 +14,8 @@
 // knows nothing about (exactly the benchmark's shape), drive the cache past
 // its ceiling, and assert: the objects stay valid and registered with the
 // driver, the accounting counts only resident storage, a draw through the
-// driver's own bind path restores the SAME pixels, and the one path that still
-// destroys (no restore source) scrubs the holders the cache itself filled.
+// driver's own bind path restores the SAME pixels, and (B947) a texture with no
+// restore source is pinned rather than destroyed.
 //
 // Real EDT_OGLES2 surfaceless device (the backend willeq and the gate use);
 // each fixture self-skips when EGL or the EQE1 asset is unavailable.
@@ -210,7 +210,10 @@ TEST_F(ResidencyFixture, EvictionKeepsTheObjectAndABindRestoresTheSamePixels) {
     EXPECT_TRUE(cache_->isResident("b944_tex0.bmp"));
     EXPECT_EQ(cache_->getRestoreCount(), 1u);
     EXPECT_EQ(cache_->getRestoreFailureCount(), 0u);
-    EXPECT_EQ(source.reads, 1);
+    // B947: the source is read once on each entry's FIRST eviction (the
+    // byte-identity check that decides release vs pin: tex0, tex1, and tex2
+    // which this restore evicted) plus once for the restore itself.
+    EXPECT_EQ(source.reads, 4);
     EXPECT_EQ(cache_->getResidentTextureCount(), 3u);
     EXPECT_EQ(cache_->getCurrentUsage(), 3 * kBytes);
     EXPECT_EQ(gles2GetGpuTextureMemoryUsage(driver_) - driverBaseline, 3 * kBytes);
@@ -233,11 +236,12 @@ TEST_F(ResidencyFixture, EvictionKeepsTheObjectAndABindRestoresTheSamePixels) {
     cache_->removeSourceProvider(&source);
 }
 
-// With no restore source the cache still destroys the texture (pre-B944
-// behaviour, guards swap holders to the placeholder) -- and it now also drops
-// the texture from ZoneMeshBuilder's name map, which the cache fills itself
-// (registerUploadedTexture) and never scrubbed.
-TEST_F(ResidencyFixture, WithoutASourceTheTextureIsDestroyedAndTheMeshBuilderForgetsIt) {
+// B947 (GitLab #265): with no restore source a GLES2 texture is no longer
+// destroyed (the pre-B944 path, which left every holder the guards did not
+// reach -- RaceModelLoader's cached meshes -- with a freed pointer). It is
+// PINNED: kept, resident, counted, never evicted again; ZoneMeshBuilder keeps
+// its (valid) pointer and no guard is told to swap it out.
+TEST_F(ResidencyFixture, WithoutASourceAGles2TextureIsPinnedNeverDestroyed) {
     makeDevice();
     if (!device_) GTEST_SKIP() << "EDT_OGLES2 (surfaceless EGL) unavailable";
     makeCache(2 * kBytes);
@@ -249,16 +253,24 @@ TEST_F(ResidencyFixture, WithoutASourceTheTextureIsDestroyedAndTheMeshBuilderFor
     irr::video::ITexture* first = upload("b944_first.bmp", makeBmp({200, 0, 0}));
     ASSERT_NE(first, nullptr);
     EXPECT_TRUE(builder.hasTexture("b944_first.bmp"));
-    ASSERT_NE(upload("b944_second.bmp", makeBmp({0, 200, 0})), nullptr);
-    ASSERT_NE(upload("b944_third.bmp", makeBmp({0, 0, 200})), nullptr);
+    irr::video::ITexture* second = upload("b944_second.bmp", makeBmp({0, 200, 0}));
+    ASSERT_NE(second, nullptr);
+    // The third cannot fit: both residents are pinned instead of destroyed,
+    // so the upload is refused rather than paid for with a dangling pointer.
+    EXPECT_EQ(upload("b944_third.bmp", makeBmp({0, 0, 200})), nullptr);
 
-    EXPECT_EQ(cache_->getEvictionCount(), 1u);
-    EXPECT_FALSE(cache_->hasTexture("b944_first.bmp"));
-    EXPECT_EQ(driver_->findTexture("b944_first.bmp"), nullptr);
-    EXPECT_FALSE(builder.hasTexture("b944_first.bmp"))
-        << "ZoneMeshBuilder kept a pointer to the destroyed texture";
-    EXPECT_EQ(listener.calls, 1);
-    EXPECT_LE(cache_->getCurrentUsage(), cache_->getMemoryLimit());
+    EXPECT_EQ(cache_->getEvictionCount(), 0u) << "a pin frees nothing and is not an eviction";
+    EXPECT_EQ(cache_->getPinnedTextureCount(), 2u);
+    EXPECT_TRUE(cache_->isPinned("b944_first.bmp"));
+    EXPECT_TRUE(cache_->isResident("b944_first.bmp"));
+    EXPECT_EQ(cache_->getTexture("b944_first.bmp"), first);
+    EXPECT_EQ(driver_->findTexture("b944_first.bmp"), first);
+    EXPECT_TRUE(builder.hasTexture("b944_first.bmp"));
+    EXPECT_EQ(listener.calls, 0) << "nothing was destroyed, so no guard may swap a holder";
+    EXPECT_EQ(cache_->getCurrentUsage(), 2 * kBytes);
+    const irr::video::SColor c = drawAndSample(first);
+    EXPECT_EQ(c.getRed(), 200);
+    EXPECT_EQ(c.getGreen(), 0);
 
     cache_->removeEvictionListener(&listener);
     cache_->setMeshBuilder(nullptr);

@@ -956,6 +956,10 @@ EXEMPT_TESTS_GROUPS = {
     # test_texture_eviction_residency asserts eviction and restore through it;
     # production only needs the counts (getResidentTextureCount()).
     ("ConstrainedTextureCache", "isResident"): "observer",
+    # B947: whether one entry was pinned (no restore source; never evicted
+    # again). test_texture_eviction_{residency,character_restore} assert it;
+    # production logs the count (getPinnedTextureCount()).
+    ("ConstrainedTextureCache", "isPinned"): "observer",
     # Spatial budget overrun (B813 follow-up): the occluder table's reserved
     # heap bytes. test_region_occluders asserts it is exactly 40 B/triangle +
     # 8 B/region -- the net that keeps the per-region-block layout from

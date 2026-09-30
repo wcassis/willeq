@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <fstream>
 
 namespace EQT {
 namespace Graphics {
@@ -66,6 +67,30 @@ bool ArchiveTextureSource::readSource(const std::string& name, std::vector<char>
         }
     }
     return false;
+}
+
+bool ArchiveTextureSource::readMember(const std::string& archivePath, const std::string& member,
+                                      std::vector<char>& out) {
+    auto it = std::find(paths_.begin(), paths_.end(), archivePath);
+    if (it == paths_.end()) {
+        addArchive(archivePath);
+        it = std::find(paths_.begin(), paths_.end(), archivePath);
+        if (it == paths_.end()) return false;
+    }
+    PfsArchive* archive = archiveAt(static_cast<size_t>(it - paths_.begin()));
+    if (!archive) return false;
+    const std::string lower = lowerCased(member);
+    return archive->exists(lower) && archive->get(lower, out);
+}
+
+bool ArchiveTextureSource::readFile(const std::string& path, std::vector<char>& out) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) return false;
+    const std::streamsize size = file.tellg();
+    if (size <= 0) return false;
+    file.seekg(0, std::ios::beg);
+    out.resize(static_cast<size_t>(size));
+    return static_cast<bool>(file.read(out.data(), size));
 }
 
 }  // namespace Graphics

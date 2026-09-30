@@ -297,13 +297,17 @@ irr::scene::IMesh* RaceModelLoader::buildMeshFromGeometry(
                 if (!texture) {
                     auto texInfo = findTextureData(finalTexName);
                     if (texInfo && texInfo->present()) {
-                        texture = meshBuilder_->loadTextureFromBMP(finalTexName, texInfo->data, isMaskedMaterial);
+                        const TextureOrigin origin = texInfo->origin();  // B947
+                        texture = meshBuilder_->loadTextureFromBMP(finalTexName, texInfo->data, isMaskedMaterial,
+                                                                   &origin);
                     } else if (overrideApplied) {
                         texture = meshBuilder_->getOrLoadTexture(lowerTexName, isMaskedMaterial);
                         if (!texture) {
                             texInfo = findTextureData(lowerTexName);
                             if (texInfo && texInfo->present()) {
-                                texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texInfo->data, isMaskedMaterial);
+                                const TextureOrigin origin = texInfo->origin();  // B947
+                                texture = meshBuilder_->loadTextureFromBMP(lowerTexName, texInfo->data,
+                                                                           isMaskedMaterial, &origin);
                             }
                         }
                     }

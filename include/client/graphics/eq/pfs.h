@@ -2,6 +2,7 @@
 #define EQT_GRAPHICS_PFS_H
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 #include <map>
@@ -83,6 +84,12 @@ public:
         return total;
     }
 
+    // B947 (GitLab #265): the path this archive was opened from, shared, so a
+    // TextureInfo read out of it can name its origin for a texture-cache
+    // eviction restore without copying the string per texture. Null when
+    // nothing is open.
+    const std::shared_ptr<const std::string>& sharedPath() const { return path_; }
+
 private:
     bool parseDirectory();
     bool inflateByOffset(uint32_t offset, uint32_t size, std::vector<char>& outBuffer) const;
@@ -93,6 +100,7 @@ private:
     size_t mappedSize_ = 0;
     std::vector<char> heapBuffer_;    // fallback when mmap fails
     std::map<std::string, FileEntry> files_;
+    std::shared_ptr<const std::string> path_;  // B947
 };
 
 // Compression utilities

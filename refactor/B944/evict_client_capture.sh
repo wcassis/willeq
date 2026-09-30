@@ -241,10 +241,14 @@ EOF
     # exits 1 AFTER a clean shutdown -- that is not a client failure.
     grep -q "LeakSanitizer has encountered a fatal error" "$log" && lsan=y
     grep -q "Application shutdown complete" "$log" && clean=y
-    printf 'zone=%s rc=%s wall_s=%s landed=%s watchdog=%s asan=%s lsan_exit=%s clean_shutdown=%s evict_warn=%s placeholder_warn=%s fatal=%s frames=%s\n' \
+    # B947: pinned (no restore source) and failed restores are counted too;
+    # the unloadZone line carries the cache's own totals.
+    printf 'zone=%s rc=%s wall_s=%s landed=%s watchdog=%s asan=%s lsan_exit=%s clean_shutdown=%s evict_warn=%s placeholder_warn=%s pinned_warn=%s restore_fail_warn=%s fatal=%s frames=%s\n' \
         "$zone" "$rc" "$(( $(date +%s) - start ))" "$landed" "${killed:-none}" "$asan" "$lsan" "$clean" \
         "$(grep -c 'Evicting texture\|evicted texture' "$log")" \
         "$(grep -c 'placeholder checkerboard' "$log")" \
+        "$(grep -c 'no restore source -- PINNED' "$log")" \
+        "$(grep -c 'could not restore evicted texture' "$log")" \
         "$(grep -c '\[FATAL\]' "$log")" \
         "$(ls "$dir/frames" 2>/dev/null | wc -l)" > "$dir/result.txt"
     say "[$zone] $(cat "$dir/result.txt")"

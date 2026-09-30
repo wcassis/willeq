@@ -609,8 +609,9 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
                         // Try the variant texture first
                         auto texIt = modelData->textures.find(equipTexName);
                         if (texIt != modelData->textures.end() && texIt->second && meshBuilder_) {
+                            const TextureOrigin origin = texIt->second->origin();  // B947
                             irr::video::ITexture* equipTex = meshBuilder_->loadTextureFromBMP(
-                                equipTexName, texIt->second->data, isMaskedMaterial);
+                                equipTexName, texIt->second->data, isMaskedMaterial, &origin);
                             if (equipTex) {
                                 node->getMaterial(b).setTexture(0, equipTex);
                                 LOG_DEBUG(MOD_GRAPHICS, "    -> REPLACED with {}", equipTexName);
@@ -626,8 +627,9 @@ EQAnimatedMeshSceneNode* RaceModelLoader::createAnimatedNodeWithEquipment(uint16
 
                                 auto legacyIt = modelData->textures.find(lowerLegacyTex);
                                 if (legacyIt != modelData->textures.end() && legacyIt->second && meshBuilder_) {
+                                    const TextureOrigin origin = legacyIt->second->origin();  // B947
                                     irr::video::ITexture* equipTex = meshBuilder_->loadTextureFromBMP(
-                                        legacyTexName, legacyIt->second->data, isMaskedMaterial);
+                                        legacyTexName, legacyIt->second->data, isMaskedMaterial, &origin);
                                     if (equipTex) {
                                         node->getMaterial(b).setTexture(0, equipTex);
                                         LOG_DEBUG(MOD_GRAPHICS, "    -> REPLACED with legacy {}", legacyTexName);

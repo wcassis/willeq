@@ -7,6 +7,7 @@
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/zone_geometry.h"
+#include "client/graphics/archive_texture_source.h"
 #include "common/logging.h"
 #include "client/core/memory_ledger.h"
 #include <algorithm>
@@ -178,7 +179,8 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
                                                           const std::vector<char>& data,
                                                           const std::string& category,
                                                           const std::string& callsite,
-                                                          bool applyPaletteMask) {
+                                                          bool applyPaletteMask,
+                                                          const TextureOrigin* origin) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDecoded);  // T491
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -288,6 +290,10 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     decoded.width = width;
     decoded.height = height;
     decoded.hasAlpha = hasAlpha;
+    // B947: the restore identity of these bytes (see TextureOrigin).
+    if (origin && origin->known()) decoded.origin = *origin;
+    decoded.rawDigest = rawBytesDigest(data);
+    decoded.rawSize = data.size();
     decodedEntries_[internalKey] = std::move(decoded);
 
     LOG_DEBUG(MOD_GRAPHICS, "  [CONSTRAINED] texture '{}' decoded ({}x{}, alpha={}{})",
@@ -360,6 +366,9 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     bool hasAlpha = entry.hasAlpha;
     int width = entry.width;
     int height = entry.height;
+    TextureOrigin origin = std::move(entry.origin);  // B947
+    const uint64_t rawDigest = entry.rawDigest;
+    const size_t rawSize = entry.rawSize;
 
     // Remove decoded entry regardless of upload success (P46d: keyed by internalKey)
     decodedEntries_.erase(decodedIt);
@@ -378,7 +387,11 @@ irr::video::ITexture* ConstrainedTextureCache::uploadTexture(const std::string& 
     cached.lruIterator = std::prev(lruOrder_.end());
     // B944: an eviction can restore this from a registered
     // TextureSourceProvider (the raw bytes are the caller's and are gone).
+    // B947: or from the origin the caller named, checked against the digest.
     cached.source = CachedTexture::Source::Decoded;
+    cached.origin = std::move(origin);
+    cached.rawDigest = rawDigest;
+    cached.rawSize = rawSize;
 
     // P13: consume this name's pending ledger tag (set by getOrLoad) and
     // record the upload row. No-op when disabled.
@@ -718,6 +731,10 @@ void ConstrainedTextureCache::clear() {
     // B944: every shell left in the map was destroyed above (protected ones
     // are re-registered below with their own entry, never through this map).
     evictedOwner_.clear();
+    // B947: the zone's origin archives go with its textures (reopened on the
+    // next zone's first restore that needs one).
+    originArchives_.reset();
+    pinLogged_.clear();
 
     for (auto& [name, entry] : preserved) {
         if (!entry.resident) {

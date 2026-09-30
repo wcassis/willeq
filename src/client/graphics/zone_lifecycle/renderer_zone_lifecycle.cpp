@@ -52,13 +52,15 @@ void ZoneLifecycleComponent::unloadZone() {
     if (ctx_.constrainedTextureCache) {
         // B944: with the eviction/restore traffic of the zone that is leaving.
         LOG_INFO(MOD_GRAPHICS, "unloadZone: constrained texture cache has {} textures ({} resident), {} bytes "
-                 "before cleanup; {} evictions, {} restores, {} restore failures this zone",
+                 "before cleanup; {} evictions, {} restores, {} restore failures, {} pinned (no restore "
+                 "source, B947) this zone",
                  ctx_.constrainedTextureCache->getTextureCount(),
                  ctx_.constrainedTextureCache->getResidentTextureCount(),
                  ctx_.constrainedTextureCache->getCurrentUsage(),
                  ctx_.constrainedTextureCache->getEvictionCount(),
                  ctx_.constrainedTextureCache->getRestoreCount(),
-                 ctx_.constrainedTextureCache->getRestoreFailureCount());
+                 ctx_.constrainedTextureCache->getRestoreFailureCount(),
+                 ctx_.constrainedTextureCache->getPinnedTextureCount());
     }
 
     // Remove zone placeholder mesh if still present

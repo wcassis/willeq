@@ -387,8 +387,10 @@ void ZoneLoadComponent::loadZoneStep8c_VariantTextures(ZoneLoadContext& ctx) {
                 std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
                                [](unsigned char c) { return std::tolower(c); });
                 if (loadedNames.count(lowerName) > 0) return;
+                const TextureOrigin origin = texInfo->origin();  // B947: restore origin
                 ctx_.constrainedTextureCache->getOrLoad(lowerName, texInfo->data,
-                                                     "entity_perpart", "loadZoneStep8c_VariantTextures");
+                                                     "entity_perpart", "loadZoneStep8c_VariantTextures",
+                                                     false, &origin);
                 loadedNames.insert(lowerName);
                 ++ctx.variantTextureCount;
             };
@@ -509,8 +511,10 @@ bool ZoneLoadComponent::loadZoneStep8d_EquipmentPrep(ZoneLoadContext& ctx) {
                 const auto& texInfo = texIt->second;
                 if (texInfo->data.empty()) continue;
 
+                const TextureOrigin origin = texInfo->origin();  // B947: restore origin
                 ctx_.constrainedTextureCache->getOrLoad(ln, texInfo->data,
-                                                     "entity_perpart", "loadZoneStep8d_EquipmentPrep");
+                                                     "entity_perpart", "loadZoneStep8d_EquipmentPrep",
+                                                     false, &origin);
             }
             ctx.equipmentData.push_back(std::move(prepData));
         };
