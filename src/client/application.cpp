@@ -54,6 +54,7 @@
 #include "client/input/hotkey_manager.h"
 #include "client/input/graphics_input_handler.h"
 #include "client/bridge/irrlicht_bridge.h"
+#include "client/graphics/diagnostics/gpu_buffer_tally.h"  // B955
 #endif
 
 #ifdef WITH_AUDIO
@@ -1051,6 +1052,11 @@ void Application::mainLoop() {
 
     while (m_running.load()) {
         try {
+#ifdef EQT_HAS_GRAPHICS
+            // B955: the driver's GPU buffer tally for the ledger's gpu_buffers
+            // row, published from the GL-owning thread at most once a second.
+            if (m_renderer) EQT::Graphics::publishGpuBufferTallyThrottled(m_renderer->getDriver());
+#endif
             if (eqt::memory::pollSteadyState()) {  // T491: "steady_60s" once per zone-in
                 // T504b Leg 0: the source-character census at the steady
                 // point too -- the prep worker builds models after

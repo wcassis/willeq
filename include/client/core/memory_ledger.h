@@ -56,6 +56,8 @@
 #include <malloc.h>  // struct mallinfo2 (mallinfo2(), glibc >= 2.33)
 #endif
 
+#include "client/core/gpu_buffer_census.h"  // B955: the gpu_buffers row
+
 #ifndef EQT_MEMORY_LEDGER
 #define EQT_MEMORY_LEDGER 0
 #endif
@@ -362,6 +364,14 @@ struct Snapshot {
     uint64_t ownedBytes = 0;                 // max(0, rssAnon - gpuDriverBytes)
     uint64_t overTargetBytes = 0;            // max(0, ownedBytes - target)
     uint64_t overTargetRssAnonBytes = 0;     // max(0, rssAnon - target): the old figure, driver included
+    // B955: GPU buffer memory (textures, VBOs, render targets) held OUTSIDE
+    // RssAnon -- Lima GEM/shmem on the Pi -- or, on a software rasteriser,
+    // the renderer's tally that already sits inside gpu_driver
+    // (gpu_buffer_census.h has the sources and the decision). The 64 MB
+    // target stays on `owned` (what CI prints); ownedPlusGpuBuffersBytes is
+    // printed beside it for Will's ruling on whether these bytes count.
+    GpuBufferCensus gpuBuffers;
+    uint64_t ownedPlusGpuBuffersBytes = 0;   // owned + gpuBuffers (only if outside RssAnon)
 };
 
 // T491 addendum: the categories that would have to shrink to reach the 64 MB
