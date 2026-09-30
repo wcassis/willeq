@@ -149,6 +149,94 @@ void main() {
 }
 )";
 
+// ---- isolating the Lima defect (B958): which part of ALPHA3D_FS_DERIVATIVES
+// turns the discard around? Each keeps ONE ingredient of it. ----
+
+// Derivatives computed, but the discard compares with the constant 0.5.
+const char* kFwidthUnusedInDiscard = R"(
+#extension GL_OES_standard_derivatives : enable
+precision mediump float;
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    float fw = fwidth(texColor.a);
+    if (texColor.a < 0.5) discard;
+    gl_FragColor = texColor * vColor;
+    gl_FragColor.a = min(1.0, gl_FragColor.a + fw);  // keeps fw alive; alpha is not blended
+}
+)";
+
+// A non-constant threshold with no derivative in it (uThreshold = 0.5).
+const char* kUniformThreshold = R"(
+precision mediump float;
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+uniform float uThreshold;
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    if (texColor.a < uThreshold) discard;
+    gl_FragColor = texColor * vColor;
+}
+)";
+
+// The derivative threshold, tested through step() instead of `<`.
+const char* kDerivativesStep = R"(
+#extension GL_OES_standard_derivatives : enable
+precision mediump float;
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
+    if (step(threshold, texColor.a) < 0.5) discard;
+    gl_FragColor = texColor * vColor;
+}
+)";
+
+// The derivative threshold, with the discard as the LAST statement.
+const char* kDerivativesDiscardLast = R"(
+#extension GL_OES_standard_derivatives : enable
+precision mediump float;
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
+    gl_FragColor = texColor * vColor;
+    if (texColor.a < threshold) discard;
+}
+)";
+
+// fwidth of a quantity that is not the one tested (the texture coordinate).
+const char* kDerivativeOfOtherValue = R"(
+#extension GL_OES_standard_derivatives : enable
+precision mediump float;
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    float threshold = clamp(0.5 - fwidth(vTexCoord.x) * 0.001, 0.1, 0.5);
+    if (texColor.a < threshold) discard;
+    gl_FragColor = texColor * vColor;
+}
+)";
+
 const char* kVs = R"(
 precision highp float;
 attribute vec3 aPosition;
@@ -335,6 +423,8 @@ void rawDraw(GLuint prog, GLuint tex) {
     if (loc >= 0) glUniform1i(loc, 0);
     loc = glGetUniformLocation(prog, "uFogColor");
     if (loc >= 0) glUniform4f(loc, 0.0f, 0.0f, 0.0f, 1.0f);
+    loc = glGetUniformLocation(prog, "uThreshold");
+    if (loc >= 0) glUniform1f(loc, 0.5f);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, pos);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, uv);
@@ -480,6 +570,11 @@ int main(int argc, char** argv) {
         {"raw_compare_base", kCompareBase},
         {"raw_compare_derivatives", kCompareDerivatives},
         {"raw_threshold_as_colour", kThresholdAsColour},
+        {"raw_fwidth_unused_in_discard", kFwidthUnusedInDiscard},
+        {"raw_uniform_threshold", kUniformThreshold},
+        {"raw_derivatives_step", kDerivativesStep},
+        {"raw_derivatives_discard_last", kDerivativesDiscardLast},
+        {"raw_derivative_of_other_value", kDerivativeOfOtherValue},
     };
     for (const auto& r : kRaw) {
         GLuint fresh = link(r.fs);
