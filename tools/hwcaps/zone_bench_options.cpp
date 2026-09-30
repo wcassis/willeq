@@ -68,6 +68,20 @@ void printUsage(const char* prog) {
     printf("  --gl-counters        P38: record driver glBindTexture/glTexParameteri calls per frame (tex_binds/tex_param_calls CSV columns; off by default, zero overhead when absent)\n");
     printf("  --gpu-sync-probe     P52: per-phase GPU-sync timer queries + CPU sync-point attribution (gpu_*_ns/swap_buffers_ms/flip_wait_ms/finish_readpixels_ms CSV columns; off by default, zero overhead when absent)\n");
     printf("  --entity-budget N    Max composite entities per frame (default: 55)\n");
+    printf("  --impostor-size N    B952: impostor texture edge, 64|128|256 (default: 256)\n");
+    printf("  --impostor-mode M    B952: unique (one texture per entity, default) | shared\n");
+    printf("                       (one per race/gender/texture variant)\n");
+    printf("  --impostor-fbo M     B952: shared (one scratch FBO+depth, colour-only impostors,\n");
+    printf("                       default) | per (pre-B952: an RTT with its own depth each)\n");
+    printf("  --impostor-refresh N B952: re-render every live impostor every N frames (0 = never)\n");
+    printf("  --impostor-scene S   B952: far|mixed -- re-place the entities in rows in front of the\n");
+    printf("                       first pose, all beyond --lod-dist or half inside / half beyond\n");
+    printf("  --adaptive-tier-dist D  B952: --adaptive-lod entities beyond D are always impostors\n");
+    printf("                       (0 = off, the pre-B952 limit-only behaviour)\n");
+    printf("  --entity-genders G   B952: 0|1|both -- cross the race list with these genders\n");
+    printf("  --impostor-pixel-test DIR  B952: full model vs impostor 64/128/256 at 40/80/160\n");
+    printf("                       units per variant; numbers to stdout + CSV, 4x crop sheets\n");
+    printf("                       to DIR; exits\n");
     printf("  --adaptive-lighting  Per-pixel lighting near, per-vertex far (zone + entities)\n");
     printf("  --perpixel-budget N  Max entities with per-pixel lighting (default: 15)\n");
     printf("  --zone-pp-budget N   Max zone regions with per-pixel lighting (default: 20)\n");
@@ -236,6 +250,42 @@ Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--lod-entities") == 0) opts.lodEntities = true;
         else if (strcmp(argv[i], "--adaptive-lod") == 0) opts.adaptiveLod = true;
         else if (strcmp(argv[i], "--entity-budget") == 0 && i + 1 < argc) opts.entityBudget = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--impostor-size") == 0 && i + 1 < argc) {
+            opts.impostorSize = atoi(argv[++i]);
+            if (opts.impostorSize != 64 && opts.impostorSize != 128 && opts.impostorSize != 256) {
+                fprintf(stderr, "ERROR: --impostor-size must be 64, 128 or 256\n");
+                exit(1);
+            }
+        }
+        else if (strcmp(argv[i], "--impostor-mode") == 0 && i + 1 < argc) {
+            std::string v = argv[++i];
+            if (v == "unique") opts.impostorShared = false;
+            else if (v == "shared") opts.impostorShared = true;
+            else { fprintf(stderr, "ERROR: --impostor-mode unique|shared\n"); exit(1); }
+        }
+        else if (strcmp(argv[i], "--impostor-fbo") == 0 && i + 1 < argc) {
+            std::string v = argv[++i];
+            if (v == "shared") opts.impostorFboPer = false;
+            else if (v == "per") opts.impostorFboPer = true;
+            else { fprintf(stderr, "ERROR: --impostor-fbo shared|per\n"); exit(1); }
+        }
+        else if (strcmp(argv[i], "--impostor-refresh") == 0 && i + 1 < argc) opts.impostorRefresh = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--impostor-scene") == 0 && i + 1 < argc) {
+            opts.impostorScene = argv[++i];
+            if (opts.impostorScene != "far" && opts.impostorScene != "mixed") {
+                fprintf(stderr, "ERROR: --impostor-scene far|mixed\n");
+                exit(1);
+            }
+        }
+        else if (strcmp(argv[i], "--adaptive-tier-dist") == 0 && i + 1 < argc) opts.adaptiveTierDist = static_cast<float>(atof(argv[++i]));
+        else if (strcmp(argv[i], "--entity-genders") == 0 && i + 1 < argc) {
+            std::string v = argv[++i];
+            if (v == "0") opts.entityGenders = {0};
+            else if (v == "1") opts.entityGenders = {1};
+            else if (v == "both") opts.entityGenders = {0, 1};
+            else { fprintf(stderr, "ERROR: --entity-genders 0|1|both\n"); exit(1); }
+        }
+        else if (strcmp(argv[i], "--impostor-pixel-test") == 0 && i + 1 < argc) opts.impostorPixelTestDir = argv[++i];
         else if (strcmp(argv[i], "--adaptive-lighting") == 0) opts.adaptiveLighting = true;
         else if (strcmp(argv[i], "--perpixel-budget") == 0 && i + 1 < argc) opts.perPixelBudget = atoi(argv[++i]);
         else if (strcmp(argv[i], "--zone-pp-budget") == 0 && i + 1 < argc) opts.perPixelZoneBudget = atoi(argv[++i]);

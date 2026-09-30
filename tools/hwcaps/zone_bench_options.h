@@ -92,6 +92,16 @@ struct Options {
     float lodTier2Dist = 80.0f;   // Distance for billboard switch
     bool adaptiveLod = false;     // Predictive LOD: billboard excess entities
     int entityBudget = 55;        // Max composite entities per frame
+    // B952: impostor measurement knobs (zone_bench_impostor.h). Defaults are
+    // the pre-B952 impostor size and one-texture-per-entity keying.
+    int impostorSize = 256;               // --impostor-size 64|128|256
+    bool impostorShared = false;          // --impostor-mode unique|shared
+    bool impostorFboPer = false;          // --impostor-fbo per (pre-B952 RTT each) | shared
+    int impostorRefresh = 0;              // --impostor-refresh N (0 = never)
+    std::string impostorScene;            // --impostor-scene far|mixed ("" = off)
+    float adaptiveTierDist = 0.0f;        // --adaptive-tier-dist D (0 = off)
+    std::vector<uint8_t> entityGenders;   // --entity-genders 0|1|both (empty = {0})
+    std::string impostorPixelTestDir;     // --impostor-pixel-test DIR
     bool adaptiveLighting = false; // Per-pixel near, per-vertex far
     int perPixelBudget = 15;       // Max entities with per-pixel lighting
     int perPixelZoneBudget = 20;   // Max zone regions with per-pixel lighting

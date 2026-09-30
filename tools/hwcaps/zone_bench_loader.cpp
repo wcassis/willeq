@@ -823,6 +823,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         static const uint16_t kDefaultRaceIds[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};  // or --test-races
         const uint16_t* raceIds = config.testRaceIds.empty() ? kDefaultRaceIds : config.testRaceIds.data();
         int numRaces = config.testRaceIds.empty() ? (int)(sizeof(kDefaultRaceIds) / sizeof(kDefaultRaceIds[0])) : (int)config.testRaceIds.size();
+        // B952: race x gender variants (default: gender 0 only, as before).
+        const std::vector<uint8_t> genders =
+            config.genders.empty() ? std::vector<uint8_t>{0} : config.genders;
 
         // When composite entities are enabled, use preloadModelData() to populate
         // composite texture data (JSON + EQE1 lookup) before building meshes.
@@ -854,10 +857,12 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
             printf("  Composite: compositeEntityPath='%s'\n", config.eqe1Path.c_str());
             int preloadOk = 0, preloadFail = 0;
             for (int r = 0; r < numRaces; ++r) {
-                bool ok = data->raceModelLoader->preloadModelData(raceIds[r], 0);
-                printf("    preloadModelData(race=%d, gender=0) = %s\n",
-                       raceIds[r], ok ? "OK" : "FAILED");
-                if (ok) preloadOk++; else preloadFail++;
+                for (uint8_t g : genders) {
+                    bool ok = data->raceModelLoader->preloadModelData(raceIds[r], g);
+                    printf("    preloadModelData(race=%d, gender=%d) = %s\n",
+                           raceIds[r], g, ok ? "OK" : "FAILED");
+                    if (ok) preloadOk++; else preloadFail++;
+                }
             }
             printf("  Composite: preloaded %d OK, %d failed\n", preloadOk, preloadFail);
 
@@ -889,18 +894,34 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                    data->eqe1ResolverOpens, data->eqe1ResolverBytes);
         }
 
-        // Pre-load meshes for each race (cache them)
+        // Pre-load meshes for each race (cache them). B952: one per race x
+        // gender variant that loads; entities and animated nodes both cycle
+        // THIS list, so a race that fails to load can no longer shift the
+        // animated node's race away from the static mesh's.
+        struct LoadedVariant {
+            uint16_t race;
+            uint8_t gender;
+            irr::scene::IMesh* mesh;
+        };
+        std::vector<LoadedVariant> variants;
         std::vector<irr::scene::IMesh*> raceMeshes;
         for (int r = 0; r < numRaces; ++r) {
-            auto* mesh = data->raceModelLoader->getMeshForRace(raceIds[r], 0);
-            if (mesh) {
-                // Upload VBOs
-                uploadMeshHWBuffers(data->driver, mesh);
-                raceMeshes.push_back(mesh);
+            for (uint8_t g : genders) {
+                auto* mesh = data->raceModelLoader->getMeshForRace(raceIds[r], g);
+                if (mesh) {
+                    // Upload VBOs
+                    uploadMeshHWBuffers(data->driver, mesh);
+                    raceMeshes.push_back(mesh);
+                    variants.push_back({raceIds[r], g, mesh});
+                } else {
+                    printf("  [variants] race=%d gender=%d: no mesh\n", raceIds[r], g);
+                }
+                // Upload textures that were decoded during mesh building
+                data->textureCache->uploadAllPending();
             }
-            // Upload textures that were decoded during mesh building
-            data->textureCache->uploadAllPending();
         }
+        printf("  [variants] loaded=%zu (races=%d x genders=%zu requested)\n",
+               variants.size(), numRaces, genders.size());
 
         // P46d: production-accurate preload for --animate, run AFTER the
         // static getMeshForRace() preload loop above (see the long comment
@@ -927,7 +948,8 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
         // composite hit, see race_model_loader.cpp's P13b comment).
         if (config.animate && !(config.compositeEntities && !config.eqe1Path.empty())) {
             for (int r = 0; r < numRaces; ++r) {
-                data->raceModelLoader->preloadModelData(raceIds[r], 0);
+                for (uint8_t g : genders)
+                    data->raceModelLoader->preloadModelData(raceIds[r], g);
             }
             data->raceModelLoader->promotePreparedModels();
             data->textureCache->uploadAllPending();
@@ -942,7 +964,10 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
             // For now, just store the meshes. Placement happens after path generation.
             data->entities.resize(config.entityCount);
             for (int i = 0; i < config.entityCount; ++i) {
-                data->entities[i].mesh = raceMeshes[i % raceMeshes.size()];
+                const LoadedVariant& v = variants[i % variants.size()];
+                data->entities[i].mesh = v.mesh;
+                data->entities[i].raceId = v.race;
+                data->entities[i].gender = v.gender;
             }
 
             // Create animated scene nodes when animation is enabled
@@ -955,9 +980,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                 int animatedCount = 0;
 
                 for (int i = 0; i < config.entityCount; ++i) {
-                    uint16_t raceId = raceIds[i % numRaces];
+                    const LoadedVariant& v = variants[i % variants.size()];
                     auto* node = data->raceModelLoader->createAnimatedNode(
-                        raceId, 0, data->smgr->getRootSceneNode());
+                        v.race, v.gender, data->smgr->getRootSceneNode());
                     if (node) {
                         data->animatedNodes[i] = node;
                         // P46 Part B (P46b fix): mirror production's PAIRED solid +
