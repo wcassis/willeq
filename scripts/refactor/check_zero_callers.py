@@ -958,6 +958,11 @@ EXEMPT_TESTS_GROUPS = {
     # 8 B/region -- the net that keeps the per-region-block layout from
     # returning. The gate's ledger measures the same bytes in production.
     ("RegionOccluderTable", "reservedBytes"): "observer",
+    # B909b: the placed-object collision set's region index. The ray-identity
+    # test checks every region of the old per-instance copy is still present
+    # (production only asks rayIntersect(), which answers "no hit" for an
+    # absent region).
+    ("ObjectCollisionSet", "hasRegion"): "observer",
     # T504b Leg 2b: the unload test's window on the evictable set, and the
     # clock it turns forward so the hysteresis window elapses in a test.
     ("RaceModelLoader", "evictableCountForTest"): "observer",

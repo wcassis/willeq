@@ -663,7 +663,7 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
                      "held once: {} distinct meshes, {} mesh triangles, {} bytes owned (instances + index), "
                      "{} bytes of mesh arrays read in place (charged to objects; claimants: object draw + collision); "
                      "a per-instance copy would be {} bytes",
-                     objectsAdded, oc.worldTriangleCount(), oc.regionCount(), oc.meshCount(),
+                     oc.instanceCount(), oc.worldTriangleCount(), oc.regionCount(), oc.meshCount(),
                      oc.meshTriangleCount(), oc.ownedBytes(), oc.sharedMeshBytes(),
                      oc.worldTriangleCount() * sizeof(irr::core::triangle3df));
         }
