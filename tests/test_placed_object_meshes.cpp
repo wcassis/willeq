@@ -31,7 +31,6 @@
 #include "client/graphics/eq/wld_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/placed_object_meshes.h"
-#include "client/graphics/renderer_types.h"
 
 using namespace EQT::Graphics;
 

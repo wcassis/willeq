@@ -9,7 +9,6 @@
 #include "client/graphics/placed_object_meshes.h"
 
 #include "client/graphics/eq/wld_loader.h"
-#include "client/graphics/renderer_types.h"
 
 #include <cmath>
 #include <cstdint>

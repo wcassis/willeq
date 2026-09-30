@@ -27,6 +27,7 @@
 #include <cstddef>
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -34,7 +35,27 @@ namespace EQT {
 namespace Graphics {
 
 struct ZoneGeometry;
-struct VertexAnimatedMesh;
+struct MeshAnimatedVertices;
+
+// A keyframe-animated object mesh (flags, banners, Kunark/Velious grass and
+// plants). B936: ONE entry per MESH, which every placement of the geometry
+// draws (this header's comment says why that is exact); `placements` counts
+// them. The pose routine is applyVertexAnimFrame().
+struct VertexAnimatedMesh {
+    irr::scene::IMesh* mesh = nullptr;
+    size_t placements = 0;   // scene nodes drawing this mesh
+    std::shared_ptr<MeshAnimatedVertices> animData;
+    int currentFrame = 0;
+    std::string objectName;  // first placement's name, for the log
+    // Mapping from mesh buffer vertex index to animation vertex index
+    // Indexed by [bufferIndex][vertexIndex] -> animationVertexIndex
+    std::vector<std::vector<size_t>> vertexMapping;
+    // Center offset (EQ coords) - animation frames are relative to center,
+    // but mesh vertices have center baked in. Add this to animation positions.
+    float centerOffsetX = 0.0f;
+    float centerOffsetY = 0.0f;
+    float centerOffsetZ = 0.0f;
+};
 
 // True when `geom` carries a keyframe animation the renderer plays (two or
 // more frames).
