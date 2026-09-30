@@ -20,6 +20,8 @@
 # client prints ([memledger-startup] lines, WILLEQ_LEDGER_OWNERS=<category>):
 #   spatial, zone_mesh  -- the B909 labels (sp.*, zm.*) name the owners
 #   objects             -- the B936 labels (obj.meshes, obj.instances, obj.anim)
+#   game_state          -- the B941 labels (gs.navmesh, gs.nav_query,
+#                          gs.collision_map, gs.zone_lines, gs.zone_sources)
 #   zone_parse          -- the shared S3D/WLD parser carries no labels, so this
 #                          mode ALSO sets WILLEQ_LEDGER_TRACE=zone_parse:startup
 #                          and the [memledger-trace] rows split it by call site
@@ -50,6 +52,9 @@
 #            [--assert-budgets]  also exit 1 if any budgeted category of any
 #                                run is over its orangepi budget at ready or
 #                                steady_60s (the `ClientLedgerLive` ctest)
+#            [--tour FILE]  the client --script (default: wait HOLD, /q)
+#            [--client-arg ARG]...  extra client arguments (B941 used
+#                                --log-module=PATHFIND:DEBUG)
 #            [--char-level N --char-exp E]  the eligibility leg of
 #                                scripts/pi_rendered_zone_sweep.sh: set the
 #                                character's level/exp after the snapshot, so a
@@ -57,6 +62,9 @@
 #                                kick it; the snapshot restore puts both back
 #                                (B909b)
 #   Lane: EQEMU_HOST as every scripts/eqemu tool reads it (default the VM).
+#   MAPS_PATH / NAVMESH_PATH: the collision map and navmesh roots (default
+#   /mnt/projects/maps/base and /mnt/projects/maps/nav, the Pi recipe's; set
+#   to "" to run without them, as every run before B941 did).
 
 set -u
 
@@ -76,6 +84,7 @@ AUDIO=1
 ASSERT=0   # --assert-budgets: the live ctest mode (client_ledger_table.py check)
 RES_W=1280; RES_H=720   # Will's Pi recipe
 CHAR_LEVEL=""; CHAR_EXP=""   # B909b: the eligibility leg (see --char-level)
+TOUR_FILE=""; EXTRA_ARGS=()  # B941: --tour / --client-arg (a live pathing check)
 ZONE_BOOT_S="${ZONE_BOOT_S:-150}"
 LATE_SAVE_S=10
 while [ $# -gt 0 ]; do
@@ -91,12 +100,14 @@ while [ $# -gt 0 ]; do
         --res) RES_W="$2"; RES_H="$3"; shift 3 ;;
         --char-level) CHAR_LEVEL="$2"; shift 2 ;;
         --char-exp) CHAR_EXP="$2"; shift 2 ;;
+        --tour) TOUR_FILE="$2"; shift 2 ;;
+        --client-arg) EXTRA_ARGS+=( "$2" ); shift 2 ;;
         -h|--help) sed -n '2,56p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 3 ;;
     esac
 done
 for m in ${MODES//,/ }; do
-    case "$m" in spatial|zone_mesh|zone_parse|objects) ;; *) echo "unknown mode: $m" >&2; exit 3 ;; esac
+    case "$m" in spatial|zone_mesh|zone_parse|objects|game_state) ;; *) echo "unknown mode: $m" >&2; exit 3 ;; esac
 done
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -109,6 +120,12 @@ say() { printf '[client_ledger %s] %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$
 
 EQ_PATH="${EQ_CLIENT_PATH:-/mnt/projects/EverQuestP1999}"
 EQE1_PATH="${EQE1_PATH:-/mnt/projects/EverQuest_ETC1}"
+# B941: the collision map and the navmesh, exactly as the Pi recipe
+# (scripts/pi_rendered_zone_sweep.sh) loads them. Before B941 this rig's config
+# named neither, so every x86 client ledger ran WITHOUT them and its
+# `game_state` row was ~0.3 MB where the Pi's was up to 54 MB.
+MAPS_PATH="${MAPS_PATH-/mnt/projects/maps/base}"
+NAVMESH_PATH="${NAVMESH_PATH-/mnt/projects/maps/nav}"
 [ -x "$SRC_BIN" ] || { say "no willeq binary at $SRC_BIN -- build first"; exit 68; }
 [ -d "$EQ_PATH" ] || { say "no EQ client files at $EQ_PATH"; exit 68; }
 [ -d "$EQE1_PATH" ] || { say "no EQE1 tree at $EQE1_PATH"; exit 68; }
@@ -144,7 +161,9 @@ cat > "$CFG" <<EOF
       "pass": "${EQ_TEST_PASSWORD}",
       "server": "${EQ_TEST_SERVER_LONGNAME}",
       "character": "${CHAR}",
-      "eq_client_path": "${EQ_PATH}"
+      "eq_client_path": "${EQ_PATH}",
+      "maps_path": "${MAPS_PATH}",
+      "navmesh_path": "${NAVMESH_PATH}"
     }
   ]
 }
@@ -165,7 +184,7 @@ say "lane EQEMU_HOST=$EQEMU_HOST, client config host $CLIENT_HOST (verified)"
 {
     echo "host=$(hostname) commit=$(git -C "$REPO" rev-parse HEAD) dirty=$(git -C "$REPO" status --porcelain -- src include | wc -l)"
     echo "binary=$SRC_BIN sha256=$(sha256sum "$SRC_BIN" | cut -d' ' -f1)"
-    echo "lane=$EQEMU_HOST zones=$ZONES modes=$MODES hold_s=$HOLD_S audio=$AUDIO res=${RES_W}x${RES_H}"
+    echo "lane=$EQEMU_HOST zones=$ZONES modes=$MODES hold_s=$HOLD_S audio=$AUDIO res=${RES_W}x${RES_H} maps=${MAPS_PATH} navmesh=${NAVMESH_PATH}"
     echo "start_utc=$(date -u +%FT%TZ)"
 } > "$OUT/run_meta.txt"
 
@@ -233,16 +252,21 @@ run_one() {
     local zone="$1" mode="$2" dir="$OUT/$1/$2"
     mkdir -p "$dir"
     local log="$dir/client.log" samples="$dir/rss_samples.tsv" tour="$dir/tour.txt"
-    cat > "$tour" <<EOF
+    if [ -n "$TOUR_FILE" ]; then
+        cp "$TOUR_FILE" "$tour"
+    else
+        cat > "$tour" <<EOF
 # held until fully zoned in (Application::updateScript), then idle past steady_60s
 wait ${HOLD_S}
 /q
 EOF
+    fi
     local -a envs=( "WILLEQ_BASELINE=1" "WILLEQ_LEDGER_OWNERS=${mode}" "TZ=UTC" )
     [ "$mode" = zone_parse ] && envs+=( "WILLEQ_LEDGER_TRACE=zone_parse:startup" "WILLEQ_LEDGER_TRACE_DEPTH=8" )
     local -a args=( -c "$CFG" --renderer gles2 --constrained orangepi -r "$RES_W" "$RES_H"
                     --eqe1-path "$EQE1_PATH" --log-level=INFO --script "$tour" )
     [ "$AUDIO" -eq 1 ] || args+=( --no-audio )
+    [ "${#EXTRA_ARGS[@]}" -gt 0 ] && args+=( "${EXTRA_ARGS[@]}" )
     printf '%s\n' "${envs[@]}" > "$dir/env.txt"
     printf '%q ' "$BIN" "${args[@]}" > "$dir/command_line.txt"; echo >> "$dir/command_line.txt"
     say "[$zone/$mode] launching"

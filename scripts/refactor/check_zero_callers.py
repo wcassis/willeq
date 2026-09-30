@@ -124,9 +124,10 @@ ENTRY_POINTS = {"main"}
 
 # Standard-library customisation points.  The library calls these; no line in
 # the tree ever names them, so a caller census cannot see the call.
-# `PageAlignedAllocator::allocate` / `::deallocate` (include/common/util/ksm.h)
-# are the tree's live example -- every `std::vector<T, PageAlignedAllocator<T>>`
-# reaches them and not one source line writes the name.
+# `PageAlignedAllocator::allocate` / `::deallocate` (the `ksm.h` header,
+# deleted by B941 with its last user) were the tree's example -- every
+# `std::vector<T, PageAlignedAllocator<T>>` reached them and not one source
+# line wrote the name.
 STDLIB_CUSTOMIZATION = {
     "allocate", "deallocate", "construct", "destroy", "max_size",
     "begin", "end", "cbegin", "cend", "rbegin", "rend", "swap", "hash",
@@ -481,7 +482,7 @@ BOARD_REASONS = {
         "setAutomationCallback",
     "B501":
         "common/ utility API with no caller -- the performance-metrics timing "
-        "and zone-load marks, the KSM heap helpers, ClampLower, Shuffle and "
+        "and zone-load marks, ClampLower, Shuffle and "
         "the logging mutex accessor",
     "B502":
         "gameplay-domain manager API with no caller -- SkillManager's "
@@ -897,9 +898,6 @@ EXEMPT_GROUPS = {
     ("HeadlessMode", "consoleRenderer"): "B500",
     ("HeadlessMode", "getGameState"): "B500",
     ("(free)", "ClampLower"): "B501",
-    ("(free)", "MarkHeapStart"): "B501",
-    ("(free)", "MeasureHeapUsage"): "B501",
-    ("(free)", "PageAlignVectorAligned"): "B501",
     ("(free)", "getCategoryName"): "B501",
     ("LogManager", "GetMutex"): "B501",
     ("PerformanceMetrics", "getElapsedMs"): "B501",

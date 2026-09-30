@@ -1447,6 +1447,34 @@ rate is still measured and reported beside every memory change; the project's
 standing rule that under 30 fps on the Pi is a client defect is not withdrawn,
 only ranked below memory.
 
+## 2026-09-30 — ship the LLVM-less Mesa as a prefix with the client (Will; recorded by B935, #253)
+
+**Will, in chat: "ship the prefix".** Of the three options on #253 — (a)
+replace the system Mesa packages, (b) ship the prefix with the client and
+select it by rpath, (c) static-link or bundle it in the ARM build — Will chose
+**(b)**, the mechanism B932 measured (`refactor/B932/README.md`).
+
+**Implemented by B935** (`refactor/B935/README.md`, `docs/ci.md` "The shipped
+Mesa prefix"):
+
+- The prefix is a pinned, derived artifact: `scripts/pi/build_mesa_nollvm.sh`
+  packs it into a deterministic tarball whose SHA256 is pinned in
+  `scripts/pi/mesa_nollvm.sha256`; the tarball lives outside git on NFS, in
+  `ci-arm/mesa/<version>/`. Version, Pi install path and store path are named
+  once, in `scripts/pi/mesa_nollvm.env`.
+- The prefix lives at ONE absolute path on the Pi (`MESA_NOLLVM_PI_PREFIX`,
+  the ext4 home). It is not relocatable: libgbm and libgallium carry that path
+  compiled in.
+- The selection is an **absolute DT_RPATH** on a copy of the binary
+  (`bin/willeq-nollvm`, written by CI's publish step). `$ORIGIN` is not an
+  option: glibc drops an `$ORIGIN` rpath entry in secure-execution mode unless
+  it expands into a trusted system directory, and the setcap'd client
+  (CAP_NET_ADMIN, B751) always runs in that mode — measured by B935.
+- The Pi rigs run the prefix **by default**; `WILLEQ_MESA=system` is the
+  explicit opt-out for A/B work. Every rig run proves which Mesa it loaded
+  from `/proc/<pid>/maps` and fails when it is not the one asked for.
+- The Pi's system Mesa packages are not touched.
+
 ## 2026-09-30 — six more orangepi budgets ratchet down, audio held (Will, B943)
 
 **Will, in chat: "lower the seven budgets, hold audio".** Seven categories had

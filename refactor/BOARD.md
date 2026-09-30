@@ -937,6 +937,16 @@ it without taking that measurement first.
   on the owned side, and the 256 MB bound is unchanged. Pinned by
   `MemoryLedger.TargetGapExcludesGpuDriver` and `test_visual_gate_ledger.py`
   check 7b.
+- ~~**B935** (C) How the Pi gets the LLVM-less Mesa (GitLab #253).~~ **Decided**
+  by Will on 2026-09-30, "ship the prefix" (`docs/decisions.md`), and
+  **implemented** on branch `task/B935-ship-mesa-prefix`
+  (`refactor/B935/README.md`). The prefix is a pinned deterministic tarball
+  (`scripts/pi/mesa_nollvm.sha256`, store `ci-arm/mesa/<version>/`). CI
+  publishes `ci-arm/<sha>/bin/willeq-nollvm` with an absolute DT_RPATH to the
+  prefix's one Pi path. `$ORIGIN` is dropped under setcap's secure mode
+  (measured), and the prefix is not relocatable. The Pi rigs run it by
+  default, `WILLEQ_MESA=system` opts out, and every sweep row proves the
+  loaded libgallium from maps (exit 67 on a mismatch).
 
 - **B909** (A) The client binary's own memory ledger had never been measured, and
   its `spatial` is over budget (GitLab #229). **Measured 2026-09-29** on branch
@@ -9318,15 +9328,12 @@ fine — the table fails on a stale entry, so it cannot rot.
   zero-caller public functions across 5 headers.**
   `PerformanceMetrics::getTimings()` / `resetGameplay()` / `getElapsedMs()` /
   `markZoneLoadStart()` / `markZoneLoadEnd()` / `getCategoryName()` — a
-  zone-load timing channel nothing marks; the KSM heap helpers
-  (`MarkHeapStart()`, `MeasureHeapUsage()`, `CheckPageAlignment()`,
-  `PageAlignVectorAligned()` — note `PageAlignedAllocator::allocate()` /
-  `deallocate()` are NOT dead, they are standard-library customisation points
-  and the census excludes them by rule); `ClampLower()`; `Random::Shuffle()`;
+  zone-load timing channel nothing marks; `ClampLower()`; `Random::Shuffle()`;
   `Logger::GetMutex()`. This is the remaining `common/util` residue after
-  T455 deleted `strings` and `file`; it is left because `ksm.h` pairs every
-  helper across a `_WIN32` / Linux `#ifdef` and a partial deletion there is
-  not mechanical. Found by T455.
+  T455 deleted `strings` and `file`. ~~The KSM heap helpers
+  (`MarkHeapStart()`, `MeasureHeapUsage()`, `PageAlignVectorAligned()`)~~:
+  B941 (#259) deleted the whole `ksm.h` header when its last user,
+  `RaycastMesh`, moved to plain vectors. Found by T455.
 
 - **B502** (B, unreached) **Gameplay-domain manager API with no caller: 21 → issue #177
   zero-caller public functions across 9 headers
@@ -12646,6 +12653,7 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   - Only nurga is under (60.3 MB).
   - At `steady_60s` the median is 89.4 MB and 41/45 are over.
   - The largest ledger categories at `ready` are `gpu_driver` (18.4 to 20.2 MB; #1 in 30/45 zones) and `game_state` (up to 51.2 MB, emeraldjungle; #1 in 11).
+    B941 (#259) shrinks `game_state` on its branch (emeraldjungle 53.6 → 34.8 MB on the Pi); these figures are the pre-B941 sweep.
   - It is under the 256 MB failing bound everywhere: worst VmHWM 218.7 MB, and no OOM.
   - The shrink queue for the Pi should be planned from these rows (docs/decisions.md 2026-09-17 addendum).
 - **B920** (A, tooling) → issue #239. The CI-published ARM binary (`ci-arm/<sha>/bin/willeq`, on NFS) carries no file capability.
@@ -12684,3 +12692,12 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   taken at) and its `ChaseConstantsFitPinned` test checks only the JSON's
   structure (green with the distance at 4.001). Both are superseded by the tests
   above.
+
+## Added 2026-09-30 by task/B941-game-state-memory (issue #259)
+
+- **B941** (A, memory) → issue #259. `game_state` was the largest owned category on the Pi (emeraldjungle 53.6 MB at `ready`): the collision map (`HCMap` + `RaycastMesh`) and the Detour navmesh. **Fixed on the branch, MR pending review**: placed-model collision triangles are indexed per placement instead of a triangle soup, both loads stream and free their buffers, the navmesh's unused `dtLink` tail is trimmed, refused navmesh tiles are freed. Queries bit-identical (`GameStateIdentity.*`, x86).
+  - Pi A/B `game_state` at `ready`: emeraldjungle 53.6 → 34.8 MB, growthplane 26.3 → 22.7, gfaydark 13.8 → 11.5, timorous 35.2 → 30.5; owned at `steady_60s` emeraldjungle 102.4 → 83.5 MB.
+  - Owner rows `gs.*` under `WILLEQ_LEDGER_OWNERS=game_state`. Evidence and "Not verified": `refactor/B941/README.md`.
+  - Open: the Pi's timorous Player Movement phase was measured on one leg per side (821 vs 1,986 us); the zone would not reach `ready` on either side in eight more attempts.
+- **B942** (A, pathing) → issue #260. `PathfinderNavmesh::FindPath` passed capacity 2048 for 256-entry straight-path stack arrays. Fixed on the B941 branch. No repeatable test yet (needs a navmesh path crossing more than 255 poly edges).
+- **B945** (A, memory) → issue #263. Timorous `game_state` `misc` is 6.2 MB at `ready` on x86; 3.1 MB of it is one `GameEvent` staging buffer the game thread keeps after the zone-in burst.

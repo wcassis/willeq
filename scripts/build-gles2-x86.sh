@@ -180,7 +180,7 @@ echo "=== libIrrlicht.a built: $IRRLICHT_BUILD_DIR/lib/libIrrlicht.a ==="
 # from a stale one -- a committed change to the device sources no longer leaves
 # the whole pipeline running old code. The stamp is over content (relative path
 # + sha256, sorted), stable across checkouts of the same commit.
-bash scripts/ci/irrlicht_input_stamp.sh write "$IRRLICHT_BUILD_DIR/irrlicht_input_stamp.txt"
+bash "$PROJECT_DIR/scripts/ci/irrlicht_input_stamp.sh" write "$IRRLICHT_BUILD_DIR/irrlicht_input_stamp.txt"
 
 if [ "$IRRLICHT_ONLY" -eq 1 ]; then
     exit 0

@@ -7,6 +7,11 @@
 # the build options: same upstream tarball, same Ubuntu patches, same
 # toolchain family. Only the meson options differ from Ubuntu's build.
 #
+# B935: this is also the SHIPPED prefix's build image (Will 2026-09-30, "ship
+# the prefix"), and its patchelf writes ci-arm/<sha>/bin/willeq-nollvm. The
+# tarball it produces is pinned (scripts/pi/mesa_nollvm.sha256); a change here
+# that moves the bytes needs build_mesa_nollvm.sh --write-pin in the same commit.
+#
 # Cross build: amd64 build tools + armhf -dev packages via multiarch
 # (archive.ubuntu.com serves amd64, ports.ubuntu.com serves armhf).
 

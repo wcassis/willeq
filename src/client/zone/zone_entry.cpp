@@ -178,19 +178,34 @@ void eqt::zone::ZoneComponent::ZoneProcessNewZone(const EQ::Net::Packet &p)
 		// each has a row: navmesh, collision map, zone lines, zone sources.
 		eqt::memory::recordPoint("game_zone_begin", ctx_.self.CurrentZoneName());
 
+		// B941 (GitLab #259): each load is a named `game_state` owner row
+		// (WILLEQ_LEDGER_OWNERS=game_state prints them); everything the game
+		// thread allocates outside these four stays in the catch-all row.
 		// Load pathfinder for this zone
-		ctx_.Movement().LoadPathfinder(ctx_.self.CurrentZoneName());
+		{
+			eqt::memory::StartupScope owner("gs.navmesh");
+			ctx_.Movement().LoadPathfinder(ctx_.self.CurrentZoneName());
+		}
 		eqt::memory::recordPoint("game_pathfinder", ctx_.self.CurrentZoneName());
 
 		// Load zone map for terrain height calculations
-		LoadZoneMap(ctx_.self.CurrentZoneName());
+		{
+			eqt::memory::StartupScope owner("gs.collision_map");
+			LoadZoneMap(ctx_.self.CurrentZoneName());
+		}
 		eqt::memory::recordPoint("game_zone_map", ctx_.self.CurrentZoneName());
 
 		// Load zone lines for zone transitions
-		LoadZoneLines(ctx_.self.CurrentZoneName());
+		{
+			eqt::memory::StartupScope owner("gs.zone_lines");
+			LoadZoneLines(ctx_.self.CurrentZoneName());
+		}
 
 		// Open zone S3D archive, parse WLD, extract BSP tree
-		LoadZoneSources(ctx_.self.CurrentZoneName());
+		{
+			eqt::memory::StartupScope owner("gs.zone_sources");
+			LoadZoneSources(ctx_.self.CurrentZoneName());
+		}
 		eqt::memory::recordPoint("game_zone_sources", ctx_.self.CurrentZoneName());
 
 		// Update zone music and sound emitters
