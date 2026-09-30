@@ -531,6 +531,15 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
                     } else if (EQT::Graphics::isVertexAnimatedGeometry(*instance.geometry)) {
                         placedMeshes.registerAnimated(*instance.geometry, objMesh, objName, vertexAnims);
                     }
+                    // B936: where the keyframe-animated placements are (every
+                    // 250th, EQ coords), so a pixel comparison can aim a
+                    // --camera-pose at them.
+                    if (instance.placeable && EQT::Graphics::isVertexAnimatedGeometry(*instance.geometry) &&
+                        (placedMeshes.animatedPlacements() - 1) % 250 == 0) {
+                        printf("  Animated placement #%zu '%s' at EQ (%.1f, %.1f, %.1f)\n",
+                               placedMeshes.animatedPlacements() - 1, objName.c_str(),
+                               instance.placeable->getX(), instance.placeable->getY(), instance.placeable->getZ());
+                    }
 
                     // Build world transform matrix (EQ → Irrlicht coordinate swap)
                     const auto& p = instance.placeable;
