@@ -614,6 +614,10 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
             std::vector<const irr::scene::IMesh*> animatedMeshes;
             for (const auto& vam : ctx_.vertexAnimatedMeshes) animatedMeshes.push_back(vam.mesh);
             ctx_.objectCollision.clear();
+            // Sharing census for the log (B909b measured the representation
+            // with it): instances and triangles per distinct mesh.
+            struct MeshUse { size_t instances = 0; size_t triangles = 0; const char* name = ""; };
+            std::map<const irr::scene::IMesh*, MeshUse> meshUse;
             for (size_t oi = 0; oi < ctx_.objectNodes.size(); ++oi) {
                 auto* node = ctx_.objectNodes[oi];
                 if (node && node->getMesh()) {
@@ -625,10 +629,35 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
                                                          SelectorWorldMatrix(node->getAbsoluteTransformation()),
                                                          animated)) {
                         objectsAdded++;
+                        MeshUse& use = meshUse[mesh];
+                        if (use.instances++ == 0) {
+                            for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
+                                use.triangles += mesh->getMeshBuffer(b)->getIndexCount() / 3;
+                            use.name = node->getName();
+                        }
                     }
                 }
             }
             ctx_.objectCollision.finish();
+            {
+                std::vector<MeshUse> uses;
+                size_t maxInstances = 0;
+                for (const auto& [m, use] : meshUse) {
+                    uses.push_back(use);
+                    maxInstances = std::max(maxInstances, use.instances);
+                }
+                std::sort(uses.begin(), uses.end(), [](const MeshUse& a, const MeshUse& b) {
+                    return a.instances * a.triangles > b.instances * b.triangles;
+                });
+                std::string top;
+                for (size_t k = 0; k < uses.size() && k < 5; ++k) {
+                    top += fmt::format("{}{} x{} ({} tris)", k ? ", " : "", uses[k].name, uses[k].instances,
+                                       uses[k].triangles);
+                }
+                LOG_INFO(MOD_GRAPHICS, "Object collision sharing: {} instances over {} distinct meshes "
+                         "(max {} instances of one mesh); largest per-instance-copy contributors: {}",
+                         objectsAdded, meshUse.size(), maxInstances, top);
+            }
             const auto& oc = ctx_.objectCollision;
             LOG_INFO(MOD_GRAPHICS, "Sequential: {} objects -> {} world-space-equivalent triangles across {} regions; "
                      "held once: {} distinct meshes, {} mesh triangles, {} bytes owned (instances + index), "
