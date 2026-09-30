@@ -39,15 +39,29 @@
 #          [--owner NAME] [--tour FILE] [--env K=V]... [--drive-keys]
 #          [--snap-points startup,ready,steady_60s]   (B932: a smaps/maps
 #          snapshot at each named ledger point, rendered_zone_run.py)
+#          [--mesa nollvm|system]   (B935; default $WILLEQ_MESA, else nollvm)
 #          [--allow-vm-lane]   (B909's A/B, scripts/pi/collision_ab.sh:
 #          --tour replaces the /loc-wait-/q script, --env adds client
 #          environment, --drive-keys plays scripts/pi/uinput_drive.py's fixed
 #          keyboard sequence so the renderer's collision rays run,
 #          --allow-vm-lane lets EQEMU_HOST name the eqemu VM -- the Pi reaches
 #          it, measured 2026-09-29: 0.7 ms, TCP 22 open)
+#
+# THE MESA (B935, #253 -- Will 2026-09-30 "ship the prefix"). By default the
+# client runs on the SHIPPED LLVM-less Mesa: the sweep stages the build dir's
+# bin/willeq-nollvm (DT_RPATH=<prefix>/lib, scripts/pi/publish_arm_build.sh)
+# and installs the pinned prefix at $MESA_NOLLVM_PI_PREFIX on the Pi
+# (scripts/pi/deploy_mesa_prefix.sh). WILLEQ_MESA=system (or --mesa system)
+# is the explicit opt-out for A/B work: it stages bin/willeq, the system Mesa.
+# Every run snapshots /proc/<pid>/maps at `startup` (plus --snap-points), the
+# row records the libgallium it mapped and whether libLLVM was mapped, and a
+# run that loaded the other Mesa FAILS (mesa_mismatch) and ABORTS the sweep
+# with exit 67; a run with no snapshot fails as mesa_unproven.
 # Exit: 0 every first-attempt row passed, 1 a row failed, 64 a lock is held,
 #       65 the stack/lane would not come up, 66 snapshot mismatch,
-#       68 bad inputs (no build, Pi unreachable).
+#       67 the loaded Mesa is not the one asked for,
+#       68 bad inputs (no build, no bin/willeq-nollvm, Pi unreachable,
+#       the prefix would not deploy).
 
 set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -55,6 +69,7 @@ export EQEMU_HOST="${EQEMU_HOST:-local}"
 source "$REPO/scripts/eqemu/env.sh"
 source "$REPO/scripts/eqemu/restore_lib.sh"
 source "$REPO/scripts/pi/env.sh"
+source "$REPO/scripts/pi/mesa_nollvm.env"
 
 OWNER="pi-rendered-sweep"
 ZONES=""
@@ -87,6 +102,7 @@ EXTRA_ENV=""
 DRIVE_KEYS=0
 ALLOW_VM=0
 SNAP_POINTS=""
+MESA="${WILLEQ_MESA:-nollvm}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --zones) ZONES="$2"; shift 2 ;;
@@ -105,10 +121,15 @@ while [ $# -gt 0 ]; do
         --drive-keys) DRIVE_KEYS=1; shift ;;
         --allow-vm-lane) ALLOW_VM=1; shift ;;
         --snap-points) SNAP_POINTS="$2"; shift 2 ;;
-        -h|--help) sed -n '2,50p' "$0"; exit 0 ;;
+        --mesa) MESA="$2"; shift 2 ;;
+        -h|--help) sed -n '2,65p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
+case "$MESA" in nollvm|system) ;; *) echo "WILLEQ_MESA/--mesa must be nollvm or system, not '$MESA'" >&2; exit 64;; esac
+# The proof of which Mesa loaded is taken in EVERY run: `startup` is always a
+# snapshot point (the driver is mapped by then).
+case ",$SNAP_POINTS," in *,startup,*) ;; *) SNAP_POINTS="startup${SNAP_POINTS:+,$SNAP_POINTS}";; esac
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 [ -n "$OUT" ] || OUT="/mnt/projects/fable/review/B854-rendered/sweep-${STAMP}"
 LOGS="$OUT/zones"
@@ -142,9 +163,17 @@ zone_meta() {  # zone_meta <zone> -> "expansion<TAB>s3d_bytes"
 # ---- inputs -----------------------------------------------------------------
 PI_SHA_DIR="$(readlink -f "$PI_DIR")"
 [ -x "$PI_SHA_DIR/bin/willeq" ] || { say "no ARM build at $PI_SHA_DIR/bin/willeq"; exit 68; }
+STAGE_SRC="$PI_SHA_DIR/bin/willeq"
+if [ "$MESA" = nollvm ]; then
+    STAGE_SRC="$PI_SHA_DIR/bin/willeq-nollvm"
+    if [ ! -x "$STAGE_SRC" ] || [ ! -f "$PI_SHA_DIR/mesa/prefix/.willeq-mesa-pin" ]; then
+        say "no bin/willeq-nollvm or mesa/prefix in $PI_SHA_DIR (a publish before B935, or its Mesa step failed) -- use a newer build, or WILLEQ_MESA=system for the system Mesa"
+        exit 68
+    fi
+fi
 BUILD_SHA="$(sed -n 's/^sha=//p' "$PI_SHA_DIR/BUILD_INFO")"
-BIN_SHA256="$(sha256sum "$PI_SHA_DIR/bin/willeq" | cut -d' ' -f1)"
-say "ARM build: $PI_SHA_DIR (BUILD_INFO sha=$BUILD_SHA, sha256=$BIN_SHA256)"
+BIN_SHA256="$(sha256sum "$STAGE_SRC" | cut -d' ' -f1)"
+say "ARM build: $PI_SHA_DIR (BUILD_INFO sha=$BUILD_SHA); staging $(basename "$STAGE_SRC") sha256=$BIN_SHA256; Mesa: $MESA"
 pi_remote true </dev/null || { say "the Pi ($PI_HOST) is unreachable"; exit 68; }
 
 # The client config: this lane's server, derived (never the VM's address --
@@ -232,13 +261,24 @@ trap 'cleanup; exit 130' INT TERM
 trap cleanup EXIT
 
 # ---- 1. stage the capable client on the Pi -----------------------------------
-pi_remote "mkdir -p '$PI_BIN_DIR' && cp '$PI_SHA_DIR/bin/willeq' '$PI_BIN' && sudo -n setcap cap_net_raw,cap_net_admin+ep '$PI_BIN'" </dev/null \
+pi_remote "mkdir -p '$PI_BIN_DIR' && cp '$STAGE_SRC' '$PI_BIN' && sudo -n setcap cap_net_raw,cap_net_admin+ep '$PI_BIN'" </dev/null \
     || say "WARNING: staging/setcap on the Pi failed -- the run goes ahead; the rcvbuf column shows what the client got"
+MESA_DEPLOY="not deployed (WILLEQ_MESA=system)"
+if [ "$MESA" = nollvm ]; then
+    if ! MESA_DEPLOY="$(bash "$REPO/scripts/pi/deploy_mesa_prefix.sh" "$PI_SHA_DIR/mesa/prefix" 2>&1)"; then
+        say "the shipped Mesa prefix would not deploy: $MESA_DEPLOY"
+        exit 68
+    fi
+    say "$MESA_DEPLOY"
+fi
 {
     echo "host_utc=$(date -u +%FT%TZ)"
     echo "build_dir=$PI_SHA_DIR"
     echo "build_sha=$BUILD_SHA"
+    echo "staged=$STAGE_SRC"
     echo "published_sha256=$BIN_SHA256"
+    echo "mesa=$MESA expect_prefix=$MESA_NOLLVM_PI_PREFIX pin=$(mesa_nollvm_pin)"
+    echo "mesa_deploy=$MESA_DEPLOY"
     echo "pi_copy_sha256=$(pi_remote "sha256sum '$PI_BIN' | cut -d' ' -f1" </dev/null)"
     echo "pi_getcap=$(pi_remote "getcap '$PI_BIN'" </dev/null)"
     echo "published_getcap=$(pi_remote "getcap '$PI_SHA_DIR/bin/willeq'; echo rc=\$?" </dev/null | tr '\n' ' ')"
@@ -279,7 +319,7 @@ fail_row() {  # fail_row <tsv> <zone> <attempt> <signature>
     dir="$LOGS/$2"; [ "$3" = retry ] && dir="$LOGS/${2}_retry"
     python3 "$REPO/scripts/pi/rendered_zone_summarize.py" --run "$dir" \
         --zone "$2" --attempt "$3" --tsv "$1" --expansion "${meta%%	*}" --s3d-bytes "${meta##*	}" \
-        --preset-signature "$4" 2>&1 | tee -a "$RIG_LOG" >&2
+        --preset-signature "$4" --expect-mesa "$MESA" --mesa-prefix "$MESA_NOLLVM_PI_PREFIX" 2>&1 | tee -a "$RIG_LOG" >&2
 }
 run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     local z="$1" attempt="$2" tsv="$3" meta exp s3d dir pidir before after rc
@@ -324,7 +364,14 @@ sudo -n rm -rf '$pidir'; true"
         grep -iE "oom|killed process|out of memory" "$dir/dmesg_new.txt" > "$dir/dmesg_oom.txt" || true
     fi
     python3 "$REPO/scripts/pi/rendered_zone_summarize.py" --run "$dir" --zone "$z" --attempt "$attempt" \
-        --expansion "$exp" --s3d-bytes "$s3d" --dmesg "$dir/dmesg_oom.txt" --tsv "$tsv" 2>&1 | tee -a "$RIG_LOG" >&2
+        --expansion "$exp" --s3d-bytes "$s3d" --dmesg "$dir/dmesg_oom.txt" --tsv "$tsv" \
+        --expect-mesa "$MESA" --mesa-prefix "$MESA_NOLLVM_PI_PREFIX" 2>&1 | tee -a "$RIG_LOG" >&2
+    local mcheck
+    mcheck="$(awk -F'\t' 'NR==1 {for (i=1;i<=NF;i++) if ($i=="mesa_check") c=i; next} END {if (c) print $c}' "$tsv")"
+    if [ "${mcheck#mismatch}" != "$mcheck" ]; then
+        say "!!!!!!!! MESA MISMATCH in $z: WILLEQ_MESA=$MESA but $mcheck -- ABORTING the sweep (exit 67) !!!!!!!!"
+        MESA_MISMATCH=1
+    fi
     sleep "$LATE_SAVE_S"
     kill_zone "$z"
     # The server may have moved the character to ANOTHER zone (a min-level
@@ -345,12 +392,14 @@ sudo -n rm -rf '$pidir'; true"
 
 SWEEP_T0=$(date +%s)
 FAILED=()
+MESA_MISMATCH=0
 for z in "${ZONE_LIST[@]}"; do
     [ -n "$z" ] || continue
     run_one "$z" first "$TSV" || FAILED+=("$z")
+    [ "$MESA_MISMATCH" -eq 1 ] && break
     say "progress: $(( $(grep -c . "$TSV") - 1 ))/${#ZONE_LIST[@]} rows, ${#FAILED[@]} failed, $(( ($(date +%s) - SWEEP_T0) / 60 )) min"
 done
-if [ "$RETRY" -eq 1 ] && [ "${#FAILED[@]}" -gt 0 ]; then
+if [ "$RETRY" -eq 1 ] && [ "${#FAILED[@]}" -gt 0 ] && [ "$MESA_MISMATCH" -eq 0 ]; then
     say "retrying ${#FAILED[@]} failed zone(s) ONCE: ${FAILED[*]}"
     for z in "${FAILED[@]}"; do run_one "$z" retry "$RETRY_TSV" || true; done
 fi
@@ -359,5 +408,6 @@ say "first attempt: $(awk -F'\t' 'NR>1 && $5=="pass"' "$TSV" | wc -l)/$(( $(grep
 
 cleanup
 [ "$RESTORE_BAD" -eq 1 ] && { say "restore mismatch"; exit 66; }
+[ "$MESA_MISMATCH" -eq 1 ] && { say "the loaded Mesa was not the one asked for (WILLEQ_MESA=$MESA)"; exit 67; }
 [ "${#FAILED[@]}" -eq 0 ] && exit 0
 exit 1

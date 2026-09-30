@@ -55,6 +55,43 @@ forced receive buffer). For a live zone-in, copy the binary to the Pi's ext4 hom
 buffer it actually got (`rcvbuf=... SO_RCVBUFFORCE`). `scripts/pi_rendered_zone_sweep.sh` does exactly this
 for the rendered Kunark + Velious sweep (#102, `refactor/B854/RENDERED_SWEEP.md`).
 
+### The shipped Mesa prefix (B935, #253)
+
+Will, 2026-09-30: "ship the prefix" (`docs/decisions.md`). The Pi runs the client on an LLVM-less Mesa (B932's
+build, `refactor/B932/README.md`) that ships beside it, selected by an absolute DT_RPATH. The system Mesa packages
+on the Pi are never touched.
+
+- **The artifact.** `scripts/pi/build_mesa_nollvm.sh` (docker image `willeq-mesa-nollvm-armhf`, dev-u24 only) packs
+  the prefix into a deterministic `mesa-nollvm-<version>-armhf.tar.zst`, pinned by SHA256 in
+  `scripts/pi/mesa_nollvm.sha256`. The store is `ci-arm/mesa/<version>/` on NFS (the tarball, its `.sha256`,
+  `BUILD_INFO`, the meson option dump, and `prefix/` = the tarball extracted plus `.willeq-mesa-pin`). Never in git,
+  never pruned. The version, the Pi install path (`MESA_NOLLVM_PI_PREFIX`) and the store path are named once, in
+  `scripts/pi/mesa_nollvm.env`. The prefix is built for that one Pi path (libgbm and libgallium carry it compiled
+  in), so a path or version change is a rebuild plus a re-pin (`--write-pin`) in one commit.
+- **Publish.** `build-arm` runs `build_mesa_nollvm.sh --ensure`, which verifies the store against the pin and builds
+  only when the pinned tarball is missing (a build whose bytes differ from the pin is never installed: the job
+  fails). It then adds to `ci-arm/<sha>/`: `bin/willeq-nollvm` (the stripped `bin/willeq` with
+  `DT_RPATH=<Pi prefix>/lib`, `scripts/pi/mesa_nollvm_select.sh`), a `mesa` symlink to the store dir, and the Mesa
+  version / tarball sha / Pi prefix in `BUILD_INFO`. `bin/willeq` itself is unchanged and loads the system Mesa. If
+  the Mesa step fails, everything else is still published, without `bin/willeq-nollvm`, and the job is red.
+- **Why an absolute DT_RPATH, not `$ORIGIN` or `LD_LIBRARY_PATH`.** The setcap'd client runs in secure-execution
+  mode (`AT_SECURE=1`). There `ld.so` ignores `LD_LIBRARY_PATH` and drops an `$ORIGIN` rpath entry unless it
+  expands into a trusted system directory (B935 measured both, `refactor/B935/README.md`). It must be DT_RPATH, not
+  DT_RUNPATH, so that glvnd's `dlopen("libEGL_mesa.so.0")` from the system `libEGL.so.1` also searches it (B932).
+- **The rigs use the prefix by default.** `scripts/pi_rendered_zone_sweep.sh` (and so `scripts/pi/collision_ab.sh`
+  and `scripts/pi/mesa_ab.sh`) stages `bin/willeq-nollvm` and installs the prefix on the Pi with
+  `scripts/pi/deploy_mesa_prefix.sh` (rsync `--checksum --delete` from the NFS store to the Pi's ext4 home;
+  the pin is checked on both ends). **`WILLEQ_MESA=system`** (or `--mesa system`) is the opt-out: it stages
+  `bin/willeq`. A build dir published before B935 has no `bin/willeq-nollvm`, so the default refuses it (exit 68).
+  Use a newer build, or the opt-out.
+- **Every run proves it.** The sweep always snapshots `/proc/<pid>/maps` at `startup` (plus any `--snap-points`).
+  Each row records the mapped libgallium and `llvm_mapped`. A run that loaded the other Mesa fails as
+  `mesa_mismatch` and aborts the sweep with **exit 67**. A run with no snapshot fails as `mesa_unproven`.
+  `scripts/pi/kmscube_floor.sh` prints the same two facts per run.
+- **By hand** (Pi lock held): `bash scripts/pi/deploy_mesa_prefix.sh`, then run `$D/bin/willeq-nollvm`, or a setcap'd
+  ext4 copy of it. For another binary (kmscube, `gles2_zone_benchmark`), use
+  `scripts/pi/mesa_nollvm_select.sh <in> <out>`.
+
 ## The stages
 
 | Stage | What it does | Cold | Warm |

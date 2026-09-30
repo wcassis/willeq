@@ -10,7 +10,23 @@
 | `Dockerfile.arm64-noble` | Rock64 (RK3328) | aarch64 (64-bit) | Same GLES2 path, 64-bit |
 | `Dockerfile` | Desktop | x86_64 | Multi-stage: builder, runtime, vnc |
 | `Dockerfile.arm-cross` | ARM (legacy) | armhf | Superseded by arm-noble |
-| `Dockerfile.mesa-nollvm-armhf` | Orange Pi One | armhf (32-bit) | B932: builds Mesa 25.2.8 without LLVM (Lima only) into a side prefix; driven by `scripts/pi/build_mesa_nollvm.sh`, measured in `refactor/B932/README.md` |
+| `Dockerfile.mesa-nollvm-armhf` | Orange Pi One | armhf (32-bit) | B932/B935: builds the SHIPPED Mesa 25.2.8 without LLVM (Lima only), plus patchelf for the rpath copy; driven by `scripts/pi/build_mesa_nollvm.sh`, measured in `refactor/B932/README.md` |
+
+## The shipped Mesa prefix (B935)
+
+Will, 2026-09-30: "ship the prefix" (`docs/decisions.md`, #253). The Pi's GL driver is an LLVM-less Mesa prefix
+that ships with the client. The system Mesa packages are left alone.
+
+- `scripts/pi/mesa_nollvm.env` names the version, the Pi install path (`MESA_NOLLVM_PI_PREFIX`, baked into the
+  build) and the NFS store (`ci-arm/mesa/<version>/`). `scripts/pi/mesa_nollvm.sha256` pins the deterministic
+  tarball.
+- `scripts/pi/build_mesa_nollvm.sh [--ensure] [--write-pin]` builds in this image on dev-u24 only (never on the Pi,
+  never on the Inspur box), packs, checks the pin, and installs into the store. `--ensure` is the idempotent
+  no-build path that CI's publish step uses.
+- `scripts/pi/mesa_nollvm_select.sh` writes the absolute DT_RPATH copy (`patchelf --force-rpath`, run in this
+  image). CI publishes it as `ci-arm/<sha>/bin/willeq-nollvm`.
+- The rigs, the opt-out (`WILLEQ_MESA=system`) and the maps proof are covered in `docs/ci.md`, "The shipped Mesa
+  prefix".
 
 **Build command**: `scripts/build-arm-noble.sh`
 ```bash

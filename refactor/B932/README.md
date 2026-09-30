@@ -202,6 +202,12 @@ build's cache before the A/B started.
 
 ## Reproduce
 
+Since B935 (#253, `refactor/B935/README.md`) the prefix is a shipped, pinned
+artifact at `/home/user/mesa-nollvm-25.2.8` on the Pi, CI publishes
+`bin/willeq-nollvm` beside `bin/willeq`, and `mesa_ab.sh` runs both sides from
+one published dir (it no longer builds a B dir or takes `--prefix`). The
+commands below are the ones this unit ran.
+
 ```bash
 # build (dev-u24, docker) and deploy the prefix
 bash scripts/pi/build_mesa_nollvm.sh                     # -> ~/b932-mesa-nollvm/
