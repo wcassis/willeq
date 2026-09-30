@@ -2,6 +2,8 @@
 #include <algorithm>
 #include "client/raycast_mesh.h"
 #include <cmath>
+#include <cstring>
+#include <thread>
 #include <vector>
 
 // Test fixture for raycast tests
@@ -348,10 +350,10 @@ TEST(HCMapTest, LoadMapFile_NonexistentFile) {
 	EXPECT_EQ(map, nullptr);
 }
 
-// T504d: the per-triangle "already tested this raycast" mark is one byte. The
-// frame counter wraps every 255 raycasts and the marks are cleared once at
-// the wrap; a triangle must still be found on every call across several
-// wraps, and the result must not drift (same hit, same distance, same normal).
+// T504d: the per-triangle "already tested this raycast" mark was one byte whose
+// frame counter wrapped every 255 raycasts. B951 (#269) removed the marks
+// altogether (raycast() writes nothing into the mesh); the test stays as the
+// net that a long run of identical rays returns an identical hit every time.
 TEST_F(RaycastMeshTest, Raycast_OneByteFrameWrapsWithoutLosingHits) {
 	RaycastMesh* mesh = createRaycastMesh(4, squareVerts.data(), 2, squareIndices.data());
 	ASSERT_NE(mesh, nullptr);
@@ -366,5 +368,61 @@ TEST_F(RaycastMeshTest, Raycast_OneByteFrameWrapsWithoutLosingHits) {
 		if (i == 0) { std::copy(hitNormal, hitNormal + 3, firstNormal); }
 		for (int k = 0; k < 3; ++k) EXPECT_FLOAT_EQ(hitNormal[k], firstNormal[k]) << "raycast " << i;
 	}
+	mesh->release();
+}
+
+// B951 / B953 (#271): the collision map is shared by the render thread (player
+// collision) and the game thread (FixZ, spell LOS). raycast() used to write a
+// per-mesh frame counter and per-triangle marks, so two concurrent rays raced
+// and one could skip a triangle the other had marked. It is now const and
+// writes nothing: two threads casting the same rays through a const pointer
+// must each get exactly the single-threaded answers.
+TEST(RaycastMeshConcurrency, TwoThreadsGetTheSingleThreadedAnswers) {
+	// A 40x40 bumpy grid (3,200 triangles), so leaves share triangles.
+	const int N = 40;
+	std::vector<float> v;
+	std::vector<uint32_t> idx;
+	for (int y = 0; y <= N; ++y)
+		for (int x = 0; x <= N; ++x) {
+			v.push_back((float)x);
+			v.push_back((float)y);
+			v.push_back(0.3f * std::sin(0.7f * x) * std::cos(0.5f * y));
+		}
+	for (int y = 0; y < N; ++y)
+		for (int x = 0; x < N; ++x) {
+			const uint32_t a = y * (N + 1) + x, b = a + 1, c = a + N + 1, d = c + 1;
+			idx.insert(idx.end(), {a, b, d, a, d, c});
+		}
+	RaycastMesh* mesh = createRaycastMesh((RmUint32)(v.size() / 3), v.data(), (RmUint32)(idx.size() / 3), idx.data());
+	ASSERT_NE(mesh, nullptr);
+	const RaycastMesh* cm = mesh;
+	const int R = 20000;
+	std::vector<float> rays(R * 6);
+	for (int i = 0; i < R; ++i) {
+		const float fx = (float)((i * 37) % (N * 100)) / 100.0f, fy = (float)((i * 91) % (N * 100)) / 100.0f;
+		const float dx = (float)((i * 13) % 700) / 100.0f - 3.5f, dy = (float)((i * 29) % 700) / 100.0f - 3.5f;
+		const float r[6] = {fx, fy, 2.0f, fx + dx, fy + dy, -2.0f};
+		std::memcpy(&rays[i * 6], r, sizeof(r));
+	}
+	auto castAll = [&](std::vector<float>& out) {
+		out.assign(R * 4, 0.0f);
+		for (int i = 0; i < R; ++i) {
+			float hit[3] = {0, 0, 0}, dist = 0;
+			const bool h = cm->raycast(&rays[i * 6], &rays[i * 6 + 3], hit, nullptr, &dist);
+			out[i * 4] = h ? 1.0f : 0.0f;
+			out[i * 4 + 1] = hit[0]; out[i * 4 + 2] = hit[1]; out[i * 4 + 3] = hit[2];
+		}
+	};
+	std::vector<float> ref, a, b;
+	castAll(ref);
+	int hits = 0;
+	for (int i = 0; i < R; ++i) hits += ref[i * 4] != 0.0f;
+	EXPECT_GT(hits, R / 2);  // not vacuous
+	std::thread t1([&] { castAll(a); });
+	std::thread t2([&] { castAll(b); });
+	t1.join();
+	t2.join();
+	EXPECT_EQ(std::memcmp(ref.data(), a.data(), ref.size() * sizeof(float)), 0);
+	EXPECT_EQ(std::memcmp(ref.data(), b.data(), ref.size() * sizeof(float)), 0);
 	mesh->release();
 }

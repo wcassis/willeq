@@ -95,9 +95,8 @@ private:
     // Helper to find animated sequence by base name pattern (e.g., "water" -> water01, water02, ...)
     std::vector<std::string> findTextureSequence(const std::string& baseName,
                                                    const std::map<std::string, std::shared_ptr<TextureInfo>>& textures) const;
-    // Load a texture from raw data
-    irr::video::ITexture* loadTexture(const std::string& name,
-                                       const std::vector<char>& data);
+    // Load a texture from an archive texture's raw data (B947: and its origin)
+    irr::video::ITexture* loadTexture(const std::string& name, const TextureInfo& info);
 
     irr::video::IVideoDriver* driver_;
     irr::io::IFileSystem* fileSystem_;

@@ -21,12 +21,17 @@
 // upload used and adopts it into the same object.
 //
 // Sources: an EQE1 entry keeps its CompressedEntry (pointers into the mapped
-// pack -- a struct, not pixels). A decode-path entry is re-read by name from a
-// TextureSourceProvider (ArchiveTextureSource: the mapped S3D archives). An
-// entry with no source, or a texture that is not a GLES2 texture at all (the
-// EDT_NULL unit tests), still takes the pre-B944 destroy path.
+// pack -- a struct, not pixels). A decode-path entry is re-read from the
+// TextureOrigin its caller named (B947: the character/equipment archive
+// member, or the data/textures/ file), else by name from a
+// TextureSourceProvider (ArchiveTextureSource over the zone's archives), and
+// only if the bytes match the first decode's digest. A GLES2 entry with no
+// source is PINNED (B947): kept resident and never evicted again. Only a
+// texture that is not a GLES2 texture at all -- the EDT_NULL unit tests, which
+// pin the eviction-listener guards -- still takes the pre-B944 destroy path.
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/zone_geometry.h"
+#include "client/graphics/archive_texture_source.h"
 #include "client/core/memory_ledger.h"
 #include "common/logging.h"
 #include <algorithm>
@@ -102,22 +107,15 @@ bool ConstrainedTextureCache::isResident(const std::string& name, bool applyPale
 // Eviction: release, or destroy (caller holds mutex_)
 // ---------------------------------------------------------------------------
 
-bool ConstrainedTextureCache::canReleaseStorage(const std::string& key, const CachedTexture& entry) {
+bool ConstrainedTextureCache::canReleaseStorage(const std::string& key, CachedTexture& entry) {
 #ifdef EQT_EQE1_UPLOAD_AVAILABLE
     if (!isGles2Texture(entry.texture) || entry.texture->isRenderTarget()) return false;
     if (entry.alphaTexture && !isGles2Texture(entry.alphaTexture)) return false;
     switch (entry.source) {
         case CachedTexture::Source::Compressed:
             return entry.compressed.etc1Data != nullptr;
-        case CachedTexture::Source::Decoded: {
-            std::string realName;
-            bool masked = false;
-            splitCacheKey(key, realName, masked);
-            for (auto* provider : sourceProviders_) {
-                if (provider->hasSource(realName)) return true;
-            }
-            return false;
-        }
+        case CachedTexture::Source::Decoded:
+            return decodedSourceAvailable(key, entry);
         case CachedTexture::Source::None:
             break;
     }
@@ -126,6 +124,81 @@ bool ConstrainedTextureCache::canReleaseStorage(const std::string& key, const Ca
     (void)entry;
 #endif
     return false;
+}
+
+// B947 (GitLab #265): a decode-path entry is restorable only if its exact raw
+// bytes can be read again -- from the origin its caller named (an archive
+// member or a file: the character/equipment archives, data/textures/), else
+// from a name-keyed TextureSourceProvider (the zone archives, B944). The read
+// is checked against the size + digest recorded at the first decode, so a
+// name that two archives both hold can never restore the other one's pixels.
+// Checked on the entry's FIRST eviction and remembered: one extra read per
+// evicted texture, and the answer decides between release and pin.
+bool ConstrainedTextureCache::decodedSourceAvailable(const std::string& key, CachedTexture& entry) {
+    if (!entry.sourceChecked) {
+        std::vector<char> bytes;
+        {
+            eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDecoded);  // T491
+            entry.sourceOk = readDecodedSource(key, entry, bytes);
+        }
+        entry.sourceChecked = true;
+    }
+    return entry.sourceOk;
+}
+
+bool ConstrainedTextureCache::readDecodedSource(const std::string& key, const CachedTexture& entry,
+                                                std::vector<char>& out) {
+    auto matches = [&](const std::vector<char>& bytes) {
+        return bytes.size() == entry.rawSize && rawBytesDigest(bytes) == entry.rawDigest;
+    };
+    if (entry.origin.known()) {
+        bool read = false;
+        if (entry.origin.isArchiveMember()) {
+            if (!originArchives_) originArchives_ = std::make_unique<ArchiveTextureSource>();
+            read = originArchives_->readMember(*entry.origin.file, entry.origin.member, out);
+        } else {
+            read = ArchiveTextureSource::readFile(*entry.origin.file, out);
+        }
+        if (read && matches(out)) return true;
+        out.clear();
+    }
+    std::string realName;
+    bool masked = false;
+    splitCacheKey(key, realName, masked);
+    for (auto* provider : sourceProviders_) {
+        if (provider->hasSource(realName) && provider->readSource(realName, out) && matches(out)) return true;
+        out.clear();
+    }
+    return false;
+}
+
+// B947: the fallback for an entry nothing can restore. Before this unit it
+// was destroyed (the pre-B944 path) and every holder the eviction guards did
+// not reach -- RaceModelLoader's cached meshes above all -- kept a freed
+// pointer. Now it stays: resident, counted in the usage, skipped by
+// evictUntilAvailable() for the rest of the zone. A texture that can dangle
+// does not exist; one that can't be given back is honest about costing.
+void ConstrainedTextureCache::pinEntry(const std::string& key, CachedTexture& entry) {
+    entry.pinned = true;
+    if (pinLogged_.insert(key).second) {
+        LOG_WARN(MOD_GRAPHICS, "Constrained cache: evicted texture '{}' ({} bytes) has no restore source -- "
+                 "PINNED (stays resident, never evicted again)", key, entry.sizeBytes);
+    }
+}
+
+size_t ConstrainedTextureCache::getPinnedTextureCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    size_t n = 0;
+    for (const auto& [key, entry] : cache_) {
+        if (entry.pinned) ++n;
+    }
+    return n;
+}
+
+bool ConstrainedTextureCache::isPinned(const std::string& name, bool applyPaletteMask) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = cache_.find(cacheKey(name, applyPaletteMask));
+    return it != cache_.end() && it->second.pinned;
 }
 
 void ConstrainedTextureCache::releaseStorage(const std::string& key, CachedTexture& entry) {
@@ -286,11 +359,8 @@ bool ConstrainedTextureCache::rebuildStorage(const std::string& key, CachedTextu
         std::vector<char> raw;
         {
             eqt::memory::MemoryScope decodeScope(eqt::memory::Category::TexturesDecoded);
-            bool found = false;
-            for (auto* provider : sourceProviders_) {
-                if (provider->readSource(realName, raw)) { found = true; break; }
-            }
-            if (!found) return false;
+            // B947: the same bytes the first decode had, or nothing.
+            if (!readDecodedSource(key, entry, raw)) return false;
         }
         std::vector<uint8_t> rgba;
         int width = 0, height = 0;

@@ -39,6 +39,7 @@ bool S3DLoader::loadTextures(PfsArchive& archive) {
             tex->data = std::move(data);
             tex->width = 0;
             tex->height = 0;
+            tex->sourceArchive = archive.sharedPath();  // B947: restore origin
 
             // Store with lowercase key for case-insensitive lookup
             std::string lowerName = texName;
@@ -75,6 +76,7 @@ bool S3DLoader::loadObjectTextures(PfsArchive& archive) {
             tex->data = std::move(data);
             tex->width = 0;
             tex->height = 0;
+            tex->sourceArchive = archive.sharedPath();  // B947: restore origin
 
             // Store with lowercase key for case-insensitive lookup
             std::string lowerName = texName;
@@ -124,6 +126,7 @@ bool S3DLoader::loadCharacterTextures(PfsArchive& archive) {
             tex->data = std::move(data);
             tex->width = 0;
             tex->height = 0;
+            tex->sourceArchive = archive.sharedPath();  // B947: restore origin
             // B843: the pixels were just allocated on this thread, under this
             // thread's current ledger scope -- that scope is the ONLY owner
             // of these bytes. Record it so a tally that also holds `tex`

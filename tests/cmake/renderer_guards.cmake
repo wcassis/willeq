@@ -55,6 +55,26 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_texture_eviction_residency DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B947 (GitLab #265): every evictable texture has a restore source. A REAL
+# cached animated character mesh (RaceModelLoader, S3D path) is pushed far
+# below the working set; every texture its materials hold must stay the
+# cache's live object and re-bind to the same pixels. Also: equipment origins,
+# plain-file origins + the digest guard, pinning, protected textures, and an
+# EQE1 character pack opened late (T266). Real EDT_OGLES2 surfaceless device;
+# self-skips without EGL, data/eq_client, the shipped db or the EQE1 tree.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_texture_eviction_character_restore
+        test_texture_eviction_character_restore.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_texture_eviction_character_restore PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    # Constructs RaceModelLoader (which owns a ZoneMeshBuilder): see the
+    # EQT_HAS_TEXTURE_ATLAS note on test_texture_eviction_residency above.
+    TARGET_COMPILE_DEFINITIONS(test_texture_eviction_character_restore PRIVATE EQT_HAS_TEXTURE_ATLAS
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    TARGET_LINK_LIBRARIES(test_texture_eviction_character_restore GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_texture_eviction_character_restore DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T123: ObjectNodeTextureGuard regression coverage — a detached object node's
 # node-level Materials copy (what CMeshSceneNode::render() actually reads,
 # ReadOnlyMaterials=false default) must not go dangling after

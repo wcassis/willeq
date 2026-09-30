@@ -250,12 +250,22 @@ it without taking that measurement first.
   pixel-identical to the goldens; `clear()` also stops leaking every ETC1
   alpha companion. Regression net: `tests/test_texture_eviction_residency.cpp`
   (ASan-clean). No budget, golden or gate assertion changed.
-- **B947** (A) → issue #265. S3D-path character/equipment textures have no
-  restore source (B944 covers EQE1 fully and the S3D zone/objects/sky
-  archives), so their eviction still destroys them and `RaceModelLoader`'s
-  cached meshes keep the freed pointer -- the holder B944's pre-fix ASan run
-  caught. Not the shipped path. Confirmed by B944 (code reading + the EQE1
-  measurement of the same holder).
+- ~~**B947** (A) → issue #265. S3D-path character/equipment textures had no
+  restore source, so their eviction destroyed them and `RaceModelLoader`'s
+  cached meshes kept the freed pointer.~~ **DONE 2026-09-30** (branch
+  `task/B947-char-texture-restore`, `refactor/B947/README.md`). Every
+  decode-path upload now carries a `TextureOrigin` (the archive member the S3D
+  loaders read it from, or the file) plus a size + FNV-1a-64 digest, and a
+  restore re-decodes only those bytes; a GLES2 entry with no source is PINNED
+  (resident, never evicted again), never destroyed -- the destroy path is left
+  only for the EDT_NULL test driver. Live, ASan, 8 MiB forced ceiling, S3D
+  path: the tip's cache had 273 (qeynos2) / 216 (gfaydark) fewer entries at
+  unload than this branch's -- the textures its evictions destroyed -- and this
+  branch ran 0 ASan errors, 0 pinned, 0 restore failures on S3D and EQE1.
+  Nets: `tests/test_texture_eviction_character_restore.cpp` (a real cached
+  animated human mesh below its working set re-binds pixel-identical; red and
+  ASan heap-use-after-free with the destroy path forced) and
+  `tests/test_texture_eviction_residency.cpp`.
 - **B954** (A) → issue #272. `COpenGLES2Driver::createScreenShot()` leaks
   its whole pixel buffer on every call (`createImageFromData(...,
   ownForeignMemory=true, deleteMemory=false)`, and `CImage` frees only with
@@ -12731,3 +12741,11 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   - Open: the Pi's timorous Player Movement phase was measured on one leg per side (821 vs 1,986 us); the zone would not reach `ready` on either side in eight more attempts.
 - **B942** (A, pathing) → issue #260. `PathfinderNavmesh::FindPath` passed capacity 2048 for 256-entry straight-path stack arrays. Fixed on the B941 branch. No repeatable test yet (needs a navmesh path crossing more than 255 poly edges).
 - **B945** (A, memory) → issue #263. Timorous `game_state` `misc` is 6.2 MB at `ready` on x86; 3.1 MB of it is one `GameEvent` staging buffer the game thread keeps after the zone-in burst.
+
+## Added 2026-09-30 by task/B951-collision-map-arrays (issue #269)
+
+- **B951** (A, memory) → issue #269. After B941 the collision map (`HCMap` + `RaycastMesh`) was still 5-11x its `.map` (emeraldjungle 17.88 MB: indices 7.42, leaf lists 3.77, vertices 4.40, nodes 1.68, marks 0.62). **Fixed on the branch, MR pending review**: the unchanged tree is re-laid-out -- triangles stored once in leaf order as uint16 offsets from a per-64-triangle base, a leaf = its owned range + 3-byte references for triangles an earlier leaf owns, 28-byte nodes, no per-triangle marks. emeraldjungle 17.88 → 10.63 MB, timorous 9.31 → 5.89, growthplane 4.76 → 3.18, gfaydark 6.13 → 4.18. Every `GameStateIdentity` query digest unchanged (x86 and ARM); Pi rays 9-53 % faster. Owner rows `gs.collision_map.{verts,tris,refs,nodes,leaves,flags}`. Evidence and "Not verified": `refactor/B951/README.md`.
+  - Pi A/B `game_state` at `ready`: emeraldjungle 34.8 → 27.5 MB, growthplane 22.7 → 21.2, gfaydark 11.5 → 9.5; owned at `steady_60s` emeraldjungle 76.6-77.7 → 69.4 MB; Player Movement not slower in any zone; timorous no verdict (zone link, every leg of both sides).
+  - Open: the plan's "well under 2x the `.map`" bar is not met (emeraldjungle 3.0x) -- see B957.
+- **B953** (A, threading) → issue #271. `RaycastMesh::raycast()` wrote a shared frame counter and per-triangle marks while the render thread and the game thread cast into the same `HCMap` (a data race that could skip a triangle). Fixed on the B951 branch (`raycast()` is const); `RaycastMeshConcurrency.TwoThreadsGetTheSingleThreadedAnswers` fails 13/20 on the old code.
+- **B957** (C, memory vs frame) → issue #275. The collision map is still ~3x its `.map`. Two measured levers (child bounds derived from the parent: nodes to ~40 %; 5-byte delta triangles: emeraldjungle -0.37 MB) each made the Pi's cache-warm rays 11-31 % / 17 % slower. Will's call.

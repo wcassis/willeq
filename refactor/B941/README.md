@@ -166,3 +166,4 @@ wait 30 s, `/loc`. Before: "Found path with 16 waypoints", moved (-20.0,
 - Remaining collision-map representation (emeraldjungle after: vertices
   4.4 MB, indices 7.4 MB, leaf refs 3.8 MB, nodes 1.7 MB, marks 0.6 MB) and
   the Detour tile format itself (polys, verts, detail meshes) are unchanged.
+  (The collision-map half is B951, #269: `refactor/B951/README.md`.)

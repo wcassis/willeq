@@ -44,7 +44,8 @@ bool RainOverlay::initialize(irr::video::IVideoDriver* driver,
         std::vector<char> data(fileSize);
         file.read(data.data(), fileSize);
 
-        irr::video::ITexture* tex = constrainedCache_->getOrLoad(cacheName, data);
+        const TextureOrigin origin = TextureOrigin::plainFile(path);  // B947: restore origin
+        irr::video::ITexture* tex = constrainedCache_->getOrLoad(cacheName, data, "uncategorized", "", false, &origin);
         if (!tex) tex = constrainedCache_->uploadTexture(cacheName);
         if (!tex) {
             LOG_FATAL(MOD_GRAPHICS, "RainOverlay: Failed to load required texture: {}", path);

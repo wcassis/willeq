@@ -4,6 +4,8 @@
 #include "pfs.h"
 #include "wld_loader.h"
 #include "placeable.h"
+#include "client/graphics/texture_origin.h"
+#include <cctype>
 #include <string>
 #include <memory>
 #include <map>
@@ -75,6 +77,26 @@ struct TextureInfo {
         size_t total = data.capacity();
         for (const auto& f : frames) total += f.data.capacity();
         return total;
+    }
+
+    // B947 (GitLab #265): the archive these bytes were read from (shared with
+    // the PfsArchive that read them -- one pointer per texture, no path copy),
+    // and the member name when it is not simply lower-case `name` (an
+    // equipment texture found under its .bmp/.dds sibling). Null when the
+    // bytes did not come from an archive. origin() is what a caller hands
+    // ConstrainedTextureCache::getOrLoad() so an evicted texture can be
+    // re-decoded from the same bytes; see texture_origin.h.
+    std::shared_ptr<const std::string> sourceArchive;
+    std::shared_ptr<const std::string> sourceMember;
+    TextureOrigin origin() const {
+        if (!sourceArchive) return {};
+        return TextureOrigin::archiveMember(sourceArchive, sourceMember ? *sourceMember : lowerCased(name));
+    }
+
+private:
+    static std::string lowerCased(std::string s) {
+        for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
     }
 };
 

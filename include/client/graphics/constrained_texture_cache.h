@@ -4,6 +4,7 @@
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/eqe1_format.h"
 #include "client/graphics/texture_upload_ledger.h"
+#include "client/graphics/texture_origin.h"
 #include <irrlicht.h>
 #include <map>
 #include <set>
@@ -13,6 +14,7 @@
 #include <string>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <unordered_set>
 
 namespace EQT {
@@ -20,6 +22,7 @@ namespace Graphics {
 
 class ZoneMeshBuilder;
 class EQE1Loader;
+class ArchiveTextureSource;
 
 // Listener interface for texture DESTRUCTION notifications.
 // Subsystems that register textures with the cache can implement this
@@ -29,8 +32,10 @@ class EQE1Loader;
 // fire this -- the object survives (its storage is released and restored on
 // the next bind), so holders keep a valid pointer and must NOT swap it for the
 // placeholder. The callback fires when the object really goes: clear() (zone
-// unload), a registerTexture() replacement, and an eviction of an entry the
-// cache cannot restore (see ConstrainedTextureCache::evictTexture()). For an
+// unload), a registerTexture() replacement, and -- only for a texture of a
+// driver other than GLES2 (the EDT_NULL unit tests) -- an eviction of an entry
+// the cache cannot restore; B947 pins such a GLES2 entry instead (see
+// ConstrainedTextureCache::evictTexture()). For an
 // ETC1 texture it fires twice, once for the main texture and once (name +
 // "_alpha") for its alpha companion.
 //
@@ -56,9 +61,11 @@ public:
 // handed those bytes by a caller that has since released them, so an eviction
 // can only give its storage back if something can produce the same bytes
 // again by name. ArchiveTextureSource (archive_texture_source.h) re-reads them
-// from the mapped S3D archives. A decode-path entry no provider can serve is
-// evicted the pre-B944 way (destroyed, holders swapped to the placeholder by
-// the guards) -- see ConstrainedTextureCache::evictTexture().
+// from the mapped S3D archives. B947: a provider is the FALLBACK -- an entry
+// whose caller named a TextureOrigin is re-read from exactly there -- and a
+// read is accepted only if it matches the first decode's size + digest. A
+// GLES2 decode-path entry nothing can serve is PINNED, never destroyed -- see
+// ConstrainedTextureCache::evictTexture().
 //
 // Both calls happen under the cache's mutex, on whichever thread evicts or
 // restores; an implementation must not call back into the cache.
@@ -85,6 +92,12 @@ struct DecodedEntry {
     int width = 0;
     int height = 0;
     bool hasAlpha = false;
+    // B947: where the raw bytes came from and what they were (size + FNV-1a
+    // 64), carried to the CachedTexture so an eviction restore re-decodes the
+    // SAME bytes (see TextureOrigin).
+    TextureOrigin origin;
+    uint64_t rawDigest = 0;
+    size_t rawSize = 0;
 };
 
 // LRU texture cache with memory budget enforcement
@@ -100,10 +113,16 @@ struct DecodedEntry {
 // which re-uploads the same pixels -- evicting something older if it must --
 // and hands the new GL name back. Only resident entries count toward
 // getCurrentUsage() and sit in the LRU list. An object is destroyed only by
-// clear() (zone unload), by a registerTexture() replacement, or by the
-// pre-B944 fallback for an entry that cannot be restored (no GLES2 storage to
-// release, or no source to restore from) -- and those three still notify the
-// TextureEvictionListeners, whose guards swap holders to the placeholder.
+// clear() (zone unload) or by a registerTexture() replacement -- both notify
+// the TextureEvictionListeners, whose guards swap holders to the placeholder.
+//
+// B947 (GitLab #265) -- NOTHING EVICTABLE CAN DANGLE. A GLES2 entry an
+// eviction finds with no restore source (a registerTexture() external, a
+// decode-path texture whose bytes cannot be read back identical) is PINNED:
+// it stays resident, counts toward the usage and is never evicted again
+// (getPinnedTextureCount()). Process-lifetime textures are protectTexture()d
+// and never evicted either. The destroy-on-eviction fallback survives only for
+// textures of another driver (EDT_NULL, unit tests only).
 class ConstrainedTextureCache {
 public:
     // Construct with config only (no driver needed). Call setDriver() later
@@ -136,11 +155,19 @@ public:
     // decodes opaque, as it always has) — this is load-bearing for zone
     // geometry, where palette slot 0 is frequently a legitimate opaque
     // color and must never be punched transparent. See decodeBMP().
+    //
+    // B947 (GitLab #265): origin, when the caller knows it, names where `data`
+    // was read from (an archive member or a file). The decode path records it
+    // with a digest of `data`; an eviction then releases the storage and a
+    // bind re-reads and re-decodes those exact bytes. A decode-path entry
+    // with no usable origin and no TextureSourceProvider serving the same
+    // bytes is PINNED on eviction (never evicted again), never destroyed.
     irr::video::ITexture* getOrLoad(const std::string& name,
                                      const std::vector<char>& data,
                                      const std::string& category = "uncategorized",
                                      const std::string& callsite = "",
-                                     bool applyPaletteMask = false);
+                                     bool applyPaletteMask = false,
+                                     const TextureOrigin* origin = nullptr);
 
     // Upload a decoded texture to the GPU.
     // Promotes DecodedEntry → CachedTexture via driver_->addTexture().
@@ -236,6 +263,12 @@ public:
     size_t getResidentTextureCount() const;
     size_t getRestoreCount() const;
     size_t getRestoreFailureCount() const;
+    // B947: entries an eviction found with nothing to restore from and
+    // PINNED instead of destroying (they stay resident, count toward the
+    // usage, and are never evicted again). Zero is the target: every live
+    // upload path has a restore source.
+    size_t getPinnedTextureCount() const;
+    bool isPinned(const std::string& name, bool applyPaletteMask = false) const;
     // B944: true when `name` is cached AND its storage is resident; false for
     // an evicted entry or an unknown name.
     bool isResident(const std::string& name, bool applyPaletteMask = false) const;
@@ -486,7 +519,7 @@ private:
 
     // ---- B944 residency (constrained_texture_cache_residency.cpp) ----------
     struct CachedTexture;
-    bool canReleaseStorage(const std::string& key, const CachedTexture& entry);
+    bool canReleaseStorage(const std::string& key, CachedTexture& entry);
     void releaseStorage(const std::string& key, CachedTexture& entry);
     // Destroy an entry's objects and drop it from the map (clear(), a
     // registerTexture() replacement, an eviction that cannot restore).
@@ -495,6 +528,14 @@ private:
     // (scrubMeshBuilder; not from clear(), see the .cpp), driver removal --
     // for the main texture AND its alpha companion.
     void destroyTextures(const std::string& key, CachedTexture& entry, bool scrubMeshBuilder);
+    // B947: can this decode-path entry's bytes be read again, byte-identical?
+    // Checked once per entry (first eviction) and remembered.
+    bool decodedSourceAvailable(const std::string& key, CachedTexture& entry);
+    // Read the entry's raw bytes from its origin, else from the providers;
+    // true only when the digest matches the first decode's.
+    bool readDecodedSource(const std::string& key, const CachedTexture& entry, std::vector<char>& out);
+    // The no-source fallback for a texture the shipped driver created: keep it.
+    void pinEntry(const std::string& key, CachedTexture& entry);
     // The driver's restore callback (COGLES2Texture::ensureResident()).
     static bool restoreHook(void* ctx, void* texture);
     bool restoreEvicted(irr::video::ITexture* texture);
@@ -567,6 +608,14 @@ private:
         enum class Source : uint8_t { None, Compressed, Decoded };
         Source source = Source::None;
         CompressedEntry compressed{};
+        // B947: Decoded source identity (see DecodedEntry) and its check.
+        TextureOrigin origin;
+        uint64_t rawDigest = 0;
+        size_t rawSize = 0;
+        bool sourceChecked = false;   // decodedSourceAvailable() ran
+        bool sourceOk = false;        // ...and found the same bytes
+        // B947: an eviction found no restore source; never evicted again.
+        bool pinned = false;
     };
 
     // Protects all state except decodedQueue_ (which has its own decodedQueueMutex_)
@@ -616,6 +665,10 @@ private:
     size_t restoreCount_ = 0;
     size_t restoreFailureCount_ = 0;
     std::set<std::string> restoreFailureLogged_;  // one WARN per key
+    // B947: archives named by entry origins, opened on first need and closed
+    // by clear() (zone unload). Guarded by mutex_.
+    std::unique_ptr<ArchiveTextureSource> originArchives_;
+    std::set<std::string> pinLogged_;  // one WARN per pinned key
 
     // EQE1 flat pack loaders (non-owning, populated per zone).
     // P04: guarded by eqe1LoadersMutex_ (NOT mutex_) — addEQE1Loader is called

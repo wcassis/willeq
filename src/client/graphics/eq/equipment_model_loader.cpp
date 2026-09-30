@@ -385,6 +385,7 @@ std::shared_ptr<TextureInfo> EquipmentModelLoader::getEquipmentTextureLocked(con
     auto tex = std::make_shared<TextureInfo>();
     tex->name = ref.entryName;
     tex->data = std::move(data);
+    tex->sourceArchive = archive.sharedPath();  // B947: restore origin
 
     textures_[lowerName] = tex;
 
@@ -567,9 +568,10 @@ irr::scene::IMesh* EquipmentModelLoader::buildMeshFromGeometry(
                 // signal that picked EMT_TRANSPARENT_ALPHA_CHANNEL_REF), so
                 // the runtime BMP decode now actually punches palette index
                 // 0 transparent for it instead of hardcoding alpha=255.
+                const TextureOrigin origin = texIt->second->origin();  // B947
                 constrainedTextureCache_->getOrLoad(lowerTexName, texIt->second->data,
                                                      "uncategorized", "",
-                                                     isMaskedMaterial);
+                                                     isMaskedMaterial, &origin);
                 // P46d: uploadTexture must be told the same applyPaletteMask
                 // getOrLoad() above was, or it looks up the wrong internal
                 // cache-key variant (see ConstrainedTextureCache::cacheKey()).
@@ -960,6 +962,7 @@ std::shared_ptr<EquipmentModelData> EquipmentModelLoader::extractFromParsed(
         // Try to find the texture in the same archive first
         std::vector<char> data;
         bool found = false;
+        std::string foundMember = lowerName;  // B947: the member the bytes came from
 
         // Try exact name
         if (archive.get(texName, data)) {
@@ -974,6 +977,7 @@ std::shared_ptr<EquipmentModelData> EquipmentModelLoader::extractFromParsed(
                 bmpName = bmpName.substr(0, dotPos) + ".bmp";
                 if (archive.get(bmpName, data)) {
                     found = true;
+                    foundMember = bmpName;
                 }
             }
             // Try with .dds extension
@@ -984,6 +988,7 @@ std::shared_ptr<EquipmentModelData> EquipmentModelLoader::extractFromParsed(
                     ddsName = ddsName.substr(0, dotPos) + ".dds";
                     if (archive.get(ddsName, data)) {
                         found = true;
+                        foundMember = ddsName;
                     }
                 }
             }
@@ -993,6 +998,10 @@ std::shared_ptr<EquipmentModelData> EquipmentModelLoader::extractFromParsed(
             auto tex = std::make_shared<TextureInfo>();
             tex->name = texName;
             tex->data = std::move(data);
+            // B947: restore origin (the member differs from the name only for
+            // the .bmp/.dds sibling fallbacks above).
+            tex->sourceArchive = archive.sharedPath();
+            if (foundMember != lowerName) tex->sourceMember = std::make_shared<const std::string>(foundMember);
             equipModel->textures[lowerName] = tex;
         }
     }

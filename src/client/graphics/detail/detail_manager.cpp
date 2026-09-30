@@ -148,7 +148,8 @@ void DetailManager::onZoneEnter(const std::string& zoneName,
         std::vector<char> data(fileSize);
         file.read(data.data(), fileSize);
 
-        atlasTexture_ = constrainedCache_->getOrLoad("detail_atlas", data);
+        const TextureOrigin origin = TextureOrigin::plainFile(atlasPath);  // B947: restore origin
+        atlasTexture_ = constrainedCache_->getOrLoad("detail_atlas", data, "uncategorized", "", false, &origin);
         if (!atlasTexture_) atlasTexture_ = constrainedCache_->uploadTexture("detail_atlas");
         if (!atlasTexture_) {
             LOG_FATAL(MOD_GRAPHICS, "DetailManager: Failed to load required texture: {}", atlasPath);

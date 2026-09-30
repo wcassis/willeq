@@ -84,15 +84,17 @@ bool ConstrainedTextureCache::evictUntilAvailable(size_t bytesNeeded) {
         size_t scanned = 0;
         for (const auto& candidate : lruOrder_) {
             ++scanned;
-            if (protectedTextures_.find(candidate) == protectedTextures_.end()) {
-                oldest = candidate;
-                break;
-            }
+            if (protectedTextures_.find(candidate) != protectedTextures_.end()) continue;
+            // B947: a pinned entry has no restore source; it is never evicted.
+            auto candidateIt = cache_.find(candidate);
+            if (candidateIt != cache_.end() && candidateIt->second.pinned) continue;
+            oldest = candidate;
+            break;
         }
         if (oldest.empty()) {
-            // Everything resident is protected — nothing left to give back.
+            // Everything resident is protected or pinned — nothing left to give back.
             LOG_WARN(MOD_GRAPHICS, "Constrained cache: cannot free {} bytes, all {} "
-                     "resident textures are protected", bytesNeeded, scanned);
+                     "resident textures are protected or pinned", bytesNeeded, scanned);
             break;
         }
         evictTexture(oldest);
@@ -103,16 +105,8 @@ bool ConstrainedTextureCache::evictUntilAvailable(size_t bytesNeeded) {
 
 void ConstrainedTextureCache::evictTexture(const std::string& name) {
     auto it = cache_.find(name);
-    if (it == cache_.end() || !it->second.resident) return;
-
-    LOG_DEBUG(MOD_GRAPHICS, "Evicting texture '{}' ({} bytes)", name, it->second.sizeBytes);
-
-    // P13: record the eviction (name/bytes/category) and thrash-detect any
-    // later re-upload of this same name. No-op when disabled.
-    if (ledgerEnabled_) {
-        ledger_.recordEviction(name, it->second.sizeBytes, it->second.category);
-    }
-    ++evictionCount_;
+    if (it == cache_.end() || !it->second.resident || it->second.pinned) return;
+    CachedTexture& entry = it->second;
 
     // B944 (GitLab #262): give back the STORAGE and keep the object, so no
     // holder of this ITexture* is left with a dangling pointer; its first
@@ -120,15 +114,36 @@ void ConstrainedTextureCache::evictTexture(const std::string& name) {
     // any holder the guards below did not reach -- the benchmark's region
     // meshes (no guard at all), ZoneMeshBuilder's name map, RaceModelLoader's
     // cached meshes -- dereferenced freed memory.
-    if (canReleaseStorage(name, it->second)) {
-        releaseStorage(name, it->second);
+    const bool release = canReleaseStorage(name, entry);
+
+    // B947 (GitLab #265): nothing to restore from, and a texture the shipped
+    // (GLES2) driver made: PIN it -- kept, resident, never evicted again --
+    // because destroying it is what left RaceModelLoader's cached meshes with
+    // a freed pointer. Nothing was freed, so it is not counted as an eviction.
+    if (!release && entry.texture && entry.texture->getDriverType() == irr::video::EDT_OGLES2) {
+        pinEntry(name, entry);
         return;
     }
 
-    // Pre-B944 path, for an entry with nothing to restore from: destroy it.
-    // The listeners and clearTextureReferences() swap every holder they reach
-    // to the placeholder (a wrong draw, never a freed pointer, for what they
-    // reach) -- see destroyTextures().
+    LOG_DEBUG(MOD_GRAPHICS, "Evicting texture '{}' ({} bytes)", name, entry.sizeBytes);
+
+    // P13: record the eviction (name/bytes/category) and thrash-detect any
+    // later re-upload of this same name. No-op when disabled.
+    if (ledgerEnabled_) {
+        ledger_.recordEviction(name, entry.sizeBytes, entry.category);
+    }
+    ++evictionCount_;
+
+    if (release) {
+        releaseStorage(name, entry);
+        return;
+    }
+
+    // Pre-B944 path, kept ONLY for textures of another driver (the EDT_NULL
+    // unit tests that pin the eviction-listener guards; the client and the
+    // tools only ever create EDT_OGLES2 textures): destroy it. The listeners
+    // and clearTextureReferences() swap every holder they reach to the
+    // placeholder -- see destroyTextures().
     destroyEntry(name);
 }
 

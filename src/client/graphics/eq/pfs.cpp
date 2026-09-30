@@ -128,6 +128,7 @@ bool PfsArchive::open(const std::string& filename) {
     ::close(fd);   // the mapping outlives the descriptor
 
     if (!parseDirectory()) { close(); return false; }
+    path_ = std::make_shared<const std::string>(filename);  // B947
     return true;
 }
 
@@ -230,6 +231,7 @@ bool PfsArchive::parseDirectory() {
 
 void PfsArchive::close() {
     files_.clear();
+    path_.reset();
     if (mapping_) {
         munmap(mapping_, mappedSize_);
         mapping_ = nullptr;

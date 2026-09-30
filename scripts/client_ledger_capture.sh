@@ -21,7 +21,9 @@
 #   spatial, zone_mesh  -- the B909 labels (sp.*, zm.*) name the owners
 #   objects             -- the B936 labels (obj.meshes, obj.instances, obj.anim)
 #   game_state          -- the B941 labels (gs.navmesh, gs.nav_query,
-#                          gs.collision_map, gs.zone_lines, gs.zone_sources)
+#                          gs.collision_map, gs.zone_lines, gs.zone_sources;
+#                          B951 adds gs.collision_map.{verts,tris,refs,
+#                          nodes,leaves,flags}, the raycast mesh arrays)
 #   zone_parse          -- the shared S3D/WLD parser carries no labels, so this
 #                          mode ALSO sets WILLEQ_LEDGER_TRACE=zone_parse:startup
 #                          and the [memledger-trace] rows split it by call site
