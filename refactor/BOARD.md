@@ -292,12 +292,18 @@ it without taking that measurement first.
   device, 2 x 3,686,400 B per client at 1280x720) and the client cgroup's
   kernel bytes (1.1-1.9 MiB) are on no ledger row; the first is visible only
   in debugfs (root). Measured by B955.
-- **B962** (A, memory) → issue #280. The client's GEM buffers are ~2x its
-  logical GPU tally on the Pi (qeynos2 `steady_60s` 36.98 vs 17.33 MiB):
-  depth buffer 3.52, two GL contexts' driver BOs, 1 MiB stream-upload BOs,
-  9.56 MiB of mapped BOs beyond the tally not decomposed per texture; and
-  `vboEboBytes` reads ~0 on the Pi although Step 4 uploads per-region hardware
-  buffers. Measured by B955.
+- ~~**B962** (A, memory) → issue #280. The client's GEM buffers are ~2x its
+  logical GPU tally on the Pi.~~ **FIXED** (`refactor/B962/README.md`): a
+  tagged GEM census (`scripts/pi/lima_bo_census.c` + `gem_owner_table.py`)
+  put every buffer on an owner row. The 2x was two GEM buffers per EQE1
+  texture (the mip chain uploaded with the default filter in place: level 0
+  alone, then the chain) plus an unused second GL context and a duplicate
+  player-region node; fixed, qeynos2 `steady_60s` 36.70 -> 22.52 MiB. The
+  `[memgpu]` tally counts texture storage and the depth/stencil; the Pi rig
+  fails `gpu_unnamed_over_bound` above 10 MiB. Follow-ups B971 (#289), B972 (#290).
+- **B971** (C) → issue #289. The window surface's D24S8 depth/stencil is
+  3.52 MiB of GEM at 1280x720; its only stencil user (`/portal`) is off on the
+  orangepi preset. 16-bit depth changes pixels: Will's call. Measured by B962.
 - **B967** (C) → issue #285. The player light is quantized at large world
   coordinates on BOTH GPUs: the mediump `vWorldPos` varying. The goldens carry
   it. Fix: pLv in the VS, plus a re-bless. Measured by B965.
@@ -660,11 +666,17 @@ it without taking that measurement first.
   built-in fwidth() threshold (x86) with the constant 0.5: the x86 fringe
   narrowed (80 units, 128^2: silhouette mismatch 6.1 % -> 4.1 % of the
   footprint), and the Pi now draws it too (5.0 %) -- not gone.
-- **B963** (B) → issue #281. On Lima the benchmark gives every static
-  hardware buffer its own 4 KiB-minimum GEM BO: qeynos2 9,355 BOs = 36.5 MiB
-  (+9.6 MiB kernel slab) for 1.73 MiB of vertex/index data. The client has no
-  such BO population, so Pi benchmark GPU-memory figures (B952's included) are
-  not the client's. Measured by B955 (LD_PRELOAD BO census).
+- ~~**B963** (B) → issue #281. On Lima the benchmark gives every static
+  hardware buffer its own 4 KiB-minimum GEM BO (qeynos2 9,355 BOs = 36.5 MiB).~~
+  **CLOSED by B962** on the question it asked of the client: the tagged census
+  shows the client creates NO static vertex/index buffers in pooled mode, so
+  it does not have that shape (`refactor/B962/README.md` section 5). The
+  benchmark's per-buffer VBOs remain, so a Pi benchmark GPU-memory figure is
+  still not the client's -- read the client's `[memgpu]` row instead.
+- **B972** (B, memory) → issue #290. Mesa's stream-upload buffers and Lima's
+  draw-time BOs hold 3-6 MiB of the client's GEM at `steady_60s`, driven by
+  client-array draws (2D UI, entities, zone pools, raw-GL particles). A static
+  VBO for the zone pools measured worse (B962). Measured by B962.
 - ~~**B958** (B) → issue #276. Benchmark impostor billboards rendered inverted
   on Lima (Orange Pi).~~ **FIXED** (`refactor/B958/README.md`): Lima runs a
   `discard` whose comparison operand depends on a derivative INVERTED, and the

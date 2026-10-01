@@ -1,5 +1,6 @@
 #include "client/graphics/texture_atlas.h"
 #include "common/logging.h"
+#include "client/core/gem_owner_census.h"  // B962
 
 #ifdef EQT_HAS_GLES2
 #include <GLES2/gl2.h>
@@ -221,6 +222,7 @@ bool TextureAtlas::uploadPreloadedPage(PreloadData& data, int pageIndex) {
                 break;
             }
 
+            eqt::memory::GemTag gemTag("tex:atlas-page", "zone_atlas", w, h, level);
             glCompressedTexImage2D(GL_TEXTURE_2D, level,
                                    GL_ETC1_RGB8_OES,
                                    w, h, 0,

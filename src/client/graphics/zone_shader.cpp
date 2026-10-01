@@ -1,5 +1,6 @@
 #include "client/graphics/zone_shader.h"
 #include "common/logging.h"
+#include "client/core/gem_owner_census.h"  // B962
 #ifdef EQT_HAS_GLES2
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
@@ -366,6 +367,7 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
             // Initialize with default attenuation (will be updated on first beginFrame)
             uint16_t data[256 * 2];
             fillAttenLUT(data, playerLightAtten_[0], playerLightAtten_[2], lutMaxD2_);
+            eqt::memory::GemTag gemTag("tex:light-lut 256x1");
             glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, 256, 1, 0,
                          GL_LUMINANCE_ALPHA, GL_HALF_FLOAT_OES, data);
             lutBakedConst_ = playerLightAtten_[0];

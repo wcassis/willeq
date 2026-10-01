@@ -5,6 +5,7 @@
 #include "client/graphics/work_priority.h"
 #include "common/logging.h"
 #include <algorithm>
+#include <cstdlib>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -149,6 +150,14 @@ static uint32_t textureGroupId(const irr::video::SMaterial& mat) {
 ZoneMergeBuffers& ZoneLifecycleComponent::ensureZoneMergeBuffers() {
     if (!zoneMergeBuffers_) zoneMergeBuffers_ = std::make_unique<ZoneMergeBuffers>();
     return *zoneMergeBuffers_;
+}
+
+bool ZoneLifecycleComponent::zonePoolsEnabled() const {
+    // WILLEQ_ZONE_POOLS=0 (or "u", unpooled) forces the legacy per-region-node
+    // path with the same binary, so the two can be compared frame for frame.
+    const char* poolsEnv = std::getenv("WILLEQ_ZONE_POOLS");
+    return ctx_.config.constrainedConfig.mergeZoneDraws &&
+           !(poolsEnv && (poolsEnv[0] == '0' || poolsEnv[0] == 'u'));
 }
 
 void ZoneLifecycleComponent::createZoneMesh() {

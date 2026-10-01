@@ -191,9 +191,20 @@ private:
     mutable GLenum CachedWrapS = 0;
     mutable GLenum CachedWrapT = 0;
 
+    // B962: the bytes this texture's storage really holds, when the uploader
+    // knows them to differ from GpuBytes (an ETC1 texture whose upload sends
+    // level 0 only, a main texture wrapped with its companion's bytes too --
+    // B948). GpuBytes stays the budget/gate figure; the gpu_buffers tally
+    // reads this. Unset = GpuBytes.
+    u32 StorageBytes = 0;
+    bool HasStorageBytes = false;
+
 public:
     // Get GPU memory usage for this texture
     u32 getGpuMemoryBytes() const { return GpuBytes; }
+    // B962 (see StorageBytes)
+    u32 getStorageBytes() const { return HasStorageBytes ? StorageBytes : GpuBytes; }
+    void setStorageBytes(u32 bytes) { StorageBytes = bytes; HasStorageBytes = true; }
 };
 
 } // end namespace video

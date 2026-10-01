@@ -23,6 +23,7 @@ namespace {
 
 std::atomic<uint64_t> g_logicalTextures{0};
 std::atomic<uint64_t> g_logicalBuffers{0};
+std::atomic<uint64_t> g_logicalDepthStencil{0};
 std::atomic<bool> g_logicalPublished{false};
 std::atomic<int> g_software{-1};
 
@@ -112,9 +113,10 @@ uint32_t countLines(const std::string& text) {
 
 } // namespace
 
-void publishGpuLogicalTally(uint64_t textureBytes, uint64_t bufferBytes) {
+void publishGpuLogicalTally(uint64_t textureBytes, uint64_t bufferBytes, uint64_t depthStencilBytes) {
     g_logicalTextures.store(textureBytes, std::memory_order_relaxed);
     g_logicalBuffers.store(bufferBytes, std::memory_order_relaxed);
+    g_logicalDepthStencil.store(depthStencilBytes, std::memory_order_relaxed);
     g_logicalPublished.store(true, std::memory_order_release);
 }
 
@@ -228,7 +230,7 @@ std::string parseCgroupV2Path(const std::string& text) {
 GpuBufferCensus decideGpuBuffers(const GpuBufferInputs& in) {
     GpuBufferCensus c;
     c.in = in;
-    c.logicalBytes = in.logicalTextureBytes + in.logicalBufferBytes;
+    c.logicalBytes = in.logicalTextureBytes + in.logicalBufferBytes + in.logicalDepthStencilBytes;
     c.cgroupExclusive = in.memcg.ok && in.cgroupProcs == 1;
     // A software rasteriser has no GPU: published by the renderer, else
     // inferred from the absence of any DRM fd.
@@ -266,6 +268,7 @@ GpuBufferCensus readGpuBufferCensus() {
     in.logicalPublished = g_logicalPublished.load(std::memory_order_acquire);
     in.logicalTextureBytes = g_logicalTextures.load(std::memory_order_relaxed);
     in.logicalBufferBytes = g_logicalBuffers.load(std::memory_order_relaxed);
+    in.logicalDepthStencilBytes = g_logicalDepthStencil.load(std::memory_order_relaxed);
     in.softwareRasteriser = g_software.load(std::memory_order_relaxed);
 #if defined(__linux__)
     // DRM fds: one client may hold several fds (dup'd, or card + render
@@ -328,6 +331,7 @@ std::string gpuBuffersToLogLine(const std::string& point, const std::string& zon
     appendKV(out, "fdinfo_resident", c.in.fdinfoResidentBytes);
     appendKV(out, "owned", ownedBytes);
     appendKV(out, "owned_plus_gpu_buffers", ownedPlusGpuBuffers(ownedBytes, c));
+    appendKV(out, "logical_depth_stencil", c.in.logicalDepthStencilBytes);  // B962
     return out;
 }
 
@@ -339,6 +343,7 @@ std::string gpuBuffersToJson(const GpuBufferCensus& c, uint64_t ownedBytes) {
     out += ",\"logicalBytes\":" + std::to_string(c.logicalBytes);
     out += ",\"logicalTextureBytes\":" + std::to_string(c.in.logicalTextureBytes);
     out += ",\"logicalBufferBytes\":" + std::to_string(c.in.logicalBufferBytes);
+    out += ",\"logicalDepthStencilBytes\":" + std::to_string(c.in.logicalDepthStencilBytes);
     out += ",\"residualBytes\":" + std::to_string(c.residualBytes);
     out += ",\"memcgShmemBytes\":" + std::to_string(c.in.memcg.shmemBytes);
     out += ",\"memcgKernelBytes\":" + std::to_string(c.in.memcg.kernelBytes);
