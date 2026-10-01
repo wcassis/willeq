@@ -3,6 +3,7 @@
 #include "client/graphics/environment/unified_particle_renderer.h"
 #include "client/graphics/environment/spell_sprite_atlas.h"
 #include "common/logging.h"
+#include "client/core/gem_owner_census.h"  // B962
 #include <cstring>
 #include <chrono>
 
@@ -247,7 +248,10 @@ bool UnifiedParticleRenderer::init() {
         glGenTextures(1, &opaqueAlphaFallback_);
         glBindTexture(GL_TEXTURE_2D, opaqueAlphaFallback_);
         const unsigned char white[4] = {255, 255, 255, 255};
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+        {
+            eqt::memory::GemTag gemTag("tex:particle-alpha-fallback 1x1");
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+        }
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(savedTex));

@@ -292,12 +292,26 @@ it without taking that measurement first.
   device, 2 x 3,686,400 B per client at 1280x720) and the client cgroup's
   kernel bytes (1.1-1.9 MiB) are on no ledger row; the first is visible only
   in debugfs (root). Measured by B955.
-- **B962** (A, memory) → issue #280. The client's GEM buffers are ~2x its
-  logical GPU tally on the Pi (qeynos2 `steady_60s` 36.98 vs 17.33 MiB):
-  depth buffer 3.52, two GL contexts' driver BOs, 1 MiB stream-upload BOs,
-  9.56 MiB of mapped BOs beyond the tally not decomposed per texture; and
-  `vboEboBytes` reads ~0 on the Pi although Step 4 uploads per-region hardware
-  buffers. Measured by B955.
+- ~~**B962** (A, memory) → issue #280. The client's GEM buffers are ~2x its
+  logical GPU tally on the Pi.~~ **FIXED** (`refactor/B962/README.md`): a
+  tagged GEM census (`scripts/pi/lima_bo_census.c` + `gem_owner_table.py`)
+  put every buffer on an owner row. The 2x was two GEM buffers per EQE1
+  texture (the mip chain uploaded with the default filter in place: level 0
+  alone, then the chain) plus an unused second GL context and a duplicate
+  player-region node; fixed, qeynos2 `steady_60s` 36.70 -> 22.52 MiB. The
+  `[memgpu]` tally counts texture storage and the depth/stencil; the Pi rig
+  fails `gpu_unnamed_over_bound` above 10 MiB. Follow-ups B971 (#289), B972 (#290).
+- **B971** (C) → issue #289. The window surface's D24S8 depth/stencil is
+  3.52 MiB of GEM at 1280x720; its only stencil user (`/portal`) is off on the
+  orangepi preset. 16-bit depth changes pixels: Will's call. Measured by B962.
+- **B967** (C) → issue #285. The player light is quantized at large world
+  coordinates on BOTH GPUs: the mediump `vWorldPos` varying. The goldens carry
+  it. Fix: pLv in the VS, plus a re-bless. Measured by B965.
+- **B968** (C) → issue #286. Past 64 units the player light gets brighter with
+  distance on a surface that faces it: the LUT's `1/d` clamps at 1/64, so
+  pLn = d/64. Both GPUs; in the goldens. Measured by B965.
+- **B969** (A) → issue #287. timorous_f2: 3,175 px >32, Pi vs the x86 golden,
+  along polygon edges. Not the player light; cause not isolated. Found by B965.
 - **B973** (A) → issue #291. Post-load entity builds are Green-gated
   (`FrameComponent::processFrame`, "1 unit per GREEN frame";
   `EntityRenderer::processOneEntityBuildStep`), and the Pi is rarely Green in
@@ -670,11 +684,26 @@ it without taking that measurement first.
   billboard (B964) divides RGB by the sampled alpha: 13-19 % fewer dark-edge
   pixels than the built-in alpha test, still not gone
   (`refactor/B964/README.md`).
-- **B963** (B) → issue #281. On Lima the benchmark gives every static
-  hardware buffer its own 4 KiB-minimum GEM BO: qeynos2 9,355 BOs = 36.5 MiB
-  (+9.6 MiB kernel slab) for 1.73 MiB of vertex/index data. The client has no
-  such BO population, so Pi benchmark GPU-memory figures (B952's included) are
-  not the client's. Measured by B955 (LD_PRELOAD BO census).
+- ~~**B963** (B) → issue #281. On Lima the benchmark gives every static
+  hardware buffer its own 4 KiB-minimum GEM BO (qeynos2 9,355 BOs = 36.5 MiB).~~
+  **CLOSED by B962** on the question it asked of the client: the tagged census
+  shows the client creates NO static vertex/index buffers in pooled mode, so
+  it does not have that shape (`refactor/B962/README.md` section 5). The
+  benchmark's per-buffer VBOs remain, so a Pi benchmark GPU-memory figure is
+  still not the client's -- read the client's `[memgpu]` row instead.
+- **B972** (B, memory) → issue #290. Mesa's stream-upload buffers and Lima's
+  draw-time BOs hold 3-6 MiB of the client's GEM at `steady_60s`, driven by
+  client-array draws (2D UI, entities, zone pools, raw-GL particles). A static
+  VBO for the zone pools measured worse (B962). Measured by B962.
+- ~~**B970** (B) → issue #288. `build-arm` fetched `irrlicht-1.8.5.zip` and
+  `libpng-1.6.37.tar.xz` from downloads.sourceforge.net inside a Docker layer, so
+  the 2026-10-01 SourceForge outage (HTTP 522, ~3 h) failed every job whose
+  `docker/irrlicht-drm/*` change invalidated it.~~ **FIXED**
+  (`refactor/B970/README.md`): both archives live in the NFS store
+  `ci-arm/vendor/`, SHA256-pinned in `docker/vendor.sha256`, filled once by
+  `scripts/ci/vendor_fetch.sh --ensure` and handed to the build as the `vendor`
+  build context. The other Dockerfiles (`Dockerfile`, `arm64-noble`,
+  `arm-cross`) still wget from SourceForge; none is in CI.
 - ~~**B958** (B) → issue #276. Benchmark impostor billboards rendered inverted
   on Lima (Orange Pi).~~ **FIXED** (`refactor/B958/README.md`): Lima runs a
   `discard` whose comparison operand depends on a derivative INVERTED, and the
@@ -689,10 +718,35 @@ it without taking that measurement first.
   the host injects `eqt::ResolveShaderCacheDirectory()` through
   `eqt::ConfigureGles2ShaderCache()`; no directory = cache off. Pinned by
   `test_shader_cache_path` and two `DataPathRouting` censuses. Found by B958.
-- **B960** (B, *unconfirmed*) → issue #278. Which production draws reached the
-  built-in AlphaTest3D on the Pi -- and so drew inverted -- before B958.
-  Confirm by counting `useProgram(EOGLES2SP_ALPHA3D)` per frame in a rendered
-  Pi zone run on a pre-B958 build.
+- ~~**B960** (B) → issue #278. Which production draws reached the built-in
+  AlphaTest3D on the Pi before B958.~~ **ANSWERED** (`refactor/B960/README.md`):
+  the inventory paperdoll for a model with a WLD-masked material (measured: the
+  Iksar head, 59 draws per inventory session; Pi before/after 43-86 px >32 per
+  viewer angle, after = x86), and one frame per newly built masked entity
+  (B966). The world otherwise: 0 draws, and the 15 gate frames are bit-identical
+  before/after on the Pi. Instruments: `WILLEQ_ALPHATEST_FWIDTH=1` (pre-B958
+  test knob), `WILLEQ_ALPHATEST_TRACE=1`. The dead fwidth() zone variants were
+  deleted. Follow-ups: #283 (B965), #284 (B966).
+- ~~**B965** (A) → issue #283. The per-pixel player light was blown out on
+  Lima.~~ **FIXED** (`refactor/B965/README.md`, `tools/hwcaps/gles2_player_light_probe`).
+  Mali-400's FS ALU is FP16 even under `highp`, so `d2 = dot(pLv, pLv)`
+  became +inf past 256 units. Lima's LINEAR sampler read the LUT's near end for
+  that infinite coordinate. The LUT coordinate is now `clamp(d2 * uLUTScale, 0, 1)`,
+  and the x86 goldens are pixel-identical. Pi gate frames, >32 px vs the golden:
+  - gfaydark 23,842 / 202 / 4,531 → 429 / 66 / 163;
+  - iceclad 19,495 / 32,245 / 6,904 → 2 / 29 / 335.
+
+  The residual iceclad_f2 band edges are B967. Follow-ups: #285 (B967), #286
+  (B968), #287 (B969), #288 (B970).
+- **B966** (A, minor) → issue #284. A newly built entity draws one frame with
+  unpromoted materials (driver built-in Solid3D / AlphaTest3D):
+  `SceneNodeCreation` adds the node and `NodeSetup` promotes it a frame later
+  (`entity_build_step.cpp`). Measured on the Pi: `a_whiskered_bat` in qeynos2.
+  Found by B960.
+- **B970** (B) → issue #288. CI `build-arm` cannot build the ARM Irrlicht
+  layer while downloads.sourceforge.net is down. `docker/Dockerfile.arm-noble`
+  wgets the Irrlicht zip and libpng; HTTP 522 for all of B965's session (job
+  1926). Fix: vendor both archives with pinned sha256. Found by B965.
 
 ## C — needs Will's decision
 

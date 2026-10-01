@@ -449,6 +449,12 @@ private:
                            unsigned int& texIdOut, unsigned int& alphaTexIdOut);
     bool createV2Storage(const std::string& name, const CompressedEntry& entry,
                          unsigned int& texIdOut);
+    // B962: the bytes those two really upload (level 0 alone unless the
+    // texture is sampled through a mipmap filter -- the ETC1 companion), set
+    // on the wrapped texture as its STORAGE bytes for the gpu_buffers tally.
+    // The budget and the gated gpuTextureBytes keep the full-chain figures.
+    static uint32_t etc1StorageBytes(const CompressedEntry& entry, bool companion);
+    static uint32_t v2StorageBytes(const CompressedEntry& entry);
     irr::video::ITexture* createDecodedTexture(const std::string& glName,
                                                const std::vector<uint8_t>& rgbaPixels,
                                                int width, int height);

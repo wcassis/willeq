@@ -21,6 +21,7 @@
 #include "client/graphics/sky_config.h"
 #include "client/graphics/gles2_vertex_color.h"
 #include "common/logging.h"
+#include "client/core/gem_owner_census.h"  // B962
 #include <cmath>
 #include <algorithm>
 
@@ -356,7 +357,10 @@ bool SkyRenderer::beginStripUpload(const std::string& name, const uint8_t* argbP
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    {
+        eqt::memory::GemTag gemTag("tex:sky-strip", "sky", w, h, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    }
 
     // Allocate reusable swizzle buffer (one strip worth of RGBA pixels)
     stripState_.swizzleBuf.resize(w * SKY_STRIP_HEIGHT * 4);

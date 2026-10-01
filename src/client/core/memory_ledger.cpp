@@ -8,6 +8,7 @@
 #define _GNU_SOURCE  // B841: mallinfo2, malloc_info, malloc_trim, get_mallopt
 #endif
 #include "client/core/memory_ledger.h"
+#include "client/core/gem_owner_census.h"
 #include "memory_ledger_trace.h"  // T504: the stack-trace instrument (own TU)
 #include "client/core/memory_owner_rows.h"  // B964: published owner rows
 
@@ -782,6 +783,9 @@ Snapshot recordPoint(const std::string& point, const std::string& zone) {
     LOG_INFO(MOD_MAIN, "{}", toLogLine(s));
     // B955: the GPU buffer row's sources and reconciliation, beside every point.
     LOG_INFO(MOD_MAIN, "{}", gpuBuffersToLogLine(point, s.zone, s.gpuBuffers, s.ownedBytes));
+    // B962: the per-BO owner table, when the census shim is preloaded (no-op
+    // otherwise -- include/client/core/gem_owner_census.h).
+    gemCensusDump(point.c_str());
     // The startup breakdown rides as a sibling of the ledger line at EVERY
     // point, so `startup`, `ready` and `steady_60s` all carry it and the
     // Pi run gets the same table the x86 run does -- the bucket that never

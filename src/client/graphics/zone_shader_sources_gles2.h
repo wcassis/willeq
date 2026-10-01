@@ -142,6 +142,18 @@ void main() {
 
 // GLSL ES 1.00 fragment shader — solid (opaque)
 // Per-pixel player light (light[0]) for smooth illumination on large triangles.
+//
+// The LUT coordinate is clamp(d2 * uLUTScale, 0.0, 1.0) in every player-light
+// FS below (B965, GitLab #283). Mali-400's fragment ALU is FP16 whatever the
+// precision qualifier says, so d2 = dot(pLv, pLv) overflows to +inf for any
+// pixel 256+ units from the light (65,504 is FP16's max), and Lima's LINEAR
+// sampler returns the LUT's NEAR end (full brightness) for an infinite
+// coordinate under CLAMP_TO_EDGE -- the blown-out far band B960 measured on the
+// Pi. The clamp turns +inf into 1.0, the last texel, which is exactly what
+// llvmpipe already sampled for any coordinate past the table, so the x86
+// output is unchanged bit for bit. Cost on the Pi: GPU p50 +2.5..4.7% per frame
+// across the five gate zones (a pre-scaled form cost +4.5..9.3%). Measured:
+// refactor/B965/README.md, tools/hwcaps/gles2_player_light_probe.cpp.
 static const char* FRAGMENT_SHADER_SOLID_SRC = R"(
 precision mediump float;
 
@@ -163,7 +175,7 @@ void main() {
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -197,7 +209,7 @@ void main() {
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -234,7 +246,7 @@ void main() {
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -243,42 +255,10 @@ void main() {
 }
 )";
 
-// GLSL ES 1.00 fragment shader — alpha-test (derivatives variant)
-// Clamp threshold to [0.1, 0.5] so binary alpha masks still discard transparent pixels.
-static const char* FRAGMENT_SHADER_ALPHA_SRC_DERIVATIVES = R"(
-#extension GL_OES_standard_derivatives : enable
-precision mediump float;
-
-uniform sampler2D uTexture;
-uniform sampler2D uAlphaTexture;
-uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
-uniform vec3 uPlayerLightColor;
-uniform sampler2D uAttenLUT;
-uniform float uLUTScale;
-
-varying vec4 vColor;
-varying vec2 vTexCoord;
-varying float vFogFactor;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
-
-void main() {
-    vec4 texColor = texture2D(uTexture, vTexCoord);
-    float alpha = texture2D(uAlphaTexture, vTexCoord).r;
-    float threshold = clamp(0.5 - fwidth(alpha), 0.1, 0.5);
-    if (alpha < threshold) discard;
-
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
-    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * lut.a;
-
-    vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, alpha * vColor.a);
-    gl_FragColor = mix(uFogColor, lit, vFogFactor);
-}
-)";
+// B960 (GitLab #278): the fwidth() "derivatives" alpha-test variant that sat
+// here had no caller (zone_shader.cpp compiles the constant-threshold sources
+// on every GLES2 build) and is the shader shape Lima runs INVERTED (B958,
+// refactor/B958/README.md) -- deleted rather than left as a trap.
 
 // GLSL ES 1.00 atlas vertex shader — per-vertex lighting, precomputed atlas UV
 // Light[0] (player light) computed per-pixel in FS; lights[1..7] per-vertex.
@@ -427,7 +407,7 @@ void main() {
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -461,7 +441,7 @@ void main() {
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -470,41 +450,7 @@ void main() {
 }
 )";
 
-// GLSL ES 1.00 atlas fragment shader — alpha (dual ETC1, derivatives variant)
-static const char* ATLAS_FRAGMENT_SHADER_ALPHA_SRC_DERIVATIVES = R"(
-#extension GL_OES_standard_derivatives : enable
-precision mediump float;
-
-uniform sampler2D uTexture;
-uniform sampler2D uAlphaTexture;
-uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
-uniform vec3 uPlayerLightColor;
-uniform sampler2D uAttenLUT;
-uniform float uLUTScale;
-
-varying vec4 vColor;
-varying vec2 vTexCoord;
-varying float vFogFactor;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
-
-void main() {
-    float alpha = texture2D(uAlphaTexture, vTexCoord).r;
-    float threshold = clamp(0.5 - fwidth(alpha), 0.1, 0.5);
-    if (alpha < threshold) discard;
-    vec4 texColor = texture2D(uTexture, vTexCoord);
-
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
-    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * lut.a;
-
-    vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
-    gl_FragColor = mix(uFogColor, lit, vFogFactor);
-}
-)";
+// B960: the atlas fwidth() alpha variant was deleted for the same reason.
 
 // ============================================================================
 // Debug fragment shader (GLSL ES 1.00) — visualize shader intermediates
@@ -540,7 +486,7 @@ void main() {
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
     float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(d2 * uLUTScale, 0.5));
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 

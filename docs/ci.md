@@ -92,6 +92,27 @@ on the Pi are never touched.
   ext4 copy of it. For another binary (kmscube, `gles2_zone_benchmark`), use
   `scripts/pi/mesa_nollvm_select.sh <in> <out>`.
 
+### The vendored ARM archives (B970, #288)
+
+`docker/Dockerfile.arm-noble` builds Irrlicht 1.8.5 and takes the NEON sources from libpng 1.6.37. It no
+longer downloads them: SourceForge returned HTTP 522 for ~3 h on 2026-10-01 and every `build-arm` whose
+`docker/irrlicht-drm/*` change invalidated the layer failed.
+
+- **The store** is `/mnt/projects/fable/ci-arm/vendor/` on NFS (`VENDOR_STORE` overrides), never in git:
+  `irrlicht-1.8.5.zip`, `libpng-1.6.37.tar.xz`.
+- **The pins** are `docker/vendor.sha256` (`sha256sum -c` format). The Dockerfile `COPY`s the pin file and
+  re-checks the archives inside the image.
+- **`scripts/ci/vendor_fetch.sh --ensure`** verifies the store against the pins, downloads only what is missing or
+  wrong (SourceForge first, then `sources.buildroot.net`, then `ftp.osuosl.org` for libpng; every download must hash to
+  the pin), and prints the store path. `--check` verifies only. If a pinned file is neither in the store nor
+  obtainable it exits 1 naming the pin. `build-arm` runs it as its first script line, and
+  `scripts/build-arm-noble.sh` runs it again and passes the result as `--build-context vendor=<store>`.
+- **Layer cache.** The archives are `COPY --from=vendor` before the `docker/irrlicht-drm/*` copies, so editing
+  those sources does not touch the archive layers, and no step before the Irrlicht compile needs SourceForge.
+- **Refreshing a pin.** Put the new file in the store, change the name/hash in `docker/vendor.sha256` and the
+  source URLs in `vendor_fetch.sh`, and commit the pin. Never commit the archive.
+- The x86 bootstrap (`scripts/build-gles2-x86.sh`) never downloaded: it copies `/mnt/projects/irrlicht-1.8.5`.
+
 ## The stages
 
 | Stage | What it does | Cold | Warm |
