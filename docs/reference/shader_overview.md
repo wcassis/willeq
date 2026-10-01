@@ -89,6 +89,8 @@ Identical VS to Solid3D. Fragment shader adds `discard` for alpha-tested transpa
 | Base | `if (texColor.a < 0.5) discard` | Hard threshold |
 | Derivatives | `threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5)` | Adaptive threshold for smoother vegetation edges. Clamped to [0.1, 0.5] to ensure binary alpha masks (0/1 with no gradient) still discard properly |
 
+> **Superseded by B958 (2026-10-01):** the Derivatives variant is deleted; every device compiles the Base FS. Lima runs that discard inverted (`refactor/B958/README.md`).
+
 ### 2.5 AtlasSolid3D (Program 2)
 
 Same lighting pipeline as Solid3D, but reads precomputed atlas UVs from `aTexCoord1` instead of original UVs from `aTexCoord0`. Reuses `SOLID3D_FS`.
@@ -186,7 +188,7 @@ lit = (texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a)
 
 The conditional branch on color sum avoids the `length()`, `normalize()`, and division operations when the player light is off (`/plight` toggle or no light equipped).
 
-**Alpha-test fragment shaders:** Same per-pixel player light logic, plus `discard` on alpha < 0.5. The derivatives variant uses `fwidth()` but is disabled on Lima driver (which returns degenerate values).
+**Alpha-test fragment shaders:** Same per-pixel player light logic, plus `discard` on alpha < 0.5. The derivatives variant uses `fwidth()` but is disabled on Lima driver (which returns degenerate values). *(B958: `fwidth()` is correct on Lima; a discard whose comparison depends on it runs inverted -- `refactor/B958/README.md`.)*
 
 ### 3.2 Atlas Shaders (GLES2)
 
@@ -470,4 +472,4 @@ The `COGLES2ShaderManager` supports `GL_OES_get_program_binary` for caching comp
 2. **Lightweight variants:** Reduce varying count from 5 to 3, saving interpolation bandwidth on the tile-based architecture.
 3. **ETC1 dual-texture alpha:** Mali 400's only hardware-compressed format. RGB and alpha stored separately, sampled in FS from two texture units.
 4. **`gl_TexCoord[]` on desktop GL:** Comments note that Mali 400's Lima driver may route built-in texture coordinate varyings through dedicated high-precision interpolation hardware, avoiding FP16 blocky artifacts on large triangles.
-5. **fwidth() disabled on Lima:** The Lima driver's standard derivatives implementation returns degenerate values, so the adaptive alpha threshold is skipped for zone shader alpha-test materials (though it's offered for the built-in programs if the extension reports as available).
+5. **fwidth() disabled on Lima:** The Lima driver's standard derivatives implementation returns degenerate values, so the adaptive alpha threshold is skipped for zone shader alpha-test materials (though it's offered for the built-in programs if the extension reports as available). *(B958: the cause is not fwidth() -- a derivative-dependent discard runs inverted on Lima -- and the built-in programs no longer offer it; `refactor/B958/README.md`.)*

@@ -258,7 +258,8 @@ marginal above), which the row does not see.
    unit), with the scratch's sample count; never one `addRenderTargetTexture()`
    per impostor (2.3x on Lima). `COpenGLES2Driver::createScreenShot()` must be
    fixed (#272) before any capture code reads frames back, and the billboard
-   draw must render on Lima first (#276) -- today it does not.
+   draw must render on Lima first (#276) -- today it does not. *(Both fixed by
+   the B958/B954 unit: `refactor/B958/README.md`.)*
 
 ## Findings filed
 
@@ -270,6 +271,8 @@ marginal above), which the row does not see.
 - **#276 (B958, B)** impostor billboards render inverted on Lima (the
   transparent texels are drawn, the model's are not); texture content verified
   correct. Blocks any Pi pixel evidence and the production port on the Pi.
+  *(#272 and #276 fixed by the B958/B954 unit; the Pi pixel test re-run on
+  the fixed driver is in `refactor/B958/README.md`.)*
 
 ## Deviations
 

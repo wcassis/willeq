@@ -141,12 +141,11 @@ Diff diffImages(irr::video::IImage* a, irr::video::IImage* b, irr::video::IImage
     return d;
 }
 
-// The frame's pixels as an image that OWNS its memory. Not
-// driver->createScreenShot(): COpenGLES2Driver::createScreenShot() hands its
-// pixel buffer to createImageFromData(..., ownForeignMemory=true,
-// deleteMemory=false), so every call leaks width*height*4 bytes (B952 found
-// it: this test grew RssAnon 9.6 MB per variant on x86 and the Pi OOM-killed
-// it at anon-rss 289 MB -- see refactor/B952/README.md, filed separately).
+// The frame's pixels as an image that OWNS its memory. Written by B952 because
+// COpenGLES2Driver::createScreenShot() then leaked every frame it returned
+// (the Pi OOM-killed this test at anon-rss 289 MB); B954 fixed the driver
+// (tests/test_screenshot_leak.cpp), so this is no longer a workaround, just
+// the test's own readback.
 irr::video::IImage* readFrame(ZoneBenchData& data) {
 #ifdef EQT_HAS_GLES2
     const auto size = data.driver->getScreenSize();
