@@ -17,7 +17,7 @@
 //     un-premultiply, no fog: B952's billboard), 2 = shipped program, fog off.
 //     Writes <outdir>/pixel.csv (+ crops/*.png with --crops).
 //   impostor_pixel_compare drawcost <outdir> [--counts 1,50,200] [--size 800x600]
-//                          [--frames 60] [--aa N] [--eq-path DIR] [--db FILE]
+//                          [--frames 60] [--aa N] [--drm] [--eq-path DIR] [--db FILE]
 //     N entities 100-160 units in front of the camera, full models vs
 //     impostors, glFinish-bracketed frame times. Writes <outdir>/drawcost.csv.
 
@@ -66,6 +66,7 @@ struct Options {
     float fogStart = 180.0f, fogEnd = 300.0f;  // the orangepi client's 300-unit clip
     int frames = 60;
     int antiAlias = 0;
+    bool drm = false;
     bool crops = false;
 };
 
@@ -97,6 +98,7 @@ bool parse(int argc, char** argv, Options& o) {
         else if (!strcmp(argv[i], "--frames")) o.frames = std::atoi(next());
         else if (!strcmp(argv[i], "--crops")) o.crops = true;
         else if (!strcmp(argv[i], "--aa")) o.antiAlias = std::atoi(next());
+        else if (!strcmp(argv[i], "--drm")) o.drm = true;
         else if (!strcmp(argv[i], "--size")) sscanf(next(), "%ux%u", &o.width, &o.height);
         else if (!strcmp(argv[i], "--fog")) sscanf(next(), "%f,%f", &o.fogStart, &o.fogEnd);
         else { fprintf(stderr, "unknown option %s\n", argv[i]); return false; }
@@ -245,6 +247,13 @@ bool setup(Scene& s, const Options& o, EQT::WilleqDatabase& db) {
     params.WindowSize = irr::core::dimension2d<irr::u32>(o.width, o.height);
     params.Fullscreen = true;
     params.AntiAlias = static_cast<irr::u8>(o.antiAlias);  // the orangepi preset asks for 4
+    params.Vsync = false;                                  // frame times, not the display rate
+    params.Stencilbuffer = true;                           // as the client on the orangepi preset
+#ifdef EQT_HAS_DRM
+    if (o.drm) params.DeviceType = irr::EIDT_FRAMEBUFFER;  // the Pi: DRM/KMS
+#else
+    (void)o.drm;
+#endif
     eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
     s.device = irr::createDeviceEx(params);
     if (!s.device) { fprintf(stderr, "ERROR: no device\n"); return false; }
