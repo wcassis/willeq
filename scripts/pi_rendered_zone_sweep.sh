@@ -40,6 +40,10 @@
 #          [--snap-points startup,ready,steady_60s]   (B932: a smaps/maps
 #          snapshot at each named ledger point, rendered_zone_run.py)
 #          [--mesa nollvm|system]   (B935; default $WILLEQ_MESA, else nollvm)
+#          [--dump-every N --dump-max M]   (B960; default 100 / 3: the
+#          client's --dump-every / --dump-max-frames, Pi /tmp is ~242 MB)
+#          [--account NAME --char NAME]   (B960; default the lane's test
+#          account/character from scripts/eqemu/env.sh, same password)
 #          [--shared-cgroup]   (B955: by default the client runs in its OWN
 #          memory cgroup -- rendered_zone_run.py --own-cgroup -- so its
 #          gpu_buffers ledger row reads the Lima GEM bytes from memory.stat;
@@ -106,6 +110,10 @@ EXTRA_ENV=""
 DRIVE_KEYS=0
 ALLOW_VM=0
 SNAP_POINTS=""
+DUMP_EVERY=100
+DUMP_MAX=3
+ACCOUNT_OVERRIDE=""
+CHAR_OVERRIDE=""
 OWN_CGROUP=1
 MESA="${WILLEQ_MESA:-nollvm}"
 while [ $# -gt 0 ]; do
@@ -127,8 +135,12 @@ while [ $# -gt 0 ]; do
         --allow-vm-lane) ALLOW_VM=1; shift ;;
         --snap-points) SNAP_POINTS="$2"; shift 2 ;;
         --mesa) MESA="$2"; shift 2 ;;
+        --dump-every) DUMP_EVERY="$2"; shift 2 ;;
+        --dump-max) DUMP_MAX="$2"; shift 2 ;;
+        --account) ACCOUNT_OVERRIDE="$2"; shift 2 ;;
+        --char) CHAR_OVERRIDE="$2"; shift 2 ;;
         --shared-cgroup) OWN_CGROUP=0; shift ;;
-        -h|--help) sed -n '2,68p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,72p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -144,7 +156,8 @@ TSV="$OUT/results.tsv"
 RETRY_TSV="$OUT/results_retry.tsv"
 RIG_LOG="$OUT/sweep.log"
 say() { printf '[pi_rendered_sweep %s] %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$RIG_LOG" >&2; }
-CHAR="${EQ_TEST_CHARACTER}"
+CHAR="${CHAR_OVERRIDE:-${EQ_TEST_CHARACTER}}"
+[ -n "$ACCOUNT_OVERRIDE" ] && EQ_TEST_ACCOUNT="$ACCOUNT_OVERRIDE"
 
 # ---- the zone set: B854's 46 Kunark + Velious rows, heavy four first --------
 CENSUS="$REPO/scripts/ci/zone_content_sweep_zones.tsv"
@@ -356,7 +369,7 @@ env TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTR
 python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} $([ "$OWN_CGROUP" -eq 1 ] && echo --own-cgroup) -- \
 '$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
 --eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
---dump-frames-dir '$pidir/frames' --dump-every 100 --dump-max-frames 3 \
+--dump-frames-dir '$pidir/frames' --dump-every $DUMP_EVERY --dump-max-frames $DUMP_MAX \
 > '$pidir/runner.out' 2>&1; cp -rp '$pidir/.' '$dir/'; \
 sudo -n pkill -TERM -f '[u]input_drive[.]py' >/dev/null 2>&1; sleep 1; cp '$pidir/keys.tsv' '$pidir/keys.out' '$dir/' 2>/dev/null; \
 sudo -n rm -rf '$pidir'; true"

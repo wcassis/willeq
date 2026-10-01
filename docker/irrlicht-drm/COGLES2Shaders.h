@@ -83,7 +83,9 @@ public:
     // Compile and link all built-in programs. Returns true if at least Color2D succeeded.
     // B958: the alpha-test programs use the constant 0.5 threshold on every
     // device; the fwidth() variant is miscompiled by Lima (COGLES2Shaders.cpp).
-    bool init();
+    // legacyFwidthAlphaTest = true restores that variant for the B960
+    // before/after measurement only (WILLEQ_ALPHATEST_FWIDTH=1).
+    bool init(bool legacyFwidthAlphaTest = false);
 
     // Activate a program. Returns false if program unavailable.
     bool useProgram(EOGLES2ShaderProgram prog);

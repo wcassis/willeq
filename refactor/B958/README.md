@@ -230,7 +230,8 @@ code path selects it (`useProgram(EOGLES2SP_ATLAS_ALPHA3D)` has no caller).
 - The Mesa source-level cause, i.e. which ppir pass turns the discard around.
   The probe pins the shader shape that triggers it. Not reported upstream.
 - Mesa versions other than 25.2.8, and other Mali-400 / Lima kernels.
-- Production reach of the built-in AlphaTest3D on the Pi (#278).
+- ~~Production reach of the built-in AlphaTest3D on the Pi (#278).~~ Answered
+  by B960 (`refactor/B960/README.md`).
 - That no CI visual-gate golden moves: verified locally (all golden frames
   pass), with CI pending at hand-off.
 - RDP capture end to end (no RDP client was connected). The leak is proven at
