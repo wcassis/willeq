@@ -184,17 +184,21 @@ governor ondemand untouched. No eqemu lock or stack used.
      `textureCacheBytesLimit` display field (64 MiB manifest vs 51 MiB live).
 6. ~~Full suite + hygiene: `ctest --test-dir build -j6` (record the summary line),
    `bash scripts/refactor/check_file_sizes.sh -C . fable`.~~ **DONE** (2026-10-01,
-   kanban unit, on CI per the card rule): CI pipeline **453** (id 453) on the
-   final head `450f327c` -- hygiene/build/**test**/**gate** all **success**.
+   kanban unit, on CI per the card rule): CI pipeline **454** on the final head
+   `8d0bc2ed` -- hygiene/build/**test**/**gate** all **success** (pipeline 453 on
+   `450f327c` identical; 454 re-ran after the docs-only REMAINS-6 commit).
    - Full suite (CI `test` job): **"100% tests passed, 0 tests failed out of
-     5145"**, Total Test time 162.23 s.
+     5145"**.
    - Gate (CI `gate` job): **"=== VISUAL GATE: PASS ==="**, **0 PIXEL MISMATCH
      in 15 frames**.
    - File sizes (`check_file_sizes.sh -C . --all`, local this host):
      "checked 1331 file(s): 1331 ok, 0 warn, 0 fail"; CLAUDE.md 58,989 bytes
      (< 60,000 ceiling).
-7. Issues #285/#286 (and #287) -> `status::review`; MR description final (Closes #285,
-   #286, #287); un-draft.
+7. ~~Issues #285/#286 (and #287) -> `status::review`; MR description final
+   (Closes #285, #286, #287); un-draft.~~ **DONE** (2026-10-01, kanban unit):
+   #285/#286/#287 labels are now `[class::A, lane::pi, status::review]`
+   (verified via API); MR !74 description final, ends with `Closes #285, #286,
+   #287`; MR un-drafted and re-titled (draft marker removed).
 
 ## Not verified
 
