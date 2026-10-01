@@ -394,10 +394,8 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                 irr::video::SColor nameColor = vis.isPlayer
                     ? irr::video::SColor(255, 100, 200, 255)
                     : irr::video::SColor(255, 255, 255, 255);
-                vis.nameNode = smgr_->addTextSceneNode(
-                    smgr_->getGUIEnvironment()->getBuiltInFont(),
-                    wname.c_str(), nameColor, vis.sceneNode,
-                    irr::core::vector3df(0, nameHeight, 0));
+                vis.nameNode = createNameTagNode(  // B975: drawn by the name-tag batch
+                    vis.sceneNode, wname, nameColor, irr::core::vector3df(0, nameHeight, 0));
             }
 
             // Boat collision (static mesh only, race 72=Ship, 73=Launch)

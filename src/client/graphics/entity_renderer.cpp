@@ -102,6 +102,7 @@ EntityRenderer::~EntityRenderer() {
     }
     placeholderMeshCache_.clear();
     impostors_.reset();  // B964: pages, scratch, batch node, the tex.impostor row
+    releaseNameTagBatch();  // B975
 }
 
 void EntityRenderer::setClientPath(const std::string& path) {

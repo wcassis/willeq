@@ -118,6 +118,7 @@ class ConstrainedTextureCache;
 struct ConstrainedRendererConfig;
 struct SimulationInput;
 class ImpostorCache;            // B964: include/client/graphics/impostor/impostor_cache.h
+class NameTagBatchNode;         // B975: include/client/graphics/name_tag_batch.h
 class FrameBudgetGovernor;
 
 // B964: one spawn's impostor state (entity_impostors.cpp). `key` is the cell
@@ -409,6 +410,15 @@ public:
     // Show/hide name tags
     void setNameTagsVisible(bool visible);
     bool areNameTagsVisible() const { return nameTagsVisible_; }
+
+    // B975: the ONE name-tag factory (entity_name_tags.cpp). A NameTagNode
+    // under `parent` at `offset`, drawn by the shared NameTagBatchNode; with
+    // WILLEQ_NAMETAG_BATCH=0 the pre-B975 CTextSceneNode (the A/B path).
+    irr::scene::ITextSceneNode* createNameTagNode(irr::scene::ISceneNode* parent, const std::wstring& text,
+                                                  irr::video::SColor color, const irr::core::vector3df& offset);
+    // The batch node (null until the first tag, and on the A/B path).
+    const NameTagBatchNode* nameTagBatch() const { return nameTagBatch_; }
+    void releaseNameTagBatch();  // destructor only: every tag holds its own reference
 
     // Enable/disable lighting on entity materials
     void setLightingEnabled(bool enabled);
@@ -739,6 +749,7 @@ private:
     void impostorOnEntityRemoved(uint16_t spawnId);
     void impostorRestoreFull(EntityVisual& visual, ImpostorSpawnState& st);
     std::unique_ptr<ImpostorCache> impostors_;
+    NameTagBatchNode* nameTagBatch_ = nullptr;  // B975: grabbed; entity_name_tags.cpp
     std::unordered_map<uint16_t, ImpostorSpawnState> impostorSpawns_;
     ImpostorFrameStats impostorFrameStats_;
     const FrameBudgetGovernor* impostorGovernor_ = nullptr;

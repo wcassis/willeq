@@ -100,69 +100,11 @@ void TextBatch::addText3D(const std::string& text,
     entries_.push_back({std::move(wtext), screenX, screenY, color, false, false});
 }
 
-// T462 (board B506): the glyph table the batched flush lays text out from.
-//
-// CGUIFont::draw() (the built-in font is a CGUIFont, an IGUIFontBitmap) walks
-// the string with a pen: for each character it adds the character's
-// underhang, queues its sprite at the pen unless the character is in the
-// font's invisible set, then adds width + overhang + the global kerning; its
-// sprite bank then issues one draw2DImageBatch per texture. Every one of those
-// numbers is reachable through the public font API, so the table is taken
-// from the font itself rather than re-derived:
-//   underhang(c)   = getKerningWidth(p, &c) - getKerningWidth(p, nullptr)
-//                    (getKerningWidth adds the PREVIOUS letter's underhang)
-//   total advance  = getDimension("c").Width (underhang + width + overhang +
-//                    kerning, exactly CGUIFont::getDimension's per-char sum)
-//   sprite         = getSpriteBank()->getSprites()[getSpriteNoFromChar(&c)]
-// The invisible set is CGUIFont's constructor default, L" " -- nothing in the
-// tree calls setInvisibleCharacters() on the built-in font. Anything the
-// table cannot reproduce exactly (a line break, a character outside 0..127, an
-// animated sprite, a sprite the bank would abort the string on, a string whose
-// glyphs span two textures) marks the entry for font_->draw() instead.
-bool TextBatch::buildGlyphTable() {
-    glyphTableBuilt_ = true;
-    if (!font_ || font_->getType() != irr::gui::EGFT_BITMAP) return false;
-    auto* bitmapFont = static_cast<irr::gui::IGUIFontBitmap*>(font_);
-    irr::gui::IGUISpriteBank* bank = bitmapFont->getSpriteBank();
-    if (!bank) return false;
-    auto& sprites = bank->getSprites();
-    auto& positions = bank->getPositions();
-
-    const wchar_t probe = L'A';
-    const irr::s32 kerningBase = font_->getKerningWidth(&probe, nullptr);
-    for (size_t i = 0; i < kGlyphTableSize; ++i) {
-        const wchar_t c = static_cast<wchar_t>(i);
-        Glyph g;
-        if (c == L'\0' || c == L'\r' || c == L'\n') {
-            glyphs_[i] = g;  // not batchable: line breaks move the pen by MaxHeight
-            continue;
-        }
-        const wchar_t one[2] = {c, L'\0'};
-        g.underhang = font_->getKerningWidth(&probe, &c) - kerningBase;
-        g.advanceAfter = static_cast<irr::s32>(font_->getDimension(one).Width) - g.underhang;
-        g.drawn = (c != L' ');
-        if (g.drawn) {
-            const irr::u32 spriteNo = bitmapFont->getSpriteNoFromChar(&c);
-            if (spriteNo >= sprites.size() || sprites[spriteNo].Frames.empty()) {
-                g.drawn = false;  // CGUISpriteBank::draw2DSpriteBatch skips it
-            } else if (sprites[spriteNo].frameTime != 0) {
-                return false;     // an animated font: frames depend on the clock
-            } else {
-                const irr::gui::SGUISpriteFrame& frame = sprites[spriteNo].Frames[0];
-                if (frame.rectNumber >= positions.size()) {
-                    glyphs_[i] = g;  // the sprite bank aborts the string here
-                    continue;
-                }
-                g.src = positions[frame.rectNumber];
-                g.texture = bank->getTexture(frame.textureNumber);
-                if (!g.texture) g.drawn = false;  // draw2DImageBatch(nullptr) draws nothing
-            }
-        }
-        g.batchable = true;
-        glyphs_[i] = g;
-    }
-    return true;
-}
+// T462 (board B506): the glyph table the batched flush lays text out from is
+// BitmapGlyphTable (client/graphics/ui/bitmap_glyph_table.h; B975 moved it
+// there so the entity name-tag batch shares it). A string the table cannot
+// reproduce exactly -- or whose glyphs span two textures -- goes to
+// font_->draw() instead.
 
 void TextBatch::flush(irr::video::IVideoDriver* driver) {
     lastFlushDriverDraws_ = 0;
@@ -177,7 +119,10 @@ void TextBatch::flush(irr::video::IVideoDriver* driver) {
         ++lastFlushDriverDraws_;
     };
 
-    if (batchingEnabled_ && !glyphTableBuilt_) glyphTableUsable_ = buildGlyphTable();
+    if (batchingEnabled_ && !glyphTableBuilt_) {
+        glyphTableBuilt_ = true;
+        glyphTableUsable_ = glyphs_.build(font_);
+    }
     if (!batchingEnabled_ || !glyphTableUsable_ || !UiQuadBatch::driverSupportsBatching(driver)) {
         // The pre-T462 flush: one font draw per entry.
         for (const auto& entry : entries_) drawEntry(entry);
@@ -200,9 +145,8 @@ void TextBatch::flush(irr::video::IVideoDriver* driver) {
         bool plain = true;
         irr::video::ITexture* entryTexture = nullptr;
         for (wchar_t c : entry.text) {
-            const auto code = static_cast<uint32_t>(c);
-            if (code >= kGlyphTableSize || !glyphs_[code].batchable) { plain = false; break; }
-            const Glyph& g = glyphs_[code];
+            const BitmapGlyphTable::Glyph& g = glyphs_.glyph(c);
+            if (!g.batchable) { plain = false; break; }
             if (!g.drawn) continue;
             if (entryTexture && g.texture != entryTexture) { plain = false; break; }
             entryTexture = g.texture;
@@ -215,7 +159,7 @@ void TextBatch::flush(irr::video::IVideoDriver* driver) {
 
         irr::s32 penX = entry.x;
         for (wchar_t c : entry.text) {
-            const Glyph& g = glyphs_[static_cast<uint32_t>(c)];
+            const BitmapGlyphTable::Glyph& g = glyphs_.glyph(c);
             penX += g.underhang;
             if (g.drawn) {
                 if (runTexture && g.texture != runTexture) flushRun();
