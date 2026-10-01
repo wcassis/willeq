@@ -250,8 +250,9 @@ public:
     }
     void setPlayerLightAtten(float c, float l, float q) {
         playerLightAtten_[0] = c; playerLightAtten_[1] = l; playerLightAtten_[2] = q;
-        // Mark LUT dirty if attenuation params changed
-        if (c != lutBakedConst_ || q != lutBakedQuad_) lutDirty_ = true;
+        // Mark LUT dirty if attenuation params changed (all three: since B968
+        // the LUT carries the linear term too)
+        if (c != lutBakedAtten_[0] || l != lutBakedAtten_[1] || q != lutBakedAtten_[2]) lutDirty_ = true;
     }
     const float* playerLightPos() const { return playerLightPos_; }
     const float* playerLightColor() const { return playerLightColor_; }
@@ -361,11 +362,12 @@ private:
     uint64_t frameId_ = 0;
 
     // Attenuation LUT for per-pixel player light (GLES2)
+    // (B968: indexed by d / lutRange_; uLUTScale = 64 / lutRange_ because the
+    // FS forms d / 64 -- include/client/graphics/player_light_shader.h)
     uint32_t attenLutTexture_ = 0;
-    float lutScale_ = 1.0f / 4096.0f;
-    float lutMaxD2_ = 4096.0f;
-    float lutBakedConst_ = -1.0f;
-    float lutBakedQuad_ = -1.0f;
+    float lutScale_ = 64.0f / 4096.0f;
+    float lutRange_ = 4096.0f;
+    float lutBakedAtten_[3] = {-1.0f, -1.0f, -1.0f};
     bool lutDirty_ = true;
 
     // Atlas page GL texture handles (set by renderer, used by shader callback)
