@@ -195,6 +195,29 @@ void main() {
 }
 )";
 
+// B960 (GitLab #278): TEST KNOB ONLY. The pre-B958 fwidth() variant, kept
+// byte-identical to the source c9f8ffb4 deleted so a pre-fix / post-fix
+// comparison on the Pi is ONE binary (WILLEQ_ALPHATEST_FWIDTH=1, read by
+// COpenGLES2Driver::initDriver(); compiled only when the device also exposes
+// GL_OES_standard_derivatives, exactly the old switch). Never the default:
+// Lima runs this discard inverted (refactor/B958/README.md).
+static const char* ALPHA3D_FS_LEGACY_FWIDTH = R"(
+#extension GL_OES_standard_derivatives : enable
+precision mediump float;
+uniform sampler2D uTexture;
+uniform vec4 uFogColor;
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+void main() {
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    float threshold = clamp(0.5 - fwidth(texColor.a), 0.1, 0.5);
+    if (texColor.a < threshold) discard;
+    vec4 lit = texColor * vColor;
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
 // ============================================================================
 // Shader source: AtlasSolid3D (Phase 4) — atlas UV from texcoord1
 // ============================================================================
@@ -274,6 +297,26 @@ varying float vFogFactor;
 void main() {
     float alpha = texture2D(uAlphaTexture, vTexCoord).r;
     if (alpha < 0.5) discard;
+    vec4 texColor = texture2D(uTexture, vTexCoord);
+    vec4 lit = texColor * vColor;
+    gl_FragColor = mix(uFogColor, lit, vFogFactor);
+}
+)";
+
+// B960: the pre-B958 atlas variant, TEST KNOB ONLY (see ALPHA3D_FS_LEGACY_FWIDTH).
+static const char* ATLAS_ALPHA3D_FS_LEGACY_FWIDTH = R"(
+#extension GL_OES_standard_derivatives : enable
+precision mediump float;
+uniform sampler2D uTexture;
+uniform sampler2D uAlphaTexture;
+uniform vec4 uFogColor;
+varying vec4 vColor;
+varying vec2 vTexCoord;
+varying float vFogFactor;
+void main() {
+    float alpha = texture2D(uAlphaTexture, vTexCoord).r;
+    float threshold = clamp(0.5 - fwidth(alpha), 0.1, 0.5);
+    if (alpha < threshold) discard;
     vec4 texColor = texture2D(uTexture, vTexCoord);
     vec4 lit = texColor * vColor;
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -569,8 +612,16 @@ void COGLES2ShaderManager::cacheUniforms(EOGLES2ShaderProgram prog)
     u.uColor = glGetUniformLocation(p, "uColor");
 }
 
-bool COGLES2ShaderManager::init()
+bool COGLES2ShaderManager::init(bool legacyFwidthAlphaTest)
 {
+    // B960: legacyFwidthAlphaTest is the WILLEQ_ALPHATEST_FWIDTH test knob.
+    const char* alpha3dFS = legacyFwidthAlphaTest ? ALPHA3D_FS_LEGACY_FWIDTH : ALPHA3D_FS;
+    const char* atlasAlpha3dFS =
+        legacyFwidthAlphaTest ? ATLAS_ALPHA3D_FS_LEGACY_FWIDTH : ATLAS_ALPHA3D_FS;
+    if (legacyFwidthAlphaTest)
+        os::Printer::log("GLES2: B960 test knob -- pre-B958 fwidth() alpha threshold "
+                         "(WILLEQ_ALPHATEST_FWIDTH=1)", ELL_WARNING);
+
     // Phase 1: Color2D (required for loading screen)
     programs_[EOGLES2SP_COLOR2D] = buildProgram(COLOR2D_VS, COLOR2D_FS);
     if (programs_[EOGLES2SP_COLOR2D]) {
@@ -599,7 +650,7 @@ bool COGLES2ShaderManager::init()
         os::Printer::log("GLES2: Solid3D shader FAILED (3D rendering disabled)", ELL_WARNING);
     }
 
-    programs_[EOGLES2SP_ALPHA3D] = buildProgram(SOLID3D_VS, ALPHA3D_FS);
+    programs_[EOGLES2SP_ALPHA3D] = buildProgram(SOLID3D_VS, alpha3dFS);
     if (programs_[EOGLES2SP_ALPHA3D]) {
         cacheUniforms(EOGLES2SP_ALPHA3D);
         os::Printer::log("GLES2: AlphaTest3D shader compiled", ELL_INFORMATION);
@@ -616,7 +667,7 @@ bool COGLES2ShaderManager::init()
         os::Printer::log("GLES2: AtlasSolid3D shader FAILED", ELL_WARNING);
     }
 
-    programs_[EOGLES2SP_ATLAS_ALPHA3D] = buildProgram(ATLAS_SOLID3D_VS, ATLAS_ALPHA3D_FS);
+    programs_[EOGLES2SP_ATLAS_ALPHA3D] = buildProgram(ATLAS_SOLID3D_VS, atlasAlpha3dFS);
     if (programs_[EOGLES2SP_ATLAS_ALPHA3D]) {
         cacheUniforms(EOGLES2SP_ATLAS_ALPHA3D);
         os::Printer::log("GLES2: AtlasAlpha3D shader compiled", ELL_INFORMATION);
