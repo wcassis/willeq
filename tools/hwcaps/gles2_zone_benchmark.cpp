@@ -11,6 +11,7 @@
 // See --help for full options.
 
 #include "zone_bench_loader.h"
+#include "zone_bench_gpu_tally.h"  // B955
 #include "zone_bench_camera.h"
 #include "zone_bench_entity_viewer.h"
 #include "zone_bench_histogram.h"
@@ -583,8 +584,7 @@ int main(int argc, char** argv) {
     // which mode it's in.
     // T491 lifecycle points: "ready" before the first frame, "steady" after
     // the last, both to stdout in the same [memledger] schema as the client.
-    printf("%s\n", eqt::memory::toLogLine(eqt::memory::snapshot("ready")).c_str());
-    fflush(stdout);
+    ZoneBench::printLedgerPoint("ready", data->driver);  // B955: + the [memgpu] line
     eqt::memory::setThreadCategory(eqt::memory::Category::IrrlichtScene);
     const uint64_t ledgerAllocsBeforeFrames = eqt::memory::snapshot("frames").allocCount;
     for (int frame = 0; frame < totalFrames; ++frame) {
@@ -1012,8 +1012,7 @@ int main(int argc, char** argv) {
     // ── Output results ──
     metrics.printSummary();
     {
-        const auto steady = eqt::memory::snapshot("steady");
-        printf("%s\n", eqt::memory::toLogLine(steady).c_str());
+        const auto steady = ZoneBench::printLedgerPoint("steady", data->driver);  // B955
         if (totalFrames > 0) {
             // T491: allocation rate of the frame loop, for the ledger-overhead
             // arithmetic (allocs/frame x measured ns/alloc).

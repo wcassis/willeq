@@ -79,6 +79,7 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eqe1_loader.h"
+#include "zone_bench_gpu_tally.h"  // B955
 
 #ifdef EQT_HAS_GLES2
 // Same driver-level accounting IrrlichtRenderer::getMemoryReportBreakdown()
@@ -239,6 +240,7 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
     }
 
     // T491: the allocator ledger, same schema as /pmem and the log lines.
+    ZoneBench::publishGpuTally(data.driver);  // B955: the gpu_buffers row reconciles
     snap.ledger = eqt::memory::snapshot("benchmark_end");
     snap.mappings = eqt::memory::readMappings();  // T491 addendum (B801)
     snap.impostorJson = ZoneBench::impostorJson(data);  // B952

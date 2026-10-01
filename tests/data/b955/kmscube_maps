@@ -1,0 +1,130 @@
+004f7000-00665000 r-xp 00000000 b3:01 259327     /home/user/b932/bin/kmscube.nollvm
+00665000-00666000 r--p 0016e000 b3:01 259327     /home/user/b932/bin/kmscube.nollvm
+00666000-00669000 rw-p 0016f000 b3:01 259327     /home/user/b932/bin/kmscube.nollvm
+00795000-00d6c000 rw-p 00000000 00:00 0          [heap]
+b4f50000-b4f5f000 rw-s 128a2000 00:06 454        /dev/dri/renderD128
+b4f5f000-b4f6e000 rw-s 12507000 00:06 454        /dev/dri/renderD128
+b4f6e000-b506e000 rw-s 12407000 00:06 454        /dev/dri/renderD128
+b506e000-b5121000 rw-p 00000000 00:00 0 
+b5121000-b5200000 ---p 00000000 00:00 0 
+b5203000-b5230000 rw-p 00000000 00:00 0 
+b5230000-b5252000 r-xp 00000000 b3:01 259317     /home/user/mesa-nollvm/lib/libEGL_mesa.so.0.0.0
+b5252000-b525a000 r--p 00022000 b3:01 259317     /home/user/mesa-nollvm/lib/libEGL_mesa.so.0.0.0
+b525a000-b525b000 rw-p 0002a000 b3:01 259317     /home/user/mesa-nollvm/lib/libEGL_mesa.so.0.0.0
+b525b000-b525c000 ---p 00000000 00:00 0 
+b525c000-b5a5c000 rw-p 00000000 00:00 0 
+b5a5c000-b5b9d000 rw-s 00000000 b3:01 122042     /home/user/.cache/mesa_shader_cache/index
+b5b9d000-b5d43000 r-xp 00000000 b3:01 10173      /usr/lib/arm-linux-gnueabihf/libstdc++.so.6.0.33
+b5d43000-b5d48000 r--p 001a6000 b3:01 10173      /usr/lib/arm-linux-gnueabihf/libstdc++.so.6.0.33
+b5d48000-b5d4a000 rw-p 001ab000 b3:01 10173      /usr/lib/arm-linux-gnueabihf/libstdc++.so.6.0.33
+b5d4a000-b5d4d000 rw-p 00000000 00:00 0 
+b5d51000-b5d52000 rw-s 1289b000 00:06 454        /dev/dri/renderD128
+b5d52000-b5d53000 rw-s 1289a000 00:06 454        /dev/dri/renderD128
+b5d53000-b5d54000 rw-s 12406000 00:06 454        /dev/dri/renderD128
+b5d54000-b5d55000 rw-s 12081000 00:06 454        /dev/dri/renderD128
+b5d55000-b66ae000 r-xp 00000000 b3:01 259318     /home/user/mesa-nollvm/lib/libgallium-25.2.8.so
+b66ae000-b66f7000 r--p 00958000 b3:01 259318     /home/user/mesa-nollvm/lib/libgallium-25.2.8.so
+b66f7000-b66fb000 rw-p 009a1000 b3:01 259318     /home/user/mesa-nollvm/lib/libgallium-25.2.8.so
+b66fb000-b6728000 rw-p 00000000 00:00 0 
+b6728000-b6730000 r-xp 00000000 b3:01 259320     /home/user/mesa-nollvm/lib/gbm/dri_gbm.so
+b6730000-b6731000 r--p 00007000 b3:01 259320     /home/user/mesa-nollvm/lib/gbm/dri_gbm.so
+b6731000-b6732000 rw-p 00008000 b3:01 259320     /home/user/mesa-nollvm/lib/gbm/dri_gbm.so
+b6732000-b6736000 rw-p 00000000 00:00 0 
+b6736000-b6741000 r-xp 00000000 b3:01 1918       /usr/lib/arm-linux-gnueabihf/libbz2.so.1.0.4
+b6741000-b6742000 r--p 0000a000 b3:01 1918       /usr/lib/arm-linux-gnueabihf/libbz2.so.1.0.4
+b6742000-b6743000 rw-p 0000b000 b3:01 1918       /usr/lib/arm-linux-gnueabihf/libbz2.so.1.0.4
+b6743000-b67b8000 r-xp 00000000 b3:01 2058       /usr/lib/arm-linux-gnueabihf/libzstd.so.1.5.5
+b67b8000-b67b9000 r--p 00074000 b3:01 2058       /usr/lib/arm-linux-gnueabihf/libzstd.so.1.5.5
+b67b9000-b67ba000 rw-p 00075000 b3:01 2058       /usr/lib/arm-linux-gnueabihf/libzstd.so.1.5.5
+b67ba000-b67ca000 r-xp 00000000 b3:01 2057       /usr/lib/arm-linux-gnueabihf/libz.so.1.3
+b67ca000-b67cb000 r--p 0000f000 b3:01 2057       /usr/lib/arm-linux-gnueabihf/libz.so.1.3
+b67cb000-b67cc000 rw-p 00010000 b3:01 2057       /usr/lib/arm-linux-gnueabihf/libz.so.1.3
+b67cc000-b67dd000 r-xp 00000000 b3:01 1940       /usr/lib/arm-linux-gnueabihf/libelf-0.190.so
+b67dd000-b67de000 r--p 00010000 b3:01 1940       /usr/lib/arm-linux-gnueabihf/libelf-0.190.so
+b67de000-b67df000 rw-p 00011000 b3:01 1940       /usr/lib/arm-linux-gnueabihf/libelf-0.190.so
+b67df000-b67fc000 r-xp 00000000 b3:01 1984       /usr/lib/arm-linux-gnueabihf/liblzma.so.5.4.5
+b67fc000-b67fd000 r--p 0001c000 b3:01 1984       /usr/lib/arm-linux-gnueabihf/liblzma.so.5.4.5
+b67fd000-b67fe000 rw-p 0001d000 b3:01 1984       /usr/lib/arm-linux-gnueabihf/liblzma.so.5.4.5
+b67fe000-b6869000 r-xp 00000000 b3:01 26786      /usr/lib/arm-linux-gnueabihf/liborc-0.4.so.0.38.0
+b6869000-b686b000 r--p 0006a000 b3:01 26786      /usr/lib/arm-linux-gnueabihf/liborc-0.4.so.0.38.0
+b686b000-b686e000 rw-p 0006c000 b3:01 26786      /usr/lib/arm-linux-gnueabihf/liborc-0.4.so.0.38.0
+b686e000-b68d8000 r-xp 00000000 b3:01 2014       /usr/lib/arm-linux-gnueabihf/libpcre2-8.so.0.11.2
+b68d8000-b68d9000 r--p 00069000 b3:01 2014       /usr/lib/arm-linux-gnueabihf/libpcre2-8.so.0.11.2
+b68d9000-b68da000 rw-p 0006a000 b3:01 2014       /usr/lib/arm-linux-gnueabihf/libpcre2-8.so.0.11.2
+b68da000-b68df000 r-xp 00000000 b3:01 1948       /usr/lib/arm-linux-gnueabihf/libffi.so.8.1.4
+b68df000-b68e0000 r--p 00005000 b3:01 1948       /usr/lib/arm-linux-gnueabihf/libffi.so.8.1.4
+b68e0000-b68e1000 rw-p 00006000 b3:01 1948       /usr/lib/arm-linux-gnueabihf/libffi.so.8.1.4
+b68e1000-b68e3000 rw-p 00000000 00:00 0 
+b68e3000-b6950000 r-xp 00000000 b3:01 26733      /usr/lib/arm-linux-gnueabihf/libdw-0.190.so
+b6950000-b6955000 r--p 0006c000 b3:01 26733      /usr/lib/arm-linux-gnueabihf/libdw-0.190.so
+b6955000-b6956000 rw-p 00071000 b3:01 26733      /usr/lib/arm-linux-gnueabihf/libdw-0.190.so
+b6956000-b695f000 r-xp 00000000 b3:01 26966      /usr/lib/arm-linux-gnueabihf/libunwind.so.8.0.1
+b695f000-b6960000 r--p 00008000 b3:01 26966      /usr/lib/arm-linux-gnueabihf/libunwind.so.8.0.1
+b6960000-b6961000 rw-p 00009000 b3:01 26966      /usr/lib/arm-linux-gnueabihf/libunwind.so.8.0.1
+b6961000-b697a000 rw-p 00000000 00:00 0 
+b697a000-b697c000 r-xp 00000000 b3:01 1960       /usr/lib/arm-linux-gnueabihf/libgmodule-2.0.so.0.8000.0
+b697c000-b697d000 r--p 00001000 b3:01 1960       /usr/lib/arm-linux-gnueabihf/libgmodule-2.0.so.0.8000.0
+b697d000-b697e000 rw-p 00002000 b3:01 1960       /usr/lib/arm-linux-gnueabihf/libgmodule-2.0.so.0.8000.0
+b697e000-b6a93000 r-xp 00000000 b3:01 27055      /usr/lib/arm-linux-gnueabihf/libGLdispatch.so.0.0.0
+b6a93000-b6aa1000 r--p 00115000 b3:01 27055      /usr/lib/arm-linux-gnueabihf/libGLdispatch.so.0.0.0
+b6aa1000-b6aa2000 rw-p 00123000 b3:01 27055      /usr/lib/arm-linux-gnueabihf/libGLdispatch.so.0.0.0
+b6aa2000-b6aa6000 rw-p 00000000 00:00 0 
+b6aa6000-b6abe000 r-xp 00000000 b3:01 10258      /usr/lib/arm-linux-gnueabihf/libgcc_s.so.1
+b6abe000-b6abf000 r--p 00017000 b3:01 10258      /usr/lib/arm-linux-gnueabihf/libgcc_s.so.1
+b6abf000-b6ac0000 rw-p 00018000 b3:01 10258      /usr/lib/arm-linux-gnueabihf/libgcc_s.so.1
+b6ac0000-b6ad8000 r-xp 00000000 b3:01 2040       /usr/lib/arm-linux-gnueabihf/libexpat.so.1.9.1
+b6ad8000-b6ada000 r--p 00017000 b3:01 2040       /usr/lib/arm-linux-gnueabihf/libexpat.so.1.9.1
+b6ada000-b6adb000 rw-p 00019000 b3:01 2040       /usr/lib/arm-linux-gnueabihf/libexpat.so.1.9.1
+b6adb000-b6be8000 r-xp 00000000 b3:01 28774      /usr/lib/arm-linux-gnueabihf/libc.so.6
+b6be8000-b6bea000 r--p 0010c000 b3:01 28774      /usr/lib/arm-linux-gnueabihf/libc.so.6
+b6bea000-b6beb000 rw-p 0010e000 b3:01 28774      /usr/lib/arm-linux-gnueabihf/libc.so.6
+b6beb000-b6bf5000 rw-p 00000000 00:00 0 
+b6bf5000-b6c77000 r-xp 00000000 b3:01 27641      /usr/lib/arm-linux-gnueabihf/libgstvideo-1.0.so.0.2402.0
+b6c77000-b6c86000 r--p 00081000 b3:01 27641      /usr/lib/arm-linux-gnueabihf/libgstvideo-1.0.so.0.2402.0
+b6c86000-b6c87000 rw-p 00090000 b3:01 27641      /usr/lib/arm-linux-gnueabihf/libgstvideo-1.0.so.0.2402.0
+b6c87000-b6c8c000 r-xp 00000000 b3:01 27631      /usr/lib/arm-linux-gnueabihf/libgstallocators-1.0.so.0.2402.0
+b6c8c000-b6c8d000 r--p 00004000 b3:01 27631      /usr/lib/arm-linux-gnueabihf/libgstallocators-1.0.so.0.2402.0
+b6c8d000-b6c8e000 rw-p 00005000 b3:01 27631      /usr/lib/arm-linux-gnueabihf/libgstallocators-1.0.so.0.2402.0
+b6c8e000-b6cf2000 r-xp 00000000 b3:01 26747      /usr/lib/arm-linux-gnueabihf/libgstbase-1.0.so.0.2402.0
+b6cf2000-b6cf3000 r--p 00063000 b3:01 26747      /usr/lib/arm-linux-gnueabihf/libgstbase-1.0.so.0.2402.0
+b6cf3000-b6cf4000 rw-p 00064000 b3:01 26747      /usr/lib/arm-linux-gnueabihf/libgstbase-1.0.so.0.2402.0
+b6cf4000-b6cf6000 rw-p 00000000 00:00 0 
+b6cf6000-b6d04000 r-xp 00000000 b3:01 27632      /usr/lib/arm-linux-gnueabihf/libgstapp-1.0.so.0.2402.0
+b6d04000-b6d05000 r--p 0000e000 b3:01 27632      /usr/lib/arm-linux-gnueabihf/libgstapp-1.0.so.0.2402.0
+b6d05000-b6d06000 rw-p 0000f000 b3:01 27632      /usr/lib/arm-linux-gnueabihf/libgstapp-1.0.so.0.2402.0
+b6d06000-b6df5000 r-xp 00000000 b3:01 1959       /usr/lib/arm-linux-gnueabihf/libglib-2.0.so.0.8000.0
+b6df5000-b6df6000 r--p 000ee000 b3:01 1959       /usr/lib/arm-linux-gnueabihf/libglib-2.0.so.0.8000.0
+b6df6000-b6df7000 rw-p 000ef000 b3:01 1959       /usr/lib/arm-linux-gnueabihf/libglib-2.0.so.0.8000.0
+b6df7000-b6e35000 r-xp 00000000 b3:01 1963       /usr/lib/arm-linux-gnueabihf/libgobject-2.0.so.0.8000.0
+b6e35000-b6e37000 r--p 0003d000 b3:01 1963       /usr/lib/arm-linux-gnueabihf/libgobject-2.0.so.0.8000.0
+b6e37000-b6e38000 rw-p 0003f000 b3:01 1963       /usr/lib/arm-linux-gnueabihf/libgobject-2.0.so.0.8000.0
+b6e38000-b6f1e000 r-xp 00000000 b3:01 26760      /usr/lib/arm-linux-gnueabihf/libgstreamer-1.0.so.0.2402.0
+b6f1e000-b6f21000 r--p 000e5000 b3:01 26760      /usr/lib/arm-linux-gnueabihf/libgstreamer-1.0.so.0.2402.0
+b6f21000-b6f23000 rw-p 000e8000 b3:01 26760      /usr/lib/arm-linux-gnueabihf/libgstreamer-1.0.so.0.2402.0
+b6f23000-b6f24000 rw-p 00000000 00:00 0 
+b6f24000-b6f38000 r-xp 00000000 b3:01 28347      /usr/lib/arm-linux-gnueabihf/libGLESv2.so.2.1.0
+b6f38000-b6f39000 r--p 00014000 b3:01 28347      /usr/lib/arm-linux-gnueabihf/libGLESv2.so.2.1.0
+b6f39000-b6f3a000 rw-p 00015000 b3:01 28347      /usr/lib/arm-linux-gnueabihf/libGLESv2.so.2.1.0
+b6f3a000-b6f45000 r-xp 00000000 b3:01 27062      /usr/lib/arm-linux-gnueabihf/libEGL.so.1.1.0
+b6f45000-b6f46000 r--p 0000a000 b3:01 27062      /usr/lib/arm-linux-gnueabihf/libEGL.so.1.1.0
+b6f46000-b6f47000 rw-p 0000b000 b3:01 27062      /usr/lib/arm-linux-gnueabihf/libEGL.so.1.1.0
+b6f47000-b6f49000 r-xp 00000000 b3:01 259319     /home/user/mesa-nollvm/lib/libgbm.so.1.0.0
+b6f49000-b6f4a000 r--p 00001000 b3:01 259319     /home/user/mesa-nollvm/lib/libgbm.so.1.0.0
+b6f4a000-b6f4b000 rw-p 00002000 b3:01 259319     /home/user/mesa-nollvm/lib/libgbm.so.1.0.0
+b6f4b000-b6f58000 r-xp 00000000 b3:01 26691      /usr/lib/arm-linux-gnueabihf/libdrm.so.2.125.0
+b6f58000-b6f59000 r--p 0000c000 b3:01 26691      /usr/lib/arm-linux-gnueabihf/libdrm.so.2.125.0
+b6f59000-b6f5a000 rw-p 0000d000 b3:01 26691      /usr/lib/arm-linux-gnueabihf/libdrm.so.2.125.0
+b6f5a000-b6f9a000 r-xp 00000000 b3:01 28777      /usr/lib/arm-linux-gnueabihf/libm.so.6
+b6f9a000-b6f9b000 r--p 00040000 b3:01 28777      /usr/lib/arm-linux-gnueabihf/libm.so.6
+b6f9b000-b6f9c000 rw-p 00041000 b3:01 28777      /usr/lib/arm-linux-gnueabihf/libm.so.6
+b6f9c000-b6f9d000 rw-s 10000000 00:06 454        /dev/dri/renderD128
+b6f9d000-b6fa4000 r--s 00000000 b3:01 28763      /usr/lib/arm-linux-gnueabihf/gconv/gconv-modules.cache
+b6fa4000-b6fa6000 rw-p 00000000 00:00 0 
+b6fa6000-b6fc2000 r-xp 00000000 b3:01 28771      /usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3
+b6fc2000-b6fc4000 r--p 0001b000 b3:01 28771      /usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3
+b6fc4000-b6fc5000 rw-p 0001d000 b3:01 28771      /usr/lib/arm-linux-gnueabihf/ld-linux-armhf.so.3
+be8ab000-be8cc000 rw-p 00000000 00:00 0          [stack]
+beab5000-beab6000 r-xp 00000000 00:00 0          [sigpage]
+beab6000-beab7000 r--p 00000000 00:00 0          [vvar]
+beab7000-beab8000 r-xp 00000000 00:00 0          [vdso]
+ffff0000-ffff1000 r-xp 00000000 00:00 0          [vectors]

@@ -1,5 +1,6 @@
 #include "zone_bench_loader.h"
 #include "client/graphics/gles2_shader_cache.h"
+#include "zone_bench_gpu_tally.h"  // B955
 
 #include <algorithm>
 #include <chrono>
@@ -216,7 +217,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
     // variable, so its invocation is unchanged.
     const bool ownerRows = std::getenv("WILLEQ_LEDGER_OWNERS") != nullptr;
     auto ledgerPoint = [&](const char* point) {
-        printf("%s\n", eqt::memory::toLogLine(eqt::memory::snapshot(point)).c_str());
+        // B955: [memledger] + [memgpu] (the gpu_buffers row) with the driver's
+        // tally published first (no driver yet at "startup").
+        ZoneBench::printLedgerPoint(point, data->driver);
         if (ownerRows) {
             eqt::memory::recordPoint(point);
             printf("%s\n", eqt::memory::startupToLogLines(point).c_str());

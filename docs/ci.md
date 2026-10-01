@@ -181,6 +181,14 @@ B943 (2026-09-30) ratcheted six more orangepi budgets to the same convention
 The table is in `config/constrained_presets.json` and pinned in
 `tests/test_constrained_renderer.cpp`; do not copy the numbers here.
 
+B955 (2026-10-01) added the `gpu_buffers` row to the memory JSON's `ledger`
+object: `gpuBuffersBytes`, `ownedPlusGpuBuffersBytes` and a `gpuBuffers`
+object with the row's source and inputs (`include/client/core/gpu_buffer_census.h`).
+On the gate's llvmpipe the source is `logical_in_gpu_driver` -- the buffers are
+heap already inside `gpu_driver`, so `ownedPlusGpuBuffersBytes` equals
+`ownedBytes`. **Nothing asserts any of it**: the row exists for the Orange Pi,
+where it is the only figure that sees Lima's GEM buffers.
+
 ## Reading a pipeline (worker or human)
 
 A human: the pipeline list is linked from the project page, and every job page

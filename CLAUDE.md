@@ -124,6 +124,10 @@ reason at the top of this file. Cut narrative before you cut a rule.
   as EXCLUDED, never a shrink bucket; the driver .so COW pages stay on the
   owned side; B933). **Memory first, frame rate second** (Will,
   2026-09-29). The original client ran these assets in 32 MB total.
+- **GPU buffers are outside RssAnon on the Pi** (Lima GEM/shmem, B955): the
+  `gpu_buffers` row (`[memgpu]`, `include/client/core/gpu_buffer_census.h`)
+  sees them only when the client runs in its own cgroup (the Pi rigs do).
+  `owned_plus_gpu_buffers` is printed beside `owned`, never asserted.
 - **Development may be done on x86, but the final numbers are required on BOTH
   platforms**, and a shrink unit is planned off the Orange Pi's own ledger
   output, not the x86 one — the two queues disagree by more than an order of

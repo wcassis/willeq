@@ -54,6 +54,7 @@
 #include "client/input/hotkey_manager.h"
 #include "client/input/graphics_input_handler.h"
 #include "client/bridge/irrlicht_bridge.h"
+#include "client/graphics/diagnostics/gpu_buffer_tally.h"  // B955
 #endif
 
 #ifdef WITH_AUDIO
@@ -802,6 +803,12 @@ bool Application::initLoginConnection(const ApplicationConfig& config) {
 }
 
 void Application::run() {
+#ifdef EQT_HAS_GRAPHICS
+    // B955: the UI atlas, icon sheets and fonts are already uploaded; publish
+    // the driver's tally (this thread owns the context) so the startup
+    // point's gpu_buffers row reconciles against them.
+    if (m_renderer) EQT::Graphics::publishGpuBufferTally(m_renderer->getDriver());
+#endif
     // T491 lifecycle point: everything is constructed, nothing has run.
     eqt::memory::recordPoint("startup");
     // T491 addendum (board B801): the STARTUP BASELINE is the whole gap to the
@@ -1051,6 +1058,11 @@ void Application::mainLoop() {
 
     while (m_running.load()) {
         try {
+#ifdef EQT_HAS_GRAPHICS
+            // B955: the driver's GPU buffer tally for the ledger's gpu_buffers
+            // row, published from the GL-owning thread at most once a second.
+            if (m_renderer) EQT::Graphics::publishGpuBufferTallyThrottled(m_renderer->getDriver());
+#endif
             if (eqt::memory::pollSteadyState()) {  // T491: "steady_60s" once per zone-in
                 // T504b Leg 0: the source-character census at the steady
                 // point too -- the prep worker builds models after
