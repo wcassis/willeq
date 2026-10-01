@@ -33,6 +33,7 @@
 // program both compiled (first run) and loaded from its binary cache (second).
 
 #include <irrlicht.h>
+#include "client/graphics/gles2_shader_cache.h"
 
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
@@ -461,6 +462,7 @@ int main(int argc, char** argv) {
 #else
     (void)useDrm;
 #endif
+    eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
     irr::IrrlichtDevice* device = irr::createDeviceEx(params);
     if (!device) {
         fprintf(stderr, "ERROR: could not create the EDT_OGLES2 device\n");

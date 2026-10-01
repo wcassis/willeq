@@ -93,6 +93,17 @@ std::string ResolveCachePathForRead(const std::string& name);
  */
 std::string ResolveCachePathForWrite(const std::string& name);
 
+/**
+ * B959 (GitLab #277): directory for the GLES2 driver's program-binary cache
+ * (<hash>.bin files), i.e. <cache candidate>/shader_cache, created if need be.
+ * Same candidate walk and the same authoritative $WILLEQ_CACHE_DIR as every
+ * other generated cache. Returns "" when no candidate is writable -- the
+ * caller then runs with the shader cache off (not an error). Hosts pass the
+ * result to the driver through eqt::ConfigureGles2ShaderCache()
+ * (client/graphics/gles2_shader_cache.h); the driver never picks a path.
+ */
+std::string ResolveShaderCacheDirectory();
+
 /** Directory of the running executable, or "" if it cannot be determined. */
 std::string ExecutableDirectory();
 

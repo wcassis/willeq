@@ -464,7 +464,7 @@ Zone shader callbacks use a `frameId_` counter to avoid re-uploading per-frame u
 
 ### Binary Cache
 
-The `COGLES2ShaderManager` supports `GL_OES_get_program_binary` for caching compiled shader binaries to disk. Cache keys are FNV-1a hashes of `gpuId + vsSource + fsSource`. This eliminates shader compilation latency on subsequent startups — significant on the Mali 400 where compilation can take several seconds.
+The `COGLES2ShaderManager` supports `GL_OES_get_program_binary` for caching compiled shader binaries to disk. Cache keys are FNV-1a hashes of `gpuId + vsSource + fsSource`. This eliminates shader compilation latency on subsequent startups — significant on the Mali 400 where compilation can take several seconds. The directory is `<cache dir>/shader_cache` (`eqt::ResolveShaderCacheDirectory()`, i.e. the same generated-cache rule as the index caches, handed to the driver by `eqt::ConfigureGles2ShaderCache()` before device creation); with no directory set the cache is off (B959, `refactor/B959/README.md`).
 
 ### Mali 400 Design Considerations
 

@@ -8,6 +8,7 @@
 // out-parameters, and `return 1` on a fatal path became `return false`.
 
 #include "model_viewer_state.h"
+#include "client/graphics/gles2_shader_cache.h"
 
 
 void parseCommandLine(int argc, char* argv[], ViewerArgs& args) {
@@ -310,6 +311,7 @@ bool createViewerDevice() {
     }
 
     // Create Irrlicht device
+    eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
     device = createDevice(driverType,
         core::dimension2d<u32>(800, 600),
         32, false, false, false, &receiver);

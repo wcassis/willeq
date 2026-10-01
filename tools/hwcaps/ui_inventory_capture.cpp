@@ -46,6 +46,7 @@
 //   <output_dir>/inventory_paperdoll_two_handed.png  -- T62: 2H weapon, primary only
 
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/gles2_shader_cache.h"
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/ui_atlas.h"
@@ -132,6 +133,7 @@ bool runAtResolution(irr::u32 w, irr::u32 h, const std::string& outputDir,
     params.WindowSize = irr::core::dimension2d<irr::u32>(w, h);
     params.Fullscreen = true;
 
+    eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
     irr::IrrlichtDevice* device = irr::createDeviceEx(params);
     if (!device) {
         fprintf(stderr, "ERROR: failed to create Irrlicht device at %ux%u\n", w, h);
@@ -212,6 +214,7 @@ bool runPaperdollCaptures(const std::string& outputDir, const std::string& eqPat
 #endif
     params.WindowSize = irr::core::dimension2d<irr::u32>(800, 600);
     params.Fullscreen = true;
+    eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
     irr::IrrlichtDevice* device = irr::createDeviceEx(params);
     if (!device) {
         fprintf(stderr, "ERROR: failed to create Irrlicht device for paperdoll captures\n");
@@ -539,6 +542,7 @@ bool runAtlasPanelCapture(const std::string& outputDir, const std::string& eqe1D
     params.DriverType = irr::video::EDT_OGLES2;
     params.WindowSize = irr::core::dimension2d<irr::u32>(800, 600);
     params.Fullscreen = true;
+    eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
     irr::IrrlichtDevice* device = irr::createDeviceEx(params);
     if (!device) {
         fprintf(stderr, "ERROR: failed to create Irrlicht device for atlas capture\n");

@@ -666,10 +666,11 @@ it without taking that measurement first.
   `tools/hwcaps/gles2_alpha_test_probe` on both Pi Mesa builds; the B952 pixel
   test at 80 units, 128^2: interior/full 0.7 % -> 97.6 % on the Pi (x86 97.3 %).
   Follow-ups: #277 (B959), #278 (B960).
-- **B959** (B) → issue #277. The GLES2 program-binary cache is written to
-  `config/shader_cache` relative to the CWD (`COpenGLES2Driver::initDriver()`),
-  not through `ResolveCachePathForWrite()`; B952's runs left 46 binaries in an
-  NFS checkout, and a CWD without `config/` silently saves nothing. Found by B958.
+- ~~**B959** (B) → issue #277. The GLES2 program-binary cache was written to
+  `config/shader_cache` relative to the CWD.~~ **FIXED** (`refactor/B959/README.md`):
+  the host injects `eqt::ResolveShaderCacheDirectory()` through
+  `eqt::ConfigureGles2ShaderCache()`; no directory = cache off. Pinned by
+  `test_shader_cache_path` and two `DataPathRouting` censuses. Found by B958.
 - **B960** (B, *unconfirmed*) → issue #278. Which production draws reached the
   built-in AlphaTest3D on the Pi -- and so drew inverted -- before B958.
   Confirm by counting `useProgram(EOGLES2SP_ALPHA3D)` per frame in a rendered

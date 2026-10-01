@@ -172,4 +172,13 @@ std::string ResolveCachePathForWrite(const std::string& name) {
     return "";
 }
 
+std::string ResolveShaderCacheDirectory() {
+    // B959: reuse the one writable-candidate walk. The leaf is never created;
+    // ResolveCachePathForWrite() makes `shader_cache/` exist and hands back
+    // the path of a would-be file inside it, whose parent is the directory.
+    const std::string leaf = ResolveCachePathForWrite("shader_cache/program_binaries");
+    if (leaf.empty()) return "";
+    return ParentOf(leaf);
+}
+
 }  // namespace eqt
