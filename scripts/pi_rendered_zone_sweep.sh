@@ -40,6 +40,8 @@
 #          [--snap-points startup,ready,steady_60s]   (B932: a smaps/maps
 #          snapshot at each named ledger point, rendered_zone_run.py)
 #          [--mesa nollvm|system]   (B935; default $WILLEQ_MESA, else nollvm)
+#          [--dump-every N --dump-max M]   (B960; default 100 / 3: the
+#          client's --dump-every / --dump-max-frames, Pi /tmp is ~242 MB)
 #          [--allow-vm-lane]   (B909's A/B, scripts/pi/collision_ab.sh:
 #          --tour replaces the /loc-wait-/q script, --env adds client
 #          environment, --drive-keys plays scripts/pi/uinput_drive.py's fixed
@@ -102,6 +104,8 @@ EXTRA_ENV=""
 DRIVE_KEYS=0
 ALLOW_VM=0
 SNAP_POINTS=""
+DUMP_EVERY=100
+DUMP_MAX=3
 MESA="${WILLEQ_MESA:-nollvm}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -122,7 +126,9 @@ while [ $# -gt 0 ]; do
         --allow-vm-lane) ALLOW_VM=1; shift ;;
         --snap-points) SNAP_POINTS="$2"; shift 2 ;;
         --mesa) MESA="$2"; shift 2 ;;
-        -h|--help) sed -n '2,65p' "$0"; exit 0 ;;
+        --dump-every) DUMP_EVERY="$2"; shift 2 ;;
+        --dump-max) DUMP_MAX="$2"; shift 2 ;;
+        -h|--help) sed -n '2,67p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -350,7 +356,7 @@ env TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTR
 python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} -- \
 '$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
 --eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
---dump-frames-dir '$pidir/frames' --dump-every 100 --dump-max-frames 3 \
+--dump-frames-dir '$pidir/frames' --dump-every $DUMP_EVERY --dump-max-frames $DUMP_MAX \
 > '$pidir/runner.out' 2>&1; cp -r '$pidir/.' '$dir/'; \
 sudo -n pkill -TERM -f '[u]input_drive[.]py' >/dev/null 2>&1; sleep 1; cp '$pidir/keys.tsv' '$pidir/keys.out' '$dir/' 2>/dev/null; \
 sudo -n rm -rf '$pidir'; true"
