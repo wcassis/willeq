@@ -75,6 +75,16 @@ budget sounds fine" -> 128^2 impostors, a 20 MiB `tex.impostor` budget.
   below). `WILLEQ_IMPOSTOR_FINISH=1` glFinishes before the units so their
   timing is their own work (measurement only).
 
+## Against the bar
+
+| criterion | result |
+|---|---|
+| `tex.impostor` <= 20 MiB at N = 200 unique | **met**: 16.09 MiB (4 pages + scratch) in the draw-cost tool at 200 unique; 12.09 MiB (3 pages) in every Pi crowd run; the cap refuses a 5th page by construction (`ImpostorCellTable.CapRefusesThe257thCell`) |
+| no hitch > 1 frame budget from creation/refresh | **not met everywhere**: worst capture work in one Pi frame 26.6-46.4 ms after the unit predictor (budget 33.3 ms); single slow captures (30-62 ms) are not bounded |
+| Pi N = 200 far >= 30 fps, or the governor measurably holding the budget | **neither, fully**: 28 / 18 / 25 fps (qeynos2 / gfaydark / growthplane); the governor drove the full-model limit 40 -> 0 in 15 s and held it while Red (trace below), which took the frame from ~88 to ~36 ms in qeynos2 -- but half of what remains is name tags (#293), not anything this policy controls. Impostors off: 15 / 12 / 16 fps showing 40 of the 200 |
+| zero golden movement | **met**: the benchmark builds no `EntityRenderer`; local gate: every golden frame and metric matched (misses: host-load CPU p95, B937 slack); CI pipeline 421 `gate` green |
+| WILLEQ_BASELINE=1 bit-identical (impostors classed non-baseline) | **met by construction, not by a frame diff**: under the switch `impostorsEnabled()` is false, so `updateImpostors()` returns at its first line (no cache, no row, no `[impostor]` line -- checked in the `base0` client logs), `impostorVisibilityAllowance()` is 0 (the worker's cap is the preset's) and `setImpostorFrameInputs` is never called. No two live frames are bit-comparable (NPCs move), so no frame diff was taken |
+
 ## Pixel evidence (no verdict -- per-pixel numbers)
 
 `impostor_pixel_compare pixel`: per race (13) x gender, the entity built by
@@ -246,6 +256,19 @@ Read off the table:
   restore happened, the cache reports `0 restores`; cause not decomposed). The
   unit budget is checked before each unit, so a slow unit is not bounded, and
   2-3 units of ~15-20 ms land in one frame on the Pi.
+- **The unit predictor (`70ef6376`)**, re-run of the three `imp200far` rows
+  (`review/B964/pi/crowd800_v2/`): the most capture work in one frame
+  gfaydark 72.8 -> **43.2** ms, growthplane 53.3 -> **26.6** ms, qeynos2
+  28.5 -> **46.4** ms (one single 46 ms capture). Multi-unit frames are gone
+  (Red: one unit per frame unless the average still fits); **single slow
+  captures (30-62 ms, a model's first draw into the render target) are not
+  bounded, so the bar is still not met in 2 of 3 zones.** Steady idle frame
+  times unchanged (growthplane 41.1, qeynos2 36.5 ms; gfaydark's idle window
+  included the crowd's creation this time, 79.3 ms p50, 56 ms rolling average
+  once all 188 were captured). `gpu_buffers` within 0.5 MiB of the first
+  session (qeynos2 64.51, gfaydark 65.86, growthplane 51.46 MiB); owned moved
+  +3.75 / +5.94 / +0.37 MiB (81.00 / 95.70 / 105.54) -- run-to-run spread
+  of the crowd's own allocations, not decomposed.
 - **Captures are rare after creation**: 3-59 angle refreshes and 0-20 flip
   re-captures per ~5 min run, 0-37 flips that reused the capture.
 
@@ -261,20 +284,33 @@ quoted here.)
 
 ### x86 (llvmpipe) -- not performance evidence
 
-`review/B964/x86/crowd/table.md` (18 runs, three zones x
-`imp0,imp50far,imp200far,imp200near,off200far,base0`, ARM-build-loaded host,
-load average 15-20) ran BEFORE the full-model-cap rule and without the zone
-hop; `review/B964/x86/hoptest/` is qeynos2 `imp200far` with both. A 200-NPC
-crowd puts the x86 client at 2.0-2.3 GiB RssAnon, ~2 GiB of it `gpu_driver`,
-**with impostors on or off** -- llvmpipe-side, the Pi stays at 21 MiB (filed
-#292 / B974). x86 capture units ran 57-500 ms on average in that matrix
-(llvmpipe flushes the previous frame's deferred rasterization at the capture's
-first FBO read: with `WILLEQ_IMPOSTOR_FINISH=1` the same run measures 8.4 ms
-per unit, `review/B964/x86/crowd_smoke3/`).
+`review/B964/x86/crowd_final/table.md`: 15 runs on `4a81a6b1` (the cap rule
+and the zone hop in; the unit predictor of `70ef6376` not yet), 1280x720 (the
+Pi recipe's resolution), three zones x `imp200far, imp200near, off200far,
+imp0, base0`, on a shared host (other units' builds and Pi rigs; load average
+15-20). Idle FPS from the client's `FPS:` lines (vsync 60):
 
-| run (x86, after the rule, hop) | idle p50 / p95 ms | impostors | cells | pages | tex.impostor | RssAnon | gpu_driver | owned |
-|---|---|---|---|---|---|---|---|---|
-| qeynos2 imp200far | 16.7 / 16.8 | 144 | 179 | 3 | 12.09 MiB | 894 MiB | 809 MiB | 85.6 MiB |
+| zone | imp200far | imp200near | off200far | drawn as impostors (far / near) | pages (far / near) | tex.impostor max MiB (far) |
+|---|---|---|---|---|---|---|
+| qeynos2 | 48 | 41 | 16 | 144 / 144 | 3 / 3 | 12.09 |
+| gfaydark | 60 | 27 | 16 | 188 / 156 | 4 / 3 | 16.09 |
+| growthplane | 37 | 37 | 16 | 186 / 130 | 3 / 3 | 12.09 |
+
+- **The x86 memory columns are not usable either.** A 200-NPC crowd puts the
+  x86 client at 2.0-2.4 GiB RssAnon, ~2 GiB of it `gpu_driver`, **with
+  impostors on or off** (`off200far` 2.00-2.28 GiB); llvmpipe-side, the Pi
+  stays at 21 MiB (filed #292 / B974). `owned = RssAnon - gpu_driver` swings
+  from 0 to 231 MiB between runs of the same zone because the ledger's
+  `gpu_driver` counts llvmpipe allocations that are not resident.
+- **x86 capture units are not the captures' cost.** 64-2,473 ms on average
+  per run in this matrix: llvmpipe flushes the previous frame's deferred rasterization
+  at the capture's first FBO read, and compiles new fragment-shader variants
+  for the render target's format. With `WILLEQ_IMPOSTOR_FINISH=1` (the GPU
+  finished first) the same qeynos2 crowd measures **8.4 ms** per unit
+  (`review/B964/x86/crowd_smoke3/`); the draw-cost tool, 1.5 ms.
+- `review/B964/x86/crowd/table.md` is the earlier 18-run matrix (before the cap
+  rule and the hop: the crowd half-built, placeholders all drawn); kept as
+  recorded.
 
 ## Governor behaviour observed
 

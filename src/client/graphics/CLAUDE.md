@@ -291,10 +291,14 @@ visibility cap unchanged). `WILLEQ_IMPOSTORS=0` turns off this feature alone
   that wants its impostor but has none yet stays a model while full-model slots
   last and is not drawn past them (before B964 the visibility cap culled it).
   When impostors are on, the simulation worker's visibility cap grows by the
-  cell capacity (impostors do not count against `maxVisibleEntities`).
+  cell capacity and the pass re-applies the old cap itself to everything NOT
+  drawn as an impostor (models, placeholders, corpses, the not yet captured):
+  pinned then nearest first, at most `maxVisibleEntities` are drawn; impostors
+  take no slot (without it the Pi drew every streaming placeholder).
 - **Units.** Creation and refresh are captures scheduled a few per frame
   (`unitBudgetFor()`: Green 3 / half a frame budget, Yellow/Red 2 / a quarter,
-  never zero -- an impostor is how the governor leaves Red). Refresh triggers,
+  never zero -- an impostor is how the governor leaves Red); a second unit
+  starts only if the measured average unit still fits. Refresh triggers,
   **never a timer**: `updateEntityAppearance()` (`EntityAppearanceChanged` /
   `OP_WearChange`; the cell survives the rebuild and the old capture is drawn
   until the new one), a tier flip back to the impostor when the view angle or
