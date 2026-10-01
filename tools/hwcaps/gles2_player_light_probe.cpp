@@ -163,7 +163,7 @@ const char* kProdClamped = "precision mediump float;\n" FS_HEAD
                            "}\n";
 
 // The shipped fix (B965): the production math with the coordinate SATURATED,
-// clamp(x, 0, 1) -- a free output modifier on Mali-400, where min() is an op.
+// clamp(x, 0, 1).
 const char* kProdSaturate = "precision mediump float;\n" FS_HEAD
                             "void main() {\n"
                             "    vec3 pLv = uPlayerLightPos - vWorldPos;\n"

@@ -151,9 +151,9 @@ void main() {
 // coordinate under CLAMP_TO_EDGE -- the blown-out far band B960 measured on the
 // Pi. The clamp turns +inf into 1.0, the last texel, which is exactly what
 // llvmpipe already sampled for any coordinate past the table, so the x86
-// output is unchanged bit for bit. clamp(x, 0, 1) is a free output modifier on
-// Mali-400. Measured: refactor/B965/README.md,
-// tools/hwcaps/gles2_player_light_probe.cpp.
+// output is unchanged bit for bit. Cost on the Pi: GPU p50 +2.5..4.7% per frame
+// across the five gate zones (a pre-scaled form cost +4.5..9.3%). Measured:
+// refactor/B965/README.md, tools/hwcaps/gles2_player_light_probe.cpp.
 static const char* FRAGMENT_SHADER_SOLID_SRC = R"(
 precision mediump float;
 
