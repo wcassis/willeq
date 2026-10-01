@@ -266,6 +266,19 @@ it without taking that measurement first.
   animated human mesh below its working set re-binds pixel-identical; red and
   ASan heap-use-after-free with the destroy path forced) and
   `tests/test_texture_eviction_residency.cpp`.
+- **B954** (A) → issue #272. `COpenGLES2Driver::createScreenShot()` leaks
+  its whole pixel buffer on every call (`createImageFromData(...,
+  ownForeignMemory=true, deleteMemory=false)`, and `CImage` frees only with
+  `DeleteMemory`). Reached by `RdpComponent::captureFrameForRDP()` every frame
+  while an RDP client is connected, and by `IrrlichtRenderer::saveScreenshot()`.
+  Measured by B952: +9.6 MB RssAnon per five 800x600 screenshots on x86 with
+  every ledger category flat; the Pi OOM-killed the pixel test at anon-rss
+  289 MB.
+- **B955** (A) → issue #273. GPU buffer memory on the Orange Pi (Lima GEM,
+  shmem-backed, unmapped) is on no ledger row and outside `owned =
+  RssAnon - gpu_driver`; this kernel's DRM fds publish no `drm-*` memory keys.
+  Measured by B952: 200 impostor textures (52.4 MB of pixels) moved system
+  Shmem +55,220 kB and `gpu_driver` +0.20 MB, RssAnon/RssShmem 0.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
@@ -606,6 +619,23 @@ it without taking that measurement first.
   `tests/test_placed_object_meshes.cpp` constructs one without it (B944's own
   test hit the resulting ASan stack-buffer-overflow and defines it). Confirmed
   by B944 for its own test; the other by construction.
+- **B952** (B) → issue #270, **in review** (`refactor/B952/README.md`).
+  Impostor billboards part 1: the benchmark's impostor row (`tex.impostor`),
+  sizes 64/128/256, unique/shared, measured on x86 and the Pi; budget
+  candidates proposed for Will. Part 2 (the production port -- governor-driven
+  tier, creation/refresh scheduling, the unique->shared cap check) is not
+  started and has no issue yet; the design is the README's "Production port"
+  section.
+- **B956** (B) → issue #274. Benchmark impostors have a dark silhouette
+  fringe: bilinear sampling against the capture's (0,0,0,0) clear with the
+  built-in shader's hard 0.5 alpha test. Measured by B952 (the largest
+  single-pixel difference is background-vs-near-black, 60, at every size).
+- **B958** (B) → issue #276. Benchmark impostor billboards render inverted on
+  Lima (Orange Pi): the quad is drawn where the impostor texture is
+  transparent and the model's texels are never drawn; the texture content is
+  right (Pi readback, and a CPU re-upload renders the same). Measured by B952's
+  Pi pixel test; llvmpipe renders the same code correctly. Blocks the
+  impostor port on the Pi.
 
 ## C — needs Will's decision
 

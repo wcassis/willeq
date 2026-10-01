@@ -8,6 +8,7 @@
 // which remains this module's single interface header.
 
 #include "zone_bench_loader.h"
+#include "zone_bench_impostor.h"
 
 #include <algorithm>
 #include <chrono>
@@ -206,141 +207,24 @@ int renderLodEntities(
     return drawCalls;
 }
 
-// Render an entity mesh into a dedicated FBO to create a billboard impostor texture.
-// Each entity gets its own RTT that persists as both the render target and the billboard texture.
-// Returns a cached texture, or renders one if not yet cached for this entity.
-static irr::video::ITexture* getOrCreateImpostor(
-    ZoneBenchData& data,
-    int entityIdx,
-    const ZoneBenchData::PlacedEntity& ent,
-    const CameraState& cam) {
+// B952: the impostor textures moved to zone_bench_impostor.cpp (ImpostorCache).
+// Before B952 getOrCreateImpostor() lived here: one addRenderTargetTexture()
+// (RGBA8 + its own DEPTH16) per entity at a fixed 256^2, created lazily INSIDE
+// the draw (a mid-frame FBO switch), captured from the model's +X side.
 
-    auto& state = data.adaptiveLodState;
-
-    // Check cache first
-    auto it = state.impostorTextures.find(entityIdx);
-    if (it != state.impostorTextures.end())
-        return it->second;
-
-    // Create a dedicated RTT for this entity (serves as both FBO and billboard texture)
-    char texName[64];
-    snprintf(texName, sizeof(texName), "impostor_%d", entityIdx);
-    irr::core::dimension2d<irr::u32> rttSize(state.impostorSize, state.impostorSize);
-    irr::video::ITexture* rtt = data.driver->addRenderTargetTexture(rttSize, texName);
-    if (!rtt) {
-        state.impostorTextures[entityIdx] = nullptr;
-        return nullptr;
-    }
-
-    // Save current view/projection (drawAll overwrites these)
-    irr::core::matrix4 savedView, savedProj;
-    savedView = data.driver->getTransform(irr::video::ETS_VIEW);
-    savedProj = data.driver->getTransform(irr::video::ETS_PROJECTION);
-
-    // Set entity to idle pose (first frame of o01) for the impostor snapshot.
-    // The static T-pose is unnatural — idle is what players actually see in-game.
-    irr::scene::IMesh* meshToDraw = ent.mesh;
-    if (entityIdx >= 0 && entityIdx < static_cast<int>(data.animatedNodes.size())
-        && data.animatedNodes[entityIdx]) {
-        auto* node = data.animatedNodes[entityIdx];
-        node->playAnimation("o01", true);
-        node->forceAnimationUpdate();
-        if (node->getInstanceMesh())
-            meshToDraw = node->getInstanceMesh();
-    }
-
-    // Set render target to this entity's FBO, clear with transparent black
-    data.driver->setRenderTarget(rtt, true, true, irr::video::SColor(0, 0, 0, 0));
-
-    // Compute bounding box from idle-pose vertex positions
-    irr::core::aabbox3df bbox;
-    bool bboxInit = false;
-    for (irr::u32 b = 0; b < meshToDraw->getMeshBufferCount(); ++b) {
-        auto* buf = meshToDraw->getMeshBuffer(b);
-        if (!buf || buf->getVertexCount() == 0) continue;
-        const irr::video::S3DVertex* verts =
-            static_cast<const irr::video::S3DVertex*>(buf->getVertices());
-        for (irr::u32 v = 0; v < buf->getVertexCount(); ++v) {
-            if (!bboxInit) {
-                bbox.reset(verts[v].Pos);
-                bboxInit = true;
-            } else {
-                bbox.addInternalPoint(verts[v].Pos);
-            }
-        }
-    }
-    if (!bboxInit) {
-        data.driver->setRenderTarget(nullptr, false, false);
-        data.driver->setTransform(irr::video::ETS_VIEW, savedView);
-        data.driver->setTransform(irr::video::ETS_PROJECTION, savedProj);
-        state.impostorTextures[entityIdx] = nullptr;
-        return nullptr;
-    }
-
-    // Mesh coords: X=left/right, Y=height, Z=front/back
-    // Camera along +X, Y up (inverted). Width=Z, Height=Y.
-    irr::core::vector3df extent = bbox.getExtent();
-    float halfW = extent.Z * 0.55f;
-    float halfH = extent.Y * 0.55f;
-    if (halfW < 1.0f) halfW = 1.0f;
-    if (halfH < 1.0f) halfH = 1.0f;
-
-    irr::core::matrix4 projMat;
-    projMat.buildProjectionMatrixOrthoLH(halfW * 2.0f, halfH * 2.0f, 0.1f, 500.0f);
-    data.driver->setTransform(irr::video::ETS_PROJECTION, projMat);
-
-    irr::core::vector3df center = bbox.getCenter();
-    irr::core::vector3df eye = center + irr::core::vector3df(100.0f, 0, 0);
-    irr::core::vector3df up(0, -1, 0);
-
-    irr::core::matrix4 viewMat;
-    viewMat.buildCameraLookAtMatrixLH(eye, center, up);
-    data.driver->setTransform(irr::video::ETS_VIEW, viewMat);
-
-    // World: identity (mesh is in model space at origin)
-    irr::core::matrix4 worldMat;
-    data.driver->setTransform(irr::video::ETS_WORLD, worldMat);
-
-    // Draw the entity mesh into the FBO.
-    // Use the original material (custom zone shader) — it renders correctly in RTT.
-    // Only override fog and backface culling.
-    for (irr::u32 b = 0; b < meshToDraw->getMeshBufferCount(); ++b) {
-        auto* buf = meshToDraw->getMeshBuffer(b);
-        if (!buf || buf->getVertexCount() == 0) continue;
-        irr::video::SMaterial mat = buf->getMaterial();
-        mat.FogEnable = false;
-        mat.BackfaceCulling = false;
-        data.driver->setMaterial(mat);
-        data.driver->drawMeshBuffer(buf);
-    }
-
-    // Restore default render target and saved matrices
-    data.driver->setRenderTarget(nullptr, false, false);
-    data.driver->setTransform(irr::video::ETS_VIEW, savedView);
-    data.driver->setTransform(irr::video::ETS_PROJECTION, savedProj);
-
-    state.impostorTextures[entityIdx] = rtt;
-    return rtt;
-}
-
-int renderAdaptiveLodEntities(
+// B952: the tier decision, split out of renderAdaptiveLodEntities() so the
+// impostor pre-pass (before beginScene) and the draw use the same plan.
+void planAdaptiveLod(
     ZoneBenchData& data,
     const CameraState& cam,
     float renderDistance,
     bool frustumCull,
-    float lastFrameMs,
-    int& outEntityPolys,
-    int& outTier1Count,
-    int& outTier2Count,
-    float& outEntityMs) {
+    float lastFrameMs) {
 
-    outEntityPolys = 0;
-    outTier1Count = 0;
-    outTier2Count = 0;
-    outEntityMs = 0;
     float renderDistSq = renderDistance * renderDistance;
     auto& cfg = data.adaptiveLodConfig;
     auto& state = data.adaptiveLodState;
+    const float tierDistSq = cfg.tierDist * cfg.tierDist;
 
     // Tick hysteresis timers (decrement counters, remove expired)
     state.tickHysteresis();
@@ -432,25 +316,58 @@ int renderAdaptiveLodEntities(
     }
 
     // ── Walk sorted list: composites up to limit, then billboards ──
-    // Camera basis for billboards (XZ plane right vector)
-    float fwdLen = std::sqrt(cam.dirX * cam.dirX + cam.dirY * cam.dirY + cam.dirZ * cam.dirZ);
-    float fX = cam.dirX / fwdLen, fY = cam.dirY / fwdLen;
-    float rX = fY, rY = -fX;
-    float rLen = std::sqrt(rX * rX + rY * rY);
-    if (rLen > 0.001f) { rX /= rLen; rY /= rLen; }
+    state.plan.clear();
+    state.plan.reserve(visible.size());
+    int compositeIdx = 0;
+    for (int vi = 0; vi < visibleCount; ++vi) {
+        const auto& ve = visible[vi];
 
-    const float bbHalfW = 3.0f;
-    const float bbHeight = 8.0f;
+        // B952: beyond the distance tier an entity is always an impostor and
+        // takes no composite slot (tierDist 0 = off).
+        const bool beyondTier = cfg.tierDist > 0.0f && ve.distSq > tierDistSq;
 
-    // Billboard material: textured with impostor RTT, alpha test to discard transparent bg
-    irr::video::SMaterial bbMaterial;
-    bbMaterial.MaterialType = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF;
-    bbMaterial.MaterialTypeParam = 0.1f;  // Alpha ref threshold
-    bbMaterial.Lighting = false;
-    bbMaterial.BackfaceCulling = false;
+        // Determine if this entity should be a billboard:
+        // 1) Over the composite limit (frame-time or hard-cap driven)
+        // 2) At the boundary (within 3 slots of limit) AND has active hysteresis timer —
+        //    prevents flickering. Entities well within the limit always recover.
+        bool overLimit = (compositeIdx >= compositeLimit);
+        bool nearBoundary = (compositeIdx >= compositeLimit - 3);
+        bool forcedBillboard = nearBoundary && state.isForcedBillboard(ve.entityIdx);
+        bool isBillboard = beyondTier || overLimit || forcedBillboard;
 
-    irr::video::S3DVertex bbQuad[4];
-    irr::u16 bbIdx[6] = {0, 1, 2, 0, 2, 3};
+        if (isBillboard) {
+            // Start or refresh hysteresis timer
+            state.markBillboard(ve.entityIdx, cfg.hysteresisFrames);
+        } else {
+            compositeIdx++;
+        }
+        state.plan.push_back({ve.entityIdx, isBillboard});
+    }
+    state.planValid = true;
+}
+
+int renderAdaptiveLodEntities(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    float lastFrameMs,
+    int& outEntityPolys,
+    int& outTier1Count,
+    int& outTier2Count,
+    float& outEntityMs) {
+
+    outEntityPolys = 0;
+    outTier1Count = 0;
+    outTier2Count = 0;
+    outEntityMs = 0;
+    auto& cfg = data.adaptiveLodConfig;
+    auto& state = data.adaptiveLodState;
+
+    if (!state.planValid)
+        planAdaptiveLod(data, cam, renderDistance, frustumCull, lastFrameMs);
+
+    ImpostorCache& impostors = impostorCache(data);
 
     std::vector<irr::video::S3DVertex> compositeVerts;
     std::vector<irr::u16> compositeIndices;
@@ -460,55 +377,18 @@ int renderAdaptiveLodEntities(
 
     float entityDrawMs = 0;  // Accumulate only actual draw time (not impostor creation)
 
-    for (int vi = 0; vi < visibleCount; ++vi) {
-        const auto& ve = visible[vi];
-        const auto& ent = data.entities[ve.entityIdx];
+    for (const auto& pe : state.plan) {
+        const auto& ent = data.entities[pe.entityIdx];
 
-        // Determine if this entity should be a billboard:
-        // 1) Over the composite limit (frame-time or hard-cap driven)
-        // 2) At the boundary (within 3 slots of limit) AND has active hysteresis timer —
-        //    prevents flickering. Entities well within the limit always recover.
-        bool overLimit = (compositeIdx >= compositeLimit);
-        bool nearBoundary = (compositeIdx >= compositeLimit - 3);
-        bool forcedBillboard = nearBoundary && state.isForcedBillboard(ve.entityIdx);
-        bool isBillboard = overLimit || forcedBillboard;
+        if (pe.billboard) {
+            // B952: the pre-pass normally created this already; acquire()
+            // creates it here only when no pre-pass ran (a mid-frame FBO
+            // switch). Creation is NOT counted in entity draw time -- a
+            // one-time cost that would otherwise poison the rolling average.
+            ImpostorEntry* imp = impostors.acquire(data, pe.entityIdx, cam);
+            if (!imp || !imp->tex) continue;
 
-        if (isBillboard) {
-            // Start or refresh hysteresis timer
-            state.markBillboard(ve.entityIdx, cfg.hysteresisFrames);
-
-            // Get or create RTT impostor texture for this entity.
-            // This is NOT counted in entity draw time — impostor creation is a one-time
-            // cost that would otherwise poison the rolling average and cause oscillation.
-            irr::video::ITexture* impostorTex = getOrCreateImpostor(
-                data, ve.entityIdx, ent, cam);
-            if (!impostorTex) continue;
-
-            float irrRX = rX * bbHalfW, irrRZ = rY * bbHalfW;
-            irr::video::SColor white(255, 255, 255, 255);
-
-            // Billboard quad with impostor texture UVs [0,1]
-            // FBO RTT content is V-flipped (V=0 at top in GL), so UV Y is 0 at top, 1 at bottom
-            bbQuad[0] = irr::video::S3DVertex(
-                ent.position.X - irrRX, ent.position.Y,
-                ent.position.Z - irrRZ, 0, 0, 1, white, 0.0f, 1.0f);
-            bbQuad[1] = irr::video::S3DVertex(
-                ent.position.X + irrRX, ent.position.Y,
-                ent.position.Z + irrRZ, 0, 0, 1, white, 1.0f, 1.0f);
-            bbQuad[2] = irr::video::S3DVertex(
-                ent.position.X + irrRX, ent.position.Y + bbHeight,
-                ent.position.Z + irrRZ, 0, 0, 1, white, 1.0f, 0.0f);
-            bbQuad[3] = irr::video::S3DVertex(
-                ent.position.X - irrRX, ent.position.Y + bbHeight,
-                ent.position.Z - irrRZ, 0, 0, 1, white, 0.0f, 0.0f);
-
-            bbMaterial.setTexture(0, impostorTex);
-            data.driver->setTransform(irr::video::ETS_WORLD, identityMat);
-            data.driver->setMaterial(bbMaterial);
-            data.driver->drawVertexPrimitiveList(
-                bbQuad, 4, bbIdx, 2,
-                irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES,
-                irr::video::EIT_16BIT);
+            drawImpostorBillboard(data, *imp, ent.position, cam);
             drawCalls++;
 
             outTier2Count++;
@@ -569,8 +449,7 @@ int renderAdaptiveLodEntities(
             }
         }
     }
-
-    // Billboards are drawn per-entity above (each has its own impostor texture)
+    state.planValid = false;  // next frame plans again
 
     outEntityMs = entityDrawMs;
 

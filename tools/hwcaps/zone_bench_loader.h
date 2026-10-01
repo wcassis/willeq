@@ -33,6 +33,8 @@ namespace EQT::Graphics {
 
 namespace ZoneBench {
 
+class ImpostorCache;  // B952: zone_bench_impostor.h
+
 struct BenchConfig {
     std::string zoneName = "qeynos2";
     std::string eqPath;          // Path to EQ client directory
@@ -47,6 +49,9 @@ struct BenchConfig {
     // composite-vs-baseline spot-checks. Empty = default behavior (byte-
     // identical to pre-P08f invocations that don't pass --test-races).
     std::vector<uint16_t> testRaceIds;
+    // B952: genders to cross with the race list (race x gender variants).
+    // Empty = {0}, the pre-B952 behaviour.
+    std::vector<uint8_t> genders;
     bool animate = false;        // Enable skeletal animation on entities
     bool compositeEntities = false; // Use composite textures for entities (single draw per entity)
     bool loadObjects = false;    // Load zone objects (trees, lamps, etc.)
@@ -159,6 +164,10 @@ struct ZoneBenchData {
         irr::core::vector3df position;  // Irrlicht coords
         float eqX, eqY, eqZ;           // EQ coords (for culling)
         EntityPriority priority = EntityPriority::Default;
+        // B952: the model variant, the key of a shared impostor.
+        uint16_t raceId = 0;
+        uint8_t gender = 0;
+        uint8_t textureVariant = 0;
     };
     std::vector<PlacedEntity> entities;
 
@@ -173,6 +182,10 @@ struct ZoneBenchData {
         int hysteresisFrames = 10;         // Stay billboarded for N frames after switching
         int rollingWindowSize = 30;        // Frames for rolling average
         float safetyMargin = 0.85f;        // Use 85% of budget to leave headroom
+        // B952: distance tier. An entity beyond it is always an impostor and
+        // takes no composite slot; the cap/frame-budget limit applies inside
+        // it. 0 = off (the pre-B952 behaviour: the limit alone decides).
+        float tierDist = 0.0f;
     } adaptiveLodConfig;
 
     struct AdaptiveLodState {
@@ -225,9 +238,18 @@ struct ZoneBenchData {
             billboardTimers[entityIdx] = frames;
         }
 
-        // RTT impostor cache: entityIndex → dedicated FBO texture (both render target and billboard)
-        std::map<int, irr::video::ITexture*> impostorTextures;
-        int impostorSize = 256;  // Width/height of impostor textures
+        // B952: the impostor textures (zone_bench_impostor.h). Was a
+        // map<entity, dedicated RTT> at a fixed 256^2 before B952.
+        std::shared_ptr<ImpostorCache> impostors;
+
+        // B952: this frame's tier plan, computed once (planAdaptiveLod) so
+        // the impostor pre-pass before beginScene() and the draw agree.
+        struct PlannedEntity {
+            int entityIdx;
+            bool billboard;
+        };
+        std::vector<PlannedEntity> plan;
+        bool planValid = false;
 
         // Rate-limited composite limit (smoothed to prevent oscillation)
         int smoothedCompositeLimit = -1;  // -1 = uninitialized
@@ -444,6 +466,15 @@ void placeEntitiesTrain(ZoneBenchData& data,
 // important entities (target, group) as full meshes.
 // lastFrameMs: previous frame's total time (for budget tracking)
 // Returns draw call count and poly count.
+// B952: the tier decision is planAdaptiveLod(); renderAdaptiveLodEntities()
+// uses a plan made earlier in the frame (the impostor pre-pass) or makes one.
+void planAdaptiveLod(
+    ZoneBenchData& data,
+    const CameraState& cam,
+    float renderDistance,
+    bool frustumCull,
+    float lastFrameMs);
+
 int renderAdaptiveLodEntities(
     ZoneBenchData& data,
     const CameraState& cam,
