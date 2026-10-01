@@ -269,8 +269,12 @@ Before this, `snd_index_cache.json` and `gfx_index_cache.json` were git-tracked
 files under `config/` that the client rewrote on every run, so a plain run left
 the working tree dirty and a careless `git add -A` committed one machine's
 absolute EQ path. A cache miss is not an error — it costs a rescan, measured at
-~0.4 s for the 17 sound archives and ~30 ms for the 378 character archives. **A
-new generated cache uses these, never `ResolveDataPath()`.**
+~0.4 s for the 17 sound archives and ~30 ms for the 378 character archives. The GLES2 driver's shader-binary cache
+(`<hash>.bin`, `<cache dir>/shader_cache/`) is one too (B959): the host calls
+`eqt::ConfigureGles2ShaderCache()` before creating its device and the driver, which
+sits below the client, only ever receives the directory; none set means cache off,
+never `config/shader_cache` under the CWD. **A new generated cache uses these,
+never `ResolveDataPath()`.**
 
 ### The shipped data has build recipes — use them, do not hand-edit
 

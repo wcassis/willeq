@@ -1,4 +1,5 @@
 #include "zone_bench_loader.h"
+#include "client/graphics/gles2_shader_cache.h"
 
 #include <algorithm>
 #include <chrono>
@@ -160,6 +161,7 @@ static irr::IrrlichtDevice* createDevice(const BenchConfig& config) {
     printf("Creating Irrlicht device: %dx%d, DRM=%d\n",
            config.width, config.height, config.useDRM);
 
+    eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
     irr::IrrlichtDevice* device = irr::createDeviceEx(params);
     if (!device) {
         fprintf(stderr, "ERROR: Failed to create Irrlicht device\n");

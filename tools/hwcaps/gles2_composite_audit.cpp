@@ -9,6 +9,7 @@
 //   gles2_composite_audit --drm --eq-path /path/to/EQ --eqe1-path /path/to/ETC1 --output audit/ --race 1
 
 #include "common/logging.h"
+#include "client/graphics/gles2_shader_cache.h"
 #include "client/graphics/eq/pfs.h"
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/race_model_loader.h"
@@ -453,6 +454,7 @@ int main(int argc, char** argv) {
     params.Bits = 24; params.Stencilbuffer = true; params.Vsync = false;
     LOG_TRACE(MOD_GRAPHICS, "main: device params: driver=OGLES2 size={}x{} bits={} stencil={} vsync={}",
               opts.rttSize, opts.rttSize, params.Bits, params.Stencilbuffer, params.Vsync);
+    eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
     irr::IrrlichtDevice* device = irr::createDeviceEx(params);
 #else
     LOG_INFO(MOD_GRAPHICS, "main: using X11 device with OpenGL driver");

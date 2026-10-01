@@ -67,7 +67,7 @@ DRM/KMS/GBM/EGL framebuffer device replacing Irrlicht's X11 device:
 Native GLES2 `IVideoDriver` extending Irrlicht's `CNullDriver`:
 
 - **State tracking** (`SOGLES2State`): Blend, depth, cull, scissor, stencil, color mask, VBO/EBO, texture units, viewport, active program
-- **Extensions** (`SOGLES2Extensions`): multisampled_render_to_texture (free MSAA on Mali), discard_framebuffer, standard_derivatives, get_program_binary (shader caching)
+- **Extensions** (`SOGLES2Extensions`): multisampled_render_to_texture (free MSAA on Mali), discard_framebuffer, standard_derivatives, get_program_binary (shader caching; the cache directory is injected by the host via `eqtSetShaderBinaryCacheDir()` / `eqt::ConfigureGles2ShaderCache()`, never a CWD-relative path — B959; unset = cache off)
 - **Rendering**: `drawMeshBuffer()`, `draw2DImage()`, `draw2DImageBatch()`, `draw2DRectangle()`, `draw3DLine()`
 - **Shaders**: `addHighLevelShaderMaterial()`, uniform/attribute setters
 - **Hardware buffers**: `createStaticHardwareBuffer()`, `registerExternalHWBuffer()` (for GPU upload thread)
