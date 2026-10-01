@@ -301,11 +301,25 @@ it without taking that measurement first.
 - **B967** (C) → issue #285. The player light is quantized at large world
   coordinates on BOTH GPUs: the mediump `vWorldPos` varying. The goldens carry
   it. Fix: pLv in the VS, plus a re-bless. Measured by B965.
+  - B969 measured the fix on the gate. It moves all 15 x86 goldens: >32 px
+    only in iceclad_f2 (546) and timorous_f2 (16,085).
+  - It takes timorous_f2 Pi vs x86 from 3,175 to 11 px. B969 is the Pi half
+    of this item.
 - **B968** (C) → issue #286. Past 64 units the player light gets brighter with
   distance on a surface that faces it: the LUT's `1/d` clamps at 1/64, so
   pLn = d/64. Both GPUs; in the goldens. Measured by B965.
-- **B969** (A) → issue #287. timorous_f2: 3,175 px >32, Pi vs the x86 golden,
-  along polygon edges. Not the player light; cause not isolated. Found by B965.
+- **B969** (A, blocked on B967) → issue #287. timorous_f2: 3,175 px >32, Pi
+  vs the x86 golden. The cause is ISOLATED, but no x86-invariant fix exists.
+  - The "polygon edges" are B967's FP16 step lines of the interpolated
+    `vWorldPos` (8 units in x, 4 in z at this pose).
+  - Lima's varying interpolation puts each rounding boundary a few px off
+    llvmpipe's: the Pi's x is exactly ±8 units off at 3,173 of the pixels.
+  - B967's pLv-in-the-VS fix takes Pi vs x86 to 11 px, but moves every x86
+    golden. It closes with B967's re-bless.
+  - `refactor/B969/README.md`.
+- **B976** (B) → issue #294. In timorous_f2, `--shader-debug 5` shows the
+  bottom plane's normal as +Y on llvmpipe and G=0 on Lima, so the player light
+  lights it on x86 only. It is nearly black in the gate frame. Found by B969.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
