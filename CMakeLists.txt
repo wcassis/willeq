@@ -2226,6 +2226,18 @@ IF(EQT_GRAPHICS)
     ENDIF()
     TARGET_LINK_LIBRARIES(gles2_alpha_test_probe ${ZONE_BENCH_LIBS})
 
+    # B965 (GitLab #283): the per-pixel player light probe -- the production
+    # uAttenLUT math and its precision variants drawn as intensity curves over
+    # 0..400 world units, read back per pixel.
+    ADD_EXECUTABLE(gles2_player_light_probe tools/hwcaps/gles2_player_light_probe.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gles2_player_light_probe PRIVATE ${IRRLICHT_INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/include)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_player_light_probe PRIVATE EQT_HAS_DRM)
+    ENDIF()
+    TARGET_LINK_LIBRARIES(gles2_player_light_probe ${ZONE_BENCH_LIBS})
+
     # Shader diagnostic tool — renders test modules through all debug shader modes
     ADD_EXECUTABLE(gles2_shader_diagnostic
         tools/hwcaps/gles2_shader_diagnostic.cpp

@@ -298,6 +298,14 @@ it without taking that measurement first.
   9.56 MiB of mapped BOs beyond the tally not decomposed per texture; and
   `vboEboBytes` reads ~0 on the Pi although Step 4 uploads per-region hardware
   buffers. Measured by B955.
+- **B967** (C) → issue #285. The player light is quantized at large world
+  coordinates on BOTH GPUs: the mediump `vWorldPos` varying. The goldens carry
+  it. Fix: pLv in the VS, plus a re-bless. Measured by B965.
+- **B968** (C) → issue #286. Past 64 units the player light gets brighter with
+  distance on a surface that faces it: the LUT's `1/d` clamps at 1/64, so
+  pLn = d/64. Both GPUs; in the goldens. Measured by B965.
+- **B969** (A) → issue #287. timorous_f2: 3,175 px >32, Pi vs the x86 golden,
+  along polygon edges. Not the player light; cause not isolated. Found by B965.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
@@ -680,15 +688,26 @@ it without taking that measurement first.
   before/after on the Pi. Instruments: `WILLEQ_ALPHATEST_FWIDTH=1` (pre-B958
   test knob), `WILLEQ_ALPHATEST_TRACE=1`. The dead fwidth() zone variants were
   deleted. Follow-ups: #283 (B965), #284 (B966).
-- **B965** (A, cause not isolated) → issue #283. The per-pixel player light
-  (lightstone) is blown out on Lima. At the gate poses, Pi vs x86 golden >32 px
-  is up to 32,245 per frame, and at most 409 with `--player-light-level 0`.
-  Not the B958 class. Lead: the FP16 attenuation LUT. Found by B960.
+- ~~**B965** (A) → issue #283. The per-pixel player light was blown out on
+  Lima.~~ **FIXED** (`refactor/B965/README.md`, `tools/hwcaps/gles2_player_light_probe`).
+  Mali-400's FS ALU is FP16 even under `highp`, so `d2 = dot(pLv, pLv)`
+  became +inf past 256 units. Lima's LINEAR sampler read the LUT's near end for
+  that infinite coordinate. The LUT coordinate is now `clamp(d2 * uLUTScale, 0, 1)`,
+  and the x86 goldens are pixel-identical. Pi gate frames, >32 px vs the golden:
+  - gfaydark 23,842 / 202 / 4,531 → 429 / 66 / 163;
+  - iceclad 19,495 / 32,245 / 6,904 → 2 / 29 / 335.
+
+  The residual iceclad_f2 band edges are B967. Follow-ups: #285 (B967), #286
+  (B968), #287 (B969), #288 (B970).
 - **B966** (A, minor) → issue #284. A newly built entity draws one frame with
   unpromoted materials (driver built-in Solid3D / AlphaTest3D):
   `SceneNodeCreation` adds the node and `NodeSetup` promotes it a frame later
   (`entity_build_step.cpp`). Measured on the Pi: `a_whiskered_bat` in qeynos2.
   Found by B960.
+- **B970** (B) → issue #288. CI `build-arm` cannot build the ARM Irrlicht
+  layer while downloads.sourceforge.net is down. `docker/Dockerfile.arm-noble`
+  wgets the Irrlicht zip and libpng; HTTP 522 for all of B965's session (job
+  1926). Fix: vendor both archives with pinned sha256. Found by B965.
 
 ## C — needs Will's decision
 
