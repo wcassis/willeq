@@ -323,11 +323,12 @@ it without taking that measurement first.
   - B967's pLv-in-the-VS fix takes Pi vs x86 to 11 px, but moves every x86
     golden. It closes with B967's re-bless.
   - `refactor/B969/README.md`.
+
+## B — implemented-but-unreached, and hygiene needing a code change
+
 - **B976** (B) → issue #294. In timorous_f2, `--shader-debug 5` shows the
   bottom plane's normal as +Y on llvmpipe and G=0 on Lima, so the player light
   lights it on x86 only. It is nearly black in the gate frame. Found by B969.
-
-## B — implemented-but-unreached, and hygiene needing a code change
 
 - ~~**B005** (B) the `UCSConnection` TU and header (under `src/client/` and
   `include/client/`, basename `ucs`) — 413 lines of live-looking code with zero

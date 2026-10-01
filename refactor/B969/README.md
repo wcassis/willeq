@@ -1,7 +1,8 @@
 # B969 -- timorous_f2: the FP16 step lines of `vWorldPos`, placed differently by Lima
 
 GitLab #287 (class A). Branch `task/B969-timorous-edges`, cut from `fable`
-`788c6b82`. Raw evidence: `/mnt/projects/fable/review/B969/` (its README lists
+`788c6b82` and merged with `fable` `f26373a0` (B962) before pushing. Every
+measurement was taken at `788c6b82`. Raw evidence: `/mnt/projects/fable/review/B969/` (its README lists
 every file).
 
 **Outcome: the diverging term is isolated; no fix ships.** The only change that
