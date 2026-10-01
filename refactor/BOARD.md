@@ -648,10 +648,24 @@ it without taking that measurement first.
   `config/shader_cache` relative to the CWD (`COpenGLES2Driver::initDriver()`),
   not through `ResolveCachePathForWrite()`; B952's runs left 46 binaries in an
   NFS checkout, and a CWD without `config/` silently saves nothing. Found by B958.
-- **B960** (B, *unconfirmed*) → issue #278. Which production draws reached the
-  built-in AlphaTest3D on the Pi -- and so drew inverted -- before B958.
-  Confirm by counting `useProgram(EOGLES2SP_ALPHA3D)` per frame in a rendered
-  Pi zone run on a pre-B958 build.
+- ~~**B960** (B) → issue #278. Which production draws reached the built-in
+  AlphaTest3D on the Pi before B958.~~ **ANSWERED** (`refactor/B960/README.md`):
+  the inventory paperdoll for a model with a WLD-masked material (measured: the
+  Iksar head, 59 draws per inventory session; Pi before/after 43-86 px >32 per
+  viewer angle, after = x86), and one frame per newly built masked entity
+  (B966). The world otherwise: 0 draws, and the 15 gate frames are bit-identical
+  before/after on the Pi. Instruments: `WILLEQ_ALPHATEST_FWIDTH=1` (pre-B958
+  test knob), `WILLEQ_ALPHATEST_TRACE=1`. The dead fwidth() zone variants were
+  deleted. Follow-ups: #283 (B965), #284 (B966).
+- **B965** (A, cause not isolated) → issue #283. The per-pixel player light
+  (lightstone) is blown out on Lima. At the gate poses, Pi vs x86 golden >32 px
+  is up to 32,245 per frame, and at most 409 with `--player-light-level 0`.
+  Not the B958 class. Lead: the FP16 attenuation LUT. Found by B960.
+- **B966** (A, minor) → issue #284. A newly built entity draws one frame with
+  unpromoted materials (driver built-in Solid3D / AlphaTest3D):
+  `SceneNodeCreation` adds the node and `NodeSetup` promotes it a frame later
+  (`entity_build_step.cpp`). Measured on the Pi: `a_whiskered_bat` in qeynos2.
+  Found by B960.
 
 ## C — needs Will's decision
 

@@ -42,6 +42,8 @@
 #          [--mesa nollvm|system]   (B935; default $WILLEQ_MESA, else nollvm)
 #          [--dump-every N --dump-max M]   (B960; default 100 / 3: the
 #          client's --dump-every / --dump-max-frames, Pi /tmp is ~242 MB)
+#          [--account NAME --char NAME]   (B960; default the lane's test
+#          account/character from scripts/eqemu/env.sh, same password)
 #          [--allow-vm-lane]   (B909's A/B, scripts/pi/collision_ab.sh:
 #          --tour replaces the /loc-wait-/q script, --env adds client
 #          environment, --drive-keys plays scripts/pi/uinput_drive.py's fixed
@@ -106,6 +108,8 @@ ALLOW_VM=0
 SNAP_POINTS=""
 DUMP_EVERY=100
 DUMP_MAX=3
+ACCOUNT_OVERRIDE=""
+CHAR_OVERRIDE=""
 MESA="${WILLEQ_MESA:-nollvm}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -128,7 +132,9 @@ while [ $# -gt 0 ]; do
         --mesa) MESA="$2"; shift 2 ;;
         --dump-every) DUMP_EVERY="$2"; shift 2 ;;
         --dump-max) DUMP_MAX="$2"; shift 2 ;;
-        -h|--help) sed -n '2,67p' "$0"; exit 0 ;;
+        --account) ACCOUNT_OVERRIDE="$2"; shift 2 ;;
+        --char) CHAR_OVERRIDE="$2"; shift 2 ;;
+        -h|--help) sed -n '2,69p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -144,7 +150,8 @@ TSV="$OUT/results.tsv"
 RETRY_TSV="$OUT/results_retry.tsv"
 RIG_LOG="$OUT/sweep.log"
 say() { printf '[pi_rendered_sweep %s] %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$RIG_LOG" >&2; }
-CHAR="${EQ_TEST_CHARACTER}"
+CHAR="${CHAR_OVERRIDE:-${EQ_TEST_CHARACTER}}"
+[ -n "$ACCOUNT_OVERRIDE" ] && EQ_TEST_ACCOUNT="$ACCOUNT_OVERRIDE"
 
 # ---- the zone set: B854's 46 Kunark + Velious rows, heavy four first --------
 CENSUS="$REPO/scripts/ci/zone_content_sweep_zones.tsv"
