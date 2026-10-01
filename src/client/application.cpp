@@ -803,6 +803,12 @@ bool Application::initLoginConnection(const ApplicationConfig& config) {
 }
 
 void Application::run() {
+#ifdef EQT_HAS_GRAPHICS
+    // B955: the UI atlas, icon sheets and fonts are already uploaded; publish
+    // the driver's tally (this thread owns the context) so the startup
+    // point's gpu_buffers row reconciles against them.
+    if (m_renderer) EQT::Graphics::publishGpuBufferTally(m_renderer->getDriver());
+#endif
     // T491 lifecycle point: everything is constructed, nothing has run.
     eqt::memory::recordPoint("startup");
     // T491 addendum (board B801): the STARTUP BASELINE is the whole gap to the

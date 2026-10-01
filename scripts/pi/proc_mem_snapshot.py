@@ -34,7 +34,9 @@ def snapshot(pid, label=""):
             if k in ("Name", "VmRSS", "RssAnon", "RssFile", "RssShmem", "VmHWM", "VmSize"):
                 status[k] = v.strip() if k == "Name" else int(v.split()[0]) * 1024
     files = {}
+    drm_sizes = {}   # B955: size -> count of each /dev/dri mapping (one BO each)
     cur = None
+    cur_path = ""
     head = re.compile(r"^[0-9a-f]+-[0-9a-f]+ \S+ \S+ \S+ \d+\s*(.*)$")
     with open("/proc/%d/smaps" % pid) as f:
         for line in f:
@@ -43,14 +45,19 @@ def snapshot(pid, label=""):
                 path = m.group(1).strip() or "[anon]"
                 cur = files.setdefault(path, {"rss": 0, "anon": 0, "size": 0, "maps": 0})
                 cur["maps"] += 1
+                cur_path = path
                 continue
             if cur is None:
                 continue
             k, _, v = line.partition(":")
             if k in ("Rss", "Anonymous", "Size"):
                 cur[{"Rss": "rss", "Anonymous": "anon", "Size": "size"}[k]] += int(v.split()[0]) * 1024
+                if k == "Size" and cur_path.startswith("/dev/dri/"):
+                    b = int(v.split()[0]) * 1024
+                    drm_sizes[b] = drm_sizes.get(b, 0) + 1
     sos = sorted(p for p in files if ".so" in p)
     gpu = gpu_sources(pid, status.get("Name", ""), files)
+    gpu["drm_map_sizes"] = {str(k): v for k, v in sorted(drm_sizes.items())}
     out = {
         "pid": pid, "label": label, "status": status,
         "files": dict(sorted(files.items(), key=lambda kv: -kv[1]["rss"])),

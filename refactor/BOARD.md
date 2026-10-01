@@ -274,11 +274,28 @@ it without taking that measurement first.
   Measured by B952: +9.6 MB RssAnon per five 800x600 screenshots on x86 with
   every ledger category flat; the Pi OOM-killed the pixel test at anon-rss
   289 MB.
-- **B955** (A) → issue #273. GPU buffer memory on the Orange Pi (Lima GEM,
+- ~~**B955** (A) → issue #273. GPU buffer memory on the Orange Pi (Lima GEM,
   shmem-backed, unmapped) is on no ledger row and outside `owned =
   RssAnon - gpu_driver`; this kernel's DRM fds publish no `drm-*` memory keys.
   Measured by B952: 200 impostor textures (52.4 MB of pixels) moved system
-  Shmem +55,220 kB and `gpu_driver` +0.20 MB, RssAnon/RssShmem 0.
+  Shmem +55,220 kB and `gpu_driver` +0.20 MB, RssAnon/RssShmem 0.~~
+  **FIXED by B955** (`task/B955-gpu-buffer-ledger`, closes on merge): the
+  `gpu_buffers` row (`include/client/core/gpu_buffer_census.h`, the `[memgpu]`
+  line, `gpuBuffers` in the JSON) reads the client's GEM pages from its own
+  memory cgroup (the Pi rigs launch it in one); `owned_plus_gpu_buffers` is
+  printed beside `owned` for Will's ruling, asserted nowhere. Pi
+  `steady_60s`: qeynos2 36.98 / gfaydark 35.77 / growthplane 25.12 MiB; the
+  impostor proof sees +15.35 MiB for B952's 200 at 128. `refactor/B955/README.md`.
+- **B961** (A) → issue #279. The scanout framebuffers (CMA on the display
+  device, 2 x 3,686,400 B per client at 1280x720) and the client cgroup's
+  kernel bytes (1.1-1.9 MiB) are on no ledger row; the first is visible only
+  in debugfs (root). Measured by B955.
+- **B962** (A, memory) → issue #280. The client's GEM buffers are ~2x its
+  logical GPU tally on the Pi (qeynos2 `steady_60s` 36.98 vs 17.33 MiB):
+  depth buffer 3.52, two GL contexts' driver BOs, 1 MiB stream-upload BOs,
+  9.56 MiB of mapped BOs beyond the tally not decomposed per texture; and
+  `vboEboBytes` reads ~0 on the Pi although Step 4 uploads per-region hardware
+  buffers. Measured by B955.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
@@ -630,6 +647,11 @@ it without taking that measurement first.
   fringe: bilinear sampling against the capture's (0,0,0,0) clear with the
   built-in shader's hard 0.5 alpha test. Measured by B952 (the largest
   single-pixel difference is background-vs-near-black, 60, at every size).
+- **B963** (B) → issue #281. On Lima the benchmark gives every static
+  hardware buffer its own 4 KiB-minimum GEM BO: qeynos2 9,355 BOs = 36.5 MiB
+  (+9.6 MiB kernel slab) for 1.73 MiB of vertex/index data. The client has no
+  such BO population, so Pi benchmark GPU-memory figures (B952's included) are
+  not the client's. Measured by B955 (LD_PRELOAD BO census).
 - **B958** (B) → issue #276. Benchmark impostor billboards render inverted on
   Lima (Orange Pi): the quad is drawn where the impostor texture is
   transparent and the model's texels are never drawn; the texture content is
