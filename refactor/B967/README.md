@@ -123,10 +123,17 @@ governor ondemand untouched. No eqemu lock or stack used.
 
 **REMAINS (checklist)**
 
-1. `review/B967/README.md`: describe every file (sheet/, x86/, pi/, arm_bin/, scripts/);
-   no verdicts.
-2. `refactor/BOARD.md`: strike B967, B968 (done), B969 (bar met: timorous_f2 15 px);
-   keep the gfaydark residual as a new item (step 5).
+1. ~~`review/B967/README.md`: describe every file (sheet/, x86/, pi/, arm_bin/,
+   scripts/); no verdicts.~~ **DONE** (`refactor/B967/REVIEW_MEDIA.md`, committed
+   on this branch; the card's NFS rule redirects the write here -- the orchestrator
+   copies it to `review/B967/README.md` on the Pi/NFS). Describes every file
+   under `/mnt/projects/fable/review/B967/` (arm_bin, pi, scripts, sheet, x86,
+   pi_frame_time_ab.tsv); no verdicts.
+2. ~~`refactor/BOARD.md`: strike B967, B968 (done), B969 (bar met: timorous_f2
+   15 px); keep the gfaydark residual as a new item (step 5).~~ **DONE**
+   (committed this unit): B967/B968 struck **FIXED**, B969 struck **CLOSED**
+   (timorous_f2 3,175 -> 15 px, bar met); the gfaydark Pi-vs-x86 residual kept as
+   a new open item **B980** (issue #299); B965's follow-up line updated.
 3. Re-run the local gate on a quiet host for a clean record:
    `bash scripts/ci/visual_gate.sh` (must show no PIXEL MISMATCH; CPU/slack misses =
    B937/B931 if load).
@@ -135,10 +142,16 @@ governor ondemand untouched. No eqemu lock or stack used.
    largest diagonal and the five gate zones' in this README; confirm diag < 15,677
    (the FS clamp point) or note which zones exceed it (beyond it the light is 0 by
    construction, not garbage).
-5. File issues (B numbers from the max `B###:` title; B976 = #294 last known):
+5. ~~File issues (B numbers from the max `B###:` title; B976 = #294 last known):
    gfaydark gate frames Pi vs x86 409/55/162 px >32 with the player light OFF too
    (cause not isolated); manifest `textureCacheBytesLimit` display field stale since
-   B943 (67,108,864 vs live 53,477,376; not asserted).
+   B943 (67,108,864 vs live 53,477,376; not asserted).~~ **DONE** (2026-10-01,
+   re-read the max `B###:` title just before filing: max was B979 = #298, so this
+   unit took B980/B981):
+   - **B980 = issue #299** (class::B, lane::pi, status::triage): the gfaydark
+     409/55/162 px >32 Pi-vs-x86 residual, present with the player light OFF too.
+   - **B981 = issue #300** (class::B, lane::offline, status::triage): the stale
+     `textureCacheBytesLimit` display field (64 MiB manifest vs 51 MiB live).
 6. Full suite + hygiene: `ctest --test-dir build -j6` (record the summary line),
    `bash scripts/refactor/check_file_sizes.sh -C . fable`.
 7. Issues #285/#286 (and #287) -> `status::review`; MR description final (Closes #285,
