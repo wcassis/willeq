@@ -136,6 +136,7 @@
 // IrrlichtRenderer::FrameTimings when it resets the accumulator.
 
 #include "client/graphics/renderer_context.h"
+#include "client/graphics/entity_build_scheduler.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/tradeskill_panel.h"
@@ -459,7 +460,23 @@ public:
 	size_t frustumDebugBoxCount() const { return ctx_.regionBoundingBoxes.size(); }
 	void renderDebugOverlaysForTest(float deltaTime) { renderDebugOverlays(deltaTime); }
 
+	// B973 (GitLab #291, frame/renderer_frame_entity_build.cpp): the
+	// post-load entity work of one frame -- prep queue/dispatch/distribution
+	// every frame, then build units under EntityRenderer::buildScheduler()'s
+	// slice (the first unit always, in every governor state). Called from
+	// processFrame() after zone load and from
+	// ZoneStreamComponent::processFrameProgressiveLoad() while a re-armed
+	// progressive load runs without the loading screen. Returns true when a
+	// unit ran. Not called under WILLEQ_ENTITY_BUILD_LEGACY=1.
+	bool runEntityBuildSlice();
+
 private:
+	// B973: account the frame's build work (the [entity-build] window line,
+	// and [entity-build-frame] per frame under WILLEQ_ENTITY_BUILD_TRACE=1).
+	void finishEntityBuildFrame(float frameMs);
+	int entityBuildTrace_ = -1;            // -1 = env not read yet
+	EntityBuildBacklog lastBuildBacklog_{};
+
 	RendererContext& ctx_;
 	IrrlichtRenderer& owner_;
 

@@ -89,6 +89,19 @@ void ZoneStreamComponent::processFrameProgressiveLoad() {
     // Player entity goes through processOneEntityBuildStep() like other entities
     // (no synchronous build here — avoids 7.6s render thread stall from disk I/O)
 
+    // B973 (GitLab #291): a progressive load re-armed after zone-in (T111: an
+    // unbuilt entity entered the visible set) runs WITHOUT the loading screen,
+    // in the middle of play. Its only work is entity work, and it takes the
+    // same per-frame slice as the post-load path: guaranteed progress in every
+    // governor state. The loading-screen path below is unchanged, and so is
+    // everything under WILLEQ_ENTITY_BUILD_LEGACY=1 (the old GREEN gate).
+    if (!ctx_.loadingScreenVisible && ctx_.entityRenderer &&
+        !ctx_.entityRenderer->buildScheduler().legacy()) {
+        ctx_.Frame().runEntityBuildSlice();
+        checkProgressiveLoadingComplete();
+        return;
+    }
+
     // Update loading screen progress during asset loading.
     // --- GREEN gate: exactly ONE non-critical step per frame when GREEN ---
     // Bypass when loading screen is visible (no scene to compete with).

@@ -16,6 +16,7 @@
 #include "client/graphics/eq/equipment_model_loader.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/wld_loader.h"
+#include "client/graphics/entity_build_scheduler.h"
 #include "client/graphics/frustum_culler.h"
 #include "client/graphics/software_occlusion_culler.h"
 
@@ -653,7 +654,18 @@ public:
     // Advance one entity through the multi-frame build pipeline.
     // Returns true if work was done this frame.
     // pvsRegion: only build entities in this BSP region (SIZE_MAX = no filter).
-    bool processOneEntityBuildStep(size_t pvsRegion = SIZE_MAX);
+    // B973: priorityTargetId (the player's target) is built before the
+    // nearest-first order, after the player and anything already in progress.
+    // With a scheduler, the step first asks it whether a unit of the chosen
+    // entity's kind may start (returns false when not) and records the unit's
+    // measured cost after it ran; without one (loading screen, tests) every
+    // call may run a unit, as before.
+    bool processOneEntityBuildStep(size_t pvsRegion = SIZE_MAX, uint16_t priorityTargetId = 0,
+                                   EntityBuildScheduler* scheduler = nullptr);
+    // B973: the build work still pending (O(entities); the [entity-build] line).
+    EntityBuildBacklog countBuildBacklog() const;
+    // B973: the post-load build scheduler (frame slice + accounting).
+    EntityBuildScheduler& buildScheduler() { return buildScheduler_; }
     // Check if entity mesh is built
     bool isEntityMeshBuilt(uint16_t spawnId) const;
     // Get spawn IDs of all entities with meshBuilt == false
@@ -853,6 +865,9 @@ private:
 
     // Debug flags
     bool skipTextureUpload_ = false;
+
+    // B973: post-load build scheduling (WILLEQ_ENTITY_BUILD_LEGACY read once here).
+    EntityBuildScheduler buildScheduler_;
 
     // Constrained rendering state
     const ConstrainedRendererConfig* constrainedConfig_ = nullptr;
