@@ -25,6 +25,9 @@
 # Usage: scripts/b964/crowd_run.sh [--zones z1,z2] [--variants v1,v2]
 #          [--out DIR] [--owner NAME] [--bin PATH] [--res W H]
 #          [--char-level N --char-exp E]   (growthplane: min level 46)
+#          [--env K=V]...  extra client environment (e.g. WILLEQ_IMPOSTOR_FINISH=1)
+#          [--dump]        dump a frame every 600 (8 max) for review -- off in
+#                          timed runs (each dump is a glReadPixels + PNG frame)
 # Lane: EQEMU_HOST (scripts/eqemu/env.sh), default local for this rig.
 # Exit: 0 every run reached steady_60s; 1 a run did not; 3 usage; 64 lock
 #       held; 65 stack would not come up; 66 snapshot did not restore.
@@ -44,6 +47,8 @@ SRC_BIN="$REPO/build/bin/willeq"
 RES_W=1280; RES_H=720
 CHAR_LEVEL=""; CHAR_EXP=""
 ZONE_BOOT_S="${ZONE_BOOT_S:-150}"
+EXTRA_ENV=()
+DUMP=0
 LATE_SAVE_S=10
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -55,6 +60,8 @@ while [ $# -gt 0 ]; do
         --res) RES_W="$2"; RES_H="$3"; shift 3 ;;
         --char-level) CHAR_LEVEL="$2"; shift 2 ;;
         --char-exp) CHAR_EXP="$2"; shift 2 ;;
+        --env) EXTRA_ENV+=( "$2" ); shift 2 ;;
+        --dump) DUMP=1; shift ;;
         -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 3 ;;
     esac
@@ -150,7 +157,7 @@ run_one() {  # run_one <zone> <variant>
     sy="$(eqemu_sql "SELECT ROUND(safe_y,3) FROM zone WHERE short_name='${zone}';" | head -1 | tr -d '[:space:]')"
     sz="$(eqemu_sql "SELECT ROUND(safe_z,3) FROM zone WHERE short_name='${zone}';" | head -1 | tr -d '[:space:]')"
     python3 "$REPO/scripts/b964/make_tour.py" --safe "$sx" "$sy" "$sz" --count "$n" --layout "$layout" --out "$dir/tour.txt"
-    local -a envs=( "TZ=UTC" )
+    local -a envs=( "TZ=UTC" "${EXTRA_ENV[@]}" )
     case "$mode" in
         imp) ;;
         off) envs+=( "WILLEQ_IMPOSTORS=0" ) ;;
@@ -159,6 +166,7 @@ run_one() {  # run_one <zone> <variant>
     esac
     local -a args=( -c "$CFG" --renderer gles2 --constrained orangepi -r "$RES_W" "$RES_H"
                     --eqe1-path "$EQE1_PATH" --log-level=INFO --script "$dir/tour.txt" --no-audio )
+    [ "$DUMP" -eq 1 ] && args+=( --dump-frames-dir "$dir/frames" --dump-every 600 --dump-max-frames 8 )
     printf '%s\n' "${envs[@]}" > "$dir/env.txt"
     printf '%q ' "$BIN" "${args[@]}" > "$dir/command_line.txt"; echo >> "$dir/command_line.txt"
     local log="$dir/client.log" start; start=$(date +%s)

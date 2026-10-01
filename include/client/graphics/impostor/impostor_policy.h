@@ -119,7 +119,10 @@ private:
 //     last kHysteresisFrames frames stays one (B952's boundary hysteresis);
 //   - pinned entities (target, group members) are always full models.
 // The full-model limit follows the production FrameBudgetGovernor (the
-// benchmark's private predictor is gone): every kAdjustEveryFrames frames it
+// benchmark's private predictor is gone): every kAdjustEveryFrames frames
+// (half the governor's 30-frame rolling window, so a step is seen by the
+// average before the next one -- at 5 frames the x86 crowd run swung the
+// limit 40 -> 0 -> 40 inside 5 s and re-captured 277 times on the flips) it
 // moves by at most kStep -- down when the governor is Red or its rolling
 // average is over the target, up when it is Green and the average is under
 // kSafetyMargin x the target, held otherwise. It never exceeds `maxFull`
@@ -141,7 +144,7 @@ struct TierPolicyConfig {
     float tierDistance = 80.0f;
     int maxFull = 40;
     static constexpr int kStep = 2;
-    static constexpr int kAdjustEveryFrames = 5;
+    static constexpr int kAdjustEveryFrames = 15;  // half the governor's 30-frame window
     static constexpr int kHysteresisFrames = 10;
     static constexpr int kBoundaryBand = 3;
     static constexpr float kSafetyMargin = 0.85f;

@@ -900,7 +900,7 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
             }
             ctx_.entityRenderer->setImpostorFrameInputs(
                 ctx_.governor.get(), ctx_.Overlays().currentTargetId(), std::move(groupNames),
-                ctx_.progressiveLoadingActive || ctx_.loadingScreenVisible);
+                ctx_.loadingScreenVisible);
         }
 
         // Main-thread entity state: corpse fading, equipment transforms, animation timing

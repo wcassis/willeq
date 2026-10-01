@@ -43,6 +43,7 @@ struct ImpostorCapture {
     float halfH = 0.5f;
     irr::core::vector3df offset;
     float viewAngleDeg = 0.0f;   // relative view angle the capture was taken at
+    std::string pose;            // the animation playing when it was taken
     uint16_t sourceSpawn = 0;
     bool captured = false;
 };
@@ -52,6 +53,7 @@ struct ImpostorCacheStats {
     uint64_t refreshAppearance = 0;
     uint64_t refreshAngle = 0;
     uint64_t refreshFlip = 0;
+    uint64_t flipReused = 0;       // a flip whose capture still matched (angle + pose)
     uint64_t demotions = 0;        // a unique cell taken for a shared key
     uint64_t sharedClaims = 0;     // a spawn drawn with an existing shared cell
     uint64_t pageAllocs = 0;
@@ -98,6 +100,9 @@ public:
     ImpostorBatchNode* batchNode() const { return batch_; }
     void addBillboard(uint64_t key, const irr::core::vector3df& nodePos, bool useHorizontalOffset);
     void beginBatch();
+
+    // glFinish() -- the WILLEQ_IMPOSTOR_FINISH measurement switch only.
+    void finishGpu() const;
 
     // Zone change: drop every cell and page (the scratch stays).
     void clear();

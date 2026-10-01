@@ -134,7 +134,10 @@ void EntityRenderer::updateImpostors() {
         smgr_->getRootSceneNode()->addChild(cache.batchNode());
     cache.beginBatch();
     irr::scene::ICameraSceneNode* cam = smgr_->getActiveCamera();
-    if (impostorLoading_ || !cam) return;
+    if (impostorLoading_ || !cam) {
+        impostorLastFrameT_ = {};  // a loading screen is not a frame interval
+        return;
+    }
 
     ++impostorFrame_;
     const uint32_t frame = impostorFrame_;
@@ -182,14 +185,27 @@ void EntityRenderer::updateImpostors() {
         st.lastSeenFrame = frame;
         const bool want = impostorTiers_[i] == Tier::Impostor;
         if (want && !st.wantsImpostor && st.hasKey) {
-            // Tier flip: re-capture at the current angle and pose before it shows.
-            st.needsCapture = true;
-            st.reason = ImpostorSpawnState::Reason::Flip;
-            // A shared spawn asks for its own cell again when there is room.
+            // Tier flip back to the impostor: re-capture if the view angle or
+            // the pose (the animation playing) changed since the capture;
+            // until then the old capture is drawn (a flip never shows a gap).
+            const ImpostorCapture* cap = cache.captureFor(st.key);
+            const EntityVisual& v = entities_.at(impostorCands_[i].spawnId);
+            const irr::core::vector3df p = v.sceneNode->getPosition();
+            const float ang = relativeViewAngleDeg(camPos.X, camPos.Z, p.X, p.Z, v.sceneNode->getRotation().Y);
+            const bool stale = !cap || !cap->captured || needsViewRefresh(cap->viewAngleDeg, ang) ||
+                               cap->pose != v.animatedNode->getCurrentAnimation();
             if (st.shared && cache.cells().freeCells() + (cache.cells().maxPages() - cache.cells().pages()) *
                                                              kCellsPerPage > 0) {
+                // A shared spawn asks for its own cell again when there is room.
                 st.hasKey = false;
                 st.shared = false;
+                st.needsCapture = true;
+                st.reason = ImpostorSpawnState::Reason::Create;
+            } else if (stale && !st.shared) {
+                st.needsCapture = true;
+                st.reason = ImpostorSpawnState::Reason::Flip;
+            } else {
+                cache.stats().flipReused++;
             }
         }
         st.wantsImpostor = want;
@@ -213,7 +229,10 @@ void EntityRenderer::updateImpostors() {
         ImpostorSpawnState& st = impostorSpawns_[c.spawnId];
         if (!st.wantsImpostor) continue;
         if (!st.hasKey || st.needsCapture) {
-            work.push_back({c.distSq, c.spawnId});
+            // Creations first (the entity is drawn as nothing or a model
+            // until then); refreshes of a drawn impostor after them.
+            const bool creation = !st.hasKey || st.reason == ImpostorSpawnState::Reason::Create;
+            work.push_back({c.distSq + (creation ? 0.0f : 1e12f), c.spawnId});
             continue;
         }
         if (!st.shared) {
@@ -232,6 +251,15 @@ void EntityRenderer::updateImpostors() {
         return a.distSq != b.distSq ? a.distSq < b.distSq : a.id < b.id;
     });
     const UnitBudget ub = unitBudgetFor(gstate, targetMs);
+    // Measurement switch (refactor/B964/README.md): WILLEQ_IMPOSTOR_FINISH=1
+    // finishes the GPU before the units, so a unit's time is its own work and
+    // not the previous frame's deferred rasterization (llvmpipe flushes it at
+    // the first FBO read). Off by default: a finish costs CPU/GPU overlap.
+    static const bool finishFirst = [] {
+        const char* e = std::getenv("WILLEQ_IMPOSTOR_FINISH");
+        return e && e[0] == '1';
+    }();
+    if (finishFirst && !work.empty()) cache.finishGpu();
     const auto frameT0 = std::chrono::steady_clock::now();
     auto& cs = cache.stats();
     for (const Work& w : work) {
@@ -332,8 +360,7 @@ void EntityRenderer::updateImpostors() {
         EntityVisual& v = entities_.at(id);
         ImpostorSpawnState& st = impostorSpawns_[id];
         const ImpostorCapture* cap = st.hasKey ? cache.captureFor(st.key) : nullptr;
-        const bool fresh = !(st.needsCapture && (st.reason == ImpostorSpawnState::Reason::Create ||
-                                                 st.reason == ImpostorSpawnState::Reason::Flip));
+        const bool fresh = !(st.needsCapture && st.reason == ImpostorSpawnState::Reason::Create);
         const bool ready = cap && cap->captured && fresh;
         bool drawImpostor = st.wantsImpostor && ready;
         bool hide = false;
@@ -391,12 +418,12 @@ void EntityRenderer::updateImpostors() {
         LOG_INFO(MOD_GRAPHICS,
                  "[impostor] frame={} candidates={} full={} impostor={} want={} limit={} gov={} avg_ms={:.1f} "
                  "pages={} cells={} unique={} shared={} row={} created={} refresh_appearance={} refresh_angle={} "
-                 "refresh_flip={} demotions={} shared_claims={} cap_full={} units={} unit_ms_avg={:.2f} "
+                 "refresh_flip={} flip_reused={} demotions={} shared_claims={} cap_full={} units={} unit_ms_avg={:.2f} "
                  "unit_ms_max={:.2f} frame_unit_ms_max={:.2f} frame_units_max={} draws={} incomplete_fbo={}",
                  frame, fs.candidates, fs.tierFull, fs.tierImpostor, fs.wantImpostor, fs.fullLimit,
                  stateName(gstate), avgMs, cache.cells().pages(), cache.cells().cellsUsed(),
                  cache.cells().uniqueCount(), cache.cells().sharedCount(), cache.rowBytes(), cs.created,
-                 cs.refreshAppearance, cs.refreshAngle, cs.refreshFlip, cs.demotions, cs.sharedClaims, cs.capFull,
+                 cs.refreshAppearance, cs.refreshAngle, cs.refreshFlip, cs.flipReused, cs.demotions, cs.sharedClaims, cs.capFull,
                  cs.units, cs.units ? cs.unitMsSum / cs.units : 0.0, cs.unitMsMax, cs.frameUnitMsMax,
                  cs.frameUnitsMax, fs.drawCalls, cs.incompleteFbo);
     }

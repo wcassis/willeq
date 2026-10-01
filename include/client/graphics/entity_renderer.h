@@ -713,7 +713,8 @@ public:
     // ---- B964: impostor billboards (entity_impostors.cpp) ----
     // Per-frame inputs from the frame loop, set before updateMainThreadEntityState():
     // the governor (null = treat as Green), the target and group members
-    // (always full models), and whether the zone is still loading (no work).
+    // (always full models), and whether the loading screen is up (no work).
+    // Post-load progressive streaming is NOT loading: a GM spawn re-arms it.
     void setImpostorFrameInputs(const FrameBudgetGovernor* governor, uint16_t targetId,
                                 std::vector<std::string> groupMemberNames, bool loading);
     // True when the preset gives impostors a budget and WILLEQ_BASELINE is not set.

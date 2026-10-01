@@ -163,6 +163,8 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
     if (!mesh) return false;
     eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDriver);
 
+    using Clock = std::chrono::steady_clock;
+    const auto tStart = Clock::now();
     // The pose the entity is in now (its skinning may be suspended).
     node->forceAnimationUpdate();
     node->updateAbsolutePosition();
@@ -216,12 +218,15 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
     cap.offset = center - node->getAbsolutePosition();
     cap.viewAngleDeg = viewAngleDeg;
     cap.sourceSpawn = sourceSpawn;
+    cap.pose = node->getCurrentAnimation();
 
     const irr::core::matrix4 savedView = driver_->getTransform(irr::video::ETS_VIEW);
     const irr::core::matrix4 savedProj = driver_->getTransform(irr::video::ETS_PROJECTION);
     const irr::core::matrix4 savedWorld = driver_->getTransform(irr::video::ETS_WORLD);
 
+    const auto tBind = Clock::now();
     driver_->setRenderTarget(scratch_, true, true, irr::video::SColor(0, 0, 0, 0));
+    const auto tDraw = Clock::now();
     irr::core::matrix4 proj;
     proj.buildProjectionMatrixOrthoLH(cap.halfW * 2.0f, cap.halfH * 2.0f, 0.1f, 500.0f);
     driver_->setTransform(irr::video::ETS_PROJECTION, proj);
@@ -253,6 +258,7 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
         }
     }
 
+    const auto tCopy = Clock::now();
     // Copy the capture into its cell while the scratch FBO is still bound.
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         if (stats_.incompleteFbo++ == 0)
@@ -265,7 +271,21 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
     glCopyTexSubImage2D(GL_TEXTURE_2D, 0, cx * kCellPx, cy * kCellPx, 0, 0, kCellPx, kCellPx);
     glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTex));
 
+    const auto tUnbind = Clock::now();
     driver_->setRenderTarget(nullptr, false, false);
+    const auto tEnd = Clock::now();
+    // Where a capture's time goes, for the first few (the unit timing in the
+    // [impostor] line is the whole of it).
+    if (stats_.units < 16) {
+        auto ms = [](Clock::time_point a, Clock::time_point b) {
+            return std::chrono::duration<double, std::milli>(b - a).count();
+        };
+        LOG_INFO(MOD_GRAPHICS,
+                 "[impostor-capture] key={} pose_bounds_ms={:.2f} bind_clear_ms={:.2f} draw_ms={:.2f} "
+                 "copy_ms={:.2f} unbind_ms={:.2f} buffers={}",
+                 key, ms(tStart, tBind), ms(tBind, tDraw), ms(tDraw, tCopy), ms(tCopy, tUnbind),
+                 ms(tUnbind, tEnd), mesh->getMeshBufferCount());
+    }
     driver_->setTransform(irr::video::ETS_VIEW, savedView);
     driver_->setTransform(irr::video::ETS_PROJECTION, savedProj);
     driver_->setTransform(irr::video::ETS_WORLD, savedWorld);
@@ -274,6 +294,12 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
 #else
     (void)key; (void)node; (void)heldItems; (void)camPos; (void)viewAngleDeg; (void)sourceSpawn;
     return false;
+#endif
+}
+
+void ImpostorCache::finishGpu() const {
+#ifdef EQT_HAS_GLES2
+    glFinish();
 #endif
 }
 

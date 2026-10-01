@@ -40,10 +40,14 @@ def main():
              "/say #set gm on",
              "wait 1"]
     n = a.count if a.layout != "none" else 0
-    # The crowd: a square grid centred `dist` ahead (+client y) of the safe point.
-    dist, spacing = (35.0, 3.5) if a.layout == "near" else (130.0, 5.0)
+    # The crowd is spawned on a grid 4-50 units ahead (+client y) of the safe
+    # point, while the character stands there: the client builds an entity's
+    # model only in the camera's PVS region (processOneEntityBuildStep), so a
+    # crowd spawned far away would stay placeholders. `far` then steps the
+    # character 110 units back, so the crowd is 115-160 units away.
+    spacing = 3.0
     side = max(1, int(math.ceil(math.sqrt(n)))) if n else 0
-    centre = (cx, cy + dist)
+    centre = (cx, cy + 4.0 + (side - 1) * spacing / 2.0)
     for i in range(n):
         gx, gy = i % side, i // side
         x = centre[0] + (gx - (side - 1) / 2.0) * spacing
@@ -55,15 +59,23 @@ def main():
         lines.append("wait 0.15")
         lines.append("/say #spawn Crowd %d 1 %d 100 %d 1" % (race, texture, gender))
         lines.append("wait 0.1")
+    stand = (cx, cy - 110.0) if a.layout == "far" else (cx, cy)
     lines.append("/warp %.2f %.2f %.2f" % (cx, cy, cz))
+    lines.append("wait 1")
+    # Facing it: an entity outside the frustum is culled, and a culled
+    # entity is never built (processOneEntityBuildStep).
+    lines.append("/face %.2f %.2f %.2f" % (centre[0], centre[1], cz))
+    lines.append("# phase: build (the crowd's models stream in)")
+    lines.append("wait %.1f" % (max(45.0, 0.6 * n) if n else 1.0))
+    lines.append("/warp %.2f %.2f %.2f" % (stand[0], stand[1], cz))
     lines.append("wait 1")
     lines.append("/face %.2f %.2f %.2f" % (centre[0], centre[1], cz))
     lines.append("# phase: idle")
     lines.append("wait %.1f" % a.idle)
     lines.append("# phase: moving (walk toward the crowd and back)")
-    lines.append("/move %.2f %.2f %.2f" % (cx, cy + min(dist * 0.6, 60.0), cz))
+    lines.append("/move %.2f %.2f %.2f" % (stand[0], stand[1] + 30.0, cz))
     lines.append("wait 12")
-    lines.append("/move %.2f %.2f %.2f" % (cx, cy, cz))
+    lines.append("/move %.2f %.2f %.2f" % (stand[0], stand[1], cz))
     lines.append("wait 12")
     lines.append("# phase: hold")
     lines.append("wait %.1f" % a.hold_after)
