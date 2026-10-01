@@ -143,16 +143,16 @@ void main() {
 // GLSL ES 1.00 fragment shader — solid (opaque)
 // Per-pixel player light (light[0]) for smooth illumination on large triangles.
 //
-// The LUT coordinate (B965, GitLab #283) is dot(pLs, pLs) with pLs = pLv *
-// uLUTDistScale (= 1/sqrt(lutMaxD2), a power of two), clamped to 1.0. Every
-// player-light FS below uses the same two lines. Never form d^2 = dot(pLv, pLv)
-// in a mediump FS: Mali-400's fragment ALU is FP16, so d^2 overflows to inf
-// past d = 256 units (65,504) and Lima then samples the LUT's NEAR end (full
-// brightness) for every far pixel -- the blown-out band B960 measured on the
-// Pi. Pre-scaling keeps the value inside FP16 range, and the min() pins any
-// coordinate past the table to its last texel, which is what CLAMP_TO_EDGE
-// returns on llvmpipe anyway, so x86 output is unchanged bit for bit
-// (scaling by a power of two is exact). refactor/B965/README.md,
+// The LUT coordinate is clamp(d2 * uLUTScale, 0.0, 1.0) in every player-light
+// FS below (B965, GitLab #283). Mali-400's fragment ALU is FP16 whatever the
+// precision qualifier says, so d2 = dot(pLv, pLv) overflows to +inf for any
+// pixel 256+ units from the light (65,504 is FP16's max), and Lima's LINEAR
+// sampler returns the LUT's NEAR end (full brightness) for an infinite
+// coordinate under CLAMP_TO_EDGE -- the blown-out far band B960 measured on the
+// Pi. The clamp turns +inf into 1.0, the last texel, which is exactly what
+// llvmpipe already sampled for any coordinate past the table, so the x86
+// output is unchanged bit for bit. clamp(x, 0, 1) is a free output modifier on
+// Mali-400. Measured: refactor/B965/README.md,
 // tools/hwcaps/gles2_player_light_probe.cpp.
 static const char* FRAGMENT_SHADER_SOLID_SRC = R"(
 precision mediump float;
@@ -162,7 +162,7 @@ uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
-uniform float uLUTDistScale;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -174,8 +174,8 @@ void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    vec3 pLs = pLv * uLUTDistScale;
-    vec4 lut = texture2D(uAttenLUT, vec2(min(dot(pLs, pLs), 1.0), 0.5));
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -194,7 +194,7 @@ uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
-uniform float uLUTDistScale;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -208,8 +208,8 @@ void main() {
     if (alpha < 0.5) discard;
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    vec3 pLs = pLv * uLUTDistScale;
-    vec4 lut = texture2D(uAttenLUT, vec2(min(dot(pLs, pLs), 1.0), 0.5));
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -232,7 +232,7 @@ uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
-uniform float uLUTDistScale;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -245,8 +245,8 @@ void main() {
     if (texColor.a < 0.5) discard;
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    vec3 pLs = pLv * uLUTDistScale;
-    vec4 lut = texture2D(uAttenLUT, vec2(min(dot(pLs, pLs), 1.0), 0.5));
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -267,7 +267,7 @@ uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
-uniform float uLUTDistScale;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -282,8 +282,8 @@ void main() {
     if (alpha < threshold) discard;
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    vec3 pLs = pLv * uLUTDistScale;
-    vec4 lut = texture2D(uAttenLUT, vec2(min(dot(pLs, pLs), 1.0), 0.5));
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -426,7 +426,7 @@ uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
-uniform float uLUTDistScale;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -438,8 +438,8 @@ void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    vec3 pLs = pLv * uLUTDistScale;
-    vec4 lut = texture2D(uAttenLUT, vec2(min(dot(pLs, pLs), 1.0), 0.5));
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -458,7 +458,7 @@ uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
-uniform float uLUTDistScale;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -472,8 +472,8 @@ void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    vec3 pLs = pLv * uLUTDistScale;
-    vec4 lut = texture2D(uAttenLUT, vec2(min(dot(pLs, pLs), 1.0), 0.5));
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -493,7 +493,7 @@ uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
-uniform float uLUTDistScale;
+uniform float uLUTScale;
 
 varying vec4 vColor;
 varying vec2 vTexCoord;
@@ -508,8 +508,8 @@ void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    vec3 pLs = pLv * uLUTDistScale;
-    vec4 lut = texture2D(uAttenLUT, vec2(min(dot(pLs, pLs), 1.0), 0.5));
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 
@@ -537,7 +537,7 @@ uniform vec4 uFogColor;
 uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
-uniform float uLUTDistScale;
+uniform float uLUTScale;
 uniform int uShaderDebug;
 
 varying vec4 vColor;
@@ -551,8 +551,8 @@ void main() {
     if (texColor.a < 0.5) discard;
 
     vec3 pLv = uPlayerLightPos - vWorldPos;
-    vec3 pLs = pLv * uLUTDistScale;
-    vec4 lut = texture2D(uAttenLUT, vec2(min(dot(pLs, pLs), 1.0), 0.5));
+    float d2 = dot(pLv, pLv);
+    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
     float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
     vec3 pLight = uPlayerLightColor * pLn * lut.a;
 

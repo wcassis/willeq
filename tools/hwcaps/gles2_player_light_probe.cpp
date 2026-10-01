@@ -25,6 +25,7 @@
 //                      FS never forms d^2 itself (d^2/4096 instead)
 //   vs_prescaled    -- pLv/64 computed in the VS, dot in the FS
 //   prod_clamped    -- production with the LUT coordinate min()'d to 1.0
+//   prod_saturate   -- production with the coordinate clamp(x, 0, 1)'d (the shipped fix)
 //   fs_prescaled_clamped -- fs_prescaled plus that clamp
 //   diag_coord      -- R = clamp(d2*uLUTScale), G = clamp(d2*uLUTScale/64), B = d2>=60000
 //   diag_lut_linear_coord -- the LUT sampled at d/16 (0..25), no d^2 involved
@@ -160,6 +161,18 @@ const char* kProdClamped = "precision mediump float;\n" FS_HEAD
                            "    vec3 pLight = uPlayerLightColor * pLn * lut.a;\n"
                            "    gl_FragColor = vec4(pLight * 0.25, 1.0);\n"
                            "}\n";
+
+// The shipped fix (B965): the production math with the coordinate SATURATED,
+// clamp(x, 0, 1) -- a free output modifier on Mali-400, where min() is an op.
+const char* kProdSaturate = "precision mediump float;\n" FS_HEAD
+                            "void main() {\n"
+                            "    vec3 pLv = uPlayerLightPos - vWorldPos;\n"
+                            "    float d2 = dot(pLv, pLv);\n"
+                            "    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));\n"
+                            "    float pLn = max(dot(uNormal, pLv * lut.r), 0.0);\n"
+                            "    vec3 pLight = uPlayerLightColor * pLn * lut.a;\n"
+                            "    gl_FragColor = vec4(pLight * 0.25, 1.0);\n"
+                            "}\n";
 
 // Prescaled (d^2 never formed at full range) AND clamped.
 const char* kFsPrescaledClamped =
@@ -362,6 +375,7 @@ int main(int argc, char** argv) {
         {"fs_prescaled", kFsPrescaled, lutLinear},
         {"vs_prescaled", kVsPrescaled, lutLinear},
         {"prod_clamped", kProdClamped, lutLinear},
+        {"prod_saturate", kProdSaturate, lutLinear},
         {"fs_prescaled_clamped", kFsPrescaledClamped, lutLinear},
         {"diag_coord", kDiagCoord, lutLinear},
         {"diag_lut_linear_coord", kDiagLutAtX, lutLinear},
