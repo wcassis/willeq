@@ -57,6 +57,7 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_textures.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_objects.cpp
         # B734: loadObjects() poses skinned objects through T476's resolver.

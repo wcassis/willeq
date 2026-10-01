@@ -22,6 +22,18 @@ B935: the row always records which libgallium the run's maps snapshots
 nollvm|system it also FAILS a run whose loaded driver is not the one asked
 for (mesa_mismatch -- the sweep aborts on it) or that has no snapshot proving
 it (mesa_unproven).
+
+B955: the gpu_buffers columns (appended at the END). The client's [memgpu]
+line at ready and steady_60s: GPU buffer memory outside RssAnon (Lima GEM),
+its source (memcg_shmem when the rig ran the client in its own cgroup), the
+renderer's logical tally beside it and the residual, the cgroup's kernel
+bytes, and owned + gpu_buffers (printed for Will's ruling; owned stays what
+the 64 MB target is read on). A frame the client dumped into the Pi's tmpfs
+before a point is charged to the same cgroup's shmem, so its bytes are named
+(dumped_png_bytes_*) and subtracted in gpu_buffers_net_*. The scanout
+framebuffers (CMA, not shmem) come from the rig's root snapshots. A Pi run
+that reached ready with a [memgpu] line reading 0 FAILS (gpu_buffers_zero):
+the row exists to see those bytes.
 """
 import argparse
 import glob
@@ -45,7 +57,11 @@ HEADER = ("zone expansion s3d_bytes attempt verdict signature exit_code kill_rea
           "sys_mem_used_delta_steady top5_ready top5_steady oom oom_line fatal_count "
           "error_count first_fatal error_signatures rcvbuf "
           # B935: appended at the END so the sweep's cut -f5 / -f11 stay put
-          "mesa_expected mesa_gallium llvm_mapped mesa_check").split()
+          "mesa_expected mesa_gallium llvm_mapped mesa_check "
+          # B955: appended at the END as well
+          "gpu_buffers_src gpu_buffers_ready gpu_buffers_steady gpu_logical_ready gpu_logical_steady "
+          "gpu_residual_steady dumped_png_bytes_steady gpu_buffers_net_steady memcg_kernel_steady "
+          "drm_mapped_steady owned_steady owned_plus_gpu_buffers_steady scanout_fb_bytes").split()
 
 
 def mesa_proof(run, expect, prefix):
@@ -102,6 +118,44 @@ def ledger_points(lines):
         out.setdefault(scal.get("point", "?"), (epoch, scal, cat))
         seq.append((epoch, scal.get("point", "?"), scal.get("zone", "")))
     return out, seq
+
+
+def memgpu_points(lines):
+    """B955: point -> (epoch, kv) of the FIRST [memgpu] line per point."""
+    out = {}
+    for ln in lines:
+        if "[memgpu] point=" not in ln:
+            continue
+        epoch = float(ln.split(" ", 1)[0]) if re.match(r"^\d+\.\d+ ", ln) else 0.0
+        kv = parse_kv(ln[ln.index("[memgpu] point="):])
+        out.setdefault(kv.get("point", "?"), (epoch, kv))
+    return out
+
+
+def png_bytes_before(run, epoch):
+    """Bytes of the frames the client dumped (into its own cgroup's tmpfs)
+    up to `epoch` -- the rig copies them back with their mtimes (cp -p)."""
+    total = 0
+    for p in glob.glob(os.path.join(run, "frames", "*.png")):
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        if st.st_mtime <= epoch:
+            total += st.st_size
+    return total
+
+
+def scanout_bytes(run):
+    vals = []
+    for p in sorted(glob.glob(os.path.join(run, "snap_*.json"))):
+        try:
+            g = json.load(open(p)).get("gpu") or {}
+        except (OSError, ValueError):
+            continue
+        if g.get("scanout_fb_bytes") is not None:
+            vals.append(g["scanout_fb_bytes"])
+    return max(vals) if vals else ""
 
 
 def top5(cat):
@@ -265,6 +319,12 @@ def main():
     kill = summ.get("kill_reason", "") if summ else "no summary.json (runner never finished)"
     rendered = zm > 0 and tx > 0 and irr > 0 and n_good >= 1
     gallium, llvm, mesa_check = mesa_proof(a.run, a.expect_mesa, a.mesa_prefix)
+    mg = memgpu_points(lines)
+    mg_ready = mg.get("ready")
+    mg_steady = mg.get("steady_60s") if steady else None
+    gv = lambda p, k: int(p[1].get(k, 0)) if p else ""
+    png_steady = png_bytes_before(a.run, mg_steady[0]) if mg_steady else ""
+    gpu_zero = bool(ready) and mg_ready is not None and gv(mg_ready, "gpu_buffers") == 0
     checks = [
         (mesa_check.startswith("mismatch"), "mesa_" + mesa_check),
         (oom == "y", "oom_kill"),
@@ -276,6 +336,8 @@ def main():
         (bool(ready) and not rendered, "render_unproven (zone_mesh=%d textures=%d irrlicht_scene=%d nonblank=%s/%d)"
          % (zm, tx, irr, n_good, n_png)),
         (bool(fatal), "fatal"),
+        (gpu_zero, "gpu_buffers_zero (the [memgpu] row read 0 at ready, source %s)"
+         % (mg_ready[1].get("source", "?") if mg_ready else "?")),
         (bool(ready) and steady is not None and (rc != 0 or kill), "unclean_exit (rc=%s %s)" % (rc, kill)),
         (mesa_check.startswith("unproven"), "mesa_" + mesa_check),
     ]
@@ -307,6 +369,16 @@ def main():
         "error_signatures": sig_txt, "rcvbuf": rcv[:160],
         "mesa_expected": a.expect_mesa, "mesa_gallium": ",".join(gallium), "llvm_mapped": llvm,
         "mesa_check": mesa_check,
+        "gpu_buffers_src": (mg_steady or mg_ready or (0, {}))[1].get("source", ""),
+        "gpu_buffers_ready": gv(mg_ready, "gpu_buffers"), "gpu_buffers_steady": gv(mg_steady, "gpu_buffers"),
+        "gpu_logical_ready": gv(mg_ready, "logical"), "gpu_logical_steady": gv(mg_steady, "logical"),
+        "gpu_residual_steady": gv(mg_steady, "residual"),
+        "dumped_png_bytes_steady": png_steady,
+        "gpu_buffers_net_steady": (gv(mg_steady, "gpu_buffers") - png_steady) if mg_steady else "",
+        "memcg_kernel_steady": gv(mg_steady, "memcg_kernel"), "drm_mapped_steady": gv(mg_steady, "drm_mapped"),
+        "owned_steady": gv(mg_steady, "owned"),
+        "owned_plus_gpu_buffers_steady": gv(mg_steady, "owned_plus_gpu_buffers"),
+        "scanout_fb_bytes": scanout_bytes(a.run),
     }
     clean = {k: str(v).replace("\t", " ").replace("\n", " ") for k, v in row.items()}
     new = not os.path.exists(a.tsv) or os.path.getsize(a.tsv) == 0
@@ -318,8 +390,11 @@ def main():
         json.dump({"row": row, "frames": fdetail, "fps_after_ready": fps,
                    "points": {k: {"epoch": v[0], "rss_anon": v[1].get("rss_anon"), "categories": v[2]}
                               for k, v in pts.items()}}, f, indent=1)
-    print("%s %s %s peak_rss_anon=%.1fMB steady=%.1fMB fps_med=%s frames=%d/%d libgallium=%s libLLVM=%s mesa=%s %s"
+    print("%s %s %s peak_rss_anon=%.1fMB steady=%.1fMB gpu_buffers_steady=%s(%s) fps_med=%s frames=%d/%d "
+          "libgallium=%s libLLVM=%s mesa=%s %s"
           % (a.zone, a.attempt, verdict, peak / 1048576.0, rss_steady / 1048576.0,
+             ("%.1fMB" % (row["gpu_buffers_steady"] / 1048576.0)) if row["gpu_buffers_steady"] != "" else "-",
+             row["gpu_buffers_src"] or "-",
              row["fps_median"], n_good, n_png, ",".join(gallium) or "-", llvm or "-",
              (a.expect_mesa + ":" + mesa_check) if a.expect_mesa else "-", sig))
 

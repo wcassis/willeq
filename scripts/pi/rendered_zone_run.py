@@ -25,6 +25,12 @@ What it does:
     named [memledger] point -- scripts/pi/proc_mem_snapshot.py's status +
     per-mapped-file Rss/Anonymous + the mapped .so list, i.e. the proof of
     which GL driver libraries the process really loaded.
+  * B955, opt-in: --own-cgroup launches the client in its OWN memory cgroup
+    (`systemd-run --user --scope`, same pid: the scope execs the client), so
+    the client's gpu_buffers ledger row can read its GEM/shmem bytes from
+    memory.stat (include/client/core/gpu_buffer_census.h). The log is written
+    by THIS runner, outside that cgroup, so it never lands in the row; frame
+    dumps the client writes into a tmpfs do, and the summarizer names them.
 
 It never interprets the run (pass/fail is the host-side summarizer's job,
 scripts/pi/rendered_zone_summarize.py), so a change of criterion never
@@ -73,6 +79,8 @@ def main():
     ap.add_argument("--stop-point", default="steady_60s")
     ap.add_argument("--stop-delay", type=float, default=5.0)
     ap.add_argument("--snap-points", default="")
+    ap.add_argument("--own-cgroup", action="store_true",
+                    help="B955: run the client in its own systemd --user scope (memcg)")
     ap.add_argument("cmd", nargs=argparse.REMAINDER)
     a = ap.parse_args()
     cmd = a.cmd[1:] if a.cmd and a.cmd[0] == "--" else a.cmd
@@ -91,6 +99,10 @@ def main():
     }
     t0 = time.time()
     summary["start_epoch"] = t0
+    if a.own_cgroup:
+        unit = "willeq-run-%d-%d" % (os.getpid(), int(t0))
+        cmd = ["systemd-run", "--user", "--scope", "--quiet", "--collect", "--unit=" + unit] + cmd
+        summary["cgroup_unit"] = unit
     proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, bufsize=0, cwd=a.out)
     last_line = [time.time()]

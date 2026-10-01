@@ -26,6 +26,10 @@ steady_60s, owned = RssAnon - gpu_driver against 64 MiB, and the
 "SimWorker Apply" phase (where the renderer applies the worker's results,
 the keyframe vertex rewrite included) next to Player Movement.
 
+B955: gpu_buffers at steady_60s (the client's [memgpu] line: GPU buffer
+memory outside RssAnon -- Lima GEM on the Pi) and owned + gpu_buffers, the
+figure Will rules on beside owned.
+
 usage: collision_ab_table.py AB_DIR [--out FILE.md] [--category CAT]
 """
 import argparse
@@ -41,6 +45,8 @@ CATEGORY = "spatial"
 LEDGER_RE = None  # built in main() for CATEGORY
 GPU_RE = re.compile(r" gpu_driver=(\d+)/")
 APPLY_RE = re.compile(r"SimWorker Apply:\s+([\d.]+) us")
+MEMGPU_RE = re.compile(r"\[memgpu\] point=steady_60s zone=(\S+) gpu_buffers=(\d+) source=(\S+) .*"
+                       r" owned_plus_gpu_buffers=(\d+)")
 OWNER_RE = re.compile(r"\[memledger-startup\] point=(ready|steady_60s) owner=(\S+) live=(\d+) blocks=(\d+)")
 
 
@@ -48,6 +54,7 @@ def parse_zone(d, zone):
     log = d / "client.log"
     out = {"moving": [], "idle": [], "move_us": [], "idle_move_us": [], "spatial": {}, "owners": {},
            "apply_mov": [], "apply_idle": [], "gpu_steady": None,
+           "gpubuf_steady": None, "gpubuf_src": "", "owned_plus_steady": None,
            "rss_steady": None, "rss_peak": None, "keys": 0, "ready": None, "ok": False}
     if not log.exists():
         return out
@@ -77,6 +84,11 @@ def parse_zone(d, zone):
                     g = GPU_RE.search(line)
                     out["gpu_steady"] = int(g.group(1)) if g else None
                     out["ok"] = True
+            continue
+        m = MEMGPU_RE.search(line)
+        if m and m.group(1) == zone:
+            out["gpubuf_steady"], out["gpubuf_src"] = int(m.group(2)), m.group(3)
+            out["owned_plus_steady"] = int(m.group(4))
             continue
         m = OWNER_RE.search(line)
         if m:
@@ -153,8 +165,8 @@ def main():
     md = [f"Source: `{root}`. Frame time = median of the client's `/frametiming` 60-frame blocks "
           "(\"Total Frame\", us); moving = wholly inside the key sequence, idle = after it. "
           "fps = median of the blocks' fps estimates.\n"]
-    md.append(f"| zone | side | runs ok | blocks mov/idle | moving frame us | moving fps | Player Movement us (mov / idle) | SimWorker Apply us (mov / idle) | idle frame us | idle fps | {CATEGORY} @ready | {CATEGORY} @steady | peak RssAnon | RssAnon @steady | gpu_driver @steady | owned = RssAnon - gpu_driver @steady | owned - 64 MiB |")
-    md.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    md.append(f"| zone | side | runs ok | blocks mov/idle | moving frame us | moving fps | Player Movement us (mov / idle) | SimWorker Apply us (mov / idle) | idle frame us | idle fps | {CATEGORY} @ready | {CATEGORY} @steady | peak RssAnon | RssAnon @steady | gpu_driver @steady | owned = RssAnon - gpu_driver @steady | owned - 64 MiB | gpu_buffers @steady (source) | owned + gpu_buffers @steady |")
+    md.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     verdicts = []
     for z in zones:
         meds = {}
@@ -176,13 +188,17 @@ def main():
             gp = [r["gpu_steady"] for r in runs if r["gpu_steady"]]
             ow = [r["rss_steady"] - r["gpu_steady"] for r in runs if r["rss_steady"] and r["gpu_steady"]]
             over = [o - 64 * 1024 * 1024 for o in ow]
+            gb = [r["gpubuf_steady"] for r in runs if r["gpubuf_steady"] is not None]
+            gsrc = ",".join(sorted({r["gpubuf_src"] for r in runs if r["gpubuf_src"]}))
+            op = [r["owned_plus_steady"] for r in runs if r["owned_plus_steady"] is not None]
             meds[side] = (med(mv), med(mf), med(pm))
             rng = lambda xs: (f"{min(xs):,}" if len(xs) and min(xs) == max(xs) else
                               (f"{min(xs):,}–{max(xs):,}" if xs else "n/a"))
             fmt = lambda v, p=0: (f"{v:,.{p}f}" if v is not None else "n/a")
             md.append(f"| {z} | {side} | {ok}/{len(runs)} | {len(mv)}/{len(iv)} | {fmt(med(mv))} | {fmt(med(mf), 1)} | "
                       f"{fmt(med(pm))} / {fmt(med(pim))} | {fmt(med(am))} / {fmt(med(ai))} | {fmt(med(iv))} | {fmt(med(ifp), 1)} | {rng(spr)} | {rng(sps)} | "
-                      f"{rng(pk)} | {rng(st)} | {rng(gp)} | {rng(ow)} | {rng(over)} |")
+                      f"{rng(pk)} | {rng(st)} | {rng(gp)} | {rng(ow)} | {rng(over)} | "
+                      f"{rng(gb)}{' (' + gsrc + ')' if gsrc else ''} | {rng(op)} |")
         (a_t, a_f, a_p), (b_t, b_f, b_p) = meds["A"], meds["B"]
         if a_t and b_t:
             d = 100.0 * (b_t - a_t) / a_t
