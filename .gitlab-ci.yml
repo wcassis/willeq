@@ -196,6 +196,16 @@ test:
     # wipes and rebuilds Irrlicht, so only call it when there is no benchmark
     # binary yet; otherwise build the two targets incrementally (cmake re-runs
     # its own configure if CMakeLists.txt changed).
+    # B959: the gate's incremental path never looked at libIrrlicht, so a
+    # driver-source change (a new eqt* symbol) linked against the OLD warm lib
+    # whenever this job ran on a runner where the build job's rebuild was not
+    # the one that landed. Same stamp check as the build job; a mismatch
+    # rebuilds the lib (and rewrites the stamp) before the incremental build,
+    # whose willeq / gles2_zone_benchmark then relink against it.
+    - |
+      if [ ! -f third_party/irrlicht-gles2-x86/lib/libIrrlicht.a ] || ! bash scripts/ci/irrlicht_input_stamp.sh verify third_party/irrlicht-gles2-x86/irrlicht_input_stamp.txt; then
+        JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh --irrlicht-only
+      fi
     - |
       if [ -x build-gles2/bin/gles2_zone_benchmark ]; then
         nice -n 10 cmake --build build-gles2 --target willeq gles2_zone_benchmark -j "$JOBS" 2>&1 | tail -n 60

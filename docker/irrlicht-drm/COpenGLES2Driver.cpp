@@ -17,6 +17,7 @@
 #include <EGL/egl.h>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <cstring>
 
 namespace irr
@@ -108,6 +109,16 @@ void alphaTraceSummary()
 
 void eqtEnableGPUSyncProbe(bool enable) { irr::video::g_gpuSyncProbe.enabled = enable; }
 bool eqtGPUSyncProbeEnabled() { return irr::video::g_gpuSyncProbe.enabled; }
+
+// B959 (GitLab #277): the program-binary cache directory is INJECTED by the
+// host before the device is created (include/client/graphics/gles2_shader_cache.h
+// resolves it through eqt::ResolveCachePathForWrite). Unset or empty means the
+// cache is OFF -- the driver never invents a path, in particular never one
+// relative to the current directory (that wrote 46 binaries into a checkout).
+namespace {
+std::string g_shaderCacheDir;
+}
+void eqtSetShaderBinaryCacheDir(const char* dir) { g_shaderCacheDir = dir ? dir : ""; }
 
 void eqtProbeGPUTimerQuerySupport()
 {
@@ -355,11 +366,14 @@ bool COpenGLES2Driver::initDriver()
     DefaultFBO = (GLuint)fbo;
 
     // Enable shader binary cache if extension available
-    if (extensions_.hasProgramBinary) {
+    if (extensions_.hasProgramBinary && g_shaderCacheDir.empty()) {
+        os::Printer::log("GLES2: Shader binary cache disabled (no cache directory set)",
+                         ELL_INFORMATION);
+    } else if (extensions_.hasProgramBinary) {
         char gpuId[512];
         snprintf(gpuId, sizeof(gpuId), "%s|%s",
                  version ? version : "?", renderer ? renderer : "?");
-        shaderManager_.enableBinaryCache("config/shader_cache", gpuId,
+        shaderManager_.enableBinaryCache(g_shaderCacheDir.c_str(), gpuId,
                                           extensions_.glGetProgramBinaryOES,
                                           extensions_.glProgramBinaryOES);
     }
