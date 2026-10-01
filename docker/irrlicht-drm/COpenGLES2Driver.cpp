@@ -16,6 +16,8 @@
 #include <GLES2/gl2ext.h>
 #include <EGL/egl.h>
 #include <cstdio>
+#include <cstdlib>
+#include <string>
 #include <cstring>
 #include <dlfcn.h>
 
@@ -81,10 +83,66 @@ bool g_gpuQueryIssued[kGPUQueryBuffers][kGPUPhaseCount] = {};
 bool g_gpuQueriesGenerated = false;
 int g_gpuWriteBuf = 0;
 
+// B960 (GitLab #278): WILLEQ_ALPHATEST_TRACE=1 names every texture the
+// built-in AlphaTest3D program draws (once, on first sight) and prints the
+// per-frame AlphaTest3D draw count every 60 frames, to stderr. Read once at
+// driver init; off = one predicted-false branch per built-in material apply.
+// Diagnostic for "which production draws reach the built-in alpha test",
+// the question B958's Lima inversion made matter.
+bool g_alphaTrace = false;
+unsigned g_alphaTraceFrame = 0;
+unsigned g_alphaTraceFrameDraws = 0;
+unsigned long g_alphaTraceTotalDraws = 0;
+const void* g_alphaTraceSeen[512] = {};
+unsigned g_alphaTraceSeenCount = 0;
+
+void alphaTraceDraw(const irr::video::ITexture* tex)
+{
+    ++g_alphaTraceFrameDraws;
+    ++g_alphaTraceTotalDraws;
+    for (unsigned i = 0; i < g_alphaTraceSeenCount; ++i)
+        if (g_alphaTraceSeen[i] == tex) return;
+    if (g_alphaTraceSeenCount < 512) g_alphaTraceSeen[g_alphaTraceSeenCount++] = tex;
+    std::fprintf(stderr, "[B960] alpha3d new_texture frame=%u name=%s\n",
+                 g_alphaTraceFrame, tex ? tex->getName().getPath().c_str() : "(null)");
+}
+
+unsigned g_alphaTraceFramesWithDraws = 0;
+
+void alphaTraceEndFrame()
+{
+    if (g_alphaTraceFrameDraws > 0) ++g_alphaTraceFramesWithDraws;
+    // Every 60th frame, plus the first 200 frames that drew anything.
+    if (g_alphaTraceFrame % 60 == 0 ||
+        (g_alphaTraceFrameDraws > 0 && g_alphaTraceFramesWithDraws <= 200))
+        std::fprintf(stderr, "[B960] alpha3d frame=%u draws_this_frame=%u total_draws=%lu unique_textures=%u\n",
+                     g_alphaTraceFrame, g_alphaTraceFrameDraws, g_alphaTraceTotalDraws,
+                     g_alphaTraceSeenCount);
+    ++g_alphaTraceFrame;
+    g_alphaTraceFrameDraws = 0;
+}
+
+void alphaTraceSummary()
+{
+    std::fprintf(stderr, "[B960] alpha3d summary frames=%u frames_with_draws=%u total_draws=%lu unique_textures=%u\n",
+                 g_alphaTraceFrame, g_alphaTraceFramesWithDraws, g_alphaTraceTotalDraws,
+                 g_alphaTraceSeenCount);
+}
+
 } // anonymous namespace
 
 void eqtEnableGPUSyncProbe(bool enable) { irr::video::g_gpuSyncProbe.enabled = enable; }
 bool eqtGPUSyncProbeEnabled() { return irr::video::g_gpuSyncProbe.enabled; }
+
+// B959 (GitLab #277): the program-binary cache directory is INJECTED by the
+// host before the device is created (include/client/graphics/gles2_shader_cache.h
+// resolves it through eqt::ResolveCachePathForWrite). Unset or empty means the
+// cache is OFF -- the driver never invents a path, in particular never one
+// relative to the current directory (that wrote 46 binaries into a checkout).
+namespace {
+std::string g_shaderCacheDir;
+}
+void eqtSetShaderBinaryCacheDir(const char* dir) { g_shaderCacheDir = dir ? dir : ""; }
 
 void eqtProbeGPUTimerQuerySupport()
 {
@@ -332,11 +390,14 @@ bool COpenGLES2Driver::initDriver()
     DefaultFBO = (GLuint)fbo;
 
     // Enable shader binary cache if extension available
-    if (extensions_.hasProgramBinary) {
+    if (extensions_.hasProgramBinary && g_shaderCacheDir.empty()) {
+        os::Printer::log("GLES2: Shader binary cache disabled (no cache directory set)",
+                         ELL_INFORMATION);
+    } else if (extensions_.hasProgramBinary) {
         char gpuId[512];
         snprintf(gpuId, sizeof(gpuId), "%s|%s",
                  version ? version : "?", renderer ? renderer : "?");
-        shaderManager_.enableBinaryCache("config/shader_cache", gpuId,
+        shaderManager_.enableBinaryCache(g_shaderCacheDir.c_str(), gpuId,
                                           extensions_.glGetProgramBinaryOES,
                                           extensions_.glProgramBinaryOES);
     }
@@ -347,7 +408,19 @@ bool COpenGLES2Driver::initDriver()
     // Lima miscompiles a DISCARD whose condition depends on it -- the test runs
     // inverted -- so every device now compiles the same constant-threshold FS
     // (COGLES2Shaders.cpp, tools/hwcaps/gles2_alpha_test_probe.cpp).
-    if (!shaderManager_.init()) {
+    // B960 (GitLab #278): WILLEQ_ALPHATEST_FWIDTH=1 is a TEST KNOB that
+    // restores the pre-B958 switch (fwidth() variant iff the extension is
+    // exposed) so the Pi before/after comparison runs one binary.
+    const char* fwKnob = std::getenv("WILLEQ_ALPHATEST_FWIDTH");
+    const bool legacyFwidth = fwKnob && std::strcmp(fwKnob, "1") == 0 &&
+                              extensions_.hasStandardDerivatives;
+    const char* traceKnob = std::getenv("WILLEQ_ALPHATEST_TRACE");
+    if (!g_alphaTrace && traceKnob && std::strcmp(traceKnob, "1") == 0) {
+        g_alphaTrace = true;
+        std::atexit(alphaTraceSummary);  // tools exit without dropping the device
+        std::fprintf(stderr, "[B960] alpha3d trace on, legacy_fwidth=%d\n", legacyFwidth ? 1 : 0);
+    }
+    if (!shaderManager_.init(legacyFwidth)) {
         os::Printer::log("GLES2: Shader initialization failed", ELL_ERROR);
         return false;
     }
@@ -451,6 +524,7 @@ bool COpenGLES2Driver::beginScene(bool backBuffer, bool zBuffer,
 bool COpenGLES2Driver::endScene()
 {
     CNullDriver::endScene();
+    if (g_alphaTrace) alphaTraceEndFrame();
 
     // Discard depth/stencil tiles before present (bandwidth saving on tile-based GPUs)
     if (extensions_.hasDiscardFramebuffer) {
@@ -1533,9 +1607,10 @@ void COpenGLES2Driver::applyMaterialState(const SMaterial& material)
     // Select appropriate built-in shader
     bool hasTexture = material.getTexture(0) != nullptr;
     if (hasTexture) {
-        if (material.MaterialType == EMT_TRANSPARENT_ALPHA_CHANNEL_REF)
+        if (material.MaterialType == EMT_TRANSPARENT_ALPHA_CHANNEL_REF) {
             shaderManager_.useProgram(EOGLES2SP_ALPHA3D);
-        else
+            if (g_alphaTrace) alphaTraceDraw(material.getTexture(0));
+        } else
             shaderManager_.useProgram(EOGLES2SP_SOLID3D);
     } else {
         shaderManager_.useProgram(EOGLES2SP_COLOR2D);

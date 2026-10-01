@@ -33,6 +33,7 @@
 //                 "before" half of T416's before/after.
 
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/gles2_shader_cache.h"
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/item_display_panel.h"
 #include "client/graphics/ui/options_panel.h"
@@ -585,6 +586,7 @@ int main(int argc, char** argv) {
     params.DriverType = irr::video::EDT_OGLES2;
     params.WindowSize = irr::core::dimension2d<irr::u32>(kW, kH);
     params.Fullscreen = true;
+    eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
     irr::IrrlichtDevice* device = irr::createDeviceEx(params);
     if (!device) {
         fprintf(stderr, "ERROR: failed to create Irrlicht device\n");

@@ -304,6 +304,14 @@ it without taking that measurement first.
 - **B971** (C) → issue #289. The window surface's D24S8 depth/stencil is
   3.52 MiB of GEM at 1280x720; its only stencil user (`/portal`) is off on the
   orangepi preset. 16-bit depth changes pixels: Will's call. Measured by B962.
+- **B967** (C) → issue #285. The player light is quantized at large world
+  coordinates on BOTH GPUs: the mediump `vWorldPos` varying. The goldens carry
+  it. Fix: pLv in the VS, plus a re-bless. Measured by B965.
+- **B968** (C) → issue #286. Past 64 units the player light gets brighter with
+  distance on a surface that faces it: the LUT's `1/d` clamps at 1/64, so
+  pLn = d/64. Both GPUs; in the goldens. Measured by B965.
+- **B969** (A) → issue #287. timorous_f2: 3,175 px >32, Pi vs the x86 golden,
+  along polygon edges. Not the player light; cause not isolated. Found by B965.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
@@ -678,14 +686,40 @@ it without taking that measurement first.
   `tools/hwcaps/gles2_alpha_test_probe` on both Pi Mesa builds; the B952 pixel
   test at 80 units, 128^2: interior/full 0.7 % -> 97.6 % on the Pi (x86 97.3 %).
   Follow-ups: #277 (B959), #278 (B960).
-- **B959** (B) → issue #277. The GLES2 program-binary cache is written to
-  `config/shader_cache` relative to the CWD (`COpenGLES2Driver::initDriver()`),
-  not through `ResolveCachePathForWrite()`; B952's runs left 46 binaries in an
-  NFS checkout, and a CWD without `config/` silently saves nothing. Found by B958.
-- **B960** (B, *unconfirmed*) → issue #278. Which production draws reached the
-  built-in AlphaTest3D on the Pi -- and so drew inverted -- before B958.
-  Confirm by counting `useProgram(EOGLES2SP_ALPHA3D)` per frame in a rendered
-  Pi zone run on a pre-B958 build.
+- ~~**B959** (B) → issue #277. The GLES2 program-binary cache was written to
+  `config/shader_cache` relative to the CWD.~~ **FIXED** (`refactor/B959/README.md`):
+  the host injects `eqt::ResolveShaderCacheDirectory()` through
+  `eqt::ConfigureGles2ShaderCache()`; no directory = cache off. Pinned by
+  `test_shader_cache_path` and two `DataPathRouting` censuses. Found by B958.
+- ~~**B960** (B) → issue #278. Which production draws reached the built-in
+  AlphaTest3D on the Pi before B958.~~ **ANSWERED** (`refactor/B960/README.md`):
+  the inventory paperdoll for a model with a WLD-masked material (measured: the
+  Iksar head, 59 draws per inventory session; Pi before/after 43-86 px >32 per
+  viewer angle, after = x86), and one frame per newly built masked entity
+  (B966). The world otherwise: 0 draws, and the 15 gate frames are bit-identical
+  before/after on the Pi. Instruments: `WILLEQ_ALPHATEST_FWIDTH=1` (pre-B958
+  test knob), `WILLEQ_ALPHATEST_TRACE=1`. The dead fwidth() zone variants were
+  deleted. Follow-ups: #283 (B965), #284 (B966).
+- ~~**B965** (A) → issue #283. The per-pixel player light was blown out on
+  Lima.~~ **FIXED** (`refactor/B965/README.md`, `tools/hwcaps/gles2_player_light_probe`).
+  Mali-400's FS ALU is FP16 even under `highp`, so `d2 = dot(pLv, pLv)`
+  became +inf past 256 units. Lima's LINEAR sampler read the LUT's near end for
+  that infinite coordinate. The LUT coordinate is now `clamp(d2 * uLUTScale, 0, 1)`,
+  and the x86 goldens are pixel-identical. Pi gate frames, >32 px vs the golden:
+  - gfaydark 23,842 / 202 / 4,531 → 429 / 66 / 163;
+  - iceclad 19,495 / 32,245 / 6,904 → 2 / 29 / 335.
+
+  The residual iceclad_f2 band edges are B967. Follow-ups: #285 (B967), #286
+  (B968), #287 (B969), #288 (B970).
+- **B966** (A, minor) → issue #284. A newly built entity draws one frame with
+  unpromoted materials (driver built-in Solid3D / AlphaTest3D):
+  `SceneNodeCreation` adds the node and `NodeSetup` promotes it a frame later
+  (`entity_build_step.cpp`). Measured on the Pi: `a_whiskered_bat` in qeynos2.
+  Found by B960.
+- **B970** (B) → issue #288. CI `build-arm` cannot build the ARM Irrlicht
+  layer while downloads.sourceforge.net is down. `docker/Dockerfile.arm-noble`
+  wgets the Irrlicht zip and libpng; HTTP 522 for all of B965's session (job
+  1926). Fix: vendor both archives with pinned sha256. Found by B965.
 
 ## C — needs Will's decision
 

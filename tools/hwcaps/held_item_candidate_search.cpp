@@ -24,6 +24,7 @@
 // the forearm direction from the skeleton).
 
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/gles2_shader_cache.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/bone_attachment.h"
 #include "client/graphics/eq/skeletal_animator.h"
@@ -177,6 +178,7 @@ int main(int argc, char** argv) {
 #endif
     params.WindowSize = irr::core::dimension2d<irr::u32>(opt.width, opt.height);
     params.Fullscreen = true;
+    eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
     irr::IrrlichtDevice* device = irr::createDeviceEx(params);
     if (!device) {
         fprintf(stderr, "ERROR: no Irrlicht device\n");
