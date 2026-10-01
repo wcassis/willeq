@@ -1,0 +1,7 @@
+# B970 (#288): SHA256 pins for the third-party archives the ARM image builds from.
+# They live on NFS in $VENDOR_STORE (default /mnt/projects/fable/ci-arm/vendor/), never in git;
+# scripts/ci/vendor_fetch.sh --ensure verifies them against this file and fetches any that
+# are missing. Same format as sha256sum -c. Hashes are of the files the Dockerfile used to
+# wget from downloads.sourceforge.net (re-downloaded and compared 2026-10-01).
+effb7beed3985099ce2315a959c639b4973aac8210f61e354475a84105944f3d  irrlicht-1.8.5.zip
+505e70834d35383537b6491e7ae8641f1a4bed1876dbfe361201fc80868d88ca  libpng-1.6.37.tar.xz
