@@ -55,7 +55,7 @@ import statistics
 RSS_TARGET = 64 * 1024 * 1024       # the design yardstick (printed, not a gate); judged on
                                     # OWNED = RssAnon - gpu_driver (Will, 2026-09-29, B933)
 RSS_CEILING = 256 * 1024 * 1024     # the failing bound
-GPU_UNNAMED_BOUND = 12 * 1024 * 1024  # B962: the measured sweep (refactor/B962/README.md) + margin
+GPU_UNNAMED_BOUND = 10 * 1024 * 1024  # B962: measured 5.0-7.7 MiB fixed, 11.4-17.3 MiB before (refactor/B962/README.md)
 DRIVER_SO = re.compile(r"owner=(so:(libLLVM|libgallium|libEGL|libGLES|libGLdispatch|libdrm|libgbm|libglapi)[^ ]*"
                        r"|[^ ]*(/dev/dri|renderD|card[0-9])[^ ]*)")
 

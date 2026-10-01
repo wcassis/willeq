@@ -1,619 +1,639 @@
-P	steady_60s	1935591.129547	617	57122816	619	2	0
-B	10	155	32768	0	1	153	8462	textures_decoded	tex:etc1 15walin1.bmp 256x256 L9
-B	10	84	45056	0	1	83	8450	textures_decoded	tex:etc1a storm_cloud_blend_28 256x256 L9
-B	10	368	4096	0	1	368	8462	entity_instances	draw2d:rect
-B	10	226	8192	0	1	224	8462	objects	draw2d:batch
-B	10	297	4096	0	1	295	8462	textures_decoded	tex:etc1 qcmlg0002.bmp 64x64 L7
-B	10	581	102400	0	0	581	8450	irrlicht_scene	-
-B	10	439	4096	0	1	439	8462	textures_decoded	tex:etc1a hufft0001.bmp 64x32 L7
-B	10	510	4096	0	0	510	8462	irrlicht_scene	draw2d:batch
-B	10	23	4096	0	1	22	8450	textures_decoded	tex:etc1 creature_atlas 64x64 L7
-B	10	94	4096	0	1	93	8450	startup	draw2d:rect
-B	10	236	16384	0	1	234	8462	textures_decoded	tex:etc1 crate1.bmp 256x128 L9
-B	10	165	8192	0	1	163	8462	zone_mesh	draw2d:batch
-B	10	449	4096	0	1	449	8462	textures_decoded	tex:etc1 huflg0001.bmp 128x64 L8
-B	10	307	4096	0	1	307	8462	entity_instances	draw2d:batch
-B	10	378	4096	0	1	378	8462	textures_decoded	tex:etc1 helm14.bmp 32x32 L6
-B	10	520	8192	0	0	520	8450	irrlicht_scene	draw3d:client
-B	10	591	4096	0	0	591	8450	irrlicht_scene	draw2d:batch
-B	10	104	4096	0	1	102	8450	irrlicht_scene	draw2d:batch
-B	10	175	32768	0	1	173	8462	textures_decoded	tex:etc1 carpet.bmp 256x256 L9
-B	10	33	32768	0	1	32	8450	textures_decoded	tex:etc1 storm_cloud_blend_3 256x256 L9
-B	10	206	32768	0	1	204	8462	textures_decoded	tex:etc1 urnside.bmp 256x256 L9
-B	10	64	45056	0	1	63	8450	textures_decoded	tex:etc1a storm_cloud_blend_18 256x256 L9
-B	10	135	32768	0	1	133	8462	textures_decoded	tex:etc1 xgrasdir.bmp 256x256 L9
-B	10	419	4096	0	1	419	8462	textures_decoded	tex:etc1 qcfhe0001.bmp 64x64 L7
-B	10	277	32768	0	1	275	8462	textures_decoded	tex:etc1 phook.bmp 256x256 L9
-B	10	348	4096	0	1	348	8462	textures_decoded	tex:etc1a rathe0003.bmp 32x64 L7
-B	10	561	4096	0	0	561	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	490	4096	0	0	490	8462	entity_instances	draw2d:rect
-B	10	74	45056	0	1	73	8450	textures_decoded	tex:etc1a storm_cloud_blend_23 256x256 L9
-B	10	3	16777216	1	0	3	8450	startup	egl:device
-B	10	287	4096	0	1	285	8462	textures_decoded	tex:etc1 qcmhe0001.bmp 128x64 L8
-B	10	145	32768	0	1	143	8462	textures_decoded	tex:etc1 16waal3.bmp 256x256 L9
-B	10	216	32768	0	1	214	8462	textures_decoded	tex:etc1 holderd.bmp 256x256 L9
-B	10	500	131072	0	1	500	8462	textures_decoded	tex:etc1 detail_atlas 512x512 L10
-B	10	358	4096	0	1	358	8462	entity_instances	draw2d:batch
-B	10	429	4096	0	1	429	8462	textures_decoded	tex:etc1 qcflg0002.bmp 64x32 L7
-B	10	13	700416	0	1	12	8450	textures_decoded	tex:etc1a item_icons0 1024x1024 L11
-B	10	571	4096	0	0	571	8450	irrlicht_scene	draw3d:client
-B	10	531	4096	0	0	531	8450	irrlicht_scene	draw2d:batch
-B	10	602	4096	0	0	602	8450	irrlicht_scene	draw3d:client
-B	10	460	4096	0	1	460	8462	entity_instances	draw2d:batch
-B	10	44	45056	0	1	43	8450	textures_decoded	tex:etc1a storm_cloud_blend_8 256x256 L9
-B	10	257	16384	0	1	255	8462	textures_decoded	tex:etc1 crate10.bmp 256x128 L9
-B	10	115	65536	0	1	113	8462	textures_decoded	tex:etc1 16wall2.bmp 256x512 L10
-B	10	186	32768	0	1	184	8462	textures_decoded	tex:etc1 falls7.bmp 256x256 L9
-B	10	470	4096	0	1	470	8462	entity_instances	draw2d:batch
-B	10	328	4096	0	1	328	8462	textures_decoded	tex:etc1 bathe0010.bmp 32x8 L6
-B	10	399	4096	0	1	399	8462	textures_decoded	tex:etc1 humlg0001.bmp 128x64 L8
-B	10	612	4096	0	0	612	8450	irrlicht_scene	draw2d:image
-B	10	541	4096	0	0	541	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	125	32768	0	1	123	8462	textures_decoded	tex:etc1 5roof.bmp 256x256 L9
-B	10	54	45056	0	1	53	8450	textures_decoded	tex:etc1a storm_cloud_blend_13 256x256 L9
-B	10	338	4096	0	1	338	8462	entity_instances	draw2d:rect
-B	10	196	16384	0	1	194	8462	textures_decoded	tex:etc1 chestfrnt.bmp 256x128 L9
-B	10	267	16384	0	1	265	8462	textures_decoded	tex:etc1 contabtop.bmp 256x128 L9
-B	10	480	4096	0	1	480	8462	textures_decoded	tex:etc1 skeft0002.bmp 32x64 L7
-B	10	551	4096	0	0	551	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	409	8192	0	1	409	8462	entity_instances	draw2d:batch
-B	10	369	4096	0	1	369	8462	entity_instances	draw2d:batch
-B	10	440	4096	0	1	440	8462	textures_decoded	tex:etc1 hufft0002.bmp 8x8 L4
-B	10	298	4096	0	1	296	8462	textures_decoded	tex:etc1a qcmlg0002.bmp 64x64 L7
-B	10	582	4096	0	0	582	8450	irrlicht_scene	draw2d:image
-B	10	511	4096	0	0	511	8462	irrlicht_scene	draw2d:batch
-B	10	95	4096	0	1	94	8450	startup	draw2d:rect
-B	10	24	4096	0	1	23	8450	textures_decoded	tex:etc1a creature_atlas 64x64 L7
-B	10	308	8192	0	1	308	8462	entity_instances	draw2d:batch
-B	10	166	32768	0	1	164	8462	textures_decoded	tex:etc1 w1.bmp 256x256 L9
-B	10	237	16384	0	1	235	8462	textures_decoded	tex:etc1 crate8.bmp 256x128 L9
-B	10	450	8192	0	1	450	8462	textures_decoded	tex:etc1a huflg0001.bmp 128x64 L8
-B	10	521	8192	0	0	521	8450	irrlicht_scene	draw3d:client
-B	10	379	4096	0	1	379	8462	textures_decoded	tex:etc1a helm14.bmp 32x32 L6
-B	10	592	4096	0	0	592	8450	irrlicht_scene	draw2d:image
-B	10	176	32768	0	1	174	8462	textures_decoded	tex:etc1 undrtil2.bmp 256x256 L9
-B	10	34	45056	0	1	33	8450	textures_decoded	tex:etc1a storm_cloud_blend_3 256x256 L9
-B	10	105	61440	0	1	103	8450	irrlicht_scene	swap
-B	10	389	4096	0	1	389	8462	textures_decoded	tex:etc1 humft0001.bmp 32x16 L6
-B	10	247	32768	0	1	245	8462	textures_decoded	tex:etc1 dresserfrnt.bmp 256x256 L9
-B	10	318	4096	0	1	318	8462	textures_decoded	tex:etc1 bathe0005.bmp 16x32 L6
-B	10	278	32768	0	1	276	8462	textures_decoded	tex:etc1 door2.bmp 256x256 L9
-B	10	136	32768	0	1	134	8462	textures_decoded	tex:etc1 coble3.bmp 256x256 L9
-B	10	207	32768	0	1	205	8462	textures_decoded	tex:etc1 inurn.bmp 256x256 L9
-B	10	420	4096	0	1	420	8462	textures_decoded	tex:etc1a qcfhe0001.bmp 64x64 L7
-B	10	491	4096	0	1	491	8462	entity_instances	draw2d:rect
-B	10	349	4096	0	1	349	8462	textures_decoded	tex:etc1 rathe0004.bmp 16x16 L5
-B	10	562	167936	0	0	562	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	146	32768	0	1	144	8462	textures_decoded	tex:etc1 41wall.bmp 256x256 L9
-B	10	4	262144	0	0	4	8450	startup	egl:device
-B	10	75	32768	0	1	74	8450	textures_decoded	tex:etc1 storm_cloud_blend_24 256x256 L9
-B	10	288	8192	0	1	286	8462	textures_decoded	tex:etc1a qcmhe0001.bmp 128x64 L8
-B	10	359	4096	0	1	359	8462	entity_instances	draw2d:batch
-B	10	217	32768	0	1	215	8462	textures_decoded	tex:etc1 holderl.bmp 256x256 L9
-B	10	501	524288	0	1	501	8462	textures_decoded	tex:etc1 spell_sprite_atlas 1024x1024 L11
-B	10	572	4096	0	0	572	8450	irrlicht_scene	draw3d:client
-B	10	430	4096	0	1	430	8462	textures_decoded	tex:etc1a qcflg0002.bmp 64x32 L7
-B	10	14	524288	0	1	13	8450	textures_decoded	tex:etc1 item_icons1 1024x1024 L11
-B	10	227	8192	0	1	225	8462	textures_decoded	tex:etc1 qeyflag.bmp 128x128 L8
-B	10	85	32768	0	1	84	8450	textures_decoded	tex:etc1 storm_cloud_blend_29 256x256 L9
-B	10	156	32768	0	1	154	8462	textures_decoded	tex:etc1 6ceil.bmp 256x256 L9
-B	10	116	65536	0	1	114	8462	textures_decoded	tex:etc1 16wall1.bmp 256x512 L10
-B	10	45	32768	0	1	44	8450	textures_decoded	tex:etc1 storm_cloud_blend_9 256x256 L9
-B	10	258	32768	0	1	256	8462	textures_decoded	tex:etc1 urn2.bmp 256x256 L9
-B	10	329	4096	0	1	329	8462	textures_decoded	tex:etc1a bathe0010.bmp 32x8 L6
-B	10	187	32768	0	1	185	8462	textures_decoded	tex:etc1 rea2.bmp 256x256 L9
-B	10	471	4096	0	0	471	8462	entity_instances	draw2d:batch
-B	10	542	4096	0	0	542	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	400	4096	0	1	400	8462	textures_decoded	tex:etc1 humlg0002.bmp 64x64 L7
-B	10	613	4096	0	0	613	8450	irrlicht_scene	draw2d:image
-B	10	197	16384	0	1	195	8462	textures_decoded	tex:etc1 drawertop.bmp 256x128 L9
-B	10	55	32768	0	1	54	8450	textures_decoded	tex:etc1 storm_cloud_blend_14 256x256 L9
-B	10	126	32768	0	1	124	8462	textures_decoded	tex:etc1 5jam.bmp 256x256 L9
-B	10	339	4096	0	1	339	8462	entity_instances	draw2d:rect
-B	10	410	4096	0	1	410	8462	entity_instances	draw2d:batch
-B	10	268	32768	0	1	266	8462	textures_decoded	tex:etc1 bedpost.bmp 256x256 L9
-B	10	552	4096	0	0	552	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	481	4096	0	1	481	8462	textures_decoded	tex:etc1a skeft0002.bmp 32x64 L7
-B	10	65	32768	0	1	64	8450	textures_decoded	tex:etc1 storm_cloud_blend_19 256x256 L9
-B	10	512	4096	0	1	512	8462	irrlicht_scene	draw2d:batch
-B	10	583	4096	0	0	583	8450	irrlicht_scene	draw2d:batch
-B	10	96	4096	0	1	95	8450	startup	draw2d:batch|tex:alpha-fallback 1x1
-B	10	167	32768	0	1	165	8462	textures_decoded	tex:etc1 wawall1.bmp 256x256 L9
-B	10	25	4096	0	1	24	8450	textures_decoded	tex:etc1 tumbleweed 64x64 L7
-B	10	309	4096	0	1	309	8462	entity_instances	draw2d:batch
-B	10	380	4096	0	1	380	8462	textures_decoded	tex:etc1 helm15.bmp 32x32 L6
-B	10	238	16384	0	1	236	8462	textures_decoded	tex:etc1 crate7.bmp 256x128 L9
-B	10	522	12288	0	0	522	8450	irrlicht_scene	draw3d:client
-B	10	451	4096	0	1	451	8462	textures_decoded	tex:etc1 huflg0002.bmp 64x64 L7
-B	10	35	32768	0	1	34	8450	textures_decoded	tex:etc1 storm_cloud_blend_4 256x256 L9
-B	10	593	4096	0	0	593	8450	irrlicht_scene	draw2d:image
-B	10	177	32768	0	1	175	8462	textures_decoded	tex:etc1 undrtil3.bmp 256x256 L9
-B	10	248	16384	0	1	246	8462	textures_decoded	tex:etc1 dresserside.bmp 256x128 L9
-B	10	106	4096	0	1	104	8450	irrlicht_scene	draw2d:rect
-B	10	390	4096	0	1	390	8462	textures_decoded	tex:etc1 humft0002.bmp 8x8 L4
-B	10	461	8192	0	1	461	8462	entity_instances	draw2d:batch
-B	10	319	4096	0	1	319	8462	textures_decoded	tex:etc1a bathe0005.bmp 16x32 L6
-B	10	603	4096	0	0	603	8450	irrlicht_scene	draw3d:client
-B	10	532	4096	0	0	532	8450	irrlicht_scene	draw2d:batch
-B	10	492	4096	0	1	492	8462	entity_instances	draw2d:rect
-B	10	421	4096	0	1	421	8462	textures_decoded	tex:etc1 qcfhe0002.bmp 32x32 L6
-B	10	5	16777216	1	0	5	8450	startup	egl:device
-B	10	563	4096	0	1	563	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	147	32768	0	1	145	8462	textures_decoded	tex:etc1 16waa2.bmp 256x256 L9
-B	10	218	32768	0	1	216	8462	textures_decoded	tex:etc1 amythist.bmp 256x256 L9
-B	10	76	45056	0	1	75	8450	textures_decoded	tex:etc1a storm_cloud_blend_24 256x256 L9
-B	10	360	12288	0	1	360	8462	textures_decoded	tex:etc1a betch0101.bmp 128x128 L8
-B	10	431	4096	0	1	431	8462	textures_decoded	tex:etc1 qcfua0001.bmp 32x64 L7
-B	10	289	4096	0	1	287	8462	textures_decoded	tex:etc1 qcmhe0002.bmp 8x8 L4
-B	10	573	12288	0	0	573	8450	irrlicht_scene	draw3d:client
-B	10	502	700416	0	1	502	8462	textures_decoded	tex:etc1a spell_sprite_atlas 1024x1024 L11
-B	10	86	45056	0	1	85	8450	textures_decoded	tex:etc1a storm_cloud_blend_29 256x256 L9
-B	10	15	700416	0	1	14	8450	textures_decoded	tex:etc1a item_icons1 1024x1024 L11
-B	10	228	32768	0	1	226	8462	textures_decoded	tex:etc1 counterfrnt.bmp 256x256 L9
-B	10	299	4096	0	1	297	8462	textures_decoded	tex:etc1 qcmlg0003.bmp 64x32 L7
-B	10	157	32768	0	1	155	8462	textures_decoded	tex:etc1 1merwal1.bmp 256x256 L9
-B	10	441	4096	0	1	441	8462	textures_decoded	tex:etc1 hufhe0021.bmp 64x64 L7
-B	10	370	8192	0	1	370	8462	entity_instances	draw2d:batch
-B	10	609	4096	0	0	609	8450	irrlicht_scene	draw2d:batch
-B	10	193	32768	0	1	191	8462	textures_decoded	tex:etc1 chairseat.bmp 256x256 L9
-B	10	51	32768	0	1	50	8450	textures_decoded	tex:etc1 storm_cloud_blend_12 256x256 L9
-B	10	122	16384	0	1	120	8462	textures_decoded	tex:etc1 2jam4.bmp 128x256 L9
-B	10	406	4096	0	1	406	8462	entity_instances	draw2d:rect
-B	10	264	16384	0	1	262	8462	textures_decoded	tex:etc1 crate4.bmp 256x128 L9
-B	10	335	4096	0	1	335	8462	textures_decoded	tex:etc1a bathn0003.bmp 64x64 L7
-B	10	548	4096	0	0	548	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	619	4096	0	0	619	8450	irrlicht_scene	draw2d:image
-B	10	477	4096	0	1	477	8462	textures_decoded	tex:etc1a skefa0001.bmp 32x64 L7
-B	10	61	32768	0	1	60	8450	textures_decoded	tex:etc1 storm_cloud_blend_17 256x256 L9
-B	10	274	16384	0	1	272	8462	textures_decoded	tex:etc1 darktabtop.bmp 256x128 L9
-B	10	132	32768	0	1	130	8462	textures_decoded	tex:etc1 undrtil1.bmp 256x256 L9
-B	10	203	32768	0	1	201	8462	textures_decoded	tex:etc1 bedposta.bmp 256x256 L9
-B	10	416	4096	0	1	416	8462	textures_decoded	tex:etc1a qcfft0001.bmp 64x32 L7
-B	10	487	32768	0	1	487	8462	textures_decoded	tex:etc1 skelg0001.bmp 256x256 L9
-B	10	345	24576	0	1	345	8462	textures_decoded	tex:etc1a ratch0001.bmp 128x256 L9
-B	10	558	4096	0	0	558	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	518	12288	0	0	518	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	589	4096	0	1	589	8450	irrlicht_scene	draw2d:rect
-B	10	447	4096	0	1	447	8462	textures_decoded	tex:etc1 hufhn0002.bmp 32x32 L6
-B	10	31	32768	0	1	30	8450	textures_decoded	tex:etc1 storm_cloud_blend_2 256x256 L9
-B	10	244	16384	0	1	242	8462	textures_decoded	tex:etc1 tabletop.bmp 256x128 L9
-B	10	102	61440	0	1	101	8450	irrlicht_scene	swap
-B	10	173	32768	0	1	171	8462	textures_decoded	tex:etc1 theif2.bmp 256x256 L9
-B	10	386	4096	0	1	386	8462	textures_decoded	tex:etc1 humch0002.bmp 32x16 L6
-B	10	457	4096	0	1	457	8462	entity_instances	draw2d:rect
-B	10	315	4096	0	1	315	8462	textures_decoded	tex:etc1a bathe0003.bmp 16x32 L6
-B	10	599	4096	0	0	599	8450	irrlicht_scene	draw3d:client
-B	10	528	4096	0	0	528	8450	irrlicht_scene	draw2d:batch
-B	10	112	4096	0	1	110	8450	irrlicht_scene	draw2d:batch
-B	10	41	32768	0	1	40	8450	textures_decoded	tex:etc1 storm_cloud_blend_7 256x256 L9
-B	10	325	4096	0	1	325	8462	textures_decoded	tex:etc1a bathe0008.bmp 32x64 L7
-B	10	183	32768	0	1	181	8462	textures_decoded	tex:etc1 falls4.bmp 256x256 L9
-B	10	254	32768	0	1	252	8462	textures_decoded	tex:etc1 barrelside2.bmp 256x256 L9
-B	10	467	4096	0	1	467	8462	textures_decoded	tex:etc1 flat.bmp 2x2 L2
-B	10	538	4096	0	0	538	8450	irrlicht_scene	draw2d:image
-B	10	396	4096	0	1	396	8462	textures_decoded	tex:etc1a humhn0001.bmp 64x32 L7
-B	10	356	4096	0	1	356	8462	entity_instances	draw2d:rect
-B	10	427	4096	0	1	427	8462	textures_decoded	tex:etc1 qcflg0001.bmp 64x128 L8
-B	10	285	4096	0	1	283	8462	textures_decoded	tex:etc1 qcmft0002.bmp 8x8 L4
-B	10	569	4096	0	0	569	8450	irrlicht_scene	draw3d:client
-B	10	498	8192	0	1	498	8462	irrlicht_scene	draw2d:batch
-B	10	82	45056	0	1	81	8450	textures_decoded	tex:etc1a storm_cloud_blend_27 256x256 L9
-B	10	11	262144	0	1	10	8450	textures_decoded	tex:v2 ui_atlas 256x256 L9
-B	10	224	32768	0	1	222	8462	textures_decoded	tex:etc1 lantern2a.bmp 256x256 L9
-B	10	295	4096	0	1	293	8462	textures_decoded	tex:etc1 qcmlg0001.bmp 128x64 L8
-B	10	153	16384	0	1	151	8462	textures_decoded	tex:etc1 16irnsn2.bmp 256x128 L9
-B	10	437	8192	0	1	437	8462	entity_instances	draw2d:batch
-B	10	508	45056	0	1	508	8462	textures_decoded	tex:etc1a fire4.bmp 256x256 L9
-B	10	366	4096	0	1	366	8462	entity_instances	draw2d:rect
-B	10	579	12288	0	0	579	8450	irrlicht_scene	-
-B	10	163	32768	0	1	161	8462	textures_decoded	tex:etc1 11prist4.bmp 256x256 L9
-B	10	21	4096	0	1	305	8462	entity_instances	draw2d:rect
-B	10	92	4096	0	1	91	8450	startup	draw2d:rect
-B	10	305	4096	0	1	303	8462	textures_decoded	tex:etc1a qguard-front.bmp 64x64 L7
-B	10	376	8192	0	1	376	8462	textures_decoded	tex:etc1 clk0405.bmp 128x128 L8
-B	10	234	45056	0	1	232	8462	textures_decoded	tex:etc1a gpine.bmp 256x256 L9
-B	10	194	16384	0	1	192	8462	textures_decoded	tex:etc1 chestside1.bmp 256x128 L9
-B	10	265	16384	0	1	263	8462	textures_decoded	tex:etc1 crate3.bmp 256x128 L9
-B	10	123	8192	0	1	121	8462	zone_mesh	draw2d:batch
-B	10	407	4096	0	1	407	8462	entity_instances	draw2d:rect
-B	10	478	4096	0	1	478	8462	textures_decoded	tex:etc1 skeft0001.bmp 32x64 L7
-B	10	336	4096	0	1	336	8462	textures_decoded	tex:etc1 batlg0001.bmp 8x32 L6
-B	10	549	4096	0	0	549	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	133	32768	0	1	131	8462	textures_decoded	tex:etc1 11wall2.bmp 256x256 L9
-B	10	62	45056	0	1	61	8450	textures_decoded	tex:etc1a storm_cloud_blend_17 256x256 L9
-B	10	275	32768	0	1	273	8462	textures_decoded	tex:etc1 pchain.bmp 256x256 L9
-B	10	346	4096	0	1	346	8462	textures_decoded	tex:etc1a rathe0002.bmp 32x32 L6
-B	10	204	16384	0	1	202	8462	textures_decoded	tex:etc1 b4hdboard.bmp 256x128 L9
-B	10	488	4096	0	1	488	8462	textures_decoded	tex:etc1 skeua0001.bmp 32x64 L7
-B	10	559	4096	0	0	559	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	417	4096	0	1	417	8462	textures_decoded	tex:etc1 qcfft0002.bmp 8x8 L4
-B	10	1	4096	0	1	1	8450	startup	egl:device
-B	10	214	32768	0	1	212	8462	textures_decoded	tex:etc1 torchtop.bmp 256x256 L9
-B	10	72	45056	0	1	71	8450	textures_decoded	tex:etc1a storm_cloud_blend_22 256x256 L9
-B	10	143	32768	0	1	141	8462	textures_decoded	tex:etc1 thievflr.bmp 256x256 L9
-B	10	32	45056	0	1	31	8450	textures_decoded	tex:etc1a storm_cloud_blend_2 256x256 L9
-B	10	245	16384	0	1	243	8462	textures_decoded	tex:etc1 dressertop.bmp 256x128 L9
-B	10	316	4096	0	1	316	8462	textures_decoded	tex:etc1 bathe0004.bmp 16x32 L6
-B	10	174	32768	0	1	172	8462	textures_decoded	tex:etc1 cotushbn.bmp 256x256 L9
-B	10	458	4096	0	1	458	8462	entity_instances	draw2d:rect
-B	10	387	4096	0	1	387	8462	textures_decoded	tex:etc1 humfa0001.bmp 32x64 L7
-B	10	529	4096	0	0	529	8450	irrlicht_scene	draw2d:batch
-B	10	600	4096	0	0	600	8450	irrlicht_scene	draw3d:client
-B	10	113	4096	0	1	111	8450	irrlicht_scene	draw2d:batch
-B	10	184	32768	0	1	182	8462	textures_decoded	tex:etc1 falls5.bmp 256x256 L9
-B	10	42	45056	0	1	41	8450	textures_decoded	tex:etc1a storm_cloud_blend_7 256x256 L9
-B	10	326	4096	0	1	326	8462	textures_decoded	tex:etc1 bathe0009.bmp 16x32 L6
-B	10	397	4096	0	1	397	8462	textures_decoded	tex:etc1 humhn0002.bmp 32x32 L6
-B	10	255	32768	0	1	253	8462	textures_decoded	tex:etc1 barreltop.bmp 256x256 L9
-B	10	539	102400	0	0	539	8450	irrlicht_scene	-
-B	10	468	4096	0	1	468	8462	entity_instances	draw2d:rect
-B	10	52	45056	0	1	51	8450	textures_decoded	tex:etc1a storm_cloud_blend_12 256x256 L9
-B	10	610	4096	0	0	610	8450	irrlicht_scene	draw2d:image
-B	10	499	4096	0	1	499	8462	irrlicht_scene	draw2d:batch
-B	10	570	4096	0	0	570	8450	irrlicht_scene	draw3d:client
-B	10	83	32768	0	1	82	8450	textures_decoded	tex:etc1 storm_cloud_blend_28 256x256 L9
-B	10	154	32768	0	1	152	8462	textures_decoded	tex:etc1 15inceil.bmp 256x256 L9
-B	10	12	524288	0	1	11	8450	textures_decoded	tex:etc1 item_icons0 1024x1024 L11
-B	10	296	8192	0	1	294	8462	textures_decoded	tex:etc1a qcmlg0001.bmp 128x64 L8
-B	10	367	4096	0	1	367	8462	entity_instances	draw2d:rect
-B	10	225	32768	0	1	223	8462	textures_decoded	tex:etc1 glass.bmp 256x256 L9
-B	10	509	4096	0	0	509	8462	irrlicht_scene	draw2d:batch
-B	10	438	4096	0	1	438	8462	entity_instances	draw2d:batch
-B	10	22	4096	0	1	21	8450	startup	tex:particle-alpha-fallback 1x1
-B	10	580	4096	0	0	580	8450	irrlicht_scene	draw2d:image
-B	10	164	32768	0	1	162	8462	textures_decoded	tex:etc1 11prist3.bmp 256x256 L9
-B	10	235	16384	0	1	233	8462	textures_decoded	tex:etc1 crate2.bmp 256x128 L9
-B	10	93	4096	0	1	92	8450	startup	draw2d:rect
-B	10	377	12288	0	1	377	8462	textures_decoded	tex:etc1a clk0405.bmp 128x128 L8
-B	10	306	4096	0	1	306	8462	entity_instances	draw2d:rect
-B	10	590	4096	0	0	590	8450	irrlicht_scene	draw2d:rect
-B	10	448	4096	0	1	448	8462	textures_decoded	tex:etc1a hufhn0002.bmp 32x32 L6
-B	10	519	167936	0	0	519	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	479	4096	0	1	479	8462	textures_decoded	tex:etc1a skeft0001.bmp 32x64 L7
-B	10	337	4096	0	1	337	8462	textures_decoded	tex:etc1a batlg0001.bmp 8x32 L6
-B	10	408	4096	0	1	408	8462	entity_instances	draw2d:batch
-B	10	550	4096	0	0	550	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	134	32768	0	1	132	8462	textures_decoded	tex:etc1 xgrass1.bmp 256x256 L9
-B	10	205	131072	0	1	203	8462	textures_decoded	tex:etc1 rug4.bmp 512x512 L10
-B	10	63	32768	0	1	62	8450	textures_decoded	tex:etc1 storm_cloud_blend_18 256x256 L9
-B	10	347	4096	0	1	347	8462	textures_decoded	tex:etc1 rathe0003.bmp 32x64 L7
-B	10	276	45056	0	1	274	8462	textures_decoded	tex:etc1a pchain.bmp 256x256 L9
-B	10	560	12288	0	0	560	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	418	4096	0	1	418	8462	textures_decoded	tex:etc1a qcfft0002.bmp 8x8 L4
-B	10	489	4096	0	1	489	8462	textures_decoded	tex:etc1a skeua0001.bmp 32x64 L7
-B	10	2	262144	0	0	2	8450	startup	egl:device
-B	10	73	32768	0	1	72	8450	textures_decoded	tex:etc1 storm_cloud_blend_23 256x256 L9
-B	10	215	32768	0	1	213	8462	textures_decoded	tex:etc1 torchbot.bmp 256x256 L9
-B	10	286	4096	0	1	284	8462	textures_decoded	tex:etc1a qcmft0002.bmp 8x8 L4
-B	10	144	32768	0	1	142	8462	textures_decoded	tex:etc1 sneed3.bmp 256x256 L9
-B	10	428	8192	0	1	428	8462	textures_decoded	tex:etc1a qcflg0001.bmp 64x128 L8
-B	10	357	4096	0	1	357	8462	entity_instances	draw2d:rect
-B	10	317	4096	0	1	317	8462	textures_decoded	tex:etc1a bathe0004.bmp 16x32 L6
-B	10	246	32768	0	1	244	8462	textures_decoded	tex:etc1 bedleg1.bmp 256x256 L9
-B	10	530	4096	0	0	530	8450	irrlicht_scene	draw2d:batch
-B	10	388	4096	0	1	388	8462	textures_decoded	tex:etc1a humfa0001.bmp 32x64 L7
-B	10	459	4096	0	1	459	8462	entity_instances	draw2d:rect
-B	10	43	32768	0	1	42	8450	textures_decoded	tex:etc1 storm_cloud_blend_8 256x256 L9
-B	10	601	4096	0	0	601	8450	irrlicht_scene	draw3d:client
-B	10	185	32768	0	1	183	8462	textures_decoded	tex:etc1 falls6.bmp 256x256 L9
-B	10	114	1048576	0	1	112	8450	irrlicht_scene	draw2d:batch
-B	10	398	4096	0	1	398	8462	textures_decoded	tex:etc1a humhn0002.bmp 32x32 L6
-B	10	256	16384	0	1	254	8462	textures_decoded	tex:etc1 crate10a.bmp 256x128 L9
-B	10	327	4096	0	1	327	8462	textures_decoded	tex:etc1a bathe0009.bmp 16x32 L6
-B	10	611	4096	0	0	611	8450	irrlicht_scene	draw2d:image
-B	10	469	4096	0	1	469	8462	entity_instances	draw2d:rect
-B	10	540	4096	0	0	540	8450	irrlicht_scene	draw2d:image
-B	10	53	32768	0	1	52	8450	textures_decoded	tex:etc1 storm_cloud_blend_13 256x256 L9
-B	10	124	32768	0	1	122	8462	textures_decoded	tex:etc1 5sidewin.bmp 256x256 L9
-B	10	266	16384	0	1	264	8462	textures_decoded	tex:etc1 headboard.bmp 256x128 L9
-B	10	195	16384	0	1	193	8462	textures_decoded	tex:etc1 chesttop.bmp 256x128 L9
-B	10	505	32768	0	1	505	8462	textures_decoded	tex:etc1 fire3.bmp 256x256 L9
-B	10	434	4096	0	1	434	8462	entity_instances	draw2d:rect
-B	10	18	4096	0	1	17	8450	textures_decoded	tex:etc1 particle_atlas 64x64 L7
-B	10	576	4096	0	0	576	8450	irrlicht_scene	draw2d:rect
-B	10	160	32768	0	1	158	8462	textures_decoded	tex:etc1 16flor.bmp 256x256 L9
-B	10	231	32768	0	1	229	8462	textures_decoded	tex:etc1 barka.bmp 256x256 L9
-B	10	89	32768	0	1	88	8450	textures_decoded	tex:etc1 storm_cloud_blend_31 256x256 L9
-B	10	373	4096	0	1	373	8462	textures_decoded	tex:etc1a clk0403.bmp 32x64 L7
-B	10	444	4096	0	1	444	8462	textures_decoded	tex:etc1a hufhe0022.bmp 64x32 L7
-B	10	302	4096	0	1	300	8462	textures_decoded	tex:etc1a qcmua0001.bmp 32x64 L7
-B	10	586	4096	0	1	586	8450	irrlicht_scene	draw2d:image
-B	10	515	1171456	0	1	515	8450	irrlicht_scene	draw:zone|vbo:zone-pools
-B	10	99	4096	0	1	98	8450	startup	draw2d:batch
-B	10	28	45056	0	1	27	8450	textures_decoded	tex:etc1a storm_cloud_blend_0 256x256 L9
-B	10	241	16384	0	1	239	8462	textures_decoded	tex:etc1 bedtop.bmp 256x128 L9
-B	10	312	4096	0	1	312	8462	textures_decoded	tex:etc1 bathe0002.bmp 16x32 L6
-B	10	170	16384	0	1	168	8462	textures_decoded	tex:etc1 10dirt3b.bmp 256x128 L9
-B	10	454	4096	0	1	454	8462	textures_decoded	tex:etc1a huflg0003.bmp 64x32 L7
-B	10	525	12288	0	0	525	8450	irrlicht_scene	draw3d:client
-B	10	383	4096	0	1	383	8462	textures_decoded	tex:etc1a helmleather02.bmp 32x32 L6
-B	10	343	4096	0	1	343	8462	entity_instances	draw2d:batch
-B	10	414	4096	0	1	414	8462	textures_decoded	tex:etc1a qcffa0001.bmp 32x64 L7
-B	10	272	16384	0	1	270	8462	textures_decoded	tex:etc1 crate5.bmp 256x128 L9
-B	10	556	4096	0	0	556	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	485	4096	0	1	485	8462	textures_decoded	tex:etc1 skehn0002.bmp 32x32 L6
-B	10	69	32768	0	1	68	8450	textures_decoded	tex:etc1 storm_cloud_blend_21 256x256 L9
-B	10	211	131072	0	1	209	8462	textures_decoded	tex:etc1 rug2.bmp 512x512 L10
-B	10	282	32768	0	1	280	8462	textures_decoded	tex:etc1 door1.bmp 256x256 L9
-B	10	140	32768	0	1	138	8462	textures_decoded	tex:etc1 3bar3.bmp 256x256 L9
-B	10	424	4096	0	1	424	8462	textures_decoded	tex:etc1a qcfhn0001.bmp 64x32 L7
-B	10	495	4096	0	0	495	8462	entity_instances	draw2d:batch
-B	10	353	4096	0	1	353	8462	textures_decoded	tex:etc1 ratlg0002.bmp 32x16 L6
-B	10	566	8192	0	0	566	8450	irrlicht_scene	draw3d:client
-B	10	150	32768	0	1	148	8462	textures_decoded	tex:etc1 16jwall3.bmp 256x256 L9
-B	10	8	3686400	0	0	7	8450	startup	egl:device
-B	10	79	32768	0	1	78	8450	textures_decoded	tex:etc1 storm_cloud_blend_26 256x256 L9
-B	10	292	4096	0	1	290	8462	textures_decoded	tex:etc1a qcmhn0001.bmp 64x32 L7
-B	10	363	4096	0	1	363	8462	textures_decoded	tex:etc1a betlg0101.bmp 32x64 L7
-B	10	221	32768	0	1	219	8462	textures_decoded	tex:etc1 lantholderd.bmp 256x256 L9
-B	10	181	32768	0	1	179	8462	textures_decoded	tex:etc1 falls2.bmp 256x256 L9
-B	10	252	16384	0	1	250	8462	textures_decoded	tex:etc1 cartsi01.bmp 256x128 L9
-B	10	110	8192	0	1	108	8450	irrlicht_scene	draw2d:batch
-B	10	394	4096	0	1	394	8462	textures_decoded	tex:etc1a humhe0002.bmp 8x8 L4
-B	10	323	4096	0	1	323	8462	textures_decoded	tex:etc1a bathe0007.bmp 32x64 L7
-B	10	607	4096	0	0	607	8450	irrlicht_scene	draw3d:client
-B	10	465	4096	0	1	465	8462	entity_instances	draw2d:batch
-B	10	536	4096	0	0	536	8450	irrlicht_scene	draw2d:image
-B	10	49	32768	0	1	48	8450	textures_decoded	tex:etc1 storm_cloud_blend_11 256x256 L9
-B	10	120	8192	0	1	118	8462	textures_decoded	tex:etc1 4jam1.bmp 64x256 L9
-B	10	262	32768	0	1	260	8462	textures_decoded	tex:etc1 stumptop.bmp 256x256 L9
-B	10	333	4096	0	1	333	8462	textures_decoded	tex:etc1a bathn0002.bmp 64x64 L7
-B	10	191	16384	0	1	189	8462	textures_decoded	tex:etc1 chair.bmp 256x128 L9
-B	10	475	4096	0	1	475	8462	textures_decoded	tex:etc1a skech0005.bmp 32x64 L7
-B	10	404	4096	0	1	404	8462	textures_decoded	tex:etc1a humua0001.bmp 32x64 L7
-B	10	546	8192	0	1	546	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	617	4096	0	0	617	8450	irrlicht_scene	draw2d:image
-B	10	130	32768	0	1	128	8462	textures_decoded	tex:etc1 11sign2.bmp 256x256 L9
-B	10	201	16384	0	1	199	8462	textures_decoded	tex:etc1 coversa.bmp 256x128 L9
-B	10	59	32768	0	1	58	8450	textures_decoded	tex:etc1 storm_cloud_blend_16 256x256 L9
-B	10	19	4096	0	1	18	8450	textures_decoded	tex:etc1a particle_atlas 64x64 L7
-B	10	90	45056	0	1	89	8450	textures_decoded	tex:etc1a storm_cloud_blend_31 256x256 L9
-B	10	232	32768	0	1	230	8462	textures_decoded	tex:etc1 kbarkd.bmp 256x256 L9
-B	10	303	4096	0	1	301	8462	textures_decoded	tex:etc1 qguard-back.bmp 32x32 L6
-B	10	161	32768	0	1	159	8462	textures_decoded	tex:etc1 fount.bmp 256x256 L9
-B	10	445	4096	0	1	445	8462	textures_decoded	tex:etc1 hufhn0001.bmp 64x32 L7
-B	10	374	4096	0	1	374	8462	textures_decoded	tex:etc1 clk0404.bmp 32x64 L7
-B	10	516	1171456	0	1	516	8450	irrlicht_scene	draw:zone|vbo:zone-pools
-B	10	587	4096	0	0	587	8450	irrlicht_scene	draw2d:image
-B	10	100	8192	0	1	99	8450	startup	draw2d:batch
-B	10	171	32768	0	1	169	8462	textures_decoded	tex:etc1 10dirtb.bmp 256x256 L9
-B	10	29	32768	0	1	28	8450	textures_decoded	tex:etc1 storm_cloud_blend_1 256x256 L9
-B	10	313	4096	0	1	313	8462	textures_decoded	tex:etc1a bathe0002.bmp 16x32 L6
-B	10	242	32768	0	1	240	8462	textures_decoded	tex:etc1 barrelnew.bmp 256x256 L9
-B	10	526	12288	0	0	526	8450	irrlicht_scene	draw3d:client
-B	10	384	4096	0	1	384	8462	textures_decoded	tex:etc1 humch0001.bmp 64x128 L8
-B	10	455	4096	0	1	455	8462	textures_decoded	tex:etc1 hufua0001.bmp 32x64 L7
-B	10	39	32768	0	1	38	8450	textures_decoded	tex:etc1 storm_cloud_blend_6 256x256 L9
-B	10	597	4096	0	0	597	8450	irrlicht_scene	draw2d:image
-B	10	486	4096	0	1	486	8462	textures_decoded	tex:etc1a skehn0002.bmp 32x32 L6
-B	10	557	4096	0	0	557	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	70	45056	0	1	69	8450	textures_decoded	tex:etc1a storm_cloud_blend_21 256x256 L9
-B	10	141	32768	0	1	139	8462	textures_decoded	tex:etc1 sneed1.bmp 256x256 L9
-B	10	283	8192	0	1	281	8462	textures_decoded	tex:etc1a qcmch0001.bmp 64x128 L8
-B	10	212	32768	0	1	210	8462	textures_decoded	tex:etc1 fire1.bmp 256x256 L9
-B	10	496	8192	0	1	496	8462	textures_decoded	tex:etc1 normalsky.bmp 128x128 L8
-B	10	354	4096	0	1	354	8462	textures_decoded	tex:etc1a ratlg0002.bmp 32x16 L6
-B	10	425	4096	0	1	425	8462	textures_decoded	tex:etc1 qcfhn0002.bmp 32x32 L6
-B	10	9	65536	0	1	8	8450	startup	egl:device|tex:rgba #DefaultFont 128x128
-B	10	567	8192	0	0	567	8450	irrlicht_scene	draw3d:client
-B	10	151	32768	0	1	149	8462	textures_decoded	tex:etc1 16wood2.bmp 256x256 L9
-B	10	222	32768	0	1	220	8462	textures_decoded	tex:etc1 lantholderl.bmp 256x256 L9
-B	10	80	45056	0	1	79	8450	textures_decoded	tex:etc1a storm_cloud_blend_26 256x256 L9
-B	10	364	4096	0	1	364	8462	textures_decoded	tex:etc1 fisttrans1.bmp 32x32 L6
-B	10	293	4096	0	1	291	8462	textures_decoded	tex:etc1 qcmhn0002.bmp 32x32 L6
-B	10	577	4096	0	0	577	8450	irrlicht_scene	draw2d:batch
-B	10	435	4096	0	1	435	8462	entity_instances	draw2d:rect
-B	10	506	45056	0	1	506	8462	textures_decoded	tex:etc1a fire3.bmp 256x256 L9
-B	10	466	4096	0	1	466	8462	entity_instances	draw2d:batch
-B	10	324	4096	0	1	324	8462	textures_decoded	tex:etc1 bathe0008.bmp 32x64 L7
-B	10	395	4096	0	1	395	8462	textures_decoded	tex:etc1 humhn0001.bmp 64x32 L7
-B	10	608	4096	0	0	608	8450	irrlicht_scene	draw2d:rect
-B	10	537	12288	0	0	537	8450	irrlicht_scene	-
-B	10	121	16384	0	1	119	8462	textures_decoded	tex:etc1 2jam3.bmp 256x128 L9
-B	10	50	45056	0	1	49	8450	textures_decoded	tex:etc1a storm_cloud_blend_11 256x256 L9
-B	10	334	4096	0	1	334	8462	textures_decoded	tex:etc1 bathn0003.bmp 64x64 L7
-B	10	192	16384	0	1	190	8462	textures_decoded	tex:etc1 chairback.bmp 256x128 L9
-B	10	263	32768	0	1	261	8462	textures_decoded	tex:etc1 posta.bmp 256x256 L9
-B	10	547	4096	0	0	547	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	405	4096	0	1	405	8462	entity_instances	draw2d:rect
-B	10	476	4096	0	1	476	8462	textures_decoded	tex:etc1 skefa0001.bmp 32x64 L7
-B	10	60	45056	0	1	59	8450	textures_decoded	tex:etc1a storm_cloud_blend_16 256x256 L9
-B	10	618	4096	0	0	618	8450	irrlicht_scene	draw2d:image
-B	10	202	16384	0	1	200	8462	textures_decoded	tex:etc1 sideboard.bmp 256x128 L9
-B	10	131	32768	0	1	129	8462	textures_decoded	tex:etc1 falls1.bmp 256x256 L9
-B	10	415	4096	0	1	415	8462	textures_decoded	tex:etc1 qcfft0001.bmp 64x32 L7
-B	10	273	32768	0	1	271	8462	textures_decoded	tex:etc1 darktabsid.bmp 256x256 L9
-B	10	344	16384	0	1	344	8462	textures_decoded	tex:etc1 ratch0001.bmp 128x256 L9
-B	10	304	4096	0	1	302	8462	textures_decoded	tex:etc1 qguard-front.bmp 64x64 L7
-B	10	162	32768	0	1	160	8462	textures_decoded	tex:etc1 11temcar.bmp 256x256 L9
-B	10	233	32768	0	1	231	8462	textures_decoded	tex:etc1 gpine.bmp 256x256 L9
-B	10	517	192512	0	0	517	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	375	4096	0	1	375	8462	textures_decoded	tex:etc1a clk0404.bmp 32x64 L7
-B	10	446	4096	0	1	446	8462	textures_decoded	tex:etc1a hufhn0001.bmp 64x32 L7
-B	10	30	45056	0	1	29	8450	textures_decoded	tex:etc1a storm_cloud_blend_1 256x256 L9
-B	10	588	4096	0	0	588	8450	irrlicht_scene	draw2d:image
-B	10	172	32768	0	1	170	8462	textures_decoded	tex:etc1 theif3.bmp 256x256 L9
-B	10	101	4096	0	1	100	8450	startup	draw2d:batch
-B	10	385	8192	0	1	385	8462	textures_decoded	tex:etc1a humch0001.bmp 64x128 L8
-B	10	243	32768	0	1	241	8462	textures_decoded	tex:etc1 barreltopg.bmp 256x256 L9
-B	10	314	4096	0	1	314	8462	textures_decoded	tex:etc1 bathe0003.bmp 16x32 L6
-B	10	598	4096	0	0	598	8450	irrlicht_scene	draw2d:image
-B	10	456	4096	0	1	456	8462	textures_decoded	tex:etc1a hufua0001.bmp 32x64 L7
-B	10	527	4096	0	0	527	8450	irrlicht_scene	draw2d:batch
-B	10	40	45056	0	1	39	8450	textures_decoded	tex:etc1a storm_cloud_blend_6 256x256 L9
-B	10	111	4096	0	1	109	8450	irrlicht_scene	draw2d:batch
-B	10	253	16384	0	1	251	8462	textures_decoded	tex:etc1 cartside.bmp 256x128 L9
-B	10	182	32768	0	1	180	8462	textures_decoded	tex:etc1 falls3.bmp 256x256 L9
-B	10	142	32768	0	1	140	8462	textures_decoded	tex:etc1 3barwall.bmp 256x256 L9
-B	10	71	32768	0	1	70	8450	textures_decoded	tex:etc1 storm_cloud_blend_22 256x256 L9
-B	10	355	4096	0	1	355	8462	entity_instances	draw2d:rect
-B	10	213	45056	0	1	211	8462	textures_decoded	tex:etc1a fire1.bmp 256x256 L9
-B	10	284	4096	0	1	282	8462	textures_decoded	tex:etc1a qcmft0001.bmp 32x16 L6
-B	10	497	8192	0	1	497	8462	textures_decoded	tex:etc1 sun.bmp 128x128 L8
-B	10	568	12288	0	0	568	8450	irrlicht_scene	draw3d:client
-B	10	426	4096	0	1	426	8462	textures_decoded	tex:etc1a qcfhn0002.bmp 32x32 L6
-B	10	10	4096	0	1	9	8450	textures_driver	tex:rgba software_cursor 8x10
-B	10	223	32768	0	1	221	8462	textures_decoded	tex:etc1 lantern3.bmp 256x256 L9
-B	10	81	32768	0	1	80	8450	textures_decoded	tex:etc1 storm_cloud_blend_27 256x256 L9
-B	10	152	32768	0	1	150	8462	textures_decoded	tex:etc1 16cab.bmp 256x256 L9
-B	10	436	4096	0	1	436	8462	entity_instances	draw2d:batch
-B	10	294	4096	0	1	292	8462	textures_decoded	tex:etc1a qcmhn0002.bmp 32x32 L6
-B	10	365	4096	0	1	365	8462	textures_decoded	tex:etc1a fisttrans1.bmp 32x32 L6
-B	10	578	4096	0	0	578	8450	irrlicht_scene	draw2d:image
-B	10	507	32768	0	1	507	8462	textures_decoded	tex:etc1 fire4.bmp 256x256 L9
-B	10	91	1048576	0	1	90	8450	startup	draw2d:rect
-B	10	20	4096	0	1	304	8462	entity_instances	draw2d:rect
-B	10	330	4096	0	1	330	8462	textures_decoded	tex:etc1 bathn0001.bmp 8x32 L6
-B	10	259	16384	0	1	257	8462	textures_decoded	tex:etc1 crate9a.bmp 256x128 L9
-B	10	543	4096	0	0	543	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	401	4096	0	1	401	8462	textures_decoded	tex:etc1 humlg0003.bmp 64x32 L7
-B	10	472	12288	0	1	472	8462	textures_decoded	tex:etc1a skech0001.bmp 128x128 L8
-B	10	56	45056	0	1	55	8450	textures_decoded	tex:etc1a storm_cloud_blend_14 256x256 L9
-B	10	614	4096	0	0	614	8450	irrlicht_scene	draw2d:image
-B	10	198	16384	0	1	196	8462	textures_decoded	tex:etc1 drawerfront.bmp 256x128 L9
-B	10	269	16384	0	1	267	8462	textures_decoded	tex:etc1 stoolleg.bmp 256x128 L9
-B	10	127	32768	0	1	125	8462	textures_decoded	tex:etc1 5side.bmp 256x256 L9
-B	10	411	4096	0	1	411	8462	entity_instances	draw2d:rect
-B	10	340	4096	0	1	340	8462	entity_instances	draw2d:rect
-B	10	482	16384	0	1	482	8462	textures_decoded	tex:etc1 skehe0001.bmp 256x128 L9
-B	10	553	4096	0	0	553	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	66	45056	0	1	65	8450	textures_decoded	tex:etc1a storm_cloud_blend_19 256x256 L9
-B	10	137	32768	0	1	135	8462	textures_decoded	tex:etc1 6inwall.bmp 256x256 L9
-B	10	279	32768	0	1	277	8462	textures_decoded	tex:etc1 spearhed.bmp 256x256 L9
-B	10	350	4096	0	1	350	8462	textures_decoded	tex:etc1a rathe0004.bmp 16x16 L5
-B	10	208	32768	0	1	206	8462	textures_decoded	tex:etc1 urn3.bmp 256x256 L9
-B	10	168	32768	0	1	166	8462	textures_decoded	tex:etc1 wafl1.bmp 256x256 L9
-B	10	239	32768	0	1	237	8462	textures_decoded	tex:etc1 pillow.bmp 256x256 L9
-B	10	97	4096	0	1	96	8450	startup	draw2d:batch
-B	10	381	4096	0	1	381	8462	textures_decoded	tex:etc1a helm15.bmp 32x32 L6
-B	10	310	8192	0	1	310	8462	entity_instances	draw2d:batch
-B	10	594	4096	0	0	594	8450	irrlicht_scene	draw2d:image
-B	10	452	4096	0	1	452	8462	textures_decoded	tex:etc1a huflg0002.bmp 64x64 L7
-B	10	523	4096	0	0	523	8450	irrlicht_scene	draw3d:client
-B	10	36	45056	0	1	35	8450	textures_decoded	tex:etc1a storm_cloud_blend_4 256x256 L9
-B	10	107	4096	0	1	105	8450	irrlicht_scene	draw2d:rect
-B	10	249	32768	0	1	247	8462	textures_decoded	tex:etc1 plank3.bmp 256x256 L9
-B	10	178	32768	0	1	176	8462	textures_decoded	tex:etc1 w2.bmp 256x256 L9
-B	10	462	4096	0	1	462	8462	entity_instances	draw2d:batch
-B	10	320	4096	0	1	320	8462	textures_decoded	tex:etc1 bathe0006.bmp 8x8 L4
-B	10	391	4096	0	1	391	8462	textures_decoded	tex:etc1 humhe0001.bmp 128x64 L8
-B	10	533	4096	0	0	533	8450	irrlicht_scene	draw2d:batch
-B	10	604	4096	0	0	604	8450	irrlicht_scene	draw3d:client
-B	10	117	16384	0	1	115	8462	textures_decoded	tex:etc1 18wall2.bmp 128x256 L9
-B	10	188	32768	0	1	186	8462	textures_decoded	tex:etc1 rea3.bmp 256x256 L9
-B	10	46	45056	0	1	45	8450	textures_decoded	tex:etc1a storm_cloud_blend_9 256x256 L9
-B	10	6	4096	0	1	6	8450	startup	egl:device
-B	10	77	32768	0	1	76	8450	textures_decoded	tex:etc1 storm_cloud_blend_25 256x256 L9
-B	10	219	32768	0	1	217	8462	textures_decoded	tex:etc1 lanterntop.bmp 256x256 L9
-B	10	148	32768	0	1	146	8462	textures_decoded	tex:etc1 16jwall.bmp 256x256 L9
-B	10	432	4096	0	1	432	8462	textures_decoded	tex:etc1a qcfua0001.bmp 32x64 L7
-B	10	290	4096	0	1	288	8462	textures_decoded	tex:etc1a qcmhe0002.bmp 8x8 L4
-B	10	361	4096	0	1	361	8462	textures_decoded	tex:etc1a bethe0102.bmp 32x64 L7
-B	10	503	32768	0	1	503	8462	textures_decoded	tex:etc1 fire2.bmp 256x256 L9
-B	10	574	12288	0	0	574	8450	irrlicht_scene	draw3d:client
-B	10	87	32768	0	1	86	8450	textures_decoded	tex:etc1 storm_cloud_blend_30 256x256 L9
-B	10	158	32768	0	1	156	8462	textures_decoded	tex:etc1 18win2.bmp 256x256 L9
-B	10	16	4096	0	1	15	8450	textures_driver	tex:rgba _placeholder_ 8x8
-B	10	300	4096	0	1	298	8462	textures_decoded	tex:etc1a qcmlg0003.bmp 64x32 L7
-B	10	229	32768	0	1	227	8462	textures_decoded	tex:etc1 tree70.bmp 256x256 L9
-B	10	513	4096	0	1	513	8450	irrlicht_scene	draw2d:batch
-B	10	371	4096	0	1	371	8462	entity_instances	draw2d:batch
-B	10	442	4096	0	1	442	8462	textures_decoded	tex:etc1a hufhe0021.bmp 64x64 L7
-B	10	26	4096	0	1	25	8450	textures_decoded	tex:etc1a tumbleweed 64x64 L7
-B	10	584	4096	0	1	584	8450	irrlicht_scene	draw2d:rect
-B	10	544	192512	0	0	544	8450	irrlicht_scene	draw:zone|draw3d:shared-vbo
-B	10	615	4096	0	0	615	8450	irrlicht_scene	draw2d:rect
-B	10	473	4096	0	1	473	8462	textures_decoded	tex:etc1a skech0004.bmp 32x16 L6
-B	10	57	32768	0	1	56	8450	textures_decoded	tex:etc1 storm_cloud_blend_15 256x256 L9
-B	10	270	32768	0	1	268	8462	textures_decoded	tex:etc1 stoolseat.bmp 256x256 L9
-B	10	128	32768	0	1	126	8462	textures_decoded	tex:etc1 ike2.bmp 256x256 L9
-B	10	199	16384	0	1	197	8462	textures_decoded	tex:etc1 drawerside.bmp 256x128 L9
-B	10	483	4096	0	1	483	8462	textures_decoded	tex:etc1 skehn0001.bmp 64x32 L7
-B	10	341	4096	0	1	341	8462	entity_instances	draw2d:batch
-B	10	412	4096	0	1	412	8462	entity_instances	draw2d:rect
-B	10	554	4096	0	0	554	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	138	32768	0	1	136	8462	textures_decoded	tex:etc1 sneed2.bmp 256x256 L9
-B	10	67	32768	0	1	66	8450	textures_decoded	tex:etc1 storm_cloud_blend_20 256x256 L9
-B	10	351	4096	0	1	351	8462	textures_decoded	tex:etc1 ratlg0001.bmp 64x64 L7
-B	10	209	32768	0	1	207	8462	textures_decoded	tex:etc1 tableside.bmp 256x256 L9
-B	10	280	32768	0	1	278	8462	textures_decoded	tex:etc1 pawc.bmp 256x256 L9
-B	10	564	8192	0	1	564	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	422	4096	0	1	422	8462	textures_decoded	tex:etc1a qcfhe0002.bmp 32x32 L6
-B	10	493	4096	0	1	493	8462	entity_instances	draw2d:batch
-B	10	453	4096	0	1	453	8462	textures_decoded	tex:etc1 huflg0003.bmp 64x32 L7
-B	10	311	4096	0	1	311	8462	entity_instances	draw2d:batch
-B	10	382	4096	0	1	382	8462	textures_decoded	tex:etc1 helmleather02.bmp 32x32 L6
-B	10	595	4096	0	0	595	8450	irrlicht_scene	draw2d:batch
-B	10	524	4096	0	1	524	8450	irrlicht_scene	draw3d:client
-B	10	108	4096	0	1	106	8450	irrlicht_scene	draw2d:rect
-B	10	37	32768	0	1	36	8450	textures_decoded	tex:etc1 storm_cloud_blend_5 256x256 L9
-B	10	321	4096	0	1	321	8462	textures_decoded	tex:etc1a bathe0006.bmp 8x8 L4
-B	10	179	32768	0	1	177	8462	textures_decoded	tex:etc1 w3.bmp 256x256 L9
-B	10	250	32768	0	1	248	8462	textures_decoded	tex:etc1 cartwheel.bmp 256x256 L9
-B	10	534	4096	0	0	534	8450	irrlicht_scene	draw2d:rect
-B	10	392	8192	0	1	392	8462	textures_decoded	tex:etc1a humhe0001.bmp 128x64 L8
-B	10	463	4096	0	1	463	8462	entity_instances	draw2d:rect
-B	10	47	32768	0	1	46	8450	textures_decoded	tex:etc1 storm_cloud_blend_10 256x256 L9
-B	10	605	4096	0	0	605	8450	irrlicht_scene	draw3d:client
-B	10	189	131072	0	1	187	8462	textures_decoded	tex:etc1 rug3.bmp 512x512 L10
-B	10	118	16384	0	1	116	8462	textures_decoded	tex:etc1 3side2.bmp 128x256 L9
-B	10	402	4096	0	1	402	8462	textures_decoded	tex:etc1a humlg0003.bmp 64x32 L7
-B	10	260	16384	0	1	258	8462	textures_decoded	tex:etc1 crate9.bmp 256x128 L9
-B	10	331	4096	0	1	331	8462	textures_decoded	tex:etc1a bathn0001.bmp 8x32 L6
-B	10	291	4096	0	1	289	8462	textures_decoded	tex:etc1 qcmhn0001.bmp 64x32 L7
-B	10	149	32768	0	1	147	8462	textures_decoded	tex:etc1 16jwall4.bmp 256x256 L9
-B	10	220	32768	0	1	218	8462	textures_decoded	tex:etc1 lamptop.bmp 256x256 L9
-B	10	433	4096	0	1	433	8462	entity_instances	draw2d:rect
-B	10	504	45056	0	1	504	8462	textures_decoded	tex:etc1a fire2.bmp 256x256 L9
-B	10	362	4096	0	1	362	8462	textures_decoded	tex:etc1 betlg0101.bmp 32x64 L7
-B	10	575	4096	0	0	575	8450	irrlicht_scene	draw2d:batch
-B	10	159	32768	0	1	157	8462	textures_decoded	tex:etc1 5wall1.bmp 256x256 L9
-B	10	17	16384	0	1	16	8450	startup	tex:light-lut 256x1
-B	10	88	45056	0	1	87	8450	textures_decoded	tex:etc1a storm_cloud_blend_30 256x256 L9
-B	10	372	4096	0	1	372	8462	textures_decoded	tex:etc1 clk0403.bmp 32x64 L7
-B	10	230	45056	0	1	228	8462	textures_decoded	tex:etc1a tree70.bmp 256x256 L9
-B	10	301	4096	0	1	299	8462	textures_decoded	tex:etc1 qcmua0001.bmp 32x64 L7
-B	10	514	4096	0	0	514	8450	irrlicht_scene	draw2d:batch
-B	10	585	4096	0	0	585	8450	irrlicht_scene	draw2d:batch
-B	10	443	4096	0	1	443	8462	textures_decoded	tex:etc1 hufhe0022.bmp 64x32 L7
-B	10	27	32768	0	1	26	8450	textures_decoded	tex:etc1 storm_cloud_blend_0 256x256 L9
-B	10	240	32768	0	1	238	8462	textures_decoded	tex:etc1 bedwood.bmp 256x256 L9
-B	10	98	4096	0	1	97	8450	startup	draw2d:batch
-B	10	169	16384	0	1	167	8462	textures_decoded	tex:etc1 10dirt2b.bmp 256x128 L9
-B	10	129	32768	0	1	127	8462	textures_decoded	tex:etc1 rent2wal.bmp 256x256 L9
-B	10	58	45056	0	1	57	8450	textures_decoded	tex:etc1a storm_cloud_blend_15 256x256 L9
-B	10	342	8192	0	1	342	8462	entity_instances	draw2d:batch
-B	10	200	32768	0	1	198	8462	textures_decoded	tex:etc1 pillowb.bmp 256x256 L9
-B	10	271	16384	0	1	269	8462	textures_decoded	tex:etc1 crate6.bmp 256x128 L9
-B	10	484	4096	0	1	484	8462	textures_decoded	tex:etc1a skehn0001.bmp 64x32 L7
-B	10	555	4096	0	0	555	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	413	4096	0	1	413	8462	textures_decoded	tex:etc1 qcffa0001.bmp 32x64 L7
-B	10	210	32768	0	1	208	8462	textures_decoded	tex:etc1 rtabltop.bmp 256x256 L9
-B	10	68	45056	0	1	67	8450	textures_decoded	tex:etc1a storm_cloud_blend_20 256x256 L9
-B	10	139	32768	0	1	137	8462	textures_decoded	tex:etc1 xdrtpat3.bmp 256x256 L9
-B	10	352	4096	0	1	352	8462	textures_decoded	tex:etc1a ratlg0001.bmp 64x64 L7
-B	10	423	4096	0	1	423	8462	textures_decoded	tex:etc1 qcfhn0001.bmp 64x32 L7
-B	10	281	32768	0	1	279	8462	textures_decoded	tex:etc1 pwadbar.bmp 256x256 L9
-B	10	565	4096	0	0	565	8450	irrlicht_scene	draw:zone|draw3d:client
-B	10	494	8192	0	1	494	8462	entity_instances	draw2d:batch
-B	10	78	45056	0	1	77	8450	textures_decoded	tex:etc1a storm_cloud_blend_25 256x256 L9
-B	10	596	4096	0	0	596	8450	irrlicht_scene	draw2d:image
-B	10	180	32768	0	1	178	8462	textures_decoded	tex:etc1 w4.bmp 256x256 L9
-B	10	38	45056	0	1	37	8450	textures_decoded	tex:etc1a storm_cloud_blend_5 256x256 L9
-B	10	109	4096	0	1	107	8450	irrlicht_scene	draw2d:batch
-B	10	322	4096	0	1	322	8462	textures_decoded	tex:etc1 bathe0007.bmp 32x64 L7
-B	10	393	4096	0	1	393	8462	textures_decoded	tex:etc1 humhe0002.bmp 8x8 L4
-B	10	251	32768	0	1	249	8462	textures_decoded	tex:etc1 plank4.bmp 256x256 L9
-B	10	535	4096	0	0	535	8450	irrlicht_scene	draw2d:batch
-B	10	606	4096	0	0	606	8450	irrlicht_scene	draw3d:client
-B	10	464	4096	0	1	464	8462	entity_instances	draw2d:rect
-B	10	48	45056	0	1	47	8450	textures_decoded	tex:etc1a storm_cloud_blend_10 256x256 L9
-B	10	261	32768	0	1	259	8462	textures_decoded	tex:etc1 post.bmp 256x256 L9
-B	10	119	16384	0	1	117	8462	textures_decoded	tex:etc1 sneedsw1.bmp 128x256 L9
-B	10	190	176128	0	1	188	8462	textures_decoded	tex:etc1a rug3.bmp 512x512 L10
-B	10	403	4096	0	1	403	8462	textures_decoded	tex:etc1 humua0001.bmp 32x64 L7
-B	10	474	4096	0	1	474	8462	textures_decoded	tex:etc1 skech0005.bmp 32x64 L7
-B	10	332	4096	0	1	332	8462	textures_decoded	tex:etc1 bathn0002.bmp 64x64 L7
-B	10	616	4096	0	0	616	8450	irrlicht_scene	draw2d:batch
-B	10	545	4096	0	1	545	8450	irrlicht_scene	draw:zone|draw3d:client
+P	steady_60s	1939892.955944	637	55312384	639	2	0
+B	10	155	32768	0	1	153	30021	textures_decoded	tex:etc1 15walin1.bmp 256x256 L9
+B	10	84	45056	0	1	83	30009	textures_decoded	tex:etc1a storm_cloud_blend_28 256x256 L9
+B	10	368	4096	0	1	368	30021	entity_instances	draw2d:rect
+B	10	226	8192	0	1	224	30021	objects	draw2d:batch
+B	10	297	4096	0	1	295	30021	textures_decoded	tex:etc1 qcmlg0002.bmp 64x64 L7
+B	10	581	102400	0	0	581	30009	irrlicht_scene	-
+B	10	439	4096	0	1	439	30021	textures_decoded	tex:etc1 qcfhe0002.bmp 32x32 L6
+B	10	510	8192	0	1	510	30021	textures_decoded	tex:etc1 sun.bmp 128x128 L8
+B	10	23	4096	0	1	22	30009	textures_decoded	tex:etc1 creature_atlas 64x64 L7
+B	10	94	4096	0	1	93	30009	startup	draw2d:rect
+B	10	236	16384	0	1	234	30021	textures_decoded	tex:etc1 crate1.bmp 256x128 L9
+B	10	165	8192	0	1	163	30021	zone_mesh	draw2d:batch
+B	10	449	4096	0	1	449	30021	textures_decoded	tex:etc1 qcfua0001.bmp 32x64 L7
+B	10	307	4096	0	1	307	30021	entity_instances	draw2d:batch
+B	10	378	4096	0	1	378	30021	textures_decoded	tex:etc1a snahe0005.bmp 32x64 L7
+B	10	520	32768	0	1	520	30021	textures_decoded	tex:etc1 fire4.bmp 256x256 L9
+B	10	591	4096	0	0	591	30009	irrlicht_scene	draw3d:client
+B	10	104	4096	0	1	102	30009	irrlicht_scene	draw2d:batch
+B	10	175	32768	0	1	173	30021	textures_decoded	tex:etc1 carpet.bmp 256x256 L9
+B	10	33	32768	0	1	32	30009	textures_decoded	tex:etc1 storm_cloud_blend_3 256x256 L9
+B	10	622	4096	0	0	622	30009	irrlicht_scene	draw2d:batch
+B	10	206	32768	0	1	204	30021	textures_decoded	tex:etc1 urnside.bmp 256x256 L9
+B	10	64	45056	0	1	63	30009	textures_decoded	tex:etc1a storm_cloud_blend_18 256x256 L9
+B	10	135	32768	0	1	133	30021	textures_decoded	tex:etc1 xgrasdir.bmp 256x256 L9
+B	10	419	4096	0	1	419	30021	textures_decoded	tex:etc1 humlg0003.bmp 64x32 L7
+B	10	277	32768	0	1	275	30021	textures_decoded	tex:etc1 phook.bmp 256x256 L9
+B	10	348	4096	0	1	348	30021	textures_decoded	tex:etc1 bathn0002.bmp 64x64 L7
+B	10	561	4096	0	1	561	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	632	8192	0	0	632	30009	irrlicht_scene	draw3d:client
+B	10	490	4096	0	1	490	30021	textures_decoded	tex:etc1a skefa0001.bmp 32x64 L7
+B	10	74	45056	0	1	73	30009	textures_decoded	tex:etc1a storm_cloud_blend_23 256x256 L9
+B	10	3	16777216	1	0	3	30009	startup	egl:device
+B	10	287	4096	0	1	285	30021	textures_decoded	tex:etc1 qcmhe0001.bmp 128x64 L8
+B	10	145	32768	0	1	143	30021	textures_decoded	tex:etc1 16waal3.bmp 256x256 L9
+B	10	216	32768	0	1	214	30021	textures_decoded	tex:etc1 holderd.bmp 256x256 L9
+B	10	500	32768	0	1	500	30021	textures_decoded	tex:etc1 skelg0001.bmp 256x256 L9
+B	10	358	8192	0	1	358	30021	entity_instances	draw2d:batch
+B	10	429	4096	0	1	429	30021	entity_instances	draw2d:rect
+B	10	13	700416	0	1	12	30009	textures_decoded	tex:etc1a item_icons0 1024x1024 L11
+B	10	571	12288	0	0	571	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	531	4096	0	1	531	30009	irrlicht_scene	draw2d:batch
+B	10	602	4096	0	0	602	30009	irrlicht_scene	draw3d:client
+B	10	460	4096	0	1	460	30021	textures_decoded	tex:etc1a hufhe0021.bmp 64x64 L7
+B	10	44	45056	0	1	43	30009	textures_decoded	tex:etc1a storm_cloud_blend_8 256x256 L9
+B	10	257	16384	0	1	255	30021	textures_decoded	tex:etc1 crate10.bmp 256x128 L9
+B	10	115	65536	0	1	113	30021	textures_decoded	tex:etc1 16wall2.bmp 256x512 L10
+B	10	186	32768	0	1	184	30021	textures_decoded	tex:etc1 falls7.bmp 256x256 L9
+B	10	470	4096	0	1	470	30021	textures_decoded	tex:etc1a huflg0002.bmp 64x64 L7
+B	10	328	4096	0	1	328	30021	textures_decoded	tex:etc1 bathe0002.bmp 16x32 L6
+B	10	399	4096	0	1	399	30021	textures_decoded	tex:etc1a helm15.bmp 32x32 L6
+B	10	612	4096	0	0	612	30009	irrlicht_scene	draw2d:image
+B	10	541	102400	0	0	541	30009	irrlicht_scene	-
+B	10	125	32768	0	1	123	30021	textures_decoded	tex:etc1 5roof.bmp 256x256 L9
+B	10	54	45056	0	1	53	30009	textures_decoded	tex:etc1a storm_cloud_blend_13 256x256 L9
+B	10	338	4096	0	1	338	30021	textures_decoded	tex:etc1 bathe0007.bmp 32x64 L7
+B	10	196	16384	0	1	194	30021	textures_decoded	tex:etc1 chestfrnt.bmp 256x128 L9
+B	10	267	16384	0	1	265	30021	textures_decoded	tex:etc1 contabtop.bmp 256x128 L9
+B	10	480	4096	0	1	480	30021	entity_instances	draw2d:batch
+B	10	551	4096	0	0	551	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	409	4096	0	1	409	30021	textures_decoded	tex:etc1 humhe0001.bmp 128x64 L8
+B	10	369	4096	0	1	369	30021	entity_instances	draw2d:batch
+B	10	440	4096	0	1	440	30021	textures_decoded	tex:etc1a qcfhe0002.bmp 32x32 L6
+B	10	298	4096	0	1	296	30021	textures_decoded	tex:etc1a qcmlg0002.bmp 64x64 L7
+B	10	582	4096	0	0	582	30009	irrlicht_scene	draw2d:image
+B	10	511	8192	0	1	511	30021	irrlicht_scene	draw2d:batch
+B	10	95	4096	0	1	94	30009	startup	draw2d:rect
+B	10	24	4096	0	1	23	30009	textures_decoded	tex:etc1a creature_atlas 64x64 L7
+B	10	308	8192	0	1	308	30021	entity_instances	draw2d:batch
+B	10	166	32768	0	1	164	30021	textures_decoded	tex:etc1 w1.bmp 256x256 L9
+B	10	237	16384	0	1	235	30021	textures_decoded	tex:etc1 crate8.bmp 256x128 L9
+B	10	450	4096	0	1	450	30021	textures_decoded	tex:etc1a qcfua0001.bmp 32x64 L7
+B	10	521	45056	0	1	521	30021	textures_decoded	tex:etc1a fire4.bmp 256x256 L9
+B	10	379	4096	0	1	379	30021	textures_decoded	tex:etc1 snahe0006.bmp 32x32 L6
+B	10	592	4096	0	0	592	30009	irrlicht_scene	draw3d:client
+B	10	176	32768	0	1	174	30021	textures_decoded	tex:etc1 undrtil2.bmp 256x256 L9
+B	10	34	45056	0	1	33	30009	textures_decoded	tex:etc1a storm_cloud_blend_3 256x256 L9
+B	10	105	61440	0	1	103	30009	irrlicht_scene	swap
+B	10	389	4096	0	1	389	30021	entity_instances	draw2d:batch
+B	10	247	32768	0	1	245	30021	textures_decoded	tex:etc1 dresserfrnt.bmp 256x256 L9
+B	10	318	4096	0	1	318	30021	textures_decoded	tex:etc1a rathe0004.bmp 16x16 L5
+B	10	278	32768	0	1	276	30021	textures_decoded	tex:etc1 door2.bmp 256x256 L9
+B	10	136	32768	0	1	134	30021	textures_decoded	tex:etc1 coble3.bmp 256x256 L9
+B	10	207	32768	0	1	205	30021	textures_decoded	tex:etc1 inurn.bmp 256x256 L9
+B	10	420	4096	0	1	420	30021	textures_decoded	tex:etc1a humlg0003.bmp 64x32 L7
+B	10	491	4096	0	1	491	30021	textures_decoded	tex:etc1 skeft0001.bmp 32x64 L7
+B	10	349	4096	0	1	349	30021	textures_decoded	tex:etc1a bathn0002.bmp 64x64 L7
+B	10	633	8192	0	0	633	30009	irrlicht_scene	draw3d:client
+B	10	562	4096	0	0	562	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	146	32768	0	1	144	30021	textures_decoded	tex:etc1 41wall.bmp 256x256 L9
+B	10	4	262144	0	0	4	30009	startup	egl:device
+B	10	75	32768	0	1	74	30009	textures_decoded	tex:etc1 storm_cloud_blend_24 256x256 L9
+B	10	288	8192	0	1	286	30021	textures_decoded	tex:etc1a qcmhe0001.bmp 128x64 L8
+B	10	359	4096	0	1	359	30021	entity_instances	draw2d:batch
+B	10	217	32768	0	1	215	30021	textures_decoded	tex:etc1 holderl.bmp 256x256 L9
+B	10	501	4096	0	1	501	30021	textures_decoded	tex:etc1 skeua0001.bmp 32x64 L7
+B	10	572	4096	0	0	572	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	430	4096	0	1	430	30021	entity_instances	draw2d:rect
+B	10	14	524288	0	1	13	30009	textures_decoded	tex:etc1 item_icons1 1024x1024 L11
+B	10	227	8192	0	1	225	30021	textures_decoded	tex:etc1 qeyflag.bmp 128x128 L8
+B	10	85	32768	0	1	84	30009	textures_decoded	tex:etc1 storm_cloud_blend_29 256x256 L9
+B	10	156	32768	0	1	154	30021	textures_decoded	tex:etc1 6ceil.bmp 256x256 L9
+B	10	116	65536	0	1	114	30021	textures_decoded	tex:etc1 16wall1.bmp 256x512 L10
+B	10	45	32768	0	1	44	30009	textures_decoded	tex:etc1 storm_cloud_blend_9 256x256 L9
+B	10	258	32768	0	1	256	30021	textures_decoded	tex:etc1 urn2.bmp 256x256 L9
+B	10	329	4096	0	1	329	30021	textures_decoded	tex:etc1a bathe0002.bmp 16x32 L6
+B	10	187	32768	0	1	185	30021	textures_decoded	tex:etc1 rea2.bmp 256x256 L9
+B	10	471	4096	0	1	471	30021	textures_decoded	tex:etc1 huflg0003.bmp 64x32 L7
+B	10	542	4096	0	0	542	30009	irrlicht_scene	draw2d:image
+B	10	400	4096	0	1	400	30021	textures_decoded	tex:etc1 helmleather02.bmp 32x32 L6
+B	10	613	12288	0	0	613	30009	irrlicht_scene	-
+B	10	197	16384	0	1	195	30021	textures_decoded	tex:etc1 drawertop.bmp 256x128 L9
+B	10	55	32768	0	1	54	30009	textures_decoded	tex:etc1 storm_cloud_blend_14 256x256 L9
+B	10	126	32768	0	1	124	30021	textures_decoded	tex:etc1 5jam.bmp 256x256 L9
+B	10	339	4096	0	1	339	30021	textures_decoded	tex:etc1a bathe0007.bmp 32x64 L7
+B	10	410	8192	0	1	410	30021	textures_decoded	tex:etc1a humhe0001.bmp 128x64 L8
+B	10	268	32768	0	1	266	30021	textures_decoded	tex:etc1 bedpost.bmp 256x256 L9
+B	10	552	4096	0	0	552	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	623	4096	0	0	623	30009	irrlicht_scene	draw2d:image
+B	10	481	4096	0	1	481	30021	entity_instances	draw2d:rect
+B	10	65	32768	0	1	64	30009	textures_decoded	tex:etc1 storm_cloud_blend_19 256x256 L9
+B	10	512	4096	0	0	512	30021	irrlicht_scene	draw2d:batch
+B	10	583	4096	0	0	583	30009	irrlicht_scene	draw3d:client
+B	10	96	4096	0	1	95	30009	startup	draw2d:batch|tex:alpha-fallback 1x1
+B	10	167	32768	0	1	165	30021	textures_decoded	tex:etc1 wawall1.bmp 256x256 L9
+B	10	25	4096	0	1	24	30009	textures_decoded	tex:etc1 tumbleweed 64x64 L7
+B	10	309	4096	0	1	309	30021	entity_instances	draw2d:batch
+B	10	380	4096	0	1	380	30021	textures_decoded	tex:etc1a snahe0006.bmp 32x32 L6
+B	10	238	16384	0	1	236	30021	textures_decoded	tex:etc1 crate7.bmp 256x128 L9
+B	10	522	4096	0	0	522	30021	irrlicht_scene	draw2d:batch
+B	10	451	4096	0	0	451	30021	entity_instances	draw2d:rect
+B	10	35	32768	0	1	34	30009	textures_decoded	tex:etc1 storm_cloud_blend_4 256x256 L9
+B	10	593	4096	0	1	593	30009	irrlicht_scene	draw2d:rect
+B	10	177	32768	0	1	175	30021	textures_decoded	tex:etc1 undrtil3.bmp 256x256 L9
+B	10	248	16384	0	1	246	30021	textures_decoded	tex:etc1 dresserside.bmp 256x128 L9
+B	10	106	4096	0	1	104	30009	irrlicht_scene	draw2d:rect
+B	10	390	4096	0	1	390	30021	textures_decoded	tex:etc1 clk0403.bmp 32x64 L7
+B	10	461	4096	0	1	461	30021	textures_decoded	tex:etc1 hufhe0022.bmp 64x32 L7
+B	10	319	4096	0	1	319	30021	textures_decoded	tex:etc1 ratlg0001.bmp 64x64 L7
+B	10	603	4096	0	0	603	30009	irrlicht_scene	draw3d:client
+B	10	532	4096	0	0	532	30009	irrlicht_scene	draw2d:batch
+B	10	492	4096	0	1	492	30021	textures_decoded	tex:etc1a skeft0001.bmp 32x64 L7
+B	10	421	4096	0	1	421	30021	textures_decoded	tex:etc1 humua0001.bmp 32x64 L7
+B	10	5	16777216	1	0	5	30009	startup	egl:device
+B	10	563	4096	0	0	563	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	634	12288	0	0	634	30009	irrlicht_scene	-
+B	10	147	32768	0	1	145	30021	textures_decoded	tex:etc1 16waa2.bmp 256x256 L9
+B	10	218	32768	0	1	216	30021	textures_decoded	tex:etc1 amythist.bmp 256x256 L9
+B	10	76	45056	0	1	75	30009	textures_decoded	tex:etc1a storm_cloud_blend_24 256x256 L9
+B	10	360	12288	0	1	360	30021	textures_decoded	tex:etc1a betch0101.bmp 128x128 L8
+B	10	431	4096	0	1	431	30021	entity_instances	draw2d:batch
+B	10	289	4096	0	1	287	30021	textures_decoded	tex:etc1 qcmhe0002.bmp 8x8 L4
+B	10	573	4096	0	0	573	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	502	4096	0	1	502	30021	textures_decoded	tex:etc1a skeua0001.bmp 32x64 L7
+B	10	86	45056	0	1	85	30009	textures_decoded	tex:etc1a storm_cloud_blend_29 256x256 L9
+B	10	15	700416	0	1	14	30009	textures_decoded	tex:etc1a item_icons1 1024x1024 L11
+B	10	228	32768	0	1	226	30021	textures_decoded	tex:etc1 counterfrnt.bmp 256x256 L9
+B	10	299	4096	0	1	297	30021	textures_decoded	tex:etc1 qcmlg0003.bmp 64x32 L7
+B	10	157	32768	0	1	155	30021	textures_decoded	tex:etc1 1merwal1.bmp 256x256 L9
+B	10	441	4096	0	1	441	30021	textures_decoded	tex:etc1 qcfhn0001.bmp 64x32 L7
+B	10	370	8192	0	1	370	30021	entity_instances	draw2d:batch
+B	10	609	4096	0	0	609	30009	irrlicht_scene	draw3d:client
+B	10	193	32768	0	1	191	30021	textures_decoded	tex:etc1 chairseat.bmp 256x256 L9
+B	10	51	32768	0	1	50	30009	textures_decoded	tex:etc1 storm_cloud_blend_12 256x256 L9
+B	10	122	16384	0	1	120	30021	textures_decoded	tex:etc1 2jam4.bmp 128x256 L9
+B	10	406	4096	0	1	406	30021	textures_decoded	tex:etc1a humfa0001.bmp 32x64 L7
+B	10	264	16384	0	1	262	30021	textures_decoded	tex:etc1 crate4.bmp 256x128 L9
+B	10	335	4096	0	1	335	30021	textures_decoded	tex:etc1a bathe0005.bmp 16x32 L6
+B	10	548	8192	0	1	548	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	619	4096	0	0	619	30009	irrlicht_scene	draw2d:image
+B	10	477	4096	0	1	477	30021	entity_instances	draw2d:rect
+B	10	61	32768	0	1	60	30009	textures_decoded	tex:etc1 storm_cloud_blend_17 256x256 L9
+B	10	274	16384	0	1	272	30021	textures_decoded	tex:etc1 darktabtop.bmp 256x128 L9
+B	10	132	32768	0	1	130	30021	textures_decoded	tex:etc1 undrtil1.bmp 256x256 L9
+B	10	203	32768	0	1	201	30021	textures_decoded	tex:etc1 bedposta.bmp 256x256 L9
+B	10	416	4096	0	1	416	30021	textures_decoded	tex:etc1a humhn0002.bmp 32x32 L6
+B	10	487	4096	0	1	487	30021	textures_decoded	tex:etc1 skech0005.bmp 32x64 L7
+B	10	345	4096	0	1	345	30021	textures_decoded	tex:etc1a bathe0010.bmp 32x8 L6
+B	10	629	12288	0	0	629	30009	irrlicht_scene	-
+B	10	558	8192	0	0	558	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	518	32768	0	1	518	30021	textures_decoded	tex:etc1 fire3.bmp 256x256 L9
+B	10	589	4096	0	0	589	30009	irrlicht_scene	draw3d:client
+B	10	447	4096	0	1	447	30021	textures_decoded	tex:etc1 qcflg0002.bmp 64x32 L7
+B	10	31	32768	0	1	30	30009	textures_decoded	tex:etc1 storm_cloud_blend_2 256x256 L9
+B	10	244	16384	0	1	242	30021	textures_decoded	tex:etc1 tabletop.bmp 256x128 L9
+B	10	102	61440	0	1	101	30009	irrlicht_scene	swap
+B	10	173	32768	0	1	171	30021	textures_decoded	tex:etc1 theif2.bmp 256x256 L9
+B	10	386	4096	0	1	386	30021	entity_instances	draw2d:rect
+B	10	457	4096	0	1	457	30021	textures_decoded	tex:etc1a hufft0001.bmp 64x32 L7
+B	10	315	4096	0	1	315	30021	textures_decoded	tex:etc1 rathe0003.bmp 32x64 L7
+B	10	599	4096	0	0	599	30009	irrlicht_scene	draw2d:image
+B	10	528	8192	0	1	528	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	112	4096	0	1	110	30009	irrlicht_scene	draw2d:batch
+B	10	41	32768	0	1	40	30009	textures_decoded	tex:etc1 storm_cloud_blend_7 256x256 L9
+B	10	325	4096	0	1	325	30021	entity_instances	draw2d:rect
+B	10	183	32768	0	1	181	30021	textures_decoded	tex:etc1 falls4.bmp 256x256 L9
+B	10	254	32768	0	1	252	30021	textures_decoded	tex:etc1 barrelside2.bmp 256x256 L9
+B	10	467	4096	0	1	467	30021	textures_decoded	tex:etc1 huflg0001.bmp 128x64 L8
+B	10	538	4096	0	0	538	30009	irrlicht_scene	draw2d:image
+B	10	396	4096	0	1	396	30021	textures_decoded	tex:etc1 helm14.bmp 32x32 L6
+B	10	356	4096	0	1	356	30021	entity_instances	draw2d:rect
+B	10	427	8192	0	1	427	30021	entity_instances	draw2d:batch
+B	10	285	4096	0	1	283	30021	textures_decoded	tex:etc1 qcmft0002.bmp 8x8 L4
+B	10	569	4096	0	0	569	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	498	4096	0	1	498	30021	textures_decoded	tex:etc1 skehn0002.bmp 32x32 L6
+B	10	82	45056	0	1	81	30009	textures_decoded	tex:etc1a storm_cloud_blend_27 256x256 L9
+B	10	11	262144	0	1	10	30009	textures_decoded	tex:v2 ui_atlas 256x256 L9
+B	10	224	32768	0	1	222	30021	textures_decoded	tex:etc1 lantern2a.bmp 256x256 L9
+B	10	295	4096	0	1	293	30021	textures_decoded	tex:etc1 qcmlg0001.bmp 128x64 L8
+B	10	153	16384	0	1	151	30021	textures_decoded	tex:etc1 16irnsn2.bmp 256x128 L9
+B	10	437	4096	0	1	437	30021	textures_decoded	tex:etc1 qcfhe0001.bmp 64x64 L7
+B	10	508	4096	0	0	508	30021	entity_instances	draw2d:batch
+B	10	366	4096	0	1	366	30021	entity_instances	draw2d:rect
+B	10	579	12288	0	0	579	30009	irrlicht_scene	-
+B	10	163	32768	0	1	161	30021	textures_decoded	tex:etc1 11prist4.bmp 256x256 L9
+B	10	21	4096	0	1	305	30021	entity_instances	draw2d:rect
+B	10	92	4096	0	1	91	30009	startup	draw2d:rect
+B	10	305	4096	0	1	303	30021	textures_decoded	tex:etc1a qguard-front.bmp 64x64 L7
+B	10	376	4096	0	1	376	30021	textures_decoded	tex:etc1a snahe0004.bmp 32x64 L7
+B	10	234	45056	0	1	232	30021	textures_decoded	tex:etc1a gpine.bmp 256x256 L9
+B	10	194	16384	0	1	192	30021	textures_decoded	tex:etc1 chestside1.bmp 256x128 L9
+B	10	265	16384	0	1	263	30021	textures_decoded	tex:etc1 crate3.bmp 256x128 L9
+B	10	123	8192	0	1	121	30021	zone_mesh	draw2d:batch
+B	10	407	4096	0	1	407	30021	textures_decoded	tex:etc1 humft0001.bmp 32x16 L6
+B	10	478	4096	0	1	478	30021	entity_instances	draw2d:batch
+B	10	336	4096	0	1	336	30021	textures_decoded	tex:etc1 bathe0006.bmp 8x8 L4
+B	10	620	4096	0	0	620	30009	irrlicht_scene	draw2d:image
+B	10	549	4096	0	0	549	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	133	32768	0	1	131	30021	textures_decoded	tex:etc1 11wall2.bmp 256x256 L9
+B	10	62	45056	0	1	61	30009	textures_decoded	tex:etc1a storm_cloud_blend_17 256x256 L9
+B	10	275	32768	0	1	273	30021	textures_decoded	tex:etc1 pchain.bmp 256x256 L9
+B	10	346	4096	0	1	346	30021	textures_decoded	tex:etc1 bathn0001.bmp 8x32 L6
+B	10	204	16384	0	1	202	30021	textures_decoded	tex:etc1 b4hdboard.bmp 256x128 L9
+B	10	488	4096	0	1	488	30021	textures_decoded	tex:etc1a skech0005.bmp 32x64 L7
+B	10	559	4096	0	0	559	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	417	4096	0	1	417	30021	textures_decoded	tex:etc1 humlg0001.bmp 128x64 L8
+B	10	1	4096	0	1	1	30009	startup	egl:device
+B	10	630	12288	0	0	630	30009	irrlicht_scene	-
+B	10	214	32768	0	1	212	30021	textures_decoded	tex:etc1 torchtop.bmp 256x256 L9
+B	10	72	45056	0	1	71	30009	textures_decoded	tex:etc1a storm_cloud_blend_22 256x256 L9
+B	10	143	32768	0	1	141	30021	textures_decoded	tex:etc1 thievflr.bmp 256x256 L9
+B	10	32	45056	0	1	31	30009	textures_decoded	tex:etc1a storm_cloud_blend_2 256x256 L9
+B	10	245	16384	0	1	243	30021	textures_decoded	tex:etc1 dressertop.bmp 256x128 L9
+B	10	316	4096	0	1	316	30021	textures_decoded	tex:etc1a rathe0003.bmp 32x64 L7
+B	10	174	32768	0	1	172	30021	textures_decoded	tex:etc1 cotushbn.bmp 256x256 L9
+B	10	458	4096	0	1	458	30021	textures_decoded	tex:etc1 hufft0002.bmp 8x8 L4
+B	10	387	4096	0	1	387	30021	entity_instances	draw2d:batch
+B	10	529	12288	0	0	529	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	600	4096	0	0	600	30009	irrlicht_scene	draw3d:client
+B	10	113	4096	0	1	111	30009	irrlicht_scene	draw2d:batch
+B	10	184	32768	0	1	182	30021	textures_decoded	tex:etc1 falls5.bmp 256x256 L9
+B	10	42	45056	0	1	41	30009	textures_decoded	tex:etc1a storm_cloud_blend_7 256x256 L9
+B	10	326	4096	0	1	326	30021	entity_instances	draw2d:batch
+B	10	397	4096	0	1	397	30021	textures_decoded	tex:etc1a helm14.bmp 32x32 L6
+B	10	255	32768	0	1	253	30021	textures_decoded	tex:etc1 barreltop.bmp 256x256 L9
+B	10	539	12288	0	0	539	30009	irrlicht_scene	-
+B	10	468	8192	0	1	468	30021	textures_decoded	tex:etc1a huflg0001.bmp 128x64 L8
+B	10	52	45056	0	1	51	30009	textures_decoded	tex:etc1a storm_cloud_blend_12 256x256 L9
+B	10	610	4096	0	1	610	30009	irrlicht_scene	draw2d:rect
+B	10	499	4096	0	1	499	30021	textures_decoded	tex:etc1a skehn0002.bmp 32x32 L6
+B	10	570	4096	0	0	570	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	83	32768	0	1	82	30009	textures_decoded	tex:etc1 storm_cloud_blend_28 256x256 L9
+B	10	154	32768	0	1	152	30021	textures_decoded	tex:etc1 15inceil.bmp 256x256 L9
+B	10	12	524288	0	1	11	30009	textures_decoded	tex:etc1 item_icons0 1024x1024 L11
+B	10	296	8192	0	1	294	30021	textures_decoded	tex:etc1a qcmlg0001.bmp 128x64 L8
+B	10	367	4096	0	1	367	30021	entity_instances	draw2d:rect
+B	10	225	32768	0	1	223	30021	textures_decoded	tex:etc1 glass.bmp 256x256 L9
+B	10	509	8192	0	1	509	30021	textures_decoded	tex:etc1 normalsky.bmp 128x128 L8
+B	10	438	4096	0	1	438	30021	textures_decoded	tex:etc1a qcfhe0001.bmp 64x64 L7
+B	10	22	4096	0	1	21	30009	startup	tex:particle-alpha-fallback 1x1
+B	10	580	4096	0	0	580	30009	irrlicht_scene	draw2d:image
+B	10	164	32768	0	1	162	30021	textures_decoded	tex:etc1 11prist3.bmp 256x256 L9
+B	10	235	16384	0	1	233	30021	textures_decoded	tex:etc1 crate2.bmp 256x128 L9
+B	10	93	4096	0	1	92	30009	startup	draw2d:rect
+B	10	377	4096	0	1	377	30021	textures_decoded	tex:etc1 snahe0005.bmp 32x64 L7
+B	10	306	4096	0	1	306	30021	entity_instances	draw2d:rect
+B	10	590	4096	0	0	590	30009	irrlicht_scene	draw3d:client
+B	10	448	4096	0	1	448	30021	textures_decoded	tex:etc1a qcflg0002.bmp 64x32 L7
+B	10	519	45056	0	1	519	30021	textures_decoded	tex:etc1a fire3.bmp 256x256 L9
+B	10	479	8192	0	1	479	30021	entity_instances	draw2d:batch
+B	10	337	4096	0	1	337	30021	textures_decoded	tex:etc1a bathe0006.bmp 8x8 L4
+B	10	408	4096	0	1	408	30021	textures_decoded	tex:etc1 humft0002.bmp 8x8 L4
+B	10	550	4096	0	0	550	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	621	4096	0	0	621	30009	irrlicht_scene	draw2d:image
+B	10	134	32768	0	1	132	30021	textures_decoded	tex:etc1 xgrass1.bmp 256x256 L9
+B	10	205	131072	0	1	203	30021	textures_decoded	tex:etc1 rug4.bmp 512x512 L10
+B	10	63	32768	0	1	62	30009	textures_decoded	tex:etc1 storm_cloud_blend_18 256x256 L9
+B	10	347	4096	0	1	347	30021	textures_decoded	tex:etc1a bathn0001.bmp 8x32 L6
+B	10	276	45056	0	1	274	30021	textures_decoded	tex:etc1a pchain.bmp 256x256 L9
+B	10	560	4096	0	0	560	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	418	4096	0	1	418	30021	textures_decoded	tex:etc1 humlg0002.bmp 64x64 L7
+B	10	489	4096	0	1	489	30021	textures_decoded	tex:etc1 skefa0001.bmp 32x64 L7
+B	10	2	262144	0	0	2	30009	startup	egl:device
+B	10	73	32768	0	1	72	30009	textures_decoded	tex:etc1 storm_cloud_blend_23 256x256 L9
+B	10	631	32768	0	0	631	30009	irrlicht_scene	draw3d:client
+B	10	215	32768	0	1	213	30021	textures_decoded	tex:etc1 torchbot.bmp 256x256 L9
+B	10	286	4096	0	1	284	30021	textures_decoded	tex:etc1a qcmft0002.bmp 8x8 L4
+B	10	144	32768	0	1	142	30021	textures_decoded	tex:etc1 sneed3.bmp 256x256 L9
+B	10	428	4096	0	1	428	30021	entity_instances	draw2d:batch
+B	10	357	4096	0	1	357	30021	entity_instances	draw2d:batch
+B	10	317	4096	0	1	317	30021	textures_decoded	tex:etc1 rathe0004.bmp 16x16 L5
+B	10	246	32768	0	1	244	30021	textures_decoded	tex:etc1 bedleg1.bmp 256x256 L9
+B	10	530	8192	0	0	530	30009	irrlicht_scene	draw3d:client
+B	10	388	8192	0	1	388	30021	entity_instances	draw2d:batch
+B	10	459	4096	0	1	459	30021	textures_decoded	tex:etc1 hufhe0021.bmp 64x64 L7
+B	10	43	32768	0	1	42	30009	textures_decoded	tex:etc1 storm_cloud_blend_8 256x256 L9
+B	10	601	4096	0	0	601	30009	irrlicht_scene	draw3d:client
+B	10	185	32768	0	1	183	30021	textures_decoded	tex:etc1 falls6.bmp 256x256 L9
+B	10	114	1048576	0	1	112	30009	irrlicht_scene	draw2d:batch
+B	10	398	4096	0	1	398	30021	textures_decoded	tex:etc1 helm15.bmp 32x32 L6
+B	10	256	16384	0	1	254	30021	textures_decoded	tex:etc1 crate10a.bmp 256x128 L9
+B	10	327	4096	0	1	327	30021	entity_instances	draw2d:batch
+B	10	611	4096	0	0	611	30009	irrlicht_scene	draw2d:batch
+B	10	469	4096	0	1	469	30021	textures_decoded	tex:etc1 huflg0002.bmp 64x64 L7
+B	10	540	4096	0	0	540	30009	irrlicht_scene	draw2d:image
+B	10	53	32768	0	1	52	30009	textures_decoded	tex:etc1 storm_cloud_blend_13 256x256 L9
+B	10	124	32768	0	1	122	30021	textures_decoded	tex:etc1 5sidewin.bmp 256x256 L9
+B	10	266	16384	0	1	264	30021	textures_decoded	tex:etc1 headboard.bmp 256x128 L9
+B	10	195	16384	0	1	193	30021	textures_decoded	tex:etc1 chesttop.bmp 256x128 L9
+B	10	505	4096	0	1	505	30021	entity_instances	draw2d:rect
+B	10	434	4096	0	1	434	30021	textures_decoded	tex:etc1a qcfft0001.bmp 64x32 L7
+B	10	18	4096	0	1	17	30009	textures_decoded	tex:etc1 particle_atlas 64x64 L7
+B	10	576	4096	0	0	576	30009	irrlicht_scene	draw2d:rect
+B	10	160	32768	0	1	158	30021	textures_decoded	tex:etc1 16flor.bmp 256x256 L9
+B	10	231	32768	0	1	229	30021	textures_decoded	tex:etc1 barka.bmp 256x256 L9
+B	10	89	32768	0	1	88	30009	textures_decoded	tex:etc1 storm_cloud_blend_31 256x256 L9
+B	10	373	4096	0	1	373	30021	textures_decoded	tex:etc1 snahe0003.bmp 64x64 L7
+B	10	444	4096	0	1	444	30021	textures_decoded	tex:etc1a qcfhn0002.bmp 32x32 L6
+B	10	302	4096	0	1	300	30021	textures_decoded	tex:etc1a qcmua0001.bmp 32x64 L7
+B	10	586	4096	0	0	586	30009	irrlicht_scene	draw3d:client
+B	10	515	700416	0	1	515	30021	textures_decoded	tex:etc1a spell_sprite_atlas 1024x1024 L11
+B	10	99	4096	0	1	98	30009	startup	draw2d:batch
+B	10	28	45056	0	1	27	30009	textures_decoded	tex:etc1a storm_cloud_blend_0 256x256 L9
+B	10	241	16384	0	1	239	30021	textures_decoded	tex:etc1 bedtop.bmp 256x128 L9
+B	10	312	16384	0	1	312	30021	textures_decoded	tex:etc1 ratch0001.bmp 128x256 L9
+B	10	170	16384	0	1	168	30021	textures_decoded	tex:etc1 10dirt3b.bmp 256x128 L9
+B	10	454	4096	0	1	454	30021	entity_instances	draw2d:batch
+B	10	525	4096	0	0	525	30021	irrlicht_scene	draw2d:batch
+B	10	383	4096	0	1	383	30021	textures_decoded	tex:etc1 snalg0001.bmp 128x64 L8
+B	10	343	4096	0	1	343	30021	textures_decoded	tex:etc1a bathe0009.bmp 16x32 L6
+B	10	414	4096	0	1	414	30021	textures_decoded	tex:etc1a humhn0001.bmp 64x32 L7
+B	10	272	16384	0	1	270	30021	textures_decoded	tex:etc1 crate5.bmp 256x128 L9
+B	10	556	4096	0	0	556	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	485	12288	0	1	485	30021	textures_decoded	tex:etc1a skech0001.bmp 128x128 L8
+B	10	69	32768	0	1	68	30009	textures_decoded	tex:etc1 storm_cloud_blend_21 256x256 L9
+B	10	627	12288	0	0	627	30009	irrlicht_scene	-
+B	10	211	131072	0	1	209	30021	textures_decoded	tex:etc1 rug2.bmp 512x512 L10
+B	10	282	32768	0	1	280	30021	textures_decoded	tex:etc1 door1.bmp 256x256 L9
+B	10	140	32768	0	1	138	30021	textures_decoded	tex:etc1 3bar3.bmp 256x256 L9
+B	10	424	4096	0	1	424	30021	entity_instances	draw2d:rect
+B	10	495	16384	0	1	495	30021	textures_decoded	tex:etc1 skehe0001.bmp 256x128 L9
+B	10	353	4096	0	1	353	30021	textures_decoded	tex:etc1a batlg0001.bmp 8x32 L6
+B	10	637	12288	0	0	637	30009	irrlicht_scene	-
+B	10	566	4096	0	0	566	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	150	32768	0	1	148	30021	textures_decoded	tex:etc1 16jwall3.bmp 256x256 L9
+B	10	8	3686400	0	0	7	30009	startup	egl:device
+B	10	79	32768	0	1	78	30009	textures_decoded	tex:etc1 storm_cloud_blend_26 256x256 L9
+B	10	292	4096	0	1	290	30021	textures_decoded	tex:etc1a qcmhn0001.bmp 64x32 L7
+B	10	363	4096	0	1	363	30021	textures_decoded	tex:etc1a betlg0101.bmp 32x64 L7
+B	10	221	32768	0	1	219	30021	textures_decoded	tex:etc1 lantholderd.bmp 256x256 L9
+B	10	181	32768	0	1	179	30021	textures_decoded	tex:etc1 falls2.bmp 256x256 L9
+B	10	252	16384	0	1	250	30021	textures_decoded	tex:etc1 cartsi01.bmp 256x128 L9
+B	10	110	8192	0	1	108	30009	irrlicht_scene	draw2d:batch
+B	10	394	8192	0	1	394	30021	textures_decoded	tex:etc1 clk0405.bmp 128x128 L8
+B	10	323	4096	0	1	323	30021	entity_instances	draw2d:rect
+B	10	607	4096	0	0	607	30009	irrlicht_scene	draw3d:client
+B	10	465	4096	0	1	465	30021	textures_decoded	tex:etc1 hufhn0002.bmp 32x32 L6
+B	10	536	4096	0	0	536	30009	irrlicht_scene	draw2d:rect
+B	10	49	32768	0	1	48	30009	textures_decoded	tex:etc1 storm_cloud_blend_11 256x256 L9
+B	10	120	8192	0	1	118	30021	textures_decoded	tex:etc1 4jam1.bmp 64x256 L9
+B	10	262	32768	0	1	260	30021	textures_decoded	tex:etc1 stumptop.bmp 256x256 L9
+B	10	333	4096	0	1	333	30021	textures_decoded	tex:etc1a bathe0004.bmp 16x32 L6
+B	10	191	16384	0	1	189	30021	textures_decoded	tex:etc1 chair.bmp 256x128 L9
+B	10	475	4096	0	1	475	30021	entity_instances	draw2d:rect
+B	10	404	4096	0	1	404	30021	textures_decoded	tex:etc1 humch0002.bmp 32x16 L6
+B	10	546	8192	0	0	546	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	617	4096	0	0	617	30009	irrlicht_scene	draw2d:rect
+B	10	130	32768	0	1	128	30021	textures_decoded	tex:etc1 11sign2.bmp 256x256 L9
+B	10	201	16384	0	1	199	30021	textures_decoded	tex:etc1 coversa.bmp 256x128 L9
+B	10	59	32768	0	1	58	30009	textures_decoded	tex:etc1 storm_cloud_blend_16 256x256 L9
+B	10	19	4096	0	1	18	30009	textures_decoded	tex:etc1a particle_atlas 64x64 L7
+B	10	90	45056	0	1	89	30009	textures_decoded	tex:etc1a storm_cloud_blend_31 256x256 L9
+B	10	232	32768	0	1	230	30021	textures_decoded	tex:etc1 kbarkd.bmp 256x256 L9
+B	10	303	4096	0	1	301	30021	textures_decoded	tex:etc1 qguard-back.bmp 32x32 L6
+B	10	161	32768	0	1	159	30021	textures_decoded	tex:etc1 fount.bmp 256x256 L9
+B	10	445	4096	0	1	445	30021	textures_decoded	tex:etc1 qcflg0001.bmp 64x128 L8
+B	10	374	4096	0	1	374	30021	textures_decoded	tex:etc1a snahe0003.bmp 64x64 L7
+B	10	516	32768	0	1	516	30021	textures_decoded	tex:etc1 fire2.bmp 256x256 L9
+B	10	587	4096	0	0	587	30009	irrlicht_scene	draw3d:client
+B	10	100	8192	0	1	99	30009	startup	draw2d:batch
+B	10	171	32768	0	1	169	30021	textures_decoded	tex:etc1 10dirtb.bmp 256x256 L9
+B	10	29	32768	0	1	28	30009	textures_decoded	tex:etc1 storm_cloud_blend_1 256x256 L9
+B	10	313	24576	0	1	313	30021	textures_decoded	tex:etc1a ratch0001.bmp 128x256 L9
+B	10	242	32768	0	1	240	30021	textures_decoded	tex:etc1 barrelnew.bmp 256x256 L9
+B	10	526	4096	0	1	526	30009	irrlicht_scene	draw2d:batch
+B	10	384	4096	0	1	384	30021	entity_instances	draw2d:rect
+B	10	455	8192	0	1	455	30021	entity_instances	draw2d:batch
+B	10	39	32768	0	1	38	30009	textures_decoded	tex:etc1 storm_cloud_blend_6 256x256 L9
+B	10	597	12288	0	0	597	30009	irrlicht_scene	-
+B	10	628	32768	0	0	628	30009	irrlicht_scene	draw3d:client
+B	10	486	4096	0	1	486	30021	textures_decoded	tex:etc1a skech0004.bmp 32x16 L6
+B	10	557	4096	0	0	557	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	70	45056	0	1	69	30009	textures_decoded	tex:etc1a storm_cloud_blend_21 256x256 L9
+B	10	141	32768	0	1	139	30021	textures_decoded	tex:etc1 sneed1.bmp 256x256 L9
+B	10	283	8192	0	1	281	30021	textures_decoded	tex:etc1a qcmch0001.bmp 64x128 L8
+B	10	212	32768	0	1	210	30021	textures_decoded	tex:etc1 fire1.bmp 256x256 L9
+B	10	496	4096	0	1	496	30021	textures_decoded	tex:etc1 skehn0001.bmp 64x32 L7
+B	10	354	4096	0	1	354	30021	entity_instances	draw2d:rect
+B	10	425	4096	0	1	425	30021	entity_instances	draw2d:rect
+B	10	9	65536	0	1	8	30009	startup	egl:device|tex:rgba #DefaultFont 128x128
+B	10	567	4096	0	0	567	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	638	12288	0	0	638	30009	irrlicht_scene	-
+B	10	151	32768	0	1	149	30021	textures_decoded	tex:etc1 16wood2.bmp 256x256 L9
+B	10	222	32768	0	1	220	30021	textures_decoded	tex:etc1 lantholderl.bmp 256x256 L9
+B	10	80	45056	0	1	79	30009	textures_decoded	tex:etc1a storm_cloud_blend_26 256x256 L9
+B	10	364	4096	0	1	364	30021	textures_decoded	tex:etc1 fisttrans1.bmp 32x32 L6
+B	10	293	4096	0	1	291	30021	textures_decoded	tex:etc1 qcmhn0002.bmp 32x32 L6
+B	10	577	4096	0	0	577	30009	irrlicht_scene	draw2d:batch
+B	10	435	4096	0	1	435	30021	textures_decoded	tex:etc1 qcfft0002.bmp 8x8 L4
+B	10	506	4096	0	1	506	30021	entity_instances	draw2d:batch
+B	10	466	4096	0	1	466	30021	textures_decoded	tex:etc1a hufhn0002.bmp 32x32 L6
+B	10	324	4096	0	1	324	30021	entity_instances	draw2d:rect
+B	10	395	12288	0	1	395	30021	textures_decoded	tex:etc1a clk0405.bmp 128x128 L8
+B	10	608	4096	0	0	608	30009	irrlicht_scene	draw3d:client
+B	10	537	4096	0	0	537	30009	irrlicht_scene	draw2d:batch
+B	10	121	16384	0	1	119	30021	textures_decoded	tex:etc1 2jam3.bmp 256x128 L9
+B	10	50	45056	0	1	49	30009	textures_decoded	tex:etc1a storm_cloud_blend_11 256x256 L9
+B	10	334	4096	0	1	334	30021	textures_decoded	tex:etc1 bathe0005.bmp 16x32 L6
+B	10	192	16384	0	1	190	30021	textures_decoded	tex:etc1 chairback.bmp 256x128 L9
+B	10	263	32768	0	1	261	30021	textures_decoded	tex:etc1 posta.bmp 256x256 L9
+B	10	547	4096	0	1	547	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	405	4096	0	1	405	30021	textures_decoded	tex:etc1 humfa0001.bmp 32x64 L7
+B	10	476	4096	0	1	476	30021	entity_instances	draw2d:rect
+B	10	60	45056	0	1	59	30009	textures_decoded	tex:etc1a storm_cloud_blend_16 256x256 L9
+B	10	618	4096	0	0	618	30009	irrlicht_scene	draw2d:batch
+B	10	202	16384	0	1	200	30021	textures_decoded	tex:etc1 sideboard.bmp 256x128 L9
+B	10	131	32768	0	1	129	30021	textures_decoded	tex:etc1 falls1.bmp 256x256 L9
+B	10	415	4096	0	1	415	30021	textures_decoded	tex:etc1 humhn0002.bmp 32x32 L6
+B	10	273	32768	0	1	271	30021	textures_decoded	tex:etc1 darktabsid.bmp 256x256 L9
+B	10	344	4096	0	1	344	30021	textures_decoded	tex:etc1 bathe0010.bmp 32x8 L6
+B	10	304	4096	0	1	302	30021	textures_decoded	tex:etc1 qguard-front.bmp 64x64 L7
+B	10	162	32768	0	1	160	30021	textures_decoded	tex:etc1 11temcar.bmp 256x256 L9
+B	10	233	32768	0	1	231	30021	textures_decoded	tex:etc1 gpine.bmp 256x256 L9
+B	10	517	45056	0	1	517	30021	textures_decoded	tex:etc1a fire2.bmp 256x256 L9
+B	10	375	4096	0	1	375	30021	textures_decoded	tex:etc1 snahe0004.bmp 32x64 L7
+B	10	446	8192	0	1	446	30021	textures_decoded	tex:etc1a qcflg0001.bmp 64x128 L8
+B	10	30	45056	0	1	29	30009	textures_decoded	tex:etc1a storm_cloud_blend_1 256x256 L9
+B	10	588	4096	0	0	588	30009	irrlicht_scene	draw3d:client
+B	10	172	32768	0	1	170	30021	textures_decoded	tex:etc1 theif3.bmp 256x256 L9
+B	10	101	4096	0	1	100	30009	startup	draw2d:batch
+B	10	385	4096	0	1	385	30021	entity_instances	draw2d:rect
+B	10	243	32768	0	1	241	30021	textures_decoded	tex:etc1 barreltopg.bmp 256x256 L9
+B	10	314	4096	0	1	314	30021	textures_decoded	tex:etc1a rathe0002.bmp 32x32 L6
+B	10	598	4096	0	0	598	30009	irrlicht_scene	draw2d:image
+B	10	456	4096	0	1	456	30021	entity_instances	draw2d:batch
+B	10	527	4096	0	0	527	30009	irrlicht_scene	draw2d:batch
+B	10	40	45056	0	1	39	30009	textures_decoded	tex:etc1a storm_cloud_blend_6 256x256 L9
+B	10	111	4096	0	1	109	30009	irrlicht_scene	draw2d:batch
+B	10	253	16384	0	1	251	30021	textures_decoded	tex:etc1 cartside.bmp 256x128 L9
+B	10	182	32768	0	1	180	30021	textures_decoded	tex:etc1 falls3.bmp 256x256 L9
+B	10	142	32768	0	1	140	30021	textures_decoded	tex:etc1 3barwall.bmp 256x256 L9
+B	10	71	32768	0	1	70	30009	textures_decoded	tex:etc1 storm_cloud_blend_22 256x256 L9
+B	10	355	4096	0	1	355	30021	entity_instances	draw2d:rect
+B	10	213	45056	0	1	211	30021	textures_decoded	tex:etc1a fire1.bmp 256x256 L9
+B	10	284	4096	0	1	282	30021	textures_decoded	tex:etc1a qcmft0001.bmp 32x16 L6
+B	10	497	4096	0	1	497	30021	textures_decoded	tex:etc1a skehn0001.bmp 64x32 L7
+B	10	568	4096	0	0	568	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	426	4096	0	1	426	30021	entity_instances	draw2d:batch
+B	10	10	4096	0	1	9	30009	textures_driver	tex:rgba software_cursor 8x10
+B	10	639	4096	0	0	639	30009	irrlicht_scene	draw2d:image
+B	10	223	32768	0	1	221	30021	textures_decoded	tex:etc1 lantern3.bmp 256x256 L9
+B	10	81	32768	0	1	80	30009	textures_decoded	tex:etc1 storm_cloud_blend_27 256x256 L9
+B	10	152	32768	0	1	150	30021	textures_decoded	tex:etc1 16cab.bmp 256x256 L9
+B	10	436	4096	0	1	436	30021	textures_decoded	tex:etc1a qcfft0002.bmp 8x8 L4
+B	10	294	4096	0	1	292	30021	textures_decoded	tex:etc1a qcmhn0002.bmp 32x32 L6
+B	10	365	4096	0	1	365	30021	textures_decoded	tex:etc1a fisttrans1.bmp 32x32 L6
+B	10	578	4096	0	0	578	30009	irrlicht_scene	draw2d:image
+B	10	507	8192	0	1	507	30021	entity_instances	draw2d:batch
+B	10	91	1048576	0	1	90	30009	startup	draw2d:rect
+B	10	20	4096	0	1	304	30021	entity_instances	draw2d:rect
+B	10	330	4096	0	1	330	30021	textures_decoded	tex:etc1 bathe0003.bmp 16x32 L6
+B	10	259	16384	0	1	257	30021	textures_decoded	tex:etc1 crate9a.bmp 256x128 L9
+B	10	543	4096	0	1	543	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	401	4096	0	1	401	30021	textures_decoded	tex:etc1a helmleather02.bmp 32x32 L6
+B	10	472	4096	0	1	472	30021	textures_decoded	tex:etc1a huflg0003.bmp 64x32 L7
+B	10	56	45056	0	1	55	30009	textures_decoded	tex:etc1a storm_cloud_blend_14 256x256 L9
+B	10	614	4096	0	0	614	30009	irrlicht_scene	draw2d:image
+B	10	198	16384	0	1	196	30021	textures_decoded	tex:etc1 drawerfront.bmp 256x128 L9
+B	10	269	16384	0	1	267	30021	textures_decoded	tex:etc1 stoolleg.bmp 256x128 L9
+B	10	127	32768	0	1	125	30021	textures_decoded	tex:etc1 5side.bmp 256x256 L9
+B	10	411	4096	0	1	411	30021	textures_decoded	tex:etc1 humhe0002.bmp 8x8 L4
+B	10	340	4096	0	1	340	30021	textures_decoded	tex:etc1 bathe0008.bmp 32x64 L7
+B	10	624	4096	0	0	624	30009	irrlicht_scene	draw2d:image
+B	10	482	4096	0	1	482	30021	entity_instances	draw2d:rect
+B	10	553	4096	0	0	553	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	66	45056	0	1	65	30009	textures_decoded	tex:etc1a storm_cloud_blend_19 256x256 L9
+B	10	137	32768	0	1	135	30021	textures_decoded	tex:etc1 6inwall.bmp 256x256 L9
+B	10	279	32768	0	1	277	30021	textures_decoded	tex:etc1 spearhed.bmp 256x256 L9
+B	10	350	4096	0	1	350	30021	textures_decoded	tex:etc1 bathn0003.bmp 64x64 L7
+B	10	208	32768	0	1	206	30021	textures_decoded	tex:etc1 urn3.bmp 256x256 L9
+B	10	168	32768	0	1	166	30021	textures_decoded	tex:etc1 wafl1.bmp 256x256 L9
+B	10	239	32768	0	1	237	30021	textures_decoded	tex:etc1 pillow.bmp 256x256 L9
+B	10	97	4096	0	1	96	30009	startup	draw2d:batch
+B	10	381	4096	0	1	381	30021	textures_decoded	tex:etc1 snahe0007.bmp 32x128 L8
+B	10	310	8192	0	1	310	30021	entity_instances	draw2d:batch
+B	10	594	4096	0	0	594	30009	irrlicht_scene	draw2d:rect
+B	10	452	4096	0	1	452	30021	entity_instances	draw2d:rect
+B	10	523	4096	0	1	523	30021	irrlicht_scene	draw2d:batch
+B	10	36	45056	0	1	35	30009	textures_decoded	tex:etc1a storm_cloud_blend_4 256x256 L9
+B	10	107	4096	0	1	105	30009	irrlicht_scene	draw2d:rect
+B	10	249	32768	0	1	247	30021	textures_decoded	tex:etc1 plank3.bmp 256x256 L9
+B	10	178	32768	0	1	176	30021	textures_decoded	tex:etc1 w2.bmp 256x256 L9
+B	10	462	4096	0	1	462	30021	textures_decoded	tex:etc1a hufhe0022.bmp 64x32 L7
+B	10	320	4096	0	1	320	30021	textures_decoded	tex:etc1a ratlg0001.bmp 64x64 L7
+B	10	391	4096	0	1	391	30021	textures_decoded	tex:etc1a clk0403.bmp 32x64 L7
+B	10	533	4096	0	0	533	30009	irrlicht_scene	draw2d:batch
+B	10	604	4096	0	0	604	30009	irrlicht_scene	draw3d:client
+B	10	117	16384	0	1	115	30021	textures_decoded	tex:etc1 18wall2.bmp 128x256 L9
+B	10	188	32768	0	1	186	30021	textures_decoded	tex:etc1 rea3.bmp 256x256 L9
+B	10	46	45056	0	1	45	30009	textures_decoded	tex:etc1a storm_cloud_blend_9 256x256 L9
+B	10	6	4096	0	1	6	30009	startup	egl:device
+B	10	77	32768	0	1	76	30009	textures_decoded	tex:etc1 storm_cloud_blend_25 256x256 L9
+B	10	635	12288	0	0	635	30009	irrlicht_scene	-
+B	10	219	32768	0	1	217	30021	textures_decoded	tex:etc1 lanterntop.bmp 256x256 L9
+B	10	148	32768	0	1	146	30021	textures_decoded	tex:etc1 16jwall.bmp 256x256 L9
+B	10	432	4096	0	1	432	30021	entity_instances	draw2d:batch
+B	10	290	4096	0	1	288	30021	textures_decoded	tex:etc1a qcmhe0002.bmp 8x8 L4
+B	10	361	4096	0	1	361	30021	textures_decoded	tex:etc1a bethe0102.bmp 32x64 L7
+B	10	503	4096	0	0	503	30021	entity_instances	draw2d:rect
+B	10	574	4096	0	0	574	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	87	32768	0	1	86	30009	textures_decoded	tex:etc1 storm_cloud_blend_30 256x256 L9
+B	10	158	32768	0	1	156	30021	textures_decoded	tex:etc1 18win2.bmp 256x256 L9
+B	10	16	4096	0	1	15	30009	textures_driver	tex:rgba _placeholder_ 8x8
+B	10	300	4096	0	1	298	30021	textures_decoded	tex:etc1a qcmlg0003.bmp 64x32 L7
+B	10	229	32768	0	1	227	30021	textures_decoded	tex:etc1 tree70.bmp 256x256 L9
+B	10	513	131072	0	1	513	30021	textures_decoded	tex:etc1 detail_atlas 512x512 L10
+B	10	371	4096	0	1	371	30021	entity_instances	draw2d:batch
+B	10	442	4096	0	1	442	30021	textures_decoded	tex:etc1a qcfhn0001.bmp 64x32 L7
+B	10	26	4096	0	1	25	30009	textures_decoded	tex:etc1a tumbleweed 64x64 L7
+B	10	584	4096	0	0	584	30009	irrlicht_scene	draw3d:client
+B	10	544	4096	0	1	544	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	615	4096	0	0	615	30009	irrlicht_scene	draw2d:image
+B	10	473	4096	0	1	473	30021	textures_decoded	tex:etc1 hufua0001.bmp 32x64 L7
+B	10	57	32768	0	1	56	30009	textures_decoded	tex:etc1 storm_cloud_blend_15 256x256 L9
+B	10	270	32768	0	1	268	30021	textures_decoded	tex:etc1 stoolseat.bmp 256x256 L9
+B	10	128	32768	0	1	126	30021	textures_decoded	tex:etc1 ike2.bmp 256x256 L9
+B	10	199	16384	0	1	197	30021	textures_decoded	tex:etc1 drawerside.bmp 256x128 L9
+B	10	483	4096	0	1	483	30021	entity_instances	draw2d:batch
+B	10	341	4096	0	1	341	30021	textures_decoded	tex:etc1a bathe0008.bmp 32x64 L7
+B	10	412	4096	0	1	412	30021	textures_decoded	tex:etc1a humhe0002.bmp 8x8 L4
+B	10	625	4096	0	0	625	30009	irrlicht_scene	draw2d:image
+B	10	554	4096	0	0	554	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	138	32768	0	1	136	30021	textures_decoded	tex:etc1 sneed2.bmp 256x256 L9
+B	10	67	32768	0	1	66	30009	textures_decoded	tex:etc1 storm_cloud_blend_20 256x256 L9
+B	10	351	4096	0	1	351	30021	textures_decoded	tex:etc1a bathn0003.bmp 64x64 L7
+B	10	209	32768	0	1	207	30021	textures_decoded	tex:etc1 tableside.bmp 256x256 L9
+B	10	280	32768	0	1	278	30021	textures_decoded	tex:etc1 pawc.bmp 256x256 L9
+B	10	564	4096	0	0	564	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	422	4096	0	1	422	30021	textures_decoded	tex:etc1a humua0001.bmp 32x64 L7
+B	10	493	4096	0	1	493	30021	textures_decoded	tex:etc1 skeft0002.bmp 32x64 L7
+B	10	453	4096	0	1	453	30021	entity_instances	draw2d:rect
+B	10	311	4096	0	1	311	30021	entity_instances	draw2d:batch
+B	10	382	4096	0	1	382	30021	textures_decoded	tex:etc1a snahe0007.bmp 32x128 L8
+B	10	595	4096	0	0	595	30009	irrlicht_scene	draw2d:batch
+B	10	524	4096	0	1	524	30021	irrlicht_scene	draw2d:batch
+B	10	108	4096	0	1	106	30009	irrlicht_scene	draw2d:rect
+B	10	37	32768	0	1	36	30009	textures_decoded	tex:etc1 storm_cloud_blend_5 256x256 L9
+B	10	321	4096	0	1	321	30021	textures_decoded	tex:etc1 ratlg0002.bmp 32x16 L6
+B	10	179	32768	0	1	177	30021	textures_decoded	tex:etc1 w3.bmp 256x256 L9
+B	10	250	32768	0	1	248	30021	textures_decoded	tex:etc1 cartwheel.bmp 256x256 L9
+B	10	534	4096	0	0	534	30009	irrlicht_scene	draw2d:batch
+B	10	392	4096	0	1	392	30021	textures_decoded	tex:etc1 clk0404.bmp 32x64 L7
+B	10	463	4096	0	1	463	30021	textures_decoded	tex:etc1 hufhn0001.bmp 64x32 L7
+B	10	47	32768	0	1	46	30009	textures_decoded	tex:etc1 storm_cloud_blend_10 256x256 L9
+B	10	605	4096	0	0	605	30009	irrlicht_scene	draw3d:client
+B	10	189	131072	0	1	187	30021	textures_decoded	tex:etc1 rug3.bmp 512x512 L10
+B	10	118	16384	0	1	116	30021	textures_decoded	tex:etc1 3side2.bmp 128x256 L9
+B	10	402	4096	0	1	402	30021	textures_decoded	tex:etc1 humch0001.bmp 64x128 L8
+B	10	260	16384	0	1	258	30021	textures_decoded	tex:etc1 crate9.bmp 256x128 L9
+B	10	331	4096	0	1	331	30021	textures_decoded	tex:etc1a bathe0003.bmp 16x32 L6
+B	10	291	4096	0	1	289	30021	textures_decoded	tex:etc1 qcmhn0001.bmp 64x32 L7
+B	10	149	32768	0	1	147	30021	textures_decoded	tex:etc1 16jwall4.bmp 256x256 L9
+B	10	220	32768	0	1	218	30021	textures_decoded	tex:etc1 lamptop.bmp 256x256 L9
+B	10	433	4096	0	1	433	30021	textures_decoded	tex:etc1 qcfft0001.bmp 64x32 L7
+B	10	504	4096	0	1	504	30021	entity_instances	draw2d:rect
+B	10	362	4096	0	1	362	30021	textures_decoded	tex:etc1 betlg0101.bmp 32x64 L7
+B	10	575	8192	0	0	575	30009	irrlicht_scene	draw3d:client
+B	10	159	32768	0	1	157	30021	textures_decoded	tex:etc1 5wall1.bmp 256x256 L9
+B	10	17	16384	0	1	16	30009	startup	tex:light-lut 256x1
+B	10	88	45056	0	1	87	30009	textures_decoded	tex:etc1a storm_cloud_blend_30 256x256 L9
+B	10	372	4096	0	1	372	30021	textures_decoded	tex:etc1a snahe0002.bmp 64x64 L7
+B	10	230	45056	0	1	228	30021	textures_decoded	tex:etc1a tree70.bmp 256x256 L9
+B	10	301	4096	0	1	299	30021	textures_decoded	tex:etc1 qcmua0001.bmp 32x64 L7
+B	10	514	524288	0	1	514	30021	textures_decoded	tex:etc1 spell_sprite_atlas 1024x1024 L11
+B	10	585	4096	0	0	585	30009	irrlicht_scene	draw3d:client
+B	10	443	4096	0	1	443	30021	textures_decoded	tex:etc1 qcfhn0002.bmp 32x32 L6
+B	10	27	32768	0	1	26	30009	textures_decoded	tex:etc1 storm_cloud_blend_0 256x256 L9
+B	10	240	32768	0	1	238	30021	textures_decoded	tex:etc1 bedwood.bmp 256x256 L9
+B	10	98	4096	0	1	97	30009	startup	draw2d:batch
+B	10	169	16384	0	1	167	30021	textures_decoded	tex:etc1 10dirt2b.bmp 256x128 L9
+B	10	129	32768	0	1	127	30021	textures_decoded	tex:etc1 rent2wal.bmp 256x256 L9
+B	10	58	45056	0	1	57	30009	textures_decoded	tex:etc1a storm_cloud_blend_15 256x256 L9
+B	10	342	4096	0	1	342	30021	textures_decoded	tex:etc1 bathe0009.bmp 16x32 L6
+B	10	200	32768	0	1	198	30021	textures_decoded	tex:etc1 pillowb.bmp 256x256 L9
+B	10	271	16384	0	1	269	30021	textures_decoded	tex:etc1 crate6.bmp 256x128 L9
+B	10	484	4096	0	1	484	30021	entity_instances	draw2d:batch
+B	10	555	4096	0	0	555	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	413	4096	0	1	413	30021	textures_decoded	tex:etc1 humhn0001.bmp 64x32 L7
+B	10	626	12288	0	0	626	30009	irrlicht_scene	-
+B	10	210	32768	0	1	208	30021	textures_decoded	tex:etc1 rtabltop.bmp 256x256 L9
+B	10	68	45056	0	1	67	30009	textures_decoded	tex:etc1a storm_cloud_blend_20 256x256 L9
+B	10	139	32768	0	1	137	30021	textures_decoded	tex:etc1 xdrtpat3.bmp 256x256 L9
+B	10	352	4096	0	1	352	30021	textures_decoded	tex:etc1 batlg0001.bmp 8x32 L6
+B	10	423	4096	0	1	423	30021	entity_instances	draw2d:rect
+B	10	281	32768	0	1	279	30021	textures_decoded	tex:etc1 pwadbar.bmp 256x256 L9
+B	10	565	4096	0	0	565	30009	irrlicht_scene	draw:zone|draw3d:client
+B	10	636	1048576	0	1	636	30009	irrlicht_scene	-
+B	10	494	4096	0	1	494	30021	textures_decoded	tex:etc1a skeft0002.bmp 32x64 L7
+B	10	78	45056	0	1	77	30009	textures_decoded	tex:etc1a storm_cloud_blend_25 256x256 L9
+B	10	596	4096	0	0	596	30009	irrlicht_scene	draw2d:image
+B	10	180	32768	0	1	178	30021	textures_decoded	tex:etc1 w4.bmp 256x256 L9
+B	10	38	45056	0	1	37	30009	textures_decoded	tex:etc1a storm_cloud_blend_5 256x256 L9
+B	10	109	4096	0	1	107	30009	irrlicht_scene	draw2d:batch
+B	10	322	4096	0	1	322	30021	textures_decoded	tex:etc1a ratlg0002.bmp 32x16 L6
+B	10	393	4096	0	1	393	30021	textures_decoded	tex:etc1a clk0404.bmp 32x64 L7
+B	10	251	32768	0	1	249	30021	textures_decoded	tex:etc1 plank4.bmp 256x256 L9
+B	10	535	4096	0	0	535	30009	irrlicht_scene	draw2d:batch
+B	10	606	4096	0	0	606	30009	irrlicht_scene	draw3d:client
+B	10	464	4096	0	1	464	30021	textures_decoded	tex:etc1a hufhn0001.bmp 64x32 L7
+B	10	48	45056	0	1	47	30009	textures_decoded	tex:etc1a storm_cloud_blend_10 256x256 L9
+B	10	261	32768	0	1	259	30021	textures_decoded	tex:etc1 post.bmp 256x256 L9
+B	10	119	16384	0	1	117	30021	textures_decoded	tex:etc1 sneedsw1.bmp 128x256 L9
+B	10	190	176128	0	1	188	30021	textures_decoded	tex:etc1a rug3.bmp 512x512 L10
+B	10	403	8192	0	1	403	30021	textures_decoded	tex:etc1a humch0001.bmp 64x128 L8
+B	10	474	4096	0	1	474	30021	textures_decoded	tex:etc1a hufua0001.bmp 32x64 L7
+B	10	332	4096	0	1	332	30021	textures_decoded	tex:etc1 bathe0004.bmp 16x32 L6
+B	10	616	4096	0	1	616	30009	irrlicht_scene	draw2d:rect
+B	10	545	4096	0	0	545	30009	irrlicht_scene	draw:zone|draw3d:client
 E	steady_60s
