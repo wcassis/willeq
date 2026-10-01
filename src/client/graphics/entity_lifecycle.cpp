@@ -255,7 +255,10 @@ void EntityRenderer::clearEntities() {
     // B964: a zone change drops every impostor cell and page.
     impostorSpawns_.clear();
     impostorPolicy_.reset();
-    if (impostors_) impostors_->clear();
+    if (impostors_) {
+        impostors_->clear();
+        impostors_->publishRow(0, 0, 0);  // the row says the pages are gone
+    }
 }
 
 bool EntityRenderer::hasEntity(uint16_t spawnId) const {

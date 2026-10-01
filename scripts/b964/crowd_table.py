@@ -114,7 +114,8 @@ def fold(log):
     for k in ("candidates", "full", "impostor", "want", "limit", "gov", "pages", "cells", "unique", "shared", "draws"):
         if k in at_idle:
             tiers[k] = at_idle[k]
-    return dict(idle=idle, moving=moving, imp=tiers, unit_max=unit_max, worst=worst,
+    row_max = max((int(d.get("row", 0)) for _t, d in imp_lines), default=0)
+    return dict(idle=idle, moving=moving, imp=tiers, unit_max=unit_max, worst=worst, row_max=row_max,
                 ledger=ledger, gpu=gpu, owner=owner)
 
 
@@ -135,7 +136,7 @@ def main():
     print("(full/impostor/want/limit/gov/pages/cells: at the end of the idle phase; counters: whole run)")
     print("| run | idle p50 / p95 / max ms | moving p50 / p95 / max ms | full | impostor | want | limit | gov | "
           "pages | cells (u/s) | created | refresh app/angle/flip | demotions | unit ms avg / max | worst frame-unit ms | "
-          "worst frame ms after spawn | draws | tex.impostor MiB (steady) | RssAnon | gpu_driver | owned | gpu_buffers | owned+gpu |")
+          "worst frame ms after spawn | draws | tex.impostor MiB (steady / max) | RssAnon | gpu_driver | owned | gpu_buffers | owned+gpu |")
     print("|" + "---|" * 25)
     for root in sys.argv[1:]:
         for rel, log in runs(root):
@@ -151,7 +152,8 @@ def main():
                 i.get("pages", "-"), i.get("cells", "-"), i.get("unique", "-"), i.get("shared", "-"),
                 i.get("created", "-"), i.get("refresh_appearance", "-"), i.get("refresh_angle", "-"),
                 i.get("refresh_flip", "-"), i.get("demotions", "-"), i.get("unit_ms_avg", "-"), i.get("unit_ms_max", "-"),
-                f["unit_max"], f["worst"], i.get("draws", "-"), mib(O.get("live")) if O else "0",
+                f["unit_max"], f["worst"], i.get("draws", "-"),
+                (mib(O.get("live")) if O else "0") + " / " + mib(f["row_max"]),
                 mib(L.get("rss_anon")), mib(L.get("gpu_driver", "").split("/")[0] if L.get("gpu_driver") else None),
                 mib(G.get("owned")), mib(G.get("gpu_buffers")), mib(G.get("owned_plus_gpu_buffers"))))
 

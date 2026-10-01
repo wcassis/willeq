@@ -351,22 +351,61 @@ void EntityRenderer::updateImpostors() {
     }
 
     // ---- 3. Draw state: withhold the impostored models, batch their billboards ----
-    // An entity that wants its impostor but has none yet stays a model while
-    // the full-model slots last; past them it is not drawn until its impostor
-    // exists (before B964 the visibility cap culled it outright).
+    // The visibility cap the simulation worker applies was raised by the cell
+    // capacity (impostorVisibilityAllowance), so the old cap is re-applied
+    // HERE to everything that is not drawn as an impostor: walking every
+    // visible entity, pinned first and then nearest first, the first
+    // maxVisibleEntities that are drawn as models (full-tier candidates,
+    // candidates whose impostor is not ready yet, and entities that can never
+    // be impostors -- placeholders, corpses, boats) are shown and the rest are
+    // not drawn, exactly as the cap culled them before B964. Impostors take no
+    // slot. Measured on the Pi before this rule (qeynos2, 1280x720, a crowd of
+    // 200 still streaming in as placeholders): 20 fps against 27 with
+    // impostors off, because the raised cap let every placeholder draw.
+    struct Item {
+        float distSq;
+        uint16_t id;
+        int cand;     // index into impostorCands_, or -1
+        bool pinned;
+    };
+    std::vector<Item> items;
+    items.reserve(entities_.size());
+    for (size_t i = 0; i < impostorCands_.size(); ++i)
+        items.push_back({impostorCands_[i].distSq, impostorCands_[i].spawnId, static_cast<int>(i),
+                         impostorCands_[i].pinned});
+    for (auto& [id, v] : entities_) {
+        if (eligible(v) || !v.sceneNode || !v.inSceneGraph || v.isPlayer) continue;
+        const bool pinned = id == impostorTargetId_;
+        items.push_back({(v.sceneNode->getPosition() - camPos).getLengthSQ(), id, -1, pinned});
+    }
+    std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
+        if (a.pinned != b.pinned) return a.pinned;
+        return a.distSq != b.distSq ? a.distSq < b.distSq : a.id < b.id;
+    });
+    const int maxFull = impostorPolicy_.config().maxFull;
     int fullDrawn = 0;
-    for (size_t i = 0; i < impostorCands_.size(); ++i) {
-        const uint16_t id = impostorCands_[i].spawnId;
-        EntityVisual& v = entities_.at(id);
-        ImpostorSpawnState& st = impostorSpawns_[id];
+    for (const Item& it : items) {
+        EntityVisual& v = entities_.at(it.id);
+        ImpostorSpawnState& st = impostorSpawns_[it.id];
+        if (it.cand < 0) {
+            // Never an impostor: the old cap decides.
+            const bool show = it.pinned || fullDrawn < maxFull;
+            if (show) {
+                if (st.capHidden) { v.sceneNode->setVisible(true); st.capHidden = false; }
+                ++fullDrawn;
+            } else if (!st.capHidden) {
+                v.sceneNode->setVisible(false);
+                st.capHidden = true;
+            }
+            continue;
+        }
+        if (st.capHidden) { v.sceneNode->setVisible(true); st.capHidden = false; }
         const ImpostorCapture* cap = st.hasKey ? cache.captureFor(st.key) : nullptr;
         const bool fresh = !(st.needsCapture && st.reason == ImpostorSpawnState::Reason::Create);
         const bool ready = cap && cap->captured && fresh;
-        bool drawImpostor = st.wantsImpostor && ready;
-        bool hide = false;
-        if (st.wantsImpostor && !ready) {
-            if (fullDrawn >= impostorPolicy_.config().maxFull) hide = true;
-        }
+        const bool drawImpostor = st.wantsImpostor && ready;
+        // Not an impostor (yet): a model while the slots last, else not drawn.
+        const bool hide = !drawImpostor && !it.pinned && fullDrawn >= maxFull;
         if (drawImpostor || hide) {
             if (!st.drawnAsImpostor) {
                 v.animatedNode->setWithheldFromRenderList(true);
@@ -384,8 +423,12 @@ void EntityRenderer::updateImpostors() {
         } else if (!hide) {
             ++fs.tierFull;
             ++fullDrawn;
+        } else {
+            ++fs.capHidden;
         }
     }
+    for (const Item& it : items)
+        if (it.cand < 0 && impostorSpawns_[it.id].capHidden) ++fs.capHidden;
     fs.drawCalls = cache.batchNode() ? cache.batchNode()->drawCallsLastRender() : 0;
 
     // Shared cells no spawn draws any more go back on the free list.
@@ -418,12 +461,12 @@ void EntityRenderer::updateImpostors() {
         LOG_INFO(MOD_GRAPHICS,
                  "[impostor] frame={} candidates={} full={} impostor={} want={} limit={} gov={} avg_ms={:.1f} "
                  "pages={} cells={} unique={} shared={} row={} created={} refresh_appearance={} refresh_angle={} "
-                 "refresh_flip={} flip_reused={} demotions={} shared_claims={} cap_full={} units={} unit_ms_avg={:.2f} "
+                 "cap_hidden={} refresh_flip={} flip_reused={} demotions={} shared_claims={} cap_full={} units={} unit_ms_avg={:.2f} "
                  "unit_ms_max={:.2f} frame_unit_ms_max={:.2f} frame_units_max={} draws={} incomplete_fbo={}",
                  frame, fs.candidates, fs.tierFull, fs.tierImpostor, fs.wantImpostor, fs.fullLimit,
                  stateName(gstate), avgMs, cache.cells().pages(), cache.cells().cellsUsed(),
                  cache.cells().uniqueCount(), cache.cells().sharedCount(), cache.rowBytes(), cs.created,
-                 cs.refreshAppearance, cs.refreshAngle, cs.refreshFlip, cs.flipReused, cs.demotions, cs.sharedClaims, cs.capFull,
+                 cs.refreshAppearance, cs.refreshAngle, fs.capHidden, cs.refreshFlip, cs.flipReused, cs.demotions, cs.sharedClaims, cs.capFull,
                  cs.units, cs.units ? cs.unitMsSum / cs.units : 0.0, cs.unitMsMax, cs.frameUnitMsMax,
                  cs.frameUnitsMax, fs.drawCalls, cs.incompleteFbo);
     }

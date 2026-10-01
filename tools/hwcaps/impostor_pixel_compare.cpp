@@ -17,7 +17,7 @@
 //     un-premultiply, no fog: B952's billboard), 2 = shipped program, fog off.
 //     Writes <outdir>/pixel.csv (+ crops/*.png with --crops).
 //   impostor_pixel_compare drawcost <outdir> [--counts 1,50,200] [--size 800x600]
-//                          [--frames 60] [--aa N] [--drm] [--eq-path DIR] [--db FILE]
+//                          [--frames 60] [--aa N] [--drm] [--budget BYTES] [--eq-path DIR] [--db FILE]
 //     N entities 100-160 units in front of the camera, full models vs
 //     impostors, glFinish-bracketed frame times. Writes <outdir>/drawcost.csv.
 
@@ -66,6 +66,7 @@ struct Options {
     float fogStart = 180.0f, fogEnd = 300.0f;  // the orangepi client's 300-unit clip
     int frames = 60;
     int antiAlias = 0;
+    size_t budget = 20u * 1024u * 1024u;  // the blessed tex.impostor budget
     bool drm = false;
     bool crops = false;
 };
@@ -99,6 +100,7 @@ bool parse(int argc, char** argv, Options& o) {
         else if (!strcmp(argv[i], "--crops")) o.crops = true;
         else if (!strcmp(argv[i], "--aa")) o.antiAlias = std::atoi(next());
         else if (!strcmp(argv[i], "--drm")) o.drm = true;
+        else if (!strcmp(argv[i], "--budget")) o.budget = static_cast<size_t>(std::strtoull(next(), nullptr, 10));
         else if (!strcmp(argv[i], "--size")) sscanf(next(), "%ux%u", &o.width, &o.height);
         else if (!strcmp(argv[i], "--fog")) sscanf(next(), "%f,%f", &o.fogStart, &o.fogEnd);
         else { fprintf(stderr, "unknown option %s\n", argv[i]); return false; }
@@ -275,8 +277,9 @@ bool setup(Scene& s, const Options& o, EQT::WilleqDatabase& db) {
                                        s.shader->getActiveAlphaTestRGBA());
     if (!s.ents->loadGlobalCharacters()) { fprintf(stderr, "ERROR: global_chr.s3d\n"); return false; }
     s.ents->loadEquipmentModels();
-    // The blessed budget; tier distance 0 = the policy floor is off (forced tiers decide).
-    s.ents->enableImpostorsForTesting(20u * 1024u * 1024u, 0.0f);
+    // The blessed budget (or --budget, to force the shared/demotion path);
+    // tier distance 0 = the policy floor is off (forced tiers decide).
+    s.ents->enableImpostorsForTesting(o.budget, 0.0f);
     s.ents->setImpostorFrameInputs(nullptr, 0, {}, false);
     s.camera = s.smgr->addCameraSceneNode();
     s.camera->setFOV(irr::core::PI / 3.0f);
@@ -372,7 +375,8 @@ int runDrawCost(Scene& s, const Options& o) {
     FILE* csv = fopen((o.outDir + "/drawcost.csv").c_str(), "w");
     if (!csv) return 1;
     fprintf(csv, "n,tier,frame_p50_ms,frame_p95_ms,frame_max_ms,drawn_impostor,drawn_full,billboard_draws,pages,"
-                 "row_bytes,create_frames,units,unit_ms_avg,unit_ms_max,frame_unit_ms_max\n");
+                 "row_bytes,create_frames,units,unit_ms_avg,unit_ms_max,frame_unit_ms_max,cells,unique,shared,"
+                 "demotions,shared_claims,budget\n");
     irr::u32 t = 1000;
     for (int n : o.counts) {
         s.ents->clearEntities();
@@ -405,13 +409,16 @@ int runDrawCost(Scene& s, const Options& o) {
             const auto& fs = s.ents->impostorFrameStats();
             const ImpostorCache* c = s.ents->impostorCache();
             const auto* bn = c ? c->batchNode() : nullptr;
-            fprintf(csv, "%d,%s,%.2f,%.2f,%.2f,%d,%d,%d,%d,%zu,%d,%llu,%.3f,%.3f,%.3f\n", made,
+            fprintf(csv, "%d,%s,%.2f,%.2f,%.2f,%d,%d,%d,%d,%zu,%d,%llu,%.3f,%.3f,%.3f,%d,%d,%d,%llu,%llu,%zu\n", made,
                     tier == 1 ? "impostor" : "full", pct(ms, 0.5), pct(ms, 0.95),
                     *std::max_element(ms.begin(), ms.end()), fs.tierImpostor, fs.tierFull,
                     bn ? bn->drawCallsLastRender() : 0, c ? c->cells().pages() : 0, c ? c->rowBytes() : size_t(0),
                     createFrames, c ? static_cast<unsigned long long>(c->stats().units) : 0ull,
                     c && c->stats().units ? c->stats().unitMsSum / c->stats().units : 0.0,
-                    c ? c->stats().unitMsMax : 0.0, c ? c->stats().frameUnitMsMax : 0.0);
+                    c ? c->stats().unitMsMax : 0.0, c ? c->stats().frameUnitMsMax : 0.0,
+                    c ? c->cells().cellsUsed() : 0, c ? c->cells().uniqueCount() : 0, c ? c->cells().sharedCount() : 0,
+                    c ? static_cast<unsigned long long>(c->stats().demotions) : 0ull,
+                    c ? static_cast<unsigned long long>(c->stats().sharedClaims) : 0ull, o.budget);
             fflush(csv);
         }
     }

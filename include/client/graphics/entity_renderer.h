@@ -129,6 +129,7 @@ struct ImpostorSpawnState {
     bool drawnAsImpostor = false;   // withheld from the render list this frame
     bool wantsImpostor = false;     // the tier policy's verdict this frame
     bool needsCapture = true;       // no current capture for the state it is in
+    bool capHidden = false;         // not drawn: past the full-model cap (setVisible(false))
     enum class Reason : uint8_t { None, Create, Flip, Appearance, Angle } reason = Reason::Create;
     uint32_t lastSeenFrame = 0;
 };
@@ -143,6 +144,7 @@ struct ImpostorFrameStats {
     int unitsThisFrame = 0;
     float unitMsThisFrame = 0.0f;
     int drawCalls = 0;         // billboard draws in the previous render
+    int capHidden = 0;         // not drawn this frame: past the full-model cap
 };
 
 // Entity pending update for worker drain (matches SimulationInput::EntityPendingUpdate layout)
