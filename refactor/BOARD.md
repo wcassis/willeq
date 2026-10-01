@@ -677,6 +677,15 @@ it without taking that measurement first.
   draw-time BOs hold 3-6 MiB of the client's GEM at `steady_60s`, driven by
   client-array draws (2D UI, entities, zone pools, raw-GL particles). A static
   VBO for the zone pools measured worse (B962). Measured by B962.
+- ~~**B970** (B) → issue #288. `build-arm` fetched `irrlicht-1.8.5.zip` and
+  `libpng-1.6.37.tar.xz` from downloads.sourceforge.net inside a Docker layer, so
+  the 2026-10-01 SourceForge outage (HTTP 522, ~3 h) failed every job whose
+  `docker/irrlicht-drm/*` change invalidated it.~~ **FIXED**
+  (`refactor/B970/README.md`): both archives live in the NFS store
+  `ci-arm/vendor/`, SHA256-pinned in `docker/vendor.sha256`, filled once by
+  `scripts/ci/vendor_fetch.sh --ensure` and handed to the build as the `vendor`
+  build context. The other Dockerfiles (`Dockerfile`, `arm64-noble`,
+  `arm-cross`) still wget from SourceForge; none is in CI.
 - ~~**B958** (B) → issue #276. Benchmark impostor billboards rendered inverted
   on Lima (Orange Pi).~~ **FIXED** (`refactor/B958/README.md`): Lima runs a
   `discard` whose comparison operand depends on a derivative INVERTED, and the

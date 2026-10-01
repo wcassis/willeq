@@ -72,9 +72,15 @@ echo "Audio:         ${ENABLE_AUDIO}"
 echo "T122 texprobe: ${ENABLE_T122_TEXPROBE}"
 echo ""
 
+# B970 (#288): the Irrlicht/libpng archives come from the vendor store on NFS (pinned in
+# docker/vendor.sha256), handed to the build as the `vendor` context -- never fetched from
+# SourceForge inside a Docker layer. Fails loudly, naming the pin, if the store lacks one.
+VENDOR_DIR="$("$PROJECT_DIR/scripts/ci/vendor_fetch.sh" --ensure)"
+
 # Build the Docker image (caches layers between runs)
 echo "--- Building Docker cross-compilation image ---"
 docker build \
+    --build-context "vendor=$VENDOR_DIR" \
     -f "$PROJECT_DIR/docker/Dockerfile.arm-noble" \
     --build-arg "ENABLE_GRAPHICS=${ENABLE_GRAPHICS}" \
     --build-arg "ENABLE_AUDIO=${ENABLE_AUDIO}" \
