@@ -124,6 +124,15 @@ Benchmarked with `gles2_shader_perpixel_benchmark` and `gles2_program_switch_ben
 - **Program switching cost is negligible** — ~0.08ms per `glUseProgram` switch. Switching between 2-8 programs within a frame costs <1ms total.
 - **Total compiled program count has zero impact** — 9, 18, or 27 compiled programs show identical render performance. No instruction store pressure observed.
 - **The FS ALU is FP16 even under `precision highp`, and the driver does not say so** (B965, `tools/hwcaps/gles2_player_light_probe`). Lima reports `GL_HIGH_FLOAT` and `GL_MEDIUM_FLOAT` as fp32 (127,127,23) in the FS and defines `GL_FRAGMENT_PRECISION_HIGH`, yet a `highp` FS gives bit-for-bit the same pixels as the `mediump` one. Any FS value past 65,504 is +inf: a squared world distance overflows at 256 units. Keep range-sensitive arithmetic in the VS or pre-scaled, and never feed a value that can reach inf to `texture2D()` — with `LINEAR` + `CLAMP_TO_EDGE`, Lima samples an infinite coordinate at the texture's NEAR end (llvmpipe at the far end). `clamp(x, 0.0, 1.0)` on the coordinate is the fix (Pi GPU p50 +2.5..4.7 % per frame in the gate zones; pre-scaling the vector instead cost more). llvmpipe also quantizes the `mediump` world-position path (near world coordinate 7,000 the light moves in visible steps on BOTH GPUs, so the goldens carry it: B967, #285) but does not overflow, so the overflow showed only on the Pi.
+- **An FP16-quantized varying never matches across GPUs at its step lines** (B969, `refactor/B969/README.md`).
+  - Both GPUs round the interpolated `mediump` varying to FP16 per pixel. llvmpipe interpolates in fp32 first,
+    so its step lines are straight. Lima interpolates differently, so near each rounding midpoint it flips by one
+    FP16 step, in saw-toothed bands up to ~20 px wide at grazing angles.
+  - `varying highp` in the FS changes nothing on Lima: bit-identical pixels.
+  - A varying that carries world coordinates (|x| > 2,048: steps of 2+ units) therefore makes Pi-vs-x86 diffs
+    that no x86-invariant shader edit can remove.
+  - Pass small, relative quantities instead (e.g. `pLv` formed in the VS). For an existing golden, that is a
+    re-bless (B967, #285).
 
 ## Zone Rendering Optimizations
 
