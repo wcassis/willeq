@@ -81,9 +81,10 @@ TEST(EntityBuildScheduler, LegacyRuleStarvesInRed) {
     EntityBuildScheduler s;
     s.setLegacy(true);
     auto crowd = Crowd(200, 12.0f, 0.2f);
-    for (int f = 0; f < 10000; ++f) EXPECT_EQ(RunFrame(s, BudgetState::Red, crowd), 0);
+    int units = 0;
+    for (int f = 0; f < 10000; ++f) units += RunFrame(s, BudgetState::Red, crowd);
     EXPECT_FALSE(AllBuilt(crowd));
-    EXPECT_EQ(s.totalUnits(), 0u);
+    EXPECT_EQ(units, 0);
 }
 
 TEST(EntityBuildScheduler, LegacyRuleRunsExactlyOneUnitPerGreenFrame) {
@@ -159,12 +160,14 @@ TEST(EntityBuildScheduler, AnExpensiveKindDoesNotRepeatInsideARedFrame) {
 TEST(EntityBuildScheduler, A200EntityCrowdInPermanentRedIsBuiltInBoundedFrames) {
     EntityBuildScheduler s;
     auto crowd = Crowd(200, 12.0f, 0.2f);
-    int frames = 0;
+    int frames = 0, units = 0;
     while (!AllBuilt(crowd)) {
-        ASSERT_GE(RunFrame(s, BudgetState::Red, crowd), 1);
+        const int u = RunFrame(s, BudgetState::Red, crowd);
+        ASSERT_GE(u, 1);
+        units += u;
         ASSERT_LE(++frames, 400) << "a 200-entity crowd must be built within 2 units per entity";
     }
-    EXPECT_EQ(s.totalUnits(), 400u);
+    EXPECT_EQ(units, 400);
 }
 
 // The accounting line: one per window, only when there is something to say.

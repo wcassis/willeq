@@ -10,18 +10,6 @@
 namespace EQT {
 namespace Graphics {
 
-const char* entityBuildUnitKindName(EntityBuildUnitKind kind) {
-    switch (kind) {
-        case EntityBuildUnitKind::Upload: return "upload";
-        case EntityBuildUnitKind::Create: return "create";
-        case EntityBuildUnitKind::Finalize: return "finalize";
-        case EntityBuildUnitKind::Equip: return "equip";
-        case EntityBuildUnitKind::Other: return "other";
-        case EntityBuildUnitKind::Count: break;
-    }
-    return "?";
-}
-
 EntityBuildScheduler::EntityBuildScheduler(EntityBuildSlicePolicy policy) : policy_(policy) {}
 
 bool EntityBuildScheduler::legacyFromEnv() {
@@ -62,10 +50,11 @@ void EntityBuildScheduler::recordUnit(EntityBuildUnitKind kind, float ms) {
             emaMs_[k] += policy_.emaAlpha * (ms - emaMs_[k]);
         }
         wKindUnits_[k]++;
+        wKindMaxMs_[k] = std::max(wKindMaxMs_[k], ms);
+        wKindSumMs_[k] += ms;
     }
     spentMs_ += ms;
     unitsThisFrame_++;
-    totalUnits_++;
     wUnits_++;
     wUnitMsSum_ += ms;
     wUnitMsMax_ = std::max(wUnitMsMax_, ms);
@@ -73,11 +62,9 @@ void EntityBuildScheduler::recordUnit(EntityBuildUnitKind kind, float ms) {
 
 bool EntityBuildScheduler::endFrame(float frameMs, const EntityBuildBacklog& backlog,
                                     double nowSeconds, double windowSeconds) {
-    totalFrames_++;
     if (windowStart_ < 0.0) {
         windowStart_ = nowSeconds;
         wBuiltAtStart_ = backlog.built;   // the first frame's count is fresh (windowDue)
-        wHaveBuiltAtStart_ = true;
     }
     wFrames_++;
     wStateFrames_[std::min<size_t>(static_cast<size_t>(state_), 2)]++;
@@ -109,7 +96,8 @@ bool EntityBuildScheduler::endFrame(float frameMs, const EntityBuildBacklog& bac
             "frame_ms avg={:.1f} max={:.1f} with_work={:.1f} without_work={:.1f} "
             "built={} built_delta={:+d} unbuilt_visible={} unbuilt_total={} in_progress={} "
             "awaiting_prep={} pending_units={} pending_uploads={} pred_ms upload={:.2f} create={:.2f} "
-            "finalize={:.2f} equip={:.2f}",
+            "finalize={:.2f} equip={:.2f} kind_ms(sum/max) upload={:.2f}/{:.2f} create={:.2f}/{:.2f} "
+            "finalize={:.2f}/{:.2f} equip={:.2f}/{:.2f}",
             legacy_ ? "legacy" : "sliced", nowSeconds - windowStart_, wFrames_,
             wStateFrames_[0], wStateFrames_[1], wStateFrames_[2], wUnits_,
             wKindUnits_[0], wKindUnits_[1], wKindUnits_[2], wKindUnits_[3], wKindUnits_[4],
@@ -120,7 +108,8 @@ bool EntityBuildScheduler::endFrame(float frameMs, const EntityBuildBacklog& bac
             backlog.built, builtDelta, backlog.unbuiltVisible, backlog.unbuiltTotal,
             backlog.inProgress, backlog.awaitingPrep, backlog.pendingUnits, backlog.pendingUploads,
             predictedMs(EntityBuildUnitKind::Upload), predictedMs(EntityBuildUnitKind::Create), predictedMs(EntityBuildUnitKind::Finalize),
-            predictedMs(EntityBuildUnitKind::Equip));
+            predictedMs(EntityBuildUnitKind::Equip), wKindSumMs_[0], wKindMaxMs_[0], wKindSumMs_[1],
+            wKindMaxMs_[1], wKindSumMs_[2], wKindMaxMs_[2], wKindSumMs_[3], wKindMaxMs_[3]);
     }
 
     windowStart_ = nowSeconds;
@@ -128,6 +117,8 @@ bool EntityBuildScheduler::endFrame(float frameMs, const EntityBuildBacklog& bac
     wStateFrames_ = {};
     wUnits_ = 0;
     wKindUnits_ = {};
+    wKindMaxMs_ = {};
+    wKindSumMs_ = {};
     wUnitMsSum_ = wUnitMsMax_ = wFrameWorkMsMax_ = 0.0f;
     wFramesWithWork_ = wFramesOverSlice_ = 0;
     wFrameMsSum_ = wFrameMsMax_ = wFrameMsWithWorkSum_ = wFrameMsWithoutWorkSum_ = 0.0f;

@@ -46,8 +46,6 @@ enum class EntityBuildUnitKind : uint8_t {
     Count
 };
 
-const char* entityBuildUnitKindName(EntityBuildUnitKind kind);
-
 struct EntityBuildSlicePolicy {
     float greenFraction = 0.20f;   // of the governor's target frame time
     float yellowFraction = 0.12f;
@@ -106,10 +104,6 @@ public:
     }
     const std::string& windowLine() const { return windowLine_; }
 
-    // Totals since construction (for tests and the trace).
-    uint64_t totalUnits() const { return totalUnits_; }
-    uint64_t totalFrames() const { return totalFrames_; }
-
 private:
     EntityBuildSlicePolicy policy_;
     bool legacy_ = false;
@@ -130,6 +124,8 @@ private:
     std::array<uint32_t, 3> wStateFrames_{};   // Green / Yellow / Red
     uint32_t wUnits_ = 0;
     std::array<uint32_t, static_cast<size_t>(EntityBuildUnitKind::Count)> wKindUnits_{};
+    std::array<float, static_cast<size_t>(EntityBuildUnitKind::Count)> wKindMaxMs_{};
+    std::array<float, static_cast<size_t>(EntityBuildUnitKind::Count)> wKindSumMs_{};
     float wUnitMsSum_ = 0.0f;
     float wUnitMsMax_ = 0.0f;
     float wFrameWorkMsMax_ = 0.0f;          // most build work in one frame
@@ -140,11 +136,7 @@ private:
     float wFrameMsWithWorkSum_ = 0.0f;
     float wFrameMsWithoutWorkSum_ = 0.0f;
     uint32_t wBuiltAtStart_ = 0;
-    bool wHaveBuiltAtStart_ = false;
     std::string windowLine_;
-
-    uint64_t totalUnits_ = 0;
-    uint64_t totalFrames_ = 0;
 };
 
 }  // namespace Graphics

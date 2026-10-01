@@ -69,12 +69,24 @@ bool EntityRenderer::hasPendingTextureUploads() const {
 bool EntityRenderer::processOnePendingTextureUpload(EntityBuildScheduler* scheduler) {
     if (!hasPendingTextureUploads()) return false;
     if (scheduler && !scheduler->mayStartUnit(EntityBuildUnitKind::Upload)) return false;
-    const auto t0 = std::chrono::steady_clock::now();
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
+    // The cache lock is shared with the prep worker's getOrLoad(); this first
+    // locked call measures how long the render thread waited for it.
+    const size_t pendingBefore = constrainedTextureCache_->pendingUploadCount();
+    const auto t1 = Clock::now();
     const int uploaded = constrainedTextureCache_->uploadPending(1);
-    const float ms = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    const auto t2 = Clock::now();
+    const float lockMs = std::chrono::duration<float, std::milli>(t1 - t0).count();
+    const float ms = std::chrono::duration<float, std::milli>(t2 - t0).count();
     if (scheduler) scheduler->recordUnit(EntityBuildUnitKind::Upload, ms);
-    LOG_DEBUG(MOD_GRAPHICS, "EntityBuild: texture upload unit {} in {:.2f} ms ({} left)", uploaded, ms,
-              constrainedTextureCache_->pendingUploadCount());
+    if (ms >= 20.0f) {
+        LOG_INFO(MOD_GRAPHICS, "EntityBuild: upload unit {} tex in {:.2f} ms (lock_wait={:.2f} ms upload={:.2f} ms, "
+                 "{} pending before)", uploaded, ms, lockMs, ms - lockMs, pendingBefore);
+    } else {
+        LOG_DEBUG(MOD_GRAPHICS, "EntityBuild: upload unit {} tex in {:.2f} ms ({} pending before)", uploaded, ms,
+                  pendingBefore);
+    }
     return uploaded > 0;
 }
 

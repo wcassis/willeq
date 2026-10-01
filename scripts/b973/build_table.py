@@ -22,6 +22,10 @@ BUILD = re.compile(r"EntityBuild: (\d+) \(([^)]*)\) (\w+) -> (\w+) in (\d+)us"
 WIN = re.compile(r"\[entity-build\] (.*)")
 FRAME = re.compile(r"\[entity-build-frame\] (.*)")
 KV = re.compile(r"(\w+)=([^\s]+)")
+COUNTS = re.compile(r"\(upload=(\d+) create=(\d+) finalize=(\d+) equip=(\d+)")
+KSUMS = re.compile(r"kind_ms\(sum/max\) upload=([\d.]+)/([\d.]+) create=([\d.]+)/([\d.]+) "
+                   r"finalize=([\d.]+)/([\d.]+) equip=([\d.]+)/([\d.]+)")
+IMPWIN = re.compile(r"\[impostor-frames\] frame=\d+ n=(\d+) frame_p50_ms=([\d.]+) frame_p95_ms=([\d.]+)")
 
 
 def ts(line):
@@ -38,7 +42,7 @@ def pct(v, p):
 
 def parse(path):
     r = {"spawn0": None, "spawn1": None, "move": None, "quit": None, "builds": [],
-         "windows": [], "frames": [], "crowd_seen": set(), "crowd_built": {}}
+         "windows": [], "frames": [], "impwin": [], "crowd_seen": set(), "crowd_built": {}}
     for line in open(path, errors="replace"):
         t = ts(line)
         m = EXEC.search(line)
@@ -72,9 +76,24 @@ def parse(path):
             d["t"] = t
             r["frames"].append(d)
             continue
+        m = IMPWIN.search(line)
+        if m:
+            r["impwin"].append({"t": t, "n": int(m.group(1)), "p50": float(m.group(2)),
+                                "p95": float(m.group(3))})
+            continue
         m = WIN.search(line)
         if m:
-            d = dict(KV.findall(m.group(1)))
+            body = m.group(1)
+            d = dict(KV.findall(body))
+            for k in ("upload", "create", "finalize", "equip"):
+                d.pop(k, None)
+            c = COUNTS.search(body)
+            if c:
+                d.update(upload=c.group(1), create=c.group(2), finalize=c.group(3), equip=c.group(4))
+            s = KSUMS.search(body)
+            if s:
+                for i, k in enumerate(("upload", "create", "finalize", "equip")):
+                    d["k_" + k] = "%s/%s" % (s.group(1 + 2 * i), s.group(2 + 2 * i))
             d["t"] = t
             r["windows"].append(d)
     return r
@@ -107,8 +126,8 @@ def summarize(path):
     fms_w = [float(f["frame_ms"]) for f in fr if int(f["units"]) > 0]
     fms_n = [float(f["frame_ms"]) for f in fr if int(f["units"]) == 0]
     states = [f["gov"] for f in fr]
-    out["frames"] = len(fr)
-    out["frames_R_Y_G"] = "%d/%d/%d" % (states.count("R"), states.count("Y"), states.count("G"))
+    out["trace_frames_spawn_to_move"] = len(fr)
+    out["trace_frames_R_Y_G"] = "%d/%d/%d" % (states.count("R"), states.count("Y"), states.count("G"))
     out["frames_with_units"] = len(work)
     out["work_ms_p50_p95_max"] = "%.2f / %.2f / %.2f" % (pct(work, 50), pct(work, 95), max(work) if work else float("nan"))
     out["frame_ms_with_units_p50_p95"] = "%.1f / %.1f" % (pct(fms_w, 50), pct(fms_w, 95))
@@ -116,7 +135,22 @@ def summarize(path):
     # after the walk: hold phase frame times (everything built)
     hold = [float(f["frame_ms"]) for f in r["frames"] if mv and f["t"] > mv]
     out["frame_ms_after_move_p50_p95"] = "%.1f / %.1f" % (pct(hold, 50), pct(hold, 95))
-    # window-based frame time (covers frames with no trace line: nothing pending)
+    # Every frame, pending work or not: the impostor pass's 5 s windows
+    # ([impostor-frames], B964), median of the window p50s per tour phase.
+    phases = [("spawn", s0, s1), ("build", s1, mv), ("walk", mv, mv + 30 if mv else None),
+              ("hold", mv + 30 if mv else None, r["quit"])]
+    for name, a, b in phases:
+        p50s = [w["p50"] for w in r["impwin"] if a and b and a < w["t"] <= b and w["n"] > 0]
+        p95s = [w["p95"] for w in r["impwin"] if a and b and a < w["t"] <= b and w["n"] > 0]
+        out["frame_ms_%s_p50(max_p95)" % name] = (
+            "%.1f (%.1f)" % (statistics.median(p50s), max(p95s)) if p50s else "-")
+    # unit kinds over the run, from the window lines
+    for kind in ("upload", "create", "finalize", "equip"):
+        n = sum(int(w.get(kind, 0)) for w in r["windows"] if w.get(kind, "").isdigit())
+        sums = [float(w["k_" + kind].split("/")[0]) for w in r["windows"] if "k_" + kind in w]
+        maxs = [float(w["k_" + kind].split("/")[1]) for w in r["windows"] if "k_" + kind in w]
+        out["%s_units(avg/max ms)" % kind] = (
+            "%d (%.2f/%.2f)" % (n, sum(sums) / n if n else 0.0, max(maxs) if maxs else 0.0))
     return out, r
 
 
@@ -149,15 +183,16 @@ def main():
     if not rows:
         print(__doc__)
         return
-    cols = list(rows[0].keys())
-    print("| " + " | ".join(cols) + " |")
-    print("|" + "---|" * len(cols))
-    for row in rows:
+    # one column per log, one row per metric
+    keys = list(rows[0].keys())
+    print("| metric | " + " | ".join("run %d" % (i + 1) for i in range(len(rows))) + " |")
+    print("|---|" + "---|" * len(rows))
+    for k in keys:
         cells = []
-        for c in cols:
-            v = row[c]
+        for row in rows:
+            v = row.get(k, "-")
             cells.append("%.1f" % v if isinstance(v, float) else str(v))
-        print("| " + " | ".join(cells) + " |")
+        print("| %s | %s |" % (k, " | ".join(cells)))
 
 
 if __name__ == "__main__":
