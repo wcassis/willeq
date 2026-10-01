@@ -182,8 +182,17 @@ governor ondemand untouched. No eqemu lock or stack used.
      409/55/162 px >32 Pi-vs-x86 residual, present with the player light OFF too.
    - **B981 = issue #300** (class::B, lane::offline, status::triage): the stale
      `textureCacheBytesLimit` display field (64 MiB manifest vs 51 MiB live).
-6. Full suite + hygiene: `ctest --test-dir build -j6` (record the summary line),
-   `bash scripts/refactor/check_file_sizes.sh -C . fable`.
+6. ~~Full suite + hygiene: `ctest --test-dir build -j6` (record the summary line),
+   `bash scripts/refactor/check_file_sizes.sh -C . fable`.~~ **DONE** (2026-10-01,
+   kanban unit, on CI per the card rule): CI pipeline **453** (id 453) on the
+   final head `450f327c` -- hygiene/build/**test**/**gate** all **success**.
+   - Full suite (CI `test` job): **"100% tests passed, 0 tests failed out of
+     5145"**, Total Test time 162.23 s.
+   - Gate (CI `gate` job): **"=== VISUAL GATE: PASS ==="**, **0 PIXEL MISMATCH
+     in 15 frames**.
+   - File sizes (`check_file_sizes.sh -C . --all`, local this host):
+     "checked 1331 file(s): 1331 ok, 0 warn, 0 fail"; CLAUDE.md 58,989 bytes
+     (< 60,000 ceiling).
 7. Issues #285/#286 (and #287) -> `status::review`; MR description final (Closes #285,
    #286, #287); un-draft.
 
