@@ -376,6 +376,7 @@ Snapshot snapshot(const std::string& point, const std::string& zone) {
     // B933: the 64 MB target is read against willeq-owned memory, RssAnon minus
     // gpu_driver; the ceiling above stays on the whole RssAnon.
     s.gpuDriverBytes = s.categories[static_cast<size_t>(Category::GpuDriver)].liveBytes;
+    s.gpuBuffers = readGpuBufferCensus();  // B955: GPU buffers outside RssAnon (Lima GEM)
     finishTargetGap(s);
     return s;
 }
@@ -385,6 +386,7 @@ void finishTargetGap(Snapshot& s) {
     s.overTargetBytes = s.ownedBytes > s.rssTargetBytes ? s.ownedBytes - s.rssTargetBytes : 0;
     s.overTargetRssAnonBytes =
         s.rssAnonBytes > s.rssTargetBytes ? s.rssAnonBytes - s.rssTargetBytes : 0;
+    s.ownedPlusGpuBuffersBytes = ownedPlusGpuBuffers(s.ownedBytes, s.gpuBuffers);  // B955
 }
 
 std::vector<GapRow> gapToTarget(const Snapshot& s) {
@@ -443,6 +445,11 @@ std::string toLogLine(const Snapshot& s) {
     appendKV(out, "owned", s.ownedBytes);
     appendKV(out, "over_target", s.overTargetBytes);
     appendKV(out, "over_target_rss_anon", s.overTargetRssAnonBytes);
+    // B955: the GPU buffer row and owned + it (printed for Will; not asserted).
+    appendKV(out, "gpu_buffers", s.gpuBuffers.gpuBuffersBytes);
+    out += " gpu_buffers_src=";
+    out += gpuBufferSourceName(s.gpuBuffers.source);
+    appendKV(out, "owned_plus_gpu_buffers", s.ownedPlusGpuBuffersBytes);
     appendKV(out, "ceiling", s.rssCeilingBytes);
     appendKV(out, "over_ceiling", s.overCeilingBytes);
     appendKV(out, "allocs", s.allocCount);
@@ -514,6 +521,13 @@ std::string toReportText(const Snapshot& s) {
              s.overCeilingBytes ? "over by " : "under, headroom ",
              (s.overCeilingBytes ? s.overCeilingBytes : s.rssCeilingBytes - s.rssAnonBytes) / 1048576.0);
     out += buf;
+    // B955: GPU buffers outside RssAnon (Lima GEM), and owned + them.
+    snprintf(buf, sizeof(buf),
+             "  gpu_buffers %.1f MiB (source %s, %s) -> owned + gpu_buffers %.1f MiB\n",
+             s.gpuBuffers.gpuBuffersBytes / 1048576.0, gpuBufferSourceName(s.gpuBuffers.source),
+             s.gpuBuffers.outsideRssAnon ? "outside RssAnon" : "already inside gpu_driver",
+             s.ownedPlusGpuBuffersBytes / 1048576.0);
+    out += buf;
     if (s.overTargetBytes) {
         snprintf(buf, sizeof(buf),
                  "  to reach the %.0f MiB target, shrink %.1f MiB of owned memory (gpu_driver is "
@@ -577,6 +591,10 @@ std::string toJson(const Snapshot& s) {
     out += "\"ownedBytes\":" + std::to_string(s.ownedBytes) + ",";
     out += "\"overTargetBytes\":" + std::to_string(s.overTargetBytes) + ",";
     out += "\"overTargetRssAnonBytes\":" + std::to_string(s.overTargetRssAnonBytes) + ",";
+    // B955: the GPU buffer row (gpu_buffer_census.h), flat and in full.
+    out += "\"gpuBuffersBytes\":" + std::to_string(s.gpuBuffers.gpuBuffersBytes) + ",";
+    out += "\"ownedPlusGpuBuffersBytes\":" + std::to_string(s.ownedPlusGpuBuffersBytes) + ",";
+    out += "\"gpuBuffers\":" + gpuBuffersToJson(s.gpuBuffers, s.ownedBytes) + ",";
     out += "\"rssCeilingBytes\":" + std::to_string(s.rssCeilingBytes) + ",";
     out += "\"overCeilingBytes\":" + std::to_string(s.overCeilingBytes);
     out += "}";
@@ -596,6 +614,9 @@ namespace {
 std::string ownerOf(const std::string& path) {
     if (path.empty()) return "[anon]";
     if (path[0] == '[') return path;                 // [heap] [stack] [vvar] ...
+    // B955: a DRM device mapping is a GPU buffer object mapped for the CPU
+    // (VM_PFNMAP: Size only, never Rss) -- its own owner kind.
+    if (path.compare(0, 9, "/dev/dri/") == 0) return "drm:" + path.substr(9);
     const size_t slash = path.find_last_of('/');
     const std::string base = slash == std::string::npos ? path : path.substr(slash + 1);
     if (base.find(".so") != std::string::npos) return "so:" + base;
@@ -709,7 +730,8 @@ std::string mappingsToLogLines(const std::string& point, const MappingBreakdown&
     const size_t limit = topN ? (topN < b.rows.size() ? topN : b.rows.size()) : b.rows.size();
     for (size_t i = 0; i < limit; ++i) {
         const auto& r = b.rows[i];
-        if (!r.anonBytes && !r.rssBytes) continue;
+        // B955: drm: rows are never resident (PFN mappings) -- print their size.
+        if (!r.anonBytes && !r.rssBytes && r.name.compare(0, 4, "drm:") != 0) continue;
         out += "\n[memmap] point=";
         out += point;
         out += " owner=";
@@ -757,6 +779,8 @@ Snapshot recordPoint(const std::string& point, const std::string& zone) {
     g_sublabelsArmed = true;
     Snapshot s = snapshot(point, zone);
     LOG_INFO(MOD_MAIN, "{}", toLogLine(s));
+    // B955: the GPU buffer row's sources and reconciliation, beside every point.
+    LOG_INFO(MOD_MAIN, "{}", gpuBuffersToLogLine(point, s.zone, s.gpuBuffers, s.ownedBytes));
     // The startup breakdown rides as a sibling of the ledger line at EVERY
     // point, so `startup`, `ready` and `steady_60s` all carry it and the
     // Pi run gets the same table the x86 run does -- the bucket that never

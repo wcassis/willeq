@@ -39,6 +39,7 @@
 #include "client/events/renderer_intents.h"
 #include "common/logging.h"
 #include "client/core/memory_ledger.h"
+#include "client/graphics/diagnostics/gpu_buffer_tally.h"  // B955
 #include "client/data_paths.h"
 #include <fmt/format.h>
 #include "common/name_utils.h"
@@ -1011,6 +1012,10 @@ void ZoneLoadComponent::loadZoneSequential(const std::string& eqClientPath,
     // stable byte-count accessor yet (see review's audit note on this gap).
     const bool memAudit = ctx_.config.constrainedConfig.loadMemAudit;
     auto sampleStep = [&](const char* stepName) {
+        // B955: every recordPoint below follows a sampleStep, and this thread
+        // owns the GL context -- publish the driver's GPU buffer tally so the
+        // point's gpu_buffers row reconciles against this step's uploads.
+        publishGpuBufferTally(ctx_.driver);
         if (!memAudit) return;
         size_t texBytes = ctx_.constrainedTextureCache ? ctx_.constrainedTextureCache->getCurrentUsage() : 0;
         // meshBytes was constrainedMeshCache_'s usage, always 0 (T67: cache

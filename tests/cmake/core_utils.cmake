@@ -283,6 +283,7 @@ ADD_EXECUTABLE(test_memory_ledger
     test_memory_ledger.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
 )
 TARGET_LINK_LIBRARIES(test_memory_ledger GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} Threads::Threads)
 # B839 (issue #94): the startup sub-owner acceptance case SPAWNS the real
@@ -295,3 +296,19 @@ IF(TARGET willeq)
     ADD_DEPENDENCIES(test_memory_ledger willeq)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)
+
+# B955 (GitLab #273): the gpu_buffers ledger row -- GPU buffer memory outside
+# RssAnon (Lima GEM/shmem on the Orange Pi). Parsers against fixtures captured
+# on the Pi (tests/data/b955/), the source decision, and the row on the
+# [memledger] line / JSON. Links the ledger TU (it replaces the allocator for
+# the whole binary, as in test_memory_ledger).
+ADD_EXECUTABLE(test_gpu_buffer_census
+    test_gpu_buffer_census.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
+)
+TARGET_LINK_LIBRARIES(test_gpu_buffer_census GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} Threads::Threads)
+TARGET_COMPILE_DEFINITIONS(test_gpu_buffer_census PRIVATE
+    B955_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/data/b955")
+GTEST_DISCOVER_TESTS(test_gpu_buffer_census DISCOVERY_TIMEOUT 120)

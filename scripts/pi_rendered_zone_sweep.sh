@@ -44,6 +44,10 @@
 #          client's --dump-every / --dump-max-frames, Pi /tmp is ~242 MB)
 #          [--account NAME --char NAME]   (B960; default the lane's test
 #          account/character from scripts/eqemu/env.sh, same password)
+#          [--shared-cgroup]   (B955: by default the client runs in its OWN
+#          memory cgroup -- rendered_zone_run.py --own-cgroup -- so its
+#          gpu_buffers ledger row reads the Lima GEM bytes from memory.stat;
+#          this opts out, and the row falls back to the mapped lower bound)
 #          [--allow-vm-lane]   (B909's A/B, scripts/pi/collision_ab.sh:
 #          --tour replaces the /loc-wait-/q script, --env adds client
 #          environment, --drive-keys plays scripts/pi/uinput_drive.py's fixed
@@ -110,6 +114,7 @@ DUMP_EVERY=100
 DUMP_MAX=3
 ACCOUNT_OVERRIDE=""
 CHAR_OVERRIDE=""
+OWN_CGROUP=1
 MESA="${WILLEQ_MESA:-nollvm}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -134,7 +139,8 @@ while [ $# -gt 0 ]; do
         --dump-max) DUMP_MAX="$2"; shift 2 ;;
         --account) ACCOUNT_OVERRIDE="$2"; shift 2 ;;
         --char) CHAR_OVERRIDE="$2"; shift 2 ;;
-        -h|--help) sed -n '2,69p' "$0"; exit 0 ;;
+        --shared-cgroup) OWN_CGROUP=0; shift ;;
+        -h|--help) sed -n '2,72p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -360,11 +366,11 @@ run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     # shellcheck disable=SC2086
     local remote="rm -rf '$pidir' && mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && ${drive}\
 env TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTRA_ENV \
-python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} -- \
+python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} $([ "$OWN_CGROUP" -eq 1 ] && echo --own-cgroup) -- \
 '$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
 --eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
 --dump-frames-dir '$pidir/frames' --dump-every $DUMP_EVERY --dump-max-frames $DUMP_MAX \
-> '$pidir/runner.out' 2>&1; cp -r '$pidir/.' '$dir/'; \
+> '$pidir/runner.out' 2>&1; cp -rp '$pidir/.' '$dir/'; \
 sudo -n pkill -TERM -f '[u]input_drive[.]py' >/dev/null 2>&1; sleep 1; cp '$pidir/keys.tsv' '$pidir/keys.out' '$dir/' 2>/dev/null; \
 sudo -n rm -rf '$pidir'; true"
     timeout $((CAP_S + 120)) bash -c 'source "$1"; pi_remote "$2" </dev/null' _ "$REPO/scripts/pi/env.sh" "$remote"

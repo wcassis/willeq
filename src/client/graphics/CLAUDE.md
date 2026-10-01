@@ -227,6 +227,31 @@ chunk to whatever `eqt::memory::Category` the CALLING THREAD is scoped to.
 - **The target is 32–64 MB RSS** (Will, 2026-09-17), with the T293 256 MB
   ceiling now an interim bound. Every report prints the gap to 64 MB by bucket,
   largest first; the gate fails on the ceiling and prints the target gap.
+- **GPU buffers: the `gpu_buffers` row (B955, `include/client/core/gpu_buffer_census.h`).**
+  On the Orange Pi every texture, VBO, depth buffer and render target is a Lima
+  GEM object: shmem pages the kernel pins for the process. They are in no
+  RssAnon, RssShmem or `gpu_driver` figure (`gpu_driver` is the driver's CPU
+  heap), and Lima on the Pi's 6.12 kernel publishes no `drm-*` fdinfo keys. The
+  row reads them from the process's OWN memory cgroup (`memory.stat` shmem),
+  which is exact only when the client is alone in it: `scripts/pi/rendered_zone_run.py
+  --own-cgroup` (`systemd-run --user --scope`), the default in
+  `scripts/pi_rendered_zone_sweep.sh`. Outside such a cgroup the row falls back
+  to the CPU-mapped DRM BOs in `/proc/self/maps` (`drm_maps_lower_bound`: GPU-only
+  buffers such as render targets are never mapped). On llvmpipe the "GPU" is
+  heap inside the process, already charged to `gpu_driver`: the row then
+  reports the driver's tally (`logical_in_gpu_driver`) and is NOT added to
+  owned. Every `recordPoint()` prints a `[memgpu]` line beside `[memledger]`:
+  the row, its source, the renderer's logical tally (`gpuTextureBytes` +
+  `vboEboBytes`, published by `src/client/graphics/diagnostics/gpu_buffer_tally.cpp`
+  from the GL-owning thread) and the residual between them, the cgroup's
+  kernel bytes, the mapped bytes, `owned` and `owned_plus_gpu_buffers`. The
+  64 MB target stays on `owned`; `owned_plus_gpu_buffers` is printed for Will's
+  ruling and asserted nowhere. Not on the row: the display controller's scanout
+  framebuffers (CMA, allocated by the display device -- the rigs read them from
+  debugfs as root, `proc_mem_snapshot.py`'s `gpu.scanout_fb_bytes`) and a frame
+  the client dumps into a tmpfs (charged to the same cgroup; the summarizer
+  subtracts it). Measurements and the residual's composition:
+  `refactor/B955/README.md`.
 
 ## Zone Loading Thread
 
