@@ -34,6 +34,16 @@ before a point is charged to the same cgroup's shmem, so its bytes are named
 framebuffers (CMA, not shmem) come from the rig's root snapshots. A Pi run
 that reached ready with a [memgpu] line reading 0 FAILS (gpu_buffers_zero):
 the row exists to see those bytes.
+
+B962: gpu_unnamed_steady = gpu_buffers_net_steady - logical: the GEM bytes no
+row of the client's own tally names (textures by their storage, vertex/index
+buffers, the window's depth/stencil) -- the GL driver's internal buffers
+(PLB, PP streams, shader binaries, stream uploads, its BO cache, tile-heap
+pages) plus page and tile rounding. refactor/B962/README.md names each part
+with the GEM census shim. A run whose client prints the B962 tally
+(logical_depth_stencil on its [memgpu] line) and reads the row from its own
+cgroup FAILS when that exceeds GPU_UNNAMED_BOUND (gpu_unnamed_over_bound): a
+new unnamed allocation, or a regression of a B962 fix, shows there first.
 """
 import argparse
 import glob
@@ -45,6 +55,7 @@ import statistics
 RSS_TARGET = 64 * 1024 * 1024       # the design yardstick (printed, not a gate); judged on
                                     # OWNED = RssAnon - gpu_driver (Will, 2026-09-29, B933)
 RSS_CEILING = 256 * 1024 * 1024     # the failing bound
+GPU_UNNAMED_BOUND = 12 * 1024 * 1024  # B962: the measured sweep (refactor/B962/README.md) + margin
 DRIVER_SO = re.compile(r"owner=(so:(libLLVM|libgallium|libEGL|libGLES|libGLdispatch|libdrm|libgbm|libglapi)[^ ]*"
                        r"|[^ ]*(/dev/dri|renderD|card[0-9])[^ ]*)")
 
@@ -61,7 +72,9 @@ HEADER = ("zone expansion s3d_bytes attempt verdict signature exit_code kill_rea
           # B955: appended at the END as well
           "gpu_buffers_src gpu_buffers_ready gpu_buffers_steady gpu_logical_ready gpu_logical_steady "
           "gpu_residual_steady dumped_png_bytes_steady gpu_buffers_net_steady memcg_kernel_steady "
-          "drm_mapped_steady owned_steady owned_plus_gpu_buffers_steady scanout_fb_bytes").split()
+          "drm_mapped_steady owned_steady owned_plus_gpu_buffers_steady scanout_fb_bytes "
+          # B962: appended at the END
+          "gpu_depth_stencil_steady gpu_unnamed_steady").split()
 
 
 def mesa_proof(run, expect, prefix):
@@ -325,6 +338,12 @@ def main():
     gv = lambda p, k: int(p[1].get(k, 0)) if p else ""
     png_steady = png_bytes_before(a.run, mg_steady[0]) if mg_steady else ""
     gpu_zero = bool(ready) and mg_ready is not None and gv(mg_ready, "gpu_buffers") == 0
+    # B962: what the client's own tally does not name, net of the rig's frame dumps.
+    b962_tally = bool(mg_steady) and "logical_depth_stencil" in mg_steady[1]
+    unnamed = ((gv(mg_steady, "gpu_buffers") - png_steady - gv(mg_steady, "logical"))
+               if b962_tally else "")
+    unnamed_over = (b962_tally and mg_steady[1].get("source") == "memcg_shmem"
+                    and unnamed > GPU_UNNAMED_BOUND)
     checks = [
         (mesa_check.startswith("mismatch"), "mesa_" + mesa_check),
         (oom == "y", "oom_kill"),
@@ -338,6 +357,8 @@ def main():
         (bool(fatal), "fatal"),
         (gpu_zero, "gpu_buffers_zero (the [memgpu] row read 0 at ready, source %s)"
          % (mg_ready[1].get("source", "?") if mg_ready else "?")),
+        (unnamed_over, "gpu_unnamed_over_bound (%.2f MiB of GEM no tally row names at steady_60s > %.2f MiB)"
+         % ((unnamed if unnamed != "" else 0) / 1048576.0, GPU_UNNAMED_BOUND / 1048576.0)),
         (bool(ready) and steady is not None and (rc != 0 or kill), "unclean_exit (rc=%s %s)" % (rc, kill)),
         (mesa_check.startswith("unproven"), "mesa_" + mesa_check),
     ]
@@ -379,6 +400,8 @@ def main():
         "owned_steady": gv(mg_steady, "owned"),
         "owned_plus_gpu_buffers_steady": gv(mg_steady, "owned_plus_gpu_buffers"),
         "scanout_fb_bytes": scanout_bytes(a.run),
+        "gpu_depth_stencil_steady": gv(mg_steady, "logical_depth_stencil") if b962_tally else "",
+        "gpu_unnamed_steady": unnamed,
     }
     clean = {k: str(v).replace("\t", " ").replace("\n", " ") for k, v in row.items()}
     new = not os.path.exists(a.tsv) or os.path.getsize(a.tsv) == 0

@@ -6,8 +6,6 @@
 // the T504 pools:
 //
 //   WILLEQ_GPU_BUFFERS_LEGACY=1
-//     - the zone draw pools draw from client-side vertex arrays (no shared
-//       static VBO: Mesa streams every run's vertex range each frame);
 //     - the GPU upload thread's shared EGL context is created even with the
 //       pools on, and setupMinimalZoneCollision() rebuilds the player's
 //       region as a second, undrawn node whose VBO that thread uploads;

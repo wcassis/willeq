@@ -63,11 +63,6 @@ inline const Shim& shim() {
 
 } // namespace gem_detail
 
-// True when the census shim is preloaded (its symbols resolve).
-inline bool gemCensusActive() {
-    return gem_detail::shim().push != nullptr;
-}
-
 // Ask the shim to append the live-BO table under `point` (no-op without it).
 // Called by recordPoint() beside the [memgpu] line.
 inline void gemCensusDump(const char* point) {

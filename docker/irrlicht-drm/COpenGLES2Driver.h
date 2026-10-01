@@ -367,16 +367,6 @@ public:
                                   u32 vertexCount, u32 indexCount,
                                   E_VERTEX_TYPE vType = EVT_STANDARD);
 
-    // B962: ONE static VBO shared by many draws (the client's zone draw pools,
-    // src/client/graphics/zone_stream/renderer_zone_merge.cpp). The caller
-    // draws a run from a byte offset into it with CLIENT-side 16-bit indices,
-    // so only the per-frame index gather is streamed, never the vertices. Its
-    // bytes are part of getHWBufferMemoryUsage() (the gpu_buffers tally).
-    // S3DVertex (EVT_STANDARD) only.
-    GLuint createSharedStaticVBO(const void* data, u32 bytes);
-    void deleteSharedStaticVBO(GLuint vbo, u32 bytes);
-    void drawSharedVBORun(GLuint vbo, u32 vertexByteOffset, const u16* indices, u32 indexCount);
-
     // Hardware buffer memory queries
     size_t getHWBufferMemoryUsage() const;
     size_t getHWBufferCount() const;
@@ -485,8 +475,6 @@ private:
 
     // Hardware buffer cache (VBO/EBO for static mesh data)
     std::unordered_map<const scene::IMeshBuffer*, SHWBuffer> HWBufferMap;
-    // B962: bytes held by createSharedStaticVBO() buffers
-    size_t sharedVBOBytes_ = 0;
 
     // Custom shader materials (from addHighLevelShaderMaterial)
     core::array<SOGLES2CustomShader> CustomShaders;

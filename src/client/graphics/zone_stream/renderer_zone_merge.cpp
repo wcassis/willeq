@@ -5,22 +5,10 @@
 #include "client/graphics/door_manager.h"       // DoorVisual
 #include "common/logging.h"
 #include "client/core/gem_owner_census.h"  // B962
-#include "client/graphics/gpu_buffers_legacy.h"  // B962
 
 #include <irrlicht.h>
 
 #include <algorithm>
-#include <cstdlib>
-#include <cstring>
-
-#ifdef EQT_HAS_GLES2
-// B962: the shared static VBO bridge (COpenGLES2Driver.cpp), declared here
-// like gles2CreateStaticHWBuffer() so this TU needs no driver header.
-extern unsigned int gles2CreateSharedStaticVBO(void* driver, const void* data, unsigned int bytes);
-extern void gles2DeleteSharedStaticVBO(void* driver, unsigned int vbo, unsigned int bytes);
-extern void gles2DrawSharedVBORun(void* driver, unsigned int vbo, unsigned int vertexByteOffset,
-                                  const unsigned short* indices, unsigned int indexCount);
-#endif
 
 namespace EQT {
 namespace Graphics {
@@ -52,7 +40,6 @@ constexpr int kMaxVertsPerBucket = 65535;  // uint16 index space
 struct ZoneMergeBuffers::MergedGeneration {
     irr::scene::SMeshBuffer* buf = nullptr;
     std::vector<uint16_t> templateIndices;
-    uint32_t vboByteOffset = 0;   // B962: where this generation's vertices sit in poolVbo_
 };
 
 struct ZoneMergeBuffers::RegionBufferRange {
@@ -192,13 +179,6 @@ void ZoneMergeBuffers::destroy() {
         }
     }
     poolBuckets_.clear();
-#ifdef EQT_HAS_GLES2
-    if (poolVbo_ && poolVboDriver_) gles2DeleteSharedStaticVBO(poolVboDriver_, poolVbo_, poolVboBytes_);
-#endif
-    poolVbo_ = 0;
-    poolVboBytes_ = 0;
-    poolVboDriver_ = nullptr;
-    poolVboTried_ = false;
     std::vector<ZoneSlice>().swap(slices_);
     std::vector<RegionSpan>().swap(regionSpans_);
     delete poolMaterials_;
@@ -218,39 +198,6 @@ void ZoneMergeBuffers::beginPooled() {
     destroy();
     pooled_ = true;
     poolMaterials_ = new PoolMaterials();
-    poolVboWanted_ = !gpuBuffersLegacy();
-}
-
-// B962: one GL buffer for every generation of every material, so the pools
-// cost one GEM buffer (one page-rounding) however many generations there are.
-void ZoneMergeBuffers::createPoolVbo(irr::video::IVideoDriver* driver) {
-    poolVboTried_ = true;
-#ifdef EQT_HAS_GLES2
-    if (!poolVboWanted_ || !driver || driver->getDriverType() != irr::video::EDT_OGLES2) return;
-    size_t total = 0;
-    for (auto& gens : poolBuckets_)
-        for (auto* gen : gens) total += static_cast<size_t>(gen->buf->getVertexCount()) * sizeof(irr::video::S3DVertex);
-    if (total == 0 || total > 0xFFFFFFFFu) return;
-    std::vector<uint8_t> data(total);
-    size_t at = 0;
-    for (auto& gens : poolBuckets_) {
-        for (auto* gen : gens) {
-            const size_t n = static_cast<size_t>(gen->buf->getVertexCount()) * sizeof(irr::video::S3DVertex);
-            gen->vboByteOffset = static_cast<uint32_t>(at);
-            if (n) std::memcpy(data.data() + at, gen->buf->getVertices(), n);
-            at += n;
-        }
-    }
-    poolVbo_ = gles2CreateSharedStaticVBO(driver, data.data(), static_cast<unsigned int>(total));
-    if (poolVbo_) {
-        poolVboBytes_ = static_cast<unsigned int>(total);
-        poolVboDriver_ = driver;
-        LOG_INFO(MOD_GRAPHICS, "[zonepools] shared static VBO: {} bytes ({} generations' vertices)",
-                 total, [&] { size_t g = 0; for (auto& v : poolBuckets_) g += v.size(); return g; }());
-    }
-#else
-    (void)driver;
-#endif
 }
 
 int ZoneMergeBuffers::appendRegion(size_t regionIdx, irr::scene::IMesh* mesh, float px, float py, float pz) {
@@ -430,7 +377,6 @@ int ZoneMergeBuffers::renderMerged(irr::video::IVideoDriver* driver,
     int drawCalls = 0;
 
     if (pooled_) {
-        if (!poolVboTried_) createPoolVbo(driver);
         // T504: every entry carries a slice. A run is a maximal stretch of equal
         // materialKey + materialId (the list is sorted by materialKey); within a
         // run, each generation that appears is gathered and drawn once. There is
@@ -486,15 +432,6 @@ int ZoneMergeBuffers::renderMerged(irr::video::IVideoDriver* driver,
                 gen->buf->Material = mat;
                 driver->setTransform(irr::video::ETS_WORLD, identity);
                 driver->setMaterial(mat);
-#ifdef EQT_HAS_GLES2
-                if (poolVbo_) {
-                    // B962: vertices from the shared static VBO, indices gathered.
-                    gles2DrawSharedVBORun(driver, poolVbo_, gen->vboByteOffset,
-                                          gen->buf->Indices.const_pointer(), gen->buf->Indices.size());
-                    ++drawCalls;
-                    continue;
-                }
-#endif
                 driver->drawMeshBuffer(gen->buf);
                 ++drawCalls;
             }
