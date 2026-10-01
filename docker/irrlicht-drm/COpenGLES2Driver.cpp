@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <string>
 #include <cstring>
+#include <dlfcn.h>
 
 namespace irr
 {
@@ -32,6 +33,29 @@ GLCallCounters g_glCounters;
 // P52 audit: process-wide GPU-sync probe instance, disabled by default.
 // See gpu_sync_probe.h for the design and zero-cost-when-off justification.
 GPUSyncProbe g_gpuSyncProbe;
+
+// B962: the census shim's tag entry points (see COpenGLES2Driver.h). Resolved
+// once; both null without the shim.
+namespace {
+struct GemTagFns {
+    void (*push)(const char*) = nullptr;
+    void (*pop)() = nullptr;
+};
+const GemTagFns& gemTagFns() {
+    static const GemTagFns fns = [] {
+        GemTagFns f;
+        f.push = reinterpret_cast<void (*)(const char*)>(dlsym(RTLD_DEFAULT, "willeq_gem_tag_push"));
+        f.pop = reinterpret_cast<void (*)()>(dlsym(RTLD_DEFAULT, "willeq_gem_tag_pop"));
+        if (!f.push || !f.pop) f.push = nullptr;
+        return f;
+    }();
+    return fns;
+}
+} // namespace
+
+bool gles2GemTagActive() { return gemTagFns().push != nullptr; }
+void gles2GemTagPush(const char* tag) { if (gemTagFns().push) gemTagFns().push(tag ? tag : ""); }
+void gles2GemTagPop() { if (gemTagFns().push) gemTagFns().pop(); }
 
 } // namespace video
 } // namespace irr
@@ -453,6 +477,7 @@ bool COpenGLES2Driver::beginScene(bool backBuffer, bool zBuffer,
     // See endScene() for why the swap/page-flip moved here instead of
     // running immediately at the end of the frame that produced it.
     if (pendingPresent_) {
+        GemTagScope gemTag("swap");
         Device->present(0, 0, 0);
         pendingPresent_ = false;
     }
@@ -480,8 +505,10 @@ bool COpenGLES2Driver::beginScene(bool backBuffer, bool zBuffer,
         clearMask |= GL_STENCIL_BUFFER_BIT;
     }
 
-    if (clearMask)
+    if (clearMask) {
+        GemTagScope gemTag("clear");
         glClear(clearMask);
+    }
 
     ResetRenderStates = true;
     Is2DMode = false;
@@ -553,6 +580,7 @@ bool COpenGLES2Driver::endScene()
 void COpenGLES2Driver::flushPendingPresent()
 {
     if (pendingPresent_) {
+        GemTagScope gemTag("swap");
         Device->present(0, 0, 0);
         pendingPresent_ = false;
     }
@@ -780,6 +808,7 @@ void COpenGLES2Driver::draw2DRectangle(const core::rect<s32>& pos,
                                          SColor colorLeftDown, SColor colorRightDown,
                                          const core::rect<s32>* clip)
 {
+    GemTagScope gemTag("draw2d:rect");
     setOrthoProjection();
     setScissorFromClip(clip);
     setBlend(colorLeftUp.getAlpha() < 255 || colorRightUp.getAlpha() < 255 ||
@@ -841,6 +870,7 @@ void COpenGLES2Driver::draw2DLine(const core::position2d<s32>& start,
                                    const core::position2d<s32>& end,
                                    SColor color)
 {
+    GemTagScope gemTag("draw2d:line");
     setScissorFromClip(nullptr);
     setOrthoProjection();
     setBlend(color.getAlpha() < 255, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -880,6 +910,7 @@ void COpenGLES2Driver::draw3DLine(const core::vector3df& start,
                                    const core::vector3df& end,
                                    SColor color)
 {
+    GemTagScope gemTag("draw3d:line");
     // Unbind VBO/EBO — using client-side CPU pointers
     if (state_.boundVBO != 0) {
         glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -922,6 +953,7 @@ void COpenGLES2Driver::draw3DLine(const core::vector3df& start,
 
 void COpenGLES2Driver::draw3DLinesBatch(const f32* vertices, u32 lineCount)
 {
+    GemTagScope gemTag("draw3d:lines");
     if (!vertices || lineCount == 0) return;
 
     // Unbind VBO/EBO — using client-side CPU pointers
@@ -993,6 +1025,7 @@ void COpenGLES2Driver::draw2DImage(const video::ITexture* texture,
                                     const video::SColor* const colors,
                                     bool useAlphaChannelOfTexture)
 {
+    GemTagScope gemTag("draw2d:image");
     if (!texture)
         return;
 
@@ -1081,6 +1114,7 @@ void COpenGLES2Driver::draw2DImageBatch(const video::ITexture* texture,
                                           SColor color,
                                           bool useAlphaChannelOfTexture)
 {
+    GemTagScope gemTag("draw2d:batch");
     if (!texture || positions.size() == 0)
         return;
 
@@ -1185,6 +1219,7 @@ void COpenGLES2Driver::drawVertexPrimitiveList(const void* vertices, u32 vertexC
                                                 scene::E_PRIMITIVE_TYPE pType,
                                                 E_INDEX_TYPE iType)
 {
+    GemTagScope gemTag("draw3d:client");
     if (!vertices || !indexList || vertexCount == 0 || primitiveCount == 0)
         return;
 
@@ -1300,6 +1335,7 @@ void COpenGLES2Driver::drawMeshBuffer(const scene::IMeshBuffer* mb)
     // Check for hardware buffer (VBO/EBO) — fast path for static geometry
     auto it = HWBufferMap.find(mb);
     if (it != HWBufferMap.end()) {
+        GemTagScope gemTag("draw3d:vbo");
         const SHWBuffer& hwb = it->second;
 
         restore3DProjection();
@@ -1423,6 +1459,7 @@ void COpenGLES2Driver::setMaterial(const SMaterial& material)
 
 GLuint COpenGLES2Driver::getOpaqueAlphaFallback() {
     if (!opaqueAlphaFallback_) {
+        GemTagScope gemTag("tex:alpha-fallback 1x1");
         // P09b root cause: lazy-init used to glBindTexture() without first
         // selecting unit 1, so the new fallback texture landed on whichever
         // unit was last left active by applyMaterialRenderState() (unit 0),
@@ -1805,8 +1842,10 @@ bool COpenGLES2Driver::setRenderTarget(video::ITexture* texture,
         setDepthWrite(true);
         clearMask |= GL_DEPTH_BUFFER_BIT;
     }
-    if (clearMask)
+    if (clearMask) {
+        GemTagScope gemTag("clear");
         glClear(clearMask);
+    }
 
     return true;
 }
@@ -1818,6 +1857,7 @@ bool COpenGLES2Driver::setRenderTarget(video::ITexture* texture,
 IImage* COpenGLES2Driver::createScreenShot(video::ECOLOR_FORMAT format,
                                             video::E_RENDER_TARGET target)
 {
+    GemTagScope gemTag("screenshot");
     const core::dimension2d<u32>& size = getCurrentRenderTargetSize();
     u32 w = size.Width;
     u32 h = size.Height;
@@ -1965,6 +2005,7 @@ s32 COpenGLES2Driver::addHighLevelShaderMaterial(
     s32 userData,
     E_GPU_SHADING_LANGUAGE shadingLanguage)
 {
+    GemTagScope gemTag("shader:compile");
     if (!vertexShaderProgram || !pixelShaderProgram)
         return -1;
 
@@ -2109,6 +2150,7 @@ void COpenGLES2Driver::enableMaterial2D(bool enable)
 
 bool COpenGLES2Driver::createStaticHardwareBuffer(const scene::IMeshBuffer* mb)
 {
+    GemTagScope gemTag("vbo:static");
     if (!mb || mb->getVertexCount() == 0 || mb->getIndexCount() == 0)
         return false;
 
@@ -2269,6 +2311,16 @@ size_t COpenGLES2Driver::getGpuTextureMemoryUsage() const
     return total;
 }
 
+size_t COpenGLES2Driver::getGpuTextureStorageUsage() const
+{
+    size_t total = 0;
+    for (u32 i = 0; i < Textures.size(); ++i) {
+        if (Textures[i].Surface)
+            total += static_cast<const COGLES2Texture*>(Textures[i].Surface)->getStorageBytes();
+    }
+    return total;
+}
+
 // ============================================================================
 // Factory function
 // ============================================================================
@@ -2329,6 +2381,18 @@ size_t gles2GetGpuTextureMemoryUsage(void* driver)
 {
     auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
     return d->getGpuTextureMemoryUsage();
+}
+
+size_t gles2GetGpuTextureStorageUsage(void* driver)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    return d->getGpuTextureStorageUsage();
+}
+
+void gles2TextureSetStorageBytes(void* texture, unsigned int bytes)
+{
+    if (texture)
+        static_cast<irr::video::COGLES2Texture*>(static_cast<irr::video::ITexture*>(texture))->setStorageBytes(bytes);
 }
 
 void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned int lineCount)

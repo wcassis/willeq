@@ -622,8 +622,7 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
             // names the benchmark uses where the two build the same thing).
             std::optional<eqt::memory::StartupScope> meshOwner;
             meshOwner.emplace("zm.build");
-            const char* poolsEnv = std::getenv("WILLEQ_ZONE_POOLS");
-            const bool pooledRegions = ctx_.config.constrainedConfig.mergeZoneDraws && !(poolsEnv && (poolsEnv[0] == '0' || poolsEnv[0] == 'u'));
+            const bool pooledRegions = ctx_.ZoneLifecycle().zonePoolsEnabled();
             ZoneMergeBuffers* pools = nullptr;
             size_t pooledRegionCount = 0;
             if (pooledRegions) {

@@ -60,7 +60,24 @@ namespace memory {
 // points, the render thread about once a second) and PUBLISHED here; the
 // ledger points (some of them on the game thread) read the last published
 // value. Relaxed atomics; a point reads a value at most ~1 s old.
-void publishGpuLogicalTally(uint64_t textureBytes, uint64_t bufferBytes);
+//
+// B962: textureBytes is the textures' STORAGE (COGLES2Texture::getStorageBytes()
+// -- what the upload really sent, not the budget figure the gate reads as
+// gpuTextureBytes), and depthStencilBytes the window surface's depth/stencil
+// buffer (width x height x its bytes per pixel), a buffer the client asked for
+// at device creation that no texture or VBO tally contains.
+void publishGpuLogicalTally(uint64_t textureBytes, uint64_t bufferBytes,
+                            uint64_t depthStencilBytes = 0);
+// B962: the window surface's depth/stencil buffer, from the default
+// framebuffer's GL_DEPTH_BITS/GL_STENCIL_BITS: a 24/8 (or 24/0, 32) buffer is 4
+// bytes a pixel, a 16-bit one 2 (Lima stores D24S8 as one 32-bit word, Z16 as
+// 16). The tile/page rounding the driver adds stays in the residual.
+inline uint64_t depthStencilBytesFor(uint32_t width, uint32_t height, int depthBits, int stencilBits) {
+    const int bits = (depthBits > 0 ? depthBits : 0) + (stencilBits > 0 ? stencilBits : 0);
+    const uint64_t bpp = bits == 0 ? 0 : (bits <= 16 ? 2 : 4);
+    return static_cast<uint64_t>(width) * height * bpp;
+}
+
 // Whether the GL renderer is a software rasteriser (GL_RENDERER names
 // llvmpipe/softpipe/swrast), published once by the renderer after context
 // creation. Unpublished: inferred (no DRM fd open = software).
@@ -123,6 +140,7 @@ struct GpuBufferInputs {
     uint32_t cgroupProcs = 0;     // processes in our cgroup (1 = exclusive)
     uint64_t logicalTextureBytes = 0;
     uint64_t logicalBufferBytes = 0;
+    uint64_t logicalDepthStencilBytes = 0;  // B962
     bool logicalPublished = false;
     int softwareRasteriser = -1;  // -1 unpublished, 0 no, 1 yes
 };
@@ -133,7 +151,7 @@ struct GpuBufferCensus {
     uint64_t gpuBuffersBytes = 0;   // THE row
     bool outsideRssAnon = false;    // true: add to owned; false: already in gpu_driver
     bool software = false;          // the decision's software-rasteriser verdict
-    uint64_t logicalBytes = 0;      // textures + buffers
+    uint64_t logicalBytes = 0;      // textures + buffers + depth/stencil (B962)
     int64_t residualBytes = 0;      // gpuBuffersBytes - logicalBytes (the named gap)
     bool cgroupExclusive = false;
 };
@@ -148,6 +166,8 @@ GpuBufferCensus readGpuBufferCensus();
 
 // `[memgpu] point=<p> zone=<z> gpu_buffers=<B> source=<tok> outside_rss_anon=<0|1>
 //  logical=<B> logical_textures=<B> logical_buffers=<B> residual=<B>
+//  ... (B962, appended last so every existing parse holds:)
+//  logical_depth_stencil=<B>
 //  memcg_shmem=<B> memcg_kernel=<B> cgroup_procs=<n> drm_mapped=<B>
 //  drm_maps=<n> drm_fds=<n> fdinfo_total=<B> fdinfo_resident=<B> owned=<B>
 //  owned_plus_gpu_buffers=<B>`

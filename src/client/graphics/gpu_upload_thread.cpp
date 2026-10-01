@@ -4,6 +4,7 @@
 
 #include "client/graphics/gpu_upload_thread.h"
 #include "common/logging.h"
+#include "client/core/gem_owner_census.h"  // B962
 #include "client/core/memory_ledger.h"
 
 #include <algorithm>
@@ -46,7 +47,10 @@ bool GPUUploadThread::init(EGLDisplay display, EGLContext mainContext, EGLConfig
         EGL_CONTEXT_CLIENT_VERSION, 2,
         EGL_NONE
     };
-    sharedContext_ = eglCreateContext(display_, config_, mainContext, contextAttribs);
+    {
+        eqt::memory::GemTag gemTag("egl:upload-thread-context");
+        sharedContext_ = eglCreateContext(display_, config_, mainContext, contextAttribs);
+    }
     if (sharedContext_ == EGL_NO_CONTEXT) {
         EGLint err = eglGetError();
         LOG_WARN(MOD_GRAPHICS, "GPUUploadThread: eglCreateContext failed (error 0x{:04X})", err);
@@ -246,6 +250,7 @@ void GPUUploadThread::processRequest(const UploadRequest& req) {
 
 void GPUUploadThread::processVertexBufferUpload(const UploadRequest& req) {
     GLuint vbo = 0, ebo = 0;
+    eqt::memory::GemTag gemTag("vbo:upload-thread");
 
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);

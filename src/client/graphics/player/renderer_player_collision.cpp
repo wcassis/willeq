@@ -6,6 +6,7 @@
 // guard in tests/test_first_person_camera_single_formula.cpp requires it.
 #include "client/graphics/zone_lifecycle/zone_lifecycle_component.h"  // T504
 #include "client/graphics/renderer_zone_merge.h"  // T504
+#include "client/graphics/gpu_buffers_legacy.h"  // B962
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/player/player_camera_component.h"
 #include "client/graphics/door_collision.h"
@@ -194,9 +195,15 @@ void PlayerCameraComponent::setupMinimalZoneCollision() {
         return;
     }
 
-    // Build player's BSP region mesh synchronously (only if not already loaded)
+    // Build player's BSP region mesh synchronously (only if not already loaded).
+    // B962: NOT in pooled mode. There the region is already in the zone draw
+    // pools -- drawn from them, and its collision triangles read from them
+    // below -- so the node this built was a second copy of the region (mesh,
+    // animated-texture registration and a VBO uploaded through the GPU upload
+    // thread's second GL context) that nothing drew. It was the 1-7 KB the
+    // gpu_buffers row's logical_buffers showed at steady_60s on the Pi.
     size_t playerRegion = SIZE_MAX;
-    if (ctx_.zoneBspTree) {
+    if (ctx_.zoneBspTree && (!ctx_.ZoneLifecycle().zonePoolsEnabled() || gpuBuffersLegacy())) {
         playerRegion = ctx_.zoneBspTree->findRegionIndexForPoint(ctx_.playerX, ctx_.playerY, ctx_.playerZ);
         bool alreadyBuilt = ctx_.regionMeshNodes.count(playerRegion) && ctx_.regionMeshNodes[playerRegion];
         if (playerRegion != SIZE_MAX && !alreadyBuilt) {

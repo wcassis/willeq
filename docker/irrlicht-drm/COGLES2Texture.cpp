@@ -20,6 +20,21 @@ namespace irr
 namespace video
 {
 
+// B962: the owner tag for every storage this class allocates (see
+// COpenGLES2Driver.h GemTagScope). Formats only when the census shim is there.
+namespace {
+struct TexGemTag {
+    bool on;
+    TexGemTag(const char* kind, const ITexture* tex, u32 w, u32 h) : on(gles2GemTagActive()) {
+        if (!on) return;
+        char buf[160];
+        snprintf(buf, sizeof(buf), "%s %s %ux%u", kind, tex->getName().getPath().c_str(), w, h);
+        gles2GemTagPush(buf);
+    }
+    ~TexGemTag() { if (on) gles2GemTagPop(); }
+};
+} // namespace
+
 #ifdef WILLEQ_T122_TEXPROBE
 namespace t122 {
 Entry g_t122Ring[kRingCapacity];
@@ -132,6 +147,8 @@ void COGLES2Texture::releaseStorage()
         glDeleteTextures(1, &TextureName);
     TextureName = 0;
     GpuBytes = 0;
+    StorageBytes = 0;
+    HasStorageBytes = false;
     Evicted = true;
     // The next storage is a NEW GL object with the upload's default
     // parameters; the P42 dedup cache describes the deleted one.
@@ -146,6 +163,7 @@ void COGLES2Texture::adoptStorage(GLuint glTexName, u32 gpuBytes)
         glDeleteTextures(1, &TextureName);
     TextureName = glTexName;
     GpuBytes = gpuBytes;
+    HasStorageBytes = false;  // B962: the restorer sets it again when it knows it
     Evicted = (glTexName == 0);
     TexParamsCached = false;
 }
@@ -157,6 +175,7 @@ GLuint COGLES2Texture::takeStorage(u32* gpuBytesOut)
         *gpuBytesOut = GpuBytes;
     TextureName = 0;
     GpuBytes = 0;
+    HasStorageBytes = false;
     TexParamsCached = false;
     return name;
 }
@@ -182,6 +201,7 @@ void COGLES2Texture::uploadImage(IImage* image)
     if (!image)
         return;
 
+    TexGemTag gemTag("tex:rgba", this, image->getDimension().Width, image->getDimension().Height);
     glGenTextures(1, &TextureName);
     glBindTexture(GL_TEXTURE_2D, TextureName);
 
@@ -296,6 +316,7 @@ void COGLES2Texture::uploadETC1(const void* data, u32 dataSize, u32 width, u32 h
     if (!data || dataSize == 0)
         return;
 
+    TexGemTag gemTag("tex:etc1drv", this, width, height);
     if (TextureName == 0) {
         glGenTextures(1, &TextureName);
     }
@@ -334,6 +355,7 @@ void COGLES2Texture::uploadETC1(const void* data, u32 dataSize, u32 width, u32 h
 
 void COGLES2Texture::createRenderTarget(const core::dimension2d<u32>& size)
 {
+    TexGemTag gemTag("rtt", this, size.Width, size.Height);
     // Create texture
     glGenTextures(1, &TextureName);
     glBindTexture(GL_TEXTURE_2D, TextureName);
@@ -437,6 +459,7 @@ void* COGLES2Texture::lock(E_TEXTURE_LOCK_MODE mode, u32 mipmapLevel)
     u32 h = TextureSize.Height;
     u32 bufSize = w * h * 4;
 
+    TexGemTag gemTag("tex:readback", this, w, h);
     LockBuffer = new u8[bufSize];
 
     if (mode != ETLM_WRITE_ONLY) {
@@ -477,6 +500,7 @@ void COGLES2Texture::unlock()
     // Re-upload modified data
     u32 w = TextureSize.Width;
     u32 h = TextureSize.Height;
+    TexGemTag gemTag("tex:sub", this, w, h);
 
     // Convert BGRA back to RGBA
     u8* rgba = new u8[w * h * 4];
@@ -499,6 +523,7 @@ void COGLES2Texture::unlock()
 void COGLES2Texture::regenerateMipMapLevels(void* mipmapData)
 {
     if (TextureName) {
+        TexGemTag gemTag("tex:genmip", this, TextureSize.Width, TextureSize.Height);
         glBindTexture(GL_TEXTURE_2D, TextureName);
         glGenerateMipmap(GL_TEXTURE_2D);
         HasMipMaps = true;

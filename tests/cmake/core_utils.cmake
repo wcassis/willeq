@@ -312,3 +312,19 @@ TARGET_LINK_LIBRARIES(test_gpu_buffer_census GTest::gtest_main ${FMT_LIB} ${JSON
 TARGET_COMPILE_DEFINITIONS(test_gpu_buffer_census PRIVATE
     B955_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/data/b955")
 GTEST_DISCOVER_TESTS(test_gpu_buffer_census DISCOVERY_TIMEOUT 120)
+
+# B962 (GitLab #280): the GEM owner census shim's own bookkeeping
+# (scripts/pi/lima_bo_census.c built as a host program with a fake Lima ioctl:
+# tagged creates, a million create/close pairs through the backward-shift
+# table, mmap/munmap tracking, the dump format), and the fold that turns a
+# dump into the per-owner table against the [memgpu] row
+# (scripts/pi/test_gem_owner_table.py, over a dump CAPTURED on the Pi in
+# tests/data/b962/). Pure host checks, no GPU.
+ADD_EXECUTABLE(test_lima_bo_census_shim ${CMAKE_SOURCE_DIR}/scripts/pi/lima_bo_census.c)
+TARGET_COMPILE_DEFINITIONS(test_lima_bo_census_shim PRIVATE B962_SHIM_SELFTEST)
+TARGET_LINK_LIBRARIES(test_lima_bo_census_shim ${CMAKE_DL_LIBS} Threads::Threads)
+ADD_TEST(NAME LimaBoCensusShim
+    COMMAND test_lima_bo_census_shim ${CMAKE_CURRENT_BINARY_DIR}/b962_shim_selftest.tsv)
+ADD_TEST(NAME GemOwnerTable
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_gem_owner_table.py -v)
+SET_TESTS_PROPERTIES(GemOwnerTable PROPERTIES LABELS "hygiene")

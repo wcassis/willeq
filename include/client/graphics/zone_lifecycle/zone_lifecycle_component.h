@@ -274,6 +274,12 @@ public:
 	// T504 (zone draw rework): the loader fills the pools at step 4, before any
 	// frame is drawn, so it needs the object to exist.
 	ZoneMergeBuffers& ensureZoneMergeBuffers();
+	// B962: the ONE predicate for "this client draws zones from the T504 pools"
+	// (preset mergeZoneDraws, unless WILLEQ_ZONE_POOLS=0/u forces the legacy
+	// per-region-node path). Step 4 builds pools on it; the GPU upload thread
+	// (whose only client is the legacy path's per-region VBO upload) and the
+	// player-region rebuild in setupMinimalZoneCollision() are skipped on it.
+	bool zonePoolsEnabled() const;
 	irr::scene::ITriangleSelector*& zoneTriangleSelector() { return zoneTriangleSelector_; }
 	irr::scene::ITriangleSelector* const& zoneTriangleSelector() const { return zoneTriangleSelector_; }
 
