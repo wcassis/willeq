@@ -416,8 +416,6 @@ public:
     // WILLEQ_NAMETAG_BATCH=0 the pre-B975 CTextSceneNode (the A/B path).
     irr::scene::ITextSceneNode* createNameTagNode(irr::scene::ISceneNode* parent, const std::wstring& text,
                                                   irr::video::SColor color, const irr::core::vector3df& offset);
-    // The batch node (null until the first tag, and on the A/B path).
-    const NameTagBatchNode* nameTagBatch() const { return nameTagBatch_; }
     void releaseNameTagBatch();  // destructor only: every tag holds its own reference
 
     // Enable/disable lighting on entity materials
