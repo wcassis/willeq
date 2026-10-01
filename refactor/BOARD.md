@@ -298,6 +298,13 @@ it without taking that measurement first.
   9.56 MiB of mapped BOs beyond the tally not decomposed per texture; and
   `vboEboBytes` reads ~0 on the Pi although Step 4 uploads per-region hardware
   buffers. Measured by B955.
+- **B973** (A) → issue #291. Post-load entity builds are Green-gated
+  (`FrameComponent::processFrame`, "1 unit per GREEN frame";
+  `EntityRenderer::processOneEntityBuildStep`), and the Pi is rarely Green in
+  a populated zone: a crowd spawned after zone-in stays placeholder cubes (0 of
+  200 GM-spawned NPCs built in 4 min, qeynos2 1280x720; 28 of 200 at
+  800x600). A zone reload builds them. Measured by B964
+  (`review/B964/pi/crowd/`).
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
@@ -641,17 +648,28 @@ it without taking that measurement first.
 - **B952** (B) → issue #270, **in review** (`refactor/B952/README.md`).
   Impostor billboards part 1: the benchmark's impostor row (`tex.impostor`),
   sizes 64/128/256, unique/shared, measured on x86 and the Pi; budget
-  candidates proposed for Will. Part 2 (the production port -- governor-driven
-  tier, creation/refresh scheduling, the unique->shared cap check) is not
-  started and has no issue yet; the design is the README's "Production port"
-  section.
+  candidates proposed for Will (blessed 2026-09-30: 128^2, 20 MiB). Part 2,
+  the production port, is **B964**.
+- **B964** (B) → issue #282, **in review** (`refactor/B964/README.md`).
+  Impostor billboards part 2, the production port: atlas pages of 128^2
+  cells, the blessed cap, governor-driven tiers, scheduled captures, one draw
+  per page, the `tex.impostor` owner row; on only on `orangepi`, off under
+  `WILLEQ_BASELINE=1`.
+- **B974** (B, *cause unconfirmed*) → issue #292. On x86 (llvmpipe) a 200-NPC
+  crowd puts the client at 2.0-2.3 GiB RssAnon, ~2 GiB of it `gpu_driver`,
+  with impostors on or off; the Pi stays at 21 MiB. Confirm by attributing the
+  llvmpipe objects (per-texture resources vs fragment-shader variants).
+  Measured by B964 (`review/B964/x86/crowd/`).
 - **B956** (B) → issue #274. Benchmark impostors have a dark silhouette
   fringe: bilinear sampling against the capture's (0,0,0,0) clear with the
   built-in shader's hard 0.5 alpha test. Measured by B952 (the largest
   single-pixel difference is background-vs-near-black, 60, at every size). B958 replaced the
   built-in fwidth() threshold (x86) with the constant 0.5: the x86 fringe
   narrowed (80 units, 128^2: silhouette mismatch 6.1 % -> 4.1 % of the
-  footprint), and the Pi now draws it too (5.0 %) -- not gone.
+  footprint), and the Pi now draws it too (5.0 %) -- not gone. The production
+  billboard (B964) divides RGB by the sampled alpha: 13-19 % fewer dark-edge
+  pixels than the built-in alpha test, still not gone
+  (`refactor/B964/README.md`).
 - **B963** (B) → issue #281. On Lima the benchmark gives every static
   hardware buffer its own 4 KiB-minimum GEM BO: qeynos2 9,355 BOs = 36.5 MiB
   (+9.6 MiB kernel slab) for 1.73 MiB of vertex/index data. The client has no

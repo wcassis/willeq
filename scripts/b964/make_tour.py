@@ -13,7 +13,12 @@ server's y/x -- command_processor_world.cpp). The safe point is passed in the
 server frame as the zone table stores it and swapped here.
 
 usage: make_tour.py --safe SX SY SZ --count N --layout near|far|none --out FILE
-                    [--idle 40] [--hold-after 15]
+                    [--idle 40] [--hold-after 15] [--zone Z --hop-zone H]
+
+--zone/--hop-zone: after spawning, zone to H and back to Z (`#zone`), so the
+crowd is built by the zone LOAD (not governor-gated) instead of by post-load
+streaming, which builds one step per Green frame -- on the Pi that left 172
+of 200 spawned NPCs as placeholders for the whole run (measured, B964).
 """
 import argparse
 import math
@@ -29,6 +34,8 @@ def main():
     ap.add_argument("--idle", type=float, default=40.0)
     ap.add_argument("--hold-after", type=float, default=15.0)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--zone", default="")
+    ap.add_argument("--hop-zone", default="")
     a = ap.parse_args()
     sx, sy, sz = a.safe
     cx, cy, cz = sy, sx, sz + 1.0  # client frame
@@ -65,8 +72,27 @@ def main():
     # Facing it: an entity outside the frustum is culled, and a culled
     # entity is never built (processOneEntityBuildStep).
     lines.append("/face %.2f %.2f %.2f" % (centre[0], centre[1], cz))
-    lines.append("# phase: build (the crowd's models stream in)")
-    lines.append("wait %.1f" % (max(45.0, 0.6 * n) if n else 1.0))
+    if n and a.zone and a.hop_zone:
+        # Commands are held while the client is not fully connected, so each
+        # line after a #zone waits for that zone-in.
+        lines.append("# phase: reload (zone out and back: the load builds the crowd)")
+        lines.append("/say #zone %s" % a.hop_zone)
+        lines.append("wait 5")
+        lines.append("/loc")
+        lines.append("wait 3")
+        lines.append("/say #zone %s" % a.zone)
+        lines.append("wait 5")
+        lines.append("/loc")
+        lines.append("/say #set gm on")
+        lines.append("wait 2")
+        lines.append("/warp %.2f %.2f %.2f" % (cx, cy, cz))
+        lines.append("wait 1")
+        lines.append("/face %.2f %.2f %.2f" % (centre[0], centre[1], cz))
+        lines.append("# phase: build (stragglers stream in)")
+        lines.append("wait 20")
+    else:
+        lines.append("# phase: build (the crowd's models stream in)")
+        lines.append("wait %.1f" % (max(45.0, 0.6 * n) if n else 1.0))
     lines.append("/warp %.2f %.2f %.2f" % (stand[0], stand[1], cz))
     lines.append("wait 1")
     lines.append("/face %.2f %.2f %.2f" % (centre[0], centre[1], cz))

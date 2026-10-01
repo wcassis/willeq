@@ -26,6 +26,8 @@
 #          [--out DIR] [--owner NAME] [--bin PATH] [--res W H]
 #          [--char-level N --char-exp E]   (growthplane: min level 46)
 #          [--env K=V]...  extra client environment (e.g. WILLEQ_IMPOSTOR_FINISH=1)
+#          [--hop-zone Z]  the zone to hop to and back after the spawn (default
+#                          arena; "" = no hop, the crowd streams in post-load)
 #          [--dump]        dump a frame every 600 (8 max) for review -- off in
 #                          timed runs (each dump is a glReadPixels + PNG frame)
 # Lane: EQEMU_HOST (scripts/eqemu/env.sh), default local for this rig.
@@ -49,6 +51,7 @@ CHAR_LEVEL=""; CHAR_EXP=""
 ZONE_BOOT_S="${ZONE_BOOT_S:-150}"
 EXTRA_ENV=()
 DUMP=0
+HOP_ZONE="arena"   # zone out and back after the spawn: the LOAD builds the crowd
 LATE_SAVE_S=10
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -62,6 +65,7 @@ while [ $# -gt 0 ]; do
         --char-exp) CHAR_EXP="$2"; shift 2 ;;
         --env) EXTRA_ENV+=( "$2" ); shift 2 ;;
         --dump) DUMP=1; shift ;;
+        --hop-zone) HOP_ZONE="$2"; shift 2 ;;
         -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 3 ;;
     esac
@@ -156,7 +160,8 @@ run_one() {  # run_one <zone> <variant>
     sx="$(eqemu_sql "SELECT ROUND(safe_x,3) FROM zone WHERE short_name='${zone}';" | head -1 | tr -d '[:space:]')"
     sy="$(eqemu_sql "SELECT ROUND(safe_y,3) FROM zone WHERE short_name='${zone}';" | head -1 | tr -d '[:space:]')"
     sz="$(eqemu_sql "SELECT ROUND(safe_z,3) FROM zone WHERE short_name='${zone}';" | head -1 | tr -d '[:space:]')"
-    python3 "$REPO/scripts/b964/make_tour.py" --safe "$sx" "$sy" "$sz" --count "$n" --layout "$layout" --out "$dir/tour.txt"
+    python3 "$REPO/scripts/b964/make_tour.py" --safe "$sx" "$sy" "$sz" --count "$n" --layout "$layout" \
+        --zone "$zone" --hop-zone "$HOP_ZONE" --out "$dir/tour.txt"
     local -a envs=( "TZ=UTC" "${EXTRA_ENV[@]}" )
     case "$mode" in
         imp) ;;

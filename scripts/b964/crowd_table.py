@@ -59,22 +59,27 @@ def fold(log):
     lines = open(log, errors="replace").read().splitlines()
     t_face = t_move = t_hold = t_spawn_done = None
     frames = []      # (t, p50, p95, max, n)
+    fps_lines = []   # (t, fps): the client's own 'FPS: N' lines (every run, impostors or not)
     last_imp = {}
     imp_lines = []   # (t, dict)
     unit_max = 0.0
     ledger = {}
+    order = []       # ledger points in log order (a zone hop repeats them)
     gpu = {}
     owner = {}
     for ln in lines:
         t = ts_of(ln)
-        if "Script: executing '/face" in ln and t_face is None:
-            t_face = t
+        if "Script: executing '/face" in ln and t_move is None:
+            t_face = t   # the LAST /face before the first /move (a hop tour faces three times)
         elif "Script: executing '/move" in ln and t_move is None:
             t_move = t
         elif "Script: wait" in ln and t_move is not None and t_hold is None and t is not None and t > t_move + 20:
             t_hold = t
         if "Script: executing '/warp" in ln:
             t_spawn_done = t
+        mfps = re.search(r"\]   FPS: ([0-9.]+)$", ln)
+        if mfps and t is not None:
+            fps_lines.append((t, float(mfps.group(1))))
         if "[impostor-frames]" in ln:
             d = kv(ln)
             frames.append((t, float(d.get("frame_p50_ms", 0)), float(d.get("frame_p95_ms", 0)),
@@ -86,6 +91,7 @@ def fold(log):
         elif "[memledger] point=" in ln:
             d = kv(ln)
             ledger[d.get("point")] = d
+            order.append(d.get("point"))
         elif "[memgpu] point=" in ln:
             d = kv(ln)
             gpu[d.get("point")] = d
@@ -102,6 +108,13 @@ def fold(log):
 
     idle = window(t_face, t_move)
     moving = window(t_move, t_hold)
+
+    def fps_window(a, b):
+        sel = [v for t, v in fps_lines if a is not None and t > a and (b is None or t <= b)]
+        return statistics.median(sel) if sel else None
+
+    fps_idle = fps_window(t_face, t_move)
+    fps_moving = fps_window(t_move, t_hold)
     after = [f for f in frames if t_spawn_done and f[0] and f[0] > t_spawn_done]
     worst = max((f[3] for f in after), default=0.0)
     # Tier counts at the end of the idle phase (the last line before /move);
@@ -115,7 +128,33 @@ def fold(log):
         if k in at_idle:
             tiers[k] = at_idle[k]
     row_max = max((int(d.get("row", 0)) for _t, d in imp_lines), default=0)
-    return dict(idle=idle, moving=moving, imp=tiers, unit_max=unit_max, worst=worst, row_max=row_max,
+    # The point the crowd is measured at: steady_60s when it came after the
+    # last `ready`, else that last `ready` (a zone hop re-zones after the
+    # spawn and the steady timer does not re-arm).
+    pt = None
+    for name in order:
+        if name == "ready":
+            pt = "ready"
+        elif name == "steady_60s":
+            pt = "steady_60s"
+    peak = 0
+    d = os.path.dirname(log)
+    for name, col in (("samples.tsv", None), ("rss_samples.tsv", None)):
+        fp = os.path.join(d, name)
+        if os.path.exists(fp):
+            rows = open(fp).read().splitlines()
+            if rows:
+                hdr = rows[0].split("\t")
+                idx = next((i for i, h in enumerate(hdr) if h.lower().startswith("rss_anon") or h == "RssAnon"), None)
+                if idx is not None:
+                    for r in rows[1:]:
+                        f = r.split("\t")
+                        try:
+                            v = int(float(f[idx]))
+                            peak = max(peak, v)
+                        except (ValueError, IndexError):
+                            pass
+    return dict(idle=idle, moving=moving, fps_idle=fps_idle, fps_moving=fps_moving, imp=tiers, unit_max=unit_max, worst=worst, row_max=row_max, pt=pt, peak=peak,
                 ledger=ledger, gpu=gpu, owner=owner)
 
 
@@ -134,27 +173,31 @@ def fmt_phase(p):
 
 def main():
     print("(full/impostor/want/limit/gov/pages/cells: at the end of the idle phase; counters: whole run)")
-    print("| run | idle p50 / p95 / max ms | moving p50 / p95 / max ms | full | impostor | want | limit | gov | "
+    print("| run | idle FPS / moving FPS (client lines) | idle p50 / p95 / max ms | moving p50 / p95 / max ms | full | impostor | want | limit | gov | "
           "pages | cells (u/s) | created | refresh app/angle/flip | demotions | unit ms avg / max | worst frame-unit ms | "
-          "worst frame ms after spawn | draws | tex.impostor MiB (steady / max) | RssAnon | gpu_driver | owned | gpu_buffers | owned+gpu |")
-    print("|" + "---|" * 25)
+          "worst frame ms after spawn | draws | tex.impostor MiB (point / max) | point | RssAnon | RssAnon peak | gpu_driver | owned | gpu_buffers | owned+gpu |")
+    print("|" + "---|" * 28)
     for root in sys.argv[1:]:
         for rel, log in runs(root):
             f = fold(log)
             i = f["imp"]
-            pt = "steady_60s" if "steady_60s" in f["ledger"] else (list(f["ledger"])[-1] if f["ledger"] else None)
+            pt = f["pt"]
             L = f["ledger"].get(pt, {}) if pt else {}
             G = f["gpu"].get(pt, {}) if pt else {}
             O = f["owner"].get(pt, {}) if pt else {}
-            print("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s (%s/%s) | %s | %s/%s/%s | %s | %s / %s | %.1f | %.0f | %s | %s | %s | %s | %s | %s | %s |" % (
-                os.path.join(os.path.basename(os.path.normpath(root)), rel), fmt_phase(f["idle"]), fmt_phase(f["moving"]),
+            print("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s (%s/%s) | %s | %s/%s/%s | %s | %s / %s | %.1f | %.0f | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+                os.path.join(os.path.basename(os.path.normpath(root)), rel),
+                "%s / %s" % (("%.0f" % f["fps_idle"]) if f["fps_idle"] is not None else "-",
+                             ("%.0f" % f["fps_moving"]) if f["fps_moving"] is not None else "-"),
+                fmt_phase(f["idle"]), fmt_phase(f["moving"]),
                 i.get("full", "-"), i.get("impostor", "-"), i.get("want", "-"), i.get("limit", "-"), i.get("gov", "-"),
                 i.get("pages", "-"), i.get("cells", "-"), i.get("unique", "-"), i.get("shared", "-"),
                 i.get("created", "-"), i.get("refresh_appearance", "-"), i.get("refresh_angle", "-"),
                 i.get("refresh_flip", "-"), i.get("demotions", "-"), i.get("unit_ms_avg", "-"), i.get("unit_ms_max", "-"),
                 f["unit_max"], f["worst"], i.get("draws", "-"),
-                (mib(O.get("live")) if O else "0") + " / " + mib(f["row_max"]),
-                mib(L.get("rss_anon")), mib(L.get("gpu_driver", "").split("/")[0] if L.get("gpu_driver") else None),
+                (mib(O.get("live")) if O else "0") + " / " + mib(f["row_max"]), pt or "-",
+                mib(L.get("rss_anon")), "%.2f" % (f["peak"] / 1024.0),
+                mib(L.get("gpu_driver", "").split("/")[0] if L.get("gpu_driver") else None),
                 mib(G.get("owned")), mib(G.get("gpu_buffers")), mib(G.get("owned_plus_gpu_buffers"))))
 
 
