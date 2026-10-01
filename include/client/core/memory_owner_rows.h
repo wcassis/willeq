@@ -58,15 +58,6 @@ inline void clearOwnerRow(const std::string& owner) {
     owner_rows_detail::rows().erase(owner);
 }
 
-// Copy of one row; false when it is not published.
-inline bool getOwnerRow(const std::string& owner, OwnerRow& out) {
-    std::lock_guard<std::mutex> lock(owner_rows_detail::mutex());
-    auto it = owner_rows_detail::rows().find(owner);
-    if (it == owner_rows_detail::rows().end()) return false;
-    out = it->second;
-    return true;
-}
-
 // The `[memledger-owner]` lines for `point`, newline separated, no trailing
 // newline; empty when nothing is published.
 inline std::string ownerRowsToLogLines(const std::string& point) {

@@ -38,7 +38,6 @@ public:
     // Grabbed until the next clearQuads().
     void addNameNode(irr::scene::ISceneNode* node);
 
-    int quadCount() const { return quadCount_; }
     int drawCallsLastRender() const { return drawCallsLastRender_; }
     bool hasProgram() const { return materialType_ >= 0; }
 
@@ -46,7 +45,6 @@ public:
     // program, 1 = the built-in alpha test (no un-premultiply, no fog: B952's
     // billboard), 2 = the shipped program with its fog off.
     void setDiagnosticMode(int mode);
-    int diagnosticMode() const { return diagMode_; }
 
 private:
     struct Quad {

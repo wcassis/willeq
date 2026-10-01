@@ -111,7 +111,7 @@ def fold(log):
         if t is not None and t_move is not None and t <= t_move:
             at_idle = d
     tiers = dict(last_imp)
-    for k in ("candidates", "full", "impostor", "want", "limit", "gov", "pages", "cells", "unique", "shared"):
+    for k in ("candidates", "full", "impostor", "want", "limit", "gov", "pages", "cells", "unique", "shared", "draws"):
         if k in at_idle:
             tiers[k] = at_idle[k]
     return dict(idle=idle, moving=moving, imp=tiers, unit_max=unit_max, worst=worst,

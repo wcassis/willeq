@@ -120,11 +120,6 @@ bool ImpostorCache::acquireCell(uint64_t key, uint32_t frame, bool& isNew) {
     }
 }
 
-bool ImpostorCache::hasCell(uint64_t key) const {
-    CellRef r;
-    return cells_.find(key, r);
-}
-
 void ImpostorCache::releaseCell(uint64_t key) {
     cells_.release(key);
     captures_.erase(key);

@@ -1506,3 +1506,39 @@ the five gate zones, golden and coverage invocations, stay under every new
 budget at the asserted point (worst 79.6 % of the GPU texture budget, qeynos2
 golden). Recomputation:
 `refactor/B943/budget_ratchet_census.py`; write-up `refactor/B943/README.md`.
+
+## 2026-09-30 — impostor billboards: the design and the budget (Will; recorded by B964, #282)
+
+**Will, in chat, on B952's measurement and its "Production port" design
+(`refactor/B952/README.md`): "I agree with the proposed imposter
+implementation. proceed".** And on its budget candidates: **"Your recommended
+impostor budget sounds fine"** -- 128^2 impostors, a new `tex.impostor` budget of
+**20 MiB** (200 unique x 128^2 = 12.59 MiB logical x 1.25 = 15.74 MiB; the Pi
+measured 15.79 MiB, x 1.25 = 19.74 MiB).
+
+**Decision (as built by B964):** distant characters are drawn as billboards of a
+capture of themselves, from an atlas of 128^2 cells in 1024^2 pages, with one
+shared capture render target. The cap is the blessed rule
+`(n + 1) * 4 s^2 + 6 s^2 <= budget` with the page as the allocation unit (4
+pages = 256 unique cells at 20 MiB); past it a spawn shares its
+race/gender/texture cell. The tier is a distance floor (80 units) plus the
+production `FrameBudgetGovernor` narrowing the full-model set; creation and
+refresh are scheduled units before `beginScene()`, refreshed by appearance
+changes, tier flips and the view angle, never by a timer. Will's framing:
+adaptive LOD, impostors and the frame governor are wanted willeq features (the
+oracle governs world functionality, never performance); memory first, frame rate
+second; 100 % accounting.
+
+**Classification:** a **non-original LOD feature on a baseline capability**
+(the original client drew every character as its model). `WILLEQ_BASELINE=1`
+turns it off, so the baseline is unchanged; it is ON by default only on the
+`orangepi` preset (`impostorTextureMemoryBytes` = 20 MiB, pinned in
+`tests/test_constrained_renderer.cpp`); its memory is its own row
+(`[memledger-owner] owner=tex.impostor`) either way.
+
+**Implications:** the budget is a per-subsystem budget beside B943's
+(`ConstrainedRendererConfig::impostorTextureMemoryBytes`), not a
+`memoryLedgerBudgets` category: impostor pixels are not allocator memory (Lima
+GEM on the Pi, llvmpipe's heap inside `gpu_driver` on x86). Design, numbers and
+what is not verified: `refactor/B964/README.md`; the code map:
+`src/client/graphics/CLAUDE.md`, "Impostor billboards".

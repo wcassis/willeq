@@ -44,6 +44,10 @@
 #          memory cgroup -- rendered_zone_run.py --own-cgroup -- so its
 #          gpu_buffers ledger row reads the Lima GEM bytes from memory.stat;
 #          this opts out, and the row falls back to the mapped lower bound)
+#          [--stop-point P]   (B964: the ledger point after which the runner
+#          ends the client, rendered_zone_run.py --stop-point; default its
+#          steady_60s -- a --tour longer than that needs a later point, or
+#          a name that never comes, so the tour's own /q ends the run)
 #          [--allow-vm-lane]   (B909's A/B, scripts/pi/collision_ab.sh:
 #          --tour replaces the /loc-wait-/q script, --env adds client
 #          environment, --drive-keys plays scripts/pi/uinput_drive.py's fixed
@@ -107,6 +111,7 @@ DRIVE_KEYS=0
 ALLOW_VM=0
 SNAP_POINTS=""
 OWN_CGROUP=1
+STOP_POINT=""
 MESA="${WILLEQ_MESA:-nollvm}"
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -128,7 +133,8 @@ while [ $# -gt 0 ]; do
         --snap-points) SNAP_POINTS="$2"; shift 2 ;;
         --mesa) MESA="$2"; shift 2 ;;
         --shared-cgroup) OWN_CGROUP=0; shift ;;
-        -h|--help) sed -n '2,68p' "$0"; exit 0 ;;
+        --stop-point) STOP_POINT="$2"; shift 2 ;;
+        -h|--help) sed -n '2,72p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -353,7 +359,7 @@ run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     # shellcheck disable=SC2086
     local remote="rm -rf '$pidir' && mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && ${drive}\
 env TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTRA_ENV \
-python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} $([ "$OWN_CGROUP" -eq 1 ] && echo --own-cgroup) -- \
+python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} ${STOP_POINT:+--stop-point $STOP_POINT} $([ "$OWN_CGROUP" -eq 1 ] && echo --own-cgroup) -- \
 '$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
 --eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
 --dump-frames-dir '$pidir/frames' --dump-every 100 --dump-max-frames 3 \

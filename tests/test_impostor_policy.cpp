@@ -27,8 +27,11 @@ TEST(ImpostorBudget, BlessedSizesAndTheCapCheck) {
     EXPECT_EQ(kPageBytes, 4u * 1024u * 1024u);
     // The blessed per-impostor rule (n + 1) * 4 s^2 + 6 s^2 <= B at 20 MiB:
     // 318 fit, the 319th does not.
-    EXPECT_TRUE(blessedUniqueFits(317, kBlessedBudget));
-    EXPECT_FALSE(blessedUniqueFits(318, kBlessedBudget));
+    auto blessedFits = [](size_t uniqueNow) {
+        return (uniqueNow + 1) * kCellBytes + kScratchBytes <= kBlessedBudget;
+    };
+    EXPECT_TRUE(blessedFits(317));
+    EXPECT_FALSE(blessedFits(318));
     // With the page as the allocation unit: 4 pages + the scratch fit, 5 do not.
     EXPECT_EQ(maxPagesForBudget(kBlessedBudget), 4);
     EXPECT_LE(rowBytes(4, true), kBlessedBudget);

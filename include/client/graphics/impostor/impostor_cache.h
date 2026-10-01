@@ -80,7 +80,6 @@ public:
     // The cell for `key`, allocating (and creating its page) if needed.
     // Returns false when the cap refuses it.
     bool acquireCell(uint64_t key, uint32_t frame, bool& isNew);
-    bool hasCell(uint64_t key) const;
     void touch(uint64_t key, uint32_t frame) { cells_.touch(key, frame); }
     void releaseCell(uint64_t key);
     // Least-recently-drawn unique key, for demotion.

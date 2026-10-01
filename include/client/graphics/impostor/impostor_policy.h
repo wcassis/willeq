@@ -38,11 +38,6 @@ constexpr size_t kCellBytes = static_cast<size_t>(kCellPx) * kCellPx * 4;
 constexpr size_t kPageBytes = static_cast<size_t>(kPagePx) * kPagePx * 4;
 constexpr size_t kScratchBytes = static_cast<size_t>(kCellPx) * kCellPx * (4 + 2);  // RGBA8 + DEPTH16
 
-// The blessed per-impostor formula, kept for the record and the tests.
-inline bool blessedUniqueFits(size_t uniqueNow, size_t budgetBytes) {
-    return (uniqueNow + 1) * kCellBytes + kScratchBytes <= budgetBytes;
-}
-
 // How many pages the budget admits (the scratch is always paid first).
 inline int maxPagesForBudget(size_t budgetBytes) {
     if (budgetBytes <= kScratchBytes) return 0;
