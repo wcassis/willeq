@@ -54,7 +54,8 @@ TEST(PlayerLightLut, MonotonicNonIncreasingAndZeroAtTheEnd) {
         for (int i = 1; i < PL::kLutSize; ++i) {
             const float v = halfToFloat(lut[i * 2 + 1]);
             EXPECT_LE(v, prev) << "level " << level << " texel " << i;
-            EXPECT_EQ(lut[i * 2], lut[i * 2 + 1]) << "L and A carry the same value";
+            EXPECT_NEAR(halfToFloat(lut[i * 2]), (i + 0.5f) / PL::kLutSize, 1e-3f)
+                << "L is the texel's coordinate d/R (/shaderdebug 3)";
             prev = v;
         }
         EXPECT_EQ(halfToFloat(lut[(PL::kLutSize - 1) * 2 + 1]), 0.0f) << "level " << level;

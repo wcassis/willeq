@@ -116,13 +116,14 @@ inline uint16_t floatToHalf(float f) {
     return static_cast<uint16_t>(sign | ((exp + 15) << 10) | (mant >> 13));
 }
 
-// Fill a 256x1 LUMINANCE_ALPHA half-float table: L = A = attenuation (L is
-// read only by /shaderdebug 3).
+// Fill a 256x1 LUMINANCE_ALPHA half-float table: A = the attenuation; L = the
+// texel's own coordinate d / R, which no lighting term reads -- it makes
+// /shaderdebug 3 (and the benchmark's --shader-debug 3) draw the distance to
+// the light in red (d / R) beside the attenuation in green.
 inline void fillLut(uint16_t* data, float c, float l, float q, float range) {
     for (int i = 0; i < kLutSize; ++i) {
-        const uint16_t h = floatToHalf(lutAtten(i, c, l, q, range));
-        data[i * 2] = h;
-        data[i * 2 + 1] = h;
+        data[i * 2] = floatToHalf((static_cast<float>(i) + 0.5f) / static_cast<float>(kLutSize));
+        data[i * 2 + 1] = floatToHalf(lutAtten(i, c, l, q, range));
     }
 }
 

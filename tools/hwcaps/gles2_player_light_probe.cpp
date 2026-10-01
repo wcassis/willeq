@@ -20,7 +20,8 @@
 // player_light_shader.h), not a copy. `--assert` turns the probe into the
 // regression net (ctest PlayerLightProbeMonotonic): at the world origin AND at
 // the iceclad f2 pose, on the wall and the floor, the `ship` curve must
-//   (1) never rise with distance (B968) -- from 0.5 unit out, kNearFloor,
+//   (1) never rise with distance (B968) -- from 0.5 unit out (kNearFloor),
+//       within one 8-bit step of Lima's FP16 rounding (kMonoTolerance),
 //   (2) be 0 from the LUT's range R on,
 //   (3) match the per-vertex family color * N.L^ / (c + l*d + q*d^2) within
 //       kRefTolerance, and
@@ -365,6 +366,12 @@ const float kFarOrigin[3] = {7234.6f, 13.9f, 5619.3f};
 // --assert tolerances, in 8-bit steps of the R channel.
 constexpr int kRefTolerance = 2;     // vs the CPU reference curve (FP16 LUT + varying)
 constexpr int kOriginTolerance = 1;  // origin 0 vs the iceclad pose
+// Monotonic: no column may exceed the lowest value at any nearer column by
+// more than this. Lima's FP16 FS rounds values sitting at n + 0.5 either way
+// in neighbouring columns (17,16,17,16 ...), so its curve has 1-step rises
+// that never accumulate (B967 Pi run); llvmpipe's has none. A brightening
+// with distance (B968: +88 steps by 400 units) is far outside it.
+constexpr int kMonoTolerance = 1;
 // The varying-range quad's far end: past FP16's d^2 range after the 1/64
 // pre-scale (16,384 units) and past the largest era zone's diagonal (measured
 // in refactor/B967/README.md).
@@ -467,13 +474,18 @@ int runAssertions(int W, int H, bool b965) {
         std::vector<unsigned char> near = drawRow(prog, lut, scale, origin0, s, kMaxDist, W, H);
         std::vector<unsigned char> far = drawRow(prog, lut, scale, kFarOrigin, s, kMaxDist, W, H);
         int rises = 0, maxRise = 0, refMax = 0, refAt = -1, originMax = 0, originAt = -1, pastR = 0;
+        int aboveMin = 0;                 // worst excess over the running minimum
+        int runMin[2] = {1 << 30, 1 << 30};  // per row: near, far
         for (int x = 0; x < W; ++x) {
             const float t = (x + 0.5f) * kMaxDist / W;
             const float d = std::sqrt(t * t + s.drop * s.drop);
             const float tPrev = (x - 0.5f) * kMaxDist / W;
             if (std::sqrt(tPrev * tPrev + s.drop * s.drop) < kNearFloor) continue;
-            for (const std::vector<unsigned char>* row : {&near, &far}) {
+            for (int ri = 0; ri < 2; ++ri) {
+                const std::vector<unsigned char>* row = ri == 0 ? &near : &far;
                 const int v = (*row)[x * 4];
+                if (runMin[ri] != (1 << 30) && v - runMin[ri] > aboveMin) aboveMin = v - runMin[ri];
+                if (v < runMin[ri]) runMin[ri] = v;
                 if (x > 0) {
                     const int rise = v - (*row)[(x - 1) * 4];
                     if (rise > 0) {
@@ -494,12 +506,13 @@ int runAssertions(int W, int H, bool b965) {
                 originAt = x;
             }
         }
-        const bool monoOk = rises == 0;
+        const bool monoOk = aboveMin <= kMonoTolerance;
         const bool refOk = refMax <= kRefTolerance;
         const bool originOk = originMax <= kOriginTolerance;
         const bool pastOk = pastR == 0;
-        printf("[plight-assert] %s %s: monotonic (rises=%d, max rise=%d)\n", monoOk ? "PASS" : "FAIL", s.name, rises,
-               maxRise);
+        printf("[plight-assert] %s %s: monotonic, worst excess over a nearer column %d (tolerance %d; "
+               "1-column rises=%d, max %d)\n",
+               monoOk ? "PASS" : "FAIL", s.name, aboveMin, kMonoTolerance, rises, maxRise);
         printf("[plight-assert] %s %s: vs per-vertex family max |err|=%d at d=%.2f (tolerance %d)\n",
                refOk ? "PASS" : "FAIL", s.name, refMax, refAt >= 0 ? (refAt + 0.5f) * kMaxDist / W : 0.0f,
                kRefTolerance);
