@@ -266,14 +266,16 @@ it without taking that measurement first.
   animated human mesh below its working set re-binds pixel-identical; red and
   ASan heap-use-after-free with the destroy path forced) and
   `tests/test_texture_eviction_residency.cpp`.
-- **B954** (A) → issue #272. `COpenGLES2Driver::createScreenShot()` leaks
+- ~~**B954** (A) → issue #272. `COpenGLES2Driver::createScreenShot()` leaked
   its whole pixel buffer on every call (`createImageFromData(...,
-  ownForeignMemory=true, deleteMemory=false)`, and `CImage` frees only with
-  `DeleteMemory`). Reached by `RdpComponent::captureFrameForRDP()` every frame
-  while an RDP client is connected, and by `IrrlichtRenderer::saveScreenshot()`.
-  Measured by B952: +9.6 MB RssAnon per five 800x600 screenshots on x86 with
-  every ledger category flat; the Pi OOM-killed the pixel test at anon-rss
-  289 MB.
+  ownForeignMemory=true, deleteMemory=false)`; `CImage` frees only with
+  `DeleteMemory`), reached by `RdpComponent::captureFrameForRDP()` every frame
+  while an RDP client is connected.~~ **FIXED** (B958/B954 unit,
+  `refactor/B958/README.md`): `deleteMemory=true`. Pinned by
+  `tests/test_screenshot_leak.cpp` -- 16 screenshots at 512x384 grow glibc's
+  in-use heap and the ledger by 0 B; 12,648,448 B with the old argument (red).
+  `saveScreenshot()`, `COGLES2Texture::lock()/unlock()` and every tool caller
+  checked: no leak of their own.
 - ~~**B955** (A) → issue #273. GPU buffer memory on the Orange Pi (Lima GEM,
   shmem-backed, unmapped) is on no ledger row and outside `owned =
   RssAnon - gpu_driver`; this kernel's DRM fds publish no `drm-*` memory keys.
@@ -646,18 +648,32 @@ it without taking that measurement first.
 - **B956** (B) → issue #274. Benchmark impostors have a dark silhouette
   fringe: bilinear sampling against the capture's (0,0,0,0) clear with the
   built-in shader's hard 0.5 alpha test. Measured by B952 (the largest
-  single-pixel difference is background-vs-near-black, 60, at every size).
+  single-pixel difference is background-vs-near-black, 60, at every size). B958 replaced the
+  built-in fwidth() threshold (x86) with the constant 0.5: the x86 fringe
+  narrowed (80 units, 128^2: silhouette mismatch 6.1 % -> 4.1 % of the
+  footprint), and the Pi now draws it too (5.0 %) -- not gone.
 - **B963** (B) → issue #281. On Lima the benchmark gives every static
   hardware buffer its own 4 KiB-minimum GEM BO: qeynos2 9,355 BOs = 36.5 MiB
   (+9.6 MiB kernel slab) for 1.73 MiB of vertex/index data. The client has no
   such BO population, so Pi benchmark GPU-memory figures (B952's included) are
   not the client's. Measured by B955 (LD_PRELOAD BO census).
-- **B958** (B) → issue #276. Benchmark impostor billboards render inverted on
-  Lima (Orange Pi): the quad is drawn where the impostor texture is
-  transparent and the model's texels are never drawn; the texture content is
-  right (Pi readback, and a CPU re-upload renders the same). Measured by B952's
-  Pi pixel test; llvmpipe renders the same code correctly. Blocks the
-  impostor port on the Pi.
+- ~~**B958** (B) → issue #276. Benchmark impostor billboards rendered inverted
+  on Lima (Orange Pi).~~ **FIXED** (`refactor/B958/README.md`): Lima runs a
+  `discard` whose comparison operand depends on a derivative INVERTED, and the
+  built-in AlphaTest3D used `clamp(0.5 - fwidth(a), 0.1, 0.5)` whenever
+  `GL_OES_standard_derivatives` was exposed. Every device now compiles the
+  constant 0.5 threshold (as the zone shaders already did). Measured with
+  `tools/hwcaps/gles2_alpha_test_probe` on both Pi Mesa builds; the B952 pixel
+  test at 80 units, 128^2: interior/full 0.7 % -> 97.6 % on the Pi (x86 97.3 %).
+  Follow-ups: #277 (B959), #278 (B960).
+- **B959** (B) → issue #277. The GLES2 program-binary cache is written to
+  `config/shader_cache` relative to the CWD (`COpenGLES2Driver::initDriver()`),
+  not through `ResolveCachePathForWrite()`; B952's runs left 46 binaries in an
+  NFS checkout, and a CWD without `config/` silently saves nothing. Found by B958.
+- **B960** (B, *unconfirmed*) → issue #278. Which production draws reached the
+  built-in AlphaTest3D on the Pi -- and so drew inverted -- before B958.
+  Confirm by counting `useProgram(EOGLES2SP_ALPHA3D)` per frame in a rendered
+  Pi zone run on a pre-B958 build.
 
 ## C — needs Will's decision
 

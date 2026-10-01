@@ -2213,6 +2213,16 @@ IF(EQT_GRAPHICS)
     ENDIF()
     TARGET_LINK_LIBRARIES(gles2_zone_benchmark ${ZONE_BENCH_LIBS})
 
+    # B958 (GitLab #276): the alpha-test probe -- one RGBA texture drawn through
+    # the driver's built-in alpha-test program and through raw copies of it
+    # (freshly compiled and program-binary round-tripped), pixel counts only.
+    ADD_EXECUTABLE(gles2_alpha_test_probe tools/hwcaps/gles2_alpha_test_probe.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gles2_alpha_test_probe PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_alpha_test_probe PRIVATE EQT_HAS_DRM)
+    ENDIF()
+    TARGET_LINK_LIBRARIES(gles2_alpha_test_probe ${ZONE_BENCH_LIBS})
+
     # Shader diagnostic tool — renders test modules through all debug shader modes
     ADD_EXECUTABLE(gles2_shader_diagnostic
         tools/hwcaps/gles2_shader_diagnostic.cpp

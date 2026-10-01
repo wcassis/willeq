@@ -69,7 +69,12 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
     }
 
 #ifdef EQT_HAS_GLES2
-    // Lima driver's fwidth() returns degenerate values — use base alpha shaders.
+    // Constant-threshold alpha shaders on every GLES2 build. B958 measured WHY
+    // the fwidth() variants cannot be used: fwidth() itself is correct on Lima,
+    // but Lima runs a discard whose comparison operand depends on a derivative
+    // INVERTED (opaque texels dropped, transparent ones drawn) --
+    // refactor/B958/README.md, tools/hwcaps/gles2_alpha_test_probe.cpp. The
+    // driver's built-in AlphaTest3D uses the same constant threshold since B958.
     const char* fragmentAlphaSrc = FRAGMENT_SHADER_ALPHA_SRC_BASE;
     const char* atlasFragmentAlphaSrc = ATLAS_FRAGMENT_SHADER_ALPHA_SRC_BASE;
     const char* fragmentAlphaRGBASrc = FRAGMENT_SHADER_ALPHA_RGBA_SRC;

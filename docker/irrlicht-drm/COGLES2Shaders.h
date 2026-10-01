@@ -81,8 +81,9 @@ public:
     ~COGLES2ShaderManager();
 
     // Compile and link all built-in programs. Returns true if at least Color2D succeeded.
-    // If hasStandardDerivatives is true, alpha-test shaders use fwidth() for smoother edges.
-    bool init(bool hasStandardDerivatives = false);
+    // B958: the alpha-test programs use the constant 0.5 threshold on every
+    // device; the fwidth() variant is miscompiled by Lima (COGLES2Shaders.cpp).
+    bool init();
 
     // Activate a program. Returns false if program unavailable.
     bool useProgram(EOGLES2ShaderProgram prog);
