@@ -27,8 +27,7 @@ B955: the gpu_buffers columns (appended at the END). The client's [memgpu]
 line at ready and steady_60s: GPU buffer memory outside RssAnon (Lima GEM),
 its source (memcg_shmem when the rig ran the client in its own cgroup), the
 renderer's logical tally beside it and the residual, the cgroup's kernel
-bytes, and owned + gpu_buffers (printed for Will's ruling; owned stays what
-the 64 MB target is read on). A frame the client dumped into the Pi's tmpfs
+bytes, and owned. A frame the client dumped into the Pi's tmpfs
 before a point is charged to the same cgroup's shmem, so its bytes are named
 (dumped_png_bytes_*) and subtracted in gpu_buffers_net_*. The scanout
 framebuffers (CMA, not shmem) come from the rig's root snapshots. A Pi run
@@ -44,6 +43,15 @@ with the GEM census shim. A run whose client prints the B962 tally
 (logical_depth_stencil on its [memgpu] line) and reads the row from its own
 cgroup FAILS when that exceeds GPU_UNNAMED_BOUND (gpu_unnamed_over_bound): a
 new unnamed allocation, or a regression of a B962 fix, shows there first.
+
+B978 (Will, 2026-10-01: GPU buffers count toward the 64 MB target): every
+owned column is owned=RssAnon-gpu_driver+gpu_buffers (scripts/ci/owned_memory.py),
+the buffers added only when the row is outside RssAnon (the Pi) and net of the
+frames the rig dumped into the cgroup's tmpfs. owned_peak is taken per ledger
+point (the [memledger] line carries gpu_buffers since B955); the 2 s RssAnon
+sample peak adds the gpu_buffers at ready. The RssAnon component is printed
+beside it (owned_rss_anon_steady, owned_rss_anon_peak). Logs written before
+B978 are read too (owned_memory.owned_from_memgpu).
 """
 import argparse
 import glob
@@ -51,9 +59,13 @@ import json
 import os
 import re
 import statistics
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ci"))
+import owned_memory  # noqa: E402  B978: owned=RssAnon-gpu_driver+gpu_buffers
 
 RSS_TARGET = 64 * 1024 * 1024       # the design yardstick (printed, not a gate); judged on
-                                    # OWNED = RssAnon - gpu_driver (Will, 2026-09-29, B933)
+                                    # OWNED = RssAnon - gpu_driver + gpu_buffers (B933, B978)
 RSS_CEILING = 256 * 1024 * 1024     # the failing bound
 GPU_UNNAMED_BOUND = 10 * 1024 * 1024  # B962: measured 5.0-7.7 MiB fixed, 11.4-17.3 MiB before (refactor/B962/README.md)
 DRIVER_SO = re.compile(r"owner=(so:(libLLVM|libgallium|libEGL|libGLES|libGLdispatch|libdrm|libgbm|libglapi)[^ ]*"
@@ -72,9 +84,11 @@ HEADER = ("zone expansion s3d_bytes attempt verdict signature exit_code kill_rea
           # B955: appended at the END as well
           "gpu_buffers_src gpu_buffers_ready gpu_buffers_steady gpu_logical_ready gpu_logical_steady "
           "gpu_residual_steady dumped_png_bytes_steady gpu_buffers_net_steady memcg_kernel_steady "
-          "drm_mapped_steady owned_steady owned_plus_gpu_buffers_steady scanout_fb_bytes "
+          "drm_mapped_steady owned_steady owned_rss_anon_steady scanout_fb_bytes "
           # B962: appended at the END
-          "gpu_depth_stencil_steady gpu_unnamed_steady").split()
+          "gpu_depth_stencil_steady gpu_unnamed_steady "
+          # B978: appended at the END
+          "owned_rss_anon_peak gpu_buffers_at_owned_peak").split()
 
 
 def mesa_proof(run, expect, prefix):
@@ -291,14 +305,25 @@ def main():
                         break
                     sampled = max(sampled, int(c[1]) * 1024)
     peak = max(ledger_max, sampled)
-    # B933: the 64 MB target is read on owned = RssAnon - gpu_driver. Ledger
-    # points subtract their own gpu_driver; a 2 s RssAnon sample has no ledger
-    # row of its own, so it subtracts the gpu_driver at ready (the driver heap
-    # is built by then), else the largest seen before the move.
-    owned_pts = [int(p[1].get("rss_anon", 0)) - p[2].get("gpu_driver", 0)
-                 for p in pts.values() if p[0] < move_epoch]
+    # B933 + B978: the 64 MB target is read on owned = RssAnon - gpu_driver +
+    # gpu_buffers. Ledger points subtract their own gpu_driver and add their own
+    # gpu_buffers when outside RssAnon (net of the frames dumped before the
+    # point); a 2 s RssAnon sample has no ledger row of its own, so it uses the
+    # gpu_driver and gpu_buffers at ready (both built by then), else the largest
+    # seen before the move.
+    def gpu_buf_net(p):
+        if not owned_memory.gpu_buffers_outside(p[1].get("gpu_buffers_src"),
+                                                p[1].get("gpu_buffers_outside_rss_anon")):
+            return 0
+        return max(0, int(p[1].get("gpu_buffers", 0)) - png_bytes_before(a.run, p[0]))
+    owned_pts = [(owned_memory.owned_rss_anon(p[1].get("rss_anon", 0), p[2].get("gpu_driver", 0)),
+                  gpu_buf_net(p)) for p in pts.values() if p[0] < move_epoch]
     gpu_for_samples = gpu or max([p[2].get("gpu_driver", 0) for p in pts.values()] + [0])
-    owned_peak = max(0, max(owned_pts + [sampled - gpu_for_samples if sampled else 0]))
+    gbuf_for_samples = gpu_buf_net(ready) if ready else max([g for _a, g in owned_pts] + [0])
+    if sampled:
+        owned_pts.append((owned_memory.owned_rss_anon(sampled, gpu_for_samples), gbuf_for_samples))
+    owned_rss_anon_peak, gbuf_at_peak = max(owned_pts, key=lambda t: t[0] + t[1]) if owned_pts else (0, 0)
+    owned_peak = owned_rss_anon_peak + gbuf_at_peak
     peak_point = ""
     if summ.get("peak_rss_anon_epoch"):
         pe = summ["peak_rss_anon_epoch"]
@@ -342,6 +367,15 @@ def main():
     b962_tally = bool(mg_steady) and "logical_depth_stencil" in mg_steady[1]
     unnamed = ((gv(mg_steady, "gpu_buffers") - png_steady - gv(mg_steady, "logical"))
                if b962_tally else "")
+    # B978: owned at steady = RssAnon - gpu_driver + gpu_buffers (outside RssAnon,
+    # net of the frames dumped before the point), from either [memgpu] shape.
+    owned_steady = owned_anon_steady = ""
+    if mg_steady:
+        o, owned_anon_steady, added = owned_memory.owned_from_memgpu(mg_steady[1])
+        if o is not None:
+            owned_steady = o - (min(png_steady, added) if added else 0)
+        else:
+            owned_anon_steady = ""
     unnamed_over = (b962_tally and mg_steady[1].get("source") == "memcg_shmem"
                     and unnamed > GPU_UNNAMED_BOUND)
     checks = [
@@ -397,11 +431,12 @@ def main():
         "dumped_png_bytes_steady": png_steady,
         "gpu_buffers_net_steady": (gv(mg_steady, "gpu_buffers") - png_steady) if mg_steady else "",
         "memcg_kernel_steady": gv(mg_steady, "memcg_kernel"), "drm_mapped_steady": gv(mg_steady, "drm_mapped"),
-        "owned_steady": gv(mg_steady, "owned"),
-        "owned_plus_gpu_buffers_steady": gv(mg_steady, "owned_plus_gpu_buffers"),
+        "owned_steady": owned_steady,
+        "owned_rss_anon_steady": owned_anon_steady,
         "scanout_fb_bytes": scanout_bytes(a.run),
         "gpu_depth_stencil_steady": gv(mg_steady, "logical_depth_stencil") if b962_tally else "",
         "gpu_unnamed_steady": unnamed,
+        "owned_rss_anon_peak": owned_rss_anon_peak, "gpu_buffers_at_owned_peak": gbuf_at_peak,
     }
     clean = {k: str(v).replace("\t", " ").replace("\n", " ") for k, v in row.items()}
     new = not os.path.exists(a.tsv) or os.path.getsize(a.tsv) == 0
@@ -411,11 +446,14 @@ def main():
         f.write("\t".join(clean[h] for h in HEADER) + "\n")
     with open(os.path.join(a.run, "details.json"), "w") as f:
         json.dump({"row": row, "frames": fdetail, "fps_after_ready": fps,
-                   "points": {k: {"epoch": v[0], "rss_anon": v[1].get("rss_anon"), "categories": v[2]}
+                   "points": {k: {"epoch": v[0], "rss_anon": v[1].get("rss_anon"), "categories": v[2],
+                                  # B978: the gpu_buffers this point adds to owned
+                                  "gpu_buffers_added": gpu_buf_net(v)}
                               for k, v in pts.items()}}, f, indent=1)
-    print("%s %s %s peak_rss_anon=%.1fMB steady=%.1fMB gpu_buffers_steady=%s(%s) fps_med=%s frames=%d/%d "
-          "libgallium=%s libLLVM=%s mesa=%s %s"
+    print("%s %s %s peak_rss_anon=%.1fMB steady=%.1fMB owned_peak(%s)=%.1fMB gpu_buffers_steady=%s(%s) "
+          "fps_med=%s frames=%d/%d libgallium=%s libLLVM=%s mesa=%s %s"
           % (a.zone, a.attempt, verdict, peak / 1048576.0, rss_steady / 1048576.0,
+             owned_memory.OWNED_LABEL, owned_peak / 1048576.0,
              ("%.1fMB" % (row["gpu_buffers_steady"] / 1048576.0)) if row["gpu_buffers_steady"] != "" else "-",
              row["gpu_buffers_src"] or "-",
              row["fps_median"], n_good, n_png, ",".join(gallium) or "-", llvm or "-",

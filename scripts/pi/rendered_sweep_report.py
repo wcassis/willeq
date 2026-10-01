@@ -45,7 +45,8 @@ def table(rows, title):
     return "\n".join(out)
 
 
-OWNED_KEYS = ("owned_peak",)   # B933: the only keys the 64 MB target is counted on
+OWNED_KEYS = ("owned_peak",)   # B933/B978: the only keys the 64 MB target is counted on
+OWNED_LABEL = "owned=RssAnon-gpu_driver+gpu_buffers"   # B978: scripts/ci/owned_memory.py
 
 
 def dist(rows, key, label):
@@ -53,10 +54,11 @@ def dist(rows, key, label):
     if not v:
         return "- %s: no data" % label
     over256 = sum(x > 256 * MB for x in v)
-    # B933 (Will, 2026-09-29: "64 MB excludes driver memory"): "over 64 MB" is
-    # counted only on OWNED memory (RssAnon - gpu_driver); a whole-RssAnon
-    # figure is counted against the 256 MB failing bound only.
-    over64 = ("over 64 MB (owned=RssAnon-gpu_driver): %d/%d; " % (sum(x > 64 * MB for x in v), len(v))
+    # B933 (Will, 2026-09-29: "64 MB excludes driver memory") + B978 (Will,
+    # 2026-10-01: GPU buffers count): "over 64 MB" is counted only on OWNED
+    # memory (RssAnon - gpu_driver + gpu_buffers); a whole-RssAnon figure is
+    # counted against the 256 MB failing bound only.
+    over64 = ("over 64 MB (%s): %d/%d; " % (OWNED_LABEL, sum(x > 64 * MB for x in v), len(v))
               if key in OWNED_KEYS else "")
     return ("- %s (n=%d): min %.1f, median %.1f, max %.1f MB; %sover 256 MB (whole RssAnon): %d/%d"
             % (label, len(v), v[0] / MB, statistics.median(v) / MB, v[-1] / MB, over64, over256, len(v)))
@@ -89,7 +91,14 @@ def main():
     print("- zones with a verified own-zone ready row (any attempt/leg): %d/%d; of those passing: %d"
           % (len(ran), len(first), sum(r["verdict"] == "pass" for r in ran)))
     print(dist(ran, "peak_rss_anon", "peak RssAnon (verified rows)"))
-    print(dist(ran, "owned_peak", "peak OWNED = RssAnon - gpu_driver (verified rows)"))
+    # B978: a row summarized before B978 has no owned_rss_anon_peak column and
+    # its owned_peak omits gpu_buffers -- never mixed in; re-summarize the run
+    # dirs (scripts/pi/rendered_sweep_rebuild.py) to count them.
+    b978 = [r for r in ran if r.get("owned_rss_anon_peak") not in (None, "")]
+    if len(b978) != len(ran):
+        print("- %d verified row(s) were summarized before B978 (owned without gpu_buffers): left out of the "
+              "owned line; re-summarize with scripts/pi/rendered_sweep_rebuild.py" % (len(ran) - len(b978)))
+    print(dist(b978, "owned_peak", "peak OWNED = RssAnon - gpu_driver + gpu_buffers (verified rows)"))
     print(dist(ran, "rss_anon_ready", "RssAnon at ready (verified rows)"))
     print(dist([r for r in ran if r["reached_steady"] == "y"], "rss_anon_steady", "RssAnon at steady_60s (verified rows)"))
     print(dist(ran, "vm_hwm", "VmHWM, peak total RSS incl. file-backed (verified rows)"))

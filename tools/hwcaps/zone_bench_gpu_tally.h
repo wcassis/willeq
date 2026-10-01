@@ -64,7 +64,7 @@ inline eqt::memory::Snapshot printLedgerPoint(const char* point, void* driver) {
     publishGpuTally(driver);
     eqt::memory::Snapshot s = eqt::memory::snapshot(point);
     printf("%s\n%s\n", eqt::memory::toLogLine(s).c_str(),
-           eqt::memory::gpuBuffersToLogLine(point, s.zone, s.gpuBuffers, s.ownedBytes).c_str());
+           eqt::memory::gpuBuffersToLogLine(point, s.zone, s.gpuBuffers, s.ownedRssAnonBytes).c_str());
     fflush(stdout);
     eqt::memory::gemCensusDump(point);  // B962: the census shim's owner table, if preloaded
     return s;

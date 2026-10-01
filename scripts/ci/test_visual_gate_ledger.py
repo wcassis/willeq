@@ -11,6 +11,7 @@ PRINTED. Red before T491 (the functions do not exist), green after.
 """
 import importlib.util
 import io
+import re
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -27,7 +28,8 @@ def load_gate():
     return mod
 
 
-def ledger_dict(rss_anon, ledger_total, cats, slack=0, uncharged=0):
+def ledger_dict(rss_anon, ledger_total, cats, slack=0, uncharged=0, gpu_buffers=0,
+                gpu_source="logical_in_gpu_driver"):
     """Build a ledger object exactly the way memory_ledger.h's snapshot() does:
     four buckets that COVER RssAnon (they do not partition it -- glibc's arena
     can hold non-resident free pages), with `unaccounted` = RssAnon - arena,
@@ -50,8 +52,13 @@ def ledger_dict(rss_anon, ledger_total, cats, slack=0, uncharged=0):
         "mallocSlackBytes": slack,
         "rssTargetBytes": 64 * MIB,
         "rssCeilingBytes": 256 * MIB,
-        # B933: the target gap is on owned = RssAnon - gpu_driver.
-        "overTargetBytes": max(0, rss_anon - cats.get("gpu_driver", 0) - 64 * MIB),
+        # B933/B978: the target gap is on owned = RssAnon - gpu_driver + gpu_buffers
+        # (the buffers only when outside RssAnon).
+        "overTargetBytes": max(0, rss_anon - cats.get("gpu_driver", 0)
+                               + (gpu_buffers if gpu_source != "logical_in_gpu_driver" else 0) - 64 * MIB),
+        "gpuBuffersBytes": gpu_buffers,
+        "gpuBuffers": {"gpuBuffersBytes": gpu_buffers, "source": gpu_source,
+                       "outsideRssAnon": gpu_source != "logical_in_gpu_driver"},
         "overCeilingBytes": max(0, rss_anon - 256 * MIB),
         "categories": {k: {"live": v, "peak": v, "allocs": 1} for k, v in cats.items()},
     }
@@ -160,30 +167,76 @@ def main():
     order = [ln.split()[0] for ln in out.splitlines() if ln.startswith("      ")]
     assert order[:3] == ["zone_mesh", "zone_parse", "ui"], order
 
-    # 7b. B933 (Will, 2026-09-29: "64 MB excludes driver memory"): the same
-    #     100 MiB RssAnon with 19 MiB of gpu_driver is 81 MiB OWNED, so the gap
-    #     is 17.0 MiB, the label says owned=RssAnon-gpu_driver, gpu_driver is
-    #     shown as EXCLUDED and is not a shrink bucket, and the whole-RssAnon
-    #     figure is printed under its own name.
+    # 7b. B933 (Will, 2026-09-29: "64 MB excludes driver memory"): on x86
+    #     (llvmpipe) the same 100 MiB RssAnon with 19 MiB of gpu_driver is 81
+    #     MiB OWNED -- the 22 MiB of GPU buffers are INSIDE gpu_driver there and
+    #     are NOT added again (B978: no double count). The gap is 17.0 MiB,
+    #     gpu_driver is shown as EXCLUDED and is not a shrink bucket, and the
+    #     whole-RssAnon figure is printed under its own name.
     mem = {"ledger": ledger_dict(100 * MIB, 95 * MIB,
                                  {"zone_mesh": 50 * MIB, "gpu_driver": 19 * MIB,
                                   "zone_parse": 20 * MIB, "ui": 5 * MIB},
-                                 slack=3 * MIB)}
+                                 slack=3 * MIB, gpu_buffers=22 * MIB)}
     f, out = run(gate, mem)
     assert f == [], f
     assert gate.owned_bytes(100 * MIB, 19 * MIB) == 81 * MIB
     assert gate.owned_bytes(10 * MIB, 19 * MIB) == 0
-    assert "owned (RssAnon-gpu_driver) 81.0 MiB" in out, out
+    assert "owned=RssAnon-gpu_driver+gpu_buffers 81.0 MiB" in out, out
+    assert "gpu_buffers 22.0 inside gpu_driver, not added again" in out, out
     assert "must shrink 17.0 MiB of owned memory" in out, out
     assert "whole-RssAnon gap 36.0 MiB, driver included" in out, out
     assert "gpu_driver" in out and "EXCLUDED from the gap" in out, out
     order = [ln.split()[0] for ln in out.splitlines() if ln.startswith("      ")]
     assert order[-1] == "gpu_driver" and "gpu_driver" not in order[:-1], order
+    assert "gpu_buffers" not in order, order
     # driver bigger than the gap: within target on owned memory, still under the ceiling
     mem = {"ledger": ledger_dict(80 * MIB, 78 * MIB, {"zone_mesh": 40 * MIB, "gpu_driver": 19 * MIB},
                                  slack=MIB)}
     f, out = run(gate, mem)
-    assert f == [] and "WITHIN the 64 MiB target" in out and "owned (RssAnon-gpu_driver) 61.0 MiB" in out, out
+    assert f == [] and "WITHIN the 64 MiB target" in out and "owned=RssAnon-gpu_driver+gpu_buffers 61.0 MiB" in out, out
+
+    # 7c. B978 (Will, 2026-10-01: "1) yes", GPU buffers count toward the 64 MB
+    #     target): on the Pi the GPU buffers are Lima GEM OUTSIDE RssAnon, so
+    #     RssAnon 100, gpu_driver 19, gpu_buffers 22 -> owned 103, gap 39, and
+    #     gpu_buffers is a shrink bucket of its own.
+    mem = {"ledger": ledger_dict(100 * MIB, 95 * MIB,
+                                 {"zone_mesh": 50 * MIB, "gpu_driver": 19 * MIB,
+                                  "zone_parse": 20 * MIB, "ui": 5 * MIB},
+                                 slack=3 * MIB, gpu_buffers=22 * MIB, gpu_source="memcg_shmem")}
+    f, out = run(gate, mem)
+    assert f == [], f
+    assert gate.owned_bytes(100 * MIB, 19 * MIB, 22 * MIB, True) == 103 * MIB
+    assert "owned=RssAnon-gpu_driver+gpu_buffers 103.0 MiB" in out, out
+    assert "gpu_buffers 22.0 outside RssAnon, added" in out, out
+    assert "must shrink 39.0 MiB of owned memory" in out, out
+    assert "whole-RssAnon gap 36.0 MiB, driver included" in out, out
+    order = [ln.split()[0] for ln in out.splitlines() if ln.startswith("      ")]
+    assert order[:2] == ["zone_mesh", "gpu_buffers"], order
+    # the buffers alone can put owned over the target
+    mem = {"ledger": ledger_dict(60 * MIB, 58 * MIB, {"zone_mesh": 40 * MIB, "gpu_driver": 19 * MIB},
+                                 slack=MIB, gpu_buffers=30 * MIB, gpu_source="memcg_shmem")}
+    f, out = run(gate, mem)
+    assert f == [] and "owned=RssAnon-gpu_driver+gpu_buffers 71.0 MiB" in out and "must shrink 7.0 MiB" in out, out
+
+    # 7d. the Pi summarizers read the [memgpu] line through owned_memory: both
+    #     the pre-B978 shape (owned=RssAnon-gpu_driver + owned_plus_gpu_buffers,
+    #     the committed Pi fixtures under tests/data/b962) and the B978 shape
+    #     (owned_rss_anon= + owned=) give the same owned figure.
+    om = gate.owned_memory
+    root = GATE.parents[2]
+    for stem, anon, gpu in (("qeynos2_steady_memgpu", 48537616, 23433216),
+                            ("qeynos2_steady_legacy_memgpu", 47755144, 38735872)):
+        line = (root / "tests" / "data" / "b962" / (stem + ".txt")).read_text()
+        kv = dict(re.findall(r"([a-z_0-9]+)=([^ \n]+)", line[line.index("[memgpu]"):]))
+        assert om.owned_from_memgpu(kv) == (anon + gpu, anon, gpu), (stem, om.owned_from_memgpu(kv))
+        new = dict(kv)
+        del new["owned_plus_gpu_buffers"]
+        new["owned_rss_anon"], new["owned"] = str(anon), str(anon + gpu)
+        assert om.owned_from_memgpu(new) == (anon + gpu, anon, gpu), new
+    x86 = {"gpu_buffers": "35651584", "source": "logical_in_gpu_driver", "outside_rss_anon": "0",
+           "owned_rss_anon": "84934656", "owned": "84934656"}
+    assert om.owned_from_memgpu(x86) == (84934656, 84934656, 0), om.owned_from_memgpu(x86)
+    assert om.OWNED_LABEL == "owned=RssAnon-gpu_driver+gpu_buffers"
 
     # 8. T491 addendum: over the 256 MB interim ceiling IS a failure
     mem = {"ledger": ledger_dict(300 * MIB, 295 * MIB, {"zone_mesh": 290 * MIB}, slack=3 * MIB)}
@@ -220,8 +273,6 @@ def main():
     #     list. (B903/B904, 2026-09-29, ended the 2026-09-28 blocking/
     #     non-blocking split; docs/decisions.md, docs/ci.md.)
     import json
-    import re
-    root = GATE.parents[2]
     ci_text = (root / ".gitlab-ci.yml").read_text()
     lists = re.findall(r"visual_gate\.sh --zones ([A-Za-z0-9_,]+)", ci_text)
     assert len(lists) == 1, f"expected exactly one --zones gate invocation in .gitlab-ci.yml, got {lists}"
@@ -234,7 +285,7 @@ def main():
     assert sorted(ci_zones) == sorted(manifest_zones), (lists, manifest_zones)
     assert set(coverage_zones) <= set(ci_zones), (lists, coverage_zones)
 
-    print("test_visual_gate_ledger: 16 checks OK")
+    print("test_visual_gate_ledger: 19 checks OK")
     return 0
 
 

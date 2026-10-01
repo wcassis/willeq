@@ -125,7 +125,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_Backend) {
     EXPECT_EQ(config.renderingBackend, RenderingBackend::GLES2);
     EXPECT_TRUE(config.useDRM);
     EXPECT_EQ(config.framebufferMemoryBytes, 10 * 1024 * 1024);  // 10MB
-    EXPECT_EQ(config.textureMemoryBytes, 51 * 1024 * 1024);      // 51MB (B943)
+    EXPECT_EQ(config.textureMemoryBytes, 21 * 1024 * 1024);      // 21MB (B978; B943 was 51)
     EXPECT_EQ(config.colorDepthBits, 16);
     EXPECT_EQ(config.maxTextureDimension, 512);
     // Rendering feature defaults
@@ -400,7 +400,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_GpuFeatures) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
 
     EXPECT_EQ(config.framebufferMemoryBytes, 10 * 1024 * 1024);  // 10MB
-    EXPECT_EQ(config.textureMemoryBytes, 51 * 1024 * 1024);      // 51MB (B943)
+    EXPECT_EQ(config.textureMemoryBytes, 21 * 1024 * 1024);      // 21MB (B978; B943 was 51)
     EXPECT_EQ(config.maxTextureDimension, 512);
     EXPECT_EQ(config.colorDepthBits, 16);
     EXPECT_FLOAT_EQ(config.clipDistance, 300.0f);
@@ -1146,7 +1146,7 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
     bool applied = config.loadJsonOverrides("orangepi", WILLEQ_CONSTRAINED_PRESETS_JSON);
     EXPECT_TRUE(applied);
-    EXPECT_EQ(config.textureMemoryBytes,          static_cast<size_t>(51) * 1024 * 1024);  // B943: 64 -> 51
+    EXPECT_EQ(config.textureMemoryBytes,          static_cast<size_t>(21) * 1024 * 1024);  // B943: 64 -> 51, B978: 51 -> 21
     EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(38) * 1024 * 1024);  // B943: 64 -> 38
     EXPECT_EQ(config.zoneGeometryMemoryBytes,     static_cast<size_t>(16) * 1024 * 1024);
     EXPECT_EQ(config.placeableObjectsMemoryBytes, static_cast<size_t>(24) * 1024 * 1024);

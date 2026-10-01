@@ -10,10 +10,14 @@ Every number comes from a file the run wrote:
     plus the mapped .so list -- the PROOF of which Mesa was loaded;
   * frames/*.png: the dumped frames, compared across runs of the same zone.
 
-willeq-owned memory (Will, 2026-09-29: "64 MB excludes driver memory") is
-  RssAnon - gpu_driver
-taken from the SAME ledger line (both are printed together), at every
-ledger point; owned_max is the maximum over the points.
+willeq-owned memory (Will, 2026-09-29: "64 MB excludes driver memory";
+2026-10-01, B978: GPU buffers count toward the 64 MB target) is
+  owned=RssAnon-gpu_driver+gpu_buffers
+taken from the SAME ledger line (all printed together), at every ledger point
+(details.json's gpu_buffers_added: the row when outside RssAnon, net of dumped
+frames; a details.json written before B978 has no such field and its owned is
+RssAnon - gpu_driver alone, flagged "(pre-B978)"); owned_max is the maximum
+over the points.
 
 usage: mesa_ab_table.py --ab-dir DIR [--json OUT.json]
        mesa_ab_table.py --frame-dirs A1=DIR B1=DIR ...   (scripts/pi/mesa_frame_ab.sh
@@ -69,11 +73,12 @@ def one(rnd, side, zone, zd):
          "fps_min": row.get("fps_min"), "peak_rss_anon": row.get("peak_rss_anon"),
          "vm_hwm": row.get("vm_hwm"), "nonblank": "%s/%s" % (row.get("nonblank_frames"), row.get("dumped_frames"))}
     owned = []
+    r["pre_b978"] = any("gpu_buffers_added" not in p for p in pts.values())
     for name, p in pts.items():
         ra = int(p.get("rss_anon") or 0)
         gd = int(p.get("categories", {}).get("gpu_driver", 0))
         if ra:
-            owned.append((ra - gd, name))
+            owned.append((ra - gd + int(p.get("gpu_buffers_added") or 0), name))
     r["owned_max"], r["owned_max_point"] = max(owned) if owned else (0, "")
     for p in POINTS:
         lp = pts.get(p, {})
@@ -81,7 +86,7 @@ def one(rnd, side, zone, zd):
         gd = int(lp.get("categories", {}).get("gpu_driver", 0))
         r["ledger_rss_anon_" + p] = ra
         r["gpu_driver_" + p] = gd
-        r["owned_" + p] = ra - gd if ra else 0
+        r["owned_" + p] = (ra - gd + int(lp.get("gpu_buffers_added") or 0)) if ra else 0
         st = (snaps[p] or {}).get("status", {})
         r["rss_anon_" + p] = st.get("RssAnon", 0)
         r["rss_file_" + p] = st.get("RssFile", 0)
@@ -158,7 +163,7 @@ def main():
 
     print("## Per run\n")
     print("| zone | side | rnd | verdict | RssAnon st/rdy/stdy MiB | RssFile st/rdy/stdy MiB | gpu_driver st/rdy/stdy MiB "
-          "| owned (RssAnon-gpu_driver) rdy/stdy/max MiB | peak RssAnon | VmHWM | driver .so Rss | fps med/min | libLLVM mapped | libgallium |")
+          "| owned (RssAnon-gpu_driver+gpu_buffers) rdy/stdy/max MiB | peak RssAnon | VmHWM | driver .so Rss | fps med/min | libLLVM mapped | libgallium |")
     print("|" + "---|" * 14)
     for r in sorted(rows, key=lambda r: (zones.index(r["zone"]), r["side"], r["round"])):
         print("| %s | %s | %d | %s | %s | %s | %s | %s | %s | %s | %s | %s/%s | %s | %s |" % (
@@ -166,7 +171,8 @@ def main():
             "/".join(mib(r["rss_anon_" + p]) for p in POINTS),
             "/".join(mib(r["rss_file_" + p]) for p in POINTS),
             "/".join(mib(r["gpu_driver_" + p]) for p in POINTS),
-            "/".join(mib(r[k]) for k in ("owned_ready", "owned_steady_60s", "owned_max")),
+            "/".join(mib(r[k]) for k in ("owned_ready", "owned_steady_60s", "owned_max"))
+            + (" (pre-B978)" if r["pre_b978"] else ""),
             mib(r["peak_rss_anon"] or 0), mib(r["vm_hwm"] or 0), mib(r["driver_so_rss"]),
             r["fps_median"], r["fps_min"], r["llvm_mapped"],
             ",".join(os.path.basename(g) for g in (r["gallium"] or [])) or "-"))
@@ -194,7 +200,7 @@ def main():
         owned_b = [r["owned_max"] for r in rows if r["zone"] == z and r["side"] == "B" and r["verdict"] == "pass"]
         if owned_b:
             owned_a = [r["owned_max"] for r in rows if r["zone"] == z and r["side"] == "A" and r["verdict"] == "pass"]
-            print("| %s | owned=RssAnon-gpu_driver max (worst run) minus 64 MiB | %s | %s | |" % (
+            print("| %s | owned=RssAnon-gpu_driver+gpu_buffers max (worst run) minus 64 MiB | %s | %s | |" % (
                 z, "%+.1f" % ((max(owned_a) - TARGET) / MB) if owned_a else "-",
                 "%+.1f" % ((max(owned_b) - TARGET) / MB)))
 

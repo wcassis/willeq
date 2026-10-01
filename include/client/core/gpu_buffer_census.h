@@ -169,16 +169,23 @@ GpuBufferCensus readGpuBufferCensus();
 //  ... (B962, appended last so every existing parse holds:)
 //  logical_depth_stencil=<B>
 //  memcg_shmem=<B> memcg_kernel=<B> cgroup_procs=<n> drm_mapped=<B>
-//  drm_maps=<n> drm_fds=<n> fdinfo_total=<B> fdinfo_resident=<B> owned=<B>
-//  owned_plus_gpu_buffers=<B>`
+//  drm_maps=<n> drm_fds=<n> fdinfo_total=<B> fdinfo_resident=<B>
+//  owned_rss_anon=<B> owned=<B>`
+// B978 (Will, 2026-10-01: GPU buffers count toward the 64 MB target):
+// owned_rss_anon is RssAnon - gpu_driver and owned is the TARGET figure,
+// owned_rss_anon + gpu_buffers when the row is outside RssAnon. Before B978
+// the line carried `owned=<RssAnon-gpu_driver> owned_plus_gpu_buffers=<B>`;
+// the Pi summarizers read both shapes (the presence of owned_rss_anon= tells
+// them apart).
 std::string gpuBuffersToLogLine(const std::string& point, const std::string& zone,
-                                const GpuBufferCensus& c, uint64_t ownedBytes);
+                                const GpuBufferCensus& c, uint64_t ownedRssAnonBytes);
 // JSON object (no trailing newline), the same fields.
-std::string gpuBuffersToJson(const GpuBufferCensus& c, uint64_t ownedBytes);
+std::string gpuBuffersToJson(const GpuBufferCensus& c, uint64_t ownedRssAnonBytes);
 
-// owned + the row when it lives outside RssAnon; owned when it does not.
-inline uint64_t ownedPlusGpuBuffers(uint64_t ownedBytes, const GpuBufferCensus& c) {
-    return ownedBytes + (c.outsideRssAnon ? c.gpuBuffersBytes : 0);
+// B978: owned = (RssAnon - gpu_driver) + the row when it lives outside RssAnon;
+// on a software rasteriser the row is already inside gpu_driver, nothing added.
+inline uint64_t ownedPlusGpuBuffers(uint64_t ownedRssAnonBytes, const GpuBufferCensus& c) {
+    return ownedRssAnonBytes + (c.outsideRssAnon ? c.gpuBuffersBytes : 0);
 }
 
 } // namespace memory
