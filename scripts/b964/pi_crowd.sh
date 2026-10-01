@@ -12,7 +12,7 @@
 #
 # Usage: scripts/b964/pi_crowd.sh --pi-dir /mnt/projects/fable/ci-arm/<sha>
 #          [--zones qeynos2,gfaydark,growthplane] [--variants imp50far,imp200far,off200far]
-#          [--out DIR] [-r "1280 720"] [--hop-zone arena]   (see make_tour.py)
+#          [--out DIR] [-r "1280 720"] [--hop-zone arena] [--frametiming]   (see make_tour.py)
 set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ZONES="qeynos2,gfaydark,growthplane"
@@ -21,6 +21,7 @@ PI_DIR=""
 OUT=""
 RES="1280 720"
 HOP_ZONE="arena"
+TOUR_EXTRA=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --zones) ZONES="$2"; shift 2 ;;
@@ -29,6 +30,7 @@ while [ $# -gt 0 ]; do
         --out) OUT="$2"; shift 2 ;;
         -r) RES="$2"; shift 2 ;;
         --hop-zone) HOP_ZONE="$2"; shift 2 ;;
+        --frametiming) TOUR_EXTRA+=( --frametiming ); shift ;;
         *) echo "unknown option $1" >&2; exit 3 ;;
     esac
 done
@@ -55,7 +57,7 @@ for zone in ${ZONES//,/ }; do
         mkdir -p "$dir"
         # shellcheck disable=SC2086
         python3 "$REPO/scripts/b964/make_tour.py" --safe $safe --count "$n" --layout "$layout" \
-            --zone "$zone" --hop-zone "$HOP_ZONE" --out "$dir/tour.txt"
+            --zone "$zone" --hop-zone "$HOP_ZONE" "${TOUR_EXTRA[@]}" --out "$dir/tour.txt"
         envs=()
         case "$mode" in
             imp) ;;

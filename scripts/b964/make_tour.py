@@ -36,6 +36,8 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--zone", default="")
     ap.add_argument("--hop-zone", default="")
+    ap.add_argument("--frametiming", action="store_true",
+                    help="send /frametiming before the idle phase (the client's per-section breakdown every 60 frames)")
     a = ap.parse_args()
     sx, sy, sz = a.safe
     cx, cy, cz = sy, sx, sz + 1.0  # client frame
@@ -96,6 +98,8 @@ def main():
     lines.append("/warp %.2f %.2f %.2f" % (stand[0], stand[1], cz))
     lines.append("wait 1")
     lines.append("/face %.2f %.2f %.2f" % (centre[0], centre[1], cz))
+    if a.frametiming:
+        lines.append("/frametiming")
     lines.append("# phase: idle")
     lines.append("wait %.1f" % a.idle)
     lines.append("# phase: moving (walk toward the crowd and back)")

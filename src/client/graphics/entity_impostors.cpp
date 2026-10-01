@@ -262,9 +262,15 @@ void EntityRenderer::updateImpostors() {
     if (finishFirst && !work.empty()) cache.finishGpu();
     const auto frameT0 = std::chrono::steady_clock::now();
     auto& cs = cache.stats();
+    // A unit starts only if the time already spent plus the measured average
+    // unit fits the frame's capture budget (the first unit of a frame always
+    // runs): checking only the time already spent let 2-3 units of 15-20 ms
+    // land in one Pi frame (53 ms, growthplane, refactor/B964/README.md).
+    const double avgUnitMs = cs.units ? cs.unitMsSum / static_cast<double>(cs.units) : 0.0;
     for (const Work& w : work) {
         const double spent = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameT0).count();
         if (fs.unitsThisFrame >= ub.maxUnits || spent >= ub.maxMs) break;
+        if (fs.unitsThisFrame > 0 && spent + avgUnitMs > ub.maxMs) break;
         auto eit = entities_.find(w.id);
         if (eit == entities_.end()) continue;
         EntityVisual& v = eit->second;

@@ -194,7 +194,60 @@ passes = the frame) in the idle / moving phases, median of the 5 s windows;
 
 ### Orange Pi, 800x600 (the measurement of record)
 
-PI_TABLE_PLACEHOLDER
+ARM build `4a81a6b1` (published in `review/B964/arm/`), 800x600, the zone
+hop, `review/B964/pi/crowd800/table.md` (all columns). Frame times: the idle
+phase, `[impostor-frames]` median p50 / p95 of the 5 s windows (impostors on);
+idle FPS from the client's `FPS:` lines (both). Drawn and governor: at the end
+of the idle phase. Memory at `steady_60s` (after the reload, crowd built), MiB.
+The sweep marks these runs `fail` (`moved_after_ready`): the hop is deliberate.
+
+| zone | variant | idle frame p50 / p95 ms | idle FPS | drawn: impostors / models | limit, governor | pages / cells | tex.impostor | captures: created / angle / flip (reused) | unit ms avg / max | most capture work in one frame ms | RssAnon | gpu_driver | owned | gpu_buffers | owned + gpu_buffers |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| qeynos2 | imp0 (no crowd) | 16.7 / 16.9 | 60 | 3 / 0 | 40, green | 1 / 8 | 4.09 | 15 / 4 / 7 (3) | 3.24 / 7.26 | 18.1 | 63.36 | 19.60 | 43.76 | 39.06 | 82.82 |
+| qeynos2 | imp50far | 24.1 / 30.3 | 41 | 47 / 1 | 40, green | 1 / 54 | 4.09 | 60 / 5 / 0 (1) | 5.04 / 22.97 | 33.4 | 90.49 | 21.34 | 69.15 | 54.54 | 123.69 |
+| qeynos2 | **imp200far** | **36.5 / 37.4** | 28 | **145 / 0** | 0, red | 3 / 168 | **12.09** | 194 / 18 / 8 (37) | 5.82 / 28.47 | 28.5 | 98.66 | 21.41 | 77.25 | 64.07 | 141.32 |
+| qeynos2 | off200far | -- | **15** | 0 / 40 (cap) | -- | -- | 0 | -- | -- | -- | 98.32 | 21.13 | 77.18 | 51.61 | 128.80 |
+| qeynos2 | **imp200near** | 49.7 / 51.0 | 21 | 155 / 0 | 0, red | 3 / 160 | 12.09 | 178 / 59 / 20 (31) | 5.06 / 12.67 | 24.1 | 99.32 | 21.47 | 77.84 | 64.21 | 142.05 |
+| gfaydark | **imp200far** | 56.3 / 57.0 | 18 | 188 / 0 | 0, red | 3 / 188 | 12.09 | 193 / 3 / 0 (13) | 7.22 / **72.81** | **72.8** | 110.89 | 21.13 | 89.76 | 65.70 | 155.46 |
+| gfaydark | off200far | -- | **12** | 0 / 40 (cap) | -- | -- | 0 | -- | -- | -- | 105.88 | 20.74 | 85.14 | 53.91 | 139.05 |
+| gfaydark | imp200near | 73.1 / 81.5 | 17 | 151 / 0 | 0, red | 3 / 153 | 12.09 | 164 / 33 / 5 (20) | 7.78 / 45.71 | 72.8 | 115.16 | 21.20 | 93.96 | 66.82 | 160.78 |
+| growthplane | **imp200far** | 41.2 / 41.9 | 25 | 186 / 0 | 0, red | 3 / 186 | 12.09 | 186 / 6 / 0 (0) | 4.79 / 40.27 | 53.3 | 125.84 | 20.67 | 105.17 | 51.18 | 156.35 |
+| growthplane | off200far | -- | **16** | 0 / 40 (cap) | -- | -- | 0 | -- | -- | -- | 125.66 | 20.24 | 105.42 | 37.75 | 143.17 |
+| growthplane | imp200near | 57.9 / 60.0 | 21 | 150 / 0 | 0, red | 3 / 150 | 12.09 | 150 / 14 / 0 (0) | 5.51 / 25.54 | 39.1 | 119.23 | 20.67 | 98.56 | 51.16 | 149.72 |
+
+Read off the table:
+
+- **`tex.impostor` <= 20 MiB**: at most 3 pages (12.09 MiB, 188 unique cells)
+  in every Pi run; 4 pages (16.09 MiB) for 200 unique in the draw-cost tool.
+  No run needed the shared path (no run exceeded 256 cells).
+- **Memory, impostors on vs off, same crowd:** owned (RssAnon - gpu_driver)
+  +0.07 MiB (qeynos2), +4.6 (gfaydark), -0.25 (growthplane);
+  `gpu_buffers` (Lima GEM in the client's memcg) **+12.5 MiB** (qeynos2), +11.8
+  (gfaydark), +13.4 (growthplane): the 3 pages (12.0 MiB) and the scratch,
+  where B955 said impostor pixels land. The crowd itself (200 NPCs) costs
+  ~33.5 MiB of owned memory in qeynos2 (`imp0` 43.76 -> 77.25), impostors or not.
+- **Frame time, N = 200 far:** 28 / 18 / 25 fps with ~145-188 entities drawn
+  as impostors, against 15 / 12 / 16 fps with impostors off, where the cap
+  draws only the 40 nearest as models and the other ~150 are not drawn at
+  all. **Not >= 30 fps.** The governor did hold every entity at the cheapest
+  tier (limit 0, Red) -- and the frame's remaining cost is not the
+  impostors: `/frametiming` on the same qeynos2 run
+  (`review/B964/pi/crowd800_frametiming/`) has the transparent pass at
+  **18.0 ms of 36.6** -- the ~150 name tags, one text scene node each (filed
+  **#293, B975**) -- against 5.8 ms for the solid pass (the billboards and the
+  zone's objects) and 1.6 ms of entity update. Impostors off: solid pass
+  44.0 ms (40 models), transparent 6.6 ms, total 69.0 ms.
+- **Hitches from creation and refresh: the bar (none above one frame budget,
+  33.3 ms) is NOT met in 4 of 9 runs.** The most capture work in one frame:
+  qeynos2 18.1 / 33.4 (`imp50far`) / 28.5 / 24.1 ms, growthplane **53.3**
+  (`imp200far`) / **39.1** (`imp200near`) ms, gfaydark **72.8** ms in both
+  runs -- one single capture (`[impostor-capture]` draw_ms 62.5 for that key:
+  the first draw of that model's materials into the render target; no texture
+  restore happened, the cache reports `0 restores`; cause not decomposed). The
+  unit budget is checked before each unit, so a slow unit is not bounded, and
+  2-3 units of ~15-20 ms land in one frame on the Pi.
+- **Captures are rare after creation**: 3-59 angle refreshes and 0-20 flip
+  re-captures per ~5 min run, 0-37 flips that reused the capture.
 
 ### Orange Pi, 1280x720, before the full-model-cap rule (the finding that produced it)
 
@@ -225,7 +278,27 @@ per unit, `review/B964/x86/crowd_smoke3/`).
 
 ## Governor behaviour observed
 
-GOV_PLACEHOLDER
+From `qeynos2/imp200far` (Pi, 800x600), the `[impostor]` lines, 5 s apart:
+
+| time | what the tour is doing | candidates | drawn impostors / models | full-model limit | governor | rolling avg ms |
+|---|---|---|---|---|---|---|
+| 08:30:40 | back from the hop, crowd streaming in | 30 | 1 / 29 | 40 | green | 33.3 |
+| 08:30:45 | crowd built | 153 | 63 / 34 | 34 | red | 87.2 |
+| 08:30:50 | | 147 | 126 / 21 | 26 | red | 88.3 |
+| 08:30:55 | | 146 | 145 / 1 | 10 | red | 37.9 |
+| 08:31:00-08:31:25 | idle | 145-146 | 145-146 / 0 | 0 | red | 35.9-38.7 |
+| 08:31:30-08:31:40 | walking toward the crowd | 169-170 | 169-170 / 0 | 0 | red | 39.9-41.1 |
+| 08:31:45 | walking away (crowd out of view) | 2 | 2 / 0 | 30 | green | 15.3 |
+| 08:31:50 | | 2 | 2 / 0 | 40 | green | 10.7 |
+
+The limit fell 40 -> 0 in 15 s (-2 per 15 frames at ~10-25 fps) as the
+rolling average came down from 88 to 36 ms, held at 0 while the governor stayed
+Red, and climbed back to 40 within 10 s once the crowd left the view. In the
+`near` runs the governor puts even entities 4 units away on impostors (limit 0)
+-- that is the rule ("inside the tier the governor narrows the full-model set"),
+and at 4-46 units the billboards are large on screen: 49.7 ms (qeynos2) against
+36.5 ms far. x86 (llvmpipe, loaded host) mostly stayed Green with the limit at
+40.
 
 ## Findings filed
 
@@ -234,6 +307,8 @@ GOV_PLACEHOLDER
   qeynos2 1280x720; 28 at 800x600).
 - **#292 (B974, B)** x86 llvmpipe: a 200-NPC crowd costs ~2 GiB of
   `gpu_driver`, impostors on or off; not on the Pi.
+- **#293 (B975, B)** name tags are one text scene node each: ~0.12-0.16 ms per
+  visible tag on the Pi, 18 ms of a 36.6 ms crowd frame.
 - (Already filed by another unit, hit here: **#288 (B970)**, CI `build-arm`
   cannot build while downloads.sourceforge.net is down -- see Deviations.)
 
