@@ -410,3 +410,10 @@ and every `wt/*` worktree). The runner checks out under `/home/user/builds/…`
 and carries only a stale rsync of the archive, so from there those citations are
 reported SKIP rather than judged against out-of-date media. In-repo citations
 are checked on CI exactly as they are locally.
+
+**The `gate` job checks the stamp too (B959).** Its `.visual_gate_prepare` used to
+build `build-gles2/` incrementally without looking at libIrrlicht, so a driver
+change that adds a symbol the client calls (B959's `eqtSetShaderBinaryCacheDir`)
+failed the gate at link time on a warm tree (pipeline 397, job 1865). It now runs
+the same `verify`, and rebuilds the lib with `--irrlicht-only` on a mismatch,
+before the incremental build.
