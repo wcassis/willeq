@@ -888,6 +888,21 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
         // self row's raw server heading that a flushed echo may just have set.
         ctx_.entityRenderer->syncLocalPlayerHeading(ctx_.playerHeading);
 
+        // B964: the impostor pass's per-frame inputs -- the governor, and the
+        // target and group members it pins to full models. A no-op unless
+        // the preset gives impostors a budget (the pass runs at the end of
+        // updateMainThreadEntityState, before beginScene()).
+        if (ctx_.entityRenderer->impostorsEnabled()) {
+            std::vector<std::string> groupNames;
+            if (groupPanelState_.inGroup) {
+                for (const auto& m : groupPanelState_.members)
+                    if (!m.name.empty()) groupNames.push_back(m.name);
+            }
+            ctx_.entityRenderer->setImpostorFrameInputs(
+                ctx_.governor.get(), ctx_.Overlays().currentTargetId(), std::move(groupNames),
+                ctx_.loadingScreenVisible);
+        }
+
         // Main-thread entity state: corpse fading, equipment transforms, animation timing
         ctx_.entityRenderer->updateMainThreadEntityState(deltaTime);
 

@@ -10,6 +10,7 @@
 #include "client/core/memory_ledger.h"
 #include "client/core/gem_owner_census.h"
 #include "memory_ledger_trace.h"  // T504: the stack-trace instrument (own TU)
+#include "client/core/memory_owner_rows.h"  // B964: published owner rows
 
 #include <algorithm>
 #include <atomic>
@@ -792,6 +793,12 @@ Snapshot recordPoint(const std::string& point, const std::string& zone) {
     const std::string startup = startupToLogLines(point);
     if (!startup.empty()) {
         LOG_INFO(MOD_MAIN, "{}", startup);
+    }
+    // B964: owner rows published by subsystems the allocator cannot see
+    // (tex.impostor), at every point -- memory_owner_rows.h.
+    const std::string owners = ownerRowsToLogLines(point);
+    if (!owners.empty()) {
+        LOG_INFO(MOD_MAIN, "{}", owners);
     }
     // T504 trace instrument: report first (the arm point's own rows are
     // empty by construction), then arm if this is the arm point.

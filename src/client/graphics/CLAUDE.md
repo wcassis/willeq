@@ -282,6 +282,79 @@ chunk to whatever `eqt::memory::Category` the CALLING THREAD is scoped to.
   the frame rate, so `vboEboBytes` ~0 is correct. `WILLEQ_GPU_BUFFERS_LEGACY=1`
   restores the pre-B962 allocation pattern for an A/B.
 
+## Impostor billboards (B964, the production port of B952)
+
+Distant characters are drawn as camera-facing billboards of a capture of
+themselves. Will approved B952's design and blessed the numbers (2026-09-30):
+**128^2 impostors, a 20 MiB `tex.impostor` row**. A non-original LOD feature:
+**on only when the preset gives it a budget** (`impostorTextureMemoryBytes`,
+`orangepi` only) and **off under `WILLEQ_BASELINE=1`** (no cache, no row, the
+visibility cap unchanged). `WILLEQ_IMPOSTORS=0` turns off this feature alone
+(the A/B switch).
+
+- **Pieces.** `include/client/graphics/impostor/impostor_policy.h` (the rules,
+  device-free, `tests/test_impostor_policy.cpp`), `impostor_cache.h` (atlas
+  pages + the capture), `impostor_batch_node.h` (the draw), and
+  `src/client/graphics/entity_impostors.cpp` (`EntityRenderer::updateImpostors()`,
+  the per-frame pass at the end of `updateMainThreadEntityState()`, i.e. frame
+  phase 3, **before `beginScene()`** -- every capture's FBO switch is outside
+  the frame).
+- **Storage.** One scratch render target (128^2 RGBA8 + DEPTH16, from
+  `addRenderTargetTexture()`, so it carries Lima's multisample attachment)
+  takes every capture; the capture is `glCopyTexSubImage2D`'d into a cell of an
+  **atlas page** (1024^2 RGBA8, 64 cells, a raw GL texture wrapped with
+  `gles2WrapTexture()`). The pages are the storage: `tex.impostor` = pages x
+  4 MiB + the 96 KiB scratch. **Never one `addRenderTargetTexture()` per
+  impostor** (B952: 2.3x its logical size in Lima GEM, and it swapped the Pi).
+- **The cap** is Will's `(n + 1) * 4 s^2 + 6 s^2 <= budget` with a page as the
+  allocation unit: a page is allocated only while it and the scratch fit, so 20
+  MiB = 4 pages = 256 unique cells. Past that a spawn draws the shared cell of
+  its race/gender/body-texture key; with no cell left for that key either, the
+  least-recently-drawn unique cell is demoted (its spawn goes shared). Despawn
+  frees a unique cell; a zone change frees every page.
+- **Tiers.** Beyond `impostorTierDistance` (80) an entity is always its
+  impostor; inside it the production `FrameBudgetGovernor` moves a full-model
+  limit (Red or over target: -2, Green under 0.85 x target: +2, every 15
+  frames, at most `maxVisibleEntities`), with B952's 10-frame boundary
+  hysteresis; the target and group members are pinned to the model. An entity
+  that wants its impostor but has none yet stays a model while full-model slots
+  last and is not drawn past them (before B964 the visibility cap culled it).
+  When impostors are on, the simulation worker's visibility cap grows by the
+  cell capacity and the pass re-applies the old cap itself to everything NOT
+  drawn as an impostor (models, placeholders, corpses, the not yet captured):
+  pinned then nearest first, at most `maxVisibleEntities` are drawn; impostors
+  take no slot (without it the Pi drew every streaming placeholder).
+- **Units.** Creation and refresh are captures scheduled a few per frame
+  (`unitBudgetFor()`: Green 3 / half a frame budget, Yellow/Red 2 / a quarter,
+  never zero -- an impostor is how the governor leaves Red); a second unit
+  starts only if the measured average unit still fits. Refresh triggers,
+  **never a timer**: `updateEntityAppearance()` (`EntityAppearanceChanged` /
+  `OP_WearChange`; the cell survives the rebuild and the old capture is drawn
+  until the new one), a tier flip back to the impostor when the view angle or
+  the animation changed since the capture, and a view angle past
+  `kViewAngleRefreshDeg` (30, chosen, not measured).
+- **The draw.** `ImpostorBatchNode` draws every billboard of a page in **one**
+  `drawVertexPrimitiveList` (B952: ~0.12 ms per billboard draw on the Pi). Its
+  own GLSL ES program: constant 0.5 alpha threshold (B958: never a
+  derivative-dependent `discard` on Lima), RGB divided by the sampled alpha
+  (the capture clears to (0,0,0,0), so bilinear sampling premultiplies the
+  edge texels -- the #274 fringe), and **the entity shader's own fog formula**
+  at the billboard's vertices (B952's built-in-shader fog did not match the
+  entity shader; this one does -- `refactor/B964/README.md` has the numbers).
+  Impostored models are withheld from the render list (T309's seam) and their
+  skinning suspended (`EQAnimatedMeshSceneNode::setSkinningSuspended`); their
+  name tags are re-registered by the batch node.
+- **Accounting.** `[memledger-owner] ... category=textures_driver
+  owner=tex.impostor live=<bytes> pages= cells= unique= shared= ...` at every
+  lifecycle point (`include/client/core/memory_owner_rows.h`, a report, never
+  an allocation); the pages are in the driver's `gpuTextureBytes` tally and, on
+  the Pi, in the memcg `gpu_buffers` row. `[impostor]` / `[impostor-frames]`
+  lines every 5 s carry the tier counts, units and frame-time percentiles.
+- **Evidence tools.** `tools/hwcaps/impostor_pixel_compare` (`pixel`: model vs
+  impostor per race/gender/distance through `EntityRenderer`; `drawcost`: N
+  models vs N billboards), `scripts/b964/crowd_run.sh` (x86 client crowd runs)
+  and `scripts/b964/pi_crowd.sh` (the Pi sweep with a GM-spawned crowd).
+
 ## Zone Loading Thread
 
 Zone loading runs on a dedicated **LoadingThread** that owns the GL context during the load. This keeps the main thread free to pump the network and handle packets while the loading screen is displayed.

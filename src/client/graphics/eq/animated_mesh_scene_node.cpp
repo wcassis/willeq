@@ -333,8 +333,9 @@ void EQAnimatedMeshSceneNode::OnAnimate(irr::u32 timeMs) {
             animationEndCallback_->OnAnimationEnd(this);
         }
 
-        // Apply animation to our per-instance mesh
-        applyAnimation();
+        // Apply animation to our per-instance mesh -- unless the entity is
+        // drawn as its impostor (B964), which needs no posed vertices.
+        if (!skinningSuspended_) applyAnimation();
     }
 
     IAnimatedMeshSceneNode::OnAnimate(timeMs);

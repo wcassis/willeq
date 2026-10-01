@@ -201,6 +201,18 @@ TARGET_INCLUDE_DIRECTORIES(test_camera_modes PRIVATE ${CMAKE_SOURCE_DIR}/include
 TARGET_LINK_LIBRARIES(test_camera_modes GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_camera_modes DISCOVERY_TIMEOUT 120)
 
+# B964 (issue #282): the impostor port's decision logic -- the cap check, the
+# cell table, the governor-driven tier policy, the view-angle refresh and the
+# unit budget. Device-free, so it compiles the one TU directly; the
+# memory_owner_rows.h registry it also pins is header-only.
+ADD_EXECUTABLE(test_impostor_policy
+    test_impostor_policy.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/impostor/impostor_policy.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_impostor_policy PRIVATE ${CMAKE_SOURCE_DIR}/include)
+TARGET_LINK_LIBRARIES(test_impostor_policy GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_impostor_policy DISCOVERY_TIMEOUT 120)
+
 # B875 (issue #219): ChaseRigPinned, the device-free half of the Chase camera
 # pin (the renderer half is ChaseRigPinnedE2E in test_pose_log_e2e). Pins
 # fable's CURRENT constants against drift -- not an official-client

@@ -19,6 +19,7 @@
 #include "client/graphics/entity_build_scheduler.h"
 #include "client/graphics/frustum_culler.h"
 #include "client/graphics/software_occlusion_culler.h"
+#include "client/graphics/impostor/impostor_policy.h"
 
 namespace EQT {
 namespace Graphics {
@@ -117,6 +118,35 @@ class EntityPrepWorker;
 class ConstrainedTextureCache;
 struct ConstrainedRendererConfig;
 struct SimulationInput;
+class ImpostorCache;            // B964: include/client/graphics/impostor/impostor_cache.h
+class FrameBudgetGovernor;
+
+// B964: one spawn's impostor state (entity_impostors.cpp). `key` is the cell
+// it draws: its own (unique) or its race/gender/texture key (shared).
+struct ImpostorSpawnState {
+    uint64_t key = 0;
+    bool hasKey = false;
+    bool shared = false;            // drawing (or asking for) a shared cell
+    bool drawnAsImpostor = false;   // withheld from the render list this frame
+    bool wantsImpostor = false;     // the tier policy's verdict this frame
+    bool needsCapture = true;       // no current capture for the state it is in
+    bool capHidden = false;         // not drawn: past the full-model cap (setVisible(false))
+    enum class Reason : uint8_t { None, Create, Flip, Appearance, Angle } reason = Reason::Create;
+    uint32_t lastSeenFrame = 0;
+};
+
+// B964: what the impostor pass did, for logs, tests and the rigs.
+struct ImpostorFrameStats {
+    int candidates = 0;
+    int tierFull = 0;
+    int tierImpostor = 0;      // drawn as an impostor this frame
+    int wantImpostor = 0;      // the policy's verdict, impostor ready or not
+    int fullLimit = 0;
+    int unitsThisFrame = 0;
+    float unitMsThisFrame = 0.0f;
+    int drawCalls = 0;         // billboard draws in the previous render
+    int capHidden = 0;         // not drawn this frame: past the full-model cap
+};
 
 // Entity pending update for worker drain (matches SimulationInput::EntityPendingUpdate layout)
 struct DrainedEntityUpdate {
@@ -694,7 +724,51 @@ public:
     // Get per-instance animated mesh memory (instanceMesh_ + animator state per entity)
     size_t getPerInstanceMemoryBytes() const;
 
+    // ---- B964: impostor billboards (entity_impostors.cpp) ----
+    // Per-frame inputs from the frame loop, set before updateMainThreadEntityState():
+    // the governor (null = treat as Green), the target and group members
+    // (always full models), and whether the loading screen is up (no work).
+    // Post-load progressive streaming is NOT loading: a GM spawn re-arms it.
+    void setImpostorFrameInputs(const FrameBudgetGovernor* governor, uint16_t targetId,
+                                std::vector<std::string> groupMemberNames, bool loading);
+    // True when the preset gives impostors a budget and WILLEQ_BASELINE is not set.
+    bool impostorsEnabled() const;
+    // How many more entities the simulation worker may mark visible because
+    // they can be drawn as impostors (0 when impostors are off).
+    int impostorVisibilityAllowance() const;
+    // Tools/tests: 0 = the policy decides, 1 = every candidate wants its
+    // impostor, 2 = every candidate stays a full model.
+    void forceImpostorTier(int mode) { impostorForceMode_ = mode; }
+    // Tools/tests: turn impostors on with this budget whatever the preset says.
+    void enableImpostorsForTesting(size_t budgetBytes, float tierDistance);
+    const ImpostorFrameStats& impostorFrameStats() const { return impostorFrameStats_; }
+    const ImpostorCache* impostorCache() const { return impostors_.get(); }
+    bool isEntityDrawnAsImpostor(uint16_t spawnId) const;
+
 private:
+    // B964 (entity_impostors.cpp)
+    void updateImpostors();
+    void impostorOnEntityRemoved(uint16_t spawnId);
+    void impostorRestoreFull(EntityVisual& visual, ImpostorSpawnState& st);
+    std::unique_ptr<ImpostorCache> impostors_;
+    std::unordered_map<uint16_t, ImpostorSpawnState> impostorSpawns_;
+    ImpostorFrameStats impostorFrameStats_;
+    const FrameBudgetGovernor* impostorGovernor_ = nullptr;
+    uint16_t impostorTargetId_ = 0;
+    std::vector<std::string> impostorGroupNames_;
+    bool impostorLoading_ = false;
+    bool impostorRetainOnRemove_ = false;   // updateEntityAppearance's rebuild keeps the cell
+    int impostorForceMode_ = 0;
+    size_t impostorTestBudget_ = 0;
+    float impostorTestTierDistance_ = -1.0f;
+    uint32_t impostorFrame_ = 0;
+    std::chrono::steady_clock::time_point impostorLastLog_{};
+    std::chrono::steady_clock::time_point impostorLastFrameT_{};
+    std::vector<float> impostorFrameMs_;   // frame intervals since the last [impostor] line
+    impostor::TierPolicy impostorPolicy_;
+    std::vector<impostor::TierCandidate> impostorCands_;   // reused per frame
+    std::vector<impostor::Tier> impostorTiers_;
+
     irr::scene::IMesh* getMeshForRace(uint16_t raceId, uint8_t gender = 0,
                                        const EntityAppearance& appearance = EntityAppearance());
     irr::scene::IMesh* createPlaceholderMesh(float size, irr::video::SColor color);
