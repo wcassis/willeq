@@ -694,6 +694,14 @@ public:
                                    EntityBuildScheduler* scheduler = nullptr);
     // B973: the build work still pending (O(entities); the [entity-build] line).
     EntityBuildBacklog countBuildBacklog() const;
+    // B973: textures the prep worker decoded wait for their GPU upload; the
+    // create unit used to upload ALL of them in one step (up to 68 textures,
+    // 485 ms measured on x86). Uploads now run as their own units, one texture
+    // each, before any create unit. False when nothing is pending, the
+    // scheduler declines, the skipEntityTextureUpload knob is set, or the
+    // upload made no progress (the create unit's uploadAll then handles it).
+    bool hasPendingTextureUploads() const;
+    bool processOnePendingTextureUpload(EntityBuildScheduler* scheduler);
     // B973: the post-load build scheduler (frame slice + accounting).
     EntityBuildScheduler& buildScheduler() { return buildScheduler_; }
     // Check if entity mesh is built

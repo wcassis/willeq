@@ -189,7 +189,7 @@ TEST(EntityBuildScheduler, TheWindowLineCountsUnitsStatesAndTheBacklog) {
     const std::string& line = s.windowLine();
     EXPECT_NE(line.find("[entity-build] mode=sliced"), std::string::npos) << line;
     EXPECT_NE(line.find("frames=5 gov=G0/Y0/R5"), std::string::npos) << line;
-    EXPECT_NE(line.find("units=4 (create=4"), std::string::npos) << line;
+    EXPECT_NE(line.find("units=4 (upload=0 create=4"), std::string::npos) << line;
     EXPECT_NE(line.find("over_slice=4"), std::string::npos) << line;
     EXPECT_NE(line.find("built_delta=+4"), std::string::npos) << line;
 

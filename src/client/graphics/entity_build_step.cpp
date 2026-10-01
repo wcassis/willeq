@@ -61,8 +61,27 @@ EntityBuildUnitKind unitKindForPhase(EntityBuildPhase phase) {
 }
 }  // namespace
 
+bool EntityRenderer::hasPendingTextureUploads() const {
+    return constrainedTextureCache_ && !skipTextureUpload_ &&
+           constrainedTextureCache_->pendingUploadCount() > 0;
+}
+
+bool EntityRenderer::processOnePendingTextureUpload(EntityBuildScheduler* scheduler) {
+    if (!hasPendingTextureUploads()) return false;
+    if (scheduler && !scheduler->mayStartUnit(EntityBuildUnitKind::Upload)) return false;
+    const auto t0 = std::chrono::steady_clock::now();
+    const int uploaded = constrainedTextureCache_->uploadPending(1);
+    const float ms = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    if (scheduler) scheduler->recordUnit(EntityBuildUnitKind::Upload, ms);
+    LOG_DEBUG(MOD_GRAPHICS, "EntityBuild: texture upload unit {} in {:.2f} ms ({} left)", uploaded, ms,
+              constrainedTextureCache_->pendingUploadCount());
+    return uploaded > 0;
+}
+
 EntityBuildBacklog EntityRenderer::countBuildBacklog() const {
     EntityBuildBacklog b;
+    if (constrainedTextureCache_)
+        b.pendingUploads = static_cast<uint32_t>(constrainedTextureCache_->pendingUploadCount());
     for (const auto& [spawnId, vis] : entities_) {
         (void)spawnId;
         if (vis.buildPhase == EntityBuildPhase::Built) {

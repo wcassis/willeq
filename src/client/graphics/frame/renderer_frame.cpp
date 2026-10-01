@@ -147,6 +147,14 @@ bool FrameComponent::processFrame(float deltaTime) {
     ctx_.SimBridge().postSimulationInput(deltaTime);
     frameTimings_.postSimInput = measureSection();
 
+    // B973: open the build scheduler's frame before ANY entity work -- a
+    // re-armed progressive load (below) runs the same slice.
+    EntityBuildScheduler* buildSched = ctx_.entityRenderer ? &ctx_.entityRenderer->buildScheduler() : nullptr;
+    if (buildSched) {
+        buildSched->beginFrame(ctx_.governor ? ctx_.governor->getState() : BudgetState::Green,
+                               ctx_.governor ? ctx_.governor->getTargetFrameTimeMs() : 33.3f);
+    }
+
     // ─── Progressive loading (loading screen showing, no governor restriction §4.2) ───
     if (ctx_.progressiveLoadingActive) {
         ctx_.ZoneStream().processFrameProgressiveLoad();
@@ -160,11 +168,6 @@ bool FrameComponent::processFrame(float deltaTime) {
     // GREEN frame, and a crowd that kept the frame Red was never built; that
     // code path is kept verbatim below as the WILLEQ_ENTITY_BUILD_LEGACY=1 A/B.
     sectionStart_ = std::chrono::steady_clock::now();
-    EntityBuildScheduler* buildSched = ctx_.entityRenderer ? &ctx_.entityRenderer->buildScheduler() : nullptr;
-    if (buildSched) {
-        buildSched->beginFrame(ctx_.governor ? ctx_.governor->getState() : BudgetState::Green,
-                               ctx_.governor ? ctx_.governor->getTargetFrameTimeMs() : 33.3f);
-    }
     if (!ctx_.progressiveLoadingActive && buildSched && !buildSched->legacy()) {
         if (runEntityBuildSlice()) frameTimings_.meshLoading = measureSection();
         frameTimings_.entityHousekeeping = measureSection();

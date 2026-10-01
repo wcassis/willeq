@@ -73,8 +73,21 @@ bool FrameComponent::runEntityBuildSlice() {
     er.pollAndDistributePrepResults();
 
     if (ctx_.config.constrainedConfig.skipEntityBuild) return any;
+    // Texture uploads first, one texture per unit: a create unit expects its
+    // textures resident, and before B973 it uploaded EVERY pending texture in
+    // one step (up to 68 / 485 ms on x86). While uploads are pending no create
+    // runs; an upload that makes no progress hands over to the creates.
+    int units = 0;
+    while (er.hasPendingTextureUploads() && units < kMaxUnitsPerFrame) {
+        const bool progressed = er.processOnePendingTextureUpload(&sched);
+        if (sched.unitsThisFrame() > units) any = true;
+        units = sched.unitsThisFrame();
+        if (!progressed) break;
+    }
+    if (er.hasPendingTextureUploads() && units > 0 && !sched.mayStartUnit(EntityBuildUnitKind::Upload))
+        return any;   // the slice is spent on uploads; creates wait for them
     const uint16_t target = ctx_.Overlays().currentTargetId();
-    for (int i = 0; i < kMaxUnitsPerFrame; ++i) {
+    for (; units < kMaxUnitsPerFrame; ++units) {
         if (!er.processOneEntityBuildStep(ctx_.currentPvsRegion, target, &sched)) break;
         any = true;
     }

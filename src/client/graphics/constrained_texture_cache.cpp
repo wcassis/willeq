@@ -15,6 +15,7 @@
 #include <functional>
 #include <fstream>
 #include <cstdlib>
+#include <limits>
 
 // P03: the EQE1 upload path (ETC1 + v2 payloads) is available on any GLES2
 // driver build, not just DRM/ARM — EQT_HAS_GLES2 is defined for the x86
@@ -495,6 +496,15 @@ irr::video::ITexture* ConstrainedTextureCache::createDecodedTexture(const std::s
 }
 
 int ConstrainedTextureCache::uploadAllPending() {
+    return uploadPending(std::numeric_limits<int>::max());
+}
+
+size_t ConstrainedTextureCache::pendingUploadCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return decodedEntries_.size() + compressedEntries_.size();
+}
+
+int ConstrainedTextureCache::uploadPending(int maxCount) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::TexturesDecoded);  // T491
     // Collect internal keys first (uploadTexture modifies decodedEntries_ and
     // compressedEntries_). P46d: these keys may already be mangled (see
@@ -522,7 +532,10 @@ int ConstrainedTextureCache::uploadAllPending() {
     }
 
     int uploaded = 0;
+    int attempted = 0;
     for (const auto& key : names) {
+        if (attempted >= maxCount) break;
+        ++attempted;
         std::string realName;
         bool applyPaletteMask = false;
         splitCacheKey(key, realName, applyPaletteMask);
@@ -530,8 +543,10 @@ int ConstrainedTextureCache::uploadAllPending() {
             ++uploaded;
         }
     }
-    LOG_INFO(MOD_GRAPHICS, "Constrained cache: uploadAllPending uploaded {} textures ({} were pending)",
-             uploaded, names.size());
+    if (maxCount == std::numeric_limits<int>::max()) {
+        LOG_INFO(MOD_GRAPHICS, "Constrained cache: uploadAllPending uploaded {} textures ({} were pending)",
+                 uploaded, names.size());
+    }
     return uploaded;
 }
 

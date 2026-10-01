@@ -141,11 +141,18 @@ void ZoneStreamComponent::processFrameProgressiveLoad() {
         // Poll completed prep results — distributing a result consumes the budget
         if (ctx_.entityRenderer->pollAndDistributePrepResults()) {
             didWork = canMarkWork;
+            if (canMarkWork)   // B973 accounting (legacy A/B): the poll took this frame's unit
+                ctx_.entityRenderer->buildScheduler().recordUnit(EntityBuildUnitKind::Other, 0.0f);
             logAssetBuildTime("entity_poll", 0, stepStart);
         }
     }
     if (!didWork && ctx_.entityPrepReady && ctx_.entityRenderer && !ctx_.config.constrainedConfig.skipEntityBuild) {
-        if (ctx_.entityRenderer->processOneEntityBuildStep(ctx_.currentPvsRegion)) {
+        // B973: under the legacy A/B with the scene showing, the step is
+        // accounted by the scheduler (whose legacy rule is this block's own
+        // GREEN gate); the loading screen stays unscheduled.
+        EntityBuildScheduler* sched = (!ctx_.loadingScreenVisible && ctx_.entityRenderer)
+            ? &ctx_.entityRenderer->buildScheduler() : nullptr;
+        if (ctx_.entityRenderer->processOneEntityBuildStep(ctx_.currentPvsRegion, 0, sched)) {
             didWork = canMarkWork;
             logAssetBuildTime("entity_step", 0, stepStart);
             // Report entity progress to chat

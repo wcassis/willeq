@@ -189,6 +189,12 @@ public:
     // Used by the sequential loader after populating the cache with getOrLoad().
     // Returns the number of textures uploaded.
     int uploadAllPending();
+    // B973: upload at most maxCount pending entries (the post-load build
+    // uploads ONE per scheduled unit -- uploadAllPending() in one build step
+    // measured up to 68 textures / 485 ms on x86). Returns the number uploaded.
+    int uploadPending(int maxCount);
+    // B973: decoded + compressed entries waiting for their GPU upload.
+    size_t pendingUploadCount() const;
 
     // Mark a texture as recently used (moves to back of LRU list)
     void touch(const std::string& name);

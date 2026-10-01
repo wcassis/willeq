@@ -12,6 +12,7 @@ namespace Graphics {
 
 const char* entityBuildUnitKindName(EntityBuildUnitKind kind) {
     switch (kind) {
+        case EntityBuildUnitKind::Upload: return "upload";
         case EntityBuildUnitKind::Create: return "create";
         case EntityBuildUnitKind::Finalize: return "finalize";
         case EntityBuildUnitKind::Equip: return "equip";
@@ -103,21 +104,22 @@ bool EntityBuildScheduler::endFrame(float frameMs, const EntityBuildBacklog& bac
         const int builtDelta = static_cast<int>(backlog.built) - static_cast<int>(wBuiltAtStart_);
         windowLine_ = fmt::format(
             "[entity-build] mode={} window_s={:.2f} frames={} gov=G{}/Y{}/R{} units={} "
-            "(create={} finalize={} equip={} other={}) unit_ms avg={:.2f} max={:.2f} "
+            "(upload={} create={} finalize={} equip={} other={}) unit_ms avg={:.2f} max={:.2f} "
             "frame_work_ms max={:.2f} frames_with_work={} over_slice={} "
             "frame_ms avg={:.1f} max={:.1f} with_work={:.1f} without_work={:.1f} "
             "built={} built_delta={:+d} unbuilt_visible={} unbuilt_total={} in_progress={} "
-            "awaiting_prep={} pending_units={} pred_ms create={:.2f} finalize={:.2f} equip={:.2f}",
+            "awaiting_prep={} pending_units={} pending_uploads={} pred_ms upload={:.2f} create={:.2f} "
+            "finalize={:.2f} equip={:.2f}",
             legacy_ ? "legacy" : "sliced", nowSeconds - windowStart_, wFrames_,
             wStateFrames_[0], wStateFrames_[1], wStateFrames_[2], wUnits_,
-            wKindUnits_[0], wKindUnits_[1], wKindUnits_[2], wKindUnits_[3],
+            wKindUnits_[0], wKindUnits_[1], wKindUnits_[2], wKindUnits_[3], wKindUnits_[4],
             avg(wUnitMsSum_, wUnits_), wUnitMsMax_, wFrameWorkMsMax_, wFramesWithWork_,
             wFramesOverSlice_, avg(wFrameMsSum_, wFrames_), wFrameMsMax_,
             avg(wFrameMsWithWorkSum_, wFramesWithWork_),
             avg(wFrameMsWithoutWorkSum_, wFrames_ - wFramesWithWork_),
             backlog.built, builtDelta, backlog.unbuiltVisible, backlog.unbuiltTotal,
-            backlog.inProgress, backlog.awaitingPrep, backlog.pendingUnits,
-            predictedMs(EntityBuildUnitKind::Create), predictedMs(EntityBuildUnitKind::Finalize),
+            backlog.inProgress, backlog.awaitingPrep, backlog.pendingUnits, backlog.pendingUploads,
+            predictedMs(EntityBuildUnitKind::Upload), predictedMs(EntityBuildUnitKind::Create), predictedMs(EntityBuildUnitKind::Finalize),
             predictedMs(EntityBuildUnitKind::Equip));
     }
 

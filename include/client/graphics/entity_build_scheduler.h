@@ -38,7 +38,8 @@ namespace Graphics {
 
 // What a build unit does; the predictor keeps one average per kind.
 enum class EntityBuildUnitKind : uint8_t {
-    Create = 0,   // Placeholder -> node created and its materials promoted (B966)
+    Upload = 0,   // ONE pending texture to the GPU (decoded by the prep worker)
+    Create,       // Placeholder -> node created and its materials promoted (B966)
     Finalize,     // MeshFinalize: name tag, corpse pose, light, race ref
     Equip,        // EquipmentAttach: weapon meshes on the point bones
     Other,        // anything else the frame did under the same slice (GPU result)
@@ -62,6 +63,7 @@ struct EntityBuildBacklog {
     uint32_t inProgress = 0;        // past Placeholder, not Built
     uint32_t awaitingPrep = 0;      // visible Placeholders whose prep has not landed
     uint32_t pendingUnits = 0;      // estimated units left for the eligible ones
+    uint32_t pendingUploads = 0;    // textures waiting for their GPU upload
 };
 
 class EntityBuildScheduler {
