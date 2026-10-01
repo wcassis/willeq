@@ -335,6 +335,85 @@ TEST(DataPathRouting, IndexCachesAreNotWrittenUnderConfig) {
            "checkout entirely (board B248).";
 }
 
+// B959 (GitLab #277): the GLES2 program-binary cache. The driver once named
+// "config/shader_cache" -- relative to the CWD -- and B952's runs left 46
+// binaries inside a checkout. Two censuses over every C++ source that can
+// reach the driver:
+//   1. no code names a shader_cache path except the resolver itself
+//      (src/client/core/data_paths.cpp); anything else is a path the host did
+//      not get from ResolveCachePathForWrite();
+//   2. every file under src/ and tools/ that creates an Irrlicht device for
+//      the GLES2 driver calls eqt::ConfigureGles2ShaderCache() (the injection
+//      that gives the driver its directory).
+std::vector<std::string> ListSources(const std::vector<std::string>& roots) {
+    std::vector<std::string> files;
+    for (const auto& r : roots) {
+        std::string cmd = "find '" + kRoot + r +
+                          "' -type f \\( -name '*.cpp' -o -name '*.h' \\) 2>/dev/null";
+        FILE* p = ::popen(cmd.c_str(), "r");
+        if (!p) continue;
+        char buf[4096];
+        while (::fgets(buf, sizeof(buf), p)) {
+            std::string path(buf);
+            while (!path.empty() && (path.back() == '\n' || path.back() == '\r')) path.pop_back();
+            if (path.empty()) continue;
+            if (path.rfind(kRoot, 0) == 0) path = path.substr(kRoot.size());
+            files.push_back(path);
+        }
+        ::pclose(p);
+    }
+    return files;
+}
+
+TEST(DataPathRouting, ShaderCacheIsNotWrittenRelativeToTheCwd) {
+    std::vector<Offender> offenders;
+    for (const auto& path : ListSources({"src", "include", "tools", "docker/irrlicht-drm"})) {
+        if (path == "src/client/core/data_paths.cpp") continue;  // the resolver itself
+        const std::string code = StripComments(ReadFile(path));
+        std::istringstream ls(code);
+        std::string line;
+        int lineNo = 0;
+        while (std::getline(ls, line)) {
+            ++lineNo;
+            if (line.find("shader_cache") == std::string::npos) continue;
+            // gles2_shader_cache.h is the injection header's own name.
+            if (line.find("gles2_shader_cache.h") != std::string::npos) continue;
+            offenders.push_back({path, lineNo, "shader_cache"});
+        }
+    }
+    EXPECT_TRUE(offenders.empty())
+        << Describe(offenders)
+        << "\nThe shader-binary cache directory comes from eqt::ResolveShaderCacheDirectory() "
+           "(ResolveCachePathForWrite) via eqt::ConfigureGles2ShaderCache(); a literal or "
+           "CWD-relative shader_cache path writes into the checkout (B959).";
+}
+
+TEST(DataPathRouting, EveryGles2DeviceCreatorInjectsTheShaderCacheDir) {
+    std::vector<std::string> missing;
+    int creators = 0;
+    for (const auto& path : ListSources({"src", "tools"})) {
+        const std::string code = StripComments(ReadFile(path));
+        const bool makesDevice = code.find("createDeviceEx(") != std::string::npos ||
+                                 code.find("createDevice(") != std::string::npos;
+        if (!makesDevice || code.find("EDT_OGLES2") == std::string::npos) continue;
+        // Constructing a device is not enough: only files that SELECT the
+        // driver (assign it) host one. A bare comparison does not.
+        if (code.find("DriverType = ") == std::string::npos &&
+            code.find("driverType = ") == std::string::npos)
+            continue;
+        ++creators;
+        if (code.find("ConfigureGles2ShaderCache") == std::string::npos) missing.push_back(path);
+    }
+    EXPECT_GT(creators, 0) << "the census found no GLES2 device creator -- it has drifted";
+    std::ostringstream ss;
+    for (const auto& m : missing) ss << "  " << m << "\n";
+    EXPECT_TRUE(missing.empty())
+        << missing.size() << " file(s) create a GLES2 device without calling "
+           "eqt::ConfigureGles2ShaderCache() (include/client/graphics/gles2_shader_cache.h):\n"
+        << ss.str()
+        << "Without it the driver runs with its shader cache OFF (B959).";
+}
+
 TEST(DataPathRouting, RemainingDataLoadsAreRouted) {
     ExpectRouted({
         "src/client/graphics/entity_equipment.cpp",

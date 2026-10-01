@@ -37,6 +37,7 @@
 // Race 21 (SKE, forearms/shins masked) also works via --race 21.
 
 #include "common/logging.h"
+#include "client/graphics/gles2_shader_cache.h"
 #include "client/willeq_database.h"
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
@@ -114,6 +115,7 @@ int main(int argc, char** argv) {
 #endif
     params.WindowSize = irr::core::dimension2d<irr::u32>(64, 64);
     params.Fullscreen = true;
+    eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
     irr::IrrlichtDevice* device = irr::createDeviceEx(params);
     if (!device) {
         fprintf(stderr, "ERROR: failed to create Irrlicht device\n");

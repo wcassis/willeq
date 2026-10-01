@@ -87,8 +87,7 @@ perf.data.old
 /*.txt
 /*.logreset
 
-# Runtime caches
-config/shader_cache/
+# Runtime caches (the shader-binary cache lives outside the checkout, B959)
 # T402 (board B248): the two generated archive indices. They used to be
 # TRACKED here, so every client run left the working tree dirty and a careless
 # `git add -A` committed one machine's absolute EQ path. They are caches (a

@@ -596,6 +596,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_screenshot_leak DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B959 (GitLab #277): the driver's program-binary cache lands in the resolved
+# cache directory ($WILLEQ_CACHE_DIR here) and nowhere under the CWD. Same
+# headless-GLES2 idiom and self-skip as test_screenshot_leak.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_shader_cache_path
+        test_shader_cache_path.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_shader_cache_path PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_shader_cache_path GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_shader_cache_path DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T484 (board B726): the sky dome's time-of-day vertex tint reaches SOLID3D_FS
 # in R,G,B order. Real sky.s3d / sky.ini / sky.eqe1 through the real
 # SkyRenderer on a headless GLES2 device; self-skips without the device or the

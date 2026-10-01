@@ -2230,8 +2230,11 @@ IF(EQT_GRAPHICS)
     # B958 (GitLab #276): the alpha-test probe -- one RGBA texture drawn through
     # the driver's built-in alpha-test program and through raw copies of it
     # (freshly compiled and program-binary round-tripped), pixel counts only.
-    ADD_EXECUTABLE(gles2_alpha_test_probe tools/hwcaps/gles2_alpha_test_probe.cpp)
-    TARGET_INCLUDE_DIRECTORIES(gles2_alpha_test_probe PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    # B959: data_paths.cpp resolves the driver's shader-cache directory.
+    ADD_EXECUTABLE(gles2_alpha_test_probe tools/hwcaps/gles2_alpha_test_probe.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gles2_alpha_test_probe PRIVATE ${IRRLICHT_INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/include)
     IF(EQT_DRM)
         TARGET_COMPILE_DEFINITIONS(gles2_alpha_test_probe PRIVATE EQT_HAS_DRM)
     ENDIF()
