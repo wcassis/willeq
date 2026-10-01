@@ -136,14 +136,42 @@ governor ondemand untouched. No eqemu lock or stack used.
    (committed this unit): B967/B968 struck **FIXED**, B969 struck **CLOSED**
    (timorous_f2 3,175 -> 15 px, bar met); the gfaydark Pi-vs-x86 residual kept as
    a new open item **B980** (issue #299); B965's follow-up line updated.
-3. Re-run the local gate on a quiet host for a clean record:
+3. ~~Re-run the local gate on a quiet host for a clean record:
    `bash scripts/ci/visual_gate.sh` (must show no PIXEL MISMATCH; CPU/slack misses =
-   B937/B931 if load).
-4. Varying-range survey: run `bash scripts/ci/zone_content_sweep.sh --out-dir <dir>` (all
-   118 zones, ~7 min) and parse `Zone bounds (EQ)` from the per-zone logs; record the
-   largest diagonal and the five gate zones' in this README; confirm diag < 15,677
-   (the FS clamp point) or note which zones exceed it (beyond it the light is 0 by
-   construction, not garbage).
+   B937/B931 if load).~~ **DONE** (2026-10-01, kanban unit, host load ~5-8):
+   **0 PIXEL MISMATCH in 15 frames** (log `~/kb-evidence/b967-player-light/
+   local_gate.log`). It FAILED on a host-load item only: `iceclad: p95
+   process-CPU ms 9.841 exceeds ceiling 9.530 (baseline 4.765 x2.0)` (B937's
+   CPU item; not a pixel failure). The CI `gate` job on this branch's final head
+   is the record of record (card rule REMAINS 3).
+4. ~~Varying-range survey: run `bash scripts/ci/zone_content_sweep.sh
+   --out-dir <dir>` (all 118 zones, ~7 min) and parse `Zone bounds (EQ)` from
+   the per-zone logs; record the largest diagonal and the five gate zones' in
+   this README; confirm diag < 15,677 (the FS clamp point) or note which zones
+   exceed it (beyond it the light is 0 by construction, not garbage).~~ **DONE**
+   (2026-10-01, kanban unit): `zone_content_sweep.sh --out-dir
+   ~/kb-evidence/b967-player-light/sweep` (118 zones, every row CLEAN, exit 0;
+   raw per-zone logs kept there, not committed). `Zone bounds (EQ)` parsed with
+   `refactor/B967/zone_bounds_survey.py`; full output committed at
+   `refactor/B967/evidence/zone_bounds_survey.txt`.
+   - The player-light distance `d` is a 3D distance, so a zone's full 3D
+     diagonal is the upper bound on player-to-surface distance within it. The
+     FS clamp point is 15,677 units (d where the LUT coordinate saturates to 1
+     and A = 0). A zone whose diagonal exceeds it has its far corner receive 0
+     player light by construction -- intended, not garbage.
+   - **Largest diagonal: iceclad, full 3D 41,305 units** (XZ 17,729). No zone's
+     XZ diagonal is used as the bound; the full diagonal is.
+   - 17 zones' full 3D diagonal exceed 15,677: iceclad 41,305; timorous 28,883;
+     oot 25,368; eastwastes 24,617; overthere 22,394; firiona 19,967; qey2hh1
+     19,699; westwastes 19,440; dreadlands 18,776; stonebrunt 18,676;
+     warslikswood 18,375; lakeofillomen 17,078; skyfire 16,420; greatdivide
+     16,240; burningwood 15,988; southkarana 15,922; frontiermtns 15,850.
+   - Five gate zones: befallen full 1,083; qeynos2 full 3,188; gfaydark full
+     7,816 (all under 15,677 -- the light is never clamped to 0 anywhere in
+     these zones); iceclad full 41,305 (EXCEEDS); timorous full 28,883
+     (EXCEEDS). So in the two large gate zones the far regions are at
+     player-light 0 by construction, which the re-blessed goldens already show
+     (the B968 darkening past 336 units).
 5. ~~File issues (B numbers from the max `B###:` title; B976 = #294 last known):
    gfaydark gate frames Pi vs x86 409/55/162 px >32 with the player light OFF too
    (cause not isolated); manifest `textureCacheBytesLimit` display field stale since
@@ -161,8 +189,10 @@ governor ondemand untouched. No eqemu lock or stack used.
 
 ## Not verified
 
-- Live client on the Pi with `/plight` (only benchmark poses and the probe).
-- Zone-extent survey for the varying range (REMAINS 4).
+- Live client on the Pi with `/plight` (only benchmark poses + the probe).
+- Zone-extent survey for the varying range (REMAINS 4; completed 2026-10-01 by
+  the kanban unit, `refactor/B967/zone_bounds_survey.py` + the README REMAINS 4
+  entry).
 - Mesa versions other than 25.2.8; the system Mesa on the Pi.
 - The on-Pi `--assert` run of the FINAL probe binary (criterion recomputed offline
   from the same Pi pixels; the shader and A channel are identical).

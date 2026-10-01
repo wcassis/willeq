@@ -1,0 +1,33 @@
+zone                      X range      Y range      Z range    XZ diag  full diag  exceeds 15677?
+----------------------------------------------------------------------------------------------------
+*  iceclad           [  -8820,   8820] [ -24358,  12948] [   -294,   1481]    17729.1    41304.5  YES (full) XZ
+*  timorous          [ -14023,  10910] [  -8290,   6220] [   -619,    812]    24974.0    28883.3  YES (full) XZ
+   oot               [  -5956,   3854] [ -11719,  11660] [   -352,    487]     9845.8    25367.6  YES (full)
+   eastwastes        [ -13262,   3975] [  -9212,   8317] [   -372,    905]    17284.2    24617.3  YES (full) XZ
+   overthere         [  -7993,  11260] [  -5273,   6012] [   -726,   1137]    19342.9    22394.2  YES (full) XZ
+   firiona           [ -10013,   6445] [  -5164,   6069] [   -285,   1000]    16508.1    19967.4  YES (full) XZ
+   qey2hh1           [  -5792,   2242] [ -16650,   1319] [   -131,    660]     8072.8    19699.1  YES (full)
+   westwastes        [  -7019,   7253] [  -6103,   7050] [   -518,    579]    14314.1    19439.5  YES (full)
+   dreadlands        [  -2939,   4500] [  -6581,  10406] [   -210,   2729]     7998.5    18775.9  YES (full)
+   stonebrunt        [  -8974,   5019] [  -6000,   6000] [   -493,   2507]    14311.0    18676.3  YES (full)
+   warslikswood      [  -3859,   7869] [  -6606,   7325] [   -956,   1500]    11982.4    18375.3  YES (full)
+   lakeofillomen     [  -4154,   7222] [  -7650,   5027] [   -236,   1000]    11442.9    17077.7  YES (full)
+   skyfire           [  -6992,   5908] [  -4473,   5582] [   -695,    750]    12980.7    16419.5  YES (full)
+   greatdivide       [  -8800,   1293] [  -7407,   5068] [  -1004,   1496]    10398.0    16240.2  YES (full)
+   burningwood       [  -5998,   7434] [  -5103,   3437] [   -727,    773]    13515.5    15987.5  YES (full)
+   southkarana       [  -8964,   4183] [  -4693,   4207] [   -303,    900]    13201.9    15921.7  YES (full)
+   frontiermtns      [  -3954,   8046] [  -5773,   4371] [   -778,   1302]    12178.9    15850.1  YES (full)
+*  gfaydark          [  -2804,   2717] [  -2693,   2766] [    -99,    802]     5594.0     7816.3  
+*  qeynos2           [   -259,   1999] [  -1100,   1100] [   -391,     80]     2306.6     3187.5  
+*  befallen          [  -1008,    -42] [   -282,    196] [    -86,     21]      971.9     1083.1  
+----------------------------------------------------------------------------------------------------
+total zones parsed: 118
+zones with full 3D diagonal > 15677: ['iceclad', 'timorous', 'oot', 'eastwastes', 'overthere', 'firiona', 'qey2hh1', 'westwastes', 'dreadlands', 'stonebrunt', 'warslikswood', 'lakeofillomen', 'skyfire', 'greatdivide', 'burningwood', 'southkarana', 'frontiermtns']
+zones with XZ diagonal > 15677: []
+
+Five gate zones:
+  iceclad      XZ diag  17729.1  full diag  41304.5  EXCEEDS
+  timorous     XZ diag  24974.0  full diag  28883.3  EXCEEDS
+  gfaydark     XZ diag   5594.0  full diag   7816.3  ok
+  qeynos2      XZ diag   2306.6  full diag   3187.5  ok
+  befallen     XZ diag    971.9  full diag   1083.1  ok
