@@ -2,7 +2,9 @@
 # Produces a willeq binary for Orange Pi One (Allwinner H3, Cortex-A7)
 # Uses Lima open-source GPU driver (Mesa GL 2.1) via DRM/KMS/GBM/EGL - no X11 needed
 #
-# Build: docker build -f docker/Dockerfile.arm-noble -t willeq-arm-noble .
+# Build: scripts/build-arm-noble.sh  (supplies the `vendor` build context; B970)
+#   By hand: docker build -f docker/Dockerfile.arm-noble \
+#              --build-context vendor="$(scripts/ci/vendor_fetch.sh --ensure)" -t willeq-arm-noble .
 # Run:   docker run --rm -v $(pwd):/src -v $(pwd)/build-arm-noble/bin:/output willeq-arm-noble
 #
 # Build options (passed as --build-arg):
@@ -199,6 +201,13 @@ ARG ENABLE_GLES2=ON
 # probe macro is never defined and a normal ARM build contains no probe
 # symbols, exactly like the x86 default build.
 ARG ENABLE_T122_TEXPROBE=OFF
+# B970 (#288): the Irrlicht and libpng archives come from the vendor store (a named build
+# context = the NFS dir ci-arm/vendor/, filled and SHA256-checked by scripts/ci/vendor_fetch.sh
+# against docker/vendor.sha256), NOT from SourceForge. They are COPYed BEFORE the patch sources
+# below so editing docker/irrlicht-drm/* never re-runs this layer or needs the network.
+COPY --from=vendor irrlicht-1.8.5.zip libpng-1.6.37.tar.xz /tmp/vendor/
+COPY docker/vendor.sha256 /tmp/vendor/vendor.sha256
+RUN cd /tmp/vendor && grep -v '^#' vendor.sha256 | sha256sum -c -
 COPY docker/irrlicht-drm/CIrrDeviceFB.h /tmp/irrlicht-drm/CIrrDeviceFB.h
 COPY docker/irrlicht-drm/CIrrDeviceFB.cpp /tmp/irrlicht-drm/CIrrDeviceFB.cpp
 COPY docker/irrlicht-drm/COpenGLES2Driver.h /tmp/irrlicht-drm/COpenGLES2Driver.h
@@ -215,10 +224,8 @@ COPY docker/irrlicht-drm/t122_texprobe.h /tmp/irrlicht-drm/t122_texprobe.h
 COPY docker/irrlicht-drm/drm_mode_select.h /tmp/irrlicht-drm/drm_mode_select.h
 COPY docker/irrlicht-drm-patch.py /tmp/irrlicht-drm-patch.py
 RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
-        wget -q https://downloads.sourceforge.net/irrlicht/irrlicht-1.8.5.zip && \
-        python3 -c "import zipfile; zipfile.ZipFile('irrlicht-1.8.5.zip').extractall()" && \
-        wget -q https://downloads.sourceforge.net/libpng/libpng-1.6.37.tar.xz && \
-        tar xJf libpng-1.6.37.tar.xz && \
+        python3 -c "import zipfile; zipfile.ZipFile('/tmp/vendor/irrlicht-1.8.5.zip').extractall()" && \
+        tar xJf /tmp/vendor/libpng-1.6.37.tar.xz && \
         cp -r libpng-1.6.37/arm irrlicht-1.8.5/source/Irrlicht/libpng/ && \
         cp /tmp/irrlicht-drm/CIrrDeviceFB.h irrlicht-1.8.5/source/Irrlicht/CIrrDeviceFB.h && \
         cp /tmp/irrlicht-drm/CIrrDeviceFB.cpp irrlicht-1.8.5/source/Irrlicht/CIrrDeviceFB.cpp && \

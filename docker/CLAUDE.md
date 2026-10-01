@@ -28,6 +28,15 @@ that ships with the client. The system Mesa packages are left alone.
 - The rigs, the opt-out (`WILLEQ_MESA=system`) and the maps proof are covered in `docs/ci.md`, "The shipped Mesa
   prefix".
 
+## Vendored archives (B970)
+
+`Dockerfile.arm-noble` takes `irrlicht-1.8.5.zip` and `libpng-1.6.37.tar.xz` from a named build context,
+`vendor` (the NFS store `ci-arm/vendor/`), never from SourceForge. `docker/vendor.sha256` pins them;
+`scripts/ci/vendor_fetch.sh --ensure` fills the store. Run the Dockerfile by hand only with
+`--build-context vendor="$(scripts/ci/vendor_fetch.sh --ensure)"`. Keep the archive `COPY` ahead of the
+`docker/irrlicht-drm/*` copies. `Dockerfile`, `Dockerfile.arm64-noble` and `Dockerfile.arm-cross` still wget
+(not in CI). Details: `docs/ci.md`.
+
 **Build command**: `scripts/build-arm-noble.sh`
 ```bash
 ./scripts/build-arm-noble.sh                    # Graphics + Audio (default)

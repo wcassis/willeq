@@ -146,6 +146,8 @@ build-arm:
   script:
     - set -o pipefail
     - '[ "$(hostname)" = "dev-u24" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
+    # B970: verify/fill the vendored Irrlicht+libpng store first; fails naming the pin.
+    - scripts/ci/vendor_fetch.sh --ensure
     - nice -n 10 scripts/build-arm-noble.sh 2>&1 | tail -n 40
     - scripts/pi/publish_arm_build.sh "$CI_COMMIT_SHA" "${CI_COMMIT_BRANCH:-$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
 
