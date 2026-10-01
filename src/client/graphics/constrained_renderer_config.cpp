@@ -348,6 +348,11 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // inherits that sample's limit) x 1.25 = 1.84 -> 2 MiB. The blessed
             // coverage BASELINES in tests/goldens/manifest.json are unchanged.
             config.characterModelsMemoryBytes    = 2 * 1024 * 1024;    // 2MB
+            // B964 (Will, 2026-09-30: "Your recommended impostor budget
+            // sounds fine"): the tex.impostor row, 128^2 impostors. B952's
+            // 200 unique x 128^2 Pi-measured 15.79 MiB x 1.25 = 19.74 -> 20 MiB.
+            config.impostorTextureMemoryBytes    = 20 * 1024 * 1024;   // 20MB
+            config.impostorTierDistance          = 80.0f;
             // Address space, not RAM -- see the field's comment.
             config.eqe1MappedAddressSpaceBytes   = 256 * 1024 * 1024;  // 256MB
             // T491 (2026-09-14, Will's 100%-accounting ruling): per-category
@@ -638,6 +643,10 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         vboEboMemoryBytes = static_cast<size_t>(preset["vboEboMemoryBytes"].asUInt64());
     if (preset.isMember("characterModelsMemoryBytes"))
         characterModelsMemoryBytes = static_cast<size_t>(preset["characterModelsMemoryBytes"].asUInt64());
+    if (preset.isMember("impostorTextureMemoryBytes"))
+        impostorTextureMemoryBytes = static_cast<size_t>(preset["impostorTextureMemoryBytes"].asUInt64());
+    if (preset.isMember("impostorTierDistance"))
+        impostorTierDistance = preset["impostorTierDistance"].asFloat();
     if (preset.isMember("eqe1MappedAddressSpaceBytes"))
         eqe1MappedAddressSpaceBytes = static_cast<size_t>(preset["eqe1MappedAddressSpaceBytes"].asUInt64());
     // T491: ledger budgets, keyed by eqt::memory::categoryName(). An unknown

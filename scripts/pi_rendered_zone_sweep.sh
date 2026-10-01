@@ -48,6 +48,10 @@
 #          memory cgroup -- rendered_zone_run.py --own-cgroup -- so its
 #          gpu_buffers ledger row reads the Lima GEM bytes from memory.stat;
 #          this opts out, and the row falls back to the mapped lower bound)
+#          [--stop-point P]   (B964: the ledger point after which the runner
+#          ends the client, rendered_zone_run.py --stop-point; default its
+#          steady_60s -- a --tour longer than that needs a later point, or
+#          a name that never comes, so the tour's own /q ends the run)
 #          [--bo-census SHIM.so]   (B962: run the client under the GEM owner
 #          census shim, scripts/pi/lima_bo_census.c, built for armhf: an UNCAPPED
 #          copy -- a setcap binary ignores LD_PRELOAD -- with net.core.rmem_max
@@ -123,6 +127,7 @@ DUMP_MAX=3
 ACCOUNT_OVERRIDE=""
 CHAR_OVERRIDE=""
 OWN_CGROUP=1
+STOP_POINT=""
 MESA="${WILLEQ_MESA:-nollvm}"
 BO_CENSUS=""
 while [ $# -gt 0 ]; do
@@ -149,8 +154,9 @@ while [ $# -gt 0 ]; do
         --account) ACCOUNT_OVERRIDE="$2"; shift 2 ;;
         --char) CHAR_OVERRIDE="$2"; shift 2 ;;
         --shared-cgroup) OWN_CGROUP=0; shift ;;
+        --stop-point) STOP_POINT="$2"; shift 2 ;;
         --bo-census) BO_CENSUS="$(readlink -f "$2")"; shift 2 ;;
-        -h|--help) sed -n '2,80p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,84p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -398,7 +404,7 @@ run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     local remote="rm -rf '$pidir' && rm -f '$PI_BIN_DIR/gem_owners.tsv' '$PI_BIN_DIR/bo_events.log' && \
 mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && ${drive}\
 env TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTRA_ENV \
-python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} $([ "$OWN_CGROUP" -eq 1 ] && echo --own-cgroup) -- \
+python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} ${STOP_POINT:+--stop-point $STOP_POINT} $([ "$OWN_CGROUP" -eq 1 ] && echo --own-cgroup) -- \
 $GEM_CENSUS_ENV '$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
 --eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
 --dump-frames-dir '$pidir/frames' --dump-every $DUMP_EVERY --dump-max-frames $DUMP_MAX \
