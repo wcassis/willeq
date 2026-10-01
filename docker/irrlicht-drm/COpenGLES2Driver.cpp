@@ -82,14 +82,26 @@ void alphaTraceDraw(const irr::video::ITexture* tex)
                  g_alphaTraceFrame, tex ? tex->getName().getPath().c_str() : "(null)");
 }
 
+unsigned g_alphaTraceFramesWithDraws = 0;
+
 void alphaTraceEndFrame()
 {
-    if (g_alphaTraceFrame % 60 == 0)
+    if (g_alphaTraceFrameDraws > 0) ++g_alphaTraceFramesWithDraws;
+    // Every 60th frame, plus the first 200 frames that drew anything.
+    if (g_alphaTraceFrame % 60 == 0 ||
+        (g_alphaTraceFrameDraws > 0 && g_alphaTraceFramesWithDraws <= 200))
         std::fprintf(stderr, "[B960] alpha3d frame=%u draws_this_frame=%u total_draws=%lu unique_textures=%u\n",
                      g_alphaTraceFrame, g_alphaTraceFrameDraws, g_alphaTraceTotalDraws,
                      g_alphaTraceSeenCount);
     ++g_alphaTraceFrame;
     g_alphaTraceFrameDraws = 0;
+}
+
+void alphaTraceSummary()
+{
+    std::fprintf(stderr, "[B960] alpha3d summary frames=%u frames_with_draws=%u total_draws=%lu unique_textures=%u\n",
+                 g_alphaTraceFrame, g_alphaTraceFramesWithDraws, g_alphaTraceTotalDraws,
+                 g_alphaTraceSeenCount);
 }
 
 } // anonymous namespace
@@ -226,9 +238,6 @@ COpenGLES2Driver::COpenGLES2Driver(const SIrrlichtCreationParameters& params,
 
 COpenGLES2Driver::~COpenGLES2Driver()
 {
-    if (g_alphaTrace)
-        std::fprintf(stderr, "[B960] alpha3d summary frames=%u total_draws=%lu unique_textures=%u\n",
-                     g_alphaTraceFrame, g_alphaTraceTotalDraws, g_alphaTraceSeenCount);
     // Clean up hardware buffers (VBOs/EBOs)
     deleteAllHardwareBuffers();
 
@@ -368,7 +377,11 @@ bool COpenGLES2Driver::initDriver()
     const bool legacyFwidth = fwKnob && std::strcmp(fwKnob, "1") == 0 &&
                               extensions_.hasStandardDerivatives;
     const char* traceKnob = std::getenv("WILLEQ_ALPHATEST_TRACE");
-    g_alphaTrace = traceKnob && std::strcmp(traceKnob, "1") == 0;
+    if (!g_alphaTrace && traceKnob && std::strcmp(traceKnob, "1") == 0) {
+        g_alphaTrace = true;
+        std::atexit(alphaTraceSummary);  // tools exit without dropping the device
+        std::fprintf(stderr, "[B960] alpha3d trace on, legacy_fwidth=%d\n", legacyFwidth ? 1 : 0);
+    }
     if (!shaderManager_.init(legacyFwidth)) {
         os::Printer::log("GLES2: Shader initialization failed", ELL_ERROR);
         return false;
