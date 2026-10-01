@@ -196,6 +196,10 @@ public:
     // Attenuation LUT texture (GLES2 per-pixel player light optimization)
     uint32_t attenLutTexture() const { return attenLutTexture_; }
     float lutScale() const { return lutScale_; }
+    // The FS uniform uLUTDistScale (B965): the player-light vector is scaled by
+    // this BEFORE it is squared, so the LUT coordinate dot(pLs, pLs) = d^2 *
+    // lutScale_ without ever forming d^2 in an FP16 (Mali-400 mediump) register.
+    float lutDistScale() const { return lutDistScale_; }
 
     // Camera position for atlas per-pixel lighting (Irrlicht world space, Y-up)
     void setCameraPos(float x, float y, float z);
@@ -364,6 +368,7 @@ private:
     uint32_t attenLutTexture_ = 0;
     float lutScale_ = 1.0f / 4096.0f;
     float lutMaxD2_ = 4096.0f;
+    float lutDistScale_ = 1.0f / 64.0f;  // 1/sqrt(lutMaxD2_); a power of two, so exact
     float lutBakedConst_ = -1.0f;
     float lutBakedQuad_ = -1.0f;
     bool lutDirty_ = true;

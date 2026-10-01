@@ -69,7 +69,7 @@ public:
             locPlayerLightColor_ = glGetUniformLocation(prog, "uPlayerLightColor");
             locPlayerLightAtten_ = glGetUniformLocation(prog, "uPlayerLightAtten");
             locAttenLUT_         = glGetUniformLocation(prog, "uAttenLUT");
-            locLUTScale_         = glGetUniformLocation(prog, "uLUTScale");
+            locLUTScale_         = glGetUniformLocation(prog, "uLUTDistScale");
             locNumPointLights_   = glGetUniformLocation(prog, "uNumPointLights");
             locFireGlowLightPos_    = glGetUniformLocation(prog, "uFireGlowLightPos[0]");
             locFireGlowLightColor_  = glGetUniformLocation(prog, "uFireGlowLightColor[0]");
@@ -154,7 +154,7 @@ public:
                 glActiveTexture(GL_TEXTURE0);
                 glUniform1i(locAttenLUT_, 2);
             }
-            if (locLUTScale_ >= 0) glUniform1f(locLUTScale_, owner_->lutScale());
+            if (locLUTScale_ >= 0) glUniform1f(locLUTScale_, owner_->lutDistScale());
             if (locNumPointLights_ >= 0)   glUniform1i(locNumPointLights_, owner_->numPointLights());
 
             // Fire glow fog emitters
@@ -318,7 +318,7 @@ public:
             locPlayerLightColor_ = glGetUniformLocation(prog, "uPlayerLightColor");
             locPlayerLightAtten_ = glGetUniformLocation(prog, "uPlayerLightAtten");
             locAttenLUT_         = glGetUniformLocation(prog, "uAttenLUT");
-            locLUTScale_         = glGetUniformLocation(prog, "uLUTScale");
+            locLUTScale_         = glGetUniformLocation(prog, "uLUTDistScale");
             locNumPointLights_   = glGetUniformLocation(prog, "uNumPointLights");
             locFireGlowLightPos_    = glGetUniformLocation(prog, "uFireGlowLightPos[0]");
             locFireGlowLightColor_  = glGetUniformLocation(prog, "uFireGlowLightColor[0]");
@@ -385,7 +385,7 @@ public:
                 glActiveTexture(GL_TEXTURE0);
                 glUniform1i(locAttenLUT_, 2);
             }
-            if (locLUTScale_ >= 0) glUniform1f(locLUTScale_, owner_->lutScale());
+            if (locLUTScale_ >= 0) glUniform1f(locLUTScale_, owner_->lutDistScale());
             if (locNumPointLights_ >= 0)   glUniform1i(locNumPointLights_, owner_->numPointLights());
 
             // Fire glow fog emitters
@@ -520,7 +520,7 @@ public:
             locWindParams_ = glGetUniformLocation(prog, "uWindParams");
             locMeshYBounds_ = glGetUniformLocation(prog, "uMeshYBounds");
             locAttenLUT_   = glGetUniformLocation(prog, "uAttenLUT");
-            locLUTScale_   = glGetUniformLocation(prog, "uLUTScale");
+            locLUTScale_   = glGetUniformLocation(prog, "uLUTDistScale");
             locNumPointLights_ = glGetUniformLocation(prog, "uNumPointLights");
             locPlayerLightPos_   = glGetUniformLocation(prog, "uPlayerLightPos");
             locPlayerLightColor_ = glGetUniformLocation(prog, "uPlayerLightColor");
@@ -609,7 +609,7 @@ public:
                 glActiveTexture(GL_TEXTURE0);
                 glUniform1i(locAttenLUT_, 2);
             }
-            if (locLUTScale_ >= 0) glUniform1f(locLUTScale_, owner_->lutScale());
+            if (locLUTScale_ >= 0) glUniform1f(locLUTScale_, owner_->lutDistScale());
             if (locNumPointLights_ >= 0) glUniform1i(locNumPointLights_, owner_->numPointLights());
 
             // Fire glow fog emitters
