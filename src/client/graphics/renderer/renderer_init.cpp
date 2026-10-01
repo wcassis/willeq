@@ -1,5 +1,6 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/core/memory_ledger.h"  // T504: startup owner labels
+#include "client/core/gem_owner_census.h"  // B962: GEM owner tags
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -411,7 +412,12 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     startupOwner("gfx.device");
     LOG_TRACE(MOD_GRAPHICS, "Creating Irrlicht device (createDeviceEx)...");
-    device_ = irr::createDeviceEx(params);
+    {
+        // B962: the EGL surface (depth/stencil) and the main context's driver
+        // buffers are created here -- name them for the GEM census shim.
+        eqt::memory::GemTag gemTag("egl:device");
+        device_ = irr::createDeviceEx(params);
+    }
 
     if (!device_) {
         // P32: the EDT_SOFTWARE retry fallback was removed along with

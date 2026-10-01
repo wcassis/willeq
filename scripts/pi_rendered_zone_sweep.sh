@@ -44,6 +44,12 @@
 #          memory cgroup -- rendered_zone_run.py --own-cgroup -- so its
 #          gpu_buffers ledger row reads the Lima GEM bytes from memory.stat;
 #          this opts out, and the row falls back to the mapped lower bound)
+#          [--bo-census SHIM.so]   (B962: run the client under the GEM owner
+#          census shim, scripts/pi/lima_bo_census.c, built for armhf: an UNCAPPED
+#          copy -- a setcap binary ignores LD_PRELOAD -- with net.core.rmem_max
+#          raised to the 1 MiB the client asks for, so its SO_RCVBUF fallback gets
+#          what SO_RCVBUFFORCE would have (B751), restored at cleanup; the dump
+#          lands in the zone's dir as gem_owners.tsv)
 #          [--allow-vm-lane]   (B909's A/B, scripts/pi/collision_ab.sh:
 #          --tour replaces the /loc-wait-/q script, --env adds client
 #          environment, --drive-keys plays scripts/pi/uinput_drive.py's fixed
@@ -108,6 +114,7 @@ ALLOW_VM=0
 SNAP_POINTS=""
 OWN_CGROUP=1
 MESA="${WILLEQ_MESA:-nollvm}"
+BO_CENSUS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --zones) ZONES="$2"; shift 2 ;;
@@ -128,6 +135,7 @@ while [ $# -gt 0 ]; do
         --snap-points) SNAP_POINTS="$2"; shift 2 ;;
         --mesa) MESA="$2"; shift 2 ;;
         --shared-cgroup) OWN_CGROUP=0; shift ;;
+        --bo-census) BO_CENSUS="$(readlink -f "$2")"; shift 2 ;;
         -h|--help) sed -n '2,68p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
@@ -240,6 +248,7 @@ say "pi lock taken: $(pi_lock_show </dev/null)"
 BEFORE="$OUT/snapshot_before.tsv"
 AFTER="$OUT/snapshot_after.tsv"
 CLEANED=0
+RMEM_RESTORE=""
 RESTORE_BAD=0
 SNAP_TAKEN=0
 PI_BIN_DIR="/home/${PI_USER}/pi-rendered-sweep"
@@ -254,6 +263,10 @@ cleanup() {
     say "cleanup: stopping any Pi client, restoring, lane down, releasing locks"
     pi_kill_client
     pi_remote "rm -rf '$PI_TMP'" </dev/null >/dev/null 2>&1
+    if [ -n "$RMEM_RESTORE" ]; then
+        pi_remote "sudo -n sysctl -q -w net.core.rmem_max=$RMEM_RESTORE" </dev/null >/dev/null 2>&1
+        say "net.core.rmem_max restored to $RMEM_RESTORE: now $(pi_remote "sysctl -n net.core.rmem_max" </dev/null)"
+    fi
     if [ "$SNAP_TAKEN" -eq 1 ]; then
         eqemu_restore_snapshot "$BEFORE" "$AFTER" say || RESTORE_BAD=1
     fi
@@ -267,8 +280,23 @@ trap 'cleanup; exit 130' INT TERM
 trap cleanup EXIT
 
 # ---- 1. stage the capable client on the Pi -----------------------------------
+GEM_CENSUS_ENV=""
+if [ -n "$BO_CENSUS" ]; then
+    # B962: an UNCAPPED copy (secure execution would drop LD_PRELOAD), and the
+    # receive-buffer ceiling raised so SO_RCVBUF gets the 1 MiB SO_RCVBUFFORCE
+    # would have forced (B751); the original value is restored at cleanup.
+    [ -f "$BO_CENSUS" ] || { say "no census shim at $BO_CENSUS"; exit 68; }
+    pi_remote "mkdir -p '$PI_BIN_DIR' && cp '$STAGE_SRC' '$PI_BIN' && cp '$BO_CENSUS' '$PI_BIN_DIR/lima_bo_census.so'" </dev/null \
+        || { say "staging the census binary/shim on the Pi failed"; exit 68; }
+    RMEM_RESTORE="$(pi_remote "sysctl -n net.core.rmem_max" </dev/null | tr -d '[:space:]')"
+    pi_remote "sudo -n sysctl -q -w net.core.rmem_max=1048576" </dev/null \
+        || say "WARNING: could not raise net.core.rmem_max -- the uncapped client's rcvbuf will be the default"
+    say "B962 census: uncapped client + LD_PRELOAD $BO_CENSUS; rmem_max $RMEM_RESTORE -> $(pi_remote "sysctl -n net.core.rmem_max" </dev/null)"
+    GEM_CENSUS_ENV="env LD_PRELOAD=$PI_BIN_DIR/lima_bo_census.so B962_GEMDUMP=$PI_BIN_DIR/gem_owners.tsv"
+else
 pi_remote "mkdir -p '$PI_BIN_DIR' && cp '$STAGE_SRC' '$PI_BIN' && sudo -n setcap cap_net_raw,cap_net_admin+ep '$PI_BIN'" </dev/null \
     || say "WARNING: staging/setcap on the Pi failed -- the run goes ahead; the rcvbuf column shows what the client got"
+fi
 MESA_DEPLOY="not deployed (WILLEQ_MESA=system)"
 if [ "$MESA" = nollvm ]; then
     if ! MESA_DEPLOY="$(bash "$REPO/scripts/pi/deploy_mesa_prefix.sh" "$PI_SHA_DIR/mesa/prefix" 2>&1)"; then
@@ -295,6 +323,7 @@ fi
     echo "worktree_commit=$(git -C "$REPO" rev-parse HEAD)"
     echo "resolution=$RES cap_s=$CAP_S stall_s=$STALL_S hold_s=$HOLD_S"
     echo "lane=$EQEMU_HOST tour=${TOUR_IN:-default} extra_env=${EXTRA_ENV:-none} drive_keys=$DRIVE_KEYS snap_points=${SNAP_POINTS:-none}"
+    echo "bo_census=${BO_CENSUS:-none}"
 } > "$OUT/binary_identity.txt"
 say "$(tr '\n' ' ' < "$OUT/binary_identity.txt")"
 
@@ -353,11 +382,13 @@ run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     # shellcheck disable=SC2086
     local remote="rm -rf '$pidir' && mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && ${drive}\
 env TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTRA_ENV \
+rm -f '$PI_BIN_DIR/gem_owners.tsv'; \
 python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} $([ "$OWN_CGROUP" -eq 1 ] && echo --own-cgroup) -- \
-'$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
+$GEM_CENSUS_ENV '$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
 --eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
 --dump-frames-dir '$pidir/frames' --dump-every 100 --dump-max-frames 3 \
 > '$pidir/runner.out' 2>&1; cp -rp '$pidir/.' '$dir/'; \
+cp '$PI_BIN_DIR/gem_owners.tsv' '$dir/' 2>/dev/null; rm -f '$PI_BIN_DIR/gem_owners.tsv'; \
 sudo -n pkill -TERM -f '[u]input_drive[.]py' >/dev/null 2>&1; sleep 1; cp '$pidir/keys.tsv' '$pidir/keys.out' '$dir/' 2>/dev/null; \
 sudo -n rm -rf '$pidir'; true"
     timeout $((CAP_S + 120)) bash -c 'source "$1"; pi_remote "$2" </dev/null' _ "$REPO/scripts/pi/env.sh" "$remote"

@@ -31,6 +31,25 @@ namespace video
 
 class COGLES2Texture;
 
+// B962 (GitLab #280): GEM buffer OWNER tags for the diagnostic LD_PRELOAD
+// census (scripts/pi/lima_bo_census.c; the client side is
+// include/client/core/gem_owner_census.h). Every GL call that can make Mesa
+// allocate a GEM buffer (texture/renderbuffer storage, buffer data, a draw
+// that streams client arrays, the present) runs inside a GemTagScope, and the
+// shim records the tag with each GEM_CREATE. The shim's entry points are
+// resolved once with dlsym (COpenGLES2Driver.cpp); without the shim a scope
+// is one null check.
+bool gles2GemTagActive();
+void gles2GemTagPush(const char* tag);
+void gles2GemTagPop();
+struct GemTagScope {
+    explicit GemTagScope(const char* tag) : on_(gles2GemTagActive()) { if (on_) gles2GemTagPush(tag); }
+    ~GemTagScope() { if (on_) gles2GemTagPop(); }
+    GemTagScope(const GemTagScope&) = delete;
+    GemTagScope& operator=(const GemTagScope&) = delete;
+    bool on_;
+};
+
 // State tracking to minimize redundant GL calls (critical for Mali 400 tile-based arch)
 struct SOGLES2State
 {

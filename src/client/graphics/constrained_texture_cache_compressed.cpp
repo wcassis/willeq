@@ -9,7 +9,9 @@
 #include "client/graphics/eq/zone_geometry.h"
 #include "common/logging.h"
 #include "client/core/memory_ledger.h"
+#include "client/core/gem_owner_census.h"  // B962
 #include <algorithm>
+#include <optional>
 #include <cstring>
 #include <functional>
 #include <fstream>
@@ -102,6 +104,7 @@ irr::video::ITexture* ConstrainedTextureCache::tryCompressedUpload(
 
     // T491: driver-side from here (IImage, COGLES2Texture, the ETC1 upload).
     eqt::memory::MemoryScope driverScope(eqt::memory::Category::TexturesDriver);
+    eqt::memory::GemTag gemTag("tex:dxt", name.c_str(), compressed.width, compressed.height, 1);
     irr::video::IImage* image = driver_->createImageFromData(
         irr::video::ECF_A8R8G8B8,
         irr::core::dimension2d<irr::u32>(compressed.width, compressed.height),
@@ -519,6 +522,10 @@ bool ConstrainedTextureCache::createETC1Storage(const std::string& name, const C
 
     glBindTexture(GL_TEXTURE_2D, texId);
 
+    // B962: GEM owner tag for the census shim (no-op without it).
+    std::optional<eqt::memory::GemTag> gemTag;
+    gemTag.emplace("tex:etc1", name.c_str(), entry.width, entry.height, entry.mipLevels);
+
     // Upload RGB mip chain
     uint32_t offset = 0;
     uint16_t w = entry.width, h = entry.height;
@@ -573,7 +580,9 @@ bool ConstrainedTextureCache::createETC1Storage(const std::string& name, const C
 
     // Upload alpha texture if present
     GLuint alphaTexId = 0;
+    gemTag.reset();
     if (entry.hasAlpha && entry.alphaData) {
+        gemTag.emplace("tex:etc1a", name.c_str(), entry.width, entry.height, entry.mipLevels);
         glGenTextures(1, &alphaTexId);
         glBindTexture(GL_TEXTURE_2D, alphaTexId);
 
@@ -764,6 +773,7 @@ bool ConstrainedTextureCache::createV2Storage(const std::string& name, const Com
     }
 
     glBindTexture(GL_TEXTURE_2D, texId);
+    eqt::memory::GemTag gemTag("tex:v2", name.c_str(), entry.width, entry.height, entry.mipLevels);
 
     // Upload uncompressed mip chain via glTexImage2D (not compressed — no
     // glCompressedTexImage2D indirection or function-pointer lookup needed).
