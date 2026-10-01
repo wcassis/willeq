@@ -218,6 +218,10 @@ void EntityRenderer::updateMainThreadEntityState(float deltaTime) {
     // T309: the first-person draw rule. Must run every frame and BEFORE
     // smgr_->drawAll(), which is where OnRegisterSceneNode() reads the flag.
     updateFirstPersonBodyDrawRule();
+
+    // B964: the impostor pass (entity_impostors.cpp) -- tier decision,
+    // governor-scheduled captures, billboard batch. Before beginScene().
+    updateImpostors();
 }
 
 void EntityRenderer::processUpdate(const PendingUpdate& update) {

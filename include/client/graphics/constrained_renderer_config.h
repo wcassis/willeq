@@ -189,6 +189,21 @@ struct ConstrainedRendererConfig {
     // races beyond it are unmeasured) x 1.25 = 1.84 -> 2 MiB.
     size_t characterModelsMemoryBytes = 0;
 
+    // B964: the impostor billboard row, `tex.impostor` (the impostor atlas
+    // pages plus the one capture scratch, include/client/graphics/impostor/).
+    // Blessed by Will 2026-09-30 ("Your recommended impostor budget sounds
+    // fine"): 128^2 impostors, 20 MiB -- B952's 200 unique x 128^2 logical
+    // 12.59 MiB x 1.25 = 15.74 MiB, Pi-measured 15.79 MiB x 1.25 = 19.74 MiB
+    // (refactor/B952/README.md). It is BOTH the cap the cache checks before it
+    // allocates a page and the row's budget. 0 = impostors OFF: only the
+    // orangepi preset turns them on, and WILLEQ_BASELINE=1 turns them off
+    // whatever the preset says (they are a non-original LOD feature).
+    size_t impostorTextureMemoryBytes = 0;
+    // B964: beyond this distance (EQ units, camera to entity) an entity is
+    // always drawn as its impostor once the impostor exists; inside it the
+    // frame-budget governor decides. B952 measured the 80-unit tier.
+    float impostorTierDistance = 80.0f;
+
     // T491: per-category budgets for the allocator-level memory ledger
     // (client/core/memory_ledger.h), indexed by eqt::memory::Category and
     // keyed by categoryName() in config/constrained_presets.json

@@ -50,6 +50,8 @@
       "s3dZoneSourceMemoryBytes": 14680064,
       "vboEboMemoryBytes": 41943040,
       "characterModelsMemoryBytes": 2097152,
+      "impostorTextureMemoryBytes": 20971520,
+      "impostorTierDistance": 80.0,
       "eqe1MappedAddressSpaceBytes": 268435456,
       "mergeZoneDraws": true,
       "enableMipmaps": true,

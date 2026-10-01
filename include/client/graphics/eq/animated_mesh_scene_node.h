@@ -294,6 +294,14 @@ public:
     void setWithheldFromRenderList(bool withheld) { withheldFromRenderList_ = withheld; }
     bool isWithheldFromRenderList() const { return withheldFromRenderList_; }
 
+    // B964: an entity drawn as its impostor needs no posed vertices. While
+    // suspended, OnAnimate() keeps the animator (bones, phase, end callbacks)
+    // running but skips applyAnimation(), the per-vertex skinning; the
+    // impostor capture calls forceAnimationUpdate() first, and clearing the
+    // flag re-skins on the next OnAnimate().
+    void setSkinningSuspended(bool suspended) { skinningSuspended_ = suspended; }
+    bool isSkinningSuspended() const { return skinningSuspended_; }
+
     // Total index count summed across the per-instance mesh's buffers
     // (i.e. 3x the currently-drawn triangle count). Diagnostics/tests.
     size_t getInstanceMeshIndexCount() const;
@@ -329,6 +337,7 @@ private:
     bool isPlayerNode_ = false;
     // T309: see setWithheldFromRenderList(). Never mirrors IsVisible.
     bool withheldFromRenderList_ = false;
+    bool skinningSuspended_ = false;  // B964: see setSkinningSuspended()
 
     // T301 first-person eye cache. Both are properties of the MESH, not of
     // this instance's pose, so they are resolved once. -2 = not yet

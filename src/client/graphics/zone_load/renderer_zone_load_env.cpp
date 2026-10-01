@@ -990,6 +990,10 @@ void ZoneLoadComponent::loadZoneStep12b_Simulation(ZoneLoadContext& ctx) {
             }
             input.entityRenderDistance = ctx_.config.constrainedConfig.entityRenderDistance;
             input.maxVisibleEntities = ctx_.config.constrainedConfig.maxVisibleEntities;
+            // B964: impostored entities do not count against the full-model cap;
+            // the tier policy keeps the full models within maxVisibleEntities.
+            if (ctx_.entityRenderer)
+                input.maxVisibleEntities += ctx_.entityRenderer->impostorVisibilityAllowance();
             input.entityCullingEnabled = true;
             input.nameTagDistance = ctx_.entityRenderer->getNameTagDistance();
             input.nameTagsVisible = ctx_.entityRenderer->areNameTagsVisible();

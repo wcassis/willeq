@@ -10,6 +10,7 @@
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/skeletal_animator.h"
+#include "client/graphics/impostor/impostor_cache.h"
 #include "client/animation_constants.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
@@ -43,6 +44,10 @@ void EntityRenderer::removeEntity(uint16_t spawnId) {
 
     // Remove from spatial grid
     removeEntityFromGrid(spawnId);
+
+    // B964: free its impostor cell (or keep it, dirty, across an appearance
+    // rebuild -- see updateEntityAppearance()).
+    impostorOnEntityRemoved(spawnId);
 
     EntityVisual& visual = it->second;
 
@@ -156,8 +161,12 @@ void EntityRenderer::updateEntityAppearance(uint16_t spawnId, uint16_t raceId, u
     LOG_INFO(MOD_GRAPHICS, "Updating appearance for entity {} ({}) to race {} gender {}",
              spawnId, name, raceId, gender);
 
-    // Remove the old entity (this cleans up scene nodes)
+    // Remove the old entity (this cleans up scene nodes). B964: an impostored
+    // entity keeps its cell across the rebuild, marked for re-capture -- the
+    // EntityAppearanceChanged / OP_WearChange refresh trigger.
+    impostorRetainOnRemove_ = true;
     removeEntity(spawnId);
+    impostorRetainOnRemove_ = false;
 
     // Recreate with new appearance
     bool result = createEntity(spawnId, raceId, name, x, y, z, heading,
@@ -243,6 +252,13 @@ void EntityRenderer::clearEntities() {
     }
     entities_.clear();
     boatSpawnIds_.clear();
+    // B964: a zone change drops every impostor cell and page.
+    impostorSpawns_.clear();
+    impostorPolicy_.reset();
+    if (impostors_) {
+        impostors_->clear();
+        impostors_->publishRow(0, 0, 0);  // the row says the pages are gone
+    }
 }
 
 bool EntityRenderer::hasEntity(uint16_t spawnId) const {
