@@ -1,0 +1,174 @@
+# B975 -- entity name tags in one batch
+
+GitLab #293 (class B, perf, lane pi). Branch `task/B975-name-tag-batch`
+(worktree `/mnt/projects/fable/wt/audit-nametags`), based on `gitlab/fable`
+d3375b65 (B964 / MR !70 merged). Raw evidence: `/mnt/projects/fable/review/B975/`.
+
+## STATE AT HAND-OFF 2026-10-01
+
+The unit was stopped on a hand-off order mid-way. Everything below is the
+state at the WIP commit that carries this section.
+
+### Done (with evidence)
+
+1. **Per-tag cost of the old path, measured** (`tools/hwcaps/nametag_drawcost drawcost`,
+   N tags under N empty entity nodes 115-160 units ahead, 800x600, no zone).
+   Orange Pi (Lima, LLVM-less Mesa, `--drm`), CPU submission per tag:
+
+   | component (per tag, Pi) | us |
+   |---|---|
+   | `getScreenCoordinatesFrom3DPosition` (recomputes proj x view every call) | 1.9 |
+   | `CGUIFont::draw()` total (layout, 2+ `core::array`s, sprite bank, driver draw) | 150 |
+   | of which `draw2DImageBatch()` alone (program/uniform setup + one `glDrawElements` over client arrays) | 128 |
+
+   So ~85 % of a tag is the per-tag GL draw submission; layout + allocations
+   ~20 us; projection ~2 us. Whole scene through `drawAll()`, glFinish-bracketed,
+   per-node CTextSceneNodes: N=150 29.3 ms, N=200 44.8 ms (CPU 25.9 / 34.3 ms);
+   the empty scene is 16.5 ms (the Pi's page-flip floor even with Vsync off).
+   x86 llvmpipe (loaded host, not perf evidence): font draw 42-44 us/tag,
+   draw2DImageBatch 34-36 us/tag. Files: `review/B975/pi/drawcost_800x600/drawcost.csv`,
+   `review/B975/x86/drawcost_800x600/drawcost.csv`.
+   Glyph atlas: the built-in font is ONE texture (all glyphs one sprite-bank
+   texture) -- there was never a per-string texture; the cost is draws, not
+   textures. Visibility today: `SimulationWorker::computeNameTagVisibility()`
+   (distance <= `nameTagDistance_` 200 + PVS + LOS), kept unchanged. The
+   oracle's own name distance / crowd rule is NOT recorded anywhere in
+   `docs/` or `refactor/` (grepped) and was NOT measured on the oracle rig.
+
+2. **Batch implemented** (commits 6632933e, e4eeca69):
+   - `include/client/graphics/name_tag_batch.h`, `src/client/graphics/name_tag_batch.cpp`:
+     `NameTagNode` (an `ITextSceneNode`: same parent, same 5.5/10.5 x scale offset,
+     same setText/setTextColor/setVisible/remove; its `OnRegisterSceneNode()`
+     hands itself to the batch under CTextSceneNode's exact condition, so the
+     visibility rules, first-person hiding and B964's `ImpostorBatchNode`
+     re-registration of withheld entities' tags all work unchanged) and
+     `NameTagBatchNode` (one node in ESNRP_TRANSPARENT at camera distance 0,
+     i.e. drawn after every other transparent node; sorts tags with the scene
+     manager's own `TransparentNodeEntry` order + `core::array::sort`;
+     projects with the same `getScreenCoordinatesFrom3DPosition()` call;
+     centres exactly as `CGUIFont::draw(hcenter,vcenter)`; per-tag glyph run
+     cached, rebuilt only on setText; draws through `UiQuadBatch`: first glyph
+     via `draw2DImage()` (sets state), every other glyph of every tag in ONE
+     `glDrawElements` = **2 draw calls per frame, any N**; a tag with a
+     non-ASCII char goes to `font->draw()` in its place in the order).
+     `[nametags]` line every 5 s (tags, cpu us p50/p95, us/tag, build/submit us,
+     draws, quads, buffer bytes); owner row `[memledger-owner] owner=ent.nametag_batch
+     category=entity_instances` (buffer capacity; trimmed at a window boundary
+     when capacity > 4x the window's need).
+   - `include/client/graphics/ui/bitmap_glyph_table.h` + `.cpp`: T462's glyph
+     table moved out of `TextBatch` (shared, not duplicated); `TextBatch` uses it.
+   - `EntityRenderer::createNameTagNode()` (`src/client/graphics/entity_name_tags.cpp`)
+     is the one factory; the three `addTextSceneNode` sites
+     (`entity_mesh_build.cpp` x2, `entity_build_step.cpp`) call it.
+     `WILLEQ_NAMETAG_BATCH=0` = the old CTextSceneNodes (A/B switch).
+   - `UiQuadBatch::bytesReserved()/trim()`.
+3. **Pixel identity, fixed poses** (`nametag_drawcost pixel`, 9 poses, N = 1..200,
+   near 4-46 and far 115-160, yaw 0/20/25): **0 differing pixels in every pose on
+   BOTH x86 and the Pi** (`review/B975/{x86,pi}/pixel_800x600/pixel.csv`, PNGs
+   in `before/` / `after/`). The one way the paths can differ: two tags at
+   EXACTLY equal float distance from the camera (mirrored grid columns) whose
+   text overlaps -- the scene manager's heapsort orders ties by the whole
+   transparent list, the batch by the tags alone. Measured with the (empty)
+   batch node left in the per-node frame's list: 0-23 px per pose
+   (`differing_pixels_tie_order` column), identical on x86 and Pi.
+   Also by design: a transparent node NEARER than a tag that overlaps it used to
+   be drawn over the tag; now every tag is drawn after it (not exercised by the
+   poses -- no other transparent nodes there).
+4. **Batch cost, Pi, first version** (same csv): N=200 tags, 2183 glyph quads:
+   `render()` 3.12 ms = build 0.73 ms (3.65 us/tag: sort + projection + layout +
+   UiQuad emission) + submit 2.39 ms (UiQuadBatch vertex fill 144 B/quad + the 2
+   draws). Whole-scene frame at N=200: per-node 44.8 ms -> batch 16.5 ms (the
+   flip floor). **The bar "tag pass <= 2 ms at 200 on the Pi" is NOT met yet (3.1 ms)**;
+   buffer capacity at N=200 = 791,024 B (too high, see remaining step 1).
+   x86: render 2.29 ms at 200 (build 0.25 ms).
+5. **Tests**: `tests/test_name_tag_batch.cpp` (4 cases, GLES2 device, self-skip
+   without one): pixel identity vs CTextSceneNodes (3 poses, overlapping tags,
+   all con colours, a fallback name, a tag behind the camera, a hidden tag),
+   2 draws + one quad per glyph for N = 1/50/200, re-registration of a withheld
+   parent's tag (B964's path), setText relayout, buffer bytes >= frame need.
+   Passes on x86. Full suite on 6632933e: 5144/5146, the 2 reds
+   (`DataPathRouting.EveryGles2DeviceCreatorInjectsTheShaderCacheDir`,
+   `ZeroCallers`) fixed in e4eeca69 and re-run green with
+   NameTagBatch/StaticUiFrameCost/TextBatch.
+6. **ARM build** of e4eeca69 made locally (`scripts/build-arm-noble.sh`;
+   `nametag_drawcost` added to `docker/Dockerfile.arm-noble`), published to
+   `/mnt/projects/fable/review/B975/arm/e4eeca69/` (`bin/willeq-nollvm`,
+   `bin/nametag_drawcost-nollvm`, config/, data/).
+7. Rig changes: `scripts/b964/pi_crowd.sh` takes `--owner` and a `tagnode`
+   variant (impostors on, `WILLEQ_NAMETAG_BATCH=0`);
+   `scripts/b975/frametiming_table.py` folds `/frametiming` blocks (idle phase)
+   + `[nametags]` + the owner row into a table (reproduces B964's 18.0 / 36.7 ms
+   from `review/B964/pi/crowd800_frametiming/`).
+
+### Remaining (numbered checklist)
+
+1. **Make the batch fit the 2 ms bar on the Pi** (designed, not written):
+   - project with ONE proj x view per frame instead of
+     `getScreenCoordinatesFrom3DPosition()` per tag (1.9 us x 200 = 0.39 ms);
+     the pixel tool must still show 0 differing px on x86 AND Pi (FMA
+     contraction could move a rounding: if it does, keep the Irrlicht call);
+   - write vertices directly (no `UiQuad` intermediate) in a compact layout
+     `{float x,y; u8 r,g,b,a (GL_UNSIGNED_BYTE normalized); float u,v}` = 80 B/quad
+     instead of 144; per-glyph UVs precomputed once with the driver's
+     `src * (1.0f/texW)` arithmetic; a static, grown-once index pattern;
+     add a `UiQuadBatch::drawCompactTexturedRun()` (first quad still through
+     `draw2DImage()` for state; attribute slots 0/2/3 as `ui_quad_batch.cpp`);
+     re-run `nametag_drawcost pixel` x86 + Pi (normalized-ubyte colour must
+     still give 0 differing px; else keep float colour, 128 B/quad);
+   - keep buffers at need (the 791 KB at N=200 is `std::vector` doubling of
+     UiQuad + 144 B/quad vertices).
+   Then: `cmake --build /mnt/projects/fable/wt/audit-nametags/build -j24`,
+   `build/bin/test_name_tag_batch`, `build/bin/nametag_drawcost pixel|drawcost
+   /mnt/projects/fable/review/B975/x86/...`, `bash scripts/build-arm-noble.sh`,
+   publish (`ARM_PUBLISH_ROOT=/mnt/projects/fable/review/B975/arm ARM_PUBLISH_KEEP=50
+   MESA_NOLLVM_STORE_ROOT=/mnt/projects/fable/ci-arm/mesa bash scripts/pi/publish_arm_build.sh <sha> task/B975-name-tag-batch`,
+   then strip + `scripts/pi/mesa_nollvm_select.sh bin/nametag_drawcost bin/nametag_drawcost-nollvm $MESA_NOLLVM_PI_PREFIX`),
+   Pi: `pi_lock_take b975`; `ssh orangepi '<dir>/bin/nametag_drawcost-nollvm pixel /tmp/b975/pixel --drm --png; ... drawcost /tmp/b975/drawcost --drm'`;
+   scp back to `review/B975/pi/`; `pi_lock_release b975`. (Pi invocations used
+   this session: 1 tool run + 2 trivial ssh.)
+2. **Pi crowd before/after (the measurement of record)**, 800x600, the B964 recipe:
+   `bash scripts/b964/pi_crowd.sh --pi-dir /mnt/projects/fable/review/B975/arm/<sha>
+   --zones qeynos2,gfaydark --variants imp200far,tagnode200far,imp0,tagnode0
+   -r "800 600" --frametiming --owner b975 --out /mnt/projects/fable/review/B975/pi/crowd800`
+   (each variant takes/releases the eqemu LOCAL lane lock and the Pi lock
+   itself; check `pi_lock_show` / `eqemu_lock_show` first -- B973 held both
+   earlier today). Table: `python3 scripts/b975/frametiming_table.py
+   review/B975/pi/crowd800/*/*` + `python3 scripts/b964/crowd_table.py ...`
+   (memory: owned / gpu_buffers at steady_60s, the `ent.nametag_batch` row).
+   `imp0` is the normal-zone case (qeynos2 safe point near the gate, gfaydark).
+3. **x86 the same** (not perf evidence): `scripts/b964/crowd_run.sh` with the
+   same variants (needs `EQEMU_HOST=local`, `eqemu_lock_take b975`).
+4. Live check that tags still follow con colour / player colour / setText
+   (entity_updates.cpp, entity_interpolation.cpp, entity_renderer.cpp call
+   sites unchanged) -- a screenshot pair on the local lane with
+   `WILLEQ_NAMETAG_BATCH=0` vs default, diffed per pixel (NPCs move: take it
+   with a GM-frozen crowd or accept movement noise and say so).
+5. Verification bar: full `ctest --test-dir build -j8`; `bash scripts/build-gles2-x86.sh`
+   then `scripts/ci/visual_gate.sh` (goldens are `gles2_zone_benchmark` frames,
+   which build no `EntityRenderer` -> no name tag in any golden; confirm, STOP
+   if a golden pixel moves); `bash scripts/refactor/check_file_sizes.sh fable`;
+   hygiene (`ctest -L hygiene`; a new number in a doc needs a
+   `check_doc_counts.py` row).
+6. Docs: `src/client/graphics/CLAUDE.md` (name tags section), `docs/module_map.md`
+   (new TUs), `docs/future/ui_fixes.md` Chunk 2 (name tags now batched),
+   `refactor/BOARD.md` (B975 entry), this README's final tables; issues for new
+   findings (next B number from the max `B###:` GitLab title; B976 = #294 was
+   last known).
+7. Merge `gitlab/fable` before the final push; MR `Closes #293` (this draft MR
+   says Refs); #293 -> `status::review`.
+
+### Locks / stacks at hand-off
+
+- Pi lock: taken as `b975` for the one tool run, RELEASED (`pi_lock_show` empty);
+  Pi left with governor `ondemand`, `/tmp/b975` removed.
+- eqemu: never taken by this unit; no stack started.
+- GitLab #293 labels: `status::running` (set by this unit).
+
+### Deviations so far
+
+- 2 draw calls per frame, not 1: the first glyph goes through the driver so
+  every GL state (program, texture units, blend, uniforms) is the driver's own;
+  constant in N. One draw would need a state-only entry point in
+  `docker/irrlicht-drm/COpenGLES2Driver` (not done).
+- Commit trailers: the first two commits say `Claude Opus 5.5`; the hand-off
+  commit says `Claude Fable 5.1` as ordered.
