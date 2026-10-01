@@ -363,13 +363,21 @@ and at 4-46 units the billboards are large on screen: 49.7 ms (qeynos2) against
   `/mnt/projects/irrlicht-1.8.5.zip`, libpng 1.6.37 from GitHub -- into an own
   image tag `willeq-arm-noble-b964`), because downloads.sourceforge.net
   answered 522 all session (CI `build-arm` jobs 1937/1938 failed in the
-  Irrlicht layer, #288). Published with `scripts/pi/publish_arm_build.sh` into
+  Irrlicht layer, #288 -- since fixed on `fable` by B970's vendored archives,
+  merged into this branch after the measurements). Published with
+  `scripts/pi/publish_arm_build.sh` into
   `review/B964/arm/<sha>/` (not `ci-arm/`), plus a stripped, prefix-rpath'd
   `impostor_pixel_compare-nollvm`.
 - **The per-entity-ms predictor** of the benchmark was replaced by the
   governor step rule (above), as the B952 design said.
 - **x86 crowd matrix predates two fixes** (the cap rule, the zone hop); kept as
-  recorded, the hop test re-runs the key case.
+  recorded; `x86/crowd_final/` re-runs it with both.
+- **Every measurement predates the merge of `fable` f26373a0** (B962's
+  `COGLES2Texture` / texture-cache GEM changes, B965's player-light shaders):
+  the Pi numbers are from builds `4a81a6b1` / `70ef6376`. B962 removed the second GEM buffer per EQE1
+  texture (qeynos2 `steady_60s` 36.70 -> 22.52 MiB), so `gpu_buffers` on the
+  merged tip is expected lower than the tables; the impostor pages are raw GL textures outside that path.
+  Not re-measured.
 - Commit trailer: `Co-Authored-By: Claude Opus 5.5` (the model that did the
   work), not the `Claude Fable 5.1` named in the dispatch.
 
