@@ -609,6 +609,12 @@ IF(EQT_GRAPHICS)
         src/client/graphics/entity_mesh_build.cpp
         src/client/graphics/entity_build_step.cpp
         src/client/graphics/entity_updates.cpp
+        # B964: impostor billboards (the policy, the atlas cache, the batch
+        # node) and EntityRenderer's impostor pass.
+        src/client/graphics/entity_impostors.cpp
+        src/client/graphics/impostor/impostor_policy.cpp
+        src/client/graphics/impostor/impostor_cache.cpp
+        src/client/graphics/impostor/impostor_batch_node.cpp
         src/client/graphics/entity_interpolation.cpp
         src/client/graphics/entity_lifecycle.cpp
         src/client/graphics/entity_castbars.cpp
@@ -952,6 +958,14 @@ ENDIF()
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(held_item_candidate_search tools/hwcaps/held_item_candidate_search.cpp)
     TARGET_LINK_LIBRARIES(held_item_candidate_search willeq_core ${LINK_LIBS})
+ENDIF()
+
+# B964 (GitLab #282): pixel and draw-cost evidence for the production impostor
+# port -- full model vs impostor through EntityRenderer, and N billboards vs N
+# models (refactor/B964/README.md).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(impostor_pixel_compare tools/hwcaps/impostor_pixel_compare.cpp)
+    TARGET_LINK_LIBRARIES(impostor_pixel_compare willeq_core ${LINK_LIBS})
 ENDIF()
 
 # P23: SimulationWorker input/output-buffer race stress harness. Manual

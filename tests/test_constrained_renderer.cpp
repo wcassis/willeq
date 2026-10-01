@@ -1075,6 +1075,10 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudget
     EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(2) * 1024 * 1024);   // B943: 40 -> 2
     EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
+    // B964 (Will, 2026-09-30: "Your recommended impostor budget sounds fine"):
+    // the tex.impostor row, 128^2 impostors, 20 MiB (refactor/B952/README.md).
+    EXPECT_EQ(config.impostorTextureMemoryBytes,  static_cast<size_t>(20) * 1024 * 1024);
+    EXPECT_FLOAT_EQ(config.impostorTierDistance,  80.0f);
 
     // T491 (2026-09-14, Will's 100%-accounting ruling): the ALLOCATOR-level
     // ledger's per-category budgets, derived by the T293 headroom rule from
@@ -1158,6 +1162,10 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     EXPECT_EQ(config.vboEboMemoryBytes,           static_cast<size_t>(40) * 1024 * 1024);
     EXPECT_EQ(config.characterModelsMemoryBytes,  static_cast<size_t>(2) * 1024 * 1024);   // B943: 40 -> 2
     EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, static_cast<size_t>(256) * 1024 * 1024);
+    // B964 (Will, 2026-09-30: "Your recommended impostor budget sounds fine"):
+    // the tex.impostor row, 128^2 impostors, 20 MiB (refactor/B952/README.md).
+    EXPECT_EQ(config.impostorTextureMemoryBytes,  static_cast<size_t>(20) * 1024 * 1024);
+    EXPECT_FLOAT_EQ(config.impostorTierDistance,  80.0f);
 
     // T491 (2026-09-14, Will's 100%-accounting ruling): the ALLOCATOR-level
     // ledger's per-category budgets, derived by the T293 headroom rule from
@@ -1226,6 +1234,8 @@ TEST_F(ConstrainedRendererConfigTest, T293Budgets_UnsetOnUnbudgetedPresets) {
         EXPECT_EQ(config.vboEboMemoryBytes, 0u);
         EXPECT_EQ(config.characterModelsMemoryBytes, 0u);
         EXPECT_EQ(config.eqe1MappedAddressSpaceBytes, 0u);
+        // B964: impostors are an orangepi-preset feature; 0 = off.
+        EXPECT_EQ(config.impostorTextureMemoryBytes, 0u);
     }
 }
 

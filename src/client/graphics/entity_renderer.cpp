@@ -11,6 +11,7 @@
 #include "client/graphics/eq/dds_decoder.h"
 #include "client/graphics/eq/animated_mesh_scene_node.h"
 #include "client/graphics/eq/skeletal_animator.h"
+#include "client/graphics/impostor/impostor_cache.h"  // B964: complete type for impostors_
 #include "client/animation_constants.h"
 #include "common/logging.h"
 #include "common/name_utils.h"
@@ -100,6 +101,7 @@ EntityRenderer::~EntityRenderer() {
         }
     }
     placeholderMeshCache_.clear();
+    impostors_.reset();  // B964: pages, scratch, batch node, the tex.impostor row
 }
 
 void EntityRenderer::setClientPath(const std::string& path) {
