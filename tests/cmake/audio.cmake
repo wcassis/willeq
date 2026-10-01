@@ -18,6 +18,13 @@ SET(AUDIO_COMMON_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/pfs.cpp
     ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
+    # B977: audio_manager.cpp / zone_audio_manager.cpp open `au.*` owner labels
+    # (eqt::memory::StartupScope), which -- unlike MemoryScope -- is not
+    # header-only. Every AudioManager test therefore links the ledger TU, the
+    # way test_audio_startup_peak always did.
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
 )
 
 # Common libs for audio tests (platform audio libs for miniaudio)
@@ -366,9 +373,6 @@ IF(WITH_AUDIO)
         test_audio_startup_peak.cpp
         ${AUDIO_COMMON_TEST_SOURCES}
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
     )
     TARGET_COMPILE_DEFINITIONS(test_audio_startup_peak PRIVATE
         WITH_AUDIO
@@ -402,4 +406,27 @@ IF(WITH_AUDIO)
             SKIP_REGULAR_EXPRESSION "\\[  SKIPPED \\]"
             RESOURCE_LOCK "audio_startup_peak_shared_cache")
     ENDFOREACH()
+ENDIF()
+
+# B977 (2026-10-01): audio bytes are charged to `audio` whichever thread asks.
+# The custom SoundFont that T504 deferred to the first Velious/Luclin XMI, and
+# every WAV decoded on first play, used to land in the CALLER's category -- on
+# the client that is the game thread's `game_state` (B854 velketor: +24.8 MB of
+# game_state, audio flat). The cases open a GameState scope, call the public
+# entry points the game thread calls, and assert the bytes moved to `audio`.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_audio_ledger_attribution
+        test_audio_ledger_attribution.cpp
+        ${AUDIO_COMMON_TEST_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/client/audio/zone_audio_manager.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/zone_sound_emitter.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/audio/eff_loader.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_audio_ledger_attribution PRIVATE
+        WITH_AUDIO
+        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+    TARGET_LINK_LIBRARIES(test_audio_ledger_attribution
+        GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
+    GTEST_DISCOVER_TESTS(test_audio_ledger_attribution DISCOVERY_TIMEOUT 120)
 ENDIF()
