@@ -32,6 +32,7 @@
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/eq/race_codes.h"
 #include "common/logging.h"
+#include "client/core/gem_owner_census.h"  // B962
 #include "client/data_paths.h"
 #include <cctype>
 #include <json/json.h>
@@ -129,6 +130,7 @@ void Eqe1ArchiveComponent::buildIcosphereMesh() {
     }
 
     // Upload to GPU
+    eqt::memory::GemTag gemTag("vbo:fire-icosphere");
     glGenBuffers(1, &icosphereVBO_);
     glBindBuffer(GL_ARRAY_BUFFER, icosphereVBO_);
     glBufferData(GL_ARRAY_BUFFER,

@@ -4,6 +4,7 @@
 #include "client/graphics/entity_renderer.h"    // EntityVisual, EQAnimatedMeshSceneNode
 #include "client/graphics/door_manager.h"       // DoorVisual
 #include "common/logging.h"
+#include "client/core/gem_owner_census.h"  // B962
 
 #include <irrlicht.h>
 
@@ -370,6 +371,7 @@ std::vector<size_t> ZoneMergeBuffers::regionsWithTriangles() const {
 int ZoneMergeBuffers::renderMerged(irr::video::IVideoDriver* driver,
                                     const std::vector<ZoneDrawEntry>& sortedEntries) {
     if (!built_ || sortedEntries.empty() || !driver) return 0;
+    eqt::memory::GemTag gemTag("draw:zone");  // B962: GEM census owner
 
     irr::core::matrix4 identity;
     int drawCalls = 0;

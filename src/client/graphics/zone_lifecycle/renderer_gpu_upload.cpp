@@ -1,5 +1,6 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/zone_lifecycle/zone_lifecycle_component.h"
+#include "client/graphics/gpu_buffers_legacy.h"  // B962
 #include "common/logging.h"
 
 #ifdef EQT_HAS_DRM
@@ -40,6 +41,16 @@ void ZoneLifecycleComponent::initGPUUploadThread() {
     if (ctx_.driver->getDriverType() != irr::video::EDT_OGLES2) {
         LOG_WARN(MOD_GRAPHICS, "GPU upload thread: driver type {} != EDT_OGLES2 ({}), skipping",
                  static_cast<int>(ctx_.driver->getDriverType()), static_cast<int>(irr::video::EDT_OGLES2));
+        return;
+    }
+
+    // B962: the thread's ONLY client is the legacy per-region-node path's VBO
+    // upload (createZoneMesh()/rebuildRegionMesh()). With the zone pools on
+    // there are no region nodes and no region VBOs, but the shared EGL context
+    // was created anyway: a second Lima context with its own PLB and tile-heap
+    // GEM buffers (refactor/B962/README.md) for nothing. Not created then.
+    if (zonePoolsEnabled() && !gpuBuffersLegacy()) {
+        LOG_INFO(MOD_GRAPHICS, "GPU upload thread: not created (zone pools on -- no region VBOs to upload)");
         return;
     }
 

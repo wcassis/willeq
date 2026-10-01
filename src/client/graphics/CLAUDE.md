@@ -63,7 +63,7 @@
   gone (B160), and T384 added `travelType` to that vocabulary.
 - `ParticleManager` - Unified point-sprite particle system for weather and spell effects (GLES2)
 - `SpellEffectsConfig` - JSON-configurable spell particle presets (`config/spell_effects.json`)
-- `GPUUploadThread` - Async region VBO uploads via shared EGL context (separate from render thread). Its texture request types were deleted by T475 (board B670): texture loading is synchronous (T04), and a texture missing at mesh build is not re-textured later (B671)
+- `GPUUploadThread` - Async region VBO uploads via shared EGL context (separate from render thread) -- legacy per-region path only: NOT created when the zone pools are on (B962; its second Lima context cost 0.5 MiB of GEM for nothing). Its texture request types were deleted by T475 (board B670): texture loading is synchronous (T04), and a texture missing at mesh build is not re-textured later (B671)
 - `BackgroundThreadPool` - Shared thread pool for deferred asset loading with unified `WorkPriorityKey` (PVS depth, asset type, distance)
 
 **GLES2 Driver** (`docker/irrlicht-drm/`)
@@ -136,7 +136,7 @@ Benchmarked with `gles2_shader_perpixel_benchmark` and `gles2_program_switch_ben
 
 ## Zone Rendering Optimizations
 
-**Static VBOs and material-sorted draw** (GLES2): Zone geometry is uploaded once at zone load via `GL_STATIC_DRAW` VBOs, eliminating per-frame CPU→GPU DMA. Draw calls are sorted by material key `(MaterialType << 16) | TextureID` to minimize `glUseProgram` + `glBindTexture` state changes, with front-to-back order preserved within each material group. `TextureID` is a stable FNV-1a hash of the texture name (`textureGroupId()`, H02b/Q02), not a texture pointer — the old pointer-derived key made draw order depend on ASLR-influenced heap addresses, nondeterministic run-to-run.
+**Static VBOs and material-sorted draw** (GLES2): on the legacy per-region-node path (`WILLEQ_ZONE_POOLS=0`, or a preset without `mergeZoneDraws`) zone geometry is uploaded once at zone load via `GL_STATIC_DRAW` VBOs. The orangepi preset draws the T504 pools instead, from client-side arrays that Mesa streams each frame -- a static VBO for them was measured worse on the Pi (B962). Draw calls are sorted by material key `(MaterialType << 16) | TextureID` to minimize `glUseProgram` + `glBindTexture` state changes, with front-to-back order preserved within each material group. `TextureID` is a stable FNV-1a hash of the texture name (`textureGroupId()`, H02b/Q02), not a texture pointer — the old pointer-derived key made draw order depend on ASLR-influenced heap addresses, nondeterministic run-to-run.
 
 **Front-to-back sorting** (`manualZoneDrawEnabled_`): Zone region meshes are removed from Irrlicht's scene graph rendering and drawn manually in front-to-back order for early-Z rejection on tile-based GPUs. The injection point is `RenderPassTimer::OnRenderPassPreRender(ESNRP_SOLID)` — fires after CAMERA pass sets up matrices. Toggle at runtime with `/sort`.
 
@@ -262,6 +262,25 @@ chunk to whatever `eqt::memory::Category` the CALLING THREAD is scoped to.
   the client dumps into a tmpfs (charged to the same cgroup; the summarizer
   subtracts it). Measurements and the residual's composition:
   `refactor/B955/README.md`.
+- **Every GEM buffer has an owner (B962, `refactor/B962/README.md`).** The
+  diagnostic shim `scripts/pi/lima_bo_census.c` records each Lima buffer with
+  the owner tag the creating thread pushed (`eqt::memory::GemTag`,
+  `include/client/core/gem_owner_census.h`; `irr::video::GemTagScope` in the
+  driver) and dumps the live set at every ledger point;
+  `scripts/pi/gem_owner_table.py` folds it into an owner table against the
+  `[memgpu]` row (`pi_rendered_zone_sweep.sh --bo-census`). **A new GL call that
+  allocates GPU storage gets a tag.** The `[memgpu]` tally is the textures'
+  STORAGE (`COGLES2Texture::getStorageBytes()`, not the gated
+  `gpuTextureBytes`) plus `logical_depth_stencil`; what it does not name
+  (`gpu_unnamed_steady`: Mesa's stream uploads, Lima's draw-time BOs, PLB,
+  rounding) fails the Pi rig above 10 MiB. Two rules it established: **an
+  EQE1 texture sets its final minification filter BEFORE its levels are
+  uploaded** (with the default filter Mesa allocates level 0 alone and then the
+  chain again -- two buffers per texture), and **unit 0 uploads level 0 only**
+  (it is never mip-filtered). The client streams its zone vertices (the pools
+  are client arrays); a shared static VBO for them measured MORE GEM and half
+  the frame rate, so `vboEboBytes` ~0 is correct. `WILLEQ_GPU_BUFFERS_LEGACY=1`
+  restores the pre-B962 allocation pattern for an A/B.
 
 ## Zone Loading Thread
 
