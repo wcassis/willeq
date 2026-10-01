@@ -128,7 +128,9 @@ governor ondemand untouched. No eqemu lock or stack used.
    on this branch; the card's NFS rule redirects the write here -- the orchestrator
    copies it to `review/B967/README.md` on the Pi/NFS). Describes every file
    under `/mnt/projects/fable/review/B967/` (arm_bin, pi, scripts, sheet, x86,
-   pi_frame_time_ab.tsv); no verdicts.
+   pi_frame_time_ab.tsv); no verdicts. scp'd to `user@10.0.30.192:
+   /mnt/projects/fable/review/B967/README.md` 2026-10-01 11:57 UTC (verified on
+   the Pi).
 2. ~~`refactor/BOARD.md`: strike B967, B968 (done), B969 (bar met: timorous_f2
    15 px); keep the gfaydark residual as a new item (step 5).~~ **DONE**
    (committed this unit): B967/B968 struck **FIXED**, B969 struck **CLOSED**
