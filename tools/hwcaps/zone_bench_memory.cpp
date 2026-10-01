@@ -68,6 +68,7 @@
 // this implies for CI coverage.
 
 #include "zone_bench_memory.h"
+#include "zone_bench_impostor.h"
 
 #include <cstdio>
 #include <set>
@@ -242,6 +243,7 @@ BenchMemorySnapshot computeMemorySnapshot(ZoneBench::ZoneBenchData& data, int wi
     ZoneBench::publishGpuTally(data.driver);  // B955: the gpu_buffers row reconciles
     snap.ledger = eqt::memory::snapshot("benchmark_end");
     snap.mappings = eqt::memory::readMappings();  // T491 addendum (B801)
+    snap.impostorJson = ZoneBench::impostorJson(data);  // B952
 
     return snap;
 }
@@ -302,6 +304,8 @@ void writeMemoryJson(const std::string& path, const std::string& zoneName,
                 snap.ledgerBudgetBytes[i]);
     }
     fprintf(f, "},\n");
+    if (!snap.impostorJson.empty())
+        fprintf(f, "  \"impostor\": %s,\n", snap.impostorJson.c_str());  // B952
     fprintf(f, "  \"mappings\": %s\n}\n",
             eqt::memory::mappingsToJson(snap.mappings, 24).c_str());
     fclose(f);

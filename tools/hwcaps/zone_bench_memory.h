@@ -86,6 +86,10 @@ struct BenchMemorySnapshot {
     eqt::memory::MappingBreakdown mappings;
     std::array<size_t, eqt::memory::kCategoryCount> ledgerBudgetBytes{};
 
+    // B952: the tex.impostor owner row as a JSON object ("" = no impostors,
+    // and then the key is absent -- the gate's runs never create one).
+    std::string impostorJson;
+
     size_t totalEstimate = 0;      // sum of every category above with a defined estimate
     size_t processRssBytes = 0;    // this process's own RSS (/proc/self/statm)
     size_t untrackedBytes = 0;     // processRssBytes - totalEstimate (0 if RSS unavailable or <= total)

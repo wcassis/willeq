@@ -67,6 +67,7 @@
 
 #include "zone_bench_frame.h"
 #include "zone_bench_modes.h"
+#include "zone_bench_impostor.h"
 
 
 // ======== Main ========
@@ -174,6 +175,7 @@ int main(int argc, char** argv) {
     benchConfig.useDRM = opts.useDRM && !opts.forceX11;
     benchConfig.entityCount = opts.entityCount;
     benchConfig.testRaceIds = opts.testRaceIds;
+    benchConfig.genders = opts.entityGenders;  // B952
     benchConfig.animate = opts.animate;
     benchConfig.compositeEntities = opts.compositeEntities;
     benchConfig.loadObjects = opts.loadObjects;
@@ -473,9 +475,25 @@ int main(int argc, char** argv) {
         for (int i = 0; i < opts.frames; ++i) pathPositions.push_back(fullTrace[opts.warmup + i].pos);
         ZoneBench::placeEntitiesAlongPath(*data, pathPositions);
     }
+    // B952: the impostor scenes re-place the entities in front of the first
+    // measured pose (all beyond --lod-dist, or half inside / half beyond).
+    if (!data->entities.empty() && !opts.impostorScene.empty() && !fullTrace.empty()) {
+        const TracePose& p0 = fullTrace[opts.warmup < totalFrames ? opts.warmup : 0];
+        ZoneBench::placeImpostorScene(*data, p0.pos.x, p0.pos.y, p0.pos.z, p0.dir.x, p0.dir.y,
+                                      opts.impostorScene == "mixed", opts.lodTier2Dist);
+    }
 
     // ── Configure adaptive LOD budget ──
     data->adaptiveLodConfig.maxEntitiesPerScene = opts.entityBudget;
+    data->adaptiveLodConfig.tierDist = opts.adaptiveTierDist;  // B952
+    {
+        ZoneBench::ImpostorConfig impCfg;
+        impCfg.size = opts.impostorSize;
+        impCfg.shared = opts.impostorShared;
+        impCfg.sharedFbo = !opts.impostorFboPer;
+        impCfg.refreshEvery = opts.impostorRefresh;
+        ZoneBench::configureImpostors(*data, impCfg);
+    }
 
     // ── Configure adaptive lighting ──
     data->adaptiveLighting = opts.adaptiveLighting;
@@ -499,6 +517,13 @@ int main(int argc, char** argv) {
 
     // ── Set up lighting ──
     setupLighting(*data, opts);
+
+    // ── B952: impostor pixel evidence (exits) ──
+    if (!opts.impostorPixelTestDir.empty() && !fullTrace.empty()) {
+        const TracePose& p0 = fullTrace[opts.warmup < totalFrames ? opts.warmup : 0];
+        return ZoneBench::runImpostorPixelTest(*data, p0.pos.x, p0.pos.y, p0.pos.z, p0.heading,
+                                               opts.impostorPixelTestDir);
+    }
 
     // ── H02b: interesting-view search (opt-in, bless-time diagnostic only) ──
     // Never used by the CI gate; run manually to find candidate poses, then
@@ -577,6 +602,16 @@ int main(int argc, char** argv) {
         // Update shader frame
         if (data->zoneShader) {
             data->zoneShader->beginFrame();
+        }
+
+        // B952: impostor creation/refresh before the frame (adaptive LOD).
+        if (opts.adaptiveLod && !data->entities.empty()) {
+            ZoneBench::CameraState preCam{camPos.x, camPos.y, camPos.z, camDir.x, camDir.y, camDir.z,
+                                          60.0f * 3.14159265f / 180.0f,
+                                          static_cast<float>(opts.width) / static_cast<float>(opts.height)};
+            ZoneBench::prepareImpostorFrame(*data, preCam, opts.entityRenderDist, opts.frustumCull,
+                                            metrics.frames().empty() ? 0.0f : metrics.frames().back().totalMs,
+                                            frame, measuring);
         }
 
         // Begin frame
@@ -780,6 +815,7 @@ int main(int argc, char** argv) {
                 entityDrawCalls = ZoneBench::renderAdaptiveLodEntities(
                     *data, camState, opts.entityRenderDist, opts.frustumCull,
                     prevFrameMs, entityPolys, tier1, tier2, entityMs);
+                ZoneBench::noteImpostorTiers(*data, tier1, tier2, measuring);  // B952
                 int polyCount = countPolygons(drawEntries) + entityPolys;
                 int totalDraws = static_cast<int>(drawEntries.size()) + entityDrawCalls;
                 int totalStateChanges = stateChangesZone + entityDrawCalls;
@@ -985,6 +1021,10 @@ int main(int argc, char** argv) {
                    totalFrames,
                    static_cast<double>(steady.allocCount - ledgerAllocsBeforeFrames) / totalFrames);
         }
+        // B952: the tex.impostor owner row beside the steady point.
+        std::vector<float> frameTotals;
+        for (const auto& fm : metrics.frames()) frameTotals.push_back(fm.totalMs);
+        ZoneBench::printImpostorReport(*data, "steady", frameTotals);
         fflush(stdout);
     }
 
