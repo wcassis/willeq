@@ -49,7 +49,9 @@
 #          copy -- a setcap binary ignores LD_PRELOAD -- with net.core.rmem_max
 #          raised to the 1 MiB the client asks for, so its SO_RCVBUF fallback gets
 #          what SO_RCVBUFFORCE would have (B751), restored at cleanup; the dump
-#          lands in the zone's dir as gem_owners.tsv)
+#          lands in the zone's dir as gem_owners.tsv, the create/close event
+#          log as bo_events.log -- the only record a binary without the
+#          B962 dump call leaves)
 #          [--allow-vm-lane]   (B909's A/B, scripts/pi/collision_ab.sh:
 #          --tour replaces the /loc-wait-/q script, --env adds client
 #          environment, --drive-keys plays scripts/pi/uinput_drive.py's fixed
@@ -292,7 +294,7 @@ if [ -n "$BO_CENSUS" ]; then
     pi_remote "sudo -n sysctl -q -w net.core.rmem_max=1048576" </dev/null \
         || say "WARNING: could not raise net.core.rmem_max -- the uncapped client's rcvbuf will be the default"
     say "B962 census: uncapped client + LD_PRELOAD $BO_CENSUS; rmem_max $RMEM_RESTORE -> $(pi_remote "sysctl -n net.core.rmem_max" </dev/null)"
-    GEM_CENSUS_ENV="env LD_PRELOAD=$PI_BIN_DIR/lima_bo_census.so B962_GEMDUMP=$PI_BIN_DIR/gem_owners.tsv"
+    GEM_CENSUS_ENV="env LD_PRELOAD=$PI_BIN_DIR/lima_bo_census.so B962_GEMDUMP=$PI_BIN_DIR/gem_owners.tsv B955_BOLOG=$PI_BIN_DIR/bo_events.log"
 else
 pi_remote "mkdir -p '$PI_BIN_DIR' && cp '$STAGE_SRC' '$PI_BIN' && sudo -n setcap cap_net_raw,cap_net_admin+ep '$PI_BIN'" </dev/null \
     || say "WARNING: staging/setcap on the Pi failed -- the run goes ahead; the rcvbuf column shows what the client got"
@@ -380,15 +382,15 @@ run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     [ "$DRIVE_KEYS" -eq 1 ] && drive="sudo -n python3 '$REPO/scripts/pi/uinput_drive.py' --client-log '$pidir/client.log' \
 --events '$pidir/keys.tsv' --cap $CAP_S > '$pidir/keys.out' 2>&1 & sleep 2; "
     # shellcheck disable=SC2086
-    local remote="rm -rf '$pidir' && mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && ${drive}\
+    local remote="rm -rf '$pidir' && rm -f '$PI_BIN_DIR/gem_owners.tsv' '$PI_BIN_DIR/bo_events.log' && \
+mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && ${drive}\
 env TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTRA_ENV \
-rm -f '$PI_BIN_DIR/gem_owners.tsv'; \
 python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} $([ "$OWN_CGROUP" -eq 1 ] && echo --own-cgroup) -- \
 $GEM_CENSUS_ENV '$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
 --eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
 --dump-frames-dir '$pidir/frames' --dump-every 100 --dump-max-frames 3 \
 > '$pidir/runner.out' 2>&1; cp -rp '$pidir/.' '$dir/'; \
-cp '$PI_BIN_DIR/gem_owners.tsv' '$dir/' 2>/dev/null; rm -f '$PI_BIN_DIR/gem_owners.tsv'; \
+cp '$PI_BIN_DIR/gem_owners.tsv' '$PI_BIN_DIR/bo_events.log' '$dir/' 2>/dev/null; rm -f '$PI_BIN_DIR/gem_owners.tsv' '$PI_BIN_DIR/bo_events.log'; \
 sudo -n pkill -TERM -f '[u]input_drive[.]py' >/dev/null 2>&1; sleep 1; cp '$pidir/keys.tsv' '$pidir/keys.out' '$dir/' 2>/dev/null; \
 sudo -n rm -rf '$pidir'; true"
     timeout $((CAP_S + 120)) bash -c 'source "$1"; pi_remote "$2" </dev/null' _ "$REPO/scripts/pi/env.sh" "$remote"

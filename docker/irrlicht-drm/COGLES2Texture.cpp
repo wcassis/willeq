@@ -147,6 +147,8 @@ void COGLES2Texture::releaseStorage()
         glDeleteTextures(1, &TextureName);
     TextureName = 0;
     GpuBytes = 0;
+    StorageBytes = 0;
+    HasStorageBytes = false;
     Evicted = true;
     // The next storage is a NEW GL object with the upload's default
     // parameters; the P42 dedup cache describes the deleted one.
@@ -161,6 +163,7 @@ void COGLES2Texture::adoptStorage(GLuint glTexName, u32 gpuBytes)
         glDeleteTextures(1, &TextureName);
     TextureName = glTexName;
     GpuBytes = gpuBytes;
+    HasStorageBytes = false;  // B962: the restorer sets it again when it knows it
     Evicted = (glTexName == 0);
     TexParamsCached = false;
 }
@@ -172,6 +175,7 @@ GLuint COGLES2Texture::takeStorage(u32* gpuBytesOut)
         *gpuBytesOut = GpuBytes;
     TextureName = 0;
     GpuBytes = 0;
+    HasStorageBytes = false;
     TexParamsCached = false;
     return name;
 }

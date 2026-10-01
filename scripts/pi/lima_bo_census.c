@@ -19,7 +19,9 @@
 //    "<mono_s> X <handle> fd<n>" (GEM_CLOSE), "<mono_s> I <handle> fd<n>" (a
 //    PRIME import: a buffer another device allocated -- the display
 //    controller's scanout, CMA, not shmem). scripts/pi/lima_bo_census.py folds
-//    a log into the live set at any instant.
+//    a log into the live set at any instant. The first line is
+//    "# clock realtime=<s> monotonic=<s>" (B962), so a fold can cut the log at a
+//    wall-clock-stamped client log line (gem_owner_table.py --events).
 //
 // 2. B962_GEMDUMP=<path>: the OWNER table. The shim keeps every live BO in a
 //    fixed in-process table (no malloc: the client's allocator is the memory
@@ -368,6 +370,17 @@ __attribute__((constructor)) static void init(void) {
     real_munmap = (int (*)(void*, size_t))dlsym(RTLD_NEXT, "munmap");
     const char* p = getenv("B955_BOLOG");
     if (p) logfd = open(p, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC, 0644);
+    if (logfd >= 0) {
+        // B962: both clocks once, so a fold can cut the event log at a client
+        // log line stamped with the wall clock (rendered_zone_run.py).
+        struct timespec rt, mt;
+        clock_gettime(CLOCK_REALTIME, &rt);
+        clock_gettime(CLOCK_MONOTONIC, &mt);
+        char hdr[128];
+        int n = snprintf(hdr, sizeof(hdr), "# clock realtime=%ld.%06ld monotonic=%ld.%06ld\n",
+                         (long)rt.tv_sec, rt.tv_nsec / 1000, (long)mt.tv_sec, mt.tv_nsec / 1000);
+        if (n > 0) (void)!write(logfd, hdr, (size_t)n);
+    }
     const char* d = getenv("B962_GEMDUMP");
     if (d) dumpfd = open(d, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC, 0644);
 }

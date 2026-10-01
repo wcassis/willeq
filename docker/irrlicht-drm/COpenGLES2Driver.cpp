@@ -17,6 +17,7 @@
 #include <EGL/egl.h>
 #include <cstdio>
 #include <cstring>
+#include <cstdint>
 #include <dlfcn.h>
 
 namespace irr
@@ -2185,12 +2186,79 @@ void COpenGLES2Driver::deleteAllHardwareBuffers()
 }
 
 // ============================================================================
+// B962: shared static VBO (the zone draw pools)
+// ============================================================================
+
+GLuint COpenGLES2Driver::createSharedStaticVBO(const void* data, u32 bytes)
+{
+    if (!data || bytes == 0)
+        return 0;
+    GemTagScope gemTag("vbo:zone-pools");
+    GLuint vbo = 0;
+    glGenBuffers(1, &vbo);
+    if (!vbo)
+        return 0;
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, bytes, data, GL_STATIC_DRAW);
+    state_.boundVBO = vbo;
+    sharedVBOBytes_ += bytes;
+    return vbo;
+}
+
+void COpenGLES2Driver::deleteSharedStaticVBO(GLuint vbo, u32 bytes)
+{
+    if (!vbo)
+        return;
+    if (state_.boundVBO == vbo) {
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        state_.boundVBO = 0;
+    }
+    glDeleteBuffers(1, &vbo);
+    sharedVBOBytes_ = sharedVBOBytes_ >= bytes ? sharedVBOBytes_ - bytes : 0;
+}
+
+void COpenGLES2Driver::drawSharedVBORun(GLuint vbo, u32 vertexByteOffset, const u16* indices, u32 indexCount)
+{
+    if (!vbo || !indices || indexCount == 0)
+        return;
+    GemTagScope gemTag("draw3d:shared-vbo");
+    restore3DProjection();
+
+    if (state_.boundVBO != vbo) {
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        state_.boundVBO = vbo;
+    }
+    // Client-side indices: no element buffer bound.
+    if (state_.boundEBO != 0) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        state_.boundEBO = 0;
+    }
+
+    // The same S3DVertex attribute layout drawVertexPrimitiveList() and the
+    // HWBufferMap path use, as byte offsets into the shared buffer.
+    const GLsizei stride = sizeof(S3DVertex);
+    const char* base = reinterpret_cast<const char*>(static_cast<uintptr_t>(vertexByteOffset));
+    glVertexAttribPointer(EOGLES2VA_POSITION, 3, GL_FLOAT, GL_FALSE, stride, base + 0);
+    glEnableVertexAttribArray(EOGLES2VA_POSITION);
+    glVertexAttribPointer(EOGLES2VA_NORMAL, 3, GL_FLOAT, GL_FALSE, stride, base + 12);
+    glEnableVertexAttribArray(EOGLES2VA_NORMAL);
+    glVertexAttribPointer(EOGLES2VA_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, base + 24);
+    glEnableVertexAttribArray(EOGLES2VA_COLOR);
+    glVertexAttribPointer(EOGLES2VA_TEXCOORD0, 2, GL_FLOAT, GL_FALSE, stride, base + 28);
+    glEnableVertexAttribArray(EOGLES2VA_TEXCOORD0);
+    glDisableVertexAttribArray(EOGLES2VA_TEXCOORD1);
+
+    glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_SHORT, indices);
+    PrimitivesDrawn += indexCount / 3;
+}
+
+// ============================================================================
 // Hardware buffer memory queries
 // ============================================================================
 
 size_t COpenGLES2Driver::getHWBufferMemoryUsage() const
 {
-    size_t total = 0;
+    size_t total = sharedVBOBytes_;
     for (const auto& [mb, hwb] : HWBufferMap) {
         // Vertex data size
         GLsizei stride;
@@ -2232,6 +2300,16 @@ size_t COpenGLES2Driver::getGpuTextureMemoryUsage() const
     for (u32 i = 0; i < Textures.size(); ++i) {
         if (Textures[i].Surface)
             total += static_cast<const COGLES2Texture*>(Textures[i].Surface)->getGpuMemoryBytes();
+    }
+    return total;
+}
+
+size_t COpenGLES2Driver::getGpuTextureStorageUsage() const
+{
+    size_t total = 0;
+    for (u32 i = 0; i < Textures.size(); ++i) {
+        if (Textures[i].Surface)
+            total += static_cast<const COGLES2Texture*>(Textures[i].Surface)->getStorageBytes();
     }
     return total;
 }
@@ -2286,6 +2364,26 @@ size_t gles2GetHWBufferMemoryUsage(void* driver)
     return d->getHWBufferMemoryUsage();
 }
 
+// B962: the zone draw pools' shared static VBO (see COpenGLES2Driver.h).
+unsigned int gles2CreateSharedStaticVBO(void* driver, const void* data, unsigned int bytes)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    return d->createSharedStaticVBO(data, bytes);
+}
+
+void gles2DeleteSharedStaticVBO(void* driver, unsigned int vbo, unsigned int bytes)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    d->deleteSharedStaticVBO(vbo, bytes);
+}
+
+void gles2DrawSharedVBORun(void* driver, unsigned int vbo, unsigned int vertexByteOffset,
+                           const unsigned short* indices, unsigned int indexCount)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    d->drawSharedVBORun(vbo, vertexByteOffset, indices, indexCount);
+}
+
 size_t gles2GetHWBufferCount(void* driver)
 {
     auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
@@ -2296,6 +2394,18 @@ size_t gles2GetGpuTextureMemoryUsage(void* driver)
 {
     auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
     return d->getGpuTextureMemoryUsage();
+}
+
+size_t gles2GetGpuTextureStorageUsage(void* driver)
+{
+    auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
+    return d->getGpuTextureStorageUsage();
+}
+
+void gles2TextureSetStorageBytes(void* texture, unsigned int bytes)
+{
+    if (texture)
+        static_cast<irr::video::COGLES2Texture*>(static_cast<irr::video::ITexture*>(texture))->setStorageBytes(bytes);
 }
 
 void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned int lineCount)

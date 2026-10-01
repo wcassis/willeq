@@ -6,6 +6,7 @@ same ledger point.
 
 usage: gem_owner_table.py DUMP [--point P ...] [--client-log LOG] [--json]
                                [--detail OWNER] [--top N]
+       gem_owner_table.py --events BO_EVENTS_LOG --client-log LOG [--point P ...]
   DUMP         the file the shim wrote (one "P ... / B ... / E" block per
                memory-ledger point the client recorded)
   --point      the point(s) to print (default: every point in the dump)
@@ -14,6 +15,11 @@ usage: gem_owner_table.py DUMP [--point P ...] [--client-log LOG] [--json]
                residual (gpu_buffers - every regular BO) is printed BY NAME
   --detail     list the individual tags inside one owner row
   --json       machine-readable (the regression test reads this)
+  --events     fold the shim's create/close EVENT log (B955_BOLOG) instead of a
+               dump: the only record a client without the B962 dump call (a
+               binary older than this unit) leaves. Cut at each [memgpu] line's
+               wall-clock stamp via the log's "# clock" header; no tags, so the
+               rows are by size/kind only (UNTAGGED_ROWS)
 
 Owner rows (OWNERS below, first match wins) are decided from the tag the
 creating thread had pushed, the BO's flags/size and whether Mesa mapped it.
@@ -35,6 +41,8 @@ STREAM_UPLOADER_BYTES = 1048576   # u_upload_create_default(): 1 MiB per buffer
 
 def owner_of(bo):
     """(row, detail) for one live BO dict."""
+    if "row" in bo:
+        return bo["row"], "size %d" % bo["size"]
     tag = bo["tag"]
     inner = tag.split("|")[-1] if tag != "-" else "-"
     outer = tag.split("|")[0] if tag != "-" else "-"
@@ -181,17 +189,101 @@ def print_table(t, detail=None, top=0):
                                            t["logical_buffers"] / MIB))
 
 
+# Rows for an UNTAGGED live set (a binary without the B962 tags): the sizes
+# that identify a buffer by themselves on this client at 1280x720. Everything
+# else is "untagged: other <size class>".
+UNTAGGED_ROWS = [
+    (lambda b: b["heap"], "lima: GP tile heap (max size, grows on demand)"),
+    (lambda b: b["size"] == 3686400, "egl: window surface depth/stencil (1280x720 D24S8)"),
+    (lambda b: b["size"] == 262144, "lima: PLB (256 KiB, two per context)"),
+    (lambda b: b["size"] == STREAM_UPLOADER_BYTES, "untagged: 1 MiB (Mesa stream uploader size)"),
+    (lambda b: b["size"] in (45056, 32768), "untagged: 45,056 / 32,768 B (a 256x256 ETC1 texture with / without its mips)"),
+    (lambda b: b["size"] <= 4096, "untagged: <= 4 KiB"),
+    (lambda b: b["size"] <= 65536, "untagged: 4-64 KiB"),
+    (lambda b: b["size"] <= 1048576, "untagged: 64 KiB-1 MiB"),
+    (lambda b: True, "untagged: > 1 MiB"),
+]
+
+
+def read_events(path):
+    """[(mono, op, fd, handle, size, flags)], plus (realtime - monotonic)."""
+    events = []
+    offset = None
+    with open(path, errors="replace") as f:
+        for line in f:
+            if line.startswith("# clock "):
+                kv = dict(x.split("=") for x in line.split()[2:])
+                offset = float(kv["realtime"]) - float(kv["monotonic"])
+                continue
+            p = line.split()
+            if len(p) >= 6 and p[1] == "C":
+                events.append((float(p[0]), "C", p[5], int(p[2]), int(p[3]), int(p[4])))
+            elif len(p) >= 4 and p[1] in ("X", "I"):
+                events.append((float(p[0]), p[1], p[3], int(p[2]), 0, 0))
+    return events, offset
+
+
+EPOCH_POINT_RE = re.compile(r"^(\d+\.\d+) .*\[memgpu\] point=(\S+) ")
+
+
+def point_epochs(client_log):
+    out = {}
+    with open(client_log, errors="replace") as f:
+        for line in f:
+            m = EPOCH_POINT_RE.search(line)
+            if m:
+                out[m.group(2)] = float(m.group(1))
+    return out
+
+
+def events_block(events, mono_cut, point):
+    live = {}
+    created = closed = 0
+    for t, op, fd, h, size, flags in events:
+        if t > mono_cut:
+            break
+        if op == "C":
+            live[(fd, h)] = (size, flags)
+            created += 1
+        elif op == "X" and live.pop((fd, h), None) is not None:
+            closed += 1
+    bos = []
+    for (fd, h), (size, flags) in live.items():
+        b = {"fd": fd, "handle": h, "size": size, "heap": flags & 1, "mapped": 0, "seq": 0, "tid": 0,
+             "scope": "-", "tag": "-"}
+        for test, row in UNTAGGED_ROWS:
+            if test(b):
+                b["row"] = row
+                break
+        bos.append(b)
+    return {"meta": {"point": point, "mono": mono_cut, "live": len(bos), "bytes": sum(b["size"] for b in bos),
+                     "created": created, "closed": closed, "overflow": 0}, "bos": bos}
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("dump")
+    ap.add_argument("dump", nargs="?", default="")
+    ap.add_argument("--events", default="")
     ap.add_argument("--point", action="append", default=[])
     ap.add_argument("--client-log", default="")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--detail", default="")
     ap.add_argument("--top", type=int, default=0)
     a = ap.parse_args()
-    points, order = read_dump(a.dump)
     memgpu = read_memgpu(a.client_log)
+    if a.events:
+        if not a.client_log:
+            ap.error("--events needs --client-log (the point stamps)")
+        events, offset = read_events(a.events)
+        if offset is None:
+            ap.error("%s has no '# clock' header (a pre-B962 shim)" % a.events)
+        stamps = point_epochs(a.client_log)
+        order = list(stamps)
+        points = {p: events_block(events, stamps[p] - offset, p) for p in order}
+    else:
+        if not a.dump:
+            ap.error("a DUMP or --events")
+        points, order = read_dump(a.dump)
     want = a.point or order
     tables = []
     for p in want:

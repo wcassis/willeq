@@ -10,6 +10,7 @@
 #include "common/logging.h"
 #include "client/core/memory_ledger.h"
 #include "client/core/gem_owner_census.h"  // B962
+#include "client/graphics/gpu_buffers_legacy.h"  // B962
 #include <algorithm>
 #include <optional>
 #include <cstring>
@@ -42,6 +43,8 @@ extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTex
 // so every draw path (3D material, draw2DImage, draw2DImageBatch) can bind
 // unit 1 from unit 0 alone instead of each consumer calling setTexture(1,...).
 extern void gles2SetAlphaCompanion(void* mainTexture, void* companionTexture);
+// B962: the bytes a texture's storage really holds (COGLES2Texture::StorageBytes).
+extern void gles2TextureSetStorageBytes(void* texture, unsigned int bytes);
 #endif
 
 namespace EQT {
@@ -448,6 +451,10 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     // alpha-TEST variants saw it, and only where a consumer had remembered to
     // call setTexture(1, getAlphaTexture(...)).
     gles2SetAlphaCompanion(texture, alphaTexture);
+    // B962: what the two storages really hold (the wrap above carries the
+    // pair's full-chain budget figure on the main texture -- B948).
+    gles2TextureSetStorageBytes(texture, etc1StorageBytes(entry, false));
+    if (alphaTexture) gles2TextureSetStorageBytes(alphaTexture, etc1StorageBytes(entry, true));
 
     // Register in LRU cache (P46d: under cacheEntryKey — see cacheKey())
     lruOrder_.push_back(cacheEntryKey);
@@ -501,6 +508,35 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
 #endif
 }
 
+// B962: mirrors createETC1Storage()'s level choice exactly.
+uint32_t ConstrainedTextureCache::etc1StorageBytes(const CompressedEntry& entry, bool companion) {
+    uint8_t levels = 1;
+    if (gpuBuffersLegacy()) {
+        levels = entry.mipLevels;
+    } else if (companion) {
+        const bool mipmapped = entry.mipLevels > 1 &&
+            entry.mipLevels == EQT::Graphics::computeMipLevels(entry.width, entry.height);
+        levels = mipmapped ? entry.mipLevels : 1;
+    }
+    uint32_t bytes = 0;
+    uint16_t w = entry.width, h = entry.height;
+    for (uint8_t level = 0; level < levels && level < entry.mipLevels; ++level) {
+        bytes += EQT::Graphics::etc1DataSize(w, h);
+        w = std::max<uint16_t>(1, w / 2);
+        h = std::max<uint16_t>(1, h / 2);
+    }
+    return bytes;
+}
+
+uint32_t ConstrainedTextureCache::v2StorageBytes(const CompressedEntry& entry) {
+    const auto fmt = static_cast<EQT::Graphics::EQE1PayloadFormat>(entry.payloadFormat);
+    if (gpuBuffersLegacy()) {
+        return static_cast<uint32_t>(EQT::Graphics::payloadMipChainSize(entry.width, entry.height,
+                                                                        entry.mipLevels, fmt));
+    }
+    return static_cast<uint32_t>(EQT::Graphics::payloadDataSize(entry.width, entry.height, fmt));
+}
+
 // B944: the GL half of uploadCompressedETC1(), shared with the eviction
 // restore (constrained_texture_cache_residency.cpp) so a restored texture is
 // built by the SAME code as the first upload -- same levels, same filters.
@@ -526,10 +562,24 @@ bool ConstrainedTextureCache::createETC1Storage(const std::string& name, const C
     std::optional<eqt::memory::GemTag> gemTag;
     gemTag.emplace("tex:etc1", name.c_str(), entry.width, entry.height, entry.mipLevels);
 
+    // B962: unit 0 is NEVER sampled through a mipmap filter (T275 below, and
+    // COpenGLES2Driver::applyMaterialRenderState() rewrites it to plain
+    // GL_LINEAR/GL_NEAREST on every bind), so only level 0 is uploaded, and the
+    // filter is set FIRST. Uploading the chain with the default
+    // GL_NEAREST_MIPMAP_LINEAR in place made Mesa allocate level 0 alone and
+    // park every further level in a GEM buffer of its own (4 KiB minimum each),
+    // none of which was ever read -- refactor/B962/README.md.
+    const bool legacyLevels = gpuBuffersLegacy();
+    if (!legacyLevels) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    }
+    const uint8_t mainLevels = legacyLevels ? entry.mipLevels : std::min<uint8_t>(entry.mipLevels, 1);
+
     // Upload RGB mip chain
     uint32_t offset = 0;
     uint16_t w = entry.width, h = entry.height;
-    for (uint8_t level = 0; level < entry.mipLevels; ++level) {
+    for (uint8_t level = 0; level < mainLevels; ++level) {
         uint32_t levelSize = EQT::Graphics::etc1DataSize(w, h);
 
         // Get function pointer for glCompressedTexImage2D
@@ -586,10 +636,26 @@ bool ConstrainedTextureCache::createETC1Storage(const std::string& name, const C
         glGenTextures(1, &alphaTexId);
         glBindTexture(GL_TEXTURE_2D, alphaTexId);
 
+        // B962: the companion's minification filter (T279 below) decides what
+        // is sampled, so it is set BEFORE the upload: with the mipmap filter in
+        // place Mesa allocates the whole chain at level 0 and every level lands
+        // in that one buffer (no per-level buffers, no reallocation at first
+        // draw); a short chain is sampled at level 0 only, so only level 0 goes.
+        const bool alphaMipComplete =
+            entry.mipLevels == EQT::Graphics::computeMipLevels(entry.width, entry.height);
+        const bool alphaMipmapped = alphaMipComplete && entry.mipLevels > 1;
+        if (!legacyLevels) {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                            alphaMipmapped ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST);
+        }
+        const uint8_t alphaLevels =
+            (legacyLevels || alphaMipmapped) ? entry.mipLevels : std::min<uint8_t>(entry.mipLevels, 1);
+
         offset = 0;
         w = entry.width;
         h = entry.height;
-        for (uint8_t level = 0; level < entry.mipLevels; ++level) {
+        for (uint8_t level = 0; level < alphaLevels; ++level) {
             uint32_t levelSize = EQT::Graphics::etc1DataSize(w, h);
 
             static auto pfnCompressedTexImage2D2 =
@@ -686,6 +752,8 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedV2(
         return nullptr;
     }
 
+    gles2TextureSetStorageBytes(texture, v2StorageBytes(entry));  // B962
+
     // Register in LRU cache (P46d: under cacheEntryKey). No alpha companion
     // (isETC1=false → H02d routes this texture's alpha-test material, if
     // any, to the main-alpha RGBA shader variant which reads uTexture.a
@@ -775,11 +843,20 @@ bool ConstrainedTextureCache::createV2Storage(const std::string& name, const Com
     glBindTexture(GL_TEXTURE_2D, texId);
     eqt::memory::GemTag gemTag("tex:v2", name.c_str(), entry.width, entry.height, entry.mipLevels);
 
+    // B962: sampled through GL_LINEAR only (see createETC1Storage()), so the
+    // filter goes first and only level 0 is uploaded.
+    const bool legacyLevels = gpuBuffersLegacy();
+    if (!legacyLevels) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    }
+    const uint8_t levels = legacyLevels ? entry.mipLevels : std::min<uint8_t>(entry.mipLevels, 1);
+
     // Upload uncompressed mip chain via glTexImage2D (not compressed — no
     // glCompressedTexImage2D indirection or function-pointer lookup needed).
     uint32_t offset = 0;
     uint16_t w = entry.width, h = entry.height;
-    for (uint8_t level = 0; level < entry.mipLevels; ++level) {
+    for (uint8_t level = 0; level < levels; ++level) {
         uint32_t levelSize = EQT::Graphics::payloadDataSize(w, h, payloadFmt);
         glTexImage2D(GL_TEXTURE_2D, level, glFormat, w, h, 0, glFormat, glType,
                      entry.etc1Data + offset);

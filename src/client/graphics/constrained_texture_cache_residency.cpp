@@ -44,6 +44,7 @@
 // COGLES2Texture's "Residency" block.
 extern void gles2TextureReleaseStorage(void* texture);
 extern void gles2TextureAdoptStorage(void* texture, unsigned int glTexName, unsigned int gpuBytes);
+extern void gles2TextureSetStorageBytes(void* texture, unsigned int bytes);  // B962
 extern bool gles2TextureTransferStorage(void* texture, void* donor);
 extern void gles2TextureSetResidencyOwner(void* texture, bool (*restoreFn)(void* ctx, void* texture),
                                           void* ctx);
@@ -340,10 +341,12 @@ bool ConstrainedTextureCache::rebuildStorage(const std::string& key, CachedTextu
             if (!createETC1Storage(realName, c, texId, alphaTexId)) return false;
             // Same byte counts the first upload handed gles2WrapTexture().
             gles2TextureAdoptStorage(entry.texture, texId, static_cast<unsigned int>(entry.sizeBytes));
+            gles2TextureSetStorageBytes(entry.texture, etc1StorageBytes(c, false));  // B962
             if (entry.alphaTexture && alphaTexId) {
                 gles2TextureAdoptStorage(entry.alphaTexture, alphaTexId,
                                          static_cast<unsigned int>(EQT::Graphics::etc1MipChainSize(
                                              c.width, c.height, c.mipLevels)));
+                gles2TextureSetStorageBytes(entry.alphaTexture, etc1StorageBytes(c, true));  // B962
             } else if (alphaTexId) {
                 glDeleteTextures(1, &alphaTexId);
             }
@@ -352,6 +355,7 @@ bool ConstrainedTextureCache::rebuildStorage(const std::string& key, CachedTextu
         unsigned int texId = 0;
         if (!createV2Storage(realName, c, texId)) return false;
         gles2TextureAdoptStorage(entry.texture, texId, static_cast<unsigned int>(entry.sizeBytes));
+        gles2TextureSetStorageBytes(entry.texture, v2StorageBytes(c));  // B962
         return true;
     }
 

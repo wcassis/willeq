@@ -157,6 +157,9 @@ public:
     // Total bytes resident in the merge buffers (for /pmem-style reporting
     // and the P10 bless-package memory-overhead numbers). Zero if !isBuilt().
     size_t totalBytes() const { return totalBytes_; }
+    // B962: bytes of the pools' shared static VBO (0 until the first pooled
+    // draw creates it, or with WILLEQ_GPU_BUFFERS_LEGACY=1).
+    size_t gpuVertexBufferBytes() const { return poolVboBytes_; }
 
     // Draws an already-collected, already-(materialKey,distanceSq)-sorted
     // ZoneDrawEntry list using the merge-aware path: consecutive runs sharing
@@ -177,6 +180,20 @@ private:
     std::map<const void*, RegionBufferRange> ranges_;
     bool built_ = false;
     size_t totalBytes_ = 0;
+
+    // B962: the pools' vertices in ONE static GPU buffer (GLES2), so a pooled
+    // draw streams only its gathered indices. Without it every run handed
+    // Mesa a client-side vertex array and Lima copied the run's whole vertex
+    // range into its stream-upload buffers each frame. Created on the first
+    // pooled draw (the render thread owns the context then), released by
+    // destroy(). WILLEQ_GPU_BUFFERS_LEGACY=1 keeps the client arrays (A/B,
+    // gpu_buffers_legacy.h).
+    bool poolVboWanted_ = true;
+    bool poolVboTried_ = false;
+    unsigned int poolVbo_ = 0;
+    unsigned int poolVboBytes_ = 0;
+    irr::video::IVideoDriver* poolVboDriver_ = nullptr;
+    void createPoolVbo(irr::video::IVideoDriver* driver);
 
     // T504 pooled mode
     struct RegionSpan { uint32_t regionIdx; uint32_t first; uint32_t count; };
