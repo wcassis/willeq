@@ -6,6 +6,12 @@ with `fable` `d3375b65` (B964) before any measurement below. Will's ruling,
 2026-10-01, in chat: **"I agree, re-bless the 15 goldens."** Raw evidence:
 `/mnt/projects/fable/review/B967/`.
 
+**MERGED** into `fable` 2026-10-02, merge commit `2c7d5be4` (MR !74, pipeline
+455 green on final head `a30b8a56`; test 5145/5145, gate PASS 0 pixel
+mismatch). Will, 2026-10-02, in chat (verbatim, also as an MR comment):
+**"I've reviewed the delta table (refactor/B967/README.md) and the contact
+sheet (review/B967/sheet/) for MR !74 and the changes are approved."**
+
 ## STATE AT HAND-OFF 2026-10-01
 
 **DONE (with evidence)**

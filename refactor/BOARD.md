@@ -306,7 +306,8 @@ it without taking that measurement first.
   orangepi preset. 16-bit depth changes pixels: Will's call. Measured by B962.
 - ~~**B967** (C) → issue #285. The player light is quantized at large world
   coordinates on BOTH GPUs: the mediump `vWorldPos` varying.~~ **FIXED**
-  (`refactor/B967/README.md`, MR !74; `202df783` + `98846a79`): the player-light
+  (`refactor/B967/README.md`, MR !74 **merged into fable `2c7d5be4`
+  2026-10-02**; `202df783` + `98846a79`): the player-light
   vector is formed in the VS (FP32, pre-scaled 1/64) and the FS is branchless
   with an attenuation LUT indexed linearly in d (B968's formula, light 0 from R
   on). Will, 2026-10-01: "I agree, re-bless the 15 goldens" -- done, manifest
@@ -315,12 +316,14 @@ it without taking that measurement first.
   (409/55/162 px >32, present with the player light OFF too) is not the player
   light and cause not isolated -- filed as B980.
 - ~~**B968** (C) → issue #286. Past 64 units the player light gets brighter with
-  distance on a surface that faces it.~~ **FIXED** with B967 (MR !74): the LUT
+  distance on a surface that faces it.~~ **FIXED** with B967 (MR !74, merged
+  into fable `2c7d5be4` 2026-10-02): the LUT
   now carries the per-vertex zone-light term `A(d) = 1/(c + l*d + q*d^2)` over
   d in [64, R], R = the d where the denominator = 255 (lightstone 9: R = 336.38);
   the light is 0 from R on by construction.
 - ~~**B969** (A, blocked on B967) → issue #287. timorous_f2: 3,175 px >32, Pi vs
-  the x86 golden.~~ **CLOSED** with B967's re-bless (MR !74): pLv-in-the-VS takes
+  the x86 golden.~~ **CLOSED** with B967's re-bless (MR !74, merged into fable
+  `2c7d5be4` 2026-10-02): pLv-in-the-VS takes
   timorous_f2 to 15 px >32 (bar met: tens). The FP16 step lines were B967's
   interpolated `vWorldPos`; `refactor/B969/README.md` has the isolation.
 - **B980** (A) → issue #299. gfaydark gate
