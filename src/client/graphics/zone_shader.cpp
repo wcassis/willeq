@@ -21,32 +21,17 @@ namespace EQT {
 namespace Graphics {
 
 // ============================================================================
-// FP16 attenuation LUT helpers (GLES2)
+// FP16 attenuation LUT (GLES2)
 // ============================================================================
 #ifdef EQT_HAS_GLES2
 
-static uint16_t floatToHalf(float f) {
-    uint32_t bits;
-    std::memcpy(&bits, &f, sizeof(bits));
-    uint32_t sign = (bits >> 16) & 0x8000;
-    int32_t exp = ((bits >> 23) & 0xFF) - 127;
-    uint32_t mant = bits & 0x7FFFFF;
-    if (exp > 15) return sign | 0x7C00;      // Inf
-    if (exp < -14) return sign;                // Zero (flush denormals)
-    return sign | ((exp + 15) << 10) | (mant >> 13);
-}
-
-// Create or update the 256x1 FP16 LUMINANCE_ALPHA attenuation LUT.
-// L = inversesqrt(d² + eps), A = 1/(c + q*d² + eps)
-static void fillAttenLUT(uint16_t* data, float attenConst, float attenQuad, float maxD2) {
-    const float eps = 0.0001f;
-    for (int i = 0; i < 256; ++i) {
-        float d2 = maxD2 * (static_cast<float>(i) + 0.5f) / 256.0f;
-        float invD = 1.0f / std::sqrt(d2 + eps);
-        float atten = 1.0f / (attenConst + attenQuad * d2 + eps);
-        data[i * 2]     = floatToHalf(invD);
-        data[i * 2 + 1] = floatToHalf(atten);
-    }
+// The 256x1 FP16 LUMINANCE_ALPHA attenuation LUT, indexed linearly in d over
+// the light's range R (B968, include/client/graphics/player_light_shader.h).
+// Sets range/scale for the uLUTScale uniform from the same attenuation.
+static void fillAttenLUT(uint16_t* data, const float atten[3], float& range, float& scale) {
+    range = PlayerLight::lutRange(atten[0], atten[1], atten[2]);
+    scale = PlayerLight::lutScale(range);
+    PlayerLight::fillLut(data, atten[0], atten[1], atten[2], range);
 }
 
 #endif // EQT_HAS_GLES2
@@ -353,8 +338,8 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
         }
     }
 
-    // Create FP16 attenuation LUT texture for per-pixel player light
-    // Replaces inversesqrt + division with a single texture lookup (1.78ms savings on Mali 400)
+    // Create FP16 attenuation LUT texture for per-pixel player light: the
+    // attenuation 1/(c + l*d + q*d^2) over the light's range (B968)
     {
         glGenTextures(1, &attenLutTexture_);
         if (attenLutTexture_ > 0) {
@@ -366,16 +351,15 @@ ZoneShaderManager::ZoneShaderManager(irr::video::IVideoDriver* driver,
 
             // Initialize with default attenuation (will be updated on first beginFrame)
             uint16_t data[256 * 2];
-            fillAttenLUT(data, playerLightAtten_[0], playerLightAtten_[2], lutMaxD2_);
+            fillAttenLUT(data, playerLightAtten_, lutRange_, lutScale_);
             eqt::memory::GemTag gemTag("tex:light-lut 256x1");
             glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, 256, 1, 0,
                          GL_LUMINANCE_ALPHA, GL_HALF_FLOAT_OES, data);
-            lutBakedConst_ = playerLightAtten_[0];
-            lutBakedQuad_ = playerLightAtten_[2];
+            std::memcpy(lutBakedAtten_, playerLightAtten_, sizeof(lutBakedAtten_));
             lutDirty_ = false;
             glBindTexture(GL_TEXTURE_2D, 0);
-            LOG_INFO(MOD_GRAPHICS, "ZoneShaderManager: FP16 attenuation LUT created (256x1, maxD²={}, scale={})",
-                     lutMaxD2_, lutScale_);
+            LOG_INFO(MOD_GRAPHICS, "ZoneShaderManager: FP16 attenuation LUT created (256x1, range={}, scale={})",
+                     lutRange_, lutScale_);
         }
     }
 #endif // EQT_HAS_GLES2
@@ -399,13 +383,12 @@ void ZoneShaderManager::beginFrame() {
     // Regenerate LUT if player light attenuation params changed
     if (lutDirty_ && attenLutTexture_ > 0) {
         uint16_t data[256 * 2];
-        fillAttenLUT(data, playerLightAtten_[0], playerLightAtten_[2], lutMaxD2_);
+        fillAttenLUT(data, playerLightAtten_, lutRange_, lutScale_);
         glBindTexture(GL_TEXTURE_2D, attenLutTexture_);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1,
                         GL_LUMINANCE_ALPHA, GL_HALF_FLOAT_OES, data);
         glBindTexture(GL_TEXTURE_2D, 0);
-        lutBakedConst_ = playerLightAtten_[0];
-        lutBakedQuad_ = playerLightAtten_[2];
+        std::memcpy(lutBakedAtten_, playerLightAtten_, sizeof(lutBakedAtten_));
         lutDirty_ = false;
     }
 #endif

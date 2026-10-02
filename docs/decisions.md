@@ -1542,3 +1542,27 @@ turns it off, so the baseline is unchanged; it is ON by default only on the
 GEM on the Pi, llvmpipe's heap inside `gpu_driver` on x86). Design, numbers and
 what is not verified: `refactor/B964/README.md`; the code map:
 `src/client/graphics/CLAUDE.md`, "Impostor billboards".
+
+## 2026-10-01 — the player light is formed in the VS; the 15 gate goldens re-blessed (Will, B967 / #285, B968 / #286)
+
+**Will, in chat: "I agree, re-bless the 15 goldens."** The ruling covers B967's
+fix -- the per-pixel player light's vector is formed in the vertex shader at
+FP32 and passed as a small, light-relative varying -- and B968's, folded into
+the same re-bless because it moves the same goldens: the light's attenuation is
+the per-vertex zone-light family and never rises with distance. This is the
+third pre-approved golden re-bless (after T279's mip chains and B110's baked
+lighting).
+
+**What moved, and only that:** the 15 PNGs under `tests/goldens/` (the gate's own
+invocation, regenerated from the B967 tip; two runs pixel-identical). No
+manifest metric, memory baseline, budget, CPU baseline or gate assertion moved
+or was edited; the manifest records the re-bless in its `approval` block. Per
+frame before/after counts, the Pi proof and the frame time:
+`refactor/B967/README.md`; the sheets: `review/B967/`.
+
+**Implications:** the light's shape is now a stated rule
+(`include/client/graphics/player_light_shader.h`): color x max(N.L^, 0) /
+(c + l*d + q*d^2), N.L^ exact, the attenuation from a LUT indexed linearly in d
+over the light's range R (where it falls to 1/255, the P07d demotion
+threshold), exactly 0 from R on. The FS reads no world coordinate. Pinned by
+`test_player_light_lut` and `PlayerLightProbeMonotonic`.
