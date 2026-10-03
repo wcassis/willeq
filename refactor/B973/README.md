@@ -144,3 +144,104 @@ the branch (WIP commits); nothing is merged.
 - Pi lock: taken/released by the two sweep runs (owner b973). At hand-off it is
   held by **b975** (another unit) -- not touched.
 - No builds on the Inspur or the Pi.
+
+## COMPLETED 2026-10-03 (hermes-ext lane, MR !72 un-drafted)
+
+Final head `06586cf4` (the hermes-ext-lane commit on top of the hand-off).
+CI pipeline **475** on that head: green — hygiene 55 s, build 355 s,
+test (full suite) 164 s, gate 422 s, build-arm success (the Pi build
+`06586cf4...` under `~/ci-arm/`, Mesa pin cc4d9beb). Local: `ctest -R
+EntityBuildScheduler` 7/7, `ctest -L hygiene` 22/22.
+
+### REMAINS, resolved
+
+1. **Local tests** — `ctest -R EntityBuildScheduler` 7/7, `ctest -L hygiene`
+   22/22 (this host, Release, `-j3`); the full suite is CI's `test` job
+   (pipeline 475, green).
+2. **Pi re-run of `HEAD`** (qeynos2 1280x720, `06586cf4`'s `willeq-nollvm`,
+   Mesa 25.2.8 pin-verified, VM lane `EQEMU_HOST=172.16.200.99`):
+
+   | metric | legacy200 | new200 (B973) |
+   |---|---|---|
+   | crowd NPCs built (of 200) | **1** | **180** (173 by the end of the build phase) |
+   | visible backlog drained after the last spawn | never | **0.4 s** |
+   | frames with a build unit / traced frames | 30 / 2,108 | 602 / 710 |
+   | build work per frame p50 / p95 / max ms | 0.00 / 0.00 / 377.71 | 6.61 / 19.18 / 473.05 |
+   | frame ms p50, spawn phase | 40.3 | 46.7 |
+   | build phase | 100.0 | 83.3 |
+   | hold phase | 66.7 | 110.0 |
+   | `EntityBuild: ... NodeSetup ->` lines | 1 (Crowd022: the B966 frame) | **0** |
+
+   **Verification bar met: 180 >= 180 of 200 built, backlog drained within
+   seconds of the last spawn, legacy never.**
+   **B966 confirmed on the Pi:** in the new run every crowd entity leaves
+   `Placeholder -> MeshFinalize` in the create unit (173 of them) and there
+   are zero separate `NodeSetup` steps — the node is never drawn with its raw
+   materials. The legacy run shows the split (`Crowd022: Placeholder ->
+   MeshFinalize` then `NodeSetup -> EquipAttach`/`Built`).
+   **The 60-344 ms upload units are settled (REMAINS 2's question):** all 26
+   upload units >= 20 ms in the new run logged `lock_wait=0.00 ms`
+   (`EntityBuild: upload unit 1 tex in 56.51 ms (lock_wait=0.00 ms
+   upload=56.51 ms, 16 pending before)` is the worst) — the cost is the GPU
+   upload itself, NOT contention on `ConstrainedTextureCache::mutex_` with the
+   prep worker, so the `findCompressedEntry()` lock-scope change is NOT
+   confirmed as the fix direction (noted on #301/B982). The run's per-frame
+   max (473.05 ms) is a CREATE unit: the first build of a non-crowd race
+   (`a_grass_snake003`, `create=472745us tex_loads=0`) — the same
+   first-build-of-a-race class as crowd1's 24.9 ms max and x86's 135 ms.
+3. **x86 re-run of `HEAD`** (llvmpipe, counts/drain only — NOT performance
+   evidence; `~/kb-evidence/b973-entity-build/x86/crowd3/`): new200
+   **200 built, drained 3.0 s** after the last spawn; legacy200 192 built,
+   last one 119 s after the last spawn (the legacy path DOES drain on x86 —
+   the governor is frequently Green here; the Pi is the evidence).
+4. **The bound** (measured, Pi): at 1 spawn / 0.25 s the build keeps pace —
+   the visible backlog drains **0.4 s** after the last spawn (180 built by
+   move, the other 20 are out of the visible set at tour end). Per-frame build
+   work is bounded by the state's slice PLUS the first unit, whose cost is
+   unbounded by design: this run's max first unit is the 473 ms
+   first-race-arcade create (above); upload units max 56.5 ms.
+5. **Docs / board / issues:**
+   - `refactor/BOARD.md`: B973 and B966 struck (FIXED, this README / the
+     NodeSetup fold).
+   - New issues filed (max `B###:` title at filing was B981 = #300):
+     **#301 (B982)** upload-unit stall class (the 60-344 ms units; this run's
+     finding posted as a note — it is the upload itself, plus the
+     first-race-arcade create cost); **#302 (B983)** the decoded-texture
+     pending-upload queue is unbounded while builds starve (legacy Pi:
+     14 -> 325 pending); **#303 (B984)** a fully built crowd costs more to draw
+     than placeholders (Pi hold p50 110 vs 67 ms in this pair — same sign as
+     crowd1's 100 vs 83); **#304 (B985)** the sweep rig's dev-host/NFS
+     coupling (this unit's Pi leg, below).
+   - `src/client/graphics/CLAUDE.md`'s governor paragraph is NOT in this MR:
+     the write-guard blocks agent-instruction-file writes in this lane (the
+     same guard B978 hit); the paragraph text is on the kanban card's thread
+     for a follow-up pass.
+6. **File sizes + gate:** `check_file_sizes.sh -C . --all` clean (1,337
+   files, 0 warn, 0 fail; the `COpenGLES2Driver.cpp` 2,502-line WARN is
+   pre-existing at `origin/fable`, untouched by this branch). The CI gate on
+   this head (pipeline 475, job 2269) is green with **no golden moved**
+   (`git diff origin/fable...HEAD -- tests/goldens/` is empty: the benchmark
+   builds no EntityRenderer).
+7. **Final state:** `git merge origin/fable` re-run before the final push; MR
+   !72 un-drafted with `Closes #291` + `Closes #284`; #291 and #284 labeled
+   `status::review`.
+
+### Lane notes (hermes-ext)
+
+- `scripts/b973/pi_crowd.sh` gained the `--allow-vm-lane` passthrough
+  (commit `06586cf4`, in scope per the card; the VM lane refuses without it).
+- The shared `pi_rendered_zone_sweep.sh` rig is dev-host-coupled: its runner
+  invocation runs `python3 $REPO/scripts/pi/rendered_zone_run.py` ON THE PI,
+  and `$REPO` (the checkout), `$CFG`, `$TOUR` and `$dir` (the `--out` path)
+  are local-to-the-launcher paths that exist only on the dev host's NFS.
+  From hermes-ext (no NFS) the runner therefore never started ("no
+  summary.json (runner never finished)"). This unit's Pi leg was run through
+  the repo's own pieces with the paths staged on the Pi (runner + tours +
+  config in `/tmp/b973keep`, run dir `/tmp/prs`): same client binary, same
+  tour, same cgroup, same Mesa. The rig fix for the non-NFS lane is B985
+  (issue #304) — it is NOT in this MR (out of scope: the card authorized
+  only the wrapper's one-line passthrough).
+- All eqemu runs restored BYTE-IDENTICALLY with the world down and ran
+  `down.sh`; the Pi and eqemu locks are released (`pi_lock_show` /
+  `eqemu_lock_show` empty after the last run).
+
