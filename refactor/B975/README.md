@@ -9,6 +9,55 @@ d3375b65 (B964 / MR !70 merged). Raw evidence: `/mnt/projects/fable/review/B975/
 The unit was stopped on a hand-off order mid-way. Everything below is the
 state at the WIP commit that carries this section.
 
+## PROGRESS 2026-10-03 (REM item 1: the shrink) — commit 05533bcb
+
+REM item 1 is implemented (x86 side verified; the Pi re-measure is in
+flight):
+
+- **One proj x view per frame.** `projectNameTag()` replaces the per-tag
+  `getScreenCoordinatesFrom3DPosition()` (which rebuilt the product every
+  call); `render()` forms the single product once. The collision manager's
+  arithmetic is fed through it, unchanged.
+- **Compact 80 B/quad vertices, no `UiQuad` intermediate.**
+  `{float x, y; u8 r, g, b, a; float u, v}` (20 B/vertex, 80 B/quad; the
+  colour is normalised at the attribute, the driver's `UI2D_FS` samples it
+  as a `vec4`). One static index pattern per run, a growing index buffer,
+  and the compact vertex buffer. `UiQuadBatch` keeps its `UiQuad`/vertex path
+  for the non-GLES2 driver (the batch node uses it there, unchanged).
+- **Buffers at need.** `logWindow()` trims the compact vertex+index buffers
+  and the `UiQuad`/`UiQuadBatch` buffers at a window boundary to
+  `2 * windowMaxTags_ * 16 + 64` quads (the 791 KB at N=200 was `UiQuad` +
+  144 B/quad vertex over-allocation).
+- **`nametag_drawcost` published to the Pi** (REM item 1's publish
+  extension): `scripts/pi/publish_arm_build.sh` also copies + strips
+  `bin/nametag_drawcost` and runs `mesa_nollvm_select.sh` to produce
+  `bin/nametag_drawcost-nollvm` (DT_RPATH to the Pi's LLVM-less Mesa
+  prefix) when the ARM build has it.
+
+### x86 (llvmpipe, loaded host — not perf evidence)
+
+| metric | before (e4eeca69) | after (05533bcb) |
+|---|---|---|
+| N=200 batch render total | 3120 us | 2109 us |
+| build (sort + project + layout) | 730 us | 382 us |
+| submit (vertex fill + 2 draws) | 2390 us | 1731 us |
+| pixel identity, 9 poses | 0 differing px | 0 differing px |
+| 2 draws / frame, 2183 quads @ N=200 | yes | yes |
+
+Full evidence: `~/kb-evidence/b975-name-tags/x86-shrink/{pixel,drawcost}/`.
+**The 2 ms bar is a Pi number** — the ARM build publishes via CI
+(`glab ci trigger build-arm`), then `nametag_drawcost-nollvm
+pixel|drawcost --drm` on the Pi under `pi_lock kb-b975`.
+
+### Remaining after this section
+
+- REM item 2 (Pi crowd A/B, `scripts/b964/pi_crowd.sh --allow-vm-lane` —
+  passthrough added in 05533bcb).
+- REM item 3 (x86 crowd run, `scripts/b964/crowd_run.sh`).
+- REM items 4-6 (live con-colour check; verification bar full ctest +
+  visual gate; docs/BOARD/issues).
+- REM item 7 (merge `gitlab/fable`, MR `Closes #293`).
+
 ### Done (with evidence)
 
 1. **Per-tag cost of the old path, measured** (`tools/hwcaps/nametag_drawcost drawcost`,
