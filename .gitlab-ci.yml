@@ -215,6 +215,53 @@ test:
         JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh 2>&1 | tail -n 100
       fi
 
+# B923 / #242: the CLIENT's own memory ledger against its budgets, run on a
+# schedule rather than by hand. The blocking `gate` job below measures
+# gles2_zone_benchmark, which never builds the client's collision and occluder
+# structures, so the client-only ledger owners (spatial's sp.* rows, and audio,
+# B977/#295) are asserted HERE: the rendered client (orangepi preset,
+# WILLEQ_BASELINE=1, the same invocation ClientLedgerLive ctest uses) zoned
+# into iceclad past steady_60s, with --assert-budgets -- every budgeted
+# memoryLedgerBudgets category at ready and steady_60s must be inside its
+# budget or the job is red (client_ledger_table.py check's exit 1).
+#
+# MANUAL, allow_failure: it takes the eqemu lane lock (one snapshot, one
+# restore with the world down, the lane's own discipline) and holds the lane
+# ~20 minutes, so it never blocks the pipeline; the schedule and an operator
+# both trigger it (issue #242 acceptance 2: "ClientLedgerLive on a schedule
+# with the result recorded"). The evidence dir and the check's per-category
+# lines are artifacts -- the recorded result. Needs the willeq binary from
+# the `build` stage's tree (build/bin/willeq), not build-gles2/'s.
+#
+# Declared ABOVE `gate:` on purpose: test_visual_gate_ledger asserts the gate
+# job's body (the text after "\ngate:") contains no "allow_failure: true", so
+# this manual job must not sit in that slice. Same stage (gate), so the file
+# order is cosmetic to the pipeline.
+client-ledger-live:
+  extends: .goldfarm
+  stage: gate
+  needs: [build]
+  dependencies: [build]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_BRANCH
+      when: manual
+      allow_failure: true
+  script:
+    - test -x build/bin/willeq || { echo "no build/bin/willeq -- the build stage did not land"; exit 1; }
+    - |
+      nice -n 10 bash scripts/client_ledger_capture.sh \
+        --zones iceclad --modes spatial --assert-budgets \
+        --owner ci-client-ledger \
+        --out client-ledger-live/client-ledger-$(date -u +%Y%m%dT%H%M%SZ) 2>&1 | tee client-ledger-live/log.txt
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - client-ledger-live/
+
 gate:
   extends: .goldfarm
   stage: gate
@@ -237,3 +284,4 @@ gate:
     paths:
       - gate.log
       - build-gles2/ci_artifacts/
+
