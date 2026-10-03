@@ -679,11 +679,23 @@ it without taking that measurement first.
   and the `_alpha` companion with the alpha bytes again. Moves a gated number
   down only when fixed. Confirmed by B944 (code reading; the census's EQE1
   `gpuTextureBytes` exceeds `textureCacheBytesUsed`).
-- **B949** (B) → issue #267. The texture cache's LRU is touched on lookup and
+- ~~**B949** (B) → issue #267. The texture cache's LRU is touched on lookup and
   restore, never on draw, so eviction order is load order and an on-screen
   texture can be evicted first and restored on its next bind (thrash;
   performance, secondary). Measured by B944: 85 evictions / 21 restores on the
-  qeynos2 golden run at 20 MiB.
+  qeynos2 golden run at 20 MiB.~~ **DONE 2026-10-03** (branch
+  `task/B949-texture-lru-draw-order`, issue #267, `refactor/B949/README.md`).
+  A cheap per-frame "used" stamp on bind (`COpenGLES2Driver::FrameCounter`
+  bumped in `beginScene()`, stamped into each texture by
+  `COGLES2Texture::markDrawn()` on the `getOpenGLTextureName()` bind accessor)
+  and one per-frame reorder (`ConstrainedTextureCache::endFrame()`, splice-based
+  so the per-entry `lruIterator`s stay valid) puts the LRU list in
+  least-recently-DRAWN order; equal stamps keep load/touch order. Same gate
+  invocation at 20 MiB: 85/21 → 84/20 evictions/restores, frames still
+  pixel-identical (0 differing pixels). Repeatable:
+  `tests/test_texture_lru_draw_order.cpp` (a texture bound every frame survives
+  load-pressure eviction; a no-draw control still evicts in load order). No
+  budget, golden or gate assertion changed.
 - **B950** (B) → issue #268. `ZoneMeshBuilder`'s layout depends on
   `EQT_HAS_TEXTURE_ATLAS`, a PRIVATE define of `willeq_core`;
   `tests/test_placed_object_meshes.cpp` constructs one without it (B944's own

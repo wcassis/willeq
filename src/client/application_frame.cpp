@@ -187,7 +187,19 @@ void Application::render(float deltaTime) {
             if (!result) {
                 LOG_DEBUG(MOD_GRAPHICS, "Graphics window closed");
                 m_running.store(false);
-            } else if (!m_config.dumpFramesDir.empty() && m_config.dumpFramesEvery > 0
+            } else if (m_constrainedCache) {
+                // B949: the texture cache's LRU now follows draw order. The
+                // driver stamped every texture this frame bound (on the GL
+                // thread, inside processFrame); reordering the list is a
+                // cache-only operation (no GL calls), so it runs here on the
+                // render thread, the only thread that reads it back from
+                // here, once per frame, after the frame's binds.
+                // (m_graphicsInitialized implies the cache exists -- it is
+                // built in initConstrainedRendererConfig() before the renderer
+                // is -- the check just keeps this line crash-free on its own.)
+                m_constrainedCache->endFrame();
+            }
+            if (result && !m_config.dumpFramesDir.empty() && m_config.dumpFramesEvery > 0
                        && m_dumpFrameIndex < static_cast<uint64_t>(m_config.dumpFramesMaxCount)) {
                 // T64: video-capture evidence tool (--dump-frames-dir/--dump-every),
                 // extracted from the P12 anim video-check session and made a
