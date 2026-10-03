@@ -395,11 +395,15 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     // this class's own internal (possibly mask-mangled) bookkeeping key.
     // mutex_ is already held by caller (uploadTexture)
 #ifdef EQT_EQE1_UPLOAD_AVAILABLE
-    // Budget check — use ETC1 compressed size, not RGBA size
-    size_t gpuSize = EQT::Graphics::etc1MipChainSize(entry.width, entry.height, entry.mipLevels);
-    if (entry.hasAlpha) {
-        gpuSize += EQT::Graphics::etc1MipChainSize(entry.width, entry.height, entry.mipLevels);
-    }
+    // Budget check — use ETC1 compressed size, not RGBA size.
+    // B948 (GitLab #266): the budget figure stays the PAIR (main + alpha) —
+    // the cache entry owns both storages — but the two ITextures are now
+    // wrapped with THEIR OWN chain only, so getGpuTextureMemoryUsage()
+    // (which sums the driver's textures) counts each chain exactly once.
+    const uint32_t mainChain = EQT::Graphics::etc1MipChainSize(entry.width, entry.height, entry.mipLevels);
+    const uint32_t alphaChain =
+        entry.hasAlpha ? EQT::Graphics::etc1MipChainSize(entry.width, entry.height, entry.mipLevels) : 0u;
+    size_t gpuSize = static_cast<size_t>(mainChain) + alphaChain;
 
     if (!evictUntilAvailable(gpuSize)) {
         LOG_WARN(MOD_GRAPHICS, "Constrained cache: budget exhausted uploading ETC1 '{}' (need {} bytes)",
@@ -421,7 +425,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     irr::video::ITexture* texture = static_cast<irr::video::ITexture*>(
         gles2WrapTexture(driver_, cacheEntryKey.c_str(), texId,
                          entry.width, entry.height,
-                         static_cast<unsigned int>(gpuSize)));
+                         mainChain));  // B948 (GitLab #266): the main chain only
 
     if (!texture) {
         glDeleteTextures(1, &texId);
@@ -437,8 +441,7 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
         alphaTexture = static_cast<irr::video::ITexture*>(
             gles2WrapTexture(driver_, alphaName.c_str(), alphaTexId,
                              entry.width, entry.height,
-                             static_cast<unsigned int>(
-                                 EQT::Graphics::etc1MipChainSize(entry.width, entry.height, entry.mipLevels))));
+                             alphaChain));  // B948: the alpha chain only
         if (!alphaTexture) {
             glDeleteTextures(1, &alphaTexId);
             LOG_WARN(MOD_GRAPHICS, "Constrained cache: wrapTexture failed for ETC1 alpha '{}'", alphaName);
@@ -451,8 +454,9 @@ irr::video::ITexture* ConstrainedTextureCache::uploadCompressedETC1(
     // alpha-TEST variants saw it, and only where a consumer had remembered to
     // call setTexture(1, getAlphaTexture(...)).
     gles2SetAlphaCompanion(texture, alphaTexture);
-    // B962: what the two storages really hold (the wrap above carries the
-    // pair's full-chain budget figure on the main texture -- B948).
+    // B962: what the two storages really hold. Since B948 (GitLab #266) the
+    // wrap above carries each texture's OWN chain, so GpuBytes and StorageBytes
+    // agree on both sides of the pair.
     gles2TextureSetStorageBytes(texture, etc1StorageBytes(entry, false));
     if (alphaTexture) gles2TextureSetStorageBytes(alphaTexture, etc1StorageBytes(entry, true));
 
