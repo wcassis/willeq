@@ -4,6 +4,8 @@
 // definitions and this file must be included by zone_shader.cpp and NOTHING
 // ELSE. See refactor/J09_zone_shader_split.md.
 
+#include "client/graphics/player_light_shader.h"
+
 namespace EQT {
 namespace Graphics {
 
@@ -62,7 +64,10 @@ uniform float uBakedFlag;
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
+// B967: the player light's vector is formed here at FP32, pre-scaled
+// by 1/64 (include/client/graphics/player_light_shader.h).
+uniform vec3 uPlayerLightPos;
+varying vec3 vPlayerLightVec;
 varying vec3 vWorldNormal;
 
 void main() {
@@ -73,7 +78,7 @@ void main() {
     vec3 worldPos = (mWorld * pos).xyz;
     vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
 
-    vWorldPos = worldPos;
+)" EQT_PLAYER_LIGHT_VS_LINE R"(
     vWorldNormal = worldN;
 
     // Directional sun light
@@ -143,23 +148,20 @@ void main() {
 // GLSL ES 1.00 fragment shader — solid (opaque)
 // Per-pixel player light (light[0]) for smooth illumination on large triangles.
 //
-// The LUT coordinate is clamp(d2 * uLUTScale, 0.0, 1.0) in every player-light
-// FS below (B965, GitLab #283). Mali-400's fragment ALU is FP16 whatever the
-// precision qualifier says, so d2 = dot(pLv, pLv) overflows to +inf for any
-// pixel 256+ units from the light (65,504 is FP16's max), and Lima's LINEAR
-// sampler returns the LUT's NEAR end (full brightness) for an infinite
-// coordinate under CLAMP_TO_EDGE -- the blown-out far band B960 measured on the
-// Pi. The clamp turns +inf into 1.0, the last texel, which is exactly what
-// llvmpipe already sampled for any coordinate past the table, so the x86
-// output is unchanged bit for bit. Cost on the Pi: GPU p50 +2.5..4.7% per frame
-// across the five gate zones (a pre-scaled form cost +4.5..9.3%). Measured:
-// refactor/B965/README.md, tools/hwcaps/gles2_player_light_probe.cpp.
+// Every player-light FS below splices EQT_PLAYER_LIGHT_FS_TERM and every
+// per-pixel VS splices EQT_PLAYER_LIGHT_VS_LINE, both from
+// include/client/graphics/player_light_shader.h, which says why: the light
+// vector is formed in the VS at FP32 (B967, #285), the term is the per-vertex
+// zone-light family and never brightens with distance (B968, #286), and the LUT
+// coordinate keeps B965's clamp(.., 0.0, 1.0) (#283: Lima samples an infinite
+// coordinate at the LUT's NEAR end). The probe that pins the term is
+// tools/hwcaps/gles2_player_light_probe.cpp; measurements in
+// refactor/B965/README.md, refactor/B969/README.md, refactor/B967/README.md.
 static const char* FRAGMENT_SHADER_SOLID_SRC = R"(
 precision mediump float;
 
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
 uniform float uLUTScale;
@@ -167,17 +169,13 @@ uniform float uLUTScale;
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
+varying vec3 vPlayerLightVec;
 varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
-    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * lut.a;
+)" EQT_PLAYER_LIGHT_FS_TERM(vWorldNormal) R"(
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -191,7 +189,6 @@ precision mediump float;
 uniform sampler2D uTexture;
 uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
 uniform float uLUTScale;
@@ -199,7 +196,7 @@ uniform float uLUTScale;
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
+varying vec3 vPlayerLightVec;
 varying vec3 vWorldNormal;
 
 void main() {
@@ -207,11 +204,7 @@ void main() {
     float alpha = texture2D(uAlphaTexture, vTexCoord).r;
     if (alpha < 0.5) discard;
 
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
-    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * lut.a;
+)" EQT_PLAYER_LIGHT_FS_TERM(vWorldNormal) R"(
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, alpha * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -229,7 +222,6 @@ precision mediump float;
 
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
 uniform float uLUTScale;
@@ -237,18 +229,14 @@ uniform float uLUTScale;
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
+varying vec3 vPlayerLightVec;
 varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     if (texColor.a < 0.5) discard;
 
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
-    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * lut.a;
+)" EQT_PLAYER_LIGHT_FS_TERM(vWorldNormal) R"(
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -305,7 +293,10 @@ uniform float uBakedFlag;
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
+// B967: the player light's vector is formed here at FP32, pre-scaled
+// by 1/64 (include/client/graphics/player_light_shader.h).
+uniform vec3 uPlayerLightPos;
+varying vec3 vPlayerLightVec;
 varying vec3 vWorldNormal;
 
 void main() {
@@ -318,7 +309,7 @@ void main() {
     vec3 worldPos = (mWorld * pos).xyz;
     vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
 
-    vWorldPos = worldPos;
+)" EQT_PLAYER_LIGHT_VS_LINE R"(
     vWorldNormal = worldN;
 
     // Directional sun light
@@ -391,7 +382,6 @@ precision mediump float;
 
 uniform sampler2D uTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
 uniform float uLUTScale;
@@ -399,17 +389,13 @@ uniform float uLUTScale;
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
+varying vec3 vPlayerLightVec;
 varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
-    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * lut.a;
+)" EQT_PLAYER_LIGHT_FS_TERM(vWorldNormal) R"(
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -423,7 +409,6 @@ precision mediump float;
 uniform sampler2D uTexture;
 uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
 uniform float uLUTScale;
@@ -431,7 +416,7 @@ uniform float uLUTScale;
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
+varying vec3 vPlayerLightVec;
 varying vec3 vWorldNormal;
 
 void main() {
@@ -439,11 +424,7 @@ void main() {
     if (alpha < 0.5) discard;
     vec4 texColor = texture2D(uTexture, vTexCoord);
 
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
-    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * lut.a;
+)" EQT_PLAYER_LIGHT_FS_TERM(vWorldNormal) R"(
 
     vec4 lit = vec4(texColor.rgb * vColor.rgb + pLight * texColor.rgb, texColor.a * vColor.a);
     gl_FragColor = mix(uFogColor, lit, vFogFactor);
@@ -468,7 +449,6 @@ precision mediump float;
 uniform sampler2D uTexture;
 uniform sampler2D uAlphaTexture;
 uniform vec4 uFogColor;
-uniform vec3 uPlayerLightPos;
 uniform vec3 uPlayerLightColor;
 uniform sampler2D uAttenLUT;
 uniform float uLUTScale;
@@ -477,25 +457,21 @@ uniform int uShaderDebug;
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
+varying vec3 vPlayerLightVec;
 varying vec3 vWorldNormal;
 
 void main() {
     vec4 texColor = texture2D(uTexture, vTexCoord);
     if (texColor.a < 0.5) discard;
 
-    vec3 pLv = uPlayerLightPos - vWorldPos;
-    float d2 = dot(pLv, pLv);
-    vec4 lut = texture2D(uAttenLUT, vec2(clamp(d2 * uLUTScale, 0.0, 1.0), 0.5));
-    float pLn = max(dot(vWorldNormal, pLv * lut.r), 0.0);
-    vec3 pLight = uPlayerLightColor * pLn * lut.a;
+)" EQT_PLAYER_LIGHT_FS_TERM(vWorldNormal) R"(
 
     if (uShaderDebug == 1) { gl_FragColor = texColor; return; }
     if (uShaderDebug == 2) { gl_FragColor = vColor; return; }
     if (uShaderDebug == 3) { gl_FragColor = vec4(lut.r, lut.a, 0.0, 1.0); return; }
     if (uShaderDebug == 4) { gl_FragColor = vec4(pLight, 1.0); return; }
     if (uShaderDebug == 5) { gl_FragColor = vec4(vWorldNormal * 0.5 + 0.5, 1.0); return; }
-    if (uShaderDebug == 6) { gl_FragColor = vec4(normalize(pLv) * 0.5 + 0.5, 1.0); return; }
+    if (uShaderDebug == 6) { gl_FragColor = vec4(normalize(vPlayerLightVec) * 0.5 + 0.5, 1.0); return; }
     if (uShaderDebug == 7) { gl_FragColor = vec4(texColor.a, texColor.a, texColor.a, 1.0); return; }
     if (uShaderDebug == 8) { gl_FragColor = vec4(texColor.rgb * vColor.rgb, 1.0); return; }
     if (uShaderDebug == 9) { gl_FragColor = vec4(vTexCoord.x, vTexCoord.y, 0.0, 1.0); return; }
@@ -564,7 +540,10 @@ uniform vec2 uMeshYBounds;  // minY, maxY in local mesh space (Irrlicht Y-up)
 varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vFogFactor;
-varying vec3 vWorldPos;
+// B967: the player light's vector is formed here at FP32, pre-scaled
+// by 1/64 (include/client/graphics/player_light_shader.h).
+uniform vec3 uPlayerLightPos;
+varying vec3 vPlayerLightVec;
 varying vec3 vWorldNormal;
 
 void main() {
@@ -603,7 +582,7 @@ void main() {
     vec3 worldPos = (mWorld * pos).xyz;
     vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
 
-    vWorldPos = worldPos;
+)" EQT_PLAYER_LIGHT_VS_LINE R"(
     vWorldNormal = worldN;
 
     // Directional sun light

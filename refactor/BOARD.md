@@ -304,25 +304,33 @@ it without taking that measurement first.
 - **B971** (C) → issue #289. The window surface's D24S8 depth/stencil is
   3.52 MiB of GEM at 1280x720; its only stencil user (`/portal`) is off on the
   orangepi preset. 16-bit depth changes pixels: Will's call. Measured by B962.
-- **B967** (C) → issue #285. The player light is quantized at large world
-  coordinates on BOTH GPUs: the mediump `vWorldPos` varying. The goldens carry
-  it. Fix: pLv in the VS, plus a re-bless. Measured by B965.
-  - B969 measured the fix on the gate. It moves all 15 x86 goldens: >32 px
-    only in iceclad_f2 (546) and timorous_f2 (16,085).
-  - It takes timorous_f2 Pi vs x86 from 3,175 to 11 px. B969 is the Pi half
-    of this item.
-- **B968** (C) → issue #286. Past 64 units the player light gets brighter with
-  distance on a surface that faces it: the LUT's `1/d` clamps at 1/64, so
-  pLn = d/64. Both GPUs; in the goldens. Measured by B965.
-- **B969** (A, blocked on B967) → issue #287. timorous_f2: 3,175 px >32, Pi
-  vs the x86 golden. The cause is ISOLATED, but no x86-invariant fix exists.
-  - The "polygon edges" are B967's FP16 step lines of the interpolated
-    `vWorldPos` (8 units in x, 4 in z at this pose).
-  - Lima's varying interpolation puts each rounding boundary a few px off
-    llvmpipe's: the Pi's x is exactly ±8 units off at 3,173 of the pixels.
-  - B967's pLv-in-the-VS fix takes Pi vs x86 to 11 px, but moves every x86
-    golden. It closes with B967's re-bless.
-  - `refactor/B969/README.md`.
+- ~~**B967** (C) → issue #285. The player light is quantized at large world
+  coordinates on BOTH GPUs: the mediump `vWorldPos` varying.~~ **FIXED**
+  (`refactor/B967/README.md`, MR !74 **merged into fable `2c7d5be4`
+  2026-10-02**; `202df783` + `98846a79`): the player-light
+  vector is formed in the VS (FP32, pre-scaled 1/64) and the FS is branchless
+  with an attenuation LUT indexed linearly in d (B968's formula, light 0 from R
+  on). Will, 2026-10-01: "I agree, re-bless the 15 goldens" -- done, manifest
+  approval block only. Pi vs new x86 goldens: 13 of 15 frames in the tens
+  (timorous_f2 3,175 -> 15, iceclad_f2 335 -> 6); the gfaydark residual
+  (409/55/162 px >32, present with the player light OFF too) is not the player
+  light and cause not isolated -- filed as B980.
+- ~~**B968** (C) → issue #286. Past 64 units the player light gets brighter with
+  distance on a surface that faces it.~~ **FIXED** with B967 (MR !74, merged
+  into fable `2c7d5be4` 2026-10-02): the LUT
+  now carries the per-vertex zone-light term `A(d) = 1/(c + l*d + q*d^2)` over
+  d in [64, R], R = the d where the denominator = 255 (lightstone 9: R = 336.38);
+  the light is 0 from R on by construction.
+- ~~**B969** (A, blocked on B967) → issue #287. timorous_f2: 3,175 px >32, Pi vs
+  the x86 golden.~~ **CLOSED** with B967's re-bless (MR !74, merged into fable
+  `2c7d5be4` 2026-10-02): pLv-in-the-VS takes
+  timorous_f2 to 15 px >32 (bar met: tens). The FP16 step lines were B967's
+  interpolated `vWorldPos`; `refactor/B969/README.md` has the isolation.
+- **B980** (A) → issue #299. gfaydark gate
+  frames differ Pi vs x86 by 409 / 55 / 162 px >32 (f0/f1/f2) with the player
+  light ON -- and f0 and f2 are EQUAL to B960's player-light-OFF counts
+  (409/54/162), so this is not the player light. Cause not isolated. Measured
+  by B967 (`review/B967/pi/gate/gfaydark_after/`, `arm_bin/before_d3375b65`).
 - **B973** (A) → issue #291. Post-load entity builds are Green-gated
   (`FrameComponent::processFrame`, "1 unit per GREEN frame";
   `EntityRenderer::processOneEntityBuildStep`), and the Pi is rarely Green in
@@ -336,6 +344,13 @@ it without taking that measurement first.
 - **B976** (B) → issue #294. In timorous_f2, `--shader-debug 5` shows the
   bottom plane's normal as +Y on llvmpipe and G=0 on Lima, so the player light
   lights it on x86 only. It is nearly black in the gate frame. Found by B969.
+
+- **B981** (B) → issue #300. `tests/goldens/manifest.json`'s
+  `memory.textureCacheBytesLimit` is 67,108,864 (64 MiB) in all five gate zones;
+  live it is 53,477,376 (51 MiB) since B943's 2026-09-30 ratchet. Display-only,
+  never asserted; the gate passes with it stale. Will's 2026-10-01 re-bless
+  ruling covered the 15 goldens and the approval block only, so the B967 unit
+  left it unchanged and filed it. Bless-or-document is Will's call.
 
 - ~~**B005** (B) the `UCSConnection` TU and header (under `src/client/` and
   `include/client/`, basename `ucs`) — 413 lines of live-looking code with zero
@@ -751,8 +766,9 @@ it without taking that measurement first.
   - gfaydark 23,842 / 202 / 4,531 → 429 / 66 / 163;
   - iceclad 19,495 / 32,245 / 6,904 → 2 / 29 / 335.
 
-  The residual iceclad_f2 band edges are B967. Follow-ups: #285 (B967), #286
-  (B968), #287 (B969), #288 (B970).
+  The residual iceclad_f2 band edges are B967, closed with the B967 re-bless
+  (MR !74). Follow-ups closed: #285 (B967), #286 (B968), #287 (B969); #288
+  (B970) closed separately; the gfaydark Pi residual is #299 (B980).
 - **B966** (A, minor) → issue #284. A newly built entity draws one frame with
   unpromoted materials (driver built-in Solid3D / AlphaTest3D):
   `SceneNodeCreation` adds the node and `NodeSetup` promotes it a frame later
