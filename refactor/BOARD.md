@@ -1165,10 +1165,19 @@ it without taking that measurement first.
      (readers in eight TUs, a camera-controller pointer, a frame-render
      golden); it no longer holds `spatial` over budget in the zones B909b
      measured.
-  3. **B923 (#242)** the gate cannot see any of this.
-     The benchmark builds neither collision copy, and it charges the occluder
-     table to `spatial` where the client charges it to `zone_mesh`. The
-     proposed net is `ClientLedgerLive` (label `live`, `tests/cmake/commands.cmake`).
+  3. ~~**B923 (#242)** the gate cannot see any of this.~~ **FIXED by B923**
+     (`refactor/B923/README.md`, branch `task/B923-client-only-owners-gate`):
+     the shared occluder table now takes ONE category, `spatial`, in both
+     loaders (the client's Step-4 charge moved off `zm.occluders`); the client's
+     own ledger is CI-visible via the manual `client-ledger-live` job and
+     `ClientLedgerLive` (label `live`), and `ClientLedgerBudgetCheck` (hygiene)
+     repeats the red contract with no server. Measured 2026-10-03 (x86,
+     llvmpipe, rendered client, iceclad/Velious, `WILLEQ_BASELINE=1`): client
+     `spatial` 4,605,600 / 4,194,304 (109.8 %) -- the client-only owners this
+     unit exposed (`sp.occluders` 2,777,568 + `sp.region_bounds` 1,717,168 +
+     rest, item 2 above). **Expected red on the client-side gate** until item 2
+     (`sp.region_bounds` flat-array, #229) lands; the job is `allow_failure`, so
+     it records the finding without blocking.
   4. **B924 (#243)** `gpu_driver` (llvmpipe) grows
      after `ready` by a different amount in each run, up to 325.5 MB at
      `steady_60s`. In one smoke run it reached 2.42 GB (about 0.9 MB per frame

@@ -712,11 +712,22 @@ void ZoneLoadComponent::loadZoneStep4_Regions(ZoneLoadContext& ctx) {
                      ctx_.regionMeshNodes.size(), regionsSkipped, meshBuildFailed, nodeFailed);
 
             // Extract occluder triangles for software occlusion culling.
-            // B909: in the CLIENT this table is charged to zone_mesh (Step 4's
-            // scope); the benchmark builds the same table under spatial.
+            // B923: this table is the ONE shared structure the two loaders
+            // both build (region_occluders.h's SelectRegionOccluders, the
+            // same selection and the same SoftwareOcclusionCuller::set
+            // RegionOccluders sink in both), so it takes ONE category, the
+            // same in client and benchmark: spatial. The benchmark's Step 10
+            // charges it sp.occ_culler / sp.occluder_sets under its Spatial
+            // scope (zone_bench_loader.cpp); B909 had charged the client's
+            // copy to zone_mesh (Step 4's scope), which is what split the
+            // same bytes across two categories (issue #242). The temporary
+            // Spatial scope mirrors the benchmark's nesting: the zone_mesh
+            // Step-4 scope resumes when it closes.
             meshOwner.reset();
-            meshOwner.emplace("zm.occluders");
             if (ctx_.occlusionCuller) {
+                eqt::memory::MemoryScope occSpatialScope(
+                    eqt::memory::Category::Spatial);  // B923
+                meshOwner.emplace("sp.occluders");
                 auto occStart = std::chrono::steady_clock::now();
                 int totalOccluders = 0;
                 int regionsWithOccluders = 0;
