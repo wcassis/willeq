@@ -339,13 +339,18 @@ bool ConstrainedTextureCache::rebuildStorage(const std::string& key, CachedTextu
         if (c.payloadFormat == EQT::Graphics::EQE1_PAYLOAD_ETC1) {
             unsigned int texId = 0, alphaTexId = 0;
             if (!createETC1Storage(realName, c, texId, alphaTexId)) return false;
-            // Same byte counts the first upload handed gles2WrapTexture().
-            gles2TextureAdoptStorage(entry.texture, texId, static_cast<unsigned int>(entry.sizeBytes));
+            // B948 (GitLab #266): same split the first upload now hands
+            // gles2WrapTexture() -- the main texture adopts its OWN chain,
+            // not the pair entry.sizeBytes carries.
+            gles2TextureAdoptStorage(entry.texture, texId,
+                static_cast<unsigned int>(
+                    EQT::Graphics::etc1MipChainSize(c.width, c.height, c.mipLevels)));
             gles2TextureSetStorageBytes(entry.texture, etc1StorageBytes(c, false));  // B962
             if (entry.alphaTexture && alphaTexId) {
                 gles2TextureAdoptStorage(entry.alphaTexture, alphaTexId,
-                                         static_cast<unsigned int>(EQT::Graphics::etc1MipChainSize(
-                                             c.width, c.height, c.mipLevels)));
+                                         static_cast<unsigned int>(
+                                             EQT::Graphics::etc1MipChainSize(
+                                                 c.width, c.height, c.mipLevels)));
                 gles2TextureSetStorageBytes(entry.alphaTexture, etc1StorageBytes(c, true));  // B962
             } else if (alphaTexId) {
                 glDeleteTextures(1, &alphaTexId);

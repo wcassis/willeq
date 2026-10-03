@@ -1,0 +1,42 @@
+variant	surface	pp_instructions	fs_compiles_before_draw
+ship	wall	9	1
+prod	wall	9	1
+prod_nearest	wall	9	1
+prod_highp	wall	9	1
+prod_lut_fp32	wall	None	0
+vs_plv	wall	8	1
+fs_prescaled	wall	10	1
+vs_prescaled	wall	9	1
+prod_clamped	wall	10	1
+prod_saturate	wall	10	1
+fs_prescaled_clamped	wall	12	1
+diag_coord	wall	5	1
+diag_lut_linear_coord	wall	4	1
+diag_lut	wall	5	1
+diag_plv_frac	wall	3	1
+diag_highp	wall	1	1
+ship	floor	9	1
+prod	floor	9	1
+prod_nearest	floor	9	1
+prod_highp	floor	9	1
+prod_lut_fp32	floor	None	0
+vs_plv	floor	8	1
+fs_prescaled	floor	10	1
+vs_prescaled	floor	9	1
+prod_clamped	floor	10	1
+prod_saturate	floor	10	1
+fs_prescaled_clamped	floor	12	1
+diag_coord	floor	5	1
+diag_lut_linear_coord	floor	4	1
+diag_lut	floor	5	1
+diag_plv_frac	floor	3	1
+diag_highp	floor	1	1
+R=336.38
+wall: monotonic excess over a nearer column 1 (tolerance 1) PASS; 1-column rises 220
+wall: vs per-vertex family max |err| 1 (tolerance 2) PASS
+wall: origin 0 vs iceclad f2 pose max |diff| 0 (tolerance 1) PASS
+wall: nonzero columns past R 0 PASS
+floor: monotonic excess over a nearer column 1 (tolerance 1) PASS; 1-column rises 226
+floor: vs per-vertex family max |err| 1 (tolerance 2) PASS
+floor: origin 0 vs iceclad f2 pose max |diff| 0 (tolerance 1) PASS
+floor: nonzero columns past R 0 PASS

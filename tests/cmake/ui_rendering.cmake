@@ -581,6 +581,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_eqe1_alpha_companion_mip DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B948 (GitLab #266): getGpuTextureMemoryUsage() counts each ETC1 alpha chain
+# exactly once -- upload a synthetic ETC1+alpha pair and assert the driver's
+# figure is main + alpha once each, through the B944 eviction/restore round
+# trip too. Same headless-GLES2 idiom (and self-skip) as
+# test_eqe1_alpha_companion_mip above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_texture_etc1_alpha_count
+        test_texture_etc1_alpha_count.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_texture_etc1_alpha_count PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_texture_etc1_alpha_count GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_texture_etc1_alpha_count DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T411 (board B261/B287): pixel proof that the ETC1 `_alpha` companion reaches
 # the three alpha-BLEND draw paths -- draw2DImage's UI2D_FS, an
 # EMT_TRANSPARENT_ALPHA_CHANNEL mesh through SOLID3D_FS, and the
