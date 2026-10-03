@@ -9,6 +9,39 @@ d3375b65 (B964 / MR !70 merged). Raw evidence: `/mnt/projects/fable/review/B975/
 The unit was stopped on a hand-off order mid-way. Everything below is the
 state at the WIP commit that carries this section.
 
+## Guided Codex verification, 2026-10-03 (in progress)
+
+Resumed the paused card `t_8f86d310` in its existing worktree. Merged
+`origin/fable` at `c778d23dab9024a55c983c62bf61169453f2a2bb`; CI pipeline
+483 supplies the x86 binaries and the ARM publication for that commit.
+Raw evidence for this run is under
+`~/kb-evidence/b975-name-tags/codex-20261003/`.
+
+The earlier `pi/crowd800/` runs are **not successful crowd evidence**:
+the first two runs have no `summary.json`, and the third was interrupted.
+Their Pi-side `runner.out` reports a missing launcher-local script path.
+This is the already-filed B985 / #304 transport defect. The B975 branch now
+stages the runner, inputs and binary explicitly and retrieves the Pi run
+directory over rsync. The `transport-smoke/` leg (previous `d0bb5fba` binary,
+harness verification only) passed, returned three rendered frames, proved
+the pinned Mesa was mapped, and restored the server snapshot byte-identically.
+
+Fresh merged-build Pi microbenchmark (`pi-micro/`, exits both zero):
+200 tags take **1690 us** in `render()` (879 us build, 801 us submit;
+component medians need not sum to the total median), with 381424 B of batch
+buffers. All nine primary pixel comparisons have zero differing pixels.
+The deliberately different tie-order variant retains the documented
+0–23 pixel differences; it is separate from the primary comparison.
+
+The x86 crowd runner now supports the required `tagnode` A/B and
+`--frametiming`. The B975 timing parser now uses the **last** face before
+movement, excluding zone-hop warmup; `NameTagCrowdTiming` pins this and
+refuses to substitute warmup samples when the idle interval has no samples.
+Red/green output is in `frametiming-{red,green}.log`.
+
+Remaining: merged-build crowd A/B on both platforms, live colour/name
+verification, final CI and documentation close-out. MR !73 stays draft.
+
 ## PROGRESS 2026-10-03 (REM item 1: the shrink) — commit 05533bcb
 
 REM item 1 is implemented (x86 side verified; the Pi re-measure is in

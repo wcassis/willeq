@@ -53,12 +53,13 @@ def fmt(x, nd=1):
 
 
 def parse(path):
-    lines = open(path, errors="replace").read().splitlines()
-    # The idle phase: between the `/face` script line and the first `/move`.
+    with open(path, errors="replace") as log:
+        lines = log.read().splitlines()
+    # Hop tours face repeatedly: idle starts at the LAST face before movement.
     idle_start = idle_end = None
     for i, ln in enumerate(lines):
         if "Script: executing" in ln or "executing script" in ln.lower():
-            if "/face" in ln and idle_start is None:
+            if "/face" in ln and idle_end is None:
                 idle_start = i
             elif "/move" in ln and idle_start is not None and idle_end is None:
                 idle_end = i
@@ -75,14 +76,12 @@ def parse(path):
                 cur[r.group(1)] = int(r.group(2)) / 1000.0
     if idle_start is not None and idle_end is not None:
         idle = [b for b in blocks if idle_start < b["line"] < idle_end]
-        if idle:
-            blocks = idle
+        blocks = idle
     nt = [dict(KV.findall(ln.split("[nametags]", 1)[1])) for ln in lines if "[nametags]" in ln]
     if idle_start is not None and idle_end is not None:
         nt_idle = [dict(KV.findall(ln.split("[nametags]", 1)[1])) for i, ln in enumerate(lines)
                    if "[nametags]" in ln and idle_start < i < idle_end]
-        if nt_idle:
-            nt = nt_idle
+        nt = nt_idle
     row_bytes = None
     for ln in lines:
         if "[memledger-owner]" in ln and "point=steady_60s" in ln and "owner=ent.nametag_batch" in ln:

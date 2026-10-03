@@ -13,6 +13,7 @@
 #   mode   imp  = impostors on (the preset's 20 MiB budget)
 #          off  = WILLEQ_IMPOSTORS=0 (the feature alone off -- the A/B)
 #          base = WILLEQ_BASELINE=1 (the original-client feature set)
+#          tagnode = WILLEQ_NAMETAG_BATCH=0 (B975 per-node name tags)
 #   N      crowd size (0 = the zone's own population only)
 #   layout near (10-60 units) | far (100-160 units); absent when N is 0
 # e.g. imp0, imp50far, imp200far, imp200near, off200far, base0.
@@ -28,6 +29,7 @@
 #          [--env K=V]...  extra client environment (e.g. WILLEQ_IMPOSTOR_FINISH=1)
 #          [--hop-zone Z]  the zone to hop to and back after the spawn (default
 #                          arena; "" = no hop, the crowd streams in post-load)
+#          [--frametiming] emit the per-section frame timing breakdown
 #          [--dump]        dump a frame every 600 (8 max) for review -- off in
 #                          timed runs (each dump is a glReadPixels + PNG frame)
 # Lane: EQEMU_HOST (scripts/eqemu/env.sh), default local for this rig.
@@ -51,6 +53,7 @@ CHAR_LEVEL=""; CHAR_EXP=""
 ZONE_BOOT_S="${ZONE_BOOT_S:-150}"
 EXTRA_ENV=()
 DUMP=0
+TOUR_EXTRA=()
 HOP_ZONE="arena"   # zone out and back after the spawn: the LOAD builds the crowd
 LATE_SAVE_S=10
 while [ $# -gt 0 ]; do
@@ -65,6 +68,7 @@ while [ $# -gt 0 ]; do
         --char-exp) CHAR_EXP="$2"; shift 2 ;;
         --env) EXTRA_ENV+=( "$2" ); shift 2 ;;
         --dump) DUMP=1; shift ;;
+        --frametiming) TOUR_EXTRA+=( --frametiming ); shift ;;
         --hop-zone) HOP_ZONE="$2"; shift 2 ;;
         -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 3 ;;
@@ -161,12 +165,13 @@ run_one() {  # run_one <zone> <variant>
     sy="$(eqemu_sql "SELECT ROUND(safe_y,3) FROM zone WHERE short_name='${zone}';" | head -1 | tr -d '[:space:]')"
     sz="$(eqemu_sql "SELECT ROUND(safe_z,3) FROM zone WHERE short_name='${zone}';" | head -1 | tr -d '[:space:]')"
     python3 "$REPO/scripts/b964/make_tour.py" --safe "$sx" "$sy" "$sz" --count "$n" --layout "$layout" \
-        --zone "$zone" --hop-zone "$HOP_ZONE" --out "$dir/tour.txt"
+        --zone "$zone" --hop-zone "$HOP_ZONE" "${TOUR_EXTRA[@]}" --out "$dir/tour.txt"
     local -a envs=( "TZ=UTC" "${EXTRA_ENV[@]}" )
     case "$mode" in
         imp) ;;
         off) envs+=( "WILLEQ_IMPOSTORS=0" ) ;;
         base) envs+=( "WILLEQ_BASELINE=1" ) ;;
+        tagnode) envs+=( "WILLEQ_NAMETAG_BATCH=0" ) ;;
         *) say "bad variant $variant"; return 1 ;;
     esac
     local -a args=( -c "$CFG" --renderer gles2 --constrained orangepi -r "$RES_W" "$RES_H"
