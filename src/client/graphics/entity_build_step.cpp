@@ -49,8 +49,81 @@ int EntityRenderer::uploadPendingEntityTextures() {
     return constrainedTextureCache_->uploadAllPending();
 }
 
-bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
+namespace {
+// B973: the scheduler predicts a unit's cost by what the unit does.
+EntityBuildUnitKind unitKindForPhase(EntityBuildPhase phase) {
+    switch (phase) {
+        case EntityBuildPhase::MeshFinalize: return EntityBuildUnitKind::Finalize;
+        case EntityBuildPhase::EquipTextureUploading:
+        case EntityBuildPhase::EquipmentAttach: return EntityBuildUnitKind::Equip;
+        default: return EntityBuildUnitKind::Create;
+    }
+}
+}  // namespace
+
+bool EntityRenderer::hasPendingTextureUploads() const {
+    return constrainedTextureCache_ && !skipTextureUpload_ &&
+           constrainedTextureCache_->pendingUploadCount() > 0;
+}
+
+bool EntityRenderer::processOnePendingTextureUpload(EntityBuildScheduler* scheduler) {
+    if (!hasPendingTextureUploads()) return false;
+    if (scheduler && !scheduler->mayStartUnit(EntityBuildUnitKind::Upload)) return false;
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
+    // The cache lock is shared with the prep worker's getOrLoad(); this first
+    // locked call measures how long the render thread waited for it.
+    const size_t pendingBefore = constrainedTextureCache_->pendingUploadCount();
+    const auto t1 = Clock::now();
+    const int uploaded = constrainedTextureCache_->uploadPending(1);
+    const auto t2 = Clock::now();
+    const float lockMs = std::chrono::duration<float, std::milli>(t1 - t0).count();
+    const float ms = std::chrono::duration<float, std::milli>(t2 - t0).count();
+    if (scheduler) scheduler->recordUnit(EntityBuildUnitKind::Upload, ms);
+    if (ms >= 20.0f) {
+        LOG_INFO(MOD_GRAPHICS, "EntityBuild: upload unit {} tex in {:.2f} ms (lock_wait={:.2f} ms upload={:.2f} ms, "
+                 "{} pending before)", uploaded, ms, lockMs, ms - lockMs, pendingBefore);
+    } else {
+        LOG_DEBUG(MOD_GRAPHICS, "EntityBuild: upload unit {} tex in {:.2f} ms ({} pending before)", uploaded, ms,
+                  pendingBefore);
+    }
+    return uploaded > 0;
+}
+
+EntityBuildBacklog EntityRenderer::countBuildBacklog() const {
+    EntityBuildBacklog b;
+    if (constrainedTextureCache_)
+        b.pendingUploads = static_cast<uint32_t>(constrainedTextureCache_->pendingUploadCount());
+    for (const auto& [spawnId, vis] : entities_) {
+        (void)spawnId;
+        if (vis.buildPhase == EntityBuildPhase::Built) {
+            b.built++;
+            continue;
+        }
+        b.unbuiltTotal++;
+        const bool inProgress = vis.buildPhase != EntityBuildPhase::Placeholder;
+        if (inProgress) b.inProgress++;
+        if (!inProgress && !vis.inSceneGraph) continue;
+        b.unbuiltVisible += inProgress ? 0 : 1;
+        if (!inProgress && !vis.entityPrepComplete) b.awaitingPrep++;
+        const bool weapons = vis.appearance.equipment[7] != 0 || vis.appearance.equipment[8] != 0 ||
+                             !vis.equipmentStaging.empty();
+        switch (vis.buildPhase) {
+            case EntityBuildPhase::MeshFinalize: b.pendingUnits += weapons ? 2 : 1; break;
+            case EntityBuildPhase::EquipTextureUploading:
+            case EntityBuildPhase::EquipmentAttach: b.pendingUnits += 1; break;
+            default: b.pendingUnits += weapons ? 3 : 2; break;   // create (+setup), finalize
+        }
+    }
+    return b;
+}
+
+bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion, uint16_t priorityTargetId,
+                                               EntityBuildScheduler* scheduler) {
     if (!smgr_ || !raceModelLoader_) return false;
+    // B973: the legacy A/B keeps the pre-B973 selection and the separate
+    // NodeSetup frame too, so the "before" column is the old code path.
+    const bool legacy = scheduler && scheduler->legacy();
 
     // Find nearest unbuilt entity that's ready for work
     float playerX = 0, playerY = 0;
@@ -66,6 +139,7 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
     uint16_t bestId = 0;
     float bestDistSq = std::numeric_limits<float>::max();
     EntityBuildPhase bestPhase = EntityBuildPhase::Built;
+    bool targetEligible = false;
 
     for (auto& [spawnId, vis] : entities_) {
         // Use buildPhase instead of meshBuilt — entity may have mesh built but still
@@ -90,6 +164,17 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
             if (!vis.entityPrepComplete && vis.cachedBspRegion != pvsRegion) continue;
         }
 
+        // B973: a Placeholder whose model is not ready yet cannot advance
+        // (the Placeholder case below returns without work). Choosing it
+        // anyway made the nearest not-ready entity block every ready one
+        // behind it for as long as its prep took.
+        if (!legacy && !inProgress && !vis.entityPrepComplete) {
+            const uint32_t key = (static_cast<uint32_t>(vis.raceId) << 8) | vis.gender;
+            if (!raceModelLoader_->isModelDataCached(key)) continue;
+        }
+        if (!legacy && priorityTargetId != 0 && spawnId == priorityTargetId && !inProgress)
+            targetEligible = true;
+
         float dx = vis.lastX - playerX;
         float dy = vis.lastY - playerY;
         float distSq = dx * dx + dy * dy;
@@ -112,12 +197,24 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
         }
     }
 
+    // B973: the player's target next -- after anything already in progress
+    // (finishing a started entity is cheaper than starting another).
+    if (targetEligible && bestPhase == EntityBuildPhase::Placeholder) {
+        bestId = priorityTargetId;
+    }
+
     // Always prioritize the player entity over distance-based selection
     if (playerSpawnId_ != 0) {
         auto playerIt = entities_.find(playerSpawnId_);
         if (playerIt != entities_.end() &&
             playerIt->second.buildPhase != EntityBuildPhase::Built) {
-            bestId = playerSpawnId_;
+            const auto& pv = playerIt->second;
+            const uint32_t key = (static_cast<uint32_t>(pv.raceId) << 8) | pv.gender;
+            // B973: a player whose model is not ready cannot advance; do not
+            // let it hold every other entity back while its prep runs.
+            const bool ready = pv.buildPhase != EntityBuildPhase::Placeholder ||
+                               pv.entityPrepComplete || raceModelLoader_->isModelDataCached(key);
+            if (legacy || ready) bestId = playerSpawnId_;
         }
     }
 
@@ -125,6 +222,8 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
 
     auto& vis = entities_[bestId];
     auto entryPhase = vis.buildPhase;
+    const EntityBuildUnitKind unitKind = unitKindForPhase(entryPhase);
+    if (scheduler && !scheduler->mayStartUnit(unitKind)) return false;
     auto stepStart = std::chrono::steady_clock::now();
 
     static auto phaseName = [](EntityBuildPhase p) -> const char* {
@@ -142,18 +241,18 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
         return "Unknown";
     };
 
-    // RAII logger — fires when processOneEntityBuildStep returns
-    struct PhaseTimer {
-        uint16_t id; const char* name; EntityBuildPhase entry; EntityBuildPhase* current;
-        std::chrono::steady_clock::time_point start;
-        ~PhaseTimer() {
-            auto us = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - start).count();
-            LOG_INFO(MOD_GRAPHICS, "EntityBuild: {} ({}) {} -> {} in {}us",
-                     id, name, phaseName(entry), phaseName(*current), us);
-        }
-    } phaseTimer{bestId, vis.name.c_str(), entryPhase, &vis.buildPhase, stepStart};
+    // B973: the create unit's own decomposition (texture uploads, node/mesh
+    // creation, texture-cache misses = textures loaded inside the creation).
+    int64_t uploadUs = 0, createUs = 0;
+    int uploadedTextures = 0;
+    size_t cacheMissesBefore = constrainedTextureCache_ ? constrainedTextureCache_->getCacheMisses() : 0;
+    size_t cacheMisses = 0;
+    using SteadyClock = std::chrono::steady_clock;
+    auto usSince = [](SteadyClock::time_point t) {
+        return std::chrono::duration_cast<std::chrono::microseconds>(SteadyClock::now() - t).count();
+    };
 
+    const bool did = [&]() -> bool {
     for (;;) { // Loop to fall through trivial phase transitions without wasting frames
     switch (vis.buildPhase) {
         case EntityBuildPhase::Placeholder: {
@@ -208,7 +307,11 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
             // During gameplay, only this entity's textures should be pending.
             // T412 (board B291): routed through uploadPendingEntityTextures()
             // so the skipEntityTextureUpload debug knob is actually honoured.
-            uploadPendingEntityTextures();
+            {
+                const auto t0 = SteadyClock::now();
+                uploadedTextures = uploadPendingEntityTextures();
+                uploadUs = usSince(t0);
+            }
 
             // Promote any background-preloaded model data
             if (entityPrepWorker_ && raceModelLoader_) {
@@ -245,6 +348,7 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
 
             // Try animated mesh first
             EQAnimatedMeshSceneNode* animNode = nullptr;
+            const auto createStart = SteadyClock::now();
             if (raceModelLoader_) {
                 bool hasEquipment = false;
                 for (int i = 0; i < 9; i++) {
@@ -260,6 +364,8 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
                     animNode = raceModelLoader_->createAnimatedNode(raceId, gender, smgr_->getRootSceneNode());
                 }
             }
+
+            createUs = usSince(createStart);
 
             // Restore weapon equipment IDs for EquipmentAttach phase
             vis.appearance.equipment[7] = savedPrimary;
@@ -323,6 +429,12 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
             }
 
             vis.buildPhase = EntityBuildPhase::NodeSetup;
+            // B966 (GitLab #284): the node joined the scene graph above with
+            // the mesh's raw materials; drawn before NodeSetup ran, it went
+            // through the driver's built-in Solid3D/AlphaTest3D programs for
+            // one frame. NodeSetup costs ~10 us (measured, Pi), so it runs in
+            // this same unit and the node's first draw is already promoted.
+            if (!legacy) continue;
             return true;
         }
 
@@ -496,6 +608,20 @@ bool EntityRenderer::processOneEntityBuildStep(size_t pvsRegion) {
 
     return false;
     } // end for(;;) fall-through loop
+    }();
+
+    const int64_t us = usSince(stepStart);
+    if (constrainedTextureCache_) cacheMisses = constrainedTextureCache_->getCacheMisses() - cacheMissesBefore;
+    if (createUs > 0 || uploadUs > 0) {
+        LOG_INFO(MOD_GRAPHICS, "EntityBuild: {} ({}) {} -> {} in {}us (upload={}us/{}tex create={}us tex_loads={} did={})",
+                 bestId, vis.name, phaseName(entryPhase), phaseName(vis.buildPhase), us,
+                 uploadUs, uploadedTextures, createUs, cacheMisses, did ? 1 : 0);
+    } else {
+        LOG_INFO(MOD_GRAPHICS, "EntityBuild: {} ({}) {} -> {} in {}us",
+                 bestId, vis.name, phaseName(entryPhase), phaseName(vis.buildPhase), us);
+    }
+    if (scheduler && did) scheduler->recordUnit(unitKind, static_cast<float>(us) / 1000.0f);
+    return did;
 }
 
 } // namespace Graphics
