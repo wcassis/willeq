@@ -15,8 +15,10 @@ markdown row per run:
     unit times, draws;
   - the max `frame_unit_ms_max` (the worst capture work in one frame) and the
     max single frame time seen anywhere after the crowd was spawned;
-  - the ledger at steady_60s and at the last point: RssAnon, gpu_driver, owned,
-    gpu_buffers, owned+gpu_buffers, and the tex.impostor owner row.
+  - the ledger at steady_60s and at the last point: RssAnon, gpu_driver,
+    RssAnon-gpu_driver, gpu_buffers, owned=RssAnon-gpu_driver+gpu_buffers (B978;
+    either [memgpu] shape, scripts/ci/owned_memory.py), and the tex.impostor
+    owner row.
 
 usage: crowd_table.py RUN_DIR [RUN_DIR...]
 """
@@ -24,6 +26,9 @@ import os
 import re
 import statistics
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ci"))
+import owned_memory  # noqa: E402  B978
 
 TS = re.compile(r"^\[?(\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d(?:\.\d+)?)")
 KV = re.compile(r"([a-z_0-9]+)=([^ ]+)")
@@ -175,7 +180,7 @@ def main():
     print("(full/impostor/want/limit/gov/pages/cells: at the end of the idle phase; counters: whole run)")
     print("| run | idle FPS / moving FPS (client lines) | idle p50 / p95 / max ms | moving p50 / p95 / max ms | full | impostor | want | limit | gov | "
           "pages | cells (u/s) | created | refresh app/angle/flip | demotions | unit ms avg / max | worst frame-unit ms | "
-          "worst frame ms after spawn | draws | tex.impostor MiB (point / max) | point | RssAnon | RssAnon peak | gpu_driver | owned | gpu_buffers | owned+gpu |")
+          "worst frame ms after spawn | draws | tex.impostor MiB (point / max) | point | RssAnon | RssAnon peak | gpu_driver | RssAnon-gpu_driver | gpu_buffers | owned=RssAnon-gpu_driver+gpu_buffers |")
     print("|" + "---|" * 28)
     for root in sys.argv[1:]:
         for rel, log in runs(root):
@@ -198,7 +203,8 @@ def main():
                 (mib(O.get("live")) if O else "0") + " / " + mib(f["row_max"]), pt or "-",
                 mib(L.get("rss_anon")), "%.2f" % (f["peak"] / 1024.0),
                 mib(L.get("gpu_driver", "").split("/")[0] if L.get("gpu_driver") else None),
-                mib(G.get("owned")), mib(G.get("gpu_buffers")), mib(G.get("owned_plus_gpu_buffers"))))
+                mib(owned_memory.owned_from_memgpu(G)[1]), mib(G.get("gpu_buffers")),
+                mib(owned_memory.owned_from_memgpu(G)[0])))
 
 
 if __name__ == "__main__":

@@ -147,15 +147,31 @@ bool FrameComponent::processFrame(float deltaTime) {
     ctx_.SimBridge().postSimulationInput(deltaTime);
     frameTimings_.postSimInput = measureSection();
 
+    // B973: open the build scheduler's frame before ANY entity work -- a
+    // re-armed progressive load (below) runs the same slice.
+    EntityBuildScheduler* buildSched = ctx_.entityRenderer ? &ctx_.entityRenderer->buildScheduler() : nullptr;
+    if (buildSched) {
+        buildSched->beginFrame(ctx_.governor ? ctx_.governor->getState() : BudgetState::Green,
+                               ctx_.governor ? ctx_.governor->getTargetFrameTimeMs() : 33.3f);
+    }
+
     // ─── Progressive loading (loading screen showing, no governor restriction §4.2) ───
     if (ctx_.progressiveLoadingActive) {
         ctx_.ZoneStream().processFrameProgressiveLoad();
         frameTimings_.meshLoading = measureSection();
     }
 
-    // ─── Post-loading: all work GREEN-gated, 1 unit per GREEN frame ───
+    // ─── Post-loading entity work (B973, GitLab #291) ───
+    // EntityRenderer::buildScheduler() decides how much build work this frame
+    // may take: the first unit always (every governor state), more while they
+    // fit the state's slice. Before B973 this block was GREEN-gated, 1 unit per
+    // GREEN frame, and a crowd that kept the frame Red was never built; that
+    // code path is kept verbatim below as the WILLEQ_ENTITY_BUILD_LEGACY=1 A/B.
     sectionStart_ = std::chrono::steady_clock::now();
-    if (!ctx_.progressiveLoadingActive) {
+    if (!ctx_.progressiveLoadingActive && buildSched && !buildSched->legacy()) {
+        if (runEntityBuildSlice()) frameTimings_.meshLoading = measureSection();
+        frameTimings_.entityHousekeeping = measureSection();
+    } else if (!ctx_.progressiveLoadingActive) {
         if (!ctx_.governor || ctx_.governor->getState() == BudgetState::Green) {
             bool didWork = false;
 
@@ -179,12 +195,14 @@ bool FrameComponent::processFrame(float deltaTime) {
             // Priority 5: Entity prep results
             if (ctx_.entityRenderer && ctx_.entityRenderer->getRaceModelLoader())
                 ctx_.entityRenderer->getRaceModelLoader()->sweepEvictable();   // T504b Leg 2b (cheap when empty)
-            if (!didWork && ctx_.entityPrepReady && ctx_.entityRenderer)
+            if (!didWork && ctx_.entityPrepReady && ctx_.entityRenderer) {
                 didWork = ctx_.entityRenderer->pollAndDistributePrepResults();
+                if (didWork && buildSched) buildSched->recordUnit(EntityBuildUnitKind::Other, 0.0f);  // B973 accounting
+            }
 
             // Priority 6: Entity mesh building
             if (!didWork && ctx_.entityPrepReady && ctx_.entityRenderer && !ctx_.config.constrainedConfig.skipEntityBuild)
-                didWork = ctx_.entityRenderer->processOneEntityBuildStep(ctx_.currentPvsRegion);
+                didWork = ctx_.entityRenderer->processOneEntityBuildStep(ctx_.currentPvsRegion, 0, buildSched);
 
             // Priority 7 (texture rebuild for regions without a buffer map)
             // removed T67 — gated on `constrainedMeshCache_ &&`, never true.
@@ -303,6 +321,7 @@ bool FrameComponent::processFrame(float deltaTime) {
 
         float totalFrameMs = frameTimings_.totalFrame / 1000.0f;
         float budgetMs = ctx_.governor ? ctx_.governor->getTargetFrameTimeMs() : 33.3f;
+        finishEntityBuildFrame(totalFrameMs);   // B973: the [entity-build] accounting
 
         // ===== SPIKE DETECTOR: unconditional, fires on any frame >50ms =====
         // Logs every section >1ms sorted by cost. Independent of governor state.

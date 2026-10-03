@@ -40,6 +40,8 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "scripts" / "ci"))
+import owned_memory  # noqa: E402  B978: owned=RssAnon-gpu_driver+gpu_buffers
 MIB = 1048576.0
 TARGET = 64 * 1024 * 1024
 CEILING = 256 * 1024 * 1024
@@ -154,8 +156,14 @@ def parse_run(log):
         m = LEDGER_RE.search(line)
         if m:
             point, zone, rss = m.group(1), m.group(2), int(m.group(3))
-            tail = line.split(" allocs=", 1)[1] if " allocs=" in line else ""
+            head, _, tail = line.partition(" allocs=")
             cats = {c: (int(l), int(p)) for c, l, p in CAT_RE.findall(" " + tail)}
+            # B978: the GPU buffers outside RssAnon (the Pi) are owned memory;
+            # carried as the pseudo-category __gpu_buffers_added (never a budget).
+            kv = dict(re.findall(r" ([a-z_0-9]+)=(\S+)", head))
+            if owned_memory.gpu_buffers_outside(kv.get("gpu_buffers_src"), kv.get("gpu_buffers_outside_rss_anon")):
+                g = int(kv.get("gpu_buffers", 0))
+                cats["__gpu_buffers_added"] = (g, g)
             points.append((point, zone, rss, cats))
             continue
         m = OWNER_RE.search(line)
@@ -198,11 +206,13 @@ def cmd_table(a):
             runs_ok.setdefault(zone, []).append((mode, ok, lost))
             for point, z, rss, cats in points:
                 for c, (live, peak) in cats.items():
+                    if c.startswith("__"):
+                        continue
                     pt_rows.append((zone, mode, point, z, rss, c, live, peak))
             for name in POINTS:
                 p = last_point(points, name, zone)
                 if p:
-                    for c, (live, _) in p[3].items():
+                    for c, (live, _) in ((c, v) for c, v in p[3].items() if not c.startswith("__")):
                         client.setdefault(zone, {}).setdefault(c, {}).setdefault(name, []).append(live)
             samples = []
             sp = mdir / "rss_samples.tsv"
@@ -216,9 +226,12 @@ def cmd_table(a):
             peak = max(samples + [pt_max]) if (samples or pt_max) else 0
             gpu = {n: ((last_point(points, n, zone) or (None, None, None, {}))[3].get("gpu_driver", (0, 0))[0])
                    for n in ("ready", "steady_60s")}
+            gbuf = {n: ((last_point(points, n, zone) or (None, None, None, {}))[3].get("__gpu_buffers_added",
+                                                                                         (0, 0))[0])
+                    for n in ("ready", "steady_60s")}
             rss_rows.append((zone, mode, peak, max(samples or [0]), pt_max,
                              at["zone_load_complete"], at["ready"], at["steady_60s"], len(samples),
-                             gpu["ready"], gpu["steady_60s"]))
+                             gpu["ready"], gpu["steady_60s"], gbuf["ready"], gbuf["steady_60s"]))
             peaks.setdefault(zone, []).append(rss_rows[-1])
             for point, owner, live, blocks in owners:
                 if point in POINTS:
@@ -240,7 +253,8 @@ def cmd_table(a):
     w("trace.tsv", ["zone", "run", "point", "site", "live", "blocks", "first_frame", "stack"], tr_rows)
     w("rss.tsv", ["zone", "run", "peak_rss_anon", "peak_sampled", "peak_at_points",
                   "rss_anon_zone_load_complete", "rss_anon_ready", "rss_anon_steady_60s", "samples",
-                  "gpu_driver_ready", "gpu_driver_steady_60s"], rss_rows)
+                  "gpu_driver_ready", "gpu_driver_steady_60s",
+                  "gpu_buffers_added_ready", "gpu_buffers_added_steady_60s"], rss_rows)
 
     md = []
     md.append(f"Source: `{run}` (client), `{a.bench}` (benchmark). Client value = the LARGEST of "
@@ -274,17 +288,19 @@ def cmd_table(a):
                       f"{pct(st)} | {fmt(spread)} | {fmt(bench)} | {pct(bench)} | "
                       f"{fmt(st - bench) if (st is not None and bench is not None) else 'n/a'} |")
         md.append("\n| run | peak RssAnon (2 s samples + points) | zone_load_complete | ready | steady_60s | "
-                  "owned peak (RssAnon-gpu_driver) vs 64 MB | peak RssAnon vs 256 MB | gpu_driver ready | gpu_driver steady_60s |")
-        md.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+                  f"owned peak ({owned_memory.OWNED_LABEL}) vs 64 MB | peak RssAnon vs 256 MB | gpu_driver ready | "
+                  "gpu_driver steady_60s | gpu_buffers added ready |")
+        md.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         for r in peaks.get(zone, []):
-            # B933: the 64 MB target is on owned = RssAnon - gpu_driver. A 2 s
-            # RssAnon sample has no ledger row, so the peak subtracts the
-            # gpu_driver at ready (else steady_60s).
-            owned = max(0, r[2] - (r[9] or r[10]))
+            # B933 + B978: the 64 MB target is on owned = RssAnon - gpu_driver +
+            # gpu_buffers (outside RssAnon only). A 2 s RssAnon sample has no
+            # ledger row, so the peak uses the gpu_driver and gpu_buffers at
+            # ready (else steady_60s).
+            owned = owned_memory.owned(r[2], r[9] or r[10], r[11] or r[12], True)
             md.append(f"| {r[1]} | {r[2]:,} ({r[2] / MIB:.1f} MiB) | {r[5] or 0:,} | {r[6] or 0:,} | "
                       f"{r[7] or 0:,} | owned {owned / MIB:.1f} MiB, {'+' if owned > TARGET else ''}{(owned - TARGET) / MIB:.1f} MiB | "
                       f"{'OVER' if r[2] > CEILING else 'under'} by {abs(r[2] - CEILING) / MIB:.1f} MiB | "
-                      f"{r[9]:,} | {r[10]:,} |")
+                      f"{r[9]:,} | {r[10]:,} | {r[11]:,} |")
         for (z, mode), by_point in sorted(owner_tab.items()):
             if z != zone:
                 continue

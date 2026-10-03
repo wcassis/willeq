@@ -254,9 +254,11 @@ chunk to whatever `eqt::memory::Category` the CALLING THREAD is scoped to.
   the row, its source, the renderer's logical tally (`gpuTextureBytes` +
   `vboEboBytes`, published by `src/client/graphics/diagnostics/gpu_buffer_tally.cpp`
   from the GL-owning thread) and the residual between them, the cgroup's
-  kernel bytes, the mapped bytes, `owned` and `owned_plus_gpu_buffers`. The
-  64 MB target stays on `owned`; `owned_plus_gpu_buffers` is printed for Will's
-  ruling and asserted nowhere. Not on the row: the display controller's scanout
+  kernel bytes, the mapped bytes, and `owned` (B978: RssAnon − gpu_driver +
+  gpu_buffers when the row is outside RssAnon — the 64 MB target figure; the
+  line ends `owned_rss_anon=<RssAnon-gpu_driver> owned=<B>`, and the old
+  `owned_plus_gpu_buffers` field was removed by B978, pinned absent by the
+  tests). Not on the row: the display controller's scanout
   framebuffers (CMA, allocated by the display device -- the rigs read them from
   debugfs as root, `proc_mem_snapshot.py`'s `gpu.scanout_fb_bytes`) and a frame
   the client dumps into a tmpfs (charged to the same cgroup; the summarizer

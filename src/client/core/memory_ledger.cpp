@@ -384,11 +384,12 @@ Snapshot snapshot(const std::string& point, const std::string& zone) {
 }
 
 void finishTargetGap(Snapshot& s) {
-    s.ownedBytes = s.rssAnonBytes > s.gpuDriverBytes ? s.rssAnonBytes - s.gpuDriverBytes : 0;
+    s.ownedRssAnonBytes = s.rssAnonBytes > s.gpuDriverBytes ? s.rssAnonBytes - s.gpuDriverBytes : 0;
+    // B978: owned = RssAnon - gpu_driver + gpu_buffers (only when outside RssAnon).
+    s.ownedBytes = ownedPlusGpuBuffers(s.ownedRssAnonBytes, s.gpuBuffers);
     s.overTargetBytes = s.ownedBytes > s.rssTargetBytes ? s.ownedBytes - s.rssTargetBytes : 0;
     s.overTargetRssAnonBytes =
         s.rssAnonBytes > s.rssTargetBytes ? s.rssAnonBytes - s.rssTargetBytes : 0;
-    s.ownedPlusGpuBuffersBytes = ownedPlusGpuBuffers(s.ownedBytes, s.gpuBuffers);  // B955
 }
 
 std::vector<GapRow> gapToTarget(const Snapshot& s) {
@@ -409,6 +410,8 @@ std::vector<GapRow> gapToTarget(const Snapshot& s) {
     push("heap_uncharged", s.heapUnchargedBytes);
     push("malloc_slack", s.mallocSlackBytes);
     push("unaccounted", s.unaccountedBytes);
+    // B978: GPU buffers outside RssAnon are owned memory, so part of the gap.
+    if (s.gpuBuffers.outsideRssAnon) push("gpu_buffers", s.gpuBuffers.gpuBuffersBytes);
     std::sort(rows.begin(), rows.end(),
               [](const GapRow& a, const GapRow& b) { return a.liveBytes > b.liveBytes; });
     return rows;
@@ -441,17 +444,20 @@ std::string toLogLine(const Snapshot& s) {
     // every line, so a cap-hunt log answers "how far past 64 MB" without a
     // second tool.
     appendKV(out, "target", s.rssTargetBytes);
-    // B933: over_target is on owned = RssAnon - gpu_driver (64 MB excludes
-    // driver memory); over_target_rss_anon is the old whole-RssAnon figure.
+    // B933/B978: over_target is on owned = RssAnon - gpu_driver + gpu_buffers
+    // (64 MB excludes driver memory, GPU buffers count; gpu_buffers is added
+    // only when outside RssAnon). Both components are printed:
+    // owned_rss_anon = RssAnon - gpu_driver, gpu_buffers (+ its source).
+    // over_target_rss_anon is the old whole-RssAnon figure.
     appendKV(out, "gpu_driver", s.gpuDriverBytes);
-    appendKV(out, "owned", s.ownedBytes);
-    appendKV(out, "over_target", s.overTargetBytes);
-    appendKV(out, "over_target_rss_anon", s.overTargetRssAnonBytes);
-    // B955: the GPU buffer row and owned + it (printed for Will; not asserted).
+    appendKV(out, "owned_rss_anon", s.ownedRssAnonBytes);
     appendKV(out, "gpu_buffers", s.gpuBuffers.gpuBuffersBytes);
     out += " gpu_buffers_src=";
     out += gpuBufferSourceName(s.gpuBuffers.source);
-    appendKV(out, "owned_plus_gpu_buffers", s.ownedPlusGpuBuffersBytes);
+    appendKV(out, "gpu_buffers_outside_rss_anon", s.gpuBuffers.outsideRssAnon ? 1 : 0);
+    appendKV(out, "owned", s.ownedBytes);
+    appendKV(out, "over_target", s.overTargetBytes);
+    appendKV(out, "over_target_rss_anon", s.overTargetRssAnonBytes);
     appendKV(out, "ceiling", s.rssCeilingBytes);
     appendKV(out, "over_ceiling", s.overCeilingBytes);
     appendKV(out, "allocs", s.allocCount);
@@ -509,12 +515,16 @@ std::string toReportText(const Snapshot& s) {
              s.unaccountedBytes / 1048576.0, s.unaccountedPct);
     out += buf;
     // T491 addendum (Will, 2026-09-17): both lines, and the gap to the target.
-    // B933: the target is read against owned = RssAnon - gpu_driver.
+    // B933/B978: the target is read against owned = RssAnon - gpu_driver + gpu_buffers.
     snprintf(buf, sizeof(buf),
-             "  RssAnon %.1f MiB, gpu_driver %.1f MiB, owned(RssAnon-gpu_driver) %.1f MiB "
+             "  RssAnon %.1f MiB, gpu_driver %.1f MiB, gpu_buffers %.1f MiB (%s), "
+             "owned(RssAnon-gpu_driver+gpu_buffers) %.1f MiB "
              "vs TARGET %.0f MiB (%s%.1f MiB; whole-RssAnon gap %.1f MiB, driver included) "
              "vs ceiling %.0f MiB on whole RssAnon (%s%.1f MiB)\n",
-             s.rssAnonBytes / 1048576.0, s.gpuDriverBytes / 1048576.0, s.ownedBytes / 1048576.0,
+             s.rssAnonBytes / 1048576.0, s.gpuDriverBytes / 1048576.0,
+             s.gpuBuffers.gpuBuffersBytes / 1048576.0,
+             s.gpuBuffers.outsideRssAnon ? "outside RssAnon, added" : "inside gpu_driver, not added again",
+             s.ownedBytes / 1048576.0,
              s.rssTargetBytes / 1048576.0,
              s.overTargetBytes ? "over by " : "under, headroom ",
              (s.overTargetBytes ? s.overTargetBytes : s.rssTargetBytes - s.ownedBytes) / 1048576.0,
@@ -523,12 +533,13 @@ std::string toReportText(const Snapshot& s) {
              s.overCeilingBytes ? "over by " : "under, headroom ",
              (s.overCeilingBytes ? s.overCeilingBytes : s.rssCeilingBytes - s.rssAnonBytes) / 1048576.0);
     out += buf;
-    // B955: GPU buffers outside RssAnon (Lima GEM), and owned + them.
+    // B955/B978: the two components of owned, each on its own.
     snprintf(buf, sizeof(buf),
-             "  gpu_buffers %.1f MiB (source %s, %s) -> owned + gpu_buffers %.1f MiB\n",
-             s.gpuBuffers.gpuBuffersBytes / 1048576.0, gpuBufferSourceName(s.gpuBuffers.source),
-             s.gpuBuffers.outsideRssAnon ? "outside RssAnon" : "already inside gpu_driver",
-             s.ownedPlusGpuBuffersBytes / 1048576.0);
+             "  owned = RssAnon-gpu_driver %.1f MiB + gpu_buffers %.1f MiB (source %s, %s)\n",
+             s.ownedRssAnonBytes / 1048576.0,
+             s.gpuBuffers.outsideRssAnon ? s.gpuBuffers.gpuBuffersBytes / 1048576.0 : 0.0,
+             gpuBufferSourceName(s.gpuBuffers.source),
+             s.gpuBuffers.outsideRssAnon ? "outside RssAnon" : "already inside gpu_driver");
     out += buf;
     if (s.overTargetBytes) {
         snprintf(buf, sizeof(buf),
@@ -590,13 +601,14 @@ std::string toJson(const Snapshot& s) {
     // T491 addendum (2026-09-17): the gate prints the gap to 64 MB from these.
     out += "\"rssTargetBytes\":" + std::to_string(s.rssTargetBytes) + ",";
     out += "\"gpuDriverBytes\":" + std::to_string(s.gpuDriverBytes) + ",";
+    // B978: ownedBytes = ownedRssAnonBytes + gpuBuffersBytes (when outside RssAnon).
+    out += "\"ownedRssAnonBytes\":" + std::to_string(s.ownedRssAnonBytes) + ",";
     out += "\"ownedBytes\":" + std::to_string(s.ownedBytes) + ",";
     out += "\"overTargetBytes\":" + std::to_string(s.overTargetBytes) + ",";
     out += "\"overTargetRssAnonBytes\":" + std::to_string(s.overTargetRssAnonBytes) + ",";
     // B955: the GPU buffer row (gpu_buffer_census.h), flat and in full.
     out += "\"gpuBuffersBytes\":" + std::to_string(s.gpuBuffers.gpuBuffersBytes) + ",";
-    out += "\"ownedPlusGpuBuffersBytes\":" + std::to_string(s.ownedPlusGpuBuffersBytes) + ",";
-    out += "\"gpuBuffers\":" + gpuBuffersToJson(s.gpuBuffers, s.ownedBytes) + ",";
+    out += "\"gpuBuffers\":" + gpuBuffersToJson(s.gpuBuffers, s.ownedRssAnonBytes) + ",";
     out += "\"rssCeilingBytes\":" + std::to_string(s.rssCeilingBytes) + ",";
     out += "\"overCeilingBytes\":" + std::to_string(s.overCeilingBytes);
     out += "}";
@@ -782,7 +794,7 @@ Snapshot recordPoint(const std::string& point, const std::string& zone) {
     Snapshot s = snapshot(point, zone);
     LOG_INFO(MOD_MAIN, "{}", toLogLine(s));
     // B955: the GPU buffer row's sources and reconciliation, beside every point.
-    LOG_INFO(MOD_MAIN, "{}", gpuBuffersToLogLine(point, s.zone, s.gpuBuffers, s.ownedBytes));
+    LOG_INFO(MOD_MAIN, "{}", gpuBuffersToLogLine(point, s.zone, s.gpuBuffers, s.ownedRssAnonBytes));
     // B962: the per-BO owner table, when the census shim is preloaded (no-op
     // otherwise -- include/client/core/gem_owner_census.h).
     gemCensusDump(point.c_str());

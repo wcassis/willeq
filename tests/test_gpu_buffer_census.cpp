@@ -132,6 +132,27 @@ TEST(GpuBufferCensus, CapturedPiProcessTakesTheExclusiveMemcg) {
     EXPECT_EQ(ownedPlusGpuBuffers(40u << 20, c), (40u << 20) + 1806336u);
 }
 
+// B978 (Will, 2026-10-01: GPU buffers count toward the 64 MB target): the
+// captured Pi process's row flows into the snapshot's owned figure --
+// owned = RssAnon - gpu_driver + gpu_buffers -- and into the gap.
+TEST(GpuBufferCensus, CapturedPiRowCountsTowardTheTarget) {
+    GpuBufferInputs in;
+    in.drmFds = 6;
+    in.maps = parseDrmMaps(fixture("kmscube_maps"));
+    in.memcg = parseMemcgStat(fixture("kmscube_memory.stat"));
+    in.cgroupProcs = 1;
+    in.softwareRasteriser = 0;
+    Snapshot s;
+    s.rssAnonBytes = 70u << 20;
+    s.gpuDriverBytes = 7u << 20;
+    s.gpuBuffers = decideGpuBuffers(in);
+    finishTargetGap(s);
+    EXPECT_EQ(s.ownedRssAnonBytes, 63u << 20);
+    EXPECT_EQ(s.ownedBytes, (63u << 20) + 1806336u);
+    EXPECT_EQ(s.overTargetBytes, s.ownedBytes - (64u << 20));   // over only because of the buffers
+    EXPECT_GT(s.overTargetBytes, 0u);
+}
+
 TEST(GpuBufferCensus, SharedCgroupFallsBackToTheMappedLowerBound) {
     GpuBufferInputs in;
     in.drmFds = 6;
@@ -199,11 +220,13 @@ TEST(GpuBufferCensus, LogLineAndJsonCarryTheRow) {
     const std::string line = gpuBuffersToLogLine("ready", "qeynos2", c, 1000);
     EXPECT_EQ(line.rfind("[memgpu] point=ready zone=qeynos2 gpu_buffers=1806336 source=memcg_shmem "
                          "outside_rss_anon=1 ", 0), 0u) << line;
-    EXPECT_NE(line.find(" owned=1000 owned_plus_gpu_buffers=1807336"), std::string::npos) << line;
+    // B978: owned = RssAnon-gpu_driver (1000) + gpu_buffers outside RssAnon.
+    EXPECT_NE(line.find(" owned_rss_anon=1000 owned=1807336"), std::string::npos) << line;
+    EXPECT_EQ(line.find("owned_plus_gpu_buffers"), std::string::npos) << line;
     const std::string json = gpuBuffersToJson(c, 1000);
     EXPECT_NE(json.find("\"gpuBuffersBytes\":1806336"), std::string::npos) << json;
     EXPECT_NE(json.find("\"source\":\"memcg_shmem\""), std::string::npos) << json;
-    EXPECT_NE(json.find("\"ownedPlusGpuBuffersBytes\":1807336"), std::string::npos) << json;
+    EXPECT_NE(json.find("\"ownedRssAnonBytes\":1000,\"ownedBytes\":1807336"), std::string::npos) << json;
 }
 
 // The row rides on the [memledger] line BEFORE `allocs=` (every rig parses
@@ -215,12 +238,13 @@ TEST(GpuBufferCensus, LedgerSnapshotCarriesTheRow) {
     // This test binary opens no DRM device, so the published verdict holds.
     EXPECT_EQ(s.gpuBuffers.source, GpuBufferSource::LogicalInGpuDriver);
     EXPECT_EQ(s.gpuBuffers.gpuBuffersBytes, 4u << 20);
-    EXPECT_EQ(s.ownedPlusGpuBuffersBytes, s.ownedBytes);
+    // B978: inside gpu_driver on a software rasteriser -- owned does not add it again.
+    EXPECT_EQ(s.ownedBytes, s.ownedRssAnonBytes);
     const std::string line = toLogLine(s);
     const size_t allocs = line.find(" allocs=");
     ASSERT_NE(allocs, std::string::npos);
     const size_t row = line.find(" gpu_buffers=4194304 gpu_buffers_src=logical_in_gpu_driver"
-                                 " owned_plus_gpu_buffers=");
+                                 " gpu_buffers_outside_rss_anon=0 owned=");
     ASSERT_NE(row, std::string::npos) << line;
     EXPECT_LT(row, allocs);
     const std::string json = toJson(s);

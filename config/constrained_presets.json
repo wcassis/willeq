@@ -42,7 +42,7 @@
       "clipDistance": 300.0,
       "entityRenderDistance": 300.0,
       "entityLoadRadius": 400.0,
-      "textureMemoryBytes": 53477376,
+      "textureMemoryBytes": 22020096,
       "framebufferMemoryBytes": 10485760,
       "gpuTextureMemoryBytes": 39845888,
       "zoneGeometryMemoryBytes": 16777216,

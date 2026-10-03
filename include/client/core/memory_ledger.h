@@ -355,31 +355,38 @@ struct Snapshot {
     uint64_t rssCeilingBytes = kRssCeilingBytes;
     uint64_t rssTargetBytes = kRssTargetBytes;
     uint64_t overCeilingBytes = 0;           // max(0, rssAnon - ceiling)
-    // B933 (Will, 2026-09-29: "64 MB excludes driver memory"): the target is
-    // judged on willeq-OWNED memory = RssAnon - the ledger's gpu_driver
-    // category (clamped at 0). The driver .so files' own copy-on-write pages
-    // stay on the OWNED side (they are in RssAnon and not in gpu_driver);
-    // B932 measures them per library. The 256 MB ceiling stays on whole RssAnon.
+    // B933 (Will, 2026-09-29: "64 MB excludes driver memory") + B978 (Will,
+    // 2026-10-01, "1) yes": GPU buffers count toward the 64 MB target): the
+    // target is judged on willeq-OWNED memory =
+    //   RssAnon - the ledger's gpu_driver category (clamped at 0)
+    //   + gpu_buffers when they live OUTSIDE RssAnon (Lima GEM on the Pi).
+    // On a software rasteriser (llvmpipe, x86) the GPU buffers are heap inside
+    // gpu_driver already, so nothing is added -- no double count. The driver
+    // .so files' own copy-on-write pages stay on the OWNED side (they are in
+    // RssAnon and not in gpu_driver); B932 measures them per library. The
+    // 256 MB ceiling stays on whole RssAnon.
     uint64_t gpuDriverBytes = 0;             // categories[GpuDriver].liveBytes
-    uint64_t ownedBytes = 0;                 // max(0, rssAnon - gpuDriverBytes)
+    uint64_t ownedRssAnonBytes = 0;          // max(0, rssAnon - gpuDriverBytes): the RssAnon component
+    uint64_t ownedBytes = 0;                 // ownedRssAnon + gpuBuffers (only if outside RssAnon)
     uint64_t overTargetBytes = 0;            // max(0, ownedBytes - target)
     uint64_t overTargetRssAnonBytes = 0;     // max(0, rssAnon - target): the old figure, driver included
     // B955: GPU buffer memory (textures, VBOs, render targets) held OUTSIDE
     // RssAnon -- Lima GEM/shmem on the Pi -- or, on a software rasteriser,
     // the renderer's tally that already sits inside gpu_driver
-    // (gpu_buffer_census.h has the sources and the decision). The 64 MB
-    // target stays on `owned` (what CI prints); ownedPlusGpuBuffersBytes is
-    // printed beside it for Will's ruling on whether these bytes count.
+    // (gpu_buffer_census.h has the sources and the decision). Since B978 it is
+    // the second component of ownedBytes when it is outside RssAnon.
     GpuBufferCensus gpuBuffers;
-    uint64_t ownedPlusGpuBuffersBytes = 0;   // owned + gpuBuffers (only if outside RssAnon)
 };
 
 // T491 addendum: the categories that would have to shrink to reach the 64 MB
 // target, largest live bytes first, with the three non-category buckets
 // (heap_uncharged, malloc_slack, unaccounted) included -- they are part of
 // RssAnon and shrinking only the categories cannot close the gap on its own.
-// The rows are a PARTITION of RssAnon: they sum to it exactly. Returns every
-// bucket with nonzero live bytes, sorted descending.
+// The rows COVER RssAnon (see the Snapshot comment). B978: when the GPU buffers
+// live outside RssAnon (the Pi) they are part of owned and so of the gap, and
+// they are listed as their own `gpu_buffers` row on top of the RssAnon buckets
+// (pctOfRssAnon is still relative to RssAnon). Returns every bucket with
+// nonzero live bytes, sorted descending.
 struct GapRow {
     std::string bucket;   // category name, or one of the three non-category buckets
     uint64_t liveBytes = 0;
@@ -391,9 +398,10 @@ struct GapRow {
 };
 std::vector<GapRow> gapToTarget(const Snapshot& s);
 
-// B933: derive ownedBytes / overTargetBytes / overTargetRssAnonBytes from a
-// snapshot's rssAnonBytes, gpuDriverBytes and rssTargetBytes. snapshot() calls
-// it; a test that fills those three fields by hand calls it to pin the arithmetic.
+// B933/B978: derive ownedRssAnonBytes / ownedBytes / overTargetBytes /
+// overTargetRssAnonBytes from a snapshot's rssAnonBytes, gpuDriverBytes,
+// gpuBuffers and rssTargetBytes. snapshot() calls it; a test that fills those
+// fields by hand calls it to pin the arithmetic.
 void finishTargetGap(Snapshot& s);
 
 // ---------------------------------------------------------------------------

@@ -596,6 +596,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_render.cpp
         src/client/graphics/frame/renderer_frame_preferences.cpp
         src/client/graphics/frame/renderer_frame_options.cpp
+        src/client/graphics/frame/renderer_frame_entity_build.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
         src/client/graphics/zone_shader.cpp
@@ -655,6 +656,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/sky_renderer_colors.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/frame_budget_governor.cpp
+        src/client/graphics/entity_build_scheduler.cpp
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/eqe1_loader.cpp
     src/client/graphics/eqe1_texture_index.cpp
