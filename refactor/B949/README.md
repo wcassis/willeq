@@ -91,9 +91,16 @@ of B944's 21 restores no longer happens.
 
 **No golden moved.** Frames f0/f1/f2 are byte-identical to the committed
 qeynos2 goldens (`cmp` clean, 0 differing pixels) both before and after. The
-gate's own invocation at the PRESET ceiling is untouched by this change
-(nothing evicts at the preset ceiling, so the reorder is a no-op on which
-texture is resident — the pixels are load-order-independent).
+full 5-zone `visual_gate.py` run on this branch (merged fable tip, the
+B967-reblessed goldens): **0 pixel mismatch on all 15 frames of all 5
+zones**; the single gate failure is `iceclad: p95 process-CPU ms 10.563
+exceeds ceiling 9.530` — a CPU-timing metric run on this host while the gate
+tree and the 20 MiB benchmarks were building concurrently (the gate's own
+header documents these false trips with zero image mismatches: the p95 is
+taken over only three measured frames). CI's gate job re-takes it on a clean
+runner. The gate's own invocation at the PRESET ceiling is untouched by this
+change (nothing evicts at the preset ceiling, so the reorder is a no-op on
+which texture is resident — the pixels are load-order-independent).
 
 The one remaining thrash (84/20) is structural, not an LRU-order defect: at
 20 MiB the working set (62 resident of 126) is larger than the ceiling, so
