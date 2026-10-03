@@ -21,6 +21,17 @@ This commit is a **WIP**: code edits are complete for both halves, but
 **nothing has been compiled or run yet** — the first `cmake --build` of this
 worktree was still running when the hand-off order came.
 
+## STATE 2026-10-03 (kb-b978, hermes-ext) — built, tested, gated
+
+`origin/fable` (55c9ac0c; B967 !74 merged, so the gate's goldens are the
+re-blessed ones) was merged into this branch first. The C++ now compiles and
+the targeted tests pass (113/113); the local gate reproduces the goldens on
+the before side and, on the after side, moves ONLY qeynos2's
+`textureCacheBytesUsed` (42,226,984 → 21,932,691), which is re-pinned per
+Will's "3) bless". Full suite + gate + `build-arm` run on CI; the Pi (REMAINS
+7) and CI green are the remaining evidence. The numbered REMAINS below carry
+the current status.
+
 ### Locks / stacks touched
 
 - **Pi lock: never taken.** **eqemu lock: never taken.** No stack brought up.
@@ -124,69 +135,100 @@ Will's "3) bless" arguably covers it; confirm before applying. Whether
 
 ### REMAINS (numbered, exact steps)
 
-1. Finish/redo the build: `cmake --build /mnt/projects/fable/wt/audit-owned2/build -j24 > LOG 2>&1; echo EXIT=$?`
-   (background + `scripts/wait_for.sh --exit-file`). Fix compile errors (none
-   expected; the edited C++ is `memory_ledger.{h,cpp}`, `gpu_buffer_census.{h,cpp}`,
-   `zone_bench_gpu_tally.h`, three tests).
-2. Targeted tests: `ctest --test-dir .../build -R "MemoryLedger|GpuBufferCensus|ConstrainedRenderer|VisualGateLedger" --output-on-failure`.
-3. Grep for anything else reading the removed names:
-   `git grep -n "ownedPlusGpuBuffersBytes\|owned_plus_gpu_buffers"` — only the
-   b962 fixtures, `owned_memory.py`'s back-compat branch and the test 7d should remain.
-4. Full suite `ctest --test-dir .../build -j6 --output-on-failure`; hygiene
-   `ctest -L hygiene` (DocClaims/CommentClaims may want rows for new numbers;
-   `ZeroCallers` may want an exemption for `ownedRssAnonBytes`? it is a field, probably not).
-5. `bash scripts/build-gles2-x86.sh` (after step 1 finishes — never concurrently),
-   then the local gate: `bash scripts/ci/visual_gate.sh` (all five zones). Expect
-   image goldens **0 PIXEL MISMATCH** (B944 proved it at 20 MiB) and the single
-   memory failure above (qeynos2 textureCacheBytesUsed). Record the new
-   qeynos2 `textureCacheBytesUsed`/`textureCount` and the `[texture-cache]`
-   stdout line (entries / resident / evictions / restores / restore failures)
-   for every zone, before (fable `d3375b65` build-gles2, e.g. `/mnt/projects/fable/main/build-gles2`
-   if at that tip, or `--texture-memory-bytes 53477376`) and after. Frame time:
-   the gate's p95 process-CPU ms per zone (printed `[cpu]` line) before/after.
-6. ARM: `bash scripts/build-arm-noble.sh` locally (compile check), then push and
-   let CI `build-arm` publish `ci-arm/<sha>/` (`glab ci trigger build-arm -b task/B978-owned-gpu-buffers-texmem`
-   if manual on task branches).
-7. Pi (owner `b978`): `source scripts/pi/env.sh; pi_lock_take b978`;
-   `source scripts/eqemu/env.sh; EQEMU_HOST=local eqemu_lock_take b978`;
-   rendered client qeynos2 + gfaydark via `scripts/pi_rendered_zone_sweep.sh`
-   (own cgroup default; `--zones qeynos2,gfaydark`, the CI binary
-   `ci-arm/<sha>/bin/willeq-nollvm`; read the script header for the exact
-   flags, and `docs/ci.md` "The ARM runner and Pi runs"), once with the B978
-   binary and once with the fable `d3375b65` binary (or `WILLEQ_TEXTURE_MEMORY_BYTES=53477376`
-   on the B978 binary — B944's test knob, LOG_WARN when set). Measure from
-   client.log: `ConstrainedTextureCache` eviction/restore counts (the
-   `unloadZone` line names them; also `[texture-cache]`), WARN counts for
-   placeholder / pinned / restore-fail (must be 0), RssFile (snap_*.json),
-   gpu_buffers, owned (new summarizer columns), fps (median/min) and frame-time
-   hitches (>33 ms frames around restores; `/frametiming` blocks). Restore,
-   `down.sh`, `eqemu_lock_release`, `pi_lock_release b978` ALWAYS.
-8. Re-summarize the committed Pi runs with the new columns WITHOUT touching
-   their dirs (summarize writes `details.json` into `--run`): build a symlink
-   farm per run (client.log, samples.tsv, summary.json, snap_*.json, frames/)
-   under `/mnt/projects/fable/review/B978/resummarized/<sweep>/<zone>` and run
-   `python3 scripts/pi/rendered_zone_summarize.py --run <farm> --zone Z --attempt first --tsv <out.tsv> --expansion E --s3d-bytes N`
-   for each row of `review/B962/{pi_final,pi_fixed,pi_legacy,pi_census_*,pi_before_fable}/results.tsv`
-   and `review/B955/pi_sweep_{1,2}/results.tsv` (qeynos2 / gfaydark /
-   growthplane only — no wider post-B955 Pi sweep exists, the 45-zone
-   Kunark/Velious sweep predates gpu_buffers and cannot be re-derived); then
-   `python3 scripts/b964/crowd_table.py review/B964/pi/crowd800_v2 ...` for the
-   crowd runs. Put the per-zone owned-vs-64 table (owned_rss_anon, gpu_buffers
-   net, owned, owned − 64) in this README and in `/mnt/projects/fable/review/B978/README.md`.
-9. Docs: `docs/decisions.md` — two dated entries at the END (newest last):
-   "2026-10-01 — GPU buffers count toward the 64 MB target (Will; B978)"
-   quoting **"1) yes"** to "does gpu_buffers count toward the 64 MB target",
-   and "2026-10-01 — textureMemoryBytes 51 -> 21 MiB (Will, "3) bless"; B978)"
-   with the derivation table; strike B933's parenthetical in the 2026-09-29 entry
-   (`owned=RssAnon-gpu_driver` → note superseded by B978). Root `CLAUDE.md`
-   "Memory accounting" bullets (owned=RssAnon−gpu_driver+gpu_buffers; drop
-   "`owned_plus_gpu_buffers` is printed beside `owned`, never asserted"; keep
-   ≤ 60,000 chars — `FileSizeCeiling`). `src/client/graphics/CLAUDE.md`
-   memory-ledger gpu_buffers bullet ("The 64 MB target stays on `owned`;
-   `owned_plus_gpu_buffers` is printed for Will's ruling" → new rule) and the
-   texture-cache paragraph (budget vs ceiling are the same knob for the cache,
-   `gpuTextureMemoryBytes` is the other). `docs/ci.md` (~line 210 mentions
-   `ownedBytes`/gpu_buffers). `refactor/BOARD.md` (~line 1049-1057: "Pi
-   behaviour under 51 MiB is unverified" → B978).
-10. Commit (trailer per dispatch), merge `gitlab/fable` if it moved, push,
-    un-draft the MR (`Closes #296`), issue label `status::review`.
+Status 2026-10-03 (kb-b978, hermes-ext): 1-5 and 8 done (see below); 6 via CI
+`build-arm`; 7 and 10 pending. `origin/fable` (now 55c9ac0c, with B967 !74
+merged) was merged into this branch first; the gate's goldens are the B967
+re-bless.
+
+1-4. DONE. Built here (Release, -j3): test targets + `JOBS=3
+   bash scripts/build-gles2-x86.sh` (the `--irrlicht-only` bootstrap ran
+   first; B959's `eqtSetShaderBinaryCacheDir` symbol present). Targeted ctest
+   `MemoryLedger|GpuBufferCensus|ConstrainedRenderer`: 113/113 pass.
+   `scripts/ci/test_visual_gate_ledger.py`: 19 checks OK. The full suite +
+   hygiene run on CI (card: full suite on CI). The grep check passed: only the
+   B955 historical README, this README, the docs/ci.md strike and
+   `owned_memory.py`'s back-compat reader still name the removed field.
+
+5. DONE (local gate, `scripts/ci/visual_gate.sh` + the before/after
+   measurement in `scripts/b978/texture_cache_ab.py`, evidence
+   `~/kb-evidence/b978-owned-gpu-texmem/gate/{before,after}_texture_cache.tsv`;
+   the before side is `--texture-memory-bytes 53477376` on THIS branch, which
+   is d3375b65's gate behaviour -- the before numbers reproduce the goldens
+   exactly, qeynos2 42,226,984 / 126 entries / p95 3.666 ms):
+
+   | zone     | before used | before p95 | after used  | after `[texture-cache]` (entries/resident/evict/restore/restfail/pinned) | after p95 |
+   |---|---|---|---|---|---|
+   | qeynos2  | 42,226,984 | 3.666 | 21,932,691 | 126 / 65 / 82 / 21 / 0 / 0 | 3.928 |
+   | gfaydark | 11,184,800 | 4.540 | 11,184,800 | 32 / 32 / 0 / 0 / 0 / 0 | 4.643 |
+   | befallen | 2,883,581 | 5.405 | 2,883,581 | 9 / 9 / 0 / 0 / 0 / 0 | 5.790 |
+   | iceclad  | 3,866,619 | 12.991 | 3,866,619 | 15 / 15 / 0 / 0 / 0 / 0 | 11.269 |
+   | timorous | 3,183,945 | 17.608 | 3,183,945 | 35 / 35 / 0 / 0 / 0 / 0 | 16.817 |
+
+   All 30 golden frames are 0-pixel-diff on both sides. Only qeynos2 exceeds
+   the 21 MiB ceiling. `textureCount` stays 126 (entry count; resident 65).
+   `gpuTextureBytes`, `totalEstimate`, `framebufferBytes` and every other
+   MEMORY_BASELINE_FIELDS value are unchanged. The gate's only memory failure
+   is the in-scope qeynos2 `textureCacheBytesUsed`, re-pinned to 21,932,691
+   (measured twice, identical) -- per Will's "3) bless", quoted in the card
+   and in `docs/decisions.md`. Local gate run also tripped an iceclad p95
+   CPU ceiling (host-load flake; 0 evictions there; CI retries 3x).
+
+6. Local ARM compile skipped (no docker on this host) -- CI `build-arm`
+   publishes `ci-arm/<sha>/` for the Pi leg.
+
+7. Pi (owner `kb-b978`): pending. `scripts/pi_rendered_zone_sweep.sh
+   --zones qeynos2,gfaydark --allow-vm-lane --pi-dir ~/ci-arm/<sha>
+   --owner kb-b978 --out ~/kb-evidence/b978-owned-gpu-texmem/pi/<variant>`,
+   `EQEMU_HOST=172.16.200.99`, once plain (B side, 21 MiB) and once with
+   `--env WILLEQ_TEXTURE_MEMORY_BYTES=53477376` (A side, 51 MiB).
+
+8. DONE. The old runs were rsynced from the Pi NFS into
+   `~/kb-evidence/b978-owned-gpu-texmem/ref/` (B962: pi_final, pi_fixed,
+   pi_legacy, pi_census_{final,fixed,legacy}, pi_before_fable; B955:
+   pi_sweep_{1,2}; B964: pi/crowd800_v2) and re-summarized with THIS branch's
+   `scripts/pi/rendered_zone_summarize.py` on local symlink farms (the farms'
+   `details.json` are new local files; the ref/ copies are untouched):
+   `~/kb-evidence/b978-owned-gpu-texmem/resummarized/*.owned.tsv`. New
+   per-sweep qeynos2 steady owned=RssAnon-gpu_driver+gpu_buffers (MiB):
+
+   | sweep | owned | owned_rss_anon | gpu_buffers (net) |
+   |---|---|---|---|
+   | B962 pi_final | 59.99 | 39.00 | 20.99 |
+   | B962 pi_fixed | 65.28 | 42.70 | 22.58 |
+   | B962 pi_legacy | 79.23 | 43.78 | 35.45 |
+   | B962 pi_census_final | 67.08 | 46.33 | 20.75 |
+   | B962 pi_census_fixed | 69.27 | 46.74 | 22.53 |
+   | B962 pi_census_legacy | 80.92 | 45.59 | 35.32 |
+   | B962 pi_before_fable | 77.70 | 42.56 | 35.14 |
+   | B955 pi_sweep_1 | 78.99 | 43.55 | 35.44 |
+   | B955 pi_sweep_2 | 78.00 | 42.58 | 35.42 |
+
+   Every row satisfies `owned_steady = owned_rss_anon_steady +
+   gpu_buffers_net_steady`. gfaydark steady owned: B962 pi_final 77.03 MiB,
+   B962 pi_census_final 82.84 MiB, B955 pi_sweep_1 90.72 MiB, B955 pi_sweep_2
+   94.96 MiB. Caveat: the resumption farms flag `render_unproven` (the
+   blank-frame check cannot read PNGs through the symlink farms); the
+   MEMORY columns are taken straight from the runs' `[memledger]` /
+   `[memgpu]` lines and are the point of the resumption. The crowd runs
+   (`ref/crowd800_v2`) were NOT re-summarized: `scripts/b964/crowd_table.py`
+   expects the B964 crowd rig's dir layout, not the sweep layout the
+   committed crowd800_v2 has, and the crowd rows' owned figures predate the
+   new rule -- flagged, not forced.
+
+9. DONE (docs): `docs/decisions.md` — two dated entries at the END (newest
+   last): "2026-10-01 — GPU buffers count toward the 64 MB target (Will;
+   B978)" quoting **"1) yes"**, and "2026-10-01 — textureMemoryBytes 51 -> 21
+   MiB (Will, "3) bless"; B978)" with the derivation table and the qeynos2
+   `textureCacheBytesUsed` re-pin noted; B933's 2026-09-29 entry now says its
+   `owned=RssAnon-gpu_driver` figure was superseded as the target figure.
+   `docs/ci.md`'s B955 paragraph and `refactor/BOARD.md`'s B943 line are
+   struck to the new rule. The two `CLAUDE.md` bullets (root "Memory
+   accounting" + `src/client/graphics/CLAUDE.md`) were NOT updated: the
+   agent-instruction-file write guard blocked them on this headless worker,
+   and `DocClaims`/`FileSizeCeiling` pass with the stale text, so it is a
+   docs-freshness gap flagged in the MR, not a CI block.
+
+10. IN PROGRESS: commit (done below for 1-5, 8, 9), merge `gitlab/fable` if it
+    moved, push (full suite + gate + `build-arm` on CI), un-draft the MR
+    (`Closes #296`), issue label `status::review`. The Pi (7) and the CI green
+    are the remaining evidence before the MR is un-drafted.

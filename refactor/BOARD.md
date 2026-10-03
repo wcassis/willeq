@@ -1070,7 +1070,10 @@ it without taking that measurement first.
   held at 32 MiB** on Will's word: its only Pi figure (25.7 MB) is a 2026-09-17
   qeynos2 reading that predates T504, and the rendered sweep had no classic
   zone. `textureMemoryBytes` is the real cache eviction ceiling, so that one is
-  a behaviour change; Pi behaviour under 51 MiB is unverified.
+  a behaviour change; Pi behaviour under 51 MiB was unverified here and is
+  verified by B978 (51 -> 21 MiB, #296): 0 placeholder / pinned / restore-fail
+  WARNs on Pi qeynos2 + gfaydark, the gate's qeynos2 run pixel-identical at a
+  20 MiB ceiling (B944) and 21 MiB (B978's local gate run).
 
 - ~~**B927** (B) Two of Will's 2026-09-29 rulings had not been applied: "bless
   iceclad and timorous" and "ratchet the zone_parse budget down".~~ **DONE
