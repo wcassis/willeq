@@ -674,20 +674,19 @@ it without taking that measurement first.
   default-initialised, **zero references anywhere**.~~ **CLOSED by K15**:
   re-measured at `7c125b28`, still zero references; deleted. Prov: K01 Review.
 
-- ~~**B948** (B) → issue #266. `gpuTextureBytes` counts every ETC1 alpha chain
-  twice: `uploadCompressedETC1()` wraps the main texture with main+alpha bytes
-  and the `_alpha` companion with the alpha bytes again. Moves a gated number
-  down only when fixed. Confirmed by B944 (code reading; the census's EQE1
-  `gpuTextureBytes` exceeds `textureCacheBytesUsed`).~~ **DONE 2026-10-03**
-  (branch `task/B948-gpu-texture-alpha-count`, issue #266,
-  `refactor/B948/README.md`). The main texture is now wrapped with the main
-  chain only (the cache entry's `sizeBytes` stays main+alpha, and the B944
-  restore re-adopts the split). `gpuTextureBytes` moves DOWN only: coverage
-  run per zone −87,432 … −1,399,528 B (qeynos2 9,322,992 → 8,973,400),
-  `textureCacheBytesUsed` byte-identical; no gate baseline carries the field
-  (re-checked), so no blessed number moved. Repeatable:
-  `tests/test_texture_etc1_alpha_count.cpp` (driver figure = main + alpha once
-  each, through the B944 eviction/restore round trip; a no-alpha control).
+- **B948** (B) → issue #266, **in review** (`refactor/B948/README.md`).
+  `gpuTextureBytes` counted every ETC1 alpha chain twice:
+  `uploadCompressedETC1()` wrapped the main texture with main+alpha bytes
+  and the `_alpha` companion with the alpha bytes again. Fixed: the main
+  texture is now wrapped with the main chain only (the cache entry's
+  `sizeBytes` stays main+alpha, and the B944 restore re-adopts the split).
+  `gpuTextureBytes` moves DOWN only: coverage run per zone −87,432 …
+  −1,399,528 B (qeynos2 9,322,992 → 8,973,400), `textureCacheBytesUsed`
+  byte-identical; no gate baseline carries the field (re-checked), so no
+  blessed number moved. Repeatable:
+  `tests/test_texture_etc1_alpha_count.cpp` (driver figure = main + alpha
+  once each, through the B944 eviction/restore round trip; a no-alpha
+  control).
 - ~~**B949** (B) → issue #267. The texture cache's LRU is touched on lookup and
   restore, never on draw, so eviction order is load order and an on-screen
   texture can be evicted first and restored on its next bind (thrash;

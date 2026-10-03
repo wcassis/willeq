@@ -71,6 +71,11 @@ The corrected figure is asserted two ways by `scripts/ci/visual_gate.py`:
 So no gate number needed re-pinning, and none was touched. The x86
 coverage-run delta is measured below.
 
+**CI (pipeline 469, head `ff49caba`, full tree on this host): SUCCESS** —
+hygiene 0:55, build 13:05, test 2:42, gate 3:17 (the `gate` job re-runs the
+whole 5-zone visual gate + coverage; its green is the independent
+confirmation that no blessed baseline trips on the corrected figure).
+
 ## Measured — unit test, red/green
 
 `tests/test_texture_etc1_alpha_count.cpp` (ctest, real EDT_OGLES2
