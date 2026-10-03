@@ -192,6 +192,15 @@ void COGLES2Texture::ensureResident() const
     Restoring = false;
 }
 
+void COGLES2Texture::markDrawn() const
+{
+    const u32 now = COpenGLES2Driver::FrameCounter.load(std::memory_order_relaxed);
+    // One write per texture per frame (binds are material-sorted, so a
+    // texture bound many times in a frame stamps once).
+    if (DrawFrameStamp_.load(std::memory_order_relaxed) != now)
+        DrawFrameStamp_.store(now, std::memory_order_relaxed);
+}
+
 // ============================================================================
 // Upload from IImage
 // ============================================================================

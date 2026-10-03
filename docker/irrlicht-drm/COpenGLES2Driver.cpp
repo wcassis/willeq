@@ -473,6 +473,10 @@ bool COpenGLES2Driver::beginScene(bool backBuffer, bool zBuffer,
                                    const SExposedVideoData& videoData,
                                    core::rect<s32>* sourceRect)
 {
+    // B949: this frame's number, stamped into every texture the frame binds
+    // (COGLES2Texture::markDrawn). Once per rendered frame, before its binds.
+    FrameCounter.fetch_add(1, std::memory_order_relaxed);
+
     // T61: present the PREVIOUS frame now, before this frame's draws begin.
     // See endScene() for why the swap/page-flip moved here instead of
     // running immediately at the end of the frame that produced it.
@@ -2436,6 +2440,10 @@ static irr::video::COGLES2Texture* asGles2Texture(void* tex)
     return static_cast<irr::video::COGLES2Texture*>(static_cast<irr::video::ITexture*>(tex));
 }
 
+// B949 (GitLab #267): the driver frame counter COGLES2Texture::markDrawn()
+// stamps into every bound texture (see COpenGLES2Driver::FrameCounter).
+std::atomic<irr::u32> irr::video::COpenGLES2Driver::FrameCounter{0};
+
 void gles2TextureReleaseStorage(void* texture)
 {
     if (texture) asGles2Texture(texture)->releaseStorage();
@@ -2469,6 +2477,14 @@ void gles2TextureSetResidencyOwner(void* texture, bool (*restoreFn)(void* ctx, v
 bool gles2TextureIsEvicted(void* texture)
 {
     return texture && asGles2Texture(texture)->isEvicted();
+}
+
+// B949 (GitLab #267): the driver frame in which `texture` was last bound
+// (0 = never drawn; COGLES2Texture::markDrawn). ConstrainedTextureCache's
+// per-frame endFrame() reorders its LRU list by these stamps.
+unsigned int gles2TextureGetDrawFrameStamp(void* texture)
+{
+    return texture ? asGles2Texture(texture)->getDrawFrameStamp() : 0;
 }
 
 void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,

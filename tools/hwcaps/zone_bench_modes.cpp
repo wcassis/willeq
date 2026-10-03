@@ -845,6 +845,10 @@ int runStaticPoseCapture(std::unique_ptr<ZoneBench::ZoneBenchData>& data, const 
         }
 
         data->driver->endScene();
+        // B949: reorders the texture cache's LRU by the draw stamps this
+        // pose frame recorded, so the eviction pressure of the NEXT pose's
+        // loads evicts least-recently-DRAWN, not oldest-loaded.
+        if (data->textureCache) data->textureCache->endFrame();
     }
     }
 
