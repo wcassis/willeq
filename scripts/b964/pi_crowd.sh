@@ -15,6 +15,8 @@
 #          [--zones qeynos2,gfaydark,growthplane] [--variants imp50far,imp200far,off200far]
 #          [--out DIR] [-r "1280 720"] [--hop-zone arena] [--frametiming]   (see make_tour.py)
 #          [--owner B964]   (the lock owner tag)
+#          [--allow-vm-lane]   (B975: forward to pi_rendered_zone_sweep.sh, whose
+#          EQEMU_HOST must then name the eqemu VM)
 set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ZONES="qeynos2,gfaydark,growthplane"
@@ -24,6 +26,7 @@ OUT=""
 RES="1280 720"
 HOP_ZONE="arena"
 OWNER="B964"
+ALLOW_VM=0
 TOUR_EXTRA=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -35,6 +38,7 @@ while [ $# -gt 0 ]; do
         --hop-zone) HOP_ZONE="$2"; shift 2 ;;
         --frametiming) TOUR_EXTRA+=( --frametiming ); shift ;;
         --owner) OWNER="$2"; shift 2 ;;
+        --allow-vm-lane) ALLOW_VM=1; shift ;;
         *) echo "unknown option $1" >&2; exit 3 ;;
     esac
 done
@@ -69,10 +73,12 @@ for zone in ${ZONES//,/ }; do
             base) envs+=( --env WILLEQ_BASELINE=1 ) ;;
             tagnode) envs+=( --env WILLEQ_NAMETAG_BATCH=0 ) ;;
         esac
+        vm_args=()
+        [ "$ALLOW_VM" -eq 1 ] && vm_args+=( --allow-vm-lane )
         echo "[pi_crowd] $zone/$variant -> $dir"
         bash "$REPO/scripts/pi_rendered_zone_sweep.sh" --zones "$zone" --out "$dir" --pi-dir "$PI_DIR" \
             -r "$RES" --tour "$dir/tour.txt" --cap 720 --stall 240 --no-retry --owner "$OWNER" \
-            --stop-point never --char-level 60 --char-exp 616137000 "${envs[@]}" \
+            --stop-point never --char-level 60 --char-exp 616137000 "${envs[@]}" "${vm_args[@]}" \
             > "$dir/sweep.out" 2>&1
         rc=$?
         echo "[pi_crowd] $zone/$variant rc=$rc"

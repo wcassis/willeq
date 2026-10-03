@@ -201,10 +201,10 @@ TEST_F(NameTagBatchTest, TwoDrawsAndOneQuadPerGlyphWhateverTheCount) {
                 if (*c != L' ') ++quads;
         }
         EXPECT_EQ(st.glyphQuads, quads);
-        // The owner row's bytes hold at least this frame's quads and vertices
-        // (36 B UiQuad + 4 x 9 floats + 6 indices a glyph, the first glyph
-        // through the driver).
-        EXPECT_GE(batch_->bufferBytes(), quads * sizeof(UiQuad) + (quads - 1) * (4 * 9 * 4 + 6 * 2));
+        // The owner row's bytes hold at least this frame's compact quads
+        // (20 B vertex x 4 + 6 u16 indices a glyph; the run's first glyph
+        // goes through the driver, so quads - 1 of them are in the buffers).
+        EXPECT_GE(batch_->bufferBytes(), (quads - 1) * (4 * 20 + 6 * 2));
     }
 }
 

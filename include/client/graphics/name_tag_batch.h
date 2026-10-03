@@ -56,7 +56,37 @@
 namespace EQT {
 namespace Graphics {
 
+/** B975: the tag pass's projection, CSceneCollisionManager's exact
+ *  arithmetic on the ONE proj x view product of the frame:
+ *  `trans = cam->getProjectionMatrix(); trans *= cam->getViewMatrix();`
+ *  (CSceneCollisionManager::getScreenCoordinatesFrom3DPosition builds that
+ *  product once per call; the batch builds it once per render() and feeds it
+ *  through the same multiplyWith1x4Matrix + round32 steps). A result of
+ *  (-10000, -10000) means behind the camera, as the per-call path's.
+ *  halfW/halfH are the driver's viewPort width/height over 2, as the
+ *  per-call path's `dim`. */
+void projectNameTag(const irr::core::matrix4& projView,
+                    const irr::core::vector3df& world,
+                    irr::s32 halfW, irr::s32 halfH,
+                    irr::core::position2d<irr::s32>& out);
+
 class NameTagBatchNode;
+
+// B975's shrink: the tag pass's compact vertex, 20 bytes, no padding
+// {f32 x, y; u8 r, g, b, a (normalized); f32 u, v}. A glyph quad is 4 of these
+// plus 6 u16 indices = 80 B/quad, against the UiQuad intermediate's
+// 36 B UiQuad + 144 B of 9-float vertices + 12 B indices.
+// Attribute slots 0/2/3, the same program (UI2D) and the same per-vertex
+// values COpenGLES2Driver::draw2DImage() feeds (x, y, z=0 the constant 2D
+// z -- the 2-component position pointer fills z with 0, red/255.0f ... via
+// the normalized byte decode, src * (1.0f/texW)); tests and the per-pose
+// pixel tool are the nets.
+struct CompactVertex {
+    irr::f32 x, y;
+    irr::u8 r, g, b, a;
+    irr::f32 u, v;
+};
+static_assert(sizeof(CompactVertex) == 20, "the compact vertex is 20 B by construction");
 
 class NameTagNode : public irr::scene::ITextSceneNode {
 public:
@@ -143,6 +173,16 @@ private:
     irr::core::aabbox3d<irr::f32> box_;
     std::vector<NameTagNode*> pending_;          // grabbed until render()
     irr::core::array<Entry> sorted_;
+    // The compact run (B975's shrink): no UiQuad intermediate.
+    // 80 B/quad: 4 x 20 B CompactVertex + 6 u16 indices, static per-quad index
+    // pattern {0,1,2, 0,2,3} over running bases; the colour bytes are
+    // normalized at the attribute. Buffers at need, trimmed at a window
+    // boundary (logWindow) when capacity > 4x the window's peak. Used only
+    // when the driver is the GLES2 one the layout is written for.
+    std::vector<CompactVertex> compactVertices_;
+    std::vector<uint16_t> compactIndices_;
+    // The per-quad fallback (any other driver): the old UiQuad + UiQuadBatch
+    // path, untouched. Zero capacity on the GLES2 driver, which never fills it.
     std::vector<UiQuad> quads_;
     UiQuadBatch quadBatch_;
     FrameStats last_;

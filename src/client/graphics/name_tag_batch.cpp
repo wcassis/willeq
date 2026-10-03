@@ -6,6 +6,10 @@
 #include "client/core/memory_owner_rows.h"
 #include "common/logging.h"
 
+#ifdef EQT_HAS_GLES2
+#include <GLES2/gl2.h>
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -17,6 +21,11 @@ namespace Graphics {
 namespace {
 constexpr const char* kOwnerRow = "ent.nametag_batch";
 constexpr int64_t kWindowMs = 5000;
+// B975's shrink: the tag pass's own vertex layout, 20 B/vertex
+// {f32 x, y; u8 r, g, b, a (normalized); f32 u, v}, attributes 0/2/3 as
+// ui_quad_batch.cpp's. A quad is 4 vertices + 6 u16 indices = 80 B, against
+// the UiQuad intermediate's 36 B + 144 B vertices + 12 B indices.
+constexpr size_t kMaxCompactQuadsPerDraw = 16384;  // 16-bit indices: 65536 vertices
 
 int64_t nowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -58,6 +67,29 @@ void NameTagNode::OnRegisterSceneNode() {
 void NameTagNode::setText(const wchar_t* text) {
     text_ = text ? text : L"";
     layoutDirty_ = true;
+}
+
+// The collision manager's projection with the proj x view product handed in:
+// CSceneCollisionManager::getScreenCoordinatesFrom3DPosition builds
+// `trans = cam->getProjectionMatrix(); trans *= cam->getViewMatrix();` on every
+// call (1.9 us x N on the Pi -- B975's per-tag cost); the batch builds it once
+// per render() and feeds it through the same multiplyWith1x4Matrix + round32
+// steps, so a tag's screen position is the per-node path's position of the
+// frame (same product, same steps; the per-pose pixel tool is the net).
+// halfW/halfH are the driver's viewPort width/height over 2, as the
+// per-call path's `dim`.
+void projectNameTag(const irr::core::matrix4& projView, const irr::core::vector3df& world,
+                    irr::s32 halfW, irr::s32 halfH, irr::core::position2d<irr::s32>& out) {
+    irr::f32 p[4] = {world.X, world.Y, world.Z, 1.0f};
+    projView.multiplyWith1x4Matrix(p);
+    if (p[3] < 0.0f) {
+        out = irr::core::position2d<irr::s32>(-10000, -10000);
+        return;
+    }
+    const irr::f32 zDiv = p[3] == 0.0f ? 1.0f : irr::core::reciprocal(p[3]);
+    out = irr::core::position2d<irr::s32>(
+        halfW + irr::core::round32(static_cast<irr::f32>(halfW) * (p[0] * zDiv)),
+        halfH - irr::core::round32(static_cast<irr::f32>(halfH) * (p[1] * zDiv)));
 }
 
 // ----------------------------------------------------------- NameTagBatchNode
@@ -136,8 +168,10 @@ void NameTagBatchNode::layout(NameTagNode& tag) {
 }
 
 size_t NameTagBatchNode::bufferBytes() const {
-    return quads_.capacity() * sizeof(UiQuad) + pending_.capacity() * sizeof(NameTagNode*) +
-           sorted_.allocated_size() * sizeof(Entry) + quadBatch_.bytesReserved();
+    return compactVertices_.capacity() * sizeof(CompactVertex) +
+           compactIndices_.capacity() * sizeof(uint16_t) + quads_.capacity() * sizeof(UiQuad) +
+           quadBatch_.bytesReserved() + pending_.capacity() * sizeof(NameTagNode*) +
+           sorted_.allocated_size() * sizeof(Entry);
 }
 
 void NameTagBatchNode::publishRow() {
@@ -145,7 +179,7 @@ void NameTagBatchNode::publishRow() {
     if (bytes == publishedBytes_) return;
     publishedBytes_ = bytes;
     eqt::memory::setOwnerRow(kOwnerRow, "entity_instances", bytes,
-                             "quad_capacity=" + std::to_string(quads_.capacity()));
+                             "compact_quads=" + std::to_string(compactIndices_.capacity() / 6));
 }
 
 void NameTagBatchNode::logWindow(int64_t micros) {
@@ -174,18 +208,89 @@ void NameTagBatchNode::logWindow(int64_t micros) {
     // Give back what a crowd that has left made the buffers hold: keep at most
     // twice this window's peak.
     const size_t keepQuads = 2 * windowMaxTags_ * 16 + 64;
-    if (quads_.capacity() > 4 * keepQuads) {
+    if (compactIndices_.capacity() / 6 > 4 * keepQuads) {
+        eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityInstances);
+        std::vector<CompactVertex>().swap(compactVertices_);
+        compactVertices_.reserve(keepQuads * 4);
+        std::vector<uint16_t>().swap(compactIndices_);
+        compactIndices_.reserve(keepQuads * 6);
+    }
+    if (quads_.capacity() > 4 * keepQuads || quadBatch_.bytesReserved() > keepQuads * (4 * 9 * 4 + 6 * 2)) {
         eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityInstances);
         std::vector<UiQuad>().swap(quads_);
         quads_.reserve(keepQuads);
         quadBatch_.trim(keepQuads);
-        publishRow();
     }
+    if (compactIndices_.capacity() / 6 > 4 * keepQuads || quads_.capacity() > 4 * keepQuads) publishRow();
     windowStartMs_ = now;
     windowFrames_ = 0;
     windowTags_ = 0;
     windowMaxTags_ = 0;
     windowMicros_.clear();
+}
+
+// B975's shrink: the tag pass's own vertex fill (no UiQuad intermediate).
+// One compact quad, COpenGLES2Driver::draw2DImage()'s own vertex arithmetic in
+// the compact layout; the colour bytes are the tag's SColor verbatim (the
+// shader's aColor decodes them normalized, the same floats draw2DImage()
+// computed with `red / 255.0f`).
+void appendCompactQuad(std::vector<CompactVertex>& vertices, std::vector<uint16_t>& indices,
+                       irr::s32 dstLeft, irr::s32 dstTop, irr::s32 dstRight, irr::s32 dstBottom,
+                       irr::s32 srcLeft, irr::s32 srcTop, irr::s32 srcRight, irr::s32 srcBottom,
+                       const irr::video::SColor& color, irr::f32 invW, irr::f32 invH) {
+    const uint16_t base = static_cast<uint16_t>(vertices.size());
+    const irr::f32 u0 = static_cast<irr::f32>(srcLeft) * invW;
+    const irr::f32 u1 = static_cast<irr::f32>(srcRight) * invW;
+    const irr::f32 v0 = static_cast<irr::f32>(srcTop) * invH;
+    const irr::f32 v1 = static_cast<irr::f32>(srcBottom) * invH;
+    vertices.push_back({static_cast<irr::f32>(dstLeft), static_cast<irr::f32>(dstTop),
+                        color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha(), u0, v0});
+    vertices.push_back({static_cast<irr::f32>(dstRight), static_cast<irr::f32>(dstTop),
+                        color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha(), u1, v0});
+    vertices.push_back({static_cast<irr::f32>(dstRight), static_cast<irr::f32>(dstBottom),
+                        color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha(), u1, v1});
+    vertices.push_back({static_cast<irr::f32>(dstLeft), static_cast<irr::f32>(dstBottom),
+                        color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha(), u0, v1});
+    const uint16_t i0 = base, i1 = base + 1, i2 = base + 2, i3 = base + 3;
+    indices.insert(indices.end(), {i0, i1, i2, i0, i2, i3});
+}
+
+// B975's shrink: submit the compact run. The run's FIRST quad is drawn by the
+// caller through the driver's own draw2DImage() (it sets the program, texture
+// units, blend and uniforms exactly as each per-quad call would); the
+// compact buffers hold ONLY the quads that come after it (bases from 0), so
+// this draws them in glDrawElements over the compact vertices, attribute
+// slots 0/2/3 as ui_quad_batch.cpp's, chunked at the 16-bit index cap
+// (16384 quads = 65536 vertices). Returns the number of glDrawElements
+// issued (0 when the buffers are empty or the driver is not the GLES2 one
+// the layout is written for).
+size_t drawCompactTexturedRun(irr::video::IVideoDriver* driver,
+                              const std::vector<CompactVertex>& vertices,
+                              const std::vector<uint16_t>& indices, bool batch) {
+    if (!driver || indices.empty()) return 0;
+    if (!batch || !UiQuadBatch::driverSupportsBatching(driver)) return 0;
+#ifdef EQT_HAS_GLES2
+    size_t draws = 0;
+    for (size_t chunk = 0; chunk < indices.size() / 6; ) {
+        const size_t chunkQuads = std::min(kMaxCompactQuadsPerDraw, indices.size() / 6 - chunk);
+        const CompactVertex* v = vertices.data() + chunk * 4;
+        const uint16_t* ix = indices.data() + chunk * 6;
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CompactVertex), v);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(CompactVertex),
+                              reinterpret_cast<const GLvoid*>(reinterpret_cast<const GLbyte*>(v) + 8));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(CompactVertex),
+                              reinterpret_cast<const GLvoid*>(reinterpret_cast<const GLbyte*>(v) + 12));
+        glEnableVertexAttribArray(3);
+        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(chunkQuads * 6), GL_UNSIGNED_SHORT, ix);
+        ++draws;
+        chunk += chunkQuads;
+    }
+    return draws;
+#else
+    return 0;
+#endif
 }
 
 void NameTagBatchNode::render() {
@@ -196,8 +301,7 @@ void NameTagBatchNode::render() {
 
     irr::video::IVideoDriver* driver = SceneManager->getVideoDriver();
     irr::scene::ICameraSceneNode* cam = SceneManager->getActiveCamera();
-    irr::scene::ISceneCollisionManager* coll = SceneManager->getSceneCollisionManager();
-    if (driver && cam && coll && font_) {
+    if (driver && cam && font_) {
         // CSceneManager's transparent order: farthest first, the same heapsort.
         const irr::core::vector3df camPos = cam->getAbsolutePosition();
         sorted_.set_used(0);
@@ -205,26 +309,72 @@ void NameTagBatchNode::render() {
         sorted_.sort();
 
         const irr::core::rect<irr::s32>& vp = driver->getViewPort();
-        quads_.clear();
+        // The ONE proj x view product of the frame (the collision manager
+        // rebuilt it per tag; the arithmetic fed through it is its own).
+        irr::core::matrix4 projView = cam->getProjectionMatrix();
+        projView *= cam->getViewMatrix();
+        const irr::s32 halfW = static_cast<irr::s32>(vp.getWidth() / 2);
+        const irr::s32 halfH = static_cast<irr::s32>(vp.getHeight() / 2);
+
+        // The compact 80 B/quad path is written for the GLES2 driver; any other
+        // driver keeps the old UiQuad + UiQuadBatch per-quad path.
+        const bool compact = UiQuadBatch::driverSupportsBatching(driver);
+        if (compact) {
+            compactVertices_.clear();
+            compactIndices_.clear();
+        } else {
+            quads_.clear();
+        }
         irr::video::ITexture* runTexture = nullptr;
+        bool runHasFirst = false;  // the run's first quad, for the driver draw
+        irr::core::rect<irr::s32> firstDest, firstSrc;
+        irr::video::SColor firstColor;
         auto flushRun = [&]() {
-            if (quads_.empty()) return;
+            const bool haveCompact = compact && !compactIndices_.empty();
+            if (!runHasFirst && !haveCompact && quads_.empty()) return;
             const auto s0 = std::chrono::steady_clock::now();
-            last_.driverDraws += quadBatch_.drawTexturedRun(driver, runTexture, quads_, true);
+            if (runHasFirst) {
+                if (compact) {
+                    // The first quad through the driver's own call: it sets the
+                    // program, texture units, blend and uniforms exactly as each
+                    // per-quad call would. The compact buffers hold only the
+                    // quads that come after it.
+                    driver->draw2DImage(runTexture, firstDest, firstSrc, nullptr, &firstColor, true);
+                    last_.driverDraws += 1;
+                    last_.glyphQuads += 1;
+                    last_.driverDraws +=
+                        drawCompactTexturedRun(driver, compactVertices_, compactIndices_, true);
+                    last_.glyphQuads += compactIndices_.size() / 6;
+                } else {
+                    // The old path: the first quad and every other quad of the
+                    // run go through UiQuadBatch (per-quad on a non-GLES2 driver).
+                    quads_.insert(quads_.begin(),
+                                  UiQuad{firstDest, firstSrc, firstColor});
+                }
+            }
+            if (!compact && !quads_.empty()) {
+                last_.driverDraws += quadBatch_.drawTexturedRun(driver, runTexture, quads_, true);
+                last_.glyphQuads += quads_.size();
+            }
             last_.submitMicros += std::chrono::duration_cast<std::chrono::microseconds>(
                                       std::chrono::steady_clock::now() - s0).count();
-            last_.glyphQuads += quads_.size();
+            if (compact) {
+                compactVertices_.clear();
+                compactIndices_.clear();
+            }
             quads_.clear();
+            runHasFirst = false;
+            runTexture = nullptr;
         };
 
         for (irr::u32 i = 0; i < sorted_.size(); ++i) {
             NameTagNode& tag = *sorted_[i].node;
             if (tag.layoutDirty_) layout(tag);
             if (tag.text_.empty()) continue;
-            // CTextSceneNode::render(): the same projection call, then
+            // CTextSceneNode::render(): the same projection, then
             // CGUIFont::draw(text, rect(pos, 1x1), color, hcenter, vcenter).
-            const irr::core::position2d<irr::s32> pos =
-                coll->getScreenCoordinatesFrom3DPosition(tag.getAbsolutePosition(), cam);
+            irr::core::position2d<irr::s32> pos;
+            projectNameTag(projView, tag.getAbsolutePosition(), halfW, halfH, pos);
             const irr::s32 ox = pos.X + ((1 - tag.width_) >> 1);
             const irr::s32 oy = pos.Y + ((1 - tag.height_) >> 1);
             // Entirely off the viewport (behind the camera reads -10000): the
@@ -250,7 +400,27 @@ void NameTagBatchNode::render() {
                 if (runTexture && g.texture != runTexture) flushRun();
                 runTexture = g.texture;
                 const irr::s32 x = ox + gp.dx;
-                quads_.push_back({{x, oy, x + g.src.getWidth(), oy + g.src.getHeight()}, g.src, tag.color_});
+                if (!runHasFirst) {
+                    // The run's first quad goes through the driver at the flush
+                    // (it sets the state); record it, skip the buffer entry.
+                    firstDest = irr::core::rect<irr::s32>(x, oy,
+                                                          x + g.src.getWidth(),
+                                                          oy + g.src.getHeight());
+                    firstSrc = g.src;
+                    firstColor = tag.color_;
+                    runHasFirst = true;
+                    continue;
+                }
+                if (compact) {
+                    const irr::core::dimension2d<irr::u32>& ts = runTexture->getOriginalSize();
+                    appendCompactQuad(compactVertices_, compactIndices_, x, oy,
+                                      x + g.src.getWidth(), oy + g.src.getHeight(),
+                                      g.src.UpperLeftCorner.X, g.src.UpperLeftCorner.Y,
+                                      g.src.LowerRightCorner.X, g.src.LowerRightCorner.Y,
+                                      tag.color_, 1.0f / (irr::f32)ts.Width, 1.0f / (irr::f32)ts.Height);
+                } else {
+                    quads_.push_back({{x, oy, x + g.src.getWidth(), oy + g.src.getHeight()}, g.src, tag.color_});
+                }
             }
         }
         flushRun();
