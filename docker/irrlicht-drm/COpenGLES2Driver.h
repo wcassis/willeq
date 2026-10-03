@@ -20,6 +20,7 @@
 
 #include <GLES2/gl2.h>
 #include <unordered_map>
+#include <atomic>
 
 namespace irr
 {
@@ -391,6 +392,16 @@ public:
 
     // Access to detected GLES2 extensions
     const SOGLES2Extensions& getExtensions() const { return extensions_; }
+
+    // B949 (GitLab #267): monotonically increasing driver frame number,
+    // bumped in beginScene() -- i.e. once per rendered frame, on the GL
+    // thread, before any of that frame's binds. COGLES2Texture stamps it
+    // into each texture on every bind (markDrawn()); ConstrainedTextureCache
+    // reads the stamps at frame end to evict least-recently-DRAWN instead of
+    // least-recently-LOADED. Relaxed ordering: single writer, same-thread
+    // readers. u32 wraps after ~136 days at 60 fps, which the ordering
+    // tolerates (it only ever compares stamps from nearby frames).
+    static std::atomic<u32> FrameCounter;
 
     // Viewport
     virtual void setViewPort(const core::rect<s32>& area);

@@ -75,6 +75,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_texture_eviction_character_restore DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B949 (GitLab #267): LRU follows DRAW order, not load order. Drives a real
+# EDT_OGLES2 surfaceless device through beginScene -> draw -> endScene ->
+# endFrame "frames" and asserts that a texture bound every frame survives
+# eviction pressure from loads (and that a no-draw control still evicts in
+# load order, which is what makes the first test discriminating). Self-skips
+# without EGL, exactly like test_texture_eviction_residency above.
+if(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_texture_lru_draw_order
+        test_texture_lru_draw_order.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_texture_lru_draw_order PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_COMPILE_DEFINITIONS(test_texture_lru_draw_order PRIVATE EQT_HAS_TEXTURE_ATLAS)
+    TARGET_LINK_LIBRARIES(test_texture_lru_draw_order GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_texture_lru_draw_order DISCOVERY_TIMEOUT 120)
+endif()
+
 # T123: ObjectNodeTextureGuard regression coverage — a detached object node's
 # node-level Materials copy (what CMeshSceneNode::render() actually reads,
 # ReadOnlyMaterials=false default) must not go dangling after
