@@ -71,6 +71,7 @@ irr::video::SColor EntityRenderer::getConColor(int playerLevel, int entityLevel)
 EntityRenderer::EntityRenderer(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                                irr::io::IFileSystem* fileSystem)
     : smgr_(smgr), driver_(driver), fileSystem_(fileSystem) {
+    buildScheduler_.setLegacy(EntityBuildScheduler::legacyFromEnv());   // B973 A/B
     // Create the race model loader
     raceModelLoader_ = std::make_unique<RaceModelLoader>(smgr, driver, fileSystem);
     // T504b: the render thread never parses an archive -- a model that is not

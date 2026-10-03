@@ -156,8 +156,17 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
         // keep the placeholder, hand the entity to the prep worker and let
         // the build step finish it when the result is promoted -- the same
         // path a late spawn takes. The loader would otherwise parse here.
+        // B973: NOT for a race/gender the loader has proven absent (the prep
+        // worker's negative cache): its prep "completes" in 0 ms with no
+        // model, the build step comes straight back here, and the entity was
+        // deferred again -- forever, taking the nearest-first build slot every
+        // time (measured: 6 Crowd spawns of race 130, 400+ deferrals each in
+        // one x86 run). It falls through to the synchronous build below,
+        // which gives it its placeholder model for good.
+        const uint32_t modelKey = (static_cast<uint32_t>(visual.raceId) << 8) | visual.gender;
         if (visual.usesPlaceholder && visual.sceneNode
-            && !raceModelLoader_->isModelReady(visual.raceId, visual.gender)) {
+            && !raceModelLoader_->isModelReady(visual.raceId, visual.gender)
+            && !raceModelLoader_->isRaceModelKnownMissing(modelKey)) {
             if (!entityPrepWorker_->isPendingForEntity(spawnId)) {
                 EntityPrepWorker::PrepRequest req;
                 req.spawnId = spawnId;

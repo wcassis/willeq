@@ -334,15 +334,31 @@ it without taking that measurement first.
   light ON -- and f0 and f2 are EQUAL to B960's player-light-OFF counts
   (409/54/162), so this is not the player light. Cause not isolated. Measured
   by B967 (`review/B967/pi/gate/gfaydark_after/`, `arm_bin/before_d3375b65`).
-- **B973** (A) → issue #291. Post-load entity builds are Green-gated
+- ~~**B973** (A) → issue #291. Post-load entity builds are Green-gated
   (`FrameComponent::processFrame`, "1 unit per GREEN frame";
   `EntityRenderer::processOneEntityBuildStep`), and the Pi is rarely Green in
   a populated zone: a crowd spawned after zone-in stays placeholder cubes (0 of
   200 GM-spawned NPCs built in 4 min, qeynos2 1280x720; 28 of 200 at
   800x600). A zone reload builds them. Measured by B964
-  (`review/B964/pi/crowd/`).
+  (`review/B964/pi/crowd/`).~~ **FIXED** (MR !72, `refactor/B973/README.md`):
+  the `EntityBuildScheduler` — the first unit always runs in every governor
+  state, further units within the state's slice (Green 20 % / Yellow 12 % /
+  Red 6 % of the target frame), texture uploads their own one-texture units,
+  create folds NodeSetup (B966); Pi new200 182/200 built (legacy 1/200),
+  backlog drained 0.7 s after the last spawn. Follow-ups: #301 (B982),
+  #302 (B983), #303 (B984).
 
 ## B — implemented-but-unreached, and hygiene needing a code change
+
+- **B985** (B) → issue #304. `scripts/pi_rendered_zone_sweep.sh` cannot run
+  from a host whose checkout and `--out` are not NFS-mounted by the Pi: its
+  runner invocation runs `python3 <checkout>/scripts/pi/rendered_zone_run.py` ON
+  THE PI and reads/writes the launcher-local `$CFG`/`$TOUR`/`$dir` by
+  absolute path, so from a non-NFS worker the runner never starts (every row
+  reads "no summary.json (runner never finished)"). Measured by B973's
+  2026-10-03 hermes-ext Pi re-run (the leg worked via a hand-staged copy of
+  the repo's pieces on the Pi). Fix: stage the runner/config/tour on the Pi
+  and rsync the run dir back when the lane is not the local one.
 
 - **B976** (B) → issue #294. In timorous_f2, `--shader-debug 5` shows the
   bottom plane's normal as +Y on llvmpipe and G=0 on Lima, so the player light
@@ -792,11 +808,12 @@ it without taking that measurement first.
   The residual iceclad_f2 band edges are B967, closed with the B967 re-bless
   (MR !74). Follow-ups closed: #285 (B967), #286 (B968), #287 (B969); #288
   (B970) closed separately; the gfaydark Pi residual is #299 (B980).
-- **B966** (A, minor) → issue #284. A newly built entity draws one frame with
+- ~~**B966** (A, minor) → issue #284. A newly built entity draws one frame with
   unpromoted materials (driver built-in Solid3D / AlphaTest3D):
   `SceneNodeCreation` adds the node and `NodeSetup` promotes it a frame later
   (`entity_build_step.cpp`). Measured on the Pi: `a_whiskered_bat` in qeynos2.
-  Found by B960.
+  Found by B960.~~ **FIXED by B973** (MR !72): the create unit runs NodeSetup
+  in the same unit, so the node is never drawn with its raw materials.
 - **B970** (B) → issue #288. CI `build-arm` cannot build the ARM Irrlicht
   layer while downloads.sourceforge.net is down. `docker/Dockerfile.arm-noble`
   wgets the Irrlicht zip and libpng; HTTP 522 for all of B965's session (job
