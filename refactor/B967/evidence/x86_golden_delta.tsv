@@ -1,0 +1,70 @@
+frame	px_gt32	px_gt8	px_any	max_abs	mean_abs	run1_vs_run2_px
+qeynos2_f0	207	14066	89508	58	0.4855	0
+qeynos2_f1	922	17621	108693	69	0.5142	0
+qeynos2_f2	58	21401	74626	41	0.6915	0
+gfaydark_f0	5011	160302	275273	56	4.4315	0
+gfaydark_f1	20491	39983	153651	128	2.3562	0
+gfaydark_f2	10265	65938	141557	126	2.4827	0
+befallen_f0	0	0	94033	8	0.2002	0
+befallen_f1	174	3044	188703	63	0.3388	0
+befallen_f2	0	0	19965	1	0.0151	0
+iceclad_f0	522	16437	93811	49	0.7586	0
+iceclad_f1	80680	110415	213593	89	10.7017	0
+iceclad_f2	7780	95911	249179	50	4.0095	0
+timorous_f0	0	69	187031	11	0.3608	0
+timorous_f1	5	7234	235228	43	0.6730	0
+timorous_f2	21150	75688	273736	98	4.0751	0
+zone	field	old	new
+qeynos2	memory.textureCacheBytesLimit	67108864	53477376
+gfaydark	memory.textureCacheBytesLimit	67108864	53477376
+befallen	memory.textureCacheBytesLimit	67108864	53477376
+iceclad	memory.textureCacheBytesLimit	67108864	53477376
+timorous	memory.textureCacheBytesLimit	67108864	53477376
+zone	total_p50_before	total_p50_after	delta_p50_pct	total_p95_before	total_p95_after	delta_p95_pct	gpu_p50_before	gpu_p50_after	gpu_delta_p50_pct	cpu_p50_before	cpu_p50_after	cpu_delta_p50_pct
+qeynos2	31.92	31.76	-0.5	32.91	32.76	-0.5	16.12	15.81	-1.9	14.96	15.18	+1.5
+gfaydark	34.42	33.91	-1.5	41.24	40.27	-2.3	20.79	20.37	-2.0	9.74	9.64	-1.0
+befallen	24.79	24.73	-0.2	42.29	42.45	+0.4	13.31	12.83	-3.6	12.01	12.10	+0.7
+iceclad	28.05	27.28	-2.8	28.49	27.73	-2.7	14.13	13.54	-4.1	13.86	13.67	-1.3
+timorous	66.60	65.78	-1.2	110.07	135.29	+22.9	24.75	24.16	-2.4	41.86	41.63	-0.6
+variant	surface	pp_instructions	fs_compiles_before_draw
+ship	wall	9	1
+prod	wall	9	1
+prod_nearest	wall	9	1
+prod_highp	wall	9	1
+prod_lut_fp32	wall	None	0
+vs_plv	wall	8	1
+fs_prescaled	wall	10	1
+vs_prescaled	wall	9	1
+prod_clamped	wall	10	1
+prod_saturate	wall	10	1
+fs_prescaled_clamped	wall	12	1
+diag_coord	wall	5	1
+diag_lut_linear_coord	wall	4	1
+diag_lut	wall	5	1
+diag_plv_frac	wall	3	1
+diag_highp	wall	1	1
+ship	floor	9	1
+prod	floor	9	1
+prod_nearest	floor	9	1
+prod_highp	floor	9	1
+prod_lut_fp32	floor	None	0
+vs_plv	floor	8	1
+fs_prescaled	floor	10	1
+vs_prescaled	floor	9	1
+prod_clamped	floor	10	1
+prod_saturate	floor	10	1
+fs_prescaled_clamped	floor	12	1
+diag_coord	floor	5	1
+diag_lut_linear_coord	floor	4	1
+diag_lut	floor	5	1
+diag_plv_frac	floor	3	1
+diag_highp	floor	1	1
+R=336.38
+wall: monotonic excess over a nearer column 1 (tolerance 1) PASS; 1-column rises 220
+wall: vs per-vertex family max |err| 1 (tolerance 2) PASS
+wall: origin 0 vs iceclad f2 pose max |diff| 0 (tolerance 1) PASS
+wall: nonzero columns past R 0 PASS
+floor: monotonic excess over a nearer column 1 (tolerance 1) PASS; 1-column rises 226
+floor: vs per-vertex family max |err| 1 (tolerance 2) PASS
+floor: origin 0 vs iceclad f2 pose max |diff| 0 (tolerance 1) PASS
+floor: nonzero columns past R 0 PASS
