@@ -63,6 +63,47 @@ exactly B978's 26 files (no B949 files, already in fable), and the manifest
 diff is the single in-scope qeynos2 re-pin. Pushed to trigger CI; the gate
 re-verification on the clean CI runner is the remaining x86 check.
 
+## STATE 2026-10-03 (kb-b978, hermes-ext) — Pi re-run ON THE ACTUAL HEAD `e209d3ee`
+
+The REMAINS-7 Pi A/B sweep had been taken on `2590e552` (before the B949
+merge and the re-gate commit `e209d3ee`). Will's "never reconstruct
+evidence" rule means the Pi leg has to be re-taken on the head the MR will
+actually merge, so the sweep was RE-RUN on `e209d3ee` (both sides, VM lane
+`EQEMU_HOST=172.16.200.99`, owner `kb-b978`, `mesa=nollvm:ok` on every row,
+snapshot restored byte-identically, both locks released). Evidence:
+`~/kb-evidence/b978-owned-gpu-texmem/pi/e209d3ee_zones_{a,b}/` (side A =
+`--env WILLEQ_TEXTURE_MEMORY_BYTES=53477376`, side B = plain 21 MiB preset).
+
+| zone     | side    | verdict | fps med/min | TMU used/budget | evict/rest/restorefail/pinned | owned_rss_anon | gpu_buffers (net) | owned | owned − 64 MiB |
+|---|---|---|---|---|---|---|---|---|---|
+| qeynos2  | A 51 MiB | pass | 30/10 | 14.6 / 51.0 MB | 0 / 0 / 0 / 0 | 48.21 MiB | 27.68 MiB | 75.89 MiB | +11.89 |
+| qeynos2  | B 21 MiB | pass | 30/10 | 14.6 / 21.0 MB | 0 / 0 / 0 / 0 | 45.14 MiB | 27.64 MiB | 72.78 MiB | +8.78 |
+| gfaydark | A 51 MiB | pass | 30/10 | 11.3 / 51.0 MB | 0 / 0 / 0 / 0 | 53.97 MiB | 24.72 MiB | 78.68 MiB | +14.68 |
+| gfaydark | B 21 MiB | pass | 30/10 | 11.4 / 21.0 MB | 0 / 0 / 0 / 0 | 61.57 MiB | 25.77 MiB | 87.34 MiB | +23.34 |
+
+- **The 51 → 21 MiB ceiling is a NO-OP on both zones, re-confirmed on the
+  actual head**: steady TMU 14.6 / 11.3–11.4 MiB is under BOTH ceilings, so
+  0 evictions / 0 restores / 0 restore-failures / 0 pinned on every row
+  (the unloadZone line reports 0/0/0/0 as well). `owned` (the "1) yes"
+  target figure, RssAnon − gpu_driver + gpu_buffers) is ~equal across the
+  ceiling (qeynos2 72.8 vs 75.9 MiB; gfaydark 87.3 vs 78.7 MiB) — the A-vs-B
+  spread is the 2 s RssAnon sample variance on the Pi, not the ceiling.
+- **>33 ms hitches**: the slow frames (5–7 per row) are ALL in the first
+  ~15 s after zone ready (the zone-mesh-load phase: the `SPIKE:
+  meshLoading` lines, 444–517 ms, sit at the same timestamps; the >1 s
+  frames cluster ts 6–11 s after ready on every row and are identical in
+  character on the prior `2590e552` runs, whose 1.5–2.3 s spikes drove that
+  run's retries). The steady sampling window (fps median 30, min 10) has no
+  hitches; A vs B agree.
+- **The ONE remaining placeholder WARN is a pre-existing MODEL-CONTENT gap,
+  not a texture-cache one**: gfaydark has 1 WARN
+  (`RaceModelLoader::preloadModelData: race=89 gender=2 has no model in any
+  S3D archive` → entity `a_forest_drakeling*` renders as a placeholder cube).
+  It is byte-identical on the prior `2590e552` runs (both sides) and on
+  `e209d3ee` (both sides), qeynos2 is clean, and it is unrelated to the
+  texture cache, the ceiling, or B949. Texture-cache placeholder / pinned /
+  restore-fail WARNs: **0 on all four rows**.
+
 ## STATE 2026-10-03 (kb-b978, hermes-ext) — built, tested, gated
 
 `origin/fable` (55c9ac0c; B967 !74 merged, so the gate's goldens are the
@@ -235,7 +276,10 @@ re-bless.
    — the summarizer's blank-frame check needs PIL; the original B rows were
    `render_unproven` only for the missing PIL, frames dumped fine), `mesa=
    nollvm:ok`, frames 3/3, `snapshot restored BYTE-IDENTICALLY`, both locks
-   released.
+   released. **Re-run on the actual MR head `e209d3ee`** (post-B949-merge;
+   see the "Pi re-run ON THE ACTUAL HEAD" section above — owned table,
+   hitches, and the no-op ceiling finding all re-confirmed there; the
+   `2590e552` table below is retained as history):
 
    | zone     | side | verdict | fps_med | TMU used/budget | evict/rest/restorefail/pinned | owned_steady | owned−64 | frame p95 |
    |---|---|---|---|---|---|---|---|---|
