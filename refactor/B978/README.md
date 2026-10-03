@@ -385,4 +385,4 @@ these were previously flagged only inline / via REMAINS.
 3. **The two CLAUDE.md doc strikes (REMAINS 9).** The root `CLAUDE.md`
    memory-accounting bullets and the `src/client/graphics/CLAUDE.md` B955
    paragraph still carried the pre-B978 owned figure when this README was
-   written: the hermes dev-profile agent-instruction-file write guard (CLAUDE.md, always-ask, no human channel on a headless lane) refused the strike on cards t_865e6d7b and the solo-orchestrator's own lane (2026-10-03). **RESOLVED by `af00ea98`**, the codex-profile doc-strike commit on this branch.**
+   written: the hermes dev-profile agent-instruction-file write guard (CLAUDE.md, always-ask, no human channel on a headless lane) refused the strike on cards t_865e6d7b and the solo-orchestrator's own lane (2026-10-03). **RESOLVED by `8463e0c4`**, the codex-profile doc-strike commit on this branch.**
