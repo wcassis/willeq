@@ -198,3 +198,47 @@ TEST(RegionOccluders, BothZoneLoadersUseTheSharedSelection) {
             << rel << " builds occluders by hand again -- call SelectRegionOccluders()";
     }
 }
+
+// B923 / #242: the shared structure takes ONE category, the same in the
+// client and the benchmark. The table is built by SelectRegionOccluders() and
+// sunk into SoftwareOcclusionCuller in both loaders, so both charge it to the
+// SAME ledger category: spatial. The benchmark's Step 10 runs under its
+// Spatial scope (sp.occ_culler / sp.occluder_sets); the client's Step 4 opens
+// the temporary Spatial scope for the same work. B909 had charged the client's
+// copy to zone_mesh (zm.occluders, Step 4's scope), which split the same
+// bytes across two categories -- the client's zone_mesh at 50-80 % of its
+// budget on bytes the gate never measures, while its spatial was asserted
+// against a benchmark that does not build the client's spatial owners.
+// Moving the shared structure to the gate-asserted category (spatial) is the
+// fix: the gate sees the benchmark's, ClientLedgerLive sees the client's, and
+// both read the same bucket.
+TEST(RegionOccludersCensus, BothLoadersChargeTheOccluderTableToSpatial) {
+    const std::string client =
+        readSource("src/client/graphics/zone_load/renderer_zone_load.cpp");
+    ASSERT_FALSE(client.empty());
+    // The charge opens inside a Spatial scope, labelled sp.occluders.
+    const size_t occ = client.find("SelectRegionOccluders(");
+    ASSERT_NE(occ, std::string::npos);
+    const size_t scope = client.rfind("Category::Spatial", occ);
+    EXPECT_NE(scope, std::string::npos)
+        << "the client charges the occluder table outside a Spatial scope";
+    EXPECT_NE(client.find("sp.occluders"), std::string::npos)
+        << "the client's occluder charge lost its sp.* owner label";
+    // And it is NOT charged to zone_mesh any more (B909's zm.occluders).
+    EXPECT_EQ(client.find("zm.occluders"), std::string::npos)
+        << "the client charges the shared occluder table to zone_mesh again";
+
+    const std::string bench = readSource("tools/hwcaps/zone_bench_loader.cpp");
+    ASSERT_FALSE(bench.empty());
+    // The benchmark's Step 10 runs under its Spatial scope, labelled
+    // sp.occ_culler / sp.occluder_sets -- the same category the client now
+    // uses. Neither loader charges the shared table to a category the other
+    // does not use.
+    const size_t bs = bench.rfind("Category::Spatial",
+                                  bench.find("SelectRegionOccluders("));
+    EXPECT_NE(bs, std::string::npos)
+        << "the benchmark builds the occluder table outside its Spatial scope";
+    EXPECT_NE(bench.find("sp.occ_culler"), std::string::npos);
+    EXPECT_EQ(bench.find("zm.occluders"), std::string::npos)
+        << "the benchmark charges the shared occluder table to zone_mesh";
+}

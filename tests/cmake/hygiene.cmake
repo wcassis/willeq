@@ -243,6 +243,20 @@ SET_TESTS_PROPERTIES(ItemModelMapDeletion PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME VisualGateLedgerAssertions
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_visual_gate_ledger.py)
 SET_TESTS_PROPERTIES(VisualGateLedgerAssertions PROPERTIES LABELS "hygiene")
+
+# B923 / #242: the repeatable budget check for a CLIENT-ledger capture.
+# `scripts/client_ledger_table.py check` asserts every budgeted
+# memoryLedgerBudgets category of a client_ledger_capture.sh evidence dir at
+# ready and steady_60s -- including the client-only owners the gate's
+# benchmark never builds (B923's whole point: the gate sees the benchmark,
+# not the client). This ctest pins that contract with no server, no display
+# and no binary: a capture-shaped fixture in the client's own log-line format,
+# driven through `check` for the three exit codes (0 in-budget / 1 a
+# client-only category over budget / 3 a run without steady_60s). Same
+# pure-python shape as VisualGateLedgerAssertions above.
+ADD_TEST(NAME ClientLedgerBudgetCheck
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_client_ledger_check.py)
+SET_TESTS_PROPERTIES(ClientLedgerBudgetCheck PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME MemoryCapHuntScript
     COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/ci/test_memory_cap_hunt.sh)
 SET_TESTS_PROPERTIES(MemoryCapHuntScript PROPERTIES LABELS "hygiene" SKIP_RETURN_CODE 125)
