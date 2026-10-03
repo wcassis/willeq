@@ -364,3 +364,31 @@ re-bless.
     only local failure is the documented iceclad p95 CPU flake).** Left:
     the CLAUDE.md doc-freshness gap (flagged in the MR), `glab mr update 76
     --ready` + `Closes #296` + #296 -> `status::review`.
+
+## Not verified
+
+Collected under the review-card heading (re-review `t_c534c8d5`, finding 3);
+these were previously flagged only inline / via REMAINS.
+
+1. **Local ARM compile — CI `build-arm` only (REMAINS 6).** No ARM toolchain
+   or docker on this host, so the ARM build of this branch was never compiled
+   locally; the only ARM compile is CI's `build-arm` job publishing
+   `ci-arm/<sha>/` (pipeline 465 at `2590e552`, and again at the `e209d3ee`
+   head the Pi leg ran on — code-identical to `83c7dde8`, whose delta is
+   docs-only).
+2. **qeynos2 `textureCount` = 126: entry count vs resident count unverified
+   (the flag at line 218 above).** B944 printed "entries 126, resident 62" at
+   the 20 MiB ceiling; at the shipped 21 MiB ceiling the gate's
+   `[texture-cache]` counters read entries 126 / resident 65 (REMAINS 5).
+   Which of the two the manifest's `textureCount` field is has not been
+   pinned.
+3. **The two CLAUDE.md doc strikes (REMAINS 9).** The root `CLAUDE.md`
+   memory-accounting bullets and the `src/client/graphics/CLAUDE.md` B955
+   paragraph still carried the pre-B978 owned figure when this README was
+   written: the agent-instruction-file write guard refused the dev worker's
+   strike on this headless lane (approval prompt timed out with no user
+   response; 2026-10-03, kanban `t_865e6d7b`), and the card's own rule
+   forbids a heredoc-echo route around it. **RESOLVED by the orchestrator's
+   follow-up doc-strike commit on `task/B978-owned-gpu-buffers-texmem`
+   (post-`83c7dde8`), which lands the strike; this line should then read
+   "RESOLVED by <sha>" once that commit is in.**

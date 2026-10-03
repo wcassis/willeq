@@ -284,8 +284,11 @@ it without taking that measurement first.
   **FIXED by B955** (`task/B955-gpu-buffer-ledger`, closes on merge): the
   `gpu_buffers` row (`include/client/core/gpu_buffer_census.h`, the `[memgpu]`
   line, `gpuBuffers` in the JSON) reads the client's GEM pages from its own
-  memory cgroup (the Pi rigs launch it in one); `owned_plus_gpu_buffers` is
-  printed beside `owned` for Will's ruling, asserted nowhere. Pi
+  memory cgroup (the Pi rigs launch it in one). B978 folded the row into the
+  64 MB target: `owned` = RssAnon − gpu_driver + gpu_buffers (added only when
+  the row is OUTSIDE RssAnon), and the `[memgpu]` line now ends
+  `owned_rss_anon=<RssAnon-gpu_driver> owned=<B>` (the separate
+  `owned_plus_gpu_buffers=` field is gone, its absence pinned by the tests). Pi
   `steady_60s`: qeynos2 36.98 / gfaydark 35.77 / growthplane 25.12 MiB; the
   impostor proof sees +15.35 MiB for B952's 200 at 128. `refactor/B955/README.md`.
 - **B961** (A) → issue #279. The scanout framebuffers (CMA on the display
