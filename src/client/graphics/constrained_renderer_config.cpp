@@ -275,19 +275,23 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // 1280x720 request to 1072x720.
             // The budget is NOT raised to cover the 32-bit case -- 16-bit is the
             // shipped configuration and Mali 400 has no reason to want 32.
-            // B943 (2026-09-30, Will: "lower the seven budgets, hold audio"):
-            // 64 -> 51 MiB. Measured worst textureCacheBytesUsed: 42,226,984 B
-            // (the gate's qeynos2 golden invocation, S3D path; the 118-zone
-            // EQE1-path census tops out at 16,250,840 qeynos) x 1.25 = 50.34
-            // MiB -> 51 MiB (refactor/B943/README.md). This is ALSO the
-            // cache's real eviction ceiling (ConstrainedTextureCache), not
-            // only an asserted budget: 20 MiB, the EQE1 census figure, makes
-            // that qeynos2 run segfault (B944).
+            // textureMemoryBytes is the texture cache's real EVICTION
+            // ceiling (ConstrainedTextureCache) and also the gate's
+            // textureCacheBytesUsed budget (textureCacheBytesLimit).
+            // B943 (2026-09-30): 64 -> 51 MiB, sized on the gate's S3D-path
+            // qeynos2 run because a 20 MiB ceiling then segfaulted (B944).
+            // B978 (2026-10-01, Will: "3) bless"): 51 -> 21 MiB, now that
+            // eviction keeps the object and restores on bind (B944/B947). By
+            // the in-tree rule on the SHIPPED EQE1 path: the 117-zone census
+            // worst is gpuTextureBytes 16,797,104 B (qeynos; its
+            // textureCacheBytesUsed is 16,250,840) x 1.25 = 20,996,380 B ->
+            // 21 MiB (refactor/B978/README.md). The S3D-path gate run (qeynos2
+            // holds 42 MB) now evicts under it -- intended.
             // P32: renderer-independent preset (see Voodoo1 comment above) —
             // GLES2 is the only backend, no #ifdef needed.
             config.useDRM = true;
             config.framebufferMemoryBytes = 10 * 1024 * 1024;  // 10MB
-            config.textureMemoryBytes = 51 * 1024 * 1024;      // 51MB
+            config.textureMemoryBytes = 21 * 1024 * 1024;      // 21MB (B978)
             config.colorDepthBits = 16;
             config.maxTextureDimension = 512;
             // Render distance and geometry budgets

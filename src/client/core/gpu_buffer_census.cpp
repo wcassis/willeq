@@ -311,7 +311,7 @@ GpuBufferCensus readGpuBufferCensus() {
 }
 
 std::string gpuBuffersToLogLine(const std::string& point, const std::string& zone,
-                                const GpuBufferCensus& c, uint64_t ownedBytes) {
+                                const GpuBufferCensus& c, uint64_t ownedRssAnonBytes) {
     std::string out = "[memgpu] point=" + point + " zone=" + (zone.empty() ? "-" : zone);
     appendKV(out, "gpu_buffers", c.gpuBuffersBytes);
     out += " source=";
@@ -329,13 +329,14 @@ std::string gpuBuffersToLogLine(const std::string& point, const std::string& zon
     appendKV(out, "drm_fds", c.in.drmFds);
     appendKV(out, "fdinfo_total", c.in.fdinfoTotalBytes);
     appendKV(out, "fdinfo_resident", c.in.fdinfoResidentBytes);
-    appendKV(out, "owned", ownedBytes);
-    appendKV(out, "owned_plus_gpu_buffers", ownedPlusGpuBuffers(ownedBytes, c));
+    // B978: owned = RssAnon - gpu_driver + gpu_buffers (outside RssAnon only).
+    appendKV(out, "owned_rss_anon", ownedRssAnonBytes);
+    appendKV(out, "owned", ownedPlusGpuBuffers(ownedRssAnonBytes, c));
     appendKV(out, "logical_depth_stencil", c.in.logicalDepthStencilBytes);  // B962
     return out;
 }
 
-std::string gpuBuffersToJson(const GpuBufferCensus& c, uint64_t ownedBytes) {
+std::string gpuBuffersToJson(const GpuBufferCensus& c, uint64_t ownedRssAnonBytes) {
     std::string out = "{";
     out += "\"gpuBuffersBytes\":" + std::to_string(c.gpuBuffersBytes);
     out += ",\"source\":\"" + std::string(gpuBufferSourceName(c.source)) + "\"";
@@ -353,7 +354,8 @@ std::string gpuBuffersToJson(const GpuBufferCensus& c, uint64_t ownedBytes) {
     out += ",\"drmFds\":" + std::to_string(c.in.drmFds);
     out += ",\"fdinfoTotalBytes\":" + std::to_string(c.in.fdinfoTotalBytes);
     out += ",\"fdinfoResidentBytes\":" + std::to_string(c.in.fdinfoResidentBytes);
-    out += ",\"ownedPlusGpuBuffersBytes\":" + std::to_string(ownedPlusGpuBuffers(ownedBytes, c));
+    out += ",\"ownedRssAnonBytes\":" + std::to_string(ownedRssAnonBytes);
+    out += ",\"ownedBytes\":" + std::to_string(ownedPlusGpuBuffers(ownedRssAnonBytes, c));
     out += "}";
     return out;
 }

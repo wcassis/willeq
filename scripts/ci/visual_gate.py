@@ -102,6 +102,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import owned_memory  # noqa: E402  B978: the one owned-memory definition
+
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 GOLDENS_DIR = PROJECT_DIR / "tests" / "goldens"
 MANIFEST_PATH = GOLDENS_DIR / "manifest.json"
@@ -704,10 +707,13 @@ def report_mapping_owners(label_prefix, mappings):
               f"{o.get('sizeBytes', 0) / 1048576:.1f} MiB mapped)")
 
 
-def owned_bytes(rss_anon, gpu_driver):
-    """B933: willeq-owned memory, the figure the 64 MB target is read against.
-    Mirrors eqt::memory::finishTargetGap (clamped at 0)."""
-    return max(0, rss_anon - gpu_driver)
+def owned_bytes(rss_anon, gpu_driver, gpu_buffers=0, gpu_buffers_outside=False):
+    """B933 + B978: willeq-owned memory, the figure the 64 MB target is read
+    against -- owned = RssAnon - gpu_driver + gpu_buffers, the buffers added
+    only when they live outside RssAnon (the Pi's Lima GEM; on llvmpipe they
+    are inside gpu_driver already). Mirrors eqt::memory::finishTargetGap; the
+    one Python definition is scripts/ci/owned_memory.py."""
+    return owned_memory.owned(rss_anon, gpu_driver, gpu_buffers, gpu_buffers_outside)
 
 
 def report_rss_target_gap(label_prefix, ledger, failures):
@@ -724,12 +730,17 @@ def report_rss_target_gap(label_prefix, ledger, failures):
     rss_anon = ledger.get("rssAnonBytes", 0)
     if not rss_anon:
         return
-    # B933 (Will, 2026-09-29: "64 MB excludes driver memory"): the target is
-    # judged on willeq-OWNED memory, RssAnon - gpu_driver. Taken from the
-    # categories here, not from the JSON's overTargetBytes, so a benchmark
-    # built before B933 prints the same figure. The ceiling stays on RssAnon.
+    # B933 (Will, 2026-09-29: "64 MB excludes driver memory") + B978 (Will,
+    # 2026-10-01: GPU buffers count): the target is judged on willeq-OWNED
+    # memory, RssAnon - gpu_driver + gpu_buffers (outside RssAnon only). Taken
+    # from the components here, not from the JSON's overTargetBytes, so a
+    # benchmark built before B978 prints the same figure. The ceiling stays on
+    # RssAnon.
     gpu_driver = ledger.get("categories", {}).get("gpu_driver", {}).get("live", 0)
-    owned = owned_bytes(rss_anon, gpu_driver)
+    owned, owned_anon, gpu_added, gpu_outside = owned_memory.owned_from_ledger_json(ledger)
+    gpu_buffers = ledger.get("gpuBuffersBytes", 0)
+    gpu_note = (f"gpu_buffers {gpu_buffers / 1048576:.1f} outside RssAnon, added" if gpu_outside
+                else f"gpu_buffers {gpu_buffers / 1048576:.1f} inside gpu_driver, not added again")
     ceiling = ledger.get("rssCeilingBytes", RSS_CEILING_BYTES)
     target = ledger.get("rssTargetBytes", RSS_TARGET_BYTES)
     if rss_anon > ceiling:
@@ -741,15 +752,18 @@ def report_rss_target_gap(label_prefix, ledger, failures):
     buckets.append((ledger.get("heapUnchargedBytes", 0), "heap_uncharged"))
     buckets.append((ledger.get("mallocSlackBytes", 0), "malloc_slack"))
     buckets.append((ledger.get("unaccountedBytes", 0), "unaccounted"))
+    if gpu_added:
+        buckets.append((gpu_added, "gpu_buffers"))
     buckets = sorted(((b, n) for b, n in buckets if b and n != "gpu_driver"), reverse=True)
+    label = owned_memory.OWNED_LABEL
     if owned <= target:
-        print(f"  [rss-target] {label_prefix}: owned (RssAnon-gpu_driver) {owned / 1048576:.1f} MiB "
-              f"(RssAnon {rss_anon / 1048576:.1f}, gpu_driver {gpu_driver / 1048576:.1f}) is "
-              f"WITHIN the {target / 1048576:.0f} MiB target")
+        print(f"  [rss-target] {label_prefix}: {label} {owned / 1048576:.1f} MiB "
+              f"(RssAnon {rss_anon / 1048576:.1f}, gpu_driver {gpu_driver / 1048576:.1f}, "
+              f"{gpu_note}) is WITHIN the {target / 1048576:.0f} MiB target")
         return
     gap = owned - target
-    print(f"  [rss-target] {label_prefix}: owned (RssAnon-gpu_driver) {owned / 1048576:.1f} MiB "
-          f"(RssAnon {rss_anon / 1048576:.1f}, gpu_driver {gpu_driver / 1048576:.1f}), "
+    print(f"  [rss-target] {label_prefix}: {label} {owned / 1048576:.1f} MiB "
+          f"(RssAnon {rss_anon / 1048576:.1f}, gpu_driver {gpu_driver / 1048576:.1f}, {gpu_note}), "
           f"target {target / 1048576:.0f} MiB, must shrink {gap / 1048576:.1f} MiB of owned memory "
           f"(whole-RssAnon gap {max(0, rss_anon - target) / 1048576:.1f} MiB, driver included); "
           f"ceiling {ceiling / 1048576:.0f} MiB on whole RssAnon "

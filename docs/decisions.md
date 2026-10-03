@@ -1423,7 +1423,8 @@ bound and 64 MB stays printed, not asserted.
 **Implemented by B933 (#251).** Every printed gap now uses this figure and says
 so: `over_target=` / `overTargetBytes` / `gapToTarget` / `visual_gate.py`'s
 `[rss-target]` line / the Pi rig's `owned_peak` and `over_64MB_owned_peak`
-columns are on `owned=RssAnon-gpu_driver`; `over_target_rss_anon=` is the old
+columns were on `owned=RssAnon-gpu_driver` (superseded as the target figure
+by B978, 2026-10-01: `owned=RssAnon-gpu_driver+gpu_buffers`); `over_target_rss_anon=` is the old
 whole-RssAnon figure; `gpu_driver` is printed as its own row marked EXCLUDED.
 The driver .so COW pages are decided to stay on the owned side (they are not in
 `gpu_driver`, and B932 reports them per library). The 256 MB failing bound is
@@ -1566,3 +1567,52 @@ frame before/after counts, the Pi proof and the frame time:
 over the light's range R (where it falls to 1/255, the P07d demotion
 threshold), exactly 0 from R on. The FS reads no world coordinate. Pinned by
 `test_player_light_lut` and `PlayerLightProbeMonotonic`.
+
+## 2026-10-01 — GPU buffers count toward the 64 MB target (Will; B978)
+
+**Will, in chat: "1) yes"** to the question "does gpu_buffers count toward the
+64 MB target". On the Orange Pi, where every texture/VBO/render target is a
+Lima GEM object outside RssAnon (B955), the target figure of the
+2026-09-17/2026-09-29 entries is now **owned = RssAnon − gpu_driver +
+gpu_buffers** (label `owned=RssAnon-gpu_driver+gpu_buffers`): gpu_buffers is
+added back only when it is outside RssAnon — on x86/llvmpipe the buffers are
+heap already inside `gpu_driver`, so nothing is double-counted. The 256 MB
+failing bound stays on whole RssAnon; the `gpu_driver` exclusion stands.
+Implemented by B978 (`refactor/B978/README.md`, #296): `Snapshot::ownedBytes`
+is the target figure, `Snapshot::ownedRssAnonBytes` (RssAnon − gpu_driver) is
+its first component, and `ownedPlusGpuBuffersBytes` is removed (it equals
+`ownedBytes` now); `scripts/ci/owned_memory.py` is the one Python definition
+behind `visual_gate.py`'s `[rss-target]` line and the Pi summarizers. The
+2026-09-29 B933 entry's `owned=RssAnon-gpu_driver` reading is superseded by
+this figure.
+
+## 2026-10-01 — textureMemoryBytes 51 -> 21 MiB (Will, "3) bless"; B978)
+
+**Will, in chat: "3) bless"** — ratchet the orangepi preset's
+`textureMemoryBytes` (the texture cache's real EVICTION ceiling, 51 MiB since
+B943's 2026-09-30) by the in-tree rule (measured worst x 1.25, whole MiB) on
+the shipped EQE1 path:
+
+| input | value |
+|---|---|
+| 117-zone census, EQE1 path (`refactor/B927/category_census.tsv`) | worst `estimate:gpuTextureBytes` 16,797,104 B (qeynos); worst `estimate:textureCacheBytesUsed` 16,250,840 B (qeynos) |
+| larger of the two | 16,797,104 B |
+| x 1.25 | 20,996,380 B |
+| rounded up to a whole MiB | **21 MiB = 22,020,096 B** |
+
+(B943's first derivation landed on 20/21 MiB too and was overridden because
+the ceiling then still destroyed on eviction; B944/B947 made an evicted
+texture restore on bind, so the lower ceiling is safe — B944 measured the
+gate's qeynos2 run pixel-identical at a 20 MiB ceiling.)
+
+`textureMemoryBytes` is also the gate's `textureCacheBytesUsed` budget knob
+(`textureCacheBytesLimit` = `getMemoryLimit()`, `tools/hwcaps/zone_bench_memory.cpp:134`):
+the S3D-path qeynos2 gate run held 42,226,984 B at the 51 MiB ceiling, so the
+blessed `textureCacheBytesUsed` for that one zone moves down with the ceiling
+(21,932,691 B, measured by B978's gate run; `textureCount` stays 126 — it is
+the entry count, resident 65 of it). That single field's re-pin is part of
+this ruling ("3) bless" covers the consequential move, and the value goes
+down); nothing else in `tests/goldens/` moves. The other four gate zones
+(gfaydark 11.2 MB, befallen 2.9 MB, iceclad 3.9 MB, timorous 3.2 MB) sit under
+21 MiB and are untouched. Pi proof (qeynos2 + gfaydark, 0 placeholder /
+pinned / restore-fail WARNs, owned per zone): `refactor/B978/README.md`.

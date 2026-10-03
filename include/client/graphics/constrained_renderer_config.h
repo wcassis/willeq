@@ -132,7 +132,10 @@ struct ConstrainedRendererConfig {
     // textureCacheBytesUsed 42,226,984 B x 1.25 = 50.34 MiB -> 51 MiB, both
     // the gate's qeynos2 golden invocation (S3D path; the EQE1-path census
     // tops out at 16.8 / 16.3 MB). Read refactor/B943/README.md; the
-    // two-feeder argument above is the T293 history.
+    // two-feeder argument above is the T293 history. B978 (2026-10-01, Will:
+    // "3) bless") lowered textureMemoryBytes, the cache's EVICTION ceiling,
+    // to 21 MiB (EQE1-path census worst 16,797,104 B x 1.25); this budget was
+    // not changed and the two are different knobs.
     size_t gpuTextureMemoryBytes = 0;
 
     // Zone region/single-mesh vertex+index bytes held CPU-side.

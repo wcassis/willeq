@@ -118,16 +118,22 @@ reason at the top of this file. Cut narrative before you cut a rule.
   .so file pages are outside it too, but every driver byte is still reported
   as its own row. The 256 MB envelope on `RssAnon` stays the FAILING bound in
   CI; 64 MB is printed, never asserted, with the gap broken down by bucket
-  (`eqt::memory::gapToTarget`), taken on **owned = RssAnon − gpu_driver**
-  (label `owned=RssAnon-gpu_driver`; `over_target` on the `[memledger]` line,
+  (`eqt::memory::gapToTarget`), taken on **owned = RssAnon − gpu_driver +
+  gpu_buffers** (label `owned=RssAnon-gpu_driver+gpu_buffers`; the
+  `gpu_buffers` row is added only when the `[memgpu]` row is OUTSIDE
+  RssAnon; `over_target` on the `[memledger]` line,
   `over_target_rss_anon` is the whole-RssAnon figure; `gpu_driver` is listed
   as EXCLUDED, never a shrink bucket; the driver .so COW pages stay on the
-  owned side; B933). **Memory first, frame rate second** (Will,
+  owned side; B978 2026-10-01 superseded B933's figure). **Memory first,
+  frame rate second** (Will,
   2026-09-29). The original client ran these assets in 32 MB total.
 - **GPU buffers are outside RssAnon on the Pi** (Lima GEM/shmem, B955): the
   `gpu_buffers` row (`[memgpu]`, `include/client/core/gpu_buffer_census.h`)
   sees them only when the client runs in its own cgroup (the Pi rigs do).
-  `owned_plus_gpu_buffers` is printed beside `owned`, never asserted.
+  B978 (2026-10-01) counts that row toward the 64 MB target when it is
+  outside RssAnon; the `[memgpu]` line ends `owned_rss_anon=<RssAnon-gpu_driver>
+  owned=<target figure>`; the old `owned_plus_gpu_buffers` field was removed
+  by B978 and its absence is pinned by the tests.
 - **Development may be done on x86, but the final numbers are required on BOTH
   platforms**, and a shrink unit is planned off the Orange Pi's own ledger
   output, not the x86 one — the two queues disagree by more than an order of

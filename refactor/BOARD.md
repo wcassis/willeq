@@ -284,8 +284,11 @@ it without taking that measurement first.
   **FIXED by B955** (`task/B955-gpu-buffer-ledger`, closes on merge): the
   `gpu_buffers` row (`include/client/core/gpu_buffer_census.h`, the `[memgpu]`
   line, `gpuBuffers` in the JSON) reads the client's GEM pages from its own
-  memory cgroup (the Pi rigs launch it in one); `owned_plus_gpu_buffers` is
-  printed beside `owned` for Will's ruling, asserted nowhere. Pi
+  memory cgroup (the Pi rigs launch it in one). B978 folded the row into the
+  64 MB target: `owned` = RssAnon − gpu_driver + gpu_buffers (added only when
+  the row is OUTSIDE RssAnon), and the `[memgpu]` line now ends
+  `owned_rss_anon=<RssAnon-gpu_driver> owned=<B>` (the separate
+  `owned_plus_gpu_buffers=` field is gone, its absence pinned by the tests). Pi
   `steady_60s`: qeynos2 36.98 / gfaydark 35.77 / growthplane 25.12 MiB; the
   impostor proof sees +15.35 MiB for B952's 200 at 128. `refactor/B955/README.md`.
 - **B961** (A) → issue #279. The scanout framebuffers (CMA on the display
@@ -1107,7 +1110,10 @@ it without taking that measurement first.
   held at 32 MiB** on Will's word: its only Pi figure (25.7 MB) is a 2026-09-17
   qeynos2 reading that predates T504, and the rendered sweep had no classic
   zone. `textureMemoryBytes` is the real cache eviction ceiling, so that one is
-  a behaviour change; Pi behaviour under 51 MiB is unverified.
+  a behaviour change; Pi behaviour under 51 MiB was unverified here and is
+  verified by B978 (51 -> 21 MiB, #296): 0 placeholder / pinned / restore-fail
+  WARNs on Pi qeynos2 + gfaydark, the gate's qeynos2 run pixel-identical at a
+  20 MiB ceiling (B944) and 21 MiB (B978's local gate run).
 
 - ~~**B927** (B) Two of Will's 2026-09-29 rulings had not been applied: "bless
   iceclad and timorous" and "ratchet the zone_parse budget down".~~ **DONE

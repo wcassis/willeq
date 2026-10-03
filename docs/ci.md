@@ -203,12 +203,21 @@ The table is in `config/constrained_presets.json` and pinned in
 `tests/test_constrained_renderer.cpp`; do not copy the numbers here.
 
 B955 (2026-10-01) added the `gpu_buffers` row to the memory JSON's `ledger`
-object: `gpuBuffersBytes`, `ownedPlusGpuBuffersBytes` and a `gpuBuffers`
-object with the row's source and inputs (`include/client/core/gpu_buffer_census.h`).
-On the gate's llvmpipe the source is `logical_in_gpu_driver` -- the buffers are
-heap already inside `gpu_driver`, so `ownedPlusGpuBuffersBytes` equals
-`ownedBytes`. **Nothing asserts any of it**: the row exists for the Orange Pi,
-where it is the only figure that sees Lima's GEM buffers.
+object: `gpuBuffersBytes` and a `gpuBuffers` object with the row's source and
+inputs (`include/client/core/gpu_buffer_census.h`), beside `ownedRssAnonBytes`
+(RssAnon − gpu_driver) and `ownedBytes`. Since B978 (2026-10-01, Will "1) yes")
+**`ownedBytes` is the 64 MB target figure**: RssAnon − gpu_driver with
+`gpu_buffers` added back when the row is OUTSIDE RssAnon
+(`gpu_buffers_outside_rss_anon`). On the gate's llvmpipe the source is
+`logical_in_gpu_driver` -- the buffers are heap already inside `gpu_driver`, so
+nothing is added again (no double count) and `ownedBytes` equals
+`ownedRssAnonBytes`; on the Orange Pi the row is outside RssAnon and counts.
+The `ownedPlusGpuBuffersBytes` field B955 shipped was removed by B978 (it equals
+`ownedBytes` now). **Nothing asserts the target**: the 256 MB bound stays the
+failing one, on whole RssAnon; the row exists for the Orange Pi, where it is
+the only figure that sees Lima's GEM buffers. `scripts/ci/owned_memory.py` is
+the one Python definition of these figures, behind the `[rss-target]` line and
+the Pi summarizers.
 
 ## Reading a pipeline (worker or human)
 
