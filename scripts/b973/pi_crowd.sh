@@ -20,6 +20,7 @@ OUT=""
 RES="1280 720"
 BUILD_S=120
 EXTRA=()
+SWEEP_EXTRA=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --zone) ZONE="$2"; shift 2 ;;
@@ -29,6 +30,9 @@ while [ $# -gt 0 ]; do
         -r) RES="$2"; shift 2 ;;
         --build) BUILD_S="$2"; shift 2 ;;
         --env) EXTRA+=( --env "$2" ); shift 2 ;;
+        # hermes-ext lane (no local eqemu stack): forward to the sweep rig,
+        # which then requires EQEMU_HOST to name the VM.
+        --allow-vm-lane) SWEEP_EXTRA+=( --allow-vm-lane ); shift ;;
         *) echo "unknown option $1" >&2; exit 3 ;;
     esac
 done
@@ -60,7 +64,7 @@ for variant in ${VARIANTS//,/ }; do
     echo "[b973 pi_crowd] $ZONE/$variant -> $dir"
     bash "$REPO/scripts/pi_rendered_zone_sweep.sh" --zones "$ZONE" --out "$dir" --pi-dir "$PI_DIR" \
         -r "$RES" --tour "$dir/tour.txt" --cap "$cap" --stall 240 --no-retry --owner b973 \
-        --stop-point never "${envs[@]}" > "$dir/sweep.out" 2>&1
+        --stop-point never "${SWEEP_EXTRA[@]}" "${envs[@]}" > "$dir/sweep.out" 2>&1
     rc=$?
     echo "[b973 pi_crowd] $ZONE/$variant rc=$rc"
     [ "$rc" -eq 0 ] || rc_all=1
