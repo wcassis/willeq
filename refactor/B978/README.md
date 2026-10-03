@@ -28,9 +28,11 @@ re-blessed ones) was merged into this branch first. The C++ now compiles and
 the targeted tests pass (113/113); the local gate reproduces the goldens on
 the before side and, on the after side, moves ONLY qeynos2's
 `textureCacheBytesUsed` (42,226,984 → 21,932,691), which is re-pinned per
-Will's "3) bless". Full suite + gate + `build-arm` run on CI; the Pi (REMAINS
-7) and CI green are the remaining evidence. The numbered REMAINS below carry
-the current status.
+Will's "3) bless". CI pipeline 465 is GREEN on `2590e552` (incl. the gate)
+and the Pi A/B sweep (qeynos2 + gfaydark, 51 vs 21 MiB) is done — both pass
+with 0 evictions / 0 restore-failures / 0 pinned (the ceiling is a no-op on
+those two zones' 14.6 / 11.5 MiB steady footprints; the finding is in
+REMAINS 7). The numbered REMAINS below carry the current status.
 
 ### Locks / stacks touched
 
@@ -176,11 +178,45 @@ re-bless.
 6. Local ARM compile skipped (no docker on this host) -- CI `build-arm`
    publishes `ci-arm/<sha>/` for the Pi leg.
 
-7. Pi (owner `kb-b978`): pending. `scripts/pi_rendered_zone_sweep.sh
-   --zones qeynos2,gfaydark --allow-vm-lane --pi-dir ~/ci-arm/<sha>
-   --owner kb-b978 --out ~/kb-evidence/b978-owned-gpu-texmem/pi/<variant>`,
-   `EQEMU_HOST=172.16.200.99`, once plain (B side, 21 MiB) and once with
-   `--env WILLEQ_TEXTURE_MEMORY_BYTES=53477376` (A side, 51 MiB).
+7. DONE (Pi, owner `kb-b978`, VM lane `EQEMU_HOST=172.16.200.99`,
+   `scripts/pi_rendered_zone_sweep.sh --zones qeynos2,gfaydark
+   --allow-vm-lane --pi-dir /mnt/projects/fable/ci-arm/2590e552...`
+   (the CI `build-arm` publish), run ON THE PI (hermes-ext has no NFS; the
+   sweep's inline summarizer reads `--out` off the sweep host's disk), repo
+   staged at `/home/user/kb-b978` from a `git bundle` of this branch; evidence
+   rsynced to `~/kb-evidence/b978-owned-gpu-texmem/pi/{zones_a,zones_b}`.
+   B side = plain (preset 21 MiB); A side = `--env
+   WILLEQ_TEXTURE_MEMORY_BYTES=53477376` (the B944 knob; the A log carries
+   `Constrained cache: WILLEQ_TEXTURE_MEMORY_BYTES=53477376 overrides the
+   preset's textureMemoryBytes 22020096`). All four rows `pass` (first
+   attempt A, re-summarized B after `apt-get install python3-pil` on the Pi
+   — the summarizer's blank-frame check needs PIL; the original B rows were
+   `render_unproven` only for the missing PIL, frames dumped fine), `mesa=
+   nollvm:ok`, frames 3/3, `snapshot restored BYTE-IDENTICALLY`, both locks
+   released.
+
+   | zone     | side | verdict | fps_med | TMU used/budget | evict/rest/restorefail/pinned | owned_steady | owned−64 | frame p95 |
+   |---|---|---|---|---|---|---|---|---|
+   | qeynos2  | A 51 MiB | pass | 30 | 14.7 / 51.0 MB | 0 / 0 / 0 / 0 | 62.23 MiB | −1.77 | 33.9 |
+   | qeynos2  | B 21 MiB | pass | 30 | 14.6 / 21.0 MB | 0 / 0 / 0 / 0 | 74.91 MiB | +10.91 | 34.0 |
+   | gfaydark | A 51 MiB | pass | 30 | 11.5 / 51.0 MB | 0 / 0 / 0 / 0 | 86.08 MiB | +22.08 | 34.1 |
+   | gfaydark | B 21 MiB | pass | 30 | 11.5 / 21.0 MB | 0 / 0 / 0 / 0 | 81.32 MiB | +17.32 | 34.0 |
+
+   **Finding — the 51→21 MiB ceiling is a NO-OP on these two Pi zones.** Their
+   steady TMU footprint (14.6 / 11.5 MiB) is under BOTH the 21 and 51 MiB
+   ceilings, so 0 evictions / 0 restores / 0 restore-failures / 0 pinned / 0
+   placeholder-or-restore WARN on every row. The ledger-attributed steady
+   memory is ~equal across the ceiling (qeynos2 48.45 vs 48.22 MiB; gfaydark
+   63.31 vs 61.11 MiB), confirming the ceiling does not move owned memory
+   here; the ceiling only bites where the x86 gate's qeynos2 footprint
+   (42 MiB) exceeds 21 (REMAINS 5). The `owned_steady` column (the new
+   `owned = RssAnon − gpu_driver + gpu_buffers` target figure, "1) yes") is
+   62–86 MiB, dominated by the ~18 MiB `gpu_driver` category plus the ~27 MiB
+   Lima `gpu_buffers` (net of dumped-PNG shmem) that B978 now counts in. The
+   A-vs-B spread in that column is the 2 s RssAnon-window sample variance on
+   the Pi, not the ceiling (the per-category ledger live-sum is ~equal).
+   Frame p95 is within ~0.3 ms A vs B, with one ~55–59 ms load spike on both
+   sides (the zone-mesh load, not the texture cache).
 
 8. DONE. The old runs were rsynced from the Pi NFS into
    `~/kb-evidence/b978-owned-gpu-texmem/ref/` (B962: pi_final, pi_fixed,
@@ -228,7 +264,11 @@ re-bless.
    and `DocClaims`/`FileSizeCeiling` pass with the stale text, so it is a
    docs-freshness gap flagged in the MR, not a CI block.
 
-10. IN PROGRESS: commit (done below for 1-5, 8, 9), merge `gitlab/fable` if it
-    moved, push (full suite + gate + `build-arm` on CI), un-draft the MR
-    (`Closes #296`), issue label `status::review`. The Pi (7) and the CI green
-    are the remaining evidence before the MR is un-drafted.
+10. DONE except the MR close-out. Committed the x86 leg (1-5, 8, 9) at
+    2590e552, pushed; CI pipeline 465 SUCCESS on `2590e5521bd0bf4a1560f3d115fbc37a24a76163`
+    (hygiene 57 s, build 816 s, test 161 s, gate 274 s, build-arm 351 s — the
+    gate's only memory delta is the in-scope qeynos2 `textureCacheBytesUsed`
+    re-pin, 0 pixel mismatch; the iceclad p95 CPU flake did not recur on CI).
+    The Pi leg (7) is done as above; this commit records it. Left: the
+    CLAUDE.md doc-freshness gap (flagged in the MR), `glab mr update 76
+    --ready` + `Closes #296` + #296 -> `status::review`.
