@@ -385,10 +385,4 @@ these were previously flagged only inline / via REMAINS.
 3. **The two CLAUDE.md doc strikes (REMAINS 9).** The root `CLAUDE.md`
    memory-accounting bullets and the `src/client/graphics/CLAUDE.md` B955
    paragraph still carried the pre-B978 owned figure when this README was
-   written: the agent-instruction-file write guard refused the dev worker's
-   strike on this headless lane (approval prompt timed out with no user
-   response; 2026-10-03, kanban `t_865e6d7b`), and the card's own rule
-   forbids a heredoc-echo route around it. **RESOLVED by the orchestrator's
-   follow-up doc-strike commit on `task/B978-owned-gpu-buffers-texmem`
-   (post-`83c7dde8`), which lands the strike; this line should then read
-   "RESOLVED by <sha>" once that commit is in.**
+   written: the hermes dev-profile agent-instruction-file write guard (CLAUDE.md, always-ask, no human channel on a headless lane) refused the strike on cards t_865e6d7b and the solo-orchestrator's own lane (2026-10-03). **RESOLVED by `af00ea98`**, the codex-profile doc-strike commit on this branch.**
