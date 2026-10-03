@@ -218,9 +218,9 @@ private:
 
     // B962: the bytes this texture's storage really holds, when the uploader
     // knows them to differ from GpuBytes (an ETC1 texture whose upload sends
-    // level 0 only, a main texture wrapped with its companion's bytes too --
-    // B948). GpuBytes stays the budget/gate figure; the gpu_buffers tally
-    // reads this. Unset = GpuBytes.
+    // level 0 only). GpuBytes stays the budget/gate figure (since B948,
+    // GitLab #266: each ETC1 texture's OWN chain, not the pair's). The
+    // gpu_buffers tally reads this. Unset = GpuBytes.
     u32 StorageBytes = 0;
     bool HasStorageBytes = false;
 
