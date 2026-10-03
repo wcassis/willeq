@@ -21,6 +21,48 @@ This commit is a **WIP**: code edits are complete for both halves, but
 **nothing has been compiled or run yet** — the first `cmake --build` of this
 worktree was still running when the hand-off order came.
 
+## STATE 2026-10-03 (kb-b978, hermes-ext) — re-gated after the B949 merge
+
+`origin/fable` advanced past `d3375b65` to `4912af9f`, which merged **B949
+(the texture cache's LRU follows draw order, `77e94169`)**. The card's
+"merge origin/fable first" means the MR head must carry B949; the previous
+run had already produced that merge (`aef398fc`, a clean 2-parent merge of
+`1af66c9a` + `4912af9f`) but had crashed before verifying or pushing it.
+
+B949 touches `ConstrainedTextureCache` — the exact LRU B978's qeynos2 re-pin
+(`textureCacheBytesUsed=21,932,691`) depends on. B949's own README claims the
+gate ceiling is a no-op ("no golden moved", byte-identical `used`) but only
+measured that at a 20 MiB ceiling; this re-verification is at the 21 MiB
+preset ceiling B978 ships.
+
+Re-ran `JOBS=3 bash scripts/build-gles2-x86.sh` (wipes + rebuilds the local
+Irrlicht, so B949's driver `FrameCounter`/`markDrawn()` and the client's
+`endFrame()` reorder are both in the tree) and re-ran the gate against the
+committed goldens on the B949-included tree `aef398fc`:
+
+- **The re-pin HOLDS.** qeynos2 `textureCacheBytesUsed` still reads
+  **21,932,691** (the re-pinned golden) and `textureCount` still **126** —
+  B949's draw-order LRU did NOT move either, so the in-scope manifest re-pin
+  is still valid. `scripts/b978/texture_cache_ab.py` on the preset ceiling
+  (evidence `~/kb-evidence/b978-owned-gpu-texmem/gate/ab_after_b949/`):
+  qeynos2 used=21,932,691 / count=126 / entries=126 / resident=65 /
+  evictions=81 / restores=20 / restore_failures=0 / pinned=0. The only
+  movement vs the pre-B949 REMAINS-5 row is the `[texture-cache]`
+  eviction/restore counters (82/21 → 81/20) — B949's documented one
+  eviction/restore pair, which are NOT gate-baselined fields.
+- **Gate result: the ONLY failure is the documented iceclad p95 process-CPU
+  flake** (`10.088 ms` > ceiling `9.530`; `visual_gate.py` p95 over three
+  frames, host-load sensitive; B949's README records the same trip at
+  `10.563` on this host while its tree built concurrently). 0 image / pixel
+  mismatch on all 5 zones; no `textureCacheBytesUsed`/`textureCount` or any
+  other `tests/goldens/` field moved. CI's gate job re-takes the p95 with
+  3 in-script retries.
+
+Net: the B949 merge is safe, the MR's effective diff vs `origin/fable` is
+exactly B978's 26 files (no B949 files, already in fable), and the manifest
+diff is the single in-scope qeynos2 re-pin. Pushed to trigger CI; the gate
+re-verification on the clean CI runner is the remaining x86 check.
+
 ## STATE 2026-10-03 (kb-b978, hermes-ext) — built, tested, gated
 
 `origin/fable` (55c9ac0c; B967 !74 merged, so the gate's goldens are the
@@ -269,6 +311,12 @@ re-bless.
     (hygiene 57 s, build 816 s, test 161 s, gate 274 s, build-arm 351 s — the
     gate's only memory delta is the in-scope qeynos2 `textureCacheBytesUsed`
     re-pin, 0 pixel mismatch; the iceclad p95 CPU flake did not recur on CI).
-    The Pi leg (7) is done as above; this commit records it. Left: the
-    CLAUDE.md doc-freshness gap (flagged in the MR), `glab mr update 76
+    The Pi leg (7) is done as above; this commit records it. **Then
+    `origin/fable` advanced past `d3375b65` to `4912af9f` (B949 merged), so
+    the MR head must carry B949; the re-gate recorded in the 2026-10-03
+    re-gate section above re-verified the qeynos2 re-pin on the
+    B949-included tree `aef398fc` (held: used 21,932,691, count 126; only the
+    non-golden `[texture-cache]` counters moved 82/21 -> 81/20; the gate's
+    only local failure is the documented iceclad p95 CPU flake).** Left:
+    the CLAUDE.md doc-freshness gap (flagged in the MR), `glab mr update 76
     --ready` + `Closes #296` + #296 -> `status::review`.
