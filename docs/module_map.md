@@ -444,7 +444,7 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (20 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
+`hygiene` (21 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
 reachability ratchet), T450's `DbReproducible`, T455's
@@ -483,7 +483,15 @@ stop one branch's leftover binary failing the NEXT branch's pipeline; asserts
 an orphan is removed, a claimed binary is kept, a non-build-tree and an
 escaping `bin/` are both refused untouched, and nothing outside `<build>/bin/`
 is ever touched; pure Python against a hand-built fake CMake file-API reply,
-no real `cmake` invocation)
+no real `cmake` invocation) and B923's `ClientLedgerBudgetCheck`
+(`scripts/ci/test_client_ledger_check.py`, the repeatable net for
+`client_ledger_table.py check` — the client-ledger capture assertion the
+`ClientLedgerLive` live ctest and the CI `client-ledger-live` job run: a
+capture-shaped fixture in the client's own [memledger] line format must pass
+at exit 0, turn red at exit 1 when a client-only owner's category exceeds its
+orangepi budget, and exit 3 for a run without a `steady_60s` point; budgets
+come from `config/constrained_presets.json`, never from the test; pure
+Python, no server, no display, no binary)
 -- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two

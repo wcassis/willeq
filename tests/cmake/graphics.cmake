@@ -345,3 +345,20 @@ ADD_EXECUTABLE(test_detail_view_distance
 )
 TARGET_LINK_LIBRARIES(test_detail_view_distance GTest::gtest_main willeq_core)
 GTEST_DISCOVER_TESTS(test_detail_view_distance DISCOVERY_TIMEOUT 120)
+
+# B967/B968 (GitLab #285/#286): the per-pixel player light. The LUT and the
+# FP16 headroom of the VS-formed light vector, GL-free (header-only, no
+# willeq_core) ...
+ADD_EXECUTABLE(test_player_light_lut
+    test_player_light_lut.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_player_light_lut PRIVATE ${CMAKE_SOURCE_DIR}/include)
+TARGET_LINK_LIBRARIES(test_player_light_lut GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_player_light_lut DISCOVERY_TIMEOUT 120)
+# ... and the rendered curve of the SHIPPED GLSL on llvmpipe (surfaceless EGL):
+# monotonic, zero past the light's range, the per-vertex family's shape, the
+# same at the world origin and the iceclad f2 pose, and no garbage on a quad
+# reaching 40,000 units (gles2_player_light_probe --assert).
+IF(TARGET gles2_player_light_probe)
+    ADD_TEST(NAME PlayerLightProbeMonotonic COMMAND gles2_player_light_probe --assert)
+ENDIF()

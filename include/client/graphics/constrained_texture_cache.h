@@ -116,6 +116,17 @@ struct DecodedEntry {
 // clear() (zone unload) or by a registerTexture() replacement -- both notify
 // the TextureEvictionListeners, whose guards swap holders to the placeholder.
 //
+// B949 (GitLab #267) -- EVICTION TAKES THE LEAST-RECENTLY-DRAWN. The LRU list
+// used to be touched on lookup only, so its order was load order: a texture
+// loaded first (the floor, the sky) was evicted first even when it was drawn
+// every frame, and restored on its very next bind, evicting the next-oldest,
+// which may also have been on screen (B944 measured 85 evictions / 21
+// restores for the gate's three static qeynos2 poses at a 20 MiB ceiling).
+// Now the driver stamps each texture with the frame it was last bound in
+// (COGLES2Texture::markDrawn on every bind), endFrame() reorders the list by
+// those stamps, and eviction falls off the front -- least recently drawn.
+// See endFrame() for the call contract and the EDT_NULL no-op.
+//
 // B947 (GitLab #265) -- NOTHING EVICTABLE CAN DANGLE. A GLES2 entry an
 // eviction finds with no restore source (a registerTexture() external, a
 // decode-path texture whose bytes cannot be read back identical) is PINNED:
@@ -198,6 +209,29 @@ public:
 
     // Mark a texture as recently used (moves to back of LRU list)
     void touch(const std::string& name);
+
+    // B949 (GitLab #267): call once per rendered frame, on the GL thread,
+    // AFTER that frame's binds/draws and BEFORE any further upload/eviction
+    // (the render loop calls it at frame end; the benchmark calls it after
+    // each pose frame). It reorders lruOrder_ into least-recently-DRAWN
+    // order using the per-texture draw stamps the driver records on every
+    // bind (COGLES2Texture::getDrawFrameStamp): an entry that was bound this
+    // frame (or most recently) is the NEWEST; an entry never drawn since a
+    // long time (a texture only LOOKED UP, e.g. by a mesh build, and a
+    // freshly uploaded one) keeps its load-order position relative to its
+    // peers, because stamps it never drew tie at "never drawn" and the sort
+    // is stable. Eviction (evictUntilAvailable) then takes from the FRONT,
+    // which is now the least-recently-drawn resident.
+    //
+    // Why a separate call and not a touch on bind: the driver's bind path
+    // (COGLES2Texture::getOpenGLTextureName) is on the GL thread and holds no
+    // lock; reordering the list there would take the cache's mutex on every
+    // bind of every texture. Instead the bind only records a cheap per-frame
+    // stamp, and this one per-frame call does the single reorder. For a
+    // driver that is not the GLES2 driver the stamps do not exist, so this
+    // is a no-op and the list stays in load order (the pre-B949 behaviour);
+    // that is the EDT_NULL unit-test driver only.
+    void endFrame();
 
     // Check if texture is in cache
     bool hasTexture(const std::string& name) const;
@@ -646,7 +680,11 @@ private:
     // Decoded but not yet uploaded: name -> decoded RGBA pixels
     std::map<std::string, DecodedEntry> decodedEntries_;
 
-    // LRU order: front = oldest (evict first), back = newest
+    // LRU order: front = least-recently-drawn (evict first), back = most
+    // recently drawn. B949: endFrame() reorders it from the driver's
+    // per-texture draw stamps; between endFrame() calls the load-order
+    // append is the tie-break (stable sort, "never drawn" ties keep their
+    // relative load order).
     std::list<std::string> lruOrder_;
 
     // Current memory usage

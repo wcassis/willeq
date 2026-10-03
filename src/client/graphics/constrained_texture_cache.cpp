@@ -38,6 +38,9 @@ typedef void (*PFNGLCOMPRESSEDTEXIMAGE2DPROC_)(GLenum target, GLint level,
 extern void* gles2WrapTexture(void* driver, const char* name, unsigned int glTexName,
                                unsigned int width, unsigned int height,
                                unsigned int gpuBytes);
+// B949 (GitLab #267): the driver frame in which `texture` was last bound
+// (0 = never drawn). endFrame() reorders the LRU list by these stamps.
+extern unsigned int gles2TextureGetDrawFrameStamp(void* texture);
 #endif
 
 namespace EQT {
@@ -553,6 +556,57 @@ int ConstrainedTextureCache::uploadPending(int maxCount) {
 void ConstrainedTextureCache::touch(const std::string& name) {
     std::lock_guard<std::mutex> lock(mutex_);
     touchInternal(name);
+}
+
+// ---------------------------------------------------------------------------
+// B949 (GitLab #267): LRU by draw order
+// ---------------------------------------------------------------------------
+
+void ConstrainedTextureCache::endFrame() {
+    std::lock_guard<std::mutex> lock(mutex_);
+#ifdef EQT_EQE1_UPLOAD_AVAILABLE
+    // Reorder the resident list by "last drawn in frame N", ascending:
+    // front = least recently drawn = the eviction candidate. The stamps the
+    // driver records on every bind are frame numbers, so equal stamps (two
+    // textures drawn in the same frame, or several never drawn) must keep
+    // their old relative order: a texture that was only looked up (never
+    // bound) or was just uploaded sits exactly where load/touch order put it
+    // relative to its equal-stamped peers, and the first endFrame() of a
+    // zone is the identity permutation (every stamp is 0). A freshly
+    // RESTORED entry was pushed_back by restoreEvicted(), which is
+    // consistent: it was just drawn (its bind restored it).
+    //
+    // Mechanism: compute the stable order over the names, then move the
+    // EXISTING nodes into that order with splice(). A spliced node keeps its
+    // address, so every entry's lruIterator into lruOrder_ stays valid.
+    // (lruOrder_.assign() -- the first draft of this -- rebuilt the node
+    // set and left every lruIterator dangling; evictTexture()/
+    // releaseStorage() erase() through them, and the gate run spun forever
+    // in evictUntilAvailable() on the corrupted list.)
+    std::vector<std::string> order(lruOrder_.begin(), lruOrder_.end());
+    std::stable_sort(order.begin(), order.end(), [this](const std::string& a,
+                                                        const std::string& b) {
+        const CachedTexture& ea = cache_.at(a);
+        const CachedTexture& eb = cache_.at(b);
+        const unsigned int stampA = gles2TextureGetDrawFrameStamp(ea.texture);
+        const unsigned int stampB = gles2TextureGetDrawFrameStamp(eb.texture);
+        return stampA < stampB;
+    });
+    std::list<std::string> sorted;
+    std::map<std::string, std::list<std::string>::iterator> node;
+    for (auto lit = lruOrder_.begin(); lit != lruOrder_.end(); ++lit) {
+        node[*lit] = lit;
+    }
+    for (const std::string& name : order) {
+        sorted.splice(sorted.end(), lruOrder_, node[name]);
+    }
+    lruOrder_.swap(sorted);
+#else
+    // EDT_NULL and other non-GLES2 drivers carry no draw stamps: the list
+    // stays in load order, exactly the pre-B949 behaviour (the unit tests'
+    // only driver).
+    (void)lruOrder_;
+#endif
 }
 
 bool ConstrainedTextureCache::hasTexture(const std::string& name) const {
