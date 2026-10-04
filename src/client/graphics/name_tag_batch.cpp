@@ -4,10 +4,13 @@
 
 #include "client/core/memory_ledger.h"
 #include "client/core/memory_owner_rows.h"
+#include "client/core/gem_owner_census.h"
 #include "common/logging.h"
 
 #ifdef EQT_HAS_GLES2
 #include <GLES2/gl2.h>
+extern void gles2Prepare2DImageRun(void* driver, void* texture);
+extern void gles2AdjustRawBufferBytes(void* driver, ptrdiff_t delta);
 #endif
 
 #include <algorithm>
@@ -112,6 +115,7 @@ NameTagBatchNode::NameTagBatchNode(irr::scene::ISceneNode* parent, irr::scene::I
 }
 
 NameTagBatchNode::~NameTagBatchNode() {
+    releaseGpuBuffers();
     for (auto* t : pending_) t->drop();
     pending_.clear();
     eqt::memory::clearOwnerRow(kOwnerRow);
@@ -176,10 +180,11 @@ size_t NameTagBatchNode::bufferBytes() const {
 
 void NameTagBatchNode::publishRow() {
     const size_t bytes = bufferBytes();
-    if (bytes == publishedBytes_) return;
-    publishedBytes_ = bytes;
+    if (bytes + gpuBufferBytes() == publishedBytes_) return;
+    publishedBytes_ = bytes + gpuBufferBytes();
     eqt::memory::setOwnerRow(kOwnerRow, "entity_instances", bytes,
-                             "compact_quads=" + std::to_string(compactIndices_.capacity() / 6));
+                             "compact_quads=" + std::to_string(compactIndices_.capacity() / 6) +
+                             " gpu_buffer_bytes=" + std::to_string(gpuBufferBytes()));
 }
 
 void NameTagBatchNode::logWindow(int64_t micros) {
@@ -199,15 +204,18 @@ void NameTagBatchNode::logWindow(int64_t micros) {
     LOG_INFO(MOD_GRAPHICS,
              "[nametags] frames={} tags_avg={:.1f} tags_max={} cpu_us_p50={} cpu_us_p95={} "
              "us_per_tag_p50={:.2f} last_build_us={} last_submit_us={} draws={} quads={} fallback={} "
-             "buffer_bytes={}",
+             "buffer_bytes={} gpu_buffer_bytes={} setup_us={} index_us={} upload_us={} draw_us={}",
              windowFrames_, avgTags, windowMaxTags_, p50, p95,
              avgTags > 0.0 ? static_cast<double>(p50) / avgTags : 0.0,
              last_.cpuMicros - last_.submitMicros, last_.submitMicros, last_.driverDraws,
-             last_.glyphQuads, last_.fallbackTags, bufferBytes());
+             last_.glyphQuads, last_.fallbackTags, bufferBytes(), gpuBufferBytes(),
+             last_.setupMicros, last_.indexMicros, last_.uploadMicros, last_.drawMicros);
 
     // Give back what a crowd that has left made the buffers hold: keep at most
     // twice this window's peak.
     const size_t keepQuads = 2 * windowMaxTags_ * 16 + 64;
+    if (gpuVertexBytes_ > 4 * keepQuads * 4 * sizeof(CompactVertex) ||
+        (windowMaxTags_ == 0 && gpuBufferBytes())) releaseGpuBuffers();
     if (compactVertices_.capacity() / 4 > 4 * keepQuads ||
         compactIndices_.capacity() / 6 > 4 * keepQuads) {
         eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityInstances);
@@ -253,21 +261,20 @@ void appendCompactQuad(std::vector<CompactVertex>& vertices,
                         color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha(), u0, v1});
 }
 
-// B975's shrink: submit the compact run. The run's FIRST quad is drawn by the
-// caller through the driver's own draw2DImage() (it sets the program, texture
-// units, blend and uniforms exactly as each per-quad call would); the
-// compact buffers hold ONLY the quads that come after it (bases from 0), so
-// this draws them in glDrawElements over the compact vertices, attribute
-// slots 0/2/3 as ui_quad_batch.cpp's, chunked at the 16-bit index cap
-// (16384 quads = 65536 vertices). Returns the number of glDrawElements
-// issued (0 when the buffers are empty or the driver is not the GLES2 one
-// the layout is written for).
-size_t drawCompactTexturedRun(irr::video::IVideoDriver* driver,
-                              const std::vector<CompactVertex>& vertices,
-                              std::vector<uint16_t>& indices, bool batch) {
+// The caller establishes the driver's own 2D state without drawing. All
+// glyphs use bounded, caller-owned GPU storage, chunked at the 16-bit index
+// cap. No orphaning or unsynchronized mapping: GL owns any necessary wait.
+size_t NameTagBatchNode::drawCompactRun(irr::video::IVideoDriver* driver) {
+    const auto& vertices = compactVertices_;
+    auto& indices = compactIndices_;
     if (!driver || vertices.empty()) return 0;
-    if (!batch || !UiQuadBatch::driverSupportsBatching(driver)) return 0;
+    if (!UiQuadBatch::driverSupportsBatching(driver)) return 0;
 #ifdef EQT_HAS_GLES2
+    using Clock = std::chrono::steady_clock;
+    auto elapsed = [](Clock::time_point start) {
+        return std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start).count();
+    };
+    auto start = Clock::now();
     // One immutable prefix, grown only when a run needs more quads. Every
     // chunk addresses its own vertex base with the same 16-bit pattern.
     const size_t quads = vertices.size() / 4;
@@ -278,34 +285,79 @@ size_t drawCompactTexturedRun(irr::video::IVideoDriver* driver,
         const uint16_t i1 = base + 1, i2 = base + 2, i3 = base + 3;
         indices.insert(indices.end(), {base, i1, i2, base, i2, i3});
     }
+    last_.indexMicros += elapsed(start);
+    start = Clock::now();
+    eqt::memory::GemTag gemTag("vbo:nametags");
+    gpuDriver_ = driver;
+    if (!gpuVertex_) glGenBuffers(1, &gpuVertex_);
+    if (!gpuIndex_) glGenBuffers(1, &gpuIndex_);
+    glBindBuffer(GL_ARRAY_BUFFER, gpuVertex_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gpuIndex_);
+    // One extra vertex keeps every subdata write strictly smaller than the
+    // allocation. Lima renames a whole-resource write even after glFinish;
+    // partial writes synchronize normally and reuse the bounded storage.
+    const size_t vertexBytes = patternQuads * 4 * sizeof(CompactVertex) + sizeof(CompactVertex);
+    if (vertexBytes > gpuVertexBytes_) {
+        glBufferData(GL_ARRAY_BUFFER, vertexBytes, nullptr, GL_DYNAMIC_DRAW);
+        gles2AdjustRawBufferBytes(driver, static_cast<ptrdiff_t>(vertexBytes) - gpuVertexBytes_);
+        gpuVertexBytes_ = vertexBytes;
+    }
+    const size_t indexBytes = patternQuads * 6 * sizeof(uint16_t);
+    if (indexBytes > gpuIndexBytes_) {
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexBytes, indices.data(), GL_STATIC_DRAW);
+        gles2AdjustRawBufferBytes(driver, static_cast<ptrdiff_t>(indexBytes) - gpuIndexBytes_);
+        gpuIndexBytes_ = indexBytes;
+    }
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CompactVertex), nullptr);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(CompactVertex),
+                          reinterpret_cast<const GLvoid*>(offsetof(CompactVertex, r)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(CompactVertex),
+                          reinterpret_cast<const GLvoid*>(offsetof(CompactVertex, u)));
+    glEnableVertexAttribArray(3);
+    glDisableVertexAttribArray(1);
+    glDisableVertexAttribArray(4);
+    last_.uploadMicros += elapsed(start);
     size_t draws = 0;
     for (size_t chunk = 0; chunk < quads; ) {
         const size_t chunkQuads = std::min(kMaxCompactQuadsPerDraw, quads - chunk);
         const CompactVertex* v = vertices.data() + chunk * 4;
-        const uint16_t* ix = indices.data();
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CompactVertex), v);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(CompactVertex),
-                              reinterpret_cast<const GLvoid*>(reinterpret_cast<const GLbyte*>(v) + 8));
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(CompactVertex),
-                              reinterpret_cast<const GLvoid*>(reinterpret_cast<const GLbyte*>(v) + 12));
-        glEnableVertexAttribArray(3);
-        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(chunkQuads * 6), GL_UNSIGNED_SHORT, ix);
+        start = Clock::now();
+        glBufferSubData(GL_ARRAY_BUFFER, 0, chunkQuads * 4 * sizeof(CompactVertex), v);
+        last_.uploadMicros += elapsed(start);
+        start = Clock::now();
+        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(chunkQuads * 6), GL_UNSIGNED_SHORT, nullptr);
+        last_.drawMicros += elapsed(start);
         ++draws;
         chunk += chunkQuads;
     }
+    // setOrthoProjection left the driver's cached binds at zero. Restore
+    // that state before a font fallback or any other renderer runs.
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     return draws;
 #else
     return 0;
 #endif
 }
 
+void NameTagBatchNode::releaseGpuBuffers() {
+#ifdef EQT_HAS_GLES2
+    if (gpuVertex_) glDeleteBuffers(1, &gpuVertex_);
+    if (gpuIndex_) glDeleteBuffers(1, &gpuIndex_);
+    if (gpuDriver_) gles2AdjustRawBufferBytes(gpuDriver_, -static_cast<ptrdiff_t>(gpuBufferBytes()));
+#endif
+    gpuVertex_ = gpuIndex_ = 0;
+    gpuVertexBytes_ = gpuIndexBytes_ = 0;
+    gpuDriver_ = nullptr;
+}
+
 void NameTagBatchNode::render() {
     const auto t0 = std::chrono::steady_clock::now();
     eqt::memory::MemoryScope memScope(eqt::memory::Category::EntityInstances);
     last_ = FrameStats();
-    if (pending_.empty()) return;
+    if (pending_.empty()) { logWindow(0); return; }
 
     irr::video::IVideoDriver* driver = SceneManager->getVideoDriver();
     irr::scene::ICameraSceneNode* cam = SceneManager->getActiveCamera();
@@ -334,7 +386,7 @@ void NameTagBatchNode::render() {
         }
         irr::video::ITexture* runTexture = nullptr;
         irr::f32 invW = 0.0f, invH = 0.0f;
-        bool runHasFirst = false;  // the run's first quad, for the driver draw
+        bool runHasFirst = false;  // non-GLES2 fallback retains its first quad
         irr::core::rect<irr::s32> firstDest, firstSrc;
         irr::video::SColor firstColor;
         auto flushRun = [&]() {
@@ -343,15 +395,14 @@ void NameTagBatchNode::render() {
             const auto s0 = std::chrono::steady_clock::now();
             if (runHasFirst) {
                 if (compact) {
-                    // The first quad through the driver's own call: it sets the
-                    // program, texture units, blend and uniforms exactly as each
-                    // per-quad call would. The compact buffers hold only the
-                    // quads that come after it.
-                    driver->draw2DImage(runTexture, firstDest, firstSrc, nullptr, &firstColor, true);
-                    last_.driverDraws += 1;
-                    last_.glyphQuads += 1;
-                    last_.driverDraws +=
-                        drawCompactTexturedRun(driver, compactVertices_, compactIndices_, true);
+                    // Exactly the driver's draw2DImage state, without a
+                    // client-array draw (and its transient upload allocation).
+#ifdef EQT_HAS_GLES2
+                    gles2Prepare2DImageRun(driver, runTexture);
+#endif
+                    last_.setupMicros += std::chrono::duration_cast<std::chrono::microseconds>(
+                                            std::chrono::steady_clock::now() - s0).count();
+                    last_.driverDraws += drawCompactRun(driver);
                     last_.glyphQuads += compactVertices_.size() / 4;
                 } else {
                     // The old path: the first quad and every other quad of the
@@ -408,8 +459,8 @@ void NameTagBatchNode::render() {
                 runTexture = g.texture;
                 const irr::s32 x = ox + gp.dx;
                 if (!runHasFirst) {
-                    // The run's first quad goes through the driver at the flush
-                    // (it sets the state); record it, skip the buffer entry.
+                    // Capture the first glyph for the non-GLES2 fallback.
+                    // The compact path includes it in the same GPU run.
                     firstDest = irr::core::rect<irr::s32>(x, oy,
                                                           x + g.src.getWidth(),
                                                           oy + g.src.getHeight());
@@ -419,7 +470,7 @@ void NameTagBatchNode::render() {
                     invW = 1.0f / static_cast<irr::f32>(ts.Width);
                     invH = 1.0f / static_cast<irr::f32>(ts.Height);
                     runHasFirst = true;
-                    continue;
+                    if (!compact) continue;
                 }
                 if (compact) {
                     appendCompactQuad(compactVertices_, x, oy,

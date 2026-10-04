@@ -4,6 +4,42 @@ GitLab #293 (class B, perf, lane pi). Branch `task/B975-name-tag-batch`
 (worktree `/mnt/projects/fable/wt/audit-nametags`), based on `gitlab/fable`
 d3375b65 (B964 / MR !70 merged). Raw evidence: `/mnt/projects/fable/review/B975/`.
 
+## Submission investigation, run 281 — candidate, not acceptance
+
+The orchestrator authorized further submission work after run 279's stop.
+Evidence: `~/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/`.
+The production policy, pinned Mesa and all acceptance limits remain unchanged.
+
+An isolated GL/ioctl trace of the previous binary measured **5659 us** for
+the 200-tag render pass. Large draws spent substantial time in GEM_CREATE,
+with no wait/submit ioctl inside those draws (`profile-job/capture/profile.log`).
+Reusable VBO/EBO storage alone measured **3459 us**: whole-buffer subdata
+writes still allocated replacement Lima BOs (`vbo-probe-job/capture/profile.log`).
+Keeping a small unused tail and reusing both small and large draw storage
+measured **2412 us**, still FAILING the unchanged 2000 us bar
+(`pad-probe-job/capture/profile.log`). Both probes preserved the nine primary
+pixel comparisons. They are diagnostic preload experiments, not production
+acceptance or a change to the shipped Mesa.
+
+Source attribution is retained beside the traces: Mesa 25.2.8
+`lima_resource.c:lima_transfer_map` creates a new BO on whole-resource discard;
+`lima_draw.c:lima_update_varying` allocates separate geometry-output storage
+for every draw. The latter remains even with reusable input buffers.
+
+The candidate uses bounded reusable GPU vertex/index storage with one slack
+vertex, normal synchronized subdata writes, and a state-only driver entry
+point instead of drawing a first glyph to establish state. All glyphs now
+belong to the same run. GPU bytes enter the driver's logical tally and the
+GEM census owner tag; the CPU owner row reports GPU storage separately.
+Both destruction and idle-window trimming release storage. Benchmark columns
+separate state setup, index preparation, upload (including synchronization)
+and draw calls. Regression coverage checks chunk/shorter-run reuse, pixels,
+fallback ordering, and bounded/accounted/released GPU storage.
+
+Final CI, Pi timing/pixels, memory and live matrices are pending. The known
+six-pixel live discrepancy and human visual decision remain unresolved.
+MR !73 stays draft; no dependent release or threshold change is implied.
+
 ## Native Codex resume, 2026-10-04 — production CPU bar fails
 
 Run `279` of `t_8f86d310` reviewed and integrated B986 commit

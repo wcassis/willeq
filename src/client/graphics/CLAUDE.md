@@ -291,9 +291,15 @@ Irrlicht's `ITextSceneNode` interface and registration condition, including
 visibility and impostor re-registration. `NameTagBatchNode` orders the
 registered tags far-to-near, projects with one proj × view product per frame,
 and draws compact glyph vertices through the GLES2 path. A batchable run
-within the index limit takes at most two draws; fallback glyphs split runs.
+within the index limit takes one draw; fallback glyphs split runs.
 The compact index prefix grows only at need and is reused across chunks and
 frames; draw length follows the current vertex run, not retained indices.
+The driver's state-only 2D entry point avoids a bootstrap client-array draw.
+Bounded VBO/EBO storage is reused; one slack vertex prevents whole-resource
+renaming on Lima. Writes remain synchronized, never orphaned or unsynchronized.
+GPU bytes are included in the driver's logical buffer tally and reported
+separately from CPU bytes in the name-tag owner row; destruction and idle-window
+trimming release the storage.
 `BitmapGlyphTable` is shared with UI text. `WILLEQ_NAMETAG_BATCH=0` selects
 the original per-node path for A/B verification. The `[nametags]` rows and
 `ent.nametag_batch` memory owner report the batch's cost and storage.

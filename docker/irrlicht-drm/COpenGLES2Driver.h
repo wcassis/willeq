@@ -372,6 +372,12 @@ public:
     size_t getHWBufferMemoryUsage() const;
     size_t getHWBufferCount() const;
 
+    // B975: the same state as draw2DImage, without a throwaway client-array
+    // draw. The caller supplies attributes and restores both buffer binds to 0.
+    void prepare2DImage(const video::ITexture* texture,
+                        const core::rect<s32>* clipRect, bool useAlphaChannelOfTexture);
+    void adjustRawBufferBytes(ptrdiff_t delta) { rawBufferBytes_ += delta; }
+
     // Wrap an already-uploaded GL texture as an ITexture (for strip uploads)
     // gpuBytes: actual GPU memory consumed (0 = assume RGBA8888 = w*h*4)
     ITexture* wrapExternalTexture(const io::path& name, GLuint glTexName,
@@ -486,6 +492,7 @@ private:
 
     // Hardware buffer cache (VBO/EBO for static mesh data)
     std::unordered_map<const scene::IMeshBuffer*, SHWBuffer> HWBufferMap;
+    size_t rawBufferBytes_ = 0; // caller-owned GL buffers, included in the logical tally
 
     // Custom shader materials (from addHighLevelShaderMaterial)
     core::array<SOGLES2CustomShader> CustomShaders;

@@ -213,7 +213,8 @@ int runDrawcost(Scene& s, const Options& o) {
     if (!f) { fprintf(stderr, "cannot write %s\n", csv.c_str()); return 1; }
     fprintf(f, "n,visible_tags,proj_us_per_tag,fontdraw_us_per_tag,imagebatch_us_per_tag,"
                "scene_none_p50_ms,pernode_p50_ms,pernode_p95_ms,batch_p50_ms,batch_p95_ms,"
-               "pernode_cpu_p50_ms,batch_cpu_p50_ms,batch_render_us_p50,batch_build_us_p50,batch_submit_us_p50,batch_draws,batch_quads,batch_buffer_bytes\n");
+               "pernode_cpu_p50_ms,batch_cpu_p50_ms,batch_render_us_p50,batch_build_us_p50,batch_submit_us_p50,batch_draws,batch_quads,batch_buffer_bytes,"
+               "batch_setup_us_p50,batch_index_us_p50,batch_upload_us_p50,batch_draw_us_p50,batch_gpu_buffer_bytes\n");
     irr::scene::ISceneCollisionManager* coll = s.smgr->getSceneCollisionManager();
     auto* bitmap = static_cast<irr::gui::IGUIFontBitmap*>(s.font);
 
@@ -294,12 +295,17 @@ int runDrawcost(Scene& s, const Options& o) {
         makeTags(s, true);
         drawScene(s, true);
         std::vector<double> batch, batchCpu, renderUs, buildUs, submitUs;
+        std::vector<double> setupUs, indexUs, uploadUs, drawUs;
         size_t draws = 0, quads = 0;
         for (int k = 0; k < o.frames; ++k) {
             batch.push_back(drawScene(s, true));
             renderUs.push_back(static_cast<double>(s.batch->lastFrame().cpuMicros));
             submitUs.push_back(static_cast<double>(s.batch->lastFrame().submitMicros));
             buildUs.push_back(static_cast<double>(s.batch->lastFrame().cpuMicros - s.batch->lastFrame().submitMicros));
+            setupUs.push_back(s.batch->lastFrame().setupMicros);
+            indexUs.push_back(s.batch->lastFrame().indexMicros);
+            uploadUs.push_back(s.batch->lastFrame().uploadMicros);
+            drawUs.push_back(s.batch->lastFrame().drawMicros);
             draws = s.batch->lastFrame().driverDraws;
             quads = s.batch->lastFrame().glyphQuads;
         }
@@ -307,11 +313,12 @@ int runDrawcost(Scene& s, const Options& o) {
         for (auto* t : s.tags) t->remove();
         s.tags.clear();
 
-        fprintf(f, "%d,%d,%.2f,%.2f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%.1f,%.1f,%zu,%zu,%zu\n", n,
+        fprintf(f, "%d,%d,%.2f,%.2f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.1f,%.1f,%.1f,%zu,%zu,%zu,%.1f,%.1f,%.1f,%.1f,%zu\n", n,
                 visible, projUs, fontUs, batchCallUs, median(none), median(perNode), p95(perNode), median(batch),
                 p95(batch), median(perNodeCpu), median(batchCpu), median(renderUs), median(buildUs),
                 median(submitUs), draws, quads,
-                s.batch->bufferBytes());
+                s.batch->bufferBytes(), median(setupUs), median(indexUs), median(uploadUs), median(drawUs),
+                s.batch->gpuBufferBytes());
         printf("n=%d visible=%d proj=%.2fus font_draw=%.2fus image_batch=%.2fus | scene none %.2f | "
                "per-node %.2f (cpu %.2f) | batch %.2f (cpu %.2f, render %.0fus = build %.0f + submit %.0f, "
                "%zu draws, %zu quads)\n",

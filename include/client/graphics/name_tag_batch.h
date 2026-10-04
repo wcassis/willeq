@@ -25,11 +25,10 @@
  *    each with CSceneCollisionManager::getScreenCoordinatesFrom3DPosition()'s
  *    arithmetic, lays each out from its cached glyph run (rebuilt only when the
  *    text changes) and centres it exactly as CGUIFont::draw(hcenter, vcenter)
- *    does, then draws every glyph of every tag through UiQuadBatch: the first
- *    glyph through the driver (it sets the program, texture, blend and
- *    uniforms) and all the rest in one glDrawElements -- TWO draw calls per
- *    frame whatever the tag count, glyph quads in the order the per-tag draws
- *    rasterised them, so blending sees the same sequence.
+ *    does. The driver's state-only 2D entry point sets the program, textures,
+ *    blend and uniforms; bounded reusable VBO/EBO storage draws one run per
+ *    glDrawElements (split at the 16-bit index limit). Glyphs retain the
+ *    per-tag order, so blending sees the same sequence.
  *
  * Pixels: identical to the per-node path wherever no other transparent node
  * nearer than a tag overlaps that tag (before, such a node was drawn over the
@@ -146,11 +145,16 @@ public:
         size_t driverDraws = 0;   // draw calls issued
         int64_t cpuMicros = 0;    // render(): sort + project + layout + quads + submit
         int64_t submitMicros = 0; // run submission (index growth + GL calls, or fallback draw)
+        int64_t setupMicros = 0;
+        int64_t indexMicros = 0;
+        int64_t uploadMicros = 0; // includes any synchronization required by GL
+        int64_t drawMicros = 0;
     };
     const FrameStats& lastFrame() const { return last_; }
 
     /** Bytes held by the batch's reusable buffers (the owner row's value). */
     size_t bufferBytes() const;
+    size_t gpuBufferBytes() const { return gpuVertexBytes_ + gpuIndexBytes_; }
 
 private:
     struct Entry {
@@ -166,6 +170,8 @@ private:
     void layout(NameTagNode& tag);
     void publishRow();
     void logWindow(int64_t micros);
+    size_t drawCompactRun(irr::video::IVideoDriver* driver);
+    void releaseGpuBuffers();
 
     irr::gui::IGUIFont* font_ = nullptr;
     BitmapGlyphTable table_;
@@ -181,6 +187,9 @@ private:
     // when the driver is the GLES2 one the layout is written for.
     std::vector<CompactVertex> compactVertices_;
     std::vector<uint16_t> compactIndices_;
+    unsigned gpuVertex_ = 0, gpuIndex_ = 0;
+    size_t gpuVertexBytes_ = 0, gpuIndexBytes_ = 0;
+    irr::video::IVideoDriver* gpuDriver_ = nullptr; // scene manager owns it
     // The per-quad fallback (any other driver): the old UiQuad + UiQuadBatch
     // path, untouched. Zero capacity on the GLES2 driver, which never fills it.
     std::vector<UiQuad> quads_;

@@ -7,8 +7,7 @@
 //  - the two framebuffers are pixel-identical (overlapping tags, every con
 //    colour, a non-ASCII name that takes the font->draw() fallback, a tag
 //    behind the camera, a hidden tag);
-//  - the batch issues TWO draw calls whatever N is (the first glyph through
-//    the driver, every other glyph of every tag in one glDrawElements) and
+//  - the batch issues one draw per run within the index limit and
 //    one quad per drawn glyph; a fallback tag costs its own draw and splits
 //    the run;
 //  - setText() relays the tag out; a tag re-registered from outside its
@@ -166,20 +165,19 @@ TEST_F(NameTagBatchTest, BatchIsPixelIdenticalToPerNodeTextSceneNodes) {
         SCOPED_TRACE("n=" + std::to_string(p.n) + " " + std::to_string(p.nearD) + "-" + std::to_string(p.farD));
         EXPECT_GT(painted, 50u * static_cast<size_t>(std::min(p.n, 10))) << "the frame drew no tags";
         EXPECT_EQ(differing, 0u);
-        // Two draws for every batchable tag together, plus one per fallback tag.
-        // A fallback tag in the middle of the order splits the run: the
-        // glyphs before it (2 draws), its font->draw() (1), the rest (2).
+        // A fallback tag splits the run: glyphs before it, font->draw(),
+        // then glyphs after it, each in one draw.
         EXPECT_LE(st.fallbackTags, 1u);
-        EXPECT_LE(st.driverDraws, 2u + 3u * st.fallbackTags);
+        EXPECT_LE(st.driverDraws, 1u + 2u * st.fallbackTags);
         if (p.allOnScreen) {
             EXPECT_EQ(st.fallbackTags, 1u);
-            EXPECT_EQ(st.driverDraws, 5u);
+            EXPECT_EQ(st.driverDraws, 3u);
             EXPECT_EQ(st.tags, static_cast<size_t>(p.n) - 2u);  // hidden + behind the camera
         }
     }
 }
 
-TEST_F(NameTagBatchTest, TwoDrawsAndOneQuadPerGlyphWhateverTheCount) {
+TEST_F(NameTagBatchTest, OneDrawAndOneQuadPerGlyphWithinTheIndexLimit) {
     for (int n : {1, 50, 200}) {
         for (auto* e : entities_) e->remove();
         entities_.clear();
@@ -193,7 +191,7 @@ TEST_F(NameTagBatchTest, TwoDrawsAndOneQuadPerGlyphWhateverTheCount) {
         const NameTagBatchNode::FrameStats st = batch_->lastFrame();
         SCOPED_TRACE("n=" + std::to_string(n));
         EXPECT_EQ(st.fallbackTags, 0u);
-        EXPECT_EQ(st.driverDraws, 2u);
+        EXPECT_EQ(st.driverDraws, 1u);
         size_t quads = 0;
         for (size_t i = 0; i < tags_.size(); ++i) {
             if (i == 5) continue;
@@ -203,9 +201,9 @@ TEST_F(NameTagBatchTest, TwoDrawsAndOneQuadPerGlyphWhateverTheCount) {
         }
         EXPECT_EQ(st.glyphQuads, quads);
         // The owner row's bytes hold at least this frame's compact quads
-        // (20 B vertex x 4 + 6 u16 indices a glyph; the run's first glyph
-        // goes through the driver, so quads - 1 of them are in the buffers).
-        EXPECT_GE(batch_->bufferBytes(), (quads - 1) * (4 * 20 + 6 * 2));
+        // (20 B vertex x 4 + 6 u16 indices a glyph).
+        EXPECT_GE(batch_->bufferBytes(), quads * (4 * 20 + 6 * 2));
+        EXPECT_GE(batch_->gpuBufferBytes(), quads * (4 * 20 + 6 * 2));
     }
 }
 
@@ -282,8 +280,34 @@ TEST_F(NameTagBatchTest, ReusedIndicesHandleChunkBoundariesAndShorterRuns) {
         const size_t quads = lengths.first + lengths.second;
         EXPECT_EQ(batch_->lastFrame().glyphQuads, quads);
         EXPECT_EQ(batch_->lastFrame().driverDraws,
-                  quads ? 1u + (quads - 1u + 16383u) / 16384u : 0u);
+                  (quads + 16383u) / 16384u);
         if (quads) EXPECT_GT(painted, 0u);
         else EXPECT_EQ(painted, 0u);
     }
 }
+
+#ifdef EQT_HAS_GLES2
+extern size_t gles2GetHWBufferMemoryUsage(void* driver);
+TEST_F(NameTagBatchTest, GpuStorageIsBoundedAccountedAndReleasedWithTheBatch) {
+    const size_t before = gles2GetHWBufferMemoryUsage(driver_);
+    place(200, 115.0f, 160.0f);
+    makeTags(true);
+    tags_[3]->setText(L"Fippy Darkpaw");
+    render()->drop();
+    const size_t bytes = batch_->gpuBufferBytes();
+    EXPECT_GT(bytes, 0u);
+    EXPECT_LE(bytes, 16384u * (80u + 12u) + 20u);
+    EXPECT_EQ(gles2GetHWBufferMemoryUsage(driver_), before + bytes);
+    // Stable workload reuses exactly the same storage, including the slack
+    // vertex that prevents Mesa from discarding a whole-resource write.
+    render()->drop();
+    EXPECT_EQ(batch_->gpuBufferBytes(), bytes);
+    for (auto* e : entities_) e->remove();
+    entities_.clear();
+    tags_.clear();
+    batch_->remove();
+    batch_->drop();
+    batch_ = nullptr;
+    EXPECT_EQ(gles2GetHWBufferMemoryUsage(driver_), before);
+}
+#endif
