@@ -251,14 +251,16 @@ void appendCompactQuad(std::vector<CompactVertex>& vertices,
     const irr::f32 u1 = static_cast<irr::f32>(srcRight) * invW;
     const irr::f32 v0 = static_cast<irr::f32>(srcTop) * invH;
     const irr::f32 v1 = static_cast<irr::f32>(srcBottom) * invH;
-    vertices.push_back({static_cast<irr::f32>(dstLeft), static_cast<irr::f32>(dstTop),
-                        color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha(), u0, v0});
-    vertices.push_back({static_cast<irr::f32>(dstRight), static_cast<irr::f32>(dstTop),
-                        color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha(), u1, v0});
-    vertices.push_back({static_cast<irr::f32>(dstRight), static_cast<irr::f32>(dstBottom),
-                        color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha(), u1, v1});
-    vertices.push_back({static_cast<irr::f32>(dstLeft), static_cast<irr::f32>(dstBottom),
-                        color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha(), u0, v1});
+    // One capacity check/copy per glyph, not one per corner. In particular,
+    // gather the colour before insert can reallocate the destination vector.
+    const irr::u8 r = color.getRed(), g = color.getGreen(), b = color.getBlue(), a = color.getAlpha();
+    const CompactVertex quad[] = {
+        {static_cast<irr::f32>(dstLeft), static_cast<irr::f32>(dstTop), r, g, b, a, u0, v0},
+        {static_cast<irr::f32>(dstRight), static_cast<irr::f32>(dstTop), r, g, b, a, u1, v0},
+        {static_cast<irr::f32>(dstRight), static_cast<irr::f32>(dstBottom), r, g, b, a, u1, v1},
+        {static_cast<irr::f32>(dstLeft), static_cast<irr::f32>(dstBottom), r, g, b, a, u0, v1}
+    };
+    vertices.insert(vertices.end(), quad, quad + 4);
 }
 
 // The caller establishes the driver's own 2D state without drawing. All

@@ -40,6 +40,18 @@ Final CI, Pi timing/pixels, memory and live matrices are pending. The known
 six-pixel live discrepancy and human visual decision remain unresolved.
 MR !73 stays draft; no dependent release or threshold change is implied.
 
+The first candidate's local test and pipeline 492 test job retain their
+failure: the re-registration test still expected the removed bootstrap
+draw. The corrected assertion expects the actual single run; local name-tag,
+static-UI and Lima-policy tests and all primary x86 poses pass
+(`local-corrected/`). A subsequent packing candidate copies each glyph's
+four corners together rather than performing separate vector insertions;
+its local regression and pixel checks pass (`local-packed/`). Neither local
+timing is Pi performance evidence. A shader-precision preload experiment
+did not reduce allocation volume or materially improve timing and was not
+added to production (`shader-probe-job/`, original-shader PNG comparisons
+in `shader-original-pixel-comparison.json`).
+
 ## Native Codex resume, 2026-10-04 — production CPU bar fails
 
 Run `279` of `t_8f86d310` reviewed and integrated B986 commit

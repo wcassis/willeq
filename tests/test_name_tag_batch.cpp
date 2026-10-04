@@ -236,7 +236,7 @@ TEST_F(NameTagBatchTest, ReRegisteredTagOfAWithheldParentIsDrawn) {
     smgr_->drawAll();
     driver_->endScene();
     EXPECT_EQ(batch_->lastFrame().tags, 1u);
-    EXPECT_EQ(batch_->lastFrame().driverDraws, 2u);
+    EXPECT_EQ(batch_->lastFrame().driverDraws, 1u);
     rr->remove();
     rr->drop();
 }
