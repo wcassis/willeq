@@ -64,7 +64,11 @@ A further CPU candidate retains a sized vertex array and writes into its used
 prefix after growing once per tag. Shorter runs, chunk boundaries and font
 fallback splits must never draw unused retained vertices; the existing pixel
 regressions exercise all three. Local tests and fixed poses pass
-(`local-prefix/`); native Pi measurement remains required.
+(`local-prefix/`). Native Pi measurement still FAILS: **2046 us** at N200,
+with an explicit-policy repeat of **2017 us** (`prefix-micro/capture/`).
+All primary Pi poses remain identical. Atlas UVs are now cached once per
+glyph using the same arithmetic, a fixed 2 KiB in the batch object rather
+than additional storage per tag. Native measurement remains required.
 
 ## Native Codex resume, 2026-10-04 — production CPU bar fails
 

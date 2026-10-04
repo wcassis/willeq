@@ -111,6 +111,18 @@ NameTagBatchNode::NameTagBatchNode(irr::scene::ISceneNode* parent, irr::scene::I
             const auto& g = table_.glyph(static_cast<wchar_t>(i));
             if (g.drawn && g.texture) { texture_ = g.texture; break; }
         }
+        if (texture_) {
+            const auto& ts = texture_->getOriginalSize();
+            const irr::f32 invW = 1.0f / static_cast<irr::f32>(ts.Width);
+            const irr::f32 invH = 1.0f / static_cast<irr::f32>(ts.Height);
+            for (size_t i = 0; i < BitmapGlyphTable::kSize; ++i) {
+                const auto& src = table_.glyph(static_cast<wchar_t>(i)).src;
+                glyphUvs_[i] = {static_cast<irr::f32>(src.UpperLeftCorner.X) * invW,
+                               static_cast<irr::f32>(src.UpperLeftCorner.Y) * invH,
+                               static_cast<irr::f32>(src.LowerRightCorner.X) * invW,
+                               static_cast<irr::f32>(src.LowerRightCorner.Y) * invH};
+            }
+        }
     }
 }
 
@@ -245,12 +257,8 @@ void NameTagBatchNode::logWindow(int64_t micros) {
 // computed with `red / 255.0f`).
 void writeCompactQuad(CompactVertex* vertices,
                        irr::s32 dstLeft, irr::s32 dstTop, irr::s32 dstRight, irr::s32 dstBottom,
-                       irr::s32 srcLeft, irr::s32 srcTop, irr::s32 srcRight, irr::s32 srcBottom,
-                       const irr::video::SColor& color, irr::f32 invW, irr::f32 invH) {
-    const irr::f32 u0 = static_cast<irr::f32>(srcLeft) * invW;
-    const irr::f32 u1 = static_cast<irr::f32>(srcRight) * invW;
-    const irr::f32 v0 = static_cast<irr::f32>(srcTop) * invH;
-    const irr::f32 v1 = static_cast<irr::f32>(srcBottom) * invH;
+                       irr::f32 u0, irr::f32 v0, irr::f32 u1, irr::f32 v1,
+                       const irr::video::SColor& color) {
     // Storage was sized once for the tag, outside this glyph loop.
     const irr::u8 r = color.getRed(), g = color.getGreen(), b = color.getBlue(), a = color.getAlpha();
     vertices[0] = {static_cast<irr::f32>(dstLeft), static_cast<irr::f32>(dstTop), r, g, b, a, u0, v0};
@@ -383,7 +391,6 @@ void NameTagBatchNode::render() {
             quads_.clear();
         }
         irr::video::ITexture* runTexture = nullptr;
-        irr::f32 invW = 0.0f, invH = 0.0f;
         bool runHasFirst = false;  // non-GLES2 fallback retains its first quad
         irr::core::rect<irr::s32> firstDest, firstSrc;
         irr::video::SColor firstColor;
@@ -471,18 +478,14 @@ void NameTagBatchNode::render() {
                                                           oy + g.src.getHeight());
                     firstSrc = g.src;
                     firstColor = tag.color_;
-                    const auto& ts = runTexture->getOriginalSize();
-                    invW = 1.0f / static_cast<irr::f32>(ts.Width);
-                    invH = 1.0f / static_cast<irr::f32>(ts.Height);
                     runHasFirst = true;
                     if (!compact) continue;
                 }
                 if (compact) {
+                    const auto& uv = glyphUvs_[static_cast<size_t>(gp.c)];
                     writeCompactQuad(compactVertices_.data() + compactVertexCount_, x, oy,
                                       x + g.src.getWidth(), oy + g.src.getHeight(),
-                                      g.src.UpperLeftCorner.X, g.src.UpperLeftCorner.Y,
-                                      g.src.LowerRightCorner.X, g.src.LowerRightCorner.Y,
-                                      tag.color_, invW, invH);
+                                      uv.u0, uv.v0, uv.u1, uv.v1, tag.color_);
                     compactVertexCount_ += 4;
                 } else {
                     quads_.push_back({{x, oy, x + g.src.getWidth(), oy + g.src.getHeight()}, g.src, tag.color_});

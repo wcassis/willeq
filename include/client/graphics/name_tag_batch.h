@@ -175,6 +175,10 @@ private:
 
     irr::gui::IGUIFont* font_ = nullptr;
     BitmapGlyphTable table_;
+    struct GlyphUv { irr::f32 u0, v0, u1, v1; };
+    // Immutable atlas coordinates: compute the driver's exact arithmetic once,
+    // not four integer conversions and multiplies for every glyph every frame.
+    GlyphUv glyphUvs_[BitmapGlyphTable::kSize]{};
     irr::video::ITexture* texture_ = nullptr;   // the one texture every batchable glyph uses
     irr::core::aabbox3d<irr::f32> box_;
     std::vector<NameTagNode*> pending_;          // grabbed until render()
