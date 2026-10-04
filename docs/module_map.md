@@ -446,7 +446,7 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (21 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
+`hygiene` (23 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
 reachability ratchet), T450's `DbReproducible`, T455's
@@ -493,7 +493,11 @@ capture-shaped fixture in the client's own [memledger] line format must pass
 at exit 0, turn red at exit 1 when a client-only owner's category exceeds its
 orangepi budget, and exit 3 for a run without a `steady_60s` point; budgets
 come from `config/constrained_presets.json`, never from the test; pure
-Python, no server, no display, no binary)
+Python, no server, no display, no binary), plus B975's `NameTagCrowdTiming`
+(`scripts/b975/test_frametiming_table.py`, excludes zone-hop warmup from
+idle timings) and `RenderedZoneFinalVisit`
+(`scripts/pi/test_rendered_zone_final_visit.py`, requires the final tour visit
+to reach the requested zone and steady state without borrowing earlier evidence)
 -- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two
