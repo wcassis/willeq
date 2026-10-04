@@ -37,6 +37,7 @@
 #          [--pi-dir /mnt/projects/fable/ci-arm/<sha>] [-r "1280 720"]
 #          [--char-level N --char-exp E]   (the eligibility leg; see CHAR_LEVEL)
 #          [--owner NAME] [--tour FILE] [--env K=V]... [--drive-keys]
+#          [--final-visit] verify the final visit of an intentional zone-hop tour
 #          [--snap-points startup,ready,steady_60s]   (B932: a smaps/maps
 #          snapshot at each named ledger point, rendered_zone_run.py)
 #          [--mesa nollvm|system]   (B935; default $WILLEQ_MESA, else nollvm)
@@ -128,6 +129,7 @@ ACCOUNT_OVERRIDE=""
 CHAR_OVERRIDE=""
 OWN_CGROUP=1
 STOP_POINT=""
+FINAL_VISIT_ARGS=()
 MESA="${WILLEQ_MESA:-nollvm}"
 BO_CENSUS=""
 while [ $# -gt 0 ]; do
@@ -144,6 +146,7 @@ while [ $# -gt 0 ]; do
         --char-exp) CHAR_EXP="$2"; shift 2 ;;
         --owner) OWNER="$2"; shift 2 ;;
         --tour) TOUR_IN="$2"; shift 2 ;;
+        --final-visit) FINAL_VISIT_ARGS=( --final-visit ); shift ;;
         --env) case "$2" in [A-Z_]*=*) EXTRA_ENV="$EXTRA_ENV '$2'";; *) echo "bad --env $2" >&2; exit 64;; esac; shift 2 ;;
         --drive-keys) DRIVE_KEYS=1; shift ;;
         --allow-vm-lane) ALLOW_VM=1; shift ;;
@@ -400,7 +403,7 @@ fail_row() {  # fail_row <tsv> <zone> <attempt> <signature>
     dir="$LOGS/$2"; [ "$3" = retry ] && dir="$LOGS/${2}_retry"
     python3 "$REPO/scripts/pi/rendered_zone_summarize.py" --run "$dir" \
         --zone "$2" --attempt "$3" --tsv "$1" --expansion "${meta%%	*}" --s3d-bytes "${meta##*	}" \
-        --preset-signature "$4" --expect-mesa "$MESA" --mesa-prefix "$MESA_NOLLVM_PI_PREFIX" 2>&1 | tee -a "$RIG_LOG" >&2
+        --preset-signature "$4" --expect-mesa "$MESA" --mesa-prefix "$MESA_NOLLVM_PI_PREFIX" "${FINAL_VISIT_ARGS[@]}" 2>&1 | tee -a "$RIG_LOG" >&2
 }
 run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     local z="$1" attempt="$2" tsv="$3" meta exp s3d dir pidir before after rc
@@ -452,7 +455,7 @@ sudo -n pkill -TERM -f '[u]input_drive[.]py' >/dev/null 2>&1; sleep 1; exit \$ru
     fi
     python3 "$REPO/scripts/pi/rendered_zone_summarize.py" --run "$dir" --zone "$z" --attempt "$attempt" \
         --expansion "$exp" --s3d-bytes "$s3d" --dmesg "$dir/dmesg_oom.txt" --tsv "$tsv" \
-        --expect-mesa "$MESA" --mesa-prefix "$MESA_NOLLVM_PI_PREFIX" 2>&1 | tee -a "$RIG_LOG" >&2
+        --expect-mesa "$MESA" --mesa-prefix "$MESA_NOLLVM_PI_PREFIX" "${FINAL_VISIT_ARGS[@]}" 2>&1 | tee -a "$RIG_LOG" >&2
     local mcheck
     mcheck="$(awk -F'\t' 'NR==1 {for (i=1;i<=NF;i++) if ($i=="mesa_check") c=i; next} END {if (c) print $c}' "$tsv")"
     if [ "${mcheck#mismatch}" != "$mcheck" ]; then

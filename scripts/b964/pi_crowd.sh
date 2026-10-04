@@ -78,7 +78,7 @@ for zone in ${ZONES//,/ }; do
         echo "[pi_crowd] $zone/$variant -> $dir"
         bash "$REPO/scripts/pi_rendered_zone_sweep.sh" --zones "$zone" --out "$dir" --pi-dir "$PI_DIR" \
             -r "$RES" --tour "$dir/tour.txt" --cap 720 --stall 240 --no-retry --owner "$OWNER" \
-            --stop-point never --char-level 60 --char-exp 616137000 "${envs[@]}" "${vm_args[@]}" \
+            --stop-point never --final-visit --char-level 60 --char-exp 616137000 "${envs[@]}" "${vm_args[@]}" \
             > "$dir/sweep.out" 2>&1
         rc=$?
         echo "[pi_crowd] $zone/$variant rc=$rc"
