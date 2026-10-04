@@ -22,6 +22,7 @@
 
 #include <irrlicht.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace EQT::Graphics;
@@ -253,4 +254,36 @@ TEST_F(NameTagBatchTest, SetTextRelaysTheTagOut) {
     img->drop();
     EXPECT_EQ(batch_->lastFrame().glyphQuads, 4u);
     EXPECT_EQ(static_cast<NameTagNode*>(tags_[0])->text(), std::wstring(L"Wolf"));
+}
+
+TEST_F(NameTagBatchTest, ReusedIndicesHandleChunkBoundariesAndShorterRuns) {
+    place(2, 30.0f, 40.0f);
+    entities_[1]->setPosition(irr::core::vector3df(0.0f, 2.0f, 45.0f));
+    // Each per-node string fits its own 16-bit draw; their batch crosses the
+    // chunk boundary. Later frames must not draw the retained index suffix.
+    for (const auto& lengths : {std::pair<size_t, size_t>{9000, 9000}, {4, 1},
+                                {1, 0}, {0, 0}, {4, 9}}) {
+        SCOPED_TRACE(std::to_string(lengths.first) + "/" + std::to_string(lengths.second));
+        const std::wstring names[] = {std::wstring(lengths.first, L'A'),
+                                      std::wstring(lengths.second, L'W')};
+        batch_->setVisible(false);
+        makeTags(false);
+        for (size_t i = 0; i < tags_.size(); ++i) tags_[i]->setText(names[i].c_str());
+        irr::video::IImage* before = render();
+        batch_->setVisible(true);
+        makeTags(true);
+        for (size_t i = 0; i < tags_.size(); ++i) tags_[i]->setText(names[i].c_str());
+        irr::video::IImage* after = render();
+        size_t differing = 0, painted = 0;
+        compare(before, after, &differing, &painted);
+        before->drop();
+        after->drop();
+        EXPECT_EQ(differing, 0u);
+        const size_t quads = lengths.first + lengths.second;
+        EXPECT_EQ(batch_->lastFrame().glyphQuads, quads);
+        EXPECT_EQ(batch_->lastFrame().driverDraws,
+                  quads ? 1u + (quads - 1u + 16383u) / 16384u : 0u);
+        if (quads) EXPECT_GT(painted, 0u);
+        else EXPECT_EQ(painted, 0u);
+    }
 }

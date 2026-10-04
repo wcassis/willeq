@@ -4,7 +4,40 @@ GitLab #293 (class B, perf, lane pi). Branch `task/B975-name-tag-batch`
 (worktree `/mnt/projects/fable/wt/audit-nametags`), based on `gitlab/fable`
 d3375b65 (B964 / MR !70 merged). Raw evidence: `/mnt/projects/fable/review/B975/`.
 
-## STATE AT HAND-OFF 2026-10-01
+## Native Codex resume, 2026-10-04 — acceptance in progress
+
+Run `279` of `t_8f86d310` reviewed and integrated B986 commit
+`fd8b002b2a3ecb4f1b7d1a896cad20b9812f4d5d` into this branch. The fix disables
+Lima BO retention before DRM device creation; it does not change a memory
+threshold or golden. Its parent evidence is not B975 acceptance. Fresh run
+evidence is under
+`~/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/`.
+
+Source review found the earlier shrink still regenerated every glyph's
+indices each frame. The compact path now grows a reusable index prefix,
+bounded by the 16-bit draw limit, and reuses it for each vertex chunk. Draw
+length comes from the current vertices, never the retained index suffix.
+Texture reciprocals are computed once per run with the same arithmetic.
+Trimming checks vertex and index capacities independently and immediately
+publishes the reduced memory-owner row. The standalone `nametag_drawcost`
+now applies the same DRM Lima policy as the client, so its default timing
+tests the production policy rather than the former cache setting.
+
+The focused Release checks and all primary x86 poses pass after this change
+(`local-reconfigured/job.log` and `local-reconfigured/pixel/pixel.csv`). The
+new regression crosses the 16-bit index boundary, then draws shorter,
+single-glyph and empty runs against the original per-node framebuffers.
+An earlier local build command failed because its stale CMake configuration
+did not know the new Lima-policy test target; that exit remains recorded in
+`local-index-check/job.json`. Explicit reconfiguration resolved it.
+
+The initial fresh captures use the integrated B986 revision above, before
+this index change. They are comparison evidence, not final-head acceptance.
+Final publication, Pi timing, the complete matrix and live-tag decisions
+remain to be recorded. MR !73 remains draft; no visual approval or downstream
+release is implied. The historical sections below retain earlier failures.
+
+## STATE AT HAND-OFF 2026-10-01 (historical)
 
 The unit was stopped on a hand-off order mid-way. Everything below is the
 state at the WIP commit that carries this section.

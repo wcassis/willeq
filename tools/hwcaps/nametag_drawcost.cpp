@@ -19,6 +19,7 @@
 // No model judges a frame: every column is a count or a time.
 
 #include "client/graphics/gles2_shader_cache.h"
+#include "client/graphics/lima_buffer_policy.h"
 #include "client/graphics/name_tag_batch.h"
 
 #include <irrlicht.h>
@@ -137,6 +138,10 @@ bool openDevice(Scene& s, const Options& o) {
     if (o.drm) params.DeviceType = irr::EIDT_FRAMEBUFFER;  // the Pi: DRM/KMS
 #endif
     eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
+    if (!configureLimaBufferPolicy(o.drm)) {
+        fprintf(stderr, "cannot configure the client's Lima buffer policy\n");
+        return false;
+    }
     s.device = irr::createDeviceEx(params);
     if (!s.device) return false;
     s.driver = s.device->getVideoDriver();

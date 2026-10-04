@@ -74,7 +74,7 @@ class NameTagBatchNode;
 
 // B975's shrink: the tag pass's compact vertex, 20 bytes, no padding
 // {f32 x, y; u8 r, g, b, a (normalized); f32 u, v}. A glyph quad is 4 of these
-// plus 6 u16 indices = 80 B/quad, against the UiQuad intermediate's
+// (80 B), plus 6 u16 indices, against the UiQuad intermediate's
 // 36 B UiQuad + 144 B of 9-float vertices + 12 B indices.
 // Attribute slots 0/2/3, the same program (UI2D) and the same per-vertex
 // values COpenGLES2Driver::draw2DImage() feeds (x, y, z=0 the constant 2D
@@ -145,7 +145,7 @@ public:
         size_t fallbackTags = 0;  // tags drawn by font->draw()
         size_t driverDraws = 0;   // draw calls issued
         int64_t cpuMicros = 0;    // render(): sort + project + layout + quads + submit
-        int64_t submitMicros = 0; // of which: the vertex fill + GL calls (UiQuadBatch, font->draw)
+        int64_t submitMicros = 0; // run submission (index growth + GL calls, or fallback draw)
     };
     const FrameStats& lastFrame() const { return last_; }
 
@@ -174,8 +174,8 @@ private:
     std::vector<NameTagNode*> pending_;          // grabbed until render()
     irr::core::array<Entry> sorted_;
     // The compact run (B975's shrink): no UiQuad intermediate.
-    // 80 B/quad: 4 x 20 B CompactVertex + 6 u16 indices, static per-quad index
-    // pattern {0,1,2, 0,2,3} over running bases; the colour bytes are
+    // 80 B/quad: 4 x 20 B CompactVertex, plus 6 u16 indices in a grow-once
+    // pattern {0,1,2, 0,2,3}, reused for each chunk; the colour bytes are
     // normalized at the attribute. Buffers at need, trimmed at a window
     // boundary (logWindow) when capacity > 4x the window's peak. Used only
     // when the driver is the GLES2 one the layout is written for.
