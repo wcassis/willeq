@@ -9,7 +9,7 @@ d3375b65 (B964 / MR !70 merged). Raw evidence: `/mnt/projects/fable/review/B975/
 The unit was stopped on a hand-off order mid-way. Everything below is the
 state at the WIP commit that carries this section.
 
-## Guided Codex verification, 2026-10-03 (in progress)
+## Guided Codex verification, 2026-10-03/04 — blocked by B986
 
 Resumed the paused card `t_8f86d310` in its existing worktree. Merged
 `origin/fable` at `c778d23dab9024a55c983c62bf61169453f2a2bb`; CI pipeline
@@ -39,8 +39,92 @@ movement, excluding zone-hop warmup; `NameTagCrowdTiming` pins this and
 refuses to substitute warmup samples when the idle interval has no samples.
 Red/green output is in `frametiming-{red,green}.log`.
 
-Remaining: merged-build crowd A/B on both platforms, live colour/name
-verification, final CI and documentation close-out. MR !73 stays draft.
+Pipeline **485** at `a28f1b0795602d3dfb592291ee44150d3e391a15` passes
+hygiene, build, the full test job and the visual gate. The renderer binaries
+remain those from pipeline 483: subsequent changes affect only the capture
+harness, its tests and documentation. Fresh x86 NameTagBatch tests and all
+nine primary fixed-pose pixel comparisons also pass.
+
+The intentional crowd tour visits arena and returns. Its verification now
+opts into `--final-visit`, requiring ready and steady in the last visit to
+the requested zone. A failed return cannot borrow an earlier success;
+`RenderedZoneFinalVisit` covers that boundary. Whole-process exit/FATAL/OOM
+checks remain in force. No memory threshold or golden was changed.
+
+Both Qeynos normal-population variants pass. The Qeynos crowd variants
+reach ready/steady and exit cleanly, but fail the existing 10 MiB unnamed
+GPU allocation guard: 18.70 MiB batched, 19.23 MiB per-node. This is present
+with batching disabled too; its cause is not yet isolated (B986 / #305). The first crowd
+comparison reduces the idle transparent pass from 19.7 ms to 1.1 ms and
+steady owned memory from 130.68 MiB to 122.74 MiB. These are medians from
+separate live runs, with different dynamic visibility/governor decisions.
+
+An intermediate crowd attempt was interrupted by editing its running shell
+harness. Its partial `pi-crowd/qeynos2/{imp0,tagnode0}` directories are invalid;
+the verified replacements are under `pi-crowd-resume/qeynos2/`. The earlier
+successful crowd pair remains under `pi-crowd/qeynos2/`.
+
+Greater Faydark reproduces the crowd guard failure in both paths:
+27.32 MiB batch and 26.68 MiB per-node. Its idle transparent pass is
+1.2 ms batch versus 24.0 ms per-node; the batch reports 200 visible tags
+and 1137.5 us CPU. Steady owned memory is 146.48 versus 144.93 MiB.
+The per-node run's live tmpfs cache was only 688 KiB
+(`gfaydark-tagnode-cache-kib.txt`), insufficient to explain the excess.
+B986 / #305 records the unresolved accounting failure; it is not waived.
+
+Source inspection also corrects the old colour-check wording: NPC name tags
+are white and player tags blue; con colours belong to placeholder meshes.
+The live check must preserve those existing colours and exercise the corpse
+name update, rather than claim the batch adds con-coloured name tags.
+
+All Pi variants are captured. Qeynos normal-population passes; Greater
+Faydark normal-population fails the same guard (12.24/11.80 MiB,
+batch/per-node). `evidence-20261003/pi-verification.csv` contains the
+verifier's net-of-PNG values and exact source paths. The separate generated
+`pi-crowd.md` table prints raw GPU values, including captured PNG charges;
+do not mix those memory definitions.
+
+All eight x86 variants exit zero, with no watchdog or FATAL, and reach
+ready and steady in the final requested zone (`x86-verification.csv`).
+These are integration results, not Pi performance or memory-budget passes:
+the crowd runs reproduce the known llvmpipe growth in B974 / #292. Some
+x86 `gpu_driver` ledger values even exceed resident anonymous bytes, so the
+reported clamped owned value is not a useful memory comparison.
+
+Live daylight A/B (`live-tags/{batch,tagnode}/{living,corpse}.png`) exercises
+white NPC tags, blue player tags, and `setText` through NPC death. Both clients
+exit zero with ready/steady and no lost zone link. Whole frames differ by
+172050 pixels (living) and 149714 (corpse); the world, animations and chat are
+not deterministic. Fixed-rectangle colour masks match exactly for the NPC
+in both phases and the player in the corpse phase. The living player mask
+differs by six pixels where it overlaps the NPC; this is recorded, not waived
+or represented as exact whole-frame identity. See `live-tags-comparison.json`
+for rectangles, colours and counts. Will retains visual approval.
+
+### Verification result and handoff
+
+| Check | Result |
+|---|---|
+| Pi 200-tag render pass <=2 ms | PASS: 1.690 ms, `pi-drawcost.csv` |
+| Nine primary fixed poses, x86 and Pi | PASS: zero differing pixels, both pixel CSVs |
+| Full CI suite and visual gate | PASS at pipeline 485; final pushed-head pipeline is linked from MR !73 |
+| Pi crowd/normal matrix | All eight captured; two pass, six FAIL the unchanged GPU guard |
+| x86 crowd/normal matrix | All eight integration checks pass; known llvmpipe memory growth remains |
+| Live colour and corpse-name update | Captured and diffed; limitations above, visual approval remains Will's |
+
+The fresh code/data comparison against c778d23d is empty
+(`renderer-source-since-c778.diff`), so the measured renderer is unchanged by
+the harness/documentation commits. Evidence retrieval now preserves remote
+files if interrupted or rsync fails, and stops before retrying over them.
+
+**Acceptance remains blocked by B986 / #305.** MR !73 stays draft and refers
+to #293 without closing it. No budget, golden or baseline was changed; the
+kanban board remains paused and no dependent worker was released. All Pi,
+x86 and live-run character snapshots restored byte-identically; both locks
+are free and the EQEmu stack is down. B985's
+non-NFS transport fix is included in this branch but awaits review/merge.
+The next decision is how to address the unchanged memory guard failure, not
+whether to relax the name-tag CPU target (which is already met).
 
 ## PROGRESS 2026-10-03 (REM item 1: the shrink) — commit 05533bcb
 

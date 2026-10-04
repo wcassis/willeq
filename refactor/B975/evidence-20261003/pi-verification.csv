@@ -1,0 +1,9 @@
+zone,variant,verdict,exit_code,reached_ready,reached_steady,fps_median,rss_anon_steady,owned_steady,gpu_buffers_net_steady,gpu_unnamed_steady,signature,source
+qeynos2,imp200far,fail,0,y,y,31.0,101367808,128700905,47821953,19603785,gpu_unnamed_over_bound (18.70 MiB of GEM no tally row names at steady_60s > 10.00 MiB),pi-crowd/qeynos2/imp200far/results-final-visit.tsv
+qeynos2,tagnode200far,fail,0,y,y,29.0,109133824,137025417,48339393,20159233,gpu_unnamed_over_bound (19.23 MiB of GEM no tally row names at steady_60s > 10.00 MiB),pi-crowd/qeynos2/tagnode200far/results-final-visit.tsv
+qeynos2,imp0,pass,0,y,y,41.0,68468736,77206716,27822052,9410244,,pi-crowd-resume/qeynos2/imp0/results.tsv
+qeynos2,tagnode0,pass,0,y,y,39,66191360,74969701,27945733,9485253,,pi-crowd-resume/qeynos2/tagnode0/results.tsv
+gfaydark,imp200far,fail,0,y,y,26,119689216,153596331,54133443,28644555,gpu_unnamed_over_bound (27.32 MiB of GEM no tally row names at steady_60s > 10.00 MiB),pi-crowd-resume/gfaydark/imp200far/results.tsv
+gfaydark,tagnode200far,fail,0,y,y,22.0,118775808,151974176,53460872,27977552,gpu_unnamed_over_bound (26.68 MiB of GEM no tally row names at steady_60s > 10.00 MiB),pi-crowd-resume/gfaydark/tagnode200far/results.tsv
+gfaydark,imp0,fail,0,y,y,41.0,83333120,93023599,28803423,12838199,gpu_unnamed_over_bound (12.24 MiB of GEM no tally row names at steady_60s > 10.00 MiB),pi-crowd-resume/gfaydark/imp0/results.tsv
+gfaydark,tagnode0,fail,0,y,y,41.0,76201984,85445704,28218176,12372288,gpu_unnamed_over_bound (11.80 MiB of GEM no tally row names at steady_60s > 10.00 MiB),pi-crowd-resume/gfaydark/tagnode0/results.tsv

@@ -350,6 +350,19 @@ it without taking that measurement first.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
+- **B986** (B) → issue #305. Pi 200-NPC crowd runs fail the existing
+  unnamed-GPU allocation guard with both name-tag renderers: Qeynos
+  18.70/19.23 MiB and Greater Faydark 27.32/26.68 MiB (batch/per-node),
+  against 10 MiB. Attribution remains open; the normal-zone stream-buffer
+  finding B972 does not establish this crowd's cause. B975 acceptance blocked;
+  evidence and reproduction in #305 and `refactor/B975/README.md`.
+- **B975** (B) → issue #293, draft MR !73. Entity name tags batched into
+  compact glyph runs. Guided verification on the merged branch meets the
+  Pi 200-tag CPU bar (1.690 ms) and preserves exact primary fixed-pose pixels
+  on x86 and Pi. Crowd verification is complete; both zones' crowd paths
+  and Greater Faydark normal-population paths fail the unchanged unnamed-GPU
+  allocation guard, including batching OFF (B986).
+  See `refactor/B975/README.md` for provenance and acceptance blockers.
 - **B985** (B) → issue #304. `scripts/pi_rendered_zone_sweep.sh` cannot run
   from a host whose checkout and `--out` are not NFS-mounted by the Pi: its
   runner invocation runs `python3 <checkout>/scripts/pi/rendered_zone_run.py` ON
@@ -359,6 +372,9 @@ it without taking that measurement first.
   2026-10-03 hermes-ext Pi re-run (the leg worked via a hand-staged copy of
   the repo's pieces on the Pi). Fix: stage the runner/config/tour on the Pi
   and rsync the run dir back when the lane is not the local one.
+  Implemented on B975's draft MR !73: explicit staging and retrieval also
+  work from hermes-ext; the transport smoke and subsequent real Pi runs
+  produced client logs, snapshots and rendered frames. Awaiting review/merge.
 
 - **B976** (B) → issue #294. In timorous_f2, `--shader-debug 5` shows the
   bottom plane's normal as +Y on llvmpipe and G=0 on Lima, so the player light

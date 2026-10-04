@@ -280,6 +280,7 @@ SNAP_TAKEN=0
 PI_BIN_DIR="/home/${PI_USER}/pi-rendered-sweep"
 PI_BIN="$PI_BIN_DIR/willeq"
 PI_TMP="/tmp/prs"
+PI_EVIDENCE_PENDING=0
 pi_kill_client() {
     pi_remote "pkill -TERM -f '^${PI_BIN} ' >/dev/null 2>&1; sleep 3; pkill -KILL -f '^${PI_BIN} ' >/dev/null 2>&1; pkill -KILL -f '[r]endered_zone_run[.]py' >/dev/null 2>&1; sudo -n pkill -KILL -f '[u]input_drive[.]py' >/dev/null 2>&1; true" </dev/null >/dev/null 2>&1
 }
@@ -288,7 +289,11 @@ cleanup() {
     CLEANED=1
     say "cleanup: stopping any Pi client, restoring, lane down, releasing locks"
     pi_kill_client
-    pi_remote "rm -rf '$PI_TMP'" </dev/null >/dev/null 2>&1
+    if [ "$PI_EVIDENCE_PENDING" -eq 0 ]; then
+        pi_remote "rm -rf '$PI_TMP'" </dev/null >/dev/null 2>&1
+    else
+        say "unretrieved evidence retained on ${PI_HOST}:$PI_TMP; retrieve before another sweep"
+    fi
     if [ -n "$RMEM_RESTORE" ]; then
         pi_remote "sudo -n sysctl -q -w net.core.rmem_max=$RMEM_RESTORE" </dev/null >/dev/null 2>&1
         say "net.core.rmem_max restored to $RMEM_RESTORE: now $(pi_remote "sysctl -n net.core.rmem_max" </dev/null)"
@@ -439,13 +444,15 @@ $GEM_CENSUS_ENV '$PI_BIN' -c '$PI_INPUTS/client.json' --drm --renderer gles2 --c
 > '$pidir/runner.out' 2>&1; runner_rc=\$?; \
 cp '$PI_BIN_DIR/gem_owners.tsv' '$PI_BIN_DIR/bo_events.log' '$pidir/' 2>/dev/null; rm -f '$PI_BIN_DIR/gem_owners.tsv' '$PI_BIN_DIR/bo_events.log'; \
 sudo -n pkill -TERM -f '[u]input_drive[.]py' >/dev/null 2>&1; sleep 1; exit \$runner_rc"
+    PI_EVIDENCE_PENDING=1
     timeout $((CAP_S + 120)) bash -c 'source "$1"; pi_remote "$2" </dev/null' _ "$REPO/scripts/pi/env.sh" "$remote"
     rc=$?
     [ "$rc" -eq 0 ] || { say "WARN: the Pi leg returned $rc (ssh/timeout) -- killing any leftover client"; pi_kill_client; }
     if ! rsync -a -e "ssh $PI_SSH_OPTS" "${PI_USER}@${PI_HOST}:$pidir/" "$dir/"; then
         say "failed to retrieve Pi evidence for $z"
-        return 1
+        exit 68  # stop before a retry can overwrite the unretrieved run
     fi
+    PI_EVIDENCE_PENDING=0
     pi_remote "sudo -n rm -rf '$pidir'" </dev/null
     after="$(dmesg_count)"
     : > "$dir/dmesg_oom.txt"
