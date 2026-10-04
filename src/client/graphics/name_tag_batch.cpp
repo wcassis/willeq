@@ -243,7 +243,7 @@ void NameTagBatchNode::logWindow(int64_t micros) {
 // the compact layout; the colour bytes are the tag's SColor verbatim (the
 // shader's aColor decodes them normalized, the same floats draw2DImage()
 // computed with `red / 255.0f`).
-void appendCompactQuad(std::vector<CompactVertex>& vertices,
+void writeCompactQuad(CompactVertex* vertices,
                        irr::s32 dstLeft, irr::s32 dstTop, irr::s32 dstRight, irr::s32 dstBottom,
                        irr::s32 srcLeft, irr::s32 srcTop, irr::s32 srcRight, irr::s32 srcBottom,
                        const irr::video::SColor& color, irr::f32 invW, irr::f32 invH) {
@@ -251,16 +251,12 @@ void appendCompactQuad(std::vector<CompactVertex>& vertices,
     const irr::f32 u1 = static_cast<irr::f32>(srcRight) * invW;
     const irr::f32 v0 = static_cast<irr::f32>(srcTop) * invH;
     const irr::f32 v1 = static_cast<irr::f32>(srcBottom) * invH;
-    // One capacity check/copy per glyph, not one per corner. In particular,
-    // gather the colour before insert can reallocate the destination vector.
+    // Storage was sized once for the tag, outside this glyph loop.
     const irr::u8 r = color.getRed(), g = color.getGreen(), b = color.getBlue(), a = color.getAlpha();
-    const CompactVertex quad[] = {
-        {static_cast<irr::f32>(dstLeft), static_cast<irr::f32>(dstTop), r, g, b, a, u0, v0},
-        {static_cast<irr::f32>(dstRight), static_cast<irr::f32>(dstTop), r, g, b, a, u1, v0},
-        {static_cast<irr::f32>(dstRight), static_cast<irr::f32>(dstBottom), r, g, b, a, u1, v1},
-        {static_cast<irr::f32>(dstLeft), static_cast<irr::f32>(dstBottom), r, g, b, a, u0, v1}
-    };
-    vertices.insert(vertices.end(), quad, quad + 4);
+    vertices[0] = {static_cast<irr::f32>(dstLeft), static_cast<irr::f32>(dstTop), r, g, b, a, u0, v0};
+    vertices[1] = {static_cast<irr::f32>(dstRight), static_cast<irr::f32>(dstTop), r, g, b, a, u1, v0};
+    vertices[2] = {static_cast<irr::f32>(dstRight), static_cast<irr::f32>(dstBottom), r, g, b, a, u1, v1};
+    vertices[3] = {static_cast<irr::f32>(dstLeft), static_cast<irr::f32>(dstBottom), r, g, b, a, u0, v1};
 }
 
 // The caller establishes the driver's own 2D state without drawing. All
@@ -269,7 +265,7 @@ void appendCompactQuad(std::vector<CompactVertex>& vertices,
 size_t NameTagBatchNode::drawCompactRun(irr::video::IVideoDriver* driver) {
     const auto& vertices = compactVertices_;
     auto& indices = compactIndices_;
-    if (!driver || vertices.empty()) return 0;
+    if (!driver || compactVertexCount_ == 0) return 0;
     if (!UiQuadBatch::driverSupportsBatching(driver)) return 0;
 #ifdef EQT_HAS_GLES2
     using Clock = std::chrono::steady_clock;
@@ -279,7 +275,7 @@ size_t NameTagBatchNode::drawCompactRun(irr::video::IVideoDriver* driver) {
     auto start = Clock::now();
     // One immutable prefix, grown only when a run needs more quads. Every
     // chunk addresses its own vertex base with the same 16-bit pattern.
-    const size_t quads = vertices.size() / 4;
+    const size_t quads = compactVertexCount_ / 4;
     const size_t patternQuads = std::min(kMaxCompactQuadsPerDraw, quads);
     indices.reserve(patternQuads * 6);
     for (size_t q = indices.size() / 6; q < patternQuads; ++q) {
@@ -382,7 +378,7 @@ void NameTagBatchNode::render() {
         // driver keeps the old UiQuad + UiQuadBatch per-quad path.
         const bool compact = UiQuadBatch::driverSupportsBatching(driver);
         if (compact) {
-            compactVertices_.clear();
+            compactVertexCount_ = 0;
         } else {
             quads_.clear();
         }
@@ -392,7 +388,7 @@ void NameTagBatchNode::render() {
         irr::core::rect<irr::s32> firstDest, firstSrc;
         irr::video::SColor firstColor;
         auto flushRun = [&]() {
-            const bool haveCompact = compact && !compactVertices_.empty();
+            const bool haveCompact = compact && compactVertexCount_ != 0;
             if (!runHasFirst && !haveCompact && quads_.empty()) return;
             const auto s0 = std::chrono::steady_clock::now();
             if (runHasFirst) {
@@ -405,7 +401,7 @@ void NameTagBatchNode::render() {
                     last_.setupMicros += std::chrono::duration_cast<std::chrono::microseconds>(
                                             std::chrono::steady_clock::now() - s0).count();
                     last_.driverDraws += drawCompactRun(driver);
-                    last_.glyphQuads += compactVertices_.size() / 4;
+                    last_.glyphQuads += compactVertexCount_ / 4;
                 } else {
                     // The old path: the first quad and every other quad of the
                     // run go through UiQuadBatch (per-quad on a non-GLES2 driver).
@@ -420,7 +416,7 @@ void NameTagBatchNode::render() {
             last_.submitMicros += std::chrono::duration_cast<std::chrono::microseconds>(
                                       std::chrono::steady_clock::now() - s0).count();
             if (compact) {
-                compactVertices_.clear();
+                compactVertexCount_ = 0;
             }
             quads_.clear();
             runHasFirst = false;
@@ -455,6 +451,13 @@ void NameTagBatchNode::render() {
                 ++last_.driverDraws;
                 continue;
             }
+            // Reuse the sized storage, not merely its capacity. Growing once
+            // per tag removes per-corner/per-glyph vector bookkeeping; only
+            // the used prefix is submitted, including after fallback splits.
+            if (compact) {
+                const size_t need = compactVertexCount_ + tag.glyphs_.size() * 4;
+                if (compactVertices_.size() < need) compactVertices_.resize(need);
+            }
             for (const auto& gp : tag.glyphs_) {
                 const BitmapGlyphTable::Glyph& g = table_.glyph(gp.c);
                 if (runTexture && g.texture != runTexture) flushRun();
@@ -475,11 +478,12 @@ void NameTagBatchNode::render() {
                     if (!compact) continue;
                 }
                 if (compact) {
-                    appendCompactQuad(compactVertices_, x, oy,
+                    writeCompactQuad(compactVertices_.data() + compactVertexCount_, x, oy,
                                       x + g.src.getWidth(), oy + g.src.getHeight(),
                                       g.src.UpperLeftCorner.X, g.src.UpperLeftCorner.Y,
                                       g.src.LowerRightCorner.X, g.src.LowerRightCorner.Y,
                                       tag.color_, invW, invH);
+                    compactVertexCount_ += 4;
                 } else {
                     quads_.push_back({{x, oy, x + g.src.getWidth(), oy + g.src.getHeight()}, g.src, tag.color_});
                 }

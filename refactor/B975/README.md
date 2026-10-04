@@ -52,6 +52,20 @@ did not reduce allocation volume or materially improve timing and was not
 added to production (`shader-probe-job/`, original-shader PNG comparisons
 in `shader-original-pixel-comparison.json`).
 
+The native reusable-buffer candidate at `7374b642` passes all primary Pi
+poses but still reports **2221 us** at 200 tags (**765 build / 1442 submit**).
+Its explicit-policy repeat is **2203 us**, including **50 setup / 0 index /
+213 upload / 1120 draw** microseconds (independent medians). Raw results:
+`candidate-micro/capture/`. Large-draw tracing now shows one geometry-output
+allocation per draw rather than transient input uploads; the pinned Mesa's
+geometry-output allocation remains in place. This candidate still FAILS.
+
+A further CPU candidate retains a sized vertex array and writes into its used
+prefix after growing once per tag. Shorter runs, chunk boundaries and font
+fallback splits must never draw unused retained vertices; the existing pixel
+regressions exercise all three. Local tests and fixed poses pass
+(`local-prefix/`); native Pi measurement remains required.
+
 ## Native Codex resume, 2026-10-04 — production CPU bar fails
 
 Run `279` of `t_8f86d310` reviewed and integrated B986 commit

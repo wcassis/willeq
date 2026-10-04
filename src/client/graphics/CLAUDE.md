@@ -293,7 +293,9 @@ registered tags far-to-near, projects with one proj × view product per frame,
 and draws compact glyph vertices through the GLES2 path. A batchable run
 within the index limit takes one draw; fallback glyphs split runs.
 The compact index prefix grows only at need and is reused across chunks and
-frames; draw length follows the current vertex run, not retained indices.
+frames; draw length follows the used vertex prefix, not retained storage.
+CPU vertex storage stays sized between runs and grows once per tag, so glyph
+emission does not repeat vector bookkeeping for every corner.
 The driver's state-only 2D entry point avoids a bootstrap client-array draw.
 Bounded VBO/EBO storage is reused; one slack vertex prevents whole-resource
 renaming on Lima. Writes remain synchronized, never orphaned or unsynchronized.

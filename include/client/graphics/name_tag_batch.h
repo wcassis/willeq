@@ -186,6 +186,7 @@ private:
     // boundary (logWindow) when capacity > 4x the window's peak. Used only
     // when the driver is the GLES2 one the layout is written for.
     std::vector<CompactVertex> compactVertices_;
+    size_t compactVertexCount_ = 0; // used prefix; vector storage survives each run
     std::vector<uint16_t> compactIndices_;
     unsigned gpuVertex_ = 0, gpuIndex_ = 0;
     size_t gpuVertexBytes_ = 0, gpuIndexBytes_ = 0;
