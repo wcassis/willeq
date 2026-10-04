@@ -1,0 +1,58 @@
+[
+  {
+    "run": "baseline tool default (not production)",
+    "tested_sha": "fd8b002b2a3ecb4f1b7d1a896cad20b9812f4d5d",
+    "production_policy": false,
+    "verdict": "Not applicable",
+    "render_us": "1706.0",
+    "build_us": "891.0",
+    "submit_us": "800.0",
+    "buffer_bytes": "381424",
+    "source": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/pi-micro/drawcost/drawcost.csv",
+    "render_ms": 1.706,
+    "build_ms": 0.891,
+    "submit_ms": 0.8
+  },
+  {
+    "run": "baseline explicit nobocache",
+    "tested_sha": "fd8b002b2a3ecb4f1b7d1a896cad20b9812f4d5d",
+    "production_policy": true,
+    "verdict": "FAIL",
+    "render_us": "5771.0",
+    "build_us": "923.0",
+    "submit_us": "4845.0",
+    "buffer_bytes": "381424",
+    "source": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/pi-micro/drawcost-nobocache/drawcost.csv",
+    "render_ms": 5.771,
+    "build_ms": 0.923,
+    "submit_ms": 4.845
+  },
+  {
+    "run": "optimized production default",
+    "tested_sha": "c81e226090f2960bcd21eac8abee41b2f38ed72b",
+    "production_policy": true,
+    "verdict": "FAIL",
+    "render_us": "5604.0",
+    "build_us": "751.0",
+    "submit_us": "4845.0",
+    "buffer_bytes": "358456",
+    "source": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/index-micro/capture/drawcost/drawcost.csv",
+    "render_ms": 5.604,
+    "build_ms": 0.751,
+    "submit_ms": 4.845
+  },
+  {
+    "run": "optimized explicit repeat",
+    "tested_sha": "c81e226090f2960bcd21eac8abee41b2f38ed72b",
+    "production_policy": true,
+    "verdict": "FAIL",
+    "render_us": "5621.0",
+    "build_us": "758.0",
+    "submit_us": "4834.0",
+    "buffer_bytes": "358456",
+    "source": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/index-micro/capture/drawcost-nobocache/drawcost.csv",
+    "render_ms": 5.621,
+    "build_ms": 0.758,
+    "submit_ms": 4.834
+  }
+]

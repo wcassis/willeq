@@ -350,18 +350,20 @@ it without taking that measurement first.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
-- **B986** (B) → issue #305. Pi 200-NPC crowd runs fail the existing
-  unnamed-GPU allocation guard with both name-tag renderers: Qeynos
-  18.70/19.23 MiB and Greater Faydark 27.32/26.68 MiB (batch/per-node),
-  against 10 MiB. Attribution remains open; the normal-zone stream-buffer
-  finding B972 does not establish this crowd's cause. B975 acceptance blocked;
-  evidence and reproduction in #305 and `refactor/B975/README.md`.
+- **B986** (B) → issue #305. The Pi unnamed-GPU guard failure was attributed
+  to Lima BO-cache retention and fixed by configuring the DRM client before
+  device creation. The reviewed fix is integrated into B975; its fresh
+  baseline matrix passes the unchanged memory guard with both renderers.
+  Evidence: `refactor/B986_pi_gpu_guard.md` and `refactor/B975/README.md`.
+  Awaiting review/merge; this does not establish B975's CPU acceptance.
 - **B975** (B) → issue #293, draft MR !73. Entity name tags batched into
-  compact glyph runs. Guided verification on the merged branch meets the
-  Pi 200-tag CPU bar (1.690 ms) and preserves exact primary fixed-pose pixels
-  on x86 and Pi. Crowd verification is complete; both zones' crowd paths
-  and Greater Faydark normal-population paths fail the unchanged unnamed-GPU
-  allocation guard, including batching OFF (B986).
+  compact glyph runs. The old standalone benchmark omitted B986's production
+  buffer policy, invalidating its apparent CPU pass. The corrected optimized
+  Pi tool takes 5.604 ms at 200 tags (0.751 build / 4.845 submit), exceeding
+  the unchanged 2 ms bar. Primary fixed-pose pixels remain exact on x86/Pi;
+  the integrated B986 baseline passes the memory matrix. The optimized-head
+  full matrix is not claimed after the CPU stop condition. No budget or
+  policy rollback is authorized; submission work needs a new plan.
   See `refactor/B975/README.md` for provenance and acceptance blockers.
 - **B985** (B) → issue #304. `scripts/pi_rendered_zone_sweep.sh` cannot run
   from a host whose checkout and `--out` are not NFS-mounted by the Pi: its

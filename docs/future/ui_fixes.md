@@ -113,11 +113,13 @@ Compare: 85-3,000 draw calls today → **2-5 draw calls** with batched atlas ren
 
 ### Chunk 2: Bitmap Font Atlas + Batched Text Renderer
 
-**Status (B975, 2026-10-03): the ENTITY NAME-TAG half of this chunk is done a
-different way** — `include/client/graphics/name_tag_batch.h` /
+**Status (B975, 2026-10-04): the ENTITY NAME-TAG half is implemented a
+different way, but production-policy Pi CPU acceptance remains blocked**
+(`refactor/B975/README.md`) — `include/client/graphics/name_tag_batch.h` /
 `src/client/graphics/name_tag_batch.cpp` (GitLab #293): every entity name tag
-is drawn by ONE `NameTagBatchNode` in the transparent pass (2 draw calls per
-frame whatever the tag count, compact 80 B/quad vertices on the GLES2 driver,
+is drawn by ONE `NameTagBatchNode` in the transparent pass (normally two draw
+calls per batchable run, with longer runs split at the index limit and
+fallback glyphs splitting runs; compact 80 B/quad vertices on the GLES2 driver,
 one proj x view per frame), keeping the `ITextSceneNode` interface and the
 `CTextSceneNode` registration condition so visibility and B964's impostor
 re-registration are unchanged; `WILLEQ_NAMETAG_BATCH=0` is the per-node A/B.

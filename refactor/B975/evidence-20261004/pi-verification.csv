@@ -1,0 +1,9 @@
+zone,variant,verdict,exit_code,reached_ready,reached_steady,gpu_unnamed_steady,owned_steady,rss_anon_steady,gpu_buffers_net_steady,source
+qeynos2,imp200far,pass,0,y,y,7207676,124755796,109694976,35383108,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/qeynos2/imp200far/results.tsv
+qeynos2,tagnode200far,pass,0,y,y,6180749,123627309,109596672,34362117,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/qeynos2/tagnode200far/results.tsv
+qeynos2,imp0,pass,0,y,y,5635722,71227858,66174976,24172186,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/qeynos2/imp0/results.tsv
+qeynos2,tagnode0,pass,0,y,y,5595012,73072692,68132864,24012756,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/qeynos2/tagnode0/results.tsv
+gfaydark,imp200far,pass,0,y,y,6682508,132557668,120459264,32223692,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/gfaydark/imp200far/results.tsv
+gfaydark,tagnode200far,pass,0,y,y,7351079,132200575,119431168,32892263,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/gfaydark/tagnode200far/results.tsv
+gfaydark,imp0,pass,0,y,y,6689364,81322348,77737984,22601140,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/gfaydark/imp0/results.tsv
+gfaydark,tagnode0,pass,0,y,y,6597096,85343432,81838080,22496432,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/gfaydark/tagnode0/results.tsv

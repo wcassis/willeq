@@ -100,6 +100,16 @@ the original exit 130 and owner-lost failure remain preserved. See
 not edited. The fresh diagnostic restored its snapshot byte-identically,
 stopped the stack/client and released both locks, verified by its guardian.
 
-Local policy tests and file-size checks pass. Full CI, compiled-binary identity
-and the eight uninstrumented Pi acceptance entries remain pending. B986 is
-not complete; B975 remains blocked and must rerun its own acceptance later.
+The parent task's run-278 handoff records passing CI and real-Pi acceptance
+at `fd8b002b2a3ecb4f1b7d1a896cad20b9812f4d5d`. B975 run 279 reviewed that fix
+and independently repeated the complete Pi matrix with passing memory,
+final-visit and no-OOM checks and byte-identical snapshot restoration.
+Evidence: `~/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/`
+(`matrix-verification.json`, `pi-verification.csv`, and raw `matrix/capture/`).
+This supersedes the pending status from the initial investigation commit.
+
+B975 remains blocked for a different, measured reason: its standalone timing
+tool omitted this production policy. Applying it makes submission alone
+exceed B975's CPU bar; the tool now uses the same policy as the client.
+See `refactor/B975/README.md`. The memory fix and its thresholds remain intact;
+neither this integration nor a green pipeline is B975 performance acceptance.

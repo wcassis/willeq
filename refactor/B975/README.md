@@ -4,7 +4,7 @@ GitLab #293 (class B, perf, lane pi). Branch `task/B975-name-tag-batch`
 (worktree `/mnt/projects/fable/wt/audit-nametags`), based on `gitlab/fable`
 d3375b65 (B964 / MR !70 merged). Raw evidence: `/mnt/projects/fable/review/B975/`.
 
-## Native Codex resume, 2026-10-04 — acceptance in progress
+## Native Codex resume, 2026-10-04 — production CPU bar fails
 
 Run `279` of `t_8f86d310` reviewed and integrated B986 commit
 `fd8b002b2a3ecb4f1b7d1a896cad20b9812f4d5d` into this branch. The fix disables
@@ -30,12 +30,61 @@ single-glyph and empty runs against the original per-node framebuffers.
 An earlier local build command failed because its stale CMake configuration
 did not know the new Lima-policy test target; that exit remains recorded in
 `local-index-check/job.json`. Explicit reconfiguration resolved it.
+The later local hygiene run also retains exit 8: the partial test build lacks
+the texture, pack and database builders, so their reproducibility checks
+fail to start. Source/doc checks pass; `documentation-hygiene.log` records
+the distinction. Complete-build CI results are separate evidence, not a
+rewrite of those local failures.
 
-The initial fresh captures use the integrated B986 revision above, before
-this index change. They are comparison evidence, not final-head acceptance.
-Final publication, Pi timing, the complete matrix and live-tag decisions
-remain to be recorded. MR !73 remains draft; no visual approval or downstream
-release is implied. The historical sections below retain earlier failures.
+### The old tool's default was not the production policy
+
+The fresh baseline tool reports **1706 us** at 200 visible tags, but explicitly
+applying the client's `LIMA_DEBUG=nobocache` policy reports **5771 us**. The
+standalone tool had omitted B986's initialization. Its old default number
+cannot establish production acceptance. This is why the tool now calls the
+same policy helper before creating its device.
+
+The optimized production-policy tool at
+`c81e226090f2960bcd21eac8abee41b2f38ed72b` reports **5604 us** at 200 tags:
+**751 us build, 4845 us submit**, with **358456 B** of buffers. The explicit
+policy repeat reports **5621 us**, with **758 us build, 4834 us submit**.
+Component medians need not sum to the total median. All primary fixed poses
+remain pixel-identical on both platforms. Sources and compact tables:
+[`evidence-20261004/`](evidence-20261004/); raw optimized Pi results are
+`index-micro/capture/{drawcost,drawcost-nobocache,pixel}/` under the run root.
+
+**The unchanged 2000 us bar fails: submission alone exceeds it.** The planned
+CPU-side shrink cannot remove that measured submission cost. Per the card's
+stop condition, this is a blocked handoff for the orchestrator to plan the
+remaining submission work, not permission to restore BO retention or relax
+a budget. CI pipeline 490 passes at the optimized code revision, but does
+not waive this performance failure.
+
+### Verification boundaries
+
+The fresh crowd/normal matrix uses the integrated B986 revision above, before
+the index change. Every Pi variant passes its unchanged memory, final-visit
+and no-OOM checks, with byte-identical restoration. That independently
+confirms the memory fix, not optimized-head crowd acceptance. The complete
+optimized-head matrix is not rerun after the CPU stop condition; it remains
+a required check for a resumed implementation.
+
+The baseline x86 matrix also passes its exit, final-visit, spawn-acknowledgement
+and renderer-path checks. Idle frame-time and memory tables for both platforms
+are committed in `evidence-20261004/`; x86 is integration evidence, not a Pi
+performance measurement or a waiver of B974's llvmpipe memory finding.
+Baseline live screenshots show white NPC tags, blue player tags and the
+corpse-name update. The scoped NPC masks match in both phases, and the player
+mask matches after death; the living player mask differs by six pixels in
+the overlapping scene. That difference remains unapproved. The comparison
+and rectangles are in `evidence-20261004/live-comparison.json`; whole live
+frames are not a deterministic oracle.
+
+The terminal `result.json` and `final-report.txt` under the run root record
+the exact final head, CI jobs, binary identities, required-check failures
+and cleanup. MR !73 remains draft; #293 is not closed or advanced to review.
+No human visual approval or downstream release is implied. The historical
+sections below retain earlier failures rather than silently replacing them.
 
 ## STATE AT HAND-OFF 2026-10-01 (historical)
 
