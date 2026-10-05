@@ -34,6 +34,13 @@ BIN="$SRC/build-arm-noble/bin/willeq"
 NDC_BIN="$SRC/build-arm-noble/bin/nametag_drawcost"
 HAVE_NDC=0
 [ -x "$NDC_BIN" ] && HAVE_NDC=1
+# B971 (#289): the gate benchmark runs on the Pi for the golden poses
+# (scripts/b971/run_gate_poses.sh). Same shape as nametag_drawcost: a
+# stripped bin/gles2_zone_benchmark (system Mesa) and, when the Mesa step
+# succeeded, bin/gles2_zone_benchmark-nollvm (the Mesa-prefix rpath copy).
+BENCH_BIN="$SRC/build-arm-noble/bin/gles2_zone_benchmark"
+HAVE_BENCH=0
+[ -x "$BENCH_BIN" ] && HAVE_BENCH=1
 : "${MESA_NOLLVM_STORE_ROOT:=$ROOT/mesa}"
 # shellcheck source=mesa_nollvm.env
 source "$SRC/scripts/pi/mesa_nollvm.env"
@@ -71,6 +78,18 @@ if [ "$HAVE_NDC" -eq 1 ]; then
     else
         rm -f "$TMP/bin/nametag_drawcost-nollvm"
         echo "nametag_drawcost=stripped only (bin/nametag_drawcost-nollvm missing; see nametag_drawcost-nollvm.dynamic.txt)" >> "$TMP/BUILD_INFO"
+    fi
+fi
+if [ "$HAVE_BENCH" -eq 1 ]; then
+    cp "$BENCH_BIN" "$TMP/bin/gles2_zone_benchmark"
+    arm-linux-gnueabihf-strip "$TMP/bin/gles2_zone_benchmark"
+    if [ "$MESA_OK" -eq 1 ] \
+        && bash "$SRC/scripts/pi/mesa_nollvm_select.sh" "$TMP/bin/gles2_zone_benchmark" "$TMP/bin/gles2_zone_benchmark-nollvm" "$MESA_NOLLVM_PI_PREFIX" \
+            > "$TMP/gles2_zone_benchmark-nollvm.dynamic.txt" 2>&1; then
+        echo "gles2_zone_benchmark=published (bin/gles2_zone_benchmark, bin/gles2_zone_benchmark-nollvm)" >> "$TMP/BUILD_INFO"
+    else
+        rm -f "$TMP/bin/gles2_zone_benchmark-nollvm"
+        echo "gles2_zone_benchmark=stripped only (bin/gles2_zone_benchmark-nollvm missing; see gles2_zone_benchmark-nollvm.dynamic.txt)" >> "$TMP/BUILD_INFO"
     fi
 fi
 rm -rf "$DEST"; mv "$TMP" "$DEST"

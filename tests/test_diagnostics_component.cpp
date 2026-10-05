@@ -40,6 +40,12 @@ TEST(DiagnosticsComponentTest, PortalOcclusionToggleReadsAndWritesThroughTheCont
     IrrlichtRenderer renderer;
     ASSERT_FALSE(renderer.isPortalOcclusionEnabled());
 
+    // B971: the toggle is gated on the preset having a stencil buffer (the
+    // surface's stencil is fixed at device creation, and /portal cannot render
+    // without it), so establish that precondition -- the test under is the
+    // context read/write plumbing, not the stencil gate.
+    renderer.Context().config.constrainedConfig.enableStencilBuffer = true;
+
     // togglePortalOcclusion() first READS ctx_.portalOcclusionEligible and
     // bails when it is false. Nothing has loaded a zone, so it is false and
     // the toggle must be a no-op -- that is the context READ under test.
@@ -55,6 +61,26 @@ TEST(DiagnosticsComponentTest, PortalOcclusionToggleReadsAndWritesThroughTheCont
     EXPECT_TRUE(renderer.isPortalOcclusionEnabled());
     renderer.Diagnostics().togglePortalOcclusion();
     EXPECT_FALSE(renderer.isPortalOcclusionEnabled());
+}
+
+// B971: on a preset without a stencil buffer the manual /portal toggle must
+// be a no-op -- the surface cannot re-request a stencil mid-session, and the
+// on-demand portal build (T504) must not be scheduled for a system that can
+// never render. Default-constructed renderer = stencil off, which is the
+// orangepi shipping config.
+TEST(DiagnosticsComponentTest, PortalOcclusionToggleIsANoOpWithoutAStencilBuffer) {
+    IrrlichtRenderer renderer;
+    ASSERT_FALSE(renderer.Context().config.constrainedConfig.enableStencilBuffer);
+    ASSERT_FALSE(renderer.isPortalOcclusionEnabled());
+
+    // Eligible AND an on-demand build would be possible -- neither matters
+    // without a stencil.
+    renderer.Context().portalOcclusionEligible = true;
+    renderer.Diagnostics().togglePortalOcclusion();
+    EXPECT_FALSE(renderer.isPortalOcclusionEnabled());
+    // The T504 on-demand build must NOT have been scheduled: there is no
+    // stencil for the built system to render into.
+    EXPECT_FALSE(renderer.Context().portalBuildPending);
 }
 
 TEST(DiagnosticsComponentTest, WireframeToggleWritesTheRenderersOwnMember) {

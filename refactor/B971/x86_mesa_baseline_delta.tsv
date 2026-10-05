@@ -1,0 +1,16 @@
+frame	px_gt32	px_gt8	px_any	max_abs	mean_abs	run1_vs_run2_px	darker_32	brighter_32
+qeynos2_f0	0	0	0	0	0.0000	0	0	0
+qeynos2_f1	0	0	0	0	0.0000	0	0	0
+qeynos2_f2	0	0	0	0	0.0000	0	0	0
+gfaydark_f0	0	0	0	0	0.0000	0	0	0
+gfaydark_f1	0	0	0	0	0.0000	0	0	0
+gfaydark_f2	0	0	0	0	0.0000	0	0	0
+befallen_f0	0	0	0	0	0.0000	0	0	0
+befallen_f1	0	0	0	0	0.0000	0	0	0
+befallen_f2	0	0	0	0	0.0000	0	0	0
+iceclad_f0	0	0	0	0	0.0000	0	0	0
+iceclad_f1	0	0	0	0	0.0000	0	0	0
+iceclad_f2	0	0	0	0	0.0000	0	0	0
+timorous_f0	0	0	0	0	0.0000	0	0	0
+timorous_f1	0	0	0	0	0.0000	0	0	0
+timorous_f2	0	0	0	0	0.0000	0	0	0

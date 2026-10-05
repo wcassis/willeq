@@ -102,11 +102,16 @@ bool CIrrDeviceFB::initEGLX11()
     }
     useGLES2_ = true;
 
+    // B971: follow the client's stencil request (see initEGL() in
+    // CIrrDeviceFB.cpp for the full note).
+    const bool wantStencil = CreationParams.Stencilbuffer;
+    const int depthBits = wantStencil ? 24 : 16;
+    const int stencilBits = wantStencil ? 8 : 0;
     EGLint configAttribs[] = {
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
         EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 0,
-        EGL_DEPTH_SIZE, 24,
-        EGL_STENCIL_SIZE, 8,
+        EGL_DEPTH_SIZE, depthBits,
+        EGL_STENCIL_SIZE, stencilBits,
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
         EGL_NONE
     };
