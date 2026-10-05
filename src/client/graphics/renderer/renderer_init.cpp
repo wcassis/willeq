@@ -201,31 +201,31 @@ static void logDriverDetails(irr::video::IVideoDriver* driver, irr::IrrlichtDevi
 IrrlichtRenderer::IrrlichtRenderer()
     : ctx_{
         config_, entityRenderer_, driver_, constrainedTextureCache_, smgr_, zoneShader_,
-        regionMeshNodes_, doorManager_, zoneBspTree_, objectNodes_, objectRecords_, currentPvsRegion_, camera_,
+        regionMeshNodes_, doorManager_, zoneBspTree_, objectRecords_, currentPvsRegion_, camera_,
         weatherEffects_, device_, currentZone_, skyRenderer_, playerX_, playerY_, playerZ_,
         particleManager_, detailManager_, currentZoneName_, boidsManager_,
         regionBoundingBoxes_, manualZoneDrawEnabled_, progressiveLoadingActive_,
         portalOcclusionEnabled_, fogEnabled_, usePvsCulling_, entityPrepReady_, wireframeMode_,
         portalOcclusionEligible_, lightingEnabled_, fireEffectsEnabled_, eventReceiver_,
         cameraController_, objectLights_, collisionMap_, animatedTextureManager_,
-        objectInSceneGraph_, portalSystem_, renderDistance_, frustumCuller_, governor_,
+        portalSystem_, renderDistance_, frustumCuller_, governor_,
         bridge_,
 #ifdef EQT_HAS_GLES2
         gpuUploadThread_,
 #endif
         tumbleweedManager_, entityPrepWorker_, occlusionCuller_, indoorRegions_,
-        treeWindController_, currentHour_, currentMinute_, objectPositions_,
+        treeWindController_, currentHour_, currentMinute_,
         // L12 (Batch L close-out): the promoted shared set -- every member
         // reached through owner_ by three or more of the ten components.
         // Order below is renderer_context.h's declaration order (aggregate
         // initialisation, so it must match exactly).
         zoneMeshNode_, regionWorldTriangles_, deferredObjects_,
-        zonePlaceholderNode_, playerHeading_, regionNeighbors_, objectRegions_,
+        zonePlaceholderNode_, playerHeading_, regionNeighbors_,
         zoneReady_, currentVision_, weatherSystem_, vertexAnimatedMeshes_, objectLightInSceneGraph_,
         fireGlowIcospheresEnabled_, zoneLightPositions_, fireGlowLightingEnabled_, objectCollision_,
         maxFireGlowLights_, mergeZoneDrawsEnabled_, sortedZoneDrawList_, occlusionCulledRegions_, collisionManager_,
         zoneBoundsMinX_, zoneBoundsMinY_, zoneBoundsMaxX_, zoneBoundsMaxY_, frameNumber_,
-        zoneBoundsValid_, isIndoorZone_, entityPrepScanCounter_, objectBoundingBoxes_, regionPvsDepthMap_,
+        zoneBoundsValid_, isIndoorZone_, entityPrepScanCounter_, regionPvsDepthMap_,
         portalBuildPending_, loadingScreenVisible_, captured3DView_, captured3DProj_, particleRenderBuffer_,
         fogThickness_, progressiveLoadStartTime_, sequentialLoadComplete_,
         eqe1Loaders_, pendingGlobalEQE1Archives_, eqe1LoadTimeCandidateCount_,

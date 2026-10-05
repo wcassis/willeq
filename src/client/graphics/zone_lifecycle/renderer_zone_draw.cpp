@@ -613,17 +613,17 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
         // B938 (#256): read the compact record, not the node. The record's
         // world/mesh/buffer-materials are byte-identical to what the old
         // node->getRelativeTransformation()/node->getMesh() provided, so the
-        // drawn pixels do not move. (objectNodes is now null in PVS zones.)
+        // drawn pixels do not move. (In PVS zones the records carry no node.)
         for (size_t i = 0; i < ctx_.objectRecords.size() && i < results->objectVisible.size(); ++i) {
             if (!results->objectVisible[i]) continue;
             const auto& rec = ctx_.objectRecords[i];
             irr::scene::IMesh* mesh = rec.mesh;
             if (!mesh) continue;
 
-            // Distance from stored object position (Irrlicht coords)
+            // Distance from the record's position (Irrlicht coords)
             float distSq = 0.0f;
-            if (i < ctx_.objectPositions.size()) {
-                irr::core::vector3df diff = ctx_.objectPositions[i] - camPos;
+            {
+                irr::core::vector3df diff = rec.position - camPos;
                 distSq = diff.getLengthSQ();
             }
 

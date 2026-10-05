@@ -243,6 +243,15 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 PlacedObjectRecord record;
                 record.mesh = objMesh;
                 record.name = objName;
+                record.position = irr::core::vector3df(ox, oz, oy);
+                if (ctx_.zoneBspTree)
+                    record.region = ctx_.zoneBspTree->findRegionIndexForPoint(ox, oy, oz);
+                // B938 (#256): the record is the placement's ONLY state -- before
+                // it the culling data lived in four renderer-parallel vectors
+                // (objectPositions_ / objectRegions_ / objectBoundingBoxes_ /
+                // objectInSceneGraph_), ~45 B per placement, all indexed by the
+                // same placement index. They are folded in here; consumers read
+                // the record now.
                 // Reference accounting. The acquire() above handed this
                 // iteration one reference (balanced by the objMesh->drop() at
                 // the end of the loop). In a PVS zone the record is the SOLE
@@ -274,8 +283,8 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 // World-space transformed bounding box, exactly the old
                 // node->getTransformedBoundingBox(): the mesh's bounding box
                 // transformed by the relative (record.world) matrix.
-                irr::core::aabbox3df worldBox = objMesh->getBoundingBox();
-                record.world.transformBoxEx(worldBox);
+                record.box = objMesh->getBoundingBox();
+                record.world.transformBoxEx(record.box);
 
                 // Non-PVS zone: the scene-graph pass needs a real node with the
                 // old per-buffer SMaterial overrides. PVS zones skip this -- the
@@ -332,19 +341,12 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
 
                 size_t newNodeIndex = ctx_.objectRecords.size();
                 ctx_.objectRecords.push_back(std::move(record));
-                ctx_.objectNodes.push_back(objNode);  // null in PVS zones
-                ctx_.objectPositions.push_back(irr::core::vector3df(ox, oz, oy));
-                if (ctx_.zoneBspTree)
-                    ctx_.objectRegions.push_back(ctx_.zoneBspTree->findRegionIndexForPoint(ox, oy, oz));
-                else
-                    ctx_.objectRegions.push_back(SIZE_MAX);
-                ctx_.objectBoundingBoxes.push_back(worldBox);
                 deferred.nodeIndex = newNodeIndex;
 
                 // PVS visibility (no SimWorker yet, so all visible).
                 // When manualZoneDrawEnabled_, objects are always out of scene graph
                 // and rendered via drawZoneGeometrySorted() instead.
-                bool pvsVisible = owner_.isRegionPvsVisible(ctx_.objectRegions.back());
+                bool pvsVisible = owner_.isRegionPvsVisible(ctx_.objectRecords[newNodeIndex].region);
                 if (!pvsVisible || ctx_.manualZoneDrawEnabled) {
                     // Only a real scene-graph node (non-PVS zone) is removed; PVS
                     // records have none.
@@ -352,10 +354,10 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                         ctx_.objectRecords[newNodeIndex].node->remove();
                     if (!pvsVisible) {
                         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' removed from scene graph (PVS hidden, region={})",
-                                  oi, objName, ctx_.objectRegions.back());
+                                  oi, objName, ctx_.objectRecords[newNodeIndex].region);
                     }
                 }
-                ctx_.objectInSceneGraph.push_back(pvsVisible && !ctx_.manualZoneDrawEnabled);
+                ctx_.objectRecords[newNodeIndex].inSceneGraph = pvsVisible && !ctx_.manualZoneDrawEnabled;
 
                 // Object lights (torch, lantern, fire, candle, etc.)
                 std::string upperName = objName;
@@ -436,7 +438,7 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                         objLight.position = lightPos;
                         objLight.objectName = objName;
                         objLight.originalColor = lightColor;
-                        objLight.bspRegion = ctx_.objectRegions.back();
+                        objLight.bspRegion = ctx_.objectRecords[newNodeIndex].region;
 
                         if (upperName.find("TORCH") != std::string::npos ||
                             upperName.find("FIRE") != std::string::npos ||
@@ -631,7 +633,7 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
             for (size_t oi = 0; oi < ctx_.objectRecords.size(); ++oi) {
                 const auto& rec = ctx_.objectRecords[oi];
                 if (rec.mesh) {
-                    size_t region = (oi < ctx_.objectRegions.size()) ? ctx_.objectRegions[oi] : SIZE_MAX;
+                    size_t region = rec.region;
                     irr::scene::IMesh* mesh = rec.mesh;
                     const bool animated = std::find(animatedMeshes.begin(), animatedMeshes.end(), mesh) !=
                                           animatedMeshes.end();

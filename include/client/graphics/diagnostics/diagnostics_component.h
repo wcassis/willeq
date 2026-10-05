@@ -141,7 +141,8 @@ private:
 	// debug shader swap state (original material types saved when entering
 	// debug mode). Nothing outside these two TUs ever named either.
 	struct DebugMaterialEntry {
-		irr::scene::IMeshSceneNode* node;
+		irr::scene::IMeshSceneNode* node;  // node material: materialIndex is the material index
+		irr::scene::IMeshBuffer* meshBuffer;  // B938 (#256): mesh buffer material (manual/PVS draw); materialIndex unused
 		irr::u32 materialIndex;
 		irr::s32 originalType;
 	};

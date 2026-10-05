@@ -101,10 +101,11 @@ struct RendererContext {
 	std::map<size_t, irr::scene::IMeshSceneNode*>& regionMeshNodes;
 	std::unique_ptr<DoorManager>& doorManager;
 	std::shared_ptr<EQT::Graphics::BspTree>& zoneBspTree;
-	std::vector<irr::scene::IMeshSceneNode*>& objectNodes;
-	// B938 (#256): the per-placement state -- the source of truth the manual
-	// draw path, the sim worker and the texture-eviction guard read. Indexed
-	// parallel to objectNodes (null node in PVS zones).
+	// B938 (#256): the per-placement state -- the ONLY per-placement storage
+	// (the record holds mesh, world transform, position, region, world box,
+	// in-scene-graph flag and name; in a PVS zone the node is null and no
+	// IMeshSceneNode exists). The manual draw path, the sim worker, the
+	// diagnostics and the texture-eviction guard all read it.
 	std::vector<PlacedObjectRecord>& objectRecords;
 	size_t& currentPvsRegion;
 	// 5-9 families
@@ -136,7 +137,6 @@ struct RendererContext {
 	std::vector<ObjectLight>& objectLights;
 	std::shared_ptr<const HCMap>& collisionMap;
 	std::unique_ptr<AnimatedTextureManager>& animatedTextureManager;
-	std::vector<bool>& objectInSceneGraph;
 	std::unique_ptr<PortalSystem>& portalSystem;
 	float& renderDistance;
 	std::unique_ptr<FrustumCuller>& frustumCuller;
@@ -154,7 +154,6 @@ struct RendererContext {
 	TreeWindController& treeWindController;
 	uint8_t& currentHour;
 	uint8_t& currentMinute;
-	std::vector<irr::core::vector3df>& objectPositions;
 
 	// ------------------------------------------------------------------
 	// L12 (Batch L close-out): the SHARED-BUT-BELOW-THRESHOLD set, promoted.
@@ -173,7 +172,6 @@ struct RendererContext {
 	irr::scene::IMeshSceneNode*& zonePlaceholderNode;  // 20: zone_lifecycle 17,diagnostics 2,frame 1
 	float& playerHeading;  // 18: player 10,frame 4,sim 2,zone_load 2
 	std::unordered_map<size_t, std::vector<size_t>>& regionNeighbors;  // 17: zone_load 10,zone_lifecycle 4,zone_stream 3
-	std::vector<size_t>& objectRegions;  // 15: zone_load 7,zone_stream 4,player 2,sim 2
 	bool& zoneReady;  // 14: frame 7,sim 4,zone_lifecycle 3
 	VisionType& currentVision;  // 13: player 11,sim 1,zone_load 1
 	std::unique_ptr<WeatherSystem>& weatherSystem;  // 12: zone_load 6,sim 4,overlays 2
@@ -196,7 +194,6 @@ struct RendererContext {
 	bool& zoneBoundsValid;  // 6: zone_load 3,overlays 1,player 1,zone_lifecycle 1
 	bool& isIndoorZone;  // 6: overlays 2,zone_lifecycle 2,zone_load 2
 	int& entityPrepScanCounter;  // 5: zone_stream 2,frame 1,zone_lifecycle 1,zone_load 1
-	std::vector<irr::core::aabbox3df>& objectBoundingBoxes;  // 5: sim 2,zone_lifecycle 1,zone_load 1,zone_stream 1
 	const std::unordered_map<size_t, uint8_t>*& regionPvsDepthMap;  // 5: zone_stream 3,sim 1,zone_lifecycle 1
 	bool& portalBuildPending;  // 5: zone_load 2,zone_stream 2,zone_lifecycle 1
 	bool& loadingScreenVisible;  // 4: zone_stream 2,frame 1,sim 1

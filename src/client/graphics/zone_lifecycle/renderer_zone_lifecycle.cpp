@@ -266,19 +266,22 @@ void ZoneLifecycleComponent::unloadZone() {
         ctx_.doorManager->setRegionNeighbors(nullptr);
     }
 
-    // Remove object nodes
-    for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
-        if (ctx_.objectNodes[i]) {
-            if (i < ctx_.objectInSceneGraph.size() && ctx_.objectInSceneGraph[i]) {
-                ctx_.objectNodes[i]->remove();
-            }
-            ctx_.objectNodes[i]->drop();  // Release our reference
+    // Remove object records. B938 (#256): the record is the placement. In a
+    // PVS zone it is the SOLE mesh holder (its grab() in step 6, needsOwnRef),
+    // so dropping rec.mesh releases the mesh. In a non-PVS zone the record
+    // holds NO mesh reference (needsOwnRef false) -- the scene-graph node does
+    // (addMeshSceneNode grabbed it) -- so remove() + drop() the node and let
+    // its destruction release the mesh.
+    for (auto& rec : ctx_.objectRecords) {
+        if (rec.node) {
+            if (rec.inSceneGraph)
+                rec.node->remove();
+            rec.node->drop();  // release the record's node reference (step 6 grab)
+        } else if (rec.mesh) {
+            rec.mesh->drop();  // release the record's own mesh reference (PVS zones)
         }
     }
-    ctx_.objectNodes.clear();
-    ctx_.objectPositions.clear();
-    ctx_.objectBoundingBoxes.clear();
-    ctx_.objectInSceneGraph.clear();
+    ctx_.objectRecords.clear();
 
     // Clear zone light data (no scene nodes to remove)
     ctx_.zoneLightData.clear();

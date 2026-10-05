@@ -21,10 +21,17 @@ void DiagnosticsComponent::toggleWireframe() {
         }
     }
 
-    for (auto* node : ctx_.objectNodes) {
-        if (node) {
-            for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                node->getMaterial(i).Wireframe = ctx_.wireframeMode;
+    for (const auto& rec : ctx_.objectRecords) {
+        if (!rec.mesh) continue;
+        // The mesh buffer materials are what the manual (PVS) draw path binds;
+        // the node's own copies are what the scene-graph pass reads, and exist
+        // only in a non-PVS zone.
+        for (irr::u32 i = 0; i < rec.mesh->getMeshBufferCount(); ++i) {
+            rec.mesh->getMeshBuffer(i)->getMaterial().Wireframe = ctx_.wireframeMode;
+        }
+        if (rec.node) {
+            for (irr::u32 i = 0; i < rec.node->getMaterialCount(); ++i) {
+                rec.node->getMaterial(i).Wireframe = ctx_.wireframeMode;
             }
         }
     }
@@ -66,10 +73,14 @@ void DiagnosticsComponent::toggleFog() {
         }
     }
 
-    for (auto* node : ctx_.objectNodes) {
-        if (node) {
-            for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                node->getMaterial(i).FogEnable = ctx_.fogEnabled;
+    for (const auto& rec : ctx_.objectRecords) {
+        if (!rec.mesh) continue;
+        for (irr::u32 i = 0; i < rec.mesh->getMeshBufferCount(); ++i) {
+            rec.mesh->getMeshBuffer(i)->getMaterial().FogEnable = ctx_.fogEnabled;
+        }
+        if (rec.node) {
+            for (irr::u32 i = 0; i < rec.node->getMaterialCount(); ++i) {
+                rec.node->getMaterial(i).FogEnable = ctx_.fogEnabled;
             }
         }
     }
@@ -111,10 +122,14 @@ void DiagnosticsComponent::toggleZoneLights() {
                 }
             }
         }
-        for (auto* node : ctx_.objectNodes) {
-            if (node) {
-                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                    node->getMaterial(i).Lighting = false;
+        for (const auto& rec : ctx_.objectRecords) {
+            if (!rec.mesh) continue;
+            for (irr::u32 i = 0; i < rec.mesh->getMeshBufferCount(); ++i) {
+                rec.mesh->getMeshBuffer(i)->getMaterial().Lighting = false;
+            }
+            if (rec.node) {
+                for (irr::u32 i = 0; i < rec.node->getMaterialCount(); ++i) {
+                    rec.node->getMaterial(i).Lighting = false;
                 }
             }
         }
@@ -148,13 +163,20 @@ void DiagnosticsComponent::toggleZoneLights() {
                 }
             }
         }
-        for (auto* node : ctx_.objectNodes) {
-            if (node) {
-                for (irr::u32 i = 0; i < node->getMaterialCount(); ++i) {
-                    node->getMaterial(i).Lighting = true;
-                    node->getMaterial(i).NormalizeNormals = true;
-                    node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                    node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+        for (const auto& rec : ctx_.objectRecords) {
+            if (!rec.mesh) continue;
+            for (irr::u32 i = 0; i < rec.mesh->getMeshBufferCount(); ++i) {
+                rec.mesh->getMeshBuffer(i)->getMaterial().Lighting = true;
+                rec.mesh->getMeshBuffer(i)->getMaterial().NormalizeNormals = true;
+                rec.mesh->getMeshBuffer(i)->getMaterial().AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                rec.mesh->getMeshBuffer(i)->getMaterial().DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+            }
+            if (rec.node) {
+                for (irr::u32 i = 0; i < rec.node->getMaterialCount(); ++i) {
+                    rec.node->getMaterial(i).Lighting = true;
+                    rec.node->getMaterial(i).NormalizeNormals = true;
+                    rec.node->getMaterial(i).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                    rec.node->getMaterial(i).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
                 }
             }
         }
@@ -292,9 +314,35 @@ void DiagnosticsComponent::swapZoneMeshMaterials() {
         swapNode(node);
     }
 
-    // Swap object nodes (trees use wind material)
-    for (auto* node : ctx_.objectNodes) {
-        swapNode(node);
+    // Swap object records (trees use wind material). B938 (#256): the mesh
+    // buffer materials are what the manual (PVS) draw path binds, the node's
+    // copies what the scene-graph pass reads -- swap both, mirroring swapNode
+    // (PVS zones have no node, non-PVS share meshes across records, so a
+    // shared mesh is visited once per record as before).
+    for (const auto& rec : ctx_.objectRecords) {
+        if (rec.mesh) {
+            for (irr::u32 i = 0; i < rec.mesh->getMeshBufferCount(); ++i) {
+                auto& mat = rec.mesh->getMeshBuffer(i)->getMaterial();
+                irr::s32 cur = mat.MaterialType;
+                irr::s32 mapped = mapMaterial(cur);
+                ++swapTotal;
+                if (mapped != cur) {
+                    mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(mapped);
+                    ++swapChanged;
+                }
+            }
+        }
+        if (rec.node) {
+            for (irr::u32 i = 0; i < rec.node->getMaterialCount(); ++i) {
+                auto& mat = rec.node->getMaterial(i);
+                irr::s32 cur = mat.MaterialType;
+                irr::s32 mapped = mapMaterial(cur);
+                if (mapped != cur) {
+                    LOG_TRACE(MOD_SHADER, "swapNode: node mat[{}] {} -> {}", i, cur, mapped);
+                    mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(mapped);
+                }
+            }
+        }
     }
 
     // Swap door mesh materials and update stored types for future door builds
@@ -315,7 +363,7 @@ void DiagnosticsComponent::swapZoneMeshMaterials() {
     LOG_INFO(MOD_GRAPHICS, "swapZoneMeshMaterials: swapped {}/{} mesh buffers (zone={} regions={} objects={} doors={})",
         swapChanged, swapTotal,
         ctx_.zoneMeshNode != nullptr, ctx_.regionMeshNodes.size(),
-        ctx_.objectNodes.size(), doorSwapped);
+        ctx_.objectRecords.size(), doorSwapped);
 
     // Rebuild sorted draw list if manual zone draw is active (material keys changed)
     if (ctx_.manualZoneDrawEnabled) {
@@ -359,7 +407,7 @@ void DiagnosticsComponent::swapToDebugShader(irr::s32 debugMat) {
             auto& mat = node->getMaterial(i);
             irr::s32 cur = mat.MaterialType;
             if (cur >= firstCustom && cur != debugMat) {
-                debugOriginalMaterials_.push_back({node, i, cur});
+                debugOriginalMaterials_.push_back({node, nullptr, i, cur});
                 mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(debugMat);
             }
         }
@@ -367,7 +415,25 @@ void DiagnosticsComponent::swapToDebugShader(irr::s32 debugMat) {
 
     if (ctx_.zoneMeshNode) swapNodeToDebug(ctx_.zoneMeshNode);
     for (auto& [idx, node] : ctx_.regionMeshNodes) swapNodeToDebug(node);
-    for (auto* node : ctx_.objectNodes) swapNodeToDebug(node);
+    // B938 (#256): objects are records. The mesh buffer materials are what the
+    // manual (PVS) draw path binds -- swap those (PVS zones have no node, so
+    // without this the debug shader would not reach them at all) and the node
+    // materials where a node exists.
+    for (const auto& rec : ctx_.objectRecords) {
+        if (rec.mesh) {
+            for (irr::u32 i = 0; i < rec.mesh->getMeshBufferCount(); ++i) {
+                auto* buf = rec.mesh->getMeshBuffer(i);
+                if (!buf) continue;
+                auto& mat = buf->getMaterial();
+                irr::s32 cur = mat.MaterialType;
+                if (cur >= firstCustom && cur != debugMat) {
+                    debugOriginalMaterials_.push_back({nullptr, buf, 0, cur});
+                    mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(debugMat);
+                }
+            }
+        }
+        if (rec.node) swapNodeToDebug(rec.node);
+    }
 }
 
 void DiagnosticsComponent::swapFromDebugShader(irr::s32 debugMat) {
@@ -375,6 +441,9 @@ void DiagnosticsComponent::swapFromDebugShader(irr::s32 debugMat) {
     for (auto& entry : debugOriginalMaterials_) {
         if (entry.node && entry.materialIndex < entry.node->getMaterialCount()) {
             entry.node->getMaterial(entry.materialIndex).MaterialType =
+                static_cast<irr::video::E_MATERIAL_TYPE>(entry.originalType);
+        } else if (entry.meshBuffer) {
+            entry.meshBuffer->getMaterial().MaterialType =
                 static_cast<irr::video::E_MATERIAL_TYPE>(entry.originalType);
         }
     }
@@ -461,18 +530,13 @@ void DiagnosticsComponent::toggleManualZoneDraw() {
         if (ctx_.smgr && ctx_.renderPassTimer) {
             ctx_.smgr->setLightManager(ctx_.renderPassTimer);
         }
-        // Remove zone mesh nodes from scene graph — manual draw accesses them directly
+        // Remove zone mesh nodes from scene graph — manual zone draw accesses them directly
         for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
             if (node && node->getParent()) { node->grab(); node->remove(); }
         }
-        // Remove object nodes from scene graph — drawn via sorted draw list
-        for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
-            auto* node = ctx_.objectNodes[i];
-            if (node && node->getParent()) {
-                node->grab(); node->remove();
-                if (i < ctx_.objectInSceneGraph.size()) ctx_.objectInSceneGraph[i] = false;
-            }
-        }
+        // B938 (#256): object records in a PVS zone (the only kind manual zone
+        // draw is available in) carry no node at all, so there is nothing to
+        // detach. (In the pre-B938 world this loop detached objectNodes_.)
     } else {
         // Re-add zone mesh nodes to scene graph for Irrlicht-managed rendering
         for (auto& [regionIdx, node] : ctx_.regionMeshNodes) {
@@ -481,15 +545,7 @@ void DiagnosticsComponent::toggleManualZoneDraw() {
                 node->drop();
             }
         }
-        // Re-add visible object nodes to scene graph
-        for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
-            auto* node = ctx_.objectNodes[i];
-            if (node && !node->getParent()) {
-                ctx_.smgr->getRootSceneNode()->addChild(node);
-                node->drop();
-                if (i < ctx_.objectInSceneGraph.size()) ctx_.objectInSceneGraph[i] = true;
-            }
-        }
+        // B938 (#256): no object nodes exist in a PVS zone to re-add.
     }
     LOG_INFO(MOD_GRAPHICS, "Manual zone draw (front-to-back sorting): {}",
              ctx_.manualZoneDrawEnabled ? "ENABLED" : "DISABLED");
