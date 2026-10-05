@@ -47,4 +47,4 @@ python3 scripts/b975/frametiming_table.py --check --zone qeynos2 \
 Longer waits are an observation adjustment, not a waiver. If readiness arrives
 too late or never arrives, retain the failure and diagnose it; no indefinite
 retry is permitted. Historical B975 run283 failure and run284 recovery remain
-in [B975's evidence record](../refactor/B975/README.md), not new B987 tests.
+in `refactor/B975/README.md`, not new B987 tests.
