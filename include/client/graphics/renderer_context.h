@@ -23,6 +23,7 @@
 // members), which is what we want: there is exactly one per IrrlichtRenderer.
 
 #include "client/graphics/renderer_types.h"   // RendererConfig, ObjectLight, S3DZone, irr, std containers
+#include "client/graphics/placed_object_meshes.h"  // B938: PlacedObjectRecord (objectRecords binding)
 #include "client/graphics/renderer_draw_types.h"  // L12: SortedRegionEntry (sortedZoneDrawList)
 #include "client/graphics/object_collision_set.h"  // B909b: objectCollision
 
@@ -101,6 +102,10 @@ struct RendererContext {
 	std::unique_ptr<DoorManager>& doorManager;
 	std::shared_ptr<EQT::Graphics::BspTree>& zoneBspTree;
 	std::vector<irr::scene::IMeshSceneNode*>& objectNodes;
+	// B938 (#256): the per-placement state -- the source of truth the manual
+	// draw path, the sim worker and the texture-eviction guard read. Indexed
+	// parallel to objectNodes (null node in PVS zones).
+	std::vector<PlacedObjectRecord>& objectRecords;
 	size_t& currentPvsRegion;
 	// 5-9 families
 	irr::scene::ICameraSceneNode*& camera;

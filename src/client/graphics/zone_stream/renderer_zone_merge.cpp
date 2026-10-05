@@ -718,9 +718,9 @@ void EntityMeshTextureGuard::onTextureEvicted(const std::string& /*name*/,
 // ---------------------------------------------------------------------------
 
 ObjectNodeTextureGuard::ObjectNodeTextureGuard(
-    const std::vector<irr::scene::IMeshSceneNode*>& objectNodes,
+    const std::vector<PlacedObjectRecord>& objectRecords,
     irr::video::ITexture* placeholder)
-    : objectNodes_(objectNodes), placeholder_(placeholder) {}
+    : objectRecords_(objectRecords), placeholder_(placeholder) {}
 
 void ObjectNodeTextureGuard::onTextureEvicted(const std::string& /*name*/,
                                                irr::video::ITexture* texture) {
@@ -732,22 +732,30 @@ void ObjectNodeTextureGuard::onTextureEvicted(const std::string& /*name*/,
     irr::video::ITexture* placeholder = placeholder_;
     int swapped = 0;
 
-    // T124: migrated onto swapTextureInMeshSceneNode() -- behaviour-
-    // preserving, this is byte-for-byte the same two-part scan (mesh-buffer
-    // materials, mirrors RegionMeshTextureGuard; node-level override
-    // materials, what ConstrainedTextureCache::clearTextureReferences()
-    // already checks for reachable nodes -- T123 confirmed via live core
-    // dump this is the holder type an observed UAF write traced back to),
-    // just de-duplicated into the shared primitive.
-    for (irr::scene::IMeshSceneNode* node : objectNodes_) {
-        swapped += swapTextureInMeshSceneNode(node, texture, placeholder);
+    // B938 (#256): the per-placement state is a record. In a PVS zone the
+    // manual draw path binds the SHARED mesh's buffer materials, so the live
+    // texture references live on record.mesh (a shared mesh is swapped once,
+    // deduped below, not once per placement); in a non-PVS zone the scene-graph
+    // pass binds record.node's own override materials, so those are swapped
+    // too. This is the same two-part scan as the old ObjectNodeTextureGuard
+    // (mesh-buffer materials + node-level override materials), just read off
+    // the record instead of the node.
+    std::vector<const irr::scene::IMesh*> meshesSeen;
+    for (const auto& rec : objectRecords_) {
+        if (rec.mesh &&
+            std::find(meshesSeen.begin(), meshesSeen.end(), rec.mesh) == meshesSeen.end()) {
+            meshesSeen.push_back(rec.mesh);
+            swapped += swapTextureInMesh(rec.mesh, texture, placeholder);
+        }
+        if (rec.node) {
+            swapped += swapTextureInNodeMaterials(rec.node, texture, placeholder);
+        }
     }
 
     if (swapped > 0) {
-        LOG_DEBUG(MOD_GRAPHICS, "[objecttex] ObjectNodeTextureGuard: swapped {} object-node material "
-                  "reference(s) to evicted texture -> placeholder (T123 — closes the detached-object-node "
-                  "gap: applySimulationOutput() detaches invisible objectNodes_ entries from the scene "
-                  "graph, making clearTextureReferences()'s scene walk unable to reach them while hidden)",
+        LOG_DEBUG(MOD_GRAPHICS, "[objecttex] ObjectNodeTextureGuard: swapped {} object texture "
+                  "reference(s) to evicted texture -> placeholder (B938 -- record.mesh covers the "
+                  "PVS manual-draw path; record.node covers the non-PVS scene-graph path)",
                   swapped);
     }
 }

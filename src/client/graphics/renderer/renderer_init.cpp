@@ -201,7 +201,7 @@ static void logDriverDetails(irr::video::IVideoDriver* driver, irr::IrrlichtDevi
 IrrlichtRenderer::IrrlichtRenderer()
     : ctx_{
         config_, entityRenderer_, driver_, constrainedTextureCache_, smgr_, zoneShader_,
-        regionMeshNodes_, doorManager_, zoneBspTree_, objectNodes_, currentPvsRegion_, camera_,
+        regionMeshNodes_, doorManager_, zoneBspTree_, objectNodes_, objectRecords_, currentPvsRegion_, camera_,
         weatherEffects_, device_, currentZone_, skyRenderer_, playerX_, playerY_, playerZ_,
         particleManager_, detailManager_, currentZoneName_, boidsManager_,
         regionBoundingBoxes_, manualZoneDrawEnabled_, progressiveLoadingActive_,
@@ -559,8 +559,11 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
         softwareCursorTextureGuard_ = std::make_unique<SingleTexturePointerGuard>(softwareCursorTexture_);
         constrainedTextureCache_->addEvictionListener(softwareCursorTextureGuard_.get());
 
-        // T123: guards detached objectNodes_ entries -- see renderer_zone_merge.h.
-        ZoneStream().objectNodeTextureGuard() = std::make_unique<ObjectNodeTextureGuard>(objectNodes_, constrainedTextureCache_->getPlaceholderTexture());
+        // B938 (#256): the guard reads the compact records. In a PVS zone the
+        // live texture references sit on the record's shared mesh buffers (what
+        // the manual draw path binds); in a non-PVS zone it also covers the
+        // record's node override materials. See renderer_zone_merge.h.
+        ZoneStream().objectNodeTextureGuard() = std::make_unique<ObjectNodeTextureGuard>(objectRecords_, constrainedTextureCache_->getPlaceholderTexture());
         constrainedTextureCache_->addEvictionListener(ZoneStream().objectNodeTextureGuard().get());
     }
 

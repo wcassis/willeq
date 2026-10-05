@@ -64,10 +64,15 @@ SimulationZoneData SimBridgeComponent::buildSimulationZoneData() {
     }
 
     // Copy object data
-    zoneData.objects.resize(ctx_.objectNodes.size());
-    for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
+    // B938 (#256): per-placement state is a record, not a node. The record is
+    // the placement itself -- in a PVS zone there is no node, but the placement
+    // still exists and must be visibility-tested and drawn by the manual pass.
+    // So hasNode means "a renderable placement exists" (record holds a mesh),
+    // not "a scene node exists".
+    zoneData.objects.resize(ctx_.objectRecords.size());
+    for (size_t i = 0; i < ctx_.objectRecords.size(); ++i) {
         auto& od = zoneData.objects[i];
-        od.hasNode = (ctx_.objectNodes[i] != nullptr);
+        od.hasNode = (ctx_.objectRecords[i].mesh != nullptr);
         if (i < ctx_.objectBoundingBoxes.size())
             od.boundingBox = ctx_.objectBoundingBoxes[i];
         if (i < ctx_.objectPositions.size())

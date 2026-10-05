@@ -600,7 +600,7 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
     }
 
     // Add visible object mesh buffers (sorted alongside zone geometry)
-    if (!ctx_.objectNodes.empty() && owner_.currentFrameSimResults_) {
+    if (!ctx_.objectRecords.empty() && owner_.currentFrameSimResults_) {
         const auto* results = owner_.currentFrameSimResults_;
 
         // Get camera position for distance sorting
@@ -610,10 +610,15 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
         }
 
         int objectsDrawn = 0;
-        for (size_t i = 0; i < ctx_.objectNodes.size() && i < results->objectVisible.size(); ++i) {
+        // B938 (#256): read the compact record, not the node. The record's
+        // world/mesh/buffer-materials are byte-identical to what the old
+        // node->getRelativeTransformation()/node->getMesh() provided, so the
+        // drawn pixels do not move. (objectNodes is now null in PVS zones.)
+        for (size_t i = 0; i < ctx_.objectRecords.size() && i < results->objectVisible.size(); ++i) {
             if (!results->objectVisible[i]) continue;
-            auto* node = ctx_.objectNodes[i];
-            if (!node || !node->getMesh()) continue;
+            const auto& rec = ctx_.objectRecords[i];
+            irr::scene::IMesh* mesh = rec.mesh;
+            if (!mesh) continue;
 
             // Distance from stored object position (Irrlicht coords)
             float distSq = 0.0f;
@@ -625,10 +630,9 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
             // Adaptive lighting: beyond object budget, use lightweight
             bool objUseLW = adaptiveLight && objectPPBudget > 0 && objectsDrawn >= objectPPBudget;
 
-            // World transform from node's relative transformation
-            irr::core::matrix4 worldMat = node->getRelativeTransformation();
+            // World transform from the record (= the old node's relative transform)
+            irr::core::matrix4 worldMat = rec.world;
 
-            irr::scene::IMesh* mesh = node->getMesh();
             for (irr::u32 bi = 0; bi < mesh->getMeshBufferCount(); ++bi) {
                 irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(bi);
                 if (!buf || buf->getVertexCount() == 0) continue;
@@ -636,9 +640,9 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
                 const irr::video::SMaterial& mat = buf->getMaterial();
                 irr::s32 matOverride = objUseLW ? getLightweightOverride(mat.MaterialType) : -1;
 
-                if (node->getName() && (std::string(node->getName()) == "TREE6" || std::string(node->getName()) == "TREE1")) {
+                if (rec.name == "TREE6" || rec.name == "TREE1") {
                     LOG_DEBUG(MOD_GRAPHICS, "[ADAPTIVE] {} obj[{}] buf[{}] matType={} useLW={} override={}",
-                              node->getName(), i, bi, (int)mat.MaterialType, objUseLW, matOverride);
+                              rec.name, i, bi, (int)mat.MaterialType, objUseLW, matOverride);
                 }
 
                 uint32_t texId = textureGroupId(mat);

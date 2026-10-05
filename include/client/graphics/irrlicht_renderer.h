@@ -26,6 +26,7 @@
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/door_manager.h"
 #include "client/graphics/animated_texture_manager.h"
+#include "client/graphics/placed_object_meshes.h"  // B938: PlacedObjectRecord
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/graphics_archive_index.h"
 #include "client/graphics/frustum_culler.h"
@@ -606,6 +607,21 @@ private:
 
     // PVS visibility check for a BSP region (used at insertion time for objects/lights)
     bool isRegionPvsVisible(size_t regionIdx) const;
+
+    // B938 (#256): the per-placement state is a compact record, not a scene
+    // node. These accessors are the seam between the two worlds.
+    //
+    // getNode: the real IMeshSceneNode a placement uses, non-null only in a
+    // non-PVS zone (manualZoneDrawEnabled false), where the scene-graph pass
+    // still draws objects via Irrlicht's SOLID pass. PVS placements have no
+    // node and return null -- callers that null-check (the sim bridge, the
+    // texture-eviction guard, diagnostics, the tree-wind fixup) keep working
+    // unchanged and simply skip PVS placements.
+    irr::scene::IMeshSceneNode* getPlacedObjectNode(size_t index) const;
+    // The shared mesh a placement draws (one per geometry), or null. This is
+    // what the manual draw path and the texture-eviction guard swap on.
+    irr::scene::IMesh* getPlacedObjectMesh(size_t index) const;
+    size_t placedObjectCount() const { return objectRecords_.size(); }
     irr::IrrlichtDevice* device_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::scene::ISceneManager* smgr_ = nullptr;
@@ -910,8 +926,25 @@ private:
     bool sequentialLoadComplete_ = false;  // True after loadZoneSequential() finishes
 
 
+    // B938 (GitLab #256): the per-placement state, one compact record each,
+    // replacing the per-placement IMeshSceneNode (obj.instances, ~2.2 KB: the
+    // node object, its name, its relative/absolute matrices, and a copied
+    // SMaterial per mesh buffer). The record holds what the draw paths read
+    // that a node carried: the shared mesh, its world transform, and its name.
+    // In every PVS zone (all gate and ledger zones) the node is never
+    // allocated -- the manual draw path reads the record directly.
+    std::vector<PlacedObjectRecord> objectRecords_;
+
+    // Indexed, parallel to objectRecords_: the real IMeshSceneNode a placement
+    // uses, or nullptr. Non-null only in non-PVS zones (manualZoneDrawEnabled
+    // false), where the scene-graph pass still draws objects via Irrlicht's
+    // SOLID pass and needs a real node. This is what the indexed consumers
+    // (sim bridge, diagnostics, step-11 fixup, lifecycle) read through; the
+    // texture-eviction guard additionally reads the records' shared meshes.
     std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
 
+    // Parallel per-placement state (cheap: ~45 B/placement). B938's target was
+    // the node, not these, so they are kept as before.
     std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
     std::vector<irr::core::aabbox3df> objectBoundingBoxes_;  // Cached world-space bounding boxes for distance-to-edge culling
     std::vector<bool> objectInSceneGraph_;  // Track which objects are in scene graph
