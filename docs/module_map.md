@@ -499,8 +499,12 @@ idle timings) and `RenderedZoneFinalVisit`
 (`scripts/pi/test_rendered_zone_final_visit.py`, requires the final tour visit
 to reach the requested zone and steady state without borrowing earlier evidence),
 plus B987's `CrowdObservationControls`
-(`scripts/b964/test_observation_controls.py`, both wrappers' duration forwarding,
-default workload and fail-closed observation, with a bounded no-ready process)
+(`scripts/b964/test_observation_controls.py`, both wrappers' duration forwarding
+(defaults, canonical-integer consumption, `--env` passthrough) and
+fail-closed observation, the ONE accepted duration spelling (plain ASCII
+decimal 0..86400, rejected before any lock/stack/Pi resource, including the
+sweep's self-validation with its real scripts) and a bounded x86 deadline
+that stops a continuously logging child)
 -- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two

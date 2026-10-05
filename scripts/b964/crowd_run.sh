@@ -31,6 +31,8 @@
 #                          arena; "" = no hop, the crowd streams in post-load)
 #          [--frametiming] emit the per-section frame timing breakdown
 #          [--idle 40] [--hold-after 15] [--cap 420] (seconds, finite deadline)
+#          (durations: plain ASCII decimal 0..86400 -- one definition in
+#          scripts/b964/observation_controls.py; B987's QA finding F1)
 # B975 acceptance: --idle 180 --hold-after 75 --cap 720 --frametiming.
 #          [--dump]        dump a frame every 600 (8 max) for review -- off in
 #                          timed runs (each dump is a glReadPixels + PNG frame)
@@ -83,7 +85,29 @@ while [ $# -gt 0 ]; do
         *) echo "unknown option: $1" >&2; exit 3 ;;
     esac
 done
-python3 "$REPO/scripts/b964/observation_controls.py" "$IDLE" "$HOLD_AFTER" "$CAP" || exit 3
+# B987's QA finding F1: ONE definition of a valid duration -- a plain ASCII
+# decimal 0..86400 (scripts/b964/observation_controls.py's docstring), the
+# form Bash arithmetic and `timeout` accept. int()/float() also take
+# `0_1`, `1_000`, `0800` (invalid octal here), `0720` (SILENTLY octal: 464),
+# signs, whitespace and non-ASCII digits; forwarded raw, a bad token hits the
+# deadline comparison below and the shell prints "integer expression
+# expected" -- the overall deadline silently DISABLED (with a continuously
+# logging child the silence watchdog never fires either). The validator
+# prints the CANONICAL integers, which this script (and its arithmetic)
+# consumes; the grep re-checks the same regex (LC_ALL=C, so [0-9] is the byte
+# range 0x30-0x39 -- a [0-9] in [[ =~ ]] follows the locale and, in a UTF-8
+# locale, matches non-ASCII digits), so no path forwards a raw token. Both
+# checks run BEFORE any lock, stack or resource is acquired.
+RE_DURATION='^(0|[1-9][0-9]*)$'
+for d in "$IDLE" "$HOLD_AFTER" "$CAP"; do
+    if ! LC_ALL=C grep -qE "$RE_DURATION" <<< "$d" || [ "$d" -gt 86400 ]; then
+        echo "bad duration '$d' (plain ASCII decimal 0..86400, no underscores/signs/leading zeros)" >&2
+        exit 3
+    fi
+done
+_IDLE=0 _HOLD_AFTER=0 _CAP=0
+read -r _IDLE _HOLD_AFTER _CAP < <(python3 "$REPO/scripts/b964/observation_controls.py" "$IDLE" "$HOLD_AFTER" "$CAP") || exit 3
+IDLE="$_IDLE"; HOLD_AFTER="$_HOLD_AFTER"; CAP="$_CAP"
 TOUR_EXTRA+=( --idle "$IDLE" --hold-after "$HOLD_AFTER" )
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 [ -n "$OUT" ] || OUT="/mnt/projects/fable/review/B964/x86/crowd-${STAMP}"

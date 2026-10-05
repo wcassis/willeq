@@ -16,7 +16,11 @@
 #          [--out DIR] [-r "1280 720"] [--hop-zone arena] [--frametiming]   (see make_tour.py)
 #          [--owner B964]   (the lock owner tag)
 #          [--idle 40] [--hold-after 15] [--cap 720] (seconds, finite deadline)
+#          (durations: plain ASCII decimal 0..86400 -- one definition in
+#          scripts/b964/observation_controls.py; B987's QA finding F1)
 # B975 acceptance: --idle 180 --hold-after 75 --cap 720 --frametiming.
+#          [--env K=V]...  (B988 lane: extra client environment forwarded to
+#          the sweep, e.g. WILLEQ_LIMA_NOBOCACHE=1)
 #          [--allow-vm-lane]   (B975: forward to pi_rendered_zone_sweep.sh, whose
 #          EQEMU_HOST must then name the eqemu VM)
 set -u
@@ -29,6 +33,7 @@ RES="1280 720"
 HOP_ZONE="arena"
 OWNER="B964"
 ALLOW_VM=0
+EXTRA_ENV=()
 TOUR_EXTRA=()
 IDLE=40
 HOLD_AFTER=15
@@ -47,13 +52,29 @@ while [ $# -gt 0 ]; do
         --hold-after) HOLD_AFTER="$2"; shift 2 ;;
         --cap) CAP="$2"; shift 2 ;;
         --owner) OWNER="$2"; shift 2 ;;
+        --env) EXTRA_ENV+=( --env "$2" ); shift 2 ;;
         --allow-vm-lane) ALLOW_VM=1; shift ;;
         -h|--help) sed -n '2,/^set -u/p' "$0"; exit 0 ;;
         *) echo "unknown option $1" >&2; exit 3 ;;
     esac
 done
-# Validate before acquiring either lock or launching a client.
-python3 "$REPO/scripts/b964/observation_controls.py" "$IDLE" "$HOLD_AFTER" "$CAP" || exit 3
+# B987's QA finding F1: validate idle/hold-after/cap as plain ASCII decimal
+# 0..86400 (scripts/b964/observation_controls.py) BEFORE either lock or a
+# client is launched, and consume the CANONICAL integers it prints, so no
+# raw token (0_1, 0720-as-octal, ...) reaches the sweep's --cap, the
+# runner's --stall, or any Bash arithmetic. The grep re-checks the same
+# regex (LC_ALL=C: [0-9] = bytes 0x30-0x39; a [[ =~ ]] range would follow
+# the locale and match non-ASCII digits).
+RE_DURATION='^(0|[1-9][0-9]*)$'
+for d in "$IDLE" "$HOLD_AFTER" "$CAP"; do
+    if ! LC_ALL=C grep -qE "$RE_DURATION" <<< "$d" || [ "$d" -gt 86400 ]; then
+        echo "bad duration '$d' (plain ASCII decimal 0..86400, no underscores/signs/leading zeros)" >&2
+        exit 3
+    fi
+done
+_IDLE=0 _HOLD_AFTER=0 _CAP=0
+read -r _IDLE _HOLD_AFTER _CAP < <(python3 "$REPO/scripts/b964/observation_controls.py" "$IDLE" "$HOLD_AFTER" "$CAP") || exit 3
+IDLE="$_IDLE"; HOLD_AFTER="$_HOLD_AFTER"; CAP="$_CAP"
 TOUR_EXTRA+=( --idle "$IDLE" --hold-after "$HOLD_AFTER" )
 [ -n "$PI_DIR" ] || { echo "--pi-dir is required" >&2; exit 3; }
 [ -n "$OUT" ] || OUT="/mnt/projects/fable/review/B964/pi/crowd-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -91,7 +112,7 @@ for zone in ${ZONES//,/ }; do
         echo "[pi_crowd] $zone/$variant -> $dir"
         bash "$REPO/scripts/pi_rendered_zone_sweep.sh" --zones "$zone" --out "$dir" --pi-dir "$PI_DIR" \
             -r "$RES" --tour "$dir/tour.txt" --cap "$CAP" --stall 240 --no-retry --owner "$OWNER" \
-            --stop-point never --final-visit --char-level 60 --char-exp 616137000 "${envs[@]}" "${vm_args[@]}" \
+            --stop-point never --final-visit --char-level 60 --char-exp 616137000 "${envs[@]}" "${EXTRA_ENV[@]}" "${vm_args[@]}" \
             > "$dir/sweep.out" 2>&1
         rc=$?
         echo "[pi_crowd] $zone/$variant rc=$rc"

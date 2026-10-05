@@ -54,6 +54,16 @@ while [ $# -gt 0 ]; do
         *) echo "unknown option: $1" >&2; exit 3 ;;
     esac
 done
+# B987's QA finding F1 (same class): --build feeds the deadline arithmetic
+# $((BUILD_S + 360)); a raw token (0_1, 0720-as-octal, ...) would print
+# "integer expression expected" and silently disable it. Validate BEFORE any
+# lock, stack or resource (plain ASCII decimal, 0..86400 -- the one
+# definition in scripts/b964/observation_controls.py).
+RE_DURATION='^(0|[1-9][0-9]*)$'
+if ! LC_ALL=C grep -qE "$RE_DURATION" <<< "$BUILD_S" || [ "$BUILD_S" -gt 86400 ]; then
+    echo "bad duration '$BUILD_S' (plain ASCII decimal 0..86400, no underscores/signs/leading zeros)" >&2
+    exit 3
+fi
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 [ -n "$OUT" ] || OUT="/mnt/projects/fable/review/B973/x86/crowd-${STAMP}"
 LOGS="$OUT/server"

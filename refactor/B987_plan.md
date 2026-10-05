@@ -103,6 +103,53 @@ correction. Final-HEAD CI and rerun source/doc checks are recorded in run305
 `result.json`, `ci-response.json` and `final-checks/commands.json`; CI is
 incremental, not a cold-build claim. Optional skipped tests are not passes.
 
+### QA finding F1 — duration validation agreed across all consumers
+
+Independent QA (run 306, verdict FAIL) found that the Python validator
+accepted spellings the shell consumers do not: `int()` takes `0_1`, `1_000`,
+leading zeros, signs, whitespace and non-ASCII digits, while
+`scripts/b964/crowd_run.sh` kept the RAW token for its deadline comparison
+`[ $((now - start)) -ge "$CAP" ]`. Executed reproduction against the actual
+wrapper with the repository's inert-service fixture: `--cap 1` stopped in
+1.46 s; `--cap 0_1` ran until an external process-group timeout with 97
+"integer expression expected" errors -- the overall deadline silently
+DISABLED. Sibling, Pi side: `scripts/pi_rendered_zone_sweep.sh` took
+`--cap`/`--stall` unvalidated into `timeout $((CAP_S + 120))` and
+`rendered_zone_run.py` (0800/0900 invalid-octal errors; 0720 SILENTLY octal
+-- the ssh timeout 584 while the runner is told 720), and never validated
+`--stall`/`--hold`; the same class hit `scripts/b973`'s `--build`
+(`$((BUILD_S + 360))`, `cap=$((BUILD_S + 420))`).
+
+Fix (this MR, after run 306): ONE definition of a valid duration for `--idle`,
+`--hold-after`, `--cap`, `--stall`, `--hold` and `--build` -- a plain ASCII
+decimal `0` or `[1-9][0-9]*` in 0..86400 seconds (`scripts/b964/observation_controls.py`'s
+`_seconds()`). Enforced in `scripts/b964/crowd_run.sh`, `scripts/b964/pi_crowd.sh`,
+`scripts/pi_rendered_zone_sweep.sh` (which is called directly by other rigs)
+and `scripts/b973/{crowd_run.sh,pi_crowd.sh}`, each BEFORE any lock, stack or
+Pi resource, each re-checking the same regex with `LC_ALL=C grep -qE` (a
+`[0-9]` range in `[[ =~ ]]` follows the locale and, in a UTF-8 locale,
+matches non-ASCII digits), and the wrappers then CONSUME the validator's
+printed canonical integers -- no path forwards a raw token. All defaults and
+the tour workload are unchanged (x86 cap 420, Pi cap 720, idle 40, hold 15).
+
+Regression: `CrowdObservationControls` gains the executed x86 deadline test
+(a continuously logging child stopped at the cap, the test QA's probe would
+have been), every rejected spelling (`0_1`, `1_000`, `0720`, `0800`, ` 5`,
+`+5`, `-1`, `5.0`, `1e3`, a non-ASCII digit, empty, over range) on BOTH
+wrappers and on the sweep with its REAL scripts in a sandbox, the good
+spellings accepted, and the canonical integer reaching the sweep. RED on
+`e3078ac5`: 3/8 of the new tests fail there (the rejected-spelling test on
+`0_1` first -- the wrapper accepted it and acquired the lock; the sweep
+sandbox reached the Pi probe with rc 68; `--env` unknown). GREEN on the head:
+8/8.
+
+`scripts/b964/pi_crowd.sh` also gains `--env K=V` (forwarded to the sweep),
+so the B988 lane can run the pair with `WILLEQ_LIMA_NOBOCACHE=1` -- one-line
+passthrough, in scope per the card.
+
+Pipeline (on the head): see the MR description. The fresh confirming Pi pair
+through the fixed wrappers is recorded under "Fresh Pi pair" below.
+
 Preserved failures: initial pipelines 501/502 failed the newly changed hygiene
 census and a relative documentation citation. Both documentation defects were
 corrected without relaxing checks. A preliminary partial inspector ran before
