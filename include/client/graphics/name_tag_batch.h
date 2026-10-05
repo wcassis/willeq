@@ -62,8 +62,10 @@ namespace Graphics {
  *  product once per call; the batch builds it once per render() and feeds it
  *  through the same multiplyWith1x4Matrix + round32 steps). A result of
  *  (-10000, -10000) means behind the camera, as the per-call path's.
- *  halfW/halfH are the driver's viewPort width/height over 2, as the
- *  per-call path's `dim`. */
+ *  halfW/halfH are the driver's viewPort width/height over 2. NOT the
+ *  per-node path's `dim`: CTextSceneNode calls it with useViewPort=false,
+ *  i.e. getCurrentRenderTargetSize(). The two agree while the viewport
+ *  covers the render target (the client never calls setViewPort). */
 void projectNameTag(const irr::core::matrix4& projView,
                     const irr::core::vector3df& world,
                     irr::s32 halfW, irr::s32 halfH,
