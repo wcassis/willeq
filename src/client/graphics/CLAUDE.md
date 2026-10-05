@@ -296,6 +296,8 @@ The compact index prefix grows only at need and is reused across chunks and
 frames; draw length follows the used vertex prefix, not retained storage.
 CPU vertex storage stays sized between runs and grows once per tag, so glyph
 emission does not repeat vector bookkeeping for every corner.
+Immutable atlas coordinates are cached once per glyph using the driver's
+same arithmetic; this adds no per-tag storage.
 The driver's state-only 2D entry point avoids a bootstrap client-array draw.
 Bounded VBO/EBO storage is reused; one slack vertex prevents whole-resource
 renaming on Lima. Writes remain synchronized, never orphaned or unsynchronized.

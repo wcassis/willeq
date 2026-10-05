@@ -356,15 +356,16 @@ it without taking that measurement first.
   baseline matrix passes the unchanged memory guard with both renderers.
   Evidence: `refactor/B986_pi_gpu_guard.md` and `refactor/B975/README.md`.
   Awaiting review/merge; this does not establish B975's CPU acceptance.
-- **B975** (B) → issue #293, draft MR !73. Entity name tags batched into
-  compact glyph runs. The old standalone benchmark omitted B986's production
-  buffer policy, invalidating its apparent CPU pass. The corrected optimized
-  Pi tool takes 5.604 ms at 200 tags (0.751 build / 4.845 submit), exceeding
-  the unchanged 2 ms bar. Primary fixed-pose pixels remain exact on x86/Pi;
-  the integrated B986 baseline passes the memory matrix. The optimized-head
-  full matrix is not claimed after the CPU stop condition. No budget or
-  policy rollback is authorized; submission work needs a new plan.
-  See `refactor/B975/README.md` for provenance and acceptance blockers.
+- **B975** (B) → issue #293, MR !73. Entity name tags use compact glyph runs,
+  bounded reusable GPU input storage and cached atlas coordinates. Run 281's
+  candidate meets the unchanged production-policy Pi CPU bar, preserves primary
+  fixed-pose pixels on both platforms, and passes the full Pi memory matrix and
+  x86 functional matrix. Live tag masks and the corpse-name update match;
+  targeted-outline and whole-frame differences are retained separately.
+  Candidate measurements and all earlier failures: `refactor/B975/README.md`
+  and `refactor/B975/evidence-run281/`. Publication requires an exact-terminal-
+  HEAD retake, recorded in the MR handoff. QA remains scheduled/held; no merge,
+  budget/golden change or production-policy rollback is authorized.
 - **B985** (B) → issue #304. `scripts/pi_rendered_zone_sweep.sh` cannot run
   from a host whose checkout and `--out` are not NFS-mounted by the Pi: its
   runner invocation runs `python3 <checkout>/scripts/pi/rendered_zone_run.py` ON

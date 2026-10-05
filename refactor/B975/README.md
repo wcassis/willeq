@@ -36,9 +36,46 @@ separate state setup, index preparation, upload (including synchronization)
 and draw calls. Regression coverage checks chunk/shorter-run reuse, pixels,
 fallback ordering, and bounded/accounted/released GPU storage.
 
-Final CI, Pi timing/pixels, memory and live matrices are pending. The known
-six-pixel live discrepancy and human visual decision remain unresolved.
-MR !73 stays draft; no dependent release or threshold change is implied.
+Candidate `850b679c6974a5dccf08cea93c063459efa91d89` passes the production
+Pi micro bar: **1917 us** at N200, with an explicit-policy repeat of
+**1963 us**. All primary poses are identical on both platforms. CI pipeline
+**495** passes hygiene, build, test, gate and build-arm; its test/gate traces
+contain no failed retry. These are candidate results, not a substitute for
+the final-head retake required by the execution contract.
+The CI evidence is from the runner's incremental tree, not a claimed cold run.
+
+Its full Pi crowd/normal matrix passes the unchanged guards, binary/Mesa
+identity, final-visit, spawn-acknowledgement and cleanup checks. Idle crowd
+transparent-pass samples are **1.3 / 32.3 ms** (batch / per-node, Qeynos) and
+**1.5 / 34.9 ms** (Greater Faydark). Full tables, including normal-zone rows
+and the distinct whole-run measurements, are in
+[`evidence-run281/pi-timing.md`](evidence-run281/pi-timing.md) and
+[`evidence-run281/pi-crowd.md`](evidence-run281/pi-crowd.md).
+The micro history preserves each failing candidate and its exact source/hash
+in [`evidence-run281/micro-history.json`](evidence-run281/micro-history.json).
+
+The x86 functional matrix also passes every case: final-visit ready/steady,
+spawn acknowledgements, selected renderer and clean exit. Its full memory
+figures remain in `evidence-run281/x86-crowd.md`: live llvmpipe RSS exceeds
+256 MiB in captured cases. These are not Pi memory-guard or hardware-performance
+passes, and the 64 MiB owned-memory target is not claimed as achieved.
+
+Live targeted, untargeted and corpse captures preserve the existing white
+NPC and blue player masks exactly between renderers. The corpse name changes
+through `setText`. The targeted view has fewer blue glyph pixels than the
+untargeted control: the post-scene gold target outline overlaps the player's
+label. This supports an overlay-phase explanation for run 279's six blue/gold
+differences; that earlier mismatch remains recorded, not retroactively passed.
+Current whole-frame differences (world animation and UI text) are retained
+separately in `evidence-run281/live-comparison.json`; no human visual approval
+is inferred. Both live snapshots and the x86 matrix snapshot restore
+byte-identically, with the stack stopped and locks released.
+
+Publication requires all contract checks again at the terminal HEAD, whose
+identity and results are recorded in the external run directory's `result.json`,
+`final-report.txt` and `final-verification/`. The committed tables identify
+their candidate SHA and never stand in for this final retake. QA remains
+scheduled/held for the orchestrator; this worker does not merge or unblock it.
 
 The first candidate's local test and pipeline 492 test job retain their
 failure: the re-registration test still expected the removed bootstrap
@@ -68,9 +105,14 @@ regressions exercise all three. Local tests and fixed poses pass
 with an explicit-policy repeat of **2017 us** (`prefix-micro/capture/`).
 All primary Pi poses remain identical. Atlas UVs are now cached once per
 glyph using the same arithmetic, a fixed 2 KiB in the batch object rather
-than additional storage per tag. Native measurement remains required.
+than additional storage per tag. Its native measurements are the passing
+`uv-micro/capture/` candidate results above.
 
-## Native Codex resume, 2026-10-04 — production CPU bar fails
+## Historical run 279, 2026-10-04 — production CPU bar failed
+
+The following prior-attempt records are historical evidence, not the current
+work queue. Their failures remain failures; run 281's measurements above do
+not rewrite them.
 
 Run `279` of `t_8f86d310` reviewed and integrated B986 commit
 `fd8b002b2a3ecb4f1b7d1a896cad20b9812f4d5d` into this branch. The fix disables

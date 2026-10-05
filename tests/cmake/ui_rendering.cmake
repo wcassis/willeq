@@ -540,7 +540,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 
 # B975 (GitLab #293): the entity name-tag batch -- pixel-identical to the
-# per-node CTextSceneNodes, two draw calls whatever the tag count. Needs a
+# per-node CTextSceneNodes, one draw per bounded run (fallbacks split it). Needs a
 # headless GLES2 device; self-skips without one.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_name_tag_batch
