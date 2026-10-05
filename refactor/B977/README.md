@@ -1,165 +1,144 @@
 # B977 — the `audio` ledger budget: measure on the Orange Pi (classic zones, sound ON), then ratchet
 
-Issue #295. Branch `task/B977-audio-budget` from `gitlab/fable` @ `d3375b65`.
-Will, in chat, 2026-10-01: **"4) perform the test run"** — the run `audio` was
-held for on 2026-09-30 (**"lower the seven budgets, hold audio"**, B943).
+Issue #295. Branch `task/B977-audio-budget`. Will, in chat, 2026-10-01:
+**"4) perform the test run"** — the run `audio` was held for on 2026-09-30
+(**"lower the seven budgets, hold audio"**, B943).
 
-## STATE AT HAND-OFF 2026-10-01
+## STATE AT HAND-OFF 2026-10-05 (this unit, complete)
 
-Handed off mid-unit on the coordinator's order (owner near his usage limit).
-**No Pi session and no eqemu session was started: neither lock was taken, no
-stack was brought up, no snapshot exists to restore.** Nothing has been
-measured live by this unit yet. The branch carries a WIP commit with an
-attribution fix, its regression test and a rig mode; it has NOT been built
-(see "Build blocker").
+The 2026-10-01 hand-off list below is superseded: steps 1–9 of REMAINS are
+done (see "DONE 2026-10-05"). The code fix (attribution + `au.*` owner labels
++ the regression test + the rig's `audio` mode) is unchanged from the WIP
+commit `8f229907`; fable merged in at `1b8ebb6f` (pre) and again before the
+final push. Raw evidence: `~/kb-evidence/b977-audio/{pi,x86}/` (NOT committed;
+the committed artifacts are this README, `audio_ledger_census.tsv` and the
+table in it). Both lanes restored their eqemu snapshots BYTE-IDENTICALLY with
+the world down; both released the eqemu and Pi locks.
 
-### DONE (with evidence)
+## DONE 2026-10-05 (with evidence)
 
-1. **Audio is ON on the Pi rig.** `scripts/pi_rendered_zone_sweep.sh` never
-   passes `--no-audio`, and `WILLEQ_BASELINE=1` does not touch audio
-   (`grep -rn Baseline src/client/audio` is empty). The B854 sweep's own logs
-   show the backend up: e.g.
-   `review/B854-rendered/sweep-full/zones/skyfire/client.log`:
-   `Miniaudio backend initialized (22050Hz, stereo)`, `MidiPlayer: loaded GM
-   SoundFont: .../synthusr.sf2`, `custom font deferred: .../synthus2.sf2`,
-   `Preloaded 17/17 common sounds`, and `audio=1613736/2000912` at `startup`.
+1. **Irrlicht rebuilt + Release build** (`build/`), `-j3` per the worker
+   cap; `--irrlicht-only` first (B959's symbol).
+2. **Red/green attribution test** (recorded in `~/kb-evidence/b977-audio/`):
+   - red (the two `src/client/audio/*.cpp` hunks reverted): `playMusic
+     (velketor.xmi): audio +64 B, game_state +24,228,592 B` — the custom
+     SoundFont lands in the CALLER's category; `playSoundByName x6: audio
+     +0 B, game_state +3,135,120 B`. Both cases FAIL as written.
+   - green (hunks applied, `ctest -R AudioLedgerAttribution`): 2/2 pass.
+3. **ARM build** published by CI at full sha
+   `1b8ebb6f18b20e26a3dc3b4e730b3a9bfb653ca0`, staged locally
+   (`~/ci-arm/1b8ebb6f…`, `binary_identity.txt`: pi_copy_sha256 matches
+   published).
+4. **Pi run** (`pi/sweep.log`, 13 zones, `--allow-vm-lane`, tour with the
+   rat-fight, `--char-level 60 --char-exp 616137000`,
+   `WILLEQ_LEDGER_OWNERS=audio WILLEQ_LEDGER_IDLE_EVERY=15`). 10/13 first-pass
+   pass, 3 retried: erudnint passed on retry; **rivervale and gfaydark fail
+   both attempts on `gpu_unnamed_over_bound` (13.03 / 12.19 MiB unnamed GEM >
+   10 MiB) — the KNOWN condition of B988/#307 (Lima BO cache on by default,
+   expected red on Pi tours until B972/#290 lands); not an audio finding, the
+   guard was not changed.** `#npctypespawn 351043` exists on the VM lane
+   (`client.log`: `Spawned a rat (351043)` in every zone that fought).
+   Audio confirmation per zone: `Miniaudio backend initialized`, GM font
+   loaded, `Preloaded 17/17 common sounds`; zone music actually STARTED
+   (log `Playing music: …/…xmi`) in qeynos, qeynos2, befallen, akanon,
+   neriaka, rivervale, gfaydark and **velketor** — velketor is the only one
+   that also shows `MidiPlayer: loaded custom SoundFont on demand`.
+   freportw, halas and erudnint never entered a music region in this tour.
+   kael and thurgadina (the other two synthus2 zones) likewise never entered
+   a music region: their safe point sits outside it, so their rows are the
+   ~3.6 MB startup-only ones.
+5. **x86 client, same zones** (`x86/rig.log`, `client_ledger_capture.sh
+   --modes audio --bin build-gles2/bin/willeq`, same tour + char level):
+   13/13 pass, snapshot restored byte-identically. Same music pattern:
+   velketor is the only custom-font load (`au.soundfont_custom`
+   24,162,944 B); kael/thurgadina again music-less.
+6. **Table + ratchet decision** (below, and in
+   `audio_ledger_census.tsv`; `docs/decisions.md` 2026-10-05 entry quotes both
+   rulings verbatim).
+7. **Gate note:** the benchmark never constructs `AudioManager` (audio row 0
+   in the five gate zones), so the gate passes any audio budget trivially —
+   the CLIENT figure is what the budget bounds (B923 #242). The full suite +
+   gate run on CI (pushed branch; see MR !75 pipeline).
+8. **Defects filed:** **B989 (#308)** duplicated float SFX caches
+   (`AudioManager::bufferCache_` + `SfxManager::cache_`, each capped at the
+   8,192 KB `soundCache` → up to 16 MiB of duplicated PCM) and **B990 (#309)**
+   the custom SoundFont held as ~24 MB of float samples. Both class::A,
+   lane::pi, on the board's A section. Board numbers re-read just before
+   filing (max B-number in use 988), so the new ones land as B989/B990; the
+   GitLab iids are the next free, #308/#309 (max iid 307 = B988) — the two
+   numberings are not aligned.
+9. **Push + MR**: `glab mr update 75` un-draft, `Closes #295`, issue #295 →
+   `status::review`. Not merged.
 
-2. **FINDING — the `audio` row under-counts: it only sees what exists at
-   startup.** Only `AudioManager::initialize()`, `ZoneAudioManager::loadZone()`
-   and the RDP pump thread opened `MemoryScope(Audio)`. Everything loaded later
-   is charged to the CALLER's scope, i.e. the game thread's `game_state`:
-   - the custom SoundFont `synthus2.sf2` (12,036,844 B on disk; tsf holds float
-     samples, ~24 MB). T504 deferred it from init to the first
-     `selectSoundFont(Custom)`, which `AudioManager::playMusic()` makes for the
-     31 Velious/Luclin XMI stems in `getSoundFontTypeForFile()`.
-     **Pi evidence (B854, velketor,
-     `review/B854-rendered/sweep-full/zones/velketor/client.log`):**
-     `audio` = 1,625,664 B at `zone_load_complete`, `ready` AND `steady_60s`;
-     the log shows `MidiPlayer: loaded custom SoundFont on demand` 1.6 s after
-     `ready`; `game_state` went 4,850,304 (ready) -> 29,661,808 (steady_60s).
-     Same load in `templeveeshan_retry`. No classic zone loads it (their XMI
-     stems are not on the synthus2 list), so classic zones play on the GM font
-     (`synthusr.sf2`, 498,320 B).
-   - every WAV decoded on first play (`loadSound()` -> `bufferCache_`) and
-     `SfxManager::preload()`'s second float copy of the same samples.
-   **So the B854 "audio <= 1,862,784 B" figures are startup-only, and the
-   Velious music zones' real audio is ~1.6 MB + ~24 MB.**
+## The measurement (steady_60s, the asserted point; full table in
+`audio_ledger_census.tsv`)
 
-3. **The T496 25,725,824 B figure explained.** At T496 (2026-09-17, before
-   T504) `MidiPlayer::init()` loaded BOTH fonts at startup under the Audio
-   scope: ~24 MB synthus2 (float) + the rest (~1.6 MB) = 25.7 MB, in every zone
-   (`review/T496/pi/raw/qeynos2_T496legD/ledger.txt`: `audio=25725824` from
-   `zone_change_before_unload` on). T504 made the custom font on-demand, so the
-   startup row fell to ~1.6 MB, and from then on the font (when a Velious/Luclin
-   zone plays it) was charged to `game_state` — finding 2.
+Pi client (`pi/zones/<zone>/client.log`, `WILLEQ_LEDGER_OWNERS=audio`):
 
-4. **Code on the branch (WIP commit, unbuilt):**
-   - `src/client/audio/audio_manager.cpp`: `MemoryScope(Audio)` at every public
-     entry point that can allocate (`playSound`, `playSoundByName`,
-     `playSoundInternal`, `playMusic`, `stopMusic`, `onZoneChange`,
-     `restartZoneMusic`, auto-attack / vendor-bank music start/stop,
-     `loadSound`, `preloadCommonSounds`, `enableLoopbackMode`,
-     `setAudioOutputCallback`), plus `au.*` owner labels
-     (`eqt::memory::StartupScope`, reported by `WILLEQ_LEDGER_OWNERS=audio`):
-     `au.mixer_sfx`, `au.soundfont_gm`, `au.music`, `au.backend`,
-     `au.pfs_index`, `au.sound_buffers`, `au.sfx_cache`, `au.soundfont_custom`.
-   - `src/client/audio/zone_audio_manager.cpp`: Audio scope in `update()` and
-     `setDayNight()`; `au.zone_emitters` label in `loadZone()`.
-   - `tests/test_audio_ledger_attribution.cpp` (new, registered in
-     `tests/cmake/audio.cmake`): two cases that open a GameState scope, call
-     `playMusic(velketor.xmi)` / `playSoundByName(...)`, and assert the bytes
-     land in `audio`, not `game_state`. **Not yet run red-before / green-after.**
-   - `tests/cmake/audio.cmake`: `AUDIO_COMMON_TEST_SOURCES` now links
-     `memory_ledger.cpp`, `memory_ledger_trace.cpp`, `gpu_buffer_census.cpp`
-     (StartupScope is not header-only; every AudioManager test binary needs the
-     symbol), and `test_audio_startup_peak` drops its now-duplicate copies.
-   - `scripts/client_ledger_capture.sh`: new mode `audio` (x86 owner rows).
+| zone | zone_load_complete | ready | steady_60s live / peak | notes |
+|---|---:|---:|---:|---|
+| qeynos | 3,653,144 / 3,667,928 | 3,653,144 / 3,667,928 | 4,239,144 / **4,839,672** | music started |
+| qeynos2 | 3,638,160 / 3,638,160 | 3,638,160 / 3,638,160 | 3,811,680 / 4,765,016 | music started |
+| freportw | 3,702,488 / 3,702,488 | 3,702,488 / 3,702,488 | 3,702,488 / 3,702,488 | no music region |
+| gfaydark | 3,699,816 / 3,699,888 | 3,699,816 / 3,699,888 | 3,752,096 / 4,067,056 | music started; row failed the #307 guard |
+| befallen | 4,050,664 / 4,050,712 | 4,050,664 / 4,050,712 | 4,686,944 / 4,789,664 | music started |
+| halas | 3,638,856 / 3,638,856 | 3,638,856 / 3,638,856 | 4,123,640 / 4,244,536 | no music region |
+| erudnint | 4,050,688 / 4,050,808 | 4,050,688 / 4,050,808 | 4,874,384 / **4,945,872** | classic worst; no music region |
+| rivervale | 4,051,752 / 4,051,824 | 4,051,752 / 4,051,824 | 4,153,184 / 4,680,064 | music started; row failed the #307 guard |
+| neriaka | 4,051,032 / 4,051,080 | 4,051,032 / 4,051,080 | 4,078,640 / 4,276,032 | music started |
+| akanon | 3,644,224 / 3,644,224 | 3,644,224 / 3,644,224 | 3,794,712 / 4,849,504 | music started |
+| velketor | 3,646,472 / 3,646,472 | 3,646,472 / 3,646,472 | 28,622,192 / **28,720,320** | music started; **custom font `au.soundfont_custom` 24,160,712 B** |
+| thurgadina | 3,682,080 / 3,682,080 | 3,682,080 / 3,682,080 | 3,682,080 / 3,682,080 | no music region |
+| kael | 3,678,376 / 3,678,376 | 3,678,376 / 3,678,376 | 3,678,376 / 3,678,376 | no music region |
 
-5. **Defect to file (not yet filed):** every played WAV is held TWICE as
-   32-bit float — `AudioManager::bufferCache_` and `SfxManager::cache_`
-   (`preload()` copies the samples), each capped separately at the preset's
-   `soundCache` (8,192 KB on orangepi), so up to 16 MiB of duplicated decoded
-   PCM. The custom SoundFont at ~24 MB float for a 12 MB file is the other
-   1999-implausible owner (the original client did not decode its font to
-   float). Both make any ratchet value provisional.
+x86 client (`x86/<zone>/audio/client.log`, same tour, same char level):
 
-### REMAINS (numbered checklist)
+| zone | ready live / peak | steady_60s live / peak | notes |
+|---|---:|---:|---|
+| worst classic (akanon) | 3,616,080 / 3,616,080 | 3,817,120 / **5,690,016** | music started |
+| velketor | 3,618,656 / 3,618,656 | 28,614,000 / **28,918,432** | **custom font: `au.soundfont_custom` 24,162,944 B** |
+| kael / thurgadina | ~3.66 MB | ~3.66 MB | no music region entered |
 
-1. **Build blocker.** The worktree's `third_party/irrlicht-gles2-x86` was
-   copied from `main/`, whose Irrlicht predates B959: the link fails with
-   `undefined reference to eqtSetShaderBinaryCacheDir(char const*)`
-   (`gles2_alpha_test_probe`, `gles2_player_light_probe`). Rebuild the slot's
-   own Irrlicht first (needs downloads.sourceforge.net — see B970 #288 if it is
-   still down):
-   `bash /mnt/projects/fable/wt/audit-audio/scripts/build-gles2-x86.sh --irrlicht-only`
-   then
-   `cmake --build /mnt/projects/fable/wt/audit-audio/build -j24 > <log> 2>&1; echo EXIT=$?`
-   (background + `scripts/wait_for.sh --exit-file`; the tree is configured
-   RelWithDebInfo against the slot's own Irrlicht dir).
-2. **Red/green the attribution test.** On this branch:
-   `ctest --test-dir /mnt/projects/fable/wt/audit-audio/build -R AudioLedgerAttribution --output-on-failure`
-   must pass; with the two `src/client/audio/*.cpp` hunks reverted
-   (`git diff ... > x.patch; git apply -R`; never `git stash`) the
-   `CustomSoundFontLoadedByPlayMusicIsChargedToAudio` case must fail with
-   `game_state` +~24 MB. Record both numbers.
-3. **ARM build of the branch:** push, then
-   `glab ci trigger build-arm -b task/B977-audio-budget -R https://gitlab.goldfarm.local/willeq/willeq`
-   -> `/mnt/projects/fable/ci-arm/<sha>/` (must contain `bin/willeq-nollvm`
-   and `mesa/prefix/.willeq-mesa-pin`).
-4. **Pi run (locks: the rig takes eqemu `local` then the Pi, releases both,
-   restores the snapshot with the world down):** a tour file with
-   `/loc`, `wait 75`, `/say #npctypespawn 351043`, `wait 2`, `/target`,
-   `wait 1`, `/attack`, `wait 10`, `/stopattack`, `wait 20`, `/loc`, `/q`, then
-   ```
-   EQEMU_HOST=local bash scripts/pi_rendered_zone_sweep.sh \
-     --pi-dir /mnt/projects/fable/ci-arm/<sha> --owner B977 \
-     --zones qeynos2,qeynos,freportw,gfaydark,befallen,halas,erudnint,rivervale,neriaka,akanon,velketor,thurgadina,kael \
-     --tour <tour> --drive-keys --stop-point never \
-     --env WILLEQ_LEDGER_OWNERS=audio --env WILLEQ_LEDGER_IDLE_EVERY=15 \
-     --out /mnt/projects/fable/review/B977/pi
-   ```
-   (the three Velious zones are there because they are the only ones that load
-   the custom font — they are the real worst; kael may need `--char-level`).
-   Per zone read `audio=<live>/<peak>` at `zone_load_complete`, `ready`,
-   `steady_60s`, the `idle_*` points after the combat, and the
-   `[memledger-startup] ... owner=startup.au.*` rows. Confirm in each
-   `client.log`: `Miniaudio backend initialized`, the zone's music started
-   (`MidiPlayer`/music lines; for velketor `loaded custom SoundFont on
-   demand`), and `audio` non-zero.
-5. **x86 client, same zones:**
-   `EQEMU_HOST=local bash scripts/client_ledger_capture.sh --zones <same> --modes audio --owner B977 --tour <tour> --out /mnt/projects/fable/review/B977/x86`
-   (needs `build-gles2/bin/willeq` built from this branch:
-   `bash scripts/build-gles2-x86.sh`, AFTER step 1's build finishes). Benchmark
-   census column: 0 — `gles2_zone_benchmark` never constructs `AudioManager`.
-6. **Table + ratchet** (`refactor/B943/README.md` is the model): per zone
-   audio at ready / steady / peak, Pi and x86, owner rows of the worst. Worst x
-   1.25, rounded UP to a whole MiB. If that is above 32 MiB (likely, if the
-   velketor figure is ~26 MB with the font now charged to `audio`: 26e6 x 1.25
-   = 32.5e6 B = 31.0 MiB -> 31 MiB; above ~26.8 MB it rounds to 33 MiB = a
-   raise, which the ratchet rule forbids — then HOLD 32 MiB and say the
-   soundfont defect is what has to move). Files to change, exactly as B943:
-   `config/constrained_presets.json` (`memoryLedgerBudgets.audio`),
-   `src/client/graphics/constrained_renderer_config.cpp` (`fromPreset(OrangePi)`
-   + derivation comment), `include/client/graphics/constrained_renderer_config.h`
-   (field comment), `tests/test_constrained_renderer.cpp` (compiled-preset and
-   shipped-JSON `audio` pins), `docs/decisions.md` (2026-10-01 entry quoting
-   "4) perform the test run" and "lower the seven budgets, hold audio"),
-   `refactor/BOARD.md`, this README ("Not verified").
-7. **Gate:** the benchmark's `audio` row is 0, so the five gate zones pass any
-   audio budget trivially; the CLIENT figure is what the budget bounds and the
-   gate does not see it (B923 #242). Run `visual_gate.py` once on the branch
-   anyway (`docs/ci.md`).
-8. **File the defects** (next free B number = max `B###:` GitLab title + 1;
-   re-check before filing): (a) duplicated float SFX caches; (b) the custom
-   SoundFont held as ~24 MB of float samples. Name them in the README and the
-   MR.
-9. Full suite + hygiene (`ctest -L hygiene`) + `check_file_sizes.sh fable`
-   from the slot; commit (trailer
-   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`); push; take the
-   MR out of draft with `Closes #295`; issue label `status::review`. Do not
-   merge.
+The worst on BOTH machines is velketor at steady_60s, and it is the custom
+SoundFont: 24.16 MB of 28.7–28.9 MB (84 %). velketor is also the only zone
+whose music STARTED in both runs (music is region-based,
+`ZoneAudioManager::findMusicEmitter`; kael/thurgadina's seeded safe point is
+outside their region).
 
-### Locks and stacks touched
+**Ratchet (the in-tree convention: measured worst × 1.25, rounded UP to a
+whole MiB, moves DOWN only):**
 
-None. Pi lock and the eqemu `local` lock were read FREE at ~11:04 UTC and
-never taken; no stack was brought up; no character row was changed.
+| | worst | × 1.25 | rounded up | vs 32 MiB |
+|---|---:|---:|---:|---|
+| Pi, velketor | 28,720,320 B | 35,900,400 B | 34.25 MiB → **35 MiB** | above |
+| x86, velketor | 28,918,432 B | 36,148,040 B | 34.47 MiB → **35 MiB** | above |
+
+35 MiB is above the current 32 MiB, so per the rule the budget **HOLDS at
+32 MiB** and the defects are named: the custom SoundFont (B990) moves first —
+it is 24.16 MB of the 28.9 MB worst and the 1999 client never held its font
+as float — and the duplicated SFX caches (B989) second. When B990 (+B989)
+land, the worst falls to the classic-zone figures (~4.9 MiB Pi / 5.7 MiB x86
+in this tour): worst 5,690,016 B × 1.25 = 7,112,520 B = 6.79 MiB → **7 MiB**
+would be the convention value then. The ratchet NUMBER is Will's to bless
+(he held it on 2026-09-30 and released the run on 2026-10-01); this unit
+writes no budget change, so `config/constrained_presets.json` (33554432),
+`constrained_renderer_config.{h,cpp}`, the test pins and the gate stay as
+they are.
+
+## Files changed by this unit (on top of `8f229907`)
+
+- `refactor/B977/README.md` (this), `refactor/B977/audio_ledger_census.tsv`
+  (new, 26 rows = 13 zones × Pi/x86 + the velketor owner rows);
+- `docs/decisions.md` (2026-10-05 entry, quotes both rulings verbatim);
+- `refactor/BOARD.md` (B989 #308 and B990 #309 filed, class::A, lane::pi);
+- `src/client/graphics/constrained_renderer_config.cpp` +
+  `tests/test_constrained_renderer.cpp`: the audio-budget comments now carry
+  the B977 result (the VALUE is unchanged: 32 MiB, both pins untouched).
+
+## Locks and stacks touched
+
+Pi lock + eqemu VM-lane lock: taken and released by the sweep rig
+(`pi/sweep.log` final lines: `snapshot restored BYTE-IDENTICALLY`,
+`stack down`, `locks released`). x86 lane: eqemu lock taken and released by
+`client_ledger_capture.sh` (`x86/rig.log`: same). No character row changed
+(eligibility leg level 60 / exp 616137000 restored from the snapshot).
