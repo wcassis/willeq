@@ -1616,3 +1616,30 @@ down); nothing else in `tests/goldens/` moves. The other four gate zones
 (gfaydark 11.2 MB, befallen 2.9 MB, iceclad 3.9 MB, timorous 3.2 MB) sit under
 21 MiB and are untouched. Pi proof (qeynos2 + gfaydark, 0 placeholder /
 pinned / restore-fail WARNs, owned per zone): `refactor/B978/README.md`.
+
+## 2026-10-05 — Lima's BO cache stays on; `nobocache` is opt-in (Will; B988, #307)
+
+**Will, in chat: "make the nobocache flag opt-in (off by default) and fix the
+stale docs".** B986 (#305, merged with B975 as MR !73, fable `ee538d2c`) had
+made every DRM client append `nobocache` to `LIMA_DEBUG` under the
+2026-09-29 "memory first" ruling. A same-binary Orange Pi A/B
+(`/mnt/projects/fable/review/CODEX-AUDIT-1005/README.md`, 800x600, orangepi,
+standing at the safe point) measured the trade:
+
+| zone | scene draw ms, cache on -> nobocache | owned MiB, cache on -> nobocache |
+|---|---|---|
+| gfaydark | 7.7 -> 15.5 | 81.6 -> 78.2 |
+| qeynos2 | 3.3 -> 6.0 | 66.2 -> 64.7 |
+
+In 200-NPC crowds the cache costs 9–20 MiB of owned memory and `nobocache`
+up to half the frame rate (`refactor/B986_pi_gpu_guard.md`, superseded
+section). Will ruled for the cache.
+
+**Decision:** a DRM client leaves `LIMA_DEBUG` untouched; `WILLEQ_LIMA_NOBOCACHE=1`
+is the one opt-in switch and restores B986's behaviour exactly; renderer init
+logs the effective policy. The memory the cache retains (Mesa stream uploads,
+Lima draw-time buffers) is B972's (#290) to remove at the source. **No guard,
+budget, golden or baseline moves:** the 10 MiB unnamed-GPU guard stays, and is
+expected to fail on the crowd/zone-hop tours (6 of 8 cases in B975's
+2026-10-03 matrix, `refactor/B975/evidence-20261003/pi-verification.csv`)
+until B972 lands.

@@ -34,4 +34,10 @@ and `final-report.txt`. No source-equivalence waiver is used.
 The default and explicit-policy native runs both retain B986's production
 policy and Mesa 25.2.8. No budget, golden or baseline was changed. All candidate
 snapshot restores are byte-identical; both locks are released and clients
-stopped before the terminal retake. QA remains held for the orchestrator.
+stopped before the terminal retake. QA was held for the orchestrator at
+this point; it later ran (run 284, PASS) and B975 merged as MR !73 (fable
+`ee538d2c`, 2026-10-05) -- see `../README.md` "Current state".
+
+B986's production policy here is `LIMA_DEBUG=nobocache` (BO cache OFF), so
+every Pi timing in this directory is a cache-off figure. B988 (2026-10-05)
+made the cache-on setting the default again; `refactor/B986_pi_gpu_guard.md`.

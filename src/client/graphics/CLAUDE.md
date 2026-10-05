@@ -281,8 +281,24 @@ chunk to whatever `eqt::memory::Category` the CALLING THREAD is scoped to.
   chain again -- two buffers per texture), and **unit 0 uploads level 0 only**
   (it is never mip-filtered). The client streams its zone vertices (the pools
   are client arrays); a shared static VBO for them measured MORE GEM and half
-  the frame rate, so `vboEboBytes` ~0 is correct. `WILLEQ_GPU_BUFFERS_LEGACY=1`
+  the frame rate, so the zone contributes ~0 to `vboEboBytes`; what the tally
+  does carry is the name-tag batch's VBO/EBO storage (B975, through
+  `gles2AdjustRawBufferBytes`). `WILLEQ_GPU_BUFFERS_LEGACY=1`
   restores the pre-B962 allocation pattern for an A/B.
+- **Lima's BO cache is ON by default; `nobocache` is opt-in (B988, Will
+  2026-10-05).** `configureLimaBufferPolicy()`
+  (`include/client/graphics/lima_buffer_policy.h`, called before
+  `createDeviceEx`) leaves `LIMA_DEBUG` untouched unless
+  `WILLEQ_LIMA_NOBOCACHE=1`, which appends `nobocache` (B986's policy: other
+  flags kept, idempotent, `all` respected); a caller's own
+  `LIMA_DEBUG=nobocache` works without the switch. Renderer init logs one
+  `[GL] Lima buffer policy:` INFO line with the effective policy. Measured
+  same-binary on the Pi: `nobocache` saves 1.5–3.5 MiB owned standing still
+  (9–20 MiB in 200-NPC crowds) but doubles scene draw (gfaydark 7.7 -> 15.5
+  ms, qeynos2 3.3 -> 6.0 ms). With the cache on, the 10 MiB unnamed-GPU guard
+  fails on crowd/zone-hop tours until B972 (#290) removes the retained buffers
+  at the source; the guard is not raised. Record:
+  `refactor/B986_pi_gpu_guard.md`.
 
 ## Entity name tags (B975)
 
@@ -309,9 +325,10 @@ the original per-node path for A/B verification. The `[nametags]` rows and
 `ent.nametag_batch` memory owner report the batch's cost and storage.
 `test_name_tag_batch` and `nametag_drawcost` check pixel identity, changes to
 text and draw counts; measured evidence and limits are in `refactor/B975/README.md`.
-The DRM benchmark applies the same Lima buffer policy as the client (B986).
-A cached standalone-tool timing is not evidence for the uncached production
-path; the production-policy CPU bar remains a B975 acceptance requirement.
+The DRM benchmark applies the same Lima buffer policy as the client
+(`configureLimaBufferPolicy()`; since B988 that is the BO cache ON unless
+`WILLEQ_LIMA_NOBOCACHE=1`), so its default timing is the client's default
+path. B975's accepted 1914 / 1955 us were measured under `nobocache`.
 
 ## Impostor billboards (B964, the production port of B952)
 

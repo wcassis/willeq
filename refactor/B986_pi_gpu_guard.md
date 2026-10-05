@@ -1,5 +1,69 @@
 # B986 — Pi unnamed-GPU guard investigation
 
+## Superseded 2026-10-05 (B988, issue #307)
+
+Will, 2026-10-05, verbatim: **"make the nobocache flag opt-in (off by default)
+and fix the stale docs"**.
+
+B986 merged into `fable` with B975 (MR !73, `ee538d2c`, 2026-10-05) and made
+every DRM client append `nobocache` to `LIMA_DEBUG`. A same-binary Orange Pi
+A/B the same day measured what that costs
+(`/mnt/projects/fable/review/CODEX-AUDIT-1005/README.md`: the pre-B986 ARM
+binary `e209d3ee` with and without `--env LIMA_DEBUG=nobocache`, plus fable
+`ee538d2c` as shipped; 800x600, orangepi preset, shipped LLVM-less Mesa,
+character standing at the safe point; ms from a `/frametiming` tour, memory at
+`steady_60s`):
+
+| zone | leg | scene draw ms | total ms | owned MiB | gpu_buffers MiB | unnamed MiB |
+|---|---|---|---|---|---|---|
+| gfaydark | old, cache on | 7.7 | 28.8 | 81.6 | 22.6 | 7.5 |
+| gfaydark | old, nobocache | 15.5 | 28.9 | 78.2 | 19.2 | 4.1 |
+| gfaydark | fable shipped | 14.9 | 28.6 | 79.2 | 19.7 | 4.4 |
+| qeynos2 | old, cache on | 3.3 | 7.8 | 66.2 | 23.2 | 5.7 |
+| qeynos2 | old, nobocache | 6.0 | 12.7 | 64.7 | 21.3 | 3.7 |
+| qeynos2 | fable shipped | 6.0 | 12.5 | 63.9 | 21.1 | 3.5 |
+
+Standing still the cache costs 1.5–3.5 MiB of owned memory and buys a 2x
+cheaper scene draw. Codex's own crowd tours point the same way, though they
+are NOT a single-variable A/B (client `c778d23d` cache on,
+`refactor/B975/evidence-20261003/pi-crowd.md`, vs B975 candidate `850b679c`
+under `nobocache`, `refactor/B975/evidence-run281/pi-crowd.md`; idle FPS from
+the client lines, owned at `steady_60s`):
+
+| zone / variant | idle FPS, cache on -> nobocache | owned MiB, cache on -> nobocache |
+|---|---|---|
+| gfaydark / imp0 (normal population) | 41 -> 24 | 90.11 -> 79.89 |
+| gfaydark / imp200far (200-NPC crowd, batch) | 26 -> 11 | 146.59 -> 126.64 |
+| gfaydark / tagnode200far (crowd, per-node) | 16 -> 8 | 145.02 -> 128.63 |
+| qeynos2 / imp200far | 31 -> 24 | 123.53 -> 114.42 |
+| qeynos2 / tagnode200far | 20 -> 13 | 131.23 -> 117.48 |
+
+So `nobocache` saved 9–20 MiB of owned memory in the 200-NPC crowds and cost
+up to half the frame rate.
+
+**New default (B988):** a DRM client leaves `LIMA_DEBUG` untouched, so Lima's
+BO cache is ON. **Opt-in:** `WILLEQ_LIMA_NOBOCACHE=1` restores the policy below
+exactly (append `nobocache`, keep the caller's other flags, idempotent, `all`
+respected, before `createDeviceEx`). A caller's own `LIMA_DEBUG=nobocache`
+still works without the switch. Renderer init logs one `[GL] Lima buffer
+policy:` INFO line naming the effective policy. `nametag_drawcost` calls the
+same `configureLimaBufferPolicy()`, so it measures the client's default (cache
+on) unless the switch is set. Code: `include/client/graphics/lima_buffer_policy.h`;
+tests: `tests/test_lima_buffer_policy.cpp`.
+
+**Consequence, stated plainly.** With the cache on, Codex's 2026-10-03 Pi
+matrix exceeded the 10 MiB unnamed-GPU guard in **6 of 8** crowd/zone-hop
+cases (`refactor/B975/evidence-20261003/pi-verification.csv`: both 200-NPC
+crowds in qeynos2 and gfaydark with either renderer, and gfaydark's
+normal-population pair at 12.24 / 11.80 MiB). The guard is expected to read
+red again on those tours until **B972 (#290)** removes the retained Mesa
+stream-upload / Lima draw-time buffers at their source. **The guard number
+(`GPU_UNNAMED_BOUND`, 10 MiB) is NOT changed.**
+
+The text below is the original B986 record, kept as written.
+
+---
+
 Assigned contract: kanban `t_d79d91ae`, GitLab issue #305. Stacked branch
 `task/B986-pi-gpu-guard`, based on B975 at
 `b0bb555ee8d2cdc8f25cb16202a8237e2d237eeb`. No merge is authorized.
@@ -108,6 +172,9 @@ Evidence: `~/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/`
 (`matrix-verification.json`, `pi-verification.csv`, and raw `matrix/capture/`).
 This supersedes the pending status from the initial investigation commit.
 
+*(2026-10-05: no longer current -- B975 later met its CPU bar under this
+policy and merged with B986 as MR !73, `ee538d2c`; B988 then made the policy
+opt-in. The paragraph is kept as written.)*
 B975 remains blocked for a different, measured reason: its standalone timing
 tool omitted this production policy. Applying it makes submission alone
 exceed B975's CPU bar; the tool now uses the same policy as the client.

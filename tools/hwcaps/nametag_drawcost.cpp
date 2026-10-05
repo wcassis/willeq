@@ -138,10 +138,12 @@ bool openDevice(Scene& s, const Options& o) {
     if (o.drm) params.DeviceType = irr::EIDT_FRAMEBUFFER;  // the Pi: DRM/KMS
 #endif
     eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
-    if (!configureLimaBufferPolicy(o.drm)) {
+    const auto limaPolicy = configureLimaBufferPolicy(o.drm);  // the client's own policy (B988)
+    if (!limaPolicy.ok) {
         fprintf(stderr, "cannot configure the client's Lima buffer policy\n");
         return false;
     }
+    if (o.drm) fprintf(stderr, "Lima buffer policy: %s\n", describeLimaBufferPolicy(limaPolicy.policy));
     s.device = irr::createDeviceEx(params);
     if (!s.device) return false;
     s.driver = s.device->getVideoDriver();

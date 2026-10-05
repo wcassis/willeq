@@ -415,9 +415,17 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     startupOwner("gfx.device");
     LOG_TRACE(MOD_GRAPHICS, "Creating Irrlicht device (createDeviceEx)...");
     eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
-    if (!configureLimaBufferPolicy(config_.constrainedConfig.useDRM)) {
+    // B988: Lima's BO cache stays on unless WILLEQ_LIMA_NOBOCACHE=1 (or the
+    // caller's own LIMA_DEBUG) turns it off; log which one ran.
+    const auto limaPolicy = configureLimaBufferPolicy(config_.constrainedConfig.useDRM);
+    if (!limaPolicy.ok) {
         LOG_ERROR(MOD_GRAPHICS, "Failed to configure Lima GPU buffer retention policy");
         return false;
+    }
+    if (config_.constrainedConfig.useDRM) {
+        const char* limaDebug = std::getenv("LIMA_DEBUG");
+        LOG_INFO(MOD_GRAPHICS, "[GL] Lima buffer policy: {} (LIMA_DEBUG={})",
+                 describeLimaBufferPolicy(limaPolicy.policy), limaDebug ? limaDebug : "(unset)");
     }
     {
         // B962: the EGL surface (depth/stencil) and the main context's driver

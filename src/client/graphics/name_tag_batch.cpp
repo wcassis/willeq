@@ -79,8 +79,10 @@ void NameTagNode::setText(const wchar_t* text) {
 // per render() and feeds it through the same multiplyWith1x4Matrix + round32
 // steps, so a tag's screen position is the per-node path's position of the
 // frame (same product, same steps; the per-pose pixel tool is the net).
-// halfW/halfH are the driver's viewPort width/height over 2, as the
-// per-call path's `dim`.
+// halfW/halfH are the driver's viewPort width/height over 2. NOT the per-node
+// path's `dim`: CTextSceneNode passes useViewPort=false, i.e. the current
+// render-target size. They agree while the viewport covers the render target
+// (the client never calls setViewPort).
 void projectNameTag(const irr::core::matrix4& projView, const irr::core::vector3df& world,
                     irr::s32 halfW, irr::s32 halfH, irr::core::position2d<irr::s32>& out) {
     irr::f32 p[4] = {world.X, world.Y, world.Z, 1.0f};
