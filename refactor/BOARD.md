@@ -367,7 +367,9 @@ it without taking that measurement first.
   historical candidate tables. All earlier failures, including QA run 283's
   missing steady window, remain failures; run 284's bounded longer observation
   passes unchanged guards. B987 / issue #306 remains separate harness
-  work. No budget/golden change, policy rollback or human visual approval.
+  work (MR !82, implementation verified by the fresh run305 Pi pair;
+  `refactor/B987_plan.md`, independent QA/review still required).
+  No budget/golden change, policy rollback or human visual approval.
 - **B985** (B) → issue #304. `scripts/pi_rendered_zone_sweep.sh` cannot run
   from a host whose checkout and `--out` are not NFS-mounted by the Pi: its
   runner invocation runs `python3 <checkout>/scripts/pi/rendered_zone_run.py` ON

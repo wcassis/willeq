@@ -43,6 +43,9 @@ the merge tree equals the reviewed source. Issue #293 is closed.
   --cap 720 --frametiming` for this acceptance recipe, and reject missing final
   readiness/steady or post-ready idle timing. Longer waits do not guarantee a
   pass: readiness beyond the finite observation window must still fail.
+  B987's fresh run305 Qeynos pair passes the original guards with final-visit
+  ready/steady and complete idle blocks on both renderers; measured scope and
+  limitations are in `refactor/B987_plan.md`. It does not replace run283/284.
 - Pipeline **496** on that implementation head passed hygiene/build/test/gate/
   build-arm; [CI response](/home/user/kb-evidence/b975-qa-20261005/run-284/ci-response.json).
   This is incremental CI, not a cold-build claim. This documentation-only
