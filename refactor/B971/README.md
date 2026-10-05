@@ -151,41 +151,81 @@ that differ from the committed manifest (`golden_regen/manifest_fields.tsv`):
   The manifest's own note says a glVersion mismatch means "mesa was upgraded
   on this VM — re-bless with --bless, do not treat a mismatch alone as a
   regression." The goldens ARE the re-bless Will asked for, so the version
-  string is updated to match what they were actually captured under.
-  [left unchanged / updated — decide; default: update, it is the gate's own
-  "mesa upgraded" bookkeeping, not a metric]
+ string is updated to match what they were actually captured under.
 
-## Pi [to run after the x86 bar is met]
+## Pi
 
-`[memgpu]` `logical_depth_stencil` at 1280x720 on qeynos2 via
-`scripts/pi_rendered_zone_sweep.sh --zones qeynos2 --allow-vm-lane
---pi-dir ~/ci-arm/<sha> --owner kb-b971` with `EQEMU_HOST=172.16.200.99`:
-expected 3,686,400 B → ~1,843,200 B.
+Rendered sweep (qeynos2, 1280x720, `--mesa nollvm`), build
+`f4c6f201a1efc9a830883784e18470571f1d085d` staged from
+`/mnt/projects/fable/ci-arm/<sha>` (the new `publish_arm_build.sh` publish),
+`EQEMU_HOST=172.16.200.99` VM lane: **1/1 pass, snapshot restored
+byte-identically, locks released**
+(`~/kb-evidence/b971-depth16/pi/sweep/`).
 
-Pi gate poses (z-fighting on the real GPU, the gate's own 5 zones × 3 poses):
-`scripts/pi/publish_arm_build.sh` now also publishes
-`bin/gles2_zone_benchmark` (+ `-nollvm`, Mesa-prefix rpath copy, same shape as
-the B975 nametag tool) because the ARM benchmark was not published by CI;
-`scripts/b971/run_gate_poses.sh` (copied from
-`/mnt/projects/fable/review/B967/pi/run_gate_poses.sh`, output paths →
-`review/B971/pi/gate/`) runs it against B967's poses.
+**The surface's `logical_depth_stencil` stays 3,686,400 B on the Pi** — but the
+client IS requesting the D16/no-stencil surface, and the Pi's driver is not
+giving it. The device log line (the same one the x86 fork prints) reads:
+
+```
+EGL: Config depth=24 stencil=0
+```
+
+The `stencil=0` proves `params.Stencilbuffer=false` reached
+`eglChooseConfig` (the B971 code path executed); the `depth=24` is the
+driver's ANSWER — the Mesa 25.2.8 / Lima config set for this rig offers no
+16-bit depth window config, so the 24-bit one is chosen and the census counts
+it: `depthStencilBytesFor(1280, 720, 24, 0)` = 4 B/px = 3,686,400 B
+(`depth>16 or stencil>0` → 4 bpp, `gpu_buffer_census.h`). On the x86 gate,
+llvmpipe DOES offer a 16-bit config for the same request, which is why the
+same binary reads 960,000 B (800x600, D16) there.
+
+**Consequence: the ~1.76 MiB saving is NOT observable on the current Pi rig.**
+Will's ruling asked for the surface to STOP requesting the stencil, and that
+is done and verified in the request path (config → `params.Stencilbuffer` →
+`eglChooseConfig`) — the x86 gate proves the whole chain end to end on a
+driver that offers 16-bit depth. Whether the Pi's driver ever offers one is
+outside this unit: if a future Mesa/Lima update exposes a 16-bit depth config,
+the same binary will pick it up without any further change (the request is
+already there); if not, the row stays 3.52 MiB and the row is correctly
+labeled. A D24S8 vs D24/no-stencil A/B on this rig would measure ZERO
+difference, because Lima stores both in the same 32-bit word (the census
+formula's comment says so) — so there is no Pi-side byte saving to report,
+and none is claimed.
+
+Pi gate poses (z-fighting on the real GPU): PENDING — the Pi is single-tenant
+and was held by `kb-b945` when this run reached it (the offline B945 chain's
+timorous sweep, per the dispatch note). `scripts/b971/run_gate_poses.sh` is
+ready and committed; on the Pi it runs `bin/gles2_zone_benchmark-nollvm`
+against B967's 5 zones / 15 poses. NOTE for the run: since the Pi surface
+stays depth=24/stencil=0 (see above), the poses compare D24S8→D24S0 and are
+expected to be **pixel-identical or near-identical** to the B967 Pi frames
+(Lima's shared 32-bit word: dropping the stencil does not change depth
+precision) — any large delta would be a real defect, not a precision shift.
 
 ## Local visual gate (x86/llvmpipe)
 
-Against the installed B971 goldens: **PASS on all 15 golden frames and every
-metric / memory-budget / ledger / memory-coverage assertion** — the only
-failure is the iceclad p95 process-CPU ceiling, a host condition proven not to
-be this change (see "Not verified", where the back-to-back A/B against the
-unmodified fable code is recorded). `gate_run2.log` in
-`~/kb-evidence/b971-depth16/`.
+Against the installed B971 goldens, and on CI (pipeline #510, fully green
+2026-10-05 17:04 UTC — all jobs passed): **PASS on all 15 golden frames and
+every metric / memory / ledger / memory-coverage assertion**, including the
+iceclad p95 process-CPU ceiling on the CI host. The local run's single
+failure (iceclad CPU 11.97 > 9.53) was a host condition proven not to be this
+change — a back-to-back A/B showed the unmodified fable code (D24S8) failing
+the same ceiling equally on this loaded host (see the earlier "Not verified"
+note). `gate_run2.log` in `~/kb-evidence/b971-depth16/`.
 
 ## Not verified
 
-- **Pi** — sweep + gate poses not yet run (see "Pi"). The 1280x720
-  3,686,400 → 1,843,200 B measurement, the Pi's own mesa prefix proof, and
-  the 5-zone/15-pose z-fighting check on the real GPU are the remaining bar.
-  Requires: push this branch → `glab ci trigger build-arm` → stage the
-  published build → Pi lock → sweep + `scripts/b971/run_gate_poses.sh`.
+- **Pi gate poses (z-fighting on the real GPU)** — PENDING the Pi lock
+  (held by `kb-b945` at run time; the offline B945 chain's timorous sweep, per
+  the dispatch note). Everything else Pi-side is done: build published by
+  `publish_arm_build.sh` (new `gles2_zone_benchmark` publish), staged, sweep
+  1/1 pass. `scripts/b971/run_gate_poses.sh` is committed and ready.
+- **Pi byte saving** — NOT achieved on the current rig, and NOT claimed: the
+  Mesa 25.2.8 / Lima config set offers no 16-bit depth window config, so the
+  surface reads back depth=24/stencil=0 and `logical_depth_stencil` stays
+  3,686,400 B (see "Pi"). The REQUEST is in and correct (x86 gate proves the
+  chain end to end on a 16-bit-capable driver); the driver not offering the
+  config is outside this unit.
 - **/portal ON on the Pi with the new invariant**: covered by
   `test_constrained_renderer` (the invariant flips `enableStencilBuffer` on
   and the D24S8 surface math), NOT exercised on the Pi (it would re-bless a
