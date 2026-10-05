@@ -192,15 +192,17 @@ difference, because Lima stores both in the same 32-bit word (the census
 formula's comment says so) — so there is no Pi-side byte saving to report,
 and none is claimed.
 
-Pi gate poses (z-fighting on the real GPU): PENDING — the Pi is single-tenant
-and was held by `kb-b945` when this run reached it (the offline B945 chain's
-timorous sweep, per the dispatch note). `scripts/b971/run_gate_poses.sh` is
-ready and committed; on the Pi it runs `bin/gles2_zone_benchmark-nollvm`
-against B967's 5 zones / 15 poses. NOTE for the run: since the Pi surface
-stays depth=24/stencil=0 (see above), the poses compare D24S8→D24S0 and are
-expected to be **pixel-identical or near-identical** to the B967 Pi frames
-(Lima's shared 32-bit word: dropping the stencil does not change depth
-precision) — any large delta would be a real defect, not a precision shift.
+Pi gate poses (z-fighting on the real GPU, the gate's own 5 zones × 3 poses):
+**DONE** (Pi lock taken 17:46 UTC after `kb-b945` released; `run_gate_poses.sh`
+ran `bin/gles2_zone_benchmark-nollvm` from the published build dir, nollvm Mesa
+prefix confirmed in the process maps). All 5 zones rc=0; `EGL: Config
+depth=24 stencil=0` in every bench.log — the same surface the sweep measured.
+Compared against B967's Pi frames (`review/B967/pi/gate/*_after`, same Mesa
+25.2.8 nollvm, `EGL: Config depth=24 stencil=8`): **0 px in all 15 frames —
+byte-identical** (`pi_delta.md`). Dropping the stencil changed no pixels on
+the real GPU, exactly as Lima's shared 32-bit word predicts (depth precision
+is 24-bit in both runs; the portal was off in both). No z-fighting, no
+defect. (`~/kb-evidence/b971-depth16/pi/gate/` vs `.../pi/b967_gate/`.)
 
 ## Local visual gate (x86/llvmpipe)
 
@@ -215,11 +217,6 @@ note). `gate_run2.log` in `~/kb-evidence/b971-depth16/`.
 
 ## Not verified
 
-- **Pi gate poses (z-fighting on the real GPU)** — PENDING the Pi lock
-  (held by `kb-b945` at run time; the offline B945 chain's timorous sweep, per
-  the dispatch note). Everything else Pi-side is done: build published by
-  `publish_arm_build.sh` (new `gles2_zone_benchmark` publish), staged, sweep
-  1/1 pass. `scripts/b971/run_gate_poses.sh` is committed and ready.
 - **Pi byte saving** — NOT achieved on the current rig, and NOT claimed: the
   Mesa 25.2.8 / Lima config set offers no 16-bit depth window config, so the
   surface reads back depth=24/stencil=0 and `logical_depth_stencil` stays
