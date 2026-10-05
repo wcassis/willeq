@@ -30,6 +30,10 @@
 #          [--hop-zone Z]  the zone to hop to and back after the spawn (default
 #                          arena; "" = no hop, the crowd streams in post-load)
 #          [--frametiming] emit the per-section frame timing breakdown
+#          [--idle 40] [--hold-after 15] [--cap 420] (seconds, finite deadline)
+#          (durations: plain ASCII decimal 0..86400 -- one definition in
+#          scripts/b964/observation_controls.py; B987's QA finding F1)
+# B975 acceptance: --idle 180 --hold-after 75 --cap 720 --frametiming.
 #          [--dump]        dump a frame every 600 (8 max) for review -- off in
 #                          timed runs (each dump is a glReadPixels + PNG frame)
 # Lane: EQEMU_HOST (scripts/eqemu/env.sh), default local for this rig.
@@ -54,6 +58,10 @@ ZONE_BOOT_S="${ZONE_BOOT_S:-150}"
 EXTRA_ENV=()
 DUMP=0
 TOUR_EXTRA=()
+IDLE=40
+HOLD_AFTER=15
+CAP=420
+TIMING_ARGS=()
 HOP_ZONE="arena"   # zone out and back after the spawn: the LOAD builds the crowd
 LATE_SAVE_S=10
 while [ $# -gt 0 ]; do
@@ -68,12 +76,39 @@ while [ $# -gt 0 ]; do
         --char-exp) CHAR_EXP="$2"; shift 2 ;;
         --env) EXTRA_ENV+=( "$2" ); shift 2 ;;
         --dump) DUMP=1; shift ;;
-        --frametiming) TOUR_EXTRA+=( --frametiming ); shift ;;
+        --frametiming) TOUR_EXTRA+=( --frametiming ); TIMING_ARGS+=( --require-timing ); shift ;;
+        --idle) IDLE="$2"; shift 2 ;;
+        --hold-after) HOLD_AFTER="$2"; shift 2 ;;
+        --cap) CAP="$2"; shift 2 ;;
         --hop-zone) HOP_ZONE="$2"; shift 2 ;;
-        -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,/^set -u/p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 3 ;;
     esac
 done
+# B987's QA finding F1: ONE definition of a valid duration -- a plain ASCII
+# decimal 0..86400 (scripts/b964/observation_controls.py's docstring), the
+# form Bash arithmetic and `timeout` accept. int()/float() also take
+# `0_1`, `1_000`, `0800` (invalid octal here), `0720` (SILENTLY octal: 464),
+# signs, whitespace and non-ASCII digits; forwarded raw, a bad token hits the
+# deadline comparison below and the shell prints "integer expression
+# expected" -- the overall deadline silently DISABLED (with a continuously
+# logging child the silence watchdog never fires either). The validator
+# prints the CANONICAL integers, which this script (and its arithmetic)
+# consumes; the grep re-checks the same regex (LC_ALL=C, so [0-9] is the byte
+# range 0x30-0x39 -- a [0-9] in [[ =~ ]] follows the locale and, in a UTF-8
+# locale, matches non-ASCII digits), so no path forwards a raw token. Both
+# checks run BEFORE any lock, stack or resource is acquired.
+RE_DURATION='^(0|[1-9][0-9]*)$'
+for d in "$IDLE" "$HOLD_AFTER" "$CAP"; do
+    if ! LC_ALL=C grep -qE "$RE_DURATION" <<< "$d" || [ "$d" -gt 86400 ]; then
+        echo "bad duration '$d' (plain ASCII decimal 0..86400, no underscores/signs/leading zeros)" >&2
+        exit 3
+    fi
+done
+_IDLE=0 _HOLD_AFTER=0 _CAP=0
+read -r _IDLE _HOLD_AFTER _CAP < <(python3 "$REPO/scripts/b964/observation_controls.py" "$IDLE" "$HOLD_AFTER" "$CAP") || exit 3
+IDLE="$_IDLE"; HOLD_AFTER="$_HOLD_AFTER"; CAP="$_CAP"
+TOUR_EXTRA+=( --idle "$IDLE" --hold-after "$HOLD_AFTER" )
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 [ -n "$OUT" ] || OUT="/mnt/projects/fable/review/B964/x86/crowd-${STAMP}"
 LOGS="$OUT/server"
@@ -165,7 +200,7 @@ run_one() {  # run_one <zone> <variant>
     sy="$(eqemu_sql "SELECT ROUND(safe_y,3) FROM zone WHERE short_name='${zone}';" | head -1 | tr -d '[:space:]')"
     sz="$(eqemu_sql "SELECT ROUND(safe_z,3) FROM zone WHERE short_name='${zone}';" | head -1 | tr -d '[:space:]')"
     python3 "$REPO/scripts/b964/make_tour.py" --safe "$sx" "$sy" "$sz" --count "$n" --layout "$layout" \
-        --zone "$zone" --hop-zone "$HOP_ZONE" "${TOUR_EXTRA[@]}" --out "$dir/tour.txt"
+        --zone "$zone" --hop-zone "$HOP_ZONE" "${TOUR_EXTRA[@]}" --out "$dir/tour.txt" || return 3
     local -a envs=( "TZ=UTC" "${EXTRA_ENV[@]}" )
     case "$mode" in
         imp) ;;
@@ -193,7 +228,7 @@ run_one() {  # run_one <zone> <variant>
         size=$(stat -c %s "$log" 2>/dev/null || echo 0)
         if [ "$size" -ne "$last_size" ]; then last_size=$size; last_growth=$now; fi
         [ $((now - last_growth)) -ge 120 ] && killed="log silent for 120 s"
-        [ $((now - start)) -ge 420 ] && killed="420 s overall deadline"
+        [ $((now - start)) -ge "$CAP" ] && killed="$CAP s overall deadline"
         if [ -n "$killed" ]; then
             say "[$zone/$variant] WATCHDOG: $killed"
             kill "$CLIENT_PID" 2>/dev/null; sleep 3; kill -9 "$CLIENT_PID" 2>/dev/null
@@ -209,7 +244,10 @@ run_one() {  # run_one <zone> <variant>
     printf 'zone=%s variant=%s rc=%s wall_s=%s steady_60s=%s landed=%s watchdog=%s\n' \
         "$zone" "$variant" "$rc" "$(( $(date +%s) - start ))" "$steady" "$landed" "${killed:-none}" > "$dir/result.txt"
     say "[$zone/$variant] $(cat "$dir/result.txt")"
-    [ "$steady" -eq 1 ] && [ "$landed" = y ]
+    python3 "$REPO/scripts/b975/frametiming_table.py" --check --zone "$zone" \
+        "${TIMING_ARGS[@]}" "$log" > "$dir/observation.json"
+    local observation_rc=$?
+    [ "$observation_rc" -eq 0 ] && [ "$rc" -eq 0 ] && [ -z "$killed" ] && [ "$landed" = y ]
 }
 
 FAILS=0
