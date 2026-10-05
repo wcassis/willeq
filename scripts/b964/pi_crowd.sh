@@ -15,6 +15,8 @@
 #          [--zones qeynos2,gfaydark,growthplane] [--variants imp50far,imp200far,off200far]
 #          [--out DIR] [-r "1280 720"] [--hop-zone arena] [--frametiming]   (see make_tour.py)
 #          [--owner B964]   (the lock owner tag)
+#          [--idle 40] [--hold-after 15] [--cap 720] (seconds, finite deadline)
+# B975 acceptance: --idle 180 --hold-after 75 --cap 720 --frametiming.
 #          [--allow-vm-lane]   (B975: forward to pi_rendered_zone_sweep.sh, whose
 #          EQEMU_HOST must then name the eqemu VM)
 set -u
@@ -28,6 +30,10 @@ HOP_ZONE="arena"
 OWNER="B964"
 ALLOW_VM=0
 TOUR_EXTRA=()
+IDLE=40
+HOLD_AFTER=15
+CAP=720
+TIMING_ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --zones) ZONES="$2"; shift 2 ;;
@@ -36,12 +42,19 @@ while [ $# -gt 0 ]; do
         --out) OUT="$2"; shift 2 ;;
         -r) RES="$2"; shift 2 ;;
         --hop-zone) HOP_ZONE="$2"; shift 2 ;;
-        --frametiming) TOUR_EXTRA+=( --frametiming ); shift ;;
+        --frametiming) TOUR_EXTRA+=( --frametiming ); TIMING_ARGS+=( --require-timing ); shift ;;
+        --idle) IDLE="$2"; shift 2 ;;
+        --hold-after) HOLD_AFTER="$2"; shift 2 ;;
+        --cap) CAP="$2"; shift 2 ;;
         --owner) OWNER="$2"; shift 2 ;;
         --allow-vm-lane) ALLOW_VM=1; shift ;;
+        -h|--help) sed -n '2,/^set -u/p' "$0"; exit 0 ;;
         *) echo "unknown option $1" >&2; exit 3 ;;
     esac
 done
+# Validate before acquiring either lock or launching a client.
+python3 "$REPO/scripts/b964/observation_controls.py" "$IDLE" "$HOLD_AFTER" "$CAP" || exit 3
+TOUR_EXTRA+=( --idle "$IDLE" --hold-after "$HOLD_AFTER" )
 [ -n "$PI_DIR" ] || { echo "--pi-dir is required" >&2; exit 3; }
 [ -n "$OUT" ] || OUT="/mnt/projects/fable/review/B964/pi/crowd-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$OUT"
@@ -65,7 +78,7 @@ for zone in ${ZONES//,/ }; do
         mkdir -p "$dir"
         # shellcheck disable=SC2086
         python3 "$REPO/scripts/b964/make_tour.py" --safe $safe --count "$n" --layout "$layout" \
-            --zone "$zone" --hop-zone "$HOP_ZONE" "${TOUR_EXTRA[@]}" --out "$dir/tour.txt"
+            --zone "$zone" --hop-zone "$HOP_ZONE" "${TOUR_EXTRA[@]}" --out "$dir/tour.txt" || exit 3
         envs=()
         case "$mode" in
             imp) ;;
@@ -77,13 +90,15 @@ for zone in ${ZONES//,/ }; do
         [ "$ALLOW_VM" -eq 1 ] && vm_args+=( --allow-vm-lane )
         echo "[pi_crowd] $zone/$variant -> $dir"
         bash "$REPO/scripts/pi_rendered_zone_sweep.sh" --zones "$zone" --out "$dir" --pi-dir "$PI_DIR" \
-            -r "$RES" --tour "$dir/tour.txt" --cap 720 --stall 240 --no-retry --owner "$OWNER" \
+            -r "$RES" --tour "$dir/tour.txt" --cap "$CAP" --stall 240 --no-retry --owner "$OWNER" \
             --stop-point never --final-visit --char-level 60 --char-exp 616137000 "${envs[@]}" "${vm_args[@]}" \
             > "$dir/sweep.out" 2>&1
         rc=$?
         echo "[pi_crowd] $zone/$variant rc=$rc"
         [ "$rc" -eq 0 ] || rc_all=1
         [ "$rc" -eq 64 ] && { echo "[pi_crowd] a lock is held -- stopping" >&2; exit 64; }
+        python3 "$REPO/scripts/b975/frametiming_table.py" --check --zone "$zone" \
+            "${TIMING_ARGS[@]}" "$dir/zones/$zone/client.log" > "$dir/observation.json" || rc_all=1
     done
 done
 exit "$rc_all"

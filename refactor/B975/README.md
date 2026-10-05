@@ -3,12 +3,14 @@
 GitLab #293 (class B, perf, lane pi), MR !73. Branch `task/B975-name-tag-batch`;
 current worktree `/home/user/src/willeq-wt/kb-b975-name-tags`.
 
-## Current state — implemented, QA passed, review pending; NOT merged
+## Current state — implemented, QA/review passed, merged
 
 The final implementation handoff and cumulative independent QA both cover
 `bcf5335ffa7bcdabddb6090b9469a564d6618015`, not just the earlier candidate.
-MR !73 is non-draft. Review run 285 requested the documentation correction
-recorded here; review acceptance and merge remain pending.
+Review run 285 requested the documentation correction recorded here. Run 304
+accepted the correction at `3872871a559b59cf2a5493c2259a89f3d1a2e555` with
+pipeline 499 green. MR !73 merged as `ee538d2c14849ac309dd6aa0d7dbef429b884498`;
+the merge tree equals the reviewed source. Issue #293 is closed.
 
 - Final implementation: [run 281 final report](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/final-report.txt)
   and [validated handoff](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/result.json).
@@ -35,7 +37,12 @@ recorded here; review acceptance and merge remain pending.
   [tour diff](/home/user/kb-evidence/b975-qa-20261005/run-284/tour-differences.json).
   [Original run 283](/home/user/kb-evidence/b975-qa-20261005/run-283/result.json)
   remains FAILED (`no_steady_60s`, no final per-node idle timing blocks).
-  **B987 / issue #306 remains separately queued** for durable readiness controls.
+  **B987 / issue #306 is the separate harness follow-up** for durable observation
+  controls; see [plan](../B987_plan.md). Its fresh verification is distinct from
+  this historical recovery. Both wrappers now expose `--idle 180 --hold-after 75
+  --cap 720 --frametiming` for this acceptance recipe, and reject missing final
+  readiness/steady or post-ready idle timing. Longer waits do not guarantee a
+  pass: readiness beyond the finite observation window must still fail.
 - Pipeline **496** on that implementation head passed hygiene/build/test/gate/
   build-arm; [CI response](/home/user/kb-evidence/b975-qa-20261005/run-284/ci-response.json).
   This is incremental CI, not a cold-build claim. This documentation-only

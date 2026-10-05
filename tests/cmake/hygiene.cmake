@@ -337,6 +337,10 @@ ADD_TEST(NAME NameTagCrowdTiming
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/b975/test_frametiming_table.py)
 SET_TESTS_PROPERTIES(NameTagCrowdTiming PROPERTIES LABELS "hygiene")
 
+ADD_TEST(NAME CrowdObservationControls
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/b964/test_observation_controls.py)
+SET_TESTS_PROPERTIES(CrowdObservationControls PROPERTIES LABELS "hygiene")
+
 ADD_TEST(NAME RenderedZoneFinalVisit
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_rendered_zone_final_visit.py)
 SET_TESTS_PROPERTIES(RenderedZoneFinalVisit PROPERTIES LABELS "hygiene")
