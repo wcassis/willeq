@@ -307,6 +307,22 @@ it without taking that measurement first.
 - **B971** (C) → issue #289. The window surface's D24S8 depth/stencil is
   3.52 MiB of GEM at 1280x720; its only stencil user (`/portal`) is off on the
   orangepi preset. 16-bit depth changes pixels: Will's call. Measured by B962.
+  **FIXED** (MR !84, head de31969c, pipeline #510 green; `refactor/B971/README.md`):
+  the surface follows `enableStencilBuffer` end to end (preset + shipped JSON
+  false → D16/no-stencil; device `eglChooseConfig` driven by
+  `params.Stencilbuffer`, all three x86 sites + the ARM DRM device); a
+  one-way invariant in `loadJsonOverrides()` (portal occlusion on ⇒ stencil
+  on, the only stencil user) keeps `/portal` ON on D24S8; the benchmark
+  mirrors production's surface request. Will approved the x86 goldens in chat
+  2026-10-05 (re-blessed per his 2026-10-01 ruling; run1 vs run2 0 px; VM mesa
+  24.04.2→24.04.4 isolated with a D24S8-on-.4 baseline build — 0 px). Pi:
+  sweep 1/1 pass (nollvm, snapshot byte-identical); the surface REQUESTS
+  D16/no-stencil (`EGL: Config depth=24 stencil=0` — stencil honored) but the
+  Mesa 25.2.8/Lima config set offers no 16-bit depth window config, so
+  `logical_depth_stencil` stays 3,686,400 B on the Pi and the ~1.76 MiB saving
+  is not claimed there; gate poses vs B967 Pi frames: 0 px in all 15 (stencil
+  drop is pixel-inert on Lima's shared 32-bit word). ARM benchmark now
+  published by `publish_arm_build.sh`; runner `scripts/b971/run_gate_poses.sh`.
 - ~~**B967** (C) → issue #285. The player light is quantized at large world
   coordinates on BOTH GPUs: the mediump `vWorldPos` varying.~~ **FIXED**
   (`refactor/B967/README.md`, MR !74 **merged into fable `2c7d5be4`

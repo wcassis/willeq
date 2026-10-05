@@ -149,7 +149,15 @@ static irr::IrrlichtDevice* createDevice(const BenchConfig& config) {
 #endif
     params.WindowSize = irr::core::dimension2d<irr::u32>(config.width, config.height);
     params.Fullscreen = true;
-    params.Stencilbuffer = true;
+    // B971: mirror production's surface request. The production client sets
+    // params.Stencilbuffer from the preset's enableStencilBuffer
+    // (renderer_init.cpp), which is false on OrangePi (Will, 2026-10-01,
+    // "orangepi uses a 16-bit depth buffer (no stencil user there)") -- a
+    // 16-bit depth, no-stencil surface. The benchmark must exercise the same
+    // surface or its [memgpu] logical_depth_stencil row and its depth
+    // precision stop measuring what ships.
+    params.Stencilbuffer = ConstrainedRendererConfig::fromPreset(
+        ConstrainedRenderingPreset::OrangePi).enableStencilBuffer;
     params.Vsync = false;  // No vsync for benchmarking
     params.AntiAlias = 0;  // No MSAA for clean measurements
 
