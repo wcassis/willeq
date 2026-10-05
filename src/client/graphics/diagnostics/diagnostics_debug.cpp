@@ -575,12 +575,15 @@ bool DiagnosticsComponent::loadIndoorRegionMap(const std::string& zoneName) {
 
 void DiagnosticsComponent::togglePortalOcclusion() {
     if (owner_.isLoading()) return;
-    // B971: stencil is the only mechanism /portal renders with, and the
-    // orangepi preset has no stencil buffer on its surface (no stencil user,
-    // Will 2026-10-01). The auto-enable paths (zone load / progressive load)
-    // are already gated on enableStencilBuffer, so the only way to reach here
-    // is the manual toggle: say plainly that there is no stencil to use
-    // instead of silently building a portal system that can never render.
+    // B971 (Will 2026-10-01: "orangepi uses a 16-bit depth buffer (no stencil
+    // user there)"): the surface only carries a stencil when the preset has
+    // one, and it is fixed at device creation -- it cannot be re-requested
+    // mid-session. Stencil is the only mechanism /portal renders with, and the
+    // auto-enable paths (zone load / progressive load) are already gated on
+    // enableStencilBuffer, so the only way to reach here on a stencil-less
+    // preset is the manual toggle: say plainly that there is no stencil to use
+    // instead of scheduling a 92.9 MiB portal-system build that can never
+    // render. (T504's on-demand build below must not run without a stencil.)
     if (!ctx_.config.constrainedConfig.enableStencilBuffer) {
         LOG_WARN(MOD_GRAPHICS, "Portal occlusion unavailable: this preset has no stencil buffer (enableStencilBuffer off)");
         return;
