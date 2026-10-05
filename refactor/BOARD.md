@@ -372,8 +372,15 @@ it without taking that measurement first.
   at the final head (`refactor/B975/README.md`, Not verified).
 - **B987** (B) → issue #306. A crowd tour can end before the final visit's
   rendered readiness and steady-state window (B975 QA run 283). MR !82
-  (`task/B987-crowd-readiness`) is OPEN; its QA FAILED on `--cap` validation and
-  a repair is pending.
+  (`task/B987-crowd-readiness`) is OPEN at `2eed34f3bf6ccd99a79ff17f490ebd56a381e21f`
+  (pipeline 519 green). QA run 306 FAILED it on `--cap` validation (F1: an
+  accepted spelling disabled the x86 deadline); the fix is in — ONE duration
+  definition (plain ASCII decimal 0..86400) enforced before any lock/stack/Pi
+  resource in both wrappers, the sweep itself and b973, with the executed
+  x86-deadline regression (RED 3/8 on `e3078ac5`, GREEN 8/8 on the head).
+  The fresh post-fix Pi acceptance pair (batched/per-node qeynos2,
+  `WILLEQ_LIMA_NOBOCACHE=1`) passed; `refactor/B987_plan.md` carries the table.
+  Awaiting review; NOT merged.
 - ~~**B985** (B) → issue #304. `scripts/pi_rendered_zone_sweep.sh` cannot run
   from a host whose checkout and `--out` are not NFS-mounted by the Pi.~~
   **FIXED in code, merged with MR !73** (fable `ee538d2c`, 2026-10-05): the

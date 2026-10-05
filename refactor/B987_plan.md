@@ -147,8 +147,49 @@ sandbox reached the Pi probe with rc 68; `--env` unknown). GREEN on the head:
 so the B988 lane can run the pair with `WILLEQ_LIMA_NOBOCACHE=1` -- one-line
 passthrough, in scope per the card.
 
+### Fresh Pi pair (post-F1-fix) — measured 2026-10-05, head 2eed34f3
+
+One batched/per-node qeynos2 crowd pair through the FIXED wrappers
+(`scripts/b964/pi_crowd.sh`, `--owner kb-b987`, VM lane
+`EQEMU_HOST=172.16.200.99`, `--allow-vm-lane`):
+`--idle 180 --hold-after 75 --cap 720 --frametiming`, 800x600, and
+client env `WILLEQ_LIMA_NOBOCACHE=1` (B988 ships Lima's BO cache ON; the
+opt-in keeps the unchanged 10 MiB unnamed-GPU guard comparable with run
+305 -- the client log records `Lima buffer policy: BO cache OFF
+(WILLEQ_LIMA_NOBOCACHE=1 appended nobocache)` in both legs). The CI-published
+ARM build of this head was staged to the worker
+(`rsync` from the Pi's `/mnt/projects/fable/ci-arm/<sha>/`, binary
+SHA-256 `a59ab3e253bfc661c934e80820576619e3000f3bc6ec37c51abcf14be0af3fba`,
+matching the Pi-side copy) and the sweep staged and hash-verified it on the
+Pi (`pi_copy_sha256` equals `published_sha256`, sweep.out line
+`host_utc=2026-10-05T20:11:20Z`). Mesa pin `cc4d9beb38dcdd1345c719a5f2223e802c51af1b1acaf49091c24188fc3d14bf`,
+`mesa_check=ok` both legs.
+
+| renderer | verdict | final ready (runner epoch) | final steady (runner epoch) | complete idle blocks | transparent median ms | all200 spawn acks |
+|---|---|---|---|---|---|---|
+| batched (imp200far) | pass | 1791231168.5213 (2026-10-05T20:12:48Z) | 1791231310.4763 (2026-10-05T20:15:10Z) | 66 | 1.326 | 200 applied + 20 names |
+| per-node (tagnode200far) | pass | 1791231721.0360 (2026-10-05T20:22:01Z) | 1791231862.7997 (2026-10-05T20:24:22Z) | 36 | 33.2885 | 200 applied + 20 names |
+
+Acceptance held on both legs: the FINAL visit reached `point=ready` and the
+subsequent `point=steady_60s` in qeynos2 (ready→steady 142.0 / 141.8 s), at
+least one COMPLETE post-ready idle timing block was required and present
+(66 / 36; the verifier's idle window starts after `ready_line`),
+`observation.json` `pass=true`, wall 389.4 / 390.7 s (under the 720 s cap,
+`kill_reason` empty, exit 0), all 200 `#spawn Crowd` commands
+`CMD outcome=applied` and all 20 distinct names Crowd000..Crowd199 logged.
+Guards unchanged: `gpu_unnamed_steady` 7.56 / 7.96 MiB (under the 10 MiB
+guard), `owned_steady` 117.8 / 116.5 MiB, `over_256MB_peak=0`, `oom=n`,
+`mesa_check=ok`, 3 nonblank dumped frames each. Each sweep restored its
+snapshot BYTE-IDENTICALLY with the world down, stopped the stack and released
+both owned locks (`sweep.out`, per leg). Wrapper exit 0
+(`2026-10-05T20:29:19Z`).
+
+This is the acceptance pair; the run305 pair (pre-fix harness) remains
+diagnosis. Evidence: `~/kb-evidence/b987-crowd-readiness/dev-local/pi-crowd-20261005T201048Z/`
+(sweep.out, results.tsv, observation.json, client.log, frames per leg).
+
 Pipeline (on the head): see the MR description. The fresh confirming Pi pair
-through the fixed wrappers is recorded under "Fresh Pi pair" below.
+through the fixed wrappers is recorded under "Fresh Pi pair (post-F1-fix)".
 
 Preserved failures: initial pipelines 501/502 failed the newly changed hygiene
 census and a relative documentation citation. Both documentation defects were
