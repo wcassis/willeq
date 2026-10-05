@@ -563,14 +563,21 @@ bool CIrrDeviceFB::initEGL()
                      ELL_INFORMATION);
 
     // Choose EGL config
+    // B971 (Will, 2026-10-01: "orangepi uses a 16-bit depth buffer (no
+    // stencil user there)"): the surface follows the client's request,
+    // carried on SIrrlichtCreationParameters.Stencilbuffer. See
+    // docker/irrlicht-drm/CIrrDeviceFB.cpp initEGL() for the full note.
+    const bool wantStencil = CreationParams.Stencilbuffer;
+    const int depthBits = wantStencil ? 24 : 16;
+    const int stencilBits = wantStencil ? 8 : 0;
     EGLint configAttribs[] = {
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
         EGL_RED_SIZE, 8,
         EGL_GREEN_SIZE, 8,
         EGL_BLUE_SIZE, 8,
         EGL_ALPHA_SIZE, 0,
-        EGL_DEPTH_SIZE, 24,       // D24S8 is native on Mali 400 (shared 32-bit word)
-        EGL_STENCIL_SIZE, 8,      // Stencil for portal occlusion
+        EGL_DEPTH_SIZE, depthBits,
+        EGL_STENCIL_SIZE, stencilBits,
         EGL_RENDERABLE_TYPE, useDesktopGL ? EGL_OPENGL_BIT : EGL_OPENGL_ES2_BIT,
         EGL_NONE
     };
@@ -686,14 +693,18 @@ bool CIrrDeviceFB::initEGLSurfaceless()
     }
     useGLES2_ = true;
 
+    // B971: follow the client's stencil request (see initEGL() above).
+    const bool wantStencil = CreationParams.Stencilbuffer;
+    const int depthBits = wantStencil ? 24 : 16;
+    const int stencilBits = wantStencil ? 8 : 0;
     EGLint configAttribs[] = {
         EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
         EGL_RED_SIZE, 8,
         EGL_GREEN_SIZE, 8,
         EGL_BLUE_SIZE, 8,
         EGL_ALPHA_SIZE, 8,
-        EGL_DEPTH_SIZE, 24,
-        EGL_STENCIL_SIZE, 8,
+        EGL_DEPTH_SIZE, depthBits,
+        EGL_STENCIL_SIZE, stencilBits,
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
         EGL_NONE
     };

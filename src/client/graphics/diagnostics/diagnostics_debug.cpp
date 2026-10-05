@@ -575,6 +575,16 @@ bool DiagnosticsComponent::loadIndoorRegionMap(const std::string& zoneName) {
 
 void DiagnosticsComponent::togglePortalOcclusion() {
     if (owner_.isLoading()) return;
+    // B971: stencil is the only mechanism /portal renders with, and the
+    // orangepi preset has no stencil buffer on its surface (no stencil user,
+    // Will 2026-10-01). The auto-enable paths (zone load / progressive load)
+    // are already gated on enableStencilBuffer, so the only way to reach here
+    // is the manual toggle: say plainly that there is no stencil to use
+    // instead of silently building a portal system that can never render.
+    if (!ctx_.config.constrainedConfig.enableStencilBuffer) {
+        LOG_WARN(MOD_GRAPHICS, "Portal occlusion unavailable: this preset has no stencil buffer (enableStencilBuffer off)");
+        return;
+    }
     // T504: presets with portalOcclusion off no longer build the portal system at
     // zone load (it cost +92.9 MiB in iceclad). Ask the deferred builder
     // (ZoneStreamComponent) for it; it lands within a frame or two.
