@@ -311,6 +311,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/merchant/merchant.cpp
     src/client/merchant/merchant_trade.cpp
     src/client/merchant/merchant_vendor_bank.cpp
+    src/client/merchant/merchant_trainer.cpp
     src/client/core/eq_player_info.cpp
     src/client/raid_update.cpp
     src/client/inspect_answer.cpp
@@ -698,6 +699,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/merchant_panel.cpp
         src/client/graphics/ui/bank_panel.cpp
         src/client/graphics/ui/cursor_attachment.cpp
+        # B898 (#214): the skill trainer window.
+        src/client/graphics/ui/trainer_panel.cpp
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
         src/client/graphics/ui/ui_preferences.cpp

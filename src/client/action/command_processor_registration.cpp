@@ -597,9 +597,8 @@ void CommandProcessor::registerMovementAndUtilityCommands() {
         "Skills", false   // argless /train keeps its pre-T280 meaning
     }, [this](const std::string& args) { return cmdTrain(args); });
 
-    // T280: /trainclose -- the scriptable form of a trainer-window close
-    // button (there is no trainer panel yet, so the command is the only
-    // producer; T156's rule keeps it first either way).
+    // T280: /trainclose -- the scriptable form of the trainer window's
+    // TW_DoneButton (B898 drew the window; both push CloseTrainerIntent).
     registerCommand({
         "trainclose", {"traindone"}, "/trainclose", "Close the trainer window", "Skills", false
     }, [this](const std::string& args) { return cmdTrainClose(args); });

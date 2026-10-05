@@ -332,6 +332,13 @@ void eqt::zone::ZoneComponent::OnSkillUpdate(const EQ::Net::Packet & p)
 				eqt::state::GameEventType::SkillValueChanged, std::move(sdata)));
 		}
 
+		// B898 (#214): on Titanium this packet is the server's ONLY answer to
+		// a train (commands_train.cpp), so it is what refreshes an open
+		// trainer window -- new value, new price, the practice just spent.
+		if (ctx_.game_state.player().trainerNpcId() != 0) {
+			ctx_.Merchant().PublishTrainerWindow();
+		}
+
 		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Skill {} updated to {}", static_cast<int>(skill_id), value);
 		}

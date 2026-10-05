@@ -40,6 +40,7 @@ struct MerchantPanelState;
 struct BankPanelState;
 struct CursorAttachmentState;
 struct OptionsPanelState;
+struct TrainerPanelState;  // B898
 
 /**
  * T313 -- the three panels that carry a scrollOffset.
@@ -166,6 +167,18 @@ public:
                               MerchantPanelState& merchant,
                               BankPanelState& bank,
                               const CursorAttachmentState& cursor);
+
+    /**
+     * B898 (#214): the skill trainer window. Its own entry point (the T415 /
+     * T421 shape), defined in trainer_panel.cpp beside its hit tests. The
+     * window is not a centre popup (Style_Sizable false, 580x280), so it is
+     * hit-tested above them like the bank. Pushes only pre-existing intents:
+     * `TrainSkillIntent` (Train, the selected row's skill id -- what
+     * `/train <id>` pushes) and `CloseTrainerIntent` (Done and the close box
+     * -- what `/trainclose` pushes). Closes only on TrainerWindowClosed.
+     */
+    bool processTrainerInput(int mouseX, int mouseY, bool leftClicked,
+                             const UILayout& layout, TrainerPanelState& trainer);
 
     /**
      * T434: the Options window.

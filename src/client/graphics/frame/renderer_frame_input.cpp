@@ -681,6 +681,14 @@ void FrameComponent::processChatInput() {
         // them). Neither closes itself: both push the intent that ends the
         // SERVER-side session and wait for its Closed event, exactly as ESC
         // on the loot window pushes CloseLootIntent.
+        // B898 (#214): the trainer window draws above the bank, so it is
+        // dismissed first; like the bank it ends the SERVER session
+        // (CloseTrainerIntent -> OP_GMEndTraining) and waits for the Closed
+        // event.
+        if (!popupConsumedEscape && trainerState_.isOpen) {
+            if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::CloseTrainerIntent{});
+            popupConsumedEscape = true;
+        }
         if (!popupConsumedEscape && bankState_.isOpen) {
             if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::CloseBankIntent{});
             popupConsumedEscape = true;

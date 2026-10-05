@@ -177,7 +177,7 @@ Legend: Done | Partial | Not Implemented
 | Item / spell display | Done | T421 + T425, one window for both (`EQUI_ItemDisplay.xml`); click an item slot, SHIFT+click a gem or spellbook row |
 | Pick up / put down an item | No | The static UI latches no drag and no click-to-pick-up; `SendMoveItem`/`MoveItemIntent` exist and `/equip` drives them (#151, B442; the official client is click-to-cursor, plan appended there) |
 | Tradeskill container | Partial | /recipesearch, /recipecombine; the drawn window is the post-Velious recipe window and opens for world containers only. The era container window + Combine is issue #215 (B899) |
-| Skill trainer | Partial | /train opens a session; the reply is decoded then dropped, nothing is drawn. Issue #214 (B898) |
+| Skill trainer | Partial | B898, the oracle's `EQUI_TrainWindow.xml` at 580x280: skill list (name, value, price in pp/gp/sp/cp), practices, experience, money, Train, Done. Opens with /train, T, or Ctrl+click on a guildmaster; refreshes only when the server confirms a train. The Rank column and the live train are still owed to the oracle (issue #214) |
 
 ### Inventory
 | Feature | Status | Notes |
@@ -650,7 +650,9 @@ Commands are dispatched through three registries in order: the game registry (au
 /buy <slot> [qty]               Buy from the open vendor
 /sell <slot> [qty]              Sell to the open vendor
 /bank                           Open/close bank with target
-/train                          Open trainer session with target
+/train                          Open the trainer window with target
+/train <skill|id|list>          Train a skill at the open trainer
+/trainclose (/traindone)        Close the trainer window
 /equip <slot> <slot> | <name>   Move/equip an item (/equip list)
 /clickobject (/clickobj) <id>   Click a world object (forge, oven, ground spawn)
 /recipesearch (/recipes) <text> Search the open container's recipes
