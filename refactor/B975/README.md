@@ -1,19 +1,26 @@
 # B975 -- entity name tags in one batch
 
-GitLab #293 (class B, perf, lane pi), MR !73. Branch `task/B975-name-tag-batch`;
-current worktree `/home/user/src/willeq-wt/kb-b975-name-tags`.
+GitLab #293 (class B, perf, lane pi), MR !73. Branch `task/B975-name-tag-batch`
+(worked in `/home/user/src/willeq-wt/kb-b975-name-tags`).
 
-## Current state — implemented, QA passed, review pending; NOT merged
+## Current state — MERGED (MR !73, fable `ee538d2c`, 2026-10-05)
 
-The final implementation handoff and cumulative independent QA both cover
-`bcf5335ffa7bcdabddb6090b9469a564d6618015`, not just the earlier candidate.
-MR !73 is non-draft. Review run 285 requested the documentation correction
-recorded here; review acceptance and merge remain pending.
+B975 merged into `fable` as MR !73 (merge commit `ee538d2c`, 2026-10-05),
+together with B986 (#305) and B985's transport fix (#304); issue #293 is
+closed. The final implementation handoff and cumulative independent QA both
+cover `bcf5335ffa7bcdabddb6090b9469a564d6618015`, not just the earlier
+candidate.
+
+**Superseded policy (B988, 2026-10-05).** Every Pi number below was taken
+under B986's always-on `LIMA_DEBUG=nobocache`. Will ruled the same day that
+`nobocache` is opt-in (`WILLEQ_LIMA_NOBOCACHE=1`); the default client now runs
+with Lima's BO cache ON. See `refactor/B986_pi_gpu_guard.md`.
 
 - Final implementation: [run 281 final report](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/final-report.txt)
   and [validated handoff](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/result.json).
   Final-head Pi N200 render medians are **1914 / 1955 us** (production policy /
-  explicit `nobocache` repeat), below the unchanged 2000 us bar. Raw CSVs:
+  explicit `nobocache` repeat -- the production policy was then `nobocache`
+  too, so BOTH legs ran with the BO cache off), below the unchanged 2000 us bar. Raw CSVs:
   [default](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/final-micro/capture/drawcost/drawcost.csv),
   [repeat](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/final-micro/capture/drawcost-nobocache/drawcost.csv).
   Final matrix tables, distinct from the committed candidate tables, are
@@ -62,6 +69,11 @@ recorded here; review acceptance and merge remain pending.
 - No fresh hardware capture or full review-stage live matrix is claimed for
   this documentation-only repair. Earlier failed candidates, CI failures,
   canceled CI and run 283 remain preserved, not retroactively passed.
+- **The acceptance numbers 1914 / 1955 us were measured WITH `nobocache`**
+  (both legs: the tool then applied B986's always-on policy). Under B988's
+  default (BO cache on) `nametag_drawcost` has NOT been re-measured at the
+  final head; the only cache-on figure is the 2026-10-03 pre-policy
+  1.69–1.71 ms (`pi-micro/`, run 279's 1706 us baseline below).
 
 ## Historical origin
 
@@ -139,7 +151,8 @@ byte-identically, with the stack stopped and locks released.
 The required terminal-head retake subsequently passed, followed by independent
 cumulative QA run 284; see Current state above. The committed tables retain
 their candidate SHA and never stand in for that final retake. The former
-QA-scheduled/held status is superseded; review and merge are still pending.
+QA-scheduled/held status is superseded; review passed and MR !73 merged
+(fable `ee538d2c`, 2026-10-05).
 
 The first candidate's local test and pipeline 492 test job retain their
 failure: the re-registration test still expected the removed bootstrap
@@ -359,7 +372,7 @@ for rectangles, colours and counts. Will retains visual approval.
 
 | Check | Result |
 |---|---|
-| Pi 200-tag render pass <=2 ms | PASS: 1.690 ms, `pi-drawcost.csv` |
+| Pi 200-tag render pass <=2 ms | PASS: 1.690 ms, `pi-drawcost.csv` — measured WITHOUT the then-production `nobocache` policy (the tool did not apply it yet; see run 279 above). Under `nobocache` the same code measured 5.6 ms. B988 (2026-10-05) made the cache-on setting the default again |
 | Nine primary fixed poses, x86 and Pi | PASS: zero differing pixels, both pixel CSVs |
 | Full CI suite and visual gate | PASS at pipeline 485; final pushed-head pipeline is linked from MR !73 |
 | Pi crowd/normal matrix | All eight captured; two pass, six FAIL the unchanged GPU guard |
@@ -376,9 +389,13 @@ to #293 without closing it. No budget, golden or baseline was changed; the
 kanban board remains paused and no dependent worker was released. All Pi,
 x86 and live-run character snapshots restored byte-identically; both locks
 are free and the EQEmu stack is down. B985's
-non-NFS transport fix is included in this branch but awaits review/merge.
+non-NFS transport fix is included in this branch (merged with MR !73,
+`ee538d2c`, 2026-10-05).
 The next decision is how to address the unchanged memory guard failure, not
 whether to relax the name-tag CPU target (which is already met).
+*(Annotation 2026-10-05: "already met" held only with Lima's BO cache on --
+the 1.690 ms above. Under B986's `nobocache` policy run 279 measured 5.6 ms,
+which is what the later submission work brought back to 1.91 ms.)*
 
 ## PROGRESS 2026-10-03 (REM item 1: the shrink) — commit 05533bcb
 
@@ -465,7 +482,12 @@ pixel|drawcost --drm` on the Pi under `pi_lock kb-b975`.
      `NameTagBatchNode` (one node in ESNRP_TRANSPARENT at camera distance 0,
      i.e. drawn after every other transparent node; sorts tags with the scene
      manager's own `TransparentNodeEntry` order + `core::array::sort`;
-     projects with the same `getScreenCoordinatesFrom3DPosition()` call;
+     projects with the same `getScreenCoordinatesFrom3DPosition()` call
+     (*corrected 2026-10-05: since 05533bcb it is `projectNameTag()`, the same
+     arithmetic on one proj x view product, but its half-size comes from the
+     driver VIEWPORT while `CTextSceneNode` uses the current render-target size
+     (`useViewPort=false`); they agree because the client never calls
+     `setViewPort`*);
      centres exactly as `CGUIFont::draw(hcenter,vcenter)`; per-tag glyph run
      cached, rebuilt only on setText; draws through `UiQuadBatch`: first glyph
      via `draw2DImage()` (sets state), every other glyph of every tag in ONE
@@ -589,6 +611,8 @@ pixel|drawcost --drm` on the Pi under `pi_lock kb-b975`.
 - 2 draw calls per frame, not 1: the first glyph goes through the driver so
   every GL state (program, texture units, blend, uniforms) is the driver's own;
   constant in N. One draw would need a state-only entry point in
-  `docker/irrlicht-drm/COpenGLES2Driver` (not done).
+  `docker/irrlicht-drm/COpenGLES2Driver` (not done at this hand-off; later
+  DONE: `COpenGLES2Driver::prepare2DImage()` via `gles2Prepare2DImageRun()`,
+  so a run is one draw — see "Submission investigation, run 281").
 - Commit trailers: the first two commits say `Claude Opus 5.5`; the hand-off
   commit says `Claude Fable 5.1` as ordered.

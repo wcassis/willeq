@@ -114,11 +114,12 @@ Compare: 85-3,000 draw calls today → **2-5 draw calls** with batched atlas ren
 ### Chunk 2: Bitmap Font Atlas + Batched Text Renderer
 
 **Status (B975, 2026-10-05): the ENTITY NAME-TAG half is implemented a
-different way; production-policy Pi CPU acceptance and independent cumulative
-QA passed. Review pending, NOT merged.** The earlier blocked status is
-superseded by the final implementation handoff and QA run 284; measurements,
-precise evidence links, preserved failures and Not verified limits are in
-[B975 current state](../../refactor/B975/README.md#current-state--implemented-qa-passed-review-pending-not-merged).
+different way and MERGED (MR !73, fable `ee538d2c`, 2026-10-05; #293 closed).**
+Its Pi CPU acceptance and independent cumulative QA (run 284) passed under
+B986's then-default `nobocache`; B988 made Lima's BO cache the default again
+the same day. Measurements, evidence links, preserved failures and Not
+verified limits are in the "Current state" and "Not verified" sections of
+[B975's README](../../refactor/B975/README.md).
 `include/client/graphics/name_tag_batch.h` /
 `src/client/graphics/name_tag_batch.cpp` (GitLab #293): every entity name tag
 is drawn by ONE `NameTagBatchNode` in the transparent pass (one draw
