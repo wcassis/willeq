@@ -1,0 +1,89 @@
+{
+  "tested_sha": "fd8b002b2a3ecb4f1b7d1a896cad20b9812f4d5d",
+  "binary_sha256": "8129e632a15031cc397708420ca025352e171d2ff89823e68a4e2db5ee345216",
+  "observed_cases": 8,
+  "complete": true,
+  "rows": [
+    {
+      "case": "qeynos2/imp200far",
+      "verdict": "pass",
+      "unnamed_MiB": 6.874,
+      "fps_median": "23.0",
+      "signature": "",
+      "issues": [],
+      "artifact": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/qeynos2/imp200far/results.tsv",
+      "sha256": "846d1671cfbf29f3a68bc65509c6b7a9ab1709e8a73eb3056b60f3256ec31a24"
+    },
+    {
+      "case": "qeynos2/tagnode200far",
+      "verdict": "pass",
+      "unnamed_MiB": 5.894,
+      "fps_median": "24.0",
+      "signature": "",
+      "issues": [],
+      "artifact": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/qeynos2/tagnode200far/results.tsv",
+      "sha256": "254d322f9347fcf79253477f50087a4fae787cbde1e7554abc94fac2f31ac940"
+    },
+    {
+      "case": "qeynos2/imp0",
+      "verdict": "pass",
+      "unnamed_MiB": 5.375,
+      "fps_median": "29",
+      "signature": "",
+      "issues": [],
+      "artifact": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/qeynos2/imp0/results.tsv",
+      "sha256": "b966eb2a4d481257e5e73b299c2931593e1967a8e6b167c8bd736ed2e5734a8b"
+    },
+    {
+      "case": "qeynos2/tagnode0",
+      "verdict": "pass",
+      "unnamed_MiB": 5.336,
+      "fps_median": "28",
+      "signature": "",
+      "issues": [],
+      "artifact": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/qeynos2/tagnode0/results.tsv",
+      "sha256": "169c7005a779c1afc1b3da67ad0fe4b5d8800ef3e9fe763e0c02d7cdb8c54e52"
+    },
+    {
+      "case": "gfaydark/imp200far",
+      "verdict": "pass",
+      "unnamed_MiB": 6.373,
+      "fps_median": "20.0",
+      "signature": "",
+      "issues": [],
+      "artifact": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/gfaydark/imp200far/results.tsv",
+      "sha256": "ce90867da867127e00bb32ef4e285e337243da751366908bbc2e852981c69c7d"
+    },
+    {
+      "case": "gfaydark/tagnode200far",
+      "verdict": "pass",
+      "unnamed_MiB": 7.011,
+      "fps_median": "24",
+      "signature": "",
+      "issues": [],
+      "artifact": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/gfaydark/tagnode200far/results.tsv",
+      "sha256": "38b04da4ec84e7daf96de061e99a4e16da7442cf30d23b7181925f1362710217"
+    },
+    {
+      "case": "gfaydark/imp0",
+      "verdict": "pass",
+      "unnamed_MiB": 6.379,
+      "fps_median": "24.0",
+      "signature": "",
+      "issues": [],
+      "artifact": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/gfaydark/imp0/results.tsv",
+      "sha256": "bf2bf5302603416ad983c256d8bcf26d1a0d21383c531c67d592b3714cc24a72"
+    },
+    {
+      "case": "gfaydark/tagnode0",
+      "verdict": "pass",
+      "unnamed_MiB": 6.291,
+      "fps_median": "24.0",
+      "signature": "",
+      "issues": [],
+      "artifact": "/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/matrix/capture/gfaydark/tagnode0/results.tsv",
+      "sha256": "cd4425c178314a52d48f69b7a23395b66b23bb3d3b4b61a8e62b1888163105c4"
+    }
+  ],
+  "problems": []
+}

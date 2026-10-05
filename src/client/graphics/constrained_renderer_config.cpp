@@ -275,19 +275,23 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // 1280x720 request to 1072x720.
             // The budget is NOT raised to cover the 32-bit case -- 16-bit is the
             // shipped configuration and Mali 400 has no reason to want 32.
-            // B943 (2026-09-30, Will: "lower the seven budgets, hold audio"):
-            // 64 -> 51 MiB. Measured worst textureCacheBytesUsed: 42,226,984 B
-            // (the gate's qeynos2 golden invocation, S3D path; the 118-zone
-            // EQE1-path census tops out at 16,250,840 qeynos) x 1.25 = 50.34
-            // MiB -> 51 MiB (refactor/B943/README.md). This is ALSO the
-            // cache's real eviction ceiling (ConstrainedTextureCache), not
-            // only an asserted budget: 20 MiB, the EQE1 census figure, makes
-            // that qeynos2 run segfault (B944).
+            // textureMemoryBytes is the texture cache's real EVICTION
+            // ceiling (ConstrainedTextureCache) and also the gate's
+            // textureCacheBytesUsed budget (textureCacheBytesLimit).
+            // B943 (2026-09-30): 64 -> 51 MiB, sized on the gate's S3D-path
+            // qeynos2 run because a 20 MiB ceiling then segfaulted (B944).
+            // B978 (2026-10-01, Will: "3) bless"): 51 -> 21 MiB, now that
+            // eviction keeps the object and restores on bind (B944/B947). By
+            // the in-tree rule on the SHIPPED EQE1 path: the 117-zone census
+            // worst is gpuTextureBytes 16,797,104 B (qeynos; its
+            // textureCacheBytesUsed is 16,250,840) x 1.25 = 20,996,380 B ->
+            // 21 MiB (refactor/B978/README.md). The S3D-path gate run (qeynos2
+            // holds 42 MB) now evicts under it -- intended.
             // P32: renderer-independent preset (see Voodoo1 comment above) —
             // GLES2 is the only backend, no #ifdef needed.
             config.useDRM = true;
             config.framebufferMemoryBytes = 10 * 1024 * 1024;  // 10MB
-            config.textureMemoryBytes = 51 * 1024 * 1024;      // 51MB
+            config.textureMemoryBytes = 21 * 1024 * 1024;      // 21MB (B978)
             config.colorDepthBits = 16;
             config.maxTextureDimension = 512;
             // Render distance and geometry budgets
@@ -316,7 +320,30 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // GPU feature flags (Mali 400 via Lima supports these)
             config.enableMipmaps = true;
             config.enableNPOT = true;
-            config.enableStencilBuffer = true;
+            // B971 (Will, 2026-10-01: "orangepi uses a 16-bit depth buffer
+            // (no stencil user there)"): the shipped surface has no stencil.
+            // D24S8 is 3,686,400 B (3.52 MiB) of Lima GEM at 1280x720, the
+            // single largest non-texture [memgpu] row after B962; 16-bit depth
+            // with no stencil is 1,843,200 B. The surface is selected end to
+            // end by enableStencilBuffer (params.Stencilbuffer in
+            // renderer_init.cpp -> eglChooseConfig in
+            // docker/irrlicht-drm/CIrrDeviceFB.cpp), so this is what a 16-bit-
+            // depth surface ships as.
+            //
+            // Note the interplay with the portalOcclusion=true above: that is
+            // the pre-B971 "portal vis auto-enables in indoor zones"
+            // AVAILABILITY default, and the shipped config/constrained_presets.json
+            // orangepi block sets portalOcclusion:false ON TOP of it (loadJsonOverrides
+            // wins), so in the shipped config the two agree -- no stencil user,
+            // no stencil buffer. This C++ baseline is what the x86 benchmark
+            // (zone_bench_loader.cpp, fromPreset(OrangePi), no JSON) mirrors,
+            // hence enableStencilBuffer=false here: the benchmark must render
+            // on the D16/no-stencil surface the client ships. (The benchmark
+            // does not consume portalOcclusion, so the baseline's true there
+            // is inert.) Re-enabling portal occlusion in a local/custom config
+            // re-requests the stencil automatically -- see loadJsonOverrides'
+            // portalOcclusion/enableStencilBuffer invariant below.
+            config.enableStencilBuffer = false;
             config.enableAlphaToCoverage = true;
             config.enableShaders = true;
             config.enableCompressedTextures = false;  // Mali 400 via Lima software-decodes S3TC; no GPU savings, extra CPU cost
@@ -765,6 +792,26 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         wireframe = preset["wireframe"].asBool();
     if (preset.isMember("portalOcclusion"))
         portalOcclusion = preset["portalOcclusion"].asBool();
+    // B971 (Will, 2026-10-01: "orangepi uses a 16-bit depth buffer (no
+    // stencil user there)"): /portal occlusion is the ONLY stencil consumer in
+    // the tree, so a config that turns it on MUST have the stencil buffer on
+    // the surface -- otherwise it builds a portal system that can never render
+    // (the pre-B971 defect: the shipped JSON had portalOcclusion off but
+    // enableStencilBuffer on, paying for D24S8 for a feature that was off; the
+    // reverse footgun is portal on with no stencil). Make the implication
+    // one-way (portal on => stencil on; stencil on does not force portal on,
+    // so a stencil-less config stays stencil-less) and let it log, so a
+    // local/custom config that re-enables portal occlusion gets D24S8 back
+    // automatically instead of silently mis-rendering. The shipped orangepi
+    // block sets portalOcclusion:false, so this is a no-op for it.
+    if (portalOcclusion && !enableStencilBuffer) {
+        LOG_WARN(MOD_GRAPHICS,
+                 "Preset '{}': portalOcclusion is on but enableStencilBuffer is off; "
+                 "turning the stencil buffer back on (D24S8 surface) -- portal occlusion "
+                 "is the only stencil user, so it cannot render without it (B971)",
+                 presetName);
+        enableStencilBuffer = true;
+    }
     if (preset.isMember("playerLight"))
         playerLight = preset["playerLight"].asBool();
     if (preset.isMember("objectLights"))

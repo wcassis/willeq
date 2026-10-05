@@ -27,6 +27,20 @@ KEEP="${ARM_PUBLISH_KEEP:-12}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BIN="$SRC/build-arm-noble/bin/willeq"
 [ -x "$BIN" ] || { echo "publish_arm_build: no $BIN"; exit 1; }
+# B975 (#293): the name-tag batch tool, when this build has it (the branch's
+# docker/Dockerfile.arm-noble builds it into the output) -- a stripped
+# bin/nametag_drawcost (system Mesa) and the same with DT_RPATH to the
+# LLVM-less prefix, bin/nametag_drawcost-nollvm (what the Pi runs).
+NDC_BIN="$SRC/build-arm-noble/bin/nametag_drawcost"
+HAVE_NDC=0
+[ -x "$NDC_BIN" ] && HAVE_NDC=1
+# B971 (#289): the gate benchmark runs on the Pi for the golden poses
+# (scripts/b971/run_gate_poses.sh). Same shape as nametag_drawcost: a
+# stripped bin/gles2_zone_benchmark (system Mesa) and, when the Mesa step
+# succeeded, bin/gles2_zone_benchmark-nollvm (the Mesa-prefix rpath copy).
+BENCH_BIN="$SRC/build-arm-noble/bin/gles2_zone_benchmark"
+HAVE_BENCH=0
+[ -x "$BENCH_BIN" ] && HAVE_BENCH=1
 : "${MESA_NOLLVM_STORE_ROOT:=$ROOT/mesa}"
 # shellcheck source=mesa_nollvm.env
 source "$SRC/scripts/pi/mesa_nollvm.env"
@@ -53,6 +67,30 @@ if nice -n 10 bash "$SRC/scripts/pi/build_mesa_nollvm.sh" --ensure \
 else
     rm -f "$TMP/bin/willeq-nollvm"
     echo "mesa_nollvm=FAILED (no bin/willeq-nollvm; see the build-arm job log)" >> "$TMP/BUILD_INFO"
+fi
+if [ "$HAVE_NDC" -eq 1 ]; then
+    cp "$NDC_BIN" "$TMP/bin/nametag_drawcost"
+    arm-linux-gnueabihf-strip "$TMP/bin/nametag_drawcost"
+    if [ "$MESA_OK" -eq 1 ] \
+        && bash "$SRC/scripts/pi/mesa_nollvm_select.sh" "$TMP/bin/nametag_drawcost" "$TMP/bin/nametag_drawcost-nollvm" "$MESA_NOLLVM_PI_PREFIX" \
+            > "$TMP/nametag_drawcost-nollvm.dynamic.txt" 2>&1; then
+        echo "nametag_drawcost=published (bin/nametag_drawcost, bin/nametag_drawcost-nollvm)" >> "$TMP/BUILD_INFO"
+    else
+        rm -f "$TMP/bin/nametag_drawcost-nollvm"
+        echo "nametag_drawcost=stripped only (bin/nametag_drawcost-nollvm missing; see nametag_drawcost-nollvm.dynamic.txt)" >> "$TMP/BUILD_INFO"
+    fi
+fi
+if [ "$HAVE_BENCH" -eq 1 ]; then
+    cp "$BENCH_BIN" "$TMP/bin/gles2_zone_benchmark"
+    arm-linux-gnueabihf-strip "$TMP/bin/gles2_zone_benchmark"
+    if [ "$MESA_OK" -eq 1 ] \
+        && bash "$SRC/scripts/pi/mesa_nollvm_select.sh" "$TMP/bin/gles2_zone_benchmark" "$TMP/bin/gles2_zone_benchmark-nollvm" "$MESA_NOLLVM_PI_PREFIX" \
+            > "$TMP/gles2_zone_benchmark-nollvm.dynamic.txt" 2>&1; then
+        echo "gles2_zone_benchmark=published (bin/gles2_zone_benchmark, bin/gles2_zone_benchmark-nollvm)" >> "$TMP/BUILD_INFO"
+    else
+        rm -f "$TMP/bin/gles2_zone_benchmark-nollvm"
+        echo "gles2_zone_benchmark=stripped only (bin/gles2_zone_benchmark-nollvm missing; see gles2_zone_benchmark-nollvm.dynamic.txt)" >> "$TMP/BUILD_INFO"
+    fi
 fi
 rm -rf "$DEST"; mv "$TMP" "$DEST"
 [ -n "$BRANCH" ] && ln -sfn "../$SHA" "$ROOT/by-branch/$(echo "$BRANCH" | tr '/' '_')"

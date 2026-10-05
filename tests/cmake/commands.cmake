@@ -701,12 +701,18 @@ ENDIF()
 # category at `ready` and `steady_60s` (scripts/client_ledger_capture.sh
 # --assert-budgets). The gate measures the benchmark, which does not build
 # everything the client does (refactor/B909/README.md). Needs the eqemu lane,
-# so live-only (T164) and never in the default suite.
+# so live-only (T164) and never in the default suite. B923 / #242: the
+# evidence dir lands in the build tree under a dated name, so the recorded
+# result (the check's per-category lines in rig.log plus the capture's
+# summary.md) can be committed as evidence; the CI job client-ledger-live
+# (.gitlab-ci.yml) runs the same invocation on a schedule and keeps its own
+# artifacts.
 IF(EQT_LIVE_TESTS AND EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_TEST(NAME ClientLedgerLive
              COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/client_ledger_capture.sh
                      --zones iceclad --modes spatial --assert-budgets
-                     --owner ctest-client-ledger)
+                     --owner ctest-client-ledger
+                     --out ${CMAKE_CURRENT_BINARY_DIR}/client_ledger_live/$(date -u +%Y%m%dT%H%M%SZ))
     SET_TESTS_PROPERTIES(ClientLedgerLive PROPERTIES
         LABELS "live"
         TIMEOUT 900

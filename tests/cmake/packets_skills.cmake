@@ -180,6 +180,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_corpse_death_pose DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B973 (GitLab #291): post-load entity build scheduling -- guaranteed progress
+# in every governor state, bounded per-frame work, and B966's create unit
+# promoting materials before the node's first draw. Part 1 is device-free; the
+# staged-build half skips without the db or the client tree.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_entity_build_scheduler
+        test_entity_build_scheduler.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_entity_build_scheduler PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_entity_build_scheduler GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_entity_build_scheduler PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_entity_build_scheduler DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T310 Leg B: collisionZOffset is the origin-to-feet distance, not half the
 # bbox. Same EDT_NULL + willeq_core gate as the eye anatomy tests; the
 # shipped-mesh half skips without the db or the client tree.

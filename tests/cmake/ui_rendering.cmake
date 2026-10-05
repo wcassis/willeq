@@ -539,6 +539,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_static_ui_frame_cost DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B975 (GitLab #293): the entity name-tag batch -- pixel-identical to the
+# per-node CTextSceneNodes, one draw per bounded run (fallbacks split it). Needs a
+# headless GLES2 device; self-skips without one.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_name_tag_batch
+        test_name_tag_batch.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_name_tag_batch PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_name_tag_batch GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_name_tag_batch DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T313: the static UI's missing scroll INPUT -- chat scrollback, the skills
 # list and the loot list all honoured a scrollOffset nothing ever wrote.
 # Mostly device-free (it drives StaticUIInput and IrrlichtRenderer's slash
@@ -567,6 +579,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eqe1_alpha_companion_mip PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_eqe1_alpha_companion_mip GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_eqe1_alpha_companion_mip DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B948 (GitLab #266): getGpuTextureMemoryUsage() counts each ETC1 alpha chain
+# exactly once -- upload a synthetic ETC1+alpha pair and assert the driver's
+# figure is main + alpha once each, through the B944 eviction/restore round
+# trip too. Same headless-GLES2 idiom (and self-skip) as
+# test_eqe1_alpha_companion_mip above.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_texture_etc1_alpha_count
+        test_texture_etc1_alpha_count.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_texture_etc1_alpha_count PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_texture_etc1_alpha_count GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_texture_etc1_alpha_count DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T411 (board B261/B287): pixel proof that the ETC1 `_alpha` companion reaches

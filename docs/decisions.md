@@ -1423,7 +1423,8 @@ bound and 64 MB stays printed, not asserted.
 **Implemented by B933 (#251).** Every printed gap now uses this figure and says
 so: `over_target=` / `overTargetBytes` / `gapToTarget` / `visual_gate.py`'s
 `[rss-target]` line / the Pi rig's `owned_peak` and `over_64MB_owned_peak`
-columns are on `owned=RssAnon-gpu_driver`; `over_target_rss_anon=` is the old
+columns were on `owned=RssAnon-gpu_driver` (superseded as the target figure
+by B978, 2026-10-01: `owned=RssAnon-gpu_driver+gpu_buffers`); `over_target_rss_anon=` is the old
 whole-RssAnon figure; `gpu_driver` is printed as its own row marked EXCLUDED.
 The driver .so COW pages are decided to stay on the owned side (they are not in
 `gpu_driver`, and B932 reports them per library). The 256 MB failing bound is
@@ -1542,3 +1543,138 @@ turns it off, so the baseline is unchanged; it is ON by default only on the
 GEM on the Pi, llvmpipe's heap inside `gpu_driver` on x86). Design, numbers and
 what is not verified: `refactor/B964/README.md`; the code map:
 `src/client/graphics/CLAUDE.md`, "Impostor billboards".
+
+## 2026-10-01 — the player light is formed in the VS; the 15 gate goldens re-blessed (Will, B967 / #285, B968 / #286)
+
+**Will, in chat: "I agree, re-bless the 15 goldens."** The ruling covers B967's
+fix -- the per-pixel player light's vector is formed in the vertex shader at
+FP32 and passed as a small, light-relative varying -- and B968's, folded into
+the same re-bless because it moves the same goldens: the light's attenuation is
+the per-vertex zone-light family and never rises with distance. This is the
+third pre-approved golden re-bless (after T279's mip chains and B110's baked
+lighting).
+
+**What moved, and only that:** the 15 PNGs under `tests/goldens/` (the gate's own
+invocation, regenerated from the B967 tip; two runs pixel-identical). No
+manifest metric, memory baseline, budget, CPU baseline or gate assertion moved
+or was edited; the manifest records the re-bless in its `approval` block. Per
+frame before/after counts, the Pi proof and the frame time:
+`refactor/B967/README.md`; the sheets: `review/B967/`.
+
+**Implications:** the light's shape is now a stated rule
+(`include/client/graphics/player_light_shader.h`): color x max(N.L^, 0) /
+(c + l*d + q*d^2), N.L^ exact, the attenuation from a LUT indexed linearly in d
+over the light's range R (where it falls to 1/255, the P07d demotion
+threshold), exactly 0 from R on. The FS reads no world coordinate. Pinned by
+`test_player_light_lut` and `PlayerLightProbeMonotonic`.
+
+## 2026-10-01 — GPU buffers count toward the 64 MB target (Will; B978)
+
+**Will, in chat: "1) yes"** to the question "does gpu_buffers count toward the
+64 MB target". On the Orange Pi, where every texture/VBO/render target is a
+Lima GEM object outside RssAnon (B955), the target figure of the
+2026-09-17/2026-09-29 entries is now **owned = RssAnon − gpu_driver +
+gpu_buffers** (label `owned=RssAnon-gpu_driver+gpu_buffers`): gpu_buffers is
+added back only when it is outside RssAnon — on x86/llvmpipe the buffers are
+heap already inside `gpu_driver`, so nothing is double-counted. The 256 MB
+failing bound stays on whole RssAnon; the `gpu_driver` exclusion stands.
+Implemented by B978 (`refactor/B978/README.md`, #296): `Snapshot::ownedBytes`
+is the target figure, `Snapshot::ownedRssAnonBytes` (RssAnon − gpu_driver) is
+its first component, and `ownedPlusGpuBuffersBytes` is removed (it equals
+`ownedBytes` now); `scripts/ci/owned_memory.py` is the one Python definition
+behind `visual_gate.py`'s `[rss-target]` line and the Pi summarizers. The
+2026-09-29 B933 entry's `owned=RssAnon-gpu_driver` reading is superseded by
+this figure.
+
+## 2026-10-01 — textureMemoryBytes 51 -> 21 MiB (Will, "3) bless"; B978)
+
+**Will, in chat: "3) bless"** — ratchet the orangepi preset's
+`textureMemoryBytes` (the texture cache's real EVICTION ceiling, 51 MiB since
+B943's 2026-09-30) by the in-tree rule (measured worst x 1.25, whole MiB) on
+the shipped EQE1 path:
+
+| input | value |
+|---|---|
+| 117-zone census, EQE1 path (`refactor/B927/category_census.tsv`) | worst `estimate:gpuTextureBytes` 16,797,104 B (qeynos); worst `estimate:textureCacheBytesUsed` 16,250,840 B (qeynos) |
+| larger of the two | 16,797,104 B |
+| x 1.25 | 20,996,380 B |
+| rounded up to a whole MiB | **21 MiB = 22,020,096 B** |
+
+(B943's first derivation landed on 20/21 MiB too and was overridden because
+the ceiling then still destroyed on eviction; B944/B947 made an evicted
+texture restore on bind, so the lower ceiling is safe — B944 measured the
+gate's qeynos2 run pixel-identical at a 20 MiB ceiling.)
+
+`textureMemoryBytes` is also the gate's `textureCacheBytesUsed` budget knob
+(`textureCacheBytesLimit` = `getMemoryLimit()`, `tools/hwcaps/zone_bench_memory.cpp:134`):
+the S3D-path qeynos2 gate run held 42,226,984 B at the 51 MiB ceiling, so the
+blessed `textureCacheBytesUsed` for that one zone moves down with the ceiling
+(21,932,691 B, measured by B978's gate run; `textureCount` stays 126 — it is
+the entry count, resident 65 of it). That single field's re-pin is part of
+this ruling ("3) bless" covers the consequential move, and the value goes
+down); nothing else in `tests/goldens/` moves. The other four gate zones
+(gfaydark 11.2 MB, befallen 2.9 MB, iceclad 3.9 MB, timorous 3.2 MB) sit under
+21 MiB and are untouched. Pi proof (qeynos2 + gfaydark, 0 placeholder /
+pinned / restore-fail WARNs, owned per zone): `refactor/B978/README.md`.
+
+## 2026-10-05 — Lima's BO cache stays on; `nobocache` is opt-in (Will; B988, #307)
+
+**Will, in chat: "make the nobocache flag opt-in (off by default) and fix the
+stale docs".** B986 (#305, merged with B975 as MR !73, fable `ee538d2c`) had
+made every DRM client append `nobocache` to `LIMA_DEBUG` under the
+2026-09-29 "memory first" ruling. A same-binary Orange Pi A/B
+(`/mnt/projects/fable/review/CODEX-AUDIT-1005/README.md`, 800x600, orangepi,
+standing at the safe point) measured the trade:
+
+| zone | scene draw ms, cache on -> nobocache | owned MiB, cache on -> nobocache |
+|---|---|---|
+| gfaydark | 7.7 -> 15.5 | 81.6 -> 78.2 |
+| qeynos2 | 3.3 -> 6.0 | 66.2 -> 64.7 |
+
+In 200-NPC crowds the cache costs 9–20 MiB of owned memory and `nobocache`
+up to half the frame rate (`refactor/B986_pi_gpu_guard.md`, superseded
+section). Will ruled for the cache.
+
+**Decision:** a DRM client leaves `LIMA_DEBUG` untouched; `WILLEQ_LIMA_NOBOCACHE=1`
+is the one opt-in switch and restores B986's behaviour exactly; renderer init
+logs the effective policy. The memory the cache retains (Mesa stream uploads,
+Lima draw-time buffers) is B972's (#290) to remove at the source. **No guard,
+budget, golden or baseline moves:** the 10 MiB unnamed-GPU guard stays, and is
+expected to fail on the crowd/zone-hop tours (6 of 8 cases in B975's
+2026-10-03 matrix, `refactor/B975/evidence-20261003/pi-verification.csv`)
+until B972 lands.
+
+## 2026-10-05 — B957: 3x the .map is acceptable; no lossy collision geometry (Will; #275)
+
+**Will, in chat: "B957, 3x the .map is acceptable."** B957 (#275) measured
+the remaining exact-float levers after B951: each costs 10-30 % of the
+collision rays' CPU (Player Movement is ~250-420 us of a 16-33 ms Pi frame)
+for ~1 MB per heavy zone, and below that needs a lossy representation
+(quantised vertices or bounds -- changes query answers).
+
+**Decision:** the ~3x-.map resident size of the exact-float collision map is
+ACCEPTED. No CPU trade for the last MB; no lossy collision geometry. The
+collision map stays query-exact; nothing in the gate, budgets or baselines
+moves. #275's decision question is closed -- remaining B957 scope is
+documentation only, no card.
+
+## 2026-10-05 — B971 check 5(c): the Pi depth-buffer saving is a driver
+limitation, not a B971 defect (Will; #289)
+
+**Will, in chat: "B971, accept 5(c) as a driver limitation."** B971 (#289,
+MR !84) made the orangepi window surface follow `enableStencilBuffer`
+(D16/no-stencil). QA independently verified all five checks; the only unmet
+bar was 5(c): Pi `logical_depth_stencil` measured 3,686,400 B (3.52 MiB) at
+1280x720 in qeynos2, not <= 1.8 MiB.
+
+Root cause (QA-proven, not a B971 defect): the Mesa 25.2.8 / Lima config set
+on that rig offers NO 16-bit depth window config, so the driver answers
+depth=24 even though the stencil-off request reached it (client.log
+"EGL: Config depth=24 stencil=0" is the B971 code path executing). The same
+binary + same request gets the 16-bit config on the x86 gate (960,000 B at
+800x600, exactly 2% of the D24S8 bytes). The README's statement stands: the
+Pi byte saving is "not achieved on the current rig, and not claimed."
+
+**Decision:** 5(c) is ACCEPTED as a driver limitation. The request path is
+structurally correct and a future Mesa/Lima that exposes a 16-bit depth
+window config picks it up with no further code change.

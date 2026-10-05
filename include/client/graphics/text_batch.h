@@ -20,6 +20,7 @@
 #include <unordered_map>
 
 #include "client/graphics/ui/ui_quad_batch.h"  // T462: glyph runs
+#include "client/graphics/ui/bitmap_glyph_table.h"
 
 namespace EQT {
 namespace Graphics {
@@ -99,19 +100,10 @@ public:
     void setBatchingEnabled(bool enabled) { batchingEnabled_ = enabled; }
 
 private:
-    // T462: one glyph of the built-in bitmap font, laid out the way
-    // CGUIFont::draw() lays it out (see buildGlyphTable()).
-    struct Glyph {
-        bool batchable = false;   // false: an entry containing it goes to font_->draw()
-        bool drawn = false;       // false: advances the pen but draws nothing
-        irr::s32 underhang = 0;   // pen offset before the glyph is placed
-        irr::s32 advanceAfter = 0;// pen advance after it (width + overhang + kerning)
-        irr::core::rect<irr::s32> src;
-        irr::video::ITexture* texture = nullptr;
-    };
-    static constexpr size_t kGlyphTableSize = 128;
-    bool buildGlyphTable();
-    Glyph glyphs_[kGlyphTableSize];
+    // T462: the built-in bitmap font's glyphs, laid out the way
+    // CGUIFont::draw() lays them out (B975 moved the table into
+    // client/graphics/ui/bitmap_glyph_table.h, shared with the name tags).
+    BitmapGlyphTable glyphs_;
     bool glyphTableBuilt_ = false;
     bool glyphTableUsable_ = false;
     bool batchingEnabled_ = true;

@@ -11,6 +11,7 @@
 #include "ITexture.h"
 #include "t122_texprobe.h"
 #include <GLES2/gl2.h>
+#include <atomic>
 
 namespace irr
 {
@@ -57,10 +58,17 @@ public:
     // GLES2-specific. B944: this is THE accessor every bind path in
     // COpenGLES2Driver goes through, so it is where an evicted texture is made
     // resident again, on first use, before its name is handed out.
+    // B949: and where a resident texture is stamped "used in frame N" — the
+    // driver's frame counter (COpenGLES2Driver::FrameCounter, incremented in
+    // beginScene()) — so ConstrainedTextureCache's LRU can evict the
+    // least-recently-DRAWN entry instead of the oldest-LOADED one. One
+    // atomic load/compare/store per bind, skipped when the frame was
+    // already stamped (a texture bound five times in one frame writes once).
     GLuint getOpenGLTextureName() const
     {
         if (Evicted)
             ensureResident();
+        markDrawn();
         return TextureName;
     }
     GLuint getFBO() const { return FBO; }
@@ -97,6 +105,20 @@ public:
     void releaseStorage();
     void adoptStorage(GLuint glTexName, u32 gpuBytes);
     GLuint takeStorage(u32* gpuBytesOut);
+
+    // B949 (GitLab #267): the driver frame in which this texture was last
+    // BOUND (COpenGLES2Driver::FrameCounter, incremented in beginScene()).
+    // getOpenGLTextureName() -- the one accessor every bind path goes
+    // through -- refreshes it, so a texture drawn every frame always carries
+    // the current frame number while a texture that has not been drawn since
+    // frame N keeps N. ConstrainedTextureCache::endFrame() reads it to put
+    // the LRU list in least-recently-DRAWN order (B944's list was load
+    // order: a floor texture loaded first was evicted first even though it
+    // was on screen every frame). Relaxed: only THIS thread (the GL thread)
+    // ever writes it, and the cache reads it from the same thread at frame
+    // end.
+    void markDrawn() const;
+    u32 getDrawFrameStamp() const { return DrawFrameStamp_.load(std::memory_order_relaxed); }
 
     // Upload raw ETC1 compressed data (native, no conversion)
     void uploadETC1(const void* data, u32 dataSize, u32 width, u32 height);
@@ -163,6 +185,9 @@ private:
     ResidencyRestoreFn RestoreFn = nullptr;
     void* RestoreCtx = nullptr;
 
+    // B949: last frame this texture was bound in (see markDrawn()).
+    mutable std::atomic<u32> DrawFrameStamp_{0};
+
     COpenGLES2Driver* Driver;
     GLuint TextureName;
     GLuint FBO;           // Framebuffer object (0 if not a render target)
@@ -193,9 +218,9 @@ private:
 
     // B962: the bytes this texture's storage really holds, when the uploader
     // knows them to differ from GpuBytes (an ETC1 texture whose upload sends
-    // level 0 only, a main texture wrapped with its companion's bytes too --
-    // B948). GpuBytes stays the budget/gate figure; the gpu_buffers tally
-    // reads this. Unset = GpuBytes.
+    // level 0 only). GpuBytes stays the budget/gate figure (since B948,
+    // GitLab #266: each ETC1 texture's OWN chain, not the pair's). The
+    // gpu_buffers tally reads this. Unset = GpuBytes.
     u32 StorageBytes = 0;
     bool HasStorageBytes = false;
 

@@ -1003,6 +1003,11 @@ int main(int argc, char** argv) {
             metrics.setSwapMsForLastFrame(swapMs);
         }
 
+        // B949: reorders the texture cache's LRU by the draw stamps this
+        // frame recorded (the gate's static-pose path does the same after
+        // its own endScene, zone_bench_modes.cpp).
+        if (data->textureCache) data->textureCache->endFrame();
+
         // Progress
         if (frame > 0 && frame % 100 == 0) {
             printf("  Frame %d/%d...\n", frame, totalFrames);

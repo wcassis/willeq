@@ -340,3 +340,9 @@ ADD_TEST(NAME LimaBoCensusShim
 ADD_TEST(NAME GemOwnerTable
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_gem_owner_table.py -v)
 SET_TESTS_PROPERTIES(GemOwnerTable PROPERTIES LABELS "hygiene")
+
+# B986: the DRM client's Lima BO retention policy, before device creation.
+ADD_EXECUTABLE(test_lima_buffer_policy test_lima_buffer_policy.cpp)
+TARGET_LINK_LIBRARIES(test_lima_buffer_policy GTest::gtest_main)
+TARGET_COMPILE_DEFINITIONS(test_lima_buffer_policy PRIVATE B986_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+GTEST_DISCOVER_TESTS(test_lima_buffer_policy DISCOVERY_TIMEOUT 120)

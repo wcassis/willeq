@@ -112,7 +112,7 @@ Custom shader materials registered by `zone_shader.cpp` use the GLES ES 1.0 sour
 
 ## Hybrid Per-Vertex/Per-Pixel Lighting
 
-Zone lights (indices 1-7: torches, campfires) are computed per-vertex in the VS using standard Lambertian `max(NdotL, 0.0)` with quadratic attenuation. Player light (index 0) is computed per-pixel in the FS when `/plight` is enabled, using OPT C math: single `inversesqrt` for light direction, quadratic-only attenuation `1/(constant + quadratic*d²)`, no FS `normalize()` of normal (VS already normalizes). When `/plight` is disabled, lightweight shaders are used (all lights per-vertex, trivial FS). The renderer auto-swaps all zone mesh materials between per-pixel and lightweight variants via `swapZoneMeshMaterials()`. Point light contributions are additive — NOT multiplied by `uTintColor` (night darkening) or `aColor` (EQ baked vertex colors), which would suppress them to invisibility at night.
+Zone lights (indices 1-7: torches, campfires) are computed per-vertex in the VS using standard Lambertian `max(NdotL, 0.0)` with quadratic attenuation. Player light (index 0) is computed per-pixel in the FS when `/plight` is enabled. **Its vector is formed in the VS** (B967, #285): `vPlayerLightVec = (uPlayerLightPos - worldPos) / 64` at FP32, a small light-relative varying, because the FS (FP16 on Mali-400) cannot subtract two world coordinates -- at |x| ~ 7,000-9,500 one FP16 step is 4-8 units, which banded the light on both GPUs and put the band edges in different places on each. **Its shape is the per-vertex family** (B968, #286): `color * max(N.L^, 0) / (c + l*d + q*d²)`, N.L^ from one `inversesqrt` (no FS `normalize()` of the normal, the VS already normalizes), the attenuation from a 256-texel FP16 LUT indexed LINEARLY in d over the light's range R (where it falls to 1/255, P07d's demotion threshold), last texel 0 -- so it never rises with distance and is 0 from R on. The GLSL lines and the LUT live ONCE in `include/client/graphics/player_light_shader.h`, spliced into all six player-light FS and the three per-pixel VS and drawn by `gles2_player_light_probe`'s `ship` variant; nets `test_player_light_lut`, `PlayerLightProbeMonotonic`. Mali-400 PP: 9 instructions against B965's 10 (`refactor/B967/README.md`). When `/plight` is disabled, lightweight shaders are used (all lights per-vertex, trivial FS). The renderer auto-swaps all zone mesh materials between per-pixel and lightweight variants via `swapZoneMeshMaterials()`. Point light contributions are additive — NOT multiplied by `uTintColor` (night darkening) or `aColor` (EQ baked vertex colors), which would suppress them to invisibility at night.
 
 ## Mali 400 Shader Optimization Rules
 
@@ -123,7 +123,7 @@ Benchmarked with `gles2_shader_perpixel_benchmark` and `gles2_program_switch_ben
 - **VS branches and light count are free** — the Mali 400 vertex processor handles loops and branches efficiently. 0 VS lights vs 7 VS lights: identical performance.
 - **Program switching cost is negligible** — ~0.08ms per `glUseProgram` switch. Switching between 2-8 programs within a frame costs <1ms total.
 - **Total compiled program count has zero impact** — 9, 18, or 27 compiled programs show identical render performance. No instruction store pressure observed.
-- **The FS ALU is FP16 even under `precision highp`, and the driver does not say so** (B965, `tools/hwcaps/gles2_player_light_probe`). Lima reports `GL_HIGH_FLOAT` and `GL_MEDIUM_FLOAT` as fp32 (127,127,23) in the FS and defines `GL_FRAGMENT_PRECISION_HIGH`, yet a `highp` FS gives bit-for-bit the same pixels as the `mediump` one. Any FS value past 65,504 is +inf: a squared world distance overflows at 256 units. Keep range-sensitive arithmetic in the VS or pre-scaled, and never feed a value that can reach inf to `texture2D()` — with `LINEAR` + `CLAMP_TO_EDGE`, Lima samples an infinite coordinate at the texture's NEAR end (llvmpipe at the far end). `clamp(x, 0.0, 1.0)` on the coordinate is the fix (Pi GPU p50 +2.5..4.7 % per frame in the gate zones; pre-scaling the vector instead cost more). llvmpipe also quantizes the `mediump` world-position path (near world coordinate 7,000 the light moves in visible steps on BOTH GPUs, so the goldens carry it: B967, #285) but does not overflow, so the overflow showed only on the Pi.
+- **The FS ALU is FP16 even under `precision highp`, and the driver does not say so** (B965, `tools/hwcaps/gles2_player_light_probe`). Lima reports `GL_HIGH_FLOAT` and `GL_MEDIUM_FLOAT` as fp32 (127,127,23) in the FS and defines `GL_FRAGMENT_PRECISION_HIGH`, yet a `highp` FS gives bit-for-bit the same pixels as the `mediump` one. Any FS value past 65,504 is +inf: a squared world distance overflows at 256 units. Keep range-sensitive arithmetic in the VS or pre-scaled, and never feed a value that can reach inf to `texture2D()` — with `LINEAR` + `CLAMP_TO_EDGE`, Lima samples an infinite coordinate at the texture's NEAR end (llvmpipe at the far end). `clamp(x, 0.0, 1.0)` on the coordinate is the fix (Pi GPU p50 +2.5..4.7 % per frame in the gate zones; pre-scaling the vector instead cost more). llvmpipe also quantizes a `mediump` world-position varying (near world coordinate 7,000 the light moved in visible steps on BOTH GPUs) but does not overflow, so the overflow showed only on the Pi. B967 removed the world-position varying from the player light.
 - **An FP16-quantized varying never matches across GPUs at its step lines** (B969, `refactor/B969/README.md`).
   - Both GPUs round the interpolated `mediump` varying to FP16 per pixel. llvmpipe interpolates in fp32 first,
     so its step lines are straight. Lima interpolates differently, so near each rounding midpoint it flips by one
@@ -131,8 +131,8 @@ Benchmarked with `gles2_shader_perpixel_benchmark` and `gles2_program_switch_ben
   - `varying highp` in the FS changes nothing on Lima: bit-identical pixels.
   - A varying that carries world coordinates (|x| > 2,048: steps of 2+ units) therefore makes Pi-vs-x86 diffs
     that no x86-invariant shader edit can remove.
-  - Pass small, relative quantities instead (e.g. `pLv` formed in the VS). For an existing golden, that is a
-    re-bless (B967, #285).
+  - Pass small, relative quantities instead, as the player light now does (`vPlayerLightVec`, formed in the VS:
+    B967, #285, re-blessed by Will 2026-10-01). timorous_f2 Pi vs x86 went 3,175 -> 15 px > 32.
 
 ## Zone Rendering Optimizations
 
@@ -254,9 +254,11 @@ chunk to whatever `eqt::memory::Category` the CALLING THREAD is scoped to.
   the row, its source, the renderer's logical tally (`gpuTextureBytes` +
   `vboEboBytes`, published by `src/client/graphics/diagnostics/gpu_buffer_tally.cpp`
   from the GL-owning thread) and the residual between them, the cgroup's
-  kernel bytes, the mapped bytes, `owned` and `owned_plus_gpu_buffers`. The
-  64 MB target stays on `owned`; `owned_plus_gpu_buffers` is printed for Will's
-  ruling and asserted nowhere. Not on the row: the display controller's scanout
+  kernel bytes, the mapped bytes, and `owned` (B978: RssAnon − gpu_driver +
+  gpu_buffers when the row is outside RssAnon — the 64 MB target figure; the
+  line ends `owned_rss_anon=<RssAnon-gpu_driver> owned=<B>`, and the old
+  `owned_plus_gpu_buffers` field was removed by B978, pinned absent by the
+  tests). Not on the row: the display controller's scanout
   framebuffers (CMA, allocated by the display device -- the rigs read them from
   debugfs as root, `proc_mem_snapshot.py`'s `gpu.scanout_fb_bytes`) and a frame
   the client dumps into a tmpfs (charged to the same cgroup; the summarizer
@@ -279,8 +281,54 @@ chunk to whatever `eqt::memory::Category` the CALLING THREAD is scoped to.
   chain again -- two buffers per texture), and **unit 0 uploads level 0 only**
   (it is never mip-filtered). The client streams its zone vertices (the pools
   are client arrays); a shared static VBO for them measured MORE GEM and half
-  the frame rate, so `vboEboBytes` ~0 is correct. `WILLEQ_GPU_BUFFERS_LEGACY=1`
+  the frame rate, so the zone contributes ~0 to `vboEboBytes`; what the tally
+  does carry is the name-tag batch's VBO/EBO storage (B975, through
+  `gles2AdjustRawBufferBytes`). `WILLEQ_GPU_BUFFERS_LEGACY=1`
   restores the pre-B962 allocation pattern for an A/B.
+- **Lima's BO cache is ON by default; `nobocache` is opt-in (B988, Will
+  2026-10-05).** `configureLimaBufferPolicy()`
+  (`include/client/graphics/lima_buffer_policy.h`, called before
+  `createDeviceEx`) leaves `LIMA_DEBUG` untouched unless
+  `WILLEQ_LIMA_NOBOCACHE=1`, which appends `nobocache` (B986's policy: other
+  flags kept, idempotent, `all` respected); a caller's own
+  `LIMA_DEBUG=nobocache` works without the switch. Renderer init logs one
+  `[GL] Lima buffer policy:` INFO line with the effective policy. Measured
+  same-binary on the Pi: `nobocache` saves 1.5–3.5 MiB owned standing still
+  (9–20 MiB in 200-NPC crowds) but doubles scene draw (gfaydark 7.7 -> 15.5
+  ms, qeynos2 3.3 -> 6.0 ms). With the cache on, the 10 MiB unnamed-GPU guard
+  fails on crowd/zone-hop tours until B972 (#290) removes the retained buffers
+  at the source; the guard is not raised. Record:
+  `refactor/B986_pi_gpu_guard.md`.
+
+## Entity name tags (B975)
+
+`EntityRenderer::createNameTagNode()` is the factory. `NameTagNode` keeps
+Irrlicht's `ITextSceneNode` interface and registration condition, including
+visibility and impostor re-registration. `NameTagBatchNode` orders the
+registered tags far-to-near, projects with one proj × view product per frame,
+and draws compact glyph vertices through the GLES2 path. A batchable run
+within the index limit takes one draw; fallback glyphs split runs.
+The compact index prefix grows only at need and is reused across chunks and
+frames; draw length follows the used vertex prefix, not retained storage.
+CPU vertex storage stays sized between runs and grows once per tag, so glyph
+emission does not repeat vector bookkeeping for every corner.
+Immutable atlas coordinates are cached once per glyph using the driver's
+same arithmetic; this adds no per-tag storage.
+The driver's state-only 2D entry point avoids a bootstrap client-array draw.
+Bounded VBO/EBO storage is reused; one slack vertex prevents whole-resource
+renaming on Lima. Writes remain synchronized, never orphaned or unsynchronized.
+GPU bytes are included in the driver's logical buffer tally and reported
+separately from CPU bytes in the name-tag owner row; destruction and idle-window
+trimming release the storage.
+`BitmapGlyphTable` is shared with UI text. `WILLEQ_NAMETAG_BATCH=0` selects
+the original per-node path for A/B verification. The `[nametags]` rows and
+`ent.nametag_batch` memory owner report the batch's cost and storage.
+`test_name_tag_batch` and `nametag_drawcost` check pixel identity, changes to
+text and draw counts; measured evidence and limits are in `refactor/B975/README.md`.
+The DRM benchmark applies the same Lima buffer policy as the client
+(`configureLimaBufferPolicy()`; since B988 that is the BO cache ON unless
+`WILLEQ_LIMA_NOBOCACHE=1`), so its default timing is the client's default
+path. B975's accepted 1914 / 1955 us were measured under `nobocache`.
 
 ## Impostor billboards (B964, the production port of B952)
 

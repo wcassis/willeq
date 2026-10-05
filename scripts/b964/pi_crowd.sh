@@ -3,7 +3,8 @@
 # (the rendered client on the Pi, the local eqemu lane, its own memory cgroup,
 # the shipped LLVM-less Mesa) once per (zone, variant), with the crowd tour of
 # scripts/b964/make_tour.py. Variants as scripts/b964/crowd_run.sh:
-# <imp|off|base><N>[near|far]. Each sweep call takes and releases both locks
+# <imp|off|base|tagnode><N>[near|far] (B975: `tagnode` = impostors on, name
+# tags through the pre-B975 per-node path, WILLEQ_NAMETAG_BATCH=0). Each sweep call takes and releases both locks
 # itself (eqemu first, Pi second) and restores the character with the world down.
 #
 # Safe points (server frame, the zone table's safe_x/safe_y/safe_z on the
@@ -13,6 +14,9 @@
 # Usage: scripts/b964/pi_crowd.sh --pi-dir /mnt/projects/fable/ci-arm/<sha>
 #          [--zones qeynos2,gfaydark,growthplane] [--variants imp50far,imp200far,off200far]
 #          [--out DIR] [-r "1280 720"] [--hop-zone arena] [--frametiming]   (see make_tour.py)
+#          [--owner B964]   (the lock owner tag)
+#          [--allow-vm-lane]   (B975: forward to pi_rendered_zone_sweep.sh, whose
+#          EQEMU_HOST must then name the eqemu VM)
 set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ZONES="qeynos2,gfaydark,growthplane"
@@ -21,6 +25,8 @@ PI_DIR=""
 OUT=""
 RES="1280 720"
 HOP_ZONE="arena"
+OWNER="B964"
+ALLOW_VM=0
 TOUR_EXTRA=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -31,6 +37,8 @@ while [ $# -gt 0 ]; do
         -r) RES="$2"; shift 2 ;;
         --hop-zone) HOP_ZONE="$2"; shift 2 ;;
         --frametiming) TOUR_EXTRA+=( --frametiming ); shift ;;
+        --owner) OWNER="$2"; shift 2 ;;
+        --allow-vm-lane) ALLOW_VM=1; shift ;;
         *) echo "unknown option $1" >&2; exit 3 ;;
     esac
 done
@@ -63,11 +71,14 @@ for zone in ${ZONES//,/ }; do
             imp) ;;
             off) envs+=( --env WILLEQ_IMPOSTORS=0 ) ;;
             base) envs+=( --env WILLEQ_BASELINE=1 ) ;;
+            tagnode) envs+=( --env WILLEQ_NAMETAG_BATCH=0 ) ;;
         esac
+        vm_args=()
+        [ "$ALLOW_VM" -eq 1 ] && vm_args+=( --allow-vm-lane )
         echo "[pi_crowd] $zone/$variant -> $dir"
         bash "$REPO/scripts/pi_rendered_zone_sweep.sh" --zones "$zone" --out "$dir" --pi-dir "$PI_DIR" \
-            -r "$RES" --tour "$dir/tour.txt" --cap 720 --stall 240 --no-retry --owner B964 \
-            --stop-point never --char-level 60 --char-exp 616137000 "${envs[@]}" \
+            -r "$RES" --tour "$dir/tour.txt" --cap 720 --stall 240 --no-retry --owner "$OWNER" \
+            --stop-point never --final-visit --char-level 60 --char-exp 616137000 "${envs[@]}" "${vm_args[@]}" \
             > "$dir/sweep.out" 2>&1
         rc=$?
         echo "[pi_crowd] $zone/$variant rc=$rc"

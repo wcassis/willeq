@@ -125,7 +125,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_Backend) {
     EXPECT_EQ(config.renderingBackend, RenderingBackend::GLES2);
     EXPECT_TRUE(config.useDRM);
     EXPECT_EQ(config.framebufferMemoryBytes, 10 * 1024 * 1024);  // 10MB
-    EXPECT_EQ(config.textureMemoryBytes, 51 * 1024 * 1024);      // 51MB (B943)
+    EXPECT_EQ(config.textureMemoryBytes, 21 * 1024 * 1024);      // 21MB (B978; B943 was 51)
     EXPECT_EQ(config.colorDepthBits, 16);
     EXPECT_EQ(config.maxTextureDimension, 512);
     // Rendering feature defaults
@@ -400,7 +400,7 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_GpuFeatures) {
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
 
     EXPECT_EQ(config.framebufferMemoryBytes, 10 * 1024 * 1024);  // 10MB
-    EXPECT_EQ(config.textureMemoryBytes, 51 * 1024 * 1024);      // 51MB (B943)
+    EXPECT_EQ(config.textureMemoryBytes, 21 * 1024 * 1024);      // 21MB (B978; B943 was 51)
     EXPECT_EQ(config.maxTextureDimension, 512);
     EXPECT_EQ(config.colorDepthBits, 16);
     EXPECT_FLOAT_EQ(config.clipDistance, 300.0f);
@@ -410,7 +410,15 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_GpuFeatures) {
     // GPU feature flags
     EXPECT_TRUE(config.enableMipmaps);
     EXPECT_TRUE(config.enableNPOT);
-    EXPECT_TRUE(config.enableStencilBuffer);
+    // B971 (Will, 2026-10-01: "orangepi uses a 16-bit depth buffer (no
+    // stencil user there)"): no stencil -- the shipped preset's only stencil
+    // user, /portal, is off (the JSON block sets portalOcclusion: false on
+    // top of this C++ case's auto-enable default), so the surface is 16-bit
+    // depth with no stencil (1,843,200 B of GEM at 1280x720 instead of
+    // D24S8's 3,686,400 B). A preset with portal occlusion ON flips
+    // enableStencilBuffer back on and gets D24S8 (the JSON key; see
+    // StencilBufferSwitchesD24S8BackOn).
+    EXPECT_FALSE(config.enableStencilBuffer);
     EXPECT_TRUE(config.enableAlphaToCoverage);
     EXPECT_EQ(config.antiAliasLevel, 4);
     EXPECT_FALSE(config.enableCompressedTextures);  // Mali 400 via Lima software-decodes S3TC; use ETC1 atlas instead
@@ -534,6 +542,69 @@ TEST_F(ConstrainedRendererConfigTest, JsonOverride_CaseInsensitive) {
     bool applied = config.loadJsonOverrides("orangepi", testJsonPath);
     EXPECT_TRUE(applied);
     EXPECT_EQ(config.maxTextureDimension, 256);
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_PortalOcclusionForcesStencilOn) {
+    // B971 (Will, 2026-10-01: "orangepi uses a 16-bit depth buffer (no stencil
+    // user there)"): portal occlusion is the only stencil user, so a config that
+    // turns it on must also get the stencil buffer on the surface (D24S8), even
+    // if the JSON never names enableStencilBuffer or sets it false. Without this
+    // a /portal-on config would render portal occlusion with no stencil to use.
+    const std::string testJsonPath = tmpPath("test_constrained_presets_portal.json");
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "testpreset": {
+                    "portalOcclusion": true,
+                    "enableStencilBuffer": false
+                }
+            }
+        })";
+    }
+
+    ConstrainedRendererConfig config;
+    bool applied = config.loadJsonOverrides("testpreset", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_TRUE(config.portalOcclusion);
+    // The one-way invariant flipped the stencil back on.
+    EXPECT_TRUE(config.enableStencilBuffer);
+    // And the surface format follows: D24S8 (4 B/px depth-stencil), not D16.
+    config.colorDepthBits = 16;
+    EXPECT_EQ(config.calculateFramebufferUsage(1280, 720),
+              static_cast<size_t>(1280) * 720 * (2 * 2 + 4));
+
+    std::remove(testJsonPath.c_str());
+}
+
+TEST_F(ConstrainedRendererConfigTest, JsonOverride_NoPortalOcclusionStaysStencilLess) {
+    // The shipped orangepi case: portal occlusion OFF means no stencil user, so
+    // the surface stays 16-bit depth, no stencil. Stencil-off must NOT be forced
+    // on by the absence of a stencil user (the invariant is one-way), and the
+    // shipped block's explicit enableStencilBuffer:false must survive unchanged.
+    const std::string testJsonPath = tmpPath("test_constrained_presets_nostencil.json");
+    {
+        std::ofstream f(testJsonPath);
+        f << R"({
+            "presets": {
+                "testpreset": {
+                    "portalOcclusion": false,
+                    "enableStencilBuffer": false
+                }
+            }
+        })";
+    }
+
+    ConstrainedRendererConfig config;
+    bool applied = config.loadJsonOverrides("testpreset", testJsonPath);
+    EXPECT_TRUE(applied);
+    EXPECT_FALSE(config.portalOcclusion);
+    EXPECT_FALSE(config.enableStencilBuffer);
+    config.colorDepthBits = 16;
+    EXPECT_EQ(config.calculateFramebufferUsage(1280, 720),
+              static_cast<size_t>(1280) * 720 * (2 * 2 + 2));  // 16-bit colour + D16, no stencil
 
     std::remove(testJsonPath.c_str());
 }
@@ -1146,7 +1217,7 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
     bool applied = config.loadJsonOverrides("orangepi", WILLEQ_CONSTRAINED_PRESETS_JSON);
     EXPECT_TRUE(applied);
-    EXPECT_EQ(config.textureMemoryBytes,          static_cast<size_t>(51) * 1024 * 1024);  // B943: 64 -> 51
+    EXPECT_EQ(config.textureMemoryBytes,          static_cast<size_t>(21) * 1024 * 1024);  // B943: 64 -> 51, B978: 51 -> 21
     EXPECT_EQ(config.gpuTextureMemoryBytes,       static_cast<size_t>(38) * 1024 * 1024);  // B943: 64 -> 38
     EXPECT_EQ(config.zoneGeometryMemoryBytes,     static_cast<size_t>(16) * 1024 * 1024);
     EXPECT_EQ(config.placeableObjectsMemoryBytes, static_cast<size_t>(24) * 1024 * 1024);
@@ -1242,16 +1313,16 @@ TEST_F(ConstrainedRendererConfigTest, T293Budgets_UnsetOnUnbudgetedPresets) {
 TEST_F(ConstrainedRendererConfigTest, OrangePi_FramebufferBudgetHolds1280x720) {
     // T293 scope item 3, checked explicitly because the margin is not large
     // and depends entirely on colorDepthBits. 1280x720 is the stated maximum
-    // resolution; the shipped preset is 16-bit colour with a D24S8
-    // depth-stencil, so 2*2 + 4 = 8 bytes per pixel.
+    // resolution; the shipped preset is 16-bit colour with a 16-bit depth,
+    // no stencil (B971), so 2*2 + 2 = 6 bytes per pixel.
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
     ASSERT_EQ(config.colorDepthBits, 16);
-    ASSERT_TRUE(config.enableStencilBuffer);
+    ASSERT_FALSE(config.enableStencilBuffer);
 
     const size_t usage720p = config.calculateFramebufferUsage(1280, 720);
-    EXPECT_EQ(usage720p, static_cast<size_t>(1280) * 720 * 8);  // 7,372,800
-    EXPECT_EQ(usage720p, 7372800u);
-    EXPECT_LE(usage720p, config.framebufferMemoryBytes);        // FITS: 67% of 10 MiB
+    EXPECT_EQ(usage720p, static_cast<size_t>(1280) * 720 * 6);  // 5,529,600
+    EXPECT_EQ(usage720p, 5529600u);
+    EXPECT_LE(usage720p, config.framebufferMemoryBytes);        // FITS: 53% of 10 MiB
 
     std::string error;
     EXPECT_TRUE(config.validateResolution(1280, 720, error)) << error;
@@ -1264,35 +1335,59 @@ TEST_F(ConstrainedRendererConfigTest, OrangePi_FramebufferBudgetHolds1280x720) {
     EXPECT_EQ(h, 720);
 }
 
-TEST_F(ConstrainedRendererConfigTest, OrangePi_FramebufferBudgetWouldNotHold1280x720At32Bit) {
-    // The other half of the same finding, pinned so the reason 10 MiB is
-    // sufficient does not get lost: it is sufficient ONLY because this preset
-    // is 16-bit. At 32-bit colour the same resolution needs 2*4 + 4 = 12
-    // bytes per pixel = 11,059,200 bytes, which is 573,440 bytes OVER the
-    // 10,485,760-byte budget. The budget is deliberately NOT raised to cover
-    // this -- 16-bit is the shipped configuration and Mali 400 has no reason
-    // to want 32 -- but a future edit flipping colorDepthBits must fail here
-    // rather than silently clamping the display.
+TEST_F(ConstrainedRendererConfigTest, StencilBufferSwitchesD24S8BackOn) {
+    // B971: enableStencilBuffer is what selects the surface format end to end
+    // (params.Stencilbuffer in renderer_init.cpp, eglChooseConfig in
+    // CIrrDeviceFB.cpp): 4 bytes/pixel of depth-stencil with it on,
+    // 2 with it off. The orangepi preset ships it OFF (no stencil user --
+    // /portal is off and is the only stencil user); a preset that turns
+    // portal occlusion ON flips it back and gets D24S8, as this pins.
+    auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
+    EXPECT_FALSE(config.enableStencilBuffer);
+    const size_t d16 = config.calculateFramebufferUsage(1280, 720);
+    EXPECT_EQ(d16, static_cast<size_t>(1280) * 720 * 6);
+
+    config.enableStencilBuffer = true;
+    config.portalOcclusion = true;
+    const size_t d24s8 = config.calculateFramebufferUsage(1280, 720);
+    EXPECT_EQ(d24s8, static_cast<size_t>(1280) * 720 * 8);
+    EXPECT_EQ(d24s8, 7372800u);
+    EXPECT_EQ(d24s8 - d16, static_cast<size_t>(1280) * 720 * 2);  // the stencil+depth delta
+}
+
+TEST_F(ConstrainedRendererConfigTest, OrangePi_FramebufferBudgetAt32BitNowFits1280x720) {
+    // B971 turned the old OrangePi_FramebufferBudgetWouldNotHold1280x720At32Bit
+    // inside out. With the surface at D24S8, 32-bit colour needed 2*4 + 4 =
+    // 12 bytes per pixel = 11,059,200 at 1280x720 -- the overrun that old test
+    // pinned. B971 takes the surface to 16-bit depth, no stencil, so 32-bit
+    // colour is now 2*4 + 2 = 10 B/px = 9,216,000, which FITS the 10 MiB
+    // (10,485,760) framebuffer budget. The shipped configuration (16-bit
+    // colour, D16, 6 B/px = 5,529,600) fits even more comfortably
+    // (OrangePi_FramebufferBudgetHolds1280x720). Pinned in both directions so
+    // the budget's behaviour is not lost: colour depth still matters, and the
+    // 32-bit-colour + D24S8 combination (12 B/px = 11,059,200) -- which the
+    // shipped preset does not use -- is over again.
     auto config = ConstrainedRendererConfig::fromPreset(ConstrainedRenderingPreset::OrangePi);
     config.colorDepthBits = 32;
 
     const size_t usage720p32 = config.calculateFramebufferUsage(1280, 720);
-    EXPECT_EQ(usage720p32, 11059200u);
-    EXPECT_GT(usage720p32, config.framebufferMemoryBytes);
-    EXPECT_EQ(usage720p32 - config.framebufferMemoryBytes, 573440u);
+    EXPECT_EQ(usage720p32, 9216000u);
+    EXPECT_LE(usage720p32, config.framebufferMemoryBytes);  // FITS (B971: D16, no stencil)
 
     std::string error;
-    EXPECT_FALSE(config.validateResolution(1280, 720, error));
-    EXPECT_FALSE(error.empty());
+    EXPECT_TRUE(config.validateResolution(1280, 720, error)) << error;
 
-    // And the clamp that would silently happen instead: 1280 narrows to the
-    // recomputed max width, 720 is left alone (it is already under the max
-    // height).
+    // The derived max resolution at 10 B/px (measured: the 4:3 formula plus
+    // the 8-multiple rounding and the budget while-loop land here).
     config.calculateMaxResolution();
-    EXPECT_EQ(config.maxResolutionWidth, 1072);
-    EXPECT_EQ(config.maxResolutionHeight, 808);
-    int w = 1280, h = 720;
-    EXPECT_TRUE(config.clampResolution(w, h));
-    EXPECT_EQ(w, 1072);
-    EXPECT_EQ(h, 720);
+    EXPECT_EQ(config.maxResolutionWidth, 1176);
+    EXPECT_EQ(config.maxResolutionHeight, 880);
+
+    // And the 32-bit-colour WITH-stencil combination the shipped preset does
+    // NOT use would still overrun -- that is the configuration this test now
+    // stands in for.
+    config.enableStencilBuffer = true;
+    const size_t usage720p32s8 = config.calculateFramebufferUsage(1280, 720);
+    EXPECT_EQ(usage720p32s8, 11059200u);
+    EXPECT_GT(usage720p32s8, config.framebufferMemoryBytes);
 }

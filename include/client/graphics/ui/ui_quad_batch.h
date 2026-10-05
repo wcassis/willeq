@@ -61,6 +61,23 @@ public:
     size_t drawSolidRun(irr::video::IVideoDriver* driver, const std::vector<UiQuad>& quads,
                         bool batch);
 
+    /** B975: bytes the reusable vertex/index buffers hold (capacity). */
+    size_t bytesReserved() const {
+        return vertices_.capacity() * sizeof(float) + indices_.capacity() * sizeof(uint16_t);
+    }
+
+    /** B975: release capacity beyond `quads` textured quads. */
+    void trim(size_t quads) {
+        if (vertices_.capacity() > quads * 4 * 9) {
+            std::vector<float>().swap(vertices_);
+            vertices_.reserve(quads * 4 * 9);
+        }
+        if (indices_.capacity() > quads * 6) {
+            std::vector<uint16_t>().swap(indices_);
+            indices_.reserve(quads * 6);
+        }
+    }
+
 private:
     std::vector<float> vertices_;      // reused across frames
     std::vector<uint16_t> indices_;

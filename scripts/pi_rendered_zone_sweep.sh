@@ -37,6 +37,7 @@
 #          [--pi-dir /mnt/projects/fable/ci-arm/<sha>] [-r "1280 720"]
 #          [--char-level N --char-exp E]   (the eligibility leg; see CHAR_LEVEL)
 #          [--owner NAME] [--tour FILE] [--env K=V]... [--drive-keys]
+#          [--final-visit] verify the final visit of an intentional zone-hop tour
 #          [--snap-points startup,ready,steady_60s]   (B932: a smaps/maps
 #          snapshot at each named ledger point, rendered_zone_run.py)
 #          [--mesa nollvm|system]   (B935; default $WILLEQ_MESA, else nollvm)
@@ -128,6 +129,7 @@ ACCOUNT_OVERRIDE=""
 CHAR_OVERRIDE=""
 OWN_CGROUP=1
 STOP_POINT=""
+FINAL_VISIT_ARGS=()
 MESA="${WILLEQ_MESA:-nollvm}"
 BO_CENSUS=""
 while [ $# -gt 0 ]; do
@@ -144,6 +146,7 @@ while [ $# -gt 0 ]; do
         --char-exp) CHAR_EXP="$2"; shift 2 ;;
         --owner) OWNER="$2"; shift 2 ;;
         --tour) TOUR_IN="$2"; shift 2 ;;
+        --final-visit) FINAL_VISIT_ARGS=( --final-visit ); shift ;;
         --env) case "$2" in [A-Z_]*=*) EXTRA_ENV="$EXTRA_ENV '$2'";; *) echo "bad --env $2" >&2; exit 64;; esac; shift 2 ;;
         --drive-keys) DRIVE_KEYS=1; shift ;;
         --allow-vm-lane) ALLOW_VM=1; shift ;;
@@ -242,7 +245,9 @@ EOF
 # after ready -- then /q.
 TOUR="$OUT/tour.txt"
 if [ -n "$TOUR_IN" ]; then
-    cp "$TOUR_IN" "$TOUR"
+    if [ ! "$TOUR_IN" -ef "$TOUR" ]; then
+        cp "$TOUR_IN" "$TOUR" || exit 68
+    fi
 else
     printf '/loc\nwait %s\n/loc\n/q\n' "$HOLD_S" > "$TOUR"
 fi
@@ -275,6 +280,7 @@ SNAP_TAKEN=0
 PI_BIN_DIR="/home/${PI_USER}/pi-rendered-sweep"
 PI_BIN="$PI_BIN_DIR/willeq"
 PI_TMP="/tmp/prs"
+PI_EVIDENCE_PENDING=0
 pi_kill_client() {
     pi_remote "pkill -TERM -f '^${PI_BIN} ' >/dev/null 2>&1; sleep 3; pkill -KILL -f '^${PI_BIN} ' >/dev/null 2>&1; pkill -KILL -f '[r]endered_zone_run[.]py' >/dev/null 2>&1; sudo -n pkill -KILL -f '[u]input_drive[.]py' >/dev/null 2>&1; true" </dev/null >/dev/null 2>&1
 }
@@ -283,7 +289,11 @@ cleanup() {
     CLEANED=1
     say "cleanup: stopping any Pi client, restoring, lane down, releasing locks"
     pi_kill_client
-    pi_remote "rm -rf '$PI_TMP'" </dev/null >/dev/null 2>&1
+    if [ "$PI_EVIDENCE_PENDING" -eq 0 ]; then
+        pi_remote "rm -rf '$PI_TMP'" </dev/null >/dev/null 2>&1
+    else
+        say "unretrieved evidence retained on ${PI_HOST}:$PI_TMP; retrieve before another sweep"
+    fi
     if [ -n "$RMEM_RESTORE" ]; then
         pi_remote "sudo -n sysctl -q -w net.core.rmem_max=$RMEM_RESTORE" </dev/null >/dev/null 2>&1
         say "net.core.rmem_max restored to $RMEM_RESTORE: now $(pi_remote "sysctl -n net.core.rmem_max" </dev/null)"
@@ -301,13 +311,36 @@ trap 'cleanup; exit 130' INT TERM
 trap cleanup EXIT
 
 # ---- 1. stage the capable client on the Pi -----------------------------------
+# B975: hermes-ext has no shared filesystem with the Pi. Transfer every
+# runtime input explicitly, then retrieve evidence before deleting Pi tmpfs.
+PI_INPUTS="$PI_BIN_DIR/inputs"
+PI_DATA="$PI_INPUTS/build"
+PI_RUNNER="$PI_INPUTS/scripts"
+pi_remote "mkdir -p '$PI_DATA' '$PI_RUNNER'" </dev/null || exit 68
+rsync -aL --checksum --delete -e "ssh $PI_SSH_OPTS" \
+    "$PI_SHA_DIR/config" "$PI_SHA_DIR/data" "${PI_USER}@${PI_HOST}:$PI_DATA/" || exit 68
+rsync -a --checksum -e "ssh $PI_SSH_OPTS" \
+    "$REPO/scripts/pi/rendered_zone_run.py" "$REPO/scripts/pi/proc_mem_snapshot.py" \
+    "$REPO/scripts/pi/uinput_drive.py" "${PI_USER}@${PI_HOST}:$PI_RUNNER/" || exit 68
+rsync -a --checksum -e "ssh $PI_SSH_OPTS" \
+    "$CFG" "$TOUR" "${PI_USER}@${PI_HOST}:$PI_INPUTS/" || exit 68
+rsync -a --checksum -e "ssh $PI_SSH_OPTS" \
+    "$STAGE_SRC" "${PI_USER}@${PI_HOST}:$PI_BIN" || exit 68
+if [ "$MESA" = nollvm ]; then
+    rsync -a --checksum -e "ssh $PI_SSH_OPTS" \
+        "$PI_SHA_DIR/mesa/prefix/" "${PI_USER}@${PI_HOST}:$PI_INPUTS/mesa-prefix/" || exit 68
+fi
+PI_BIN_SHA256="$(pi_remote "sha256sum '$PI_BIN'" </dev/null | cut -d' ' -f1)"
+[ "$PI_BIN_SHA256" = "$BIN_SHA256" ] || { say "staged binary hash mismatch"; exit 68; }
 GEM_CENSUS_ENV=""
 if [ -n "$BO_CENSUS" ]; then
     # B962: an UNCAPPED copy (secure execution would drop LD_PRELOAD), and the
     # receive-buffer ceiling raised so SO_RCVBUF gets the 1 MiB SO_RCVBUFFORCE
     # would have forced (B751); the original value is restored at cleanup.
     [ -f "$BO_CENSUS" ] || { say "no census shim at $BO_CENSUS"; exit 68; }
-    pi_remote "mkdir -p '$PI_BIN_DIR' && cp '$STAGE_SRC' '$PI_BIN' && cp '$BO_CENSUS' '$PI_BIN_DIR/lima_bo_census.so'" </dev/null \
+    # An unchanged rsync destination can retain the previous run's setcap.
+    pi_remote "if [ -n \"\$(getcap '$PI_BIN')\" ]; then sudo -n setcap -r '$PI_BIN'; fi" </dev/null || exit 68
+    rsync -a --checksum -e "ssh $PI_SSH_OPTS" "$BO_CENSUS" "${PI_USER}@${PI_HOST}:$PI_BIN_DIR/lima_bo_census.so" \
         || { say "staging the census binary/shim on the Pi failed"; exit 68; }
     RMEM_RESTORE="$(pi_remote "sysctl -n net.core.rmem_max" </dev/null | tr -d '[:space:]')"
     pi_remote "sudo -n sysctl -q -w net.core.rmem_max=1048576" </dev/null \
@@ -315,12 +348,12 @@ if [ -n "$BO_CENSUS" ]; then
     say "B962 census: uncapped client + LD_PRELOAD $BO_CENSUS; rmem_max $RMEM_RESTORE -> $(pi_remote "sysctl -n net.core.rmem_max" </dev/null)"
     GEM_CENSUS_ENV="env LD_PRELOAD=$PI_BIN_DIR/lima_bo_census.so B962_GEMDUMP=$PI_BIN_DIR/gem_owners.tsv B955_BOLOG=$PI_BIN_DIR/bo_events.log"
 else
-pi_remote "mkdir -p '$PI_BIN_DIR' && cp '$STAGE_SRC' '$PI_BIN' && sudo -n setcap cap_net_raw,cap_net_admin+ep '$PI_BIN'" </dev/null \
+pi_remote "sudo -n setcap cap_net_raw,cap_net_admin+ep '$PI_BIN'" </dev/null \
     || say "WARNING: staging/setcap on the Pi failed -- the run goes ahead; the rcvbuf column shows what the client got"
 fi
 MESA_DEPLOY="not deployed (WILLEQ_MESA=system)"
 if [ "$MESA" = nollvm ]; then
-    if ! MESA_DEPLOY="$(bash "$REPO/scripts/pi/deploy_mesa_prefix.sh" "$PI_SHA_DIR/mesa/prefix" 2>&1)"; then
+    if ! MESA_DEPLOY="$(bash "$REPO/scripts/pi/deploy_mesa_prefix.sh" "$PI_INPUTS/mesa-prefix" 2>&1)"; then
         say "the shipped Mesa prefix would not deploy: $MESA_DEPLOY"
         exit 68
     fi
@@ -336,7 +369,7 @@ fi
     echo "mesa_deploy=$MESA_DEPLOY"
     echo "pi_copy_sha256=$(pi_remote "sha256sum '$PI_BIN' | cut -d' ' -f1" </dev/null)"
     echo "pi_getcap=$(pi_remote "getcap '$PI_BIN'" </dev/null)"
-    echo "published_getcap=$(pi_remote "getcap '$PI_SHA_DIR/bin/willeq'; echo rc=\$?" </dev/null | tr '\n' ' ')"
+    echo "published_getcap=$(getcap "$PI_SHA_DIR/bin/willeq")"
     echo "pi_tmp_mount=$(pi_remote "findmnt -no OPTIONS /tmp" </dev/null)"
     echo "pi_rmem=$(pi_remote "sysctl -n net.core.rmem_max net.core.rmem_default" </dev/null | tr '\n' ' ')"
     echo "pi_kernel=$(pi_remote "uname -r" </dev/null)"
@@ -375,7 +408,7 @@ fail_row() {  # fail_row <tsv> <zone> <attempt> <signature>
     dir="$LOGS/$2"; [ "$3" = retry ] && dir="$LOGS/${2}_retry"
     python3 "$REPO/scripts/pi/rendered_zone_summarize.py" --run "$dir" \
         --zone "$2" --attempt "$3" --tsv "$1" --expansion "${meta%%	*}" --s3d-bytes "${meta##*	}" \
-        --preset-signature "$4" --expect-mesa "$MESA" --mesa-prefix "$MESA_NOLLVM_PI_PREFIX" 2>&1 | tee -a "$RIG_LOG" >&2
+        --preset-signature "$4" --expect-mesa "$MESA" --mesa-prefix "$MESA_NOLLVM_PI_PREFIX" "${FINAL_VISIT_ARGS[@]}" 2>&1 | tee -a "$RIG_LOG" >&2
 }
 run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     local z="$1" attempt="$2" tsv="$3" meta exp s3d dir pidir before after rc
@@ -398,23 +431,29 @@ run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
     # scan, so it starts first; it plays its sequence after the ready point
     # and removes itself at the client's shutdown point (or its cap).
     local drive=""
-    [ "$DRIVE_KEYS" -eq 1 ] && drive="sudo -n python3 '$REPO/scripts/pi/uinput_drive.py' --client-log '$pidir/client.log' \
+    [ "$DRIVE_KEYS" -eq 1 ] && drive="sudo -n python3 '$PI_RUNNER/uinput_drive.py' --client-log '$pidir/client.log' \
 --events '$pidir/keys.tsv' --cap $CAP_S > '$pidir/keys.out' 2>&1 & sleep 2; "
     # shellcheck disable=SC2086
     local remote="rm -rf '$pidir' && rm -f '$PI_BIN_DIR/gem_owners.tsv' '$PI_BIN_DIR/bo_events.log' && \
 mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && ${drive}\
-env TZ=UTC WILLEQ_DATA_ROOT='$PI_SHA_DIR' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTRA_ENV \
-python3 '$REPO/scripts/pi/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} ${STOP_POINT:+--stop-point $STOP_POINT} $([ "$OWN_CGROUP" -eq 1 ] && echo --own-cgroup) -- \
-$GEM_CENSUS_ENV '$PI_BIN' -c '$CFG' --drm --renderer gles2 --constrained orangepi -r $RES \
---eqe1-path '$PI_EQE1' --log-level=INFO --script '$TOUR' \
+env TZ=UTC WILLEQ_DATA_ROOT='$PI_DATA' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTRA_ENV \
+python3 '$PI_RUNNER/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} ${STOP_POINT:+--stop-point $STOP_POINT} $([ "$OWN_CGROUP" -eq 1 ] && echo --own-cgroup) -- \
+$GEM_CENSUS_ENV '$PI_BIN' -c '$PI_INPUTS/client.json' --drm --renderer gles2 --constrained orangepi -r $RES \
+--eqe1-path '$PI_EQE1' --log-level=INFO --script '$PI_INPUTS/tour.txt' \
 --dump-frames-dir '$pidir/frames' --dump-every $DUMP_EVERY --dump-max-frames $DUMP_MAX \
-> '$pidir/runner.out' 2>&1; cp -rp '$pidir/.' '$dir/'; \
-cp '$PI_BIN_DIR/gem_owners.tsv' '$PI_BIN_DIR/bo_events.log' '$dir/' 2>/dev/null; rm -f '$PI_BIN_DIR/gem_owners.tsv' '$PI_BIN_DIR/bo_events.log'; \
-sudo -n pkill -TERM -f '[u]input_drive[.]py' >/dev/null 2>&1; sleep 1; cp '$pidir/keys.tsv' '$pidir/keys.out' '$dir/' 2>/dev/null; \
-sudo -n rm -rf '$pidir'; true"
+> '$pidir/runner.out' 2>&1; runner_rc=\$?; \
+cp '$PI_BIN_DIR/gem_owners.tsv' '$PI_BIN_DIR/bo_events.log' '$pidir/' 2>/dev/null; rm -f '$PI_BIN_DIR/gem_owners.tsv' '$PI_BIN_DIR/bo_events.log'; \
+sudo -n pkill -TERM -f '[u]input_drive[.]py' >/dev/null 2>&1; sleep 1; exit \$runner_rc"
+    PI_EVIDENCE_PENDING=1
     timeout $((CAP_S + 120)) bash -c 'source "$1"; pi_remote "$2" </dev/null' _ "$REPO/scripts/pi/env.sh" "$remote"
     rc=$?
     [ "$rc" -eq 0 ] || { say "WARN: the Pi leg returned $rc (ssh/timeout) -- killing any leftover client"; pi_kill_client; }
+    if ! rsync -a -e "ssh $PI_SSH_OPTS" "${PI_USER}@${PI_HOST}:$pidir/" "$dir/"; then
+        say "failed to retrieve Pi evidence for $z"
+        exit 68  # stop before a retry can overwrite the unretrieved run
+    fi
+    PI_EVIDENCE_PENDING=0
+    pi_remote "sudo -n rm -rf '$pidir'" </dev/null
     after="$(dmesg_count)"
     : > "$dir/dmesg_oom.txt"
     if [ -n "$after" ] && [ -n "$before" ] && [ "$after" -gt "$before" ]; then
@@ -423,7 +462,7 @@ sudo -n rm -rf '$pidir'; true"
     fi
     python3 "$REPO/scripts/pi/rendered_zone_summarize.py" --run "$dir" --zone "$z" --attempt "$attempt" \
         --expansion "$exp" --s3d-bytes "$s3d" --dmesg "$dir/dmesg_oom.txt" --tsv "$tsv" \
-        --expect-mesa "$MESA" --mesa-prefix "$MESA_NOLLVM_PI_PREFIX" 2>&1 | tee -a "$RIG_LOG" >&2
+        --expect-mesa "$MESA" --mesa-prefix "$MESA_NOLLVM_PI_PREFIX" "${FINAL_VISIT_ARGS[@]}" 2>&1 | tee -a "$RIG_LOG" >&2
     local mcheck
     mcheck="$(awk -F'\t' 'NR==1 {for (i=1;i<=NF;i++) if ($i=="mesa_check") c=i; next} END {if (c) print $c}' "$tsv")"
     if [ "${mcheck#mismatch}" != "$mcheck" ]; then

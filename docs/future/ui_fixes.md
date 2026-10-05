@@ -113,6 +113,24 @@ Compare: 85-3,000 draw calls today → **2-5 draw calls** with batched atlas ren
 
 ### Chunk 2: Bitmap Font Atlas + Batched Text Renderer
 
+**Status (B975, 2026-10-05): the ENTITY NAME-TAG half is implemented a
+different way and MERGED (MR !73, fable `ee538d2c`, 2026-10-05; #293 closed).**
+Its Pi CPU acceptance and independent cumulative QA (run 284) passed under
+B986's then-default `nobocache`; B988 made Lima's BO cache the default again
+the same day. Measurements, evidence links, preserved failures and Not
+verified limits are in the "Current state" and "Not verified" sections of
+[B975's README](../../refactor/B975/README.md).
+`include/client/graphics/name_tag_batch.h` /
+`src/client/graphics/name_tag_batch.cpp` (GitLab #293): every entity name tag
+is drawn by ONE `NameTagBatchNode` in the transparent pass (one draw
+call per batchable run, with longer runs split at the index limit and
+fallback glyphs splitting runs; compact 80 B/quad vertices on the GLES2 driver,
+one proj x view per frame), keeping the `ITextSceneNode` interface and the
+`CTextSceneNode` registration condition so visibility and B964's impostor
+re-registration are unchanged; `WILLEQ_NAMETAG_BATCH=0` is the per-node A/B.
+The glyph layout is the shared `BitmapGlyphTable` (moved out of `TextBatch`
+for this). The chat/UI-label half of the chunk is open.
+
 **Goal**: Replace Irrlicht's per-string `Font->draw()` with a single-draw-call batched text renderer.
 
 **Scope**:

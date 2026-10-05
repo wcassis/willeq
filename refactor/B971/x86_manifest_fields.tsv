@@ -1,0 +1,11 @@
+zone	field	old	new
+qeynos2	memory.textureCacheBytesLimit	67108864	22020096
+qeynos2	blessedUnder.glVersion	OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.2	OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.4
+gfaydark	memory.textureCacheBytesLimit	67108864	22020096
+gfaydark	blessedUnder.glVersion	OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.2	OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.4
+befallen	memory.textureCacheBytesLimit	67108864	22020096
+befallen	blessedUnder.glVersion	OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.2	OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.4
+iceclad	memory.textureCacheBytesLimit	67108864	22020096
+iceclad	blessedUnder.glVersion	OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.2	OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.4
+timorous	memory.textureCacheBytesLimit	67108864	22020096
+timorous	blessedUnder.glVersion	OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.2	OpenGL ES 3.2 Mesa 25.2.8-0ubuntu0.24.04.4

@@ -596,6 +596,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_render.cpp
         src/client/graphics/frame/renderer_frame_preferences.cpp
         src/client/graphics/frame/renderer_frame_options.cpp
+        src/client/graphics/frame/renderer_frame_entity_build.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
         src/client/graphics/zone_shader.cpp
@@ -615,6 +616,9 @@ IF(EQT_GRAPHICS)
         src/client/graphics/impostor/impostor_policy.cpp
         src/client/graphics/impostor/impostor_cache.cpp
         src/client/graphics/impostor/impostor_batch_node.cpp
+        # B975: entity name tags, one batched draw for all of them.
+        src/client/graphics/entity_name_tags.cpp
+        src/client/graphics/name_tag_batch.cpp
         src/client/graphics/entity_interpolation.cpp
         src/client/graphics/entity_lifecycle.cpp
         src/client/graphics/entity_castbars.cpp
@@ -652,6 +656,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/sky_renderer_colors.cpp
         src/client/graphics/constrained_renderer_config.cpp
         src/client/graphics/frame_budget_governor.cpp
+        src/client/graphics/entity_build_scheduler.cpp
         src/client/graphics/texture_atlas.cpp
         src/client/graphics/eqe1_loader.cpp
     src/client/graphics/eqe1_texture_index.cpp
@@ -678,6 +683,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/static_panels.cpp
         src/client/graphics/ui/chat_wrap_cache.cpp
         src/client/graphics/ui/ui_quad_batch.cpp
+        src/client/graphics/ui/bitmap_glyph_table.cpp
         src/client/graphics/ui/loot_panel.cpp
         src/client/graphics/ui/tradeskill_panel.cpp
         src/client/graphics/ui/tradeskill_recipe_list.cpp
@@ -948,6 +954,14 @@ ENDIF()
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(ui_panel_capture tools/hwcaps/ui_panel_capture.cpp)
     TARGET_LINK_LIBRARIES(ui_panel_capture willeq_core ${LINK_LIBS})
+ENDIF()
+
+# B975 (GitLab #293): the name-tag cost breakdown and the batched path against
+# the per-node CTextSceneNodes -- frame times and a per-pixel diff of fixed
+# poses, on x86 and (--drm) the Orange Pi.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(nametag_drawcost tools/hwcaps/nametag_drawcost.cpp)
+    TARGET_LINK_LIBRARIES(nametag_drawcost willeq_core ${LINK_LIBS})
 ENDIF()
 
 # T485 (boards B588/B724/B725): renders every proper signed permutation of the

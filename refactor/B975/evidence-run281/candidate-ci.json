@@ -1,0 +1,48 @@
+{
+  "pipeline": {
+    "id": 495,
+    "sha": "850b679c6974a5dccf08cea93c063459efa91d89",
+    "status": "success",
+    "web_url": "https://gitlab.goldfarm.local/willeq/willeq/-/pipelines/495"
+  },
+  "jobs": [
+    {
+      "id": 2390,
+      "name": "build-arm",
+      "status": "success"
+    },
+    {
+      "id": 2389,
+      "name": "gate",
+      "status": "success"
+    },
+    {
+      "id": 2388,
+      "name": "client-ledger-live",
+      "status": "manual"
+    },
+    {
+      "id": 2387,
+      "name": "test",
+      "status": "success"
+    },
+    {
+      "id": 2386,
+      "name": "build",
+      "status": "success"
+    },
+    {
+      "id": 2385,
+      "name": "hygiene",
+      "status": "success"
+    }
+  ],
+  "merge_request": {
+    "iid": 73,
+    "sha": "850b679c6974a5dccf08cea93c063459efa91d89",
+    "draft": true,
+    "source_branch": "task/B975-name-tag-batch",
+    "target_branch": "fable",
+    "web_url": "https://gitlab.goldfarm.local/willeq/willeq/-/merge_requests/73"
+  }
+}

@@ -284,8 +284,11 @@ it without taking that measurement first.
   **FIXED by B955** (`task/B955-gpu-buffer-ledger`, closes on merge): the
   `gpu_buffers` row (`include/client/core/gpu_buffer_census.h`, the `[memgpu]`
   line, `gpuBuffers` in the JSON) reads the client's GEM pages from its own
-  memory cgroup (the Pi rigs launch it in one); `owned_plus_gpu_buffers` is
-  printed beside `owned` for Will's ruling, asserted nowhere. Pi
+  memory cgroup (the Pi rigs launch it in one). B978 folded the row into the
+  64 MB target: `owned` = RssAnon − gpu_driver + gpu_buffers (added only when
+  the row is OUTSIDE RssAnon), and the `[memgpu]` line now ends
+  `owned_rss_anon=<RssAnon-gpu_driver> owned=<B>` (the separate
+  `owned_plus_gpu_buffers=` field is gone, its absence pinned by the tests). Pi
   `steady_60s`: qeynos2 36.98 / gfaydark 35.77 / growthplane 25.12 MiB; the
   impostor proof sees +15.35 MiB for B952's 200 at 128. `refactor/B955/README.md`.
 - **B961** (A) → issue #279. The scanout framebuffers (CMA on the display
@@ -304,38 +307,107 @@ it without taking that measurement first.
 - **B971** (C) → issue #289. The window surface's D24S8 depth/stencil is
   3.52 MiB of GEM at 1280x720; its only stencil user (`/portal`) is off on the
   orangepi preset. 16-bit depth changes pixels: Will's call. Measured by B962.
-- **B967** (C) → issue #285. The player light is quantized at large world
-  coordinates on BOTH GPUs: the mediump `vWorldPos` varying. The goldens carry
-  it. Fix: pLv in the VS, plus a re-bless. Measured by B965.
-  - B969 measured the fix on the gate. It moves all 15 x86 goldens: >32 px
-    only in iceclad_f2 (546) and timorous_f2 (16,085).
-  - It takes timorous_f2 Pi vs x86 from 3,175 to 11 px. B969 is the Pi half
-    of this item.
-- **B968** (C) → issue #286. Past 64 units the player light gets brighter with
-  distance on a surface that faces it: the LUT's `1/d` clamps at 1/64, so
-  pLn = d/64. Both GPUs; in the goldens. Measured by B965.
-- **B969** (A, blocked on B967) → issue #287. timorous_f2: 3,175 px >32, Pi
-  vs the x86 golden. The cause is ISOLATED, but no x86-invariant fix exists.
-  - The "polygon edges" are B967's FP16 step lines of the interpolated
-    `vWorldPos` (8 units in x, 4 in z at this pose).
-  - Lima's varying interpolation puts each rounding boundary a few px off
-    llvmpipe's: the Pi's x is exactly ±8 units off at 3,173 of the pixels.
-  - B967's pLv-in-the-VS fix takes Pi vs x86 to 11 px, but moves every x86
-    golden. It closes with B967's re-bless.
-  - `refactor/B969/README.md`.
-- **B973** (A) → issue #291. Post-load entity builds are Green-gated
+  **FIXED** (MR !84, head de31969c, pipeline #510 green; `refactor/B971/README.md`):
+  the surface follows `enableStencilBuffer` end to end (preset + shipped JSON
+  false → D16/no-stencil; device `eglChooseConfig` driven by
+  `params.Stencilbuffer`, all three x86 sites + the ARM DRM device); a
+  one-way invariant in `loadJsonOverrides()` (portal occlusion on ⇒ stencil
+  on, the only stencil user) keeps `/portal` ON on D24S8; the benchmark
+  mirrors production's surface request. Will approved the x86 goldens in chat
+  2026-10-05 (re-blessed per his 2026-10-01 ruling; run1 vs run2 0 px; VM mesa
+  24.04.2→24.04.4 isolated with a D24S8-on-.4 baseline build — 0 px). Pi:
+  sweep 1/1 pass (nollvm, snapshot byte-identical); the surface REQUESTS
+  D16/no-stencil (`EGL: Config depth=24 stencil=0` — stencil honored) but the
+  Mesa 25.2.8/Lima config set offers no 16-bit depth window config, so
+  `logical_depth_stencil` stays 3,686,400 B on the Pi and the ~1.76 MiB saving
+  is not claimed there; gate poses vs B967 Pi frames: 0 px in all 15 (stencil
+  drop is pixel-inert on Lima's shared 32-bit word). ARM benchmark now
+  published by `publish_arm_build.sh`; runner `scripts/b971/run_gate_poses.sh`.
+- ~~**B967** (C) → issue #285. The player light is quantized at large world
+  coordinates on BOTH GPUs: the mediump `vWorldPos` varying.~~ **FIXED**
+  (`refactor/B967/README.md`, MR !74 **merged into fable `2c7d5be4`
+  2026-10-02**; `202df783` + `98846a79`): the player-light
+  vector is formed in the VS (FP32, pre-scaled 1/64) and the FS is branchless
+  with an attenuation LUT indexed linearly in d (B968's formula, light 0 from R
+  on). Will, 2026-10-01: "I agree, re-bless the 15 goldens" -- done, manifest
+  approval block only. Pi vs new x86 goldens: 13 of 15 frames in the tens
+  (timorous_f2 3,175 -> 15, iceclad_f2 335 -> 6); the gfaydark residual
+  (409/55/162 px >32, present with the player light OFF too) is not the player
+  light and cause not isolated -- filed as B980.
+- ~~**B968** (C) → issue #286. Past 64 units the player light gets brighter with
+  distance on a surface that faces it.~~ **FIXED** with B967 (MR !74, merged
+  into fable `2c7d5be4` 2026-10-02): the LUT
+  now carries the per-vertex zone-light term `A(d) = 1/(c + l*d + q*d^2)` over
+  d in [64, R], R = the d where the denominator = 255 (lightstone 9: R = 336.38);
+  the light is 0 from R on by construction.
+- ~~**B969** (A, blocked on B967) → issue #287. timorous_f2: 3,175 px >32, Pi vs
+  the x86 golden.~~ **CLOSED** with B967's re-bless (MR !74, merged into fable
+  `2c7d5be4` 2026-10-02): pLv-in-the-VS takes
+  timorous_f2 to 15 px >32 (bar met: tens). The FP16 step lines were B967's
+  interpolated `vWorldPos`; `refactor/B969/README.md` has the isolation.
+- **B980** (A) → issue #299. gfaydark gate
+  frames differ Pi vs x86 by 409 / 55 / 162 px >32 (f0/f1/f2) with the player
+  light ON -- and f0 and f2 are EQUAL to B960's player-light-OFF counts
+  (409/54/162), so this is not the player light. Cause not isolated. Measured
+  by B967 (`review/B967/pi/gate/gfaydark_after/`, `arm_bin/before_d3375b65`).
+- ~~**B973** (A) → issue #291. Post-load entity builds are Green-gated
   (`FrameComponent::processFrame`, "1 unit per GREEN frame";
   `EntityRenderer::processOneEntityBuildStep`), and the Pi is rarely Green in
   a populated zone: a crowd spawned after zone-in stays placeholder cubes (0 of
   200 GM-spawned NPCs built in 4 min, qeynos2 1280x720; 28 of 200 at
   800x600). A zone reload builds them. Measured by B964
-  (`review/B964/pi/crowd/`).
+  (`review/B964/pi/crowd/`).~~ **FIXED** (MR !72, `refactor/B973/README.md`):
+  the `EntityBuildScheduler` — the first unit always runs in every governor
+  state, further units within the state's slice (Green 20 % / Yellow 12 % /
+  Red 6 % of the target frame), texture uploads their own one-texture units,
+  create folds NodeSetup (B966); Pi new200 182/200 built (legacy 1/200),
+  backlog drained 0.7 s after the last spawn. Follow-ups: #301 (B982),
+  #302 (B983), #303 (B984).
 
 ## B — implemented-but-unreached, and hygiene needing a code change
+
+- **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
+  (off by default) and fix the stale docs". A DRM client now leaves
+  `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
+  restores B986's `nobocache`; renderer init logs the effective policy.
+  Same-binary Pi A/B: `/mnt/projects/fable/review/CODEX-AUDIT-1005/README.md`.
+  Expected consequence, guard unchanged: the 10 MiB unnamed-GPU guard reads
+  red again on the crowd/zone-hop tours until B972 (#290) lands
+  (`refactor/B986_pi_gpu_guard.md`, superseded section). Branch
+  `task/B988-lima-bocache-opt-in`, in review.
+- ~~**B986** (B) → issue #305. The Pi unnamed-GPU guard failure was attributed
+  to Lima BO-cache retention and fixed by configuring the DRM client before
+  device creation.~~ **MERGED** with B975 (MR !73, fable `ee538d2c`,
+  2026-10-05). Its always-on `nobocache` default is **superseded by B988**
+  (opt-in; `refactor/B986_pi_gpu_guard.md`).
+- ~~**B975** (B) — Entity name tags → issue #293, MR !73.~~ **MERGED** (MR !73,
+  fable `ee538d2c`, 2026-10-05; #293 closed). Compact glyph runs, bounded
+  reusable GPU input storage and cached atlas coordinates; final head
+  `bcf5335f`, QA run 284 PASS. Its Pi CPU acceptance (1914 / 1955 us) was
+  measured with `nobocache`; under B988's default the tool is not re-measured
+  at the final head (`refactor/B975/README.md`, Not verified).
+- **B987** (B) → issue #306. A crowd tour can end before the final visit's
+  rendered readiness and steady-state window (B975 QA run 283). MR !82
+  (`task/B987-crowd-readiness`) is OPEN; its QA FAILED on `--cap` validation and
+  a repair is pending.
+- ~~**B985** (B) → issue #304. `scripts/pi_rendered_zone_sweep.sh` cannot run
+  from a host whose checkout and `--out` are not NFS-mounted by the Pi.~~
+  **FIXED in code, merged with MR !73** (fable `ee538d2c`, 2026-10-05): the
+  sweep now rsyncs the runner scripts, config, tour, data and binary to
+  `$PI_BIN_DIR/inputs` on the Pi and rsyncs each run dir back
+  (`scripts/pi_rendered_zone_sweep.sh`, "stage the capable client on the Pi"
+  and `run_one`). GitLab #304 is still OPEN with no status label.
 
 - **B976** (B) → issue #294. In timorous_f2, `--shader-debug 5` shows the
   bottom plane's normal as +Y on llvmpipe and G=0 on Lima, so the player light
   lights it on x86 only. It is nearly black in the gate frame. Found by B969.
+
+- **B981** (B) → issue #300. `tests/goldens/manifest.json`'s
+  `memory.textureCacheBytesLimit` is 67,108,864 (64 MiB) in all five gate zones;
+  live it is 53,477,376 (51 MiB) since B943's 2026-09-30 ratchet. Display-only,
+  never asserted; the gate passes with it stale. Will's 2026-10-01 re-bless
+  ruling covered the 15 goldens and the approval block only, so the B967 unit
+  left it unchanged and filed it. Bless-or-document is Will's call.
 
 - ~~**B005** (B) the `UCSConnection` TU and header (under `src/client/` and
   `include/client/`, basename `ucs`) — 413 lines of live-looking code with zero
@@ -659,16 +731,36 @@ it without taking that measurement first.
   default-initialised, **zero references anywhere**.~~ **CLOSED by K15**:
   re-measured at `7c125b28`, still zero references; deleted. Prov: K01 Review.
 
-- **B948** (B) → issue #266. `gpuTextureBytes` counts every ETC1 alpha chain
-  twice: `uploadCompressedETC1()` wraps the main texture with main+alpha bytes
-  and the `_alpha` companion with the alpha bytes again. Moves a gated number
-  down only when fixed. Confirmed by B944 (code reading; the census's EQE1
-  `gpuTextureBytes` exceeds `textureCacheBytesUsed`).
-- **B949** (B) → issue #267. The texture cache's LRU is touched on lookup and
+- **B948** (B) → issue #266, **in review** (`refactor/B948/README.md`).
+  `gpuTextureBytes` counted every ETC1 alpha chain twice:
+  `uploadCompressedETC1()` wrapped the main texture with main+alpha bytes
+  and the `_alpha` companion with the alpha bytes again. Fixed: the main
+  texture is now wrapped with the main chain only (the cache entry's
+  `sizeBytes` stays main+alpha, and the B944 restore re-adopts the split).
+  `gpuTextureBytes` moves DOWN only: coverage run per zone −87,432 …
+  −1,399,528 B (qeynos2 9,322,992 → 8,973,400), `textureCacheBytesUsed`
+  byte-identical; no gate baseline carries the field (re-checked), so no
+  blessed number moved. Repeatable:
+  `tests/test_texture_etc1_alpha_count.cpp` (driver figure = main + alpha
+  once each, through the B944 eviction/restore round trip; a no-alpha
+  control).
+- ~~**B949** (B) → issue #267. The texture cache's LRU is touched on lookup and
   restore, never on draw, so eviction order is load order and an on-screen
   texture can be evicted first and restored on its next bind (thrash;
   performance, secondary). Measured by B944: 85 evictions / 21 restores on the
-  qeynos2 golden run at 20 MiB.
+  qeynos2 golden run at 20 MiB.~~ **DONE 2026-10-03** (branch
+  `task/B949-texture-lru-draw-order`, issue #267, `refactor/B949/README.md`).
+  A cheap per-frame "used" stamp on bind (`COpenGLES2Driver::FrameCounter`
+  bumped in `beginScene()`, stamped into each texture by
+  `COGLES2Texture::markDrawn()` on the `getOpenGLTextureName()` bind accessor)
+  and one per-frame reorder (`ConstrainedTextureCache::endFrame()`, splice-based
+  so the per-entry `lruIterator`s stay valid) puts the LRU list in
+  least-recently-DRAWN order; equal stamps keep load/touch order. Same gate
+  invocation at 20 MiB: 85/21 → 84/20 evictions/restores, frames still
+  pixel-identical (0 differing pixels). Repeatable:
+  `tests/test_texture_lru_draw_order.cpp` (a texture bound every frame survives
+  load-pressure eviction; a no-draw control still evicts in load order). No
+  budget, golden or gate assertion changed.
 - **B950** (B) → issue #268. `ZoneMeshBuilder`'s layout depends on
   `EQT_HAS_TEXTURE_ATLAS`, a PRIVATE define of `willeq_core`;
   `tests/test_placed_object_meshes.cpp` constructs one without it (B944's own
@@ -751,13 +843,15 @@ it without taking that measurement first.
   - gfaydark 23,842 / 202 / 4,531 → 429 / 66 / 163;
   - iceclad 19,495 / 32,245 / 6,904 → 2 / 29 / 335.
 
-  The residual iceclad_f2 band edges are B967. Follow-ups: #285 (B967), #286
-  (B968), #287 (B969), #288 (B970).
-- **B966** (A, minor) → issue #284. A newly built entity draws one frame with
+  The residual iceclad_f2 band edges are B967, closed with the B967 re-bless
+  (MR !74). Follow-ups closed: #285 (B967), #286 (B968), #287 (B969); #288
+  (B970) closed separately; the gfaydark Pi residual is #299 (B980).
+- ~~**B966** (A, minor) → issue #284. A newly built entity draws one frame with
   unpromoted materials (driver built-in Solid3D / AlphaTest3D):
   `SceneNodeCreation` adds the node and `NodeSetup` promotes it a frame later
   (`entity_build_step.cpp`). Measured on the Pi: `a_whiskered_bat` in qeynos2.
-  Found by B960.
+  Found by B960.~~ **FIXED by B973** (MR !72): the create unit runs NodeSetup
+  in the same unit, so the node is never drawn with its raw materials.
 - **B970** (B) → issue #288. CI `build-arm` cannot build the ARM Irrlicht
   layer while downloads.sourceforge.net is down. `docker/Dockerfile.arm-noble`
   wgets the Irrlicht zip and libpng; HTTP 522 for all of B965's session (job
@@ -1054,7 +1148,10 @@ it without taking that measurement first.
   held at 32 MiB** on Will's word: its only Pi figure (25.7 MB) is a 2026-09-17
   qeynos2 reading that predates T504, and the rendered sweep had no classic
   zone. `textureMemoryBytes` is the real cache eviction ceiling, so that one is
-  a behaviour change; Pi behaviour under 51 MiB is unverified.
+  a behaviour change; Pi behaviour under 51 MiB was unverified here and is
+  verified by B978 (51 -> 21 MiB, #296): 0 placeholder / pinned / restore-fail
+  WARNs on Pi qeynos2 + gfaydark, the gate's qeynos2 run pixel-identical at a
+  20 MiB ceiling (B944) and 21 MiB (B978's local gate run).
 
 - ~~**B927** (B) Two of Will's 2026-09-29 rulings had not been applied: "bless
   iceclad and timorous" and "ratchet the zone_parse budget down".~~ **DONE
@@ -1149,10 +1246,19 @@ it without taking that measurement first.
      (readers in eight TUs, a camera-controller pointer, a frame-render
      golden); it no longer holds `spatial` over budget in the zones B909b
      measured.
-  3. **B923 (#242)** the gate cannot see any of this.
-     The benchmark builds neither collision copy, and it charges the occluder
-     table to `spatial` where the client charges it to `zone_mesh`. The
-     proposed net is `ClientLedgerLive` (label `live`, `tests/cmake/commands.cmake`).
+  3. ~~**B923 (#242)** the gate cannot see any of this.~~ **FIXED by B923**
+     (`refactor/B923/README.md`, branch `task/B923-client-only-owners-gate`):
+     the shared occluder table now takes ONE category, `spatial`, in both
+     loaders (the client's Step-4 charge moved off `zm.occluders`); the client's
+     own ledger is CI-visible via the manual `client-ledger-live` job and
+     `ClientLedgerLive` (label `live`), and `ClientLedgerBudgetCheck` (hygiene)
+     repeats the red contract with no server. Measured 2026-10-03 (x86,
+     llvmpipe, rendered client, iceclad/Velious, `WILLEQ_BASELINE=1`): client
+     `spatial` 4,605,600 / 4,194,304 (109.8 %) -- the client-only owners this
+     unit exposed (`sp.occluders` 2,777,568 + `sp.region_bounds` 1,717,168 +
+     rest, item 2 above). **Expected red on the client-side gate** until item 2
+     (`sp.region_bounds` flat-array, #229) lands; the job is `allow_failure`, so
+     it records the finding without blocking.
   4. **B924 (#243)** `gpu_driver` (llvmpipe) grows
      after `ready` by a different amount in each run, up to 325.5 MB at
      `steady_60s`. In one smoke run it reached 2.42 GB (about 0.9 MB per frame

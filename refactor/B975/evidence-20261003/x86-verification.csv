@@ -1,0 +1,9 @@
+zone,variant,exit_code,watchdog,final_zone,final_ready,final_steady,fatal_count,rss_anon_steady,gpu_driver_steady,owned_steady,source
+gfaydark,imp0,0,none,gfaydark,True,True,0,207638528,172626480,35012048,x86-crowd/gfaydark/imp0/client.log
+gfaydark,imp200far,0,none,gfaydark,True,True,0,1530167296,1442851840,87315456,x86-crowd/gfaydark/imp200far/client.log
+gfaydark,tagnode0,0,none,gfaydark,True,True,0,206102528,173188400,32914128,x86-crowd/gfaydark/tagnode0/client.log
+gfaydark,tagnode200far,0,none,gfaydark,True,True,0,1302102016,1188916288,113185728,x86-crowd/gfaydark/tagnode200far/client.log
+qeynos2,imp0,0,none,qeynos2,True,True,0,195489792,163029952,32459840,x86-crowd/qeynos2/imp0/client.log
+qeynos2,imp200far,0,none,qeynos2,True,True,0,2003611648,2014511520,0,x86-crowd/qeynos2/imp200far/client.log
+qeynos2,tagnode0,0,none,qeynos2,True,True,0,194170880,154689136,39481744,x86-crowd/qeynos2/tagnode0/client.log
+qeynos2,tagnode200far,0,none,qeynos2,True,True,0,1399779328,1398915744,863584,x86-crowd/qeynos2/tagnode200far/client.log
