@@ -1,0 +1,122 @@
+[
+  {
+    "phase": "living",
+    "different_frame_pixels": 17529,
+    "regions": [
+      {
+        "tag": "npc",
+        "xyxy": [
+          350,
+          213,
+          450,
+          234
+        ],
+        "rgb": [
+          255,
+          255,
+          255
+        ],
+        "batch_pixels": 73,
+        "pernode_pixels": 73,
+        "different_mask_pixels": 0
+      },
+      {
+        "tag": "player",
+        "xyxy": [
+          370,
+          275,
+          435,
+          294
+        ],
+        "rgb": [
+          100,
+          200,
+          255
+        ],
+        "batch_pixels": 45,
+        "pernode_pixels": 45,
+        "different_mask_pixels": 0
+      }
+    ]
+  },
+  {
+    "phase": "living-untargeted",
+    "different_frame_pixels": 28141,
+    "regions": [
+      {
+        "tag": "npc",
+        "xyxy": [
+          350,
+          213,
+          450,
+          234
+        ],
+        "rgb": [
+          255,
+          255,
+          255
+        ],
+        "batch_pixels": 73,
+        "pernode_pixels": 73,
+        "different_mask_pixels": 0
+      },
+      {
+        "tag": "player",
+        "xyxy": [
+          370,
+          275,
+          435,
+          294
+        ],
+        "rgb": [
+          100,
+          200,
+          255
+        ],
+        "batch_pixels": 56,
+        "pernode_pixels": 56,
+        "different_mask_pixels": 0
+      }
+    ]
+  },
+  {
+    "phase": "corpse",
+    "different_frame_pixels": 10547,
+    "regions": [
+      {
+        "tag": "npc",
+        "xyxy": [
+          350,
+          213,
+          450,
+          234
+        ],
+        "rgb": [
+          255,
+          255,
+          255
+        ],
+        "batch_pixels": 160,
+        "pernode_pixels": 160,
+        "different_mask_pixels": 0
+      },
+      {
+        "tag": "player",
+        "xyxy": [
+          370,
+          275,
+          435,
+          294
+        ],
+        "rgb": [
+          100,
+          200,
+          255
+        ],
+        "batch_pixels": 56,
+        "pernode_pixels": 56,
+        "different_mask_pixels": 0
+      }
+    ]
+  }
+]

@@ -1033,6 +1033,54 @@ void COpenGLES2Driver::draw2DImage(const video::ITexture* texture,
     if (!texture)
         return;
 
+    prepare2DImage(texture, clipRect, useAlphaChannelOfTexture);
+
+    SColor tint = colors ? colors[0] : SColor(255, 255, 255, 255);
+
+    // Compute UV coordinates from source rect and texture size
+    const core::dimension2d<u32>& texSize = texture->getOriginalSize();
+    f32 invW = 1.0f / (f32)texSize.Width;
+    f32 invH = 1.0f / (f32)texSize.Height;
+
+    f32 srcLeft = sourceRect.UpperLeftCorner.X * invW;
+    f32 srcTop = sourceRect.UpperLeftCorner.Y * invH;
+    f32 srcRight = sourceRect.LowerRightCorner.X * invW;
+    f32 srcBottom = sourceRect.LowerRightCorner.Y * invH;
+
+    f32 dstLeft = (f32)destRect.UpperLeftCorner.X;
+    f32 dstTop = (f32)destRect.UpperLeftCorner.Y;
+    f32 dstRight = (f32)destRect.LowerRightCorner.X;
+    f32 dstBottom = (f32)destRect.LowerRightCorner.Y;
+
+    f32 r = tint.getRed() / 255.0f;
+    f32 g = tint.getGreen() / 255.0f;
+    f32 b = tint.getBlue() / 255.0f;
+    f32 a = tint.getAlpha() / 255.0f;
+
+    f32 vertices[4 * 9] = {
+        dstLeft,  dstTop,    0.0f, r, g, b, a, srcLeft,  srcTop,
+        dstRight, dstTop,    0.0f, r, g, b, a, srcRight, srcTop,
+        dstRight, dstBottom, 0.0f, r, g, b, a, srcRight, srcBottom,
+        dstLeft,  dstBottom, 0.0f, r, g, b, a, srcLeft,  srcBottom
+    };
+    u16 indices[] = { 0, 1, 2, 0, 2, 3 };
+    glVertexAttribPointer(EOGLES2VA_POSITION, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(f32), vertices);
+    glEnableVertexAttribArray(EOGLES2VA_POSITION);
+    glVertexAttribPointer(EOGLES2VA_COLOR, 4, GL_FLOAT, GL_FALSE, 9 * sizeof(f32), vertices + 3);
+    glEnableVertexAttribArray(EOGLES2VA_COLOR);
+    glVertexAttribPointer(EOGLES2VA_TEXCOORD0, 2, GL_FLOAT, GL_FALSE, 9 * sizeof(f32), vertices + 7);
+    glEnableVertexAttribArray(EOGLES2VA_TEXCOORD0);
+    glDisableVertexAttribArray(EOGLES2VA_NORMAL);
+    glDisableVertexAttribArray(EOGLES2VA_TEXCOORD1);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
+    setScissorFromClip(nullptr);
+}
+
+void COpenGLES2Driver::prepare2DImage(const video::ITexture* texture,
+                                     const core::rect<s32>* clipRect,
+                                     bool useAlphaChannelOfTexture)
+{
+
     setOrthoProjection();
     setScissorFromClip(clipRect);
 
@@ -1065,50 +1113,6 @@ void COpenGLES2Driver::draw2DImage(const video::ITexture* texture,
     if (u.uAlphaTexture >= 0)
         glUniform1i(u.uAlphaTexture, 1);
 
-    SColor tint = colors ? colors[0] : SColor(255, 255, 255, 255);
-
-    // Compute UV coordinates from source rect and texture size
-    const core::dimension2d<u32>& texSize = texture->getOriginalSize();
-    f32 invW = 1.0f / (f32)texSize.Width;
-    f32 invH = 1.0f / (f32)texSize.Height;
-
-    f32 srcLeft = sourceRect.UpperLeftCorner.X * invW;
-    f32 srcTop = sourceRect.UpperLeftCorner.Y * invH;
-    f32 srcRight = sourceRect.LowerRightCorner.X * invW;
-    f32 srcBottom = sourceRect.LowerRightCorner.Y * invH;
-
-    f32 dstLeft = (f32)destRect.UpperLeftCorner.X;
-    f32 dstTop = (f32)destRect.UpperLeftCorner.Y;
-    f32 dstRight = (f32)destRect.LowerRightCorner.X;
-    f32 dstBottom = (f32)destRect.LowerRightCorner.Y;
-
-    f32 r = tint.getRed() / 255.0f;
-    f32 g = tint.getGreen() / 255.0f;
-    f32 b = tint.getBlue() / 255.0f;
-    f32 a = tint.getAlpha() / 255.0f;
-
-    // Vertex layout: x, y, z, r, g, b, a, u, v (9 floats per vertex)
-    f32 vertices[4 * 9] = {
-        dstLeft,  dstTop,    0.0f, r, g, b, a, srcLeft,  srcTop,
-        dstRight, dstTop,    0.0f, r, g, b, a, srcRight, srcTop,
-        dstRight, dstBottom, 0.0f, r, g, b, a, srcRight, srcBottom,
-        dstLeft,  dstBottom, 0.0f, r, g, b, a, srcLeft,  srcBottom
-    };
-
-    u16 indices[] = { 0, 1, 2, 0, 2, 3 };
-
-    glVertexAttribPointer(EOGLES2VA_POSITION, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(f32), vertices);
-    glEnableVertexAttribArray(EOGLES2VA_POSITION);
-    glVertexAttribPointer(EOGLES2VA_COLOR, 4, GL_FLOAT, GL_FALSE, 9 * sizeof(f32), vertices + 3);
-    glEnableVertexAttribArray(EOGLES2VA_COLOR);
-    glVertexAttribPointer(EOGLES2VA_TEXCOORD0, 2, GL_FLOAT, GL_FALSE, 9 * sizeof(f32), vertices + 7);
-    glEnableVertexAttribArray(EOGLES2VA_TEXCOORD0);
-    glDisableVertexAttribArray(EOGLES2VA_NORMAL);
-    glDisableVertexAttribArray(EOGLES2VA_TEXCOORD1);
-
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, indices);
-
-    setScissorFromClip(nullptr);
 }
 
 void COpenGLES2Driver::draw2DImageBatch(const video::ITexture* texture,
@@ -2269,7 +2273,7 @@ void COpenGLES2Driver::deleteAllHardwareBuffers()
 
 size_t COpenGLES2Driver::getHWBufferMemoryUsage() const
 {
-    size_t total = 0;
+    size_t total = rawBufferBytes_;
     for (const auto& [mb, hwb] : HWBufferMap) {
         // Vertex data size
         GLsizei stride;
@@ -2497,6 +2501,17 @@ void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,
     d->registerExternalHWBuffer(mb, (GLuint)vbo, (GLuint)ebo,
                                  (irr::u32)vertexCount, (irr::u32)indexCount,
                                  static_cast<irr::video::E_VERTEX_TYPE>(vertexType));
+}
+
+void gles2Prepare2DImageRun(void* driver, void* texture)
+{
+    static_cast<irr::video::COpenGLES2Driver*>(driver)->prepare2DImage(
+        static_cast<irr::video::ITexture*>(texture), nullptr, true);
+}
+
+void gles2AdjustRawBufferBytes(void* driver, ptrdiff_t delta)
+{
+    static_cast<irr::video::COpenGLES2Driver*>(driver)->adjustRawBufferBytes(delta);
 }
 
 #endif // _IRR_COMPILE_WITH_OGLES2_

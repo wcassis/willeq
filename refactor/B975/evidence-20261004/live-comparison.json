@@ -1,0 +1,82 @@
+[
+  {
+    "phase": "living",
+    "different_frame_pixels": 13559,
+    "regions": [
+      {
+        "tag": "npc",
+        "xyxy": [
+          350,
+          213,
+          450,
+          234
+        ],
+        "rgb": [
+          255,
+          255,
+          255
+        ],
+        "batch_pixels": 73,
+        "pernode_pixels": 73,
+        "different_mask_pixels": 0
+      },
+      {
+        "tag": "player",
+        "xyxy": [
+          370,
+          275,
+          435,
+          294
+        ],
+        "rgb": [
+          100,
+          200,
+          255
+        ],
+        "batch_pixels": 49,
+        "pernode_pixels": 45,
+        "different_mask_pixels": 6
+      }
+    ]
+  },
+  {
+    "phase": "corpse",
+    "different_frame_pixels": 6530,
+    "regions": [
+      {
+        "tag": "npc",
+        "xyxy": [
+          350,
+          213,
+          450,
+          234
+        ],
+        "rgb": [
+          255,
+          255,
+          255
+        ],
+        "batch_pixels": 160,
+        "pernode_pixels": 160,
+        "different_mask_pixels": 0
+      },
+      {
+        "tag": "player",
+        "xyxy": [
+          370,
+          275,
+          435,
+          294
+        ],
+        "rgb": [
+          100,
+          200,
+          255
+        ],
+        "batch_pixels": 56,
+        "pernode_pixels": 56,
+        "different_mask_pixels": 0
+      }
+    ]
+  }
+]

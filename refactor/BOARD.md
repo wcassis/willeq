@@ -350,6 +350,24 @@ it without taking that measurement first.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
+- **B986** (B) → issue #305. The Pi unnamed-GPU guard failure was attributed
+  to Lima BO-cache retention and fixed by configuring the DRM client before
+  device creation. The reviewed fix is integrated into B975; its fresh
+  baseline matrix passes the unchanged memory guard with both renderers.
+  Evidence: `refactor/B986_pi_gpu_guard.md` and `refactor/B975/README.md`.
+  Awaiting review/merge; this does not establish B975's CPU acceptance.
+- **B975** (B) — Entity name tags → issue #293, non-draft MR !73. **Implemented and independent
+  cumulative QA passed; review pending, NOT merged.** Compact glyph runs,
+  bounded reusable GPU input storage and cached atlas coordinates passed the
+  final implementation retake and QA on `bcf5335ffa7bcdabddb6090b9469a564d6618015`.
+  The former candidate-only / QA-held status is superseded.
+  Final handoff, QA run 284, measurements and Not verified limits in
+  `refactor/B975/README.md` (Current state and Not verified sections)
+  distinguish final-head evidence from `refactor/B975/evidence-run281/`'s
+  historical candidate tables. All earlier failures, including QA run 283's
+  missing steady window, remain failures; run 284's bounded longer observation
+  passes unchanged guards. B987 / issue #306 remains separately queued harness
+  work. No budget/golden change, policy rollback or human visual approval.
 - **B985** (B) → issue #304. `scripts/pi_rendered_zone_sweep.sh` cannot run
   from a host whose checkout and `--out` are not NFS-mounted by the Pi: its
   runner invocation runs `python3 <checkout>/scripts/pi/rendered_zone_run.py` ON
@@ -359,6 +377,9 @@ it without taking that measurement first.
   2026-10-03 hermes-ext Pi re-run (the leg worked via a hand-staged copy of
   the repo's pieces on the Pi). Fix: stage the runner/config/tour on the Pi
   and rsync the run dir back when the lane is not the local one.
+  Implemented on B975's non-draft MR !73: explicit staging and retrieval also
+  work from hermes-ext; the transport smoke and subsequent real Pi runs
+  produced client logs, snapshots and rendered frames. Awaiting review/merge.
 
 - **B976** (B) → issue #294. In timorous_f2, `--shader-debug 5` shows the
   bottom plane's normal as +Y on llvmpipe and G=0 on Lima, so the player light

@@ -1,5 +1,6 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/gles2_shader_cache.h"
+#include "client/graphics/lima_buffer_policy.h"
 #include "client/core/memory_ledger.h"  // T504: startup owner labels
 #include "client/core/gem_owner_census.h"  // B962: GEM owner tags
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
@@ -414,6 +415,10 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     startupOwner("gfx.device");
     LOG_TRACE(MOD_GRAPHICS, "Creating Irrlicht device (createDeviceEx)...");
     eqt::ConfigureGles2ShaderCache();  // B959: cache dir via ResolveCachePathForWrite
+    if (!configureLimaBufferPolicy(config_.constrainedConfig.useDRM)) {
+        LOG_ERROR(MOD_GRAPHICS, "Failed to configure Lima GPU buffer retention policy");
+        return false;
+    }
     {
         // B962: the EGL surface (depth/stencil) and the main context's driver
         // buffers are created here -- name them for the GEM census shim.

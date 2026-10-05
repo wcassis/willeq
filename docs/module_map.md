@@ -315,6 +315,8 @@ Re-measure; do not quote a number from this paragraph.
 | src/client/graphics/text_batch.cpp | 249 | U01: `TextBatch` — the batched text renderer for UI and 3D name tags (`addText`/`addText3D`, flushed once per frame); since T462 its glyph runs go through `UiQuadBatch`. Header `include/client/graphics/text_batch.h` |
 | src/client/graphics/ui/ui_quad_batch.cpp | 178 | T462 (B506): `UiQuadBatch` — 2D quad runs as one GLES2 draw call, pixel-identical to the driver's per-quad calls (the run's first quad is drawn by the driver to establish state, the rest in one `glDrawElements`); non-GLES2 drivers get the per-quad calls. Header `include/client/graphics/ui/ui_quad_batch.h`; pinned pixel-for-pixel by `tests/test_static_ui_frame_cost.cpp` |
 | src/client/graphics/ui/chat_wrap_cache.cpp | 88 | T462 (B505): `ChatWrapCache` — the chat panel's word-wrap done on CHANGE (width, timestamp setting, buffer generation, appended messages), not every frame; `wrapChatText()` is the pre-T462 loop verbatim. Header `include/client/graphics/ui/chat_wrap_cache.h` |
+| src/client/graphics/name_tag_batch.cpp | — | B975 (GitLab #293): `NameTagNode` (the per-entity `ITextSceneNode`, hands itself to the batch under `CTextSceneNode`'s exact registration condition) + `NameTagBatchNode` (ONE node in the transparent pass, camera distance 0; sorts the tags far-to-near with the scene manager's own comparison, projects with the ONE proj x view product of the frame, draws every glyph through a compact 80 B/quad run — driver-owned 2D state setup without a bootstrap draw, one `glDrawElements` per run, split at the index limit, using bounded reusable VBO/EBO storage and a grow-once index prefix; non-GLES2 drivers keep the old `UiQuadBatch` per-quad path). `[nametags]` 5 s window row, owner row `ent.nametag_batch`. `WILLEQ_NAMETAG_BATCH=0` is the per-node A/B. Header `include/client/graphics/name_tag_batch.h`; `tools/hwcaps/nametag_drawcost.cpp` is the per-pose pixel + per-component cost net using the client's DRM Lima policy; `tests/test_name_tag_batch.cpp` pins pixel identity and the bounded-draw invariant and shorter-run/chunk reuse, GPU accounting and release. Measure size with `wc -l src/client/graphics/name_tag_batch.cpp` |
+| src/client/graphics/ui/bitmap_glyph_table.cpp | 60 | T462's (B506) glyph table of Irrlicht's built-in bitmap font, moved out of `TextBatch` by B975 (#293) so the entity name-tag batch and the static UI's `TextBatch` share ONE table. Header `include/client/graphics/ui/bitmap_glyph_table.h` |
 | src/client/graphics/eq/equipment_actor_geometry.cpp | 197 | T472 (B588): `resolveEquipmentActorGeometry()` — the geometry an equipment actor (IT###) draws, resolved through the WLD reference chain (0x14 → 0x11 → 0x10 skeleton, bone meshes at their rest transform, T476's skinned pieces) rather than by mesh-name prefix; T479 (held branch) also uses it for skeletal zone objects. Header `include/client/graphics/eq/equipment_actor_geometry.h`. **T485 (slot1) is editing this territory** |
 | include/client/graphics/gles2_vertex_color.h | 38 | T484 (B726), header-only: `gles2VertexColor()` writes an `SColor` whose stored bytes reach the GLES2 built-in shaders as R,G,B,A — the driver uploads `SColor`'s little-endian B,G,R,A unconverted (board B780). Used by the sky dome tint only; every other vertex-colour consumer still gets the swap. `tests/test_sky_dome_tint_channel_order.cpp` pins the driver convention and fails when it changes, at which point this helper goes |
 | src/client/graphics/renderer/software_cursor_texture.cpp | 28 | T460 (board B520): `AcquireSoftwareCursorTexture()`, the DRM/KMS software cursor's load + upload + `protectTexture()` -- the cursor is a process-lifetime UI asset and used to be evicted by zone unload's `clear()` and never reloaded. Called by `IrrlichtRenderer::createSoftwareCursor()`; **read AS TEXT by `tests/test_software_cursor_pack_name.cpp`** (the cache-name literal) |
@@ -444,7 +446,7 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (21 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
+`hygiene` (23 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
 reachability ratchet), T450's `DbReproducible`, T455's
@@ -491,7 +493,11 @@ capture-shaped fixture in the client's own [memledger] line format must pass
 at exit 0, turn red at exit 1 when a client-only owner's category exceeds its
 orangepi budget, and exit 3 for a run without a `steady_60s` point; budgets
 come from `config/constrained_presets.json`, never from the test; pure
-Python, no server, no display, no binary)
+Python, no server, no display, no binary), plus B975's `NameTagCrowdTiming`
+(`scripts/b975/test_frametiming_table.py`, excludes zone-hop warmup from
+idle timings) and `RenderedZoneFinalVisit`
+(`scripts/pi/test_rendered_zone_final_visit.py`, requires the final tour visit
+to reach the requested zone and steady state without borrowing earlier evidence)
 -- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two

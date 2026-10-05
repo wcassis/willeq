@@ -1,0 +1,9 @@
+zone,variant,status,rc,watchdog,final_ready,final_steady,source
+qeynos2,imp200far,pass,0,none,True,True,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/x86-crowd/qeynos2/imp200far/client.log
+qeynos2,tagnode200far,pass,0,none,True,True,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/x86-crowd/qeynos2/tagnode200far/client.log
+qeynos2,imp0,pass,0,none,True,True,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/x86-crowd/qeynos2/imp0/client.log
+qeynos2,tagnode0,pass,0,none,True,True,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/x86-crowd/qeynos2/tagnode0/client.log
+gfaydark,imp200far,pass,0,none,True,True,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/x86-crowd/gfaydark/imp200far/client.log
+gfaydark,tagnode200far,pass,0,none,True,True,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/x86-crowd/gfaydark/tagnode200far/client.log
+gfaydark,imp0,pass,0,none,True,True,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/x86-crowd/gfaydark/imp0/client.log
+gfaydark,tagnode0,pass,0,none,True,True,/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-279/x86-crowd/gfaydark/tagnode0/client.log

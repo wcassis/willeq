@@ -539,6 +539,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_static_ui_frame_cost DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B975 (GitLab #293): the entity name-tag batch -- pixel-identical to the
+# per-node CTextSceneNodes, one draw per bounded run (fallbacks split it). Needs a
+# headless GLES2 device; self-skips without one.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_name_tag_batch
+        test_name_tag_batch.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_name_tag_batch PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_name_tag_batch GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_name_tag_batch DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T313: the static UI's missing scroll INPUT -- chat scrollback, the skills
 # list and the loot list all honoured a scrollOffset nothing ever wrote.
 # Mostly device-free (it drives StaticUIInput and IrrlichtRenderer's slash

@@ -390,13 +390,10 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
 		float nameHeight = 5.5f * scale;
 
 		entOwner("ent.nametag");
-		visual.nameNode = smgr_->addTextSceneNode(
-				smgr_->getGUIEnvironment()->getBuiltInFont(),
-				wname.c_str(),
+		visual.nameNode = createNameTagNode(  // B975: drawn by the name-tag batch
+				animNode, wname,
 				isPlayer ? irr::video::SColor(255, 100, 200, 255) : irr::video::SColor(255, 255, 255, 255),
-				animNode,
-				irr::core::vector3df(0, nameHeight, 0)
-				);
+				irr::core::vector3df(0, nameHeight, 0));
 	}
 
 	// Track race model reference for cache eviction
@@ -521,13 +518,10 @@ bool EntityRenderer::buildEntityMesh(uint16_t spawnId) {
         float nameHeight = usesPlaceholder ? 10.5f : 5.5f;
         nameHeight *= scale;
 
-        visual.nameNode = smgr_->addTextSceneNode(
-            smgr_->getGUIEnvironment()->getBuiltInFont(),
-            wname.c_str(),
+        visual.nameNode = createNameTagNode(  // B975: drawn by the name-tag batch
+            visual.meshNode, wname,
             isPlayer ? irr::video::SColor(255, 100, 200, 255) : irr::video::SColor(255, 255, 255, 255),
-            visual.meshNode,
-            irr::core::vector3df(0, nameHeight, 0)
-        );
+            irr::core::vector3df(0, nameHeight, 0));
     }
 
     // Set up collision data for boats (race 72 = Ship, race 73 = Launch/Barrel Barge)

@@ -27,6 +27,13 @@ KEEP="${ARM_PUBLISH_KEEP:-12}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BIN="$SRC/build-arm-noble/bin/willeq"
 [ -x "$BIN" ] || { echo "publish_arm_build: no $BIN"; exit 1; }
+# B975 (#293): the name-tag batch tool, when this build has it (the branch's
+# docker/Dockerfile.arm-noble builds it into the output) -- a stripped
+# bin/nametag_drawcost (system Mesa) and the same with DT_RPATH to the
+# LLVM-less prefix, bin/nametag_drawcost-nollvm (what the Pi runs).
+NDC_BIN="$SRC/build-arm-noble/bin/nametag_drawcost"
+HAVE_NDC=0
+[ -x "$NDC_BIN" ] && HAVE_NDC=1
 : "${MESA_NOLLVM_STORE_ROOT:=$ROOT/mesa}"
 # shellcheck source=mesa_nollvm.env
 source "$SRC/scripts/pi/mesa_nollvm.env"
@@ -53,6 +60,18 @@ if nice -n 10 bash "$SRC/scripts/pi/build_mesa_nollvm.sh" --ensure \
 else
     rm -f "$TMP/bin/willeq-nollvm"
     echo "mesa_nollvm=FAILED (no bin/willeq-nollvm; see the build-arm job log)" >> "$TMP/BUILD_INFO"
+fi
+if [ "$HAVE_NDC" -eq 1 ]; then
+    cp "$NDC_BIN" "$TMP/bin/nametag_drawcost"
+    arm-linux-gnueabihf-strip "$TMP/bin/nametag_drawcost"
+    if [ "$MESA_OK" -eq 1 ] \
+        && bash "$SRC/scripts/pi/mesa_nollvm_select.sh" "$TMP/bin/nametag_drawcost" "$TMP/bin/nametag_drawcost-nollvm" "$MESA_NOLLVM_PI_PREFIX" \
+            > "$TMP/nametag_drawcost-nollvm.dynamic.txt" 2>&1; then
+        echo "nametag_drawcost=published (bin/nametag_drawcost, bin/nametag_drawcost-nollvm)" >> "$TMP/BUILD_INFO"
+    else
+        rm -f "$TMP/bin/nametag_drawcost-nollvm"
+        echo "nametag_drawcost=stripped only (bin/nametag_drawcost-nollvm missing; see nametag_drawcost-nollvm.dynamic.txt)" >> "$TMP/BUILD_INFO"
+    fi
 fi
 rm -rf "$DEST"; mv "$TMP" "$DEST"
 [ -n "$BRANCH" ] && ln -sfn "../$SHA" "$ROOT/by-branch/$(echo "$BRANCH" | tr '/' '_')"
