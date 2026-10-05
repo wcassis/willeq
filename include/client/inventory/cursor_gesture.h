@@ -1,0 +1,179 @@
+/*
+ * CursorGesture -- the click-to-cursor item gesture, ONE implementation for
+ * every item window (B442, GitLab #151).
+ *
+ * WHAT WAS MISSING. InventoryManager::pickupItem / placeItem /
+ * pickupPartialStack / placeOnMatchingStack / pickupMoney all existed and all
+ * push MoveItemIntent (-> SendMoveItem), and nothing but tests called them:
+ * the static UI latched no pick-up and no put-down, a bank slot could be
+ * hovered and never used, and an inventory slot's left click opened the item
+ * display (fable's old deviation; the oracle opens it on a RIGHT click).
+ *
+ * THE OFFICIAL CLIENT'S GESTURE (Titanium is click-to-cursor, not drag and
+ * drop -- the item rides the pointer as CA_Anim between two clicks,
+ * EQUI_CursorAttachment.xml):
+ *   - LEFT on an occupied slot, cursor empty      -> pick up (whole stack)
+ *   - LEFT with an item held                      -> place; on an occupied
+ *     slot the displaced item becomes the cursor item (swap); on a matching
+ *     stack with room the held stack merges into it
+ *   - SHIFT+LEFT on a stack of 2+, cursor empty   -> the QuantityWnd split
+ *     dialog (EQUI_QuantityWnd.xml); its Accept picks up that many
+ *   - RIGHT on an occupied slot                   -> item display, or -- for a
+ *     container, once the bag window exists -- open the bag (the hook below)
+ *   - LEFT on a purse row                         -> that coin onto the cursor
+ *     (held coin goes back to the purse)
+ * The SHIFT rule and the coin toggle are the issue's stated defaults and are
+ * ORACLE-OWED (#151 Leg O, gestures.tsv); see the B442 report.
+ *
+ * THE SPLIT. Two halves, one per thread, joined by ONE intent:
+ *   render thread  CursorGesture::click() maps (slot, button, modifiers, what
+ *                  the panel shows) to a GestureAction and pushes
+ *                  CursorGestureIntent (or ItemDisplayRequestIntent). It never
+ *                  touches a panel's slot state: the panels change when the
+ *                  game thread republishes InventorySlotChanged.
+ *   game thread    ApplyCursorGesture() resolves the intent against
+ *                  InventoryManager's model -- the only code that knows
+ *                  whether the held item stacks onto the target -- and calls
+ *                  the existing pickupItem / placeItem / pickupPartialStack /
+ *                  placeOnMatchingStack, which push the MoveItemIntent(s).
+ * /pickup, /putdown and /coin push the SAME CursorGestureIntent, so a
+ * --script run and a click are one path.
+ *
+ * SERVER AUTHORITY. eqemu answers a successful OP_MoveItem with SILENCE and a
+ * refused one with a resync (Client::SwapItem / SwapItemResync), so the model
+ * moves when the request is sent, exactly as the official client's own cursor
+ * does and exactly as /equip has since T71. The renderer never moves an item
+ * on its own: what it draws is what the game thread republishes.
+ *
+ * This header is device-free and graphics-free on purpose: the bag window
+ * (B899) and the trade/give windows call click() from their own slot arms.
+ * KEEP THE INTERFACE STABLE -- other units build against it.
+ */
+
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
+namespace eqt { namespace bridge { class GameStateBridge; } }
+namespace eqt { namespace events { struct CursorGestureIntent; } }
+
+namespace eqt {
+namespace inventory {
+
+class InventoryManager;
+
+enum class ClickButton : uint8_t { Left = 0, Right };
+
+struct ClickModifiers {
+    bool shift = false;
+    bool ctrl = false;
+    bool alt = false;
+};
+
+/** What the clicked window's panel shows for the slot (render-thread cache). */
+struct SlotSnapshot {
+    bool occupied = false;
+    int32_t quantity = 0;   // the stack count the panel holds; 0/1 = not a stack
+};
+
+/** What the renderer knows about the cursor (CursorAttachmentState). */
+struct CursorSnapshot {
+    bool hasItem = false;
+};
+
+enum class GestureAction : uint8_t {
+    None = 0,       // nothing to act on (an empty slot with an empty cursor)
+    CursorClick,    // CursorGestureIntent{Click} pushed
+    OpenQuantity,   // the caller opens the QuantityWnd for this slot
+    ItemDisplay,    // ItemDisplayRequestIntent pushed
+    OpenContainer,  // the open-container hook claimed the right click
+};
+
+/**
+ * The button map, as a pure function -- no bridge, no hook. Every window's
+ * click arm and every test reads the rule from here, so there is one.
+ * A RIGHT click classifies as ItemDisplay; click() then offers it to the
+ * open-container hook first.
+ */
+GestureAction classifyClick(ClickButton button, ClickModifiers mods,
+                            const SlotSnapshot& slot, const CursorSnapshot& cursor);
+
+class CursorGesture {
+public:
+    /**
+     * Return true when `slotId` holds a container and a bag window was opened
+     * (or closed) for it; false to fall back to the item display. Installed by
+     * the bag-window unit (B899). With no hook a right click always displays.
+     */
+    using OpenContainerHook = std::function<bool(int16_t slotId)>;
+
+    void setBridge(eqt::bridge::GameStateBridge* bridge) { bridge_ = bridge; }
+    void setOpenContainerHook(OpenContainerHook hook) { openContainer_ = std::move(hook); }
+
+    /**
+     * One slot click in any item window. `slotId` is the Titanium (model) slot
+     * id -- 0-21 worn, 22-29 general, 251-330 bag contents, 2000-2007 bank,
+     * 3000-3007 trade -- never a server/RoF2 number. Pushes what the action
+     * needs and returns it; OpenQuantity pushes nothing (the caller owns the
+     * dialog and later calls pickUpQuantity()).
+     */
+    GestureAction click(int16_t slotId, ClickButton button, ClickModifiers mods,
+                        const SlotSnapshot& slot, const CursorSnapshot& cursor);
+
+    /** QuantityWnd Accept: pick `quantity` of the stack in `slotId` up. */
+    void pickUpQuantity(int16_t slotId, int32_t quantity);
+
+    /**
+     * A purse row (IW_Money0..3). `coinType` is EQT::COINTYPE_* (0 cp .. 3
+     * pp); `amount` 0 = the whole pile. Held coin goes back instead.
+     */
+    void coinClick(uint8_t coinType, int32_t amount);
+
+private:
+    eqt::bridge::GameStateBridge* bridge_ = nullptr;
+    OpenContainerHook openContainer_;
+};
+
+// ---------------------------------------------------------------------------
+// Game-thread half
+// ---------------------------------------------------------------------------
+
+struct CursorGestureOutcome {
+    bool success = false;
+    // Every model slot whose contents changed (the cursor included), in the
+    // order the game thread must republish InventorySlotChanged for them.
+    std::vector<int16_t> touched;
+    std::string message;   // what a slash command prints; empty on a silent no-op
+};
+
+/**
+ * Resolve one item op (Click / PickUp / PutDown) against the model and run
+ * it through the existing InventoryManager calls. CoinClick is not an item op
+ * -- see PlanCoinGesture(). Never sends a packet itself.
+ */
+CursorGestureOutcome ApplyCursorGesture(InventoryManager& inv,
+                                        const eqt::events::CursorGestureIntent& intent);
+
+/**
+ * The OP_MoveCoin a purse click / `/coin` needs (eqemu Client::OPMoveCoin:
+ * slot 0 = cursor, 1 = inventory). `purseOfType` is the player's on-hand
+ * count of `coinType`. When the cursor already holds coin the plan returns it
+ * to the purse (cursor -> inventory, its own type and amount) whatever was
+ * clicked; otherwise it moves min(requested or all, purse) onto the cursor.
+ * Pure: the caller sends it and updates the purse and the cursor model.
+ */
+struct CoinMovePlan {
+    bool send = false;
+    bool toCursor = false;    // true: inventory -> cursor; false: cursor -> inventory
+    int32_t coinType = 0;
+    int32_t amount = 0;
+    std::string message;
+};
+CoinMovePlan PlanCoinGesture(const InventoryManager& inv, uint8_t coinType,
+                             int32_t requested, uint32_t purseOfType);
+
+}  // namespace inventory
+}  // namespace eqt

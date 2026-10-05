@@ -367,6 +367,12 @@ private:
 	void onMoveItemIntent(const eqt::events::MoveItemIntent& i);
 	void onDeleteItemIntent(const eqt::events::DeleteItemIntent& i);
 	void onEquipmentChangedIntent(const eqt::events::EquipmentChangedIntent& i);
+	// B442 (#151): the click-to-cursor gesture and /pickup /putdown /coin.
+	// The arm is a one-line relay; the body is RunCursorGesture() in
+	// bridge_component_cursor.cpp, beside the slot republisher it needs.
+	void onCursorGestureIntent(const eqt::events::CursorGestureIntent& i);
+	void RunCursorGesture(const eqt::events::CursorGestureIntent& i);
+	void PublishInventorySlot(int16_t slot);
 	void onPlaySoundIntent(const eqt::events::PlaySoundIntent& i);
 
 	// T171: shared resolution of the per-client config node. See the

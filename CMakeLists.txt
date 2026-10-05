@@ -291,6 +291,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/bridge/bridge_component.cpp
     src/client/bridge/bridge_component_intents.cpp
     src/client/bridge/bridge_component_ui_audio.cpp
+    src/client/bridge/bridge_component_cursor.cpp  # B442
     src/client/entities/entities_component.cpp
     src/client/entities/entities_component_appearance.cpp
     src/client/entities/entities_component_updates.cpp
@@ -385,6 +386,7 @@ SET(CLIENT_CORE_SOURCES
     # J01: inventory_manager.cpp split move-only into four TUs
     src/client/inventory/inventory_item_parser.cpp
     src/client/inventory/inventory_cursor.cpp
+    src/client/inventory/cursor_gesture.cpp  # B442: click-to-cursor
     src/client/inventory/inventory_bags.cpp
     src/client/inventory/inventory_packets.cpp
     src/client/hotbar/hotbar_model.cpp

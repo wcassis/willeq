@@ -891,6 +891,11 @@ void eqt::bridge::BridgeComponent::onEquipmentChangedIntent(const eqt::events::E
 	ctx_.Entities().UpdatePlayerAppearanceFromInventory();
 }
 
+// B442 (#151): every item window's slot click and /pickup /putdown /coin.
+void eqt::bridge::BridgeComponent::onCursorGestureIntent(const eqt::events::CursorGestureIntent& i) {
+	RunCursorGesture(i);
+}
+
 // Audio (T328 Leg B) -- the ONE consumer of PlaySoundIntent.
 // Forwards to the same BridgeComponent::PlaySound() the water
 // path uses, so the loading-phase gate applies identically. In a
@@ -984,6 +989,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::MoveItemIntent& i) { onMoveItemIntent(i); },
 			[this](const eqt::events::DeleteItemIntent& i) { onDeleteItemIntent(i); },
 			[this](const eqt::events::EquipmentChangedIntent& i) { onEquipmentChangedIntent(i); },
+			[this](const eqt::events::CursorGestureIntent& i) { onCursorGestureIntent(i); },
 			[this](const eqt::events::PlaySoundIntent& i) { onPlaySoundIntent(i); },
 		}, intent);
 	}
