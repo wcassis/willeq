@@ -33,7 +33,10 @@
 #      lock then the eqemu lock, print both lock-show lines.
 #
 # Usage: scripts/pi_rendered_zone_sweep.sh [--zones z1,z2] [--out DIR]
-#          [--cap 300] [--stall 180] [--hold 75] [--no-retry]
+#          [--cap 300] [--stall 180] [--hold 75] (seconds: plain ASCII
+#          decimal 0..86400, validated before any lock/stack/Pi resource --
+#          scripts/b964/observation_controls.py, B987's QA finding F1)
+#          [--no-retry]
 #          [--pi-dir /mnt/projects/fable/ci-arm/<sha>] [-r "1280 720"]
 #          [--char-level N --char-exp E]   (the eligibility leg; see CHAR_LEVEL)
 #          [--owner NAME] [--tour FILE] [--env K=V]... [--drive-keys]
@@ -159,11 +162,31 @@ while [ $# -gt 0 ]; do
         --shared-cgroup) OWN_CGROUP=0; shift ;;
         --stop-point) STOP_POINT="$2"; shift 2 ;;
         --bo-census) BO_CENSUS="$(readlink -f "$2")"; shift 2 ;;
-        -h|--help) sed -n '2,84p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,87p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
 case "$MESA" in nollvm|system) ;; *) echo "WILLEQ_MESA/--mesa must be nollvm or system, not '$MESA'" >&2; exit 64;; esac
+# B987's QA finding F1 (sibling of the x86 one): --cap feeds BOTH the runner
+# (rendered_zone_run.py --cap) and this script's `timeout $((CAP_S + 120))`;
+# --stall feeds the runner; --hold feeds the generated tour's wait. A raw
+# token (underscore, sign, 0800 invalid octal, 0720 SILENTLY octal: the ssh
+# timeout becomes 584 while the runner is told 720, killing the leg mid-
+# observation) must be a usage error BEFORE any lock, stack or Pi resource
+# is acquired -- this rig is called directly by other rigs, so the check
+# lives here, not only in the wrappers. ONE definition with
+# scripts/b964/observation_controls.py: plain ASCII decimal 0..86400
+# (0 meaningful only where it is today; the default tour is 240 s of hold).
+RE_DURATION='^(0|[1-9][0-9]*)$'
+for d in "$CAP_S" "$STALL_S" "$HOLD_S"; do
+    # LC_ALL=C grep: [0-9] is the byte range 0x30-0x39; a [[ =~ ]] range
+    # would follow the locale and, in a UTF-8 locale, match non-ASCII
+    # digits (١), exactly the spellings this check exists to reject.
+    if ! LC_ALL=C grep -qE "$RE_DURATION" <<< "$d" || [ "$d" -gt 86400 ]; then
+        echo "bad duration '$d' (plain ASCII decimal 0..86400, no underscores/signs/leading zeros)" >&2
+        exit 64
+    fi
+done
 # The proof of which Mesa loaded is taken in EVERY run: `startup` is always a
 # snapshot point (the driver is mapped by then).
 case ",$SNAP_POINTS," in *,startup,*) ;; *) SNAP_POINTS="startup${SNAP_POINTS:+,$SNAP_POINTS}";; esac

@@ -36,6 +36,16 @@ while [ $# -gt 0 ]; do
         *) echo "unknown option $1" >&2; exit 3 ;;
     esac
 done
+# B987's QA finding F1 (same class): --build feeds the arithmetic
+# cap=$((BUILD_S + 420)) below; a raw token (0_1, 0720-as-octal, ...) would
+# print "integer expression expected" and hand the sweep a broken cap.
+# Validate BEFORE any resource (plain ASCII decimal, 0..86400 -- the one
+# definition in scripts/b964/observation_controls.py).
+RE_DURATION='^(0|[1-9][0-9]*)$'
+if ! LC_ALL=C grep -qE "$RE_DURATION" <<< "$BUILD_S" || [ "$BUILD_S" -gt 86400 ]; then
+    echo "bad duration '$BUILD_S' (plain ASCII decimal 0..86400, no underscores/signs/leading zeros)" >&2
+    exit 3
+fi
 [ -n "$PI_DIR" ] || { echo "--pi-dir is required" >&2; exit 3; }
 [ -n "$OUT" ] || OUT="/mnt/projects/fable/review/B973/pi/crowd-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$OUT"
