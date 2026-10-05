@@ -320,7 +320,30 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // GPU feature flags (Mali 400 via Lima supports these)
             config.enableMipmaps = true;
             config.enableNPOT = true;
-            config.enableStencilBuffer = true;
+            // B971 (Will, 2026-10-01: "orangepi uses a 16-bit depth buffer
+            // (no stencil user there)"): the shipped surface has no stencil.
+            // D24S8 is 3,686,400 B (3.52 MiB) of Lima GEM at 1280x720, the
+            // single largest non-texture [memgpu] row after B962; 16-bit depth
+            // with no stencil is 1,843,200 B. The surface is selected end to
+            // end by enableStencilBuffer (params.Stencilbuffer in
+            // renderer_init.cpp -> eglChooseConfig in
+            // docker/irrlicht-drm/CIrrDeviceFB.cpp), so this is what a 16-bit-
+            // depth surface ships as.
+            //
+            // Note the interplay with the portalOcclusion=true above: that is
+            // the pre-B971 "portal vis auto-enables in indoor zones"
+            // AVAILABILITY default, and the shipped config/constrained_presets.json
+            // orangepi block sets portalOcclusion:false ON TOP of it (loadJsonOverrides
+            // wins), so in the shipped config the two agree -- no stencil user,
+            // no stencil buffer. This C++ baseline is what the x86 benchmark
+            // (zone_bench_loader.cpp, fromPreset(OrangePi), no JSON) mirrors,
+            // hence enableStencilBuffer=false here: the benchmark must render
+            // on the D16/no-stencil surface the client ships. (The benchmark
+            // does not consume portalOcclusion, so the baseline's true there
+            // is inert.) Re-enabling portal occlusion in a local/custom config
+            // re-requests the stencil automatically -- see loadJsonOverrides'
+            // portalOcclusion/enableStencilBuffer invariant below.
+            config.enableStencilBuffer = false;
             config.enableAlphaToCoverage = true;
             config.enableShaders = true;
             config.enableCompressedTextures = false;  // Mali 400 via Lima software-decodes S3TC; no GPU savings, extra CPU cost
@@ -769,6 +792,26 @@ bool ConstrainedRendererConfig::loadJsonOverrides(const std::string& presetName,
         wireframe = preset["wireframe"].asBool();
     if (preset.isMember("portalOcclusion"))
         portalOcclusion = preset["portalOcclusion"].asBool();
+    // B971 (Will, 2026-10-01: "orangepi uses a 16-bit depth buffer (no
+    // stencil user there)"): /portal occlusion is the ONLY stencil consumer in
+    // the tree, so a config that turns it on MUST have the stencil buffer on
+    // the surface -- otherwise it builds a portal system that can never render
+    // (the pre-B971 defect: the shipped JSON had portalOcclusion off but
+    // enableStencilBuffer on, paying for D24S8 for a feature that was off; the
+    // reverse footgun is portal on with no stencil). Make the implication
+    // one-way (portal on => stencil on; stencil on does not force portal on,
+    // so a stencil-less config stays stencil-less) and let it log, so a
+    // local/custom config that re-enables portal occlusion gets D24S8 back
+    // automatically instead of silently mis-rendering. The shipped orangepi
+    // block sets portalOcclusion:false, so this is a no-op for it.
+    if (portalOcclusion && !enableStencilBuffer) {
+        LOG_WARN(MOD_GRAPHICS,
+                 "Preset '{}': portalOcclusion is on but enableStencilBuffer is off; "
+                 "turning the stencil buffer back on (D24S8 surface) -- portal occlusion "
+                 "is the only stencil user, so it cannot render without it (B971)",
+                 presetName);
+        enableStencilBuffer = true;
+    }
     if (preset.isMember("playerLight"))
         playerLight = preset["playerLight"].asBool();
     if (preset.isMember("objectLights"))
