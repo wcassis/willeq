@@ -1,8 +1,70 @@
 # B975 -- entity name tags in one batch
 
-GitLab #293 (class B, perf, lane pi). Branch `task/B975-name-tag-batch`
-(worktree `/mnt/projects/fable/wt/audit-nametags`), based on `gitlab/fable`
-d3375b65 (B964 / MR !70 merged). Raw evidence: `/mnt/projects/fable/review/B975/`.
+GitLab #293 (class B, perf, lane pi), MR !73. Branch `task/B975-name-tag-batch`;
+current worktree `/home/user/src/willeq-wt/kb-b975-name-tags`.
+
+## Current state — implemented, QA passed, review pending; NOT merged
+
+The final implementation handoff and cumulative independent QA both cover
+`bcf5335ffa7bcdabddb6090b9469a564d6618015`, not just the earlier candidate.
+MR !73 is non-draft. Review run 285 requested the documentation correction
+recorded here; review acceptance and merge remain pending.
+
+- Final implementation: [run 281 final report](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/final-report.txt)
+  and [validated handoff](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/result.json).
+  Final-head Pi N200 render medians are **1914 / 1955 us** (production policy /
+  explicit `nobocache` repeat), below the unchanged 2000 us bar. Raw CSVs:
+  [default](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/final-micro/capture/drawcost/drawcost.csv),
+  [repeat](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/final-micro/capture/drawcost-nobocache/drawcost.csv).
+  Final matrix tables, distinct from the committed candidate tables, are
+  [Pi timing](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/final-verification/pi-timing.md),
+  [Pi memory](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/final-verification/pi-crowd.md),
+  [x86 timing](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/final-verification/x86-timing.md)
+  and [x86 memory](/home/user/kb-evidence/b975-name-tags/codex-resume-20261004/run-281/final-verification/x86-crowd.md).
+- Independent cumulative QA: [run 284 PASS verdict](/home/user/kb-evidence/b975-qa-20261005/run-284/verdict.md)
+  and [handoff](/home/user/kb-evidence/b975-qa-20261005/run-284/result.json).
+  Hash-revalidated independent Pi N200 measurements are **1918 / 1908 / 1924 /
+  1915 us**; [timing evidence with raw CSV paths](/home/user/kb-evidence/b975-qa-20261005/run-283/timing-verification.json).
+  Both platforms' nine primary poses have zero differing pixels. Focused
+  regressions pass with no name-tag test skips.
+- Recovery crowd A/B: **1.336 / 32.553 ms** transparent-pass medians (batch /
+  per-node), from complete post-ready idle windows, not whole-run timings;
+  [raw-log paths, source lines and guard results](/home/user/kb-evidence/b975-qa-20261005/run-284/crowd-verification.json).
+  Both legs pass the unchanged guards; snapshots restore byte-identically and
+  cleanup completes. Only bounded waits changed, idle 40→180 s and hold 15→75 s;
+  [tour diff](/home/user/kb-evidence/b975-qa-20261005/run-284/tour-differences.json).
+  [Original run 283](/home/user/kb-evidence/b975-qa-20261005/run-283/result.json)
+  remains FAILED (`no_steady_60s`, no final per-node idle timing blocks).
+  **B987 / issue #306 remains separately queued** for durable readiness controls.
+- Pipeline **496** on that implementation head passed hygiene/build/test/gate/
+  build-arm; [CI response](/home/user/kb-evidence/b975-qa-20261005/run-284/ci-response.json).
+  This is incremental CI, not a cold-build claim. This documentation-only
+  rework requires its own exact-new-head CI and source-equivalence proof;
+  those results belong to [run 286](/home/user/kb-evidence/b975-doc-rework-20261005/run-286/result.json).
+
+## Not verified
+
+- The **64 MiB owned-memory target is unmet**. Live x86 llvmpipe captures exceed
+  the 256 MiB bound; x86 functional acceptance is not a memory-bound pass.
+- Primary pose identity is not global transparent-scene identity: nearer
+  transparent overlaps and equal-distance tie ordering can differ. The
+  rendering-order boundary below remains in force; no human visual blessing
+  is claimed, including for live targeted-overlay/whole-frame differences.
+- QA's shutdown-point sample retains **1584 GPU bytes before renderer
+  teardown**, not a measured zero after destruction. The destructor regression
+  supplies release coverage; [owner evidence](/home/user/kb-evidence/b975-qa-20261005/run-284/owner-verification.json).
+- Review's opt-in `StaticUiFrameCostTest.AccountPerStageTimings` diagnostic
+  skipped without `WILLEQ_T462_ACCOUNT=1`; it is not a timing pass.
+  [Review verdict and limitations](/home/user/kb-evidence/b975-review-20261005/run-285/verdict.md).
+- No fresh hardware capture or full review-stage live matrix is claimed for
+  this documentation-only repair. Earlier failed candidates, CI failures,
+  canceled CI and run 283 remain preserved, not retroactively passed.
+
+## Historical origin
+
+Originally based on `gitlab/fable` d3375b65 (B964 / MR !70 merged), in
+`/mnt/projects/fable/wt/audit-nametags`, with initial raw evidence at
+`/mnt/projects/fable/review/B975/`. Current evidence is linked above.
 
 ## Submission investigation, run 281 — candidate, not acceptance
 
@@ -71,11 +133,10 @@ separately in `evidence-run281/live-comparison.json`; no human visual approval
 is inferred. Both live snapshots and the x86 matrix snapshot restore
 byte-identically, with the stack stopped and locks released.
 
-Publication requires all contract checks again at the terminal HEAD, whose
-identity and results are recorded in the external run directory's `result.json`,
-`final-report.txt` and `final-verification/`. The committed tables identify
-their candidate SHA and never stand in for this final retake. QA remains
-scheduled/held for the orchestrator; this worker does not merge or unblock it.
+The required terminal-head retake subsequently passed, followed by independent
+cumulative QA run 284; see Current state above. The committed tables retain
+their candidate SHA and never stand in for that final retake. The former
+QA-scheduled/held status is superseded; review and merge are still pending.
 
 The first candidate's local test and pipeline 492 test job retain their
 failure: the re-registration test still expected the removed bootstrap

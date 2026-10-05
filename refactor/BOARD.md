@@ -356,16 +356,17 @@ it without taking that measurement first.
   baseline matrix passes the unchanged memory guard with both renderers.
   Evidence: `refactor/B986_pi_gpu_guard.md` and `refactor/B975/README.md`.
   Awaiting review/merge; this does not establish B975's CPU acceptance.
-- **B975** (B) → issue #293, MR !73. Entity name tags use compact glyph runs,
-  bounded reusable GPU input storage and cached atlas coordinates. Run 281's
-  candidate meets the unchanged production-policy Pi CPU bar, preserves primary
-  fixed-pose pixels on both platforms, and passes the full Pi memory matrix and
-  x86 functional matrix. Live tag masks and the corpse-name update match;
-  targeted-outline and whole-frame differences are retained separately.
-  Candidate measurements and all earlier failures: `refactor/B975/README.md`
-  and `refactor/B975/evidence-run281/`. Publication requires an exact-terminal-
-  HEAD retake, recorded in the MR handoff. QA remains scheduled/held; no merge,
-  budget/golden change or production-policy rollback is authorized.
+- **B975** (B) → issue #293, non-draft MR !73. **Implemented and independent
+  cumulative QA passed; review pending, NOT merged.** Compact glyph runs,
+  bounded reusable GPU input storage and cached atlas coordinates passed the
+  final implementation retake and QA on `bcf5335ffa7bcdabddb6090b9469a564d6618015`.
+  The former candidate-only / QA-held status is superseded.
+  [Final handoff, QA run 284, measurements and Not verified limits](B975/README.md#current-state--implemented-qa-passed-review-pending-not-merged)
+  distinguish final-head evidence from `refactor/B975/evidence-run281/`'s
+  historical candidate tables. All earlier failures, including QA run 283's
+  missing steady window, remain failures; run 284's bounded longer observation
+  passes unchanged guards. B987 / issue #306 remains separately queued harness
+  work. No budget/golden change, policy rollback or human visual approval.
 - **B985** (B) → issue #304. `scripts/pi_rendered_zone_sweep.sh` cannot run
   from a host whose checkout and `--out` are not NFS-mounted by the Pi: its
   runner invocation runs `python3 <checkout>/scripts/pi/rendered_zone_run.py` ON
@@ -375,7 +376,7 @@ it without taking that measurement first.
   2026-10-03 hermes-ext Pi re-run (the leg worked via a hand-staged copy of
   the repo's pieces on the Pi). Fix: stage the runner/config/tour on the Pi
   and rsync the run dir back when the lane is not the local one.
-  Implemented on B975's draft MR !73: explicit staging and retrieval also
+  Implemented on B975's non-draft MR !73: explicit staging and retrieval also
   work from hermes-ext; the transport smoke and subsequent real Pi runs
   produced client logs, snapshots and rendered frames. Awaiting review/merge.
 
