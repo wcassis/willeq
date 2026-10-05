@@ -356,12 +356,13 @@ it without taking that measurement first.
   baseline matrix passes the unchanged memory guard with both renderers.
   Evidence: `refactor/B986_pi_gpu_guard.md` and `refactor/B975/README.md`.
   Awaiting review/merge; this does not establish B975's CPU acceptance.
-- **B975** (B) → issue #293, non-draft MR !73. **Implemented and independent
+- **B975** (B) — Entity name tags → issue #293, non-draft MR !73. **Implemented and independent
   cumulative QA passed; review pending, NOT merged.** Compact glyph runs,
   bounded reusable GPU input storage and cached atlas coordinates passed the
   final implementation retake and QA on `bcf5335ffa7bcdabddb6090b9469a564d6618015`.
   The former candidate-only / QA-held status is superseded.
-  [Final handoff, QA run 284, measurements and Not verified limits](B975/README.md#current-state--implemented-qa-passed-review-pending-not-merged)
+  Final handoff, QA run 284, measurements and Not verified limits in
+  `refactor/B975/README.md` (Current state and Not verified sections)
   distinguish final-head evidence from `refactor/B975/evidence-run281/`'s
   historical candidate tables. All earlier failures, including QA run 283's
   missing steady window, remain failures; run 284's bounded longer observation

@@ -40,7 +40,10 @@ recorded here; review acceptance and merge remain pending.
   build-arm; [CI response](/home/user/kb-evidence/b975-qa-20261005/run-284/ci-response.json).
   This is incremental CI, not a cold-build claim. This documentation-only
   rework requires its own exact-new-head CI and source-equivalence proof;
-  those results belong to [run 286](/home/user/kb-evidence/b975-doc-rework-20261005/run-286/result.json).
+  [Run 286](/home/user/kb-evidence/b975-doc-rework-20261005/run-286/result.json)
+  failed pipeline 498's DocCitations and BoardDirNumbers checks; it remains a
+  failed attempt. The bounded documentation correction and exact-new-head
+  revalidation belong to [run 303](/home/user/kb-evidence/b975-doc-rework-20261005/run-303/result.json).
 
 ## Not verified
 
