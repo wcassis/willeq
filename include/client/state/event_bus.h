@@ -102,6 +102,8 @@ using EventData = std::variant<
     // Audio
     VolumesChangedData,
     GameOptionChangedData,  // B430
+    // Social (B897)
+    SocialListsChangedData,
     // Loot
     LootWindowOpenedData,
     LootWindowClosedData,

@@ -61,6 +61,7 @@ struct PetPanelState;
 struct BuffBarState;
 struct CombatAbilityPanelState;
 struct OptionsPanelState;
+struct FriendsPanelState;
 
 /**
  * The persisted per-character state. Every field is user-changeable, and the
@@ -79,6 +80,10 @@ struct UiPreferences {
     // /mnt/projects/EverQuestP1999/UI_Obian_project1999.ini has
     // `[OptionsWindow] ... Show=0`.
     bool optionsWindow = false;      // [OptionsWindow]
+    // B897: the oracle's own section name, /mnt/projects/EverQuestP1999/
+    // defaults.ini `[FriendsWindow]` (it records positions there and no
+    // Show=). Closed by default, like every other toggled window.
+    bool friendsWindow = false;      // [FriendsWindow]
     // [Camera] View= -- the CameraMode enumerator, 1..6 (camera_mode.h: the
     // official client's six cameras, in eqstr_us.txt order). T461 replaced
     // T432's `Mode=` (0 Free, 1 Follow, 2 FirstPerson): the two numberings
@@ -142,6 +147,7 @@ struct UiPreferences {
             && buffWindow == o.buffWindow
             && combatAbilityWnd == o.combatAbilityWnd
             && optionsWindow == o.optionsWindow
+            && friendsWindow == o.friendsWindow
             && musicVolume == o.musicVolume
             && soundVolume == o.soundVolume
             && clipPlane == o.clipPlane
@@ -168,6 +174,7 @@ struct UiPreferencesBinding {
     BuffBarState* buff = nullptr;
     CombatAbilityPanelState* combatAbility = nullptr;
     OptionsPanelState* options = nullptr;   // T434
+    FriendsPanelState* friends = nullptr;   // B897
 };
 
 /**

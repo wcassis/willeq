@@ -388,6 +388,20 @@ struct TrackingIntent {
     uint8_t value = 0;
 };
 
+// B897 (GitLab #213): a Friends-window button. The handler runs the SAME
+// eqt::state::ApplySocialEdit() / RunFriendsWho() bodies /friends, /ignore and
+// /friendswho run (include/client/state/social_lists.h), so the window and
+// the slash commands print the same oracle strings. `list` is
+// eqt::state::SocialList (0 friends, 1 ignored). Who with a `name` (a selected
+// friend) is a who-all for that name; Who with none queries the stored list
+// (review/UIGAP-ORACLE/213/friends.tsv rows 13-14).
+enum class SocialListOp : uint8_t { Add, Remove, Who };
+struct SocialListIntent {
+    uint8_t list;
+    SocialListOp op;
+    std::string name;
+};
+
 // ============================================================================
 // Variant type for all renderer intents
 // ============================================================================
@@ -455,7 +469,9 @@ using RendererIntent = std::variant<
     // Options window (B430)
     GameOptionIntent,
     // Tracking (B895)
-    TrackingIntent
+    TrackingIntent,
+    // Social (B897)
+    SocialListIntent
 >;
 
 } // namespace events

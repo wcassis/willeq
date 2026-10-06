@@ -231,7 +231,20 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     - entry 318, `renderContainerWindows(...)`, directly after entry 317
 //       `renderTrackingWindow(...)`, mirroring that hit-test order.
 //     The count rises 348 -> 352: three statements plus one.
-const size_t kGoldenSize = 352u;
+//   * B897 (GitLab #213): the Friends window. TWO pure insertions, no text
+//     change and no reorder anywhere.
+//     - entry 287, `processFriendsWindowInput();`, directly after the last
+//       line of T421's processItemDisplayInput call and before T434's
+//       Options hop: the Friends window is `RelativePosition false` at its
+//       own placement, so it sits above the item display and below the
+//       Options window, and hit-test order mirrors draw order. It is a
+//       FrameComponent method rather than a StaticUIInput entry point
+//       because an Add/Delete/Who click pushes an intent and a Contact click
+//       opens the chat prefill, both of which only FrameComponent can do.
+//     - entry 321, `renderFriendsWindow(...)`, directly after
+//       `renderItemDisplayPopup(...)` and before `renderOptionsWindow(...)`.
+//     The count rises 352 -> 354.
+const size_t kGoldenSize = 354u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

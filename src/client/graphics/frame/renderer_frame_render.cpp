@@ -647,6 +647,8 @@ void FrameComponent::renderStaticUI() {
         // is on top of everything, including the item display. A moved
         // slider is reported as a Setting and applied in the one place that
         // knows how (FrameComponent::applyOptionsSetting).
+        // B897: the Friends window, just below Options in both orders.
+        processFriendsWindowInput();
         OptionsLayout::Setting optionsChanged = OptionsLayout::Setting::None;
         staticUIInput_->processOptionsInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
@@ -723,6 +725,7 @@ void FrameComponent::renderStaticUI() {
         // OptionsWindow is `RelativePosition false` at its own <Location>
         // and overlaps whatever is beneath it; the draw order mirrors the
         // hit-test order above.
+        renderFriendsWindow(*uiRenderer_, uiLayout_, friendsState_);  // B897
         renderOptionsWindow(*uiRenderer_, uiLayout_, optionsState_);
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
         // B442: the QuantityWnd, above every window (hit-tested first).

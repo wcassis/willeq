@@ -172,9 +172,12 @@ TEST(CommandRegistrationOrderTest, GoldenIsPresentAndTheRightSize) {
     // 148-152 (trackfilter, tracksort, trackplayers, stoptracking, tracklist).
     // +1 by B899 (#215): entry 065 `bag` INSERTED after 064 `closecontainer`,
     // 065-152 renumbered to 066-153.
-    EXPECT_EQ(golden.size(), 153u)
+    // +2 by B897 (#213): 140 `friends` and 141 `ignore` after 139 `friendswho`,
+    // 140-153 renumbered to 142-155.
+    EXPECT_EQ(golden.size(), 155u)
         << "142 commands at G03, +1 for T347's /cleartarget, +4 for B442's cursor "
-           "commands, +5 for B895's tracking family, +1 for B899's /bag; the golden has "
+           "commands, +5 for B895's tracking family, +1 for B899's /bag, +2 for "
+           "B897's /friends and /ignore; the golden has "
         << golden.size();
     for (const auto& n : golden) {
         EXPECT_FALSE(n.empty());

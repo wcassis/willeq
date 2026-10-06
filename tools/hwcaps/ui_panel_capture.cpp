@@ -51,6 +51,7 @@
 #include "client/display_eqstr.h"
 // B899 (#215 / #151 Leg B).
 #include "client/graphics/ui/container_panel.h"
+#include "client/graphics/ui/friends_panel.h"   // B897
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -167,6 +168,8 @@ struct PanelStates {
     // B899 (#215): the era container windows -- a carried bag, a carried
     // tradeskill kit and a world forge, all through the REAL appliers.
     ContainerWindowsState containers;
+    // B897: the Friends window, captured once per tab.
+    FriendsPanelState friends;
     XPBarState xp;
 
     PanelStates() {
@@ -305,6 +308,21 @@ struct PanelStates {
             cd.iconId = 918;
             cd.quantity = 4;
             applyCursorSlotChanged(cursor, cd);
+        }
+        {
+            // B897: names from the oracle's own Obian_project1999.ini
+            // [Friends] and Logjam_project1999.ini [Ignored], plus filler
+            // so the VScroll thumb shows; a selection and a typed name.
+            eqt::state::SocialListsChangedData sl;
+            // In the model's order: sorted (UIGAP-ORACLE/213 friends.tsv rows 1, 11).
+            sl.friends = {"aaodyn", "bilblow", "bortill", "caricature", "Drachtha",
+                          "Gudknobadd", "hrakk", "khozmo", "shikaka", "Thrasix",
+                          "vilurum", "Xenephon"};
+            sl.ignored = {"ilvvqwgwqvvqgll", "Spammer"};
+            applySocialListsChanged(friends, sl);
+            friends.selected[0] = 2;
+            friends.nameEntry[0].inputText = "Oraclecharlie";
+            friends.nameEntry[1].inputText = "Pest";
         }
         inventory.coins[0] = 12; inventory.coins[1] = 5;
         inventory.coins[2] = 8;  inventory.coins[3] = 47;
@@ -684,6 +702,13 @@ std::vector<PanelCapture> buildCaptureList() {
             renderContainerWindows(u, l, one); }},
         {"container_three_open", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderContainerWindows(u, l, s.containers); }},
+        // B897: both tabs of the Friends window (EQUI_FriendsWnd.xml).
+        {"friends_friends", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.friends.isOpen = true; s.friends.activePage = 0;
+            renderFriendsWindow(u, l, s.friends); }},
+        {"friends_ignored", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.friends.isOpen = true; s.friends.activePage = 1;
+            renderFriendsWindow(u, l, s.friends); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.

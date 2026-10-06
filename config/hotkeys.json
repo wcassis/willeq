@@ -11,6 +11,7 @@
             "ScrollUIUp": "PageUp",
             "ScrollUIDown": "PageDown",
             "ToggleOptions": "Alt+O",
+            "ToggleFriends": "Alt+F",
             "ConfirmDialog": ["Return", "Y"],
             "CancelDialog": ["Escape", "N"],
             "SubmitInput": "Return",

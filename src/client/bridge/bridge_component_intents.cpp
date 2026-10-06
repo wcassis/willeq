@@ -29,6 +29,7 @@
 #include "client/spell/buff_manager.h"
 #include "client/skill/skill_manager.h"
 #include "client/audio/volume_steps.h"  // T439: the oracle's 0..20 volume step
+#include "client/state/social_lists.h"  // B897: the friends/ignore command bodies
 #include "client/zone_lines.h"
 #include "client/formatted_message.h"
 #include "common/logging.h"
@@ -959,6 +960,36 @@ void eqt::bridge::BridgeComponent::onTrackingIntent(const eqt::events::TrackingI
 	ctx_.Player().Tracking().ApplyIntent(i);
 }
 
+// B897 (GitLab #213) -- a Friends-window button. The SAME bodies the
+// /friends, /ignore and /friendswho commands run (social_lists.h), so the
+// window prints exactly the slash commands' oracle strings. The edited lists
+// reach the window back through SocialListsChanged on the next GameTick
+// (SyncSocialLists), never optimistically.
+void eqt::bridge::BridgeComponent::onSocialListIntent(const eqt::events::SocialListIntent& i) {
+	using eqt::state::SocialList;
+	const SocialList list = (i.list == 1) ? SocialList::Ignored : SocialList::Friends;
+	eqt::state::SocialOutcome outcome;
+	if (i.op == eqt::events::SocialListOp::Who && !i.name.empty()) {
+		// MEASURED (review/UIGAP-ORACLE/213/friends.tsv row 14): Who with a
+		// friend SELECTED is a who-all for that one name (OP_WhoAllRequest,
+		// "Players in EverQuest:"), i.e. what `/who <name>` sends.
+		ctx_.Player().SendWhoAllRequest(i.name);
+		return;
+	}
+	if (i.op == eqt::events::SocialListOp::Who) {
+		// Row 13: no selection -> OP_FriendsWho with the stored names.
+		outcome = eqt::state::RunFriendsWho(ctx_.game_state.social(), std::string());
+	} else {
+		outcome = eqt::state::ApplySocialEdit(
+			ctx_.game_state.social(), list,
+			i.op == eqt::events::SocialListOp::Add ? eqt::state::SocialEditOp::Add
+			                                       : eqt::state::SocialEditOp::Remove,
+			i.name, ctx_.character);
+	}
+	for (const auto& line : outcome.lines) ctx_.out.System(line);
+	if (!outcome.whoList.empty()) ctx_.Player().SendFriendsWho(outcome.whoList);
+}
+
 // The intent pump. Pure dispatch: std::visit over an exhaustive overload set,
 // one line per RendererIntent alternative, in the variant's own order. There
 // is deliberately NO generic fallback lambda -- the old chain ended in an
@@ -1021,6 +1052,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::PlaySoundIntent& i) { onPlaySoundIntent(i); },
 			[this](const eqt::events::GameOptionIntent& i) { onGameOptionIntent(i); },
 			[this](const eqt::events::TrackingIntent& i) { onTrackingIntent(i); },
+			[this](const eqt::events::SocialListIntent& i) { onSocialListIntent(i); },
 		}, intent);
 	}
 }

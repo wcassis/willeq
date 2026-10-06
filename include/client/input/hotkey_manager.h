@@ -99,6 +99,8 @@ enum class HotkeyAction : uint32_t {
     ToggleOptions,      // T434: Options window (Alt+O, measured at the
                         // oracle's Options > Keys > UI page) - available in
                         // all modes
+    ToggleFriends,      // B897: Friends window (Alt+F, measured at the
+                        // oracle's Options > Keys > UI page, eqstr 6599)
     ToggleCollision,
     ToggleCollisionDebug,
     ToggleZoneLineVisualization,

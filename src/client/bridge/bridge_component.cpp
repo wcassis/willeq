@@ -314,6 +314,10 @@ void eqt::bridge::BridgeComponent::GameTick(float deltaTime) {
 
 	// Process intents from renderer's previous frame
 	ProcessBridgeIntents();
+
+	// B897: load/save the friends and ignore lists and tell the window.
+	// After the intents, so a window edit is persisted in the same tick.
+	SyncSocialLists();
 }
 
 // T220: PreRenderTick() (D21a's render-thread event drain) is DELETED. In a

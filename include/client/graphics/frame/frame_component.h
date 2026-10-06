@@ -143,6 +143,7 @@
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/item_display_panel.h"
 #include "client/graphics/ui/options_panel.h"
+#include "client/graphics/ui/friends_panel.h"  // B897
 // T436 (board B429): the merchant, bank and cursor-attachment windows.
 #include "client/graphics/ui/merchant_panel.h"
 #include "client/graphics/ui/bank_panel.h"
@@ -291,6 +292,21 @@ public:
 	bool processOptionsKeyCapture();
 	bool optionsKeyCaptureGate_ = false;
 
+	// ---- B897 (GitLab #213): the Friends window, renderer_frame_friends.cpp ----
+	// toggleFriendsWindow(): Alt+F (MEASURED: review/T377/oracle/
+	// T377_oracle_options_keys_UI_page1.png, "Toggle friend window  Alt F",
+	// Alternate empty -- eqstr 6599) and /friendswindow. A HUD-style window
+	// with its own oracle placement, so it closes nothing. Returns the new
+	// open state.
+	bool toggleFriendsWindow();
+	// The click pass, from renderStaticUI(): resolve, apply, act.
+	void processFriendsWindowInput();
+	// The Editbox key gate, from processChatInput() beside the tradeskill
+	// one: true while FW_NameInput / FW_IgnoreNameInput holds the keyboard.
+	bool processFriendsNameInput();
+	// One resolved click -> a SocialListIntent, the chat prefill, or a close.
+	void applyFriendsAction(const FriendsAction& action);
+
 	// ---- T432 (board B275): the ONE per-character persistence path ----
 	// Before this the client persisted NOTHING a player changed. Will's
 	// ruling (docs/decisions.md 2026-09-07) is to persist per character what
@@ -380,6 +396,11 @@ public:
 	// popups -- the oracle's OptionsWindow is `RelativePosition false` at its
 	// own <Location> -- so it is drawn and hit-tested on top of them.
 	OptionsPanelState optionsState_;            // T434
+	// B897: the Friends window. Not a centre popup (RelativePosition false,
+	// its own placement), drawn and hit-tested just below the Options window.
+	// Fed by the SocialListsChanged bridge arm; persisted open/closed as
+	// `[FriendsWindow] Show=` through UiPreferences.
+	FriendsPanelState friendsState_;            // B897
 	// T436 (board B429): the merchant window. One of the mutually exclusive
 	// centre popups (the oracle's MerchantWnd is Style_Sizable true and does
 	// not fit 640x480, so it is scaled onto centerPopup the way T415 scaled
@@ -607,6 +628,8 @@ private:
 	// T421: true while processTradeskillSearchInput() holds the keyboard
 	// gate, so the release is a state change and not a per-frame write.
 	bool textEntryGateHeld_ = false;
+	// B897: the same, for the Friends window's two Editboxes.
+	bool friendsGateHeld_ = false;
 	int currentFps_ = 0;
 	float essentialSimCostAvgUs_ = 3000.0f;  // EMA of essential sim cost (us), init ~3ms
 	float fireGlowTime_ = 0.0f;  // Animation time accumulator

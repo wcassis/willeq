@@ -863,10 +863,30 @@ void CommandProcessor::registerFindCommands() {
         "Ask the server to path you to your target or a named entity", "Social", false
     }, [this](const std::string& args) { return cmdFind(args); });
 
+    // B897 (GitLab #213): /friends is NO LONGER an alias of /friendswho.
+    // On the official client `/friends <name>` ADDS a friend (eqstr 12308:
+    // "... you can add some with: /friends <name>"), so it is its own
+    // command below; /friendswho with no argument now asks about the STORED
+    // list (the FW_WhoButton's query).
     registerCommand({
-        "friendswho", {"friends"}, "/friendswho <name>[,<name>...]",
-        "Ask who from a comma-delimited name list is online", "Social", true
+        "friendswho", {}, "/friendswho [<name>[,<name>...]]",
+        "Ask which of your friends (or of the named players) are online", "Social", false
     }, [this](const std::string& args) { return cmdFriendsWho(args); });
+
+    // B897: the friends and ignore lists, both client-side (Titanium has no
+    // add/remove opcode for either). Toggle with a name, list without one --
+    // eqstr 13967 /friends, 12978 "/friend <name>", 13956 /ignore.
+    registerCommand({
+        "friends", {"friend"}, "/friends [name]",
+        "Add a name to your friends list, or remove it if present; no name lists them",
+        "Social", false
+    }, [this](const std::string& args) { return cmdFriends(args); });
+
+    registerCommand({
+        "ignore", {}, "/ignore [name]",
+        "Ignore a player (or stop ignoring them); no name lists your ignore list",
+        "Social", false
+    }, [this](const std::string& args) { return cmdIgnore(args); });
 }
 
 // GM (T148)

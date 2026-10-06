@@ -68,10 +68,27 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Cursor item | At the mouse, the oracle's 50x50 box | `CursorAttachmentState` | `renderCursorAttachment()` (T436, board B429) |
 | Skill trainer | Centred, the oracle's own 580x280, unscaled | `TrainerPanelState` | `renderTrainerWindow()` (B898, #214) |
 | Tracking | Centred, the oracle's own 150x460 (height clamped to the screen) | `TrackingPanelState` | `renderTrackingWindow()` (B895, GitLab #211) |
+| Friends | The oracle's own 168x288, at `defaults.ini`'s `[FriendsWindow]` position (XML (196,50) elsewhere), two tabs | `FriendsPanelState` | `renderFriendsWindow()` (B897) |
 
 Center popups (inventory, spellbook, skills, merchant, loot, trade, tradeskill container) share the same screen region and are mutually exclusive. **The BANK is not one of them** (T436): the oracle's `BankWnd` is `Style_Sizable false` at its own 108x347, so like the combat-abilities window it keeps its own size and its own anchor and draws above the centre popups. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle. **Neither is the item display window** (T421): `EQUI_ItemDisplay.xml` gives it `RelativePosition false` and `<Location>(0,80)</Location>`, so it is drawn and hit-tested LAST, on top of every centre popup, and ESC dismisses it before them. **Nor is the Options window** (T434), for the same reason and one level higher still: `EQUI_OptionsWindow.xml` is `RelativePosition false` at `<Location>(90,47)</Location>`, so it is drawn and hit-tested after even the item display and ESC dismisses it first of all. Its geometry is `options_layout.h`, a table of every control the oracle XML declares; a control whose `OptionsLayout::Setting` is `None` has no backing setting in fable, is drawn greyed and is **not hit-testable** (the T363 rule made mechanical).
 
 **What is wired (B430/B431/B433).** Every control row has a decision in `src/client/graphics/ui/options_classification.cpp` — WIRED, or excluded as POST-VELIOUS, OUT (Will 2026-09-23), NO CAPABILITY (naming the issue that owns the missing capability) or AWAITING ORACLE — and `OptionsClassification.EveryControlRowIsClassifiedExactlyOnce` / `AControlIsWiredIffItHasASetting` fail on a gap; read that file, not this paragraph, for the live census. The settings themselves are one table, `options_settings.h/.cpp` (oracle ini key, scale, default, owner), and every click resolves through `resolveOptionsClick()` (`options_lists.cpp`: checkbox toggles, slider steps, combobox CYCLES — a flagged deviation from the oracle's drop-down — list rows select) into `FrameComponent::applyOptionsSetting()`. Owners: **Renderer** settings persist per character under their `eqclient.ini` key; **Game** settings (anonymous/roleplay, autosplit, the three auto-consents) are the server's and travel as `GameOptionIntent` → `OP_SpawnAppearance`, coming back on `GameOptionChanged` (also published from the player profile at zone-in and from `/anon`, `/roleplay`). Pages: **Filters** — the era `/filter` set (eqstr 1354-1360), one `OP_SetServerFilter` payload, `/filter <name>`; **General** — the anon pair, autosplit, auto-consent ×3, pet window popup, the two volumes; **Display** — PC and NPC names (two flags under the Ctrl+F3 master, `EntityRenderer::setNameTagKindsVisible`), clip plane; **Mouse** — invert Y, look spring, mouse look, wheel zoom, sensitivity (`include/client/graphics/player/mouse_options.h`); **Keys** — category combobox, the Command/Keypress/Alternate list over `HotkeyManager` (a slot click captures the next key, `options_keys.h`), Reload defaults; **Colors** — not reached; **Mail** — all OUT. `/option [list | <name> [value]]` (registry 3) sets any wired setting by name.
+
+**The Friends window** (B897, GitLab #213). `friends_layout.h` quotes `EQUI_FriendsWnd.xml`: one
+`Style_Sizable false` 168x288 window (drawn unscaled) whose TabBox holds `FW_FriendsPage` (Contact, Who,
+the list, the name Editbox, Add, Delete) and `FW_IgnorePage` (the list, the Editbox, Add, Delete -- the
+file declares no Contact or Who there, so none is drawn or hit-testable). Its title height (24) and tab strip
+(22, the `FT_DefTabBorder` strip the Options pages sit under) are derived, its list row (14) and VScroll strip
+(12) are fable's own and flagged. The LISTS are the game thread's (`state::GameState::social()`,
+`include/client/state/social_lists.h`); the panel holds a copy fed by `GameEventType::SocialListsChanged`, and
+Add / Delete / Who push `SocialListIntent`, whose handler runs the very bodies `/friends`, `/ignore` and
+`/friendswho` run; Who with a friend selected is a who-all for that name. Contact prefills the chat input with
+`/tell <name> `. Both measured on the official client (`review/UIGAP-ORACLE/213/friends.tsv`). Both
+lists persist in `<cache dir>/ui/<Char>_<server>.ini` `[Friends]`/`[Ignored]` -- the oracle's own file and
+keys, sorted and tail-packed with `*NULL*` as every real file is -- written by `state::SocialListsSync` on the game
+thread (headless too); the window's open state is `[FriendsWindow] Show=` in the UI_ file. Drawn and
+hit-tested just below the Options window; ESC closes it after Options. The Editboxes take the keyboard through
+`processFriendsNameInput()`, beside the tradeskill gate, with their own hold flag.
 
 **The three commerce windows** (T436, board **B429** CLOSED). Three producers filled an `iconId`
 nothing could draw, because the merchant window, the bank window and the cursor attachment did not
@@ -201,6 +218,7 @@ group panel and the buff bar (board **B366**).
 | Shift+LMB / Ctrl+LMB on a stack | Whole stack / exactly one, no dialog (B442, measured) |
 | Alt+LMB, RMB on an item slot | Item display (B442; was LMB, T421's deviation) |
 | Ctrl+LMB+drag | Look around (single-button mouse) |
+| Alt+F | Toggle the Friends window (B897). MEASURED at the oracle's Options > Keys > UI page (`review/T377/oracle/T377_oracle_options_keys_UI_page1.png`: "Toggle friend window   Alt F", eqstr 6599, Alternate column empty). Scriptable as `/friendswindow` (registry 3). |
 | Alt+O | Toggle the Options window (T434). MEASURED at the oracle's Options > Keys > UI page (`review/T377/oracle/T377_oracle_options_keys_UI_page2.png`: "Toggle options window   Alt O", Alternate column empty). fable bound a bare `O` to an arm that was `break;`; `O` is now unbound, as it is in the oracle. |
 | Shift+ESC | Quit |
 | Ctrl+F1 | Toggle wireframe |
@@ -330,7 +348,7 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    (aliases `/memory`, `/mem_report`), `/music`, `/sound`, `/volume`
    (`/vol`), `/musicvolume` (`/mvol`), `/effectsvolume` (`/evol`, `/sfxvol`).
 2. **Registry 2 — `action::CommandProcessor`**
-   (`src/client/action/command_processor_registration.cpp`, **153**
+   (`src/client/action/command_processor_registration.cpp`, **155**
    `registerCommand({...})` calls — T347 inserted `/cleartarget` at entry 022
    and `tests/goldens/command_registration_order_g03.txt` pins both the count
    and the position, so re-read the golden header rather than this line; J04
@@ -421,7 +439,11 @@ before you can click it (T268).
 `/inspectmessage [text|-clear]` (`/inspectmsg`, T171), `/trade [name]`,
 `/accept`, `/tradedecline` (`/rejecttrade`), `/canceltrade` (`/stoptrade`),
 `/lfg`, `/surname <name>`, `/random [low] [high]` (`/roll`), `/yell`, `/find
-[name]` (`/findperson`), `/friendswho <names>` (`/friends`).
+[name]` (`/findperson`), `/friendswho [names]` (no argument: the stored friends
+list), `/friends [name]` (`/friend`; toggles the name, no name lists the list --
+B897 ended its old aliasing to `/friendswho`, which the official client's
+`/friends <name>` contradicts), `/ignore [name]` (toggle / list). The window
+toggle is `/friendswindow` (registry 3).
 
 **Character:** `/appearance <field> <0-255> ...` (T153/T167).
 

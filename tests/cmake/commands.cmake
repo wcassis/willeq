@@ -24,6 +24,9 @@ SET(ACTION_LAYER_STATE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/client/state/combat_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/state/game_state.cpp
     ${CMAKE_SOURCE_DIR}/src/client/door_state_manager.cpp
+    # B897: GameState::social() -- the friends/ignore model the
+    # /friends, /ignore and /friendswho handlers edit (no disk I/O here).
+    ${CMAKE_SOURCE_DIR}/src/client/state/social_lists.cpp
 )
 
 ADD_EXECUTABLE(test_action_dispatcher
@@ -68,6 +71,7 @@ ADD_EXECUTABLE(test_command_processor
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_world.cpp  # J04
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_cursor.cpp  # B442
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_spells_gm.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_friends.cpp  # B897
     ${ACTION_LAYER_STATE_SOURCES}
 )
 # T140: cmdMove/cmdMoveTo/cmdFollow use fmt::format directly (T88's
@@ -97,6 +101,7 @@ ADD_EXECUTABLE(test_appearance_command
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_world.cpp  # J04
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_cursor.cpp  # B442
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_spells_gm.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_friends.cpp  # B897
     ${ACTION_LAYER_STATE_SOURCES}
 )
 TARGET_LINK_LIBRARIES(test_appearance_command GTest::gtest_main fmt::fmt)
@@ -134,6 +139,7 @@ ADD_EXECUTABLE(test_merged_help
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_world.cpp  # J04
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_cursor.cpp  # B442
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_spells_gm.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_friends.cpp  # B897
     ${CMAKE_SOURCE_DIR}/src/client/graphics/ui/command_registry.cpp
     ${CMAKE_SOURCE_DIR}/src/client/help/merged_help.cpp
     ${CMAKE_SOURCE_DIR}/src/client/help/renderer_command_catalog.cpp
@@ -284,6 +290,7 @@ ADD_EXECUTABLE(test_input_action_bridge
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_world.cpp  # J04
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_cursor.cpp  # B442
     ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_spells_gm.cpp  # J04
+    ${CMAKE_SOURCE_DIR}/src/client/action/command_processor_friends.cpp  # B897
     ${CMAKE_SOURCE_DIR}/src/client/action/input_action_bridge.cpp
     # T174: the bridge now reads HotbarModel to route keyboard hotbar presses
     # by slot content type. hotbar_model.cpp is dependency-light (event_bus +

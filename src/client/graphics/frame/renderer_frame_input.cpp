@@ -209,6 +209,7 @@ void FrameComponent::processCommonInput(const std::vector<RendererEvent>& action
             // setting. The key is Alt+O, measured at the oracle's
             // Options > Keys > UI page (T377).
             case RA::ToggleOptions: toggleOptionsWindow(); break;
+            case RA::ToggleFriends: toggleFriendsWindow(); break;  // B897
             case RA::ClearTarget:
                 if (ctx_.Overlays().currentTargetId() != 0) {
                     LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", ctx_.Overlays().currentTargetName());
@@ -579,6 +580,10 @@ void FrameComponent::processChatInput() {
     if (processTradeskillSearchInput()) {
         return;
     }
+    // B897: the Friends window's FW_NameInput / FW_IgnoreNameInput.
+    if (processFriendsNameInput()) {
+        return;
+    }
 
     // Open chat input on Enter or / key
     if (!chatInputFocused_) {
@@ -673,6 +678,11 @@ void FrameComponent::processChatInput() {
         bool popupConsumedEscape = false;
         if (optionsState_.isOpen) {
             optionsState_.isOpen = false;
+            popupConsumedEscape = true;
+        }
+        // B897: the Friends window sits just below Options in the draw.
+        if (!popupConsumedEscape && friendsState_.isOpen) {
+            toggleFriendsWindow();
             popupConsumedEscape = true;
         }
         if (!popupConsumedEscape && itemDisplayState_.isOpen) {

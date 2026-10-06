@@ -11,6 +11,7 @@
 #include "client/bind_wound_outcome.h"
 #include "client/who_format.h"
 #include "client/who_response.h"
+#include "client/state/social_lists.h"  // B897: eqstr 12307
 #include "client/zone_lines.h"
 #include "client/combat.h"
 #include "client/spell/spell_manager.h"
@@ -387,6 +388,20 @@ void eqt::player::PlayerComponent::ZoneProcessWhoAllResponse(const EQ::Net::Pack
 		if (!title.empty()) {
 			ctx_.out.System(title);
 		}
+	} else if (header->playerineqstring == EQT::kWhoStringNone) {
+		// B897: 0xFFFFFFFF is world's FRIENDS-who signature (ClientList::
+		// SendFriendsWho is its only writer; /who all sends 5001), so this
+		// reply is the answer to /friendswho or the Who button, and its
+		// heading is eqstr 12307 "Friends currently on EverQuest:".
+		// MEASURED (review/UIGAP-ORACLE/213/friends.tsv row 13): the heading
+		// arrives WITH the reply's lines. Printing it on receipt rather than
+		// at send time is fable's reading of that.
+		using eqt::state::SocialStr::kFriendsOnline;
+		std::string title = ctx_.strings.Db().getString(kFriendsOnline);
+		ctx_.out.System(title.empty() ? eqt::state::SocialDefaultString(kFriendsOnline) : title);
+		// The official client rules it with 33 dashes (friends.tsv row 13);
+		// world's own `line` is empty for this reply, so it is skipped below.
+		ctx_.out.System(eqt::state::kFriendsOnlineRule);
 	}
 
 	// Line 2: the rule ("---------------------------").

@@ -293,6 +293,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/bridge/bridge_component_ui_audio.cpp
     src/client/bridge/bridge_component_cursor.cpp  # B442
     src/client/bridge/bridge_component_options.cpp
+    src/client/bridge/bridge_component_social.cpp  # B897
     src/client/entities/entities_component.cpp
     src/client/entities/entities_component_appearance.cpp
     src/client/entities/entities_component_updates.cpp
@@ -416,6 +417,9 @@ SET(CLIENT_CORE_SOURCES
     src/client/state/trade_state.cpp
     src/client/state/inventory_state.cpp
     src/client/state/spell_state.cpp
+    # B897: the friends/ignore lists (model + oracle text; disk I/O apart).
+    src/client/state/social_lists.cpp
+    src/client/state/social_lists_io.cpp
     src/client/state/game_state.cpp
     # Input handling sources
     src/client/input/null_input_handler.cpp
@@ -458,6 +462,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/action/command_processor_world.cpp  # J04
     src/client/action/command_processor_cursor.cpp  # B442
     src/client/action/command_processor_spells_gm.cpp  # J04
+    src/client/action/command_processor_friends.cpp  # B897
     # Help system sources (T143: merges EverQuest::m_command_registry +
     # action::CommandProcessor catalogs for a registry-aware /help)
     src/client/help/merged_help.cpp
@@ -608,6 +613,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_render.cpp
         src/client/graphics/frame/renderer_frame_preferences.cpp
         src/client/graphics/frame/renderer_frame_options.cpp
+        src/client/graphics/frame/renderer_frame_friends.cpp  # B897
         src/client/graphics/frame/renderer_frame_entity_build.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
@@ -715,6 +721,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/options_classification.cpp
         src/client/graphics/ui/options_command.cpp
         src/client/graphics/ui/options_keys.cpp
+        # B897: the Friends window (friends + ignore lists).
+        src/client/graphics/ui/friends_panel.cpp
         # T436 (board B429): the merchant, bank and cursor-attachment
         # windows -- one TU per panel (M00).
         src/client/graphics/ui/merchant_panel.cpp
