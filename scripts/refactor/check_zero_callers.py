@@ -502,7 +502,7 @@ BOARD_REASONS.update({
     "B603":
         "gameplay-manager control API with no production caller -- CombatManager's auto-loot/aggro/flee/auto-fire configuration, SpellManager's cast-by-id, gem swap and two callback setters, BuffManager's removals and ActiveBuff's formatting, the group-decline, move-speed, cursor-stack and hotbar-slot mutators, ZoneLines::checkMovement, WhoAllEntry::isLinkdead and calcBankBagSlotId",
     "B605":
-        "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval and focusTextEntry",
+        "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval",
     "B899":
         "the T415/T419 recipe window (TradeskillPanelState, EQUI_TradeskillWnd) -- since B899 (#215, Will 2026-09-23: the recipe half is out of baseline) no event opens it, so its close applier is reached only from its tests; deleting the window is a follow-up, not done mid-unit",
     "B606":
@@ -964,10 +964,6 @@ EXEMPT_TESTS_GROUPS = {
     # test_texture_eviction_residency asserts eviction and restore through it;
     # production only needs the counts (getResidentTextureCount()).
     ("ConstrainedTextureCache", "isResident"): "observer",
-    # B442: the bag window (B899, concurrent) installs the open-container hook
-    # on the shared CursorGesture; until it merges only test_cursor_gesture
-    # drives the seam.
-    ("CursorGesture", "setOpenContainerHook"): "seam",
     # B947: whether one entry was pinned (no restore source; never evicted
     # again). test_texture_eviction_{residency,character_restore} assert it;
     # production logs the count (getPinnedTextureCount()).
@@ -1269,7 +1265,6 @@ EXEMPT_TESTS_GROUPS = {
     ("SpellManager", "swapGems"): "B603",
     ("WhoAllEntry", "isLinkdead"): "B603",
     ("ZoneLines", "checkMovement"): "B603",
-    ("(free)", "focusTextEntry"): "B605",
     ("CommandProcessor", "setDefaultChannel"): "B605",
     ("CommandProcessor", "setEchoEnabled"): "B605",
     ("CommandProcessor", "unregisterCommand"): "B605",

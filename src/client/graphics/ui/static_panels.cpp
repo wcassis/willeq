@@ -407,6 +407,23 @@ void renderInventoryPopup(UIRenderer& ui, const UILayout& layout,
             decal.LowerRightCorner.X + 2, decal.UpperLeftCorner.Y,
             irr::video::SColor(255, 255, 255, 255));
     }
+
+    // B442b (#152, merchant.tsv row 3): the item selected for sale while a
+    // merchant is open -- the oracle frames it in yellow.
+    if (inv.selectedSlot >= 0 && inv.selectedSlot < InventoryLayout::TOTAL_SLOTS) {
+        ui.drawFrame(InventoryLayout::slotRect(layout, inv.selectedSlot),
+                     irr::video::SColor(255, 255, 220, 0));
+    }
+
+    // B442b (#151 row 34): IW_Destroy. See InventoryLayout::destroyButtonRect()
+    // for why its size is the oracle's and its place is not.
+    const auto destroy = InventoryLayout::destroyButtonRect(layout);
+    ui.drawRect(destroy, inv.destroyHovered ? irr::video::SColor(220, 120, 60, 60)
+                                            : irr::video::SColor(200, 56, 62, 84));
+    ui.drawFrame(destroy, irr::video::SColor(255, 80, 80, 80));
+    if (tb) {
+        tb->addTextCentered("Destroy", destroy, irr::video::SColor(255, 255, 255, 255));
+    }
 }
 
 void renderHotbar(UIRenderer& ui, const UILayout& layout,

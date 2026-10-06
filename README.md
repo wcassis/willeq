@@ -157,7 +157,7 @@ Legend: Done | Partial | Not Implemented
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Chat panel | Done | Scrollable, filterable |
-| Inventory popup | Done | Equipment slots, item icons (T430), tooltips. Click-to-cursor (B442): left click picks up / places, right click is the item display, a purse row opens the Quantity window for coin |
+| Inventory popup | Done | Equipment slots, item icons (T430), tooltips. Click-to-cursor (B442): left click picks up / places, right click shows the item display while held (Alt+left keeps it), right click on a bag toggles its window, a purse row opens the Quantity window for coin, Destroy asks before destroying the held item (B442b) |
 | Player status | Done | HP/mana/stamina, stats |
 | Target info | Done | |
 | Spell book popup | Done | Searchable, click-to-memorise (no drag; T444) |
@@ -168,14 +168,14 @@ Legend: Done | Partial | Not Implemented
 | Buff bar | Done | Duration timers |
 | XP bar | Done | |
 | Skills popup | Done | Skill values by category, class skill table from `config/skill_caps.json` |
-| Merchant window | Done | T436 (board B429), the oracle's `EQUI_MerchantWnd.xml`: stock list with icons, Buy/Sell, Done. `/vendorlist`, `/buy`, `/sell` still work |
+| Merchant window | Done | T436 (board B429), the oracle's `EQUI_MerchantWnd.xml`: stock list with icons, Buy/Sell, Done. As measured (B442b, #152): clicking one of your items selects it for sale (never the cursor), the button is Buy or Sell by the last selection, Sell on a stack opens the Quantity window. `/vendorlist`, `/buy`, `/sell` still work |
 | Bank window | Done | T436 (board B429), the oracle's `EQUI_BankWnd.xml`: 8 slots + 4 money rows + Done. `/bank` still works. Change is drawn disabled (board B441) |
 | Cursor item | Done | T436, `EQUI_CursorAttachment.xml`: the held item's icon follows the mouse |
 | Loot window | Done | T290, center popup, scrollable |
 | Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; every row is classified in `src/client/graphics/ui/options_classification.cpp` (wired, or excluded with its reason -- post-Velious, Will's OUT ruling, no fable capability, or awaiting the oracle) and `OptionsClassification.*` fails on an unclassified row. B430/B433 wired General (anonymous/roleplay, autosplit, auto-consent, pet window popup, the volumes), Display (PC/NPC names, clip plane), Mouse, Keys (category, rebinding, reload defaults) and Filters; Colors and the remaining General/Display rows stay greyed (#144, #145, #146). `/option` sets any wired setting by name |
 | Trade | Partial | Command-driven (/trade); no window. `SetupTradeWindowCallbacks` is an empty stub. Issue #212 (B896) |
 | Item / spell display | Done | T421 + T425, one window for both (`EQUI_ItemDisplay.xml`); click an item slot, SHIFT+click a gem or spellbook row |
-| Pick up / put down an item | Partial | Click-to-cursor in the inventory, bank and loot windows, the Quantity window (a stack or a purse row) and `/pickup` `/putdown` `/cursor` `/coin` — one `CursorGestureIntent` path, rules from the official client's capture (B442, #151). Owed: the live `pickup_roundtrip` scenario, bag/trade/give windows, a coin icon on the cursor, the world drop and Destroy prompts |
+| Pick up / put down an item | Partial | Click-to-cursor in the inventory, bank, loot and container windows, the Quantity window (a stack or a purse/bank coin row; its box takes typed digits) and `/pickup` `/putdown` `/cursor` `/coin` — one `CursorGestureIntent` path, rules from the official client's capture (B442, B442b, #151). Coin rides the cursor with its count; a motionless world click with an item held asks "ARE YOU SURE you wish to drop..." (Yes = `OP_GroundSpawn`) and Destroy asks before `OP_MoveItem 30 -> -1`. Owed: the live `pickup_roundtrip` scenario, trade/give windows, loot-to-cursor (not captured) |
 | Tradeskill container | Partial | B899 (#215): a world container (forge, oven) and a carried kit open the era container window (`EQUI_Container.xml`): its slots, Combine, Done. The post-Velious recipe window no longer opens (Will 2026-09-23); `/recipesearch` and `/recipecombine` stay as automation. The button reads "Combine" on every container (measured, `review/UIGAP-ORACLE/215`); the live combine is owed |
 | Skill trainer | Partial | B898, the oracle's `EQUI_TrainWindow.xml` at 580x280: skill list (name, value, price in pp/gp/sp/cp), practices, experience, money, Train, Done. Opens with /train, T, or Ctrl+click on a guildmaster; refreshes only when the server confirms a train. The Rank column and the live train are still owed to the oracle (issue #214) |
 
@@ -185,7 +185,7 @@ Legend: Done | Partial | Not Implemented
 | Item display | Done | Icons and names |
 | Item stats | Done | Tooltip |
 | Move items | Partial | Click-to-cursor (B442) plus `/equip` by slot or name and `/pickup` / `/putdown`. Not drag and drop: the official client is click-to-cursor (T444 corrected "Drag and drop" here) |
-| Container bags | Partial | B899: `/bag <general slot>` opens/closes a bag's window (`EQUI_Container.xml`, several at once, stacked at one position as measured), contents drawn with icons, cells click-to-cursor (B442). Right-click on the inventory bag does not open it yet |
+| Container bags | Partial | B899: `/bag <general slot>` opens/closes a bag's window (`EQUI_Container.xml`, several at once, stacked at one position as measured), contents drawn with icons, cells click-to-cursor (B442). Right-click on a bag in a general slot toggles its window, as the official client does (B442b, #151 rows 19-21) |
 | Equipment slots | Done | With tint colors |
 | Loot items | Done | |
 | Currency | Done | All denominations, /split |

@@ -56,6 +56,27 @@ struct InventorySlotChangedData {
     std::string itemName;
     uint32_t iconId = 0;
     uint32_t quantity = 0;
+    // B442b (#151 rows 19-21): the item's bag size (ItemInstance::bagSlots),
+    // 0 for anything that is not a container -- so the render thread knows a
+    // RIGHT click on this slot opens a bag window rather than the display.
+    uint8_t bagSlots = 0;
+};
+
+// B442b (#151 row 29): the coin on the cursor. The official client draws the
+// coin's decal with its count under it while it is held
+// (review/UIGAP-ORACLE/151/run1.G33a_coin_quantity_set_3.png). `coinType` is
+// EQT::COINTYPE_* (0 cp .. 3 pp); `amount` 0 means the cursor holds no coin.
+struct CursorCoinChangedData {
+    uint8_t coinType = 0;
+    uint32_t amount = 0;
+};
+
+// B442b (#151 rows 31-35): a Yes/No prompt the game thread composed from
+// eqstr. `purpose` is the asker's own token (eqt::inventory::ConfirmPurpose
+// for the cursor gestures); the render thread echoes it back on Yes.
+struct ConfirmationRequestedData {
+    uint8_t purpose = 0;
+    std::string text;
 };
 
 struct CursorItemChangedData {

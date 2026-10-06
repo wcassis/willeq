@@ -98,7 +98,7 @@ void CursorGesture::pickUpQuantity(int16_t slotId, int32_t quantity) {
     bridge_->pushIntent(intent);
 }
 
-void CursorGesture::coinClick(uint8_t coinType, int32_t amount) {
+void CursorGesture::coinClick(uint8_t coinType, int32_t amount, uint8_t source) {
     if (!bridge_ || coinType > EQT::COINTYPE_PP) {
         return;
     }
@@ -106,6 +106,8 @@ void CursorGesture::coinClick(uint8_t coinType, int32_t amount) {
     intent.op = eqt::events::CursorGestureOp::CoinClick;
     intent.coinType = coinType;
     intent.quantity = std::max<int32_t>(0, amount);
+    intent.coinSource = source == EQT::COINSLOT_BANK ? static_cast<uint8_t>(EQT::COINSLOT_BANK)
+                                                     : static_cast<uint8_t>(EQT::COINSLOT_INVENTORY);
     bridge_->pushIntent(intent);
 }
 
@@ -158,8 +160,10 @@ CursorGestureOutcome ApplyCursorGesture(InventoryManager& inv,
     using Op = eqt::events::CursorGestureOp;
     CursorGestureOutcome out;
 
-    if (intent.op == Op::CoinClick) {
-        out.message = "A coin gesture is not an item move.";
+    if (intent.op != Op::Click && intent.op != Op::PickUp && intent.op != Op::PutDown) {
+        // CoinClick (PlanCoinGesture), ToggleBag and the four confirmation
+        // ops are resolved by the bridge's RunCursorGesture, never here.
+        out.message = "That gesture is not an item move.";
         return out;
     }
     const int16_t slot = intent.slot;
@@ -235,16 +239,23 @@ CursorGestureOutcome ApplyCursorGesture(InventoryManager& inv,
 
 CoinMovePlan PlanCoinGesture(const InventoryManager& inv, uint8_t coinType,
                              int32_t requested, uint32_t purseOfType) {
+    return PlanCoinGesture(inv, coinType, requested, purseOfType, /*bank=*/false);
+}
+
+CoinMovePlan PlanCoinGesture(const InventoryManager& inv, uint8_t coinType,
+                             int32_t requested, uint32_t purseOfType, bool bank) {
     CoinMovePlan plan;
+    const char* store = bank ? "the bank" : "your purse";
     if (inv.hasCursorMoney()) {
-        // Held coin goes home, whatever row was clicked: its own type, its
-        // whole amount (eqemu's cursor buckets hold one pile per type).
+        // Held coin goes onto the clicked store, whatever row was clicked:
+        // its own type, its whole amount (eqemu's cursor buckets hold one
+        // pile per type). Rows 30 and 44.
         plan.send = true;
         plan.toCursor = false;
         plan.coinType = coinTypeOf(inv.getCursorMoneyType());
         plan.amount = static_cast<int32_t>(inv.getCursorMoneyAmount());
         plan.message = "Returned " + std::to_string(plan.amount) + " " +
-                       coinName(plan.coinType) + " to your purse.";
+                       coinName(plan.coinType) + " to " + store + ".";
         return plan;
     }
     if (coinType > EQT::COINTYPE_PP) {
@@ -255,22 +266,49 @@ CoinMovePlan PlanCoinGesture(const InventoryManager& inv, uint8_t coinType,
         plan.message = "You are holding " + held->name + " -- put it down first.";
         return plan;
     }
+    const std::string where = bank ? " in the bank" : "";
     if (purseOfType == 0) {
-        plan.message = std::string("You have no ") + coinName(coinType) + ".";
+        plan.message = std::string("You have no ") + coinName(coinType) + where + ".";
         return plan;
     }
     if (requested > 0 && static_cast<uint32_t>(requested) > purseOfType) {
         // The server would take only what is there; refuse instead so the
         // projection and the wire never disagree (the /bank precedent, T269).
         plan.message = "You do not have " + std::to_string(requested) + " " +
-                       coinName(coinType) + ".";
+                       coinName(coinType) + where + ".";
         return plan;
     }
     plan.send = true;
     plan.toCursor = true;
     plan.coinType = coinType;
     plan.amount = requested > 0 ? requested : static_cast<int32_t>(purseOfType);
-    plan.message = "Picked up " + std::to_string(plan.amount) + " " + coinName(coinType) + ".";
+    plan.message = "Picked up " + std::to_string(plan.amount) + " " + coinName(coinType) +
+                   (bank ? " from the bank." : ".");
+    return plan;
+}
+
+ConfirmPromptPlan PlanConfirmPrompt(const InventoryManager& inv,
+                                    eqt::events::CursorGestureOp op) {
+    using Op = eqt::events::CursorGestureOp;
+    ConfirmPromptPlan plan;
+    const bool drop = op == Op::RequestDrop;
+    if (!drop && op != Op::RequestDestroy) {
+        plan.message = "Not a confirmation request.";
+        return plan;
+    }
+    const ItemInstance* held = inv.getCursorItem();
+    if (!held) {
+        // Row 34 measured the Destroy button WITH an item held; with an empty
+        // cursor there is nothing to name in the prompt, so nothing is asked
+        // (assumption awaiting oracle: the official empty-cursor Destroy).
+        plan.message = drop ? "You are not holding anything to drop."
+                            : "You are not holding anything to destroy.";
+        return plan;
+    }
+    plan.prompt = true;
+    plan.purpose = drop ? ConfirmPurpose::DropItem : ConfirmPurpose::DestroyItem;
+    plan.eqstrId = drop ? kEqStrDropOnGround : kEqStrDestroyItem;
+    plan.itemName = held->name;
     return plan;
 }
 

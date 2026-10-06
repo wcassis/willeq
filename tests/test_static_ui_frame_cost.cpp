@@ -468,8 +468,8 @@ TEST_F(StaticUiFrameCostTest, AWarmChatCachePaintsTheSamePixelsAsAColdOne) {
 // B506 -- the open inventory's commands are flushed in texture runs
 // ===========================================================================
 
-// The static UI with the inventory open submits 159 draw commands (98 of them
-// the popup's) and 49 text entries. Before T462 the flush issued one driver
+// The static UI with the inventory open submits 164 draw commands (103 of them
+// the popup's, IW_Destroy included since B442b) and 50 text entries. Before T462 the flush issued one driver
 // draw call -- with its full 2D state setup -- per command; now it issues at
 // most two per maximal same-texture run (the run's first quad sets the state,
 // the rest go in one draw).
@@ -482,8 +482,10 @@ TEST_F(StaticUiFrameCostTest, TheOpenInventoryFlushIssuesAtMostTwoDrawsPerTextur
 
     // The draw LIST is not T462's to change; pinned so batching cannot hide a
     // lost command.
-    EXPECT_EQ(s.commands, 159u);
-    EXPECT_EQ(s.textEntries, 49u);
+    // B442b: +5 commands (IW_Destroy's rect + its 4-edge frame) and +1 text
+    // entry (its label): 159 -> 164 and 49 -> 50.
+    EXPECT_EQ(s.commands, 164u);
+    EXPECT_EQ(s.textEntries, 50u);
     ASSERT_GT(s.textureRuns, 0u);
     EXPECT_LT(s.textureRuns, s.commands / 4)
         << "the fixture's icons break the atlas run " << s.textureRuns << " times";

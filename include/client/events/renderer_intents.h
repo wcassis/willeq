@@ -342,6 +342,16 @@ enum class CursorGestureOp : uint8_t {
     PickUp,      // /pickup: pick up only -- refused while the cursor holds an item
     PutDown,     // /putdown: place only -- refused while the cursor is empty
     CoinClick,   // purse row / /coin: coin onto the cursor, or held coin back
+    // B442b (#151 rows 19-21): RIGHT click on a carried bag -- the body /bag
+    // runs (CommandsComponent::RequestToggleBag). `slot` = the general slot.
+    ToggleBag,
+    // B442b (#151 rows 31-35): the two confirmations. A Request asks the game
+    // thread for the prompt (eqstr 9057 / 2043 with the held item's name,
+    // published back as ConfirmationRequested); a Confirm is the dialog's Yes.
+    RequestDrop,     // a motionless world click with an item held (row 31)
+    ConfirmDrop,     // Yes -> OP_GroundSpawn, empty body (row 33)
+    RequestDestroy,  // IW_Destroy with an item held (row 34)
+    ConfirmDestroy,  // Yes -> OP_MoveItem 30 -> -1 qty 0 (row 35)
 };
 
 struct CursorGestureIntent {
@@ -349,6 +359,9 @@ struct CursorGestureIntent {
     int16_t slot = -1;      // Titanium (model) slot id; unused by CoinClick
     int32_t quantity = 0;   // 0 = the whole stack / the whole coin pile
     uint8_t coinType = 0;   // EQT::COINTYPE_* (0 cp .. 3 pp), CoinClick only
+    // B442b (#151 rows 43-44): which coin store a CoinClick is on --
+    // EQT::COINSLOT_INVENTORY (1, the purse) or EQT::COINSLOT_BANK (2).
+    uint8_t coinSource = 1;
     bool echo = false;      // a slash command: print the outcome to chat
 };
 

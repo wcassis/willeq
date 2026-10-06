@@ -823,6 +823,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_cursor_gesture PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_cursor_gesture GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_cursor_gesture DISCOVERY_TIMEOUT 120)
+
+    # B442b (#151 remainder, #152): the bag toggle, the held/kept item
+    # display, coin on the cursor and the bank's coin rows, the drop/destroy
+    # confirmation dialog and its wire (OP_GroundSpawn, OP_MoveItem 30->-1),
+    # the typed Quantity box, and the merchant's select-to-sell model -- the
+    # render half with no device, the game half on a REAL EverQuest over
+    # FakeUdpTransport with the shipped eqstr table.
+    ADD_EXECUTABLE(test_cursor_gesture_completion
+        test_cursor_gesture_completion.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_cursor_gesture_completion PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_cursor_gesture_completion GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_cursor_gesture_completion PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_cursor_gesture_completion DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # B895 (GitLab #211): the Tracking Window -- its XML layout, the direction

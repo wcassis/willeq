@@ -428,6 +428,13 @@ bool InventoryManager::consumeScribedScroll() {
 
     // Same local bookkeeping as destroyCursorItem(), WITHOUT the
     // DeleteItemIntent -- the server deleted it and told us so.
+    return discardCursorFront();
+}
+
+bool InventoryManager::discardCursorFront() {
+    if (cursorQueue_.empty()) {
+        return false;
+    }
     dropCursorFrontContents();
     cursorQueue_.pop_front();
     promoteCursorFrontContents();

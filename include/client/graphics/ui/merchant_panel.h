@@ -26,18 +26,18 @@
  *
  * BUY AND SELL SHARE ONE RECT, because the oracle's own two elements carry
  * byte-identical anchors (see merchant_layout.h). The official client can
- * therefore only show one at a time, and which one it shows depends on
- * whether the item under consideration is the merchant's or yours. fable's
- * list holds the MERCHANT's stock (it is fed by `VendorItemAdded`) and fable
- * has no drag, so the rule here is:
+ * therefore only show one at a time. WHICH ONE IS MEASURED (B442b, #152,
+ * review/UIGAP-ORACLE/152/merchant.tsv): the side of the LAST SELECTION.
  *
- *     the cursor holds an item  ->  SELL (of the cursor item)
- *     otherwise                 ->  BUY  (of the selected list row)
+ *     the window just opened, nothing selected     -> Buy   (row 1)
+ *     a merchant list row was clicked last         -> Buy   (rows 2, 4, 9)
+ *     an item in YOUR inventory was clicked last   -> Sell  (row 3)
  *
- * which is the same disjunction the oracle draws, expressed with the one
- * "your item" fable can name. It is a DESIGN CHOICE made to fit the oracle's
- * shared rect, not a measurement; the live pair that would settle it is
- * OWED (T436 held no eqemu lock) -- board B443.
+ * and the cursor is NEVER involved: with a merchant open, a left click on an
+ * inventory item SELECTS it (yellow frame) and does not pick it up, and Sell
+ * sends OP_ShopPlayerSell straight from that slot (row 6, itemslot=27). T436
+ * guessed "an item on the cursor means SELL"; that default was wrong and is
+ * gone. The selection is written by StaticUIInput (static_ui_merchant.cpp).
  */
 
 #pragma once
@@ -52,6 +52,7 @@ namespace eqt { namespace state {
 struct WindowOpenedData;
 struct WindowClosedData;
 struct VendorItemAddedData;
+struct InventorySlotChangedData;
 } }
 
 namespace EQT {
@@ -59,6 +60,7 @@ namespace Graphics {
 
 class UIRenderer;
 struct CursorAttachmentState;
+struct InventoryPanelState;
 
 /** One MW_ItemList row -- exactly the fields VendorItemAddedData carries. */
 struct MerchantItemRow {
@@ -81,6 +83,34 @@ struct MerchantPanelState {
     // MW_SelectedItem / MW_SelectedItemLabel / MW_SelectedPriceLabel all
     // describe ONE row; -1 is "nothing considered yet".
     int selectedRow = -1;
+
+    // B442b (#152): the player's item selected for sale -- an inventory /
+    // bag slot (Titanium id), with what MW_SelectedItem* need to describe it.
+    int16_t playerSlot = -1;
+    std::string playerItemName;
+    uint32_t playerIconId = 0;
+    int32_t playerQuantity = 0;
+
+    // Which side was selected LAST; it names the shared button (see above).
+    enum class Side : uint8_t { None = 0, Merchant, Player };
+    Side lastSelected = Side::None;
+
+    bool sellSelected() const { return lastSelected == Side::Player && playerSlot >= 0; }
+    void selectRow(int row) { selectedRow = row; lastSelected = Side::Merchant; }
+    void selectPlayerItem(int16_t slot, const std::string& name, uint32_t icon, int32_t qty) {
+        playerSlot = slot;
+        playerItemName = name;
+        playerIconId = icon;
+        playerQuantity = qty;
+        lastSelected = Side::Player;
+    }
+    void clearPlayerItem() {
+        playerSlot = -1;
+        playerItemName.clear();
+        playerIconId = 0;
+        playerQuantity = 0;
+        if (lastSelected == Side::Player) lastSelected = Side::None;
+    }
 
     // `Style_VScroll true` on MW_ItemList. Measured from the TOP, the
     // SkillsPopupState/LootPanelState convention.
@@ -114,6 +144,16 @@ void applyVendorItemAdded(MerchantPanelState& state,
 /** VendorWindowClosed: the server has confirmed the session is over. */
 void applyVendorWindowClosed(MerchantPanelState& state,
                              const eqt::state::WindowClosedData& data);
+
+/**
+ * B442b (#152): the InventorySlotChanged arm's merchant half. The selected
+ * item's slot changed (a partial sale, a sale of the last one, a move): keep
+ * the selection's count current, or drop it when the slot emptied. Defined in
+ * static_ui_merchant.cpp.
+ */
+void applyMerchantSelectionSlotChanged(MerchantPanelState& merchant,
+                                       InventoryPanelState& inventory,
+                                       const eqt::state::InventorySlotChangedData& data);
 
 // --- draw and hit test -----------------------------------------------------
 

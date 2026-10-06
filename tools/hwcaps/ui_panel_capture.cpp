@@ -43,6 +43,7 @@
 #include "client/graphics/ui/cursor_attachment.h"
 #include "client/graphics/ui/trainer_panel.h"  // B898
 #include "client/graphics/ui/quantity_window.h"   // B442
+#include "client/graphics/ui/confirmation_dialog.h"  // B442b
 #include "client/graphics/ui/inventory_layout.h"  // B442
 // B895 (GitLab #211).
 #include "client/graphics/ui/tracking_panel.h"
@@ -661,14 +662,18 @@ std::vector<PanelCapture> buildCaptureList() {
             s.options.isOpen = true; s.options.activeTab = 6;
             renderOptionsWindow(u, l, s.options); }},
         // T436 (board B429): the three windows B429 said did not exist.
-        // `merchant_sell` is the SAME window with an item on the cursor --
-        // the oracle gives MW_Buy_Button and MW_Sell_Button one rect, so
-        // only one can show, and that is the state that picks Sell.
+        // `merchant_sell` is the SAME window after a left click on one of the
+        // player's items -- B442b (#152, merchant.tsv row 3): the last
+        // selection was the player's, so the shared rect reads Sell and
+        // MW_SelectedItem* describe that item. The cursor is not involved.
         {"merchant", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             CursorAttachmentState empty;
             renderMerchantPopup(u, l, s.merchant, empty); }},
         {"merchant_sell", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderMerchantPopup(u, l, s.merchant, s.cursor); }},
+            MerchantPanelState m = s.merchant;
+            m.selectPlayerItem(27, "Bottle", 1068, 5);
+            CursorAttachmentState empty;
+            renderMerchantPopup(u, l, m, empty); }},
         {"bank", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderBankWindow(u, l, s.bank); }},
         // B898 (#214): the skill trainer window, and the same window scrolled.
@@ -739,6 +744,53 @@ std::vector<PanelCapture> buildCaptureList() {
             q.openForStack(23, "Arrow", 20);
             q.value = 7;
             renderQuantityWindow(u, l, q); }},
+        // B442b (#151 remainder). `quantity_typed`: the box holds the
+        // keyboard and "2" was typed (row 5). `cursor_coin`: 10 platinum on
+        // the cursor over the purse, the decal + count strip (row 29).
+        // `confirm_drop` / `confirm_destroy`: the confirmation dialog over the
+        // inventory with an item held (rows 31, 34); the texts are eqstr 9057 /
+        // 2043 with the oracle run's own items, typed here as fixture data
+        // (the client composes them game-side from the string table).
+        // `inventory_sell_selected`: the popup with slot 27 selected for sale
+        // (the yellow frame, #152 row 3) and the Destroy button.
+        {"quantity_typed", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            QuantityWindowState q;
+            q.openForStack(26, "Low Quality Wolf Skin", 3);
+            q.input.inputActive = true;
+            q.input.inputText = "2";
+            q.value = 2;
+            renderQuantityWindow(u, l, q); }},
+        {"cursor_coin", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderInventoryPopup(u, l, s.inventory);
+            CursorAttachmentState coin;
+            coin.coinType = 3;   // EQT::COINTYPE_PP
+            coin.coinAmount = 10;
+            const auto pp = InventoryLayout::coinRect(l, 0);
+            coin.mouseX = pp.UpperLeftCorner.X + 20;
+            coin.mouseY = pp.UpperLeftCorner.Y - 40;
+            renderCursorAttachment(u, l, coin); }},
+        {"confirm_drop", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderInventoryPopup(u, l, s.inventory);
+            ConfirmationDialogState c;
+            c.open(1, "ARE YOU SURE you wish to drop your Rusty Long Sword on the ground?");
+            renderConfirmationDialog(u, l, c);
+            CursorAttachmentState held = s.cursor;
+            held.itemName = "Rusty Long Sword";
+            held.iconId = 1001;
+            held.mouseX = l.screenW / 2 + 160;
+            held.mouseY = l.screenH / 2 + 120;
+            renderCursorAttachment(u, l, held); }},
+        {"confirm_destroy", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderInventoryPopup(u, l, s.inventory);
+            ConfirmationDialogState c;
+            c.open(2, "Are you absolutely sure you want to destroy your Low Quality Wolf Skin?");
+            c.yesHovered = true;
+            renderConfirmationDialog(u, l, c); }},
+        {"inventory_sell_selected", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            InventoryPanelState inv = s.inventory;
+            inv.selectedSlot = 27;
+            inv.destroyHovered = true;
+            renderInventoryPopup(u, l, inv); }},
         // Everything the HUD draws at once -- the screen a player sees.
         {"hud_all", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderPlayerStatus(u, l, s.stats);
