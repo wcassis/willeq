@@ -1736,7 +1736,8 @@ the impostor is NOT the lever (its ~12 MiB is a named texture; unnamed share
 raw-GL particle) and ~7.4 MiB per-draw varying BOs — dominated by work B962
 already measured a static VBO worse for (+1.1..+4.3 MiB, half qeynos2 fps).
 The 10 MiB bound is therefore not reachable in the original card's shape
-(`refactor/B972/README.md`).
+(full numbers + census in `refactor/B972/`'s README on the
+`task/B972-mesa-stream-buffers` branch, MR !94 — lands on fable with !94).
 
 **Will's ruling, option 2, verbatim (2026-10-06): "proceed with option 2".**
 - The **10 MiB `gpu_unnamed_steady` crowd-tour guard HOLDS and is

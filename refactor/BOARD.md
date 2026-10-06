@@ -846,7 +846,8 @@ it without taking that measurement first.
   `renderer_zone_merge.cpp`) + the remaining `draw3d:client` pool hold the
   residual above the 10 MiB `gpu_unnamed_steady` guard (measured 2026-10-06:
   qeynos2 18.90 / gfaydark 24.5 MiB cache-on imp200far, the impostor proven
-  NOT the lever by the `off200far` control — `refactor/B972/README.md`).
+  NOT the lever by the `off200far` control — the B972 README in
+  `refactor/B972/` on the `task/B972-mesa-stream-buffers` branch, MR !94).
   Conversion to bounded reused VBOs (partial `glBufferSubData`, the merged
   B975 `NameTagBatchNode` slack pattern); a static VBO is the measured
   anti-pattern (B962: +4.3 MiB, half qeynos2 fps). Cut behind #290/MR !94
