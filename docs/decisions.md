@@ -1775,3 +1775,28 @@ The 10 MiB bound is therefore not reachable in the original card's shape
 
 Every worker reads the guard as will's number: it is blessed as-is by this
 ruling and neither #290 nor #317 re-scopes it.
+
+## 2026-10-06 — UI-gap pass rulings: container view stands; target ring accepted; merges gated locally (Will)
+
+**Tradeskill containers (#215, B899).** The official-client capture
+(`review/UIGAP-ORACLE/215/combine.tsv`) showed that Titanium opens a usable
+tradeskill container in the RECIPE window first and reaches the plain
+container view through Experiment. Asked whether to match that, Will ruled:
+**"tradeskill containers opening in the container view is correct."** So
+fable opens straight in the container (Experiment) view, with the type's
+Combine button and nothing else; the recipe window stays out of the baseline
+(2026-09-23 ruling unchanged). Not a deviation to "fix".
+
+**3D target ring (#314, B994).** Drawn procedurally from the client's own
+`TargetIndicator.ini` as a filled con-tinted glow, the caustic texture replaced
+by its mean brightness (`review/B993-B995/target_ring_on_800x600.png`). Will:
+**"looks fine."** Accepted as drawn.
+
+**Merge gating for the UI-gap pass (2026-10-06).** Will: executors on Opus;
+**merges gated on LOCAL ctest runs, not the GitLab pipeline**, so hermes-ext
+stays free for the board. Consequences recorded in B991 (#310): pushes go up
+with `-o ci.skip`; `visual_gate` is skipped in every executor slot (no
+`build-gles2/` tree) and runs only in `main`; on dev-u24 the untouched tip
+fails two host-specific gate rows (iceclad p95 CPU, iceclad allocator slack
+37 % vs 35 %), so a local gate is green when nothing else fails. No pipeline
+ran on `fable` for this pass; the ARM/Pi build for its tip is a manual run.
