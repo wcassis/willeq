@@ -126,22 +126,111 @@ bool ImpostorCache::prepare() {
     const double allocMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
 
     const auto p0 = Clock::now();
-    irr::core::matrix4 savedView = driver_->getTransform(irr::video::ETS_VIEW);
-    irr::core::matrix4 savedProj = driver_->getTransform(irr::video::ETS_PROJECTION);
-    driver_->setRenderTarget(scratch_, true, true, irr::video::SColor(0, 0, 0, 0));
-    driver_->draw2DRectangle(irr::video::SColor(0, 0, 0, 0),
-                             irr::core::rect<irr::s32>(0, 0, kCellPx - 1, kCellPx - 1));
-    finishGpu();  // glFinish, the EQT_HAS_GLES2 guard lives there
-    driver_->setRenderTarget(nullptr, false, false);
-    driver_->setTransform(irr::video::ETS_VIEW, savedView);
-    driver_->setTransform(irr::video::ETS_PROJECTION, savedProj);
+    const bool primed = prime3d();
     const double primeMs = std::chrono::duration<double, std::milli>(Clock::now() - p0).count();
 
     LOG_INFO(MOD_GRAPHICS,
-             "Impostor: prepared {} pages + scratch FBO in {:.2f} ms, primed the FBO in {:.2f} ms "
-             "(one-time GPU costs moved off the first gameplay frame, B979); row now {} B of {} B",
-             n, allocMs, primeMs, rowBytes(), budgetBytes_);
+             "Impostor: prepared {} pages + scratch FBO in {:.2f} ms, primed the 3D capture path in "
+             "{:.2f} ms ({}; one-time GPU costs moved off the first gameplay frame, B979); row now {} B of {} B",
+             n, allocMs, primeMs, primed ? "ok" : "FAILED", rowBytes(), budgetBytes_);
+    return primed;
+}
+
+bool ImpostorCache::prime3d() {
+#ifdef EQT_HAS_GLES2
+    if (primed3d_) return true;  // one-time per session: pages + scratch survive zone reloads
+    if (!scratch_ || pages_.empty() || !pages_[0].glTex) return false;
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
+
+    // A 4x4 white texture: the driver picks the SOLID3D program (the capture's
+    // own program) whenever the material's texture(0) is non-null -- a 2D
+    // rectangle or an untextured 3D mesh would select COLOR2D instead, which is
+    // NOT what a real capture draws, so it would not prime the 3D path.
+    irr::video::ITexture* white = driver_->addRenderTargetTexture(
+        irr::core::dimension2d<irr::u32>(4, 4), "impostor_prime");
+    if (white) {
+        eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDriver);
+        if (irr::u8* px = static_cast<irr::u8*>(white->lock())) {
+            for (int i = 0; i < 4 * 4 * 4; ++i) px[i] = 255;  // opaque white, RGBA
+        }
+        white->unlock();
+    }
+
+    // A unit cube (the same shape createPlaceholderMesh builds) carrying that
+    // texture: a real 3D mesh with a non-null texture(0), drawn with the
+    // capture's ortho look-at into the scratch FBO.
+    irr::scene::SMesh* mesh = new irr::scene::SMesh();
+    auto* buf = new irr::scene::SMeshBuffer();
+    irr::video::S3DVertex v[8] = {
+        {-0.5f, 0.0f, -0.5f, 0, -1, 0, irr::video::SColor(255, 255, 255, 255), 0, 1},
+        {0.5f, 0.0f, -0.5f, 0, -1, 0, irr::video::SColor(255, 255, 255, 255), 1, 1},
+        {0.5f, 0.0f, 0.5f, 0, -1, 0, irr::video::SColor(255, 255, 255, 255), 1, 0},
+        {-0.5f, 0.0f, 0.5f, 0, -1, 0, irr::video::SColor(255, 255, 255, 255), 0, 0},
+        {-0.5f, 1.0f, -0.5f, 0, 1, 0, irr::video::SColor(255, 255, 255, 255), 0, 1},
+        {0.5f, 1.0f, -0.5f, 0, 1, 0, irr::video::SColor(255, 255, 255, 255), 1, 1},
+        {0.5f, 1.0f, 0.5f, 0, 1, 0, irr::video::SColor(255, 255, 255, 255), 1, 0},
+        {-0.5f, 1.0f, 0.5f, 0, 1, 0, irr::video::SColor(255, 255, 255, 255), 0, 0},
+    };
+    irr::u16 idx[36] = {0,1,2,0,2,3, 4,6,5,4,7,6, 0,5,1,0,4,5, 2,7,3,2,6,7, 3,4,0,3,7,4, 1,6,2,1,5,6};
+    for (int i = 0; i < 8; ++i) buf->Vertices.push_back(v[i]);
+    for (int i = 0; i < 36; ++i) buf->Indices.push_back(idx[i]);
+    buf->recalculateBoundingBox();
+    irr::video::SMaterial mat;
+    mat.TextureLayer[0].Texture = white;  // non-null => SOLID3D
+    mat.BackfaceCulling = false;
+    buf->Material = mat;
+    mesh->addMeshBuffer(buf);
+    buf->drop();
+    mesh->recalculateBoundingBox();
+
+    const irr::core::matrix4 savedView = driver_->getTransform(irr::video::ETS_VIEW);
+    const irr::core::matrix4 savedProj = driver_->getTransform(irr::video::ETS_PROJECTION);
+    const irr::core::matrix4 savedWorld = driver_->getTransform(irr::video::ETS_WORLD);
+    driver_->setRenderTarget(scratch_, true, true, irr::video::SColor(0, 0, 0, 0));
+    irr::core::matrix4 proj;
+    proj.buildProjectionMatrixOrthoLH(2.0f, 2.0f, 0.1f, 500.0f);
+    driver_->setTransform(irr::video::ETS_PROJECTION, proj);
+    irr::core::matrix4 view;
+    view.buildCameraLookAtMatrixLH(irr::core::vector3df(0, 0.5f, -100.0f),
+                                   irr::core::vector3df(0, 0.5f, 0), irr::core::vector3df(0, 1, 0));
+    driver_->setTransform(irr::video::ETS_VIEW, view);
+    driver_->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+    driver_->setMaterial(mat);
+    driver_->drawMeshBuffer(mesh->getMeshBuffer(0));
+
+    // The capture's readback: glCopyTexSubImage2D out of the scratch FBO into
+    // page 0 (one cell). This is the FBO's first READ, a separate one-time
+    // cost from the first 3D raster -- growthplane 353c showed it at
+    // copy_ms=21.15 on the main thread, so the priming must read back too.
+    GLint prevTex = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTex);
+    glBindTexture(GL_TEXTURE_2D, pages_[0].glTex);
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, kCellPx, kCellPx);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTex));
+    driver_->setRenderTarget(nullptr, false, false);
+
+    // This is the loading thread's LAST GL work (prepare() is the final step of
+    // loadZoneGraphicsOnThread); glFinish so the deferred 3D raster and
+    // readback resolve HERE, before the main thread's first frame.
+    glFinish();
+
+    driver_->setTransform(irr::video::ETS_VIEW, savedView);
+    driver_->setTransform(irr::video::ETS_PROJECTION, savedProj);
+    driver_->setTransform(irr::video::ETS_WORLD, savedWorld);
+    mesh->drop();
+    if (white) driver_->removeTexture(white);
+
+    primed3d_ = true;
+    const double ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+    LOG_INFO(MOD_GRAPHICS, "Impostor: 3D capture path primed in {:.2f} ms (one-time, on the loading thread)", ms);
     return true;
+#else
+    (void)scratch_;
+    (void)pages_;
+    primed3d_ = true;
+    return true;
+#endif
 }
 
 bool ImpostorCache::acquireCell(uint64_t key, uint32_t frame, bool& isNew) {
