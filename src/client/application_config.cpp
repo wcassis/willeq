@@ -206,6 +206,9 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) config.deleteCharacterName = argv[++i];
         } else if (arg == "--list-characters") {
             config.listCharacters = true;
+        } else if (arg == "--character-select") {
+            // B998 (#318): login_world/character_select.h.
+            config.characterSelectScreen = true;
         } else if (arg == "--scenario") {
             // T410: the scenario lane implies Automated mode -- no graphics,
             // no stdin reader, and AutomatedMode's per-tick automation
@@ -312,6 +315,8 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                          "                           Create the character at character select, then enter world with it (home city)\n";
             std::cout << "  --delete-character <Name>  Delete the character at character select, then exit\n";
             std::cout << "  --list-characters        Print the account's characters at character select, then exit\n";
+            std::cout << "  --character-select       Show the character-select screen even with a configured character\n"
+                         "                           (graphics only; it is shown anyway when no character is configured)\n";
             std::cout << "  --scenario <name>        Run a live scenario headless and exit 0 pass / 1 fail / 2 timeout / 3 could-not-start\n";
             std::cout << "  --timeout <s>            --scenario: overall wall-clock budget (default 300)\n";
             std::cout << "  --scenario-hold <s>      --scenario two_client_survive: how long the pair must hold (default 300)\n";

@@ -23,8 +23,10 @@
 //     eq_packet_structs.h:657 (race, gender, name[64]); world fills `name` and
 //     echoes the same struct back (:636-697).
 //   OP_DeleteCharacter (0x26c9): the NUL-terminated name, read as a C string
-//     (:1072-1082); world answers with a fresh OP_SendCharInfo. Sent as a
-//     64-byte field -- the length is an assumption awaiting the pcap.
+//     (:1072-1082); world answers with a fresh OP_SendCharInfo. MEASURED
+//     (B998, review/UIGAP-ORACLE/318/charselect.opcodes_hex.tsv 15:42:08): the
+//     official client sends the name and its NUL, nothing more --
+//     "Testmelee\0", 10 bytes. kDeleteCharacterBytes is the name's cap.
 
 #include "client/login_world/char_create_rules.h"
 #include "common/net/packet.h"

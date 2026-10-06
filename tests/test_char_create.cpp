@@ -369,7 +369,14 @@ TEST(CharCreatePackets, RandomNameAndDeleteAndTheReplies) {
     EXPECT_EQ(U32(g, 6), 1u);
 
     const auto d = BuildDeleteCharacter("Cinewbie");
-    ASSERT_EQ(d.Length(), 2u + 64u);
+    // B998: the official client's own bytes -- the name and its NUL
+    // (review/UIGAP-ORACLE/318: "Testmelee\0", 10 bytes).
+    ASSERT_EQ(d.Length(), 2u + 9u);
+    EXPECT_EQ(d.GetUInt8(2 + 8), 0u);
+    const auto oracle = BuildDeleteCharacter("Testmelee");
+    const uint8_t kOracle[] = {0x54, 0x65, 0x73, 0x74, 0x6d, 0x65, 0x6c, 0x65, 0x65, 0x00};
+    ASSERT_EQ(oracle.Length(), 2u + sizeof(kOracle));
+    EXPECT_EQ(std::memcmp(static_cast<const uint8_t*>(oracle.Data()) + 2, kOracle, sizeof(kOracle)), 0);
     EXPECT_EQ(d.GetUInt16(0), HC_OP_DeleteCharacter);
     EXPECT_EQ(Str(d, 2), "Cinewbie");
 

@@ -246,6 +246,7 @@ void renderCharCreateScreen(UIRenderer& ui, int sw, int sh, const CharCreateScre
     }
 
     if (s.messageEqstr || !s.messageText.empty()) {
+        ui.beginLayer();   // B992: the modal is above the panes' text (B998 hosts it live)
         const Rect m = charCreateMessageRect(sw, sh);
         drawScreen(ui, m);
         const std::string text = s.messageEqstr ? resolve(eqstr, s.messageEqstr) : s.messageText;

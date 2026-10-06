@@ -48,6 +48,7 @@
 #include "client/hotbar/hotbar_model.h"
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/irrlicht_renderer.h"
+#include "client/graphics/ui/char_select_host.h"  // B998: complete type for ~Application
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/constrained_texture_cache.h"
@@ -175,7 +176,7 @@ bool Application::initConfigValidation(const ApplicationConfig& config) {
         if (config.user.empty()) errors += "  - user: must not be empty\n";
         if (config.pass.empty()) errors += "  - pass: must not be empty\n";
         if (config.server.empty()) errors += "  - server: must not be empty\n";
-        if (config.character.empty()) errors += "  - character: must not be empty\n";
+        if (config.character.empty() && !characterSelectWanted(config)) errors += "  - character: must not be empty\n";
 
 #ifdef EQT_HAS_GRAPHICS
         if (config.graphicsEnabled) {
@@ -293,6 +294,9 @@ bool Application::initEverQuestClient(const ApplicationConfig& config) {
         // connection so a bad spec costs no login. Defined in
         // application_world_script.cpp, so the G04 golden pins the call.
         if (!applyWorldScript(config)) return false;
+        // B998 (#318): the character-select screen (no configured character,
+        // or --character-select). Defined in application_char_select.cpp.
+        if (!applyCharacterSelect(config)) return false;
 
         // Configure EverQuest client
         m_eqClient->Movement().SetPathfinding(config.pathfindingEnabled);
