@@ -167,14 +167,26 @@ bool applyContainerSlotChanged(ContainerWindowsState& state,
 
 /**
  * The open window on top: the most recently opened. ESC dismisses it first,
- * it is the one drawn and the one a click reaches (they all share one rect).
- * -1 when none is open.
+ * it is drawn last and it is the one a click reaches (they all share one
+ * rect). -1 when none is open.
  */
 int topmostContainerWindow(const ContainerWindowsState& state);
 
+/**
+ * B992 (#312): the open windows in DRAW order, oldest first, so the last is
+ * topmostContainerWindow(). Writes up to MAX_WINDOWS indices into `out` and
+ * returns how many.
+ */
+int containerDrawOrder(const ContainerWindowsState& state,
+                       int (&out)[ContainerWindowsState::MAX_WINDOWS]);
+
 // --- draw --------------------------------------------------------------------
 
-/** Draw the topmost open window (the others are covered by it). */
+/**
+ * Draw EVERY open window, oldest first, each as its own UIRenderer layer, so
+ * the newest covers the rest -- its text included (B992; before it only the
+ * topmost was drawn, because a covered window's text bled through).
+ */
 void renderContainerWindows(UIRenderer& ui, const UILayout& layout,
                             const ContainerWindowsState& state);
 

@@ -541,8 +541,32 @@ TEST_F(ContainerClickTest, AClosedWindowEatsNoClickAndTheTopmostWins) {
     EXPECT_EQ(b->inventorySlot, inv::GENERAL_BEGIN + 5);
 }
 
+// B992 (#312): EVERY open window is drawn, oldest first, so the newest -- the
+// one ESC closes and a click reaches -- is drawn last, on top (151 row 20).
+// Before B992 only the topmost was drawn, because a covered window's text
+// bled through the one above it (test_ui_panel_z_order.cpp pins the fix).
+TEST_F(ContainerClickTest, EveryOpenWindowIsDrawnOldestFirstAndTheNewestLast) {
+    int order[ContainerWindowsState::MAX_WINDOWS];
+    EXPECT_EQ(containerDrawOrder(state, order), 0);
+    applyContainerOpened(state, carried(inv::GENERAL_BEGIN + 4, 0, 8));
+    applyContainerOpened(state, world(55));
+    applyContainerOpened(state, carried(inv::GENERAL_BEGIN, 0, 8));
+    ASSERT_EQ(containerDrawOrder(state, order), 3);
+    EXPECT_EQ(order[0], 5);
+    EXPECT_EQ(order[1], ContainerWindowsState::WORLD_WINDOW);
+    EXPECT_EQ(order[2], 1);
+    EXPECT_EQ(order[2], topmostContainerWindow(state));
+    // Re-opening an open window keeps its place; closing one drops it.
+    applyContainerOpened(state, carried(inv::GENERAL_BEGIN + 4, 0, 8));
+    applyContainerClosed(state, {true, 55, -1});
+    ASSERT_EQ(containerDrawOrder(state, order), 2);
+    EXPECT_EQ(order[0], 5);
+    EXPECT_EQ(order[1], 1);
+    EXPECT_EQ(order[1], topmostContainerWindow(state));
+}
+
 // ESC follows the z-order: the newest window is on top (151 row 20), world
-// container or bag alike.
+// container or bag alike -- and it is the window drawn last (above).
 TEST_F(ContainerClickTest, EscapeAsksTheNewestWindowFirst) {
     EXPECT_FALSE(input.processContainerEscape(state));
     applyContainerOpened(state, carried(inv::GENERAL_BEGIN, 0, 8));

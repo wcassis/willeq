@@ -1047,6 +1047,9 @@ EXEMPT_TESTS_GROUPS = {
     ("ParticleManager", "Test_SetUnifiedRendererInitializedForSeam"): "seam",
     ("PlayerCameraComponent", "collisionDebugLineCount"): "seam",
     ("PlayerCameraComponent", "seedCollisionDebugLineForTest"): "seam",
+    # B992: the pre-B992 one-layer flush, so test_ui_panel_z_order can show
+    # its pixel assertion catches the bleed (setBatchingEnabled's sibling).
+    ("UIRenderer", "setLayeringEnabled"): "seam",
     ("PlayerComponent", "Test_GetLastFaceChange"): "seam",
     ("PlayerComponent", "Test_GetLastInspectAnswer"): "seam",
     ("RaceModelLoader", "getChrCacheAccountingForTest"): "seam",

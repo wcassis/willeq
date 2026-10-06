@@ -241,29 +241,30 @@ protected:
     }
 
     // renderStaticUI()'s draw list, statement for statement, minus the input
-    // pass and the paperdoll update (no player entity here).
+    // pass and the paperdoll update (no player entity here). B992: each window
+    // is its own layer (`ui_.layer()`), as it is there.
     void submitStaticUI() {
-        renderPlayerStatus(ui_, layout_, stats_);
-        renderTargetInfo(ui_, layout_, target_);
-        renderChatPanel(ui_, layout_, chat_);
-        renderHotbar(ui_, layout_, hotbar_);
-        renderSpellGemPanel(ui_, layout_, gems_);
-        renderBuffBar(ui_, layout_, buffs_);
-        renderCastingBar(ui_, layout_, casting_);
-        renderGroupPanel(ui_, layout_, group_);
-        renderPetPanel(ui_, layout_, pet_);
-        renderInventoryPopup(ui_, layout_, inv_);
-        renderSpellbookPopup(ui_, layout_, spellbook_);
-        renderSkillsPopup(ui_, layout_, skills_);
-        renderLootPopup(ui_, layout_, loot_);
-        renderTradeskillPopup(ui_, layout_, tradeskill_);
-        renderMerchantPopup(ui_, layout_, merchant_, cursor_);
-        renderCombatAbilityPanel(ui_, layout_, combat_);
-        renderBankWindow(ui_, layout_, bank_);
-        renderItemDisplayPopup(ui_, layout_, itemDisplay_);
-        renderOptionsWindow(ui_, layout_, options_);
-        renderXPBar(ui_, layout_, xp_);
-        renderCursorAttachment(ui_, layout_, cursor_);
+        renderPlayerStatus(ui_.layer(), layout_, stats_);
+        renderTargetInfo(ui_.layer(), layout_, target_);
+        renderChatPanel(ui_.layer(), layout_, chat_);
+        renderHotbar(ui_.layer(), layout_, hotbar_);
+        renderSpellGemPanel(ui_.layer(), layout_, gems_);
+        renderBuffBar(ui_.layer(), layout_, buffs_);
+        renderCastingBar(ui_.layer(), layout_, casting_);
+        renderGroupPanel(ui_.layer(), layout_, group_);
+        renderPetPanel(ui_.layer(), layout_, pet_);
+        renderInventoryPopup(ui_.layer(), layout_, inv_);
+        renderSpellbookPopup(ui_.layer(), layout_, spellbook_);
+        renderSkillsPopup(ui_.layer(), layout_, skills_);
+        renderLootPopup(ui_.layer(), layout_, loot_);
+        renderTradeskillPopup(ui_.layer(), layout_, tradeskill_);
+        renderMerchantPopup(ui_.layer(), layout_, merchant_, cursor_);
+        renderCombatAbilityPanel(ui_.layer(), layout_, combat_);
+        renderBankWindow(ui_.layer(), layout_, bank_);
+        renderItemDisplayPopup(ui_.layer(), layout_, itemDisplay_);
+        renderOptionsWindow(ui_.layer(), layout_, options_);
+        renderXPBar(ui_.layer(), layout_, xp_);
+        renderCursorAttachment(ui_.layer(), layout_, cursor_);
     }
 
     // One content frame of `submit`, after a prime frame and with a repeat --
@@ -528,7 +529,10 @@ TEST_F(StaticUiFrameCostTest, TheFallbackPathQueuesItsDrawsAndFlushesThemInRuns)
 
 // Every text entry was one font draw -- one draw2DImageBatch with its own
 // allocations and 2D state setup. The glyphs of every plain entry now go in
-// texture runs: a couple of draws for the whole frame's text, on both paths.
+// texture runs: a couple of draws per flush group's text, on both paths.
+// B992 (#312): the text is flushed per GROUP of windows (UIRenderer::
+// beginLayer()), and the open inventory covers HUD text, so this frame is two
+// groups -- 4 text draws, measured; at most 2 per group is the T462 rule.
 TEST_F(StaticUiFrameCostTest, TheTextFlushIsBatchedOnBothPaths) {
     if (!pinsApply()) GTEST_SKIP() << "count pins are taken at 800x600";
     inv_.activePopup = PopupType::Inventory;
@@ -540,8 +544,10 @@ TEST_F(StaticUiFrameCostTest, TheTextFlushIsBatchedOnBothPaths) {
         if (img) img->drop();
         const char* path = fallback ? "fallback path" : "atlas path";
         EXPECT_GT(s.textEntries, 40u) << path;
-        EXPECT_LE(s.textDraws, 2u) << path << ": " << s.textDraws << " text draws for "
-                                   << s.textEntries << " entries";
+        EXPECT_EQ(s.layerGroups, 2u) << path;
+        EXPECT_LE(s.textDraws, 2u * s.layerGroups)
+            << path << ": " << s.textDraws << " text draws for " << s.textEntries
+            << " entries in " << s.layerGroups << " flush groups";
     }
 }
 
