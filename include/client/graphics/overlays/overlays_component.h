@@ -129,9 +129,6 @@ public:
 	// ledger's `ui` category.
 	void drawTargetRing();
 	void setTargetRingEnabled(bool on) { targetRingEnabled_ = on; }
-	bool targetRingEnabled() const { return targetRingEnabled_; }
-	// Test/diagnostic seam: frames the ring was actually drawn in.
-	uint64_t targetRingDrawCount() const { return targetRingDrawCount_; }
 	void drawZoneLineBoxLabels();
 	void drawFPSCounter();
 	void updatePaperdollForFrame();
@@ -251,7 +248,6 @@ private:
 	uint8_t currentTargetLevel_ = 0;
 	// B994: the 3D target ring (default off, target_ring.h R5).
 	bool targetRingEnabled_ = false;
-	uint64_t targetRingDrawCount_ = 0;
 	TargetRing::Geometry targetRingGeometry_;
 	TargetInfo currentTargetInfo_;  // Extended target info for HUD display
 

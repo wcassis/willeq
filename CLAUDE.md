@@ -979,8 +979,8 @@ own rule (T368), so a fresh character writes no file until it changes something.
 Since T467 (board B560) an identity change FROM a character resets every
 persisted field to its default before the new file is read, so nothing carries
 over; the FIRST identity of a run is not reset, so a volume the audio manager
-published before zone-in is kept. **Chat timestamps, chat scrollback and UI
-colours are still NOT persisted** — that was scope, not oversight.
+published before zone-in is kept. Chat colours persist under `[TextColors]`
+(B993). **Chat timestamps and scrollback are NOT persisted** (scope).
 
 The feature is four files: `include/client/graphics/ui/ui_preferences.h`,
 `src/client/graphics/ui/ui_preferences.cpp` (the format, device-free),

@@ -45,7 +45,7 @@ void OverlaysComponent::drawTargetRing() {
     const irr::core::vector3df ext = box.getExtent();
     const float footprint = 0.5f * std::max(ext.X, ext.Z);
     const eqt::ConTier tier =
-        eqt::ConTierForLevels(ctx_.entityRenderer->getPlayerLevel(), currentTargetLevel_);
+        eqt::ConTierForLevels(ctx_.entityRenderer->getConPlayerLevel(), currentTargetLevel_);
     {
         // The ring's two vectors are the only memory it owns: ~11 KiB,
         // reserved once, charged to the ui row.
@@ -59,7 +59,6 @@ void OverlaysComponent::drawTargetRing() {
     ctx_.driver->setTransform(irr::video::ETS_VIEW, ctx_.captured3DView);
     ctx_.driver->setTransform(irr::video::ETS_PROJECTION, ctx_.captured3DProj);
     TargetRing::drawGeometry(ctx_.driver, targetRingGeometry_);
-    ++targetRingDrawCount_;
 }
 
 namespace TargetRing {
