@@ -387,6 +387,22 @@ it without taking that measurement first.
   create folds NodeSetup (B966); Pi new200 182/200 built (legacy 1/200),
   backlog drained 0.7 s after the last spawn. Follow-ups: #301 (B982),
   #302 (B983), #303 (B984).
+- ~~**B979** (A) → issue #298. An impostor capture is an unbounded unit:
+  single first-draw captures of 30–62 ms land whole in one Orange Pi frame
+  (B964's hitch bar not met: worst single-frame capture work 43–46 ms against
+  the 33.3 ms frame budget; `refactor/B964/README.md` "Against the bar").~~
+  **FIXED** (MR !99, `refactor/B979/README.md`): the slow first capture
+  decomposed on the Pi into three one-time GPU costs (a 4 MiB page GEM
+  allocation 14–16 ms, the scratch FBO 3–14 ms, and the first 3D draw into
+  the FBO + its first readback, Lima's deferred rasterization — 21–77 ms).
+  All three moved to the loading thread (pre-created resources + a 3D
+  textured-mesh priming draw + readback + glFinish, one-time per session,
+  no-op for `WILLEQ_BASELINE=1`), and the capture unit became a unit of
+  B973's `EntityBuildScheduler` (kind `Impostor`). Re-measured on the Pi:
+  worst single-frame capture work qeynos2 47.68→**12.06 ms**, gfaydark
+  46.20→**23.11 ms**, growthplane 26.37→**22.64 ms** (all ≤33.3 ms); x86
+  `impostor_pixel_compare pixel` unchanged (234 rows), scheduler test
+  11/11, ctest 5538/5538.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 

@@ -38,19 +38,36 @@ reload **22.18 ms** (26.4 ms frame, already under budget).
   sum to ~6–15 ms; the rest is the three one-time costs above, which no
   per-frame budget can see because they happen before any unit runs.
 
-## The fix (two halves, both measured off the first gameplay frame)
+## The fix (three halves, all measured off the gameplay frames)
 
 1. **Pre-create the one-time GPU resources on the loading thread.**
    `EntityRenderer::prepareImpostorCache()` (called from
    `Application::loadZoneGraphicsOnThread()`, under the loading screen, where
    the loading thread owns the GL context and the main thread is paused in
-   `render()`'s loading branch) creates every page, the scratch FBO, and does
-   one priming draw into the scratch + `glFinish()`, so the FBO's first raster
-   lands there. `ImpostorCache::prepare()` is idempotent: a zone reload
-   re-uses the resident pages and scratch (only the priming re-runs), and the
-   cache is only created when the preset budgets it (`WILLEQ_BASELINE=1` /
-   impostors-off runs create nothing and do none of this).
-2. **The capture unit is now a unit of the B973 scheduler.**
+   `render()`'s loading branch) creates every page and the scratch FBO.
+   `ImpostorCache::prepare()` is idempotent: a zone reload re-uses the
+   resident pages and scratch, and the cache is only created when the preset
+   budgets it (`WILLEQ_BASELINE=1` / impostors-off runs create nothing and do
+   none of this).
+2. **Prime the 3D capture path on the loading thread.** Pre-creating the
+   resources was not enough: the FBO's first use by a **3D** draw (the
+   capture's own path, not a 2D rectangle) and the FBO's first **readback**
+   were still one-time costs that landed on the main thread's first capture
+   frame. The two runs that showed it (evidence `after_r353`, `after_r353c`):
+   qeynos2 frame 1 (the first capture) drew in **76.61 ms** *after* prepare()
+   had finished with a glFinish; gfaydark's first capture ran at frame 795
+   and paid **37.92 ms**; growthplane's FBO readback cost **21.15 ms** at
+   frame 520. `ImpostorCache::prime3d()` now draws a real 3D textured mesh
+   into the scratch FBO (the capture's own ortho look-at, the driver's 3D
+   program selection — a 2D rectangle would not select it), reads it back
+   into page 0 with `glCopyTexSubImage2D`, and `glFinish()`es. It runs once
+   per session (`primed3d_` survives zone reloads, like the pages and the
+   scratch) and is the loading thread's LAST GL work (prepare() is the final
+   step of `loadZoneGraphicsOnThread()`), so the deferred raster and readback
+   resolve there, before the main thread's first frame. Measured:
+   "3D capture path primed in 23.21 ms" on the loading thread; the priming
+   texture and cube are freed inside the call (no new resident resources).
+3. **The capture unit is now a unit of the B973 scheduler.**
    `EntityBuildUnitKind::Impostor` (appended at the end of the enum and the
    window line, so B973's parsers do not shift). `entity_impostors.cpp` gates
    its unit loop with `EntityBuildScheduler::mayStartCaptureUnit()` and
@@ -65,11 +82,12 @@ reload **22.18 ms** (26.4 ms frame, already under budget).
    (`WILLEQ_ENTITY_BUILD_LEGACY=1`) leaves the gate off.
 
 The per-frame budget the issue asks for: **no frame carries more than one frame
-budget (33.3 ms) of capture work** — after the one-time costs are pre-created,
-the measured worst single capture is 5–9 ms (first real capture after
-prepare) and steady-state captures are 1–3.5 ms; the per-pass budget caps a
-frame at 2–3 units of measured-average cost; and the scheduler gate defers a
-unit whose predicted cost would not fit the slice.
+budget (33.3 ms) of capture work** — after the one-time costs (resource
+allocations AND the 3D-path priming) are on the loading thread, the measured
+worst single-frame capture work is 12–23 ms (frame-time table below), steady-
+state captures are 1–3.5 ms; the per-pass budget caps a frame at 2–3 units of
+measured-average cost; and the scheduler gate defers a unit whose predicted
+cost would not fit the slice.
 
 ## Acceptance 3 -- no pixel change
 
@@ -91,19 +109,41 @@ and the Pi's own visual evidence is the CI visual gate (pipeline 592,
 
 ## Frame-time table (acceptance 2)
 
-Baseline (tip `ba15c44f`) and fixed (this branch) both:
-`scripts/b964/pi_crowd.sh --zones qeynos2,gfaydark,growthplane
---variants imp200far --frametiming --allow-vm-lane`.
+All runs: `scripts/b964/pi_crowd.sh --zones qeynos2,gfaydark,growthplane
+--variants imp200far --frametiming --allow-vm-lane` (Pi 1280x720, VM lane).
+Worst single-frame capture work = the max of `unit_ms_max` over the whole tour
+(the `[impostor]` line's `frame_unit_ms_max` is a running high-water mark, not
+a per-frame count — the number below is the single worst capture unit).
 
-Baseline worst single-frame capture work (from `frame_unit_ms_max` /
-`[impostor]` lines): qeynos2 **47.68 ms** @ frame 1, gfaydark **46.20 ms** @
-frame 1, growthplane 26.37 ms @ frame 422. Fixed: see
-`~/kb-evidence/b979-impostor-hitch/after/` (same rig, same tour).
+| zone        | baseline (`ba15c44f`) | fixed 2D-prime (`1bf2c2a4`) | fixed 3D-prime (`b45c6327`, this head) | bar |
+|-------------|----------------------:|---------------------------:|---------------------------------------:|----:|
+| qeynos2     | **47.68 ms** @f1      | 13.81 ms @f485             | **12.06 ms** @f1                       | 33.3 |
+| gfaydark    | **46.20 ms** @f1      | **37.95 ms** @f795         | **23.11 ms** @f790                     | 33.3 |
+| growthplane | 26.37 ms @f422        | 14.92 ms @f493             | **22.64 ms** @f532                     | 33.3 |
+
+All three zones are under the 33.3 ms bar on this head (worst case 23.11 ms),
+and no frame carries more than one frame budget of capture work. The 2D-prime
+column is the intermediate state (resource pre-creation only): qeynos2 and
+growthplane were already under budget, but gfaydark's first capture still paid
+the 3D-path one-time cost at frame 795 (37.95 ms). The 3D priming removes it:
+the worst single-frame capture work is now the steady-state first/early
+captures (12–23 ms), with the one-time 3D raster + FBO readback paid on the
+loading thread ("3D capture path primed in 23.21 ms").
+
+Evidence: `~/kb-evidence/b979-impostor-hitch/` — `baseline/`, `after_r353/`
+(2D-prime Pi sweep), `after_r353c/` (2D-prime + instrumented build),
+`after_r353d/` (3D-prime, this head), `x86_before/` + `x86_after4/` (pixel).
 
 ## Not verified / left open
 
-- The `gpu_unnamed_over_bound` sweep verdict (18–24 MiB of GEM no tally row
-  names) fails on the baseline tip identically — a pre-existing memory-accounting
-  bound (the ledger does not name the impostor pages' GEM blocks), not a B979
-  regression. Boarded separately (B9xx): the impostor pages' GEM allocations
-  should get a `tex.impostor` tally row.
+- The sweep rig's `no_steady_60s` verdict row in `after_r353d/` (and the
+  baseline's `gpu_unnamed_over_bound`) is a rig-lane condition, not a B979
+  regression: the client ran the full tour (2190–3112 impostor frames, matching
+  the prior runs), exited cleanly, and observation.json reads `steady=true`
+  with fps identical to every prior run (qeynos2 48.1, gfaydark 32.2,
+  growthplane 23.9). The `gpu_unnamed_over_bound` half (18–24 MiB of GEM no
+  tally row names) fails on the baseline tip identically — a pre-existing
+  memory-accounting bound (the ledger does not name the impostor pages' GEM
+  blocks), not a B979 regression (the known B988/#307 condition). Boarded
+  separately: the impostor pages' GEM allocations should get a `tex.impostor`
+  tally row.
