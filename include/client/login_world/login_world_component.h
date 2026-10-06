@@ -165,6 +165,20 @@ public:
 	/** Delete_Button + Yes. False if the name is not on the list. */
 	bool RequestDeleteCharacter(const std::string& name);
 
+	// ------------------------------------------------------------------
+	// B998 (GitLab #318): the character-select SCREEN. While it is on, the
+	// automatic OP_EnterWorld at OP_ExpansionInfo is withheld (exactly as a
+	// world script withholds it) and the user's Enter World sends it instead.
+	// Off -- every run with a configured character -- the handshake is byte
+	// for byte what it was. Bodies: login_world_char_select.cpp.
+	void SetCharacterSelectScreen(bool on) { m_select_screen = on; }
+	bool CharacterSelectScreen() const { return m_select_screen; }
+	/** Bumped by every OP_SendCharInfo (0 = no list yet). */
+	uint32_t CharacterListGeneration() const { return m_character_list_generation; }
+	/** Enter_World_Button: OP_EnterWorld for a listed character. False if the
+	 *  name is not listed, a request is in flight, or it was already sent. */
+	bool EnterWorldFromSelect(const std::string& name);
+
 private:
 	// B888: the reply handlers and the script driver.
 	void WorldProcessApproveName(const EQ::Net::Packet &p);
@@ -278,6 +292,10 @@ private:
 	// (:1134-1138), so an OP_EnterWorld straight after a create would put the
 	// character in the tutorial zone (:891-907). The CRC pair is re-sent first.
 	bool m_created_this_session = false;
+
+	// B998: the character-select screen is up (see SetCharacterSelectScreen).
+	bool m_select_screen = false;
+	uint32_t m_character_list_generation = 0;
 
 	ClientContext& ctx_;
 };

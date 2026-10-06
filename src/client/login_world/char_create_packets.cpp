@@ -72,8 +72,10 @@ EQ::Net::DynamicPacket BuildRandomName(uint32_t race, uint32_t gender) {
 }
 
 EQ::Net::DynamicPacket BuildDeleteCharacter(const std::string& name) {
-    auto p = sized(HC_OP_DeleteCharacter, kDeleteCharacterBytes);
-    putName(p, kOp, name, kDeleteCharacterBytes);
+    // strlen + 1, as the official client sends it (B998's pcap; header).
+    const size_t body = std::min(name.size(), kDeleteCharacterBytes - 1) + 1;
+    auto p = sized(HC_OP_DeleteCharacter, body);
+    putName(p, kOp, name, body);
     return p;
 }
 

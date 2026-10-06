@@ -178,6 +178,12 @@ void LoginWorldComponent::OnCharacterListReceived() {
 		const bool gone = !CharacterListHas(name);
 		m_create_status.last = gone ? Result::Deleted : Result::DeleteFailed;
 		LOG_INFO(MOD_WORLD, "[CHARCREATE] delete '{}': {}", name, gone ? "gone" : "STILL LISTED");
+		if (m_select_screen) {
+			// B998, MEASURED (review/UIGAP-ORACLE/318/charselect.opcodes_hex.tsv
+			// 15:42:09): the official screen answers the post-delete list with
+			// the CRC pair again before redrawing it.
+			WorldSendWorldClientCRC();
+		}
 		if (m_world_script.kind == WorldScript::Kind::Delete) {
 			if (gone) std::cout << "DELETED " << name << std::endl;
 			FinishWorldScript(gone, gone ? std::string() : name + " is still listed after the delete");

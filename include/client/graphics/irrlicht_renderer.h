@@ -102,7 +102,7 @@ namespace bridge { class GameStateBridge; }
 // Forward declaration for spell visual effects
 namespace EQ { class SpellVisualFX; }
 namespace eqt { namespace ui { class ChatMessageBuffer; class CharacterModelView; } }
-namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRenderer; class StaticUIInput; } }
+namespace EQT { namespace Graphics { class TextBatch; class UIAtlas; class UIRenderer; class StaticUIInput; struct UILayout; } }
 // U03: included directly for layout struct and panel data structs (small, no deps)
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
@@ -135,6 +135,14 @@ public:
     // Use this at startup for early progress display. (T468 deleted the
     // uncalled loadGlobalAssets() that this comment used to name.)
     bool initLoadingScreen(const RendererConfig& config) override;
+
+    // B998 (#318, #204 Leg M): one PRE-ZONE UI frame -- the character-select
+    // host's (graphics/ui/char_select_host.h). Pumps the device, clears the
+    // screen, runs `draw` between the static UI renderer's begin/end (with the
+    // renderer's own UILayout), then the DRM software cursor, then presents.
+    // False when the device has stopped. Render thread, no loading thread
+    // running. Body: renderer/renderer_pre_zone.cpp.
+    bool drawPreZoneUI(const std::function<void(UIRenderer&, const UILayout&)>& draw);
 
     // Loading thread owns GL context — main thread must not call GL-mutating methods.
     void setLoading(bool loading) { loading_.store(loading, std::memory_order_release); }
