@@ -264,96 +264,98 @@
 263 pendingUIClick_ = false;
 264 rightClick = false;
 265 staticUIInput_->setFrameClickState(rightClick, mods, &cursorState_);
-266 processTradeWindowInput();
-267 bool uiTook = staticUIInput_->processInput(
-268 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
-269 uiLayout_, hotbarState_, spellGemState_, inventoryState_,
-270 spellbookState_, skillsPopupState_, buffBarState_, lootState_, ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT));
-271 uiTook |= staticUIInput_->processPanelInput(
-272 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-273 pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
-274 cursorState_.mouseX = ctx_.eventReceiver->getMouseX();
-275 cursorState_.mouseY = ctx_.eventReceiver->getMouseY();
-276 uiTook |= staticUIInput_->processCommerceInput(
-277 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-278 pendingUIClick_, uiLayout_, merchantState_, bankState_, cursorState_);
-279 uiTook |= staticUIInput_->processTrainerInput(
-280 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-281 pendingUIClick_, uiLayout_, trainerState_);
-282 uiTook |= processTrackingInput(ctx_.bridge, ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_, uiLayout_, trackingState_);
-283 uiTook |= staticUIInput_->processContainerInput(
-284 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-285 pendingUIClick_, uiLayout_, containerState_);
-286 uiTook |= staticUIInput_->processItemDisplayInput(
-287 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-288 pendingUIClick_, uiLayout_, itemDisplayState_);
-289 processFriendsWindowInput();
-290 OptionsLayout::Setting optionsChanged = OptionsLayout::Setting::None;
-291 uiTook |= staticUIInput_->processOptionsInput(
-292 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-293 pendingUIClick_, uiLayout_, optionsState_, optionsChanged);
-294 applyOptionsSetting(optionsChanged);
-295 processCursorGestureFrame(uiTook);
-296 pendingUIClick_ = false;
-297 staticUIInput_->setFrameClickState(false, {}, &cursorState_);
-298 if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
-299 ctx_.Overlays().updatePaperdollForFrame();
-300 inventoryState_.paperdollTexture = ctx_.Overlays().characterModelView() ? ctx_.Overlays().characterModelView()->getTexture() : nullptr;
-301 if (newUIEnabled_ && uiRenderer_ && !allUIHidden_) {
-302 uiRenderer_->beginFrame();
-303 renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
-304 renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
-305 renderChatPanel(*uiRenderer_, uiLayout_, chatPanelState_);
-306 renderHotbar(*uiRenderer_, uiLayout_, hotbarState_);
-307 renderSpellGemPanel(*uiRenderer_, uiLayout_, spellGemState_);
-308 renderBuffBar(*uiRenderer_, uiLayout_, buffBarState_);
-309 renderCastingBar(*uiRenderer_, uiLayout_, castingBarState_);
-310 renderGroupPanel(*uiRenderer_, uiLayout_, groupPanelState_);
-311 renderPetPanel(*uiRenderer_, uiLayout_, petPanelState_);
-312 renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
-313 renderSpellbookPopup(*uiRenderer_, uiLayout_, spellbookState_);
-314 renderSkillsPopup(*uiRenderer_, uiLayout_, skillsPopupState_);
-315 renderLootPopup(*uiRenderer_, uiLayout_, lootState_);
-316 renderTradeskillPopup(*uiRenderer_, uiLayout_, tradeskillState_);
-317 renderMerchantPopup(*uiRenderer_, uiLayout_, merchantState_, cursorState_);
-318 renderCombatAbilityPanel(*uiRenderer_, uiLayout_, combatAbilityState_);
-319 renderBankWindow(*uiRenderer_, uiLayout_, bankState_);
-320 renderTrainerWindow(*uiRenderer_, uiLayout_, trainerState_, xpBarState_.progress);
-321 renderTrackingWindow(*uiRenderer_, uiLayout_, trackingState_);
-322 renderContainerWindows(*uiRenderer_, uiLayout_, containerState_);
-323 renderTradeWindow(*uiRenderer_, uiLayout_, tradeState_);
-324 renderItemDisplayPopup(*uiRenderer_, uiLayout_, itemDisplayState_);
-325 renderFriendsWindow(*uiRenderer_, uiLayout_, friendsState_);  // B897
-326 renderOptionsWindow(*uiRenderer_, uiLayout_, optionsState_);
-327 renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
-328 if (staticUIInput_) {
-329 renderQuantityWindow(*uiRenderer_, uiLayout_, staticUIInput_->quantityWindow());
-330 renderConfirmationDialog(*uiRenderer_, uiLayout_, staticUIInput_->confirmationDialog());
-331 renderCursorAttachment(*uiRenderer_, uiLayout_, cursorState_);
-332 uiRenderer_->endFrame();
-333 frameTimings_.staticUI = measureSection();
-334 ctx_.Overlays().drawZoneLineBoxLabels();
-335 frameTimings_.zoneLineOverlay = measureSection();
-336 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
-337 ctx_.Rdp().captureFrameForRDP();
-338 if (owner_.softwareCursorTexture_) {
-339 auto* cursor = ctx_.device->getCursorControl();
-340 if (cursor && cursor->isVisible()) {
-341 auto pos = cursor->getPosition();
-342 irr::core::position2di destPos(pos.X, pos.Y);
-343 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
-344 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
-345 nullptr, irr::video::SColor(255, 255, 255, 255), true);
-346 if (pendingScreenshot_) {
-347 pendingScreenshot_ = false;
-348 owner_.saveScreenshot("screenshot.png");
-349 frameTimings_.postRender = measureSection();
-350 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
-351 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
-352 ctx_.driver->endScene();
-353 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
-354 eqtGPUPhaseCollectResults();
-355 frameTimings_.endScene = measureSection();
-356 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
-357 FlushThreadLog();
-358 return true;
+266 if (processTipWindowInput()) pendingUIClick_ = false;
+267 processTradeWindowInput();
+268 bool uiTook = staticUIInput_->processInput(
+269 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
+270 uiLayout_, hotbarState_, spellGemState_, inventoryState_,
+271 spellbookState_, skillsPopupState_, buffBarState_, lootState_, ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT));
+272 uiTook |= staticUIInput_->processPanelInput(
+273 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+274 pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
+275 cursorState_.mouseX = ctx_.eventReceiver->getMouseX();
+276 cursorState_.mouseY = ctx_.eventReceiver->getMouseY();
+277 uiTook |= staticUIInput_->processCommerceInput(
+278 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+279 pendingUIClick_, uiLayout_, merchantState_, bankState_, cursorState_);
+280 uiTook |= staticUIInput_->processTrainerInput(
+281 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+282 pendingUIClick_, uiLayout_, trainerState_);
+283 uiTook |= processTrackingInput(ctx_.bridge, ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_, uiLayout_, trackingState_);
+284 uiTook |= staticUIInput_->processContainerInput(
+285 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+286 pendingUIClick_, uiLayout_, containerState_);
+287 uiTook |= staticUIInput_->processItemDisplayInput(
+288 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+289 pendingUIClick_, uiLayout_, itemDisplayState_);
+290 processFriendsWindowInput();
+291 OptionsLayout::Setting optionsChanged = OptionsLayout::Setting::None;
+292 uiTook |= staticUIInput_->processOptionsInput(
+293 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+294 pendingUIClick_, uiLayout_, optionsState_, optionsChanged);
+295 applyOptionsSetting(optionsChanged);
+296 processCursorGestureFrame(uiTook);
+297 pendingUIClick_ = false;
+298 staticUIInput_->setFrameClickState(false, {}, &cursorState_);
+299 if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
+300 ctx_.Overlays().updatePaperdollForFrame();
+301 inventoryState_.paperdollTexture = ctx_.Overlays().characterModelView() ? ctx_.Overlays().characterModelView()->getTexture() : nullptr;
+302 if (newUIEnabled_ && uiRenderer_ && !allUIHidden_) {
+303 uiRenderer_->beginFrame();
+304 renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
+305 renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
+306 renderChatPanel(*uiRenderer_, uiLayout_, chatPanelState_);
+307 renderHotbar(*uiRenderer_, uiLayout_, hotbarState_);
+308 renderSpellGemPanel(*uiRenderer_, uiLayout_, spellGemState_);
+309 renderBuffBar(*uiRenderer_, uiLayout_, buffBarState_);
+310 renderCastingBar(*uiRenderer_, uiLayout_, castingBarState_);
+311 renderGroupPanel(*uiRenderer_, uiLayout_, groupPanelState_);
+312 renderPetPanel(*uiRenderer_, uiLayout_, petPanelState_);
+313 renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
+314 renderSpellbookPopup(*uiRenderer_, uiLayout_, spellbookState_);
+315 renderSkillsPopup(*uiRenderer_, uiLayout_, skillsPopupState_);
+316 renderLootPopup(*uiRenderer_, uiLayout_, lootState_);
+317 renderTradeskillPopup(*uiRenderer_, uiLayout_, tradeskillState_);
+318 renderMerchantPopup(*uiRenderer_, uiLayout_, merchantState_, cursorState_);
+319 renderCombatAbilityPanel(*uiRenderer_, uiLayout_, combatAbilityState_);
+320 renderBankWindow(*uiRenderer_, uiLayout_, bankState_);
+321 renderTrainerWindow(*uiRenderer_, uiLayout_, trainerState_, xpBarState_.progress);
+322 renderTrackingWindow(*uiRenderer_, uiLayout_, trackingState_);
+323 renderContainerWindows(*uiRenderer_, uiLayout_, containerState_);
+324 renderTradeWindow(*uiRenderer_, uiLayout_, tradeState_);
+325 renderItemDisplayPopup(*uiRenderer_, uiLayout_, itemDisplayState_);
+326 renderFriendsWindow(*uiRenderer_, uiLayout_, friendsState_);  // B897
+327 renderOptionsWindow(*uiRenderer_, uiLayout_, optionsState_);
+328 renderTipWindow(*uiRenderer_, uiLayout_, tipState_);  // B834
+329 renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
+330 if (staticUIInput_) {
+331 renderQuantityWindow(*uiRenderer_, uiLayout_, staticUIInput_->quantityWindow());
+332 renderConfirmationDialog(*uiRenderer_, uiLayout_, staticUIInput_->confirmationDialog());
+333 renderCursorAttachment(*uiRenderer_, uiLayout_, cursorState_);
+334 uiRenderer_->endFrame();
+335 frameTimings_.staticUI = measureSection();
+336 ctx_.Overlays().drawZoneLineBoxLabels();
+337 frameTimings_.zoneLineOverlay = measureSection();
+338 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
+339 ctx_.Rdp().captureFrameForRDP();
+340 if (owner_.softwareCursorTexture_) {
+341 auto* cursor = ctx_.device->getCursorControl();
+342 if (cursor && cursor->isVisible()) {
+343 auto pos = cursor->getPosition();
+344 irr::core::position2di destPos(pos.X, pos.Y);
+345 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
+346 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
+347 nullptr, irr::video::SColor(255, 255, 255, 255), true);
+348 if (pendingScreenshot_) {
+349 pendingScreenshot_ = false;
+350 owner_.saveScreenshot("screenshot.png");
+351 frameTimings_.postRender = measureSection();
+352 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
+353 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
+354 ctx_.driver->endScene();
+355 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
+356 eqtGPUPhaseCollectResults();
+357 frameTimings_.endScene = measureSection();
+358 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
+359 FlushThreadLog();
+360 return true;

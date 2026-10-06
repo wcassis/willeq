@@ -54,6 +54,9 @@
 #include "client/graphics/ui/container_panel.h"
 #include "client/graphics/ui/friends_panel.h"   // B897
 #include "client/graphics/ui/trade_panel.h"     // B896
+#include "client/graphics/ui/tip_window.h"      // B834
+#include <fstream>
+#include <sstream>
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -178,6 +181,10 @@ struct PanelStates {
     TradePanelState tradeA;
     TradePanelState tradeB;
     TradePanelState give;
+    // B834 (#202): a context tip and the Tip of the Day, from the client's
+    // own help/tips/ files when present (inline stand-ins otherwise).
+    TipWindowState tipInventory;
+    TipWindowState tipOfTheDay;
     XPBarState xp;
 
     PanelStates() {
@@ -331,6 +338,37 @@ struct PanelStates {
             friends.selected[0] = 2;
             friends.nameEntry[0].inputText = "Oraclecharlie";
             friends.nameEntry[1].inputText = "Pest";
+        }
+        {
+            auto slurp = [](const std::string& path, std::string& out) {
+                std::ifstream in(path, std::ios::binary);
+                if (!in) return false;
+                std::ostringstream ss;
+                ss << in.rdbuf();
+                out = ss.str();
+                return true;
+            };
+            UILayout l;
+            l.computeLayout(800, 600);
+            const std::string dir = "/mnt/projects/EverQuestP1999/help/tips/";
+            std::string html, totd;
+            if (!slurp(dir + "ctxinventory.html", html)) {
+                html = "<TITLE>Inventory Tip window</TITLE><BODY>Inventory Tips<br><br>"
+                       "- (help/tips/ctxinventory.html not found)</BODY>";
+            }
+            if (!slurp(dir + "TOTD.txt", totd)) {
+                totd = "###\n<c \"#00CC00\">\nGameplay Tip\n</c>\n(help/tips/TOTD.txt not found)\n";
+            }
+            openContextTip(tipInventory, "Inventory", parseTipHtml(html), l);
+            auto entries = parseTipOfTheDay(totd);
+            // The measured grab's entry ("Fire Beetle eyes ..."), if present.
+            for (size_t i = 0; i < entries.size(); ++i) {
+                if (entries[i].paragraphs.size() > 2 &&
+                    entries[i].paragraphs[2].find("Fire Beetle") != std::string::npos) {
+                    tipOfTheDay.totdIndex = static_cast<int>(i);
+                }
+            }
+            openTipOfTheDay(tipOfTheDay, entries, l);
         }
         inventory.coins[0] = 12; inventory.coins[1] = 5;
         inventory.coins[2] = 8;  inventory.coins[3] = 47;
@@ -783,6 +821,11 @@ std::vector<PanelCapture> buildCaptureList() {
             renderTradeWindow(u, l, s.tradeA); }},
         {"give_npc", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderTradeWindow(u, l, s.give); }},
+        // B834 (#202): EQUI_TipWnd.xml, both kinds.
+        {"tip_inventory", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTipWindow(u, l, s.tipInventory); }},
+        {"tip_of_the_day", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTipWindow(u, l, s.tipOfTheDay); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.
