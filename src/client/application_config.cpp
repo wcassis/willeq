@@ -198,6 +198,14 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 config.fpCamOverrides.push_back(argv[++i]);
             }
+        } else if (arg == "--create-character") {
+            // B888 (#204): world_script.h. Parsed (against the era data) in
+            // initialize(); parseArguments() stays side-effect-free.
+            if (i + 1 < argc) config.createCharacterSpec = argv[++i];
+        } else if (arg == "--delete-character") {
+            if (i + 1 < argc) config.deleteCharacterName = argv[++i];
+        } else if (arg == "--list-characters") {
+            config.listCharacters = true;
         } else if (arg == "--scenario") {
             // T410: the scenario lane implies Automated mode -- no graphics,
             // no stdin reader, and AutomatedMode's per-tick automation
@@ -300,6 +308,10 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  -np, --no-pathfinding    Disable navmesh pathfinding\n";
             std::cout << "  --record-session <file>  Record decoded session packets to <file> for later replay\n";
             std::cout << "  --script <file>          Run a scripted command tour ('wait N' + slash-command lines)\n";
+            std::cout << "  --create-character \"Name,Race,Gender,Class,Deity,City[,STR=n,...]\"\n"
+                         "                           Create the character at character select, then enter world with it (home city)\n";
+            std::cout << "  --delete-character <Name>  Delete the character at character select, then exit\n";
+            std::cout << "  --list-characters        Print the account's characters at character select, then exit\n";
             std::cout << "  --scenario <name>        Run a live scenario headless and exit 0 pass / 1 fail / 2 timeout / 3 could-not-start\n";
             std::cout << "  --timeout <s>            --scenario: overall wall-clock budget (default 300)\n";
             std::cout << "  --scenario-hold <s>      --scenario two_client_survive: how long the pair must hold (default 300)\n";

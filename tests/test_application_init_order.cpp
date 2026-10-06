@@ -215,12 +215,17 @@ TEST(ApplicationInitOrderTest, GoldenIsPresentAndTheRightSize) {
     // order, which is what matters here (after the bridge, before login).
     // Correction 32: an order golden learns a reviewed edit in place, at its
     // positions, named here; it is never regenerated from the tip.
-    EXPECT_EQ(golden.size(), 314u)
+    // Then +1 by B888 (#204), which ADDED entry 69 `if
+    // (!applyWorldScript(config)) return false;` right after the client is
+    // constructed -- same exception as initScenario(): its own TU, so the
+    // CALL is pinned.
+    EXPECT_EQ(golden.size(), 315u)
         << "316 statement lines at G04, -2 for T347's write-only "
            "customMemorySpec, +1 for T357's completion-provider wiring, "
            "-1 for T402's S03 race_models.json check (B246), "
            "-1 for T407's write-only m_lastUpdate (B290), "
-           "+1 for T410's initScenario() step (B138/B139); "
+           "+1 for T410's initScenario() step (B138/B139), "
+           "+1 for B888's applyWorldScript() step (#204); "
            "the golden has " << golden.size();
     for (const auto& e : golden) EXPECT_FALSE(e.empty());
 }

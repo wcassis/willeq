@@ -138,8 +138,10 @@ ScenarioOptions DefaultOptions() { return ScenarioOptions{}; }
 TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     const std::vector<std::string> names = ScenarioNames();
     // 6 pre-B630 + 7 B630 (issue #48) interrupted-cast legs + 10 UIGAP-live
-    // UI legs (pinned by name in tests/test_scenario_ui_legs.cpp).
-    EXPECT_EQ(names.size(), 23u);
+    // UI legs (pinned by name in tests/test_scenario_ui_legs.cpp) + B888's
+    // create_character.
+    EXPECT_EQ(names.size(), 24u);
+    EXPECT_TRUE(IsScenarioName("create_character"));
     EXPECT_TRUE(IsScenarioName("zone_in"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));
     EXPECT_TRUE(IsScenarioName("cast_lands"));
@@ -281,6 +283,61 @@ TEST(ZoneInScenario, ZonedInWithNoZoneNameIsAFailureNotAPass) {
     Advance(runner, 5.0);
     EXPECT_TRUE(runner.finished());
     EXPECT_EQ(runner.exitCode(), kScenarioFail);
+}
+
+// ===========================================================================
+// create_character (B888, issue #204)
+// ===========================================================================
+
+namespace {
+ScenarioOptions CreateOptions() {
+    ScenarioOptions o;
+    o.expectCharacterName = "Cinewbie";
+    o.expectHomeZones = {"qeynos", "qeynos2", "qrg"};  // data/char_create.tsv QEYNOS
+    return o;
+}
+int RunCreate(FakeWorld& world, const ScenarioOptions& o) {
+    world.zonedIn = true;
+    ScenarioRunner runner(MakeScenario("create_character", o), world, 60.0, 30.0);
+    Advance(runner, 2.0);
+    EXPECT_TRUE(runner.finished());
+    return runner.exitCode();
+}
+}  // namespace
+
+TEST(CreateCharacterScenario, PassesForTheCreatedCharacterInItsHomeCity) {
+    FakeWorld world;
+    world.playerName = "Cinewbie";
+    world.zone = "qeynos2";
+    EXPECT_EQ(RunCreate(world, CreateOptions()), kScenarioPass);
+}
+
+TEST(CreateCharacterScenario, TheTutorialIsAFailureEvenIfListed) {
+    // Will 2026-09-23: home city only. World:TutorialZoneID 189 = tutorialb.
+    FakeWorld world;
+    world.playerName = "Cinewbie";
+    world.zone = "tutorialb";
+    ScenarioOptions o = CreateOptions();
+    o.expectHomeZones.push_back("tutorialb");
+    EXPECT_EQ(RunCreate(world, o), kScenarioFail);
+}
+
+TEST(CreateCharacterScenario, AnotherCityOrAnotherCharacterFails) {
+    FakeWorld wrongZone;
+    wrongZone.playerName = "Cinewbie";
+    wrongZone.zone = "freportw";
+    EXPECT_EQ(RunCreate(wrongZone, CreateOptions()), kScenarioFail);
+
+    FakeWorld wrongName;
+    wrongName.playerName = "Testchar";
+    wrongName.zone = "qeynos2";
+    EXPECT_EQ(RunCreate(wrongName, CreateOptions()), kScenarioFail);
+}
+
+TEST(CreateCharacterScenario, WithoutCreateCharacterItRefuses) {
+    FakeWorld world;
+    world.zone = "qeynos2";
+    EXPECT_EQ(RunCreate(world, DefaultOptions()), kScenarioFail);
 }
 
 // ===========================================================================

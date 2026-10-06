@@ -74,6 +74,9 @@ std::unique_ptr<IScenario> MakeSocialPeerScenario(const ScenarioOptions& options
 std::unique_ptr<IScenario> MakeTrackListScenario(const ScenarioOptions& options);
 /** Its peer: stays, walks off, camps out. */
 std::unique_ptr<IScenario> MakeTrackPeerScenario(const ScenarioOptions& options);
+/** B888 (issue #204): with --create-character, the created character is in
+ *  world, in its home city, never the tutorial. */
+std::unique_ptr<IScenario> MakeCreateCharacterScenario(const ScenarioOptions& options);
 
 }  // namespace scenario
 }  // namespace eqt

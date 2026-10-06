@@ -1722,3 +1722,22 @@ custom SoundFont (24.16 MB of 28.9 MB, 84 %), which the official client
 to 32 MiB or below follows Will's number when the SoundFont fix lands; this
 unit writes no new number (the ratchet value is his, per the B943
 convention as this card applies it).
+
+## 2026-09-23 — native character creation: copy the official screen; no tutorial; post-Velious HIDDEN (Will; B888, #204)
+
+**Will, on #204 (2026-09-23):** copy the official client's general UI layout and
+progression (the two-page Character Creation screen); there is NO tutorial
+option -- the character goes to its home city; the post-Velious races/classes
+(Vah Shir, Froglok, Beastlord, Berserker -- and with them SHARVAHL and GUKTA)
+are HIDDEN, not greyed: the in-era buttons are laid out without them; the
+`/mnt/projects/EverQuestP1999` install IS stock Titanium, so its `EQUI_*.xml`
+and `eqstr_us.txt` are the oracle source without further confirmation.
+
+**As built (B888):** the era filter is DATA (`data/char_create.tsv`), applied
+in one place (`eqt::charcreate::CharCreateData`); the creation rules are the
+SERVER's, quoted (`include/client/login_world/char_create_rules.h`);
+`OP_CharacterCreate` always carries `tutorial = 0`, and because Titanium world
+sets `StartInTutorial` after every create and clears it only on
+`OP_World_Client_CRC1`, the client re-sends the CRC pair before entering world
+with a new character. Offers the oracle has not been measured for are
+`assumption` rows in the data file, never silent.

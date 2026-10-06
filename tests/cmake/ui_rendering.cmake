@@ -349,6 +349,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_friends_window DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B888 (#204): the two-page Character Creation screen -- geometry against
+# EQUI_CharacterCreate.xml, the hidden-entry layout, the page flow and its
+# refusals (eqstr 1576/1577/1580), click resolution. Device-free.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_char_create_screen
+        test_char_create_screen.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_char_create_screen PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_char_create_screen GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_char_create_screen PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_char_create_screen DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
 # T363 disabled-control rule, the three wired sliders, the Alt+O binding and
 # the persistence round trip. Device-free like its siblings.

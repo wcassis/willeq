@@ -6,6 +6,7 @@
 
 #include "client/application.h"
 #include "client/eq.h"
+#include "client/login_world/char_create_data.h"
 #include "client/mode/automated_mode.h"
 #include "client/scenario/scenario_world_app.h"
 #include "client/scenario/scenarios.h"
@@ -28,6 +29,19 @@ bool Application::initScenario(const ApplicationConfig& config) {
     options.recastStopSpellId = config.scenarioRecastStopSpellId;
     options.buffNotakeVictimId = config.scenarioBuffNotakeSpellId;
     options.fizzleSpellId = config.scenarioFizzleSpellId;
+    // B888 (issue #204): create_character checks what --create-character made.
+    if (m_eqClient) {
+        const auto& script = m_eqClient->LoginWorld().GetWorldScript();
+        if (script.kind == charcreate::WorldScript::Kind::Create) {
+            options.expectCharacterName = script.create.name;
+            charcreate::CharCreateData data;
+            if (data.loadShipped()) {
+                if (const auto* city = data.cityByIndex(script.create.startZone)) {
+                    options.expectHomeZones = city->homeZones;
+                }
+            }
+        }
+    }
 
     auto built = scenario::MakeScenario(config.scenarioName, options);
     if (!built) {

@@ -4,7 +4,7 @@ A standalone EverQuest client targeting the Titanium client version (2006) with 
 
 This is a mostly vibe-coded project so the codebase is a bit chaotic. Expect major changes as features are implemented.
 
-There is no character creation in the client (it never sends `OP_CharacterCreate`), so you need an existing account and character. For the project's own test server, accounts and characters are provisioned by driving the official client under Wine/Xvfb (the eq-oracle rig, `refactor/T157_rogue_provisioning.md`), not by WillEQ.
+You need an existing account. A character can be created by the client itself at character select (B888, issue #204): `willeq -c willeq.json --create-character "Name,Race,Gender,Class,Deity,City"` creates it and enters world with it in its home city (never the tutorial); `--delete-character Name` and `--list-characters` do the other two. The official two-page Character Creation screen is transcribed (`include/client/graphics/ui/char_create_*.h`) but is not yet reachable from a character-select screen, because the client has none (see the table below).
 
 I'm developing this on a remote Ubuntu 24 server without a GPU. The default run needs no display at all (surfaceless EGL on llvmpipe); Xvfb + x11vnc or native RDP are used when a picture is wanted. The ARM builds target an Orange Pi One (Mali 400) running Armbian Noble with the Lima open-source driver.
 
@@ -41,7 +41,7 @@ current defect list; where the two disagree, the board wins.
 - ETC1 flat-pack texture assets (EQE1) for memory-constrained boards
 
 **What doesn't work or is incomplete:**
-- No character creation (requires existing account/character)
+- No character-select SCREEN: the character is picked from the config, and creation/deletion are command-line scripts (`--create-character`, `--delete-character`); the creation screen is drawn only by `ui_panel_capture` so far
 - Visual spell effects incomplete. Only the cast glow, the cast-complete flash and the impact are reached from the game; the projectile, buff-aura, rain and ground-circle code exists but has **no production caller** — its only callers are the `model_viewer` FX harness and a unit test (`refactor/BOARD.md` B161/B165), so no spell projectile and no buff aura is ever drawn in a real session
 - Swimming mechanics incomplete (keys exist, physics don't)
 - Boats/transport not implemented
@@ -65,7 +65,7 @@ Legend: Done | Partial | Not Implemented
 | Login server authentication | Done | |
 | Server selection | Done | |
 | Character selection | Done | Auto-select from config |
-| Character creation | -- | Provisioned externally (eq-oracle Wine rig). Native creation is issue #204 (B888): the official two-page screen and progression, home city (no tutorial), post-Velious races/classes excluded |
+| Character creation | Partial | B888 (#204). `--create-character "Name,Race,Gender,Class,Deity,City[,STR=n,...]"` sends `OP_ApproveName` then `OP_CharacterCreate` exactly as eqemu's Titanium world validates them (byte-pinned) and enters world in the home city, never the tutorial; `--delete-character`, `--list-characters`; scenario `create_character`. The official two-page screen (`EQUI_CharacterCreate.xml`) and its flow are transcribed with post-Velious races/classes/cities HIDDEN (`data/char_create.tsv`), but there is no character-select screen to open it from yet, no FacePick window and no 3D preview |
 
 ### World & Zones
 | Feature | Status | Notes |

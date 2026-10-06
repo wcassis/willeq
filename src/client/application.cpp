@@ -289,6 +289,11 @@ bool Application::initEverQuestClient(const ApplicationConfig& config) {
             config.server, config.character
         );
 
+        // B888 (#204): the world-stage character script, parsed before any
+        // connection so a bad spec costs no login. Defined in
+        // application_world_script.cpp, so the G04 golden pins the call.
+        if (!applyWorldScript(config)) return false;
+
         // Configure EverQuest client
         m_eqClient->Movement().SetPathfinding(config.pathfindingEnabled);
         if (!config.navmeshPath.empty()) {

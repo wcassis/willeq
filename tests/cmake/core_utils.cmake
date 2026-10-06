@@ -119,6 +119,7 @@ ADD_EXECUTABLE(test_scenario_state_machines
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_equip_observed.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_inventory.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_social.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_create_character.cpp  # B888
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_state_machines PRIVATE ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_scenario_state_machines GTest::gtest_main)
@@ -137,6 +138,7 @@ ADD_EXECUTABLE(test_scenario_ui_legs
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_equip_observed.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_inventory.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_social.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_create_character.cpp  # B888
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_ui_legs PRIVATE ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_scenario_ui_legs GTest::gtest_main)

@@ -46,6 +46,8 @@ const Entry kScenarios[] = {
     {"social_peer", &MakeSocialPeerScenario},
     {"track_list", &MakeTrackListScenario},
     {"track_peer", &MakeTrackPeerScenario},
+    // B888 (issue #204): needs --create-character.
+    {"create_character", &MakeCreateCharacterScenario},
 };
 
 }  // namespace
