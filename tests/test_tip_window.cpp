@@ -159,11 +159,14 @@ TEST(TipRules, TipOfTheDayShowAnotherAndItsCheckbox) {
 // still pops at zone-in with its "Don't show any tips" box drawn UNTICKED.
 // ShowTips does not gate the TOTD; ShowTOTD does.
 TEST(TipRules, ShowTipsZeroSuppressesContextTipsButNotTheTipOfTheDay) {
-    // The oracle's own ini section, as appended before the run.
+    // The oracle's own ini: `[Tips] ShowTips=0` was appended before the run
+    // (UI_ini_live2_before.ini is the snapshot from BEFORE the append) and the
+    // official client wrote it back unchanged at /camp -- the after_camp file
+    // is therefore the measured section, with no ShowTOTD key.
     std::string ini = "[Tips]\r\nShowTips=0\r\n";
-    const fs::path before = "/mnt/projects/fable/review/UIGAP-ORACLE/202/UI_ini_live2_before.ini";
-    if (fs::exists(before)) {
-        std::ifstream in(before);
+    const fs::path after = "/mnt/projects/fable/review/UIGAP-ORACLE/202/UI_ini_live2_after_camp.ini";
+    if (fs::exists(after)) {
+        std::ifstream in(after);
         std::stringstream ss;
         ss << in.rdbuf();
         ini = ss.str();

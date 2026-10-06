@@ -38,6 +38,7 @@
 
 #include "client/bridge/bridge_component.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/combat.h"
 #include "client/eq_opcodes.h"
 #include "client/events/renderer_intents.h"
 #include "client/graphics/ui/cursor_attachment.h"
