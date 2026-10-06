@@ -21,12 +21,42 @@
 #include "client/eq.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/display_eqstr.h"
+#include "client/string_database.h"
 #include "client/skill/skill_constants.h"
 #include "client/skill/skill_manager.h"
 #include "common/logging.h"
 #include "common/packet_structs.h"
 
 #include <string>
+
+namespace {
+
+// UIGAP-residue (#214): the trainer window's rows and its two client-side
+// lines name a skill the way the OFFICIAL client does -- "1H Slashing" in the
+// measured run2 chat and list, where EQ::getSkillName() (fable's own short
+// table, read by the skills window, /train name matching and the item
+// display) says "1H Slash". Of its 75 names exactly three differ from the
+// official skill-name rows eqstr 13850-13924, so those three are read from
+// that table; every other id keeps getSkillName(). A table miss falls back.
+std::string officialSkillName(const EQT::StringDatabase& strings, uint8_t skillId) {
+	uint32_t eqstrId = 0;
+	switch (skillId) {
+		case 1:  eqstrId = 13856; break;   // "1H Slashing" (fable: "1H Slash")
+		case 3:  eqstrId = 13858; break;   // "2H Slashing" (fable: "2H Slash")
+		case 48: eqstrId = 13915; break;   // "Pick Pockets" (fable: "Pick Pocket")
+		default: break;
+	}
+	if (eqstrId != 0) {
+		const std::string s = strings.getString(eqstrId);
+		if (!s.empty()) {
+			return s;
+		}
+	}
+	const char* name = EQ::getSkillName(skillId);
+	return name ? std::string(name) : fmt::format("skill {}", skillId);
+}
+
+}  // namespace
 
 void eqt::merchant::MerchantComponent::PublishTrainerWindow()
 {
@@ -63,7 +93,7 @@ void eqt::merchant::MerchantComponent::PublishTrainerWindow()
 		// (TrainRefusal's eqstr 12930). B898 skipped it here.
 
 		// Get skill name
-		const char* skill_name = EQ::getSkillName(skill_id);
+		const std::string skill_name = officialSkillName(ctx_.strings.Db(), skill_id);
 
 		// Training cost, in COPPER. T280 corrected this: the old
 		// "(current_value + 1) * 10" was invented, and disagreed with the
@@ -81,7 +111,7 @@ void eqt::merchant::MerchantComponent::PublishTrainerWindow()
 
 		eqt::state::TrainerSkillEntryData skill;
 		skill.skillId = skill_id;
-		skill.name = skill_name ? skill_name : "Unknown";
+		skill.name = skill_name;
 		skill.currentValue = current_value;
 		skill.maxTrainable = max_trainable;
 		skill.cost = cost;
@@ -109,8 +139,7 @@ std::string eqt::merchant::MerchantComponent::TrainRefusal(uint8_t skillId) cons
 		return "You are not interacting with a trainer. Target your guildmaster and use /train.";
 	}
 
-	const char* skillName = EQ::getSkillName(skillId);
-	const std::string label = skillName ? skillName : fmt::format("skill {}", skillId);
+	const std::string label = officialSkillName(ctx_.strings.Db(), skillId);
 
 	// eqemu's very first line is `if(!m_pp.points) return;` -- silent.
 	if (ctx_.self.GetPracticePoints() == 0) {
@@ -157,8 +186,7 @@ std::string eqt::merchant::MerchantComponent::TrainerSelectLine(uint8_t skillId)
 	if (ctx_.game_state.player().trainerNpcId() == 0) {
 		return std::string();
 	}
-	const char* skillName = EQ::getSkillName(skillId);
-	const std::string label = skillName ? skillName : fmt::format("skill {}", skillId);
+	const std::string label = officialSkillName(ctx_.strings.Db(), skillId);
 	// eqstr 12056 "%1 says, 'Interested in training in %2 ?'" -- the space
 	// before the '?' is the string's own (and the measured chat line's).
 	return eqt::EqStrLine(ctx_.strings.Db(), 12056,
