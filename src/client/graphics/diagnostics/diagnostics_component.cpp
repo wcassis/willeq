@@ -81,13 +81,12 @@ void DiagnosticsComponent::dumpScene() const {
     // --- Objects ---
     {
         size_t inGraph = 0, outGraph = 0;
-        for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
-            if (!ctx_.objectNodes[i]) continue;
-            bool ig = (i < ctx_.objectInSceneGraph.size()) ? ctx_.objectInSceneGraph[i] : true;
-            if (ig) inGraph++; else outGraph++;
+        for (const auto& rec : ctx_.objectRecords) {
+            if (!rec.mesh) continue;
+            if (rec.inSceneGraph) inGraph++; else outGraph++;
         }
         LOG_INFO(MOD_GRAPHICS, "  OBJECTS: {} total, {} in-graph, {} out-of-graph",
-                 ctx_.objectNodes.size(), inGraph, outGraph);
+                 ctx_.objectRecords.size(), inGraph, outGraph);
     }
 
     // --- Zone Lights ---
@@ -186,9 +185,9 @@ void DiagnosticsComponent::dumpScene() const {
             }
         }
     }
-    for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
-        if (ctx_.objectNodes[i] && i < ctx_.objectInSceneGraph.size() && ctx_.objectInSceneGraph[i]) {
-            census.singles.push_back(ctx_.objectNodes[i]);
+    for (const auto& rec : ctx_.objectRecords) {
+        if (rec.node && rec.inSceneGraph) {
+            census.singles.push_back(rec.node);
         }
     }
     // Zone lights have no scene nodes — nothing to subtract
@@ -284,14 +283,14 @@ void DiagnosticsComponent::dumpScene() const {
         for (const auto& [regionIdx, node] : ctx_.regionMeshNodes) {
             if (node && node->isVisible()) visRegions++;
         }
-        for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
-            if (ctx_.objectNodes[i] && i < ctx_.objectInSceneGraph.size() && ctx_.objectInSceneGraph[i])
+        for (const auto& rec : ctx_.objectRecords) {
+            if (rec.node && rec.inSceneGraph)
                 visObjects++;
         }
         size_t visEntities = ctx_.entityRenderer ? ctx_.entityRenderer->getVisibleEntityCount() : 0;
         LOG_INFO(MOD_GRAPHICS, "  VISIBLE: regions={}/{}, objects={}/{}, lights={}, entities={}",
                  visRegions, ctx_.regionMeshNodes.size(),
-                 visObjects, ctx_.objectNodes.size(),
+                 visObjects, ctx_.objectRecords.size(),
                  ctx_.SimBridge().activeLightCount(), visEntities);
     }
 
@@ -419,9 +418,11 @@ void DiagnosticsComponent::profileSceneBreakdown() {
     auto hideAll = [this]() {
         if (ctx_.zoneMeshNode) ctx_.zoneMeshNode->setVisible(false);
         if (ctx_.entityRenderer) ctx_.entityRenderer->setAllEntitiesVisible(false);
-        // Hide objects (they may already be out of scene graph)
-        for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
-            if (ctx_.objectNodes[i]) ctx_.objectNodes[i]->setVisible(false);
+        // Hide objects (they may already be out of scene graph). B938 (#256):
+        // in a PVS zone the records have no node to hide -- the manual draw
+        // path is what draws them, and it is disabled for the measurement.
+        for (const auto& rec : ctx_.objectRecords) {
+            if (rec.node) rec.node->setVisible(false);
         }
         if (ctx_.doorManager) ctx_.doorManager->setAllDoorsVisible(false);
         // Zone lights have no scene nodes — nothing to hide
@@ -433,13 +434,13 @@ void DiagnosticsComponent::profileSceneBreakdown() {
         if (ctx_.zoneMeshNode) ctx_.zoneMeshNode->setVisible(true);
         if (ctx_.entityRenderer) ctx_.entityRenderer->setAllEntitiesVisible(true);
         // Add objects back to scene graph and show
-        for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
-            if (ctx_.objectNodes[i]) {
-                if (i < ctx_.objectInSceneGraph.size() && !ctx_.objectInSceneGraph[i]) {
-                    ctx_.smgr->getRootSceneNode()->addChild(ctx_.objectNodes[i]);
-                    ctx_.objectInSceneGraph[i] = true;
+        for (auto& rec : ctx_.objectRecords) {
+            if (rec.node) {
+                if (!rec.inSceneGraph) {
+                    ctx_.smgr->getRootSceneNode()->addChild(rec.node);
+                    rec.inSceneGraph = true;
                 }
-                ctx_.objectNodes[i]->setVisible(true);
+                rec.node->setVisible(true);
             }
         }
         if (ctx_.doorManager) ctx_.doorManager->setAllDoorsVisible(true);
@@ -450,7 +451,7 @@ void DiagnosticsComponent::profileSceneBreakdown() {
 
     // Count nodes
     breakdown.entityCount = ctx_.entityRenderer ? static_cast<int>(ctx_.entityRenderer->getEntityCount()) : 0;
-    breakdown.objectCount = static_cast<int>(ctx_.objectNodes.size());
+    breakdown.objectCount = static_cast<int>(ctx_.objectRecords.size());
     breakdown.doorCount = ctx_.doorManager ? static_cast<int>(ctx_.doorManager->getDoorCount()) : 0;
     int lightCount = static_cast<int>(ctx_.zoneLightData.size()) + (sunLight_ ? 1 : 0) + (playerLightNode_ ? 1 : 0);
 
@@ -517,7 +518,7 @@ void DiagnosticsComponent::profileSceneBreakdown() {
     if (ctx_.entityRenderer) ctx_.entityRenderer->setAllEntitiesVisible(false);
 
     // 4. Measure objects only
-    for (auto* node : ctx_.objectNodes) if (node) node->setVisible(true);
+    for (const auto& rec : ctx_.objectRecords) if (rec.node) rec.node->setVisible(true);
     int64_t objectSum = 0;
     uint32_t objectPolys = 0;
     for (int i = 0; i < numSamples; i++) {
@@ -529,7 +530,7 @@ void DiagnosticsComponent::profileSceneBreakdown() {
     }
     breakdown.objectTime = (objectSum / numSamples) - baseline;
     int objectPolyCount = static_cast<int>(objectPolys - baselinePolys);
-    for (auto* node : ctx_.objectNodes) if (node) node->setVisible(false);
+    for (const auto& rec : ctx_.objectRecords) if (rec.node) rec.node->setVisible(false);
 
     // 5. Measure doors only
     if (ctx_.doorManager) ctx_.doorManager->setAllDoorsVisible(true);
@@ -697,10 +698,11 @@ MemoryReportBreakdown DiagnosticsComponent::getMemoryReportBreakdown(const Memor
 
         // Placeable objects. Placements share one mesh per geometry (T504,
         // B936), so a mesh is counted ONCE, not once per node drawing it.
+        // B938 (#256): read the records (PVS zones have no nodes at all).
         std::set<const irr::scene::IMesh*> countedObjectMeshes;
-        for (auto* node : ctx_.objectNodes) {
-            if (node && node->getMesh() && countedObjectMeshes.insert(node->getMesh()).second) {
-                auto* mesh = node->getMesh();
+        for (const auto& rec : ctx_.objectRecords) {
+            if (rec.mesh && countedObjectMeshes.insert(rec.mesh).second) {
+                auto* mesh = rec.mesh;
                 for (uint32_t i = 0; i < mesh->getMeshBufferCount(); ++i) {
                     auto* buf = mesh->getMeshBuffer(i);
                     b.placeableObjectsBytes += buf->getVertexCount() * sizeof(irr::video::S3DVertex);
@@ -871,7 +873,7 @@ std::vector<std::string> DiagnosticsComponent::getMemoryReport(const MemoryRepor
     // --- Zone Geometry ---
     {
         size_t regionCount = ctx_.regionMeshNodes.size();
-        size_t objectCount = ctx_.objectNodes.size();
+        size_t objectCount = ctx_.objectRecords.size();
         size_t lightCount = ctx_.zoneLightData.size();
         size_t objectLightCount = ctx_.objectLights.size();
 

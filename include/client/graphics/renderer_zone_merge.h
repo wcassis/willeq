@@ -45,6 +45,7 @@
 // prototype -- build() only reads region mesh nodes).
 
 #include "client/graphics/region_world_triangles.h"
+#include "client/graphics/placed_object_meshes.h"  // B938: PlacedObjectRecord
 #include "client/graphics/constrained_texture_cache.h"  // TextureEvictionListener
 
 #include <cstdint>
@@ -409,21 +410,26 @@ private:
 // without requiring scene-graph reachability).
 class ObjectNodeTextureGuard : public TextureEvictionListener {
 public:
-    // objectNodes: IrrlichtRenderer::objectNodes_ -- renderer-owned, cleared
-    // (remove()+drop() each entry) not destroyed/recreated between zone
-    // visits (renderer_zone_lifecycle.cpp), safe to hold a reference for the
-    // guard's own lifetime (also renderer-owned, constructed once).
+    // objectRecords: IrrlichtRenderer::objectRecords_ -- renderer-owned, cleared
+    // (zone teardown) not destroyed/recreated between zone visits
+    // (renderer_zone_lifecycle.cpp), safe to hold a reference for the
+    // guard's own lifetime (also renderer-owned, constructed once). B938 (#256):
+    // the per-placement state is a record, not a node. In a PVS zone the live
+    // texture references the manual draw path binds live on the record's SHARED
+    // mesh buffers, so the guard swaps on record.mesh (a shared mesh is swapped
+    // once, not once per placement); in a non-PVS zone it also swaps on
+    // record.node's own override materials.
     //
     // placeholder: resolved ONCE by the caller before construction, same
     // load-bearing non-reentrancy constraint as RegionMeshTextureGuard's
     // constructor doc above (never re-derive it inside onTextureEvicted()).
-    ObjectNodeTextureGuard(const std::vector<irr::scene::IMeshSceneNode*>& objectNodes,
+    ObjectNodeTextureGuard(const std::vector<PlacedObjectRecord>& objectRecords,
                            irr::video::ITexture* placeholder);
 
     void onTextureEvicted(const std::string& name, irr::video::ITexture* texture) override;
 
 private:
-    const std::vector<irr::scene::IMeshSceneNode*>& objectNodes_;
+    const std::vector<PlacedObjectRecord>& objectRecords_;
     irr::video::ITexture* placeholder_;
 };
 

@@ -1335,9 +1335,17 @@ it without taking that measurement first.
   `placeableObjectsBytes` baselines were BLESSED by Will in chat 2026-09-30
   ("bless placeableObjectsBytes", `docs/decisions.md`). #247 acceptance 1 is in;
   acceptance 2 (the census job) remains.
-- **B938** (A, memory) → issue #256. After B936 the per-placement scene node
-  (`obj.instances`, about 2.2 KB per placed object on x86, 1.5 KB on the Pi)
-  is 88–98 % of `objects`: 9.6 MB of growthplane's 9.7 MB on x86.
+- **B938** (A, memory) → issue #256. RESOLVED (MR pending): the per-placement
+  `IMeshSceneNode` (~2.2 KB) and the four renderer-parallel vectors are
+  replaced by a 168 B `PlacedObjectRecord` read by both draw paths; PVS zones
+  allocate no node at all (growthplane scene graph 4,333 → 10 nodes). x86
+  `obj.instances` growthplane 9.61 → 3.27 MB (the residual is the per-object
+  light nodes, a separate concern); Pi `obj.instances` growthplane 6.59 →
+  2.66, trakanon 4.47 → 1.76, gfaydark 3.33 → 0.65 MB (overthere no `ready`,
+  B940; the trakanon row's `gpu_unnamed_over_bound` verdict is B988/#307's
+  known condition); per-pixel: CI visual gate 0 mismatch, all five golden
+  zones; size pinned by `tests/test_placed_object_record.cpp`.
+  `refactor/B938/README.md`.
 - **B939** (B) → issue #257. The placement phase of keyframe-animated
   objects was never measured against the official client (#254 acceptance 1);
   fable animates them in phase and B936 keeps that. The baked load pose is not

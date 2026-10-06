@@ -161,3 +161,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_placed_object_meshes GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_placed_object_meshes DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B938 (GitLab #256): the compact per-placement PlacedObjectRecord that
+# replaced the ~2.2 KB per-placement IMeshSceneNode. Header-only size/layout
+# pin (168 B on x86-64) plus the structural invariants the refactor's
+# reference accounting rests on. No device, no zone files.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_placed_object_record
+        test_placed_object_record.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_placed_object_record PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_placed_object_record GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_placed_object_record DISCOVERY_TIMEOUT 120)
+ENDIF()
