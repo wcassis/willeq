@@ -56,16 +56,27 @@ ImpostorCache::~ImpostorCache() {
 
 bool ImpostorCache::ensureScratch() {
     if (scratch_) return true;
+    // B979: the scratch FBO is the capture's one-time GPU cost. Time it so the
+    // first-capture decomposition (refactor/B979) names its steps.
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
     eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDriver);
     char name[64];
     snprintf(name, sizeof(name), "impostor_scratch_%d", kCellPx);
     scratch_ = driver_->addRenderTargetTexture(irr::core::dimension2d<irr::u32>(kCellPx, kCellPx), name);
+    const double ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+    if (scratch_)
+        LOG_INFO(MOD_GRAPHICS, "Impostor: scratch FBO allocated in {:.2f} ms", ms);
     return scratch_ != nullptr;
 }
 
 bool ImpostorCache::ensurePage(int page) {
     if (page < static_cast<int>(pages_.size()) && pages_[page].tex) return true;
 #ifdef EQT_HAS_GLES2
+    // B979: a page is a kPagePx^2 RGBA8 allocation (glTexImage2D) -- the other
+    // one-time GPU cost of a first capture. Time it per page.
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
     eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDriver);
     if (static_cast<size_t>(page) >= pages_.size()) pages_.resize(page + 1);
     GLint prevTex = 0;
@@ -86,12 +97,139 @@ bool ImpostorCache::ensurePage(int page) {
     pages_[page].tex = static_cast<irr::video::ITexture*>(
         gles2WrapTexture(driver_, name, t, kPagePx, kPagePx, static_cast<unsigned>(kPageBytes)));
     stats_.pageAllocs++;
-    LOG_INFO(MOD_GRAPHICS, "Impostor: page {} allocated ({} B); row now {} B of {} B", page, kPageBytes,
-             rowBytes(), budgetBytes_);
+    const double pageMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+    LOG_INFO(MOD_GRAPHICS, "Impostor: page {} allocated in {:.2f} ms ({} B); row now {} B of {} B", page,
+             pageMs, kPageBytes, rowBytes(), budgetBytes_);
     return pages_[page].tex != nullptr;
 #else
     (void)page;
     return false;
+#endif
+}
+
+bool ImpostorCache::prepare() {
+    if (!usable_) return false;
+    // B979: the one-time GPU costs of a first capture, measured on the Pi
+    // (refactor/B979/README.md): a page is a 14-16 ms 4 MiB GEM allocation,
+    // the scratch FBO 3-14 ms, and the FIRST draw into the FBO 9-21 ms (Lima
+    // rasterizes deferred; every later capture draws in 1-2 ms). The loading
+    // screen covers all of it: create every page, the scratch, and do one
+    // real draw into the FBO + a glFinish so the driver/tile setup and the
+    // first deferred raster land HERE, not in the first gameplay frame.
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
+    const int n = cells_.maxPages();
+    for (int p = 0; p < n; ++p) {
+        if (!ensurePage(p)) return false;
+    }
+    if (n > 0 && !ensureScratch()) return false;
+    const double allocMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+
+    const auto p0 = Clock::now();
+    const bool primed = prime3d();
+    const double primeMs = std::chrono::duration<double, std::milli>(Clock::now() - p0).count();
+
+    LOG_INFO(MOD_GRAPHICS,
+             "Impostor: prepared {} pages + scratch FBO in {:.2f} ms, primed the 3D capture path in "
+             "{:.2f} ms ({}; one-time GPU costs moved off the first gameplay frame, B979); row now {} B of {} B",
+             n, allocMs, primeMs, primed ? "ok" : "FAILED", rowBytes(), budgetBytes_);
+    return primed;
+}
+
+bool ImpostorCache::prime3d() {
+#ifdef EQT_HAS_GLES2
+    if (primed3d_) return true;  // one-time per session: pages + scratch survive zone reloads
+    if (!scratch_ || pages_.empty() || !pages_[0].glTex) return false;
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
+
+    // A 4x4 white texture: the driver picks the SOLID3D program (the capture's
+    // own program) whenever the material's texture(0) is non-null -- a 2D
+    // rectangle or an untextured 3D mesh would select COLOR2D instead, which is
+    // NOT what a real capture draws, so it would not prime the 3D path.
+    irr::video::ITexture* white = driver_->addRenderTargetTexture(
+        irr::core::dimension2d<irr::u32>(4, 4), "impostor_prime");
+    if (white) {
+        eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDriver);
+        if (irr::u8* px = static_cast<irr::u8*>(white->lock())) {
+            for (int i = 0; i < 4 * 4 * 4; ++i) px[i] = 255;  // opaque white, RGBA
+        }
+        white->unlock();
+    }
+
+    // A unit cube (the same shape createPlaceholderMesh builds) carrying that
+    // texture: a real 3D mesh with a non-null texture(0), drawn with the
+    // capture's ortho look-at into the scratch FBO.
+    irr::scene::SMesh* mesh = new irr::scene::SMesh();
+    auto* buf = new irr::scene::SMeshBuffer();
+    irr::video::S3DVertex v[8] = {
+        {-0.5f, 0.0f, -0.5f, 0, -1, 0, irr::video::SColor(255, 255, 255, 255), 0, 1},
+        {0.5f, 0.0f, -0.5f, 0, -1, 0, irr::video::SColor(255, 255, 255, 255), 1, 1},
+        {0.5f, 0.0f, 0.5f, 0, -1, 0, irr::video::SColor(255, 255, 255, 255), 1, 0},
+        {-0.5f, 0.0f, 0.5f, 0, -1, 0, irr::video::SColor(255, 255, 255, 255), 0, 0},
+        {-0.5f, 1.0f, -0.5f, 0, 1, 0, irr::video::SColor(255, 255, 255, 255), 0, 1},
+        {0.5f, 1.0f, -0.5f, 0, 1, 0, irr::video::SColor(255, 255, 255, 255), 1, 1},
+        {0.5f, 1.0f, 0.5f, 0, 1, 0, irr::video::SColor(255, 255, 255, 255), 1, 0},
+        {-0.5f, 1.0f, 0.5f, 0, 1, 0, irr::video::SColor(255, 255, 255, 255), 0, 0},
+    };
+    irr::u16 idx[36] = {0,1,2,0,2,3, 4,6,5,4,7,6, 0,5,1,0,4,5, 2,7,3,2,6,7, 3,4,0,3,7,4, 1,6,2,1,5,6};
+    for (int i = 0; i < 8; ++i) buf->Vertices.push_back(v[i]);
+    for (int i = 0; i < 36; ++i) buf->Indices.push_back(idx[i]);
+    buf->recalculateBoundingBox();
+    irr::video::SMaterial mat;
+    mat.TextureLayer[0].Texture = white;  // non-null => SOLID3D
+    mat.BackfaceCulling = false;
+    buf->Material = mat;
+    mesh->addMeshBuffer(buf);
+    buf->drop();
+    mesh->recalculateBoundingBox();
+
+    const irr::core::matrix4 savedView = driver_->getTransform(irr::video::ETS_VIEW);
+    const irr::core::matrix4 savedProj = driver_->getTransform(irr::video::ETS_PROJECTION);
+    const irr::core::matrix4 savedWorld = driver_->getTransform(irr::video::ETS_WORLD);
+    driver_->setRenderTarget(scratch_, true, true, irr::video::SColor(0, 0, 0, 0));
+    irr::core::matrix4 proj;
+    proj.buildProjectionMatrixOrthoLH(2.0f, 2.0f, 0.1f, 500.0f);
+    driver_->setTransform(irr::video::ETS_PROJECTION, proj);
+    irr::core::matrix4 view;
+    view.buildCameraLookAtMatrixLH(irr::core::vector3df(0, 0.5f, -100.0f),
+                                   irr::core::vector3df(0, 0.5f, 0), irr::core::vector3df(0, 1, 0));
+    driver_->setTransform(irr::video::ETS_VIEW, view);
+    driver_->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+    driver_->setMaterial(mat);
+    driver_->drawMeshBuffer(mesh->getMeshBuffer(0));
+
+    // The capture's readback: glCopyTexSubImage2D out of the scratch FBO into
+    // page 0 (one cell). This is the FBO's first READ, a separate one-time
+    // cost from the first 3D raster -- growthplane 353c showed it at
+    // copy_ms=21.15 on the main thread, so the priming must read back too.
+    GLint prevTex = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTex);
+    glBindTexture(GL_TEXTURE_2D, pages_[0].glTex);
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, kCellPx, kCellPx);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTex));
+    driver_->setRenderTarget(nullptr, false, false);
+
+    // This is the loading thread's LAST GL work (prepare() is the final step of
+    // loadZoneGraphicsOnThread); glFinish so the deferred 3D raster and
+    // readback resolve HERE, before the main thread's first frame.
+    glFinish();
+
+    driver_->setTransform(irr::video::ETS_VIEW, savedView);
+    driver_->setTransform(irr::video::ETS_PROJECTION, savedProj);
+    driver_->setTransform(irr::video::ETS_WORLD, savedWorld);
+    mesh->drop();
+    if (white) driver_->removeTexture(white);
+
+    primed3d_ = true;
+    const double ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+    LOG_INFO(MOD_GRAPHICS, "Impostor: 3D capture path primed in {:.2f} ms (one-time, on the loading thread)", ms);
+    return true;
+#else
+    (void)scratch_;
+    (void)pages_;
+    primed3d_ = true;
+    return true;
 #endif
 }
 
@@ -151,6 +289,13 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
                             const std::vector<irr::scene::IMeshSceneNode*>& heldItems,
                             const irr::core::vector3df& camPos, float viewAngleDeg, uint16_t sourceSpawn) {
 #ifdef EQT_HAS_GLES2
+    // B979: capture() entry, so a slow capture's log can split its unit time
+    // into top_ms (entry -> tStart: cell lookup, scratch, mesh, the optional
+    // finishBefore glFinish) and total_ms (tStart -> tEnd: pose, bind, draw,
+    // copy, unbind). The unit timing in the [impostor] line is the whole call,
+    // so a >33 ms unit that does NOT show up in total_ms is in the top region.
+    using ClockT = std::chrono::steady_clock;
+    const auto tEntry = ClockT::now();
     CellRef ref;
     if (!node || !cells_.find(key, ref) || ref.page >= static_cast<int>(pages_.size())) return false;
     if (!ensureScratch()) return false;
@@ -158,8 +303,22 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
     if (!mesh) return false;
     eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDriver);
 
+    // B979: measure whether the first capture's wall time is the capture's OWN
+    // deferred rasterization (Lima tiles resolve when the FBO is next read) or
+    // the PREVIOUS frame's unfinished GPU work (the loading thread's last
+    // frame, resolved at this first glReadPixels-adjacent read). Off by
+    // default: a glFinish costs CPU/GPU overlap.
+    static const bool finishBefore = [] {
+        const char* e = std::getenv("WILLEQ_IMPOSTOR_FINISH_BEFORE");
+        return e && e[0] == '1';
+    }();
     using Clock = std::chrono::steady_clock;
+    const auto tf0 = Clock::now();
+    if (finishBefore) glFinish();
+    const double finishBeforeMs = std::chrono::duration<double, std::milli>(Clock::now() - tf0).count();
+
     const auto tStart = Clock::now();
+    const double topMs = std::chrono::duration<double, std::milli>(tStart - tEntry).count();
     // The pose the entity is in now (its skinning may be suspended).
     node->forceAnimationUpdate();
     node->updateAbsolutePosition();
@@ -270,16 +429,19 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
     driver_->setRenderTarget(nullptr, false, false);
     const auto tEnd = Clock::now();
     // Where a capture's time goes, for the first few (the unit timing in the
-    // [impostor] line is the whole of it).
-    if (stats_.units < 16) {
+    // [impostor-capture] line is the whole of it) AND for any slow one (B979: a
+    // >20 ms capture is a hitch candidate, so its sub-timer split is what we
+    // need to read — the one-time cost that survived prepare()).
+    const double totalMs = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
+    if (stats_.units < 16 || (totalMs + finishBeforeMs) > 20.0) {
         auto ms = [](Clock::time_point a, Clock::time_point b) {
             return std::chrono::duration<double, std::milli>(b - a).count();
         };
         LOG_INFO(MOD_GRAPHICS,
-                 "[impostor-capture] key={} pose_bounds_ms={:.2f} bind_clear_ms={:.2f} draw_ms={:.2f} "
-                 "copy_ms={:.2f} unbind_ms={:.2f} buffers={}",
-                 key, ms(tStart, tBind), ms(tBind, tDraw), ms(tDraw, tCopy), ms(tCopy, tUnbind),
-                 ms(tUnbind, tEnd), mesh->getMeshBufferCount());
+                 "[impostor-capture] key={} total_ms={:.2f} top_ms={:.2f} finish_before_ms={:.2f} pose_bounds_ms={:.2f} "
+                 "bind_clear_ms={:.2f} draw_ms={:.2f} copy_ms={:.2f} unbind_ms={:.2f} buffers={}",
+                 key, totalMs, topMs, finishBeforeMs, ms(tStart, tBind), ms(tBind, tDraw), ms(tDraw, tCopy),
+                 ms(tCopy, tUnbind), ms(tUnbind, tEnd), mesh->getMeshBufferCount());
     }
     driver_->setTransform(irr::video::ETS_VIEW, savedView);
     driver_->setTransform(irr::video::ETS_PROJECTION, savedProj);

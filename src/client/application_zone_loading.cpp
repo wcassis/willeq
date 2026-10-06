@@ -329,6 +329,16 @@ void Application::loadZoneGraphicsOnThread(EQT::Graphics::LoadingStatus& status)
 
     LOG_INFO(MOD_GRAPHICS, "loadZoneGraphicsOnThread: complete for zone '{}'", snap.zoneName);
 
+    // B979: the impostor capture's one-time GPU costs -- a 4 MiB GEM allocation
+    // per page (14-16 ms each), the scratch FBO (3-14 ms) and the FBO's first
+    // raster (9-21 ms on Lima) -- would otherwise all land in the first
+    // gameplay frame (refactor/B979/README.md). Do them HERE, under the
+    // loading screen, while THIS thread owns the GL context; the main thread
+    // is paused in render()'s loading branch for the whole duration, so the
+    // GL calls are exclusive.
+    if (auto* er = m_renderer->getEntityRenderer())
+        er->prepareImpostorCache();
+
     // Restore loading flag — will be cleared by joinLoadingThread on main thread
     m_renderer->setLoading(true);
 }
