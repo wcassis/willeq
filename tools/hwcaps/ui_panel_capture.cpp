@@ -920,13 +920,13 @@ std::vector<PanelCapture> buildCaptureList() {
         // account's characters, empty, the delete prompt, and the creation
         // page it opens (the pre-zone host draws exactly this call).
         {"charselect_characters", [](UIRenderer& u, const UILayout& l, PanelStates&) {
-            renderCharSelectScreen(u, l, charSelectCaptureState(0)); }},
+            renderCharSelectScreen(u.layer(), l, charSelectCaptureState(0)); }},
         {"charselect_empty", [](UIRenderer& u, const UILayout& l, PanelStates&) {
-            renderCharSelectScreen(u, l, charSelectCaptureState(1)); }},
+            renderCharSelectScreen(u.layer(), l, charSelectCaptureState(1)); }},
         {"charselect_delete_prompt", [](UIRenderer& u, const UILayout& l, PanelStates&) {
-            renderCharSelectScreen(u, l, charSelectCaptureState(2)); }},
+            renderCharSelectScreen(u.layer(), l, charSelectCaptureState(2)); }},
         {"charselect_create_opened", [](UIRenderer& u, const UILayout& l, PanelStates&) {
-            renderCharSelectScreen(u, l, charSelectCaptureState(3)); }},
+            renderCharSelectScreen(u.layer(), l, charSelectCaptureState(3)); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.

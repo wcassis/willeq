@@ -98,7 +98,9 @@ void renderCharSelectScreen(UIRenderer& ui, const UILayout& layout, const CharSe
         tb->addTextCentered(r.zoneLine, L::zoneLineRect(sw, sh), kSelected);
     }
 
-    renderConfirmationDialog(ui, layout, s.confirm);
+    // B992: the prompt overlaps the window, so it is its own layer -- the
+    // window's button text must not draw over the dialog's plate.
+    if (s.confirm.isOpen) renderConfirmationDialog(ui.layer(), layout, s.confirm);
 }
 
 CharSelectClickTarget hitTestCharSelect(int sw, int sh, const CharSelectScreenState& s, int x, int y) {
