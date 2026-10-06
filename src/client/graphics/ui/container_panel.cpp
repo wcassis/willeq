@@ -139,9 +139,9 @@ bool applyContainerSlotChanged(ContainerWindowsState& state,
 }
 
 int topmostContainerWindow(const ContainerWindowsState& state) {
-    if (state.windows[ContainerWindowsState::WORLD_WINDOW].isOpen) {
-        return ContainerWindowsState::WORLD_WINDOW;
-    }
+    // The most recently opened window: every window shares the oracle's one
+    // <Location>, so the newest covers the rest (UIGAP-ORACLE 151
+    // gestures.tsv row 20). ESC, the draw and the hit test all use this.
     int best = -1;
     uint32_t bestSeq = 0;
     for (int i = 0; i < ContainerWindowsState::MAX_WINDOWS; ++i) {
@@ -230,17 +230,11 @@ void renderOne(UIRenderer& ui, const UILayout& layout, const ContainerWindow& w)
 
 void renderContainerWindows(UIRenderer& ui, const UILayout& layout,
                             const ContainerWindowsState& state) {
-    // Oldest first, so the most recently opened window is drawn on top --
-    // the order hitTestContainer() reverses.
-    int order[ContainerWindowsState::MAX_WINDOWS];
-    int count = 0;
-    for (int i = 0; i < ContainerWindowsState::MAX_WINDOWS; ++i) {
-        if (state.windows[i].isOpen) order[count++] = i;
-    }
-    std::sort(order, order + count, [&](int a, int b) {
-        return state.windows[a].openSequence < state.windows[b].openSequence;
-    });
-    for (int k = 0; k < count; ++k) renderOne(ui, layout, state.windows[order[k]]);
+    // Every window sits at the same rect, so only the topmost is visible.
+    // Drawing the covered ones too would leak their text through: the text
+    // batch is flushed after every quad of the frame.
+    const int top = topmostContainerWindow(state);
+    if (top >= 0) renderOne(ui, layout, state.windows[top]);
 }
 
 // --- hit tests -------------------------------------------------------------

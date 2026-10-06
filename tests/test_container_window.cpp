@@ -537,7 +537,9 @@ TEST_F(ContainerClickTest, AClosedWindowEatsNoClickAndTheTopmostWins) {
     EXPECT_EQ(b->inventorySlot, inv::GENERAL_BEGIN + 5);
 }
 
-TEST_F(ContainerClickTest, EscapeAsksTheWorldContainerFirstThenTheNewestBag) {
+// ESC follows the z-order: the newest window is on top (151 row 20), world
+// container or bag alike.
+TEST_F(ContainerClickTest, EscapeAsksTheNewestWindowFirst) {
     EXPECT_FALSE(input.processContainerEscape(state));
     applyContainerOpened(state, carried(inv::GENERAL_BEGIN, 0, 8));
     applyContainerOpened(state, world(55));
@@ -545,14 +547,15 @@ TEST_F(ContainerClickTest, EscapeAsksTheWorldContainerFirstThenTheNewestBag) {
     EXPECT_TRUE(input.processContainerEscape(state));
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
-    EXPECT_EQ(std::get<eqt::events::TradeskillCloseIntent>(intents[0]).dropId, 55u);
-    EXPECT_TRUE(state.windows[0].isOpen);  // not hidden locally
-    applyContainerClosed(state, {true, 55, -1});
+    EXPECT_EQ(std::get<eqt::events::TradeskillCloseIntent>(intents[0]).inventorySlot,
+              inv::GENERAL_BEGIN + 4);
+    EXPECT_TRUE(state.windows[5].isOpen);  // not hidden locally
+    applyContainerClosed(state, {false, 0, static_cast<int16_t>(inv::GENERAL_BEGIN + 4)});
     EXPECT_TRUE(input.processContainerEscape(state));
     intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
-    EXPECT_EQ(std::get<eqt::events::TradeskillCloseIntent>(intents[0]).inventorySlot,
-              inv::GENERAL_BEGIN + 4);
+    EXPECT_EQ(std::get<eqt::events::TradeskillCloseIntent>(intents[0]).dropId, 55u);
+    EXPECT_EQ(std::get<eqt::events::TradeskillCloseIntent>(intents[0]).inventorySlot, -1);
 }
 
 // ===========================================================================

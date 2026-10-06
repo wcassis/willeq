@@ -166,15 +166,15 @@ bool applyContainerSlotChanged(ContainerWindowsState& state,
                                const eqt::state::InventorySlotChangedData& data);
 
 /**
- * The open window ESC dismisses first: the world container if it is open
- * (the server-owned one, T443's rule), else the most recently opened bag.
+ * The open window on top: the most recently opened. ESC dismisses it first,
+ * it is the one drawn and the one a click reaches (they all share one rect).
  * -1 when none is open.
  */
 int topmostContainerWindow(const ContainerWindowsState& state);
 
 // --- draw --------------------------------------------------------------------
 
-/** Draw every open window, oldest first, so the newest is on top. */
+/** Draw the topmost open window (the others are covered by it). */
 void renderContainerWindows(UIRenderer& ui, const UILayout& layout,
                             const ContainerWindowsState& state);
 

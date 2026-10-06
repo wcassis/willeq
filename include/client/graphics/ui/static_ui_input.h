@@ -267,8 +267,8 @@ public:
                                ContainerWindowsState& containers);
 
     /**
-     * B899: ESC on the container windows. The world container first (server
-     * owned, T443), else the most recently opened bag; each pushes
+     * B899: ESC on the container windows. The topmost (most recently opened,
+     * world container or bag) is asked first; each pushes
      * TradeskillCloseIntent and nothing is hidden locally. Returns true if a
      * window was addressed.
      */
