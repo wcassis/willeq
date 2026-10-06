@@ -424,6 +424,12 @@ public:
      */
     ActionResult scribeItem(const std::string& args);
 
+    /**
+     * B442 (#151): /pickup /putdown /cursor /coin. Zone-connection gate only;
+     * parsing and every refusal live in CommandsComponent::RequestCursorCommand().
+     */
+    ActionResult cursorCommand(const std::string& verb, const std::string& args);
+
     // ========== Spellbook Actions ==========
 
     /**

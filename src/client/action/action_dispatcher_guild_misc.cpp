@@ -347,6 +347,16 @@ ActionResult ActionDispatcher::scribeItem(const std::string& args) {
     return ActionResult::Success();
 }
 
+// ========== Cursor gesture commands (B442) ==========
+// Same gate as equip(): a disconnected client has no inventory to move.
+ActionResult ActionDispatcher::cursorCommand(const std::string& verb, const std::string& args) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->cursorCommand(verb, args);
+    return ActionResult::Success();
+}
+
 // ========== Movement / Utility / Skills Actions (T140) ==========
 
 ActionResult ActionDispatcher::showLocation() {

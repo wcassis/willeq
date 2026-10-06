@@ -804,3 +804,31 @@ TEST_F(CommandProcessorTest, Train_NotConnectedToZone_FailsCleanlyWithoutDispatc
 }
 
 }  // namespace
+
+// B442 (#151): /pickup /putdown /cursor /coin -- registered in the Inventory
+// category, raw arguments passed through to the one handler (parsing lives in
+// CommandsComponent::RequestCursorCommand -> ParseCursorCommand, covered by
+// tests/test_cursor_gesture.cpp).
+namespace {
+TEST_F(CommandProcessorTest, B442_CursorCommandsAreRegisteredAsInventory) {
+    for (const char* name : {"pickup", "putdown", "cursor", "coin"}) {
+        auto info = processor->getCommandInfo(name);
+        ASSERT_TRUE(info.has_value()) << name;
+        EXPECT_EQ(info->category, "Inventory") << name;
+    }
+}
+
+TEST_F(CommandProcessorTest, B442_CursorCommandsPassTheirVerbAndArgsThrough) {
+    EXPECT_TRUE(processor->processCommand("/pickup 23 5").success);
+    EXPECT_TRUE(handler.calledOnceWith("cursorCommand(\"pickup 23 5\")"));
+    handler.calls.clear();
+    EXPECT_TRUE(processor->processCommand("/putdown 24").success);
+    EXPECT_TRUE(handler.calledOnceWith("cursorCommand(\"putdown 24\")"));
+    handler.calls.clear();
+    EXPECT_TRUE(processor->processCommand("/cursor").success);
+    EXPECT_TRUE(handler.calledOnceWith("cursorCommand(\"cursor\")"));
+    handler.calls.clear();
+    EXPECT_TRUE(processor->processCommand("/coin pp 3").success);
+    EXPECT_TRUE(handler.calledOnceWith("cursorCommand(\"coin pp 3\")"));
+}
+}  // namespace

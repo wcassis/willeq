@@ -105,6 +105,9 @@ public:
 	void RequestReadItem(const std::string& args);
 	void RequestScribeItem(const std::string& args);
 
+	// B442 (#151): /pickup /putdown /cursor /coin (commands_cursor.cpp).
+	void RequestCursorCommand(const std::string& verb, const std::string& args);
+
 	// T278: /combine and /closecontainer.
 	void RequestTradeskillCombine(int16_t containerSlot);
 	void RequestCloseTradeskillContainer();

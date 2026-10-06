@@ -331,6 +331,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 break;
             case irr::EMIE_RMOUSE_PRESSED_DOWN:
                 rightButtonDown_.store(true, std::memory_order_relaxed);
+                rightButtonClicked_.store(true, std::memory_order_relaxed);  // B442
                 break;
             case irr::EMIE_RMOUSE_LEFT_UP:
                 rightButtonDown_.store(false, std::memory_order_relaxed);
@@ -401,6 +402,11 @@ bool RendererEventReceiver::wasLeftButtonClicked() {
 
 bool RendererEventReceiver::wasLeftButtonReleased() {
     return leftButtonReleased_.exchange(false, std::memory_order_relaxed);
+}
+
+// B442: read-and-reset, one consumer (renderStaticUI), like the left click.
+bool RendererEventReceiver::wasRightButtonClicked() {
+    return rightButtonClicked_.exchange(false, std::memory_order_relaxed);
 }
 
 

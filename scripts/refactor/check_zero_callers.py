@@ -497,6 +497,8 @@ BOARD_REASONS.update({
         "GameState module mutators with no production writer -- the target/pet HP updaters, the group member updaters, three InventoryState setters, PlayerState::loadFromProfile/setCurHP/setPositionAndHeading, the SpellState memorize/scribe mutators, WorldState::setZoneId/setZoning and GameState::resetForZoneChange",
     "B602":
         "EntityManager's query and mutation API with no production caller -- exact-name, pet-owner, range and nearest-corpse lookups, the two forEach iterators, and the HP/equipment/corpse updaters",
+    "B899":
+        "B442's published interface for the bag (container) window, built by the concurrent unit B899 -- StaticUIInput::cursorGesture() is how that window's slot arm reaches the shared gesture; it has no caller until that branch merges",
     "B603":
         "gameplay-manager control API with no production caller -- CombatManager's auto-loot/aggro/flee/auto-fire configuration, SpellManager's cast-by-id, gem swap and two callback setters, BuffManager's removals and ActiveBuff's formatting, the group-decline, move-speed, cursor-stack and hotbar-slot mutators, ZoneLines::checkMovement, WhoAllEntry::isLinkdead and calcBankBagSlotId",
     "B605":
@@ -514,6 +516,7 @@ BOARD_REASONS.update({
 # and boarded the rest rather than wiring a feature mid-unit (the T39/B024
 # rule).
 EXEMPT_GROUPS = {
+    ("StaticUIInput", "cursorGesture"): "B899",
     ("(free)", "resistToParticleColor"): "B490",
     ("BoidsManager", "getCurrentBiome"): "B490",
     ("BoidsManager", "getQuality"): "B490",
@@ -771,8 +774,6 @@ EXEMPT_GROUPS = {
     ("(free)", "getWeaponTypeAbbrev"): "B495",
     ("(free)", "isAnyBankBagSlot"): "B495",
     ("(free)", "isAnyBankSlot"): "B495",
-    ("(free)", "isContainerParentSlot"): "B495",
-    ("(free)", "isContainerSlot"): "B495",
     ("(free)", "isWorldContainerSlot"): "B495",
     ("InventoryManager", "addQuantityToExistingStack"): "B495",
     ("InventoryManager", "clearBankSlots"): "B495",
@@ -783,8 +784,6 @@ EXEMPT_GROUPS = {
     ("InventoryManager", "getBankBagSize"): "B495",
     ("InventoryManager", "getBankItems"): "B495",
     ("InventoryManager", "getChangeCounter"): "B495",
-    ("InventoryManager", "getCursorMoneyAmount"): "B495",
-    ("InventoryManager", "getCursorMoneyType"): "B495",
     ("InventoryManager", "getPlayerClass"): "B495",
     ("InventoryManager", "getPlayerLevel"): "B495",
     ("InventoryManager", "getPlayerRace"): "B495",
@@ -956,6 +955,10 @@ EXEMPT_TESTS_GROUPS = {
     # test_texture_eviction_residency asserts eviction and restore through it;
     # production only needs the counts (getResidentTextureCount()).
     ("ConstrainedTextureCache", "isResident"): "observer",
+    # B442: the bag window (B899, concurrent) installs the open-container hook
+    # on the shared CursorGesture; until it merges only test_cursor_gesture
+    # drives the seam.
+    ("CursorGesture", "setOpenContainerHook"): "seam",
     # B947: whether one entry was pinned (no restore source; never evicted
     # again). test_texture_eviction_{residency,character_restore} assert it;
     # production logs the count (getPinnedTextureCount()).
@@ -1063,7 +1066,6 @@ EXEMPT_TESTS_GROUPS = {
     ("EnvironmentState", "isSnowing"): "observer",
     ("FrameComponent", "hasCommandCompletionProvider"): "observer",
     ("GuildComponent", "HasPendingGuildInvite"): "observer",
-    ("InventoryManager", "getCursorQueueSize"): "observer",
     ("InventoryManager", "getCursorSourceSlot"): "observer",
     ("InventoryState", "bankItemCount"): "observer",
     ("InventoryState", "cursorQueueSize"): "observer",
@@ -1240,10 +1242,6 @@ EXEMPT_TESTS_GROUPS = {
     ("GroupComponent", "DeclineGroupInvite"): "B603",
     ("HotbarModel", "assignSlot"): "B603",
     ("HotbarModel", "clearSlot"): "B603",
-    ("InventoryManager", "pickupMoney"): "B603",
-    ("InventoryManager", "pickupPartialStack"): "B603",
-    ("InventoryManager", "placeOnMatchingStack"): "B603",
-    ("InventoryManager", "returnCursorMoney"): "B603",
     ("PlayerComponent", "SetMoveSpeed"): "B603",
     ("SpellManager", "beginCastById"): "B603",
     ("SpellManager", "setOnCastComplete"): "B603",

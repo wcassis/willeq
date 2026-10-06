@@ -313,6 +313,27 @@ struct EquipmentChangedIntent {
     int16_t slotId;
 };
 
+// B442 (#151): the click-to-cursor gesture. ONE intent for every item
+// window's slot click AND for /pickup, /putdown and /coin, so a --script
+// tour and a click are one path. The render thread only says WHICH slot was
+// clicked and how; the game thread resolves it against InventoryManager's
+// model (eqt::inventory::ApplyCursorGesture, cursor_gesture.h), which pushes
+// the MoveItemIntent(s). See include/client/inventory/cursor_gesture.h.
+enum class CursorGestureOp : uint8_t {
+    Click = 0,   // left click: pick up, or place / swap / merge onto a stack
+    PickUp,      // /pickup: pick up only -- refused while the cursor holds an item
+    PutDown,     // /putdown: place only -- refused while the cursor is empty
+    CoinClick,   // purse row / /coin: coin onto the cursor, or held coin back
+};
+
+struct CursorGestureIntent {
+    CursorGestureOp op = CursorGestureOp::Click;
+    int16_t slot = -1;      // Titanium (model) slot id; unused by CoinClick
+    int32_t quantity = 0;   // 0 = the whole stack / the whole coin pile
+    uint8_t coinType = 0;   // EQT::COINTYPE_* (0 cp .. 3 pp), CoinClick only
+    bool echo = false;      // a slash command: print the outcome to chat
+};
+
 // --- Audio ---
 
 // T328 Leg B: "play this sound id now".
@@ -394,6 +415,7 @@ using RendererIntent = std::variant<
     MoveItemIntent,
     DeleteItemIntent,
     EquipmentChangedIntent,
+    CursorGestureIntent,   // B442
     // Audio (T328)
     PlaySoundIntent
 >;

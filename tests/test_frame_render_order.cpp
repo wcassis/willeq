@@ -189,7 +189,24 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //       centre popup, so it draws above them and above the bank.
 //     The count rises 328 -> 332: three statements plus one, nothing removed
 //     and nothing replaced.
-const size_t kGoldenSize = 332u;
+//   * B442 (#151): the click-to-cursor gesture. THREE pure insertions, no
+//     text change and no reorder (verified by diffing the composed list
+//     against the pre-edit golden -- the only hunks are these three).
+//     - entries 254-264, at the head of the static-UI input hop, before
+//       entry 265 `staticUIInput_->processInput(`: the right-click latch,
+//       the two modifiers, the QuantityWnd hit test (it is above every
+//       window, so a click it takes is withheld from the rest) and
+//       `setFrameClickState(...)`.
+//     - entry 289, `setFrameClickState(false, {}, &cursorState_);`, directly
+//       after entry 288 `pendingUIClick_ = false;`: the latched state is
+//       spent with the frame.
+//     - entries 316-317, `renderQuantityWindow(...)` and its null guard,
+//       directly after entry 315 `renderXPBar(...)` and before the cursor
+//       attachment: above every window, below the pointer.
+//     Applied after B898 (rebased onto it); B898's entries above are
+//     shifted by B442's eleven-line head insertion, nothing else moved.
+//     The count rises 332 -> 346: eleven plus one plus two.
+const size_t kGoldenSize = 346u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

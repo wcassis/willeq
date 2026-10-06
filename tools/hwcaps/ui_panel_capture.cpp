@@ -42,6 +42,8 @@
 #include "client/graphics/ui/bank_panel.h"
 #include "client/graphics/ui/cursor_attachment.h"
 #include "client/graphics/ui/trainer_panel.h"  // B898
+#include "client/graphics/ui/quantity_window.h"   // B442
+#include "client/graphics/ui/inventory_layout.h"  // B442
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -561,6 +563,30 @@ std::vector<PanelCapture> buildCaptureList() {
             s.cursor.mouseX = l.screenW / 2;
             s.cursor.mouseY = l.screenH / 2;
             renderCursorAttachment(u, l, s.cursor); }},
+        // B442 (#151): click-to-cursor. `inventory_pickup` is the popup the
+        // moment after a left click lifted general slot 3's item: that slot
+        // is empty and the item rides the pointer, which sits over the empty
+        // slot it is about to be put down in. `quantity` is the QuantityWnd a
+        // plain click on a stack of 20 opens, slider at 7.
+        {"inventory_pickup", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            InventoryPanelState inv = s.inventory;
+            inv.generalSlots[2].hasItem = false;
+            inv.hoveredSlot = 22 + 5;
+            inv.generalSlots[5].hasItem = false;
+            renderInventoryPopup(u, l, inv);
+            CursorAttachmentState held;
+            held.hasItem = true;
+            held.itemName = s.inventory.generalSlots[2].itemName;
+            held.iconId = s.inventory.generalSlots[2].iconId;
+            const auto target = InventoryLayout::slotRect(l, 22 + 5);
+            held.mouseX = target.UpperLeftCorner.X + 8;
+            held.mouseY = target.UpperLeftCorner.Y + 8;
+            renderCursorAttachment(u, l, held); }},
+        {"quantity", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            QuantityWindowState q;
+            q.openForStack(23, "Arrow", 20);
+            q.value = 7;
+            renderQuantityWindow(u, l, q); }},
         // Everything the HUD draws at once -- the screen a player sees.
         {"hud_all", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderPlayerStatus(u, l, s.stats);

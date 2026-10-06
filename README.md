@@ -26,7 +26,7 @@ current defect list; where the two disagree, the board wins.
 - WASD movement with collision detection and server sync
 - Chat (all channels), targeting (click, Tab cycle, F-keys), auto-attack
 - Spell memorization, casting, and gem management
-- Inventory window with equipment slots, bags, the official client's own item icons (T430) and tooltips; items are moved with `/equip` (the static UI latches no drag — board B442)
+- Inventory window with equipment slots, bags, the official client's own item icons (T430) and tooltips; items are picked up and put down click-to-cursor like the official client (left click picks up / places / swaps / stacks, a stack opens the Quantity window, Shift = whole stack, Ctrl = one, right or Alt+left click shows the item — B442, #151, rules measured on the official client), or with `/pickup`, `/putdown`, `/cursor`, `/coin` and `/equip`
 - Vendor buy/sell and banking through the oracle's own merchant and bank windows (T436), or by slash command; player-to-player trading is command-driven
 - Group system with HP/mana bars, invite/accept/disband/decline
 - Raid commands (invite, accept, leave, remove, leader, loot type, looters, lock, group)
@@ -47,7 +47,7 @@ current defect list; where the two disagree, the board wins.
 - Boats/transport not implemented
 - Fall damage not implemented
 - First-person view draws the player's own model and weapon for the duration of an attack animation and at no other time (T307 measured the rule against the official client; T309 implemented it in `src/client/graphics/entity_first_person_draw.cpp`). The down-pitch clamp that earlier revisions of this file described as the hiding mechanism was refuted live and no longer exists. Eye placement is still open (`refactor/BOARD.md` B018)
-- UI is a fixed static-panel HUD. Merchant, bank, loot, tradeskill container, item display and Options all have real windows now (T290, T415, T421, T425, T434, T436); **trade is still slash-command only**, and the static UI latches no drag of any kind, so an item is moved with `/equip` rather than picked up (`refactor/BOARD.md` B442)
+- UI is a fixed static-panel HUD. Merchant, bank, loot, tradeskill container, item display and Options all have real windows now (T290, T415, T421, T425, T434, T436); **trade is still slash-command only**. Items move click-to-cursor (B442, #151) in the inventory, bank and loot windows; the bag window is separate work (B899)
 
 **Architecture note:** This is a thin client that delegates game logic to the server. Combat damage, spell effects, skill checks, and item transactions are all server-calculated. The client handles rendering, input, and state tracking.
 
@@ -157,7 +157,7 @@ Legend: Done | Partial | Not Implemented
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Chat panel | Done | Scrollable, filterable |
-| Inventory popup | Done | Equipment slots, item icons (T430), tooltips. **No drag** — see the pick-up row below (board B442) |
+| Inventory popup | Done | Equipment slots, item icons (T430), tooltips. Click-to-cursor (B442): left click picks up / places, right click is the item display, a purse row opens the Quantity window for coin |
 | Player status | Done | HP/mana/stamina, stats |
 | Target info | Done | |
 | Spell book popup | Done | Searchable, click-to-memorise (no drag; T444) |
@@ -175,7 +175,7 @@ Legend: Done | Partial | Not Implemented
 | Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; six of them are wired (three sliders — music volume, effects volume, clip plane — and their three value labels) and the other 108 are drawn greyed and are not hit-testable (boards B430, B431, B433) |
 | Trade | Partial | Command-driven (/trade); no window. `SetupTradeWindowCallbacks` is an empty stub. Issue #212 (B896) |
 | Item / spell display | Done | T421 + T425, one window for both (`EQUI_ItemDisplay.xml`); click an item slot, SHIFT+click a gem or spellbook row |
-| Pick up / put down an item | No | The static UI latches no drag and no click-to-pick-up; `SendMoveItem`/`MoveItemIntent` exist and `/equip` drives them (#151, B442; the official client is click-to-cursor, plan appended there) |
+| Pick up / put down an item | Partial | Click-to-cursor in the inventory, bank and loot windows, the Quantity window (a stack or a purse row) and `/pickup` `/putdown` `/cursor` `/coin` — one `CursorGestureIntent` path, rules from the official client's capture (B442, #151). Owed: the live `pickup_roundtrip` scenario, bag/trade/give windows, a coin icon on the cursor, the world drop and Destroy prompts |
 | Tradeskill container | Partial | /recipesearch, /recipecombine; the drawn window is the post-Velious recipe window and opens for world containers only. The era container window + Combine is issue #215 (B899) |
 | Skill trainer | Partial | B898, the oracle's `EQUI_TrainWindow.xml` at 580x280: skill list (name, value, price in pp/gp/sp/cp), practices, experience, money, Train, Done. Opens with /train, T, or Ctrl+click on a guildmaster; refreshes only when the server confirms a train. The Rank column and the live train are still owed to the oracle (issue #214) |
 
@@ -184,7 +184,7 @@ Legend: Done | Partial | Not Implemented
 |---------|--------|-------|
 | Item display | Done | Icons and names |
 | Item stats | Done | Tooltip |
-| Move items | Partial | `/equip` by slot or name. The static UI has no drag and no click-to-pick-up (board B442); T444 corrected "Drag and drop" here |
+| Move items | Partial | Click-to-cursor (B442) plus `/equip` by slot or name and `/pickup` / `/putdown`. Not drag and drop: the official client is click-to-cursor (T444 corrected "Drag and drop" here) |
 | Container bags | Done | |
 | Equipment slots | Done | With tint colors |
 | Loot items | Done | |

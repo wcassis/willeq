@@ -221,6 +221,7 @@ const SweepEntry kSweep[] = {
     {"getMouseDeltaY", 1, "render thread (mouse-look). Second caller deleted by T312."},
     {"wasLeftButtonClicked", 1, "render thread (processFrameInput). Second caller deleted by T315."},
     {"wasLeftButtonReleased", 1, "render thread (processFrameInput). Second caller deleted by T315."},
+    {"wasRightButtonClicked", 1, "render thread (renderStaticUI). B442: the item windows' right click."},
     {"drainActions", 1, "render thread (processFrameInput). Render-only queue."},
     {"drainBridgeActions", 1, "game thread (GraphicsInputHandler). Mutex-guarded since T312."},
     {"getSpellGemCastRequest", 1, "game thread. The render-thread discard was removed earlier."},

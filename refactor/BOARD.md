@@ -8491,6 +8491,20 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   button reachable only when something else has already put an item on the
   cursor. Closes when the inventory/bank/cursor click model has a pick-up and a
   put-down. Found by T436.
+  **OFFLINE HALF DONE B442 (2026-10-05, branch `task/B442-cursor-gesture`)**:
+  `eqt::inventory::CursorGesture` + `CursorGestureIntent` -- left click picks up
+  / places / swaps / merges in the inventory, bank and loot (to the cursor)
+  windows; a stack opens the QuantityWnd, SHIFT = whole, CTRL = one; right /
+  ALT+left = item display; a purse row opens the QuantityWnd for coin -- all
+  per the oracle ledger review/UIGAP-ORACLE/151/gestures.tsv;
+  `/pickup` `/putdown` `/cursor` `/coin`; `tests/test_cursor_gesture.cpp`.
+  STILL OWED (#151 stays open): the live `pickup_roundtrip` scenario and
+  two-client wear check (Leg V), the bag window (B899), trade/give windows, a
+  coin icon + count on the cursor, typing into `QTYW_SliderInput`, the world
+  drop prompt (OP_GroundSpawn) and Destroy prompt (30 -> -1), the
+  hold-to-show right-click display, bank coin rows, a right-click display for
+  corpse rows, loot-to-cursor vs auto-inventory (the oracle did not capture
+  loot). Merchant selling is #152's (the oracle: never via the cursor).
 
 - **B443** (B) `src/client/graphics/ui/merchant_panel.cpp` → issue #152
   (`renderMerchantPopup`, the trade button) -- **which of Buy and Sell the

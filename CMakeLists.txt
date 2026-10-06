@@ -291,11 +291,13 @@ SET(CLIENT_CORE_SOURCES
     src/client/bridge/bridge_component.cpp
     src/client/bridge/bridge_component_intents.cpp
     src/client/bridge/bridge_component_ui_audio.cpp
+    src/client/bridge/bridge_component_cursor.cpp  # B442
     src/client/entities/entities_component.cpp
     src/client/entities/entities_component_appearance.cpp
     src/client/entities/entities_component_updates.cpp
     src/client/entities/entities_component_world.cpp
     src/client/commands/commands_component.cpp
+    src/client/commands/commands_cursor.cpp  # B442
     src/client/commands/commands_movement.cpp
     src/client/commands/commands_spells.cpp
     src/client/commands/commands_train.cpp
@@ -385,6 +387,7 @@ SET(CLIENT_CORE_SOURCES
     # J01: inventory_manager.cpp split move-only into four TUs
     src/client/inventory/inventory_item_parser.cpp
     src/client/inventory/inventory_cursor.cpp
+    src/client/inventory/cursor_gesture.cpp  # B442: click-to-cursor
     src/client/inventory/inventory_bags.cpp
     src/client/inventory/inventory_packets.cpp
     src/client/hotbar/hotbar_model.cpp
@@ -447,6 +450,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/action/command_processor_registration.cpp  # J04
     src/client/action/command_processor_social.cpp  # J04
     src/client/action/command_processor_world.cpp  # J04
+    src/client/action/command_processor_cursor.cpp  # B442
     src/client/action/command_processor_spells_gm.cpp  # J04
     # Help system sources (T143: merges EverQuest::m_command_registry +
     # action::CommandProcessor catalogs for a registry-aware /help)
@@ -680,6 +684,8 @@ IF(EQT_GRAPHICS)
         # pack and addressed by include/client/graphics/ui/item_icon_atlas.h.
         src/client/graphics/ui/item_icon_sheets.cpp
         src/client/graphics/ui/static_ui_input.cpp
+        src/client/graphics/ui/static_ui_cursor.cpp  # B442
+        src/client/graphics/ui/quantity_window.cpp  # B442
         src/client/graphics/ui/ui_renderer.cpp
         src/client/graphics/ui/static_panels.cpp
         src/client/graphics/ui/chat_wrap_cache.cpp
