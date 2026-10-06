@@ -176,8 +176,13 @@ events, drain, assert retained capacity bounded") plus the 7 pre-existing:
 - `ASecondBurstStillGrowsAndDrainsAgain` — a second, larger burst still grows to its own size and drains back (no mid-burst shrink, no dropped events).
 - `SteadyStateDrainsStopReallocating` — the queue's retained capacity stays at the steady state across further cycles (no re-alloc per frame), and the returned vector keeps its buffer.
 
-11/11 pass (`build/bin/test_game_state_sync_bridge`); CI pipeline #512 green
-(hygiene, build, test, gate all success on this branch).
+11/11 pass (`build/bin/test_game_state_sync_bridge`); the pipeline on this
+branch is green — CI pipeline #531 on the code head 428f0ff3 (MR ref
+refs/merge-requests/85/head): hygiene, build, test and gate all success;
+build-arm and client-ledger-live are manual (`allow_failure`) jobs. (The
+citation names the head whose full suite ran; the final head's delta is this
+README plus the BOARD entry — docs-only — re-verified by the final head's
+pipeline, recorded on the card.)
 
 ## Verdict on #263
 
