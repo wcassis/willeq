@@ -1643,3 +1643,38 @@ budget, golden or baseline moves:** the 10 MiB unnamed-GPU guard stays, and is
 expected to fail on the crowd/zone-hop tours (6 of 8 cases in B975's
 2026-10-03 matrix, `refactor/B975/evidence-20261003/pi-verification.csv`)
 until B972 lands.
+
+## 2026-10-05 — B957: 3x the .map is acceptable; no lossy collision geometry (Will; #275)
+
+**Will, in chat: "B957, 3x the .map is acceptable."** B957 (#275) measured
+the remaining exact-float levers after B951: each costs 10-30 % of the
+collision rays' CPU (Player Movement is ~250-420 us of a 16-33 ms Pi frame)
+for ~1 MB per heavy zone, and below that needs a lossy representation
+(quantised vertices or bounds -- changes query answers).
+
+**Decision:** the ~3x-.map resident size of the exact-float collision map is
+ACCEPTED. No CPU trade for the last MB; no lossy collision geometry. The
+collision map stays query-exact; nothing in the gate, budgets or baselines
+moves. #275's decision question is closed -- remaining B957 scope is
+documentation only, no card.
+
+## 2026-10-05 — B971 check 5(c): the Pi depth-buffer saving is a driver
+limitation, not a B971 defect (Will; #289)
+
+**Will, in chat: "B971, accept 5(c) as a driver limitation."** B971 (#289,
+MR !84) made the orangepi window surface follow `enableStencilBuffer`
+(D16/no-stencil). QA independently verified all five checks; the only unmet
+bar was 5(c): Pi `logical_depth_stencil` measured 3,686,400 B (3.52 MiB) at
+1280x720 in qeynos2, not <= 1.8 MiB.
+
+Root cause (QA-proven, not a B971 defect): the Mesa 25.2.8 / Lima config set
+on that rig offers NO 16-bit depth window config, so the driver answers
+depth=24 even though the stencil-off request reached it (client.log
+"EGL: Config depth=24 stencil=0" is the B971 code path executing). The same
+binary + same request gets the 16-bit config on the x86 gate (960,000 B at
+800x600, exactly 2% of the D24S8 bytes). The README's statement stands: the
+Pi byte saving is "not achieved on the current rig, and not claimed."
+
+**Decision:** 5(c) is ACCEPTED as a driver limitation. The request path is
+structurally correct and a future Mesa/Lima that exposes a 16-bit depth
+window config picks it up with no further code change.

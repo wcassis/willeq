@@ -57,7 +57,7 @@
       "enableMipmaps": true,
       "enableCompressedTextures": false,
       "enableNPOT": true,
-      "enableStencilBuffer": true,
+      "enableStencilBuffer": false,
       "enableAlphaToCoverage": true,
       "enableShaders": true,
       "antiAliasLevel": 4,

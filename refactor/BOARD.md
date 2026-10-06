@@ -307,6 +307,22 @@ it without taking that measurement first.
 - **B971** (C) → issue #289. The window surface's D24S8 depth/stencil is
   3.52 MiB of GEM at 1280x720; its only stencil user (`/portal`) is off on the
   orangepi preset. 16-bit depth changes pixels: Will's call. Measured by B962.
+  **FIXED** (MR !84, head de31969c, pipeline #510 green; `refactor/B971/README.md`):
+  the surface follows `enableStencilBuffer` end to end (preset + shipped JSON
+  false → D16/no-stencil; device `eglChooseConfig` driven by
+  `params.Stencilbuffer`, all three x86 sites + the ARM DRM device); a
+  one-way invariant in `loadJsonOverrides()` (portal occlusion on ⇒ stencil
+  on, the only stencil user) keeps `/portal` ON on D24S8; the benchmark
+  mirrors production's surface request. Will approved the x86 goldens in chat
+  2026-10-05 (re-blessed per his 2026-10-01 ruling; run1 vs run2 0 px; VM mesa
+  24.04.2→24.04.4 isolated with a D24S8-on-.4 baseline build — 0 px). Pi:
+  sweep 1/1 pass (nollvm, snapshot byte-identical); the surface REQUESTS
+  D16/no-stencil (`EGL: Config depth=24 stencil=0` — stencil honored) but the
+  Mesa 25.2.8/Lima config set offers no 16-bit depth window config, so
+  `logical_depth_stencil` stays 3,686,400 B on the Pi and the ~1.76 MiB saving
+  is not claimed there; gate poses vs B967 Pi frames: 0 px in all 15 (stencil
+  drop is pixel-inert on Lima's shared 32-bit word). ARM benchmark now
+  published by `publish_arm_build.sh`; runner `scripts/b971/run_gate_poses.sh`.
 - ~~**B967** (C) → issue #285. The player light is quantized at large world
   coordinates on BOTH GPUs: the mediump `vWorldPos` varying.~~ **FIXED**
   (`refactor/B967/README.md`, MR !74 **merged into fable `2c7d5be4`
@@ -372,8 +388,15 @@ it without taking that measurement first.
   at the final head (`refactor/B975/README.md`, Not verified).
 - **B987** (B) → issue #306. A crowd tour can end before the final visit's
   rendered readiness and steady-state window (B975 QA run 283). MR !82
-  (`task/B987-crowd-readiness`) is OPEN; its QA FAILED on `--cap` validation and
-  a repair is pending.
+  (`task/B987-crowd-readiness`) is OPEN at `2eed34f3bf6ccd99a79ff17f490ebd56a381e21f`
+  (pipeline 519 green). QA run 306 FAILED it on `--cap` validation (F1: an
+  accepted spelling disabled the x86 deadline); the fix is in — ONE duration
+  definition (plain ASCII decimal 0..86400) enforced before any lock/stack/Pi
+  resource in both wrappers, the sweep itself and b973, with the executed
+  x86-deadline regression (RED 3/8 on `e3078ac5`, GREEN 8/8 on the head).
+  The fresh post-fix Pi acceptance pair (batched/per-node qeynos2,
+  `WILLEQ_LIMA_NOBOCACHE=1`) passed; `refactor/B987_plan.md` carries the table.
+  Awaiting review; NOT merged.
 - ~~**B985** (B) → issue #304. `scripts/pi_rendered_zone_sweep.sh` cannot run
   from a host whose checkout and `--out` are not NFS-mounted by the Pi.~~
   **FIXED in code, merged with MR !73** (fable `ee538d2c`, 2026-10-05): the
