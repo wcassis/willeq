@@ -122,7 +122,7 @@ env (nollvm Mesa, 1280×720, `game_state` owner + `login_world` trace,
 |---|---|---|---|
 | `misc` @ `ready` | 316,944 (0.30 MB) | 317,824 (0.30 MB) | +880 (noise) |
 | `misc` @ `steady_60s` | 1,243,736 (1.19 MB) | 1,244,768 (1.19 MB) | +1,032 (noise) |
-| `game_state` total @ `steady_60s` | 28,432,224 | 28,438,704 | +6,480 (noise) |
+| `game_state` total @ `steady_60s` | 28,450,392 | 28,457,392 | +7,000 (noise) |
 
 Two readings from the Pi:
 
@@ -192,3 +192,19 @@ in-flight burst at the `ready` point recorded as the measurement artifact
 (the `ready` ledger point is taken inside the load window on x86, where the
 burst is still staged); the bounded steady-state capacity fix and its tests
 are merged regardless.
+
+## Not verified
+
+1. **No ARM ctest lane.** The sysroot has no gtest, so the suite (including the
+   four new B945 cases in `tests/test_game_state_sync_bridge.cpp`) is never
+   executed on ARM: the only ARM evidence in this unit is CI's `build-arm`
+   compile plus the rendered Pi captures, and the 11/11 pass above is the x86
+   lane.
+2. **The x86 `steady_60s` numbers are confounded** by the timorous zone-link
+   drop (#244/#258) — footnoted inline in the x86 table above.
+3. **The `[b945-cap]` probe + its `probe.cpp` are uncommitted
+   working-tree evidence.** Per the no-bulk-logs rule they live only under
+   `~/kb-evidence/b945-event-staging/` (probe, probe.cpp, and the seven capture
+   directories named in the "What was measured" section) — not on the branch,
+   not in CI. The committed tables above rest on those local files; a reader
+   who cannot see them cannot re-check the cited log lines.
