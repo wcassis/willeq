@@ -34,8 +34,9 @@
  *
  * Wired triggers are the ones fable has a window for: Inventory, Quantity,
  * Bank, Merchant, WorldContainer, Trainer, Friends, Loot, Spellbook,
- * SkillsWindow, OptKeys, plus the Tip of the Day. Trade/Give/Consider/Sit/
- * Death have no fable window or hook in this unit and are not popped.
+ * SkillsWindow, OptKeys, Trade, GiveNPC (B896's window), plus the Tip of the
+ * Day. Consider/Sit/Death have no fable window or hook in this unit and are
+ * not popped; B442b's confirmation dialog is not in the oracle table.
  */
 
 #include <cstdint>

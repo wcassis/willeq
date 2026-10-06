@@ -51,6 +51,9 @@ std::set<std::string> FrameComponent::activeTipTriggers() const {
         on.insert("WorldContainer");
     }
     if (staticUIInput_ && staticUIInput_->quantityWindow().isOpen) on.insert("Quantity");
+    // B896's trade / give window: "Trade Tip window" / "Give Items Tip window"
+    // in the observed table (review/UIGAP-ORACLE/202/README.md).
+    if (tradeState_.isOpen) on.insert(tradeState_.isNpc ? "GiveNPC" : "Trade");
     return on;
 }
 

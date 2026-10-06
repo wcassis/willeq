@@ -124,6 +124,9 @@ const std::vector<TipCatalogEntry>& tipCatalog() {
         {"Loot", "ctxlooting.html"},
         {"WorldContainer", "ctxcontainer.html"},
         {"Quantity", "ctxquantity.html"},
+        // B896's windows: both pop in the oracle run (README rows Trade, Give).
+        {"GiveNPC", "ctxgive.html"},
+        {"Trade", "ctxtrade.html"},
     };
     return kCatalog;
 }

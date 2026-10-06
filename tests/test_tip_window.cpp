@@ -72,6 +72,7 @@ TEST(TipCatalog, KeysAreTheExecutablesOwn) {
         {"SkillsWindow", "ctxskills.html"}, {"Merchant", "ctxmerchant.html"},
         {"Bank", "ctxbank.html"}, {"Trainer", "ctxtrainer.html"}, {"Loot", "ctxlooting.html"},
         {"WorldContainer", "ctxcontainer.html"}, {"Quantity", "ctxquantity.html"},
+        {"GiveNPC", "ctxgive.html"}, {"Trade", "ctxtrade.html"},
     };
     ASSERT_EQ(tipCatalog().size(), std::size(exe));
     for (const auto& [key, file] : exe) {
@@ -236,4 +237,27 @@ TEST_F(TipFrameTest, ASuppressedTipDoesNotPop) {
     F().inventoryState_.activePopup = PopupType::Inventory;
     F().updateTipWindows();
     EXPECT_FALSE(F().tipState_.isOpen);
+}
+
+// B896's trade / give window pops the oracle's "Trade" / "Give Items" tip.
+TEST_F(TipFrameTest, TheTradeAndGiveWindowsPopTheirOwnTips) {
+    std::ofstream(dir / "help" / "tips" / "ctxtrade.html")
+        << "<TITLE>Trade Tip window</TITLE><BODY>Trade Tips</BODY>";
+    std::ofstream(dir / "help" / "tips" / "ctxgive.html")
+        << "<TITLE>Give Items Tip window</TITLE><BODY>Give Tips</BODY>";
+    F().tipState_.totdShownThisSession = true;
+    F().updateTipWindows();
+    F().tradeState_.isOpen = true;
+    F().tradeState_.isNpc = true;
+    F().updateTipWindows();
+    ASSERT_TRUE(F().tipState_.isOpen);
+    EXPECT_EQ(F().tipState_.title, "Give Items Tip window");
+    closeTipWindow(F().tipState_, F().tipPrefs_);
+    F().tradeState_.isOpen = false;
+    F().updateTipWindows();
+    F().tradeState_.isOpen = true;
+    F().tradeState_.isNpc = false;
+    F().updateTipWindows();
+    ASSERT_TRUE(F().tipState_.isOpen);
+    EXPECT_EQ(F().tipState_.title, "Trade Tip window");
 }
