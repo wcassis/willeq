@@ -626,7 +626,10 @@ private:
     ActionResult cmdGroupAssist(const std::string& args);
     ActionResult cmdTrack(const std::string& args);
     ActionResult cmdFind(const std::string& args);
+    // B897: the friends/ignore family, command_processor_friends.cpp.
     ActionResult cmdFriendsWho(const std::string& args);
+    ActionResult cmdFriends(const std::string& args);
+    ActionResult cmdIgnore(const std::string& args);
 
     // Helper methods
     static std::string toLower(const std::string& str);

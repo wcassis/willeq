@@ -208,6 +208,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ToggleBuffWindow: actionQueue_.push_back({RA::ToggleBuffWindow}); break;
                     case HA::ToggleCombatAbilities: actionQueue_.push_back({RA::ToggleCombatAbilities}); break;
                     case HA::ToggleOptions: actionQueue_.push_back({RA::ToggleOptions}); break;
+                    case HA::ToggleFriends: actionQueue_.push_back({RA::ToggleFriends}); break;  // B897
                     case HA::ToggleVendor: actionQueue_.push_back({RA::ToggleVendor}); break;
                     case HA::ToggleTrainer: actionQueue_.push_back({RA::ToggleTrainer}); break;
                     case HA::ToggleCollision: actionQueue_.push_back({RA::ToggleCollision}); break;

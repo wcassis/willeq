@@ -42,6 +42,7 @@ UiPreferencesBinding FrameComponent::uiPreferencesBinding() {
     b.buff = &buffBarState_;
     b.combatAbility = &combatAbilityState_;
     b.options = &optionsState_;          // T434
+    b.friends = &friendsState_;          // B897
     return b;
 }
 

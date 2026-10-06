@@ -111,6 +111,9 @@ public:
 	// flags. K-final folds these call sites into the component.
 	void SetCredentials(const std::string& host, int port, const std::string& user,
 	                    const std::string& pass, const std::string& server);
+	// B897: the configured server name, the `<server>` of the per-character
+	// `<Char>_<server>.ini` the friends/ignore lists persist in.
+	const std::string& ServerName() const { return m_server; }
 	std::unique_ptr<EQ::Net::DaybreakConnectionManager>& LoginManager() { return m_login_connection_manager; }
 	std::shared_ptr<EQ::Net::DaybreakConnection>& LoginConnection() { return m_login_connection; }
 	std::unique_ptr<EQ::Net::DaybreakConnectionManager>& WorldManager() { return m_world_connection_manager; }

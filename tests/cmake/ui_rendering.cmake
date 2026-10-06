@@ -323,6 +323,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_preferences_identity DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B897 (#213): the Friends window -- geometry against EQUI_FriendsWnd.xml and
+# defaults.ini, the friends/ignore model and its oracle strings, the commands,
+# the <Char>_<server>.ini shape and persistence tick, both tabs' hit tests,
+# the ignore filter and the window intent through a real EverQuest, Alt+F.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_friends_window
+        test_friends_window.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_friends_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_friends_window GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_friends_window DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
 # T363 disabled-control rule, the three wired sliders, the Alt+O binding and
 # the persistence round trip. Device-free like its siblings.

@@ -21,6 +21,7 @@
 #include "client/data_paths.h"
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/options_panel.h"
+#include "client/graphics/ui/friends_panel.h"
 #include "client/graphics/ui/static_panels.h"
 #include "common/logging.h"
 
@@ -83,6 +84,7 @@ const WindowRow kWindows[] = {
     {"BuffWindow", &UiPreferences::buffWindow},
     {"CombatAbilityWnd", &UiPreferences::combatAbilityWnd},
     {"OptionsWindow", &UiPreferences::optionsWindow},   // T434
+    {"FriendsWindow", &UiPreferences::friendsWindow},   // B897
 };
 
 // T434 -- the `[Options]` section. Same anti-drift device as kWindows: one
@@ -182,6 +184,7 @@ UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode
             if (IsPersistedSetting(i)) p.optionValues[i] = b.options->values[i];
         }
     }
+    if (b.friends) p.friendsWindow = b.friends->isOpen;
     p.cameraMode = cameraMode;
     p.user1Camera = user1Camera;
     p.user2Camera = user2Camera;
@@ -213,6 +216,7 @@ void ApplyUiPreferences(const UiPreferences& p, const UiPreferencesBinding& b) {
     if (b.pet) b.pet->isOpen = p.petInfoWindow;
     if (b.buff) b.buff->isOpen = p.buffWindow;
     if (b.combatAbility) b.combatAbility->isOpen = p.combatAbilityWnd;
+    if (b.friends) b.friends->isOpen = p.friendsWindow;
     if (b.options) {
         b.options->isOpen = p.optionsWindow;
         // The steps were clamped on parse; clamp again here so a value

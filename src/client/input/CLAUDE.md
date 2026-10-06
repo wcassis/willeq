@@ -21,7 +21,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 - Handles movement keys, mouse input, text input, debug toggles
 
 **HotkeyManager** (`hotkey_manager.h`) — Configurable key binding system:
-- `HotkeyAction` enum (**101** actions plus a `Count` sentinel, re-counted T471 -- T461 read 99, T415 95, T371 94; the key table grows with every UI panel, T461 added the four camera-orbit actions and T471 `CameraRaise`/`CameraLower`, binding all six to the official Camera-page keys T466 measured) covering movement, toggles, targeting, interaction
+- `HotkeyAction` enum (**102** actions plus a `Count` sentinel, re-counted T471 -- T461 read 99, T415 95, T371 94; the key table grows with every UI panel, T461 added the four camera-orbit actions and T471 `CameraRaise`/`CameraLower`, binding all six to the official Camera-page keys T466 measured) covering movement, toggles, targeting, interaction
 - `HotkeyBinding` struct: key code + `ModifierFlags` (Ctrl/Shift/Alt) + action
 - `HotkeyMode` enum: Global (always active) vs Player (gameplay only)
 - Loads/saves from `config/hotkeys.json`, supports runtime overrides from `willeq.json`
@@ -37,8 +37,8 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 Implementation split across eight TUs in `src/client/action/` (J04, plus
 T268/T269/T280): `command_processor.cpp` holds the core (parse, dispatch,
 registry queries), `command_processor_registration.cpp` holds
-`registerBuiltinCommands()` and its **153** `registerCommand({…})` calls
-(T347 added `/cleartarget`, B899 `/bag`; `tests/goldens/command_registration_order_g03.txt`
+`registerBuiltinCommands()` and its **155** `registerCommand({…})` calls
+(T347 added `/cleartarget`, B899 `/bag`, B897 `/friends` and `/ignore`; `tests/goldens/command_registration_order_g03.txt`
 pins the count and the order — read the golden, not this line), and the
 handlers live in `command_processor_{social,spells_gm,world,bank,loot,train}.cpp`
 behind the shared private header `command_processor_internal.h`. See

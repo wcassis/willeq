@@ -60,6 +60,7 @@
 #include "client/pet_constants.h"
 #include "client/hotbar/hotbar_slot_type.h"
 #include "client/zone_load_snapshot.h"
+#include "client/state/social_lists_io.h"  // B897: SocialListsSync
 // G02: the intent handlers below take one alternative of RendererIntent each,
 // by const reference. Dependency-free header (cstdint/string/variant + the
 // hotbar slot-type enum), so this costs nothing the component did not pay.
@@ -300,6 +301,12 @@ public:
 	void SetUse3DAudio(bool enabled) { m_audio_config_use_3d_audio = enabled; }
 #endif
 
+	// B897 (GitLab #213): the friends/ignore persistence tick, once per
+	// GameTick. Loads the character's `<Char>_<server>.ini` on a new identity,
+	// saves on a changed revision, and on either publishes the ONE
+	// GameEventType::SocialListsChanged (state::SocialListsSync decides).
+	void SyncSocialLists();
+
 private:
 	// T46: assigns m_bridge and propagates the same pointer (including
 	// null) to the four managers' own bridge pointers
@@ -387,6 +394,8 @@ private:
 	void onGameOptionIntent(const eqt::events::GameOptionIntent& i);
 	// B895: the Tracking Window's controls -> TrackingController.
 	void onTrackingIntent(const eqt::events::TrackingIntent& i);
+	// B897: the Friends window buttons.
+	void onSocialListIntent(const eqt::events::SocialListIntent& i);
 
 	// T171: shared resolution of the per-client config node. See the
 	// definitions in bridge_component_ui_audio.cpp for why read and write
@@ -465,6 +474,9 @@ private:
 	// playSoundInternal().
 	bool m_audio_config_use_3d_audio = true;
 #endif
+
+	// B897: when the friends/ignore lists were last loaded or written.
+	eqt::state::SocialListsSync m_social_sync;
 
 	ClientContext& ctx_;
 };

@@ -151,6 +151,7 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ToggleBuffWindow", HotkeyAction::ToggleBuffWindow},
     {"ToggleCombatAbilities", HotkeyAction::ToggleCombatAbilities},
     {"ToggleOptions", HotkeyAction::ToggleOptions},
+    {"ToggleFriends", HotkeyAction::ToggleFriends},  // B897
     {"ToggleCollision", HotkeyAction::ToggleCollision},
     {"ToggleCollisionDebug", HotkeyAction::ToggleCollisionDebug},
     {"ToggleZoneLineVisualization", HotkeyAction::ToggleZoneLineVisualization},
@@ -460,6 +461,10 @@ void HotkeyManager::setupDefaults() {
     // T382 removed for the group and pet windows, and it left `O` bound to a
     // window that did not exist. `O` is now unbound, as it is in the oracle.
     addBinding(HotkeyAction::ToggleOptions, HotkeyMode::Global, irr::KEY_KEY_O, ModifierFlags::Alt);
+    // B897: Alt+F, MEASURED on the same page
+    // (review/T377/oracle/T377_oracle_options_keys_UI_page1.png): "Toggle
+    // friend window   Alt F" (eqstr 6599), Alternate column empty.
+    addBinding(HotkeyAction::ToggleFriends, HotkeyMode::Global, irr::KEY_KEY_F, ModifierFlags::Alt);
     addBinding(HotkeyAction::ToggleAllUI, HotkeyMode::Global, irr::KEY_F11);
     // T313: PageUp/PageDown scroll the static-UI panel under the cursor --
     // chat scrollback, the skills list, the loot list -- which is what they

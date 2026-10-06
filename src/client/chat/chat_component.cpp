@@ -24,6 +24,7 @@
 
 #include "client/chat/chat_component.h"
 #include "client/say_link_text.h"
+#include "client/state/social_lists.h"  // B897
 
 #include "client/eq.h"
 #include "client/combat.h"
@@ -136,6 +137,23 @@ void eqt::chat::ChatComponent::ZoneSendChannelMessage(const std::string &message
 	ctx_.net.SafeQueueZone(p);
 }
 
+// B897: the OP_ChannelMessage channels the official client hides from an
+// ignored sender -- exactly the measured set (UIGAP-ORACLE/213 row 9).
+bool eqt::chat::IsIgnoreFilteredChannel(uint32_t channel)
+{
+	switch (channel) {
+		case CHAT_CHANNEL_TELL:
+		case CHAT_CHANNEL_SAY:
+		case CHAT_CHANNEL_SHOUT:
+		case CHAT_CHANNEL_OOC:
+		case CHAT_CHANNEL_AUCTION:
+		case CHAT_CHANNEL_EMOTE:
+			return true;
+		default:
+			return false;
+	}
+}
+
 void eqt::chat::ChatComponent::ZoneProcessChannelMessage(const EQ::Net::Packet &p)
 {
 	// Process incoming channel messages.
@@ -158,6 +176,20 @@ void eqt::chat::ChatComponent::ZoneProcessChannelMessage(const EQ::Net::Packet &
 	// an item link a player posts is the same wire shape as the saylink
 	// eqemu wrapped a spell name in. Render the display text, not the body.
 	std::string message = eqt::StripSayLinks(p.GetCString(150));
+
+	// B897 (GitLab #213): the ignore list. Client-side end to end -- the
+	// server DELIVERS an ignored player's lines and the official client hides
+	// them (review/UIGAP-ORACLE/213/friends.tsv row 9: tell, say, shout, ooc,
+	// auction and emote, each seen in A.pcap and absent from A's chat). It
+	// runs BEFORE the /reply bookkeeping so an ignored tell never becomes
+	// /reply's target. Group and guild were not measured, so they are NOT
+	// filtered (owed to the oracle).
+	if (!sender.empty() && sender != ctx_.character &&
+	    eqt::chat::IsIgnoreFilteredChannel(channel) &&
+	    ctx_.game_state.social().isIgnored(sender)) {
+		LOG_DEBUG(MOD_MAIN, "Ignored {} message from {}", ChatChannelName(channel), sender);
+		return;
+	}
 
 	// Track last tell sender for /reply command
 	if (channel == CHAT_CHANNEL_TELL && !sender.empty() && sender != ctx_.character) {
@@ -311,6 +343,17 @@ void eqt::chat::ChatComponent::ZoneProcessEmote(const EQ::Net::Packet &p)
 
 	uint32_t type = p.GetUInt32(2);
 	std::string message = p.GetCString(6);
+
+	// B897: an ignored player's emote is hidden too (friends.tsv row 9). The
+	// actor's name is the message's first word -- the server prepends it.
+	{
+		const std::string actor = eqt::state::SocialNameFromArgs(message);
+		if (!actor.empty() && actor != ctx_.character &&
+		    ctx_.game_state.social().isIgnored(actor)) {
+			LOG_DEBUG(MOD_MAIN, "Ignored emote from {}", actor);
+			return;
+		}
+	}
 
 	if (EverQuest::GetDebugLevel() >= 1) {
 		std::cout << fmt::format("[CHAT] (emote type {}) {}", type, message) << std::endl;

@@ -252,7 +252,10 @@ const SweepEntry kSweep[] = {
     // capture is a THIRD mutually exclusive drain of the same frame, never a
     // second consumer racing the first. It reads enter/slash/escape only to
     // discard them while it holds the keyboard.
-    {"popKeyEvent", 3, "render thread only; processChatInput early-returns into processOptionsKeyCapture (B433) or processTradeskillSearchInput, mutually exclusive. T241/T421."},
+    // B897: the Friends window's name Editboxes are a FOURTH drain of the
+    // same shape -- processChatInput() early-returns into
+    // processFriendsNameInput() while one of them holds the caret.
+    {"popKeyEvent", 4, "render thread only; processChatInput early-returns into processOptionsKeyCapture (B433), processTradeskillSearchInput or processFriendsNameInput (B897), mutually exclusive. T241/T421."},
     {"enterKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
     {"slashKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
     {"escapeKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},

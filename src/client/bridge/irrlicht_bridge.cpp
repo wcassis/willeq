@@ -631,6 +631,15 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->Frame().trackingState_, d, renderer_->Frame().uiLayout_);
         }
         break;
+    case state::GameEventType::SocialListsChanged:
+        // B897 (GitLab #213): the friends/ignore lists, whole. The window
+        // keeps a copy and never edits it -- its buttons push
+        // SocialListIntent and the result comes back here.
+        if (renderer_) {
+            auto& d = std::get<state::SocialListsChangedData>(event.data);
+            EQT::Graphics::applySocialListsChanged(renderer_->Frame().friendsState_, d);
+        }
+        break;
     case state::GameEventType::EntityWeaponSkillsChanged:
         if (renderer_) {
             auto& d = std::get<state::EntityWeaponSkillsChangedData>(event.data);

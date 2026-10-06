@@ -455,6 +455,11 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         // cannot drift again; same shape as T294's /inventory.
         chat(fmt::format("New UI skills: {}",
             ctx_.Frame().toggleSkillsWindow() ? "OPEN" : "CLOSED"));
+    } else if (cmd == "/friendswindow") {
+        // B897: the scriptable half of Alt+F -- one body,
+        // FrameComponent::toggleFriendsWindow(), shared with the key.
+        chat(fmt::format("Friends window: {}",
+            ctx_.Frame().toggleFriendsWindow() ? "OPEN" : "CLOSED"));
     } else if (cmd == "/inventory") {
         // T294: ONE body, shared with the `I` keybind — the toggle used to
         // be written out here and IrrlichtRenderer::toggleInventory() (what

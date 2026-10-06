@@ -195,8 +195,8 @@ Legend: Done | Partial | Not Implemented
 | Feature | Status | Notes |
 |---------|--------|-------|
 | /who | Done | Server who-all with count substitution |
-| Friends list | Partial | /friendswho query only; `/friends` is aliased to it where the official client's `/friends <name>` adds a friend. Issue #213 (B897) |
-| Ignore list | -- | Issue #213 (B897), one Friends window with an Ignored tab |
+| Friends list | Partial | B897: the official two-tab Friends window (Alt+F, `/friendswindow`, from `EQUI_FriendsWnd.xml`), 100 names, `/friends [name]` (`/friend`) toggles/lists, `/friendswho` and the Who button query the stored list, persisted in `<Char>_<server>.ini` `[Friends]` as the official client does. Live two-client proof owed (#213) |
+| Ignore list | Partial | B897: the window's Ignored tab and `/ignore [name]`, 100 names, `[Ignored]` in the same ini; an ignored sender's tell, say, shout, ooc, auction and emote are hidden client-side (measured on the official client, `review/UIGAP-ORACLE/213`) and never become `/reply`'s target. Cap and group/guild behaviour unmeasured (#213) |
 | Group | Done | /invite, /groupaccept, /disband, /decline, /groupassist |
 | Raid | Done | /raid invite/accept/leave/remove/leader/loot/looter/lock/unlock/group/status/list |
 | Guild management | Done | Invite, accept/decline, remove, demote, leader, MOTD |
@@ -634,7 +634,9 @@ Commands are dispatched through three registries in order: the game registry (au
 /lfg, /afk, /anon, /roleplay    Status toggles
 /surname <name>                 Request surname
 /random (/roll) [n]             Roll a random number
-/friendswho (/friends) <names>  Ask who is online
+/friends (/friend) [name]       Add/remove a friend; no name lists them
+/ignore [name]                  Ignore/unignore a player; no name lists them
+/friendswho [names]             Ask which friends (or named players) are online
 /find (/findperson) [name]      Ask the server to path you to a target
 /consent <name>, /deny <name>   Corpse drag permission
 /corpsedrag (/drag), /corpsedrop (/drop)

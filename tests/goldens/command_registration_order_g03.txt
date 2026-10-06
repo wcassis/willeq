@@ -19,6 +19,8 @@
 #   B899 (#215): entry 065 `bag` INSERTED after 064 `closecontainer`
 #     (the tradeskill family registers it last); entries 065-152
 #     renumbered to 066-153. Count 152 -> 153.
+#   B897 (#213): entries 140 `friends` and 141 `ignore` INSERTED after 139
+#     `friendswho`; entries 140-153 renumbered to 142-155. Count 153 -> 155.
 001 shout
 002 say
 003 ooc
@@ -158,17 +160,19 @@
 137 track
 138 find
 139 friendswho
-140 gmzone
-141 summon
-142 goto
-143 gmfind
-144 kick
-145 kill
-146 hideme
-147 emotezone
-148 gmlastname
-149 trackfilter
-150 tracksort
-151 trackplayers
-152 stoptracking
-153 tracklist
+140 friends
+141 ignore
+142 gmzone
+143 summon
+144 goto
+145 gmfind
+146 kick
+147 kill
+148 hideme
+149 emotezone
+150 gmlastname
+151 trackfilter
+152 tracksort
+153 trackplayers
+154 stoptracking
+155 tracklist

@@ -240,5 +240,15 @@ struct TradeskillRecipeReceivedData {
     std::string name;
 };
 
+// B897 (GitLab #213): the friends and ignore lists, whole, after any change
+// and at identity bind (load). Published by BridgeComponent's social tick
+// (state::SocialListsSync), consumed by the Friends window's two copies.
+// The lists are client-side -- Titanium has no add/remove opcode -- so this
+// is the only way the renderer learns them.
+struct SocialListsChangedData {
+    std::vector<std::string> friends;
+    std::vector<std::string> ignored;
+};
+
 } // namespace state
 } // namespace eqt
