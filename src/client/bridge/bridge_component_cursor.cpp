@@ -63,7 +63,8 @@ void eqt::bridge::BridgeComponent::PublishInventorySlot(int16_t slot) {
 }
 
 // B442b (#151 row 29). The ONE publisher of CursorCoinChanged; called after
-// every cursor-coin change, which RunCursorCoinGesture() is the only site of.
+// every cursor-coin change: RunCursorCoinGesture(), and B896's coin row in the
+// trade window (RunTradeWindowIntent, cursor -> trade).
 void eqt::bridge::BridgeComponent::PublishCursorCoin() {
 	if (!ctx_.bridge || !ctx_.inventory_manager) {
 		return;
@@ -228,8 +229,20 @@ void eqt::bridge::BridgeComponent::RunCursorGesture(const eqt::events::CursorGes
 		break;
 	}
 
+	// B896 (#212): a trade slot's rules, before the move (an offered item
+	// cannot be taken back out) and after it (our change resets both accepts).
+	if (const std::string refusal = TradeGestureRefusal(i); !refusal.empty()) {
+		LOG_DEBUG(MOD_INVENTORY, "Cursor gesture refused on trade slot {}: {}", i.slot, refusal);
+		if (i.echo) {
+			ctx_.out.System(refusal);
+		}
+		return;
+	}
 	auto& inv = *ctx_.inventory_manager;
 	const eqt::inventory::CursorGestureOutcome outcome = eqt::inventory::ApplyCursorGesture(inv, i);
+	if (outcome.success) {
+		AfterTradeGesture(i);
+	}
 	LOG_DEBUG(MOD_INVENTORY, "Cursor gesture op={} slot={} qty={}: {} ({})",
 		static_cast<int>(i.op), i.slot, i.quantity, outcome.success ? "ok" : "refused",
 		outcome.message);

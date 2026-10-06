@@ -99,7 +99,6 @@ public:
 
 	// ---- Trade packet handlers and send functions
 	void SetupTradeManagerCallbacks();
-	void SetupTradeWindowCallbacks();
 	bool ZoneProcessTradePartnerItem(const EQ::Net::Packet& p);
 	void SendTradeRequest(const EQT::TradeRequest_Struct& req);
 	void SendTradeRequestAck(const EQT::TradeRequestAck_Struct& ack);

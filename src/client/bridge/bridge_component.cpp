@@ -184,7 +184,8 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 	ctx_.Merchant().SetupVendorCallbacks();
 	ctx_.Merchant().SetupBankCallbacks();
 	ctx_.Merchant().SetupTrainerCallbacks();
-	ctx_.Merchant().SetupTradeWindowCallbacks();
+	// B896 (#212): the trade window's empty stub was deleted; the window is
+	// fed by the trade events SetupTradeManagerCallbacks() publishes.
 	ctx_.Merchant().SetupTradeskillCallbacks();
 
 	// S2: movement callback removed — position flows via PlayerPositionChanged intent only

@@ -153,6 +153,8 @@ void eqt::merchant::MerchantComponent::SetupTradeManagerCallbacks()
 				tdata.slot = static_cast<uint8_t>(slot);
 				tdata.itemId = itemId;
 				tdata.itemName = itemName;
+				tdata.iconId = item ? item->icon : 0;          // B896
+				tdata.quantity = item ? item->quantity : 0;    // B896
 				ctx_.bridge->pushEvent(eqt::state::GameEvent(
 					eqt::state::GameEventType::TradeItemUpdated, std::move(tdata)));
 			}
@@ -191,60 +193,11 @@ void eqt::merchant::MerchantComponent::SetupTradeManagerCallbacks()
 	});
 
 	ctx_.trade_manager->setOnCompleted([this]() {
-		// Generate chat messages for what was exchanged
-		std::string partnerName = EQT::toDisplayName(ctx_.trade_manager->getPartnerName());
-		const auto& partnerMoney = ctx_.trade_manager->getPartnerMoney();
-		const auto& ownMoney = ctx_.trade_manager->getOwnMoney();
-
-		// Report money received from partner
-		if (partnerMoney.platinum > 0) {
-			ctx_.out.System(fmt::format("You receive {} platinum from {}.", partnerMoney.platinum, partnerName));
-		}
-		if (partnerMoney.gold > 0) {
-			ctx_.out.System(fmt::format("You receive {} gold from {}.", partnerMoney.gold, partnerName));
-		}
-		if (partnerMoney.silver > 0) {
-			ctx_.out.System(fmt::format("You receive {} silver from {}.", partnerMoney.silver, partnerName));
-		}
-		if (partnerMoney.copper > 0) {
-			ctx_.out.System(fmt::format("You receive {} copper from {}.", partnerMoney.copper, partnerName));
-		}
-
-		// Report items received from partner
-		for (int i = 0; i < 8; i++) {
-			const auto* item = ctx_.trade_manager->getPartnerItem(i);
-			if (item) {
-				ctx_.out.System(fmt::format("You receive {} from {}.", item->name, partnerName));
-			}
-		}
-
-		// Report money given to partner
-		if (ownMoney.platinum > 0) {
-			ctx_.out.System(fmt::format("You give {} platinum to {}.", ownMoney.platinum, partnerName));
-		}
-		if (ownMoney.gold > 0) {
-			ctx_.out.System(fmt::format("You give {} gold to {}.", ownMoney.gold, partnerName));
-		}
-		if (ownMoney.silver > 0) {
-			ctx_.out.System(fmt::format("You give {} silver to {}.", ownMoney.silver, partnerName));
-		}
-		if (ownMoney.copper > 0) {
-			ctx_.out.System(fmt::format("You give {} copper to {}.", ownMoney.copper, partnerName));
-		}
-
-		// Report items given to partner
-		for (int i = 0; i < 8; i++) {
-			const auto* item = ctx_.trade_manager->getOwnItem(i);
-			if (item) {
-				ctx_.out.System(fmt::format("You give {} to {}.", item->name, partnerName));
-			}
-		}
-
-		// Publish TradeCompleted event to bridge. Read from the source
-		// TradeManager above (still populated -- TradeManager::
-		// resetTradeState() hasn't run yet at this point in
-		// handleFinishTrade()'s sequence), then clear the projection now
-		// that the summary has been read out of it.
+		// B896 (#212): a completed trade prints NO chat line on either side --
+		// MEASURED, review/UIGAP-ORACLE/212/trade.tsv row 7 (both clients' own
+		// logs, A.chat.txt / B.chat.txt, hold nothing between the last offer and
+		// the next trade). T259's "You receive/give X" summary was fable's own
+		// and is gone. The window and the inventory close on TradeCompleted.
 		ctx_.game_state.trade().reset();
 		if (ctx_.bridge) {
 			ctx_.bridge->pushEvent(eqt::state::GameEvent(
@@ -259,7 +212,10 @@ void eqt::merchant::MerchantComponent::SetupTradeManagerCallbacks()
 			ctx_.out.System(fmt::format("Declined trade request from {}.",
 				EQT::toDisplayName(requesterName)));
 		} else {
-			ctx_.out.System("Trade cancelled.");
+			// B896 (#212): eqstr 1450 "You have cancelled the trade." on BOTH
+			// sides, whichever side pressed Cancel -- MEASURED, trade.tsv row 8
+			// (A.chat.txt and B.chat.txt both carry the line).
+			ctx_.out.System(ctx_.strings.GetStringMessage(1450));
 		}
 
 		// Publish TradeCancelled event to bridge
@@ -471,12 +427,6 @@ void eqt::merchant::MerchantComponent::SetupVendorCallbacks()
 void eqt::merchant::MerchantComponent::SetupBankCallbacks()
 {
 	/* D20a: intents handle bank actions */
-}
-
-void eqt::merchant::MerchantComponent::SetupTradeWindowCallbacks()
-{
-	// D20e3: Trade window init moved to InitGraphics (needs renderer)
-	// This stub remains for the call in InitGraphics; actual init is done there.
 }
 
 void eqt::merchant::MerchantComponent::SetupTradeskillCallbacks()

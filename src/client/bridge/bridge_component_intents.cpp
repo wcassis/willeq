@@ -990,6 +990,13 @@ void eqt::bridge::BridgeComponent::onSocialListIntent(const eqt::events::SocialL
 	if (!outcome.whoList.empty()) ctx_.Player().SendFriendsWho(outcome.whoList);
 }
 
+// B896 (GitLab #212) -- a trade / give window button or coin row. The body is
+// RunTradeWindowIntent() in bridge_component_trade.cpp, beside the trade
+// hooks of the cursor gesture.
+void eqt::bridge::BridgeComponent::onTradeWindowIntent(const eqt::events::TradeWindowIntent& i) {
+	RunTradeWindowIntent(i);
+}
+
 // The intent pump. Pure dispatch: std::visit over an exhaustive overload set,
 // one line per RendererIntent alternative, in the variant's own order. There
 // is deliberately NO generic fallback lambda -- the old chain ended in an
@@ -1053,6 +1060,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::GameOptionIntent& i) { onGameOptionIntent(i); },
 			[this](const eqt::events::TrackingIntent& i) { onTrackingIntent(i); },
 			[this](const eqt::events::SocialListIntent& i) { onSocialListIntent(i); },
+			[this](const eqt::events::TradeWindowIntent& i) { onTradeWindowIntent(i); },
 		}, intent);
 	}
 }

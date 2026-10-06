@@ -53,6 +53,7 @@
 // B899 (#215 / #151 Leg B).
 #include "client/graphics/ui/container_panel.h"
 #include "client/graphics/ui/friends_panel.h"   // B897
+#include "client/graphics/ui/trade_panel.h"     // B896
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -171,6 +172,12 @@ struct PanelStates {
     ContainerWindowsState containers;
     // B897: the Friends window, captured once per tab.
     FriendsPanelState friends;
+    // B896 (#212): the trade window from BOTH sides of the ledger's row 4
+    // (client A pressed Trade) and the NPC give window of row 9, all through
+    // the real appliers with real dragitem icon ids.
+    TradePanelState tradeA;
+    TradePanelState tradeB;
+    TradePanelState give;
     XPBarState xp;
 
     PanelStates() {
@@ -563,6 +570,58 @@ struct PanelStates {
             containers.windows[2].hoveredSlot = 1;
         }
 
+        // B896 (#212): review/UIGAP-ORACLE/212/trade.tsv rows 1-4 and 9.
+        {
+            auto start = [](TradePanelState& s, const char* partner, bool npc, const char* me) {
+                eqt::state::TradeStartedData d;
+                d.partnerId = npc ? 332 : 329;
+                d.partnerName = partner;
+                d.isNpc = npc;
+                applyTradeStarted(s, d, me);
+            };
+            auto own = [](TradePanelState& s, int i, const char* name, uint32_t icon) {
+                eqt::state::InventorySlotChangedData d;
+                d.slotId = static_cast<int16_t>(eqt::inventory::TRADE_BEGIN + i);
+                d.hasItem = true;
+                d.itemId = 1000u + static_cast<uint32_t>(i);
+                d.itemName = name;
+                d.iconId = icon;
+                d.quantity = 1;
+                applyTradeSlotChanged(s, d);
+            };
+            auto his = [](TradePanelState& s, int i, const char* name, uint32_t icon) {
+                eqt::state::TradeItemUpdatedData d;
+                d.who = 1;
+                d.slot = static_cast<uint8_t>(i);
+                d.itemId = 2000u + static_cast<uint32_t>(i);
+                d.itemName = name;
+                d.iconId = icon;
+                d.quantity = 1;
+                applyTradeItemUpdated(s, d);
+            };
+            auto coins = [](TradePanelState& s, uint8_t who, uint32_t pp) {
+                eqt::state::TradeMoneyUpdatedData d{who, pp, 0, 0, 0};
+                applyTradeMoneyUpdated(s, d);
+            };
+            // Client A (Testchar): its wolf skin in 3000, 1 pp of its own, B's
+            // spell scroll in B's first slot, A has pressed Trade.
+            start(tradeA, "Testbuddy", false, "Testchar");
+            own(tradeA, 0, "Low Quality Wolf Skin", 783);
+            coins(tradeA, 0, 1);
+            his(tradeA, 0, "Spell: Minor Shielding", 504);
+            applyTradeAcceptStateChanged(tradeA, {true, false});
+            tradeA.hoveredOwnSlot = 4;
+            // Client B (Testbuddy): the same moment from the other side.
+            start(tradeB, "Testchar", false, "Testbuddy");
+            own(tradeB, 0, "Spell: Minor Shielding", 504);
+            his(tradeB, 0, "Low Quality Wolf Skin", 783);
+            coins(tradeB, 1, 1);
+            applyTradeAcceptStateChanged(tradeB, {false, true});
+            // Row 9: the give window, the bottle auto-placed in slot 1.
+            start(give, "Givedummy000", true, "Testchar");
+            own(give, 0, "Bottle", 768);
+        }
+
         xp.progress = 0.62f;
 
         // B898 (#214): a warrior guildmaster's reply, with more rows than the
@@ -714,6 +773,16 @@ std::vector<PanelCapture> buildCaptureList() {
         {"friends_ignored", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.friends.isOpen = true; s.friends.activePage = 1;
             renderFriendsWindow(u, l, s.friends); }},
+        // B896 (#212): both sides of trade.tsv row 4 and the give window.
+        {"trade_client_a_own_accepted", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTradeWindow(u, l, s.tradeA); }},
+        {"trade_client_b_partner_accepted", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTradeWindow(u, l, s.tradeB); }},
+        {"trade_with_inventory", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderInventoryPopup(u, l, s.inventory);
+            renderTradeWindow(u, l, s.tradeA); }},
+        {"give_npc", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTradeWindow(u, l, s.give); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.

@@ -24,6 +24,8 @@
 #include "client/graphics/ui/item_display_panel.h"
 #include "client/graphics/ui/quantity_layout.h"
 #include "client/graphics/ui/static_ui_input.h"
+#include "client/graphics/ui/trade_panel.h"   // B896: classifyHeldItemWorldClick
+#include "client/graphics/overlays/overlays_component.h"
 #include "client/events/renderer_intents.h"
 #include "client/bridge/game_state_bridge.h"
 #include "common/logging.h"
@@ -70,7 +72,14 @@ void FrameComponent::processCursorGestureFrame(bool uiTook) {
     if (pendingUIClick_) {
         const int px = ctx_.eventReceiver->getClickMouseX();
         const int py = ctx_.eventReceiver->getClickMouseY();
-        worldDropArmed_ = !uiTook && !dialogUp && cursorState_.hasItem &&
+        // B896 (#212): a click on a player or an NPC with an item held is a
+        // trade / give (handleMouseTargeting already pushed the TargetIntent
+        // the game thread turns into requestTrade) -- never the drop prompt.
+        const auto& hit = ctx_.Overlays().lastClickedEntity();
+        const bool onEntity = hit.x == px && hit.y == py &&
+            classifyHeldItemWorldClick(hit.spawnId, hit.isNpc, hit.isCorpse) !=
+                HeldItemWorldClick::Drop;
+        worldDropArmed_ = !uiTook && !dialogUp && cursorState_.hasItem && !onEntity &&
                           !pointOverSelfConsumingWindow(px, py);
         worldDropX_ = px;
         worldDropY_ = py;

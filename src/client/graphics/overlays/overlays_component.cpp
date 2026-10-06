@@ -669,6 +669,9 @@ void OverlaysComponent::handleMouseTargeting(int clickX, int clickY) {
 
     // Get entity at click position
     uint16_t targetId = getEntityAtScreenPos(clickX, clickY);
+    lastClickedEntity_ = ClickedEntity{};  // B896: see lastClickedEntity()
+    lastClickedEntity_.x = clickX;
+    lastClickedEntity_.y = clickY;
 
     if (targetId != 0) {
         // Found an entity - verify it's visible (LOS from camera)
@@ -683,6 +686,9 @@ void OverlaysComponent::handleMouseTargeting(int clickX, int clickY) {
             irr::core::vector3df cameraPos = ctx_.camera->getPosition();
 
             if (checkEntityLOS(cameraPos, entityPos)) {
+                lastClickedEntity_.spawnId = targetId;
+                lastClickedEntity_.isNpc = visual.isNPC;
+                lastClickedEntity_.isCorpse = visual.isCorpse;
                 // Check for shift+click on corpse to loot
                 if (shiftHeld && visual.isCorpse) {
                     if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::LootCorpseIntent{targetId});

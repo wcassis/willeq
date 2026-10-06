@@ -115,8 +115,11 @@ public:
 
     // ========== Money ==========
 
-    const TradeMoney& ownMoney() const { return m_ownMoney; }
-    const TradeMoney& partnerMoney() const { return m_partnerMoney; }
+    // B896 (#212): the two read accessors were deleted with their only
+    // apparent caller (the completion summary's local `ownMoney`, which the
+    // zero-caller sweep matched by name). The trade window reads the coin
+    // rows from the bridge's TradeMoneyUpdated (MerchantComponent's money
+    // callback), not from this projection.
     void setMoney(bool isOwn, const TradeMoney& money);
 
     // ========== Partner items ==========

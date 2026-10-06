@@ -151,6 +151,7 @@
 #include "client/graphics/ui/cursor_attachment.h"
 #include "client/graphics/ui/trainer_panel.h"  // B898
 #include "client/graphics/ui/container_panel.h"
+#include "client/graphics/ui/trade_panel.h"  // B896
 #include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
@@ -319,6 +320,13 @@ public:
 	// True when a static window's own geometry holds (x,y) but its entry
 	// point returns nothing (the Friends window, the two dialogs).
 	bool pointOverSelfConsumingWindow(int x, int y) const;
+	// ---- B896 (GitLab #212): the trade / give window, renderer_frame_trade.cpp ----
+	// The click pass, from renderStaticUI() right after the QuantityWnd: the
+	// window is drawn above the centre popups, the bank, the trainer and the
+	// container windows, and the inventory is always open beside it (the
+	// official client opens both, trade.tsv row 1), so a click it takes is
+	// withheld from every window below it.
+	void processTradeWindowInput();
 
 	// ---- T432 (board B275): the ONE per-character persistence path ----
 	// Before this the client persisted NOTHING a player changed. Will's
@@ -442,6 +450,12 @@ public:
 	// InventorySlotChanged arm; NOT a centre popup (EQUI_Container.xml is
 	// RelativePosition false, Style_Sizable false at 100x366).
 	ContainerWindowsState containerState_;      // B899
+	// B896 (GitLab #212): the trade window (EQUI_TradeWnd.xml) or the NPC
+	// give window (EQUI_GiveWnd.xml), whichever the session is. Fed by the
+	// seven Trade* bridge arms and the 3000..3007 branch of the
+	// InventorySlotChanged arm; NOT a centre popup (RelativePosition false at
+	// its own <Location>, and the inventory is open beside it).
+	TradePanelState tradeState_;                // B896
 	XPBarState xpBarState_;             // U06i
 	// T432 (board B275): per-character UI persistence. Empty identity =
 	// not logged in yet, and sync() is then a no-op.

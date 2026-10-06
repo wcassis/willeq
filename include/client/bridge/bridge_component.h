@@ -191,6 +191,14 @@ public:
 
 	void UpdateInventoryStats();  // Update inventory window with current stats (base + equipment)
 
+	// B896 (#212): OUR trade request was acknowledged (player or NPC). The
+	// official client then drops the item it was opened with into the first
+	// trade slot by itself -- OP_MoveItem 30 -> 3000 (MEASURED,
+	// review/UIGAP-ORACLE/212/trade.tsv rows 1 and 9). Runs the same
+	// CursorGesture place a slot click does; a no-op with nothing held.
+	// Called from ZoneComponent::OnTradeRequestAck (bridge_component_trade.cpp).
+	void OfferHeldItemOnTradeOpen();
+
 	// ---- config paths and persistence ----
 	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
 	void SetConfigPath(const std::string& path) { m_config_path = path; }
@@ -402,6 +410,15 @@ private:
 	void onTrackingIntent(const eqt::events::TrackingIntent& i);
 	// B897: the Friends window buttons.
 	void onSocialListIntent(const eqt::events::SocialListIntent& i);
+	// B896 (#212): the trade / give window's buttons and coin rows. The arm
+	// relays to RunTradeWindowIntent() (bridge_component_trade.cpp), which
+	// also holds the two trade hooks RunCursorGesture() calls: the refusal of
+	// a withdrawal (TradeGestureRefusal) and the accept reset after our own
+	// side changed (AfterTradeGesture).
+	void onTradeWindowIntent(const eqt::events::TradeWindowIntent& i);
+	void RunTradeWindowIntent(const eqt::events::TradeWindowIntent& i);
+	std::string TradeGestureRefusal(const eqt::events::CursorGestureIntent& i) const;
+	void AfterTradeGesture(const eqt::events::CursorGestureIntent& i);
 
 	// T171: shared resolution of the per-client config node. See the
 	// definitions in bridge_component_ui_audio.cpp for why read and write

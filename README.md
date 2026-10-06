@@ -27,7 +27,7 @@ current defect list; where the two disagree, the board wins.
 - Chat (all channels), targeting (click, Tab cycle, F-keys), auto-attack
 - Spell memorization, casting, and gem management
 - Inventory window with equipment slots, bags, the official client's own item icons (T430) and tooltips; items are picked up and put down click-to-cursor like the official client (left click picks up / places / swaps / stacks, a stack opens the Quantity window, Shift = whole stack, Ctrl = one, right or Alt+left click shows the item — B442, #151, rules measured on the official client), or with `/pickup`, `/putdown`, `/cursor`, `/coin` and `/equip`
-- Vendor buy/sell and banking through the oracle's own merchant and bank windows (T436), or by slash command; player-to-player trading is command-driven
+- Vendor buy/sell and banking through the oracle's own merchant and bank windows (T436), or by slash command; player-to-player trading and NPC hand-ins through the oracle's trade and give windows (B896), or by slash command
 - Group system with HP/mana bars, invite/accept/disband/decline
 - Raid commands (invite, accept, leave, remove, leader, loot type, looters, lock, group)
 - Inspect (both answering and asking) with a configurable inspect message
@@ -47,7 +47,7 @@ current defect list; where the two disagree, the board wins.
 - Boats/transport not implemented
 - Fall damage not implemented
 - First-person view draws the player's own model and weapon for the duration of an attack animation and at no other time (T307 measured the rule against the official client; T309 implemented it in `src/client/graphics/entity_first_person_draw.cpp`). The down-pitch clamp that earlier revisions of this file described as the hiding mechanism was refuted live and no longer exists. Eye placement is still open (`refactor/BOARD.md` B018)
-- UI is a fixed static-panel HUD. Merchant, bank, loot, the era container window (world containers and carried bags, B899), item display and Options all have real windows now (T290, T421, T425, T434, T436, B899); **trade is still slash-command only**. Items move click-to-cursor (B442, #151) in the inventory, bank, loot and container windows
+- UI is a fixed static-panel HUD. Merchant, bank, loot, the era container window (world containers and carried bags, B899), item display, Options, trade and give all have real windows now (T290, T421, T425, T434, T436, B899, B896). Items move click-to-cursor (B442, #151) in the inventory, bank, loot, container, trade and give windows
 
 **Architecture note:** This is a thin client that delegates game logic to the server. Combat damage, spell effects, skill checks, and item transactions are all server-calculated. The client handles rendering, input, and state tracking.
 
@@ -173,9 +173,9 @@ Legend: Done | Partial | Not Implemented
 | Cursor item | Done | T436, `EQUI_CursorAttachment.xml`: the held item's icon follows the mouse |
 | Loot window | Done | T290, center popup, scrollable |
 | Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; every row is classified in `src/client/graphics/ui/options_classification.cpp` (wired, or excluded with its reason -- post-Velious, Will's OUT ruling, no fable capability, or awaiting the oracle) and `OptionsClassification.*` fails on an unclassified row. B430/B433 wired General (anonymous/roleplay, autosplit, auto-consent, pet window popup, the volumes), Display (PC/NPC names, clip plane), Mouse, Keys (category, rebinding, reload defaults) and Filters; Colors and the remaining General/Display rows stay greyed (#144, #145, #146). `/option` sets any wired setting by name |
-| Trade | Partial | Command-driven (/trade); no window. `SetupTradeWindowCallbacks` is an empty stub. Issue #212 (B896) |
+| Trade | Partial | B896 (#212): `EQUI_TradeWnd.xml` (8 slots a side, ours on the right, column-major; coin rows; Trade / Cancel) and the NPC `EQUI_GiveWnd.xml` (4 slots, Give / Cancel), opened by a click on a player or NPC with an item held; the held item drops into slot 3000, an incoming request is acknowledged with no prompt, the accepting side's name turns green and any change resets it, offered items cannot be taken back, cancel prints eqstr 1450 and completion prints nothing -- all measured (`review/UIGAP-ORACLE/212`). Owed: the live two-client run, the no-drop refusal string (not captured), the tip windows |
 | Item / spell display | Done | T421 + T425, one window for both (`EQUI_ItemDisplay.xml`); click an item slot, SHIFT+click a gem or spellbook row |
-| Pick up / put down an item | Partial | Click-to-cursor in the inventory, bank, loot and container windows, the Quantity window (a stack or a purse/bank coin row; its box takes typed digits) and `/pickup` `/putdown` `/cursor` `/coin` — one `CursorGestureIntent` path, rules from the official client's capture (B442, B442b, #151). Coin rides the cursor with its count; a motionless world click with an item held asks "ARE YOU SURE you wish to drop..." (Yes = `OP_GroundSpawn`) and Destroy asks before `OP_MoveItem 30 -> -1`. Owed: the live `pickup_roundtrip` scenario, trade/give windows, loot-to-cursor (not captured) |
+| Pick up / put down an item | Partial | Click-to-cursor in the inventory, bank, loot, container, trade and give windows, the Quantity window (a stack or a purse/bank coin row; its box takes typed digits) and `/pickup` `/putdown` `/cursor` `/coin` — one `CursorGestureIntent` path, rules from the official client's capture (B442, B442b, #151). Coin rides the cursor with its count; a motionless world click with an item held asks "ARE YOU SURE you wish to drop..." (Yes = `OP_GroundSpawn`) unless it lands on a player (trade) or an NPC (give, B896), and Destroy asks before `OP_MoveItem 30 -> -1`. Owed: the live `pickup_roundtrip` scenario, loot-to-cursor (not captured) |
 | Tradeskill container | Partial | B899 (#215): a world container (forge, oven) and a carried kit open the era container window (`EQUI_Container.xml`): its slots, Combine, Done. The post-Velious recipe window no longer opens (Will 2026-09-23); `/recipesearch` and `/recipecombine` stay as automation. The button reads "Combine" on every container (measured, `review/UIGAP-ORACLE/215`); the live combine is owed |
 | Skill trainer | Partial | B898, the oracle's `EQUI_TrainWindow.xml` at 580x280: skill list (name, value, price in pp/gp/sp/cp), practices, experience, money, Train, Done. Opens with /train, T, or Ctrl+click on a guildmaster; refreshes only when the server confirms a train. The Rank column and the live train are still owed to the oracle (issue #214) |
 
@@ -200,7 +200,7 @@ Legend: Done | Partial | Not Implemented
 | Group | Done | /invite, /groupaccept, /disband, /decline, /groupassist |
 | Raid | Done | /raid invite/accept/leave/remove/leader/loot/looter/lock/unlock/group/status/list |
 | Guild management | Done | Invite, accept/decline, remove, demote, leader, MOTD |
-| Trading | Done | /trade, /accept, /tradedecline, /canceltrade |
+| Trading | Partial | The trade and give windows (B896) and /trade, /accept, /tradedecline, /canceltrade; the live two-client round trip is owed |
 | Inspect | Done | /inspect; /inspectmessage sets your own text |
 | LFG / anon / roleplay / AFK | Done | Toggles |
 | Surname / random | Done | |

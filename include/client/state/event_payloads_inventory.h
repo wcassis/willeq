@@ -180,6 +180,11 @@ struct TradeItemUpdatedData {
     uint8_t slot;
     uint32_t itemId;
     std::string itemName;
+    // B896 (#212): the trade window draws the partner's items, so the
+    // publisher (MerchantComponent's item callback) ships the A_DragItem icon
+    // and the stack count the parsed ItemPacketTradeView carries.
+    uint32_t iconId = 0;
+    int32_t quantity = 0;
 };
 
 struct TradeMoneyUpdatedData {

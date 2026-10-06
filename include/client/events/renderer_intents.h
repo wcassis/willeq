@@ -415,6 +415,20 @@ struct SocialListIntent {
     std::string name;
 };
 
+// B896 (GitLab #212): the trade window's and the NPC give window's buttons
+// and coin rows. Accept is TRDW_Trade_Button / GVW_Give_Button and runs
+// TradeManager::clickAccept() -- the body /accept runs during an active
+// trade (OP_TradeAcceptClick, MEASURED review/UIGAP-ORACLE/212/trade.tsv rows
+// 4 and 10); Cancel is the Cancel button and the close box and runs
+// TradeManager::cancelTrade(), the body /canceltrade runs (OP_CancelTrade,
+// row 8). CoinFromCursor is a click on an own coin row with coin on the
+// cursor: one OP_MoveCoin cursor -> trade (row 2, to_slot 3). Item slots are
+// NOT here -- they are B442's CursorGestureIntent with slot 3000+n.
+enum class TradeWindowOp : uint8_t { Accept = 0, Cancel, CoinFromCursor };
+struct TradeWindowIntent {
+    TradeWindowOp op = TradeWindowOp::Accept;
+};
+
 // ============================================================================
 // Variant type for all renderer intents
 // ============================================================================
@@ -484,7 +498,9 @@ using RendererIntent = std::variant<
     // Tracking (B895)
     TrackingIntent,
     // Social (B897)
-    SocialListIntent
+    SocialListIntent,
+    // Trade (B896)
+    TradeWindowIntent
 >;
 
 } // namespace events

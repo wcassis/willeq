@@ -116,7 +116,7 @@ void TradeState::setPartnerItem(int slot, uint32_t itemId, const std::string& it
 void TradeState::reset() {
     // Does not self-publish TradeCancelled/TradeCompleted -- reset() only
     // clears fields; the two callers (GameStateSyncBridge's TradeCancelled/
-    // TradeCompleted cases, and EverQuest::SetupTradeWindowCallbacks()'s
+    // TradeCompleted cases, and MerchantComponent::SetupTradeManagerCallbacks()'s
     // m_on_cancelled/m_on_completed lambdas) already know which of the two
     // actually happened and publish the correctly-typed event themselves,
     // matching TradeManager::resetTradeState()'s own shape (it is a private

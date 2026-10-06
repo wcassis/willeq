@@ -292,6 +292,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/bridge/bridge_component_intents.cpp
     src/client/bridge/bridge_component_ui_audio.cpp
     src/client/bridge/bridge_component_cursor.cpp  # B442
+    src/client/bridge/bridge_component_trade.cpp  # B896: the trade/give window
     src/client/bridge/bridge_component_options.cpp
     src/client/bridge/bridge_component_social.cpp  # B897
     src/client/entities/entities_component.cpp
@@ -615,6 +616,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_options.cpp
         src/client/graphics/frame/renderer_frame_friends.cpp  # B897
         src/client/graphics/frame/renderer_frame_cursor.cpp  # B442b
+        src/client/graphics/frame/renderer_frame_trade.cpp  # B896
         src/client/graphics/frame/renderer_frame_entity_build.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
@@ -739,6 +741,9 @@ IF(EQT_GRAPHICS)
         # and carried, and its input.
         src/client/graphics/ui/container_panel.cpp
         src/client/graphics/ui/container_input.cpp
+        # B896 (#212): the trade window and the NPC give window, and their input.
+        src/client/graphics/ui/trade_panel.cpp
+        src/client/graphics/ui/trade_input.cpp
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
         src/client/graphics/ui/ui_preferences.cpp
