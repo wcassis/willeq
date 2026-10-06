@@ -162,8 +162,10 @@ count is the placement count plus the light nodes).
 - Full ctest suite on CI: **5,195 tests, 0 failures** (54 skips = missing
   captures/assets), hygiene label green, gate green — pipeline **#568** (green
   on `5c7704cb`, the code-complete head the per-pixel evidence above was taken
-  at; a later doc-only commit rides on it unchanged). The superseded `#526` /
-  `3153348f` citation is struck.
+  at; the later fable merge (B442b) plus this doc change ride on top of it).
+  The current head's own pipeline is **#570** (green at `a834989d`:
+  hygiene/build/test/gate success). The superseded `#526` / `3153348f` citation
+  is struck.
 - Collision (B909b) structures and shared animated meshes (B936) keep working:
   their tests are green in the suite, and the gate renders zones that use both.
 
