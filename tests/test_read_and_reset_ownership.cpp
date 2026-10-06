@@ -221,6 +221,7 @@ const SweepEntry kSweep[] = {
     {"getMouseDeltaY", 1, "render thread (mouse-look). Second caller deleted by T312."},
     {"wasLeftButtonClicked", 1, "render thread (processFrameInput). Second caller deleted by T315."},
     {"wasLeftButtonReleased", 1, "render thread (processFrameInput). Second caller deleted by T315."},
+    {"wasRightButtonClicked", 1, "render thread (renderStaticUI). B442: the item windows' right click."},
     {"drainActions", 1, "render thread (processFrameInput). Render-only queue."},
     {"drainBridgeActions", 1, "game thread (GraphicsInputHandler). Mutex-guarded since T312."},
     {"getSpellGemCastRequest", 1, "game thread. The render-thread discard was removed earlier."},
@@ -246,10 +247,18 @@ const SweepEntry kSweep[] = {
     // also the same widget: both loops feed applyTextEntryKey()
     // (include/client/graphics/ui/text_entry.h), which is why there is no
     // second entry mechanism to keep in step.
-    {"popKeyEvent", 2, "render thread only; processChatInput early-returns into processTradeskillSearchInput, mutually exclusive. T241/T421."},
-    {"enterKeyPressed", 1, "render thread (processChatInput). T241."},
-    {"slashKeyPressed", 1, "render thread (processChatInput). T241."},
-    {"escapeKeyPressed", 1, "render thread (processChatInput). T241."},
+    // B433: processChatInput() early-returns into processOptionsKeyCapture()
+    // (the Options Keys page) exactly like the tradeskill search boxes, so the
+    // capture is a THIRD mutually exclusive drain of the same frame, never a
+    // second consumer racing the first. It reads enter/slash/escape only to
+    // discard them while it holds the keyboard.
+    // B897: the Friends window's name Editboxes are a FOURTH drain of the
+    // same shape -- processChatInput() early-returns into
+    // processFriendsNameInput() while one of them holds the caret.
+    {"popKeyEvent", 4, "render thread only; processChatInput early-returns into processOptionsKeyCapture (B433), processTradeskillSearchInput or processFriendsNameInput (B897), mutually exclusive. T241/T421."},
+    {"enterKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
+    {"slashKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
+    {"escapeKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
 };
 
 }  // namespace

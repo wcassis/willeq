@@ -54,6 +54,7 @@ void CommandProcessor::registerBuiltinCommands() {
     registerLoggingFilterCommands();
     registerFindCommands();
     registerGMCommands();
+    registerTrackingCommands();
 }
 
 // Chat (T100)
@@ -432,6 +433,12 @@ void CommandProcessor::registerTradeskillCommands() {
         "closecontainer", {"containerclose"}, "/closecontainer",
         "Close the open world tradeskill container", "Tradeskill", false
     }, [this](const std::string& args) { return cmdCloseContainer(args); });
+
+    // B899 (#215 / #151 Leg B): the carried container window's producer.
+    registerCommand({
+        "bag", {}, "/bag <general slot>",
+        "Open or close the window of a container you carry", "Tradeskill", false
+    }, [this](const std::string& args) { return cmdBag(args); });
 }
 
 // Utility (T135)
@@ -519,6 +526,27 @@ void CommandProcessor::registerInventoryCommands() {
         "Scribe a spell scroll you are carrying into your spellbook (e.g. /scribe Spell: Minor Healing)",
         "Inventory", false
     }, [this](const std::string& args) { return cmdScribe(args); });
+
+    // B442 (#151): the scriptable half of the click-to-cursor gesture. Each
+    // pushes the SAME CursorGestureIntent a slot click pushes.
+    registerCommand({
+        "pickup", {}, "/pickup <slot> [quantity]",
+        "Pick an item (or part of a stack) up onto the cursor (slot = inventory.slot_id)",
+        "Inventory", false
+    }, [this](const std::string& args) { return cmdPickup(args); });
+    registerCommand({
+        "putdown", {}, "/putdown <slot>",
+        "Put the item on the cursor down in a slot (swaps or stacks like a click)",
+        "Inventory", false
+    }, [this](const std::string& args) { return cmdPutdown(args); });
+    registerCommand({
+        "cursor", {}, "/cursor", "Show what is on the cursor", "Inventory", false
+    }, [this](const std::string& args) { return cmdCursor(args); });
+    registerCommand({
+        "coin", {}, "/coin <pp|gp|sp|cp> <amount>",
+        "Pick coin up onto the cursor (held coin goes back to the purse)",
+        "Inventory", false
+    }, [this](const std::string& args) { return cmdCoin(args); });
 }
 
 // The final sixteen of the game-registry migration (T140) + /trainclose (T280)
@@ -597,9 +625,8 @@ void CommandProcessor::registerMovementAndUtilityCommands() {
         "Skills", false   // argless /train keeps its pre-T280 meaning
     }, [this](const std::string& args) { return cmdTrain(args); });
 
-    // T280: /trainclose -- the scriptable form of a trainer-window close
-    // button (there is no trainer panel yet, so the command is the only
-    // producer; T156's rule keeps it first either way).
+    // T280: /trainclose -- the scriptable form of the trainer window's
+    // TW_DoneButton (B898 drew the window; both push CloseTrainerIntent).
     registerCommand({
         "trainclose", {"traindone"}, "/trainclose", "Close the trainer window", "Skills", false
     }, [this](const std::string& args) { return cmdTrainClose(args); });
@@ -836,10 +863,30 @@ void CommandProcessor::registerFindCommands() {
         "Ask the server to path you to your target or a named entity", "Social", false
     }, [this](const std::string& args) { return cmdFind(args); });
 
+    // B897 (GitLab #213): /friends is NO LONGER an alias of /friendswho.
+    // On the official client `/friends <name>` ADDS a friend (eqstr 12308:
+    // "... you can add some with: /friends <name>"), so it is its own
+    // command below; /friendswho with no argument now asks about the STORED
+    // list (the FW_WhoButton's query).
     registerCommand({
-        "friendswho", {"friends"}, "/friendswho <name>[,<name>...]",
-        "Ask who from a comma-delimited name list is online", "Social", true
+        "friendswho", {}, "/friendswho [<name>[,<name>...]]",
+        "Ask which of your friends (or of the named players) are online", "Social", false
     }, [this](const std::string& args) { return cmdFriendsWho(args); });
+
+    // B897: the friends and ignore lists, both client-side (Titanium has no
+    // add/remove opcode for either). Toggle with a name, list without one --
+    // eqstr 13967 /friends, 12978 "/friend <name>", 13956 /ignore.
+    registerCommand({
+        "friends", {"friend"}, "/friends [name]",
+        "Add a name to your friends list, or remove it if present; no name lists them",
+        "Social", false
+    }, [this](const std::string& args) { return cmdFriends(args); });
+
+    registerCommand({
+        "ignore", {}, "/ignore [name]",
+        "Ignore a player (or stop ignoring them); no name lists your ignore list",
+        "Social", false
+    }, [this](const std::string& args) { return cmdIgnore(args); });
 }
 
 // GM (T148)
@@ -895,6 +942,42 @@ void CommandProcessor::registerGMCommands() {
     registerCommand({
         "gmlastname", {}, "/gmlastname <name> <lastname>", "GM: set a character's last name", "GM", true
     }, [this](const std::string& args) { return cmdGMLastName(args); });
+}
+
+// Tracking (B895, GitLab #211). APPENDED after the GM family, so nothing above
+// is renumbered. Four are the official client's own commands -- eqstr 6777
+// /stoptracking, 14155 /trackplayers, 14184 /tracksort, 14185 /trackfilter --
+// each answering a bad or missing argument with its own FORMAT line
+// (13143/13154/13162), which is why none of them sets requiresArgs. /tracklist
+// is fable's: it prints the window's current rows so a headless script can
+// assert on them. All five reach eqt::tracking::TrackingController, the same
+// bodies the Tracking Window's controls push TrackingIntent into.
+void CommandProcessor::registerTrackingCommands() {
+    using eqt::tracking::TrackingCommand;
+    registerCommand({
+        "trackfilter", {}, "/trackfilter <red|yellow|white|blue|lblue|green>",
+        "Show or hide one con colour of NPCs in the tracking list", "Skills", false
+    }, [this](const std::string& args) { return m_dispatcher.trackingCommand(TrackingCommand::Filter, args); });
+
+    registerCommand({
+        "tracksort", {}, "/tracksort <normal|distance|consider|rdistance|rconsider>",
+        "Set the tracking list's sort order", "Skills", false
+    }, [this](const std::string& args) { return m_dispatcher.trackingCommand(TrackingCommand::Sort, args); });
+
+    registerCommand({
+        "trackplayers", {}, "/trackplayers <on|off|group>",
+        "Choose which players the tracking list shows", "Skills", false
+    }, [this](const std::string& args) { return m_dispatcher.trackingCommand(TrackingCommand::Players, args); });
+
+    registerCommand({
+        "stoptracking", {}, "/stoptracking",
+        "Stop tracking your tracking target", "Skills", false
+    }, [this](const std::string& args) { return m_dispatcher.trackingCommand(TrackingCommand::Stop, args); });
+
+    registerCommand({
+        "tracklist", {}, "/tracklist",
+        "Print the tracking list (the Tracking Window's rows) to chat", "Skills", false
+    }, [this](const std::string& args) { return m_dispatcher.trackingCommand(TrackingCommand::List, args); });
 }
 
 } // namespace action

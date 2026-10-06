@@ -13,6 +13,7 @@
 #include <glm/glm.hpp>
 #include "client/hotbar/hotbar_slot_type.h"  // T239: activateHotbarCommandSlot
 #include "client/action/action_types.h"
+#include "client/tracking/tracking_state.h"  // B895: TrackingCommand
 
 namespace eqt {
 
@@ -208,6 +209,11 @@ public:
     // carried scroll, refuses locally, and pushes ScribeSpellIntent.
     virtual void scribeItem(const std::string& args) = 0;
 
+    // B442 (#151): /pickup, /putdown, /cursor and /coin. `verb` is the
+    // command name; CommandsComponent::RequestCursorCommand() parses it and
+    // pushes the SAME CursorGestureIntent the slot click pushes.
+    virtual void cursorCommand(const std::string& verb, const std::string& args) = 0;
+
     // ========== Spellbook ==========
 
     virtual void forgetSpell(uint8_t gemSlot) = 0;
@@ -289,6 +295,9 @@ public:
     // the recipe requests take no object_type. Delegate to EverQuest.
     virtual void tradeskillCombine(int16_t containerSlot) = 0;
     virtual void closeTradeskillContainer() = 0;
+    // B899 (#215 / #151 Leg B): /bag <general slot> opens or closes a
+    // carried container's window. Delegate to EverQuest.
+    virtual void toggleBag(int16_t generalSlot) = 0;
 
     // T153: request an appearance (face/hair/beard) change. Only the fields
     // the user named are set; the handler merges the rest from the
@@ -483,6 +492,9 @@ public:
     // EqActionHandler reads.
     virtual void assistGroup(uint16_t targetId) = 0;
     virtual void trackTarget(uint16_t targetId) = 0;
+    // B895 (GitLab #211): /trackfilter, /tracksort, /trackplayers,
+    // /stoptracking, /tracklist -- all one route to TrackingController.
+    virtual void trackingCommand(eqt::tracking::TrackingCommand cmd, const std::string& arg) = 0;
     virtual void findPerson(uint16_t targetId) = 0;
     virtual void friendsWho(const std::string& friendsList) = 0;
 

@@ -314,7 +314,21 @@ std::vector<std::string> goldenOrder() {
 // updatePlayerMovement() and the lift carry (processFrameSimulation(), since
 // T486 -- it was also called right after this body), which is where Chase is
 // now placed.
-constexpr size_t kGoldenSize = 454;
+//
+// B433: the Options window's Mouse page, a stated BEHAVIOUR change in
+// updateHeadingAndPitch() (454 -> 459). In place: statement 49
+// `bool mouseLookActive = (ctx_...isLeftButtonDown() ||` became
+// `bool mouseLookActive = mouseOptions_.mouseLook &&` with its old operand
+// line `(ctx_.eventReceiver->isLeftButtonDown() ||` INSERTED as 50 (Mouse
+// Look gates the gesture); the two delta lines gained the sensitivity scale
+// and the invert-Y sign. Inserted: 57
+// `const float scale = mouseLookScale(mouseOptions_.sensitivity);`, and after
+// the first-person min-look clamp the look-spring branch, three statements
+// `} else if (mouseOptions_.lookSpring &&` /
+// `(playerMovement_.moveForward || playerMovement_.moveBackward)) {` /
+// `playerPitch_ = applyLookSpring(playerPitch_, deltaTime);`.
+// Nothing else moved.
+constexpr size_t kGoldenSize = 459;
 
 }  // namespace
 

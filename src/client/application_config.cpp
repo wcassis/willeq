@@ -422,7 +422,8 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
             {
                 auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
                 hotkeyMgr.resetToDefaults();
-                hotkeyMgr.loadFromFile(eqt::ResolveDataPath("config/hotkeys.json"));
+                // B433: the Options Keys page user copy wins over the shipped file.
+                hotkeyMgr.loadFromFile(eqt::input::HotkeyManager::startupBindingsPath());
             }
 #endif
         } else if (handle.isObject()) {
@@ -440,7 +441,8 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
             {
                 auto& hotkeyMgr = eqt::input::HotkeyManager::instance();
                 hotkeyMgr.resetToDefaults();
-                hotkeyMgr.loadFromFile(eqt::ResolveDataPath("config/hotkeys.json"));
+                // B433: the Options Keys page user copy wins over the shipped file.
+                hotkeyMgr.loadFromFile(eqt::input::HotkeyManager::startupBindingsPath());
                 if (handle.isMember("hotkeys")) {
                     LOG_INFO(MOD_INPUT, "Applying hotkey overrides from main config");
                     hotkeyMgr.applyOverrides(handle["hotkeys"]);

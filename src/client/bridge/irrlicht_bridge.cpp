@@ -348,6 +348,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::PetCreatedData>(event.data);
             // U06f: New UI
             renderer_->Frame().petPanelState_.hasPet = true;
+            // B430: OGP_PetWindowPopupCheckbox -- a new pet opens the pet
+            // window when the option is on (default on, the oracle capture);
+            // off leaves the player's own Alt+F1 choice alone.
+            if (EQT::Graphics::optionsSettingStep(
+                    renderer_->Frame().optionsState_,
+                    EQT::Graphics::OptionsLayout::Setting::PetWindowPopup) != 0) {
+                renderer_->Frame().petPanelState_.isOpen = true;
+            }
             renderer_->Frame().petPanelState_.name = d.name;
             renderer_->Frame().petPanelState_.level = d.level;
             renderer_->Frame().petPanelState_.hpPercent = 100;
@@ -432,32 +440,38 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->Frame().bankState_, d);
         }
         break;
+    // B898 (#214): both were LOG_TRACEs that discarded the decoded
+    // OP_GMTraining reply. They now feed the trainer window (trainer_panel.cpp).
     case state::GameEventType::TrainerWindowOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TrainerWindowOpened");
+        if (renderer_) {
+            EQT::Graphics::applyTrainerWindowOpened(
+                renderer_->Frame().trainerState_,
+                std::get<state::TrainerWindowOpenedData>(event.data));
+        }
         break;
     case state::GameEventType::TrainerWindowClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TrainerWindowClosed");
+        if (renderer_) {
+            EQT::Graphics::applyTrainerWindowClosed(
+                renderer_->Frame().trainerState_,
+                std::get<state::WindowClosedData>(event.data));
+        }
         break;
     // T415 (board B321): both arms were LOG_TRACEs that discarded their
     // payloads, because fable had no container window. They now feed one.
+    // B899 (#215, Will 2026-09-23): both arms feed the era CONTAINER window
+    // (EQUI_Container.xml), world and carried alike -- no longer T415's
+    // recipe window, whose recipe half is out of era. The container window is
+    // not a centre popup (its own <Location>), so opening one closes nothing.
     case state::GameEventType::TradeskillContainerOpened:
         if (renderer_) {
             auto& d = std::get<state::TradeskillContainerOpenedEvent>(event.data);
-            EQT::Graphics::applyTradeskillContainerOpened(
-                renderer_->Frame().tradeskillState_, d);
-            // A container is a centre popup: opening one closes the other
-            // three, the same rule the LootWindowOpened arm applies.
-            renderer_->Frame().inventoryState_.activePopup =
-                EQT::Graphics::PopupType::None;
-            renderer_->Frame().spellbookState_.isOpen = false;
-            renderer_->Frame().skillsPopupState_.isOpen = false;
+            EQT::Graphics::applyContainerOpened(renderer_->Frame().containerState_, d);
         }
         break;
     case state::GameEventType::TradeskillContainerClosed:
         if (renderer_) {
             auto& d = std::get<state::TradeskillContainerClosedEvent>(event.data);
-            EQT::Graphics::applyTradeskillContainerClosed(
-                renderer_->Frame().tradeskillState_, d);
+            EQT::Graphics::applyContainerClosed(renderer_->Frame().containerState_, d);
         }
         break;
     // T419 (board B335): the recipe list. `Cleared` is the client's own
@@ -528,6 +542,11 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 // "the single choke point for vendor-buy item placement and
                 // bank-window population", as its own comment says -- and
                 // dropped here until now.
+            } else if (EQT::Graphics::applyContainerSlotChanged(
+                           renderer_->Frame().containerState_, d)) {
+                // B899 (#215): the WORLD container range, 4000-4009, and the
+                // general BAG range, 251-330 -- the container windows' cells.
+                // The applier returns false for every other slot id.
             } else {
                 // T415 (board B321): the WORLD container range, 4000-4009.
                 // eqemu sends a tradeskill container's contents as
@@ -592,6 +611,33 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::VolumesChangedData>(event.data);
             EQT::Graphics::applyVolumesChanged(
                 renderer_->Frame().optionsState_, d);
+        }
+        break;
+    case state::GameEventType::GameOptionChanged:
+        // B430: a server-owned Options setting as the game thread now holds
+        // it (profile at zone-in, /anon, /roleplay, or the window's own
+        // GameOptionIntent) -- the same read-back shape as VolumesChanged.
+        if (renderer_) {
+            auto& d = std::get<state::GameOptionChangedData>(event.data);
+            EQT::Graphics::applyGameOptionChanged(
+                renderer_->Frame().optionsState_, d.option, d.value);
+        }
+        break;
+    case state::GameEventType::TrackingListChanged:
+        // B895 (GitLab #211): the Tracking Window's whole list + settings.
+        if (renderer_) {
+            auto& d = std::get<state::TrackingListChangedData>(event.data);
+            EQT::Graphics::applyTrackingListChanged(
+                renderer_->Frame().trackingState_, d, renderer_->Frame().uiLayout_);
+        }
+        break;
+    case state::GameEventType::SocialListsChanged:
+        // B897 (GitLab #213): the friends/ignore lists, whole. The window
+        // keeps a copy and never edits it -- its buttons push
+        // SocialListIntent and the result comes back here.
+        if (renderer_) {
+            auto& d = std::get<state::SocialListsChangedData>(event.data);
+            EQT::Graphics::applySocialListsChanged(renderer_->Frame().friendsState_, d);
         }
         break;
     case state::GameEventType::EntityWeaponSkillsChanged:

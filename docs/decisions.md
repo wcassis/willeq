@@ -1678,3 +1678,47 @@ Pi byte saving is "not achieved on the current rig, and not claimed."
 **Decision:** 5(c) is ACCEPTED as a driver limitation. The request path is
 structurally correct and a future Mesa/Lima that exposes a 16-bit depth
 window config picks it up with no further code change.
+
+## 2026-10-05 — the audio ledger is measured on the Pi; the budget is held at
+32 MiB (Will; B977, #295)
+
+**Will, in chat 2026-10-01: "4) perform the test run"** — the classic-zone Pi
+audio run the `audio` budget was held for after 2026-09-30 **("lower the seven
+budgets, hold audio", B943)**. B977 (#295, MR !75) performed it: 13 zones
+(qeynos2, qeynos, freportw, gfaydark, befallen, halas, erudnint, rivervale,
+neriaka, akanon, velketor, thurgadina, kael) on the Orange Pi (build
+`1b8ebb6f`, nollvm Mesa 25.2.8) and the x86 client (same zones, same tour),
+audio on, `WILLEQ_LEDGER_OWNERS=audio` (`refactor/B977/audio_ledger_census.tsv`;
+raw logs `~/kb-evidence/b977-audio/`, not committed).
+
+The MR's code fix is the point of the re-measurement: the `audio` row
+under-counted because every late allocation (the on-demand custom SoundFont,
+every first-play WAV decode, `SfxManager::preload()`'s second copy) was charged
+to the CALLER's category, i.e. `game_state`. The attribution fix
+(`audio_manager.cpp`, `zone_audio_manager.cpp`) plus the `au.*` owner labels
+put them back on `audio`; `test_audio_ledger_attribution` pins it red/green.
+
+Measured worst (at `steady_60s`, the asserted point):
+
+| source | zone | audio | x 1.25 | rounded up |
+|---|---|---:|---:|---:|
+| Pi client | velketor | 28,720,320 B | 35,900,400 B = 34.25 MiB | **35 MiB** |
+| x86 client | velketor | 28,918,432 B | 36,148,040 B = 34.47 MiB | **35 MiB** |
+
+velketor is the worst on both machines because it is the only zone whose
+zone music actually STARTED in these runs: the custom SoundFont
+`synthus2.sf2` loads on first `playMusic` of a Velious/Luclin stem and is
+24,160,712 B (Pi) / 24,162,944 B (x86) of it. kael and thurgadina carry the
+same font in their zone EFF, but their music region was not entered in these
+runs (the seeded safe point sits outside it), so their worst is the ~3.6 MB
+startup-only row. The 10 classic zones top out at 4,945,872 B (Pi, erudnint).
+
+**Decision: `memoryLedgerBudgets.audio` STAYS at 32 MiB.** The in-tree
+ratchet (measured worst x 1.25, rounded up to a whole MiB, DOWN only) gives
+35 MiB, above 32 MiB, so it cannot move. The figure is dominated by the
+custom SoundFont (24.16 MB of 28.9 MB, 84 %), which the official client
+(32 MB total) never held as float samples — that defect moves first (B990,
+#309); the duplicated float SFX caches (B989, #308) are second. A re-ratchet
+to 32 MiB or below follows Will's number when the SoundFont fix lands; this
+unit writes no new number (the ratchet value is his, per the B943
+convention as this card applies it).

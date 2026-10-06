@@ -143,10 +143,14 @@
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/item_display_panel.h"
 #include "client/graphics/ui/options_panel.h"
+#include "client/graphics/ui/friends_panel.h"  // B897
 // T436 (board B429): the merchant, bank and cursor-attachment windows.
 #include "client/graphics/ui/merchant_panel.h"
 #include "client/graphics/ui/bank_panel.h"
+#include "client/graphics/ui/tracking_panel.h"  // B895
 #include "client/graphics/ui/cursor_attachment.h"
+#include "client/graphics/ui/trainer_panel.h"  // B898
+#include "client/graphics/ui/container_panel.h"
 #include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
@@ -274,6 +278,34 @@ public:
 	// Called from renderStaticUI() when processOptionsInput() reports a
 	// change, and from syncUiPreferences() after a load.
 	void applyOptionsSetting(OptionsLayout::Setting setting);
+	// B430: the arms for every setting added after T434 (same TU), and the
+	// load path's "tell everything" -- every persisted setting once.
+	void applyOptionsSettingB430(OptionsLayout::Setting setting);
+	void applyAllOptionsSettings();
+	// B430/B433: `/option` and `/filter` (registry 3). Runs the grammar in
+	// options_command.cpp against optionsState_, applies every setting it
+	// changed through applyOptionsSetting(), and returns the reply lines.
+	std::vector<std::string> runOptionsCommand(const std::string& cmd,
+	                                           const std::string& args);
+	// B433: the Keys page's key capture (renderer_frame_options.cpp); called
+	// first thing in processChatInput(), true while it owns the keyboard.
+	bool processOptionsKeyCapture();
+	bool optionsKeyCaptureGate_ = false;
+
+	// ---- B897 (GitLab #213): the Friends window, renderer_frame_friends.cpp ----
+	// toggleFriendsWindow(): Alt+F (MEASURED: review/T377/oracle/
+	// T377_oracle_options_keys_UI_page1.png, "Toggle friend window  Alt F",
+	// Alternate empty -- eqstr 6599) and /friendswindow. A HUD-style window
+	// with its own oracle placement, so it closes nothing. Returns the new
+	// open state.
+	bool toggleFriendsWindow();
+	// The click pass, from renderStaticUI(): resolve, apply, act.
+	void processFriendsWindowInput();
+	// The Editbox key gate, from processChatInput() beside the tradeskill
+	// one: true while FW_NameInput / FW_IgnoreNameInput holds the keyboard.
+	bool processFriendsNameInput();
+	// One resolved click -> a SocialListIntent, the chat prefill, or a close.
+	void applyFriendsAction(const FriendsAction& action);
 
 	// ---- T432 (board B275): the ONE per-character persistence path ----
 	// Before this the client persisted NOTHING a player changed. Will's
@@ -364,6 +396,11 @@ public:
 	// popups -- the oracle's OptionsWindow is `RelativePosition false` at its
 	// own <Location> -- so it is drawn and hit-tested on top of them.
 	OptionsPanelState optionsState_;            // T434
+	// B897: the Friends window. Not a centre popup (RelativePosition false,
+	// its own placement), drawn and hit-tested just below the Options window.
+	// Fed by the SocialListsChanged bridge arm; persisted open/closed as
+	// `[FriendsWindow] Show=` through UiPreferences.
+	FriendsPanelState friendsState_;            // B897
 	// T436 (board B429): the merchant window. One of the mutually exclusive
 	// centre popups (the oracle's MerchantWnd is Style_Sizable true and does
 	// not fit 640x480, so it is scaled onto centerPopup the way T415 scaled
@@ -378,6 +415,20 @@ public:
 	// Fed by the slot-30 branch of the InventorySlotChanged arm; its mouse
 	// position is written once per frame by renderStaticUI().
 	CursorAttachmentState cursorState_;         // T436
+	// B898 (#214): the skill trainer window. NOT a centre popup -- the
+	// oracle's TrainWindow is Style_Sizable false at 580x280. Fed by the
+	// TrainerWindowOpened/Closed bridge arms.
+	TrainerPanelState trainerState_;            // B898
+	// B895 (GitLab #211): the Tracking Window. Not a centre popup (the
+	// oracle's TrackingWnd has its own placement); drawn above the bank.
+	// Fed by the TrackingListChanged bridge arm.
+	TrackingPanelState trackingState_;          // B895
+	// B899 (#215 / #151 Leg B): the era container windows -- the world
+	// container (forge, oven) AND every carried bag. Fed by the two
+	// TradeskillContainer* arms and the world/bag branch of the
+	// InventorySlotChanged arm; NOT a centre popup (EQUI_Container.xml is
+	// RelativePosition false, Style_Sizable false at 100x366).
+	ContainerWindowsState containerState_;      // B899
 	XPBarState xpBarState_;             // U06i
 	// T432 (board B275): per-character UI persistence. Empty identity =
 	// not logged in yet, and sync() is then a no-op.
@@ -577,6 +628,8 @@ private:
 	// T421: true while processTradeskillSearchInput() holds the keyboard
 	// gate, so the release is a state change and not a per-frame write.
 	bool textEntryGateHeld_ = false;
+	// B897: the same, for the Friends window's two Editboxes.
+	bool friendsGateHeld_ = false;
 	int currentFps_ = 0;
 	float essentialSimCostAvgUs_ = 3000.0f;  // EMA of essential sim cost (us), init ~3ms
 	float fireGlowTime_ = 0.0f;  // Animation time accumulator

@@ -346,16 +346,34 @@ TEST_F(CommandProcessorTest, T150_FriendsWho_PassesNameListThroughVerbatim) {
     ASSERT_TRUE(handler.calledOnceWith("friendsWho(\"Testmelee,Testbuddy\")"));
 }
 
-TEST_F(CommandProcessorTest, T150_FriendsWho_FriendsAlias_DispatchesSameAsPrimary) {
+// B897 (GitLab #213): /friends is NO LONGER an alias of /friendswho -- on
+// the official client `/friends <name>` adds a friend (eqstr 12308). The
+// T150 alias test is inverted rather than deleted, so the old wiring is a red.
+TEST_F(CommandProcessorTest, B897_Friends_IsNotAnAliasOfFriendsWho) {
+    auto info = processor->getCommandInfo("friends");
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info->name, "friends");
     auto result = processor->processCommand("/friends Testbuddy");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("friendsWho(\"Testbuddy\")"));
+    EXPECT_EQ(handler.count(), 0u) << "/friends <name> must not send OP_FriendsWho";
+    EXPECT_TRUE(state.social().contains(eqt::state::SocialList::Friends, "testbuddy"));
 }
 
-TEST_F(CommandProcessorTest, T150_FriendsWho_NoArgs_FailsCleanlyWithoutDispatching) {
+// B897: no argument now asks about the STORED list. Empty -> nothing sent.
+TEST_F(CommandProcessorTest, T150_FriendsWho_NoArgs_EmptyListSendsNothing) {
     auto result = processor->processCommand("/friendswho");
-    EXPECT_FALSE(result.success);
+    EXPECT_TRUE(result.success);
     EXPECT_EQ(handler.count(), 0u);
+}
+
+TEST_F(CommandProcessorTest, B897_FriendsWho_NoArgs_SendsTheStoredList) {
+    processor->processCommand("/friends Testmelee");
+    processor->processCommand("/friend Testbuddy");
+    auto result = processor->processCommand("/friendswho");
+    EXPECT_TRUE(result.success);
+    // Sorted, as the official client keeps the list
+    // (review/UIGAP-ORACLE/213/friends.tsv rows 1, 11).
+    ASSERT_TRUE(handler.calledOnceWith("friendsWho(\"Testbuddy,Testmelee\")"));
 }
 
 TEST_F(CommandProcessorTest, T150_FriendsWho_DoesNotShadowWho) {

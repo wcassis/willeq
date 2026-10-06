@@ -21,11 +21,12 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 - Handles movement keys, mouse input, text input, debug toggles
 
 **HotkeyManager** (`hotkey_manager.h`) — Configurable key binding system:
-- `HotkeyAction` enum (**101** actions plus a `Count` sentinel, re-counted T471 -- T461 read 99, T415 95, T371 94; the key table grows with every UI panel, T461 added the four camera-orbit actions and T471 `CameraRaise`/`CameraLower`, binding all six to the official Camera-page keys T466 measured) covering movement, toggles, targeting, interaction
+- `HotkeyAction` enum (**102** actions plus a `Count` sentinel, re-counted T471 -- T461 read 99, T415 95, T371 94; the key table grows with every UI panel, T461 added the four camera-orbit actions and T471 `CameraRaise`/`CameraLower`, binding all six to the official Camera-page keys T466 measured) covering movement, toggles, targeting, interaction
 - `HotkeyBinding` struct: key code + `ModifierFlags` (Ctrl/Shift/Alt) + action
 - `HotkeyMode` enum: Global (always active) vs Player (gameplay only)
 - Loads/saves from `config/hotkeys.json`, supports runtime overrides from `willeq.json`
 - **A file that loads REPLACES the compiled-in defaults** (`loadFromFile()` clears every binding; the defaults are only the fallback for a file that cannot be read), so a default binding must be in `setupDefaults()` AND the shipped `config/hotkeys.json`. T464 (board B535) found five that production never reached (Alt+C, L, F10, Shift+F10, Shift+F11); `HotkeyShippedFileTest.T464_TheShippedFileCarriesEveryDefaultBinding` compares the two tables binding by binding. Its one exemption is `MusicVolumeUp` = F11, which the defaults also give to `ToggleAllUI`: a Global binding wins in `getAction()`, so F11 has only ever meant ToggleAllUI, and the official key is oracle-owed (board B561)
+- **B433: user rebinding** (the Options window's Keys page, `hotkey_manager_user.cpp`): `setBinding()` takes the key off every other action first, `saveUserBindings()` writes the whole set to `<cache dir>/hotkeys.json` (never the shipped file), the client loads that copy at startup when it exists (`startupBindingsPath()`), and `restoreShippedBindings()` deletes it (Reload defaults). Still global, never per character
 - Fast hash lookup with separate movement key map for continuous (held) keys
 - Conflict detection between bindings
 - String parsing (e.g., "Ctrl+Shift+F1")
@@ -36,8 +37,8 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 Implementation split across eight TUs in `src/client/action/` (J04, plus
 T268/T269/T280): `command_processor.cpp` holds the core (parse, dispatch,
 registry queries), `command_processor_registration.cpp` holds
-`registerBuiltinCommands()` and its **143** `registerCommand({…})` calls
-(T347 added `/cleartarget`; `tests/goldens/command_registration_order_g03.txt`
+`registerBuiltinCommands()` and its **155** `registerCommand({…})` calls
+(T347 added `/cleartarget`, B899 `/bag`, B897 `/friends` and `/ignore`; `tests/goldens/command_registration_order_g03.txt`
 pins the count and the order — read the golden, not this line), and the
 handlers live in `command_processor_{social,spells_gm,world,bank,loot,train}.cpp`
 behind the shared private header `command_processor_internal.h`. See

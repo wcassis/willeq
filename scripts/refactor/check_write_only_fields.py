@@ -169,8 +169,6 @@ EXEMPT = {
     # territory in that wave, so the residue is boarded rather than deleted.
     ("CameraController", "mouseSensitivity_"):
         ("boarded", "B533: the fly-camera residue T461 left when it deleted CameraController::update() with the Free mode; its only writer is the init call in irrlicht_renderer.cpp"),
-    ("TradeskillContainerClosedEvent", "wasWorldObject"):
-        ("boarded", "B321: T415 Leg A drew the window and either close event hides it, so the world-vs-inventory provenance of the CLOSE is still unread (T445 fixed the board id here: this row cited B336, which is the detail view distance and has nothing to do with containers)"),
     # T421 closed B298's item half: the fourteen fields that HAVE an oracle
     # line are drawn by the item display window, and their exemptions are
     # gone. These nine are what is left, and they are a DIFFERENT defect.

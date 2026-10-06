@@ -26,6 +26,7 @@ void ZoneAudioManager::setAudioManager(AudioManager* audioManager) {
 
 bool ZoneAudioManager::loadZone(const std::string& zoneName, const std::string& eqPath) {
     eqt::memory::MemoryScope memScope(eqt::memory::Category::Audio);  // T491
+    eqt::memory::StartupScope owner("au.zone_emitters");  // B977
     // Unload previous zone
     unloadZone();
 
@@ -62,6 +63,9 @@ void ZoneAudioManager::unloadZone() {
 }
 
 void ZoneAudioManager::update(float deltaTime, const glm::vec3& listenerPos, bool isDay) {
+    // B977: emitters and music regions start sounds and music from here, on
+    // the game thread -- charge what they load to `audio`, not `game_state`.
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Audio);
     if (isPaused_ || !audioManager_) {
         return;
     }
@@ -110,6 +114,7 @@ void ZoneAudioManager::update(float deltaTime, const glm::vec3& listenerPos, boo
 }
 
 void ZoneAudioManager::setDayNight(bool isDay) {
+    eqt::memory::MemoryScope memScope(eqt::memory::Category::Audio);  // B977
     if (isDay_ == isDay) {
         return;
     }

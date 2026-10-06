@@ -323,6 +323,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_preferences_identity DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B897 (#213): the Friends window -- geometry against EQUI_FriendsWnd.xml and
+# defaults.ini, the friends/ignore model and its oracle strings, the commands,
+# the <Char>_<server>.ini shape and persistence tick, both tabs' hit tests,
+# the ignore filter and the window intent through a real EverQuest, Alt+F.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_friends_window
+        test_friends_window.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_friends_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_friends_window GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_friends_window DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
 # T363 disabled-control rule, the three wired sliders, the Alt+O binding and
 # the persistence round trip. Device-free like its siblings.
@@ -333,6 +346,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_options_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_options_window GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_options_window DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B430/B431/B433: the Options window's controls wired -- the classification
+# census, the settings table, and per page click -> setting -> persisted ->
+# reloaded plus the /option and /filter grammar. Device-free.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_options_wiring
+        test_options_wiring.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_options_wiring PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_options_wiring GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_options_wiring DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
@@ -413,6 +438,33 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_merchant_bank_cursor PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_merchant_bank_cursor GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_merchant_bank_cursor DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B898 (#214): the skill trainer window -- layout vs EQUI_TrainWindow.xml,
+# the OP_GMTraining reply through the real EverQuest into the real applier,
+# the Train/Done clicks against the /train intents and their exact bytes on a
+# fake Daybreak connection. No device, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_trainer_panel
+        test_trainer_panel.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_trainer_panel PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_trainer_panel GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_trainer_panel DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B899 (#215 / #151 Leg B): the era container window -- the geometry parsed
+# out of EQUI_Container.xml, the appliers, the Combine / Done / ESC clicks on
+# a real GameStateBridge, /bag through the real command chain on a real
+# EverQuest, and the world container no longer opening the recipe window.
+# No device, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_container_window
+        test_container_window.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_container_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_container_window GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_container_window DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T439 (boards B432/B444/B434): the T434/T436 residue -- the absolute volume
@@ -757,4 +809,34 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_COMPILE_DEFINITIONS(test_entity_model_sharing PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_entity_model_sharing DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B442 (GitLab #151): the click-to-cursor gesture -- the button map, synthetic
+# clicks over the inventory/purse/bank/loot/merchant/QuantityWnd rects, the
+# game-thread ApplyCursorGesture() over a real InventoryManager (the
+# MoveItemIntent sequence), and /pickup /putdown /cursor /coin. No device, no
+# server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_cursor_gesture
+        test_cursor_gesture.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_cursor_gesture PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_cursor_gesture GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_cursor_gesture DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B895 (GitLab #211): the Tracking Window -- its XML layout, the direction
+# rule across the compass against eqemu's DoTracking thresholds, the list
+# rules, and the whole route (OP_Track reply -> TrackingListChanged -> panel
+# -> TrackingIntent -> "You begin tracking" -> direction ticks). A headless
+# EverQuest and the shipped eqstr table; no device, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_tracking_window
+        test_tracking_window.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_tracking_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_tracking_window GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_tracking_window PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_tracking_window DISCOVERY_TIMEOUT 120)
 ENDIF()

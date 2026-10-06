@@ -94,13 +94,17 @@ void FrameComponent::processFrameInput(float deltaTime) {
         bool wheelConsumedByUI = false;
         if (newUIEnabled_ && staticUIInput_) {
             wheel = ctx_.eventReceiver->getMouseWheelDelta();
-            wheelConsumedByUI = staticUIInput_->processWheel(mx, my, wheel,
+            // B895: the Tracking Window's list is asked first (it draws above).
+            wheelConsumedByUI = scrollTrackingList(trackingState_, uiLayout_, mx, my, wheel) ||
+                staticUIInput_->processWheel(mx, my, wheel,
                 uiLayout_, chatPanelState_, skillsPopupState_, lootState_,
                 itemDisplayState_);
         } else {
             wheel = ctx_.eventReceiver->getMouseWheelDelta();  // drain, never accumulate
         }
-        if (wheel != 0.0f && !wheelConsumedByUI && !chatInputFocused_) {
+        // B433: OMP_MouseWheelZoomCheckbox gates the zoom half.
+        if (wheel != 0.0f && !wheelConsumedByUI && !chatInputFocused_ &&
+            ctx_.PlayerCamera().mouseOptions().wheelZoom) {
             ctx_.PlayerCamera().zoomCamera(-wheel * kCameraZoomStepUnits, deltaTime);
         }
     }
@@ -205,6 +209,7 @@ void FrameComponent::processCommonInput(const std::vector<RendererEvent>& action
             // setting. The key is Alt+O, measured at the oracle's
             // Options > Keys > UI page (T377).
             case RA::ToggleOptions: toggleOptionsWindow(); break;
+            case RA::ToggleFriends: toggleFriendsWindow(); break;  // B897
             case RA::ClearTarget:
                 if (ctx_.Overlays().currentTargetId() != 0) {
                     LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", ctx_.Overlays().currentTargetName());
@@ -563,11 +568,20 @@ void FrameComponent::processChatInput() {
         return;
     }
 
+    // B433: a Keys-page rebinding owns the keyboard until its key arrives.
+    if (processOptionsKeyCapture()) {
+        return;
+    }
+
     // T421 (board B365): the tradeskill search boxes get the keys first when
     // one of them has the caret. They cannot take the gate themselves --
     // StaticUIInput has no event receiver -- so the ONE keyboard gate lives
     // here for both entries.
     if (processTradeskillSearchInput()) {
+        return;
+    }
+    // B897: the Friends window's FW_NameInput / FW_IgnoreNameInput.
+    if (processFriendsNameInput()) {
         return;
     }
 
@@ -666,6 +680,11 @@ void FrameComponent::processChatInput() {
             optionsState_.isOpen = false;
             popupConsumedEscape = true;
         }
+        // B897: the Friends window sits just below Options in the draw.
+        if (!popupConsumedEscape && friendsState_.isOpen) {
+            toggleFriendsWindow();
+            popupConsumedEscape = true;
+        }
         if (!popupConsumedEscape && itemDisplayState_.isOpen) {
             itemDisplayState_.isOpen = false;
             popupConsumedEscape = true;
@@ -681,6 +700,28 @@ void FrameComponent::processChatInput() {
         // them). Neither closes itself: both push the intent that ends the
         // SERVER-side session and wait for its Closed event, exactly as ESC
         // on the loot window pushes CloseLootIntent.
+        // B899 (#215): the container windows draw above the tracking window,
+        // the trainer and the bank, so ESC reaches them first; each pushes
+        // TradeskillCloseIntent and waits for TradeskillContainerClosed
+        // (T290/T443's rule, carried bags included).
+        if (!popupConsumedEscape && newUIEnabled_ && staticUIInput_) {
+            popupConsumedEscape = staticUIInput_->processContainerEscape(containerState_);
+        }
+        // B895: the Tracking Window draws above the trainer and the bank and below the item
+        // display; a pure client view, so ESC hides it in place.
+        if (!popupConsumedEscape && trackingState_.isOpen) {
+            trackingState_.isOpen = false;
+            trackingState_.openCombo = TrackingCombo::None;
+            popupConsumedEscape = true;
+        }
+        // B898 (#214): the trainer window draws above the bank, so it is
+        // dismissed first; like the bank it ends the SERVER session
+        // (CloseTrainerIntent -> OP_GMEndTraining) and waits for the Closed
+        // event.
+        if (!popupConsumedEscape && trainerState_.isOpen) {
+            if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::CloseTrainerIntent{});
+            popupConsumedEscape = true;
+        }
         if (!popupConsumedEscape && bankState_.isOpen) {
             if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::CloseBankIntent{});
             popupConsumedEscape = true;

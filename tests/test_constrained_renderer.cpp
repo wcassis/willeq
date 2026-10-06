@@ -1170,6 +1170,12 @@ TEST_F(ConstrainedRendererConfigTest, FromPreset_OrangePi_T293PerSubsystemBudget
     EXPECT_EQ(ledgerBudget(Category::Objects),         static_cast<size_t>(40) * 1024 * 1024);
     // T496 Leg D: the first budget in this table derived from a PI measurement
     // (24.53 MiB steady, x1.25 -> 32). See B830.
+    // B977 (2026-10-05, Will: "4) perform the test run"): re-measured on the
+    // Pi + x86 over 13 classic + 3 Velious zones with the attribution fix;
+    // worst at steady_60s is velketor 28,720,320 B (Pi) / 28,918,432 B (x86),
+    // 84 % of it the on-demand synthus2.sf2. Convention (x1.25, whole MiB,
+    // DOWN only) gives 35 MiB, above this, so it HOLDS at 32 MiB; B990/#309
+    // (the SoundFont) then B989/#308 (the duplicated SFX caches) move it down.
     EXPECT_EQ(ledgerBudget(Category::Audio),           static_cast<size_t>(32) * 1024 * 1024);
     // The ZoneParse ledger budget is PINNED to the S3D-zone-source estimate
     // budget (board B803): they bound the same bytes by two different methods,
@@ -1257,6 +1263,12 @@ TEST_F(ConstrainedRendererConfigTest, ShippedOrangePiPreset_ActivelyCarriesT293B
     EXPECT_EQ(ledgerBudget(Category::Objects),         static_cast<size_t>(40) * 1024 * 1024);
     // T496 Leg D: the first budget in this table derived from a PI measurement
     // (24.53 MiB steady, x1.25 -> 32). See B830.
+    // B977 (2026-10-05, Will: "4) perform the test run"): re-measured on the
+    // Pi + x86 over 13 classic + 3 Velious zones with the attribution fix;
+    // worst at steady_60s is velketor 28,720,320 B (Pi) / 28,918,432 B (x86),
+    // 84 % of it the on-demand synthus2.sf2. Convention (x1.25, whole MiB,
+    // DOWN only) gives 35 MiB, above this, so it HOLDS at 32 MiB; B990/#309
+    // (the SoundFont) then B989/#308 (the duplicated SFX caches) move it down.
     EXPECT_EQ(ledgerBudget(Category::Audio),           static_cast<size_t>(32) * 1024 * 1024);
     // The ZoneParse ledger budget is PINNED to the S3D-zone-source estimate
     // budget (board B803): they bound the same bytes by two different methods,

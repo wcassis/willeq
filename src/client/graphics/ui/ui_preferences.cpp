@@ -21,6 +21,7 @@
 #include "client/data_paths.h"
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/options_panel.h"
+#include "client/graphics/ui/friends_panel.h"
 #include "client/graphics/ui/static_panels.h"
 #include "common/logging.h"
 
@@ -83,6 +84,7 @@ const WindowRow kWindows[] = {
     {"BuffWindow", &UiPreferences::buffWindow},
     {"CombatAbilityWnd", &UiPreferences::combatAbilityWnd},
     {"OptionsWindow", &UiPreferences::optionsWindow},   // T434
+    {"FriendsWindow", &UiPreferences::friendsWindow},   // B897
 };
 
 // T434 -- the `[Options]` section. Same anti-drift device as kWindows: one
@@ -124,6 +126,40 @@ const CameraRigRow kCameraRigKeys[] = {
     {"User2Height", &UiPreferences::user2Camera, &CameraRig::height},
 };
 
+// B430: the settings-table half of `[Options]` -- the same anti-drift device
+// as kOptions (one table, walked by parse and serialise), with the table in
+// options_settings.cpp. Persisted = Renderer-owned AND carries an ini key.
+bool IsPersistedSetting(int i) {
+    if (i <= 0 || i >= OptionsLayout::kSettingCount) return false;
+    const auto& info = OptionsLayout::allSettings()[i];
+    return info.owner == OptionsLayout::Owner::Renderer && info.iniKey != nullptr;
+}
+
+// A bool key accepts the oracle's TRUE/FALSE spelling (eqclient.ini
+// `CombatMusic=TRUE`) as well as 0/1; anything the table refuses keeps the
+// default, exactly as an absent key would.
+void ParseSettingKey(const std::string& key, const std::string& value, UiPreferences& p) {
+    for (int i = 0; i < OptionsLayout::kSettingCount; ++i) {
+        if (!IsPersistedSetting(i)) continue;
+        const auto& info = OptionsLayout::allSettings()[i];
+        if (key != info.iniKey) continue;
+        int v = 0;
+        const std::string t = Trim(value);
+        if (info.kind == OptionsLayout::ValueKind::Bool &&
+            (t == "TRUE" || t == "true" || t == "FALSE" || t == "false")) {
+            v = (t == "TRUE" || t == "true") ? 1 : 0;
+        } else {
+            try {
+                v = std::stoi(t);
+            } catch (...) {
+                return;
+            }
+        }
+        if (OptionsLayout::isValidSettingValue(info.setting, v)) p.optionValues[i] = v;
+        return;
+    }
+}
+
 }  // namespace
 
 UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode,
@@ -144,7 +180,11 @@ UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode
         p.musicVolume = b.options->musicVolume;
         p.soundVolume = b.options->soundVolume;
         p.clipPlane = b.options->clipPlane;
+        for (int i = 0; i < OptionsLayout::kSettingCount; ++i) {
+            if (IsPersistedSetting(i)) p.optionValues[i] = b.options->values[i];
+        }
     }
+    if (b.friends) p.friendsWindow = b.friends->isOpen;
     p.cameraMode = cameraMode;
     p.user1Camera = user1Camera;
     p.user2Camera = user2Camera;
@@ -176,6 +216,7 @@ void ApplyUiPreferences(const UiPreferences& p, const UiPreferencesBinding& b) {
     if (b.pet) b.pet->isOpen = p.petInfoWindow;
     if (b.buff) b.buff->isOpen = p.buffWindow;
     if (b.combatAbility) b.combatAbility->isOpen = p.combatAbilityWnd;
+    if (b.friends) b.friends->isOpen = p.friendsWindow;
     if (b.options) {
         b.options->isOpen = p.optionsWindow;
         // The steps were clamped on parse; clamp again here so a value
@@ -183,6 +224,14 @@ void ApplyUiPreferences(const UiPreferences& p, const UiPreferencesBinding& b) {
         b.options->musicVolume = std::max(0, std::min(kOptionMaxStep, p.musicVolume));
         b.options->soundVolume = std::max(0, std::min(kOptionMaxStep, p.soundVolume));
         b.options->clipPlane = std::max(0, std::min(kOptionMaxStep, p.clipPlane));
+        // B430: a value assembled in code is checked against the table too.
+        for (int i = 0; i < OptionsLayout::kSettingCount; ++i) {
+            if (!IsPersistedSetting(i)) continue;
+            const auto s = static_cast<OptionsLayout::Setting>(i);
+            if (OptionsLayout::isValidSettingValue(s, p.optionValues[i])) {
+                b.options->values[i] = p.optionValues[i];
+            }
+        }
     }
 }
 
@@ -260,8 +309,10 @@ UiPreferences ParseUiPreferences(const std::string& text,
             continue;
         }
         if (section == "Options") {
+            bool matched = false;
             for (const auto& row : kOptions) {
                 if (key != row.key) continue;
+                matched = true;
                 try {
                     const int v = std::stoi(Trim(value));
                     if (v >= 0 && v <= kOptionMaxStep) p.*(row.field) = v;
@@ -270,6 +321,7 @@ UiPreferences ParseUiPreferences(const std::string& text,
                 }
                 break;
             }
+            if (!matched) ParseSettingKey(key, value, p);
             continue;
         }
         if (key != "Show") continue;
@@ -303,6 +355,12 @@ std::string SerializeUiPreferences(const UiPreferences& p) {
     for (const auto& row : kOptions) {
         out += row.key;
         out += "=" + std::to_string(p.*(row.field)) + "\n";
+    }
+    // B430/B433: every persisted setting, in table order, under its oracle key.
+    for (int i = 0; i < OptionsLayout::kSettingCount; ++i) {
+        if (!IsPersistedSetting(i)) continue;
+        out += OptionsLayout::allSettings()[i].iniKey;
+        out += "=" + std::to_string(p.optionValues[i]) + "\n";
     }
     out += "[Camera]\nView=" + std::to_string(p.cameraMode) + "\n";
     for (const auto& row : kCameraRigKeys) {

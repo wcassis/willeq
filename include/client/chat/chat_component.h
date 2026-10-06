@@ -39,6 +39,10 @@ class Packet;
 namespace eqt {
 namespace chat {
 
+// B897: true for the OP_ChannelMessage channels an ignored sender is hidden
+// on (the measured set, review/UIGAP-ORACLE/213/friends.tsv row 9).
+bool IsIgnoreFilteredChannel(uint32_t channel);
+
 class ChatComponent {
 public:
 	// T341: the EverQuest& transition handle is GONE -- this family reaches

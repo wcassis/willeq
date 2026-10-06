@@ -60,6 +60,7 @@
 #include "client/pet_constants.h"
 #include "client/hotbar/hotbar_slot_type.h"
 #include "client/zone_load_snapshot.h"
+#include "client/state/social_lists_io.h"  // B897: SocialListsSync
 // G02: the intent handlers below take one alternative of RendererIntent each,
 // by const reference. Dependency-free header (cstdint/string/variant + the
 // hotbar slot-type enum), so this costs nothing the component did not pay.
@@ -279,6 +280,16 @@ public:
 	// clamping, which is the whole point of the board item.
 	void PublishVolumesChanged();
 
+	// B430: the ONE publisher of GameEventType::GameOptionChanged, and the one
+	// body that applies a server-owned Options setting (bridge_component_options.cpp).
+	// ApplyGameOption() sends it (OP_SpawnAppearance, or OP_SetServerFilter for
+	// ServerFilters) and publishes the applied value; PublishProfileGameOptions()
+	// publishes the player-profile values read at zone-in.
+	void ApplyGameOption(const eqt::events::GameOptionIntent& i);
+	void PublishGameOption(eqt::GameOption option, int32_t value);
+	void PublishProfileGameOptions(uint8_t anon, uint32_t autosplit, uint8_t consentGroup,
+	                               uint8_t consentRaid, uint8_t consentGuild);
+
 	// Audio configuration (applied during InitializeAudio; Application sets
 	// these from the CLI/config before InitGraphics).
 	void SetAudioEnabled(bool enabled) { m_audio_config_enabled = enabled; }
@@ -289,6 +300,12 @@ public:
 	void SetVendorMusic(const std::string& filename) { m_audio_config_vendor_music = filename; }
 	void SetUse3DAudio(bool enabled) { m_audio_config_use_3d_audio = enabled; }
 #endif
+
+	// B897 (GitLab #213): the friends/ignore persistence tick, once per
+	// GameTick. Loads the character's `<Char>_<server>.ini` on a new identity,
+	// saves on a changed revision, and on either publishes the ONE
+	// GameEventType::SocialListsChanged (state::SocialListsSync decides).
+	void SyncSocialLists();
 
 private:
 	// T46: assigns m_bridge and propagates the same pointer (including
@@ -367,7 +384,18 @@ private:
 	void onMoveItemIntent(const eqt::events::MoveItemIntent& i);
 	void onDeleteItemIntent(const eqt::events::DeleteItemIntent& i);
 	void onEquipmentChangedIntent(const eqt::events::EquipmentChangedIntent& i);
+	// B442 (#151): the click-to-cursor gesture and /pickup /putdown /coin.
+	// The arm is a one-line relay; the body is RunCursorGesture() in
+	// bridge_component_cursor.cpp, beside the slot republisher it needs.
+	void onCursorGestureIntent(const eqt::events::CursorGestureIntent& i);
+	void RunCursorGesture(const eqt::events::CursorGestureIntent& i);
+	void PublishInventorySlot(int16_t slot);
 	void onPlaySoundIntent(const eqt::events::PlaySoundIntent& i);
+	void onGameOptionIntent(const eqt::events::GameOptionIntent& i);
+	// B895: the Tracking Window's controls -> TrackingController.
+	void onTrackingIntent(const eqt::events::TrackingIntent& i);
+	// B897: the Friends window buttons.
+	void onSocialListIntent(const eqt::events::SocialListIntent& i);
 
 	// T171: shared resolution of the per-client config node. See the
 	// definitions in bridge_component_ui_audio.cpp for why read and write
@@ -446,6 +474,9 @@ private:
 	// playSoundInternal().
 	bool m_audio_config_use_3d_audio = true;
 #endif
+
+	// B897: when the friends/ignore lists were last loaded or written.
+	eqt::state::SocialListsSync m_social_sync;
 
 	ClientContext& ctx_;
 };

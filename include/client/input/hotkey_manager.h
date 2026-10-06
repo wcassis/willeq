@@ -99,6 +99,8 @@ enum class HotkeyAction : uint32_t {
     ToggleOptions,      // T434: Options window (Alt+O, measured at the
                         // oracle's Options > Keys > UI page) - available in
                         // all modes
+    ToggleFriends,      // B897: Friends window (Alt+F, measured at the
+                        // oracle's Options > Keys > UI page, eqstr 6599)
     ToggleCollision,
     ToggleCollisionDebug,
     ToggleZoneLineVisualization,
@@ -317,6 +319,32 @@ public:
      * Get all bindings for an action (for UI display).
      */
     std::vector<HotkeyBinding> getBindingsForAction(HotkeyAction action) const;
+
+    // === B433: the Options window's Keys page (hotkey_manager_user.cpp) ===
+    //
+    // Bindings stay GLOBAL (not per character -- T432's settled rule). A
+    // rebinding is written to the user copy `<cache dir>/hotkeys.json`
+    // (T402's generated-state rule: never the shipped config/hotkeys.json in
+    // the checkout), and the client loads that copy instead of the shipped
+    // file when it exists. "Reload defaults" deletes it and reloads the
+    // shipped file.
+
+    /**
+     * Bind `action`'s `slot` (0 = Keypress, 1 = Alternate column) to key +
+     * modifiers. The same key+modifiers is taken off every OTHER action first,
+     * so a key never means two things. A slot past the action's last binding
+     * appends. Returns false for an invalid action/key.
+     */
+    bool setBinding(HotkeyAction action, int slot, irr::EKEY_CODE key, ModifierFlags mods);
+
+    /** Write every binding to the user copy. False if no cache dir is writable. */
+    bool saveUserBindings();
+
+    /** Delete the user copy and reload the shipped bindings. */
+    bool restoreShippedBindings();
+
+    /** What the client loads at startup: the user copy if present, else the shipped file. */
+    static std::string startupBindingsPath();
 
     // === Conflict Detection ===
 

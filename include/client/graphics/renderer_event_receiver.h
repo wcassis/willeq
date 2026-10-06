@@ -135,6 +135,11 @@ public:
     // do.
     bool wasLeftButtonClicked();  // Returns true once per click (not hold)
     bool wasLeftButtonReleased(); // Returns true once when button is released
+    // B442 (#151): the RIGHT click, latched the same way, for the static UI's
+    // item windows (right click = item display, the oracle's inspect). ONE
+    // consumer, FrameComponent::renderStaticUI(). Mouselook is unaffected: it
+    // reads isRightButtonDown(), never this latch.
+    bool wasRightButtonClicked();
     int getClickMouseX() const { return clickMouseX_.load(std::memory_order_relaxed); }
     int getClickMouseY() const { return clickMouseY_.load(std::memory_order_relaxed); }
 
@@ -261,6 +266,7 @@ private:
     // keeps the read-and-reset one indivisible step; there is no ordering
     // relationship to any other field.
     std::atomic<bool> leftButtonClicked_{false};
+    std::atomic<bool> rightButtonClicked_{false};   // B442
     std::atomic<bool> leftButtonReleased_{false};
     std::atomic<int> clickMouseX_{0};
     std::atomic<int> clickMouseY_{0};

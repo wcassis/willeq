@@ -176,7 +176,75 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     at 138), so a null slot in `regions` was safe; calling `->pvs()` at 133
 //     dereferences it, and the guard moved into the condition rather than
 //     becoming a statement of its own. Still 328.
-const size_t kGoldenSize = 328u;
+//   * B898 (#214): the skill trainer window. TWO pure insertions, no text
+//     change and no reorder anywhere.
+//     - entries 266-268, the three lines of
+//       `staticUIInput_->processTrainerInput(...)`, directly after entry 265
+//       (the last line of T436's processCommerceInput call) and before
+//       processItemDisplayInput: the trainer window draws above the bank and
+//       below the item display / Options windows, and hit-test order
+//       mirrors draw order.
+//     - entry 300, `renderTrainerWindow(...)`, directly after entry 299
+//       `renderBankWindow(...)`: Style_Sizable false at 580x280, not a
+//       centre popup, so it draws above them and above the bank.
+//     The count rises 328 -> 332: three statements plus one, nothing removed
+//     and nothing replaced.
+//   * B442 (#151): the click-to-cursor gesture. THREE pure insertions, no
+//     text change and no reorder (verified by diffing the composed list
+//     against the pre-edit golden -- the only hunks are these three).
+//     - entries 254-264, at the head of the static-UI input hop, before
+//       entry 265 `staticUIInput_->processInput(`: the right-click latch,
+//       the two modifiers, the QuantityWnd hit test (it is above every
+//       window, so a click it takes is withheld from the rest) and
+//       `setFrameClickState(...)`.
+//     - entry 289, `setFrameClickState(false, {}, &cursorState_);`, directly
+//       after entry 288 `pendingUIClick_ = false;`: the latched state is
+//       spent with the frame.
+//     - entries 316-317, `renderQuantityWindow(...)` and its null guard,
+//       directly after entry 315 `renderXPBar(...)` and before the cursor
+//       attachment: above every window, below the pointer.
+//     Applied after B898 (rebased onto it); B898's entries above are
+//     shifted by B442's eleven-line head insertion, nothing else moved.
+//     The count rises 332 -> 346: eleven plus one plus two.
+//   * B895 (GitLab #211): the Tracking Window, applied after B898 and B442
+//     (rebased onto them). TWO pure insertions, no text change and no
+//     reorder anywhere.
+//     - entry 280, `processTrackingInput(ctx_.bridge, ...);` (one line),
+//       directly after entry 279, the last line of B898's
+//       processTrainerInput call, and before T421's processItemDisplayInput:
+//       the window draws above the trainer and the bank and below the item
+//       display, and the hit-test order mirrors the draw order.
+//     - entry 314, `renderTrackingWindow(...)`, directly after entry 313
+//       `renderTrainerWindow(...)` (the oracle's TrackingWnd has its own
+//       placement, so it is not a centre popup).
+//     The count rises 346 -> 348, nothing removed and nothing replaced.
+//   * B899 (#215 / #151 Leg B): the era container windows, applied after
+//     B898, B442 and B895 (rebased onto them). TWO pure insertions, no text
+//     change and no reorder anywhere.
+//     - entries 281-283, the three lines of
+//       `staticUIInput_->processContainerInput(...)`, directly after entry
+//       280 (B895's processTrackingInput) and before T421's
+//       processItemDisplayInput: the oracle's ContainerWindow is
+//       `RelativePosition false` at its own <Location>, so it sits above the
+//       centre popups, the bank, the trainer and the tracking window and
+//       below the item display / Options.
+//     - entry 318, `renderContainerWindows(...)`, directly after entry 317
+//       `renderTrackingWindow(...)`, mirroring that hit-test order.
+//     The count rises 348 -> 352: three statements plus one.
+//   * B897 (GitLab #213): the Friends window. TWO pure insertions, no text
+//     change and no reorder anywhere.
+//     - entry 287, `processFriendsWindowInput();`, directly after the last
+//       line of T421's processItemDisplayInput call and before T434's
+//       Options hop: the Friends window is `RelativePosition false` at its
+//       own placement, so it sits above the item display and below the
+//       Options window, and hit-test order mirrors draw order. It is a
+//       FrameComponent method rather than a StaticUIInput entry point
+//       because an Add/Delete/Who click pushes an intent and a Contact click
+//       opens the chat prefill, both of which only FrameComponent can do.
+//     - entry 321, `renderFriendsWindow(...)`, directly after
+//       `renderItemDisplayPopup(...)` and before `renderOptionsWindow(...)`.
+//     The count rises 352 -> 354.
+const size_t kGoldenSize = 354u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

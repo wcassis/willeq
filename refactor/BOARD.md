@@ -39,6 +39,30 @@ it without taking that measurement first.
 
 ## A — live defects
 
+- **B990** (A) → issue #309. The custom orchestral SoundFont `synthus2.sf2`
+  (12,036,844 B on disk) is held in the client as **24,160,712 B (23.16 MiB) of
+  float samples** (`tsf` holds float; `au.soundfont_custom`, Pi velketor steady
+  `refactor/B977/audio_ledger_census.tsv` — the same 24,162,944 B on x86). It
+  loads on the first `playMusic` of a Velious/Luclin XMI stem (T504 deferred
+  it from startup to `MidiPlayer::selectSoundFont(Custom)`) and is never
+  released: it is 84 % of the audio ledger's measured worst (velketor,
+  28,720,320 B at steady_60s) and what makes the audio ratchet (35 MiB) refuse
+  to move the 32 MiB budget down (B977, #295; docs/decisions.md 2026-10-05).
+  The original client (32 MB total) never decoded its font to float. **This
+  defect moves first**; a re-ratchet of `memoryLedgerBudgets.audio` follows
+  Will's number when it lands. Filed by B977, class::A, lane::pi.
+- **B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
+  float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode,
+  ~2.0–2.4 MB after the B977 tour's combat) and `SfxManager::cache_`
+  (`au.sfx_cache`, `preload()`'s second copy of the same samples), each capped
+  separately at the preset's `soundCache` (8,192 KB on orangepi) — up to
+  16 MiB of duplicated decoded PCM the 1999 client did not carry twice.
+  Measured: b977-audio x86 befallen `au.sound_buffers` 2,322,320 +
+  `au.sfx_cache` 310,640 B at steady_60s (723,600 B at the shutdown and
+  zone_change points; Pi befallen 2,320,376 + 723,456 B at steady_60s,
+  `refactor/B977/audio_ledger_census.tsv` owner rows). Moves SECOND, after
+  B990, in the audio re-ratchet. Filed by B977, class::A, lane::pi.
+
 - ~~**B852** (A) **Nothing verifies that Kunark and Velious zones load.** The CI
   gate renders three classic zones and nothing else; no test, script or gate
   opened a single Kunark or Velious zone. Will, 2026-09-20: "velious and
@@ -8499,6 +8523,20 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   button reachable only when something else has already put an item on the
   cursor. Closes when the inventory/bank/cursor click model has a pick-up and a
   put-down. Found by T436.
+  **OFFLINE HALF DONE B442 (2026-10-05, branch `task/B442-cursor-gesture`)**:
+  `eqt::inventory::CursorGesture` + `CursorGestureIntent` -- left click picks up
+  / places / swaps / merges in the inventory, bank and loot (to the cursor)
+  windows; a stack opens the QuantityWnd, SHIFT = whole, CTRL = one; right /
+  ALT+left = item display; a purse row opens the QuantityWnd for coin -- all
+  per the oracle ledger review/UIGAP-ORACLE/151/gestures.tsv;
+  `/pickup` `/putdown` `/cursor` `/coin`; `tests/test_cursor_gesture.cpp`.
+  STILL OWED (#151 stays open): the live `pickup_roundtrip` scenario and
+  two-client wear check (Leg V), the bag window (B899), trade/give windows, a
+  coin icon + count on the cursor, typing into `QTYW_SliderInput`, the world
+  drop prompt (OP_GroundSpawn) and Destroy prompt (30 -> -1), the
+  hold-to-show right-click display, bank coin rows, a right-click display for
+  corpse rows, loot-to-cursor vs auto-inventory (the oracle did not capture
+  loot). Merchant selling is #152's (the oracle: never via the cursor).
 
 - **B443** (B) `src/client/graphics/ui/merchant_panel.cpp` → issue #152
   (`renderMerchantPopup`, the trade button) -- **which of Buy and Sell the
@@ -12987,7 +13025,7 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   - Owner rows `gs.*` under `WILLEQ_LEDGER_OWNERS=game_state`. Evidence and "Not verified": `refactor/B941/README.md`.
   - Open: the Pi's timorous Player Movement phase was measured on one leg per side (821 vs 1,986 us); the zone would not reach `ready` on either side in eight more attempts.
 - **B942** (A, pathing) → issue #260. `PathfinderNavmesh::FindPath` passed capacity 2048 for 256-entry straight-path stack arrays. Fixed on the B941 branch. No repeatable test yet (needs a navmesh path crossing more than 255 poly edges).
-- **B945** (A, memory) → issue #263. Timorous `game_state` `misc` is 6.2 MB at `ready` on x86; 3.1 MB of it is one `GameEvent` staging buffer the game thread keeps after the zone-in burst.
+- **B945** (A, memory) → issue #263. Timorous `game_state` `misc` is 6.2 MB at `ready` on x86; 3.1 MB of it is one `GameEvent` staging buffer the game thread keeps after the zone-in burst. **Closed 2026-10-05** — refuted as a retention defect (the burst is in flight and freed at the first post-load forward, in the base too); bounded steady-state capacity fix merged; see the "Added 2026-10-05 by task/B945-event-staging-capacity" section at the end of this file and `refactor/B945/README.md`.
 
 ## Added 2026-09-30 by task/B951-collision-map-arrays (issue #269)
 
@@ -12996,3 +13034,11 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   - Open: the plan's "well under 2x the `.map`" bar is not met (emeraldjungle 3.0x) -- see B957.
 - **B953** (A, threading) → issue #271. `RaycastMesh::raycast()` wrote a shared frame counter and per-triangle marks while the render thread and the game thread cast into the same `HCMap` (a data race that could skip a triangle). Fixed on the B951 branch (`raycast()` is const); `RaycastMeshConcurrency.TwoThreadsGetTheSingleThreadedAnswers` fails 13/20 on the old code.
 - **B957** (C, memory vs frame) → issue #275. The collision map is still ~3x its `.map`. Two measured levers (child bounds derived from the parent: nodes to ~40 %; 5-byte delta triangles: emeraldjungle -0.37 MB) each made the Pi's cache-warm rays 11-31 % / 17 % slower. Will's call.
+
+## Added 2026-10-05 by task/B945-event-staging-capacity (issue #263)
+
+- **B945** (A, memory) → issue #263. **Refuted as a retention defect; merged as a bounded steady-state fix.** The issue's "3.1 MB `GameEvent` staging buffer never given back" is the zone-in spawn burst in flight in `GameStateSyncBridge::m_forwardQueue`: alive at the `ready` ledger point (recorded inside the load window on x86, where the render thread is not forwarding), freed at the FIRST `forwardStagedEvents()` after the load — which the base already does. Matched x86 before/after (base 7a621b9c vs fixed, `[b945-cap]` diagnostic: `retained_cap=0` after every forward in BOTH; `misc@ready` 6.23 → 6.23 MB) and the required matched Pi before/after (emeraldjungle — timorous does not reach `ready` on the Pi, the known B925/B940 class — `misc@ready` 316,944 → 317,824, `misc@steady_60s` 1,243,736 → 1,244,768, i.e. identical; no multi-MB single-block `GameEvent` buffer at either point, the top `game_state` block is the 16.4 MB navmesh, owned not misc) both show the issue's number is a measurement artifact, not a leak.
+  - The merged change: both drain sites (`GameStateBridge::drainEvents()`, `forwardStagedEvents()`) carry a high-water halving rule so a burst's buffer is returned once the queue drops below half the peak; bounded to steady state (a live burst can never force its own shrink; no re-alloc per frame). 11/11 `test_game_state_sync_bridge` (4 new burst/drain capacity cases).
+  - Evidence: `~/kb-evidence/b945-event-staging/{x86-before,x86-after,pi-before-ej,pi-after-ej}`; full tables and the verdict: `refactor/B945/README.md`.
+  - Open: none. Recommend closing #263 as not-a-retention (see the README verdict).
+  - **Re-review findings fixed 2026-10-06** (review card t_0d1891b6, CHANGES REQUESTED, doc-only): README steady_60s `game_state` row re-cited to the `point=steady_60s` lines (28,450,392 / 28,457,392, delta +7,000 — the previously cited pair was the `zone_change_before_unload` point); "Not verified" section added; the "Repeatable test" pipeline citation now names pipeline #531 on the code head 428f0ff3 (hygiene/build/test/gate success; build-arm and client-ledger-live manual) instead of the pre-README pipeline #512. The final head's docs-only delta is re-verified by its own pipeline (id recorded on the fix card). MR !85 description now carries `Closes #263`.

@@ -205,6 +205,9 @@ public:
     void equip(const std::string& args) override { record("equip", args); }
     void readItem(const std::string& args) override { record("readItem", args); }
     void scribeItem(const std::string& args) override { record("scribeItem", args); }
+    void cursorCommand(const std::string& verb, const std::string& args) override {
+        record("cursorCommand", verb + (args.empty() ? "" : " " + args));
+    }
 
     // ========== Spellbook ==========
     void forgetSpell(uint8_t gemSlot) override {
@@ -275,6 +278,9 @@ public:
     }
     void closeTradeskillContainer() override {
         record("closeTradeskillContainer");
+    }
+    void toggleBag(int16_t generalSlot) override {
+        record("toggleBag", generalSlot);
     }
 
     // T153: record only the fields the user actually named, in wire order.
@@ -432,6 +438,9 @@ public:
     }
     void trackTarget(uint16_t targetId) override {
         record("trackTarget", static_cast<uint32_t>(targetId));
+    }
+    void trackingCommand(eqt::tracking::TrackingCommand cmd, const std::string& arg) override {
+        record("trackingCommand", static_cast<uint32_t>(cmd), arg);
     }
     void findPerson(uint16_t targetId) override {
         record("findPerson", static_cast<uint32_t>(targetId));

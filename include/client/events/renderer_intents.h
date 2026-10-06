@@ -6,6 +6,7 @@
 
 // T156: the hotbar numbering, shared by value so HotbarActivateIntent cannot
 // carry a raw uint8_t in some other scheme. Dependency-free header.
+#include "client/game_options.h"  // B430: GameOptionIntent
 #include "client/hotbar/hotbar_slot_type.h"
 
 namespace eqt {
@@ -218,6 +219,18 @@ struct EffectsVolumeChangeIntent {
     int step;  // 0..20, clamped by the handler
 };
 
+// --- Options window (B430/B433) ---
+
+// A server-owned Options setting the player changed: a scalar option is sent
+// as OP_SpawnAppearance (eqt::gameOptionAppearanceType), ServerFilters as the
+// whole OP_SetServerFilter payload in `filters`. The game thread publishes
+// the applied scalar back on GameEventType::GameOptionChanged.
+struct GameOptionIntent {
+    eqt::GameOption option;
+    int32_t value = 0;
+    eqt::ServerFilterPayload filters{};
+};
+
 // --- Tradeskill ---
 
 struct TradeskillCombineIntent {
@@ -226,6 +239,11 @@ struct TradeskillCombineIntent {
 
 struct TradeskillCloseIntent {
     uint32_t dropId;  // World object drop ID (0 for inventory containers)
+    // B899: the general slot of a CARRIED container whose window is closing
+    // (Done, the close box, ESC). SLOT_INVALID (-1) for a world container.
+    // A carried bag has no server session, so this closes it game-side
+    // (CommandsComponent::CloseCarriedContainer) and sends nothing.
+    int16_t inventorySlot = -1;
 };
 
 // T419 (board B335): a click on a COMBW_RecipeList row. Reaches
@@ -313,6 +331,27 @@ struct EquipmentChangedIntent {
     int16_t slotId;
 };
 
+// B442 (#151): the click-to-cursor gesture. ONE intent for every item
+// window's slot click AND for /pickup, /putdown and /coin, so a --script
+// tour and a click are one path. The render thread only says WHICH slot was
+// clicked and how; the game thread resolves it against InventoryManager's
+// model (eqt::inventory::ApplyCursorGesture, cursor_gesture.h), which pushes
+// the MoveItemIntent(s). See include/client/inventory/cursor_gesture.h.
+enum class CursorGestureOp : uint8_t {
+    Click = 0,   // left click: pick up, or place / swap / merge onto a stack
+    PickUp,      // /pickup: pick up only -- refused while the cursor holds an item
+    PutDown,     // /putdown: place only -- refused while the cursor is empty
+    CoinClick,   // purse row / /coin: coin onto the cursor, or held coin back
+};
+
+struct CursorGestureIntent {
+    CursorGestureOp op = CursorGestureOp::Click;
+    int16_t slot = -1;      // Titanium (model) slot id; unused by CoinClick
+    int32_t quantity = 0;   // 0 = the whole stack / the whole coin pile
+    uint8_t coinType = 0;   // EQT::COINTYPE_* (0 cp .. 3 pp), CoinClick only
+    bool echo = false;      // a slash command: print the outcome to chat
+};
+
 // --- Audio ---
 
 // T328 Leg B: "play this sound id now".
@@ -331,6 +370,36 @@ struct EquipmentChangedIntent {
 // which T328 Leg A measured against the official client.
 struct PlaySoundIntent {
     uint32_t soundId;
+};
+
+// --- Tracking (B895, GitLab #211) ---
+
+// The Tracking Window's controls. ONE intent for the four gestures, because
+// all four land on eqt::tracking::TrackingController -- the same bodies the
+// /track, /trackfilter, /tracksort and /trackplayers commands reach, so a
+// click and a command cannot do different things. `value` is the filter
+// index (TRW_Filter*Button order R Y W B L G), the sort or the players
+// setting, in eqt::tracking's numbering.
+enum class TrackingIntentOp : uint8_t { Track = 0, ToggleFilter, SetSort, SetPlayers };
+
+struct TrackingIntent {
+    TrackingIntentOp op = TrackingIntentOp::Track;
+    uint16_t spawnId = 0;  // Track: the selected TRW_TrackingList row
+    uint8_t value = 0;
+};
+
+// B897 (GitLab #213): a Friends-window button. The handler runs the SAME
+// eqt::state::ApplySocialEdit() / RunFriendsWho() bodies /friends, /ignore and
+// /friendswho run (include/client/state/social_lists.h), so the window and
+// the slash commands print the same oracle strings. `list` is
+// eqt::state::SocialList (0 friends, 1 ignored). Who with a `name` (a selected
+// friend) is a who-all for that name; Who with none queries the stored list
+// (review/UIGAP-ORACLE/213/friends.tsv rows 13-14).
+enum class SocialListOp : uint8_t { Add, Remove, Who };
+struct SocialListIntent {
+    uint8_t list;
+    SocialListOp op;
+    std::string name;
 };
 
 // ============================================================================
@@ -394,8 +463,15 @@ using RendererIntent = std::variant<
     MoveItemIntent,
     DeleteItemIntent,
     EquipmentChangedIntent,
+    CursorGestureIntent,   // B442
     // Audio (T328)
-    PlaySoundIntent
+    PlaySoundIntent,
+    // Options window (B430)
+    GameOptionIntent,
+    // Tracking (B895)
+    TrackingIntent,
+    // Social (B897)
+    SocialListIntent
 >;
 
 } // namespace events

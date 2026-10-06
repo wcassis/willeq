@@ -796,4 +796,10 @@ void EqActionHandler::scribeItem(const std::string& args) {
     m_eq.Commands().RequestScribeItem(args);
 }
 
+// B442: one relay for the four cursor commands; everything is in
+// CommandsComponent::RequestCursorCommand().
+void EqActionHandler::cursorCommand(const std::string& verb, const std::string& args) {
+    m_eq.Commands().RequestCursorCommand(verb, args);
+}
+
 } // namespace eqt

@@ -29,6 +29,7 @@
 #include "client/spell/buff_manager.h"
 #include "client/skill/skill_manager.h"
 #include "client/audio/volume_steps.h"  // T439: the oracle's 0..20 volume step
+#include "client/state/social_lists.h"  // B897: the friends/ignore command bodies
 #include "client/zone_lines.h"
 #include "client/formatted_message.h"
 #include "common/logging.h"
@@ -337,6 +338,20 @@ void eqt::bridge::BridgeComponent::onBankerInteractIntent(const eqt::events::Ban
 	if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
 		LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is too far away (dist={})", target.name, std::sqrt(distSq));
 		ctx_.out.System("You are too far away to interact with this NPC.");
+		return;
+	}
+
+	// B898 (#214): a guildmaster opens the trainer window. Ctrl+click on an
+	// NPC is fable's stand-in for the official client's RIGHT click on one
+	// (the right button is mouselook until #151's latch), and right-clicking
+	// a guildmaster is how the official client opens training (eqstr 6788,
+	// "Stand close to and right click on the %1 to train your skills.") --
+	// the request is OP_GMTraining, the packet /train and T send.
+	constexpr uint8_t CLASS_WARRIOR_GM = 20;
+	constexpr uint8_t CLASS_BERSERKER_GM = 35;
+	if (target.class_id >= CLASS_WARRIOR_GM && target.class_id <= CLASS_BERSERKER_GM) {
+		LOG_INFO(MOD_MAIN, "Requesting training from {} (id={})", target.name, i.npcId);
+		ctx_.Merchant().RequestTrainerWindow(i.npcId);
 		return;
 	}
 
@@ -716,10 +731,24 @@ void eqt::bridge::BridgeComponent::onHotbarActivateIntent(const eqt::events::Hot
 
 // Tradeskill intents (D20b1)
 void eqt::bridge::BridgeComponent::onTradeskillCombineIntent(const eqt::events::TradeskillCombineIntent& i) {
+	// B899, MEASURED (UIGAP-ORACLE 215 combine.tsv row 7): a stack in the
+	// container is refused here, with eqstr 8504 and no packet -- the window's
+	// Combine and /combine both arrive through this one intent.
+	if (ctx_.Commands().ContainerHoldsAStack(i.containerSlot)) {
+		ctx_.out.System(ctx_.strings.GetStringMessage(8504));
+		return;
+	}
 	ctx_.Player().SendTradeSkillCombine(i.containerSlot);
 }
 
 void eqt::bridge::BridgeComponent::onTradeskillCloseIntent(const eqt::events::TradeskillCloseIntent& i) {
+	// B899: a CARRIED container's window (Done, close box, ESC). No server
+	// session exists for it, and the world container -- if one is open --
+	// is not the one being closed, so the active object id is left alone.
+	if (i.inventorySlot >= 0) {
+		ctx_.Commands().CloseCarriedContainer(i.inventorySlot);
+		return;
+	}
 	if (i.dropId != 0) {
 		ctx_.Entities().SendCloseContainer(i.dropId);
 	}
@@ -848,6 +877,15 @@ void eqt::bridge::BridgeComponent::onSpellDisplayRequestIntent(const eqt::events
 
 // Trainer intents (D20b1)
 void eqt::bridge::BridgeComponent::onTrainSkillIntent(const eqt::events::TrainSkillIntent& i) {
+	// B898: /train <skill|id> and the trainer window's Train button both push
+	// this intent, so the refusals live on the consumer too (one body,
+	// MerchantComponent::TrainRefusal). For /train it re-asks what the command
+	// already asked of the same state, so it cannot disagree.
+	const std::string refusal = ctx_.Merchant().TrainRefusal(i.skillId);
+	if (!refusal.empty()) {
+		ctx_.out.System(refusal);
+		return;
+	}
 	ctx_.Merchant().TrainSkill(i.skillId);
 }
 
@@ -868,6 +906,11 @@ void eqt::bridge::BridgeComponent::onEquipmentChangedIntent(const eqt::events::E
 	ctx_.Entities().UpdatePlayerAppearanceFromInventory();
 }
 
+// B442 (#151): every item window's slot click and /pickup /putdown /coin.
+void eqt::bridge::BridgeComponent::onCursorGestureIntent(const eqt::events::CursorGestureIntent& i) {
+	RunCursorGesture(i);
+}
+
 // Audio (T328 Leg B) -- the ONE consumer of PlaySoundIntent.
 // Forwards to the same BridgeComponent::PlaySound() the water
 // path uses, so the loading-phase gate applies identically. In a
@@ -877,6 +920,12 @@ void eqt::bridge::BridgeComponent::onPlaySoundIntent(const eqt::events::PlaySoun
 #ifdef WITH_AUDIO
 	PlaySound(i.soundId);
 #endif
+}
+
+// B430 -- the Options window's server-owned settings. One line: the body is
+// ApplyGameOption() in bridge_component_options.cpp, which /option shares.
+void eqt::bridge::BridgeComponent::onGameOptionIntent(const eqt::events::GameOptionIntent& i) {
+	ApplyGameOption(i);
 }
 
 void eqt::bridge::BridgeComponent::onMemorizeSpellIntent(const eqt::events::MemorizeSpellIntent& i) {
@@ -901,6 +950,44 @@ void eqt::bridge::BridgeComponent::onMemorizeSpellIntent(const eqt::events::Memo
 			"Cannot memorize into gem {} - check if scribed and level requirement",
 			i.gemSlot + 1));
 	}
+}
+
+// B895 (GitLab #211): the Tracking Window's Track button, filter toggles and
+// the two comboboxes. All four land on the bodies /track, /trackfilter,
+// /tracksort and /trackplayers reach, so a click prints the same eqstr line
+// a command does and publishes the same TrackingListChanged.
+void eqt::bridge::BridgeComponent::onTrackingIntent(const eqt::events::TrackingIntent& i) {
+	ctx_.Player().Tracking().ApplyIntent(i);
+}
+
+// B897 (GitLab #213) -- a Friends-window button. The SAME bodies the
+// /friends, /ignore and /friendswho commands run (social_lists.h), so the
+// window prints exactly the slash commands' oracle strings. The edited lists
+// reach the window back through SocialListsChanged on the next GameTick
+// (SyncSocialLists), never optimistically.
+void eqt::bridge::BridgeComponent::onSocialListIntent(const eqt::events::SocialListIntent& i) {
+	using eqt::state::SocialList;
+	const SocialList list = (i.list == 1) ? SocialList::Ignored : SocialList::Friends;
+	eqt::state::SocialOutcome outcome;
+	if (i.op == eqt::events::SocialListOp::Who && !i.name.empty()) {
+		// MEASURED (review/UIGAP-ORACLE/213/friends.tsv row 14): Who with a
+		// friend SELECTED is a who-all for that one name (OP_WhoAllRequest,
+		// "Players in EverQuest:"), i.e. what `/who <name>` sends.
+		ctx_.Player().SendWhoAllRequest(i.name);
+		return;
+	}
+	if (i.op == eqt::events::SocialListOp::Who) {
+		// Row 13: no selection -> OP_FriendsWho with the stored names.
+		outcome = eqt::state::RunFriendsWho(ctx_.game_state.social(), std::string());
+	} else {
+		outcome = eqt::state::ApplySocialEdit(
+			ctx_.game_state.social(), list,
+			i.op == eqt::events::SocialListOp::Add ? eqt::state::SocialEditOp::Add
+			                                       : eqt::state::SocialEditOp::Remove,
+			i.name, ctx_.character);
+	}
+	for (const auto& line : outcome.lines) ctx_.out.System(line);
+	if (!outcome.whoList.empty()) ctx_.Player().SendFriendsWho(outcome.whoList);
 }
 
 // The intent pump. Pure dispatch: std::visit over an exhaustive overload set,
@@ -961,7 +1048,11 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::MoveItemIntent& i) { onMoveItemIntent(i); },
 			[this](const eqt::events::DeleteItemIntent& i) { onDeleteItemIntent(i); },
 			[this](const eqt::events::EquipmentChangedIntent& i) { onEquipmentChangedIntent(i); },
+			[this](const eqt::events::CursorGestureIntent& i) { onCursorGestureIntent(i); },
 			[this](const eqt::events::PlaySoundIntent& i) { onPlaySoundIntent(i); },
+			[this](const eqt::events::GameOptionIntent& i) { onGameOptionIntent(i); },
+			[this](const eqt::events::TrackingIntent& i) { onTrackingIntent(i); },
+			[this](const eqt::events::SocialListIntent& i) { onSocialListIntent(i); },
 		}, intent);
 	}
 }

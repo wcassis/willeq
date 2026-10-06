@@ -45,12 +45,13 @@ include a consumer needs**:
 | `event_payloads_inventory.h` | inventory, audio volumes, loot, trade |
 | `event_payloads_spell.h` | spells, buffs, skills, weather, zone lifecycle |
 | `event_payloads_ui.h` | UI, hotbar, spell visuals, diagnostics |
+| `event_payloads_tracking.h` | the Tracking Window (B895: `TrackingListChangedData`) |
 
 A new event adds its enumerator to `event_types.h`, its payload struct to the
 family header it belongs to, and its variant alternative to `event_bus.h` --
 three files, none of which is the 1,269-line one this replaced.
 
-**101 event types** (`GameEventType`, re-counted 2026-09-07 by T439, which added `VolumesChanged`; T421 added `ItemDisplayShown` and T419 `TradeskillRecipeListCleared` / `TradeskillRecipeReceived`) organized by domain; `IrrlichtBridge` has a case for all 101 in its switch, `ConsoleBridge` logs a subset headless. **This number is netted by `DocCounts`** (`scripts/refactor/check_doc_counts.py`), so a new enumerator that leaves it stale is a red test, not a silent drift:
+**104 event types** (`GameEventType`; B897 added `SocialListsChanged`, B895 added `TrackingListChanged`, B430 `GameOptionChanged`; T439 added `VolumesChanged`; T421 added `ItemDisplayShown` and T419 `TradeskillRecipeListCleared` / `TradeskillRecipeReceived`) organized by domain; `IrrlichtBridge` has a case for all 104 in its switch, `ConsoleBridge` logs a subset headless. **This number is netted by `DocCounts`** (`scripts/refactor/check_doc_counts.py`), so a new enumerator that leaves it stale is a red test, not a silent drift:
 - **Player**: PositionChanged, StatsChanged, MovementModeChanged, LevelChanged
 - **Entity**: EntitySpawned, EntityDespawned, EntityMoved, EntityAppearanceChanged, EntityAnimation
 - **Door**: DoorSpawned, DoorStateChanged

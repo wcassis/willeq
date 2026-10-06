@@ -41,6 +41,17 @@
 #include "client/graphics/ui/merchant_panel.h"
 #include "client/graphics/ui/bank_panel.h"
 #include "client/graphics/ui/cursor_attachment.h"
+#include "client/graphics/ui/trainer_panel.h"  // B898
+#include "client/graphics/ui/quantity_window.h"   // B442
+#include "client/graphics/ui/inventory_layout.h"  // B442
+// B895 (GitLab #211).
+#include "client/graphics/ui/tracking_panel.h"
+#include "client/tracking/tracking_state.h"
+#include "client/con_tier.h"
+#include "client/display_eqstr.h"
+// B899 (#215 / #151 Leg B).
+#include "client/graphics/ui/container_panel.h"
+#include "client/graphics/ui/friends_panel.h"   // B897
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -150,6 +161,15 @@ struct PanelStates {
     MerchantPanelState merchant;
     BankPanelState bank;
     CursorAttachmentState cursor;
+    TrainerPanelState trainer;  // B898 (#214)
+    // B895: the Tracking Window, with con-coloured rows through the real
+    // list rules and combobox text from the shipped eqstr table.
+    TrackingPanelState tracking;
+    // B899 (#215): the era container windows -- a carried bag, a carried
+    // tradeskill kit and a world forge, all through the REAL appliers.
+    ContainerWindowsState containers;
+    // B897: the Friends window, captured once per tab.
+    FriendsPanelState friends;
     XPBarState xp;
 
     PanelStates() {
@@ -189,6 +209,53 @@ struct PanelStates {
             inventory.generalSlots[i].quantity = i + 1;
         }
         inventory.hoveredSlot = 4;
+
+        // B895: a mixed-con list as a level-12 Ranger sees it, through the
+        // real VisibleRows() and the shared con table.
+        {
+            using namespace eqt::tracking;
+            struct S { const char* name; int level; float dist; bool pc; };
+            static const S kSpawns[] = {
+                {"Guard Hezlan", 30, 120.f, false}, {"a gnoll pup", 2, 40.f, false},
+                {"a large rat", 7, 75.f, false},    {"a black wolf", 11, 90.f, false},
+                {"Fippy Darkpaw", 14, 210.f, false}, {"a decaying skeleton", 1, 33.f, false},
+                {"Oraclerogue", 10, 15.f, true},     {"a gnoll", 13, 160.f, false},
+                {"an orc pawn", 16, 280.f, false},   {"a moss snake", 9, 55.f, false},
+            };
+            std::vector<TrackEntry> entries;
+            uint32_t order = 0;
+            for (const auto& sp : kSpawns) {
+                TrackEntry e;
+                e.spawnId = static_cast<uint16_t>(400 + order);
+                e.name = sp.name; e.level = static_cast<uint8_t>(sp.level);
+                e.distance = sp.dist; e.isPlayer = sp.pc; e.serverOrder = order++;
+                e.con = eqt::ConTierForLevels(12, sp.level);
+                entries.push_back(e);
+            }
+            // One filter unchecked, and the rows computed WITH it, so the
+            // picture is self-consistent: no yellow NPC row while Y is off.
+            TrackingSettings settings;
+            settings.filters[static_cast<size_t>(TrackFilter::Yellow)] = false;
+            for (const auto& e : VisibleRows(entries, settings)) {
+                eqt::state::TrackingRowData r;
+                r.spawnId = e.spawnId; r.name = e.name; r.isPlayer = e.isPlayer;
+                const auto c = eqt::ConTierRgb(e.con);
+                r.r = c.r; r.g = c.g; r.b = c.b;
+                tracking.rows.push_back(r);
+            }
+            for (int i = 0; i < kSortCount; ++i) {
+                tracking.sortOptions.push_back(eqt::EqStrLine(
+                    eqStrings(), SortOptionStringId(static_cast<TrackSort>(i))));
+            }
+            for (int i = 0; i < kPlayersCount; ++i) {
+                tracking.playersOptions.push_back(eqt::EqStrLine(
+                    eqStrings(), PlayersOptionStringId(static_cast<TrackPlayers>(i))));
+            }
+            tracking.filters = settings.filters;
+            tracking.isOpen = true;
+            tracking.selectedSpawnId = 403;
+            tracking.hoveredRow = 1;
+        }
 
         // T436 (board B429): a merchant with real stock, a bank with real
         // contents, and an item on the cursor. The icon ids are real
@@ -241,6 +308,21 @@ struct PanelStates {
             cd.iconId = 918;
             cd.quantity = 4;
             applyCursorSlotChanged(cursor, cd);
+        }
+        {
+            // B897: names from the oracle's own Obian_project1999.ini
+            // [Friends] and Logjam_project1999.ini [Ignored], plus filler
+            // so the VScroll thumb shows; a selection and a typed name.
+            eqt::state::SocialListsChangedData sl;
+            // In the model's order: sorted (UIGAP-ORACLE/213 friends.tsv rows 1, 11).
+            sl.friends = {"aaodyn", "bilblow", "bortill", "caricature", "Drachtha",
+                          "Gudknobadd", "hrakk", "khozmo", "shikaka", "Thrasix",
+                          "vilurum", "Xenephon"};
+            sl.ignored = {"ilvvqwgwqvvqgll", "Spammer"};
+            applySocialListsChanged(friends, sl);
+            friends.selected[0] = 2;
+            friends.nameEntry[0].inputText = "Oraclecharlie";
+            friends.nameEntry[1].inputText = "Pest";
         }
         inventory.coins[0] = 12; inventory.coins[1] = 5;
         inventory.coins[2] = 8;  inventory.coins[3] = 47;
@@ -437,7 +519,73 @@ struct PanelStates {
             applyItemDisplayShown(spellDisplay, d);
         }
 
+        // B899 (#215 / #151 Leg B): the container windows, opened through the
+        // same applier the bridge uses, with real dragitem icon ids.
+        {
+            auto open = [this](bool world, int16_t slot, const char* name,
+                               uint8_t type, uint8_t count, uint32_t icon) {
+                eqt::state::TradeskillContainerOpenedEvent e;
+                e.isWorldObject = world;
+                e.objectId = world ? 4242u : 0u;
+                e.inventorySlot = slot;
+                e.containerName = name;
+                e.containerType = type;
+                e.slotCount = count;
+                e.iconId = icon;
+                applyContainerOpened(containers, e);
+            };
+            auto fill = [this](int16_t slotId, const char* name, uint32_t icon,
+                               uint32_t qty) {
+                eqt::state::InventorySlotChangedData d;
+                d.slotId = slotId;
+                d.hasItem = true;
+                d.itemId = 3000u + static_cast<uint32_t>(slotId);
+                d.itemName = name;
+                d.iconId = icon;
+                d.quantity = qty;
+                applyContainerSlotChanged(containers, d);
+            };
+            namespace inv = eqt::inventory;
+            // A Backpack (bag type 5, eight slots) in general slot 1.
+            open(false, inv::GENERAL_BEGIN, "Backpack", inv::CONTAINER_BACKPACK, 8, 565);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN, 0), "Bread Cake", 537, 4);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN, 3), "Water Flask", 550, 1);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN, 6), "Bone Chips", 772, 12);
+            // A Sewing Kit (bag type 16, ten slots) in general slot 2.
+            open(false, inv::GENERAL_BEGIN + 1, "Sewing Kit", inv::CONTAINER_TAILORING, 10, 598);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN + 1, 0), "Silk Thread", 1093, 2);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN + 1, 1), "Spider Silk", 1094, 1);
+            // A world forge.
+            open(true, inv::SLOT_INVALID, "Forge", inv::CONTAINER_BLACKSMITHING, 10, 0);
+            fill(inv::WORLD_BEGIN + 0, "Small Brick of Ore", 700, 1);
+            fill(inv::WORLD_BEGIN + 1, "Water Flask", 550, 1);
+            containers.windows[2].hoveredSlot = 1;
+        }
+
         xp.progress = 0.62f;
+
+        // B898 (#214): a warrior guildmaster's reply, with more rows than the
+        // list shows so the scroll bar's thumb is visible. Costs are eqemu's
+        // (cur-10)^3/100, computed the way the game thread computes them.
+        {
+            eqt::state::TrainerWindowOpenedData t;
+            t.npcId = 90; t.npcName = "Guildmaster Rough";
+            t.platinum = 12; t.gold = 3; t.silver = 4; t.copper = 5;
+            t.practicePoints = 5;
+            static const struct { uint8_t id; const char* name; uint32_t cur; } kSkills[] = {
+                {0, "1H Blunt", 22}, {1, "1H Slashing", 51}, {2, "2H Blunt", 0},
+                {3, "2H Slashing", 14}, {7, "Archery", 3}, {10, "Bash", 30},
+                {15, "Defense", 48}, {19, "Disarm", 0}, {21, "Dodge", 35},
+                {22, "Double Attack", 0}, {33, "Offense", 55}, {34, "Parry", 12},
+                {36, "Piercing", 9}, {50, "Swimming", 40}};
+            for (const auto& s : kSkills) {
+                const uint32_t adj = s.cur > 10 ? s.cur - 10 : 0;
+                t.skills.push_back({s.id, s.name, s.cur, 200, adj * adj * adj / 100});
+            }
+            applyTrainerWindowOpened(trainer, t);
+            trainer.selectedRow = 1;
+            trainer.hoveredRow = 5;
+        }
     }
 };
 
@@ -523,12 +671,74 @@ std::vector<PanelCapture> buildCaptureList() {
             renderMerchantPopup(u, l, s.merchant, s.cursor); }},
         {"bank", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderBankWindow(u, l, s.bank); }},
+        // B898 (#214): the skill trainer window, and the same window scrolled.
+        {"trainer", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.trainer.scrollOffset = 0;
+            renderTrainerWindow(u, l, s.trainer, s.xp.progress); }},
+        {"trainer_scrolled", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.trainer.scrollOffset = s.trainer.maxScrollOffset();
+            renderTrainerWindow(u, l, s.trainer, s.xp.progress); }},
+        // B895: the Tracking Window, and the same window with its sort
+        // combobox dropped down.
+        {"tracking", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.tracking.openCombo = TrackingCombo::None;
+            renderTrackingWindow(u, l, s.tracking); }},
+        {"tracking_sort_open", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.tracking.openCombo = TrackingCombo::Sort;
+            renderTrackingWindow(u, l, s.tracking); }},
+        // B899 (#215): each container window alone, then all three open at
+        // once: they share the oracle position, newest on top (measured).
+        {"container_bag", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            ContainerWindowsState one;
+            one.windows[1] = s.containers.windows[1];
+            renderContainerWindows(u, l, one); }},
+        {"container_sewing_kit", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            ContainerWindowsState one;
+            one.windows[2] = s.containers.windows[2];
+            renderContainerWindows(u, l, one); }},
+        {"container_forge", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            ContainerWindowsState one;
+            one.windows[0] = s.containers.windows[0];
+            renderContainerWindows(u, l, one); }},
+        {"container_three_open", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderContainerWindows(u, l, s.containers); }},
+        // B897: both tabs of the Friends window (EQUI_FriendsWnd.xml).
+        {"friends_friends", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.friends.isOpen = true; s.friends.activePage = 0;
+            renderFriendsWindow(u, l, s.friends); }},
+        {"friends_ignored", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.friends.isOpen = true; s.friends.activePage = 1;
+            renderFriendsWindow(u, l, s.friends); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.
             s.cursor.mouseX = l.screenW / 2;
             s.cursor.mouseY = l.screenH / 2;
             renderCursorAttachment(u, l, s.cursor); }},
+        // B442 (#151): click-to-cursor. `inventory_pickup` is the popup the
+        // moment after a left click lifted general slot 3's item: that slot
+        // is empty and the item rides the pointer, which sits over the empty
+        // slot it is about to be put down in. `quantity` is the QuantityWnd a
+        // plain click on a stack of 20 opens, slider at 7.
+        {"inventory_pickup", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            InventoryPanelState inv = s.inventory;
+            inv.generalSlots[2].hasItem = false;
+            inv.hoveredSlot = 22 + 5;
+            inv.generalSlots[5].hasItem = false;
+            renderInventoryPopup(u, l, inv);
+            CursorAttachmentState held;
+            held.hasItem = true;
+            held.itemName = s.inventory.generalSlots[2].itemName;
+            held.iconId = s.inventory.generalSlots[2].iconId;
+            const auto target = InventoryLayout::slotRect(l, 22 + 5);
+            held.mouseX = target.UpperLeftCorner.X + 8;
+            held.mouseY = target.UpperLeftCorner.Y + 8;
+            renderCursorAttachment(u, l, held); }},
+        {"quantity", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            QuantityWindowState q;
+            q.openForStack(23, "Arrow", 20);
+            q.value = 7;
+            renderQuantityWindow(u, l, q); }},
         // Everything the HUD draws at once -- the screen a player sees.
         {"hud_all", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderPlayerStatus(u, l, s.stats);

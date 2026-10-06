@@ -454,6 +454,11 @@ void EqActionHandler::closeTradeskillContainer() {
     m_eq.Commands().RequestCloseTradeskillContainer();
 }
 
+// B899: /bag <general slot> -- the carried container window's producer.
+void EqActionHandler::toggleBag(int16_t generalSlot) {
+    m_eq.Commands().RequestToggleBag(generalSlot);
+}
+
 // T153: /appearance. SendFaceChange() had zero production callers, so nothing
 // had ever exercised it; this is the wiring, and the merge below is the reason
 // it needs a handler rather than going straight from CommandProcessor.

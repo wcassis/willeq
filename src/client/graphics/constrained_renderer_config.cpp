@@ -469,6 +469,17 @@ ConstrainedRendererConfig ConstrainedRendererConfig::fromPreset(ConstrainedRende
             // (review/T496/pi/table_categories.tsv). x1.25 = 30.66 -> 32.
             // This is two SoundFonts' float samples and essentially nothing
             // else; it does not vary with the zone.
+            // B977 (2026-10-05, Will: "4) perform the test run"; held 2026-09-30
+            // by "lower the seven budgets, hold audio", B943): re-measured on the
+            // Pi and x86 over 13 classic + 3 Velious zones with the attribution
+            // fix, so the on-demand custom SoundFont and first-play WAVs are
+            // charged here instead of game_state (refactor/B977/audio_ledger_census.tsv).
+            // Worst at steady_60s is velketor, 28,720,320 B (Pi) / 28,918,432 B
+            // (x86); 84 % of it is synthus2.sf2 (24.16 MB of float samples).
+            // Convention (worst x 1.25, up to a whole MiB, DOWN only) gives 35 MiB,
+            // above this budget, so it HOLDS at 32 MiB. The SoundFont defect (B990,
+            // #309) moves first, then the duplicated SFX caches (B989, #308); the
+            // re-ratchet follows Will's number when they land.
             config.memoryLedgerBudgetBytes[static_cast<size_t>(eqt::memory::Category::Audio)] =
                 32 * 1024 * 1024;
             // Deferred asset loading (progressive mesh building during gameplay)

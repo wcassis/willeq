@@ -208,6 +208,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ToggleBuffWindow: actionQueue_.push_back({RA::ToggleBuffWindow}); break;
                     case HA::ToggleCombatAbilities: actionQueue_.push_back({RA::ToggleCombatAbilities}); break;
                     case HA::ToggleOptions: actionQueue_.push_back({RA::ToggleOptions}); break;
+                    case HA::ToggleFriends: actionQueue_.push_back({RA::ToggleFriends}); break;  // B897
                     case HA::ToggleVendor: actionQueue_.push_back({RA::ToggleVendor}); break;
                     case HA::ToggleTrainer: actionQueue_.push_back({RA::ToggleTrainer}); break;
                     case HA::ToggleCollision: actionQueue_.push_back({RA::ToggleCollision}); break;
@@ -331,6 +332,7 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                 break;
             case irr::EMIE_RMOUSE_PRESSED_DOWN:
                 rightButtonDown_.store(true, std::memory_order_relaxed);
+                rightButtonClicked_.store(true, std::memory_order_relaxed);  // B442
                 break;
             case irr::EMIE_RMOUSE_LEFT_UP:
                 rightButtonDown_.store(false, std::memory_order_relaxed);
@@ -401,6 +403,11 @@ bool RendererEventReceiver::wasLeftButtonClicked() {
 
 bool RendererEventReceiver::wasLeftButtonReleased() {
     return leftButtonReleased_.exchange(false, std::memory_order_relaxed);
+}
+
+// B442: read-and-reset, one consumer (renderStaticUI), like the left click.
+bool RendererEventReceiver::wasRightButtonClicked() {
+    return rightButtonClicked_.exchange(false, std::memory_order_relaxed);
 }
 
 

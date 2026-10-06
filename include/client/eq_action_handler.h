@@ -116,6 +116,7 @@ public:
     void equip(const std::string& args) override;  // T141
     void readItem(const std::string& args) override;  // T273
     void scribeItem(const std::string& args) override;  // T276
+    void cursorCommand(const std::string& verb, const std::string& args) override;  // B442
 
     // ========== Spellbook ==========
 
@@ -155,6 +156,7 @@ public:
     void recipesFavorite(const std::vector<uint32_t>& recipeIds) override;
     void tradeskillCombine(int16_t containerSlot) override;
     void closeTradeskillContainer() override;
+    void toggleBag(int16_t generalSlot) override;  // B899
 
     // T153: /appearance -- merges the named fields over the character's
     // current appearance and calls EverQuest::SendFaceChange().
@@ -279,6 +281,7 @@ public:
     // ========== Social / Find (T150) ==========
     void assistGroup(uint16_t targetId) override;
     void trackTarget(uint16_t targetId) override;
+    void trackingCommand(eqt::tracking::TrackingCommand cmd, const std::string& arg) override;  // B895
     void findPerson(uint16_t targetId) override;
     void friendsWho(const std::string& friendsList) override;
 

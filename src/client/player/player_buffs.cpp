@@ -649,43 +649,14 @@ void eqt::player::PlayerComponent::ZoneProcessBindWound(const EQ::Net::Packet &p
 
 void eqt::player::PlayerComponent::ZoneProcessTrack(const EQ::Net::Packet &p)
 {
-	// Track response contains variable number of Track_Struct entries
-	// Each entry is 8 bytes: entityid (4) + distance (4)
-	// Plus 2 bytes for opcode = minimum 2 bytes
-
+	// B895 (GitLab #211): the reply is the Tracking Window's feed. It used to
+	// be dumped into chat here ("name - N units", plus an invented "No
+	// trackable entities nearby."); the official client prints nothing and
+	// opens its window instead. The chat form survives as /tracklist.
 	if (p.Length() < 2) {
 		LOG_WARN(MOD_ENTITY, "Track response too short: {} bytes", p.Length());
 		return;
 	}
-
-	size_t data_len = p.Length() - 2;  // Subtract opcode
-	size_t entry_count = data_len / sizeof(EQT::Track_Struct);
-
-	LOG_DEBUG(MOD_ENTITY, "Track response: {} bytes, {} entries", p.Length(), entry_count);
-
-	if (entry_count == 0) {
-		ctx_.out.System("No trackable entities nearby.");
-		return;
-	}
-
-	ctx_.out.System(fmt::format("=== Tracking ({} targets) ===", entry_count));
-
-	size_t offset = 2;  // Skip opcode
-	for (size_t i = 0; i < entry_count && offset + sizeof(EQT::Track_Struct) <= p.Length(); i++) {
-		uint32_t entity_id = p.GetUInt32(offset);
-		float distance = p.GetFloat(offset + 4);
-		offset += sizeof(EQT::Track_Struct);
-
-		// Look up entity name
-		std::string name = "Unknown";
-		auto it = ctx_.entities.find(static_cast<uint16_t>(entity_id));
-		if (it != ctx_.entities.end()) {
-			name = it->second.name;
-		}
-
-		ctx_.out.System(fmt::format("  {} - {:.0f} units", name, distance));
-		LOG_DEBUG(MOD_ENTITY, "  Track entry: entity_id={}, name={}, distance={:.1f}",
-			entity_id, name, distance);
-	}
+	m_tracking.OnTrackReply(p);
 }
 

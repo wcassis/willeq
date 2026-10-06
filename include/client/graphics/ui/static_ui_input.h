@@ -17,6 +17,8 @@
 #include <string>
 
 #include "client/graphics/ui/options_layout.h"
+#include "client/graphics/ui/quantity_window.h"   // B442
+#include "client/inventory/cursor_gesture.h"      // B442
 
 namespace eqt { namespace bridge { class GameStateBridge; } }
 
@@ -40,6 +42,9 @@ struct MerchantPanelState;
 struct BankPanelState;
 struct CursorAttachmentState;
 struct OptionsPanelState;
+struct TrainerPanelState;  // B898
+// B899 (#215 / #151 Leg B).
+struct ContainerWindowsState;
 
 /**
  * T313 -- the three panels that carry a scrollOffset.
@@ -70,7 +75,43 @@ public:
     StaticUIInput() = default;
     ~StaticUIInput() = default;
 
-    void init(eqt::bridge::GameStateBridge* bridge) { bridge_ = bridge; }
+    void init(eqt::bridge::GameStateBridge* bridge) {
+        bridge_ = bridge;
+        cursorGesture_.setBridge(bridge);
+    }
+
+    // --- B442 (#151): the click-to-cursor gesture --------------------------
+    //
+    // The per-frame click state the item-window arms need beyond the left
+    // click every entry point already takes: the RIGHT click (latched by
+    // RendererEventReceiver::wasRightButtonClicked(), consumed only by the
+    // static UI -- a right click off every panel still mouselooks, because
+    // mouselook reads isRightButtonDown(), not this latch), the modifiers,
+    // and what the cursor holds. Set once per frame before the entry points
+    // run; kept off their parameter lists so no existing caller changes.
+    void setFrameClickState(bool rightClicked, eqt::inventory::ClickModifiers mods,
+                            const CursorAttachmentState* cursor) {
+        rightClicked_ = rightClicked;
+        mods_ = mods;
+        cursor_ = cursor;
+    }
+
+    /**
+     * The QuantityWnd, hit-tested FIRST (it is drawn last, `RelativePosition
+     * false` above everything). Returns true when the position is over it; the
+     * caller then withholds the click from every other entry point. Accept
+     * pushes the pick-up through cursorGesture(). Measured on the official
+     * client: ESC does NOT close it (gestures.tsv row 16) -- only its X and
+     * Accept do -- and while it is up other item-slot clicks are ignored
+     * (row 18).
+     */
+    bool processQuantityInput(int mouseX, int mouseY, bool leftClicked,
+                              const UILayout& layout);
+
+    /** The shared gesture -- the bag window (B899) calls click() on it. */
+    eqt::inventory::CursorGesture& cursorGesture() { return cursorGesture_; }
+    QuantityWindowState& quantityWindow() { return quantity_; }
+    const QuantityWindowState& quantityWindow() const { return quantity_; }
 
     /**
      * Process input for the current frame.
@@ -168,6 +209,18 @@ public:
                               const CursorAttachmentState& cursor);
 
     /**
+     * B898 (#214): the skill trainer window. Its own entry point (the T415 /
+     * T421 shape), defined in trainer_panel.cpp beside its hit tests. The
+     * window is not a centre popup (Style_Sizable false, 580x280), so it is
+     * hit-tested above them like the bank. Pushes only pre-existing intents:
+     * `TrainSkillIntent` (Train, the selected row's skill id -- what
+     * `/train <id>` pushes) and `CloseTrainerIntent` (Done and the close box
+     * -- what `/trainclose` pushes). Closes only on TrainerWindowClosed.
+     */
+    bool processTrainerInput(int mouseX, int mouseY, bool leftClicked,
+                             const UILayout& layout, TrainerPanelState& trainer);
+
+    /**
      * T434: the Options window.
      *
      * Its own entry point for the same reason processPanelInput() and
@@ -193,6 +246,33 @@ public:
                              const UILayout& layout,
                              OptionsPanelState& options,
                              OptionsLayout::Setting& changed);
+
+    /**
+     * B899 (#215 / #151 Leg B): the container windows -- world and carried.
+     * Defined in src/client/graphics/ui/container_input.cpp.
+     *
+     * Its own entry point, the T415/T421/T436 shape: the oracle's
+     * ContainerWindow is `RelativePosition false` at its own <Location>, so
+     * it is not a centre popup and is hit-tested beside the bank.
+     *
+     * Combine pushes the existing TradeskillCombineIntent with the world
+     * (1000) or the carried (the bag's own general slot) container slot;
+     * Done and the close box push TradeskillCloseIntent and leave the window
+     * up until TradeskillContainerClosed comes back. A left or right click
+     * on a cell goes through B442's shared slotClick() -> CursorGesture,
+     * with the cell's wire slot (bag sub-slot 251-330 or world 4000-4009).
+     */
+    bool processContainerInput(int mouseX, int mouseY, bool leftClicked,
+                               const UILayout& layout,
+                               ContainerWindowsState& containers);
+
+    /**
+     * B899: ESC on the container windows. The topmost (most recently opened,
+     * world container or bag) is asked first; each pushes
+     * TradeskillCloseIntent and nothing is hidden locally. Returns true if a
+     * window was addressed.
+     */
+    bool processContainerEscape(ContainerWindowsState& containers);
 
     /**
      * Handle a key press. Returns true if consumed.
@@ -311,6 +391,25 @@ public:
 
 private:
     eqt::bridge::GameStateBridge* bridge_ = nullptr;
+
+    // B442: see setFrameClickState().
+    eqt::inventory::CursorGesture cursorGesture_;
+    QuantityWindowState quantity_;
+    bool rightClicked_ = false;
+    eqt::inventory::ClickModifiers mods_;
+    const CursorAttachmentState* cursor_ = nullptr;
+    // Coin this UI put on the cursor and has not yet put back. The renderer
+    // has no coin feed (CursorAttachmentState carries items); the game thread
+    // stays authoritative -- PlanCoinGesture() returns held coin on ANY purse
+    // click -- so this only chooses between "open the dialog" and "put back".
+    bool coinHeld_ = false;
+    bool cursorHoldsItem() const;
+    // One item-slot click through the shared gesture: opens the QuantityWnd
+    // when the gesture says so, otherwise the gesture pushed the intent.
+    void slotClick(int16_t slotId, bool leftClicked,
+                   const eqt::inventory::SlotSnapshot& slot, const std::string& name);
+    // A purse row (0 = platinum .. 3 = copper, the oracle's IW_Money order).
+    void coinRowClick(int denom, int32_t onHand);
 
     // Hit test a point against a horizontal slot row and return slot index,
     // or -1. Used by the hotbar; the inventory popup's grid geometry comes

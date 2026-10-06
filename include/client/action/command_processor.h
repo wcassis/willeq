@@ -276,6 +276,7 @@ private:
     void registerLoggingFilterCommands();
     void registerFindCommands();
     void registerGMCommands();
+    void registerTrackingCommands();  // B895
 
     // Built-in command handlers
     // T98 deleted cmdSay/cmdOOC/cmdAuction/cmdTell/cmdReply/cmdGroupSay/
@@ -446,6 +447,7 @@ private:
     // producer. Argument-less; both refuse a stray argument.
     ActionResult cmdCombine(const std::string& args);
     ActionResult cmdCloseContainer(const std::string& args);
+    ActionResult cmdBag(const std::string& args);  // B899
 
     // T135: Utility (6), migrated from eq_commands.cpp's leftover Group
     // Split / Misc / Skill / Movement / Utility blocks -- these six do not
@@ -479,6 +481,11 @@ private:
     ActionResult cmdEquip(const std::string& args);  // T141
     ActionResult cmdRead(const std::string& args);   // T273
     ActionResult cmdScribe(const std::string& args); // T276
+    // B442 (#151): command_processor_cursor.cpp.
+    ActionResult cmdPickup(const std::string& args);
+    ActionResult cmdPutdown(const std::string& args);
+    ActionResult cmdCursor(const std::string& args);
+    ActionResult cmdCoin(const std::string& args);
 
     // T140: final 16 of the game-registry migration programme (equip
     // deliberately excluded -- see refactor/T140_migrate_final_seventeen.md).
@@ -619,7 +626,10 @@ private:
     ActionResult cmdGroupAssist(const std::string& args);
     ActionResult cmdTrack(const std::string& args);
     ActionResult cmdFind(const std::string& args);
+    // B897: the friends/ignore family, command_processor_friends.cpp.
     ActionResult cmdFriendsWho(const std::string& args);
+    ActionResult cmdFriends(const std::string& args);
+    ActionResult cmdIgnore(const std::string& args);
 
     // Helper methods
     static std::string toLower(const std::string& str);

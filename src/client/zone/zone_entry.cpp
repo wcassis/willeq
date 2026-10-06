@@ -515,6 +515,20 @@ void eqt::zone::ZoneComponent::ZoneProcessPlayerProfile(const EQ::Net::Packet &p
 	// not "this account has GM privileges" -- see EverQuest::GetGMMode().
 	m_gm_mode = (gm_mode != 0);
 
+	// B430: the five server-owned Options-window settings, from the same
+	// profile (titanium_structs.h PlayerProfile_Struct: anon @13053,
+	// autosplit @13256, group/raid/guild autoconsent @19572..19574). The
+	// window shows these, never a locally saved guess. A short profile (a
+	// truncated test packet) publishes nothing.
+	if (p.Length() >= base + 19575) {
+		const uint8_t anon = p.GetUInt8(base + 13053);
+		ctx_.game_state.player().setAnonymous(anon == 1);
+		ctx_.game_state.player().setRoleplay(anon == 2);
+		ctx_.Bridge().PublishProfileGameOptions(
+			anon, p.GetUInt32(base + 13256), p.GetUInt8(base + 19572),
+			p.GetUInt8(base + 19573), p.GetUInt8(base + 19574));
+	}
+
 	// Phase 7.2 / T286: the single store for all of the above
 	auto& player = ctx_.game_state.player();
 	player.setName(name[0] ? name : ctx_.character);  // Use server name if available, else local

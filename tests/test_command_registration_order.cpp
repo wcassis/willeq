@@ -166,8 +166,18 @@ TEST(CommandRegistrationOrderTest, GoldenIsPresentAndTheRightSize) {
     // +1 by T347 (B012), which INSERTED entry 022 `cleartarget` after 021
     // `target` and renumbered 022-142 to 023-143. Correction 32: an order
     // golden learns a reviewed edit in place, at its positions, named here.
-    EXPECT_EQ(golden.size(), 143u)
-        << "142 commands at G03, +1 for T347's /cleartarget; the golden has "
+    // +4 by B442 (#151): 078-081 `pickup` `putdown` `cursor` `coin` after
+    // 077 `scribe`, 078-143 renumbered to 082-147.
+    // +5 by B895 (GitLab #211): registerTrackingCommands() APPENDED entries
+    // 148-152 (trackfilter, tracksort, trackplayers, stoptracking, tracklist).
+    // +1 by B899 (#215): entry 065 `bag` INSERTED after 064 `closecontainer`,
+    // 065-152 renumbered to 066-153.
+    // +2 by B897 (#213): 140 `friends` and 141 `ignore` after 139 `friendswho`,
+    // 140-153 renumbered to 142-155.
+    EXPECT_EQ(golden.size(), 155u)
+        << "142 commands at G03, +1 for T347's /cleartarget, +4 for B442's cursor "
+           "commands, +5 for B895's tracking family, +1 for B899's /bag, +2 for "
+           "B897's /friends and /ignore; the golden has "
         << golden.size();
     for (const auto& n : golden) {
         EXPECT_FALSE(n.empty());

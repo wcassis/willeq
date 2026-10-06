@@ -357,80 +357,18 @@ void eqt::merchant::MerchantComponent::ZoneProcessGMTraining(const EQ::Net::Pack
 	// T286: and the ONLY write -- EverQuest keeps no trainer copy.
 	ctx_.game_state.player().setTrainer(trainerNpcId, trainerName);
 
-	// Build list of trainable skills and publish to bridge
-	eqt::state::TrainerWindowOpenedData trainerData;
-	trainerData.npcId = ctx_.game_state.player().trainerNpcId();
-	trainerData.npcName = ctx_.game_state.player().trainerName();
-	trainerData.platinum = ctx_.self.GetPlatinum();
-	trainerData.gold = ctx_.self.GetGold();
-	trainerData.silver = ctx_.self.GetSilver();
-	trainerData.copper = ctx_.self.GetCopper();
-	trainerData.practicePoints = ctx_.self.GetPracticePoints();
-
 	// T280: keep the caps for the life of the session. /train has to answer
 	// "does this trainer teach that, and am I already at its cap" before it
 	// puts anything on the wire, and this reply is the only place the
 	// answer ever arrives.
 	m_trainer_skill_caps.assign(trainee->skills, trainee->skills + EQT::MAX_PP_SKILL);
 
-	for (uint8_t skill_id = 0; skill_id < EQT::MAX_PP_SKILL; ++skill_id) {
-		uint32_t max_trainable = trainee->skills[skill_id];
-
-		// Skip skills with max_trainable = 0 (not trainable at this trainer)
-		if (max_trainable == 0) {
-			continue;
-		}
-
-		// Get current skill value
-		uint32_t current_value = 0;
-		if (ctx_.skill_manager) {
-			current_value = ctx_.skill_manager->getSkillValue(skill_id);
-		}
-
-		// Skip skills already at or above max
-		if (current_value >= max_trainable) {
-			continue;
-		}
-
-		// Get skill name
-		const char* skill_name = EQ::getSkillName(skill_id);
-
-		// Training cost, in COPPER. T280 corrected this: the old
-		// "(current_value + 1) * 10" was invented, and disagreed with the
-		// server at every skill value. eqemu's Client::OPGMTrainSkill
-		// (zone/client_process.cpp) is the authority and computes
-		//     AdjustedSkillLevel = skilllevel - 10;
-		//     if (AdjustedSkillLevel > 0)
-		//         Cost = AdjustedSkillLevel^3 / 100;
-		// off the CURRENT (pre-train) value -- so the first ten points of
-		// any skill are free, and the price then grows cubically. Cost is
-		// what the server DEDUCTS; it is not sent back on Titanium (see
-		// TrainingCost() below), so this figure is the only one the player
-		// ever sees and it had better match.
-		uint32_t cost = TrainingCost(current_value);
-
-		eqt::state::TrainerSkillEntryData skill;
-		skill.skillId = skill_id;
-		skill.name = skill_name ? skill_name : "Unknown";
-		skill.currentValue = current_value;
-		skill.maxTrainable = max_trainable;
-		skill.cost = cost;
-		trainerData.skills.push_back(std::move(skill));
-
-		if (EverQuest::GetDebugLevel() >= 2) {
-			LOG_DEBUG(MOD_MAIN, "  Skill {}: {} cur={} max={} cost={}",
-				skill_id, skill_name, current_value, max_trainable, cost);
-		}
-	}
-
-	LOG_INFO(MOD_MAIN, "Trainer window opened for {} (id={}) with {} trainable skills",
-		ctx_.game_state.player().trainerName(), ctx_.game_state.player().trainerNpcId(), trainerData.skills.size());
-
-	// Publish TrainerWindowOpened event to bridge
-	if (ctx_.bridge) {
-		ctx_.bridge->pushEvent(eqt::state::GameEvent(
-			eqt::state::GameEventType::TrainerWindowOpened, std::move(trainerData)));
-	}
+	// B898 (#214): the event is built from the kept caps by ONE body, which
+	// the OP_SkillUpdate arm calls again to refresh the open window
+	// (merchant_trainer.cpp).
+	PublishTrainerWindow();
+	LOG_INFO(MOD_MAIN, "Trainer window opened for {} (id={})",
+		ctx_.game_state.player().trainerName(), ctx_.game_state.player().trainerNpcId());
 }
 
 void eqt::merchant::MerchantComponent::RequestTrainerWindow(uint16_t npcId)

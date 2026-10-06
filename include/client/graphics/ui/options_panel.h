@@ -13,7 +13,8 @@
  * GEOMETRY is entirely options_layout.h, quoted from the oracle's
  * EQUI_OptionsWindow.xml. This TU computes no rect.
  *
- * WHAT IS WIRED, and why only three controls are.
+ * WHAT T434 WIRED (B430/B433 wired more -- see options_settings.h and
+ * options_classification.cpp for the live census).
  * The rule (T363) is that nothing may advertise a setting fable does not
  * have, so a control whose `OptionsLayout::Setting` is `None` is drawn
  * GREYED and is not hit-testable. Three are wired, because three settings
@@ -84,6 +85,20 @@ struct OptionsPanelState {
     int soundVolume = 20;
     int clipPlane = 5;
 
+    // --- B430/B433: every other wired setting, indexed by Setting ---
+    // Renderer-owned values are persisted; Game-owned ones mirror what the
+    // game thread last published (applyGameOptionChanged). The three legacy
+    // sliders above do NOT live here -- their slots are unused.
+    OptionsLayout::OptionValues values = OptionsLayout::defaultOptionValues();
+
+    /** The Filters page: OFP_FilterList's selected row (0..kFilterCount-1). */
+    int filterSelectedRow = 0;
+
+    // --- The Keys page (B433, options_keys.h) ---
+    int keysCategory = 0;        // OKP_KeyboardFilterCombobox
+    int keysCaptureAction = -1;  // a HotkeyAction waiting for its key, or -1
+    int keysCaptureSlot = 0;     // 0 Keypress, 1 Alternate
+
     int hoveredTab = -1;
     int hoveredControl = -1;
 };
@@ -98,6 +113,32 @@ int optionsSettingStep(const OptionsPanelState& state,
 /** Set a wired setting's step, clamped to 0..20. No-op for `None`. */
 void setOptionsSettingStep(OptionsPanelState& state,
                            OptionsLayout::Setting setting, int step);
+
+/**
+ * B430: set any wired setting's value. A legacy slider clamps (as above);
+ * every other setting REFUSES a value its table row does not allow. Returns
+ * true when the stored value changed.
+ */
+bool setOptionsValue(OptionsPanelState& state, OptionsLayout::Setting setting,
+                     int value);
+
+/**
+ * B430: a game-owned option the game thread published
+ * (GameEventType::GameOptionChanged). AnonStatus fans out to BOTH the
+ * Anonymous and the Roleplaying checkbox -- the server holds one value.
+ * Returns true if any checkbox moved.
+ */
+bool applyGameOptionChanged(OptionsPanelState& state, eqt::GameOption option,
+                            int value);
+
+/**
+ * B430: the game-option value a click on game-owned `setting` asks for when
+ * it becomes `checked` (e.g. Roleplaying on -> AnonStatus 2, off -> 0).
+ */
+int gameOptionValueFor(OptionsLayout::Setting setting, bool checked);
+
+/** The filter OFP_FilterList has selected (a Filter* Setting). */
+OptionsLayout::Setting optionsSelectedFilter(const OptionsPanelState& state);
 
 /** A slider's readout, the oracle's own `value x 5` percentage. */
 std::string optionsSettingText(const OptionsPanelState& state,
@@ -129,6 +170,24 @@ int optionsVolumeStep(float fraction);
  */
 bool applyVolumesChanged(OptionsPanelState& state,
                          const eqt::state::VolumesChangedData& data);
+
+/**
+ * B433: draw wired combobox / listbox control `i` -- its current choice, or
+ * its rows (options_lists.cpp). Called by renderOptionsWindow().
+ */
+void renderOptionsWiredList(UIRenderer& ui, const UILayout& layout,
+                            const OptionsPanelState& state, int i);
+
+/**
+ * B430: the ONE click resolver for a wired control. `i` is the control under
+ * the click (hitTestOptionsControl). Toggles a checkbox, steps a slider,
+ * cycles a combobox, selects a list row; returns the Setting that changed
+ * (None when nothing did, e.g. a list selection or a no-op step). Every rule
+ * it applies is the settings table's, so it never invents a value.
+ */
+OptionsLayout::Setting resolveOptionsClick(const UILayout& layout,
+                                           OptionsPanelState& state, int i,
+                                           int mouseX, int mouseY);
 
 /** Render the window. Only when optionsWindowIsVisible(). */
 void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,

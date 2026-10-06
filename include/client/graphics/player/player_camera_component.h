@@ -85,6 +85,7 @@
 #include "client/graphics/renderer_context.h"
 #include "client/graphics/player/ground_query.h"  // T437 (B435): the ground answer shape
 #include "client/graphics/player/camera_rig.h"    // T461: the orbit rig
+#include "client/graphics/player/mouse_options.h" // B433: the Options Mouse page
 
 #include <cstdint>
 #include <string>
@@ -234,6 +235,12 @@ public:
 	// One zoom step (EQ units, + = farther): the active rig's distance --
 	// Chase's included since T474. First person does not zoom.
 	void zoomCamera(float deltaUnits, float deltaTime);
+
+	// B433: the Options window's Mouse page (mouse_options.h). Set by
+	// FrameComponent::applyOptionsSetting(); read by the mouse-look phase
+	// of updatePlayerMovement() and by the wheel's zoom gate.
+	void setMouseOptions(const MouseOptions& o) { mouseOptions_ = o; }
+	const MouseOptions& mouseOptions() const { return mouseOptions_; }
 	// Adds to the ACTIVE USER camera only; a no-op in any other mode. The
 	// Pitch up / down keys (HotkeyAction::CameraPitchUp/Down) reach it with a
 	// pitch delta -- Pitch up is a NEGATIVE delta, which lowers the camera and
@@ -454,6 +461,7 @@ private:
 	// (K04 correction f / L03 correction 2, now the third L unit in a row).
 	PlayerMovementState playerMovement_;
 	float playerPitch_ = 0;  // Vertical look angle in degrees (-89 to 89)
+	MouseOptions mouseOptions_;  // B433
 	VisionType baseVision_ = VisionType::Normal;    // Base vision from race
 	bool useIrrlichtCollision_ = true;  // Use zone mesh for collision instead of HCMap
 	// T332: set by setPlayerPosition() (the only external writer of

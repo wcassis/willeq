@@ -163,6 +163,17 @@ enum class GameEventType {
     // /musicvolume and /effectsvolume. The Options window's two sliders
     // read it back, so a slash command and a drag can no longer disagree.
     VolumesChanged,
+
+    // B430: a server-owned Options-window setting (anonymous/roleplay,
+    // autosplit, the three auto-consents) as the game thread now holds it.
+    GameOptionChanged,
+    // B895 (GitLab #211): the Tracking Window's list and settings, published
+    // whole by eqt::tracking::TrackingController on an OP_Track reply and on
+    // every filter/sort/players/target change.
+    TrackingListChanged,
+    // B897 (GitLab #213): the friends and ignore lists changed (or were
+    // loaded for a new character). Whole lists, SocialListsChangedData.
+    SocialListsChanged,
 };
 
 

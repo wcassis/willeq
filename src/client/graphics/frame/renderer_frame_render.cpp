@@ -591,6 +591,23 @@ void FrameComponent::renderLegacyGui() {
 void FrameComponent::renderStaticUI() {
     // U06j: Process new UI input before rendering
     if (newUIEnabled_ && staticUIInput_ && ctx_.eventReceiver) {
+        // B442 (#151): the right click, the modifiers and the cursor, for the
+        // item windows' click-to-cursor gesture. The QuantityWnd is above
+        // every other window, so a click it takes reaches nothing below it.
+        bool rightClick = ctx_.eventReceiver->wasRightButtonClicked();
+        {
+            eqt::inventory::ClickModifiers mods;
+            mods.shift = ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT);
+            mods.ctrl = ctx_.eventReceiver->isKeyDown(irr::KEY_LCONTROL) ||
+                        ctx_.eventReceiver->isKeyDown(irr::KEY_RCONTROL);
+            if (staticUIInput_->processQuantityInput(
+                    ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+                    pendingUIClick_, uiLayout_)) {
+                pendingUIClick_ = false;
+                rightClick = false;
+            }
+            staticUIInput_->setFrameClickState(rightClick, mods, &cursorState_);
+        }
         staticUIInput_->processInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
             uiLayout_, hotbarState_, spellGemState_, inventoryState_,
@@ -608,6 +625,19 @@ void FrameComponent::renderStaticUI() {
         staticUIInput_->processCommerceInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, merchantState_, bankState_, cursorState_);
+        // B898 (#214): the trainer window draws above the bank, so it is
+        // asked after it and before the item display / Options windows.
+        staticUIInput_->processTrainerInput(
+            ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+            pendingUIClick_, uiLayout_, trainerState_);
+        // B895: the Tracking Window -- above the trainer, below the item display.
+        processTrackingInput(ctx_.bridge, ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_, uiLayout_, trackingState_);
+        // B899 (#215): the container windows -- their own placement, above the
+        // centre popups, the bank, the trainer and the tracking window, below
+        // the item display and the Options window.
+        staticUIInput_->processContainerInput(
+            ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+            pendingUIClick_, uiLayout_, containerState_);
         // T421 (board B298): the item display window is hit-tested LAST and
         // drawn LAST -- it sits on top of every centre popup.
         staticUIInput_->processItemDisplayInput(
@@ -617,12 +647,15 @@ void FrameComponent::renderStaticUI() {
         // is on top of everything, including the item display. A moved
         // slider is reported as a Setting and applied in the one place that
         // knows how (FrameComponent::applyOptionsSetting).
+        // B897: the Friends window, just below Options in both orders.
+        processFriendsWindowInput();
         OptionsLayout::Setting optionsChanged = OptionsLayout::Setting::None;
         staticUIInput_->processOptionsInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, optionsState_, optionsChanged);
         applyOptionsSetting(optionsChanged);
         pendingUIClick_ = false;
+        staticUIInput_->setFrameClickState(false, {}, &cursorState_);
     }
 
     // T60: the paperdoll only exists/renders while the inventory popup is
@@ -676,6 +709,14 @@ void FrameComponent::renderStaticUI() {
         // BankWnd is Style_Sizable false at 108x347 and keeps its own size --
         // so it draws above them, mirroring the hit-test order.
         renderBankWindow(*uiRenderer_, uiLayout_, bankState_);
+        // B898 (#214): the trainer window -- Style_Sizable false at 580x280,
+        // NOT a centre popup, so it draws above them and above the bank.
+        renderTrainerWindow(*uiRenderer_, uiLayout_, trainerState_, xpBarState_.progress);
+        // B895: the Tracking Window (own placement, not a centre popup).
+        renderTrackingWindow(*uiRenderer_, uiLayout_, trackingState_);
+        // B899 (#215): the container windows (EQUI_Container.xml), drawn
+        // after the tracking window, mirroring the hit-test order above.
+        renderContainerWindows(*uiRenderer_, uiLayout_, containerState_);
         // T421 (B298 item half): the item display window. Drawn after every
         // popup because the oracle's ItemDisplayWindow has its own absolute
         // placement (0,80) and overlaps whatever is beneath it.
@@ -684,8 +725,13 @@ void FrameComponent::renderStaticUI() {
         // OptionsWindow is `RelativePosition false` at its own <Location>
         // and overlaps whatever is beneath it; the draw order mirrors the
         // hit-test order above.
+        renderFriendsWindow(*uiRenderer_, uiLayout_, friendsState_);  // B897
         renderOptionsWindow(*uiRenderer_, uiLayout_, optionsState_);
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
+        // B442: the QuantityWnd, above every window (hit-tested first).
+        if (staticUIInput_) {
+            renderQuantityWindow(*uiRenderer_, uiLayout_, staticUIInput_->quantityWindow());
+        }
         // T436 (B429): the cursor attachment is drawn LAST of everything.
         // It is the pointer: nothing may cover it, including the Options
         // window and the XP bar.

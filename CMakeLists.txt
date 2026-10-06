@@ -291,14 +291,19 @@ SET(CLIENT_CORE_SOURCES
     src/client/bridge/bridge_component.cpp
     src/client/bridge/bridge_component_intents.cpp
     src/client/bridge/bridge_component_ui_audio.cpp
+    src/client/bridge/bridge_component_cursor.cpp  # B442
+    src/client/bridge/bridge_component_options.cpp
+    src/client/bridge/bridge_component_social.cpp  # B897
     src/client/entities/entities_component.cpp
     src/client/entities/entities_component_appearance.cpp
     src/client/entities/entities_component_updates.cpp
     src/client/entities/entities_component_world.cpp
     src/client/commands/commands_component.cpp
+    src/client/commands/commands_cursor.cpp  # B442
     src/client/commands/commands_movement.cpp
     src/client/commands/commands_spells.cpp
     src/client/commands/commands_train.cpp
+    src/client/commands/commands_containers.cpp
     src/client/core/eq_strings.cpp
     src/client/core/say_link_text.cpp
     # T397 (board B221): the one shipped-data path resolution.
@@ -311,6 +316,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/merchant/merchant.cpp
     src/client/merchant/merchant_trade.cpp
     src/client/merchant/merchant_vendor_bank.cpp
+    src/client/merchant/merchant_trainer.cpp
     src/client/core/eq_player_info.cpp
     src/client/raid_update.cpp
     src/client/inspect_answer.cpp
@@ -333,6 +339,10 @@ SET(CLIENT_CORE_SOURCES
     src/client/packet_sender.cpp
     src/client/commands/combat_actions.cpp
     src/client/commands/consider_text.cpp
+    # B895 (GitLab #211): the one level-based con table, and the Tracking skill.
+    src/client/con_tier.cpp
+    src/client/tracking/tracking_state.cpp
+    src/client/tracking/tracking_controller.cpp
     src/client/combat.cpp
     src/client/combat_rounds.cpp
     src/client/combat_hunting.cpp
@@ -384,6 +394,7 @@ SET(CLIENT_CORE_SOURCES
     # J01: inventory_manager.cpp split move-only into four TUs
     src/client/inventory/inventory_item_parser.cpp
     src/client/inventory/inventory_cursor.cpp
+    src/client/inventory/cursor_gesture.cpp  # B442: click-to-cursor
     src/client/inventory/inventory_bags.cpp
     src/client/inventory/inventory_packets.cpp
     src/client/hotbar/hotbar_model.cpp
@@ -406,6 +417,9 @@ SET(CLIENT_CORE_SOURCES
     src/client/state/trade_state.cpp
     src/client/state/inventory_state.cpp
     src/client/state/spell_state.cpp
+    # B897: the friends/ignore lists (model + oracle text; disk I/O apart).
+    src/client/state/social_lists.cpp
+    src/client/state/social_lists_io.cpp
     src/client/state/game_state.cpp
     # Input handling sources
     src/client/input/null_input_handler.cpp
@@ -446,7 +460,9 @@ SET(CLIENT_CORE_SOURCES
     src/client/action/command_processor_registration.cpp  # J04
     src/client/action/command_processor_social.cpp  # J04
     src/client/action/command_processor_world.cpp  # J04
+    src/client/action/command_processor_cursor.cpp  # B442
     src/client/action/command_processor_spells_gm.cpp  # J04
+    src/client/action/command_processor_friends.cpp  # B897
     # Help system sources (T143: merges EverQuest::m_command_registry +
     # action::CommandProcessor catalogs for a registry-aware /help)
     src/client/help/merged_help.cpp
@@ -504,6 +520,7 @@ IF(EQT_GRAPHICS)
         # CLIENT_CORE_SOURCES (always compiled), which made it impossible to
         # build EQT_GRAPHICS=OFF at all regardless of eq.h's own guards.
         src/client/input/hotkey_manager.cpp
+        src/client/input/hotkey_manager_user.cpp  # B433: Options Keys page rebinding
         src/client/bridge/irrlicht_bridge.cpp
         # EQ file loaders (pfs.cpp/wld_loader.cpp moved to CLIENT_CORE_SOURCES — P28, see there)
         src/client/graphics/eq/s3d_loader.cpp
@@ -596,6 +613,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_render.cpp
         src/client/graphics/frame/renderer_frame_preferences.cpp
         src/client/graphics/frame/renderer_frame_options.cpp
+        src/client/graphics/frame/renderer_frame_friends.cpp  # B897
         src/client/graphics/frame/renderer_frame_entity_build.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
@@ -679,6 +697,8 @@ IF(EQT_GRAPHICS)
         # pack and addressed by include/client/graphics/ui/item_icon_atlas.h.
         src/client/graphics/ui/item_icon_sheets.cpp
         src/client/graphics/ui/static_ui_input.cpp
+        src/client/graphics/ui/static_ui_cursor.cpp  # B442
+        src/client/graphics/ui/quantity_window.cpp  # B442
         src/client/graphics/ui/ui_renderer.cpp
         src/client/graphics/ui/static_panels.cpp
         src/client/graphics/ui/chat_wrap_cache.cpp
@@ -693,11 +713,29 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/item_display_panel.cpp
         src/client/graphics/ui/combat_ability_panel.cpp
         src/client/graphics/ui/options_panel.cpp
+        # B430/B433: the Options window settings table, value rules, wired
+        # lists and the /option + /filter grammar.
+        src/client/graphics/ui/options_settings.cpp
+        src/client/graphics/ui/options_values.cpp
+        src/client/graphics/ui/options_lists.cpp
+        src/client/graphics/ui/options_classification.cpp
+        src/client/graphics/ui/options_command.cpp
+        src/client/graphics/ui/options_keys.cpp
+        # B897: the Friends window (friends + ignore lists).
+        src/client/graphics/ui/friends_panel.cpp
         # T436 (board B429): the merchant, bank and cursor-attachment
         # windows -- one TU per panel (M00).
         src/client/graphics/ui/merchant_panel.cpp
         src/client/graphics/ui/bank_panel.cpp
         src/client/graphics/ui/cursor_attachment.cpp
+        # B898 (#214): the skill trainer window.
+        src/client/graphics/ui/trainer_panel.cpp
+        # B895 (GitLab #211): the Tracking Window.
+        src/client/graphics/ui/tracking_panel.cpp
+        # B899 (#215): the era container window (EQUI_Container.xml), world
+        # and carried, and its input.
+        src/client/graphics/ui/container_panel.cpp
+        src/client/graphics/ui/container_input.cpp
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
         src/client/graphics/ui/ui_preferences.cpp

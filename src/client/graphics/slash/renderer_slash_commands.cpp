@@ -150,6 +150,10 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
     } else if (cmd == "/mergedraws") {
         ctx_.Diagnostics().toggleMergeZoneDraws();
         chat(fmt::format("Zone draw merge: {}", owner_.isMergeZoneDrawsEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/option" || cmd == "/filter") {
+        // B430/B433: the Options window's command half -- same model, same
+        // apply body as a click (FrameComponent::runOptionsCommand).
+        for (const auto& line : ctx_.Frame().runOptionsCommand(cmd, args)) chat(line);
     } else if (cmd == "/screenshot") {
         // P10: smallest additive hook for the in-app A/B capture (no other
         // scriptable screenshot command existed — F12 is a raw key event,
@@ -451,6 +455,11 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
         // cannot drift again; same shape as T294's /inventory.
         chat(fmt::format("New UI skills: {}",
             ctx_.Frame().toggleSkillsWindow() ? "OPEN" : "CLOSED"));
+    } else if (cmd == "/friendswindow") {
+        // B897: the scriptable half of Alt+F -- one body,
+        // FrameComponent::toggleFriendsWindow(), shared with the key.
+        chat(fmt::format("Friends window: {}",
+            ctx_.Frame().toggleFriendsWindow() ? "OPEN" : "CLOSED"));
     } else if (cmd == "/inventory") {
         // T294: ONE body, shared with the `I` keybind — the toggle used to
         // be written out here and IrrlichtRenderer::toggleInventory() (what

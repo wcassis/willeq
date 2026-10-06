@@ -497,10 +497,14 @@ BOARD_REASONS.update({
         "GameState module mutators with no production writer -- the target/pet HP updaters, the group member updaters, three InventoryState setters, PlayerState::loadFromProfile/setCurHP/setPositionAndHeading, the SpellState memorize/scribe mutators, WorldState::setZoneId/setZoning and GameState::resetForZoneChange",
     "B602":
         "EntityManager's query and mutation API with no production caller -- exact-name, pet-owner, range and nearest-corpse lookups, the two forEach iterators, and the HP/equipment/corpse updaters",
+    "B899":
+        "B442's published interface for the bag (container) window, built by the concurrent unit B899 -- StaticUIInput::cursorGesture() is how that window's slot arm reaches the shared gesture; it has no caller until that branch merges",
     "B603":
         "gameplay-manager control API with no production caller -- CombatManager's auto-loot/aggro/flee/auto-fire configuration, SpellManager's cast-by-id, gem swap and two callback setters, BuffManager's removals and ActiveBuff's formatting, the group-decline, move-speed, cursor-stack and hotbar-slot mutators, ZoneLines::checkMovement, WhoAllEntry::isLinkdead and calcBankBagSlotId",
     "B605":
         "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval and focusTextEntry",
+    "B899":
+        "the T415/T419 recipe window (TradeskillPanelState, EQUI_TradeskillWnd) -- since B899 (#215, Will 2026-09-23: the recipe half is out of baseline) no event opens it, so its close applier is reached only from its tests; deleting the window is a follow-up, not done mid-unit",
     "B606":
         "renderer, asset and data API with no production caller -- setNewUIEnabled, EntityRenderer's two global loaders (not called even by the zero-caller loadGlobalAssets, which T468 deleted), the superseded applyStoredZoneEnvironment, RDPServer::setCertificate, BackgroundWorkQueue's pollAll/batch hooks, StringDatabase's legacy text loaders, and eight free helpers (race reload, lift travel, body-type restriction, SpellVisualSource toString, formatted-message text parse, three options-slider conversions)",
 })
@@ -514,6 +518,7 @@ BOARD_REASONS.update({
 # and boarded the rest rather than wiring a feature mid-unit (the T39/B024
 # rule).
 EXEMPT_GROUPS = {
+    ("StaticUIInput", "cursorGesture"): "B899",
     ("(free)", "resistToParticleColor"): "B490",
     ("BoidsManager", "getCurrentBiome"): "B490",
     ("BoidsManager", "getQuality"): "B490",
@@ -764,15 +769,12 @@ EXEMPT_GROUPS = {
     ("ZoneShaderManager", "setAtlasPageTextures"): "B494",
     ("ZoneShaderManager", "setAtlasTileScale"): "B494",
     ("(free)", "calcSharedBankBagSlotId"): "B495",
-    ("(free)", "getBagIndex"): "B495",
     ("(free)", "getBankBagIndexAny"): "B495",
     ("(free)", "getClassAbbrev"): "B495",
     ("(free)", "getParentBankSlotAny"): "B495",
     ("(free)", "getWeaponTypeAbbrev"): "B495",
     ("(free)", "isAnyBankBagSlot"): "B495",
     ("(free)", "isAnyBankSlot"): "B495",
-    ("(free)", "isContainerParentSlot"): "B495",
-    ("(free)", "isContainerSlot"): "B495",
     ("(free)", "isWorldContainerSlot"): "B495",
     ("InventoryManager", "addQuantityToExistingStack"): "B495",
     ("InventoryManager", "clearBankSlots"): "B495",
@@ -783,8 +785,6 @@ EXEMPT_GROUPS = {
     ("InventoryManager", "getBankBagSize"): "B495",
     ("InventoryManager", "getBankItems"): "B495",
     ("InventoryManager", "getChangeCounter"): "B495",
-    ("InventoryManager", "getCursorMoneyAmount"): "B495",
-    ("InventoryManager", "getCursorMoneyType"): "B495",
     ("InventoryManager", "getPlayerClass"): "B495",
     ("InventoryManager", "getPlayerLevel"): "B495",
     ("InventoryManager", "getPlayerRace"): "B495",
@@ -931,6 +931,14 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # B430/B433: the Options window's per-control classification table is a
+    # CENSUS, not a runtime input -- its reader is the test that fails on an
+    # unclassified control row (OptionsClassification.*), which is the point.
+    ("(free)", "controlClassifications"): "observer",
+    ("(free)", "controlClassificationCount"): "observer",
+    ("(free)", "findControlClass"): "observer",
+    ("(free)", "dispositionText"): "observer",
+    ("(free)", "applyTradeskillContainerClosed"): "B899",
     # B918: the process-wide FATAL-exit record is a one-way latch in a real
     # run (set once, read by main()); a test that trips it on purpose must
     # clear it so later cases in the same binary start clean.
@@ -956,6 +964,10 @@ EXEMPT_TESTS_GROUPS = {
     # test_texture_eviction_residency asserts eviction and restore through it;
     # production only needs the counts (getResidentTextureCount()).
     ("ConstrainedTextureCache", "isResident"): "observer",
+    # B442: the bag window (B899, concurrent) installs the open-container hook
+    # on the shared CursorGesture; until it merges only test_cursor_gesture
+    # drives the seam.
+    ("CursorGesture", "setOpenContainerHook"): "seam",
     # B947: whether one entry was pinned (no restore source; never evicted
     # again). test_texture_eviction_{residency,character_restore} assert it;
     # production logs the count (getPinnedTextureCount()).
@@ -970,6 +982,13 @@ EXEMPT_TESTS_GROUPS = {
     # (production only asks rayIntersect(), which answers "no hit" for an
     # absent region).
     ("ObjectCollisionSet", "hasRegion"): "observer",
+    # B945: the bridge event/staging queue's retained capacity (bytes), read
+    # under the queue's own mutex. A live observation window: production
+    # measures the same bytes through the memory ledger's [memledger-trace]
+    # rows; the capacity-bounded unit test (test_game_state_sync_bridge)
+    # asserts the burst's buffer is returned once it drains.
+    ("GameStateBridge", "eventQueueCapacityBytes"): "observer",
+    ("GameStateSyncBridge", "forwardQueueCapacityBytes"): "observer",
     # T504b Leg 2b: the unload test's window on the evictable set, and the
     # clock it turns forward so the hysteresis window elapses in a test.
     ("RaceModelLoader", "evictableCountForTest"): "observer",
@@ -983,6 +1002,11 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "ConsiderEqStrIds"): "seam",
     ("(free)", "ItemDisplayEqStrIds"): "seam",
     ("(free)", "SpellDisplayEqStrIds"): "seam",
+    # B895: the tracking feature's eqstr census list (the shipped-db test),
+    # and the controller's two read-only views the route test observes.
+    ("(free)", "TrackingEqStrIds"): "seam",
+    ("TrackingController", "TrackedSpawnId"): "observer",
+    ("TrackingController", "Settings"): "observer",
     ("(free)", "Test_GetLastComputedPositionUpdate"): "seam",
     ("(free)", "Test_SnapToMovementTargetForSeam"): "seam",
     # T490: the PVS store's two observation windows. setPvs() is the pinned,
@@ -1063,7 +1087,6 @@ EXEMPT_TESTS_GROUPS = {
     ("EnvironmentState", "isSnowing"): "observer",
     ("FrameComponent", "hasCommandCompletionProvider"): "observer",
     ("GuildComponent", "HasPendingGuildInvite"): "observer",
-    ("InventoryManager", "getCursorQueueSize"): "observer",
     ("InventoryManager", "getCursorSourceSlot"): "observer",
     ("InventoryState", "bankItemCount"): "observer",
     ("InventoryState", "cursorQueueSize"): "observer",
@@ -1199,7 +1222,6 @@ EXEMPT_TESTS_GROUPS = {
     ("CombatState", "updateTargetHP"): "B601",
     ("CombatState", "updateTargetLevel"): "B601",
     ("GameState", "resetForZoneChange"): "B601",
-    ("GroupState", "findMemberBySpawnId"): "B601",
     ("GroupState", "setMemberInZone"): "B601",
     ("GroupState", "updateMemberSpawnId"): "B601",
     ("InventoryState", "setBagInfo"): "B601",
@@ -1240,10 +1262,6 @@ EXEMPT_TESTS_GROUPS = {
     ("GroupComponent", "DeclineGroupInvite"): "B603",
     ("HotbarModel", "assignSlot"): "B603",
     ("HotbarModel", "clearSlot"): "B603",
-    ("InventoryManager", "pickupMoney"): "B603",
-    ("InventoryManager", "pickupPartialStack"): "B603",
-    ("InventoryManager", "placeOnMatchingStack"): "B603",
-    ("InventoryManager", "returnCursorMoney"): "B603",
     ("PlayerComponent", "SetMoveSpeed"): "B603",
     ("SpellManager", "beginCastById"): "B603",
     ("SpellManager", "setOnCastComplete"): "B603",
