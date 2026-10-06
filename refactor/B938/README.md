@@ -49,7 +49,8 @@ the **client's** own changed draw path:
 
 **The CI gate is a benchmark-render net, not this unit's per-pixel instrument.**
 It diffs `gles2_zone_benchmark` frames against the pre-B938 goldens at exact
-zero-diff — and it passes on this head (PASS, 0 pixel mismatch) — but the
+zero-diff — and it passes (PASS, 0 pixel mismatch, pipeline #568 on `5c7704cb`,
+the code-complete head this whole evidence set was taken at) — but the
 benchmark (a) links **none** of the TUs B938 changes and **never constructs an
 `IrrlichtRenderer`** (`zone_bench_memory.cpp: 4`), and (b) its golden-image runs
 pass no `--objects` (objects unloaded; `loadObjects` defaults false), so its
@@ -159,7 +160,10 @@ count is the placement count plus the light nodes).
 - `test_placed_object_meshes`: 7/7. `test_object_collision_set` (B909b): 8/8.
   `test_sim_bridge_component`: 9/9.
 - Full ctest suite on CI: **5,195 tests, 0 failures** (54 skips = missing
-  captures/assets), hygiene label green, gate green — pipeline #526.
+  captures/assets), hygiene label green, gate green — pipeline **#568** (green
+  on `5c7704cb`, the code-complete head the per-pixel evidence above was taken
+  at; a later doc-only commit rides on it unchanged). The superseded `#526` /
+  `3153348f` citation is struck.
 - Collision (B909b) structures and shared animated meshes (B936) keep working:
   their tests are green in the suite, and the gate renders zones that use both.
 
