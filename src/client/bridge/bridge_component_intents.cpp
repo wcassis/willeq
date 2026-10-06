@@ -14,6 +14,7 @@
 //
 // See refactor/F10_bridge.md for the original moved/left mapping.
 #include "client/eq.h"
+#include "client/display_eqstr.h"
 #include "client/inspect_answer.h"
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
@@ -194,7 +195,18 @@ void eqt::bridge::BridgeComponent::onTargetIntent(const eqt::events::TargetInten
 		bool hasCursorMoney = ctx_.inventory_manager->hasCursorMoney();
 		if (cursorItem || hasCursorMoney) {
 			auto it = ctx_.entities.find(i.spawnId);
-			if (it != ctx_.entities.end() && (it->second.npc_type == 0 || it->second.npc_type == 1)) {
+			const uint32_t refusal = it != ctx_.entities.end() ? HeldItemTargetRefusal(it->second) : 0;
+			if (refusal != 0) {
+				// UIGAP-residue (B1001 #321, #212 rows 12-13): refused
+				// client-side -- the official line, then the click is a plain
+				// target (OP_TargetMouse) and NO OP_TradeRequest goes out.
+				const std::string line = eqt::EqStrLine(ctx_.strings.Db(), refusal, {});
+				if (!line.empty()) {
+					ctx_.out.System(line);
+				}
+				LOG_INFO(MOD_MAIN, "Held-item click on {} refused client-side (eqstr {})",
+				         it->second.name, refusal);
+			} else if (it != ctx_.entities.end() && (it->second.npc_type == 0 || it->second.npc_type == 1)) {
 				bool isNpc = (it->second.npc_type == 1);
 				if (cursorItem) {
 					LOG_INFO(MOD_MAIN, "Initiating trade with {} (cursor item: {}, isNpc={})",

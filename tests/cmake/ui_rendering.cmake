@@ -555,6 +555,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_trade_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_trade_window GTest::gtest_main willeq_core)
+    # UIGAP-residue: the no-drop / banker refusals print eqstr 12921 / 8505.
+    TARGET_COMPILE_DEFINITIONS(test_trade_window PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_trade_window DISCOVERY_TIMEOUT 120)
 ENDIF()
 
