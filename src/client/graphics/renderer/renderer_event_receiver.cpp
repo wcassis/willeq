@@ -200,6 +200,8 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     // renderer action with an arm in processCommonInput().
                     case HA::ToggleAutorun: actionQueue_.push_back({RA::ToggleAutorun}); break;
                     case HA::ToggleAutoAttack: pushBridgeAction({RA::ToggleAutoAttack}); break;
+                    // B905 (#225): Ctrl+Q was bound and fell to default.
+                    case HA::Attack: pushBridgeAction({RA::Attack}); break;
                     case HA::ToggleInventory: actionQueue_.push_back({RA::ToggleInventory}); break;
                     case HA::ToggleSkills: actionQueue_.push_back({RA::ToggleSkills}); break;
                     case HA::ToggleGroup: actionQueue_.push_back({RA::ToggleGroup}); break;
@@ -235,6 +237,15 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ReplyToTell: pushBridgeAction({RA::ReplyToTell}); break;
                     case HA::Consider: pushBridgeAction({RA::Consider}); break;
                     case HA::ClearTarget:
+                        // B905 (#225): ESCAPE is the window stack's key
+                        // (escapeKeyPressed_ above -> FrameComponent's ESC
+                        // handler, which closes the newest window and clears
+                        // the target only when no window took the press). The
+                        // Global CancelDialog binding used to shadow this arm
+                        // for Escape; with it deleted, clearing here would
+                        // drop the target on every window-closing press.
+                        // Any OTHER key bound to ClearTarget clears directly.
+                        if (event.KeyInput.Key == irr::KEY_ESCAPE) break;
                         // Both queues: bridge clears combat target, renderer clears display
                         pushBridgeAction({RA::ClearTarget});
                         actionQueue_.push_back({RA::ClearTarget});

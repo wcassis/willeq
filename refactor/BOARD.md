@@ -10274,14 +10274,18 @@ because the Pi had no keyboard or mouse attached (B510).
   eight bindings), pinned by
   `T464_TheShippedFileCarriesEveryDefaultBinding`, issue #182 closed.**
 
-- **(B, needs a GitLab issue)** MR !34's fix commit notes that 7 of the 8
+- ~~**(B, needs a GitLab issue)** MR !34's fix commit notes that 7 of the 8
   actions it added to `setupDefaults()` still have no dispatch consumer:
   `hotkey_manager.cpp:476` says "ToggleZoneLights is the ONE of the eight
   with a dispatch consumer" (`RendererEventReceiver` -> `RA::ToggleZoneLights`).
   `CancelDialog`, `CancelInput`, `ChatAutocomplete`, `ConfirmDialog`,
   `ResetUIDefaults`, `SaveUILayout` and `ToggleUILock` are bound keys with
   nothing behind them -- the B562 fix made the binding table match the
-  shipped file, it did not wire the seven actions to anything. Remains open.
+  shipped file, it did not wire the seven actions to anything. Remains open.~~
+  **STRUCK (UIGAP-small, B905 / #225): the seven -- and `SubmitInput`, found
+  by the new census -- were DELETED (no oracle counterpart; as Global
+  bindings they shadowed Tab/Escape/Return), Ctrl+Q `Attack` got its receiver
+  arm, pinned by `tests/test_hotkey_dispatch_census.cpp`.**
 
 - **B563** (P) **The region box a camera or sim reads is built in one place
   and re-derived in a test.** `tests/test_camera_bsp_ceiling.cpp` copies

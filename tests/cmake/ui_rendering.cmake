@@ -137,6 +137,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_debug_hotkey_arms DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B905 (#225): every default and shipped key binding is unshadowed and reaches
+# a dispatch consumer on a real RendererEventReceiver.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_hotkey_dispatch_census
+        test_hotkey_dispatch_census.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_hotkey_dispatch_census PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_hotkey_dispatch_census GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_hotkey_dispatch_census PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_hotkey_dispatch_census DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T343 (B002): the autorun arm in processCommonInput. Behavioural on a
 # device-less renderer (the flag lives on PlayerCameraComponent), plus the two
 # source-pinned ends the behavioural test cannot reach -- the receiver's queue

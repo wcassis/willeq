@@ -62,14 +62,18 @@ enum class HotkeyAction : uint32_t {
     // popups that scroll are reachable in any mode.
     ScrollUIUp,
     ScrollUIDown,
-    ToggleUILock,
-    SaveUILayout,
-    ResetUIDefaults,
-    ConfirmDialog,
-    CancelDialog,
-    SubmitInput,
-    CancelInput,
-    ChatAutocomplete,
+    // B905 (#225, UIGAP-small) DELETED eight Global actions that were bound
+    // and had no dispatch consumer: ToggleUILock, SaveUILayout,
+    // ResetUIDefaults (the deleted WindowManager's draggable-window layout --
+    // fable's windows are static by design), ConfirmDialog, CancelDialog,
+    // SubmitInput, CancelInput, ChatAutocomplete (Return / Escape / Tab / Y /
+    // N: text-entry and dialog keys that the entry or the ESC stack owns
+    // directly). None is on the oracle's measured Options > Keys UI or
+    // Commands pages, and as Global bindings they SHADOWED real Player keys
+    // (Tab = CycleTargets, Escape = ClearTarget, Return = OpenChat). Their
+    // names are still accepted -- and ignored -- in a saved hotkeys.json
+    // (hotkey_manager.cpp kRetiredActionNames). Pinned by
+    // tests/test_hotkey_dispatch_census.cpp.
 
     // === Player Mode Actions ===
     // Movement (continuous/held keys)

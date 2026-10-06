@@ -273,7 +273,7 @@ group panel and the buff bar (board **B366**).
 | Ctrl+A / End | Strafe left |
 | Ctrl+D / Home | Strafe right (T313 moved this off PageDown, which now scrolls the UI) |
 | Q | Toggle auto-attack |
-| Ctrl+Q | Attack (initiate combat) |
+| Ctrl+Q | Attack (initiate combat). B905 (#225): the key had no receiver arm until UIGAP-small; it now reaches `InputActionBridge`'s long-standing `InputAction::Attack` consumer |
 | ` / NumLock / Numpad+ | Toggle autorun. Live since T343 and live-proven by T345 (board B002 CLOSED): the route is RENDERER-side — the receiver queues `RA::ToggleAutorun` on `actionQueue_`, `processCommonInput()` flips `PlayerCameraComponent::toggleAutorun()`, and movement phase 1 cancels it on a translational key (turning does not cancel). The game-side `EqActionHandler::toggleAutorun()` survives for the console handler alone |
 | Space | Jump |
 | 1-8 | Hotbar slots 1-8 (routed by slot content type: Spell → cast, Skill → useSkill, Item → useItemById (T230), Emote/Macro/Combat → activateHotbarCommandSlot (T239)) |
@@ -283,7 +283,7 @@ group panel and the buff bar (board **B366**).
 | F2-F6 | Target group member 1-5 |
 | F7 | Target nearest PC |
 | F8 | Target nearest NPC |
-| Tab | Cycle targets |
+| Tab | Cycle targets. B905 (#225): a Global `ChatAutocomplete` binding with no consumer SHADOWED this in every production run (`getAction()` resolves Global first); deleted with seven other consumerless actions, and `tests/test_hotkey_dispatch_census.cpp` now fails on any shadowed or consumerless binding |
 | Shift+Tab | Cycle targets reverse |
 | C | Consider target |
 | R | Reply to last tell |

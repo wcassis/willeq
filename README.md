@@ -491,10 +491,10 @@ Bindings are configurable in `config/hotkeys.json` (or a `hotkeys` object in the
 | Key | Action |
 |-----|--------|
 | Q | Toggle auto-attack |
-| Ctrl+Q | Attack target |
+| Ctrl+Q | Attack target (B905: the key had no dispatch arm until UIGAP-small) |
 | C | Consider target |
 | H | Hail target |
-| Tab | Cycle targets |
+| Tab | Cycle targets (B905: shadowed by a dead Global `ChatAutocomplete` binding until UIGAP-small) |
 | Shift+Tab | Cycle targets reverse |
 | F1 | Target self |
 | F2-F6 | Target group member 1-5 |

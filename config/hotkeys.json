@@ -4,19 +4,11 @@
         "global": {
             "Screenshot": "F12",
             "Quit": "Shift+Escape",
-            "ToggleUILock": "Ctrl+L",
-            "SaveUILayout": "Ctrl+S",
-            "ResetUIDefaults": "Ctrl+Shift+R",
             "ToggleAllUI": "F11",
             "ScrollUIUp": "PageUp",
             "ScrollUIDown": "PageDown",
             "ToggleOptions": "Alt+O",
-            "ToggleFriends": "Alt+F",
-            "ConfirmDialog": ["Return", "Y"],
-            "CancelDialog": ["Escape", "N"],
-            "SubmitInput": "Return",
-            "CancelInput": "Escape",
-            "ChatAutocomplete": "Tab"
+            "ToggleFriends": "Alt+F"
         },
         "player": {
             "MoveForward": ["W", "Up"],
