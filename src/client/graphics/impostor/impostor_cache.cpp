@@ -429,7 +429,7 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
     driver_->setRenderTarget(nullptr, false, false);
     const auto tEnd = Clock::now();
     // Where a capture's time goes, for the first few (the unit timing in the
-    // [timme] line is the whole of it) AND for any slow one (B979: a
+    // [impostor-capture] line is the whole of it) AND for any slow one (B979: a
     // >20 ms capture is a hitch candidate, so its sub-timer split is what we
     // need to read — the one-time cost that survived prepare()).
     const double totalMs = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
@@ -438,7 +438,7 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
             return std::chrono::duration<double, std::milli>(b - a).count();
         };
         LOG_INFO(MOD_GRAPHICS,
-                 "[timme] capture] key={} total_ms={:.2f} top_ms={:.2f} finish_before_ms={:.2f} pose_bounds_ms={:.2f} "
+                 "[impostor-capture] key={} total_ms={:.2f} top_ms={:.2f} finish_before_ms={:.2f} pose_bounds_ms={:.2f} "
                  "bind_clear_ms={:.2f} draw_ms={:.2f} copy_ms={:.2f} unbind_ms={:.2f} buffers={}",
                  key, totalMs, topMs, finishBeforeMs, ms(tStart, tBind), ms(tBind, tDraw), ms(tDraw, tCopy),
                  ms(tCopy, tUnbind), ms(tUnbind, tEnd), mesh->getMeshBufferCount());

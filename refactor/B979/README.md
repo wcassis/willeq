@@ -68,8 +68,9 @@ reload **22.18 ms** (26.4 ms frame, already under budget).
    "3D capture path primed in 23.21 ms" on the loading thread; the priming
    texture and cube are freed inside the call (no new resident resources).
 3. **The capture unit is now a unit of the B973 scheduler.**
-   `EntityBuildUnitKind::Impostor` (appended at the end of the enum and the
-   window line, so B973's parsers do not shift). `entity_impostors.cpp` gates
+   `EntityBuildUnitKind::Impostor` (appended to the enum; its window-line
+   fields are mid-line additions, verified against the B973 parsers).
+   `entity_impostors.cpp` gates
    its unit loop with `EntityBuildScheduler::mayStartCaptureUnit()` and
    `recordUnit(Impostor, ms)`: the first capture of a frame always runs
    (guaranteed progress, every governor state), the next starts only if the
