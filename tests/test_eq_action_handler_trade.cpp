@@ -268,8 +268,16 @@ TEST(EqActionHandlerTrade, CancelTrade_ActiveTrade_ResetsProjection) {
 
     handler.cancelTrade();
 
+    // B896 (#212): exactly ONE line, the oracle's eqstr 1450 (MEASURED,
+    // review/UIGAP-ORACLE/212/trade.tsv row 8) -- fable used to print its own
+    // "Trade cancelled." from the callback AND "Trade cancelled" from here.
     auto events = bridge.drainEvents();
-    EXPECT_EQ(lastSystemMessage(events), "Trade cancelled");
+    int lines = 0;
+    for (const auto& e : events) {
+        if (e.type == eqt::state::GameEventType::SystemMessage) ++lines;
+    }
+    EXPECT_EQ(lines, 1);
+    EXPECT_EQ(lastSystemMessage(events), "You have cancelled the trade.");
     EXPECT_FALSE(eq.GetGameState().trade().active());
     EXPECT_EQ(eq.GetTradeManager()->getState(), TradeState::None);
 }

@@ -117,10 +117,32 @@ ADD_EXECUTABLE(test_scenario_state_machines
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_cast_lands.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_interrupted_cast.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_equip_observed.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_inventory.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_social.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_create_character.cpp  # B888
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_state_machines PRIVATE ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_scenario_state_machines GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_scenario_state_machines DISCOVERY_TIMEOUT 120)
+
+# UIGAP-live: the wave-1 UI units' live legs, driven offline through the real
+# ScenarioRunner against a simulated world.
+ADD_EXECUTABLE(test_scenario_ui_legs
+    test_scenario_ui_legs.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_registry.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_runner.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_in.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_two_client_survive.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_cast_lands.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_interrupted_cast.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_equip_observed.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_inventory.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_social.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_create_character.cpp  # B888
+)
+TARGET_INCLUDE_DIRECTORIES(test_scenario_ui_legs PRIVATE ${CMAKE_SOURCE_DIR}/include)
+TARGET_LINK_LIBRARIES(test_scenario_ui_legs GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_scenario_ui_legs DISCOVERY_TIMEOUT 120)
 
 # Test logging infrastructure
 ADD_EXECUTABLE(test_logging

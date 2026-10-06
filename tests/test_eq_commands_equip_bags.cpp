@@ -572,13 +572,10 @@ TEST_F(EqCommandsEquipTest, TradeFinish_OwnTradeSlotsAndContentsClearedCleanly) 
 
     eq.GetTradeManager()->handleFinishTrade();
 
-    // The completion summary sees what we offered (TradeManager::hasOwnItem
-    // reads the inventory trade slot; addItemToTrade() has no callers).
-    bool gaveBag = false;
-    for (const auto& msg : DrainSystemMessages(bridge)) {
-        if (msg == "You give Large Bag to Buddy.") gaveBag = true;
-    }
-    EXPECT_TRUE(gaveBag);
+    // B896 (#212): a completed trade prints NO chat line on either side
+    // (MEASURED, review/UIGAP-ORACLE/212/trade.tsv row 7); T259's "You give
+    // Large Bag to Buddy." summary was fable's own and is gone.
+    EXPECT_TRUE(DrainSystemMessages(bridge).empty());
     EXPECT_EQ(eq.GetTradeManager()->getState(), TradeState::None);
     EXPECT_EQ(inv->getItem(TRADE_BEGIN), nullptr);
     EXPECT_EQ(inv->getItem(3031), nullptr);

@@ -76,6 +76,10 @@ std::string eqt::strings::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_SetChatServer2: return "HC_OP_SetChatServer2";
 		case HC_OP_ZoneServerInfo: return "HC_OP_ZoneServerInfo";
 		case HC_OP_WorldComplete: return "HC_OP_WorldComplete";
+		case HC_OP_DeleteCharacter: return "HC_OP_DeleteCharacter";
+		case HC_OP_CharacterCreate: return "HC_OP_CharacterCreate";
+		case HC_OP_RandomNameGenerator: return "HC_OP_RandomNameGenerator";
+		case HC_OP_ApproveName: return "HC_OP_ApproveName";
 	}
 
 	// Zone opcodes
@@ -442,6 +446,9 @@ std::string eqt::StringDb::GetStringMessage(uint32_t string_id) {
 		case 335: return "You gained raid experience!";
 		case 336: return "You gained group leadership experience!";
 		case 337: return "You gained raid leadership experience!";
+		// B896 (#212): the trade cancel line both sides print, MEASURED
+		// (review/UIGAP-ORACLE/212/trade.tsv row 8).
+		case 1450: return "You have cancelled the trade.";
 		default: return fmt::format("[Unknown message #{}]", string_id);
 	}
 }

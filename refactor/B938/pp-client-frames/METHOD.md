@@ -66,9 +66,11 @@ world region is 677,200 px of 1280×720.
 The base→head world-region diff is **4.5× smaller than the base same-binary
 control and 5.7× smaller than the head same-binary control**, in *every single
 frame* (see the table — no frame's B938 diff exceeds the controls). The full-frame
-diff is dominated by sub-8-level llvmpipe FP16/ETC1 rounding (mean abs diff
-0.809 base→head vs 1.91 / 2.50 for the controls); **zero pixels** in the 4–16
-band for base→head, vs thousands for the controls.
+diff is dominated by sub-8-level llvmpipe FP16/ETC1 rounding (on the committed
+frame 20: mean max-channel abs diff 0.809 base→head vs 1.91 / 2.50 for the
+controls, with >16-level pixels at 0.01% / 0.70% / 0.79%). The 4–16 band on
+frame 20: base→head has 18 pixels (2 in (4,8], 16 in (8,16]), vs 38 / 43 for the
+two controls — the smallest of the three.
 
 `heatmaps/diff_base_vs_head.png` (the B938 comparison) is almost entirely black,
 with only tiny clusters where the 3 vertex-animated plants (the one thing that
@@ -83,7 +85,7 @@ the per-pixel acceptance-2 evidence the gate could not provide.
 
 - Raw frames + per-run `run_meta.txt` / `command_line.txt` / `client.log`:
   `~/kb-evidence/b938-placement-records/pp-client-frames/{baseA1,baseA2,headB1,
-  headB2}/` (160 frames total, ~700 KB each).
+  headB2}/` (164 frames total, ~700 KB each).
 - Committed here: one steady frame from base and head (`frames/`), the three
   diff heatmaps (`heatmaps/`), the per-frame table, and the diff tooling
   (`pixel_diff.py`, `diff_heat.py`, `pp_table.py`) — reproducible from the raw

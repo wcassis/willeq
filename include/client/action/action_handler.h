@@ -481,6 +481,8 @@ public:
     // GameState BEFORE dispatch -- a refused command reaches none of these.
     virtual void bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) = 0;
     virtual void bankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount) = 0;
+    // B441 (#26): /bank change -- the Change button, both purses to the fewest coins.
+    virtual void bankMakeChange() = 0;
 
     // ========== Social / Find (T150) ==========
     // Four senders that had zero production callers until this unit

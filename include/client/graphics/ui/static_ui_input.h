@@ -17,6 +17,7 @@
 #include <string>
 
 #include "client/graphics/ui/confirmation_dialog.h"  // B442b
+#include "client/graphics/ui/esc_window_stack.h"   // B460
 #include "client/graphics/ui/options_layout.h"
 #include "client/graphics/ui/quantity_window.h"   // B442
 #include "client/inventory/cursor_gesture.h"      // B442
@@ -46,6 +47,7 @@ struct OptionsPanelState;
 struct TrainerPanelState;  // B898
 // B899 (#215 / #151 Leg B).
 struct ContainerWindowsState;
+struct TradePanelState;  // B896
 
 /**
  * T313 -- the three panels that carry a scrollOffset.
@@ -317,7 +319,22 @@ public:
      * TradeskillCloseIntent and nothing is hidden locally. Returns true if a
      * window was addressed.
      */
-    bool processContainerEscape(ContainerWindowsState& containers);
+    bool processContainerEscape(ContainerWindowsState& containers, int onlyIndex = -1);
+
+    /**
+     * B896 (#212): the trade window and the NPC give window. Defined in
+     * src/client/graphics/ui/trade_input.cpp. Returns true when the point is
+     * over the open window (the caller then withholds the click from the
+     * windows below it). An own slot takes a LEFT click only with an item
+     * held, into an EMPTY slot, through B442's slotClick() -> CursorGesture
+     * with slot 3000+n (an offered item cannot be taken back: trade.tsv row
+     * 5); a RIGHT click on an occupied own slot is the item display. An own
+     * coin row with coin held pushes TradeWindowIntent{CoinFromCursor}; Trade
+     * / Give pushes {Accept}; Cancel and the close box push {Cancel}. Nothing
+     * here changes the panel's contents: the game thread answers.
+     */
+    bool processTradeInput(int mouseX, int mouseY, bool leftClicked,
+                           const UILayout& layout, TradePanelState& trade);
 
     /**
      * Handle a key press. Returns true if consumed.
@@ -335,13 +352,20 @@ public:
      * close intent and leaves the panel up until the server's own
      * TradeskillContainerClosed / LootWindowClosed comes back. The other
      * three are pure client views and are hidden here.
+     *
+     * B460 (#156): `only` names the ONE popup the ESC window stack chose
+     * (the most recently opened window); EscWindow::Count keeps the fixed
+     * draw order above, which is what a caller without the stack gets.
+     * B899's processContainerEscape() takes the stack's container index the
+     * same way (-1 = the topmost).
      */
     bool processKey(irr::EKEY_CODE key, bool pressed, bool shift, bool ctrl,
                     InventoryPanelState& inventory,
                     SpellbookPopupState& spellbook,
                     SkillsPopupState& skills,
                     LootPanelState& loot,
-                    TradeskillPanelState& tradeskill);
+                    TradeskillPanelState& tradeskill,
+                    EscWindow only = EscWindow::Count);
 
     // --- T313: the one scroll input path -------------------------------
     //

@@ -590,8 +590,12 @@ bool StaticUIInput::processKey(irr::EKEY_CODE key, bool pressed, bool /*shift*/,
                                 SpellbookPopupState& spellbook,
                                 SkillsPopupState& skills,
                                 LootPanelState& loot,
-                                TradeskillPanelState& tradeskill) {
+                                TradeskillPanelState& tradeskill,
+                                EscWindow only) {
     if (!pressed) return false;
+    // B460: with `only` set, exactly that popup is addressed.
+    const bool any = only == EscWindow::Count;
+    auto pick = [&](EscWindow w) { return any || only == w; };
 
     // ESC closes any open popup
     if (key == irr::KEY_ESCAPE) {
@@ -604,7 +608,7 @@ bool StaticUIInput::processKey(irr::EKEY_CODE key, bool pressed, bool /*shift*/,
         // rule and the same body the window's Close button already used --
         // ESC is a second producer for one existing intent, not a new
         // packet.
-        if (tradeskill.isOpen) {
+        if (tradeskill.isOpen && pick(EscWindow::Tradeskill)) {
             if (bridge_) {
                 bridge_->pushIntent(
                     eqt::events::TradeskillCloseIntent{tradeskill.objectId});
@@ -614,15 +618,15 @@ bool StaticUIInput::processKey(irr::EKEY_CODE key, bool pressed, bool /*shift*/,
         // T290: the loot popup goes next -- it is the only OTHER popup whose
         // close has to reach the server. It does NOT clear isOpen here;
         // LootWindowClosed does.
-        if (loot.isOpen) {
+        if (loot.isOpen && pick(EscWindow::Loot)) {
             if (bridge_) {
                 bridge_->pushIntent(eqt::events::CloseLootIntent{loot.corpseId});
             }
             return true;
         }
-        if (spellbook.isOpen) { spellbook.isOpen = false; return true; }
-        if (skills.isOpen) { skills.isOpen = false; return true; }
-        if (inventory.activePopup != PopupType::None) {
+        if (spellbook.isOpen && pick(EscWindow::Spellbook)) { spellbook.isOpen = false; return true; }
+        if (skills.isOpen && pick(EscWindow::Skills)) { skills.isOpen = false; return true; }
+        if (inventory.activePopup != PopupType::None && pick(EscWindow::Inventory)) {
             inventory.activePopup = PopupType::None;
             return true;
         }
@@ -875,6 +879,7 @@ bool StaticUIInput::processCommerceInput(int mouseX, int mouseY,
     bank.hoveredSlot = -1;
     bank.doneHovered = false;
     bank.closeHovered = false;
+    bank.changeHovered = false;
 
     // --- the bank window, asked first (it draws above the centre popups) ---
     if (bank.isOpen) {
@@ -887,6 +892,15 @@ bool StaticUIInput::processCommerceInput(int mouseX, int mouseY,
                 // The session is the SERVER's; the panel closes when
                 // BankWindowClosed comes back (T290's rule).
                 bridge_->pushIntent(eqt::events::CloseBankIntent{});
+            }
+            return true;
+        }
+        // B441 (#26): BW_ChangeButton -- the game thread converts both
+        // purses from its own counters and sends the OP_MoveCoin steps.
+        if (hitTestBankChangeButton(layout, bank, mouseX, mouseY)) {
+            bank.changeHovered = true;
+            if (leftClicked && bridge_) {
+                bridge_->pushIntent(eqt::events::BankMakeChangeIntent{});
             }
             return true;
         }

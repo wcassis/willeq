@@ -609,6 +609,13 @@ void FrameComponent::renderStaticUI() {
             }
             staticUIInput_->setFrameClickState(rightClick, mods, &cursorState_);
         }
+        // B834: the tip window draws above every window but the Quantity
+        // window, so it is asked before them and keeps the click it takes.
+        if (processTipWindowInput()) pendingUIClick_ = false;
+        // B896 (#212): the trade / give window is above every window from
+        // here to the containers, and the inventory is open beside it, so it
+        // takes its click before them (renderer_frame_trade.cpp).
+        processTradeWindowInput();
         bool uiTook = staticUIInput_->processInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
             uiLayout_, hotbarState_, spellGemState_, inventoryState_,
@@ -720,6 +727,9 @@ void FrameComponent::renderStaticUI() {
         // B899 (#215): the container windows (EQUI_Container.xml), drawn
         // after the tracking window, mirroring the hit-test order above.
         renderContainerWindows(*uiRenderer_, uiLayout_, containerState_);
+        // B896 (#212): the trade / give window, at the oracle's own (0,25),
+        // above the containers and every window it took the click from.
+        renderTradeWindow(*uiRenderer_, uiLayout_, tradeState_);
         // T421 (B298 item half): the item display window. Drawn after every
         // popup because the oracle's ItemDisplayWindow has its own absolute
         // placement (0,80) and overlaps whatever is beneath it.
@@ -730,6 +740,7 @@ void FrameComponent::renderStaticUI() {
         // hit-test order above.
         renderFriendsWindow(*uiRenderer_, uiLayout_, friendsState_);  // B897
         renderOptionsWindow(*uiRenderer_, uiLayout_, optionsState_);
+        renderTipWindow(*uiRenderer_, uiLayout_, tipState_);  // B834
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
         // B442: the QuantityWnd, above every window (hit-tested first).
         if (staticUIInput_) {

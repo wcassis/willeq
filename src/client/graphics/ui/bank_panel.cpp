@@ -24,7 +24,6 @@ namespace {
 const irr::video::SColor kText(255, 225, 225, 225);
 const irr::video::SColor kTitle(255, 255, 215, 0);
 const irr::video::SColor kFrame(255, 80, 80, 80);
-const irr::video::SColor kDisabledText(255, 120, 120, 128);
 
 }  // namespace
 
@@ -141,15 +140,14 @@ void renderBankWindow(UIRenderer& ui, const UILayout& layout,
                     kText);
     }
 
-    // --- BW_ChangeButton: DRAWN GREYED, NOT HIT-TESTABLE (board B441) ---
-    // The oracle's Change opens a coin-denomination dialog fable does not
-    // have, and /bank convert needs a from/to/amount triple no single click
-    // supplies. T363's rule, made mechanical by T434: a control with no
-    // backing setting is greyed and eats no click.
+    // --- BW_ChangeButton (B441, #26): one click, every coin in both purses
+    // to the fewest coins (help/tips/ctxbank.html; no dialog exists). Drawn
+    // like Done, the same A_BtnNormal template in the XML.
     const auto change = BankLayout::changeButtonRect(layout);
-    ui.drawRect(change, irr::video::SColor(160, 40, 40, 46));
+    ui.drawRect(change, state.changeHovered ? irr::video::SColor(220, 120, 60, 60)
+                                            : irr::video::SColor(200, 56, 62, 84));
     ui.drawFrame(change, kFrame);
-    if (tb) tb->addTextCentered("Change", change, kDisabledText);
+    if (tb) tb->addTextCentered("Change", change, kText);
 
     // --- BW_DoneButton ---
     const auto done = BankLayout::doneButtonRect(layout);
@@ -182,6 +180,13 @@ bool hitTestBankCloseBox(const UILayout& layout, const BankPanelState& state,
                          int mouseX, int mouseY) {
     if (!state.isOpen) return false;
     return BankLayout::closeBoxRect(layout).isPointInside(
+        irr::core::vector2di(mouseX, mouseY));
+}
+
+bool hitTestBankChangeButton(const UILayout& layout, const BankPanelState& state,
+                             int mouseX, int mouseY) {
+    if (!state.isOpen) return false;
+    return BankLayout::changeButtonRect(layout).isPointInside(
         irr::core::vector2di(mouseX, mouseY));
 }
 

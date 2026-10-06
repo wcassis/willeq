@@ -70,11 +70,21 @@ ActionResult CommandProcessor::cmdBank(const std::string& args) {
 
     static const char* kUsage =
         "Usage: /bank [deposit|withdraw <amount> <pp|gp|sp|cp>] "
-        "[convert <amount> <from> <to>]";
+        "[convert <amount> <from> <to>] [change]";
 
     std::string sub = parts[0];
     std::transform(sub.begin(), sub.end(), sub.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    // B441 (#26): the bank window's Change button -- every coin in both
+    // purses to the fewest coins (the client's own ctxbank.html tip).
+    if (sub == "change") {
+        if (parts.size() != 1) return ActionResult::Failure(kUsage);
+        if (!m_state.player().isAtBank()) {
+            return ActionResult::Failure("You must have a bank window open (/bank) to change coins.");
+        }
+        return m_dispatcher.bankMakeChange();
+    }
 
     const bool isMove = (sub == "deposit" || sub == "withdraw");
     const bool isConvert = (sub == "convert");

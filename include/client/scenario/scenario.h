@@ -77,11 +77,71 @@ public:
      */
     virtual long long SelfEquipmentMaterial(int materialSlot) const = 0;
 
+    // --- UIGAP-live observables (#151 #213 #214 #215 #211) ---
+    //
+    // These have DEFAULT bodies that answer "not readable" (-1 / empty) on
+    // purpose: every older scenario and every fake keeps compiling unchanged,
+    // and a scenario that needs one of them treats the default as "the world
+    // cannot tell me" rather than as a value.
+
+    /**
+     * The item id THIS client's InventoryManager holds at `serverSlot`
+     * (`inventory.slot_id` numbering: general 23-30, cursor 33, bag contents
+     * 4010+, bank 2000+, world container 4000+), so a scenario and the
+     * database speak one numbering. 33 is the cursor's FRONT item. 0 = empty,
+     * -1 = not readable / not a slot this client has.
+     */
+    virtual long long ClientItemAt(int serverSlot) const { (void)serverSlot; return -1; }
+    /** The stack count (charges) at `serverSlot`; 0 empty, -1 not readable. */
+    virtual long long ClientChargesAt(int serverSlot) const { (void)serverSlot; return -1; }
+    /** Items queued on the cursor, front included; -1 not readable. */
+    virtual long long CursorQueueSize() const { return -1; }
+    /** The skill value this client holds for `skillId`; -1 not readable. */
+    virtual long long SkillValue(int skillId) const { (void)skillId; return -1; }
+    /** The training points this client holds; -1 not readable. */
+    virtual long long PracticePoints() const { return -1; }
+    /**
+     * Every line this client SHOWED in chat since the lane armed (system
+     * lines and channel messages alike), oldest first, each as
+     * "<channel>|<sender>|<text>". A line the client filtered out (the ignore
+     * list) never appears here: this is the transcript a player would read.
+     */
+    virtual size_t ChatLineCount() const { return 0; }
+    virtual std::string ChatLine(size_t index) const { (void)index; return std::string(); }
+    /**
+     * How many game events of `GameEventType` (its integer value) this client
+     * published since the lane armed; -1 not readable. The scenario lane's
+     * stand-in for "the packet behind that event arrived".
+     */
+    virtual long long EventCount(int gameEventType) const { (void)gameEventType; return -1; }
+    /** The latest SkillValueChanged value seen for `skillId`; -1 none yet. */
+    virtual long long LastSkillUpdateValue(int skillId) const { (void)skillId; return -1; }
+    /** Rows in the latest TrackingListChanged event; -1 none yet. */
+    virtual long long TrackingRowCount() const { return -1; }
+    /**
+     * The drop id of the nearest world object (OP_GroundSpawn) of
+     * `objectType` (17 = forge), 0 when none is known.
+     */
+    virtual long long NearestWorldObjectId(int objectType) const { (void)objectType; return 0; }
+
     // --- actions ---
     /** Dispatch one slash command line, exactly as --script would. */
     virtual void SendCommand(const std::string& rawLine) = 0;
     /** One line of scenario trace (MOD_SCENARIO, INFO). */
     virtual void Note(const std::string& line) = 0;
+    /**
+     * UIGAP-live: a synthetic LEFT (or RIGHT) click on an item-window slot,
+     * `serverSlot` in `inventory.slot_id` numbering. It runs the same
+     * CursorGesture::click() a window's slot arm runs (B442), with the slot
+     * and cursor snapshots read off the model, so what reaches the game thread
+     * is the CursorGestureIntent a real click pushes. Returns the
+     * GestureAction as an int (eqt::inventory::GestureAction), -1 when the
+     * world cannot click (the default).
+     */
+    virtual int ClickSlot(int serverSlot, bool rightButton, bool shift, bool ctrl) {
+        (void)serverSlot; (void)rightButton; (void)shift; (void)ctrl;
+        return -1;
+    }
 };
 
 struct ScenarioTick {
@@ -147,6 +207,13 @@ struct ScenarioOptions {
      * clamps to ~95%. 41 = Weaken (classes13 255). 0 = the scenario refuses.
      */
     uint32_t fizzleSpellId = 0;
+    /**
+     * B888 (issue #204): create_character. The name --create-character made
+     * and the zones its chosen home city may land in (data/char_create.tsv's
+     * `city` row). Empty name = the scenario refuses (it has nothing to check).
+     */
+    std::string expectCharacterName;
+    std::vector<std::string> expectHomeZones;
 };
 
 class IScenario {

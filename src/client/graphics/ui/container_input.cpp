@@ -87,9 +87,12 @@ bool StaticUIInput::processContainerInput(int mouseX, int mouseY, bool leftClick
     return true;
 }
 
-bool StaticUIInput::processContainerEscape(ContainerWindowsState& containers) {
-    const int idx = topmostContainerWindow(containers);
-    if (idx < 0) return false;
+bool StaticUIInput::processContainerEscape(ContainerWindowsState& containers, int onlyIndex) {
+    // B460: the ESC window stack names the window it chose; -1 = the topmost.
+    const int idx = onlyIndex < 0 ? topmostContainerWindow(containers) : onlyIndex;
+    if (idx < 0 || idx >= ContainerWindowsState::MAX_WINDOWS || !containers.windows[idx].isOpen) {
+        return false;
+    }
     if (bridge_) bridge_->pushIntent(closeIntentFor(containers.windows[idx]));
     return true;
 }

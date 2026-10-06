@@ -109,6 +109,12 @@ void GraphicsInputHandler::updateFromEventReceiver() {
                     LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ToggleAutoAttack -> pendingAction set");
                 } else { LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: ToggleAutoAttack BLOCKED by chatFocused"); }
                 break;
+            // B905 (#225): Ctrl+Q. InputActionBridge has always consumed
+            // InputAction::Attack (enableAutoAttack); the receiver never
+            // queued it, so the key fell through the switch's default.
+            case RA::Attack:
+                if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::Attack)] = true; }
+                break;
             case RA::Hail:
                 if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::Hail)] = true;
                     LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: Hail -> pendingAction set");

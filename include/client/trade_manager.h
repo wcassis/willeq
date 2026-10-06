@@ -85,7 +85,6 @@ public:
 
     // Item management (own side, slots 0-3)
     bool hasOwnItem(int slot) const;
-    const eqt::inventory::ItemInstance* getOwnItem(int slot) const;
     bool addItemToTrade(int16_t inventorySlot, int tradeSlot);
     bool removeItemFromTrade(int tradeSlot);
 
@@ -95,6 +94,14 @@ public:
 
     // Money management (own side)
     void setOwnMoney(uint32_t platinum, uint32_t gold, uint32_t silver, uint32_t copper);
+    // B896 (#212): coin already ON THE CURSOR goes into the trade -- the
+    // window's coin-row click. ONE OP_MoveCoin cursor -> trade (MEASURED,
+    // review/UIGAP-ORACLE/212/trade.tsv row 2: from_slot 0, to_slot 3; the
+    // inventory -> cursor half was the purse click's own packet before it).
+    // `coinType` is EQT::COINTYPE_* (0 cp .. 3 pp). Adds to our side, resets
+    // the accept state (row 6: any change resets it) and fires the money
+    // callback. Returns false (nothing sent) outside an active trade.
+    bool addOwnCoinFromCursor(int32_t coinType, uint32_t amount);
     const TradeMoney& getOwnMoney() const { return m_own_money; }
     const TradeMoney& getPartnerMoney() const { return m_partner_money; }
 

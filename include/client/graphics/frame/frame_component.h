@@ -151,6 +151,9 @@
 #include "client/graphics/ui/cursor_attachment.h"
 #include "client/graphics/ui/trainer_panel.h"  // B898
 #include "client/graphics/ui/container_panel.h"
+#include "client/graphics/ui/trade_panel.h"  // B896
+#include "client/graphics/ui/esc_window_stack.h"  // B460
+#include "client/graphics/ui/tip_window.h"  // B834
 #include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
@@ -319,6 +322,40 @@ public:
 	// True when a static window's own geometry holds (x,y) but its entry
 	// point returns nothing (the Friends window, the two dialogs).
 	bool pointOverSelfConsumingWindow(int x, int y) const;
+	// ---- B896 (GitLab #212): the trade / give window, renderer_frame_trade.cpp ----
+	// The click pass, from renderStaticUI() right after the QuantityWnd: the
+	// window is drawn above the centre popups, the bank, the trainer and the
+	// container windows, and the inventory is always open beside it (the
+	// official client opens both, trade.tsv row 1), so a click it takes is
+	// withheld from every window below it.
+	void processTradeWindowInput();
+	// ---- B460 (GitLab #156): ESC closes the most recently opened window ----
+	// observeEscWindows() runs every frame (processFrameInput) so the stack
+	// sees every opener; handleEscapeKey() is the ESC press, from
+	// processChatInput(). Returns true when a window took the press (false:
+	// it cleared the target, or there was nothing to do).
+	std::vector<EscWindowKey> openEscWindows() const;
+	void observeEscWindows();
+	bool handleEscapeKey();
+	EscWindowStack escWindowStack_;
+
+	// ---- B834 (GitLab #202): the tip windows, renderer_frame_tips.cpp ----
+	// updateTipWindows() runs once a frame: it pops the Tip of the Day after
+	// the first zone-in of a character and a context tip on the rising edge
+	// of each window that has one (tip_window.h lists the oracle and the
+	// flagged assumptions). processTipWindowInput() is the click pass, true
+	// when the window took the click. The texts are read lazily from the
+	// client's own help/tips/ under RendererConfig::eqClientPath.
+	void updateTipWindows();
+	bool processTipWindowInput();
+	std::set<std::string> activeTipTriggers() const;
+	const TipDocument* tipDocument(const std::string& key);
+	TipWindowState tipState_;
+	TipPreferences tipPrefs_;
+	std::vector<TipDocument> totdEntries_;
+	bool totdLoaded_ = false;
+	std::map<std::string, TipDocument> tipDocs_;
+	std::set<std::string> tipTriggersLast_;
 
 	// ---- T432 (board B275): the ONE per-character persistence path ----
 	// Before this the client persisted NOTHING a player changed. Will's
@@ -442,6 +479,12 @@ public:
 	// InventorySlotChanged arm; NOT a centre popup (EQUI_Container.xml is
 	// RelativePosition false, Style_Sizable false at 100x366).
 	ContainerWindowsState containerState_;      // B899
+	// B896 (GitLab #212): the trade window (EQUI_TradeWnd.xml) or the NPC
+	// give window (EQUI_GiveWnd.xml), whichever the session is. Fed by the
+	// seven Trade* bridge arms and the 3000..3007 branch of the
+	// InventorySlotChanged arm; NOT a centre popup (RelativePosition false at
+	// its own <Location>, and the inventory is open beside it).
+	TradePanelState tradeState_;                // B896
 	XPBarState xpBarState_;             // U06i
 	// T432 (board B275): per-character UI persistence. Empty identity =
 	// not logged in yet, and sync() is then a no-op.

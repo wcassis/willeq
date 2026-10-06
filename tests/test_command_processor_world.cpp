@@ -738,6 +738,22 @@ TEST_F(BankCoinCommandTest, UnknownSubcommand_UsageNothingDispatched) {
     EXPECT_EQ(handler.count(), 0u);
 }
 
+// B441 (#26): `/bank change` is the bank window's Change button.
+TEST_F(BankCoinCommandTest, Change_DispatchesBankMakeChange) {
+    auto result = processor->processCommand("/bank change");
+    EXPECT_TRUE(result.success) << result.message;
+    ASSERT_TRUE(handler.calledOnceWith("bankMakeChange()"));
+}
+
+TEST_F(BankCoinCommandTest, Change_NeedsTheBankWindowAndNoArguments) {
+    EXPECT_FALSE(processor->processCommand("/bank change 5").success);
+    state.player().clearBanker();
+    auto result = processor->processCommand("/bank change");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("bank window"), std::string::npos) << result.message;
+    EXPECT_EQ(handler.count(), 0u);
+}
+
 TEST_F(BankCoinCommandTest, Convert_Up_DispatchesBankCoinConvert) {
     auto result = processor->processCommand("/bank convert 30 cp sp");
     EXPECT_TRUE(result.success) << result.message;
