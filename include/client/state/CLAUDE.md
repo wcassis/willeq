@@ -50,7 +50,7 @@ A new event adds its enumerator to `event_types.h`, its payload struct to the
 family header it belongs to, and its variant alternative to `event_bus.h` --
 three files, none of which is the 1,269-line one this replaced.
 
-**101 event types** (`GameEventType`, re-counted 2026-09-07 by T439, which added `VolumesChanged`; T421 added `ItemDisplayShown` and T419 `TradeskillRecipeListCleared` / `TradeskillRecipeReceived`) organized by domain; `IrrlichtBridge` has a case for all 101 in its switch, `ConsoleBridge` logs a subset headless. **This number is netted by `DocCounts`** (`scripts/refactor/check_doc_counts.py`), so a new enumerator that leaves it stale is a red test, not a silent drift:
+**102 event types** (`GameEventType`, re-counted 2026-10-05 by B430, which added `GameOptionChanged`; T439 added `VolumesChanged`; T421 added `ItemDisplayShown` and T419 `TradeskillRecipeListCleared` / `TradeskillRecipeReceived`) organized by domain; `IrrlichtBridge` has a case for all 102 in its switch, `ConsoleBridge` logs a subset headless. **This number is netted by `DocCounts`** (`scripts/refactor/check_doc_counts.py`), so a new enumerator that leaves it stale is a red test, not a silent drift:
 - **Player**: PositionChanged, StatsChanged, MovementModeChanged, LevelChanged
 - **Entity**: EntitySpawned, EntityDespawned, EntityMoved, EntityAppearanceChanged, EntityAnimation
 - **Door**: DoorSpawned, DoorStateChanged

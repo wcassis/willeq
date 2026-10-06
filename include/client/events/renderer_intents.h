@@ -6,6 +6,7 @@
 
 // T156: the hotbar numbering, shared by value so HotbarActivateIntent cannot
 // carry a raw uint8_t in some other scheme. Dependency-free header.
+#include "client/game_options.h"  // B430: GameOptionIntent
 #include "client/hotbar/hotbar_slot_type.h"
 
 namespace eqt {
@@ -218,6 +219,18 @@ struct EffectsVolumeChangeIntent {
     int step;  // 0..20, clamped by the handler
 };
 
+// --- Options window (B430/B433) ---
+
+// A server-owned Options setting the player changed: a scalar option is sent
+// as OP_SpawnAppearance (eqt::gameOptionAppearanceType), ServerFilters as the
+// whole OP_SetServerFilter payload in `filters`. The game thread publishes
+// the applied scalar back on GameEventType::GameOptionChanged.
+struct GameOptionIntent {
+    eqt::GameOption option;
+    int32_t value = 0;
+    eqt::ServerFilterPayload filters{};
+};
+
 // --- Tradeskill ---
 
 struct TradeskillCombineIntent {
@@ -417,7 +430,9 @@ using RendererIntent = std::variant<
     EquipmentChangedIntent,
     CursorGestureIntent,   // B442
     // Audio (T328)
-    PlaySoundIntent
+    PlaySoundIntent,
+    // Options window (B430)
+    GameOptionIntent
 >;
 
 } // namespace events

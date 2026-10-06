@@ -163,24 +163,14 @@ void eqt::zone::ZoneComponent::ZoneSendSetServerFilter()
 	
 	p.PutUInt16(0, HC_OP_SetServerFilter);
 	
-	// T243: show everything. The slot conventions are NOT uniform (see
-	// EQT::ServerFilterSlot): eleven slots are "0=hide, 1=show" and eqemu's
-	// Filter0 macro shows ONLY for the exact value 1; the rest are "0=show".
-	// The previous payload (0xFFFFFFFF in every slot, "all enabled") hid all
-	// 28 filters server-side -- FilterSocials among them, which is why the
-	// OP_Emote broadcast never reached an observing willeq (T243 live run 1).
-	static const bool kShowIsOne[EQT::FILTER_COUNT] = {
-		false,                                            // 0  none
-		true, true, true, true, true, true, true,         // 1-7  guild/socials/group/shouts/auctions/ooc/badwords
-		false, false, false, false, false, false,         // 8-13 pc spells .. spell damage
-		true, true, true, true,                           // 14-17 my misses / others miss / others hit / missed me
-		false, false, false, false, false, false,         // 18-23 damage shields .. pet spells
-		false, false, false, false, false                 // 24-28 heal over time .. bard songs on pets
-	};
+	// T243 settled the per-slot conventions (EQT::ServerFilterSlot; the table
+	// now lives in eqt::defaultServerFilterPayload(), client/game_options.h).
+	// B433: the payload is whatever the Options window's Filters page last
+	// set -- show-everything until it sets something.
 	for (size_t i = 0; i < EQT::FILTER_COUNT; i++) {
-		p.PutUInt32(2 + (i * 4), kShowIsOne[i] ? 1u : 0u);
+		p.PutUInt32(2 + (i * 4), m_server_filters[i]);
 	}
-	
+
 	LOG_DEBUG(MOD_ZONE, "Sending OP_SetServerFilter");
 
 	eqt::strings::DumpPacket("C->S", HC_OP_SetServerFilter, p);
@@ -190,6 +180,15 @@ void eqt::zone::ZoneComponent::ZoneSendSetServerFilter()
 		ctx_.net.NoteSuppressedSend();
 	}
 	m_server_filter_sent = true;
+}
+
+void eqt::zone::ZoneComponent::SetServerFilters(const eqt::ServerFilterPayload& filters)
+{
+	m_server_filters = filters;
+	// Before the zone-in packet the stored payload simply rides on it.
+	if (m_server_filter_sent) {
+		ZoneSendSetServerFilter();
+	}
 }
 
 void eqt::zone::ZoneComponent::ZoneSendStreamIdentify()

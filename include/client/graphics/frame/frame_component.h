@@ -275,6 +275,19 @@ public:
 	// Called from renderStaticUI() when processOptionsInput() reports a
 	// change, and from syncUiPreferences() after a load.
 	void applyOptionsSetting(OptionsLayout::Setting setting);
+	// B430: the arms for every setting added after T434 (same TU), and the
+	// load path's "tell everything" -- every persisted setting once.
+	void applyOptionsSettingB430(OptionsLayout::Setting setting);
+	void applyAllOptionsSettings();
+	// B430/B433: `/option` and `/filter` (registry 3). Runs the grammar in
+	// options_command.cpp against optionsState_, applies every setting it
+	// changed through applyOptionsSetting(), and returns the reply lines.
+	std::vector<std::string> runOptionsCommand(const std::string& cmd,
+	                                           const std::string& args);
+	// B433: the Keys page's key capture (renderer_frame_options.cpp); called
+	// first thing in processChatInput(), true while it owns the keyboard.
+	bool processOptionsKeyCapture();
+	bool optionsKeyCaptureGate_ = false;
 
 	// ---- T432 (board B275): the ONE per-character persistence path ----
 	// Before this the client persisted NOTHING a player changed. Will's

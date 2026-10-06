@@ -16,6 +16,7 @@
 #include <memory>
 #include <glm/glm.hpp>
 
+#include "client/game_options.h"  // B430: GameOptionChangedData
 #include "client/hotbar/hotbar_slot_type.h"  // T156: HotbarSlotAssignedData carries the enum, not a raw uint8_t
 #include "client/spell/spell_visual_vocabulary.h"  // T381: SpellCastVisual*Data carry the render vocabulary by value, not a SpellDatabase*
 
@@ -100,6 +101,16 @@ struct BankCurrencyChangedData {
 struct VolumesChangedData {
     int musicStep;   // 0..20
     int soundStep;   // 0..20
+};
+
+// B430: a server-owned Options-window setting the game thread now holds
+// (eqt::GameOption, include/client/game_options.h) -- published from the
+// player-profile read at zone-in and from every site that changes one
+// (/anon, /roleplay, the Options window's own GameOptionIntent), so the
+// window's checkboxes show what the SERVER was told, never a local guess.
+struct GameOptionChangedData {
+    eqt::GameOption option;
+    int32_t value;
 };
 
 // --- Loot events ---

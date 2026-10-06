@@ -279,6 +279,16 @@ public:
 	// clamping, which is the whole point of the board item.
 	void PublishVolumesChanged();
 
+	// B430: the ONE publisher of GameEventType::GameOptionChanged, and the one
+	// body that applies a server-owned Options setting (bridge_component_options.cpp).
+	// ApplyGameOption() sends it (OP_SpawnAppearance, or OP_SetServerFilter for
+	// ServerFilters) and publishes the applied value; PublishProfileGameOptions()
+	// publishes the player-profile values read at zone-in.
+	void ApplyGameOption(const eqt::events::GameOptionIntent& i);
+	void PublishGameOption(eqt::GameOption option, int32_t value);
+	void PublishProfileGameOptions(uint8_t anon, uint32_t autosplit, uint8_t consentGroup,
+	                               uint8_t consentRaid, uint8_t consentGuild);
+
 	// Audio configuration (applied during InitializeAudio; Application sets
 	// these from the CLI/config before InitGraphics).
 	void SetAudioEnabled(bool enabled) { m_audio_config_enabled = enabled; }
@@ -374,6 +384,7 @@ private:
 	void RunCursorGesture(const eqt::events::CursorGestureIntent& i);
 	void PublishInventorySlot(int16_t slot);
 	void onPlaySoundIntent(const eqt::events::PlaySoundIntent& i);
+	void onGameOptionIntent(const eqt::events::GameOptionIntent& i);
 
 	// T171: shared resolution of the per-client config node. See the
 	// definitions in bridge_component_ui_audio.cpp for why read and write

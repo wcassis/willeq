@@ -348,6 +348,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::PetCreatedData>(event.data);
             // U06f: New UI
             renderer_->Frame().petPanelState_.hasPet = true;
+            // B430: OGP_PetWindowPopupCheckbox -- a new pet opens the pet
+            // window when the option is on (default on, the oracle capture);
+            // off leaves the player's own Alt+F1 choice alone.
+            if (EQT::Graphics::optionsSettingStep(
+                    renderer_->Frame().optionsState_,
+                    EQT::Graphics::OptionsLayout::Setting::PetWindowPopup) != 0) {
+                renderer_->Frame().petPanelState_.isOpen = true;
+            }
             renderer_->Frame().petPanelState_.name = d.name;
             renderer_->Frame().petPanelState_.level = d.level;
             renderer_->Frame().petPanelState_.hpPercent = 100;
@@ -602,6 +610,16 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             auto& d = std::get<state::VolumesChangedData>(event.data);
             EQT::Graphics::applyVolumesChanged(
                 renderer_->Frame().optionsState_, d);
+        }
+        break;
+    case state::GameEventType::GameOptionChanged:
+        // B430: a server-owned Options setting as the game thread now holds
+        // it (profile at zone-in, /anon, /roleplay, or the window's own
+        // GameOptionIntent) -- the same read-back shape as VolumesChanged.
+        if (renderer_) {
+            auto& d = std::get<state::GameOptionChangedData>(event.data);
+            EQT::Graphics::applyGameOptionChanged(
+                renderer_->Frame().optionsState_, d.option, d.value);
         }
         break;
     case state::GameEventType::EntityWeaponSkillsChanged:

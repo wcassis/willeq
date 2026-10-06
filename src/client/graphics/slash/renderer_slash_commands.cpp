@@ -150,6 +150,10 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
     } else if (cmd == "/mergedraws") {
         ctx_.Diagnostics().toggleMergeZoneDraws();
         chat(fmt::format("Zone draw merge: {}", owner_.isMergeZoneDrawsEnabled() ? "ENABLED" : "DISABLED"));
+    } else if (cmd == "/option" || cmd == "/filter") {
+        // B430/B433: the Options window's command half -- same model, same
+        // apply body as a click (FrameComponent::runOptionsCommand).
+        for (const auto& line : ctx_.Frame().runOptionsCommand(cmd, args)) chat(line);
     } else if (cmd == "/screenshot") {
         // P10: smallest additive hook for the in-app A/B capture (no other
         // scriptable screenshot command existed — F12 is a raw key event,

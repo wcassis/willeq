@@ -57,7 +57,7 @@
  * WHAT IS WIRED. `OptionsSetting` is `None` for every control whose setting
  * does not exist in fable today, and such a control is drawn greyed and is
  * NOT hit-testable — the T363 rule, so nothing advertises what does not
- * exist. The three that are wired are named in options_panel.h.
+ * exist. B430/B433 wired many more: options_classification.cpp is the census.
  */
 
 #pragma once
@@ -65,6 +65,7 @@
 #include <irrlicht.h>
 #include <cstdint>
 
+#include "client/graphics/ui/options_settings.h"
 #include "client/graphics/ui/ui_layout.h"
 
 namespace EQT {
@@ -123,17 +124,9 @@ enum class Kind : uint8_t {
     TabBox,     // a nested <TabBox> frame (ODP_ParticlesTabs)
 };
 
-/**
- * The fable setting a control drives. `None` means "fable has no such
- * setting" — the control is drawn greyed and is not hit-testable, and each
- * family of them is boarded rather than faked.
- */
-enum class Setting : uint8_t {
-    None = 0,
-    MusicVolume,   // AudioManager music volume, via MusicVolumeChangeIntent
-    SoundVolume,   // AudioManager effects volume, via EffectsVolumeChangeIntent
-    ClipPlane,     // IrrlichtRenderer::setRenderDistance()
-};
+// `Setting` (and the table behind it) lives in options_settings.h, which is
+// device-free so the persistence and the slash commands can use it.
+
 
 /**
  * One control, at its oracle offset inside its page. `x,y,w,h` are the
@@ -157,13 +150,13 @@ constexpr Control kControls[] = {
 // The nineteen left-column checkboxes, <Location>/<Size> verbatim.
 {Tab::General, Kind::Checkbox, "OGP_FastItemDestroyCheckbox",      10,  15, 150, 20, "Fast Item Destroy",        Setting::None},
 {Tab::General, Kind::Checkbox, "OGP_GuildInvitesCheckbox",         10,  35, 150, 20, "Receive Guild Invites",    Setting::None},
-{Tab::General, Kind::Checkbox, "OGP_LootAutosplitCheckbox",        10,  55, 150, 20, "Autosplit",                Setting::None},
-{Tab::General, Kind::Checkbox, "OGP_AnonymousCheckbox",            10,  75, 150, 20, "Anonymous",                Setting::None},
-{Tab::General, Kind::Checkbox, "OGP_RoleplayingCheckbox",          10,  95, 150, 20, "Roleplaying",              Setting::None},
+{Tab::General, Kind::Checkbox, "OGP_LootAutosplitCheckbox",        10,  55, 150, 20, "Autosplit",                Setting::AutoSplit},
+{Tab::General, Kind::Checkbox, "OGP_AnonymousCheckbox",            10,  75, 150, 20, "Anonymous",                Setting::Anonymous},
+{Tab::General, Kind::Checkbox, "OGP_RoleplayingCheckbox",          10,  95, 150, 20, "Roleplaying",              Setting::Roleplaying},
 {Tab::General, Kind::Checkbox, "OGP_AANoConfirmCheckbox",          10, 115, 150, 20, "Fast AA Purchase",         Setting::None},
 {Tab::General, Kind::Checkbox, "OGP_AdvMerchantNoConfirmCheckbox", 10, 135, 150, 20, "Fast Adv Purchase",        Setting::None},
 {Tab::General, Kind::Checkbox, "OGP_LeadershipNoConfirmCheckbox",  10, 155, 150, 20, "Fast Leadership Purchase", Setting::None},
-{Tab::General, Kind::Checkbox, "OGP_PetWindowPopupCheckbox",       10, 175, 150, 20, "Pet Window Popup",         Setting::None},
+{Tab::General, Kind::Checkbox, "OGP_PetWindowPopupCheckbox",       10, 175, 150, 20, "Pet Window Popup",         Setting::PetWindowPopup},
 {Tab::General, Kind::Checkbox, "OGP_AllowContextMenusCheckbox",    10, 195, 150, 20, "Allow Context Menus",      Setting::None},
 {Tab::General, Kind::Checkbox, "OGP_SystemInfoButton",             10, 215, 150, 20, "Allow SysInfo Send",       Setting::None},
 {Tab::General, Kind::Checkbox, "OGP_LeftClickHelpText",            10, 235, 150, 20, "Target Click Shows Help",  Setting::None},
@@ -171,18 +164,18 @@ constexpr Control kControls[] = {
 {Tab::General, Kind::Checkbox, "OGP_AllowAutoDuckCheckbox",        10, 275, 150, 20, "Allow Auto-duck",          Setting::None},
 {Tab::General, Kind::Checkbox, "OGP_AllowAutoStandCheckbox",       10, 295, 150, 20, "Allow Auto-stand",         Setting::None},
 {Tab::General, Kind::Checkbox, "OGP_AutojoinCheckbox",             10, 315, 150, 20, "Join General Channels",    Setting::None},
-{Tab::General, Kind::Checkbox, "OGP_AutoConsentGroupCheckbox",     10, 335, 150, 20, "Auto Consent Group",       Setting::None},
-{Tab::General, Kind::Checkbox, "OGP_AutoConsentRaidCheckbox",      10, 355, 150, 20, "Auto Consent Raid",        Setting::None},
-{Tab::General, Kind::Checkbox, "OGP_AutoConsentGuildCheckbox",     10, 375, 150, 20, "Auto Consent Guild",       Setting::None},
+{Tab::General, Kind::Checkbox, "OGP_AutoConsentGroupCheckbox",     10, 335, 150, 20, "Auto Consent Group",       Setting::AutoConsentGroup},
+{Tab::General, Kind::Checkbox, "OGP_AutoConsentRaidCheckbox",      10, 355, 150, 20, "Auto Consent Raid",        Setting::AutoConsentRaid},
+{Tab::General, Kind::Checkbox, "OGP_AutoConsentGuildCheckbox",     10, 375, 150, 20, "Auto Consent Guild",       Setting::AutoConsentGuild},
 // The right column: three slider triples, two checkboxes, two combos, the
 // font row and the skin button.
 {Tab::General, Kind::Label,      "OGP_SoundRealismLabel",      200,  10, 150, 14, "Sound Realism",       Setting::None},
 {Tab::General, Kind::Slider,     "OGP_SoundRealismSlider",     200,  30, 100, 16, "",                    Setting::None},
 {Tab::General, Kind::ValueLabel, "OGP_SoundRealismValueLabel", 300,  30,  50, 16, "0 %",                 Setting::None},
-{Tab::General, Kind::Label,      "OGP_MusicVolumeLabel",       200,  50, 150, 14, "Music Volume",        Setting::None},
+{Tab::General, Kind::Label,      "OGP_MusicVolumeLabel",       200,  50, 150, 14, "Music Volume",        Setting::MusicVolume},
 {Tab::General, Kind::Slider,     "OGP_MusicVolumeSlider",      200,  70, 100, 16, "",                    Setting::MusicVolume},
 {Tab::General, Kind::ValueLabel, "OGP_MusicVolumeValueLabel",  300,  70,  50, 16, "",                    Setting::MusicVolume},
-{Tab::General, Kind::Label,      "OGP_SoundVolumeLabel",       200,  90, 150, 14, "Sound Volume",        Setting::None},
+{Tab::General, Kind::Label,      "OGP_SoundVolumeLabel",       200,  90, 150, 14, "Sound Volume",        Setting::SoundVolume},
 {Tab::General, Kind::Slider,     "OGP_SoundVolumeSlider",      200, 110, 100, 16, "",                    Setting::SoundVolume},
 {Tab::General, Kind::ValueLabel, "OGP_SoundVolumeValueLabel",  300, 110,  50, 16, "",                    Setting::SoundVolume},
 {Tab::General, Kind::Checkbox,   "OGP_EnvSoundsCheckbox",      200, 130, 150, 20, "Environment Sounds",  Setting::None},
@@ -198,8 +191,8 @@ constexpr Control kControls[] = {
 {Tab::General, Kind::Button,     "OGP_LoadSkinButton",         200, 345, 150, 20, "Load UI Skin",        Setting::None},
 
 // ---------------------------------------------------------------- Display
-{Tab::Display, Kind::Checkbox,   "ODP_PCNamesCheckbox",             10,  12, 150, 18, "Show PC Names",        Setting::None},
-{Tab::Display, Kind::Checkbox,   "ODP_NPCNamesCheckbox",            10,  30, 150, 18, "Show NPC Names",       Setting::None},
+{Tab::Display, Kind::Checkbox,   "ODP_PCNamesCheckbox",             10,  12, 150, 18, "Show PC Names",        Setting::PCNames},
+{Tab::Display, Kind::Checkbox,   "ODP_NPCNamesCheckbox",            10,  30, 150, 18, "Show NPC Names",       Setting::NPCNames},
 {Tab::Display, Kind::Checkbox,   "ODP_ShowTargetRingCheckbox",      10,  48, 150, 18, "Show 3D Target Ring",  Setting::None},
 {Tab::Display, Kind::Checkbox,   "ODP_LevelOfDetailCheckbox",       10,  66, 150, 18, "Level of Detail",      Setting::None},
 {Tab::Display, Kind::Checkbox,   "ODP_ShowHelmCheckbox",            10,  84, 150, 18, "Show My Helm",         Setting::None},
@@ -237,7 +230,7 @@ constexpr Control kControls[] = {
 // THE ONE WIRED CONTROL ON THIS PAGE. The oracle's own slash-command alias
 // for it is `/clipplane` (renderer_slash_commands.cpp), which is why the
 // mapping in options_panel.h lands on setRenderDistance().
-{Tab::Display, Kind::Label,      "ODP_ClipPlaneLabel",             200, 109, 150, 14, "Far Clip Plane",       Setting::None},
+{Tab::Display, Kind::Label,      "ODP_ClipPlaneLabel",             200, 109, 150, 14, "Far Clip Plane",       Setting::ClipPlane},
 {Tab::Display, Kind::Slider,     "ODP_ClipPlaneSlider",            200, 129, 100, 16, "",                     Setting::ClipPlane},
 {Tab::Display, Kind::ValueLabel, "ODP_ClipPlaneValueLabel",        300, 129,  50, 16, "",                     Setting::ClipPlane},
 {Tab::Display, Kind::Label,      "ODP_ParticlesLabel",             200, 160, 150, 14, "Particles",            Setting::None},
@@ -258,32 +251,32 @@ constexpr Control kControls[] = {
 {Tab::Display, Kind::Button,     "ODP_AdvancedButton",                 190, 350, 150, 20, "Advanced",   Setting::None},
 
 // ------------------------------------------------------------------ Mouse
-{Tab::Mouse, Kind::Checkbox,   "OMP_InvertYAxisCheckbox",       10,  10, 150, 20, "Invert Y Axis",         Setting::None},
-{Tab::Mouse, Kind::Checkbox,   "OMP_LookSpringCheckbox",        10,  30, 150, 20, "Look Spring",           Setting::None},
-{Tab::Mouse, Kind::Checkbox,   "OMP_MouseLookCheckbox",         10,  50, 150, 20, "Mouse Look",            Setting::None},
-{Tab::Mouse, Kind::Checkbox,   "OMP_MouseWheelZoomCheckbox",    10,  70, 150, 20, "Mouse Wheel Zoom",      Setting::None},
+{Tab::Mouse, Kind::Checkbox,   "OMP_InvertYAxisCheckbox",       10,  10, 150, 20, "Invert Y Axis",         Setting::MouseInvertY},
+{Tab::Mouse, Kind::Checkbox,   "OMP_LookSpringCheckbox",        10,  30, 150, 20, "Look Spring",           Setting::MouseLookSpring},
+{Tab::Mouse, Kind::Checkbox,   "OMP_MouseLookCheckbox",         10,  50, 150, 20, "Mouse Look",            Setting::MouseLook},
+{Tab::Mouse, Kind::Checkbox,   "OMP_MouseWheelZoomCheckbox",    10,  70, 150, 20, "Mouse Wheel Zoom",      Setting::MouseWheelZoom},
 {Tab::Mouse, Kind::Checkbox,   "OMP_MouseHandedness",           10,  90, 150, 20, "Right-handed mouse",    Setting::None},
-{Tab::Mouse, Kind::Label,      "OMP_MouseSensitivityLabel",    200,  10, 150, 14, "Mouselook Sensitivity", Setting::None},
-{Tab::Mouse, Kind::Slider,     "OMP_MouseSensitivitySlider",   200,  30, 100, 16, "",                      Setting::None},
-{Tab::Mouse, Kind::ValueLabel, "OMP_MouseSensitivityValueLabel",300, 30,  50, 16, "0 %",                   Setting::None},
+{Tab::Mouse, Kind::Label,      "OMP_MouseSensitivityLabel",    200,  10, 150, 14, "Mouselook Sensitivity", Setting::MouseSensitivity},
+{Tab::Mouse, Kind::Slider,     "OMP_MouseSensitivitySlider",   200,  30, 100, 16, "",                      Setting::MouseSensitivity},
+{Tab::Mouse, Kind::ValueLabel, "OMP_MouseSensitivityValueLabel",300, 30,  50, 16, "0 %",                   Setting::MouseSensitivity},
 
 // ------------------------------------------------------------------- Keys
-{Tab::Keys, Kind::Label,    "OKP_KeyboardFilterLabel",    10, 10, 120, 14, "Select category:", Setting::None},
-{Tab::Keys, Kind::Combobox, "OKP_KeyboardFilterCombobox", 20, 24, 150, 24, "",                 Setting::None},
-{Tab::Keys, Kind::Button,   "OKP_DefaultKeysButton",     200, 15, 150, 20, "Reload defaults",  Setting::None},
+{Tab::Keys, Kind::Label,    "OKP_KeyboardFilterLabel",    10, 10, 120, 14, "Select category:", Setting::KeysCategory},
+{Tab::Keys, Kind::Combobox, "OKP_KeyboardFilterCombobox", 20, 24, 150, 24, "",                 Setting::KeysCategory},
+{Tab::Keys, Kind::Button,   "OKP_DefaultKeysButton",     200, 15, 150, 20, "Reload defaults",  Setting::KeysReloadDefaults},
 // Anchored: Top=60, Left=5, Right=5 (from the page's right), Bottom=5 (from
 // the page's bottom) => (5,60)-(387-5, 402-5) = (5,60) 377x337.
 // Its columns are Command 180 / Keypress 75 / Alternate 75.
-{Tab::Keys, Kind::Listbox,  "OKP_KeyboardAssignmentList",  5, 60, 377, 337, "Command|Keypress|Alternate", Setting::None},
+{Tab::Keys, Kind::Listbox,  "OKP_KeyboardAssignmentList",  5, 60, 377, 337, "Command|Keypress|Alternate", Setting::KeysAssignment},
 
 // ---------------------------------------------------------------- Filters
 // OFP_FilterList: Top=10, Left=40, Right=40 (from right), Bottom=40 (from
 // bottom) => (40,10)-(347,362) = 307x352.
-{Tab::Filters, Kind::Listbox,  "OFP_FilterList",     40,  10, 307, 352, "Filter description|Filter Setting", Setting::None},
+{Tab::Filters, Kind::Listbox,  "OFP_FilterList",     40,  10, 307, 352, "Filter description|Filter Setting", Setting::FilterSelection},
 // OFP_FilterComboBox: TopAnchorToTop false, so Top=34 is measured from the
 // page's BOTTOM => y1 = 402-34 = 368; Bottom=10 from the bottom => y2 = 392.
 // Left=60, Right=60 (from right) => x 60..327, width 267.
-{Tab::Filters, Kind::Combobox, "OFP_FilterComboBox", 60, 368, 267,  24, "",                                 Setting::None},
+{Tab::Filters, Kind::Combobox, "OFP_FilterComboBox", 60, 368, 267,  24, "",                                 Setting::FilterSelection},
 
 // ----------------------------------------------------------------- Colors
 // OCP_UserColorDefault: Top=8, Bottom=30 (both from the top), Left=126,
@@ -415,6 +408,39 @@ inline int sliderStepAt(const UILayout& layout, int i, int mouseX) {
     if (rel < 0) rel = 0;
     if (rel > travel) rel = travel;
     return static_cast<int>((rel * SLIDER_STEPS + travel / 2) / travel);
+}
+
+/**
+ * A <Listbox>'s rows (B433). The oracle's listboxes draw a column-header row
+ * and then fixed-height item rows; the row height is fable's (the bitmap
+ * font's line plus 2px), not quoted -- a layout header has no font metrics.
+ * THE one row-placement body: the draw and the hit test both use it.
+ */
+constexpr irr::s32 LIST_HEADER_H = 16;
+constexpr irr::s32 LIST_ROW_H = 14;
+
+/** How many whole rows list control `i` shows. */
+inline int listVisibleRows(const UILayout& layout, int i) {
+    const auto r = controlRect(layout, i);
+    const irr::s32 body = r.getHeight() - LIST_HEADER_H;
+    return body > 0 ? static_cast<int>(body / LIST_ROW_H) : 0;
+}
+
+/** The rect of visible row `row` (0 = first under the header) of list `i`. */
+inline irr::core::rect<irr::s32> listRowRect(const UILayout& layout, int i, int row) {
+    const auto r = controlRect(layout, i);
+    const irr::s32 y = r.UpperLeftCorner.Y + LIST_HEADER_H + row * LIST_ROW_H;
+    return irr::core::rect<irr::s32>(r.UpperLeftCorner.X, y,
+                                     r.LowerRightCorner.X, y + LIST_ROW_H);
+}
+
+/** The visible row under `mouseY` in list `i`, or -1 (header / past the end). */
+inline int listRowAt(const UILayout& layout, int i, int mouseY) {
+    const auto r = controlRect(layout, i);
+    const irr::s32 rel = mouseY - r.UpperLeftCorner.Y - LIST_HEADER_H;
+    if (rel < 0) return -1;
+    const int row = static_cast<int>(rel / LIST_ROW_H);
+    return row < listVisibleRows(layout, i) ? row : -1;
 }
 
 }  // namespace OptionsLayout

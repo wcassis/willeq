@@ -68,7 +68,11 @@ const std::vector<RendererCommandInfo> kCatalog = {
     {"skills", {}, "Toggle the skills window"},  // T363: was newskills (B058)
     {"inventory", {}, "Toggle the inventory window"},  // T365: was newinv (B090)
     {"timestamp", {"timestamps", "ts"}, "Chat timestamps (not available: WindowManager removed)"},
-    {"filter", {}, "Chat filter (not available: WindowManager removed)"},
+    // B433: the era /filter vocabulary (eqstr_us.txt 1354-1360), against the
+    // Options window's Filters page and OP_SetServerFilter.
+    {"filter", {}, "Toggle a chat filter: /filter <name> (no name lists them)"},
+    // B430: every wired Options-window setting, by name.
+    {"option", {}, "Show or set an Options-window setting: /option [list | <name> [value]]"},
     {"reloadeffects", {"particlereload", "reloadfx", "reloadparticles"}, "Reload environment effect settings"},
     {"reloadweather", {"weatherreload", "weather_reload"}, "Reload weather effect settings"},
     {"spellreload", {"reloadspells", "reloadspellfx"}, "Reload spell effect settings"},

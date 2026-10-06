@@ -100,7 +100,9 @@ void FrameComponent::processFrameInput(float deltaTime) {
         } else {
             wheel = ctx_.eventReceiver->getMouseWheelDelta();  // drain, never accumulate
         }
-        if (wheel != 0.0f && !wheelConsumedByUI && !chatInputFocused_) {
+        // B433: OMP_MouseWheelZoomCheckbox gates the zoom half.
+        if (wheel != 0.0f && !wheelConsumedByUI && !chatInputFocused_ &&
+            ctx_.PlayerCamera().mouseOptions().wheelZoom) {
             ctx_.PlayerCamera().zoomCamera(-wheel * kCameraZoomStepUnits, deltaTime);
         }
     }
@@ -560,6 +562,11 @@ void FrameComponent::processChatInput() {
         chatPanelState_.cursorPos = static_cast<int>(prefill->size());
         ctx_.eventReceiver->setChatInputFocused(true);
         ctx_.eventReceiver->clearPendingKeyEvents();
+        return;
+    }
+
+    // B433: a Keys-page rebinding owns the keyboard until its key arrives.
+    if (processOptionsKeyCapture()) {
         return;
     }
 

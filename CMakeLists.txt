@@ -292,6 +292,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/bridge/bridge_component_intents.cpp
     src/client/bridge/bridge_component_ui_audio.cpp
     src/client/bridge/bridge_component_cursor.cpp  # B442
+    src/client/bridge/bridge_component_options.cpp
     src/client/entities/entities_component.cpp
     src/client/entities/entities_component_appearance.cpp
     src/client/entities/entities_component_updates.cpp
@@ -509,6 +510,7 @@ IF(EQT_GRAPHICS)
         # CLIENT_CORE_SOURCES (always compiled), which made it impossible to
         # build EQT_GRAPHICS=OFF at all regardless of eq.h's own guards.
         src/client/input/hotkey_manager.cpp
+        src/client/input/hotkey_manager_user.cpp  # B433: Options Keys page rebinding
         src/client/bridge/irrlicht_bridge.cpp
         # EQ file loaders (pfs.cpp/wld_loader.cpp moved to CLIENT_CORE_SOURCES — P28, see there)
         src/client/graphics/eq/s3d_loader.cpp
@@ -700,6 +702,14 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/item_display_panel.cpp
         src/client/graphics/ui/combat_ability_panel.cpp
         src/client/graphics/ui/options_panel.cpp
+        # B430/B433: the Options window settings table, value rules, wired
+        # lists and the /option + /filter grammar.
+        src/client/graphics/ui/options_settings.cpp
+        src/client/graphics/ui/options_values.cpp
+        src/client/graphics/ui/options_lists.cpp
+        src/client/graphics/ui/options_classification.cpp
+        src/client/graphics/ui/options_command.cpp
+        src/client/graphics/ui/options_keys.cpp
         # T436 (board B429): the merchant, bank and cursor-attachment
         # windows -- one TU per panel (M00).
         src/client/graphics/ui/merchant_panel.cpp

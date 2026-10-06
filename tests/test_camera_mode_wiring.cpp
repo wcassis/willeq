@@ -410,7 +410,9 @@ TEST(CameraModeWiringSource, TheRigCameraIsPlacedOncePerFrameAfterTheLiftCarry) 
 TEST(CameraModeWiringSource, TheFrameZoomsWithAWheelNotchTheUIDidNotConsume) {
     const std::string frame =
         readFile(kRoot / "src/client/graphics/frame/renderer_frame_input.cpp");
-    EXPECT_NE(frame.find("if (wheel != 0.0f && !wheelConsumedByUI && !chatInputFocused_) {"),
+    // B433: the Options window's Mouse Wheel Zoom checkbox gates the zoom half.
+    EXPECT_NE(frame.find("if (wheel != 0.0f && !wheelConsumedByUI && !chatInputFocused_ &&\n"
+                         "            ctx_.PlayerCamera().mouseOptions().wheelZoom) {"),
               std::string::npos);
     EXPECT_NE(frame.find("ctx_.PlayerCamera().zoomCamera(-wheel * kCameraZoomStepUnits, deltaTime);"),
               std::string::npos);

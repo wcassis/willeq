@@ -554,15 +554,10 @@ bool StaticUIInput::processOptionsInput(int mouseX, int mouseY, bool leftClicked
         // hover is stale the instant it lands.
         options.hoveredControl = -1;
     } else if (leftClicked && options.hoveredControl >= 0) {
-        const int i = options.hoveredControl;
-        const auto& c = OptionsLayout::kControls[i];
-        if (c.kind == OptionsLayout::Kind::Slider) {
-            const int step = OptionsLayout::sliderStepAt(layout, i, mouseX);
-            if (step != optionsSettingStep(options, c.setting)) {
-                setOptionsSettingStep(options, c.setting, step);
-                changed = c.setting;
-            }
-        }
+        // B430: every wired kind (slider, checkbox, combobox, list) resolves
+        // through the one body in options_lists.cpp.
+        changed = resolveOptionsClick(layout, options, options.hoveredControl,
+                                      mouseX, mouseY);
     }
 
     // The whole window consumes the position either way, so a click on a

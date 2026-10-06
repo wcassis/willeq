@@ -317,8 +317,18 @@ void EntityRenderer::setNameTagsVisible(bool visible) {
 
     for (auto& [spawnId, visual] : entities_) {
         if (visual.nameNode) {
-            visual.nameNode->setVisible(visible);
+            visual.nameNode->setVisible(visible && nameTagKindVisible(visual));
         }
+    }
+}
+
+void EntityRenderer::setNameTagKindsVisible(bool pcNames, bool npcNames) {
+    pcNameTagsVisible_ = pcNames;
+    npcNameTagsVisible_ = npcNames;
+    // Hide now; a tag of a kind turned back on reappears on the next
+    // simulation result, which is what decides distance/PVS visibility.
+    for (auto& [spawnId, visual] : entities_) {
+        if (visual.nameNode && !nameTagKindVisible(visual)) visual.nameNode->setVisible(false);
     }
 }
 

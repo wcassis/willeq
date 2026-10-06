@@ -163,6 +163,10 @@ enum class GameEventType {
     // /musicvolume and /effectsvolume. The Options window's two sliders
     // read it back, so a slash command and a drag can no longer disagree.
     VolumesChanged,
+
+    // B430: a server-owned Options-window setting (anonymous/roleplay,
+    // autosplit, the three auto-consents) as the game thread now holds it.
+    GameOptionChanged,
 };
 
 

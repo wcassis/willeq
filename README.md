@@ -151,7 +151,7 @@ Legend: Done | Partial | Not Implemented
 | Tell / Reply | Done | R key or /reply |
 | Yell | Done | |
 | Emote | Done | /emote + shortcuts (/wave, /dance, /cheer, /laugh) |
-| Chat filtering | -- | `/filter` is catalogued as unavailable (`src/client/help/renderer_command_catalog.cpp:71`); the era filter set is the Options window's Filters tab (#146) |
+| Chat filtering | Done | The era `/filter` set (eqstr_us.txt 1354-1360: seventeen filters) on the Options window's Filters page and `/filter <name>`, sent to the server as `OP_SetServerFilter` (eqemu filters server-side), persisted per character under the oracle's `[Options]` keys (B433) |
 
 ### UI
 | Feature | Status | Notes |
@@ -172,7 +172,7 @@ Legend: Done | Partial | Not Implemented
 | Bank window | Done | T436 (board B429), the oracle's `EQUI_BankWnd.xml`: 8 slots + 4 money rows + Done. `/bank` still works. Change is drawn disabled (board B441) |
 | Cursor item | Done | T436, `EQUI_CursorAttachment.xml`: the held item's icon follows the mouse |
 | Loot window | Done | T290, center popup, scrollable |
-| Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; six of them are wired (three sliders — music volume, effects volume, clip plane — and their three value labels) and the other 108 are drawn greyed and are not hit-testable (boards B430, B431, B433) |
+| Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; every row is classified in `src/client/graphics/ui/options_classification.cpp` (wired, or excluded with its reason -- post-Velious, Will's OUT ruling, no fable capability, or awaiting the oracle) and `OptionsClassification.*` fails on an unclassified row. B430/B433 wired General (anonymous/roleplay, autosplit, auto-consent, pet window popup, the volumes), Display (PC/NPC names, clip plane), Mouse, Keys (category, rebinding, reload defaults) and Filters; Colors and the remaining General/Display rows stay greyed (#144, #145, #146). `/option` sets any wired setting by name |
 | Trade | Partial | Command-driven (/trade); no window. `SetupTradeWindowCallbacks` is an empty stub. Issue #212 (B896) |
 | Item / spell display | Done | T421 + T425, one window for both (`EQUI_ItemDisplay.xml`); click an item slot, SHIFT+click a gem or spellbook row |
 | Pick up / put down an item | Partial | Click-to-cursor in the inventory, bank and loot windows, the Quantity window (a stack or a purse row) and `/pickup` `/putdown` `/cursor` `/coin` — one `CursorGestureIntent` path, rules from the official client's capture (B442, #151). Owed: the live `pickup_roundtrip` scenario, bag/trade/give windows, a coin icon on the cursor, the world drop and Destroy prompts |
@@ -699,7 +699,8 @@ Commands are dispatched through three registries in order: the game registry (au
 **Renderer-only (graphics builds):**
 ```
 /screenshot                     Save a screenshot
-/filter [channel]               Toggle chat channel display
+/filter <name>                  Toggle an era chat filter (no name lists them)
+/option [list | <name> [value]] Show or set an Options-window setting
 /timestamp (/ts)                Toggle chat timestamps
 /camera                         Camera controls
 /dumpscene (/ds)                Dump the scene graph
