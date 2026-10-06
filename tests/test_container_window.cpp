@@ -494,6 +494,9 @@ TEST_F(ContainerClickTest, ACellClickReachesTheOneCallSiteWithTheWireSlot) {
     // An occupied cell: B442's CursorGesture picks it up, addressed by the
     // cell's wire slot 251 + 0*10 + 3 = 254.
     applyContainerSlotChanged(state, slotEvent(inv::calcBagSlotId(inv::GENERAL_BEGIN, 3), true));
+    // A single item (a stack of 3 opens B442's QuantityWnd instead -- 151
+    // gestures.tsv row 3 -- which pushes nothing until Accept).
+    state.windows[1].slots[3].quantity = 1;
     intents = click(ContainerLayout::slotRect(layout, 3));
     const auto* g = findIntent<eqt::events::CursorGestureIntent>(intents);
     ASSERT_NE(g, nullptr) << "a container cell click did not reach CursorGesture";
@@ -507,6 +510,7 @@ TEST_F(ContainerClickTest, ACellClickReachesTheOneCallSiteWithTheWireSlot) {
     EXPECT_EQ(slotIdAt(layout, ws, c.X, c.Y), inv::WORLD_BEGIN + 2);
     // A world cell's click carries its 4000+ slot.
     applyContainerSlotChanged(ws, slotEvent(inv::WORLD_BEGIN + 2, true));
+    ws.windows[0].slots[2].quantity = 1;
     input.processContainerInput(c.X, c.Y, true, layout, ws);
     intents = bridge.drainIntents();
     const auto* gw = findIntent<eqt::events::CursorGestureIntent>(intents);
