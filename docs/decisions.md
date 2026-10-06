@@ -1722,3 +1722,37 @@ custom SoundFont (24.16 MB of 28.9 MB, 84 %), which the official client
 to 32 MiB or below follows Will's number when the SoundFont fix lands; this
 unit writes no new number (the ratchet value is his, per the B943
 convention as this card applies it).
+
+
+## 2026-10-06 — B972 split: the 10 MiB crowd-tour guard holds; the work splits (Will, "proceed with option 2"; #290, #317)
+
+**Context.** B972 (#290, MR !94 at `20f09dfb`) measured the lever landscape
+for the `gpu_unnamed_steady` 10 MiB crowd-tour guard (Pi, cache-on,
+imp200far, the run-277 tour): qeynos2 18.90 / gfaydark 24.5 MiB, and the
+decisive `off200far` control (impostors OFF) reads the same (17.64 / 24.54) —
+the impostor is NOT the lever (its ~12 MiB is a named texture; unnamed share
+≤ 1.3 MiB). The census puts the excess in the zone-merge client-array pool
+(6 × 1 MiB `u_upload` `draw:zone` slots + 6 `draw3d:client` + 1 untagged
+raw-GL particle) and ~7.4 MiB per-draw varying BOs — dominated by work B962
+already measured a static VBO worse for (+1.1..+4.3 MiB, half qeynos2 fps).
+The 10 MiB bound is therefore not reachable in the original card's shape
+(full numbers + census in `refactor/B972/`'s README on the
+`task/B972-mesa-stream-buffers` branch, MR !94 — lands on fable with !94).
+
+**Will's ruling, option 2, verbatim (2026-10-06): "proceed with option 2".**
+- The **10 MiB `gpu_unnamed_steady` crowd-tour guard HOLDS and is
+  NOT re-scoped** (qeynos2 AND gfaydark, cache-on default policy,
+  imp200far crowd tour, no frame-time regression vs fable).
+- **#290 (MR !94) ships only the self-contained, pixel-identical cuts**
+  (~3-6 MiB: impostor pages, the untagged raw-GL particle draw, optionally
+  the T462 `UiQuadBatch` vertices). While #317 is out, the guard may read
+  red on the crowd tours — that is the B988/#307 known condition, not #290's
+  failure.
+- **The residual is B997 (#317)** — the zone-merge + entity-aux bounded-VBO
+  conversion (bounded reused VBOs, partial `glBufferSubData`, the merged
+  B975 `NameTagBatchNode` slack pattern). A static VBO is the measured
+  anti-pattern (B962) and is NOT the approach. B997 lands after #290 and
+  re-measures the residual before converting.
+
+Every worker reads the guard as will's number: it is blessed as-is by this
+ruling and neither #290 nor #317 re-scopes it.
