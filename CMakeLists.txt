@@ -318,6 +318,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/merchant/merchant_trade.cpp
     src/client/merchant/merchant_vendor_bank.cpp
     src/client/merchant/merchant_trainer.cpp
+    src/client/merchant/coin_change.cpp  # B441: the bank Change steps
     src/client/core/eq_player_info.cpp
     src/client/raid_update.cpp
     src/client/inspect_answer.cpp

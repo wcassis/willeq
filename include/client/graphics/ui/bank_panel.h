@@ -19,12 +19,13 @@
  *
  * NO NEW PROTOCOL CODE beyond one close intent. The four BW_Money rows are
  * fed by the existing `BankCurrencyChanged` event (a LOG_TRACE stub with no
- * consumer until now). BW_ChangeButton has no fable setting behind it -- the
- * oracle's Change opens a coin-denomination dialog fable does not have, and
- * `/bank convert` needs a from/to/amount triple no single click supplies --
- * so it is drawn GREYED and is NOT hit-testable, the T363 rule T434 made
- * mechanical. Board B441. BW_DoneButton pushes `CloseBankIntent`, the one
- * new intent, whose handler is the existing `CloseBankWindow()`; the panel
+ * consumer until now). BW_ChangeButton (B441, #26, UIGAP-small) pushes
+ * `BankMakeChangeIntent`: ONE click converts every coin in both purses to the
+ * fewest coins -- the client's own Bank Tip window says so
+ * (help/tips/ctxbank.html), and no EQUI_*.xml declares a dialog for it, so
+ * T436's "coin-denomination dialog" does not exist (coin_change.h).
+ * BW_DoneButton pushes `CloseBankIntent`, whose handler is the existing
+ * `CloseBankWindow()`; the panel
  * closes when the server-side session is torn down and `BankWindowClosed`
  * comes back, never optimistically (T290's rule).
  */
@@ -73,6 +74,7 @@ struct BankPanelState {
     int hoveredSlot = -1;
     bool doneHovered = false;
     bool closeHovered = false;
+    bool changeHovered = false;   // B441
 };
 
 // --- the bridge arms, as free functions (T290's idiom) ---------------------
@@ -112,6 +114,9 @@ bool hitTestBankDoneButton(const UILayout& layout, const BankPanelState& state,
                            int mouseX, int mouseY);
 bool hitTestBankCloseBox(const UILayout& layout, const BankPanelState& state,
                          int mouseX, int mouseY);
+/** BW_ChangeButton (B441). */
+bool hitTestBankChangeButton(const UILayout& layout, const BankPanelState& state,
+                             int mouseX, int mouseY);
 
 /** Is the point anywhere inside the open window? (Click consumption.) */
 bool bankContains(const UILayout& layout, const BankPanelState& state,

@@ -145,8 +145,7 @@ its `.cpp`: `merchant_layout.h` (`EQUI_MerchantWnd.xml`), `bank_layout.h` (`EQUI
   `BANK_COUNT = 16` is a post-Velious bank, and the era file declares `BW_BankSlot0..7`.
   `BW_SharedBankSlot0/1`, `BW_SharedMoney0`, `BW_SharedBankLabel` and `BW_AltStorageButton` are IN the
   `<Pieces>` list and carry a `<ScreenID>` and nothing else — no `<Location>`, no `<Size>` — so the
-  era file itself declares them as geometry-less stubs and fable draws none of them. `BW_ChangeButton`
-  is drawn greyed and is NOT hit-testable (board **B441**). `BW_DoneButton` and the close box push
+  era file itself declares them as geometry-less stubs and fable draws none of them. `BW_ChangeButton` (B441, #26, UIGAP-small) pushes `BankMakeChangeIntent`: ONE click converts every coin in the bank AND on the person to the fewest coins -- the client's own `help/tips/ctxbank.html` says exactly that, and no `EQUI_*.xml` declares a conversion dialog, so none exists to build. The game thread's arm sends `eqt::merchant::BuildMakeChangeMoves()`'s OP_MoveCoin steps (cp->sp->gp->pp, `from_slot == to_slot`, multiples of 10, `coin_change.h`) and projects the same arithmetic (eqemu answers with silence); `/bank change` pushes the same intent. Order of the steps is an assumption awaiting oracle; `tests/test_bank_change.cpp` replays them through eqemu's own conversion arithmetic. `BW_DoneButton` and the close box push
   **`CloseBankIntent`**, the unit's one new intent, whose handler is the existing `CloseBankWindow()`.
 - **Cursor attachment** — `CA_Anim` at (5,5) 40x40 in a 50x50 box that follows the mouse, drawn LAST
   of everything (it is the pointer). `Style_Transparent true` / `Style_Border false`, so no plate and
@@ -510,7 +509,7 @@ hold, focus, health, dismiss).
 (B899: opens/closes a carried container's window).
 
 **Commerce / Inventory:** `/vendor`, `/vendorlist`, `/buy <slot> [qty]`,
-`/sell <slot> [qty]`, `/bank`, `/equip <from> <to> | <item name> | list`,
+`/sell <slot> [qty]`, `/bank [deposit|withdraw|convert|change]`, `/equip <from> <to> | <item name> | list`,
 `/pickup <slot> [qty]`, `/putdown <slot>`, `/cursor`, `/coin <pp|gp|sp|cp> <n>`
 (B442: the click-to-cursor gesture's scriptable half, one `CursorGestureIntent`).
 

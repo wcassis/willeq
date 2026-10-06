@@ -535,6 +535,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_esc_server_owned_windows DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B441 (#26): the bank's Change button -- the OP_MoveCoin steps, replayed
+# through eqemu's own conversion arithmetic, and the button's intent.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_bank_change
+        test_bank_change.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_bank_change PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_bank_change GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_bank_change PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_bank_change DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B460 (#156): ESC closes the most recently opened window, one per press --
 # the open-order stack and FrameComponent::handleEscapeKey() on a device-less
 # renderer, driven through opened-order sequences.

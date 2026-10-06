@@ -370,6 +370,7 @@ private:
 	void onCloseBankIntent(const eqt::events::CloseBankIntent& i);
 	void onBankCurrencyMoveIntent(const eqt::events::BankCurrencyMoveIntent& i);
 	void onBankCurrencyConvertIntent(const eqt::events::BankCurrencyConvertIntent& i);
+	void onBankMakeChangeIntent(const eqt::events::BankMakeChangeIntent& i);  // B441
 	void onTrainerToggleIntent(const eqt::events::TrainerToggleIntent& i);
 	void onCastSpellIntent(const eqt::events::CastSpellIntent& i);
 	void onMemorizeSpellIntent(const eqt::events::MemorizeSpellIntent& i);

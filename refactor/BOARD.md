@@ -8501,7 +8501,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   is established that Titanium never puts one there and the two elements are
   recorded as deliberately unused. Found by T436.
 
-- **B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`), → issue #26
+- ~~**B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`), → issue #26
   `include/client/graphics/ui/bank_layout.h` -- **the bank window's Change
   button is drawn greyed and is not hit-testable.** The oracle's Change opens a
   coin-denomination dialog that fable does not have, and the underlying
@@ -8510,7 +8510,11 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   missing is a way for one click to supply the from/to/amount triple it needs.
   `/bank convert <from> <to> <amount>` remains the only route. Drawn disabled
   rather than wired to a guess, the T363 rule T434 made mechanical. Closes on a
-  decision about what gesture supplies the triple. Found by T436.
+  decision about what gesture supplies the triple. Found by T436.~~
+  **STRUCK (UIGAP-small): there is no dialog -- no EQUI_*.xml declares one and
+  the client's own help/tips/ctxbank.html says Change converts all coin, bank
+  and person, to the fewest coins. Wired as one click (`BankMakeChangeIntent`,
+  `coin_change.h`, `/bank change`), pinned by `tests/test_bank_change.cpp`.**
 
 - **B442** (B) `src/client/graphics/ui/static_ui_input.cpp` → issue #151
   (`StaticUIInput::processCommerceInput`, the bank-slot arm) -- **a bank slot

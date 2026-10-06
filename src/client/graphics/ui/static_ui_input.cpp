@@ -879,6 +879,7 @@ bool StaticUIInput::processCommerceInput(int mouseX, int mouseY,
     bank.hoveredSlot = -1;
     bank.doneHovered = false;
     bank.closeHovered = false;
+    bank.changeHovered = false;
 
     // --- the bank window, asked first (it draws above the centre popups) ---
     if (bank.isOpen) {
@@ -891,6 +892,15 @@ bool StaticUIInput::processCommerceInput(int mouseX, int mouseY,
                 // The session is the SERVER's; the panel closes when
                 // BankWindowClosed comes back (T290's rule).
                 bridge_->pushIntent(eqt::events::CloseBankIntent{});
+            }
+            return true;
+        }
+        // B441 (#26): BW_ChangeButton -- the game thread converts both
+        // purses from its own counters and sends the OP_MoveCoin steps.
+        if (hitTestBankChangeButton(layout, bank, mouseX, mouseY)) {
+            bank.changeHovered = true;
+            if (leftClicked && bridge_) {
+                bridge_->pushIntent(eqt::events::BankMakeChangeIntent{});
             }
             return true;
         }
