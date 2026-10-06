@@ -43,12 +43,22 @@
 #include "client/graphics/ui/cursor_attachment.h"
 #include "client/graphics/ui/trainer_panel.h"  // B898
 #include "client/graphics/ui/quantity_window.h"   // B442
+#include "client/graphics/ui/confirmation_dialog.h"  // B442b
 #include "client/graphics/ui/inventory_layout.h"  // B442
 // B895 (GitLab #211).
 #include "client/graphics/ui/tracking_panel.h"
 #include "client/tracking/tracking_state.h"
 #include "client/con_tier.h"
 #include "client/display_eqstr.h"
+// B899 (#215 / #151 Leg B).
+#include "client/graphics/ui/container_panel.h"
+#include "client/graphics/ui/friends_panel.h"   // B897
+#include "client/graphics/ui/trade_panel.h"     // B896
+#include "client/graphics/ui/tip_window.h"      // B834
+#include <fstream>
+#include <sstream>
+#include "client/graphics/ui/char_create_panel.h"   // B888
+#include "client/login_world/char_create_data.h"     // B888
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -119,6 +129,34 @@ EQT::StringDatabase& eqStrings() {
     return strings;
 }
 
+// B888: the creation screen's eqstr text and its era data.
+EqstrResolver charCreateEqstr() {
+    return [](uint32_t id) { return eqStrings().getString(id); };
+}
+
+// 0 = page 0 (Human male Warrior, AGI +25), 1 = page 1 (AGNOSTIC, QEYNOS,
+// "Cinewbie"), 2 = page 0 with nothing spent and Next pressed (eqstr 1577).
+CharCreateScreenState charCreateCaptureState(int which) {
+    static eqt::charcreate::CharCreateData data = [] {
+        eqt::charcreate::CharCreateData d;
+        if (!d.loadShipped()) std::fprintf(stderr, "ui_panel_capture: %s\n", d.error().c_str());
+        return d;
+    }();
+    CharCreateScreenState s;
+    openCharCreateWith(s, data, eqt::charcreate::Race::Human, eqt::charcreate::Gender::Male,
+                       eqt::charcreate::Class::Warrior);
+    if (which == 2) {
+        pressNext(s);
+        return s;
+    }
+    statMax(s, eqt::charcreate::AGI);
+    if (which == 1) {
+        pressNext(s);
+        s.nameEntry.inputText = "Cinewbie";
+    }
+    return s;
+}
+
 void addChat(eqt::ui::ChatMessageBuffer& buf, const char* text, uint32_t color) {
     eqt::ui::ChatMessage msg;
     msg.text = text;
@@ -162,6 +200,21 @@ struct PanelStates {
     // B895: the Tracking Window, with con-coloured rows through the real
     // list rules and combobox text from the shipped eqstr table.
     TrackingPanelState tracking;
+    // B899 (#215): the era container windows -- a carried bag, a carried
+    // tradeskill kit and a world forge, all through the REAL appliers.
+    ContainerWindowsState containers;
+    // B897: the Friends window, captured once per tab.
+    FriendsPanelState friends;
+    // B896 (#212): the trade window from BOTH sides of the ledger's row 4
+    // (client A pressed Trade) and the NPC give window of row 9, all through
+    // the real appliers with real dragitem icon ids.
+    TradePanelState tradeA;
+    TradePanelState tradeB;
+    TradePanelState give;
+    // B834 (#202): a context tip and the Tip of the Day, from the client's
+    // own help/tips/ files when present (inline stand-ins otherwise).
+    TipWindowState tipInventory;
+    TipWindowState tipOfTheDay;
     XPBarState xp;
 
     PanelStates() {
@@ -300,6 +353,52 @@ struct PanelStates {
             cd.iconId = 918;
             cd.quantity = 4;
             applyCursorSlotChanged(cursor, cd);
+        }
+        {
+            // B897: names from the oracle's own Obian_project1999.ini
+            // [Friends] and Logjam_project1999.ini [Ignored], plus filler
+            // so the VScroll thumb shows; a selection and a typed name.
+            eqt::state::SocialListsChangedData sl;
+            // In the model's order: sorted (UIGAP-ORACLE/213 friends.tsv rows 1, 11).
+            sl.friends = {"aaodyn", "bilblow", "bortill", "caricature", "Drachtha",
+                          "Gudknobadd", "hrakk", "khozmo", "shikaka", "Thrasix",
+                          "vilurum", "Xenephon"};
+            sl.ignored = {"ilvvqwgwqvvqgll", "Spammer"};
+            applySocialListsChanged(friends, sl);
+            friends.selected[0] = 2;
+            friends.nameEntry[0].inputText = "Oraclecharlie";
+            friends.nameEntry[1].inputText = "Pest";
+        }
+        {
+            auto slurp = [](const std::string& path, std::string& out) {
+                std::ifstream in(path, std::ios::binary);
+                if (!in) return false;
+                std::ostringstream ss;
+                ss << in.rdbuf();
+                out = ss.str();
+                return true;
+            };
+            UILayout l;
+            l.computeLayout(800, 600);
+            const std::string dir = "/mnt/projects/EverQuestP1999/help/tips/";
+            std::string html, totd;
+            if (!slurp(dir + "ctxinventory.html", html)) {
+                html = "<TITLE>Inventory Tip window</TITLE><BODY>Inventory Tips<br><br>"
+                       "- (help/tips/ctxinventory.html not found)</BODY>";
+            }
+            if (!slurp(dir + "TOTD.txt", totd)) {
+                totd = "###\n<c \"#00CC00\">\nGameplay Tip\n</c>\n(help/tips/TOTD.txt not found)\n";
+            }
+            openContextTip(tipInventory, "Inventory", parseTipHtml(html), l);
+            auto entries = parseTipOfTheDay(totd);
+            // The measured grab's entry ("Fire Beetle eyes ..."), if present.
+            for (size_t i = 0; i < entries.size(); ++i) {
+                if (entries[i].paragraphs.size() > 2 &&
+                    entries[i].paragraphs[2].find("Fire Beetle") != std::string::npos) {
+                    tipOfTheDay.totdIndex = static_cast<int>(i);
+                }
+            }
+            openTipOfTheDay(tipOfTheDay, entries, l);
         }
         inventory.coins[0] = 12; inventory.coins[1] = 5;
         inventory.coins[2] = 8;  inventory.coins[3] = 47;
@@ -496,6 +595,101 @@ struct PanelStates {
             applyItemDisplayShown(spellDisplay, d);
         }
 
+        // B899 (#215 / #151 Leg B): the container windows, opened through the
+        // same applier the bridge uses, with real dragitem icon ids.
+        {
+            auto open = [this](bool world, int16_t slot, const char* name,
+                               uint8_t type, uint8_t count, uint32_t icon) {
+                eqt::state::TradeskillContainerOpenedEvent e;
+                e.isWorldObject = world;
+                e.objectId = world ? 4242u : 0u;
+                e.inventorySlot = slot;
+                e.containerName = name;
+                e.containerType = type;
+                e.slotCount = count;
+                e.iconId = icon;
+                applyContainerOpened(containers, e);
+            };
+            auto fill = [this](int16_t slotId, const char* name, uint32_t icon,
+                               uint32_t qty) {
+                eqt::state::InventorySlotChangedData d;
+                d.slotId = slotId;
+                d.hasItem = true;
+                d.itemId = 3000u + static_cast<uint32_t>(slotId);
+                d.itemName = name;
+                d.iconId = icon;
+                d.quantity = qty;
+                applyContainerSlotChanged(containers, d);
+            };
+            namespace inv = eqt::inventory;
+            // A Backpack (bag type 5, eight slots) in general slot 1.
+            open(false, inv::GENERAL_BEGIN, "Backpack", inv::CONTAINER_BACKPACK, 8, 565);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN, 0), "Bread Cake", 537, 4);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN, 3), "Water Flask", 550, 1);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN, 6), "Bone Chips", 772, 12);
+            // A Sewing Kit (bag type 16, ten slots) in general slot 2.
+            open(false, inv::GENERAL_BEGIN + 1, "Sewing Kit", inv::CONTAINER_TAILORING, 10, 598);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN + 1, 0), "Silk Thread", 1093, 2);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN + 1, 1), "Spider Silk", 1094, 1);
+            // A world forge.
+            open(true, inv::SLOT_INVALID, "Forge", inv::CONTAINER_BLACKSMITHING, 10, 0);
+            fill(inv::WORLD_BEGIN + 0, "Small Brick of Ore", 700, 1);
+            fill(inv::WORLD_BEGIN + 1, "Water Flask", 550, 1);
+            containers.windows[2].hoveredSlot = 1;
+        }
+
+        // B896 (#212): review/UIGAP-ORACLE/212/trade.tsv rows 1-4 and 9.
+        {
+            auto start = [](TradePanelState& s, const char* partner, bool npc, const char* me) {
+                eqt::state::TradeStartedData d;
+                d.partnerId = npc ? 332 : 329;
+                d.partnerName = partner;
+                d.isNpc = npc;
+                applyTradeStarted(s, d, me);
+            };
+            auto own = [](TradePanelState& s, int i, const char* name, uint32_t icon) {
+                eqt::state::InventorySlotChangedData d;
+                d.slotId = static_cast<int16_t>(eqt::inventory::TRADE_BEGIN + i);
+                d.hasItem = true;
+                d.itemId = 1000u + static_cast<uint32_t>(i);
+                d.itemName = name;
+                d.iconId = icon;
+                d.quantity = 1;
+                applyTradeSlotChanged(s, d);
+            };
+            auto his = [](TradePanelState& s, int i, const char* name, uint32_t icon) {
+                eqt::state::TradeItemUpdatedData d;
+                d.who = 1;
+                d.slot = static_cast<uint8_t>(i);
+                d.itemId = 2000u + static_cast<uint32_t>(i);
+                d.itemName = name;
+                d.iconId = icon;
+                d.quantity = 1;
+                applyTradeItemUpdated(s, d);
+            };
+            auto coins = [](TradePanelState& s, uint8_t who, uint32_t pp) {
+                eqt::state::TradeMoneyUpdatedData d{who, pp, 0, 0, 0};
+                applyTradeMoneyUpdated(s, d);
+            };
+            // Client A (Testchar): its wolf skin in 3000, 1 pp of its own, B's
+            // spell scroll in B's first slot, A has pressed Trade.
+            start(tradeA, "Testbuddy", false, "Testchar");
+            own(tradeA, 0, "Low Quality Wolf Skin", 783);
+            coins(tradeA, 0, 1);
+            his(tradeA, 0, "Spell: Minor Shielding", 504);
+            applyTradeAcceptStateChanged(tradeA, {true, false});
+            tradeA.hoveredOwnSlot = 4;
+            // Client B (Testbuddy): the same moment from the other side.
+            start(tradeB, "Testchar", false, "Testbuddy");
+            own(tradeB, 0, "Spell: Minor Shielding", 504);
+            his(tradeB, 0, "Low Quality Wolf Skin", 783);
+            coins(tradeB, 1, 1);
+            applyTradeAcceptStateChanged(tradeB, {false, true});
+            // Row 9: the give window, the bottle auto-placed in slot 1.
+            start(give, "Givedummy000", true, "Testchar");
+            own(give, 0, "Bottle", 768);
+        }
+
         xp.progress = 0.62f;
 
         // B898 (#214): a warrior guildmaster's reply, with more rows than the
@@ -595,14 +789,18 @@ std::vector<PanelCapture> buildCaptureList() {
             s.options.isOpen = true; s.options.activeTab = 6;
             renderOptionsWindow(u, l, s.options); }},
         // T436 (board B429): the three windows B429 said did not exist.
-        // `merchant_sell` is the SAME window with an item on the cursor --
-        // the oracle gives MW_Buy_Button and MW_Sell_Button one rect, so
-        // only one can show, and that is the state that picks Sell.
+        // `merchant_sell` is the SAME window after a left click on one of the
+        // player's items -- B442b (#152, merchant.tsv row 3): the last
+        // selection was the player's, so the shared rect reads Sell and
+        // MW_SelectedItem* describe that item. The cursor is not involved.
         {"merchant", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             CursorAttachmentState empty;
             renderMerchantPopup(u, l, s.merchant, empty); }},
         {"merchant_sell", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderMerchantPopup(u, l, s.merchant, s.cursor); }},
+            MerchantPanelState m = s.merchant;
+            m.selectPlayerItem(27, "Bottle", 1068, 5);
+            CursorAttachmentState empty;
+            renderMerchantPopup(u, l, m, empty); }},
         {"bank", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderBankWindow(u, l, s.bank); }},
         // B898 (#214): the skill trainer window, and the same window scrolled.
@@ -620,6 +818,58 @@ std::vector<PanelCapture> buildCaptureList() {
         {"tracking_sort_open", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.tracking.openCombo = TrackingCombo::Sort;
             renderTrackingWindow(u, l, s.tracking); }},
+        // B899 (#215): each container window alone, then all three open at
+        // once: they share the oracle position, newest on top (measured).
+        {"container_bag", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            ContainerWindowsState one;
+            one.windows[1] = s.containers.windows[1];
+            renderContainerWindows(u, l, one); }},
+        {"container_sewing_kit", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            ContainerWindowsState one;
+            one.windows[2] = s.containers.windows[2];
+            renderContainerWindows(u, l, one); }},
+        {"container_forge", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            ContainerWindowsState one;
+            one.windows[0] = s.containers.windows[0];
+            renderContainerWindows(u, l, one); }},
+        {"container_three_open", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderContainerWindows(u, l, s.containers); }},
+        // B897: both tabs of the Friends window (EQUI_FriendsWnd.xml).
+        {"friends_friends", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.friends.isOpen = true; s.friends.activePage = 0;
+            renderFriendsWindow(u, l, s.friends); }},
+        {"friends_ignored", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.friends.isOpen = true; s.friends.activePage = 1;
+            renderFriendsWindow(u, l, s.friends); }},
+        // B896 (#212): both sides of trade.tsv row 4 and the give window.
+        {"trade_client_a_own_accepted", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTradeWindow(u, l, s.tradeA); }},
+        {"trade_client_b_partner_accepted", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTradeWindow(u, l, s.tradeB); }},
+        {"trade_with_inventory", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderInventoryPopup(u, l, s.inventory);
+            renderTradeWindow(u, l, s.tradeA); }},
+        {"give_npc", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTradeWindow(u, l, s.give); }},
+        // B834 (#202): EQUI_TipWnd.xml, both kinds.
+        {"tip_inventory", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTipWindow(u, l, s.tipInventory); }},
+        {"tip_of_the_day", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTipWindow(u, l, s.tipOfTheDay); }},
+        // B888 (#204): the two Character Creation pages, in the selections
+        // the oracle frames were taken in (eq-oracle/logs/shots/cc_06_stats.png:
+        // Human male Warrior, all 25 points in AGILITY; cc_08_deity_city.png:
+        // AGNOSTIC, QEYNOS) so the pair can be laid side by side, plus page 0
+        // holding eqstr 1577 (Next pressed with points left).
+        {"charcreate_page0", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            auto s = charCreateCaptureState(0);
+            renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
+        {"charcreate_page1", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            auto s = charCreateCaptureState(1);
+            renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
+        {"charcreate_page0_points_left", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            auto s = charCreateCaptureState(2);
+            renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.
@@ -650,6 +900,53 @@ std::vector<PanelCapture> buildCaptureList() {
             q.openForStack(23, "Arrow", 20);
             q.value = 7;
             renderQuantityWindow(u, l, q); }},
+        // B442b (#151 remainder). `quantity_typed`: the box holds the
+        // keyboard and "2" was typed (row 5). `cursor_coin`: 10 platinum on
+        // the cursor over the purse, the decal + count strip (row 29).
+        // `confirm_drop` / `confirm_destroy`: the confirmation dialog over the
+        // inventory with an item held (rows 31, 34); the texts are eqstr 9057 /
+        // 2043 with the oracle run's own items, typed here as fixture data
+        // (the client composes them game-side from the string table).
+        // `inventory_sell_selected`: the popup with slot 27 selected for sale
+        // (the yellow frame, #152 row 3) and the Destroy button.
+        {"quantity_typed", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            QuantityWindowState q;
+            q.openForStack(26, "Low Quality Wolf Skin", 3);
+            q.input.inputActive = true;
+            q.input.inputText = "2";
+            q.value = 2;
+            renderQuantityWindow(u, l, q); }},
+        {"cursor_coin", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderInventoryPopup(u, l, s.inventory);
+            CursorAttachmentState coin;
+            coin.coinType = 3;   // EQT::COINTYPE_PP
+            coin.coinAmount = 10;
+            const auto pp = InventoryLayout::coinRect(l, 0);
+            coin.mouseX = pp.UpperLeftCorner.X + 20;
+            coin.mouseY = pp.UpperLeftCorner.Y - 40;
+            renderCursorAttachment(u, l, coin); }},
+        {"confirm_drop", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderInventoryPopup(u, l, s.inventory);
+            ConfirmationDialogState c;
+            c.open(1, "ARE YOU SURE you wish to drop your Rusty Long Sword on the ground?");
+            renderConfirmationDialog(u, l, c);
+            CursorAttachmentState held = s.cursor;
+            held.itemName = "Rusty Long Sword";
+            held.iconId = 1001;
+            held.mouseX = l.screenW / 2 + 160;
+            held.mouseY = l.screenH / 2 + 120;
+            renderCursorAttachment(u, l, held); }},
+        {"confirm_destroy", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderInventoryPopup(u, l, s.inventory);
+            ConfirmationDialogState c;
+            c.open(2, "Are you absolutely sure you want to destroy your Low Quality Wolf Skin?");
+            c.yesHovered = true;
+            renderConfirmationDialog(u, l, c); }},
+        {"inventory_sell_selected", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            InventoryPanelState inv = s.inventory;
+            inv.selectedSlot = 27;
+            inv.destroyHovered = true;
+            renderInventoryPopup(u, l, inv); }},
         // Everything the HUD draws at once -- the screen a player sees.
         {"hud_all", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderPlayerStatus(u, l, s.stats);

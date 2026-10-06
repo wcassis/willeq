@@ -218,7 +218,75 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //       `renderTrainerWindow(...)` (the oracle's TrackingWnd has its own
 //       placement, so it is not a centre popup).
 //     The count rises 346 -> 348, nothing removed and nothing replaced.
-const size_t kGoldenSize = 348u;
+//   * B899 (#215 / #151 Leg B): the era container windows, applied after
+//     B898, B442 and B895 (rebased onto them). TWO pure insertions, no text
+//     change and no reorder anywhere.
+//     - entries 281-283, the three lines of
+//       `staticUIInput_->processContainerInput(...)`, directly after entry
+//       280 (B895's processTrackingInput) and before T421's
+//       processItemDisplayInput: the oracle's ContainerWindow is
+//       `RelativePosition false` at its own <Location>, so it sits above the
+//       centre popups, the bank, the trainer and the tracking window and
+//       below the item display / Options.
+//     - entry 318, `renderContainerWindows(...)`, directly after entry 317
+//       `renderTrackingWindow(...)`, mirroring that hit-test order.
+//     The count rises 348 -> 352: three statements plus one.
+//   * B897 (GitLab #213): the Friends window. TWO pure insertions, no text
+//     change and no reorder anywhere.
+//     - entry 287, `processFriendsWindowInput();`, directly after the last
+//       line of T421's processItemDisplayInput call and before T434's
+//       Options hop: the Friends window is `RelativePosition false` at its
+//       own placement, so it sits above the item display and below the
+//       Options window, and hit-test order mirrors draw order. It is a
+//       FrameComponent method rather than a StaticUIInput entry point
+//       because an Add/Delete/Who click pushes an intent and a Contact click
+//       opens the chat prefill, both of which only FrameComponent can do.
+//     - entry 321, `renderFriendsWindow(...)`, directly after
+//       `renderItemDisplayPopup(...)` and before `renderOptionsWindow(...)`.
+//     The count rises 352 -> 354.
+//   * B442b (#151 remainder): the drop click, the held item display and the
+//     confirmation dialog. NINE text changes and THREE insertions, no
+//     reorder (applied by editing the golden in place, never regenerated):
+//     - entry 259 (new), `mods.alt = ...KEY_LMENU || ...KEY_RMENU;`, directly
+//       after the ctrl modifier: ALT+LEFT is the kept item display (row 26).
+//     - entry 260 (was 259) changed `processQuantityInput(` to
+//       `processDialogInput(`: the confirmation dialog is hit-tested above
+//       the QuantityWnd, which that call still asks second.
+//     - entries 266, 270, 275, 278, 281, 282, 285, 290 (were 265, 269, 274,
+//       277, 280, 281, 284, 289) gained `bool uiTook = ` / `uiTook |= `: the
+//       entry points' existing return values are collected so a world click
+//       is told from a window click (rows 31-33). Nothing else on those
+//       lines changed.
+//     - entry 294 (new), `processCursorGestureFrame(uiTook);`, directly after
+//       `applyOptionsSetting(optionsChanged);` and before
+//       `pendingUIClick_ = false;`, which it reads.
+//     - entry 328 (new), `renderConfirmationDialog(...)`, directly after
+//       `renderQuantityWindow(...)` inside the same guard: the topmost modal,
+//       below only the pointer.
+//     The count rises 354 -> 357.
+//   * B896 (GitLab #212): the trade / give window, applied after B442b (rebased onto it). TWO pure insertions, no
+//     text change and no reorder anywhere (the renumbering of the entries
+//     after each is the only other hunk).
+//     - entry 266, `processTradeWindowInput();`, directly after entry 265
+//       (B442's `setFrameClickState(rightClick, ...)`) and before entry 267
+//       `bool uiTook = staticUIInput_->processInput(`: the window is drawn above the centre
+//       popups, the bank, the trainer, the tracking and container windows,
+//       and the inventory is open beside it (review/UIGAP-ORACLE/212/
+//       trade.tsv row 1), so it takes its click first and spends it. A
+//       FrameComponent method (renderer_frame_trade.cpp), like B897's.
+//     - entry 323, `renderTradeWindow(...)`, directly after entry 322
+//       `renderContainerWindows(...)` and before the item display.
+//     The count rises 357 -> 359.
+//   * B834 (GitLab #202, UIGAP-small): the tip windows, applied after B896
+//     (rebased onto it). TWO pure insertions, no text change and no reorder.
+//     - entry 266, `if (processTipWindowInput()) pendingUIClick_ = false;`,
+//       directly before B896's `processTradeWindowInput();`: the tip window
+//       draws above every window but the QuantityWnd, so it is asked before
+//       them and keeps the click it takes.
+//     - entry 328, `renderTipWindow(...)`, directly after
+//       `renderOptionsWindow(...)` and before `renderXPBar(...)`.
+//     The count rises 359 -> 361.
+const size_t kGoldenSize = 361u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

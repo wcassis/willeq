@@ -29,6 +29,8 @@
 #include "client/spell/buff_manager.h"
 #include "client/skill/skill_manager.h"
 #include "client/audio/volume_steps.h"  // T439: the oracle's 0..20 volume step
+#include "client/state/social_lists.h"  // B897: the friends/ignore command bodies
+#include "client/merchant/coin_change.h"  // B441: the Change button's steps
 #include "client/zone_lines.h"
 #include "client/formatted_message.h"
 #include "common/logging.h"
@@ -635,6 +637,35 @@ void eqt::bridge::BridgeComponent::onBankCurrencyConvertIntent(const eqt::events
 	PublishBankCoinProjection(/*inventoryChanged=*/false);
 }
 
+// B441 (#26): the bank's Change button / `/bank change`. Both purses, bank
+// then carried, each converted up to the fewest coins (coin_change.h quotes
+// the client's own description and the assumptions). Same rules as the two
+// T269 arms above: the bank window must be open (the server refuses slot 2
+// with no banker in range), the server answers with silence, so the
+// projection applies the arithmetic BuildMakeChangeMoves() already did.
+void eqt::bridge::BridgeComponent::onBankMakeChangeIntent(const eqt::events::BankMakeChangeIntent& i) {
+	(void)i;
+	if (!ctx_.self.IsBankWindowOpen()) {
+		LOG_WARN(MOD_INVENTORY, "Bank change refused: bank window not open");
+		return;
+	}
+	size_t sent = 0;
+	for (const bool bank : {true, false}) {
+		eqt::merchant::CoinPurse purse{};
+		for (uint8_t t = 0; t < 4; ++t) purse[t] = BankCoinGet(t, bank);
+		const auto moves = eqt::merchant::BuildMakeChangeMoves(
+			bank ? EQT::COINSLOT_BANK : EQT::COINSLOT_INVENTORY, purse);
+		for (const auto& move : moves) ctx_.Merchant().SendMoveCoin(move);
+		for (uint8_t t = 0; t < 4; ++t) BankCoinSet(t, bank, purse[t]);
+		sent += moves.size();
+	}
+	LOG_DEBUG(MOD_INVENTORY, "Bank change: {} OP_MoveCoin steps; bank now {}pp {}gp {}sp {}cp, carried {}pp {}gp {}sp {}cp",
+		sent,
+		ctx_.game_state.player().bankPlatinum(), ctx_.game_state.player().bankGold(), ctx_.game_state.player().bankSilver(), ctx_.game_state.player().bankCopper(),
+		ctx_.game_state.player().platinum(), ctx_.game_state.player().gold(), ctx_.game_state.player().silver(), ctx_.game_state.player().copper());
+	if (sent > 0) PublishBankCoinProjection(/*inventoryChanged=*/true);
+}
+
 // Volume change intents (D20c2). T439 (board B432): the payload is an
 // ABSOLUTE step 0..20, not a delta, and the applied value is published back
 // on GameEventType::VolumesChanged -- which is what stops the Options slider
@@ -730,10 +761,24 @@ void eqt::bridge::BridgeComponent::onHotbarActivateIntent(const eqt::events::Hot
 
 // Tradeskill intents (D20b1)
 void eqt::bridge::BridgeComponent::onTradeskillCombineIntent(const eqt::events::TradeskillCombineIntent& i) {
+	// B899, MEASURED (UIGAP-ORACLE 215 combine.tsv row 7): a stack in the
+	// container is refused here, with eqstr 8504 and no packet -- the window's
+	// Combine and /combine both arrive through this one intent.
+	if (ctx_.Commands().ContainerHoldsAStack(i.containerSlot)) {
+		ctx_.out.System(ctx_.strings.GetStringMessage(8504));
+		return;
+	}
 	ctx_.Player().SendTradeSkillCombine(i.containerSlot);
 }
 
 void eqt::bridge::BridgeComponent::onTradeskillCloseIntent(const eqt::events::TradeskillCloseIntent& i) {
+	// B899: a CARRIED container's window (Done, close box, ESC). No server
+	// session exists for it, and the world container -- if one is open --
+	// is not the one being closed, so the active object id is left alone.
+	if (i.inventorySlot >= 0) {
+		ctx_.Commands().CloseCarriedContainer(i.inventorySlot);
+		return;
+	}
 	if (i.dropId != 0) {
 		ctx_.Entities().SendCloseContainer(i.dropId);
 	}
@@ -945,6 +990,43 @@ void eqt::bridge::BridgeComponent::onTrackingIntent(const eqt::events::TrackingI
 	ctx_.Player().Tracking().ApplyIntent(i);
 }
 
+// B897 (GitLab #213) -- a Friends-window button. The SAME bodies the
+// /friends, /ignore and /friendswho commands run (social_lists.h), so the
+// window prints exactly the slash commands' oracle strings. The edited lists
+// reach the window back through SocialListsChanged on the next GameTick
+// (SyncSocialLists), never optimistically.
+void eqt::bridge::BridgeComponent::onSocialListIntent(const eqt::events::SocialListIntent& i) {
+	using eqt::state::SocialList;
+	const SocialList list = (i.list == 1) ? SocialList::Ignored : SocialList::Friends;
+	eqt::state::SocialOutcome outcome;
+	if (i.op == eqt::events::SocialListOp::Who && !i.name.empty()) {
+		// MEASURED (review/UIGAP-ORACLE/213/friends.tsv row 14): Who with a
+		// friend SELECTED is a who-all for that one name (OP_WhoAllRequest,
+		// "Players in EverQuest:"), i.e. what `/who <name>` sends.
+		ctx_.Player().SendWhoAllRequest(i.name);
+		return;
+	}
+	if (i.op == eqt::events::SocialListOp::Who) {
+		// Row 13: no selection -> OP_FriendsWho with the stored names.
+		outcome = eqt::state::RunFriendsWho(ctx_.game_state.social(), std::string());
+	} else {
+		outcome = eqt::state::ApplySocialEdit(
+			ctx_.game_state.social(), list,
+			i.op == eqt::events::SocialListOp::Add ? eqt::state::SocialEditOp::Add
+			                                       : eqt::state::SocialEditOp::Remove,
+			i.name, ctx_.character);
+	}
+	for (const auto& line : outcome.lines) ctx_.out.System(line);
+	if (!outcome.whoList.empty()) ctx_.Player().SendFriendsWho(outcome.whoList);
+}
+
+// B896 (GitLab #212) -- a trade / give window button or coin row. The body is
+// RunTradeWindowIntent() in bridge_component_trade.cpp, beside the trade
+// hooks of the cursor gesture.
+void eqt::bridge::BridgeComponent::onTradeWindowIntent(const eqt::events::TradeWindowIntent& i) {
+	RunTradeWindowIntent(i);
+}
+
 // The intent pump. Pure dispatch: std::visit over an exhaustive overload set,
 // one line per RendererIntent alternative, in the variant's own order. There
 // is deliberately NO generic fallback lambda -- the old chain ended in an
@@ -981,6 +1063,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::CloseBankIntent& i) { onCloseBankIntent(i); },
 			[this](const eqt::events::BankCurrencyMoveIntent& i) { onBankCurrencyMoveIntent(i); },
 			[this](const eqt::events::BankCurrencyConvertIntent& i) { onBankCurrencyConvertIntent(i); },
+			[this](const eqt::events::BankMakeChangeIntent& i) { onBankMakeChangeIntent(i); },
 			[this](const eqt::events::TrainerToggleIntent& i) { onTrainerToggleIntent(i); },
 			[this](const eqt::events::CastSpellIntent& i) { onCastSpellIntent(i); },
 			[this](const eqt::events::MemorizeSpellIntent& i) { onMemorizeSpellIntent(i); },
@@ -1007,6 +1090,8 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::PlaySoundIntent& i) { onPlaySoundIntent(i); },
 			[this](const eqt::events::GameOptionIntent& i) { onGameOptionIntent(i); },
 			[this](const eqt::events::TrackingIntent& i) { onTrackingIntent(i); },
+			[this](const eqt::events::SocialListIntent& i) { onSocialListIntent(i); },
+			[this](const eqt::events::TradeWindowIntent& i) { onTradeWindowIntent(i); },
 		}, intent);
 	}
 }

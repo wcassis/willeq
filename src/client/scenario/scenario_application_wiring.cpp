@@ -6,6 +6,7 @@
 
 #include "client/application.h"
 #include "client/eq.h"
+#include "client/login_world/char_create_data.h"
 #include "client/mode/automated_mode.h"
 #include "client/scenario/scenario_world_app.h"
 #include "client/scenario/scenarios.h"
@@ -28,6 +29,19 @@ bool Application::initScenario(const ApplicationConfig& config) {
     options.recastStopSpellId = config.scenarioRecastStopSpellId;
     options.buffNotakeVictimId = config.scenarioBuffNotakeSpellId;
     options.fizzleSpellId = config.scenarioFizzleSpellId;
+    // B888 (issue #204): create_character checks what --create-character made.
+    if (m_eqClient) {
+        const auto& script = m_eqClient->LoginWorld().GetWorldScript();
+        if (script.kind == charcreate::WorldScript::Kind::Create) {
+            options.expectCharacterName = script.create.name;
+            charcreate::CharCreateData data;
+            if (data.loadShipped()) {
+                if (const auto* city = data.cityByIndex(script.create.startZone)) {
+                    options.expectHomeZones = city->homeZones;
+                }
+            }
+        }
+    }
 
     auto built = scenario::MakeScenario(config.scenarioName, options);
     if (!built) {
@@ -60,7 +74,12 @@ bool Application::initScenario(const ApplicationConfig& config) {
     // lane whose result can be silenced by a logging flag is not a lane.
     SetModuleLogLevel(MOD_SCENARIO, LOG_INFO);
 
-    m_scenarioWorld = std::make_unique<scenario::ApplicationScenarioWorld>(*this, *m_eqClient);
+    // UIGAP-live: hand the world the bridge EverQuest pushes into, so its
+    // transcript observer sees the chat lines / tracking list / skill updates
+    // a headless run never drains. Installed here, before the game thread
+    // runs, so the observer is never set concurrently with a push.
+    m_scenarioWorld = std::make_unique<scenario::ApplicationScenarioWorld>(
+        *this, *m_eqClient, m_bridge);
     m_scenarioRunner = std::make_unique<scenario::ScenarioRunner>(
         std::move(built), *m_scenarioWorld,
         config.scenarioTimeoutSeconds, config.scenarioStartDeadlineSeconds);

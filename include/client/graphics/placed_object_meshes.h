@@ -37,6 +37,64 @@ namespace Graphics {
 struct ZoneGeometry;
 struct MeshAnimatedVertices;
 
+// B938 (GitLab #256): the per-placement state of a placed object, replacing the
+// full Irrlicht IMeshSceneNode (~2.2 KB per placement: the node object, its
+// name, its relative/absolute matrices, and a copied SMaterial per mesh
+// buffer) that B936's per-geometry mesh sharing left as the dominant
+// `objects` owner (88-98 % of the category in every measured zone).
+//
+// What a placement actually needs to draw: the shared mesh it draws (one per
+// geometry, B936), its world transform, and its BSP region / box / position
+// for culling. Everything else the node carried was redundant:
+//
+//   * the per-buffer SMaterial copies -- the live draw path in a PVS zone is
+//     drawZoneGeometrySorted(), which binds the SHARED mesh's own buffer
+//     materials (the GLES2 driver consumes only BackfaceCulling and FogEnable,
+//     both already set on those buffers by the mesh builder). The node's own
+//     material array is read only by the scene-graph pass (Irrlicht's SOLID
+//     drawAll), which is dormant in every PVS zone -- manualZoneDrawEnabled is
+//     true there, so objects are always out of the scene graph and drawn via
+//     the manual sorted path.
+//   * the name -- kept here (32 B, small string pool in practice) because the
+//     tree-wind fixup and the debug/adaptive-log sites key off it.
+//
+// `world` is the node's getRelativeTransformation(), computed with the exact
+// same three-setter idiom step 6 used to set it (setRotationDegrees +
+// setTranslation, then `*= scale` only when the scale is not (1,1,1)), so the
+// manual draw path reads byte-identical bytes to the pre-B938 node.
+//
+// `node` is non-null ONLY in the rare no-PVS zone (manualZoneDrawEnabled
+// false), where the scene-graph pass still draws objects via Irrlicht's SOLID
+// pass and needs a real IMeshSceneNode; there the record is a thin index into
+// it. In every PVS zone (all gate zones, all ledger-measured zones) `node` is
+// null and no per-placement node is allocated -- that is where the memory is.
+//
+// The record is the ONLY per-placement state. Before B938 the culling state
+// lived in four renderer-parallel vectors (objectPositions_ /
+// objectRegions_ / objectBoundingBoxes_ / objectInSceneGraph_); B938 folded
+// them in here (position = the translation of world, the box = the mesh's
+// bounding box transformed by world, exactly what the old node's
+// getTransformedBoundingBox() computed). A test pins the struct's size
+// (tests/test_placed_object_record.cpp), so a growth is a red test, not a
+// drift. `name` is SSO-backed in practice: object definition names are
+// short ("TREE1", "DRGRASS101", ...).
+struct PlacedObjectRecord {
+    irr::scene::IMesh* mesh = nullptr;   // shared mesh, one per geometry.
+                                         // Reference: PVS zone -- the record
+                                         // holds it (grabbed in step 6, dropped
+                                         // in zone teardown); non-PVS zone --
+                                         // the node holds it and this is a
+                                         // read-only pointer the manual-draw
+                                         // diagnostics and the guard scan use.
+    irr::core::matrix4 world;            // = the old node's getRelativeTransformation()
+    irr::core::vector3df position;       // old objectPositions_: Irrlicht coords
+    size_t region = SIZE_MAX;            // old objectRegions_: BSP region
+    irr::core::aabbox3df box;            // old objectBoundingBoxes_: world-space
+    bool inSceneGraph = false;           // old objectInSceneGraph_
+    std::string name;                    // object definition name (tree-wind, logs)
+    irr::scene::IMeshSceneNode* node = nullptr;  // non-null only in non-PVS zones
+};
+
 // A keyframe-animated object mesh (flags, banners, Kunark/Velious grass and
 // plants). B936: ONE entry per MESH, which every placement of the geometry
 // draws (this header's comment says why that is exact); `placements` counts

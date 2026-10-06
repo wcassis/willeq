@@ -99,9 +99,13 @@ using EventData = std::variant<
     EquipmentStatsChangedData,
     CurrencyChangedData,
     BankCurrencyChangedData,
+    CursorCoinChangedData,          // B442b
+    ConfirmationRequestedData,      // B442b
     // Audio
     VolumesChangedData,
     GameOptionChangedData,  // B430
+    // Social (B897)
+    SocialListsChangedData,
     // Loot
     LootWindowOpenedData,
     LootWindowClosedData,

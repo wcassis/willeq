@@ -42,6 +42,8 @@ UiPreferencesBinding FrameComponent::uiPreferencesBinding() {
     b.buff = &buffBarState_;
     b.combatAbility = &combatAbilityState_;
     b.options = &optionsState_;          // T434
+    b.friends = &friendsState_;          // B897
+    b.tips = &tipPrefs_;                 // B834
     return b;
 }
 
@@ -59,6 +61,9 @@ void FrameComponent::setUiPreferencesIdentity(const std::string& character,
     // A new identity re-arms the load: zoning does not change the character,
     // but a character change (or the first zone-in of a run) must re-read.
     uiPrefsLoaded_ = false;
+    // B834: the tips popped "this session" are per character.
+    tipState_.shownThisSession.clear();
+    tipState_.totdShownThisSession = false;
     LOG_INFO(MOD_UI, "UI preferences identity: {} on {}", character, server);
 }
 

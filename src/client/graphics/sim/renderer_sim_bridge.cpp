@@ -64,15 +64,20 @@ SimulationZoneData SimBridgeComponent::buildSimulationZoneData() {
     }
 
     // Copy object data
-    zoneData.objects.resize(ctx_.objectNodes.size());
-    for (size_t i = 0; i < ctx_.objectNodes.size(); ++i) {
+    // B938 (#256): per-placement state is a record, not a node. The record is
+    // the placement itself -- in a PVS zone there is no node, but the placement
+    // still exists and must be visibility-tested and drawn by the manual pass.
+    // So hasNode means "a renderable placement exists" (record holds a mesh),
+    // not "a scene node exists". The culling data (box, position, region) is
+    // folded into the record now, so there are no parallel vectors to bound-check.
+    zoneData.objects.resize(ctx_.objectRecords.size());
+    for (size_t i = 0; i < ctx_.objectRecords.size(); ++i) {
+        const auto& rec = ctx_.objectRecords[i];
         auto& od = zoneData.objects[i];
-        od.hasNode = (ctx_.objectNodes[i] != nullptr);
-        if (i < ctx_.objectBoundingBoxes.size())
-            od.boundingBox = ctx_.objectBoundingBoxes[i];
-        if (i < ctx_.objectPositions.size())
-            od.position = ctx_.objectPositions[i];
-        od.bspRegion = (i < ctx_.objectRegions.size()) ? ctx_.objectRegions[i] : SIZE_MAX;
+        od.hasNode = (rec.mesh != nullptr);
+        od.boundingBox = rec.box;
+        od.position = rec.position;
+        od.bspRegion = rec.region;
     }
 
     // Copy zone light data
@@ -708,23 +713,24 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
     // When manualZoneDrawEnabled_, objects are drawn via drawZoneGeometrySorted()
     // alongside zone geometry for material sorting. Keep them out of the scene graph
     // to avoid double-rendering by drawAll().
+    // B938 (#256): in a PVS zone the records carry no node -- the branch below is
+    // exactly what kept them out of the graph, so it simply does nothing there.
     if (!results->objectVisible.empty() && !ctx_.manualZoneDrawEnabled) {
-        for (size_t i = 0; i < results->objectVisible.size() && i < ctx_.objectNodes.size(); ++i) {
-            auto* node = ctx_.objectNodes[i];
+        for (size_t i = 0; i < results->objectVisible.size() && i < ctx_.objectRecords.size(); ++i) {
+            auto& rec = ctx_.objectRecords[i];
+            auto* node = rec.node;
             if (!node) continue;
 
             bool shouldBeVisible = results->objectVisible[i] != 0;
-            bool isInScene = (i < ctx_.objectInSceneGraph.size()) ? ctx_.objectInSceneGraph[i] : false;
+            bool isInScene = rec.inSceneGraph;
 
             if (shouldBeVisible && !isInScene) {
                 ctx_.smgr->getRootSceneNode()->addChild(node);
                 node->setVisible(true);
-                if (i < ctx_.objectInSceneGraph.size())
-                    ctx_.objectInSceneGraph[i] = true;
+                rec.inSceneGraph = true;
             } else if (!shouldBeVisible && isInScene) {
                 node->remove();
-                if (i < ctx_.objectInSceneGraph.size())
-                    ctx_.objectInSceneGraph[i] = false;
+                rec.inSceneGraph = false;
             }
         }
     }

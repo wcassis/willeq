@@ -112,6 +112,19 @@ public:
 	void RequestTradeskillCombine(int16_t containerSlot);
 	void RequestCloseTradeskillContainer();
 
+	// B899 (#215 / #151 Leg B): the carried container window
+	// (src/client/commands/commands_containers.cpp). The game thread is the
+	// one truth for which bags are open -- there is no server session.
+	void RequestToggleBag(int16_t generalSlot);      // /bag <slot>
+	void CloseCarriedContainer(int16_t generalSlot); // Done / close box / ESC
+	void OnInventorySlotChanged(int16_t slot);       // the bag left its slot
+	bool IsBagOpen(int16_t generalSlot) const;
+	// MEASURED (UIGAP-ORACLE 215 combine.tsv row 7): Combine with a stack
+	// (quantity > 1) in any of the container's slots is refused CLIENT-side
+	// with eqstr 8504 and no packet. `containerSlot` is the combine's
+	// container_slot: 1000 (the world container) or a general slot.
+	bool ContainerHoldsAStack(int16_t containerSlot) const;
+
 	// T140: warp/time-of-day thin wrappers.
 	void RequestWarp(const std::string& args);
 	// T362 (B070): the entity form of /warp, already resolved to a spawn id
@@ -181,6 +194,10 @@ private:
 	std::chrono::steady_clock::time_point m_stunned_until{};
 
 	std::map<uint32_t, GameVendorItem> m_vendor_items;  // slot -> item data (game-side)
+
+	// B899: bit (g - GENERAL_BEGIN) set while the bag in general slot g has
+	// its window open.
+	uint8_t m_open_bag_mask = 0;
 };
 
 }  // namespace commands

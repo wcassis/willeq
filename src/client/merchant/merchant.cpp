@@ -33,6 +33,7 @@
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/commands/commands_component.h"
 
 // P28: renderer-free inventory data model, used unconditionally below
 // (m_inventory_manager->processCharInventory).
@@ -102,6 +103,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessMoveItem(const EQ::Net::Packet
 			data.itemName = data.hasItem ? item->name : "";
 			data.iconId = data.hasItem ? item->icon : 0;
 			data.quantity = data.hasItem ? item->quantity : 0;
+			data.bagSlots = data.hasItem ? item->bagSlots : 0;  // B442b
 			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 		};
@@ -150,6 +152,12 @@ void eqt::merchant::MerchantComponent::SyncInventorySlotToGameState(int16_t slot
 		ctx_.game_state.inventory().setGeneralOccupied(slot - eqt::inventory::GENERAL_BEGIN, hasItem);
 	} else if (eqt::inventory::isBankSlot(slot)) {
 		ctx_.game_state.inventory().setBankOccupied(slot - eqt::inventory::BANK_BEGIN, hasItem);
+	}
+	// B899: a change to an open bag's own general slot closes its window
+	// (CommandsComponent::OnInventorySlotChanged). This is the one choke point
+	// every InventorySlotChanged publisher already calls.
+	if (ctx_.commands_ && eqt::inventory::isGeneralSlot(slot)) {
+		ctx_.Commands().OnInventorySlotChanged(slot);
 	}
 }
 
@@ -442,6 +450,21 @@ void eqt::merchant::MerchantComponent::RequestBankCoinConvert(uint8_t fromCoinTy
 		ctx_.bridge->pushIntent(eqt::events::BankCurrencyConvertIntent{fromCoinType, toCoinType, amount});
 	} else {
 		ctx_.out.System("Cannot convert coins - no bridge attached.");
+	}
+}
+
+// B441 (#26): `/bank change`, the slash half of the bank window's Change
+// button -- the same intent, the same arm (BridgeComponent::onBankMakeChangeIntent).
+void eqt::merchant::MerchantComponent::RequestBankMakeChange()
+{
+	if (!ctx_.self.IsBankWindowOpen()) {
+		ctx_.out.System("You must have a bank window open to change coins.");
+		return;
+	}
+	if (ctx_.bridge) {
+		ctx_.bridge->pushIntent(eqt::events::BankMakeChangeIntent{});
+	} else {
+		ctx_.out.System("Cannot change coins - no bridge attached.");
 	}
 }
 

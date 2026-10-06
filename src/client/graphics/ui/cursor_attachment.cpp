@@ -37,8 +37,38 @@ bool applyCursorSlotChanged(CursorAttachmentState& state,
     return true;
 }
 
+void applyCursorCoinChanged(CursorAttachmentState& state,
+                            const eqt::state::CursorCoinChangedData& data) {
+    state.coinType = data.amount > 0 ? data.coinType : 0;
+    state.coinAmount = data.amount;
+}
+
+// B442b (#151 row 29): the coin a held pile is drawn with. MEASURED for
+// platinum: the oracle's cursor coin in run1.G33a matches dragitem cell 644
+// pixel for pixel (MSE 195 at a 1px offset; the next-best cell scores 7,546).
+// 645/646/647 are the three cells under it in dragitem5.tga's first column --
+// gold, silver and copper coin art, in that order -- an INFERENCE from the
+// sheet, owed an oracle grab of each denomination on the cursor.
+uint32_t cursorCoinIcon(uint8_t coinType) {
+    constexpr uint32_t kPlatinumIcon = 644;
+    return kPlatinumIcon + static_cast<uint32_t>(3 - std::min<uint8_t>(coinType, 3));
+}
+
 void renderCursorAttachment(UIRenderer& ui, const UILayout& layout,
                             const CursorAttachmentState& state) {
+    if (!state.hasItem && state.holdsCoin()) {
+        const auto icon =
+            CursorAttachmentLayout::iconRect(layout, state.mouseX, state.mouseY);
+        const auto strip =
+            CursorAttachmentLayout::coinCountRect(layout, state.mouseX, state.mouseY);
+        ui.drawItemIcon(icon, cursorCoinIcon(state.coinType));
+        ui.drawRect(strip, irr::video::SColor(255, 64, 64, 64));
+        if (auto* tb = ui.getTextBatch()) {
+            tb->addTextCentered(std::to_string(state.coinAmount), strip,
+                                irr::video::SColor(255, 230, 230, 230));
+        }
+        return;
+    }
     if (!state.hasItem) return;
 
     // Style_Transparent true, Style_Border false: the oracle draws NO frame

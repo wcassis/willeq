@@ -12,6 +12,7 @@ The bridge is the sole communication channel between the game thread and the ren
 - `pushIntent(RendererIntent)` — renderer thread enqueues user action
 - `drainIntents()` → returns vector — game thread consumes
 - Two independent mutexes (events and intents never contend)
+- `setEventObserver()` (UIGAP-live) — one optional game-thread observer of every pushed event; only the scenario lane installs one (`ApplicationScenarioWorld`'s chat transcript / event counts). Empty in every ordinary run
 - **Swap-vector pattern**: drain swaps the entire vector in O(1), then processes outside the lock
 
 **IrrlichtBridge** (`irrlicht_bridge.h`) — Concrete bridge for 3D rendering:
@@ -42,26 +43,28 @@ EverQuest::tick()                    processFrame()
 
 Defined in `include/client/state/event_bus.h`. See `include/client/state/CLAUDE.md` for the full categorization.
 
-## Intent Types (45)
+## Intent Types (48)
 
 Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `std::variant` holding all intent structs:
 
 - **Movement**: `PlayerPositionChanged` (position + velocity)
 - **Targeting**: `TargetIntent` (T51: `AttackIntent`/`ToggleAutoAttackIntent` removed -- never had a producer; auto-attack is reached via direct `CombatManager` calls from `src/client/commands/commands_movement.cpp` (K12 moved it off the flat `eq_commands_movement.cpp`)/`ActionDispatcher`, not the intent system)
 - **Interaction**: `DoorInteractIntent`, `LootCorpseIntent`, `LootItemIntent`, `LootAllIntent`, `CloseLootIntent`, `WorldObjectInteractIntent`, `ZoningEnabledIntent`, `ReadItemIntent`
-- **Commerce**: `VendorToggleIntent`, `VendorBuyIntent`, `VendorSellIntent`, `BankerInteractIntent`, `CloseBankIntent` (T436 -- `BankerInteractIntent`'s handler returns early on an already-open window, so the bank window's Done button and close box needed a close-only intent, the `CloseTrainerIntent` shape), `BankCurrencyMoveIntent`, `BankCurrencyConvertIntent`
+- **Commerce**: `VendorToggleIntent`, `VendorBuyIntent`, `VendorSellIntent`, `BankerInteractIntent`, `CloseBankIntent` (T436 -- `BankerInteractIntent`'s handler returns early on an already-open window, so the bank window's Done button and close box needed a close-only intent, the `CloseTrainerIntent` shape), `BankCurrencyMoveIntent`, `BankCurrencyConvertIntent`, `BankMakeChangeIntent` (B441 -- the bank window's Change button and `/bank change`)
 - **Spells**: `CastSpellIntent`, `MemorizeSpellIntent`, `ScribeSpellIntent`, `SpellbookStateIntent`
 - **Buffs**: `BuffCancelIntent`
 - **Skills**: `SkillActivateIntent`
 - **Hotbar**: `HotbarActivateIntent`
-- **Inventory**: `MoveItemIntent`, `DeleteItemIntent`, `EquipmentChangedIntent`, `CursorGestureIntent` (B442: every item window's slot click, the QuantityWnd's Accept, a purse row, and `/pickup` `/putdown` `/coin` -- one intent, resolved on the game thread by `eqt::inventory::ApplyCursorGesture()` / `PlanCoinGesture()` in `include/client/inventory/cursor_gesture.h`, which calls the existing `InventoryManager` pickup/place bodies that push `MoveItemIntent`)
+- **Inventory**: `MoveItemIntent`, `DeleteItemIntent`, `EquipmentChangedIntent`, `CursorGestureIntent` (B442: every item window's slot click, the QuantityWnd's Accept, a purse row, and `/pickup` `/putdown` `/coin` -- one intent, resolved on the game thread by `eqt::inventory::ApplyCursorGesture()` / `PlanCoinGesture()` in `include/client/inventory/cursor_gesture.h`, which calls the existing `InventoryManager` pickup/place bodies that push `MoveItemIntent`; B442b added the ops `ToggleBag` (a bag's right click -> the `/bag` body), `RequestDrop`/`ConfirmDrop` (`OP_GroundSpawn`) and `RequestDestroy`/`ConfirmDestroy` (`OP_MoveItem 30 -> -1`), and `coinSource` for the bank's coin rows -- no new intent struct; its game-side replies are `GameEventType::CursorCoinChanged` and `ConfirmationRequested`)
 - **Chat**: `ChatSubmitIntent`
+- **Social**: `SocialListIntent` (B897 -- the Friends window's Add / Delete / Who; its handler runs the same `eqt::state::ApplySocialEdit()` / `RunFriendsWho()` bodies `/friends`, `/ignore` and `/friendswho` run, and the edited lists come back on `GameEventType::SocialListsChanged`, published once per `GameTick` by `BridgeComponent::SyncSocialLists()`)
 - **Audio**: `MusicVolumeChangeIntent`, `EffectsVolumeChangeIntent` (T439, board B432: both carry an ABSOLUTE step 0..20 -- the oracle's slider unit, `include/client/audio/volume_steps.h` -- not a delta; the applied value comes back on `GameEventType::VolumesChanged`), `PlaySoundIntent` (T328 Leg B: the measured UI sounds — itemclth, wearclth, BuyItem)
 - **Options window** (B430/B433): `GameOptionIntent` -- a server-owned Options setting (anonymous/roleplay, autosplit, the three auto-consents as `OP_SpawnAppearance`; the Filters page as the whole `OP_SetServerFilter` payload). One handler, `BridgeComponent::ApplyGameOption()` (`bridge_component_options.cpp`), which publishes the applied value back on `GameEventType::GameOptionChanged`, the `VolumesChanged` shape
 - **Trainer**: `TrainerToggleIntent`, `TrainSkillIntent`, `CloseTrainerIntent` (B898: the trainer window's Train / Done buttons push the last two, the same intents `/train <id>` / `/trainclose` push)
 - **Tradeskill**: `TradeskillCombineIntent`, `TradeskillCloseIntent`
 - **Model**: `PlayerModelGeometryChanged`
 - **Tracking**: `TrackingIntent` (B895 -- the Tracking Window's Track button, filter toggles and two comboboxes, one intent onto `TrackingController`, the bodies `/track` and `/track*` reach)
+- **Trade**: `TradeWindowIntent` (B896 -- the trade / give window's Trade or Give (`Accept`), Cancel and close box (`Cancel`) and a coin row with coin held (`CoinFromCursor`); the first two run the `TradeManager::clickAccept()` / `cancelTrade()` bodies `/accept` and `/canceltrade` run, the third is one `OP_MoveCoin` cursor -> trade. Item slots are `CursorGestureIntent` with slot 3000+n; `BridgeComponent::TradeGestureRefusal()` / `AfterTradeGesture()` (`bridge_component_trade.cpp`) refuse a withdrawal and reset both accepts after our own change)
 
 ## Two-stage drain in graphics runs (T220, T227)
 

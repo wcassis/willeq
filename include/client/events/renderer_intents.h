@@ -155,6 +155,14 @@ struct BankCurrencyConvertIntent {
     int32_t amount;        // in fromCoinType coins
 };
 
+// B441 (#26, UIGAP-small): the bank window's BW_ChangeButton and `/bank
+// change`. ONE click, no dialog -- the client's own Bank Tip window
+// (help/tips/ctxbank.html): "Click on the "Change" button to convert all
+// your coin, both in the bank and on your person, to the fewest possible
+// coins." The arm builds the OP_MoveCoin steps from the game thread's own
+// purses (eqt::merchant::BuildMakeChangeMoves, coin_change.h).
+struct BankMakeChangeIntent {};
+
 // --- Trainer ---
 
 struct TrainerToggleIntent {};  // Validation stays on game thread
@@ -239,6 +247,11 @@ struct TradeskillCombineIntent {
 
 struct TradeskillCloseIntent {
     uint32_t dropId;  // World object drop ID (0 for inventory containers)
+    // B899: the general slot of a CARRIED container whose window is closing
+    // (Done, the close box, ESC). SLOT_INVALID (-1) for a world container.
+    // A carried bag has no server session, so this closes it game-side
+    // (CommandsComponent::CloseCarriedContainer) and sends nothing.
+    int16_t inventorySlot = -1;
 };
 
 // T419 (board B335): a click on a COMBW_RecipeList row. Reaches
@@ -337,6 +350,16 @@ enum class CursorGestureOp : uint8_t {
     PickUp,      // /pickup: pick up only -- refused while the cursor holds an item
     PutDown,     // /putdown: place only -- refused while the cursor is empty
     CoinClick,   // purse row / /coin: coin onto the cursor, or held coin back
+    // B442b (#151 rows 19-21): RIGHT click on a carried bag -- the body /bag
+    // runs (CommandsComponent::RequestToggleBag). `slot` = the general slot.
+    ToggleBag,
+    // B442b (#151 rows 31-35): the two confirmations. A Request asks the game
+    // thread for the prompt (eqstr 9057 / 2043 with the held item's name,
+    // published back as ConfirmationRequested); a Confirm is the dialog's Yes.
+    RequestDrop,     // a motionless world click with an item held (row 31)
+    ConfirmDrop,     // Yes -> OP_GroundSpawn, empty body (row 33)
+    RequestDestroy,  // IW_Destroy with an item held (row 34)
+    ConfirmDestroy,  // Yes -> OP_MoveItem 30 -> -1 qty 0 (row 35)
 };
 
 struct CursorGestureIntent {
@@ -344,6 +367,9 @@ struct CursorGestureIntent {
     int16_t slot = -1;      // Titanium (model) slot id; unused by CoinClick
     int32_t quantity = 0;   // 0 = the whole stack / the whole coin pile
     uint8_t coinType = 0;   // EQT::COINTYPE_* (0 cp .. 3 pp), CoinClick only
+    // B442b (#151 rows 43-44): which coin store a CoinClick is on --
+    // EQT::COINSLOT_INVENTORY (1, the purse) or EQT::COINSLOT_BANK (2).
+    uint8_t coinSource = 1;
     bool echo = false;      // a slash command: print the outcome to chat
 };
 
@@ -383,6 +409,34 @@ struct TrackingIntent {
     uint8_t value = 0;
 };
 
+// B897 (GitLab #213): a Friends-window button. The handler runs the SAME
+// eqt::state::ApplySocialEdit() / RunFriendsWho() bodies /friends, /ignore and
+// /friendswho run (include/client/state/social_lists.h), so the window and
+// the slash commands print the same oracle strings. `list` is
+// eqt::state::SocialList (0 friends, 1 ignored). Who with a `name` (a selected
+// friend) is a who-all for that name; Who with none queries the stored list
+// (review/UIGAP-ORACLE/213/friends.tsv rows 13-14).
+enum class SocialListOp : uint8_t { Add, Remove, Who };
+struct SocialListIntent {
+    uint8_t list;
+    SocialListOp op;
+    std::string name;
+};
+
+// B896 (GitLab #212): the trade window's and the NPC give window's buttons
+// and coin rows. Accept is TRDW_Trade_Button / GVW_Give_Button and runs
+// TradeManager::clickAccept() -- the body /accept runs during an active
+// trade (OP_TradeAcceptClick, MEASURED review/UIGAP-ORACLE/212/trade.tsv rows
+// 4 and 10); Cancel is the Cancel button and the close box and runs
+// TradeManager::cancelTrade(), the body /canceltrade runs (OP_CancelTrade,
+// row 8). CoinFromCursor is a click on an own coin row with coin on the
+// cursor: one OP_MoveCoin cursor -> trade (row 2, to_slot 3). Item slots are
+// NOT here -- they are B442's CursorGestureIntent with slot 3000+n.
+enum class TradeWindowOp : uint8_t { Accept = 0, Cancel, CoinFromCursor };
+struct TradeWindowIntent {
+    TradeWindowOp op = TradeWindowOp::Accept;
+};
+
 // ============================================================================
 // Variant type for all renderer intents
 // ============================================================================
@@ -413,6 +467,7 @@ using RendererIntent = std::variant<
     CloseBankIntent,
     BankCurrencyMoveIntent,
     BankCurrencyConvertIntent,
+    BankMakeChangeIntent,      // B441
     // Trainer
     TrainerToggleIntent,
     // Spells
@@ -450,7 +505,11 @@ using RendererIntent = std::variant<
     // Options window (B430)
     GameOptionIntent,
     // Tracking (B895)
-    TrackingIntent
+    TrackingIntent,
+    // Social (B897)
+    SocialListIntent,
+    // Trade (B896)
+    TradeWindowIntent
 >;
 
 } // namespace events

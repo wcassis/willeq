@@ -527,15 +527,7 @@ ActionResult CommandProcessor::cmdFind(const std::string& args) {
     return m_dispatcher.findPerson(targetId);
 }
 
-ActionResult CommandProcessor::cmdFriendsWho(const std::string& args) {
-    // No name resolution here: the server takes NAMES, not ids, for this
-    // opcode, and deliberately reports on characters who may be in other
-    // zones -- so an entity-list lookup would be wrong, not just redundant.
-    if (args.empty()) {
-        return ActionResult::Failure("Usage: /friendswho <name>[,<name>...]");
-    }
-    return m_dispatcher.friendsWho(args);
-}
+// cmdFriendsWho: moved to command_processor_friends.cpp (B897).
 
 ActionResult CommandProcessor::cmdLogClear(const std::string& args) {
     ClearModuleFilters();

@@ -184,7 +184,8 @@ bool eqt::bridge::BridgeComponent::InitGraphics(int width, int height,
 	ctx_.Merchant().SetupVendorCallbacks();
 	ctx_.Merchant().SetupBankCallbacks();
 	ctx_.Merchant().SetupTrainerCallbacks();
-	ctx_.Merchant().SetupTradeWindowCallbacks();
+	// B896 (#212): the trade window's empty stub was deleted; the window is
+	// fed by the trade events SetupTradeManagerCallbacks() publishes.
 	ctx_.Merchant().SetupTradeskillCallbacks();
 
 	// S2: movement callback removed — position flows via PlayerPositionChanged intent only
@@ -314,6 +315,10 @@ void eqt::bridge::BridgeComponent::GameTick(float deltaTime) {
 
 	// Process intents from renderer's previous frame
 	ProcessBridgeIntents();
+
+	// B897: load/save the friends and ignore lists and tell the window.
+	// After the intents, so a window edit is persisted in the same tick.
+	SyncSocialLists();
 }
 
 // T220: PreRenderTick() (D21a's render-thread event drain) is DELETED. In a

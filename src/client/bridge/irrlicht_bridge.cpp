@@ -4,6 +4,10 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/chat/chat_message_buffer.h"
+#include "client/graphics/ui/confirmation_dialog.h"   // B442b
+#include "client/graphics/ui/cursor_attachment.h"
+#include "client/graphics/ui/merchant_panel.h"
+#include "client/graphics/ui/static_ui_input.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/inventory_manager.h"
 #include "common/logging.h"
@@ -408,6 +412,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // LootWindowOpened arm below follows.
             renderer_->Frame().inventoryState_.activePopup =
                 EQT::Graphics::PopupType::None;
+            renderer_->Frame().inventoryState_.selectedSlot = -1;  // B442b
             EQT::Graphics::applyVendorWindowOpened(
                 renderer_->Frame().merchantState_, d);
         }
@@ -415,6 +420,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::VendorWindowClosed:
         if (renderer_) {
             auto& d = std::get<state::WindowClosedData>(event.data);
+            // B442b (#152): the sale selection ends with the session.
+            renderer_->Frame().inventoryState_.selectedSlot = -1;
             EQT::Graphics::applyVendorWindowClosed(
                 renderer_->Frame().merchantState_, d);
         }
@@ -458,24 +465,20 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
     // T415 (board B321): both arms were LOG_TRACEs that discarded their
     // payloads, because fable had no container window. They now feed one.
+    // B899 (#215, Will 2026-09-23): both arms feed the era CONTAINER window
+    // (EQUI_Container.xml), world and carried alike -- no longer T415's
+    // recipe window, whose recipe half is out of era. The container window is
+    // not a centre popup (its own <Location>), so opening one closes nothing.
     case state::GameEventType::TradeskillContainerOpened:
         if (renderer_) {
             auto& d = std::get<state::TradeskillContainerOpenedEvent>(event.data);
-            EQT::Graphics::applyTradeskillContainerOpened(
-                renderer_->Frame().tradeskillState_, d);
-            // A container is a centre popup: opening one closes the other
-            // three, the same rule the LootWindowOpened arm applies.
-            renderer_->Frame().inventoryState_.activePopup =
-                EQT::Graphics::PopupType::None;
-            renderer_->Frame().spellbookState_.isOpen = false;
-            renderer_->Frame().skillsPopupState_.isOpen = false;
+            EQT::Graphics::applyContainerOpened(renderer_->Frame().containerState_, d);
         }
         break;
     case state::GameEventType::TradeskillContainerClosed:
         if (renderer_) {
             auto& d = std::get<state::TradeskillContainerClosedEvent>(event.data);
-            EQT::Graphics::applyTradeskillContainerClosed(
-                renderer_->Frame().tradeskillState_, d);
+            EQT::Graphics::applyContainerClosed(renderer_->Frame().containerState_, d);
         }
         break;
     // T419 (board B335): the recipe list. `Cleared` is the client's own
@@ -522,6 +525,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
                 slot.quantity = d.hasItem ? d.quantity : 0;
+                slot.bagSlots = d.hasItem ? d.bagSlots : 0;  // B442b
                 // T60: an equip-slot change usually means the player's
                 // EntityAppearance changed too (WearChange) — mark the
                 // paperdoll dirty so it picks it up next time it renders.
@@ -533,6 +537,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
                 slot.quantity = d.hasItem ? d.quantity : 0;
+                // B442b (#151 rows 19-21): a bag here is right-click toggleable.
+                slot.bagSlots = d.hasItem ? d.bagSlots : 0;
             } else if (EQT::Graphics::applyCursorSlotChanged(
                            renderer_->Frame().cursorState_, d)) {
                 // T436 (board B429): the CURSOR slot (30, or the wire's 33).
@@ -546,6 +552,15 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 // "the single choke point for vendor-buy item placement and
                 // bank-window population", as its own comment says -- and
                 // dropped here until now.
+            } else if (EQT::Graphics::applyContainerSlotChanged(
+                           renderer_->Frame().containerState_, d)) {
+                // B899 (#215): the WORLD container range, 4000-4009, and the
+                // general BAG range, 251-330 -- the container windows' cells.
+                // The applier returns false for every other slot id.
+            } else if (EQT::Graphics::applyTradeSlotChanged(
+                           renderer_->Frame().tradeState_, d)) {
+                // B896 (#212): our own trade slots, 3000-3007 -- published by
+                // the cursor gesture that placed the item, never by this side.
             } else {
                 // T415 (board B321): the WORLD container range, 4000-4009.
                 // eqemu sends a tradeskill container's contents as
@@ -560,9 +575,28 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 EQT::Graphics::applyTradeskillSlotChanged(
                     renderer_->Frame().tradeskillState_, d);
             }
+            // B442b (#152): the item selected for sale follows its slot.
+            EQT::Graphics::applyMerchantSelectionSlotChanged(
+                renderer_->Frame().merchantState_, renderer_->Frame().inventoryState_, d);
         }
         break;
     }
+    // B442b (#151 row 29): the coin on the cursor, drawn by the attachment.
+    case state::GameEventType::CursorCoinChanged:
+        if (renderer_) {
+            EQT::Graphics::applyCursorCoinChanged(
+                renderer_->Frame().cursorState_,
+                std::get<state::CursorCoinChangedData>(event.data));
+        }
+        break;
+    // B442b (#151 rows 31-35): a drop / destroy prompt the game composed.
+    case state::GameEventType::ConfirmationRequested:
+        if (renderer_ && renderer_->Frame().staticUIInput_) {
+            EQT::Graphics::applyConfirmationRequested(
+                renderer_->Frame().staticUIInput_->confirmationDialog(),
+                std::get<state::ConfirmationRequestedData>(event.data));
+        }
+        break;
     case state::GameEventType::CursorItemChanged:
         // No dedicated renderer call — cursor state read directly by UI
         LOG_TRACE(MOD_GRAPHICS, "Bridge: CursorItemChanged");
@@ -630,6 +664,15 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->Frame().trackingState_, d, renderer_->Frame().uiLayout_);
         }
         break;
+    case state::GameEventType::SocialListsChanged:
+        // B897 (GitLab #213): the friends/ignore lists, whole. The window
+        // keeps a copy and never edits it -- its buttons push
+        // SocialListIntent and the result comes back here.
+        if (renderer_) {
+            auto& d = std::get<state::SocialListsChangedData>(event.data);
+            EQT::Graphics::applySocialListsChanged(renderer_->Frame().friendsState_, d);
+        }
+        break;
     case state::GameEventType::EntityWeaponSkillsChanged:
         if (renderer_) {
             auto& d = std::get<state::EntityWeaponSkillsChangedData>(event.data);
@@ -682,27 +725,61 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         }
         break;
 
-    // Trade events (D11c)
+    // Trade events (D11c). B896 (GitLab #212): the arms were LOG_TRACEs that
+    // dropped every payload, because there was no window. They feed the
+    // trade / give window now (trade_panel.cpp). MEASURED behaviour,
+    // review/UIGAP-ORACLE/212/trade.tsv: the window opens with the INVENTORY
+    // beside it (row 1) and both close at completion (row 7) and on cancel
+    // (row 8, A.R21_after_B_cancel.png).
     case state::GameEventType::TradeRequestReceived:
+        // The official client acks a request by itself (row 1); the window
+        // opens on the TradeStarted that ack produces, so there is no prompt.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeRequestReceived");
         break;
     case state::GameEventType::TradeStarted:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeStarted");
+        if (renderer_) {
+            auto& d = std::get<state::TradeStartedData>(event.data);
+            auto& frame = renderer_->Frame();
+            EQT::Graphics::applyTradeStarted(frame.tradeState_, d, frame.cachedPlayerStats_.name);
+            // Row 1: the Inventory opens with it (the centre popups are
+            // mutually exclusive, so the other three close).
+            frame.inventoryState_.activePopup = EQT::Graphics::PopupType::Inventory;
+            frame.spellbookState_.isOpen = false;
+            frame.skillsPopupState_.isOpen = false;
+        }
         break;
     case state::GameEventType::TradeItemUpdated:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeItemUpdated");
+        if (renderer_) {
+            EQT::Graphics::applyTradeItemUpdated(
+                renderer_->Frame().tradeState_, std::get<state::TradeItemUpdatedData>(event.data));
+        }
         break;
     case state::GameEventType::TradeMoneyUpdated:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeMoneyUpdated");
+        if (renderer_) {
+            EQT::Graphics::applyTradeMoneyUpdated(
+                renderer_->Frame().tradeState_, std::get<state::TradeMoneyUpdatedData>(event.data));
+        }
         break;
     case state::GameEventType::TradeAcceptStateChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeAcceptStateChanged");
+        if (renderer_) {
+            EQT::Graphics::applyTradeAcceptStateChanged(
+                renderer_->Frame().tradeState_,
+                std::get<state::TradeAcceptStateChangedData>(event.data));
+        }
         break;
     case state::GameEventType::TradeCancelled:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeCancelled");
-        break;
     case state::GameEventType::TradeCompleted:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeCompleted");
+        if (renderer_) {
+            auto& frame = renderer_->Frame();
+            // Rows 7 and 8: the window AND the inventory close. Only a window
+            // that was open closes the inventory (a declined request that
+            // never opened one leaves the inventory as the player had it).
+            if (frame.tradeState_.isOpen &&
+                frame.inventoryState_.activePopup == EQT::Graphics::PopupType::Inventory) {
+                frame.inventoryState_.activePopup = EQT::Graphics::PopupType::None;
+            }
+            EQT::Graphics::applyTradeEnded(frame.tradeState_);
+        }
         break;
 
     // Spell events (D12)

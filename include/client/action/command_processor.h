@@ -447,6 +447,7 @@ private:
     // producer. Argument-less; both refuse a stray argument.
     ActionResult cmdCombine(const std::string& args);
     ActionResult cmdCloseContainer(const std::string& args);
+    ActionResult cmdBag(const std::string& args);  // B899
 
     // T135: Utility (6), migrated from eq_commands.cpp's leftover Group
     // Split / Misc / Skill / Movement / Utility blocks -- these six do not
@@ -625,7 +626,10 @@ private:
     ActionResult cmdGroupAssist(const std::string& args);
     ActionResult cmdTrack(const std::string& args);
     ActionResult cmdFind(const std::string& args);
+    // B897: the friends/ignore family, command_processor_friends.cpp.
     ActionResult cmdFriendsWho(const std::string& args);
+    ActionResult cmdFriends(const std::string& args);
+    ActionResult cmdIgnore(const std::string& args);
 
     // Helper methods
     static std::string toLower(const std::string& str);

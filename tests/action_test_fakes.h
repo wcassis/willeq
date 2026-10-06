@@ -279,6 +279,9 @@ public:
     void closeTradeskillContainer() override {
         record("closeTradeskillContainer");
     }
+    void toggleBag(int16_t generalSlot) override {
+        record("toggleBag", generalSlot);
+    }
 
     // T153: record only the fields the user actually named, in wire order.
     // The merge with the character's current appearance is EqActionHandler's
@@ -428,6 +431,7 @@ public:
         record("bankCoinConvert", static_cast<uint32_t>(fromCoinType),
                static_cast<uint32_t>(toCoinType), amount);
     }
+    void bankMakeChange() override { record("bankMakeChange"); }  // B441
 
     // ========== Social / Find (T150) ==========
     void assistGroup(uint16_t targetId) override {

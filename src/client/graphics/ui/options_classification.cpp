@@ -31,7 +31,7 @@ const char* const kWillOut = "Will 2026-09-23 ruling on #144: OUT";
 const char* const kNoFade =
     "fable's static panels have no fade or transparency model (#145)";
 const char* const kNoParticleKnob =
-    "no runtime particle knob of this kind in fable (#145)";
+    "no runtime particle knob of this kind in fable (B995 #315; #145)";
 const char* const kNoMail = "no in-game mail in the era or on this server (#146 era table: all OUT)";
 
 // clang-format off
@@ -80,7 +80,7 @@ const ControlClass kClasses[] = {
 // ---------------------------------------------------------------- Display
 {"ODP_PCNamesCheckbox",              W,  "EntityRenderer::setNameTagKindsVisible (PC half)"},
 {"ODP_NPCNamesCheckbox",             W,  "EntityRenderer::setNameTagKindsVisible (NPC half)"},
-{"ODP_ShowTargetRingCheckbox",       NC, "fable draws no 3D target ring (Will 2026-09-23: IN, so the ring itself is owed); #145"},
+{"ODP_ShowTargetRingCheckbox",       NC, "fable draws no 3D target ring (Will 2026-09-23: IN; the ring is a new world-space draw, not a toggle -- B994 #314); #145"},
 {"ODP_LevelOfDetailCheckbox",        PV, "Luclin models; #144 era table"},
 {"ODP_ShowHelmCheckbox",             PV, "Luclin models; #144 era table"},
 {"ODP_SetWindowedButton",            NC, "fable is EGL-surfaceless or DRM: no windowed/fullscreen switch; #145"},
@@ -113,8 +113,8 @@ const ControlClass kClasses[] = {
 {"ODP_ClipPlaneLabel",               W,  kCaption},
 {"ODP_ClipPlaneSlider",              W,  "T434: setRenderDistance()"},
 {"ODP_ClipPlaneValueLabel",          W,  kCaption},
-{"ODP_ParticlesLabel", AO, "every control behind the Spell/Env/Player sub-tabs is unwired (see those rows), so there is nothing to switch to; #145"},
-{"ODP_ParticlesTabs", AO, "every control behind the Spell/Env/Player sub-tabs is unwired (see those rows), so there is nothing to switch to; #145"},
+{"ODP_ParticlesLabel", AO, "every control behind the Spell/Env/Player sub-tabs is unwired (Will 2026-09-23: Env/Player IN; the knobs are B995 #315), so there is nothing to switch to; #145"},
+{"ODP_ParticlesTabs", AO, "every control behind the Spell/Env/Player sub-tabs is unwired (Will 2026-09-23: Env/Player IN; the knobs are B995 #315), so there is nothing to switch to; #145"},
 {"ODP_SpellParticlesNearClipLabel",  NC, kNoParticleKnob},
 {"ODP_SpellParticlesNearClipCombobox", NC, kNoParticleKnob},
 {"ODP_SpellParticlesDensityLabel", AO, "the Density combobox's choices and the float each stores are not in the oracle files (SpellParticleDensity=1.000000 only); #145 Leg O"},
@@ -147,9 +147,9 @@ const ControlClass kClasses[] = {
 {"OFP_FilterComboBox",               W,  "the selected filter's setting"},
 
 // ----------------------------------------------------------------- Colors
-{"OCP_UserColorDefault",             NC, "REMAINING (B433 did not reach Colors): chat colours are a compiled per-channel table (getChannelColor), no user table yet; #146"},
-{"OCP_ColorChooseList",              NC, "REMAINING (B433 did not reach Colors): no user colour table to list (eqclient.ini [TextColors] User_N_*); #146"},
-{"OCP_UserColorChange",              NC, "REMAINING (B433 did not reach Colors): no colour-picker window (the oracle opens one); #146"},
+{"OCP_UserColorDefault",             NC, "chat colours are a compiled per-channel table (getChannelColor), no user table yet -- B993 #313 (UIGAP-small filed it: the table, [TextColors] persistence and EQUI_ColorPickerWnd are not small); #146"},
+{"OCP_ColorChooseList",              NC, "no user colour table to list (eqclient.ini [TextColors] User_N_*) -- B993 #313; #146"},
+{"OCP_UserColorChange",              NC, "no colour-picker window (the oracle opens EQUI_ColorPickerWnd) -- B993 #313; #146"},
 
 // ------------------------------------------------------------------- Mail
 {"OMP_PathToAddressBookLabel",            PV, kNoMail},

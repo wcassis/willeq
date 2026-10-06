@@ -58,6 +58,17 @@ struct ItemDisplayPanelState {
 
     bool closeHovered = false;
 
+    // B442b (#151 rows 24-26). The official client shows the display opened
+    // by a RIGHT press only WHILE the button is held and keeps the one opened
+    // by ALT+LEFT (row 26) until Escape (row 27). The request crosses to the
+    // game thread and the contents come back a frame or two later, so a
+    // release can come before them: `heldReleasedEarly` makes that late
+    // ItemDisplayShown open nothing (row 24: a press+release leaves nothing).
+    bool heldOnly = false;            // the open window goes with the right button
+    bool heldRequestPending = false;  // a right-press request has not come back yet
+    bool heldReleasedEarly = false;   // ...and the button is already up
+    int heldReleaseAgeFrames = 0;     // a refused request never comes back: forget it
+
     /** Highest legal `scrollOffset`, the LootPanelState::maxScrollOffset shape. */
     int maxScrollOffset(const UILayout& layout) const;
 
@@ -73,6 +84,22 @@ struct ItemDisplayPanelState {
  */
 void applyItemDisplayShown(ItemDisplayPanelState& state,
                            const eqt::state::ItemDisplayShownData& data);
+
+/**
+ * B442b: a display was just requested -- `held` for a RIGHT press (row 25),
+ * false for ALT+LEFT (row 26), which also cancels any pending held request.
+ */
+void noteItemDisplayRequest(ItemDisplayPanelState& state, bool held);
+
+/**
+ * B442b: once per frame with the right button's state. A held display closes
+ * when the button is up; a held request still in flight is marked so its
+ * contents open nothing when they arrive.
+ */
+void updateHeldItemDisplay(ItemDisplayPanelState& state, bool rightButtonDown);
+
+/** Frames a released held request is remembered before it is forgotten. */
+constexpr int kHeldDisplayForgetFrames = 60;
 
 /** Draw the window. Only when state.isOpen. */
 void renderItemDisplayPopup(UIRenderer& ui, const UILayout& layout,

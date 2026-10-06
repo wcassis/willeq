@@ -67,6 +67,8 @@ void applyVendorWindowOpened(MerchantPanelState& state,
     // merchant's rows must not survive into it.
     state.items.clear();
     state.selectedRow = -1;
+    state.clearPlayerItem();
+    state.lastSelected = MerchantPanelState::Side::None;   // row 1: "Buy" on open
     state.scrollOffset = 0;
     state.hoveredRow = -1;
 }
@@ -105,6 +107,8 @@ void applyVendorWindowClosed(MerchantPanelState& state,
     state.npcId = 0;
     state.items.clear();
     state.selectedRow = -1;
+    state.clearPlayerItem();
+    state.lastSelected = MerchantPanelState::Side::None;
     state.scrollOffset = 0;
     state.hoveredRow = -1;
 }
@@ -208,16 +212,19 @@ void renderMerchantPopup(UIRenderer& ui, const UILayout& layout,
     ui.drawSprite(sel, static_cast<uint8_t>(UISprite::SlotBackground));
     ui.drawFrame(sel, kFrame);
 
-    // What the two labels and the trade button describe: the cursor item when
-    // one is held (that is what SELL acts on), otherwise the selected row.
-    const bool sellMode = cursor.hasItem;
+    // What the two labels and the trade button describe: the side of the
+    // LAST selection (B442b, #152 merchant.tsv rows 1-4) -- your selected
+    // item (Sell) or the selected list row (Buy). The cursor is not read:
+    // the oracle never sells from it.
+    (void)cursor;
+    const bool sellMode = state.sellSelected();
     const MerchantItemRow* selected =
         (!sellMode && state.selectedRow >= 0 &&
          state.selectedRow < static_cast<int>(state.items.size()))
             ? &state.items[static_cast<size_t>(state.selectedRow)]
             : nullptr;
 
-    const uint32_t decalIcon = sellMode ? cursor.iconId
+    const uint32_t decalIcon = sellMode ? state.playerIconId
                                         : (selected ? selected->iconId : 0);
     if (decalIcon != 0) {
         const auto decal = MerchantLayout::selectedDecalRect(layout);
@@ -230,7 +237,7 @@ void renderMerchantPopup(UIRenderer& ui, const UILayout& layout,
         // MW_SelectedItemLabel -- the oracle's placeholder text is "Item
         // Being Considered", so an empty selection draws nothing rather than
         // a fake name.
-        const std::string label = sellMode ? cursor.itemName
+        const std::string label = sellMode ? state.playerItemName
                                            : (selected ? selected->itemName
                                                        : std::string());
         if (!label.empty()) {
@@ -238,9 +245,11 @@ void renderMerchantPopup(UIRenderer& ui, const UILayout& layout,
             tb->addText(label, r.UpperLeftCorner.X, r.UpperLeftCorner.Y, kText);
         }
         // MW_SelectedPriceLabel. The merchant's price is only known for a
-        // row the merchant sent; a cursor item's sale value is the server's
-        // to decide (T342 measured the whole exchange as one BuyItem), so
-        // the price is blank in sell mode rather than invented.
+        // row the merchant sent. The oracle shows an offer for YOUR item
+        // ("Bottle 4c", merchant.tsv row 3) that the client computes from
+        // the item's value and the merchant's rate; fable carries neither to
+        // this panel, so the price is blank in sell mode rather than
+        // invented (owed, with the eqstr 12026 offer line).
         if (selected) {
             const auto r = MerchantLayout::selectedPriceLabelRect(layout);
             tb->addText(std::to_string(selected->price) + "cp",

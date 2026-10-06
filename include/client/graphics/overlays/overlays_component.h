@@ -98,6 +98,18 @@ public:
 	bool ensureWeatherEffects();
 	void drawLoadingScreen(float progress, const std::wstring& stageText);
 	void handleMouseTargeting(int clickX, int clickY);
+	// B896 (#212): what the last world click landed on, recorded by
+	// handleMouseTargeting() for FrameComponent::processCursorGestureFrame():
+	// with an item held, a click on a player is a trade and on an NPC a give
+	// (TargetIntent -> requestTrade on the game thread), NOT the drop prompt.
+	struct ClickedEntity {
+		int x = -1;
+		int y = -1;
+		uint16_t spawnId = 0;   // 0: no visible entity under the click
+		bool isNpc = false;
+		bool isCorpse = false;
+	};
+	const ClickedEntity& lastClickedEntity() const { return lastClickedEntity_; }
 	void toggleMapOverlay();
 	void updateMapOverlay(const glm::vec3& playerPos);
 	void drawMapOverlay();
@@ -193,6 +205,7 @@ private:
 	irr::video::SColor getMapOverlayColor(float z, float minZ, float maxZ, const glm::vec3& normal) const;
 	irr::video::SColor getNavmeshAreaColor(uint8_t areaType) const;
 	uint16_t getEntityAtScreenPos(int screenX, int screenY);
+	ClickedEntity lastClickedEntity_;  // B896
 	bool checkEntityLOS(const irr::core::vector3df& cameraPos, const irr::core::vector3df& entityPos);
 	void ensurePaperdollInitialized();
 

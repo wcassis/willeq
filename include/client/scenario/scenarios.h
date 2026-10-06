@@ -51,5 +51,32 @@ std::unique_ptr<IScenario> MakeCastInterruptObserveScenario(const ScenarioOption
 /** Leg B: the non-GM caster loops gem casts until the fizzle roll lands. */
 std::unique_ptr<IScenario> MakeCastFizzleScenario(const ScenarioOptions& options);
 
+// UIGAP-live: the live legs owed by the wave-1 UI units. See
+// src/client/scenario/scenario_ui_inventory.cpp and scenario_ui_social.cpp.
+
+/** #151: general -> bag -> bank -> general by /pickup /putdown and clicks. */
+std::unique_ptr<IScenario> MakePickupRoundtripScenario(const ScenarioOptions& options);
+/** #151 two-client: the peer moves a weapon bag -> primary by two clicks. */
+std::unique_ptr<IScenario> MakeClickEquipActorScenario(const ScenarioOptions& options);
+/** Its observer: the peer's primary material, as the server reported it. */
+std::unique_ptr<IScenario> MakeClickEquipObservedScenario(const ScenarioOptions& options);
+/** #215: sewing-kit and world-forge combines; results on the cursor queue. */
+std::unique_ptr<IScenario> MakeCombineSewingScenario(const ScenarioOptions& options);
+/** #214: /train <id>; value and points move only on OP_SkillUpdate. */
+std::unique_ptr<IScenario> MakeTrainSkillScenario(const ScenarioOptions& options);
+/** #213: /friends <peer>, /friendswho. Peer = --scenario-cast-target. */
+std::unique_ptr<IScenario> MakeFriendsWhoScenario(const ScenarioOptions& options);
+/** #213: the ignored peer's tell is delivered but not shown. */
+std::unique_ptr<IScenario> MakeIgnoreTellScenario(const ScenarioOptions& options);
+/** The peer for friends_who / ignore_tell: two tells to the main character. */
+std::unique_ptr<IScenario> MakeSocialPeerScenario(const ScenarioOptions& options);
+/** #211: Ranger tracking list, 2 s direction cadence, lost-target 12102. */
+std::unique_ptr<IScenario> MakeTrackListScenario(const ScenarioOptions& options);
+/** Its peer: stays, walks off, camps out. */
+std::unique_ptr<IScenario> MakeTrackPeerScenario(const ScenarioOptions& options);
+/** B888 (issue #204): with --create-character, the created character is in
+ *  world, in its home city, never the tutorial. */
+std::unique_ptr<IScenario> MakeCreateCharacterScenario(const ScenarioOptions& options);
+
 }  // namespace scenario
 }  // namespace eqt

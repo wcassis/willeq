@@ -187,6 +187,10 @@ struct TradeskillContainerOpenedEvent {
     std::string containerName;
     uint8_t containerType;
     uint8_t slotCount;
+    // B899: EQUI_Container.xml's Container_Icon (an A_DragItem decal). The
+    // carried bag's own item icon; 0 for a world container, whose
+    // ClickObjectAction icon is not an A_DragItem id.
+    uint32_t iconId = 0;
 };
 
 struct TradeskillContainerClosedEvent {
@@ -234,6 +238,16 @@ struct TradeskillRecipeReceivedData {
     uint32_t recipeId;
     uint32_t trivial;
     std::string name;
+};
+
+// B897 (GitLab #213): the friends and ignore lists, whole, after any change
+// and at identity bind (load). Published by BridgeComponent's social tick
+// (state::SocialListsSync), consumed by the Friends window's two copies.
+// The lists are client-side -- Titanium has no add/remove opcode -- so this
+// is the only way the renderer learns them.
+struct SocialListsChangedData {
+    std::vector<std::string> friends;
+    std::vector<std::string> ignored;
 };
 
 } // namespace state

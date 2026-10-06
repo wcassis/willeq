@@ -49,6 +49,8 @@
 #include "client/graphics/player/camera_rig.h"
 // B430: the Options settings table (device-free).
 #include "client/graphics/ui/options_settings.h"
+// B834: the [Tips] section (device-free).
+#include "client/graphics/ui/tip_preferences.h"
 
 namespace EQT {
 namespace Graphics {
@@ -61,6 +63,7 @@ struct PetPanelState;
 struct BuffBarState;
 struct CombatAbilityPanelState;
 struct OptionsPanelState;
+struct FriendsPanelState;
 
 /**
  * The persisted per-character state. Every field is user-changeable, and the
@@ -79,6 +82,10 @@ struct UiPreferences {
     // /mnt/projects/EverQuestP1999/UI_Obian_project1999.ini has
     // `[OptionsWindow] ... Show=0`.
     bool optionsWindow = false;      // [OptionsWindow]
+    // B897: the oracle's own section name, /mnt/projects/EverQuestP1999/
+    // defaults.ini `[FriendsWindow]` (it records positions there and no
+    // Show=). Closed by default, like every other toggled window.
+    bool friendsWindow = false;      // [FriendsWindow]
     // [Camera] View= -- the CameraMode enumerator, 1..6 (camera_mode.h: the
     // official client's six cameras, in eqstr_us.txt order). T461 replaced
     // T432's `Mode=` (0 Free, 1 Follow, 2 FirstPerson): the two numberings
@@ -133,6 +140,11 @@ struct UiPreferences {
     // are ever collected, parsed or written; the rest stay at the default.
     OptionsLayout::OptionValues optionValues = OptionsLayout::defaultOptionValues();
 
+    // B834 (#202): `[Tips]` -- the official section and keys (ShowTips,
+    // ShowTOTD, <Key>=0), quoted from real player files; tip_preferences.h.
+    // This one IS the oracle's own file and section.
+    TipPreferences tips;
+
     bool operator==(const UiPreferences& o) const {
         return inventoryWindow == o.inventoryWindow
             && spellBookWnd == o.spellBookWnd
@@ -142,10 +154,12 @@ struct UiPreferences {
             && buffWindow == o.buffWindow
             && combatAbilityWnd == o.combatAbilityWnd
             && optionsWindow == o.optionsWindow
+            && friendsWindow == o.friendsWindow
             && musicVolume == o.musicVolume
             && soundVolume == o.soundVolume
             && clipPlane == o.clipPlane
             && optionValues == o.optionValues
+            && tips == o.tips
             && cameraMode == o.cameraMode
             && user1Camera == o.user1Camera
             && user2Camera == o.user2Camera;
@@ -168,6 +182,8 @@ struct UiPreferencesBinding {
     BuffBarState* buff = nullptr;
     CombatAbilityPanelState* combatAbility = nullptr;
     OptionsPanelState* options = nullptr;   // T434
+    FriendsPanelState* friends = nullptr;   // B897
+    TipPreferences* tips = nullptr;         // B834
 };
 
 /**

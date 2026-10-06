@@ -11,7 +11,7 @@ kanban workers that read it as a context file silently truncate past ~62,900.
 Additional context is in subdirectory CLAUDE.md files:
 - `src/client/graphics/CLAUDE.md` - Rendering, shaders, GLES2, zone loading, performance
 - `include/client/graphics/ui/CLAUDE.md` - Static UI panels, key bindings, slash commands
-- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 103 event types
+- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 106 event types
 - `include/client/bridge/CLAUDE.md` - Event/intent bridge, thread-safe game↔renderer communication
 - `src/client/input/CLAUDE.md` - Input handlers, hotkey manager, command processor, action dispatch
 - `src/client/audio/CLAUDE.md` - Audio system, sound categories, audio tests
@@ -577,6 +577,8 @@ two-client scenario is a **peer process**, launched by `scripts/scenario.sh`
 running the partner scenario on the second account — the client never forks a
 second client.
 
+UIGAP-live UI legs: `scenario_ui_*.cpp`; scenario.sh sources `<name>.sidecar.sh`/`.post.sh` (DB half).
+
 The state machines are pure logic over `IScenarioWorld`
 (`include/client/scenario/scenario.h`), so
 `tests/test_scenario_state_machines.cpp` runs every case with no client, no
@@ -727,14 +729,14 @@ Audio updates                       Zone load completion detection
   EntityMoved events per entity and PlayerPositionChanged intents.
 - **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates
   game events into IrrlichtRenderer calls
-  (switch over the 103 `GameEventType` enumerators; T264: every event has a
+  (switch over the 106 `GameEventType` enumerators; T264: every event has a
   publisher and a consumer, pinned by `test_reachability_sweep`)
 - **ConsoleBridge** (`include/client/bridge/console_bridge.h`) — logs events to
   console in headless mode
 - **Event types** (`include/client/state/event_types.h`; the `GameEvent` variant
   and its payload headers are `event_bus.h` + `event_payloads_*.h`)
-  — 103 event types covering all game state changes
-- **Intent types** (`include/client/events/renderer_intents.h`) — 45 intent
+  — 106 event types covering all game state changes
+- **Intent types** (`include/client/events/renderer_intents.h`) — 48 intent
   structs in the `RendererIntent` variant, pinned by `test_reachability_sweep`
 
 **Key separation**: EverQuest communicates with the renderer only through the
@@ -764,7 +766,7 @@ Three stages, each with its own connection manager:
 ### Core Components
 
 **Application** (`include/client/application.h`, `src/client/application.cpp` +
-4 `application_*.cpp` TUs, J06) — top-level orchestrator: owns renderer, bridge,
+the `application_*.cpp` TUs, J06 and B888) — top-level orchestrator: owns renderer, bridge,
 game thread and loading thread; spawns the game thread running the EverQuest
 tick loop; the main thread runs the render loop (or sleeps headless) and manages
 the zone loading thread (GL context transfer, snapshot handoff).

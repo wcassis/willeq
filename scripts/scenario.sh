@@ -89,6 +89,11 @@ log_module_for() {
     case "$1" in
         cast_interrupt_chain|cast_interrupt|cast_interrupt_observe|cast_success_tail|cast_recast_stop|cast_buff_notake|cast_fizzle)
             echo "ZONE:DEBUG,SPELL:DEBUG" ;;
+        # UIGAP-live: ignore_tell's DELIVERED half is the client's own
+        # MAIN:DEBUG "Ignored tell message from <peer>" line (the server sent
+        # the tell; the ignore filter dropped it). ignore_tell.post.sh greps it.
+        ignore_tell)
+            echo "MAIN:DEBUG,ZONE:DEBUG" ;;
         *)
             echo "" ;;
     esac
@@ -371,6 +376,13 @@ case "$SCENARIO" in
     # targets the caster and holds it for the chain's duration. Co-location is
     # the seed SQL, not a re-login.
     cast_interrupt_chain) PEER_SCENARIO="cast_interrupt_observe" ;;
+    # UIGAP-live (#151 #213 #211): the UI legs' peers. The click-equip pair is
+    # equip_observed's shape (the actor equips, exits and logs back in);
+    # social_peer and track_peer get the main character's name as their
+    # --scenario-cast-target (the generic peer branch below passes it).
+    click_equip_observed) PEER_SCENARIO="click_equip_actor"; PEER_SCENARIO_2="equip_actor_return" ;;
+    friends_who|ignore_tell) PEER_SCENARIO="social_peer" ;;
+    track_list) PEER_SCENARIO="track_peer" ;;
 esac
 if [ -n "$PEER_SCENARIO" ]; then
     if [ ! -f "$PEER_CONFIG" ]; then
@@ -406,7 +418,10 @@ if [ -n "$PEER_SCENARIO" ]; then
                     ${PEER_LOG_MODULE:+--log-module="$PEER_LOG_MODULE"} > "$PEERLOG" 2>&1
                 ;;
             *)
+                # UIGAP-live: every peer is told the main character's name
+                # (social_peer tells it, the others ignore the flag).
                 "$BIN" -c "$PEER_CONFIG" --scenario "$PEER_SCENARIO" --timeout "$TIMEOUT" \
+                    --scenario-cast-target "$CASTER_CHAR" \
                     --log-level="$LOG_LEVEL" \
                     ${PEER_LOG_MODULE:+--log-module="$PEER_LOG_MODULE"} > "$PEERLOG" 2>&1
                 ;;
@@ -455,18 +470,52 @@ case "$SCENARIO" in
         MAIN_SPELL_FLAGS="--scenario-spell $CHAIN_A_SPELL"
         ;;
 esac
+# UIGAP-live: an optional per-scenario SIDECAR (scripts/scenario_configs/
+# <scenario>.sidecar.sh), sourced in a background subshell for the length of
+# the client run so it can use eqemu_sql -- pickup_roundtrip's 1 Hz poll of
+# the moving item's `inventory` row is the database half of its assertion.
+SIDECAR="$REPO/scripts/scenario_configs/${SCENARIO}.sidecar.sh"
+SIDECAR_PID=""
+if [ -f "$SIDECAR" ]; then
+    ( source "$SIDECAR" ) > "$OUT/${SCENARIO}_sidecar.log" 2>&1 &
+    SIDECAR_PID=$!
+    say "sidecar started ($SIDECAR, pid $SIDECAR_PID)"
+fi
+# UIGAP-live: SCENARIO_CLIENT_ARGS (environment) is appended to the MAIN
+# client's command line -- the review video passes --dump-frames-dir here.
+# shellcheck disable=SC2086
 "$BIN" -c "$CONFIG" --scenario "$SCENARIO" --timeout "$TIMEOUT" \
     --scenario-hold "$HOLD" \
     $MAIN_SPELL_FLAGS \
     --scenario-cast-target "${PEER_CHAR:-}" \
     --log-level="$LOG_LEVEL" \
-    ${MAIN_LOG_MODULE:+--log-module="$MAIN_LOG_MODULE"} > "$LOG" 2>&1 &
+    ${MAIN_LOG_MODULE:+--log-module="$MAIN_LOG_MODULE"} ${SCENARIO_CLIENT_ARGS:-} > "$LOG" 2>&1 &
 CLIENT_PID=$!
 wait "$CLIENT_PID"
 CODE=$?
 CLIENT_PID=""
 say "client exit ${CODE}"
 grep -E '\[SCENARIO\]|^SCENARIO ' "$LOG" | tail -20 >&2
+if [ -n "$SIDECAR_PID" ]; then
+    kill "$SIDECAR_PID" >/dev/null 2>&1
+    wait "$SIDECAR_PID" 2>/dev/null
+fi
+
+# UIGAP-live: an optional per-scenario POST-CHECK (scripts/scenario_configs/
+# <scenario>.post.sh), sourced in a subshell with the world still UP (before
+# the restore) and LOG / PEERLOG / OUT set. It asserts what the client cannot
+# see -- the database rows, a server-delivered packet the client filtered. A
+# client PASS that the post-check contradicts becomes a FAIL (1); any other
+# client code is left as it is.
+POST="$REPO/scripts/scenario_configs/${SCENARIO}.post.sh"
+if [ -f "$POST" ]; then
+    if ( source "$POST" ) > "$OUT/${SCENARIO}_post.log" 2>&1; then
+        say "post-check PASS ($(tail -1 "$OUT/${SCENARIO}_post.log"))"
+    else
+        say "post-check FAIL -- see $OUT/${SCENARIO}_post.log: $(tail -1 "$OUT/${SCENARIO}_post.log")"
+        [ "$CODE" -eq 0 ] && CODE=1
+    fi
+fi
 
 # B630: turn the two logs into the results table + the B760 packet-order table.
 # The exit code here is advisory (informational) -- the client's own code above

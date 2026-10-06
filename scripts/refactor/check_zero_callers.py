@@ -502,7 +502,11 @@ BOARD_REASONS.update({
     "B603":
         "gameplay-manager control API with no production caller -- CombatManager's auto-loot/aggro/flee/auto-fire configuration, SpellManager's cast-by-id, gem swap and two callback setters, BuffManager's removals and ActiveBuff's formatting, the group-decline, move-speed, cursor-stack and hotbar-slot mutators, ZoneLines::checkMovement, WhoAllEntry::isLinkdead and calcBankBagSlotId",
     "B605":
-        "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval and focusTextEntry",
+        "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval",
+    "B899":
+        "the T415/T419 recipe window (TradeskillPanelState, EQUI_TradeskillWnd) -- since B899 (#215, Will 2026-09-23: the recipe half is out of baseline) no event opens it, so its close applier is reached only from its tests; deleting the window is a follow-up, not done mid-unit",
+    "B888":
+        "the Character Creation screen's host-facing API (#204) -- the state machine, click resolver and Get Name round trip are built and tested, but fable has no character-select screen and no pre-zone UI host yet (#204 Legs S/M), so ui_panel_capture and the tests are their only callers; creation itself is reached through --create-character",
     "B606":
         "renderer, asset and data API with no production caller -- setNewUIEnabled, EntityRenderer's two global loaders (not called even by the zero-caller loadGlobalAssets, which T468 deleted), the superseded applyStoredZoneEnvironment, RDPServer::setCertificate, BackgroundWorkQueue's pollAll/batch hooks, StringDatabase's legacy text loaders, and eight free helpers (race reload, lift travel, body-type restriction, SpellVisualSource toString, formatted-message text parse, three options-slider conversions)",
 })
@@ -517,6 +521,7 @@ BOARD_REASONS.update({
 # rule).
 EXEMPT_GROUPS = {
     ("StaticUIInput", "cursorGesture"): "B899",
+    ("(free)", "applyRandomName"): "B888",
     ("(free)", "resistToParticleColor"): "B490",
     ("BoidsManager", "getCurrentBiome"): "B490",
     ("BoidsManager", "getQuality"): "B490",
@@ -767,7 +772,6 @@ EXEMPT_GROUPS = {
     ("ZoneShaderManager", "setAtlasPageTextures"): "B494",
     ("ZoneShaderManager", "setAtlasTileScale"): "B494",
     ("(free)", "calcSharedBankBagSlotId"): "B495",
-    ("(free)", "getBagIndex"): "B495",
     ("(free)", "getBankBagIndexAny"): "B495",
     ("(free)", "getClassAbbrev"): "B495",
     ("(free)", "getParentBankSlotAny"): "B495",
@@ -937,6 +941,20 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "controlClassificationCount"): "observer",
     ("(free)", "findControlClass"): "observer",
     ("(free)", "dispositionText"): "observer",
+    ("(free)", "applyTradeskillContainerClosed"): "B899",
+    # B888 (#204): the creation screen has no host yet (no character-select
+    # screen); the era data's full lists and row sources are the tests'
+    # window onto the oracle rows the production lookups filter.
+    ("(free)", "applyCharCreateClick"): "B888",
+    ("(free)", "applySubmitRefused"): "B888",
+    ("(free)", "hitTestCharCreate"): "B888",
+    ("(free)", "openCharCreate"): "B888",
+    ("LoginWorldComponent", "RequestRandomName"): "B888",
+    ("LoginWorldComponent", "GetCharCreateStatus"): "observer",
+    ("CharCreateData", "allCities"): "observer",
+    ("CharCreateData", "allClasses"): "observer",
+    ("CharCreateData", "allDeities"): "observer",
+    ("CharCreateData", "citySource"): "observer",
     # B918: the process-wide FATAL-exit record is a one-way latch in a real
     # run (set once, read by main()); a test that trips it on purpose must
     # clear it so later cases in the same binary start clean.
@@ -962,10 +980,6 @@ EXEMPT_TESTS_GROUPS = {
     # test_texture_eviction_residency asserts eviction and restore through it;
     # production only needs the counts (getResidentTextureCount()).
     ("ConstrainedTextureCache", "isResident"): "observer",
-    # B442: the bag window (B899, concurrent) installs the open-container hook
-    # on the shared CursorGesture; until it merges only test_cursor_gesture
-    # drives the seam.
-    ("CursorGesture", "setOpenContainerHook"): "seam",
     # B947: whether one entry was pinned (no restore source; never evicted
     # again). test_texture_eviction_{residency,character_restore} assert it;
     # production logs the count (getPinnedTextureCount()).
@@ -1267,7 +1281,6 @@ EXEMPT_TESTS_GROUPS = {
     ("SpellManager", "swapGems"): "B603",
     ("WhoAllEntry", "isLinkdead"): "B603",
     ("ZoneLines", "checkMovement"): "B603",
-    ("(free)", "focusTextEntry"): "B605",
     ("CommandProcessor", "setDefaultChannel"): "B605",
     ("CommandProcessor", "setEchoEnabled"): "B605",
     ("CommandProcessor", "unregisterCommand"): "B605",

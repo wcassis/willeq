@@ -67,6 +67,7 @@ const std::vector<RendererCommandInfo> kCatalog = {
     {"newbooknext", {}, "Spellbook: next page"},
     {"skills", {}, "Toggle the skills window"},  // T363: was newskills (B058)
     {"inventory", {}, "Toggle the inventory window"},  // T365: was newinv (B090)
+    {"friendswindow", {}, "Toggle the Friends window (Alt+F)"},  // B897
     {"timestamp", {"timestamps", "ts"}, "Chat timestamps (not available: WindowManager removed)"},
     // B433: the era /filter vocabulary (eqstr_us.txt 1354-1360), against the
     // Options window's Filters page and OP_SetServerFilter.

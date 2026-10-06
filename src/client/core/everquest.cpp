@@ -281,10 +281,9 @@ EverQuest::EverQuest(const std::string &host, int port, const std::string &user,
 	// comment named but didn't itself touch.
 	m_inventory_manager = std::make_unique<eqt::inventory::InventoryManager>();
 	m_merchant->SetupInventoryCallbacks();
-	// T259: TradeManager::setInventoryManager() had NO caller, so
-	// TradeManager::getOwnItem() (the "You give X to Y" lines) always saw a
-	// null manager and the trade-end clearing of the trade slots could not
-	// reach the inventory model at all.
+	// T259: TradeManager::setInventoryManager() had NO caller, so the
+	// manager's own-item reads always saw a null manager and the trade-end
+	// clearing of the trade slots could not reach the inventory model at all.
 	if (m_trade_manager) {
 		m_trade_manager->setInventoryManager(m_inventory_manager.get());
 	}
@@ -763,6 +762,7 @@ void EverQuest::PublishFullStateSnapshot() {
 			data.itemName = item ? item->name : "";
 			data.iconId = item ? item->icon : 0;
 			data.quantity = item ? item->quantity : 0;
+			data.bagSlots = item ? item->bagSlots : 0;  // B442b
 			m_bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 		}

@@ -29,6 +29,7 @@
 
 namespace eqt { namespace state {
 struct InventorySlotChangedData;
+struct CursorCoinChangedData;
 } }
 
 namespace EQT {
@@ -42,6 +43,18 @@ struct CursorAttachmentState {
     std::string itemName;
     uint32_t iconId = 0;     // -> CA_Anim's 40x40 decal
     int32_t quantity = 0;    // held, NOT drawn -- the oracle has no count label
+
+    // B442b (#151 row 29): held COIN, fed by GameEventType::CursorCoinChanged
+    // (the game thread's one cursor-coin publisher). EQT::COINTYPE_* and the
+    // amount; amount 0 = no coin. Unlike an item's stack, a coin's count IS
+    // drawn: the oracle puts it in a strip under the decal (measured,
+    // CursorAttachmentLayout::coinCountRect). Also what a purse / bank coin
+    // row reads to decide "put the held coin back" -- the render thread
+    // keeps no shadow of its own (B442's coinHeld_ is gone).
+    uint8_t coinType = 0;
+    uint32_t coinAmount = 0;
+
+    bool holdsCoin() const { return coinAmount > 0; }
 
     // Where the pointer was on the frame this was last drawn. Written once
     // per frame by FrameComponent::renderStaticUI() from the event receiver,
@@ -58,7 +71,17 @@ struct CursorAttachmentState {
 bool applyCursorSlotChanged(CursorAttachmentState& state,
                             const eqt::state::InventorySlotChangedData& data);
 
-/** Draw CA_Anim at the mouse. Only when state.hasItem. */
+/** B442b: the dragitem icon a held coin of `coinType` is drawn with. */
+uint32_t cursorCoinIcon(uint8_t coinType);
+
+/** B442b: the CursorCoinChanged bridge arm. */
+void applyCursorCoinChanged(CursorAttachmentState& state,
+                            const eqt::state::CursorCoinChangedData& data);
+
+/**
+ * Draw CA_Anim at the mouse: the held item's icon, or -- with no item held --
+ * the held coin's decal and its count strip (B442b, row 29).
+ */
 void renderCursorAttachment(UIRenderer& ui, const UILayout& layout,
                             const CursorAttachmentState& state);
 

@@ -143,12 +143,17 @@
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/item_display_panel.h"
 #include "client/graphics/ui/options_panel.h"
+#include "client/graphics/ui/friends_panel.h"  // B897
 // T436 (board B429): the merchant, bank and cursor-attachment windows.
 #include "client/graphics/ui/merchant_panel.h"
 #include "client/graphics/ui/bank_panel.h"
 #include "client/graphics/ui/tracking_panel.h"  // B895
 #include "client/graphics/ui/cursor_attachment.h"
 #include "client/graphics/ui/trainer_panel.h"  // B898
+#include "client/graphics/ui/container_panel.h"
+#include "client/graphics/ui/trade_panel.h"  // B896
+#include "client/graphics/ui/esc_window_stack.h"  // B460
+#include "client/graphics/ui/tip_window.h"  // B834
 #include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
@@ -290,6 +295,68 @@ public:
 	bool processOptionsKeyCapture();
 	bool optionsKeyCaptureGate_ = false;
 
+	// ---- B897 (GitLab #213): the Friends window, renderer_frame_friends.cpp ----
+	// toggleFriendsWindow(): Alt+F (MEASURED: review/T377/oracle/
+	// T377_oracle_options_keys_UI_page1.png, "Toggle friend window  Alt F",
+	// Alternate empty -- eqstr 6599) and /friendswindow. A HUD-style window
+	// with its own oracle placement, so it closes nothing. Returns the new
+	// open state.
+	bool toggleFriendsWindow();
+	// The click pass, from renderStaticUI(): resolve, apply, act.
+	void processFriendsWindowInput();
+	// The Editbox key gate, from processChatInput() beside the tradeskill
+	// one: true while FW_NameInput / FW_IgnoreNameInput holds the keyboard.
+	bool processFriendsNameInput();
+	// One resolved click -> a SocialListIntent, the chat prefill, or a close.
+	void applyFriendsAction(const FriendsAction& action);
+
+	// B442b (GitLab #151), renderer_frame_cursor.cpp. Once per frame from
+	// renderStaticUI(), after every window had the click (`uiTook` says
+	// whether one of them took it): the motionless world click with an item
+	// held (rows 31-33), and the item display's held/kept requests and the
+	// right button's release (rows 24-26).
+	void processCursorGestureFrame(bool uiTook);
+	// The QuantityWnd box's key gate (row 5), from processChatInput() beside
+	// the friends one: true while QTYW_SliderInput holds the keyboard.
+	bool processQuantityKeyInput();
+	// True when a static window's own geometry holds (x,y) but its entry
+	// point returns nothing (the Friends window, the two dialogs).
+	bool pointOverSelfConsumingWindow(int x, int y) const;
+	// ---- B896 (GitLab #212): the trade / give window, renderer_frame_trade.cpp ----
+	// The click pass, from renderStaticUI() right after the QuantityWnd: the
+	// window is drawn above the centre popups, the bank, the trainer and the
+	// container windows, and the inventory is always open beside it (the
+	// official client opens both, trade.tsv row 1), so a click it takes is
+	// withheld from every window below it.
+	void processTradeWindowInput();
+	// ---- B460 (GitLab #156): ESC closes the most recently opened window ----
+	// observeEscWindows() runs every frame (processFrameInput) so the stack
+	// sees every opener; handleEscapeKey() is the ESC press, from
+	// processChatInput(). Returns true when a window took the press (false:
+	// it cleared the target, or there was nothing to do).
+	std::vector<EscWindowKey> openEscWindows() const;
+	void observeEscWindows();
+	bool handleEscapeKey();
+	EscWindowStack escWindowStack_;
+
+	// ---- B834 (GitLab #202): the tip windows, renderer_frame_tips.cpp ----
+	// updateTipWindows() runs once a frame: it pops the Tip of the Day after
+	// the first zone-in of a character and a context tip on the rising edge
+	// of each window that has one (tip_window.h lists the oracle and the
+	// flagged assumptions). processTipWindowInput() is the click pass, true
+	// when the window took the click. The texts are read lazily from the
+	// client's own help/tips/ under RendererConfig::eqClientPath.
+	void updateTipWindows();
+	bool processTipWindowInput();
+	std::set<std::string> activeTipTriggers() const;
+	const TipDocument* tipDocument(const std::string& key);
+	TipWindowState tipState_;
+	TipPreferences tipPrefs_;
+	std::vector<TipDocument> totdEntries_;
+	bool totdLoaded_ = false;
+	std::map<std::string, TipDocument> tipDocs_;
+	std::set<std::string> tipTriggersLast_;
+
 	// ---- T432 (board B275): the ONE per-character persistence path ----
 	// Before this the client persisted NOTHING a player changed. Will's
 	// ruling (docs/decisions.md 2026-09-07) is to persist per character what
@@ -379,6 +446,11 @@ public:
 	// popups -- the oracle's OptionsWindow is `RelativePosition false` at its
 	// own <Location> -- so it is drawn and hit-tested on top of them.
 	OptionsPanelState optionsState_;            // T434
+	// B897: the Friends window. Not a centre popup (RelativePosition false,
+	// its own placement), drawn and hit-tested just below the Options window.
+	// Fed by the SocialListsChanged bridge arm; persisted open/closed as
+	// `[FriendsWindow] Show=` through UiPreferences.
+	FriendsPanelState friendsState_;            // B897
 	// T436 (board B429): the merchant window. One of the mutually exclusive
 	// centre popups (the oracle's MerchantWnd is Style_Sizable true and does
 	// not fit 640x480, so it is scaled onto centerPopup the way T415 scaled
@@ -401,6 +473,18 @@ public:
 	// oracle's TrackingWnd has its own placement); drawn above the bank.
 	// Fed by the TrackingListChanged bridge arm.
 	TrackingPanelState trackingState_;          // B895
+	// B899 (#215 / #151 Leg B): the era container windows -- the world
+	// container (forge, oven) AND every carried bag. Fed by the two
+	// TradeskillContainer* arms and the world/bag branch of the
+	// InventorySlotChanged arm; NOT a centre popup (EQUI_Container.xml is
+	// RelativePosition false, Style_Sizable false at 100x366).
+	ContainerWindowsState containerState_;      // B899
+	// B896 (GitLab #212): the trade window (EQUI_TradeWnd.xml) or the NPC
+	// give window (EQUI_GiveWnd.xml), whichever the session is. Fed by the
+	// seven Trade* bridge arms and the 3000..3007 branch of the
+	// InventorySlotChanged arm; NOT a centre popup (RelativePosition false at
+	// its own <Location>, and the inventory is open beside it).
+	TradePanelState tradeState_;                // B896
 	XPBarState xpBarState_;             // U06i
 	// T432 (board B275): per-character UI persistence. Empty identity =
 	// not logged in yet, and sync() is then a no-op.
@@ -600,6 +684,19 @@ private:
 	// T421: true while processTradeskillSearchInput() holds the keyboard
 	// gate, so the release is a state change and not a per-frame write.
 	bool textEntryGateHeld_ = false;
+	// B897: the same, for the Friends window's two Editboxes.
+	bool friendsGateHeld_ = false;
+	// B442b: the same, for the QuantityWnd's box.
+	bool quantityGateHeld_ = false;
+	// B442b (#151 row 31): a left PRESS on the world with an item held,
+	// waiting for its release. The release fires the drop prompt only if
+	// the pointer has not moved (a press that moves is a camera drag: rows
+	// G39/G40 sent nothing). pendingUIRelease_ is the frame's release latch,
+	// read in processFrameInput() beside pendingUIClick_.
+	bool pendingUIRelease_ = false;
+	bool worldDropArmed_ = false;
+	int worldDropX_ = 0;
+	int worldDropY_ = 0;
 	int currentFps_ = 0;
 	float essentialSimCostAvgUs_ = 3000.0f;  // EMA of essential sim cost (us), init ~3ms
 	float fireGlowTime_ = 0.0f;  // Animation time accumulator

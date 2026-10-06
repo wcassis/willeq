@@ -11,6 +11,7 @@
 #include "client/state/trade_state.h"
 #include "client/state/inventory_state.h"
 #include "client/state/spell_state.h"
+#include "client/state/social_lists.h"
 
 #include <memory>
 
@@ -120,6 +121,14 @@ public:
     SpellState& spells() { return m_spellState; }
     const SpellState& spells() const { return m_spellState; }
 
+    /**
+     * B897: the friends and ignore lists (client-side, persisted per
+     * character by state::SocialListsSync). Not cleared by clearAll() or a
+     * zone change: they belong to the character, not the session.
+     */
+    SocialListsModel& social() { return m_socialLists; }
+    const SocialListsModel& social() const { return m_socialLists; }
+
     // ========== Convenience Methods ==========
 
     /**
@@ -171,6 +180,7 @@ private:
     TradeState m_tradeState;
     InventoryState m_inventoryState;
     SpellState m_spellState;
+    SocialListsModel m_socialLists;   // B897
 };
 
 } // namespace state

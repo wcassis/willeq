@@ -659,11 +659,18 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
             for (size_t oi = 0; oi < ctx_.deferredObjects.size(); ++oi) {
                 const auto& deferred = ctx_.deferredObjects[oi];
                 if (!deferred.meshBuilt || deferred.nodeIndex == SIZE_MAX) { ++fixupSkipNotBuilt; continue; }
-                if (deferred.nodeIndex >= ctx_.objectNodes.size()) { ++fixupSkipBadIndex; continue; }
+                if (deferred.nodeIndex >= ctx_.objectRecords.size()) { ++fixupSkipBadIndex; continue; }
                 if (deferred.objectIndex >= ctx_.currentZone->objects.size()) { ++fixupSkipBadIndex; continue; }
 
-                auto* objNode = ctx_.objectNodes[deferred.nodeIndex];
-                if (!objNode) { ++fixupSkipNullNode; continue; }
+                const auto& rec = ctx_.objectRecords[deferred.nodeIndex];
+                // B938 (#256): PVS zones have no node, so a null node is normal
+                // there; skip only when there is nothing to fixup at all (no
+                // mesh). The wind material swap below targets the SHARED mesh's
+                // buffer materials, which the manual draw path binds -- the
+                // node's own material copies are swapped too, but only when a
+                // node exists (non-PVS zone).
+                if (!rec.mesh) { ++fixupSkipNullNode; continue; }
+                auto* objNode = rec.node;  // null in PVS zones
                 const auto& objInstance = ctx_.currentZone->objects[deferred.objectIndex];
                 if (!objInstance.geometry || !objInstance.placeable) { ++fixupSkipNoGeomPlaceable; continue; }
 
@@ -685,7 +692,7 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                     bool isTree = treeIdentifier_.isTreeMesh(objName, primaryTexture);
                     if (isTree) {
                         ++treesFound;
-                        irr::scene::IMesh* treeMesh = objNode->getMesh();
+                        irr::scene::IMesh* treeMesh = rec.mesh;
                         if (treeMesh) {
                             irr::core::aabbox3df meshBbox = treeMesh->getBoundingBox();
                             const auto& textureNames = objInstance.geometry->textureNames();
@@ -734,47 +741,56 @@ void ZoneLoadComponent::loadZoneStep11_Env(ZoneLoadContext& ctx) {
                                     if (alphaTex) bufMat.setTexture(1, alphaTex);
                                 }
                             }
-                            for (irr::u32 mi = 0; mi < objNode->getMaterialCount(); ++mi) {
-                                auto& mat = objNode->getMaterial(mi);
-                                irr::s32 prevMatType = mat.MaterialType;
-                                irr::video::ITexture* tex0 = mat.TextureLayer[0].Texture;
-                                std::string texName = tex0
-                                    ? std::string(tex0->getName().getPath().c_str())
-                                    : primaryTexture;
-                                irr::s32 windMatType = classify(texName);
-                                mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(windMatType);
-                                mat.MaterialTypeParam = meshBbox.MinEdge.Y;
-                                mat.MaterialTypeParam2 = meshBbox.MaxEdge.Y;
-                                mat.BackfaceCulling = false;
-                                // Ensure ETC1 alpha companion is on layer 1 (may already be set by mesh builder)
-                                if (ctx_.constrainedTextureCache && tex0 && !mat.TextureLayer[1].Texture) {
-                                    // Look up alpha companion by texture name
-                                    irr::core::stringc texNameStr = tex0->getName().getPath();
-                                    irr::video::ITexture* alphaTex = ctx_.constrainedTextureCache->getAlphaTexture(
-                                        std::string(texNameStr.c_str()));
-                                    if (alphaTex) mat.setTexture(1, alphaTex);
+                            // In a non-PVS zone the node's own material copies
+                            // are what the scene-graph pass renders -- swap
+                            // those too. PVS zones have no node; the manual
+                            // draw path binds the mesh buffer materials above.
+                            if (objNode) {
+                                for (irr::u32 mi = 0; mi < objNode->getMaterialCount(); ++mi) {
+                                    auto& mat = objNode->getMaterial(mi);
+                                    irr::s32 prevMatType = mat.MaterialType;
+                                    irr::video::ITexture* tex0 = mat.TextureLayer[0].Texture;
+                                    std::string texName = tex0
+                                        ? std::string(tex0->getName().getPath().c_str())
+                                        : primaryTexture;
+                                    irr::s32 windMatType = classify(texName);
+                                    mat.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(windMatType);
+                                    mat.MaterialTypeParam = meshBbox.MinEdge.Y;
+                                    mat.MaterialTypeParam2 = meshBbox.MaxEdge.Y;
+                                    mat.BackfaceCulling = false;
+                                    // Ensure ETC1 alpha companion is on layer 1 (may already be set by mesh builder)
+                                    if (ctx_.constrainedTextureCache && tex0 && !mat.TextureLayer[1].Texture) {
+                                        // Look up alpha companion by texture name
+                                        irr::core::stringc texNameStr = tex0->getName().getPath();
+                                        irr::video::ITexture* alphaTex = ctx_.constrainedTextureCache->getAlphaTexture(
+                                            std::string(texNameStr.c_str()));
+                                        if (alphaTex) mat.setTexture(1, alphaTex);
+                                    }
+                                    LOG_DEBUG(MOD_SHADER, "fixup tree '{}' mat[{}]: prevType={} -> windType={} "
+                                              "tex0={} alphaTex1={} bboxY=[{:.2f},{:.2f}]",
+                                              objName, mi, prevMatType, windMatType,
+                                              (void*)tex0, (void*)mat.TextureLayer[1].Texture,
+                                              meshBbox.MinEdge.Y, meshBbox.MaxEdge.Y);
                                 }
-                                LOG_DEBUG(MOD_SHADER, "fixup tree '{}' mat[{}]: prevType={} -> windType={} "
-                                          "tex0={} alphaTex1={} bboxY=[{:.2f},{:.2f}]",
-                                          objName, mi, prevMatType, windMatType,
-                                          (void*)tex0, (void*)mat.TextureLayer[1].Texture,
-                                          meshBbox.MinEdge.Y, meshBbox.MaxEdge.Y);
                             }
                             ++treesWindApplied;
                         } else {
                             ++treesNullMesh;
-                            LOG_WARN(MOD_GRAPHICS, "SEQ Step11: tree '{}' identified but getMesh() returned null, "
+                            LOG_WARN(MOD_GRAPHICS, "SEQ Step11: tree '{}' identified but its mesh is null, "
                                      "wind shader NOT applied", objName);
                         }
                     }
                 }
 
-                // Animated textures
+                // Animated textures. B938 (#256): the mesh is the record's
+                // shared mesh; addSceneNode needs a real node, which exists
+                // only in a non-PVS zone (the buffer-material swap covers the
+                // manual draw path there).
                 if (ctx_.animatedTextureManager && objInstance.geometry) {
-                    irr::scene::IMesh* objMesh = objNode->getMesh();
-                    if (objMesh) {
-                        ctx_.animatedTextureManager->addMesh(*objInstance.geometry, ctx_.currentZone->objectTextures, objMesh);
-                        ctx_.animatedTextureManager->addSceneNode(objNode);
+                    if (rec.mesh) {
+                        ctx_.animatedTextureManager->addMesh(*objInstance.geometry, ctx_.currentZone->objectTextures, rec.mesh);
+                        if (objNode)
+                            ctx_.animatedTextureManager->addSceneNode(objNode);
                         ++animatedApplied;
                     }
                 }

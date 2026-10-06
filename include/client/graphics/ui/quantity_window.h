@@ -12,8 +12,15 @@
  * item display and Options windows it is `RelativePosition false`, so it is
  * drawn and hit-tested ABOVE every other static window.
  *
- * QTYW_SliderInput is drawn as a read-only box showing the chosen number;
- * typing a number into it is not wired (owed -- the slider is the gesture).
+ * QTYW_SliderInput takes TYPED digits (B442b, gestures.tsv row 5: "Accept
+ * after typing 2 (of 3)" sent qty=2): a click on the box gives it the
+ * keyboard (the oracle rig clicked the box and then typed -- whether it is
+ * focused on open without the click is assumption awaiting oracle), the first
+ * digit replaces the shown number, the value is clamped to 0..maxValue as it
+ * is typed, Return is Accept and Escape only releases the box (row 16: Escape
+ * never closes the window). The keyboard arrives through
+ * FrameComponent::processQuantityKeyInput(), the friends-window key gate's
+ * shape.
  */
 
 #pragma once
@@ -21,6 +28,9 @@
 #include <cstdint>
 #include <string>
 
+#include <irrlicht.h>
+
+#include "client/graphics/ui/text_entry.h"
 #include "client/graphics/ui/ui_layout.h"
 
 namespace EQT {
@@ -29,21 +39,30 @@ namespace Graphics {
 class UIRenderer;
 
 struct QuantityWindowState {
-    enum class Purpose : uint8_t { None = 0, ItemStack, Coin };
+    // B442b: Sell -- the merchant's Sell on a selected stack (merchant.tsv
+    // row 5: "Sell on a stack opens EQUI_QuantityWnd prefilled with the whole
+    // stack"); Accept sells `value` straight from `slotId`.
+    enum class Purpose : uint8_t { None = 0, ItemStack, Coin, Sell };
 
     bool isOpen = false;
     Purpose purpose = Purpose::None;
-    int16_t slotId = -1;      // ItemStack: the Titanium slot of the stack
+    int16_t slotId = -1;      // ItemStack / Sell: the Titanium slot of the stack
     uint8_t coinType = 0;     // Coin: EQT::COINTYPE_*
+    uint8_t coinSource = 1;   // Coin: EQT::COINSLOT_INVENTORY (1) or _BANK (2)
+    uint16_t npcId = 0;       // Sell: the merchant
     std::string label;        // what is being split, for the title row
     int32_t maxValue = 0;     // the stack count / the coins on hand
     int32_t value = 0;        // the slider's current number, 1..maxValue
+
+    // QTYW_SliderInput, when it holds the keyboard (B442b, row 5).
+    TextEntryState input;
 
     bool acceptHovered = false;
     bool closeHovered = false;
 
     void openForStack(int16_t slot, const std::string& name, int32_t count);
     void openForCoin(uint8_t type, const std::string& name, int32_t count);
+    void openForSell(uint16_t merchant, int16_t slot, const std::string& name, int32_t count);
     void close() { *this = QuantityWindowState{}; }
 };
 
@@ -61,6 +80,15 @@ enum class QuantityClick : uint8_t {
  */
 QuantityClick processQuantityClick(const UILayout& layout, QuantityWindowState& state,
                                    int mouseX, int mouseY, bool leftClicked);
+
+/**
+ * B442b (row 5): one key for QTYW_SliderInput while it holds the keyboard.
+ * Digits and editing keys change `value` (clamped 0..maxValue); Return is
+ * QuantityClick::Accept when value > 0; Escape releases the box and the
+ * window stays (row 16). Anything else is QuantityClick::Consumed.
+ */
+QuantityClick applyQuantityKey(QuantityWindowState& state, irr::EKEY_CODE key,
+                               wchar_t character);
 
 void renderQuantityWindow(UIRenderer& ui, const UILayout& layout,
                           const QuantityWindowState& state);

@@ -171,6 +171,16 @@ enum class GameEventType {
     // whole by eqt::tracking::TrackingController on an OP_Track reply and on
     // every filter/sort/players/target change.
     TrackingListChanged,
+    // B897 (GitLab #213): the friends and ignore lists changed (or were
+    // loaded for a new character). Whole lists, SocialListsChangedData.
+    SocialListsChanged,
+    // B442b (GitLab #151 row 29): the coin the cursor holds (type + amount,
+    // amount 0 = none), published by the coin gesture's game-thread body --
+    // the one site that moves cursor coin. The cursor attachment draws it.
+    CursorCoinChanged,
+    // B442b (GitLab #151 rows 31-35): a Yes/No confirmation the game thread
+    // composed (eqstr 9057 drop / 2043 destroy, with the held item's name).
+    ConfirmationRequested,
 };
 
 

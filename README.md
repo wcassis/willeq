@@ -4,7 +4,7 @@ A standalone EverQuest client targeting the Titanium client version (2006) with 
 
 This is a mostly vibe-coded project so the codebase is a bit chaotic. Expect major changes as features are implemented.
 
-There is no character creation in the client (it never sends `OP_CharacterCreate`), so you need an existing account and character. For the project's own test server, accounts and characters are provisioned by driving the official client under Wine/Xvfb (the eq-oracle rig, `refactor/T157_rogue_provisioning.md`), not by WillEQ.
+You need an existing account. A character can be created by the client itself at character select (B888, issue #204): `willeq -c willeq.json --create-character "Name,Race,Gender,Class,Deity,City"` creates it and enters world with it in its home city (never the tutorial); `--delete-character Name` and `--list-characters` do the other two. The official two-page Character Creation screen is transcribed (`include/client/graphics/ui/char_create_*.h`) but is not yet reachable from a character-select screen, because the client has none (see the table below).
 
 I'm developing this on a remote Ubuntu 24 server without a GPU. The default run needs no display at all (surfaceless EGL on llvmpipe); Xvfb + x11vnc or native RDP are used when a picture is wanted. The ARM builds target an Orange Pi One (Mali 400) running Armbian Noble with the Lima open-source driver.
 
@@ -27,7 +27,7 @@ current defect list; where the two disagree, the board wins.
 - Chat (all channels), targeting (click, Tab cycle, F-keys), auto-attack
 - Spell memorization, casting, and gem management
 - Inventory window with equipment slots, bags, the official client's own item icons (T430) and tooltips; items are picked up and put down click-to-cursor like the official client (left click picks up / places / swaps / stacks, a stack opens the Quantity window, Shift = whole stack, Ctrl = one, right or Alt+left click shows the item — B442, #151, rules measured on the official client), or with `/pickup`, `/putdown`, `/cursor`, `/coin` and `/equip`
-- Vendor buy/sell and banking through the oracle's own merchant and bank windows (T436), or by slash command; player-to-player trading is command-driven
+- Vendor buy/sell and banking through the oracle's own merchant and bank windows (T436), or by slash command; player-to-player trading and NPC hand-ins through the oracle's trade and give windows (B896), or by slash command
 - Group system with HP/mana bars, invite/accept/disband/decline
 - Raid commands (invite, accept, leave, remove, leader, loot type, looters, lock, group)
 - Inspect (both answering and asking) with a configurable inspect message
@@ -41,13 +41,13 @@ current defect list; where the two disagree, the board wins.
 - ETC1 flat-pack texture assets (EQE1) for memory-constrained boards
 
 **What doesn't work or is incomplete:**
-- No character creation (requires existing account/character)
+- No character-select SCREEN: the character is picked from the config, and creation/deletion are command-line scripts (`--create-character`, `--delete-character`); the creation screen is drawn only by `ui_panel_capture` so far
 - Visual spell effects incomplete. Only the cast glow, the cast-complete flash and the impact are reached from the game; the projectile, buff-aura, rain and ground-circle code exists but has **no production caller** — its only callers are the `model_viewer` FX harness and a unit test (`refactor/BOARD.md` B161/B165), so no spell projectile and no buff aura is ever drawn in a real session
 - Swimming mechanics incomplete (keys exist, physics don't)
 - Boats/transport not implemented
 - Fall damage not implemented
 - First-person view draws the player's own model and weapon for the duration of an attack animation and at no other time (T307 measured the rule against the official client; T309 implemented it in `src/client/graphics/entity_first_person_draw.cpp`). The down-pitch clamp that earlier revisions of this file described as the hiding mechanism was refuted live and no longer exists. Eye placement is still open (`refactor/BOARD.md` B018)
-- UI is a fixed static-panel HUD. Merchant, bank, loot, tradeskill container, item display and Options all have real windows now (T290, T415, T421, T425, T434, T436); **trade is still slash-command only**. Items move click-to-cursor (B442, #151) in the inventory, bank and loot windows; the bag window is separate work (B899)
+- UI is a fixed static-panel HUD. Merchant, bank, loot, the era container window (world containers and carried bags, B899), item display, Options, trade and give all have real windows now (T290, T421, T425, T434, T436, B899, B896). Items move click-to-cursor (B442, #151) in the inventory, bank, loot, container, trade and give windows
 
 **Architecture note:** This is a thin client that delegates game logic to the server. Combat damage, spell effects, skill checks, and item transactions are all server-calculated. The client handles rendering, input, and state tracking.
 
@@ -65,7 +65,7 @@ Legend: Done | Partial | Not Implemented
 | Login server authentication | Done | |
 | Server selection | Done | |
 | Character selection | Done | Auto-select from config |
-| Character creation | -- | Provisioned externally (eq-oracle Wine rig). Native creation is issue #204 (B888): the official two-page screen and progression, home city (no tutorial), post-Velious races/classes excluded |
+| Character creation | Partial | B888 (#204). `--create-character "Name,Race,Gender,Class,Deity,City[,STR=n,...]"` sends `OP_ApproveName` then `OP_CharacterCreate` exactly as eqemu's Titanium world validates them (byte-pinned) and enters world in the home city, never the tutorial; `--delete-character`, `--list-characters`; scenario `create_character`. The official two-page screen (`EQUI_CharacterCreate.xml`) and its flow are transcribed with post-Velious races/classes/cities HIDDEN (`data/char_create.tsv`), but there is no character-select screen to open it from yet, no FacePick window and no 3D preview |
 
 ### World & Zones
 | Feature | Status | Notes |
@@ -157,7 +157,7 @@ Legend: Done | Partial | Not Implemented
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Chat panel | Done | Scrollable, filterable |
-| Inventory popup | Done | Equipment slots, item icons (T430), tooltips. Click-to-cursor (B442): left click picks up / places, right click is the item display, a purse row opens the Quantity window for coin |
+| Inventory popup | Done | Equipment slots, item icons (T430), tooltips. Click-to-cursor (B442): left click picks up / places, right click shows the item display while held (Alt+left keeps it), right click on a bag toggles its window, a purse row opens the Quantity window for coin, Destroy asks before destroying the held item (B442b) |
 | Player status | Done | HP/mana/stamina, stats |
 | Target info | Done | |
 | Spell book popup | Done | Searchable, click-to-memorise (no drag; T444) |
@@ -168,15 +168,16 @@ Legend: Done | Partial | Not Implemented
 | Buff bar | Done | Duration timers |
 | XP bar | Done | |
 | Skills popup | Done | Skill values by category, class skill table from `config/skill_caps.json` |
-| Merchant window | Done | T436 (board B429), the oracle's `EQUI_MerchantWnd.xml`: stock list with icons, Buy/Sell, Done. `/vendorlist`, `/buy`, `/sell` still work |
-| Bank window | Done | T436 (board B429), the oracle's `EQUI_BankWnd.xml`: 8 slots + 4 money rows + Done. `/bank` still works. Change is drawn disabled (board B441) |
+| Merchant window | Done | T436 (board B429), the oracle's `EQUI_MerchantWnd.xml`: stock list with icons, Buy/Sell, Done. As measured (B442b, #152): clicking one of your items selects it for sale (never the cursor), the button is Buy or Sell by the last selection, Sell on a stack opens the Quantity window. `/vendorlist`, `/buy`, `/sell` still work |
+| Bank window | Done | T436 (board B429), the oracle's `EQUI_BankWnd.xml`: 8 slots + 4 money rows + Change + Done. Change converts every coin in the bank and on you to the fewest coins (B441, the client's own tip text; `/bank change`). `/bank` still works |
 | Cursor item | Done | T436, `EQUI_CursorAttachment.xml`: the held item's icon follows the mouse |
 | Loot window | Done | T290, center popup, scrollable |
-| Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; every row is classified in `src/client/graphics/ui/options_classification.cpp` (wired, or excluded with its reason -- post-Velious, Will's OUT ruling, no fable capability, or awaiting the oracle) and `OptionsClassification.*` fails on an unclassified row. B430/B433 wired General (anonymous/roleplay, autosplit, auto-consent, pet window popup, the volumes), Display (PC/NPC names, clip plane), Mouse, Keys (category, rebinding, reload defaults) and Filters; Colors and the remaining General/Display rows stay greyed (#144, #145, #146). `/option` sets any wired setting by name |
-| Trade | Partial | Command-driven (/trade); no window. `SetupTradeWindowCallbacks` is an empty stub. Issue #212 (B896) |
+| Tip windows | Done | B834 (#202): the Tip of the Day at zone-in and the context tips on the first open of a window (Inventory, Bank, Merchant, Trainer, Friends, Loot, Quantity, ...), the client's own `help/tips/` texts, `EQUI_TipWnd.xml` controls, "Don't show" persisted in the official `[Tips]` keys |
+| Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; every row is classified in `src/client/graphics/ui/options_classification.cpp` (wired, or excluded with its reason -- post-Velious, Will's OUT ruling, no fable capability, or awaiting the oracle) and `OptionsClassification.*` fails on an unclassified row. B430/B433 wired General (anonymous/roleplay, autosplit, auto-consent, pet window popup, the volumes), Display (PC/NPC names, clip plane), Mouse, Keys (category, rebinding, reload defaults) and Filters; Colors and the remaining General/Display rows stay greyed (#144, #145, #146; the missing capabilities are B993 colours #313, B994 3D target ring #314, B995 particle knobs #315). `/option` sets any wired setting by name |
+| Trade | Partial | B896 (#212): `EQUI_TradeWnd.xml` (8 slots a side, ours on the right, column-major; coin rows; Trade / Cancel) and the NPC `EQUI_GiveWnd.xml` (4 slots, Give / Cancel), opened by a click on a player or NPC with an item held; the held item drops into slot 3000, an incoming request is acknowledged with no prompt, the accepting side's name turns green and any change resets it, offered items cannot be taken back, cancel prints eqstr 1450 and completion prints nothing -- all measured (`review/UIGAP-ORACLE/212`). Owed: the live two-client run, the no-drop refusal string (not captured), the tip windows |
 | Item / spell display | Done | T421 + T425, one window for both (`EQUI_ItemDisplay.xml`); click an item slot, SHIFT+click a gem or spellbook row |
-| Pick up / put down an item | Partial | Click-to-cursor in the inventory, bank and loot windows, the Quantity window (a stack or a purse row) and `/pickup` `/putdown` `/cursor` `/coin` — one `CursorGestureIntent` path, rules from the official client's capture (B442, #151). Owed: the live `pickup_roundtrip` scenario, bag/trade/give windows, a coin icon on the cursor, the world drop and Destroy prompts |
-| Tradeskill container | Partial | /recipesearch, /recipecombine; the drawn window is the post-Velious recipe window and opens for world containers only. The era container window + Combine is issue #215 (B899) |
+| Pick up / put down an item | Partial | Click-to-cursor in the inventory, bank, loot, container, trade and give windows, the Quantity window (a stack or a purse/bank coin row; its box takes typed digits) and `/pickup` `/putdown` `/cursor` `/coin` — one `CursorGestureIntent` path, rules from the official client's capture (B442, B442b, #151). Coin rides the cursor with its count; a motionless world click with an item held asks "ARE YOU SURE you wish to drop..." (Yes = `OP_GroundSpawn`) unless it lands on a player (trade) or an NPC (give, B896), and Destroy asks before `OP_MoveItem 30 -> -1`. Owed: the live `pickup_roundtrip` scenario, loot-to-cursor (not captured) |
+| Tradeskill container | Partial | B899 (#215): a world container (forge, oven) and a carried kit open the era container window (`EQUI_Container.xml`): its slots, Combine, Done. The post-Velious recipe window no longer opens (Will 2026-09-23); `/recipesearch` and `/recipecombine` stay as automation. The button reads "Combine" on every container (measured, `review/UIGAP-ORACLE/215`); the live combine is owed |
 | Skill trainer | Partial | B898, the oracle's `EQUI_TrainWindow.xml` at 580x280: skill list (name, value, price in pp/gp/sp/cp), practices, experience, money, Train, Done. Opens with /train, T, or Ctrl+click on a guildmaster; refreshes only when the server confirms a train. The Rank column and the live train are still owed to the oracle (issue #214) |
 
 ### Inventory
@@ -185,7 +186,7 @@ Legend: Done | Partial | Not Implemented
 | Item display | Done | Icons and names |
 | Item stats | Done | Tooltip |
 | Move items | Partial | Click-to-cursor (B442) plus `/equip` by slot or name and `/pickup` / `/putdown`. Not drag and drop: the official client is click-to-cursor (T444 corrected "Drag and drop" here) |
-| Container bags | Done | |
+| Container bags | Partial | B899: `/bag <general slot>` opens/closes a bag's window (`EQUI_Container.xml`, several at once, stacked at one position as measured), contents drawn with icons, cells click-to-cursor (B442). Right-click on a bag in a general slot toggles its window, as the official client does (B442b, #151 rows 19-21) |
 | Equipment slots | Done | With tint colors |
 | Loot items | Done | |
 | Currency | Done | All denominations, /split |
@@ -195,12 +196,12 @@ Legend: Done | Partial | Not Implemented
 | Feature | Status | Notes |
 |---------|--------|-------|
 | /who | Done | Server who-all with count substitution |
-| Friends list | Partial | /friendswho query only; `/friends` is aliased to it where the official client's `/friends <name>` adds a friend. Issue #213 (B897) |
-| Ignore list | -- | Issue #213 (B897), one Friends window with an Ignored tab |
+| Friends list | Partial | B897: the official two-tab Friends window (Alt+F, `/friendswindow`, from `EQUI_FriendsWnd.xml`), 100 names, `/friends [name]` (`/friend`) toggles/lists, `/friendswho` and the Who button query the stored list, persisted in `<Char>_<server>.ini` `[Friends]` as the official client does. Live two-client proof owed (#213) |
+| Ignore list | Partial | B897: the window's Ignored tab and `/ignore [name]`, 100 names, `[Ignored]` in the same ini; an ignored sender's tell, say, shout, ooc, auction and emote are hidden client-side (measured on the official client, `review/UIGAP-ORACLE/213`) and never become `/reply`'s target. Cap and group/guild behaviour unmeasured (#213) |
 | Group | Done | /invite, /groupaccept, /disband, /decline, /groupassist |
 | Raid | Done | /raid invite/accept/leave/remove/leader/loot/looter/lock/unlock/group/status/list |
 | Guild management | Done | Invite, accept/decline, remove, demote, leader, MOTD |
-| Trading | Done | /trade, /accept, /tradedecline, /canceltrade |
+| Trading | Partial | The trade and give windows (B896) and /trade, /accept, /tradedecline, /canceltrade; the live two-client round trip is owed |
 | Inspect | Done | /inspect; /inspectmessage sets your own text |
 | LFG / anon / roleplay / AFK | Done | Toggles |
 | Surname / random | Done | |
@@ -221,7 +222,7 @@ Legend: Done | Partial | Not Implemented
 |---------|--------|-------|
 | Skill display | Done | Values and categories, class caps from `config/skill_caps.json` |
 | Skill activation | Done | /useskill by name or id, hotbar skill slots |
-| Tradeskills | Partial | Recipe search/combine commands; combines server-side |
+| Tradeskills | Partial | Combine from the container window or `/combine [slot]`, world and carried containers (B899); recipe search/auto-combine commands; combines server-side |
 | Tracking | Partial | B895 (issue #211): `/useskill tracking` opens the Tracking Window (the oracle's `EQUI_TrackingWnd.xml`: con-coloured list, R/Y/W/B/L/G filters, sort and players comboboxes, Track, Cancel); Track or `/track` starts tracking and the official direction lines follow every 2 s (measured against the official client, `review/UIGAP-ORACLE/211`). `/trackfilter`, `/tracksort`, `/trackplayers`, `/stoptracking`, `/tracklist`. Partial until the live `track_list` scenario runs and the uncaptured controls (players combo, r* sorts) are measured |
 | Forage / Fishing | -- | Requests are sent; replies only logged. Issue #210 (B894) |
 
@@ -491,16 +492,16 @@ Bindings are configurable in `config/hotkeys.json` (or a `hotkeys` object in the
 | Key | Action |
 |-----|--------|
 | Q | Toggle auto-attack |
-| Ctrl+Q | Attack target |
+| Ctrl+Q | Attack target (B905: the key had no dispatch arm until UIGAP-small) |
 | C | Consider target |
 | H | Hail target |
-| Tab | Cycle targets |
+| Tab | Cycle targets (B905: shadowed by a dead Global `ChatAutocomplete` binding until UIGAP-small) |
 | Shift+Tab | Cycle targets reverse |
 | F1 | Target self |
 | F2-F6 | Target group member 1-5 |
 | F7 | Target nearest PC |
 | F8 | Target nearest NPC |
-| Escape | Clear target |
+| Escape | Close the most recently opened window, one per press (B460, measured); with none open, clear target |
 
 **Spells & Hotbar:**
 | Key | Action |
@@ -634,7 +635,9 @@ Commands are dispatched through three registries in order: the game registry (au
 /lfg, /afk, /anon, /roleplay    Status toggles
 /surname <name>                 Request surname
 /random (/roll) [n]             Roll a random number
-/friendswho (/friends) <names>  Ask who is online
+/friends (/friend) [name]       Add/remove a friend; no name lists them
+/ignore [name]                  Ignore/unignore a player; no name lists them
+/friendswho [names]             Ask which friends (or named players) are online
 /find (/findperson) [name]      Ask the server to path you to a target
 /consent <name>, /deny <name>   Corpse drag permission
 /corpsedrag (/drag), /corpsedrop (/drop)
@@ -655,6 +658,8 @@ Commands are dispatched through three registries in order: the game registry (au
 /trainclose (/traindone)        Close the trainer window
 /equip <slot> <slot> | <name>   Move/equip an item (/equip list)
 /clickobject (/clickobj) <id>   Click a world object (forge, oven, ground spawn)
+/bag <general slot>             Open/close a carried container's window
+/combine [general slot]         Combine in the open world container or a carried kit
 /recipesearch (/recipes) <text> Search the open container's recipes
 /recipedetails, /recipecombine, /recipefavorites
 ```

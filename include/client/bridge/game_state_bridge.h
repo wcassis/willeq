@@ -2,6 +2,7 @@
 
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
+#include <functional>
 #include <mutex>
 #include <vector>
 #include <unordered_map>
@@ -33,8 +34,23 @@ public:
      * Thread-safe. Called from the game thread.
      */
     void pushEvent(state::GameEvent event) {
+        // UIGAP-live: the scenario lane's transcript tap. Empty in every
+        // ordinary run (one branch); set once, from the game thread, which is
+        // the thread that pushes events -- so the observer runs on it too.
+        if (eventObserver_) eventObserver_(event);
         std::lock_guard<std::mutex> lock(eventMutex_);
         eventQueue_.push_back(std::move(event));
+    }
+
+    /**
+     * UIGAP-live: observe every event pushed from here on. Only the scenario
+     * lane installs one (ApplicationScenarioWorld), on the GAME thread, before
+     * it reads anything back; a headless run does not drain the bridge, so
+     * this is the one place a scenario sees what the player would have been
+     * shown (chat lines, the tracking list, skill updates).
+     */
+    void setEventObserver(std::function<void(const state::GameEvent&)> observer) {
+        eventObserver_ = std::move(observer);
     }
 
     /**
@@ -177,6 +193,7 @@ protected:
     }
 
 private:
+    std::function<void(const state::GameEvent&)> eventObserver_;
     std::mutex eventMutex_;
     std::vector<state::GameEvent> eventQueue_;
 

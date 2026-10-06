@@ -60,6 +60,7 @@
 #include "client/pet_constants.h"
 #include "client/hotbar/hotbar_slot_type.h"
 #include "client/zone_load_snapshot.h"
+#include "client/state/social_lists_io.h"  // B897: SocialListsSync
 // G02: the intent handlers below take one alternative of RendererIntent each,
 // by const reference. Dependency-free header (cstdint/string/variant + the
 // hotbar slot-type enum), so this costs nothing the component did not pay.
@@ -190,6 +191,14 @@ public:
 
 	void UpdateInventoryStats();  // Update inventory window with current stats (base + equipment)
 
+	// B896 (#212): OUR trade request was acknowledged (player or NPC). The
+	// official client then drops the item it was opened with into the first
+	// trade slot by itself -- OP_MoveItem 30 -> 3000 (MEASURED,
+	// review/UIGAP-ORACLE/212/trade.tsv rows 1 and 9). Runs the same
+	// CursorGesture place a slot click does; a no-op with nothing held.
+	// Called from ZoneComponent::OnTradeRequestAck (bridge_component_trade.cpp).
+	void OfferHeldItemOnTradeOpen();
+
 	// ---- config paths and persistence ----
 	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
 	void SetConfigPath(const std::string& path) { m_config_path = path; }
@@ -300,6 +309,12 @@ public:
 	void SetUse3DAudio(bool enabled) { m_audio_config_use_3d_audio = enabled; }
 #endif
 
+	// B897 (GitLab #213): the friends/ignore persistence tick, once per
+	// GameTick. Loads the character's `<Char>_<server>.ini` on a new identity,
+	// saves on a changed revision, and on either publishes the ONE
+	// GameEventType::SocialListsChanged (state::SocialListsSync decides).
+	void SyncSocialLists();
+
 private:
 	// T46: assigns m_bridge and propagates the same pointer (including
 	// null) to the four managers' own bridge pointers
@@ -355,6 +370,7 @@ private:
 	void onCloseBankIntent(const eqt::events::CloseBankIntent& i);
 	void onBankCurrencyMoveIntent(const eqt::events::BankCurrencyMoveIntent& i);
 	void onBankCurrencyConvertIntent(const eqt::events::BankCurrencyConvertIntent& i);
+	void onBankMakeChangeIntent(const eqt::events::BankMakeChangeIntent& i);
 	void onTrainerToggleIntent(const eqt::events::TrainerToggleIntent& i);
 	void onCastSpellIntent(const eqt::events::CastSpellIntent& i);
 	void onMemorizeSpellIntent(const eqt::events::MemorizeSpellIntent& i);
@@ -383,10 +399,27 @@ private:
 	void onCursorGestureIntent(const eqt::events::CursorGestureIntent& i);
 	void RunCursorGesture(const eqt::events::CursorGestureIntent& i);
 	void PublishInventorySlot(int16_t slot);
+	// B442b (#151): the coin on the cursor (row 29), the drop / destroy
+	// confirmations (rows 31-35) and the bag toggle (rows 19-21) -- all in
+	// bridge_component_cursor.cpp beside RunCursorGesture().
+	void PublishCursorCoin();
+	void RunCursorCoinGesture(const eqt::events::CursorGestureIntent& i);
+	void RunCursorConfirmation(const eqt::events::CursorGestureIntent& i);
 	void onPlaySoundIntent(const eqt::events::PlaySoundIntent& i);
 	void onGameOptionIntent(const eqt::events::GameOptionIntent& i);
 	// B895: the Tracking Window's controls -> TrackingController.
 	void onTrackingIntent(const eqt::events::TrackingIntent& i);
+	// B897: the Friends window buttons.
+	void onSocialListIntent(const eqt::events::SocialListIntent& i);
+	// B896 (#212): the trade / give window's buttons and coin rows. The arm
+	// relays to RunTradeWindowIntent() (bridge_component_trade.cpp), which
+	// also holds the two trade hooks RunCursorGesture() calls: the refusal of
+	// a withdrawal (TradeGestureRefusal) and the accept reset after our own
+	// side changed (AfterTradeGesture).
+	void onTradeWindowIntent(const eqt::events::TradeWindowIntent& i);
+	void RunTradeWindowIntent(const eqt::events::TradeWindowIntent& i);
+	std::string TradeGestureRefusal(const eqt::events::CursorGestureIntent& i) const;
+	void AfterTradeGesture(const eqt::events::CursorGestureIntent& i);
 
 	// T171: shared resolution of the per-client config node. See the
 	// definitions in bridge_component_ui_audio.cpp for why read and write
@@ -465,6 +498,9 @@ private:
 	// playSoundInternal().
 	bool m_audio_config_use_3d_audio = true;
 #endif
+
+	// B897: when the friends/ignore lists were last loaded or written.
+	eqt::state::SocialListsSync m_social_sync;
 
 	ClientContext& ctx_;
 };

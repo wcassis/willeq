@@ -105,6 +105,22 @@ struct ActionNameMapping {
     HotkeyAction action;
 };
 
+// B905 (#225): the eight actions deleted for having no dispatch consumer (see
+// hotkey_manager.h). A hotkeys.json written before that -- the shipped file's
+// old revision or a user copy saved by the Options Keys page -- still names
+// them; they are skipped quietly rather than warned about as unknown.
+static const char* const kRetiredActionNames[] = {
+    "ToggleUILock", "SaveUILayout", "ResetUIDefaults", "ConfirmDialog",
+    "CancelDialog", "SubmitInput", "CancelInput", "ChatAutocomplete",
+};
+
+static bool isRetiredActionName(const std::string& name) {
+    for (const char* retired : kRetiredActionNames) {
+        if (name == retired) return true;
+    }
+    return false;
+}
+
 static const ActionNameMapping s_actionNameMappings[] = {
     // Global
     {"Quit", HotkeyAction::Quit},
@@ -118,14 +134,6 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ToggleAllUI", HotkeyAction::ToggleAllUI},
     {"ScrollUIUp", HotkeyAction::ScrollUIUp},
     {"ScrollUIDown", HotkeyAction::ScrollUIDown},
-    {"ToggleUILock", HotkeyAction::ToggleUILock},
-    {"SaveUILayout", HotkeyAction::SaveUILayout},
-    {"ResetUIDefaults", HotkeyAction::ResetUIDefaults},
-    {"ConfirmDialog", HotkeyAction::ConfirmDialog},
-    {"CancelDialog", HotkeyAction::CancelDialog},
-    {"SubmitInput", HotkeyAction::SubmitInput},
-    {"CancelInput", HotkeyAction::CancelInput},
-    {"ChatAutocomplete", HotkeyAction::ChatAutocomplete},
 
     // Player - Movement
     {"MoveForward", HotkeyAction::MoveForward},
@@ -151,6 +159,7 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ToggleBuffWindow", HotkeyAction::ToggleBuffWindow},
     {"ToggleCombatAbilities", HotkeyAction::ToggleCombatAbilities},
     {"ToggleOptions", HotkeyAction::ToggleOptions},
+    {"ToggleFriends", HotkeyAction::ToggleFriends},  // B897
     {"ToggleCollision", HotkeyAction::ToggleCollision},
     {"ToggleCollisionDebug", HotkeyAction::ToggleCollisionDebug},
     {"ToggleZoneLineVisualization", HotkeyAction::ToggleZoneLineVisualization},
@@ -460,6 +469,10 @@ void HotkeyManager::setupDefaults() {
     // T382 removed for the group and pet windows, and it left `O` bound to a
     // window that did not exist. `O` is now unbound, as it is in the oracle.
     addBinding(HotkeyAction::ToggleOptions, HotkeyMode::Global, irr::KEY_KEY_O, ModifierFlags::Alt);
+    // B897: Alt+F, MEASURED on the same page
+    // (review/T377/oracle/T377_oracle_options_keys_UI_page1.png): "Toggle
+    // friend window   Alt F" (eqstr 6599), Alternate column empty.
+    addBinding(HotkeyAction::ToggleFriends, HotkeyMode::Global, irr::KEY_KEY_F, ModifierFlags::Alt);
     addBinding(HotkeyAction::ToggleAllUI, HotkeyMode::Global, irr::KEY_F11);
     // T313: PageUp/PageDown scroll the static-UI panel under the cursor --
     // chat scrollback, the skills list, the loot list -- which is what they
@@ -468,27 +481,14 @@ void HotkeyManager::setupDefaults() {
     // scrolling a loot list does not also strafe the player.
     addBinding(HotkeyAction::ScrollUIUp, HotkeyMode::Global, irr::KEY_PRIOR);
     addBinding(HotkeyAction::ScrollUIDown, HotkeyMode::Global, irr::KEY_NEXT);
-    // B562 (board; GitLab #182): the shipped config/hotkeys.json binds these
-    // Global actions, so the compiled-in defaults must carry the same keys --
-    // when the file cannot be read (loadFromFile() logs an ERROR) the defaults
-    // stay in effect, and the keys must not vanish. Same keys as the file;
-    // adding them here does not rebind anything the file loads.
-    // ToggleZoneLights is the ONE of the eight with a dispatch consumer
-    // (RendererEventReceiver -> RA::ToggleZoneLights ->
-    // DiagnosticsComponent::toggleZoneLights). The other seven fall to the
-    // switch's default: they are bound, parseable and testable, but have no
-    // consumer -- noted in the B562 MR, not invented here.
-    addBinding(HotkeyAction::ToggleUILock, HotkeyMode::Global, irr::KEY_KEY_L, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::SaveUILayout, HotkeyMode::Global, irr::KEY_KEY_S, ModifierFlags::Ctrl);
-    addBinding(HotkeyAction::ResetUIDefaults, HotkeyMode::Global, irr::KEY_KEY_R, ModifierFlags::Ctrl | ModifierFlags::Shift);
-    addBinding(HotkeyAction::ConfirmDialog, HotkeyMode::Global, irr::KEY_RETURN);
-    addBinding(HotkeyAction::ConfirmDialog, HotkeyMode::Global, irr::KEY_KEY_Y);
-    addBinding(HotkeyAction::CancelDialog, HotkeyMode::Global, irr::KEY_ESCAPE);
-    addBinding(HotkeyAction::CancelDialog, HotkeyMode::Global, irr::KEY_KEY_N);
-    addBinding(HotkeyAction::CancelInput, HotkeyMode::Global, irr::KEY_ESCAPE);
-    addBinding(HotkeyAction::ChatAutocomplete, HotkeyMode::Global, irr::KEY_TAB);
-    // The file's one NON-Global of the eight: it sits in the player section
-    // (below CameraPitchDown), and getAction() runs Global first, so the
+    // B562 (board; GitLab #182) added the file's eight file-only bindings
+    // here. B905 (#225, UIGAP-small) then DELETED seven of them, plus
+    // SubmitInput below: none had a dispatch consumer, none is on the oracle's
+    // Options > Keys pages, and as Global bindings they shadowed Tab
+    // (CycleTargets), Escape (ClearTarget) and Return (OpenChat) -- so Tab has
+    // not cycled targets in a production run since the file carried them.
+    // ToggleZoneLights, the one with a consumer, stays. It sits in the
+    // player section of the file, and getAction() runs Global first, so the
     // default must match that mode exactly or the tables disagree.
     addBinding(HotkeyAction::ToggleZoneLights, HotkeyMode::Player, irr::KEY_F4, ModifierFlags::Ctrl);
 
@@ -572,8 +572,8 @@ void HotkeyManager::setupDefaults() {
     // === Player Mode - Chat ===
     addBinding(HotkeyAction::OpenChat, HotkeyMode::Player, irr::KEY_RETURN);
     addBinding(HotkeyAction::OpenChatSlash, HotkeyMode::Player, irr::KEY_OEM_2);  // Slash
-    addBinding(HotkeyAction::SubmitInput, HotkeyMode::Global, irr::KEY_RETURN);   // Submit chat input
-    // Note: ESC for chat unfocus is handled directly by key check (conflicts with ClearTarget)
+    // Submitting and cancelling chat are the text entry's own keys
+    // (applyTextEntryKey), not hotkeys: B905 deleted SubmitInput/CancelInput.
 
     // === Player Mode - Spell Gems (Alt+1-8) ===
     addBinding(HotkeyAction::SpellGem1, HotkeyMode::Player, irr::KEY_KEY_1, ModifierFlags::Alt);
@@ -723,6 +723,12 @@ bool HotkeyManager::loadFromFile(const std::string& path) {
 void HotkeyManager::loadModeBindings(const Json::Value& modeObj, HotkeyMode mode) {
     for (const auto& actionName : modeObj.getMemberNames()) {
         HotkeyAction action = actionNameToEnum(actionName);
+        if (action == HotkeyAction::Count && isRetiredActionName(actionName)) {
+            // B905: a user copy saved before the deletion still names them.
+            LOG_INFO(MOD_INPUT,
+                "HotkeyManager: ignoring retired action '{}' (B905: it had no consumer)", actionName);
+            continue;
+        }
         if (action == HotkeyAction::Count) {
             LOG_WARN(MOD_INPUT,
                 "HotkeyManager: Unknown action '{}' in config", actionName);

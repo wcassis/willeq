@@ -7,7 +7,7 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 - `UIRenderer` - Batched quad drawing API. Accumulates draw commands per frame, flushes them in submission order in `endFrame()`. Supports atlas-backed sprites or solid color fallback. Methods: `drawRect()`, `drawSprite()`, `drawBar()`, `drawPanel()`. **T462 (boards B505/B506):** BOTH paths queue -- the fallback path (no `--eqe1-path`, so no atlas: this is what the Orange Pi recipe runs, board **B540**) used to draw every rectangle immediately. `endFrame()` flushes RUNS of commands that share their GL state (one texture, or solid with one blend enable) as at most two driver draws each (`UiQuadBatch`, `ui_quad_batch.h`: the first quad through the driver's own call, the rest in one draw with the driver's own vertex arithmetic), and `TextBatch::flush()` lays the glyphs of every plain text entry into the same kind of run, exactly as `CGUIFont::draw` lays them out. Pixel identity against the pre-T462 per-quad, per-entry flush is pinned on both paths by `tests/test_static_ui_frame_cost.cpp` (`UIRenderer::setBatchingEnabled()` is the seam). `takeFlushStats()` feeds the `/frametiming` breakdown's "UI Paperdoll / UI Quad Flush / UI Text Flush" sub-lines under Static UI. The chat panel's word-wrap is cached (`ChatWrapCache`, `chat_wrap_cache.h`): only messages that arrived since the last frame are formatted and measured.
 - `UILayout` - Anchor-based screen region definitions. `computeLayout(width, height)` positions all panels for any resolution. Constants: MARGIN=4, BAR_HEIGHT=14, SLOT_SIZE=32.
 - `StaticPanels` - Free render functions (not a class hierarchy) for each panel. Each takes a `UIRenderer`, `UILayout`, and a plain data struct. No state ownership.
-- `StaticUIInput` - Mouse/keyboard input handler for static UI. Communicates with game thread via `GameStateBridge` intents. Hit-tests slot grids for inventory, hotbar, spell gems. Its `processKey()` (ESC dismisses the top popup) had NO production caller until T290 wired it into `renderer_frame.cpp`'s escape handling, ahead of clear-target. **T443 (board B454): ESC's order is the DRAW order, and the two server-owned popups in it do not close themselves** — the tradeskill container is asked first (it is drawn after the loot popup) and pushes `TradeskillCloseIntent`, then the loot window pushes `CloseLootIntent`; both leave their panel up until the server's `TradeskillContainerClosed` / `LootWindowClosed` comes back (T290's rule). The spellbook, skills and inventory popups are pure client views and are hidden in place. The bank and merchant windows obey the same rule one level up, in `FrameComponent`'s escape handler (T436), because neither is a centre popup. **Scrolling (T313):** `processWheel()` / `processScrollKey()` / `runScrollCommand()` all funnel into ONE router — `scrollTargetAt()` picks the panel under the cursor (loot > skills > chat, the draw order), `scrollPanel()` moves it. Before T313 there was no scroll writer of any kind: chat scrollback, the skills list and the loot list all honoured a `scrollOffset` in both their render body and their hit test that nothing ever wrote, so a corpse with more than 8 items was partly UNLOOTABLE. **The offset conventions differ and are not harmonised** — chat counts lines up from the BOTTOM (0 = newest), skills and loot count rows down from the TOP; `scrollPanel()`'s `lines > 0` means "towards older content" either way. The clamps stay with the panels: `renderChatPanel()` owns chat's upper bound (it is the only code that knows the wrapped-line count), `SkillsPopupState::maxScrollOffset(visibleRows)` and `LootPanelState::maxScrollOffset()` own the other two.
+- `StaticUIInput` - Mouse/keyboard input handler for static UI. Communicates with game thread via `GameStateBridge` intents. Hit-tests slot grids for inventory, hotbar, spell gems. Its `processKey()` (ESC dismisses the top popup) had NO production caller until T290 wired it into `renderer_frame.cpp`'s escape handling, ahead of clear-target. **B460 (#156, UIGAP-small): ESC closes the MOST RECENTLY OPENED window, one per press** -- measured (`review/UIGAP-ORACLE/156/`: tip, then bag, then inventory, then nothing). `EscWindowStack` (`esc_window_stack.h`) learns every window's open ORDER from `FrameComponent::observeEscWindows()` once a frame, whoever opened it, and `FrameComponent::handleEscapeKey()` closes its newest entry (`processKey()` takes the one popup it chose; `processContainerEscape()` the one bag); with nothing open ESC clears the target. Not in the stack: the Quantity window (ESC does not close it, measured) and the HUD windows (unmeasured). Whether the official first press ALSO clears the target while closing a window is unseparated -- fable does not (assumption awaiting oracle). `tests/test_esc_window_stack.cpp`. Each window still closes its own way: T443 (board B454): the two server-owned popups do not close themselves — the tradeskill container is asked first (it is drawn after the loot popup) and pushes `TradeskillCloseIntent`, then the loot window pushes `CloseLootIntent`; both leave their panel up until the server's `TradeskillContainerClosed` / `LootWindowClosed` comes back (T290's rule). The spellbook, skills and inventory popups are pure client views and are hidden in place. The bank and merchant windows obey the same rule one level up, in `FrameComponent`'s escape handler (T436), because neither is a centre popup. **Scrolling (T313):** `processWheel()` / `processScrollKey()` / `runScrollCommand()` all funnel into ONE router — `scrollTargetAt()` picks the panel under the cursor (loot > skills > chat, the draw order), `scrollPanel()` moves it. Before T313 there was no scroll writer of any kind: chat scrollback, the skills list and the loot list all honoured a `scrollOffset` in both their render body and their hit test that nothing ever wrote, so a corpse with more than 8 items was partly UNLOOTABLE. **The offset conventions differ and are not harmonised** — chat counts lines up from the BOTTOM (0 = newest), skills and loot count rows down from the TOP; `scrollPanel()`'s `lines > 0` means "towards older content" either way. The clamps stay with the panels: `renderChatPanel()` owns chat's upper bound (it is the only code that knows the wrapped-line count), `SkillsPopupState::maxScrollOffset(visibleRows)` and `LootPanelState::maxScrollOffset()` own the other two.
 - `ItemIconSheets` - **T430 (board B376)**: the item icon art, lifted from the official client's own
   `uifiles/default/dragitem1..34.tga` by `tools/item_icon_atlas_builder` into two 1024x1024 pack entries
   (`item_icons0`, `item_icons1`). Held by `UIAtlas` (`atlas->icons()`) and reached as
@@ -57,20 +57,88 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Spellbook | Center popup | `SpellbookPopupState` | `renderSpellbookPopup()` |
 | Skills | Center popup | `SkillsPopupState` | `renderSkillsPopup()` |
 | Loot | Center popup | `LootPanelState` | `renderLootPopup()` (T290) |
-| Tradeskill container | Center popup | `TradeskillPanelState` | `renderTradeskillPopup()` (T415, board B321; T419 added the recipe list on the left, board B335 — `renderTradeskillRecipeList()` in `src/client/graphics/ui/tradeskill_recipe_list.cpp`) |
+| Tradeskill container | Center popup | `TradeskillPanelState` | `renderTradeskillPopup()` (T415, board B321; **no longer opened since B899** — the world container opens the container window below, Will 2026-09-23; T419 added the recipe list on the left, board B335 — `renderTradeskillRecipeList()` in `src/client/graphics/ui/tradeskill_recipe_list.cpp`) |
+| Container (world + carried bags) | The oracle's own (350,100) 100x366, unscaled; several at once, stacked | `ContainerWindowsState` | `renderContainerWindows()` (B899, #215 / #151 Leg B; geometry `container_layout.h` from `EQUI_Container.xml`) |
 | Combat abilities | Top-right, under target, left of the gems | `CombatAbilityPanelState` | `renderCombatAbilityPanel()` (T415, board B320) |
 | Item display | Its own absolute (0,80), 400x190 | `ItemDisplayPanelState` | `renderItemDisplayPopup()` (T421, board B298 item half) |
 | Options | Centred, the oracle's own 400x452, seven tabs | `OptionsPanelState` | `renderOptionsWindow()` (T434) |
 | Merchant | Center popup (the oracle's 374x480 scaled onto it) | `MerchantPanelState` | `renderMerchantPopup()` (T436, board B429) |
 | Bank | Centred, the oracle's own 108x347, unscaled | `BankPanelState` | `renderBankWindow()` (T436, board B429) |
 | Quantity | Its own absolute (300,10), 150x90 | `QuantityWindowState` (owned by `StaticUIInput`) | `renderQuantityWindow()` (B442, `EQUI_QuantityWnd.xml`) |
+| Confirmation | Centred (flagged), the oracle's 274x200 | `ConfirmationDialogState` (owned by `StaticUIInput`) | `renderConfirmationDialog()` (B442b, `EQUI_ConfirmationDialog.xml`; Yes/No or Ok) |
 | Cursor item | At the mouse, the oracle's 50x50 box | `CursorAttachmentState` | `renderCursorAttachment()` (T436, board B429) |
 | Skill trainer | Centred, the oracle's own 580x280, unscaled | `TrainerPanelState` | `renderTrainerWindow()` (B898, #214) |
 | Tracking | Centred, the oracle's own 150x460 (height clamped to the screen) | `TrackingPanelState` | `renderTrackingWindow()` (B895, GitLab #211) |
+| Tip windows | The oracle's 360x300, flush right at the measured (664,234) of 1024x768 | `TipWindowState` | `renderTipWindow()` (B834, #202; `tip_layout.h` from `EQUI_TipWnd.xml`) |
+| Friends | The oracle's own 168x288, at `defaults.ini`'s `[FriendsWindow]` position (XML (196,50) elsewhere), two tabs | `FriendsPanelState` | `renderFriendsWindow()` (B897) |
+| Trade / Give | The oracle's own (0,25): trade 236x365, give 108x375, unscaled | `TradePanelState` (`isNpc` picks the give window) | `renderTradeWindow()` (B896, #212; geometry `trade_layout.h` / `give_layout.h`) |
+| Character Creation | The whole screen, two pages (`EQUI_CharacterCreate.xml`); pre-zone, NO host yet | `CharCreateScreenState` | `renderCharCreateScreen()` (B888, #204) |
 
-Center popups (inventory, spellbook, skills, merchant, loot, trade, tradeskill container) share the same screen region and are mutually exclusive. **The BANK is not one of them** (T436): the oracle's `BankWnd` is `Style_Sizable false` at its own 108x347, so like the combat-abilities window it keeps its own size and its own anchor and draws above the centre popups. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle. **Neither is the item display window** (T421): `EQUI_ItemDisplay.xml` gives it `RelativePosition false` and `<Location>(0,80)</Location>`, so it is drawn and hit-tested LAST, on top of every centre popup, and ESC dismisses it before them. **Nor is the Options window** (T434), for the same reason and one level higher still: `EQUI_OptionsWindow.xml` is `RelativePosition false` at `<Location>(90,47)</Location>`, so it is drawn and hit-tested after even the item display and ESC dismisses it first of all. Its geometry is `options_layout.h`, a table of every control the oracle XML declares; a control whose `OptionsLayout::Setting` is `None` has no backing setting in fable, is drawn greyed and is **not hit-testable** (the T363 rule made mechanical).
+Center popups (inventory, spellbook, skills, merchant, loot, tradeskill container) share the same screen region and are mutually exclusive. **The BANK is not one of them** (T436): the oracle's `BankWnd` is `Style_Sizable false` at its own 108x347, so like the combat-abilities window it keeps its own size and its own anchor and draws above the centre popups. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle. **Neither is the item display window** (T421): `EQUI_ItemDisplay.xml` gives it `RelativePosition false` and `<Location>(0,80)</Location>`, so it is drawn and hit-tested LAST, on top of every centre popup (ESC: B460's open order). **Nor is the Options window** (T434), for the same reason and one level higher still: `EQUI_OptionsWindow.xml` is `RelativePosition false` at `<Location>(90,47)</Location>`, so it is drawn and hit-tested after even the item display (ESC: B460's open order). Its geometry is `options_layout.h`, a table of every control the oracle XML declares; a control whose `OptionsLayout::Setting` is `None` has no backing setting in fable, is drawn greyed and is **not hit-testable** (the T363 rule made mechanical).
 
-**What is wired (B430/B431/B433).** Every control row has a decision in `src/client/graphics/ui/options_classification.cpp` — WIRED, or excluded as POST-VELIOUS, OUT (Will 2026-09-23), NO CAPABILITY (naming the issue that owns the missing capability) or AWAITING ORACLE — and `OptionsClassification.EveryControlRowIsClassifiedExactlyOnce` / `AControlIsWiredIffItHasASetting` fail on a gap; read that file, not this paragraph, for the live census. The settings themselves are one table, `options_settings.h/.cpp` (oracle ini key, scale, default, owner), and every click resolves through `resolveOptionsClick()` (`options_lists.cpp`: checkbox toggles, slider steps, combobox CYCLES — a flagged deviation from the oracle's drop-down — list rows select) into `FrameComponent::applyOptionsSetting()`. Owners: **Renderer** settings persist per character under their `eqclient.ini` key; **Game** settings (anonymous/roleplay, autosplit, the three auto-consents) are the server's and travel as `GameOptionIntent` → `OP_SpawnAppearance`, coming back on `GameOptionChanged` (also published from the player profile at zone-in and from `/anon`, `/roleplay`). Pages: **Filters** — the era `/filter` set (eqstr 1354-1360), one `OP_SetServerFilter` payload, `/filter <name>`; **General** — the anon pair, autosplit, auto-consent ×3, pet window popup, the two volumes; **Display** — PC and NPC names (two flags under the Ctrl+F3 master, `EntityRenderer::setNameTagKindsVisible`), clip plane; **Mouse** — invert Y, look spring, mouse look, wheel zoom, sensitivity (`include/client/graphics/player/mouse_options.h`); **Keys** — category combobox, the Command/Keypress/Alternate list over `HotkeyManager` (a slot click captures the next key, `options_keys.h`), Reload defaults; **Colors** — not reached; **Mail** — all OUT. `/option [list | <name> [value]]` (registry 3) sets any wired setting by name.
+**What is wired (B430/B431/B433).** Every control row has a decision in `src/client/graphics/ui/options_classification.cpp` — WIRED, or excluded as POST-VELIOUS, OUT (Will 2026-09-23), NO CAPABILITY (naming the issue that owns the missing capability) or AWAITING ORACLE — and `OptionsClassification.EveryControlRowIsClassifiedExactlyOnce` / `AControlIsWiredIffItHasASetting` fail on a gap; read that file, not this paragraph, for the live census. The settings themselves are one table, `options_settings.h/.cpp` (oracle ini key, scale, default, owner), and every click resolves through `resolveOptionsClick()` (`options_lists.cpp`: checkbox toggles, slider steps, combobox CYCLES — a flagged deviation from the oracle's drop-down — list rows select) into `FrameComponent::applyOptionsSetting()`. Owners: **Renderer** settings persist per character under their `eqclient.ini` key; **Game** settings (anonymous/roleplay, autosplit, the three auto-consents) are the server's and travel as `GameOptionIntent` → `OP_SpawnAppearance`, coming back on `GameOptionChanged` (also published from the player profile at zone-in and from `/anon`, `/roleplay`). Pages: **Filters** — the era `/filter` set (eqstr 1354-1360), one `OP_SetServerFilter` payload, `/filter <name>`; **General** — the anon pair, autosplit, auto-consent ×3, pet window popup, the two volumes; **Display** — PC and NPC names (two flags under the Ctrl+F3 master, `EntityRenderer::setNameTagKindsVisible`), clip plane; **Mouse** — invert Y, look spring, mouse look, wheel zoom, sensitivity (`include/client/graphics/player/mouse_options.h`); **Keys** — category combobox, the Command/Keypress/Alternate list over `HotkeyManager` (a slot click captures the next key, `options_keys.h`), Reload defaults; **Colors** — NO CAPABILITY, owned by B993 (#313: a user chat-colour table, `[TextColors]` persistence and the `EQUI_ColorPickerWnd` picker; UIGAP-small judged it not small and filed it); the Display page's 3D target ring and the Env/Player particle sub-pages Will ruled IN are B994 (#314, the ring is a new draw) and B995 (#315, runtime particle knobs); **Mail** — all OUT. `/option [list | <name> [value]]` (registry 3) sets any wired setting by name.
+
+**The Friends window** (B897, GitLab #213). `friends_layout.h` quotes `EQUI_FriendsWnd.xml`: one
+`Style_Sizable false` 168x288 window (drawn unscaled) whose TabBox holds `FW_FriendsPage` (Contact, Who,
+the list, the name Editbox, Add, Delete) and `FW_IgnorePage` (the list, the Editbox, Add, Delete -- the
+file declares no Contact or Who there, so none is drawn or hit-testable). Its title height (24) and tab strip
+(22, the `FT_DefTabBorder` strip the Options pages sit under) are derived, its list row (14) and VScroll strip
+(12) are fable's own and flagged. The LISTS are the game thread's (`state::GameState::social()`,
+`include/client/state/social_lists.h`); the panel holds a copy fed by `GameEventType::SocialListsChanged`, and
+Add / Delete / Who push `SocialListIntent`, whose handler runs the very bodies `/friends`, `/ignore` and
+`/friendswho` run; Who with a friend selected is a who-all for that name. Contact prefills the chat input with
+`/tell <name> `. Both measured on the official client (`review/UIGAP-ORACLE/213/friends.tsv`). Both
+lists persist in `<cache dir>/ui/<Char>_<server>.ini` `[Friends]`/`[Ignored]` -- the oracle's own file and
+keys, sorted and tail-packed with `*NULL*` as every real file is -- written by `state::SocialListsSync` on the game
+thread (headless too); the window's open state is `[FriendsWindow] Show=` in the UI_ file. Drawn and
+hit-tested just below the Options window; ESC closes it when it is the newest window (B460). The Editboxes take the keyboard through
+`processFriendsNameInput()`, beside the tradeskill gate, with their own hold flag.
+
+**The trade and give windows** (B896, GitLab #212). `trade_layout.h` quotes `EQUI_TradeWnd.xml`
+(236x365 at (0,25); `Style_Sizable true` but it fits 640x480, so unscaled) and `give_layout.h`
+`EQUI_GiveWnd.xml` (108x375, `Style_Sizable false`); the two bottom-anchored Trade/Cancel buttons'
+arithmetic is written out there, and `TITLE_H` is fable's own 18 as in the bank and container windows.
+One state, `TradePanelState` (`trade_panel.h/.cpp`): the trade window for a player, the give window
+for an NPC (`isNpc`). Fed only by the game: `TradeStarted` opens it AND the inventory popup,
+`InventorySlotChanged` 3000..3007 fills our column, `TradeItemUpdated` the partner's (it now carries
+the icon and count), `TradeMoneyUpdated` the coin rows, `TradeAcceptStateChanged` the names, and
+`TradeCompleted`/`TradeCancelled` close it and the inventory. Everything is MEASURED on two official
+clients (`review/UIGAP-ORACLE/212/trade.tsv`): our side is the RIGHT column and the slots are
+column-major (3000-3003 then 3004-3007); both names are RED and the accepting side's turns GREEN, any
+change resets it; a click on an offered item does nothing (it cannot be taken back); the give window's
+NPC name is white. Input is `StaticUIInput::processTradeInput()` (`trade_input.cpp`), run by
+`FrameComponent::processTradeWindowInput()` (`renderer_frame_trade.cpp`) right after the QuantityWnd:
+the window is drawn above the centre popups, the bank, the trainer, tracking and the containers, and
+the inventory is always open beside it, so a click over it is spent there. A left click with an item
+held on an EMPTY own slot is B442's `slotClick()` with slot 3000+n; a right click on an occupied one
+is the item display; an own coin row with coin held (from the purse) pushes
+`TradeWindowIntent{CoinFromCursor}` (one `OP_MoveCoin` cursor -> trade); Trade/Give pushes `{Accept}`
+and Cancel and the close box `{Cancel}` -- the `TradeManager::clickAccept()` / `cancelTrade()` bodies
+`/accept` and `/canceltrade` run. Opening: a world click on a player or NPC with an item held
+(`TargetIntent` -> `requestTrade`) -- which takes precedence over B442b's drop prompt
+(`classifyHeldItemWorldClick()`, consulted by `processCursorGestureFrame()`: player = trade, NPC =
+give, anything else = drop) -- then the held item drops into 3000 by itself when the request is
+acknowledged; an incoming request is acknowledged with no prompt. ESC does not touch it, and the
+close box is Cancel (both assumptions awaiting the oracle). Tests: `tests/test_trade_window.cpp`.
+**The tip windows** (B834, GitLab #202, UIGAP-small). The Tip of the Day pops after a character's first zone-in of the session, and a context tip pops on the RISING EDGE of the window it belongs to (`FrameComponent::updateTipWindows()`, `renderer_frame_tips.cpp`, once a frame, so every opener counts): Inventory, Spellbook, Skills, Options > Keys, Friends, Merchant, Bank, Trainer, Loot, the world container, Quantity, Trade and Give (B896's window) -- the ones fable has a window for out of the observed table (`review/UIGAP-ORACLE/202/README.md`; Consider/Sit/Death are not popped, and B442b's confirmation dialog is not in the table). Text and caption are the client's own `help/tips/ctx*.html` / `TOTD.txt` under `eqClientPath`, read lazily; each tip's ini KEY is eqgame.exe's own ctx-file -> key table (`tipCatalog()`); the switches are the official `[Tips]` section of `UI_<char>_<server>.ini` (`ShowTips`, `ShowTOTD`, `<Key>=0`, the keys real player files carry), through `UiPreferences::tips`. Pieces as measured: the Tip of the Day shows Show Another Tip + "Don't show any tips"; a context tip shows the History line + both checkboxes; checkboxes apply on Close. ESC closes it first when it is the newest window (B460). Assumptions awaiting oracle, in `tip_window.h`: once per session, the TOTD checkbox -> `ShowTOTD`, the TOTD entry order, a newer tip replaces an open one, colours dropped. Tests: `tests/test_tip_window.cpp`.
+
+**Character Creation** (B888, GitLab #204). Three device-free layers: `char_create_layout.h` quotes
+`EQUI_CharacterCreate.xml` (every `<Location>`/`<Size>`/anchor) plus the placement rules MEASURED on the
+oracle's 1024x768 frames (`eq-oracle/logs/shots/cc_*.png`: title top-centre, the Character/Deity columns
+left and vertically centred, Abilities/City right, the help pane bottom-centre at the XML size -- its
+oracle size differs and is flagged); `char_create_screen.h` is the state machine (opens on a RANDOM valid
+selection with nothing spent, as the oracle does; greyed = not offered and inert; Next refused with eqstr
+1577 while points are left, 1576 for a bad name, 1580 while the request is in flight; Back page 1 -> 0 ->
+character select); `char_create_panel.h` draws and resolves clicks (right-click a stat name = every point
+into it). Post-Velious races/classes/cities are HIDDEN, never greyed (Will 2026-09-23): the in-era buttons
+take the column's slots in order, Gnome in Froglok's. The rules are the SERVER's
+(`include/client/login_world/char_create_rules.h`, quoting `CheckCharCreateInfoTitanium`), the offers are
+data (`data/char_create.tsv`; measured rows cite their oracle frame, the rest say `assumption`). **There is
+no host yet**: fable has no character-select screen and the pre-zone renderer draws only the loading screen,
+so the screen is reached by `ui_panel_capture` (`charcreate_page0/1`) and its tests; creation itself is
+reached by `--create-character` (`include/client/login_world/world_script.h`). Not drawn, flagged: the 3D
+scene and sample model, FacePick (`CC0_Face_Button` is greyed and not hit-testable), the tutorial controls
+(OUT by ruling). Tests: `tests/test_char_create.cpp`, `tests/test_char_create_screen.cpp`.
 
 **The three commerce windows** (T436, board **B429** CLOSED). Three producers filled an `iconId`
 nothing could draw, because the merchant window, the bank window and the cursor attachment did not
@@ -82,10 +150,14 @@ its `.cpp`: `merchant_layout.h` (`EQUI_MerchantWnd.xml`), `bank_layout.h` (`EQUI
 - **Merchant** — `Style_Sizable true` and 505px tall from its own `<Location>`, which does not fit
   640x480, so it is mapped proportionally onto `centerPopup`, T415's rule. It is the LAST centre
   popup. **`MW_Buy_Button` and `MW_Sell_Button` carry byte-identical anchors in the shipped file**, so
-  the official client can only ever show one; fable draws Sell when an item is on the cursor and Buy
-  otherwise, which is a design choice made to fit that shared rect and is flagged as one. Buy pushes
-  `VendorBuyIntent`, Sell `VendorSellIntent` (the cursor slot), Done `VendorToggleIntent` — all three
-  pre-existing, the same intents `/buy`, `/sell` and `/vendor` push. `MW_DoneButton` (no underscores)
+  the official client can only ever show one. WHICH ONE IS MEASURED (B442b, #152,
+  `review/UIGAP-ORACLE/152/merchant.tsv`): the side of the LAST selection -- Buy on open and after a
+  list row, Sell after a left click on one of YOUR items, which with a merchant open SELECTS it (yellow
+  frame; `static_ui_merchant.cpp`) and never touches the cursor. T436's "an item on the cursor means
+  Sell" was a guess and is gone. Buy pushes `VendorBuyIntent` (CTRL = one, measured), Sell
+  `VendorSellIntent` from the selected slot (a stack opens the QuantityWnd, `Purpose::Sell`; SHIFT =
+  all, CTRL = one, per the Merchant Tip), Done `VendorToggleIntent` — all three pre-existing, the same
+  intents `/buy`, `/sell` and `/vendor` push. `MW_DoneButton` (no underscores)
   is declared in the file and is in NO `<Pieces>` list, so the oracle never instantiates it and
   neither does fable.
 - **Bank** — `Style_Sizable false` at 108x347, so it is drawn UNSCALED at the oracle's own offsets,
@@ -94,8 +166,7 @@ its `.cpp`: `merchant_layout.h` (`EQUI_MerchantWnd.xml`), `bank_layout.h` (`EQUI
   `BANK_COUNT = 16` is a post-Velious bank, and the era file declares `BW_BankSlot0..7`.
   `BW_SharedBankSlot0/1`, `BW_SharedMoney0`, `BW_SharedBankLabel` and `BW_AltStorageButton` are IN the
   `<Pieces>` list and carry a `<ScreenID>` and nothing else — no `<Location>`, no `<Size>` — so the
-  era file itself declares them as geometry-less stubs and fable draws none of them. `BW_ChangeButton`
-  is drawn greyed and is NOT hit-testable (board **B441**). `BW_DoneButton` and the close box push
+  era file itself declares them as geometry-less stubs and fable draws none of them. `BW_ChangeButton` (B441, #26, UIGAP-small) pushes `BankMakeChangeIntent`: ONE click converts every coin in the bank AND on the person to the fewest coins -- the client's own `help/tips/ctxbank.html` says exactly that, and no `EQUI_*.xml` declares a conversion dialog, so none exists to build. The game thread's arm sends `eqt::merchant::BuildMakeChangeMoves()`'s OP_MoveCoin steps (cp->sp->gp->pp, `from_slot == to_slot`, multiples of 10, `coin_change.h`) and projects the same arithmetic (eqemu answers with silence); `/bank change` pushes the same intent. Order of the steps is an assumption awaiting oracle; `tests/test_bank_change.cpp` replays them through eqemu's own conversion arithmetic. `BW_DoneButton` and the close box push
   **`CloseBankIntent`**, the unit's one new intent, whose handler is the existing `CloseBankWindow()`.
 - **Cursor attachment** — `CA_Anim` at (5,5) 40x40 in a 50x50 box that follows the mouse, drawn LAST
   of everything (it is the pointer). `Style_Transparent true` / `Style_Border false`, so no plate and
@@ -106,19 +177,17 @@ its `.cpp`: `merchant_layout.h` (`EQUI_MerchantWnd.xml`), `bank_layout.h` (`EQUI
   bridge's arm had been dropping along with the bank's 2000..2007.
 
 None of the three closes itself. Each pushes the intent that ends the SERVER-side session and waits
-for the server's own `VendorWindowClosed` / `BankWindowClosed`, T290's rule; ESC follows the same
-top-down order the draw does (Options, item display, bank, merchant, then the centre popups). **B442 (#151)** gave all
+for the server's own `VendorWindowClosed` / `BankWindowClosed`, T290's rule; ESC closes the most recently opened window (B460, see `StaticUIInput` above), each in its own way. **B442 (#151)** gave all
 of them the click-to-cursor gesture: a bank slot (`BW_BankSlot<n>` = Titanium slot 2000+n) takes the
 same click as an inventory slot. The merchant is NOT a put-down target: the oracle measured that
 selling never uses the cursor (`review/UIGAP-ORACLE/152/`, board B443 / #152 owns it).
 
-**The skill trainer window** (B898, #214). Its geometry is `train_layout.h`, which quotes `EQUI_TrainWindow.xml` (`Style_Sizable false`, so it is drawn UNSCALED, like the bank, and CENTRED: the oracle's `<Location>` (120,20) runs off a 640-wide screen). It is not a centre popup: it draws and is hit-tested above the bank and below the item display, and ESC ends it before the bank. Fed by `TrainerWindowOpened`/`TrainerWindowClosed`, whose bridge arms were LOG_TRACEs that dropped the decoded `OP_GMTraining` reply. The game thread RE-PUBLISHES `TrainerWindowOpened` after every `OP_SkillUpdate` of an open session (`MerchantComponent::PublishTrainerWindow`, `merchant_trainer.cpp`), the only packet a Titanium server sends after a train; the applier treats a same-trainer open as a refresh and keeps the selection by skill id. Train pushes `TrainSkillIntent` (the `/train <id>` intent) and Done, the close box and ESC push `CloseTrainerIntent` (the `/trainclose` intent). Both paths' refusals are ONE body, `MerchantComponent::TrainRefusal()`. The Rank column is drawn empty (oracle-owed). `Style_Minimizebox` is not drawn. The scroll bar's arrows are clickable; the wheel does not reach this list yet. Openers are `/train`, T, and Ctrl+click on a guildmaster, which is fable's stand-in for the official right-click.
+**The skill trainer window** (B898, #214). Its geometry is `train_layout.h`, which quotes `EQUI_TrainWindow.xml` (`Style_Sizable false`, so it is drawn UNSCALED, like the bank, and CENTRED: the oracle's `<Location>` (120,20) runs off a 640-wide screen). It is not a centre popup: it draws and is hit-tested above the bank and below the item display, and ESC ends it (pushes the close intent) when it is the newest window (B460). Fed by `TrainerWindowOpened`/`TrainerWindowClosed`, whose bridge arms were LOG_TRACEs that dropped the decoded `OP_GMTraining` reply. The game thread RE-PUBLISHES `TrainerWindowOpened` after every `OP_SkillUpdate` of an open session (`MerchantComponent::PublishTrainerWindow`, `merchant_trainer.cpp`), the only packet a Titanium server sends after a train; the applier treats a same-trainer open as a refresh and keeps the selection by skill id. Train pushes `TrainSkillIntent` (the `/train <id>` intent) and Done, the close box and ESC push `CloseTrainerIntent` (the `/trainclose` intent). Both paths' refusals are ONE body, `MerchantComponent::TrainRefusal()`. The Rank column is drawn empty (oracle-owed). `Style_Minimizebox` is not drawn. The scroll bar's arrows are clickable; the wheel does not reach this list yet. Openers are `/train`, T, and Ctrl+click on a guildmaster, which is fable's stand-in for the official right-click.
 
 **The Tracking Window** (B895, GitLab #211). Geometry is `tracking_layout.h`, which quotes
 `EQUI_TrackingWnd.xml` anchor by anchor (the window is `Style_Sizable true`, so the bottom-anchored
 controls follow the window's height); the panel is `tracking_panel.cpp`. It is not a centre popup:
-drawn and hit-tested directly above the bank and below the item display, and ESC hides it in that
-order. Its one feed is `TrackingListChanged`, published WHOLE by the game thread's
+drawn and hit-tested directly above the bank and below the item display, and ESC hides it when it is the newest window (B460). Its one feed is `TrackingListChanged`, published WHOLE by the game thread's
 `eqt::tracking::TrackingController` (`include/client/tracking/`): rows already filtered, sorted and
 con-coloured (`eqt::ConTierForLevels()`, the one level table, moved out of `EntityRenderer`), and the
 combobox text composed from eqstr. The window opens on an OP_Track reply (`/useskill tracking`, a
@@ -138,9 +207,25 @@ Tests: `tests/test_tracking_window.cpp` (cites the ledger rows).
 
 **The item display window** takes its geometry from `include/client/graphics/ui/item_display_layout.h` (which quotes `EQUI_ItemDisplay.xml`) and its TEXT from the GAME thread: `eqt::inventory::BuildItemDisplayText()` composes the description from format strings quoted out of the official client's own `eqstr_us.txt`, and ships the finished lines on the `ItemDisplayShown` event. That is what the official client does too -- the XML's whole body is one `<STMLbox>`. A RIGHT click on an occupied inventory or bank slot pushes `ItemDisplayRequestIntent` -- the oracle's own button. Until B442 it was a LEFT click (T421's deviation: the static UI latched no right click); `RendererEventReceiver::wasRightButtonClicked()` is that latch now, consumed only by `renderStaticUI()`, and mouselook still reads `isRightButtonDown()`, so a right drag off the panels turns the camera as before.
 
-**Click-to-cursor (B442, #151).** One gesture for every item window, `eqt::inventory::CursorGesture` (`include/client/inventory/cursor_gesture.h`), whose rules are the official client's MEASURED ones (`review/UIGAP-ORACLE/151/gestures.tsv`): LEFT on a single item picks it up; LEFT on a stack of 2+ opens the QuantityWnd prefilled with the whole stack (`quantity_window.h`, `quantity_layout.h` quoting `EQUI_QuantityWnd.xml`; drawn and hit-tested above everything, ESC does not close it, other slot clicks are ignored while it is up); SHIFT+LEFT takes the whole stack and CTRL+LEFT exactly one, no dialog; LEFT with an item held places / swaps / merges (any modifier); ALT+LEFT and RIGHT are the item display (the oracle shows the RIGHT-click display only while the button is held; fable keeps it open -- flagged) and RIGHT on a bag goes to the open-container hook the bag window installs; a purse row (`IW_Money0..3`) opens the QuantityWnd for that coin (SHIFT: all of it) and held coin goes back. The render thread pushes `CursorGestureIntent` and never moves an item itself; the game thread resolves it in `ApplyCursorGesture()` against `InventoryManager` and republishes `InventorySlotChanged` for the slots it changed (eqemu answers a good `OP_MoveItem` with silence and a bad one with a resync). The loot window's LEFT click is `LootItemIntent` with auto_loot 0, which eqemu puts on the cursor. `/pickup <slot> [qty]`, `/putdown <slot>`, `/cursor` and `/coin <pp|gp|sp|cp> <n>` push the same intent; slot numbers are `inventory.slot_id` through `parseUserSlot()`. `tests/test_cursor_gesture.cpp` pins it against the ledger's rows.
+**Click-to-cursor (B442, #151).** One gesture for every item window, `eqt::inventory::CursorGesture` (`include/client/inventory/cursor_gesture.h`), whose rules are the official client's MEASURED ones (`review/UIGAP-ORACLE/151/gestures.tsv`): LEFT on a single item picks it up; LEFT on a stack of 2+ opens the QuantityWnd prefilled with the whole stack (`quantity_window.h`, `quantity_layout.h` quoting `EQUI_QuantityWnd.xml`; drawn and hit-tested above everything, ESC does not close it, other slot clicks are ignored while it is up); SHIFT+LEFT takes the whole stack and CTRL+LEFT exactly one, no dialog; LEFT with an item held places / swaps / merges (any modifier); RIGHT is the item display shown only WHILE held, ALT+LEFT keeps it (B442b, `ItemDisplayPanelState::heldOnly`), and RIGHT on a bag in a general slot toggles its window (`InventorySlotChangedData::bagSlots` -> `CursorGestureOp::ToggleBag` -> the `/bag` body); a purse row (`IW_Money0..3`) or a bank coin row (`BW_Money0..3`, OP_MoveCoin slot 2) opens the QuantityWnd for that coin (SHIFT: all of it) and held coin goes back. B442b also: held coin is DRAWN (dragitem 644-647 plus a measured count strip, fed by `CursorCoinChanged`; there is no render-side "coin held" shadow); the QuantityWnd's box takes typed digits; a motionless world click with an item held and `IW_Destroy` raise the reusable confirmation dialog (`confirmation_dialog.h`, `EQUI_ConfirmationDialog.xml`, text composed game-side from eqstr 9057 / 2043 and sent on `ConfirmationRequested`), whose Yes sends `OP_GroundSpawn` (empty) or `OP_MoveItem 30 -> -1`. The render thread pushes `CursorGestureIntent` and never moves an item itself; the game thread resolves it in `ApplyCursorGesture()` against `InventoryManager` and republishes `InventorySlotChanged` for the slots it changed (eqemu answers a good `OP_MoveItem` with silence and a bad one with a resync). The loot window's LEFT click is `LootItemIntent` with auto_loot 0, which eqemu puts on the cursor. `/pickup <slot> [qty]`, `/putdown <slot>`, `/cursor` and `/coin <pp|gp|sp|cp> <n>` push the same intent; slot numbers are `inventory.slot_id` through `parseUserSlot()`. `tests/test_cursor_gesture.cpp` pins it against the ledger's rows.
 
 **The same window shows SPELLS** (T425, board B298 spell half). The oracle has no second display window at all -- there is no `EQUI_SpellDisplay.xml` and no `SpellDisplay` screen anywhere in `uifiles/default`, and `IDW_IconButton`'s own `<NormalDecal>BuffIcons</NormalDecal>` is the SPELL icon sheet -- so a spell reuses `ItemDisplayPanelState`, `renderItemDisplayPopup()`, `ItemDisplayLayout` and the one `ScrollTarget::ItemDisplay`. Its lines are composed game-side by `eqt::spell::BuildSpellDisplayText()` from eqstr 3004/3005/3006/3102/3103/3105/3107/6730/9234 and arrive on the SAME `ItemDisplayShown` event. **SHIFT+left click** on a memorised gem or a spellbook row asks for it (`SpellDisplayRequestIntent`); a plain click still casts and still memorises. The oracle's gesture is a right click, which fable cannot bind, and unlike the inventory slot left click was already taken here.
+
+**The container window** (B899, #215 / #151 Leg B). ONE window shape, `EQUI_Container.xml`'s
+ContainerWindow, for a WORLD container (forge, oven: the server's `ClickObjectAction` open) and every
+CARRIED bag (`/bag <general slot>`, `CommandsComponent::RequestToggleBag()`, the game thread being the one
+truth for which bags are open). Geometry in `container_layout.h` (transcribed, unscaled, `Style_Sizable
+false`); state, appliers, draw and hit tests in `container_panel.h/.cpp`; input in `container_input.cpp`
+(`StaticUIInput::processContainerInput()` / `processContainerEscape()`). Every window sits at the oracle's
+(350,100), newest on top (measured, `review/UIGAP-ORACLE/151/gestures.tsv` row 20). Combine (on every
+container but a plain storage bag, label always "Combine": measured, `review/UIGAP-ORACLE/215/combine.tsv`)
+pushes `TradeskillCombineIntent` with 1000 (world) or the bag's slot
+(carried); Done, the close box and ESC push `TradeskillCloseIntent` (`inventorySlot` set for a bag) and
+the window waits for `TradeskillContainerClosed` (T290's rule); a stack in the container is refused
+client-side with eqstr 8504 (`onTradeskillCombineIntent`, measured row 7). A tradeskill container opens
+straight in this view, not the official client's recipe view (Will's ruling; discrepancy flagged). A cell click goes to ONE call site,
+B442's shared `slotClick()` / `CursorGesture` with the cell's wire slot (bag 251-330, world 4000-4009). Augment controls are
+out of era and not drawn. The T415 recipe window (`TradeskillPanelState`) is no longer opened by anything.
 
 **The two T415 panels take their geometry from the oracle's XML**, the way the purse and the paperdoll do:
 `include/client/graphics/ui/tradeskill_layout.h` derives `EQUI_TradeskillWnd.xml`'s anchor-positioned
@@ -182,8 +267,14 @@ group panel and the buff bar (board **B366**).
 | RMB+drag | Look around (camera) |
 | LMB on an item slot | Pick up / place / swap / stack (click-to-cursor, B442); on a stack of 2+ the Quantity window |
 | Shift+LMB / Ctrl+LMB on a stack | Whole stack / exactly one, no dialog (B442, measured) |
-| Alt+LMB, RMB on an item slot | Item display (B442; was LMB, T421's deviation) |
+| LMB on Destroy with an item held | "Are you absolutely sure you want to destroy your %1?" (eqstr 2043); Yes = `OP_MoveItem 30 -> -1` (B442b, rows 34-35) |
+| RMB (held) on an item slot | Item display while the button is held, gone on release (B442b, measured row 25) |
+| Alt+LMB on an item slot | Item display, kept until ESC (B442; rows 26-27) |
+| RMB on a bag in a general slot | Toggle its container window -- the `/bag` body (B442b, rows 19-21) |
+| LMB (motionless) on the world with an item held | "ARE YOU SURE you wish to drop your %1 on the ground?" (eqstr 9057); Yes = `OP_GroundSpawn`. A press that moves is a camera drag (B442b, rows 31-33) |
+| LMB on an inventory item with a merchant open | Selects it for sale -- never the cursor; the merchant button then reads Sell (B442b, #152) |
 | Ctrl+LMB+drag | Look around (single-button mouse) |
+| Alt+F | Toggle the Friends window (B897). MEASURED at the oracle's Options > Keys > UI page (`review/T377/oracle/T377_oracle_options_keys_UI_page1.png`: "Toggle friend window   Alt F", eqstr 6599, Alternate column empty). Scriptable as `/friendswindow` (registry 3). |
 | Alt+O | Toggle the Options window (T434). MEASURED at the oracle's Options > Keys > UI page (`review/T377/oracle/T377_oracle_options_keys_UI_page2.png`: "Toggle options window   Alt O", Alternate column empty). fable bound a bare `O` to an arm that was `break;`; `O` is now unbound, as it is in the oracle. |
 | Shift+ESC | Quit |
 | Ctrl+F1 | Toggle wireframe |
@@ -200,7 +291,7 @@ group panel and the buff bar (board **B366**).
 | Ctrl+A / End | Strafe left |
 | Ctrl+D / Home | Strafe right (T313 moved this off PageDown, which now scrolls the UI) |
 | Q | Toggle auto-attack |
-| Ctrl+Q | Attack (initiate combat) |
+| Ctrl+Q | Attack (initiate combat). B905 (#225): the key had no receiver arm until UIGAP-small; it now reaches `InputActionBridge`'s long-standing `InputAction::Attack` consumer |
 | ` / NumLock / Numpad+ | Toggle autorun. Live since T343 and live-proven by T345 (board B002 CLOSED): the route is RENDERER-side — the receiver queues `RA::ToggleAutorun` on `actionQueue_`, `processCommonInput()` flips `PlayerCameraComponent::toggleAutorun()`, and movement phase 1 cancels it on a translational key (turning does not cancel). The game-side `EqActionHandler::toggleAutorun()` survives for the console handler alone |
 | Space | Jump |
 | 1-8 | Hotbar slots 1-8 (routed by slot content type: Spell → cast, Skill → useSkill, Item → useItemById (T230), Emote/Macro/Combat → activateHotbarCommandSlot (T239)) |
@@ -210,7 +301,7 @@ group panel and the buff bar (board **B366**).
 | F2-F6 | Target group member 1-5 |
 | F7 | Target nearest PC |
 | F8 | Target nearest NPC |
-| Tab | Cycle targets |
+| Tab | Cycle targets. B905 (#225): a Global `ChatAutocomplete` binding with no consumer SHADOWED this in every production run (`getAction()` resolves Global first); deleted with seven other consumerless actions, and `tests/test_hotkey_dispatch_census.cpp` now fails on any shadowed or consumerless binding |
 | Shift+Tab | Cycle targets reverse |
 | C | Consider target |
 | R | Reply to last tell |
@@ -225,7 +316,7 @@ group panel and the buff bar (board **B366**).
 | H | Hail (say "Hail" or "Hail, <target>") |
 | L | Cycle object lights |
 | F10 / Shift+F10 / Shift+F11 | Music volume down / effects volume down / effects volume up. Until T464 (board B535) these, Alt+C and L were compiled-in defaults the shipped `config/hotkeys.json` did not carry, so production never reached them. **F11 is not music volume up**: the defaults also bind it, but F11's Global `ToggleAllUI` wins, so F11 has only ever toggled the UI; the official key is oracle-owed (board B561). |
-| ESC | Clear target. `/cleartarget` (no alias, category Combat) reaches the same `ActionDispatcher::clearTarget()` since T347 (board B012 CLOSED), so a `--script` run can clear a target |
+| ESC | Close the most recently opened window, one per press (B460, measured); with none open, clear target. `/cleartarget` (no alias, category Combat) reaches the same `ActionDispatcher::clearTarget()` since T347 (board B012 CLOSED), so a `--script` run can clear a target |
 | Numpad7 / Insert, Numpad1 / Delete, +/- | Camera zoom in / out: the active orbit camera's distance -- Chase's too since T474, which made Chase a rig at T466's oracle fit (T461, `PlayerCameraComponent::zoomCamera()`, shared with the wheel). T466 saw no visible change on the official client after Insert/Delete in Chase; whether the official Chase zooms is board B680. First person does not zoom. Numpad7/Insert and Numpad1/Delete are the official keys, MEASURED on the oracle's Options > Keys > Camera page (T466, bound by T471). fable's own +/- (and Shift+= / Numpad- in the shipped file) are kept; on the official client Shift+- / Shift+= are Clip plane and Numpad- is Screenshot (board B652). |
 | Alt+Numpad9 / Alt+PageUp, Alt+Numpad3 / Alt+PageDown | Pitch the ACTIVE user camera up / down 5 degrees per press (`CameraPitchUp` / `CameraPitchDown`; keys measured, T466/T471). Pitch up tilts the VIEW up (the camera goes lower), as the official key does. T466 boarded fable's sign as mirrored; T471 found it already matched. The bare PageUp/PageDown still scroll the UI. |
 | Alt+Numpad6 / Alt+Right, Alt+Numpad4 / Alt+Left | Tether-slide right / left (`CameraOrbitRight` / `CameraOrbitLeft`, the official `RIGHT_CAM` / `LEFT_CAM`): slides the Tether camera 5 degrees of world azimuth per press towards the viewer's right / left. It does nothing in other cameras (T466 pressed it in User 1 and nothing moved). The bare arrows stay movement: `getAction()` and the movement poll both compare modifiers exactly. |
@@ -313,7 +404,7 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    (aliases `/memory`, `/mem_report`), `/music`, `/sound`, `/volume`
    (`/vol`), `/musicvolume` (`/mvol`), `/effectsvolume` (`/evol`, `/sfxvol`).
 2. **Registry 2 — `action::CommandProcessor`**
-   (`src/client/action/command_processor_registration.cpp`, **152**
+   (`src/client/action/command_processor_registration.cpp`, **155**
    `registerCommand({...})` calls — T347 inserted `/cleartarget` at entry 022
    and `tests/goldens/command_registration_order_g03.txt` pins both the count
    and the position, so re-read the golden header rather than this line; J04
@@ -404,7 +495,11 @@ before you can click it (T268).
 `/inspectmessage [text|-clear]` (`/inspectmsg`, T171), `/trade [name]`,
 `/accept`, `/tradedecline` (`/rejecttrade`), `/canceltrade` (`/stoptrade`),
 `/lfg`, `/surname <name>`, `/random [low] [high]` (`/roll`), `/yell`, `/find
-[name]` (`/findperson`), `/friendswho <names>` (`/friends`).
+[name]` (`/findperson`), `/friendswho [names]` (no argument: the stored friends
+list), `/friends [name]` (`/friend`; toggles the name, no name lists the list --
+B897 ended its old aliasing to `/friendswho`, which the official client's
+`/friends <name>` contradicts), `/ignore [name]` (toggle / list). The window
+toggle is `/friendswindow` (registry 3).
 
 **Character:** `/appearance <field> <0-255> ...` (T153/T167).
 
@@ -431,10 +526,11 @@ hold, focus, health, dismiss).
 
 **Tradeskill (T149):** `/recipesearch` (`/recipes`), `/recipedetails`
 (`/recipeinfo`), `/recipecombine` (`/autocombine`), `/recipefavorites`
-(`/recipefav`), `/clickobject <drop_id>` (`/clickobj`).
+(`/recipefav`), `/clickobject <drop_id>` (`/clickobj`), `/combine [general slot]`, `/closecontainer`, `/bag <general slot>`
+(B899: opens/closes a carried container's window).
 
 **Commerce / Inventory:** `/vendor`, `/vendorlist`, `/buy <slot> [qty]`,
-`/sell <slot> [qty]`, `/bank`, `/equip <from> <to> | <item name> | list`,
+`/sell <slot> [qty]`, `/bank [deposit|withdraw|convert|change]`, `/equip <from> <to> | <item name> | list`,
 `/pickup <slot> [qty]`, `/putdown <slot>`, `/cursor`, `/coin <pp|gp|sp|cp> <n>`
 (B442: the click-to-cursor gesture's scriptable half, one `CursorGestureIntent`).
 

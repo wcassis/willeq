@@ -295,6 +295,9 @@ public:
     // the recipe requests take no object_type. Delegate to EverQuest.
     virtual void tradeskillCombine(int16_t containerSlot) = 0;
     virtual void closeTradeskillContainer() = 0;
+    // B899 (#215 / #151 Leg B): /bag <general slot> opens or closes a
+    // carried container's window. Delegate to EverQuest.
+    virtual void toggleBag(int16_t generalSlot) = 0;
 
     // T153: request an appearance (face/hair/beard) change. Only the fields
     // the user named are set; the handler merges the rest from the
@@ -478,6 +481,8 @@ public:
     // GameState BEFORE dispatch -- a refused command reaches none of these.
     virtual void bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) = 0;
     virtual void bankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount) = 0;
+    // B441 (#26): /bank change -- the Change button, both purses to the fewest coins.
+    virtual void bankMakeChange() = 0;
 
     // ========== Social / Find (T150) ==========
     // Four senders that had zero production callers until this unit

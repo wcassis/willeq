@@ -24,12 +24,14 @@
  *     (row 13)
  *   - ALT+LEFT on an item                         -> the item display, kept
  *     open (row 26)
- *   - RIGHT on an item                            -> the item display (the
- *     oracle shows it only WHILE the button is held, row 25 -- fable keeps it
- *     open until closed: flagged deviation), or for a bag the bag window,
- *     which right click toggles (rows 19-21; the hook below)
+ *   - RIGHT on an item                            -> the item display, shown
+ *     only WHILE the button is held (row 25; B442b's held mode,
+ *     ItemDisplayPanelState), or for a carried bag the bag window, which
+ *     right click toggles (rows 19-21; StaticUIInput installs the hook below
+ *     and it pushes CursorGestureOp::ToggleBag -> the /bag body)
  *   - a purse row                                 -> the QuantityWnd for coin
- *     (row 28), held coin goes back (row 30)
+ *     (row 28), held coin goes back (row 30); the bank's coin rows the same
+ *     on OP_MoveCoin slot 2 (rows 43-44)
  *
  * THE SPLIT. Two halves, one per thread, joined by ONE intent:
  *   render thread  CursorGesture::click() maps (slot, button, modifiers, what
@@ -137,8 +139,10 @@ public:
     /**
      * A purse row (IW_Money0..3). `coinType` is EQT::COINTYPE_* (0 cp .. 3
      * pp); `amount` 0 = the whole pile. Held coin goes back instead.
+     * B442b: `source` is the store the row belongs to, EQT::COINSLOT_INVENTORY
+     * (1, the purse) or EQT::COINSLOT_BANK (2, BW_Money0..3, rows 43-44).
      */
-    void coinClick(uint8_t coinType, int32_t amount);
+    void coinClick(uint8_t coinType, int32_t amount, uint8_t source = 1);
 
 private:
     eqt::bridge::GameStateBridge* bridge_ = nullptr;
@@ -182,6 +186,46 @@ struct CoinMovePlan {
 };
 CoinMovePlan PlanCoinGesture(const InventoryManager& inv, uint8_t coinType,
                              int32_t requested, uint32_t purseOfType);
+
+/**
+ * B442b (#151 rows 43-44): the same plan for either coin store. `bank` names
+ * the store the clicked row belongs to -- the bank's BW_Money rows
+ * (OP_MoveCoin slot 2) or the purse (slot 1): coin comes OFF that store, and
+ * held coin goes back ONTO it (row 44 returned bank coin to the purse by
+ * clicking the purse). `storeOfType` is that store's count of `coinType`.
+ * Only the message differs from the purse overload above.
+ */
+CoinMovePlan PlanCoinGesture(const InventoryManager& inv, uint8_t coinType,
+                             int32_t requested, uint32_t storeOfType, bool bank);
+
+// ---------------------------------------------------------------------------
+// B442b (#151 rows 31-35): the drop and destroy confirmations
+// ---------------------------------------------------------------------------
+
+/** The asker's token on ConfirmationRequestedData::purpose. */
+enum class ConfirmPurpose : uint8_t { None = 0, DropItem = 1, DestroyItem = 2 };
+
+// The official prompts, by eqstr id (eqstr_us.txt, read through
+// EQT::StringDatabase -- never transcribed, B390's rule):
+//   9057 "ARE YOU SURE you wish to drop your %1 on the ground?"  (row 31)
+//   2043 "Are you absolutely sure you want to destroy your %1?"  (row 34)
+constexpr uint32_t kEqStrDropOnGround = 9057;
+constexpr uint32_t kEqStrDestroyItem = 2043;
+
+/**
+ * What a RequestDrop / RequestDestroy needs: whether to prompt at all (an
+ * item must be held), which eqstr row, and the held item's name for %1.
+ * Pure -- the bridge formats the line and publishes ConfirmationRequested.
+ */
+struct ConfirmPromptPlan {
+    bool prompt = false;
+    ConfirmPurpose purpose = ConfirmPurpose::None;
+    uint32_t eqstrId = 0;
+    std::string itemName;
+    std::string message;   // why nothing is asked, when prompt is false
+};
+ConfirmPromptPlan PlanConfirmPrompt(const InventoryManager& inv,
+                                    eqt::events::CursorGestureOp op);
 
 // ---------------------------------------------------------------------------
 // The slash-command surface: /pickup <slot> [qty], /putdown <slot>, /cursor,

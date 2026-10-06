@@ -21,6 +21,7 @@
 #include "client/data_paths.h"
 #include "client/graphics/ui/combat_ability_panel.h"
 #include "client/graphics/ui/options_panel.h"
+#include "client/graphics/ui/friends_panel.h"
 #include "client/graphics/ui/static_panels.h"
 #include "common/logging.h"
 
@@ -83,6 +84,7 @@ const WindowRow kWindows[] = {
     {"BuffWindow", &UiPreferences::buffWindow},
     {"CombatAbilityWnd", &UiPreferences::combatAbilityWnd},
     {"OptionsWindow", &UiPreferences::optionsWindow},   // T434
+    {"FriendsWindow", &UiPreferences::friendsWindow},   // B897
 };
 
 // T434 -- the `[Options]` section. Same anti-drift device as kWindows: one
@@ -182,6 +184,8 @@ UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode
             if (IsPersistedSetting(i)) p.optionValues[i] = b.options->values[i];
         }
     }
+    if (b.friends) p.friendsWindow = b.friends->isOpen;
+    if (b.tips) p.tips = *b.tips;
     p.cameraMode = cameraMode;
     p.user1Camera = user1Camera;
     p.user2Camera = user2Camera;
@@ -213,6 +217,8 @@ void ApplyUiPreferences(const UiPreferences& p, const UiPreferencesBinding& b) {
     if (b.pet) b.pet->isOpen = p.petInfoWindow;
     if (b.buff) b.buff->isOpen = p.buffWindow;
     if (b.combatAbility) b.combatAbility->isOpen = p.combatAbilityWnd;
+    if (b.friends) b.friends->isOpen = p.friendsWindow;
+    if (b.tips) *b.tips = p.tips;
     if (b.options) {
         b.options->isOpen = p.optionsWindow;
         // The steps were clamped on parse; clamp again here so a value
@@ -304,6 +310,23 @@ UiPreferences ParseUiPreferences(const std::string& text,
             }
             continue;
         }
+        // B834 (#202): the official [Tips] section. ShowTips / ShowTOTD
+        // are switches; any other key is one tip's "don't show again"
+        // (`Inventory=0`); a 1 re-enables it.
+        if (section == "Tips") {
+            if (key == "ShowTips") {
+                p.tips.showTips = ParseBool(value, p.tips.showTips);
+            } else if (key == "ShowTOTD") {
+                p.tips.showTotd = ParseBool(value, p.tips.showTotd);
+            } else if (!key.empty()) {
+                if (ParseBool(value, true)) {
+                    p.tips.off.erase(key);
+                } else {
+                    p.tips.off.insert(key);
+                }
+            }
+            continue;
+        }
         if (section == "Options") {
             bool matched = false;
             for (const auto& row : kOptions) {
@@ -358,6 +381,13 @@ std::string SerializeUiPreferences(const UiPreferences& p) {
         out += OptionsLayout::allSettings()[i].iniKey;
         out += "=" + std::to_string(p.optionValues[i]) + "\n";
     }
+    // B834: the official [Tips] section, as the real files write it.
+    out += "[Tips]\nShowTips=";
+    out += p.tips.showTips ? "1" : "0";
+    out += "\nShowTOTD=";
+    out += p.tips.showTotd ? "1" : "0";
+    out += "\n";
+    for (const std::string& key : p.tips.off) out += key + "=0\n";
     out += "[Camera]\nView=" + std::to_string(p.cameraMode) + "\n";
     for (const auto& row : kCameraRigKeys) {
         out += row.key;

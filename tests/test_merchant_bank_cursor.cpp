@@ -485,20 +485,21 @@ TEST_F(CommerceClickTest, BuyWithNothingSelectedSendsNothing) {
     EXPECT_TRUE(drain().empty());
 }
 
-TEST_F(CommerceClickTest, AHeldItemTurnsTheSharedButtonIntoSell) {
+// B442b (#152) INVERTED this T436 case: it pinned "a held item turns the shared
+// button into SELL (of the cursor)", T436's design choice. The oracle measured
+// the opposite (review/UIGAP-ORACLE/152/merchant.tsv rows 1-6): the button is
+// the side of the LAST SELECTION and selling never uses the cursor. A held
+// item with nothing selected sells nothing; the positive cases are in
+// tests/test_cursor_gesture_completion.cpp (MerchantSelectToSell).
+TEST_F(CommerceClickTest, AHeldItemDoesNotTurnTheSharedButtonIntoSell) {
     cursor.hasItem = true;
     cursor.iconId = 918;
     cursor.itemName = "Bread Cake";
     cursor.quantity = 4;
     const auto btn = MerchantLayout::tradeButtonRect(layout);
     ASSERT_TRUE(click(cx(btn), cy(btn)));
-    auto intents = drain();
-    ASSERT_EQ(intents.size(), 1u);
-    const auto* s = std::get_if<eqt::events::VendorSellIntent>(&intents[0]);
-    ASSERT_NE(s, nullptr);
-    EXPECT_EQ(s->npcId, 77);
-    EXPECT_EQ(s->slot, eqt::inventory::CURSOR_SLOT);
-    EXPECT_EQ(s->quantity, 4);
+    EXPECT_TRUE(drain().empty()) << "the cursor is never sold (merchant.tsv row 6)";
+    EXPECT_FALSE(merchant.sellSelected());
 }
 
 TEST_F(CommerceClickTest, DonePushesTheVendorToggleAndDoesNotCloseLocally) {
@@ -531,14 +532,15 @@ TEST_F(CommerceClickTest, TheBankCloseBoxDoesTheSameThingAsDone) {
     EXPECT_NE(std::get_if<eqt::events::CloseBankIntent>(&intents[0]), nullptr);
 }
 
-TEST_F(CommerceClickTest, TheGreyedChangeButtonIsNotHitTestable) {
+// B441 (#26, UIGAP-small): Change is wired now -- one click, no dialog (the
+// client's own help/tips/ctxbank.html). Was TheGreyedChangeButtonIsNotHitTestable.
+TEST_F(CommerceClickTest, TheChangeButtonPushesBankMakeChangeIntent) {
     applyBankWindowOpened(bank, Opened(55, "Banker Bruce"));
     const auto change = BankLayout::changeButtonRect(layout);
-    // The window still consumes the position (it is inside the frame), but
-    // no intent is produced -- the T363 rule: an unwired control eats no
-    // click. Board B441.
-    click(cx(change), cy(change));
-    EXPECT_TRUE(drain().empty());
+    ASSERT_TRUE(click(cx(change), cy(change)));
+    auto intents = drain();
+    ASSERT_EQ(intents.size(), 1u);
+    EXPECT_NE(std::get_if<eqt::events::BankMakeChangeIntent>(&intents[0]), nullptr);
 }
 
 TEST_F(CommerceClickTest, AClosedBankLetsTheMerchantSeeTheSamePoint) {

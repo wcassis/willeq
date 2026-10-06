@@ -303,6 +303,37 @@ inline irr::core::rect<irr::s32> coinDecalRect(const UILayout& layout, int denom
     return irr::core::rect<irr::s32>(x, y, x + w, y + h);
 }
 
+/**
+ * B442b (#151 rows 34-35): `IW_Destroy`, the button that destroys the item on
+ * the cursor after a confirmation.
+ *
+ *   <Button item="IW_Destroy">  Location X=202 Y=382  Size CX=50 CY=20
+ *                               <Text>Destroy</Text>
+ *
+ * THE SIZE IS THE ORACLE'S, THE PLACE IS NOT. The size is the oracle's 50x20
+ * mapped onto centerPopup like coinRect() (46x15). Its oracle position,
+ * mapped the same way, lands on fable's own WEAPON row (the slot grid is
+ * fable's T57 layout, not the oracle's, which is why only the purse and the
+ * doll carry oracle positions). So it sits in the free space to the right of
+ * that row, right-aligned with the right equipment column and centred on the
+ * row: a flagged anchor deviation, the kind T434/T436 made for their windows.
+ * Pinned disjoint from every slot rect by tests/test_cursor_gesture_completion.cpp.
+ */
+inline irr::core::rect<irr::s32> destroyButtonRect(const UILayout& layout) {
+    using namespace detail;
+    constexpr irr::s32 ORACLE_DESTROY_W = 50;
+    constexpr irr::s32 ORACLE_DESTROY_H = 20;
+    const auto& popup = layout.centerPopup;
+    const irr::s32 popupW = popup.getWidth();
+    const irr::s32 popupH = popup.getHeight();
+    const irr::s32 w = ORACLE_DESTROY_W * popupW / ORACLE_WINDOW_W;
+    const irr::s32 h = ORACLE_DESTROY_H * popupH / ORACLE_WINDOW_H;
+    const irr::s32 weaponY = popup.UpperLeftCorner.Y + CONTENT_TOP + COL_ROWS * SLOT + GAP_COL_WEAPON;
+    const irr::s32 x = popup.UpperLeftCorner.X + popupW - LEFT_COL_X - w;
+    const irr::s32 y = weaponY + (SLOT - h) / 2;
+    return irr::core::rect<irr::s32>(x, y, x + w, y + h);
+}
+
 } // namespace InventoryLayout
 } // namespace Graphics
 } // namespace EQT

@@ -156,6 +156,7 @@ public:
     void recipesFavorite(const std::vector<uint32_t>& recipeIds) override;
     void tradeskillCombine(int16_t containerSlot) override;
     void closeTradeskillContainer() override;
+    void toggleBag(int16_t generalSlot) override;  // B899
 
     // T153: /appearance -- merges the named fields over the character's
     // current appearance and calls EverQuest::SendFaceChange().
@@ -276,6 +277,7 @@ public:
     // (eq_merchant.cpp), which push the kept Bank* intents.
     void bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank) override;
     void bankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount) override;
+    void bankMakeChange() override;  // B441
 
     // ========== Social / Find (T150) ==========
     void assistGroup(uint16_t targetId) override;

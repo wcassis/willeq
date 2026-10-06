@@ -95,20 +95,10 @@ bool TradeManager::hasOwnItem(int slot) const
     }
     // T259: nothing calls addItemToTrade() (items reach the trade window
     // through InventoryManager::placeItem(3000+slot) and one MoveItem), so
-    // m_own_item_slots was always empty and the completion summary's "You
-    // give X to Y" lines never printed. The inventory model's trade slot IS
+    // m_own_item_slots is always empty. The inventory model's trade slot IS
     // the truth for what we offered.
     return m_inventory_manager &&
            m_inventory_manager->getItem(static_cast<int16_t>(eqt::inventory::TRADE_BEGIN + slot)) != nullptr;
-}
-
-const eqt::inventory::ItemInstance* TradeManager::getOwnItem(int slot) const
-{
-    if (!hasOwnItem(slot) || !m_inventory_manager) {
-        return nullptr;
-    }
-    // Items in trade are still in the trade slots (3000-3003)
-    return m_inventory_manager->getItem(eqt::inventory::TRADE_BEGIN + slot);
 }
 
 bool TradeManager::addItemToTrade(int16_t inventorySlot, int tradeSlot)
@@ -227,6 +217,36 @@ void TradeManager::setOwnMoney(uint32_t platinum, uint32_t gold, uint32_t silver
     if (m_on_money_updated) {
         m_on_money_updated(true);
     }
+}
+
+bool TradeManager::addOwnCoinFromCursor(int32_t coinType, uint32_t amount)
+{
+    if (m_state != TradeState::Active || amount == 0) {
+        return false;
+    }
+    uint32_t* bucket = nullptr;
+    switch (coinType) {
+        case EQT::COINTYPE_CP: bucket = &m_own_money.copper; break;
+        case EQT::COINTYPE_SP: bucket = &m_own_money.silver; break;
+        case EQT::COINTYPE_GP: bucket = &m_own_money.gold; break;
+        case EQT::COINTYPE_PP: bucket = &m_own_money.platinum; break;
+        default: return false;
+    }
+    if (m_send_move_coin) {
+        EQT::MoveCoin_Struct move;
+        move.from_slot = EQT::COINSLOT_CURSOR;
+        move.to_slot = EQT::COINSLOT_TRADE;
+        move.cointype1 = coinType;
+        move.cointype2 = coinType;
+        move.amount = static_cast<int32_t>(amount);
+        m_send_move_coin(move);
+    }
+    *bucket += amount;
+    resetAccept();
+    if (m_on_money_updated) {
+        m_on_money_updated(true);
+    }
+    return true;
 }
 
 void TradeManager::clickAccept()

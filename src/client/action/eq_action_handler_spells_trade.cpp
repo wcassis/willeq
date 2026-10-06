@@ -231,7 +231,7 @@ void EqActionHandler::acceptTrade() {
     }
     // T103: acceptTradeRequest() drives TradeManager's setState(Active),
     // which synchronously (same thread, same call) fires
-    // EverQuest::SetupTradeWindowCallbacks()'s Active branch and populates
+    // MerchantComponent::SetupTradeManagerCallbacks()'s Active branch and populates
     // m_eq.GetGameState().trade() BEFORE this call returns -- so reading the
     // projection's partnerName() after the call is safe and correct, and
     // sidesteps the read-before-populate aliasing class of bug entirely
@@ -254,8 +254,10 @@ void EqActionHandler::cancelTrade() {
         m_eq.AddChatSystemMessage("You are not trading");
         return;
     }
+    // B896 (#212): the one line is the cancelled callback's eqstr 1450, "You
+    // have cancelled the trade." (MEASURED, review/UIGAP-ORACLE/212/trade.tsv
+    // row 8) -- this used to add a second, fable-only "Trade cancelled".
     trade->cancelTrade();
-    m_eq.AddChatSystemMessage("Trade cancelled");
 }
 
 void EqActionHandler::declineTrade() {
@@ -452,6 +454,11 @@ void EqActionHandler::tradeskillCombine(int16_t containerSlot) {
 
 void EqActionHandler::closeTradeskillContainer() {
     m_eq.Commands().RequestCloseTradeskillContainer();
+}
+
+// B899: /bag <general slot> -- the carried container window's producer.
+void EqActionHandler::toggleBag(int16_t generalSlot) {
+    m_eq.Commands().RequestToggleBag(generalSlot);
 }
 
 // T153: /appearance. SendFaceChange() had zero production callers, so nothing

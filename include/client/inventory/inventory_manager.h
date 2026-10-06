@@ -180,6 +180,13 @@ public:
     // server has already deleted it. Returns false if the cursor is empty.
     bool consumeScribedScroll();
 
+    // B442b (#151 rows 33, 35): the cursor front leaves the client by a
+    // packet the CALLER sends -- OP_GroundSpawn (a drop) or OP_MoveItem
+    // 30 -> -1 (a destroy, the official wire; not OP_DeleteItem, which is
+    // what destroyCursorItem() sends). The same local bookkeeping as
+    // consumeScribedScroll(); pushes NOTHING. False if the cursor is empty.
+    bool discardCursorFront();
+
     // Swap items between slots
     bool swapItems(int16_t fromSlot, int16_t toSlot);
 

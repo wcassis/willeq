@@ -833,17 +833,25 @@ it without taking that measurement first.
   draw-time BOs hold 3-6 MiB of the client's GEM at `steady_60s`, driven by
   client-array draws (2D UI, entities, zone pools, raw-GL particles). A static
   VBO for the zone pools measured worse (B962). Measured by B962. **2026-10-06
-  (`refactor/B972/README.md`): reproduced the baseline RED on both zones at the
-  fable tip (qeynos2 18.90 / gfaydark 24.5 MiB `gpu_unnamed_steady`, cache-on,
-  imp200far) and ran the decisive `off200far` control: impostors OFF reads the
-  SAME (qeynos2 17.64 / gfaydark 24.54), so the impostor is NOT the lever — its
-  ~12 MiB is a *named* texture, its unnamed share is ≤1.3 MiB. Census: 13×1 MiB
-  cache-retained `u_upload` slots (6 `draw:zone` zone-merge + 6 `draw3d:client`
-  + 1 raw-GL particle, NO `draw2d`) + ~7.4 MiB per-draw varying BOs. The 10 MiB
-  crowd-tour bound needs a ~16-19 MiB cut dominated by the zone-merge pool that
-  B962 already rejected a static VBO for. **Blocker (needs Will): re-scope the
-  bound to a reachable point / ship the self-contained cuts + a follow-up
-  zone-merge card, vs keep the bound and split the work.**
+  split (Will, option 2, verbatim: "proceed with option 2"):** the 10 MiB
+  `gpu_unnamed_steady` crowd-tour guard HOLDS and is not re-scoped. #290 (MR
+  !94) ships only the self-contained, pixel-identical cuts (~3-6 MiB: impostor
+  pages, the untagged raw-GL particle draw, optionally the T462 `UiQuadBatch`
+  vertices); the zone-merge + entity-aux pool that keeps the guard red moves
+  to **B997 (#317)** — bounded-VBO conversion (B975 pattern), NOT the rejected
+  static VBO (B962). The guard reads red on the crowd tours until B997 lands
+  (B988/#307 known condition).
+- **B997** (B, memory) → issue #317. The B972 split-off: the zone-merge pool
+  (6 × 1 MiB `u_upload` `draw:zone` slots, ~38 client-array drawCalls/frame,
+  `renderer_zone_merge.cpp`) + the remaining `draw3d:client` pool hold the
+  residual above the 10 MiB `gpu_unnamed_steady` guard (measured 2026-10-06:
+  qeynos2 18.90 / gfaydark 24.5 MiB cache-on imp200far, the impostor proven
+  NOT the lever by the `off200far` control — the B972 README in
+  `refactor/B972/` on the `task/B972-mesa-stream-buffers` branch, MR !94).
+  Conversion to bounded reused VBOs (partial `glBufferSubData`, the merged
+  B975 `NameTagBatchNode` slack pattern); a static VBO is the measured
+  anti-pattern (B962: +4.3 MiB, half qeynos2 fps). Cut behind #290/MR !94
+  (re-measure the residual after it lands).
 - ~~**B970** (B) → issue #288. `build-arm` fetched `irrlicht-1.8.5.zip` and
   `libpng-1.6.37.tar.xz` from downloads.sourceforge.net inside a Docker layer, so
   the 2026-10-01 SourceForge outage (HTTP 522, ~3 h) failed every job whose
@@ -1346,9 +1354,17 @@ it without taking that measurement first.
   `placeableObjectsBytes` baselines were BLESSED by Will in chat 2026-09-30
   ("bless placeableObjectsBytes", `docs/decisions.md`). #247 acceptance 1 is in;
   acceptance 2 (the census job) remains.
-- **B938** (A, memory) → issue #256. After B936 the per-placement scene node
-  (`obj.instances`, about 2.2 KB per placed object on x86, 1.5 KB on the Pi)
-  is 88–98 % of `objects`: 9.6 MB of growthplane's 9.7 MB on x86.
+- **B938** (A, memory) → issue #256. RESOLVED (MR pending): the per-placement
+  `IMeshSceneNode` (~2.2 KB) and the four renderer-parallel vectors are
+  replaced by a 168 B `PlacedObjectRecord` read by both draw paths; PVS zones
+  allocate no node at all (growthplane scene graph 4,333 → 10 nodes). x86
+  `obj.instances` growthplane 9.61 → 3.27 MB (the residual is the per-object
+  light nodes, a separate concern); Pi `obj.instances` growthplane 6.59 →
+  2.66, trakanon 4.47 → 1.76, gfaydark 3.33 → 0.65 MB (overthere no `ready`,
+  B940; the trakanon row's `gpu_unnamed_over_bound` verdict is B988/#307's
+  known condition); per-pixel: CI visual gate 0 mismatch, all five golden
+  zones; size pinned by `tests/test_placed_object_record.cpp`.
+  `refactor/B938/README.md`.
 - **B939** (B) → issue #257. The placement phase of keyframe-animated
   objects was never measured against the official client (#254 acceptance 1);
   fable animates them in phase and B936 keeps that. The baked load pose is not
@@ -8504,7 +8520,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   is established that Titanium never puts one there and the two elements are
   recorded as deliberately unused. Found by T436.
 
-- **B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`), → issue #26
+- ~~**B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`), → issue #26
   `include/client/graphics/ui/bank_layout.h` -- **the bank window's Change
   button is drawn greyed and is not hit-testable.** The oracle's Change opens a
   coin-denomination dialog that fable does not have, and the underlying
@@ -8513,7 +8529,11 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   missing is a way for one click to supply the from/to/amount triple it needs.
   `/bank convert <from> <to> <amount>` remains the only route. Drawn disabled
   rather than wired to a guess, the T363 rule T434 made mechanical. Closes on a
-  decision about what gesture supplies the triple. Found by T436.
+  decision about what gesture supplies the triple. Found by T436.~~
+  **STRUCK (UIGAP-small): there is no dialog -- no EQUI_*.xml declares one and
+  the client's own help/tips/ctxbank.html says Change converts all coin, bank
+  and person, to the fewest coins. Wired as one click (`BankMakeChangeIntent`,
+  `coin_change.h`, `/bank change`), pinned by `tests/test_bank_change.cpp`.**
 
 - **B442** (B) `src/client/graphics/ui/static_ui_input.cpp` → issue #151
   (`StaticUIInput::processCommerceInput`, the bank-slot arm) -- **a bank slot
@@ -8533,13 +8553,25 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   ALT+left = item display; a purse row opens the QuantityWnd for coin -- all
   per the oracle ledger review/UIGAP-ORACLE/151/gestures.tsv;
   `/pickup` `/putdown` `/cursor` `/coin`; `tests/test_cursor_gesture.cpp`.
+  **B442b (2026-10-06, branch `task/B442b-gesture-completion`)** finished the
+  offline gesture set, each case citing its gestures.tsv row in
+  `tests/test_cursor_gesture_completion.cpp`: right-click on a carried bag
+  toggles its window (rows 19-21; `InventorySlotChangedData::bagSlots`,
+  `CursorGestureOp::ToggleBag` -> the `/bag` body); the right-click item
+  display shows only while held, Alt+left keeps it (rows 24-27); coin rides
+  the cursor as dragitem 644-647 with its count strip (row 29, new event
+  `CursorCoinChanged`, B442's render-side `coinHeld_` shadow deleted) and the
+  bank's coin rows move on OP_MoveCoin slot 2 (rows 43-44); a motionless world
+  click with an item held and `IW_Destroy` raise the reusable
+  `EQUI_ConfirmationDialog` widget with eqstr 9057 / 2043 (new event
+  `ConfirmationRequested`), Yes sends `OP_GroundSpawn` (empty) / `OP_MoveItem
+  30 -> -1` (rows 31-35); `QTYW_SliderInput` takes typed digits (row 5).
   STILL OWED (#151 stays open): the live `pickup_roundtrip` scenario and
-  two-client wear check (Leg V), the bag window (B899), trade/give windows, a
-  coin icon + count on the cursor, typing into `QTYW_SliderInput`, the world
-  drop prompt (OP_GroundSpawn) and Destroy prompt (30 -> -1), the
-  hold-to-show right-click display, bank coin rows, a right-click display for
+  two-client wear check (Leg V), trade/give windows, a right-click display for
   corpse rows, loot-to-cursor vs auto-inventory (the oracle did not capture
-  loot). Merchant selling is #152's (the oracle: never via the cursor).
+  loot; the existing LootItemIntent behaviour is unchanged), the confirmation
+  dialog's unanswered auto-dismiss timeout (not measured), world clicks on an
+  NPC with an item held (the give gesture, the trade/give unit's).
 
 - **B443** (B) `src/client/graphics/ui/merchant_panel.cpp` → issue #152
   (`renderMerchantPopup`, the trade button) -- **which of Buy and Sell the
@@ -8553,6 +8585,16 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   name. The oracle's actual rule is unmeasured. Closes by watching the official
   client at a vendor with and without a held item (the T342 rig). Found by
   T436.
+  **MEASURED (UIGAP-ORACLE 2026-10-05, review/UIGAP-ORACLE/152/merchant.tsv)
+  and IMPLEMENTED by B442b (2026-10-06):** the button is the side of the LAST
+  selection (a merchant row -> Buy, an inventory item -> Sell; Buy on open),
+  and the cursor is never used -- an inventory click with a merchant open
+  SELECTS the item (yellow frame) and Sell sends `OP_ShopPlayerSell` from its
+  slot; Sell on a stack opens the QuantityWnd. T436's cursor default is gone.
+  Owed: the eqstr 4020 / 12026 price tells and the sell offer in
+  `MW_SelectedPriceLabel`; the inventory window opening beside the merchant
+  (fable's merchant shares centerPopup with the inventory popup, so today a
+  sale is selected from a bag window or with the popup reopened).
 
 - ~~**B444** (B) `src/client/core/everquest.cpp` (the zone-in inventory snapshot,
   `for (int16_t slot = 0; slot < 30; ++slot)`) -- **the zone-in snapshot
@@ -8934,6 +8976,11 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   presses ESC on each with the official client running and records what
   happens. Cheap and scriptable -- we control the server and the vendor.
   Found by T443.
+  **UIGAP-small (B460 partial):** the ORDER is now the measured one (most
+  recently opened first, one per press; `esc_window_stack.h`,
+  `tests/test_esc_window_stack.cpp`). Still unmeasured, so this stays open:
+  ESC on the merchant/bank/trainer specifically, and whether a
+  window-closing press also clears the target (fable: it does not).
 
 ---
 
@@ -10255,14 +10302,18 @@ because the Pi had no keyboard or mouse attached (B510).
   eight bindings), pinned by
   `T464_TheShippedFileCarriesEveryDefaultBinding`, issue #182 closed.**
 
-- **(B, needs a GitLab issue)** MR !34's fix commit notes that 7 of the 8
+- ~~**(B, needs a GitLab issue)** MR !34's fix commit notes that 7 of the 8
   actions it added to `setupDefaults()` still have no dispatch consumer:
   `hotkey_manager.cpp:476` says "ToggleZoneLights is the ONE of the eight
   with a dispatch consumer" (`RendererEventReceiver` -> `RA::ToggleZoneLights`).
   `CancelDialog`, `CancelInput`, `ChatAutocomplete`, `ConfirmDialog`,
   `ResetUIDefaults`, `SaveUILayout` and `ToggleUILock` are bound keys with
   nothing behind them -- the B562 fix made the binding table match the
-  shipped file, it did not wire the seven actions to anything. Remains open.
+  shipped file, it did not wire the seven actions to anything. Remains open.~~
+  **STRUCK (UIGAP-small, B905 / #225): the seven -- and `SubmitInput`, found
+  by the new census -- were DELETED (no oracle counterpart; as Global
+  bindings they shadowed Tab/Escape/Return), Ctrl+Q `Attack` got its receiver
+  arm, pinned by `tests/test_hotkey_dispatch_census.cpp`.**
 
 - **B563** (P) **The region box a camera or sim reads is built in one place
   and re-derived in a test.** `tests/test_camera_bsp_ceiling.cpp` copies
@@ -12584,7 +12635,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   Not class A: the score decided a corpus LABEL, not a shipped constant, and
   `review/T492/README.md` says the corpus is not blessed until Will has looked
   at the sheets. Found by T499.
-- **B834** (B) **The tip window is not only "Tip of the Day" at login -- it has → issue #202
+- **B834** (B) [UIGAP-small: fable now HAS the tip windows -- `tip_window.h`, `tests/test_tip_window.cpp`; what stays open is the oracle half below: whether `ShowTips=0` suppresses the context tips on the official client] **The tip window is not only "Tip of the Day" at login -- it has → issue #202
   context-sensitive variants that pop at the SAME rect after an in-world
   action, and nothing has ever verified that `[Tips] ShowTips=0` suppresses
   them.** [measured T499] The same 360x300 window at (664,234) carries a
