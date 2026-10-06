@@ -23,6 +23,7 @@
 #include <unordered_set>
 #include <json/json.h>
 #include <cmath>
+#include <optional>
 
 namespace EQT {
 namespace Audio {
@@ -33,6 +34,19 @@ glm::vec3 eqHeadingToListenerForward(float headingDeg) {
     const float headingRad = headingDeg * static_cast<float>(M_PI) / 180.0f;
     return glm::vec3(std::sin(headingRad), std::cos(headingRad), 0.0f);
 }
+
+// B977 (2026-10-01): the `audio` ledger category covered initialize() only.
+// Everything audio loaded LATER -- the custom SoundFont that T504 deferred to
+// the first Velious/Luclin XMI, every WAV decoded on first play, the SFX
+// mixer's copy of it -- was charged to whatever scope the CALLING thread had
+// open: the game thread's `game_state`. Measured on the Orange Pi (B854,
+// velketor): `audio` 1,625,664 B at steady_60s while `game_state` rose by
+// 24.8 MB when the custom font loaded. So every public entry point that can
+// allocate opens the Audio scope itself, and the `au.*` owner labels name the
+// sub-owners for a WILLEQ_LEDGER_OWNERS=audio run.
+using eqt::memory::Category;
+using eqt::memory::MemoryScope;
+using eqt::memory::StartupScope;
 
 AudioManager::AudioManager() = default;
 
@@ -53,6 +67,8 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
     tickCallback_ = std::move(tickCallback);
 
     // Create AudioMixer
+    std::optional<StartupScope> owner;
+    owner.emplace("au.mixer_sfx");  // B977
     mixer_ = std::make_unique<AudioMixer>();
     mixer_->setMasterVolume(masterVolume_);
     mixer_->setMusicVolume(musicVolume_);
@@ -66,6 +82,8 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
     if (tickCallback_) tickCallback_();
 
     // Create MidiPlayer (for XMI/MIDI music)
+    owner.reset();
+    owner.emplace("au.soundfont_gm");  // B977
     midiPlayer_ = std::make_unique<MidiPlayer>();
 
     // Find GM SoundFont: CLI --soundfont > synthusr.sf2 > 1mgm.sf2
@@ -122,6 +140,8 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
     if (tickCallback_) tickCallback_();
 
     // Create MusicPlayer (wrapper around MidiPlayer + mixer for MP3/WAV/XMI)
+    owner.reset();
+    owner.emplace("au.music");  // B977
     musicPlayer_ = std::make_unique<MusicPlayer>();
     LOG_INFO(MOD_AUDIO, "Initializing music player with eqPath: {}, soundfont: {}",
              eqPath_, soundFontPath_.empty() ? "(none)" : soundFontPath_);
@@ -144,6 +164,8 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
     if (tickCallback_) tickCallback_();
 
     // Create and initialize audio backend
+    owner.reset();
+    owner.emplace("au.backend");  // B977
     if (forceLoopback) {
         LOG_INFO(MOD_AUDIO, "Loopback mode requested");
         auto rdpBackend = std::make_unique<RDPAudioBackend>();
@@ -187,7 +209,10 @@ bool AudioManager::initialize(const std::string& eqPath, bool forceLoopback,
     loadSoundAssets();
 
     // Scan PFS archives for sound files (pumps event loop per-archive internally)
+    owner.reset();
+    owner.emplace("au.pfs_index");  // B977
     scanPfsArchives();
+    owner.reset();
 
     // Load music event configuration
     loadMusicEventConfig();
@@ -250,6 +275,7 @@ void AudioManager::playSound(uint32_t soundId) {
 }
 
 void AudioManager::playSound(uint32_t soundId, const glm::vec3& position) {
+    MemoryScope memScope(Category::Audio);  // B977
     if (!initialized_ || !audioEnabled_) {
         return;
     }
@@ -279,6 +305,7 @@ void AudioManager::playSoundByName(const std::string& filename) {
 }
 
 void AudioManager::playSoundByName(const std::string& filename, const glm::vec3& position) {
+    MemoryScope memScope(Category::Audio);  // B977
     if (!initialized_ || !audioEnabled_) {
         return;
     }
@@ -296,13 +323,16 @@ void AudioManager::playSoundByName(const std::string& filename, const glm::vec3&
 }
 
 void AudioManager::playSoundInternal(const std::string& filename, const glm::vec3& position) {
+    MemoryScope memScope(Category::Audio);  // B977
     if (!sfxManager_) return;
 
     // Ensure sound data is in SfxManager cache
     auto buffer = loadSound(filename);
     if (!buffer || !buffer->isValid()) return;
 
-    // Preload into SfxManager if not already
+    // Preload into SfxManager if not already. B977: this is a SECOND float
+    // copy of the samples loadSound() keeps in bufferCache_ -- its own owner.
+    StartupScope owner("au.sfx_cache");
     sfxManager_->preload(filename, buffer->getSamples(),
                          buffer->getFrameCount(), buffer->getSampleRate(),
                          buffer->getChannels());
@@ -327,6 +357,7 @@ void AudioManager::stopAllSounds() {
 }
 
 void AudioManager::playMusic(const std::string& filename, bool loop, int trackIndex, double startTimeMs) {
+    MemoryScope memScope(Category::Audio);  // B977
     if (!initialized_ || !audioEnabled_ || !musicPlayer_) {
         LOG_DEBUG(MOD_AUDIO, "Music failed: file={} (not initialized or disabled)", filename);
         return;
@@ -356,17 +387,20 @@ void AudioManager::playMusic(const std::string& filename, bool loop, int trackIn
         std::string ext = std::filesystem::path(fullPath).extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
         if (ext == ".xmi") {
+            StartupScope owner("au.soundfont_custom");  // B977: T504's on-demand load
             midiPlayer_->selectSoundFont(getSoundFontTypeForFile(fullPath));
         }
     }
 
     musicPlayer_->setVolume(masterVolume_ * musicVolume_);
+    StartupScope owner("au.music");  // B977
     if (!musicPlayer_->play(fullPath, loop, trackIndex, startTimeMs)) {
         LOG_WARN(MOD_AUDIO, "Failed to play music: {}", fullPath);
     }
 }
 
 void AudioManager::stopMusic(float fadeOutSeconds) {
+    MemoryScope memScope(Category::Audio);  // B977
     if (musicPlayer_) {
         musicPlayer_->stop(fadeOutSeconds);
     }
@@ -389,6 +423,7 @@ bool AudioManager::isMusicPlaying() const {
 }
 
 void AudioManager::onZoneChange(const std::string& zoneName) {
+    MemoryScope memScope(Category::Audio);  // B977
     LOG_DEBUG(MOD_AUDIO, "Zone change: {} -> {}", currentZone_, zoneName);
 
     if (!initialized_ || !audioEnabled_) {
@@ -415,6 +450,7 @@ void AudioManager::onZoneChange(const std::string& zoneName) {
 }
 
 void AudioManager::restartZoneMusic() {
+    MemoryScope memScope(Category::Audio);  // B977
     if (!initialized_ || !audioEnabled_ || currentZone_.empty()) {
         return;
     }
@@ -436,6 +472,7 @@ void AudioManager::restartZoneMusic() {
 }
 
 void AudioManager::startAutoAttackMusic() {
+    MemoryScope memScope(Category::Audio);  // B977
     if (!initialized_ || !audioEnabled_) return;
     if (!autoAttackMusicConfig_.enabled) return;
 
@@ -468,6 +505,7 @@ void AudioManager::startAutoAttackMusic() {
 }
 
 void AudioManager::stopAutoAttackMusic() {
+    MemoryScope memScope(Category::Audio);  // B977
     if (!autoAttackMusicActive_) return;
 
     LOG_DEBUG(MOD_AUDIO, "Auto-attack music: stopping");
@@ -479,6 +517,7 @@ void AudioManager::stopAutoAttackMusic() {
 }
 
 void AudioManager::startVendorBankMusic() {
+    MemoryScope memScope(Category::Audio);  // B977
     if (!initialized_ || !audioEnabled_) return;
     if (!vendorBankMusicConfig_.enabled) return;
     if (vendorBankMusicActive_) return;
@@ -504,6 +543,7 @@ void AudioManager::startVendorBankMusic() {
 }
 
 void AudioManager::stopVendorBankMusic() {
+    MemoryScope memScope(Category::Audio);  // B977
     if (!vendorBankMusicActive_) return;
 
     LOG_DEBUG(MOD_AUDIO, "Vendor/bank music: stopping");
@@ -567,6 +607,7 @@ void AudioManager::setAudioEnabled(bool enabled) {
 }
 
 void AudioManager::setAudioOutputCallback(AudioOutputCallback callback) {
+    MemoryScope memScope(Category::Audio);  // B977
     audioOutputCallback_ = std::move(callback);
 
     // If we have an RDP backend, set the callback on it
@@ -593,6 +634,8 @@ void AudioManager::setMemoryConstraints(size_t soundCacheBytes, bool lazyPfs) {
 }
 
 std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename) {
+    MemoryScope memScope(Category::Audio);  // B977
+    StartupScope owner("au.sound_buffers");
     std::lock_guard<std::mutex> lock(bufferMutex_);
 
     // Check cache
@@ -706,6 +749,7 @@ void AudioManager::preloadSound(uint32_t soundId) {
 }
 
 void AudioManager::preloadCommonSounds() {
+    MemoryScope memScope(Category::Audio);  // B977
     if (!initialized_) return;
 
     LOG_INFO(MOD_AUDIO, "Preloading common sound effects...");
@@ -742,6 +786,7 @@ std::shared_ptr<SoundBuffer> AudioManager::getSoundBufferByName(const std::strin
 }
 
 bool AudioManager::enableLoopbackMode() {
+    MemoryScope memScope(Category::Audio);  // B977
     if (loopbackMode_) {
         LOG_DEBUG(MOD_AUDIO, "Already in loopback mode");
         return true;

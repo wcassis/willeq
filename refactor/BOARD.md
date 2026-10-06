@@ -39,6 +39,30 @@ it without taking that measurement first.
 
 ## A — live defects
 
+- **B990** (A) → issue #309. The custom orchestral SoundFont `synthus2.sf2`
+  (12,036,844 B on disk) is held in the client as **24,160,712 B (23.16 MiB) of
+  float samples** (`tsf` holds float; `au.soundfont_custom`, Pi velketor steady
+  `refactor/B977/audio_ledger_census.tsv` — the same 24,162,944 B on x86). It
+  loads on the first `playMusic` of a Velious/Luclin XMI stem (T504 deferred
+  it from startup to `MidiPlayer::selectSoundFont(Custom)`) and is never
+  released: it is 84 % of the audio ledger's measured worst (velketor,
+  28,720,320 B at steady_60s) and what makes the audio ratchet (35 MiB) refuse
+  to move the 32 MiB budget down (B977, #295; docs/decisions.md 2026-10-05).
+  The original client (32 MB total) never decoded its font to float. **This
+  defect moves first**; a re-ratchet of `memoryLedgerBudgets.audio` follows
+  Will's number when it lands. Filed by B977, class::A, lane::pi.
+- **B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
+  float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode,
+  ~2.0–2.4 MB after the B977 tour's combat) and `SfxManager::cache_`
+  (`au.sfx_cache`, `preload()`'s second copy of the same samples), each capped
+  separately at the preset's `soundCache` (8,192 KB on orangepi) — up to
+  16 MiB of duplicated decoded PCM the 1999 client did not carry twice.
+  Measured: b977-audio x86 befallen `au.sound_buffers` 2,322,320 +
+  `au.sfx_cache` 310,640 B at steady_60s (723,600 B at the shutdown and
+  zone_change points; Pi befallen 2,320,376 + 723,456 B at steady_60s,
+  `refactor/B977/audio_ledger_census.tsv` owner rows). Moves SECOND, after
+  B990, in the audio re-ratchet. Filed by B977, class::A, lane::pi.
+
 - ~~**B852** (A) **Nothing verifies that Kunark and Velious zones load.** The CI
   gate renders three classic zones and nothing else; no test, script or gate
   opened a single Kunark or Velious zone. Will, 2026-09-20: "velious and
