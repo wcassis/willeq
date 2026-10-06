@@ -33,13 +33,16 @@
  *     check (row 3); stored as typed (row 5); self-ignore prints 13242
  *     (row 8); add/remove send NOTHING on the wire (rows 1-17).
  *   - Each list is kept SORTED and fills from the END (rows 1, 11, 17).
+ *   - The cap is 100 each, refused client-side with eqstr 12983 / 13244
+ *     (13244 with TWO spaces after "already."), nothing on the wire; a
+ *     toggle-off of a present name still works at the cap and frees one
+ *     slot (rows cap1-cap5, UIGAP-live2 2026-10-06).
  *
  * NOT MEASURED, and therefore fable's stated default, listed under
  * "assumptions awaiting oracle" in B897's MR and in
  * refactor/B897_friends_window.md:
  *   - MATCHING is case-insensitive (EQ character names are); storage is not.
  *   - The sort is case-insensitive (both measured pairs agree with it).
- *   - The 100 cap and its messages 12983 / 13244 (row 18: not captured).
  *   - "Too long" (eqstr 12981) is more than kSocialNameMaxLength characters
  *     -- the 64-byte name buffer every Titanium struct uses, less its NUL.
  *     eqemu's world drops a whole friends-who request whose segment is longer
