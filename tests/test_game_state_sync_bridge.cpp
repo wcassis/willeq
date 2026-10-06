@@ -14,6 +14,8 @@
 
 #include "client/bridge/game_state_sync_bridge.h"
 
+#include <cstddef>
+
 using namespace eqt;
 using namespace eqt::bridge;
 using namespace eqt::state;
@@ -242,4 +244,153 @@ TEST_F(GameStateSyncBridgeTest, SingleStageApplyEventForwardsImmediately) {
 
     bridge->forwardStagedEvents();
     EXPECT_EQ(wrapped->applied.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// B945: the staging path returns its capacity once a burst has drained.
+//
+// The zone-in burst (timorous: ~30k spawn/parse events) grows the staging
+// queues, and before the fix their buffers kept that burst-sized allocation
+// for the whole session (a 3.1 MB block alive at ready, B941's trace). The
+// rule under test: a burst may grow a queue, but once it has drained and a
+// subsequent queue is under half of the peak, the buffer is returned -- so
+// the retained capacity is bounded by the live queue's steady state, never
+// by the burst's peak. (After a drain the queue itself is empty -- the
+// events are in the vector the drain returned -- so "the queue gave its
+// burst back" is exactly "its capacity is back down to steady state".)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr size_t kEventSize = sizeof(state::GameEvent);
+
+} // namespace
+
+TEST_F(GameStateSyncBridgeTest, BurstDrainReturnsEventQueueCapacity) {
+    // Burst: N events pushed, then one drain on the next game tick.
+    const size_t kBurst = 100000;
+    for (size_t i = 0; i < kBurst; ++i) {
+        bridge->pushEvent(pet(1 + static_cast<uint16_t>(i & 0xFFFF)));
+    }
+    // The burst's drain: the base queue must deliver every event...
+    std::vector<GameEvent> drained = bridge->drainEvents();
+    ASSERT_EQ(drained.size(), kBurst);
+    // ...and during the burst the queue's live buffer held at least the
+    // burst (measured after the fact only via the retained capacity the
+    // NEXT growth proves: a steady trickle that fits in a small buffer
+    // must not keep growing it back to the burst size).
+
+    // Steady state: a trickle, drained every tick.
+    const size_t kSteady = 100;
+    for (int tick = 0; tick < 4; ++tick) {
+        for (size_t i = 0; i < kSteady; ++i) {
+            bridge->pushEvent(pet(1 + static_cast<uint16_t>(i & 0xFFFF)));
+        }
+        ASSERT_EQ(bridge->drainEvents().size(), kSteady);
+    }
+    // The burst's buffer is back: the queue's retained capacity tracks the
+    // live queue (its steady peak, 100), not the burst's 100k.
+    EXPECT_LE(bridge->eventQueueCapacityBytes(), kSteady * kEventSize);
+}
+
+TEST_F(GameStateSyncBridgeTest, BurstDrainReturnsStagingQueueCapacity) {
+    // The render-side queue (m_forwardQueue) holds the burst while the
+    // render thread is busy (a zone load); the same halving rule returns it
+    // once the burst has been forwarded and a live queue under half the peak
+    // is drained.
+    const size_t kBurst = 100000;
+    for (size_t i = 0; i < kBurst; ++i) {
+        bridge->pushEvent(pet(1 + static_cast<uint16_t>(i & 0xFFFF)));
+    }
+    bridge->stagePendingEvents();
+    // Burst staged: nothing forwarded yet, the staging queue's buffer holds
+    // at least the burst.
+    EXPECT_TRUE(wrapped->applied.empty());
+    EXPECT_GE(bridge->forwardQueueCapacityBytes(), kBurst * kEventSize);
+
+    // Burst forwarded, then a live trickle (game thread stages, render
+    // thread forwards) drained below half the peak.
+    bridge->forwardStagedEvents();
+    ASSERT_EQ(wrapped->applied.size(), kBurst);
+    // The burst just drained: the staging queue is empty and its buffer is
+    // released (the drain's returned vector holds the events, not the
+    // queue). This is the load-phase shape: the render thread was busy, the
+    // whole burst sat staged, and the first forward must not leave the
+    // burst-sized buffer behind for the rest of the session.
+    EXPECT_EQ(bridge->forwardQueueCapacityBytes(), 0u);
+    const size_t kSteady = 100;
+    for (int tick = 0; tick < 4; ++tick) {
+        for (size_t i = 0; i < kSteady; ++i) {
+            bridge->pushEvent(pet(1 + static_cast<uint16_t>(i & 0xFFFF)));
+        }
+        bridge->stagePendingEvents();
+        bridge->forwardStagedEvents();
+        ASSERT_EQ(wrapped->applied.size(), kBurst + static_cast<size_t>(tick) * kSteady + kSteady);
+    }
+    // The burst's staging buffer is back: the retained capacity tracks the
+    // live queue (its steady peak, 100), not the burst's 100k.
+    EXPECT_LE(bridge->forwardQueueCapacityBytes(), kSteady * kEventSize);
+}
+
+TEST_F(GameStateSyncBridgeTest, ASecondBurstStillGrowsAndDrainsAgain) {
+    // The shrink must not lock the queue small: a second burst may still
+    // grow to its own size, and drains back down afterwards. (A burst that
+    // grows past half the peak must never force its own shrink mid-flight.)
+    for (size_t i = 0; i < 100000; ++i) {
+        bridge->pushEvent(pet(1));
+    }
+    ASSERT_EQ(bridge->drainEvents().size(), 100000u);
+    for (size_t i = 0; i < 100; ++i) bridge->pushEvent(pet(1));
+    ASSERT_EQ(bridge->drainEvents().size(), 100u);
+    EXPECT_LE(bridge->eventQueueCapacityBytes(), 100 * kEventSize);
+
+    // Second, larger burst: it must be delivered whole (no mid-burst
+    // shrink, no dropped events) and the queue drains back to steady.
+    for (size_t i = 0; i < 200000; ++i) {
+        bridge->pushEvent(pet(1));
+    }
+    ASSERT_EQ(bridge->drainEvents().size(), 200000u);
+    for (size_t i = 0; i < 100; ++i) bridge->pushEvent(pet(1));
+    ASSERT_EQ(bridge->drainEvents().size(), 100u);
+    EXPECT_LE(bridge->eventQueueCapacityBytes(), 100 * kEventSize);
+}
+
+TEST_F(GameStateSyncBridgeTest, SteadyStateDrainsStopReallocating) {
+    // The no-thrash property, both directions, measured on the retained
+    // buffer:
+    //  - the QUEUE stops holding the burst: after a burst drains and the
+    //    live queue settles below half the peak, the queue's retained
+    //    capacity is back at steady state (zero here -- the queue is empty
+    //    after every drain -- and must STAY there through further steady
+    //    cycles: it never re-grows past what the live trickle needs);
+    //  - the RETURNED vector stops growing: the drain's own vector keeps
+    //    its buffer across cycles, so a caller that drains every tick does
+    //    not allocate a fresh burst-sized vector per drain.
+    // Before the fix, leg 1 held a 100k-sized buffer forever (the 3.1 MB
+    // timorous block); a shrink on EVERY drain would fail leg 1 by
+    // re-allocating every frame, and leg 2 would fail if the returned
+    // vector lost its buffer.
+    //
+    // Leg 1: the queue.
+    for (size_t i = 0; i < 1000; ++i) bridge->pushEvent(pet(1));
+    ASSERT_EQ(bridge->drainEvents().size(), 1000u);
+    for (size_t i = 0; i < 100; ++i) bridge->pushEvent(pet(1));
+    ASSERT_EQ(bridge->drainEvents().size(), 100u);
+    EXPECT_EQ(bridge->eventQueueCapacityBytes(), 0u);
+    // Further steady cycles: the retained buffer stays at the steady
+    // state, never back at the burst.
+    for (int tick = 0; tick < 10; ++tick) {
+        for (size_t i = 0; i < 100; ++i) bridge->pushEvent(pet(1));
+        ASSERT_EQ(bridge->drainEvents().size(), 100u);
+    }
+    EXPECT_EQ(bridge->eventQueueCapacityBytes(), 0u);
+
+    // Leg 2: the returned vector keeps its buffer across drains.
+    std::vector<GameEvent> returned;
+    for (int tick = 0; tick < 10; ++tick) {
+        for (size_t i = 0; i < 100; ++i) bridge->pushEvent(pet(1));
+        returned = bridge->drainEvents();
+        ASSERT_EQ(returned.size(), 100u);
+    }
+    EXPECT_GE(returned.capacity(), 100u);
 }
