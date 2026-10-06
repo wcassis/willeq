@@ -169,7 +169,7 @@ Legend: Done | Partial | Not Implemented
 | XP bar | Done | |
 | Skills popup | Done | Skill values by category, class skill table from `config/skill_caps.json` |
 | Merchant window | Done | T436 (board B429), the oracle's `EQUI_MerchantWnd.xml`: stock list with icons, Buy/Sell, Done. As measured (B442b, #152): clicking one of your items selects it for sale (never the cursor), the button is Buy or Sell by the last selection, Sell on a stack opens the Quantity window. `/vendorlist`, `/buy`, `/sell` still work |
-| Bank window | Done | T436 (board B429), the oracle's `EQUI_BankWnd.xml`: 8 slots + 4 money rows + Change + Done. Change converts every coin in the bank and on you to the fewest coins (B441, the client's own tip text; `/bank change`). `/bank` still works |
+| Bank window | Done | T436 (board B429), the oracle's `EQUI_BankWnd.xml`: 8 slots + 4 money rows + Change + Done. Change converts every coin in the bank and on you to the fewest coins (B441, the client's own tip text; `/bank change`). `/bank` still works. Opens within 20 units of the banker ("Welcome to my bank!"), closes itself past 20 ("Come back soon!"), and bank slots and coin rows move nothing while it is shut -- all measured (B996, #316) |
 | Cursor item | Done | T436, `EQUI_CursorAttachment.xml`: the held item's icon follows the mouse |
 | Loot window | Done | T290, center popup, scrollable; left click = to the cursor, right click = straight to the inventory (measured, #151) |
 | Tip windows | Done | B834 (#202): the Tip of the Day at zone-in and the context tips on the first open of a window (Inventory, Bank, Merchant, Trainer, Friends, Loot, Quantity, ...), the client's own `help/tips/` texts, `EQUI_TipWnd.xml` controls, "Don't show" persisted in the official `[Tips]` keys |

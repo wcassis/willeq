@@ -98,10 +98,19 @@ struct Entity
 // state layer's -- rather than a second constant that happened to agree.
 using eqt::state::MAX_GROUP_MEMBERS;
 
-// Interaction distance for vendors, bankers, tradeskill containers, etc.
-// Player must be within this distance to interact with NPCs/objects
+// Interaction distance for vendors, tradeskill containers, trainers, etc.
+// Player must be within this distance to interact with NPCs/objects.
+// NOT measured on the official client (only the banker's below is).
 static constexpr float NPC_INTERACTION_DISTANCE = 15.0f;
 static constexpr float NPC_INTERACTION_DISTANCE_SQUARED = NPC_INTERACTION_DISTANCE * NPC_INTERACTION_DISTANCE;
+
+// The banker's range, MEASURED on the official Titanium client (UIGAP-live2,
+// review/UIGAP-ORACLE/316/range.tsv): a right-click opens the bank at 10.0,
+// 15.0, 19.8 and 20.0 units and is a /consider at 21.2, 22.6 and 28.3; an
+// open bank closes itself past the same 20 ("Come back soon!", eqstr 12143).
+static constexpr float BANKER_INTERACTION_DISTANCE = 20.0f;
+static constexpr float BANKER_INTERACTION_DISTANCE_SQUARED =
+    BANKER_INTERACTION_DISTANCE * BANKER_INTERACTION_DISTANCE;
 
 // T286: EverQuest used to declare its OWN GroupMember (snake_case) and
 // keep an m_group_members array of it next to GroupState's, with a

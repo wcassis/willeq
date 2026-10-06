@@ -348,7 +348,22 @@ void eqt::bridge::BridgeComponent::onBankerInteractIntent(const eqt::events::Ban
 	// Check distance to NPC
 	float distSq = ctx_.Movement().CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), target.x, target.y);
 	distSq = distSq * distSq;  // CalculateDistance2D returns distance, not squared
-	if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
+	constexpr uint8_t CLASS_BANKER = 40;
+	if (target.class_id == CLASS_BANKER) {
+		// UIGAP-residue (B996 #316, MEASURED -- review/UIGAP-ORACLE/316/
+		// range.tsv): the official right-click opens the bank at <= 20 units
+		// and is a plain /consider (OP_Consider) at 21.2 and beyond -- no
+		// "too far" line. A gate stricter than that is a defect (Will's rule).
+		if (distSq > BANKER_INTERACTION_DISTANCE_SQUARED) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: {} at {:.1f} > {:.0f}: a consider",
+			          target.name, std::sqrt(distSq), BANKER_INTERACTION_DISTANCE);
+			if (ctx_.combat_manager && ctx_.combat_manager->SetTarget(i.npcId)) {
+				SetTrackedTargetId(i.npcId);
+				ctx_.combat_manager->ConsiderTarget();
+			}
+			return;
+		}
+	} else if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
 		LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is too far away (dist={})", target.name, std::sqrt(distSq));
 		ctx_.out.System("You are too far away to interact with this NPC.");
 		return;
@@ -368,7 +383,6 @@ void eqt::bridge::BridgeComponent::onBankerInteractIntent(const eqt::events::Ban
 		return;
 	}
 
-	constexpr uint8_t CLASS_BANKER = 40;
 	if (target.class_id != CLASS_BANKER) {
 		LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not a banker (class={})", target.name, target.class_id);
 		ctx_.out.System("This NPC is not a banker.");

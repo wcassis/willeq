@@ -47,6 +47,7 @@
 #include "client/inventory/cursor_gesture.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/inventory_manager.h"
+#include "client/merchant/merchant_component.h"
 #include "client/state/event_bus.h"
 #include "common/net/daybreak_connection.h"
 #include "common/packet_structs.h"
@@ -1042,6 +1043,7 @@ TEST(CursorGestureGame, BankCoinToCursorThenPurse) {
     GameHarness h;
     h.eq.GetGameState().player().setCurrency(0, 0, 0, 0);
     h.eq.GetGameState().player().setBankCurrency(5, 0, 0, 0);
+    h.eq.Merchant().OpenBankWindow(1);   // B996: the coin rows exist only in the open bank
     h.clearSent();
     CursorGestureIntent c = op(CursorGestureOp::CoinClick);
     c.coinType = EQT::COINTYPE_PP;
@@ -1064,6 +1066,34 @@ TEST(CursorGestureGame, BankCoinToCursorThenPurse) {
     EXPECT_EQ(mc[0].amount, 5);
     EXPECT_EQ(h.eq.GetGameState().player().platinum(), 5u);
     EXPECT_FALSE(h.inv().hasCursorMoney());
+}
+
+// B996 (#316), MEASURED (review/UIGAP-ORACLE/316/README.md): with the bank
+// shut the official client has no bank slot or coin row to click, so it never
+// moves anything to or from 2000+. The gesture (click, /pickup, /putdown, a
+// bank coin row) refuses with the window shut and works with it open.
+TEST(CursorGestureGame, BankSlotsAndCoinRowsNeedTheOpenBankWindow) {
+    GameHarness h;
+    h.seed(22, "Rusty Dagger");
+    ASSERT_TRUE(h.inv().pickupItem(22));
+    h.bridge.drainIntents();
+    h.eq.GetGameState().player().setBankCurrency(5, 0, 0, 0);
+    h.clearSent();
+
+    h.run(op(CursorGestureOp::Click, eqt::inventory::BANK_BEGIN));
+    EXPECT_TRUE(h.sentOp(HC_OP_MoveItem).empty()) << "bank shut: no move";
+    EXPECT_NE(h.inv().getCursorItem(), nullptr);
+    EXPECT_EQ(h.inv().getItem(eqt::inventory::BANK_BEGIN), nullptr);
+    CursorGestureIntent coin = op(CursorGestureOp::CoinClick);
+    coin.coinType = EQT::COINTYPE_PP;
+    coin.coinSource = EQT::COINSLOT_BANK;
+    h.run(coin);
+    EXPECT_TRUE(moveCoins(h).empty()) << "bank shut: no bank coin move";
+
+    h.eq.Merchant().OpenBankWindow(1);
+    h.run(op(CursorGestureOp::Click, eqt::inventory::BANK_BEGIN));
+    EXPECT_EQ(h.sentOp(HC_OP_MoveItem).size(), 1u) << "bank open: 30 -> 2000";
+    EXPECT_NE(h.inv().getItem(eqt::inventory::BANK_BEGIN), nullptr);
 }
 
 TEST(CursorGestureGame, BankCoinRefusalsSendNothing) {

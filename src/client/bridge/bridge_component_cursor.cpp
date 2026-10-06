@@ -92,6 +92,14 @@ void eqt::bridge::BridgeComponent::RunCursorCoinGesture(const eqt::events::Curso
 	// Rows 43-44: the bank's BW_Money rows are OP_MoveCoin slot 2, the purse
 	// slot 1. Anything else is the purse (the intent's default).
 	const bool bank = i.coinSource == EQT::COINSLOT_BANK;
+	if (bank && !ctx_.self.IsBankWindowOpen()) {
+		// B996 (#316): the bank's coin rows exist only in the open window.
+		LOG_DEBUG(MOD_INVENTORY, "Bank coin gesture refused: the bank is not open");
+		if (i.echo) {
+			ctx_.out.System("The bank is not open.");
+		}
+		return;
+	}
 	const eqt::inventory::CoinMovePlan plan = eqt::inventory::PlanCoinGesture(
 		inv, i.coinType, i.quantity, BankCoinGet(i.coinType, bank), bank);
 	if (!plan.send) {
@@ -228,6 +236,20 @@ void eqt::bridge::BridgeComponent::RunCursorGesture(const eqt::events::CursorGes
 	case Op::PutDown:
 	default:
 		break;
+	}
+
+	// UIGAP-residue (B996 #316, MEASURED -- review/UIGAP-ORACLE/316/README.md):
+	// with the bank shut the official client draws no bank slot, and the open
+	// bank closes itself past 20 units, so it never sends a 2000+ move unless
+	// the window is open. The click, /pickup and /putdown share this gate
+	// (/equip, fable's own power tool, does not go through here).
+	if ((eqt::inventory::isBankSlot(i.slot) || eqt::inventory::isBankBagSlot(i.slot)) &&
+	    !ctx_.self.IsBankWindowOpen()) {
+		LOG_DEBUG(MOD_INVENTORY, "Cursor gesture on bank slot {} refused: the bank is not open", i.slot);
+		if (i.echo) {
+			ctx_.out.System("The bank is not open.");
+		}
+		return;
 	}
 
 	// B896 (#212): a trade slot's rules, before the move (an offered item

@@ -41,6 +41,8 @@
 #include "client/skill/skill_manager.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/position_frames.h"
+#include "client/display_eqstr.h"
+#include "common/name_utils.h"
 // P28: wld_loader.h (and the zone_bsp.h BspTree/RegionType it pulls in) has no
 // renderer dependency — UpdateWaterState() below needs the complete BspTree
 // type regardless of graphics.
@@ -148,11 +150,21 @@ void eqt::movement::MovementComponent::UpdateMovement()
 			ctx_.Merchant().CloseBankWindow();
 		} else {
 			float dist = CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), it->second.x, it->second.y);
-			if (dist > NPC_INTERACTION_DISTANCE) {
+			if (dist > BANKER_INTERACTION_DISTANCE) {
+				// UIGAP-residue (B996 #316, MEASURED -- review/UIGAP-ORACLE/316/
+				// range.tsv rows 2, 4, 5): an open bank stays open at 20.0 and
+				// closes itself past it, printing "<banker> tells you, 'Come
+				// back soon!'" (eqstr 12143) and sending an OP_Save. Both are
+				// the CLIENT's: the capture has no server message at the close.
 				LOG_DEBUG(MOD_INVENTORY, "Player moved too far from banker ({:.1f} > {:.1f}), closing bank",
-					dist, NPC_INTERACTION_DISTANCE);
+					dist, BANKER_INTERACTION_DISTANCE);
+				const std::string banker = EQT::toDisplayName(it->second.name);
 				ctx_.Merchant().CloseBankWindow();
-				ctx_.out.System("You have moved too far from the banker.");
+				const std::string line = eqt::EqStrLine(ctx_.strings.Db(), 12143, {banker});
+				if (!line.empty()) {
+					ctx_.out.System(line);
+				}
+				ctx_.Player().SendSave(/*announce=*/false);
 			}
 		}
 	}
