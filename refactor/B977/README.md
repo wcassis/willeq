@@ -135,6 +135,20 @@ they are.
   `tests/test_constrained_renderer.cpp`: the audio-budget comments now carry
   the B977 result (the VALUE is unchanged: 32 MiB, both pins untouched).
 
+## Not verified
+
+- **x86 idle_75 / idle_90 points**: the census columns are empty for every
+  x86 row — the x86 lane (`client_ledger_capture.sh`) sampled
+  steady_60s only, so the idle points stand from the Pi run alone.
+- **The "31 Velious/Luclin XMI" count** (why `synthus2.sf2`'s 24 MB first
+  load is a worst case, not a one-off) and the **T504 deferral history**
+  (B990's `MidiPlayer::selectSoundFont(Custom)` deferral) are quoted from
+  the earlier units, not re-verified against the pack in this one.
+- **The rivervale and gfaydark steady points** stand in the table although
+  their rows failed the `gpu_unnamed_over_bound` guard (the B988/#307
+  condition, expected red on Pi tours until B972/#290 lands) on both
+  attempts.
+
 ## Locks and stacks touched
 
 Pi lock + eqemu VM-lane lock: taken and released by the sweep rig

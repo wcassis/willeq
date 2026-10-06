@@ -58,7 +58,8 @@ it without taking that measurement first.
   separately at the preset's `soundCache` (8,192 KB on orangepi) — up to
   16 MiB of duplicated decoded PCM the 1999 client did not carry twice.
   Measured: b977-audio x86 befallen `au.sound_buffers` 2,322,320 +
-  `au.sfx_cache` 723,600 B at steady_60s (Pi befallen 2,320,376 + 723,456 B,
+  `au.sfx_cache` 310,640 B at steady_60s (723,600 B at the shutdown and
+  zone_change points; Pi befallen 2,320,376 + 723,456 B at steady_60s,
   `refactor/B977/audio_ledger_census.tsv` owner rows). Moves SECOND, after
   B990, in the audio re-ratchet. Filed by B977, class::A, lane::pi.
 
