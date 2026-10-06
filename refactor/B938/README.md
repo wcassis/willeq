@@ -44,20 +44,35 @@ holds the sole mesh reference and the node is null.
 Rendered frames are unchanged. The only draw-path change is the source of the
 world matrix and the mesh pointer, and both are byte-identical to the old
 node's `getRelativeTransformation()` / `getMesh()` (same three-setter idiom,
-same shared mesh). Verified by the CI visual gate, which diffs decoded pixels
-against the pre-B938 goldens at **exact-zero-diff**:
+same shared mesh). Verified two ways — the CI gate, and a per-pixel leg through
+the **client's** own changed draw path:
 
-| gate | zones | result | pipeline |
-|---|---|---|---|
-| `visual_gate` | qeynos2, gfaydark, befallen, iceclad, timorous | **PASS, 0 pixel mismatch** | #526 (SHA 3153348f) |
+**The CI gate is a benchmark-render net, not this unit's per-pixel instrument.**
+It diffs `gles2_zone_benchmark` frames against the pre-B938 goldens at exact
+zero-diff — and it passes on this head (PASS, 0 pixel mismatch) — but the
+benchmark (a) links **none** of the TUs B938 changes and **never constructs an
+`IrrlichtRenderer`** (`zone_bench_memory.cpp: 4`), and (b) its golden-image runs
+pass no `--objects` (objects unloaded; `loadObjects` defaults false), so its
+compared frames contain no placed objects. It nets B936's mesh sharing and the
+zone geometry in the benchmark's render path — a safety net for that — **not**
+the client's object-draw path. It is not claimed to be sufficient for this unit.
 
-The benchmark's own `--objects` fixed-pose runs are NOT the parity evidence for
-this unit: `gles2_zone_benchmark --objects` draws objects through the tool's
-own `ZoneBench` loader, which never constructs the client's `IrrlichtRenderer`
-object code B938 changes (`zone_bench_memory.cpp:4`: "This benchmark tool
-never constructs an IrrlichtRenderer"). That run was B936's parity instrument
-for B936's own benchmark change. For B938 the gate (the client's own rendered
-frames, real zone load, manual PVS draw path) is the per-pixel comparison.
+**The per-pixel leg** (`pp-client-frames/`, `pp-client-frames/METHOD.md`)
+captures the client's own rendered frames over a PVS zone *with* objects
+(gfaydark, 2,829 placed objects), through the client's `--dump-frames-dir` path,
+which drives exactly the manual PVS `drawZoneGeometrySorted()` that B938
+changes. A 2×2 grid — base fable `3c93eeff` (per-placement node draw) and head
+`f6580c00` (the `PlacedObjectRecord` draw), two runs each, same fixed pose —
+separates B938's effect from the client's own run-to-run variance (the client's
+frames are not bit-deterministic across runs; B936's "Not verified" says so).
+In the 3D world region, over the 40 common frames, base→head differs by
+**3,723 px** — **4.5× below the base same-binary control (16,844) and 5.7× below
+the head control (21,436)**, in every single frame (`pp-client-frames/
+per_frame_table.md`). The residual is the 3 vertex-animated plants (the one
+thing that moves, which B936 had too) and any passing mob; the static
+placed-object geometry B938 draws is pixel-identical. So the client's
+object-draw path is frame-unchanged by B938 — measured below the run-to-run
+floor — which is exactly what the gate could not show.
 
 ## CI test pinning per-placement bytes (acceptance 3)
 
