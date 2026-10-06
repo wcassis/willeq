@@ -59,6 +59,8 @@
 #include <sstream>
 #include "client/graphics/ui/char_create_panel.h"   // B888
 #include "client/login_world/char_create_data.h"     // B888
+#include "client/graphics/ui/char_select_panel.h"   // B998
+#include "client/login_world/character_select.h"    // B998
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -154,6 +156,38 @@ CharCreateScreenState charCreateCaptureState(int which) {
         pressNext(s);
         s.nameEntry.inputText = "Cinewbie";
     }
+    return s;
+}
+
+// B998 (#318): the Character Select screen. `which`: 0 = the recorded
+// account (data/captures/session.sleq's three characters, Testchar
+// selected), 1 = an empty account, 2 = the delete prompt over 0 for
+// Testmelee, 3 = "Create a New Character" pressed (the hosted creation page).
+// The rows and the eqstr table are composed by the same functions the game
+// thread uses (login_world/character_select.h).
+CharSelectScreenState charSelectCaptureState(int which) {
+    static eqt::charcreate::CharCreateData data = [] {
+        eqt::charcreate::CharCreateData d;
+        d.loadShipped();
+        return d;
+    }();
+    CharSelectScreenState s;
+    auto table = std::make_shared<eqt::login_world::EqstrTable>();
+    for (uint32_t id : eqt::login_world::CharacterSelectEqstrIds(data)) (*table)[id] = eqStrings().getString(id);
+    eqt::login_world::CharacterSelectView view;
+    view.strings = table;
+    if (which != 1) {
+        std::vector<CharacterSelectEntry> list = {
+            {0, "Testcaster", 1, 12, 6, 25}, {1, "Testchar", 1, 1, 1, 36}, {2, "Testmelee", 1, 1, 6, 25}};
+        view.rows = eqt::login_world::BuildCharacterSelectRows(list, eqt::login_world::LoadEraZoneLongNames());
+    }
+    applyCharacterSelectView(s, view);
+    if (which == 0) s.selected = 1;
+    if (which == 2) {
+        s.selected = 2;
+        pressDelete(s);
+    }
+    if (which == 3) pressCharButton(s, 3, data, 1);
     return s;
 }
 
@@ -882,6 +916,17 @@ std::vector<PanelCapture> buildCaptureList() {
         {"charcreate_page0_points_left", [](UIRenderer& u, const UILayout& l, PanelStates&) {
             auto s = charCreateCaptureState(2);
             renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
+        // B998 (#318): the Character Select screen -- with the recorded
+        // account's characters, empty, the delete prompt, and the creation
+        // page it opens (the pre-zone host draws exactly this call).
+        {"charselect_characters", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            renderCharSelectScreen(u.layer(), l, charSelectCaptureState(0)); }},
+        {"charselect_empty", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            renderCharSelectScreen(u.layer(), l, charSelectCaptureState(1)); }},
+        {"charselect_delete_prompt", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            renderCharSelectScreen(u.layer(), l, charSelectCaptureState(2)); }},
+        {"charselect_create_opened", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            renderCharSelectScreen(u.layer(), l, charSelectCaptureState(3)); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.

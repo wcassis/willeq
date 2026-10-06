@@ -362,6 +362,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_char_create_screen DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B998 (#318): the character-select screen -- layout vs EQUI_CharacterSelect.xml,
+# the list from a recorded OP_SendCharInfo, buttons -> requests -> packets
+# through the real service and the world replay seam, the configured-character
+# auto-select pinned unchanged, Create opening B888's screen. Device-free.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_character_select
+        test_character_select.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_character_select PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_character_select GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_character_select PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_character_select DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
 # T363 disabled-control rule, the three wired sliders, the Alt+O binding and
 # the persistence round trip. Device-free like its siblings.

@@ -674,7 +674,8 @@ void LoginWorldComponent::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 		}
 	}
 
-	if (!found && !m_world_script.active()) {
+	++m_character_list_generation;   // B998: the select screen re-reads the list
+	if (!found && !m_world_script.active() && !m_select_screen) {
 		LOG_ERROR(MOD_WORLD, "Could not find {}, cannot continue to login.", ctx_.character);
 	}
 	// B888: a world script (or a creation/deletion in flight) acts on the list.
@@ -819,8 +820,9 @@ void LoginWorldComponent::WorldProcessExpansionInfo(const EQ::Net::Packet &p)
 		WorldSendWorldClientReady();
 
 		// Now send EnterWorld -- unless a B888 world script runs at character
-		// select instead (it enters world itself, off the character list).
-		if (!m_enter_world_sent && !m_world_script.active()) {
+		// select instead (it enters world itself, off the character list), or
+		// the B998 character-select screen is up (Enter World sends it).
+		if (!m_enter_world_sent && !m_world_script.active() && !m_select_screen) {
 			WorldSendEnterWorld(ctx_.character);
 		}
 	}

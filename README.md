@@ -4,7 +4,7 @@ A standalone EverQuest client targeting the Titanium client version (2006) with 
 
 This is a mostly vibe-coded project so the codebase is a bit chaotic. Expect major changes as features are implemented.
 
-You need an existing account. A character can be created by the client itself at character select (B888, issue #204): `willeq -c willeq.json --create-character "Name,Race,Gender,Class,Deity,City"` creates it and enters world with it in its home city (never the tutorial); `--delete-character Name` and `--list-characters` do the other two. The official two-page Character Creation screen is transcribed (`include/client/graphics/ui/char_create_*.h`) but is not yet reachable from a character-select screen, because the client has none (see the table below).
+You need an existing account. A character can be created by the client itself at character select (B888, issue #204): `willeq -c willeq.json --create-character "Name,Race,Gender,Class,Deity,City"` creates it and enters world with it in its home city (never the tutorial); `--delete-character Name` and `--list-characters` do the other two. With graphics and no `character` in the config (or with `--character-select`), the client shows the official Character Select screen (B998, issue #318): pick a character and Enter World, Delete one (with the official confirmation), or press an empty slot's "Create a New Character" to open the two-page Character Creation screen, which enters world with the new character. With a configured character the client still selects it automatically, exactly as before (every scripted and CI run).
 
 I'm developing this on a remote Ubuntu 24 server without a GPU. The default run needs no display at all (surfaceless EGL on llvmpipe); Xvfb + x11vnc or native RDP are used when a picture is wanted. The ARM builds target an Orange Pi One (Mali 400) running Armbian Noble with the Lima open-source driver.
 
@@ -41,7 +41,7 @@ current defect list; where the two disagree, the board wins.
 - ETC1 flat-pack texture assets (EQE1) for memory-constrained boards
 
 **What doesn't work or is incomplete:**
-- No character-select SCREEN: the character is picked from the config, and creation/deletion are command-line scripts (`--create-character`, `--delete-character`); the creation screen is drawn only by `ui_panel_capture` so far
+- Character select and creation have no 3D scene: no character preview, no sample model, no Explore/Rotate (greyed), no FacePick window (B998/B888)
 - Visual spell effects incomplete. Only the cast glow, the cast-complete flash and the impact are reached from the game; the projectile, buff-aura, rain and ground-circle code exists but has **no production caller** — its only callers are the `model_viewer` FX harness and a unit test (`refactor/BOARD.md` B161/B165), so no spell projectile and no buff aura is ever drawn in a real session
 - Swimming mechanics incomplete (keys exist, physics don't)
 - Boats/transport not implemented
@@ -64,8 +64,8 @@ Legend: Done | Partial | Not Implemented
 |---------|--------|-------|
 | Login server authentication | Done | |
 | Server selection | Done | |
-| Character selection | Done | Auto-select from config |
-| Character creation | Partial | B888 (#204). `--create-character "Name,Race,Gender,Class,Deity,City[,STR=n,...]"` sends `OP_ApproveName` then `OP_CharacterCreate` exactly as eqemu's Titanium world validates them (byte-pinned) and enters world in the home city, never the tutorial; `--delete-character`, `--list-characters`; scenario `create_character`. The official two-page screen (`EQUI_CharacterCreate.xml`) and its flow are transcribed with post-Velious races/classes/cities HIDDEN (`data/char_create.tsv`), but there is no character-select screen to open it from yet, no FacePick window and no 3D preview |
+| Character selection | Done | B998 (#318). Auto-select from config by default (byte-for-byte unchanged); with no configured character or `--character-select` (graphics), the official Character Select screen (`EQUI_CharacterSelect.xml`): the list from `OP_SendCharInfo` (name; "Name [level Class]" and the zone for the selected one), Enter World, Delete (eqstr 9065 Yes/No, closing itself after 10 s, `OP_DeleteCharacter`), Create a New Character, Quit. No 3D preview |
+| Character creation | Partial | B888 (#204). `--create-character "Name,Race,Gender,Class,Deity,City[,STR=n,...]"` sends `OP_ApproveName` then `OP_CharacterCreate` exactly as eqemu's Titanium world validates them (byte-pinned) and enters world in the home city, never the tutorial; `--delete-character`, `--list-characters`; scenario `create_character`. The official two-page screen (`EQUI_CharacterCreate.xml`) and its flow are transcribed with post-Velious races/classes/cities HIDDEN (`data/char_create.tsv`), opened from the character-select screen's "Create a New Character" (B998); a created character enters world straight away, as the official client does. No FacePick window and no 3D preview |
 
 ### World & Zones
 | Feature | Status | Notes |
