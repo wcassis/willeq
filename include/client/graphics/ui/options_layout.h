@@ -193,7 +193,7 @@ constexpr Control kControls[] = {
 // ---------------------------------------------------------------- Display
 {Tab::Display, Kind::Checkbox,   "ODP_PCNamesCheckbox",             10,  12, 150, 18, "Show PC Names",        Setting::PCNames},
 {Tab::Display, Kind::Checkbox,   "ODP_NPCNamesCheckbox",            10,  30, 150, 18, "Show NPC Names",       Setting::NPCNames},
-{Tab::Display, Kind::Checkbox,   "ODP_ShowTargetRingCheckbox",      10,  48, 150, 18, "Show 3D Target Ring",  Setting::None},
+{Tab::Display, Kind::Checkbox,   "ODP_ShowTargetRingCheckbox",      10,  48, 150, 18, "Show 3D Target Ring",  Setting::TargetRing},
 {Tab::Display, Kind::Checkbox,   "ODP_LevelOfDetailCheckbox",       10,  66, 150, 18, "Level of Detail",      Setting::None},
 {Tab::Display, Kind::Checkbox,   "ODP_ShowHelmCheckbox",            10,  84, 150, 18, "Show My Helm",         Setting::None},
 // ODP_SetFullscreenButton and ODP_SetWindowedButton share the rect (10,106)

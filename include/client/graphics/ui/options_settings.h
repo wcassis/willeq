@@ -87,6 +87,7 @@ enum class Setting : uint8_t {
     // --- Display page (B431) ---
     PCNames,           // Renderer: EntityRenderer::setNameTagKindsVisible
     NPCNames,          // Renderer
+    TargetRing,        // Renderer: OverlaysComponent's 3D target ring (B994)
 
     // --- Mouse page (B433) ---
     MouseInvertY,      // Renderer: PlayerCameraComponent MouseOptions

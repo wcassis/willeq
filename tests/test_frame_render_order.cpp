@@ -292,7 +292,14 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     its own z-layer, so a covered window's text is covered too. A TEXT
 //     change at those 29 positions only: no insertion, no reorder, the count
 //     stays 361.
-const size_t kGoldenSize = 361u;
+//   * B994 (#314): the 3D target ring. ONE pure insertion, no text change
+//     and no reorder: entry 90, `ctx_.Overlays().drawTargetRing();`, directly
+//     after the target outline (entries 88/89) and before that pass's
+//     `measureSection()` -- the ring is part of the target indicator, drawn
+//     after the opaque scene so the floor depth-tests it. Entries 0-89 are
+//     byte-identical; everything after shifts by one with its text
+//     byte-identical. Applied after B992 (rebased onto it). The count rises 361 -> 362.
+const size_t kGoldenSize = 362u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

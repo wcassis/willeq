@@ -580,6 +580,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/overlays/overlays_component.cpp
         src/client/graphics/overlays/overlays_hud_env.cpp
         src/client/graphics/overlays/overlays_env_managers.cpp  # T467
+        # B994 (#314): the 3D target ring -- TargetIndicator.ini's geometry
+        # (device-free) and its one draw call.
+        src/client/graphics/overlays/target_ring.cpp
+        src/client/graphics/overlays/target_ring_draw.cpp
         src/client/graphics/renderer/renderer_init.cpp  # J11
         # L06 (Batch L): the slash family -- the registry-3 renderer
         # command if-chain. The basename is unchanged; only the
@@ -1023,6 +1027,14 @@ ENDIF()
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(ui_panel_capture tools/hwcaps/ui_panel_capture.cpp)
     TARGET_LINK_LIBRARIES(ui_panel_capture willeq_core ${LINK_LIBS})
+ENDIF()
+
+# B994 (#314): the 3D target ring drawn by the client's own
+# TargetRing::build() + drawGeometry() into a headless GLES2 frame, option on
+# and off -- the review PNGs.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(target_ring_capture tools/hwcaps/target_ring_capture.cpp)
+    TARGET_LINK_LIBRARIES(target_ring_capture willeq_core ${LINK_LIBS})
 ENDIF()
 
 # B975 (GitLab #293): the name-tag cost breakdown and the batched path against

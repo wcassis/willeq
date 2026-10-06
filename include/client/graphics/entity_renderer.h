@@ -688,6 +688,7 @@ public:
 
     // Set player level (for con-colored placeholders during deferred loading)
     void setPlayerLevel(int level) { playerLevel_ = level; }
+    int getPlayerLevel() const { return playerLevel_; }  // B994: the target ring's con
 
     // Deferred/progressive mesh building
     // Register entity metadata without building mesh (for deferred loading)

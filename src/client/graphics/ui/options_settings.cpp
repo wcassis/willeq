@@ -145,6 +145,11 @@ const SettingInfo kSettings[kSettingCount] = {
  "Show PC Names", "eqclient.ini [Options] PCNames=1"},
 {Setting::NPCNames, Owner::Renderer, ValueKind::Bool, "npcnames", "NPCNames", 1, 1, NO_CHOICES, -1, kNoGame,
  "Show NPC Names", "eqclient.ini [Options] NPCNames=1"},
+// B994 (#314): default OFF and the key is FABLE'S OWN -- none of the six
+// eqclient*.ini files carries a ring key, and TargetIndicator.ini's
+// [instructions] describe turning the indicator ON (target_ring.h, R5).
+{Setting::TargetRing, Owner::Renderer, ValueKind::Bool, "targetring", "ShowTargetRing", 0, 1, NO_CHOICES, -1, kNoGame,
+ "Show 3D Target Ring", "uifiles/default/TargetIndicator.ini; key is fable's (R5)"},
 
 // --- Mouse (B433) --- eqclient.ini [Options], every shipped file:
 // InverseMouse=0 LookSpring=0 MouseActive=1 MouseWheelZoom=1

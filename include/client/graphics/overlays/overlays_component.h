@@ -28,6 +28,7 @@
 
 #include "client/graphics/renderer_context.h"
 #include "client/graphics/entity_renderer.h"   // EQT::Graphics::EntityAppearance (by value below)
+#include "client/graphics/overlays/target_ring.h"  // B994: TargetRing::Geometry (by value below)
 
 #include <glm/glm.hpp>
 #include <cstdint>
@@ -121,6 +122,16 @@ public:
 #else
 	void drawTargetSelectionBox();  // Wireframe bounding box (desktop GL)
 #endif
+	// B994 (#314): Options > Display "Show 3D Target Ring" -- the con-coloured
+	// TargetIndicator.ini ring under the current target's feet (target_ring.h).
+	// Drawn right after the outline; a no-op unless the option is on and the
+	// target's node is visible. Its vertex/index storage is charged to the
+	// ledger's `ui` category.
+	void drawTargetRing();
+	void setTargetRingEnabled(bool on) { targetRingEnabled_ = on; }
+	bool targetRingEnabled() const { return targetRingEnabled_; }
+	// Test/diagnostic seam: frames the ring was actually drawn in.
+	uint64_t targetRingDrawCount() const { return targetRingDrawCount_; }
 	void drawZoneLineBoxLabels();
 	void drawFPSCounter();
 	void updatePaperdollForFrame();
@@ -238,6 +249,10 @@ private:
 	// frame family reads them too (Batch K Mechanism 3).
 	uint8_t currentTargetHpPercent_ = 100;
 	uint8_t currentTargetLevel_ = 0;
+	// B994: the 3D target ring (default off, target_ring.h R5).
+	bool targetRingEnabled_ = false;
+	uint64_t targetRingDrawCount_ = 0;
+	TargetRing::Geometry targetRingGeometry_;
 	TargetInfo currentTargetInfo_;  // Extended target info for HUD display
 
 	// --- Zone line debugging ----------------------------------------------

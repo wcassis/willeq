@@ -80,7 +80,7 @@ const ControlClass kClasses[] = {
 // ---------------------------------------------------------------- Display
 {"ODP_PCNamesCheckbox",              W,  "EntityRenderer::setNameTagKindsVisible (PC half)"},
 {"ODP_NPCNamesCheckbox",             W,  "EntityRenderer::setNameTagKindsVisible (NPC half)"},
-{"ODP_ShowTargetRingCheckbox",       NC, "fable draws no 3D target ring (Will 2026-09-23: IN; the ring is a new world-space draw, not a toggle -- B994 #314); #145"},
+{"ODP_ShowTargetRingCheckbox",       W,  "B994: OverlaysComponent::drawTargetRing(), TargetIndicator.ini's four-circle ring (target_ring.h)"},
 {"ODP_LevelOfDetailCheckbox",        PV, "Luclin models; #144 era table"},
 {"ODP_ShowHelmCheckbox",             PV, "Luclin models; #144 era table"},
 {"ODP_SetWindowedButton",            NC, "fable is EGL-surfaceless or DRM: no windowed/fullscreen switch; #145"},

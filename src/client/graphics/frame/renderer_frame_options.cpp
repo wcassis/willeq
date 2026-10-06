@@ -37,6 +37,7 @@
 #include "client/graphics/ui/options_command.h"
 #include "client/graphics/player/player_camera_component.h"
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/overlays/overlays_component.h"  // B994
 #include "client/graphics/ui/options_keys.h"
 #include "client/graphics/renderer_event_receiver.h"
 #include "client/events/renderer_intents.h"
@@ -139,6 +140,12 @@ void FrameComponent::applyOptionsSettingB430(OptionsLayout::Setting setting) {
             optionsState_.keysCaptureAction = -1;
             eqt::input::HotkeyManager::instance().restoreShippedBindings();
             LOG_INFO(MOD_GRAPHICS, "Options: key bindings reloaded from defaults");
+            return;
+        case Setting::TargetRing:
+            // B994: the overlay draws it after the target outline each frame.
+            ctx_.Overlays().setTargetRingEnabled(on(Setting::TargetRing));
+            LOG_INFO(MOD_GRAPHICS, "Options: 3D target ring {}",
+                     on(Setting::TargetRing) ? "on" : "off");
             return;
         case Setting::TextColors:
         case Setting::TextColorReset:
