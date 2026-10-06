@@ -22,6 +22,7 @@ of 200 spawned NPCs as placeholders for the whole run (measured, B964).
 """
 import argparse
 import math
+from observation_controls import duration
 
 RACES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 128, 130]
 
@@ -31,8 +32,8 @@ def main():
     ap.add_argument("--safe", nargs=3, type=float, required=True, metavar=("SX", "SY", "SZ"))
     ap.add_argument("--count", type=int, default=0)
     ap.add_argument("--layout", choices=["near", "far", "none"], default="none")
-    ap.add_argument("--idle", type=float, default=40.0)
-    ap.add_argument("--hold-after", type=float, default=15.0)
+    ap.add_argument("--idle", type=duration, default=40.0)
+    ap.add_argument("--hold-after", type=duration, default=15.0)
     ap.add_argument("--out", required=True)
     ap.add_argument("--zone", default="")
     ap.add_argument("--hop-zone", default="")
