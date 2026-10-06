@@ -14,6 +14,7 @@
 #include "client/zone_load_handoff.h"
 #include "client/fatal_exit.h"
 #include "client/scenario/scenario_runner.h"
+#include "client/login_world/character_select_service.h"   // B998
 
 #include <memory>
 #include <string>
@@ -24,7 +25,7 @@
 
 // Forward declarations
 class EverQuest;
-namespace EQT { namespace Graphics { class IrrlichtRenderer; class ConstrainedTextureCache; struct BspTree; } }
+namespace EQT { namespace Graphics { class IrrlichtRenderer; class ConstrainedTextureCache; struct BspTree; class CharacterSelectHost; } }
 namespace eqt { namespace bridge { class IrrlichtBridge; class ConsoleBridge; class GameStateBridge; class GameStateSyncBridge; } }
 
 namespace eqt {
@@ -142,6 +143,10 @@ struct ApplicationConfig {
     std::string createCharacterSpec;  // --create-character "Name,Race,Gender,Class,Deity,City[,STR=n..]"
     std::string deleteCharacterName;  // --delete-character <Name>
     bool listCharacters = false;      // --list-characters
+    // B998 (#318): show the character-select screen even with a configured
+    // character (graphics only). Without a configured character it is shown
+    // anyway; see login_world/character_select.h CharacterSelectScreenWanted().
+    bool characterSelectScreen = false;   // --character-select
 
     // T64: video-capture evidence tool (--dump-frames-dir/--dump-every/
     // --dump-max-frames). Off by default (empty dir = disabled) -- does not
@@ -361,6 +366,11 @@ public:
     std::string scenarioReason() const;
     std::string scenarioName() const;
 
+    /** B998 (#318): whether `config` shows the character-select screen
+     *  (login_world/character_select.h, CharacterSelectScreenWanted). Public
+     *  so the configured-character negative is pinned on THIS entry point. */
+    static bool characterSelectWanted(const ApplicationConfig& config);
+
     /**
      * B918 (issue #237): true when the run ended because of a FATAL that
      * takes the ordinary quit path -- the zone loading thread failing, or
@@ -486,6 +496,12 @@ private:
     // B888 (#204): --create-character / --delete-character / --list-characters
     // -> LoginWorldComponent::SetWorldScript(). Body: application_world_script.cpp.
     bool applyWorldScript(const ApplicationConfig& config);
+    // B998 (#318): the character-select screen -- whether this run shows it,
+    // and (game thread) its service tick / (render thread) its pre-zone
+    // frame. Bodies: application_char_select.cpp.
+    bool applyCharacterSelect(const ApplicationConfig& config);
+    void serviceCharacterSelect();
+    bool renderCharacterSelect(float deltaTime);
     bool initSpellSystem(const ApplicationConfig& config);
     bool initActionLayer(const ApplicationConfig& config);
     bool initScriptedCommandTour(const ApplicationConfig& config);
@@ -717,6 +733,16 @@ private:
     // loader actually BUILT (T260's label), taken from the loader's own
     // snapshot rather than from a slot the game thread may have overwritten.
     eqt::ZoneLoadHandoff m_zoneLoadHandoff;
+
+    // B998 (#318): the character-select screen. The channel is the ONE thing
+    // both threads touch (mutex inside); it exists only on a run that shows
+    // the screen. The service state below it is the game thread's; the host
+    // is the render thread's and lives only while the screen is up.
+    std::unique_ptr<eqt::login_world::CharacterSelectChannel> m_charSelect;
+    eqt::login_world::CharacterSelectService m_charSelectService;   // game thread
+#ifdef EQT_HAS_GRAPHICS
+    std::unique_ptr<EQT::Graphics::CharacterSelectHost> m_charSelectHost;   // render thread
+#endif
 
     // Timing
     std::chrono::steady_clock::time_point m_lastGraphicsUpdate;

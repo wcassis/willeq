@@ -72,7 +72,8 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Tip windows | The oracle's 360x300, flush right at the measured (664,234) of 1024x768 | `TipWindowState` | `renderTipWindow()` (B834, #202; `tip_layout.h` from `EQUI_TipWnd.xml`) |
 | Friends | The oracle's own 168x288, at `defaults.ini`'s `[FriendsWindow]` position (XML (196,50) elsewhere), two tabs | `FriendsPanelState` | `renderFriendsWindow()` (B897) |
 | Trade / Give | The oracle's own (0,25): trade 236x365, give 108x375, unscaled | `TradePanelState` (`isNpc` picks the give window) | `renderTradeWindow()` (B896, #212; geometry `trade_layout.h` / `give_layout.h`) |
-| Character Creation | The whole screen, two pages (`EQUI_CharacterCreate.xml`); pre-zone, NO host yet | `CharCreateScreenState` | `renderCharCreateScreen()` (B888, #204) |
+| Character Select | Pre-zone: the oracle's 252x484 window, left edge, vertically centred (`EQUI_CharacterSelect.xml`) | `CharSelectScreenState` | `renderCharSelectScreen()` (B998, #318; hosted by `CharacterSelectHost`) |
+| Character Creation | The whole screen, two pages (`EQUI_CharacterCreate.xml`); pre-zone, opened from Character Select | `CharCreateScreenState` (inside `CharSelectScreenState::create`) | `renderCharCreateScreen()` (B888, #204) |
 
 Center popups (inventory, spellbook, skills, merchant, loot, tradeskill container) share the same screen region and are mutually exclusive. **The BANK is not one of them** (T436): the oracle's `BankWnd` is `Style_Sizable false` at its own 108x347, so like the combat-abilities window it keeps its own size and its own anchor and draws above the centre popups. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle. **Neither is the item display window** (T421): `EQUI_ItemDisplay.xml` gives it `RelativePosition false` and `<Location>(0,80)</Location>`, so it is drawn and hit-tested LAST, on top of every centre popup (ESC: B460's open order). **Nor is the Options window** (T434), for the same reason and one level higher still: `EQUI_OptionsWindow.xml` is `RelativePosition false` at `<Location>(90,47)</Location>`, so it is drawn and hit-tested after even the item display (ESC: B460's open order). Its geometry is `options_layout.h`, a table of every control the oracle XML declares; a control whose `OptionsLayout::Setting` is `None` has no backing setting in fable, is drawn greyed and is **not hit-testable** (the T363 rule made mechanical).
 
@@ -133,12 +134,31 @@ character select); `char_create_panel.h` draws and resolves clicks (right-click 
 into it). Post-Velious races/classes/cities are HIDDEN, never greyed (Will 2026-09-23): the in-era buttons
 take the column's slots in order, Gnome in Froglok's. The rules are the SERVER's
 (`include/client/login_world/char_create_rules.h`, quoting `CheckCharCreateInfoTitanium`), the offers are
-data (`data/char_create.tsv`; measured rows cite their oracle frame, the rest say `assumption`). **There is
-no host yet**: fable has no character-select screen and the pre-zone renderer draws only the loading screen,
-so the screen is reached by `ui_panel_capture` (`charcreate_page0/1`) and its tests; creation itself is
-reached by `--create-character` (`include/client/login_world/world_script.h`). Not drawn, flagged: the 3D
-scene and sample model, FacePick (`CC0_Face_Button` is greyed and not hit-testable), the tutorial controls
-(OUT by ruling). Tests: `tests/test_char_create.cpp`, `tests/test_char_create_screen.cpp`.
+data (`data/char_create.tsv`; measured rows cite their oracle frame, the rest say `assumption`). Since B998
+it is HOSTED by the Character Select screen below (an empty slot's "Create a New Character"); the scripted
+path `--create-character` (`include/client/login_world/world_script.h`) remains for automation. Not drawn,
+flagged: the 3D scene and sample model, FacePick (`CC0_Face_Button` is greyed and not hit-testable), the
+tutorial controls (OUT by ruling). Tests: `tests/test_char_create.cpp`, `tests/test_char_create_screen.cpp`.
+
+**Character Select** (B998, GitLab #318, #204 Legs S/M). The pre-zone screen between `OP_SendCharInfo` and
+`OP_EnterWorld`. **Shown only with graphics, no world script, and either no configured `character` or
+`--character-select`** (`CharacterSelectScreenWanted()`, `include/client/login_world/character_select.h`; a
+`--scenario` run needs the flag): with a configured character the T14 auto-select is byte-for-byte what it was
+(`CharacterSelectDecision.*` pins it). Layers: `char_select_layout.h` quotes `EQUI_CharacterSelect.xml`
+(placement measured: left edge, vertically centred); `char_select_screen.h` is the flow (a name selects, an
+empty slot reads eqstr 1947 and opens B888's screen, Delete asks eqstr 9065 Yes/No on B442b's confirmation
+dialog and closes itself after 10 s, Enter World / Quit; the creation name field holds 15 characters and
+lower-cases after the first, both measured); `char_select_panel.h` draws and resolves clicks. THREADS: the
+list and the B888 flow live on the game thread (`LoginWorldComponent`); `CharacterSelectService` (game
+thread) publishes a `CharacterSelectView` -- rows composed there, eqstr text pre-resolved there -- into a
+mutex-guarded `CharacterSelectChannel` and drains the screen's `CharacterSelectRequest`s into the same
+`Request*` bodies the world script uses. `CharacterSelectHost` (render thread, `char_select_host.h`) runs a
+frame through `IrrlichtRenderer::drawPreZoneUI()` from `Application::render()`'s pre-zone branch -- where the
+handshake loading screen is drawn -- and exists only while the channel is active (list in, `OP_EnterWorld`
+not sent). Not drawn: the 3D scene/preview (Explore and Rotate greyed), the tutorial and Return Home buttons
+(OUT). Assumptions awaiting oracle are listed in `char_select_screen.h` (`review/UIGAP-ORACLE/318/`). Tests:
+`tests/test_character_select.cpp`. The scenario lane cannot click here: `ScenarioRunner` does not `Step()`
+before `IsFullyZonedIn()`, so `create_character` keeps its scripted route.
 
 **The three commerce windows** (T436, board **B429** CLOSED). Three producers filled an `iconId`
 nothing could draw, because the merchant window, the bank window and the cursor attachment did not

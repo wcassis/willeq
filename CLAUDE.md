@@ -783,8 +783,9 @@ graphics dependencies.
 
 **IrrlichtRenderer** (`include/client/graphics/irrlicht_renderer.h`,
 `src/client/graphics/renderer/` + eleven component directories, Batch L)
-- Its own four TUs (`irrlicht_renderer.cpp`, `renderer_init.cpp`,
-  `renderer_entities.cpp`, `renderer_event_receiver.cpp`) live in
+- Its own five TUs (`irrlicht_renderer.cpp`, `renderer_init.cpp`,
+  `renderer_entities.cpp`, `renderer_event_receiver.cpp`, B998's
+  `renderer_pre_zone.cpp`) live in
   `src/client/graphics/renderer/`, beside the free-function
   `software_cursor_texture.cpp`; everything else was extracted into eleven
   components, each `class EQT::Graphics::<Name>Component` with its own directory
