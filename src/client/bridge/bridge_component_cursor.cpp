@@ -146,7 +146,8 @@ void eqt::bridge::BridgeComponent::RunCursorConfirmation(const eqt::events::Curs
 		}
 		eqt::state::ConfirmationRequestedData data;
 		data.purpose = static_cast<uint8_t>(plan.purpose);
-		data.text = eqt::EqStrLine(ctx_.strings.Db(), plan.eqstrId, {plan.itemName});
+		data.timeoutSeconds = plan.timeoutSeconds;
+		data.text =eqt::EqStrLine(ctx_.strings.Db(), plan.eqstrId, {plan.itemName});
 		if (data.text.empty()) {
 			// display_eqstr.h's rule: a table miss draws nothing rather than a
 			// transcribed copy -- and a prompt with no words cannot be asked.
