@@ -500,7 +500,7 @@ Bindings are configurable in `config/hotkeys.json` (or a `hotkeys` object in the
 | F2-F6 | Target group member 1-5 |
 | F7 | Target nearest PC |
 | F8 | Target nearest NPC |
-| Escape | Clear target |
+| Escape | Close the most recently opened window, one per press (B460, measured); with none open, clear target |
 
 **Spells & Hotbar:**
 | Key | Action |

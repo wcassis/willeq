@@ -535,6 +535,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_esc_server_owned_windows DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B460 (#156): ESC closes the most recently opened window, one per press --
+# the open-order stack and FrameComponent::handleEscapeKey() on a device-less
+# renderer, driven through opened-order sequences.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_esc_window_stack
+        test_esc_window_stack.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_esc_window_stack PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_esc_window_stack GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_esc_window_stack DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T443 (board B453): /dumpscene's unaccounted count, against a hand-built
 # scene graph on an EDT_NULL device.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)

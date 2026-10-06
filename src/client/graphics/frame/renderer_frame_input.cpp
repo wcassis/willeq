@@ -127,6 +127,8 @@ void FrameComponent::processFrameInput(float deltaTime) {
     // ===== FRAME TIMING: Camera Update =====
     frameTimings_.cameraUpdate = measureSection();
 
+    // B460: the ESC stack learns every window's open ORDER, whoever opened it.
+    observeEscWindows();
     processChatInput();
 
     // Handle mouse targeting
@@ -663,91 +665,124 @@ void FrameComponent::processChatInput() {
     // Not in chat — clear pending keys and handle escape for target clearing
     ctx_.eventReceiver->clearPendingKeyEvents();
     if (ctx_.eventReceiver->escapeKeyPressed()) {
-        // T290: StaticUIInput::processKey() -- the static UI's ESC handler --
-        // had NO production caller at all; it was reached only from
-        // tests/test_static_ui_panels.cpp (the T48 implemented-but-unreached
-        // class). This is that caller. It runs FIRST so ESC dismisses an open
-        // popup before it clears the target, which is what the real client
-        // does, and it is the single body for "ESC closes the loot window"
-        // (which pushes CloseLootIntent -- the panel closes when the server
-        // confirms, never optimistically).
-        // T421: the item display is drawn on TOP of the centre popups (its
-        // oracle placement is its own, not centerPopup's), so ESC dismisses
-        // it before them -- same top-down rule T290 gave the loot window.
-        // T434: the Options window is drawn on top of the item display and
-        // of the centre popups (its oracle placement is its own), so ESC
-        // dismisses it first -- the same top-down rule T290 gave the loot
-        // window and T421 the item display. Unlike the loot and tradeskill
-        // windows nothing about it is server-owned, so closing it locally
-        // cannot desync anything.
-        bool popupConsumedEscape = false;
-        if (optionsState_.isOpen) {
-            optionsState_.isOpen = false;
-            popupConsumedEscape = true;
-        }
-        // B897: the Friends window sits just below Options in the draw.
-        if (!popupConsumedEscape && friendsState_.isOpen) {
-            toggleFriendsWindow();
-            popupConsumedEscape = true;
-        }
-        if (!popupConsumedEscape && itemDisplayState_.isOpen) {
-            itemDisplayState_.isOpen = false;
-            popupConsumedEscape = true;
-        }
-        // T443 (board B454): the tradeskill container is handled inside
-        // processKey() below, with the other centre popups -- it is one of
-        // them, and it is the topmost (drawn after the loot popup). Like
-        // the bank and the merchant it pushes its close intent and waits,
-        // because it is SERVER-owned.
-        // T436 (board B429): the bank window, then the merchant window --
-        // the same top-down rule, at the two levels those windows sit at
-        // (the bank draws above the centre popups, the merchant is one of
-        // them). Neither closes itself: both push the intent that ends the
-        // SERVER-side session and wait for its Closed event, exactly as ESC
-        // on the loot window pushes CloseLootIntent.
-        // B899 (#215): the container windows draw above the tracking window,
-        // the trainer and the bank, so ESC reaches them first; each pushes
-        // TradeskillCloseIntent and waits for TradeskillContainerClosed
-        // (T290/T443's rule, carried bags included).
-        if (!popupConsumedEscape && newUIEnabled_ && staticUIInput_) {
-            popupConsumedEscape = staticUIInput_->processContainerEscape(containerState_);
-        }
-        // B895: the Tracking Window draws above the trainer and the bank and below the item
-        // display; a pure client view, so ESC hides it in place.
-        if (!popupConsumedEscape && trackingState_.isOpen) {
-            trackingState_.isOpen = false;
-            trackingState_.openCombo = TrackingCombo::None;
-            popupConsumedEscape = true;
-        }
-        // B898 (#214): the trainer window draws above the bank, so it is
-        // dismissed first; like the bank it ends the SERVER session
-        // (CloseTrainerIntent -> OP_GMEndTraining) and waits for the Closed
-        // event.
-        if (!popupConsumedEscape && trainerState_.isOpen) {
-            if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::CloseTrainerIntent{});
-            popupConsumedEscape = true;
-        }
-        if (!popupConsumedEscape && bankState_.isOpen) {
-            if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::CloseBankIntent{});
-            popupConsumedEscape = true;
-        }
-        if (!popupConsumedEscape && merchantState_.isOpen) {
-            if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::VendorToggleIntent{});
-            popupConsumedEscape = true;
-        }
-        if (!popupConsumedEscape && newUIEnabled_ && staticUIInput_) {
-            popupConsumedEscape = staticUIInput_->processKey(
-                irr::KEY_ESCAPE, /*pressed=*/true, /*shift=*/false, /*ctrl=*/false,
-                inventoryState_, spellbookState_, skillsPopupState_, lootState_,
-                tradeskillState_);
-        }
-        if (!popupConsumedEscape && ctx_.Overlays().currentTargetId() != 0) {
-            LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", ctx_.Overlays().currentTargetName());
-            ctx_.Overlays().clearCurrentTarget();
-            SetTrackedTargetId(0);
-            ctx_.eventReceiver->pushBridgeAction({RendererAction::ClearTarget});
-        }
+        handleEscapeKey();
     }
+}
+
+// B460 (#156): the windows ESC can close, in DRAW order (bottom first), for
+// the open-order stack. Containers are listed by their own openSequence so
+// two opened in one frame keep the order the game thread gave them.
+std::vector<EscWindowKey> FrameComponent::openEscWindows() const {
+    std::vector<EscWindowKey> open;
+    if (inventoryState_.activePopup != PopupType::None) open.push_back({EscWindow::Inventory, 0});
+    if (spellbookState_.isOpen) open.push_back({EscWindow::Spellbook, 0});
+    if (skillsPopupState_.isOpen) open.push_back({EscWindow::Skills, 0});
+    if (merchantState_.isOpen) open.push_back({EscWindow::Merchant, 0});
+    if (lootState_.isOpen) open.push_back({EscWindow::Loot, 0});
+    if (tradeskillState_.isOpen) open.push_back({EscWindow::Tradeskill, 0});
+    if (bankState_.isOpen) open.push_back({EscWindow::Bank, 0});
+    if (trainerState_.isOpen) open.push_back({EscWindow::Trainer, 0});
+    if (trackingState_.isOpen) open.push_back({EscWindow::Tracking, 0});
+    std::vector<int> bags;
+    for (int i = 0; i < ContainerWindowsState::MAX_WINDOWS; ++i) {
+        if (containerState_.windows[i].isOpen) bags.push_back(i);
+    }
+    std::sort(bags.begin(), bags.end(), [&](int a, int b) {
+        return containerState_.windows[a].openSequence < containerState_.windows[b].openSequence;
+    });
+    for (int i : bags) open.push_back({EscWindow::Container, i});
+    if (itemDisplayState_.isOpen) open.push_back({EscWindow::ItemDisplay, 0});
+    if (friendsState_.isOpen) open.push_back({EscWindow::Friends, 0});
+    if (optionsState_.isOpen) open.push_back({EscWindow::Options, 0});
+    return open;
+}
+
+void FrameComponent::observeEscWindows() {
+    escWindowStack_.observe(openEscWindows());
+}
+
+// B460 (#156): ESC closes ONE window per press, the most recently opened
+// (MEASURED, review/UIGAP-ORACLE/156/README.md: tip, then bag, then
+// inventory, then nothing). Before this it walked a FIXED list (options ->
+// friends -> item display -> containers -> tracking -> trainer -> bank ->
+// merchant -> the centre popups). Each window still closes the way it always
+// did: the pure client views (options, friends, item display, tracking, the
+// spellbook/skills/inventory popups) hide in place; the SERVER-owned ones
+// push their close intent and stay up until the server's Closed event comes
+// back (T290's rule): containers TradeskillCloseIntent (B899), the trainer
+// CloseTrainerIntent (B898), the bank CloseBankIntent and the merchant
+// VendorToggleIntent (T436), the tradeskill/loot popups through processKey()
+// (T443/T290). With no window open ESC clears the target. Whether the
+// official client's first press ALSO clears the target while closing a window
+// is NOT separated by the oracle run: fable keeps its behaviour (it does not)
+// -- an assumption awaiting the oracle.
+bool FrameComponent::handleEscapeKey() {
+    observeEscWindows();
+    const std::optional<EscWindowKey> top = escWindowStack_.newest();
+    bool popupConsumedEscape = false;
+    if (top) {
+        LOG_DEBUG(MOD_GRAPHICS, "[ESC] closing the newest window: {}", escWindowName(top->kind));
+        switch (top->kind) {
+            case EscWindow::Options:
+                optionsState_.isOpen = false;
+                popupConsumedEscape = true;
+                break;
+            case EscWindow::Friends:
+                toggleFriendsWindow();
+                popupConsumedEscape = true;
+                break;
+            case EscWindow::ItemDisplay:
+                itemDisplayState_.isOpen = false;
+                popupConsumedEscape = true;
+                break;
+            case EscWindow::Container:
+                if (newUIEnabled_ && staticUIInput_) {
+                    popupConsumedEscape = staticUIInput_->processContainerEscape(containerState_, top->sub);
+                }
+                break;
+            case EscWindow::Tracking:
+                trackingState_.isOpen = false;
+                trackingState_.openCombo = TrackingCombo::None;
+                popupConsumedEscape = true;
+                break;
+            case EscWindow::Trainer:
+                if (trainerState_.isOpen && ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::CloseTrainerIntent{});
+                popupConsumedEscape = true;
+                break;
+            case EscWindow::Bank:
+                if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::CloseBankIntent{});
+                popupConsumedEscape = true;
+                break;
+            case EscWindow::Merchant:
+                if (ctx_.bridge) ctx_.bridge->pushIntent(eqt::events::VendorToggleIntent{});
+                popupConsumedEscape = true;
+                break;
+            case EscWindow::Tradeskill:
+            case EscWindow::Loot:
+            case EscWindow::Spellbook:
+            case EscWindow::Skills:
+            case EscWindow::Inventory:
+                if (newUIEnabled_ && staticUIInput_) {
+                    popupConsumedEscape = staticUIInput_->processKey(
+                        irr::KEY_ESCAPE, /*pressed=*/true, /*shift=*/false, /*ctrl=*/false,
+                        inventoryState_, spellbookState_, skillsPopupState_, lootState_,
+                        tradeskillState_, top->kind);
+                }
+                break;
+            case EscWindow::Count:
+                break;
+        }
+        // A pure client view closed in place: forget it now, so a second
+        // press in the same frame reaches the next one.
+        observeEscWindows();
+    }
+    if (!popupConsumedEscape && ctx_.Overlays().currentTargetId() != 0) {
+        LOG_INFO(MOD_GRAPHICS, "[TARGET] Cleared target: {}", ctx_.Overlays().currentTargetName());
+        ctx_.Overlays().clearCurrentTarget();
+        SetTrackedTargetId(0);
+        if (ctx_.eventReceiver) ctx_.eventReceiver->pushBridgeAction({RendererAction::ClearTarget});
+    }
+    return popupConsumedEscape;
 }
 
 // T357 (B057): the Tab arm of processChatInput()'s key drain.

@@ -17,6 +17,7 @@
 #include <string>
 
 #include "client/graphics/ui/confirmation_dialog.h"  // B442b
+#include "client/graphics/ui/esc_window_stack.h"   // B460
 #include "client/graphics/ui/options_layout.h"
 #include "client/graphics/ui/quantity_window.h"   // B442
 #include "client/inventory/cursor_gesture.h"      // B442
@@ -318,7 +319,7 @@ public:
      * TradeskillCloseIntent and nothing is hidden locally. Returns true if a
      * window was addressed.
      */
-    bool processContainerEscape(ContainerWindowsState& containers);
+    bool processContainerEscape(ContainerWindowsState& containers, int onlyIndex = -1);
 
     /**
      * B896 (#212): the trade window and the NPC give window. Defined in
@@ -351,13 +352,20 @@ public:
      * close intent and leaves the panel up until the server's own
      * TradeskillContainerClosed / LootWindowClosed comes back. The other
      * three are pure client views and are hidden here.
+     *
+     * B460 (#156): `only` names the ONE popup the ESC window stack chose
+     * (the most recently opened window); EscWindow::Count keeps the fixed
+     * draw order above, which is what a caller without the stack gets.
+     * B899's processContainerEscape() takes the stack's container index the
+     * same way (-1 = the topmost).
      */
     bool processKey(irr::EKEY_CODE key, bool pressed, bool shift, bool ctrl,
                     InventoryPanelState& inventory,
                     SpellbookPopupState& spellbook,
                     SkillsPopupState& skills,
                     LootPanelState& loot,
-                    TradeskillPanelState& tradeskill);
+                    TradeskillPanelState& tradeskill,
+                    EscWindow only = EscWindow::Count);
 
     // --- T313: the one scroll input path -------------------------------
     //

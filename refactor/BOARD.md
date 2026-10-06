@@ -8953,6 +8953,11 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   presses ESC on each with the official client running and records what
   happens. Cheap and scriptable -- we control the server and the vendor.
   Found by T443.
+  **UIGAP-small (B460 partial):** the ORDER is now the measured one (most
+  recently opened first, one per press; `esc_window_stack.h`,
+  `tests/test_esc_window_stack.cpp`). Still unmeasured, so this stays open:
+  ESC on the merchant/bank/trainer specifically, and whether a
+  window-closing press also clears the target (fable: it does not).
 
 ---
 

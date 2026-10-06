@@ -748,6 +748,7 @@ IF(EQT_GRAPHICS)
         # B896 (#212): the trade window and the NPC give window, and their input.
         src/client/graphics/ui/trade_panel.cpp
         src/client/graphics/ui/trade_input.cpp
+        src/client/graphics/ui/esc_window_stack.cpp
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
         src/client/graphics/ui/ui_preferences.cpp

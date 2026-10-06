@@ -152,6 +152,7 @@
 #include "client/graphics/ui/trainer_panel.h"  // B898
 #include "client/graphics/ui/container_panel.h"
 #include "client/graphics/ui/trade_panel.h"  // B896
+#include "client/graphics/ui/esc_window_stack.h"  // B460
 #include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
@@ -327,6 +328,15 @@ public:
 	// official client opens both, trade.tsv row 1), so a click it takes is
 	// withheld from every window below it.
 	void processTradeWindowInput();
+	// ---- B460 (GitLab #156): ESC closes the most recently opened window ----
+	// observeEscWindows() runs every frame (processFrameInput) so the stack
+	// sees every opener; handleEscapeKey() is the ESC press, from
+	// processChatInput(). Returns true when a window took the press (false:
+	// it cleared the target, or there was nothing to do).
+	std::vector<EscWindowKey> openEscWindows() const;
+	void observeEscWindows();
+	bool handleEscapeKey();
+	EscWindowStack escWindowStack_;
 
 	// ---- T432 (board B275): the ONE per-character persistence path ----
 	// Before this the client persisted NOTHING a player changed. Will's
