@@ -60,7 +60,12 @@ bool Application::initScenario(const ApplicationConfig& config) {
     // lane whose result can be silenced by a logging flag is not a lane.
     SetModuleLogLevel(MOD_SCENARIO, LOG_INFO);
 
-    m_scenarioWorld = std::make_unique<scenario::ApplicationScenarioWorld>(*this, *m_eqClient);
+    // UIGAP-live: hand the world the bridge EverQuest pushes into, so its
+    // transcript observer sees the chat lines / tracking list / skill updates
+    // a headless run never drains. Installed here, before the game thread
+    // runs, so the observer is never set concurrently with a push.
+    m_scenarioWorld = std::make_unique<scenario::ApplicationScenarioWorld>(
+        *this, *m_eqClient, m_bridge);
     m_scenarioRunner = std::make_unique<scenario::ScenarioRunner>(
         std::move(built), *m_scenarioWorld,
         config.scenarioTimeoutSeconds, config.scenarioStartDeadlineSeconds);

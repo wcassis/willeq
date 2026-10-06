@@ -12,6 +12,7 @@ The bridge is the sole communication channel between the game thread and the ren
 - `pushIntent(RendererIntent)` — renderer thread enqueues user action
 - `drainIntents()` → returns vector — game thread consumes
 - Two independent mutexes (events and intents never contend)
+- `setEventObserver()` (UIGAP-live) — one optional game-thread observer of every pushed event; only the scenario lane installs one (`ApplicationScenarioWorld`'s chat transcript / event counts). Empty in every ordinary run
 - **Swap-vector pattern**: drain swaps the entire vector in O(1), then processes outside the lock
 
 **IrrlichtBridge** (`irrlicht_bridge.h`) — Concrete bridge for 3D rendering:

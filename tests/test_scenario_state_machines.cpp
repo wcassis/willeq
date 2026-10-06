@@ -137,8 +137,9 @@ ScenarioOptions DefaultOptions() { return ScenarioOptions{}; }
 
 TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     const std::vector<std::string> names = ScenarioNames();
-    // 6 pre-B630 + 7 B630 (issue #48) interrupted-cast legs.
-    EXPECT_EQ(names.size(), 13u);
+    // 6 pre-B630 + 7 B630 (issue #48) interrupted-cast legs + 10 UIGAP-live
+    // UI legs (pinned by name in tests/test_scenario_ui_legs.cpp).
+    EXPECT_EQ(names.size(), 23u);
     EXPECT_TRUE(IsScenarioName("zone_in"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));
     EXPECT_TRUE(IsScenarioName("cast_lands"));
