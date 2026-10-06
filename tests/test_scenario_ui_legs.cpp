@@ -429,3 +429,259 @@ TEST(TrackPeer, StaysWalksOffAndCampsOut) {
     }
     EXPECT_EQ(runner.exitCode(), kScenarioPass) << runner.reason();
 }
+
+// ===========================================================================
+// UIGAP-live2: trade / give (#212), drop / destroy / coin (#151), bank
+// Change (#26). TradeSim answers the new IScenarioWorld surface the way the
+// client model and the server are expected to (review/UIGAP-ORACLE/212, 151).
+// ===========================================================================
+
+namespace {
+
+class TradeSim : public SimWorld {
+public:
+    int flags = 0;
+    std::vector<long long> purse{10, 0, 0, 0};
+    std::vector<long long> bank{3, 0, 0, 0};
+    long long cursorCoin = 0;
+    long long objects = 5;
+    // knobs: each makes one assertion fail
+    bool printOnComplete = false;
+    bool silentCancel = false;
+    bool groundObjectAppears = true;
+    bool questTakesFang = true;
+    bool changeDoesNothing = false;
+    // the peer's timeline (trade_peer): the actor's two trades
+    bool peerMode = false;
+
+    int TradeFlags() const override { return flags; }
+    long long FindItemSlot(long long id) const override {
+        for (const auto& [slot, item] : items)
+            if (item == id && (slot < 3000 || slot > 3007)) return slot;
+        if (!cursor.empty() && cursor.front() == id) return 33;
+        for (const auto& [slot, item] : items)
+            if (item == id) return slot;
+        return 0;
+    }
+    std::vector<long long> Coins(bool b) const override { return b ? bank : purse; }
+    long long CursorCoinCopper() const override { return cursorCoin; }
+    long long WorldObjectCount() const override { return objects; }
+
+    bool ClickEntity(const std::string& name) override {
+        commands.push_back("CLICKENTITY " + name);
+        if (cursor.empty() && cursorCoin == 0) return true;  // just a target
+        flags = IScenarioWorld::kTradeActive | (name == "Tillin" ? IScenarioWorld::kTradeWithNpc : 0);
+        items[3000] = cursor.front();
+        cursor.pop_front();
+        return true;
+    }
+    bool TradeButton(int op) override {
+        commands.push_back("TRADEBUTTON " + std::to_string(op));
+        if (op == 2) { cursorCoin = 0; return true; }
+        if (op == 1) {
+            items[FirstFree()] = items[3000];
+            items.erase(3000);
+            flags = 0;
+            if (!silentCancel) System("You have cancelled the trade.");
+            return true;
+        }
+        flags |= IScenarioWorld::kTradeOwnAccepted;
+        if (peerMode) { peerCompleteAt = clock + 1.0; return true; }
+        if (flags & IScenarioWorld::kTradeWithNpc) {
+            const long long given = items[3000];
+            items.erase(3000);
+            flags = 0;
+            if (given == 13915 && questTakesFang) {
+                chat.push_back("say|Captain Tillin|Very good! One less gnoll the people of Qeynos need to fear.");
+                cursor.push_back(10070);
+            } else {
+                cursor.push_back(given);
+            }
+            return true;
+        }
+        completeAt = clock + 2.0;  // the partner presses Trade
+        return true;
+    }
+    bool CursorGesture(int op, int, int qty, int src) override {
+        commands.push_back("GESTURE " + std::to_string(op));
+        auto& store = src == 2 ? bank : purse;
+        switch (op) {
+            case 3:
+                if (cursorCoin == 0) { store[0] -= qty; cursorCoin = qty * 1000; }
+                else { store[0] += cursorCoin / 1000; cursorCoin = 0; }
+                break;
+            case 5: case 7: Event(GameEventType::ConfirmationRequested); break;
+            case 6: cursor.pop_front(); if (groundObjectAppears) ++objects; break;
+            case 8: cursor.pop_front(); break;
+            default: return false;
+        }
+        return true;
+    }
+    void SendCommand(const std::string& line) override {
+        if (line == "/coin pp 5") { commands.push_back(line); purse[0] -= 5; cursorCoin = 5000; return; }
+        if (line == "/bank change") {
+            commands.push_back(line);
+            if (!changeDoesNothing) { purse = {2, 9, 9, 3}; bank = {4, 5, 4, 0}; }
+            return;
+        }
+        SimWorld::SendCommand(line);
+    }
+    void Tick(double dt) {
+        OnTick(dt);
+        if (completeAt >= 0 && clock >= completeAt) {
+            completeAt = -1;
+            items.erase(3000);
+            flags = 0;
+            if (printOnComplete) System("The trade is complete.");
+        }
+        if (!peerMode) return;
+        // the actor: opens at 30 s, offers + accepts at 40 s; second trade
+        // at 70 s, cancelled at 80 s
+        if (clock >= 30.0 && phase == 0) { phase = 1; flags = IScenarioWorld::kTradeActive; }
+        if (clock >= 40.0 && phase == 1) {
+            phase = 2;
+            flags |= IScenarioWorld::kTradePartnerOffered | IScenarioWorld::kTradePartnerAccepted;
+        }
+        if (peerCompleteAt >= 0 && clock >= peerCompleteAt) {
+            peerCompleteAt = -1;
+            flags = 0;
+            items[24] = 7007;
+        }
+        if (clock >= 70.0 && phase == 2) { phase = 3; flags = IScenarioWorld::kTradeActive; }
+        if (clock >= 80.0 && phase == 3) { phase = 4; flags = 0; System("You have cancelled the trade."); }
+    }
+
+private:
+    int FirstFree() const {
+        for (int s = 23; s <= 30; ++s) if (!items.count(s)) return s;
+        return 30;
+    }
+    double completeAt = -1.0;
+    double peerCompleteAt = -1.0;
+    int phase = 0;
+};
+
+int RunTradeLeg(const std::string& name, TradeSim& world, double seconds, std::string* reason = nullptr,
+                const std::string& peer = "Testbuddy") {
+    ScenarioOptions o;
+    o.castTargetName = peer;
+    ScenarioRunner runner(MakeScenario(name, o), world, /*timeout=*/900.0, /*startDeadline=*/10.0);
+    const float dt = 1.0f / 60.0f;
+    for (int i = 0; i < static_cast<int>(seconds * 60.0); ++i) {
+        world.Tick(dt);
+        if (!runner.Tick(dt)) break;
+    }
+    if (reason) *reason = runner.reason();
+    return runner.finished() ? runner.exitCode() : -1;
+}
+
+TradeSim TradeFixture() {
+    TradeSim w;
+    w.items = {{23, 17005}, {24, 7007}, {25, 16598}, {26, 13915}};
+    return w;
+}
+
+}  // namespace
+
+TEST(UiLegs2Registry, TheFiveUigapLive2ScenariosAreRegistered) {
+    for (const char* n : {"trade_roundtrip", "trade_peer", "give_npc", "drop_destroy_coin", "bank_change"}) {
+        EXPECT_TRUE(IsScenarioName(n)) << n;
+    }
+}
+
+TEST(TradeRoundtrip, DaggerAndCoinCompleteSilentlyThenACancelPrints1450) {
+    TradeSim w = TradeFixture();
+    std::string why;
+    ASSERT_EQ(RunTradeLeg("trade_roundtrip", w, 200.0, &why), kScenarioPass) << why;
+    EXPECT_EQ(w.FindItemSlot(7007), 0);     // the dagger left us
+    EXPECT_GT(w.FindItemSlot(16598), 0);    // the cancelled bottle came back
+    EXPECT_NE(std::find(w.commands.begin(), w.commands.end(), "CLICKENTITY Testbuddy"), w.commands.end());
+    EXPECT_NE(std::find(w.commands.begin(), w.commands.end(), "TRADEBUTTON 2"), w.commands.end());
+    EXPECT_NE(std::find(w.commands.begin(), w.commands.end(), "TRADEBUTTON 1"), w.commands.end());
+}
+
+TEST(TradeRoundtrip, ACompletionLineFails) {
+    TradeSim w = TradeFixture();
+    w.printOnComplete = true;
+    std::string why;
+    EXPECT_EQ(RunTradeLeg("trade_roundtrip", w, 200.0, &why), kScenarioFail);
+    EXPECT_NE(why.find("completion line"), std::string::npos) << why;
+}
+
+TEST(TradeRoundtrip, ACancelWithoutEqstr1450Fails) {
+    TradeSim w = TradeFixture();
+    w.silentCancel = true;
+    std::string why;
+    EXPECT_EQ(RunTradeLeg("trade_roundtrip", w, 200.0, &why), kScenarioFail);
+    EXPECT_NE(why.find("Cancel"), std::string::npos) << why;
+}
+
+TEST(TradeRoundtrip, NoPeerNameRefusesFast) {
+    TradeSim w = TradeFixture();
+    std::string why;
+    EXPECT_EQ(RunTradeLeg("trade_roundtrip", w, 60.0, &why, ""), kScenarioFail);
+    EXPECT_NE(why.find("--scenario-cast-target"), std::string::npos) << why;
+}
+
+TEST(TradePeer, AcceptsAfterTheActorAndSeesTheCancel) {
+    TradeSim w;
+    w.peerMode = true;
+    w.items = {{23, 17005}};
+    std::string why;
+    ASSERT_EQ(RunTradeLeg("trade_peer", w, 200.0, &why, "Testchar"), kScenarioPass) << why;
+    EXPECT_EQ(w.FindItemSlot(7007), 24);
+}
+
+TEST(GiveNpc, TheQuestTakesTheFangAndPaysAMoonstone) {
+    TradeSim w = TradeFixture();
+    std::string why;
+    ASSERT_EQ(RunTradeLeg("give_npc", w, 120.0, &why), kScenarioPass) << why;
+    EXPECT_EQ(w.FindItemSlot(13915), 0);
+    EXPECT_EQ(w.FindItemSlot(10070), 33);
+}
+
+TEST(GiveNpc, AFangHandedBackFails) {
+    TradeSim w = TradeFixture();
+    w.questTakesFang = false;
+    std::string why;
+    EXPECT_EQ(RunTradeLeg("give_npc", w, 120.0, &why), kScenarioFail);
+    EXPECT_NE(why.find("Give"), std::string::npos) << why;
+}
+
+TEST(DropDestroyCoin, ConfirmationsCoinAndBankCoin) {
+    TradeSim w = TradeFixture();
+    std::string why;
+    ASSERT_EQ(RunTradeLeg("drop_destroy_coin", w, 200.0, &why), kScenarioPass) << why;
+    EXPECT_EQ(w.FindItemSlot(16598), 0);
+    EXPECT_EQ(w.FindItemSlot(7007), 0);
+    EXPECT_EQ(w.purse[0], 8);
+    EXPECT_EQ(w.bank[0], 5);
+    EXPECT_EQ(w.objects, 6);
+}
+
+TEST(DropDestroyCoin, ADropWithNoGroundObjectFails) {
+    TradeSim w = TradeFixture();
+    w.groundObjectAppears = false;
+    std::string why;
+    EXPECT_EQ(RunTradeLeg("drop_destroy_coin", w, 200.0, &why), kScenarioFail);
+    EXPECT_NE(why.find("ground object"), std::string::npos) << why;
+}
+
+TEST(BankChange, BothPursesGoToTheFewestCoins) {
+    TradeSim w;
+    w.purse = {0, 25, 37, 123};
+    w.bank = {3, 14, 9, 50};
+    std::string why;
+    ASSERT_EQ(RunTradeLeg("bank_change", w, 60.0, &why), kScenarioPass) << why;
+    EXPECT_NE(std::find(w.commands.begin(), w.commands.end(), "/bank change"), w.commands.end());
+}
+
+TEST(BankChange, AChangeThatMovesNothingFails) {
+    TradeSim w;
+    w.purse = {0, 25, 37, 123};
+    w.bank = {3, 14, 9, 50};
+    w.changeDoesNothing = true;
+    std::string why;
+    EXPECT_EQ(RunTradeLeg("bank_change", w, 60.0, &why), kScenarioFail);
+    EXPECT_NE(why.find("/bank change"), std::string::npos) << why;
+}
