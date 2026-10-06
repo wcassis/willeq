@@ -149,6 +149,7 @@
 #include "client/graphics/ui/tracking_panel.h"  // B895
 #include "client/graphics/ui/cursor_attachment.h"
 #include "client/graphics/ui/trainer_panel.h"  // B898
+#include "client/graphics/ui/container_panel.h"
 #include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
@@ -401,6 +402,12 @@ public:
 	// oracle's TrackingWnd has its own placement); drawn above the bank.
 	// Fed by the TrackingListChanged bridge arm.
 	TrackingPanelState trackingState_;          // B895
+	// B899 (#215 / #151 Leg B): the era container windows -- the world
+	// container (forge, oven) AND every carried bag. Fed by the two
+	// TradeskillContainer* arms and the world/bag branch of the
+	// InventorySlotChanged arm; NOT a centre popup (EQUI_Container.xml is
+	// RelativePosition false, Style_Sizable false at 100x366).
+	ContainerWindowsState containerState_;      // B899
 	XPBarState xpBarState_;             // U06i
 	// T432 (board B275): per-character UI persistence. Empty identity =
 	// not logged in yet, and sync() is then a no-op.

@@ -57,7 +57,8 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Spellbook | Center popup | `SpellbookPopupState` | `renderSpellbookPopup()` |
 | Skills | Center popup | `SkillsPopupState` | `renderSkillsPopup()` |
 | Loot | Center popup | `LootPanelState` | `renderLootPopup()` (T290) |
-| Tradeskill container | Center popup | `TradeskillPanelState` | `renderTradeskillPopup()` (T415, board B321; T419 added the recipe list on the left, board B335 — `renderTradeskillRecipeList()` in `src/client/graphics/ui/tradeskill_recipe_list.cpp`) |
+| Tradeskill container | Center popup | `TradeskillPanelState` | `renderTradeskillPopup()` (T415, board B321; **no longer opened since B899** — the world container opens the container window below, Will 2026-09-23; T419 added the recipe list on the left, board B335 — `renderTradeskillRecipeList()` in `src/client/graphics/ui/tradeskill_recipe_list.cpp`) |
+| Container (world + carried bags) | The oracle's own (350,100) 100x366, unscaled; several at once, stacked | `ContainerWindowsState` | `renderContainerWindows()` (B899, #215 / #151 Leg B; geometry `container_layout.h` from `EQUI_Container.xml`) |
 | Combat abilities | Top-right, under target, left of the gems | `CombatAbilityPanelState` | `renderCombatAbilityPanel()` (T415, board B320) |
 | Item display | Its own absolute (0,80), 400x190 | `ItemDisplayPanelState` | `renderItemDisplayPopup()` (T421, board B298 item half) |
 | Options | Centred, the oracle's own 400x452, seven tabs | `OptionsPanelState` | `renderOptionsWindow()` (T434) |
@@ -141,6 +142,22 @@ Tests: `tests/test_tracking_window.cpp` (cites the ledger rows).
 **Click-to-cursor (B442, #151).** One gesture for every item window, `eqt::inventory::CursorGesture` (`include/client/inventory/cursor_gesture.h`), whose rules are the official client's MEASURED ones (`review/UIGAP-ORACLE/151/gestures.tsv`): LEFT on a single item picks it up; LEFT on a stack of 2+ opens the QuantityWnd prefilled with the whole stack (`quantity_window.h`, `quantity_layout.h` quoting `EQUI_QuantityWnd.xml`; drawn and hit-tested above everything, ESC does not close it, other slot clicks are ignored while it is up); SHIFT+LEFT takes the whole stack and CTRL+LEFT exactly one, no dialog; LEFT with an item held places / swaps / merges (any modifier); ALT+LEFT and RIGHT are the item display (the oracle shows the RIGHT-click display only while the button is held; fable keeps it open -- flagged) and RIGHT on a bag goes to the open-container hook the bag window installs; a purse row (`IW_Money0..3`) opens the QuantityWnd for that coin (SHIFT: all of it) and held coin goes back. The render thread pushes `CursorGestureIntent` and never moves an item itself; the game thread resolves it in `ApplyCursorGesture()` against `InventoryManager` and republishes `InventorySlotChanged` for the slots it changed (eqemu answers a good `OP_MoveItem` with silence and a bad one with a resync). The loot window's LEFT click is `LootItemIntent` with auto_loot 0, which eqemu puts on the cursor. `/pickup <slot> [qty]`, `/putdown <slot>`, `/cursor` and `/coin <pp|gp|sp|cp> <n>` push the same intent; slot numbers are `inventory.slot_id` through `parseUserSlot()`. `tests/test_cursor_gesture.cpp` pins it against the ledger's rows.
 
 **The same window shows SPELLS** (T425, board B298 spell half). The oracle has no second display window at all -- there is no `EQUI_SpellDisplay.xml` and no `SpellDisplay` screen anywhere in `uifiles/default`, and `IDW_IconButton`'s own `<NormalDecal>BuffIcons</NormalDecal>` is the SPELL icon sheet -- so a spell reuses `ItemDisplayPanelState`, `renderItemDisplayPopup()`, `ItemDisplayLayout` and the one `ScrollTarget::ItemDisplay`. Its lines are composed game-side by `eqt::spell::BuildSpellDisplayText()` from eqstr 3004/3005/3006/3102/3103/3105/3107/6730/9234 and arrive on the SAME `ItemDisplayShown` event. **SHIFT+left click** on a memorised gem or a spellbook row asks for it (`SpellDisplayRequestIntent`); a plain click still casts and still memorises. The oracle's gesture is a right click, which fable cannot bind, and unlike the inventory slot left click was already taken here.
+
+**The container window** (B899, #215 / #151 Leg B). ONE window shape, `EQUI_Container.xml`'s
+ContainerWindow, for a WORLD container (forge, oven: the server's `ClickObjectAction` open) and every
+CARRIED bag (`/bag <general slot>`, `CommandsComponent::RequestToggleBag()`, the game thread being the one
+truth for which bags are open). Geometry in `container_layout.h` (transcribed, unscaled, `Style_Sizable
+false`); state, appliers, draw and hit tests in `container_panel.h/.cpp`; input in `container_input.cpp`
+(`StaticUIInput::processContainerInput()` / `processContainerEscape()`). Every window sits at the oracle's
+(350,100), newest on top (measured, `review/UIGAP-ORACLE/151/gestures.tsv` row 20). Combine (on every
+container but a plain storage bag, label always "Combine": measured, `review/UIGAP-ORACLE/215/combine.tsv`)
+pushes `TradeskillCombineIntent` with 1000 (world) or the bag's slot
+(carried); Done, the close box and ESC push `TradeskillCloseIntent` (`inventorySlot` set for a bag) and
+the window waits for `TradeskillContainerClosed` (T290's rule); a stack in the container is refused
+client-side with eqstr 8504 (`onTradeskillCombineIntent`, measured row 7). A tradeskill container opens
+straight in this view, not the official client's recipe view (Will's ruling; discrepancy flagged). A cell click goes to ONE call site,
+B442's shared `slotClick()` / `CursorGesture` with the cell's wire slot (bag 251-330, world 4000-4009). Augment controls are
+out of era and not drawn. The T415 recipe window (`TradeskillPanelState`) is no longer opened by anything.
 
 **The two T415 panels take their geometry from the oracle's XML**, the way the purse and the paperdoll do:
 `include/client/graphics/ui/tradeskill_layout.h` derives `EQUI_TradeskillWnd.xml`'s anchor-positioned
@@ -313,7 +330,7 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    (aliases `/memory`, `/mem_report`), `/music`, `/sound`, `/volume`
    (`/vol`), `/musicvolume` (`/mvol`), `/effectsvolume` (`/evol`, `/sfxvol`).
 2. **Registry 2 — `action::CommandProcessor`**
-   (`src/client/action/command_processor_registration.cpp`, **152**
+   (`src/client/action/command_processor_registration.cpp`, **153**
    `registerCommand({...})` calls — T347 inserted `/cleartarget` at entry 022
    and `tests/goldens/command_registration_order_g03.txt` pins both the count
    and the position, so re-read the golden header rather than this line; J04
@@ -431,7 +448,8 @@ hold, focus, health, dismiss).
 
 **Tradeskill (T149):** `/recipesearch` (`/recipes`), `/recipedetails`
 (`/recipeinfo`), `/recipecombine` (`/autocombine`), `/recipefavorites`
-(`/recipefav`), `/clickobject <drop_id>` (`/clickobj`).
+(`/recipefav`), `/clickobject <drop_id>` (`/clickobj`), `/combine [general slot]`, `/closecontainer`, `/bag <general slot>`
+(B899: opens/closes a carried container's window).
 
 **Commerce / Inventory:** `/vendor`, `/vendorlist`, `/buy <slot> [qty]`,
 `/sell <slot> [qty]`, `/bank`, `/equip <from> <to> | <item name> | list`,

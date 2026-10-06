@@ -218,7 +218,20 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //       `renderTrainerWindow(...)` (the oracle's TrackingWnd has its own
 //       placement, so it is not a centre popup).
 //     The count rises 346 -> 348, nothing removed and nothing replaced.
-const size_t kGoldenSize = 348u;
+//   * B899 (#215 / #151 Leg B): the era container windows, applied after
+//     B898, B442 and B895 (rebased onto them). TWO pure insertions, no text
+//     change and no reorder anywhere.
+//     - entries 281-283, the three lines of
+//       `staticUIInput_->processContainerInput(...)`, directly after entry
+//       280 (B895's processTrackingInput) and before T421's
+//       processItemDisplayInput: the oracle's ContainerWindow is
+//       `RelativePosition false` at its own <Location>, so it sits above the
+//       centre popups, the bank, the trainer and the tracking window and
+//       below the item display / Options.
+//     - entry 318, `renderContainerWindows(...)`, directly after entry 317
+//       `renderTrackingWindow(...)`, mirroring that hit-test order.
+//     The count rises 348 -> 352: three statements plus one.
+const size_t kGoldenSize = 352u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

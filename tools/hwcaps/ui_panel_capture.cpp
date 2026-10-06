@@ -49,6 +49,8 @@
 #include "client/tracking/tracking_state.h"
 #include "client/con_tier.h"
 #include "client/display_eqstr.h"
+// B899 (#215 / #151 Leg B).
+#include "client/graphics/ui/container_panel.h"
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -162,6 +164,9 @@ struct PanelStates {
     // B895: the Tracking Window, with con-coloured rows through the real
     // list rules and combobox text from the shipped eqstr table.
     TrackingPanelState tracking;
+    // B899 (#215): the era container windows -- a carried bag, a carried
+    // tradeskill kit and a world forge, all through the REAL appliers.
+    ContainerWindowsState containers;
     XPBarState xp;
 
     PanelStates() {
@@ -496,6 +501,49 @@ struct PanelStates {
             applyItemDisplayShown(spellDisplay, d);
         }
 
+        // B899 (#215 / #151 Leg B): the container windows, opened through the
+        // same applier the bridge uses, with real dragitem icon ids.
+        {
+            auto open = [this](bool world, int16_t slot, const char* name,
+                               uint8_t type, uint8_t count, uint32_t icon) {
+                eqt::state::TradeskillContainerOpenedEvent e;
+                e.isWorldObject = world;
+                e.objectId = world ? 4242u : 0u;
+                e.inventorySlot = slot;
+                e.containerName = name;
+                e.containerType = type;
+                e.slotCount = count;
+                e.iconId = icon;
+                applyContainerOpened(containers, e);
+            };
+            auto fill = [this](int16_t slotId, const char* name, uint32_t icon,
+                               uint32_t qty) {
+                eqt::state::InventorySlotChangedData d;
+                d.slotId = slotId;
+                d.hasItem = true;
+                d.itemId = 3000u + static_cast<uint32_t>(slotId);
+                d.itemName = name;
+                d.iconId = icon;
+                d.quantity = qty;
+                applyContainerSlotChanged(containers, d);
+            };
+            namespace inv = eqt::inventory;
+            // A Backpack (bag type 5, eight slots) in general slot 1.
+            open(false, inv::GENERAL_BEGIN, "Backpack", inv::CONTAINER_BACKPACK, 8, 565);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN, 0), "Bread Cake", 537, 4);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN, 3), "Water Flask", 550, 1);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN, 6), "Bone Chips", 772, 12);
+            // A Sewing Kit (bag type 16, ten slots) in general slot 2.
+            open(false, inv::GENERAL_BEGIN + 1, "Sewing Kit", inv::CONTAINER_TAILORING, 10, 598);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN + 1, 0), "Silk Thread", 1093, 2);
+            fill(inv::calcBagSlotId(inv::GENERAL_BEGIN + 1, 1), "Spider Silk", 1094, 1);
+            // A world forge.
+            open(true, inv::SLOT_INVALID, "Forge", inv::CONTAINER_BLACKSMITHING, 10, 0);
+            fill(inv::WORLD_BEGIN + 0, "Small Brick of Ore", 700, 1);
+            fill(inv::WORLD_BEGIN + 1, "Water Flask", 550, 1);
+            containers.windows[2].hoveredSlot = 1;
+        }
+
         xp.progress = 0.62f;
 
         // B898 (#214): a warrior guildmaster's reply, with more rows than the
@@ -620,6 +668,22 @@ std::vector<PanelCapture> buildCaptureList() {
         {"tracking_sort_open", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.tracking.openCombo = TrackingCombo::Sort;
             renderTrackingWindow(u, l, s.tracking); }},
+        // B899 (#215): each container window alone, then all three open at
+        // once: they share the oracle position, newest on top (measured).
+        {"container_bag", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            ContainerWindowsState one;
+            one.windows[1] = s.containers.windows[1];
+            renderContainerWindows(u, l, one); }},
+        {"container_sewing_kit", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            ContainerWindowsState one;
+            one.windows[2] = s.containers.windows[2];
+            renderContainerWindows(u, l, one); }},
+        {"container_forge", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            ContainerWindowsState one;
+            one.windows[0] = s.containers.windows[0];
+            renderContainerWindows(u, l, one); }},
+        {"container_three_open", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderContainerWindows(u, l, s.containers); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.

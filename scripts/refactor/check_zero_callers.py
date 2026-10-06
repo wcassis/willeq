@@ -503,6 +503,8 @@ BOARD_REASONS.update({
         "gameplay-manager control API with no production caller -- CombatManager's auto-loot/aggro/flee/auto-fire configuration, SpellManager's cast-by-id, gem swap and two callback setters, BuffManager's removals and ActiveBuff's formatting, the group-decline, move-speed, cursor-stack and hotbar-slot mutators, ZoneLines::checkMovement, WhoAllEntry::isLinkdead and calcBankBagSlotId",
     "B605":
         "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval and focusTextEntry",
+    "B899":
+        "the T415/T419 recipe window (TradeskillPanelState, EQUI_TradeskillWnd) -- since B899 (#215, Will 2026-09-23: the recipe half is out of baseline) no event opens it, so its close applier is reached only from its tests; deleting the window is a follow-up, not done mid-unit",
     "B606":
         "renderer, asset and data API with no production caller -- setNewUIEnabled, EntityRenderer's two global loaders (not called even by the zero-caller loadGlobalAssets, which T468 deleted), the superseded applyStoredZoneEnvironment, RDPServer::setCertificate, BackgroundWorkQueue's pollAll/batch hooks, StringDatabase's legacy text loaders, and eight free helpers (race reload, lift travel, body-type restriction, SpellVisualSource toString, formatted-message text parse, three options-slider conversions)",
 })
@@ -767,7 +769,6 @@ EXEMPT_GROUPS = {
     ("ZoneShaderManager", "setAtlasPageTextures"): "B494",
     ("ZoneShaderManager", "setAtlasTileScale"): "B494",
     ("(free)", "calcSharedBankBagSlotId"): "B495",
-    ("(free)", "getBagIndex"): "B495",
     ("(free)", "getBankBagIndexAny"): "B495",
     ("(free)", "getClassAbbrev"): "B495",
     ("(free)", "getParentBankSlotAny"): "B495",
@@ -937,6 +938,7 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "controlClassificationCount"): "observer",
     ("(free)", "findControlClass"): "observer",
     ("(free)", "dispositionText"): "observer",
+    ("(free)", "applyTradeskillContainerClosed"): "B899",
     # B918: the process-wide FATAL-exit record is a one-way latch in a real
     # run (set once, read by main()); a test that trips it on purpose must
     # clear it so later cases in the same binary start clean.

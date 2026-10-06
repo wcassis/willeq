@@ -201,6 +201,28 @@ ActionResult CommandProcessor::cmdCloseContainer(const std::string& args) {
     return m_dispatcher.closeTradeskillContainer();
 }
 
+// B899 (#215 / #151 Leg B): /bag <general slot> opens a carried container's
+// window, and closes it if it is open. The argument is `inventory.slot_id`
+// (T494), converted by parseUserSlot() exactly as /combine <slot> does, and
+// must be a general slot -- the official client opens a bag's window from
+// the eight general slots.
+ActionResult CommandProcessor::cmdBag(const std::string& args) {
+    auto parts = splitWhitespace(args);
+    int16_t slot = eqt::inventory::SLOT_INVALID;
+    if (parts.size() != 1 ||
+        eqt::inventory::parseUserSlot(parts[0], slot) != eqt::inventory::UserSlotResult::Ok ||
+        !eqt::inventory::isGeneralSlot(slot)) {
+        return ActionResult::Failure(
+            "Usage: /bag <general slot "
+            + std::to_string(eqt::inventory::clientSlotToServer(eqt::inventory::GENERAL_BEGIN))
+            + "-"
+            + std::to_string(eqt::inventory::clientSlotToServer(eqt::inventory::GENERAL_END))
+            + "> (opens or closes the container you carry there; slot numbers are"
+            + " inventory.slot_id)");
+    }
+    return m_dispatcher.toggleBag(slot);
+}
+
 ActionResult CommandProcessor::cmdConsentDeny(const std::string& args) {
     if (args.empty()) {
         return ActionResult::Failure("Usage: /deny <player_name>");

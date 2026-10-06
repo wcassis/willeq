@@ -295,6 +295,9 @@ public:
     // the recipe requests take no object_type. Delegate to EverQuest.
     virtual void tradeskillCombine(int16_t containerSlot) = 0;
     virtual void closeTradeskillContainer() = 0;
+    // B899 (#215 / #151 Leg B): /bag <general slot> opens or closes a
+    // carried container's window. Delegate to EverQuest.
+    virtual void toggleBag(int16_t generalSlot) = 0;
 
     // T153: request an appearance (face/hair/beard) change. Only the fields
     // the user named are set; the handler merges the rest from the

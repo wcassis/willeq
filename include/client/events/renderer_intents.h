@@ -239,6 +239,11 @@ struct TradeskillCombineIntent {
 
 struct TradeskillCloseIntent {
     uint32_t dropId;  // World object drop ID (0 for inventory containers)
+    // B899: the general slot of a CARRIED container whose window is closing
+    // (Done, the close box, ESC). SLOT_INVALID (-1) for a world container.
+    // A carried bag has no server session, so this closes it game-side
+    // (CommandsComponent::CloseCarriedContainer) and sends nothing.
+    int16_t inventorySlot = -1;
 };
 
 // T419 (board B335): a click on a COMBW_RecipeList row. Reaches

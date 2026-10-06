@@ -302,6 +302,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/commands/commands_movement.cpp
     src/client/commands/commands_spells.cpp
     src/client/commands/commands_train.cpp
+    src/client/commands/commands_containers.cpp
     src/client/core/eq_strings.cpp
     src/client/core/say_link_text.cpp
     # T397 (board B221): the one shipped-data path resolution.
@@ -723,6 +724,10 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/trainer_panel.cpp
         # B895 (GitLab #211): the Tracking Window.
         src/client/graphics/ui/tracking_panel.cpp
+        # B899 (#215): the era container window (EQUI_Container.xml), world
+        # and carried, and its input.
+        src/client/graphics/ui/container_panel.cpp
+        src/client/graphics/ui/container_input.cpp
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
         src/client/graphics/ui/ui_preferences.cpp

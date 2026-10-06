@@ -440,6 +440,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_trainer_panel DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B899 (#215 / #151 Leg B): the era container window -- the geometry parsed
+# out of EQUI_Container.xml, the appliers, the Combine / Done / ESC clicks on
+# a real GameStateBridge, /bag through the real command chain on a real
+# EverQuest, and the world container no longer opening the recipe window.
+# No device, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_container_window
+        test_container_window.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_container_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_container_window GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_container_window DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T439 (boards B432/B444/B434): the T434/T436 residue -- the absolute volume
 # round trip, the zone-in snapshot's cursor and bank slots, and the deleted
 # PopupType::Options enumerator. Half the cases are source censuses that read

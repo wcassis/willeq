@@ -730,10 +730,24 @@ void eqt::bridge::BridgeComponent::onHotbarActivateIntent(const eqt::events::Hot
 
 // Tradeskill intents (D20b1)
 void eqt::bridge::BridgeComponent::onTradeskillCombineIntent(const eqt::events::TradeskillCombineIntent& i) {
+	// B899, MEASURED (UIGAP-ORACLE 215 combine.tsv row 7): a stack in the
+	// container is refused here, with eqstr 8504 and no packet -- the window's
+	// Combine and /combine both arrive through this one intent.
+	if (ctx_.Commands().ContainerHoldsAStack(i.containerSlot)) {
+		ctx_.out.System(ctx_.strings.GetStringMessage(8504));
+		return;
+	}
 	ctx_.Player().SendTradeSkillCombine(i.containerSlot);
 }
 
 void eqt::bridge::BridgeComponent::onTradeskillCloseIntent(const eqt::events::TradeskillCloseIntent& i) {
+	// B899: a CARRIED container's window (Done, close box, ESC). No server
+	// session exists for it, and the world container -- if one is open --
+	// is not the one being closed, so the active object id is left alone.
+	if (i.inventorySlot >= 0) {
+		ctx_.Commands().CloseCarriedContainer(i.inventorySlot);
+		return;
+	}
 	if (i.dropId != 0) {
 		ctx_.Entities().SendCloseContainer(i.dropId);
 	}

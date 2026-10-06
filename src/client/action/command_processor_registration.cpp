@@ -433,6 +433,12 @@ void CommandProcessor::registerTradeskillCommands() {
         "closecontainer", {"containerclose"}, "/closecontainer",
         "Close the open world tradeskill container", "Tradeskill", false
     }, [this](const std::string& args) { return cmdCloseContainer(args); });
+
+    // B899 (#215 / #151 Leg B): the carried container window's producer.
+    registerCommand({
+        "bag", {}, "/bag <general slot>",
+        "Open or close the window of a container you carry", "Tradeskill", false
+    }, [this](const std::string& args) { return cmdBag(args); });
 }
 
 // Utility (T135)

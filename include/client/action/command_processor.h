@@ -447,6 +447,7 @@ private:
     // producer. Argument-less; both refuse a stray argument.
     ActionResult cmdCombine(const std::string& args);
     ActionResult cmdCloseContainer(const std::string& args);
+    ActionResult cmdBag(const std::string& args);  // B899
 
     // T135: Utility (6), migrated from eq_commands.cpp's leftover Group
     // Split / Misc / Skill / Movement / Utility blocks -- these six do not

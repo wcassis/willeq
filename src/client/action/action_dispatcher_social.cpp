@@ -596,6 +596,16 @@ ActionResult ActionDispatcher::closeTradeskillContainer() {
     return ActionResult::Success();
 }
 
+// B899: /bag. Same gate as the combine -- a carried container is part of a
+// zoned-in character's inventory.
+ActionResult ActionDispatcher::toggleBag(int16_t generalSlot) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->toggleBag(generalSlot);
+    return ActionResult::Success();
+}
+
 // ========== Extended Movement Actions ==========
 
 ActionResult ActionDispatcher::setMovementMode(int mode) {
