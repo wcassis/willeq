@@ -14,6 +14,8 @@ struct Entry {
 
 const Entry kScenarios[] = {
     {"zone_in", &MakeZoneInScenario},
+    // B925 (issue #244/#258): the single-client zone-link hold.
+    {"zone_link_hold", &MakeZoneLinkHoldScenario},
     {"two_client_survive", &MakeTwoClientSurviveScenario},
     {"cast_lands", &MakeCastLandsScenario},
     // T494 (board B796): a PAIR. equip_observed is the verdict; equip_actor is

@@ -138,6 +138,22 @@ IF(EQT_LIVE_TESTS)
     GTEST_DISCOVER_TESTS(test_zoning_integration PROPERTIES LABELS "live" DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B925 (issue #244/#258): the repeatable `live` zone-link check. Drives the
+# shipped willeq binary in the `--scenario zone_link_hold` lane against a real
+# eqemu stack and takes the process exit code as the verdict (0 = held the
+# link for the hold, 2 = dropped and never recovered, 3 = never zoned in).
+# GTEST_SKIPs (not red) when no stack answers the config's login port.
+ADD_EXECUTABLE(test_zone_link_hold
+    test_zone_link_hold.cpp
+)
+TARGET_LINK_LIBRARIES(test_zone_link_hold GTest::gtest_main ${JSONCPP_LIBRARIES})
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_zone_link_hold PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+IF(EQT_LIVE_TESTS)
+    GTEST_DISCOVER_TESTS(test_zone_link_hold PROPERTIES LABELS "live" DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # Batch R (R02): headless session replay harness / game-state regression
 # oracle. Synthetic mode always runs (no network, no EQ client files); golden
 # mode activates only when data/captures/session.sleq exists and GTEST_SKIPs
