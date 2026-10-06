@@ -14,6 +14,7 @@ const char* escWindowName(EscWindow kind) {
         case EscWindow::Options: return "options";
         case EscWindow::Friends: return "friends";
         case EscWindow::ItemDisplay: return "item display";
+        case EscWindow::Tip: return "tip";
         case EscWindow::Container: return "container";
         case EscWindow::Tracking: return "tracking";
         case EscWindow::Trainer: return "trainer";

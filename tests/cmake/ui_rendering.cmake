@@ -548,6 +548,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_bank_change DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B834 (#202): the tip windows -- parse, catalog, rules, [Tips] persistence,
+# and the frame's rising-edge triggers and ESC order on a device-less renderer.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_tip_window
+        test_tip_window.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_tip_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_tip_window GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_tip_window DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B460 (#156): ESC closes the most recently opened window, one per press --
 # the open-order stack and FrameComponent::handleEscapeKey() on a device-less
 # renderer, driven through opened-order sequences.

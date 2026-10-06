@@ -12616,7 +12616,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   Not class A: the score decided a corpus LABEL, not a shipped constant, and
   `review/T492/README.md` says the corpus is not blessed until Will has looked
   at the sheets. Found by T499.
-- **B834** (B) **The tip window is not only "Tip of the Day" at login -- it has → issue #202
+- **B834** (B) [UIGAP-small: fable now HAS the tip windows -- `tip_window.h`, `tests/test_tip_window.cpp`; what stays open is the oracle half below: whether `ShowTips=0` suppresses the context tips on the official client] **The tip window is not only "Tip of the Day" at login -- it has → issue #202
   context-sensitive variants that pop at the SAME rect after an in-world
   action, and nothing has ever verified that `[Tips] ShowTips=0` suppresses
   them.** [measured T499] The same 360x300 window at (664,234) carries a

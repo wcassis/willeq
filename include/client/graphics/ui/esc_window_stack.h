@@ -40,6 +40,7 @@ enum class EscWindow : uint8_t {
     Options,
     Friends,
     ItemDisplay,
+    Tip,          // the tip windows (B834 / #202): measured, closed first
     Container,    // sub = ContainerWindowsState index
     Tracking,
     Trainer,

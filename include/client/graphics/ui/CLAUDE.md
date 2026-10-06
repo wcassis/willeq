@@ -69,6 +69,7 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Cursor item | At the mouse, the oracle's 50x50 box | `CursorAttachmentState` | `renderCursorAttachment()` (T436, board B429) |
 | Skill trainer | Centred, the oracle's own 580x280, unscaled | `TrainerPanelState` | `renderTrainerWindow()` (B898, #214) |
 | Tracking | Centred, the oracle's own 150x460 (height clamped to the screen) | `TrackingPanelState` | `renderTrackingWindow()` (B895, GitLab #211) |
+| Tip windows | The oracle's 360x300, flush right at the measured (664,234) of 1024x768 | `TipWindowState` | `renderTipWindow()` (B834, #202; `tip_layout.h` from `EQUI_TipWnd.xml`) |
 | Friends | The oracle's own 168x288, at `defaults.ini`'s `[FriendsWindow]` position (XML (196,50) elsewhere), two tabs | `FriendsPanelState` | `renderFriendsWindow()` (B897) |
 | Trade / Give | The oracle's own (0,25): trade 236x365, give 108x375, unscaled | `TradePanelState` (`isNpc` picks the give window) | `renderTradeWindow()` (B896, #212; geometry `trade_layout.h` / `give_layout.h`) |
 
@@ -118,6 +119,7 @@ and Cancel and the close box `{Cancel}` -- the `TradeManager::clickAccept()` / `
 give, anything else = drop) -- then the held item drops into 3000 by itself when the request is
 acknowledged; an incoming request is acknowledged with no prompt. ESC does not touch it, and the
 close box is Cancel (both assumptions awaiting the oracle). Tests: `tests/test_trade_window.cpp`.
+**The tip windows** (B834, GitLab #202, UIGAP-small). The Tip of the Day pops after a character's first zone-in of the session, and a context tip pops on the RISING EDGE of the window it belongs to (`FrameComponent::updateTipWindows()`, `renderer_frame_tips.cpp`, once a frame, so every opener counts): Inventory, Spellbook, Skills, Options > Keys, Friends, Merchant, Bank, Trainer, Loot, the world container, Quantity -- the ones fable has a window for out of the observed table (`review/UIGAP-ORACLE/202/README.md`; Trade/Give/Consider/Sit/Death are not popped). Text and caption are the client's own `help/tips/ctx*.html` / `TOTD.txt` under `eqClientPath`, read lazily; each tip's ini KEY is eqgame.exe's own ctx-file -> key table (`tipCatalog()`); the switches are the official `[Tips]` section of `UI_<char>_<server>.ini` (`ShowTips`, `ShowTOTD`, `<Key>=0`, the keys real player files carry), through `UiPreferences::tips`. Pieces as measured: the Tip of the Day shows Show Another Tip + "Don't show any tips"; a context tip shows the History line + both checkboxes; checkboxes apply on Close. ESC closes it first when it is the newest window (B460). Assumptions awaiting oracle, in `tip_window.h`: once per session, the TOTD checkbox -> `ShowTOTD`, the TOTD entry order, a newer tip replaces an open one, colours dropped. Tests: `tests/test_tip_window.cpp`.
 
 **The three commerce windows** (T436, board **B429** CLOSED). Three producers filled an `iconId`
 nothing could draw, because the merchant window, the bank window and the cursor attachment did not

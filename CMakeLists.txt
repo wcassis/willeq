@@ -622,6 +622,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_friends.cpp  # B897
         src/client/graphics/frame/renderer_frame_cursor.cpp  # B442b
         src/client/graphics/frame/renderer_frame_trade.cpp  # B896
+        src/client/graphics/frame/renderer_frame_tips.cpp  # B834
         src/client/graphics/frame/renderer_frame_entity_build.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
@@ -733,6 +734,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/options_keys.cpp
         # B897: the Friends window (friends + ignore lists).
         src/client/graphics/ui/friends_panel.cpp
+        src/client/graphics/ui/tip_window.cpp  # B834: the tip windows
         # T436 (board B429): the merchant, bank and cursor-attachment
         # windows -- one TU per panel (M00).
         src/client/graphics/ui/merchant_panel.cpp

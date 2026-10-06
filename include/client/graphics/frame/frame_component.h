@@ -153,6 +153,7 @@
 #include "client/graphics/ui/container_panel.h"
 #include "client/graphics/ui/trade_panel.h"  // B896
 #include "client/graphics/ui/esc_window_stack.h"  // B460
+#include "client/graphics/ui/tip_window.h"  // B834
 #include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
@@ -337,6 +338,24 @@ public:
 	void observeEscWindows();
 	bool handleEscapeKey();
 	EscWindowStack escWindowStack_;
+
+	// ---- B834 (GitLab #202): the tip windows, renderer_frame_tips.cpp ----
+	// updateTipWindows() runs once a frame: it pops the Tip of the Day after
+	// the first zone-in of a character and a context tip on the rising edge
+	// of each window that has one (tip_window.h lists the oracle and the
+	// flagged assumptions). processTipWindowInput() is the click pass, true
+	// when the window took the click. The texts are read lazily from the
+	// client's own help/tips/ under RendererConfig::eqClientPath.
+	void updateTipWindows();
+	bool processTipWindowInput();
+	std::set<std::string> activeTipTriggers() const;
+	const TipDocument* tipDocument(const std::string& key);
+	TipWindowState tipState_;
+	TipPreferences tipPrefs_;
+	std::vector<TipDocument> totdEntries_;
+	bool totdLoaded_ = false;
+	std::map<std::string, TipDocument> tipDocs_;
+	std::set<std::string> tipTriggersLast_;
 
 	// ---- T432 (board B275): the ONE per-character persistence path ----
 	// Before this the client persisted NOTHING a player changed. Will's

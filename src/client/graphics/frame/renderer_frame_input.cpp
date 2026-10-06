@@ -96,7 +96,8 @@ void FrameComponent::processFrameInput(float deltaTime) {
         if (newUIEnabled_ && staticUIInput_) {
             wheel = ctx_.eventReceiver->getMouseWheelDelta();
             // B895: the Tracking Window's list is asked first (it draws above).
-            wheelConsumedByUI = scrollTrackingList(trackingState_, uiLayout_, mx, my, wheel) ||
+            wheelConsumedByUI = scrollTipWindow(tipState_, uiLayout_, mx, my, wheel) ||  // B834
+                scrollTrackingList(trackingState_, uiLayout_, mx, my, wheel) ||
                 staticUIInput_->processWheel(mx, my, wheel,
                 uiLayout_, chatPanelState_, skillsPopupState_, lootState_,
                 itemDisplayState_);
@@ -127,6 +128,9 @@ void FrameComponent::processFrameInput(float deltaTime) {
     // ===== FRAME TIMING: Camera Update =====
     frameTimings_.cameraUpdate = measureSection();
 
+    // B834: tips pop on the rising edge of their window (before the ESC
+    // stack looks, so a tip opened this frame is the newest window).
+    updateTipWindows();
     // B460: the ESC stack learns every window's open ORDER, whoever opened it.
     observeEscWindows();
     processChatInput();
@@ -694,6 +698,8 @@ std::vector<EscWindowKey> FrameComponent::openEscWindows() const {
     if (itemDisplayState_.isOpen) open.push_back({EscWindow::ItemDisplay, 0});
     if (friendsState_.isOpen) open.push_back({EscWindow::Friends, 0});
     if (optionsState_.isOpen) open.push_back({EscWindow::Options, 0});
+    // B834: drawn above Options (review/UIGAP-ORACLE/156: the tip went first).
+    if (tipState_.isOpen) open.push_back({EscWindow::Tip, 0});
     return open;
 }
 
@@ -725,6 +731,10 @@ bool FrameComponent::handleEscapeKey() {
         switch (top->kind) {
             case EscWindow::Options:
                 optionsState_.isOpen = false;
+                popupConsumedEscape = true;
+                break;
+            case EscWindow::Tip:
+                closeTipWindow(tipState_, tipPrefs_);
                 popupConsumedEscape = true;
                 break;
             case EscWindow::Friends:
