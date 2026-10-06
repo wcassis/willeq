@@ -286,6 +286,12 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     - entry 328, `renderTipWindow(...)`, directly after
 //       `renderOptionsWindow(...)` and before `renderXPBar(...)`.
 //     The count rises 359 -> 361.
+//   * B992 (GitLab #312): the 29 static-UI draw statements between
+//     `uiRenderer_->beginFrame();` and `uiRenderer_->endFrame();` pass
+//     `uiRenderer_->layer()` instead of `*uiRenderer_` -- each window begins
+//     its own z-layer, so a covered window's text is covered too. A TEXT
+//     change at those 29 positions only: no insertion, no reorder, the count
+//     stays 361.
 const size_t kGoldenSize = 361u;
 
 std::vector<std::string> readLines(const std::string& path) {

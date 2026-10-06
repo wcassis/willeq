@@ -6,7 +6,9 @@
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/ui_atlas.h"
 #include "client/graphics/text_batch.h"
+#include "client/core/memory_ledger.h"
 
+#include <algorithm>
 #include <chrono>
 
 namespace EQT {
@@ -26,7 +28,22 @@ void UIRenderer::setBatchingEnabled(bool enabled) {
 
 void UIRenderer::beginFrame() {
     atlasQuads_.clear();
+    layers_.clear();
     if (textBatch_) textBatch_->begin();
+}
+
+void UIRenderer::beginLayer() {
+    if (!layeringEnabled_) return;
+    const LayerStart here{static_cast<uint32_t>(atlasQuads_.size()),
+                          static_cast<uint32_t>(textBatch_ ? textBatch_->getQuadCount() : 0)};
+    const LayerStart prev = layers_.empty() ? LayerStart{0, 0} : layers_.back();
+    if (here.firstCmd == prev.firstCmd && here.firstText == prev.firstText) return;  // empty layer
+    if (layers_.size() == layers_.capacity()) {
+        // The only allocation B992 adds; kept across frames.
+        eqt::memory::MemoryScope memScope(eqt::memory::Category::UI);
+        layers_.reserve(std::max<size_t>(32, layers_.capacity() * 2));
+    }
+    layers_.push_back(here);
 }
 
 void UIRenderer::drawRect(const irr::core::rect<irr::s32>& rect, irr::video::SColor color) {
@@ -172,16 +189,7 @@ bool UIRenderer::drawItemIcon(const irr::core::rect<irr::s32>& rect,
     return true;
 }
 
-void UIRenderer::endFrame() {
-    if (!driver_) return;
-
-    // T462: the Static UI sub-sections of the frame timing breakdown.
-    using Clock = std::chrono::steady_clock;
-    const auto flushStart = Clock::now();
-    flushStats_.commands = atlasQuads_.size();
-    flushStats_.driverDraws = 0;
-    flushStats_.textureRuns = 0;
-
+void UIRenderer::flushCommands(size_t begin, size_t end) {
     // Flush the queued draw commands IN SUBMISSION ORDER (T294).
     //
     // T275: the per-quad colour MUST reach the driver. The flush used to pass
@@ -206,60 +214,129 @@ void UIRenderer::endFrame() {
     // command on the same texture; a solid run (the fallback path's
     // rectangles) every following solid command with the same blend enable,
     // because draw2DRectangle() turns blending on only for alpha < 255.
-    if (!atlasQuads_.empty()) {
-        irr::video::ITexture* atlasTex = atlas_ ? atlas_->getTexture() : nullptr;
-        auto resolve = [&](const DrawCmd& c) -> irr::video::ITexture* {
-            return c.texture ? c.texture : atlasTex;
-        };
-        const size_t n = atlasQuads_.size();
-        size_t i = 0;
-        while (i < n) {
-            const DrawCmd& head = atlasQuads_[i];
-            run_.clear();
-            if (head.solid) {
-                const bool blend = head.color.getAlpha() < 255;
-                size_t end = i;
-                while (end < n && atlasQuads_[end].solid &&
-                       (atlasQuads_[end].color.getAlpha() < 255) == blend) {
-                    run_.push_back({atlasQuads_[end].destRect, {}, atlasQuads_[end].color});
-                    ++end;
-                }
-                ++flushStats_.textureRuns;
-                flushStats_.driverDraws += quadBatch_.drawSolidRun(driver_, run_, batchingEnabled_);
-                i = end;
-                continue;
-            }
-            irr::video::ITexture* tex = resolve(head);
-            if (!tex) { ++i; continue; }  // drew nothing before T462 either
-            // A command that resolves to no texture draws nothing and is
-            // passed over without ending the run, as the old loop did.
-            size_t end = i;
-            while (end < n && !atlasQuads_[end].solid) {
-                irr::video::ITexture* t = resolve(atlasQuads_[end]);
-                if (t && t != tex) break;
-                if (t) run_.push_back({atlasQuads_[end].destRect, atlasQuads_[end].srcRect,
-                                       atlasQuads_[end].color});
-                ++end;
+    irr::video::ITexture* atlasTex = atlas_ ? atlas_->getTexture() : nullptr;
+    auto resolve = [&](const DrawCmd& c) -> irr::video::ITexture* {
+        return c.texture ? c.texture : atlasTex;
+    };
+    const size_t n = end;
+    size_t i = begin;
+    while (i < n) {
+        const DrawCmd& head = atlasQuads_[i];
+        run_.clear();
+        if (head.solid) {
+            const bool blend = head.color.getAlpha() < 255;
+            size_t stop = i;
+            while (stop < n && atlasQuads_[stop].solid &&
+                   (atlasQuads_[stop].color.getAlpha() < 255) == blend) {
+                run_.push_back({atlasQuads_[stop].destRect, {}, atlasQuads_[stop].color});
+                ++stop;
             }
             ++flushStats_.textureRuns;
-            flushStats_.driverDraws += quadBatch_.drawTexturedRun(driver_, tex, run_, batchingEnabled_);
-            i = end;
+            flushStats_.driverDraws += quadBatch_.drawSolidRun(driver_, run_, batchingEnabled_);
+            i = stop;
+            continue;
         }
-        atlasQuads_.clear();
+        irr::video::ITexture* tex = resolve(head);
+        if (!tex) { ++i; continue; }  // drew nothing before T462 either
+        // A command that resolves to no texture draws nothing and is
+        // passed over without ending the run, as the old loop did.
+        size_t stop = i;
+        while (stop < n && !atlasQuads_[stop].solid) {
+            irr::video::ITexture* t = resolve(atlasQuads_[stop]);
+            if (t && t != tex) break;
+            if (t) run_.push_back({atlasQuads_[stop].destRect, atlasQuads_[stop].srcRect,
+                                   atlasQuads_[stop].color});
+            ++stop;
+        }
+        ++flushStats_.textureRuns;
+        flushStats_.driverDraws += quadBatch_.drawTexturedRun(driver_, tex, run_, batchingEnabled_);
+        i = stop;
     }
-    const auto textStart = Clock::now();
+}
 
-    // Flush text batch
-    if (textBatch_) {
-        flushStats_.textEntries = textBatch_->getQuadCount();
-        textBatch_->flush(driver_);
-        flushStats_.textDraws = textBatch_->lastFlushDriverDraws();
+void UIRenderer::endFrame() {
+    if (!driver_) return;
+
+    // T462: the Static UI sub-sections of the frame timing breakdown.
+    using Clock = std::chrono::steady_clock;
+    auto us = [](Clock::time_point a, Clock::time_point b) {
+        return static_cast<int64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(b - a).count());
+    };
+    const size_t nCmd = atlasQuads_.size();
+    const size_t nText = textBatch_ ? textBatch_->getQuadCount() : 0;
+    flushStats_.commands = nCmd;
+    flushStats_.textEntries = nText;
+    flushStats_.driverDraws = 0;
+    flushStats_.textureRuns = 0;
+    flushStats_.textDraws = 0;
+    flushStats_.layerGroups = 0;
+    flushStats_.commandFlushUs = 0;
+    flushStats_.textFlushUs = 0;
+
+    // B992 (#312): one flush GROUP is its windows' quads, then their text. A
+    // trailing beginLayer() with nothing after it opens no layer.
+    while (!layers_.empty() && layers_.back().firstCmd == nCmd &&
+           layers_.back().firstText == nText) {
+        layers_.pop_back();
     }
-    const auto flushEnd = Clock::now();
-    flushStats_.commandFlushUs =
-        std::chrono::duration_cast<std::chrono::microseconds>(textStart - flushStart).count();
-    flushStats_.textFlushUs =
-        std::chrono::duration_cast<std::chrono::microseconds>(flushEnd - textStart).count();
+    flushStats_.layers = (nCmd + nText) ? layers_.size() + 1 : 0;
+
+    auto flushGroup = [&](size_t cmdBegin, size_t cmdEnd, size_t textBegin, size_t textEnd) {
+        if (cmdBegin == cmdEnd && textBegin == textEnd) return;
+        const auto t0 = Clock::now();
+        flushCommands(cmdBegin, cmdEnd);
+        const auto t1 = Clock::now();
+        if (textBatch_ && textBegin < textEnd) {
+            textBatch_->flushRange(driver_, textBegin, textEnd);
+            flushStats_.textDraws += textBatch_->lastFlushDriverDraws();
+        }
+        flushStats_.commandFlushUs += us(t0, t1);
+        flushStats_.textFlushUs += us(t1, Clock::now());
+        ++flushStats_.layerGroups;
+    };
+
+    // Layer k joins the group in progress unless one of the group's text
+    // entries meets one of layer k's quads: merged, that text would be drawn
+    // OVER the quads; split, the quads cover it. Anything else in a merged
+    // group keeps its relative order, so merging never moves a pixel and the
+    // non-overlapping HUD stays in one group (T462's draw counts).
+    size_t groupCmd = 0, groupText = 0;
+    int64_t checkUs = 0;
+    for (size_t k = 0; k < layers_.size(); ++k) {
+        const LayerStart s = layers_[k];
+        const size_t layerEndCmd = (k + 1 < layers_.size()) ? layers_[k + 1].firstCmd : nCmd;
+        bool split = false;
+        if (textBatch_ && groupText < s.firstText && s.firstCmd < layerEndCmd) {
+            const auto c0 = Clock::now();
+            irr::core::rect<irr::s32> box = atlasQuads_[s.firstCmd].destRect;
+            for (size_t q = s.firstCmd + 1; q < layerEndCmd; ++q) {
+                box.addInternalPoint(atlasQuads_[q].destRect.UpperLeftCorner);
+                box.addInternalPoint(atlasQuads_[q].destRect.LowerRightCorner);
+            }
+            for (size_t t = groupText; t < s.firstText && !split; ++t) {
+                if (!textBatch_->entryIntersects(t, box)) continue;
+                for (size_t q = s.firstCmd; q < layerEndCmd; ++q) {
+                    if (textBatch_->entryIntersects(t, atlasQuads_[q].destRect)) {
+                        split = true;
+                        break;
+                    }
+                }
+            }
+            checkUs += us(c0, Clock::now());
+        }
+        if (split) {
+            flushGroup(groupCmd, s.firstCmd, groupText, s.firstText);
+            groupCmd = s.firstCmd;
+            groupText = s.firstText;
+        }
+    }
+    flushGroup(groupCmd, nCmd, groupText, nText);
+    flushStats_.commandFlushUs += checkUs;
+
+    atlasQuads_.clear();
+    layers_.clear();
+    if (textBatch_) textBatch_->begin();
 }
 
 } // namespace Graphics

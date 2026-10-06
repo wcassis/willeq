@@ -76,6 +76,20 @@ public:
     /** Flush all accumulated text to the driver. */
     void flush(irr::video::IVideoDriver* driver);
 
+    /**
+     * B992 (#312): draw entries [begin, end) only, in entry order, and keep
+     * them queued (begin() or flush() clears). UIRenderer::endFrame() draws a
+     * window's text right after that window's quads with it, so the next
+     * window's panel covers it. lastFlushDriverDraws() counts this call.
+     */
+    void flushRange(irr::video::IVideoDriver* driver, size_t begin, size_t end);
+
+    /**
+     * B992: does entry `i`'s drawn extent (the font's own dimension of its
+     * text, every line of it) meet `r`? Measured once per entry, on demand.
+     */
+    bool entryIntersects(size_t i, const irr::core::rect<irr::s32>& r) const;
+
     /** Measure text width in pixels. */
     irr::s32 getTextWidth(const std::string& text) const;
     irr::s32 getTextWidthW(const wchar_t* text) const;
@@ -124,6 +138,9 @@ private:
         irr::video::SColor color;
         bool hcenter;
         bool vcenter;
+        // B992: the drawn extent, measured lazily by entryIntersects().
+        mutable irr::s32 extentW = -1;
+        mutable irr::s32 extentH = 0;
     };
     std::vector<TextEntry> entries_;
 };
