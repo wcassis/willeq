@@ -460,8 +460,10 @@ SET(CLIENT_CORE_SOURCES
     src/client/scenario/scenario_ui_inventory.cpp
     src/client/scenario/scenario_ui_social.cpp
     src/client/scenario/scenario_create_character.cpp  # B888
+    src/client/scenario/scenario_ui_trade.cpp  # UIGAP-live2 (#212 #151 #26)
     src/client/scenario/scenario_world_app.cpp
     src/client/scenario/scenario_world_app_ui.cpp
+    src/client/scenario/scenario_world_app_trade.cpp  # UIGAP-live2
     src/client/scenario/scenario_application_wiring.cpp
     # Bridge sources
     src/client/bridge/console_bridge.cpp

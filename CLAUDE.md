@@ -577,7 +577,7 @@ two-client scenario is a **peer process**, launched by `scripts/scenario.sh`
 running the partner scenario on the second account — the client never forks a
 second client.
 
-UIGAP-live UI legs: `scenario_ui_*.cpp`; scenario.sh sources `<name>.sidecar.sh`/`.post.sh` (DB half).
+UIGAP-live(2) UI legs: `scenario_ui_*.cpp`; scenario.sh sources `<name>.sidecar.sh`/`.post.sh` (DB half).
 
 The state machines are pure logic over `IScenarioWorld`
 (`include/client/scenario/scenario.h`), so
