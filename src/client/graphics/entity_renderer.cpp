@@ -13,6 +13,7 @@
 #include "client/graphics/eq/skeletal_animator.h"
 #include "client/graphics/impostor/impostor_cache.h"  // B964: complete type for impostors_
 #include "client/animation_constants.h"
+#include "client/con_tier.h"  // B895: the one level-based con table
 #include "common/logging.h"
 #include "common/name_utils.h"
 #include "common/performance_metrics.h"
@@ -29,43 +30,12 @@
 namespace EQT {
 namespace Graphics {
 
-// EQ Titanium con color rules
-// Green cutoff thresholds vary by player level
-static int getGreenCutoff(int playerLevel) {
-    if (playerLevel <= 7) return -4;
-    if (playerLevel <= 12) return -6;
-    if (playerLevel <= 20) return -8;
-    if (playerLevel <= 25) return -10;
-    if (playerLevel <= 30) return -12;
-    if (playerLevel <= 35) return -14;
-    if (playerLevel <= 40) return -16;
-    if (playerLevel <= 45) return -18;
-    if (playerLevel <= 50) return -20;
-    if (playerLevel <= 55) return -21;
-    return -22;  // 56-65
-}
-
+// EQ Titanium con color rules. B895 (GitLab #211) moved the table itself to
+// src/client/con_tier.cpp so the game-thread tracking list colours its rows
+// with the SAME one; this is now tier -> colour and nothing else.
 irr::video::SColor EntityRenderer::getConColor(int playerLevel, int entityLevel) {
-    if (playerLevel <= 0 || entityLevel <= 0) {
-        return irr::video::SColor(255, 255, 255, 255);  // White for unknown
-    }
-
-    int diff = entityLevel - playerLevel;
-    int greenCutoff = getGreenCutoff(playerLevel);
-
-    if (diff <= greenCutoff) {
-        return irr::video::SColor(255, 128, 128, 128);  // Gray
-    } else if (diff < -5) {
-        return irr::video::SColor(255, 0, 200, 0);      // Green
-    } else if (diff < -1) {
-        return irr::video::SColor(255, 0, 160, 255);    // Light blue
-    } else if (diff < 3) {
-        return irr::video::SColor(255, 255, 255, 255);  // White
-    } else if (diff < 6) {
-        return irr::video::SColor(255, 255, 255, 0);    // Yellow
-    } else {
-        return irr::video::SColor(255, 255, 0, 0);      // Red
-    }
+    const eqt::ConRgb c = eqt::ConTierRgb(eqt::ConTierForLevels(playerLevel, entityLevel));
+    return irr::video::SColor(255, c.r, c.g, c.b);
 }
 
 EntityRenderer::EntityRenderer(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,

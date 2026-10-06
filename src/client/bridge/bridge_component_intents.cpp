@@ -937,6 +937,14 @@ void eqt::bridge::BridgeComponent::onMemorizeSpellIntent(const eqt::events::Memo
 	}
 }
 
+// B895 (GitLab #211): the Tracking Window's Track button, filter toggles and
+// the two comboboxes. All four land on the bodies /track, /trackfilter,
+// /tracksort and /trackplayers reach, so a click prints the same eqstr line
+// a command does and publishes the same TrackingListChanged.
+void eqt::bridge::BridgeComponent::onTrackingIntent(const eqt::events::TrackingIntent& i) {
+	ctx_.Player().Tracking().ApplyIntent(i);
+}
+
 // The intent pump. Pure dispatch: std::visit over an exhaustive overload set,
 // one line per RendererIntent alternative, in the variant's own order. There
 // is deliberately NO generic fallback lambda -- the old chain ended in an
@@ -998,6 +1006,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::CursorGestureIntent& i) { onCursorGestureIntent(i); },
 			[this](const eqt::events::PlaySoundIntent& i) { onPlaySoundIntent(i); },
 			[this](const eqt::events::GameOptionIntent& i) { onGameOptionIntent(i); },
+			[this](const eqt::events::TrackingIntent& i) { onTrackingIntent(i); },
 		}, intent);
 	}
 }

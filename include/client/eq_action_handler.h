@@ -280,6 +280,7 @@ public:
     // ========== Social / Find (T150) ==========
     void assistGroup(uint16_t targetId) override;
     void trackTarget(uint16_t targetId) override;
+    void trackingCommand(eqt::tracking::TrackingCommand cmd, const std::string& arg) override;  // B895
     void findPerson(uint16_t targetId) override;
     void friendsWho(const std::string& friendsList) override;
 

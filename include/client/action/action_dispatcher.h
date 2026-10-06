@@ -965,10 +965,18 @@ public:
      * T150: set the server-side tracking target (OP_TrackTarget).
      * targetId 0 means "use the current target". NOTE: eqemu's
      * Handle_OP_TrackTarget only calls SetTrackingID() -- it sends NO
-     * reply. The track LIST (OP_Track -> ZoneProcessTrack) is a separate
-     * request this client still has no sender for.
+     * reply. The track LIST is OP_Track (skill 53, /useskill tracking);
+     * since B895 both feed eqt::tracking::TrackingController, which also
+     * says "You begin tracking %1." and the direction lines.
      */
     ActionResult trackTarget(uint16_t targetId);
+
+    /**
+     * B895 (GitLab #211): the Tracking Window's slash surface --
+     * /trackfilter, /tracksort, /trackplayers, /stoptracking, /tracklist.
+     * `arg` is parsed by TrackingController (usage line on a bad one).
+     */
+    ActionResult trackingCommand(eqt::tracking::TrackingCommand cmd, const std::string& arg);
 
     /**
      * T150: ask the server to path you to an entity (OP_FindPersonRequest);

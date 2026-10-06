@@ -94,7 +94,9 @@ void FrameComponent::processFrameInput(float deltaTime) {
         bool wheelConsumedByUI = false;
         if (newUIEnabled_ && staticUIInput_) {
             wheel = ctx_.eventReceiver->getMouseWheelDelta();
-            wheelConsumedByUI = staticUIInput_->processWheel(mx, my, wheel,
+            // B895: the Tracking Window's list is asked first (it draws above).
+            wheelConsumedByUI = scrollTrackingList(trackingState_, uiLayout_, mx, my, wheel) ||
+                staticUIInput_->processWheel(mx, my, wheel,
                 uiLayout_, chatPanelState_, skillsPopupState_, lootState_,
                 itemDisplayState_);
         } else {
@@ -688,6 +690,13 @@ void FrameComponent::processChatInput() {
         // them). Neither closes itself: both push the intent that ends the
         // SERVER-side session and wait for its Closed event, exactly as ESC
         // on the loot window pushes CloseLootIntent.
+        // B895: the Tracking Window draws above the trainer and the bank and below the item
+        // display; a pure client view, so ESC hides it in place.
+        if (!popupConsumedEscape && trackingState_.isOpen) {
+            trackingState_.isOpen = false;
+            trackingState_.openCombo = TrackingCombo::None;
+            popupConsumedEscape = true;
+        }
         // B898 (#214): the trainer window draws above the bank, so it is
         // dismissed first; like the bank it ends the SERVER session
         // (CloseTrainerIntent -> OP_GMEndTraining) and waits for the Closed

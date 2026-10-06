@@ -367,6 +367,22 @@ struct PlaySoundIntent {
     uint32_t soundId;
 };
 
+// --- Tracking (B895, GitLab #211) ---
+
+// The Tracking Window's controls. ONE intent for the four gestures, because
+// all four land on eqt::tracking::TrackingController -- the same bodies the
+// /track, /trackfilter, /tracksort and /trackplayers commands reach, so a
+// click and a command cannot do different things. `value` is the filter
+// index (TRW_Filter*Button order R Y W B L G), the sort or the players
+// setting, in eqt::tracking's numbering.
+enum class TrackingIntentOp : uint8_t { Track = 0, ToggleFilter, SetSort, SetPlayers };
+
+struct TrackingIntent {
+    TrackingIntentOp op = TrackingIntentOp::Track;
+    uint16_t spawnId = 0;  // Track: the selected TRW_TrackingList row
+    uint8_t value = 0;
+};
+
 // ============================================================================
 // Variant type for all renderer intents
 // ============================================================================
@@ -432,7 +448,9 @@ using RendererIntent = std::variant<
     // Audio (T328)
     PlaySoundIntent,
     // Options window (B430)
-    GameOptionIntent
+    GameOptionIntent,
+    // Tracking (B895)
+    TrackingIntent
 >;
 
 } // namespace events

@@ -135,6 +135,9 @@ void eqt::movement::MovementComponent::UpdateMovement()
 
 	// Update camp timer
 	ctx_.Player().UpdateCampTimer();
+	// B895: the tracked target's direction line, client-side (eqemu runs
+	// DoTracking only for SoD+ clients).
+	if (ctx_.self.IsFullyZonedIn()) ctx_.Player().Tracking().Tick();
 
 	// Check distance to banker NPC - close bank if player moved too far
 	if (ctx_.self.IsBankWindowOpen() && ctx_.game_state.player().bankerNpcId() != 0) {

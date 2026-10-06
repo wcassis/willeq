@@ -898,7 +898,18 @@ void EqActionHandler::trackTarget(uint16_t targetId) {
     if (!skillGateAllows(EQ::kSkillTracking)) return;
     uint16_t resolved = resolveTargetOrCurrent(targetId);
     if (resolved == 0) return;
-    m_eq.Player().SendTrackTarget(resolved);
+    // B895: the SAME body the Tracking Window's Track button reaches --
+    // OP_TrackTarget, "You begin tracking %1." and the direction ticks.
+    m_eq.Player().Tracking().BeginTracking(resolved);
+}
+
+void EqActionHandler::trackingCommand(eqt::tracking::TrackingCommand cmd,
+                                      const std::string& arg) {
+    // No class gate: these are client-side view settings and the list they
+    // shape only ever arrives for a class the server lets track. eqstr 13155
+    // "Only available to Rangers." may gate one of them on the official
+    // client -- which one is awaiting the oracle (B895 assumptions).
+    m_eq.Player().Tracking().Command(cmd, arg);
 }
 
 void EqActionHandler::findPerson(uint16_t targetId) {

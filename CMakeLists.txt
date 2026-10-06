@@ -337,6 +337,10 @@ SET(CLIENT_CORE_SOURCES
     src/client/packet_sender.cpp
     src/client/commands/combat_actions.cpp
     src/client/commands/consider_text.cpp
+    # B895 (GitLab #211): the one level-based con table, and the Tracking skill.
+    src/client/con_tier.cpp
+    src/client/tracking/tracking_state.cpp
+    src/client/tracking/tracking_controller.cpp
     src/client/combat.cpp
     src/client/combat_rounds.cpp
     src/client/combat_hunting.cpp
@@ -717,6 +721,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/cursor_attachment.cpp
         # B898 (#214): the skill trainer window.
         src/client/graphics/ui/trainer_panel.cpp
+        # B895 (GitLab #211): the Tracking Window.
+        src/client/graphics/ui/tracking_panel.cpp
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
         src/client/graphics/ui/ui_preferences.cpp

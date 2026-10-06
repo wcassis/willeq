@@ -13,6 +13,7 @@
 #include <glm/glm.hpp>
 #include "client/hotbar/hotbar_slot_type.h"  // T239: activateHotbarCommandSlot
 #include "client/action/action_types.h"
+#include "client/tracking/tracking_state.h"  // B895: TrackingCommand
 
 namespace eqt {
 
@@ -488,6 +489,9 @@ public:
     // EqActionHandler reads.
     virtual void assistGroup(uint16_t targetId) = 0;
     virtual void trackTarget(uint16_t targetId) = 0;
+    // B895 (GitLab #211): /trackfilter, /tracksort, /trackplayers,
+    // /stoptracking, /tracklist -- all one route to TrackingController.
+    virtual void trackingCommand(eqt::tracking::TrackingCommand cmd, const std::string& arg) = 0;
     virtual void findPerson(uint16_t targetId) = 0;
     virtual void friendsWho(const std::string& friendsList) = 0;
 

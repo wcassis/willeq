@@ -54,6 +54,7 @@ void CommandProcessor::registerBuiltinCommands() {
     registerLoggingFilterCommands();
     registerFindCommands();
     registerGMCommands();
+    registerTrackingCommands();
 }
 
 // Chat (T100)
@@ -915,6 +916,42 @@ void CommandProcessor::registerGMCommands() {
     registerCommand({
         "gmlastname", {}, "/gmlastname <name> <lastname>", "GM: set a character's last name", "GM", true
     }, [this](const std::string& args) { return cmdGMLastName(args); });
+}
+
+// Tracking (B895, GitLab #211). APPENDED after the GM family, so nothing above
+// is renumbered. Four are the official client's own commands -- eqstr 6777
+// /stoptracking, 14155 /trackplayers, 14184 /tracksort, 14185 /trackfilter --
+// each answering a bad or missing argument with its own FORMAT line
+// (13143/13154/13162), which is why none of them sets requiresArgs. /tracklist
+// is fable's: it prints the window's current rows so a headless script can
+// assert on them. All five reach eqt::tracking::TrackingController, the same
+// bodies the Tracking Window's controls push TrackingIntent into.
+void CommandProcessor::registerTrackingCommands() {
+    using eqt::tracking::TrackingCommand;
+    registerCommand({
+        "trackfilter", {}, "/trackfilter <red|yellow|white|blue|lblue|green>",
+        "Show or hide one con colour of NPCs in the tracking list", "Skills", false
+    }, [this](const std::string& args) { return m_dispatcher.trackingCommand(TrackingCommand::Filter, args); });
+
+    registerCommand({
+        "tracksort", {}, "/tracksort <normal|distance|consider|rdistance|rconsider>",
+        "Set the tracking list's sort order", "Skills", false
+    }, [this](const std::string& args) { return m_dispatcher.trackingCommand(TrackingCommand::Sort, args); });
+
+    registerCommand({
+        "trackplayers", {}, "/trackplayers <on|off|group>",
+        "Choose which players the tracking list shows", "Skills", false
+    }, [this](const std::string& args) { return m_dispatcher.trackingCommand(TrackingCommand::Players, args); });
+
+    registerCommand({
+        "stoptracking", {}, "/stoptracking",
+        "Stop tracking your tracking target", "Skills", false
+    }, [this](const std::string& args) { return m_dispatcher.trackingCommand(TrackingCommand::Stop, args); });
+
+    registerCommand({
+        "tracklist", {}, "/tracklist",
+        "Print the tracking list (the Tracking Window's rows) to chat", "Skills", false
+    }, [this](const std::string& args) { return m_dispatcher.trackingCommand(TrackingCommand::List, args); });
 }
 
 } // namespace action

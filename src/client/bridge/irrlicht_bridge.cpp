@@ -622,6 +622,14 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->Frame().optionsState_, d.option, d.value);
         }
         break;
+    case state::GameEventType::TrackingListChanged:
+        // B895 (GitLab #211): the Tracking Window's whole list + settings.
+        if (renderer_) {
+            auto& d = std::get<state::TrackingListChangedData>(event.data);
+            EQT::Graphics::applyTrackingListChanged(
+                renderer_->Frame().trackingState_, d, renderer_->Frame().uiLayout_);
+        }
+        break;
     case state::GameEventType::EntityWeaponSkillsChanged:
         if (renderer_) {
             auto& d = std::get<state::EntityWeaponSkillsChangedData>(event.data);

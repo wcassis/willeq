@@ -25,6 +25,7 @@ class PathfinderNavmesh;
 #include "client/state/event_payloads_inventory.h"
 #include "client/state/event_payloads_spell.h"
 #include "client/state/event_payloads_ui.h"
+#include "client/state/event_payloads_tracking.h"  // B895
 
 namespace eqt {
 namespace state {
@@ -151,7 +152,9 @@ using EventData = std::variant<
     ZoneUnloadingData,
     NavmeshChangedData,
     DiagnosticsMemoryReportData,
-    DiagnosticsSceneDumpData
+    DiagnosticsSceneDumpData,
+    // B895: the Tracking Window
+    TrackingListChangedData
 >;
 
 // Game event combining type and data

@@ -276,6 +276,7 @@ private:
     void registerLoggingFilterCommands();
     void registerFindCommands();
     void registerGMCommands();
+    void registerTrackingCommands();  // B895
 
     // Built-in command handlers
     // T98 deleted cmdSay/cmdOOC/cmdAuction/cmdTell/cmdReply/cmdGroupSay/

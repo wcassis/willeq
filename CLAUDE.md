@@ -11,7 +11,7 @@ kanban workers that read it as a context file silently truncate past ~62,900.
 Additional context is in subdirectory CLAUDE.md files:
 - `src/client/graphics/CLAUDE.md` - Rendering, shaders, GLES2, zone loading, performance
 - `include/client/graphics/ui/CLAUDE.md` - Static UI panels, key bindings, slash commands
-- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 102 event types
+- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 103 event types
 - `include/client/bridge/CLAUDE.md` - Event/intent bridge, thread-safe game↔renderer communication
 - `src/client/input/CLAUDE.md` - Input handlers, hotkey manager, command processor, action dispatch
 - `src/client/audio/CLAUDE.md` - Audio system, sound categories, audio tests
@@ -727,14 +727,14 @@ Audio updates                       Zone load completion detection
   EntityMoved events per entity and PlayerPositionChanged intents.
 - **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates
   game events into IrrlichtRenderer calls
-  (switch over the 102 `GameEventType` enumerators; T264: every event has a
+  (switch over the 103 `GameEventType` enumerators; T264: every event has a
   publisher and a consumer, pinned by `test_reachability_sweep`)
 - **ConsoleBridge** (`include/client/bridge/console_bridge.h`) — logs events to
   console in headless mode
 - **Event types** (`include/client/state/event_types.h`; the `GameEvent` variant
   and its payload headers are `event_bus.h` + `event_payloads_*.h`)
-  — 102 event types covering all game state changes
-- **Intent types** (`include/client/events/renderer_intents.h`) — 44 intent
+  — 103 event types covering all game state changes
+- **Intent types** (`include/client/events/renderer_intents.h`) — 45 intent
   structs in the `RendererIntent` variant, pinned by `test_reachability_sweep`
 
 **Key separation**: EverQuest communicates with the renderer only through the

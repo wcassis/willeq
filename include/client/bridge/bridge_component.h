@@ -385,6 +385,8 @@ private:
 	void PublishInventorySlot(int16_t slot);
 	void onPlaySoundIntent(const eqt::events::PlaySoundIntent& i);
 	void onGameOptionIntent(const eqt::events::GameOptionIntent& i);
+	// B895: the Tracking Window's controls -> TrackingController.
+	void onTrackingIntent(const eqt::events::TrackingIntent& i);
 
 	// T171: shared resolution of the per-client config node. See the
 	// definitions in bridge_component_ui_audio.cpp for why read and write
