@@ -410,6 +410,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_target_ring DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B995 (#315): the Display > Particles sub-pages -- sub-tab switching, the
+# Spell/Env knobs persisted as eqclient.ini floats, and each knob reaching the
+# particle systems (the worker's spawn density, the shared draw rule).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_options_particles
+        test_options_particles.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_options_particles PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_options_particles GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_options_particles DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_tradeskill_combat_panels
         test_tradeskill_combat_panels.cpp

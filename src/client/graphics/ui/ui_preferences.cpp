@@ -148,12 +148,8 @@ void ParseSettingKey(const std::string& key, const std::string& value, UiPrefere
         if (info.kind == OptionsLayout::ValueKind::Bool &&
             (t == "TRUE" || t == "true" || t == "FALSE" || t == "false")) {
             v = (t == "TRUE" || t == "true") ? 1 : 0;
-        } else {
-            try {
-                v = std::stoi(t);
-            } catch (...) {
-                return;
-            }
+        } else if (!OptionsLayout::parseSettingIniText(info.setting, t, v)) {
+            return;  // B995: ints and the oracle's floats; junk keeps the default
         }
         if (OptionsLayout::isValidSettingValue(info.setting, v)) p.optionValues[i] = v;
         return;
@@ -413,7 +409,8 @@ std::string SerializeUiPreferences(const UiPreferences& p) {
     for (int i = 0; i < OptionsLayout::kSettingCount; ++i) {
         if (!IsPersistedSetting(i)) continue;
         out += OptionsLayout::allSettings()[i].iniKey;
-        out += "=" + std::to_string(p.optionValues[i]) + "\n";
+        out += "=" + OptionsLayout::settingIniText(static_cast<OptionsLayout::Setting>(i),
+                                                   p.optionValues[i]) + "\n";
     }
     // B834: the official [Tips] section, as the real files write it.
     out += "[Tips]\nShowTips=";

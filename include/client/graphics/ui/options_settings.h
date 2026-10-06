@@ -88,6 +88,15 @@ enum class Setting : uint8_t {
     PCNames,           // Renderer: EntityRenderer::setNameTagKindsVisible
     NPCNames,          // Renderer
     TargetRing,        // Renderer: OverlaysComponent's 3D target ring (B994)
+    // B995: Display > Particles (particle_options.h). Spell and Env pages;
+    // the Player (Actor) page has no particles behind it (N3).
+    ParticlesTab,          // Marker: ODP_ParticlesTabs' sub-tab strip
+    SpellParticleOpacity,  // Renderer, 0..20 -> SpellParticleOpacity 0..1
+    SpellParticleDensity,  // Renderer, Off/Low/Medium/High
+    SpellParticleNearClip, // Renderer, Near/Medium/Far/Farthest
+    EnvParticleOpacity,
+    EnvParticleDensity,
+    EnvParticleNearClip,
 
     // --- Mouse page (B433) ---
     MouseInvertY,      // Renderer: PlayerCameraComponent MouseOptions
@@ -147,7 +156,20 @@ struct SettingInfo {
     const char* displayName;
     /** Where the key / scale / default / text is quoted from. */
     const char* source;
+    /**
+     * B995: the oracle keeps some settings as FLOATS (`1.000000`). A Step
+     * setting with iniDivisor > 0 persists value / iniDivisor; a Choice
+     * setting with iniFloats persists iniFloats[the choice's list index].
+     * Both read back to the nearest value. Neither set = an integer key.
+     */
+    float iniDivisor = 0.0f;
+    const float* iniFloats = nullptr;
 };
+
+/** B995: the ini text of `v` for setting `s` (a float in the oracle's format, or an int). */
+std::string settingIniText(Setting s, int v);
+/** B995: parse ini text for `s`; false (and `out` untouched) if it names no legal value. */
+bool parseSettingIniText(Setting s, const std::string& text, int& out);
 
 /** The row for `s`. Every Setting has exactly one (pinned by a test). */
 const SettingInfo& settingInfo(Setting s);

@@ -147,6 +147,17 @@ void FrameComponent::applyOptionsSettingB430(OptionsLayout::Setting setting) {
             LOG_INFO(MOD_GRAPHICS, "Options: 3D target ring {}",
                      on(Setting::TargetRing) ? "on" : "off");
             return;
+        case Setting::SpellParticleOpacity:
+        case Setting::SpellParticleDensity:
+        case Setting::SpellParticleNearClip:
+        case Setting::EnvParticleOpacity:
+        case Setting::EnvParticleDensity:
+        case Setting::EnvParticleNearClip:
+            // B995: nothing to push -- the sim bridge reads particleOptionKnobs()
+            // every frame, so the next frame's spawn and draw use the value.
+            LOG_INFO(MOD_GRAPHICS, "Options: {} = {}", info.name,
+                     optionsSettingStep(optionsState_, setting));
+            return;
         case Setting::TextColors:
         case Setting::TextColorReset:
             // B993: the chat panel reads the table by pointer at draw time
@@ -242,6 +253,10 @@ bool FrameComponent::processOptionsKeyCapture() {
 // B430/B433: /option and /filter. The grammar is device-free
 // (options_command.cpp); every setting it changed goes through the same
 // applyOptionsSetting() a click does, and syncUiPreferences() saves it.
+Environment::ParticleKnobs FrameComponent::particleOptionKnobs() const {
+    return particleKnobsFromOptions(optionsState_.values);
+}
+
 std::vector<std::string> FrameComponent::runOptionsCommand(const std::string& cmd,
                                                            const std::string& args) {
     OptionsCommandResult r = RunOptionsCommand(optionsState_, cmd, args);

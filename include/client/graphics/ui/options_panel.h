@@ -53,6 +53,7 @@
 #include "client/graphics/ui/options_layout.h"
 #include "client/graphics/ui/color_picker.h"  // B993
 #include "client/chat/chat_text_colors.h"     // B993
+#include "client/graphics/environment/particle_options.h"  // B995
 #include "client/state/event_bus.h"
 #include "client/graphics/ui/ui_layout.h"
 
@@ -108,6 +109,9 @@ struct OptionsPanelState {
     int colorSelectedRow = 1;    // OCP_ColorChooseList's selection, User_N (1-based)
     int colorListTop = 1;        // the first User_N the list shows (VScroll)
     ColorPickerState colorPicker;  // EQUI_ColorPickerWnd
+
+    // --- Display > Particles (B995, options_particles.cpp) ---
+    int particlesTab = 0;        // ODP_ParticlesTabs: 0 Spell, 1 Env, 2 Player
 
     int hoveredTab = -1;
     int hoveredControl = -1;
@@ -218,6 +222,20 @@ bool resetOptionsTextColors(OptionsPanelState& state);
 
 /** The VScroll strip of a listbox: the right 12px (fable's, flagged). */
 constexpr irr::s32 LIST_VSCROLL_W = 12;
+
+// --- Display > Particles (B995, options_particles.cpp) ---
+
+constexpr int kParticleSubTabs = 3;  // Spell, Env, Player (ODP_ParticlesTabs' <Pages>)
+
+/** Sub-tab `tab`'s header in tab box control `i`: the box's top TAB_H strip, split in three. */
+irr::core::rect<irr::s32> particleSubTabRect(const UILayout& layout, int i, int tab);
+/** The sub-tab under the point, or -1 (not in the strip). */
+int particleSubTabAt(const UILayout& layout, int i, int mouseX, int mouseY);
+/** Draw the wired ODP_ParticlesTabs: the box and its three sub-tabs. */
+void renderOptionsParticleTabs(UIRenderer& ui, const UILayout& layout,
+                               const OptionsPanelState& state, int i);
+/** The Spell / Env pages' values as the particle systems' knobs (Actor: identity, N3). */
+Environment::ParticleKnobs particleKnobsFromOptions(const OptionsLayout::OptionValues& values);
 
 /** Render the window. Only when optionsWindowIsVisible(). */
 void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,

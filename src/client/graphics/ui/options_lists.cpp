@@ -183,6 +183,12 @@ Setting resolveOptionsClick(const UILayout& layout, OptionsPanelState& state, in
         case Kind::Button:
             // An action button (Reload defaults): the setting IS the action.
             return c.setting;
+        case Kind::TabBox: {
+            // B995: ODP_ParticlesTabs -- a view choice, not a setting.
+            const int tab = particleSubTabAt(layout, i, mouseX, mouseY);
+            if (tab >= 0) state.particlesTab = tab;
+            return Setting::None;
+        }
         default:
             return Setting::None;
     }

@@ -100,6 +100,14 @@ public:
      * Stacks with quality setting.
      */
     void setDensity(float density);
+
+    /**
+     * B995: the Options window's particle pages (particle_options.h): the
+     * sim bridge hands them over every frame. Environment density scales the
+     * ambient emitters; opacity / near clip are applied at draw by both this
+     * manager's billboards and the unified renderer.
+     */
+    void setParticleKnobs(const ParticleKnobs& knobs);
     float getDensity() const { return userDensity_; }
 
     /**
@@ -469,6 +477,8 @@ private:
     bool initialized_ = false;
     EffectQuality quality_ = EffectQuality::Medium;
     float userDensity_ = 1.0f;
+    ParticleKnobs knobs_ = identityParticleKnobs();  // B995
+    float envDensity() const;
     ParticleBudget budget_;
     ZoneBiome currentBiome_ = ZoneBiome::Unknown;
     std::string currentZoneName_;

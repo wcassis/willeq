@@ -748,6 +748,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/options_keys.cpp
         src/client/graphics/ui/options_colors.cpp  # B993: the Colors page
         src/client/graphics/ui/color_picker.cpp    # B993: EQUI_ColorPickerWnd
+        src/client/graphics/ui/options_particles.cpp  # B995: Display > Particles
         # B897: the Friends window (friends + ignore lists).
         src/client/graphics/ui/friends_panel.cpp
         src/client/graphics/ui/tip_window.cpp  # B834: the tip windows

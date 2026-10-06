@@ -819,6 +819,18 @@ std::vector<PanelCapture> buildCaptureList() {
             openColorPicker(o.colorPicker, o.textColors, 2);
             o.colorPicker.working = ColorPickerLayout::swatchColor(1);
             renderOptionsWindow(u.layer(), l, o); }},
+        // B995 (#315): the Display page with the Particles box on its Env
+        // and Player sub-tabs (Env: density Medium, opacity 60 %).
+        {"options_display_particles_env", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            OptionsPanelState o = s.options;
+            o.isOpen = true; o.activeTab = 1; o.particlesTab = 1;
+            setOptionsValue(o, OptionsLayout::Setting::EnvParticleDensity, 2);
+            setOptionsValue(o, OptionsLayout::Setting::EnvParticleOpacity, 12);
+            renderOptionsWindow(u.layer(), l, o); }},
+        {"options_display_particles_player", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            OptionsPanelState o = s.options;
+            o.isOpen = true; o.activeTab = 1; o.particlesTab = 2;
+            renderOptionsWindow(u.layer(), l, o); }},
         // B993: the same Tell / Group / Shout lines in the default table and
         // with the Tell row changed to (0,240,0) -- the chat panel's one
         // colour decision, resolveChatLineColor().
