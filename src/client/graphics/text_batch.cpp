@@ -6,6 +6,8 @@
 #include "client/graphics/text_batch.h"
 #include "common/logging.h"
 
+#include <algorithm>
+
 namespace EQT {
 namespace Graphics {
 
@@ -107,8 +109,26 @@ void TextBatch::addText3D(const std::string& text,
 // font_->draw() instead.
 
 void TextBatch::flush(irr::video::IVideoDriver* driver) {
+    flushRange(driver, 0, entries_.size());
+    entries_.clear();
+}
+
+bool TextBatch::entryIntersects(size_t i, const irr::core::rect<irr::s32>& r) const {
+    if (!font_ || i >= entries_.size()) return false;
+    const TextEntry& e = entries_[i];
+    if (e.extentW < 0) {
+        const auto dim = font_->getDimension(e.text.c_str());
+        e.extentW = static_cast<irr::s32>(dim.Width);
+        e.extentH = std::max(static_cast<irr::s32>(dim.Height), lineHeight_);
+    }
+    const irr::core::rect<irr::s32> extent(e.x, e.y, e.x + e.extentW, e.y + e.extentH);
+    return extent.isRectCollided(r);
+}
+
+void TextBatch::flushRange(irr::video::IVideoDriver* driver, size_t begin, size_t end) {
     lastFlushDriverDraws_ = 0;
-    if (!font_ || entries_.empty()) return;
+    end = std::min(end, entries_.size());
+    if (!font_ || begin >= end) return;
 
     auto drawEntry = [&](const TextEntry& entry) {
         irr::core::rect<irr::s32> rect(
@@ -125,8 +145,7 @@ void TextBatch::flush(irr::video::IVideoDriver* driver) {
     }
     if (!batchingEnabled_ || !glyphTableUsable_ || !UiQuadBatch::driverSupportsBatching(driver)) {
         // The pre-T462 flush: one font draw per entry.
-        for (const auto& entry : entries_) drawEntry(entry);
-        entries_.clear();
+        for (size_t i = begin; i < end; ++i) drawEntry(entries_[i]);
         return;
     }
 
@@ -141,7 +160,8 @@ void TextBatch::flush(irr::video::IVideoDriver* driver) {
         glyphRun_.clear();
     };
 
-    for (const auto& entry : entries_) {
+    for (size_t i = begin; i < end; ++i) {
+        const TextEntry& entry = entries_[i];
         bool plain = true;
         irr::video::ITexture* entryTexture = nullptr;
         for (wchar_t c : entry.text) {
@@ -171,7 +191,6 @@ void TextBatch::flush(irr::video::IVideoDriver* driver) {
         }
     }
     flushRun();
-    entries_.clear();
 }
 
 irr::s32 TextBatch::getTextWidth(const std::string& text) const {

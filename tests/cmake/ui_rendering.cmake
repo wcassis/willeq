@@ -668,6 +668,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_static_ui_frame_cost DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B992 (GitLab #312): static-UI text respects panel z-order -- a pixel
+# assertion over overlapping windows and the layered flush's draw-call pins.
+# Same headless GLES2 + willeq.eqe1 harness; self-skips without them.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_panel_z_order
+        test_ui_panel_z_order.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_ui_panel_z_order PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_panel_z_order GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_ui_panel_z_order DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B975 (GitLab #293): the entity name-tag batch -- pixel-identical to the
 # per-node CTextSceneNodes, one draw per bounded run (fallbacks split it). Needs a
 # headless GLES2 device; self-skips without one.
