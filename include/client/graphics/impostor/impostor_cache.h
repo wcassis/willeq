@@ -91,6 +91,27 @@ public:
     bool capture(uint64_t key, EQAnimatedMeshSceneNode* node,
                  const std::vector<irr::scene::IMeshSceneNode*>& heldItems,
                  const irr::core::vector3df& camPos, float viewAngleDeg, uint16_t sourceSpawn);
+    // B979: pre-create the one-time GPU resources a first capture would create
+    // on the render thread -- every page (kPagePx^2 RGBA8 GEM allocations,
+    // 14-16 ms each on the Pi) and the scratch FBO (3-14 ms) -- so none of
+    // those allocations land in a gameplay frame. Called by the loading thread
+    // at the start of a zone load (under the loading screen, which owns the GL
+    // context then; the main thread is paused in render()'s loading branch).
+    // Idempotent: pages and the scratch are kept when already resident.
+    // Returns false when a resource could not be created.
+    bool prepare();
+    // B979: the second half of the load-time priming, and it MUST be the
+    // loading thread's LAST GL work: one real 3D-mesh draw into the scratch
+    // FBO (the capture path's own program, not a 2D rectangle), one FBO
+    // readback (the capture's glCopyTexSubImage2D path), and a glFinish. The
+    // loading thread renders zone asset previews after prepare(), and Lima
+    // rasterizes deferred -- so a glFinish there only flushed what came
+    // before, and the loading thread's own preview work landed in the MAIN
+    // thread's first capture frame (qeynos2 353c: draw_ms=76.61 on frame 1
+    // after prepare() had already finished+glFinished). One-time per session:
+    // the flag survives zone reloads (the pages and scratch do too). Returns
+    // false when the FBO path could not be primed.
+    bool prime3d();
     const ImpostorCapture* captureFor(uint64_t key) const;
     // Every shared key that holds a cell (for releasing the unclaimed ones).
     std::vector<uint64_t> sharedKeys() const;
@@ -122,6 +143,10 @@ private:
     irr::scene::ISceneManager* smgr_ = nullptr;
     size_t budgetBytes_ = 0;
     bool usable_ = false;
+    // B979: the 3D priming is one-time per session. A zone reload re-uses the
+    // resident pages/scratch, so only the FIRST zone load pays the 3D-path
+    // first-use (SOLID3D into the scratch FBO + the FBO readback).
+    bool primed3d_ = false;
 
     impostor::CellTable cells_;
     std::unordered_map<uint64_t, ImpostorCapture> captures_;

@@ -170,6 +170,80 @@ TEST(EntityBuildScheduler, A200EntityCrowdInPermanentRedIsBuiltInBoundedFrames) 
     EXPECT_EQ(units, 400);
 }
 
+// B979: a capture is a unit of the B973 scheduler (entity_impostors.cpp
+// gates its loop with mayStartCaptureUnit / recordUnit, kind Impostor). The
+// defect: a slow FIRST capture (30-62 ms on the Pi, B964) was unbounded --
+// the per-pass budget checked the time already spent BEFORE the unit, so a
+// slow capture landed whole in a frame, and a second one could follow it.
+// With the kind accounted to the scheduler, a second capture starts only
+// when the pass's work so far plus the kind's PREDICTED cost fits the
+// slice. So a 46 ms capture can never be joined by another capture in the
+// same frame, and a capture never starts beside build work it does not fit.
+TEST(EntityBuildScheduler, ASlowImpostorCaptureIsDeferredSoTheFrameStaysInsideItsBudget) {
+    // Frame 1: the first capture starts (guaranteed progress, every state)
+    // and costs 46 ms -- the Pi's first-draw cost. A second capture must not
+    // follow it in the same frame.
+    EntityBuildScheduler s;
+    s.beginFrame(BudgetState::Green, kTarget);
+    ASSERT_TRUE(s.mayStartCaptureUnit(0.0f, 0)) << "the first capture of a frame always runs";
+    s.recordUnit(EntityBuildUnitKind::Impostor, 46.0f);
+    // 46 spent + 46 predicted > the 6.7 ms Green slice, far over one frame
+    // budget. Deferred to the next frame -- the bar B964 left unmet.
+    EXPECT_FALSE(s.mayStartCaptureUnit(46.0f, 1))
+        << "a second capture must not join a 46 ms one in the same frame";
+
+    // Frame 2: the build slice spent 5 ms of the 6.7 ms slice. The first
+    // capture still starts (guaranteed progress), costs 46 ms, and the
+    // second is deferred: frame work (5 + 46) + prediction does not fit the
+    // slice -- the capture never lands beside build work it does not fit in.
+    s.beginFrame(BudgetState::Green, kTarget);
+    s.recordUnit(EntityBuildUnitKind::Create, 5.0f);
+    ASSERT_TRUE(s.mayStartCaptureUnit(0.0f, 0)) << "the first capture of a frame always runs";
+    s.recordUnit(EntityBuildUnitKind::Impostor, 46.0f);
+    EXPECT_FALSE(s.mayStartCaptureUnit(46.0f, 1))
+        << "a 46 ms capture does not join a 5 ms build slice in a 6.7 ms slice";
+
+    // Frames 3+: in Red (a 2 ms slice at 30 fps) the one guaranteed capture
+    // IS the frame's unit work; nothing else lands beside it.
+    for (int f = 0; f < 4; ++f) {
+        s.beginFrame(BudgetState::Red, kTarget);
+        ASSERT_TRUE(s.mayStartCaptureUnit(0.0f, 0)) << "guaranteed progress, frame " << f;
+        s.recordUnit(EntityBuildUnitKind::Impostor, 46.0f);   // the Pi's first-draw cost
+        EXPECT_FALSE(s.mayStartCaptureUnit(46.0f, 1))
+            << "the second capture of a frame is deferred, frame " << f;
+    }
+    EXPECT_GE(s.predictedMs(EntityBuildUnitKind::Impostor), 30.0f)
+        << "the kind's prediction must carry the capture's real cost";
+
+    // Legacy A/B mode: the gate is off, the pass behaves as pre-B979.
+    EntityBuildScheduler legacy;
+    legacy.setLegacy(true);
+    legacy.beginFrame(BudgetState::Red, kTarget);
+    legacy.recordUnit(EntityBuildUnitKind::Impostor, 46.0f);
+    EXPECT_TRUE(legacy.mayStartCaptureUnit(46.0f, 1)) << "legacy mode never defers";
+}
+
+// The window line carries the new kind's count and predictor (appended at the
+// end, so the B973-era fields do not move).
+TEST(EntityBuildScheduler, TheWindowLineCarriesTheImpostorKind) {
+    EntityBuildScheduler s;
+    EntityBuildBacklog b;
+    b.built = 1;
+    b.pendingUnits = 1;
+    double t = 100.0;
+    for (int i = 0; i < 6; ++i) {
+        s.beginFrame(BudgetState::Green, kTarget);
+        s.recordUnit(EntityBuildUnitKind::Impostor, 5.0f);
+        s.recordUnit(EntityBuildUnitKind::Create, 1.0f);
+        b.built++;
+        if (s.endFrame(30.0f, b, t + 0.25 * i)) break;
+    }
+    const std::string& line = s.windowLine();
+    EXPECT_NE(line.find("impostor="), std::string::npos) << line;
+    EXPECT_NE(line.find("pred_ms upload="), std::string::npos) << line;
+    EXPECT_NE(line.find("impostor=5.00 kind_ms"), std::string::npos) << line;
+}
+
 // The accounting line: one per window, only when there is something to say.
 TEST(EntityBuildScheduler, TheWindowLineCountsUnitsStatesAndTheBacklog) {
     EntityBuildScheduler s;

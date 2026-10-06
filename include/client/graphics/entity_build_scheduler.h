@@ -36,13 +36,14 @@
 namespace EQT {
 namespace Graphics {
 
-// What a build unit does; the predictor keeps one average per kind.
+// What a unit does; the predictor keeps one average per kind.
 enum class EntityBuildUnitKind : uint8_t {
     Upload = 0,   // ONE pending texture to the GPU (decoded by the prep worker)
     Create,       // Placeholder -> node created and its materials promoted (B966)
     Finalize,     // MeshFinalize: name tag, corpse pose, light, race ref
     Equip,        // EquipmentAttach: weapon meshes on the point bones
     Other,        // anything else the frame did under the same slice (GPU result)
+    Impostor,     // B979: ONE ImpostorCache::capture (entity_impostors.cpp)
     Count
 };
 
@@ -81,6 +82,22 @@ public:
     // predicted cost <= the state's slice (legacy: never).
     bool mayStartUnit(EntityBuildUnitKind kind) const;
 
+    // B979: may a capture unit start now? The pass passes its OWN frame
+    // accounting (the capture work so far this frame, and how many captures
+    // the pass has already run in it) because the pass runs inside the frame
+    // AFTER the build slice, and callers that drive the pass directly (the
+    // pixel tool, scenarios) never call beginFrame() at all. The first
+    // capture of a frame always starts (guaranteed progress, every state --
+    // an impostor is how the governor gets out of Red); the next starts only
+    // if the frame's work so far plus this kind's prediction fits the
+    // slice: that work is the pass's OWN captures plus the frame's build-slice
+    // work (spentMs() minus the pass's share), so a capture never lands on a
+    // frame whose total unit work would run past the slice. The pass's
+    // per-frame budget (unitBudgetFor) sits on top: two independent caps,
+    // each alone sufficient. Legacy (A/B) mode: the gate is off, pre-B979
+    // behavior.
+    bool mayStartCaptureUnit(float captureWorkMs, int capturesThisFrame) const;
+
     // A unit ran and took `ms` (its own measured cost).
     void recordUnit(EntityBuildUnitKind kind, float ms);
 
@@ -105,7 +122,7 @@ public:
     const std::string& windowLine() const { return windowLine_; }
 
 private:
-    EntityBuildSlicePolicy policy_;
+    EntityBuildSlicePolicy policy_ = {};
     bool legacy_ = false;
 
     // the current frame

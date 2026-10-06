@@ -44,6 +44,10 @@ struct ChatMessage {
     ChatChannel channel;          // Channel type
     uint32_t timestamp;           // Unix timestamp (seconds)
     uint32_t color;     // Text color for rendering
+    // B993 (#313): the [TextColors] row (User_N, 1..86) the chat panel draws
+    // this line in; 0 = none, draw `color`. addMessage() fills it from the
+    // channel when the producer left it 0 (chat_text_colors.h).
+    uint8_t userColor = 0;
     bool isSystemMessage = false; // True for combat, exp, loot, etc.
     std::vector<MessageLink> links; // Clickable links in the message (for FormattedMessage)
 

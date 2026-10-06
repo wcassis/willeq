@@ -139,8 +139,9 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     const std::vector<std::string> names = ScenarioNames();
     // 6 pre-B630 + 7 B630 (issue #48) interrupted-cast legs + 10 UIGAP-live
     // UI legs (pinned by name in tests/test_scenario_ui_legs.cpp) + B888's
-    // create_character + 1 B925 (issue #244/#258) zone-link hold.
-    EXPECT_EQ(names.size(), 25u);
+    // create_character + 5 UIGAP-live2 legs (pinned by name in
+    // tests/test_scenario_ui_legs.cpp) + 1 B925 (issue #244/#258) zone-link hold.
+    EXPECT_EQ(names.size(), 30u);
     EXPECT_TRUE(IsScenarioName("create_character"));
     EXPECT_TRUE(IsScenarioName("zone_in"));
     // B925: the single-client zone-link hold.

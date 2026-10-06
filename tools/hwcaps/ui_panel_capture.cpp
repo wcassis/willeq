@@ -199,6 +199,28 @@ void addChat(eqt::ui::ChatMessageBuffer& buf, const char* text, uint32_t color) 
     buf.addMessage(std::move(msg));
 }
 
+// B993: three chat lines on the channels whose [TextColors] rows differ most,
+// drawn through `table` (a fresh panel each call, so nothing is cached).
+void renderTextColorChat(UIRenderer& u, const UILayout& l, const eqt::ui::ChatTextColors& table) {
+    eqt::ui::ChatMessageBuffer buf;
+    const struct { eqt::ui::ChatChannel ch; const char* sender; const char* text; } kLines[] = {
+        {eqt::ui::ChatChannel::Tell, "Oracle", "the Tell row, User_2"},
+        {eqt::ui::ChatChannel::Group, "Oracle", "the Group row, User_3"},
+        {eqt::ui::ChatChannel::Shout, "Oracle", "the Shout row, User_7"},
+    };
+    for (const auto& line : kLines) {
+        eqt::ui::ChatMessage m;
+        m.channel = line.ch;
+        m.sender = line.sender;
+        m.text = line.text;
+        buf.addMessage(std::move(m));
+    }
+    ChatPanelState chat;
+    chat.messageBuffer = &buf;
+    chat.textColors = &table;
+    renderChatPanel(u, l, chat);
+}
+
 // ---- panel states, populated once and shared by every capture -------------
 
 struct PanelStates {
@@ -822,6 +844,40 @@ std::vector<PanelCapture> buildCaptureList() {
         {"options_mail", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.options.isOpen = true; s.options.activeTab = 6;
             renderOptionsWindow(u.layer(), l, s.options); }},
+        // B993 (#313): the Colors page with Tell selected and the
+        // EQUI_ColorPickerWnd open on it, CPW_TC1Button's green chosen.
+        {"options_colors_picker", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            OptionsPanelState o = s.options;
+            o.isOpen = true; o.activeTab = 5;
+            o.colorSelectedRow = 2;
+            openColorPicker(o.colorPicker, o.textColors, 2);
+            o.colorPicker.working = ColorPickerLayout::swatchColor(1);
+            renderOptionsWindow(u.layer(), l, o); }},
+        // B995 (#315): the Display page with the Particles box on its Env
+        // and Player sub-tabs (Env: density Medium, opacity 60 %).
+        {"options_display_particles_env", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            OptionsPanelState o = s.options;
+            o.isOpen = true; o.activeTab = 1; o.particlesTab = 1;
+            setOptionsValue(o, OptionsLayout::Setting::EnvParticleDensity, 2);
+            setOptionsValue(o, OptionsLayout::Setting::EnvParticleOpacity, 12);
+            renderOptionsWindow(u.layer(), l, o); }},
+        {"options_display_particles_player", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            OptionsPanelState o = s.options;
+            o.isOpen = true; o.activeTab = 1; o.particlesTab = 2;
+            renderOptionsWindow(u.layer(), l, o); }},
+        // B993: the same Tell / Group / Shout lines in the default table and
+        // with the Tell row changed to (0,240,0) -- the chat panel's one
+        // colour decision, resolveChatLineColor().
+        {"chat_textcolors_default", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            static eqt::ui::ChatTextColors table = eqt::ui::defaultChatTextColors();
+            renderTextColorChat(u.layer(), l, table); }},
+        {"chat_textcolors_tell_green", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            static eqt::ui::ChatTextColors table = [] {
+                auto t = eqt::ui::defaultChatTextColors();
+                t[1] = ColorPickerLayout::swatchColor(1);
+                return t;
+            }();
+            renderTextColorChat(u.layer(), l, table); }},
         // T436 (board B429): the three windows B429 said did not exist.
         // `merchant_sell` is the SAME window after a left click on one of the
         // player's items -- B442b (#152, merchant.tsv row 3): the last

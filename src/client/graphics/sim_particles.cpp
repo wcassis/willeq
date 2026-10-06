@@ -363,7 +363,10 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
                 }
             }
 
-            int effectiveTarget = static_cast<int>(emitter.config.targetCount * emitter.transitionAlpha);
+            // B995: the Env page's density scales the volume's population.
+            const float density = pi.density[static_cast<size_t>(emitter.family) % 3];
+            int effectiveTarget = static_cast<int>(emitter.config.targetCount * emitter.transitionAlpha *
+                                                   std::min(1.0f, std::max(0.0f, density)));
             int deficit = effectiveTarget - aliveCount;
             for (int s = 0; s < deficit; ++s) {
                 spawnWeatherParticle(emitter.config, emitter.emitterID, pi.cameraPos,
@@ -394,22 +397,27 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
             }
 
             // BURST: one-shot spawn
+            // B995: the family's Options density scales both spawn shapes
+            // (Environment::scaledCount / a scaled rate); 0 spawns nothing.
+            const float density = pi.density[static_cast<size_t>(emitter.family) % 3];
             if (emitter.config.burstCount > 0 && !emitter.isBurstSpawned) {
-                for (int s = 0; s < emitter.config.burstCount; ++s) {
+                const int burst = Environment::scaledCount(emitter.config.burstCount, density);
+                for (int s = 0; s < burst; ++s) {
                     spawnSpellParticle(emitter.config, emitter.emitterID,
-                                       emitter.position + emitter.attachOffset, dirPtr);
+                                       emitter.position + emitter.attachOffset, dirPtr, emitter.family);
                 }
                 emitter.isBurstSpawned = true;
             }
 
             // Spawn-rate spawning
             if (emitter.config.spawnRate > 0.0f) {
-                emitter.spawnAccumulator += emitter.config.spawnRate * deltaTime;
+                emitter.spawnAccumulator += emitter.config.spawnRate *
+                                            std::min(1.0f, std::max(0.0f, density)) * deltaTime;
                 int toSpawn = static_cast<int>(emitter.spawnAccumulator);
                 emitter.spawnAccumulator -= static_cast<float>(toSpawn);
                 for (int s = 0; s < toSpawn; ++s) {
                     spawnSpellParticle(emitter.config, emitter.emitterID,
-                                       emitter.position + emitter.attachOffset, dirPtr);
+                                       emitter.position + emitter.attachOffset, dirPtr, emitter.family);
                 }
             }
         }
@@ -600,6 +608,7 @@ void SimulationWorker::computeParticles(const SimulationInput& input, Simulation
                         ae.emitterID = particleNextEmitterID_++;
                         ae.attachEntityID = attachEntity;
                         ae.attachOffset = emDef.positionOffset;
+                        ae.family = ParticleFamily::Spell;  // B995
                         ae.useDynamicDirection = effect.useDynamicDirection;
 
                         if (emDef.attach == SpellAttach::PROJECTILE_PATH) {
@@ -804,10 +813,12 @@ void SimulationWorker::spawnWeatherParticle(const EmitterConfig& cfg, uint16_t e
     p.emitterID = emitterID;
     p.setAlive(true);
     p.setBlendMode(cfg.blendMode);
+    p.setFamily(ParticleFamily::Environment);  // B995: weather
 }
 
 void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emitterID,
-                                           const glm::vec3& emitterPos, const glm::vec3* dynamicDir) {
+                                           const glm::vec3& emitterPos, const glm::vec3* dynamicDir,
+                                           ParticleFamily family) {
     int idx = allocateParticle();
     if (idx < 0) return;
 
@@ -885,6 +896,7 @@ void SimulationWorker::spawnSpellParticle(const EmitterConfig& cfg, uint16_t emi
     p.emitterID = emitterID;
     p.setAlive(true);
     p.setBlendMode(cfg.blendMode);
+    p.setFamily(family);  // B995
 }
 
 // ============================================================================

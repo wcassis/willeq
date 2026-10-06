@@ -290,6 +290,10 @@ public:
 	// changed through applyOptionsSetting(), and returns the reply lines.
 	std::vector<std::string> runOptionsCommand(const std::string& cmd,
 	                                           const std::string& args);
+	// B995: the Display > Particles pages as the particle systems' knobs
+	// (particleKnobsFromOptions over optionsState_). The sim bridge hands it
+	// to ParticleManager and the worker every frame.
+	Environment::ParticleKnobs particleOptionKnobs() const;
 	// B433: the Keys page's key capture (renderer_frame_options.cpp); called
 	// first thing in processChatInput(), true while it owns the keyboard.
 	bool processOptionsKeyCapture();

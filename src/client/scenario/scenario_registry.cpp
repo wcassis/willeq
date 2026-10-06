@@ -50,6 +50,13 @@ const Entry kScenarios[] = {
     {"track_peer", &MakeTrackPeerScenario},
     // B888 (issue #204): needs --create-character.
     {"create_character", &MakeCreateCharacterScenario},
+    // UIGAP-live2 (#212 #151 #26). Pair: trade_roundtrip <- trade_peer
+    // (scripts/scenario.sh launches the peer).
+    {"trade_roundtrip", &MakeTradeRoundtripScenario},
+    {"trade_peer", &MakeTradePeerScenario},
+    {"give_npc", &MakeGiveNpcScenario},
+    {"drop_destroy_coin", &MakeDropDestroyCoinScenario},
+    {"bank_change", &MakeBankChangeScenario},
 };
 
 }  // namespace

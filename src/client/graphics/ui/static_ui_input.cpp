@@ -559,6 +559,16 @@ bool StaticUIInput::processOptionsInput(int mouseX, int mouseY, bool leftClicked
         options.hoveredControl = -1;
         return false;
     }
+    // B993: the colour picker is drawn above the window, so it is asked first.
+    if (colorPickerContains(layout, options.colorPicker, mouseX, mouseY)) {
+        options.hoveredTab = -1;
+        options.hoveredControl = -1;
+        if (leftClicked &&
+            clickColorPicker(layout, options.colorPicker, options.textColors, mouseX, mouseY)) {
+            changed = OptionsLayout::Setting::TextColors;
+        }
+        return true;
+    }
     if (!optionsWindowContains(layout, options, mouseX, mouseY)) {
         options.hoveredTab = -1;
         options.hoveredControl = -1;

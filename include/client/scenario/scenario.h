@@ -124,6 +124,30 @@ public:
      */
     virtual long long NearestWorldObjectId(int objectType) const { (void)objectType; return 0; }
 
+    // --- UIGAP-live2 observables (#212 trade/give, #151 drop/destroy/coin,
+    //     #26 bank change). Same "default = not readable" rule as above. ---
+
+    /** TradeFlags() bits. */
+    static constexpr int kTradeActive = 1;          // a trade or NPC give window is open
+    static constexpr int kTradeOwnAccepted = 2;     // we pressed Trade/Give
+    static constexpr int kTradePartnerAccepted = 4; // the partner pressed Trade
+    static constexpr int kTradePartnerOffered = 8;  // the partner offered an item or coin
+    static constexpr int kTradeWithNpc = 16;        // the window is an NPC give
+    /** The trade session as this client holds it (bits above); -1 not readable. */
+    virtual int TradeFlags() const { return -1; }
+    /**
+     * The first `inventory.slot_id` holding `itemId`: general 23-30, their bag
+     * contents, the cursor 33 (front item), our trade slots 3000-3007. 0 = not
+     * held anywhere there; -1 not readable.
+     */
+    virtual long long FindItemSlot(long long itemId) const { (void)itemId; return -1; }
+    /** {pp, gp, sp, cp} of the purse (`bank` false) or the bank; empty = not readable. */
+    virtual std::vector<long long> Coins(bool bank) const { (void)bank; return {}; }
+    /** Coin held on the cursor, in copper; -1 not readable. */
+    virtual long long CursorCoinCopper() const { return -1; }
+    /** World objects (ground spawns, containers) this client knows; -1 not readable. */
+    virtual long long WorldObjectCount() const { return -1; }
+
     // --- actions ---
     /** Dispatch one slash command line, exactly as --script would. */
     virtual void SendCommand(const std::string& rawLine) = 0;
@@ -141,6 +165,30 @@ public:
     virtual int ClickSlot(int serverSlot, bool rightButton, bool shift, bool ctrl) {
         (void)serverSlot; (void)rightButton; (void)shift; (void)ctrl;
         return -1;
+    }
+    /**
+     * UIGAP-live2: a world click on the nearest entity whose name contains
+     * `name` -- the TargetIntent the renderer pushes for a click on a body.
+     * With an item or coin held the game thread turns it into a trade
+     * (player) or a give (NPC), as a real click does (B896). False when no
+     * such entity is known or the world cannot click (the default).
+     */
+    virtual bool ClickEntity(const std::string& name) { (void)name; return false; }
+    /**
+     * UIGAP-live2: a trade / give window button (TradeWindowIntent):
+     * 0 = Trade / Give, 1 = Cancel, 2 = the coin row with coin held.
+     */
+    virtual bool TradeButton(int op) { (void)op; return false; }
+    /**
+     * UIGAP-live2: a cursor gesture that is not a slot click
+     * (CursorGestureIntent): `op` is eqt::events::CursorGestureOp as an int --
+     * CoinClick (3) with coinType 0 cp .. 3 pp, quantity (0 = the whole pile)
+     * and coinSource (1 purse, 2 bank); RequestDrop (5) / ConfirmDrop (6) /
+     * RequestDestroy (7) / ConfirmDestroy (8) with the item held.
+     */
+    virtual bool CursorGesture(int op, int coinType, int quantity, int coinSource) {
+        (void)op; (void)coinType; (void)quantity; (void)coinSource;
+        return false;
     }
 };
 

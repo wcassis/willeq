@@ -1,5 +1,7 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/sim/sim_bridge_component.h"
+#include "client/graphics/frame/frame_component.h"  // B995: particleOptionKnobs()
+#include "client/graphics/environment/particle_manager.h"
 #include "client/graphics/weather_effects_controller.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/graphics/sky_renderer.h"
@@ -437,6 +439,14 @@ void SimBridgeComponent::postSimulationInput(float deltaTime) {
 
         // State flags
         pi.fireEnabled = ctx_.particleManager->isUnifiedFireEnabled();
+        // B995: the Options window's particle pages, read from the ONE record
+        // (OptionsPanelState) every frame: the manager's two renderers apply
+        // opacity / near clip at draw, the worker applies density at spawn.
+        if (ctx_.frameComponent) {  // absent only in a component-level test
+            const auto knobs = ctx_.Frame().particleOptionKnobs();
+            ctx_.particleManager->setParticleKnobs(knobs);
+            for (size_t f = 0; f < knobs.size(); ++f) pi.density[f] = knobs[f].density;
+        }
         pi.unifiedRendererInitialized = true;  // If we got here, it's initialized
         // T422 (board B375): `global.maxParticles` in config/spell_effects.json
         // had NO consumer.  This line used to send 0 with the comment "Worker

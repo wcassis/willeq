@@ -148,16 +148,39 @@ void ParseSettingKey(const std::string& key, const std::string& value, UiPrefere
         if (info.kind == OptionsLayout::ValueKind::Bool &&
             (t == "TRUE" || t == "true" || t == "FALSE" || t == "false")) {
             v = (t == "TRUE" || t == "true") ? 1 : 0;
-        } else {
-            try {
-                v = std::stoi(t);
-            } catch (...) {
-                return;
-            }
+        } else if (!OptionsLayout::parseSettingIniText(info.setting, t, v)) {
+            return;  // B995: ints and the oracle's floats; junk keeps the default
         }
         if (OptionsLayout::isValidSettingValue(info.setting, v)) p.optionValues[i] = v;
         return;
     }
+}
+
+// B993: `User_<N>_<Red|Green|Blue>=<0..255>`. Anything else -- a bad N, a
+// bad channel, a value off the 0..255 scale or not a number -- keeps the
+// default, as an absent key would.
+void ParseTextColorKey(const std::string& key, const std::string& value, UiPreferences& p) {
+    if (key.rfind("User_", 0) != 0) return;
+    const size_t us = key.find('_', 5);
+    if (us == std::string::npos) return;
+    int n = 0;
+    int v = 0;
+    try {
+        size_t used = 0;
+        n = std::stoi(key.substr(5, us - 5), &used);
+        if (used != us - 5) return;
+        const std::string t = Trim(value);
+        v = std::stoi(t, &used);
+        if (used != t.size()) return;
+    } catch (...) {
+        return;
+    }
+    if (n < 1 || n > eqt::ui::kUserColorCount || v < 0 || v > 255) return;
+    const std::string channel = key.substr(us + 1);
+    auto& c = p.textColors[n - 1];
+    if (channel == "Red") c.r = static_cast<uint8_t>(v);
+    else if (channel == "Green") c.g = static_cast<uint8_t>(v);
+    else if (channel == "Blue") c.b = static_cast<uint8_t>(v);
 }
 
 }  // namespace
@@ -183,6 +206,7 @@ UiPreferences CollectUiPreferences(const UiPreferencesBinding& b, int cameraMode
         for (int i = 0; i < OptionsLayout::kSettingCount; ++i) {
             if (IsPersistedSetting(i)) p.optionValues[i] = b.options->values[i];
         }
+        p.textColors = b.options->textColors;  // B993
     }
     if (b.friends) p.friendsWindow = b.friends->isOpen;
     if (b.tips) p.tips = *b.tips;
@@ -234,6 +258,7 @@ void ApplyUiPreferences(const UiPreferences& p, const UiPreferencesBinding& b) {
                 b.options->values[i] = p.optionValues[i];
             }
         }
+        b.options->textColors = p.textColors;  // B993 (clamped 0..255 by type)
     }
 }
 
@@ -327,6 +352,11 @@ UiPreferences ParseUiPreferences(const std::string& text,
             }
             continue;
         }
+        // B993 (#313): the oracle's [TextColors] User_<N>_Red/_Green/_Blue.
+        if (section == "TextColors") {
+            ParseTextColorKey(key, value, p);
+            continue;
+        }
         if (section == "Options") {
             bool matched = false;
             for (const auto& row : kOptions) {
@@ -379,7 +409,8 @@ std::string SerializeUiPreferences(const UiPreferences& p) {
     for (int i = 0; i < OptionsLayout::kSettingCount; ++i) {
         if (!IsPersistedSetting(i)) continue;
         out += OptionsLayout::allSettings()[i].iniKey;
-        out += "=" + std::to_string(p.optionValues[i]) + "\n";
+        out += "=" + OptionsLayout::settingIniText(static_cast<OptionsLayout::Setting>(i),
+                                                   p.optionValues[i]) + "\n";
     }
     // B834: the official [Tips] section, as the real files write it.
     out += "[Tips]\nShowTips=";
@@ -388,6 +419,15 @@ std::string SerializeUiPreferences(const UiPreferences& p) {
     out += p.tips.showTotd ? "1" : "0";
     out += "\n";
     for (const std::string& key : p.tips.off) out += key + "=0\n";
+    // B993: all 86 rows, as eqclient.ini writes them.
+    out += "[TextColors]\n";
+    for (int n = 1; n <= eqt::ui::kUserColorCount; ++n) {
+        const auto& c = p.textColors[n - 1];
+        const std::string base = "User_" + std::to_string(n) + "_";
+        out += base + "Red=" + std::to_string(c.r) + "\n";
+        out += base + "Green=" + std::to_string(c.g) + "\n";
+        out += base + "Blue=" + std::to_string(c.b) + "\n";
+    }
     out += "[Camera]\nView=" + std::to_string(p.cameraMode) + "\n";
     for (const auto& row : kCameraRigKeys) {
         out += row.key;
