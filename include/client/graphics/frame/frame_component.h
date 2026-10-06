@@ -147,6 +147,7 @@
 #include "client/graphics/ui/merchant_panel.h"
 #include "client/graphics/ui/bank_panel.h"
 #include "client/graphics/ui/cursor_attachment.h"
+#include "client/graphics/ui/trainer_panel.h"  // B898
 #include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
@@ -378,6 +379,10 @@ public:
 	// Fed by the slot-30 branch of the InventorySlotChanged arm; its mouse
 	// position is written once per frame by renderStaticUI().
 	CursorAttachmentState cursorState_;         // T436
+	// B898 (#214): the skill trainer window. NOT a centre popup -- the
+	// oracle's TrainWindow is Style_Sizable false at 580x280. Fed by the
+	// TrainerWindowOpened/Closed bridge arms.
+	TrainerPanelState trainerState_;            // B898
 	XPBarState xpBarState_;             // U06i
 	// T432 (board B275): per-character UI persistence. Empty identity =
 	// not logged in yet, and sync() is then a no-op.

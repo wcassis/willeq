@@ -176,7 +176,20 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     at 138), so a null slot in `regions` was safe; calling `->pvs()` at 133
 //     dereferences it, and the guard moved into the condition rather than
 //     becoming a statement of its own. Still 328.
-const size_t kGoldenSize = 328u;
+//   * B898 (#214): the skill trainer window. TWO pure insertions, no text
+//     change and no reorder anywhere.
+//     - entries 266-268, the three lines of
+//       `staticUIInput_->processTrainerInput(...)`, directly after entry 265
+//       (the last line of T436's processCommerceInput call) and before
+//       processItemDisplayInput: the trainer window draws above the bank and
+//       below the item display / Options windows, and hit-test order
+//       mirrors draw order.
+//     - entry 300, `renderTrainerWindow(...)`, directly after entry 299
+//       `renderBankWindow(...)`: Style_Sizable false at 580x280, not a
+//       centre popup, so it draws above them and above the bank.
+//     The count rises 328 -> 332: three statements plus one, nothing removed
+//     and nothing replaced.
+const size_t kGoldenSize = 332u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

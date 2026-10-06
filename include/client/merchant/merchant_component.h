@@ -138,6 +138,19 @@ public:
 	// `currentValue` (Client::OPGMTrainSkill). Static: it is arithmetic, and
 	// the trainer window and /train both quote it.
 	static uint32_t TrainingCost(uint32_t currentValue);
+	// B898 (#214), merchant_trainer.cpp. Build TrainerWindowOpenedData from
+	// the kept caps + the current skill values, practices and coin, and push
+	// it. Called by ZoneProcessGMTraining (open) and by the OP_SkillUpdate arm
+	// while a session is open (refresh) -- the trainer window changes only
+	// when the server has said something. No-op with no session.
+	void PublishTrainerWindow();
+	// B898 (#214), merchant_trainer.cpp. The refusals the client can make
+	// from the session the server opened, shared by /train <skill|id> and the
+	// trainer window's Train button (the TrainSkillIntent consumer): returns
+	// the message, or "" when the server should be asked. Each mirrors a
+	// SILENT server refusal (no session, no practices, not taught here,
+	// already at this trainer's cap) and none is stricter than the server.
+	std::string TrainRefusal(uint8_t skillId) const;
 
 	// ---- T269: /bank deposit|withdraw|convert. Push the kept
 	// BankCurrencyMoveIntent / BankCurrencyConvertIntent (the same shape a
