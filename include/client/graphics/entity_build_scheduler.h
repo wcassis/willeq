@@ -82,6 +82,22 @@ public:
     // predicted cost <= the state's slice (legacy: never).
     bool mayStartUnit(EntityBuildUnitKind kind) const;
 
+    // B979: may a capture unit start now? The pass passes its OWN frame
+    // accounting (the capture work so far this frame, and how many captures
+    // the pass has already run in it) because the pass runs inside the frame
+    // AFTER the build slice, and callers that drive the pass directly (the
+    // pixel tool, scenarios) never call beginFrame() at all. The first
+    // capture of a frame always starts (guaranteed progress, every state --
+    // an impostor is how the governor gets out of Red); the next starts only
+    // if the frame's work so far plus this kind's prediction fits the
+    // slice: that work is the pass's OWN captures plus the frame's build-slice
+    // work (spentMs() minus the pass's share), so a capture never lands on a
+    // frame whose total unit work would run past the slice. The pass's
+    // per-frame budget (unitBudgetFor) sits on top: two independent caps,
+    // each alone sufficient. Legacy (A/B) mode: the gate is off, pre-B979
+    // behavior.
+    bool mayStartCaptureUnit(float captureWorkMs, int capturesThisFrame) const;
+
     // A unit ran and took `ms` (its own measured cost).
     void recordUnit(EntityBuildUnitKind kind, float ms);
 
@@ -105,15 +121,8 @@ public:
     }
     const std::string& windowLine() const { return windowLine_; }
 
-    // B979: the impostor capture pass (entity_impostors.cpp) runs AFTER
-    // endFrame() -- it is inside the frame's entity update, not the frame's
-    // build slice. Account its finished capture work into the window (and the
-    // frame's total) without resetting the current-frame counters: the build
-    // slice already closed the frame.
-    void endCaptureFrame(float frameMs);
-
 private:
-    EntityBuildSlicePolicy policy_;
+    EntityBuildSlicePolicy policy_ = {};
     bool legacy_ = false;
 
     // the current frame

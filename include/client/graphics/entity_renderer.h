@@ -770,6 +770,14 @@ public:
     const ImpostorFrameStats& impostorFrameStats() const { return impostorFrameStats_; }
     const ImpostorCache* impostorCache() const { return impostors_.get(); }
     bool isEntityDrawnAsImpostor(uint16_t spawnId) const;
+    // B979: create the impostor cache (if the preset budgets it) and its
+    // one-time GPU resources (all pages + scratch FBO + a priming FBO draw).
+    // Called by the loading thread at the end of a zone load, under the
+    // loading screen, while the loading thread owns the GL context -- the
+    // first gameplay frame must never carry a page GEM allocation, the
+    // scratch FBO or the FBO's first raster (refactor/B979). A no-op with
+    // nothing to do (impostors off, already prepared).
+    void prepareImpostorCache();
 
 private:
     // B964 (entity_impostors.cpp)

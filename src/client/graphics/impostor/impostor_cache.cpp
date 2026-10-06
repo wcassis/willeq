@@ -107,6 +107,43 @@ bool ImpostorCache::ensurePage(int page) {
 #endif
 }
 
+bool ImpostorCache::prepare() {
+    if (!usable_) return false;
+    // B979: the one-time GPU costs of a first capture, measured on the Pi
+    // (refactor/B979/README.md): a page is a 14-16 ms 4 MiB GEM allocation,
+    // the scratch FBO 3-14 ms, and the FIRST draw into the FBO 9-21 ms (Lima
+    // rasterizes deferred; every later capture draws in 1-2 ms). The loading
+    // screen covers all of it: create every page, the scratch, and do one
+    // real draw into the FBO + a glFinish so the driver/tile setup and the
+    // first deferred raster land HERE, not in the first gameplay frame.
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
+    const int n = cells_.maxPages();
+    for (int p = 0; p < n; ++p) {
+        if (!ensurePage(p)) return false;
+    }
+    if (n > 0 && !ensureScratch()) return false;
+    const double allocMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+
+    const auto p0 = Clock::now();
+    irr::core::matrix4 savedView = driver_->getTransform(irr::video::ETS_VIEW);
+    irr::core::matrix4 savedProj = driver_->getTransform(irr::video::ETS_PROJECTION);
+    driver_->setRenderTarget(scratch_, true, true, irr::video::SColor(0, 0, 0, 0));
+    driver_->draw2DRectangle(irr::video::SColor(0, 0, 0, 0),
+                             irr::core::rect<irr::s32>(0, 0, kCellPx - 1, kCellPx - 1));
+    finishGpu();  // glFinish, the EQT_HAS_GLES2 guard lives there
+    driver_->setRenderTarget(nullptr, false, false);
+    driver_->setTransform(irr::video::ETS_VIEW, savedView);
+    driver_->setTransform(irr::video::ETS_PROJECTION, savedProj);
+    const double primeMs = std::chrono::duration<double, std::milli>(Clock::now() - p0).count();
+
+    LOG_INFO(MOD_GRAPHICS,
+             "Impostor: prepared {} pages + scratch FBO in {:.2f} ms, primed the FBO in {:.2f} ms "
+             "(one-time GPU costs moved off the first gameplay frame, B979); row now {} B of {} B",
+             n, allocMs, primeMs, rowBytes(), budgetBytes_);
+    return true;
+}
+
 bool ImpostorCache::acquireCell(uint64_t key, uint32_t frame, bool& isNew) {
     isNew = false;
     CellRef ref;
@@ -170,7 +207,20 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
     if (!mesh) return false;
     eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDriver);
 
+    // B979: measure whether the first capture's wall time is the capture's OWN
+    // deferred rasterization (Lima tiles resolve when the FBO is next read) or
+    // the PREVIOUS frame's unfinished GPU work (the loading thread's last
+    // frame, resolved at this first glReadPixels-adjacent read). Off by
+    // default: a glFinish costs CPU/GPU overlap.
+    static const bool finishBefore = [] {
+        const char* e = std::getenv("WILLEQ_IMPOSTOR_FINISH_BEFORE");
+        return e && e[0] == '1';
+    }();
     using Clock = std::chrono::steady_clock;
+    const auto tf0 = Clock::now();
+    if (finishBefore) glFinish();
+    const double finishBeforeMs = std::chrono::duration<double, std::milli>(Clock::now() - tf0).count();
+
     const auto tStart = Clock::now();
     // The pose the entity is in now (its skinning may be suspended).
     node->forceAnimationUpdate();
@@ -282,15 +332,17 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
     driver_->setRenderTarget(nullptr, false, false);
     const auto tEnd = Clock::now();
     // Where a capture's time goes, for the first few (the unit timing in the
-    // [impostor] line is the whole of it).
+    // [impostor] line is the whole of it). finish_before_ms is the optional
+    // WILLEQ_IMPOSTOR_FINISH_BEFORE=1 glFinish() up top -- the probe for the
+    // previous frame's unfinished GPU work (B979).
     if (stats_.units < 16) {
         auto ms = [](Clock::time_point a, Clock::time_point b) {
             return std::chrono::duration<double, std::milli>(b - a).count();
         };
         LOG_INFO(MOD_GRAPHICS,
-                 "[impostor-capture] key={} pose_bounds_ms={:.2f} bind_clear_ms={:.2f} draw_ms={:.2f} "
-                 "copy_ms={:.2f} unbind_ms={:.2f} buffers={}",
-                 key, ms(tStart, tBind), ms(tBind, tDraw), ms(tDraw, tCopy), ms(tCopy, tUnbind),
+                 "[impostor-capture] key={} finish_before_ms={:.2f} pose_bounds_ms={:.2f} bind_clear_ms={:.2f} "
+                 "draw_ms={:.2f} copy_ms={:.2f} unbind_ms={:.2f} buffers={}",
+                 key, finishBeforeMs, ms(tStart, tBind), ms(tBind, tDraw), ms(tDraw, tCopy), ms(tCopy, tUnbind),
                  ms(tUnbind, tEnd), mesh->getMeshBufferCount());
     }
     driver_->setTransform(irr::video::ETS_VIEW, savedView);

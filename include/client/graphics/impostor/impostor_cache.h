@@ -91,6 +91,17 @@ public:
     bool capture(uint64_t key, EQAnimatedMeshSceneNode* node,
                  const std::vector<irr::scene::IMeshSceneNode*>& heldItems,
                  const irr::core::vector3df& camPos, float viewAngleDeg, uint16_t sourceSpawn);
+    // B979: pre-create the one-time GPU resources a first capture would create
+    // on the render thread -- every page (kPagePx^2 RGBA8 GEM allocations,
+    // 14-16 ms each on the Pi) and the scratch FBO (3-14 ms) -- plus one
+    // priming draw into the scratch + glFinish, so the FBO's first raster
+    // (9-21 ms, Lima's deferred tiles) lands here instead of in the first
+    // real capture. Called by the loading thread at the end of a zone load,
+    // under the loading screen, which owns the GL context then (the main
+    // thread is paused in render()'s loading branch). Idempotent: pages and
+    // the scratch are kept when already resident (a zone reload re-uses them).
+    // Returns false when a resource could not be created.
+    bool prepare();
     const ImpostorCapture* captureFor(uint64_t key) const;
     // Every shared key that holds a cell (for releasing the unclaimed ones).
     std::vector<uint64_t> sharedKeys() const;
