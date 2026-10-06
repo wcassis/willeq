@@ -72,6 +72,7 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Tip windows | The oracle's 360x300, flush right at the measured (664,234) of 1024x768 | `TipWindowState` | `renderTipWindow()` (B834, #202; `tip_layout.h` from `EQUI_TipWnd.xml`) |
 | Friends | The oracle's own 168x288, at `defaults.ini`'s `[FriendsWindow]` position (XML (196,50) elsewhere), two tabs | `FriendsPanelState` | `renderFriendsWindow()` (B897) |
 | Trade / Give | The oracle's own (0,25): trade 236x365, give 108x375, unscaled | `TradePanelState` (`isNpc` picks the give window) | `renderTradeWindow()` (B896, #212; geometry `trade_layout.h` / `give_layout.h`) |
+| Character Creation | The whole screen, two pages (`EQUI_CharacterCreate.xml`); pre-zone, NO host yet | `CharCreateScreenState` | `renderCharCreateScreen()` (B888, #204) |
 
 Center popups (inventory, spellbook, skills, merchant, loot, tradeskill container) share the same screen region and are mutually exclusive. **The BANK is not one of them** (T436): the oracle's `BankWnd` is `Style_Sizable false` at its own 108x347, so like the combat-abilities window it keeps its own size and its own anchor and draws above the centre popups. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle. **Neither is the item display window** (T421): `EQUI_ItemDisplay.xml` gives it `RelativePosition false` and `<Location>(0,80)</Location>`, so it is drawn and hit-tested LAST, on top of every centre popup (ESC: B460's open order). **Nor is the Options window** (T434), for the same reason and one level higher still: `EQUI_OptionsWindow.xml` is `RelativePosition false` at `<Location>(90,47)</Location>`, so it is drawn and hit-tested after even the item display (ESC: B460's open order). Its geometry is `options_layout.h`, a table of every control the oracle XML declares; a control whose `OptionsLayout::Setting` is `None` has no backing setting in fable, is drawn greyed and is **not hit-testable** (the T363 rule made mechanical).
 
@@ -120,6 +121,24 @@ give, anything else = drop) -- then the held item drops into 3000 by itself when
 acknowledged; an incoming request is acknowledged with no prompt. ESC does not touch it, and the
 close box is Cancel (both assumptions awaiting the oracle). Tests: `tests/test_trade_window.cpp`.
 **The tip windows** (B834, GitLab #202, UIGAP-small). The Tip of the Day pops after a character's first zone-in of the session, and a context tip pops on the RISING EDGE of the window it belongs to (`FrameComponent::updateTipWindows()`, `renderer_frame_tips.cpp`, once a frame, so every opener counts): Inventory, Spellbook, Skills, Options > Keys, Friends, Merchant, Bank, Trainer, Loot, the world container, Quantity, Trade and Give (B896's window) -- the ones fable has a window for out of the observed table (`review/UIGAP-ORACLE/202/README.md`; Consider/Sit/Death are not popped, and B442b's confirmation dialog is not in the table). Text and caption are the client's own `help/tips/ctx*.html` / `TOTD.txt` under `eqClientPath`, read lazily; each tip's ini KEY is eqgame.exe's own ctx-file -> key table (`tipCatalog()`); the switches are the official `[Tips]` section of `UI_<char>_<server>.ini` (`ShowTips`, `ShowTOTD`, `<Key>=0`, the keys real player files carry), through `UiPreferences::tips`. Pieces as measured: the Tip of the Day shows Show Another Tip + "Don't show any tips"; a context tip shows the History line + both checkboxes; checkboxes apply on Close. ESC closes it first when it is the newest window (B460). Assumptions awaiting oracle, in `tip_window.h`: once per session, the TOTD checkbox -> `ShowTOTD`, the TOTD entry order, a newer tip replaces an open one, colours dropped. Tests: `tests/test_tip_window.cpp`.
+
+**Character Creation** (B888, GitLab #204). Three device-free layers: `char_create_layout.h` quotes
+`EQUI_CharacterCreate.xml` (every `<Location>`/`<Size>`/anchor) plus the placement rules MEASURED on the
+oracle's 1024x768 frames (`eq-oracle/logs/shots/cc_*.png`: title top-centre, the Character/Deity columns
+left and vertically centred, Abilities/City right, the help pane bottom-centre at the XML size -- its
+oracle size differs and is flagged); `char_create_screen.h` is the state machine (opens on a RANDOM valid
+selection with nothing spent, as the oracle does; greyed = not offered and inert; Next refused with eqstr
+1577 while points are left, 1576 for a bad name, 1580 while the request is in flight; Back page 1 -> 0 ->
+character select); `char_create_panel.h` draws and resolves clicks (right-click a stat name = every point
+into it). Post-Velious races/classes/cities are HIDDEN, never greyed (Will 2026-09-23): the in-era buttons
+take the column's slots in order, Gnome in Froglok's. The rules are the SERVER's
+(`include/client/login_world/char_create_rules.h`, quoting `CheckCharCreateInfoTitanium`), the offers are
+data (`data/char_create.tsv`; measured rows cite their oracle frame, the rest say `assumption`). **There is
+no host yet**: fable has no character-select screen and the pre-zone renderer draws only the loading screen,
+so the screen is reached by `ui_panel_capture` (`charcreate_page0/1`) and its tests; creation itself is
+reached by `--create-character` (`include/client/login_world/world_script.h`). Not drawn, flagged: the 3D
+scene and sample model, FacePick (`CC0_Face_Button` is greyed and not hit-testable), the tutorial controls
+(OUT by ruling). Tests: `tests/test_char_create.cpp`, `tests/test_char_create_screen.cpp`.
 
 **The three commerce windows** (T436, board **B429** CLOSED). Three producers filled an `iconId`
 nothing could draw, because the merchant window, the bank window and the cursor attachment did not

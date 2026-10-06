@@ -1,0 +1,110 @@
+# B888 (GitLab #204) character-creation era data. Read by include/client/login_world/char_create_data.h.
+# Era filter (Will, 2026-09-23): a row whose era is not Classic, Kunark or Velious is HIDDEN -- never drawn,
+# never offered, never sent; the in-era buttons are laid out without it. Columns per kind:
+#   race  <xml button index> <wire race id> <label (XML <Text>)> <era> <eqstr description id>
+#   class <xml button index> <wire class id> <label> <era> <eqstr description id>
+#   deity <xml button index> <wire deity id> <label> <era> <eqstr description id>
+#   city  <xml button index = CharCreate_Struct start_zone, the server's StartZoneIndex> <label> <era> <home zones>
+#   deities <race label|*> <class label|*> <deity labels, comma|ALL> <source>
+#   cities  <race label|*> <class label|*> <deity label|*> <city labels, comma> <source>
+# Buttons, labels and indices: /mnt/projects/EverQuestP1999/uifiles/default/EQUI_CharacterCreate.xml
+# (CC0_Race0..14, CC0_Class0..15, CC1_Deity0..16, CC1_City0..14). Description ids: eqstr_us.txt, matched by text
+# (race 3239-3249/3273/3274/3316/3339, class 3317-3331, deity 4002-4018).
+# Wire ids: eqemu common/races.h, classes.h, deity.h. Agnostic is sent as 396 (Deity::Agnostic2) -- assumption
+# awaiting the oracle pcap (140 is the other Agnostic id eqemu knows).
+# Home zones: where the server puts that city's characters -- world/worlddb.cpp SetTitaniumDefaultStartZone() plus
+# the neighbouring city zones a start_zones row may name (the table is not readable offline): assumption awaiting
+# the oracle matrix (one measured landing: Human Ranger of Tunare, QEYNOS -> zone 3, qrg, at the Ranger guildmaster,
+# review/UIGAP-ORACLE/204/14_after_create_entered_world_qeytoqrg.png). The create_character scenario accepts any of
+# them and refuses the tutorial (zone 189).
+# deities/cities rows: the official client greys what it does not offer for the chosen race/class(/deity). A row
+# whose source names an oracle screenshot is MEASURED; "assumption" rows are fable's stand-in until the
+# per-step oracle matrix lands (review/UIGAP-ORACLE/204/). Lookup: the most specific matching row wins
+# (exact race+class+deity, then race+class, then race, then *). The server validates neither deity nor city for a
+# Titanium client (CheckCharCreateInfoTitanium has no deity check; an unmatched start_zones row falls back to the
+# city's default zone), so a wrong row here can mis-offer but cannot be refused.
+kind	key	a	b	c	d
+race	0	2	Barbarian	Classic	3239
+race	1	6	Dark Elf	Classic	3240
+race	2	8	Dwarf	Classic	3241
+race	3	3	Erudite	Classic	3242
+race	4	12	Gnome	Classic	3339
+race	5	7	Half Elf	Classic	3243
+race	6	11	Halfling	Classic	3244
+race	7	5	High Elf	Classic	3245
+race	8	1	Human	Classic	3246
+race	9	128	Iksar	Kunark	3247
+race	10	10	Ogre	Classic	3248
+race	11	9	Troll	Classic	3249
+race	12	130	Vah Shir	Luclin	3273
+race	13	4	Wood Elf	Classic	3274
+race	14	330	Froglok	LoY	3316
+class	0	8	Bard	Classic	3317
+class	1	15	Beastlord	Luclin	3318
+class	2	16	Berserker	GoD	0
+class	3	2	Cleric	Classic	3319
+class	4	6	Druid	Classic	3320
+class	5	14	Enchanter	Classic	3321
+class	6	13	Magician	Classic	3322
+class	7	7	Monk	Classic	3323
+class	8	11	Necromancer	Classic	3324
+class	9	3	Paladin	Classic	3325
+class	10	4	Ranger	Classic	3326
+class	11	9	Rogue	Classic	3327
+class	12	5	ShadowKnight	Classic	3328
+class	13	10	Shaman	Classic	3329
+class	14	1	Warrior	Classic	3330
+class	15	12	Wizard	Classic	3331
+deity	0	396	AGNOSTIC	Classic	4002
+deity	1	201	THE PLAGUEBRINGER	Classic	4003
+deity	2	205	THE KING OF THIEVES	Classic	4004
+deity	3	203	THE FACELESS	Classic	4005
+deity	4	206	THE PRINCE OF HATE	Classic	4006
+deity	5	207	THE RAINKEEPER	Classic	4007
+deity	6	204	THE QUEEN OF LOVE	Classic	4008
+deity	7	208	THE LIGHTBEARER	Classic	4009
+deity	8	212	THE PRIME HEALER	Classic	4010
+deity	9	209	THE OCEANLORD	Classic	4011
+deity	10	210	THE TRANQUIL	Classic	4012
+deity	11	213	THE BURNING PRINCE	Classic	4013
+deity	12	202	THE DUKE OF BELOW	Classic	4014
+deity	13	214	THE SIX HAMMERS	Classic	4015
+deity	14	215	THE MOTHER OF ALL	Classic	4016
+deity	15	216	THE WURMQUEEN	Classic	4017
+deity	16	211	THE WARLORD	Classic	4018
+city	0	ERUDIN	Classic	erudnext,erudnint,paineel
+city	1	QEYNOS	Classic	qeynos,qeynos2,qrg,qeytoqrg
+city	2	HALAS	Classic	halas
+city	3	RIVERVALE	Classic	rivervale
+city	4	FREEPORT	Classic	freportw,freportn,freporte
+city	5	NERIAK	Classic	neriaka,neriakb,neriakc
+city	6	GROBB	Classic	grobb
+city	7	OGGOK	Classic	oggok
+city	8	KALADIM	Classic	kaladima,kaladimb
+city	9	KELETHIN	Classic	gfaydark
+city	10	FELWITHE	Classic	felwithea,felwitheb
+city	11	AKANON	Classic	akanon
+city	12	CABILIS	Kunark	cabwest,cabeast
+city	13	SHARVAHL	Luclin	sharvahl
+city	14	GUKTA	LoY	rathemtn,gukta
+deities	Human	Warrior	AGNOSTIC,THE PLAGUEBRINGER,THE PRINCE OF HATE,THE RAINKEEPER,THE QUEEN OF LOVE,THE LIGHTBEARER,THE PRIME HEALER,THE WARLORD	oracle:eq-oracle/logs/shots/cc_08_deity_city.png
+deities	Iksar	Warrior	THE FACELESS	oracle:eq-oracle/logs/shots/create_Oracleecho/04_deitypage.png
+deities	Human	Ranger	THE RAINKEEPER,THE MOTHER OF ALL	oracle:review/UIGAP-ORACLE/204/07_deity_city_page_opened.png
+deities	*	*	ALL	assumption
+cities	Human	Warrior	AGNOSTIC	QEYNOS,FREEPORT	oracle:eq-oracle/logs/shots/cc_08_deity_city.png
+cities	Iksar	Warrior	THE FACELESS	CABILIS	oracle:eq-oracle/logs/shots/create_Oracleecho/04_deitypage.png
+cities	Human	Ranger	THE RAINKEEPER	QEYNOS	oracle:review/UIGAP-ORACLE/204/07_deity_city_page_opened.png
+cities	Human	Ranger	THE MOTHER OF ALL	QEYNOS	oracle:review/UIGAP-ORACLE/204/08_deity_MotherOfAll_city_Qeynos.png
+cities	Human	*	*	QEYNOS,FREEPORT	assumption
+cities	Barbarian	*	*	HALAS	assumption
+cities	Erudite	*	*	ERUDIN	assumption
+cities	Wood Elf	*	*	KELETHIN	assumption
+cities	High Elf	*	*	FELWITHE	assumption
+cities	Dark Elf	*	*	NERIAK	assumption
+cities	Half Elf	*	*	QEYNOS,FREEPORT,RIVERVALE,KELETHIN,FELWITHE	assumption
+cities	Dwarf	*	*	KALADIM	assumption
+cities	Troll	*	*	GROBB	assumption
+cities	Ogre	*	*	OGGOK	assumption
+cities	Halfling	*	*	RIVERVALE	assumption
+cities	Gnome	*	*	AKANON	assumption
+cities	Iksar	*	*	CABILIS	assumption

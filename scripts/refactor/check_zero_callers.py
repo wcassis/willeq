@@ -505,6 +505,8 @@ BOARD_REASONS.update({
         "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval",
     "B899":
         "the T415/T419 recipe window (TradeskillPanelState, EQUI_TradeskillWnd) -- since B899 (#215, Will 2026-09-23: the recipe half is out of baseline) no event opens it, so its close applier is reached only from its tests; deleting the window is a follow-up, not done mid-unit",
+    "B888":
+        "the Character Creation screen's host-facing API (#204) -- the state machine, click resolver and Get Name round trip are built and tested, but fable has no character-select screen and no pre-zone UI host yet (#204 Legs S/M), so ui_panel_capture and the tests are their only callers; creation itself is reached through --create-character",
     "B606":
         "renderer, asset and data API with no production caller -- setNewUIEnabled, EntityRenderer's two global loaders (not called even by the zero-caller loadGlobalAssets, which T468 deleted), the superseded applyStoredZoneEnvironment, RDPServer::setCertificate, BackgroundWorkQueue's pollAll/batch hooks, StringDatabase's legacy text loaders, and eight free helpers (race reload, lift travel, body-type restriction, SpellVisualSource toString, formatted-message text parse, three options-slider conversions)",
 })
@@ -519,6 +521,7 @@ BOARD_REASONS.update({
 # rule).
 EXEMPT_GROUPS = {
     ("StaticUIInput", "cursorGesture"): "B899",
+    ("(free)", "applyRandomName"): "B888",
     ("(free)", "resistToParticleColor"): "B490",
     ("BoidsManager", "getCurrentBiome"): "B490",
     ("BoidsManager", "getQuality"): "B490",
@@ -939,6 +942,19 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "findControlClass"): "observer",
     ("(free)", "dispositionText"): "observer",
     ("(free)", "applyTradeskillContainerClosed"): "B899",
+    # B888 (#204): the creation screen has no host yet (no character-select
+    # screen); the era data's full lists and row sources are the tests'
+    # window onto the oracle rows the production lookups filter.
+    ("(free)", "applyCharCreateClick"): "B888",
+    ("(free)", "applySubmitRefused"): "B888",
+    ("(free)", "hitTestCharCreate"): "B888",
+    ("(free)", "openCharCreate"): "B888",
+    ("LoginWorldComponent", "RequestRandomName"): "B888",
+    ("LoginWorldComponent", "GetCharCreateStatus"): "observer",
+    ("CharCreateData", "allCities"): "observer",
+    ("CharCreateData", "allClasses"): "observer",
+    ("CharCreateData", "allDeities"): "observer",
+    ("CharCreateData", "citySource"): "observer",
     # B918: the process-wide FATAL-exit record is a one-way latch in a real
     # run (set once, read by main()); a test that trips it on purpose must
     # clear it so later cases in the same binary start clean.

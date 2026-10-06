@@ -310,6 +310,13 @@ SET(CLIENT_CORE_SOURCES
     # T397 (board B221): the one shipped-data path resolution.
     src/client/core/data_paths.cpp
     src/client/login_world/login_world_component.cpp
+    # B888 (#204): native character creation -- the server's rules, the era
+    # data (data/char_create.tsv), the four packets, the world-stage script.
+    src/client/login_world/login_world_char_create.cpp
+    src/client/login_world/char_create_rules.cpp
+    src/client/login_world/char_create_data.cpp
+    src/client/login_world/char_create_packets.cpp
+    src/client/login_world/world_script.cpp
     src/client/guild/guild_component.cpp
     # T443 (B418): OP_GuildsList parsed into a guild-id -> name lookup.
     src/client/guild/guild_name_table.cpp
@@ -448,6 +455,7 @@ SET(CLIENT_CORE_SOURCES
     # UIGAP-live: the six wave-1 UI units' live legs (#151 #213 #214 #215 #211)
     src/client/scenario/scenario_ui_inventory.cpp
     src/client/scenario/scenario_ui_social.cpp
+    src/client/scenario/scenario_create_character.cpp  # B888
     src/client/scenario/scenario_world_app.cpp
     src/client/scenario/scenario_world_app_ui.cpp
     src/client/scenario/scenario_application_wiring.cpp
@@ -481,6 +489,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/application_frame.cpp
     src/client/application_zone_loading.cpp
     src/client/application_config.cpp
+    src/client/application_world_script.cpp  # B888
     src/client/action/eq_action_handler.cpp
     src/client/action/eq_action_handler_spells_trade.cpp
     src/client/action/eq_action_handler_extended.cpp
@@ -735,6 +744,9 @@ IF(EQT_GRAPHICS)
         # B897: the Friends window (friends + ignore lists).
         src/client/graphics/ui/friends_panel.cpp
         src/client/graphics/ui/tip_window.cpp  # B834: the tip windows
+        # B888 (#204): the two-page Character Creation screen.
+        src/client/graphics/ui/char_create_screen.cpp
+        src/client/graphics/ui/char_create_panel.cpp
         # T436 (board B429): the merchant, bank and cursor-attachment
         # windows -- one TU per panel (M00).
         src/client/graphics/ui/merchant_panel.cpp

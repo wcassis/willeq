@@ -34,6 +34,11 @@ TEST_F(TitaniumOpcodesTest, WorldOpcodes) {
     EXPECT_EQ(HC_OP_SetChatServer2, 0x6536);
     EXPECT_EQ(HC_OP_ZoneServerInfo, 0x61b6);
     EXPECT_EQ(HC_OP_WorldComplete, 0x509d);
+    // B888: utils/patches/patch_Titanium.conf:21-27.
+    EXPECT_EQ(HC_OP_DeleteCharacter, 0x26c9);
+    EXPECT_EQ(HC_OP_CharacterCreate, 0x10b2);
+    EXPECT_EQ(HC_OP_RandomNameGenerator, 0x23d4);
+    EXPECT_EQ(HC_OP_ApproveName, 0x3ea6);
 }
 
 // Verify Titanium zone opcodes are correctly defined

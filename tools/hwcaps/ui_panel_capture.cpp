@@ -57,6 +57,8 @@
 #include "client/graphics/ui/tip_window.h"      // B834
 #include <fstream>
 #include <sstream>
+#include "client/graphics/ui/char_create_panel.h"   // B888
+#include "client/login_world/char_create_data.h"     // B888
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -125,6 +127,34 @@ EQT::StringDatabase& eqStrings() {
     }();
     (void)once;
     return strings;
+}
+
+// B888: the creation screen's eqstr text and its era data.
+EqstrResolver charCreateEqstr() {
+    return [](uint32_t id) { return eqStrings().getString(id); };
+}
+
+// 0 = page 0 (Human male Warrior, AGI +25), 1 = page 1 (AGNOSTIC, QEYNOS,
+// "Cinewbie"), 2 = page 0 with nothing spent and Next pressed (eqstr 1577).
+CharCreateScreenState charCreateCaptureState(int which) {
+    static eqt::charcreate::CharCreateData data = [] {
+        eqt::charcreate::CharCreateData d;
+        if (!d.loadShipped()) std::fprintf(stderr, "ui_panel_capture: %s\n", d.error().c_str());
+        return d;
+    }();
+    CharCreateScreenState s;
+    openCharCreateWith(s, data, eqt::charcreate::Race::Human, eqt::charcreate::Gender::Male,
+                       eqt::charcreate::Class::Warrior);
+    if (which == 2) {
+        pressNext(s);
+        return s;
+    }
+    statMax(s, eqt::charcreate::AGI);
+    if (which == 1) {
+        pressNext(s);
+        s.nameEntry.inputText = "Cinewbie";
+    }
+    return s;
 }
 
 void addChat(eqt::ui::ChatMessageBuffer& buf, const char* text, uint32_t color) {
@@ -826,6 +856,20 @@ std::vector<PanelCapture> buildCaptureList() {
             renderTipWindow(u, l, s.tipInventory); }},
         {"tip_of_the_day", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderTipWindow(u, l, s.tipOfTheDay); }},
+        // B888 (#204): the two Character Creation pages, in the selections
+        // the oracle frames were taken in (eq-oracle/logs/shots/cc_06_stats.png:
+        // Human male Warrior, all 25 points in AGILITY; cc_08_deity_city.png:
+        // AGNOSTIC, QEYNOS) so the pair can be laid side by side, plus page 0
+        // holding eqstr 1577 (Next pressed with points left).
+        {"charcreate_page0", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            auto s = charCreateCaptureState(0);
+            renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
+        {"charcreate_page1", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            auto s = charCreateCaptureState(1);
+            renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
+        {"charcreate_page0_points_left", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            auto s = charCreateCaptureState(2);
+            renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.

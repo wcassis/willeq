@@ -766,7 +766,7 @@ Three stages, each with its own connection manager:
 ### Core Components
 
 **Application** (`include/client/application.h`, `src/client/application.cpp` +
-4 `application_*.cpp` TUs, J06) — top-level orchestrator: owns renderer, bridge,
+the `application_*.cpp` TUs, J06 and B888) — top-level orchestrator: owns renderer, bridge,
 game thread and loading thread; spawns the game thread running the EverQuest
 tick loop; the main thread runs the render loop (or sleeps headless) and manages
 the zone loading thread (GL context transfer, snapshot handoff).

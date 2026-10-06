@@ -207,6 +207,13 @@ struct ScenarioOptions {
      * clamps to ~95%. 41 = Weaken (classes13 255). 0 = the scenario refuses.
      */
     uint32_t fizzleSpellId = 0;
+    /**
+     * B888 (issue #204): create_character. The name --create-character made
+     * and the zones its chosen home city may land in (data/char_create.tsv's
+     * `city` row). Empty name = the scenario refuses (it has nothing to check).
+     */
+    std::string expectCharacterName;
+    std::vector<std::string> expectHomeZones;
 };
 
 class IScenario {
