@@ -128,8 +128,9 @@ void pressDelete(CharSelectScreenState& s) {
     s.confirmName = s.rows[static_cast<size_t>(s.selected)].name;
     std::string text = charSelectEqstr(s, kEqstrDeletePrompt);
     if (text.empty()) text = "eqstr " + std::to_string(kEqstrDeletePrompt) + " %1";
-    s.confirm.open(kDeletePurpose, substitute(text, s.confirmName));
-    s.confirmSeconds = 0.0f;
+    s.confirm.open(kDeletePurpose, substitute(text, s.confirmName),
+                   ConfirmationDialogState::Buttons::YesNo,
+                   CharSelectScreenState::kDeleteConfirmSeconds);
 }
 
 CharSelectAction answerDeletePrompt(CharSelectScreenState& s, bool yes) {
@@ -138,7 +139,6 @@ CharSelectAction answerDeletePrompt(CharSelectScreenState& s, bool yes) {
     const std::string name = s.confirmName;
     s.confirm.close();
     s.confirmName.clear();
-    s.confirmSeconds = 0.0f;
     if (!yes || name.empty()) return none;
     CharacterSelectRequest r;
     r.kind = CharacterSelectRequest::Kind::Delete;
@@ -175,9 +175,9 @@ CharSelectAction fromCharCreateAction(CharSelectScreenState& s, const CharCreate
 }
 
 void tickCharSelect(CharSelectScreenState& s, float dt) {
-    if (!s.confirm.isOpen) return;
-    s.confirmSeconds += dt;
-    if (s.confirmSeconds >= CharSelectScreenState::kDeleteConfirmSeconds) answerDeletePrompt(s, false);
+    // The one confirmation clock (confirmation_dialog.h), shared with the
+    // in-world drop / destroy prompts.
+    if (tickConfirmationDialog(s.confirm, dt)) answerDeletePrompt(s, false);
 }
 
 void applyCharSelectKey(CharSelectScreenState& s, irr::EKEY_CODE key, wchar_t ch) {

@@ -32,6 +32,7 @@
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
+#include "client/display_eqstr.h"
 #include "client/bridge/game_state_bridge.h"
 
 // P28: renderer-free inventory data model, used unconditionally below
@@ -262,10 +263,22 @@ void eqt::merchant::MerchantComponent::OpenBankWindow(uint16_t bankerNpcId)
 	}
 #endif
 
-	ctx_.out.System("Bank window opened");
+	// UIGAP-residue (B996 #316, MEASURED -- review/UIGAP-ORACLE/316/range.tsv
+	// rows 1, 3, 6, 10): opening sends NOTHING and the client itself prints
+	// "<banker> tells you, 'Welcome to my bank!'" (eqstr 1465). It replaces
+	// fable's own "Bank window opened".
+	{
+		auto it = ctx_.entities.find(bankerId);
+		const std::string banker =
+			(it != ctx_.entities.end()) ? EQT::toDisplayName(it->second.name) : "Banker";
+		const std::string line = eqt::EqStrLine(ctx_.strings.Db(), 1465, {banker});
+		if (!line.empty()) {
+			ctx_.out.System(line);
+		}
+	}
 }
 
-void eqt::merchant::MerchantComponent::CloseBankWindow()
+void eqt::merchant::MerchantComponent::CloseBankWindow(bool announce)
 {
 	if (ctx_.game_state.player().bankerNpcId() == 0) {
 		return;
@@ -294,7 +307,9 @@ void eqt::merchant::MerchantComponent::CloseBankWindow()
 	}
 #endif
 
-	ctx_.out.System("Bank window closed");
+	if (announce) {
+		ctx_.out.System("Bank window closed");
+	}
 }
 // ============================================================================
 // Skill Trainer Window Methods

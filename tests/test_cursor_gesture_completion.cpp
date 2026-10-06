@@ -47,6 +47,7 @@
 #include "client/inventory/cursor_gesture.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/inventory_manager.h"
+#include "client/merchant/merchant_component.h"
 #include "client/state/event_bus.h"
 #include "common/net/daybreak_connection.h"
 #include "common/packet_structs.h"
@@ -55,6 +56,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -854,6 +856,7 @@ TEST(CursorGestureGame, TheTwoPromptsAreTheOfficialEqstrLines) {
     EXPECT_EQ(asks[0].text, "ARE YOU SURE you wish to drop your Rusty Long Sword on the ground?")
         << "row 31";
     EXPECT_EQ(asks[0].purpose, static_cast<uint8_t>(eqt::inventory::ConfirmPurpose::DropItem));
+    EXPECT_FLOAT_EQ(asks[0].timeoutSeconds, 20.0f) << "UIGAP-live2 run3/run5: Drop 20 s";
 
     h.run(op(CursorGestureOp::RequestDestroy));
     asks = h.events<eqt::state::ConfirmationRequestedData>(
@@ -862,7 +865,60 @@ TEST(CursorGestureGame, TheTwoPromptsAreTheOfficialEqstrLines) {
     EXPECT_EQ(asks[0].text, "Are you absolutely sure you want to destroy your Rusty Long Sword?")
         << "row 34";
     EXPECT_EQ(asks[0].purpose, static_cast<uint8_t>(eqt::inventory::ConfirmPurpose::DestroyItem));
+    EXPECT_FLOAT_EQ(asks[0].timeoutSeconds, 10.0f) << "UIGAP-live2 run3/run5: Destroy 10 s";
     EXPECT_TRUE(h.sent().empty()) << "rows 31/34: nothing at the click";
+}
+
+// MEASURED by UIGAP-live2 (review/UIGAP-ORACLE/151/README.md, run3 + run5,
+// two runs each): left unanswered, the Drop prompt closes itself at 20 s and
+// the Destroy prompt at 10 s, sending nothing; the item stays on the cursor.
+// The game side states the timeout on the request...
+TEST(CursorGestureGame, ThePromptsCarryTheMeasuredTimeouts) {
+    GameHarness h;
+    h.eq.Strings().LoadStringFiles("");
+    h.seed(22, "Rusty Dagger");
+    ASSERT_TRUE(h.inv().pickupItem(22));
+    const auto drop = eqt::inventory::PlanConfirmPrompt(h.inv(), CursorGestureOp::RequestDrop);
+    ASSERT_TRUE(drop.prompt);
+    EXPECT_FLOAT_EQ(drop.timeoutSeconds, 20.0f) << "run3/run5: drop dialog up 20.1 s";
+    const auto destroy = eqt::inventory::PlanConfirmPrompt(h.inv(), CursorGestureOp::RequestDestroy);
+    ASSERT_TRUE(destroy.prompt);
+    EXPECT_FLOAT_EQ(destroy.timeoutSeconds, 10.0f) << "run3/run5: destroy dialog up 10.1 s";
+}
+
+// ...and the dialog's one clock closes it as a No: no intent, nothing sent.
+TEST(ConfirmationDialog, AnUnansweredPromptClosesItselfAtItsTimeoutAndSendsNothing) {
+    for (const auto& [purpose, timeout] :
+         {std::pair{eqt::inventory::ConfirmPurpose::DropItem, 20.0f},
+          std::pair{eqt::inventory::ConfirmPurpose::DestroyItem, 10.0f}}) {
+        Rig rig;
+        auto& dlg = rig.input.confirmationDialog();
+        eqt::state::ConfirmationRequestedData req;
+        req.purpose = static_cast<uint8_t>(purpose);
+        req.text = "prompt";
+        req.timeoutSeconds = timeout;
+        applyConfirmationRequested(dlg, req);
+        ASSERT_TRUE(dlg.isOpen);
+        // 60 Hz frames up to just short of the timeout: still up.
+        const int frames = static_cast<int>(timeout * 60.0f) - 2;
+        for (int i = 0; i < frames; ++i) {
+            ASSERT_FALSE(tickConfirmationDialog(dlg, 1.0f / 60.0f)) << "frame " << i;
+        }
+        EXPECT_TRUE(dlg.isOpen) << timeout << " s prompt still up just before its timeout";
+        bool expired = false;
+        for (int i = 0; i < 4 && !expired; ++i) expired = tickConfirmationDialog(dlg, 1.0f / 60.0f);
+        EXPECT_TRUE(expired) << timeout << " s prompt expires at its timeout";
+        dlg.close();   // the owner's No (FrameComponent::processFrameInput)
+        EXPECT_TRUE(rig.bridge.drainIntents().empty()) << "a timeout sends nothing";
+    }
+    // No timeout stated (0): the dialog stays up until answered.
+    ConfirmationDialogState s;
+    s.open(1, "stays");
+    EXPECT_FALSE(tickConfirmationDialog(s, 1000.0f));
+    EXPECT_TRUE(s.isOpen);
+    // A closed dialog never expires.
+    ConfirmationDialogState closed;
+    EXPECT_FALSE(tickConfirmationDialog(closed, 1000.0f));
 }
 
 TEST(CursorGestureGame, NothingHeldNothingAsked) {
@@ -987,6 +1043,7 @@ TEST(CursorGestureGame, BankCoinToCursorThenPurse) {
     GameHarness h;
     h.eq.GetGameState().player().setCurrency(0, 0, 0, 0);
     h.eq.GetGameState().player().setBankCurrency(5, 0, 0, 0);
+    h.eq.Merchant().OpenBankWindow(1);   // B996: the coin rows exist only in the open bank
     h.clearSent();
     CursorGestureIntent c = op(CursorGestureOp::CoinClick);
     c.coinType = EQT::COINTYPE_PP;
@@ -1009,6 +1066,34 @@ TEST(CursorGestureGame, BankCoinToCursorThenPurse) {
     EXPECT_EQ(mc[0].amount, 5);
     EXPECT_EQ(h.eq.GetGameState().player().platinum(), 5u);
     EXPECT_FALSE(h.inv().hasCursorMoney());
+}
+
+// B996 (#316), MEASURED (review/UIGAP-ORACLE/316/README.md): with the bank
+// shut the official client has no bank slot or coin row to click, so it never
+// moves anything to or from 2000+. The gesture (click, /pickup, /putdown, a
+// bank coin row) refuses with the window shut and works with it open.
+TEST(CursorGestureGame, BankSlotsAndCoinRowsNeedTheOpenBankWindow) {
+    GameHarness h;
+    h.seed(22, "Rusty Dagger");
+    ASSERT_TRUE(h.inv().pickupItem(22));
+    h.bridge.drainIntents();
+    h.eq.GetGameState().player().setBankCurrency(5, 0, 0, 0);
+    h.clearSent();
+
+    h.run(op(CursorGestureOp::Click, eqt::inventory::BANK_BEGIN));
+    EXPECT_TRUE(h.sentOp(HC_OP_MoveItem).empty()) << "bank shut: no move";
+    EXPECT_NE(h.inv().getCursorItem(), nullptr);
+    EXPECT_EQ(h.inv().getItem(eqt::inventory::BANK_BEGIN), nullptr);
+    CursorGestureIntent coin = op(CursorGestureOp::CoinClick);
+    coin.coinType = EQT::COINTYPE_PP;
+    coin.coinSource = EQT::COINSLOT_BANK;
+    h.run(coin);
+    EXPECT_TRUE(moveCoins(h).empty()) << "bank shut: no bank coin move";
+
+    h.eq.Merchant().OpenBankWindow(1);
+    h.run(op(CursorGestureOp::Click, eqt::inventory::BANK_BEGIN));
+    EXPECT_EQ(h.sentOp(HC_OP_MoveItem).size(), 1u) << "bank open: 30 -> 2000";
+    EXPECT_NE(h.inv().getItem(eqt::inventory::BANK_BEGIN), nullptr);
 }
 
 TEST(CursorGestureGame, BankCoinRefusalsSendNothing) {

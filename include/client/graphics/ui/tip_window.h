@@ -22,6 +22,11 @@
  *     `Spellbook=0`, `OptDisplay=0`, `AAWindow=0` (27 files under
  *     /mnt/projects/EverQuestP1999). So "Don't show this tip again" writes
  *     `<Key>=0` and "Don't show any tips" writes `ShowTips=0`.
+ *   - MEASURED (UIGAP-live2, review/UIGAP-ORACLE/202/README.md): `ShowTips=0`
+ *     suppresses the context tips (Inventory, Quantity) but NOT the Tip of
+ *     the Day, which still pops at zone-in with its "Don't show any tips" box
+ *     unticked -- `ShowTOTD` alone gates it (shouldPopTipOfTheDay();
+ *     TipRules.ShowTipsZeroSuppressesContextTipsButNotTheTipOfTheDay).
  *
  * ASSUMPTIONS AWAITING ORACLE (flagged, not silent):
  *   - a context tip pops once per SESSION per character (the oracle grabs are

@@ -35,6 +35,8 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/combat.h"
 #include "client/events/renderer_intents.h"
+#include "client/movement/movement_component.h"
+#include "eqstr_test_db.h"
 #include "zone_stream_test_utils.h"
 
 using namespace zonetest;
@@ -238,6 +240,83 @@ TEST_F(EqCommandsBankTrainTest, Train_MatchingClassInRange_SendsTrainerRequest_N
     // RequestTrainerWindow's own behavior, not this unit's territory); the
     // observable this unit owns is "did pre-validation refuse or not".
     EXPECT_TRUE(DrainSystemMessages(bridge).empty());
+}
+
+// ---------------------------------------------------------------------------
+// UIGAP-residue (B996, GitLab #316): the banker's range, MEASURED on the
+// official client by UIGAP-live2 -- review/UIGAP-ORACLE/316/range.tsv. A
+// right-click opens the bank at 10 / 15 / 19.8 / 20 units (rows 1, 3, 6, 10)
+// and is a /consider at 21.2 / 22.6 / 28.3 (rows 7-9); "Welcome to my bank!"
+// (eqstr 1465) is the client's own line; an open bank closes itself past 20
+// with "Come back soon!" (eqstr 12143) and stays open at 20 (rows 2, 4, 5).
+// The banker is at the origin and the player is moved (a distance from the
+// origin is the same in either axis order).
+// ---------------------------------------------------------------------------
+
+class BankRangeTest : public EqCommandsBankTrainTest {
+protected:
+    static constexpr uint8_t kClassBanker = 40;
+    void SetUp() override {
+        ASSERT_TRUE(eqt_test::ShippedStrings().isLoaded()) << "data/willeq.db";
+        ASSERT_TRUE(eq.Strings().LoadStringFiles(""));
+        SpawnNpcAt(500, "Kendall_Copperhold000", kClassBanker);
+    }
+    void openAt(float distance) {
+        eq.SetPosition(distance, 0.0f, 0.0f);
+        bridge.drainEvents();
+        bridge.pushIntent(eqt::events::BankerInteractIntent{500});
+        eq.Bridge().ProcessBridgeIntents();
+    }
+};
+
+TEST_F(BankRangeTest, OpensAtTheMeasuredDistancesWithTheWelcomeLine) {
+    for (float d : {10.0f, 15.0f, 19.8f, 20.0f}) {
+        openAt(d);
+        EXPECT_TRUE(eq.IsBankWindowOpen()) << "range.tsv: opens at " << d;
+        const auto msgs = DrainSystemMessages(bridge);
+        ASSERT_EQ(msgs.size(), 1u) << d;
+        EXPECT_EQ(msgs[0], "Kendall Copperhold tells you, 'Welcome to my bank!'") << "eqstr 1465";
+        eq.Merchant().CloseBankWindow();
+    }
+}
+
+TEST_F(BankRangeTest, BeyondTwentyIsAConsiderNotATooFarLine) {
+    for (float d : {21.2f, 22.6f, 28.3f}) {
+        openAt(d);
+        EXPECT_FALSE(eq.IsBankWindowOpen()) << "range.tsv rows 7-9: no bank at " << d;
+        EXPECT_TRUE(DrainSystemMessages(bridge).empty()) << "a consider, no refusal line";
+        EXPECT_EQ(eq.GetCombatManager()->GetTargetId(), 500) << "the banker is targeted and considered";
+    }
+}
+
+TEST_F(BankRangeTest, AnOpenBankStaysAtTwentyAndClosesPastIt) {
+    openAt(10.0f);
+    ASSERT_TRUE(eq.IsBankWindowOpen());
+    bridge.drainEvents();
+    eq.SetPosition(20.0f, 0.0f, 0.0f);
+    eq.Movement().UpdateMovement();
+    EXPECT_TRUE(eq.IsBankWindowOpen()) << "row 4: stays open at 20.0";
+    EXPECT_TRUE(DrainSystemMessages(bridge).empty());
+
+    eq.SetPosition(21.2f, 0.0f, 0.0f);
+    eq.Movement().UpdateMovement();
+    EXPECT_FALSE(eq.IsBankWindowOpen()) << "rows 2, 5: closes past 20";
+    const auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_EQ(msgs[0], "Kendall Copperhold tells you, 'Come back soon!'") << "eqstr 12143";
+}
+
+// The trainer half of the same gesture keeps its own (unmeasured) 15: the
+// banker's 20 does not loosen it.
+TEST_F(EqCommandsBankTrainTest, TheBankersRangeDoesNotLoosenTheTrainers) {
+    SpawnNpcAt(305, "a_warrior_gm", /*classId=*/20);
+    eq.SetPosition(18.0f, 0.0f, 0.0f);
+    bridge.drainEvents();
+    bridge.pushIntent(eqt::events::BankerInteractIntent{305});
+    eq.Bridge().ProcessBridgeIntents();
+    const auto msgs = DrainSystemMessages(bridge);
+    ASSERT_EQ(msgs.size(), 1u);
+    EXPECT_EQ(msgs[0], "You are too far away to interact with this NPC.");
 }
 
 }  // namespace

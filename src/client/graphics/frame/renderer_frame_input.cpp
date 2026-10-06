@@ -65,6 +65,13 @@ void FrameComponent::processFrameInput(float deltaTime) {
 
     processInputDeltas(deltaTime);
 
+    // UIGAP-residue (#151, measured): an unanswered drop / destroy prompt
+    // closes itself (20 s / 10 s) as a No -- nothing sent, item kept.
+    if (staticUIInput_ &&
+        tickConfirmationDialog(staticUIInput_->confirmationDialog(), deltaTime)) {
+        staticUIInput_->confirmationDialog().close();
+    }
+
     // ===== FRAME TIMING: Input Handling (accumulated) =====
     frameTimings_.inputHandling += measureSection();
 
