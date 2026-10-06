@@ -491,7 +491,9 @@ void eqt::bridge::BridgeComponent::onSkillActivateIntent(const eqt::events::Skil
 // Loot intents (T268: producers are the /loot family; a loot
 // popup would push the same intents)
 void eqt::bridge::BridgeComponent::onLootItemIntent(const eqt::events::LootItemIntent& i) {
-	LootItemFromCorpse(i.corpseId, i.slot);  // to the cursor, like the real client
+	// Measured (#151 rows 46a/46c): LEFT -> auto_loot 0, onto the cursor;
+	// RIGHT -> auto_loot 1, straight into the inventory.
+	LootItemFromCorpse(i.corpseId, i.slot, i.autoLoot);
 }
 
 void eqt::bridge::BridgeComponent::onLootAllIntent(const eqt::events::LootAllIntent& i) {

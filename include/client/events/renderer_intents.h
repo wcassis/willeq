@@ -76,6 +76,10 @@ struct LootCorpseIntent {
 struct LootItemIntent {
     uint16_t corpseId;
     uint8_t slot;
+    // OP_LootItem's auto_loot (MEASURED, review/UIGAP-ORACLE/151/gestures.tsv
+    // rows 46a/46c): a LEFT click on a loot slot is 0 (the item comes onto the
+    // cursor), a RIGHT click is 1 (straight into the inventory).
+    bool autoLoot = false;
 };
 
 struct LootAllIntent {

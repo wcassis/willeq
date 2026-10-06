@@ -460,7 +460,10 @@ TEST(CursorGestureBank, ABankSlotIsTheSameGestureOnSlot2000PlusN) {
     EXPECT_EQ(std::get<CursorGestureIntent>(intents[0]).slot, eqt::inventory::BANK_BEGIN + 5);
 }
 
-TEST(CursorGestureLoot, LeftLootsToTheCursorAndRightTakesNothing) {
+// gestures.tsv rows 46a / 46c (UIGAP-live2): LEFT on a loot slot is
+// OP_LootItem auto_loot=0 (onto the cursor), RIGHT is auto_loot=1 (straight
+// into the inventory, the cursor untouched).
+TEST(CursorGestureLoot, LeftLootsToTheCursorAndRightLootsToTheInventory) {
     InventoryRig rig;
     rig.inv.activePopup = PopupType::None;
     rig.loot.isOpen = true;
@@ -482,10 +485,20 @@ TEST(CursorGestureLoot, LeftLootsToTheCursorAndRightTakesNothing) {
     ASSERT_NE(li, nullptr) << "LootItemIntent is the corpse's cursor pick-up (auto_loot 0)";
     EXPECT_EQ(li->corpseId, 77);
     EXPECT_EQ(li->slot, 5);
+    EXPECT_FALSE(li->autoLoot) << "row 46a: auto_loot=0";
 
     rig.clickAt(x, y, /*left=*/false, /*right=*/true);
-    EXPECT_TRUE(rig.bridge.drainIntents().empty())
-        << "RIGHT on a corpse row is the oracle's inspect, which is owed -- never a loot";
+    intents = rig.bridge.drainIntents();
+    ASSERT_EQ(intents.size(), 1u) << "row 46c: RIGHT loots";
+    const auto* ri = std::get_if<eqt::events::LootItemIntent>(&intents[0]);
+    ASSERT_NE(ri, nullptr);
+    EXPECT_EQ(ri->corpseId, 77);
+    EXPECT_EQ(ri->slot, 5);
+    EXPECT_TRUE(ri->autoLoot) << "row 46c: auto_loot=1, straight into the inventory";
+
+    // A hover (no button) takes nothing.
+    rig.clickAt(x, y, /*left=*/false, /*right=*/false);
+    EXPECT_TRUE(rig.bridge.drainIntents().empty());
 }
 
 // review/UIGAP-ORACLE/152: on Titanium selling NEVER uses the cursor, so a
