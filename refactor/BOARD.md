@@ -8602,6 +8602,12 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   loot; the existing LootItemIntent behaviour is unchanged), the confirmation
   dialog's unanswered auto-dismiss timeout (not measured), world clicks on an
   NPC with an item held (the give gesture, the trade/give unit's).
+  **UIGAP-residue (2026-10-06):** loot (left = cursor, right = auto_loot 1,
+  rows 46a/46c) and the dialog timeouts (drop 20 s, destroy 10 s, UIGAP-live2
+  run3/run5) are now MEASURED and IMPLEMENTED; the trade/give windows landed
+  with B896; a corpse row's right click is the auto-loot (row 46c), not a
+  display. Still owed: the live `pickup_roundtrip` scenario and the
+  two-client wear check.
 
 - **B443** (B) `src/client/graphics/ui/merchant_panel.cpp` → issue #152
   (`renderMerchantPopup`, the trade button) -- **which of Buy and Sell the

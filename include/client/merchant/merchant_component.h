@@ -124,7 +124,10 @@ public:
 
 	// ---- Bank window methods (Player mode with graphics)
 	void OpenBankWindow(uint16_t bankerNpcId = 0);
-	void CloseBankWindow();
+	// `announce` = fable's own "Bank window closed" line. The out-of-range
+	// auto-close passes false: the official client prints only its eqstr
+	// 12143 "Come back soon!" there (UIGAP-residue, B996 #316).
+	void CloseBankWindow(bool announce = true);
 
 	// ---- Skill trainer window methods (Player mode with graphics)
 	void RequestTrainerWindow(uint16_t npcId);
@@ -150,6 +153,11 @@ public:
 	// SILENT server refusal (no session, no practices, not taught here,
 	// already at this trainer's cap) and none is stricter than the server.
 	std::string TrainRefusal(uint8_t skillId) const;
+	// UIGAP-residue (#214, MEASURED train.tsv row 10), merchant_trainer.cpp:
+	// the client-side line a trainer-window row selection prints, eqstr 12056
+	// "<trainer> says, 'Interested in training in <skill> ?'"; "" with no
+	// session or no string table.
+	std::string TrainerSelectLine(uint8_t skillId) const;
 
 	// ---- T269: /bank deposit|withdraw|convert. Push the kept
 	// BankCurrencyMoveIntent / BankCurrencyConvertIntent (the same shape a

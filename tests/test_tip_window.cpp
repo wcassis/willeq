@@ -153,6 +153,48 @@ TEST(TipRules, TipOfTheDayShowAnotherAndItsCheckbox) {
     EXPECT_TRUE(prefs.showTips);
 }
 
+// MEASURED (UIGAP-live2, review/UIGAP-ORACLE/202/README.md "UIGAP-live2",
+// live2.P00/P02/P03): with `[Tips] ShowTips=0` and NO ShowTOTD key in the UI
+// ini, the Inventory and Quantity tips do not pop, but the Tip of the Day
+// still pops at zone-in with its "Don't show any tips" box drawn UNTICKED.
+// ShowTips does not gate the TOTD; ShowTOTD does.
+TEST(TipRules, ShowTipsZeroSuppressesContextTipsButNotTheTipOfTheDay) {
+    // The oracle's own ini: `[Tips] ShowTips=0` was appended before the run
+    // (UI_ini_live2_before.ini is the snapshot from BEFORE the append) and the
+    // official client wrote it back unchanged at /camp -- the after_camp file
+    // is therefore the measured section, with no ShowTOTD key.
+    std::string ini = "[Tips]\r\nShowTips=0\r\n";
+    const fs::path after = "/mnt/projects/fable/review/UIGAP-ORACLE/202/UI_ini_live2_after_camp.ini";
+    if (fs::exists(after)) {
+        std::ifstream in(after);
+        std::stringstream ss;
+        ss << in.rdbuf();
+        ini = ss.str();
+    }
+    const UiPreferences p = ParseUiPreferences(ini);
+    EXPECT_FALSE(p.tips.showTips);
+    EXPECT_TRUE(p.tips.showTotd) << "an absent ShowTOTD key = shown";
+
+    const UILayout layout = Layout();
+    TipWindowState s;
+    EXPECT_FALSE(shouldPopTip(p.tips, s, "Inventory")) << "live2.P02";
+    EXPECT_FALSE(shouldPopTip(p.tips, s, "Quantity")) << "live2.P03";
+    ASSERT_TRUE(shouldPopTipOfTheDay(p.tips, s)) << "live2.P00: the TOTD still pops";
+    openTipOfTheDay(s, parseTipOfTheDay(kTotd), layout);
+    EXPECT_TRUE(s.isOpen);
+    EXPECT_FALSE(s.noShowAll) << "live2.P00: its 'Don't show any tips' box is unticked";
+    TipPreferences prefs = p.tips;
+    applyTipClick(s, prefs, TipHit::Close, {}, layout);
+    EXPECT_FALSE(prefs.showTips) << "kept across the session (the ini after /camp still says 0)";
+
+    // The negative: ShowTOTD=0 is what stops the TOTD.
+    TipWindowState s2;
+    TipPreferences noTotd;
+    noTotd.showTotd = false;
+    EXPECT_FALSE(shouldPopTipOfTheDay(noTotd, s2));
+    EXPECT_TRUE(shouldPopTip(noTotd, s2, "Inventory"));
+}
+
 TEST(TipLayoutOracle, MeasuredPlacementAt1024x768) {
     const auto w = TipLayout::windowRect(Layout());
     EXPECT_EQ(w.UpperLeftCorner.X, 664);

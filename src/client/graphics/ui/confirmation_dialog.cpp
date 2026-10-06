@@ -42,12 +42,20 @@ void drawButton(UIRenderer& ui, TextBatch* tb, const irr::core::rect<irr::s32>& 
 
 }  // namespace
 
-void ConfirmationDialogState::open(uint8_t askerPurpose, const std::string& prompt, Buttons b) {
+void ConfirmationDialogState::open(uint8_t askerPurpose, const std::string& prompt, Buttons b,
+                                   float timeout) {
     *this = ConfirmationDialogState{};
     isOpen = !prompt.empty();
     purpose = askerPurpose;
     text = prompt;
     buttons = b;
+    timeoutSeconds = timeout > 0.0f ? timeout : 0.0f;
+}
+
+bool tickConfirmationDialog(ConfirmationDialogState& state, float dt) {
+    if (!state.isOpen || state.timeoutSeconds <= 0.0f) return false;
+    if (dt > 0.0f) state.elapsedSeconds += dt;
+    return state.elapsedSeconds >= state.timeoutSeconds;
 }
 
 ConfirmationClick processConfirmationClick(const UILayout& layout,
@@ -78,7 +86,8 @@ void applyConfirmationRequested(ConfirmationDialogState& state,
                                 const eqt::state::ConfirmationRequestedData& data) {
     // A second request while one is up replaces it: the official dialog is
     // one window, and the newer question is the one the player just asked.
-    state.open(data.purpose, data.text, ConfirmationDialogState::Buttons::YesNo);
+    state.open(data.purpose, data.text, ConfirmationDialogState::Buttons::YesNo,
+               data.timeoutSeconds);
 }
 
 std::vector<std::string> wrapConfirmationText(const std::string& text, int width,

@@ -60,6 +60,19 @@ int TrainerPanelState::selectedSkillId() const {
     return rows[static_cast<size_t>(selectedRow)].skillId;
 }
 
+uint64_t TrainerPanelState::purseCopper() const {
+    return static_cast<uint64_t>(coins[0]) * 1000 + static_cast<uint64_t>(coins[1]) * 100 +
+           static_cast<uint64_t>(coins[2]) * 10 + static_cast<uint64_t>(coins[3]);
+}
+
+bool TrainerPanelState::trainEnabled() const {
+    const int skill = selectedSkillId();
+    if (skill < 0) return false;                       // row 1: nothing selected
+    if (practicePoints == 0) return false;             // row 15: 0 practices
+    const auto& row = rows[static_cast<size_t>(selectedRow)];
+    return purseCopper() >= row.cost;                  // row 11: purse below the row's cost
+}
+
 uint32_t trainerCostDigit(uint32_t costCopper, int denom) {
     switch (denom) {
         case 0: return costCopper / 1000;
@@ -256,9 +269,11 @@ void renderTrainerWindow(UIRenderer& ui, const UILayout& layout,
     }
 
     // --- TRNW_TrainButton ---
-    // MEASURED (train.tsv rows 1 and 5): DISABLED until a row is selected.
+    // MEASURED (train.tsv rows 1, 5, 11, 13, 15): DISABLED until a row is
+    // selected, with 0 practices, or with a purse below the row's cost; a row
+    // at its cap stays ENABLED (the refusal is the press's line).
     const auto train = TrainLayout::trainButtonRect(layout);
-    const bool trainEnabled = state.selectedSkillId() >= 0;
+    const bool trainEnabled = state.trainEnabled();
     ui.drawRect(train, trainEnabled ? buttonColor(state.trainHovered)
                                     : irr::video::SColor(160, 40, 40, 46));
     ui.drawFrame(train, kFrame);
@@ -369,9 +384,11 @@ bool StaticUIInput::processTrainerInput(int mouseX, int mouseY,
 
     if (hitTestTrainerTrainButton(layout, trainer, mouseX, mouseY)) {
         const int skill = trainer.selectedSkillId();
-        // Disabled with no selection (measured): consumed, no hover, no intent.
-        trainer.trainHovered = skill >= 0;
-        if (leftClicked && bridge_ && skill >= 0) {
+        // Disabled (no selection, 0 practices, purse short -- measured rows
+        // 1, 11, 15): consumed, no hover, no intent, no line.
+        const bool enabled = trainer.trainEnabled();
+        trainer.trainHovered = enabled;
+        if (leftClicked && bridge_ && enabled) {
             // /train <id>'s intent, carrying the SKILL id (never the row).
             // Every refusal is the game thread's; nothing local changes.
             bridge_->pushIntent(
@@ -393,7 +410,18 @@ bool StaticUIInput::processTrainerInput(int mouseX, int mouseY,
     if (row >= 0) {
         trainer.hoveredRow = row;
         // Selection is client-side; the server is told nothing until Train.
-        if (leftClicked) trainer.selectedRow = row;
+        if (leftClicked) {
+            trainer.selectedRow = row;
+            // MEASURED (train.tsv row 10): the selection prints "<trainer>
+            // says, 'Interested in training in <skill> ?'" (eqstr 12056,
+            // client-side, no packet). The game thread owns the string table.
+            if (bridge_) {
+                eqt::events::TrainSkillIntent select{};
+                select.skillId = trainer.rows[static_cast<size_t>(row)].skillId;
+                select.selectOnly = true;
+                bridge_->pushIntent(select);
+            }
+        }
         return true;
     }
 

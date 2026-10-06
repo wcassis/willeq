@@ -318,8 +318,8 @@ TEST(SocialCommandsB897, FriendsToggleAndListMessages) {
                              "delete one before adding another.");
 }
 
-// Rows 6-8, 10: add, list, self refused, toggle off. The cap (13244) is row
-// 18 -- NOT captured; the 100 is the issue's default, pinned as such.
+// Rows 6-8, 10: add, list, self refused, toggle off. The cap is rows cap1-cap5
+// (UIGAP-live2, 2026-10-06) -- see CapRowsReplayTheOraclesChatLog below.
 TEST(SocialCommandsB897, IgnoreToggleListSelfAndFull) {
     SocialListsModel m;
     auto empty = eqt::state::RunIgnoreCommand(m, "", "Me");
@@ -374,6 +374,76 @@ TEST(SocialCommandsB897, ReplaysTheOraclesChatLog) {
         if (std::find(ours.begin(), ours.end(), text) != ours.end()) theirs.push_back(text);
     }
     EXPECT_EQ(ours, theirs);
+}
+
+// Rows cap1-cap5 (UIGAP-live2, 2026-10-06; live2.chat.txt / live2b.chat.txt):
+// both lists pre-filled to 100 (Capaa..Capdv, Ignaa..Igndv), then the same
+// command sequence the official client was given. The cap strings (12983 and
+// 13244, the latter with TWO spaces after "already."), the toggle-off at the
+// cap and the one freed slot are all compared line for line with its log.
+TEST(SocialCommandsB897, CapRowsReplayTheOraclesChatLog) {
+    auto hundred = [](const std::string& prefix) {
+        std::vector<std::string> v;
+        for (char a = 'a'; a <= 'd'; ++a)
+            for (char b = 'a'; b <= 'z' && v.size() < 100; ++b)
+                v.push_back(prefix + a + b);
+        return v;
+    };
+    SocialListsModel m;
+    m.assign(hundred("Cap"), hundred("Ign"));
+    ASSERT_EQ(m.friends().size(), 100u);
+    ASSERT_EQ(m.ignored().size(), 100u);
+    ASSERT_EQ(m.friends().back(), "Capdv");
+
+    std::vector<std::string> friendsLines, ignoreLines;
+    auto run = [](std::vector<std::string>& out, const eqt::state::SocialOutcome& o) {
+        out.insert(out.end(), o.lines.begin(), o.lines.end());
+    };
+    run(friendsLines, eqt::state::RunFriendsCommand(m, "Capzz", "Testchar"));  // cap1
+    run(friendsLines, eqt::state::RunFriendsCommand(m, "Capaa", "Testchar"));  // cap2
+    run(friendsLines, eqt::state::RunFriendsCommand(m, "Capzz", "Testchar"));  // cap3
+    run(friendsLines, eqt::state::RunFriendsCommand(m, "Capzy", "Testchar"));  // cap3, again full
+    run(ignoreLines, eqt::state::RunIgnoreCommand(m, "Ignzz", "Testchar"));    // cap4
+    run(ignoreLines, eqt::state::RunIgnoreCommand(m, "Ignaa", "Testchar"));    // cap5
+    run(ignoreLines, eqt::state::RunIgnoreCommand(m, "Ignzz", "Testchar"));    // cap5
+    EXPECT_EQ(m.friends().size(), 100u);
+    EXPECT_TRUE(m.contains(SocialList::Friends, "Capzz"));
+    EXPECT_FALSE(m.contains(SocialList::Friends, "Capaa"));
+    EXPECT_FALSE(m.contains(SocialList::Friends, "Capzy"));
+    EXPECT_EQ(m.ignored().size(), 100u);
+
+    const std::vector<std::string> wantFriends = {
+        "You may only have 100 friends in your list at once, please delete one before adding another.",
+        "Capaa is no longer your friend.",
+        "Capzz is now your friend.",
+        "You may only have 100 friends in your list at once, please delete one before adding another.",
+    };
+    const std::vector<std::string> wantIgnore = {
+        "You have all 100 ignore slots full already.  You must remove some to add new ones.",
+        "You have removed Ignaa from your IGNORE list.",
+        "You have added Ignzz to your IGNORE list.",
+    };
+    EXPECT_EQ(friendsLines, wantFriends);
+    EXPECT_EQ(ignoreLines, wantIgnore);
+
+    // And against the official client's own logs when the capture is present.
+    auto logLines = [](const fs::path& p) {
+        std::vector<std::string> out;
+        std::istringstream in(ReadFile(p));
+        std::string line;
+        while (std::getline(in, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            const size_t close = line.find("] ");
+            if (line.empty() || line[0] != '[' || close == std::string::npos) continue;
+            out.push_back(line.substr(close + 2));
+        }
+        return out;
+    };
+    if (!fs::exists(kLedger / "live2.chat.txt") || !fs::exists(kLedger / "live2b.chat.txt")) {
+        GTEST_SKIP() << "no UIGAP-ORACLE/213 live2 capture";
+    }
+    EXPECT_EQ(friendsLines, logLines(kLedger / "live2.chat.txt"));
+    EXPECT_EQ(ignoreLines, logLines(kLedger / "live2b.chat.txt"));
 }
 
 TEST(SocialCommandsB897, FriendsWhoUsesTheStoredListOrTheGivenOne) {

@@ -63,9 +63,8 @@ struct CharSelectScreenState {
     int selected = -1;                                         // index into rows
     std::shared_ptr<const eqt::login_world::EqstrTable> strings;
 
-    ConfirmationDialogState confirm;   // the delete prompt
+    ConfirmationDialogState confirm;   // the delete prompt (its own clock, kDeleteConfirmSeconds)
     std::string confirmName;
-    float confirmSeconds = 0.0f;
 
     CharCreateScreenState create;      // B888's two pages, hosted here
 

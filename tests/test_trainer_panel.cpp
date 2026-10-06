@@ -30,10 +30,13 @@
 //   row 6  Train = OP_GMTrainSkill skillbank 0, one practice, OP_SkillUpdate
 //          back, the selection persists -> TrainReachesTheWire*, OpSkillUpdateRefreshes*
 //   row 8  Done = OP_GMEndTraining (8 B)  -> DonePushesCloseTrainer*
+//   rows 10-15 (UIGAP-live2): the selection line, Train greyed on 0 practices
+//          or a short purse, at cap enabled + no packet + eqstr 12930
+//          -> TrainerMeasured.*, ASkillAlreadyAtTheTrainersCapIsStillListed
 // NOT pinned (owed): row 2 Rank words (only Awful/Master seen), row 4's
-// languages, row 9 refusals (0 practices / 0 money / at cap) -- fable keeps
-// the T280 refusals that mirror SILENT server refusals and otherwise shows
-// what the server replies.
+// languages, the at-cap rule against the cap at the CURRENT level (fable has
+// no per-level cap table; it applies the session's cap), row 12/14's
+// client-side money deduction.
 //
 // No Irrlicht device, no server.
 
@@ -59,6 +62,7 @@
 #include "client/state/event_bus.h"
 #include "common/net/daybreak_connection.h"
 #include "common/packet_structs.h"
+#include "eqstr_test_db.h"
 #include "fake_udp_transport.h"
 #include "zone_stream_test_utils.h"
 
@@ -432,12 +436,17 @@ TEST(TrainerReplyToPanel, TheServersReplyBecomesTheWindowsRows) {
     EXPECT_EQ(h.panel.selectedRow, -1);
 }
 
-TEST(TrainerReplyToPanel, ASkillAlreadyAtTheTrainersCapIsNotListed) {
+// train.tsv row 13 (UIGAP-live2): a skill AT its cap is still listed (1H
+// Blunt 125, Rank "Master", its price shown) -- B898 used to drop it.
+TEST(TrainerReplyToPanel, ASkillAlreadyAtTheTrainersCapIsStillListed) {
     TrainerHarness h;
     h.eq.m_skill_manager->updateSkill(kSkillBash, 75);
     h.openSession(kTrainerId, 100, 75);
     h.pumpToPanel();
-    EXPECT_EQ(rowOfSkill(h.panel, kSkillBash), -1);
+    const int bash = rowOfSkill(h.panel, kSkillBash);
+    ASSERT_GE(bash, 0);
+    EXPECT_EQ(h.panel.rows[static_cast<size_t>(bash)].currentValue, 75u);
+    EXPECT_EQ(h.panel.rows[static_cast<size_t>(bash)].cost, 2746u) << "(75-10)^3/100, still priced";
     EXPECT_GE(rowOfSkill(h.panel, kSkill1HSlash), 0);
 }
 
@@ -472,10 +481,20 @@ protected:
     }
 };
 
+// train.tsv rows 5 and 10: a row click selects and sends NOTHING; the only
+// thing it asks of the game thread is the client-side "Interested in
+// training" line (a select-only TrainSkillIntent).
 TEST_F(TrainerClickTest, ClickingARowSelectsItAndSendsNothing) {
     ASSERT_TRUE(clickRowOfSkill(kSkillBash));
     EXPECT_EQ(h.panel.selectedSkillId(), kSkillBash);
-    EXPECT_TRUE(h.bridge.drainIntents().empty());
+    auto intents = h.bridge.drainIntents();
+    ASSERT_EQ(intents.size(), 1u);
+    const auto* sel = std::get_if<eqt::events::TrainSkillIntent>(&intents[0]);
+    ASSERT_NE(sel, nullptr);
+    EXPECT_TRUE(sel->selectOnly);
+    EXPECT_EQ(sel->skillId, kSkillBash);
+    for (auto& i : intents) h.bridge.pushIntent(i);
+    h.eq.Bridge().ProcessBridgeIntents();
     EXPECT_TRUE(h.packetsWithOpcode(HC_OP_GMTrainSkill).empty());
 }
 
@@ -487,6 +506,7 @@ TEST_F(TrainerClickTest, TrainPushesTheIntentSlashTrainPushes) {
     ASSERT_NE(cmd, nullptr);
 
     ASSERT_TRUE(clickRowOfSkill(kSkillBash));
+    h.bridge.drainIntents();   // the selection's own select-only intent (row 10)
     ASSERT_TRUE(clickTrain());
     auto viaButton = h.bridge.drainIntents();
     ASSERT_EQ(viaButton.size(), 1u);
@@ -607,6 +627,121 @@ TEST_F(TrainerClickTest, ATrainWithNoPracticesIsRefusedAtTheConsumer) {
         << "the server's first line is `if(!m_pp.points) return;`";
     h.pumpToPanel();
     EXPECT_TRUE(h.anyMessageContains("no training points"));
+}
+
+// ---------------------------------------------------------------------------
+// UIGAP-residue: the refusals and the selection line, MEASURED by UIGAP-live2
+// (review/UIGAP-ORACLE/214/train.tsv rows 10-15, run2.*).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A session with the trainer spawned, so its display name is the oracle's,
+// and the shipped eqstr table loaded.
+struct MeasuredTrainer {
+    TrainerHarness h;
+    UILayout layout = layoutAt(800, 600);
+    StaticUIInput input;
+
+    explicit MeasuredTrainer(uint32_t pp = 100, uint32_t practices = 2) {
+        EXPECT_TRUE(eqt_test::ShippedStrings().isLoaded()) << "data/willeq.db";
+        EXPECT_TRUE(h.eq.Strings().LoadStringFiles(""));
+        h.spawnNpc(kTrainerId, "Brin_Stolunger000", 20);
+        h.eq.GetGameState().player().setCurrency(pp, 0, 0, 0);
+        h.eq.GetGameState().player().setPracticePoints(practices);
+        input.init(&h.bridge);
+    }
+    void open(uint32_t cap1h, uint32_t capBash) {
+        h.openSession(kTrainerId, cap1h, capBash);
+        h.pumpToPanel();
+        h.messages.clear();
+        h.clearSent();
+    }
+    bool click(const irr::core::rect<irr::s32>& r) {
+        return input.processTrainerInput(cx(r), cy(r), true, layout, h.panel);
+    }
+    void selectSkill(uint8_t skill) {
+        const int idx = rowOfSkill(h.panel, skill);
+        ASSERT_GE(idx, 0);
+        click(TrainLayout::rowRect(layout, idx - h.panel.scrollOffset));
+    }
+    // What the game thread does with whatever the window pushed.
+    void process() {
+        h.eq.Bridge().ProcessBridgeIntents();
+        h.pumpToPanel();
+    }
+};
+
+}  // namespace
+
+// Row 10: selecting a row prints "<trainer> says, 'Interested in training in
+// <skill> ?'" (eqstr 12056) client-side and sends nothing.
+TEST(TrainerMeasured, SelectingARowPrintsTheInterestedLineAndSendsNothing) {
+    MeasuredTrainer t;
+    t.h.eq.m_skill_manager->updateSkill(kSkill1HSlash, 50);
+    t.open(310, 75);
+    t.selectSkill(kSkill1HSlash);
+    t.process();
+    ASSERT_EQ(t.h.messages.size(), 1u);
+    EXPECT_EQ(t.h.messages[0], "Brin Stolunger says, 'Interested in training in 1H Slashing ?'")
+        << "run2.chat.txt 16:24:51";
+    EXPECT_TRUE(t.h.packetsWithOpcode(HC_OP_GMTrainSkill).empty());
+}
+
+// Row 11: the purse below the selected row's cost -> Train DISABLED; pressing
+// it sends nothing and prints nothing. (1H Slashing 50: (50-10)^3/100 = 640 cp.)
+TEST(TrainerMeasured, APurseShortOfTheRowsCostDisablesTrain) {
+    MeasuredTrainer t(/*pp=*/0, /*practices=*/2);
+    t.h.eq.m_skill_manager->updateSkill(kSkill1HSlash, 50);
+    t.open(310, 75);
+    t.selectSkill(kSkill1HSlash);
+    t.h.bridge.drainIntents();   // the selection line's intent
+    EXPECT_FALSE(t.h.panel.trainEnabled());
+    t.click(TrainLayout::trainButtonRect(t.layout));
+    EXPECT_TRUE(t.h.bridge.drainIntents().empty()) << "row 11: a disabled press pushes nothing";
+    t.process();
+    EXPECT_TRUE(t.h.packetsWithOpcode(HC_OP_GMTrainSkill).empty());
+    EXPECT_TRUE(t.h.messages.empty()) << "row 11: no chat line";
+    // A FREE row (Bash 5) is trainable with the same empty purse.
+    t.selectSkill(kSkillBash);
+    EXPECT_TRUE(t.h.panel.trainEnabled());
+}
+
+// Row 15: 0 practices -> Train DISABLED even on a free row; nothing sent.
+TEST(TrainerMeasured, ZeroPracticesDisablesTrain) {
+    MeasuredTrainer t(/*pp=*/98, /*practices=*/0);
+    t.open(310, 75);
+    t.selectSkill(kSkillBash);
+    t.h.bridge.drainIntents();
+    EXPECT_FALSE(t.h.panel.trainEnabled());
+    t.click(TrainLayout::trainButtonRect(t.layout));
+    EXPECT_TRUE(t.h.bridge.drainIntents().empty()) << "row 15";
+    t.process();
+    EXPECT_TRUE(t.h.packetsWithOpcode(HC_OP_GMTrainSkill).empty());
+    EXPECT_TRUE(t.h.messages.empty()) << "row 15: no chat line";
+}
+
+// Row 13: a skill AT its cap is listed, Train stays ENABLED, and pressing it
+// sends NO packet and prints, client-side, "<trainer> tells you, 'You are
+// already trained to the limit of your abilities in <skill>.'" (eqstr 12930).
+// Here the cap is the session's own (the server's per-skill cap); the
+// measured case's per-LEVEL cap is not known to fable (see the report).
+TEST(TrainerMeasured, AtCapTrainIsEnabledSendsNothingAndPrintsTheLimitLine) {
+    MeasuredTrainer t;
+    t.h.eq.m_skill_manager->updateSkill(kSkill1HSlash, 125);
+    t.open(/*cap1h=*/125, 75);
+    t.selectSkill(kSkill1HSlash);
+    t.process();
+    t.h.messages.clear();
+    EXPECT_TRUE(t.h.panel.trainEnabled()) << "row 13: enabled at cap";
+    t.click(TrainLayout::trainButtonRect(t.layout));
+    t.process();
+    EXPECT_TRUE(t.h.packetsWithOpcode(HC_OP_GMTrainSkill).empty()) << "row 13: no OP_GMTrainSkill";
+    ASSERT_EQ(t.h.messages.size(), 1u);
+    EXPECT_EQ(t.h.messages[0],
+              "Brin Stolunger tells you, 'You are already trained to the limit of your "
+              "abilities in 1H Slashing.'");
+    EXPECT_EQ(t.h.eq.GetPracticePoints(), 2u) << "practices unchanged";
 }
 
 TEST_F(TrainerClickTest, TheScrollArrowsMoveTheListAndClamp) {

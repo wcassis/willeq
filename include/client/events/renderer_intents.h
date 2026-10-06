@@ -76,6 +76,10 @@ struct LootCorpseIntent {
 struct LootItemIntent {
     uint16_t corpseId;
     uint8_t slot;
+    // OP_LootItem's auto_loot (MEASURED, review/UIGAP-ORACLE/151/gestures.tsv
+    // rows 46a/46c): a LEFT click on a loot slot is 0 (the item comes onto the
+    // cursor), a RIGHT click is 1 (straight into the inventory).
+    bool autoLoot = false;
 };
 
 struct LootAllIntent {
@@ -307,6 +311,11 @@ struct SpellDisplayRequestIntent {
 
 struct TrainSkillIntent {
     uint8_t skillId;
+    // UIGAP-residue (#214, MEASURED train.tsv row 10): a trainer-window ROW
+    // click is not a train -- the official client prints "<trainer> says,
+    // 'Interested in training in <skill> ?'" (eqstr 12056) and sends nothing.
+    // `selectOnly` asks the game thread for that line; nothing is trained.
+    bool selectOnly = false;
 };
 
 struct CloseTrainerIntent {};

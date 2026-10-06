@@ -199,6 +199,12 @@ public:
 	// Called from ZoneComponent::OnTradeRequestAck (bridge_component_trade.cpp).
 	void OfferHeldItemOnTradeOpen();
 
+	// UIGAP-residue (B1001 #321, #212 rows 12-13): a world click on `target`
+	// with something held that the official client REFUSES client-side, by
+	// the eqstr id it prints (0 = no refusal, open the trade / give window).
+	// The click then only targets (OP_TargetMouse); no OP_TradeRequest.
+	uint32_t HeldItemTargetRefusal(const Entity& target) const;
+
 	// ---- config paths and persistence ----
 	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
 	void SetConfigPath(const std::string& path) { m_config_path = path; }

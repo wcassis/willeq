@@ -77,6 +77,9 @@ struct CursorCoinChangedData {
 struct ConfirmationRequestedData {
     uint8_t purpose = 0;
     std::string text;
+    // UIGAP-residue: seconds the prompt stays up unanswered before it closes
+    // itself as a No (0 = until answered). MEASURED: drop 20, destroy 10.
+    float timeoutSeconds = 0.0f;
 };
 
 struct CursorItemChangedData {

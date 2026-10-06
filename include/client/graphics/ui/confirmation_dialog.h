@@ -18,10 +18,13 @@
  * above every other window. No answers locally: a No (or Ok) only closes it,
  * because nothing has been sent; a Yes is the owner's to turn into an intent.
  *
- * NOT DONE, measured: the official dialog closes itself if left unanswered
- * (gestures.tsv row 34: "it auto-dismisses if unanswered"); its timeout was
- * not measured, so fable's stays up until answered (assumption awaiting
- * oracle).
+ * TIMEOUT, MEASURED (UIGAP-live2, review/UIGAP-ORACLE/151/README.md, run3 +
+ * run5): left unanswered, the Destroy prompt closes itself after 10 s and the
+ * Drop prompt after 20 s, sending NOTHING, the item staying on the cursor --
+ * i.e. exactly a No. The character-select delete prompt (B998, ../318) is the
+ * same 10 s. The asker states its timeout (ConfirmationRequestedData::
+ * timeoutSeconds, 0 = stays up); tickConfirmationDialog() is the ONE clock
+ * every owner runs, and its true return is the owner's cue to treat it as No.
  */
 
 #pragma once
@@ -54,9 +57,22 @@ struct ConfirmationDialogState {
     bool noHovered = false;
     bool okHovered = false;
 
-    void open(uint8_t askerPurpose, const std::string& prompt, Buttons b = Buttons::YesNo);
+    // The unanswered-prompt clock: 0 = no timeout. See the header comment.
+    float timeoutSeconds = 0.0f;
+    float elapsedSeconds = 0.0f;
+
+    void open(uint8_t askerPurpose, const std::string& prompt, Buttons b = Buttons::YesNo,
+              float timeout = 0.0f);
     void close() { *this = ConfirmationDialogState{}; }
 };
+
+/**
+ * Advance an open dialog's clock by `dt` seconds. Returns true exactly when
+ * the dialog has now been up for its timeout: the caller then answers it as
+ * No (closes it; nothing is sent). A closed dialog, or one with no timeout,
+ * never expires.
+ */
+bool tickConfirmationDialog(ConfirmationDialogState& state, float dt);
 
 /** What a click on the dialog did. */
 enum class ConfirmationClick : uint8_t {
