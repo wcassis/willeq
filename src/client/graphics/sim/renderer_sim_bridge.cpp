@@ -1017,7 +1017,9 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
                 }
             }
             if (visual.nameNode) {
-                visual.nameNode->setVisible(er.nameTagVisible);
+                // B431: the PC/NPC name options narrow the sim's verdict.
+                visual.nameNode->setVisible(er.nameTagVisible &&
+                                            ctx_.entityRenderer->nameTagKindVisible(visual));
             }
         }
         ctx_.entityRenderer->setVisibleEntityCount(results->entityVisibleCount);

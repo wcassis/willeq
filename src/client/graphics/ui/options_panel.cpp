@@ -30,9 +30,8 @@ using OptionsLayout::Setting;
 // The oracle paints an unchecked checkbox's caption white and a checked
 // one's yellow (review/T377/oracle/T377_oracle_options_alt_o_1024x768.png:
 // "Receive Guild Invites" and "Allow Context Menus" are yellow, "Autosplit"
-// and "Anonymous" are white). fable has no state behind any checkbox on this
-// window, so every one of them is drawn in the DISABLED grey below rather
-// than picked a colour for.
+// and "Anonymous" are white). B430: a WIRED checkbox follows that rule
+// (kCheckedText); an unwired one is drawn in the DISABLED grey below.
 const irr::video::SColor kEnabledText(255, 230, 230, 210);
 const irr::video::SColor kDisabledText(255, 122, 122, 122);
 const irr::video::SColor kTitleText(255, 255, 215, 0);
@@ -45,6 +44,7 @@ const irr::video::SColor kKnobEnabled(255, 200, 180, 90);
 const irr::video::SColor kKnobDisabled(255, 90, 90, 96);
 const irr::video::SColor kHover(60, 255, 255, 255);
 const irr::video::SColor kTabActiveFill(90, 255, 255, 255);
+const irr::video::SColor kCheckedText(255, 255, 255, 0);
 
 bool enabled(const OptionsLayout::Control& c) { return c.setting != Setting::None; }
 
@@ -59,18 +59,27 @@ int optionsSettingStep(const OptionsPanelState& state, Setting setting) {
         case Setting::MusicVolume: return state.musicVolume;
         case Setting::SoundVolume: return state.soundVolume;
         case Setting::ClipPlane:   return state.clipPlane;
-        case Setting::None:        break;
+        case Setting::None:        return 0;
+        default:                   break;
     }
-    return 0;
+    const int i = static_cast<int>(setting);
+    if (i <= 0 || i >= OptionsLayout::kSettingCount) return 0;
+    return state.values[i];
 }
 
 void setOptionsSettingStep(OptionsPanelState& state, Setting setting, int step) {
-    step = std::max(0, std::min(OptionsLayout::SLIDER_STEPS, step));
     switch (setting) {
-        case Setting::MusicVolume: state.musicVolume = step; break;
-        case Setting::SoundVolume: state.soundVolume = step; break;
-        case Setting::ClipPlane:   state.clipPlane = step; break;
-        case Setting::None:        break;
+        case Setting::MusicVolume:
+        case Setting::SoundVolume:
+        case Setting::ClipPlane:
+            step = std::max(0, std::min(OptionsLayout::SLIDER_STEPS, step));
+            if (setting == Setting::MusicVolume) state.musicVolume = step;
+            else if (setting == Setting::SoundVolume) state.soundVolume = step;
+            else state.clipPlane = step;
+            return;
+        default:
+            setOptionsValue(state, setting, step);
+            return;
     }
 }
 
@@ -177,13 +186,25 @@ void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,
             case Kind::Checkbox: {
                 // The oracle's checkbox is a Style_Checkbox button whose box
                 // sits at the left of its rect with the caption beside it.
+                // B430: a wired one shows its state -- the box filled and
+                // the caption in the oracle's checked YELLOW (the T377
+                // capture: "Receive Guild Invites" yellow, "Autosplit" white).
+                const bool checked = on && optionsSettingStep(state, c.setting) != 0;
                 const irr::core::rect<irr::s32> box(
                     r.UpperLeftCorner.X, r.UpperLeftCorner.Y + 2,
                     r.UpperLeftCorner.X + 12, r.UpperLeftCorner.Y + 14);
+                if (checked) {
+                    ui.drawRect(irr::core::rect<irr::s32>(
+                                    box.UpperLeftCorner.X + 3, box.UpperLeftCorner.Y + 3,
+                                    box.LowerRightCorner.X - 3, box.LowerRightCorner.Y - 3),
+                                kCheckedText);
+                }
                 ui.drawFrame(box, frame);
+                if (on && state.hoveredControl == i) ui.drawRect(r, kHover);
                 if (tb && c.text[0] != '\0') {
                     tb->addText(c.text, box.LowerRightCorner.X + 4,
-                                r.UpperLeftCorner.Y + 2, text);
+                                r.UpperLeftCorner.Y + 2,
+                                checked ? kCheckedText : text);
                 }
                 break;
             }
@@ -199,9 +220,16 @@ void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,
             }
 
             case Kind::Combobox:
+            case Kind::Listbox:
+                if (on) {
+                    // B433: a wired combobox shows its current choice; a
+                    // wired listbox draws its rows (options_lists.cpp).
+                    renderOptionsWiredList(ui, layout, state, i);
+                    break;
+                }
+                [[fallthrough]];
             case Kind::Editbox:
             case Kind::Button:
-            case Kind::Listbox:
             case Kind::TabBox:
                 ui.drawFrame(r, frame);
                 if (!tb || c.text[0] == '\0') break;
@@ -242,6 +270,9 @@ int hitTestOptionsControl(const UILayout& layout, const OptionsPanelState& state
         // A control with no setting behind it is drawn and never hit --
         // the T363 rule, made mechanical.
         if (!enabled(c)) continue;
+        // B430: a caption or a readout carries its control's setting (so it
+        // draws enabled) but is not itself a control.
+        if (c.kind == Kind::Label || c.kind == Kind::ValueLabel) continue;
         if (OptionsLayout::controlRect(layout, i).isPointInside(p)) return i;
     }
     return -1;

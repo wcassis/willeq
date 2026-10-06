@@ -907,6 +907,12 @@ void eqt::bridge::BridgeComponent::onPlaySoundIntent(const eqt::events::PlaySoun
 #endif
 }
 
+// B430 -- the Options window's server-owned settings. One line: the body is
+// ApplyGameOption() in bridge_component_options.cpp, which /option shares.
+void eqt::bridge::BridgeComponent::onGameOptionIntent(const eqt::events::GameOptionIntent& i) {
+	ApplyGameOption(i);
+}
+
 void eqt::bridge::BridgeComponent::onMemorizeSpellIntent(const eqt::events::MemorizeSpellIntent& i) {
 	// T272: this arm had its ARGUMENTS SWAPPED --
 	// memorizeSpell(uint32_t spell_id, uint8_t gem_slot) was
@@ -991,6 +997,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 			[this](const eqt::events::EquipmentChangedIntent& i) { onEquipmentChangedIntent(i); },
 			[this](const eqt::events::CursorGestureIntent& i) { onCursorGestureIntent(i); },
 			[this](const eqt::events::PlaySoundIntent& i) { onPlaySoundIntent(i); },
+			[this](const eqt::events::GameOptionIntent& i) { onGameOptionIntent(i); },
 		}, intent);
 	}
 }

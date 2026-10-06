@@ -100,6 +100,7 @@ using EventData = std::variant<
     BankCurrencyChangedData,
     // Audio
     VolumesChangedData,
+    GameOptionChangedData,  // B430
     // Loot
     LootWindowOpenedData,
     LootWindowClosedData,

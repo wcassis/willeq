@@ -40,6 +40,7 @@
 // touch zone state that now lives here. Transition scaffolding too.
 
 #include "client/client_context.h"
+#include "client/game_options.h"  // B433: ServerFilterPayload
 #include "client/player/profile_appearance.h"  // T341: m_profile_appearance
 #include "client/zone_lines.h"
 #include "common/net/daybreak_connection.h"
@@ -130,6 +131,12 @@ public:
 	void ZoneSendReqNewZone();
 	void ZoneSendClientReady();
 	void ZoneSendSetServerFilter();
+	// B433: the Options window's Filters page. Stores the payload every later
+	// OP_SetServerFilter carries (zone-in included) and, once the zone-in one
+	// has gone out, sends it again now -- eqemu accepts the opcode while
+	// connected (Client::Handle_OP_SetServerFilter).
+	void SetServerFilters(const eqt::ServerFilterPayload& filters);
+	const eqt::ServerFilterPayload& ServerFilters() const { return m_server_filters; }
 	void ZoneSendSendExpZonein();
 	void CheckZoneRequestPhaseComplete();
 
@@ -403,6 +410,7 @@ private:
 	bool m_exp_zonein_sent = false;
 	bool m_send_exp_zonein_received = false;
 	bool m_server_filter_sent = false;
+	eqt::ServerFilterPayload m_server_filters = eqt::defaultServerFilterPayload();  // B433
 	int m_aa_table_count = 0;
 	int m_tribute_count = 0;
 	int m_guild_tribute_count = 0;

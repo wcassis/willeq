@@ -247,10 +247,15 @@ const SweepEntry kSweep[] = {
     // also the same widget: both loops feed applyTextEntryKey()
     // (include/client/graphics/ui/text_entry.h), which is why there is no
     // second entry mechanism to keep in step.
-    {"popKeyEvent", 2, "render thread only; processChatInput early-returns into processTradeskillSearchInput, mutually exclusive. T241/T421."},
-    {"enterKeyPressed", 1, "render thread (processChatInput). T241."},
-    {"slashKeyPressed", 1, "render thread (processChatInput). T241."},
-    {"escapeKeyPressed", 1, "render thread (processChatInput). T241."},
+    // B433: processChatInput() early-returns into processOptionsKeyCapture()
+    // (the Options Keys page) exactly like the tradeskill search boxes, so the
+    // capture is a THIRD mutually exclusive drain of the same frame, never a
+    // second consumer racing the first. It reads enter/slash/escape only to
+    // discard them while it holds the keyboard.
+    {"popKeyEvent", 3, "render thread only; processChatInput early-returns into processOptionsKeyCapture (B433) or processTradeskillSearchInput, mutually exclusive. T241/T421."},
+    {"enterKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
+    {"slashKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
+    {"escapeKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
 };
 
 }  // namespace

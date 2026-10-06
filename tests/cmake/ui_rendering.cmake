@@ -335,6 +335,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_options_window DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B430/B431/B433: the Options window's controls wired -- the classification
+# census, the settings table, and per page click -> setting -> persisted ->
+# reloaded plus the /option and /filter grammar. Device-free.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_options_wiring
+        test_options_wiring.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_options_wiring PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_options_wiring GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_options_wiring DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_tradeskill_combat_panels
         test_tradeskill_combat_panels.cpp

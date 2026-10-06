@@ -47,6 +47,8 @@
 // T461: device-free, so this header still needs no renderer_types.h.
 #include "client/graphics/player/camera_mode.h"
 #include "client/graphics/player/camera_rig.h"
+// B430: the Options settings table (device-free).
+#include "client/graphics/ui/options_settings.h"
 
 namespace EQT {
 namespace Graphics {
@@ -124,6 +126,13 @@ struct UiPreferences {
     int soundVolume = 20;    // [Options] SoundVolume
     int clipPlane = 5;       // [Options] ClipPlane
 
+    // B430/B433: every RENDERER-owned Options setting since T434 (the
+    // settings table in options_settings.h names each one's oracle key, its
+    // range and its default). Written under `[Options]` beside the three
+    // above, same flagged one-writer deviation. Only Renderer-owned slots
+    // are ever collected, parsed or written; the rest stay at the default.
+    OptionsLayout::OptionValues optionValues = OptionsLayout::defaultOptionValues();
+
     bool operator==(const UiPreferences& o) const {
         return inventoryWindow == o.inventoryWindow
             && spellBookWnd == o.spellBookWnd
@@ -136,6 +145,7 @@ struct UiPreferences {
             && musicVolume == o.musicVolume
             && soundVolume == o.soundVolume
             && clipPlane == o.clipPlane
+            && optionValues == o.optionValues
             && cameraMode == o.cameraMode
             && user1Camera == o.user1Camera
             && user2Camera == o.user2Camera;

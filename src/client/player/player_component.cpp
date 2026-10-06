@@ -17,6 +17,7 @@
 #include "client/spell/buff_manager.h"
 #include "client/spell/buff_cancel_request.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/bridge/bridge_component.h"  // B430: PublishGameOption()
 #include "common/logging.h"
 #include "common/packet_structs.h"
 #include "common/name_utils.h"
@@ -83,7 +84,11 @@ void eqt::player::PlayerComponent::SetAnonymous(bool anon)
 	}
 
 	ctx_.game_state.player().setAnonymous(anon);  // Phase 7.8 / T286: only store
+	// B430: the server holds ONE value (0 normal / 1 anon / 2 roleplay), so
+	// anonymous on clears roleplay here too, and the Options window is told.
+	if (anon) ctx_.game_state.player().setRoleplay(false);
 	ctx_.Entities().SendSpawnAppearance(AT_ANONYMOUS, anon ? 1 : 0);
+	ctx_.Bridge().PublishGameOption(eqt::GameOption::AnonStatus, anon ? 1 : 0);
 
 	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Anonymous status: {}", anon ? "ON" : "OFF");
@@ -97,7 +102,9 @@ void eqt::player::PlayerComponent::SetRoleplay(bool rp)
 	}
 
 	ctx_.game_state.player().setRoleplay(rp);  // Phase 7.8 / T286: only store
+	if (rp) ctx_.game_state.player().setAnonymous(false);  // B430: one server value
 	ctx_.Entities().SendSpawnAppearance(AT_ANONYMOUS, rp ? 2 : 0);  // 2 = roleplay
+	ctx_.Bridge().PublishGameOption(eqt::GameOption::AnonStatus, rp ? 2 : 0);
 
 	if (EverQuest::GetDebugLevel() >= 1) {
 		LOG_DEBUG(MOD_MAIN, "Roleplay status: {}", rp ? "ON" : "OFF");

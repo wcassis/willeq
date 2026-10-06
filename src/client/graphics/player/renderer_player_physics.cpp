@@ -162,7 +162,9 @@ void PlayerCameraComponent::updateHeadingAndPitch(MovementFrame& frame) {
     // 2. Right mouse button held (traditional 3D game control)
     // 3. Ctrl+Left mouse button (single-button mouse workaround - Ctrl+Click = Right Click on Mac)
     bool ctrlHeld = ctx_.eventReceiver->isKeyDown(irr::KEY_LCONTROL) || ctx_.eventReceiver->isKeyDown(irr::KEY_RCONTROL);
-    bool mouseLookActive = (ctx_.eventReceiver->isLeftButtonDown() ||
+    // B433: OMP_MouseLookCheckbox (MouseActive) gates the whole gesture.
+    bool mouseLookActive = mouseOptions_.mouseLook &&
+                           (ctx_.eventReceiver->isLeftButtonDown() ||
                             ctx_.eventReceiver->isRightButtonDown() ||
                             (ctrlHeld && ctx_.eventReceiver->isLeftButtonDown()));
 
@@ -173,10 +175,13 @@ void PlayerCameraComponent::updateHeadingAndPitch(MovementFrame& frame) {
     if (mouseLookActive) {
         int mouseDeltaX = ctx_.eventReceiver->getMouseDeltaX();
         int mouseDeltaY = ctx_.eventReceiver->getMouseDeltaY();
-        // Convert mouse delta X to heading change (sensitivity adjusted)
-        heading += mouseDeltaX * 0.5f;
+        // Convert mouse delta X to heading change (sensitivity adjusted).
+        // B433: the Options sensitivity slider scales both axes (step 6 is
+        // the pre-B433 0.5 / 0.3), and Invert Y flips the vertical sign.
+        const float scale = mouseLookScale(mouseOptions_.sensitivity);
+        heading += mouseDeltaX * 0.5f * scale;
         // Mouse delta Y controls pitch (vertical look) - inverted so dragging up looks up
-        playerPitch_ -= mouseDeltaY * 0.3f;
+        playerPitch_ -= mouseDeltaY * 0.3f * scale * (mouseOptions_.invertY ? -1.0f : 1.0f);
         // Clamp pitch to prevent camera flipping.
         if (playerPitch_ > kFirstPersonMaxUpPitchDegrees) playerPitch_ = kFirstPersonMaxUpPitchDegrees;
         if (playerPitch_ < -kFirstPersonMaxUpPitchDegrees) playerPitch_ = -kFirstPersonMaxUpPitchDegrees;
@@ -198,6 +203,11 @@ void PlayerCameraComponent::updateHeadingAndPitch(MovementFrame& frame) {
             const float minLook = firstPersonMinLookPitchDegrees();
             if (playerPitch_ < minLook) playerPitch_ = minLook;
         }
+    } else if (mouseOptions_.lookSpring &&
+               (playerMovement_.moveForward || playerMovement_.moveBackward)) {
+        // B433: OMP_LookSpringCheckbox -- walking with no mouse-look held
+        // levels the view (assumption A7, mouse_options.h).
+        playerPitch_ = applyLookSpring(playerPitch_, deltaTime);
     }
 
     // Normalize heading to 0-512

@@ -249,14 +249,9 @@ TEST(OptionsLayoutT434, TheQuotedOffsetsAreTheOraclesOwn) {
 // The T363 rule: a control with no setting is drawn and NOT hit-testable
 // ===========================================================================
 
-TEST(OptionsWindowT434, ExactlyThreeControlsAreWired) {
-    int wired = 0;
-    for (int i = 0; i < OL::CONTROL_COUNT; ++i) {
-        if (OL::kControls[i].setting != OL::Setting::None) ++wired;
-    }
-    // Three SLIDERS plus the three value labels that read them back.
-    EXPECT_EQ(wired, 6);
-
+TEST(OptionsWindowT434, TheThreeT434SlidersStayWired) {
+    // B430 wired more controls; the count is no longer pinned here -- the
+    // classification table (test_options_wiring.cpp) is the census.
     EXPECT_EQ(OL::kControls[controlIndex("OGP_MusicVolumeSlider")].setting,
               OL::Setting::MusicVolume);
     EXPECT_EQ(OL::kControls[controlIndex("OGP_SoundVolumeSlider")].setting,
@@ -325,7 +320,7 @@ TEST(OptionsWindowT434, AnOpenWindowConsumesEveryClickInsideIt) {
     s.isOpen = true;
     // A greyed control: the click must be swallowed, not fall through to the
     // 3D scene, and must change nothing.
-    const int i = controlIndex("OGP_AnonymousCheckbox");
+    const int i = controlIndex("OGP_FastItemDestroyCheckbox");
     ASSERT_GE(i, 0);
     const auto p = centre(OL::controlRect(l, i));
     OL::Setting changed = OL::Setting::None;

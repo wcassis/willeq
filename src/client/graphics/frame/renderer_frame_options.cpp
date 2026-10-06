@@ -34,6 +34,11 @@
 #include "client/graphics/frame/frame_component.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/ui/options_panel.h"
+#include "client/graphics/ui/options_command.h"
+#include "client/graphics/player/player_camera_component.h"
+#include "client/graphics/entity_renderer.h"
+#include "client/graphics/ui/options_keys.h"
+#include "client/graphics/renderer_event_receiver.h"
 #include "client/events/renderer_intents.h"
 #include "client/bridge/game_state_bridge.h"
 #include "common/logging.h"
@@ -83,7 +88,149 @@ void FrameComponent::applyOptionsSetting(OptionsLayout::Setting setting) {
             LOG_INFO(MOD_GRAPHICS, "Options: far clip plane {:.0f}", dist);
             return;
         }
+
+        default:
+            break;
     }
+    applyOptionsSettingB430(setting);
+}
+
+// B430/B433: every setting added after T434. Kept beside the legacy arms so
+// "the one place a wired control reaches its setting" stays one file.
+void FrameComponent::applyOptionsSettingB430(OptionsLayout::Setting setting) {
+    using OptionsLayout::Owner;
+    using OptionsLayout::Setting;
+    const auto& info = OptionsLayout::settingInfo(setting);
+
+    // Server-owned: ask the game thread, which sends it and publishes the
+    // applied value back (GameOptionChanged -> applyGameOptionChanged).
+    if (info.owner == Owner::Game) {
+        if (!ctx_.bridge) return;
+        eqt::events::GameOptionIntent intent;
+        intent.option = info.gameOption;
+        intent.value = gameOptionValueFor(setting, optionsSettingStep(optionsState_, setting) != 0);
+        ctx_.bridge->pushIntent(intent);
+        LOG_INFO(MOD_GRAPHICS, "Options: {} -> {}", info.name, intent.value);
+        return;
+    }
+
+    // A chat filter: the whole OP_SetServerFilter payload, every time.
+    if (OptionsLayout::filterRow(setting) >= 0) {
+        if (!ctx_.bridge) return;
+        eqt::events::GameOptionIntent intent;
+        intent.option = eqt::GameOption::ServerFilters;
+        intent.filters = OptionsLayout::serverFilterPayload(optionsState_.values);
+        ctx_.bridge->pushIntent(intent);
+        LOG_INFO(MOD_GRAPHICS, "Options: filter {} = {}", info.name,
+                 OptionsLayout::choiceText(setting, optionsSettingStep(optionsState_, setting)));
+        return;
+    }
+
+    auto on = [this](Setting s) { return optionsSettingStep(optionsState_, s) != 0; };
+    switch (setting) {
+        case Setting::PetWindowPopup:
+            // A preference read when a pet ARRIVES (IrrlichtBridge's
+            // PetCreated arm); nothing to tell anyone now.
+            return;
+        case Setting::KeysReloadDefaults:
+            // B433: OKP_DefaultKeysButton -- drop the user copy, reload the
+            // shipped config/hotkeys.json (global, not per character).
+            optionsState_.keysCaptureAction = -1;
+            eqt::input::HotkeyManager::instance().restoreShippedBindings();
+            LOG_INFO(MOD_GRAPHICS, "Options: key bindings reloaded from defaults");
+            return;
+        case Setting::PCNames:
+        case Setting::NPCNames:
+            // B431: the two kinds narrow the Ctrl+F3 master switch; neither
+            // moves the other.
+            if (ctx_.entityRenderer) {
+                ctx_.entityRenderer->setNameTagKindsVisible(on(Setting::PCNames),
+                                                            on(Setting::NPCNames));
+            }
+            LOG_INFO(MOD_GRAPHICS, "Options: PC names {} NPC names {}",
+                     on(Setting::PCNames) ? "on" : "off", on(Setting::NPCNames) ? "on" : "off");
+            return;
+        case Setting::MouseInvertY:
+        case Setting::MouseLookSpring:
+        case Setting::MouseLook:
+        case Setting::MouseWheelZoom:
+        case Setting::MouseSensitivity: {
+            // B433: the whole Mouse page is one value on the camera.
+            MouseOptions m;
+            m.invertY = on(Setting::MouseInvertY);
+            m.lookSpring = on(Setting::MouseLookSpring);
+            m.mouseLook = on(Setting::MouseLook);
+            m.wheelZoom = on(Setting::MouseWheelZoom);
+            m.sensitivity = optionsSettingStep(optionsState_, Setting::MouseSensitivity);
+            ctx_.PlayerCamera().setMouseOptions(m);
+            LOG_INFO(MOD_GRAPHICS, "Options: mouse {} = {}", info.name,
+                     optionsSettingStep(optionsState_, setting));
+            return;
+        }
+        default:
+            return;
+    }
+}
+
+void FrameComponent::applyAllOptionsSettings() {
+    applyOptionsSetting(OptionsLayout::Setting::MusicVolume);
+    applyOptionsSetting(OptionsLayout::Setting::SoundVolume);
+    applyOptionsSetting(OptionsLayout::Setting::ClipPlane);
+    // One payload carries every filter, so one representative is enough.
+    applyOptionsSetting(OptionsLayout::Setting::FilterBadWords);
+    for (int i = 1; i < OptionsLayout::kSettingCount; ++i) {
+        const auto s = static_cast<OptionsLayout::Setting>(i);
+        const auto& info = OptionsLayout::settingInfo(s);
+        // Persisted renderer settings only: Game-owned ones are the server's
+        // and the legacy three and the filters went above.
+        if (info.owner != OptionsLayout::Owner::Renderer) continue;
+        if (OptionsLayout::filterRow(s) >= 0) continue;
+        applyOptionsSetting(s);
+    }
+}
+
+// B433: the Keys page's capture. While a slot waits for its key the chat
+// gate holds every key (RendererEventReceiver passes only F1-F12 on to the
+// hotkeys), the next non-modifier key becomes the binding, ESC cancels.
+// Returns true while capturing, so processChatInput() reads no key itself.
+bool FrameComponent::processOptionsKeyCapture() {
+    if (!ctx_.eventReceiver) return false;
+    const bool capturing = optionsState_.isOpen && optionsState_.keysCaptureAction >= 0;
+    if (!capturing) {
+        if (optionsKeyCaptureGate_) {
+            optionsKeyCaptureGate_ = false;
+            ctx_.eventReceiver->setChatInputFocused(chatInputFocused_);
+        }
+        optionsState_.keysCaptureAction = -1;
+        return false;
+    }
+    if (!optionsKeyCaptureGate_) {
+        optionsKeyCaptureGate_ = true;
+        ctx_.eventReceiver->setChatInputFocused(true);
+        ctx_.eventReceiver->clearPendingKeyEvents();
+        return true;
+    }
+    ctx_.eventReceiver->escapeKeyPressed();  // ESC here cancels, never closes a window
+    ctx_.eventReceiver->enterKeyPressed();
+    ctx_.eventReceiver->slashKeyPressed();
+    while (ctx_.eventReceiver->hasPendingKeyEvents()) {
+        const auto ke = ctx_.eventReceiver->popKeyEvent();
+        const bool alt = ctx_.eventReceiver->isKeyDown(irr::KEY_LMENU) ||
+                         ctx_.eventReceiver->isKeyDown(irr::KEY_RMENU);
+        OptionsKeys::finishKeyCapture(optionsState_, ke.key, ke.ctrl, ke.shift, alt);
+        if (optionsState_.keysCaptureAction < 0) break;
+    }
+    return true;
+}
+
+// B430/B433: /option and /filter. The grammar is device-free
+// (options_command.cpp); every setting it changed goes through the same
+// applyOptionsSetting() a click does, and syncUiPreferences() saves it.
+std::vector<std::string> FrameComponent::runOptionsCommand(const std::string& cmd,
+                                                           const std::string& args) {
+    OptionsCommandResult r = RunOptionsCommand(optionsState_, cmd, args);
+    for (const auto s : r.changed) applyOptionsSetting(s);
+    return r.lines;
 }
 
 }  // namespace Graphics

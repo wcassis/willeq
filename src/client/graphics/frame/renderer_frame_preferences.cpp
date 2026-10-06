@@ -124,9 +124,9 @@ void FrameComponent::syncUiPreferences() {
             // body a click does. T467: a reset moved them too, so a second
             // character with no file tells the audio manager and the clip
             // plane about its defaults exactly as a file would.
-            applyOptionsSetting(OptionsLayout::Setting::MusicVolume);
-            applyOptionsSetting(OptionsLayout::Setting::SoundVolume);
-            applyOptionsSetting(OptionsLayout::Setting::ClipPlane);
+            // B430: and every persisted setting since (the filters' one
+            // OP_SetServerFilter payload among them).
+            applyAllOptionsSettings();
         }
         // Either way the client now agrees with the file (or with the
         // defaults a fresh character keeps), so record that as the baseline:

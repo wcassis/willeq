@@ -42,7 +42,7 @@ EverQuest::tick()                    processFrame()
 
 Defined in `include/client/state/event_bus.h`. See `include/client/state/CLAUDE.md` for the full categorization.
 
-## Intent Types (43)
+## Intent Types (44)
 
 Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `std::variant` holding all intent structs:
 
@@ -57,6 +57,7 @@ Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `st
 - **Inventory**: `MoveItemIntent`, `DeleteItemIntent`, `EquipmentChangedIntent`, `CursorGestureIntent` (B442: every item window's slot click, the QuantityWnd's Accept, a purse row, and `/pickup` `/putdown` `/coin` -- one intent, resolved on the game thread by `eqt::inventory::ApplyCursorGesture()` / `PlanCoinGesture()` in `include/client/inventory/cursor_gesture.h`, which calls the existing `InventoryManager` pickup/place bodies that push `MoveItemIntent`)
 - **Chat**: `ChatSubmitIntent`
 - **Audio**: `MusicVolumeChangeIntent`, `EffectsVolumeChangeIntent` (T439, board B432: both carry an ABSOLUTE step 0..20 -- the oracle's slider unit, `include/client/audio/volume_steps.h` -- not a delta; the applied value comes back on `GameEventType::VolumesChanged`), `PlaySoundIntent` (T328 Leg B: the measured UI sounds — itemclth, wearclth, BuyItem)
+- **Options window** (B430/B433): `GameOptionIntent` -- a server-owned Options setting (anonymous/roleplay, autosplit, the three auto-consents as `OP_SpawnAppearance`; the Filters page as the whole `OP_SetServerFilter` payload). One handler, `BridgeComponent::ApplyGameOption()` (`bridge_component_options.cpp`), which publishes the applied value back on `GameEventType::GameOptionChanged`, the `VolumesChanged` shape
 - **Trainer**: `TrainerToggleIntent`, `TrainSkillIntent`, `CloseTrainerIntent` (B898: the trainer window's Train / Done buttons push the last two, the same intents `/train <id>` / `/trainclose` push)
 - **Tradeskill**: `TradeskillCombineIntent`, `TradeskillCloseIntent`
 - **Model**: `PlayerModelGeometryChanged`

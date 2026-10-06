@@ -412,6 +412,16 @@ public:
     void setNameTagsVisible(bool visible);
     bool areNameTagsVisible() const { return nameTagsVisible_; }
 
+    // B431: the Options window's ODP_PCNamesCheckbox / ODP_NPCNamesCheckbox
+    // (eqclient.ini PCNames= / NPCNames=). They narrow the master switch
+    // above (Ctrl+F3) by KIND, so one never moves the other: an entity's tag
+    // shows only when the master is on AND its kind's flag is on. NPC =
+    // `isNPC`; everything else (other players, the player, corpses) is PC.
+    void setNameTagKindsVisible(bool pcNames, bool npcNames);
+    bool nameTagKindVisible(const EntityVisual& visual) const {
+        return visual.isNPC ? npcNameTagsVisible_ : pcNameTagsVisible_;
+    }
+
     // B975: the ONE name-tag factory (entity_name_tags.cpp). A NameTagNode
     // under `parent` at `offset`, drawn by the shared NameTagBatchNode; with
     // WILLEQ_NAMETAG_BATCH=0 the pre-B975 CTextSceneNode (the A/B path).
@@ -828,6 +838,8 @@ private:
 
     int playerLevel_ = 0;  // Player's level for con-color computation
     bool nameTagsVisible_ = true;
+    bool pcNameTagsVisible_ = true;   // B431
+    bool npcNameTagsVisible_ = true;  // B431
     bool lightingEnabled_ = false;
     irr::s32 shaderMaterialSolid_ = -1;
     irr::s32 shaderMaterialAlphaTest_ = -1;

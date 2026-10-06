@@ -930,6 +930,13 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # B430/B433: the Options window's per-control classification table is a
+    # CENSUS, not a runtime input -- its reader is the test that fails on an
+    # unclassified control row (OptionsClassification.*), which is the point.
+    ("(free)", "controlClassifications"): "observer",
+    ("(free)", "controlClassificationCount"): "observer",
+    ("(free)", "findControlClass"): "observer",
+    ("(free)", "dispositionText"): "observer",
     # B918: the process-wide FATAL-exit record is a one-way latch in a real
     # run (set once, read by main()); a test that trips it on purpose must
     # clear it so later cases in the same binary start clean.

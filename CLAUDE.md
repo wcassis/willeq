@@ -11,7 +11,7 @@ kanban workers that read it as a context file silently truncate past ~62,900.
 Additional context is in subdirectory CLAUDE.md files:
 - `src/client/graphics/CLAUDE.md` - Rendering, shaders, GLES2, zone loading, performance
 - `include/client/graphics/ui/CLAUDE.md` - Static UI panels, key bindings, slash commands
-- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 101 event types
+- `include/client/state/CLAUDE.md` - Game state modules, EventBus, 102 event types
 - `include/client/bridge/CLAUDE.md` - Event/intent bridge, thread-safe game↔renderer communication
 - `src/client/input/CLAUDE.md` - Input handlers, hotkey manager, command processor, action dispatch
 - `src/client/audio/CLAUDE.md` - Audio system, sound categories, audio tests
@@ -727,14 +727,14 @@ Audio updates                       Zone load completion detection
   EntityMoved events per entity and PlayerPositionChanged intents.
 - **IrrlichtBridge** (`include/client/bridge/irrlicht_bridge.h`) — translates
   game events into IrrlichtRenderer calls
-  (switch over the 101 `GameEventType` enumerators; T264: every event has a
+  (switch over the 102 `GameEventType` enumerators; T264: every event has a
   publisher and a consumer, pinned by `test_reachability_sweep`)
 - **ConsoleBridge** (`include/client/bridge/console_bridge.h`) — logs events to
   console in headless mode
 - **Event types** (`include/client/state/event_types.h`; the `GameEvent` variant
   and its payload headers are `event_bus.h` + `event_payloads_*.h`)
-  — 101 event types covering all game state changes
-- **Intent types** (`include/client/events/renderer_intents.h`) — 43 intent
+  — 102 event types covering all game state changes
+- **Intent types** (`include/client/events/renderer_intents.h`) — 44 intent
   structs in the `RendererIntent` variant, pinned by `test_reachability_sweep`
 
 **Key separation**: EverQuest communicates with the renderer only through the
@@ -960,13 +960,18 @@ What it holds is what Will ruled user-changeable (`docs/decisions.md`
 client's six cameras) plus the two user cameras' azimuth/pitch/distance/height,
 with T432's old `[Camera] Mode=` still read and mapped explicitly; and
 `[OptionsWindow] Show=` plus an `[Options]` section holding `Music`,
-`SoundVolume` and `ClipPlane` — the three Options-window controls fable can
-wire, under the oracle's own key names and on its 0..20 slider scale (measured:
-`eqclient.ini` has `Music=18`/`SoundVolume=10` and that client displays
-90 %/50 %).
+`SoundVolume` and `ClipPlane` (T434, on the oracle's 0..20 slider scale:
+`eqclient.ini` `Music=18`/`SoundVolume=10` displays 90 %/50 %) and, since
+B430/B433, every RENDERER-owned Options setting under its `eqclient.ini` key
+(table: `include/client/graphics/ui/options_settings.h`; per-control
+decisions: `options_classification.cpp`, an unclassified row is a ctest
+FAIL). SERVER-owned ones (anon, roleplay, autosplit, auto-consent) are never
+written locally: `GameOptionIntent` out, `GameOptionChanged` back.
 
 Window POSITIONS are static by design (`UILayout` computes every rect from the
-resolution) and key bindings are global (`config/hotkeys.json`), so neither is
+resolution) and key bindings are global (`config/hotkeys.json`; the Options
+Keys page saves a user copy to `<cache dir>/hotkeys.json`, loaded in its
+place — B433), so neither is
 per character. An ABSENT `Show=` key keeps the default, which is `defaults.ini`'s
 own rule (T368), so a fresh character writes no file until it changes something.
 Since T467 (board B560) an identity change FROM a character resets every
@@ -979,10 +984,12 @@ The feature is four files: `include/client/graphics/ui/ui_preferences.h`,
 `src/client/graphics/ui/ui_preferences.cpp` (the format, device-free),
 `src/client/graphics/frame/renderer_frame_preferences.cpp` (load at zone-in,
 save on change and at `/camp`) and
-`src/client/graphics/frame/renderer_frame_options.cpp` (the three fields that
-have a SETTING behind them: two go to the game thread as intents, the clip plane
-is a renderer call, and `FrameComponent::applyOptionsSetting()` is the one body
-both the click path and the load path go through). There is deliberately **no
+`src/client/graphics/frame/renderer_frame_options.cpp` (every field with a
+SETTING behind it: intents to the game thread, or a renderer call, and
+`FrameComponent::applyOptionsSetting()` is the one body the click path, the
+load path and `/option`/`/filter` all go through). **A new Options setting is
+one row in `options_settings.cpp` + its arm in `applyOptionsSetting()` + its
+row in `options_classification.cpp`.** There is deliberately **no
 per-toggle save hook**: `FrameComponent::syncUiPreferences()` compares the whole
 collected value against the last one it wrote, so a newly persisted field cannot
 be added and then forgotten at one call site. **A new persisted field goes in
