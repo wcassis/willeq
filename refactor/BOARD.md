@@ -832,7 +832,25 @@ it without taking that measurement first.
 - **B972** (B, memory) → issue #290. Mesa's stream-upload buffers and Lima's
   draw-time BOs hold 3-6 MiB of the client's GEM at `steady_60s`, driven by
   client-array draws (2D UI, entities, zone pools, raw-GL particles). A static
-  VBO for the zone pools measured worse (B962). Measured by B962.
+  VBO for the zone pools measured worse (B962). Measured by B962. **2026-10-06
+  split (Will, option 2, verbatim: "proceed with option 2"):** the 10 MiB
+  `gpu_unnamed_steady` crowd-tour guard HOLDS and is not re-scoped. #290 (MR
+  !94) ships only the self-contained, pixel-identical cuts (~3-6 MiB: impostor
+  pages, the untagged raw-GL particle draw, optionally the T462 `UiQuadBatch`
+  vertices); the zone-merge + entity-aux pool that keeps the guard red moves
+  to **B997 (#317)** — bounded-VBO conversion (B975 pattern), NOT the rejected
+  static VBO (B962). The guard reads red on the crowd tours until B997 lands
+  (B988/#307 known condition).
+- **B997** (B, memory) → issue #317. The B972 split-off: the zone-merge pool
+  (6 × 1 MiB `u_upload` `draw:zone` slots, ~38 client-array drawCalls/frame,
+  `renderer_zone_merge.cpp`) + the remaining `draw3d:client` pool hold the
+  residual above the 10 MiB `gpu_unnamed_steady` guard (measured 2026-10-06:
+  qeynos2 18.90 / gfaydark 24.5 MiB cache-on imp200far, the impostor proven
+  NOT the lever by the `off200far` control — `refactor/B972/README.md`).
+  Conversion to bounded reused VBOs (partial `glBufferSubData`, the merged
+  B975 `NameTagBatchNode` slack pattern); a static VBO is the measured
+  anti-pattern (B962: +4.3 MiB, half qeynos2 fps). Cut behind #290/MR !94
+  (re-measure the residual after it lands).
 - ~~**B970** (B) → issue #288. `build-arm` fetched `irrlicht-1.8.5.zip` and
   `libpng-1.6.37.tar.xz` from downloads.sourceforge.net inside a Docker layer, so
   the 2026-10-01 SourceForge outage (HTTP 522, ~3 h) failed every job whose
