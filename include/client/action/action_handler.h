@@ -208,6 +208,11 @@ public:
     // carried scroll, refuses locally, and pushes ScribeSpellIntent.
     virtual void scribeItem(const std::string& args) = 0;
 
+    // B442 (#151): /pickup, /putdown, /cursor and /coin. `verb` is the
+    // command name; CommandsComponent::RequestCursorCommand() parses it and
+    // pushes the SAME CursorGestureIntent the slot click pushes.
+    virtual void cursorCommand(const std::string& verb, const std::string& args) = 0;
+
     // ========== Spellbook ==========
 
     virtual void forgetSpell(uint8_t gemSlot) = 0;

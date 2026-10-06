@@ -166,8 +166,11 @@ TEST(CommandRegistrationOrderTest, GoldenIsPresentAndTheRightSize) {
     // +1 by T347 (B012), which INSERTED entry 022 `cleartarget` after 021
     // `target` and renumbered 022-142 to 023-143. Correction 32: an order
     // golden learns a reviewed edit in place, at its positions, named here.
-    EXPECT_EQ(golden.size(), 143u)
-        << "142 commands at G03, +1 for T347's /cleartarget; the golden has "
+    // +4 by B442 (#151): 078-081 `pickup` `putdown` `cursor` `coin` after
+    // 077 `scribe`, 078-143 renumbered to 082-147.
+    EXPECT_EQ(golden.size(), 147u)
+        << "142 commands at G03, +1 for T347's /cleartarget, +4 for B442's cursor "
+           "commands; the golden has "
         << golden.size();
     for (const auto& n : golden) {
         EXPECT_FALSE(n.empty());

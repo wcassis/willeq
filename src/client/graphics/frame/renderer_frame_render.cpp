@@ -591,6 +591,23 @@ void FrameComponent::renderLegacyGui() {
 void FrameComponent::renderStaticUI() {
     // U06j: Process new UI input before rendering
     if (newUIEnabled_ && staticUIInput_ && ctx_.eventReceiver) {
+        // B442 (#151): the right click, the modifiers and the cursor, for the
+        // item windows' click-to-cursor gesture. The QuantityWnd is above
+        // every other window, so a click it takes reaches nothing below it.
+        bool rightClick = ctx_.eventReceiver->wasRightButtonClicked();
+        {
+            eqt::inventory::ClickModifiers mods;
+            mods.shift = ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT);
+            mods.ctrl = ctx_.eventReceiver->isKeyDown(irr::KEY_LCONTROL) ||
+                        ctx_.eventReceiver->isKeyDown(irr::KEY_RCONTROL);
+            if (staticUIInput_->processQuantityInput(
+                    ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+                    pendingUIClick_, uiLayout_)) {
+                pendingUIClick_ = false;
+                rightClick = false;
+            }
+            staticUIInput_->setFrameClickState(rightClick, mods, &cursorState_);
+        }
         staticUIInput_->processInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
             uiLayout_, hotbarState_, spellGemState_, inventoryState_,
@@ -628,6 +645,7 @@ void FrameComponent::renderStaticUI() {
             pendingUIClick_, uiLayout_, optionsState_, optionsChanged);
         applyOptionsSetting(optionsChanged);
         pendingUIClick_ = false;
+        staticUIInput_->setFrameClickState(false, {}, &cursorState_);
     }
 
     // T60: the paperdoll only exists/renders while the inventory popup is
@@ -694,6 +712,10 @@ void FrameComponent::renderStaticUI() {
         // hit-test order above.
         renderOptionsWindow(*uiRenderer_, uiLayout_, optionsState_);
         renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
+        // B442: the QuantityWnd, above every window (hit-tested first).
+        if (staticUIInput_) {
+            renderQuantityWindow(*uiRenderer_, uiLayout_, staticUIInput_->quantityWindow());
+        }
         // T436 (B429): the cursor attachment is drawn LAST of everything.
         // It is the pointer: nothing may cover it, including the Options
         // window and the XP bar.

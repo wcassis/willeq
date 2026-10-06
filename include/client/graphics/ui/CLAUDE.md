@@ -63,6 +63,7 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Options | Centred, the oracle's own 400x452, seven tabs | `OptionsPanelState` | `renderOptionsWindow()` (T434) |
 | Merchant | Center popup (the oracle's 374x480 scaled onto it) | `MerchantPanelState` | `renderMerchantPopup()` (T436, board B429) |
 | Bank | Centred, the oracle's own 108x347, unscaled | `BankPanelState` | `renderBankWindow()` (T436, board B429) |
+| Quantity | Its own absolute (300,10), 150x90 | `QuantityWindowState` (owned by `StaticUIInput`) | `renderQuantityWindow()` (B442, `EQUI_QuantityWnd.xml`) |
 | Cursor item | At the mouse, the oracle's 50x50 box | `CursorAttachmentState` | `renderCursorAttachment()` (T436, board B429) |
 | Skill trainer | Centred, the oracle's own 580x280, unscaled | `TrainerPanelState` | `renderTrainerWindow()` (B898, #214) |
 
@@ -103,15 +104,18 @@ its `.cpp`: `merchant_layout.h` (`EQUI_MerchantWnd.xml`), `bank_layout.h` (`EQUI
 
 None of the three closes itself. Each pushes the intent that ends the SERVER-side session and waits
 for the server's own `VendorWindowClosed` / `BankWindowClosed`, T290's rule; ESC follows the same
-top-down order the draw does (Options, item display, bank, merchant, then the centre popups). There is
-still no way to MOVE an item into or out of a bank slot: that is a drag between the slot and the
-cursor and fable's static UI latches no drag — board **B442**.
+top-down order the draw does (Options, item display, bank, merchant, then the centre popups). **B442 (#151)** gave all
+of them the click-to-cursor gesture: a bank slot (`BW_BankSlot<n>` = Titanium slot 2000+n) takes the
+same click as an inventory slot. The merchant is NOT a put-down target: the oracle measured that
+selling never uses the cursor (`review/UIGAP-ORACLE/152/`, board B443 / #152 owns it).
 
 **The skill trainer window** (B898, #214). Its geometry is `train_layout.h`, which quotes `EQUI_TrainWindow.xml` (`Style_Sizable false`, so it is drawn UNSCALED, like the bank, and CENTRED: the oracle's `<Location>` (120,20) runs off a 640-wide screen). It is not a centre popup: it draws and is hit-tested above the bank and below the item display, and ESC ends it before the bank. Fed by `TrainerWindowOpened`/`TrainerWindowClosed`, whose bridge arms were LOG_TRACEs that dropped the decoded `OP_GMTraining` reply. The game thread RE-PUBLISHES `TrainerWindowOpened` after every `OP_SkillUpdate` of an open session (`MerchantComponent::PublishTrainerWindow`, `merchant_trainer.cpp`), the only packet a Titanium server sends after a train; the applier treats a same-trainer open as a refresh and keeps the selection by skill id. Train pushes `TrainSkillIntent` (the `/train <id>` intent) and Done, the close box and ESC push `CloseTrainerIntent` (the `/trainclose` intent). Both paths' refusals are ONE body, `MerchantComponent::TrainRefusal()`. The Rank column is drawn empty (oracle-owed). `Style_Minimizebox` is not drawn. The scroll bar's arrows are clickable; the wheel does not reach this list yet. Openers are `/train`, T, and Ctrl+click on a guildmaster, which is fable's stand-in for the official right-click.
 
 **Text entry** (T421, board B365). There is exactly ONE text-entry widget in the static UI: `EQT::Graphics::TextEntryState` and `applyTextEntryKey()` (`include/client/graphics/ui/text_entry.h`). `ChatPanelState` DERIVES from it -- `inputText` / `cursorPos` / `inputActive` are its members -- and the tradeskill window's three Editboxes (`COMBW_MinTrivialEdit`, `COMBW_MaxTrivialEdit`, `COMBW_SearchTextEdit`) are three more of them, selected by `TradeskillPanelState::focusedField`. The KEYBOARD GATE is `FrameComponent::processChatInput()`, still the only caller of `setChatInputFocused()`: it early-returns into `processTradeskillSearchInput()` when a search box holds the caret, so the two key drains are mutually exclusive and no keystroke is read twice (`tests/test_read_and_reset_ownership.cpp` records that as `popKeyEvent`'s two-sites-one-consumer exception). Enter in a search box, or `COMBW_SearchButton`, pushes `RecipeSearchIntent` into the existing `SendRecipesSearch()`; the favourites row pushes `RecipeFavoriteIntent` into the existing `SendRecipesFavorite()` (with board **B377** on the missing favourites set).
 
-**The item display window** takes its geometry from `include/client/graphics/ui/item_display_layout.h` (which quotes `EQUI_ItemDisplay.xml`) and its TEXT from the GAME thread: `eqt::inventory::BuildItemDisplayText()` composes the description from format strings quoted out of the official client's own `eqstr_us.txt`, and ships the finished lines on the `ItemDisplayShown` event. That is what the official client does too -- the XML's whole body is one `<STMLbox>`. A click on an occupied inventory slot pushes `ItemDisplayRequestIntent`; the oracle uses a RIGHT click there, which fable cannot (the right button is mouselook and the static UI latches no right click).
+**The item display window** takes its geometry from `include/client/graphics/ui/item_display_layout.h` (which quotes `EQUI_ItemDisplay.xml`) and its TEXT from the GAME thread: `eqt::inventory::BuildItemDisplayText()` composes the description from format strings quoted out of the official client's own `eqstr_us.txt`, and ships the finished lines on the `ItemDisplayShown` event. That is what the official client does too -- the XML's whole body is one `<STMLbox>`. A RIGHT click on an occupied inventory or bank slot pushes `ItemDisplayRequestIntent` -- the oracle's own button. Until B442 it was a LEFT click (T421's deviation: the static UI latched no right click); `RendererEventReceiver::wasRightButtonClicked()` is that latch now, consumed only by `renderStaticUI()`, and mouselook still reads `isRightButtonDown()`, so a right drag off the panels turns the camera as before.
+
+**Click-to-cursor (B442, #151).** One gesture for every item window, `eqt::inventory::CursorGesture` (`include/client/inventory/cursor_gesture.h`), whose rules are the official client's MEASURED ones (`review/UIGAP-ORACLE/151/gestures.tsv`): LEFT on a single item picks it up; LEFT on a stack of 2+ opens the QuantityWnd prefilled with the whole stack (`quantity_window.h`, `quantity_layout.h` quoting `EQUI_QuantityWnd.xml`; drawn and hit-tested above everything, ESC does not close it, other slot clicks are ignored while it is up); SHIFT+LEFT takes the whole stack and CTRL+LEFT exactly one, no dialog; LEFT with an item held places / swaps / merges (any modifier); ALT+LEFT and RIGHT are the item display (the oracle shows the RIGHT-click display only while the button is held; fable keeps it open -- flagged) and RIGHT on a bag goes to the open-container hook the bag window installs; a purse row (`IW_Money0..3`) opens the QuantityWnd for that coin (SHIFT: all of it) and held coin goes back. The render thread pushes `CursorGestureIntent` and never moves an item itself; the game thread resolves it in `ApplyCursorGesture()` against `InventoryManager` and republishes `InventorySlotChanged` for the slots it changed (eqemu answers a good `OP_MoveItem` with silence and a bad one with a resync). The loot window's LEFT click is `LootItemIntent` with auto_loot 0, which eqemu puts on the cursor. `/pickup <slot> [qty]`, `/putdown <slot>`, `/cursor` and `/coin <pp|gp|sp|cp> <n>` push the same intent; slot numbers are `inventory.slot_id` through `parseUserSlot()`. `tests/test_cursor_gesture.cpp` pins it against the ledger's rows.
 
 **The same window shows SPELLS** (T425, board B298 spell half). The oracle has no second display window at all -- there is no `EQUI_SpellDisplay.xml` and no `SpellDisplay` screen anywhere in `uifiles/default`, and `IDW_IconButton`'s own `<NormalDecal>BuffIcons</NormalDecal>` is the SPELL icon sheet -- so a spell reuses `ItemDisplayPanelState`, `renderItemDisplayPopup()`, `ItemDisplayLayout` and the one `ScrollTarget::ItemDisplay`. Its lines are composed game-side by `eqt::spell::BuildSpellDisplayText()` from eqstr 3004/3005/3006/3102/3103/3105/3107/6730/9234 and arrive on the SAME `ItemDisplayShown` event. **SHIFT+left click** on a memorised gem or a spellbook row asks for it (`SpellDisplayRequestIntent`); a plain click still casts and still memorises. The oracle's gesture is a right click, which fable cannot bind, and unlike the inventory slot left click was already taken here.
 
@@ -153,6 +157,9 @@ group panel and the buff bar (board **B366**).
 | Mouse wheel | Scroll that same panel 3 lines per notch. T313: `EMIE_MOUSE_WHEEL` had no case in `RendererEventReceiver::OnEvent()` at all before this, so the wheel was discarded client-wide. **T461: a notch with the cursor over no scrollable panel zooms the camera** — the official client's Mouse Wheel Zoom option (`eqclient.ini` `MouseWheelZoom=1`, `EQUI_OptionsWindow.xml` `OMP_MouseWheelZoomCheckbox`). There is still one reader (`FrameComponent::processFrameInput()`), so no notch both scrolls and zooms. |
 | LMB+drag | Look around (camera) |
 | RMB+drag | Look around (camera) |
+| LMB on an item slot | Pick up / place / swap / stack (click-to-cursor, B442); on a stack of 2+ the Quantity window |
+| Shift+LMB / Ctrl+LMB on a stack | Whole stack / exactly one, no dialog (B442, measured) |
+| Alt+LMB, RMB on an item slot | Item display (B442; was LMB, T421's deviation) |
 | Ctrl+LMB+drag | Look around (single-button mouse) |
 | Alt+O | Toggle the Options window (T434). MEASURED at the oracle's Options > Keys > UI page (`review/T377/oracle/T377_oracle_options_keys_UI_page2.png`: "Toggle options window   Alt O", Alternate column empty). fable bound a bare `O` to an arm that was `break;`; `O` is now unbound, as it is in the oracle. |
 | Shift+ESC | Quit |
@@ -283,7 +290,7 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    (aliases `/memory`, `/mem_report`), `/music`, `/sound`, `/volume`
    (`/vol`), `/musicvolume` (`/mvol`), `/effectsvolume` (`/evol`, `/sfxvol`).
 2. **Registry 2 — `action::CommandProcessor`**
-   (`src/client/action/command_processor_registration.cpp`, **143**
+   (`src/client/action/command_processor_registration.cpp`, **147**
    `registerCommand({...})` calls — T347 inserted `/cleartarget` at entry 022
    and `tests/goldens/command_registration_order_g03.txt` pins both the count
    and the position, so re-read the golden header rather than this line; J04
@@ -400,7 +407,9 @@ hold, focus, health, dismiss).
 (`/recipefav`), `/clickobject <drop_id>` (`/clickobj`).
 
 **Commerce / Inventory:** `/vendor`, `/vendorlist`, `/buy <slot> [qty]`,
-`/sell <slot> [qty]`, `/bank`, `/equip <from> <to> | <item name> | list`.
+`/sell <slot> [qty]`, `/bank`, `/equip <from> <to> | <item name> | list`,
+`/pickup <slot> [qty]`, `/putdown <slot>`, `/cursor`, `/coin <pp|gp|sp|cp> <n>`
+(B442: the click-to-cursor gesture's scriptable half, one `CursorGestureIntent`).
 
 **Utility:** `/help [command]`, `/quit` (`/exit`, `/q`), `/camp`, `/save`,
 `/afk`, `/anon`, `/roleplay [on|off]` (`/rp`), `/list [search]`, `/dump

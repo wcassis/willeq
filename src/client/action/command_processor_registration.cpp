@@ -519,6 +519,27 @@ void CommandProcessor::registerInventoryCommands() {
         "Scribe a spell scroll you are carrying into your spellbook (e.g. /scribe Spell: Minor Healing)",
         "Inventory", false
     }, [this](const std::string& args) { return cmdScribe(args); });
+
+    // B442 (#151): the scriptable half of the click-to-cursor gesture. Each
+    // pushes the SAME CursorGestureIntent a slot click pushes.
+    registerCommand({
+        "pickup", {}, "/pickup <slot> [quantity]",
+        "Pick an item (or part of a stack) up onto the cursor (slot = inventory.slot_id)",
+        "Inventory", false
+    }, [this](const std::string& args) { return cmdPickup(args); });
+    registerCommand({
+        "putdown", {}, "/putdown <slot>",
+        "Put the item on the cursor down in a slot (swaps or stacks like a click)",
+        "Inventory", false
+    }, [this](const std::string& args) { return cmdPutdown(args); });
+    registerCommand({
+        "cursor", {}, "/cursor", "Show what is on the cursor", "Inventory", false
+    }, [this](const std::string& args) { return cmdCursor(args); });
+    registerCommand({
+        "coin", {}, "/coin <pp|gp|sp|cp> <amount>",
+        "Pick coin up onto the cursor (held coin goes back to the purse)",
+        "Inventory", false
+    }, [this](const std::string& args) { return cmdCoin(args); });
 }
 
 // The final sixteen of the game-registry migration (T140) + /trainclose (T280)

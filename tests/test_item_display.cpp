@@ -452,7 +452,9 @@ TEST(ItemDisplayT421, AClosedWindowConsumesNothing) {
 }
 
 // The REAL producer: StaticUIInput, the real bridge, the real intent queue.
-TEST(ItemDisplayT421, ClickingAnOccupiedInventorySlotAsksForTheDisplay) {
+// B442 (#151): the display is the oracle's RIGHT click now; a LEFT click on
+// the slot is the click-to-cursor pick-up (tests/test_cursor_gesture.cpp).
+TEST(ItemDisplayT421, RightClickingAnOccupiedInventorySlotAsksForTheDisplay) {
     UILayout l = layout800();
     CapturingBridge bridge;
     StaticUIInput input;
@@ -471,8 +473,9 @@ TEST(ItemDisplayT421, ClickingAnOccupiedInventorySlotAsksForTheDisplay) {
     inv.equipSlots[13].itemName = "Bladed Thulian Claws";
 
     const auto occupied = InventoryLayout::slotRect(l, 13);
+    input.setFrameClickState(/*rightClicked=*/true, {}, nullptr);
     input.processInput(occupied.UpperLeftCorner.X + 3, occupied.UpperLeftCorner.Y + 3,
-                       /*leftClicked=*/true, l, hotbar, gems, inv, book, skills,
+                       /*leftClicked=*/false, l, hotbar, gems, inv, book, skills,
                        buffs, loot);
     auto intents = bridge.drainIntents();
     ASSERT_EQ(intents.size(), 1u);
@@ -483,7 +486,7 @@ TEST(ItemDisplayT421, ClickingAnOccupiedInventorySlotAsksForTheDisplay) {
     // An EMPTY slot asks for nothing -- there is no item to describe.
     const auto empty = InventoryLayout::slotRect(l, 14);
     input.processInput(empty.UpperLeftCorner.X + 3, empty.UpperLeftCorner.Y + 3,
-                       /*leftClicked=*/true, l, hotbar, gems, inv, book, skills,
+                       /*leftClicked=*/false, l, hotbar, gems, inv, book, skills,
                        buffs, loot);
     EXPECT_TRUE(bridge.drainIntents().empty());
 }

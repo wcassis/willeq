@@ -116,6 +116,7 @@ public:
     void equip(const std::string& args) override;  // T141
     void readItem(const std::string& args) override;  // T273
     void scribeItem(const std::string& args) override;  // T276
+    void cursorCommand(const std::string& verb, const std::string& args) override;  // B442
 
     // ========== Spellbook ==========
 

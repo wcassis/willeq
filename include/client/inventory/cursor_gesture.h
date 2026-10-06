@@ -9,21 +9,27 @@
  * hovered and never used, and an inventory slot's left click opened the item
  * display (fable's old deviation; the oracle opens it on a RIGHT click).
  *
- * THE OFFICIAL CLIENT'S GESTURE (Titanium is click-to-cursor, not drag and
- * drop -- the item rides the pointer as CA_Anim between two clicks,
- * EQUI_CursorAttachment.xml):
- *   - LEFT on an occupied slot, cursor empty      -> pick up (whole stack)
- *   - LEFT with an item held                      -> place; on an occupied
- *     slot the displaced item becomes the cursor item (swap); on a matching
- *     stack with room the held stack merges into it
- *   - SHIFT+LEFT on a stack of 2+, cursor empty   -> the QuantityWnd split
- *     dialog (EQUI_QuantityWnd.xml); its Accept picks up that many
- *   - RIGHT on an occupied slot                   -> item display, or -- for a
- *     container, once the bag window exists -- open the bag (the hook below)
- *   - LEFT on a purse row                         -> that coin onto the cursor
- *     (held coin goes back to the purse)
- * The SHIFT rule and the coin toggle are the issue's stated defaults and are
- * ORACLE-OWED (#151 Leg O, gestures.tsv); see the B442 report.
+ * THE OFFICIAL CLIENT'S GESTURE, MEASURED (Titanium is click-to-cursor, not
+ * drag and drop -- the item rides the pointer as CA_Anim between two clicks).
+ * Source: review/UIGAP-ORACLE/151/gestures.tsv (#151 Leg O, 2026-10-05); the
+ * row numbers below are that ledger's.
+ *   - LEFT on a single item, cursor empty         -> pick up (rows 1, 15)
+ *   - LEFT on a STACK of 2+, cursor empty         -> the QuantityWnd, prefilled
+ *     with the whole stack (row 3); Accept picks that many up (rows 4, 5)
+ *   - SHIFT+LEFT on a stack                       -> the whole stack, no
+ *     dialog (row 10); CTRL+LEFT -> exactly one (row 11)
+ *   - LEFT with an item held, any modifier        -> place; on an occupied
+ *     slot ONE move and the displaced item is on the cursor (row 7); on a
+ *     matching stack the held count merges (rows 9, 12); CTRL just places
+ *     (row 13)
+ *   - ALT+LEFT on an item                         -> the item display, kept
+ *     open (row 26)
+ *   - RIGHT on an item                            -> the item display (the
+ *     oracle shows it only WHILE the button is held, row 25 -- fable keeps it
+ *     open until closed: flagged deviation), or for a bag the bag window,
+ *     which right click toggles (rows 19-21; the hook below)
+ *   - a purse row                                 -> the QuantityWnd for coin
+ *     (row 28), held coin goes back (row 30)
  *
  * THE SPLIT. Two halves, one per thread, joined by ONE intent:
  *   render thread  CursorGesture::click() maps (slot, button, modifiers, what
@@ -57,8 +63,9 @@
 #include <string>
 #include <vector>
 
+#include "client/events/renderer_intents.h"   // CursorGestureIntent
+
 namespace eqt { namespace bridge { class GameStateBridge; } }
-namespace eqt { namespace events { struct CursorGestureIntent; } }
 
 namespace eqt {
 namespace inventory {
@@ -90,13 +97,14 @@ enum class GestureAction : uint8_t {
     OpenQuantity,   // the caller opens the QuantityWnd for this slot
     ItemDisplay,    // ItemDisplayRequestIntent pushed
     OpenContainer,  // the open-container hook claimed the right click
+    PickUpOne,      // CTRL+LEFT on a stack: CursorGestureIntent{PickUp, qty 1} pushed
 };
 
 /**
  * The button map, as a pure function -- no bridge, no hook. Every window's
  * click arm and every test reads the rule from here, so there is one.
  * A RIGHT click classifies as ItemDisplay; click() then offers it to the
- * open-container hook first.
+ * open-container hook first (ALT+LEFT is the display alone).
  */
 GestureAction classifyClick(ClickButton button, ClickModifiers mods,
                             const SlotSnapshot& slot, const CursorSnapshot& cursor);
@@ -174,6 +182,24 @@ struct CoinMovePlan {
 };
 CoinMovePlan PlanCoinGesture(const InventoryManager& inv, uint8_t coinType,
                              int32_t requested, uint32_t purseOfType);
+
+// ---------------------------------------------------------------------------
+// The slash-command surface: /pickup <slot> [qty], /putdown <slot>, /cursor,
+// /coin <pp|gp|sp|cp> <n>. Slot numbers are inventory.slot_id, read through
+// parseUserSlot() -- the repo's ONE inbound conversion.
+// ---------------------------------------------------------------------------
+
+struct CursorCommandParse {
+    bool ok = false;
+    eqt::events::CursorGestureIntent intent;   // echo = true when ok
+    std::string error;                          // usage / refusal text otherwise
+};
+
+/** `verb` is "pickup", "putdown" or "coin" (lower case, no slash). */
+CursorCommandParse ParseCursorCommand(const std::string& verb, const std::string& args);
+
+/** /cursor's reply: what the cursor holds, item queue and coin. */
+std::string DescribeCursor(const InventoryManager& inv);
 
 }  // namespace inventory
 }  // namespace eqt

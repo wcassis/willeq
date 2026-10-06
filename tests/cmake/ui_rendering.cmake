@@ -771,3 +771,17 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_entity_model_sharing DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B442 (GitLab #151): the click-to-cursor gesture -- the button map, synthetic
+# clicks over the inventory/purse/bank/loot/merchant/QuantityWnd rects, the
+# game-thread ApplyCursorGesture() over a real InventoryManager (the
+# MoveItemIntent sequence), and /pickup /putdown /cursor /coin. No device, no
+# server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_cursor_gesture
+        test_cursor_gesture.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_cursor_gesture PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_cursor_gesture GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_cursor_gesture DISCOVERY_TIMEOUT 120)
+ENDIF()

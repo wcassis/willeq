@@ -34,20 +34,21 @@ namespace Graphics {
 namespace {
 
 /**
- * Does inventory slot `i` (the flat 0..TOTAL_SLOTS-1 index the layout uses)
- * hold an item? The twin of renderInventoryPopup()'s own split between the
- * equipment array and the general array -- same bound, same indexing.
+ * The panel's cache for inventory slot `i` (the flat 0..TOTAL_SLOTS-1 index
+ * the layout uses), or null. The twin of renderInventoryPopup()'s own split
+ * between the equipment array and the general array -- same bound, same
+ * indexing.
  */
-bool slotHasItem(const InventoryPanelState& inv, int i) {
-    if (i < 0) return false;
+const SlotDisplayInfo* slotInfo(const InventoryPanelState& inv, int i) {
+    if (i < 0) return nullptr;
     if (i < InventoryPanelState::EQUIP_SLOTS) {
-        return inv.equipSlots[i].hasItem;
+        return &inv.equipSlots[i];
     }
     const int g = i - InventoryPanelState::EQUIP_SLOTS;
     if (g < InventoryPanelState::GENERAL_SLOTS) {
-        return inv.generalSlots[g].hasItem;
+        return &inv.generalSlots[g];
     }
-    return false;
+    return nullptr;
 }
 
 }  // namespace
@@ -149,23 +150,33 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                 if (mouseX >= r.UpperLeftCorner.X && mouseX < r.LowerRightCorner.X &&
                     mouseY >= r.UpperLeftCorner.Y && mouseY < r.LowerRightCorner.Y) {
                     inventory.hoveredSlot = i;
-                    // T421 (board B298, item half): a click on an occupied
-                    // slot asks the game thread to describe the item. Until
-                    // this, a click on an inventory slot did NOTHING at all
-                    // -- the loop set hoveredSlot and broke.
-                    //
-                    // DEVIATION from the oracle, flagged: the official client
-                    // opens the item display on a RIGHT click. fable binds the
-                    // right button to mouselook (see the key table in
-                    // include/client/graphics/ui/CLAUDE.md) and its static UI
-                    // has no right-click routing at all -- RendererEventReceiver
-                    // tracks rightButtonDown_ for the camera and latches no
-                    // click. Left is the button that was free.
-                    if (leftClicked && bridge_ && slotHasItem(inventory, i)) {
-                        bridge_->pushIntent(eqt::events::ItemDisplayRequestIntent{
-                            static_cast<int16_t>(i)});
+                    // B442 (#151): the click-to-cursor gesture. LEFT picks
+                    // up / places / swaps / merges, RIGHT is the item display
+                    // -- the oracle's own map, which replaces T421's
+                    // left-click-displays deviation now that the static UI
+                    // latches a right click. The flat index IS the Titanium
+                    // slot id (0-21 worn, 22-29 general).
+                    if (leftClicked || rightClicked_) {
+                        const SlotDisplayInfo* info = slotInfo(inventory, i);
+                        eqt::inventory::SlotSnapshot snap;
+                        snap.occupied = info && info->hasItem;
+                        snap.quantity = info ? info->quantity : 0;
+                        slotClick(static_cast<int16_t>(i), leftClicked, snap,
+                                  info ? info->itemName : std::string());
                     }
                     break;
+                }
+            }
+            // B442: a purse row (IW_Money0..3) -- coin onto the cursor, or
+            // SHIFT for the QuantityWnd. Row 0 is platinum, the wire's 3.
+            if (inventory.hoveredSlot < 0 && leftClicked) {
+                for (int d = 0; d < InventoryLayout::COIN_COUNT; ++d) {
+                    const auto r = InventoryLayout::coinRect(layout, d);
+                    if (mouseX >= r.UpperLeftCorner.X && mouseX < r.LowerRightCorner.X &&
+                        mouseY >= r.UpperLeftCorner.Y && mouseY < r.LowerRightCorner.Y) {
+                        coinRowClick(d, inventory.coins[d]);
+                        break;
+                    }
                 }
             }
         }
@@ -306,7 +317,23 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                     int first = std::min(loot.scrollOffset,
                         std::max(0, static_cast<int>(loot.items.size()) - 1));
                     loot.hoveredRow = idx - first;
-                    if (leftClicked && bridge_) {
+                    // B442 (#151): the loot window takes the shared button
+                    // map. LEFT is the cursor gesture, and for a corpse slot
+                    // that is LootItemIntent with auto_loot 0 -- eqemu's
+                    // Corpse::LootCorpseItem puts the item ON THE CURSOR
+                    // (PutLootInInventory(slotCursor)), which is the oracle's
+                    // pick-up. A corpse stack cannot be split, so SHIFT does
+                    // the same. RIGHT (the oracle's inspect) is consumed and
+                    // does nothing yet: the corpse's items are not in
+                    // InventoryManager, so ItemDisplayRequestIntent cannot
+                    // describe them (owed).
+                    const auto action = eqt::inventory::classifyClick(
+                        leftClicked ? eqt::inventory::ClickButton::Left
+                                    : eqt::inventory::ClickButton::Right,
+                        mods_, eqt::inventory::SlotSnapshot{true, 1},
+                        eqt::inventory::CursorSnapshot{cursorHoldsItem()});
+                    if (leftClicked && bridge_ &&
+                        action == eqt::inventory::GestureAction::CursorClick) {
                         LOG_INFO(MOD_GRAPHICS,
                             "Loot window: taking '{}' (corpse slot {}) from corpse {}",
                             loot.items[idx].itemName, loot.items[idx].slot,
@@ -851,9 +878,17 @@ bool StaticUIInput::processCommerceInput(int mouseX, int mouseY,
         const int slot = hitTestBankSlot(layout, bank, mouseX, mouseY);
         if (slot >= 0) {
             bank.hoveredSlot = slot;
-            // No click action. Moving an item in or out of the bank is a
-            // MoveItem between the bank slot and the cursor, and fable's
-            // static UI latches no drag; board B442.
+            // B442 (#151): BW_BankSlot<n> is Titanium slot 2000+n, and a click
+            // is the same gesture as an inventory slot's -- into and out of
+            // the bank is a MoveItem between the slot and the cursor.
+            if (leftClicked || rightClicked_) {
+                const auto& cell = bank.slots[slot];
+                eqt::inventory::SlotSnapshot snap;
+                snap.occupied = cell.hasItem;
+                snap.quantity = cell.quantity;
+                slotClick(static_cast<int16_t>(eqt::inventory::BANK_BEGIN + slot),
+                          leftClicked, snap, cell.itemName);
+            }
             return true;
         }
         if (bankContains(layout, bank, mouseX, mouseY)) return true;

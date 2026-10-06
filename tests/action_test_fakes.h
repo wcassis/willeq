@@ -205,6 +205,9 @@ public:
     void equip(const std::string& args) override { record("equip", args); }
     void readItem(const std::string& args) override { record("readItem", args); }
     void scribeItem(const std::string& args) override { record("scribeItem", args); }
+    void cursorCommand(const std::string& verb, const std::string& args) override {
+        record("cursorCommand", verb + (args.empty() ? "" : " " + args));
+    }
 
     // ========== Spellbook ==========
     void forgetSpell(uint8_t gemSlot) override {
