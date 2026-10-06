@@ -146,6 +146,7 @@
 // T436 (board B429): the merchant, bank and cursor-attachment windows.
 #include "client/graphics/ui/merchant_panel.h"
 #include "client/graphics/ui/bank_panel.h"
+#include "client/graphics/ui/tracking_panel.h"  // B895
 #include "client/graphics/ui/cursor_attachment.h"
 #include "client/graphics/ui/trainer_panel.h"  // B898
 #include "client/graphics/ui/ui_preferences.h"
@@ -396,6 +397,10 @@ public:
 	// oracle's TrainWindow is Style_Sizable false at 580x280. Fed by the
 	// TrainerWindowOpened/Closed bridge arms.
 	TrainerPanelState trainerState_;            // B898
+	// B895 (GitLab #211): the Tracking Window. Not a centre popup (the
+	// oracle's TrackingWnd has its own placement); drawn above the bank.
+	// Fed by the TrackingListChanged bridge arm.
+	TrackingPanelState trackingState_;          // B895
 	XPBarState xpBarState_;             // U06i
 	// T432 (board B275): per-character UI persistence. Empty identity =
 	// not logged in yet, and sync() is then a no-op.

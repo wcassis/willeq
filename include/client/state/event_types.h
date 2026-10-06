@@ -167,6 +167,10 @@ enum class GameEventType {
     // B430: a server-owned Options-window setting (anonymous/roleplay,
     // autosplit, the three auto-consents) as the game thread now holds it.
     GameOptionChanged,
+    // B895 (GitLab #211): the Tracking Window's list and settings, published
+    // whole by eqt::tracking::TrackingController on an OP_Track reply and on
+    // every filter/sort/players/target change.
+    TrackingListChanged,
 };
 
 

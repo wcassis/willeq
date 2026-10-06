@@ -66,6 +66,7 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Quantity | Its own absolute (300,10), 150x90 | `QuantityWindowState` (owned by `StaticUIInput`) | `renderQuantityWindow()` (B442, `EQUI_QuantityWnd.xml`) |
 | Cursor item | At the mouse, the oracle's 50x50 box | `CursorAttachmentState` | `renderCursorAttachment()` (T436, board B429) |
 | Skill trainer | Centred, the oracle's own 580x280, unscaled | `TrainerPanelState` | `renderTrainerWindow()` (B898, #214) |
+| Tracking | Centred, the oracle's own 150x460 (height clamped to the screen) | `TrackingPanelState` | `renderTrackingWindow()` (B895, GitLab #211) |
 
 Center popups (inventory, spellbook, skills, merchant, loot, trade, tradeskill container) share the same screen region and are mutually exclusive. **The BANK is not one of them** (T436): the oracle's `BankWnd` is `Style_Sizable false` at its own 108x347, so like the combat-abilities window it keeps its own size and its own anchor and draws above the centre popups. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle. **Neither is the item display window** (T421): `EQUI_ItemDisplay.xml` gives it `RelativePosition false` and `<Location>(0,80)</Location>`, so it is drawn and hit-tested LAST, on top of every centre popup, and ESC dismisses it before them. **Nor is the Options window** (T434), for the same reason and one level higher still: `EQUI_OptionsWindow.xml` is `RelativePosition false` at `<Location>(90,47)</Location>`, so it is drawn and hit-tested after even the item display and ESC dismisses it first of all. Its geometry is `options_layout.h`, a table of every control the oracle XML declares; a control whose `OptionsLayout::Setting` is `None` has no backing setting in fable, is drawn greyed and is **not hit-testable** (the T363 rule made mechanical).
 
@@ -112,6 +113,26 @@ same click as an inventory slot. The merchant is NOT a put-down target: the orac
 selling never uses the cursor (`review/UIGAP-ORACLE/152/`, board B443 / #152 owns it).
 
 **The skill trainer window** (B898, #214). Its geometry is `train_layout.h`, which quotes `EQUI_TrainWindow.xml` (`Style_Sizable false`, so it is drawn UNSCALED, like the bank, and CENTRED: the oracle's `<Location>` (120,20) runs off a 640-wide screen). It is not a centre popup: it draws and is hit-tested above the bank and below the item display, and ESC ends it before the bank. Fed by `TrainerWindowOpened`/`TrainerWindowClosed`, whose bridge arms were LOG_TRACEs that dropped the decoded `OP_GMTraining` reply. The game thread RE-PUBLISHES `TrainerWindowOpened` after every `OP_SkillUpdate` of an open session (`MerchantComponent::PublishTrainerWindow`, `merchant_trainer.cpp`), the only packet a Titanium server sends after a train; the applier treats a same-trainer open as a refresh and keeps the selection by skill id. Train pushes `TrainSkillIntent` (the `/train <id>` intent) and Done, the close box and ESC push `CloseTrainerIntent` (the `/trainclose` intent). Both paths' refusals are ONE body, `MerchantComponent::TrainRefusal()`. The Rank column is drawn empty (oracle-owed). `Style_Minimizebox` is not drawn. The scroll bar's arrows are clickable; the wheel does not reach this list yet. Openers are `/train`, T, and Ctrl+click on a guildmaster, which is fable's stand-in for the official right-click.
+
+**The Tracking Window** (B895, GitLab #211). Geometry is `tracking_layout.h`, which quotes
+`EQUI_TrackingWnd.xml` anchor by anchor (the window is `Style_Sizable true`, so the bottom-anchored
+controls follow the window's height); the panel is `tracking_panel.cpp`. It is not a centre popup:
+drawn and hit-tested directly above the bank and below the item display, and ESC hides it in that
+order. Its one feed is `TrackingListChanged`, published WHOLE by the game thread's
+`eqt::tracking::TrackingController` (`include/client/tracking/`): rows already filtered, sorted and
+con-coloured (`eqt::ConTierForLevels()`, the one level table, moved out of `EntityRenderer`), and the
+combobox text composed from eqstr. The window opens on an OP_Track reply (`/useskill tracking`, a
+skill hotbar button) and its controls push ONE intent, `TrackingIntent` (Track / ToggleFilter /
+SetSort / SetPlayers), onto the same bodies `/track`, `/trackfilter`, `/tracksort` and
+`/trackplayers` reach. Cancel, the close box and ESC only hide it (they do not stop tracking);
+settings are not changed optimistically. Not drawn: `Style_Minimizebox` (no minimised state for any
+static panel). The direction lines (eqstr 12676-12680) and the lost line are the client's own on
+Titanium -- eqemu's `DoTracking()` runs only for SoD+ -- and tick from `MovementComponent`'s game
+tick every `kDirectionIntervalSec`, 2 s, with one line at once after "You begin tracking". The
+official client was measured (`review/UIGAP-ORACLE/211/tracking.tsv`): OP_Track goes out with an
+empty OP_TrackUnknown, consider sorts hardest first, a filtered-out button is highlighted, and the
+lost line is eqstr **12102** "You have lost your target." -- NOT 12681, which the issue named.
+Tests: `tests/test_tracking_window.cpp` (cites the ledger rows).
 
 **Text entry** (T421, board B365). There is exactly ONE text-entry widget in the static UI: `EQT::Graphics::TextEntryState` and `applyTextEntryKey()` (`include/client/graphics/ui/text_entry.h`). `ChatPanelState` DERIVES from it -- `inputText` / `cursorPos` / `inputActive` are its members -- and the tradeskill window's three Editboxes (`COMBW_MinTrivialEdit`, `COMBW_MaxTrivialEdit`, `COMBW_SearchTextEdit`) are three more of them, selected by `TradeskillPanelState::focusedField`. The KEYBOARD GATE is `FrameComponent::processChatInput()`, still the only caller of `setChatInputFocused()`: it early-returns into `processTradeskillSearchInput()` when a search box holds the caret, so the two key drains are mutually exclusive and no keystroke is read twice (`tests/test_read_and_reset_ownership.cpp` records that as `popKeyEvent`'s two-sites-one-consumer exception). Enter in a search box, or `COMBW_SearchButton`, pushes `RecipeSearchIntent` into the existing `SendRecipesSearch()`; the favourites row pushes `RecipeFavoriteIntent` into the existing `SendRecipesFavorite()` (with board **B377** on the missing favourites set).
 
@@ -292,7 +313,7 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    (aliases `/memory`, `/mem_report`), `/music`, `/sound`, `/volume`
    (`/vol`), `/musicvolume` (`/mvol`), `/effectsvolume` (`/evol`, `/sfxvol`).
 2. **Registry 2 — `action::CommandProcessor`**
-   (`src/client/action/command_processor_registration.cpp`, **147**
+   (`src/client/action/command_processor_registration.cpp`, **152**
    `registerCommand({...})` calls — T347 inserted `/cleartarget` at entry 022
    and `tests/goldens/command_registration_order_g03.txt` pins both the count
    and the position, so re-read the golden header rather than this line; J04
@@ -391,7 +412,11 @@ before you can click it (T268).
 `/forget <gem#>`, `/gems`, `/interrupt` (`/ducking`), `/spellbook` (`/book`).
 
 **Skills:** `/bandage` (`/bindwound`; inbound reply parsed since T177),
-`/train`, `/track [name]`. The skills window toggle is `/skills`
+`/train`, `/track [name]` (B895: starts tracking -- OP_TrackTarget, "You begin tracking %1." and the
+direction lines), `/trackfilter <red|yellow|white|blue|lblue|green>`, `/tracksort
+<normal|distance|consider|rdistance|rconsider>`, `/trackplayers <on|off|group>`, `/stoptracking`
+(the official commands, with the official confirmation and FORMAT lines) and `/tracklist` (fable's:
+prints the window's rows for a headless script). The skills window toggle is `/skills`
 (registry 3), renamed from `/newskills` with NO alias on Will's ruling <!-- RETIRED-OK: tombstone for the old name -->
 (T363, B058); the ORIGINAL `/skills` was a dead stub deleted by T138/T139, so
 the name was free. Its body is `FrameComponent::toggleSkillsWindow()` --

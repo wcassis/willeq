@@ -13,6 +13,9 @@
 #   B442 (#151): entries 078-081 `pickup` `putdown` `cursor` `coin`
 #     INSERTED after 077 `scribe`; entries 078-143 renumbered to 082-147.
 #     Count 143 -> 147.
+#   B895 (GitLab #211): entries 148-152 APPENDED after 147 `gmlastname`
+#     (registerTrackingCommands(), the last family): trackfilter, tracksort,
+#     trackplayers, stoptracking, tracklist. Nothing renumbered. 147 -> 152.
 001 shout
 002 say
 003 ooc
@@ -160,3 +163,8 @@
 145 hideme
 146 emotezone
 147 gmlastname
+148 trackfilter
+149 tracksort
+150 trackplayers
+151 stoptracking
+152 tracklist

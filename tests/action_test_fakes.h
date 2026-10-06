@@ -436,6 +436,9 @@ public:
     void trackTarget(uint16_t targetId) override {
         record("trackTarget", static_cast<uint32_t>(targetId));
     }
+    void trackingCommand(eqt::tracking::TrackingCommand cmd, const std::string& arg) override {
+        record("trackingCommand", static_cast<uint32_t>(cmd), arg);
+    }
     void findPerson(uint16_t targetId) override {
         record("findPerson", static_cast<uint32_t>(targetId));
     }

@@ -533,6 +533,15 @@ void SkillManager::sendSkillUsePacket(uint8_t skill_id, uint16_t target_id) {
     packet.Resize(0);
     m_eq->QueuePacket(opcode, &packet);
     LOG_DEBUG(MOD_MAIN, "Sent skill packet: opcode=0x{:04x} skill={}", opcode, skill_id);
+    if (opcode == HC_OP_Track) {
+        // B895, MEASURED (review/UIGAP-ORACLE/211/tracking.tsv row 1,
+        // run1.opcodes.tsv): the official client sends an EMPTY
+        // OP_TrackUnknown at the same instant as OP_Track. eqemu's handler
+        // reads nothing ("size 0 send right after OP_Track").
+        EQ::Net::DynamicPacket unknown;
+        unknown.Resize(0);
+        m_eq->QueuePacket(HC_OP_TrackUnknown, &unknown);
+    }
 
     LOG_DEBUG(MOD_MAIN, "Sent skill use packet: skill={} target={}", skill_id, target_id);
 }

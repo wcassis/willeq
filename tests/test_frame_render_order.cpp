@@ -206,7 +206,19 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     Applied after B898 (rebased onto it); B898's entries above are
 //     shifted by B442's eleven-line head insertion, nothing else moved.
 //     The count rises 332 -> 346: eleven plus one plus two.
-const size_t kGoldenSize = 346u;
+//   * B895 (GitLab #211): the Tracking Window, applied after B898 and B442
+//     (rebased onto them). TWO pure insertions, no text change and no
+//     reorder anywhere.
+//     - entry 280, `processTrackingInput(ctx_.bridge, ...);` (one line),
+//       directly after entry 279, the last line of B898's
+//       processTrainerInput call, and before T421's processItemDisplayInput:
+//       the window draws above the trainer and the bank and below the item
+//       display, and the hit-test order mirrors the draw order.
+//     - entry 314, `renderTrackingWindow(...)`, directly after entry 313
+//       `renderTrainerWindow(...)` (the oracle's TrackingWnd has its own
+//       placement, so it is not a centre popup).
+//     The count rises 346 -> 348, nothing removed and nothing replaced.
+const size_t kGoldenSize = 348u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

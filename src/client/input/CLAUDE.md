@@ -37,7 +37,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 Implementation split across eight TUs in `src/client/action/` (J04, plus
 T268/T269/T280): `command_processor.cpp` holds the core (parse, dispatch,
 registry queries), `command_processor_registration.cpp` holds
-`registerBuiltinCommands()` and its **147** `registerCommand({…})` calls
+`registerBuiltinCommands()` and its **152** `registerCommand({…})` calls
 (T347 added `/cleartarget`; `tests/goldens/command_registration_order_g03.txt`
 pins the count and the order — read the golden, not this line), and the
 handlers live in `command_processor_{social,spells_gm,world,bank,loot,train}.cpp`

@@ -44,6 +44,11 @@
 #include "client/graphics/ui/trainer_panel.h"  // B898
 #include "client/graphics/ui/quantity_window.h"   // B442
 #include "client/graphics/ui/inventory_layout.h"  // B442
+// B895 (GitLab #211).
+#include "client/graphics/ui/tracking_panel.h"
+#include "client/tracking/tracking_state.h"
+#include "client/con_tier.h"
+#include "client/display_eqstr.h"
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -154,6 +159,9 @@ struct PanelStates {
     BankPanelState bank;
     CursorAttachmentState cursor;
     TrainerPanelState trainer;  // B898 (#214)
+    // B895: the Tracking Window, with con-coloured rows through the real
+    // list rules and combobox text from the shipped eqstr table.
+    TrackingPanelState tracking;
     XPBarState xp;
 
     PanelStates() {
@@ -193,6 +201,53 @@ struct PanelStates {
             inventory.generalSlots[i].quantity = i + 1;
         }
         inventory.hoveredSlot = 4;
+
+        // B895: a mixed-con list as a level-12 Ranger sees it, through the
+        // real VisibleRows() and the shared con table.
+        {
+            using namespace eqt::tracking;
+            struct S { const char* name; int level; float dist; bool pc; };
+            static const S kSpawns[] = {
+                {"Guard Hezlan", 30, 120.f, false}, {"a gnoll pup", 2, 40.f, false},
+                {"a large rat", 7, 75.f, false},    {"a black wolf", 11, 90.f, false},
+                {"Fippy Darkpaw", 14, 210.f, false}, {"a decaying skeleton", 1, 33.f, false},
+                {"Oraclerogue", 10, 15.f, true},     {"a gnoll", 13, 160.f, false},
+                {"an orc pawn", 16, 280.f, false},   {"a moss snake", 9, 55.f, false},
+            };
+            std::vector<TrackEntry> entries;
+            uint32_t order = 0;
+            for (const auto& sp : kSpawns) {
+                TrackEntry e;
+                e.spawnId = static_cast<uint16_t>(400 + order);
+                e.name = sp.name; e.level = static_cast<uint8_t>(sp.level);
+                e.distance = sp.dist; e.isPlayer = sp.pc; e.serverOrder = order++;
+                e.con = eqt::ConTierForLevels(12, sp.level);
+                entries.push_back(e);
+            }
+            // One filter unchecked, and the rows computed WITH it, so the
+            // picture is self-consistent: no yellow NPC row while Y is off.
+            TrackingSettings settings;
+            settings.filters[static_cast<size_t>(TrackFilter::Yellow)] = false;
+            for (const auto& e : VisibleRows(entries, settings)) {
+                eqt::state::TrackingRowData r;
+                r.spawnId = e.spawnId; r.name = e.name; r.isPlayer = e.isPlayer;
+                const auto c = eqt::ConTierRgb(e.con);
+                r.r = c.r; r.g = c.g; r.b = c.b;
+                tracking.rows.push_back(r);
+            }
+            for (int i = 0; i < kSortCount; ++i) {
+                tracking.sortOptions.push_back(eqt::EqStrLine(
+                    eqStrings(), SortOptionStringId(static_cast<TrackSort>(i))));
+            }
+            for (int i = 0; i < kPlayersCount; ++i) {
+                tracking.playersOptions.push_back(eqt::EqStrLine(
+                    eqStrings(), PlayersOptionStringId(static_cast<TrackPlayers>(i))));
+            }
+            tracking.filters = settings.filters;
+            tracking.isOpen = true;
+            tracking.selectedSpawnId = 403;
+            tracking.hoveredRow = 1;
+        }
 
         // T436 (board B429): a merchant with real stock, a bank with real
         // contents, and an item on the cursor. The icon ids are real
@@ -557,6 +612,14 @@ std::vector<PanelCapture> buildCaptureList() {
         {"trainer_scrolled", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.trainer.scrollOffset = s.trainer.maxScrollOffset();
             renderTrainerWindow(u, l, s.trainer, s.xp.progress); }},
+        // B895: the Tracking Window, and the same window with its sort
+        // combobox dropped down.
+        {"tracking", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.tracking.openCombo = TrackingCombo::None;
+            renderTrackingWindow(u, l, s.tracking); }},
+        {"tracking_sort_open", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.tracking.openCombo = TrackingCombo::Sort;
+            renderTrackingWindow(u, l, s.tracking); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.

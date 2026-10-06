@@ -797,3 +797,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_LINK_LIBRARIES(test_cursor_gesture GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_cursor_gesture DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B895 (GitLab #211): the Tracking Window -- its XML layout, the direction
+# rule across the compass against eqemu's DoTracking thresholds, the list
+# rules, and the whole route (OP_Track reply -> TrackingListChanged -> panel
+# -> TrackingIntent -> "You begin tracking" -> direction ticks). A headless
+# EverQuest and the shipped eqstr table; no device, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_tracking_window
+        test_tracking_window.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_tracking_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_tracking_window GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_tracking_window PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+    GTEST_DISCOVER_TESTS(test_tracking_window DISCOVERY_TIMEOUT 120)
+ENDIF()

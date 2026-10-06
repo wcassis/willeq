@@ -34,6 +34,7 @@
 
 #include "client/client_context.h"
 #include "client/player/profile_appearance.h"
+#include "client/tracking/tracking_controller.h"  // B895
 #include "common/packet_structs.h"
 
 #include <chrono>
@@ -58,7 +59,10 @@ public:
 	// zero EverQuest private members and names no EverQuest-scoped private
 	// name (the two-axis rule, K13 correction (ii) / B039). It is the
 	// second component to pass both axes, after eqt::gm::GmComponent.
-	explicit PlayerComponent(ClientContext& ctx) : ctx_(ctx) {}
+	explicit PlayerComponent(ClientContext& ctx) : ctx_(ctx), m_tracking(ctx) {}
+
+	// B895 (GitLab #211): the Tracking skill's list, settings and target.
+	eqt::tracking::TrackingController& Tracking() { return m_tracking; }
 
 	// Social, camp/logout, resurrection, /who, /inspect, corpse, consent
 	// (was eq_player_social.cpp).
@@ -273,6 +277,9 @@ private:
 
 	// T170 test seam -- see Test_GetLastInspectAnswer().
 	TestSentInspectAnswer m_test_last_inspect_answer;
+
+	// B895: declared after ctx_, which it binds.
+	eqt::tracking::TrackingController m_tracking;
 };
 
 }  // namespace player

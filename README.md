@@ -222,7 +222,7 @@ Legend: Done | Partial | Not Implemented
 | Skill display | Done | Values and categories, class caps from `config/skill_caps.json` |
 | Skill activation | Done | /useskill by name or id, hotbar skill slots |
 | Tradeskills | Partial | Recipe search/combine commands; combines server-side |
-| Tracking | Partial | `/useskill tracking` sends and prints the list; no Tracking Window, no direction messages. Issue #211 (B895) |
+| Tracking | Partial | B895 (issue #211): `/useskill tracking` opens the Tracking Window (the oracle's `EQUI_TrackingWnd.xml`: con-coloured list, R/Y/W/B/L/G filters, sort and players comboboxes, Track, Cancel); Track or `/track` starts tracking and the official direction lines follow every 2 s (measured against the official client, `review/UIGAP-ORACLE/211`). `/trackfilter`, `/tracksort`, `/trackplayers`, `/stoptracking`, `/tracklist`. Partial until the live `track_list` scenario runs and the uncaptured controls (players combo, r* sorts) are measured |
 | Forage / Fishing | -- | Requests are sent; replies only logged. Issue #210 (B894) |
 
 ### Audio

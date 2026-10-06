@@ -542,6 +542,15 @@ ActionResult ActionDispatcher::trackTarget(uint16_t targetId) {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::trackingCommand(eqt::tracking::TrackingCommand cmd,
+                                               const std::string& arg) {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->trackingCommand(cmd, arg);
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::findPerson(uint16_t targetId) {
     auto result = checkZoneConnection();
     if (!result.success) return result;

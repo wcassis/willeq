@@ -42,7 +42,7 @@ EverQuest::tick()                    processFrame()
 
 Defined in `include/client/state/event_bus.h`. See `include/client/state/CLAUDE.md` for the full categorization.
 
-## Intent Types (44)
+## Intent Types (45)
 
 Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `std::variant` holding all intent structs:
 
@@ -61,6 +61,7 @@ Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `st
 - **Trainer**: `TrainerToggleIntent`, `TrainSkillIntent`, `CloseTrainerIntent` (B898: the trainer window's Train / Done buttons push the last two, the same intents `/train <id>` / `/trainclose` push)
 - **Tradeskill**: `TradeskillCombineIntent`, `TradeskillCloseIntent`
 - **Model**: `PlayerModelGeometryChanged`
+- **Tracking**: `TrackingIntent` (B895 -- the Tracking Window's Track button, filter toggles and two comboboxes, one intent onto `TrackingController`, the bodies `/track` and `/track*` reach)
 
 ## Two-stage drain in graphics runs (T220, T227)
 
