@@ -124,7 +124,10 @@ public:
 
 	// ---- Bank window methods (Player mode with graphics)
 	void OpenBankWindow(uint16_t bankerNpcId = 0);
-	void CloseBankWindow();
+	// `announce` = fable's own "Bank window closed" line. The out-of-range
+	// auto-close passes false: the official client prints only its eqstr
+	// 12143 "Come back soon!" there (UIGAP-residue, B996 #316).
+	void CloseBankWindow(bool announce = true);
 
 	// ---- Skill trainer window methods (Player mode with graphics)
 	void RequestTrainerWindow(uint16_t npcId);

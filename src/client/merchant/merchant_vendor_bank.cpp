@@ -278,7 +278,7 @@ void eqt::merchant::MerchantComponent::OpenBankWindow(uint16_t bankerNpcId)
 	}
 }
 
-void eqt::merchant::MerchantComponent::CloseBankWindow()
+void eqt::merchant::MerchantComponent::CloseBankWindow(bool announce)
 {
 	if (ctx_.game_state.player().bankerNpcId() == 0) {
 		return;
@@ -307,7 +307,9 @@ void eqt::merchant::MerchantComponent::CloseBankWindow()
 	}
 #endif
 
-	ctx_.out.System("Bank window closed");
+	if (announce) {
+		ctx_.out.System("Bank window closed");
+	}
 }
 // ============================================================================
 // Skill Trainer Window Methods

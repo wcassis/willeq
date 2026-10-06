@@ -159,7 +159,7 @@ void eqt::movement::MovementComponent::UpdateMovement()
 				LOG_DEBUG(MOD_INVENTORY, "Player moved too far from banker ({:.1f} > {:.1f}), closing bank",
 					dist, BANKER_INTERACTION_DISTANCE);
 				const std::string banker = EQT::toDisplayName(it->second.name);
-				ctx_.Merchant().CloseBankWindow();
+				ctx_.Merchant().CloseBankWindow(/*announce=*/false);
 				const std::string line = eqt::EqStrLine(ctx_.strings.Db(), 12143, {banker});
 				if (!line.empty()) {
 					ctx_.out.System(line);
