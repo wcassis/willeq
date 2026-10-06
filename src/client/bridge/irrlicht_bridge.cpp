@@ -4,6 +4,7 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/chat/chat_message_buffer.h"
+#include "client/chat/chat_text_colors.h"   // B993
 #include "client/graphics/ui/confirmation_dialog.h"   // B442b
 #include "client/graphics/ui/cursor_attachment.h"
 #include "client/graphics/ui/merchant_panel.h"
@@ -239,6 +240,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             msg.channel = static_cast<eqt::ui::ChatChannel>(d.channelType);
             msg.timestamp = static_cast<uint32_t>(std::time(nullptr));
             msg.color = eqt::ui::getChannelColor(msg.channel);
+            // B993: the [TextColors] row the chat panel draws it in.
+            msg.userColor = static_cast<uint8_t>(eqt::ui::userColorFor(msg.channel, d.chatType));
             // U04: Feed new UI
             if (renderer_->Frame().newUIChatBuffer_) {
                 renderer_->Frame().newUIChatBuffer_->addMessage(std::move(msg));

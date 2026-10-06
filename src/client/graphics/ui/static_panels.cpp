@@ -11,6 +11,7 @@
 #include "client/graphics/ui/inventory_layout.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/chat/chat_message_buffer.h"
+#include "client/chat/chat_text_colors.h"
 #include "client/graphics/text_batch.h"
 #include "client/state/event_bus.h"  // T156: applyHotbarSlotAssigned
 #include <fmt/format.h>
@@ -168,7 +169,11 @@ void renderChatPanel(UIRenderer& ui, const UILayout& layout,
         irr::s32 y = areaTop;
         for (int i = startIdx; i < endIdx; ++i) {
             const ChatWrappedLine& line = wrappedLines.line(static_cast<size_t>(i));
-            tb->addText(line.text, areaX, y, line.color);
+            // B993: the ONE place a chat line's colour is decided -- its
+            // [TextColors] row in the player's table, else its own colour.
+            const irr::video::SColor color(eqt::ui::resolveChatLineColor(
+                state.textColors, line.userColor, line.color.color));
+            tb->addText(line.text, areaX, y, color);
             y += lineH;
         }
 

@@ -18,6 +18,7 @@
 #include "client/hotbar/hotbar_slot_type.h"  // T156
 #include "client/graphics/ui/text_entry.h"  // T421: ChatPanelState derives from it
 #include "client/graphics/ui/chat_wrap_cache.h"  // T462: ChatPanelState::wrapCache
+#include "client/chat/chat_text_colors.h"  // B993: ChatPanelState::textColors
 
 namespace eqt { namespace ui { class ChatMessageBuffer; } }
 // T156: applyHotbarSlotAssigned() below takes this by const reference; the
@@ -92,6 +93,10 @@ void renderTargetInfo(UIRenderer& ui, const UILayout& layout,
 // exactly one text-entry mechanism (include/client/graphics/ui/text_entry.h).
 struct ChatPanelState : TextEntryState {
     eqt::ui::ChatMessageBuffer* messageBuffer = nullptr;
+    // B993 (#313): the player's [TextColors] table (the Options window's
+    // Colors page owns it, OptionsPanelState::textColors). Null = every line
+    // draws its own compiled colour.
+    const eqt::ui::ChatTextColors* textColors = nullptr;
     int scrollOffset = 0;      // Lines scrolled up from bottom (0 = at bottom)
     bool showTimestamps = false;
     bool mouseHover = false;   // Whether mouse is over chat panel

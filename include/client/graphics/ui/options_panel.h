@@ -51,6 +51,8 @@
 #include <string>
 
 #include "client/graphics/ui/options_layout.h"
+#include "client/graphics/ui/color_picker.h"  // B993
+#include "client/chat/chat_text_colors.h"     // B993
 #include "client/state/event_bus.h"
 #include "client/graphics/ui/ui_layout.h"
 
@@ -98,6 +100,14 @@ struct OptionsPanelState {
     int keysCategory = 0;        // OKP_KeyboardFilterCombobox
     int keysCaptureAction = -1;  // a HotkeyAction waiting for its key, or -1
     int keysCaptureSlot = 0;     // 0 Keypress, 1 Alternate
+
+    // --- The Colors page (B993, options_colors.cpp) ---
+    // The player's [TextColors] table; the chat panel draws from it by
+    // pointer (ChatPanelState::textColors) and UiPreferences persists it.
+    eqt::ui::ChatTextColors textColors = eqt::ui::defaultChatTextColors();
+    int colorSelectedRow = 1;    // OCP_ColorChooseList's selection, User_N (1-based)
+    int colorListTop = 1;        // the first User_N the list shows (VScroll)
+    ColorPickerState colorPicker;  // EQUI_ColorPickerWnd
 
     int hoveredTab = -1;
     int hoveredControl = -1;
@@ -188,6 +198,26 @@ void renderOptionsWiredList(UIRenderer& ui, const UILayout& layout,
 OptionsLayout::Setting resolveOptionsClick(const UILayout& layout,
                                            OptionsPanelState& state, int i,
                                            int mouseX, int mouseY);
+
+// --- The Colors page (B993, options_colors.cpp) ---
+
+/** Draw OCP_ColorChooseList (`i`): the 86 [TextColors] rows from colorListTop. */
+void renderOptionsColorList(UIRenderer& ui, const UILayout& layout,
+                            const OptionsPanelState& state, int i);
+
+/**
+ * A click on one of the three Colors-page controls (`i`): select a row /
+ * scroll the list, reset the table, or open the picker on the selected row.
+ * Returns TextColorReset when the table changed, else None.
+ */
+OptionsLayout::Setting resolveOptionsColorsClick(const UILayout& layout, OptionsPanelState& state,
+                                                 int i, int mouseX, int mouseY);
+
+/** Reset every row to eqclient.ini's table. True if anything moved. */
+bool resetOptionsTextColors(OptionsPanelState& state);
+
+/** The VScroll strip of a listbox: the right 12px (fable's, flagged). */
+constexpr irr::s32 LIST_VSCROLL_W = 12;
 
 /** Render the window. Only when optionsWindowIsVisible(). */
 void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,

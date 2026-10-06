@@ -386,6 +386,18 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_options_wiring DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B993 (#313): the Colors page -- the [TextColors] table, the colour picker,
+# persistence, /option textcolor, and a chat line's pixels in the chosen
+# colour (headless GLES2 + willeq.eqe1; that one self-skips without them).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_options_colors
+        test_options_colors.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_options_colors PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_options_colors GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_options_colors DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_tradeskill_combat_panels
         test_tradeskill_combat_panels.cpp

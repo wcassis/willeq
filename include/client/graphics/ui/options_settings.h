@@ -100,6 +100,12 @@ enum class Setting : uint8_t {
     KeysAssignment,      // OKP_KeyboardAssignmentList: click a slot to rebind
     KeysReloadDefaults,  // OKP_DefaultKeysButton: back to the shipped bindings
 
+    // --- Colors page (B993): Markers over OptionsPanelState::textColors ---
+    TextColorList,       // OCP_ColorChooseList: selects the row Change edits
+    TextColorReset,      // OCP_UserColorDefault: back to eqclient.ini's table
+    TextColorChange,     // OCP_UserColorChange: opens the ColorPickerWnd
+    TextColors,          // no control: "the table changed" (picker Accept, /option textcolor)
+
     Count
 };
 

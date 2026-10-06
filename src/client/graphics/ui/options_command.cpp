@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <vector>
 
 #include "client/graphics/ui/options_panel.h"
 
@@ -84,6 +85,81 @@ std::string choicesHint(Setting s) {
     return "";
 }
 
+std::string colorText(const OptionsPanelState& state, int n) {
+    const auto& c = state.textColors[n - 1];
+    return "textcolor " + std::to_string(n) + " (" + eqt::ui::userColorName(n) + ") = " +
+           std::to_string(c.r) + " " + std::to_string(c.g) + " " + std::to_string(c.b);
+}
+
+// B993: `/option textcolor [reset | <N|name> [<r> <g> <b>]]`. A row is named
+// by its User_N number or its Options-list text, squashed ("youhitother").
+void runTextColor(OptionsPanelState& state, const std::string& rest, OptionsCommandResult& r) {
+    static const char* kUsage =
+        "Usage: /option textcolor [reset | <1-86|name> [<r> <g> <b>]] (0-255)";
+    std::istringstream in(rest);
+    std::vector<std::string> words;
+    for (std::string w; in >> w;) words.push_back(w);
+    if (words.empty()) {
+        r.lines.push_back(kUsage);
+        return;
+    }
+    if (squash(words[0]) == "reset") {
+        if (resetOptionsTextColors(state)) r.changed.push_back(Setting::TextColorReset);
+        r.lines.push_back("textcolor: every row reset to the defaults");
+        return;
+    }
+    // The row: a number, else the longest run of leading words naming one.
+    int n = 0;
+    size_t used = 0;
+    try {
+        size_t pos = 0;
+        const int v = std::stoi(words[0], &pos);
+        if (pos == words[0].size()) { n = v; used = 1; }
+    } catch (...) {
+    }
+    if (used == 0) {
+        for (size_t k = words.size(); k >= 1 && n == 0; --k) {
+            std::string joined;
+            for (size_t j = 0; j < k; ++j) joined += words[j];
+            for (int m = 1; m <= eqt::ui::kUserColorCount; ++m) {
+                if (squash(eqt::ui::userColorName(m)) == squash(joined)) { n = m; used = k; break; }
+            }
+        }
+    }
+    if (n < 1 || n > eqt::ui::kUserColorCount) {
+        r.lines.push_back(kUsage);
+        return;
+    }
+    if (words.size() == used) {
+        r.lines.push_back(colorText(state, n));
+        return;
+    }
+    if (words.size() != used + 3) {
+        r.lines.push_back(kUsage);
+        return;
+    }
+    int rgb[3] = {0, 0, 0};
+    for (int k = 0; k < 3; ++k) {
+        try {
+            size_t pos = 0;
+            rgb[k] = std::stoi(words[used + k], &pos);
+            if (pos != words[used + k].size() || rgb[k] < 0 || rgb[k] > 255) throw 0;
+        } catch (...) {
+            r.lines.push_back(kUsage);
+            return;
+        }
+    }
+    eqt::ui::UserColor c;
+    c.r = static_cast<uint8_t>(rgb[0]);
+    c.g = static_cast<uint8_t>(rgb[1]);
+    c.b = static_cast<uint8_t>(rgb[2]);
+    if (state.textColors[n - 1] != c) {
+        state.textColors[n - 1] = c;
+        r.changed.push_back(Setting::TextColors);
+    }
+    r.lines.push_back(colorText(state, n));
+}
+
 void runOption(OptionsPanelState& state, const std::string& args, OptionsCommandResult& r) {
     std::istringstream in(args);
     std::string name;
@@ -91,6 +167,11 @@ void runOption(OptionsPanelState& state, const std::string& args, OptionsCommand
     std::string rest;
     std::getline(in, rest);
     rest = trim(rest);
+
+    if (squash(name) == "textcolor") {
+        runTextColor(state, rest, r);
+        return;
+    }
 
     if (name.empty() || squash(name) == "list") {
         for (int i = 1; i < OptionsLayout::kSettingCount; ++i) {

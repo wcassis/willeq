@@ -48,6 +48,7 @@ namespace Graphics {
 
 bool FrameComponent::toggleOptionsWindow() {
     optionsState_.isOpen = !optionsState_.isOpen;
+    if (!optionsState_.isOpen) optionsState_.colorPicker.isOpen = false;  // B993
     LOG_INFO(MOD_GRAPHICS, "Options window {}",
              optionsState_.isOpen ? "opened" : "closed");
     return optionsState_.isOpen;
@@ -138,6 +139,14 @@ void FrameComponent::applyOptionsSettingB430(OptionsLayout::Setting setting) {
             optionsState_.keysCaptureAction = -1;
             eqt::input::HotkeyManager::instance().restoreShippedBindings();
             LOG_INFO(MOD_GRAPHICS, "Options: key bindings reloaded from defaults");
+            return;
+        case Setting::TextColors:
+        case Setting::TextColorReset:
+            // B993: the chat panel reads the table by pointer at draw time
+            // (ChatPanelState::textColors), so a changed row is on screen the
+            // next frame; syncUiPreferences() persists it.
+            LOG_INFO(MOD_GRAPHICS, "Options: chat colours {}",
+                     setting == Setting::TextColorReset ? "reset to the defaults" : "changed");
             return;
         case Setting::PCNames:
         case Setting::NPCNames:

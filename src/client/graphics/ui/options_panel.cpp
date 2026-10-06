@@ -248,6 +248,11 @@ void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,
                 break;
         }
     }
+
+    // B993: EQUI_ColorPickerWnd, above the window that opened it -- its own
+    // window, so its own layer (B992): the Colors list's text under it must
+    // not show through.
+    if (state.colorPicker.isOpen) renderColorPicker(ui.layer(), layout, state.colorPicker);
 }
 
 int hitTestOptionsTab(const UILayout& layout, const OptionsPanelState& state,

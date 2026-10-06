@@ -281,13 +281,13 @@ constexpr Control kControls[] = {
 // ----------------------------------------------------------------- Colors
 // OCP_UserColorDefault: Top=8, Bottom=30 (both from the top), Left=126,
 // Right=102 (from right) => (126,8) 159x22.
-{Tab::Colors, Kind::Button,  "OCP_UserColorDefault",  126,   8, 159,  22, "Reset Default Colors",       Setting::None},
+{Tab::Colors, Kind::Button,  "OCP_UserColorDefault",  126,   8, 159,  22, "Reset Default Colors",       Setting::TextColorReset},
 // OCP_ColorChooseList: Top=35, Left=20, Right=20, Bottom=35 (from bottom)
 // => (20,35)-(367,367) = 347x332.
-{Tab::Colors, Kind::Listbox, "OCP_ColorChooseList",    20,  35, 347, 332, "Text description|Color Sample", Setting::None},
+{Tab::Colors, Kind::Listbox, "OCP_ColorChooseList",    20,  35, 347, 332, "Text description|Color Sample", Setting::TextColorList},
 // OCP_UserColorChange: both anchors from the BOTTOM, Top=30 => y1 = 372,
 // Bottom=8 => y2 = 394.
-{Tab::Colors, Kind::Button,  "OCP_UserColorChange",   126, 372, 159,  22, "Change Selected Color",      Setting::None},
+{Tab::Colors, Kind::Button,  "OCP_UserColorChange",   126, 372, 159,  22, "Change Selected Color",      Setting::TextColorChange},
 
 // ------------------------------------------------------------------- Mail
 // Every one of these is anchored to the page's top-left, so the offsets are

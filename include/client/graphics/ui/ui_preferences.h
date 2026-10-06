@@ -51,6 +51,8 @@
 #include "client/graphics/ui/options_settings.h"
 // B834: the [Tips] section (device-free).
 #include "client/graphics/ui/tip_preferences.h"
+// B993: the [TextColors] table (device-free).
+#include "client/chat/chat_text_colors.h"
 
 namespace EQT {
 namespace Graphics {
@@ -145,6 +147,12 @@ struct UiPreferences {
     // This one IS the oracle's own file and section.
     TipPreferences tips;
 
+    // B993 (#313): the Colors page's chat-colour table, under the oracle's
+    // own `[TextColors] User_<N>_Red/_Green/_Blue` keys (0..255). The oracle
+    // keeps it in eqclient.ini; it is here for T432's one-writer rule -- the
+    // same flagged deviation as `[Options]`.
+    eqt::ui::ChatTextColors textColors = eqt::ui::defaultChatTextColors();
+
     bool operator==(const UiPreferences& o) const {
         return inventoryWindow == o.inventoryWindow
             && spellBookWnd == o.spellBookWnd
@@ -160,6 +168,7 @@ struct UiPreferences {
             && clipPlane == o.clipPlane
             && optionValues == o.optionValues
             && tips == o.tips
+            && textColors == o.textColors
             && cameraMode == o.cameraMode
             && user1Camera == o.user1Camera
             && user2Camera == o.user2Camera;

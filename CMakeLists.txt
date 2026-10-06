@@ -408,6 +408,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/inventory/inventory_packets.cpp
     src/client/hotbar/hotbar_model.cpp
     src/client/chat/chat_message_buffer.cpp
+    src/client/chat/chat_text_colors.cpp  # B993: [TextColors] User_1..86
     src/client/graphics/ui/command_registry.cpp
     # T310 Leg A: the /fpcam tunable store's name lookup, parsing and
     # formatting. No renderer dependency at all (it drives constants, not a
@@ -741,6 +742,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/options_classification.cpp
         src/client/graphics/ui/options_command.cpp
         src/client/graphics/ui/options_keys.cpp
+        src/client/graphics/ui/options_colors.cpp  # B993: the Colors page
+        src/client/graphics/ui/color_picker.cpp    # B993: EQUI_ColorPickerWnd
         # B897: the Friends window (friends + ignore lists).
         src/client/graphics/ui/friends_panel.cpp
         src/client/graphics/ui/tip_window.cpp  # B834: the tip windows

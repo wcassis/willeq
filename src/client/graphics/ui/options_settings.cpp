@@ -168,6 +168,13 @@ const SettingInfo kSettings[kSettingCount] = {
 {Setting::KeysCategory, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OKP_KeyboardFilterCombobox"},
 {Setting::KeysAssignment, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OKP_KeyboardAssignmentList"},
 {Setting::KeysReloadDefaults, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OKP_DefaultKeysButton"},
+
+// --- Colors (B993): not values -- the table is OptionsPanelState::textColors,
+// persisted under [TextColors] User_N_Red/Green/Blue (ui_preferences.cpp). ---
+{Setting::TextColorList, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OCP_ColorChooseList"},
+{Setting::TextColorReset, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OCP_UserColorDefault"},
+{Setting::TextColorChange, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OCP_UserColorChange"},
+{Setting::TextColors, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "ColorPickerWnd Accept / /option textcolor"},
 };
 // clang-format on
 

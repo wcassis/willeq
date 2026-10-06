@@ -147,9 +147,9 @@ const ControlClass kClasses[] = {
 {"OFP_FilterComboBox",               W,  "the selected filter's setting"},
 
 // ----------------------------------------------------------------- Colors
-{"OCP_UserColorDefault",             NC, "chat colours are a compiled per-channel table (getChannelColor), no user table yet -- B993 #313 (UIGAP-small filed it: the table, [TextColors] persistence and EQUI_ColorPickerWnd are not small); #146"},
-{"OCP_ColorChooseList",              NC, "no user colour table to list (eqclient.ini [TextColors] User_N_*) -- B993 #313; #146"},
-{"OCP_UserColorChange",              NC, "no colour-picker window (the oracle opens EQUI_ColorPickerWnd) -- B993 #313; #146"},
+{"OCP_UserColorDefault",             W,  "B993: OptionsPanelState::textColors back to eqclient.ini's [TextColors] table"},
+{"OCP_ColorChooseList",              W,  "B993: the 86 [TextColors] User_N rows (eqstr 6200..), selects the row Change edits"},
+{"OCP_UserColorChange",              W,  "B993: opens EQUI_ColorPickerWnd on the selected row (color_picker.h)"},
 
 // ------------------------------------------------------------------- Mail
 {"OMP_PathToAddressBookLabel",            PV, kNoMail},
