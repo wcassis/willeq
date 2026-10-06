@@ -36,13 +36,14 @@
 namespace EQT {
 namespace Graphics {
 
-// What a build unit does; the predictor keeps one average per kind.
+// What a unit does; the predictor keeps one average per kind.
 enum class EntityBuildUnitKind : uint8_t {
     Upload = 0,   // ONE pending texture to the GPU (decoded by the prep worker)
     Create,       // Placeholder -> node created and its materials promoted (B966)
     Finalize,     // MeshFinalize: name tag, corpse pose, light, race ref
     Equip,        // EquipmentAttach: weapon meshes on the point bones
     Other,        // anything else the frame did under the same slice (GPU result)
+    Impostor,     // B979: ONE ImpostorCache::capture (entity_impostors.cpp)
     Count
 };
 
@@ -103,6 +104,13 @@ public:
         return windowStart_ < 0.0 || nowSeconds - windowStart_ >= windowSeconds;
     }
     const std::string& windowLine() const { return windowLine_; }
+
+    // B979: the impostor capture pass (entity_impostors.cpp) runs AFTER
+    // endFrame() -- it is inside the frame's entity update, not the frame's
+    // build slice. Account its finished capture work into the window (and the
+    // frame's total) without resetting the current-frame counters: the build
+    // slice already closed the frame.
+    void endCaptureFrame(float frameMs);
 
 private:
     EntityBuildSlicePolicy policy_;

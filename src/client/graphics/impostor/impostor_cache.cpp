@@ -56,16 +56,27 @@ ImpostorCache::~ImpostorCache() {
 
 bool ImpostorCache::ensureScratch() {
     if (scratch_) return true;
+    // B979: the scratch FBO is the capture's one-time GPU cost. Time it so the
+    // first-capture decomposition (refactor/B979) names its steps.
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
     eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDriver);
     char name[64];
     snprintf(name, sizeof(name), "impostor_scratch_%d", kCellPx);
     scratch_ = driver_->addRenderTargetTexture(irr::core::dimension2d<irr::u32>(kCellPx, kCellPx), name);
+    const double ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+    if (scratch_)
+        LOG_INFO(MOD_GRAPHICS, "Impostor: scratch FBO allocated in {:.2f} ms", ms);
     return scratch_ != nullptr;
 }
 
 bool ImpostorCache::ensurePage(int page) {
     if (page < static_cast<int>(pages_.size()) && pages_[page].tex) return true;
 #ifdef EQT_HAS_GLES2
+    // B979: a page is a kPagePx^2 RGBA8 allocation (glTexImage2D) -- the other
+    // one-time GPU cost of a first capture. Time it per page.
+    using Clock = std::chrono::steady_clock;
+    const auto t0 = Clock::now();
     eqt::memory::MemoryScope scope(eqt::memory::Category::TexturesDriver);
     if (static_cast<size_t>(page) >= pages_.size()) pages_.resize(page + 1);
     GLint prevTex = 0;
@@ -86,8 +97,9 @@ bool ImpostorCache::ensurePage(int page) {
     pages_[page].tex = static_cast<irr::video::ITexture*>(
         gles2WrapTexture(driver_, name, t, kPagePx, kPagePx, static_cast<unsigned>(kPageBytes)));
     stats_.pageAllocs++;
-    LOG_INFO(MOD_GRAPHICS, "Impostor: page {} allocated ({} B); row now {} B of {} B", page, kPageBytes,
-             rowBytes(), budgetBytes_);
+    const double pageMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+    LOG_INFO(MOD_GRAPHICS, "Impostor: page {} allocated in {:.2f} ms ({} B); row now {} B of {} B", page,
+             pageMs, kPageBytes, rowBytes(), budgetBytes_);
     return pages_[page].tex != nullptr;
 #else
     (void)page;
