@@ -832,7 +832,18 @@ it without taking that measurement first.
 - **B972** (B, memory) → issue #290. Mesa's stream-upload buffers and Lima's
   draw-time BOs hold 3-6 MiB of the client's GEM at `steady_60s`, driven by
   client-array draws (2D UI, entities, zone pools, raw-GL particles). A static
-  VBO for the zone pools measured worse (B962). Measured by B962.
+  VBO for the zone pools measured worse (B962). Measured by B962. **2026-10-06
+  (`refactor/B972/README.md`): reproduced the baseline RED on both zones at the
+  fable tip (qeynos2 18.90 / gfaydark 24.5 MiB `gpu_unnamed_steady`, cache-on,
+  imp200far) and ran the decisive `off200far` control: impostors OFF reads the
+  SAME (qeynos2 17.64 / gfaydark 24.54), so the impostor is NOT the lever — its
+  ~12 MiB is a *named* texture, its unnamed share is ≤1.3 MiB. Census: 13×1 MiB
+  cache-retained `u_upload` slots (6 `draw:zone` zone-merge + 6 `draw3d:client`
+  + 1 raw-GL particle, NO `draw2d`) + ~7.4 MiB per-draw varying BOs. The 10 MiB
+  crowd-tour bound needs a ~16-19 MiB cut dominated by the zone-merge pool that
+  B962 already rejected a static VBO for. **Blocker (needs Will): re-scope the
+  bound to a reachable point / ship the self-contained cuts + a follow-up
+  zone-merge card, vs keep the bound and split the work.**
 - ~~**B970** (B) → issue #288. `build-arm` fetched `irrlicht-1.8.5.zip` and
   `libpng-1.6.37.tar.xz` from downloads.sourceforge.net inside a Docker layer, so
   the 2026-10-01 SourceForge outage (HTTP 522, ~3 h) failed every job whose
