@@ -467,6 +467,21 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_container_window DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B896 (GitLab #212): the player trade window and the NPC give window --
+# geometry against EQUI_TradeWnd.xml / EQUI_GiveWnd.xml, the appliers, the
+# clicks on a real bridge, the game side through a real EverQuest (auto-ack,
+# auto-place, withdrawal refusal, coin move, eqstr 1450, no completion line)
+# and the green-name state machine from review/UIGAP-ORACLE/212/trade.tsv.
+# No device, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_trade_window
+        test_trade_window.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_trade_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_trade_window GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_trade_window DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T439 (boards B432/B444/B434): the T434/T436 residue -- the absolute volume
 # round trip, the zone-in snapshot's cursor and bank slots, and the deleted
 # PopupType::Options enumerator. Half the cases are source censuses that read

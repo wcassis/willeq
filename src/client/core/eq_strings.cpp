@@ -442,6 +442,9 @@ std::string eqt::StringDb::GetStringMessage(uint32_t string_id) {
 		case 335: return "You gained raid experience!";
 		case 336: return "You gained group leadership experience!";
 		case 337: return "You gained raid leadership experience!";
+		// B896 (#212): the trade cancel line both sides print, MEASURED
+		// (review/UIGAP-ORACLE/212/trade.tsv row 8).
+		case 1450: return "You have cancelled the trade.";
 		default: return fmt::format("[Unknown message #{}]", string_id);
 	}
 }

@@ -373,6 +373,14 @@ void eqt::zone::ZoneComponent::OnTradeRequest(const EQ::Net::Packet & p)
 				from_name = it->second.name;
 			}
 			ctx_.trade_manager->handleTradeRequest(*req, from_name);
+			// B896 (#212): the official client ACKs a trade request by itself,
+			// with no prompt, 0.17 s after it arrives, and both windows open
+			// (MEASURED, review/UIGAP-ORACLE/212/trade.tsv row 1). /accept and
+			// /tradedecline keep their pending-request bodies for a request
+			// the manager is holding, but none is held here any more.
+			if (ctx_.trade_manager->getState() == TradeState::PendingAccept) {
+				ctx_.trade_manager->acceptTradeRequest();
+			}
 		}
 		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Trade request from spawn {} to spawn {}",
@@ -387,7 +395,14 @@ void eqt::zone::ZoneComponent::OnTradeRequestAck(const EQ::Net::Packet & p)
 	if (p.Length() >= 2 + sizeof(EQT::TradeRequestAck_Struct)) {
 		const EQT::TradeRequestAck_Struct* ack = reinterpret_cast<const EQT::TradeRequestAck_Struct*>(p.Data() + 2);
 		if (ctx_.trade_manager) {
+			// B896 (#212): OUR request answered (a player's client, or the
+			// server for an NPC) -> the held item goes into slot 3000 by
+			// itself (trade.tsv rows 1 and 9).
+			const bool weAsked = ctx_.trade_manager->getState() == TradeState::PendingRequest;
 			ctx_.trade_manager->handleTradeRequestAck(*ack);
+			if (weAsked && ctx_.trade_manager->isTrading()) {
+				ctx_.Bridge().OfferHeldItemOnTradeOpen();
+			}
 		}
 		if (EverQuest::GetDebugLevel() >= 2) {
 			LOG_DEBUG(MOD_MAIN, "Trade request ack from spawn {} to spawn {}",

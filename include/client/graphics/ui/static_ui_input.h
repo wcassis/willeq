@@ -46,6 +46,7 @@ struct OptionsPanelState;
 struct TrainerPanelState;  // B898
 // B899 (#215 / #151 Leg B).
 struct ContainerWindowsState;
+struct TradePanelState;  // B896
 
 /**
  * T313 -- the three panels that carry a scrollOffset.
@@ -318,6 +319,21 @@ public:
      * window was addressed.
      */
     bool processContainerEscape(ContainerWindowsState& containers);
+
+    /**
+     * B896 (#212): the trade window and the NPC give window. Defined in
+     * src/client/graphics/ui/trade_input.cpp. Returns true when the point is
+     * over the open window (the caller then withholds the click from the
+     * windows below it). An own slot takes a LEFT click only with an item
+     * held, into an EMPTY slot, through B442's slotClick() -> CursorGesture
+     * with slot 3000+n (an offered item cannot be taken back: trade.tsv row
+     * 5); a RIGHT click on an occupied own slot is the item display. An own
+     * coin row with coin held pushes TradeWindowIntent{CoinFromCursor}; Trade
+     * / Give pushes {Accept}; Cancel and the close box push {Cancel}. Nothing
+     * here changes the panel's contents: the game thread answers.
+     */
+    bool processTradeInput(int mouseX, int mouseY, bool leftClicked,
+                           const UILayout& layout, TradePanelState& trade);
 
     /**
      * Handle a key press. Returns true if consumed.

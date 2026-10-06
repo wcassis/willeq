@@ -557,6 +557,10 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 // B899 (#215): the WORLD container range, 4000-4009, and the
                 // general BAG range, 251-330 -- the container windows' cells.
                 // The applier returns false for every other slot id.
+            } else if (EQT::Graphics::applyTradeSlotChanged(
+                           renderer_->Frame().tradeState_, d)) {
+                // B896 (#212): our own trade slots, 3000-3007 -- published by
+                // the cursor gesture that placed the item, never by this side.
             } else {
                 // T415 (board B321): the WORLD container range, 4000-4009.
                 // eqemu sends a tradeskill container's contents as
@@ -721,27 +725,61 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         }
         break;
 
-    // Trade events (D11c)
+    // Trade events (D11c). B896 (GitLab #212): the arms were LOG_TRACEs that
+    // dropped every payload, because there was no window. They feed the
+    // trade / give window now (trade_panel.cpp). MEASURED behaviour,
+    // review/UIGAP-ORACLE/212/trade.tsv: the window opens with the INVENTORY
+    // beside it (row 1) and both close at completion (row 7) and on cancel
+    // (row 8, A.R21_after_B_cancel.png).
     case state::GameEventType::TradeRequestReceived:
+        // The official client acks a request by itself (row 1); the window
+        // opens on the TradeStarted that ack produces, so there is no prompt.
         LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeRequestReceived");
         break;
     case state::GameEventType::TradeStarted:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeStarted");
+        if (renderer_) {
+            auto& d = std::get<state::TradeStartedData>(event.data);
+            auto& frame = renderer_->Frame();
+            EQT::Graphics::applyTradeStarted(frame.tradeState_, d, frame.cachedPlayerStats_.name);
+            // Row 1: the Inventory opens with it (the centre popups are
+            // mutually exclusive, so the other three close).
+            frame.inventoryState_.activePopup = EQT::Graphics::PopupType::Inventory;
+            frame.spellbookState_.isOpen = false;
+            frame.skillsPopupState_.isOpen = false;
+        }
         break;
     case state::GameEventType::TradeItemUpdated:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeItemUpdated");
+        if (renderer_) {
+            EQT::Graphics::applyTradeItemUpdated(
+                renderer_->Frame().tradeState_, std::get<state::TradeItemUpdatedData>(event.data));
+        }
         break;
     case state::GameEventType::TradeMoneyUpdated:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeMoneyUpdated");
+        if (renderer_) {
+            EQT::Graphics::applyTradeMoneyUpdated(
+                renderer_->Frame().tradeState_, std::get<state::TradeMoneyUpdatedData>(event.data));
+        }
         break;
     case state::GameEventType::TradeAcceptStateChanged:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeAcceptStateChanged");
+        if (renderer_) {
+            EQT::Graphics::applyTradeAcceptStateChanged(
+                renderer_->Frame().tradeState_,
+                std::get<state::TradeAcceptStateChangedData>(event.data));
+        }
         break;
     case state::GameEventType::TradeCancelled:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeCancelled");
-        break;
     case state::GameEventType::TradeCompleted:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TradeCompleted");
+        if (renderer_) {
+            auto& frame = renderer_->Frame();
+            // Rows 7 and 8: the window AND the inventory close. Only a window
+            // that was open closes the inventory (a declined request that
+            // never opened one leaves the inventory as the player had it).
+            if (frame.tradeState_.isOpen &&
+                frame.inventoryState_.activePopup == EQT::Graphics::PopupType::Inventory) {
+                frame.inventoryState_.activePopup = EQT::Graphics::PopupType::None;
+            }
+            EQT::Graphics::applyTradeEnded(frame.tradeState_);
+        }
         break;
 
     // Spell events (D12)

@@ -264,7 +264,20 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //       `renderQuantityWindow(...)` inside the same guard: the topmost modal,
 //       below only the pointer.
 //     The count rises 354 -> 357.
-const size_t kGoldenSize = 357u;
+//   * B896 (GitLab #212): the trade / give window, applied after B442b (rebased onto it). TWO pure insertions, no
+//     text change and no reorder anywhere (the renumbering of the entries
+//     after each is the only other hunk).
+//     - entry 266, `processTradeWindowInput();`, directly after entry 265
+//       (B442's `setFrameClickState(rightClick, ...)`) and before entry 267
+//       `bool uiTook = staticUIInput_->processInput(`: the window is drawn above the centre
+//       popups, the bank, the trainer, the tracking and container windows,
+//       and the inventory is open beside it (review/UIGAP-ORACLE/212/
+//       trade.tsv row 1), so it takes its click first and spends it. A
+//       FrameComponent method (renderer_frame_trade.cpp), like B897's.
+//     - entry 323, `renderTradeWindow(...)`, directly after entry 322
+//       `renderContainerWindows(...)` and before the item display.
+//     The count rises 357 -> 359.
+const size_t kGoldenSize = 359u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

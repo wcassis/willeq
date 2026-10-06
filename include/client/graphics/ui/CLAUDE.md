@@ -70,8 +70,9 @@ The old WindowManager/WindowBase draggable window system was completely removed 
 | Skill trainer | Centred, the oracle's own 580x280, unscaled | `TrainerPanelState` | `renderTrainerWindow()` (B898, #214) |
 | Tracking | Centred, the oracle's own 150x460 (height clamped to the screen) | `TrackingPanelState` | `renderTrackingWindow()` (B895, GitLab #211) |
 | Friends | The oracle's own 168x288, at `defaults.ini`'s `[FriendsWindow]` position (XML (196,50) elsewhere), two tabs | `FriendsPanelState` | `renderFriendsWindow()` (B897) |
+| Trade / Give | The oracle's own (0,25): trade 236x365, give 108x375, unscaled | `TradePanelState` (`isNpc` picks the give window) | `renderTradeWindow()` (B896, #212; geometry `trade_layout.h` / `give_layout.h`) |
 
-Center popups (inventory, spellbook, skills, merchant, loot, trade, tradeskill container) share the same screen region and are mutually exclusive. **The BANK is not one of them** (T436): the oracle's `BankWnd` is `Style_Sizable false` at its own 108x347, so like the combat-abilities window it keeps its own size and its own anchor and draws above the centre popups. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle. **Neither is the item display window** (T421): `EQUI_ItemDisplay.xml` gives it `RelativePosition false` and `<Location>(0,80)</Location>`, so it is drawn and hit-tested LAST, on top of every centre popup, and ESC dismisses it before them. **Nor is the Options window** (T434), for the same reason and one level higher still: `EQUI_OptionsWindow.xml` is `RelativePosition false` at `<Location>(90,47)</Location>`, so it is drawn and hit-tested after even the item display and ESC dismisses it first of all. Its geometry is `options_layout.h`, a table of every control the oracle XML declares; a control whose `OptionsLayout::Setting` is `None` has no backing setting in fable, is drawn greyed and is **not hit-testable** (the T363 rule made mechanical).
+Center popups (inventory, spellbook, skills, merchant, loot, tradeskill container) share the same screen region and are mutually exclusive. **The BANK is not one of them** (T436): the oracle's `BankWnd` is `Style_Sizable false` at its own 108x347, so like the combat-abilities window it keeps its own size and its own anchor and draws above the centre popups. The combat abilities window is NOT one of them -- like the buff/group/pet panels it is a HUD window with its own anchor and its own Alt+C toggle. **Neither is the item display window** (T421): `EQUI_ItemDisplay.xml` gives it `RelativePosition false` and `<Location>(0,80)</Location>`, so it is drawn and hit-tested LAST, on top of every centre popup, and ESC dismisses it before them. **Nor is the Options window** (T434), for the same reason and one level higher still: `EQUI_OptionsWindow.xml` is `RelativePosition false` at `<Location>(90,47)</Location>`, so it is drawn and hit-tested after even the item display and ESC dismisses it first of all. Its geometry is `options_layout.h`, a table of every control the oracle XML declares; a control whose `OptionsLayout::Setting` is `None` has no backing setting in fable, is drawn greyed and is **not hit-testable** (the T363 rule made mechanical).
 
 **What is wired (B430/B431/B433).** Every control row has a decision in `src/client/graphics/ui/options_classification.cpp` — WIRED, or excluded as POST-VELIOUS, OUT (Will 2026-09-23), NO CAPABILITY (naming the issue that owns the missing capability) or AWAITING ORACLE — and `OptionsClassification.EveryControlRowIsClassifiedExactlyOnce` / `AControlIsWiredIffItHasASetting` fail on a gap; read that file, not this paragraph, for the live census. The settings themselves are one table, `options_settings.h/.cpp` (oracle ini key, scale, default, owner), and every click resolves through `resolveOptionsClick()` (`options_lists.cpp`: checkbox toggles, slider steps, combobox CYCLES — a flagged deviation from the oracle's drop-down — list rows select) into `FrameComponent::applyOptionsSetting()`. Owners: **Renderer** settings persist per character under their `eqclient.ini` key; **Game** settings (anonymous/roleplay, autosplit, the three auto-consents) are the server's and travel as `GameOptionIntent` → `OP_SpawnAppearance`, coming back on `GameOptionChanged` (also published from the player profile at zone-in and from `/anon`, `/roleplay`). Pages: **Filters** — the era `/filter` set (eqstr 1354-1360), one `OP_SetServerFilter` payload, `/filter <name>`; **General** — the anon pair, autosplit, auto-consent ×3, pet window popup, the two volumes; **Display** — PC and NPC names (two flags under the Ctrl+F3 master, `EntityRenderer::setNameTagKindsVisible`), clip plane; **Mouse** — invert Y, look spring, mouse look, wheel zoom, sensitivity (`include/client/graphics/player/mouse_options.h`); **Keys** — category combobox, the Command/Keypress/Alternate list over `HotkeyManager` (a slot click captures the next key, `options_keys.h`), Reload defaults; **Colors** — not reached; **Mail** — all OUT. `/option [list | <name> [value]]` (registry 3) sets any wired setting by name.
 
@@ -90,6 +91,33 @@ keys, sorted and tail-packed with `*NULL*` as every real file is -- written by `
 thread (headless too); the window's open state is `[FriendsWindow] Show=` in the UI_ file. Drawn and
 hit-tested just below the Options window; ESC closes it after Options. The Editboxes take the keyboard through
 `processFriendsNameInput()`, beside the tradeskill gate, with their own hold flag.
+
+**The trade and give windows** (B896, GitLab #212). `trade_layout.h` quotes `EQUI_TradeWnd.xml`
+(236x365 at (0,25); `Style_Sizable true` but it fits 640x480, so unscaled) and `give_layout.h`
+`EQUI_GiveWnd.xml` (108x375, `Style_Sizable false`); the two bottom-anchored Trade/Cancel buttons'
+arithmetic is written out there, and `TITLE_H` is fable's own 18 as in the bank and container windows.
+One state, `TradePanelState` (`trade_panel.h/.cpp`): the trade window for a player, the give window
+for an NPC (`isNpc`). Fed only by the game: `TradeStarted` opens it AND the inventory popup,
+`InventorySlotChanged` 3000..3007 fills our column, `TradeItemUpdated` the partner's (it now carries
+the icon and count), `TradeMoneyUpdated` the coin rows, `TradeAcceptStateChanged` the names, and
+`TradeCompleted`/`TradeCancelled` close it and the inventory. Everything is MEASURED on two official
+clients (`review/UIGAP-ORACLE/212/trade.tsv`): our side is the RIGHT column and the slots are
+column-major (3000-3003 then 3004-3007); both names are RED and the accepting side's turns GREEN, any
+change resets it; a click on an offered item does nothing (it cannot be taken back); the give window's
+NPC name is white. Input is `StaticUIInput::processTradeInput()` (`trade_input.cpp`), run by
+`FrameComponent::processTradeWindowInput()` (`renderer_frame_trade.cpp`) right after the QuantityWnd:
+the window is drawn above the centre popups, the bank, the trainer, tracking and the containers, and
+the inventory is always open beside it, so a click over it is spent there. A left click with an item
+held on an EMPTY own slot is B442's `slotClick()` with slot 3000+n; a right click on an occupied one
+is the item display; an own coin row with coin held (from the purse) pushes
+`TradeWindowIntent{CoinFromCursor}` (one `OP_MoveCoin` cursor -> trade); Trade/Give pushes `{Accept}`
+and Cancel and the close box `{Cancel}` -- the `TradeManager::clickAccept()` / `cancelTrade()` bodies
+`/accept` and `/canceltrade` run. Opening: a world click on a player or NPC with an item held
+(`TargetIntent` -> `requestTrade`) -- which takes precedence over B442b's drop prompt
+(`classifyHeldItemWorldClick()`, consulted by `processCursorGestureFrame()`: player = trade, NPC =
+give, anything else = drop) -- then the held item drops into 3000 by itself when the request is
+acknowledged; an incoming request is acknowledged with no prompt. ESC does not touch it, and the
+close box is Cancel (both assumptions awaiting the oracle). Tests: `tests/test_trade_window.cpp`.
 
 **The three commerce windows** (T436, board **B429** CLOSED). Three producers filled an `iconId`
 nothing could draw, because the merchant window, the bank window and the cursor attachment did not

@@ -42,7 +42,7 @@ EverQuest::tick()                    processFrame()
 
 Defined in `include/client/state/event_bus.h`. See `include/client/state/CLAUDE.md` for the full categorization.
 
-## Intent Types (46)
+## Intent Types (47)
 
 Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `std::variant` holding all intent structs:
 
@@ -63,6 +63,7 @@ Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `st
 - **Tradeskill**: `TradeskillCombineIntent`, `TradeskillCloseIntent`
 - **Model**: `PlayerModelGeometryChanged`
 - **Tracking**: `TrackingIntent` (B895 -- the Tracking Window's Track button, filter toggles and two comboboxes, one intent onto `TrackingController`, the bodies `/track` and `/track*` reach)
+- **Trade**: `TradeWindowIntent` (B896 -- the trade / give window's Trade or Give (`Accept`), Cancel and close box (`Cancel`) and a coin row with coin held (`CoinFromCursor`); the first two run the `TradeManager::clickAccept()` / `cancelTrade()` bodies `/accept` and `/canceltrade` run, the third is one `OP_MoveCoin` cursor -> trade. Item slots are `CursorGestureIntent` with slot 3000+n; `BridgeComponent::TradeGestureRefusal()` / `AfterTradeGesture()` (`bridge_component_trade.cpp`) refuse a withdrawal and reset both accepts after our own change)
 
 ## Two-stage drain in graphics runs (T220, T227)
 
