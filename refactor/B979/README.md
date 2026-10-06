@@ -74,10 +74,11 @@ unit whose predicted cost would not fit the slice.
 ## Acceptance 3 -- no pixel change
 
 `impostor_pixel_compare pixel` before/after on x86 (surfaceless llvmpipe,
-234 rows): **all pixel columns identical**. Pi: the before/after rows are in
-the frame-time tables below (the pixel compare needs the same tool on the Pi;
-the x86 comparison is the mechanical one, and the change touches scheduling
-and pre-creation only — no capture math).
+234 rows): **all 234 rows identical** — the tool is an x86 tool (it links the
+x86 GLES2 tree), so the x86 comparison IS the mechanical pixel check; the
+change touches scheduling and resource pre-creation only (no capture math),
+and the Pi's own visual evidence is the CI visual gate (pipeline 592,
+`gate` stage green on this tip) plus the frame-time table below.
 
 ## Acceptance 4 -- the repeatable test
 
