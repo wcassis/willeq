@@ -136,6 +136,13 @@ struct ApplicationConfig {
     unsigned int scenarioBuffNotakeSpellId = 293; // --scenario-buff-notake-spell <id> (D3: the caster's own beneficial buff; the "does not take hold" variant is recorded, not forced, in this rig)
     unsigned int scenarioFizzleSpellId = 0;     // --scenario-fizzle-spell <id> (B leg, non-GM caster)
 
+    // B888 (#204): the world-stage character script (world_script.h). At most
+    // one of the three; the spec is parsed against data/char_create.tsv in
+    // initialize() so a bad one fails before any connection is made.
+    std::string createCharacterSpec;  // --create-character "Name,Race,Gender,Class,Deity,City[,STR=n..]"
+    std::string deleteCharacterName;  // --delete-character <Name>
+    bool listCharacters = false;      // --list-characters
+
     // T64: video-capture evidence tool (--dump-frames-dir/--dump-every/
     // --dump-max-frames). Off by default (empty dir = disabled) -- does not
     // touch production behavior. Writes numbered PNGs via the existing
@@ -476,6 +483,9 @@ private:
     bool initRequiredFileValidation(const ApplicationConfig& config);
     bool initSignalHandlers(const ApplicationConfig& config);
     bool initEverQuestClient(const ApplicationConfig& config);
+    // B888 (#204): --create-character / --delete-character / --list-characters
+    // -> LoginWorldComponent::SetWorldScript(). Body: application_world_script.cpp.
+    bool applyWorldScript(const ApplicationConfig& config);
     bool initSpellSystem(const ApplicationConfig& config);
     bool initActionLayer(const ApplicationConfig& config);
     bool initScriptedCommandTour(const ApplicationConfig& config);

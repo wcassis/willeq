@@ -609,6 +609,9 @@ void FrameComponent::renderStaticUI() {
             }
             staticUIInput_->setFrameClickState(rightClick, mods, &cursorState_);
         }
+        // B834: the tip window draws above every window but the Quantity
+        // window, so it is asked before them and keeps the click it takes.
+        if (processTipWindowInput()) pendingUIClick_ = false;
         // B896 (#212): the trade / give window is above every window from
         // here to the containers, and the inventory is open beside it, so it
         // takes its click before them (renderer_frame_trade.cpp).
@@ -682,71 +685,75 @@ void FrameComponent::renderStaticUI() {
     // pressing F11 left the chat panel, the hotbar and every other panel
     // painted on top of the frame. That is why T300 Leg C could not rule out
     // a weapon sliver hidden under the chat box.
+    // B992 (#312): every window is its own z-layer (`uiRenderer_->layer()`),
+    // so a window's text is covered by any window drawn after it -- the
+    // order below IS the z-order, text included (UIRenderer::beginLayer()).
     if (newUIEnabled_ && uiRenderer_ && !allUIHidden_) {
         uiRenderer_->beginFrame();
-        renderPlayerStatus(*uiRenderer_, uiLayout_, cachedPlayerStats_);
-        renderTargetInfo(*uiRenderer_, uiLayout_, cachedTargetInfo_);
-        renderChatPanel(*uiRenderer_, uiLayout_, chatPanelState_);
-        renderHotbar(*uiRenderer_, uiLayout_, hotbarState_);
-        renderSpellGemPanel(*uiRenderer_, uiLayout_, spellGemState_);
-        renderBuffBar(*uiRenderer_, uiLayout_, buffBarState_);
-        renderCastingBar(*uiRenderer_, uiLayout_, castingBarState_);
-        renderGroupPanel(*uiRenderer_, uiLayout_, groupPanelState_);
-        renderPetPanel(*uiRenderer_, uiLayout_, petPanelState_);
-        renderInventoryPopup(*uiRenderer_, uiLayout_, inventoryState_);
-        renderSpellbookPopup(*uiRenderer_, uiLayout_, spellbookState_);
-        renderSkillsPopup(*uiRenderer_, uiLayout_, skillsPopupState_);
+        renderPlayerStatus(uiRenderer_->layer(), uiLayout_, cachedPlayerStats_);
+        renderTargetInfo(uiRenderer_->layer(), uiLayout_, cachedTargetInfo_);
+        renderChatPanel(uiRenderer_->layer(), uiLayout_, chatPanelState_);
+        renderHotbar(uiRenderer_->layer(), uiLayout_, hotbarState_);
+        renderSpellGemPanel(uiRenderer_->layer(), uiLayout_, spellGemState_);
+        renderBuffBar(uiRenderer_->layer(), uiLayout_, buffBarState_);
+        renderCastingBar(uiRenderer_->layer(), uiLayout_, castingBarState_);
+        renderGroupPanel(uiRenderer_->layer(), uiLayout_, groupPanelState_);
+        renderPetPanel(uiRenderer_->layer(), uiLayout_, petPanelState_);
+        renderInventoryPopup(uiRenderer_->layer(), uiLayout_, inventoryState_);
+        renderSpellbookPopup(uiRenderer_->layer(), uiLayout_, spellbookState_);
+        renderSkillsPopup(uiRenderer_->layer(), uiLayout_, skillsPopupState_);
         // T290: last of the center popups, so it is on top. It only draws
         // while the game says a corpse is open, and opening one closes the
         // other three (IrrlichtBridge's LootWindowOpened arm).
-        renderLootPopup(*uiRenderer_, uiLayout_, lootState_);
+        renderLootPopup(uiRenderer_->layer(), uiLayout_, lootState_);
         // T415 (B321): the tradeskill container window, the last centre
         // popup, drawn after the loot popup for the same reason -- the
         // server opens it and nothing else may cover it.
-        renderTradeskillPopup(*uiRenderer_, uiLayout_, tradeskillState_);
+        renderTradeskillPopup(uiRenderer_->layer(), uiLayout_, tradeskillState_);
         // T436 (B429): the merchant window, the last centre popup. It is one
         // of them because the oracle's MerchantWnd is Style_Sizable true and
         // 505px tall from its own <Location>, which does not fit 640x480 --
         // T415's condition for scaling a window onto centerPopup.
-        renderMerchantPopup(*uiRenderer_, uiLayout_, merchantState_, cursorState_);
+        renderMerchantPopup(uiRenderer_->layer(), uiLayout_, merchantState_, cursorState_);
         // T415 (B320): the combat abilities window is a HUD panel, not a
         // centre popup, so it draws above the popups like the buff bar does.
-        renderCombatAbilityPanel(*uiRenderer_, uiLayout_, combatAbilityState_);
+        renderCombatAbilityPanel(uiRenderer_->layer(), uiLayout_, combatAbilityState_);
         // T436 (B429): the bank window. NOT a centre popup -- the oracle's
         // BankWnd is Style_Sizable false at 108x347 and keeps its own size --
         // so it draws above them, mirroring the hit-test order.
-        renderBankWindow(*uiRenderer_, uiLayout_, bankState_);
+        renderBankWindow(uiRenderer_->layer(), uiLayout_, bankState_);
         // B898 (#214): the trainer window -- Style_Sizable false at 580x280,
         // NOT a centre popup, so it draws above them and above the bank.
-        renderTrainerWindow(*uiRenderer_, uiLayout_, trainerState_, xpBarState_.progress);
+        renderTrainerWindow(uiRenderer_->layer(), uiLayout_, trainerState_, xpBarState_.progress);
         // B895: the Tracking Window (own placement, not a centre popup).
-        renderTrackingWindow(*uiRenderer_, uiLayout_, trackingState_);
+        renderTrackingWindow(uiRenderer_->layer(), uiLayout_, trackingState_);
         // B899 (#215): the container windows (EQUI_Container.xml), drawn
         // after the tracking window, mirroring the hit-test order above.
-        renderContainerWindows(*uiRenderer_, uiLayout_, containerState_);
+        renderContainerWindows(uiRenderer_->layer(), uiLayout_, containerState_);
         // B896 (#212): the trade / give window, at the oracle's own (0,25),
         // above the containers and every window it took the click from.
-        renderTradeWindow(*uiRenderer_, uiLayout_, tradeState_);
+        renderTradeWindow(uiRenderer_->layer(), uiLayout_, tradeState_);
         // T421 (B298 item half): the item display window. Drawn after every
         // popup because the oracle's ItemDisplayWindow has its own absolute
         // placement (0,80) and overlaps whatever is beneath it.
-        renderItemDisplayPopup(*uiRenderer_, uiLayout_, itemDisplayState_);
+        renderItemDisplayPopup(uiRenderer_->layer(), uiLayout_, itemDisplayState_);
         // T434: the Options window is drawn LAST of all. The oracle's
         // OptionsWindow is `RelativePosition false` at its own <Location>
         // and overlaps whatever is beneath it; the draw order mirrors the
         // hit-test order above.
-        renderFriendsWindow(*uiRenderer_, uiLayout_, friendsState_);  // B897
-        renderOptionsWindow(*uiRenderer_, uiLayout_, optionsState_);
-        renderXPBar(*uiRenderer_, uiLayout_, xpBarState_);
+        renderFriendsWindow(uiRenderer_->layer(), uiLayout_, friendsState_);  // B897
+        renderOptionsWindow(uiRenderer_->layer(), uiLayout_, optionsState_);
+        renderTipWindow(uiRenderer_->layer(), uiLayout_, tipState_);  // B834
+        renderXPBar(uiRenderer_->layer(), uiLayout_, xpBarState_);
         // B442: the QuantityWnd, above every window (hit-tested first).
         if (staticUIInput_) {
-            renderQuantityWindow(*uiRenderer_, uiLayout_, staticUIInput_->quantityWindow());
-            renderConfirmationDialog(*uiRenderer_, uiLayout_, staticUIInput_->confirmationDialog());
+            renderQuantityWindow(uiRenderer_->layer(), uiLayout_, staticUIInput_->quantityWindow());
+            renderConfirmationDialog(uiRenderer_->layer(), uiLayout_, staticUIInput_->confirmationDialog());
         }
         // T436 (B429): the cursor attachment is drawn LAST of everything.
         // It is the pointer: nothing may cover it, including the Options
         // window and the XP bar.
-        renderCursorAttachment(*uiRenderer_, uiLayout_, cursorState_);
+        renderCursorAttachment(uiRenderer_->layer(), uiLayout_, cursorState_);
         uiRenderer_->endFrame();
     }
     frameTimings_.staticUI = measureSection();

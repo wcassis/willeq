@@ -577,6 +577,8 @@ two-client scenario is a **peer process**, launched by `scripts/scenario.sh`
 running the partner scenario on the second account — the client never forks a
 second client.
 
+UIGAP-live UI legs: `scenario_ui_*.cpp`; scenario.sh sources `<name>.sidecar.sh`/`.post.sh` (DB half).
+
 The state machines are pure logic over `IScenarioWorld`
 (`include/client/scenario/scenario.h`), so
 `tests/test_scenario_state_machines.cpp` runs every case with no client, no
@@ -734,7 +736,7 @@ Audio updates                       Zone load completion detection
 - **Event types** (`include/client/state/event_types.h`; the `GameEvent` variant
   and its payload headers are `event_bus.h` + `event_payloads_*.h`)
   — 106 event types covering all game state changes
-- **Intent types** (`include/client/events/renderer_intents.h`) — 47 intent
+- **Intent types** (`include/client/events/renderer_intents.h`) — 48 intent
   structs in the `RendererIntent` variant, pinned by `test_reachability_sweep`
 
 **Key separation**: EverQuest communicates with the renderer only through the
@@ -764,7 +766,7 @@ Three stages, each with its own connection manager:
 ### Core Components
 
 **Application** (`include/client/application.h`, `src/client/application.cpp` +
-4 `application_*.cpp` TUs, J06) — top-level orchestrator: owns renderer, bridge,
+the `application_*.cpp` TUs, J06 and B888) — top-level orchestrator: owns renderer, bridge,
 game thread and loading thread; spawns the game thread running the EverQuest
 tick loop; the main thread runs the render loop (or sleeps headless) and manages
 the zone loading thread (GL context transfer, snapshot handoff).

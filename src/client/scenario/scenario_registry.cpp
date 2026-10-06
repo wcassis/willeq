@@ -34,6 +34,22 @@ const Entry kScenarios[] = {
     {"cast_buff_notake", &MakeCastBuffNotakeScenario},
     {"cast_interrupt_observe", &MakeCastInterruptObserveScenario},
     {"cast_fizzle", &MakeCastFizzleScenario},
+    // UIGAP-live: the wave-1 UI units' live legs (#151 #215 #214 #213 #211).
+    // Pairs: click_equip_observed <- click_equip_actor; friends_who /
+    // ignore_tell <- social_peer; track_list <- track_peer
+    // (scripts/scenario.sh launches the peer).
+    {"pickup_roundtrip", &MakePickupRoundtripScenario},
+    {"click_equip_observed", &MakeClickEquipObservedScenario},
+    {"click_equip_actor", &MakeClickEquipActorScenario},
+    {"combine_sewing", &MakeCombineSewingScenario},
+    {"train_skill", &MakeTrainSkillScenario},
+    {"friends_who", &MakeFriendsWhoScenario},
+    {"ignore_tell", &MakeIgnoreTellScenario},
+    {"social_peer", &MakeSocialPeerScenario},
+    {"track_list", &MakeTrackListScenario},
+    {"track_peer", &MakeTrackPeerScenario},
+    // B888 (issue #204): needs --create-character.
+    {"create_character", &MakeCreateCharacterScenario},
 };
 
 }  // namespace

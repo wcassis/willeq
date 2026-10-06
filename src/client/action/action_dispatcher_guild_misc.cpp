@@ -485,6 +485,14 @@ ActionResult ActionDispatcher::bankCoinConvert(uint8_t fromCoinType, uint8_t toC
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::bankMakeChange() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->bankMakeChange();
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::trainWithTarget() {
     auto result = checkZoneConnection();
     if (!result.success) return result;

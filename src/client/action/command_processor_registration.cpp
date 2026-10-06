@@ -615,7 +615,7 @@ void CommandProcessor::registerMovementAndUtilityCommands() {
     }, [this](const std::string& args) { return cmdTime(args); });
 
     registerCommand({
-        "bank", {}, "/bank [deposit|withdraw <amount> <pp|gp|sp|cp> | convert <amount> <from> <to>]",
+        "bank", {}, "/bank [deposit|withdraw <amount> <pp|gp|sp|cp> | convert <amount> <from> <to> | change]",
         "Open/close the bank window with your current target, or move bank coins", "Utility", false
     }, [this](const std::string& args) { return cmdBank(args); });
 

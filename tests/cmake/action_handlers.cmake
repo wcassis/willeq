@@ -415,6 +415,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_login_world_flow DISCOVERY_TIMEOUT 120)
 
+# B888 (#204): native character creation -- the server's rules and tables,
+# data/char_create.tsv (the era filter), --create-character, the four packets
+# byte for byte and the world-stage flow through the replay seam.
+ADD_EXECUTABLE(test_char_create
+    test_char_create.cpp
+)
+TARGET_LINK_LIBRARIES(test_char_create GTest::gtest_main willeq_core)
+TARGET_COMPILE_DEFINITIONS(test_char_create PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_char_create PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_char_create DISCOVERY_TIMEOUT 120)
+
 # T378 (BOARD B145): every zone-stream sender goes out through
 # eqt::PacketSender::SafeQueueZone -- null-guard (the ten B140 crash-shape
 # sites) plus the R01 session recorder, one case pair per family.

@@ -525,6 +525,12 @@ void LoginWorldComponent::DispatchWorldPacket(const EQ::Net::Packet & p)
 	case HC_OP_ZoneServerInfo:
 		WorldProcessZoneServerInfo(p);
 		break;
+	case HC_OP_ApproveName:          // B888: login_world_char_create.cpp
+		WorldProcessApproveName(p);
+		break;
+	case HC_OP_RandomNameGenerator:  // B888
+		WorldProcessRandomName(p);
+		break;
 	default:
 		LOG_WARN(MOD_WORLD, "Unhandled world opcode: {}", eqt::strings::GetOpcodeName(opcode));
 		break;
@@ -668,9 +674,11 @@ void LoginWorldComponent::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 		}
 	}
 
-	if (!found) {
+	if (!found && !m_world_script.active()) {
 		LOG_ERROR(MOD_WORLD, "Could not find {}, cannot continue to login.", ctx_.character);
 	}
+	// B888: a world script (or a creation/deletion in flight) acts on the list.
+	OnCharacterListReceived();
 }
 
 void LoginWorldComponent::WorldSendApproveWorld()
@@ -810,8 +818,9 @@ void LoginWorldComponent::WorldProcessExpansionInfo(const EQ::Net::Packet &p)
 		// Then send WorldClientReady
 		WorldSendWorldClientReady();
 
-		// Now send EnterWorld
-		if (!m_enter_world_sent) {
+		// Now send EnterWorld -- unless a B888 world script runs at character
+		// select instead (it enters world itself, off the character list).
+		if (!m_enter_world_sent && !m_world_script.active()) {
 			WorldSendEnterWorld(ctx_.character);
 		}
 	}

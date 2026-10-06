@@ -9,8 +9,8 @@
 namespace eqt {
 namespace scenario {
 
-ApplicationScenarioWorld::ApplicationScenarioWorld(Application& app, EverQuest& client)
-    : app_(app), client_(client) {}
+// The constructor and the UIGAP-live observables live in
+// scenario_world_app_ui.cpp.
 
 bool ApplicationScenarioWorld::IsConnected() const {
     // There is no separate "connected" term on EverQuest -- the client's own

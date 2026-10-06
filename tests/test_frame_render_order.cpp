@@ -277,7 +277,22 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     - entry 323, `renderTradeWindow(...)`, directly after entry 322
 //       `renderContainerWindows(...)` and before the item display.
 //     The count rises 357 -> 359.
-const size_t kGoldenSize = 359u;
+//   * B834 (GitLab #202, UIGAP-small): the tip windows, applied after B896
+//     (rebased onto it). TWO pure insertions, no text change and no reorder.
+//     - entry 266, `if (processTipWindowInput()) pendingUIClick_ = false;`,
+//       directly before B896's `processTradeWindowInput();`: the tip window
+//       draws above every window but the QuantityWnd, so it is asked before
+//       them and keeps the click it takes.
+//     - entry 328, `renderTipWindow(...)`, directly after
+//       `renderOptionsWindow(...)` and before `renderXPBar(...)`.
+//     The count rises 359 -> 361.
+//   * B992 (GitLab #312): the 29 static-UI draw statements between
+//     `uiRenderer_->beginFrame();` and `uiRenderer_->endFrame();` pass
+//     `uiRenderer_->layer()` instead of `*uiRenderer_` -- each window begins
+//     its own z-layer, so a covered window's text is covered too. A TEXT
+//     change at those 29 positions only: no insertion, no reorder, the count
+//     stays 361.
+const size_t kGoldenSize = 361u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

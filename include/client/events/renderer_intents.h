@@ -155,6 +155,14 @@ struct BankCurrencyConvertIntent {
     int32_t amount;        // in fromCoinType coins
 };
 
+// B441 (#26, UIGAP-small): the bank window's BW_ChangeButton and `/bank
+// change`. ONE click, no dialog -- the client's own Bank Tip window
+// (help/tips/ctxbank.html): "Click on the "Change" button to convert all
+// your coin, both in the bank and on your person, to the fewest possible
+// coins." The arm builds the OP_MoveCoin steps from the game thread's own
+// purses (eqt::merchant::BuildMakeChangeMoves, coin_change.h).
+struct BankMakeChangeIntent {};
+
 // --- Trainer ---
 
 struct TrainerToggleIntent {};  // Validation stays on game thread
@@ -459,6 +467,7 @@ using RendererIntent = std::variant<
     CloseBankIntent,
     BankCurrencyMoveIntent,
     BankCurrencyConvertIntent,
+    BankMakeChangeIntent,      // B441
     // Trainer
     TrainerToggleIntent,
     // Spells

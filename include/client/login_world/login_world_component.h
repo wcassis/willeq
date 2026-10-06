@@ -45,6 +45,7 @@
 
 #include "client/client_context.h"
 #include "client/guild/guild_name_table.h"
+#include "client/login_world/world_script.h"
 #include "common/net/daybreak_connection.h"
 
 #include <cstdint>
@@ -129,7 +130,51 @@ public:
 	void WorldOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
 	void WorldOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p);
 
+	// ------------------------------------------------------------------
+	// B888 (GitLab #204): character creation / deletion at character select.
+	// Bodies: src/client/login_world/login_world_char_create.cpp.
+	//
+	// A world SCRIPT (--create-character / --delete-character /
+	// --list-characters, world_script.h) replaces the automatic OP_EnterWorld
+	// at OP_ExpansionInfo: the script runs off the character list instead,
+	// because world sends OP_ExpansionInfo BEFORE OP_SendCharInfo
+	// (world/client.cpp:552-553) and an OP_EnterWorld for a name the account
+	// does not hold closes the connection (:809-812). With no script the
+	// handshake is byte-for-byte what it was.
+	struct CharCreateStatus {
+		enum class Stage : uint8_t { Idle, AwaitingNameApproval, AwaitingCreate,
+		                             AwaitingDelete, AwaitingRandomName };
+		enum class Result : uint8_t { None, Created, NameRefused, CreateRefused,
+		                              Deleted, DeleteFailed };
+		Stage stage = Stage::Idle;
+		charcreate::CharCreateRequest pending;   // name approval / create
+		std::string pendingDelete;
+		Result last = Result::None;
+		std::string lastMessage;   // eqstr text, as the screen shows it
+		std::string randomName;    // the last OP_RandomNameGenerator reply
+	};
+	void SetWorldScript(const charcreate::WorldScript& script) { m_world_script = script; }
+	const charcreate::WorldScript& GetWorldScript() const { return m_world_script; }
+	const CharCreateStatus& GetCharCreateStatus() const { return m_create_status; }
+	/** OP_ApproveName now; OP_CharacterCreate when world approves. False if
+	 *  refused before sending (a request in flight, or a name the server's
+	 *  own rules refuse -- eqstr 1576 "Name is not valid."). */
+	bool RequestCreateCharacter(const charcreate::CharCreateRequest& req);
+	/** CC1_Get_Name_Button. */
+	bool RequestRandomName(uint32_t race, uint32_t gender);
+	/** Delete_Button + Yes. False if the name is not on the list. */
+	bool RequestDeleteCharacter(const std::string& name);
+
 private:
+	// B888: the reply handlers and the script driver.
+	void WorldProcessApproveName(const EQ::Net::Packet &p);
+	void WorldProcessRandomName(const EQ::Net::Packet &p);
+	void OnCharacterListReceived();
+	void RunWorldScript();
+	void FinishWorldScript(bool ok, const std::string& reason);
+	void EnterWorldAfterCreate(const std::string& name);
+	bool CharacterListHas(const std::string& name) const;
+
 	// Login
 	void LoginOnNewConnection(std::shared_ptr<EQ::Net::DaybreakConnection> connection);
 	void LoginOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::DaybreakConnection> conn, EQ::Net::DbProtocolStatus from, EQ::Net::DbProtocolStatus to);
@@ -223,6 +268,16 @@ private:
 
 	// T443 (board B418): OP_GuildsList, parsed. Empty until world sends it.
 	eqt::guild::GuildNameTable m_guild_names;
+
+	// B888: the world script and the creation flow's state.
+	charcreate::WorldScript m_world_script;
+	CharCreateStatus m_create_status;
+	bool m_world_script_started = false;
+	// Titanium world sets StartInTutorial after EVERY create
+	// (world/client.cpp:769-770) and clears it only on OP_World_Client_CRC1
+	// (:1134-1138), so an OP_EnterWorld straight after a create would put the
+	// character in the tutorial zone (:891-907). The CRC pair is re-sent first.
+	bool m_created_this_session = false;
 
 	ClientContext& ctx_;
 };

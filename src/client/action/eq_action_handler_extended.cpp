@@ -830,6 +830,10 @@ void EqActionHandler::bankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, 
     m_eq.Merchant().RequestBankCoinConvert(fromCoinType, toCoinType, amount);
 }
 
+void EqActionHandler::bankMakeChange() {
+    m_eq.Merchant().RequestBankMakeChange();
+}
+
 // ========== Social / Find (T150) ==========
 // resolveTargetOrCurrent() repeats the targetId==0 fallback assist()/
 // shieldTarget()/duel() established at the top of the Combat section: the

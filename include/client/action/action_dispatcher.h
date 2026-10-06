@@ -937,6 +937,8 @@ public:
      */
     ActionResult bankCoinMove(uint8_t coinType, int32_t amount, bool fromBank);
     ActionResult bankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount);
+    /** B441 (#26): /bank change -- the bank window's Change button. */
+    ActionResult bankMakeChange();
 
     /**
      * Request the trainer window for your current target. Target/

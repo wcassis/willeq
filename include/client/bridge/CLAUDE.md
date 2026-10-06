@@ -12,6 +12,7 @@ The bridge is the sole communication channel between the game thread and the ren
 - `pushIntent(RendererIntent)` — renderer thread enqueues user action
 - `drainIntents()` → returns vector — game thread consumes
 - Two independent mutexes (events and intents never contend)
+- `setEventObserver()` (UIGAP-live) — one optional game-thread observer of every pushed event; only the scenario lane installs one (`ApplicationScenarioWorld`'s chat transcript / event counts). Empty in every ordinary run
 - **Swap-vector pattern**: drain swaps the entire vector in O(1), then processes outside the lock
 
 **IrrlichtBridge** (`irrlicht_bridge.h`) — Concrete bridge for 3D rendering:
@@ -42,14 +43,14 @@ EverQuest::tick()                    processFrame()
 
 Defined in `include/client/state/event_bus.h`. See `include/client/state/CLAUDE.md` for the full categorization.
 
-## Intent Types (47)
+## Intent Types (48)
 
 Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `std::variant` holding all intent structs:
 
 - **Movement**: `PlayerPositionChanged` (position + velocity)
 - **Targeting**: `TargetIntent` (T51: `AttackIntent`/`ToggleAutoAttackIntent` removed -- never had a producer; auto-attack is reached via direct `CombatManager` calls from `src/client/commands/commands_movement.cpp` (K12 moved it off the flat `eq_commands_movement.cpp`)/`ActionDispatcher`, not the intent system)
 - **Interaction**: `DoorInteractIntent`, `LootCorpseIntent`, `LootItemIntent`, `LootAllIntent`, `CloseLootIntent`, `WorldObjectInteractIntent`, `ZoningEnabledIntent`, `ReadItemIntent`
-- **Commerce**: `VendorToggleIntent`, `VendorBuyIntent`, `VendorSellIntent`, `BankerInteractIntent`, `CloseBankIntent` (T436 -- `BankerInteractIntent`'s handler returns early on an already-open window, so the bank window's Done button and close box needed a close-only intent, the `CloseTrainerIntent` shape), `BankCurrencyMoveIntent`, `BankCurrencyConvertIntent`
+- **Commerce**: `VendorToggleIntent`, `VendorBuyIntent`, `VendorSellIntent`, `BankerInteractIntent`, `CloseBankIntent` (T436 -- `BankerInteractIntent`'s handler returns early on an already-open window, so the bank window's Done button and close box needed a close-only intent, the `CloseTrainerIntent` shape), `BankCurrencyMoveIntent`, `BankCurrencyConvertIntent`, `BankMakeChangeIntent` (B441 -- the bank window's Change button and `/bank change`)
 - **Spells**: `CastSpellIntent`, `MemorizeSpellIntent`, `ScribeSpellIntent`, `SpellbookStateIntent`
 - **Buffs**: `BuffCancelIntent`
 - **Skills**: `SkillActivateIntent`

@@ -54,6 +54,11 @@
 #include "client/graphics/ui/container_panel.h"
 #include "client/graphics/ui/friends_panel.h"   // B897
 #include "client/graphics/ui/trade_panel.h"     // B896
+#include "client/graphics/ui/tip_window.h"      // B834
+#include <fstream>
+#include <sstream>
+#include "client/graphics/ui/char_create_panel.h"   // B888
+#include "client/login_world/char_create_data.h"     // B888
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -124,6 +129,34 @@ EQT::StringDatabase& eqStrings() {
     return strings;
 }
 
+// B888: the creation screen's eqstr text and its era data.
+EqstrResolver charCreateEqstr() {
+    return [](uint32_t id) { return eqStrings().getString(id); };
+}
+
+// 0 = page 0 (Human male Warrior, AGI +25), 1 = page 1 (AGNOSTIC, QEYNOS,
+// "Cinewbie"), 2 = page 0 with nothing spent and Next pressed (eqstr 1577).
+CharCreateScreenState charCreateCaptureState(int which) {
+    static eqt::charcreate::CharCreateData data = [] {
+        eqt::charcreate::CharCreateData d;
+        if (!d.loadShipped()) std::fprintf(stderr, "ui_panel_capture: %s\n", d.error().c_str());
+        return d;
+    }();
+    CharCreateScreenState s;
+    openCharCreateWith(s, data, eqt::charcreate::Race::Human, eqt::charcreate::Gender::Male,
+                       eqt::charcreate::Class::Warrior);
+    if (which == 2) {
+        pressNext(s);
+        return s;
+    }
+    statMax(s, eqt::charcreate::AGI);
+    if (which == 1) {
+        pressNext(s);
+        s.nameEntry.inputText = "Cinewbie";
+    }
+    return s;
+}
+
 void addChat(eqt::ui::ChatMessageBuffer& buf, const char* text, uint32_t color) {
     eqt::ui::ChatMessage msg;
     msg.text = text;
@@ -178,6 +211,10 @@ struct PanelStates {
     TradePanelState tradeA;
     TradePanelState tradeB;
     TradePanelState give;
+    // B834 (#202): a context tip and the Tip of the Day, from the client's
+    // own help/tips/ files when present (inline stand-ins otherwise).
+    TipWindowState tipInventory;
+    TipWindowState tipOfTheDay;
     XPBarState xp;
 
     PanelStates() {
@@ -331,6 +368,37 @@ struct PanelStates {
             friends.selected[0] = 2;
             friends.nameEntry[0].inputText = "Oraclecharlie";
             friends.nameEntry[1].inputText = "Pest";
+        }
+        {
+            auto slurp = [](const std::string& path, std::string& out) {
+                std::ifstream in(path, std::ios::binary);
+                if (!in) return false;
+                std::ostringstream ss;
+                ss << in.rdbuf();
+                out = ss.str();
+                return true;
+            };
+            UILayout l;
+            l.computeLayout(800, 600);
+            const std::string dir = "/mnt/projects/EverQuestP1999/help/tips/";
+            std::string html, totd;
+            if (!slurp(dir + "ctxinventory.html", html)) {
+                html = "<TITLE>Inventory Tip window</TITLE><BODY>Inventory Tips<br><br>"
+                       "- (help/tips/ctxinventory.html not found)</BODY>";
+            }
+            if (!slurp(dir + "TOTD.txt", totd)) {
+                totd = "###\n<c \"#00CC00\">\nGameplay Tip\n</c>\n(help/tips/TOTD.txt not found)\n";
+            }
+            openContextTip(tipInventory, "Inventory", parseTipHtml(html), l);
+            auto entries = parseTipOfTheDay(totd);
+            // The measured grab's entry ("Fire Beetle eyes ..."), if present.
+            for (size_t i = 0; i < entries.size(); ++i) {
+                if (entries[i].paragraphs.size() > 2 &&
+                    entries[i].paragraphs[2].find("Fire Beetle") != std::string::npos) {
+                    tipOfTheDay.totdIndex = static_cast<int>(i);
+                }
+            }
+            openTipOfTheDay(tipOfTheDay, entries, l);
         }
         inventory.coins[0] = 12; inventory.coins[1] = 5;
         inventory.coins[2] = 8;  inventory.coins[3] = 47;
@@ -657,69 +725,69 @@ struct PanelCapture {
 std::vector<PanelCapture> buildCaptureList() {
     return {
         {"player_status", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderPlayerStatus(u, l, s.stats); }},
+            renderPlayerStatus(u.layer(), l, s.stats); }},
         {"target_info", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderTargetInfo(u, l, s.target); }},
+            renderTargetInfo(u.layer(), l, s.target); }},
         {"chat", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderChatPanel(u, l, s.chat); }},
+            renderChatPanel(u.layer(), l, s.chat); }},
         {"hotbar", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderHotbar(u, l, s.hotbar); }},
+            renderHotbar(u.layer(), l, s.hotbar); }},
         {"spell_gems", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderSpellGemPanel(u, l, s.gems); }},
+            renderSpellGemPanel(u.layer(), l, s.gems); }},
         {"buff_bar", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderBuffBar(u, l, s.buffs); }},
+            renderBuffBar(u.layer(), l, s.buffs); }},
         {"casting_bar", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderCastingBar(u, l, s.casting); }},
+            renderCastingBar(u.layer(), l, s.casting); }},
         {"group", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderGroupPanel(u, l, s.group); }},
+            renderGroupPanel(u.layer(), l, s.group); }},
         {"group_nogroup", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             GroupPanelState g = s.group; g.inGroup = false;
-            renderGroupPanel(u, l, g); }},
+            renderGroupPanel(u.layer(), l, g); }},
         {"pet", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderPetPanel(u, l, s.pet); }},
+            renderPetPanel(u.layer(), l, s.pet); }},
         {"xp_bar", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderXPBar(u, l, s.xp); }},
+            renderXPBar(u.layer(), l, s.xp); }},
         {"inventory", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderInventoryPopup(u, l, s.inventory); }},
+            renderInventoryPopup(u.layer(), l, s.inventory); }},
         {"spellbook", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderSpellbookPopup(u, l, s.spellbook); }},
+            renderSpellbookPopup(u.layer(), l, s.spellbook); }},
         {"skills", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderSkillsPopup(u, l, s.skills); }},
+            renderSkillsPopup(u.layer(), l, s.skills); }},
         {"loot", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderLootPopup(u, l, s.loot); }},
+            renderLootPopup(u.layer(), l, s.loot); }},
         // T419 (board B335): the recipe list on the window's left side.
         {"tradeskill", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderTradeskillPopup(u, l, s.tradeskill); }},
+            renderTradeskillPopup(u.layer(), l, s.tradeskill); }},
         // T421 (board B298, item half): the item display window.
         {"item_display", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderItemDisplayPopup(u, l, s.itemDisplay); }},
+            renderItemDisplayPopup(u.layer(), l, s.itemDisplay); }},
         // T425 (board B298, spell half): the same window with a SPELL in it.
         {"spell_display", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderItemDisplayPopup(u, l, s.spellDisplay); }},
+            renderItemDisplayPopup(u.layer(), l, s.spellDisplay); }},
         // T434: one capture per tab of the Options window. `options.isOpen`
         // is set here rather than in the state block so the seven lambdas
         // differ ONLY in activeTab.
         {"options_general", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.options.isOpen = true; s.options.activeTab = 0;
-            renderOptionsWindow(u, l, s.options); }},
+            renderOptionsWindow(u.layer(), l, s.options); }},
         {"options_display", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.options.isOpen = true; s.options.activeTab = 1;
-            renderOptionsWindow(u, l, s.options); }},
+            renderOptionsWindow(u.layer(), l, s.options); }},
         {"options_mouse", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.options.isOpen = true; s.options.activeTab = 2;
-            renderOptionsWindow(u, l, s.options); }},
+            renderOptionsWindow(u.layer(), l, s.options); }},
         {"options_keys", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.options.isOpen = true; s.options.activeTab = 3;
-            renderOptionsWindow(u, l, s.options); }},
+            renderOptionsWindow(u.layer(), l, s.options); }},
         {"options_filters", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.options.isOpen = true; s.options.activeTab = 4;
-            renderOptionsWindow(u, l, s.options); }},
+            renderOptionsWindow(u.layer(), l, s.options); }},
         {"options_colors", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.options.isOpen = true; s.options.activeTab = 5;
-            renderOptionsWindow(u, l, s.options); }},
+            renderOptionsWindow(u.layer(), l, s.options); }},
         {"options_mail", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.options.isOpen = true; s.options.activeTab = 6;
-            renderOptionsWindow(u, l, s.options); }},
+            renderOptionsWindow(u.layer(), l, s.options); }},
         // T436 (board B429): the three windows B429 said did not exist.
         // `merchant_sell` is the SAME window after a left click on one of the
         // player's items -- B442b (#152, merchant.tsv row 3): the last
@@ -727,68 +795,99 @@ std::vector<PanelCapture> buildCaptureList() {
         // MW_SelectedItem* describe that item. The cursor is not involved.
         {"merchant", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             CursorAttachmentState empty;
-            renderMerchantPopup(u, l, s.merchant, empty); }},
+            renderMerchantPopup(u.layer(), l, s.merchant, empty); }},
         {"merchant_sell", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             MerchantPanelState m = s.merchant;
             m.selectPlayerItem(27, "Bottle", 1068, 5);
             CursorAttachmentState empty;
-            renderMerchantPopup(u, l, m, empty); }},
+            renderMerchantPopup(u.layer(), l, m, empty); }},
         {"bank", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderBankWindow(u, l, s.bank); }},
+            renderBankWindow(u.layer(), l, s.bank); }},
         // B898 (#214): the skill trainer window, and the same window scrolled.
         {"trainer", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.trainer.scrollOffset = 0;
-            renderTrainerWindow(u, l, s.trainer, s.xp.progress); }},
+            renderTrainerWindow(u.layer(), l, s.trainer, s.xp.progress); }},
         {"trainer_scrolled", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.trainer.scrollOffset = s.trainer.maxScrollOffset();
-            renderTrainerWindow(u, l, s.trainer, s.xp.progress); }},
+            renderTrainerWindow(u.layer(), l, s.trainer, s.xp.progress); }},
         // B895: the Tracking Window, and the same window with its sort
         // combobox dropped down.
         {"tracking", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.tracking.openCombo = TrackingCombo::None;
-            renderTrackingWindow(u, l, s.tracking); }},
+            renderTrackingWindow(u.layer(), l, s.tracking); }},
         {"tracking_sort_open", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.tracking.openCombo = TrackingCombo::Sort;
-            renderTrackingWindow(u, l, s.tracking); }},
+            renderTrackingWindow(u.layer(), l, s.tracking); }},
         // B899 (#215): each container window alone, then all three open at
         // once: they share the oracle position, newest on top (measured).
         {"container_bag", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             ContainerWindowsState one;
             one.windows[1] = s.containers.windows[1];
-            renderContainerWindows(u, l, one); }},
+            renderContainerWindows(u.layer(), l, one); }},
         {"container_sewing_kit", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             ContainerWindowsState one;
             one.windows[2] = s.containers.windows[2];
-            renderContainerWindows(u, l, one); }},
+            renderContainerWindows(u.layer(), l, one); }},
         {"container_forge", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             ContainerWindowsState one;
             one.windows[0] = s.containers.windows[0];
-            renderContainerWindows(u, l, one); }},
+            renderContainerWindows(u.layer(), l, one); }},
         {"container_three_open", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderContainerWindows(u, l, s.containers); }},
+            renderContainerWindows(u.layer(), l, s.containers); }},
+        // B992 (#312): every window in these captures is passed `u.layer()`,
+        // as renderStaticUI() does, so a later window covers an earlier
+        // one's text. Two overlapping windows, the lower one's text under the
+        // upper one's panel. The Backpack (its "Backpack" label and its "4" /
+        // "12" stack counts) drawn first, the Forge on top at the same place.
+        {"stack_backpack_under_forge", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            ContainerWindowsState bag;
+            bag.windows[1] = s.containers.windows[1];
+            renderContainerWindows(u.layer(), l, bag);
+            ContainerWindowsState forge;
+            forge.windows[0] = s.containers.windows[0];
+            renderContainerWindows(u.layer(), l, forge); }},
         // B897: both tabs of the Friends window (EQUI_FriendsWnd.xml).
         {"friends_friends", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.friends.isOpen = true; s.friends.activePage = 0;
-            renderFriendsWindow(u, l, s.friends); }},
+            renderFriendsWindow(u.layer(), l, s.friends); }},
         {"friends_ignored", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             s.friends.isOpen = true; s.friends.activePage = 1;
-            renderFriendsWindow(u, l, s.friends); }},
+            renderFriendsWindow(u.layer(), l, s.friends); }},
         // B896 (#212): both sides of trade.tsv row 4 and the give window.
         {"trade_client_a_own_accepted", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderTradeWindow(u, l, s.tradeA); }},
+            renderTradeWindow(u.layer(), l, s.tradeA); }},
         {"trade_client_b_partner_accepted", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderTradeWindow(u, l, s.tradeB); }},
+            renderTradeWindow(u.layer(), l, s.tradeB); }},
         {"trade_with_inventory", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderInventoryPopup(u, l, s.inventory);
-            renderTradeWindow(u, l, s.tradeA); }},
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            renderTradeWindow(u.layer(), l, s.tradeA); }},
         {"give_npc", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderTradeWindow(u, l, s.give); }},
+            renderTradeWindow(u.layer(), l, s.give); }},
+        // B834 (#202): EQUI_TipWnd.xml, both kinds.
+        {"tip_inventory", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTipWindow(u.layer(), l, s.tipInventory); }},
+        {"tip_of_the_day", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderTipWindow(u.layer(), l, s.tipOfTheDay); }},
+        // B888 (#204): the two Character Creation pages, in the selections
+        // the oracle frames were taken in (eq-oracle/logs/shots/cc_06_stats.png:
+        // Human male Warrior, all 25 points in AGILITY; cc_08_deity_city.png:
+        // AGNOSTIC, QEYNOS) so the pair can be laid side by side, plus page 0
+        // holding eqstr 1577 (Next pressed with points left).
+        {"charcreate_page0", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            auto s = charCreateCaptureState(0);
+            renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
+        {"charcreate_page1", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            auto s = charCreateCaptureState(1);
+            renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
+        {"charcreate_page0_points_left", [](UIRenderer& u, const UILayout& l, PanelStates&) {
+            auto s = charCreateCaptureState(2);
+            renderCharCreateScreen(u, l.screenW, l.screenH, s, charCreateEqstr()); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.
             s.cursor.mouseX = l.screenW / 2;
             s.cursor.mouseY = l.screenH / 2;
-            renderCursorAttachment(u, l, s.cursor); }},
+            renderCursorAttachment(u.layer(), l, s.cursor); }},
         // B442 (#151): click-to-cursor. `inventory_pickup` is the popup the
         // moment after a left click lifted general slot 3's item: that slot
         // is empty and the item rides the pointer, which sits over the empty
@@ -799,7 +898,7 @@ std::vector<PanelCapture> buildCaptureList() {
             inv.generalSlots[2].hasItem = false;
             inv.hoveredSlot = 22 + 5;
             inv.generalSlots[5].hasItem = false;
-            renderInventoryPopup(u, l, inv);
+            renderInventoryPopup(u.layer(), l, inv);
             CursorAttachmentState held;
             held.hasItem = true;
             held.itemName = s.inventory.generalSlots[2].itemName;
@@ -807,12 +906,12 @@ std::vector<PanelCapture> buildCaptureList() {
             const auto target = InventoryLayout::slotRect(l, 22 + 5);
             held.mouseX = target.UpperLeftCorner.X + 8;
             held.mouseY = target.UpperLeftCorner.Y + 8;
-            renderCursorAttachment(u, l, held); }},
+            renderCursorAttachment(u.layer(), l, held); }},
         {"quantity", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             QuantityWindowState q;
             q.openForStack(23, "Arrow", 20);
             q.value = 7;
-            renderQuantityWindow(u, l, q); }},
+            renderQuantityWindow(u.layer(), l, q); }},
         // B442b (#151 remainder). `quantity_typed`: the box holds the
         // keyboard and "2" was typed (row 5). `cursor_coin`: 10 platinum on
         // the cursor over the purse, the decal + count strip (row 29).
@@ -828,50 +927,50 @@ std::vector<PanelCapture> buildCaptureList() {
             q.input.inputActive = true;
             q.input.inputText = "2";
             q.value = 2;
-            renderQuantityWindow(u, l, q); }},
+            renderQuantityWindow(u.layer(), l, q); }},
         {"cursor_coin", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderInventoryPopup(u, l, s.inventory);
+            renderInventoryPopup(u.layer(), l, s.inventory);
             CursorAttachmentState coin;
             coin.coinType = 3;   // EQT::COINTYPE_PP
             coin.coinAmount = 10;
             const auto pp = InventoryLayout::coinRect(l, 0);
             coin.mouseX = pp.UpperLeftCorner.X + 20;
             coin.mouseY = pp.UpperLeftCorner.Y - 40;
-            renderCursorAttachment(u, l, coin); }},
+            renderCursorAttachment(u.layer(), l, coin); }},
         {"confirm_drop", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderInventoryPopup(u, l, s.inventory);
+            renderInventoryPopup(u.layer(), l, s.inventory);
             ConfirmationDialogState c;
             c.open(1, "ARE YOU SURE you wish to drop your Rusty Long Sword on the ground?");
-            renderConfirmationDialog(u, l, c);
+            renderConfirmationDialog(u.layer(), l, c);
             CursorAttachmentState held = s.cursor;
             held.itemName = "Rusty Long Sword";
             held.iconId = 1001;
             held.mouseX = l.screenW / 2 + 160;
             held.mouseY = l.screenH / 2 + 120;
-            renderCursorAttachment(u, l, held); }},
+            renderCursorAttachment(u.layer(), l, held); }},
         {"confirm_destroy", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderInventoryPopup(u, l, s.inventory);
+            renderInventoryPopup(u.layer(), l, s.inventory);
             ConfirmationDialogState c;
             c.open(2, "Are you absolutely sure you want to destroy your Low Quality Wolf Skin?");
             c.yesHovered = true;
-            renderConfirmationDialog(u, l, c); }},
+            renderConfirmationDialog(u.layer(), l, c); }},
         {"inventory_sell_selected", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             InventoryPanelState inv = s.inventory;
             inv.selectedSlot = 27;
             inv.destroyHovered = true;
-            renderInventoryPopup(u, l, inv); }},
+            renderInventoryPopup(u.layer(), l, inv); }},
         // Everything the HUD draws at once -- the screen a player sees.
         {"hud_all", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
-            renderPlayerStatus(u, l, s.stats);
-            renderTargetInfo(u, l, s.target);
-            renderGroupPanel(u, l, s.group);
-            renderPetPanel(u, l, s.pet);
-            renderBuffBar(u, l, s.buffs);
-            renderChatPanel(u, l, s.chat);
-            renderCastingBar(u, l, s.casting);
-            renderHotbar(u, l, s.hotbar);
-            renderSpellGemPanel(u, l, s.gems);
-            renderXPBar(u, l, s.xp); }},
+            renderPlayerStatus(u.layer(), l, s.stats);
+            renderTargetInfo(u.layer(), l, s.target);
+            renderGroupPanel(u.layer(), l, s.group);
+            renderPetPanel(u.layer(), l, s.pet);
+            renderBuffBar(u.layer(), l, s.buffs);
+            renderChatPanel(u.layer(), l, s.chat);
+            renderCastingBar(u.layer(), l, s.casting);
+            renderHotbar(u.layer(), l, s.hotbar);
+            renderSpellGemPanel(u.layer(), l, s.gems);
+            renderXPBar(u.layer(), l, s.xp); }},
     };
 }
 

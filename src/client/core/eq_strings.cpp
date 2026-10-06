@@ -76,6 +76,10 @@ std::string eqt::strings::GetOpcodeName(uint16_t opcode) {
 		case HC_OP_SetChatServer2: return "HC_OP_SetChatServer2";
 		case HC_OP_ZoneServerInfo: return "HC_OP_ZoneServerInfo";
 		case HC_OP_WorldComplete: return "HC_OP_WorldComplete";
+		case HC_OP_DeleteCharacter: return "HC_OP_DeleteCharacter";
+		case HC_OP_CharacterCreate: return "HC_OP_CharacterCreate";
+		case HC_OP_RandomNameGenerator: return "HC_OP_RandomNameGenerator";
+		case HC_OP_ApproveName: return "HC_OP_ApproveName";
 	}
 
 	// Zone opcodes

@@ -49,6 +49,8 @@
 #include "client/graphics/player/camera_rig.h"
 // B430: the Options settings table (device-free).
 #include "client/graphics/ui/options_settings.h"
+// B834: the [Tips] section (device-free).
+#include "client/graphics/ui/tip_preferences.h"
 
 namespace EQT {
 namespace Graphics {
@@ -138,6 +140,11 @@ struct UiPreferences {
     // are ever collected, parsed or written; the rest stay at the default.
     OptionsLayout::OptionValues optionValues = OptionsLayout::defaultOptionValues();
 
+    // B834 (#202): `[Tips]` -- the official section and keys (ShowTips,
+    // ShowTOTD, <Key>=0), quoted from real player files; tip_preferences.h.
+    // This one IS the oracle's own file and section.
+    TipPreferences tips;
+
     bool operator==(const UiPreferences& o) const {
         return inventoryWindow == o.inventoryWindow
             && spellBookWnd == o.spellBookWnd
@@ -152,6 +159,7 @@ struct UiPreferences {
             && soundVolume == o.soundVolume
             && clipPlane == o.clipPlane
             && optionValues == o.optionValues
+            && tips == o.tips
             && cameraMode == o.cameraMode
             && user1Camera == o.user1Camera
             && user2Camera == o.user2Camera;
@@ -175,6 +183,7 @@ struct UiPreferencesBinding {
     CombatAbilityPanelState* combatAbility = nullptr;
     OptionsPanelState* options = nullptr;   // T434
     FriendsPanelState* friends = nullptr;   // B897
+    TipPreferences* tips = nullptr;         // B834
 };
 
 /**

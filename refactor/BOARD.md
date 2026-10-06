@@ -832,7 +832,26 @@ it without taking that measurement first.
 - **B972** (B, memory) → issue #290. Mesa's stream-upload buffers and Lima's
   draw-time BOs hold 3-6 MiB of the client's GEM at `steady_60s`, driven by
   client-array draws (2D UI, entities, zone pools, raw-GL particles). A static
-  VBO for the zone pools measured worse (B962). Measured by B962.
+  VBO for the zone pools measured worse (B962). Measured by B962. **2026-10-06
+  split (Will, option 2, verbatim: "proceed with option 2"):** the 10 MiB
+  `gpu_unnamed_steady` crowd-tour guard HOLDS and is not re-scoped. #290 (MR
+  !94) ships only the self-contained, pixel-identical cuts (~3-6 MiB: impostor
+  pages, the untagged raw-GL particle draw, optionally the T462 `UiQuadBatch`
+  vertices); the zone-merge + entity-aux pool that keeps the guard red moves
+  to **B997 (#317)** — bounded-VBO conversion (B975 pattern), NOT the rejected
+  static VBO (B962). The guard reads red on the crowd tours until B997 lands
+  (B988/#307 known condition).
+- **B997** (B, memory) → issue #317. The B972 split-off: the zone-merge pool
+  (6 × 1 MiB `u_upload` `draw:zone` slots, ~38 client-array drawCalls/frame,
+  `renderer_zone_merge.cpp`) + the remaining `draw3d:client` pool hold the
+  residual above the 10 MiB `gpu_unnamed_steady` guard (measured 2026-10-06:
+  qeynos2 18.90 / gfaydark 24.5 MiB cache-on imp200far, the impostor proven
+  NOT the lever by the `off200far` control — the B972 README in
+  `refactor/B972/` on the `task/B972-mesa-stream-buffers` branch, MR !94).
+  Conversion to bounded reused VBOs (partial `glBufferSubData`, the merged
+  B975 `NameTagBatchNode` slack pattern); a static VBO is the measured
+  anti-pattern (B962: +4.3 MiB, half qeynos2 fps). Cut behind #290/MR !94
+  (re-measure the residual after it lands).
 - ~~**B970** (B) → issue #288. `build-arm` fetched `irrlicht-1.8.5.zip` and
   `libpng-1.6.37.tar.xz` from downloads.sourceforge.net inside a Docker layer, so
   the 2026-10-01 SourceForge outage (HTTP 522, ~3 h) failed every job whose
@@ -8515,7 +8534,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   is established that Titanium never puts one there and the two elements are
   recorded as deliberately unused. Found by T436.
 
-- **B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`), → issue #26
+- ~~**B441** (C) `src/client/graphics/ui/bank_panel.cpp` (`BW_ChangeButton`), → issue #26
   `include/client/graphics/ui/bank_layout.h` -- **the bank window's Change
   button is drawn greyed and is not hit-testable.** The oracle's Change opens a
   coin-denomination dialog that fable does not have, and the underlying
@@ -8524,7 +8543,11 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   missing is a way for one click to supply the from/to/amount triple it needs.
   `/bank convert <from> <to> <amount>` remains the only route. Drawn disabled
   rather than wired to a guess, the T363 rule T434 made mechanical. Closes on a
-  decision about what gesture supplies the triple. Found by T436.
+  decision about what gesture supplies the triple. Found by T436.~~
+  **STRUCK (UIGAP-small): there is no dialog -- no EQUI_*.xml declares one and
+  the client's own help/tips/ctxbank.html says Change converts all coin, bank
+  and person, to the fewest coins. Wired as one click (`BankMakeChangeIntent`,
+  `coin_change.h`, `/bank change`), pinned by `tests/test_bank_change.cpp`.**
 
 - **B442** (B) `src/client/graphics/ui/static_ui_input.cpp` → issue #151
   (`StaticUIInput::processCommerceInput`, the bank-slot arm) -- **a bank slot
@@ -8967,6 +8990,11 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   presses ESC on each with the official client running and records what
   happens. Cheap and scriptable -- we control the server and the vendor.
   Found by T443.
+  **UIGAP-small (B460 partial):** the ORDER is now the measured one (most
+  recently opened first, one per press; `esc_window_stack.h`,
+  `tests/test_esc_window_stack.cpp`). Still unmeasured, so this stays open:
+  ESC on the merchant/bank/trainer specifically, and whether a
+  window-closing press also clears the target (fable: it does not).
 
 ---
 
@@ -10288,14 +10316,18 @@ because the Pi had no keyboard or mouse attached (B510).
   eight bindings), pinned by
   `T464_TheShippedFileCarriesEveryDefaultBinding`, issue #182 closed.**
 
-- **(B, needs a GitLab issue)** MR !34's fix commit notes that 7 of the 8
+- ~~**(B, needs a GitLab issue)** MR !34's fix commit notes that 7 of the 8
   actions it added to `setupDefaults()` still have no dispatch consumer:
   `hotkey_manager.cpp:476` says "ToggleZoneLights is the ONE of the eight
   with a dispatch consumer" (`RendererEventReceiver` -> `RA::ToggleZoneLights`).
   `CancelDialog`, `CancelInput`, `ChatAutocomplete`, `ConfirmDialog`,
   `ResetUIDefaults`, `SaveUILayout` and `ToggleUILock` are bound keys with
   nothing behind them -- the B562 fix made the binding table match the
-  shipped file, it did not wire the seven actions to anything. Remains open.
+  shipped file, it did not wire the seven actions to anything. Remains open.~~
+  **STRUCK (UIGAP-small, B905 / #225): the seven -- and `SubmitInput`, found
+  by the new census -- were DELETED (no oracle counterpart; as Global
+  bindings they shadowed Tab/Escape/Return), Ctrl+Q `Attack` got its receiver
+  arm, pinned by `tests/test_hotkey_dispatch_census.cpp`.**
 
 - **B563** (P) **The region box a camera or sim reads is built in one place
   and re-derived in a test.** `tests/test_camera_bsp_ceiling.cpp` copies
@@ -12617,7 +12649,7 @@ B816-B819 used by T496 (Leg A-D). B820-B822 are T497's.
   Not class A: the score decided a corpus LABEL, not a shipped constant, and
   `review/T492/README.md` says the corpus is not blessed until Will has looked
   at the sheets. Found by T499.
-- **B834** (B) **The tip window is not only "Tip of the Day" at login -- it has → issue #202
+- **B834** (B) [UIGAP-small: fable now HAS the tip windows -- `tip_window.h`, `tests/test_tip_window.cpp`; what stays open is the oracle half below: whether `ShowTips=0` suppresses the context tips on the official client] **The tip window is not only "Tip of the Day" at login -- it has → issue #202
   context-sensitive variants that pop at the SAME rect after an in-world
   action, and nothing has ever verified that `[Tips] ShowTips=0` suppresses
   them.** [measured T499] The same 360x300 window at (664,234) carries a

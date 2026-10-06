@@ -33,7 +33,13 @@ enum TitaniumWorldOpcodes {
 	HC_OP_SetChatServer = 0x00d7,
 	HC_OP_SetChatServer2 = 0x6536,
 	HC_OP_ZoneServerInfo = 0x61b6,
-	HC_OP_WorldComplete = 0x509d
+	HC_OP_WorldComplete = 0x509d,
+	// B888 (#204): character creation and deletion,
+	// akk-stack/code/utils/patches/patch_Titanium.conf:21-27.
+	HC_OP_DeleteCharacter = 0x26c9,
+	HC_OP_CharacterCreate = 0x10b2,
+	HC_OP_RandomNameGenerator = 0x23d4,
+	HC_OP_ApproveName = 0x3ea6
 };
 
 // Titanium zone opcodes
