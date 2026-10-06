@@ -44,7 +44,7 @@ TEST_F(SimBridgeComponentTest, AccessorReachesAConstructedComponent) {
 // against; every field asserted below is copied straight off RendererContext,
 // so writing through Context() and reading the built snapshot back is one
 // round trip across the binding. On a bare renderer every container the
-// function walks (objectNodes, objectLights, regionMeshNodes, the zone) is
+// function walks (objectRecords, objectLights, regionMeshNodes, the zone) is
 // empty or null and each is guarded, so the whole body runs.
 
 TEST_F(SimBridgeComponentTest, BuildZoneDataReadsTheContextTheRendererWroteThrough) {

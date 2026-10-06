@@ -39,6 +39,7 @@
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/constrained_renderer_config.h"
+#include "client/graphics/placed_object_meshes.h"
 #include "client/graphics/renderer_zone_merge.h"
 #include <irrlicht.h>
 #endif
@@ -104,13 +105,15 @@ protected:
 
 }  // namespace
 
-// The core regression: a DETACHED object node's node-level Materials copy
-// (populated by Irrlicht's own addMeshSceneNode()/copyMaterials(), the exact
-// array render() actually reads) must not be left holding a dangling
-// texture pointer after ConstrainedTextureCache::clear() — the real
+// The core regression: a DETACHED object placement's node-level Materials
+// copy (populated by Irrlicht's own addMeshSceneNode()/copyMaterials(), the
+// exact array the scene-graph pass reads) must not be left holding a
+// dangling texture pointer after ConstrainedTextureCache::clear() — the real
 // zone-unload path — destroys that texture, PROVIDED ObjectNodeTextureGuard
 // is registered as an eviction listener the way irrlicht_renderer.cpp wires
-// it up in production.
+// it up in production. B938 (#256): the guard now scans a
+// PlacedObjectRecord (record.node covers this path; record.mesh covers the
+// PVS manual-draw path, asserted in the second test).
 TEST_F(ObjectNodeTextureGuardTest, ClearSwapsDetachedNodeMaterialToPlaceholder) {
     // Real texture, registered into the cache like any zone/object texture.
     irr::video::ITexture* tex = driver_->addTexture(irr::core::dimension2d<irr::u32>(2, 2), "t123_obj_tex");
@@ -121,35 +124,43 @@ TEST_F(ObjectNodeTextureGuardTest, ClearSwapsDetachedNodeMaterialToPlaceholder) 
     irr::scene::IMeshSceneNode* node = smgr_->addMeshSceneNode(mesh);
     mesh->drop();  // node now owns it
     ASSERT_NE(node, nullptr);
-    // Mirror production's exact objectNodes_ pattern (renderer_zone_load.cpp:
-    // "objNode->grab(); ... objectNodes_.push_back(objNode);") — grab() an
-    // extra reference BEFORE any remove(), since remove() drops the scene
+    // Mirror production's non-PVS record (renderer_zone_load_objects.cpp
+    // step 6: the record grabs its mesh ref where needsOwnRef, and grabs the
+    // node unconditionally -- `objNode->grab(); record.node = objNode;`):
+    // grab() both BEFORE any remove(), since remove() drops the scene
     // graph's own reference and would otherwise destroy the node outright
-    // (matching unloadZone()'s corresponding drop() at teardown).
-    node->grab();
+    // (matching zone teardown's corresponding drops).
+    mesh->grab();  // the record's mesh reference (needsOwnRef false in
+                   // non-PVS -- see below: here we model the record holding
+                   // it so the guard's mesh-buffer scan is also exercised)
+    node->grab();  // the record's node reference (step 6 grab)
 
     // Sanity: Irrlicht's default ReadOnlyMaterials=false means the node's
-    // OWN Materials copy — not the mesh buffer's material — is what render()
-    // actually reads. Confirm the copy exists and holds our texture before
-    // testing the fix.
+    // OWN Materials copy — not the mesh buffer's material — is what the
+    // scene-graph pass actually reads. Confirm the copy exists and holds our
+    // texture before testing the fix.
     ASSERT_GT(node->getMaterialCount(), 0u);
     ASSERT_EQ(node->getMaterial(0).getTexture(0), tex);
 
     // Simulate applySimulationOutput()'s detach-on-invisible path exactly:
     // node->remove() detaches from the scene graph but the renderer (here,
-    // the test's local `node` variable standing in for objectNodes_[i])
-    // keeps the pointer alive via the grab() above.
+    // the record standing in for objectRecords_[i]) keeps the pointer alive
+    // via the grab() above.
     node->remove();
     ASSERT_EQ(node->getParent(), nullptr);
 
-    // Wire up the fix exactly like irrlicht_renderer.cpp does: a vector
-    // standing in for objectNodes_, an ObjectNodeTextureGuard bound to it,
-    // registered as an eviction listener.
-    std::vector<irr::scene::IMeshSceneNode*> objectNodes{node};
+    // Wire up the fix exactly like irrlicht_renderer.cpp does: a records
+    // vector standing in for objectRecords_, a guard bound to it, registered
+    // as an eviction listener.
+    PlacedObjectRecord rec;
+    rec.mesh = mesh;
+    rec.node = node;
+    rec.inSceneGraph = false;
+    std::vector<PlacedObjectRecord> objectRecords{rec};
     irr::video::ITexture* placeholder = cache_->getPlaceholderTexture();
     ASSERT_NE(placeholder, nullptr);
     ASSERT_NE(placeholder, tex);
-    ObjectNodeTextureGuard guard(objectNodes, placeholder);
+    ObjectNodeTextureGuard guard(objectRecords, placeholder);
     cache_->addEvictionListener(&guard);
 
     // The REAL destruction path — not a direct/synthetic call to the
@@ -161,9 +172,45 @@ TEST_F(ObjectNodeTextureGuardTest, ClearSwapsDetachedNodeMaterialToPlaceholder) 
     // override materials for nodes unreachable from the scene-graph root.
     EXPECT_EQ(node->getMaterial(0).getTexture(0), placeholder);
     EXPECT_NE(node->getMaterial(0).getTexture(0), tex);
+    // B938: the shared mesh's buffer material (what the PVS manual draw path
+    // binds) is covered by the same scan.
+    EXPECT_EQ(mesh->getMeshBuffer(0)->getMaterial().getTexture(0), placeholder);
 
     cache_->removeEvictionListener(&guard);
     node->drop();
+    mesh->drop();  // release the record's reference
+}
+
+// B938 (#256): the PVS shape — the guard's primary audience. In every PVS
+// zone (all gate zones) the record carries NO node; the live draw path binds
+// the shared mesh's buffer materials, so an evicted texture dangling in a
+// mesh buffer material of a zone whose placements are all node-less must be
+// swapped to the placeholder. Pre-B938 the guard only scanned nodes and
+// would have missed this entirely.
+TEST_F(ObjectNodeTextureGuardTest, ClearSwapsNodelessRecordMeshMaterialToPlaceholder) {
+    irr::video::ITexture* tex = driver_->addTexture(irr::core::dimension2d<irr::u32>(2, 2), "t123_obj_tex_pvs");
+    ASSERT_NE(tex, nullptr);
+    ASSERT_TRUE(cache_->registerTexture("t123_obj_tex_pvs", tex, 16));
+
+    irr::scene::SMesh* mesh = buildTestMesh(tex);  // the record holds its ref
+    ASSERT_NE(mesh, nullptr);
+    ASSERT_EQ(mesh->getMeshBuffer(0)->getMaterial().getTexture(0), tex);
+
+    PlacedObjectRecord rec;
+    rec.mesh = mesh;
+    rec.node = nullptr;  // PVS zone: no per-placement node
+    std::vector<PlacedObjectRecord> objectRecords{rec};
+    irr::video::ITexture* placeholder = cache_->getPlaceholderTexture();
+    ASSERT_NE(placeholder, nullptr);
+    ObjectNodeTextureGuard guard(objectRecords, placeholder);
+    cache_->addEvictionListener(&guard);
+
+    cache_->clear();
+
+    EXPECT_EQ(mesh->getMeshBuffer(0)->getMaterial().getTexture(0), placeholder);
+
+    cache_->removeEvictionListener(&guard);
+    mesh->drop();
 }
 
 // Control: an ATTACHED object node is already covered by
@@ -177,13 +224,19 @@ TEST_F(ObjectNodeTextureGuardTest, ClearSwapsAttachedNodeMaterialToPlaceholderTo
 
     irr::scene::SMesh* mesh = buildTestMesh(tex);
     irr::scene::IMeshSceneNode* node = smgr_->addMeshSceneNode(mesh);
-    mesh->drop();
+    mesh->drop();  // node now owns it
     ASSERT_NE(node, nullptr);
     ASSERT_NE(node->getParent(), nullptr);  // still attached
+    mesh->grab();  // the record's mesh reference (modeled held, as in PVS)
+    node->grab();  // the record's node reference (step 6 grab)
 
-    std::vector<irr::scene::IMeshSceneNode*> objectNodes{node};
+    PlacedObjectRecord rec;
+    rec.mesh = mesh;
+    rec.node = node;
+    rec.inSceneGraph = true;
+    std::vector<PlacedObjectRecord> objectRecords{rec};
     irr::video::ITexture* placeholder = cache_->getPlaceholderTexture();
-    ObjectNodeTextureGuard guard(objectNodes, placeholder);
+    ObjectNodeTextureGuard guard(objectRecords, placeholder);
     cache_->addEvictionListener(&guard);
 
     cache_->clear();
@@ -192,6 +245,8 @@ TEST_F(ObjectNodeTextureGuardTest, ClearSwapsAttachedNodeMaterialToPlaceholderTo
 
     cache_->removeEvictionListener(&guard);
     node->remove();
+    node->drop();
+    mesh->drop();
 }
 
 #else

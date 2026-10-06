@@ -26,6 +26,7 @@
 #include "client/graphics/eq/race_model_loader.h"
 #include "client/graphics/door_manager.h"
 #include "client/graphics/animated_texture_manager.h"
+#include "client/graphics/placed_object_meshes.h"  // B938: PlacedObjectRecord
 #include "client/graphics/constrained_renderer_config.h"
 #include "client/graphics/graphics_archive_index.h"
 #include "client/graphics/frustum_culler.h"
@@ -606,6 +607,15 @@ private:
 
     // PVS visibility check for a BSP region (used at insertion time for objects/lights)
     bool isRegionPvsVisible(size_t regionIdx) const;
+
+    // B938 (#256): the per-placement state is a compact record (objectRecords_),
+    // not a scene node. objectRecords_[i] is the placement i: its shared mesh,
+    // its world transform, its culling data (position/region/box/in-graph flag)
+    // and its name. In a PVS zone record.node is null and no IMeshSceneNode is
+    // allocated at all -- the manual draw path reads the record directly, and
+    // the indexed consumers (sim bridge, diagnostics, the tree-wind fixup,
+    // texture-eviction guard) read rec.node (null-checked) where they need the
+    // rare non-PVS scene-graph node.
     irr::IrrlichtDevice* device_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
     irr::scene::ISceneManager* smgr_ = nullptr;
@@ -910,12 +920,16 @@ private:
     bool sequentialLoadComplete_ = false;  // True after loadZoneSequential() finishes
 
 
-    std::vector<irr::scene::IMeshSceneNode*> objectNodes_;
-
-    std::vector<irr::core::vector3df> objectPositions_;  // Cached positions for distance culling
-    std::vector<irr::core::aabbox3df> objectBoundingBoxes_;  // Cached world-space bounding boxes for distance-to-edge culling
-    std::vector<bool> objectInSceneGraph_;  // Track which objects are in scene graph
-    std::vector<size_t> objectRegions_;  // BSP region per object (SIZE_MAX = unknown)
+    // B938 (GitLab #256): the per-placement state, one compact record each,
+    // replacing the per-placement IMeshSceneNode (obj.instances, ~2.2 KB: the
+    // node object, its name, its relative/absolute matrices, and a copied
+    // SMaterial per mesh buffer). The record holds what the draw paths read:
+    // the shared mesh, its world transform, its culling data (position, region,
+    // world box, in-scene-graph flag -- the four vectors that used to sit
+    // beside it) and its name. In every PVS zone (all gate and ledger zones)
+    // the node is never allocated -- the manual draw path reads the record
+    // directly.
+    std::vector<PlacedObjectRecord> objectRecords_;
 
     // Unified render distance system
     // renderDistance_ is the effective limit - nothing renders beyond this

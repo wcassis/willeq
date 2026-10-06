@@ -226,49 +226,105 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 }
 
                 eqt::memory::StartupScope instanceOwner("obj.instances");
-                irr::scene::IMeshSceneNode* objNode = ctx_.smgr->addMeshSceneNode(objMesh);
-                if (!objNode) {
-                    LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' addMeshSceneNode failed — mesh dropped", oi, objName);
-                    objMesh->drop(); deferred.meshBuilt = true; ++objectsBuilt; continue;
-                }
-
-                // Transform
+                // B938 (#256): the per-placement state is a compact record, not a
+                // full IMeshSceneNode. In a PVS zone (manualZoneDrawEnabled) the
+                // object is drawn by drawZoneGeometrySorted() from the shared
+                // mesh's buffers + the record's world transform, so no node is
+                // allocated at all. In a non-PVS zone the scene-graph pass
+                // (Irrlicht's SOLID drawAll) still needs a real node, so the
+                // record carries it there.
                 float scaleX = objInstance.placeable->getScaleX();
                 float scaleY = objInstance.placeable->getScaleY();
                 float scaleZ = objInstance.placeable->getScaleZ();
-                objNode->setScale(irr::core::vector3df(scaleX, scaleZ, scaleY));
-
                 float ox = objInstance.placeable->getX();
                 float oy = objInstance.placeable->getY();
                 float oz = objInstance.placeable->getZ();
-                objNode->setPosition(irr::core::vector3df(ox, oz, oy));
-                objNode->setRotation(irr::core::vector3df(
+
+                PlacedObjectRecord record;
+                record.mesh = objMesh;
+                record.name = objName;
+                record.position = irr::core::vector3df(ox, oz, oy);
+                if (ctx_.zoneBspTree)
+                    record.region = ctx_.zoneBspTree->findRegionIndexForPoint(ox, oy, oz);
+                // B938 (#256): the record is the placement's ONLY state -- before
+                // it the culling data lived in four renderer-parallel vectors
+                // (objectPositions_ / objectRegions_ / objectBoundingBoxes_ /
+                // objectInSceneGraph_), ~45 B per placement, all indexed by the
+                // same placement index. They are folded in here; consumers read
+                // the record now.
+                // Reference accounting. The acquire() above handed this
+                // iteration one reference (balanced by the objMesh->drop() at
+                // the end of the loop). In a PVS zone the record is the SOLE
+                // holder of the mesh, so it grabs its own (dropped in zone
+                // teardown); in a non-PVS zone the node created below holds a
+                // reference, so the record must not double-grab.
+                const bool needsOwnRef = ctx_.manualZoneDrawEnabled;
+                if (needsOwnRef) objMesh->grab();
+
+                // The record's world transform is the old node's
+                // getRelativeTransformation(), computed with the exact same
+                // three-setter idiom the node used to get (setRotationDegrees +
+                // setTranslation, then `*= scale` only when the scale is not
+                // (1,1,1)). The manual draw path reads it byte-identically.
+                record.world = irr::core::matrix4();
+                record.world.setRotationDegrees(irr::core::vector3df(
                     objInstance.placeable->getRotateX(),
                     objInstance.placeable->getRotateY(),
                     objInstance.placeable->getRotateZ()));
-
-                // Materials
-                for (irr::u32 mi = 0; mi < objNode->getMaterialCount(); ++mi) {
-                    objNode->getMaterial(mi).Lighting = ctx_.lightingEnabled;
-                    objNode->getMaterial(mi).BackfaceCulling = false;
-                    objNode->getMaterial(mi).GouraudShading = true;
-                    objNode->getMaterial(mi).FogEnable = ctx_.fogEnabled;
-                    objNode->getMaterial(mi).Wireframe = ctx_.wireframeMode;
-                    objNode->getMaterial(mi).NormalizeNormals = true;
-                    objNode->getMaterial(mi).AmbientColor = irr::video::SColor(255, 255, 255, 255);
-                    objNode->getMaterial(mi).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                record.world.setTranslation(irr::core::vector3df(ox, oz, oy));
+                {
+                    const irr::core::vector3df scale(scaleX, scaleZ, scaleY);
+                    if (scale != irr::core::vector3df(1.f, 1.f, 1.f)) {
+                        irr::core::matrix4 smat;
+                        smat.setScale(scale);
+                        record.world *= smat;
+                    }
                 }
+                // World-space transformed bounding box, exactly the old
+                // node->getTransformedBoundingBox(): the mesh's bounding box
+                // transformed by the relative (record.world) matrix.
+                record.box = objMesh->getBoundingBox();
+                record.world.transformBoxEx(record.box);
 
-                // Note: tree wind shaders (treeIdentifier_/zoneShader_ config)
-                // and animatedTextureManager_ are not yet created (Step 11).
-                // A fixup pass after Step 11 applies these to objects.
+                // Non-PVS zone: the scene-graph pass needs a real node with the
+                // old per-buffer SMaterial overrides. PVS zones skip this -- the
+                // node was the 2.2 KB per placement.
+                irr::scene::IMeshSceneNode* objNode = nullptr;
+                if (!ctx_.manualZoneDrawEnabled) {
+                    objNode = ctx_.smgr->addMeshSceneNode(objMesh);
+                    if (!objNode) {
+                        LOG_WARN(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' addMeshSceneNode failed — mesh dropped", oi, objName);
+                        objMesh->drop();
+                        record.mesh = nullptr;
+                        deferred.meshBuilt = true; ++objectsBuilt; continue;
+                    }
+                    objNode->setScale(irr::core::vector3df(scaleX, scaleZ, scaleY));
+                    objNode->setPosition(irr::core::vector3df(ox, oz, oy));
+                    objNode->setRotation(irr::core::vector3df(
+                        objInstance.placeable->getRotateX(),
+                        objInstance.placeable->getRotateY(),
+                        objInstance.placeable->getRotateZ()));
+                    for (irr::u32 mi = 0; mi < objNode->getMaterialCount(); ++mi) {
+                        objNode->getMaterial(mi).Lighting = ctx_.lightingEnabled;
+                        objNode->getMaterial(mi).BackfaceCulling = false;
+                        objNode->getMaterial(mi).GouraudShading = true;
+                        objNode->getMaterial(mi).FogEnable = ctx_.fogEnabled;
+                        objNode->getMaterial(mi).Wireframe = ctx_.wireframeMode;
+                        objNode->getMaterial(mi).NormalizeNormals = true;
+                        objNode->getMaterial(mi).AmbientColor = irr::video::SColor(255, 255, 255, 255);
+                        objNode->getMaterial(mi).DiffuseColor = irr::video::SColor(255, 255, 255, 255);
+                    }
+                    objNode->setName(objName.c_str());
+                    objNode->grab();
+                    record.node = objNode;
+                }
 
                 // Register vertex-animated objects (flags, banners, grass, plants):
                 // ONE entry per mesh (B936), however many placements draw it.
-                if (vertexAnimatedObject && objNode->getMesh()) {
+                if (vertexAnimatedObject && objMesh) {
                     eqt::memory::StartupScope animOwner("obj.anim");
                     size_t mappedVerts = 0;
-                    if (placedMeshes.registerAnimated(*objInstance.geometry, objNode->getMesh(), objName,
+                    if (placedMeshes.registerAnimated(*objInstance.geometry, objMesh, objName,
                                                       ctx_.vertexAnimatedMeshes, &mappedVerts)) {
                         const auto& animData = objInstance.geometry->animatedVertices;
                         if (objInstance.geometry->vertices.empty() || animData->frames[0].positions.size() < 3) {
@@ -283,31 +339,25 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                     }
                 }
 
-                objNode->setName(objName.c_str());
-                objNode->grab();
-                size_t newNodeIndex = ctx_.objectNodes.size();
-                ctx_.objectNodes.push_back(objNode);
-                ctx_.objectPositions.push_back(irr::core::vector3df(ox, oz, oy));
-                if (ctx_.zoneBspTree)
-                    ctx_.objectRegions.push_back(ctx_.zoneBspTree->findRegionIndexForPoint(ox, oy, oz));
-                else
-                    ctx_.objectRegions.push_back(SIZE_MAX);
-                objNode->updateAbsolutePosition();
-                ctx_.objectBoundingBoxes.push_back(objNode->getTransformedBoundingBox());
+                size_t newNodeIndex = ctx_.objectRecords.size();
+                ctx_.objectRecords.push_back(std::move(record));
                 deferred.nodeIndex = newNodeIndex;
 
                 // PVS visibility (no SimWorker yet, so all visible).
                 // When manualZoneDrawEnabled_, objects are always out of scene graph
                 // and rendered via drawZoneGeometrySorted() instead.
-                bool pvsVisible = owner_.isRegionPvsVisible(ctx_.objectRegions.back());
+                bool pvsVisible = owner_.isRegionPvsVisible(ctx_.objectRecords[newNodeIndex].region);
                 if (!pvsVisible || ctx_.manualZoneDrawEnabled) {
-                    objNode->remove();
+                    // Only a real scene-graph node (non-PVS zone) is removed; PVS
+                    // records have none.
+                    if (ctx_.objectRecords[newNodeIndex].node)
+                        ctx_.objectRecords[newNodeIndex].node->remove();
                     if (!pvsVisible) {
                         LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj[{}] '{}' removed from scene graph (PVS hidden, region={})",
-                                  oi, objName, ctx_.objectRegions.back());
+                                  oi, objName, ctx_.objectRecords[newNodeIndex].region);
                     }
                 }
-                ctx_.objectInSceneGraph.push_back(pvsVisible && !ctx_.manualZoneDrawEnabled);
+                ctx_.objectRecords[newNodeIndex].inSceneGraph = pvsVisible && !ctx_.manualZoneDrawEnabled;
 
                 // Object lights (torch, lantern, fire, candle, etc.)
                 std::string upperName = objName;
@@ -388,7 +438,7 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                         objLight.position = lightPos;
                         objLight.objectName = objName;
                         objLight.originalColor = lightColor;
-                        objLight.bspRegion = ctx_.objectRegions.back();
+                        objLight.bspRegion = ctx_.objectRecords[newNodeIndex].region;
 
                         if (upperName.find("TORCH") != std::string::npos ||
                             upperName.find("FIRE") != std::string::npos ||
@@ -551,8 +601,8 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
     ctx.updateProgress(88, "Setting up collision...");
     {
         auto stepStart = std::chrono::steady_clock::now();
-        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: smgr_={}, regionWorldTriangles_={}, objectNodes_={}, zoneBspTree_={}",
-                  (bool)ctx_.smgr, ctx_.regionWorldTriangles.size(), ctx_.objectNodes.size(), (bool)ctx_.zoneBspTree);
+        LOG_DEBUG(MOD_GRAPHICS, "SEQ Step9: smgr_={}, regionWorldTriangles_={}, objectRecords={}, zoneBspTree_={}",
+                  (bool)ctx_.smgr, ctx_.regionWorldTriangles.size(), ctx_.objectRecords.size(), (bool)ctx_.zoneBspTree);
         {
             // B909: owner labels for WILLEQ_LEDGER_OWNERS=spatial (no effect
             // otherwise -- the rows are printed only for the owner category).
@@ -580,22 +630,22 @@ void ZoneLoadComponent::loadZoneStep9_Collision(ZoneLoadContext& ctx) {
             // with it): instances and triangles per distinct mesh.
             struct MeshUse { size_t instances = 0; size_t triangles = 0; const char* name = ""; };
             std::map<const irr::scene::IMesh*, MeshUse> meshUse;
-            for (size_t oi = 0; oi < ctx_.objectNodes.size(); ++oi) {
-                auto* node = ctx_.objectNodes[oi];
-                if (node && node->getMesh()) {
-                    size_t region = (oi < ctx_.objectRegions.size()) ? ctx_.objectRegions[oi] : SIZE_MAX;
-                    irr::scene::IMesh* mesh = node->getMesh();
+            for (size_t oi = 0; oi < ctx_.objectRecords.size(); ++oi) {
+                const auto& rec = ctx_.objectRecords[oi];
+                if (rec.mesh) {
+                    size_t region = rec.region;
+                    irr::scene::IMesh* mesh = rec.mesh;
                     const bool animated = std::find(animatedMeshes.begin(), animatedMeshes.end(), mesh) !=
                                           animatedMeshes.end();
                     if (ctx_.objectCollision.addInstance(region, mesh,
-                                                         SelectorWorldMatrix(node->getAbsoluteTransformation()),
+                                                         SelectorWorldMatrix(rec.world),
                                                          animated)) {
                         objectsAdded++;
                         MeshUse& use = meshUse[mesh];
                         if (use.instances++ == 0) {
                             for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
                                 use.triangles += mesh->getMeshBuffer(b)->getIndexCount() / 3;
-                            use.name = node->getName();
+                            use.name = rec.name.c_str();
                         }
                     }
                 }
