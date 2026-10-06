@@ -169,10 +169,11 @@ Legend: Done | Partial | Not Implemented
 | XP bar | Done | |
 | Skills popup | Done | Skill values by category, class skill table from `config/skill_caps.json` |
 | Merchant window | Done | T436 (board B429), the oracle's `EQUI_MerchantWnd.xml`: stock list with icons, Buy/Sell, Done. As measured (B442b, #152): clicking one of your items selects it for sale (never the cursor), the button is Buy or Sell by the last selection, Sell on a stack opens the Quantity window. `/vendorlist`, `/buy`, `/sell` still work |
-| Bank window | Done | T436 (board B429), the oracle's `EQUI_BankWnd.xml`: 8 slots + 4 money rows + Done. `/bank` still works. Change is drawn disabled (board B441) |
+| Bank window | Done | T436 (board B429), the oracle's `EQUI_BankWnd.xml`: 8 slots + 4 money rows + Change + Done. Change converts every coin in the bank and on you to the fewest coins (B441, the client's own tip text; `/bank change`). `/bank` still works |
 | Cursor item | Done | T436, `EQUI_CursorAttachment.xml`: the held item's icon follows the mouse |
 | Loot window | Done | T290, center popup, scrollable |
-| Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; every row is classified in `src/client/graphics/ui/options_classification.cpp` (wired, or excluded with its reason -- post-Velious, Will's OUT ruling, no fable capability, or awaiting the oracle) and `OptionsClassification.*` fails on an unclassified row. B430/B433 wired General (anonymous/roleplay, autosplit, auto-consent, pet window popup, the volumes), Display (PC/NPC names, clip plane), Mouse, Keys (category, rebinding, reload defaults) and Filters; Colors and the remaining General/Display rows stay greyed (#144, #145, #146). `/option` sets any wired setting by name |
+| Tip windows | Done | B834 (#202): the Tip of the Day at zone-in and the context tips on the first open of a window (Inventory, Bank, Merchant, Trainer, Friends, Loot, Quantity, ...), the client's own `help/tips/` texts, `EQUI_TipWnd.xml` controls, "Don't show" persisted in the official `[Tips]` keys |
+| Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; every row is classified in `src/client/graphics/ui/options_classification.cpp` (wired, or excluded with its reason -- post-Velious, Will's OUT ruling, no fable capability, or awaiting the oracle) and `OptionsClassification.*` fails on an unclassified row. B430/B433 wired General (anonymous/roleplay, autosplit, auto-consent, pet window popup, the volumes), Display (PC/NPC names, clip plane), Mouse, Keys (category, rebinding, reload defaults) and Filters; Colors and the remaining General/Display rows stay greyed (#144, #145, #146; the missing capabilities are B993 colours #313, B994 3D target ring #314, B995 particle knobs #315). `/option` sets any wired setting by name |
 | Trade | Partial | B896 (#212): `EQUI_TradeWnd.xml` (8 slots a side, ours on the right, column-major; coin rows; Trade / Cancel) and the NPC `EQUI_GiveWnd.xml` (4 slots, Give / Cancel), opened by a click on a player or NPC with an item held; the held item drops into slot 3000, an incoming request is acknowledged with no prompt, the accepting side's name turns green and any change resets it, offered items cannot be taken back, cancel prints eqstr 1450 and completion prints nothing -- all measured (`review/UIGAP-ORACLE/212`). Owed: the live two-client run, the no-drop refusal string (not captured), the tip windows |
 | Item / spell display | Done | T421 + T425, one window for both (`EQUI_ItemDisplay.xml`); click an item slot, SHIFT+click a gem or spellbook row |
 | Pick up / put down an item | Partial | Click-to-cursor in the inventory, bank, loot, container, trade and give windows, the Quantity window (a stack or a purse/bank coin row; its box takes typed digits) and `/pickup` `/putdown` `/cursor` `/coin` — one `CursorGestureIntent` path, rules from the official client's capture (B442, B442b, #151). Coin rides the cursor with its count; a motionless world click with an item held asks "ARE YOU SURE you wish to drop..." (Yes = `OP_GroundSpawn`) unless it lands on a player (trade) or an NPC (give, B896), and Destroy asks before `OP_MoveItem 30 -> -1`. Owed: the live `pickup_roundtrip` scenario, loot-to-cursor (not captured) |
@@ -491,16 +492,16 @@ Bindings are configurable in `config/hotkeys.json` (or a `hotkeys` object in the
 | Key | Action |
 |-----|--------|
 | Q | Toggle auto-attack |
-| Ctrl+Q | Attack target |
+| Ctrl+Q | Attack target (B905: the key had no dispatch arm until UIGAP-small) |
 | C | Consider target |
 | H | Hail target |
-| Tab | Cycle targets |
+| Tab | Cycle targets (B905: shadowed by a dead Global `ChatAutocomplete` binding until UIGAP-small) |
 | Shift+Tab | Cycle targets reverse |
 | F1 | Target self |
 | F2-F6 | Target group member 1-5 |
 | F7 | Target nearest PC |
 | F8 | Target nearest NPC |
-| Escape | Clear target |
+| Escape | Close the most recently opened window, one per press (B460, measured); with none open, clear target |
 
 **Spells & Hotbar:**
 | Key | Action |

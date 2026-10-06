@@ -220,7 +220,8 @@ TEST(B454Census, EscapeOnTheBankAndMerchantStillSendsTheirCloseIntents) {
     // T436's arms, pinned as invariants so a reorder of this handler cannot
     // quietly turn either back into a local hide.
     const std::string src = slurp("src/client/graphics/frame/renderer_frame_input.cpp");
-    const std::string block = escBlock(src, "if (ctx_.eventReceiver->escapeKeyPressed())");
+    // B460 (#156) moved the ESC handler into FrameComponent::handleEscapeKey().
+    const std::string block = escBlock(src, "bool FrameComponent::handleEscapeKey(");
     EXPECT_TRUE(has(block, "CloseBankIntent"));
     EXPECT_TRUE(has(block, "VendorToggleIntent"));
     EXPECT_FALSE(has(block, "bankState_.isOpen = false"));

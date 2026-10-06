@@ -137,6 +137,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_debug_hotkey_arms DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B905 (#225): every default and shipped key binding is unshadowed and reaches
+# a dispatch consumer on a real RendererEventReceiver.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_hotkey_dispatch_census
+        test_hotkey_dispatch_census.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_hotkey_dispatch_census PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_hotkey_dispatch_census GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_hotkey_dispatch_census PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_hotkey_dispatch_census DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T343 (B002): the autorun arm in processCommonInput. Behavioural on a
 # device-less renderer (the flag lives on PlayerCameraComponent), plus the two
 # source-pinned ends the behavioural test cannot reach -- the receiver's queue
@@ -520,6 +533,42 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_esc_server_owned_windows PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_esc_server_owned_windows GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_esc_server_owned_windows DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B441 (#26): the bank's Change button -- the OP_MoveCoin steps, replayed
+# through eqemu's own conversion arithmetic, and the button's intent.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_bank_change
+        test_bank_change.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_bank_change PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_bank_change GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_bank_change PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_bank_change DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B834 (#202): the tip windows -- parse, catalog, rules, [Tips] persistence,
+# and the frame's rising-edge triggers and ESC order on a device-less renderer.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_tip_window
+        test_tip_window.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_tip_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_tip_window GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_tip_window DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B460 (#156): ESC closes the most recently opened window, one per press --
+# the open-order stack and FrameComponent::handleEscapeKey() on a device-less
+# renderer, driven through opened-order sequences.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_esc_window_stack
+        test_esc_window_stack.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_esc_window_stack PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_esc_window_stack GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_esc_window_stack DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T443 (board B453): /dumpscene's unaccounted count, against a hand-built

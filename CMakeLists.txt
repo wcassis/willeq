@@ -318,6 +318,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/merchant/merchant_trade.cpp
     src/client/merchant/merchant_vendor_bank.cpp
     src/client/merchant/merchant_trainer.cpp
+    src/client/merchant/coin_change.cpp  # B441: the bank Change steps
     src/client/core/eq_player_info.cpp
     src/client/raid_update.cpp
     src/client/inspect_answer.cpp
@@ -621,6 +622,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_friends.cpp  # B897
         src/client/graphics/frame/renderer_frame_cursor.cpp  # B442b
         src/client/graphics/frame/renderer_frame_trade.cpp  # B896
+        src/client/graphics/frame/renderer_frame_tips.cpp  # B834
         src/client/graphics/frame/renderer_frame_entity_build.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
@@ -732,6 +734,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/options_keys.cpp
         # B897: the Friends window (friends + ignore lists).
         src/client/graphics/ui/friends_panel.cpp
+        src/client/graphics/ui/tip_window.cpp  # B834: the tip windows
         # T436 (board B429): the merchant, bank and cursor-attachment
         # windows -- one TU per panel (M00).
         src/client/graphics/ui/merchant_panel.cpp
@@ -748,6 +751,7 @@ IF(EQT_GRAPHICS)
         # B896 (#212): the trade window and the NPC give window, and their input.
         src/client/graphics/ui/trade_panel.cpp
         src/client/graphics/ui/trade_input.cpp
+        src/client/graphics/ui/esc_window_stack.cpp
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
         src/client/graphics/ui/ui_preferences.cpp

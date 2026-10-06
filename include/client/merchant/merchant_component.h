@@ -158,6 +158,8 @@ public:
 	// not open.
 	void RequestBankCoinMove(uint8_t coinType, int32_t amount, bool fromBank);
 	void RequestBankCoinConvert(uint8_t fromCoinType, uint8_t toCoinType, int32_t amount);
+	// B441 (#26): the bank's Change button as a command -> BankMakeChangeIntent.
+	void RequestBankMakeChange();
 
 	// ---- Book/Note reading methods (Player mode with graphics)
 	void RequestReadBook(const std::string& filename, uint8_t type = 0);

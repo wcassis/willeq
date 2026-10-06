@@ -453,6 +453,21 @@ void eqt::merchant::MerchantComponent::RequestBankCoinConvert(uint8_t fromCoinTy
 	}
 }
 
+// B441 (#26): `/bank change`, the slash half of the bank window's Change
+// button -- the same intent, the same arm (BridgeComponent::onBankMakeChangeIntent).
+void eqt::merchant::MerchantComponent::RequestBankMakeChange()
+{
+	if (!ctx_.self.IsBankWindowOpen()) {
+		ctx_.out.System("You must have a bank window open to change coins.");
+		return;
+	}
+	if (ctx_.bridge) {
+		ctx_.bridge->pushIntent(eqt::events::BankMakeChangeIntent{});
+	} else {
+		ctx_.out.System("Cannot change coins - no bridge attached.");
+	}
+}
+
 void eqt::merchant::MerchantComponent::SendTradeAcceptClick(const EQT::TradeAcceptClick_Struct& accept)
 {
 	if (!ctx_.zone_connection) {
