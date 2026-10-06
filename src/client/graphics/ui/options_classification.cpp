@@ -30,8 +30,10 @@ const char* const kPostVeliousEra = "post-Velious feature (#144 era table)";
 const char* const kWillOut = "Will 2026-09-23 ruling on #144: OUT";
 const char* const kNoFade =
     "fable's static panels have no fade or transparency model (#145)";
-const char* const kNoParticleKnob =
-    "no runtime particle knob of this kind in fable (B995 #315; #145)";
+const char* const kParticleFilterOwed =
+    "what SpellParticleCastFilter=24 selects is not in the oracle files (a bitmask reading -- me 1, group 2, raid 4, all PCs 8, NPC 16, so 24 = All spells -- is unconfirmed); #145 Leg O";
+const char* const kNoActorParticles =
+    "fable has no actor-emitted particles for the Player page to govern (Will 2026-09-23: IN; particle_options.h N3; B995 #315)";
 const char* const kNoMail = "no in-game mail in the era or on this server (#146 era table: all OUT)";
 
 // clang-format off
@@ -80,7 +82,7 @@ const ControlClass kClasses[] = {
 // ---------------------------------------------------------------- Display
 {"ODP_PCNamesCheckbox",              W,  "EntityRenderer::setNameTagKindsVisible (PC half)"},
 {"ODP_NPCNamesCheckbox",             W,  "EntityRenderer::setNameTagKindsVisible (NPC half)"},
-{"ODP_ShowTargetRingCheckbox",       NC, "fable draws no 3D target ring (Will 2026-09-23: IN; the ring is a new world-space draw, not a toggle -- B994 #314); #145"},
+{"ODP_ShowTargetRingCheckbox",       W,  "B994: OverlaysComponent::drawTargetRing(), TargetIndicator.ini's four-circle ring (target_ring.h)"},
 {"ODP_LevelOfDetailCheckbox",        PV, "Luclin models; #144 era table"},
 {"ODP_ShowHelmCheckbox",             PV, "Luclin models; #144 era table"},
 {"ODP_SetWindowedButton",            NC, "fable is EGL-surfaceless or DRM: no windowed/fullscreen switch; #145"},
@@ -113,17 +115,33 @@ const ControlClass kClasses[] = {
 {"ODP_ClipPlaneLabel",               W,  kCaption},
 {"ODP_ClipPlaneSlider",              W,  "T434: setRenderDistance()"},
 {"ODP_ClipPlaneValueLabel",          W,  kCaption},
-{"ODP_ParticlesLabel", AO, "every control behind the Spell/Env/Player sub-tabs is unwired (Will 2026-09-23: Env/Player IN; the knobs are B995 #315), so there is nothing to switch to; #145"},
-{"ODP_ParticlesTabs", AO, "every control behind the Spell/Env/Player sub-tabs is unwired (Will 2026-09-23: Env/Player IN; the knobs are B995 #315), so there is nothing to switch to; #145"},
-{"ODP_SpellParticlesNearClipLabel",  NC, kNoParticleKnob},
-{"ODP_SpellParticlesNearClipCombobox", NC, kNoParticleKnob},
-{"ODP_SpellParticlesDensityLabel", AO, "the Density combobox's choices and the float each stores are not in the oracle files (SpellParticleDensity=1.000000 only); #145 Leg O"},
-{"ODP_SpellParticlesDensityCombobox", AO, "the Density combobox's choices and the float each stores are not in the oracle files (SpellParticleDensity=1.000000 only); #145 Leg O"},
-{"ODP_SpellParticlesFilterLabel",    AO, "the meaning of SpellParticleCastFilter=24 is not in the oracle files; #145 Leg O"},
-{"ODP_SpellParticlesFilterCombobox", AO, "the meaning of SpellParticleCastFilter=24 is not in the oracle files; #145 Leg O"},
-{"ODP_SpellParticlesOpacityLabel",   NC, kNoParticleKnob},
-{"ODP_SpellParticlesOpacitySlider",  NC, kNoParticleKnob},
-{"ODP_SpellParticlesOpacityValueLabel", NC, kNoParticleKnob},
+{"ODP_ParticlesLabel",               W,  kCaption},
+{"ODP_ParticlesTabs",                W,  "B995: switches the Spell / Env / Player sub-pages (options_particles.cpp)"},
+{"ODP_SpellParticlesNearClipLabel",  W,  kCaption},
+{"ODP_SpellParticlesNearClipCombobox", W, "B995: spell particles nearer the camera are not drawn (particle_options.h N1/N2)"},
+{"ODP_SpellParticlesDensityLabel",   W,  kCaption},
+{"ODP_SpellParticlesDensityCombobox", W, "B995: scales what spell emitters spawn (SimulationWorker)"},
+{"ODP_SpellParticlesFilterLabel",    AO, kParticleFilterOwed},
+{"ODP_SpellParticlesFilterCombobox", AO, kParticleFilterOwed},
+{"ODP_SpellParticlesOpacityLabel",   W,  kCaption},
+{"ODP_SpellParticlesOpacitySlider",  W,  "B995: spell particles' alpha at draw (applyParticleKnobs)"},
+{"ODP_SpellParticlesOpacityValueLabel", W, kCaption},
+{"ODP_EnvironmentParticlesNearClipLabel", W, kCaption},
+{"ODP_EnvironmentParticlesNearClipCombobox", W, "B995: fire / weather / ambient particles nearer the camera are not drawn (N1/N2)"},
+{"ODP_EnvironmentParticlesDensityLabel", W, kCaption},
+{"ODP_EnvironmentParticlesDensityCombobox", W, "B995: scales fire, weather and ambient emitters (worker + ParticleManager)"},
+{"ODP_EnvironmentParticlesOpacityLabel", W, kCaption},
+{"ODP_EnvironmentParticlesOpacitySlider", W, "B995: fire / weather / ambient particles' alpha at draw"},
+{"ODP_EnvironmentParticlesOpacityValueLabel", W, kCaption},
+{"ODP_ActorParticlesNearClipLabel",  NC, kNoActorParticles},
+{"ODP_ActorParticlesNearClipCombobox", NC, kNoActorParticles},
+{"ODP_ActorParticlesDensityLabel",   NC, kNoActorParticles},
+{"ODP_ActorParticlesDensityCombobox", NC, kNoActorParticles},
+{"ODP_ActorParticlesFilterLabel",    NC, kNoActorParticles},
+{"ODP_ActorParticlesFilterCombobox", NC, kNoActorParticles},
+{"ODP_ActorParticlesOpacityLabel",   NC, kNoActorParticles},
+{"ODP_ActorParticlesOpacitySlider",  NC, kNoActorParticles},
+{"ODP_ActorParticlesOpacityValueLabel", NC, kNoActorParticles},
 {"ODP_AdvancedButton",               PV, "EQUI_AdvancedDisplayOptionsWnd (post-Velious render options); #144 era table"},
 
 // ------------------------------------------------------------------ Mouse
@@ -147,9 +165,9 @@ const ControlClass kClasses[] = {
 {"OFP_FilterComboBox",               W,  "the selected filter's setting"},
 
 // ----------------------------------------------------------------- Colors
-{"OCP_UserColorDefault",             NC, "chat colours are a compiled per-channel table (getChannelColor), no user table yet -- B993 #313 (UIGAP-small filed it: the table, [TextColors] persistence and EQUI_ColorPickerWnd are not small); #146"},
-{"OCP_ColorChooseList",              NC, "no user colour table to list (eqclient.ini [TextColors] User_N_*) -- B993 #313; #146"},
-{"OCP_UserColorChange",              NC, "no colour-picker window (the oracle opens EQUI_ColorPickerWnd) -- B993 #313; #146"},
+{"OCP_UserColorDefault",             W,  "B993: OptionsPanelState::textColors back to eqclient.ini's [TextColors] table"},
+{"OCP_ColorChooseList",              W,  "B993: the 86 [TextColors] User_N rows (eqstr 6200..), selects the row Change edits"},
+{"OCP_UserColorChange",              W,  "B993: opens EQUI_ColorPickerWnd on the selected row (color_picker.h)"},
 
 // ------------------------------------------------------------------- Mail
 {"OMP_PathToAddressBookLabel",            PV, kNoMail},

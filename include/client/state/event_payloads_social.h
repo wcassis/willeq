@@ -34,6 +34,10 @@ struct ChatMessageData {
     std::string message;
     uint32_t channelType;
     std::string channelName;
+    // B993 (#313): the server's own chat type when the line came with one
+    // (OP_FormattedMessage / OP_SimpleMessage); 256.. names a [TextColors]
+    // row (chat_text_colors.h). 0 = none.
+    uint32_t chatType = 0;
 };
 
 // --- Combat events ---

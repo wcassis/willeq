@@ -45,6 +45,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdio>
+
+#include "client/graphics/environment/particle_options.h"  // B995: the ini floats
 
 namespace EQT {
 namespace Graphics {
@@ -61,6 +65,9 @@ const Choice kPcSpells[] = {{0, "Show"}, {1, "Hide"}, {2, "Show Group Only"}};
 const Choice kBardSongs[] = {{0, "Show"}, {1, "Show Mine Only"},
                              {2, "Show Group Only"}, {3, "Hide"}};
 const Choice kCrits[] = {{0, "Show"}, {1, "Show Mine Only"}, {2, "Hide"}};
+// B995: EQUI_OptionsWindow.xml ODP_*ParticlesDensityCombobox / NearClipCombobox <Choices>.
+const Choice kDensity[] = {{0, "Off"}, {1, "Low"}, {2, "Medium"}, {3, "High"}};
+const Choice kNearClip[] = {{0, "Near"}, {1, "Medium"}, {2, "Far"}, {3, "Farthest"}};
 
 #define CHOICES(arr) arr, static_cast<int>(sizeof(arr) / sizeof(arr[0]))
 #define NO_CHOICES nullptr, 0
@@ -145,6 +152,27 @@ const SettingInfo kSettings[kSettingCount] = {
  "Show PC Names", "eqclient.ini [Options] PCNames=1"},
 {Setting::NPCNames, Owner::Renderer, ValueKind::Bool, "npcnames", "NPCNames", 1, 1, NO_CHOICES, -1, kNoGame,
  "Show NPC Names", "eqclient.ini [Options] NPCNames=1"},
+// B994 (#314): default OFF and the key is FABLE'S OWN -- none of the six
+// eqclient*.ini files carries a ring key, and TargetIndicator.ini's
+// [instructions] describe turning the indicator ON (target_ring.h, R5).
+{Setting::TargetRing, Owner::Renderer, ValueKind::Bool, "targetring", "ShowTargetRing", 0, 1, NO_CHOICES, -1, kNoGame,
+ "Show 3D Target Ring", "uifiles/default/TargetIndicator.ini; key is fable's (R5)"},
+// --- Display > Particles (B995): eqclient.ini [Options] keys, its floats.
+// Choices are EQUI_OptionsWindow.xml's <Choices>; the floats per choice and
+// the near-clip meaning are assumptions N1/N2 (particle_options.h).
+{Setting::ParticlesTab, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "ODP_ParticlesTabs"},
+{Setting::SpellParticleOpacity, Owner::Renderer, ValueKind::Step, "spellparticleopacity", "SpellParticleOpacity", 20, 20, NO_CHOICES, -1, kNoGame,
+ "Spell Particle Opacity", "eqclient.ini SpellParticleOpacity=1.000000 (N1)", 20.0f, nullptr},
+{Setting::SpellParticleDensity, Owner::Renderer, ValueKind::Choice, "spellparticledensity", "SpellParticleDensity", 3, 0, CHOICES(kDensity), -1, kNoGame,
+ "Spell Particle Density", "eqclient.ini SpellParticleDensity=1.000000 (N1)", 0.0f, Environment::kDensityIniValues},
+{Setting::SpellParticleNearClip, Owner::Renderer, ValueKind::Choice, "spellparticlenearclip", "SpellParticleNearClipPlane", 1, 0, CHOICES(kNearClip), -1, kNoGame,
+ "Spell Particle Near Clip", "eqclient.ini SpellParticleNearClipPlane=2.000000 (N1, N2)", 0.0f, Environment::kNearClipIniValues},
+{Setting::EnvParticleOpacity, Owner::Renderer, ValueKind::Step, "envparticleopacity", "EnvironmentParticleOpacity", 20, 20, NO_CHOICES, -1, kNoGame,
+ "Environment Particle Opacity", "eqclient.ini EnvironmentParticleOpacity=1.000000 (N1)", 20.0f, nullptr},
+{Setting::EnvParticleDensity, Owner::Renderer, ValueKind::Choice, "envparticledensity", "EnvironmentParticleDensity", 3, 0, CHOICES(kDensity), -1, kNoGame,
+ "Environment Particle Density", "eqclient.ini EnvironmentParticleDensity=1.000000 (N1)", 0.0f, Environment::kDensityIniValues},
+{Setting::EnvParticleNearClip, Owner::Renderer, ValueKind::Choice, "envparticlenearclip", "EnvironmentParticleNearClipPlane", 1, 0, CHOICES(kNearClip), -1, kNoGame,
+ "Environment Particle Near Clip", "eqclient.ini EnvironmentParticleNearClipPlane=2.000000 (N1, N2)", 0.0f, Environment::kNearClipIniValues},
 
 // --- Mouse (B433) --- eqclient.ini [Options], every shipped file:
 // InverseMouse=0 LookSpring=0 MouseActive=1 MouseWheelZoom=1
@@ -168,6 +196,13 @@ const SettingInfo kSettings[kSettingCount] = {
 {Setting::KeysCategory, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OKP_KeyboardFilterCombobox"},
 {Setting::KeysAssignment, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OKP_KeyboardAssignmentList"},
 {Setting::KeysReloadDefaults, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OKP_DefaultKeysButton"},
+
+// --- Colors (B993): not values -- the table is OptionsPanelState::textColors,
+// persisted under [TextColors] User_N_Red/Green/Blue (ui_preferences.cpp). ---
+{Setting::TextColorList, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OCP_ColorChooseList"},
+{Setting::TextColorReset, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OCP_UserColorDefault"},
+{Setting::TextColorChange, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "OCP_UserColorChange"},
+{Setting::TextColors, Owner::Marker, ValueKind::None, "", nullptr, 0, 0, NO_CHOICES, -1, kNoGame, "", "ColorPickerWnd Accept / /option textcolor"},
 };
 // clang-format on
 
@@ -290,6 +325,64 @@ eqt::ServerFilterPayload serverFilterPayload(const OptionValues& v) {
         p[info.serverFilterSlot] = static_cast<uint32_t>(value);
     }
     return p;
+}
+
+std::string settingIniText(Setting s, int v) {
+    const auto& info = settingInfo(s);
+    float f = 0.0f;
+    bool isFloat = false;
+    if (info.kind == ValueKind::Step && info.iniDivisor > 0.0f) {
+        f = static_cast<float>(v) / info.iniDivisor;
+        isFloat = true;
+    } else if (info.kind == ValueKind::Choice && info.iniFloats) {
+        for (int i = 0; i < info.choiceCount; ++i) {
+            if (info.choices[i].value == v) { f = info.iniFloats[i]; isFloat = true; break; }
+        }
+    }
+    if (!isFloat) return std::to_string(v);
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%f", static_cast<double>(f));  // eqclient.ini's own "1.000000"
+    return buf;
+}
+
+bool parseSettingIniText(Setting s, const std::string& text, int& out) {
+    const auto& info = settingInfo(s);
+    const bool isFloat = (info.kind == ValueKind::Step && info.iniDivisor > 0.0f) ||
+                         (info.kind == ValueKind::Choice && info.iniFloats);
+    if (isFloat) {
+        float f = 0.0f;
+        try {
+            size_t used = 0;
+            f = std::stof(text, &used);
+            if (used == 0 || !std::isfinite(f)) return false;
+        } catch (...) {
+            return false;
+        }
+        if (info.kind == ValueKind::Step) {
+            const int v = static_cast<int>(std::lround(f * info.iniDivisor));
+            if (!isValidSettingValue(s, v)) return false;
+            out = v;
+            return true;
+        }
+        int best = -1;
+        float bestD = 0.0f;
+        for (int i = 0; i < info.choiceCount; ++i) {  // the nearest choice
+            const float d = std::fabs(info.iniFloats[i] - f);
+            if (best < 0 || d < bestD) { best = i; bestD = d; }
+        }
+        if (best < 0) return false;
+        out = info.choices[best].value;
+        return true;
+    }
+    try {
+        size_t used = 0;
+        const int v = std::stoi(text, &used);
+        if (used == 0 || !isValidSettingValue(s, v)) return false;
+        out = v;
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 // The `/filter` reply text, eqstr_us.txt 1316-1353 (the name each one's

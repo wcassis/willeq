@@ -37,6 +37,10 @@ namespace Graphics {
 struct ChatWrappedLine {
     std::string text;
     irr::video::SColor color;
+    // B993: the message's [TextColors] row (0 = none). renderChatPanel()
+    // resolves the draw colour from the table at DRAW time, so a changed
+    // colour reaches the lines already on screen without a re-wrap.
+    uint8_t userColor = 0;
 };
 
 // Pixel width of a string in the font the panel draws with.

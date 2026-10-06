@@ -88,274 +88,275 @@
 87 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 3: target outline");
 88 ctx_.Overlays().drawTargetOutline();
 89 ctx_.Overlays().drawTargetSelectionBox();
-90 frameTimings_.targetBox = measureSection();
-91 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 4: particles (mgr={}, enabled={}, zoneReady={})",
-92 ctx_.particleManager != nullptr,
-93 ctx_.particleManager ? ctx_.particleManager->isEnabled() : false,
-94 ctx_.zoneReady);
-95 eqtGPUPhaseBegin(2 /* GPUSyncPhase::ParticlesUI */);
-96 if (ctx_.particleManager && ctx_.particleManager->isEnabled() && ctx_.zoneReady) ctx_.particleManager->render();
-97 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 5: unified particles (have3D={})", have3DTransforms_);
-98 if (ctx_.particleManager && ctx_.zoneReady && have3DTransforms_) {
-99 float fogStart = ctx_.zoneShader ? ctx_.zoneShader->fogStart() : 999999.0f;
-100 float fogEnd = ctx_.zoneShader ? ctx_.zoneShader->fogEnd() : 999999.0f;
-101 const float* fogCol = ctx_.zoneShader ? ctx_.zoneShader->fogColor() : nullptr;
-102 float screenH = static_cast<float>(ctx_.driver->getScreenSize().Height);
-103 ctx_.particleManager->renderUnified(ctx_.captured3DView, ctx_.captured3DProj,
-104 ctx_.camera ? ctx_.camera->getAbsolutePosition() : irr::core::vector3df(0, 0, 0),
-105 fogStart, fogEnd, fogCol, screenH,
-106 ctx_.particleRenderBuffer);
-107 frameTimings_.particles = measureSection();
-108 if (ctx_.fireEffectsEnabled && !ctx_.fireGlowLights.empty() && ctx_.zoneReady && have3DTransforms_) {
-109 fireGlowTime_ += deltaTime;
-110 if (ctx_.fireGlowLightingEnabled) {
-111 ctx_.Eqe1().updateFireGlowLighting();
-112 if (ctx_.fireGlowIcospheresEnabled && ctx_.icosphereProgram != 0) {
-113 ctx_.Eqe1().renderFireGlowIcospheres();
-114 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 6: boids");
-115 if (ctx_.boidsManager && ctx_.boidsManager->isEnabled() && ctx_.zoneReady) ctx_.boidsManager->render();
-116 frameTimings_.boids = measureSection();
-117 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 7: weather");
-118 if (ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) ctx_.weatherEffects->render();
-119 frameTimings_.weatherRender = measureSection();
-120 if (ctx_.PlayerCamera().playerConfig().collisionDebug) ctx_.PlayerCamera().drawCollisionDebugLines(deltaTime);
-121 if (frustumDebugDraw_ && ctx_.frustumCuller) {
-122 irr::video::SMaterial debugMat;
-123 debugMat.Lighting = false;
-124 debugMat.ZBuffer = irr::video::ECFN_ALWAYS;
-125 debugMat.ZWriteEnable = false;
-126 debugMat.AntiAliasing = false;
-127 debugMat.Thickness = 2.0f;
-128 WorldLineBatch batch(ctx_, debugMat);
-129 ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
-130 EQT::Graphics::PvsBits pvsRegion;
-131 if (ctx_.usePvsCulling && ctx_.zoneBspTree && ctx_.currentPvsRegion != SIZE_MAX
-132 && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size() && ctx_.zoneBspTree->regions[ctx_.currentPvsRegion]) {
-133 pvsRegion = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion]->pvs();
-134 float camX = ctx_.playerX, camY = ctx_.playerY, camZ = ctx_.playerZ;
-135 for (auto& [regionIdx, eqBbox] : ctx_.regionBoundingBoxes) {
-136 irr::video::SColor color;
-137 bool pvsVisible = true;
-138 if (!pvsRegion.empty()) {
-139 if (regionIdx == ctx_.currentPvsRegion) {
-140 pvsVisible = true;
-141 } else if (regionIdx < pvsRegion.size()) {
-142 pvsVisible = pvsRegion[regionIdx];
-143 if (!pvsVisible) {
-144 color = irr::video::SColor(255, 64, 64, 255);  // Blue = PVS-culled
-145 } else {
-146 float closestX = std::max(eqBbox.MinEdge.X, std::min(camX, eqBbox.MaxEdge.X));
-147 float closestY = std::max(eqBbox.MinEdge.Y, std::min(camY, eqBbox.MaxEdge.Y));
-148 float closestZ = std::max(eqBbox.MinEdge.Z, std::min(camZ, eqBbox.MaxEdge.Z));
-149 float ddx = camX - closestX, ddy = camY - closestY, ddz = camZ - closestZ;
-150 float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
-151 if (dist > ctx_.renderDistance) {
-152 color = irr::video::SColor(255, 255, 255, 0);  // Yellow = distance-culled
-153 } else {
-154 bool inFrustum = ctx_.frustumCuller->testAABB(
-155 eqBbox.MinEdge.X, eqBbox.MinEdge.Y, eqBbox.MinEdge.Z,
-156 eqBbox.MaxEdge.X, eqBbox.MaxEdge.Y, eqBbox.MaxEdge.Z);
-157 if (!inFrustum) {
-158 color = irr::video::SColor(255, 255, 0, 0);  // Red = frustum-culled
-159 } else if (ctx_.occlusionCulledRegions.count(regionIdx)) {
-160 color = irr::video::SColor(200, 255, 0, 255);  // Magenta = occlusion-culled
-161 } else {
-162 color = irr::video::SColor(255, 0, 255, 0);  // Green = rendered
-163 irr::core::vector3df corners[8];
-164 corners[0] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MinEdge.Z, eqBbox.MinEdge.Y);
-165 corners[1] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MinEdge.Z, eqBbox.MinEdge.Y);
-166 corners[2] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MaxEdge.Z, eqBbox.MinEdge.Y);
-167 corners[3] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MaxEdge.Z, eqBbox.MinEdge.Y);
-168 corners[4] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MinEdge.Z, eqBbox.MaxEdge.Y);
-169 corners[5] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MinEdge.Z, eqBbox.MaxEdge.Y);
-170 corners[6] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
-171 corners[7] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
-172 ctx_.driver->draw3DLine(corners[0], corners[1], color);
-173 ctx_.driver->draw3DLine(corners[1], corners[2], color);
-174 ctx_.driver->draw3DLine(corners[2], corners[3], color);
-175 ctx_.driver->draw3DLine(corners[3], corners[0], color);
-176 ctx_.driver->draw3DLine(corners[4], corners[5], color);
-177 ctx_.driver->draw3DLine(corners[5], corners[6], color);
-178 ctx_.driver->draw3DLine(corners[6], corners[7], color);
-179 ctx_.driver->draw3DLine(corners[7], corners[4], color);
-180 ctx_.driver->draw3DLine(corners[0], corners[4], color);
-181 ctx_.driver->draw3DLine(corners[1], corners[5], color);
-182 ctx_.driver->draw3DLine(corners[2], corners[6], color);
-183 ctx_.driver->draw3DLine(corners[3], corners[7], color);
-184 if (ctx_.Overlays().showMapOverlay()) {
-185 ctx_.Overlays().updateMapOverlay(glm::vec3(ctx_.playerX, ctx_.playerZ, ctx_.playerY));
-186 ctx_.Overlays().drawMapOverlay();
-187 if (ctx_.Overlays().showNavmeshOverlay()) {
-188 ctx_.Overlays().updateNavmeshOverlay(glm::vec3(ctx_.playerX, ctx_.playerZ, ctx_.playerY));
-189 ctx_.Overlays().drawNavmeshOverlay();
-190 if (ctx_.Diagnostics().portalDebugDraw() && ctx_.portalSystem && ctx_.portalSystem->hasPortals() && have3DTransforms_) {
-191 const auto& portalData = ctx_.portalSystem->getData();
-192 float camEqX = ctx_.playerX;
-193 float camEqY = ctx_.playerZ;  // Irrlicht Z -> EQ Y
-194 float camEqZ = ctx_.playerY;  // Irrlicht Y -> EQ Z
-195 const float maxDistSq = 500.0f * 500.0f;
-196 std::vector<float> lineBuf;
-197 lineBuf.reserve(4096);
-198 size_t lineCount = 0;
-199 auto pushLine = [&](float x1, float y1, float z1, float x2, float y2, float z2,
-200 float r, float g, float b) {
-201 lineBuf.push_back(x1); lineBuf.push_back(z1); lineBuf.push_back(y1);
-202 lineBuf.push_back(r); lineBuf.push_back(g); lineBuf.push_back(b); lineBuf.push_back(1.0f);
-203 lineBuf.push_back(x2); lineBuf.push_back(z2); lineBuf.push_back(y2);
-204 lineBuf.push_back(r); lineBuf.push_back(g); lineBuf.push_back(b); lineBuf.push_back(1.0f);
-205 lineCount++;
-206 for (size_t pi = 0; pi < portalData.portals.size(); ++pi) {
-207 const auto& portal = portalData.portals[pi];
-208 size_t n = portal.vertexCount();
-209 if (n < 3) continue;
-210 float dx = portal.centerX - camEqX;
-211 float dy = portal.centerY - camEqY;
-212 float dz = portal.centerZ - camEqZ;
-213 if (dx * dx + dy * dy + dz * dz > maxDistSq) continue;
-214 bool isAdjacentToCamera = (portal.regionA == ctx_.currentPvsRegion ||
-215 portal.regionB == ctx_.currentPvsRegion);
-216 float r, g, b;
-217 if (isAdjacentToCamera) { r = 0.0f; g = 1.0f; b = 1.0f; }  // Cyan
-218 else { r = 1.0f; g = 0.647f; b = 0.0f; }                    // Orange
-219 for (size_t vi = 0; vi < n; ++vi) {
-220 size_t vj = (vi + 1) % n;
-221 pushLine(portal.vx(vi), portal.vy(vi), portal.vz(vi),
-222 portal.vx(vj), portal.vy(vj), portal.vz(vj), r, g, b);
-223 if (lineCount > 0) {
-224 ctx_.driver->setTransform(irr::video::ETS_VIEW, ctx_.captured3DView);
-225 ctx_.driver->setTransform(irr::video::ETS_PROJECTION, ctx_.captured3DProj);
-226 ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
-227 gles2Draw3DLinesBatch(ctx_.driver, lineBuf.data(), static_cast<unsigned int>(lineCount));
-228 if (ctx_.Diagnostics().stencilDebugDraw() && ctx_.portalOcclusionEnabled) {
-229 irr::video::SColor levelColors[4] = {
-230 irr::video::SColor(80, 0, 255, 0),     // Level 1: green
-231 irr::video::SColor(80, 0, 0, 255),     // Level 2: blue
-232 irr::video::SColor(80, 255, 255, 0),   // Level 3: yellow
-233 irr::video::SColor(80, 255, 0, 255)    // Level 4: magenta
-234 for (int level = 1; level <= 4; ++level) {
-235 glEnable(GL_STENCIL_TEST);
-236 glStencilFunc(GL_EQUAL, level, 0xFF);
-237 glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-238 irr::core::rect<irr::s32> fullScreen(0, 0,
-239 static_cast<irr::s32>(ctx_.driver->getScreenSize().Width),
-240 static_cast<irr::s32>(ctx_.driver->getScreenSize().Height));
-241 ctx_.driver->draw2DRectangle(levelColors[level - 1], fullScreen);
-242 glDisable(GL_STENCIL_TEST);
-243 frameTimings_.debugOverlays = measureSection();
-244 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 8: casting bars (entityRenderer={})", ctx_.entityRenderer != nullptr);
-245 if (!allUIHidden_ && ctx_.entityRenderer) ctx_.entityRenderer->renderEntityCastingBars(ctx_.driver, ctx_.Overlays().guienv(), ctx_.camera);
-246 frameTimings_.castingBars = measureSection();
-247 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 9: GUI drawAll");
-248 if (!allUIHidden_ && !newUIEnabled_) {
-249 ctx_.Overlays().guienv()->drawAll();
-250 if (!allUIHidden_) {
-251 ctx_.Overlays().drawFPSCounter();
-252 frameTimings_.guiDrawAll = measureSection();
-253 if (newUIEnabled_ && staticUIInput_ && ctx_.eventReceiver) {
-254 bool rightClick = ctx_.eventReceiver->wasRightButtonClicked();
-255 eqt::inventory::ClickModifiers mods;
-256 mods.shift = ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT);
-257 mods.ctrl = ctx_.eventReceiver->isKeyDown(irr::KEY_LCONTROL) ||
-258 ctx_.eventReceiver->isKeyDown(irr::KEY_RCONTROL);
-259 mods.alt = ctx_.eventReceiver->isKeyDown(irr::KEY_LMENU) || ctx_.eventReceiver->isKeyDown(irr::KEY_RMENU);
-260 if (staticUIInput_->processDialogInput(
-261 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-262 pendingUIClick_, uiLayout_)) {
-263 pendingUIClick_ = false;
-264 rightClick = false;
-265 staticUIInput_->setFrameClickState(rightClick, mods, &cursorState_);
-266 if (processTipWindowInput()) pendingUIClick_ = false;
-267 processTradeWindowInput();
-268 bool uiTook = staticUIInput_->processInput(
-269 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
-270 uiLayout_, hotbarState_, spellGemState_, inventoryState_,
-271 spellbookState_, skillsPopupState_, buffBarState_, lootState_, ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT));
-272 uiTook |= staticUIInput_->processPanelInput(
-273 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-274 pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
-275 cursorState_.mouseX = ctx_.eventReceiver->getMouseX();
-276 cursorState_.mouseY = ctx_.eventReceiver->getMouseY();
-277 uiTook |= staticUIInput_->processCommerceInput(
-278 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-279 pendingUIClick_, uiLayout_, merchantState_, bankState_, cursorState_);
-280 uiTook |= staticUIInput_->processTrainerInput(
-281 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-282 pendingUIClick_, uiLayout_, trainerState_);
-283 uiTook |= processTrackingInput(ctx_.bridge, ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_, uiLayout_, trackingState_);
-284 uiTook |= staticUIInput_->processContainerInput(
-285 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-286 pendingUIClick_, uiLayout_, containerState_);
-287 uiTook |= staticUIInput_->processItemDisplayInput(
-288 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-289 pendingUIClick_, uiLayout_, itemDisplayState_);
-290 processFriendsWindowInput();
-291 OptionsLayout::Setting optionsChanged = OptionsLayout::Setting::None;
-292 uiTook |= staticUIInput_->processOptionsInput(
-293 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
-294 pendingUIClick_, uiLayout_, optionsState_, optionsChanged);
-295 applyOptionsSetting(optionsChanged);
-296 processCursorGestureFrame(uiTook);
-297 pendingUIClick_ = false;
-298 staticUIInput_->setFrameClickState(false, {}, &cursorState_);
-299 if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
-300 ctx_.Overlays().updatePaperdollForFrame();
-301 inventoryState_.paperdollTexture = ctx_.Overlays().characterModelView() ? ctx_.Overlays().characterModelView()->getTexture() : nullptr;
-302 if (newUIEnabled_ && uiRenderer_ && !allUIHidden_) {
-303 uiRenderer_->beginFrame();
-304 renderPlayerStatus(uiRenderer_->layer(), uiLayout_, cachedPlayerStats_);
-305 renderTargetInfo(uiRenderer_->layer(), uiLayout_, cachedTargetInfo_);
-306 renderChatPanel(uiRenderer_->layer(), uiLayout_, chatPanelState_);
-307 renderHotbar(uiRenderer_->layer(), uiLayout_, hotbarState_);
-308 renderSpellGemPanel(uiRenderer_->layer(), uiLayout_, spellGemState_);
-309 renderBuffBar(uiRenderer_->layer(), uiLayout_, buffBarState_);
-310 renderCastingBar(uiRenderer_->layer(), uiLayout_, castingBarState_);
-311 renderGroupPanel(uiRenderer_->layer(), uiLayout_, groupPanelState_);
-312 renderPetPanel(uiRenderer_->layer(), uiLayout_, petPanelState_);
-313 renderInventoryPopup(uiRenderer_->layer(), uiLayout_, inventoryState_);
-314 renderSpellbookPopup(uiRenderer_->layer(), uiLayout_, spellbookState_);
-315 renderSkillsPopup(uiRenderer_->layer(), uiLayout_, skillsPopupState_);
-316 renderLootPopup(uiRenderer_->layer(), uiLayout_, lootState_);
-317 renderTradeskillPopup(uiRenderer_->layer(), uiLayout_, tradeskillState_);
-318 renderMerchantPopup(uiRenderer_->layer(), uiLayout_, merchantState_, cursorState_);
-319 renderCombatAbilityPanel(uiRenderer_->layer(), uiLayout_, combatAbilityState_);
-320 renderBankWindow(uiRenderer_->layer(), uiLayout_, bankState_);
-321 renderTrainerWindow(uiRenderer_->layer(), uiLayout_, trainerState_, xpBarState_.progress);
-322 renderTrackingWindow(uiRenderer_->layer(), uiLayout_, trackingState_);
-323 renderContainerWindows(uiRenderer_->layer(), uiLayout_, containerState_);
-324 renderTradeWindow(uiRenderer_->layer(), uiLayout_, tradeState_);
-325 renderItemDisplayPopup(uiRenderer_->layer(), uiLayout_, itemDisplayState_);
-326 renderFriendsWindow(uiRenderer_->layer(), uiLayout_, friendsState_);  // B897
-327 renderOptionsWindow(uiRenderer_->layer(), uiLayout_, optionsState_);
-328 renderTipWindow(uiRenderer_->layer(), uiLayout_, tipState_);  // B834
-329 renderXPBar(uiRenderer_->layer(), uiLayout_, xpBarState_);
-330 if (staticUIInput_) {
-331 renderQuantityWindow(uiRenderer_->layer(), uiLayout_, staticUIInput_->quantityWindow());
-332 renderConfirmationDialog(uiRenderer_->layer(), uiLayout_, staticUIInput_->confirmationDialog());
-333 renderCursorAttachment(uiRenderer_->layer(), uiLayout_, cursorState_);
-334 uiRenderer_->endFrame();
-335 frameTimings_.staticUI = measureSection();
-336 ctx_.Overlays().drawZoneLineBoxLabels();
-337 frameTimings_.zoneLineOverlay = measureSection();
-338 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
-339 ctx_.Rdp().captureFrameForRDP();
-340 if (owner_.softwareCursorTexture_) {
-341 auto* cursor = ctx_.device->getCursorControl();
-342 if (cursor && cursor->isVisible()) {
-343 auto pos = cursor->getPosition();
-344 irr::core::position2di destPos(pos.X, pos.Y);
-345 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
-346 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
-347 nullptr, irr::video::SColor(255, 255, 255, 255), true);
-348 if (pendingScreenshot_) {
-349 pendingScreenshot_ = false;
-350 owner_.saveScreenshot("screenshot.png");
-351 frameTimings_.postRender = measureSection();
-352 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
-353 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
-354 ctx_.driver->endScene();
-355 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
-356 eqtGPUPhaseCollectResults();
-357 frameTimings_.endScene = measureSection();
-358 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
-359 FlushThreadLog();
-360 return true;
+90 ctx_.Overlays().drawTargetRing();
+91 frameTimings_.targetBox = measureSection();
+92 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 4: particles (mgr={}, enabled={}, zoneReady={})",
+93 ctx_.particleManager != nullptr,
+94 ctx_.particleManager ? ctx_.particleManager->isEnabled() : false,
+95 ctx_.zoneReady);
+96 eqtGPUPhaseBegin(2 /* GPUSyncPhase::ParticlesUI */);
+97 if (ctx_.particleManager && ctx_.particleManager->isEnabled() && ctx_.zoneReady) ctx_.particleManager->render();
+98 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 5: unified particles (have3D={})", have3DTransforms_);
+99 if (ctx_.particleManager && ctx_.zoneReady && have3DTransforms_) {
+100 float fogStart = ctx_.zoneShader ? ctx_.zoneShader->fogStart() : 999999.0f;
+101 float fogEnd = ctx_.zoneShader ? ctx_.zoneShader->fogEnd() : 999999.0f;
+102 const float* fogCol = ctx_.zoneShader ? ctx_.zoneShader->fogColor() : nullptr;
+103 float screenH = static_cast<float>(ctx_.driver->getScreenSize().Height);
+104 ctx_.particleManager->renderUnified(ctx_.captured3DView, ctx_.captured3DProj,
+105 ctx_.camera ? ctx_.camera->getAbsolutePosition() : irr::core::vector3df(0, 0, 0),
+106 fogStart, fogEnd, fogCol, screenH,
+107 ctx_.particleRenderBuffer);
+108 frameTimings_.particles = measureSection();
+109 if (ctx_.fireEffectsEnabled && !ctx_.fireGlowLights.empty() && ctx_.zoneReady && have3DTransforms_) {
+110 fireGlowTime_ += deltaTime;
+111 if (ctx_.fireGlowLightingEnabled) {
+112 ctx_.Eqe1().updateFireGlowLighting();
+113 if (ctx_.fireGlowIcospheresEnabled && ctx_.icosphereProgram != 0) {
+114 ctx_.Eqe1().renderFireGlowIcospheres();
+115 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 6: boids");
+116 if (ctx_.boidsManager && ctx_.boidsManager->isEnabled() && ctx_.zoneReady) ctx_.boidsManager->render();
+117 frameTimings_.boids = measureSection();
+118 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 7: weather");
+119 if (ctx_.weatherEffects && ctx_.weatherEffects->isEnabled()) ctx_.weatherEffects->render();
+120 frameTimings_.weatherRender = measureSection();
+121 if (ctx_.PlayerCamera().playerConfig().collisionDebug) ctx_.PlayerCamera().drawCollisionDebugLines(deltaTime);
+122 if (frustumDebugDraw_ && ctx_.frustumCuller) {
+123 irr::video::SMaterial debugMat;
+124 debugMat.Lighting = false;
+125 debugMat.ZBuffer = irr::video::ECFN_ALWAYS;
+126 debugMat.ZWriteEnable = false;
+127 debugMat.AntiAliasing = false;
+128 debugMat.Thickness = 2.0f;
+129 WorldLineBatch batch(ctx_, debugMat);
+130 ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+131 EQT::Graphics::PvsBits pvsRegion;
+132 if (ctx_.usePvsCulling && ctx_.zoneBspTree && ctx_.currentPvsRegion != SIZE_MAX
+133 && ctx_.currentPvsRegion < ctx_.zoneBspTree->regions.size() && ctx_.zoneBspTree->regions[ctx_.currentPvsRegion]) {
+134 pvsRegion = ctx_.zoneBspTree->regions[ctx_.currentPvsRegion]->pvs();
+135 float camX = ctx_.playerX, camY = ctx_.playerY, camZ = ctx_.playerZ;
+136 for (auto& [regionIdx, eqBbox] : ctx_.regionBoundingBoxes) {
+137 irr::video::SColor color;
+138 bool pvsVisible = true;
+139 if (!pvsRegion.empty()) {
+140 if (regionIdx == ctx_.currentPvsRegion) {
+141 pvsVisible = true;
+142 } else if (regionIdx < pvsRegion.size()) {
+143 pvsVisible = pvsRegion[regionIdx];
+144 if (!pvsVisible) {
+145 color = irr::video::SColor(255, 64, 64, 255);  // Blue = PVS-culled
+146 } else {
+147 float closestX = std::max(eqBbox.MinEdge.X, std::min(camX, eqBbox.MaxEdge.X));
+148 float closestY = std::max(eqBbox.MinEdge.Y, std::min(camY, eqBbox.MaxEdge.Y));
+149 float closestZ = std::max(eqBbox.MinEdge.Z, std::min(camZ, eqBbox.MaxEdge.Z));
+150 float ddx = camX - closestX, ddy = camY - closestY, ddz = camZ - closestZ;
+151 float dist = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
+152 if (dist > ctx_.renderDistance) {
+153 color = irr::video::SColor(255, 255, 255, 0);  // Yellow = distance-culled
+154 } else {
+155 bool inFrustum = ctx_.frustumCuller->testAABB(
+156 eqBbox.MinEdge.X, eqBbox.MinEdge.Y, eqBbox.MinEdge.Z,
+157 eqBbox.MaxEdge.X, eqBbox.MaxEdge.Y, eqBbox.MaxEdge.Z);
+158 if (!inFrustum) {
+159 color = irr::video::SColor(255, 255, 0, 0);  // Red = frustum-culled
+160 } else if (ctx_.occlusionCulledRegions.count(regionIdx)) {
+161 color = irr::video::SColor(200, 255, 0, 255);  // Magenta = occlusion-culled
+162 } else {
+163 color = irr::video::SColor(255, 0, 255, 0);  // Green = rendered
+164 irr::core::vector3df corners[8];
+165 corners[0] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MinEdge.Z, eqBbox.MinEdge.Y);
+166 corners[1] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MinEdge.Z, eqBbox.MinEdge.Y);
+167 corners[2] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MaxEdge.Z, eqBbox.MinEdge.Y);
+168 corners[3] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MaxEdge.Z, eqBbox.MinEdge.Y);
+169 corners[4] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MinEdge.Z, eqBbox.MaxEdge.Y);
+170 corners[5] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MinEdge.Z, eqBbox.MaxEdge.Y);
+171 corners[6] = irr::core::vector3df(eqBbox.MaxEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
+172 corners[7] = irr::core::vector3df(eqBbox.MinEdge.X, eqBbox.MaxEdge.Z, eqBbox.MaxEdge.Y);
+173 ctx_.driver->draw3DLine(corners[0], corners[1], color);
+174 ctx_.driver->draw3DLine(corners[1], corners[2], color);
+175 ctx_.driver->draw3DLine(corners[2], corners[3], color);
+176 ctx_.driver->draw3DLine(corners[3], corners[0], color);
+177 ctx_.driver->draw3DLine(corners[4], corners[5], color);
+178 ctx_.driver->draw3DLine(corners[5], corners[6], color);
+179 ctx_.driver->draw3DLine(corners[6], corners[7], color);
+180 ctx_.driver->draw3DLine(corners[7], corners[4], color);
+181 ctx_.driver->draw3DLine(corners[0], corners[4], color);
+182 ctx_.driver->draw3DLine(corners[1], corners[5], color);
+183 ctx_.driver->draw3DLine(corners[2], corners[6], color);
+184 ctx_.driver->draw3DLine(corners[3], corners[7], color);
+185 if (ctx_.Overlays().showMapOverlay()) {
+186 ctx_.Overlays().updateMapOverlay(glm::vec3(ctx_.playerX, ctx_.playerZ, ctx_.playerY));
+187 ctx_.Overlays().drawMapOverlay();
+188 if (ctx_.Overlays().showNavmeshOverlay()) {
+189 ctx_.Overlays().updateNavmeshOverlay(glm::vec3(ctx_.playerX, ctx_.playerZ, ctx_.playerY));
+190 ctx_.Overlays().drawNavmeshOverlay();
+191 if (ctx_.Diagnostics().portalDebugDraw() && ctx_.portalSystem && ctx_.portalSystem->hasPortals() && have3DTransforms_) {
+192 const auto& portalData = ctx_.portalSystem->getData();
+193 float camEqX = ctx_.playerX;
+194 float camEqY = ctx_.playerZ;  // Irrlicht Z -> EQ Y
+195 float camEqZ = ctx_.playerY;  // Irrlicht Y -> EQ Z
+196 const float maxDistSq = 500.0f * 500.0f;
+197 std::vector<float> lineBuf;
+198 lineBuf.reserve(4096);
+199 size_t lineCount = 0;
+200 auto pushLine = [&](float x1, float y1, float z1, float x2, float y2, float z2,
+201 float r, float g, float b) {
+202 lineBuf.push_back(x1); lineBuf.push_back(z1); lineBuf.push_back(y1);
+203 lineBuf.push_back(r); lineBuf.push_back(g); lineBuf.push_back(b); lineBuf.push_back(1.0f);
+204 lineBuf.push_back(x2); lineBuf.push_back(z2); lineBuf.push_back(y2);
+205 lineBuf.push_back(r); lineBuf.push_back(g); lineBuf.push_back(b); lineBuf.push_back(1.0f);
+206 lineCount++;
+207 for (size_t pi = 0; pi < portalData.portals.size(); ++pi) {
+208 const auto& portal = portalData.portals[pi];
+209 size_t n = portal.vertexCount();
+210 if (n < 3) continue;
+211 float dx = portal.centerX - camEqX;
+212 float dy = portal.centerY - camEqY;
+213 float dz = portal.centerZ - camEqZ;
+214 if (dx * dx + dy * dy + dz * dz > maxDistSq) continue;
+215 bool isAdjacentToCamera = (portal.regionA == ctx_.currentPvsRegion ||
+216 portal.regionB == ctx_.currentPvsRegion);
+217 float r, g, b;
+218 if (isAdjacentToCamera) { r = 0.0f; g = 1.0f; b = 1.0f; }  // Cyan
+219 else { r = 1.0f; g = 0.647f; b = 0.0f; }                    // Orange
+220 for (size_t vi = 0; vi < n; ++vi) {
+221 size_t vj = (vi + 1) % n;
+222 pushLine(portal.vx(vi), portal.vy(vi), portal.vz(vi),
+223 portal.vx(vj), portal.vy(vj), portal.vz(vj), r, g, b);
+224 if (lineCount > 0) {
+225 ctx_.driver->setTransform(irr::video::ETS_VIEW, ctx_.captured3DView);
+226 ctx_.driver->setTransform(irr::video::ETS_PROJECTION, ctx_.captured3DProj);
+227 ctx_.driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+228 gles2Draw3DLinesBatch(ctx_.driver, lineBuf.data(), static_cast<unsigned int>(lineCount));
+229 if (ctx_.Diagnostics().stencilDebugDraw() && ctx_.portalOcclusionEnabled) {
+230 irr::video::SColor levelColors[4] = {
+231 irr::video::SColor(80, 0, 255, 0),     // Level 1: green
+232 irr::video::SColor(80, 0, 0, 255),     // Level 2: blue
+233 irr::video::SColor(80, 255, 255, 0),   // Level 3: yellow
+234 irr::video::SColor(80, 255, 0, 255)    // Level 4: magenta
+235 for (int level = 1; level <= 4; ++level) {
+236 glEnable(GL_STENCIL_TEST);
+237 glStencilFunc(GL_EQUAL, level, 0xFF);
+238 glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+239 irr::core::rect<irr::s32> fullScreen(0, 0,
+240 static_cast<irr::s32>(ctx_.driver->getScreenSize().Width),
+241 static_cast<irr::s32>(ctx_.driver->getScreenSize().Height));
+242 ctx_.driver->draw2DRectangle(levelColors[level - 1], fullScreen);
+243 glDisable(GL_STENCIL_TEST);
+244 frameTimings_.debugOverlays = measureSection();
+245 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 8: casting bars (entityRenderer={})", ctx_.entityRenderer != nullptr);
+246 if (!allUIHidden_ && ctx_.entityRenderer) ctx_.entityRenderer->renderEntityCastingBars(ctx_.driver, ctx_.Overlays().guienv(), ctx_.camera);
+247 frameTimings_.castingBars = measureSection();
+248 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 9: GUI drawAll");
+249 if (!allUIHidden_ && !newUIEnabled_) {
+250 ctx_.Overlays().guienv()->drawAll();
+251 if (!allUIHidden_) {
+252 ctx_.Overlays().drawFPSCounter();
+253 frameTimings_.guiDrawAll = measureSection();
+254 if (newUIEnabled_ && staticUIInput_ && ctx_.eventReceiver) {
+255 bool rightClick = ctx_.eventReceiver->wasRightButtonClicked();
+256 eqt::inventory::ClickModifiers mods;
+257 mods.shift = ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT);
+258 mods.ctrl = ctx_.eventReceiver->isKeyDown(irr::KEY_LCONTROL) ||
+259 ctx_.eventReceiver->isKeyDown(irr::KEY_RCONTROL);
+260 mods.alt = ctx_.eventReceiver->isKeyDown(irr::KEY_LMENU) || ctx_.eventReceiver->isKeyDown(irr::KEY_RMENU);
+261 if (staticUIInput_->processDialogInput(
+262 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+263 pendingUIClick_, uiLayout_)) {
+264 pendingUIClick_ = false;
+265 rightClick = false;
+266 staticUIInput_->setFrameClickState(rightClick, mods, &cursorState_);
+267 if (processTipWindowInput()) pendingUIClick_ = false;
+268 processTradeWindowInput();
+269 bool uiTook = staticUIInput_->processInput(
+270 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
+271 uiLayout_, hotbarState_, spellGemState_, inventoryState_,
+272 spellbookState_, skillsPopupState_, buffBarState_, lootState_, ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT));
+273 uiTook |= staticUIInput_->processPanelInput(
+274 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+275 pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
+276 cursorState_.mouseX = ctx_.eventReceiver->getMouseX();
+277 cursorState_.mouseY = ctx_.eventReceiver->getMouseY();
+278 uiTook |= staticUIInput_->processCommerceInput(
+279 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+280 pendingUIClick_, uiLayout_, merchantState_, bankState_, cursorState_);
+281 uiTook |= staticUIInput_->processTrainerInput(
+282 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+283 pendingUIClick_, uiLayout_, trainerState_);
+284 uiTook |= processTrackingInput(ctx_.bridge, ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_, uiLayout_, trackingState_);
+285 uiTook |= staticUIInput_->processContainerInput(
+286 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+287 pendingUIClick_, uiLayout_, containerState_);
+288 uiTook |= staticUIInput_->processItemDisplayInput(
+289 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+290 pendingUIClick_, uiLayout_, itemDisplayState_);
+291 processFriendsWindowInput();
+292 OptionsLayout::Setting optionsChanged = OptionsLayout::Setting::None;
+293 uiTook |= staticUIInput_->processOptionsInput(
+294 ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+295 pendingUIClick_, uiLayout_, optionsState_, optionsChanged);
+296 applyOptionsSetting(optionsChanged);
+297 processCursorGestureFrame(uiTook);
+298 pendingUIClick_ = false;
+299 staticUIInput_->setFrameClickState(false, {}, &cursorState_);
+300 if (newUIEnabled_ && inventoryState_.activePopup == PopupType::Inventory) {
+301 ctx_.Overlays().updatePaperdollForFrame();
+302 inventoryState_.paperdollTexture = ctx_.Overlays().characterModelView() ? ctx_.Overlays().characterModelView()->getTexture() : nullptr;
+303 if (newUIEnabled_ && uiRenderer_ && !allUIHidden_) {
+304 uiRenderer_->beginFrame();
+305 renderPlayerStatus(uiRenderer_->layer(), uiLayout_, cachedPlayerStats_);
+306 renderTargetInfo(uiRenderer_->layer(), uiLayout_, cachedTargetInfo_);
+307 renderChatPanel(uiRenderer_->layer(), uiLayout_, chatPanelState_);
+308 renderHotbar(uiRenderer_->layer(), uiLayout_, hotbarState_);
+309 renderSpellGemPanel(uiRenderer_->layer(), uiLayout_, spellGemState_);
+310 renderBuffBar(uiRenderer_->layer(), uiLayout_, buffBarState_);
+311 renderCastingBar(uiRenderer_->layer(), uiLayout_, castingBarState_);
+312 renderGroupPanel(uiRenderer_->layer(), uiLayout_, groupPanelState_);
+313 renderPetPanel(uiRenderer_->layer(), uiLayout_, petPanelState_);
+314 renderInventoryPopup(uiRenderer_->layer(), uiLayout_, inventoryState_);
+315 renderSpellbookPopup(uiRenderer_->layer(), uiLayout_, spellbookState_);
+316 renderSkillsPopup(uiRenderer_->layer(), uiLayout_, skillsPopupState_);
+317 renderLootPopup(uiRenderer_->layer(), uiLayout_, lootState_);
+318 renderTradeskillPopup(uiRenderer_->layer(), uiLayout_, tradeskillState_);
+319 renderMerchantPopup(uiRenderer_->layer(), uiLayout_, merchantState_, cursorState_);
+320 renderCombatAbilityPanel(uiRenderer_->layer(), uiLayout_, combatAbilityState_);
+321 renderBankWindow(uiRenderer_->layer(), uiLayout_, bankState_);
+322 renderTrainerWindow(uiRenderer_->layer(), uiLayout_, trainerState_, xpBarState_.progress);
+323 renderTrackingWindow(uiRenderer_->layer(), uiLayout_, trackingState_);
+324 renderContainerWindows(uiRenderer_->layer(), uiLayout_, containerState_);
+325 renderTradeWindow(uiRenderer_->layer(), uiLayout_, tradeState_);
+326 renderItemDisplayPopup(uiRenderer_->layer(), uiLayout_, itemDisplayState_);
+327 renderFriendsWindow(uiRenderer_->layer(), uiLayout_, friendsState_);  // B897
+328 renderOptionsWindow(uiRenderer_->layer(), uiLayout_, optionsState_);
+329 renderTipWindow(uiRenderer_->layer(), uiLayout_, tipState_);  // B834
+330 renderXPBar(uiRenderer_->layer(), uiLayout_, xpBarState_);
+331 if (staticUIInput_) {
+332 renderQuantityWindow(uiRenderer_->layer(), uiLayout_, staticUIInput_->quantityWindow());
+333 renderConfirmationDialog(uiRenderer_->layer(), uiLayout_, staticUIInput_->confirmationDialog());
+334 renderCursorAttachment(uiRenderer_->layer(), uiLayout_, cursorState_);
+335 uiRenderer_->endFrame();
+336 frameTimings_.staticUI = measureSection();
+337 ctx_.Overlays().drawZoneLineBoxLabels();
+338 frameTimings_.zoneLineOverlay = measureSection();
+339 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
+340 ctx_.Rdp().captureFrameForRDP();
+341 if (owner_.softwareCursorTexture_) {
+342 auto* cursor = ctx_.device->getCursorControl();
+343 if (cursor && cursor->isVisible()) {
+344 auto pos = cursor->getPosition();
+345 irr::core::position2di destPos(pos.X, pos.Y);
+346 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
+347 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
+348 nullptr, irr::video::SColor(255, 255, 255, 255), true);
+349 if (pendingScreenshot_) {
+350 pendingScreenshot_ = false;
+351 owner_.saveScreenshot("screenshot.png");
+352 frameTimings_.postRender = measureSection();
+353 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
+354 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
+355 ctx_.driver->endScene();
+356 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
+357 eqtGPUPhaseCollectResults();
+358 frameTimings_.endScene = measureSection();
+359 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
+360 FlushThreadLog();
+361 return true;

@@ -266,6 +266,8 @@ void FrameComponent::renderTargetIndicator() {
 #else
     ctx_.Overlays().drawTargetSelectionBox();
 #endif
+    // B994 (#314): Options > Display "Show 3D Target Ring"; a no-op when off.
+    ctx_.Overlays().drawTargetRing();
     frameTimings_.targetBox = measureSection();
 }
 

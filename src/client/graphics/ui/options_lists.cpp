@@ -109,6 +109,7 @@ void renderOptionsWiredList(UIRenderer& ui, const UILayout& layout,
     if (c.kind == Kind::Listbox) {
         if (c.setting == Setting::FilterSelection) drawFilterList(ui, tb, layout, state, i);
         else if (c.setting == Setting::KeysAssignment) drawKeysList(ui, tb, layout, state, i);
+        else if (c.setting == Setting::TextColorList) renderOptionsColorList(ui, layout, state, i);
         return;
     }
     if (c.setting == Setting::KeysCategory) {
@@ -133,6 +134,11 @@ Setting resolveOptionsClick(const UILayout& layout, OptionsPanelState& state, in
     if (i < 0 || i >= OptionsLayout::CONTROL_COUNT) return Setting::None;
     const auto& c = OptionsLayout::kControls[i];
     if (c.setting == Setting::None) return Setting::None;
+    // B993: the Colors page acts on the table, not on a value slot.
+    if (c.setting == Setting::TextColorList || c.setting == Setting::TextColorReset ||
+        c.setting == Setting::TextColorChange) {
+        return resolveOptionsColorsClick(layout, state, i, mouseX, mouseY);
+    }
 
     switch (c.kind) {
         case Kind::Slider: {
@@ -177,6 +183,12 @@ Setting resolveOptionsClick(const UILayout& layout, OptionsPanelState& state, in
         case Kind::Button:
             // An action button (Reload defaults): the setting IS the action.
             return c.setting;
+        case Kind::TabBox: {
+            // B995: ODP_ParticlesTabs -- a view choice, not a setting.
+            const int tab = particleSubTabAt(layout, i, mouseX, mouseY);
+            if (tab >= 0) state.particlesTab = tab;
+            return Setting::None;
+        }
         default:
             return Setting::None;
     }

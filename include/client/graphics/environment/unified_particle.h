@@ -7,6 +7,8 @@
 #include <glm/glm.hpp>
 #include <cstdint>
 
+#include "client/graphics/environment/particle_options.h"  // B995: ParticleFamily
+
 namespace EQT {
 namespace Graphics {
 namespace Environment {
@@ -66,7 +68,7 @@ struct UnifiedParticle {
     // Metadata — 8 bytes
     uint16_t emitterID = 0;         // Which emitter owns this particle
     uint16_t textureIndex = 0;      // Region within atlas (UV offset selector)
-    uint8_t flags = 0;              // Bit 0: alive, Bit 1: blend mode (0=additive, 1=alpha)
+    uint8_t flags = 0;              // Bit 0: alive, Bit 1: blend mode (0=additive, 1=alpha), Bits 2-3: family (B995)
     MotionType motionType = MotionType::LINEAR;
     uint16_t padding = 0;
 
@@ -81,6 +83,13 @@ struct UnifiedParticle {
     }
     void setBlendMode(UnifiedBlendMode mode) {
         if (mode == UnifiedBlendMode::ALPHA) flags |= 0x02; else flags &= ~0x02;
+    }
+
+    // B995: which Options particle page governs this particle (opacity,
+    // near clip at draw; density was applied when it spawned).
+    ParticleFamily getFamily() const { return static_cast<ParticleFamily>((flags >> 2) & 0x03); }
+    void setFamily(ParticleFamily f) {
+        flags = static_cast<uint8_t>((flags & ~0x0C) | ((static_cast<uint8_t>(f) & 0x03) << 2));
     }
 
     // Get normalized age (0 = just spawned, 1 = about to die)
@@ -158,6 +167,9 @@ struct ActiveEmitter {
     float lightRadius = 0.0f;        // Source light radius (for classification)
     float transitionAlpha = 1.0f;    // 0→1 ramp for smooth weather onset
     float transitionRate = 0.5f;     // Per-second ramp speed
+    // B995: the Options page whose knobs govern this emitter's particles.
+    // Fire and weather are Environment; spell effects set Spell.
+    ParticleFamily family = ParticleFamily::Environment;
 
     // Entity attachment (spell effects)
     uint16_t attachEntityID = 0;     // Entity to follow (0 = static)

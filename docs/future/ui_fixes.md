@@ -284,7 +284,7 @@ for this). The chat/UI-label half of the chunk is open.
 - Pet panel: pet name + HP bar + command buttons.
 - Spellbook popup: list of known spells with memorize action.
 - Skills popup: list of skills with values.
-- ~~Options popup: settings toggles.~~ **DELIVERED in T434**, from `EQUI_OptionsWindow.xml` at the oracle's own 400x452 with seven tabs and Alt+O — not a toggle list. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; six are wired (three sliders — music volume, effects volume, clip plane — and their three value labels) and the other 108 are drawn greyed and are not hit-testable, which is the T363 rule made mechanical (boards B430, B431, B433). Struck by T444.
+- ~~Options popup: settings toggles.~~ **DELIVERED in T434**, from `EQUI_OptionsWindow.xml` at the oracle's own 400x452 with seven tabs and Alt+O — not a toggle list. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **130 control rows** (114 at T434; B995 added the Env and Player particle sub-pages' 16); at T434 six were wired (three sliders — music volume, effects volume, clip plane — and their three value labels) and the other 108 are drawn greyed and are not hit-testable, which is the T363 rule made mechanical (boards B430, B431, B433). Struck by T444.
 
 Each panel is a simple render function. No class hierarchy, no inheritance, no virtual dispatch.
 

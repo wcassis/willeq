@@ -240,6 +240,10 @@ void ParticleManager::render() {
                     continue;
                 }
 
+                if (nearClipped(p.position, glm::vec3(cameraPos.X, cameraPos.Y, cameraPos.Z),
+                                knobs_[static_cast<size_t>(ParticleFamily::Environment)].nearClip)) {
+                    continue;  // B995
+                }
                 renderBillboard(p, cameraPos, cameraUp);
             }
         }
@@ -260,6 +264,10 @@ void ParticleManager::render() {
                     continue;
                 }
 
+                if (nearClipped(p.position, glm::vec3(cameraPos.X, cameraPos.Y, cameraPos.Z),
+                                knobs_[static_cast<size_t>(ParticleFamily::Environment)].nearClip)) {
+                    continue;  // B995
+                }
                 renderBillboard(p, cameraPos, cameraUp);
             }
         }
@@ -342,7 +350,7 @@ void ParticleManager::setDensity(float density) {
     userDensity_ = glm::clamp(density, 0.0f, 1.0f);
 
     // Update all emitters with new density
-    float effectiveDensity = userDensity_ * budget_.densityMult;
+    float effectiveDensity = userDensity_ * budget_.densityMult * envDensity();  // B995
     for (auto& emitter : emitters_) {
         if (emitter) {
             emitter->setDensityMultiplier(effectiveDensity);
@@ -487,7 +495,7 @@ void ParticleManager::setupEmittersForBiome(ZoneBiome biome) {
               static_cast<int>(biome));
 
     // Calculate effective density
-    float effectiveDensity = userDensity_ * budget_.densityMult;
+    float effectiveDensity = userDensity_ * budget_.densityMult * envDensity();  // B995
 
     // Check zone properties for water, etc.
     const auto& detector = ZoneBiomeDetector::instance();
@@ -713,7 +721,9 @@ void ParticleManager::renderBillboard(const Particle& p,
     getAtlasUVs(p.textureIndex, u0, v0Uv, u1, v1Uv);
 
     // Calculate final color with alpha
-    irr::u32 alpha = static_cast<irr::u32>(p.alpha * p.color.a * 255.0f);
+    // B995: the Env page's opacity (1.0 unless the player lowered it).
+    const float optionOpacity = knobs_[static_cast<size_t>(ParticleFamily::Environment)].opacity;
+    irr::u32 alpha = static_cast<irr::u32>(p.alpha * p.color.a * optionOpacity * 255.0f);
     irr::u32 r = static_cast<irr::u32>(p.color.r * 255.0f);
     irr::u32 g = static_cast<irr::u32>(p.color.g * 255.0f);
     irr::u32 b = static_cast<irr::u32>(p.color.b * 255.0f);
@@ -854,6 +864,7 @@ void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
 
     // Pass View and Projection separately — shader multiplies in GLSL
     // (same convention as built-in COGLES2 shaders)
+    unifiedRenderer_->setParticleKnobs(knobs_, glm::vec3(cameraPos.X, cameraPos.Y, cameraPos.Z));  // B995
     unifiedRenderer_->render(externalRenderBuffer->data(),
                              static_cast<int>(externalRenderBuffer->size()),
                              viewMatrix.pointer(), projMatrix.pointer(),
@@ -861,6 +872,23 @@ void ParticleManager::renderUnified(const irr::core::matrix4& viewMatrix,
                              screenHeight, atlasGL, alphaGL, spriteGL, spriteAlphaGL);
 #endif
     (void)cameraPos;
+}
+
+// B995: the Options pages' knobs. Density reaches the ambient billboard
+// emitters through the same multiplier setDensity() feeds (never above what
+// the preset gives); opacity and near clip are applied per particle at draw.
+void ParticleManager::setParticleKnobs(const ParticleKnobs& knobs) {
+    const float before = envDensity();
+    knobs_ = knobs;
+    if (envDensity() == before) return;
+    const float effectiveDensity = userDensity_ * budget_.densityMult * envDensity();
+    for (auto& emitter : emitters_) {
+        if (emitter) emitter->setDensityMultiplier(effectiveDensity);
+    }
+}
+
+float ParticleManager::envDensity() const {
+    return glm::clamp(knobs_[static_cast<size_t>(ParticleFamily::Environment)].density, 0.0f, 1.0f);
 }
 
 void ParticleManager::createFireEmitters(const std::vector<glm::vec3>& positions,

@@ -4,6 +4,7 @@
  */
 
 #include "client/chat/chat_message_buffer.h"
+#include "client/chat/chat_text_colors.h"
 #include <ctime>
 
 namespace eqt {
@@ -140,6 +141,9 @@ void ChatMessageBuffer::addMessage(ChatMessage msg) {
     }
     if (msg.color == 0xFFFFFFFF) {
         msg.color = getChannelColor(msg.channel);
+    }
+    if (msg.userColor == 0) {
+        msg.userColor = static_cast<uint8_t>(userColorForChannel(msg.channel));
     }
     std::lock_guard<std::mutex> lock(mutex_);
     pendingMessages_.push_back(std::move(msg));
