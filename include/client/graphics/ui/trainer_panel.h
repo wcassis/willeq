@@ -85,6 +85,15 @@ struct TrainerPanelState {
     int visibleRows() const;
     /** The selected row's skill id, or -1 when nothing is selected. */
     int selectedSkillId() const;
+    /** The purse, in copper (pp*1000 + gp*100 + sp*10 + cp). */
+    uint64_t purseCopper() const;
+    /**
+     * TRNW_TrainButton's enabled state, MEASURED (review/UIGAP-ORACLE/214/
+     * train.tsv rows 1, 10, 11, 13, 15): a row is selected, practices > 0 and
+     * the purse covers the selected row's cost. A row AT its cap stays
+     * enabled -- pressing it is refused with eqstr 12930 and no packet.
+     */
+    bool trainEnabled() const;
 };
 
 // --- the bridge arms, as free functions (T290's idiom) ---------------------

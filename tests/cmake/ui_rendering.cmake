@@ -526,6 +526,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_trainer_panel PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_trainer_panel GTest::gtest_main willeq_core)
+    # UIGAP-residue: the measured trainer lines are eqstr 12056 / 12930.
+    TARGET_COMPILE_DEFINITIONS(test_trainer_panel PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_trainer_panel DISCOVERY_TIMEOUT 120)
 ENDIF()
 

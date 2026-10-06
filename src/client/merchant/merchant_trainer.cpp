@@ -20,6 +20,7 @@
 
 #include "client/eq.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/display_eqstr.h"
 #include "client/skill/skill_constants.h"
 #include "client/skill/skill_manager.h"
 #include "common/logging.h"
@@ -56,10 +57,10 @@ void eqt::merchant::MerchantComponent::PublishTrainerWindow()
 			current_value = ctx_.skill_manager->getSkillValue(skill_id);
 		}
 
-		// Skip skills already at or above max
-		if (current_value >= max_trainable) {
-			continue;
-		}
+		// UIGAP-residue (#214, MEASURED train.tsv row 13): a skill AT its cap
+		// is still LISTED (1H Blunt 125 at L20, Rank "Master", its price still
+		// shown) and selectable; Train then refuses it client-side
+		// (TrainRefusal's eqstr 12930). B898 skipped it here.
 
 		// Get skill name
 		const char* skill_name = EQ::getSkillName(skill_id);
@@ -127,13 +128,39 @@ std::string eqt::merchant::MerchantComponent::TrainRefusal(uint8_t skillId) cons
 		current = ctx_.skill_manager->getSkillValue(skillId);
 	}
 	if (current >= cap) {
-		// The server's MORE_SKILLED_THAN_I branch, said up front. The cap
-		// here is the trainer's MAX-LEVEL cap (Client::OPGMTraining fills
-		// skills[] from MaxSkill at RuleI(Character, MaxLevel)), so this is
-		// never stricter than the server's own MaxSkill(current level) gate.
+		// UIGAP-residue (#214, MEASURED train.tsv row 13): at cap the official
+		// client keeps Train ENABLED, sends NO packet and prints, client-side,
+		// eqstr 12930 "<trainer> tells you, 'You are already trained to the
+		// limit of your abilities in <skill>.'" -- this line, not the server's
+		// MORE_SKILLED_THAN_I. The cap here is the trainer's MAX-LEVEL cap
+		// (Client::OPGMTraining fills skills[] from MaxSkill at
+		// RuleI(Character, MaxLevel)), so this is never stricter than the
+		// server. The official client also knows the cap at the CURRENT level
+		// (the measured case: 1H Blunt 125 at L20, server cap 310); fable has
+		// no per-level cap table (config/skill_caps.json is collapsed to the
+		// lifetime cap), so below the max-level cap the request still goes out
+		// and the server answers -- flagged in the UIGAP-residue report.
+		const std::string line = eqt::EqStrLine(ctx_.strings.Db(), 12930,
+			{ctx_.game_state.player().trainerName(), label});
+		if (!line.empty()) {
+			return line;
+		}
 		return fmt::format(
 			"You are already more skilled in {} than {} can teach ({} of {}).",
 			label, ctx_.game_state.player().trainerName(), current, cap);
 	}
 	return std::string();
+}
+
+std::string eqt::merchant::MerchantComponent::TrainerSelectLine(uint8_t skillId) const
+{
+	if (ctx_.game_state.player().trainerNpcId() == 0) {
+		return std::string();
+	}
+	const char* skillName = EQ::getSkillName(skillId);
+	const std::string label = skillName ? skillName : fmt::format("skill {}", skillId);
+	// eqstr 12056 "%1 says, 'Interested in training in %2 ?'" -- the space
+	// before the '?' is the string's own (and the measured chat line's).
+	return eqt::EqStrLine(ctx_.strings.Db(), 12056,
+		{ctx_.game_state.player().trainerName(), label});
 }

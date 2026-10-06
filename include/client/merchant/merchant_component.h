@@ -150,6 +150,11 @@ public:
 	// SILENT server refusal (no session, no practices, not taught here,
 	// already at this trainer's cap) and none is stricter than the server.
 	std::string TrainRefusal(uint8_t skillId) const;
+	// UIGAP-residue (#214, MEASURED train.tsv row 10), merchant_trainer.cpp:
+	// the client-side line a trainer-window row selection prints, eqstr 12056
+	// "<trainer> says, 'Interested in training in <skill> ?'"; "" with no
+	// session or no string table.
+	std::string TrainerSelectLine(uint8_t skillId) const;
 
 	// ---- T269: /bank deposit|withdraw|convert. Push the kept
 	// BankCurrencyMoveIntent / BankCurrencyConvertIntent (the same shape a

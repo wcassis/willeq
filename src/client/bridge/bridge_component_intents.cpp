@@ -939,6 +939,14 @@ void eqt::bridge::BridgeComponent::onTrainSkillIntent(const eqt::events::TrainSk
 	// this intent, so the refusals live on the consumer too (one body,
 	// MerchantComponent::TrainRefusal). For /train it re-asks what the command
 	// already asked of the same state, so it cannot disagree.
+	if (i.selectOnly) {
+		// UIGAP-residue (#214 train.tsv row 10): a row selection's line, no packet.
+		const std::string line = ctx_.Merchant().TrainerSelectLine(i.skillId);
+		if (!line.empty()) {
+			ctx_.out.System(line);
+		}
+		return;
+	}
 	const std::string refusal = ctx_.Merchant().TrainRefusal(i.skillId);
 	if (!refusal.empty()) {
 		ctx_.out.System(refusal);

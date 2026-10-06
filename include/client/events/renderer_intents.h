@@ -311,6 +311,11 @@ struct SpellDisplayRequestIntent {
 
 struct TrainSkillIntent {
     uint8_t skillId;
+    // UIGAP-residue (#214, MEASURED train.tsv row 10): a trainer-window ROW
+    // click is not a train -- the official client prints "<trainer> says,
+    // 'Interested in training in <skill> ?'" (eqstr 12056) and sends nothing.
+    // `selectOnly` asks the game thread for that line; nothing is trained.
+    bool selectOnly = false;
 };
 
 struct CloseTrainerIntent {};
