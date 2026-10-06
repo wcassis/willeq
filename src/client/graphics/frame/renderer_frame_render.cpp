@@ -632,6 +632,12 @@ void FrameComponent::renderStaticUI() {
             pendingUIClick_, uiLayout_, trainerState_);
         // B895: the Tracking Window -- above the trainer, below the item display.
         processTrackingInput(ctx_.bridge, ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_, uiLayout_, trackingState_);
+        // B899 (#215): the container windows -- their own placement, above the
+        // centre popups, the bank, the trainer and the tracking window, below
+        // the item display and the Options window.
+        staticUIInput_->processContainerInput(
+            ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+            pendingUIClick_, uiLayout_, containerState_);
         // T421 (board B298): the item display window is hit-tested LAST and
         // drawn LAST -- it sits on top of every centre popup.
         staticUIInput_->processItemDisplayInput(
@@ -706,6 +712,9 @@ void FrameComponent::renderStaticUI() {
         renderTrainerWindow(*uiRenderer_, uiLayout_, trainerState_, xpBarState_.progress);
         // B895: the Tracking Window (own placement, not a centre popup).
         renderTrackingWindow(*uiRenderer_, uiLayout_, trackingState_);
+        // B899 (#215): the container windows (EQUI_Container.xml), drawn
+        // after the tracking window, mirroring the hit-test order above.
+        renderContainerWindows(*uiRenderer_, uiLayout_, containerState_);
         // T421 (B298 item half): the item display window. Drawn after every
         // popup because the oracle's ItemDisplayWindow has its own absolute
         // placement (0,80) and overlaps whatever is beneath it.

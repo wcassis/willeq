@@ -690,6 +690,13 @@ void FrameComponent::processChatInput() {
         // them). Neither closes itself: both push the intent that ends the
         // SERVER-side session and wait for its Closed event, exactly as ESC
         // on the loot window pushes CloseLootIntent.
+        // B899 (#215): the container windows draw above the tracking window,
+        // the trainer and the bank, so ESC reaches them first; each pushes
+        // TradeskillCloseIntent and waits for TradeskillContainerClosed
+        // (T290/T443's rule, carried bags included).
+        if (!popupConsumedEscape && newUIEnabled_ && staticUIInput_) {
+            popupConsumedEscape = staticUIInput_->processContainerEscape(containerState_);
+        }
         // B895: the Tracking Window draws above the trainer and the bank and below the item
         // display; a pure client view, so ESC hides it in place.
         if (!popupConsumedEscape && trackingState_.isOpen) {

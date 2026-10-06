@@ -615,6 +615,10 @@ public:
      */
     ActionResult tradeskillCombine(int16_t containerSlot);
     ActionResult closeTradeskillContainer();
+    // B899: /bag <general slot>. The slot is already a MODEL general slot
+    // (CommandProcessor::cmdBag ran parseUserSlot); whether it holds a
+    // container is game state, refused one layer down.
+    ActionResult toggleBag(int16_t generalSlot);
 
     // ========== Extended Movement Actions ==========
 

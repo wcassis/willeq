@@ -43,6 +43,8 @@ struct BankPanelState;
 struct CursorAttachmentState;
 struct OptionsPanelState;
 struct TrainerPanelState;  // B898
+// B899 (#215 / #151 Leg B).
+struct ContainerWindowsState;
 
 /**
  * T313 -- the three panels that carry a scrollOffset.
@@ -244,6 +246,33 @@ public:
                              const UILayout& layout,
                              OptionsPanelState& options,
                              OptionsLayout::Setting& changed);
+
+    /**
+     * B899 (#215 / #151 Leg B): the container windows -- world and carried.
+     * Defined in src/client/graphics/ui/container_input.cpp.
+     *
+     * Its own entry point, the T415/T421/T436 shape: the oracle's
+     * ContainerWindow is `RelativePosition false` at its own <Location>, so
+     * it is not a centre popup and is hit-tested beside the bank.
+     *
+     * Combine pushes the existing TradeskillCombineIntent with the world
+     * (1000) or the carried (the bag's own general slot) container slot;
+     * Done and the close box push TradeskillCloseIntent and leave the window
+     * up until TradeskillContainerClosed comes back. A left or right click
+     * on a cell goes through B442's shared slotClick() -> CursorGesture,
+     * with the cell's wire slot (bag sub-slot 251-330 or world 4000-4009).
+     */
+    bool processContainerInput(int mouseX, int mouseY, bool leftClicked,
+                               const UILayout& layout,
+                               ContainerWindowsState& containers);
+
+    /**
+     * B899: ESC on the container windows. The world container first (server
+     * owned, T443), else the most recently opened bag; each pushes
+     * TradeskillCloseIntent and nothing is hidden locally. Returns true if a
+     * window was addressed.
+     */
+    bool processContainerEscape(ContainerWindowsState& containers);
 
     /**
      * Handle a key press. Returns true if consumed.

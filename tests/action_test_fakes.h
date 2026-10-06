@@ -279,6 +279,9 @@ public:
     void closeTradeskillContainer() override {
         record("closeTradeskillContainer");
     }
+    void toggleBag(int16_t generalSlot) override {
+        record("toggleBag", generalSlot);
+    }
 
     // T153: record only the fields the user actually named, in wire order.
     // The merge with the character's current appearance is EqActionHandler's

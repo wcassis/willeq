@@ -458,24 +458,20 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
         break;
     // T415 (board B321): both arms were LOG_TRACEs that discarded their
     // payloads, because fable had no container window. They now feed one.
+    // B899 (#215, Will 2026-09-23): both arms feed the era CONTAINER window
+    // (EQUI_Container.xml), world and carried alike -- no longer T415's
+    // recipe window, whose recipe half is out of era. The container window is
+    // not a centre popup (its own <Location>), so opening one closes nothing.
     case state::GameEventType::TradeskillContainerOpened:
         if (renderer_) {
             auto& d = std::get<state::TradeskillContainerOpenedEvent>(event.data);
-            EQT::Graphics::applyTradeskillContainerOpened(
-                renderer_->Frame().tradeskillState_, d);
-            // A container is a centre popup: opening one closes the other
-            // three, the same rule the LootWindowOpened arm applies.
-            renderer_->Frame().inventoryState_.activePopup =
-                EQT::Graphics::PopupType::None;
-            renderer_->Frame().spellbookState_.isOpen = false;
-            renderer_->Frame().skillsPopupState_.isOpen = false;
+            EQT::Graphics::applyContainerOpened(renderer_->Frame().containerState_, d);
         }
         break;
     case state::GameEventType::TradeskillContainerClosed:
         if (renderer_) {
             auto& d = std::get<state::TradeskillContainerClosedEvent>(event.data);
-            EQT::Graphics::applyTradeskillContainerClosed(
-                renderer_->Frame().tradeskillState_, d);
+            EQT::Graphics::applyContainerClosed(renderer_->Frame().containerState_, d);
         }
         break;
     // T419 (board B335): the recipe list. `Cleared` is the client's own
@@ -546,6 +542,11 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 // "the single choke point for vendor-buy item placement and
                 // bank-window population", as its own comment says -- and
                 // dropped here until now.
+            } else if (EQT::Graphics::applyContainerSlotChanged(
+                           renderer_->Frame().containerState_, d)) {
+                // B899 (#215): the WORLD container range, 4000-4009, and the
+                // general BAG range, 251-330 -- the container windows' cells.
+                // The applier returns false for every other slot id.
             } else {
                 // T415 (board B321): the WORLD container range, 4000-4009.
                 // eqemu sends a tradeskill container's contents as

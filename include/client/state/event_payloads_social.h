@@ -187,6 +187,10 @@ struct TradeskillContainerOpenedEvent {
     std::string containerName;
     uint8_t containerType;
     uint8_t slotCount;
+    // B899: EQUI_Container.xml's Container_Icon (an A_DragItem decal). The
+    // carried bag's own item icon; 0 for a world container, whose
+    // ClickObjectAction icon is not an A_DragItem id.
+    uint32_t iconId = 0;
 };
 
 struct TradeskillContainerClosedEvent {
