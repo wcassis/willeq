@@ -200,6 +200,13 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
                             const std::vector<irr::scene::IMeshSceneNode*>& heldItems,
                             const irr::core::vector3df& camPos, float viewAngleDeg, uint16_t sourceSpawn) {
 #ifdef EQT_HAS_GLES2
+    // B979: capture() entry, so a slow capture's log can split its unit time
+    // into top_ms (entry -> tStart: cell lookup, scratch, mesh, the optional
+    // finishBefore glFinish) and total_ms (tStart -> tEnd: pose, bind, draw,
+    // copy, unbind). The unit timing in the [impostor] line is the whole call,
+    // so a >33 ms unit that does NOT show up in total_ms is in the top region.
+    using ClockT = std::chrono::steady_clock;
+    const auto tEntry = ClockT::now();
     CellRef ref;
     if (!node || !cells_.find(key, ref) || ref.page >= static_cast<int>(pages_.size())) return false;
     if (!ensureScratch()) return false;
@@ -222,6 +229,7 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
     const double finishBeforeMs = std::chrono::duration<double, std::milli>(Clock::now() - tf0).count();
 
     const auto tStart = Clock::now();
+    const double topMs = std::chrono::duration<double, std::milli>(tStart - tEntry).count();
     // The pose the entity is in now (its skinning may be suspended).
     node->forceAnimationUpdate();
     node->updateAbsolutePosition();
@@ -332,18 +340,19 @@ bool ImpostorCache::capture(uint64_t key, EQAnimatedMeshSceneNode* node,
     driver_->setRenderTarget(nullptr, false, false);
     const auto tEnd = Clock::now();
     // Where a capture's time goes, for the first few (the unit timing in the
-    // [impostor] line is the whole of it). finish_before_ms is the optional
-    // WILLEQ_IMPOSTOR_FINISH_BEFORE=1 glFinish() up top -- the probe for the
-    // previous frame's unfinished GPU work (B979).
-    if (stats_.units < 16) {
+    // [timme] line is the whole of it) AND for any slow one (B979: a
+    // >20 ms capture is a hitch candidate, so its sub-timer split is what we
+    // need to read — the one-time cost that survived prepare()).
+    const double totalMs = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
+    if (stats_.units < 16 || (totalMs + finishBeforeMs) > 20.0) {
         auto ms = [](Clock::time_point a, Clock::time_point b) {
             return std::chrono::duration<double, std::milli>(b - a).count();
         };
         LOG_INFO(MOD_GRAPHICS,
-                 "[impostor-capture] key={} finish_before_ms={:.2f} pose_bounds_ms={:.2f} bind_clear_ms={:.2f} "
-                 "draw_ms={:.2f} copy_ms={:.2f} unbind_ms={:.2f} buffers={}",
-                 key, finishBeforeMs, ms(tStart, tBind), ms(tBind, tDraw), ms(tDraw, tCopy), ms(tCopy, tUnbind),
-                 ms(tUnbind, tEnd), mesh->getMeshBufferCount());
+                 "[timme] capture] key={} total_ms={:.2f} top_ms={:.2f} finish_before_ms={:.2f} pose_bounds_ms={:.2f} "
+                 "bind_clear_ms={:.2f} draw_ms={:.2f} copy_ms={:.2f} unbind_ms={:.2f} buffers={}",
+                 key, totalMs, topMs, finishBeforeMs, ms(tStart, tBind), ms(tBind, tDraw), ms(tDraw, tCopy),
+                 ms(tCopy, tUnbind), ms(tUnbind, tEnd), mesh->getMeshBufferCount());
     }
     driver_->setTransform(irr::video::ETS_VIEW, savedView);
     driver_->setTransform(irr::video::ETS_PROJECTION, savedProj);
