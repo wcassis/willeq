@@ -390,6 +390,12 @@ private:
 	void onCursorGestureIntent(const eqt::events::CursorGestureIntent& i);
 	void RunCursorGesture(const eqt::events::CursorGestureIntent& i);
 	void PublishInventorySlot(int16_t slot);
+	// B442b (#151): the coin on the cursor (row 29), the drop / destroy
+	// confirmations (rows 31-35) and the bag toggle (rows 19-21) -- all in
+	// bridge_component_cursor.cpp beside RunCursorGesture().
+	void PublishCursorCoin();
+	void RunCursorCoinGesture(const eqt::events::CursorGestureIntent& i);
+	void RunCursorConfirmation(const eqt::events::CursorGestureIntent& i);
 	void onPlaySoundIntent(const eqt::events::PlaySoundIntent& i);
 	void onGameOptionIntent(const eqt::events::GameOptionIntent& i);
 	// B895: the Tracking Window's controls -> TrackingController.

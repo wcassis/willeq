@@ -4,6 +4,10 @@
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/spell_visual_fx.h"
 #include "client/chat/chat_message_buffer.h"
+#include "client/graphics/ui/confirmation_dialog.h"   // B442b
+#include "client/graphics/ui/cursor_attachment.h"
+#include "client/graphics/ui/merchant_panel.h"
+#include "client/graphics/ui/static_ui_input.h"
 #include "client/inventory/inventory_constants.h"
 #include "client/inventory/inventory_manager.h"
 #include "common/logging.h"
@@ -408,6 +412,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             // LootWindowOpened arm below follows.
             renderer_->Frame().inventoryState_.activePopup =
                 EQT::Graphics::PopupType::None;
+            renderer_->Frame().inventoryState_.selectedSlot = -1;  // B442b
             EQT::Graphics::applyVendorWindowOpened(
                 renderer_->Frame().merchantState_, d);
         }
@@ -415,6 +420,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::VendorWindowClosed:
         if (renderer_) {
             auto& d = std::get<state::WindowClosedData>(event.data);
+            // B442b (#152): the sale selection ends with the session.
+            renderer_->Frame().inventoryState_.selectedSlot = -1;
             EQT::Graphics::applyVendorWindowClosed(
                 renderer_->Frame().merchantState_, d);
         }
@@ -518,6 +525,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
                 slot.quantity = d.hasItem ? d.quantity : 0;
+                slot.bagSlots = d.hasItem ? d.bagSlots : 0;  // B442b
                 // T60: an equip-slot change usually means the player's
                 // EntityAppearance changed too (WearChange) — mark the
                 // paperdoll dirty so it picks it up next time it renders.
@@ -529,6 +537,8 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 slot.itemName = d.hasItem ? d.itemName : "";
                 slot.iconId = d.hasItem ? d.iconId : 0;
                 slot.quantity = d.hasItem ? d.quantity : 0;
+                // B442b (#151 rows 19-21): a bag here is right-click toggleable.
+                slot.bagSlots = d.hasItem ? d.bagSlots : 0;
             } else if (EQT::Graphics::applyCursorSlotChanged(
                            renderer_->Frame().cursorState_, d)) {
                 // T436 (board B429): the CURSOR slot (30, or the wire's 33).
@@ -561,9 +571,28 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 EQT::Graphics::applyTradeskillSlotChanged(
                     renderer_->Frame().tradeskillState_, d);
             }
+            // B442b (#152): the item selected for sale follows its slot.
+            EQT::Graphics::applyMerchantSelectionSlotChanged(
+                renderer_->Frame().merchantState_, renderer_->Frame().inventoryState_, d);
         }
         break;
     }
+    // B442b (#151 row 29): the coin on the cursor, drawn by the attachment.
+    case state::GameEventType::CursorCoinChanged:
+        if (renderer_) {
+            EQT::Graphics::applyCursorCoinChanged(
+                renderer_->Frame().cursorState_,
+                std::get<state::CursorCoinChangedData>(event.data));
+        }
+        break;
+    // B442b (#151 rows 31-35): a drop / destroy prompt the game composed.
+    case state::GameEventType::ConfirmationRequested:
+        if (renderer_ && renderer_->Frame().staticUIInput_) {
+            EQT::Graphics::applyConfirmationRequested(
+                renderer_->Frame().staticUIInput_->confirmationDialog(),
+                std::get<state::ConfirmationRequestedData>(event.data));
+        }
+        break;
     case state::GameEventType::CursorItemChanged:
         // No dedicated renderer call — cursor state read directly by UI
         LOG_TRACE(MOD_GRAPHICS, "Bridge: CursorItemChanged");

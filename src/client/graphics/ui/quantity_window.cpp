@@ -44,6 +44,54 @@ void QuantityWindowState::openForCoin(uint8_t type, const std::string& name, int
     value = count;
 }
 
+// B442b: merchant.tsv row 5 -- the merchant's Sell on a stack opens the same
+// dialog prefilled with the whole stack.
+void QuantityWindowState::openForSell(uint16_t merchant, int16_t slot, const std::string& name,
+                                      int32_t count) {
+    *this = QuantityWindowState{};
+    isOpen = count > 0;
+    purpose = Purpose::Sell;
+    npcId = merchant;
+    slotId = slot;
+    label = name;
+    maxValue = count;
+    value = count;
+}
+
+QuantityClick applyQuantityKey(QuantityWindowState& state, irr::EKEY_CODE key,
+                               wchar_t character) {
+    if (!state.isOpen || !state.input.inputActive) return QuantityClick::None;
+    // QTYW_SliderInput takes a number: a printable non-digit is swallowed.
+    const bool printable = character >= 32 && character < 127;
+    if (printable && (character < L'0' || character > L'9')) return QuantityClick::Consumed;
+
+    const TextEntryAction action = applyTextEntryKey(state.input, key, character);
+    if (action == TextEntryAction::Submit) {
+        state.input.inputActive = true;   // Return keeps the box; Accept closes the window
+        return state.value > 0 ? QuantityClick::Accept : QuantityClick::Consumed;
+    }
+    if (action == TextEntryAction::Cancel) {
+        // Row 16: Escape does not close the Quantity window -- it only lets
+        // go of the box.
+        state.input.inputActive = false;
+        return QuantityClick::Consumed;
+    }
+    if (action == TextEntryAction::Changed) {
+        long typed = 0;
+        for (char c : state.input.inputText) {
+            if (c < '0' || c > '9') continue;
+            typed = typed * 10 + (c - '0');
+            if (typed > state.maxValue) break;
+        }
+        if (typed > state.maxValue) {
+            typed = state.maxValue;
+            focusTextEntry(state.input, std::to_string(typed));
+        }
+        state.value = static_cast<int32_t>(typed);
+    }
+    return QuantityClick::Consumed;
+}
+
 QuantityClick processQuantityClick(const UILayout& layout, QuantityWindowState& state,
                                    int mouseX, int mouseY, bool leftClicked) {
     state.acceptHovered = false;
@@ -51,6 +99,16 @@ QuantityClick processQuantityClick(const UILayout& layout, QuantityWindowState& 
     if (!state.isOpen) return QuantityClick::None;
     if (!inside(QuantityLayout::windowRect(layout), mouseX, mouseY)) {
         return QuantityClick::None;
+    }
+    if (leftClicked && inside(QuantityLayout::inputRect(layout), mouseX, mouseY)) {
+        // Row 5: the box takes the keyboard; the next digit replaces the
+        // number shown (an empty entry -- "select all" on focus).
+        focusTextEntry(state.input, "");
+        return QuantityClick::Consumed;
+    }
+    if (leftClicked) {
+        // Any other click on the dialog lets go of the box.
+        state.input.inputActive = false;
     }
     if (inside(QuantityLayout::closeBoxRect(layout), mouseX, mouseY)) {
         state.closeHovered = true;
@@ -97,9 +155,14 @@ void renderQuantityWindow(UIRenderer& ui, const UILayout& layout,
     // QTYW_SliderInput (WDT_Inner, white text): the number.
     const auto input = QuantityLayout::inputRect(layout);
     ui.drawRect(input, irr::video::SColor(220, 18, 18, 24));
+    if (state.input.inputActive) {
+        ui.drawFrame(input, irr::video::SColor(255, 255, 215, 0));   // it holds the keyboard
+    }
     if (tb) {
-        tb->addTextCentered(std::to_string(state.value), input,
-                            irr::video::SColor(255, 255, 255, 255));
+        const std::string shown = state.input.inputActive
+            ? state.input.inputText + "_"
+            : std::to_string(state.value);
+        tb->addTextCentered(shown, input, irr::video::SColor(255, 255, 255, 255));
     }
 
     // QTYW_Accept_Button: "Accept".

@@ -255,7 +255,10 @@ const SweepEntry kSweep[] = {
     // B897: the Friends window's name Editboxes are a FOURTH drain of the
     // same shape -- processChatInput() early-returns into
     // processFriendsNameInput() while one of them holds the caret.
-    {"popKeyEvent", 4, "render thread only; processChatInput early-returns into processOptionsKeyCapture (B433), processTradeskillSearchInput or processFriendsNameInput (B897), mutually exclusive. T241/T421."},
+    // B442b: the QuantityWnd's QTYW_SliderInput is a FIFTH, the same shape --
+    // processChatInput() early-returns into processQuantityKeyInput()
+    // (renderer_frame_cursor.cpp) while the box holds the keyboard.
+    {"popKeyEvent", 5, "render thread only; processChatInput early-returns into processOptionsKeyCapture (B433), processTradeskillSearchInput, processFriendsNameInput (B897) or processQuantityKeyInput (B442b), mutually exclusive. T241/T421."},
     {"enterKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
     {"slashKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
     {"escapeKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},

@@ -57,7 +57,8 @@ bool StaticUIInput::processContainerInput(int mouseX, int mouseY, bool leftClick
                 eqt::inventory::SlotSnapshot snap;
                 snap.occupied = cell.hasItem;
                 snap.quantity = cell.quantity;
-                slotClick(containerSlotId(w, hit.slot), leftClicked, snap, cell.itemName);
+                slotClick(containerSlotId(w, hit.slot), leftClicked, snap, cell.itemName,
+                          cell.iconId);   // B442b: the icon a merchant selection shows
             }
             break;
         case ContainerPart::Combine:

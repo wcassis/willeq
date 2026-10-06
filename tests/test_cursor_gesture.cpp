@@ -192,8 +192,9 @@ TEST(CursorGestureMap, LeftWithAnItemHeldPlacesOnEmptyAndOccupiedSlotsAlike) {
               GestureAction::CursorClick);
 }
 
-// Rows 24/25: a right click on an item never picks it up. (The oracle shows
-// the display only while the button is HELD; fable keeps it open -- flagged.)
+// Rows 24/25: a right click on an item never picks it up. (The display it
+// asks for is shown only while the button is HELD -- B442b, pinned in
+// test_cursor_gesture_completion.cpp's ItemDisplayLifetime.)
 TEST(CursorGestureMap, RightIsTheDisplayAndNeverAMove) {
     EXPECT_EQ(classifyClick(ClickButton::Right, {}, SlotSnapshot{true, 1}, CursorSnapshot{false}),
               GestureAction::ItemDisplay);
@@ -394,7 +395,11 @@ TEST(CursorGestureInventory, APurseRowIsTheCoinDialogAndHeldCoinGoesBack) {
     EXPECT_EQ(g.coinType, EQT::COINTYPE_PP);
     EXPECT_EQ(g.quantity, 10);
 
-    // Coin held: the next purse click is the put-back (no dialog).
+    // Coin held: the next purse click is the put-back (no dialog). B442b: the
+    // render thread keeps no shadow -- "held" is what the game thread's
+    // CursorCoinChanged put on the cursor attachment, simulated here.
+    rig.cursor.coinType = EQT::COINTYPE_PP;
+    rig.cursor.coinAmount = 10;
     rig.clickAt(r.UpperLeftCorner.X + 30, r.UpperLeftCorner.Y + 4, true, false);
     EXPECT_FALSE(rig.input.quantityWindow().isOpen);
     intents = rig.bridge.drainIntents();
@@ -402,6 +407,7 @@ TEST(CursorGestureInventory, APurseRowIsTheCoinDialogAndHeldCoinGoesBack) {
     EXPECT_EQ(std::get<CursorGestureIntent>(intents[0]).op, CursorGestureOp::CoinClick);
 
     // SHIFT on copper (the last row, the wire's 0): all of it, no dialog.
+    rig.cursor.coinAmount = 0;   // the put-back's CursorCoinChanged
     rig.inv.coins[3] = 47;
     ClickModifiers shift; shift.shift = true;
     const auto cp = InventoryLayout::coinRect(rig.l, 3);

@@ -614,6 +614,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_preferences.cpp
         src/client/graphics/frame/renderer_frame_options.cpp
         src/client/graphics/frame/renderer_frame_friends.cpp  # B897
+        src/client/graphics/frame/renderer_frame_cursor.cpp  # B442b
         src/client/graphics/frame/renderer_frame_entity_build.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
@@ -699,6 +700,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/static_ui_input.cpp
         src/client/graphics/ui/static_ui_cursor.cpp  # B442
         src/client/graphics/ui/quantity_window.cpp  # B442
+        src/client/graphics/ui/confirmation_dialog.cpp  # B442b
+        src/client/graphics/ui/static_ui_merchant.cpp  # B442b
         src/client/graphics/ui/ui_renderer.cpp
         src/client/graphics/ui/static_panels.cpp
         src/client/graphics/ui/chat_wrap_cache.cpp

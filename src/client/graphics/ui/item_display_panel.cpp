@@ -33,8 +33,39 @@ int ItemDisplayPanelState::maxScrollOffset(const UILayout& layout) const {
     return over > 0 ? over : 0;
 }
 
+void noteItemDisplayRequest(ItemDisplayPanelState& state, bool held) {
+    state.heldRequestPending = held;
+    state.heldReleasedEarly = false;
+    state.heldReleaseAgeFrames = 0;
+    if (!held) state.heldOnly = false;
+}
+
+void updateHeldItemDisplay(ItemDisplayPanelState& state, bool rightButtonDown) {
+    if (rightButtonDown) return;
+    if (state.heldOnly) {
+        // Row 25: "gone on release".
+        state.isOpen = false;
+        state.heldOnly = false;
+    }
+    if (state.heldRequestPending) {
+        state.heldRequestPending = false;
+        state.heldReleasedEarly = true;
+        state.heldReleaseAgeFrames = 0;
+    } else if (state.heldReleasedEarly &&
+               ++state.heldReleaseAgeFrames > kHeldDisplayForgetFrames) {
+        state.heldReleasedEarly = false;
+    }
+}
+
 void applyItemDisplayShown(ItemDisplayPanelState& state,
                            const eqt::state::ItemDisplayShownData& data) {
+    if (state.heldReleasedEarly) {
+        // Row 24: the right button came up before the contents did.
+        state.heldReleasedEarly = false;
+        return;
+    }
+    state.heldOnly = state.heldRequestPending;
+    state.heldRequestPending = false;
     state.isOpen = true;
     state.itemId = data.itemId;
     state.name = data.name;
