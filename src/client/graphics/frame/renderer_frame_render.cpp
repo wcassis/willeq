@@ -608,6 +608,11 @@ void FrameComponent::renderStaticUI() {
         staticUIInput_->processCommerceInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, merchantState_, bankState_, cursorState_);
+        // B898 (#214): the trainer window draws above the bank, so it is
+        // asked after it and before the item display / Options windows.
+        staticUIInput_->processTrainerInput(
+            ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
+            pendingUIClick_, uiLayout_, trainerState_);
         // T421 (board B298): the item display window is hit-tested LAST and
         // drawn LAST -- it sits on top of every centre popup.
         staticUIInput_->processItemDisplayInput(
@@ -676,6 +681,9 @@ void FrameComponent::renderStaticUI() {
         // BankWnd is Style_Sizable false at 108x347 and keeps its own size --
         // so it draws above them, mirroring the hit-test order.
         renderBankWindow(*uiRenderer_, uiLayout_, bankState_);
+        // B898 (#214): the trainer window -- Style_Sizable false at 580x280,
+        // NOT a centre popup, so it draws above them and above the bank.
+        renderTrainerWindow(*uiRenderer_, uiLayout_, trainerState_, xpBarState_.progress);
         // T421 (B298 item half): the item display window. Drawn after every
         // popup because the oracle's ItemDisplayWindow has its own absolute
         // placement (0,80) and overlaps whatever is beneath it.

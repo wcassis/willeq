@@ -41,6 +41,7 @@
 #include "client/graphics/ui/merchant_panel.h"
 #include "client/graphics/ui/bank_panel.h"
 #include "client/graphics/ui/cursor_attachment.h"
+#include "client/graphics/ui/trainer_panel.h"  // B898
 #include "client/inventory/item_display_text.h"
 #include "client/spell/spell_display_text.h"
 #include "client/spell/spell_data.h"
@@ -150,6 +151,7 @@ struct PanelStates {
     MerchantPanelState merchant;
     BankPanelState bank;
     CursorAttachmentState cursor;
+    TrainerPanelState trainer;  // B898 (#214)
     XPBarState xp;
 
     PanelStates() {
@@ -438,6 +440,29 @@ struct PanelStates {
         }
 
         xp.progress = 0.62f;
+
+        // B898 (#214): a warrior guildmaster's reply, with more rows than the
+        // list shows so the scroll bar's thumb is visible. Costs are eqemu's
+        // (cur-10)^3/100, computed the way the game thread computes them.
+        {
+            eqt::state::TrainerWindowOpenedData t;
+            t.npcId = 90; t.npcName = "Guildmaster Rough";
+            t.platinum = 12; t.gold = 3; t.silver = 4; t.copper = 5;
+            t.practicePoints = 5;
+            static const struct { uint8_t id; const char* name; uint32_t cur; } kSkills[] = {
+                {0, "1H Blunt", 22}, {1, "1H Slashing", 51}, {2, "2H Blunt", 0},
+                {3, "2H Slashing", 14}, {7, "Archery", 3}, {10, "Bash", 30},
+                {15, "Defense", 48}, {19, "Disarm", 0}, {21, "Dodge", 35},
+                {22, "Double Attack", 0}, {33, "Offense", 55}, {34, "Parry", 12},
+                {36, "Piercing", 9}, {50, "Swimming", 40}};
+            for (const auto& s : kSkills) {
+                const uint32_t adj = s.cur > 10 ? s.cur - 10 : 0;
+                t.skills.push_back({s.id, s.name, s.cur, 200, adj * adj * adj / 100});
+            }
+            applyTrainerWindowOpened(trainer, t);
+            trainer.selectedRow = 1;
+            trainer.hoveredRow = 5;
+        }
     }
 };
 
@@ -523,6 +548,13 @@ std::vector<PanelCapture> buildCaptureList() {
             renderMerchantPopup(u, l, s.merchant, s.cursor); }},
         {"bank", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderBankWindow(u, l, s.bank); }},
+        // B898 (#214): the skill trainer window, and the same window scrolled.
+        {"trainer", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.trainer.scrollOffset = 0;
+            renderTrainerWindow(u, l, s.trainer, s.xp.progress); }},
+        {"trainer_scrolled", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            s.trainer.scrollOffset = s.trainer.maxScrollOffset();
+            renderTrainerWindow(u, l, s.trainer, s.xp.progress); }},
         {"cursor_item", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             // Placed off-centre so the 50x50 box and its (5,5) inset are
             // both visible against the empty frame.

@@ -202,8 +202,7 @@ std::vector<std::string> variantMembers() {
 // T280 delisted TrainSkillIntent and CloseTrainerIntent: /train <skill|id>
 // and /trainclose produce them (CommandProcessor -> ActionDispatcher ->
 // EqActionHandler -> EverQuest::RequestTrainSkill/RequestCloseTrainer).
-// There is still no trainer PANEL to click, so the command is the only
-// producer -- said out loud rather than implied.
+// B898 added the trainer window as their second producer (Train, Done).
 const std::set<std::string> kBlockedIntents = {
     // T272 delisted MemorizeSpellIntent (spellbook click produces it);
     // Delisted as each got a producer: ReadItemIntent (T273 /read),

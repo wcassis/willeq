@@ -57,7 +57,7 @@ Defined in `include/client/events/renderer_intents.h`. `RendererIntent` is a `st
 - **Inventory**: `MoveItemIntent`, `DeleteItemIntent`, `EquipmentChangedIntent`
 - **Chat**: `ChatSubmitIntent`
 - **Audio**: `MusicVolumeChangeIntent`, `EffectsVolumeChangeIntent` (T439, board B432: both carry an ABSOLUTE step 0..20 -- the oracle's slider unit, `include/client/audio/volume_steps.h` -- not a delta; the applied value comes back on `GameEventType::VolumesChanged`), `PlaySoundIntent` (T328 Leg B: the measured UI sounds — itemclth, wearclth, BuyItem)
-- **Trainer**: `TrainerToggleIntent`, `TrainSkillIntent`, `CloseTrainerIntent`
+- **Trainer**: `TrainerToggleIntent`, `TrainSkillIntent`, `CloseTrainerIntent` (B898: the trainer window's Train / Done buttons push the last two, the same intents `/train <id>` / `/trainclose` push)
 - **Tradeskill**: `TradeskillCombineIntent`, `TradeskillCloseIntent`
 - **Model**: `PlayerModelGeometryChanged`
 

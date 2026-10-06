@@ -432,11 +432,21 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
                 renderer_->Frame().bankState_, d);
         }
         break;
+    // B898 (#214): both were LOG_TRACEs that discarded the decoded
+    // OP_GMTraining reply. They now feed the trainer window (trainer_panel.cpp).
     case state::GameEventType::TrainerWindowOpened:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TrainerWindowOpened");
+        if (renderer_) {
+            EQT::Graphics::applyTrainerWindowOpened(
+                renderer_->Frame().trainerState_,
+                std::get<state::TrainerWindowOpenedData>(event.data));
+        }
         break;
     case state::GameEventType::TrainerWindowClosed:
-        LOG_TRACE(MOD_GRAPHICS, "Bridge: TrainerWindowClosed");
+        if (renderer_) {
+            EQT::Graphics::applyTrainerWindowClosed(
+                renderer_->Frame().trainerState_,
+                std::get<state::WindowClosedData>(event.data));
+        }
         break;
     // T415 (board B321): both arms were LOG_TRACEs that discarded their
     // payloads, because fable had no container window. They now feed one.

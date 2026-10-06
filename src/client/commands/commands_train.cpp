@@ -111,10 +111,8 @@ void eqt::commands::CommandsComponent::RequestCloseTrainer()
 		ctx_.out.System("Cannot close the trainer window - no bridge attached.");
 		return;
 	}
-	// The same intent a trainer-panel close button would push. There is no
-	// trainer panel yet (no hit-test anywhere in graphics/ui), so the
-	// command is the only producer today -- stated plainly, T277-style,
-	// rather than pretending a gesture exists.
+	// The same intent the trainer window's TW_DoneButton, its close box and
+	// ESC push (B898, trainer_panel.cpp / renderer_frame_input.cpp).
 	ctx_.bridge->pushIntent(eqt::events::CloseTrainerIntent{});
 }
 
@@ -188,29 +186,18 @@ void eqt::commands::CommandsComponent::RequestTrainSkill(const std::string& args
 	const std::string label = skillName ? skillName : fmt::format("skill {}", skillId);
 
 	// --- refusals the client can actually make ----------------------------
-
-	// eqemu's very first line is `if(!m_pp.points) return;` -- silent.
-	if (ctx_.self.GetPracticePoints() == 0) {
-		ctx_.out.System("You have no training points left to spend.");
+	// B898: ONE body, MerchantComponent::TrainRefusal (merchant_trainer.cpp),
+	// which the trainer window's Train button reaches too.
+	const std::string refusal = ctx_.Merchant().TrainRefusal(skillId);
+	if (!refusal.empty()) {
+		ctx_.out.System(refusal);
 		return;
 	}
-
 	const uint32_t cap = ctx_.Merchant().GetTrainerSkillCap(skillId);
-	if (cap == 0) {
-		ctx_.out.System(fmt::format("{} cannot train you in {}.", ctx_.game_state.player().trainerName(), label));
-		return;
-	}
 
 	uint32_t current = 0;
 	if (ctx_.skill_manager) {
 		current = ctx_.skill_manager->getSkillValue(skillId);
-	}
-	if (current >= cap) {
-		// The server's MORE_SKILLED_THAN_I branch, said up front.
-		ctx_.out.System(fmt::format(
-			"You are already more skilled in {} than {} can teach ({} of {}).",
-			label, ctx_.game_state.player().trainerName(), current, cap));
-		return;
 	}
 
 	if (!ctx_.bridge) {

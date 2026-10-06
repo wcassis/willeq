@@ -80,10 +80,58 @@ public:
         std::vector<state::GameEvent> result;
         {
             std::lock_guard<std::mutex> lock(eventMutex_);
+            // B945: the queue's capacity is not a fixed cap -- a burst (the
+            // zone-in spawn burst) may grow it -- but it is RETURNED once the
+            // burst has drained. eventQueueHighWater_ is the peak of the
+            // queue's live capacity, read BEFORE the swap (after it, the
+            // queue holds the drained vector's buffer, not the queue's own);
+            // whenever a drain leaves the queue under half of that mark, the
+            // drained events move off into a vector at their exact drained
+            // size (a single copy) and the old, larger buffer frees -- but
+            // only if it truly retained more than the drained count (a
+            // growth step that allocated exactly the burst size is not an
+            // excess to release). The halving rule means a live burst can
+            // never force its own shrink (the peak grows with the burst) and
+            // steady state keeps one allocation whose size tracks the live
+            // queue, so only the burst's peak is released -- never a re-alloc
+            // per frame. (A std::vector's capacity is a non-binding hint, so
+            // this uses an explicit move-to-accurate-size rather than
+            // shrink_to_fit, which libstdc++ may ignore.)
+            //
+            // What this bounds: the buffer the drain's OWN (returned) vector
+            // keeps across the burst->steady transition. Note it is NOT the
+            // fix for the 3.1 MB "GameEvent staging buffer at ready" the issue
+            // named -- that block is the in-flight zone-in burst sitting in
+            // the render-side staging queue (m_forwardQueue) while the render
+            // thread is busy loading the zone, and it is freed at the FIRST
+            // forwardStagedEvents() after the load -- the base already does
+            // this (B945's x86 trace: the block is alive at the `ready` point
+            // and gone by `steady_60s`, in BOTH the base and this build). See
+            // refactor/B945/README.md for the before/after pair.
+            const size_t liveCapacity = eventQueue_.capacity();
             result.swap(eventQueue_);
+            const size_t drained = result.size();
+            if (liveCapacity > eventQueueHighWater_) {
+                eventQueueHighWater_ = liveCapacity;
+            } else if (drained * 2 < eventQueueHighWater_ &&
+                       liveCapacity > drained) {
+                result = std::vector<state::GameEvent>(
+                    std::make_move_iterator(result.begin()),
+                    std::make_move_iterator(result.end()));
+            }
         }
         coalesceEvents(result);
         return result;
+    }
+
+    /**
+     * B945: bytes the event queue's buffer still holds
+     * (capacity * sizeof(state::GameEvent)), for the capacity-bounded test.
+     * Thread-safe: reads under the same mutex pushEvent()/drainEvents() do.
+     */
+    size_t eventQueueCapacityBytes() const {
+        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(eventMutex_));
+        return eventQueue_.capacity() * sizeof(state::GameEvent);
     }
 
     /**
@@ -131,6 +179,12 @@ protected:
 private:
     std::mutex eventMutex_;
     std::vector<state::GameEvent> eventQueue_;
+
+    // B945: high-water mark of eventQueue_'s live capacity -- the burst that
+    // last grew it (read right after each drain's swap, under eventMutex_).
+    // drainEvents() gives the queue's buffer back once a drain leaves the
+    // queue under half of that mark.
+    size_t eventQueueHighWater_ = 0;
 
     std::mutex intentMutex_;
     std::vector<events::RendererIntent> intentQueue_;

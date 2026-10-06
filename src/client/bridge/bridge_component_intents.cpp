@@ -340,6 +340,20 @@ void eqt::bridge::BridgeComponent::onBankerInteractIntent(const eqt::events::Ban
 		return;
 	}
 
+	// B898 (#214): a guildmaster opens the trainer window. Ctrl+click on an
+	// NPC is fable's stand-in for the official client's RIGHT click on one
+	// (the right button is mouselook until #151's latch), and right-clicking
+	// a guildmaster is how the official client opens training (eqstr 6788,
+	// "Stand close to and right click on the %1 to train your skills.") --
+	// the request is OP_GMTraining, the packet /train and T send.
+	constexpr uint8_t CLASS_WARRIOR_GM = 20;
+	constexpr uint8_t CLASS_BERSERKER_GM = 35;
+	if (target.class_id >= CLASS_WARRIOR_GM && target.class_id <= CLASS_BERSERKER_GM) {
+		LOG_INFO(MOD_MAIN, "Requesting training from {} (id={})", target.name, i.npcId);
+		ctx_.Merchant().RequestTrainerWindow(i.npcId);
+		return;
+	}
+
 	constexpr uint8_t CLASS_BANKER = 40;
 	if (target.class_id != CLASS_BANKER) {
 		LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not a banker (class={})", target.name, target.class_id);
@@ -848,6 +862,15 @@ void eqt::bridge::BridgeComponent::onSpellDisplayRequestIntent(const eqt::events
 
 // Trainer intents (D20b1)
 void eqt::bridge::BridgeComponent::onTrainSkillIntent(const eqt::events::TrainSkillIntent& i) {
+	// B898: /train <skill|id> and the trainer window's Train button both push
+	// this intent, so the refusals live on the consumer too (one body,
+	// MerchantComponent::TrainRefusal). For /train it re-asks what the command
+	// already asked of the same state, so it cannot disagree.
+	const std::string refusal = ctx_.Merchant().TrainRefusal(i.skillId);
+	if (!refusal.empty()) {
+		ctx_.out.System(refusal);
+		return;
+	}
 	ctx_.Merchant().TrainSkill(i.skillId);
 }
 

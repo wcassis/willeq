@@ -415,6 +415,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_merchant_bank_cursor DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B898 (#214): the skill trainer window -- layout vs EQUI_TrainWindow.xml,
+# the OP_GMTraining reply through the real EverQuest into the real applier,
+# the Train/Done clicks against the /train intents and their exact bytes on a
+# fake Daybreak connection. No device, no server.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_trainer_panel
+        test_trainer_panel.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_trainer_panel PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_trainer_panel GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_trainer_panel DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T439 (boards B432/B444/B434): the T434/T436 residue -- the absolute volume
 # round trip, the zone-in snapshot's cursor and bank slots, and the deleted
 # PopupType::Options enumerator. Half the cases are source censuses that read

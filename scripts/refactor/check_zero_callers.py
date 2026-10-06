@@ -970,6 +970,13 @@ EXEMPT_TESTS_GROUPS = {
     # (production only asks rayIntersect(), which answers "no hit" for an
     # absent region).
     ("ObjectCollisionSet", "hasRegion"): "observer",
+    # B945: the bridge event/staging queue's retained capacity (bytes), read
+    # under the queue's own mutex. A live observation window: production
+    # measures the same bytes through the memory ledger's [memledger-trace]
+    # rows; the capacity-bounded unit test (test_game_state_sync_bridge)
+    # asserts the burst's buffer is returned once it drains.
+    ("GameStateBridge", "eventQueueCapacityBytes"): "observer",
+    ("GameStateSyncBridge", "forwardQueueCapacityBytes"): "observer",
     # T504b Leg 2b: the unload test's window on the evictable set, and the
     # clock it turns forward so the hysteresis window elapses in a test.
     ("RaceModelLoader", "evictableCountForTest"): "observer",

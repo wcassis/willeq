@@ -23,7 +23,11 @@
 #   game_state          -- the B941 labels (gs.navmesh, gs.nav_query,
 #                          gs.collision_map, gs.zone_lines, gs.zone_sources;
 #                          B951 adds gs.collision_map.{verts,tris,refs,
-#                          nodes,leaves,flags}, the raycast mesh arrays)
+#                          nodes,leaves,flags}, the raycast mesh arrays).
+#                          B945 also sets
+#                          WILLEQ_LEDGER_TRACE=game_state:login_world and the
+#                          [memledger-trace] rows split the misc row by call
+#                          site (the B903 method; resolve with --bin).
 #   audio               -- the B977 labels (au.soundfont_gm, au.soundfont_custom,
 #                          au.sound_buffers, au.sfx_cache, au.music, au.mixer_sfx,
 #                          au.backend, au.pfs_index, au.zone_emitters); run it
@@ -269,6 +273,10 @@ EOF
     fi
     local -a envs=( "WILLEQ_BASELINE=1" "WILLEQ_LEDGER_OWNERS=${mode}" "TZ=UTC" )
     [ "$mode" = zone_parse ] && envs+=( "WILLEQ_LEDGER_TRACE=zone_parse:startup" "WILLEQ_LEDGER_TRACE_DEPTH=8" )
+    # B945: the game_state misc row is site-split the same way the issue's
+    # trace recipe names it -- every allocation of the category from the
+    # zone-in handshake (login_world) onward, backtraced.
+    [ "$mode" = game_state ] && envs+=( "WILLEQ_LEDGER_TRACE=game_state:login_world" "WILLEQ_LEDGER_TRACE_DEPTH=8" )
     local -a args=( -c "$CFG" --renderer gles2 --constrained orangepi -r "$RES_W" "$RES_H"
                     --eqe1-path "$EQE1_PATH" --log-level=INFO --script "$tour" )
     [ "$AUDIO" -eq 1 ] || args+=( --no-audio )
