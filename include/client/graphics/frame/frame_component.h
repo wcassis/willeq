@@ -307,6 +307,19 @@ public:
 	// One resolved click -> a SocialListIntent, the chat prefill, or a close.
 	void applyFriendsAction(const FriendsAction& action);
 
+	// B442b (GitLab #151), renderer_frame_cursor.cpp. Once per frame from
+	// renderStaticUI(), after every window had the click (`uiTook` says
+	// whether one of them took it): the motionless world click with an item
+	// held (rows 31-33), and the item display's held/kept requests and the
+	// right button's release (rows 24-26).
+	void processCursorGestureFrame(bool uiTook);
+	// The QuantityWnd box's key gate (row 5), from processChatInput() beside
+	// the friends one: true while QTYW_SliderInput holds the keyboard.
+	bool processQuantityKeyInput();
+	// True when a static window's own geometry holds (x,y) but its entry
+	// point returns nothing (the Friends window, the two dialogs).
+	bool pointOverSelfConsumingWindow(int x, int y) const;
+
 	// ---- T432 (board B275): the ONE per-character persistence path ----
 	// Before this the client persisted NOTHING a player changed. Will's
 	// ruling (docs/decisions.md 2026-09-07) is to persist per character what
@@ -630,6 +643,17 @@ private:
 	bool textEntryGateHeld_ = false;
 	// B897: the same, for the Friends window's two Editboxes.
 	bool friendsGateHeld_ = false;
+	// B442b: the same, for the QuantityWnd's box.
+	bool quantityGateHeld_ = false;
+	// B442b (#151 row 31): a left PRESS on the world with an item held,
+	// waiting for its release. The release fires the drop prompt only if
+	// the pointer has not moved (a press that moves is a camera drag: rows
+	// G39/G40 sent nothing). pendingUIRelease_ is the frame's release latch,
+	// read in processFrameInput() beside pendingUIClick_.
+	bool pendingUIRelease_ = false;
+	bool worldDropArmed_ = false;
+	int worldDropX_ = 0;
+	int worldDropY_ = 0;
 	int currentFps_ = 0;
 	float essentialSimCostAvgUs_ = 3000.0f;  // EMA of essential sim cost (us), init ~3ms
 	float fireGlowTime_ = 0.0f;  // Animation time accumulator

@@ -97,6 +97,25 @@ inline irr::core::rect<irr::s32> iconRect(const UILayout& layout, int mouseX,
     return irr::core::rect<irr::s32>(x, y, x + ICON_W, y + ICON_H);
 }
 
+/**
+ * B442b (#151 row 29): the count strip under a held COIN. The XML has no
+ * element for it (the client draws it), so it is MEASURED, not quoted: in
+ * review/UIGAP-ORACLE/151/run1.G33a_coin_quantity_set_3.png the pointer is at
+ * (646,341) and the strip is the opaque (64,64,64) box x 646..695, y 388..399
+ * -- the box's full 50px width, 12px tall, its top 47px below the box's top
+ * (2px under CA_Anim's bottom edge), the count centred in near-white.
+ */
+constexpr irr::s32 COIN_COUNT_Y = 47;
+constexpr irr::s32 COIN_COUNT_H = 12;
+
+inline irr::core::rect<irr::s32> coinCountRect(const UILayout& layout, int mouseX,
+                                               int mouseY) {
+    const auto w = windowRect(layout, mouseX, mouseY);
+    const irr::s32 y = w.UpperLeftCorner.Y + COIN_COUNT_Y;
+    return irr::core::rect<irr::s32>(w.UpperLeftCorner.X, y,
+                                     w.LowerRightCorner.X, y + COIN_COUNT_H);
+}
+
 }  // namespace CursorAttachmentLayout
 }  // namespace Graphics
 }  // namespace EQT

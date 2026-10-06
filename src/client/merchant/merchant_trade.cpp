@@ -408,6 +408,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessLootedItemToInventory(const EQ
 		data.itemName = data.hasItem ? item->name : "";
 		data.iconId = data.hasItem ? item->icon : 0;
 		data.quantity = data.hasItem ? item->quantity : 0;
+		data.bagSlots = data.hasItem ? item->bagSlots : 0;  // B442b
 		LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (loot-to-inventory): slot={} hasItem={} itemId={} name='{}' qty={}",
 			data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
@@ -696,6 +697,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessShopPlayerSell(const EQ::Net::
 						data.itemName = data.hasItem ? postItem->name : "";
 						data.iconId = data.hasItem ? postItem->icon : 0;
 						data.quantity = data.hasItem ? postItem->quantity : 0;
+						data.bagSlots = data.hasItem ? postItem->bagSlots : 0;  // B442b
 						LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (vendor sell): slot={} hasItem={} itemId={} name='{}' qty={}",
 							data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
 						ctx_.bridge->pushEvent(eqt::state::GameEvent(

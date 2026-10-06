@@ -257,6 +257,7 @@ void eqt::zone::ZoneComponent::OnItemPacket(const EQ::Net::Packet & p)
 						data.itemName = data.hasItem ? item->name : "";
 						data.iconId = data.hasItem ? item->icon : 0;
 						data.quantity = data.hasItem ? item->quantity : 0;
+						data.bagSlots = data.hasItem ? item->bagSlots : 0;  // B442b
 						LOG_DEBUG(MOD_INVENTORY, "Publishing InventorySlotChanged (generic ItemPacket fallback): slot={} hasItem={} itemId={} name='{}' qty={}",
 							data.slotId, data.hasItem, data.itemId, data.itemName, data.quantity);
 						ctx_.bridge->pushEvent(eqt::state::GameEvent(

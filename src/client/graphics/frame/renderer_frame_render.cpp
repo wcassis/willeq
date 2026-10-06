@@ -600,7 +600,8 @@ void FrameComponent::renderStaticUI() {
             mods.shift = ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT);
             mods.ctrl = ctx_.eventReceiver->isKeyDown(irr::KEY_LCONTROL) ||
                         ctx_.eventReceiver->isKeyDown(irr::KEY_RCONTROL);
-            if (staticUIInput_->processQuantityInput(
+            mods.alt = ctx_.eventReceiver->isKeyDown(irr::KEY_LMENU) || ctx_.eventReceiver->isKeyDown(irr::KEY_RMENU);
+            if (staticUIInput_->processDialogInput(
                     ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
                     pendingUIClick_, uiLayout_)) {
                 pendingUIClick_ = false;
@@ -608,11 +609,11 @@ void FrameComponent::renderStaticUI() {
             }
             staticUIInput_->setFrameClickState(rightClick, mods, &cursorState_);
         }
-        staticUIInput_->processInput(
+        bool uiTook = staticUIInput_->processInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_,
             uiLayout_, hotbarState_, spellGemState_, inventoryState_,
             spellbookState_, skillsPopupState_, buffBarState_, lootState_, ctx_.eventReceiver->isKeyDown(irr::KEY_SHIFT));
-        staticUIInput_->processPanelInput(
+        uiTook |= staticUIInput_->processPanelInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, tradeskillState_, combatAbilityState_);
         // T436 (board B429): the merchant and bank windows, and the mouse
@@ -622,25 +623,25 @@ void FrameComponent::renderStaticUI() {
         // higher still.
         cursorState_.mouseX = ctx_.eventReceiver->getMouseX();
         cursorState_.mouseY = ctx_.eventReceiver->getMouseY();
-        staticUIInput_->processCommerceInput(
+        uiTook |= staticUIInput_->processCommerceInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, merchantState_, bankState_, cursorState_);
         // B898 (#214): the trainer window draws above the bank, so it is
         // asked after it and before the item display / Options windows.
-        staticUIInput_->processTrainerInput(
+        uiTook |= staticUIInput_->processTrainerInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, trainerState_);
         // B895: the Tracking Window -- above the trainer, below the item display.
-        processTrackingInput(ctx_.bridge, ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_, uiLayout_, trackingState_);
+        uiTook |= processTrackingInput(ctx_.bridge, ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(), pendingUIClick_, uiLayout_, trackingState_);
         // B899 (#215): the container windows -- their own placement, above the
         // centre popups, the bank, the trainer and the tracking window, below
         // the item display and the Options window.
-        staticUIInput_->processContainerInput(
+        uiTook |= staticUIInput_->processContainerInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, containerState_);
         // T421 (board B298): the item display window is hit-tested LAST and
         // drawn LAST -- it sits on top of every centre popup.
-        staticUIInput_->processItemDisplayInput(
+        uiTook |= staticUIInput_->processItemDisplayInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, itemDisplayState_);
         // T434: the Options window is hit-tested LAST and drawn LAST -- it
@@ -650,10 +651,12 @@ void FrameComponent::renderStaticUI() {
         // B897: the Friends window, just below Options in both orders.
         processFriendsWindowInput();
         OptionsLayout::Setting optionsChanged = OptionsLayout::Setting::None;
-        staticUIInput_->processOptionsInput(
+        uiTook |= staticUIInput_->processOptionsInput(
             ctx_.eventReceiver->getMouseX(), ctx_.eventReceiver->getMouseY(),
             pendingUIClick_, uiLayout_, optionsState_, optionsChanged);
         applyOptionsSetting(optionsChanged);
+        // B442b (#151): the world drop click and the item display's lifetime.
+        processCursorGestureFrame(uiTook);
         pendingUIClick_ = false;
         staticUIInput_->setFrameClickState(false, {}, &cursorState_);
     }
@@ -731,6 +734,7 @@ void FrameComponent::renderStaticUI() {
         // B442: the QuantityWnd, above every window (hit-tested first).
         if (staticUIInput_) {
             renderQuantityWindow(*uiRenderer_, uiLayout_, staticUIInput_->quantityWindow());
+            renderConfirmationDialog(*uiRenderer_, uiLayout_, staticUIInput_->confirmationDialog());
         }
         // T436 (B429): the cursor attachment is drawn LAST of everything.
         // It is the pointer: nothing may cover it, including the Options

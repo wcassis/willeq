@@ -244,7 +244,27 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     - entry 321, `renderFriendsWindow(...)`, directly after
 //       `renderItemDisplayPopup(...)` and before `renderOptionsWindow(...)`.
 //     The count rises 352 -> 354.
-const size_t kGoldenSize = 354u;
+//   * B442b (#151 remainder): the drop click, the held item display and the
+//     confirmation dialog. NINE text changes and THREE insertions, no
+//     reorder (applied by editing the golden in place, never regenerated):
+//     - entry 259 (new), `mods.alt = ...KEY_LMENU || ...KEY_RMENU;`, directly
+//       after the ctrl modifier: ALT+LEFT is the kept item display (row 26).
+//     - entry 260 (was 259) changed `processQuantityInput(` to
+//       `processDialogInput(`: the confirmation dialog is hit-tested above
+//       the QuantityWnd, which that call still asks second.
+//     - entries 266, 270, 275, 278, 281, 282, 285, 290 (were 265, 269, 274,
+//       277, 280, 281, 284, 289) gained `bool uiTook = ` / `uiTook |= `: the
+//       entry points' existing return values are collected so a world click
+//       is told from a window click (rows 31-33). Nothing else on those
+//       lines changed.
+//     - entry 294 (new), `processCursorGestureFrame(uiTook);`, directly after
+//       `applyOptionsSetting(optionsChanged);` and before
+//       `pendingUIClick_ = false;`, which it reads.
+//     - entry 328 (new), `renderConfirmationDialog(...)`, directly after
+//       `renderQuantityWindow(...)` inside the same guard: the topmost modal,
+//       below only the pointer.
+//     The count rises 354 -> 357.
+const size_t kGoldenSize = 357u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

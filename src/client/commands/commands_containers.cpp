@@ -109,6 +109,7 @@ void eqt::commands::CommandsComponent::RequestToggleBag(int16_t generalSlot)
 		data.itemName = data.hasItem ? in->name : "";
 		data.iconId = data.hasItem ? in->icon : 0;
 		data.quantity = data.hasItem ? static_cast<uint32_t>(in->quantity) : 0;
+		data.bagSlots = data.hasItem ? in->bagSlots : 0;  // B442b
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 	}

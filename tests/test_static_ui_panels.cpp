@@ -1004,9 +1004,10 @@ TEST(PurseT393Render, TheInventoryPopupEmitsOneTextEntryPerCoinRow) {
     tb.begin();
     renderInventoryPopup(ui, layout, inv);
 
-    EXPECT_EQ(tb.getQuadCount(), static_cast<size_t>(28))
+    EXPECT_EQ(tb.getQuadCount(), static_cast<size_t>(29))
         << "1 title + 22 equipment labels + 1 General + 4 coin counts "
-           "(the decal is a sprite since T398, not a letter)";
+           "(the decal is a sprite since T398, not a letter) + 1 IW_Destroy "
+           "label (B442b, gestures.tsv rows 34-35)";
 
     device->drop();
 }

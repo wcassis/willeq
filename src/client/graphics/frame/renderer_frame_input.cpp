@@ -74,6 +74,7 @@ void FrameComponent::processFrameInput(float deltaTime) {
     int clickX = ctx_.eventReceiver->getClickMouseX();
     int clickY = ctx_.eventReceiver->getClickMouseY();
     pendingUIClick_ = hadClick;  // Preserved for UI input processing in render phase
+    pendingUIRelease_ = hadRelease;  // B442b: the motionless world click's release
 
     // Update chat panel mouse hover state
     {
@@ -582,6 +583,10 @@ void FrameComponent::processChatInput() {
     }
     // B897: the Friends window's FW_NameInput / FW_IgnoreNameInput.
     if (processFriendsNameInput()) {
+        return;
+    }
+    // B442b (#151 row 5): the QuantityWnd's QTYW_SliderInput.
+    if (processQuantityKeyInput()) {
         return;
     }
 

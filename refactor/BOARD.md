@@ -8530,13 +8530,25 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   ALT+left = item display; a purse row opens the QuantityWnd for coin -- all
   per the oracle ledger review/UIGAP-ORACLE/151/gestures.tsv;
   `/pickup` `/putdown` `/cursor` `/coin`; `tests/test_cursor_gesture.cpp`.
+  **B442b (2026-10-06, branch `task/B442b-gesture-completion`)** finished the
+  offline gesture set, each case citing its gestures.tsv row in
+  `tests/test_cursor_gesture_completion.cpp`: right-click on a carried bag
+  toggles its window (rows 19-21; `InventorySlotChangedData::bagSlots`,
+  `CursorGestureOp::ToggleBag` -> the `/bag` body); the right-click item
+  display shows only while held, Alt+left keeps it (rows 24-27); coin rides
+  the cursor as dragitem 644-647 with its count strip (row 29, new event
+  `CursorCoinChanged`, B442's render-side `coinHeld_` shadow deleted) and the
+  bank's coin rows move on OP_MoveCoin slot 2 (rows 43-44); a motionless world
+  click with an item held and `IW_Destroy` raise the reusable
+  `EQUI_ConfirmationDialog` widget with eqstr 9057 / 2043 (new event
+  `ConfirmationRequested`), Yes sends `OP_GroundSpawn` (empty) / `OP_MoveItem
+  30 -> -1` (rows 31-35); `QTYW_SliderInput` takes typed digits (row 5).
   STILL OWED (#151 stays open): the live `pickup_roundtrip` scenario and
-  two-client wear check (Leg V), the bag window (B899), trade/give windows, a
-  coin icon + count on the cursor, typing into `QTYW_SliderInput`, the world
-  drop prompt (OP_GroundSpawn) and Destroy prompt (30 -> -1), the
-  hold-to-show right-click display, bank coin rows, a right-click display for
+  two-client wear check (Leg V), trade/give windows, a right-click display for
   corpse rows, loot-to-cursor vs auto-inventory (the oracle did not capture
-  loot). Merchant selling is #152's (the oracle: never via the cursor).
+  loot; the existing LootItemIntent behaviour is unchanged), the confirmation
+  dialog's unanswered auto-dismiss timeout (not measured), world clicks on an
+  NPC with an item held (the give gesture, the trade/give unit's).
 
 - **B443** (B) `src/client/graphics/ui/merchant_panel.cpp` → issue #152
   (`renderMerchantPopup`, the trade button) -- **which of Buy and Sell the
@@ -8550,6 +8562,16 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   name. The oracle's actual rule is unmeasured. Closes by watching the official
   client at a vendor with and without a held item (the T342 rig). Found by
   T436.
+  **MEASURED (UIGAP-ORACLE 2026-10-05, review/UIGAP-ORACLE/152/merchant.tsv)
+  and IMPLEMENTED by B442b (2026-10-06):** the button is the side of the LAST
+  selection (a merchant row -> Buy, an inventory item -> Sell; Buy on open),
+  and the cursor is never used -- an inventory click with a merchant open
+  SELECTS the item (yellow frame) and Sell sends `OP_ShopPlayerSell` from its
+  slot; Sell on a stack opens the QuantityWnd. T436's cursor default is gone.
+  Owed: the eqstr 4020 / 12026 price tells and the sell offer in
+  `MW_SelectedPriceLabel`; the inventory window opening beside the merchant
+  (fable's merchant shares centerPopup with the inventory popup, so today a
+  sale is selected from a bag window or with the popup reopened).
 
 - ~~**B444** (B) `src/client/core/everquest.cpp` (the zone-in inventory snapshot,
   `for (int16_t slot = 0; slot < 30; ++slot)`) -- **the zone-in snapshot

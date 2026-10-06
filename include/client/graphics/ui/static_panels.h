@@ -152,6 +152,9 @@ struct SlotDisplayInfo {
     std::string itemName;       // Short name for display
     uint32_t iconId = 0;        // Item icon ID (for future icon atlas)
     int32_t quantity = 1;       // Stack count
+    // B442b (#151 rows 19-21): the bag size, 0 = not a container. A RIGHT
+    // click on a general slot holding a bag toggles its window.
+    uint8_t bagSlots = 0;
 };
 
 // Cached inventory state for rendering
@@ -179,6 +182,14 @@ struct InventoryPanelState {
     // InventoryLayout::coinRect(). Absolute counts, not deltas -- every
     // one of the five publishers sends the player's whole purse.
     int32_t coins[4] = {0, 0, 0, 0};
+
+    // B442b (#152, merchant.tsv row 3): the inventory item a left click
+    // SELECTED for sale while a merchant window is open (the oracle frames it
+    // in yellow; the cursor is never used). -1 = none. Written by
+    // StaticUIInput beside MerchantPanelState's own copy of the selection.
+    int selectedSlot = -1;
+    // B442b (#151 row 34): IW_Destroy, hovered.
+    bool destroyHovered = false;
 };
 
 /** Render inventory popup (equipment + general slots). Only when activePopup == Inventory. */

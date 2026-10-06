@@ -515,6 +515,9 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // U06j: Initialize static UI input handler
     frame_->staticUIInput_ = std::make_unique<StaticUIInput>();
     frame_->staticUIInput_->init(bridge_);
+    // B442b (#152): a merchant-time inventory click selects for sale.
+    frame_->staticUIInput_->bindCommerceSelection(&frame_->merchantState_,
+                                                  &frame_->inventoryState_);
     LOG_INFO(MOD_GRAPHICS, "UIRenderer initialized (newui=off, toggle with /newui)");
 
     // Configure mipmap generation based on constrained config

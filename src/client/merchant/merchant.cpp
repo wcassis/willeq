@@ -103,6 +103,7 @@ void eqt::merchant::MerchantComponent::ZoneProcessMoveItem(const EQ::Net::Packet
 			data.itemName = data.hasItem ? item->name : "";
 			data.iconId = data.hasItem ? item->icon : 0;
 			data.quantity = data.hasItem ? item->quantity : 0;
+			data.bagSlots = data.hasItem ? item->bagSlots : 0;  // B442b
 			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::InventorySlotChanged, std::move(data)));
 		};

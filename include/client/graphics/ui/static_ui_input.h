@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <string>
 
+#include "client/graphics/ui/confirmation_dialog.h"  // B442b
 #include "client/graphics/ui/options_layout.h"
 #include "client/graphics/ui/quantity_window.h"   // B442
 #include "client/inventory/cursor_gesture.h"      // B442
@@ -78,6 +79,18 @@ public:
     void init(eqt::bridge::GameStateBridge* bridge) {
         bridge_ = bridge;
         cursorGesture_.setBridge(bridge);
+        installOpenContainerHook();
+    }
+
+    /**
+     * B442b (#152): the two panels a merchant-time inventory click writes --
+     * the merchant's own record of the selection (it drives the Buy/Sell
+     * label) and the inventory popup's yellow frame. Bound once at renderer
+     * init; unbound (null) the click is the plain cursor gesture.
+     */
+    void bindCommerceSelection(MerchantPanelState* merchant, InventoryPanelState* inventory) {
+        merchantSel_ = merchant;
+        inventorySel_ = inventory;
     }
 
     // --- B442 (#151): the click-to-cursor gesture --------------------------
@@ -108,10 +121,38 @@ public:
     bool processQuantityInput(int mouseX, int mouseY, bool leftClicked,
                               const UILayout& layout);
 
+    /**
+     * B442b: the two modal dialogs, topmost first -- the confirmation dialog
+     * (#151 rows 31-35), then the QuantityWnd. Returns true when either took
+     * the position; the caller withholds the click from everything below.
+     * Yes on the confirmation pushes CursorGestureIntent{ConfirmDrop |
+     * ConfirmDestroy} for the dialog's purpose; No only closes it.
+     */
+    bool processDialogInput(int mouseX, int mouseY, bool leftClicked,
+                            const UILayout& layout);
+
+    /** B442b (row 5): one key for the QuantityWnd's box. See applyQuantityKey(). */
+    bool processQuantityKey(irr::EKEY_CODE key, wchar_t character);
+
     /** The shared gesture -- the bag window (B899) calls click() on it. */
     eqt::inventory::CursorGesture& cursorGesture() { return cursorGesture_; }
     QuantityWindowState& quantityWindow() { return quantity_; }
     const QuantityWindowState& quantityWindow() const { return quantity_; }
+    ConfirmationDialogState& confirmationDialog() { return confirm_; }
+    const ConfirmationDialogState& confirmationDialog() const { return confirm_; }
+
+    /**
+     * B442b (#151 rows 25-26): the kind of item-display request this frame's
+     * clicks pushed, read and reset once per frame by FrameComponent, which
+     * owns the item display window. None / Held (a RIGHT press) / Kept
+     * (ALT+LEFT).
+     */
+    enum class DisplayRequest : uint8_t { None = 0, Held, Kept };
+    DisplayRequest takeDisplayRequest() {
+        const DisplayRequest r = displayRequest_;
+        displayRequest_ = DisplayRequest::None;
+        return r;
+    }
 
     /**
      * Process input for the current frame.
@@ -192,11 +233,15 @@ public:
      *
      * The cursor attachment is passed CONST: it is not clickable (the
      * oracle's CursorAttachment is `Style_Transparent true` with no
-     * control in it at all), but the merchant window's shared Buy/Sell rect
-     * reads it -- a held item is what SELL acts on.
+     * control in it at all). B442b (#152): it no longer decides Buy vs
+     * Sell -- the oracle never sells from the cursor; the shared button is
+     * the side of the LAST SELECTION (a merchant row -> Buy, an inventory
+     * item -> Sell, merchant.tsv rows 1-4) and Sell sends from the selected
+     * slot (row 6). See static_ui_merchant.cpp.
      *
      * Intents pushed, all of them pre-existing: `VendorBuyIntent` and
-     * `VendorSellIntent` (the same two `/buy` and `/sell` push),
+     * `VendorSellIntent` (the same two `/buy` and `/sell` push; Sell carries
+     * the selected inventory slot, never the cursor's),
      * `VendorToggleIntent` for MW_Done_Button (its handler closes an open
      * session) and T436's own `CloseBankIntent` for BW_DoneButton. No panel
      * closes itself -- each waits for the server's own Closed event, T290's
@@ -398,18 +443,49 @@ private:
     bool rightClicked_ = false;
     eqt::inventory::ClickModifiers mods_;
     const CursorAttachmentState* cursor_ = nullptr;
-    // Coin this UI put on the cursor and has not yet put back. The renderer
-    // has no coin feed (CursorAttachmentState carries items); the game thread
-    // stays authoritative -- PlanCoinGesture() returns held coin on ANY purse
-    // click -- so this only chooses between "open the dialog" and "put back".
-    bool coinHeld_ = false;
+    // B442b: B442's `coinHeld_` shadow is GONE. Whether coin is held is read
+    // from the cursor attachment (CursorAttachmentState::holdsCoin()), which
+    // the game thread's CursorCoinChanged feeds -- so a /coin behind the UI's
+    // back costs no extra dialog.
     bool cursorHoldsItem() const;
+    bool cursorHoldsCoin() const;
     // One item-slot click through the shared gesture: opens the QuantityWnd
     // when the gesture says so, otherwise the gesture pushed the intent.
+    // B442b: `iconId` feeds a merchant-time selection's MW_SelectedItem decal;
+    // `bagSlots` > 0 marks a container for the RIGHT-click bag toggle.
     void slotClick(int16_t slotId, bool leftClicked,
-                   const eqt::inventory::SlotSnapshot& slot, const std::string& name);
+                   const eqt::inventory::SlotSnapshot& slot, const std::string& name,
+                   uint32_t iconId = 0, uint8_t bagSlots = 0);
     // A purse row (0 = platinum .. 3 = copper, the oracle's IW_Money order).
     void coinRowClick(int denom, int32_t onHand);
+    // B442b (rows 43-44): a coin row of `source` (EQT::COINSLOT_INVENTORY or
+    // _BANK). coinRowClick() is the purse's call of it.
+    void coinStoreClick(int denom, int32_t onHand, uint8_t source);
+    // The QuantityWnd's Accept -- a click on QTYW_Accept_Button or Return in
+    // its box -- for each of its purposes, then close.
+    void acceptQuantity();
+
+    // B442b: the confirmation dialog (#151 rows 31-35).
+    ConfirmationDialogState confirm_;
+    DisplayRequest displayRequest_ = DisplayRequest::None;
+
+    // B442b (rows 19-21): RIGHT on a carried bag. The hook CursorGesture
+    // offers a right click to is installed by init(); it claims the click
+    // when the slot being clicked (pendingBag_, set by slotClick() for the
+    // one call) is a general slot holding a container.
+    void installOpenContainerHook();
+    bool pendingBag_ = false;
+
+    // B442b (#152): see bindCommerceSelection(). Defined in
+    // static_ui_merchant.cpp.
+    MerchantPanelState* merchantSel_ = nullptr;
+    InventoryPanelState* inventorySel_ = nullptr;
+    // True when the click SELECTED the item for sale instead of moving it
+    // (merchant.tsv row 3: a merchant is open, nothing is held).
+    bool selectForSale(int16_t slotId, const eqt::inventory::SlotSnapshot& slot,
+                       const std::string& name, uint32_t iconId);
+    // MW_Buy_Button / MW_Sell_Button: the side of the last selection.
+    void merchantTradeClick(MerchantPanelState& merchant);
 
     // Hit test a point against a horizontal slot row and return slot index,
     // or -1. Used by the hotbar; the inventory popup's grid geometry comes
