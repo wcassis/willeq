@@ -60,7 +60,7 @@ protected:
         driver_ = device_->getVideoDriver();
         smgr_ = device_->getSceneManager();
         auto* cam = smgr_->addCameraSceneNode(nullptr, irr::core::vector3df(0, 2, 8),
-                                              irr::core::vector3df(0, 2, -40));
+                                              irr::core::vector3df(0, 2, -32));
         cam->setNearValue(0.1f);
         cam->setFarValue(1000.0f);
 
@@ -81,19 +81,24 @@ protected:
         atlasImg->drop();
         ASSERT_NE(atlas_, nullptr);
 
-        // The impostor page: a 64x64 RGBA image -- a solid middle with
-        // transparent corners, so both the 0.5 alpha test AND the bilinear
-        // edge fringe are exercised.
+        // The impostor page: a 64x64 RGBA image -- a solid middle (the central
+        // 40x40 block, alpha 255) ringed by a 12-px TRANSPARENT margin, so
+        // both the 0.5 alpha test (the margin) AND the bilinear edge fringe
+        // (the 40x40 boundary) are exercised. edge is the NEAREST-edge
+        // distance: with max() it is >= 31 everywhere, the "solid middle"
+        // branch never fired and the whole page uploaded as alpha 0 -- the
+        // impostor program's `discard if t.a < 0.5` then ate every fragment
+        // and both paths rendered an entirely black frame.
         irr::video::IImage* pageImg = driver_->createImage(
             irr::video::ECF_A8R8G8B8, irr::core::dimension2d<irr::u32>(64, 64));
         ASSERT_NE(pageImg, nullptr);
         for (int y = 0; y < 64; ++y) {
             for (int x = 0; x < 64; ++x) {
-                const int edge = std::max({x, 63 - x, y, 63 - y});
+                const int edge = std::min({x, 63 - x, y, 63 - y});
                 pageImg->setPixel(x, y,
                                   edge < 12
-                                      ? irr::video::SColor(255, 200, 120, 60)
-                                      : irr::video::SColor(0, 200, 120, 60));
+                                      ? irr::video::SColor(0, 200, 120, 60)
+                                      : irr::video::SColor(255, 200, 120, 60));
             }
         }
         pageTex_ = driver_->addTexture("impostor_page", pageImg);
@@ -160,7 +165,11 @@ protected:
 // differently per blend mode.
 std::vector<UnifiedParticle> makeParticles() {
     std::vector<UnifiedParticle> ps;
-    const glm::vec3 base(0, 2, -40);
+    // z=-28: INSIDE the camera node's own far plane (100, see SetUp) AND the
+    // renderer's hand-rolled proj (1000). The old z=-40 was exactly the
+    // camera's 100-unit far distance, so its w=0 clip plane ate the impostor
+    // quad under drawAll() while the particle pass (1000) kept its points.
+    const glm::vec3 base(0, 2, -28);
     int i = 0;
     for (int tile = 0; tile < 16 && i < 48; ++tile) {
         for (int k = 0; k < 3 && i < 48; ++k, ++i) {
@@ -245,13 +254,13 @@ TEST_F(B972StreamBuffersTest, ImpostorVboPathIsPixelIdenticalToClientArray) {
 
     // Two pages: the first with three billboards at different depths, the
     // second with one. Every page uses the texture with the alpha fringe.
-    node->addQuad(0, pageTex_, irr::core::vector3df(-2.0f, 2.0f, -40.0f), 1.5f, 2.0f,
+    node->addQuad(0, pageTex_, irr::core::vector3df(-2.0f, 2.0f, -30.0f), 1.5f, 2.0f,
                   0.0f, 0.0f, 1.0f, 1.0f);
-    node->addQuad(0, pageTex_, irr::core::vector3df(2.0f, 3.0f, -45.0f), 1.0f, 1.5f,
+    node->addQuad(0, pageTex_, irr::core::vector3df(2.0f, 3.0f, -34.0f), 1.0f, 1.5f,
                   0.0f, 0.0f, 0.5f, 0.5f);
-    node->addQuad(0, pageTex_, irr::core::vector3df(0.0f, 1.0f, -38.0f), 0.75f, 1.0f,
+    node->addQuad(0, pageTex_, irr::core::vector3df(0.0f, 1.0f, -26.0f), 0.75f, 1.0f,
                   0.5f, 0.5f, 1.0f, 1.0f);
-    node->addQuad(1, pageTex_, irr::core::vector3df(4.0f, 2.0f, -42.0f), 1.2f, 1.2f,
+    node->addQuad(1, pageTex_, irr::core::vector3df(4.0f, 2.0f, -32.0f), 1.2f, 1.2f,
                   0.0f, 0.25f, 0.5f, 0.75f);
 
     size_t logicalBefore = gles2GetHWBufferMemoryUsage(driver_);

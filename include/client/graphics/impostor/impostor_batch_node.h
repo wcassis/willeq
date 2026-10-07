@@ -47,7 +47,9 @@ public:
     // through the bounded VBO/EBO pair below.
     void setVboPathEnabled(bool enabled) { useVbo_ = enabled; }
     bool isVboPathEnabled() const { return useVbo_; }
-    size_t vboBytes() const { return vertexBytes_; }
+    // B972: the bounded VBO/EBO PAIR's bytes (both are counted into the
+    // driver's logical tally by drawPageVbo/releaseGpuBuffers).
+    size_t vboBytes() const { return vertexBytes_ + indexBytes_; }
 
     // Tools only (tools/hwcaps/impostor_pixel_compare): 0 = the shipped
     // program, 1 = the built-in alpha test (no un-premultiply, no fog: B952's
