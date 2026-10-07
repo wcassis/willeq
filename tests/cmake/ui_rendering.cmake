@@ -736,6 +736,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_panel_z_order DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1004 (GitLab #323): item-name tooltips -- the Alt-held labels and the hover
+# tooltip, against review/UIGAP-ORACLE/323/tooltips.tsv. The logic cases need
+# no device; the pixel cases use the headless GLES2 + willeq.eqe1 harness and
+# self-skip without it.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_item_tooltip
+        test_item_tooltip.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_item_tooltip PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_item_tooltip GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_item_tooltip DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B975 (GitLab #293): the entity name-tag batch -- pixel-identical to the
 # per-node CTextSceneNodes, one draw per bounded run (fallbacks split it). Needs a
 # headless GLES2 device; self-skips without one.
