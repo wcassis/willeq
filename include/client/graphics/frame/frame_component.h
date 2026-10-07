@@ -154,6 +154,7 @@
 #include "client/graphics/ui/trade_panel.h"  // B896
 #include "client/graphics/ui/esc_window_stack.h"  // B460
 #include "client/graphics/ui/tip_window.h"  // B834
+#include "client/graphics/ui/item_tooltip.h"  // B1004
 #include "client/graphics/ui/ui_preferences.h"
 
 #include <chrono>
@@ -360,6 +361,14 @@ public:
 	bool totdLoaded_ = false;
 	std::map<std::string, TipDocument> tipDocs_;
 	std::set<std::string> tipTriggersLast_;
+
+	// ---- B1004 (GitLab #323): item-name tooltips, renderer_frame_tooltips.cpp ----
+	// Alt held over a bag / the bank: a name label on every occupied slot;
+	// a resting pointer: the hover tooltip (item_tooltip.h has the measured
+	// rule). Drawn by renderStaticUI() as its own top-most layer, below only
+	// the cursor attachment.
+	void renderItemTooltipLayer();
+	ItemTooltipState itemTooltipState_;
 
 	// ---- T432 (board B275): the ONE per-character persistence path ----
 	// Before this the client persisted NOTHING a player changed. Will's

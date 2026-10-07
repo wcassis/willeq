@@ -752,6 +752,10 @@ void FrameComponent::renderStaticUI() {
             renderQuantityWindow(uiRenderer_->layer(), uiLayout_, staticUIInput_->quantityWindow());
             renderConfirmationDialog(uiRenderer_->layer(), uiLayout_, staticUIInput_->confirmationDialog());
         }
+        // B1004 (#323): the item-name tooltips -- Alt-held labels over a bag
+        // or the bank, the hover tooltip -- their own layer above every
+        // window (renderer_frame_tooltips.cpp).
+        renderItemTooltipLayer();
         // T436 (B429): the cursor attachment is drawn LAST of everything.
         // It is the pointer: nothing may cover it, including the Options
         // window and the XP bar.
