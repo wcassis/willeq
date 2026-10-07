@@ -176,3 +176,31 @@ B997).
 - Pi census shim `lima_bo_census.so` (md5 `af7610db74fc0b55f23a7900c953f5df`)
   staged at `~/kb-evidence/b972-stream-buffers/tools/` (attribution only —
   the guard itself reads the client's own `[memgpu]` row).
+
+## QA independent re-measurement (2026-10-07, hermes-ext, VM lane)
+
+QA re-ran the same rig (`scripts/b964/pi_crowd.sh` → `pi_rendered_zone_sweep.sh`,
+`imp200far`, 800x600, cache-on, Mesa nollvm, `EQEMU_HOST=172.16.200.99`) on the
+same two **code** heads (`c7abab9c` no-cut, `a893b467` cut — the CI `build-arm`
+artifacts, not the doc-only QA merge commit), no-cut first, cut second (the
+swap-order leg of the table above). All four runs reached `steady_60s`.
+
+| zone | run order | no-cut `c7abab9c` MiB / fps | cut `a893b467` MiB / fps | Δ |
+|---|---|---|---|---|
+| qeynos2 | no-cut 1st | 19.70 / 30 | 13.95 / 21 | **−5.8 MiB, fps −30 %** |
+| gfaydark | no-cut 1st (main) | 27.30 / 25 | 25.57 / 17 | −1.7 MiB, fps −32 % (outlier, see below) |
+| gfaydark | no-cut 1st (re-take) | 27.25 / 25 | 23.13 / 20.5 | **−4.1 MiB, fps −18 %** |
+
+Every number falls within ±10 % of the option-2 table above (the one exception,
+the main-run gfaydark **cut**, was a high-variance outlier; the order-controlled
+re-take, 23.13 MiB, is inside the README's 20.69–22.75 band). The `fps_median`
+regression reproduces on **both** zones and both orderings, and the cut build's
+VBO path is confirmed active — its `logical_buffers` (named storage) grows
+(qeynos2 101 956 → 122 334 B, gfaydark 92 388 → 105 314 B at `steady_60s`), the
+bytes the client-array path left unnamed. The 10 MiB `gpu_unnamed_steady` guard
+is RED on all four runs (the B988/#307 known condition, closes with B997).
+
+QA raw runs: `~/kb-evidence/b972-stream-buffers/{qa-before,qa-after}-<TS>/
+{qeynos2,gfaydark}/imp200far/` (results.tsv, client.log, sweep.out) and
+`~/kb-evidence/b972-stream-buffers/qa-gfaydark-{nc,cut}-<TS>/gfaydark/imp200far/`
+(the re-take).
