@@ -455,6 +455,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/scenario/scenario_zone_in.cpp
     src/client/scenario/scenario_two_client_survive.cpp
     src/client/scenario/scenario_cast_lands.cpp
+    src/client/scenario/scenario_zone_link_hold.cpp
     src/client/scenario/scenario_interrupted_cast.cpp
     src/client/scenario/scenario_equip_observed.cpp
     # UIGAP-live: the six wave-1 UI units' live legs (#151 #213 #214 #215 #211)

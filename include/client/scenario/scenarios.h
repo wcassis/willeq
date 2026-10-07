@@ -19,6 +19,14 @@ std::unique_ptr<IScenario> MakeTwoClientSurviveScenario(const ScenarioOptions& o
 std::unique_ptr<IScenario> MakeCastLandsScenario(const ScenarioOptions& options);
 
 /**
+ * B925 (issue #244/#258): zone in and keep the link for holdSeconds. A single
+ * client -- the plain "does the zone link survive a long load" check. A
+ * mid-run drop that recovers before the deadline passes; one that does not,
+ * or a dead process, does not.
+ */
+std::unique_ptr<IScenario> MakeZoneLinkHoldScenario(const ScenarioOptions& options);
+
+/**
  * T494 (board B796): the OBSERVER half of the /equip proof. Sends nothing;
  * asserts the PEER's primary equipment material changed, which only the
  * server's OP_WearChange can do.

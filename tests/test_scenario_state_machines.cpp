@@ -140,10 +140,12 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // 6 pre-B630 + 7 B630 (issue #48) interrupted-cast legs + 10 UIGAP-live
     // UI legs (pinned by name in tests/test_scenario_ui_legs.cpp) + B888's
     // create_character + 5 UIGAP-live2 legs (pinned by name in
-    // tests/test_scenario_ui_legs.cpp).
-    EXPECT_EQ(names.size(), 29u);
+    // tests/test_scenario_ui_legs.cpp) + 1 B925 (issue #244/#258) zone-link hold.
+    EXPECT_EQ(names.size(), 30u);
     EXPECT_TRUE(IsScenarioName("create_character"));
     EXPECT_TRUE(IsScenarioName("zone_in"));
+    // B925: the single-client zone-link hold.
+    EXPECT_TRUE(IsScenarioName("zone_link_hold"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));
     EXPECT_TRUE(IsScenarioName("cast_lands"));
     // T494 (board B796): the observed-/equip pair.
@@ -411,6 +413,91 @@ TEST(TwoClientSurviveScenario, ObserverLeavingTheZoneMidHoldIsAFailure) {
     EXPECT_TRUE(runner.finished());
     EXPECT_EQ(runner.exitCode(), kScenarioFail);
     EXPECT_NE(runner.reason().find("left the zone"), std::string::npos);
+}
+
+// ===========================================================================
+// zone_link_hold (B925, issue #244/#258)
+// ===========================================================================
+
+TEST(ZoneLinkHoldScenario, PassesWhenTheLinkHoldsForTheWholeDeadline) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "iceclad";
+    ScenarioOptions options;
+    options.holdSeconds = 30.0;
+    ScenarioRunner runner(MakeScenario("zone_link_hold", options), world,
+                          /*timeout=*/600.0, /*startDeadline=*/30.0);
+    Advance(runner, 10.0);
+    EXPECT_FALSE(runner.finished());
+    Advance(runner, 22.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_NE(runner.reason().find("held the zone link"), std::string::npos);
+}
+
+TEST(ZoneLinkHoldScenario, ADropThatNeverRecoversTimesOut) {
+    // The R1 shape: fully zoned, then the link dies and the client keeps
+    // re-dialing a dead port forever. IsFullyZonedIn() never comes back, so
+    // the hold can never finish and the runner reports a timeout (the lane's
+    // code for "ran but never reached a verdict").
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "iceclad";
+    ScenarioOptions options;
+    options.holdSeconds = 60.0;
+    ScenarioRunner runner(MakeScenario("zone_link_hold", options), world,
+                          /*timeout=*/90.0, /*startDeadline=*/30.0);
+    Advance(runner, 30.0);
+    ASSERT_FALSE(runner.finished());
+    world.zonedIn = false;  // the zone process died mid-run
+    Advance(runner, 200.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioTimeout);
+    EXPECT_NE(runner.reason().find("link lost"), std::string::npos);
+}
+
+TEST(ZoneLinkHoldScenario, ADropThatRecoversBeforeTheDeadlinePasses) {
+    // The B925 fix: the link drops (the zone process was killed and respawned
+    // on a new port), the client re-handshakes with world and lands again.
+    // The clock never resets, so the recovery is measured against the same
+    // deadline and the run passes with the drop noted.
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "iceclad";
+    ScenarioOptions options;
+    options.holdSeconds = 100.0;
+    ScenarioRunner runner(MakeScenario("zone_link_hold", options), world,
+                          /*timeout=*/300.0, /*startDeadline=*/30.0);
+    Advance(runner, 40.0);
+    ASSERT_FALSE(runner.finished());
+    world.zonedIn = false;  // drop at t=40
+    Advance(runner, 5.0);   // still down at t=45 -- not finished, not failed
+    ASSERT_FALSE(runner.finished());
+    world.zonedIn = true;   // recovered at t=45
+    Advance(runner, 70.0);  // t=115 > 40 + 100 hold
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_NE(runner.reason().find("recovered drop"), std::string::npos);
+}
+
+TEST(ZoneLinkHoldScenario, WaitsForTheFirstLinkBeforeHolding) {
+    // The runner only steps a scenario after the first zone-in, so the
+    // pre-flight is the runner's job; the scenario itself must still not
+    // start counting until it sees a live link (a recovery's world can be
+    // mid-handshake when its first Step lands).
+    FakeWorld world;
+    world.zonedIn = false;
+    world.zone = "iceclad";
+    ScenarioOptions options;
+    options.holdSeconds = 10.0;
+    ScenarioRunner runner(MakeScenario("zone_link_hold", options), world,
+                          /*timeout=*/60.0, /*startDeadline=*/30.0);
+    world.zonedIn = true;  // the runner would have started here
+    Advance(runner, 3.0);
+    ASSERT_FALSE(runner.finished());
+    Advance(runner, 9.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
 }
 
 // ===========================================================================

@@ -1333,7 +1333,21 @@ it without taking that measurement first.
   5. **B925 (#244)** the iceclad zone link drops on
      every run. The client logs "Zone connection lost" 72–75 s after launch,
      after UDP sends to the zone port are refused. `/q` is then held until the
-     rig's 330 s deadline. Cause not investigated.
+     rig's 330 s deadline. **Root-caused 2026-10-06** (`refactor/B925/README.md`):
+     the eqemu VM's `process-watcher.pl` `kill -9`s any non-`world` process whose
+     lifetime-average CPU exceeds 30% after 60 s; a freshly-respawned zone busy
+     loading a client reads >30% in its first minute and is killed ~65–75 s in
+     (x86) / ~38 s (Pi) — the same defect as #258, both sides of one run
+     correlated (client `ECONNREFUSED` at 13:43:14 UTC = `process-kill.log` kill
+     of the client's own zone pid at 13:43:06 UTC). On a **stable** zone the
+     client holds its link zero-drop for the full 300 s (R3) / 330 s `zone_link_hold`
+     scenario (R6, exit 0). Shipped here: the `zone_link_hold` scenario + the
+     `live`-labelled `test_zone_link_hold` exit-code check + 4 offline
+     state-machine cases. **Still open:** the VM watcher fix (an eqemu-owner
+     defect, not a client one) and the client's stale-port reconnect (it
+     re-dials the dead port forever instead of re-handshaking world for a fresh
+     `OP_ZoneServerInfo` — a follow-up, gated on the official-client oracle per
+     Will's world-behaviour rule). The Pi leg (#258) is B979's lock.
   6. ~~The Orange Pi table is owed.~~ **Pi A/B done 2026-09-29** (merge gate
      for the collision change; `refactor/B909/README.md` "Orange Pi A/B").
      fable `b1132c3f` vs this branch `506f9de2`, 3 interleaved legs per side,
