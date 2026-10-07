@@ -1,7 +1,11 @@
 # B972 — Mesa stream-upload buffers + Lima draw-time BOs (issue #290)
 
-**Class B (memory).** **Status: MEASURED — lever analysis complete; acceptance scope
-needs a decision (boarded, not closed).**
+**Class B (memory).** **Status: MEASURED — option-2 cuts landed and re-measured on
+the Pi (2026-10-07); the pixel-identical x86 leg passes, the memory cut is real
+(~5.6–7.3 MiB), but the bounded-VBO cut REGRESSES frame time ~30% on the Pi
+(order-independent, two A/B runs), so the option-2 acceptance is NOT met. MR !94
+stays draft; the bounded-VBO-on-Pi frame-time finding is boarded as B972-FT (see
+the bottom of this file).**
 
 ## Task
 
@@ -106,13 +110,65 @@ already rejected a static-VBO fix for**. Two coherent options:
    card (larger, overlaps B962) owns the zone-merge + entity-aux bounded-VBO
    conversion needed to close the rest.
 
-**No code was changed on this branch yet.** The branch is at fable tip
-`85fcf0fd` (CI 557/2662 green); it holds no lever change. Nothing to revert.
+**Code change (option 2, Will 2026-10-06):** the self-contained, pixel-identical
+cuts are in — `e929f951` (raw-GL buffer tracking in the GLES2 driver + the
+impostor-page bounded VBO/EBO + the particle VBO) and `a893b467` (the
+test's black-frame fix: the page texture was generated all-alpha-0,
+`vboBytes()` omitted the index EBO, and the six test-only seams classified in
+`check_zero_callers.py`). The branch is at `a893b467` (pipeline 643 green:
+hygiene/build/test/gate/build-arm); the x86 full suite is 5644/5644.
+
+## Option-2 re-measurement (2026-10-07, Pi qeynos2+gfaydark, cache-on, imp200far, 800x600, VM lane)
+
+Two builds, **two A/B orderings** (the swap-order run rules out a cold-rig
+first-run effect: the no-cut build is fast whether it runs first or second, the
+cut build is slow whether first or second):
+
+| zone | run order | no-cut `c7abab9c` MiB / fps | cut `a893b467` MiB / fps | Δ |
+|---|---|---|---|---|
+| qeynos2 | cut 1st (03:46/04:02) | 18.80 / 31.0 | 13.42 / 21.0 | **−5.4 MiB, fps −32%** |
+| gfaydark | cut 1st | 27.70 / 25 | 20.69 / 17 | **−7.0 MiB, fps −32%** |
+| qeynos2 | no-cut 1st (swap, 04:36) | 18.12 / 30.5 | 14.06 / 21.0 | **−4.1 MiB, fps −31%** |
+| gfaydark | no-cut 1st (swap) | 27.31 / 25 | 22.75 / 17 | **−4.6 MiB, fps −32%** |
+
+`gpu_unnamed_steady` (the guard metric) and `fps_median` from each run's
+`results.tsv`. Steady-state (last 12 five-second windows) `impostor-frames`
+p50 medians agree and do not overlap: qeynos2 33.2 → 49.3 ms, gfaydark
+40.2 → 62.4 ms, in both orderings.
+
+**Findings:**
+1. **The memory cut is real** (~4–7 MiB `gpu_unnamed`, the option-2
+   "~3-6 MiB" framing at its upper edge) and `logical_buffers` grows from 0 to
+   ~92–121 KB — the buffers are now *named*, which is exactly the 100 %
+   accounting the ruling asked for.
+2. **Pixel-identical: MET.** `test_b972_stream_buffers` — both tests green on
+   the head (impostor page byte-identical through the VBO and client-array
+   paths; particle batches likewise); full x86 suite 5644/5644.
+3. **Frame time: REGRESSED ~30% on the Pi (NOT met).** The bounded-VBO draw
+   (per-page `glBufferSubData`, the B975 slack pattern) costs more frame time
+   than the client-array draw it replaces — the same class as B962's rejected
+   static zone-pool VBO (+4.3 MiB, ~half frame rate). The cut is
+   **memory-positive, frame-time-negative** as measured.
+
+**Acceptance status: NOT met — MR !94 stays draft.** The cut is correct and the
+measurement is clean, but it fails the frame-time leg of its own ruling.
+Boards **B972-FT** (the bounded-VBO-on-Pi frame-time cost: why the B975 slack
+pattern is expensive here; candidate fixes: worker/async upload, double
+buffering, or keep the client-array draw and accept the slot) for Will's ruling.
+The 10 MiB guard row stays RED as the B988/#307 known condition (closes with
+B997).
 
 ## Measurement evidence (on the Pi)
 
 - `~/kb-evidence/b972-stream-buffers/baseline-crowd-20261006T071713Z/{gfaydark,qeynos2}/imp200far/`
   — reproduced baseline (results.tsv, client.log, census).
+- `~/kb-evidence/b972-stream-buffers/after-crowd-20261007T034630Z/{gfaydark,qeynos2}/imp200far/`
+  — the cut build (`a893b467`), crowd tour, cut run first.
+- `~/kb-evidence/b972-stream-buffers/before-crowd-20261007T040258Z/{gfaydark,qeynos2}/imp200far/`
+  — the no-cut build (`c7abab9c`), crowd tour, no-cut run first.
+- `~/kb-evidence/b972-stream-buffers/swaporder-20261007T043648Z/{before-first,after-second}/{gfaydark,qeynos2}/imp200far/`
+  — the swapped-order A/B (no-cut run first, cut run second) that rules out the
+    cold-rig first-run effect.
 - `~/kb-evidence/b972-stream-buffers/control-off200far-…/{gfaydark,qeynos2}/off200far/`
   — the `off200far` control (results.tsv: qeynos2 17.64 MiB, gfaydark 24.54 MiB).
 - `~/kb-evidence/b986-pi-gpu-guard/run-277/census-gfaydark-imp200far/…/gem_owners.tsv`

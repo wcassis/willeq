@@ -856,7 +856,25 @@ it without taking that measurement first.
   vertices); the zone-merge + entity-aux pool that keeps the guard red moves
   to **B997 (#317)** — bounded-VBO conversion (B975 pattern), NOT the rejected
   static VBO (B962). The guard reads red on the crowd tours until B997 lands
-  (B988/#307 known condition).
+  (B988/#307 known condition). **2026-10-07 re-measured on the Pi (two A/B
+  orderings, `refactor/B972/README.md`): the cut is real (qeynos2 18.8→13.4–14.1,
+  gfaydark 27.7→20.7–22.8 MiB `gpu_unnamed_steady`, buffers now NAMED in
+  `logical_buffers`) and pixel-identical (x86 suite green), but it REGRESSES
+  Pi frame time ~30% (fps 31→21 / 25→17, order-independent) — the B975
+  slack-pattern bounded VBO is the same cost class B962 rejected for the zone
+  pools. Option-2 acceptance NOT met: MR !94 stays draft, frame-time finding
+  boarded **B972-FT** for Will's ruling.
+- **B972-FT** (B, memory/frame-time) → the B972 re-measurement finding: the
+  option-2 self-contained cuts (impostor pages + raw-GL particle draw →
+  bounded VBO/EBO, per-frame `glBufferSubData`, the merged B975 `NameTagBatchNode`
+  slack pattern) cost ~30% frame time on the Pi (qeynos2 31→21 fps, gfaydark
+  25→17, order-independent two-way A/B, `refactor/B972/README.md` 2026-10-07)
+  against a ~4–7 MiB `gpu_unnamed_steady` gain. Needs a ruling: (a) fix the
+  VBO path's Pi cost (worker/async upload, double buffering, upload only on
+  quad-set change — the crowd tour's quads are static for long stretches) and
+  re-measure, or (b) keep the client-array draw (the memory the guard sees)
+  and close #290 on the named-accounting half only, or (c) defer the whole
+  option-2 cut with B997. Blocks MR !94 un-drafting.
 - **B997** (B, memory) → issue #317. The B972 split-off: the zone-merge pool
   (6 × 1 MiB `u_upload` `draw:zone` slots, ~38 client-array drawCalls/frame,
   `renderer_zone_merge.cpp`) + the remaining `draw3d:client` pool hold the
