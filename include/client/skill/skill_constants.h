@@ -150,17 +150,9 @@ inline SkillCategory getSkillCategory(uint8_t skill_id) {
 // Skill Category Names
 // ============================================================================
 
-inline const char* getSkillCategoryName(SkillCategory category) {
-    switch (category) {
-        case SkillCategory::Combat:  return "Combat";
-        case SkillCategory::Defense: return "Defense";
-        case SkillCategory::Weapon:  return "Weapon";
-        case SkillCategory::Magic:   return "Magic";
-        case SkillCategory::Utility: return "Utility";
-        case SkillCategory::Trade:   return "Trade";
-        default:                     return "Unknown";
-    }
-}
+// B502 (GitLab #177) DELETED getSkillCategoryName(): the category->display
+// name table with zero callers -- the Skills popup lists skills flat (it
+// does not group by category) and the trainer panel draws its own rows.
 
 // ============================================================================
 // Skill Names

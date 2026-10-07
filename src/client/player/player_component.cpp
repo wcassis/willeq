@@ -42,28 +42,14 @@
 // ============================================================================
 // Cluster 6: Emote/AFK/Anon/RP/Camp/Logout
 // ============================================================================
-
-void eqt::player::PlayerComponent::PerformEmote(uint32_t animation)
-{
-	if (!ctx_.self.IsFullyZonedIn()) {
-		return;
-	}
-
-	// Send the emote animation using the proper Animation packet
-	ctx_.Entities().SendAnimation(static_cast<uint8_t>(animation));
-	
-	// Some emotes should stop movement
-	if (animation == ANIM_KNEEL || animation == ANIM_DEATH) {
-		if (ctx_.game_state.player().isMoving()) {
-			ctx_.Movement().StopMovement();
-		}
-	}
-	
-	if (EverQuest::GetDebugLevel() >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Performing emote animation {}", animation);
-	}
-}
-
+// B502 (GitLab #177) DELETED PlayerComponent::PerformEmote(): a second,
+// local-STOP-gated emote emitter with ZERO callers tree-wide. The README's
+// emote row is served by the direct route -- /wave /dance /cheer /laugh and
+// the hotbar Emote slots call Entities().SendAnimation() (through
+// EqActionHandler::sendAnimation), never through this. The emote-STOP rule
+// (kneel/death stops movement) belongs to whoever rewires it; nothing today
+// sends a kneel or death animation for the local player (they arrive from
+// the server via OP_Animation, zone_entry.cpp).
 void eqt::player::PlayerComponent::SetAFK(bool afk)
 {
 	if (ctx_.game_state.player().isAFK() == afk) {

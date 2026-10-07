@@ -82,9 +82,6 @@ public:
     // Get remaining cooldown in milliseconds
     uint32_t getSkillCooldownRemaining(uint8_t skill_id) const;
 
-    // Check if skill is ready to use (not on cooldown)
-    bool isSkillReady(uint8_t skill_id) const;
-
     // Get a specific skill's data
     const SkillData* getSkill(uint8_t skill_id) const;
     SkillData* getSkill(uint8_t skill_id);
@@ -93,14 +90,15 @@ public:
     // Skill Lists for UI
     // ========================================================================
 
+    // B502 (GitLab #177) DELETED isSkillReady() (redundant with
+    // getSkillCooldownRemaining() == 0), getSkillsByCategory() and
+    // getActivatableSkills(): the Skills popup does not go through them -- it
+    // is filled from getAllSkills() by EverQuest's SkillsSnapshot publish
+    // (core/everquest.cpp), and the trainer panel reads SkillCapTable
+    // directly. /useskill routes through activateSkill().
+
     // Get all skills the player has
     std::vector<const SkillData*> getAllSkills() const;
-
-    // Get skills filtered by category
-    std::vector<const SkillData*> getSkillsByCategory(SkillCategory category) const;
-
-    // Get only skills that can be manually activated
-    std::vector<const SkillData*> getActivatableSkills() const;
 
     // Get total number of skills
     size_t getSkillCount() const;
@@ -111,12 +109,6 @@ public:
 
     // Activate a skill (sends packet to server)
     bool activateSkill(uint8_t skill_id, uint16_t target_id = 0);
-
-    // Toggle a toggle skill (Hide, Sneak, etc.)
-    bool toggleSkill(uint8_t skill_id);
-
-    // Check if a toggle skill is currently active
-    bool isSkillActive(uint8_t skill_id) const;
 
     // ========================================================================
     // Callbacks

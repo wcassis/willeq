@@ -484,12 +484,8 @@ BOARD_REASONS = {
         "common/ utility API with no caller -- the performance-metrics timing "
         "and zone-load marks, ClampLower, Shuffle and "
         "the logging mutex accessor",
-    "B502":
-        "gameplay-domain manager API with no caller -- SkillManager's "
-        "ready/category/toggle queries, SpellAnimations' lookups, "
-        "BuffManager's database accessor, the chat buffer's recent-message "
-        "API, the movement helpers and PerformEmote",
 }
+
 BOARD_REASONS.update({
     "B600":
         "the audio sound-category layer that is never constructed -- CombatMusicManager (in the client target, referenced by nothing outside its own two files), and CreatureSounds, UISounds, PlayerSounds and WeatherAudio (whose .cpp files are in no client target at all; only their tests link them) -- plus DoorSounds' unused static lookups and AudioManager::preloadSound",
@@ -902,27 +898,6 @@ EXEMPT_GROUPS = {
     ("PerformanceMetrics", "markZoneLoadStart"): "B501",
     ("PerformanceMetrics", "resetGameplay"): "B501",
     ("Random", "Shuffle"): "B501",
-    ("(free)", "GetMovementSpeed"): "B502",
-    ("(free)", "IsSwimming"): "B502",
-    ("(free)", "WaterStateRef"): "B502",
-    ("(free)", "getChannelName"): "B502",
-    ("(free)", "getSkillCategoryName"): "B502",
-    ("BuffManager", "getSpellDatabase"): "B502",
-    ("ChatMessageBuffer", "clearNewMessageFlag"): "B502",
-    ("ChatMessageBuffer", "getRecentMessages"): "B502",
-    ("ChatMessageBuffer", "hasNewMessages"): "B502",
-    ("PlayerComponent", "PerformEmote"): "B502",
-    ("SkillData", "getValueString"): "B502",
-    ("SkillManager", "getActivatableSkills"): "B502",
-    ("SkillManager", "getSkillsByCategory"): "B502",
-    ("SkillManager", "isSkillActive"): "B502",
-    ("SkillManager", "isSkillReady"): "B502",
-    ("SkillManager", "toggleSkill"): "B502",
-    ("SpellAnimations", "getAnimationDuration"): "B502",
-    ("SpellAnimations", "getSchoolCastAnimation"): "B502",
-    ("SpellAnimations", "getTargetAnimation"): "B502",
-    ("SpellAnimations", "isValidAnimation"): "B502",
-    ("SpellData", "isInstantCast"): "B502",
 }
 
 EXEMPT_TESTS_GROUPS = {

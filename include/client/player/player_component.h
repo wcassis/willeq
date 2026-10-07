@@ -66,7 +66,6 @@ public:
 
 	// Social, camp/logout, resurrection, /who, /inspect, corpse, consent
 	// (was eq_player_social.cpp).
-	void PerformEmote(uint32_t animation);
 	void SetAFK(bool afk);
 	void SetAnonymous(bool anon);
 	void SetRoleplay(bool rp);

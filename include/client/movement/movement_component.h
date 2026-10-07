@@ -153,9 +153,10 @@ public:
 	// m_swim_up/m_swim_down went with it -- all six had ZERO references
 	// tree-wide beyond their own definitions and were DELETED (K10
 	// correction (s)); see refactor/BOARD.md.
-	WaterState& WaterStateRef() { return m_water_state; }
+	// B502 (GitLab #177) DELETED WaterStateRef() (the mutable-view twin of
+	// GetWaterState()) and IsSwimming() (its one-line predicate): both had
+	// zero callers -- BridgeComponent reads GetWaterState() directly.
 	WaterState GetWaterState() const { return m_water_state; }
-	bool IsSwimming() const { return m_water_state != WaterState::NotInWater; }
 
 private:
 	// Reached only from inside this family (measured by the compiler, K07).
@@ -171,7 +172,9 @@ private:
 	void OnEnterWater();               // Called when entering water
 	void OnExitWater();                // Called when exiting water
 	float GetSwimSpeed() const;        // Get swim speed based on skill
-	float GetMovementSpeed() const;
+	// B502 (GitLab #177) DELETED GetMovementSpeed(): a one-line wrapper over
+	// game_state.player().moveSpeed() with zero callers (the keyboard
+	// integrator T343 deleted was its only prospective reader).
 
 	ClientContext& ctx_;
 
