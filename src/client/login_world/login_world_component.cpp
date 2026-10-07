@@ -675,6 +675,7 @@ void LoginWorldComponent::WorldProcessCharacterSelect(const EQ::Net::Packet &p)
 	}
 
 	++m_character_list_generation;   // B998: the select screen re-reads the list
+	m_awaiting_fresh_list = false;   // B1005: the camp return's fresh list is in
 	if (!found && !m_world_script.active() && !m_select_screen) {
 		LOG_ERROR(MOD_WORLD, "Could not find {}, cannot continue to login.", ctx_.character);
 	}

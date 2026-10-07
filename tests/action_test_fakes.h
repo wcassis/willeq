@@ -414,7 +414,7 @@ public:
     }
     void showOrSetZoning(const std::string& args) override { record("showOrSetZoning", args); }
     void requestQuit() override { record("requestQuit"); }
-    void campNow() override { record("campNow"); }
+    void campNow(const std::string& args) override { record("campNow", args); }
     void debugLevel(const std::string& args) override { record("debugLevel", args); }
     void perfReport() override { record("perfReport"); }
     void timeOfDay(const std::string& args) override { record("timeOfDay", args); }

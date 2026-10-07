@@ -90,6 +90,13 @@ public:
     bool TradeButton(int op) override;
     bool CursorGesture(int op, int coinType, int quantity, int coinSource) override;
 
+    // B1005 (scenario_world_app_camp.cpp)
+    int CampPhase() const override;
+    bool AtCharacterSelect() const override;
+    std::vector<std::string> CharacterListNames() const override;
+    long long CharacterListGeneration() const override;
+    bool EnterWorldAs(const std::string& name) override;
+
     void SendCommand(const std::string& rawLine) override;
     void Note(const std::string& line) override;
 

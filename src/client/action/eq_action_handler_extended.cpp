@@ -6,6 +6,8 @@
 #include "client/eq_action_handler.h"
 #include "client/eq.h"
 #include "client/combat.h"
+#include "client/player/camp_timer.h"  // B1005: ParseCampMode
+#include "client/player/player_component.h"
 #include "client/pet_constants.h"
 #include "client/spell/spell_manager.h"
 #include "client/spell/cast_refusal.h"  // T244: official refusal strings
@@ -754,13 +756,12 @@ void EqActionHandler::requestQuit() {
     m_eq.RequestQuit();  // D20c4: Application checks quit flag
 }
 
-// Ported verbatim from eq_commands_movement.cpp's old camp_cmd lambda: sit
-// down, ack, then start the 30-second camp timer. SetPositionState()/
-// StartCampTimer() were already public.
-void EqActionHandler::campNow() {
-    m_eq.Movement().SetPositionState(POS_SITTING);
-    m_eq.AddChatSystemMessage("You have begun to camp. You will log out in 30 seconds.");
-    m_eq.Player().StartCampTimer();
+// B1005 (#324): the whole /camp rule -- the sit, OP_Camp with its mode, the
+// eqstr lines, the second-/camp cancel -- is PlayerComponent's camp
+// (player_camp.cpp over camp_timer.h). The old hand-written "You have begun to
+// camp..." line was not the official client's (camp.tsv rows 4-6).
+void EqActionHandler::campNow(const std::string& args) {
+    m_eq.Player().StartCampTimer(eqt::player::ParseCampMode(args));
 }
 
 // Ported verbatim from eq_commands_movement.cpp's old debug_cmd lambda --

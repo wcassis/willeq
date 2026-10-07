@@ -8,7 +8,12 @@
 #include "client/eq.h"
 #include "client/login_world/login_world_component.h"
 
+#include "client/bridge/bridge_component.h"
 #include "common/logging.h"
+#include "common/net/posix_udp_transport.h"
+
+#include <functional>
+#include <memory>
 
 namespace eqt {
 namespace login_world {
@@ -41,6 +46,48 @@ bool LoginWorldComponent::EnterWorldFromSelect(const std::string& name) {
 	LOG_INFO(MOD_WORLD, "[CHARSELECT] Enter World: {}", name);
 	WorldSendEnterWorld(name);
 	return true;
+}
+
+void LoginWorldComponent::ReconnectWorld() {
+	if (m_world_server_host.empty()) {
+		LOG_ERROR(MOD_WORLD, "No world server address stored for reconnection!");
+		return;
+	}
+	ctx_.Bridge().SetLoadingPhase(LoadingPhase::WORLD_CONNECTING);
+
+	// The full handshake again: WorldClientReady and OP_EnterWorld are re-sent.
+	m_world_ready = false;
+	m_enter_world_sent = false;
+
+	m_world_connection.reset();
+	m_world_connection_manager.reset(
+		new EQ::Net::DaybreakConnectionManager(std::make_unique<EQ::Net::PosixUdpTransport>()));
+	m_world_connection_manager->OnNewConnection(
+		std::bind(&LoginWorldComponent::WorldOnNewConnection, this, std::placeholders::_1));
+	m_world_connection_manager->OnConnectionStateChange(
+		std::bind(&LoginWorldComponent::WorldOnStatusChangeReconnectEnabled, this, std::placeholders::_1,
+		          std::placeholders::_2, std::placeholders::_3));
+	m_world_connection_manager->OnPacketRecv(
+		std::bind(&LoginWorldComponent::WorldOnPacketRecv, this, std::placeholders::_1, std::placeholders::_2));
+	LOG_DEBUG(MOD_WORLD, "Connecting to world server at {}:9000", m_world_server_host);
+	m_world_connection_manager->Connect(m_world_server_host, 9000);
+}
+
+void LoginWorldComponent::ReturnToCharacterSelect() {
+	// Server authoritative: this runs only after the zone's OP_LogoutReply
+	// (PlayerComponent::ZoneProcessLogoutReply -> the deferred teardown in
+	// MovementComponent::UpdateMovement), never on the client's own clock.
+	m_select_screen = true;
+	m_awaiting_fresh_list = true;
+	m_character_select_list.clear();
+	m_create_status = CharCreateStatus{};
+	++m_select_returns;
+	LOG_INFO(MOD_WORLD, "[CHARSELECT] camp: back to character select (return #{}), reconnecting to world",
+	         m_select_returns);
+	// ctx_.Zone().ZoneToZoneInProgress() is false here (the logout reply
+	// clears it), so OP_SendLoginInfo goes out with zoning = 0: a fresh
+	// login, which is what makes world send the character list.
+	ReconnectWorld();
 }
 
 }  // namespace login_world

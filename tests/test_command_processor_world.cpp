@@ -597,7 +597,14 @@ TEST_F(CommandProcessorTest, Quit_ExitAndQAliases_DispatchSameAsPrimary) {
 TEST_F(CommandProcessorTest, Camp_DispatchesCampNow) {
     auto result = processor->processCommand("/camp");
     EXPECT_TRUE(result.success);
-    ASSERT_TRUE(handler.calledOnceWith("campNow()"));
+    ASSERT_TRUE(handler.calledOnceWith("campNow(\"\")"));
+}
+
+// B1005 (#324): the mode word reaches the handler verbatim.
+TEST_F(CommandProcessorTest, CampDesktop_PassesTheModeWord) {
+    auto result = processor->processCommand("/camp desktop");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("campNow(\"desktop\")"));
 }
 
 TEST_F(CommandProcessorTest, Camp_NotConnectedToZone_FailsCleanlyWithoutDispatching) {

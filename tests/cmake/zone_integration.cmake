@@ -283,6 +283,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_zone_out_handshake DISCOVERY_TIMEOUT 120)
 
+# B1005 (GitLab #324): /camp -> Character Select, /camp desktop -> exit. The
+# camp state machine (timing, cancels, destinations), the eqstr lines against
+# the shipped table, the packet bytes and the Character Select re-entry on the
+# server's OP_LogoutReply through the real EverQuest + CharacterSelectService,
+# and the camp_to_charselect / camp_desktop scenarios over a fake world.
+ADD_EXECUTABLE(test_camp
+    test_camp.cpp
+)
+TARGET_LINK_LIBRARIES(test_camp GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_camp PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+TARGET_COMPILE_DEFINITIONS(test_camp PRIVATE
+    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+GTEST_DISCOVER_TESTS(test_camp DISCOVERY_TIMEOUT 120)
+
 # T344 (BOARD B001): the split of MovementComponent::SetPositionState into a
 # user-initiated setter (state + OP_SpawnAppearance) and a server-forced one
 # (ApplyPositionState, state only), plus the deletion of the AT_DIE echo that

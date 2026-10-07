@@ -101,5 +101,14 @@ std::unique_ptr<IScenario> MakeDropDestroyCoinScenario(const ScenarioOptions& op
 /** #26: /bank change takes both purses to the fewest coins. */
 std::unique_ptr<IScenario> MakeBankChangeScenario(const ScenarioOptions& options);
 
+// B1005 (#324): /camp. src/client/scenario/scenario_camp.cpp.
+
+/** /camp: nothing leaves before the countdown, then the character-select
+ *  state with a FRESH list, then Enter World again and zone in. */
+std::unique_ptr<IScenario> MakeCampToCharselectScenario(const ScenarioOptions& options);
+/** /camp desktop: the client stops only after the countdown and the server's
+ *  logout reply (exit 0 through IScenario::OnClientStopped). */
+std::unique_ptr<IScenario> MakeCampDesktopScenario(const ScenarioOptions& options);
+
 }  // namespace scenario
 }  // namespace eqt

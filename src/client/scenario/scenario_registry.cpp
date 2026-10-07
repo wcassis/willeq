@@ -57,6 +57,9 @@ const Entry kScenarios[] = {
     {"give_npc", &MakeGiveNpcScenario},
     {"drop_destroy_coin", &MakeDropDestroyCoinScenario},
     {"bank_change", &MakeBankChangeScenario},
+    // B1005 (#324): /camp to character select, and /camp desktop.
+    {"camp_to_charselect", &MakeCampToCharselectScenario},
+    {"camp_desktop", &MakeCampDesktopScenario},
 };
 
 }  // namespace

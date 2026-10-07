@@ -262,7 +262,7 @@ public:
     void warpToEntity(uint16_t spawnId) override;  // T362 (B070)
     void showOrSetZoning(const std::string& args) override;
     void requestQuit() override;
-    void campNow() override;
+    void campNow(const std::string& args) override;
     void debugLevel(const std::string& args) override;
     void perfReport() override;
     void timeOfDay(const std::string& args) override;
