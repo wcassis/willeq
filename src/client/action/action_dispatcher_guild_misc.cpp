@@ -429,11 +429,11 @@ ActionResult ActionDispatcher::quit() {
     return ActionResult::Success();
 }
 
-ActionResult ActionDispatcher::camp() {
+ActionResult ActionDispatcher::camp(const std::string& args) {
     auto result = checkZoneConnection();
     if (!result.success) return result;
 
-    m_handler->campNow();
+    m_handler->campNow(args);
     return ActionResult::Success();
 }
 

@@ -161,6 +161,13 @@ not sent). Not drawn: the 3D scene/preview (Explore and Rotate greyed), the tuto
 (OUT). Assumptions awaiting oracle are listed in `char_select_screen.h` (`review/UIGAP-ORACLE/318/`). Tests:
 `tests/test_character_select.cpp`. The scenario lane cannot click here: `ScenarioRunner` does not `Step()`
 before `IsFullyZonedIn()`, so `create_character` keeps its scripted route.
+**B1005 (#324): `/camp` comes back here.** On every graphics run with no world script the channel exists
+from the start (`CampReturnsToCharacterSelect()`; the render thread reads the pointer unlocked, so it is
+never created later). After the 30 s camp and the server's `OP_LogoutReply`,
+`LoginWorldComponent::ReturnToCharacterSelect()` re-runs the world handshake as a fresh login (zoning 0) and
+the service holds the screen down until the FRESH `OP_SendCharInfo` (`AwaitingFreshCharacterList()`); Enter
+World then zones in as a first login does. The old zone's scene stays loaded until the next zone load
+unloads it (the pre-zone frame draws no scene). The camp rule: `include/client/player/camp_timer.h`.
 
 **The three commerce windows** (T436, board **B429** CLOSED). Three producers filled an `iconId`
 nothing could draw, because the merchant window, the bank window and the cursor attachment did not

@@ -33,6 +33,7 @@
 // test are empty.
 
 #include "client/client_context.h"
+#include "client/player/camp_timer.h"  // B1005
 #include "client/player/profile_appearance.h"
 #include "client/tracking/tracking_controller.h"  // B895
 #include "common/packet_structs.h"
@@ -66,16 +67,28 @@ public:
 
 	// Social, camp/logout, resurrection, /who, /inspect, corpse, consent
 	// (was eq_player_social.cpp).
-	void PerformEmote(uint32_t animation);
 	void SetAFK(bool afk);
 	void SetAnonymous(bool anon);
 	void SetRoleplay(bool rp);
-	void StartCampTimer();
+	// B1005 (GitLab #324): /camp. Bodies: player_camp.cpp; the rule:
+	// camp_timer.h. StartCampTimer is the /camp command (a second one while
+	// counting abandons); CancelCamp is the stand that abandons it.
+	void StartCampTimer(CampMode mode = CampMode::CharacterSelect);
 	void CancelCamp();
 	void UpdateCampTimer();
-	void SendCamp();         // Send OP_Camp to server
-	void SendLogout();       // Send OP_Logout to server
+	void SendCamp(uint32_t mode = 0);   // OP_Camp, body u32 mode (camp.tsv [3])
+	void SendLogout();                  // OP_Logout, empty
 	void ZoneProcessLogoutReply(const EQ::Net::Packet &p);
+	CampTimer& Camp() { return m_camp; }
+	const CampTimer& Camp() const { return m_camp; }
+	// Application: the run can draw Character Select (or the scenario lane
+	// plays it), so /camp goes back there instead of exiting. (Line comments
+	// only in this header: its banner names src/client/player/<star>.cpp, and
+	// a block comment's close would pair with that for the hygiene scanners.)
+	void SetCampReturnsToCharacterSelect(bool on) { m_camp_to_select = on; }
+	bool CampReturnsToCharacterSelect() const { return m_camp_to_select; }
+	// The deferred post-logout teardown asks once: go back to select?
+	bool ConsumeReturnToCharacterSelect();
 	void ZoneProcessRezzRequest(const EQ::Net::Packet &p);
 	void ZoneProcessRezzComplete(const EQ::Net::Packet &p);
 	void SendRezzAnswer(bool accept);  // Send OP_RezzAnswer (accept/decline)
@@ -255,8 +268,10 @@ public:
 private:
 	ClientContext& ctx_;
 
-	// Camp timer
-	static constexpr int CAMP_TIMER_SECONDS = 30;
+	// B1005: the camp state machine and where a camp lands.
+	CampTimer m_camp;
+	bool m_camp_to_select = false;
+	bool m_pending_return_to_select = false;
 
 	// Pending resurrection offer
 	bool m_has_pending_rezz = false;

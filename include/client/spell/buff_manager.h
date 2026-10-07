@@ -210,8 +210,11 @@ public:
     // Set callback for when a buff is applied
     void setBuffApplyCallback(BuffApplyCallback callback) { m_on_buff_apply = callback; }
 
-    // Access spell database for icon lookups
-    SpellDatabase* getSpellDatabase() const { return m_spell_db; }
+    // B502 (GitLab #177) DELETED getSpellDatabase(): the public spell-db
+    // accessor (claimed for icon lookups) with zero callers -- the icon
+    // path resolves spells through EverQuest's snapshot publishes. The
+    // m_spell_db member stays: every buff apply/fade/stack read below uses
+    // it directly.
 
     // ========================================================================
     // Vision (T339, board B055)

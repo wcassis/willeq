@@ -71,6 +71,18 @@ public:
     /** One game tick. Returns false once finished. */
     bool Tick(float deltaTime);
 
+    /**
+     * B1005 (#324): the client stopped (the game thread left its loop) while
+     * this runner had no verdict. The scenario gets ONE look through
+     * IScenario::OnClientStopped(); anything but Pass/Fail leaves the run
+     * unfinished, i.e. kScenarioTimeout, exactly as before. Game thread,
+     * world still alive.
+     */
+    void Conclude();
+
+    /** The scenario asks for the camp return (IScenario::WantsCampToCharacterSelect). */
+    bool WantsCampToCharacterSelect() const { return scenario_ && scenario_->WantsCampToCharacterSelect(); }
+
     bool finished() const { return finished_; }
     bool started() const { return started_; }
     double elapsed() const { return elapsed_; }

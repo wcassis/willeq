@@ -337,6 +337,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/zone/zone_component.cpp
     src/client/movement/movement_component.cpp
     src/client/player/player_component.cpp
+    src/client/player/camp_timer.cpp  # B1005 (#324): the camp state machine
+    src/client/player/player_camp.cpp  # B1005: its PlayerComponent half
     src/client/player/player_misc.cpp
     src/client/player/player_state.cpp
     src/client/player/player_buffs.cpp
@@ -466,6 +468,8 @@ SET(CLIENT_CORE_SOURCES
     src/client/scenario/scenario_world_app.cpp
     src/client/scenario/scenario_world_app_ui.cpp
     src/client/scenario/scenario_world_app_trade.cpp  # UIGAP-live2
+    src/client/scenario/scenario_camp.cpp  # B1005 (#324)
+    src/client/scenario/scenario_world_app_camp.cpp  # B1005
     src/client/scenario/scenario_application_wiring.cpp
     # Bridge sources
     src/client/bridge/console_bridge.cpp
@@ -515,7 +519,6 @@ SET(CLIENT_CORE_SOURCES
     src/client/spell/cast_refusal.cpp
     src/client/spell/buff_manager.cpp
     src/client/spell/buff_cancel_request.cpp
-    src/client/spell/spell_animations.cpp
     src/client/spell/spells_eff_reader.cpp
     # Skill system sources
     src/client/skill/behind_target.cpp

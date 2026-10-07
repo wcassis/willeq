@@ -658,33 +658,11 @@ void eqt::zone::ZoneComponent::ProcessDeferredZoneChange()
 	// later, correct signal for the same re-zone.
 
 	// Reconnect to world server to get new zone info
-	if (!ctx_.LoginWorld().WorldServerHost().empty()) {
-		LOG_TRACE(MOD_ZONE, "Step 2: Creating new world connection manager");
-
-		ctx_.Bridge().SetLoadingPhase(LoadingPhase::WORLD_CONNECTING);
-
-		// Reset world connection state flags so we go through the full handshake again
-		ctx_.LoginWorld().WorldReady() = false;
-		ctx_.LoginWorld().EnterWorldSent() = false;
-
-		// Reset old connections first
-		ctx_.LoginWorld().WorldConnection().reset();
-		LOG_TRACE(MOD_ZONE, "Step 2a: Old world connection reset");
-
-		ctx_.LoginWorld().WorldManager().reset(new EQ::Net::DaybreakConnectionManager(std::make_unique<EQ::Net::PosixUdpTransport>()));
-		LOG_TRACE(MOD_ZONE, "Step 2b: New world connection manager created");
-
-		ctx_.LoginWorld().WorldManager()->OnNewConnection(std::bind(&eqt::login_world::LoginWorldComponent::WorldOnNewConnection, &ctx_.LoginWorld(), std::placeholders::_1));
-		ctx_.LoginWorld().WorldManager()->OnConnectionStateChange(std::bind(&eqt::login_world::LoginWorldComponent::WorldOnStatusChangeReconnectEnabled, &ctx_.LoginWorld(), std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-		ctx_.LoginWorld().WorldManager()->OnPacketRecv(std::bind(&eqt::login_world::LoginWorldComponent::WorldOnPacketRecv, &ctx_.LoginWorld(), std::placeholders::_1, std::placeholders::_2));
-		LOG_TRACE(MOD_ZONE, "Step 2c: Callbacks registered");
-
-		LOG_DEBUG(MOD_ZONE, "Step 3: Connecting to world server at {}:9000", ctx_.LoginWorld().WorldServerHost());
-		ctx_.LoginWorld().WorldManager()->Connect(ctx_.LoginWorld().WorldServerHost(), 9000);
-		LOG_TRACE(MOD_ZONE, "Step 3 complete: Connect() called, waiting for callbacks");
-	} else {
-		LOG_ERROR(MOD_ZONE, "No world server address stored for reconnection!");
-	}
+	// B1005: one body, shared with the /camp return to character select
+	// (LoginWorldComponent::ReconnectWorld, login_world_char_select.cpp):
+	// reset WorldReady/EnterWorldSent, a new world connection manager, the
+	// three callbacks re-bound, Connect().
+	ctx_.LoginWorld().ReconnectWorld();
 
 	LOG_TRACE(MOD_ZONE, "ProcessDeferredZoneChange returning");
 }

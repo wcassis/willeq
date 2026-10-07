@@ -131,6 +131,16 @@ private:
 bool CharacterSelectScreenWanted(const std::string& configuredCharacter, bool explicitFlag,
                                  bool graphicsEnabled, bool worldScriptRequested, bool scenarioRun);
 
+/**
+ * B1005 (#324): whether /camp (not /camp desktop) ends on this screen. Only
+ * where the screen can be drawn: graphics, and no world script (a
+ * --create/--delete/--list-characters run owns character select). Headless,
+ * /camp keeps its exit 0 -- there is no screen to return to. The scenario
+ * lane opts a run in on its own (ApplicationScenarioWorld): its scenario
+ * plays the screen's part through the same game-thread service.
+ */
+bool CampReturnsToCharacterSelect(bool graphicsEnabled, bool worldScriptRequested);
+
 /** "Name [level Class]" -- the line the oracle floats over the model. */
 std::string ComposeCharacterInfoLine(const std::string& name, int level, const std::string& className);
 

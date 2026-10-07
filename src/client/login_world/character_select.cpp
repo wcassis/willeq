@@ -70,6 +70,10 @@ bool CharacterSelectScreenWanted(const std::string& configuredCharacter, bool ex
     return explicitFlag || configuredCharacter.empty();
 }
 
+bool CampReturnsToCharacterSelect(bool graphicsEnabled, bool worldScriptRequested) {
+    return graphicsEnabled && !worldScriptRequested;
+}
+
 std::string ComposeCharacterInfoLine(const std::string& name, int level, const std::string& className) {
     // MEASURED: "Oraclealpha [1 Warrior]" (eq-oracle/logs/shots/cc_13_delete_confirm.png),
     // "Newbie [1 Warrior]" (review/UIGAP-ORACLE/204/00_character_select.png).

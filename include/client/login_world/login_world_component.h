@@ -119,9 +119,7 @@ public:
 	std::shared_ptr<EQ::Net::DaybreakConnection>& LoginConnection() { return m_login_connection; }
 	std::unique_ptr<EQ::Net::DaybreakConnectionManager>& WorldManager() { return m_world_connection_manager; }
 	std::shared_ptr<EQ::Net::DaybreakConnection>& WorldConnection() { return m_world_connection; }
-	std::string& WorldServerHost() { return m_world_server_host; }
-	bool& WorldReady() { return m_world_ready; }
-	bool& EnterWorldSent() { return m_enter_world_sent; }
+	const std::string& WorldServerHost() const { return m_world_server_host; }
 
 	// Public because EverQuest::ProcessDeferredZoneChange (eq_zone.cpp) rebuilds
 	// the world connection manager on a zone-to-zone transition and re-binds
@@ -178,6 +176,23 @@ public:
 	/** Enter_World_Button: OP_EnterWorld for a listed character. False if the
 	 *  name is not listed, a request is in flight, or it was already sent. */
 	bool EnterWorldFromSelect(const std::string& name);
+
+	// ------------------------------------------------------------------
+	// B1005 (GitLab #324): /camp back to the character-select screen. Called
+	// on the game thread, OUTSIDE any packet callback, after the zone has
+	// answered our OP_Logout (OP_LogoutReply) and the zone session is torn
+	// down. Re-runs the world handshake as a FRESH login (OP_SendLoginInfo
+	// zoning = 0: world sends the guild list, OP_ExpansionInfo and a fresh
+	// OP_SendCharInfo), with the screen on and the previous list dropped, so
+	// the screen comes up only on the NEW list. Body: login_world_char_select.cpp.
+	void ReturnToCharacterSelect();
+	/** True from ReturnToCharacterSelect() until the fresh OP_SendCharInfo. */
+	bool AwaitingFreshCharacterList() const { return m_awaiting_fresh_list; }
+	/** How many times this session went back to the character-select screen. */
+	uint32_t CharacterSelectReturns() const { return m_select_returns; }
+	/** Tear down the world session and open a new one to the stored world
+	 *  host (the zone-to-zone path's step 2 and the camp return's). */
+	void ReconnectWorld();
 
 private:
 	// B888: the reply handlers and the script driver.
@@ -296,6 +311,9 @@ private:
 	// B998: the character-select screen is up (see SetCharacterSelectScreen).
 	bool m_select_screen = false;
 	uint32_t m_character_list_generation = 0;
+	// B1005: the camp return (see ReturnToCharacterSelect).
+	bool m_awaiting_fresh_list = false;
+	uint32_t m_select_returns = 0;
 
 	ClientContext& ctx_;
 };

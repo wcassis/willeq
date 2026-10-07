@@ -291,8 +291,6 @@ public:
 
     bool isCamping() const { return m_isCamping; }
     void setCamping(bool val) { m_isCamping = val; }
-    std::chrono::steady_clock::time_point campStartTime() const { return m_campStartTime; }
-    void setCampStartTime(std::chrono::steady_clock::time_point time) { m_campStartTime = time; }
 
     // ========== Bank Currency ==========
 
@@ -468,7 +466,6 @@ private:
 
     // Camp timer
     bool m_isCamping = false;
-    std::chrono::steady_clock::time_point m_campStartTime;
 
     // Bank currency
     uint32_t m_bankPlatinum = 0;

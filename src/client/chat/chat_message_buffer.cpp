@@ -42,31 +42,11 @@ uint32_t getChannelColor(ChatChannel channel) {
     }
 }
 
-const char* getChannelName(ChatChannel channel) {
-    switch (channel) {
-        case ChatChannel::Say:       return "say";
-        case ChatChannel::Tell:      return "tell";
-        case ChatChannel::Group:     return "group";
-        case ChatChannel::Guild:     return "guild";
-        case ChatChannel::Shout:     return "shout";
-        case ChatChannel::Auction:   return "auction";
-        case ChatChannel::OOC:       return "ooc";
-        case ChatChannel::Broadcast: return "broadcast";
-        case ChatChannel::Emote:     return "emote";
-        case ChatChannel::GMSay:     return "gm";
-        case ChatChannel::Raid:      return "raid";
-        case ChatChannel::Combat:    return "combat";
-        case ChatChannel::CombatSelf:return "combat";
-        case ChatChannel::CombatMiss:return "miss";
-        case ChatChannel::Experience:return "exp";
-        case ChatChannel::Loot:      return "loot";
-        case ChatChannel::Spell:     return "spell";
-        case ChatChannel::System:    return "system";
-        case ChatChannel::Error:     return "error";
-        case ChatChannel::NPCDialogue: return "npc";
-        default:                     return "unknown";
-    }
-}
+// B502 (GitLab #177) DELETED getChannelName(): a third channel-name table
+// (the one spelled for the ChatChannel enum here) with zero callers -- the
+// name in a chat line comes from ChatChannelName() (the ONE such table,
+// pinned by tests/test_chat_channel_names.cpp), and the per-channel wording
+// lives in formatMessageForDisplay().
 
 std::string formatTimestamp(uint32_t timestamp) {
     if (timestamp == 0) return "";
@@ -161,7 +141,6 @@ void ChatMessageBuffer::addSystemMessage(const std::string& text, ChatChannel ch
 void ChatMessageBuffer::processPending() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!pendingMessages_.empty()) {
-        hasNewMessages_ = true;
         for (auto& msg : pendingMessages_) {
             messages_.push_back(std::move(msg));
             ++appendedCount_;  // T462: see appendedCount()
@@ -173,20 +152,14 @@ void ChatMessageBuffer::processPending() {
     }
 }
 
-std::vector<ChatMessage> ChatMessageBuffer::getRecentMessages(size_t count) const {
-    std::vector<ChatMessage> result;
-    size_t startIdx = (messages_.size() > count) ? messages_.size() - count : 0;
-    for (size_t i = startIdx; i < messages_.size(); ++i) {
-        result.push_back(messages_[i]);
-    }
-    return result;
-}
+// B502 (GitLab #177) DELETED getRecentMessages(): the copy-based "last N"
+// reader with zero callers -- the chat panel renders getMessages() and
+// tracks what is new through appendedCount() (T462).
 
 void ChatMessageBuffer::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     messages_.clear();
     pendingMessages_.clear();
-    hasNewMessages_ = false;
     ++clearGeneration_;  // T462: a wrap cache over this buffer starts over
 }
 

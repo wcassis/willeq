@@ -42,6 +42,8 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/position_frames.h"
 #include "client/display_eqstr.h"
+#include "client/login_world/login_world_component.h"  // B1005: the camp return
+#include "client/player/player_component.h"
 #include "common/name_utils.h"
 // P28: wld_loader.h (and the zone_bsp.h BspTree/RegionType it pulls in) has no
 // renderer dependency — UpdateWaterState() below needs the complete BspTree
@@ -78,6 +80,12 @@ void eqt::movement::MovementComponent::UpdateMovement()
 		LOG_DEBUG(MOD_ZONE, "Processing deferred post-logout disconnect...");
 		ctx_.Zone().DisconnectFromZone();
 		LOG_DEBUG(MOD_ZONE, "Deferred post-logout disconnect processed");
+		// B1005 (#324): a /camp (not /camp desktop) the server has just
+		// confirmed goes back to character select instead of quitting -- the
+		// world handshake again, as a fresh login (player_camp.cpp).
+		if (ctx_.Player().ConsumeReturnToCharacterSelect()) {
+			ctx_.LoginWorld().ReturnToCharacterSelect();
+		}
 		return;  // Don't process movement post-logout
 	}
 

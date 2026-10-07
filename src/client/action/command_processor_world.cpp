@@ -505,7 +505,7 @@ ActionResult CommandProcessor::cmdQuit(const std::string& args) {
 }
 
 ActionResult CommandProcessor::cmdCamp(const std::string& args) {
-    return m_dispatcher.camp();
+    return m_dispatcher.camp(args);  // B1005: "desktop" / "server"
 }
 
 ActionResult CommandProcessor::cmdDebug(const std::string& args) {

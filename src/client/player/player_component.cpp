@@ -42,28 +42,16 @@
 // ============================================================================
 // Cluster 6: Emote/AFK/Anon/RP/Camp/Logout
 // ============================================================================
-
-void eqt::player::PlayerComponent::PerformEmote(uint32_t animation)
-{
-	if (!ctx_.self.IsFullyZonedIn()) {
-		return;
-	}
-
-	// Send the emote animation using the proper Animation packet
-	ctx_.Entities().SendAnimation(static_cast<uint8_t>(animation));
-	
-	// Some emotes should stop movement
-	if (animation == ANIM_KNEEL || animation == ANIM_DEATH) {
-		if (ctx_.game_state.player().isMoving()) {
-			ctx_.Movement().StopMovement();
-		}
-	}
-	
-	if (EverQuest::GetDebugLevel() >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Performing emote animation {}", animation);
-	}
-}
-
+// B502 (GitLab #177) DELETED PlayerComponent::PerformEmote(): a second,
+// local-STOP-gated emote emitter with ZERO callers tree-wide. The README's
+// emote row is served by the direct route -- /wave /dance /cheer /laugh call
+// Entities().SendAnimation() through EqActionHandler::sendAnimation, and a
+// hotbar Emote slot replays its command TEXT through Chat().ProcessChatInput
+// (reaching sendAnimation only when that text is one of those shortcuts);
+// neither ever went through this. The emote-STOP rule
+// (kneel/death stops movement) belongs to whoever rewires it; nothing today
+// sends a kneel or death animation for the local player (they arrive from
+// the server via OP_Animation, zone_entry.cpp).
 void eqt::player::PlayerComponent::SetAFK(bool afk)
 {
 	if (ctx_.game_state.player().isAFK() == afk) {
@@ -112,124 +100,9 @@ void eqt::player::PlayerComponent::SetRoleplay(bool rp)
 	}
 }
 
-void eqt::player::PlayerComponent::StartCampTimer()
-{
-	if (ctx_.game_state.player().isCamping()) {
-		return;  // Already camping
-	}
-
-	// Phase 7.8 / T286: PlayerState is the only store, start time included
-	ctx_.game_state.player().setCamping(true);
-	ctx_.game_state.player().setCampStartTime(std::chrono::steady_clock::now());
-
-	// T491 lifecycle point: the user typed /camp.
-	eqt::memory::recordPoint("camp");
-
-	// Send OP_Camp to server to notify we're camping
-	SendCamp();
-
-	if (EverQuest::GetDebugLevel() >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Camp timer started, will log out in {} seconds", CAMP_TIMER_SECONDS);
-	}
-}
-
-void eqt::player::PlayerComponent::CancelCamp()
-{
-	if (!ctx_.game_state.player().isCamping()) {
-		return;
-	}
-
-	ctx_.game_state.player().setCamping(false);  // Phase 7.8 / T286: only store
-	ctx_.out.System("You are no longer camping.");
-
-	if (EverQuest::GetDebugLevel() >= 1) {
-		LOG_DEBUG(MOD_MAIN, "Camp timer cancelled");
-	}
-}
-
-void eqt::player::PlayerComponent::UpdateCampTimer()
-{
-	if (!ctx_.game_state.player().isCamping()) {
-		return;
-	}
-
-	auto now = std::chrono::steady_clock::now();
-	auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - ctx_.game_state.player().campStartTime()).count();
-
-	if (elapsed >= CAMP_TIMER_SECONDS) {
-		// Camp timer complete, send logout to server
-		ctx_.game_state.player().setCamping(false);  // Phase 7.8 / T286: only store
-		ctx_.out.System("You have camped.");
-
-		// Send OP_Logout to server - server will respond with OP_LogoutReply
-		SendLogout();
-
-		if (EverQuest::GetDebugLevel() >= 1) {
-			LOG_DEBUG(MOD_MAIN, "Camp timer complete, sending logout request");
-		}
-	}
-}
-
-void eqt::player::PlayerComponent::SendCamp()
-{
-	// OP_Camp is an empty packet -- body-only convention: QueuePacket(opcode,
-	// pkt) prepends the opcode itself (eq.cpp), so writing it into the body
-	// here too made this a 4-byte packet where the server expects 2.
-	EQ::Net::DynamicPacket packet;
-	ctx_.net.Queue(HC_OP_Camp, &packet);
-
-	if (EverQuest::GetDebugLevel() >= 2) {
-		LOG_DEBUG(MOD_MAIN, "Sent OP_Camp to server");
-	}
-}
-
-void eqt::player::PlayerComponent::SendLogout()
-{
-	// OP_Logout is an empty packet -- body-only convention, see SendCamp().
-	EQ::Net::DynamicPacket packet;
-	ctx_.net.Queue(HC_OP_Logout, &packet);
-
-	if (EverQuest::GetDebugLevel() >= 2) {
-		LOG_DEBUG(MOD_MAIN, "Sent OP_Logout to server");
-	}
-}
-
-void eqt::player::PlayerComponent::ZoneProcessLogoutReply(const EQ::Net::Packet &p)
-{
-	// T322: on a zone change the source zone answers our graceful zone-out
-	// (OP_SaveOnZoneReq + OP_DeleteSpawn) with this same OP_LogoutReply --
-	// eqemu Handle_OP_DeleteSpawn queues it before calling Disconnect().
-	// That is an acknowledgement that we may now tear the session down, NOT
-	// a logout: quitting the game here would end the session mid-transition.
-	// The flag is only ever set by BeginGracefulZoneOut(), so when no
-	// zone-out is in flight -- camp/SendLogout, and the world-side path --
-	// the behaviour below is exactly what it always was.
-	if (ctx_.Zone().ZoneOutHandshakePending()) {
-		LOG_DEBUG(MOD_ZONE, "Source zone acknowledged graceful zone-out");
-		ctx_.Zone().ZoneOutAcknowledged() = true;
-		return;
-	}
-
-	// Server confirmed logout - now we can safely disconnect
-	LOG_INFO(MOD_MAIN, "Logout confirmed by server");
-
-	// T322: a logout is not a zone transition; make sure a stale latch can
-	// never make the next world login claim to be one.
-	ctx_.Zone().ZoneToZoneInProgress() = false;
-
-	// D20c4: Signal quit via flag — Application checks and exits
-	ctx_.lifecycle.RequestQuit();
-
-	// H03: Don't call DisconnectFromZone() here — this handler runs from inside
-	// DaybreakConnectionManager::Tick()'s packet-processing loop (Tick -> ProcessPacket
-	// -> ZoneOnPacketRecv -> DispatchZonePacket -> here). DisconnectFromZone() resets
-	// m_zone_connection_manager, destroying the very object whose Tick() is still on
-	// the call stack; the next loop iteration then dereferences a dangling m_transport
-	// (use-after-free crash — reproduced via GM fast-camp, which triggers an
-	// almost-immediate OP_LogoutReply). Defer to UpdateMovement(), which — like the
-	// existing m_game_state.world().zoneChangeApproved() deferral — runs outside any callback context.
-	ctx_.lifecycle.m_pending_logout_disconnect = true;
-}
+// B1005 (GitLab #324): StartCampTimer / CancelCamp / UpdateCampTimer /
+// SendCamp / SendLogout / ZoneProcessLogoutReply moved to player_camp.cpp
+// with the measured /camp rule (camp_timer.h).
 
 // ============================================================================
 // Cluster 7: Rezz / WhoAll / Inspect

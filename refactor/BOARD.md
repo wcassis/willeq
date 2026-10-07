@@ -7983,7 +7983,7 @@ client uses every field.
   the player, and its callers cannot tell -- `findGroundZ()`
   (`src/client/graphics/player/renderer_player_collision.cpp:73`) treats the
   answer as a floor, and the game-side `GetBestZ` -> `FixZ`
-  (`src/client/zone/zone_component.cpp:1106`) writes it into the player
+  (`src/client/zone/zone_component.cpp:1091`) writes it into the player
   position. It is off the live collision path today (the BSP path wins
   whenever `regionWorldTriangles` is non-empty, which is every real zone) and
   `FixZ` is gated by `abs_diff < 20.0f`, which is why it is not currently
@@ -9764,7 +9764,7 @@ fine — the table fails on a stale entry, so it cannot rot.
   B941 (#259) deleted the whole `ksm.h` header when its last user,
   `RaycastMesh`, moved to plain vectors. Found by T455.
 
-- **B502** (B, unreached) **Gameplay-domain manager API with no caller: 21 → issue #177
+- ~~**B502** (B, unreached) **Gameplay-domain manager API with no caller: 21
   zero-caller public functions across 9 headers
   (`skill/`, `spell/`, `chat/`, `movement/`, `player/`).**
   `SkillManager::isSkillReady()` / `getSkillsByCategory()` /
@@ -9777,7 +9777,16 @@ fine — the table fails on a stale entry, so it cannot rot.
   `clearNewMessageFlag()` / `getChannelName()`;
   `MovementComponent::IsSwimming()` / `GetMovementSpeed()` /
   `WaterStateRef()`; `PlayerComponent::PerformEmote()`;
-  `SkillData::getValueString()`; `SpellData::isInstantCast()`. Found by T455.
+  `SkillData::getValueString()`; `SpellData::isInstantCast()`. Found by T455.~~
+  **STRUCK 2026-10-07 (issue #177)**: all 21 DELETED — no README row and no
+  slash command is served by any of them, so none was wired. The spell-
+  animation lookup table went as the whole `EQ::SpellAnimations` translation
+  unit (cast/impact animations play through the server-driven `OP_Animation`
+  route); `toggleSkill()` went with `SkillData::is_toggle` / `is_active` (the
+  T162 gate note now rides its tombstone); the chat buffer's "new message"
+  flag went with its two accessors (the panel follows T462's append sequence
+  instead); `PerformEmote()` went behind the direct `SendAnimation()` route
+  that serves the README's emote row.
 
 - **B503** (P, process) **The zero-caller census is ONE PASS and does not see
   cascading death.** T455 deleted 24 functions from `common/util/strings`, re-ran

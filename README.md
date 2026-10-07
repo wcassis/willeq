@@ -4,7 +4,7 @@ A standalone EverQuest client targeting the Titanium client version (2006) with 
 
 This is a mostly vibe-coded project so the codebase is a bit chaotic. Expect major changes as features are implemented.
 
-You need an existing account. A character can be created by the client itself at character select (B888, issue #204): `willeq -c willeq.json --create-character "Name,Race,Gender,Class,Deity,City"` creates it and enters world with it in its home city (never the tutorial); `--delete-character Name` and `--list-characters` do the other two. With graphics and no `character` in the config (or with `--character-select`), the client shows the official Character Select screen (B998, issue #318): pick a character and Enter World, Delete one (with the official confirmation), or press an empty slot's "Create a New Character" to open the two-page Character Creation screen, which enters world with the new character. With a configured character the client still selects it automatically, exactly as before (every scripted and CI run).
+You need an existing account. A character can be created by the client itself at character select (B888, issue #204): `willeq -c willeq.json --create-character "Name,Race,Gender,Class,Deity,City"` creates it and enters world with it in its home city (never the tutorial); `--delete-character Name` and `--list-characters` do the other two. With graphics and no `character` in the config (or with `--character-select`), the client shows the official Character Select screen (B998, issue #318): pick a character and Enter World, Delete one (with the official confirmation), or press an empty slot's "Create a New Character" to open the two-page Character Creation screen, which enters world with the new character. With a configured character the client still selects it automatically, exactly as before (every scripted and CI run). In game, `/camp` sits the character, counts down 30 s (the official eqstr lines) and, once the server confirms the logout, returns to Character Select with a fresh list (B1005, issue #324; graphics runs -- headless `/camp` still exits 0); `/camp desktop` exits after the same countdown.
 
 I'm developing this on a remote Ubuntu 24 server without a GPU. The default run needs no display at all (surfaceless EGL on llvmpipe); Xvfb + x11vnc or native RDP are used when a picture is wanted. The ARM builds target an Orange Pi One (Mali 400) running Armbian Noble with the Lima open-source driver.
 
@@ -64,7 +64,7 @@ Legend: Done | Partial | Not Implemented
 |---------|--------|-------|
 | Login server authentication | Done | |
 | Server selection | Done | |
-| Character selection | Done | B998 (#318). Auto-select from config by default (byte-for-byte unchanged); with no configured character or `--character-select` (graphics), the official Character Select screen (`EQUI_CharacterSelect.xml`): the list from `OP_SendCharInfo` (name; "Name [level Class]" and the zone for the selected one), Enter World, Delete (eqstr 9065 Yes/No, closing itself after 10 s, `OP_DeleteCharacter`), Create a New Character, Quit. No 3D preview |
+| Character selection | Done | B998 (#318). Auto-select from config by default (byte-for-byte unchanged); with no configured character or `--character-select` (graphics), the official Character Select screen (`EQUI_CharacterSelect.xml`): the list from `OP_SendCharInfo` (name; "Name [level Class]" and the zone for the selected one), Enter World, Delete (eqstr 9065 Yes/No, closing itself after 10 s, `OP_DeleteCharacter`), Create a New Character, Quit. No 3D preview. B1005 (#324): `/camp` returns here after the 30 s camp (fresh `OP_SendCharInfo`); `/camp desktop` exits |
 | Character creation | Partial | B888 (#204). `--create-character "Name,Race,Gender,Class,Deity,City[,STR=n,...]"` sends `OP_ApproveName` then `OP_CharacterCreate` exactly as eqemu's Titanium world validates them (byte-pinned) and enters world in the home city, never the tutorial; `--delete-character`, `--list-characters`; scenario `create_character`. The official two-page screen (`EQUI_CharacterCreate.xml`) and its flow are transcribed with post-Velious races/classes/cities HIDDEN (`data/char_create.tsv`), opened from the character-select screen's "Create a New Character" (B998); a created character enters world straight away, as the official client does. No FacePick window and no 3D preview |
 
 ### World & Zones
@@ -568,7 +568,8 @@ Commands are dispatched through three registries in order: the game registry (au
 ```
 /loc (/location)                Show coordinates
 /sit, /stand                    Sit/stand
-/camp                           Sit and logout
+/camp                           Sit and camp: after 30 s back to Character Select (graphics; headless exits)
+/camp desktop                   Sit and camp, then exit the client
 /crouch (/duck)                 Crouch
 /feign (/fd)                    Feign death
 /jump                           Jump

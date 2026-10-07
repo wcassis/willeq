@@ -76,8 +76,11 @@ struct SkillData {
 
     // State flags
     bool is_activatable = false;        // Can be manually activated
-    bool is_toggle = false;             // Toggle skill (Hide, Sneak, Meditate)
-    bool is_active = false;             // Currently toggled on
+    // B502 (GitLab #177) DELETED is_toggle and is_active: their only reader
+    // was the deleted SkillManager::toggleSkill()/isSkillActive() pair, and
+    // the initializeSkillData() cases that set is_toggle (Hide 29, Sneak 42,
+    // Meditate 31) went with them -- nothing in code names that set now. A
+    // future toggle UI goes through activateSkill(), not a second field pair.
     // T440 (board B416): there is NO usable_while_sitting here, and adding one
     // back needs a measured refusal, not a guess -- the same bar T353 set for
     // endurance_cost and T325 for requires_combat.
@@ -173,11 +176,6 @@ struct SkillData {
     // Apply Poison counter-example that rules the level form out.
     bool canClassHaveSkill() const {
         return class_can_have;
-    }
-
-    // Get formatted value string "current / max"
-    std::string getValueString() const {
-        return std::to_string(current_value) + " / " + std::to_string(max_value);
     }
 };
 
@@ -285,15 +283,9 @@ inline void initializeSkillData(SkillData& skill, uint8_t skill_id) {
             // No target required
             break;
 
-        // Toggle skills
-        case 29: // Hide
-        case 42: // Sneak
-            skill.is_toggle = true;
-            break;
-
-        case 31: // Meditate
-            skill.is_toggle = true;
-            break;
+        // B502 (GitLab #177): the toggle-skills cases (Hide 29, Sneak 42,
+        // Meditate 31) set is_toggle, which went with the deleted
+        // toggleSkill() -- the ids are recorded only in this comment now.
 
         default:
             break;

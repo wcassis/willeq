@@ -55,6 +55,20 @@ void ScenarioRunner::Finish(int code, std::string reason) {
     world_.Note(os.str());
 }
 
+void ScenarioRunner::Conclude() {
+    if (finished_ || !started_ || !scenario_) {
+        return;
+    }
+    ScenarioTick tick;
+    tick.sinceStart = elapsed_ - startedAt_;
+    const StepResult result = scenario_->OnClientStopped(world_, tick);
+    if (result == StepResult::Pass) {
+        Finish(kScenarioPass, scenario_->Reason());
+    } else if (result == StepResult::Fail) {
+        Finish(kScenarioFail, scenario_->Reason());
+    }
+}
+
 bool ScenarioRunner::Tick(float deltaTime) {
     if (finished_) {
         return false;

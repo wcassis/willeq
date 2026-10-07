@@ -329,13 +329,6 @@ uint32_t SkillManager::getSkillCooldownRemaining(uint8_t skill_id) const {
     return m_skills[skill_id].getCooldownRemaining();
 }
 
-bool SkillManager::isSkillReady(uint8_t skill_id) const {
-    if (skill_id >= EQT::MAX_PP_SKILL) {
-        return false;
-    }
-    return !m_skills[skill_id].isOnCooldown();
-}
-
 const SkillData* SkillManager::getSkill(uint8_t skill_id) const {
     if (skill_id >= EQT::MAX_PP_SKILL) {
         return nullptr;
@@ -360,30 +353,6 @@ std::vector<const SkillData*> SkillManager::getAllSkills() const {
 
     for (const auto& skill : m_skills) {
         if (skill.isDisplayableSkill()) {
-            result.push_back(&skill);
-        }
-    }
-
-    return result;
-}
-
-std::vector<const SkillData*> SkillManager::getSkillsByCategory(SkillCategory category) const {
-    std::vector<const SkillData*> result;
-
-    for (const auto& skill : m_skills) {
-        if (skill.isDisplayableSkill() && skill.category == category) {
-            result.push_back(&skill);
-        }
-    }
-
-    return result;
-}
-
-std::vector<const SkillData*> SkillManager::getActivatableSkills() const {
-    std::vector<const SkillData*> result;
-
-    for (const auto& skill : m_skills) {
-        if (skill.isDisplayableSkill() && skill.is_activatable) {
             result.push_back(&skill);
         }
     }
@@ -447,40 +416,16 @@ bool SkillManager::activateSkill(uint8_t skill_id, uint16_t target_id) {
     return true;
 }
 
-// T162 inventory note: this is the ONLY other caller of
-// sendSkillUsePacket(), and it does NOT go through canUseSkill() -- so it is
-// an ungated skill-opcode emitter. It is left as-is because it has ZERO
-// callers anywhere in the client (the reachability class this board tracks):
-// nothing can reach it, so nothing can bypass the gate through it. Whoever
-// wires a toggle UI to it must route through activateSkill() or answer for
-// the bypass; see refactor/T162_skill_gate_bypasses.md.
-bool SkillManager::toggleSkill(uint8_t skill_id) {
-    if (skill_id >= EQT::MAX_PP_SKILL) {
-        return false;
-    }
-
-    SkillData& skill = m_skills[skill_id];
-    if (!skill.is_toggle) {
-        return false;
-    }
-
-    skill.is_active = !skill.is_active;
-
-    // Send appropriate packet
-    sendSkillUsePacket(skill_id, 0);
-
-    LOG_DEBUG(MOD_MAIN, "Toggled skill {} ({}): now {}",
-              skill_id, skill.name, skill.is_active ? "ON" : "OFF");
-
-    return true;
-}
-
-bool SkillManager::isSkillActive(uint8_t skill_id) const {
-    if (skill_id >= EQT::MAX_PP_SKILL) {
-        return false;
-    }
-    return m_skills[skill_id].is_active;
-}
+// B502 (GitLab #177) DELETED SkillManager::toggleSkill(): the ungated
+// toggle-skill emitter (Hide/Sneak/Meditate via sendSkillUsePacket()
+// bypassing activateSkill()'s gate) that had ZERO callers tree-wide --
+// the client has no toggle-skill UI and no command that reaches it, so
+// nothing could bypass the gate through it. The T162 note that rode its
+// old body stands for the whole class: whoever wires a toggle UI routes
+// through activateSkill(); see refactor/T162_skill_gate_bypasses.md.
+// Its companions -- SkillData::is_toggle (writer: initializeSkillData),
+// is_active and isSkillActive() -- went with it as the fields and query
+// this was the only one that touched.
 
 // ============================================================================
 // Callbacks

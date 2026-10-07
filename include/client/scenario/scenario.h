@@ -148,6 +148,29 @@ public:
     /** World objects (ground spawns, containers) this client knows; -1 not readable. */
     virtual long long WorldObjectCount() const { return -1; }
 
+    // --- B1005 (#324): /camp and the character-select screen. Same
+    //     "default = not readable" rule. ---
+
+    /** CampPhase() values (eqt::player::CampPhase). */
+    static constexpr int kCampIdle = 0;
+    static constexpr int kCampCounting = 1;     // /camp typed, the countdown runs
+    static constexpr int kCampLogoutSent = 2;   // countdown over, OP_Logout out
+    static constexpr int kCampToSelect = 3;     // the server answered: back to select
+    static constexpr int kCampToDesktop = 4;    // the server answered: the client exits
+    /** The camp state machine's phase; -1 not readable. */
+    virtual int CampPhase() const { return -1; }
+    /**
+     * The character-select state is up: the screen is on, the FRESH
+     * OP_SendCharInfo after a camp has arrived, and no OP_EnterWorld is out.
+     */
+    virtual bool AtCharacterSelect() const { return false; }
+    /** The names on the latest character list, slot order. */
+    virtual std::vector<std::string> CharacterListNames() const { return {}; }
+    /** OP_SendCharInfo deliveries this session; -1 not readable. */
+    virtual long long CharacterListGeneration() const { return -1; }
+    /** Enter World for a listed name (the screen's button); false if refused. */
+    virtual bool EnterWorldAs(const std::string& name) { (void)name; return false; }
+
     // --- actions ---
     /** Dispatch one slash command line, exactly as --script would. */
     virtual void SendCommand(const std::string& rawLine) = 0;
@@ -277,6 +300,24 @@ public:
      * live, zoned-in client.
      */
     virtual StepResult Step(IScenarioWorld& world, const ScenarioTick& tick) = 0;
+
+    /**
+     * B1005 (#324): one last look after the client stopped for a reason that
+     * was not this runner (ScenarioRunner::Conclude). Default: no verdict,
+     * so an external quit still reads as the unfinished-run code. Only a
+     * scenario whose subject IS the client exiting (camp_desktop) answers.
+     */
+    virtual StepResult OnClientStopped(IScenarioWorld& world, const ScenarioTick& tick) {
+        (void)world; (void)tick;
+        return StepResult::Running;
+    }
+
+    /**
+     * B1005: a headless --scenario run has no character-select screen, so
+     * /camp exits there. A scenario that plays the screen's part returns
+     * true and the lane turns the camp return on for its run.
+     */
+    virtual bool WantsCampToCharacterSelect() const { return false; }
 
     /** Human-readable reason for the verdict. Set before returning Pass/Fail. */
     const std::string& Reason() const { return reason_; }
