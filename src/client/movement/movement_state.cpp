@@ -7,7 +7,6 @@
 //  - Jump and movement history: SendJump, SendMovementHistory, Jump,
 //    UpdateJump.
 //  - Water state: UpdateWaterState, OnEnterWater, OnExitWater, GetSwimSpeed.
-//  - Speed: GetMovementSpeed.
 //  - Keyboard control: DELETED by T343 (board B032) -- see the note at the
 //    end of this file.
 //
@@ -763,11 +762,8 @@ float eqt::movement::MovementComponent::GetSwimSpeed() const
 	return BASE_SWIM_SPEED * (1.0f + skillBonus);
 }
 
-float eqt::movement::MovementComponent::GetMovementSpeed() const
-{
-	// Return current movement speed, which may be modified by buffs, encumbrance, etc.
-	return ctx_.game_state.player().moveSpeed();
-}
+// B502 (GitLab #177) DELETED GetMovementSpeed(): a one-line wrapper over
+// game_state.player().moveSpeed() with zero callers anywhere in the tree.
 
 // T343 (board B032): THE GAME-SIDE KEYBOARD-MOVEMENT ROUTE WAS DELETED HERE.
 //

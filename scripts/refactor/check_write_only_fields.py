@@ -568,10 +568,6 @@ EXEMPT_UNUSED = {
         ("unused", "snow accumulation flag; the comment says future feature -- the accumulation system does not exist (a snow accumulation pass would make it live)"),
     ("Snow", "maxAccumulationDepth"):
         ("unused", "snow accumulation flag; the comment says future feature -- the accumulation system does not exist (a snow accumulation pass would make it live)"),
-    # Spell animation alias table: the alias rows were for casting styles the
-    # client no longer maps separately.
-    ("SpellAnimations", "ANIM_CAST_CHANNEL"):
-        ("unused", "casting-style alias; the cast-glow path keys on vocabulary, not this alias (a channel-style glow that reads it would make it live)"),
     # /perf report aggregates that are filled and never printed.
     ("SceneBreakdown", "withoutZone"):
         ("report", "B337: /perf scene breakdown; the sub-pass timings are filled and the report never prints them"),

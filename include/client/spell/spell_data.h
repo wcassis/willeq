@@ -167,10 +167,9 @@ struct SpellData {
     // Helper Methods
     // ========================================================================
 
-    // Check if spell is instant cast
-    bool isInstantCast() const {
-        return cast_time_ms == 0;
-    }
+    // B502 (GitLab #177) DELETED isInstantCast(): a `cast_time_ms == 0`
+    // wrapper with zero callers anywhere in the tree; the cast path compares
+    // cast_time_ms directly where it needs to.
 
     // Check if spell targets self only
     bool isSelfOnly() const {

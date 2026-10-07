@@ -5,7 +5,6 @@
 #include <deque>
 #include <vector>
 #include <mutex>
-#include <cstdint>
 #include "client/formatted_message.h"
 
 namespace eqt {
@@ -58,8 +57,10 @@ struct ChatMessage {
 // Get the display color for a channel
 uint32_t getChannelColor(ChatChannel channel);
 
-// Get the channel name for display
-const char* getChannelName(ChatChannel channel);
+// B502 (GitLab #177) DELETED getChannelName(): a third channel-name table
+// (this one spelled for the ChatChannel enum) with zero callers. The name
+// in a chat line comes from ChatChannelName() -- the ONE such table, pinned
+// by tests/test_chat_channel_names.cpp.
 
 // Format a message for display (e.g., "[Name] says, 'text'")
 std::string formatMessageForDisplay(const ChatMessage& msg);
@@ -88,18 +89,21 @@ public:
     // Get messages for rendering (call from UI thread only, after processPending)
     const std::deque<ChatMessage>& getMessages() const { return messages_; }
 
-    // Get recent N messages
-    std::vector<ChatMessage> getRecentMessages(size_t count) const;
-
     // Clear all messages
     void clear();
 
     // Get message count
     size_t size() const { return messages_.size(); }
 
-    // Check if there are new messages since last check
-    bool hasNewMessages() const { return hasNewMessages_; }
-    void clearNewMessageFlag() { hasNewMessages_ = false; }
+    // B502 (GitLab #177) DELETED getRecentMessages() (the copy-based "last N"
+    // reader; getMessages() is the one the panel uses), hasNewMessages() /
+    // clearNewMessageFlag() and their flag, and the free getChannelName():
+    // the "new messages" notification has no reader -- the panel follows the
+    // append sequence (appendedCount() / clearGeneration(), T462) instead --
+    // and the channel name the chat line is drawn in comes from
+    // ChatChannelName() (tests/test_chat_channel_names.cpp guards that there
+    // is ONE such table), while formatMessageForDisplay() has its own
+    // wording per channel.
 
     // T462 (board B505): the append sequence, for the chat panel's wrap cache
     // (include/client/graphics/ui/chat_wrap_cache.h). Every message
@@ -116,7 +120,6 @@ private:
     std::deque<ChatMessage> pendingMessages_;
     mutable std::mutex mutex_;
     size_t maxMessages_;
-    bool hasNewMessages_ = false;
     uint64_t appendedCount_ = 0;
     uint64_t clearGeneration_ = 0;
 };
