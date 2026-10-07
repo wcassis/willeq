@@ -2,16 +2,28 @@
 
 #include "client/graphics/impostor/impostor_batch_node.h"
 
+#include "client/core/gem_owner_census.h"
 #include "common/logging.h"
 
 #ifdef EQT_HAS_GLES2
 #include <GLES2/gl2.h>
+extern void gles2AdjustRawBufferBytes(void* driver, ptrdiff_t delta);
+extern void gles2SyncBufferBindings(void* driver);
 #endif
 
 namespace EQT {
 namespace Graphics {
 
 namespace {
+
+// docker/irrlicht-drm/COGLES2Shaders.h: the fixed attribute slots (EOGLES2VA_*)
+// the driver binds with glBindAttribLocation before every program link -- the
+// custom program's own aPosition/aTexCoord0 ride slots 0 and 3 of that.
+constexpr unsigned kAttrPosition = 0;
+constexpr unsigned kAttrNormal = 1;
+constexpr unsigned kAttrColor = 2;
+constexpr unsigned kAttrTexCoord0 = 3;
+constexpr unsigned kAttrTexCoord1 = 4;
 
 // The entity vertex shader's fog, evaluated the same way (zone_shader_sources_gles2.h,
 // VERTEX_SHADER_SRC): linear in the length of the clip-space position.
@@ -127,7 +139,24 @@ ImpostorBatchNode::ImpostorBatchNode(irr::scene::ISceneNode* parent, irr::scene:
     }
 }
 
-ImpostorBatchNode::~ImpostorBatchNode() { clearQuads(); }
+ImpostorBatchNode::~ImpostorBatchNode() {
+    releaseGpuBuffers();
+    clearQuads();
+}
+
+void ImpostorBatchNode::releaseGpuBuffers() {
+#ifdef EQT_HAS_GLES2
+    if (vertexVbo_) glDeleteBuffers(1, &vertexVbo_);
+    if (indexVbo_) glDeleteBuffers(1, &indexVbo_);
+    if (gpuDriver_) {
+        gles2AdjustRawBufferBytes(gpuDriver_,
+                                  -static_cast<ptrdiff_t>(vertexBytes_ + indexBytes_));
+    }
+#endif
+    vertexVbo_ = indexVbo_ = 0;
+    vertexBytes_ = indexBytes_ = 0;
+    gpuDriver_ = nullptr;
+}
 
 void ImpostorBatchNode::setDiagnosticMode(int mode) {
     diagMode_ = mode;
@@ -193,9 +222,20 @@ void ImpostorBatchNode::render() {
     drawCallsLastRender_ = 0;
     irr::video::IVideoDriver* driver = SceneManager->getVideoDriver();
     irr::scene::ICameraSceneNode* cam = SceneManager->getActiveCamera();
-    if (!driver || !cam || quadCount_ == 0) return;
+    if (!driver || !cam || quadCount_ == 0) {
+        if (const char* d = getenv("B972_DIAG")) fprintf(stderr, "[B972] render SKIP %s\n", d);
+        return;
+    }
     const irr::core::vector3df camPos = cam->getAbsolutePosition();
     driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+    if (getenv("B972_DIAG")) {
+        const float* pj = driver->getTransform(irr::video::ETS_PROJECTION).pointer();
+        const float* vw = driver->getTransform(irr::video::ETS_VIEW).pointer();
+        fprintf(stderr, "[B972] render quads=%d vbo=%d matType=%d prog=%d\n", (int)quadCount_,
+                (int)useVbo_, (int)material_.MaterialType, materialType_);
+        fprintf(stderr, "[B972] PROJ[0][0]=%g PROJ[1][1]=%g VIEW[0][3]=%g VIEW[1][3]=%g VIEW[2][3]=%g\n",
+                pj[0], pj[5], vw[12], vw[13], vw[14]);
+    }
     const irr::video::SColor white(255, 255, 255, 255);
 
     for (const auto& page : pages_) {
@@ -223,11 +263,96 @@ void ImpostorBatchNode::render() {
         }
         material_.setTexture(0, page.tex);
         driver->setMaterial(material_);
-        driver->drawVertexPrimitiveList(verts_.data(), static_cast<irr::u32>(verts_.size()), indices_.data(),
-                                        static_cast<irr::u32>(indices_.size() / 3), irr::video::EVT_STANDARD,
-                                        irr::scene::EPT_TRIANGLES, irr::video::EIT_16BIT);
+#ifdef EQT_HAS_GLES2
+        // B972 (#290): the bounded-VBO path replaces the client-array draw
+        // (whose 1 MiB Mesa stream slot and per-draw varying BO are what the
+        // crowd-tour census carries as unnamed GEM). Any other driver, or the
+        // pixel-identity baseline (setVboPathEnabled(false), test_b972),
+        // keeps the old path.
+        if (useVbo_ && driver->getDriverType() == irr::video::EDT_OGLES2) {
+            drawPageVbo(driver);
+        } else
+#endif
+        {
+            driver->drawVertexPrimitiveList(verts_.data(), static_cast<irr::u32>(verts_.size()),
+                                            indices_.data(), static_cast<irr::u32>(indices_.size() / 3),
+                                            irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES,
+                                            irr::video::EIT_16BIT);
+        }
         ++drawCallsLastRender_;
     }
+}
+
+// B972 (#290): one page's quads through the bounded VBO/EBO. The material
+// state (blend off / depth write on / the page texture on unit 0, the custom
+// program, its uniforms) is exactly what the preceding driver->setMaterial()
+// applied, so this only supplies the vertex sources and issues the draw.
+void ImpostorBatchNode::drawPageVbo(irr::video::IVideoDriver* driver) {
+#ifdef EQT_HAS_GLES2
+    if (verts_.empty() || indices_.empty()) return;
+    // The tag spans the whole run: the glBufferData growth AND the per-page
+    // glBufferSubData uploads both allocate GEM storage (Lima's varying
+    // reuses the bounded BO on the partial write, but the attribution must
+    // still name them vbo:impostor, not leave them for the 1 MiB slot).
+    eqt::memory::GemTag gemTag("vbo:impostor");
+    gpuDriver_ = driver;
+    if (!vertexVbo_) glGenBuffers(1, &vertexVbo_);
+    if (!indexVbo_) glGenBuffers(1, &indexVbo_);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexVbo_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexVbo_);
+    // One slack vertex/index keeps every subdata write strictly smaller than
+    // the allocation (B975): a whole-resource write is what renames a fresh
+    // BO; a partial write reuses the bounded storage.
+    const size_t neededVerts =
+        verts_.size() * sizeof(irr::video::S3DVertex) + sizeof(irr::video::S3DVertex);
+    const size_t neededIdx =
+        indices_.size() * sizeof(irr::u16) + sizeof(irr::u16);
+    if (neededVerts > vertexBytes_) {
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(neededVerts), nullptr,
+                     GL_DYNAMIC_DRAW);
+        gles2AdjustRawBufferBytes(gpuDriver_, static_cast<ptrdiff_t>(neededVerts) - vertexBytes_);
+        vertexBytes_ = neededVerts;
+    }
+    if (neededIdx > indexBytes_) {
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(neededIdx), nullptr,
+                     GL_DYNAMIC_DRAW);
+        gles2AdjustRawBufferBytes(gpuDriver_, static_cast<ptrdiff_t>(neededIdx) - indexBytes_);
+        indexBytes_ = neededIdx;
+    }
+    glBufferSubData(GL_ARRAY_BUFFER, 0,
+                    static_cast<GLsizeiptr>(verts_.size() * sizeof(irr::video::S3DVertex)),
+                    verts_.data());
+    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0,
+                    static_cast<GLsizeiptr>(indices_.size() * sizeof(irr::u16)), indices_.data());
+
+    const GLsizei stride = sizeof(irr::video::S3DVertex);
+    glVertexAttribPointer(kAttrPosition, 3, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<const GLvoid*>(0));
+    glEnableVertexAttribArray(kAttrPosition);
+    glVertexAttribPointer(kAttrNormal, 3, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<const GLvoid*>(12));
+    glEnableVertexAttribArray(kAttrNormal);
+    glVertexAttribPointer(kAttrColor, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride,
+                          reinterpret_cast<const GLvoid*>(24));
+    glEnableVertexAttribArray(kAttrColor);
+    glVertexAttribPointer(kAttrTexCoord0, 2, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<const GLvoid*>(28));
+    glEnableVertexAttribArray(kAttrTexCoord0);
+    glDisableVertexAttribArray(kAttrTexCoord1);
+
+    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices_.size()), GL_UNSIGNED_SHORT,
+                   reinterpret_cast<const GLvoid*>(0));
+
+    // The client-array fallbacks below this draw skip a bind their state_
+    // cache says is a no-op, so re-read the real bindings: the GL binds are
+    // left on the VBO/EBO by design, and a later 2D client-array draw must
+    // not sample through them.
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    gles2SyncBufferBindings(driver);
+#else
+    (void)driver;
+#endif
 }
 
 }  // namespace Graphics

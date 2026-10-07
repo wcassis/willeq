@@ -2,10 +2,15 @@
 
 #include "client/graphics/environment/unified_particle_renderer.h"
 #include "client/graphics/environment/spell_sprite_atlas.h"
+#include "client/core/gem_owner_census.h"  // B972: GemTag for the VBO's census row
 #include "common/logging.h"
-#include "client/core/gem_owner_census.h"  // B962
 #include <cstring>
 #include <chrono>
+#include <cstddef>
+
+// The driver's raw-GL accounting seams (docker/irrlicht-drm/COpenGLES2Driver.cpp).
+extern void gles2AdjustRawBufferBytes(void* driver, ptrdiff_t delta);
+extern void gles2SyncBufferBindings(void* driver);
 
 // GLES2 spec constants — fallback defines for older headers
 #ifndef GL_BLEND_SRC_RGB
@@ -136,6 +141,13 @@ UnifiedParticleRenderer::~UnifiedParticleRenderer() {
         glDeleteTextures(1, &opaqueAlphaFallback_);
         opaqueAlphaFallback_ = 0;
     }
+    if (vertexVbo_ != 0) {             // B972
+        glDeleteBuffers(1, &vertexVbo_);
+        if (driver_ && vertexVboBytes_ != 0)
+            gles2AdjustRawBufferBytes(driver_, -static_cast<ptrdiff_t>(vertexVboBytes_));
+        vertexVbo_ = 0;
+        vertexVboBytes_ = 0;
+    }
 }
 
 GLuint UnifiedParticleRenderer::compileShader(GLenum type, const char* source) {
@@ -198,7 +210,8 @@ GLuint UnifiedParticleRenderer::linkProgram(GLuint vs, GLuint fs) {
     return prog;
 }
 
-bool UnifiedParticleRenderer::init() {
+bool UnifiedParticleRenderer::init(irr::video::IVideoDriver* driver) {
+    driver_ = driver;
     // Compile vertex shader
     GLuint vs = compileShader(GL_VERTEX_SHADER, POINT_SPRITE_VS);
     if (vs == 0) {
@@ -268,6 +281,16 @@ bool UnifiedParticleRenderer::init() {
     alphaVerts_.reserve(256);
     spriteAdditiveVerts_.reserve(1024);
     spriteAlphaVerts_.reserve(256);
+
+    // B972 (#290): the bounded VBO the point batches stream into. Created
+    // empty and grown on first use in renderBatch(); the byte delta goes
+    // through the driver's logical tally so the draw's storage stops being
+    // UNNAMED GEM (the 1 MiB stream-upload slot the old client-array path
+    // warmed up stays freed with it).
+    {
+        eqt::memory::GemTag gemTag("vbo:particles");
+        glGenBuffers(1, &vertexVbo_);
+    }
 
     initialized_ = true;
     LOG_INFO(MOD_GRAPHICS, "UnifiedParticleRenderer: Initialized (max point size: {:.0f}, "
@@ -518,6 +541,11 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
 
     glBindBuffer(GL_ARRAY_BUFFER, savedVBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, savedEBO);
+    // B972: when the batches streamed through the VBO the GL bindings are
+    // correct again, but the driver's state_ cache still named the VBO it
+    // last drew with; a client-array fallback that skips its bind on a
+    // 0-cache would then sample it. Re-read the real bindings from GL.
+    if (driver_ && useVbo_) gles2SyncBufferBindings(driver_);
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(savedTexture1));
@@ -559,23 +587,68 @@ void UnifiedParticleRenderer::renderBatch(const std::vector<PointSpriteVertex>& 
     }
 
     const int stride = sizeof(PointSpriteVertex);
-    const char* base = reinterpret_cast<const char*>(verts.data());
 
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, base + 0);
+    if (useVbo_) {
+        // B972 (#290): stream the batch through the bounded reused VBO
+        // (B975's pattern). The allocation grows at high-water + one slack
+        // vertex, so every glBufferSubData stays strictly SMALLER than the
+        // allocation: Lima reuses the bounded storage (a whole-resource write
+        // is what renames a fresh BO even after glFinish), and the 1 MiB Mesa
+        // stream-upload slot the old client-array draw warmed up is never
+        // created. The named GEM BO (vbo:particles) replaces the one
+        // untagged slot the census carried for this draw.
+        eqt::memory::GemTag gemTag("vbo:particles");
+        const size_t needed =
+            verts.size() * static_cast<size_t>(stride) + sizeof(PointSpriteVertex);
+        glBindBuffer(GL_ARRAY_BUFFER, vertexVbo_);
+        if (needed > vertexVboBytes_) {
+            glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(needed), nullptr,
+                         GL_DYNAMIC_DRAW);
+            if (driver_)
+                gles2AdjustRawBufferBytes(driver_,
+                                          static_cast<ptrdiff_t>(needed) - vertexVboBytes_);
+            vertexVboBytes_ = needed;
+        }
+        glBufferSubData(GL_ARRAY_BUFFER, 0,
+                        static_cast<GLsizeiptr>(verts.size() * stride), verts.data());
 
-    glDisableVertexAttribArray(1);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
 
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, base + 12);
+        glDisableVertexAttribArray(1);
 
-    glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, base + 28);
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const GLvoid*>(12));
 
-    glEnableVertexAttribArray(4);
-    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, base + 36);
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const GLvoid*>(28));
 
-    glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(verts.size()));
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const GLvoid*>(36));
+
+        glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(verts.size()));
+    } else {
+        // The pre-B972 client-array path, kept for the pixel-identity seam
+        // (test_b972_particle_vbo renders both and demands a byte-identical
+        // framebuffer).
+        const char* base = reinterpret_cast<const char*>(verts.data());
+
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, base + 0);
+
+        glDisableVertexAttribArray(1);
+
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, base + 12);
+
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, base + 28);
+
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, base + 36);
+
+        glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(verts.size()));
+    }
 }
 
 } // namespace Environment

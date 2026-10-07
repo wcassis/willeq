@@ -2295,6 +2295,16 @@ size_t COpenGLES2Driver::getHWBufferCount() const
     return HWBufferMap.size();
 }
 
+void COpenGLES2Driver::syncBufferBindings()
+{
+    GLint vbo = 0;
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &vbo);
+    state_.boundVBO = (GLuint)vbo;
+    GLint ebo = 0;
+    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &ebo);
+    state_.boundEBO = (GLuint)ebo;
+}
+
 ITexture* COpenGLES2Driver::wrapExternalTexture(const io::path& name, GLuint glTexName,
                                                  const core::dimension2d<u32>& size,
                                                  u32 gpuBytes)
@@ -2512,6 +2522,11 @@ void gles2Prepare2DImageRun(void* driver, void* texture)
 void gles2AdjustRawBufferBytes(void* driver, ptrdiff_t delta)
 {
     static_cast<irr::video::COpenGLES2Driver*>(driver)->adjustRawBufferBytes(delta);
+}
+
+void gles2SyncBufferBindings(void* driver)
+{
+    static_cast<irr::video::COpenGLES2Driver*>(driver)->syncBufferBindings();
 }
 
 #endif // _IRR_COMPILE_WITH_OGLES2_

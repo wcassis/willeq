@@ -12,6 +12,12 @@
 #include <vector>
 #include <cstdint>
 
+namespace irr {
+namespace video {
+class IVideoDriver;
+}  // namespace video
+}  // namespace irr
+
 namespace EQT {
 namespace Graphics {
 namespace Environment {
@@ -26,8 +32,12 @@ public:
     UnifiedParticleRenderer& operator=(const UnifiedParticleRenderer&) = delete;
 
     // Compile the point sprite shader program and query GL limits.
+    // driver: the IVideoDriver that owns the GL context (null in the no-GLES2
+    // build's test doubles); the bounded VBO's bytes enter its logical tally
+    // through gles2AdjustRawBufferBytes, the same accounting the name-tag
+    // batch uses.
     // Returns true on success.
-    bool init();
+    bool init(irr::video::IVideoDriver* driver = nullptr);
 
     // Render a batch of alive particles.
     // particles: pointer to array of alive particles
@@ -65,6 +75,21 @@ public:
 
     bool isInitialized() const { return initialized_; }
 
+    // B972 (#290): the particle point draw is the one untagged raw-GL client
+    // array draw in the client -- the census names it only because the draw
+    // has no driver tag. This seam turns the bounded VBO that now backs the
+    // point draw on or off so a unit test can pin pixel identity against the
+    // old client-array path without a full scene. When on (the default) the
+    // point vertices are streamed through a reused VBO (B975's pattern: one
+    // whole-batch glBufferSubData that stays strictly smaller than the
+    // allocation), so the 1 MiB Mesa stream-upload slot the client-array path
+    // warms up is freed and the draw's bytes enter the driver's logical
+    // tally via gles2AdjustRawBufferBytes.
+    void setVboPathEnabled(bool enabled) { useVbo_ = enabled; }
+    bool isVboPathEnabled() const { return useVbo_; }
+    GLuint vertexBuffer() const { return vertexVbo_; }
+    size_t vertexBufferBytes() const { return vertexVboBytes_; }
+
 
 private:
     // Point sprite vertex layout: position(3f) + color(4f) + texcoord0(2f) + texcoord1(2f) = 11 floats = 44 bytes
@@ -93,6 +118,18 @@ private:
     GLuint opaqueAlphaFallback_ = 0;
     bool initialized_ = false;
     float maxPointSize_ = 64.0f;
+
+    // B972 (#290): the one bounded VBO every point batch is streamed into
+    // (B975's pattern). Sized high-water + one slack vertex so each
+    // glBufferSubData stays strictly smaller than the allocation.
+    GLuint vertexVbo_ = 0;
+    size_t vertexVboBytes_ = 0;
+    bool useVbo_ = true;
+    // The IVideoDriver that owns the GL context (init()); null in the
+    // no-GLES2 build's doubles. After a raw VBO draw the driver's state_
+    // cache still names the particle VBO as bound, so render() re-reads the
+    // real bindings through gles2SyncBufferBindings().
+    irr::video::IVideoDriver* driver_ = nullptr;
 
     // Uniform locations
     GLint uProj_ = -1;

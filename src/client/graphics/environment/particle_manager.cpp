@@ -773,7 +773,9 @@ bool ParticleManager::initUnifiedRenderer(int poolSize) {
 
     // Create and init the GLES2 renderer (self-contained, uses raw GL calls)
     unifiedRenderer_ = std::make_unique<UnifiedParticleRenderer>();
-    if (!unifiedRenderer_->init()) {
+    // B972: the driver's GL context, so the renderer's bounded VBO can enter
+    // the driver's logical buffer tally (gles2AdjustRawBufferBytes).
+    if (!unifiedRenderer_->init(driver_)) {
         LOG_WARN(MOD_GRAPHICS, "ParticleManager: Failed to init unified particle renderer");
         unifiedRenderer_.reset();
         return false;

@@ -11,6 +11,7 @@
 #include <GLES2/gl2.h>
 extern void gles2Prepare2DImageRun(void* driver, void* texture);
 extern void gles2AdjustRawBufferBytes(void* driver, ptrdiff_t delta);
+extern void gles2SyncBufferBindings(void* driver);
 #endif
 
 #include <algorithm>
@@ -344,6 +345,10 @@ size_t NameTagBatchNode::drawCompactRun(irr::video::IVideoDriver* driver) {
     // that state before a font fallback or any other renderer runs.
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    // B972: the driver's state_ cache still names the tag VBO/EBO as bound;
+    // a client-array fallback that skips its bind on a 0-cache would then
+    // draw through the stale buffer. Re-read the real bindings from GL.
+    gles2SyncBufferBindings(driver);
     return draws;
 #else
     return 0;

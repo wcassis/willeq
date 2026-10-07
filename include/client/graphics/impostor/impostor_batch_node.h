@@ -41,6 +41,14 @@ public:
     int drawCallsLastRender() const { return drawCallsLastRender_; }
     bool hasProgram() const { return materialType_ >= 0; }
 
+    // B972 (#290) seam for the pixel-identity test: when false, the page
+    // draws go through the pre-B972 driver->drawVertexPrimitiveList()
+    // client-array path. The default (true) streams each page's quads
+    // through the bounded VBO/EBO pair below.
+    void setVboPathEnabled(bool enabled) { useVbo_ = enabled; }
+    bool isVboPathEnabled() const { return useVbo_; }
+    size_t vboBytes() const { return vertexBytes_; }
+
     // Tools only (tools/hwcaps/impostor_pixel_compare): 0 = the shipped
     // program, 1 = the built-in alpha test (no un-premultiply, no fog: B952's
     // billboard), 2 = the shipped program with its fog off.
@@ -57,6 +65,15 @@ private:
     };
     void compileProgram();
 
+    // B972 (#290): free the bounded VBO/EBO and take their bytes out of the
+    // driver's logical tally (gles2AdjustRawBufferBytes), B975's pattern.
+    void releaseGpuBuffers();
+
+    // B972 (#290): stream the just-built verts_/indices_ of ONE page through
+    // the bounded VBO/EBO and draw them, under the material state
+    // driver->setMaterial() established. Gated on EQT_HAS_GLES2 in the cpp.
+    void drawPageVbo(irr::video::IVideoDriver* driver);
+
     irr::core::aabbox3d<irr::f32> box_;
     std::vector<PageQuads> pages_;
     std::vector<irr::scene::ISceneNode*> names_;
@@ -67,6 +84,17 @@ private:
     int quadCount_ = 0;
     int drawCallsLastRender_ = 0;
     int diagMode_ = 0;
+    // B972: one bounded VBO/EBO pair every page's quads stream into
+    // (B975's pattern: the allocation grows at high-water + one slack
+    // vertex, so each glBufferSubData stays strictly smaller than it).
+    // `unsigned` is the GL handle type (GLuint) without the GLES2 header --
+    // the same convention name_tag_batch.h uses for its own buffers.
+    unsigned vertexVbo_ = 0;
+    unsigned indexVbo_ = 0;
+    size_t vertexBytes_ = 0;
+    size_t indexBytes_ = 0;
+    irr::video::IVideoDriver* gpuDriver_ = nullptr;
+    bool useVbo_ = true;
 };
 
 }  // namespace Graphics
