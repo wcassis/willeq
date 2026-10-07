@@ -448,6 +448,14 @@ it without taking that measurement first.
 - **B976** (B) → issue #294. In timorous_f2, `--shader-debug 5` shows the
   bottom plane's normal as +Y on llvmpipe and G=0 on Lima, so the player light
   lights it on x86 only. It is nearly black in the gate frame. Found by B969.
+  **Root cause measured (2026-10-07, `refactor/B976/README.md`): not a normal
+  bug — the plane is TWO stacked real floor regions** (a +Y `sand3` top, region
+  10298, and a −Y `w1` underlayer, draw entries 158–163, whose near corners
+  clip behind the near plane) at a depth near-tie; the depth buffer picks a
+  different winner per platform (x86 D16 z-fights per row; x86 D24S8 → +Y;
+  Lima depth=24 → −Y, uniform), so the player light lights the plane on x86-D24S8
+  only. No production fix applied — any fix (per-region depth bias, or upstream
+  WLD data for the double floor) moves goldens and is blocked for Will's bless.
 
 - **B981** (B) → issue #300. `tests/goldens/manifest.json`'s
   `memory.textureCacheBytesLimit` is 67,108,864 (64 MiB) in all five gate zones;
