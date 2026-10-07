@@ -77,10 +77,10 @@ struct SkillData {
     // State flags
     bool is_activatable = false;        // Can be manually activated
     // B502 (GitLab #177) DELETED is_toggle and is_active: their only reader
-    // was the deleted SkillManager::toggleSkill()/isSkillActive() pair. The
-    // toggle-skill set (Hide 29, Sneak 42, Meditate 31) is still known to
-    // initializeSkillData() by id if a toggle UI is ever wired -- it goes
-    // through activateSkill(), not a second field pair.
+    // was the deleted SkillManager::toggleSkill()/isSkillActive() pair, and
+    // the initializeSkillData() cases that set is_toggle (Hide 29, Sneak 42,
+    // Meditate 31) went with them -- nothing in code names that set now. A
+    // future toggle UI goes through activateSkill(), not a second field pair.
     // T440 (board B416): there is NO usable_while_sitting here, and adding one
     // back needs a measured refusal, not a guess -- the same bar T353 set for
     // endurance_cost and T325 for requires_combat.
@@ -285,7 +285,7 @@ inline void initializeSkillData(SkillData& skill, uint8_t skill_id) {
 
         // B502 (GitLab #177): the toggle-skills cases (Hide 29, Sneak 42,
         // Meditate 31) set is_toggle, which went with the deleted
-        // toggleSkill() -- the ids stay on the list for a future toggle UI.
+        // toggleSkill() -- the ids are recorded only in this comment now.
 
         default:
             break;

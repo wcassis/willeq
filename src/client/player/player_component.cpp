@@ -44,9 +44,11 @@
 // ============================================================================
 // B502 (GitLab #177) DELETED PlayerComponent::PerformEmote(): a second,
 // local-STOP-gated emote emitter with ZERO callers tree-wide. The README's
-// emote row is served by the direct route -- /wave /dance /cheer /laugh and
-// the hotbar Emote slots call Entities().SendAnimation() (through
-// EqActionHandler::sendAnimation), never through this. The emote-STOP rule
+// emote row is served by the direct route -- /wave /dance /cheer /laugh call
+// Entities().SendAnimation() through EqActionHandler::sendAnimation, and a
+// hotbar Emote slot replays its command TEXT through Chat().ProcessChatInput
+// (reaching sendAnimation only when that text is one of those shortcuts);
+// neither ever went through this. The emote-STOP rule
 // (kneel/death stops movement) belongs to whoever rewires it; nothing today
 // sends a kneel or death animation for the local player (they arrive from
 // the server via OP_Animation, zone_entry.cpp).
