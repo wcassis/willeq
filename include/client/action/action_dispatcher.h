@@ -901,9 +901,10 @@ public:
     ActionResult quit();
 
     /**
-     * Sit down and start the 30-second camp-out timer.
+     * Sit down and start the 30-second camp-out timer. B1005: `args` is the
+     * mode word -- "" (Character Select), "desktop" (exit), "server".
      */
-    ActionResult camp();
+    ActionResult camp(const std::string& args = std::string());
 
     /**
      * Show or set the client debug log level (0-6).

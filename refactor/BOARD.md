@@ -7965,7 +7965,7 @@ client uses every field.
   the player, and its callers cannot tell -- `findGroundZ()`
   (`src/client/graphics/player/renderer_player_collision.cpp:73`) treats the
   answer as a floor, and the game-side `GetBestZ` -> `FixZ`
-  (`src/client/zone/zone_component.cpp:1106`) writes it into the player
+  (`src/client/zone/zone_component.cpp:1091`) writes it into the player
   position. It is off the live collision path today (the BSP path wins
   whenever `regionWorldTriangles` is non-empty, which is every real zone) and
   `FixZ` is gated by `abs_diff < 20.0f`, which is why it is not currently

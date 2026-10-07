@@ -226,8 +226,8 @@ never a defect).
 # Headless (no graphics)
 ./build/bin/willeq -c willeq.json --no-graphics
 
-# VNC (headless servers). VNC_PORT=5950 in the script; its header comment still
-# says 5999 — the variable is authoritative (T215)
+# VNC (headless servers). VNC_PORT=5950 in the script; its header says 5999 --
+# the variable wins (T215)
 ./scripts/start-with-vnc.sh -c willeq.json          # vnc://localhost:5950
 
 # VNC + audio streaming: VNC_PORT=5910, AUDIO_PORT=8085
@@ -533,8 +533,8 @@ may be returned from a scenario run):
 | 2 | timeout — zoned in, but no verdict inside `--timeout` (**also what an unfinished run reports**, so an external `/quit`, a SIGTERM or a crash can never masquerade as success) |
 | 3 | could-not-start — never reached a zone (server down, bad login, unknown scenario name) |
 
-**Outside `--scenario`** a run returns 0 for a clean `/q`, `/camp`, window close
-or SIGTERM, and **4** (`kClientFatalExit`) when it ended on a FATAL (loader
+**Outside `--scenario`** a run returns 0 for a clean `/q`, headless `/camp`,
+`/camp desktop` (B1005), window close or SIGTERM, and **4** (`kClientFatalExit`) when it ended on a FATAL (loader
 thread or `LoadZoneSources()`, `fatal_exit.h`; B918 — 1 stays bad arguments /
 failed initialize); a `--scenario` run
 never leaves 0..3 (a FATAL before a verdict reads as 2).

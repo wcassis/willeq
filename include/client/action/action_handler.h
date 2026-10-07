@@ -461,7 +461,7 @@ public:
     virtual void warpToEntity(uint16_t spawnId) = 0;
     virtual void showOrSetZoning(const std::string& args) = 0;
     virtual void requestQuit() = 0;
-    virtual void campNow() = 0;
+    virtual void campNow(const std::string& args) = 0;  // B1005: the /camp mode word
     virtual void debugLevel(const std::string& args) = 0;
     virtual void perfReport() = 0;
     virtual void timeOfDay(const std::string& args) = 0;

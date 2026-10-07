@@ -8,6 +8,7 @@
 #include "client/eq.h"
 #include "client/login_world/char_create_data.h"
 #include "client/mode/automated_mode.h"
+#include "client/player/player_component.h"
 #include "client/scenario/scenario_world_app.h"
 #include "client/scenario/scenarios.h"
 #include "common/logging.h"
@@ -90,6 +91,14 @@ bool Application::initScenario(const ApplicationConfig& config) {
     // contract for "stop": it sets m_quitRequested, the game thread's
     // isQuitRequested() check unwinds the run normally, and nothing calls
     // exit() from inside a tick.
+    // B1005 (#324): headless, /camp exits (no screen). camp_to_charselect
+    // plays the screen's part (ApplicationScenarioWorld::EnterWorldAs, the
+    // body the screen's Enter World posts to), so its run gets the return.
+    if (m_scenarioRunner->WantsCampToCharacterSelect()) {
+        m_eqClient->Player().SetCampReturnsToCharacterSelect(true);
+        LOG_INFO(MOD_SCENARIO, "scenario lane: /camp returns to character select on this run");
+    }
+
     scenario::ScenarioRunner* runner = m_scenarioRunner.get();
     automated->setAutomationCallback([runner](float deltaTime) {
         return runner->Tick(deltaTime);

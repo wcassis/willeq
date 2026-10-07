@@ -21,6 +21,7 @@
 #include "common/logging.h"
 #include "common/performance_metrics.h"
 #include "client/core/memory_ledger.h"
+#include "client/scenario/scenario_runner.h"  // B1005: ScenarioRunner::Conclude
 
 #include <filesystem>
 #include <fstream>
@@ -1049,6 +1050,13 @@ void Application::gameThreadLoop() {
         } catch (const std::exception& e) {
             LOG_ERROR(MOD_MAIN, "Exception in game thread: {}", e.what());
         }
+    }
+
+    // B1005 (#324): a scenario whose subject is the client stopping
+    // (camp_desktop) gets its one last look, on this thread, before anything
+    // is torn down. Every other scenario stays unfinished (exit 2).
+    if (m_scenarioRunner) {
+        m_scenarioRunner->Conclude();
     }
 
     LOG_INFO(MOD_MAIN, "Game thread stopped");

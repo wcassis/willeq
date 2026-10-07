@@ -370,6 +370,9 @@ public:
      *  (login_world/character_select.h, CharacterSelectScreenWanted). Public
      *  so the configured-character negative is pinned on THIS entry point. */
     static bool characterSelectWanted(const ApplicationConfig& config);
+    /** B1005 (#324): whether /camp lands on that screen on this run
+     *  (login_world/character_select.h, CampReturnsToCharacterSelect). */
+    static bool campReturnsToCharacterSelect(const ApplicationConfig& config);
 
     /**
      * B918 (issue #237): true when the run ended because of a FATAL that

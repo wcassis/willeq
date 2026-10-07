@@ -599,7 +599,7 @@ void CommandProcessor::registerMovementAndUtilityCommands() {
     }, [this](const std::string& args) { return cmdQuit(args); });
 
     registerCommand({
-        "camp", {}, "/camp", "Sit down and camp out (logout)", "Utility", false
+        "camp", {}, "/camp [desktop|server]", "Sit down and camp out: Character Select after 30 s (/camp desktop: exit)", "Utility", false
     }, [this](const std::string& args) { return cmdCamp(args); });
 
     registerCommand({

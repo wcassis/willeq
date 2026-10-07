@@ -60,6 +60,8 @@ void CharacterSelectService::tick(LoginWorldComponent& lw, CharacterSelectChanne
         return;
     }
     if (lw.CharacterListGeneration() == 0) return;   // no list yet: the loading screen stays
+    // B1005: back from /camp, the screen waits for world's FRESH list.
+    if (lw.AwaitingFreshCharacterList()) return;
 
     if (!strings_) {
         charcreate::CharCreateData data;

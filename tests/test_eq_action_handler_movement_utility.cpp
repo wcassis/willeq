@@ -33,6 +33,7 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/combat.h"
 #include "client/eq_action_handler.h"
+#include "client/player/player_component.h"
 #include "zone_stream_test_utils.h"
 
 using namespace zonetest;
@@ -154,15 +155,20 @@ TEST_F(EqActionHandlerMovementUtilityTest, Zoning_InvalidArg_PrintsUsage) {
 }
 
 // ---------------------------------------------------------------------------
-// campNow() -- sits, acks, starts the camp timer.
+// campNow() -- sits and starts the camp timer. B1005 (#324): its chat lines
+// are eqstr 12293/12684/12290 now, pinned byte-exact against the shipped
+// table in test_camp.cpp (this fixture opens no string table).
 // ---------------------------------------------------------------------------
 
-TEST_F(EqActionHandlerMovementUtilityTest, CampNow_SitsAndAcks) {
-    handler.campNow();
+TEST_F(EqActionHandlerMovementUtilityTest, CampNow_SitsAndStartsTheCamp) {
+    handler.campNow("");
 
-    auto msgs = DrainSystemMessages(bridge);
-    ASSERT_FALSE(msgs.empty());
-    EXPECT_NE(msgs[0].find("begun to camp"), std::string::npos);
+    EXPECT_TRUE(eq.IsCamping());
+    EXPECT_EQ(eq.Player().Camp().mode(), eqt::player::CampMode::CharacterSelect);
+    handler.campNow("");   // a second /camp abandons it (camp.tsv row 13)
+    EXPECT_FALSE(eq.IsCamping());
+    handler.campNow("desktop");
+    EXPECT_EQ(eq.Player().Camp().mode(), eqt::player::CampMode::Desktop);
 }
 
 // ---------------------------------------------------------------------------
