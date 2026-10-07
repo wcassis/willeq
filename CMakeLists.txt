@@ -645,6 +645,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_cursor.cpp  # B442b
         src/client/graphics/frame/renderer_frame_trade.cpp  # B896
         src/client/graphics/frame/renderer_frame_tips.cpp  # B834
+        src/client/graphics/frame/renderer_frame_tooltips.cpp  # B1004
         src/client/graphics/frame/renderer_frame_entity_build.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
@@ -783,6 +784,8 @@ IF(EQT_GRAPHICS)
         # B896 (#212): the trade window and the NPC give window, and their input.
         src/client/graphics/ui/trade_panel.cpp
         src/client/graphics/ui/trade_input.cpp
+        # B1004 (#323): the Alt-held item-name labels and the hover tooltip.
+        src/client/graphics/ui/item_tooltip.cpp
         src/client/graphics/ui/esc_window_stack.cpp
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.

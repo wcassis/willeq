@@ -332,31 +332,32 @@
 331 if (staticUIInput_) {
 332 renderQuantityWindow(uiRenderer_->layer(), uiLayout_, staticUIInput_->quantityWindow());
 333 renderConfirmationDialog(uiRenderer_->layer(), uiLayout_, staticUIInput_->confirmationDialog());
-334 renderCursorAttachment(uiRenderer_->layer(), uiLayout_, cursorState_);
-335 uiRenderer_->endFrame();
-336 frameTimings_.staticUI = measureSection();
-337 ctx_.Overlays().drawZoneLineBoxLabels();
-338 frameTimings_.zoneLineOverlay = measureSection();
-339 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
-340 ctx_.Rdp().captureFrameForRDP();
-341 if (owner_.softwareCursorTexture_) {
-342 auto* cursor = ctx_.device->getCursorControl();
-343 if (cursor && cursor->isVisible()) {
-344 auto pos = cursor->getPosition();
-345 irr::core::position2di destPos(pos.X, pos.Y);
-346 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
-347 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
-348 nullptr, irr::video::SColor(255, 255, 255, 255), true);
-349 if (pendingScreenshot_) {
-350 pendingScreenshot_ = false;
-351 owner_.saveScreenshot("screenshot.png");
-352 frameTimings_.postRender = measureSection();
-353 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
-354 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
-355 ctx_.driver->endScene();
-356 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
-357 eqtGPUPhaseCollectResults();
-358 frameTimings_.endScene = measureSection();
-359 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
-360 FlushThreadLog();
-361 return true;
+334 renderItemTooltipLayer();
+335 renderCursorAttachment(uiRenderer_->layer(), uiLayout_, cursorState_);
+336 uiRenderer_->endFrame();
+337 frameTimings_.staticUI = measureSection();
+338 ctx_.Overlays().drawZoneLineBoxLabels();
+339 frameTimings_.zoneLineOverlay = measureSection();
+340 eqtGPUPhaseEnd(2 /* GPUSyncPhase::ParticlesUI */);
+341 ctx_.Rdp().captureFrameForRDP();
+342 if (owner_.softwareCursorTexture_) {
+343 auto* cursor = ctx_.device->getCursorControl();
+344 if (cursor && cursor->isVisible()) {
+345 auto pos = cursor->getPosition();
+346 irr::core::position2di destPos(pos.X, pos.Y);
+347 irr::core::rect<irr::s32> srcRect(0, 0, 8, 10);
+348 ctx_.driver->draw2DImage(owner_.softwareCursorTexture_, destPos, srcRect,
+349 nullptr, irr::video::SColor(255, 255, 255, 255), true);
+350 if (pendingScreenshot_) {
+351 pendingScreenshot_ = false;
+352 owner_.saveScreenshot("screenshot.png");
+353 frameTimings_.postRender = measureSection();
+354 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 11: endScene");
+355 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
+356 ctx_.driver->endScene();
+357 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
+358 eqtGPUPhaseCollectResults();
+359 frameTimings_.endScene = measureSection();
+360 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
+361 FlushThreadLog();
+362 return true;

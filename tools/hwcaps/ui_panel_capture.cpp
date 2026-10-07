@@ -54,6 +54,9 @@
 #include "client/graphics/ui/container_panel.h"
 #include "client/graphics/ui/friends_panel.h"   // B897
 #include "client/graphics/ui/trade_panel.h"     // B896
+#include "client/graphics/ui/item_tooltip.h"    // B1004
+#include "client/graphics/ui/container_layout.h"
+#include "client/graphics/text_batch.h"
 #include "client/graphics/ui/tip_window.h"      // B834
 #include <fstream>
 #include <sstream>
@@ -94,6 +97,30 @@ using namespace EQT::Graphics;
 extern void gles2SetAlphaCompanion(void* mainTexture, void* companionTexture);
 
 namespace {
+
+// B1004: one tooltip frame over the given windows, past the hover dwell, drawn
+// as renderStaticUI() draws it -- its own layer on top.
+irr::s32 captureTextWidth(const std::string& t, const void* ctx) {
+    return ctx ? static_cast<const TextBatch*>(ctx)->getTextWidth(t) : 0;
+}
+void tooltipCapture(UIRenderer& u, const UILayout& l, const InventoryPanelState* inv,
+                    const BankPanelState* bank, const ContainerWindowsState* bags,
+                    int mx, int my, bool alt) {
+    ItemTooltipScene scene;
+    scene.layout = &l;
+    scene.inventory = inv;
+    scene.bank = bank;
+    scene.containers = bags;
+    scene.mouseX = mx;
+    scene.mouseY = my;
+    scene.altHeld = alt;
+    const TextBatch* tb = u.getTextBatch();
+    const irr::s32 lh = tb ? tb->getLineHeight() : 14;
+    ItemTooltipState st;
+    updateItemTooltips(st, scene, 0, &captureTextWidth, tb, lh);
+    const ItemTooltipFrame f = updateItemTooltips(st, scene, ItemTooltip::kHoverDelayMs, &captureTextWidth, tb, lh);
+    renderItemTooltips(u.layer(), f);
+}
 
 // A 16px checkerboard, drawn IMMEDIATELY (before any UIRenderer quad is
 // flushed) so every UI pixel with alpha < 255 shows it through.
@@ -953,6 +980,32 @@ std::vector<PanelCapture> buildCaptureList() {
             renderTradeWindow(u.layer(), l, s.tradeA); }},
         {"give_npc", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderTradeWindow(u.layer(), l, s.give); }},
+        // B1004 (#323): the item-name tooltips (review/UIGAP-ORACLE/323/).
+        // `tooltip_alt_bag`: Alt held, pointer on the Backpack's label -- every
+        // item named at once, the right column half a slot lower.
+        // `tooltip_alt_bank_from_inventory`: the bank open, Alt held with the
+        // pointer on the INVENTORY (row 30) -- the bank's labels.
+        // `tooltip_hover_inventory`: the hover tooltip over general slot 1
+        // after the dwell, its bottom edge on the pointer.
+        {"tooltip_alt_bag", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            ContainerWindowsState one;
+            one.windows[1] = s.containers.windows[1];
+            renderContainerWindows(u.layer(), l, one);
+            const auto c = ContainerLayout::labelRect(l);
+            tooltipCapture(u, l, nullptr, nullptr, &one,
+                           (c.UpperLeftCorner.X + c.LowerRightCorner.X) / 2,
+                           (c.UpperLeftCorner.Y + c.LowerRightCorner.Y) / 2, true); }},
+        {"tooltip_alt_bank_from_inventory", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            renderBankWindow(u.layer(), l, s.bank);
+            const auto r = InventoryLayout::slotRect(l, 22 + 1);
+            tooltipCapture(u, l, &s.inventory, &s.bank, nullptr, r.UpperLeftCorner.X - 40,
+                           r.UpperLeftCorner.Y + 10, true); }},
+        {"tooltip_hover_inventory", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
+            renderInventoryPopup(u.layer(), l, s.inventory);
+            const auto r = InventoryLayout::slotRect(l, 22 + 1);
+            tooltipCapture(u, l, &s.inventory, nullptr, nullptr, r.UpperLeftCorner.X + 16,
+                           r.UpperLeftCorner.Y + 16, false); }},
         // B834 (#202): EQUI_TipWnd.xml, both kinds.
         {"tip_inventory", [](UIRenderer& u, const UILayout& l, PanelStates& s) {
             renderTipWindow(u.layer(), l, s.tipInventory); }},

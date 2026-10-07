@@ -26,7 +26,7 @@ current defect list; where the two disagree, the board wins.
 - WASD movement with collision detection and server sync
 - Chat (all channels), targeting (click, Tab cycle, F-keys), auto-attack
 - Spell memorization, casting, and gem management
-- Inventory window with equipment slots, bags, the official client's own item icons (T430) and tooltips; items are picked up and put down click-to-cursor like the official client (left click picks up / places / swaps / stacks, a stack opens the Quantity window, Shift = whole stack, Ctrl = one, right or Alt+left click shows the item — B442, #151, rules measured on the official client), or with `/pickup`, `/putdown`, `/cursor`, `/coin` and `/equip`
+- Inventory window with equipment slots, bags, the official client's own item icons (T430) and item-name tooltips (B1004, #323: hold Alt over a bag or the bank to name every item in it, as measured on the official client, or rest the pointer on an item); items are picked up and put down click-to-cursor like the official client (left click picks up / places / swaps / stacks, a stack opens the Quantity window, Shift = whole stack, Ctrl = one, right or Alt+left click shows the item — B442, #151, rules measured on the official client), or with `/pickup`, `/putdown`, `/cursor`, `/coin` and `/equip`
 - Vendor buy/sell and banking through the oracle's own merchant and bank windows (T436), or by slash command; player-to-player trading and NPC hand-ins through the oracle's trade and give windows (B896), or by slash command
 - Group system with HP/mana bars, invite/accept/disband/decline
 - Raid commands (invite, accept, leave, remove, leader, loot type, looters, lock, group)
@@ -157,7 +157,7 @@ Legend: Done | Partial | Not Implemented
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Chat panel | Done | Scrollable, filterable |
-| Inventory popup | Done | Equipment slots, item icons (T430), tooltips. Click-to-cursor (B442): left click picks up / places, right click shows the item display while held (Alt+left keeps it), right click on a bag toggles its window, a purse row opens the Quantity window for coin, Destroy asks before destroying the held item (B442b) |
+| Inventory popup | Done | Equipment slots, item icons (T430), item-name tooltips (B1004, #323: Alt held over a bag or the bank labels every item in it -- measured, `review/UIGAP-ORACLE/323/`; a pointer resting on any item slot shows its name, the client's own documented rule, which the oracle rig never displayed). Click-to-cursor (B442): left click picks up / places, right click shows the item display while held (Alt+left keeps it), right click on a bag toggles its window, a purse row opens the Quantity window for coin, Destroy asks before destroying the held item (B442b) |
 | Player status | Done | HP/mana/stamina, stats |
 | Target info | Done | |
 | Spell book popup | Done | Searchable, click-to-memorise (no drag; T444) |
@@ -184,7 +184,7 @@ Legend: Done | Partial | Not Implemented
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Item display | Done | Icons and names |
-| Item stats | Done | Tooltip |
+| Item stats | Done | The item display window: right click held, or Alt+left to keep it (B442b, measured). The tooltips (B1004) carry the name only |
 | Move items | Partial | Click-to-cursor (B442) plus `/equip` by slot or name and `/pickup` / `/putdown`. Not drag and drop: the official client is click-to-cursor (T444 corrected "Drag and drop" here) |
 | Container bags | Partial | B899: `/bag <general slot>` opens/closes a bag's window (`EQUI_Container.xml`, several at once, stacked at one position as measured), contents drawn with icons, cells click-to-cursor (B442). Right-click on a bag in a general slot toggles its window, as the official client does (B442b, #151 rows 19-21) |
 | Equipment slots | Done | With tint colors |
