@@ -1800,3 +1800,23 @@ with `-o ci.skip`; `visual_gate` is skipped in every executor slot (no
 fails two host-specific gate rows (iceclad p95 CPU, iceclad allocator slack
 37 % vs 35 %), so a local gate is green when nothing else fails. No pipeline
 ran on `fable` for this pass; the ARM/Pi build for its tip is a manual run.
+
+**Mechanism before ruling, and a Lima cost sheet (2026-10-07, B1006 #327,
+B1007 #328).** The B972-FT finding (MR !94: a ~30 % Pi frame-time regression
+from ~30 KB of per-frame upload) reached Will as a three-way ruling request
+with no mechanism; the dev, QA and review roles had each verified the numbers
+and none had asked why. Read against the Mesa source, the cause is one line:
+a partial `glBufferSubData` into a buffer the current frame's job references
+makes `lima_transfer_map` flush that job and block in `lima_bo_wait`, once per
+write, independent of bytes — the impostor path rewrote one shared VBO per
+page. Will agreed to three process changes: (1) `docs/reference/lima_cost_sheet.md`
+holds the driver facts with their Mesa function and measuring card, so cards
+stop re-deriving them; (2) CLAUDE.md's process requirements now require a Pi
+perf or memory finding to name its mechanism and the prediction it makes,
+checked against the data in hand, before it asks for a ruling, and reviewers
+re-derive the mechanism rather than only the citations; (3) the census shim
+counts Lima job submits, blocking waits and frames, and the Pi sweep carries
+`gem_pp_jobs_per_frame` / `gem_wait_ms_per_frame` columns plus a
+`gem_pp_jobs_over_bound` guard row, so this class of regression is visible in
+one run. The willeq-solo-orchestrator cron prompt is Will's to edit; the
+sentence proposed for it is on issue #328.

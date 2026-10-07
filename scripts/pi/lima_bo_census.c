@@ -42,6 +42,18 @@
 //    scripts/pi/lima_bo_census.py --owners folds the blocks into a per-owner
 //    table.
 //
+// 3. B1006 (GitLab #327): the JOB STREAM, always on, appended to every P line
+//    of mode 2: "<frames> <gp_submits> <pp_submits> <waits> <wait_ns>" --
+//    eglSwapBuffers calls, DRM_IOCTL_LIMA_GEM_SUBMIT per pipe, and the
+//    DRM_IOCTL_LIMA_GEM_WAIT calls with a non-zero timeout (Mesa's BO cache
+//    polls with timeout 0; a partial glBufferSubData into a buffer the
+//    current job references flushes that job and waits with OS_TIMEOUT_INFINITE,
+//    lima_resource.c lima_transfer_map -- the B972-FT frame-time regression,
+//    invisible to every other row). PP submits per frame above 1 means a draw
+//    path split the frame's render job; gem_owner_table.py job_rates() and
+//    rendered_zone_summarize.py turn the deltas between two points into
+//    per-frame rates and a guard row.
+//
 // Exported API (resolved by the client with dlsym(RTLD_DEFAULT, ...); absent
 // shim = every call site is a null check):
 //   void willeq_gem_tag_push(const char* tag);
@@ -77,6 +89,15 @@ struct prime_handle { uint32_t handle, flags; int32_t fd; };
 #define IOCTL_LIMA_GEM_INFO   B955_IOWR(0x42, sizeof(struct lima_gem_info))
 #define IOCTL_GEM_CLOSE       B955_IOW(0x09, sizeof(struct gem_close))
 #define IOCTL_PRIME_FD_TO_HANDLE B955_IOWR(0x2e, sizeof(struct prime_handle))
+// B1006: drm_lima_gem_submit is 48 bytes (ctx, pipe, nr_bos, frame_size, bos,
+// frame, flags, out_sync, in_sync[2]); only the two leading fields are read.
+// drm_lima_gem_wait is 16 (handle, op, timeout_ns). Both are _IOW.
+struct lima_gem_submit_head { uint32_t ctx, pipe; };
+struct lima_gem_wait { uint32_t handle, op; int64_t timeout_ns; };
+#define IOCTL_LIMA_GEM_SUBMIT B955_IOW(0x43, 48)
+#define IOCTL_LIMA_GEM_WAIT   B955_IOW(0x44, 16)
+#define LIMA_PIPE_GP_ID 0u
+#define LIMA_PIPE_PP_ID 1u
 
 static int (*real_ioctl)(int, unsigned long, ...);
 static int (*real_ioctl_time64)(int, unsigned long, ...);
@@ -85,6 +106,14 @@ static void* (*real_mmap)(void*, size_t, int, int, int, long);
 static int (*real_munmap)(void*, size_t);
 static int logfd = -1;
 static int dumpfd = -1;
+// B1006: the job-stream counters (mode 3). Counts are relaxed atomics from
+// the render thread; the wait clock accumulates under g_lock (a wait is rare
+// and already blocking, so the lock costs nothing it did not cost already).
+static uint32_t g_frames;                 // eglSwapBuffers calls
+static uint32_t g_gp_submits, g_pp_submits;
+static uint32_t g_waits;                  // GEM_WAIT with timeout_ns != 0
+static uint64_t g_wait_ns;                // wall time inside those waits
+static unsigned int (*real_eglSwapBuffers)(void*, void*);
 
 static double mono_now(void) {
     struct timespec ts;
@@ -345,9 +374,14 @@ __attribute__((visibility("default"))) void willeq_gem_dump(const char* point) {
     for (uint32_t i = 0; i < TABLE_SIZE; ++i) {
         if (g_table[i].used) { ++live; bytes += g_table[i].size; }
     }
-    used += (size_t)snprintf(buf + used, sizeof(buf) - used, "P\t%s\t%.6f\t%u\t%llu\t%llu\t%llu\t%d\n",
+    used += (size_t)snprintf(buf + used, sizeof(buf) - used,
+                             "P\t%s\t%.6f\t%u\t%llu\t%llu\t%llu\t%d\t%u\t%u\t%u\t%u\t%llu\n",
                              point ? point : "?", mono_now(), live, (unsigned long long)bytes,
-                             (unsigned long long)g_created, (unsigned long long)g_closed, g_overflow);
+                             (unsigned long long)g_created, (unsigned long long)g_closed, g_overflow,
+                             __atomic_load_n(&g_frames, __ATOMIC_RELAXED),
+                             __atomic_load_n(&g_gp_submits, __ATOMIC_RELAXED),
+                             __atomic_load_n(&g_pp_submits, __ATOMIC_RELAXED),
+                             g_waits, (unsigned long long)g_wait_ns);
     for (uint32_t i = 0; i < TABLE_SIZE; ++i) {
         const struct bo_ent* e = &g_table[i];
         if (!e->used) continue;
@@ -399,7 +433,33 @@ static void observe_ioctl(int fd, unsigned long req, void* arg) {
         table_close(fd, h);
     } else if (req == IOCTL_PRIME_FD_TO_HANDLE) {
         logline("I %u fd%d\n", ((const struct prime_handle*)arg)->handle, fd);
+    } else if (req == IOCTL_LIMA_GEM_SUBMIT) {
+        // B1006: one render job per pipe per submit. More than one PP submit
+        // per frame means something split the frame's job.
+        const uint32_t pipe = ((const struct lima_gem_submit_head*)arg)->pipe;
+        __atomic_fetch_add(pipe == LIMA_PIPE_PP_ID ? &g_pp_submits : &g_gp_submits, 1u,
+                           __ATOMIC_RELAXED);
     }
+}
+
+// B1006: the one call that can block the render thread on the GPU. A poll
+// (timeout 0, Mesa's BO cache) is not a wait; anything else is timed.
+static int observed_ioctl(int (*fn)(int, unsigned long, ...), int fd, unsigned long req, void* arg) {
+    if (req == IOCTL_LIMA_GEM_WAIT && arg && ((const struct lima_gem_wait*)arg)->timeout_ns != 0) {
+        struct timespec t0, t1;
+        clock_gettime(CLOCK_MONOTONIC, &t0);
+        int r = fn(fd, req, arg);
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        const int64_t ns = (int64_t)(t1.tv_sec - t0.tv_sec) * 1000000000ll + (t1.tv_nsec - t0.tv_nsec);
+        pthread_mutex_lock(&g_lock);
+        ++g_waits;
+        if (ns > 0) g_wait_ns += (uint64_t)ns;
+        pthread_mutex_unlock(&g_lock);
+        return r;
+    }
+    int r = fn(fd, req, arg);
+    if (r == 0 && arg) observe_ioctl(fd, req, arg);
+    return r;
 }
 
 // Both libc names: a 64-bit-time_t build (Ubuntu armhf, which libdrm is)
@@ -413,9 +473,7 @@ int shim_ioctl(int fd, unsigned long req, ...) {
     va_start(ap, req);
     void* arg = va_arg(ap, void*);
     va_end(ap);
-    int r = real_ioctl(fd, req, arg);
-    if (r == 0 && arg) observe_ioctl(fd, req, arg);
-    return r;
+    return observed_ioctl(real_ioctl, fd, req, arg);
 }
 
 int shim_ioctl_time64(int fd, unsigned long req, ...) {
@@ -423,9 +481,16 @@ int shim_ioctl_time64(int fd, unsigned long req, ...) {
     va_start(ap, req);
     void* arg = va_arg(ap, void*);
     va_end(ap);
-    int r = (real_ioctl_time64 ? real_ioctl_time64 : real_ioctl)(fd, req, arg);
-    if (r == 0 && arg) observe_ioctl(fd, req, arg);
-    return r;
+    return observed_ioctl(real_ioctl_time64 ? real_ioctl_time64 : real_ioctl, fd, req, arg);
+}
+
+// B1006: the frame counter. The client presents through Mesa's libEGL
+// (docker/irrlicht-drm/CIrrDeviceFB.cpp present()), once per frame.
+unsigned int eglSwapBuffers(void* dpy, void* surface) {
+    if (!real_eglSwapBuffers)
+        real_eglSwapBuffers = (unsigned int (*)(void*, void*))dlsym(RTLD_NEXT, "eglSwapBuffers");
+    __atomic_fetch_add(&g_frames, 1u, __ATOMIC_RELAXED);
+    return real_eglSwapBuffers ? real_eglSwapBuffers(dpy, surface) : 0u;
 }
 
 // Exported under the libc names with asm labels: on a 64-bit-off_t build
@@ -512,6 +577,16 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 3000; i += 2) CHECK(bo_find(7, handles[i]) == NULL);
     CHECK(bo_find(9, heap) && bo_find(9, heap)->heap == 1);
     CHECK(bo_find(9, mapped) && bo_find(9, mapped)->mapped == 1);
+    // 4. B1006: the job stream -- 4 frames, 2 GP + 3 PP submits, one timed
+    // wait and one poll (timeout 0, not a wait). The fake ioctl returns at once.
+    for (int i = 0; i < 4; ++i) eglSwapBuffers(NULL, NULL);
+    unsigned char submit[48] = {0};
+    for (int i = 0; i < 2; ++i) { ((struct lima_gem_submit_head*)submit)->pipe = LIMA_PIPE_GP_ID; shim_ioctl(7, IOCTL_LIMA_GEM_SUBMIT, submit); }
+    for (int i = 0; i < 3; ++i) { ((struct lima_gem_submit_head*)submit)->pipe = LIMA_PIPE_PP_ID; shim_ioctl_time64(7, IOCTL_LIMA_GEM_SUBMIT, submit); }
+    struct lima_gem_wait w = {1, 2, INT64_MAX};
+    shim_ioctl(7, IOCTL_LIMA_GEM_WAIT, &w);
+    struct lima_gem_wait poll = {1, 2, 0};
+    shim_ioctl_time64(7, IOCTL_LIMA_GEM_WAIT, &poll);
     willeq_gem_dump("selftest");
     close(dumpfd);
     // re-read the dump: 1500 + 2 live BOs, sizes summed
@@ -522,7 +597,16 @@ int main(int argc, char** argv) {
     unsigned long long bytes = 0, expect = 16u << 20;
     for (int i = 1; i < 3000; i += 2) expect += 4096u * (uint32_t)(1 + i % 5);
     expect += 8192;
+    unsigned frames = 0, gp = 0, pp = 0, waits = 0;
+    unsigned long long wait_ns = 1;
+    int plines = 0;
     while (fgets(line, sizeof(line), f)) {
+        if (line[0] == 'P') {
+            ++plines;
+            CHECK(sscanf(line, "P\t%*[^\t]\t%*f\t%*u\t%*u\t%*u\t%*u\t%*d\t%u\t%u\t%u\t%u\t%llu",
+                         &frames, &gp, &pp, &waits, &wait_ns) == 5);
+            continue;
+        }
         if (line[0] != 'B') continue;
         ++live;
         unsigned fd, h, sz, heapf, mp, seq, tid;
@@ -535,6 +619,9 @@ int main(int argc, char** argv) {
     CHECK(live == 1502);
     CHECK(tagged == 1500);
     CHECK(bytes == expect);
+    CHECK(plines == 1);
+    CHECK(frames == 4 && gp == 2 && pp == 3 && waits == 1);
+    CHECK(wait_ns < 1000000000ull);  // a fake wait returns at once; the clock still ran
     printf("lima_bo_census selftest OK: live=%u bytes=%llu created=%llu closed=%llu\n",
            live, bytes, (unsigned long long)g_created, (unsigned long long)g_closed);
     return 0;

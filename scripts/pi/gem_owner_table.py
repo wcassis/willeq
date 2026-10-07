@@ -32,6 +32,7 @@ own frame dumps) -- printed as the residual, never hidden.
 """
 import argparse
 import json
+import os
 import re
 import sys
 
@@ -103,6 +104,9 @@ def read_dump(path):
                 cur = {"meta": {"point": p[1], "mono": float(p[2]), "live": int(p[3]), "bytes": int(p[4]),
                                 "created": int(p[5]), "closed": int(p[6]), "overflow": int(p[7])},
                        "bos": []}
+                if len(p) >= 13:  # B1006: the job-stream counters (a pre-B1006 dump has 8 fields)
+                    cur["meta"].update({"frames": int(p[8]), "gp_submits": int(p[9]), "pp_submits": int(p[10]),
+                                        "waits": int(p[11]), "wait_ns": int(p[12])})
             elif p[0] == "B" and cur is not None and len(p) >= 10:
                 cur["bos"].append({"fd": int(p[1]), "handle": int(p[2]), "size": int(p[3]), "heap": int(p[4]),
                                    "mapped": int(p[5]), "seq": int(p[6]), "tid": int(p[7]), "scope": p[8],
@@ -114,6 +118,38 @@ def read_dump(path):
                 points[name] = cur
                 cur = None
     return points, order
+
+
+JOB_FIELDS = ("frames", "gp_submits", "pp_submits", "waits", "wait_ns")
+
+
+def job_rates(path, start="ready", end="steady_60s"):
+    """B1006 (#327): the Lima job stream between two dump points as per-frame
+    rates -- {"frames", "pp_jobs_per_frame", "gp_jobs_per_frame",
+    "waits_per_frame", "wait_ms_per_frame"} -- or None when the dump is
+    absent, pre-B1006 (no counters), lacks a point, or saw no frame between
+    them. PP jobs per frame is 1 for a frame nothing split; a draw path that
+    writes a buffer the current job references forces a flush + wait per
+    write (lima_transfer_map), which shows here as PP jobs AND waits per
+    frame above the no-cut figure (B972-FT, MR !94)."""
+    if not os.path.exists(path):
+        return None
+    points, _ = read_dump(path)
+    a, b = points.get(start), points.get(end)
+    if not a or not b:
+        return None
+    ma, mb = a["meta"], b["meta"]
+    if any(k not in ma or k not in mb for k in JOB_FIELDS):
+        return None
+    frames = mb["frames"] - ma["frames"]
+    if frames <= 0:
+        return None
+    d = lambda k: mb[k] - ma[k]
+    return {"frames": frames,
+            "pp_jobs_per_frame": d("pp_submits") / frames,
+            "gp_jobs_per_frame": d("gp_submits") / frames,
+            "waits_per_frame": d("waits") / frames,
+            "wait_ms_per_frame": d("wait_ns") / frames / 1e6}
 
 
 MEMGPU_RE = re.compile(r"\[memgpu\] point=(\S+) .*?gpu_buffers=(\d+) source=(\S+) .*?logical_textures=(\d+) "
