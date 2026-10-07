@@ -448,6 +448,14 @@ it without taking that measurement first.
 - **B976** (B) → issue #294. In timorous_f2, `--shader-debug 5` shows the
   bottom plane's normal as +Y on llvmpipe and G=0 on Lima, so the player light
   lights it on x86 only. It is nearly black in the gate frame. Found by B969.
+  **Root cause measured (2026-10-07, `refactor/B976/README.md`): not a normal
+  bug — the plane is TWO stacked real floor regions** (a +Y `sand3` top, region
+  10298, and a −Y `w1` underlayer, draw entries 158–163, whose near corners
+  clip behind the near plane) at a depth near-tie; the depth buffer picks a
+  different winner per platform (x86 D16 z-fights per row; x86 D24S8 → +Y;
+  Lima depth=24 → −Y, uniform), so the player light lights the plane on x86-D24S8
+  only. No production fix applied — any fix (per-region depth bias, or upstream
+  WLD data for the double floor) moves goldens and is blocked for Will's bless.
 
 - **B981** (B) → issue #300. `tests/goldens/manifest.json`'s
   `memory.textureCacheBytesLimit` is 67,108,864 (64 MiB) in all five gate zones;
@@ -886,6 +894,22 @@ it without taking that measurement first.
   B975 `NameTagBatchNode` slack pattern); a static VBO is the measured
   anti-pattern (B962: +4.3 MiB, half qeynos2 fps). Cut behind #290/MR !94
   (re-measure the residual after it lands).
+- **B998** (B, frame-time) → issue #325. **BLOCKED with measured ceiling
+  (2026-10-07)** — no in-scope fix; see `refactor/B998/README.md` for the
+  full A/B. The gfaydark low-geometry 31 fps floor (2 vsyncs) is a vsync
+  quantization: the frame's wall time (22.4 ms measured work — Solid Pass
+  12-16 ms at ~41 manual zone draw calls, ~2× qeynos2's 22 — + 9.4-14.2 ms
+  deferred-present unaccounted) exceeds one 16.58 ms 60 Hz vsync period,
+  while qeynos2 (12.5 + 3.4 = 16.0 ms) fits. The 3× warp dips (44.7 ms,
+  22.4 fps, sustained 15-60 s) are a high-draw-call *region* (101 calls /
+  61 regions at the W1 stop) whose ~16 ms measured work plus a 28.5 ms
+  deferred-present/vblank stall lands on the third vsync edge — the same T61
+  deferred-present path as B979, different trigger (detail-streaming churn +
+  region state, not impostor capture). Draw-call bound, not fill-bound, not
+  a leak (flat resource census), governor Green on most frames (symptom, not
+  cap). Fix options are B997's batch/merge of manual zone draws or a
+  per-draw submit-cost cut — both need Will's decision (look/coverage +
+  B726/B979 invariants), so the card blocks with the measurement.
 - ~~**B970** (B) → issue #288. `build-arm` fetched `irrlicht-1.8.5.zip` and
   `libpng-1.6.37.tar.xz` from downloads.sourceforge.net inside a Docker layer, so
   the 2026-10-01 SourceForge outage (HTTP 522, ~3 h) failed every job whose
