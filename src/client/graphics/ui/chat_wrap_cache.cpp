@@ -76,9 +76,13 @@ void ChatWrapCache::sync(const eqt::ui::ChatMessageBuffer& buffer, irr::s32 area
     // Wrap only the messages appended since the last sync.
     for (uint64_t seq = endSeq_; seq < bufEnd; ++seq) {
         const eqt::ui::ChatMessage& msg = messages[static_cast<size_t>(seq - bufFirst)];
-        linesPerMessage_.push_back(static_cast<uint32_t>(wrapChatText(
+        const size_t added = wrapChatText(
             eqt::ui::formatMessageForDisplay(msg, showTimestamps),
-            irr::video::SColor(msg.color), areaW, measure, lines_)));
+            irr::video::SColor(msg.color), areaW, measure, lines_);
+        for (size_t k = lines_.size() - added; k < lines_.size(); ++k) {
+            lines_[k].userColor = msg.userColor;  // B993
+        }
+        linesPerMessage_.push_back(static_cast<uint32_t>(added));
         ++messagesWrapped_;
     }
     endSeq_ = bufEnd;

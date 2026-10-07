@@ -387,6 +387,22 @@ it without taking that measurement first.
   create folds NodeSetup (B966); Pi new200 182/200 built (legacy 1/200),
   backlog drained 0.7 s after the last spawn. Follow-ups: #301 (B982),
   #302 (B983), #303 (B984).
+- ~~**B979** (A) → issue #298. An impostor capture is an unbounded unit:
+  single first-draw captures of 30–62 ms land whole in one Orange Pi frame
+  (B964's hitch bar not met: worst single-frame capture work 43–46 ms against
+  the 33.3 ms frame budget; `refactor/B964/README.md` "Against the bar").~~
+  **FIXED** (MR !99, `refactor/B979/README.md`): the slow first capture
+  decomposed on the Pi into three one-time GPU costs (a 4 MiB page GEM
+  allocation 14–16 ms, the scratch FBO 3–14 ms, and the first 3D draw into
+  the FBO + its first readback, Lima's deferred rasterization — 21–77 ms).
+  All three moved to the loading thread (pre-created resources + a 3D
+  textured-mesh priming draw + readback + glFinish, one-time per session,
+  no-op for `WILLEQ_BASELINE=1`), and the capture unit became a unit of
+  B973's `EntityBuildScheduler` (kind `Impostor`). Re-measured on the Pi:
+  worst single-frame capture work qeynos2 47.68→**12.06 ms**, gfaydark
+  46.20→**23.11 ms**, growthplane 26.37→**22.64 ms** (all ≤33.3 ms); x86
+  `impostor_pixel_compare pixel` unchanged (234 rows), scheduler test
+  11/11, ctest 5538/5538.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
@@ -1317,7 +1333,21 @@ it without taking that measurement first.
   5. **B925 (#244)** the iceclad zone link drops on
      every run. The client logs "Zone connection lost" 72–75 s after launch,
      after UDP sends to the zone port are refused. `/q` is then held until the
-     rig's 330 s deadline. Cause not investigated.
+     rig's 330 s deadline. **Root-caused 2026-10-06** (`refactor/B925/README.md`):
+     the eqemu VM's `process-watcher.pl` `kill -9`s any non-`world` process whose
+     lifetime-average CPU exceeds 30% after 60 s; a freshly-respawned zone busy
+     loading a client reads >30% in its first minute and is killed ~65–75 s in
+     (x86) / ~38 s (Pi) — the same defect as #258, both sides of one run
+     correlated (client `ECONNREFUSED` at 13:43:14 UTC = `process-kill.log` kill
+     of the client's own zone pid at 13:43:06 UTC). On a **stable** zone the
+     client holds its link zero-drop for the full 300 s (R3) / 330 s `zone_link_hold`
+     scenario (R6, exit 0). Shipped here: the `zone_link_hold` scenario + the
+     `live`-labelled `test_zone_link_hold` exit-code check + 4 offline
+     state-machine cases. **Still open:** the VM watcher fix (an eqemu-owner
+     defect, not a client one) and the client's stale-port reconnect (it
+     re-dials the dead port forever instead of re-handshaking world for a fresh
+     `OP_ZoneServerInfo` — a follow-up, gated on the official-client oracle per
+     Will's world-behaviour rule). The Pi leg (#258) is B979's lock.
   6. ~~The Orange Pi table is owed.~~ **Pi A/B done 2026-09-29** (merge gate
      for the collision change; `refactor/B909/README.md` "Orange Pi A/B").
      fable `b1132c3f` vs this branch `506f9de2`, 3 interleaved legs per side,
@@ -8572,6 +8602,12 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   loot; the existing LootItemIntent behaviour is unchanged), the confirmation
   dialog's unanswered auto-dismiss timeout (not measured), world clicks on an
   NPC with an item held (the give gesture, the trade/give unit's).
+  **UIGAP-residue (2026-10-06):** loot (left = cursor, right = auto_loot 1,
+  rows 46a/46c) and the dialog timeouts (drop 20 s, destroy 10 s, UIGAP-live2
+  run3/run5) are now MEASURED and IMPLEMENTED; the trade/give windows landed
+  with B896; a corpse row's right click is the auto-loot (row 46c), not a
+  display. Still owed: the live `pickup_roundtrip` scenario and the
+  two-client wear check.
 
 - **B443** (B) `src/client/graphics/ui/merchant_panel.cpp` → issue #152
   (`renderMerchantPopup`, the trade button) -- **which of Buy and Sell the

@@ -357,14 +357,22 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
             atlasV = row * 0.25f;
         }
 
+        // B995: the family's Options opacity / near clip (identity by default).
+        glm::vec4 color = p.color;
+        if (!applyParticleKnobs(knobs_, p.getFamily(),
+                                p.getBlendMode() == UnifiedBlendMode::ADDITIVE, p.position,
+                                cameraPos_, color)) {
+            continue;
+        }
+
         PointSpriteVertex v;
         v.x = p.position.x;
         v.y = p.position.y;
         v.z = p.position.z;
-        v.r = p.color.r;
-        v.g = p.color.g;
-        v.b = p.color.b;
-        v.a = p.color.a;
+        v.r = color.r;
+        v.g = color.g;
+        v.b = color.b;
+        v.a = color.a;
         v.pointSize = p.size;
         v.rotation = p.rotation;
         v.atlasU = atlasU;

@@ -14,6 +14,8 @@ struct Entry {
 
 const Entry kScenarios[] = {
     {"zone_in", &MakeZoneInScenario},
+    // B925 (issue #244/#258): the single-client zone-link hold.
+    {"zone_link_hold", &MakeZoneLinkHoldScenario},
     {"two_client_survive", &MakeTwoClientSurviveScenario},
     {"cast_lands", &MakeCastLandsScenario},
     // T494 (board B796): a PAIR. equip_observed is the verdict; equip_actor is
@@ -48,6 +50,13 @@ const Entry kScenarios[] = {
     {"track_peer", &MakeTrackPeerScenario},
     // B888 (issue #204): needs --create-character.
     {"create_character", &MakeCreateCharacterScenario},
+    // UIGAP-live2 (#212 #151 #26). Pair: trade_roundtrip <- trade_peer
+    // (scripts/scenario.sh launches the peer).
+    {"trade_roundtrip", &MakeTradeRoundtripScenario},
+    {"trade_peer", &MakeTradePeerScenario},
+    {"give_npc", &MakeGiveNpcScenario},
+    {"drop_destroy_coin", &MakeDropDestroyCoinScenario},
+    {"bank_change", &MakeBankChangeScenario},
 };
 
 }  // namespace

@@ -10,6 +10,9 @@
  *   /option <name>             print one
  *   /option <name> <value>     set one (on/off, a step, or a choice's text or
  *                              value: `/option bardsongs showmineonly`)
+ *   /option textcolor ...      B993: the Colors page's [TextColors] table --
+ *                              `reset`, `<1-86|row name>` to print a row,
+ *                              `<1-86|row name> <r> <g> <b>` (0-255) to set it
  *   /filter                    eqstr_us.txt 1354-1360, the era usage text
  *   /filter <name>             flip that filter between Show and Hide and
  *                              reply eqstr 1351 "%1 *ON*" (now hidden) or

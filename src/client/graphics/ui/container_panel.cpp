@@ -141,7 +141,8 @@ bool applyContainerSlotChanged(ContainerWindowsState& state,
 int topmostContainerWindow(const ContainerWindowsState& state) {
     // The most recently opened window: every window shares the oracle's one
     // <Location>, so the newest covers the rest (UIGAP-ORACLE 151
-    // gestures.tsv row 20). ESC, the draw and the hit test all use this.
+    // gestures.tsv row 20). ESC and the hit test use this; the draw draws it
+    // LAST (containerDrawOrder(), same tie-break).
     int best = -1;
     uint32_t bestSeq = 0;
     for (int i = 0; i < ContainerWindowsState::MAX_WINDOWS; ++i) {
@@ -228,13 +229,34 @@ void renderOne(UIRenderer& ui, const UILayout& layout, const ContainerWindow& w)
 
 }  // namespace
 
+int containerDrawOrder(const ContainerWindowsState& state,
+                       int (&out)[ContainerWindowsState::MAX_WINDOWS]) {
+    int n = 0;
+    for (int i = 0; i < ContainerWindowsState::MAX_WINDOWS; ++i) {
+        if (state.windows[i].isOpen) out[n++] = i;
+    }
+    // Oldest first, so the newest is drawn last and is on top. The tie-break
+    // on the index matches topmostContainerWindow()'s `>=` (the higher index
+    // wins a tie).
+    std::sort(out, out + n, [&](int a, int b) {
+        const uint32_t sa = state.windows[a].openSequence;
+        const uint32_t sb = state.windows[b].openSequence;
+        return sa != sb ? sa < sb : a < b;
+    });
+    return n;
+}
+
 void renderContainerWindows(UIRenderer& ui, const UILayout& layout,
                             const ContainerWindowsState& state) {
-    // Every window sits at the same rect, so only the topmost is visible.
-    // Drawing the covered ones too would leak their text through: the text
-    // batch is flushed after every quad of the frame.
-    const int top = topmostContainerWindow(state);
-    if (top >= 0) renderOne(ui, layout, state.windows[top]);
+    // Every open window is drawn, oldest first, each its own z-layer
+    // (B992, #312): the newest covers the rest, text included, as the
+    // official client stacks them (UIGAP-ORACLE 151 gestures.tsv row 20).
+    int order[ContainerWindowsState::MAX_WINDOWS];
+    const int n = containerDrawOrder(state, order);
+    for (int k = 0; k < n; ++k) {
+        ui.beginLayer();
+        renderOne(ui, layout, state.windows[order[k]]);
+    }
 }
 
 // --- hit tests -------------------------------------------------------------

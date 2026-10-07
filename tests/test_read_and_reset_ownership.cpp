@@ -219,9 +219,19 @@ const SweepEntry kSweep[] = {
      "game thread (GraphicsInputHandler's Jump check). T312."},
     {"getMouseDeltaX", 1, "render thread (mouse-look). Second caller deleted by T312."},
     {"getMouseDeltaY", 1, "render thread (mouse-look). Second caller deleted by T312."},
-    {"wasLeftButtonClicked", 1, "render thread (processFrameInput). Second caller deleted by T315."},
+    // B998 (#318): the pre-zone character-select host
+    // (CharacterSelectHost::frame, char_select_host.cpp) is the second textual
+    // site of the two click latches, the key queue and the three chat-focus
+    // flags below. ONE consumer at a time, by construction: Application::render()
+    // runs the host INSTEAD of processFrame() (it returns before the frame
+    // path), only while the game thread holds the select channel active, and
+    // the channel goes inactive for good the moment OP_EnterWorld is sent --
+    // before any zone, so before the first processFrame(). Both are the render
+    // thread. The host spends enter/slash/escape so a name typed pre-zone is
+    // not replayed as "open chat" on the first in-zone frame.
+    {"wasLeftButtonClicked", 2, "render thread: processFrameInput, or (pre-zone, never in the same frame) the B998 character-select host. Second in-game caller deleted by T315."},
     {"wasLeftButtonReleased", 1, "render thread (processFrameInput). Second caller deleted by T315."},
-    {"wasRightButtonClicked", 1, "render thread (renderStaticUI). B442: the item windows' right click."},
+    {"wasRightButtonClicked", 2, "render thread: renderStaticUI (B442: the item windows' right click), or the pre-zone B998 host."},
     {"drainActions", 1, "render thread (processFrameInput). Render-only queue."},
     {"drainBridgeActions", 1, "game thread (GraphicsInputHandler). Mutex-guarded since T312."},
     {"getSpellGemCastRequest", 1, "game thread. The render-thread discard was removed earlier."},
@@ -258,10 +268,10 @@ const SweepEntry kSweep[] = {
     // B442b: the QuantityWnd's QTYW_SliderInput is a FIFTH, the same shape --
     // processChatInput() early-returns into processQuantityKeyInput()
     // (renderer_frame_cursor.cpp) while the box holds the keyboard.
-    {"popKeyEvent", 5, "render thread only; processChatInput early-returns into processOptionsKeyCapture (B433), processTradeskillSearchInput, processFriendsNameInput (B897) or processQuantityKeyInput (B442b), mutually exclusive. T241/T421."},
-    {"enterKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
-    {"slashKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
-    {"escapeKeyPressed", 2, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433). T241."},
+    {"popKeyEvent", 6, "render thread only; processChatInput early-returns into processOptionsKeyCapture (B433), processTradeskillSearchInput, processFriendsNameInput (B897) or processQuantityKeyInput (B442b), mutually exclusive; pre-zone, the B998 character-select host. T241/T421."},
+    {"enterKeyPressed", 3, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433; pre-zone, the B998 host). T241."},
+    {"slashKeyPressed", 3, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433; pre-zone, the B998 host). T241."},
+    {"escapeKeyPressed", 3, "render thread (processChatInput, or processOptionsKeyCapture which it returns into, B433; pre-zone, the B998 host). T241."},
 };
 
 }  // namespace

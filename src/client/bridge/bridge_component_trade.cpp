@@ -13,7 +13,9 @@
 //                            resets both accepts.
 //   OfferHeldItemOnTradeOpen()  our request was acknowledged: the item we
 //                            opened the trade with goes into slot 3000 by
-//                            itself.
+//                            itself (held coin: OP_MoveCoin 0 -> 3, row 14).
+//   HeldItemTargetRefusal()  UIGAP-residue: the world clicks the official
+//                            client refuses client-side (rows 12-13).
 //
 // Every rule is MEASURED on two official Titanium clients:
 // /mnt/projects/fable/review/UIGAP-ORACLE/212/trade.tsv; the row is cited at
@@ -136,11 +138,56 @@ void eqt::bridge::BridgeComponent::AfterTradeGesture(const eqt::events::CursorGe
 	ctx_.trade_manager->resetAccept();
 }
 
+uint32_t eqt::bridge::BridgeComponent::HeldItemTargetRefusal(const Entity& target) const {
+	if (!ctx_.inventory_manager) {
+		return 0;
+	}
+	const inv::ItemInstance* held = ctx_.inventory_manager->getCursorItem();
+	if (!held) {
+		// Coin held is never refused at a player (row 14: the trade opens).
+		// Coin held at a banker is not measured: left as it was.
+		return 0;
+	}
+	// Row 12 (UIGAP-live2, B1001 #321): a NO-DROP item held + a motionless
+	// click on a PLAYER -> no trade window, the item stays on the cursor, the
+	// client prints "That item cannot be dropped, traded, or sold." (eqstr
+	// 12921) and sends only OP_TargetMouse. A no-drop item to an NPC is a
+	// normal give (give_npc hands Captain Tillin a Gnoll Fang), so NPCs are
+	// not refused for it. (eqstr 12922, the container-holding-a-no-drop
+	// variant, is not measured and not applied.)
+	constexpr uint32_t kEqStrCannotDropTradeSell = 12921;
+	if (target.npc_type == 0 && held->noDrop) {
+		return kEqStrCannotDropTradeSell;
+	}
+	// Row 13: an item held + a click on a BANKER (class 40): nothing opens, the
+	// item stays held, and the client prints "This NPC cannot accept items
+	// directly, right-click if you wish to make transactions." (eqstr 8505)
+	// with only targeting on the wire. Only the banker was measured; other
+	// non-quest NPC classes (merchants, guildmasters) keep the give window.
+	constexpr uint8_t kClassBanker = 40;
+	constexpr uint32_t kEqStrNpcCannotAcceptItems = 8505;
+	if (target.npc_type == 1 && target.class_id == kClassBanker) {
+		return kEqStrNpcCannotAcceptItems;
+	}
+	return 0;
+}
+
 void eqt::bridge::BridgeComponent::OfferHeldItemOnTradeOpen() {
-	if (!ctx_.inventory_manager || !ctx_.inventory_manager->getCursorItem()) {
+	if (!ctx_.inventory_manager || !ctx_.trade_manager || !ctx_.trade_manager->isTrading()) {
 		return;
 	}
-	if (!ctx_.trade_manager || !ctx_.trade_manager->isTrading()) {
+	if (!ctx_.inventory_manager->getCursorItem()) {
+		// Row 14 (UIGAP-live2): COIN held + a click on a PLAYER opens the trade
+		// exactly like an item, and right after the ack the held pile goes into
+		// our trade money row: OP_MoveCoin from_slot=0 (cursor) to_slot=3
+		// (trade) -- the same body the own coin field's click runs (row 2).
+		// The NPC give window with coin held is not measured: left as it was
+		// (the coin stays on the cursor until a coin row is clicked).
+		if (ctx_.inventory_manager->hasCursorMoney() && !ctx_.trade_manager->isNpcTrade()) {
+			eqt::events::TradeWindowIntent coin;
+			coin.op = eqt::events::TradeWindowOp::CoinFromCursor;
+			RunTradeWindowIntent(coin);
+		}
 		return;
 	}
 	// Rows 1 and 9: "OP_MoveItem from=30 to=3000" right after the ack, for a

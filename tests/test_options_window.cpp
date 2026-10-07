@@ -268,6 +268,9 @@ TEST(OptionsWindowT434, ADisabledControlIsNotHitTestable) {
         const auto& c = OL::kControls[i];
         if (c.setting != OL::Setting::None) continue;
         s.activeTab = static_cast<int>(c.tab);
+        // B995: a particle sub-page control is tested on its OWN sub-page --
+        // the Spell, Env and Player pages share the oracle's rects.
+        if (c.subPage >= 0) s.particlesTab = c.subPage;
         const auto p = centre(OL::controlRect(l, i));
         EXPECT_EQ(hitTestOptionsControl(l, s, p.X, p.Y), -1)
             << c.xmlItem << " at " << rectStr(OL::controlRect(l, i));

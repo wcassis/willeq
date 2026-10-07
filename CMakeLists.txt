@@ -317,6 +317,10 @@ SET(CLIENT_CORE_SOURCES
     src/client/login_world/char_create_data.cpp
     src/client/login_world/char_create_packets.cpp
     src/client/login_world/world_script.cpp
+    # B998 (#318): the character-select screen -- the thread seam and Enter World.
+    src/client/login_world/character_select.cpp
+    src/client/login_world/login_world_char_select.cpp
+    src/client/login_world/character_select_service.cpp
     src/client/guild/guild_component.cpp
     # T443 (B418): OP_GuildsList parsed into a guild-id -> name lookup.
     src/client/guild/guild_name_table.cpp
@@ -408,6 +412,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/inventory/inventory_packets.cpp
     src/client/hotbar/hotbar_model.cpp
     src/client/chat/chat_message_buffer.cpp
+    src/client/chat/chat_text_colors.cpp  # B993: [TextColors] User_1..86
     src/client/graphics/ui/command_registry.cpp
     # T310 Leg A: the /fpcam tunable store's name lookup, parsing and
     # formatting. No renderer dependency at all (it drives constants, not a
@@ -450,14 +455,17 @@ SET(CLIENT_CORE_SOURCES
     src/client/scenario/scenario_zone_in.cpp
     src/client/scenario/scenario_two_client_survive.cpp
     src/client/scenario/scenario_cast_lands.cpp
+    src/client/scenario/scenario_zone_link_hold.cpp
     src/client/scenario/scenario_interrupted_cast.cpp
     src/client/scenario/scenario_equip_observed.cpp
     # UIGAP-live: the six wave-1 UI units' live legs (#151 #213 #214 #215 #211)
     src/client/scenario/scenario_ui_inventory.cpp
     src/client/scenario/scenario_ui_social.cpp
     src/client/scenario/scenario_create_character.cpp  # B888
+    src/client/scenario/scenario_ui_trade.cpp  # UIGAP-live2 (#212 #151 #26)
     src/client/scenario/scenario_world_app.cpp
     src/client/scenario/scenario_world_app_ui.cpp
+    src/client/scenario/scenario_world_app_trade.cpp  # UIGAP-live2
     src/client/scenario/scenario_application_wiring.cpp
     # Bridge sources
     src/client/bridge/console_bridge.cpp
@@ -490,6 +498,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/application_zone_loading.cpp
     src/client/application_config.cpp
     src/client/application_world_script.cpp  # B888
+    src/client/application_char_select.cpp  # B998
     src/client/action/eq_action_handler.cpp
     src/client/action/eq_action_handler_spells_trade.cpp
     src/client/action/eq_action_handler_extended.cpp
@@ -579,7 +588,12 @@ IF(EQT_GRAPHICS)
         src/client/graphics/overlays/overlays_component.cpp
         src/client/graphics/overlays/overlays_hud_env.cpp
         src/client/graphics/overlays/overlays_env_managers.cpp  # T467
+        # B994 (#314): the 3D target ring -- TargetIndicator.ini's geometry
+        # (device-free) and its one draw call.
+        src/client/graphics/overlays/target_ring.cpp
+        src/client/graphics/overlays/target_ring_draw.cpp
         src/client/graphics/renderer/renderer_init.cpp  # J11
+        src/client/graphics/renderer/renderer_pre_zone.cpp  # B998: the pre-zone UI frame
         # L06 (Batch L): the slash family -- the registry-3 renderer
         # command if-chain. The basename is unchanged; only the
         # directory moved (tests/cmake/commands.cmake reads this TU as
@@ -632,6 +646,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/frame/renderer_frame_cursor.cpp  # B442b
         src/client/graphics/frame/renderer_frame_trade.cpp  # B896
         src/client/graphics/frame/renderer_frame_tips.cpp  # B834
+        src/client/graphics/frame/renderer_frame_tooltips.cpp  # B1004
         src/client/graphics/frame/renderer_frame_entity_build.cpp
         src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp
         src/client/graphics/renderer/renderer_entities.cpp
@@ -741,12 +756,19 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/options_classification.cpp
         src/client/graphics/ui/options_command.cpp
         src/client/graphics/ui/options_keys.cpp
+        src/client/graphics/ui/options_colors.cpp  # B993: the Colors page
+        src/client/graphics/ui/color_picker.cpp    # B993: EQUI_ColorPickerWnd
+        src/client/graphics/ui/options_particles.cpp  # B995: Display > Particles
         # B897: the Friends window (friends + ignore lists).
         src/client/graphics/ui/friends_panel.cpp
         src/client/graphics/ui/tip_window.cpp  # B834: the tip windows
         # B888 (#204): the two-page Character Creation screen.
         src/client/graphics/ui/char_create_screen.cpp
         src/client/graphics/ui/char_create_panel.cpp
+        # B998 (#318): the Character Select screen and its pre-zone host.
+        src/client/graphics/ui/char_select_screen.cpp
+        src/client/graphics/ui/char_select_panel.cpp
+        src/client/graphics/ui/char_select_host.cpp
         # T436 (board B429): the merchant, bank and cursor-attachment
         # windows -- one TU per panel (M00).
         src/client/graphics/ui/merchant_panel.cpp
@@ -763,6 +785,8 @@ IF(EQT_GRAPHICS)
         # B896 (#212): the trade window and the NPC give window, and their input.
         src/client/graphics/ui/trade_panel.cpp
         src/client/graphics/ui/trade_input.cpp
+        # B1004 (#323): the Alt-held item-name labels and the hover tooltip.
+        src/client/graphics/ui/item_tooltip.cpp
         src/client/graphics/ui/esc_window_stack.cpp
         # T432 (board B275): per-character UI persistence -- the ONE reader and
         # writer of UI_<char>_<server>.ini.
@@ -1020,6 +1044,14 @@ ENDIF()
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(ui_panel_capture tools/hwcaps/ui_panel_capture.cpp)
     TARGET_LINK_LIBRARIES(ui_panel_capture willeq_core ${LINK_LIBS})
+ENDIF()
+
+# B994 (#314): the 3D target ring drawn by the client's own
+# TargetRing::build() + drawGeometry() into a headless GLES2 frame, option on
+# and off -- the review PNGs.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(target_ring_capture tools/hwcaps/target_ring_capture.cpp)
+    TARGET_LINK_LIBRARIES(target_ring_capture willeq_core ${LINK_LIBS})
 ENDIF()
 
 # B975 (GitLab #293): the name-tag cost breakdown and the batched path against

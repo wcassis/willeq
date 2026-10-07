@@ -37,6 +37,7 @@
 #include "client/graphics/ui/options_command.h"
 #include "client/graphics/player/player_camera_component.h"
 #include "client/graphics/entity_renderer.h"
+#include "client/graphics/overlays/overlays_component.h"  // B994
 #include "client/graphics/ui/options_keys.h"
 #include "client/graphics/renderer_event_receiver.h"
 #include "client/events/renderer_intents.h"
@@ -48,6 +49,7 @@ namespace Graphics {
 
 bool FrameComponent::toggleOptionsWindow() {
     optionsState_.isOpen = !optionsState_.isOpen;
+    if (!optionsState_.isOpen) optionsState_.colorPicker.isOpen = false;  // B993
     LOG_INFO(MOD_GRAPHICS, "Options window {}",
              optionsState_.isOpen ? "opened" : "closed");
     return optionsState_.isOpen;
@@ -139,6 +141,31 @@ void FrameComponent::applyOptionsSettingB430(OptionsLayout::Setting setting) {
             eqt::input::HotkeyManager::instance().restoreShippedBindings();
             LOG_INFO(MOD_GRAPHICS, "Options: key bindings reloaded from defaults");
             return;
+        case Setting::TargetRing:
+            // B994: the overlay draws it after the target outline each frame.
+            ctx_.Overlays().setTargetRingEnabled(on(Setting::TargetRing));
+            LOG_INFO(MOD_GRAPHICS, "Options: 3D target ring {}",
+                     on(Setting::TargetRing) ? "on" : "off");
+            return;
+        case Setting::SpellParticleOpacity:
+        case Setting::SpellParticleDensity:
+        case Setting::SpellParticleNearClip:
+        case Setting::EnvParticleOpacity:
+        case Setting::EnvParticleDensity:
+        case Setting::EnvParticleNearClip:
+            // B995: nothing to push -- the sim bridge reads particleOptionKnobs()
+            // every frame, so the next frame's spawn and draw use the value.
+            LOG_INFO(MOD_GRAPHICS, "Options: {} = {}", info.name,
+                     optionsSettingStep(optionsState_, setting));
+            return;
+        case Setting::TextColors:
+        case Setting::TextColorReset:
+            // B993: the chat panel reads the table by pointer at draw time
+            // (ChatPanelState::textColors), so a changed row is on screen the
+            // next frame; syncUiPreferences() persists it.
+            LOG_INFO(MOD_GRAPHICS, "Options: chat colours {}",
+                     setting == Setting::TextColorReset ? "reset to the defaults" : "changed");
+            return;
         case Setting::PCNames:
         case Setting::NPCNames:
             // B431: the two kinds narrow the Ctrl+F3 master switch; neither
@@ -226,6 +253,10 @@ bool FrameComponent::processOptionsKeyCapture() {
 // B430/B433: /option and /filter. The grammar is device-free
 // (options_command.cpp); every setting it changed goes through the same
 // applyOptionsSetting() a click does, and syncUiPreferences() saves it.
+Environment::ParticleKnobs FrameComponent::particleOptionKnobs() const {
+    return particleKnobsFromOptions(optionsState_.values);
+}
+
 std::vector<std::string> FrameComponent::runOptionsCommand(const std::string& cmd,
                                                            const std::string& args) {
     OptionsCommandResult r = RunOptionsCommand(optionsState_, cmd, args);

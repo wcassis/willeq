@@ -309,6 +309,7 @@ ConfirmPromptPlan PlanConfirmPrompt(const InventoryManager& inv,
     plan.purpose = drop ? ConfirmPurpose::DropItem : ConfirmPurpose::DestroyItem;
     plan.eqstrId = drop ? kEqStrDropOnGround : kEqStrDestroyItem;
     plan.itemName = held->name;
+    plan.timeoutSeconds = drop ? kDropPromptTimeoutSeconds : kDestroyPromptTimeoutSeconds;
     return plan;
 }
 

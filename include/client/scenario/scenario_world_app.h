@@ -80,6 +80,16 @@ public:
     long long NearestWorldObjectId(int objectType) const override;
     int ClickSlot(int serverSlot, bool rightButton, bool shift, bool ctrl) override;
 
+    // UIGAP-live2 (scenario_world_app_trade.cpp)
+    int TradeFlags() const override;
+    long long FindItemSlot(long long itemId) const override;
+    std::vector<long long> Coins(bool bank) const override;
+    long long CursorCoinCopper() const override;
+    long long WorldObjectCount() const override;
+    bool ClickEntity(const std::string& name) override;
+    bool TradeButton(int op) override;
+    bool CursorGesture(int op, int coinType, int quantity, int coinSource) override;
+
     void SendCommand(const std::string& rawLine) override;
     void Note(const std::string& line) override;
 

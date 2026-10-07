@@ -62,6 +62,10 @@
 namespace eqt {
 
 void Application::updateGameState(float deltaTime) {
+    // B998 (#318): the character-select screen's game-thread half (a no-op
+    // on every run that does not show it). application_char_select.cpp.
+    serviceCharacterSelect();
+
     // D21a: Game-side tick (spell/buff updates + intent processing)
     // T45: was `m_graphicsInitialized` alone -- that flag means "the renderer
     // subsystem exists", not "the game is ready to tick", and is permanently
@@ -160,6 +164,15 @@ void Application::render(float deltaTime) {
                 startLoadingThread();
                 m_lastGraphicsUpdate = now;
                 return;  // Loading thread now owns GL context
+            }
+
+            // B998 (#318): the character-select screen takes the pre-zone
+            // slot while the game thread holds it up (list in, no
+            // OP_EnterWorld yet). Never on a run with a configured character
+            // and no --character-select: m_charSelect does not exist there.
+            if (m_charSelect && renderCharacterSelect(gfxDeltaTime)) {
+                m_lastGraphicsUpdate = now;
+                return;
             }
 
             // Network handshake phase (0-50%): render loading screen on main thread

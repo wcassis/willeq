@@ -142,6 +142,10 @@ struct Control {
     irr::s32 x, y, w, h;
     const char* text;
     Setting setting;
+    // B995: a control inside ODP_ParticlesTabs belongs to one of its three
+    // <Pages> (0 Spell, 1 Environment, 2 Actor/"Player") and is drawn and hit
+    // only while that sub-tab is active; -1 = on the page itself.
+    int subPage = -1;
 };
 
 // clang-format off
@@ -193,7 +197,7 @@ constexpr Control kControls[] = {
 // ---------------------------------------------------------------- Display
 {Tab::Display, Kind::Checkbox,   "ODP_PCNamesCheckbox",             10,  12, 150, 18, "Show PC Names",        Setting::PCNames},
 {Tab::Display, Kind::Checkbox,   "ODP_NPCNamesCheckbox",            10,  30, 150, 18, "Show NPC Names",       Setting::NPCNames},
-{Tab::Display, Kind::Checkbox,   "ODP_ShowTargetRingCheckbox",      10,  48, 150, 18, "Show 3D Target Ring",  Setting::None},
+{Tab::Display, Kind::Checkbox,   "ODP_ShowTargetRingCheckbox",      10,  48, 150, 18, "Show 3D Target Ring",  Setting::TargetRing},
 {Tab::Display, Kind::Checkbox,   "ODP_LevelOfDetailCheckbox",       10,  66, 150, 18, "Level of Detail",      Setting::None},
 {Tab::Display, Kind::Checkbox,   "ODP_ShowHelmCheckbox",            10,  84, 150, 18, "Show My Helm",         Setting::None},
 // ODP_SetFullscreenButton and ODP_SetWindowedButton share the rect (10,106)
@@ -233,21 +237,37 @@ constexpr Control kControls[] = {
 {Tab::Display, Kind::Label,      "ODP_ClipPlaneLabel",             200, 109, 150, 14, "Far Clip Plane",       Setting::ClipPlane},
 {Tab::Display, Kind::Slider,     "ODP_ClipPlaneSlider",            200, 129, 100, 16, "",                     Setting::ClipPlane},
 {Tab::Display, Kind::ValueLabel, "ODP_ClipPlaneValueLabel",        300, 129,  50, 16, "",                     Setting::ClipPlane},
-{Tab::Display, Kind::Label,      "ODP_ParticlesLabel",             200, 160, 150, 14, "Particles",            Setting::None},
-{Tab::Display, Kind::TabBox,     "ODP_ParticlesTabs",              190, 174, 190, 170, "Spell|Env|Player",    Setting::None},
-// The nested tab box's SpellParticlesPage, at the box origin (190,174) plus
-// its own 22px sub-tab strip: subpage origin (190,196). Only the Spell page
-// is drawn -- the three sub-tabs are all disabled, so there is nothing to
-// switch between; boarded rather than faked.
-{Tab::Display, Kind::Label,      "ODP_SpellParticlesNearClipLabel",    200, 206, 100, 14, "Near Clip:", Setting::None},
-{Tab::Display, Kind::Combobox,   "ODP_SpellParticlesNearClipCombobox", 265, 202, 100, 24, "",           Setting::None},
-{Tab::Display, Kind::Label,      "ODP_SpellParticlesDensityLabel",     200, 236, 100, 14, "Density:",   Setting::None},
-{Tab::Display, Kind::Combobox,   "ODP_SpellParticlesDensityCombobox",  265, 232, 100, 24, "",           Setting::None},
-{Tab::Display, Kind::Label,      "ODP_SpellParticlesFilterLabel",      200, 266, 100, 14, "On For:",    Setting::None},
-{Tab::Display, Kind::Combobox,   "ODP_SpellParticlesFilterCombobox",   265, 262, 100, 24, "",           Setting::None},
-{Tab::Display, Kind::Label,      "ODP_SpellParticlesOpacityLabel",     200, 296, 150, 14, "Opacity",    Setting::None},
-{Tab::Display, Kind::Slider,     "ODP_SpellParticlesOpacitySlider",    200, 316, 100, 16, "",           Setting::None},
-{Tab::Display, Kind::ValueLabel, "ODP_SpellParticlesOpacityValueLabel",300, 316,  50, 16, "0 %",        Setting::None},
+{Tab::Display, Kind::Label,      "ODP_ParticlesLabel",             200, 160, 150, 14, "Particles",            Setting::ParticlesTab},
+{Tab::Display, Kind::TabBox,     "ODP_ParticlesTabs",              190, 174, 190, 170, "Spell|Env|Player",    Setting::ParticlesTab},
+// The nested tab box's three <Pages> (B995), each at the box origin (190,174)
+// plus its own 22px sub-tab strip: subpage origin (190,196), so every child
+// is its XML <Location> + (190,196). SpellParticlesPage and ActorParticlesPage
+// declare the same nine children; EnvironmentParticlesPage has no filter.
+{Tab::Display, Kind::Label,      "ODP_SpellParticlesNearClipLabel",    200, 206, 100, 14, "Near Clip:", Setting::SpellParticleNearClip, 0},
+{Tab::Display, Kind::Combobox,   "ODP_SpellParticlesNearClipCombobox", 265, 202, 100, 24, "",           Setting::SpellParticleNearClip, 0},
+{Tab::Display, Kind::Label,      "ODP_SpellParticlesDensityLabel",     200, 236, 100, 14, "Density:",   Setting::SpellParticleDensity, 0},
+{Tab::Display, Kind::Combobox,   "ODP_SpellParticlesDensityCombobox",  265, 232, 100, 24, "",           Setting::SpellParticleDensity, 0},
+{Tab::Display, Kind::Label,      "ODP_SpellParticlesFilterLabel",      200, 266, 100, 14, "On For:",    Setting::None, 0},
+{Tab::Display, Kind::Combobox,   "ODP_SpellParticlesFilterCombobox",   265, 262, 100, 24, "",           Setting::None, 0},
+{Tab::Display, Kind::Label,      "ODP_SpellParticlesOpacityLabel",     200, 296, 150, 14, "Opacity",    Setting::SpellParticleOpacity, 0},
+{Tab::Display, Kind::Slider,     "ODP_SpellParticlesOpacitySlider",    200, 316, 100, 16, "",           Setting::SpellParticleOpacity, 0},
+{Tab::Display, Kind::ValueLabel, "ODP_SpellParticlesOpacityValueLabel",300, 316,  50, 16, "0 %",        Setting::SpellParticleOpacity, 0},
+{Tab::Display, Kind::Label,      "ODP_EnvironmentParticlesNearClipLabel",    200, 206, 100, 14, "Near Clip:", Setting::EnvParticleNearClip, 1},
+{Tab::Display, Kind::Combobox,   "ODP_EnvironmentParticlesNearClipCombobox", 265, 202, 100, 24, "",           Setting::EnvParticleNearClip, 1},
+{Tab::Display, Kind::Label,      "ODP_EnvironmentParticlesDensityLabel",     200, 236, 100, 14, "Density:",   Setting::EnvParticleDensity, 1},
+{Tab::Display, Kind::Combobox,   "ODP_EnvironmentParticlesDensityCombobox",  265, 232, 100, 24, "",           Setting::EnvParticleDensity, 1},
+{Tab::Display, Kind::Label,      "ODP_EnvironmentParticlesOpacityLabel",     200, 296, 150, 14, "Opacity",    Setting::EnvParticleOpacity, 1},
+{Tab::Display, Kind::Slider,     "ODP_EnvironmentParticlesOpacitySlider",    200, 316, 100, 16, "",           Setting::EnvParticleOpacity, 1},
+{Tab::Display, Kind::ValueLabel, "ODP_EnvironmentParticlesOpacityValueLabel",300, 316,  50, 16, "0 %",        Setting::EnvParticleOpacity, 1},
+{Tab::Display, Kind::Label,      "ODP_ActorParticlesNearClipLabel",    200, 206, 100, 14, "Near Clip:", Setting::None, 2},
+{Tab::Display, Kind::Combobox,   "ODP_ActorParticlesNearClipCombobox", 265, 202, 100, 24, "",           Setting::None, 2},
+{Tab::Display, Kind::Label,      "ODP_ActorParticlesDensityLabel",     200, 236, 100, 14, "Density:",   Setting::None, 2},
+{Tab::Display, Kind::Combobox,   "ODP_ActorParticlesDensityCombobox",  265, 232, 100, 24, "",           Setting::None, 2},
+{Tab::Display, Kind::Label,      "ODP_ActorParticlesFilterLabel",      200, 266, 100, 14, "On For:",    Setting::None, 2},
+{Tab::Display, Kind::Combobox,   "ODP_ActorParticlesFilterCombobox",   265, 262, 100, 24, "",           Setting::None, 2},
+{Tab::Display, Kind::Label,      "ODP_ActorParticlesOpacityLabel",     200, 296, 150, 14, "Opacity",    Setting::None, 2},
+{Tab::Display, Kind::Slider,     "ODP_ActorParticlesOpacitySlider",    200, 316, 100, 16, "",           Setting::None, 2},
+{Tab::Display, Kind::ValueLabel, "ODP_ActorParticlesOpacityValueLabel",300, 316,  50, 16, "0 %",        Setting::None, 2},
 {Tab::Display, Kind::Button,     "ODP_AdvancedButton",                 190, 350, 150, 20, "Advanced",   Setting::None},
 
 // ------------------------------------------------------------------ Mouse
@@ -281,13 +301,13 @@ constexpr Control kControls[] = {
 // ----------------------------------------------------------------- Colors
 // OCP_UserColorDefault: Top=8, Bottom=30 (both from the top), Left=126,
 // Right=102 (from right) => (126,8) 159x22.
-{Tab::Colors, Kind::Button,  "OCP_UserColorDefault",  126,   8, 159,  22, "Reset Default Colors",       Setting::None},
+{Tab::Colors, Kind::Button,  "OCP_UserColorDefault",  126,   8, 159,  22, "Reset Default Colors",       Setting::TextColorReset},
 // OCP_ColorChooseList: Top=35, Left=20, Right=20, Bottom=35 (from bottom)
 // => (20,35)-(367,367) = 347x332.
-{Tab::Colors, Kind::Listbox, "OCP_ColorChooseList",    20,  35, 347, 332, "Text description|Color Sample", Setting::None},
+{Tab::Colors, Kind::Listbox, "OCP_ColorChooseList",    20,  35, 347, 332, "Text description|Color Sample", Setting::TextColorList},
 // OCP_UserColorChange: both anchors from the BOTTOM, Top=30 => y1 = 372,
 // Bottom=8 => y2 = 394.
-{Tab::Colors, Kind::Button,  "OCP_UserColorChange",   126, 372, 159,  22, "Change Selected Color",      Setting::None},
+{Tab::Colors, Kind::Button,  "OCP_UserColorChange",   126, 372, 159,  22, "Change Selected Color",      Setting::TextColorChange},
 
 // ------------------------------------------------------------------- Mail
 // Every one of these is anchored to the page's top-left, so the offsets are

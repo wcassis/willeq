@@ -565,6 +565,7 @@ void eqt::chat::ChatComponent::ZoneProcessFormattedMessage(const EQ::Net::Packet
 		data.message = formatted_text;
 		data.channelType = static_cast<uint32_t>(channel);
 		data.channelName = isSystemMessage ? "system" : "npc";
+		data.chatType = type;  // B993: names a [TextColors] row when >= 256
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ChatMessage, std::move(data)));
 	}
@@ -650,6 +651,7 @@ void eqt::chat::ChatComponent::ZoneProcessSimpleMessage(const EQ::Net::Packet &p
 		data.message = message_text;
 		data.channelType = static_cast<uint32_t>(channel);
 		data.channelName = "system";
+		data.chatType = color_type;  // B993: names a [TextColors] row when >= 256
 		ctx_.bridge->pushEvent(eqt::state::GameEvent(
 			eqt::state::GameEventType::ChatMessage, std::move(data)));
 	}

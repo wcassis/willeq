@@ -38,6 +38,7 @@
 
 #include "client/bridge/bridge_component.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/combat.h"
 #include "client/eq_opcodes.h"
 #include "client/events/renderer_intents.h"
 #include "client/graphics/ui/cursor_attachment.h"
@@ -51,6 +52,7 @@
 #include "client/state/event_bus.h"
 #include "client/trade_manager.h"
 #include "common/packet_structs.h"
+#include "eqstr_test_db.h"
 #include "zone_stream_test_utils.h"
 
 #include <cstring>
@@ -756,6 +758,121 @@ TEST(TradeGame, HeldCoinGoesIntoTheTradeWithOneMoveCoin) {
     // Nothing held: nothing sent.
     a.push(eqt::events::TradeWindowIntent{eqt::events::TradeWindowOp::CoinFromCursor});
     EXPECT_EQ(a.coinMoves.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// UIGAP-residue: the world-click refusals and the coin-held open, measured by
+// UIGAP-live2 (trade.tsv rows 12-14, run2.*).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A player (npc_type 0) or an NPC (1) spawned at our feet, and the shipped
+// eqstr table loaded into the client, so the refusal lines are the real rows.
+void spawnAt(TradeHarness& h, uint32_t spawnId, const char* name, uint8_t npcType,
+             uint8_t classId) {
+    zonetest::ReplayZone(h.eq, HC_OP_NewSpawn,
+                         zonetest::NewSpawnPayloadAt(spawnId, name, 0, 0, 0, /*level=*/5,
+                                                     npcType, classId));
+    h.bridge.drainEvents();
+}
+
+void loadShippedStrings(TradeHarness& h) {
+    ASSERT_TRUE(eqt_test::ShippedStrings().isLoaded()) << "data/willeq.db";
+    ASSERT_TRUE(h.eq.Strings().LoadStringFiles(""));
+}
+
+void holdNoDrop(TradeHarness& h, bool noDrop) {
+    inv::ItemInstance fang;
+    fang.itemId = 13915;
+    fang.name = "Gnoll Fang";
+    fang.icon = 783;
+    fang.noDrop = noDrop;
+    h.inventory().setItem(inv::GENERAL_BEGIN + 4, fang);
+    ASSERT_TRUE(h.inventory().pickupItem(inv::GENERAL_BEGIN + 4));
+    h.bridge.drainIntents();
+}
+
+}  // namespace
+
+// Row 12 (B1001, #321): a NO-DROP item held + a click on a player -> no trade
+// request, the item stays on the cursor, eqstr 12921, and the click targets.
+TEST(TradeRefusal, ANoDropItemHeldOnAPlayerIsRefusedClientSide) {
+    TradeHarness a;
+    loadShippedStrings(a);
+    spawnAt(a, 329, "Testbuddy", /*npcType=*/0, /*classId=*/1);
+    holdNoDrop(a, /*noDrop=*/true);
+    a.push(eqt::events::TargetIntent{329});
+    EXPECT_EQ(a.requests, 0) << "row 12: no OP_TradeRequest";
+    EXPECT_FALSE(a.trade().isTrading());
+    ASSERT_NE(a.inventory().getCursorItem(), nullptr) << "row 12: the item stays on the cursor";
+    EXPECT_EQ(a.inventory().getCursorItem()->itemId, 13915u);
+    const auto lines = systemLines(a.bridge.drainEvents());
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0], "That item cannot be dropped, traded, or sold.") << "row 12, eqstr 12921";
+    EXPECT_EQ(a.eq.GetCombatManager()->GetTargetId(), 329) << "row 12: OP_TargetMouse only";
+
+    // The negative: a TRADABLE item on the same player opens the trade (row 1).
+    TradeHarness b;
+    loadShippedStrings(b);
+    spawnAt(b, 329, "Testbuddy", 0, 1);
+    holdNoDrop(b, /*noDrop=*/false);
+    b.push(eqt::events::TargetIntent{329});
+    EXPECT_EQ(b.requests, 1);
+}
+
+// A no-drop item to an NPC is a normal give (UIGAP-live2's give_npc passes
+// with a Gnoll Fang): the no-drop refusal is for players only.
+TEST(TradeRefusal, ANoDropItemHeldOnAQuestNpcStillOpensTheGiveWindow) {
+    TradeHarness a;
+    loadShippedStrings(a);
+    spawnAt(a, 332, "Captain_Tillin000", /*npcType=*/1, /*classId=*/1);
+    holdNoDrop(a, /*noDrop=*/true);
+    a.push(eqt::events::TargetIntent{332});
+    EXPECT_EQ(a.requests, 1);
+    EXPECT_TRUE(systemLines(a.bridge.drainEvents()).empty());
+}
+
+// Row 13: an item held + a click on a BANKER (class 40) -> nothing opens, the
+// item stays held, eqstr 8505, only targeting.
+TEST(TradeRefusal, AnItemHeldOnABankerPrintsTheCannotAcceptItemsLine) {
+    TradeHarness a;
+    loadShippedStrings(a);
+    spawnAt(a, 123, "Kendall_Copperhold000", /*npcType=*/1, /*classId=*/40);
+    holdNoDrop(a, /*noDrop=*/true);
+    a.push(eqt::events::TargetIntent{123});
+    EXPECT_EQ(a.requests, 0) << "row 13: no give window";
+    ASSERT_NE(a.inventory().getCursorItem(), nullptr);
+    const auto lines = systemLines(a.bridge.drainEvents());
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0],
+              "This NPC cannot accept items directly, right-click if you wish to make transactions.")
+        << "row 13, eqstr 8505";
+    EXPECT_EQ(a.eq.GetCombatManager()->GetTargetId(), 123);
+}
+
+// Row 14: COIN held + a click on a player opens the trade exactly as an item
+// does, and right after the ack the pile goes OP_MoveCoin 0 -> 3.
+TEST(TradeGame, HeldCoinOnAPlayerOpensTheTradeAndMovesTheCoinIn) {
+    TradeHarness a;
+    TradePanelState window;
+    spawnAt(a, 329, "Testbuddy", /*npcType=*/0, /*classId=*/1);
+    a.inventory().pickupMoney(inv::InventoryManager::CursorMoneyType::Platinum, 5);
+    a.coinMoves.clear();
+    a.push(eqt::events::TargetIntent{329});
+    EXPECT_EQ(a.requests, 1) << "row 14: OP_TradeRequest";
+    EXPECT_TRUE(a.coinMoves.empty()) << "nothing moves before the ack";
+    a.replayAckFrom(329);
+    ASSERT_TRUE(a.trade().isTrading());
+    ASSERT_EQ(a.coinMoves.size(), 1u);
+    EXPECT_EQ(a.coinMoves[0].from_slot, 0) << "row 14: from_slot=0 (cursor)";
+    EXPECT_EQ(a.coinMoves[0].to_slot, 3) << "row 14: to_slot=3 (trade)";
+    EXPECT_EQ(a.coinMoves[0].cointype1, EQT::COINTYPE_PP);
+    EXPECT_EQ(a.coinMoves[0].amount, 5);
+    EXPECT_FALSE(a.inventory().hasCursorMoney());
+    a.pump(window);
+    EXPECT_TRUE(window.isOpen);
+    EXPECT_EQ(window.ownCoins[0], 5u);
 }
 
 // Rows 4 and 10: Trade / Give sends OP_TradeAcceptClick, once, and says nothing.

@@ -362,6 +362,20 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_char_create_screen DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B998 (#318): the character-select screen -- layout vs EQUI_CharacterSelect.xml,
+# the list from a recorded OP_SendCharInfo, buttons -> requests -> packets
+# through the real service and the world replay seam, the configured-character
+# auto-select pinned unchanged, Create opening B888's screen. Device-free.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_character_select
+        test_character_select.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_character_select PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_character_select GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_character_select PRIVATE WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    GTEST_DISCOVER_TESTS(test_character_select DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T434: the Options window -- geometry against EQUI_OptionsWindow.xml, the
 # T363 disabled-control rule, the three wired sliders, the Alt+O binding and
 # the persistence round trip. Device-free like its siblings.
@@ -384,6 +398,42 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_options_wiring PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_options_wiring GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_options_wiring DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B993 (#313): the Colors page -- the [TextColors] table, the colour picker,
+# persistence, /option textcolor, and a chat line's pixels in the chosen
+# colour (headless GLES2 + willeq.eqe1; that one self-skips without them).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_options_colors
+        test_options_colors.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_options_colors PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_options_colors GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_options_colors DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B994 (#314): the 3D target ring -- TargetIndicator.ini's numbers, the
+# geometry following the target, the draw decision, the Options row, and the
+# ring's pixels through the client's own draw (headless GLES2; self-skips).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_target_ring
+        test_target_ring.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_target_ring PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_target_ring GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_target_ring DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B995 (#315): the Display > Particles sub-pages -- sub-tab switching, the
+# Spell/Env knobs persisted as eqclient.ini floats, and each knob reaching the
+# particle systems (the worker's spawn density, the shared draw rule).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_options_particles
+        test_options_particles.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_options_particles PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_options_particles GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_options_particles DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
@@ -476,6 +526,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_trainer_panel PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_trainer_panel GTest::gtest_main willeq_core)
+    # UIGAP-residue: the measured trainer lines are eqstr 12056 / 12930.
+    TARGET_COMPILE_DEFINITIONS(test_trainer_panel PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_trainer_panel DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -505,6 +558,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     )
     TARGET_INCLUDE_DIRECTORIES(test_trade_window PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_trade_window GTest::gtest_main willeq_core)
+    # UIGAP-residue: the no-drop / banker refusals print eqstr 12921 / 8505.
+    TARGET_COMPILE_DEFINITIONS(test_trade_window PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     GTEST_DISCOVER_TESTS(test_trade_window DISCOVERY_TIMEOUT 120)
 ENDIF()
 
@@ -684,6 +740,31 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_static_ui_frame_cost PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_static_ui_frame_cost GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_static_ui_frame_cost DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B992 (GitLab #312): static-UI text respects panel z-order -- a pixel
+# assertion over overlapping windows and the layered flush's draw-call pins.
+# Same headless GLES2 + willeq.eqe1 harness; self-skips without them.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_panel_z_order
+        test_ui_panel_z_order.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_ui_panel_z_order PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_ui_panel_z_order GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_ui_panel_z_order DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B1004 (GitLab #323): item-name tooltips -- the Alt-held labels and the hover
+# tooltip, against review/UIGAP-ORACLE/323/tooltips.tsv. The logic cases need
+# no device; the pixel cases use the headless GLES2 + willeq.eqe1 harness and
+# self-skip without it.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_item_tooltip
+        test_item_tooltip.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_item_tooltip PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_item_tooltip GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_item_tooltip DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # B975 (GitLab #293): the entity name-tag batch -- pixel-identical to the

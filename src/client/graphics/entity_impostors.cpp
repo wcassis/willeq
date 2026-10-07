@@ -59,6 +59,19 @@ void EntityRenderer::setImpostorFrameInputs(const FrameBudgetGovernor* governor,
     impostorLoading_ = loading;
 }
 
+void EntityRenderer::prepareImpostorCache() {
+    if (!impostorsEnabled()) return;
+    if (!impostors_) {
+        const size_t budget = impostorTestBudget_ > 0 ? impostorTestBudget_
+                                                      : constrainedConfig_->impostorTextureMemoryBytes;
+        impostors_ = std::make_unique<ImpostorCache>(driver_, smgr_, budget);
+        if (!impostors_->usable())
+            LOG_WARN(MOD_GRAPHICS, "Impostor: cache unusable (driver or budget) -- every entity stays a model");
+        return;
+    }
+    impostors_->prepare();
+}
+
 bool EntityRenderer::impostorsEnabled() const {
     if (impostorTestBudget_ > 0) return true;
     // A non-original LOD feature: the baseline draws every character as its model.
@@ -251,6 +264,16 @@ void EntityRenderer::updateImpostors() {
         return a.distSq != b.distSq ? a.distSq < b.distSq : a.id < b.id;
     });
     const UnitBudget ub = unitBudgetFor(gstate, targetMs);
+    // B979: the B973 scheduler is the shared gate for capture units (kind
+    // Impostor, recorded below). It learns the capture's real cost per kind
+    // and defers a capture that would not fit the frame's slice, so a slow
+    // first-draw (30-62 ms, B964) can never be joined by a second capture in
+    // the same frame. The pass passes its OWN frame accounting because it
+    // runs inside the frame after the build slice (and tools that drive the
+    // pass directly never open a scheduler frame at all). The per-pass
+    // budget (ub) stays on top: two independent caps, neither weaker than
+    // the other.
+    EntityBuildScheduler& sched = buildScheduler_;
     // Measurement switch (refactor/B964/README.md): WILLEQ_IMPOSTOR_FINISH=1
     // finishes the GPU before the units, so a unit's time is its own work and
     // not the previous frame's deferred rasterization (llvmpipe flushes it at
@@ -271,6 +294,7 @@ void EntityRenderer::updateImpostors() {
         const double spent = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frameT0).count();
         if (fs.unitsThisFrame >= ub.maxUnits || spent >= ub.maxMs) break;
         if (fs.unitsThisFrame > 0 && spent + avgUnitMs > ub.maxMs) break;
+        if (!sched.mayStartCaptureUnit(static_cast<float>(spent), fs.unitsThisFrame)) break;
         auto eit = entities_.find(w.id);
         if (eit == entities_.end()) continue;
         EntityVisual& v = eit->second;
@@ -332,6 +356,7 @@ void EntityRenderer::updateImpostors() {
         const auto u0 = std::chrono::steady_clock::now();
         const bool ok = cache.capture(st.key, v.animatedNode, held, camPos, ang, w.id);
         const double ums = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - u0).count();
+        sched.recordUnit(EntityBuildUnitKind::Impostor, static_cast<float>(ums));
         ++fs.unitsThisFrame;
         cs.units++;
         cs.unitMsSum += ums;

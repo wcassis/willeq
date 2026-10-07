@@ -39,6 +39,15 @@ bool EntityBuildScheduler::mayStartUnit(EntityBuildUnitKind kind) const {
     return spentMs_ + predictedMs(kind) <= sliceMs_;
 }
 
+bool EntityBuildScheduler::mayStartCaptureUnit(float captureWorkMs, int capturesThisFrame) const {
+    if (legacy_) return true;                // the B973 A/B: pre-B979 pass behavior
+    if (capturesThisFrame == 0) return true; // guaranteed progress, every state
+    // The frame's work so far: the pass's own captures plus the build-slice
+    // work recorded into the same frame (never less than the pass's share).
+    const float frameWork = std::max(captureWorkMs, spentMs_);
+    return frameWork + predictedMs(EntityBuildUnitKind::Impostor) <= sliceMs_;
+}
+
 void EntityBuildScheduler::recordUnit(EntityBuildUnitKind kind, float ms) {
     ms = std::max(0.0f, ms);
     const size_t k = static_cast<size_t>(kind);
@@ -91,16 +100,16 @@ bool EntityBuildScheduler::endFrame(float frameMs, const EntityBuildBacklog& bac
         const int builtDelta = static_cast<int>(backlog.built) - static_cast<int>(wBuiltAtStart_);
         windowLine_ = fmt::format(
             "[entity-build] mode={} window_s={:.2f} frames={} gov=G{}/Y{}/R{} units={} "
-            "(upload={} create={} finalize={} equip={} other={}) unit_ms avg={:.2f} max={:.2f} "
+            "(upload={} create={} finalize={} equip={} other={} impostor={}) unit_ms avg={:.2f} max={:.2f} "
             "frame_work_ms max={:.2f} frames_with_work={} over_slice={} "
             "frame_ms avg={:.1f} max={:.1f} with_work={:.1f} without_work={:.1f} "
             "built={} built_delta={:+d} unbuilt_visible={} unbuilt_total={} in_progress={} "
             "awaiting_prep={} pending_units={} pending_uploads={} pred_ms upload={:.2f} create={:.2f} "
-            "finalize={:.2f} equip={:.2f} kind_ms(sum/max) upload={:.2f}/{:.2f} create={:.2f}/{:.2f} "
+            "finalize={:.2f} equip={:.2f} impostor={:.2f} kind_ms(sum/max) upload={:.2f}/{:.2f} create={:.2f}/{:.2f} "
             "finalize={:.2f}/{:.2f} equip={:.2f}/{:.2f}",
             legacy_ ? "legacy" : "sliced", nowSeconds - windowStart_, wFrames_,
             wStateFrames_[0], wStateFrames_[1], wStateFrames_[2], wUnits_,
-            wKindUnits_[0], wKindUnits_[1], wKindUnits_[2], wKindUnits_[3], wKindUnits_[4],
+            wKindUnits_[0], wKindUnits_[1], wKindUnits_[2], wKindUnits_[3], wKindUnits_[4], wKindUnits_[5],
             avg(wUnitMsSum_, wUnits_), wUnitMsMax_, wFrameWorkMsMax_, wFramesWithWork_,
             wFramesOverSlice_, avg(wFrameMsSum_, wFrames_), wFrameMsMax_,
             avg(wFrameMsWithWorkSum_, wFramesWithWork_),
@@ -108,7 +117,8 @@ bool EntityBuildScheduler::endFrame(float frameMs, const EntityBuildBacklog& bac
             backlog.built, builtDelta, backlog.unbuiltVisible, backlog.unbuiltTotal,
             backlog.inProgress, backlog.awaitingPrep, backlog.pendingUnits, backlog.pendingUploads,
             predictedMs(EntityBuildUnitKind::Upload), predictedMs(EntityBuildUnitKind::Create), predictedMs(EntityBuildUnitKind::Finalize),
-            predictedMs(EntityBuildUnitKind::Equip), wKindSumMs_[0], wKindMaxMs_[0], wKindSumMs_[1],
+            predictedMs(EntityBuildUnitKind::Equip), predictedMs(EntityBuildUnitKind::Impostor),
+            wKindSumMs_[0], wKindMaxMs_[0], wKindSumMs_[1],
             wKindMaxMs_[1], wKindSumMs_[2], wKindMaxMs_[2], wKindSumMs_[3], wKindMaxMs_[3]);
     }
 

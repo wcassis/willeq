@@ -161,6 +161,8 @@ void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,
     for (int i = 0; i < OptionsLayout::CONTROL_COUNT; ++i) {
         const auto& c = OptionsLayout::kControls[i];
         if (static_cast<int>(c.tab) != state.activeTab) continue;
+        // B995: a particle sub-page's controls only while its sub-tab is up.
+        if (c.subPage >= 0 && c.subPage != state.particlesTab) continue;
 
         const auto r = OptionsLayout::controlRect(layout, i);
         const bool on = enabled(c);
@@ -228,9 +230,14 @@ void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,
                     break;
                 }
                 [[fallthrough]];
+            case Kind::TabBox:
+                if (on) {  // B995: the three sub-tabs, clickable
+                    renderOptionsParticleTabs(ui, layout, state, i);
+                    break;
+                }
+                [[fallthrough]];
             case Kind::Editbox:
             case Kind::Button:
-            case Kind::TabBox:
                 ui.drawFrame(r, frame);
                 if (!tb || c.text[0] == '\0') break;
                 if (c.kind == Kind::Button) {
@@ -248,6 +255,11 @@ void renderOptionsWindow(UIRenderer& ui, const UILayout& layout,
                 break;
         }
     }
+
+    // B993: EQUI_ColorPickerWnd, above the window that opened it -- its own
+    // window, so its own layer (B992): the Colors list's text under it must
+    // not show through.
+    if (state.colorPicker.isOpen) renderColorPicker(ui.layer(), layout, state.colorPicker);
 }
 
 int hitTestOptionsTab(const UILayout& layout, const OptionsPanelState& state,
@@ -273,6 +285,13 @@ int hitTestOptionsControl(const UILayout& layout, const OptionsPanelState& state
         // B430: a caption or a readout carries its control's setting (so it
         // draws enabled) but is not itself a control.
         if (c.kind == Kind::Label || c.kind == Kind::ValueLabel) continue;
+        if (c.subPage >= 0 && c.subPage != state.particlesTab) continue;  // B995
+        // B995: a tab box is hit on its sub-tab strip only; its body holds
+        // the active sub-page's own controls.
+        if (c.kind == Kind::TabBox) {
+            if (particleSubTabAt(layout, i, mouseX, mouseY) >= 0) return i;
+            continue;
+        }
         if (OptionsLayout::controlRect(layout, i).isPointInside(p)) return i;
     }
     return -1;

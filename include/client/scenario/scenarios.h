@@ -19,6 +19,14 @@ std::unique_ptr<IScenario> MakeTwoClientSurviveScenario(const ScenarioOptions& o
 std::unique_ptr<IScenario> MakeCastLandsScenario(const ScenarioOptions& options);
 
 /**
+ * B925 (issue #244/#258): zone in and keep the link for holdSeconds. A single
+ * client -- the plain "does the zone link survive a long load" check. A
+ * mid-run drop that recovers before the deadline passes; one that does not,
+ * or a dead process, does not.
+ */
+std::unique_ptr<IScenario> MakeZoneLinkHoldScenario(const ScenarioOptions& options);
+
+/**
  * T494 (board B796): the OBSERVER half of the /equip proof. Sends nothing;
  * asserts the PEER's primary equipment material changed, which only the
  * server's OP_WearChange can do.
@@ -77,6 +85,21 @@ std::unique_ptr<IScenario> MakeTrackPeerScenario(const ScenarioOptions& options)
 /** B888 (issue #204): with --create-character, the created character is in
  *  world, in its home city, never the tutorial. */
 std::unique_ptr<IScenario> MakeCreateCharacterScenario(const ScenarioOptions& options);
+
+// UIGAP-live2: the live legs owed by B896 / B442b / UIGAP-small. See
+// src/client/scenario/scenario_ui_trade.cpp.
+
+/** #212: dagger + 5 pp to the peer by a world click, both press Trade; a
+ *  second trade cancelled (eqstr 1450). Peer = --scenario-cast-target. */
+std::unique_ptr<IScenario> MakeTradeRoundtripScenario(const ScenarioOptions& options);
+/** Its partner: auto-ack, accept after the actor, see the cancel. */
+std::unique_ptr<IScenario> MakeTradePeerScenario(const ScenarioOptions& options);
+/** #212: a Gnoll Fang to Captain Tillin through the give window. */
+std::unique_ptr<IScenario> MakeGiveNpcScenario(const ScenarioOptions& options);
+/** #151: drop and destroy confirmations; purse and bank coin by OP_MoveCoin. */
+std::unique_ptr<IScenario> MakeDropDestroyCoinScenario(const ScenarioOptions& options);
+/** #26: /bank change takes both purses to the fewest coins. */
+std::unique_ptr<IScenario> MakeBankChangeScenario(const ScenarioOptions& options);
 
 }  // namespace scenario
 }  // namespace eqt

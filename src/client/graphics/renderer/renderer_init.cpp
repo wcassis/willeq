@@ -512,6 +512,8 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
     // U04: Create chat message buffer for new UI
     frame_->newUIChatBuffer_ = std::make_unique<eqt::ui::ChatMessageBuffer>(500);
     frame_->chatPanelState_.messageBuffer = frame_->newUIChatBuffer_.get();
+    // B993: the chat panel draws in the player's [TextColors] table.
+    frame_->chatPanelState_.textColors = &frame_->optionsState_.textColors;
     // U06j: Initialize static UI input handler
     frame_->staticUIInput_ = std::make_unique<StaticUIInput>();
     frame_->staticUIInput_->init(bridge_);

@@ -318,6 +318,22 @@ TEST_F(LootWindowActionsTest, LootItemIntent_SendsLootItemToCursor) {
     EXPECT_EQ(w.auto_loot, 0u) << "the UI gesture takes to the cursor, as the real client does";
 }
 
+// review/UIGAP-ORACLE/151/gestures.tsv row 46c (UIGAP-live2): the official
+// client's RIGHT click on a loot slot is OP_LootItem with auto_loot=1.
+TEST_F(LootWindowActionsTest, LootItemIntent_RightClickSendsAutoLootToInventory) {
+    OpenWithTwoItems();
+
+    bridge.pushIntent(eqt::events::LootItemIntent{kCorpseId, 1, /*autoLoot=*/true});
+    eq.Bridge().ProcessBridgeIntents();
+
+    const auto& q = eq.Test_GetQueuedPackets();
+    ASSERT_EQ(q.size(), 1u);
+    auto w = DecodeLootItem(q[0]);
+    EXPECT_EQ(w.lootee, kCorpseId);
+    EXPECT_EQ(w.slot_id, 1u);
+    EXPECT_EQ(w.auto_loot, 1u) << "row 46c: straight into the inventory";
+}
+
 // ---------------------------------------------------------------------------
 // Loot all
 // ---------------------------------------------------------------------------

@@ -577,7 +577,7 @@ two-client scenario is a **peer process**, launched by `scripts/scenario.sh`
 running the partner scenario on the second account — the client never forks a
 second client.
 
-UIGAP-live UI legs: `scenario_ui_*.cpp`; scenario.sh sources `<name>.sidecar.sh`/`.post.sh` (DB half).
+UIGAP-live(2) UI legs: `scenario_ui_*.cpp`; scenario.sh sources `<name>.sidecar.sh`/`.post.sh` (DB half).
 
 The state machines are pure logic over `IScenarioWorld`
 (`include/client/scenario/scenario.h`), so
@@ -783,8 +783,9 @@ graphics dependencies.
 
 **IrrlichtRenderer** (`include/client/graphics/irrlicht_renderer.h`,
 `src/client/graphics/renderer/` + eleven component directories, Batch L)
-- Its own four TUs (`irrlicht_renderer.cpp`, `renderer_init.cpp`,
-  `renderer_entities.cpp`, `renderer_event_receiver.cpp`) live in
+- Its own five TUs (`irrlicht_renderer.cpp`, `renderer_init.cpp`,
+  `renderer_entities.cpp`, `renderer_event_receiver.cpp`, B998's
+  `renderer_pre_zone.cpp`) live in
   `src/client/graphics/renderer/`, beside the free-function
   `software_cursor_texture.cpp`; everything else was extracted into eleven
   components, each `class EQT::Graphics::<Name>Component` with its own directory
@@ -979,8 +980,8 @@ own rule (T368), so a fresh character writes no file until it changes something.
 Since T467 (board B560) an identity change FROM a character resets every
 persisted field to its default before the new file is read, so nothing carries
 over; the FIRST identity of a run is not reset, so a volume the audio manager
-published before zone-in is kept. **Chat timestamps, chat scrollback and UI
-colours are still NOT persisted** — that was scope, not oversight.
+published before zone-in is kept. Chat colours persist under `[TextColors]`
+(B993). **Chat timestamps and scrollback are NOT persisted** (scope).
 
 The feature is four files: `include/client/graphics/ui/ui_preferences.h`,
 `src/client/graphics/ui/ui_preferences.cpp` (the format, device-free),

@@ -212,6 +212,13 @@ enum class ConfirmPurpose : uint8_t { None = 0, DropItem = 1, DestroyItem = 2 };
 constexpr uint32_t kEqStrDropOnGround = 9057;
 constexpr uint32_t kEqStrDestroyItem = 2043;
 
+// How long each prompt stays up unanswered before it closes itself, sending
+// nothing and leaving the item on the cursor. MEASURED twice each by
+// UIGAP-live2 (review/UIGAP-ORACLE/151/README.md, run3 + run5): Destroy 10.1 s,
+// Drop 20.1 s.
+constexpr float kDropPromptTimeoutSeconds = 20.0f;
+constexpr float kDestroyPromptTimeoutSeconds = 10.0f;
+
 /**
  * What a RequestDrop / RequestDestroy needs: whether to prompt at all (an
  * item must be held), which eqstr row, and the held item's name for %1.
@@ -223,6 +230,7 @@ struct ConfirmPromptPlan {
     uint32_t eqstrId = 0;
     std::string itemName;
     std::string message;   // why nothing is asked, when prompt is false
+    float timeoutSeconds = 0.0f;   // kDrop/kDestroyPromptTimeoutSeconds
 };
 ConfirmPromptPlan PlanConfirmPrompt(const InventoryManager& inv,
                                     eqt::events::CursorGestureOp op);

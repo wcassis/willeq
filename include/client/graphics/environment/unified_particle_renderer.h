@@ -90,8 +90,18 @@ public:
     GLuint vertexBuffer() const { return vertexVbo_; }
     size_t vertexBufferBytes() const { return vertexVboBytes_; }
 
+    // B995: the Options pages' opacity and near clip, applied per particle by
+    // Environment::applyParticleKnobs() in render(). The camera is the one
+    // the near clip is measured from. Identity until set (the visual gate).
+    void setParticleKnobs(const ParticleKnobs& knobs, const glm::vec3& cameraPos) {
+        knobs_ = knobs;
+        cameraPos_ = cameraPos;
+    }
+
 
 private:
+    ParticleKnobs knobs_ = identityParticleKnobs();  // B995
+    glm::vec3 cameraPos_{0.0f};
     // Point sprite vertex layout: position(3f) + color(4f) + texcoord0(2f) + texcoord1(2f) = 11 floats = 44 bytes
     struct PointSpriteVertex {
         float x, y, z;          // World position

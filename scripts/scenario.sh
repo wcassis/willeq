@@ -13,6 +13,7 @@
 #                                  [--unit T###] [--keep-server]
 #                                  [--inventory-chars "67,68"] [--seed-sql FILE]
 #                                  [--expect-material N]
+#                                  [--create-character "Name,Race,Gender,Class,Deity,City"]
 #                                  [--log-level INFO|DEBUG]
 #   scripts/scenario.sh --selftest [--unit T###] [--config FILE] [...]
 #
@@ -106,6 +107,7 @@ log_module_for() {
 INVENTORY_CHARS=""
 SEED_SQL=""
 EXPECT_MATERIAL="-1"
+CREATE_CHARACTER=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -123,6 +125,10 @@ while [ $# -gt 0 ]; do
         # number -- the server's items.idfile for the seeded weapon. -1 (the
         # default) means it only stays logged in, as before.
         --expect-material) EXPECT_MATERIAL="$2"; shift 2 ;;
+        # UIGAP-live2 (B888, #204): the world script for the create_character
+        # scenario, passed to the MAIN client only (create_character.post.sh
+        # runs the --delete-character half against the same config).
+        --create-character) CREATE_CHARACTER="$2"; shift 2 ;;
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
@@ -383,6 +389,8 @@ case "$SCENARIO" in
     click_equip_observed) PEER_SCENARIO="click_equip_actor"; PEER_SCENARIO_2="equip_actor_return" ;;
     friends_who|ignore_tell) PEER_SCENARIO="social_peer" ;;
     track_list) PEER_SCENARIO="track_peer" ;;
+    # UIGAP-live2 (#212): the trade partner.
+    trade_roundtrip) PEER_SCENARIO="trade_peer" ;;
 esac
 if [ -n "$PEER_SCENARIO" ]; then
     if [ ! -f "$PEER_CONFIG" ]; then
@@ -489,6 +497,7 @@ fi
     $MAIN_SPELL_FLAGS \
     --scenario-cast-target "${PEER_CHAR:-}" \
     --log-level="$LOG_LEVEL" \
+    ${CREATE_CHARACTER:+--create-character "$CREATE_CHARACTER"} \
     ${MAIN_LOG_MODULE:+--log-module="$MAIN_LOG_MODULE"} ${SCENARIO_CLIENT_ARGS:-} > "$LOG" 2>&1 &
 CLIENT_PID=$!
 wait "$CLIENT_PID"

@@ -343,10 +343,11 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                     // Corpse::LootCorpseItem puts the item ON THE CURSOR
                     // (PutLootInInventory(slotCursor)), which is the oracle's
                     // pick-up. A corpse stack cannot be split, so SHIFT does
-                    // the same. RIGHT (the oracle's inspect) is consumed and
-                    // does nothing yet: the corpse's items are not in
-                    // InventoryManager, so ItemDisplayRequestIntent cannot
-                    // describe them (owed).
+                    // the same. RIGHT is MEASURED (UIGAP-live2,
+                    // review/UIGAP-ORACLE/151/gestures.tsv row 46c): the
+                    // official client sends OP_LootItem auto_loot=1 and the
+                    // item goes straight into the inventory, the cursor
+                    // untouched (row 46a is the LEFT, auto_loot=0).
                     const auto action = eqt::inventory::classifyClick(
                         leftClicked ? eqt::inventory::ClickButton::Left
                                     : eqt::inventory::ClickButton::Right,
@@ -359,7 +360,14 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
                             loot.items[idx].itemName, loot.items[idx].slot,
                             loot.corpseId);
                         bridge_->pushIntent(eqt::events::LootItemIntent{
-                            loot.corpseId, loot.items[idx].slot});
+                            loot.corpseId, loot.items[idx].slot, /*autoLoot=*/false});
+                    } else if (!leftClicked && rightClicked_ && bridge_) {
+                        LOG_INFO(MOD_GRAPHICS,
+                            "Loot window: auto-looting '{}' (corpse slot {}) from corpse {}",
+                            loot.items[idx].itemName, loot.items[idx].slot,
+                            loot.corpseId);
+                        bridge_->pushIntent(eqt::events::LootItemIntent{
+                            loot.corpseId, loot.items[idx].slot, /*autoLoot=*/true});
                     }
                 }
             }
@@ -558,6 +566,16 @@ bool StaticUIInput::processOptionsInput(int mouseX, int mouseY, bool leftClicked
         options.hoveredTab = -1;
         options.hoveredControl = -1;
         return false;
+    }
+    // B993: the colour picker is drawn above the window, so it is asked first.
+    if (colorPickerContains(layout, options.colorPicker, mouseX, mouseY)) {
+        options.hoveredTab = -1;
+        options.hoveredControl = -1;
+        if (leftClicked &&
+            clickColorPicker(layout, options.colorPicker, options.textColors, mouseX, mouseY)) {
+            changed = OptionsLayout::Setting::TextColors;
+        }
+        return true;
     }
     if (!optionsWindowContains(layout, options, mouseX, mouseY)) {
         options.hoveredTab = -1;

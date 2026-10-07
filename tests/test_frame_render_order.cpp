@@ -286,7 +286,29 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     - entry 328, `renderTipWindow(...)`, directly after
 //       `renderOptionsWindow(...)` and before `renderXPBar(...)`.
 //     The count rises 359 -> 361.
-const size_t kGoldenSize = 361u;
+//   * B992 (GitLab #312): the 29 static-UI draw statements between
+//     `uiRenderer_->beginFrame();` and `uiRenderer_->endFrame();` pass
+//     `uiRenderer_->layer()` instead of `*uiRenderer_` -- each window begins
+//     its own z-layer, so a covered window's text is covered too. A TEXT
+//     change at those 29 positions only: no insertion, no reorder, the count
+//     stays 361.
+//   * B994 (#314): the 3D target ring. ONE pure insertion, no text change
+//     and no reorder: entry 90, `ctx_.Overlays().drawTargetRing();`, directly
+//     after the target outline (entries 88/89) and before that pass's
+//     `measureSection()` -- the ring is part of the target indicator, drawn
+//     after the opaque scene so the floor depth-tests it. Entries 0-89 are
+//     byte-identical; everything after shifts by one with its text
+//     byte-identical. Applied after B992 (rebased onto it). The count rises 361 -> 362.
+//   * B1004 (GitLab #323): the item-name tooltips. ONE pure insertion, no
+//     text change and no reorder: entry 334, `renderItemTooltipLayer();`,
+//     directly after `renderConfirmationDialog(...)` (inside nothing: the
+//     `if (staticUIInput_)` guard closes before it) and before
+//     `renderCursorAttachment(...)` -- the tooltips are their own layer above
+//     every window, below only the pointer. Defined in
+//     renderer_frame_tooltips.cpp, so it is emitted as itself. Entries 0-333
+//     are byte-identical; the rest shift by one, text byte-identical. The
+//     count rises 362 -> 363.
+const size_t kGoldenSize = 363u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

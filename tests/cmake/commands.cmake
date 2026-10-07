@@ -453,6 +453,9 @@ ADD_EXECUTABLE(test_eq_commands_bank_train
     test_eq_commands_bank_train.cpp
 )
 TARGET_LINK_LIBRARIES(test_eq_commands_bank_train GTest::gtest_main willeq_core)
+# UIGAP-residue: the banker's measured lines are eqstr 1465 / 12143.
+TARGET_COMPILE_DEFINITIONS(test_eq_commands_bank_train PRIVATE
+    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     TARGET_INCLUDE_DIRECTORIES(test_eq_commands_bank_train PRIVATE ${IRRLICHT_INCLUDE_DIR})
 ENDIF()

@@ -369,6 +369,10 @@ struct SimulationInput {
         std::unordered_map<uint16_t, glm::vec3> entityDirections;  // Irrlicht Y-up, normalized
         std::vector<ParticleCommandData> commands;
         bool fireEnabled = true;
+        // B995: the Options pages' density per ParticleFamily (0..1; 1 = as
+        // configured). Scales spawn rate, burst count and a weather volume's
+        // target count; never raises them.
+        float density[3] = {1.0f, 1.0f, 1.0f};
         bool unifiedRendererInitialized = false;
         int poolSize = 1024;  // For deferred initialization
     } particleInput;
@@ -987,7 +991,8 @@ private:
                               const glm::vec3& cameraPos, float transitionAlpha,
                               const glm::vec3& windDir, float windStrength);
     void spawnSpellParticle(const Environment::EmitterConfig& cfg, uint16_t emitterID,
-                            const glm::vec3& emitterPos, const glm::vec3* dynamicDir = nullptr);
+                            const glm::vec3& emitterPos, const glm::vec3* dynamicDir = nullptr,
+                            Environment::ParticleFamily family = Environment::ParticleFamily::Environment);
     float particleRandomFloat(float minVal, float maxVal);
     int particleRandomInt(int minVal, int maxVal);
 

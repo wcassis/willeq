@@ -121,6 +121,35 @@ public:
      */
     bool drawItemIcon(const irr::core::rect<irr::s32>& rect, uint32_t iconId);
 
+    /**
+     * B992 (GitLab #312): start the next WINDOW in z-order. Everything drawn
+     * after this call -- quads and text -- is above everything drawn before
+     * it, text included.
+     *
+     * Before B992 endFrame() drew every window's quads and then every
+     * window's text, so the text of a covered window was painted over the
+     * panel that covered it (the purse counts through the confirmation
+     * dialog, a lower bag's label and stack counts through the bag opened
+     * on top of it). Within one layer that rule stands: a window's own text
+     * is drawn after all of its own quads, as every panel was written to
+     * expect.
+     *
+     * endFrame() keeps adjacent layers in ONE flush group whenever that
+     * cannot change a pixel -- no text queued so far in the group meets the
+     * next layer's quads -- so the HUD panels, which do not overlap, still
+     * cost the same draw calls as before, and only a window that really
+     * covers earlier text splits the batch. `renderStaticUI()` calls this
+     * once per window (`layer()`), `renderContainerWindows()` once per
+     * container window. An empty layer is not recorded.
+     */
+    void beginLayer();
+
+    /** beginLayer(), then *this -- for `renderX(ui.layer(), ...)`. */
+    UIRenderer& layer() {
+        beginLayer();
+        return *this;
+    }
+
     /** Flush all accumulated quads to the driver. */
     void endFrame();
 
@@ -154,6 +183,10 @@ public:
         // Driver draw calls the text flush issued (one per entry until T462
         // batched the glyphs of every entry into texture runs).
         size_t textDraws = 0;
+        // B992: non-empty layers (windows) submitted, and the flush groups
+        // endFrame() drew them in -- one quads-then-text pass per group.
+        size_t layers = 0;
+        size_t layerGroups = 0;
         int64_t commandFlushUs = 0;
         int64_t textFlushUs = 0;
     };
@@ -171,7 +204,17 @@ public:
      */
     void setBatchingEnabled(bool enabled);
 
+    /**
+     * B992 test seam: false makes beginLayer() a no-op, so the frame is ONE
+     * layer -- every quad, then every text entry: the pre-B992 flush. Lets a
+     * test show its pixel assertion catches the bleed. Production never
+     * calls it.
+     */
+    void setLayeringEnabled(bool enabled) { layeringEnabled_ = enabled; }
+
 private:
+    // Draw the queued commands [begin, end) in runs (T462).
+    void flushCommands(size_t begin, size_t end);
     irr::video::IVideoDriver* driver_ = nullptr;
     UIAtlas* atlas_ = nullptr;
     TextBatch* textBatch_ = nullptr;
@@ -191,6 +234,17 @@ private:
         bool solid = false;
     };
     std::vector<DrawCmd> atlasQuads_;
+
+    // B992: where each layer starts in atlasQuads_ and in the text batch.
+    // Layer 0 starts at {0, 0} implicitly; the vector keeps its capacity
+    // across frames (a few dozen 8-byte entries, grown under the UI ledger
+    // category).
+    struct LayerStart {
+        uint32_t firstCmd;
+        uint32_t firstText;
+    };
+    std::vector<LayerStart> layers_;
+    bool layeringEnabled_ = true;
 
     FlushStats flushStats_;
     bool batchingEnabled_ = true;

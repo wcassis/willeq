@@ -4,7 +4,7 @@ A standalone EverQuest client targeting the Titanium client version (2006) with 
 
 This is a mostly vibe-coded project so the codebase is a bit chaotic. Expect major changes as features are implemented.
 
-You need an existing account. A character can be created by the client itself at character select (B888, issue #204): `willeq -c willeq.json --create-character "Name,Race,Gender,Class,Deity,City"` creates it and enters world with it in its home city (never the tutorial); `--delete-character Name` and `--list-characters` do the other two. The official two-page Character Creation screen is transcribed (`include/client/graphics/ui/char_create_*.h`) but is not yet reachable from a character-select screen, because the client has none (see the table below).
+You need an existing account. A character can be created by the client itself at character select (B888, issue #204): `willeq -c willeq.json --create-character "Name,Race,Gender,Class,Deity,City"` creates it and enters world with it in its home city (never the tutorial); `--delete-character Name` and `--list-characters` do the other two. With graphics and no `character` in the config (or with `--character-select`), the client shows the official Character Select screen (B998, issue #318): pick a character and Enter World, Delete one (with the official confirmation), or press an empty slot's "Create a New Character" to open the two-page Character Creation screen, which enters world with the new character. With a configured character the client still selects it automatically, exactly as before (every scripted and CI run).
 
 I'm developing this on a remote Ubuntu 24 server without a GPU. The default run needs no display at all (surfaceless EGL on llvmpipe); Xvfb + x11vnc or native RDP are used when a picture is wanted. The ARM builds target an Orange Pi One (Mali 400) running Armbian Noble with the Lima open-source driver.
 
@@ -26,7 +26,7 @@ current defect list; where the two disagree, the board wins.
 - WASD movement with collision detection and server sync
 - Chat (all channels), targeting (click, Tab cycle, F-keys), auto-attack
 - Spell memorization, casting, and gem management
-- Inventory window with equipment slots, bags, the official client's own item icons (T430) and tooltips; items are picked up and put down click-to-cursor like the official client (left click picks up / places / swaps / stacks, a stack opens the Quantity window, Shift = whole stack, Ctrl = one, right or Alt+left click shows the item — B442, #151, rules measured on the official client), or with `/pickup`, `/putdown`, `/cursor`, `/coin` and `/equip`
+- Inventory window with equipment slots, bags, the official client's own item icons (T430) and item-name tooltips (B1004, #323: hold Alt over a bag or the bank to name every item in it, as measured on the official client, or rest the pointer on an item); items are picked up and put down click-to-cursor like the official client (left click picks up / places / swaps / stacks, a stack opens the Quantity window, Shift = whole stack, Ctrl = one, right or Alt+left click shows the item — B442, #151, rules measured on the official client), or with `/pickup`, `/putdown`, `/cursor`, `/coin` and `/equip`
 - Vendor buy/sell and banking through the oracle's own merchant and bank windows (T436), or by slash command; player-to-player trading and NPC hand-ins through the oracle's trade and give windows (B896), or by slash command
 - Group system with HP/mana bars, invite/accept/disband/decline
 - Raid commands (invite, accept, leave, remove, leader, loot type, looters, lock, group)
@@ -41,7 +41,7 @@ current defect list; where the two disagree, the board wins.
 - ETC1 flat-pack texture assets (EQE1) for memory-constrained boards
 
 **What doesn't work or is incomplete:**
-- No character-select SCREEN: the character is picked from the config, and creation/deletion are command-line scripts (`--create-character`, `--delete-character`); the creation screen is drawn only by `ui_panel_capture` so far
+- Character select and creation have no 3D scene: no character preview, no sample model, no Explore/Rotate (greyed), no FacePick window (B998/B888)
 - Visual spell effects incomplete. Only the cast glow, the cast-complete flash and the impact are reached from the game; the projectile, buff-aura, rain and ground-circle code exists but has **no production caller** — its only callers are the `model_viewer` FX harness and a unit test (`refactor/BOARD.md` B161/B165), so no spell projectile and no buff aura is ever drawn in a real session
 - Swimming mechanics incomplete (keys exist, physics don't)
 - Boats/transport not implemented
@@ -64,8 +64,8 @@ Legend: Done | Partial | Not Implemented
 |---------|--------|-------|
 | Login server authentication | Done | |
 | Server selection | Done | |
-| Character selection | Done | Auto-select from config |
-| Character creation | Partial | B888 (#204). `--create-character "Name,Race,Gender,Class,Deity,City[,STR=n,...]"` sends `OP_ApproveName` then `OP_CharacterCreate` exactly as eqemu's Titanium world validates them (byte-pinned) and enters world in the home city, never the tutorial; `--delete-character`, `--list-characters`; scenario `create_character`. The official two-page screen (`EQUI_CharacterCreate.xml`) and its flow are transcribed with post-Velious races/classes/cities HIDDEN (`data/char_create.tsv`), but there is no character-select screen to open it from yet, no FacePick window and no 3D preview |
+| Character selection | Done | B998 (#318). Auto-select from config by default (byte-for-byte unchanged); with no configured character or `--character-select` (graphics), the official Character Select screen (`EQUI_CharacterSelect.xml`): the list from `OP_SendCharInfo` (name; "Name [level Class]" and the zone for the selected one), Enter World, Delete (eqstr 9065 Yes/No, closing itself after 10 s, `OP_DeleteCharacter`), Create a New Character, Quit. No 3D preview |
+| Character creation | Partial | B888 (#204). `--create-character "Name,Race,Gender,Class,Deity,City[,STR=n,...]"` sends `OP_ApproveName` then `OP_CharacterCreate` exactly as eqemu's Titanium world validates them (byte-pinned) and enters world in the home city, never the tutorial; `--delete-character`, `--list-characters`; scenario `create_character`. The official two-page screen (`EQUI_CharacterCreate.xml`) and its flow are transcribed with post-Velious races/classes/cities HIDDEN (`data/char_create.tsv`), opened from the character-select screen's "Create a New Character" (B998); a created character enters world straight away, as the official client does. No FacePick window and no 3D preview |
 
 ### World & Zones
 | Feature | Status | Notes |
@@ -157,7 +157,7 @@ Legend: Done | Partial | Not Implemented
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Chat panel | Done | Scrollable, filterable |
-| Inventory popup | Done | Equipment slots, item icons (T430), tooltips. Click-to-cursor (B442): left click picks up / places, right click shows the item display while held (Alt+left keeps it), right click on a bag toggles its window, a purse row opens the Quantity window for coin, Destroy asks before destroying the held item (B442b) |
+| Inventory popup | Done | Equipment slots, item icons (T430), item-name tooltips (B1004, #323: Alt held over a bag or the bank labels every item in it -- measured, `review/UIGAP-ORACLE/323/`; a pointer resting on any item slot shows its name, the client's own documented rule, which the oracle rig never displayed). Click-to-cursor (B442): left click picks up / places, right click shows the item display while held (Alt+left keeps it), right click on a bag toggles its window, a purse row opens the Quantity window for coin, Destroy asks before destroying the held item (B442b) |
 | Player status | Done | HP/mana/stamina, stats |
 | Target info | Done | |
 | Spell book popup | Done | Searchable, click-to-memorise (no drag; T444) |
@@ -169,22 +169,22 @@ Legend: Done | Partial | Not Implemented
 | XP bar | Done | |
 | Skills popup | Done | Skill values by category, class skill table from `config/skill_caps.json` |
 | Merchant window | Done | T436 (board B429), the oracle's `EQUI_MerchantWnd.xml`: stock list with icons, Buy/Sell, Done. As measured (B442b, #152): clicking one of your items selects it for sale (never the cursor), the button is Buy or Sell by the last selection, Sell on a stack opens the Quantity window. `/vendorlist`, `/buy`, `/sell` still work |
-| Bank window | Done | T436 (board B429), the oracle's `EQUI_BankWnd.xml`: 8 slots + 4 money rows + Change + Done. Change converts every coin in the bank and on you to the fewest coins (B441, the client's own tip text; `/bank change`). `/bank` still works |
+| Bank window | Done | T436 (board B429), the oracle's `EQUI_BankWnd.xml`: 8 slots + 4 money rows + Change + Done. Change converts every coin in the bank and on you to the fewest coins (B441, the client's own tip text; `/bank change`). `/bank` still works. Opens within 20 units of the banker ("Welcome to my bank!"), closes itself past 20 ("Come back soon!"), and bank slots and coin rows move nothing while it is shut -- all measured (B996, #316) |
 | Cursor item | Done | T436, `EQUI_CursorAttachment.xml`: the held item's icon follows the mouse |
-| Loot window | Done | T290, center popup, scrollable |
+| Loot window | Done | T290, center popup, scrollable; left click = to the cursor, right click = straight to the inventory (measured, #151) |
 | Tip windows | Done | B834 (#202): the Tip of the Day at zone-in and the context tips on the first open of a window (Inventory, Bank, Merchant, Trainer, Friends, Loot, Quantity, ...), the client's own `help/tips/` texts, `EQUI_TipWnd.xml` controls, "Don't show" persisted in the official `[Tips]` keys |
-| Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **114 control rows**; every row is classified in `src/client/graphics/ui/options_classification.cpp` (wired, or excluded with its reason -- post-Velious, Will's OUT ruling, no fable capability, or awaiting the oracle) and `OptionsClassification.*` fails on an unclassified row. B430/B433 wired General (anonymous/roleplay, autosplit, auto-consent, pet window popup, the volumes), Display (PC/NPC names, clip plane), Mouse, Keys (category, rebinding, reload defaults) and Filters; Colors and the remaining General/Display rows stay greyed (#144, #145, #146; the missing capabilities are B993 colours #313, B994 3D target ring #314, B995 particle knobs #315). `/option` sets any wired setting by name |
-| Trade | Partial | B896 (#212): `EQUI_TradeWnd.xml` (8 slots a side, ours on the right, column-major; coin rows; Trade / Cancel) and the NPC `EQUI_GiveWnd.xml` (4 slots, Give / Cancel), opened by a click on a player or NPC with an item held; the held item drops into slot 3000, an incoming request is acknowledged with no prompt, the accepting side's name turns green and any change resets it, offered items cannot be taken back, cancel prints eqstr 1450 and completion prints nothing -- all measured (`review/UIGAP-ORACLE/212`). Owed: the live two-client run, the no-drop refusal string (not captured), the tip windows |
+| Options window | Done | T434, the oracle's `EQUI_OptionsWindow.xml` at 400x452, seven tabs, Alt+O. Its geometry is the constexpr table in `include/client/graphics/ui/options_layout.h`, **130 control rows**; every row is classified in `src/client/graphics/ui/options_classification.cpp` (wired, or excluded with its reason -- post-Velious, Will's OUT ruling, no fable capability, or awaiting the oracle) and `OptionsClassification.*` fails on an unclassified row. B430/B433 wired General (anonymous/roleplay, autosplit, auto-consent, pet window popup, the volumes), Display (PC/NPC names, clip plane), Mouse, Keys (category, rebinding, reload defaults) and Filters. B993 (#313) wired Colors: the 86-row `[TextColors]` chat colour table (eqclient.ini's defaults, persisted per character), Reset, and the `EQUI_ColorPickerWnd` picker; every chat line is drawn in its row's colour. B994 (#314) wired Display's 3D target ring (`TargetIndicator.ini`'s con-coloured ring under the target, default off). B995 (#315) wired the Particles box's Spell and Env sub-pages (opacity, density, near clip on the particle systems, persisted as eqclient.ini's floats); the Player page and the two "On For" filters stay greyed with their reason. The remaining General/Display rows stay greyed (#144, #145). `/option` sets any wired setting by name |
+| Trade | Partial | B896 (#212): `EQUI_TradeWnd.xml` (8 slots a side, ours on the right, column-major; coin rows; Trade / Cancel) and the NPC `EQUI_GiveWnd.xml` (4 slots, Give / Cancel), opened by a click on a player or NPC with an item held; the held item drops into slot 3000, an incoming request is acknowledged with no prompt, the accepting side's name turns green and any change resets it, offered items cannot be taken back, cancel prints eqstr 1450 and completion prints nothing; held coin opens the trade and goes in by itself; a no-drop item at a player is refused with eqstr 12921 and any item at a banker with eqstr 8505 (the click only targets) -- all measured (`review/UIGAP-ORACLE/212`). The live two-client round trip passed (UIGAP-live2 `trade_roundtrip`, `give_npc`) |
 | Item / spell display | Done | T421 + T425, one window for both (`EQUI_ItemDisplay.xml`); click an item slot, SHIFT+click a gem or spellbook row |
-| Pick up / put down an item | Partial | Click-to-cursor in the inventory, bank, loot, container, trade and give windows, the Quantity window (a stack or a purse/bank coin row; its box takes typed digits) and `/pickup` `/putdown` `/cursor` `/coin` — one `CursorGestureIntent` path, rules from the official client's capture (B442, B442b, #151). Coin rides the cursor with its count; a motionless world click with an item held asks "ARE YOU SURE you wish to drop..." (Yes = `OP_GroundSpawn`) unless it lands on a player (trade) or an NPC (give, B896), and Destroy asks before `OP_MoveItem 30 -> -1`. Owed: the live `pickup_roundtrip` scenario, loot-to-cursor (not captured) |
+| Pick up / put down an item | Partial | Click-to-cursor in the inventory, bank, loot, container, trade and give windows, the Quantity window (a stack or a purse/bank coin row; its box takes typed digits) and `/pickup` `/putdown` `/cursor` `/coin` — one `CursorGestureIntent` path, rules from the official client's capture (B442, B442b, #151). Coin rides the cursor with its count; a motionless world click with an item held asks "ARE YOU SURE you wish to drop..." (Yes = `OP_GroundSpawn`) unless it lands on a player (trade) or an NPC (give, B896), and Destroy asks before `OP_MoveItem 30 -> -1`; unanswered, the two prompts close themselves after 20 s / 10 s and send nothing (measured). A loot slot's left click takes the item to the cursor and its right click straight into the inventory (measured, #151 rows 46a/46c). Owed: the live `pickup_roundtrip` scenario |
 | Tradeskill container | Partial | B899 (#215): a world container (forge, oven) and a carried kit open the era container window (`EQUI_Container.xml`): its slots, Combine, Done. The post-Velious recipe window no longer opens (Will 2026-09-23); `/recipesearch` and `/recipecombine` stay as automation. The button reads "Combine" on every container (measured, `review/UIGAP-ORACLE/215`); the live combine is owed |
-| Skill trainer | Partial | B898, the oracle's `EQUI_TrainWindow.xml` at 580x280: skill list (name, value, price in pp/gp/sp/cp), practices, experience, money, Train, Done. Opens with /train, T, or Ctrl+click on a guildmaster; refreshes only when the server confirms a train. The Rank column and the live train are still owed to the oracle (issue #214) |
+| Skill trainer | Partial | B898, the oracle's `EQUI_TrainWindow.xml` at 580x280: skill list (name, value, price in pp/gp/sp/cp), practices, experience, money, Train, Done. Opens with /train, T, or Ctrl+click on a guildmaster; refreshes only when the server confirms a train. A row click prints "Interested in training in <skill> ?", Train is greyed with no practices or not enough money, and a skill at its cap is listed and refused with the official line (measured, #214). The Rank column, the at-cap rule at the current level's cap and the live train are still owed (issue #214) |
 
 ### Inventory
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Item display | Done | Icons and names |
-| Item stats | Done | Tooltip |
+| Item stats | Done | The item display window: right click held, or Alt+left to keep it (B442b, measured). The tooltips (B1004) carry the name only |
 | Move items | Partial | Click-to-cursor (B442) plus `/equip` by slot or name and `/pickup` / `/putdown`. Not drag and drop: the official client is click-to-cursor (T444 corrected "Drag and drop" here) |
 | Container bags | Partial | B899: `/bag <general slot>` opens/closes a bag's window (`EQUI_Container.xml`, several at once, stacked at one position as measured), contents drawn with icons, cells click-to-cursor (B442). Right-click on a bag in a general slot toggles its window, as the official client does (B442b, #151 rows 19-21) |
 | Equipment slots | Done | With tint colors |
@@ -201,7 +201,7 @@ Legend: Done | Partial | Not Implemented
 | Group | Done | /invite, /groupaccept, /disband, /decline, /groupassist |
 | Raid | Done | /raid invite/accept/leave/remove/leader/loot/looter/lock/unlock/group/status/list |
 | Guild management | Done | Invite, accept/decline, remove, demote, leader, MOTD |
-| Trading | Partial | The trade and give windows (B896) and /trade, /accept, /tradedecline, /canceltrade; the live two-client round trip is owed |
+| Trading | Partial | The trade and give windows (B896) and /trade, /accept, /tradedecline, /canceltrade; the live two-client round trip passed (UIGAP-live2) |
 | Inspect | Done | /inspect; /inspectmessage sets your own text |
 | LFG / anon / roleplay / AFK | Done | Toggles |
 | Surname / random | Done | |
@@ -706,6 +706,7 @@ Commands are dispatched through three registries in order: the game registry (au
 /screenshot                     Save a screenshot
 /filter <name>                  Toggle an era chat filter (no name lists them)
 /option [list | <name> [value]] Show or set an Options-window setting
+/option textcolor [reset | <1-86|name> [<r> <g> <b>]]  The Colors page's chat colour table
 /timestamp (/ts)                Toggle chat timestamps
 /camera                         Camera controls
 /dumpscene (/ds)                Dump the scene graph

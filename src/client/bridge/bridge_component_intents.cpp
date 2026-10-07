@@ -14,6 +14,7 @@
 //
 // See refactor/F10_bridge.md for the original moved/left mapping.
 #include "client/eq.h"
+#include "client/display_eqstr.h"
 #include "client/inspect_answer.h"
 #include "client/willeq_database.h"
 #include "client/pathfinder_interface.h"
@@ -194,7 +195,18 @@ void eqt::bridge::BridgeComponent::onTargetIntent(const eqt::events::TargetInten
 		bool hasCursorMoney = ctx_.inventory_manager->hasCursorMoney();
 		if (cursorItem || hasCursorMoney) {
 			auto it = ctx_.entities.find(i.spawnId);
-			if (it != ctx_.entities.end() && (it->second.npc_type == 0 || it->second.npc_type == 1)) {
+			const uint32_t refusal = it != ctx_.entities.end() ? HeldItemTargetRefusal(it->second) : 0;
+			if (refusal != 0) {
+				// UIGAP-residue (B1001 #321, #212 rows 12-13): refused
+				// client-side -- the official line, then the click is a plain
+				// target (OP_TargetMouse) and NO OP_TradeRequest goes out.
+				const std::string line = eqt::EqStrLine(ctx_.strings.Db(), refusal, {});
+				if (!line.empty()) {
+					ctx_.out.System(line);
+				}
+				LOG_INFO(MOD_MAIN, "Held-item click on {} refused client-side (eqstr {})",
+				         it->second.name, refusal);
+			} else if (it != ctx_.entities.end() && (it->second.npc_type == 0 || it->second.npc_type == 1)) {
 				bool isNpc = (it->second.npc_type == 1);
 				if (cursorItem) {
 					LOG_INFO(MOD_MAIN, "Initiating trade with {} (cursor item: {}, isNpc={})",
@@ -336,7 +348,22 @@ void eqt::bridge::BridgeComponent::onBankerInteractIntent(const eqt::events::Ban
 	// Check distance to NPC
 	float distSq = ctx_.Movement().CalculateDistance2D(ctx_.self.PosX(), ctx_.self.PosY(), target.x, target.y);
 	distSq = distSq * distSq;  // CalculateDistance2D returns distance, not squared
-	if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
+	constexpr uint8_t CLASS_BANKER = 40;
+	if (target.class_id == CLASS_BANKER) {
+		// UIGAP-residue (B996 #316, MEASURED -- review/UIGAP-ORACLE/316/
+		// range.tsv): the official right-click opens the bank at <= 20 units
+		// and is a plain /consider (OP_Consider) at 21.2 and beyond -- no
+		// "too far" line. A gate stricter than that is a defect (Will's rule).
+		if (distSq > BANKER_INTERACTION_DISTANCE_SQUARED) {
+			LOG_DEBUG(MOD_INVENTORY, "Banker interact: {} at {:.1f} > {:.0f}: a consider",
+			          target.name, std::sqrt(distSq), BANKER_INTERACTION_DISTANCE);
+			if (ctx_.combat_manager && ctx_.combat_manager->SetTarget(i.npcId)) {
+				SetTrackedTargetId(i.npcId);
+				ctx_.combat_manager->ConsiderTarget();
+			}
+			return;
+		}
+	} else if (distSq > NPC_INTERACTION_DISTANCE_SQUARED) {
 		LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is too far away (dist={})", target.name, std::sqrt(distSq));
 		ctx_.out.System("You are too far away to interact with this NPC.");
 		return;
@@ -356,7 +383,6 @@ void eqt::bridge::BridgeComponent::onBankerInteractIntent(const eqt::events::Ban
 		return;
 	}
 
-	constexpr uint8_t CLASS_BANKER = 40;
 	if (target.class_id != CLASS_BANKER) {
 		LOG_DEBUG(MOD_INVENTORY, "Banker interact: Target {} is not a banker (class={})", target.name, target.class_id);
 		ctx_.out.System("This NPC is not a banker.");
@@ -491,7 +517,9 @@ void eqt::bridge::BridgeComponent::onSkillActivateIntent(const eqt::events::Skil
 // Loot intents (T268: producers are the /loot family; a loot
 // popup would push the same intents)
 void eqt::bridge::BridgeComponent::onLootItemIntent(const eqt::events::LootItemIntent& i) {
-	LootItemFromCorpse(i.corpseId, i.slot);  // to the cursor, like the real client
+	// Measured (#151 rows 46a/46c): LEFT -> auto_loot 0, onto the cursor;
+	// RIGHT -> auto_loot 1, straight into the inventory.
+	LootItemFromCorpse(i.corpseId, i.slot, i.autoLoot);
 }
 
 void eqt::bridge::BridgeComponent::onLootAllIntent(const eqt::events::LootAllIntent& i) {
@@ -911,6 +939,14 @@ void eqt::bridge::BridgeComponent::onTrainSkillIntent(const eqt::events::TrainSk
 	// this intent, so the refusals live on the consumer too (one body,
 	// MerchantComponent::TrainRefusal). For /train it re-asks what the command
 	// already asked of the same state, so it cannot disagree.
+	if (i.selectOnly) {
+		// UIGAP-residue (#214 train.tsv row 10): a row selection's line, no packet.
+		const std::string line = ctx_.Merchant().TrainerSelectLine(i.skillId);
+		if (!line.empty()) {
+			ctx_.out.System(line);
+		}
+		return;
+	}
 	const std::string refusal = ctx_.Merchant().TrainRefusal(i.skillId);
 	if (!refusal.empty()) {
 		ctx_.out.System(refusal);

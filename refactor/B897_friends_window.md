@@ -54,7 +54,9 @@ does, each pinned by `tests/test_friends_window.cpp` citing the row:
 
 ## Assumptions still awaiting oracle
 
-1. The 100 cap and messages 12983 / 13244 (row 18: NOT captured) -- the issue's default.
+1. ~~The 100 cap and messages 12983 / 13244~~ MEASURED by UIGAP-live2 (friends.tsv rows cap1-cap5):
+   100 each, both strings exact (13244 with two spaces), toggle-off still works at the cap. Pinned by
+   `SocialCommandsB897.CapRowsReplayTheOraclesChatLog` (UIGAP-residue).
 2. Any friend login/logout notice (row 18: NOT captured) -- none implemented.
 3. Matching is case-insensitive (no row adds a name differing only in case while present); the sort is
    case-insensitive (both measured pairs agree with it).
@@ -71,7 +73,7 @@ does, each pinned by `tests/test_friends_window.cpp` citing the row:
 
 ## Live legs owed (#213 Leg O + Leg V)
 
-- Leg O remainder: the 100 cap (12983/13244), login/logout notices, group/guild suppression, case-only
+- Leg O remainder: login/logout notices, group/guild suppression, case-only
   duplicate adds.
 - Leg V: scenarios `friends_who` (A stores B, B logs in, A presses Who → B in A's chat under 12307) and
   `ignore_tell` (A ignores B, B tells A, A's chat lacks the line). Not written: they need two new

@@ -459,9 +459,10 @@ void eqt::commands::CommandsComponent::RequestTraining()
 	// (client_process.cpp) -- the server's own limit is
 	// USE_NPC_RANGE2=40000 (200 units squared, common/features.h),
 	// looser than the client's own NPC_INTERACTION_DISTANCE (15,
-	// eq.h) used everywhere else a client-side interaction range is
-	// checked (the banker gesture's BankerInteractIntent handler,
-	// eq_bridge.cpp, and the movement proximity gate, eq_movement.cpp).
+	// eq_types.h), the range the BankerInteractIntent handler applies to a
+	// guildmaster. (The BANKER's own range is the measured 20 since
+	// UIGAP-residue, BANKER_INTERACTION_DISTANCE; a trainer's range is
+	// still unmeasured.)
 	// Checking at 15 is therefore STRICTER than the server would
 	// require -- a target between 15 and 200 units away that the server
 	// would happily train is refused here. Chose 15 anyway, for
