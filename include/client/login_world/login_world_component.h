@@ -119,9 +119,7 @@ public:
 	std::shared_ptr<EQ::Net::DaybreakConnection>& LoginConnection() { return m_login_connection; }
 	std::unique_ptr<EQ::Net::DaybreakConnectionManager>& WorldManager() { return m_world_connection_manager; }
 	std::shared_ptr<EQ::Net::DaybreakConnection>& WorldConnection() { return m_world_connection; }
-	std::string& WorldServerHost() { return m_world_server_host; }
-	bool& WorldReady() { return m_world_ready; }
-	bool& EnterWorldSent() { return m_enter_world_sent; }
+	const std::string& WorldServerHost() const { return m_world_server_host; }
 
 	// Public because EverQuest::ProcessDeferredZoneChange (eq_zone.cpp) rebuilds
 	// the world connection manager on a zone-to-zone transition and re-binds

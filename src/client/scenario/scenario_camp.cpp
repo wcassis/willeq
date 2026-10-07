@@ -44,6 +44,10 @@ public:
     StepResult Step(IScenarioWorld& w, const ScenarioTick& tick) override {
         switch (stage_) {
         case Stage::Camp:
+            if (w.CampPhase() != IScenarioWorld::kCampIdle) {
+                SetReason("a camp was already running at zone-in (phase " + std::to_string(w.CampPhase()) + ")");
+                return StepResult::Fail;
+            }
             me_ = w.PlayerName();
             zone_ = w.ZoneName();
             gen0_ = w.CharacterListGeneration();

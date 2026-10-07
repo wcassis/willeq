@@ -226,8 +226,8 @@ never a defect).
 # Headless (no graphics)
 ./build/bin/willeq -c willeq.json --no-graphics
 
-# VNC (headless servers). VNC_PORT=5950 in the script; its header comment still
-# says 5999 — the variable is authoritative (T215)
+# VNC (headless servers). VNC_PORT=5950 in the script; its header says 5999 --
+# the variable wins (T215)
 ./scripts/start-with-vnc.sh -c willeq.json          # vnc://localhost:5950
 
 # VNC + audio streaming: VNC_PORT=5910, AUDIO_PORT=8085
@@ -533,10 +533,8 @@ may be returned from a scenario run):
 | 2 | timeout — zoned in, but no verdict inside `--timeout` (**also what an unfinished run reports**, so an external `/quit`, a SIGTERM or a crash can never masquerade as success) |
 | 3 | could-not-start — never reached a zone (server down, bad login, unknown scenario name) |
 
-**Outside `--scenario`** a run returns 0 for a clean `/q`, `/camp desktop`, a
-headless `/camp` (a graphics `/camp` goes back to Character Select instead and
-does not end the process -- B1005), window close
-or SIGTERM, and **4** (`kClientFatalExit`) when it ended on a FATAL (loader
+**Outside `--scenario`** a run returns 0 for a clean `/q`, headless `/camp`,
+`/camp desktop` (B1005), window close or SIGTERM, and **4** (`kClientFatalExit`) when it ended on a FATAL (loader
 thread or `LoadZoneSources()`, `fatal_exit.h`; B918 — 1 stays bad arguments /
 failed initialize); a `--scenario` run
 never leaves 0..3 (a FATAL before a verdict reads as 2).
@@ -571,9 +569,6 @@ the same authoritative state either stream was published from.
 The registered scenarios are in `src/client/scenario/scenario_registry.cpp`
 (`kScenarios`) — read that table, not this paragraph, for the live list. Today:
 `zone_in` (login → zone → `IsFullyZonedIn()` with a non-empty zone name),
-`camp_to_charselect` / `camp_desktop` (B1005: run on the non-GM
-`willeq_buddy`; a scenario's `OnClientStopped()` is the runner's one last look
-after a stop it did not cause -- only `camp_desktop` answers it),
 `two_client_survive` (a second player appears AND both hold for
 `--scenario-hold` seconds, default 300), `cast_lands` (prep, `/cast 1`, then the
 buff actually reaching `BuffManager`), and T494's `equip_observed` /

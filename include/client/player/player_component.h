@@ -82,11 +82,13 @@ public:
 	void ZoneProcessLogoutReply(const EQ::Net::Packet &p);
 	CampTimer& Camp() { return m_camp; }
 	const CampTimer& Camp() const { return m_camp; }
-	/** Application: the run can draw Character Select (or the scenario lane
-	 *  plays it), so /camp goes back there instead of exiting. */
+	// Application: the run can draw Character Select (or the scenario lane
+	// plays it), so /camp goes back there instead of exiting. (Line comments
+	// only in this header: its banner names src/client/player/<star>.cpp, and
+	// a block comment's close would pair with that for the hygiene scanners.)
 	void SetCampReturnsToCharacterSelect(bool on) { m_camp_to_select = on; }
 	bool CampReturnsToCharacterSelect() const { return m_camp_to_select; }
-	/** The deferred post-logout teardown asks once: go back to select? */
+	// The deferred post-logout teardown asks once: go back to select?
 	bool ConsumeReturnToCharacterSelect();
 	void ZoneProcessRezzRequest(const EQ::Net::Packet &p);
 	void ZoneProcessRezzComplete(const EQ::Net::Packet &p);

@@ -101,7 +101,6 @@ public:
 
     CampPhase phase() const { return phase_; }
     CampMode mode() const { return mode_; }
-    double startedAt() const { return startedAt_; }
     bool counting() const { return phase_ == CampPhase::Counting; }
 
 private:

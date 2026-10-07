@@ -57,7 +57,6 @@ void PlayerComponent::StartCampTimer(CampMode mode)
 	}
 	ShowLines(ctx_, fx.lines);
 	ctx_.game_state.player().setCamping(m_camp.counting());   // the IsCamping() facade
-	if (fx.sendCamp) ctx_.game_state.player().setCampStartTime(std::chrono::steady_clock::now());
 }
 
 void PlayerComponent::CancelCamp()

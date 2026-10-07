@@ -85,7 +85,10 @@ bool Application::renderCharacterSelect(float deltaTime) {
         }
         return false;
     }
-    if (!m_charSelectHost) m_charSelectHost = std::make_unique<EQT::Graphics::CharacterSelectHost>();
+    if (!m_charSelectHost) {
+        m_charSelectHost = std::make_unique<EQT::Graphics::CharacterSelectHost>();
+        LOG_INFO(MOD_MAIN, "[CHARSELECT] screen up (render thread)");
+    }
     if (!m_charSelectHost->frame(*m_renderer, *m_charSelect, deltaTime)) {
         LOG_INFO(MOD_MAIN, "[CHARSELECT] quit from character select");
         requestQuit();

@@ -1105,6 +1105,7 @@ EXEMPT_TESTS_GROUPS = {
     ("IrrlichtRenderer", "isDeferredAssetLoading"): "observer",
     ("IrrlichtRenderer", "isNetworkReady"): "observer",
     ("IrrlichtRenderer", "isNewUIEnabled"): "observer",
+    ("LoginWorldComponent", "CharacterSelectReturns"): "observer",  # B1005
     ("LoginWorldComponent", "GetAccountId"): "observer",
     ("LoginWorldComponent", "GetCharacterSelectIndex"): "observer",
     ("LoginWorldComponent", "GetChatConnectionType"): "observer",
@@ -1115,6 +1116,7 @@ EXEMPT_TESTS_GROUPS = {
     ("LoginWorldComponent", "GetWorldServers"): "observer",
     ("LoginWorldComponent", "GuildNames"): "observer",
     ("LoginWorldComponent", "IsWorldReady"): "observer",
+    ("LoginWorldComponent", "WorldServerHost"): "observer",  # B1005: ReconnectWorld reads the member
     ("MidiPlayer", "getActiveSoundFont"): "observer",
     ("MidiPlayer", "getConfiguredMaxVoices"): "observer",
     ("MidiPlayer", "getPreallocatedChannelCount"): "observer",
