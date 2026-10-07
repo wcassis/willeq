@@ -62,13 +62,14 @@ production preset requests.
 
 | run (evidence dir) | surface depth | (400,520) | col-x=400 signature |
 |---|---|---|---|
-| `gateargs_d16_081207` | **D16**, no stencil — `logical_depth_stencil=960000` (0.92 MiB @800×600) | **(128,0,128) = −Y** | **z-fights**: (128,0,128)/(128,255,128) alternate every ~2 px from y=464 to 598 |
-| `d24s8_gateargs_081816` | **D24S8** — `logical_depth_stencil=1920000` (1.83 MiB) | **(128,255,128) = +Y** | single boundary at y=464, uniform +Y below |
+| `gateargs_d16_081207` | **D16**, no stencil — `logical_depth_stencil=960000` (0.92 MiB @800×600) | **(128,0,128) = −Y** | **z-fights**: 22 ±Y switches in the x=400 column (y=463→598) — +Y stripes of 2–3 px over −Y stripes of 9–10 px (period ~12 px); block cols300–500/rows464–598 = 6 030 +Y / 21 105 −Y |
+| `d24s8_gateargs_081816` | **D24S8** — `logical_depth_stencil=1920000` (1.83 MiB) | **(128,255,128) = +Y** | single boundary at y=463, uniform +Y below (block cols300–500/rows464–598 = 27 135 +Y / 0 −Y) |
 
 The alternating rows in the D16 run are the fingerprint of two surfaces landing
 in adjacent quantization cells — a pure depth tie, not a normal. The same
-D24S8 result matches B969's x86 frame byte-for-byte at this pixel
-(`b969_evidence/x86/timorous_f2.png` → (128,255,128)).
+D24S8 result matches B969's x86 frame at this pixel
+(`b969_evidence/x86/timorous_f2.png` → (128,255,128)), and the Pi frame
+below matches B969's Pi frame at this pixel (→ (128,0,128)).
 
 ## The Pi leg (this session, current tip)
 
@@ -81,9 +82,12 @@ args, 800×600, `--shader-debug 5` and `4`:
 - surface: `EGL: Config depth=24 stencil=0` — the B971 request (no stencil)
   reached the driver, but **Lima 25.2.8 answers depth=24**, exactly as B971
   recorded;
-- (400,520) debug5: **(128,0,128) = −Y**, uniform — the whole sampled plane
-  block (10 000 samples, rows 470–570) is 8 974× (128,0,128); a single boundary
-  at y=440, no alternation (unlike x86-D16);
+- (400,520) debug5: **(128,0,128) = −Y** — the whole sampled plane block is
+  uniformly −Y (G=0 on all 10 000 px of cols350–449/rows470–569; zero +Y
+  pixels). It is **not** a per-row ±Y z-fight like x86-D16: the column
+  alternates only between (128,0,128) and (127,0,127) — a 1-LSB rounding
+  ripple on the *same* (0,−1,0) normal — 5 000 of each; the −Y plane's top
+  edge at x=400 is at y=381;
 - (400,520) debug4 (pLight): **(0,0,0)** — the −Y face points away from the
   player light, so the lit plane is unlit on the Pi;
 - identical to B969's Pi frame at this pixel.
