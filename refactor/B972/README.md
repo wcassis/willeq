@@ -27,9 +27,22 @@ The B986 baseline measured **24.82 MiB** unnamed at the same point
    | zone | rig `gpu_unnamed_steady` | fps_median | verdict |
    |---|---|---|---|
    | qeynos2 | **18.90 MiB** | 32 | over_bound |
-   | gfaydark | **24.5 MiB** | 26 | over_bound |
+   | gfaydark | **24.5 MiB** (client-log-derived, see note) | 26 | over_bound |
 
    Matches B986's 24.82 within run-to-run noise.
+
+   **The gfaydark 24.5 is not a rig measurement.** The rig's `results.tsv`
+   row for this run is `no_steady_60s (exit 0)` with `gpu_unnamed_steady`
+   **empty**, and the run's first `steady_60s` client-log row implies only
+   ~5.7 MiB unnamed (`zones/gfaydark/client.log`, 07:20:32: `memgpu` row
+   `gpu_buffers=15585280` − `logical=9626124` = 5,959,156 B ≈ 5.68 MiB). The
+   24.5 reconstructs only from the log's **last** `steady_60s` `memgpu` row
+   (07:21:47: `gpu_buffers=51224576` − `logical=25541184` = **25,683,392 B**
+   ≈ **24.50 MiB**) — the client's own reading swung 5.7 → 24.5 MiB inside
+   the window. The impostor-Δ control below does not rest on that number:
+   the `off200far` control's **rig** column reads 24.54 MiB for gfaydark
+   (populated, `results.tsv`), and the option-2 A/B's own no-cut rows read
+   27.70 / 27.30–27.31 MiB.
 
 3. **Decisive control — `off200far` (impostors OFF, 200 full models, same
    tip/rig):**
@@ -46,6 +59,10 @@ The B986 baseline measured **24.82 MiB** unnamed at the same point
    1 MiB `u_upload` slot pool the impostor does.
 
 ## Census anatomy (gfaydark imp200far, final crowd `steady_60s`, cache-on)
+
+**Carried over from B986's run-277 census — not re-censused on this branch;
+the exact figures diverge from run-277's own `owner-summary.json` (see
+"Not verified / left open").**
 
 `unnamed = gpu_buffers − logical` (frame PNGs and `logical_textures` are
 subtracted by the summarizer; `logical_buffers` is 0 in every run because the
@@ -137,10 +154,11 @@ p50 medians agree and do not overlap: qeynos2 33.2 → 49.3 ms, gfaydark
 40.2 → 62.4 ms, in both orderings.
 
 **Findings:**
-1. **The memory cut is real** (~4–7 MiB `gpu_unnamed`, the option-2
-   "~3-6 MiB" framing at its upper edge) and `logical_buffers` grows from 0 to
-   ~92–121 KB — the buffers are now *named*, which is exactly the 100 %
-   accounting the ruling asked for.
+1. **The memory cut is real** — 4.1 to 7.0 MiB across the four dev runs
+   (−5.4 / −7.0 / −4.1 / −4.6 above), two of which (5.4, 7.0 MiB) sit **at or
+   above** the option-2 ruling's "~3-6 MiB" upper edge; `logical_buffers`
+   grows from 0 to ~92–121 KB — the buffers are now *named*, which is exactly
+   the 100 % accounting the ruling asked for.
 2. **Pixel-identical: MET.** `test_b972_stream_buffers` — both tests green on
    the head (impostor page byte-identical through the VBO and client-array
    paths; particle batches likewise); full x86 suite 5644/5644.
@@ -157,6 +175,30 @@ pattern is expensive here; candidate fixes: worker/async upload, double
 buffering, or keep the client-array draw and accept the slot) for Will's ruling.
 The 10 MiB guard row stays RED as the B988/#307 known condition (closes with
 B997).
+
+## Not verified / left open
+
+- **The census-anatomy block is a B986 run-277 carry-over, not re-censused on
+  this branch**, and its exact figures disagree with run-277's own
+  `owner-summary.json`
+  (`~/kb-evidence/b986-pi-gpu-guard/run-277/census-gfaydark-imp200far/owner-summary.json`):
+  run-277 reads **12** `mesa: stream uploader (1 MiB)` BOs (12,582,912 B), not
+  13; and its `lima: draw-time BOs` row is count **2000** / 10,018,816 B
+  (9.55 MiB allocated) / 3,874,816 B mapped (3.70 MiB), not "~7.4 MiB" —
+  which the block's own "~2043 × 4 KiB" arithmetic does not back either
+  (2043 × 4 KiB = 8.0 MiB). The block's *direction* (a cache-retained 1 MiB
+  stream-slot pool plus a multi-MiB per-draw varying-BO pool, no `draw2d`
+  slots) stands, but treat its counts and MiB figures as the un-remeasured
+  B986 numbers. A per-tag census of this branch's own run is a B972-FT /
+  B997 follow-up (the bounded-VBO conversion moves exactly these numbers).
+- The **gfaydark 24.5 MiB baseline** is a client-log derivation, not a rig
+  measurement (the rig row is `no_steady_60s` with the `gpu_unnamed_steady`
+  column empty; see the note under step 2 above). It was not re-taken
+  cleanly on the Pi — the verified `off200far` control (24.54 MiB, rig
+  column) and the option-2 A/B's own no-cut rows (27.70 / 27.30–27.31 MiB)
+  carry the impostor-Δ argument instead.
+- The **B986 cache-off floor (6.87 MiB)** in the reachability section is
+  likewise carried from B986's `run-277` (`-nobocache` leg), not re-taken.
 
 ## Measurement evidence (on the Pi)
 
