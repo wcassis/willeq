@@ -876,6 +876,22 @@ it without taking that measurement first.
   B975 `NameTagBatchNode` slack pattern); a static VBO is the measured
   anti-pattern (B962: +4.3 MiB, half qeynos2 fps). Cut behind #290/MR !94
   (re-measure the residual after it lands).
+- **B998** (B, frame-time) → issue #325. **BLOCKED with measured ceiling
+  (2026-10-07)** — no in-scope fix; see `refactor/B998/README.md` for the
+  full A/B. The gfaydark low-geometry 31 fps floor (2 vsyncs) is a vsync
+  quantization: the frame's wall time (22.4 ms measured work — Solid Pass
+  12-16 ms at ~41 manual zone draw calls, ~2× qeynos2's 22 — + 9.4-14.2 ms
+  deferred-present unaccounted) exceeds one 16.58 ms 60 Hz vsync period,
+  while qeynos2 (12.5 + 3.4 = 16.0 ms) fits. The 3× warp dips (44.7 ms,
+  22.4 fps, sustained 15-60 s) are a high-draw-call *region* (101 calls /
+  61 regions at the W1 stop) whose ~16 ms measured work plus a 28.5 ms
+  deferred-present/vblank stall lands on the third vsync edge — the same T61
+  deferred-present path as B979, different trigger (detail-streaming churn +
+  region state, not impostor capture). Draw-call bound, not fill-bound, not
+  a leak (flat resource census), governor Green on most frames (symptom, not
+  cap). Fix options are B997's batch/merge of manual zone draws or a
+  per-draw submit-cost cut — both need Will's decision (look/coverage +
+  B726/B979 invariants), so the card blocks with the measurement.
 - ~~**B970** (B) → issue #288. `build-arm` fetched `irrlicht-1.8.5.zip` and
   `libpng-1.6.37.tar.xz` from downloads.sourceforge.net inside a Docker layer, so
   the 2026-10-01 SourceForge outage (HTTP 522, ~3 h) failed every job whose
