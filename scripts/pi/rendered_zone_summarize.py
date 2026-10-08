@@ -78,9 +78,11 @@ GPU_UNNAMED_BOUND = 10 * 1024 * 1024  # B962: measured 5.0-7.7 MiB fixed, 11.4-1
 # census shim's job-stream counters. One per frame is a frame nothing split; a
 # draw path that writes a buffer the current job references splits the job and
 # blocks (lima_transfer_map) once per write -- B972-FT's ~30 % frame-time cost
-# read 1 -> ~5 here. None = the row is off until the Pi measures the no-cut
-# figure (docs/reference/lima_cost_sheet.md); then pin it here.
-GEM_PP_JOBS_PER_FRAME_BOUND = None
+# cost. Measured 2026-10-08 (review/B1006/, crowd tour, imp200far, 800x600):
+# no-cut c7abab9c 1.20 (qeynos2) / 1.31 (gfaydark) PP jobs per frame with
+# ~1.1 near-instant waits; the B972 cut a893b467 3.12 jobs, 10.45 waits and
+# 17.2 ms per frame inside them on qeynos2 -- the whole 16 ms regression.
+GEM_PP_JOBS_PER_FRAME_BOUND = 2.0
 DRIVER_SO = re.compile(r"owner=(so:(libLLVM|libgallium|libEGL|libGLES|libGLdispatch|libdrm|libgbm|libglapi)[^ ]*"
                        r"|[^ ]*(/dev/dri|renderD|card[0-9])[^ ]*)")
 

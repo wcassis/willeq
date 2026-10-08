@@ -23,7 +23,11 @@ the line numbers move, the function names do not.
    table — and `lima_bo_wait` waits with an infinite timeout. The cost is per
    write, independent of the bytes written. Measured: B972-FT (MR !94), the
    impostor path's one shared VBO rewritten once per page gave ~30 % frame
-   time on qeynos2 and gfaydark for ~30 KB per frame of data.
+   time on qeynos2 and gfaydark for ~30 KB per frame of data; B1006
+   (`refactor/B1006/README.md`) then counted it — the cut build spends 17 ms
+   (qeynos2) and 21 ms (gfaydark) per frame inside `lima_bo_wait` across ~10
+   waits, against ~0.015 ms in one wait for the client-array build, which is
+   the whole frame-time delta.
    The test `usage & PIPE_MAP_READ_WRITE` is a mask test (`READ | WRITE`), so
    a write-only map takes the branch; a reader who assumed it needs both bits
    concluded "plain memcpy, no wait" and was wrong.
@@ -68,9 +72,12 @@ the line numbers move, the function names do not.
 7. **One GP job and one PP job per frame unless something splits them.**
    The driver accumulates draws into `ctx->job` and submits at the flush
    (`eglSwapBuffers`); fact 1's flush submits the partial frame early, so each
-   such write adds a PP job. A split's GPU-side cost (the tile-based PP pass
-   re-walks the framebuffer per job) is **not measured**; B1006 measures the
-   count and the CPU wait, via the census shim's job-stream counters
+   such write adds a PP job. Measured by B1006: 1.2–1.3 PP jobs per frame on
+   the client-array build, 3.1–3.2 on the B972 cut; the guard row
+   `gem_pp_jobs_over_bound` fails a zone above 2.0. A split's GPU-side cost
+   (the tile-based PP pass re-walks the framebuffer per job) is **not
+   separated** from the CPU wait, which already accounts for the delta. The
+   count and the wait come from the census shim's job-stream counters
    (`scripts/pi/lima_bo_census.c`, the `gem_pp_jobs_per_frame`,
    `gem_waits_per_frame` and `gem_wait_ms_per_frame` columns of
    `scripts/pi/rendered_zone_summarize.py`).
