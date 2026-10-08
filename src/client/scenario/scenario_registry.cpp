@@ -18,6 +18,8 @@ const Entry kScenarios[] = {
     {"zone_link_hold", &MakeZoneLinkHoldScenario},
     {"two_client_survive", &MakeTwoClientSurviveScenario},
     {"cast_lands", &MakeCastLandsScenario},
+    // B894 (issue #210): the forage/fishing landing pair.
+    {"forage_lands", &MakeForageLandsScenario},
     // T494 (board B796): a PAIR. equip_observed is the verdict; equip_actor is
     // the peer scripts/scenario.sh launches for it.
     {"equip_observed", &MakeEquipObservedScenario},

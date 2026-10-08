@@ -19,6 +19,13 @@ std::unique_ptr<IScenario> MakeTwoClientSurviveScenario(const ScenarioOptions& o
 std::unique_ptr<IScenario> MakeCastLandsScenario(const ScenarioOptions& options);
 
 /**
+ * B894 (issue #210): #forage and #fish until the caught item is on the
+ * cursor with its skill line. The forage landing is the hard leg; the
+ * fishing catch is best-effort and only reported.
+ */
+std::unique_ptr<IScenario> MakeForageLandsScenario(const ScenarioOptions& options);
+
+/**
  * B925 (issue #244/#258): zone in and keep the link for holdSeconds. A single
  * client -- the plain "does the zone link survive a long load" check. A
  * mid-run drop that recovers before the deadline passes; one that does not,

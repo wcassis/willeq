@@ -116,6 +116,7 @@ ADD_EXECUTABLE(test_scenario_state_machines
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_two_client_survive.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_cast_lands.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_zone_link_hold.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_forage_lands.cpp  # B894
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_interrupted_cast.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_equip_observed.cpp
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_inventory.cpp
