@@ -877,12 +877,18 @@ it without taking that measurement first.
   bounded VBO/EBO, per-frame `glBufferSubData`, the merged B975 `NameTagBatchNode`
   slack pattern) cost ~30% frame time on the Pi (qeynos2 31→21 fps, gfaydark
   25→17, order-independent two-way A/B, `refactor/B972/README.md` 2026-10-07)
-  against a ~4–7 MiB `gpu_unnamed_steady` gain. Needs a ruling: (a) fix the
-  VBO path's Pi cost (worker/async upload, double buffering, upload only on
-  quad-set change — the crowd tour's quads are static for long stretches) and
-  re-measure, or (b) keep the client-array draw (the memory the guard sees)
-  and close #290 on the named-accounting half only, or (c) defer the whole
-  option-2 cut with B997. Blocks MR !94 un-drafting.
+  against a ~4–7 MiB `gpu_unnamed_steady` gain. **RULED: option-2 (fix the
+  write path, keep the cut)** — the mechanism (B1006, #326 note 2873) is a
+  per-write `lima_bo_wait` serialization, not a byte-scaled upload cost, so
+  the fix is a per-page/per-batch VBO RING (3 frame-rows deep: no write
+  touches a buffer an in-flight job references). Implemented on
+  `task/B972-mesa-stream-buffers` (MR !94 head, after `ce56510e`): impostor
+  VBO/EBO pairs, particle 12 slots, nametag 12 slots — `refactor/B972-FT/`.
+  Two CI red defects at the ring head (nametag SEGV: attribute pointers set
+  before the slot bind; release under-subtracting the tally) are fixed and
+  pinned by `test_name_tag_batch`. Awaiting the Pi crowd-tour A/B vs
+  `c7abab9c` (`pi_crowd.sh --bo-census`: p50 parity + jobs ≤ 2.0). Blocks MR
+  !94 un-drafting.
 - **B997** (B, memory) → issue #317. The B972 split-off: the zone-merge pool
   (6 × 1 MiB `u_upload` `draw:zone` slots, ~38 client-array drawCalls/frame,
   `renderer_zone_merge.cpp`) + the remaining `draw3d:client` pool hold the

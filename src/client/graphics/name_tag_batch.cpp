@@ -322,16 +322,6 @@ size_t NameTagBatchNode::drawCompactRun(irr::video::IVideoDriver* driver) {
         gles2AdjustRawBufferBytes(driver, static_cast<ptrdiff_t>(indexBytes) - gpuIndexBytes_);
         gpuIndexBytes_ = indexBytes;
     }
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CompactVertex), nullptr);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(CompactVertex),
-                          reinterpret_cast<const GLvoid*>(offsetof(CompactVertex, r)));
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(CompactVertex),
-                          reinterpret_cast<const GLvoid*>(offsetof(CompactVertex, u)));
-    glEnableVertexAttribArray(3);
-    glDisableVertexAttribArray(1);
-    glDisableVertexAttribArray(4);
     last_.uploadMicros += elapsed(start);
     size_t draws = 0;
     for (size_t chunkIdx = 0; chunkIdx < chunks; ++chunkIdx) {
@@ -348,6 +338,24 @@ size_t NameTagBatchNode::drawCompactRun(irr::video::IVideoDriver* driver) {
                                       static_cast<ptrdiff_t>(vertexBytes) - gpuVertexRingBytes_[slot]);
             gpuVertexRingBytes_[slot] = vertexBytes;
         }
+        // The attribute pointers capture the buffer bound AT CALL TIME (no
+        // VAO), so they must be set after this slot's bind: each chunk's draw
+        // reads its OWN VBO, not client memory (the ring's whole point, and
+        // the reason the impostor/particle rings set pointers after their
+        // per-slot bind). The EBO bind above persists -- GL_ARRAY_BUFFER and
+        // GL_ELEMENT_ARRAY_BUFFER are independent bind points, so
+        // glDrawElements reads chunk k's vertices from slot k and the indices
+        // from gpuIndex_.
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CompactVertex), nullptr);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(CompactVertex),
+                              reinterpret_cast<const GLvoid*>(offsetof(CompactVertex, r)));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(CompactVertex),
+                              reinterpret_cast<const GLvoid*>(offsetof(CompactVertex, u)));
+        glEnableVertexAttribArray(3);
+        glDisableVertexAttribArray(1);
+        glDisableVertexAttribArray(4);
         start = Clock::now();
         glBufferSubData(GL_ARRAY_BUFFER, 0, chunkQuads * 4 * sizeof(CompactVertex), v);
         last_.uploadMicros += elapsed(start);
@@ -372,13 +380,18 @@ size_t NameTagBatchNode::drawCompactRun(irr::video::IVideoDriver* driver) {
 
 void NameTagBatchNode::releaseGpuBuffers() {
 #ifdef EQT_HAS_GLES2
+    // Tally the driver's bytes BEFORE zeroing anything: the subtraction
+    // below reads gpuBufferBytes(), so a per-slot zero inside the delete
+    // loop would leave the ring's bytes in the driver's tally (the impostor
+    // and particle releases both compute their total first, same reason).
+    const size_t total = gpuBufferBytes();
     for (size_t i = 0; i < kNametagRingSlots; ++i) {
         if (gpuVertexRing_[i]) glDeleteBuffers(1, &gpuVertexRing_[i]);
         gpuVertexRing_[i] = 0;
         gpuVertexRingBytes_[i] = 0;
     }
     if (gpuIndex_) glDeleteBuffers(1, &gpuIndex_);
-    if (gpuDriver_) gles2AdjustRawBufferBytes(gpuDriver_, -static_cast<ptrdiff_t>(gpuBufferBytes()));
+    if (gpuDriver_) gles2AdjustRawBufferBytes(gpuDriver_, -static_cast<ptrdiff_t>(total));
 #endif
     gpuIndex_ = 0;
     gpuIndexBytes_ = 0;
