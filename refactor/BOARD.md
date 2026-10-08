@@ -13097,7 +13097,7 @@ T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are cla
 - **B891** (B, feature) swimming speeds are guesses, drowning and the Air Remaining window are missing. → issue #207
 - **B892** (B, feature) levitation never applies to the player (eqemu skip-self appearance; derive from own buffs). → issue #208
 - **B893** (B, feature) two unmeasured jump models, fall damage never sent. → issue #209
-- **B894** (B, feature) forage and fishing are sent but never measured or shown. → issue #210
+- **B894** (B, feature) forage and fishing are sent but never measured or shown. → issue #210 — **dev leg PARTIAL** (2026-10-08, lane 3, `refactor/B894/README.md`): the offline precondition table is GREEN (12/12, RED at 382bbc77 → green b6ff5f15), the foraged item lands on the cursor with its line (797bf0e6, live `forage_lands` scenario exit 0), and the fishing stand faces the harbor water (6692e84d, parsed off the lane's own freporte watermap). **Still owed, NOT struck:** the live fishing catch (the server's `FindBestZ`/`.map` gate did not pass on this stack) and the oracle animation leg (cast-and-reel id/duration, eq-oracle-3 capture — willeq has no cast animation to match yet).
 - **B895** (B, feature) tracking window and direction messages. → issue #211
 - **B896** (B, feature) player trade window (callbacks are an empty stub). → issue #212
 - **B897** (B, feature) friends window with friends + ignore lists; `/friends` alias conflict. → issue #213

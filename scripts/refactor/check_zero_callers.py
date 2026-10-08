@@ -922,6 +922,12 @@ EXEMPT_TESTS_GROUPS = {
     # run (set once, read by main()); a test that trips it on purpose must
     # clear it so later cases in the same binary start clean.
     ("(free)", "ResetFatalExitForTest"): "seam",
+    # B894 (#210): the in-flight fishing latch is read live by the cast loop
+    # (stopFishingIfMoved/Idle, onCastTimeout) and by getSkillUseError's
+    # forageOrFishingRefusal(); its ONLY remaining reader outside that logic is
+    # the test that pins the refusal table, so the accessor is the test's
+    # observation window on a live class.
+    ("SkillManager", "isFishing"): "observer",
     # T504: the ledger's stack-trace instrument is armed by an environment
     # variable in a live run (WILLEQ_LEDGER_TRACE); the unit test needs the
     # programmatic form of that switch and the report it prints.
