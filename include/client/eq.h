@@ -381,6 +381,16 @@ public:
 	// K07 (Batch K): the movement family is eqt::movement::MovementComponent;
 	// callers go through Movement().
 	eqt::movement::MovementComponent& Movement() { return *m_movement; }
+	// B892 (GitLab #208): the self row's AT_FLYMODE value, 0 before the row
+	// exists (or after CleanupZone cleared the map). The input the buff
+	// apply/fade hooks feed to Movement().SyncLevitation() -- the
+	// predicate's OR half, which the official client derives from its own
+	// flymode (GM #levitate and the like reach self even though the cast
+	// path's AT_FLYMODE does not).
+	uint8_t SelfFlymode() const {
+		auto it = m_entities.find(m_player_facade.MySpawnId());
+		return it == m_entities.end() ? 0 : it->second.flymode;
+	}
 	// K10 (Batch K): the login_world family is eqt::login_world::LoginWorldComponent;
 	// callers go through LoginWorld().
 	eqt::login_world::LoginWorldComponent& LoginWorld() { return *m_login_world; }

@@ -104,7 +104,7 @@ Legend: Done | Partial | Not Implemented
 | Jumping | Partial | ONE jump table (`jump_fall_physics.h`, B893) and fall damage now sends `OP_EnvDamage` (dmgtype 252, `fall_damage` scenario). The arc peak/duration and the fall-curve numbers are [ASSUMED] until the oracle capture lands (Wine oracle login looped). Issue #209 (B893) |
 | Swimming | Partial | Water detection, swim movement, sinking and animations exist (`renderer_player_physics.cpp`); the speeds and skill formula are unmeasured guesses. Issue #207 (B891) |
 | Drowning | -- | No breath state, no Air Remaining window, the environment-damage packet is only received. Issue #207 (B891) |
-| Levitation | -- | eqemu sends the levitate appearance with skip-self, so the self check never fires; must derive from own buffs. Issue #208 (B892) |
+| Levitation | Partial | Own levitation now derived from the buff list (SPA 57) + self flymode 2/5 and published as `LevitationChanged`; a levitating player hovers above the floor and descends at a reduced rate on land; the `levitate_applies` scenario passed on lane 1 (exit 0). Hover height and descent rate are [assumed] — the lane-1 oracle capture is owed. Issue #208 (B892) |
 | Auto-run | Done | |
 | Collision | Done | Map-based raycasting |
 | Sit/stand/crouch | Done | With animations |

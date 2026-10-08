@@ -57,6 +57,13 @@ public:
     /** Spell ids of the buffs currently on the player, in slot order. */
     virtual std::vector<uint32_t> PlayerBuffSpellIds() const = 0;
     /**
+     * B892 (#208): the client's OWN levitation -- any active buff whose
+     * spell carries SPA 57, or a self flymode 2/5 the server sent. The
+     * game thread publishes it as LevitationChanged; the real world reads
+     * the MovementComponent's stored state. False by default (no reader).
+     */
+    virtual bool PlayerLevitating() const { return false; }
+    /**
      * T494: the equipment MATERIAL another player is wearing, as this client
      * was told by the server (Entity::equipment[], filled only by
      * EntitiesComponent::ZoneProcessWearChange()). `peerName` empty means "the

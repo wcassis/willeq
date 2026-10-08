@@ -9117,7 +9117,18 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   object's horizontal centroid; the half-period shows as a strong NEGATIVE peak,
   which is the trap that produced fable's original 42.35). Found by T438.
 
-- ~~**B463** (A, live defect)~~ **CLOSED 2026-10-08 (B893, `task/kb-b893-jump-fall-damage`).** fable's jump is 25 units high, and the number is a debug value. `MovementComponent::UpdateJump()` ran a 25-unit / 1000 ms closed-form arc that coexisted with the renderer's 10-unit/40-80 arc. **B893 established the renderer owns the wire Z in Player Mode** (its `PlayerPositionChanged` intent, drained last on the game thread, overwrites the headless jump's Z), **collapsed both to one table** — `include/client/jump_fall_physics.h` (`Arc`, one `peakHeight`/`durationS` pair; the headless 25/1000 and the bare 40/80 literals are deleted, and `tests/test_jump_fall_arc.cpp::NoSecondWriterOfTheArcConstants` fails if either returns). The apex is now the lane-2-measured +3.05 units; the arc duration is [assumed, owed] (1 Hz wire). See `refactor/B893/README.md`.
+- **B463** (A, live defect) **fable's jump is 25 units high, and the number is a → issue #33
+  debug value.** `MovementComponent::UpdateJump()`
+  (`src/client/movement/movement_state.cpp:545`) reads
+  `const float jump_height = 25.0f;  // Maximum height of jump (increased for
+  visibility)`, over a fixed 1,000 ms parabola. A real EverQuest jump is a few
+  units; 25 is taller than a Kelethin storey, and T438's Leg C trace watched the
+  player arc from 14.49 to 39.49 and back four times in one session. The
+  landing bug that made this dangerous is fixed (the struck B424), so this is now
+  a look/feel defect rather than a position corruption -- but it is unmeasured
+  in both height and duration and both should come off the oracle: the rig that
+  measures it is the same one T438 used (a 4 Hz server-side position trace via a
+  Perl quest timer while the official client jumps). Found by T438 Leg C.
 
 - ~~**B464** (B)~~ **CLOSED 2026-09-07 (T448).** The door-spawn debug dump
   named the loop INDEX where the door id belongs, so a two-door packet whose
@@ -13084,7 +13095,7 @@ T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are cla
 - **B889** (B, feature) capability-level CI suite: a README-row → oracle → test → CI-lane matrix, nightly live + pi stages. → issue #205
 - **B890** (B, feature) boats/transport. → issue #206
 - **B891** (B, feature) swimming speeds are guesses, drowning and the Air Remaining window are missing. → issue #207
-- **B892** (B, feature) levitation never applies to the player (eqemu skip-self appearance; derive from own buffs). → issue #208
+- **B892** (B, feature) levitation never applies to the player (eqemu skip-self appearance; derive from own buffs). → issue #208. **PARTIAL** (task/kb-b892-levitation 2026-10-08): offline leg done (SPA-57 predicate + `LevitationChanged` + hover clamp + `levitate_applies` scenario, RED/GREEN ctest) AND criterion 4 met — the scenario passed on lane 1 exit 0 (`Levitation up: buffs=1, selfFlymode=0`); hover height/descent rate still [assumed] because the criterion-3 oracle capture (Wine login flaky under llvmpipe) is owed. `refactor/B892/README.md`.
 - ~~**B893** (B, feature)~~ **CLOSED 2026-10-08 (B893, `task/kb-b893-jump-fall-damage`).** two unmeasured jump models collapsed to ONE table (`include/client/jump_fall_physics.h`; the renderer owns the wire Z in Player Mode, and `tests/test_jump_fall_arc.cpp` fails on a second writer) and the client now SENDS fall damage (`MovementComponent::SendFallDamage` → `OP_EnvDamage` dmgtype 252; the `fall_damage` scenario + state-machine test, registered in `kScenarios`). The jump-arc APEX and the fall-curve VALUES are **measured off the lane-2 oracle** (official client over the wire: apex +3.05 units from mid-air `OP_ClientUpdate`; fall curve from the client-computed `OP_EnvDamage`, safe height 18, concave 5@28u→91@68u) — the arc DURATION and terminal velocity are the two constants that stay [assumed, owed] because the capture cannot resolve them (1 Hz wire; `#goto` fall is a server-side teleport). See `refactor/B893/README.md` + `refactor/B893/evidence/oracle_measurements.md`.
 - **B894** (B, feature) forage and fishing are sent but never measured or shown. → issue #210
 - **B895** (B, feature) tracking window and direction messages. → issue #211
