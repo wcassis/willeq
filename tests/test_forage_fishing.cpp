@@ -37,6 +37,8 @@
 #include "client/inventory/item_instance.h"
 #include "client/string_database.h"
 #include "client/willeq_database.h"
+#include "common/net/packet.h"
+#include "common/packets/merchant.h"  // EQT::ITEM_PACKET_INVENTORY
 
 #include <string>
 #include <vector>
@@ -72,6 +74,19 @@ std::vector<std::string> DrainSystemMessages(eqt::bridge::GameStateBridge& bridg
     std::vector<std::string> out;
     for (auto& ev : bridge.drainEvents()) {
         if (ev.type == eqt::state::GameEventType::SystemMessage) {
+            out.push_back(std::get<eqt::state::ChatMessageData>(ev.data).message);
+        }
+    }
+    return out;
+}
+
+// The inbound zone path (a replayed OP_SimpleMessage) publishes a
+// ChatMessage event, not a SystemMessage one (ChatComponent's
+// ZoneProcessSimpleMessage pushes GameEventType::ChatMessage).
+std::vector<std::string> DrainChatMessages(eqt::bridge::GameStateBridge& bridge) {
+    std::vector<std::string> out;
+    for (auto& ev : bridge.drainEvents()) {
+        if (ev.type == eqt::state::GameEventType::ChatMessage) {
             out.push_back(std::get<eqt::state::ChatMessageData>(ev.data).message);
         }
     }
@@ -142,6 +157,7 @@ protected:
     static constexpr uint32_t kEqstrNoPole          = 160;  // ...without a fishing pole...
     static constexpr uint32_t kEqstrPolePrimary     = 161;  // ...pole in your primary hand.
     static constexpr uint32_t kEqstrNoBait          = 162;  // ...without fishing bait...
+    static constexpr uint32_t kEqstrForageFood      = 152;  // You have scrounged up some food.
     static constexpr uint32_t kEqstrStopFishing     = 165;  // You stop fishing and go on your way.
 
     EverQuest eq;
@@ -508,6 +524,113 @@ TEST_F(ForageFishingTest, MovingEndsAFishingCastWithEqstr165) {
         PlayerPositionStateChangedData{
             static_cast<uint8_t>(eqt::state::PositionState::Sitting)}));
     EXPECT_FALSE(skills.isFishing());
+}
+
+// ===================================================================
+// 4. The landing leg (acceptance criterion 1b): what eqemu SENDS after a
+//    ForageItem()/GoFish() success is a MessageString (Chat::Skills,
+//    FORAGE_FOOD) plus the caught item pushed on the cursor. On the wire
+//    (eqemu client.cpp:3803, entity.cpp) those are:
+//      * OP_SimpleMessage, a 12-byte struct {u32 color; u32 string_id;
+//        u32 unknown8}  (forage.cpp:499 -> MessageString(152));
+//      * OP_ItemPacket carrying the item serialised at the SERVER cursor
+//        slot 33 (forage.cpp:507-508: PushItemOnCursor + SendItemPacket
+//        (slotCursor)).
+//    Replaying both through the real zone dispatch must land the item on
+//    the client cursor AND print the line. No production change: both
+//    inbound paths already exist (ZoneComponent::OnItemPacket -> the
+//    generic processItemPacket fallback, and Chat's
+//    ZoneProcessSimpleMessage); this test is their regression net.
+// ===================================================================
+
+// A plain carried item the way titanium.cpp's SerializeItem writes it:
+// instance fields 0..11, then a 135-field static block. Field 3 (item) is
+// the material id, field 4 (static) is the db id, field 1 (static) the name,
+// and instance field 2 is the SLOT the server is placing it in.
+std::string CursorItemString(const std::string& name, uint32_t itemId) {
+    // eqemu SendItemPacket(slotCursor) serialises at the SERVER cursor slot
+    // (invslot::slotCursor == 33); the parser normalises it onto 30.
+    const std::string instance =
+        "0|0|33|0|1|0|0|0|0|0|0";  // 0|0|<slot>|0|1|0|0|0|0|0|0
+    std::vector<std::string> fields(135, "");
+    fields[0] = "0";
+    fields[1] = name;
+    fields[2] = name;
+    fields[3] = "IT63";
+    fields[4] = std::to_string(itemId);
+    fields[5] = "10";
+    fields[6] = "1";
+    fields[7] = "1";
+    std::string staticData;
+    for (size_t i = 0; i < fields.size(); ++i) {
+        if (i) staticData += "|";
+        staticData += fields[i];
+    }
+    return instance + "\"" + staticData + "\"";
+}
+
+// OP_ItemPacket, exactly the shape ZoneComponent::OnItemPacket hands to
+// InventoryManager::processItemPacket: 2-byte opcode, u32 packet type,
+// the serialised item, a trailing NUL (test_eq_commands_equip_bags.cpp's
+// ItemPacketPacket carries the same layout).
+void ReplayItemPacket(EverQuest& eq, const std::string& item) {
+    EQ::Net::DynamicPacket p;
+    p.Resize(2 + 4 + item.size() + 1);
+    p.PutUInt16(0, HC_OP_ItemPacket);
+    p.PutUInt32(2, EQT::ITEM_PACKET_INVENTORY);
+    p.PutData(2 + 4, const_cast<char*>(item.data()), item.size());
+    p.PutUInt8(2 + 4 + item.size(), 0);
+    std::vector<uint8_t> payload(p.Length() - 2);
+    std::memcpy(payload.data(), p.Data() + 2, payload.size());
+    ReplayZone(eq, HC_OP_ItemPacket, payload);
+}
+
+// OP_SimpleMessage: 2-byte opcode + SimpleMessage_Struct {u32 string_id;
+// u32 color; u32 unknown8} (eqemu common/eq_packet_structs.h:3832 -- string_id
+// first, then color; ChatComponent's ZoneProcessSimpleMessage reads the same
+// order).
+void ReplaySimpleMessage(EverQuest& eq, uint32_t stringId, uint32_t color = 0) {
+    EQ::Net::DynamicPacket p;
+    p.Resize(2 + 12);
+    p.PutUInt16(0, HC_OP_SimpleMessage);
+    p.PutUInt32(2, stringId);
+    p.PutUInt32(6, color);
+    p.PutUInt32(10, 0);
+    std::vector<uint8_t> payload(p.Length() - 2);
+    std::memcpy(payload.data(), p.Data() + 2, payload.size());
+    ReplayZone(eq, HC_OP_SimpleMessage, payload);
+}
+
+TEST_F(ForageFishingTest, AForagedItemLandsOnTheCursorAndTheLinePrints) {
+    // The forage success (forage.cpp:499-508): the food line, then the item
+    // on the cursor. String 152 is the FORAGE_FOOD line in the SHIPPED
+    // table (fetched through the one formatter, not transcribed here).
+    const std::string foodLine = Line(kEqstrForageFood);
+    ASSERT_FALSE(foodLine.empty());
+    EXPECT_EQ(foodLine, "You have scrounged up some food.");
+
+    eq.GetInventoryManager()->clearAll();
+    ASSERT_FALSE(eq.GetInventoryManager()->hasCursorItem());
+    DrainSystemMessages(bridge);
+    DrainChatMessages(bridge);
+
+    // eqemu pushes the caught food on the cursor, then tells us what it was.
+    ReplayItemPacket(eq, CursorItemString("Roasted Beef", 10470));
+    ReplaySimpleMessage(eq, kEqstrForageFood);
+
+    // The item landed ON the cursor (normalised server 33 -> client 30).
+    ASSERT_TRUE(eq.GetInventoryManager()->hasCursorItem());
+    const auto* cursor = eq.GetInventoryManager()->getCursorItem();
+    ASSERT_NE(cursor, nullptr);
+    EXPECT_EQ(cursor->name, "Roasted Beef");
+    EXPECT_EQ(cursor->itemId, 10470u);
+    EXPECT_EQ(eq.GetInventoryManager()->getCursorQueueSize(), 1u);
+    EXPECT_EQ(cursor->currentSlot, CURSOR_SLOT);
+
+    // The line printed, from the SHIPPED table.
+    auto chat = DrainChatMessages(bridge);
+    EXPECT_TRUE(AnyContains(chat, foodLine))
+        << "the forage success line must print; got " << chat.size() << " chat message(s)";
 }
 
 }  // namespace
