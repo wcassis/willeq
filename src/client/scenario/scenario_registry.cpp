@@ -18,6 +18,9 @@ const Entry kScenarios[] = {
     {"zone_link_hold", &MakeZoneLinkHoldScenario},
     {"two_client_survive", &MakeTwoClientSurviveScenario},
     {"cast_lands", &MakeCastLandsScenario},
+    // B892 (issue #208): cast Levitate on ourselves and wait for the
+    // client's OWN levitation (the buff + the LevitationChanged state).
+    {"levitate_applies", &MakeLevitateAppliesScenario},
     // T494 (board B796): a PAIR. equip_observed is the verdict; equip_actor is
     // the peer scripts/scenario.sh launches for it.
     {"equip_observed", &MakeEquipObservedScenario},

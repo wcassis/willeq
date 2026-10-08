@@ -63,6 +63,7 @@ public:
     int OtherPlayerCount() const override;
     std::string PlayerName() const override;
     std::vector<uint32_t> PlayerBuffSpellIds() const override;
+    bool PlayerLevitating() const override;
     long long PeerEquipmentMaterial(const std::string& peerName, int materialSlot) const override;
     long long SelfEquipmentMaterial(int materialSlot) const override;
 
