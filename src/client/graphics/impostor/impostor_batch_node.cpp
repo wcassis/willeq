@@ -363,6 +363,20 @@ void ImpostorBatchNode::render() {
             }
         }
     }
+#ifdef EQT_HAS_GLES2
+    // B972-FT (#326), the flush-without-wait leg (note 2938 / card option c):
+    // ONE explicit glFlush() immediately after the impostor pass, before the
+    // frame's remaining non-impostor draws. It submits the impostor-pass job
+    // early. It does NO buffer write, so it never enters
+    // lima_transfer_map's lima_bo_wait (the cost sheet's fact 1 is
+    // write-triggered) -- unlike the pre-ring cut, whose shared-VBO
+    // glBufferSubData flushes AND waits. If the cut's 4-7 MiB reduction is
+    // the per-draw varying BOs being freed by that early submit, this
+    // recovers it at ring frame parity; if not, gpu_unnamed_steady stays in
+    // the no-cut band and the cut is not client-achievable with the frame
+    // fix (refactor/B972-FT/README.md Measurement: the glFlush row).
+    glFlush();
+#endif
 }
 
 // B972 (#290) / B972-FT (#326), the ALTERNATIVE shape: grow + write the ring
