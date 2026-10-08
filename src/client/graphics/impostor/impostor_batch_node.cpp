@@ -449,7 +449,9 @@ bool ImpostorBatchNode::uploadFrameVbo(irr::video::IVideoDriver* driver, size_t 
     // unbind when the cache says 0 -- would leave this VBO bound and draw
     // through it. drawPackedPageVbo() re-binds the pair per page, so the
     // unbind costs nothing. gles2SyncBufferBindings re-reads the real GL
-    // bindings into the cache (the B972 pattern).
+    // bindings into the cache (the B972 pattern) -- the raw unbind alone
+    // leaves the cache stale (still 0) and a later client-array draw would
+    // skip its own unbind.
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     gles2SyncBufferBindings(driver);

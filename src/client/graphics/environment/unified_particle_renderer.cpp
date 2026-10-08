@@ -522,10 +522,14 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
             // VBO path: start is the batch's window into the PACK (one
             // buffer). Client-array path: start is 0 into the batch's own
             // array (there is no pack) -- mixing the two is an OOB read.
+            // The bind + attribute pointers go to the first batch that
+            // ACTUALLY draws (an earlier empty batch must not consume the
+            // flag, or the real batch would draw with stale pointers).
+            const bool bindAndPointers = packVbo && !packedBound;
             renderBatch(packVbo ? pv : src.data(), packVbo ? start : 0,
-                        src.size(), mode, batchIdx, packVbo && !packedBound);
+                        src.size(), mode, batchIdx, bindAndPointers);
+            if (bindAndPointers) packedBound = true;
         }
-        if (packVbo) packedBound = true;
         return start;
     };
 
@@ -745,9 +749,11 @@ GLuint UnifiedParticleRenderer::uploadPackedVerts() {
     // through it. The batch draws re-bind the row (first batch) and
     // render() restores the saved binds at its end; this unbind only matters
     // for a client-array frame in between. gles2SyncBufferBindings re-reads
-    // the real GL bindings into the cache (the B972 pattern).
+    // the real GL bindings into the cache (the B972 pattern) -- but only
+    // when a driver is attached: test doubles init() without one and draw
+    // in raw GL, where there is no cache to re-read.
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-    gles2SyncBufferBindings(driver_);
+    if (driver_) gles2SyncBufferBindings(driver_);
     return vertexVbo_[row];
 }
 
