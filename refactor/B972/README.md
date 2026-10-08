@@ -176,6 +176,19 @@ buffering, or keep the client-array draw and accept the slot) for Will's ruling.
 The 10 MiB guard row stays RED as the B988/#307 known condition (closes with
 B997).
 
+**B972-FT outcome (2026-10-08, `refactor/B972-FT/README.md` Measurement).**
+Will ruled option-2 (fix the write path, keep the cut): a per-page/per-batch
+VBO ring. The Pi A/B (four builds) shows the ring **fixes the frame** (p50 at
+no-cut parity, `gem_pp_jobs_per_frame` ≤ 2.0, the `lima_bo_wait` gone) but
+**loses the memory cut** (`gpu_unnamed_steady` back to the no-cut band), and
+the card-sanctioned one-VBO-per-frame alternative does the same. Mechanism
+named: the cut's low memory is a by-product of the per-frame flush (it is the
+only leg that flushes, and its Mesa `lima: draw-time BOs` scratch is low only
+while that flush tears the job down); the ring removes that flush by
+definition, so the scratch returns. Memory cut and frame fix are
+FLUSH-COUPLED → needs Will's ruling (Class C). MR !94 stays draft; no issue
+set to review.
+
 ## Not verified / left open
 
 - **The census-anatomy block is a B986 run-277 carry-over, not re-censused on

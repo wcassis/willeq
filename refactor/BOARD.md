@@ -882,13 +882,28 @@ it without taking that measurement first.
   per-write `lima_bo_wait` serialization, not a byte-scaled upload cost, so
   the fix is a per-page/per-batch VBO RING (3 frame-rows deep: no write
   touches a buffer an in-flight job references). Implemented on
-  `task/B972-mesa-stream-buffers` (MR !94 head, after `ce56510e`): impostor
-  VBO/EBO pairs, particle 12 slots, nametag 12 slots — `refactor/B972-FT/`.
-  Two CI red defects at the ring head (nametag SEGV: attribute pointers set
-  before the slot bind; release under-subtracting the tally) are fixed and
-  pinned by `test_name_tag_batch`. Awaiting the Pi crowd-tour A/B vs
-  `c7abab9c` (`pi_crowd.sh --bo-census`: p50 parity + jobs ≤ 2.0). Blocks MR
-  !94 un-drafting.
+  `task/B972-mesa-stream-buffers` (MR !94 head): impostor VBO/EBO pairs,
+  particle 12 slots, nametag 12 slots — `refactor/B972-FT/`. Two CI red
+  defects at the ring head (nametag SEGV: attribute pointers set before the
+  slot bind; release under-subtracting the tally) are fixed and pinned by
+  `test_name_tag_batch`. **Pi crowd-tour A/B complete** (four builds,
+  `refactor/B972-FT/README.md` Measurement): the frame gate is **MET** by both
+  ring shapes (imp p50 at no-cut parity, `gem_pp_jobs_per_frame` 1.23–1.32 ≤ 2.0,
+  `gem_wait_ms_per_frame` ~0.05 — the `lima_bo_wait` is gone), but the memory
+  gate is **NOT met** — `gpu_unnamed_steady` is back in the no-cut band
+  (18.9–19.5 / 27.9–28.1), not the cut's 14.6 / 23.1. Mechanism named
+  (`gem_owners` decomposition): the cut's reduction sits in Mesa/Lima's
+  driver-retained `lima: draw-time BOs` row and tracks the per-frame FLUSH,
+  not the VBO count — the cut is the only low-memory leg AND the only one that
+  flushes, and the packed one-VBO/frame alternative (same VBO count as the
+  cut, 0.05 ms wait) sits at no-cut-level scratch. The memory cut and the
+  frame fix are FLUSH-COUPLED: the low memory is a by-product of the very flush
+  the ring removes. **NEEDS WILL'S RULING (Class C):** (a) accept the frame fix
+  and let `gpu_unnamed_steady` return to the no-cut band, (b) re-scope the cut
+  so the frame fix stands on its own, or (c) hold both gates — which needs a
+  driver-side flush-without-wait, out of the client's reach. MR !94 stays
+  DRAFT; no issue set to review. x86 full suite 5668/5668 + CI build/test/
+  visual-gate green at head `09b71c7e`.
 - **B997** (B, memory) → issue #317. The B972 split-off: the zone-merge pool
   (6 × 1 MiB `u_upload` `draw:zone` slots, ~38 client-array drawCalls/frame,
   `renderer_zone_merge.cpp`) + the remaining `draw3d:client` pool hold the
