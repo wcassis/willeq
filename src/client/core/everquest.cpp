@@ -381,9 +381,13 @@ bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 	// T339: the landing hook. applyBuff()/setPlayerBuff() fire this AFTER the
 	// buff is in the list, so nothing is excluded.
 	m_buff_manager->setBuffApplyCallback(
-		[publishVisionForBuffChange](uint16_t entity_id, uint32_t spell_id) {
+		[this, publishVisionForBuffChange](uint16_t entity_id, uint32_t spell_id) {
 			publishVisionForBuffChange(entity_id, spell_id,
 			                           EQ::BuffManager::NO_EXCLUDED_SPELL);
+			// B892 (GitLab #208): the levitation predicate is a function of
+			// the WHOLE buff list, so every player apply re-runs it; a
+			// non-levitating landing is a no-op there (no flip, no event).
+			if (entity_id == 0) m_movement->SyncLevitation(SelfFlymode());
 		});
 
 	// The fade hook. Three of the four fade paths notify BEFORE erasing, so the
@@ -404,6 +408,11 @@ bool EverQuest::InitializeSpellSystem(const std::string& eqClientPath)
 	m_buff_manager->setBuffFadeCallback(
 		[this, publishVisionForBuffChange](uint16_t entity_id, uint32_t spell_id) {
 			publishVisionForBuffChange(entity_id, spell_id, spell_id);
+			// B892 (GitLab #208): the fade fires while the fading buff is
+			// still in the list (notify before erase), so the recompute
+			// excludes it -- a buff that fades with another levitation
+			// still up flips nothing and publishes nothing.
+			if (entity_id == 0) m_movement->SyncLevitation(SelfFlymode(), spell_id);
 			if (entity_id != 0 || !m_spell_manager) return;
 			const EQ::SpellData* faded = m_spell_manager->getSpell(spell_id);
 			if (faded && !faded->spell_fades.empty()) {

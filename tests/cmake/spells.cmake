@@ -58,6 +58,25 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_spell_body_type_targeting DISCOVERY_TIMEOUT 120)
 
+# B892 (GitLab #208): the player's own levitation -- the SPA-57 predicate
+# (the first reader of SpellEffect::Levitate in the tree), the full
+# buff-apply/fade -> LevitationChanged chain over a live EverQuest with a
+# test bridge, the ClampLevitationFeet ground decision (device-free, next to
+# its sibling in test_ground_sentinels) and the levitate_applies scenario
+# state machine. RED on the pre-fix tree: every name it uses was absent.
+# The wire tests need the real spell DB (spells 261/970 carry SPA 57; 288
+# must NOT) and degrade to GTEST_SKIP like test_spell_manager's DB half;
+# the predicate, clamp and scenario tests run with no DB at all.
+ADD_EXECUTABLE(test_levitation
+    test_levitation.cpp
+)
+TARGET_COMPILE_DEFINITIONS(test_levitation PRIVATE WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+TARGET_LINK_LIBRARIES(test_levitation GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_levitation PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+GTEST_DISCOVER_TESTS(test_levitation DISCOVERY_TIMEOUT 120)
+
 ADD_EXECUTABLE(test_spell_manager_timing
     test_spell_manager_timing.cpp
 )

@@ -909,6 +909,15 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
             renderer_->setSwimmingState(d.isSwimming, d.swimSpeed, d.isLevitating);
         }
         break;
+    case state::GameEventType::LevitationChanged:
+        // B892 (GitLab #208): the game thread's own-levitation flip (buff
+        // with SPA 57, or a self flymode 2/5 the server sent). The hover
+        // physics runs per-frame from this flag; this arm only records it.
+        if (renderer_) {
+            auto& d = std::get<state::LevitationChangedData>(event.data);
+            renderer_->setLevitationState(d.isLevitating);
+        }
+        break;
 
     // Zone lifecycle events (D13)
     case state::GameEventType::CollisionMapChanged:

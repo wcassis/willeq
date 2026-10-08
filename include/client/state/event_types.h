@@ -123,6 +123,10 @@ enum class GameEventType {
     // World/environment events
     WeatherChanged,
     SwimmingStateChanged,
+    // B892 (GitLab #208): the player's own levitation (an SPA-57 buff, or a
+    // self flymode 2/5 the server did send). A dedicated event -- levitation
+    // changes with the buff list, with no water state change.
+    LevitationChanged,
 
     // Zone lifecycle events
     CollisionMapChanged,

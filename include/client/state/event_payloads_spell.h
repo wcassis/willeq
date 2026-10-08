@@ -116,6 +116,11 @@ struct SwimmingStateChangedData {
     bool isLevitating;
 };
 
+// B892 (GitLab #208): the player's own levitation, absolute.
+struct LevitationChangedData {
+    bool isLevitating;
+};
+
 // --- Zone lifecycle events ---
 
 struct CollisionMapChangedData {

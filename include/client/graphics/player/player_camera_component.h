@@ -147,6 +147,15 @@ public:
 	// this frame. Called right after syncDoorCollision(); defined in
 	// src/client/graphics/player/renderer_player_lift.cpp.
 	void carryPlayerOnLifts(float deltaTime);
+	// B892 (GitLab #208): the per-frame levitation hover clamp, called by
+	// FrameComponent after the lift carry (renderer_frame_input.cpp), once
+	// per frame. A levitating player's feet rest kLevitationHoverHeight
+	// above the floor; from height they descend kLevitationDescentRate
+	// units/s instead of free-falling. Both numbers live in
+	// client/spell/levitation.h ([assumed] until the lane-1 capture lands).
+	// A no-op not levitating, in water or mid-jump (those own the z), and
+	// without collision geometry.
+	void applyLevitationClamp(float deltaTime);
 	void drawCollisionDebugLines(float deltaTime);
 
 	// T354 (B042/B047 batch): the incremental collision-registration API
@@ -204,6 +213,14 @@ public:
 	void refreshVisionLighting();
 	void setPlayerPosition(float x, float y, float z, float heading);
 	void setSwimmingState(bool swimming, float swimSpeed = 20.0f, bool levitating = false);
+	// B892 (GitLab #208): the LevitationChanged arm (irrlicht_bridge.cpp).
+	// playerMovement_.isLevitating is fed here now, not from the swimming
+	// event: that field's original job (suppressing the idle water sink in
+	// computeMovementVector) still reads it, but the HOVER it no longer does
+	// -- the game thread's LevitationChanged event is the writer the hover
+	// trusts, and the frame's per-frame carry (applyLevitationClamp, called
+	// after the lift carry) does the physics from this flag.
+	void setLevitationState(bool levitating);
 	void setCameraMode(CameraMode mode);
 	// T461: F9 (HotkeyAction::ToggleCameraMode, drained in
 	// FrameComponent::processCommonInput) and `/camera cycle`. The order is
@@ -470,6 +487,9 @@ private:
 	// T438: throttle for the rider's own position sync (the movement path
 	// only fires on a frame with movement INPUT, and a rider stands still).
 	float liftRideSyncAccum_ = 0.0f;
+	// B892 (GitLab #208): the throttled server sync inside
+	// applyLevitationClamp() (same ~250 ms rhythm as the lift ride's).
+	float levitationSyncAccum_ = 0.0f;
 
 	bool playerPositionIsSeed_ = false;
 	// B912: see setPlayerGameDrivenMoving().

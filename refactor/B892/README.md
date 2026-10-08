@@ -1,0 +1,139 @@
+# B892 — the player's own levitation (SPA 57)
+
+Issue #208. Class B feature gap. The official client floats a levitating player;
+willeq never applied the caster's own levitation.
+
+## The gap, measured at origin/fable 471fbeaa
+
+- eqemu sends the caster the levitate appearance with `ignore_self`
+  (akk-stack `code/zone/spell_effects.cpp:1452-1455`,
+  `SendAppearancePacket(FlyMode, Levitating, true, true)`), so the caster's
+  own client never receives `AT_FLYMODE 2` from a self-cast. The fade DOES
+  reach self (the default `ignore_self=false`).
+- `SpellEffect::Levitate` (SPA 57, `include/client/spell/spell_constants.h:184`)
+  had **zero readers** in the tree.
+- `PlayerMovementState::isLevitating` (`renderer_types.h:327`) was fed only
+  from `SwimmingStateChanged` and only suppressed idle sinking in water; it
+  floated nothing on land and slowed no fall.
+
+Shipped-data confirmation (this tip, `data/willeq.db`): spell **261 "Levitate"**
+carries SPA 57 in effect slot 1 (`effect_id_1 = 57`); **970 "Levitation"**
+carries it in slot 3 (`effect_id_3 = 57`); **288 "Minor Shielding"** carries
+neither. (Query: `select id,name,effect_id_1,effect_id_2,effect_id_3 from
+spells where id in (261,970,288)` — the DB-gated tests assert the same rows.)
+
+## The fix
+
+1. **The predicate** — `include/client/spell/levitation.h`, `EQ::
+   PlayerIsLevitating(buffs, db, selfFlymode, exclude_spell_id)`. The first
+   reader of SPA 57: any active buff whose spell carries `SpellEffect::Levitate`,
+   **OR** a self flymode 2/5 the server did send (a GM `#levitate`-style
+   effect reaches self even though the cast path does not). `db` may be null
+   (a pre-`InitializeSpellSystem` rig); then only the flymode half fires. The
+   fade hooks fire while the fading buff is still in the list (notify-before-
+   erase, `buff_manager.cpp`), so the fade-side recompute excludes the leaving
+   spell — the same pre-erase shape T339's `computeVisionType()` uses.
+2. **A dedicated event** — `GameEventType::LevitationChanged` with
+   `LevitationChangedData{isLevitating}`, an absolute value. NOT piggy-backed on
+   water transitions (the issue's explicit instruction). Published on the game
+   thread by `MovementComponent::SyncLevitation()`, called from the buff apply
+   hook (no exclusion) and the buff fade hook (fading spell excluded), and from
+   a self flymode change (`entities_component.cpp` AT_FLYMODE handler). It
+   publishes only on a flip, so a per-buff recompute of a non-levitating buff is
+   a no-op. Reset silently on zone transition (`CleanupZone`), because the
+   entity map the flymode reads from is cleared there and the buff list is
+   re-applied from the profile on the way in.
+3. **The renderer hover** — the bridge arm records
+   `playerMovement_.isLevitating`; `PlayerCameraComponent::applyLevitationClamp()`
+   (one call per frame after the lift carry) puts the feet on the hover line
+   (`floor + kLevitationHoverHeight`) and descends from height at
+   `kLevitationDescentRate` instead of free-falling. The pure decision is
+   `ClampLevitationFeet()` in `ground_query.cpp`, beside its siblings. No-ops:
+   not levitating, in water, mid-jump, or no collision data (a BSP miss is not
+   a floor — the T440 lesson, so the feet keep falling exactly as a normal fall
+   does). The server is told via the throttled `PlayerPositionChanged` intent
+   (the lift-ride's ~250 ms rhythm), because a hovering player may be standing
+   still and the ordinary movement sync only fires on a frame with input.
+4. **The scenario** — `levitate_applies` (`scenario_levitate_applies.cpp`),
+   pure logic over `IScenarioWorld`, registered in `kScenarios`. Casts a
+   levitation spell on ourselves (T401's measured prep: `#set invulnerable off`,
+   `#unmemspells`, `#memspell <id> 0`, `/target <self>`, then `/cast 1`) and
+   waits until the buff is in the list **and** the client reports levitating
+   (`IScenarioWorld::PlayerLevitating()`, read by the real
+   `ApplicationScenarioWorld` from the `MovementComponent`'s stored state). A
+   stale self flymode without the buff, and a preexisting buff, are not landings.
+
+## The two motion numbers — [assumed]
+
+`kLevitationHoverHeight` (1.5 units) and `kLevitationDescentRate` (10.0 units/s)
+live in ONE table, `include/client/spell/levitation.h`. **Both are [assumed]**:
+they are the classic client's behaviour as observed (hover roughly a foot off
+the ground, a slow roughly-constant descent off a ledge), and no Z trace has
+been recorded for them yet. They are the smell the process rules forbid, so they
+are marked [assumed] here and in the header, not [measured]. The oracle capture
+(acceptance criterion 3) is what re-points them to [measured] — see "Not
+verified / left open".
+
+## Offline evidence
+
+**RED** (the pre-fix tree cannot build the new test — every name it uses was
+absent). Built `tests/test_levitation.cpp` + `include/client/spell/levitation.h`
+against unmodified `origin/fable` (`/tmp/b892-red`, same `-j3` Release tree);
+`gmake ... Error 1` on 24 distinct compile errors, e.g.:
+
+```
+tests/test_levitation.cpp:142:55: error: ‘LevitationChanged’ is not a member of ‘eqt::state::GameEventType’; did you mean ‘VisionChanged’?
+tests/test_levitation.cpp:192:23: error: ‘class eqt::movement::MovementComponent’ has no member named ‘PlayerLevitating’
+tests/test_levitation.cpp:251:10: error: ‘class eqt::movement::MovementComponent’ has no member named ‘SyncLevitation’
+tests/test_levitation.cpp:289:26: error: ‘ClampLevitationFeet’ has not been declared in ‘EQT::Graphics’
+tests/test_levitation.cpp:346:10: error: ‘bool {anonymous}::LevFakeWorld::PlayerLevitating() const’ marked ‘override’, but does not override
+```
+
+The full list is `red_errors.txt` beside this file (in `/home/user/kb-evidence/
+b892-levitation/`).
+
+**GREEN** (this branch): `./bin/test_levitation` — **15 tests pass**
+(`test_levitation_green.log` beside this file). The DB-gated wire tests (the SPA-57
+apply→publish-up / fade→publish-down chain, the slot-3 row, the non-levitating
+negative, the self-flymode-2 half) run against the real `data/willeq.db`, not a
+skip. The offline predicate, clamp and scenario state-machine tests run with no
+DB.
+
+Neighbouring suites, all green on this branch:
+- `test_reachability_sweep` — 5/5. `LevitationChanged` has a publisher outside
+  the consumer TUs and a case in `IrrlichtBridge::applyEvent`, so the sweep's
+  "every event has a publisher and a consumer" holds.
+- `test_scenario_state_machines` — 52 pass (the shipped-scenario census is now 33;
+  `levitate_applies` is asserted by name).
+- `test_scenario_ui_legs`, `test_movement_component`, `test_buff_manager` — green.
+- `python3 scripts/refactor/check_doc_counts.py` — "OK: every stated count
+  matches the tree" (the `GameEventType` row now reads 107, updated in
+  `CLAUDE.md` and `include/client/state/CLAUDE.md`; the scenario-census row is a
+  test, not a doc count).
+
+## Not verified / left open
+
+- **The two motion numbers are [assumed]** — hover height and descent rate. The
+  lane-1 oracle capture (criterion 3) that would re-point them to [measured]
+  was **not run**: lane 1's lock was held by **`B972FT`** (the B972-FT Pi leg,
+  from the `orangepione` host) for the whole window this dev seat ran
+  (`scenario.sh` exit 64, `scenario_run.log`). The numbers stay [assumed] and
+  must be re-pointed when the capture lands; the README and the `levitation.h`
+  header both say so.
+- **Criterion 3 (oracle leg)** — not done, same reason as above. No still of the
+  hover, no walk-off-a-drop video, no hover-height-vs-model or fall-time
+  measurement, no willeq side-by-side.
+- **Criterion 4 (live scenario, exit 0 on lane 1)** — the state machine is
+  registered and passes offline, but it has not run against a live server on
+  lane 1 (lane held). The config `scripts/scenario_configs/levitate_applies.json`
+  (Testchar, a Wizard — spell 261 is in its castable band) is in the tree, so the
+  lane is `scripts/scenario.sh levitate_applies --spell 261 --timeout 300 --unit
+  B892` once the lock is free.
+- **Other levitators drawn hovering.** The server DOES send other entities their
+  flymode, and the renderer already places each entity at the server-sent Z
+  (no ground-snap), so a flymode-2 peer already renders at its server Z. What is
+  NOT done is drawing the levitation *animation/bob* for them (the pre-existing
+  `// TODO: Graphics rendering could show levitation animation` at
+  `entities_component.cpp`) — that is the "draw hovering" half of the issue and is
+  left open, matching the scope the issue's parallel legs assign to a separate
+  lane (Leg E).

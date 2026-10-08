@@ -1,6 +1,8 @@
 #include "client/graphics/vision_ambient.h"
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/player/player_camera_component.h"
+#include "client/graphics/player/ground_query.h"  // B892: ClampLevitationFeet, GroundZ
+#include "client/spell/levitation.h"  // B892: the ONE table of the two motion numbers
 #include "client/graphics/renderer_zone_merge.h"  // ZoneMergeBuffers complete type (unique_ptr member destruction)
 #include "client/willeq_database.h"
 #include "client/graphics/loading_thread.h"
@@ -494,6 +496,92 @@ void PlayerCameraComponent::setSwimmingState(bool swimming, float swimSpeed, boo
     playerMovement_.isSwimming = swimming;
     playerMovement_.swimSpeed = swimSpeed;
     playerMovement_.isLevitating = levitating;
+}
+
+// B892 (GitLab #208): the writer of playerMovement_.isLevitating. The
+// swimming event no longer feeds it: that event fires on water TRANSITIONS
+// only, and its isLevitating field read a flymode that, for a self-cast,
+// eqemu never sent to us (ignore_self). The game thread's LevitationChanged
+// event (MovementComponent::SyncLevitation) is the source, and this is its
+// renderer arm. The field's one remaining reader -- the idle water-sink
+// suppression in computeMovementVector() -- keeps working off the same flag.
+void PlayerCameraComponent::setLevitationState(bool levitating) {
+    if (owner_.isLoading()) return;
+    if (playerMovement_.isLevitating != levitating) {
+        LOG_INFO(MOD_GRAPHICS, "[Levitation] {} (B892)", levitating ? "up" : "down");
+    }
+    playerMovement_.isLevitating = levitating;
+}
+
+// B892 (GitLab #208): the per-frame levitation hover clamp. Called from
+// FrameComponent::processFrameSimulation() once per frame, after the lift
+// carry and before the rig camera placement (the lift carry can move the
+// floor under the player, so it must run first; the rig camera then frames
+// wherever this clamp left the feet).
+//
+// A levitating player's feet rest kLevitationHoverHeight above the floor,
+// and from height they DESCEND to the hover line at kLevitationDescentRate
+// instead of free-falling -- ClampLevitationFeet() is the pure decision,
+// the GroundZ query and the publish are here. Both motion numbers live in
+// ONE table, client/spell/levitation.h ([assumed] until the lane-1 oracle
+// capture lands).
+//
+// No-ops, deliberately: not levitating (the flag's only other reader is the
+// idle water-sink suppression), swimming (the swim path owns the z, including
+// its own floor clamp), mid-jump (gravity and the landing test own the z),
+// and no collision data (findGroundZBspFiltered answers NoFloor -- a miss is
+// not a floor, the T440 lesson, so the feet keep falling exactly as a
+// normal fall does).
+void PlayerCameraComponent::applyLevitationClamp(float deltaTime) {
+    if (owner_.isLoading()) return;
+    if (!playerMovement_.isLevitating) return;
+    if (playerMovement_.isSwimming || playerMovement_.isJumping) return;
+
+    const float modelYOffset = ctx_.entityRenderer
+        ? ctx_.entityRenderer->getPlayerCollisionZOffset() : 0.0f;
+    const float feetZ = ctx_.playerZ - modelYOffset;
+
+    const GroundZ ground =
+        findGroundZBspFiltered(ctx_.playerX, ctx_.playerY, ctx_.playerZ, modelYOffset);
+    if (!ground.hasFloor()) return;
+
+    // The hover LINE: the floor plus the hover height at the feet.
+    const float hoverLine = ground.z() + EQ::kLevitationHoverHeight;
+    const float clamped = ClampLevitationFeet(
+        ground.z(), feetZ, hoverLine, EQ::kLevitationDescentRate, deltaTime);
+    if (clamped == feetZ) return;
+
+    const float newCenterZ = clamped + modelYOffset;
+    ctx_.playerZ = newCenterZ;
+    playerPositionIsSeed_ = false;
+    if (ctx_.entityRenderer) {
+        ctx_.entityRenderer->updatePlayerEntityPosition(ctx_.playerX, ctx_.playerY,
+                                                        ctx_.playerZ, ctx_.playerHeading);
+    }
+    if (cameraMode_ == CameraMode::FirstPerson) {
+        repositionFirstPersonCamera();
+    }
+
+    // The server has to be told, and the ordinary movement sync will not do
+    // it: it only fires on a frame with movement INPUT, and a hovering
+    // player may be standing still. Throttled to the same ~250 ms the lift
+    // ride uses (T438).
+    levitationSyncAccum_ += deltaTime;
+    if (ctx_.bridge && levitationSyncAccum_ >= 0.25f) {
+        levitationSyncAccum_ = 0.0f;
+        eqt::events::PlayerPositionChanged intent;
+        intent.x = ctx_.playerX;
+        intent.y = ctx_.playerY;
+        intent.z = ctx_.playerZ;
+        intent.heading = ctx_.playerHeading;
+        intent.seededPosition = false;
+        intent.dx = 0.0f;
+        intent.dy = 0.0f;
+        intent.dz = newCenterZ - (feetZ + modelYOffset);
+        ctx_.bridge->pushIntent(std::move(intent));
+    }
+    LOG_TRACE(MOD_MOVEMENT, "[Levitation] hover clamp: feet {} -> {} (floor {}, line {})",
+              feetZ, clamped, ground.z(), hoverLine);
 }
 
 void PlayerCameraComponent::setCameraMode(CameraMode mode) {
