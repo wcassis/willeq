@@ -23,6 +23,9 @@
 #          the sweep, e.g. WILLEQ_LIMA_NOBOCACHE=1)
 #          [--allow-vm-lane]   (B975: forward to pi_rendered_zone_sweep.sh, whose
 #          EQEMU_HOST must then name the eqemu VM)
+#          [--bo-census build/lima_bo_census.so]   (B1006: forward the census
+#          shim to the sweep; its job-stream counters fill the gem_* columns
+#          and the gem_pp_jobs_over_bound row -- without it those are blank)
 set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ZONES="qeynos2,gfaydark,growthplane"
@@ -33,6 +36,7 @@ RES="1280 720"
 HOP_ZONE="arena"
 OWNER="B964"
 ALLOW_VM=0
+BO_CENSUS_ARGS=()
 EXTRA_ENV=()
 TOUR_EXTRA=()
 IDLE=40
@@ -54,6 +58,7 @@ while [ $# -gt 0 ]; do
         --owner) OWNER="$2"; shift 2 ;;
         --env) EXTRA_ENV+=( --env "$2" ); shift 2 ;;
         --allow-vm-lane) ALLOW_VM=1; shift ;;
+        --bo-census) BO_CENSUS_ARGS=( --bo-census "$2" ); shift 2 ;;
         -h|--help) sed -n '2,/^set -u/p' "$0"; exit 0 ;;
         *) echo "unknown option $1" >&2; exit 3 ;;
     esac
@@ -112,7 +117,7 @@ for zone in ${ZONES//,/ }; do
         echo "[pi_crowd] $zone/$variant -> $dir"
         bash "$REPO/scripts/pi_rendered_zone_sweep.sh" --zones "$zone" --out "$dir" --pi-dir "$PI_DIR" \
             -r "$RES" --tour "$dir/tour.txt" --cap "$CAP" --stall 240 --no-retry --owner "$OWNER" \
-            --stop-point never --final-visit --char-level 60 --char-exp 616137000 "${envs[@]}" "${EXTRA_ENV[@]}" "${vm_args[@]}" \
+            --stop-point never --final-visit --char-level 60 --char-exp 616137000 "${envs[@]}" "${EXTRA_ENV[@]}" "${vm_args[@]}" "${BO_CENSUS_ARGS[@]}" \
             > "$dir/sweep.out" 2>&1
         rc=$?
         echo "[pi_crowd] $zone/$variant rc=$rc"

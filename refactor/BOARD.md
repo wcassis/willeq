@@ -892,6 +892,25 @@ it without taking that measurement first.
   cap). Fix options are B997's batch/merge of manual zone draws or a
   per-draw submit-cost cut — both need Will's decision (look/coverage +
   B726/B979 invariants), so the card blocks with the measurement.
+- ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
+  mechanism (a partial `glBufferSubData` into a buffer the current Lima job
+  references flushes the job and blocks in `lima_bo_wait`, once per write): the
+  P52 sync probe needs timer queries Lima lacks and the census shim counted
+  buffers, not jobs.~~ **FIXED** (`refactor/B1006/README.md`): the shim
+  (`scripts/pi/lima_bo_census.c`) counts GEM submits per pipe, blocking GEM
+  waits and their wall time, and frames; `rendered_zone_summarize.py` carries
+  them as the `gem_*` columns and the `gem_pp_jobs_over_bound` row (bound 2.0;
+  no-cut 1.2–1.3 PP jobs/frame, the B972 cut 3.1–3.2 with 17–21 ms/frame in
+  waits = the whole regression); `pi_crowd.sh --bo-census` loads the shim,
+  which the crowd runs never had.
+- ~~**B1007** (P) → issue #328. Four cards re-derived the same Lima driver
+  facts and the B972-FT ruling request carried no mechanism; dev, QA and
+  review all verified citations and none asked why 30 KB cost 16 ms.~~
+  **FIXED**: `docs/reference/lima_cost_sheet.md` (each fact with its Mesa
+  function and measuring card), the mechanism-before-ruling bullet in
+  `CLAUDE.md` process requirements, `docs/decisions.md` 2026-10-07. The
+  solo-orchestrator cron prompt is Will's: the proposed sentence is a note on
+  #328.
 - ~~**B970** (B) → issue #288. `build-arm` fetched `irrlicht-1.8.5.zip` and
   `libpng-1.6.37.tar.xz` from downloads.sourceforge.net inside a Docker layer, so
   the 2026-10-01 SourceForge outage (HTTP 522, ~3 h) failed every job whose
