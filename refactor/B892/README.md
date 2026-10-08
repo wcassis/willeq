@@ -55,10 +55,10 @@ spells where id in (261,970,288)` — the DB-gated tests assert the same rows.)
    (the lift-ride's ~250 ms rhythm), because a hovering player may be standing
    still and the ordinary movement sync only fires on a frame with input.
 4. **The scenario** — `levitate_applies` (`scenario_levitate_applies.cpp`),
-   pure logic over `IScenarioWorld`, registered in `kScenarios`. Casts a
-   levitation spell on ourselves (T401's measured prep: `#set invulnerable off`,
-   `#unmemspells`, `#memspell <id> 0`, `/target <self>`, then `/cast 1`) and
-   waits until the buff is in the list **and** the client reports levitating
+   pure logic over `IScenarioWorld`, registered in `kScenarios`. Prep is
+   `#set invulnerable off` + `/target <self>`, then the GM `#castspell <id> 1`
+   (see "Criterion 4" below for why the GM cast, not a gem), and waits until
+   the buff is in the list **and** the client reports levitating
    (`IScenarioWorld::PlayerLevitating()`, read by the real
    `ApplicationScenarioWorld` from the `MovementComponent`'s stored state). A
    stale self flymode without the buff, and a preexisting buff, are not landings.
@@ -111,24 +111,64 @@ Neighbouring suites, all green on this branch:
   `CLAUDE.md` and `include/client/state/CLAUDE.md`; the scenario-census row is a
   test, not a doc count).
 
+## Criterion 4 — the live scenario PASSED on lane 1 (exit 0)
+
+`scripts/scenario.sh levitate_applies --spell 261 --timeout 300 --unit B892`
+on lane 1 (Testchar, GM=1), 2026-10-08T07:44:
+
+```
+[SCENARIO] GM cast attempt 1: /say #castspell 261 1
+[SPELL]    Levitation up: buffs=1, selfFlymode=0
+[MAIN]     Cast Levitate (261) on yourself instantly.
+[SCENARIO] VERDICT pass (exit 0) after 23.628s: spell 261 landed on Testchar
+           and the client is levitating 0.068s after #castspell attempt #1
+           (buff slots 0 -> 1, LevitationChanged events 1)
+```
+
+Snapshot restored byte-identically, lock released. The mechanism line
+`Levitation up: buffs=1, selfFlymode=0` is the point of the card: the client
+went levitating **from the buff list alone** — the self flymode stayed 0, which
+is exactly what eqemu's `ignore_self` levitate appearance implies
+(`code/zone/spell_effects.cpp:1452-1455`,
+`SendAppearancePacket(FlyMode, Levitating, true, true)`).
+
+The cast is the GM `#castspell <id> 1`, not a gem cast. The first lane-1 run
+(07:36) used the T401 gem recipe and FAILED for a resource reason, not a
+defect: `#memspell 261 0` succeeded ("Server memorised 'Levitate' (261) into
+gem 1") but all three `/cast 1` were refused "Insufficient Mana to cast this
+spell!" — Testchar (a GM) has GM invulnerability off but low mana, so the buff
+never landed. `#castspell` calls `SpellFinished` directly
+(gm_commands/castspell.cpp) — no mana check, no fizzle roll — and applies the
+buff through the same OP_Action path a landed gem cast would. This is the card's
+own recipe ("have a GM cast Levitate"). Full client log:
+`/home/user/kb-evidence/b892-levitation/scenario_lane1_client_gmcast.log`.
+
 ## Not verified / left open
 
-- **The two motion numbers are [assumed]** — hover height and descent rate. The
-  lane-1 oracle capture (criterion 3) that would re-point them to [measured]
-  was **not run**: lane 1's lock was held by **`B972FT`** (the B972-FT Pi leg,
-  from the `orangepione` host) for the whole window this dev seat ran
-  (`scenario.sh` exit 64, `scenario_run.log`). The numbers stay [assumed] and
-  must be re-pointed when the capture lands; the README and the `levitation.h`
-  header both say so.
-- **Criterion 3 (oracle leg)** — not done, same reason as above. No still of the
-  hover, no walk-off-a-drop video, no hover-height-vs-model or fall-time
-  measurement, no willeq side-by-side.
-- **Criterion 4 (live scenario, exit 0 on lane 1)** — the state machine is
-  registered and passes offline, but it has not run against a live server on
-  lane 1 (lane held). The config `scripts/scenario_configs/levitate_applies.json`
-  (Testchar, a Wizard — spell 261 is in its castable band) is in the tree, so the
-  lane is `scripts/scenario.sh levitate_applies --spell 261 --timeout 300 --unit
-  B892` once the lock is free.
+- **The two motion numbers are [assumed]** — hover height
+  (`kLevitationHoverHeight = 1.5`) and descent rate
+  (`kLevitationDescentRate = 10.0` u/s), in
+  `include/client/spell/levitation.h`. They are the classic client's behaviour
+  as observed (hover ~a foot off the ground, a slow roughly-constant descent);
+  no Z trace has been recorded for them yet, so they are marked [assumed] here
+  and in the header — not [measured], never invented.
+- **Criterion 3 (oracle leg)** — **not done.** The lane-1 oracle capture that
+  would re-point the numbers to [measured] (official client in-world as
+  Testchar, GM-cast Levitate, a hover still + a walk-off-a-drop video, hover
+  height vs model height, fall time) was **not completed**: the official client
+  under Wine/Xvfb/llvmpipe on the oracle VM (172.16.200.91) could not be driven
+  reliably through login — the SOE login form dropped the password keystrokes
+  under slow llvmpipe and the client self-exited to the title screen on each
+  attempt (a known gotcha in `~/src/willeq-notes/wine-oracle.md`), and the dev
+  seat's window ran out before the capture landed. What blocked it: the
+  password field was empty at submit in every full-drive attempt; title-screen
+  LOGIN button and field geometry were re-measured but the login submit itself
+  is the flaky step. No hover still, no drop video, no hover-height-vs-model or
+  fall-time measurement, no willeq side-by-side. To finish it: the oracle recipe
+  is `~/src/willeq-notes/wine-oracle.md` (lane 1: `export EQEMU_LANE=1`, oracle
+  VM 172.16.200.91, GM-cast via the say-line `#castspell 261 1` once in world),
+  then re-point the two constants in `levitation.h` and flip this [assumed] to
+  [measured] with the frames cited.
 - **Other levitators drawn hovering.** The server DOES send other entities their
   flymode, and the renderer already places each entity at the server-sent Z
   (no ground-snap), so a flymode-2 peer already renders at its server Z. What is
