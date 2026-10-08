@@ -101,7 +101,7 @@ Legend: Done | Partial | Not Implemented
 |---------|--------|-------|
 | Walking/running | Done | With server sync |
 | Strafing | Done | |
-| Jumping | Partial | Two unmeasured models: the headless 25-unit arc (#33, B463) and the renderer's own velocity/gravity arc. Fall damage is never sent. Issue #209 (B893) |
+| Jumping | Partial | ONE jump table (`jump_fall_physics.h`, B893) and fall damage now sends `OP_EnvDamage` (dmgtype 252, `fall_damage` scenario). The arc peak/duration and the fall-curve numbers are [ASSUMED] until the oracle capture lands (Wine oracle login looped). Issue #209 (B893) |
 | Swimming | Partial | Water detection, swim movement, sinking and animations exist (`renderer_player_physics.cpp`); the speeds and skill formula are unmeasured guesses. Issue #207 (B891) |
 | Drowning | -- | No breath state, no Air Remaining window, the environment-damage packet is only received. Issue #207 (B891) |
 | Levitation | -- | eqemu sends the levitate appearance with skip-self, so the self check never fires; must derive from own buffs. Issue #208 (B892) |

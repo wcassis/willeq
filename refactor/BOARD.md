@@ -9117,18 +9117,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   object's horizontal centroid; the half-period shows as a strong NEGATIVE peak,
   which is the trap that produced fable's original 42.35). Found by T438.
 
-- **B463** (A, live defect) **fable's jump is 25 units high, and the number is a → issue #33
-  debug value.** `MovementComponent::UpdateJump()`
-  (`src/client/movement/movement_state.cpp:545`) reads
-  `const float jump_height = 25.0f;  // Maximum height of jump (increased for
-  visibility)`, over a fixed 1,000 ms parabola. A real EverQuest jump is a few
-  units; 25 is taller than a Kelethin storey, and T438's Leg C trace watched the
-  player arc from 14.49 to 39.49 and back four times in one session. The
-  landing bug that made this dangerous is fixed (the struck B424), so this is now
-  a look/feel defect rather than a position corruption -- but it is unmeasured
-  in both height and duration and both should come off the oracle: the rig that
-  measures it is the same one T438 used (a 4 Hz server-side position trace via a
-  Perl quest timer while the official client jumps). Found by T438 Leg C.
+- ~~**B463** (A, live defect)~~ **CLOSED 2026-10-08 (B893, `task/kb-b893-jump-fall-damage`).** fable's jump is 25 units high, and the number is a debug value. `MovementComponent::UpdateJump()` ran a 25-unit / 1000 ms closed-form arc that coexisted with the renderer's 10-unit/40-80 arc. **B893 established the renderer owns the wire Z in Player Mode** (its `PlayerPositionChanged` intent, drained last on the game thread, overwrites the headless jump's Z), **collapsed both to one table** — `include/client/jump_fall_physics.h` (`Arc`, one `peakHeight`/`durationS` pair; the headless 25/1000 and the bare 40/80 literals are deleted, and `tests/test_jump_fall_arc.cpp::NoSecondWriterOfTheArcConstants` fails if either returns). The jump arc's peak height and duration are **owed to the oracle** (the Wine login looped; the table is [ASSUMED] 10 units / 1.0 s and Leg C's capture replaces them in place) — see `refactor/B893/README.md`.
 
 - ~~**B464** (B)~~ **CLOSED 2026-09-07 (T448).** The door-spawn debug dump
   named the loop INDEX where the door id belongs, so a two-door packet whose
@@ -13096,7 +13085,7 @@ T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are cla
 - **B890** (B, feature) boats/transport. → issue #206
 - **B891** (B, feature) swimming speeds are guesses, drowning and the Air Remaining window are missing. → issue #207
 - **B892** (B, feature) levitation never applies to the player (eqemu skip-self appearance; derive from own buffs). → issue #208
-- **B893** (B, feature) two unmeasured jump models, fall damage never sent. → issue #209
+- ~~**B893** (B, feature)~~ **CLOSED 2026-10-08 (B893, `task/kb-b893-jump-fall-damage`); issue #209's oracle leg stays open.** two unmeasured jump models collapsed to ONE table (`include/client/jump_fall_physics.h`; the renderer owns the wire Z in Player Mode, and `tests/test_jump_fall_arc.cpp` fails on a second writer) and the client now SENDS fall damage (`MovementComponent::SendFallDamage` → `OP_EnvDamage` dmgtype 252; the `fall_damage` scenario + state-machine test, registered in `kScenarios`). The jump-arc / fall-curve NUMBERS are [ASSUMED] and owed to the lane-2 oracle capture (the Wine oracle's login looped on an empty-credentials modal — a client-side focus issue, server was healthy), and terminal velocity is unmeasured and owed. See `refactor/B893/README.md`.
 - **B894** (B, feature) forage and fishing are sent but never measured or shown. → issue #210
 - **B895** (B, feature) tracking window and direction messages. → issue #211
 - **B896** (B, feature) player trade window (callbacks are an empty stub). → issue #212

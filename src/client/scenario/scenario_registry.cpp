@@ -60,6 +60,9 @@ const Entry kScenarios[] = {
     // B1005 (#324): /camp to character select, and /camp desktop.
     {"camp_to_charselect", &MakeCampToCharselectScenario},
     {"camp_desktop", &MakeCampDesktopScenario},
+    // B893 (#209): fall damage -- the client sends OP_EnvDamage and the
+    // server's HP change comes back.
+    {"fall_damage", &MakeFallDamageScenario},
 };
 
 }  // namespace

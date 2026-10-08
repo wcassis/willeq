@@ -423,6 +423,41 @@ void eqt::movement::MovementComponent::SendJump()
 	}
 }
 
+void eqt::movement::MovementComponent::SendFallDamage(float fallHeight)
+{
+	// B893: the client owns the height->damage curve -- eqemu reads
+	// EnvDamage2_Struct::damage VERBATIM (akk-stack code/zone/
+	// client_packet.cpp:6316, Handle_OP_EnvDamage: drops the packet in liquid,
+	// applies ReduceFallDamage, then for a GM prints the would-be damage and
+	// does 1 HP; for a non-GM applies it). So the whole curve lives in the one
+	// table (include/client/jump_fall_physics.h), and its values are [ASSUMED]
+	// until the lane-2 oracle capture (refactor/B893/README.md) measures them.
+	const uint32_t damage = eqt::jumpfall::damageForFallHeight(fallHeight);
+	if (damage == 0) {
+		return;  // at or below the table's safe height: a step down, no packet
+	}
+	if (!ctx_.self.IsFullyZonedIn()) {
+		return;
+	}
+
+	EQT::EnvDamage2_Struct env = {};
+	unsigned char buf[31];
+	eqt::jumpfall::encodeEnvDamage(buf, damage, eqt::jumpfall::kEnvDamageFalling);
+	std::memcpy(&env, buf, sizeof(env));
+
+	EQ::Net::DynamicPacket p;
+	p.Resize(2 + sizeof(EQT::EnvDamage2_Struct));
+	p.PutUInt16(0, HC_OP_EnvDamage);
+	p.PutData(2, &env, sizeof(env));
+
+	ctx_.net.SafeQueueZone(p, 0, true);
+
+	if (EverQuest::GetDebugLevel() >= 1) {
+		LOG_DEBUG(MOD_MOVEMENT, "Sent OP_EnvDamage fall damage={} for a {}-unit drop",
+			damage, fallHeight);
+	}
+}
+
 void eqt::movement::MovementComponent::SendMovementHistory()
 {
 	if (!ctx_.self.IsFullyZonedIn() || ctx_.Zone().MovementHistory().empty() || !ctx_.zone_connection) {
@@ -547,16 +582,18 @@ void eqt::movement::MovementComponent::UpdateJump()
 	if (!ctx_.game_state.player().isJumping()) {
 		return;
 	}
-	
+
 	auto now = std::chrono::steady_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx_.game_state.player().jumpStartTime()).count();
-	
-	// Jump physics: parabolic arc
-	// Jump lasts about 1 second, peaks at 0.5 seconds
-	const float jump_duration_ms = 1000.0f;
-	const float jump_height = 25.0f;  // Maximum height of jump (increased for visibility)
-	
-	if (elapsed >= jump_duration_ms) {
+	// B893: the arc constants live in ONE table (include/client/jump_fall_
+	// physics.h), shared with the renderer's PlayerCameraComponent. The old
+	// local `jump_duration_ms = 1000.0f` / `jump_height = 25.0f` pair (the
+	// "increased for visibility" B463 numbers) is deleted -- tests/
+	// test_jump_fall_arc.cpp fails if a second writer reappears.
+	const auto& arc = eqt::jumpfall::arc();
+	const float t_s = static_cast<float>(elapsed) / 1000.0f;
+
+	if (arc.elapsed(t_s)) {
 		// Jump complete
 		ctx_.game_state.player().setJumping(false);
 		// Return to original height (or use FixZ)
@@ -573,16 +610,15 @@ void eqt::movement::MovementComponent::UpdateJump()
 			LOG_DEBUG(MOD_MAIN, "Jump completed");
 		}
 	} else {
-		// Calculate jump height using parabola
-		float t = elapsed / jump_duration_ms;  // 0 to 1
-		float height = 4.0f * jump_height * t * (1.0f - t);  // Parabola peaking at t=0.5
+		// Closed-form parabola from the shared table (peak at t = duration/2).
+		float height = arc.jumpHeightAt(t_s);
 		ctx_.self.SetPosLocal(ctx_.self.PosX(), ctx_.self.PosY(), ctx_.game_state.player().jumpStartZ() + height);
 		
 		if (EverQuest::GetDebugLevel() >= 2) {
 			static int jump_frame = 0;
 			if (jump_frame % 10 == 0) {  // Log every 10th frame
 				LOG_DEBUG(MOD_MAIN, "Jump progress: t={:.2f}, height={:.2f}, z={:.2f}", 
-					t, height, ctx_.self.PosZ());
+					t_s, height, ctx_.self.PosZ());
 			}
 			jump_frame++;
 		}

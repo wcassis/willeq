@@ -178,6 +178,15 @@ ADD_EXECUTABLE(test_jump_relocation
 TARGET_LINK_LIBRARIES(test_jump_relocation GTest::gtest_main willeq_core)
 GTEST_DISCOVER_TESTS(test_jump_relocation DISCOVERY_TIMEOUT 120)
 
+# B893: one jump/fall model -- the arc constants live in one table and no
+# second writer may reappear (source scan, WILLEQ_REPO_ROOT).
+ADD_EXECUTABLE(test_jump_fall_arc
+    test_jump_fall_arc.cpp
+)
+TARGET_LINK_LIBRARIES(test_jump_fall_arc GTest::gtest_main)
+TARGET_COMPILE_DEFINITIONS(test_jump_fall_arc PRIVATE WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+GTEST_DISCOVER_TESTS(test_jump_fall_arc DISCOVERY_TIMEOUT 120)
+
 # T438 (BOARD B421/B422/B423): every door-motion constant, measured against the
 # official client, plus the lift cycle that plays them.
 ADD_EXECUTABLE(test_door_motion

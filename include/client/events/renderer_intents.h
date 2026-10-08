@@ -51,6 +51,18 @@ struct PlayerModelGeometryChanged {
     float collisionZOffset;  // |bbox.MinEdge.Y| * scale, world units; 0 = unknown
 };
 
+// B893: the renderer's free-fall landing height, handed to the game thread so
+// it can send OP_EnvDamage (dmgtype 252). Only the renderer knows a free fall
+// happened -- it is the one with a per-frame gravity integrator (walking off
+// an edge sets isJumping + zero velocity, gravity pulls, ShouldLandJump
+// lands). The headless game thread has no such integrator, so it can neither
+// see the fall nor own the send from here; the sanctioned crossing is this
+// intent, drained on the game thread into MovementComponent::SendFallDamage.
+// `fallHeight` is peakZ - groundZ (the renderer's FallTracker measured it).
+struct FallDamageIntent {
+    float fallHeight;
+};
+
 // --- Targeting ---
 
 struct TargetIntent {
@@ -454,6 +466,7 @@ using RendererIntent = std::variant<
     // Movement
     PlayerPositionChanged,
     PlayerModelGeometryChanged,
+    FallDamageIntent,   // B893
     // Targeting
     TargetIntent,
     // Chat

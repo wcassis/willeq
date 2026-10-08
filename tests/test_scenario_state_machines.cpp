@@ -55,6 +55,23 @@ public:
     void SendCommand(const std::string& rawLine) override { commands.push_back(rawLine); }
     void Note(const std::string& line) override { notes.push_back(line); }
 
+    // B893 (fall_damage): the fake's fall surface. PlayerHP() answers hp; a
+    // call to SimulateFall(h) is recorded and, when hpDropsOnFall, drops hp by
+    // fallDamage (simulating the server's SetHP + SendHPUpdate). hp = -1 is
+    // "not readable" so the scenario's pre-flight fails as designed.
+    long long hp = -1;
+    std::vector<float> falls;
+    bool hpDropsOnFall = true;
+    int fallDamage = 0;
+    long long PlayerHP() const override { return hp; }
+    bool SimulateFall(float h) override {
+        falls.push_back(h);
+        if (hpDropsOnFall && hp >= 0) {
+            hp -= fallDamage;
+        }
+        return true;
+    }
+
     bool sent(const std::string& needle) const {
         return std::any_of(commands.begin(), commands.end(),
             [&needle](const std::string& c) { return c.find(needle) != std::string::npos; });
@@ -141,12 +158,14 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // UI legs (pinned by name in tests/test_scenario_ui_legs.cpp) + B888's
     // create_character + 5 UIGAP-live2 legs (pinned by name in
     // tests/test_scenario_ui_legs.cpp) + 1 B925 (issue #244/#258) zone-link hold
-    // + B1005's camp pair (tests/test_camp.cpp).
-    EXPECT_EQ(names.size(), 32u);
+    // + B1005's camp pair (tests/test_camp.cpp) + B893's fall_damage.
+    EXPECT_EQ(names.size(), 33u);
     EXPECT_TRUE(IsScenarioName("camp_to_charselect"));
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
     EXPECT_TRUE(IsScenarioName("create_character"));
     EXPECT_TRUE(IsScenarioName("zone_in"));
+    // B893 (#209): fall damage.
+    EXPECT_TRUE(IsScenarioName("fall_damage"));
     // B925: the single-client zone-link hold.
     EXPECT_TRUE(IsScenarioName("zone_link_hold"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));
@@ -289,6 +308,82 @@ TEST(ZoneInScenario, ZonedInWithNoZoneNameIsAFailureNotAPass) {
     Advance(runner, 5.0);
     EXPECT_TRUE(runner.finished());
     EXPECT_EQ(runner.exitCode(), kScenarioFail);
+}
+
+// ===========================================================================
+// B893: fall_damage
+// ===========================================================================
+
+namespace {
+// A zoned-in fake with a readable HP and the server applying the fall.
+FakeWorld FallWorld(long long startHp, int damage, bool serverApplies = true) {
+    FakeWorld w;
+    w.zonedIn = true;
+    w.zone = "arena";
+    w.hp = startHp;
+    w.fallDamage = damage;
+    w.hpDropsOnFall = serverApplies;
+    return w;
+}
+}  // namespace
+
+TEST(FallDamageScenario, PassesWhenTheServerHPLands) {
+    FakeWorld world = FallWorld(/*startHp=*/500, /*damage=*/30);
+    ScenarioRunner runner(MakeScenario("fall_damage", DefaultOptions()), world,
+                          /*timeout=*/60.0, /*startDeadline=*/30.0);
+    Advance(runner, 5.0);
+    ASSERT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    ASSERT_EQ(world.falls.size(), 1u);
+    // The default option is 20.0 (the [ASSUMED] safe height is 4.0).
+    EXPECT_FLOAT_EQ(world.falls[0], 20.0f);
+    // The server applied the damage: 500 -> 470.
+    EXPECT_EQ(world.hp, 470);
+    EXPECT_NE(runner.reason().find("500"), std::string::npos);
+}
+
+TEST(FallDamageScenario, FailsWhenTheHPNeverMoves) {
+    // The pre-B893 shape: the send goes out (or not) but the server's HP
+    // change never arrives -- a fall damage the client never sent cannot land.
+    FakeWorld world = FallWorld(/*startHp=*/500, /*damage=*/30,
+                                /*serverApplies=*/false);
+    ScenarioOptions opts = DefaultOptions();
+    opts.fallWaitSeconds = 3.0;
+    ScenarioRunner runner(MakeScenario("fall_damage", opts), world,
+                          /*timeout=*/60.0, /*startDeadline=*/30.0);
+    Advance(runner, 20.0);
+    ASSERT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_EQ(world.hp, 500);
+    ASSERT_EQ(world.falls.size(), 1u);
+    EXPECT_NE(runner.reason().find("never"), std::string::npos);
+}
+
+TEST(FallDamageScenario, RefusesWithoutAReadableHP) {
+    FakeWorld world;
+    world.zonedIn = true;
+    world.zone = "arena";
+    world.hp = -1;  // not readable
+    ScenarioRunner runner(MakeScenario("fall_damage", DefaultOptions()), world,
+                          /*timeout=*/60.0, /*startDeadline=*/30.0);
+    Advance(runner, 5.0);
+    ASSERT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_TRUE(world.falls.empty());
+    EXPECT_NE(runner.reason().find("HP"), std::string::npos);
+}
+
+TEST(FallDamageScenario, TheDropHeightIsAnOptionNotAConstant) {
+    FakeWorld world = FallWorld(/*startHp=*/500, /*damage=*/30);
+    ScenarioOptions opts = DefaultOptions();
+    opts.fallDamageHeight = 15.0f;
+    ScenarioRunner runner(MakeScenario("fall_damage", opts), world,
+                          /*timeout=*/60.0, /*startDeadline=*/30.0);
+    Advance(runner, 5.0);
+    ASSERT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    ASSERT_EQ(world.falls.size(), 1u);
+    EXPECT_FLOAT_EQ(world.falls[0], 15.0f);
 }
 
 // ===========================================================================

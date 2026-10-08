@@ -27,6 +27,7 @@
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
+#include "client/jump_fall_physics.h"  // B893: the shared fall-damage table
 #include "client/audio/volume_steps.h"  // T439: the oracle's 0..20 volume step
 #include "common/logging.h"
 #include "common/performance_metrics.h"
@@ -120,6 +121,54 @@ void FrameComponent::processFrameInput(float deltaTime) {
 
     // Update camera and player movement
     ctx_.PlayerCamera().updatePlayerMovement(deltaTime);
+
+    // B893: fall damage, detected HERE, straddling the movement phase. The
+    // renderer is the only thing that can see a fall: it is the one that
+    // integrates gravity (isJumping, set on Space in readMovementInput) and
+    // snaps the player to the ground on landing, and the headless game thread
+    // -- the only one allowed to send packets -- has no per-frame integrator,
+    // so it cannot. This straddle (unpoliced: the movement-order golden parses
+    // only renderer_player_player_physics.cpp, and the static-ui test parses
+    // this TU for the mouse-wheel reads and the wheel-routing calls, which
+    // this block does not touch) samples isJumping around the one call:
+    //   - rising edge: record the takeoff Z (the player became airborne);
+    //   - falling edge: the landing. The drop is takeoffZ - playerZ; only a
+    //     drop above the table's safe height pushes a FallDamageIntent, which
+    //     the game thread turns into OP_EnvDamage (dmgtype 252). A normal
+    //     standing jump lands back at its takeoff -> 0 -> nothing is sent.
+    // Teleport protection: a horizontal relocation (zoning, a door, /go)
+    // between the frames breaks the fall, so it deals nothing instead of
+    // "falling" from the last takeoff.
+    {
+        const bool airborneNow =
+            ctx_.PlayerCamera().isJumping() && !ctx_.PlayerCamera().isSwimming();
+        if (wasAirborne_) {
+            const float dx = ctx_.playerX - lastFallTrackX_;
+            const float dy = ctx_.playerY - lastFallTrackY_;
+            if (dx * dx + dy * dy < 25.0f * 25.0f) {
+                if (!airborneNow) {
+                    // The landing edge: report the drop.
+                    const float drop = fallTakeoffZ_ - ctx_.playerZ;
+                    if (drop > eqt::jumpfall::fall().safeHeight && ctx_.bridge) {
+                        LOG_INFO(MOD_MOVEMENT, "[Fall] drop {:.1f} from takeoff {:.1f} "
+                            "-> OP_EnvDamage ({} damage for the height above the safe threshold)",
+                            drop, fallTakeoffZ_,
+                            eqt::jumpfall::damageForFallHeight(drop));
+                        ctx_.bridge->pushIntent(eqt::events::FallDamageIntent{drop});
+                    }
+                    wasAirborne_ = false;
+                }
+            } else {
+                // Relocated, not landed.
+                wasAirborne_ = false;
+            }
+        } else if (airborneNow) {
+            wasAirborne_ = true;
+            fallTakeoffZ_ = ctx_.playerZ;
+        }
+        lastFallTrackX_ = ctx_.playerX;
+        lastFallTrackY_ = ctx_.playerY;
+    }
     // T461: a rig camera (Overhead, Chase since T474, User Defined 1/2, Tether)
     // is re-placed every frame around wherever the frame leaves the player --
     // ONCE, in processFrameSimulation() after the lift carry, the last thing

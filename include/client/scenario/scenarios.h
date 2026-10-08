@@ -110,5 +110,11 @@ std::unique_ptr<IScenario> MakeCampToCharselectScenario(const ScenarioOptions& o
  *  logout reply (exit 0 through IScenario::OnClientStopped). */
 std::unique_ptr<IScenario> MakeCampDesktopScenario(const ScenarioOptions& options);
 
+// B893: fall damage. src/client/scenario/scenario_fall_damage.cpp.
+
+/** A synthetic drop through the client's own fall-damage sender; Pass when
+ *  the server's HP change arrives within fallWaitSeconds. */
+std::unique_ptr<IScenario> MakeFallDamageScenario(const ScenarioOptions& options);
+
 }  // namespace scenario
 }  // namespace eqt
