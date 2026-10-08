@@ -192,9 +192,42 @@ The two ring shapes both pass the pixel-identity test (`test_b972_stream_buffers
 5668/5668 and the CI `build`/`test`/`gate` (visual_gate) jobs are all green on
 the packed tip `054fa115` (pipeline 670).
 
+## The glFlush leg (note 2938 / ruling option c) — commit `cf56196a`, MEASUREMENT PENDING
+
+The last untested client-side shape: ONE explicit `glFlush()` immediately after
+the impostor pass (`ImpostorBatchNode::render()`, after the packed VBO's
+unbind/re-sync, before the frame's remaining non-impostor draws). It submits
+the impostor-pass job early. It does NO buffer write, so it never enters
+`lima_transfer_map`'s `lima_bo_wait` (cost-sheet fact 1 is write-triggered) —
+unlike the pre-ring cut, whose shared-VBO `glBufferSubData` flushes AND waits.
+If the cut's 4–7 MiB reduction is the per-draw varying BOs being freed by that
+early submit, this recovers the memory gate at ring frame parity (both gates
+hold); if not, `gpu_unnamed_steady` stays in the no-cut band and the cut is not
+client-achievable with the frame fix.
+
+**x86 (this commit):** `test_b972_stream_buffers` 2/2 (pixel-identity still
+byte-identical — the flush is a no-op for pixels), hygiene 25/25, pipeline 683
+green (hygiene/build/test/gate; the `test` job runs the full suite).
+
+**Pi A/B status (2026-10-08 ~16:40 UTC):** the glFlush ARM build is NOT
+produced — the only ARM build path (the `arm-nfs` runner on `dev-u24`,
+`build-arm` jobs 3163/3164/3165) fails at `vendor_fetch.sh --ensure` with
+`mkdir: cannot create directory '/mnt/projects/fable': Permission denied`. Job
+3085 succeeded on the same runner at 06:48 the same day, so this is a fresh
+NFS-mount fault on `dev-u24`, not this commit; the host is unreachable from
+hermes-ext (no ssh path, no docker, no cross-compiler here) and a shell-runner
+retry does not re-mount NFS. A no-cut control leg of THIS leg's own A/B WAS
+completed on the identical rig (`~/kb-evidence/b972ft-vbo-ring/glflush-cf56196a/
+nocut/`): qeynos2 p50 33.56 / unnamed 18.92 MiB, gfaydark 41.34 / 27.76 MiB,
+pp jobs 1.24/1.31, wait 0.014/0.016 ms — within noise of the README's four-build
+table (33.62/41.55, 19.29/28.20), confirming the rig. **The glFlush row itself
+(p50 + unnamed + gem_ on the `cf56196a` ARM build) is the outstanding
+measurement; resume the A/B (`--pi-dir ~/ci-arm/cf56196a…`) the moment
+`build-arm` is green again.**
+
 **Evidence:** `~/kb-evidence/b972ft-vbo-ring/{nocut-c7abab9c,prering-a893b467,
-ringed-e5f69cd6,packed-054fa115}/{qeynos2,gfaydark}/imp200far/` (results.tsv,
-gem_owners.tsv, zones/<zone>/client.log).
+ringed-e5f69cd6,packed-054fa115,glflush-cf56196a/nocut}/{qeynos2,gfaydark}/
+imp200far/` (results.tsv, gem_owners.tsv, zones/<zone>/client.log).
 
 ## Not verified / left open
 
