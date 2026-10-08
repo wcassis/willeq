@@ -10,6 +10,7 @@
   - `pre_luclin_zones.json` - Pre-Luclin zone list (used by reference generation scripts)
   - `zone_textures/` - Zone texture listings by expansion
   - `orangepione_noble.txt` - Orange Pi hardware diagnostics
+  - `lima_cost_sheet.md` - What the Pi's Lima driver charges for (uploads, draws, jobs, memory), each fact with its Mesa function and measuring card (B1006). Read before any Pi draw-path or GPU-memory change.
 
 - **`docs/standards/`** - Coding guidance and implementation standards
   - `debug_logging_standards.md` - Logging framework standards (referenced by CLAUDE.md and code)

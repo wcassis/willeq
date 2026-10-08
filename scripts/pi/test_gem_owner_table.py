@@ -63,6 +63,34 @@ class GemOwnerTableTest(unittest.TestCase):
         self.assertLessEqual(tex, t["logical_textures"] * TEXTURE_ROUNDING)
         self.assertNotIn("lima: upload-thread context (PLB, streams)", t["rows"])
 
+    def test_job_rates_pre_b1006_dump_is_none(self):
+        # The checked-in B962 dumps carry 8 P fields: no counters, no rates, no crash.
+        self.assertIsNone(g.job_rates(os.path.join(DATA, "qeynos2_steady_gem_owners.tsv")))
+        self.assertIsNone(g.job_rates(os.path.join(DATA, "does_not_exist.tsv")))
+
+    def test_job_rates_between_points(self):
+        # B1006: counters are cumulative per P line; rates are the delta per frame.
+        import tempfile
+        rows = ["P\tready\t10.0\t1\t4096\t1\t0\t0\t100\t100\t100\t2\t500000\n",
+                "B\t7\t1\t4096\t0\t0\t1\t1\t-\t-\n", "E\tready\n",
+                # 200 frames later: 200 GP, 1000 PP (5 per frame), 800 waits, 3.2 s inside them
+                "P\tsteady_60s\t70.0\t1\t4096\t1\t0\t0\t300\t300\t1100\t802\t3200500000\n",
+                "B\t7\t1\t4096\t0\t0\t1\t1\t-\t-\n", "E\tsteady_60s\n"]
+        with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False) as f:
+            f.writelines(rows)
+        try:
+            r = g.job_rates(f.name)
+            self.assertEqual(r["frames"], 200)
+            self.assertAlmostEqual(r["pp_jobs_per_frame"], 5.0)
+            self.assertAlmostEqual(r["gp_jobs_per_frame"], 1.0)
+            self.assertAlmostEqual(r["waits_per_frame"], 4.0)
+            self.assertAlmostEqual(r["wait_ms_per_frame"], 16.0)
+            self.assertIsNone(g.job_rates(f.name, start="ready", end="missing"))
+            points, _ = g.read_dump(f.name)
+            self.assertEqual(points["ready"]["meta"]["live"], 1)  # the first 8 fields are unchanged
+        finally:
+            os.unlink(f.name)
+
     def test_legacy_partition(self):
         self.check_partition("qeynos2_steady_legacy")
 

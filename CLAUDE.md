@@ -68,6 +68,12 @@ Additional context is in subdirectory CLAUDE.md files:
   states a new number adds a row to `scripts/refactor/check_doc_counts.py`.
 - **Strike every mention when you close an item.** A fix verified only by a
   hand-run tool leaves no regression net and no doc trigger.
+- **A Pi perf or memory finding names its mechanism before it asks for a
+  ruling** (B1006, #327): the driver fact it rests on
+  (`docs/reference/lima_cost_sheet.md`, or a cited Mesa function for a new
+  one) and the prediction that fact makes, checked against the measurements
+  in hand. A finding without one is a measurement, not a ruling request;
+  reviewers re-derive the mechanism, not only the citations.
 - **CI runs the build and the suite on the GitLab runner, not in your
   worker.** `.gitlab-ci.yml` (T502) builds Release and runs the full ctest suite
   on pushes to `task/*`, `plans/*` and `fable`, and on merge requests, in four
@@ -76,13 +82,10 @@ Additional context is in subdirectory CLAUDE.md files:
   is re-run with `--repeat until-pass:3`) and `gate` (`visual_gate`, 3 in-script
   retries, never `allow_failure`, all five manifest zones — B903/B904 ended
   the 2026-09-28 iceclad/timorous split, `docs/ci.md`). The jobs execute on **hermes-ext** and refuse
-  any other host — a hermes kanban worker is capped at 4 GiB and is OOM-killed
-  while linking, which is what CI exists to stop, and Will's 2026-09-17 ruling
-  keeps builds off the Inspur inference box. Pushing a branch is therefore the
-  cheapest way to get the suite run, but the runner keeps a **warm** build tree
-  between pipelines, so a green pipeline is evidence about an incremental build;
-  force a clean one before trusting it on a build-system change. How to read a
-  pipeline, retry the gate and go cold: `docs/ci.md`.
+  any other host (a kanban worker's 4 GiB cap OOM-kills a link; Will's
+  2026-09-17 ruling keeps builds off the Inspur box). Pushing a branch is the
+  cheapest suite run, but the runner's build tree is **warm**: force a clean
+  pipeline before trusting a build-system change (`docs/ci.md`).
 
 ### File sizes
 
@@ -140,10 +143,8 @@ reason at the top of this file. Cut narrative before you cut a rule.
   magnitude in both directions (`docs/decisions.md` 2026-09-17 addendum, T496).
 - **A block shared by several owners is reported ONCE, with all its claimants
   named** — never counted into each claimant, which would inflate the total and
-  make 100 % accounting unreachable.
-  <!-- The last two bullets were relayed by the orchestrator at T501 as Will's
-  2026-09-17 rulings; the x86/both-platforms half is anchored by the T496
-  addendum, the shared-block half has no docs/decisions.md entry yet. -->
+  make 100 % accounting unreachable (relayed at T501; the shared-block half
+  has no `docs/decisions.md` entry yet).
 
 ## Project Overview
 
@@ -620,7 +621,7 @@ bash scripts/ci/encode_capture.sh /tmp/capture <UNIT_ID> [output_dir]
   performance conclusion from a capture video.**
 - Verify frames are real images before encoding — `saveScreenshot()` has a
   documented history of returning garbage under the surfaceless path (P10, P20).
-  Worked example: `refactor/T64_video_capture_extraction.md`, `review/T64/README.md`.
+  Worked example: `review/T64/README.md`.
 
 ### Linux Capabilities
 

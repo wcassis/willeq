@@ -68,11 +68,21 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ci"))
 import owned_memory  # noqa: E402  B978: owned=RssAnon-gpu_driver+gpu_buffers
+import gem_owner_table  # noqa: E402  B1006: the shim's job-stream counters
 
 RSS_TARGET = 64 * 1024 * 1024       # the design yardstick (printed, not a gate); judged on
                                     # OWNED = RssAnon - gpu_driver + gpu_buffers (B933, B978)
 RSS_CEILING = 256 * 1024 * 1024     # the failing bound
 GPU_UNNAMED_BOUND = 10 * 1024 * 1024  # B962: measured 5.0-7.7 MiB fixed, 11.4-17.3 MiB before (refactor/B962/README.md)
+# B1006 (#327): PP render jobs per frame between ready and steady_60s, from the
+# census shim's job-stream counters. One per frame is a frame nothing split; a
+# draw path that writes a buffer the current job references splits the job and
+# blocks (lima_transfer_map) once per write -- B972-FT's ~30 % frame-time cost
+# cost. Measured 2026-10-08 (review/B1006/, crowd tour, imp200far, 800x600):
+# no-cut c7abab9c 1.20 (qeynos2) / 1.31 (gfaydark) PP jobs per frame with
+# ~1.1 near-instant waits; the B972 cut a893b467 3.12 jobs, 10.45 waits and
+# 17.2 ms per frame inside them on qeynos2 -- the whole 16 ms regression.
+GEM_PP_JOBS_PER_FRAME_BOUND = 2.0
 DRIVER_SO = re.compile(r"owner=(so:(libLLVM|libgallium|libEGL|libGLES|libGLdispatch|libdrm|libgbm|libglapi)[^ ]*"
                        r"|[^ ]*(/dev/dri|renderD|card[0-9])[^ ]*)")
 
@@ -93,7 +103,10 @@ HEADER = ("zone expansion s3d_bytes attempt verdict signature exit_code kill_rea
           # B962: appended at the END
           "gpu_depth_stencil_steady gpu_unnamed_steady "
           # B978: appended at the END
-          "owned_rss_anon_peak gpu_buffers_at_owned_peak").split()
+          "owned_rss_anon_peak gpu_buffers_at_owned_peak "
+          # B1006: appended at the END -- the Lima job stream ready->steady_60s
+          "gem_frames_steady gem_pp_jobs_per_frame gem_gp_jobs_per_frame gem_waits_per_frame "
+          "gem_wait_ms_per_frame").split()
 
 
 def mesa_proof(run, expect, prefix):
@@ -418,6 +431,11 @@ def main():
             owned_anon_steady = ""
     unnamed_over = (b962_tally and mg_steady[1].get("source") == "memcg_shmem"
                     and unnamed > GPU_UNNAMED_BOUND)
+    # B1006: the Lima job stream between ready and steady_60s (shim P-line counters).
+    jobs = gem_owner_table.job_rates(os.path.join(a.run, "gem_owners.tsv")) if steady else None
+    jv = lambda k, nd=2: round(jobs[k], nd) if jobs else ""
+    pp_over = bool(jobs) and GEM_PP_JOBS_PER_FRAME_BOUND is not None \
+        and jobs["pp_jobs_per_frame"] > GEM_PP_JOBS_PER_FRAME_BOUND
     checks = [
         (mesa_check.startswith("mismatch"), "mesa_" + mesa_check),
         (oom == "y", "oom_kill"),
@@ -433,6 +451,10 @@ def main():
          % (mg_ready[1].get("source", "?") if mg_ready else "?")),
         (unnamed_over, "gpu_unnamed_over_bound (%.2f MiB of GEM no tally row names at steady_60s > %.2f MiB)"
          % ((unnamed if unnamed != "" else 0) / 1048576.0, GPU_UNNAMED_BOUND / 1048576.0)),
+        (pp_over, "gem_pp_jobs_over_bound (%.2f PP render jobs/frame ready->steady_60s > %.2f: a draw "
+                  "path splits the frame job, %.2f waits/frame %.2f ms/frame -- B1006/#327)"
+         % ((jobs or {}).get("pp_jobs_per_frame", 0), GEM_PP_JOBS_PER_FRAME_BOUND or 0,
+            (jobs or {}).get("waits_per_frame", 0), (jobs or {}).get("wait_ms_per_frame", 0))),
         (bool(ready) and steady is not None and (rc != 0 or kill), "unclean_exit (rc=%s %s)" % (rc, kill)),
         (mesa_check.startswith("unproven"), "mesa_" + mesa_check),
     ]
@@ -477,6 +499,9 @@ def main():
         "gpu_depth_stencil_steady": gv(mg_steady, "logical_depth_stencil") if b962_tally else "",
         "gpu_unnamed_steady": unnamed,
         "owned_rss_anon_peak": owned_rss_anon_peak, "gpu_buffers_at_owned_peak": gbuf_at_peak,
+        "gem_frames_steady": jobs["frames"] if jobs else "",
+        "gem_pp_jobs_per_frame": jv("pp_jobs_per_frame"), "gem_gp_jobs_per_frame": jv("gp_jobs_per_frame"),
+        "gem_waits_per_frame": jv("waits_per_frame"), "gem_wait_ms_per_frame": jv("wait_ms_per_frame", 3),
     }
     clean = {k: str(v).replace("\t", " ").replace("\n", " ") for k, v in row.items()}
     new = not os.path.exists(a.tsv) or os.path.getsize(a.tsv) == 0
