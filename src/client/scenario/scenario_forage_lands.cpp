@@ -137,6 +137,7 @@ public:
 private:
     // Timeline (seconds since zone-in).
     static constexpr double kInvulnOffAt   = 3.0;
+    static constexpr double kShoreGotoAt   = 5.0;   // #goto the harbor shore
     static constexpr double kForageAt      = 8.0;
     static constexpr double kStashForageAt = 18.0;  // /putdown 23 (general 1)
     static constexpr double kPoleSummonAt  = 24.0;
@@ -163,8 +164,20 @@ private:
         // foraged catch is stashed into general 1 FIRST (it is the cursor's
         // front item at that point, so /putdown 23 takes the food, not the
         // pole).
+        //
+        // #goto first: the fishing leg is WATER-DEPENDENT. The server's
+        // CanFish() (forage.cpp:206-229, RuleB Watermap.CheckForWaterWhenFishing
+        // ON on this lane) probes a rod tip 30u ahead along the heading at the
+        // player's z, then a 100u vertical line down: no water in reach is
+        // eqstr 166 FISHING_LAND, the refusal the pre-run lane run measured
+        // twice (forage_lands_client.log 17:38:47 and 17:38:57). The stand is
+        // parsed from the lane's own freporte watermap (wtr_cands.py over
+        // /mnt/projects/akk-stack/server/maps/water/freporte.wtr): (0,-825,-75)
+        // is land with water 25u south, heading 180 puts the rod tip at
+        // (0,-855), in water. #goto x y z h (gm_commands/goto.cpp:62-75).
         return {
             {kInvulnOffAt, "/say #set invulnerable off"},
+            {kShoreGotoAt, "/say #goto 0 -825 -75 180"},
             {kForageAt, "/say #forage"},
             {kStashForageAt, "/putdown 23"},  // foraged food -> general 1
             {kPoleSummonAt, "/say #summonitem 13100 1"},  // Fishing Pole (36)

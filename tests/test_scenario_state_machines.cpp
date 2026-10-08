@@ -639,21 +639,25 @@ TEST(ForageLandsScenario, RunsTheGMRecipeInOrder) {
     ScenarioRunner runner(MakeScenario("forage_lands", DefaultOptions()), world,
                           /*timeout=*/600.0, /*startDeadline=*/30.0);
     Advance(runner, 60.0);
-    ASSERT_GE(world.commands.size(), 10u);
+    ASSERT_GE(world.commands.size(), 11u);
     EXPECT_EQ(world.commands[0], "/say #set invulnerable off");
-    EXPECT_EQ(world.commands[1], "/say #forage");
+    // The stand: the fishing leg is water-dependent (CanFish's rod-tip
+    // probe), so the scenario teleports to a parsed freporte harbor shore
+    // (rod tip 30u ahead at heading 180 lands in water) BEFORE foraging.
+    EXPECT_EQ(world.commands[1], "/say #goto 0 -825 -75 180");
+    EXPECT_EQ(world.commands[2], "/say #forage");
     // The forage catch is stashed to general 1 BEFORE the pole is summoned
     // (it is on the cursor, and so would be the pole's summon).
-    EXPECT_EQ(world.commands[2], "/putdown 23");  // foraged food -> general 1
-    EXPECT_EQ(world.commands[3], "/say #summonitem 13100 1");  // the pole
-    EXPECT_EQ(world.commands[4], "/putdown 13");   // pole -> primary
-    EXPECT_EQ(world.commands[5], "/say #summonitem 13101 1");  // the bait
-    EXPECT_EQ(world.commands[6], "/putdown 24");   // bait -> general 2
-    EXPECT_EQ(world.commands[7], "/say #maxskills");
+    EXPECT_EQ(world.commands[3], "/putdown 23");  // foraged food -> general 1
+    EXPECT_EQ(world.commands[4], "/say #summonitem 13100 1");  // the pole
+    EXPECT_EQ(world.commands[5], "/putdown 13");   // pole -> primary
+    EXPECT_EQ(world.commands[6], "/say #summonitem 13101 1");  // the bait
+    EXPECT_EQ(world.commands[7], "/putdown 24");   // bait -> general 2
+    EXPECT_EQ(world.commands[8], "/say #maxskills");
     // The client's own OP_Fishing path (criterion 2: "fish ... succeeds"),
     // with the server's guaranteed #fish right after it.
-    EXPECT_EQ(world.commands[8], "/useskill fishing");
-    EXPECT_EQ(world.commands[9], "/say #fish");
+    EXPECT_EQ(world.commands[9], "/useskill fishing");
+    EXPECT_EQ(world.commands[10], "/say #fish");
 }
 
 TEST(ForageLandsScenario, PassesWhenTheScroungedLineAndTheItemLand) {
