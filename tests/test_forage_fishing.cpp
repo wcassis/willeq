@@ -32,6 +32,9 @@
 #include "client/skill/skill_cap_table.h"
 #include "client/skill/skill_manager.h"
 #include "client/combat.h"
+#include "client/inventory/inventory_constants.h"
+#include "client/inventory/inventory_manager.h"
+#include "client/inventory/item_instance.h"
 #include "client/string_database.h"
 #include "client/willeq_database.h"
 
@@ -39,6 +42,13 @@
 #include <vector>
 
 using namespace zonetest;
+using namespace eqt::inventory;  // SLOT_PRIMARY, GENERAL_BEGIN, ...
+// NO `using eqt::state::PositionState` here: eq_enums.h declares a global
+// `enum PositionState` (POS_*) and the two names cannot share this scope.
+using eqt::state::PlayerPositionStateChangedData;
+using eqt::state::PlayerMovedData;
+using eqt::state::GameEvent;
+using eqt::state::GameEventType;
 
 namespace {
 
@@ -242,6 +252,262 @@ TEST_F(ForageFishingTest, ForageRefusedWhileAttackingWithEqstr148) {
     EXPECT_TRUE(AnyContains(msgs, Line(kEqstrForageAttacking)))
         << "the player must be told " << Line(kEqstrForageAttacking) << "; got "
         << msgs.size() << " message(s)";
+}
+
+// ===================================================================
+// 3. The rest of the table.
+//    Item seeding follows tests/eq_commands_equip_test_fixture.h's idiom:
+//    InventoryManager::setItem with a full ItemInstance. The pole/bait
+//    witness is ItemInstance::skillType (the full ItemType, eqemu's
+//    item->ItemType off serialized field 56): FishingPole is 36, Bait 37
+//    (common_t common/item_data.h).
+// ===================================================================
+
+void SeedPole(EverQuest& eq, int16_t slot) {
+    ItemInstance pole;
+    pole.itemId = 99001;
+    pole.name = "Worn Fishing Rod";
+    pole.skillType = 36;  // ItemTypeFishingPole
+    eq.GetInventoryManager()->setItem(slot, pole);
+}
+
+void SeedBait(EverQuest& eq, int16_t slot) {
+    ItemInstance bait;
+    bait.itemId = 99002;
+    bait.name = "Fishing Bait";
+    bait.skillType = 37;  // ItemTypeFishingBait
+    eq.GetInventoryManager()->setItem(slot, bait);
+}
+
+// A ready fisher: pole in primary, bait in general, nothing else.
+void ReadyFisher(EverQuest& eq) {
+    SeedPole(eq, SLOT_PRIMARY);
+    SeedBait(eq, GENERAL_BEGIN);
+}
+
+// Rewind a skill's recast so the COOLDOWN gate cannot be the reason a
+// second activation refuses -- the refusal under test must be the one that
+// sits behind it.
+void ExpireRecast(EQ::SkillManager& skills, uint8_t skill_id) {
+    skills.getSkill(skill_id)->last_used =
+        std::chrono::steady_clock::now() - std::chrono::hours(1);
+}
+
+TEST_F(ForageFishingTest, ForageRefusedWhileSittingWithEqstr149) {
+    auto& skills = Skills(kRanger);
+    skills.updateSkill(kForage, 100);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
+    eq.Test_SetCaptureQueuedPacketsForSeam(true);
+    eq.Test_ClearQueuedPackets();
+    DrainSystemMessages(bridge);
+
+    eq.GetGameState().player().setPositionState(eqt::state::PositionState::Sitting);
+    ASSERT_EQ(eq.GetGameState().player().positionState(), eqt::state::PositionState::Sitting);
+
+    EXPECT_FALSE(skills.canUseSkill(kForage));
+    EXPECT_EQ(skills.getSkillUseError(kForage), Line(kEqstrForageStanding));
+    EXPECT_FALSE(skills.activateSkill(kForage));
+    EXPECT_FALSE(Sent(eq, kOpForage));
+
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, Line(kEqstrForageStanding)));
+
+    // Back to standing clears the gate: the same activation now sends.
+    eq.GetGameState().player().setPositionState(eqt::state::PositionState::Standing);
+    EXPECT_TRUE(skills.canUseSkill(kForage));
+    EXPECT_TRUE(skills.activateSkill(kForage));
+    EXPECT_TRUE(Sent(eq, kOpForage));
+}
+
+TEST_F(ForageFishingTest, FishingRefusedWithoutAPoleWithEqstr160) {
+    auto& skills = Skills(kWarrior);
+    skills.updateSkill(kFishing, 100);
+    ReadyFisher(eq);
+    // Take the pole AND the bait: nothing anywhere.
+    eq.GetInventoryManager()->setItem(SLOT_PRIMARY, ItemInstance());
+    eq.GetInventoryManager()->setItem(GENERAL_BEGIN, ItemInstance());
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
+    eq.Test_SetCaptureQueuedPacketsForSeam(true);
+    eq.Test_ClearQueuedPackets();
+    DrainSystemMessages(bridge);
+
+    EXPECT_FALSE(skills.canUseSkill(kFishing));
+    EXPECT_EQ(skills.getSkillUseError(kFishing), Line(kEqstrNoPole))
+        << "no pole anywhere is 160 (buy one), not 161 (equip it)";
+    EXPECT_FALSE(skills.activateSkill(kFishing));
+    EXPECT_FALSE(Sent(eq, kOpFishing));
+
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, Line(kEqstrNoPole)));
+}
+
+TEST_F(ForageFishingTest, FishingRefusedWithAPoleOutOfPrimaryWithEqstr161) {
+    auto& skills = Skills(kWarrior);
+    skills.updateSkill(kFishing, 100);
+    ReadyFisher(eq);
+    // The pole is carried -- in general 2, not primary.
+    auto pole = *eq.GetInventoryManager()->getItem(SLOT_PRIMARY);
+    eq.GetInventoryManager()->setItem(SLOT_PRIMARY, ItemInstance());
+    eq.GetInventoryManager()->setItem(GENERAL_BEGIN + 1, pole);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
+    eq.Test_SetCaptureQueuedPacketsForSeam(true);
+    eq.Test_ClearQueuedPackets();
+    DrainSystemMessages(bridge);
+
+    EXPECT_FALSE(skills.canUseSkill(kFishing));
+    EXPECT_EQ(skills.getSkillUseError(kFishing), Line(kEqstrPolePrimary))
+        << "a carried pole is 161 (put it in primary), not 160 (buy one)";
+    EXPECT_FALSE(skills.activateSkill(kFishing));
+    EXPECT_FALSE(Sent(eq, kOpFishing));
+
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, Line(kEqstrPolePrimary)));
+}
+
+TEST_F(ForageFishingTest, FishingRefusedWithoutBaitWithEqstr162) {
+    auto& skills = Skills(kWarrior);
+    skills.updateSkill(kFishing, 100);
+    ReadyFisher(eq);
+    // Pole in primary; the bait is gone.
+    eq.GetInventoryManager()->setItem(GENERAL_BEGIN, ItemInstance());
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
+    eq.Test_SetCaptureQueuedPacketsForSeam(true);
+    eq.Test_ClearQueuedPackets();
+    DrainSystemMessages(bridge);
+
+    EXPECT_FALSE(skills.canUseSkill(kFishing));
+    EXPECT_EQ(skills.getSkillUseError(kFishing), Line(kEqstrNoBait));
+    EXPECT_FALSE(skills.activateSkill(kFishing));
+    EXPECT_FALSE(Sent(eq, kOpFishing));
+
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, Line(kEqstrNoBait)));
+}
+
+TEST_F(ForageFishingTest, FishingRefusedWhileAttackingWithEqstr159) {
+    auto& skills = Skills(kWarrior);
+    skills.updateSkill(kFishing, 100);
+    ReadyFisher(eq);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
+    eq.Test_SetCaptureQueuedPacketsForSeam(true);
+    eq.Test_ClearQueuedPackets();
+    DrainSystemMessages(bridge);
+
+    auto* combat = eq.GetCombatManager();
+    ReplayZone(eq, HC_OP_NewSpawn,
+               NewSpawnPayloadAt(500, "a_probe_dummy", 0, 10, 0));
+    ASSERT_TRUE(combat->SetTarget(500));
+    combat->EnableAutoAttack();
+    ASSERT_EQ(combat->GetCombatState(), COMBAT_STATE_ENGAGED);
+
+    EXPECT_FALSE(skills.canUseSkill(kFishing));
+    EXPECT_EQ(skills.getSkillUseError(kFishing), Line(kEqstrFishingAttacking));
+    EXPECT_FALSE(skills.activateSkill(kFishing));
+    EXPECT_FALSE(skills.isFishing());
+    EXPECT_FALSE(Sent(eq, kOpFishing));
+
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, Line(kEqstrFishingAttacking)));
+}
+
+// A satisfied precondition sends exactly one empty OP_Fishing and the cast
+// goes live.
+TEST_F(ForageFishingTest, AReadyFisherSendsOneEmptyOpFishing) {
+    auto& skills = Skills(kWarrior);
+    skills.updateSkill(kFishing, 100);
+    ReadyFisher(eq);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
+    eq.Test_SetCaptureQueuedPacketsForSeam(true);
+    eq.Test_ClearQueuedPackets();
+    DrainSystemMessages(bridge);
+
+    ASSERT_TRUE(skills.canUseSkill(kFishing));
+    ASSERT_TRUE(skills.activateSkill(kFishing));
+    ASSERT_TRUE(skills.isFishing());
+
+    const EverQuest::TestQueuedPacket* fishing = nullptr;
+    size_t fishing_sends = 0;
+    for (const auto& p : eq.Test_GetQueuedPackets()) {
+        if (p.opcode == kOpFishing) {
+            ++fishing_sends;
+            fishing = &p;
+        }
+    }
+    ASSERT_EQ(fishing_sends, 1u) << "exactly one OP_Fishing";
+    EXPECT_TRUE(fishing->bytes.empty()) << "empty body, T152's wire form";
+}
+
+// The already-fishing refusal: the first cast went out (and is still live),
+// the recast is expired so the COOLDOWN gate cannot be the reason -- the
+// 156 refusal is the one that fires.
+TEST_F(ForageFishingTest, ASecondCastWhileFishingIsRefusedWithEqstr156) {
+    auto& skills = Skills(kWarrior);
+    skills.updateSkill(kFishing, 100);
+    ReadyFisher(eq);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
+    eq.Test_SetCaptureQueuedPacketsForSeam(true);
+    eq.Test_ClearQueuedPackets();
+    DrainSystemMessages(bridge);
+
+    ASSERT_TRUE(skills.activateSkill(kFishing));
+    ASSERT_TRUE(skills.isFishing());
+    ExpireRecast(skills, kFishing);  // not the cooldown that refuses
+    ASSERT_EQ(skills.getSkillCooldownRemaining(kFishing), 0u);
+
+    EXPECT_FALSE(skills.canUseSkill(kFishing));
+    EXPECT_EQ(skills.getSkillUseError(kFishing), Line(kEqstrAlreadyFishing));
+    EXPECT_FALSE(skills.activateSkill(kFishing));
+    EXPECT_TRUE(skills.isFishing()) << "the first cast is still live";
+    EXPECT_EQ(skills.getSkillCooldownRemaining(kFishing), 0u)
+        << "the refusal must not have started a second recast";
+    size_t fishing_now = 0;
+    for (const auto& p : eq.Test_GetQueuedPackets())
+        if (p.opcode == kOpFishing) ++fishing_now;
+    EXPECT_EQ(fishing_now, 1u) << "no second OP_Fishing goes out";
+
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, Line(kEqstrAlreadyFishing)));
+}
+
+// Moving ends a live cast with eqstr 165 (the movement integrator's own
+// PlayerMoved is the trigger; the test publishes the same event the
+// integrator publishes, isMoving=true).
+TEST_F(ForageFishingTest, MovingEndsAFishingCastWithEqstr165) {
+    auto& skills = Skills(kWarrior);
+    skills.updateSkill(kFishing, 100);
+    ReadyFisher(eq);
+    eq.Net().Test_SetBypassSendGuardForSeam(true);
+    eq.Test_SetCaptureQueuedPacketsForSeam(true);
+    eq.Test_ClearQueuedPackets();
+    DrainSystemMessages(bridge);
+
+    ASSERT_TRUE(skills.activateSkill(kFishing));
+    ASSERT_TRUE(skills.isFishing());
+
+    eq.GetGameState().events().publish(GameEvent(
+        GameEventType::PlayerMoved,
+        PlayerMovedData{10.0f, 10.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, true}));
+
+    EXPECT_FALSE(skills.isFishing());
+    auto msgs = DrainSystemMessages(bridge);
+    EXPECT_TRUE(AnyContains(msgs, Line(kEqstrStopFishing)))
+        << "moving must print eqstr 165; got " << msgs.size() << " message(s)";
+
+    // A discrete relocation (isMoving=false) must NOT end a cast.
+    ASSERT_TRUE(skills.activateSkill(kFishing));
+    ASSERT_TRUE(skills.isFishing());
+    eq.GetGameState().events().publish(GameEvent(
+        GameEventType::PlayerMoved,
+        PlayerMovedData{11.0f, 11.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false}));
+    EXPECT_TRUE(skills.isFishing()) << "a discrete relocation is not a walk";
+
+    // Sitting ends one too (position state, not movement).
+    eq.GetGameState().player().setPositionState(eqt::state::PositionState::Sitting);
+    eq.GetGameState().events().publish(GameEvent(
+        GameEventType::PlayerPositionStateChanged,
+        PlayerPositionStateChangedData{
+            static_cast<uint8_t>(eqt::state::PositionState::Sitting)}));
+    EXPECT_FALSE(skills.isFishing());
 }
 
 }  // namespace
