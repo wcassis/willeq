@@ -148,6 +148,7 @@ ADD_EXECUTABLE(test_scenario_ui_legs
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_create_character.cpp  # B888
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_trade.cpp  # UIGAP-live2
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_camp.cpp  # B1005
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_forage_lands.cpp  # B894
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_ui_legs PRIVATE ${CMAKE_SOURCE_DIR}/include)
 TARGET_LINK_LIBRARIES(test_scenario_ui_legs GTest::gtest_main)
