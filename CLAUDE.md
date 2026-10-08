@@ -34,9 +34,8 @@ Additional context is in subdirectory CLAUDE.md files:
   (component extraction from `class EverQuest`, then `class IrrlichtRenderer`).
   The active unit plans are `refactor/K<nn>_*.md`.
 - `refactor/completed/` and most of `docs/reference/` are historical snapshots
-  (bannered); do not trust their findings as current. That includes the three
-  `*_archive_20260903.md` trackers `BOARD.md` replaced (K00, 2026-09-03), many
-  of whose entries were closed by later units without being struck.
+  (bannered); do not trust their findings as current, nor the three
+  `*_archive_20260903.md` trackers `BOARD.md` replaced (K00, 2026-09-03).
 - Workspace: canonical checkout at `/mnt/projects/fable/main` (branch `fable`;
   symlink from `/mnt/projects/willeq-fable`), executor worktree slots under
   `/mnt/projects/fable/wt/` (`slot1`..`slot3` plus `t1`, `t2`, … — take the live
@@ -81,9 +80,9 @@ Additional context is in subdirectory CLAUDE.md files:
   minute), `build`, `test` (the intermittent `RDPServerFrameTest.UpdateFrameMultipleTimes`
   is re-run with `--repeat until-pass:3`) and `gate` (`visual_gate`, 3 in-script
   retries, never `allow_failure`, all five manifest zones — B903/B904 ended
-  the 2026-09-28 iceclad/timorous split, `docs/ci.md`). The jobs execute on **hermes-ext** and refuse
-  any other host (a kanban worker's 4 GiB cap OOM-kills a link; Will's
-  2026-09-17 ruling keeps builds off the Inspur box). Pushing a branch is the
+  the 2026-09-28 iceclad/timorous split, `docs/ci.md`). The x86 jobs run on **gitlab-runner-1** (tag `x86-build`,
+  B1008) and refuse other hosts (a kanban worker's 4 GiB cap OOM-kills a
+  link; builds stay off the Inspur box and off hermes-ext). Pushing a branch is the
   cheapest suite run, but the runner's build tree is **warm**: force a clean
   pipeline before trusting a build-system change (`docs/ci.md`).
 
@@ -443,13 +442,14 @@ Keep new generator arithmetic defined.
 
 ## The eqemu lane
 
-**eqemu runs on a dedicated VM, not on this machine** (2026-09-12).
-`scripts/eqemu/env.sh` is the one place that knows: `EQEMU_HOST` defaults to
-`172.16.200.99`, every docker/compose/`.env` access goes through `eq_remote`
-(ssh to `EQEMU_SSH`), and `AKK_DIR` is the akk-stack path ON that host. Set
-`EQEMU_HOST=local` to drive a stack on this machine instead. The cross-session
-exclusive lock lives on the eqemu host too — take it with `eqemu_lock_take`,
-never by touching a path by hand. All of `scripts/eqemu/*.sh` is sourced from
+**eqemu runs on dedicated VMs, not on this machine: FOUR lanes** (B1008,
+2026-10-08; `docs/decisions.md`). `scripts/eqemu/env.sh` is the one place that
+knows: `EQEMU_LANE=1..4` picks the eqemu VM and its paired official-client
+oracle VM (lane 1 = `172.16.200.99`, the default), every docker/compose/`.env`
+access goes through `eq_remote` (ssh to `EQEMU_SSH`), and `AKK_DIR` is the
+akk-stack path ON that host. `EQEMU_HOST=local` drives a stack on this machine.
+A card names its LANE, never an address. Each lane's exclusive lock lives on its
+own VM — take it with `eqemu_lock_take`, never by touching a path by hand. All of `scripts/eqemu/*.sh` is sourced from
 this file; see `refactor/EXECUTOR_PROTOCOL.md` for the lock discipline.
 
 ### The scenario lane — a live verification that exits with a code
@@ -616,12 +616,12 @@ bash scripts/ci/encode_capture.sh /tmp/capture <UNIT_ID> [output_dir]
   video with the measured fps/frame-count/real-time span; keep that file with
   the video.
 - **Capture fps is an artifact of the capture mechanism, not a performance
-  measurement.** Per-frame `glReadPixels` + PNG encode is expensive — P12
-  measured ~4-7.6 effective fps on this x86 dev VM under llvmpipe. **Never draw a
-  performance conclusion from a capture video.**
-- Verify frames are real images before encoding — `saveScreenshot()` has a
-  documented history of returning garbage under the surfaceless path (P10, P20).
-  Worked example: `review/T64/README.md`.
+  measurement** (per-frame `glReadPixels` + PNG encode; P12 measured ~4-7.6
+  effective fps on llvmpipe). **Never draw a performance conclusion from a
+  capture video.**
+- Verify frames are real images before encoding — `saveScreenshot()` has
+  returned garbage under the surfaceless path before (P10, P20). Worked
+  example: `review/T64/README.md`.
 
 ### Linux Capabilities
 

@@ -1820,3 +1820,23 @@ counts Lima job submits, blocking waits and frames, and the Pi sweep carries
 `gem_pp_jobs_over_bound` guard row, so this class of regression is visible in
 one run. The willeq-solo-orchestrator cron prompt is Will's to edit; the
 sentence proposed for it is on issue #328.
+
+**Four eqemu + oracle lanes, and two x86 CI runners (2026-10-08, B1008 #329).**
+Will deployed seven VMs so four local-model worker chains can run live legs
+at once: `eqemu-2/3/4` (172.16.200.98/.97/.96) are byte-for-byte clones of
+the original eqemu VM's akk-stack (same tree at `/mnt/projects/akk-stack`,
+same images, `localaddress` = the VM, each lane's lock on its own disk) and
+`eq-oracle-1..4` (172.16.200.91-94) carry the Wine official client from the
+hermes-ext recipe, each pointed at its lane. `EQEMU_LANE=1..4` in
+`scripts/eqemu/env.sh` resolves the pair (lane 1 = the original VM +
+eq-oracle-1); an explicit `EQEMU_HOST` still wins and the lane id follows
+the host. `scripts/scenario.sh` keys its output dir and derives its client
+configs per lane, because three lanes run under one unit id shared a snapshot
+file (lane 2 exit 66 on the first try). A card names its lane, never an
+address. Proven on 2026-10-08: `eqemu_stack_ready` on all four; `zone_in`
+exit 0 on lanes 3 and 4 (lane 2 after the fix); the official client to
+character select on eq-oracle-1 (lanes 2-4 in the B1008 README).
+CI: `gitlab-runner-1/2` (10.0.30.81/82) take the x86 jobs under tag
+`x86-build`; one runner carries the tag until build+test+gate fold into one
+job, since the stages share a warm tree. hermes-ext's runner no longer
+builds, which is what the 2026-10-06 local-gate rule wanted.

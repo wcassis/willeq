@@ -931,6 +931,26 @@ it without taking that measurement first.
   cap). Fix options are B997's batch/merge of manual zone draws or a
   per-draw submit-cost cut — both need Will's decision (look/coverage +
   B726/B979 invariants), so the card blocks with the measurement.
+- ~~**B1009** (A) → issue #330. `HCMap::Load` reserved vertex/index/model/poly
+  vectors on counts read straight from the file; a malicious V2 `vert_count`
+  threw `std::bad_alloc` out of `Load()` on a 15 GB host and left `IsLoaded()`
+  true, while hermes-ext's 31 GB let the same reserve through so the suite
+  was green there.~~ **FIXED** (B1008's pipeline 665 found it on
+  gitlab-runner-1): `bounded_count()` in `src/client/hc_map.cpp` rejects any
+  count whose bytes exceed the remaining decompressed buffer with the parser's
+  own `MapParseError`; the V1 `face_count` is bounded by the file size. Pinned
+  by `HCMapMalformedV2.OversizedVertCountFailsLoadWithoutCrashing`, which now
+  fails the same way on every host.
+- ~~**B1008** (P) → issue #329. Everything live was single — one eqemu VM and
+  lock, one Wine oracle on hermes-ext, one x86 CI runner on hermes-ext — so four
+  local-model chains could not run live legs at once.~~ **FIXED**
+  (`refactor/B1008/README.md`): eqemu-2/3/4 + eq-oracle-1..4 provisioned and
+  proven (zone_in exit 0 and official client to character select on all four
+  lanes); `EQEMU_LANE=1..4` in `scripts/eqemu/env.sh`; `scripts/scenario.sh`
+  keys its output dir and derives its configs per lane (three lanes under one
+  unit id shared a snapshot file); gitlab-runner-1/2 registered, x86 jobs
+  tagged `x86-build`. Open: fold build+test+gate into one job so runner-2 can
+  take pipelines too; `ready_selftest.sh` not yet run on the clones.
 - ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
   mechanism (a partial `glBufferSubData` into a buffer the current Lima job
   references flushes the job and blocks in `lima_bo_wait`, once per write): the

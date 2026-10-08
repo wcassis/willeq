@@ -133,7 +133,11 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-OUT="/mnt/projects/fable/review/${UNIT}/scenario"
+# B1008 (#329): one output dir PER LANE. Parallel lanes under one unit id
+# shared a snapshot file, and the second lane's restore compared against the
+# first lane's rows (exit 66 on lane 2, 2026-10-08). Lane 1 keeps the old path.
+LANE_TAG=""; [ "${EQEMU_LANE:-1}" != "1" ] && LANE_TAG="-lane${EQEMU_LANE}"
+OUT="/mnt/projects/fable/review/${UNIT}/scenario${LANE_TAG}"
 mkdir -p "$OUT"
 LOG="$OUT/${SCENARIO}_client.log"
 PEERLOG="$OUT/${SCENARIO}_peer.log"
@@ -156,8 +160,23 @@ fi
 # and then pointed the client at the VM -- the lane leak T489/T493 hit.
 LANE_SUFFIX="json"
 [ "${EQEMU_HOST:-}" = "local" ] && LANE_SUFFIX="local.json"
+CONFIG_GIVEN="$CONFIG"; PEER_GIVEN="$PEER_CONFIG"
 [ -n "$CONFIG" ] || CONFIG="$REPO/scripts/scenario_configs/${SCENARIO}.${LANE_SUFFIX}"
 [ -n "$PEER_CONFIG" ] || PEER_CONFIG="$REPO/scripts/scenario_configs/peer.${LANE_SUFFIX}"
+# B1008 (#329): lanes 2-4 DERIVE their client configs from the shipped lane-1
+# files by substituting the lane's server for every "host" value, into the
+# per-lane OUT -- no per-lane copies in the tree to drift. An explicit
+# --config/--peer-config is taken as given (and still lane-checked below).
+derive_lane_config() {  # derive_lane_config <shipped.json> -> prints the per-lane path
+    local src="$1" dst
+    dst="$OUT/$(basename "$1" .json).lane${EQEMU_LANE}.json"
+    [ -f "$src" ] || { echo "$src"; return; }
+    sed "s/\"host\"\([[:space:]]*:[[:space:]]*\)\"[^\"]*\"/\"host\"\1\"${EQEMU_HOST}\"/g" "$src" > "$dst" && echo "$dst"
+}
+if [ "${EQEMU_LANE:-1}" != "1" ] && [ "${EQEMU_HOST:-}" != "local" ]; then
+    [ -n "$CONFIG_GIVEN" ] || CONFIG="$(derive_lane_config "$CONFIG")"
+    [ -n "$PEER_GIVEN" ] || PEER_CONFIG="$(derive_lane_config "$PEER_CONFIG")"
+fi
 
 say() { printf '[scenario.sh] %s\n' "$*" >&2; }
 

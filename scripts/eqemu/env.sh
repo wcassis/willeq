@@ -11,7 +11,43 @@
 # which ssh-es to EQEMU_SSH; ports are probed on EQEMU_HOST. Set
 # EQEMU_HOST=local to drive a stack on this machine the old way.
 # AKK_DIR is the akk-stack path ON the eqemu host.
-EQEMU_HOST="${EQEMU_HOST:-172.16.200.99}"
+#
+# B1008 (2026-10-08): FOUR independent lanes, each an eqemu VM (a clone of the
+# original, same stack, same accounts, its own lock on its own disk) paired
+# with a Wine official-client oracle VM pointed at it. `EQEMU_LANE=N` picks the
+# pair; an explicit EQEMU_HOST still wins. Lane 1 is the original VM. A card
+# names its lane, never an address.
+#   lane  eqemu           oracle
+#   1     172.16.200.99   172.16.200.91  (eq-oracle-1)
+#   2     172.16.200.98   172.16.200.92  (eq-oracle-2)
+#   3     172.16.200.97   172.16.200.93  (eq-oracle-3)
+#   4     172.16.200.96   172.16.200.94  (eq-oracle-4)
+case "${EQEMU_LANE:-}" in
+    ""|1) EQEMU_LANE_HOST=172.16.200.99 ;;
+    2)    EQEMU_LANE_HOST=172.16.200.98 ;;
+    3)    EQEMU_LANE_HOST=172.16.200.97 ;;
+    4)    EQEMU_LANE_HOST=172.16.200.96 ;;
+    *)    echo "scripts/eqemu/env.sh: unknown EQEMU_LANE '${EQEMU_LANE}' (1-4)" >&2
+          return 1 2>/dev/null || exit 1 ;;
+esac
+EQEMU_HOST="${EQEMU_HOST:-${EQEMU_LANE_HOST}}"
+# The lane id follows the HOST that won (an explicit EQEMU_HOST beats EQEMU_LANE),
+# so scenario.sh's per-lane output dir and derived configs key on it; `local`
+# and an unknown host keep whatever EQEMU_LANE said, else lane 1.
+case "${EQEMU_HOST}" in
+    172.16.200.99) EQEMU_LANE=1 ;;
+    172.16.200.98) EQEMU_LANE=2 ;;
+    172.16.200.97) EQEMU_LANE=3 ;;
+    172.16.200.96) EQEMU_LANE=4 ;;
+    *) EQEMU_LANE="${EQEMU_LANE:-1}" ;;
+esac
+case "${EQEMU_LANE}" in
+    1) EQEMU_ORACLE_HOST="${EQEMU_ORACLE_HOST:-172.16.200.91}" ;;
+    2) EQEMU_ORACLE_HOST="${EQEMU_ORACLE_HOST:-172.16.200.92}" ;;
+    3) EQEMU_ORACLE_HOST="${EQEMU_ORACLE_HOST:-172.16.200.93}" ;;
+    4) EQEMU_ORACLE_HOST="${EQEMU_ORACLE_HOST:-172.16.200.94}" ;;
+esac
+export EQEMU_LANE
 EQEMU_SSH="${EQEMU_SSH:-user@${EQEMU_HOST}}"
 AKK_DIR="${AKK_DIR:-/mnt/projects/akk-stack}"
 COMPOSE_FILE="${AKK_DIR}/docker-compose.yml"
