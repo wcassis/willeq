@@ -58,6 +58,15 @@ std::vector<uint32_t> ApplicationScenarioWorld::PlayerBuffSpellIds() const {
     return ids;
 }
 
+bool ApplicationScenarioWorld::PlayerLevitating() const {
+    // B892 (issue #208): the game thread's OWN levitation state -- the
+    // MovementComponent's stored predicate result (any SPA-57 buff, or a
+    // self flymode 2/5 the server sent), flipped on buff apply/fade. The
+    // base IScenarioWorld answers false (unreadable), which is what keeps
+    // the scenario from ever passing on a world that does not read it.
+    return client_.Movement().PlayerLevitating();
+}
+
 long long ApplicationScenarioWorld::PeerEquipmentMaterial(const std::string& peerName,
                                                           int materialSlot) const {
     // T494 (board B796). Entity::equipment[] (include/client/eq_types.h:69) is

@@ -457,6 +457,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/scenario/scenario_zone_in.cpp
     src/client/scenario/scenario_two_client_survive.cpp
     src/client/scenario/scenario_cast_lands.cpp
+    src/client/scenario/scenario_levitate_applies.cpp
     src/client/scenario/scenario_zone_link_hold.cpp
     src/client/scenario/scenario_forage_lands.cpp  # B894 (#210)
     src/client/scenario/scenario_interrupted_cast.cpp

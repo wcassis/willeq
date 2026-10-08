@@ -141,8 +141,9 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // UI legs (pinned by name in tests/test_scenario_ui_legs.cpp) + B888's
     // create_character + 5 UIGAP-live2 legs (pinned by name in
     // tests/test_scenario_ui_legs.cpp) + 1 B925 (issue #244/#258) zone-link hold
-    // + B1005's camp pair (tests/test_camp.cpp).
-    EXPECT_EQ(names.size(), 33u);
+    // + B1005's camp pair (tests/test_camp.cpp) + B892's levitate_applies
+    // (tests/test_levitation.cpp) + B894's forage_lands.
+    EXPECT_EQ(names.size(), 34u);
     EXPECT_TRUE(IsScenarioName("camp_to_charselect"));
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
     EXPECT_TRUE(IsScenarioName("create_character"));
@@ -153,6 +154,8 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     EXPECT_TRUE(IsScenarioName("cast_lands"));
     // B894 (issue #210): the forage/fishing landing pair.
     EXPECT_TRUE(IsScenarioName("forage_lands"));
+    // B892 (issue #208): the self-levitation lane.
+    EXPECT_TRUE(IsScenarioName("levitate_applies"));
     // T494 (board B796): the observed-/equip pair.
     EXPECT_TRUE(IsScenarioName("equip_observed"));
     EXPECT_TRUE(IsScenarioName("equip_actor"));

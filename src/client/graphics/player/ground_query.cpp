@@ -25,6 +25,20 @@ bool ShouldClampSwimToFloor(const GroundZ& ground, float feetZ) {
 	return feetZ < ground.z();
 }
 
+// B892 (GitLab #208). See the header for the full contract -- in one line:
+// at or below the hover line the feet rest on it exactly; above it they
+// descend one frame's worth of the rate, never undershooting it; a floor
+// above the feet owns the z and is returned untouched.
+float ClampLevitationFeet(float groundZ, float feetZ, float hoverLine,
+                          float descentRate, float deltaTime) {
+	// The floor moving up under the player (a step-up) is the collision
+	// path's to resolve; the hover must not fight it.
+	if (feetZ < groundZ) return feetZ;
+	if (feetZ <= hoverLine) return hoverLine;
+	const float descended = feetZ - descentRate * deltaTime;
+	return descended < hoverLine ? hoverLine : descended;
+}
+
 // T440 (B438). A ray that hit NOTHING is not a floor at your feet.
 GroundZ ClassifyBspGroundRay(bool hit, float hitZ, float feetZ, float maxStepUp) {
 	// The miss. Pre-T440 this fell through to `float groundZ = feetZ;` and the

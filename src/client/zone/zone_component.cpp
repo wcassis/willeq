@@ -357,6 +357,12 @@ void eqt::zone::ZoneComponent::CleanupZone()
 	ctx_.Movement().StopMovement();
 	ctx_.game_state.player().setMoving(false);
 	ctx_.Movement().ResetPath();
+	// B892 (GitLab #208): the flymode input of the levitation predicate lives
+	// in the entity map cleared below; the buff list is re-applied from the
+	// character profile on the way into the new zone. Silent reset (no
+	// publish): no renderer is being torn down, and the new zone's re-apply
+	// re-flips it if the character is still levitating.
+	ctx_.Movement().ResetLevitation();
 	ctx_.game_state.player().clearFollowTarget();
 	// Phase 7.6 / T286: CombatState is the only store
 	ctx_.game_state.combat().setInCombatMovement(false);

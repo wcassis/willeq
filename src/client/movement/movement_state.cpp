@@ -28,6 +28,7 @@
 #include "client/eq.h"
 #include "client/combat.h"
 #include "client/pathfinder_interface.h"
+#include "client/spell/spell_manager.h"  // B892: SyncLevitation reads the spell DB
 #ifdef EQT_HAS_NAVMESH
 #include "client/pathfinder_nav_mesh.h"
 #endif
@@ -760,6 +761,50 @@ float eqt::movement::MovementComponent::GetSwimSpeed() const
 	// At skill 200: 30 units/sec
 	float skillBonus = (static_cast<float>(swimSkill) / 200.0f) * 0.5f;
 	return BASE_SWIM_SPEED * (1.0f + skillBonus);
+}
+
+// B892 (GitLab #208): the sync point for the player's own levitation.
+//
+// Why the game thread owns this: the two INPUTS to the predicate are both
+// game-thread state -- the buff list (BuffManager, touched by the OP_Action
+// landing and the local expiry timer) and the self row's flymode (the entity
+// map, written by the AT_FLYMODE handler). The renderer's
+// playerMovement_.isLevitating (renderer_types.h:327) was fed from the
+// swimming event and only suppressed idle sinking in water; it floated
+// nothing on land. So the state lives here, and the event it publishes
+// (LevitationChanged, absolute) is what tells the renderer to hover.
+//
+// The apply hook calls this with no exclusion (the landing buff is already
+// in the list and counts); the FADE hook passes the fading spell, because
+// the fade fires while that buff is still in the list (removeBuff and
+// removeBuffBySlot notify before erasing) -- the same pre-erase shape T339's
+// computeVisionType() excludes for. `selfFlymode` is an explicit input: the
+// production call sites read it off the entity map (0 before the self row
+// exists), and a test rig without a zone passes 0.
+void eqt::movement::MovementComponent::SyncLevitation(uint8_t selfFlymode,
+                                                      uint32_t fade_spell_id)
+{
+	if (!ctx_.spell_manager || !ctx_.buff_manager || !ctx_.bridge) {
+		return;  // spell database not up yet, or nothing to publish to
+	}
+
+	const EQ::LevitationState next = EQ::PlayerIsLevitating(
+		ctx_.buff_manager->getPlayerBuffs(),
+		&ctx_.spell_manager->getDatabase(),
+		selfFlymode,
+		fade_spell_id);
+	if (next == m_levitation) {
+		return;  // no flip, no event -- SyncLevitation() may run per buff
+	}
+	m_levitation = next;
+	LOG_INFO(MOD_SPELL, "Levitation {}: buffs={}, selfFlymode={}",
+	         next == EQ::LevitationState::Levitating ? "up" : "down",
+	         ctx_.buff_manager->getPlayerBuffCount(), selfFlymode);
+
+	eqt::state::LevitationChangedData data;
+	data.isLevitating = (next == EQ::LevitationState::Levitating);
+	ctx_.bridge->pushEvent(eqt::state::GameEvent(
+		eqt::state::GameEventType::LevitationChanged, std::move(data)));
 }
 
 // B502 (GitLab #177) DELETED GetMovementSpeed(): a one-line wrapper over

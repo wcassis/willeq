@@ -1041,7 +1041,6 @@ EXEMPT_TESTS_GROUPS = {
     ("BoidsManager", "getCreatureMaterial"): "observer",
     ("BuffManager", "getPetBuffs"): "observer",
     ("BuffManager", "getPetBuffsOwnerId"): "observer",
-    ("BuffManager", "getPlayerBuffCount"): "observer",
     ("BuffManager", "hasEntityBuff"): "observer",
     ("BuffManager", "hasPlayerBuff"): "observer",
     ("CharacterModelView", "isReady"): "observer",
