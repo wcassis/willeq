@@ -314,7 +314,8 @@ struct ScenarioOptions {
      * B893 (fall_damage): the synthetic drop height the scenario drives
      * through the client's own fall-damage sender. It must exceed
      * eqt::jumpfall::fall().safeHeight for the live leg to deal damage; the
-     * default 20.0 does (safeHeight is 4.0 [ASSUMED]).
+     * default 20.0 does (safeHeight is 18.0 [MEASURED, lane-2 capture] -> 3
+     * points of damage at the default height).
      */
     float fallDamageHeight = 20.0f;
     /**

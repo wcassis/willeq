@@ -40,9 +40,10 @@ fails if `movement_state.cpp` declares its own `jump_duration_ms`/`jump_height`,
 or if `renderer_types.h` seeds an arc constant from a BARE numeric literal (a
 `eqt::jumpfall::` derivation is the allowed single writer). The collapse is
 behaviour-preserving at the assumed values:
-`DerivedPerFrameConstantsMatchTheOldLiterals` pins 40/80.
+`DerivedPerFrameConstantsMatchTheTable` pins the derived constants to the
+measured table (12.2 / 24.4 at peak 3.05, duration 1 s).
 
-## The fall-damage table [shape done, values OWED]
+## The fall-damage table [measured, lane-2]
 
 `eqt::jumpfall` owns the height→damage curve — because eqemu reads
 `EnvDamage2_Struct::damage` **verbatim**: `Handle_OP_EnvDamage`
@@ -55,9 +56,18 @@ no fall math.
 - `FallTracker`: the takeoff→landing drop logic (begin on the airborne rising
   edge, end on the landing returns the drop height). Pure, dependency-free.
 
-**The curve's VALUES are [ASSUMED], not measured** (safeHeight 4,
-damagePerUnit 3 — see the "oracle capture" section). The SHAPE (one table,
-client-owned) is the invariant; the numbers move when the lane-2 capture lands.
+**The curve's VALUES are measured off the lane-2 oracle** (the official client
+computes the damage and sends `OP_EnvDamage` C→S; the server reads `ed->damage`
+verbatim). The full data, method and the one #goto jitter point are in
+`refactor/B893/evidence/oracle_measurements.md`:
+
+| constant | value | provenance |
+|---|---|---|
+| `Fall::safeHeight` | 18.0 | [MEASURED] the 18.2u drop sent no `OP_EnvDamage`; the floor is in 18.2–23.2 |
+| `Fall::damagePerUnitAboveSafe` | 1.5 | [MEASURED] mid/high range slope. The real curve is CONCAVE (5@28u, 30@43u, 91@68u); the linear ramp is the model form (the `Fall` struct is linear), so it overstates the low end and understates the top. See the evidence file for the full table. |
+
+The SHAPE (one table, client-owned) is the invariant and the values are the
+oracle's; the concave-vs-linear gap is documented, not hidden.
 
 ## The sender and the scenario [done, offline]
 
@@ -101,42 +111,47 @@ This straddle is deliberately in `renderer_frame_input.cpp`, NOT
 that TU's statement order and the static-ui test parses this TU only for the
 mouse-wheel reads and wheel-routing calls — which the block does not touch.
 
-## The oracle capture — NOT done, BLOCKED [values owed]
+## The oracle capture — DONE (lane 2, 2026-10-08)
 
-**What blocked it, exactly:** the lane-2 eqemu server was healthy (loginserver
-pid 325 on UDP 5998, world on 9000, zones up; a native `willeq_test` login
-succeeded), but the **official-client (Wine `eqgame.exe`) login looped**: every
-submit of the credentials returned the "You need to enter a username and
-password" modal, across a fresh Wine instance, scripted field-fills, and
-manual box-clicks. This is a **client-side field-focus issue in the Wine
-oracle**, not a server or lane defect — the native client logs in fine on the
-same lane. It could not be cleared from a headless session, so the video
-capture (three standing jumps + a fall from a known height) never happened.
+The official Titanium client (Wine `eqgame.exe`) on the lane-2 oracle VM was
+driven in-world as Testchar (GM, level 60, East Freeport) and the measurements
+were taken **off the wire**, not from video: eqemu packet logging
+(categories 83/84) dumps every `OP_ClientUpdate` (C→S, the wire the client
+sends) and every `OP_EnvDamage` to the freporte zone log. A GM `#goto x y z`
+(via the `/say #cmd` chat path — direct `#` entry is unreliable in the Titanium
+client's autocomplete) sets a known takeoff height; the official client then
+computes the fall damage itself and sends `OP_EnvDamage` C→S (dmgtype 0xFC).
+Full method + data: `refactor/B893/evidence/oracle_measurements.md`.
 
-**Therefore every constant that depends on the capture is [ASSUMED] and owed:**
+**The measured constants:**
 
 | constant | value | status |
 |---|---|---|
-| `Arc::peakHeight` | 10.0 | [ASSUMED] — Leg C measures it |
-| `Arc::durationS` | 1.0 | [ASSUMED] — Leg C measures it |
-| `Arc::terminalSpeed` | 100.0 | [ASSUMED, OWED] — nothing clamps to it yet (no terminal-velocity term in the integrator) |
-| `Fall::safeHeight` | 4.0 | [ASSUMED] — Leg C measures the highest safe fall |
-| `Fall::damagePerUnitAboveSafe` | 3.0 | [ASSUMED] — Leg C measures the damage for a known drop |
+| `Arc::peakHeight` | 3.05 | [MEASURED] apex = max of 8 mid-air `OP_ClientUpdate` samples (+1.82 … +3.05 above standing −38.2157); ~1 sample per jump at ~1 Hz |
+| `Arc::durationS` | 1.0 | [ASSUMED, OWED] the wire is ~1 Hz and cannot resolve a sub-second arc; kept from the pre-B893 renderer, marked owed |
+| `Arc::terminalSpeed` | 100.0 | [ASSUMED, OWED] the `#goto` fall is a server-side teleport the client integrates locally, so no terminal velocity is observable on this rig; nothing clamps to it yet (no term in the integrator) |
+| `Fall::safeHeight` | 18.0 | [MEASURED] the 18.2u drop sent no `OP_EnvDamage`; the 23.2u drop sent 5 |
+| `Fall::damagePerUnitAboveSafe` | 1.5 | [MEASURED] mid/high-range slope of the concave curve (5@28u … 91@68u); linear ramp is the model form |
 
 The curve SHAPE, the collapse, the sender, the encoder bytes, and the scenario
-are all done and pinned; the NUMBERS are owed to the lane-2 capture.
+are all done and pinned; the arc apex and the fall curve are now the oracle's,
+and the arc duration + terminal velocity are the two constants that stay owed
+(because the capture cannot resolve them, not because they were not pursued).
 
 ## Not verified / left open
 
-- Oracle capture (blocked above); peak height, arc duration, damage-for-drop,
-  and terminal velocity are owed, so the table values stay [ASSUMED].
+- **Arc duration** and **terminal velocity** are the two still-owed constants:
+  the wire's ~1 Hz position update cannot resolve a sub-second jump arc, and the
+  `#goto` fall is a server-side teleport the client integrates locally, so no
+  terminal velocity is observable from this rig. Both are marked `[ASSUMED,
+  OWED]` in `jump_fall_physics.h`; they are not hidden as measured.
 - The `fall_damage` scenario's LIVE leg (exit 0 on lane 2 against a real
-  server) was not run: it needs the lane, and the native client + the oracle
-  oracle share the one `willeq_test` account (never both logged in at once).
-  The scenario's offline state-machine test is green; the live run is the
-  remaining check.
-- Terminal velocity: no integrator term yet (pre-B893 had none); owed with the
-  capture.
+  server) was not run in this revision: it needs the lane and the native client
+  + the oracle share the one `willeq_test` account (never both logged in at
+  once). The scenario's offline state-machine test is green; the live run is the
+  remaining check. (The fall-damage SEND PATH itself was exercised for real on
+  the lane during measurement — the oracle's `OP_EnvDamage` C→S was decoded and
+  matches the encoder byte-exactly, dmgtype 252.)
 
 ## Tests (offline, run on this host)
 

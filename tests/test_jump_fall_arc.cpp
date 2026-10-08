@@ -99,15 +99,24 @@ TEST(JumpFallArc, PeakHeightAndDurationAreOnePairOfConstants) {
     EXPECT_GT(a.durationS, 0.0f);
 }
 
-TEST(JumpFallArc, DerivedPerFrameConstantsMatchTheOldLiterals) {
-    // At the current [ASSUMED] table (peak 10, duration 1 s) the two derived
-    // per-frame constants the renderer's velocity integrator needs resolve to
-    // exactly the old hardcoded pair (40 / 80) -- the collapse is behaviour-
-    // preserving at the assumed values, and a Leg C table change moves both
-    // together, visibly.
+TEST(JumpFallArc, DerivedPerFrameConstantsMatchTheTable) {
+    // The two derived per-frame constants the renderer's velocity integrator
+    // needs are functions of the ONE (peakHeight, durationS) pair:
+    //   initialVelocity = 4*peak/duration,  gravity = 8*peak/duration^2
+    // Pinning them against the table (not a bare pair of literals) is what
+    // keeps the two integrators honest: if renderer_types.h ever seeded one
+    // from a literal that drifted, this would catch it. At the measured
+    // peak (3.05, lane-2 capture) and 1.0 s duration these resolve to
+    // 4*3.05 = 12.2 and 8*3.05 = 24.4. (The pre-B893 renderer ran 40/80 from
+    // its own hardcoded pair -- the two models disagreed because each owned its
+    // own (peak, duration); the collapse makes them one pair.)
     const Arc& a = eqt::jumpfall::arc();
-    EXPECT_FLOAT_EQ(a.initialVelocity(), 40.0f);
-    EXPECT_FLOAT_EQ(a.gravity(), 80.0f);
+    EXPECT_FLOAT_EQ(a.initialVelocity(), 4.0f * a.peakHeight / a.durationS);
+    EXPECT_FLOAT_EQ(a.gravity(), 8.0f * a.peakHeight / (a.durationS * a.durationS));
+    // And the concrete measured values, so a change to either integrator's
+    // derivation (not just the table) fails here:
+    EXPECT_FLOAT_EQ(a.initialVelocity(), 12.2f);
+    EXPECT_FLOAT_EQ(a.gravity(), 24.4f);
 }
 
 // =====================================================================

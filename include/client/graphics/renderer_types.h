@@ -324,9 +324,10 @@ struct PlayerMovementState {
     bool isJumping = false;        // Currently in air from jump
     float verticalVelocity = 0.0f; // Current vertical velocity (positive = up)
     // B893: DERIVED from the one jump table (include/client/jump_fall_
-    // physics.h), not literals. At peakHeight=10, durationS=1 these resolve
-    // to the old 40/80 pair, but if the oracle-measured arc (Leg C) changes
-    // the table, the renderer follows with no second edit.
+    // physics.h), not literals. At the measured peakHeight=3.05 / durationS=1
+    // these resolve to 12.2/24.4; if the table changes, the renderer follows
+    // with no second edit. (The pre-B893 renderer hardcoded 40/80 from its own
+    // 10-unit arc -- the collapse to this derivation is the point.)
     float jumpVelocity = eqt::jumpfall::arc().initialVelocity();
     float gravity = eqt::jumpfall::arc().gravity();
 

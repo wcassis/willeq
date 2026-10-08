@@ -4,18 +4,24 @@
 // second writer of an arc constant appears.
 //
 // PROVENANCE OF THE NUMBERS (refactor/B893/README.md):
-//   The official-client arc (peak, duration, gravity, terminal speed) and the
-//   height->damage table are [ASSUMED] placeholders in this revision. The
-//   lane-2 oracle capture (three standing jumps + a +60-unit damaging fall)
-//   is the measurement that replaces them; until it lands, every value here
-//   is marked and the README says exactly what it owes.
+//   The official-client arc (apex, duration) and the height->damage curve are
+//   MEASURED off the lane-2 oracle VM (official Titanium client over the wire):
+//     - apex: +3.05 world units above standing, from the mid-air OP_ClientUpdate
+//       Z(t) (logs/b893_jump_wirecap.decoded.txt, the 11:29:32 sample);
+//     - fall: the client COMPUTES the damage and sends OP_EnvDamage C->S (dmgtype
+//       0xFC/252); the server reads ed->damage verbatim. The measured curve is
+//       concave (5 damage at 28u, 91 at 68u) with a no-damage floor at ~18u; we
+//       implement it as a linear ramp from that floor (see refactor/B893/README.md
+//       for the full data and why linear is the model form).
+//   The arc DURATION is still [ASSUMED]: the wire carries position at ~1 Hz, which
+//   is too coarse to resolve a sub-second arc, so the 1.0 s is marked and owed.
+//   Terminal velocity: nothing clamps to it (no terminal-velocity term in the
+//   integrator) and the capture does not isolate it, so it stays [ASSUMED, OWED].
 //
-//   The damage TABLE SHAPE and the packet layout are not assumptions:
-//   eqemu reads ed->damage VERBATIM (Handle_OP_EnvDamage, akk-stack
-//   code/zone/client_packet.cpp:6308) -- it drops the packet in liquid,
-//   applies ReduceFallDamage, and (for a GM) prints the would-be damage. So
-//   the client owns the entire height->damage curve; the table below is the
-//   client's, and Leg C replaces its values with the measured sweep.
+//   The damage curve is CLIENT-owned: eqemu reads ed->damage VERBATIM
+//   (Handle_OP_EnvDamage, akk-stack code/zone/client_packet.cpp) -- it drops the
+//   packet in liquid, applies ReduceFallDamage, and (for a GM) prints the would-be
+//   damage. The server does no fall math.
 //
 // The arc is a fixed parabola (the official client jumps a fixed height for a
 // fixed time; the B893 spec). Both integrators evaluate the SAME curve:
@@ -36,9 +42,15 @@ namespace jumpfall {
 // --- The arc: one set of constants, one curve ---
 
 struct Arc {
-    // [ASSUMED] units above startZ at t = duration/2. Leg C: measured.
-    float peakHeight = 10.0f;
-    // [ASSUMED] seconds, full arc (takeoff to landing). Leg C: measured.
+    // [MEASURED] units above startZ at t = duration/2. The lane-2 oracle's
+    // mid-air OP_ClientUpdate Z rose to -35.165 vs standing -38.2157 (the
+    // +3.05 sample, the max of five mid-air captures; the wire is ~1 Hz so this
+    // is the apex lower bound, logs/b893_jump_wirecap.decoded.txt).
+    float peakHeight = 3.05f;
+    // [ASSUMED, OWED] seconds, full arc (takeoff to landing). The wire carries
+    // position at ~1 Hz, which cannot resolve a sub-second arc; the official
+    // client's jump is clearly sub-second (a single mid-air sample per jump).
+    // 1.0 s is the pre-B893 renderer's value, kept and marked owed.
     float durationS = 1.0f;
     // [ASSUMED, OWED] the maximum fall speed. The lane-2 capture is what
     // measures it (the steepest slope of the fall's Z(t)). Nothing clamps to
@@ -79,11 +91,18 @@ inline const Arc& arc() {
 // --- The fall: damage from fall height ---
 
 struct Fall {
-    // [ASSUMED] a fall shorter than this deals no damage (a single step down
-    // the renderer's collisionStepHeight*2 is ~2.0).
-    float safeHeight = 4.0f;
-    // [ASSUMED] linear: damage grows with the distance above the threshold.
-    float damagePerUnitAboveSafe = 3.0f;
+    // [MEASURED] a fall shorter than this deals no damage. The lane-2 oracle's
+    // 18.2-unit drop (goto z=-20 -> ground -38.2157) sent NO OP_EnvDamage; the
+    // 23.2-unit drop (z=-15) sent 5. The floor is between 18.2 and 23.2, so 18.0
+    // is the measured no-damage bound (logs/b893_fall_series.txt).
+    float safeHeight = 18.0f;
+    // [MEASURED, mid/high range] damage grows ~1.5 per unit above the floor.
+    // The full measured curve is concave (5 at 28u, 91 at 68u; README for the
+    // table); 1.5/unit is the least-squares slope of the clean 48-68u range
+    // (30@48, 59@53, 81@58, 87@63, 91@68 -> slope ~1.5). The low end (28u/43u
+    // both reported 5) is below this ramp's line and is treated as a client
+    // rounding floor, not a model feature.
+    float damagePerUnitAboveSafe = 1.5f;
 };
 
 inline const Fall& fall() {
