@@ -24,11 +24,17 @@ namespace {
  * LevitationChanged -- IScenarioWorld::PlayerLevitating() and
  * EventCount(LevitationChanged) read exactly that.
  *
- * The prep is T401's measured recipe (review/T401/scripts/t401_caster.
- * script), identical to cast_lands: GM invulnerability refuses every
- * self-cast, #memspell takes <spellid> <gem, 0-based> while /cast takes a
- * 1-based gem, and the explicit self-target is what made T401's casts stop
- * dying on "Cast timeout waiting for server confirmation".
+ * The cast is the GM `#castspell <id> [instant]` (the card's own recipe:
+ * "have a GM cast Levitate"). The lane-1 run of 2026-10-08T07:36 shows
+ * why a gem cast does not work here: Testchar (a GM) has GM invulnerability
+ * off but LOW MANA, so `#memspell 261 0` succeeded ("Server memorised
+ * 'Levitate' (261) into gem 1") while all three `/cast 1` attempts were
+ * refused "Insufficient Mana to cast this spell!" -- the buff never landed,
+ * and a fizzle-clamp would only make it a coin. `#castspell 261 1` calls
+ * SpellFinished directly (gm_commands/castspell.cpp) and applies the buff
+ * through the same OP_Action path a landed gem cast would, with no mana
+ * check and no fizzle roll. The self-target is still sent, because
+ * command_castspell casts ON c->GetTarget() when one is set.
  */
 class LevitateAppliesScenario final : public IScenario {
 public:
@@ -66,7 +72,7 @@ public:
             std::ostringstream os;
             os << "spell " << spellId_ << " landed on " << world.PlayerName()
                << " and the client is levitating " << (t - lastCastAt_)
-               << "s after gem cast #" << attempts_ << " (buff slots "
+               << "s after #castspell attempt #" << attempts_ << " (buff slots "
                << baseline_.size() << " -> " << world.PlayerBuffSpellIds().size()
                << ", LevitationChanged events "
                << world.EventCount(static_cast<int>(
@@ -79,20 +85,20 @@ public:
             if (attempts_ >= kMaxAttempts) {
                 std::ostringstream os;
                 os << "spell " << spellId_ << " never levitated after "
-                   << attempts_ << " gem casts (buff landed: "
+                   << attempts_ << " #castspell attempts (buff landed: "
                    << (HasLanded(world) ? "yes" : "no")
                    << ", client levitating: " << (world.PlayerLevitating() ? "yes" : "no")
                    << ", LevitationChanged events "
                    << world.EventCount(static_cast<int>(
                           state::GameEventType::LevitationChanged))
-                   << "; gem 1 must hold the levitation spell)";
+                   << ")";
                 SetReason(os.str());
                 return StepResult::Fail;
             }
             ++attempts_;
             lastCastAt_ = t;
-            world.Note("gem cast attempt " + std::to_string(attempts_) + ": /cast 1");
-            world.SendCommand("/cast 1");
+            world.Note("GM cast attempt " + std::to_string(attempts_) + ": /say #castspell " + std::to_string(spellId_) + " 1");
+            world.SendCommand("/say #castspell " + std::to_string(spellId_) + " 1");
         }
         return StepResult::Running;
     }
@@ -108,12 +114,12 @@ private:
     };
 
     void BuildPrep(IScenarioWorld& world) {
-        // #memspell takes the gem 0-based; /cast 1 is that same gem.
+        // No gem: #castspell takes the spell id directly. The self-target
+        // stays because command_castspell casts ON c->GetTarget() when one
+        // is set, and GM invulnerability off is cast_lands' measured prep.
         prep_ = {
             {3.0, "/say #set invulnerable off"},
-            {7.0, "/say #unmemspells"},
-            {11.0, "/say #memspell " + std::to_string(spellId_) + " 0"},
-            {16.0, "/target " + world.PlayerName()},
+            {7.0, "/target " + world.PlayerName()},
         };
     }
 

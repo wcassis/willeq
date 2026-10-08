@@ -418,13 +418,14 @@ TEST(LevitationScenario, PassesWhenTheBuffLandsAndTheClientLevitates) {
     AdvanceLev(runner, w, 40.0);
     EXPECT_EQ(runner.exitCode(), eqt::scenario::kScenarioPass)
         << runner.reason();
-    // The prep is the cast_lands recipe (T401) with the invulnerability
-    // guard, targeting the caster's own name.
+    // The prep is cast_lands' invulnerability guard plus the self-target
+    // (#castspell casts ON the target when one is set); the cast itself is
+    // the GM command, because the lane-1 character's mana cannot pay for a
+    // gem cast (2026-10-08: three "/cast 1" all refused "Insufficient Mana").
     EXPECT_TRUE(w.sent("#set invulnerable off"));
-    EXPECT_TRUE(w.sent("#unmemspells"));
-    EXPECT_TRUE(w.sent("#memspell 261 0"));
+    EXPECT_FALSE(w.sent("#memspell"));
     EXPECT_TRUE(w.sent("/target Testchar"));
-    EXPECT_TRUE(w.sent("/cast 1"));
+    EXPECT_TRUE(w.sent("#castspell 261 1"));
 }
 
 // The buff never lands: the cast is refused (or never fires) and the buff
