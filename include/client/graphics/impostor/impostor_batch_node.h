@@ -47,9 +47,9 @@ public:
     // through the bounded VBO/EBO pair below.
     void setVboPathEnabled(bool enabled) { useVbo_ = enabled; }
     bool isVboPathEnabled() const { return useVbo_; }
-    // B972: the bounded VBO/EBO PAIR's bytes (both are counted into the
+    // B972: the bounded VBO/EBO RING's bytes (every slot is counted into the
     // driver's logical tally by drawPageVbo/releaseGpuBuffers).
-    size_t vboBytes() const { return vertexBytes_ + indexBytes_; }
+    size_t vboBytes() const;
 
     // Tools only (tools/hwcaps/impostor_pixel_compare): 0 = the shipped
     // program, 1 = the built-in alpha test (no un-premultiply, no fog: B952's
@@ -71,10 +71,17 @@ private:
     // driver's logical tally (gles2AdjustRawBufferBytes), B975's pattern.
     void releaseGpuBuffers();
 
-    // B972 (#290): stream the just-built verts_/indices_ of ONE page through
-    // the bounded VBO/EBO and draw them, under the material state
-    // driver->setMaterial() established. Gated on EQT_HAS_GLES2 in the cpp.
-    void drawPageVbo(irr::video::IVideoDriver* driver);
+    // B972 (#290) / B972-FT: stream the just-built verts_/indices_ of ONE
+    // page through the bounded VBO/EBO of the ring's `slot`th pair and draw
+    // them, under the material state driver->setMaterial() established.
+    // `page` is the page's index in pages_ (the timing log's frame boundary).
+    // Gated on EQT_HAS_GLES2 in the cpp.
+    void drawPageVbo(irr::video::IVideoDriver* driver, size_t slot, size_t page);
+
+    // B972-FT: the ring slot this render() passes down: the render()-count
+    // modulo the configured depth (B972FT_RING_DEPTH, default 3, clamped
+    // 1..3 -- 1 is the pre-B972-FT shared pair, the A/C control).
+    size_t ringDepth() const;
 
     irr::core::aabbox3d<irr::f32> box_;
     std::vector<PageQuads> pages_;
@@ -86,15 +93,29 @@ private:
     int quadCount_ = 0;
     int drawCallsLastRender_ = 0;
     int diagMode_ = 0;
-    // B972: one bounded VBO/EBO pair every page's quads stream into
-    // (B975's pattern: the allocation grows at high-water + one slack
-    // vertex, so each glBufferSubData stays strictly smaller than it).
+    // B972 / B972-FT (#326): a RING of bounded VBO/EBO pairs -- one per
+    // (frame, page), rotated: frame N page p writes pair (frameCount %
+    // kVboRingDepth) * maxPages + p, so the written BO is referenced by no
+    // draw of frame N (pages use distinct pairs) NOR of the in-flight
+    // frames N-1 / N-2 (distinct frame rows) -- Lima's
+    // lima_flush_job_accessing_bo + lima_bo_wait in lima_transfer_map then
+    // find no matching job and return without the per-frame write-wait or
+    // per-page job fragmentation. Each pair grows at its own high-water +
+    // one slack vertex, so every glBufferSubData stays strictly smaller
+    // than the allocation (B975's pattern). kVboRingDepth=1 is the
+    // pre-B972-FT single shared pair (the A/C control:
+    // B972FT_RING_DEPTH=1).
     // `unsigned` is the GL handle type (GLuint) without the GLES2 header --
     // the same convention name_tag_batch.h uses for its own buffers.
-    unsigned vertexVbo_ = 0;
-    unsigned indexVbo_ = 0;
-    size_t vertexBytes_ = 0;
-    size_t indexBytes_ = 0;
+    // A pair that is still being allocated is 0 (glGenBuffers hands out
+    // nonzero ids); a pair that was never used is nullptr-sized.
+    struct VboPair {
+        unsigned vert = 0, idx = 0;
+        size_t vertBytes = 0, idxBytes = 0;
+    };
+    static constexpr size_t kVboRingDepthMax = 3;
+    std::vector<VboPair> vboRing_;  // ringDepth() * maxPages() pairs, grown in drawPageVbo
+    unsigned frameCount_ = 0;  // render() count; frame row is % ringDepth()
     irr::video::IVideoDriver* gpuDriver_ = nullptr;
     bool useVbo_ = true;
 };

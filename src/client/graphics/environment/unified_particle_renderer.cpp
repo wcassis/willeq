@@ -141,12 +141,18 @@ UnifiedParticleRenderer::~UnifiedParticleRenderer() {
         glDeleteTextures(1, &opaqueAlphaFallback_);
         opaqueAlphaFallback_ = 0;
     }
-    if (vertexVbo_ != 0) {             // B972
-        glDeleteBuffers(1, &vertexVbo_);
-        if (driver_ && vertexVboBytes_ != 0)
-            gles2AdjustRawBufferBytes(driver_, -static_cast<ptrdiff_t>(vertexVboBytes_));
-        vertexVbo_ = 0;
-        vertexVboBytes_ = 0;
+    if (vertexVbo_[0] != 0 || vertexVboBytes_[0] != 0) {  // B972
+        size_t total = 0;
+        for (size_t i = 0; i < kVboRingFrames * kVboRingBatches; ++i) {
+            if (vertexVbo_[i] != 0) glDeleteBuffers(1, &vertexVbo_[i]);
+            total += vertexVboBytes_[i];
+        }
+        if (driver_ && total != 0)
+            gles2AdjustRawBufferBytes(driver_, -static_cast<ptrdiff_t>(total));
+        for (size_t i = 0; i < kVboRingFrames * kVboRingBatches; ++i) {
+            vertexVbo_[i] = 0;
+            vertexVboBytes_[i] = 0;
+        }
     }
 }
 
@@ -282,14 +288,14 @@ bool UnifiedParticleRenderer::init(irr::video::IVideoDriver* driver) {
     spriteAdditiveVerts_.reserve(1024);
     spriteAlphaVerts_.reserve(256);
 
-    // B972 (#290): the bounded VBO the point batches stream into. Created
-    // empty and grown on first use in renderBatch(); the byte delta goes
-    // through the driver's logical tally so the draw's storage stops being
-    // UNNAMED GEM (the 1 MiB stream-upload slot the old client-array path
-    // warmed up stays freed with it).
+    // B972 (#290) / B972-FT (#326): the 12-slot VBO ring the point batches
+    // stream into. Created empty and grown on first use in renderBatch();
+    // the byte deltas go through the driver's logical tally so the draws'
+    // storage stops being UNNAMED GEM (the 1 MiB stream-upload slots the
+    // old client-array paths warmed up stay freed with them).
     {
         eqt::memory::GemTag gemTag("vbo:particles");
-        glGenBuffers(1, &vertexVbo_);
+        glGenBuffers(static_cast<GLsizei>(kVboRingFrames * kVboRingBatches), vertexVbo_);
     }
 
     initialized_ = true;
@@ -306,6 +312,8 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
                                       GLuint alphaCompanion, GLuint spriteTexture,
                                       GLuint spriteAlphaCompanion) {
     if (!initialized_ || count <= 0 || !particles) return;
+    // B972-FT: the ring's row advances once per render(), not per batch.
+    ++frameCount_;
 
     auto t0 = std::chrono::steady_clock::now();
 
@@ -498,10 +506,10 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         glBindTexture(GL_TEXTURE_2D, atlasTexture);
 
         if (!additiveVerts_.empty()) {
-            renderBatch(additiveVerts_, UnifiedBlendMode::ADDITIVE);
+            renderBatch(additiveVerts_, UnifiedBlendMode::ADDITIVE, 0);
         }
         if (!alphaVerts_.empty()) {
-            renderBatch(alphaVerts_, UnifiedBlendMode::ALPHA);
+            renderBatch(alphaVerts_, UnifiedBlendMode::ALPHA, 1);
         }
     }
 
@@ -522,10 +530,10 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         glBindTexture(GL_TEXTURE_2D, spriteTexture);
 
         if (!spriteAdditiveVerts_.empty()) {
-            renderBatch(spriteAdditiveVerts_, UnifiedBlendMode::ADDITIVE);
+            renderBatch(spriteAdditiveVerts_, UnifiedBlendMode::ADDITIVE, 2);
         }
         if (!spriteAlphaVerts_.empty()) {
-            renderBatch(spriteAlphaVerts_, UnifiedBlendMode::ALPHA);
+            renderBatch(spriteAlphaVerts_, UnifiedBlendMode::ALPHA, 3);
         }
     }
 
@@ -585,7 +593,7 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
 }
 
 void UnifiedParticleRenderer::renderBatch(const std::vector<PointSpriteVertex>& verts,
-                                           UnifiedBlendMode blendMode) {
+                                           UnifiedBlendMode blendMode, int batchIdx) {
     if (verts.empty()) return;
 
     if (blendMode == UnifiedBlendMode::ADDITIVE) {
@@ -597,28 +605,50 @@ void UnifiedParticleRenderer::renderBatch(const std::vector<PointSpriteVertex>& 
     const int stride = sizeof(PointSpriteVertex);
 
     if (useVbo_) {
-        // B972 (#290): stream the batch through the bounded reused VBO
-        // (B975's pattern). The allocation grows at high-water + one slack
-        // vertex, so every glBufferSubData stays strictly SMALLER than the
-        // allocation: Lima reuses the bounded storage (a whole-resource write
-        // is what renames a fresh BO even after glFinish), and the 1 MiB Mesa
-        // stream-upload slot the old client-array draw warmed up is never
-        // created. The named GEM BO (vbo:particles) replaces the one
-        // untagged slot the census carried for this draw.
+        // B972 (#290) / B972-FT (#326): stream the batch through its OWN
+        // ring slot: frame N's batch b writes slot (N % 3) * 4 + b. Distinct
+        // from every same-frame batch (no within-frame write-after-draw on
+        // the same BO) and from the in-flight frames N-1 / N-2's rows, so
+        // Lima's lima_transfer_map flush + lima_bo_wait find no matching
+        // job -- the per-frame write-wait issue #326 names is gone. The
+        // allocation grows at high-water + one slack vertex, so every
+        // glBufferSubData stays strictly SMALLER than the allocation
+        // (B975's pattern: Lima reuses the bounded storage; a
+        // whole-resource write renames a fresh BO). The named GEM BOs
+        // (vbo:particles) replace the untagged slots the census carried
+        // for these draws.
         eqt::memory::GemTag gemTag("vbo:particles");
         const size_t needed =
             verts.size() * static_cast<size_t>(stride) + sizeof(PointSpriteVertex);
-        glBindBuffer(GL_ARRAY_BUFFER, vertexVbo_);
-        if (needed > vertexVboBytes_) {
+        const size_t row = frameCount_ % kVboRingFrames;
+        const size_t slot = row * kVboRingBatches + static_cast<size_t>(batchIdx);
+        if (!vertexVbo_[slot]) glGenBuffers(1, &vertexVbo_[slot]);
+        glBindBuffer(GL_ARRAY_BUFFER, vertexVbo_[slot]);
+        if (needed > vertexVboBytes_[slot]) {
             glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(needed), nullptr,
                          GL_DYNAMIC_DRAW);
             if (driver_)
                 gles2AdjustRawBufferBytes(driver_,
-                                          static_cast<ptrdiff_t>(needed) - vertexVboBytes_);
-            vertexVboBytes_ = needed;
+                                          static_cast<ptrdiff_t>(needed) -
+                                              vertexVboBytes_[slot]);
+            vertexVboBytes_[slot] = needed;
         }
-        glBufferSubData(GL_ARRAY_BUFFER, 0,
-                        static_cast<GLsizeiptr>(verts.size() * stride), verts.data());
+        // B972-FT: the confirming measurement (issue #326, acceptance gate 4).
+        // WILLEQ_B972FT_TIMING=1 wall-clocks the subdata (its wall clock
+        // carries Lima's lima_flush_job_accessing_bo + lima_bo_wait when the
+        // written BO is still referenced by the in-flight job).
+        if (getenv("WILLEQ_B972FT_TIMING")) {
+            const auto t0 = std::chrono::steady_clock::now();
+            glBufferSubData(GL_ARRAY_BUFFER, 0,
+                            static_cast<GLsizeiptr>(verts.size() * stride), verts.data());
+            const auto t1 = std::chrono::steady_clock::now();
+            const int64_t subUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+            fprintf(stderr, "[B972FT] subdata batch=%d verts=%zu sub=%lld us\n",
+                    batchIdx, verts.size(), (long long)subUs);
+        } else {
+            glBufferSubData(GL_ARRAY_BUFFER, 0,
+                            static_cast<GLsizeiptr>(verts.size() * stride), verts.data());
+        }
 
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);

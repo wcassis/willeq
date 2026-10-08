@@ -283,6 +283,27 @@ TEST_F(B972StreamBuffersTest, ImpostorVboPathIsPixelIdenticalToClientArray) {
     ASSERT_EQ(diff, 0u)
         << diff << " pixel(s) differ between the VBO and client-array impostor paths";
 
+    // B972-FT: the ring is BOUNDED and wraps without allocating. ringDepth
+    // (default 3) x 2 pages = 6 pairs, one per (frame row, page). Each
+    // renderFrame is ONE frame = ONE row (all its pages share the row), and
+    // frameCount_ advances every render() regardless of the VBO path:
+    //   frame 1 (VBO on)  row 0 -> allocates pairs 0,1
+    //   frame 2 (VBO off) row 1 -> client-array, no allocation
+    //   frame 3 (VBO on)  row 2 -> allocates pairs 4,5
+    //   frame 4 (VBO on)  row 0 -> wraps, pairs 0,1 already allocated
+    const size_t bAfterFrame1 = gles2GetHWBufferMemoryUsage(driver_);
+    node->setVboPathEnabled(true);
+    renderFrame([&] { smgr_->drawAll(); });  // frame 3, row 2: allocates 4,5
+    const size_t bAfterRow2 = gles2GetHWBufferMemoryUsage(driver_);
+    EXPECT_GT(bAfterRow2, bAfterFrame1)
+        << "ring row 2 allocated no new pairs -- the ring is not rotating "
+           "across frames";
+    renderFrame([&] { smgr_->drawAll(); });  // frame 4, row 0: wrap, no allocation
+    const size_t bAfterWrap = gles2GetHWBufferMemoryUsage(driver_);
+    EXPECT_EQ(bAfterWrap, bAfterRow2)
+        << "the ring grew on wrap (frame 4, row 0) -- it is not bounded at "
+           "depth x pages pairs";
+
     const size_t logicalAfter = gles2GetHWBufferMemoryUsage(driver_);
     EXPECT_GT(logicalAfter, logicalBefore)
         << "the impostor VBO/EBO bytes did not enter the driver's logical buffer "

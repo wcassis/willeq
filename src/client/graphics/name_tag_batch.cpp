@@ -229,7 +229,7 @@ void NameTagBatchNode::logWindow(int64_t micros) {
     // Give back what a crowd that has left made the buffers hold: keep at most
     // twice this window's peak.
     const size_t keepQuads = 2 * windowMaxTags_ * 16 + 64;
-    if (gpuVertexBytes_ > 4 * keepQuads * 4 * sizeof(CompactVertex) ||
+    if (gpuBufferBytes() > 4 * keepQuads * 4 * sizeof(CompactVertex) ||
         (windowMaxTags_ == 0 && gpuBufferBytes())) releaseGpuBuffers();
     if (compactVertices_.capacity() / 4 > 4 * keepQuads ||
         compactIndices_.capacity() / 6 > 4 * keepQuads) {
@@ -298,19 +298,24 @@ size_t NameTagBatchNode::drawCompactRun(irr::video::IVideoDriver* driver) {
     start = Clock::now();
     eqt::memory::GemTag gemTag("vbo:nametags");
     gpuDriver_ = driver;
-    if (!gpuVertex_) glGenBuffers(1, &gpuVertex_);
     if (!gpuIndex_) glGenBuffers(1, &gpuIndex_);
-    glBindBuffer(GL_ARRAY_BUFFER, gpuVertex_);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gpuIndex_);
-    // One extra vertex keeps every subdata write strictly smaller than the
-    // allocation. Lima renames a whole-resource write even after glFinish;
-    // partial writes synchronize normally and reuse the bounded storage.
+    // B972-FT (#326): the index EBO is written only when the pattern grows
+    // (static), so it never enters the per-chunk write-wait below. The
+    // vertex chunks, though, each write-then-draw the SAME buffer within a
+    // run -- the very pattern issue #326 names. They now stream through a
+    // RING of 12 vertex VBOs (3 frame rows x 4 chunk slots, the particle
+    // renderer's shape): run r's chunk k writes slot (r % 3) * 4 + k --
+    // distinct from the run's own previous chunks (same row, distinct
+    // slots) and from the previous TWO runs' slots (the rows are 3-deep,
+    // and the transparent pass is the frame's LAST). A run of more than 4
+    // chunks would wrap into the next row, but that is 65536+ name-tag
+    // quads -- far past any measured zone (keepQuads is 2*maxTags*16+64) --
+    // and the wrap stays within-row-adjacent, never a previous-run slot.
+    const size_t chunks = (quads + kMaxCompactQuadsPerDraw - 1) / kMaxCompactQuadsPerDraw;
+    ++runChunk_;
+    const size_t row = runChunk_ % kNametagRingFrames;
     const size_t vertexBytes = patternQuads * 4 * sizeof(CompactVertex) + sizeof(CompactVertex);
-    if (vertexBytes > gpuVertexBytes_) {
-        glBufferData(GL_ARRAY_BUFFER, vertexBytes, nullptr, GL_DYNAMIC_DRAW);
-        gles2AdjustRawBufferBytes(driver, static_cast<ptrdiff_t>(vertexBytes) - gpuVertexBytes_);
-        gpuVertexBytes_ = vertexBytes;
-    }
     const size_t indexBytes = patternQuads * 6 * sizeof(uint16_t);
     if (indexBytes > gpuIndexBytes_) {
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexBytes, indices.data(), GL_STATIC_DRAW);
@@ -329,9 +334,20 @@ size_t NameTagBatchNode::drawCompactRun(irr::video::IVideoDriver* driver) {
     glDisableVertexAttribArray(4);
     last_.uploadMicros += elapsed(start);
     size_t draws = 0;
-    for (size_t chunk = 0; chunk < quads; ) {
-        const size_t chunkQuads = std::min(kMaxCompactQuadsPerDraw, quads - chunk);
-        const CompactVertex* v = vertices.data() + chunk * 4;
+    for (size_t chunkIdx = 0; chunkIdx < chunks; ++chunkIdx) {
+        const size_t chunkQuads = std::min(kMaxCompactQuadsPerDraw, quads - chunkIdx * kMaxCompactQuadsPerDraw);
+        const CompactVertex* v = vertices.data() + chunkIdx * kMaxCompactQuadsPerDraw * 4;
+        const size_t slot = (row * kNametagRingChunks + chunkIdx) % kNametagRingSlots;
+        // One extra vertex keeps every subdata write strictly smaller than
+        // the allocation (B975): partial writes reuse the bounded storage.
+        if (!gpuVertexRing_[slot]) glGenBuffers(1, &gpuVertexRing_[slot]);
+        glBindBuffer(GL_ARRAY_BUFFER, gpuVertexRing_[slot]);
+        if (vertexBytes > gpuVertexRingBytes_[slot]) {
+            glBufferData(GL_ARRAY_BUFFER, vertexBytes, nullptr, GL_DYNAMIC_DRAW);
+            gles2AdjustRawBufferBytes(driver,
+                                      static_cast<ptrdiff_t>(vertexBytes) - gpuVertexRingBytes_[slot]);
+            gpuVertexRingBytes_[slot] = vertexBytes;
+        }
         start = Clock::now();
         glBufferSubData(GL_ARRAY_BUFFER, 0, chunkQuads * 4 * sizeof(CompactVertex), v);
         last_.uploadMicros += elapsed(start);
@@ -339,7 +355,6 @@ size_t NameTagBatchNode::drawCompactRun(irr::video::IVideoDriver* driver) {
         glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(chunkQuads * 6), GL_UNSIGNED_SHORT, nullptr);
         last_.drawMicros += elapsed(start);
         ++draws;
-        chunk += chunkQuads;
     }
     // setOrthoProjection left the driver's cached binds at zero. Restore
     // that state before a font fallback or any other renderer runs.
@@ -357,12 +372,16 @@ size_t NameTagBatchNode::drawCompactRun(irr::video::IVideoDriver* driver) {
 
 void NameTagBatchNode::releaseGpuBuffers() {
 #ifdef EQT_HAS_GLES2
-    if (gpuVertex_) glDeleteBuffers(1, &gpuVertex_);
+    for (size_t i = 0; i < kNametagRingSlots; ++i) {
+        if (gpuVertexRing_[i]) glDeleteBuffers(1, &gpuVertexRing_[i]);
+        gpuVertexRing_[i] = 0;
+        gpuVertexRingBytes_[i] = 0;
+    }
     if (gpuIndex_) glDeleteBuffers(1, &gpuIndex_);
     if (gpuDriver_) gles2AdjustRawBufferBytes(gpuDriver_, -static_cast<ptrdiff_t>(gpuBufferBytes()));
 #endif
-    gpuVertex_ = gpuIndex_ = 0;
-    gpuVertexBytes_ = gpuIndexBytes_ = 0;
+    gpuIndex_ = 0;
+    gpuIndexBytes_ = 0;
     gpuDriver_ = nullptr;
 }
 

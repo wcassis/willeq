@@ -87,8 +87,15 @@ public:
     // tally via gles2AdjustRawBufferBytes.
     void setVboPathEnabled(bool enabled) { useVbo_ = enabled; }
     bool isVboPathEnabled() const { return useVbo_; }
-    GLuint vertexBuffer() const { return vertexVbo_; }
-    size_t vertexBufferBytes() const { return vertexVboBytes_; }
+    // B972-FT: slot i of the 12-slot ring (3 frame rows x 4 batches).
+    GLuint vertexBuffer(size_t i) const { return vertexVbo_[i]; }
+    // B972-FT: the RING's total bytes (every slot is named in the driver's
+    // logical tally).
+    size_t vertexBufferBytes() const {
+        size_t sum = 0;
+        for (size_t i = 0; i < 12; ++i) sum += vertexVboBytes_[i];
+        return sum;
+    }
 
     // B995: the Options pages' opacity and near clip, applied per particle by
     // Environment::applyParticleKnobs() in render(). The camera is the one
@@ -117,7 +124,17 @@ private:
     // Link VS+FS into a program with standard attribute bindings
     GLuint linkProgram(GLuint vs, GLuint fs);
 
-    void renderBatch(const std::vector<PointSpriteVertex>& verts, UnifiedBlendMode blendMode);
+    // B972-FT: batchIdx is the ring slot (0..3: the two procedural-atlas
+    // batches, then the two spell-sprite batches; each its own VBO).
+    void renderBatch(const std::vector<PointSpriteVertex>& verts, UnifiedBlendMode blendMode,
+                     int batchIdx);
+
+    // B972-FT: the ring's row count (frames): frame N's batches occupy the
+    // slots row*4 .. row*4+3, row = frameCount % kVboRingFrames. 3 covers
+    // the two in-flight frames N-1/N-2 a tile-based driver keeps queued.
+    static constexpr size_t kVboRingFrames = 3;
+    static constexpr size_t kVboRingBatches = 4;  // the four point batches
+    unsigned frameCount_ = 0;  // render() count, incremented once per frame
 
     GLuint program_ = 0;
     // T411: 1x1 opaque-white texture bound on unit 1 when the atlas has no
@@ -129,11 +146,17 @@ private:
     bool initialized_ = false;
     float maxPointSize_ = 64.0f;
 
-    // B972 (#290): the one bounded VBO every point batch is streamed into
-    // (B975's pattern). Sized high-water + one slack vertex so each
-    // glBufferSubData stays strictly smaller than the allocation.
-    GLuint vertexVbo_ = 0;
-    size_t vertexVboBytes_ = 0;
+    // B972 (#290) / B972-FT (#326): the RING of bounded VBOs the point
+    // batches stream into (B975's pattern): 3 frame rows x 4 batches = 12
+    // slots. Frame N batch b writes slot (N % 3) * 4 + b -- a distinct slot
+    // from every same-frame batch (no within-frame write-after-draw on the
+    // same BO) and from the in-flight frames N-1 / N-2's rows, so Lima's
+    // lima_transfer_map flush + lima_bo_wait find no matching job (the
+    // per-frame write-wait issue #326 describes is gone). Each slot grows
+    // at high-water + one slack vertex, so every glBufferSubData stays
+    // strictly smaller than the allocation.
+    GLuint vertexVbo_[12] = {0};
+    size_t vertexVboBytes_[12] = {0};
     bool useVbo_ = true;
     // The IVideoDriver that owns the GL context (init()); null in the
     // no-GLES2 build's doubles. After a raw VBO draw the driver's state_
