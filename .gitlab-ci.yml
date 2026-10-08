@@ -59,10 +59,19 @@ workflow:
   interruptible: true
   # Nothing is passed between stages as artifacts -- the jobs share one warm
   # working tree on a concurrent=1 runner. Never download upstream artifacts.
+  # B1008 (2026-10-08): the x86 jobs run on the dedicated runner VMs
+  # (gitlab-runner-1/2, 10.0.30.81/82: 16 cores, 15 GB, local copies of the
+  # two client trees at the same paths), tag `x86-build`, so hermes-ext's
+  # untagged runner no longer builds (Will 2026-10-06: keep hermes-ext for the
+  # board). ONE runner carries the tag today: the stages share a warm tree and
+  # pass no artifacts, so a second tagged runner would split a pipeline across
+  # two trees. gitlab-runner-2 is registered as `x86-build-2` and idles until
+  # build+test+gate are folded into one job (docs/ci.md).
   dependencies: []
+  tags: [x86-build]
   before_script:
     - set -o pipefail
-    - '[ "$(hostname)" = "hermes-ext" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
+    - 'case "$(hostname)" in hermes-ext|gitlab-runner-1|gitlab-runner-2) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac'
     - hostname; nproc; free -g | head -2
     # The client asset symlinks are gitignored (tests/test_data_paths.cpp), so
     # `git clean -ffdx` removes them before every job and they must be re-made
