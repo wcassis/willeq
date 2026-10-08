@@ -87,13 +87,14 @@ public:
     // tally via gles2AdjustRawBufferBytes.
     void setVboPathEnabled(bool enabled) { useVbo_ = enabled; }
     bool isVboPathEnabled() const { return useVbo_; }
-    // B972-FT: slot i of the 12-slot ring (3 frame rows x 4 batches).
+    // B972-FT (alternative shape): slot i of the 3-slot RING (one bounded
+    // VBO per FRAME: the frame's non-empty point batches packed into it).
     GLuint vertexBuffer(size_t i) const { return vertexVbo_[i]; }
     // B972-FT: the RING's total bytes (every slot is named in the driver's
     // logical tally).
     size_t vertexBufferBytes() const {
         size_t sum = 0;
-        for (size_t i = 0; i < 12; ++i) sum += vertexVboBytes_[i];
+        for (size_t i = 0; i < kVboRingFrames; ++i) sum += vertexVboBytes_[i];
         return sum;
     }
 
@@ -124,16 +125,36 @@ private:
     // Link VS+FS into a program with standard attribute bindings
     GLuint linkProgram(GLuint vs, GLuint fs);
 
-    // B972-FT: batchIdx is the ring slot (0..3: the two procedural-atlas
-    // batches, then the two spell-sprite batches; each its own VBO).
-    void renderBatch(const std::vector<PointSpriteVertex>& verts, UnifiedBlendMode blendMode,
-                     int batchIdx);
+    // B972-FT (alternative shape): draw ONE batch's vertex WINDOW of the
+    // packed frame VBO (start vertex + count, the blend mode set per call).
+    // batchIdx is the batch identity (0..3: the two procedural-atlas
+    // batches, then the two spell-sprite batches) for the timing log.
+    // bindAndPointers: true for the first packed batch of the frame -- the
+    // upload's trailing unbind must be re-established (bind + attribute
+    // pointers capture the VBO, the run-381 pattern) before any draw reads
+    // it.
+    void renderBatch(const PointSpriteVertex* verts, size_t start, size_t count,
+                     UnifiedBlendMode blendMode, int batchIdx, bool bindAndPointers);
 
-    // B972-FT: the ring's row count (frames): frame N's batches occupy the
-    // slots row*4 .. row*4+3, row = frameCount % kVboRingFrames. 3 covers
-    // the two in-flight frames N-1/N-2 a tile-based driver keeps queued.
+    // B972-FT (alternative shape): grow the ring row's VBO and write the
+    // frame's PACKED vertices (packedVerts_: the non-empty batches
+    // concatenated) with ONE glBufferSubData, then set the point-vertex
+    // attribute pointers once (they capture this VBO). The write-wait
+    // (issue #326) is measured here: the row was last written two frames
+    // ago, so no in-flight job references it. Returns the row's VBO (0 when
+    // the pack is empty).
+    GLuint uploadPackedVerts();
+
+    // B972-FT (alternative shape): the RING's rows (frames). render() packs
+    // the frame's non-empty batches into ONE bounded VBO (the row's slot)
+    // with one glBufferSubData; each batch then draws its vertex WINDOW with
+    // a glDrawArrays offset. ONE VBO per frame -- the pre-ring cut's shape --
+    // is what keeps Mesa/Lima's driver-retained per-BO scratch at the cut's
+    // level (the per-batch 12-slot ring, the first measured-and-rejected
+    // shape, gave back 4-5 MiB of gpu_unnamed: the scratch scales with the
+    // number of distinct VBOs the frame's job names). 3 rows cover the two
+    // in-flight frames N-1/N-2 a tile-based driver keeps queued.
     static constexpr size_t kVboRingFrames = 3;
-    static constexpr size_t kVboRingBatches = 4;  // the four point batches
     unsigned frameCount_ = 0;  // render() count, incremented once per frame
 
     GLuint program_ = 0;
@@ -146,17 +167,26 @@ private:
     bool initialized_ = false;
     float maxPointSize_ = 64.0f;
 
-    // B972 (#290) / B972-FT (#326): the RING of bounded VBOs the point
-    // batches stream into (B975's pattern): 3 frame rows x 4 batches = 12
-    // slots. Frame N batch b writes slot (N % 3) * 4 + b -- a distinct slot
-    // from every same-frame batch (no within-frame write-after-draw on the
-    // same BO) and from the in-flight frames N-1 / N-2's rows, so Lima's
-    // lima_transfer_map flush + lima_bo_wait find no matching job (the
-    // per-frame write-wait issue #326 describes is gone). Each slot grows
-    // at high-water + one slack vertex, so every glBufferSubData stays
-    // strictly smaller than the allocation.
-    GLuint vertexVbo_[12] = {0};
-    size_t vertexVboBytes_[12] = {0};
+    // B972 (#290) / B972-FT (#326), the ALTERNATIVE shape: the RING of
+    // bounded VBOs, ONE per FRAME (kVboRingFrames rows). render() packs the
+    // frame's non-empty point batches into the row's VBO with a single
+    // glBufferSubData, then each batch draws its vertex WINDOW with a
+    // glDrawArrays offset -- the frame's job references exactly ONE VBO,
+    // the pre-ring cut's shape (the per-batch 12-slot ring, first rejected
+    // by measurement, re-added 4-5 MiB of gpu_unnamed: Mesa/Lima's
+    // driver-retained per-BO scratch scales with the number of distinct
+    // VBOs the frame's job names). The row was last written two frames ago,
+    // so no in-flight job references it and Lima's
+    // lima_flush_job_accessing_bo + lima_bo_wait return immediately (issue
+    // #326's write-wait stays gone). The VBO grows at high-water + one
+    // slack vertex, so every glBufferSubData stays strictly smaller than
+    // the allocation (B975's pattern).
+    GLuint vertexVbo_[kVboRingFrames] = {0};
+    size_t vertexVboBytes_[kVboRingFrames] = {0};
+    // B972-FT (alternative shape): the frame's packed point vertices (the
+    // non-empty batches concatenated) that uploadPackedVerts() streams into
+    // the ring row. Reused each frame.
+    std::vector<PointSpriteVertex> packedVerts_;
     bool useVbo_ = true;
     // The IVideoDriver that owns the GL context (init()); null in the
     // no-GLES2 build's doubles. After a raw VBO draw the driver's state_

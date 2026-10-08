@@ -261,23 +261,37 @@ void ImpostorBatchNode::render() {
     }
     const irr::video::SColor white(255, 255, 255, 255);
 
-    // B972-FT: this frame's ring row. Frame N page p writes pair
-    // row * pages_ + p (row = render()-count % depth), so within-frame pages
-    // use distinct pairs and the in-flight frames N-1/N-2 use other rows --
-    // the written BO is referenced by no live draw. Depth 1 collapses
-    // everything onto pair 0: the pre-B972-FT single shared pair, the A/C
-    // control.
+    // B972-FT (the card-sanctioned ALTERNATIVE, chosen by measurement -- see
+    // refactor/B972-FT/README.md Measurement): pack ALL of this frame's
+    // visible pages into ONE bounded VBO/EBO pair from a ring deep enough
+    // that no write touches a buffer any in-flight job references (the
+    // write-wait stays gone), and draw each page through an index OFFSET
+    // into that one buffer. The job then references ONE VBO -- the pre-ring
+    // cut's shape -- so Mesa's driver-retained per-BO scratch stays minimal
+    // (the per-page VBO ring, the primary shape, re-added 4-5 MiB of unnamed
+    // GEM: the scratch scales with the number of distinct VBOs the frame's
+    // job names). Depth 1 is the pre-B972-FT shared pair, the A/C control.
     const size_t depth = ringDepth();
-    const size_t row = depth > 1 ? (frameCount_ % depth) : 0;
-    const size_t slotBase = depth > 1 ? row * pages_.size() : 0;
+    const size_t slot = depth > 1 ? (frameCount_ % depth) : 0;
     ++frameCount_;
 
+    // Rebuild the frame's pack from scratch: the page loop APPENDS, and the
+    // ring's high-water is only bounded if the frame's pack is the same size
+    // every frame (it is: the same quads, the same camera). Without the
+    // clear the pack grows every frame and the VBO high-water with it.
+    verts_.clear();
+    indices_.clear();
+
+    std::vector<PageRun> runs;
+
+    bool any = false;
     const size_t pageCount = pages_.size();
     for (size_t pageIdx = 0; pageIdx < pageCount; ++pageIdx) {
         const auto& page = pages_[pageIdx];
         if (page.quads.empty() || !page.tex) continue;
-        verts_.clear();
-        indices_.clear();
+        PageRun run;
+        run.tex = page.tex;
+        run.indexOffset = indices_.size();
         for (const Quad& q : page.quads) {
             // Face the camera along the horizontal camera->billboard direction
             // (the direction the capture looked along); right = up x forward.
@@ -294,49 +308,89 @@ void ImpostorBatchNode::render() {
             verts_.emplace_back(q.center.X - r.X, y1, q.center.Z - r.Z, 0, 0, 1, white, q.u0, q.v1);
             const irr::u16 quadIdx[6] = {0, 1, 2, 0, 2, 3};
             for (irr::u16 i : quadIdx) indices_.push_back(static_cast<irr::u16>(base + i));
-            // 16-bit indices: flush at the limit (16,384 billboards a page is
-            // far past the 64 cells one holds, so this never triggers).
         }
-        material_.setTexture(0, page.tex);
-        driver->setMaterial(material_);
+        run.indexCount = indices_.size() - run.indexOffset;
+        runs.push_back(run);
+        any = true;
+    }
+    if (!any) return;
+
+    // ONE upload for the whole frame (the card's alternative shape): the
+    // frame's pages concatenated into the ring slot, written once. The
+    // WILLEQ_B972FT_TIMING gate wall-clocks that one subdata pair -- on
+    // Lima the shared pair (depth 1) makes it block in lima_bo_wait, the
+    // ringed slot must collapse toward the memcpy.
+    {
+        bool usedVbo = false;
 #ifdef EQT_HAS_GLES2
-        // B972 (#290): the bounded-VBO path replaces the client-array draw
-        // (whose 1 MiB Mesa stream slot and per-draw varying BO are what the
-        // crowd-tour census carries as unnamed GEM). Any other driver, or the
-        // pixel-identity baseline (setVboPathEnabled(false), test_b972),
-        // keeps the old path.
-        if (useVbo_ && driver->getDriverType() == irr::video::EDT_OGLES2) {
-            drawPageVbo(driver, slotBase + pageIdx, pageIdx);
-        } else
+        if (useVbo_ && driver->getDriverType() == irr::video::EDT_OGLES2)
+            usedVbo = uploadFrameVbo(driver, slot);
 #endif
-        {
-            driver->drawVertexPrimitiveList(verts_.data(), static_cast<irr::u32>(verts_.size()),
-                                            indices_.data(), static_cast<irr::u32>(indices_.size() / 3),
-                                            irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES,
-                                            irr::video::EIT_16BIT);
+        if (usedVbo) {
+            // Draw each page through its index window of the one frame VBO.
+            for (const PageRun& run : runs) {
+                material_.setTexture(0, run.tex);
+                driver->setMaterial(material_);
+                drawPackedPageVbo(run);
+                ++drawCallsLastRender_;
+            }
+            // drawPackedPageVbo leaves the pair bound; unbind it and re-sync
+            // the driver's state_ cache (which the raw binds do not update).
+            // Otherwise the NEXT frame's client-array draw -- which skips its
+            // own unbind when the cache says 0 -- would still see this
+            // VBO/EBO bound and read its client pointers/indices as offsets
+            // into it (the B972 pattern the old drawPageVbo ended with).
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+            gles2SyncBufferBindings(driver);
+        } else {
+            // The client-array baseline: drawVertexPrimitiveList treats
+            // indices as ABSOLUTE offsets into the passed vertices pointer,
+            // and the packed indices_ ARE absolute (each quad's base is its
+            // index into the whole verts_), so the whole verts_ array stays
+            // in place and each page only windows its indices_.
+            for (size_t i = 0; i < runs.size(); ++i) {
+                const PageRun& run = runs[i];
+                material_.setTexture(0, run.tex);
+                driver->setMaterial(material_);
+                driver->drawVertexPrimitiveList(
+                    verts_.data(), static_cast<irr::u32>(verts_.size()),
+                    indices_.data() + run.indexOffset,
+                    static_cast<irr::u32>(run.indexCount / 3),
+                    irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES,
+                    irr::video::EIT_16BIT);
+                ++drawCallsLastRender_;
+            }
         }
-        ++drawCallsLastRender_;
     }
 }
 
-// B972 (#290) / B972-FT (#326): one page's quads through the bounded VBO/EBO
-// of the ring's `slot`th pair. The material state (blend off / depth write
-// on / the page texture on unit 0, the custom program, its uniforms) is
-// exactly what the preceding driver->setMaterial() applied, so this only
-// supplies the vertex sources and issues the draw.
-void ImpostorBatchNode::drawPageVbo(irr::video::IVideoDriver* driver, size_t slot, size_t page) {
+// B972 (#290) / B972-FT (#326), the ALTERNATIVE shape: grow + write the ring
+// slot's ONE VBO/EBO pair for the whole packed frame (verts_ + indices_, the
+// frame's pages concatenated) and set the attribute pointers once. The tag
+// spans the whole run: the glBufferData growth AND the glBufferSubData
+// uploads both allocate GEM storage, and the attribution must name them
+// vbo:impostor, not leave them for the 1 MiB slot.
+//
+// The write-wait (issue #326) is measured here, not in the draws: on Lima
+// the subdata's wall clock carries lima_transfer_map's
+// lima_flush_job_accessing_bo + lima_bo_wait when the written BO is still
+// referenced by an in-flight job. With the ring (depth >= 2) the slot was
+// last written two frames ago and no live job references it, so the wait
+// returns immediately; with depth 1 (the pre-B972-FT shared pair, the A/C
+// control) it blocks. WILLEQ_B972FT_TIMING wall-clocks the two subdatas.
+bool ImpostorBatchNode::uploadFrameVbo(irr::video::IVideoDriver* driver, size_t slot) {
 #ifdef EQT_HAS_GLES2
-    if (verts_.empty() || indices_.empty()) return;
-    // The tag spans the whole run: the glBufferData growth AND the per-page
-    // glBufferSubData uploads both allocate GEM storage (Lima's varying
-    // reuses the bounded BO on the partial write, but the attribution must
-    // still name them vbo:impostor, not leave them for the 1 MiB slot).
+    if (verts_.empty() || indices_.empty()) return false;
     eqt::memory::GemTag gemTag("vbo:impostor");
     gpuDriver_ = driver;
     if (slot >= vboRing_.size()) vboRing_.resize(slot + 1);
     VboPair& pair = vboRing_[slot];
     if (!pair.vert) glGenBuffers(1, &pair.vert);
     if (!pair.idx) glGenBuffers(1, &pair.idx);
+    // The attribute pointers capture the buffer bound AT CALL TIME (no VAO),
+    // so the bind precedes the pointer setup -- the run-381 nametag SEGV was
+    // exactly the reverse order.
     glBindBuffer(GL_ARRAY_BUFFER, pair.vert);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pair.idx);
     // One slack vertex/index keeps every subdata write strictly smaller than
@@ -360,45 +414,23 @@ void ImpostorBatchNode::drawPageVbo(irr::video::IVideoDriver* driver, size_t slo
                                   static_cast<ptrdiff_t>(neededIdx) - pair.idxBytes);
         pair.idxBytes = neededIdx;
     }
-    // B972-FT: the confirming measurement (issue #326, acceptance gate 4).
-    // WILLEQ_B972FT_TIMING=1 wraps every glBufferSubData in a wall clock and
-    // reports per page + per frame. On Lima the subdata's wall clock carries
-    // lima_transfer_map's lima_flush_job_accessing_bo + lima_bo_wait -- with
-    // a shared pair (depth 1) every page >= 2 blocks; with the ring it must
-    // collapse toward the memcpy alone. The log goes to stderr (the sweep
-    // runner prefixes every line with its epoch and keeps it in client.log).
     if (getenv("WILLEQ_B972FT_TIMING")) {
-        static size_t frameSubdatas = 0;
-        static int64_t frameVertUs = 0;
-        static int64_t frameIdxUs = 0;
-        using Clock = std::chrono::steady_clock;
-        const auto t0 = Clock::now();
+        const auto t0 = std::chrono::steady_clock::now();
         glBufferSubData(GL_ARRAY_BUFFER, 0,
                         static_cast<GLsizeiptr>(verts_.size() * sizeof(irr::video::S3DVertex)),
                         verts_.data());
-        const auto t1 = Clock::now();
+        const auto t1 = std::chrono::steady_clock::now();
         glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0,
                         static_cast<GLsizeiptr>(indices_.size() * sizeof(irr::u16)), indices_.data());
-        const auto t2 = Clock::now();
+        const auto t2 = std::chrono::steady_clock::now();
         const int64_t vertUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
         const int64_t idxUs = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-        ++frameSubdatas;
-        frameVertUs += vertUs;
-        frameIdxUs += idxUs;
-        fprintf(stderr, "[B972FT] subdata frame=%u page=%zu slot=%zu vert=%lld us idx=%lld us verts=%zu idx=%zu\n",
-                (unsigned)(frameCount_ - 1), page, slot,
-                (long long)vertUs, (long long)idxUs, verts_.size(), indices_.size());
-        // One frame line: this frame's subdata count and totals, printed when
-        // the LAST page of the frame uploads (a skipped page defers the line
-        // to the next frame's last page -- per-call lines are the evidence).
-        if (page + 1 == pages_.size()) {
-            fprintf(stderr, "[B972FT] frame=%u subdatas=%zu vert_total=%lld us idx_total=%lld us\n",
-                    (unsigned)(frameCount_ - 1), frameSubdatas,
-                    (long long)frameVertUs, (long long)frameIdxUs);
-            frameSubdatas = 0;
-            frameVertUs = 0;
-            frameIdxUs = 0;
-        }
+        fprintf(stderr,
+                "[B972FT] frame=%u slot=%zu subdata=1 vert=%lld us idx=%lld us verts=%zu idx=%zu "
+                "pack verts=%zu idx=%zu\n",
+                (unsigned)(frameCount_ - 1), slot, (long long)vertUs, (long long)idxUs,
+                pair.vertBytes / sizeof(irr::video::S3DVertex), pair.idxBytes / sizeof(irr::u16),
+                verts_.size(), indices_.size());
     } else {
         glBufferSubData(GL_ARRAY_BUFFER, 0,
                         static_cast<GLsizeiptr>(verts_.size() * sizeof(irr::video::S3DVertex)),
@@ -407,6 +439,53 @@ void ImpostorBatchNode::drawPageVbo(irr::video::IVideoDriver* driver, size_t slo
                         static_cast<GLsizeiptr>(indices_.size() * sizeof(irr::u16)), indices_.data());
     }
 
+    // NO attribute-pointer setup here: pointers capture the buffer bound AT
+    // CALL TIME (no VAO), and the unbind below would make them capture client
+    // null. drawPackedPageVbo() re-binds the pair and THEN sets them.
+    //
+    // Unbind before returning: the driver's state_ cache is NOT updated by
+    // the raw glBindBuffer above (it stays at the driver's last tracked
+    // bind, usually 0), so a later client-array draw -- which skips its own
+    // unbind when the cache says 0 -- would leave this VBO bound and draw
+    // through it. drawPackedPageVbo() re-binds the pair per page, so the
+    // unbind costs nothing. gles2SyncBufferBindings re-reads the real GL
+    // bindings into the cache (the B972 pattern).
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    gles2SyncBufferBindings(driver);
+    return true;
+#else
+    (void)driver;
+    (void)slot;
+    return false;
+#endif
+}
+
+// B972-FT (#326): draw one page's index WINDOW of the packed frame VBO. The
+// material state (blend off / depth write on / the page texture on unit 0,
+// the custom program, its uniforms) is exactly what the preceding
+// driver->setMaterial() applied; this re-binds the pair (setMaterial does
+// not touch buffer bindings, but the run-381 pattern re-binds per draw) and
+// issues the draw. GL 2.0: with an element buffer bound, glDrawElements'
+// index parameter is a BYTE OFFSET into it (not a pointer), so a page is
+// indexed from run.indexOffset * sizeof(u16) without a baseVertex (GLES2
+// has none). Every page draws through the SAME pair, so the frame's job
+// references one VBO + one EBO -- the pre-ring cut's shape, which is what
+// keeps Mesa's driver-retained per-BO scratch at the cut's level.
+void ImpostorBatchNode::drawPackedPageVbo(const PageRun& run) const {
+#ifdef EQT_HAS_GLES2
+    if (run.indexCount == 0) return;
+    const size_t depth = ringDepth();
+    const size_t slot = depth > 1 ? ((frameCount_ - 1) % depth) : 0;
+    if (slot >= vboRing_.size() || !vboRing_[slot].vert) return;
+    const VboPair& pair = vboRing_[slot];
+    glBindBuffer(GL_ARRAY_BUFFER, pair.vert);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pair.idx);
+    // The attribute pointers capture the buffer bound AT CALL TIME (no VAO),
+    // so they are set HERE, after the bind: they must name this VBO, not
+    // client memory (the run-381 nametag SEGV was exactly the reverse
+    // order). Per-page cost is a handful of pointer sets against the draw
+    // itself -- the same order the pre-ring code paid.
     const GLsizei stride = sizeof(irr::video::S3DVertex);
     glVertexAttribPointer(kAttrPosition, 3, GL_FLOAT, GL_FALSE, stride,
                           reinterpret_cast<const GLvoid*>(0));
@@ -421,19 +500,10 @@ void ImpostorBatchNode::drawPageVbo(irr::video::IVideoDriver* driver, size_t slo
                           reinterpret_cast<const GLvoid*>(28));
     glEnableVertexAttribArray(kAttrTexCoord0);
     glDisableVertexAttribArray(kAttrTexCoord1);
-
-    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices_.size()), GL_UNSIGNED_SHORT,
-                   reinterpret_cast<const GLvoid*>(0));
-
-    // The client-array fallbacks below this draw skip a bind their state_
-    // cache says is a no-op, so re-read the real bindings: the GL binds are
-    // left on the VBO/EBO by design, and a later 2D client-array draw must
-    // not sample through them.
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    gles2SyncBufferBindings(driver);
+    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(run.indexCount), GL_UNSIGNED_SHORT,
+                   reinterpret_cast<const GLvoid*>(run.indexOffset * sizeof(irr::u16)));
 #else
-    (void)driver;
+    (void)run;
 #endif
 }
 
