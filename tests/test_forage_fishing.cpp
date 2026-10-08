@@ -100,6 +100,11 @@ protected:
         ASSERT_TRUE(db_.open(WILLEQ_DB_REAL_PATH)) << WILLEQ_DB_REAL_PATH;
         EQT::WilleqDatabase::setGlobalInstance(&db_);
         ASSERT_TRUE(strings_.initFromDatabase());
+        // The SAME rows, loaded into the EverQuest-under-test's own string db
+        // so the SkillManager's refusal fetches the SHIPPED line and the
+        // literal fallback (a never-loaded table) cannot be what the test
+        // sees.
+        ASSERT_TRUE(eq.Strings().LoadStringFiles(WILLEQ_REPO_ROOT));
     }
     void TearDown() override {
         EQ::SkillCapTable::instance().load(kShippedCaps);

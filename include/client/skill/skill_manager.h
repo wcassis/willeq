@@ -13,6 +13,7 @@
 #include "skill_data.h"
 #include "skill_constants.h"
 #include "common/packet_structs.h"  // For MAX_PP_SKILL
+#include "client/state/event_bus.h"  // eqt::state::ListenerHandle (B894)
 
 // Forward declarations
 class EverQuest;
@@ -126,9 +127,18 @@ public:
     // D20e1: Bridge for visual events (set by EverQuest::InitGraphics)
     void setBridge(eqt::bridge::GameStateBridge* bridge) { m_bridge = bridge; }
 
+    // B894 (GitLab #210): true while a Fishing cast is live. Set on the
+    // branch of activateSkill() that has already sent OP_Fishing; cleared
+    // by stopFishing() on movement or a pose change (eqstr 165).
+    bool isFishing() const { return m_is_fishing; }
+
 private:
     EverQuest* m_eq;
     eqt::bridge::GameStateBridge* m_bridge = nullptr;  // D20e1
+    bool m_is_fishing = false;  // B894
+
+    // B894: the state-bus listeners that end a live cast (movement / pose).
+    std::vector<eqt::state::ListenerHandle> m_fishing_stop_handles;
 
     // All skills indexed by skill_id
     std::array<SkillData, EQT::MAX_PP_SKILL> m_skills;
@@ -179,6 +189,20 @@ private:
     // sends for a skill reads or spends endurance or mana, and there is no
     // client-side skill-cost table to load one from. See the enforcement table
     // in refactor/T353_skill_costs.md before adding one back.
+
+    // B894 (GitLab #210): the Forage/Fishing preconditions. "" = send may go
+    // out; otherwise the SHIPPED eqstr line (148/149 for Forage, 156/159/160/
+    // 161/162 for Fishing) that refuses it. Called from canUseSkill() and
+    // paired with getSkillUseError()'s branch for the same ids.
+    std::string forageOrFishingRefusal(uint8_t skill_id) const;
+    // The client's in-combat witness (auto-attack / auto-fire on,
+    // COMBAT_STATE_ENGAGED, or the target recently hit us) -- the same
+    // signal checkCombatRequirement() reads.
+    bool isAttacking() const;
+    // The two state-bus arms and their shared body (eqstr 165).
+    void stopFishingOnMove(bool is_moving);
+    void stopFishingOnPositionState(uint8_t state);
+    void stopFishing();
 };
 
 } // namespace EQ
