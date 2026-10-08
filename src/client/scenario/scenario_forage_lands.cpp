@@ -166,18 +166,24 @@ private:
         // pole).
         //
         // #goto first: the fishing leg is WATER-DEPENDENT. The server's
-        // CanFish() (forage.cpp:206-229, RuleB Watermap.CheckForWaterWhenFishing
-        // ON on this lane) probes a rod tip 30u ahead along the heading at the
-        // player's z, then a 100u vertical line down: no water in reach is
-        // eqstr 166 FISHING_LAND, the refusal the pre-run lane run measured
-        // twice (forage_lands_client.log 17:38:47 and 17:38:57). The stand is
-        // parsed from the lane's own freporte watermap (wtr_cands.py over
-        // /mnt/projects/akk-stack/server/maps/water/freporte.wtr): (0,-825,-75)
-        // is land with water 25u south, heading 180 puts the rod tip at
-        // (0,-855), in water. #goto x y z h (gm_commands/goto.cpp:62-75).
+        // CanFish() (forage.cpp:206-247) probes a rod tip 30u ahead along the
+        // heading at the player's z, then a 100u vertical line down: no water
+        // in reach is eqstr 166 FISHING_LAND ("Trying to catch land sharks
+        // perhaps?"), the refusal the pre-run lane runs measured (the run at
+        // heading 0 cast the rod NORTH to dry land). #goto's heading is the
+        // raw wire value (gm_commands/goto.cpp:76-77 -> ProcessMovePC), and
+        // CanFish converts it (forage.cpp:214): degrees = hu*360/512. The
+        // stand is parsed from the lane's own freporte watermap
+        // (freporte_lane3.wtr, md5 f52d9aa088; probes wtr_headings.py /
+        // wtr_cols.py in /home/user/kb-evidence/b894-forage-fishing): the
+        // harbor's water is SOUTH of the dock (y ~ -855, surface z ~ -74.4),
+        // so the stand sits at (0,-825,-74) -- the server-stored zone-in z --
+        // with heading 256 (180deg, rod tip (0,-855), water depth ~10u; the
+        // FindBestZ 100u gate holds: the seabed is only ~10u below the
+        // player's z). #goto x y z h (gm_commands/goto.cpp:62-75).
         return {
             {kInvulnOffAt, "/say #set invulnerable off"},
-            {kShoreGotoAt, "/say #goto 0 -825 -75 180"},
+            {kShoreGotoAt, "/say #goto 0 -825 -74 256"},
             {kForageAt, "/say #forage"},
             {kStashForageAt, "/putdown 23"},  // foraged food -> general 1
             {kPoleSummonAt, "/say #summonitem 13100 1"},  // Fishing Pole (36)

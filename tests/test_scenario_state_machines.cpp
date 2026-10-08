@@ -643,8 +643,9 @@ TEST(ForageLandsScenario, RunsTheGMRecipeInOrder) {
     EXPECT_EQ(world.commands[0], "/say #set invulnerable off");
     // The stand: the fishing leg is water-dependent (CanFish's rod-tip
     // probe), so the scenario teleports to a parsed freporte harbor shore
-    // (rod tip 30u ahead at heading 180 lands in water) BEFORE foraging.
-    EXPECT_EQ(world.commands[1], "/say #goto 0 -825 -75 180");
+    // BEFORE foraging. Heading 256 (180deg, raw wire units) puts the rod tip
+    // 30u south into the harbor's water (watermap probe wtr_headings.py).
+    EXPECT_EQ(world.commands[1], "/say #goto 0 -825 -74 256");
     EXPECT_EQ(world.commands[2], "/say #forage");
     // The forage catch is stashed to general 1 BEFORE the pole is summoned
     // (it is on the cursor, and so would be the pole's summon).
