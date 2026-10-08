@@ -148,6 +148,8 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
     EXPECT_TRUE(IsScenarioName("create_character"));
     EXPECT_TRUE(IsScenarioName("zone_in"));
+    // B893 (#209): fall damage.
+    EXPECT_TRUE(IsScenarioName("fall_damage"));
     // B925: the single-client zone-link hold.
     EXPECT_TRUE(IsScenarioName("zone_link_hold"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));
