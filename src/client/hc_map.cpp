@@ -61,6 +61,22 @@ static inline void skip_bytes(char*& buf, const char* end, size_t bytes) {
 	buf += bytes;
 }
 
+// B1009 (GitLab #330): a count read from the file is trusted only once the
+// bytes it claims fit in what remains. Reserving on the count alone turned a
+// malicious 0x7FFFFFFF vert_count into a 25 GB std::vector reservation: it
+// threw std::bad_alloc out of Load() on a 15 GB host (gitlab-runner-1) and
+// only "passed" on the 31 GB hermes-ext because overcommit let the reserve
+// through until the reads ran off the buffer. Same failure path as the
+// readers: MapParseError, which Load() catches.
+static inline uint32_t bounded_count(uint32_t count, size_t bytes_each, const char* buf, const char* end,
+                                     const char* what) {
+	const size_t remain = end > buf ? static_cast<size_t>(end - buf) : 0;
+	if (bytes_each != 0 && static_cast<size_t>(count) > remain / bytes_each) {
+		throw MapParseError((std::string("map count exceeds the decompressed buffer: ") + what).c_str());
+	}
+	return count;
+}
+
 struct HCMap::impl {
 	RaycastMesh* rm;
 
@@ -225,6 +241,15 @@ bool HCMap::Load(const std::string& filename) {
 		// B941: flat float triples, moved into the raycast mesh (no copy).
 		std::vector<float> verts;
 		std::vector<uint32_t> indices;
+		// B1009: a V1 face is at least nine floats on disk; a face_count the
+		// file cannot hold is a malformed map, not a reservation.
+		if (file_size > 0 && static_cast<size_t>(face_count) > static_cast<size_t>(file_size) / (9 * sizeof(float))) {
+			LOG_ERROR(MOD_MAP, "V1 map face_count {} exceeds the file ({} bytes)", face_count, file_size);
+			fclose(f);
+			delete m_impl;
+			m_impl = nullptr;
+			return false;
+		}
 		verts.reserve(static_cast<size_t>(face_count) * 9);
 		indices.reserve(static_cast<size_t>(face_count) * 3);
 		for (uint32_t i = 0; i < face_count; ++i) {
@@ -364,9 +389,9 @@ bool HCMap::Load(const std::string& filename) {
 		// exactly the per-vertex transform the old per-triangle loop applied --
 		// so every query is bit-identical (tests/test_game_state_identity.cpp).
 		std::vector<float> verts;
-		verts.reserve(static_cast<size_t>(vert_count) * 3);
+		verts.reserve(static_cast<size_t>(bounded_count(vert_count, 3 * sizeof(float), buf, end, "vert_count")) * 3);
 		std::vector<uint32_t> indices;
-		indices.reserve(ind_count);
+		indices.reserve(bounded_count(ind_count, sizeof(uint32_t), buf, end, "ind_count"));
 		auto vertexCount = [&verts]() { return static_cast<uint32_t>(verts.size() / 3); };
 		auto pushVertex = [&verts](float x, float y, float z) {
 			verts.push_back(x);
@@ -405,7 +430,7 @@ bool HCMap::Load(const std::string& filename) {
 			uint32_t model_vert_count = read_val<uint32_t>(buf, end);
 			uint32_t poly_count = read_val<uint32_t>(buf, end);
 
-			me->verts.reserve(model_vert_count);
+			me->verts.reserve(bounded_count(model_vert_count, 3 * sizeof(float), buf, end, "model_vert_count"));
 			for (uint32_t j = 0; j < model_vert_count; ++j) {
 				float x = read_val<float>(buf, end);
 				float y = read_val<float>(buf, end);
@@ -413,7 +438,7 @@ bool HCMap::Load(const std::string& filename) {
 				me->verts.emplace_back(x, y, z);
 			}
 
-			me->polys.reserve(poly_count);
+			me->polys.reserve(bounded_count(poly_count, 3 * sizeof(uint32_t), buf, end, "poly_count"));
 			for (uint32_t j = 0; j < poly_count; ++j) {
 				uint32_t v1 = read_val<uint32_t>(buf, end);
 				uint32_t v2 = read_val<uint32_t>(buf, end);
