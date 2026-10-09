@@ -65,6 +65,8 @@ const Entry kScenarios[] = {
     // B1005 (#324): /camp to character select, and /camp desktop.
     {"camp_to_charselect", &MakeCampToCharselectScenario},
     {"camp_desktop", &MakeCampDesktopScenario},
+    // B900 (#216): the single ranged attack, live. The packet half's lane leg.
+    {"ranged_single_shot", &MakeRangedSingleShotScenario},
 };
 
 }  // namespace

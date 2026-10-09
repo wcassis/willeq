@@ -570,6 +570,14 @@ ActionResult CommandProcessor::cmdAutofire(const std::string& args) {
     return m_dispatcher.toggleAutoFire();
 }
 
+// B900 (#216): /range (aliases /rangedattack, /fire). One shot. The weapon and
+// the wire skill are resolved in CombatManager::RangedAttack(); the command
+// layer only dispatches, exactly like /autofire above (no name argument --
+// the target is the current combat target).
+ActionResult CommandProcessor::cmdRange(const std::string& args) {
+    return m_dispatcher.rangedAttack();
+}
+
 ActionResult CommandProcessor::cmdAssist(const std::string& args) {
     // Ported from game's assist_cmd: explicit name wins (resolved here via
     // EntityManager, whose substring search matched the game-side

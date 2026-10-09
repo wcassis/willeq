@@ -251,6 +251,15 @@ void CommandProcessor::registerCombatCommands() {
         "autofire", {"af"}, "/autofire", "Toggle ranged auto-attack (archery/throwing)", "Combat", false
     }, [this](const std::string& args) { return cmdAutofire(args); });
 
+    // B900 (#216): the single ranged attack. /range is the era-correct name
+    // (official client's Range Attack button/key), with /rangedattack and
+    // /fire as aliases. Fires exactly one OP_CombatAbility with m_atk =
+    // slotRange; distinct from /autofire (the on/off autofire toggle, which
+    // Will keeps per the era call).
+    registerCommand({
+        "range", {"rangedattack", "fire"}, "/range", "Fire one ranged attack (bow/crossbow/throwing)", "Combat", false
+    }, [this](const std::string& args) { return cmdRange(args); });
+
     registerCommand({
         "assist", {"a"}, "/assist [target]", "Assist your target or specified player", "Combat", false
     }, [this](const std::string& args) { return cmdAssist(args); });

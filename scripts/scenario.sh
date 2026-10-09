@@ -343,10 +343,6 @@ fi
 # ---- 3. snapshot -----------------------------------------------------------
 snapshot "$BEFORE"
 say "snapshot taken ($(wc -l < "$BEFORE") rows)"
-if [ -n "$INVENTORY_CHARS" ]; then
-    eqemu_inventory_snapshot "$INV_BEFORE" "$INVENTORY_CHARS"
-    say "inventory snapshot taken ($(wc -l < "$INV_BEFORE") rows for ${INVENTORY_CHARS})"
-fi
 
 # ---- 3b. seed, AFTER the snapshots so the restore takes it out again --------
 # B630 (issue #48): the co-location seed is a LANE concern, not an operator
@@ -357,8 +353,26 @@ fi
 if [ "$SCENARIO" = "cast_interrupt_chain" ] && [ -z "$SEED_SQL" ]; then
     SEED_SQL="$REPO/scripts/scenario_configs/b630_seed.sql"
 fi
+# B900 (#216): the bow + arrow kit is DB-seeded (the client cannot seat the
+# ammo slot -- server bitmask bit 22 vs Titanium slot 21), and a shot that
+# consumes an arrow is an INVENTORY mutation, so Testchar's rows get the
+# snapshot/restore pair exactly like T494's equip lane.
+if [ "$SCENARIO" = "ranged_single_shot" ] && [ -z "$SEED_SQL" ]; then
+    SEED_SQL="$REPO/scripts/scenario_configs/ranged_single_shot_seed.sql"
+    [ -n "$INVENTORY_CHARS" ] || INVENTORY_CHARS="$(eqemu_sql "SELECT id FROM character_data WHERE name='Testchar';" | head -1)"
+fi
 if [ -n "$SEED_SQL" ]; then
     [ -f "$SEED_SQL" ] || { say "no --seed-sql file at $SEED_SQL"; exit 64; }
+    # A seed that inserts INVENTORY rows must have its characters' rows in the
+    # inventory snapshot BEFORE it lands -- a seed after the snapshot is
+    # invisible to the restore and survives the run (duplicate-key on the
+    # next seed, the kit left behind; measured 2026-10-08, lane 4). The
+    # character-data snapshot above already ran; the inventory one is the
+    # only half that must move.
+    if [ -n "$INVENTORY_CHARS" ]; then
+        eqemu_inventory_snapshot "$INV_BEFORE" "$INVENTORY_CHARS"
+        say "inventory snapshot taken ($(wc -l < "$INV_BEFORE") rows for ${INVENTORY_CHARS})"
+    fi
     eqemu_sql "$(cat "$SEED_SQL")" >/dev/null || { say "--seed-sql failed"; exit 65; }
     say "seeded from $SEED_SQL"
 fi

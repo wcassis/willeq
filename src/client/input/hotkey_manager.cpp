@@ -179,6 +179,7 @@ static const ActionNameMapping s_actionNameMappings[] = {
     {"ClearTarget", HotkeyAction::ClearTarget},
     {"Consider", HotkeyAction::Consider},
     {"Attack", HotkeyAction::Attack},
+    {"RangeAttack", HotkeyAction::RangeAttack},  // B900 (#216): unbound, owed
     {"ReplyToTell", HotkeyAction::ReplyToTell},
 
     // Player - Targeting

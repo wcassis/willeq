@@ -126,5 +126,11 @@ std::unique_ptr<IScenario> MakeCampToCharselectScenario(const ScenarioOptions& o
  *  logout reply (exit 0 through IScenario::OnClientStopped). */
 std::unique_ptr<IScenario> MakeCampDesktopScenario(const ScenarioOptions& options);
 
+// B900 (#216): the single ranged attack, live on the lane. GM-spawn a dummy,
+// target it, fire ONE /range and wait for the SERVER's hit-or-miss verdict
+// (a combat line naming the target); the lane's post-check asserts the DB
+// ammo count dropped by one. See scenario_ranged_single_shot.cpp.
+std::unique_ptr<IScenario> MakeRangedSingleShotScenario(const ScenarioOptions& options);
+
 }  // namespace scenario
 }  // namespace eqt

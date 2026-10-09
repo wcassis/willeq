@@ -174,10 +174,13 @@ TEST(CommandRegistrationOrderTest, GoldenIsPresentAndTheRightSize) {
     // 065-152 renumbered to 066-153.
     // +2 by B897 (#213): 140 `friends` and 141 `ignore` after 139 `friendswho`,
     // 140-153 renumbered to 142-155.
-    EXPECT_EQ(golden.size(), 155u)
+    // +1 by B900 (#216): entry 030 `range` INSERTED after 029 `autofire`
+    // (registerCombatCommands, the /range single-shot); 030-155 renumbered to
+    // 031-156.
+    EXPECT_EQ(golden.size(), 156u)
         << "142 commands at G03, +1 for T347's /cleartarget, +4 for B442's cursor "
            "commands, +5 for B895's tracking family, +1 for B899's /bag, +2 for "
-           "B897's /friends and /ignore; the golden has "
+           "B897's /friends and /ignore, +1 for B900's /range; the golden has "
         << golden.size();
     for (const auto& n : golden) {
         EXPECT_FALSE(n.empty());

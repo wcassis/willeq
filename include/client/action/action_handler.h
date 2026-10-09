@@ -89,6 +89,12 @@ public:
     virtual void shieldTarget(uint16_t targetId) = 0;
     virtual void taunt() = 0;
     virtual void toggleAutoFire() = 0;
+    // B900 (#216): the single ranged attack. Uses the current combat target;
+    // the handler resolves the weapon and the wire skill, and sends one
+    // OP_CombatAbility (slotRange) -- or refuses with eqstr 9150 and sends
+    // nothing when there is no range item. Distinct from toggleAutoFire
+    // (the on/off autofire toggle).
+    virtual void rangedAttack() = 0;
     // CombatManager's own m_enabled flag (Enable()/Disable()/IsEnabled()) --
     // NOT the same as auto-attack or setAutoHunting()'s m_auto_hunting_enabled,
     // both pre-existing and untouched. This is /combat on|off|<toggle>,
