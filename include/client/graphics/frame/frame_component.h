@@ -591,6 +591,18 @@ public:
 	bool runEntityBuildSlice();
 
 private:
+	// B893: fall damage. The renderer is the only thing that can see a fall --
+	// it integrates gravity (isJumping, set on Space) and snaps to ground on
+	// landing. processFrameInput() straddles updatePlayerMovement() to catch
+	// the airborne transition: wasAirborne_ flips on the rising edge (record
+	// the takeoff Z) and off on the landing edge (push a FallDamageIntent for
+	// the drop, which the game thread turns into OP_EnvDamage). A jump that
+	// lands back at its takeoff deals 0, so a normal standing jump never fires.
+	bool wasAirborne_ = false;
+	float fallTakeoffZ_ = 0.0f;
+	float lastFallTrackX_ = 0.0f;
+	float lastFallTrackY_ = 0.0f;
+
 	// B973: account the frame's build work (the [entity-build] window line,
 	// and [entity-build-frame] per frame under WILLEQ_ENTITY_BUILD_TRACE=1).
 	void finishEntityBuildFrame(float frameMs);

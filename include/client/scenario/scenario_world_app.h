@@ -98,6 +98,10 @@ public:
     long long CharacterListGeneration() const override;
     bool EnterWorldAs(const std::string& name) override;
 
+    // B893 (fall_damage): the fall's live observable and its driver.
+    long long PlayerHP() const override;
+    bool SimulateFall(float fallHeight) override;
+
     void SendCommand(const std::string& rawLine) override;
     void Note(const std::string& line) override;
 

@@ -358,6 +358,7 @@ private:
 	// has no generic fallback: a new alternative without a handler here is a
 	// COMPILE ERROR.
 	void onPlayerPositionChanged(const eqt::events::PlayerPositionChanged& i);
+	void onFallDamageIntent(const eqt::events::FallDamageIntent& i);
 	void onPlayerModelGeometryChanged(const eqt::events::PlayerModelGeometryChanged& i);
 	void onTargetIntent(const eqt::events::TargetIntent& i);
 	void onChatSubmitIntent(const eqt::events::ChatSubmitIntent& i);

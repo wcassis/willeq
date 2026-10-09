@@ -142,12 +142,15 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // create_character + 5 UIGAP-live2 legs (pinned by name in
     // tests/test_scenario_ui_legs.cpp) + 1 B925 (issue #244/#258) zone-link hold
     // + B1005's camp pair (tests/test_camp.cpp) + B892's levitate_applies
-    // (tests/test_levitation.cpp) + B900's ranged_single_shot (#216, this file).
-    EXPECT_EQ(names.size(), 34u);
+    // (tests/test_levitation.cpp) + B893's fall_damage + B900's
+    // ranged_single_shot (#216, this file).
+    EXPECT_EQ(names.size(), 35u);
     EXPECT_TRUE(IsScenarioName("camp_to_charselect"));
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
     EXPECT_TRUE(IsScenarioName("create_character"));
     EXPECT_TRUE(IsScenarioName("zone_in"));
+    // B893 (#209): fall damage.
+    EXPECT_TRUE(IsScenarioName("fall_damage"));
     // B925: the single-client zone-link hold.
     EXPECT_TRUE(IsScenarioName("zone_link_hold"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));

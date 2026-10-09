@@ -124,6 +124,7 @@ ADD_EXECUTABLE(test_scenario_state_machines
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_create_character.cpp  # B888
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_trade.cpp  # UIGAP-live2
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_camp.cpp  # B1005
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_fall_damage.cpp  # B893
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ranged_single_shot.cpp  # B900
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_state_machines PRIVATE ${CMAKE_SOURCE_DIR}/include)
@@ -148,6 +149,7 @@ ADD_EXECUTABLE(test_scenario_ui_legs
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_create_character.cpp  # B888
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ui_trade.cpp  # UIGAP-live2
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_camp.cpp  # B1005
+    ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_fall_damage.cpp  # B893
     ${CMAKE_SOURCE_DIR}/src/client/scenario/scenario_ranged_single_shot.cpp  # B900
 )
 TARGET_INCLUDE_DIRECTORIES(test_scenario_ui_legs PRIVATE ${CMAKE_SOURCE_DIR}/include)

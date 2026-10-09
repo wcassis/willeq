@@ -132,6 +132,18 @@ void eqt::bridge::BridgeComponent::onPlayerPositionChanged(const eqt::events::Pl
 	OnGraphicsMovement(i);
 }
 
+// B893: the renderer's free-fall landing. Runs on the game thread (the intent
+// drain), so calling the component directly is thread-safe -- the same thread
+// that owns MovementComponent is the one sending. The height is already the
+// peak-to-ground drop the renderer measured; SendFallDamage turns it into the
+// damage the table gives (0 for a safe-height step, which it does not send).
+void eqt::bridge::BridgeComponent::onFallDamageIntent(const eqt::events::FallDamageIntent& i) {
+	if (!ctx_.bridge) {
+		return;
+	}
+	ctx_.Movement().SendFallDamage(i.fallHeight);
+}
+
 // T311: the renderer's measured origin-to-feet distance for our own
 // model. One store (PlayerState), no event — nothing downstream of
 // the game thread consumes it; it exists so the packet edges can
@@ -1081,6 +1093,7 @@ void eqt::bridge::BridgeComponent::ProcessBridgeIntents() {
 	for (const auto& intent : intents) {
 		std::visit(overloaded{
 			[this](const eqt::events::PlayerPositionChanged& i) { onPlayerPositionChanged(i); },
+			[this](const eqt::events::FallDamageIntent& i) { onFallDamageIntent(i); },
 			[this](const eqt::events::PlayerModelGeometryChanged& i) { onPlayerModelGeometryChanged(i); },
 			[this](const eqt::events::TargetIntent& i) { onTargetIntent(i); },
 			[this](const eqt::events::ChatSubmitIntent& i) { onChatSubmitIntent(i); },

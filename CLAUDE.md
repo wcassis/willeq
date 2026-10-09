@@ -737,7 +737,7 @@ Audio updates                       Zone load completion detection
 - **Event types** (`include/client/state/event_types.h`; the `GameEvent` variant
   and its payload headers are `event_bus.h` + `event_payloads_*.h`)
   — 107 event types covering all game state changes
-- **Intent types** (`include/client/events/renderer_intents.h`) — 48 intent
+- **Intent types** (`include/client/events/renderer_intents.h`) — 49 intent
   structs in the `RendererIntent` variant, pinned by `test_reachability_sweep`
 
 **Key separation**: EverQuest communicates with the renderer only through the

@@ -2,6 +2,7 @@
 
 #include "client/application.h"
 #include "client/eq.h"
+#include "client/movement/movement_component.h"
 #include "client/spell/buff_manager.h"
 #include "client/state/game_state.h"
 #include "common/logging.h"
@@ -123,6 +124,20 @@ void ApplicationScenarioWorld::SendCommand(const std::string& rawLine) {
     // The same unified dispatch --script and piped stdin use (T29), so a
     // scenario can never reach a command a human operator could not.
     app_.DispatchSlashCommand(rawLine);
+}
+
+long long ApplicationScenarioWorld::PlayerHP() const {
+    return static_cast<long long>(client_.GetGameState().player().curHP());
+}
+
+bool ApplicationScenarioWorld::SimulateFall(float fallHeight) {
+    // Game thread only (the automation callback runs here), so calling the
+    // component directly is thread-safe: the same thread that owns
+    // MovementComponent is the one sending. This drives the client's OWN
+    // fall-damage sender against a synthetic height -- the headless scenario
+    // has no renderer free-fall integrator to produce a real drop.
+    client_.Movement().SendFallDamage(fallHeight);
+    return true;
 }
 
 void ApplicationScenarioWorld::Note(const std::string& line) {
