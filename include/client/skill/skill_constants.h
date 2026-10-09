@@ -25,6 +25,16 @@ static constexpr uint8_t kSkillBindWound = 9;
 static constexpr uint8_t kSkillTracking  = 53;
 static constexpr uint8_t kSkillTaunt     = 73;
 
+// B900 (#216): the wire skill ids OP_CombatAbility carries on a ranged attack.
+// eqemu common/skills.h: SkillArchery = 7, SkillThrowing = 51. The server
+// routes the ranged path on these (zone/special_attacks.cpp:376-397):
+// m_atk == slotRange AND m_skill in {7, 51}. They are the SKILL ids the wire
+// carries, not the weapon-skill-type ids that ItemInstance::skillType holds
+// (those are the ItemType enum: kItemTypeBow/LargeThrowing/SmallThrowing in
+// skill_packet_bodies.h) -- two different enums that happen to overlap at 7.
+static constexpr uint8_t kSkillArchery   = 7;
+static constexpr uint8_t kSkillThrowing  = 51;
+
 // ============================================================================
 // Skill Categories
 // ============================================================================

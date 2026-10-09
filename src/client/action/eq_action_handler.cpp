@@ -399,6 +399,17 @@ void EqActionHandler::toggleAutoFire() {
     }
 }
 
+// B900 (#216): /range (and its aliases) fire one ranged shot. The weapon/skill
+// resolution and the OP_CombatAbility(slotRange) send live in
+// CombatManager::RangedAttack(), which prints the official eqstr 9150 refusal
+// itself when there is no range item. No target here: the combat manager
+// resolves the current target, and a no-target shot is a clean no-op.
+void EqActionHandler::rangedAttack() {
+    auto* combat = getCombatManager();
+    if (!combat) return;
+    combat->RangedAttack();
+}
+
 // enableCombatManager()/disableCombatManager()/toggleCombatManager() wrap
 // CombatManager's own m_enabled flag (IsEnabled()/Enable()/Disable()) --
 // NOT the same flag as auto-attack (above) or setAutoHunting() (below,

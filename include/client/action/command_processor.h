@@ -364,6 +364,7 @@ private:
     // T156: /useskill — the ONLY scriptable route to SkillManager::activateSkill.
     ActionResult cmdUseSkill(const std::string& args);
     ActionResult cmdAutofire(const std::string& args);
+    ActionResult cmdRange(const std::string& args);
     ActionResult cmdAssist(const std::string& args);
     ActionResult cmdShield(const std::string& args);
     ActionResult cmdDuel(const std::string& args);

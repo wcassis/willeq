@@ -86,6 +86,12 @@ void InputActionBridge::processDiscreteActions() {
         reportAction("Attack", m_dispatcher.enableAutoAttack());
     }
 
+    // B900 (#216): one ranged shot. The dispatcher gates zone-connection; the
+    // combat manager does the no-target / no-range-weapon handling.
+    if (m_input->consumeAction(input::InputAction::RangeAttack)) {
+        reportAction("RangeAttack", m_dispatcher.rangedAttack());
+    }
+
     if (m_input->consumeAction(input::InputAction::ClearTarget)) {
         reportAction("ClearTarget", m_dispatcher.clearTarget());
     }

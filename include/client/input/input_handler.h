@@ -28,6 +28,7 @@ enum class InputAction {
     // Combat
     ToggleAutoAttack,
     Attack,             // Initiate attack on target (distinct from toggle)
+    RangeAttack,        // B900 (#216): one ranged shot (bow/crossbow/throwing)
     ClearTarget,
     Consider,           // Consider target (sends server packet)
     Hail,
