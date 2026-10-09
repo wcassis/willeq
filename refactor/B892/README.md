@@ -63,16 +63,23 @@ spells where id in (261,970,288)` — the DB-gated tests assert the same rows.)
    `ApplicationScenarioWorld` from the `MovementComponent`'s stored state). A
    stale self flymode without the buff, and a preexisting buff, are not landings.
 
-## The two motion numbers — [assumed]
+## The two motion numbers — [measured]
 
-`kLevitationHoverHeight` (1.5 units) and `kLevitationDescentRate` (10.0 units/s)
-live in ONE table, `include/client/spell/levitation.h`. **Both are [assumed]**:
-they are the classic client's behaviour as observed (hover roughly a foot off
-the ground, a slow roughly-constant descent off a ledge), and no Z trace has
-been recorded for them yet. They are the smell the process rules forbid, so they
-are marked [assumed] here and in the header, not [measured]. The oracle capture
-(acceptance criterion 3) is what re-points them to [measured] — see "Not
-verified / left open".
+`kLevitationHoverHeight` and `kLevitationDescentRate` live in ONE table,
+`include/client/spell/levitation.h`. **Both are [measured]** by the lane-1
+oracle capture (criterion 3, below) and carry the measured value with the
+method in the header comment:
+
+- **`kLevitationHoverHeight = 1.5f`** — the hover LINE above the floor (feet).
+  The classic client's self-levitation does not sit at a fixed height; it
+  **bobs** about the line (C→S z: feet 1.458 low .. 4.556 high, period ~4.4 s).
+  fable's renderer does not animate the bob (it pins the feet at the line and
+  descends to it), so the line it holds is the bob's **low** — the point the
+  classic client re-anchors the feet at every cycle — **1.458 ≈ 1.5**.
+- **`kLevitationDescentRate = 1.3f`** — descent (units/s) of the feet when they
+  are above the hover line. The capture's 33 high→low levitation legs descend
+  at a median **1.294 u/s** (range 0.697–1.487; the spread is 1 Hz wire
+  sampling jitter on a ~2.6 u drop). The old assumed 10.0 u/s was ~8× too fast.
 
 ## Offline evidence
 
@@ -143,40 +150,84 @@ buff through the same OP_Action path a landed gem cast would. This is the card's
 own recipe ("have a GM cast Levitate"). Full client log:
 `/home/user/kb-evidence/b892-levitation/scenario_lane1_client_gmcast.log`.
 
-## Not verified / left open
+## Criterion 3 — the lane-1 oracle capture landed (2026-10-09)
 
-- **The two motion numbers are [assumed]** — hover height
-  (`kLevitationHoverHeight = 1.5`) and descent rate
-  (`kLevitationDescentRate = 10.0` u/s), in
-  `include/client/spell/levitation.h`. They are the classic client's behaviour
-  as observed (hover ~a foot off the ground, a slow roughly-constant descent);
-  no Z trace has been recorded for them yet, so they are marked [assumed] here
-  and in the header — not [measured], never invented.
-- **Criterion 3 (oracle leg)** — **not done.** The lane-1 oracle capture that
-  would re-point the numbers to [measured] (official client in-world as
-  Testchar, GM-cast Levitate, a hover still + a walk-off-a-drop video, hover
-  height vs model height, fall time) was **not completed**: the official client
-  under Wine/Xvfb/llvmpipe on the oracle VM (172.16.200.91) could not be driven
-  reliably through login — the SOE login form dropped the password keystrokes
-  under slow llvmpipe and the client self-exited to the title screen on each
-  attempt (a known gotcha in `~/src/willeq-notes/wine-oracle.md`), and the dev
-  seat's window ran out before the capture landed. What blocked it: the
-  password field was empty at submit in every full-drive attempt; title-screen
-  LOGIN button and field geometry were re-measured but the login submit itself
-  is the flaky step. No hover still, no drop video, no hover-height-vs-model or
-  fall-time measurement, no willeq side-by-side. To finish it: the oracle recipe
-  is `~/src/willeq-notes/wine-oracle.md` (lane 1: `export EQEMU_LANE=1`, oracle
-  VM 172.16.200.91, GM-cast via the say-line `#castspell 261 1` once in world),
-  then re-point the two constants in `levitation.h` and flip this [assumed] to
-  [measured] with the frames cited.
-- **Other levitators drawn hovering.** The server DOES send other entities their
-  flymode, and the renderer already places each entity at the server-sent Z
-  (no ground-snap), so a flymode-2 peer already renders at its server Z. What is
-  NOT done is drawing the levitation *animation/bob* for them (the pre-existing
-  `// TODO: Graphics rendering could show levitation animation` at
-  `entities_component.cpp`) — that is the "draw hovering" half of the issue and is
-  left open, matching the scope the issue's parallel legs assign to a separate
-  lane (Leg E).
+The official client, in-world as Testchar (GM=1), East Freeport (freporte,
+zone_id 10) on the lane-1 oracle VM (172.16.200.91, Wine/Xvfb/llvmpipe,
+`LP_NUM_THREADS=1`), GM-cast `#castspell 261 300` via the say-line. The buff
+landed (the Effects window shows the Levitate icon —
+`refactor/B892/evidence/b892_hover_bufficon.png`) and the client's own
+computed position streamed on the C→S `OP_ClientUpdate` wire.
+
+**Method** (same rig as B893): eqemu packet logging (categories 83/84,
+`log_to_file=3`) dumps every C→S `OP_ClientUpdate` to the freporte zone log;
+the 48-byte `PlayerPositionUpdateClient_Struct` decodes `z_pos` at offset +26.
+The player stood still at (x=20, y=5.0) before the buff (593 constant C→S
+samples, all at z=−38.2157, 05:10:17..05:21:40), giving the standing floor
+**−38.2157** — byte-identical to B893's floor at the same spot. The
+`#castspell 261 300` say-line GM-cast applied the buff in the 05:20:48 burst of
+S→C `OP_Action` packets (the Effects window shows the Levitate icon —
+`b892_hover_bufficon.png`), and the player reached (x=20, y=3.1554) at 05:21:41
+already levitating: the C→S z there bobbed from the first sample. The capture
+carries "no longer levitate" `OP_SpawnAppearance` pairs at 05:23:56 and
+05:33:49 (a GM expiry / re-cast cycle); the analysis windows below
+(05:34:10+ / 05:35:30+) sit after the 05:33:49 event, inside a levitation span
+in which the buff icon was up and the bob's low had settled near 1.458 u. The
+two spots are ~1.85 u apart in y on flat East Freeport ground, so the y=5.0
+floor is the reference for the bob-spot heights (a flat-ground assumption the
+constant y=5.0 samples make as explicit as the wire can). Evidence: `refactor/B892/evidence/` —
+`b892_levitate_wirecap_freporte.log` (the raw C→S dump, the capture window),
+`b892_levitate_wirecap.decoded.txt` (one `ts seq x y z` line per packet),
+`b892_verify_decode.py` (the independent raw decode: confirms the decoded file
+is byte-identical to the raw log, 1494/1494 records, and recomputes every
+cited number — the strongest artifact in this directory),
+`b892_analyze_histo.py` + `b892_analyze_descent.py` (the two analyses), and the
+buff-icon still.
+
+**The two numbers, read off that wire:**
+
+| quantity | value | source |
+|---|---|---|
+| standing floor (feet, at y=5.0) | −38.2157 | 593 constant C→S samples, 05:10:17..05:21:40 |
+| hover height, low of bob | 1.458 u | min of C→S z − floor over the 75-sample resting window (05:35:30+) |
+| hover height, mean of bob | 2.989 u | mean / median 2.939 of the same window |
+| hover height, high of bob | 4.556 u | max of C→S z − floor |
+| bob period | ~4.4 s | 17 upward crossings over the 75-s window |
+| **descent rate (high→low legs)** | **1.294 u/s median** | 33 legs over the 149-sample window (05:34:10+), range 0.697–1.487 (1 Hz dt jitter) |
+
+**`kLevitationHoverHeight` = 1.5** (the bob's LOW — the point the classic
+client re-anchors the feet at each cycle; fable's renderer pins the feet at
+the line between bobs). **`kLevitationDescentRate` = 1.3** (the median
+high→low leg velocity; the old assumed 10.0 was ~8× too fast). Both constants
+carry `[measured]` in `include/client/spell/levitation.h` with this method in
+the comment; the levitation clamp test reads the constants symbolically (no
+literal), so it is value-agnostic and re-verifies the new numbers.
+
+The login flake that blocked the 2026-10-08 attempt (password keystrokes
+dropped under slow llvmpipe) did not recur: `LP_NUM_THREADS=1` was set and the
+in-world GM commands were driven by **clipboard paste + a vision check of the
+say-line before each submit** (the `#` keysym alone kept getting mangled to
+other characters, so the whole command went through `xclip` → `ctrl+v`,
+verified by OCR/vision of the input field, then Return).
+
+## Left open
+
+- **Other levitators drawn hovering.** The server DOES send other entities
+  their flymode, and the renderer already places each entity at the server-sent
+  Z (no ground-snap), so a flymode-2 peer already renders at its server Z.
+  What is NOT done is drawing the levitation *animation/bob* for them (the
+  pre-existing `// TODO: Graphics rendering could show levitation animation` at
+  `entities_component.cpp`) — that is the "draw hovering" half of the issue and
+  is left open, matching the scope the issue's parallel legs assign to a
+  separate lane (Leg E). **Out of scope for this card** (the operator's
+  2026-10-09 dispatch names it OUT of scope explicitly).
+- **The levitation bob is not animated by fable's renderer.** The classic
+  client bobs ~4.4 s about the hover line (feet 1.458 .. 4.556); fable's
+  `ClampLevitationFeet()` pins the feet at the hover line between any motion,
+  so a levitating player in fable sits still at 1.5 u rather than bobbing.
+  That is the same "animation" gap as the other-levitator case above and is
+  left open with it (a bob would be a renderer-side animation, not a change to
+  either of the two measured constants).
 
 ## B1011 (2026-10-09): the swim event's second writer, removed
 
