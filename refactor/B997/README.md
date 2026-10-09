@@ -122,40 +122,45 @@ principle — by cutting the cuttable pool, not the floor.
 whose BOs are large because the generations are large, and whose draw count is
 the u16 65 535-vertex index constraint, not a reducible split). So the relevant
 denominator for a scene-graph batch is the generic-d3c draw count (scene_graph
-+ entity_body), not the total 3D client-array count. A batch that collapses the
-residual to **D draws (one per distinct material)** removes `(residual − D)`
-draws/frame, cutting `D_cut × (pool/draws)` MiB from the generic pool. The
-post-batch residual is the distinct-material count, not 2 — and the census
-`client.log` door records give it **measured**, not assumed:
++ entity_body), not the total 3D client-array count. The **scene-graph batch**
+removes only the **scene_graph** draws (doors + equipment + overlays from
+`smgr->drawAll()`), collapsing that residual to **D_sg draws (one per distinct
+material)**; it does *not* remove the `entity_body` crowd-model draws (q2 13/f
+— a separate animated path) or the `zone` draws (u16-constrained). The pool cut
+is `cut × (pool / generic_draws)`, where `generic_draws = scene_graph +
+entity_body`. The census `client.log` door records give the distinct-model
+count **measured**, not assumed (steady per-frame, aligned to `point=steady_60s`):
 
-| zone | generic pool | generic draws (sg + ent) | measured distinct models |
+| zone | generic pool | steady draws (sg + ent) | measured distinct models |
 |---|---|---|---|
-| qeynos2 | 9.28 MiB | 55 (sg 42 + ent 13) | **5** doors/objects: DOOR1×48, BARREL3×16, DOOR2×4, TREE6, TREE1 |
-| gfaydark | 10.07 MiB | 120 (sg 120 + ent 0) | **3** door models: FAYDOOR×92, FAYDOOR2A×22, FAYDOOR2×22 (+ trees for the 2 829 placed objects) |
+| qeynos2 | 9.28 MiB | 54 (sg 41 + ent 13) | **5** doors/objects: DOOR1×48, BARREL3×16, DOOR2×4, TREE1, TREE6 |
+| gfaydark | 10.07 MiB | 120 (sg 120 + ent 0) | **3** door models: FAYDOOR×92, FAYDOOR2A×22, FAYDOOR2×22 (+ trees) |
 
-Varying the post-batch residual D across the plausible range (door models
-measured above + equipment/overlay materials not yet enumerated):
+Varying D_sg (post-batch distinct scene-graph materials = door models measured
+above + equipment/overlay materials not yet enumerated):
 
-| zone | D→unnamed (MiB) | | | | | | |
-|---|---|---|---|---|---|---|---|
-| | D=4 | D=7 | D=10 | D=12 | D=15 | D=20 |
-| qeynos2 | **9.48** ✅ | **9.98** ✅ | 10.49 ❌ | 10.83 ❌ | 11.33 ❌ | 12.18 ❌ |
-| gfaydark | 8.96 ✅ | 9.21 ✅ | 9.46 ✅ | 9.63 ✅ | 9.88 ✅ | 10.30 ❌ |
+| zone | D_sg → unnamed (MiB) | | | | | |
+|---|---|---|---|---|---|---|
+| | D_sg=3 | D_sg=5 | D_sg=7 | D_sg=10 | D_sg=12 | D_sg=15 |
+| qeynos2 | **9.36** ✅ | **9.70** ✅ | 10.05 ❌ | 10.56 ❌ | 10.91 ❌ | 11.42 ❌ |
+| gfaydark | 8.87 ✅ | 9.04 ✅ | 9.21 ✅ | 9.46 ✅ | 9.63 ✅ | 9.88 ✅ |
 
 **Verdict.** **gfaydark is comfortably reachable** — the residual is 120/f and
-collapses to ~15 or fewer draws with margin (9.88 at D=15). **qeynos2 is
-reachable but thin** — it needs the residual to collapse to **≤ ~7 draws**
-(9.98 at D=7), and the measured 5 door/object models already put it there; the
-only thing that could push it over is if equipment + target overlays add ≥ 5
-distinct materials of their own. The irreducible floor after any batch is the
-Mesa floor (5.28 / 3.79 MiB) + the `draw:zone` + `vbo:nametags` pools
+collapses to ~15 or fewer draws with margin (9.88 at D_sg=15). **qeynos2 is
+reachable only if the residual collapses to ≤ 5 draws** (9.70 at D_sg=5;
+10.05, *over*, at D_sg=7) — and the measured 5 in-graph door/object models put
+it exactly at the edge, so **any equipment or target-overlay material that adds
+a distinct draw pushes q2 over 10 MiB**. The irreducible floor after any batch
+is the Mesa floor (5.28 / 3.79 MiB) + the `draw:zone` + `vbo:nametags` pools
 (1.33 / 4.83 MiB, named-or-u16-constrained, not batchable here) — already under
-10 MiB. The `entity_body` crowd models on qeynos2 (13/d) are a separate site a
+10 MiB. The `entity_body` crowd models on qeynos2 (13/f) are a separate site a
 door/object batch does not touch; on gfaydark the crowd is all impostor pages
 so the scene-graph batch carries the whole cut. **The exact post-batch number
-must come from the Pi A/B, not this linear model** — the census proves the lever
-reaches the target on both zones, and names the one open variable (q2's
-equipment/overlay material count) that a built+measured batch settles.
+must come from the Pi A/B, not this linear model** — the census shows the lever
+reaches the target on gfaydark with margin and on qeynos2 only in the knife-edge
+case, and names the one open variable (q2's equipment/overlay material count,
+and whether the 13/f entity crowd also needs batching) that a built+measured
+batch settles.
 
 ### What splits the scene-graph residual (the step-3 target)
 
