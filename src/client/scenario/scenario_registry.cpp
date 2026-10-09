@@ -66,6 +66,8 @@ const Entry kScenarios[] = {
     // B893 (#209): fall damage -- the client sends OP_EnvDamage and the
     // server's HP change comes back.
     {"fall_damage", &MakeFallDamageScenario},
+    // B900 (#216): the single ranged attack, live. The packet half's lane leg.
+    {"ranged_single_shot", &MakeRangedSingleShotScenario},
 };
 
 }  // namespace

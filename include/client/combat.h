@@ -225,6 +225,15 @@ public:
 	void UseAbility(uint32_t ability_id, uint16_t target_id = 0);
 	void Taunt(uint16_t target_id = 0);
 
+	// B900 (#216): the single ranged attack -- one OP_CombatAbility shot with
+	// m_atk = slotRange and m_skill picked from the range-slot item's ItemType
+	// (bow -> Archery, throwing -> Throwing), shared by /range and the Range
+	// Attack key. Distinct from UseAbility (which hard-codes m_atk = 100 for
+	// the melee abilities) and from the auto-fire tick. Returns false (sending
+	// nothing) when there is no target or no ranged weapon; with no ranged
+	// weapon it also prints the official client's eqstr 9150 refusal.
+	bool RangedAttack();
+
 	// Situational awareness
 	void UpdateCombatStats(const CombatStats& stats);
 	bool ShouldFlee() const;

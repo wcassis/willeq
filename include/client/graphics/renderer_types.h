@@ -128,6 +128,7 @@ enum class RendererAction : uint8_t {
     // Player-mode actions
     ToggleAutorun, ToggleAutoAttack, Hail, Consider,
     Attack,                     // B905 (#225): Ctrl+Q -> InputAction::Attack
+    RangeAttack,                // B900 (#216): one ranged shot
 
     ToggleVendor, ToggleTrainer, ToggleCollision, ToggleCollisionDebug,
     ClearTarget, ToggleInventory, ToggleGroup, ToggleSkills,

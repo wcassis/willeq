@@ -115,6 +115,12 @@ void GraphicsInputHandler::updateFromEventReceiver() {
             case RA::Attack:
                 if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::Attack)] = true; }
                 break;
+            // B900 (#216): one ranged shot. Gated by chat focus like the other
+            // combat actions. Unbound by default; the Options Keys page can
+            // bind it.
+            case RA::RangeAttack:
+                if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::RangeAttack)] = true; }
+                break;
             case RA::Hail:
                 if (!chatFocused) { m_pendingActions[static_cast<size_t>(InputAction::Hail)] = true;
                     LOG_DEBUG(MOD_INPUT, "[INPUT-TRACE] GraphicsInputHandler: Hail -> pendingAction set");

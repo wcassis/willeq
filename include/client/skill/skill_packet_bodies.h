@@ -138,6 +138,15 @@ MakePickPocketBody(uint32_t to, uint32_t from, uint16_t myskill) {
 // ---------------------------------------------------------------------------
 inline constexpr uint8_t kItemTypePoison = 42;
 
+// B900 (#216): the ranged-weapon ItemType values, eqemu common/item_data.h
+// (same ItemType enum kItemTypePoison above; ItemInstance::skillType carries
+// it). The autofire/manual split keys off these (zone/client_process.cpp:345-
+// 380, zone/special_attacks.cpp:880-945): a bow -> Archery, a large or small
+// throwing item -> Throwing, anything else is not a ranged weapon.
+inline constexpr uint8_t kItemTypeBow           = 5;  // EQ::item::ItemTypeBow
+inline constexpr uint8_t kItemTypeLargeThrowing = 7;  // EQ::item::ItemTypeLargeThrowing
+inline constexpr uint8_t kItemTypeSmallThrowing = 19; // EQ::item::ItemTypeSmallThrowing
+
 } // namespace skill
 } // namespace EQ
 

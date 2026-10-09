@@ -7,7 +7,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 ## Input Layer (`include/client/input/`)
 
 **IInputHandler** (`input_handler.h`) — Abstract interface defining the input contract:
-- `InputAction` enum (**33** discrete one-shot actions plus a `Count` sentinel, re-counted T371): Quit, Screenshot, Jump, ToggleAutoAttack, TargetSelf, etc. J21's 40 is stale — T365 deleted `ToggleInventory`/`ToggleSkills`/`ToggleGroup` and T368 deleted `ToggleVendor`/`TogglePetWindow`/`ToggleTrainer`/`ToggleSpellbook` (board B090/B100), all seven having no consumer in `InputActionBridge::processDiscreteActions()`. `InputActionEnumTest.T368_NoConsumerlessUITogglesRemain` pins it; the UI toggles are renderer-side `RendererAction`s, a different enum
+- `InputAction` enum (**34** discrete one-shot actions plus a `Count` sentinel, re-counted T371): Quit, Screenshot, Jump, ToggleAutoAttack, TargetSelf, etc. J21's 40 is stale — T365 deleted `ToggleInventory`/`ToggleSkills`/`ToggleGroup` and T368 deleted `ToggleVendor`/`TogglePetWindow`/`ToggleTrainer`/`ToggleSpellbook` (board B090/B100), all seven having no consumer in `InputActionBridge::processDiscreteActions()`. `InputActionEnumTest.T368_NoConsumerlessUITogglesRemain` pins it; the UI toggles are renderer-side `RendererAction`s, a different enum
 - Continuous state (movement, mouse position) is polled at the point of
   use, on the thread that uses it -- there is deliberately no snapshot
   struct. T315 deleted `InputState`: it had no reader, and filling it
@@ -21,7 +21,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 - Handles movement keys, mouse input, text input, debug toggles
 
 **HotkeyManager** (`hotkey_manager.h`) — Configurable key binding system:
-- `HotkeyAction` enum (**94** actions plus a `Count` sentinel, re-counted UIGAP-small -- T471 read 102, T461 99, T415 95, T371 94; B905 (#225) DELETED eight Global actions that were bound and had no consumer (`ToggleUILock`, `SaveUILayout`, `ResetUIDefaults`, `ConfirmDialog`, `CancelDialog`, `SubmitInput`, `CancelInput`, `ChatAutocomplete`): none is on the oracle's Options > Keys pages and, Global, they shadowed Tab (CycleTargets), Escape and Return. `tests/test_hotkey_dispatch_census.cpp` presses every default AND shipped binding on a real `RendererEventReceiver` and fails on a shadowed binding or one with no consumer; the key table grows with every UI panel, T461 added the four camera-orbit actions and T471 `CameraRaise`/`CameraLower`, binding all six to the official Camera-page keys T466 measured) covering movement, toggles, targeting, interaction
+- `HotkeyAction` enum (**95** actions plus a `Count` sentinel, re-counted UIGAP-small -- T471 read 102, T461 99, T415 95, T371 94; B905 (#225) DELETED eight Global actions that were bound and had no consumer (`ToggleUILock`, `SaveUILayout`, `ResetUIDefaults`, `ConfirmDialog`, `CancelDialog`, `SubmitInput`, `CancelInput`, `ChatAutocomplete`): none is on the oracle's Options > Keys pages and, Global, they shadowed Tab (CycleTargets), Escape and Return. `tests/test_hotkey_dispatch_census.cpp` presses every default AND shipped binding on a real `RendererEventReceiver` and fails on a shadowed binding or one with no consumer; the key table grows with every UI panel, T461 added the four camera-orbit actions and T471 `CameraRaise`/`CameraLower`, binding all six to the official Camera-page keys T466 measured) covering movement, toggles, targeting, interaction
 - `HotkeyBinding` struct: key code + `ModifierFlags` (Ctrl/Shift/Alt) + action
 - `HotkeyMode` enum: Global (always active) vs Player (gameplay only)
 - Loads/saves from `config/hotkeys.json`, supports runtime overrides from `willeq.json`
@@ -37,7 +37,7 @@ Input flows through a four-layer pipeline: capture → hotkey resolution → act
 Implementation split across eight TUs in `src/client/action/` (J04, plus
 T268/T269/T280): `command_processor.cpp` holds the core (parse, dispatch,
 registry queries), `command_processor_registration.cpp` holds
-`registerBuiltinCommands()` and its **155** `registerCommand({…})` calls
+`registerBuiltinCommands()` and its **156** `registerCommand({…})` calls
 (T347 added `/cleartarget`, B899 `/bag`, B897 `/friends` and `/ignore`; `tests/goldens/command_registration_order_g03.txt`
 pins the count and the order — read the golden, not this line), and the
 handlers live in `command_processor_{social,spells_gm,world,bank,loot,train}.cpp`
