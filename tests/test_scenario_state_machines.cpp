@@ -144,7 +144,11 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // + B1005's camp pair (tests/test_camp.cpp) + B892's levitate_applies
     // (tests/test_levitation.cpp) + B894's forage_lands + B900's
     // ranged_single_shot (#216, this file).
-    EXPECT_EQ(names.size(), 34u);
+    // 33 pre-merge-base + B894's forage_lands + B900's ranged_single_shot.
+    // The two parents each bumped the count to 34 off the same base, so the
+    // merge is 35, not 34 -- git kept the identical 34 line as a clean
+    // (non-conflicting) merge, which is why this needs the hand.
+    EXPECT_EQ(names.size(), 35u);
     EXPECT_TRUE(IsScenarioName("camp_to_charselect"));
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
     EXPECT_TRUE(IsScenarioName("create_character"));
