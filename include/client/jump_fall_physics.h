@@ -5,16 +5,23 @@
 //
 // PROVENANCE OF THE NUMBERS (refactor/B893/README.md):
 //   The official-client arc (apex, duration) and the height->damage curve are
-//   MEASURED off the lane-2 oracle VM (official Titanium client over the wire):
-//     - apex: +3.05 world units above standing, from the mid-air OP_ClientUpdate
-//       Z(t) (logs/b893_jump_wirecap.decoded.txt, the 11:29:32 sample);
+//   taken off the lane-2 oracle VM (official Titanium client over the wire):
+//     - apex: [MEASURED LOWER BOUND] +3.05 world units above standing. Five
+//       jumps gave ONE mid-air OP_ClientUpdate each (four at an identical
+//       +2.509, one at +3.051; evidence/b893_jump_wirecap_1129.log, decoded in
+//       evidence/oracle_measurements.md). A 1-3 Hz wire samples a sub-second
+//       arc once, at no particular phase, so the true apex is AT OR ABOVE 3.05
+//       and is OWED from the committed video (B1011 review);
 //     - fall: the client COMPUTES the damage and sends OP_EnvDamage C->S (dmgtype
-//       0xFC/252); the server reads ed->damage verbatim. The measured curve is
-//       concave (5 damage at 28u, 91 at 68u) with a no-damage floor at ~18u; we
-//       implement it as a linear ramp from that floor (see refactor/B893/README.md
-//       for the full data and why linear is the model form).
-//   The arc DURATION is still [ASSUMED]: the wire carries position at ~1 Hz, which
-//   is too coarse to resolve a sub-second arc, so the 1.0 s is marked and owed.
+//       0xFC/252); the server reads ed->damage verbatim. The table below IS the
+//       measured points (no-damage floor at ~18u, 5 from 23u to 33u, then a
+//       concave rise to 91 at 68u), linearly interpolated between them -- the
+//       oracle's own numbers at every measured height, no formula assumed
+//       (B1011 replaced B893's 1.5/unit linear ramp, which gave 23 where the
+//       oracle gave 5). Measured on ONE character (level 60 GM, 2255 HP);
+//       whether the curve depends on level or HP is UNTESTED and owed.
+//   The arc DURATION is still [ASSUMED]: the wire cannot resolve a sub-second
+//   arc, so the 1.0 s is marked and owed.
 //   Terminal velocity: nothing clamps to it (no terminal-velocity term in the
 //   integrator) and the capture does not isolate it, so it stays [ASSUMED, OWED].
 //
@@ -42,10 +49,13 @@ namespace jumpfall {
 // --- The arc: one set of constants, one curve ---
 
 struct Arc {
-    // [MEASURED] units above startZ at t = duration/2. The lane-2 oracle's
-    // mid-air OP_ClientUpdate Z rose to -35.165 vs standing -38.2157 (the
-    // +3.05 sample, the max of five mid-air captures; the wire is ~1 Hz so this
-    // is the apex lower bound, logs/b893_jump_wirecap.decoded.txt).
+    // [MEASURED LOWER BOUND, apex OWED] units above startZ at t = duration/2.
+    // The lane-2 oracle's mid-air OP_ClientUpdate Z rose to -35.1651 vs
+    // standing -38.2157 (+3.051, the max of five single mid-air samples; the
+    // other four were an identical +2.509). The wire samples a sub-second arc
+    // once per jump at no particular phase, so the official client's apex is
+    // at or above this value -- not equal to it. The committed capture
+    // evidence/b893_jump_fall.mp4 is the measurement that resolves it (B1011).
     float peakHeight = 3.05f;
     // [ASSUMED, OWED] seconds, full arc (takeoff to landing). The wire carries
     // position at ~1 Hz, which cannot resolve a sub-second arc; the official
@@ -94,15 +104,8 @@ struct Fall {
     // [MEASURED] a fall shorter than this deals no damage. The lane-2 oracle's
     // 18.2-unit drop (goto z=-20 -> ground -38.2157) sent NO OP_EnvDamage; the
     // 23.2-unit drop (z=-15) sent 5. The floor is between 18.2 and 23.2, so 18.0
-    // is the measured no-damage bound (logs/b893_fall_series.txt).
+    // is the measured no-damage bound (evidence/oracle_measurements.md).
     float safeHeight = 18.0f;
-    // [MEASURED, mid/high range] damage grows ~1.5 per unit above the floor.
-    // The full measured curve is concave (5 at 28u, 91 at 68u; README for the
-    // table); 1.5/unit is the least-squares slope of the clean 48-68u range
-    // (30@48, 59@53, 81@58, 87@63, 91@68 -> slope ~1.5). The low end (28u/43u
-    // both reported 5) is below this ramp's line and is treated as a client
-    // rounding floor, not a model feature.
-    float damagePerUnitAboveSafe = 1.5f;
 };
 
 inline const Fall& fall() {
@@ -110,15 +113,65 @@ inline const Fall& fall() {
     return kFall;
 }
 
-// The client's height->damage table: 0 until the safe height, then linear.
-// Returns 0 for heights at or below safeHeight.
+// [MEASURED] the oracle's height -> damage points, lane 2, 2026-10-08
+// (evidence/oracle_measurements.md: #goto z, then the OP_EnvDamage the official
+// client sent; fall = goto_z - standing -38.2157). Every point is a wire
+// reading from ONE character (Testchar, level 60 GM, 2255 HP). The 48.2u point
+// (71, above the 53.2u point's 59) is the one #goto-jitter reading the series
+// could not reproduce and is left out; everything else is in. B1011: this
+// table replaced B893's 1.5-per-unit linear ramp, which disagreed with the
+// oracle by up to 4.6x in the 23-33u band (model 8..23, oracle 5).
+struct FallDamagePoint {
+    float height;
+    uint32_t damage;
+};
+inline constexpr FallDamagePoint kFallDamageTable[] = {
+    {18.2f, 0},   // no OP_EnvDamage sent
+    {23.2f, 5},
+    {28.2f, 5},
+    {33.2f, 5},
+    {43.2f, 30},
+    {53.2f, 59},
+    {58.2f, 81},
+    {63.2f, 87},
+    {68.2f, 91},
+};
+inline constexpr int kFallDamageTableSize =
+    static_cast<int>(sizeof(kFallDamageTable) / sizeof(kFallDamageTable[0]));
+
+// The client's height->damage curve: 0 at or below the safe height, the
+// oracle's value at every measured height, linear interpolation between
+// neighbouring points, and -- above the last measured point -- the last
+// segment's slope continued ([ASSUMED]: nothing above 68.2u was captured).
+// Rounded to nearest, like the oracle's integer damage.
 inline uint32_t damageForFallHeight(float fallHeight) {
     if (fallHeight <= fall().safeHeight) {
         return 0;
     }
-    const float excess = fallHeight - fall().safeHeight;
-    const double d = excess * fall().damagePerUnitAboveSafe;
-    return static_cast<uint32_t>(d + 0.5);  // round to nearest
+    const FallDamagePoint* t = kFallDamageTable;
+    const int n = kFallDamageTableSize;
+    // Below the first measured point: interpolate from (safeHeight, 0).
+    float x0 = fall().safeHeight, y0 = 0.0f;
+    float x1 = t[0].height, y1 = static_cast<float>(t[0].damage);
+    for (int i = 0; i < n; ++i) {
+        if (fallHeight <= t[i].height) {
+            x1 = t[i].height;
+            y1 = static_cast<float>(t[i].damage);
+            if (i > 0) {
+                x0 = t[i - 1].height;
+                y0 = static_cast<float>(t[i - 1].damage);
+            }
+            const float d = y0 + (y1 - y0) * (fallHeight - x0) / (x1 - x0);
+            return static_cast<uint32_t>(d + 0.5f);
+        }
+    }
+    // Above the table: extrapolate along the last segment.
+    x0 = t[n - 2].height;
+    y0 = static_cast<float>(t[n - 2].damage);
+    x1 = t[n - 1].height;
+    y1 = static_cast<float>(t[n - 1].damage);
+    const float d = y1 + (y1 - y0) * (fallHeight - x1) / (x1 - x0);
+    return static_cast<uint32_t>(d + 0.5f);
 }
 
 // --- The fall: takeoff tracking ---

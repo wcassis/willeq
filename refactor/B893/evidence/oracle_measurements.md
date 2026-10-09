@@ -32,10 +32,15 @@ C->S `OP_ClientUpdate` 48-byte, z at offset 26, B893_JSTART/B893_JEND window
   11:29:38  z=-35.7070  d=+2.51
   11:29:41  z=-35.7070  d=+2.51
 
-APEX = +3.05 units above standing (lower bound: the wire carries position at
-~1 Hz, so a jump is sampled once mid-air and the true peak is at or above this).
-~1 mid-air sample per jump = the arc is sub-second.
-[MEASURED] peakHeight = 3.05 (jump_fall_physics.h Arc::peakHeight)
+APEX = +3.05 units above standing -- a LOWER BOUND. B1011 re-decoded every
+C->S OP_ClientUpdate in the 11:29:20-46 window of the committed log: the
+client sends 1-3 per second, and each of the five jumps has exactly ONE
+mid-air sample -- 11:29:30 +2.509, 11:29:32 +3.051, 11:29:35 +2.509,
+11:29:38 +2.509, 11:29:41 +2.509 (every other packet is the standing z). Four
+identical +2.509 readings say the sample lands at an arbitrary, often
+repeated, phase of a sub-second arc, not at its peak; the true apex is at or
+above 3.051 and is OWED from b893_jump_fall.mp4.
+[MEASURED LOWER BOUND] peakHeight = 3.05 (jump_fall_physics.h Arc::peakHeight)
 [ASSUMED, OWED] durationS = 1.0 -- the wire cannot resolve a sub-second arc.
 
 ## Fall damage (height -> damage, client-computed, OP_EnvDamage C->S)
@@ -66,9 +71,9 @@ teleport jitter (the client integrates its own fall from its local position,
 which the server-side #goto snaps independently), not a model feature.
 
 [MEASURED] safeHeight = 18.0 (the 18.2u drop sent nothing; the floor is in 18.2-23.2)
-[MEASURED] damagePerUnitAboveSafe = 1.5 (mid/high range slope; the real curve
-         is concave, so a linear ramp overstates the low end and understates
-         the top -- documented in refactor/B893/README.md)
+[MEASURED] kFallDamageTable = the nine clean rows above, interpolated
+         (B1011; B893's 1.5/unit ramp gave 8..23 where this series reads 5).
+         ONE character only (level 60 GM, 2255 HP): level/HP dependence untested.
 
 ## Chat-line confirmation (the oracle displays the server's echo)
 

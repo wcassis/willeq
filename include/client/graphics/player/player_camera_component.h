@@ -60,7 +60,8 @@
 // setSwimDown() and setLevitating(): the first two were never the sole writers
 // of playerMovement_.swimUp/.swimDown -- the G06 input poll assigns both every
 // frame from the [ and ] bindings -- and the third duplicated
-// setSwimmingState()'s levitating parameter. resetVisionToBase() is no longer
+// setSwimmingState()'s then-levitating parameter (itself removed by B1011;
+// setLevitationState() is the one writer now). resetVisionToBase() is no longer
 // a dead end either: setVisionType() calls it (B046).
 //
 // The camera forwarders that stayed, each with a real caller on an
@@ -212,10 +213,10 @@ public:
 	// the global ambient immediately instead of at the next server time tick.
 	void refreshVisionLighting();
 	void setPlayerPosition(float x, float y, float z, float heading);
-	void setSwimmingState(bool swimming, float swimSpeed = 20.0f, bool levitating = false);
+	void setSwimmingState(bool swimming, float swimSpeed = 20.0f);
 	// B892 (GitLab #208): the LevitationChanged arm (irrlicht_bridge.cpp).
-	// playerMovement_.isLevitating is fed here now, not from the swimming
-	// event: that field's original job (suppressing the idle water sink in
+	// playerMovement_.isLevitating is fed here and ONLY here (B1011 removed
+	// the swimming event's write): that field's original job (suppressing the idle water sink in
 	// computeMovementVector) still reads it, but the HOVER it no longer does
 	// -- the game thread's LevitationChanged event is the writer the hover
 	// trusts, and the frame's per-frame carry (applyLevitationClamp, called
@@ -306,8 +307,8 @@ public:
 	// does for WASD. Adding an event-driven setter beside a per-frame poll
 	// could only lose the race: the poll overwrites it the next frame, and a
 	// key-DOWN action has nothing to clear the flag on key-up. setLevitating()
-	// was the same shape, duplicated by setSwimmingState()'s levitating
-	// parameter (live, irrlicht_bridge.cpp:629). None had a pushEvent.
+	// was the same shape, duplicated by setSwimmingState()'s then-levitating
+	// parameter (B1011 removed that parameter too). None had a pushEvent.
 	//
 	// resetVisionToBase() is no longer zero-caller either: setVisionType()
 	// calls it, so a recomputed buff set applies over the racial base

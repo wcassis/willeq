@@ -120,9 +120,9 @@ TEST_F(PlayerCameraComponentTest, SwimmingStateRoundTripsOnTheComponentsOwnMembe
     // (irrlicht_bridge.cpp:629) and isSwimming() is reachable only through the
     // component, because it had zero callers and got no forwarder.
     EXPECT_FALSE(renderer.PlayerCamera().isSwimming());
-    renderer.setSwimmingState(true, 20.0f, false);
+    renderer.setSwimmingState(true, 20.0f);
     EXPECT_TRUE(renderer.PlayerCamera().isSwimming());
-    renderer.setSwimmingState(false, 20.0f, false);
+    renderer.setSwimmingState(false, 20.0f);
     EXPECT_FALSE(renderer.PlayerCamera().isSwimming());
 }
 
@@ -170,7 +170,7 @@ TEST_F(PlayerCameraComponentTest, BridgeAndApplicationForwardersReachTheComponen
 
     // setCameraMode + getCameraModeString are covered above; this asserts the
     // remaining two forwarders dispatch into a non-null component.
-    renderer.setSwimmingState(true, 15.0f, true);
+    renderer.setSwimmingState(true, 15.0f);
     EXPECT_TRUE(renderer.PlayerCamera().isSwimming());
     renderer.setVisionType(VisionType::Infravision);
     EXPECT_EQ(renderer.getVisionType(), VisionType::Infravision);

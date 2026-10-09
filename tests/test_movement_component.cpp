@@ -99,7 +99,8 @@ TEST_F(MovementComponentTest, StopMovementIsReachableThroughTheAccessor) {
 // UpdateWaterState() computed `waterSurfaceZ` in its OnSurface arm and stashed
 // it in MovementComponent::m_water_surface_z on every water-state change. The
 // member had ZERO readers tree-wide, and the SwimmingStateChanged event the
-// same function publishes carries only {isSwimming, swimSpeed, isLevitating},
+// same function publishes carries only {isSwimming, swimSpeed} (B1011 dropped
+// its isLevitating),
 // so nothing downstream could observe the value either -- it was a write into
 // a hole. There is no runtime handle on a deleted member, so the net is a
 // source guard: reintroducing the field (or the local that fed it) without a
@@ -140,14 +141,14 @@ TEST(MovementWaterStateGuard, SwimmingEventCarriesNoSurfaceHeight) {
     eqt::state::SwimmingStateChangedData data;
     data.isSwimming = true;
     data.swimSpeed = 1.5f;
-    data.isLevitating = false;
     EXPECT_TRUE(data.isSwimming);
     EXPECT_FLOAT_EQ(data.swimSpeed, 1.5f);
-    EXPECT_FALSE(data.isLevitating);
 
     // The field list itself, read from the header rather than guessed from
-    // sizeof() (which padding makes a lie): exactly three members, none of
-    // them a height.
+    // sizeof() (which padding makes a lie): exactly two members, none of
+    // them a height. (B1011 removed the third, isLevitating: the swim event
+    // must never carry the player's levitation again -- the renderer's hover
+    // flag has one writer, LevitationChanged.)
     const std::string bus = ReadRepoFile("include/client/state/event_payloads_spell.h");
     const size_t at = bus.find("struct SwimmingStateChangedData {");
     ASSERT_NE(at, std::string::npos) << "payload struct renamed -- guard is vacuous";
@@ -157,9 +158,12 @@ TEST(MovementWaterStateGuard, SwimmingEventCarriesNoSurfaceHeight) {
     EXPECT_EQ(body.find("urface"), std::string::npos)
         << "the swim event gained a surface field; B029's deletion can be revisited "
            "-- with a reader this time. Body:\n" << body;
-    EXPECT_EQ(std::count(body.begin(), body.end(), ';'), 3)
-        << "the swim event's payload is no longer exactly {isSwimming, swimSpeed, "
-           "isLevitating}. Body:\n" << body;
+    EXPECT_EQ(std::count(body.begin(), body.end(), ';'), 2)
+        << "the swim event's payload is no longer exactly {isSwimming, swimSpeed}. "
+           "Body:\n" << body;
+    EXPECT_EQ(body.find("evitat"), std::string::npos)
+        << "the swim event carries levitation again; B1011 removed that because "
+           "it overwrote the hover flag on every water transition. Body:\n" << body;
 }
 
 }  // namespace

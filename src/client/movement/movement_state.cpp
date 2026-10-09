@@ -431,8 +431,8 @@ void eqt::movement::MovementComponent::SendFallDamage(float fallHeight)
 	// client_packet.cpp:6316, Handle_OP_EnvDamage: drops the packet in liquid,
 	// applies ReduceFallDamage, then for a GM prints the would-be damage and
 	// does 1 HP; for a non-GM applies it). So the whole curve lives in the one
-	// table (include/client/jump_fall_physics.h), and its values are [ASSUMED]
-	// until the lane-2 oracle capture (refactor/B893/README.md) measures them.
+	// table (include/client/jump_fall_physics.h): the measured lane-2 oracle
+	// points, interpolated (refactor/B893/evidence/oracle_measurements.md).
 	const uint32_t damage = eqt::jumpfall::damageForFallHeight(fallHeight);
 	if (damage == 0) {
 		return;  // at or below the table's safe height: a step down, no packet
@@ -699,7 +699,7 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 						// stashed in m_water_surface_z is gone. The member had
 						// ZERO readers tree-wide, and the SwimmingStateChanged
 						// event this function publishes carries only
-						// {isSwimming, swimSpeed, isLevitating} -- no surface
+						// {isSwimming, swimSpeed} (B1011 dropped isLevitating) -- no surface
 						// height -- so nothing downstream could see it either.
 						// Swim height has no consumer; add one before adding
 						// the estimate back.
@@ -722,16 +722,13 @@ void eqt::movement::MovementComponent::UpdateWaterState()
 
 		// Publish SwimmingStateChanged event to bridge (only on state change)
 		if (ctx_.bridge) {
+			// B1011: no levitation here. The flymode-derived flag this event
+			// used to carry overwrote the renderer's hover flag on every water
+			// transition; SyncLevitation() (below) is the one publisher.
 			float swimSpd = GetSwimSpeed();
-			bool lev = false;
-			auto me = ctx_.entities.find(ctx_.self.MySpawnId());
-			if (me != ctx_.entities.end() && me->second.flymode == 2) {
-				lev = true;
-			}
 			eqt::state::SwimmingStateChangedData data;
 			data.isSwimming = (newState != WaterState::NotInWater);
 			data.swimSpeed = swimSpd;
-			data.isLevitating = lev;
 			ctx_.bridge->pushEvent(eqt::state::GameEvent(
 				eqt::state::GameEventType::SwimmingStateChanged, std::move(data)));
 		}

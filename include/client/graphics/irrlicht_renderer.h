@@ -288,7 +288,7 @@ public:
     void setPlayerSpawnId(uint16_t spawnId) { playerCamera_->setPlayerSpawnId(spawnId); }
     void setVisionType(VisionType vision) { playerCamera_->setVisionType(vision); }
     void setPlayerPosition(float x, float y, float z, float heading) { playerCamera_->setPlayerPosition(x, y, z, heading); }
-    void setSwimmingState(bool swimming, float swimSpeed = 20.0f, bool levitating = false) { playerCamera_->setSwimmingState(swimming, swimSpeed, levitating); }
+    void setSwimmingState(bool swimming, float swimSpeed = 20.0f) { playerCamera_->setSwimmingState(swimming, swimSpeed); }
     // B892 (GitLab #208): caller irrlicht_bridge.cpp (the LevitationChanged arm).
     void setLevitationState(bool levitating) { playerCamera_->setLevitationState(levitating); }
     // B912: caller irrlicht_bridge.cpp (the PlayerMoved arm, PlayerMovedData::isMoving).

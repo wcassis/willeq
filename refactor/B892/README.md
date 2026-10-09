@@ -228,3 +228,16 @@ verified by OCR/vision of the input field, then Return).
   That is the same "animation" gap as the other-levitator case above and is
   left open with it (a bob would be a renderer-side animation, not a change to
   either of the two measured constants).
+
+## B1011 (2026-10-09): the swim event's second writer, removed
+
+The B892 review noted, as non-blocking, that `setSwimmingState()` still wrote
+`playerMovement_.isLevitating` from `SwimmingStateChangedData::isLevitating`.
+It was blocking: that field read the entity flymode -- which eqemu never sends
+for a self-cast, B892's own root cause -- so a self-levitating player who
+touched water had the hover flag cleared on entry AND on exit, and nothing
+restored it (`LevitationChanged` fires only on a buff flip). B1011 deleted the
+field, the publisher's flymode read and the parameter;
+`PlayerCameraComponent::setLevitationState()` is the flag's one writer, and
+`tests/test_movement_component.cpp::SwimmingEventCarriesNoSurfaceHeight` fails
+if the swim payload ever carries levitation again.
