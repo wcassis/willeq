@@ -18,6 +18,8 @@ const Entry kScenarios[] = {
     {"zone_link_hold", &MakeZoneLinkHoldScenario},
     {"two_client_survive", &MakeTwoClientSurviveScenario},
     {"cast_lands", &MakeCastLandsScenario},
+    // B894 (issue #210): the forage/fishing landing pair.
+    {"forage_lands", &MakeForageLandsScenario},
     // B892 (issue #208): cast Levitate on ourselves and wait for the
     // client's OWN levitation (the buff + the LevitationChanged state).
     {"levitate_applies", &MakeLevitateAppliesScenario},

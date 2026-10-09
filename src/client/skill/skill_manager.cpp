@@ -5,6 +5,7 @@
 #include "client/skill/skill_manager.h"
 #include "client/eq.h"
 #include "client/combat.h"
+#include "client/display_eqstr.h"
 #include "client/skill/skill_cap_table.h"
 #include "client/skill/skill_packet_bodies.h"
 #include "client/skill/behind_target.h"
@@ -12,14 +13,39 @@
 #include "client/inventory/inventory_constants.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
+#include "client/state/game_state.h"
 #include "common/logging.h"
 #include "common/net/packet.h"
 
 namespace EQ {
 
+using namespace eqt::inventory;  // slot ranges (EQUIPMENT_*, GENERAL_*), B894
+
 // ============================================================================
 // Constructor / Destructor
 // ============================================================================
+
+// B894 (GitLab #210): the two ItemType values eqemu's Client::CanFish /
+// Client::ForageItem branch on (common/item_data.h's ItemType enum,
+// ItemType1HSlash = 0): ItemTypeFishingPole is 36 and ItemTypeFishingBait is
+// 37. ItemInstance::skillType carries the full ItemType, parsed from
+// serialized item field 56 (titanium.cpp writes item->ItemType) -- the same
+// field findPoisonInventorySlot() already reads for kItemTypePoison (42).
+constexpr uint8_t kItemTypeFishingPole = 36;
+constexpr uint8_t kItemTypeFishingBait = 37;
+
+// The eqstr ids B894's precondition table names (eqstr_us.txt, verified
+// against data/willeq.db's eqstrings by tests/test_forage_fishing.cpp).
+namespace {
+constexpr uint32_t kEqstrForageAttacking  = 148;
+constexpr uint32_t kEqstrForageStanding   = 149;
+constexpr uint32_t kEqstrAlreadyFishing   = 156;
+constexpr uint32_t kEqstrFishingAttacking = 159;
+constexpr uint32_t kEqstrNoPole           = 160;
+constexpr uint32_t kEqstrPolePrimary      = 161;
+constexpr uint32_t kEqstrNoBait           = 162;
+constexpr uint32_t kEqstrStopFishing      = 165;
+}  // namespace
 
 SkillManager::SkillManager(EverQuest* eq)
     : m_eq(eq)
@@ -28,9 +54,187 @@ SkillManager::SkillManager(EverQuest* eq)
     for (uint8_t i = 0; i < EQT::MAX_PP_SKILL; ++i) {
         initializeSkillData(m_skills[i], i);
     }
+
+    // B894: moving or leaving Standing stops a live cast. The official client
+    // ends fishing the moment the player moves (eqstr 165); this client's
+    // movement integrator (movement_update.cpp) publishes PlayerMoved onto
+    // the game-state bus, and every position-state write publishes
+    // PlayerPositionStateChanged, so the gate listens there rather than
+    // reaching into the movement component.
+    if (m_eq) {
+        auto self = this;  // a non-const reference: the listener arms call
+        // non-const members (stopFishingOnMove / stopFishing), so a
+        // `const auto&` capture would fail at the call.
+        m_fishing_stop_handles.push_back(
+            m_eq->GetGameState().events().subscribe(
+                [self](const eqt::state::GameEvent& ev) {
+                    if (ev.type == eqt::state::GameEventType::PlayerMoved) {
+                        self->stopFishingOnMove(
+                            std::get<eqt::state::PlayerMovedData>(ev.data).isMoving);
+                    } else if (ev.type ==
+                               eqt::state::GameEventType::PlayerPositionStateChanged) {
+                        self->stopFishingOnPositionState(
+                            std::get<eqt::state::PlayerPositionStateChangedData>(ev.data)
+                                .state);
+                    }
+                }));
+    }
 }
 
-SkillManager::~SkillManager() = default;
+SkillManager::~SkillManager() {
+    // Unsubscribe before m_eq is destroyed; the bus outlives the manager.
+    if (m_eq) {
+        for (auto h : m_fishing_stop_handles) {
+            m_eq->GetGameState().events().unsubscribe(h);
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// B894: the preconditions the official client checks before OP_Forage (148/
+// 149) and OP_Fishing (156/159/160/161/162), in the order the shipped eqstr
+// ids run. Returns "" when the send may go out; the SHIPPED eqstr line
+// otherwise. The strings come from the one eqstr fetch (eqt::EqStrLine, over
+// the StringDb service) with a literal fallback only so a table that never
+// loaded degrades to the oracle's own wording rather than to silence --
+// tests fail on the fallback, so the shipped row is what the player sees.
+//
+// The ATTACKING witness is the client's own in-combat signal (the one
+// checkCombatRequirement uses since T317/T325): auto-attack or auto-fire on,
+// COMBAT_STATE_ENGAGED, or the selected target recently hit us.
+//
+// eqemu repeats a subset of these on the wire (forage.cpp CanFish: pole in
+// slotPrimary + pole type 36, bait type 37 somewhere worn/personal, water
+// check), so this gate is the local refusal the official client gives first,
+// not a replacement for the server.
+// ----------------------------------------------------------------------------
+bool SkillManager::isAttacking() const {
+    auto* combat = m_eq ? m_eq->GetCombatManager() : nullptr;
+    if (!combat) {
+        return false;
+    }
+    if (combat->IsAutoAttackEnabled() || combat->IsAutoFireEnabled()) {
+        return true;
+    }
+    if (combat->GetCombatState() == COMBAT_STATE_ENGAGED) {
+        return true;
+    }
+    return combat->HasTarget() && combat->IsRecentAttacker(combat->GetTargetId());
+}
+
+std::string SkillManager::forageOrFishingRefusal(uint8_t skill_id) const {
+    // The strings service over EverQuest's own m_string_db (K14); the one
+    // eqstr fetch, "" on a table miss.
+    auto fetch = [this](uint32_t id, const char* fallback) -> std::string {
+        auto* eq = m_eq;
+        if (!eq) {
+            return fallback;
+        }
+        const std::string line =
+            eqt::EqStrLine(eq->Strings().Db(), id);
+        return line.empty() ? std::string(fallback) : line;
+    };
+
+    switch (skill_id) {
+    case 27:  // Forage
+        if (isAttacking()) {
+            return fetch(kEqstrForageAttacking, "You can't try to forage while attacking.");
+        }
+        if (!m_eq ||
+            m_eq->GetGameState().player().positionState() !=
+                eqt::state::PositionState::Standing) {
+            return fetch(kEqstrForageStanding, "You must be standing to forage.");
+        }
+        return "";
+    case 55:  // Fishing
+    {
+        if (m_is_fishing) {
+            return fetch(kEqstrAlreadyFishing, "You are already fishing!");
+        }
+        if (isAttacking()) {
+            return fetch(kEqstrFishingAttacking, "You can't start fishing while attacking!");
+        }
+        auto* inv = m_eq ? m_eq->GetInventoryManager() : nullptr;
+        if (!inv) {
+            return fetch(kEqstrNoPole, "You can't fish without a fishing pole, go buy one.");
+        }
+        const auto* pole = inv->getItem(SLOT_PRIMARY);
+        if (!pole || pole->itemId == 0 ||
+            pole->skillType != kItemTypeFishingPole) {
+            // eqemu's CanFish wording: a pole SOMEWHERE gives 161 (equip it),
+            // none at all gives 160 (buy one). Same HasItemByUse scan shape,
+            // over the worn + general ranges this model tracks.
+            auto hasPoleAnywhere = [](const eqt::inventory::ItemInstance* i) {
+                return i && i->itemId != 0 && i->skillType == kItemTypeFishingPole;
+            };
+            bool anywhere = false;
+            for (int16_t slot = EQUIPMENT_BEGIN;
+                 slot <= EQUIPMENT_END && !anywhere; ++slot) {
+                anywhere = hasPoleAnywhere(inv->getItem(slot));
+            }
+            for (int16_t slot = GENERAL_BEGIN;
+                 slot <= GENERAL_END && !anywhere; ++slot) {
+                anywhere = hasPoleAnywhere(inv->getItem(slot));
+            }
+            return anywhere
+                ? fetch(kEqstrPolePrimary, "You need to put your fishing pole in your primary hand.")
+                : fetch(kEqstrNoPole, "You can't fish without a fishing pole, go buy one.");
+        }
+        auto hasBait = [](const eqt::inventory::ItemInstance* i) {
+            return i && i->itemId != 0 && i->skillType == kItemTypeFishingBait;
+        };
+        bool bait = false;
+        for (int16_t slot = EQUIPMENT_BEGIN; slot <= EQUIPMENT_END && !bait; ++slot) {
+            bait = hasBait(inv->getItem(slot));
+        }
+        for (int16_t slot = GENERAL_BEGIN; slot <= GENERAL_END && !bait; ++slot) {
+            bait = hasBait(inv->getItem(slot));
+        }
+        if (!bait) {
+            return fetch(kEqstrNoBait, "You can't fish without fishing bait, go buy some.");
+        }
+        return "";
+    }
+    default:
+        return "";
+    }
+}
+
+// A PlayerMoved arrives with isMoving true while the integrator is walking
+// the player and false on discrete relocations.
+void SkillManager::stopFishingOnMove(bool is_moving) {
+    if (!m_is_fishing || !m_eq) {
+        return;
+    }
+    if (!is_moving) {
+        return;  // a discrete relocation, not a walk
+    }
+    stopFishing();
+}
+
+void SkillManager::stopFishingOnPositionState(uint8_t state) {
+    // Sitting, crouching or dying all end a cast; Standing and FeignDeath do
+    // not (feign death is its own state the official client leaves a fisher
+    // in). Dead ends it -- there is no fisher left.
+    if (!m_is_fishing ||
+        state == static_cast<uint8_t>(eqt::state::PositionState::Standing) ||
+        state == static_cast<uint8_t>(eqt::state::PositionState::FeignDeath)) {
+        return;
+    }
+    stopFishing();
+}
+
+void SkillManager::stopFishing() {
+    m_is_fishing = false;
+    if (m_eq) {
+        // The one eqstr fetch, 165's line, with the oracle's own wording as
+        // the fallback (tests fail on the fallback).
+        const std::string line = eqt::EqStrLine(m_eq->Strings().Db(), kEqstrStopFishing);
+        m_eq->AddChatSystemMessage(
+            line.empty() ? std::string("You stop fishing and go on your way.") : line);
+    }
+    LOG_DEBUG(MOD_MAIN, "B894: fishing ended (eqstr 165)");
+}
 
 // ============================================================================
 // Initialization
@@ -212,6 +416,13 @@ bool SkillManager::canUseSkill(uint8_t skill_id) const {
         return false;
     }
 
+    // B894: the Forage/Fishing preconditions (attacking, standing, pole,
+    // primary, bait, already-fishing). Refuses with the SHIPPED eqstr line
+    // through getSkillUseError's paired branch; a refusal here sends nothing.
+    if (!forageOrFishingRefusal(skill_id).empty()) {
+        return false;
+    }
+
     // Check combat requirement
     if (!checkCombatRequirement(skill_id)) {
         return false;
@@ -270,6 +481,17 @@ std::string SkillManager::getSkillUseError(uint8_t skill_id) const {
 
     if (skill.requires_target && target_id == 0) {
         return "You must have a target";
+    }
+
+    // B894: paired with canUseSkill's forageOrFishingRefusal() branch. The
+    // refusal text IS the check's text -- the same eqstr line the gate
+    // computed -- so the player never hears a reason the gate didn't act on.
+    // Forage/Fishing only; every other skill gets "".
+    if (skill_id == 27 || skill_id == 55) {
+        const std::string refusal = forageOrFishingRefusal(skill_id);
+        if (!refusal.empty()) {
+            return refusal;
+        }
     }
 
     // T317: this branch was empty, so canUseSkill() could refuse on the combat
@@ -399,6 +621,14 @@ bool SkillManager::activateSkill(uint8_t skill_id, uint16_t target_id) {
 
     // Send packet to server
     sendSkillUsePacket(skill_id, target_id);
+
+    // B894: the cast is live from here. It ends on movement or a pose change
+    // through the state-bus listeners (stopFishingOnMove /
+    // stopFishingOnPositionState); the cooldown is the server's own reuse
+    // timer, not a stop condition.
+    if (skill_id == 55) {
+        m_is_fishing = true;
+    }
 
     // Play animation locally
     playSkillAnimation(skill_id);

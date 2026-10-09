@@ -104,6 +104,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_skill_gates DISCOVERY_TIMEOUT 120)
 
+# B894 (GitLab #210): the Forage/Fishing precondition table and the caught
+# item on the cursor. Same headless EverQuest + TestBridge seam as
+# test_skill_gate_bypasses.cpp; the eqstr refusal lines come from the SHIPPED
+# string table (WILLEQ_DB_REAL_PATH, as test_camp defines it), never from
+# literals. No network, no graphics, no eqemu.
+ADD_EXECUTABLE(test_forage_fishing
+    test_forage_fishing.cpp
+)
+TARGET_LINK_LIBRARIES(test_forage_fishing GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_forage_fishing PRIVATE ${IRRLICHT_INCLUDE_DIR})
+ENDIF()
+TARGET_COMPILE_DEFINITIONS(test_forage_fishing PRIVATE
+    WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
+GTEST_DISCOVER_TESTS(test_forage_fishing DISCOVERY_TIMEOUT 120)
+
 # T317: the guild opcodes' rank fields, and where the player's real rank lives
 ADD_EXECUTABLE(test_guild_wire_rank
     test_guild_wire_rank.cpp

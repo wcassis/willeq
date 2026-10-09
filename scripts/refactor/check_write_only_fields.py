@@ -171,15 +171,16 @@ EXEMPT = {
         ("boarded", "B533: the fly-camera residue T461 left when it deleted CameraController::update() with the Free mode; its only writer is the init call in irrlicht_renderer.cpp"),
     # T421 closed B298's item half: the fourteen fields that HAVE an oracle
     # line are drawn by the item display window, and their exemptions are
-    # gone. These nine are what is left, and they are a DIFFERENT defect.
-    ("ItemInstance", "currentSlot"):
-        ("boarded", "B298 (item half CLOSED by T421): the oracle has no element for it. EQUI_ItemDisplay.xml is a title, an icon and one STMLbox; `Slot:` (eqstr 3000) is the EQUIPPABLE list, drawn from `slots`. Nothing shows where an item currently sits."),
+    # gone. `ItemInstance::currentSlot` (the last item row) lost its
+    # exemption the same way T421/T425 deleted the others: B894's
+    # tests/test_forage_fishing.cpp read it to pin the caught item's
+    # normalised slot, giving it a real consumer. The oracle-shows-nothing
+    # half of B298's item census is fully closed.
     # T425 (B298 spell half): the spell display window EXISTS now
     # (BuildSpellDisplayText, drawn in the oracle's one ItemDisplayWindow).
     # These four have no line in it because the official client's string
     # table has no format string for them -- measured by grepping
-    # /mnt/projects/EverQuestP1999/eqstr_us.txt, not assumed. Same shape as
-    # ItemInstance::currentSlot's row: the oracle does not show it.
+    # /mnt/projects/EverQuestP1999/eqstr_us.txt, not assumed.
     ("SpellData", "player_tag"):
         ("boarded", "B298 (spell half CLOSED by T425): spells_us.txt internal tag ('PLAYER_1'); no eqstr format string"),
     ("SpellData", "resist_diff"):

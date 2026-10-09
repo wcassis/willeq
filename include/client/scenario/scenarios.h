@@ -19,6 +19,13 @@ std::unique_ptr<IScenario> MakeTwoClientSurviveScenario(const ScenarioOptions& o
 std::unique_ptr<IScenario> MakeCastLandsScenario(const ScenarioOptions& options);
 
 /**
+ * B894 (issue #210): #forage and #fish until the caught item is on the
+ * cursor with its skill line. The forage landing is the hard leg; the
+ * fishing catch is best-effort and only reported.
+ */
+std::unique_ptr<IScenario> MakeForageLandsScenario(const ScenarioOptions& options);
+
+/**
  * B892 (issue #208): cast a levitation spell on ourselves and wait until the
  * client is actually levitating -- the buff in the buff list AND the
  * LevitationChanged-derived state. The caster never gets its own

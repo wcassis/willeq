@@ -142,9 +142,15 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // create_character + 5 UIGAP-live2 legs (pinned by name in
     // tests/test_scenario_ui_legs.cpp) + 1 B925 (issue #244/#258) zone-link hold
     // + B1005's camp pair (tests/test_camp.cpp) + B892's levitate_applies
-    // (tests/test_levitation.cpp) + B893's fall_damage + B900's
-    // ranged_single_shot (#216, this file).
-    EXPECT_EQ(names.size(), 35u);
+    // (tests/test_levitation.cpp) + B894's forage_lands + B893's
+    // fall_damage + B900's ranged_single_shot (#216, this file).
+    // 33 pre-merge-base + one per each of the three merged branches:
+    // B894's forage_lands, B893's fall_damage, B900's ranged_single_shot.
+    // Three branches each bumped this count by 1 off the same 33 base, so
+    // git kept a stale identical number as a clean (non-conflicting) merge;
+    // the true count is 36 and needs the hand (see 3cf3a002 for the first
+    // of these fixes, when only B894 + B900 had merged).
+    EXPECT_EQ(names.size(), 36u);
     EXPECT_TRUE(IsScenarioName("camp_to_charselect"));
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
     EXPECT_TRUE(IsScenarioName("create_character"));
@@ -155,6 +161,8 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     EXPECT_TRUE(IsScenarioName("zone_link_hold"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));
     EXPECT_TRUE(IsScenarioName("cast_lands"));
+    // B894 (issue #210): the forage/fishing landing pair.
+    EXPECT_TRUE(IsScenarioName("forage_lands"));
     // B892 (issue #208): the self-levitation lane.
     EXPECT_TRUE(IsScenarioName("levitate_applies"));
     // B900: the single ranged attack, live.
@@ -607,6 +615,130 @@ TEST(CastLandsScenario, TheSpellIdIsAnOptionNotAConstant) {
 // Minor Shielding, 288.
 TEST(CastLandsScenario, TheDefaultSpellIsOneTheConfigClassCanCast) {
     EXPECT_EQ(DefaultOptions().castSpellId, 288u);
+}
+
+// ===========================================================================
+// forage_lands -- B894 (issue #210)
+// ===========================================================================
+//
+// The landing observable is a chat line from the forage vocabulary AND an
+// item on the cursor; a line without an item (or an item without a line) is
+// a Fail. The GM triggers make the server's reply deterministic, so the
+// state machine is tested against the world it will actually see.
+
+class ForageWorld : public FakeWorld {
+public:
+    long long cursorItem = 0;  // slot 33 (the cursor), 0 = empty
+    std::vector<std::string> chat;
+
+    long long ClientItemAt(int slot) const override {
+        return slot == 33 ? cursorItem : 0;
+    }
+    size_t ChatLineCount() const override { return chat.size(); }
+    std::string ChatLine(size_t i) const override {
+        return i < chat.size() ? chat[i] : std::string();
+    }
+    void Chat(const std::string& line) { chat.push_back(line); }
+    void ForageLanded(long long itemId, const std::string& line =
+                          "You have scrounged up some food.") {
+        cursorItem = itemId;
+        Chat("skills||" + line);
+    }
+};
+
+TEST(ForageLandsScenario, RunsTheGMRecipeInOrder) {
+    ForageWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos";
+    ScenarioRunner runner(MakeScenario("forage_lands", DefaultOptions()), world,
+                          /*timeout=*/600.0, /*startDeadline=*/30.0);
+    Advance(runner, 60.0);
+    ASSERT_GE(world.commands.size(), 11u);
+    EXPECT_EQ(world.commands[0], "/say #set invulnerable off");
+    // The stand: the fishing leg is water-dependent (CanFish's rod-tip
+    // probe), so the scenario teleports to a parsed freporte harbor shore
+    // BEFORE foraging. Heading 256 (180deg, raw wire units) puts the rod tip
+    // 30u south into the harbor's water (watermap probe wtr_headings.py).
+    EXPECT_EQ(world.commands[1], "/say #goto 0 -825 -74 256");
+    EXPECT_EQ(world.commands[2], "/say #forage");
+    // The forage catch is stashed to general 1 BEFORE the pole is summoned
+    // (it is on the cursor, and so would be the pole's summon).
+    EXPECT_EQ(world.commands[3], "/putdown 23");  // foraged food -> general 1
+    EXPECT_EQ(world.commands[4], "/say #summonitem 13100 1");  // the pole
+    EXPECT_EQ(world.commands[5], "/putdown 13");   // pole -> primary
+    EXPECT_EQ(world.commands[6], "/say #summonitem 13101 1");  // the bait
+    EXPECT_EQ(world.commands[7], "/putdown 24");   // bait -> general 2
+    EXPECT_EQ(world.commands[8], "/say #maxskills");
+    // The client's own OP_Fishing path (criterion 2: "fish ... succeeds"),
+    // with the server's guaranteed #fish right after it.
+    EXPECT_EQ(world.commands[9], "/useskill fishing");
+    EXPECT_EQ(world.commands[10], "/say #fish");
+}
+
+TEST(ForageLandsScenario, PassesWhenTheScroungedLineAndTheItemLand) {
+    ForageWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos";
+    ScenarioRunner runner(MakeScenario("forage_lands", DefaultOptions()), world,
+                          /*timeout=*/600.0, /*startDeadline=*/30.0);
+    // The #forage reply (guarantee: forage.cpp:458 + the common-food
+    // fallback) arrives a couple of seconds after the trigger at t=8.
+    Advance(runner, 10.0);
+    world.ForageLanded(13046);  // Fruit
+    // Both windows must elapse before the verdict (fish at 56 + 90).
+    Advance(runner, 150.0);
+    ASSERT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass) << runner.reason();
+    EXPECT_NE(runner.reason().find("forage landed"), std::string::npos);
+}
+
+// A caught item with no skill line (or a line with no item) is the
+// half-landing this card exists to rule out: the forage window closes
+// without both halves and the run fails.
+TEST(ForageLandsScenario, AnItemWithoutTheLineIsNotALanding) {
+    ForageWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos";
+    ScenarioRunner runner(MakeScenario("forage_lands", DefaultOptions()), world,
+                          /*timeout=*/600.0, /*startDeadline=*/30.0);
+    Advance(runner, 10.0);
+    world.cursorItem = 13046;  // the item lands, but no "scrounged" line
+    Advance(runner, 60.0);  // past the 45 s forage window (t=8+45=53)
+    ASSERT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail) << runner.reason();
+    EXPECT_NE(runner.reason().find("no forage landing"), std::string::npos);
+}
+
+TEST(ForageLandsScenario, ALineWithoutAnItemIsNotALanding) {
+    ForageWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos";
+    ScenarioRunner runner(MakeScenario("forage_lands", DefaultOptions()), world,
+                          /*timeout=*/600.0, /*startDeadline=*/30.0);
+    Advance(runner, 10.0);
+    world.Chat("skills||You have scrounged up some food.");  // line, no item
+    Advance(runner, 60.0);
+    ASSERT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail) << runner.reason();
+}
+
+// The fishing leg is best-effort: a missed catch is reported in the reason
+// but never sinks a run the forage already proved.
+TEST(ForageLandsScenario, TheFishingLandingIsBestEffortNotAHardLeg) {
+    ForageWorld world;
+    world.zonedIn = true;
+    world.zone = "qeynos";
+    ScenarioRunner runner(MakeScenario("forage_lands", DefaultOptions()), world,
+                          /*timeout=*/600.0, /*startDeadline=*/30.0);
+    Advance(runner, 10.0);
+    world.ForageLanded(13046);
+    // No "caught" line and no new cursor item ever appear for the fish;
+    // the fish window (t=56+90) closes by t=146, past which the run ends.
+    Advance(runner, 160.0);
+    ASSERT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass) << runner.reason();
+    EXPECT_NE(runner.reason().find("no landing"), std::string::npos)
+        << "the missed fishing catch must be reported: " << runner.reason();
 }
 
 // ===========================================================================
