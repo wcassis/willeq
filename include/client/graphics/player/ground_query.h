@@ -69,6 +69,39 @@ bool ShouldLandJump(const GroundZ& ground, float feetZ, float verticalVelocity);
 // re-clamped every frame, which is the pre-T437 comparison, preserved.
 bool ShouldClampSwimToFloor(const GroundZ& ground, float feetZ);
 
+// B892 (GitLab #208) -- the levitation hover clamp, the pure part.
+//
+// A levitating player's feet rest at the hover LINE (the floor plus the
+// hover height, computed by the CALLER -- see applyLevitationClamp) instead
+// of on the floor, and from height they DESCEND to it (the classic client's
+// slow glide when walking off a ledge) rather than free-falling. The
+// swim-clamp shape (ShouldClampSwimToFloor) with a hover line as the rest
+// position:
+//
+//   * at or below the line (`feetZ <= hoverLine`) the feet go TO the line --
+//     exactly, with no epsilon, so a player on flat ground rests on the line
+//     every frame without jitter, and the frame after the buff lands raises
+//     the player to the line in one step;
+//   * above the line the feet descend at `descentRate` units/second, one
+//     frame's worth, and never undershoot the line (a large frame or a high
+//     fall clamps to the line instead of tunnelling through it);
+//   * a floor ABOVE the feet (`feetZ < groundZ`) owns the z: the step-up the
+//     collision path is about to resolve is returned untouched -- the clamp
+//     must not fight the floor moving up under the player.
+//
+// The caller must not call this for a `GroundZ::NoFloor()` answer (a
+// ceiling, an empty column, or no collision data): over a hole there is no
+// floor to hover above and the feet keep falling exactly as a normal fall
+// does (the T440 lesson: a miss is not a floor) -- that skip lives in
+// applyLevitationClamp().
+//
+// The hover height and the descent rate the caller feeds in are the [assumed]
+// classic-client numbers (EQ::kLevitationHoverHeight / EQ::
+// kLevitationDescentRate, client/spell/levitation.h) -- measured, not
+// assumed, once the lane-1 oracle capture lands.
+float ClampLevitationFeet(float groundZ, float feetZ, float hoverLine,
+                          float descentRate, float deltaTime);
+
 // T440 (board B438) -- the BSP downward raycast's verdict, lifted out of
 // PlayerCameraComponent::findGroundZBspFiltered() for the same reason as the
 // two decisions above: it lives in a body that needs a live Irrlicht device, a

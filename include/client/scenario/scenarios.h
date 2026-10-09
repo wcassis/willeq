@@ -19,6 +19,15 @@ std::unique_ptr<IScenario> MakeTwoClientSurviveScenario(const ScenarioOptions& o
 std::unique_ptr<IScenario> MakeCastLandsScenario(const ScenarioOptions& options);
 
 /**
+ * B892 (issue #208): cast a levitation spell on ourselves and wait until the
+ * client is actually levitating -- the buff in the buff list AND the
+ * LevitationChanged-derived state. The caster never gets its own
+ * AT_FLYMODE, so this is the lane for the self-levitation the official
+ * client derives from its buffs.
+ */
+std::unique_ptr<IScenario> MakeLevitateAppliesScenario(const ScenarioOptions& options);
+
+/**
  * B925 (issue #244/#258): zone in and keep the link for holdSeconds. A single
  * client -- the plain "does the zone link survive a long load" check. A
  * mid-run drop that recovers before the deadline passes; one that does not,

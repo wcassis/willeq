@@ -782,6 +782,13 @@ void eqt::entities::EntitiesComponent::ZoneProcessSpawnAppearance(const EQ::Net:
 			if (it != ctx_.entities.end()) {
 				it->second.flymode = static_cast<uint8_t>(parameter);
 				LOG_DEBUG(MOD_ENTITY, "Entity {} flymode set to {}", spawn_id, parameter);
+				// B892 (GitLab #208): a self flymode 2/5 IS levitation for the
+				// predicate, even when the buff list is empty (a GM
+				// #levitate-style effect reaches self even though the cast
+				// path does not). Re-run the game-thread sync on the OR half.
+				if (spawn_id == ctx_.self.MySpawnId()) {
+					ctx_.Movement().SyncLevitation(it->second.flymode);
+				}
 			}
 			// TODO: Graphics rendering could show levitation animation
 		}

@@ -356,7 +356,7 @@ ROWS = [
     ("GameEventType enumerators",
      lambda r: count_enumerators(
          r, "include/client/state/event_types.h", "GameEventType"),
-     "every new panel or feed adds one; T439 added VolumesChanged",
+     "every new panel or feed adds one; T439 added VolumesChanged, B892 LevitationChanged",
      [("CLAUDE.md",
        r"EventBus,\s+(\w+)\s+event types"),
       ("CLAUDE.md",

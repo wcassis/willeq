@@ -141,9 +141,9 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // UI legs (pinned by name in tests/test_scenario_ui_legs.cpp) + B888's
     // create_character + 5 UIGAP-live2 legs (pinned by name in
     // tests/test_scenario_ui_legs.cpp) + 1 B925 (issue #244/#258) zone-link hold
-    // + B1005's camp pair (tests/test_camp.cpp) + B900's ranged_single_shot
-    // (#216, this file).
-    EXPECT_EQ(names.size(), 33u);
+    // + B1005's camp pair (tests/test_camp.cpp) + B892's levitate_applies
+    // (tests/test_levitation.cpp) + B900's ranged_single_shot (#216, this file).
+    EXPECT_EQ(names.size(), 34u);
     EXPECT_TRUE(IsScenarioName("camp_to_charselect"));
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
     EXPECT_TRUE(IsScenarioName("create_character"));
@@ -152,6 +152,8 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     EXPECT_TRUE(IsScenarioName("zone_link_hold"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));
     EXPECT_TRUE(IsScenarioName("cast_lands"));
+    // B892 (issue #208): the self-levitation lane.
+    EXPECT_TRUE(IsScenarioName("levitate_applies"));
     // B900: the single ranged attack, live.
     EXPECT_TRUE(IsScenarioName("ranged_single_shot"));
     // T494 (board B796): the observed-/equip pair.

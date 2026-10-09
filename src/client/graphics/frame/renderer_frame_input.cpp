@@ -1040,6 +1040,13 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
         // CURRENT triangles in the map the ride probe queries.
         ctx_.PlayerCamera().carryPlayerOnLifts(deltaTime);
     }
+    // B892 (GitLab #208): and a levitating player hovers. Runs after the lift
+    // carry -- which may have moved the floor under the player -- and before
+    // the rig camera placement, so the camera frames wherever the hover
+    // left the feet. A no-op not levitating, in water, mid-jump, or without
+    // collision data (the whole decision is ClampLevitationFeet + a GroundZ
+    // query; see applyLevitationClamp()).
+    ctx_.PlayerCamera().applyLevitationClamp(deltaTime);
     // T461: a rig camera (Overhead, Chase since T474, User Defined 1/2, Tether)
     // is re-placed around wherever this frame left the player -- after the
     // movement integration AND the lift carry, and whether or not there is a

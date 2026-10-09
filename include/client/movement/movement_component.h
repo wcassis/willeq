@@ -24,6 +24,11 @@
 #include "client/client_context.h"
 #include "client/eq_enums.h"
 #include "client/pathfinder_interface.h"
+// B892 (GitLab #208): SyncLevitation reads the buff list, the spell database
+// and the self row's flymode.
+#include "client/spell/buff_manager.h"
+#include "client/spell/levitation.h"
+#include "client/spell/spell_database.h"
 
 #include <chrono>
 #include <cstddef>
@@ -158,6 +163,36 @@ public:
 	// zero callers -- BridgeComponent reads GetWaterState() directly.
 	WaterState GetWaterState() const { return m_water_state; }
 
+	// B892 (GitLab #208): the player's own levitation, as the GAME THREAD
+	// sees it. eqemu sends the caster the levitate appearance with
+	// ignore_self (spell_effects.cpp:1452-1455), so the caster's own client
+	// never receives AT_FLYMODE 2 from a self-cast; the official client
+	// derives its own levitation from its buff list instead. EQ::
+	// PlayerIsLevitating() (client/spell/levitation.h) is the predicate --
+	// any active buff whose spell carries SPA 57, OR a self flymode 2/5 the
+	// server did send.
+	bool PlayerLevitating() const {
+		return m_levitation == EQ::LevitationState::Levitating;
+	}
+	// The one sync point. `selfFlymode` is the self row's AT_FLYMODE value,
+	// passed in by the caller (the production sites read the entity map; a
+	// test rig without a zoned-in self row passes 0) -- this component does
+	// not reach into the map itself. Called by the buff apply hook (no
+	// exclusion -- the landing buff is already in the list and counts), the
+	// buff FADE hook (with the fading spell excluded -- the fade fires while
+	// the buff is still in the list, the same pre-erase notify as T339's
+	// vision recompute) and on a self flymode change. No-op without a spell
+	// database (a client before InitializeSpellSystem: nothing to read) and
+	// without a bridge. Publishes LevitationChanged only when the state
+	// flips.
+	void SyncLevitation(uint8_t selfFlymode,
+	                    uint32_t fade_spell_id = EQ::BuffManager::NO_EXCLUDED_SPELL);
+	// Silent reset: a state change without the publish. The zone
+	// transition clears the entity map the flymode is read from (and the
+	// buff list is re-applied from the character profile there), so this
+	// just brings the stored state back to its start-of-zone value.
+	void ResetLevitation() { m_levitation = EQ::LevitationState::NotLevitating; }
+
 private:
 	// Reached only from inside this family (measured by the compiler, K07).
 	void UpdateCombatMovement();
@@ -180,6 +215,9 @@ private:
 
 	// K13: swimming state. Was EverQuest::m_water_state.
 	WaterState m_water_state = WaterState::NotInWater;
+
+	// B892 (GitLab #208): see PlayerLevitating() above.
+	EQ::LevitationState m_levitation = EQ::LevitationState::NotLevitating;
 
 	// Movement target timing.
 	std::chrono::steady_clock::time_point m_last_position_update_time;
