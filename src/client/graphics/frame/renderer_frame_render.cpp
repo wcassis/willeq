@@ -43,6 +43,7 @@
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/character_model_view.h"
+#include "client/graphics/draw_census.h"  // B997: per-site 3D-draw census
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
@@ -61,6 +62,10 @@
 // Declared in irrlicht_renderer.cpp (H01: hit when building EQT_GLES2 on x86;
 // pre-existing gap from the Batch F file split).
 extern void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned int lineCount);
+// B997: per-site 3D-draw census bridge (defined in COpenGLES2Driver.cpp).
+extern void gles2GetDrawCensusTotals(void* driver, unsigned long* winD3client,
+                                     unsigned long* winD3vbo, unsigned long* frames,
+                                     bool* newWindow);
 #endif
 
 namespace EQT {
@@ -811,6 +816,21 @@ void FrameComponent::endSceneAndSwap() {
     eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
     ctx_.driver->endScene();
     eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
+    // B997: per-site 3D-draw census (gated on EQT_DRAW_CENSUS). Reads the
+    // driver's just-closed 120-frame [drawcensus] window through the bridge
+    // (the driver emitted its own line a moment earlier in endScene()) and
+    // emits the client's [drawsite] split on the same boundary, so the two
+    // streams line up for a per-window draws/frame + per-site diff.
+#ifdef EQT_HAS_GLES2
+    {
+        unsigned long wc = 0, wv = 0, fr = 0;
+        bool newWin = false;
+        gles2GetDrawCensusTotals(static_cast<void*>(ctx_.driver), &wc, &wv, &fr,
+                                 &newWin);
+        drawCensusEmit(newWin, static_cast<long>(wc), static_cast<long>(wv),
+                       static_cast<long>(fr));
+    }
+#endif
     // Collect any GPU query results that became available (double-buffered,
     // non-blocking) and flip the write buffer for next frame. Must be
     // called exactly once per frame, after the last eqtGPUPhaseEnd() above.

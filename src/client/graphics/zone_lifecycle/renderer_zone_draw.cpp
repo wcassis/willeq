@@ -2,6 +2,7 @@
 #include "client/graphics/zone_lifecycle/zone_lifecycle_component.h"
 #include "client/graphics/constrained_texture_cache.h"
 #include "client/graphics/renderer_zone_merge.h"
+#include "client/graphics/draw_census.h"  // B997: per-site 3D-draw census
 #include "client/graphics/work_priority.h"
 #include "common/logging.h"
 #include <algorithm>
@@ -782,6 +783,9 @@ void ZoneLifecycleComponent::drawZoneGeometrySorted() {
         }
         drawCalls = static_cast<int>(sortedDrawEntries_.size());
     }
+    // B997: count this zone pass's 3D client draws (merged or unmerged) so the
+    // [drawsite] census splits the d3client pool by site.
+    drawCensusAddZone(drawCalls);
 
     // P08d-style adoption-line: unmerged-would-be draws vs actual (merged or
     // not) draws, sampled every 120 frames (~2s at 60fps) so live sessions

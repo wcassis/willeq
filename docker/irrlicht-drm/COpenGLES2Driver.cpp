@@ -26,6 +26,77 @@ namespace irr
 namespace video
 {
 
+// B997 (GitLab #317): per-frame 3D-draw census, the card's step-2 evidence.
+// Every Mesa lima draw (VBO or client-array) allocates one varying-output BO
+// (docs/reference/lima_cost_sheet.md fact 5), so the steady draw-time BO pool
+// (the gpu_unnamed_steady guard's dominant row) is sized by the per-frame 3D
+// draw count. This counter is that census: one increment per 3D draw, split
+// by the draw's GEM tag (the pool rows), gated behind EQT_DRAW_CENSUS so a
+// production build's cost is one predicted-false branch per call (the
+// gl_call_counters.h precedent). Emitted by endScene() every 120 frames as
+// [drawcensus] (stderr, the [B960] precedent); the Pi rig's client.log
+// captures it. Client-side per-site counters (include/client/graphics/
+// draw_census.h) explain the composition; the driver's window_3d_client total
+// is the exact pool driver, so (window_3d_client - the client-site counts)
+// names the scene-graph remainder (doors, equipment, other scene nodes).
+struct B997DrawCensus {
+    bool enabled = false;
+    unsigned long d3client = 0;   // per-frame: client-side 3D draws (draw3d:client tag)
+    unsigned long d3vbo = 0;      // per-frame: VBO/EBO 3D draws (draw3d:vbo tag)
+    unsigned long winD3Client = 0;  // since the last [drawcensus] line (accumulating)
+    unsigned long winD3Vbo = 0;
+    unsigned long emitted = 0;      // lifetime frames closed (the window key)
+    // Snapshot of the just-closed 120-frame window, held for the client's
+    // [drawsite] emit (the client reads it via gles2GetDrawCensusTotals() and
+    // consumes it with newWinPending on the same endScene cadence).
+    unsigned long snapD3Client = 0;
+    unsigned long snapD3Vbo = 0;
+    bool newWinPending = false;
+};
+
+inline B997DrawCensus& b997Census() {
+    static B997DrawCensus c = [] {
+        B997DrawCensus r;
+        const char* env = std::getenv("EQT_DRAW_CENSUS");
+        r.enabled = env && (env[0] == '1' || env[0] == 'y' || env[0] == 'Y');
+        return r;
+    }();
+    return c;
+}
+// Count one client-side 3D draw (call after the early-out guards).
+inline void b997Count3dClient() {
+    B997DrawCensus& c = b997Census();
+    if (c.enabled) c.d3client++;
+}
+inline void b997Count3dVbo() {
+    B997DrawCensus& c = b997Census();
+    if (c.enabled) c.d3vbo++;
+}
+// Per-frame close (endScene): accumulate the frame into the window, emit the
+// window every 120 frames, and hold a snapshot of the just-closed window for
+// the client's [drawsite] emit (same endScene cadence, so the two streams line
+// up).
+inline void b997CensusEndFrame() {
+    B997DrawCensus& c = b997Census();
+    if (!c.enabled) { c.newWinPending = false; return; }
+    c.winD3Client += c.d3client;
+    c.winD3Vbo += c.d3vbo;
+    c.d3client = 0;
+    c.d3vbo = 0;
+    c.newWinPending = false;
+    c.emitted++;
+    if (c.emitted % 120 == 0) {
+        c.snapD3Client = c.winD3Client;
+        c.snapD3Vbo = c.winD3Vbo;
+        c.newWinPending = true;
+        std::fprintf(stderr, "[drawcensus] frames=%lu window_3d_client=%lu "
+                             "window_3d_vbo=%lu\n",
+                     c.emitted, c.winD3Client, c.winD3Vbo);
+        c.winD3Client = 0;
+        c.winD3Vbo = 0;
+    }
+}
+
 // P38 audit: process-wide counter instance, disabled by default. See
 // gl_call_counters.h for the zero-cost-when-off justification.
 GLCallCounters g_glCounters;
@@ -529,6 +600,7 @@ bool COpenGLES2Driver::endScene()
 {
     CNullDriver::endScene();
     if (g_alphaTrace) alphaTraceEndFrame();
+    b997CensusEndFrame();  // B997: roll the per-frame 3D-draw census
 
     // Discard depth/stencil tiles before present (bandwidth saving on tile-based GPUs)
     if (extensions_.hasDiscardFramebuffer) {
@@ -1230,6 +1302,7 @@ void COpenGLES2Driver::drawVertexPrimitiveList(const void* vertices, u32 vertexC
     GemTagScope gemTag("draw3d:client");
     if (!vertices || !indexList || vertexCount == 0 || primitiveCount == 0)
         return;
+    b997Count3dClient();
 
     restore3DProjection();
 
@@ -1344,6 +1417,7 @@ void COpenGLES2Driver::drawMeshBuffer(const scene::IMeshBuffer* mb)
     auto it = HWBufferMap.find(mb);
     if (it != HWBufferMap.end()) {
         GemTagScope gemTag("draw3d:vbo");
+        b997Count3dVbo();
         const SHWBuffer& hwb = it->second;
 
         restore3DProjection();
@@ -2405,6 +2479,25 @@ size_t gles2GetGpuTextureStorageUsage(void* driver)
 {
     auto* d = static_cast<irr::video::COpenGLES2Driver*>(driver);
     return d->getGpuTextureStorageUsage();
+}
+
+// B997: expose the driver's just-closed 120-frame [drawcensus] window to the
+// client render thread (the extern-bridge precedent). The client's [drawsite]
+// line joins against this snapshot on the same endScene cadence, so
+// scene_graph = window_3d_client - (every client-site count) names the
+// scene-node remainder (doors, equipment, overlays). No-ops (zero + false)
+// when the census is off or no window just closed.
+void gles2GetDrawCensusTotals(void* driver, unsigned long* winD3client,
+                              unsigned long* winD3vbo, unsigned long* frames,
+                              bool* newWindow)
+{
+    (void)driver;
+    auto& c = irr::video::b997Census();
+    if (winD3client) *winD3client = c.snapD3Client;
+    if (winD3vbo) *winD3vbo = c.snapD3Vbo;
+    if (frames) *frames = c.emitted;
+    if (newWindow) *newWindow = c.newWinPending;
+    c.newWinPending = false;  // consumed by the client emit
 }
 
 void gles2TextureSetStorageBytes(void* texture, unsigned int bytes)
