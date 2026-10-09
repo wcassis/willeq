@@ -141,8 +141,9 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // UI legs (pinned by name in tests/test_scenario_ui_legs.cpp) + B888's
     // create_character + 5 UIGAP-live2 legs (pinned by name in
     // tests/test_scenario_ui_legs.cpp) + 1 B925 (issue #244/#258) zone-link hold
-    // + B1005's camp pair (tests/test_camp.cpp).
-    EXPECT_EQ(names.size(), 32u);
+    // + B1005's camp pair (tests/test_camp.cpp) + B900's ranged_single_shot
+    // (#216, this file).
+    EXPECT_EQ(names.size(), 33u);
     EXPECT_TRUE(IsScenarioName("camp_to_charselect"));
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
     EXPECT_TRUE(IsScenarioName("create_character"));
@@ -151,6 +152,8 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     EXPECT_TRUE(IsScenarioName("zone_link_hold"));
     EXPECT_TRUE(IsScenarioName("two_client_survive"));
     EXPECT_TRUE(IsScenarioName("cast_lands"));
+    // B900: the single ranged attack, live.
+    EXPECT_TRUE(IsScenarioName("ranged_single_shot"));
     // T494 (board B796): the observed-/equip pair.
     EXPECT_TRUE(IsScenarioName("equip_observed"));
     EXPECT_TRUE(IsScenarioName("equip_actor"));
@@ -1058,4 +1061,124 @@ TEST(CastFizzleScenario, PrepThenLoopsGemCastsOnAThrottledCadence) {
     EXPECT_TRUE(runner.finished());
     EXPECT_EQ(runner.exitCode(), kScenarioPass);
     EXPECT_NE(runner.reason().find("fizzle leg executed"), std::string::npos);
+}
+
+// ===========================================================================
+// B900 (#216): ranged_single_shot -- the one /range, and the server's verdict.
+// ===========================================================================
+//
+// The scenario spawns a dummy, targets it, fires exactly one /range, and
+// passes when a post-baseline COMBAT chat line names the target and says hit
+// or miss -- the client's reading of the server's OP_Damage (a hit line for
+// damage > 0, a miss line for damage == 0; attack.cpp's CommonDamage sends
+// both, so either proves the server ran RangedAttack()). The ammo count is
+// the post-check's job, not the state machine's.
+//
+// The world is the file's FakeWorld with chat added: the baseline is taken
+// on the first Step (after zone-in), so lines pushed before the run starts
+// are zone-in noise the pass condition must ignore.
+
+namespace {
+
+class RangedWorld : public FakeWorld {
+public:
+    std::vector<std::string> chat;
+    size_t ChatLineCount() const override { return chat.size(); }
+    std::string ChatLine(size_t index) const override {
+        return index < chat.size() ? chat[index] : std::string();
+    }
+};
+
+RangedWorld RangedBaseline() {
+    RangedWorld w;
+    w.zonedIn = true;
+    w.zone = "arena2";
+    // Zone-in noise: combat from something else, before the shot exists.
+    w.chat = {"combat|Something|Something hits YOU for 3 points of damage."};
+    return w;
+}
+
+}  // namespace
+
+TEST(RangedSingleShot, SpawnsTargetsAndFiresExactlyOneRangeCommand) {
+    RangedWorld world = RangedBaseline();
+    ScenarioRunner runner(MakeScenario("ranged_single_shot", DefaultOptions()),
+                          world, 60.0, 10.0);
+    Advance(runner, 17.0);  // past the 16 s fire time (float clock)
+    ASSERT_GE(world.commands.size(), 4u);
+    EXPECT_EQ(world.commands[0], "/say #spawn Ranged_Dummy")
+        << "#spawn takes a SINGLE-TOKEN name (npc.cpp:1054, sep.arg[0]); the "
+           "underscore renders back to a space in the display name";
+    EXPECT_EQ(world.commands[1], "/say #goto 70 5 5")
+        << "the dummy spawns AT the character (spawn.cpp:46); the character "
+           "moves 50 units away or the shot is under the 25-unit minimum";
+    EXPECT_EQ(world.commands[2], "/target Ranged_Dummy")
+        << "target AFTER the #goto -- a teleport can clear the target, and the "
+           "one-shot /range must not fire at a stale/absent one; Ranged_Dummy "
+           "is a substring of the server's raw name Ranged_Dummy000 "
+           "(entity_manager.cpp:186)";
+    const int ranges = std::count(world.commands.begin(), world.commands.end(),
+                                  std::string("/range"));
+    EXPECT_EQ(ranges, 1)
+        << "ONE shot at a time (Will's ruling) -- the scenario must fire /range "
+           "exactly once, not a held-key burst";
+    EXPECT_FALSE(runner.finished());
+}
+
+TEST(RangedSingleShot, AHitLineNamingTheTargetPasses) {
+    RangedWorld world = RangedBaseline();
+    ScenarioRunner runner(MakeScenario("ranged_single_shot", DefaultOptions()),
+                          world, 60.0, 10.0);
+    Advance(runner, 17.0);  // spawn, target, one /range
+    world.chat.push_back("combat_self||You hit Ranged Dummy for 31 points of damage.");
+    Advance(runner, 2.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+    EXPECT_NE(runner.reason().find("Ranged Dummy"), std::string::npos);
+}
+
+TEST(RangedSingleShot, AMissLineNamingTheTargetPasses) {
+    // A miss is a verdict too: the server ran the ranged path and the client
+    // saw it. OP_Damage with damage 0 broadcasts the same way attack.cpp
+    // sends a hit.
+    RangedWorld world = RangedBaseline();
+    ScenarioRunner runner(MakeScenario("ranged_single_shot", DefaultOptions()),
+                          world, 60.0, 10.0);
+    Advance(runner, 17.0);
+    world.chat.push_back("combat_miss||You try to hit Ranged Dummy but miss!");
+    Advance(runner, 2.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioPass);
+}
+
+TEST(RangedSingleShot, AHitLineForAnotherTargetDoesNotPass) {
+    // The baseline + "You " + target-name match keep a bystander's combat
+    // (a third party hitting OUR target: "Ranged Dummy hits Orc for 5
+    // points of damage" in channel combat) and a shot at something else from
+    // reading as our verdict.
+    RangedWorld world = RangedBaseline();
+    ScenarioRunner runner(MakeScenario("ranged_single_shot", DefaultOptions()),
+                          world, 120.0, 10.0);
+    Advance(runner, 17.0);
+    world.chat.push_back("combat|Orc|Ranged Dummy hits Orc for 5 points of damage.");
+    world.chat.push_back("combat_self||You hit Other Guy for 10 points of damage.");
+    Advance(runner, 24.0);  // t = 41, inside the 45 s deadline
+    EXPECT_FALSE(runner.finished())
+        << "a hit at another target (or an NPC-on-NPC line) is not the verdict";
+    // Let the deadline run: it must fail, with the no-verdict reason.
+    Advance(runner, 10.0);
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_NE(runner.reason().find("no server hit/miss verdict"), std::string::npos);
+}
+
+TEST(RangedSingleShot, NoVerdictByTheDeadlineFails) {
+    RangedWorld world = RangedBaseline();
+    ScenarioRunner runner(MakeScenario("ranged_single_shot", DefaultOptions()),
+                          world, 120.0, 10.0);
+    Advance(runner, 17.0);
+    Advance(runner, 30.0);  // t = 47, past the 45 s deadline
+    EXPECT_TRUE(runner.finished());
+    EXPECT_EQ(runner.exitCode(), kScenarioFail);
+    EXPECT_NE(runner.reason().find("no server hit/miss verdict"), std::string::npos);
 }
