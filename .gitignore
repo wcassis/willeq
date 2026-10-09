@@ -63,6 +63,10 @@ tests/*_tests.cmake
 # records what they were blessed under; scripts/ci/visual_gate.sh compares against them)
 !tests/goldens/*.png
 
+# B893 (#209): the raw oracle wirecaps behind the [MEASURED] arc apex
+# (eqemu zone log; the review rule is a [measured] claim carries its capture)
+!refactor/B893/evidence/*.log
+
 # JSON data dumps in root (keep tests/ and src/ json files)
 /*.json
 

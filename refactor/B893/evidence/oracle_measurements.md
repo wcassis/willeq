@@ -17,8 +17,11 @@
 ## Jump arc (standing jumps, Space)
 
 Standing z (wire, C->S OP_ClientUpdate z_pos@26): -38.2157
-Mid-air samples (max of the two jump captures, logs/b893_jump_wirecap.decoded.txt
-and the 11:29:3x run):
+Mid-air samples (max of the two jump captures: the 10:28 run,
+`logs/b893_jump_wirecap.decoded.txt` in the evidence tree, and the 11:29 run,
+raw wire `b893_jump_wirecap_1129.log` beside this file — eqemu zone log,
+C->S `OP_ClientUpdate` 48-byte, z at offset 26, B893_JSTART/B893_JEND window
+11:29:27-45; apex row 11:29:32 decodes z=-35.1651, +3.05 above -38.2157):
 
   10:28:55  z=-36.0921  d=+2.12
   10:28:59  z=-36.1635  d=+2.05

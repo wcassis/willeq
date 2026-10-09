@@ -127,7 +127,7 @@ Full method + data: `refactor/B893/evidence/oracle_measurements.md`.
 
 | constant | value | status |
 |---|---|---|
-| `Arc::peakHeight` | 3.05 | [MEASURED] apex = max of 8 mid-air `OP_ClientUpdate` samples (+1.82 … +3.05 above standing −38.2157); ~1 sample per jump at ~1 Hz |
+| `Arc::peakHeight` | 3.05 | [MEASURED] apex = max of 8 mid-air `OP_ClientUpdate` samples (+1.82 … +3.05 above standing −38.2157; the 11:29 capture is the raw `evidence/b893_jump_wirecap_1129.log`, the 10:28 capture `b893_jump_wirecap.decoded.txt` lives in the evidence tree); ~1 sample per jump at ~1 Hz |
 | `Arc::durationS` | 1.0 | [ASSUMED, OWED] the wire is ~1 Hz and cannot resolve a sub-second arc; kept from the pre-B893 renderer, marked owed |
 | `Arc::terminalSpeed` | 100.0 | [ASSUMED, OWED] the `#goto` fall is a server-side teleport the client integrates locally, so no terminal velocity is observable on this rig; nothing clamps to it yet (no term in the integrator) |
 | `Fall::safeHeight` | 18.0 | [MEASURED] the 18.2u drop sent no `OP_EnvDamage`; the 23.2u drop sent 5 |
@@ -158,4 +158,4 @@ and the arc duration + terminal velocity are the two constants that stay owed
 - `test_jump_fall_arc` — 9 tests (curve, the collapse / no-second-writer,
   derived-constants pin, fall table shape, FallTracker, encoder bytes, dmgtype).
 - `test_scenario_state_machines` — `FallDamageScenario` (4) +
-  `ScenarioRegistry` (now 33 scenarios, `IsScenarioName("fall_damage")`).
+  `ScenarioRegistry` (now 35 scenarios, `IsScenarioName("fall_damage")`).
