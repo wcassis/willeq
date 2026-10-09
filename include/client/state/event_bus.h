@@ -133,6 +133,7 @@ using EventData = std::variant<
     // World
     WeatherChangedData,
     SwimmingStateChangedData,
+    LevitationChangedData,  // B892 (GitLab #208)
     // Zone lifecycle
     CollisionMapChangedData,
     ZoneLineBoundingBoxesData,

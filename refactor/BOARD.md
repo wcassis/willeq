@@ -13145,7 +13145,7 @@ T505 (2026-09-23) -- Will's rulings: feature gaps vs the official client are cla
 - **B889** (B, feature) capability-level CI suite: a README-row → oracle → test → CI-lane matrix, nightly live + pi stages. → issue #205
 - **B890** (B, feature) boats/transport. → issue #206
 - **B891** (B, feature) swimming speeds are guesses, drowning and the Air Remaining window are missing. → issue #207
-- **B892** (B, feature) levitation never applies to the player (eqemu skip-self appearance; derive from own buffs). → issue #208
+- **B892** (B, feature) levitation never applies to the player (eqemu skip-self appearance; derive from own buffs). → issue #208. **PARTIAL** (task/kb-b892-levitation 2026-10-08): offline leg done (SPA-57 predicate + `LevitationChanged` + hover clamp + `levitate_applies` scenario, RED/GREEN ctest) AND criterion 4 met — the scenario passed on lane 1 exit 0 (`Levitation up: buffs=1, selfFlymode=0`); hover height/descent rate still [assumed] because the criterion-3 oracle capture (Wine login flaky under llvmpipe) is owed. `refactor/B892/README.md`.
 - **B893** (B, feature) two unmeasured jump models, fall damage never sent. → issue #209
 - **B894** (B, feature) forage and fishing are sent but never measured or shown. → issue #210
 - **B895** (B, feature) tracking window and direction messages. → issue #211
