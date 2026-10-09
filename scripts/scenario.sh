@@ -343,6 +343,25 @@ fi
 # ---- 3. snapshot -----------------------------------------------------------
 snapshot "$BEFORE"
 say "snapshot taken ($(wc -l < "$BEFORE") rows)"
+# B900 (#216) / B1011: a scenario whose kit is DB-seeded into INVENTORY names
+# its characters HERE, before the inventory snapshot, so the seed lands after
+# the snapshot and the restore takes it out again. (B900's first shape put this
+# derivation -- and the snapshot itself -- inside the --seed-sql branch, so a
+# run with --inventory-chars and no seed took NO inventory snapshot and its
+# restore was a silent no-op; and a run with a custom --seed-sql skipped the
+# derivation and left the kit behind. Both are B1011's fix: the snapshot is
+# unconditional on INVENTORY_CHARS, the derivation unconditional on the seed.)
+if [ "$SCENARIO" = "ranged_single_shot" ] && [ -z "$INVENTORY_CHARS" ]; then
+    INVENTORY_CHARS="$(eqemu_sql "SELECT id FROM character_data WHERE name='Testchar';" | head -1)"
+fi
+# The inventory snapshot, whenever the run names inventory characters -- always
+# BEFORE any seed (a seed after the snapshot is invisible to the restore and
+# survives the run: duplicate-key on the next seed, the kit left behind;
+# measured 2026-10-08, lane 4).
+if [ -n "$INVENTORY_CHARS" ]; then
+    eqemu_inventory_snapshot "$INV_BEFORE" "$INVENTORY_CHARS"
+    say "inventory snapshot taken ($(wc -l < "$INV_BEFORE") rows for ${INVENTORY_CHARS})"
+fi
 
 # ---- 3b. seed, AFTER the snapshots so the restore takes it out again --------
 # B630 (issue #48): the co-location seed is a LANE concern, not an operator
@@ -359,20 +378,9 @@ fi
 # snapshot/restore pair exactly like T494's equip lane.
 if [ "$SCENARIO" = "ranged_single_shot" ] && [ -z "$SEED_SQL" ]; then
     SEED_SQL="$REPO/scripts/scenario_configs/ranged_single_shot_seed.sql"
-    [ -n "$INVENTORY_CHARS" ] || INVENTORY_CHARS="$(eqemu_sql "SELECT id FROM character_data WHERE name='Testchar';" | head -1)"
 fi
 if [ -n "$SEED_SQL" ]; then
     [ -f "$SEED_SQL" ] || { say "no --seed-sql file at $SEED_SQL"; exit 64; }
-    # A seed that inserts INVENTORY rows must have its characters' rows in the
-    # inventory snapshot BEFORE it lands -- a seed after the snapshot is
-    # invisible to the restore and survives the run (duplicate-key on the
-    # next seed, the kit left behind; measured 2026-10-08, lane 4). The
-    # character-data snapshot above already ran; the inventory one is the
-    # only half that must move.
-    if [ -n "$INVENTORY_CHARS" ]; then
-        eqemu_inventory_snapshot "$INV_BEFORE" "$INVENTORY_CHARS"
-        say "inventory snapshot taken ($(wc -l < "$INV_BEFORE") rows for ${INVENTORY_CHARS})"
-    fi
     eqemu_sql "$(cat "$SEED_SQL")" >/dev/null || { say "--seed-sql failed"; exit 65; }
     say "seeded from $SEED_SQL"
 fi

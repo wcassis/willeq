@@ -906,7 +906,7 @@ void IrrlichtBridge::applyEvent(const state::GameEvent& event) {
     case state::GameEventType::SwimmingStateChanged:
         if (renderer_) {
             auto& d = std::get<state::SwimmingStateChangedData>(event.data);
-            renderer_->setSwimmingState(d.isSwimming, d.swimSpeed, d.isLevitating);
+            renderer_->setSwimmingState(d.isSwimming, d.swimSpeed);
         }
         break;
     case state::GameEventType::LevitationChanged:

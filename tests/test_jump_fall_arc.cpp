@@ -105,8 +105,8 @@ TEST(JumpFallArc, DerivedPerFrameConstantsMatchTheTable) {
     //   initialVelocity = 4*peak/duration,  gravity = 8*peak/duration^2
     // Pinning them against the table (not a bare pair of literals) is what
     // keeps the two integrators honest: if renderer_types.h ever seeded one
-    // from a literal that drifted, this would catch it. At the measured
-    // peak (3.05, lane-2 capture) and 1.0 s duration these resolve to
+    // from a literal that drifted, this would catch it. At the table's
+    // peak (3.05, the lane-2 capture's lower bound; B1011) and 1.0 s duration these resolve to
     // 4*3.05 = 12.2 and 8*3.05 = 24.4. (The pre-B893 renderer ran 40/80 from
     // its own hardcoded pair -- the two models disagreed because each owned its
     // own (peak, duration); the collapse makes them one pair.)
@@ -172,6 +172,36 @@ TEST(JumpFallFall, NoDamageWithinTheSafeHeight) {
     EXPECT_EQ(eqt::jumpfall::damageForFallHeight(0.0f), 0u);
     EXPECT_EQ(eqt::jumpfall::damageForFallHeight(f.safeHeight), 0u);
     EXPECT_EQ(eqt::jumpfall::damageForFallHeight(f.safeHeight - 0.5f), 0u);
+}
+
+// B1011: the curve IS the oracle's points. Every measured height returns the
+// damage the official client sent at that height (evidence/oracle_
+// measurements.md), so a "simplification" back to a formula that disagrees
+// with the wire -- B893's 1.5/unit ramp gave 23 where the oracle gave 5 --
+// fails here, not in play.
+TEST(JumpFallFall, EveryMeasuredOraclePointIsReproduced) {
+    ASSERT_GE(eqt::jumpfall::kFallDamageTableSize, 9);
+    for (int i = 0; i < eqt::jumpfall::kFallDamageTableSize; ++i) {
+        const auto& p = eqt::jumpfall::kFallDamageTable[i];
+        EXPECT_EQ(eqt::jumpfall::damageForFallHeight(p.height), p.damage)
+            << "measured height " << p.height;
+        if (i > 0) {
+            EXPECT_GE(p.height, eqt::jumpfall::kFallDamageTable[i - 1].height)
+                << "table must be sorted by height";
+            EXPECT_GE(p.damage, eqt::jumpfall::kFallDamageTable[i - 1].damage)
+                << "table must be monotone (the one non-monotone reading, 48.2u, is excluded)";
+        }
+    }
+    // The oracle's flat band: 5 everywhere from 23.2u to 33.2u, where the
+    // old ramp climbed 8 -> 23.
+    EXPECT_EQ(eqt::jumpfall::damageForFallHeight(25.0f), 5u);
+    EXPECT_EQ(eqt::jumpfall::damageForFallHeight(30.0f), 5u);
+    // Between points: linear. 48.2u sits midway between 43.2 (30) and 53.2
+    // (59) -> 44.5 -> 45 (the excluded 71 reading would have been here).
+    EXPECT_EQ(eqt::jumpfall::damageForFallHeight(48.2f), 45u);
+    // Above the table: the last segment's slope continues (0.8/unit).
+    EXPECT_GT(eqt::jumpfall::damageForFallHeight(78.2f), 91u);
+    EXPECT_EQ(eqt::jumpfall::damageForFallHeight(78.2f), 99u);
 }
 
 TEST(JumpFallFall, DamageGrowsWithTheHeightAboveSafe) {

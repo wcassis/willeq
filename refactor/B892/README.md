@@ -177,3 +177,16 @@ own recipe ("have a GM cast Levitate"). Full client log:
   `entities_component.cpp`) — that is the "draw hovering" half of the issue and is
   left open, matching the scope the issue's parallel legs assign to a separate
   lane (Leg E).
+
+## B1011 (2026-10-09): the swim event's second writer, removed
+
+The B892 review noted, as non-blocking, that `setSwimmingState()` still wrote
+`playerMovement_.isLevitating` from `SwimmingStateChangedData::isLevitating`.
+It was blocking: that field read the entity flymode -- which eqemu never sends
+for a self-cast, B892's own root cause -- so a self-levitating player who
+touched water had the hover flag cleared on entry AND on exit, and nothing
+restored it (`LevitationChanged` fires only on a buff flip). B1011 deleted the
+field, the publisher's flymode read and the parameter;
+`PlayerCameraComponent::setLevitationState()` is the flag's one writer, and
+`tests/test_movement_component.cpp::SwimmingEventCarriesNoSurfaceHeight` fails
+if the swim payload ever carries levitation again.

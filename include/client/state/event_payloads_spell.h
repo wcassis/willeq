@@ -110,10 +110,15 @@ struct WeatherChangedData {
     uint8_t intensity;  // 0-255
 };
 
+// B1011: the isLevitating member this payload carried is GONE. It read the
+// entity flymode, which eqemu never sends for a self-cast (B892's root cause),
+// and its renderer arm overwrote playerMovement_.isLevitating on every water
+// transition -- so a levitating player who touched water lost the hover and
+// nothing restored it (LevitationChanged fires only on a buff flip).
+// LevitationChangedData below is the ONLY source of the player's levitation.
 struct SwimmingStateChangedData {
     bool isSwimming;
     float swimSpeed;
-    bool isLevitating;
 };
 
 // B892 (GitLab #208): the player's own levitation, absolute.

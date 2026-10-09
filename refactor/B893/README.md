@@ -51,8 +51,10 @@ measured table (12.2 / 24.4 at peak 3.05, duration 1 s).
 `SendHPUpdate()` for a non-GM and 1 HP + a chat line for a GM. The server does
 no fall math.
 
-- `damageForFallHeight(h)`: 0 at/below `fall().safeHeight`, then linear
-  (`safeHeight + damagePerUnitAboveSafe` per unit).
+- `damageForFallHeight(h)`: 0 at/below `fall().safeHeight`, then the oracle's
+  measured points (`kFallDamageTable`) linearly interpolated, the last
+  segment's slope continued above the table (B1011; B893 shipped a 1.5/unit
+  linear ramp that gave 8..23 across the 23-33u band where the oracle gave 5).
 - `FallTracker`: the takeoff→landing drop logic (begin on the airborne rising
   edge, end on the landing returns the drop height). Pure, dependency-free.
 
@@ -64,10 +66,13 @@ verbatim). The full data, method and the one #goto jitter point are in
 | constant | value | provenance |
 |---|---|---|
 | `Fall::safeHeight` | 18.0 | [MEASURED] the 18.2u drop sent no `OP_EnvDamage`; the floor is in 18.2–23.2 |
-| `Fall::damagePerUnitAboveSafe` | 1.5 | [MEASURED] mid/high range slope. The real curve is CONCAVE (5@28u, 30@43u, 91@68u); the linear ramp is the model form (the `Fall` struct is linear), so it overstates the low end and understates the top. See the evidence file for the full table. |
+| `kFallDamageTable` | 9 points, 0@18.2u … 91@68.2u | [MEASURED] every point is the `OP_EnvDamage` the official client sent at that drop; the 48.2u reading (71, above the 53.2u point) is the one #goto-jitter outlier and is excluded. `tests/test_jump_fall_arc.cpp::EveryMeasuredOraclePointIsReproduced` pins each point. |
 
 The SHAPE (one table, client-owned) is the invariant and the values are the
-oracle's; the concave-vs-linear gap is documented, not hidden.
+oracle's at every measured height. **Caveat (B1011): the whole series is ONE
+character** (Testchar, level 60 GM, 2255 HP); whether the official client's
+curve depends on level, HP or race is untested and owed — a second series on
+a low-level, non-GM character is the check.
 
 ## The sender and the scenario [done, offline]
 
@@ -127,21 +132,26 @@ Full method + data: `refactor/B893/evidence/oracle_measurements.md`.
 
 | constant | value | status |
 |---|---|---|
-| `Arc::peakHeight` | 3.05 | [MEASURED] apex = max of 8 mid-air `OP_ClientUpdate` samples (+1.82 … +3.05 above standing −38.2157; the 11:29 capture is the raw `evidence/b893_jump_wirecap_1129.log`, the 10:28 capture `b893_jump_wirecap.decoded.txt` lives in the evidence tree); ~1 sample per jump at ~1 Hz |
-| `Arc::durationS` | 1.0 | [ASSUMED, OWED] the wire is ~1 Hz and cannot resolve a sub-second arc; kept from the pre-B893 renderer, marked owed |
+| `Arc::peakHeight` | 3.05 | [MEASURED LOWER BOUND, apex OWED] (B1011) the max of the mid-air `OP_ClientUpdate` samples: the committed 11:29 capture (`evidence/b893_jump_wirecap_1129.log`, decoded in `evidence/oracle_measurements.md`) holds five jumps with ONE mid-air sample each — four at an identical +2.509, one at +3.051 — and the uncommitted 10:28 run gave +1.82 … +2.12. The client sends `OP_ClientUpdate` at 1-3 Hz, so each jump is sampled once at an arbitrary phase: the official apex is at or above 3.05. The committed `evidence/b893_jump_fall.mp4` is the measurement that resolves it (step the video against the character's known height) |
+| `Arc::durationS` | 1.0 | [ASSUMED, OWED] the wire cannot resolve a sub-second arc; kept from the pre-B893 renderer, marked owed |
 | `Arc::terminalSpeed` | 100.0 | [ASSUMED, OWED] the `#goto` fall is a server-side teleport the client integrates locally, so no terminal velocity is observable on this rig; nothing clamps to it yet (no term in the integrator) |
 | `Fall::safeHeight` | 18.0 | [MEASURED] the 18.2u drop sent no `OP_EnvDamage`; the 23.2u drop sent 5 |
-| `Fall::damagePerUnitAboveSafe` | 1.5 | [MEASURED] mid/high-range slope of the concave curve (5@28u … 91@68u); linear ramp is the model form |
+| `kFallDamageTable` | 9 measured points | [MEASURED] the oracle's own values, interpolated (B1011 replaced the 1.5/unit ramp) |
 
 The curve SHAPE, the collapse, the sender, the encoder bytes, and the scenario
-are all done and pinned; the arc apex and the fall curve are now the oracle's,
-and the arc duration + terminal velocity are the two constants that stay owed
-(because the capture cannot resolve them, not because they were not pursued).
+are all done and pinned; the fall curve is the oracle's at every measured
+height; the arc apex is a measured lower bound, and the true apex, the arc
+duration and terminal velocity are the three constants that stay owed.
 
 ## Not verified / left open
 
-- **Arc duration** and **terminal velocity** are the two still-owed constants:
-  the wire's ~1 Hz position update cannot resolve a sub-second jump arc, and the
+- **The arc apex** (B1011): 3.05 is a lower bound from one wire sample per
+  jump; the official client's peak is at or above it and is to be read off
+  `evidence/b893_jump_fall.mp4` (the project's own rule: a transient is
+  measured from video, not from sparse stills).
+- **The fall curve on other characters** (B1011): one level-60 GM series only.
+- **Arc duration** and **terminal velocity** are the two other owed constants:
+  the wire's 1-3 Hz position update cannot resolve a sub-second jump arc, and the
   `#goto` fall is a server-side teleport the client integrates locally, so no
   terminal velocity is observable from this rig. Both are marked `[ASSUMED,
   OWED]` in `jump_fall_physics.h`; they are not hidden as measured.

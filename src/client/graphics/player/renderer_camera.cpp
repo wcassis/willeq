@@ -480,11 +480,15 @@ void PlayerCameraComponent::setPlayerPosition(float x, float y, float z, float h
     // recomputes visibility from the camera position this call just set.
 }
 
-void PlayerCameraComponent::setSwimmingState(bool swimming, float swimSpeed, bool levitating) {
+// B1011: no levitation parameter. This arm used to assign
+// playerMovement_.isLevitating from the swim event's flymode-derived flag on
+// every water transition, which cleared a self-cast hover the moment the
+// player touched water (B892 review observation, promoted to a defect).
+void PlayerCameraComponent::setSwimmingState(bool swimming, float swimSpeed) {
     if (owner_.isLoading()) return;
     if (playerMovement_.isSwimming != swimming) {
         LOG_INFO(MOD_GRAPHICS, "[Swimming] {} water (swimSpeed={}, levitating={})",
-                 swimming ? "Entering" : "Exiting", swimSpeed, levitating);
+                 swimming ? "Entering" : "Exiting", swimSpeed, playerMovement_.isLevitating);
 
         // When entering water, cancel any jump in progress
         if (swimming) {
@@ -495,13 +499,12 @@ void PlayerCameraComponent::setSwimmingState(bool swimming, float swimSpeed, boo
 
     playerMovement_.isSwimming = swimming;
     playerMovement_.swimSpeed = swimSpeed;
-    playerMovement_.isLevitating = levitating;
 }
 
-// B892 (GitLab #208): the writer of playerMovement_.isLevitating. The
-// swimming event no longer feeds it: that event fires on water TRANSITIONS
-// only, and its isLevitating field read a flymode that, for a self-cast,
-// eqemu never sent to us (ignore_self). The game thread's LevitationChanged
+// B892 (GitLab #208): the writer of playerMovement_.isLevitating -- the ONLY
+// one since B1011 removed the swimming event's assignment above (that event
+// fires on water TRANSITIONS only, and its flag read a flymode that, for a
+// self-cast, eqemu never sent to us, ignore_self). The game thread's LevitationChanged
 // event (MovementComponent::SyncLevitation) is the source, and this is its
 // renderer arm. The field's one remaining reader -- the idle water-sink
 // suppression in computeMovementVector() -- keeps working off the same flag.
