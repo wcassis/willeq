@@ -220,6 +220,31 @@ public:
         (void)op; (void)coinType; (void)quantity; (void)coinSource;
         return false;
     }
+
+    // --- B893: fall_damage ---
+    //
+    // The scenario's live observable is the player's CURRENT HP (eqemu
+    // applies a non-GM fall's damage and SendHPUpdate()s it; a GM takes 1 HP
+    // and gets the "Your GM status protects you from N points of ... " chat
+    // line). The fall itself is driven by the world, not the client: a
+    // headless run has no renderer free-fall integrator (the server-driven
+    // pathing only drops the player along its path, and UpdateJump's bounded
+    // arc always lands safely), so the scenario asks the world to run the
+    // client's own fall-damage SEND PATH against a synthetic height. Both
+    // have defaults -- an older fake answers "not readable" / no-op, which a
+    // scenario that needs them treats as "the world can't do this".
+    /**
+     * The player's current HP; -1 not readable before zone-in.
+     */
+    virtual long long PlayerHP() const { return -1; }
+    /**
+     * Drive the client's fall-damage sender against a synthetic `fallHeight`
+     * (eqt::jumpfall::damageForFallHeight + SendFallDamage, dmgtype 252). The
+     * server then applies the damage (or, for a GM, echoes the would-be
+     * amount and takes 1). True when the world sent it; false when the world
+     * cannot (the default).
+     */
+    virtual bool SimulateFall(float fallHeight) { (void)fallHeight; return false; }
 };
 
 struct ScenarioTick {
@@ -292,6 +317,21 @@ struct ScenarioOptions {
      */
     std::string expectCharacterName;
     std::vector<std::string> expectHomeZones;
+    /**
+     * B893 (fall_damage): the synthetic drop height the scenario drives
+     * through the client's own fall-damage sender. It must exceed
+     * eqt::jumpfall::fall().safeHeight for the live leg to deal damage; the
+     * default 20.0 does (safeHeight is 18.0 [MEASURED, lane-2 capture] -> 3
+     * points of damage at the default height).
+     */
+    float fallDamageHeight = 20.0f;
+    /**
+     * B893 (fall_damage): how long to wait for the server's HP change to
+     * arrive after SimulateFall. The send is a single C->S packet; the
+     * server's SendHPUpdate() round-trip is well under a second, but a
+     * flaky lane should not pass on the first tick's un-echoed value.
+     */
+    double fallWaitSeconds = 8.0;
 };
 
 class IScenario {

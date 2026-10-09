@@ -24,6 +24,9 @@
 #include "client/client_context.h"
 #include "client/eq_enums.h"
 #include "client/pathfinder_interface.h"
+// B893: the ONE jump/fall model (arc constants + the FallTracker + the
+// EnvDamage encoder).
+#include "client/jump_fall_physics.h"
 // B892 (GitLab #208): SyncLevitation reads the buff list, the spell database
 // and the self row's flymode.
 #include "client/spell/buff_manager.h"
@@ -72,6 +75,15 @@ public:
 
 	// The per-tick pump and the two geometry helpers other families call
 	// (was eq_movement_update.cpp).
+	// B893: the ONE fall-damage sender. Real play drives this from the
+	// MovementComponent's own fall tracker (UpdateJump / the movement pump) in
+	// headless mode and from a PlayerFallDamage intent in graphical mode (the
+	// renderer's landing detection, which the bridge turns into this call).
+	// Encodes the 31-byte EnvDamage2_Struct (dmgtype 252 = Falling) and queues
+	// it to the zone; the server reads `damage` verbatim (akk-stack
+	// code/zone/client_packet.cpp:6316) and echoes the chat line. A drop of at
+	// most the table's safeHeight sends nothing.
+	void SendFallDamage(float fallHeight);
 	void UpdateMovement();
 	void SendPositionUpdate();
 

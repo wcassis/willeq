@@ -30,6 +30,10 @@
 #include "client/graphics/eq/s3d_loader.h"
 #include "client/graphics/eq/zone_geometry.h"
 #include "client/graphics/placed_object_meshes.h"
+// B893: the ONE jump/fall model. The jump arc constants below are DERIVED
+// from this table, not literals, so the headless and renderer integrators
+// read the same (peak, duration) pair.
+#include "client/jump_fall_physics.h"
 #include "client/graphics/camera_controller.h"
 #include "client/graphics/entity_renderer.h"
 #include "client/graphics/eq/equipment_model_loader.h"
@@ -320,8 +324,13 @@ struct PlayerMovementState {
     // Jump state
     bool isJumping = false;        // Currently in air from jump
     float verticalVelocity = 0.0f; // Current vertical velocity (positive = up)
-    float jumpVelocity = 40.0f;    // Initial upward velocity when jumping
-    float gravity = 80.0f;         // Gravity acceleration (units/sec^2)
+    // B893: DERIVED from the one jump table (include/client/jump_fall_
+    // physics.h), not literals. At the measured peakHeight=3.05 / durationS=1
+    // these resolve to 12.2/24.4; if the table changes, the renderer follows
+    // with no second edit. (The pre-B893 renderer hardcoded 40/80 from its own
+    // 10-unit arc -- the collapse to this derivation is the point.)
+    float jumpVelocity = eqt::jumpfall::arc().initialVelocity();
+    float gravity = eqt::jumpfall::arc().gravity();
 
     // Swimming state
     bool isSwimming = false;       // Currently in water

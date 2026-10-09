@@ -569,6 +569,13 @@ EXEMPT_UNUSED = {
         ("unused", "snow accumulation flag; the comment says future feature -- the accumulation system does not exist (a snow accumulation pass would make it live)"),
     ("Snow", "maxAccumulationDepth"):
         ("unused", "snow accumulation flag; the comment says future feature -- the accumulation system does not exist (a snow accumulation pass would make it live)"),
+    # B893 jump/fall: the documented [ASSUMED, OWED] table slot. The lane-2
+    # capture cannot resolve the terminal velocity (the `#goto` fall is a
+    # server-side teleport the client integrates locally), and the integrator
+    # has no terminal-velocity term; the measured value lands in this slot
+    # when obtained (refactor/B893/README.md, owed-constants section).
+    ("Arc", "terminalSpeed"):
+        ("unused", "B893: documented [ASSUMED, OWED] slot for the measured terminal fall velocity (refactor/B893/README.md); nothing clamps to it yet (a terminal-velocity term in the fall integrator would make it live)"),
     # /perf report aggregates that are filled and never printed.
     ("SceneBreakdown", "withoutZone"):
         ("report", "B337: /perf scene breakdown; the sub-pass timings are filled and the report never prints them"),
