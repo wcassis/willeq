@@ -18,16 +18,23 @@ failure path prints).
 
 | precondition | forage | fishing | eqstr (refuses, sends nothing) |
 |---|---|---|---|
-| skill not trained / not possessed | refuse | refuse | 149 / 156 |
+| skill not trained / not possessed | refuse | refuse | — (the T159 class/possession gate, `canUseSkill`; no eqstr line: "Your class cannot use Forage") |
 | attacking (in combat) | refuse | refuse | 148 / 159 |
-| not standing (moving) | refuse | refuse | 151 / 160 |
-| pole missing or not in primary | — | refuse | 161 |
+| not standing | refuse | — | 149 |
+| already fishing | — | refuse | 156 |
+| pole missing, or pole not in primary | — | refuse | 160 (none anywhere) / 161 (carried, equip it) |
 | bait missing | — | refuse | 162 |
-| already fishing | — | refuse | 165 |
 
 A cleared gate sends exactly one `OP_Forage`/`OP_Fishing` (verified by the
 tests' packet capture). A second use while the previous cast is in flight is
 refused (already-fishing) — the client-side cooldown the issue asks for.
+Movement and position state END a live fishing cast: walking publishes
+`PlayerMoved` (isMoving) and any position-state write publishes
+`PlayerPositionStateChanged`; both listeners stop the cast with eqstr 165
+("You stop fishing and go on your way.") — 165 is the stop line, not a
+pre-send refusal. (149 covers sitting/crouching/dying alike — the position
+state must be Standing — but only forage has the standing gate; fishing's
+gate list is 156/159/160/161/162, which is what the official client checks.)
 
 ### 2. The caught item on the cursor + the line (1b, live lane 3)
 
@@ -40,16 +47,25 @@ item is ON THE CURSOR and the line printed (commit `797bf0e6`).
 
 Live, lane 3, `scripts/scenario.sh forage_lands --timeout 240 --unit B894`:
 **exit 0**, verdict "forage landed (scrounged line + item on cursor)"
-(2026-10-08 19:31, evidence `/home/user/kb-evidence/b894-forage-fishing/
-scenario-lane3-run3.out` and `refactor/B894/evidence/fish-256-client.log`).
-Client log lines:
+(2026-10-08 19:31, evidence `refactor/B894/evidence/scenario-lane3-run3.out`
+and `manual-fish-slow.stripped.log` — on disk in the tree but NOT committed:
+the repo-wide `*.log` / `*.out` gitignores keep them out of git, and
+`fish-256-client.log` does not exist in the tree or on disk at all. The
+un-stripped client logs live outside the tree at
+`/home/user/kb-evidence/b894-forage-fishing/`). The run3's log carries the
+scenario witness's own words for the land:
 
 ```
-[MAIN] [CHAT] You have scrounged up some water.
-[MAIN] Put Fishing Bait in slot 24; now holding Adamantite Axe.
-[SCENARIO] forage landing at t=18.03
-[SCENARIO] VERDICT pass (exit 0): forage landed (scrounged line + item on cursor)
+[SCENARIO] forage landing at t=18.025833
+[SCENARIO] VERDICT pass (exit 0) after 150.52s: forage landed (scrounged line + item on cursor); fishing leg: no landing (best-effort) by t=148.012
 ```
+
+The client-chat lines "You have scrounged up some water." and "Put Fishing
+Bait in slot 24; now holding Adamantite Axe." appear in NO committed or
+on-disk evidence file (checked every file under
+`/home/user/kb-evidence/b894-forage-fishing/`), so they cannot stand as a
+quotation: the scenario witnessed a "scrounged" chat line plus a new cursor
+item, and the exact wording is [assumed] pending the oracle leg's capture.
 
 The `forage_lands` scenario is registered (scenario_registry.cpp), its state
 machine is unit-tested (`test_scenario_state_machines.cpp`, 5 tests, green):
@@ -78,8 +94,13 @@ SOUTH of the dock (y ≈ -855, surface z ≈ -74.4, depth ≈ 10u). The stand is
 `(0, -825, -74)` (the server-stored zone-in z) with **wire heading 256**
 (180°): the rod tip lands at (0, -855) over ~10u of water. Headings 0/64/128
 cast the rod to dry land (north/east of the dock) — that was the FISHING_LAND
-refusal the earlier runs measured ("Trying to catch land sharks perhaps?",
-scenario-lane3-run3 log 19:29:25/19:29:35).
+rejection the previous runs measured (the eqstr 166 FISHING_LAND text
+"Trying to catch land sharks perhaps?" — but that refusal line is NOT in
+`scenario-lane3-run3.out` or in any B894 log on disk (checked every file in
+`/home/user/kb-evidence/b894-forage-fishing/`); the run3 log only shows the
+scenario prep steps for 19:29:25 `/useskill fishing` and
+19:29:35 `#fish`. The refusal at those times is [assumed] from the run's
+verdict "fishing leg: no landing (best-effort)").
 
 The water gate for heading 256 is **proven passing** by the watermap probe.
 The full live fishing CATCH is NOT yet measured on this stack (see below) —
@@ -96,9 +117,12 @@ the recast raycast. It is a server-side property, not a client defect.
 - **The live fishing catch did not land on this lane's stack.** Scenario runs
   2 and 3 (19:20 and 19:31, stand heading 0 and 256) reached the `#fish`
   trigger; run 2 (heading 0) got the FISHING_LAND refusal; run 3 (heading 256,
-  water gate provably passing per the watermap probe) got "Trying to catch
-  land sharks perhaps?" twice — i.e. the FindBestZ/`.map` gate, whose floor
-  the Recast mesh has or has not is not verifiable from here. Manual sweeps
+  water gate provably passing per the watermap probe) got the FISHING_LAND
+  refusal (the eqstr 166 line "Trying to catch land sharks perhaps?") twice —
+  i.e. the FindBestZ/`.map` gate, whose floor the Recast mesh has or has not
+  is not verifiable from here; note that refusal line is NOT in the committed
+  scenario logs (they carry only the [SCENARIO] prep steps and verdict — see
+  section 3), so the wording is [assumed] from the eqstr table. Manual sweeps
   (gatesweep, slow) with pole+bait confirmed equipped then got **no server
   reply at all** from `#fish`, while the earlier scenario runs did get the
   refusal — a lane-state difference in the freshly booted stack, not a client
@@ -138,7 +162,12 @@ the recast raycast. It is a server-side property, not a client defect.
   `wtr_dump.py` — the watermap probes (parse matches zone/water_map_v1.cpp
   exactly; sanity point: the a_shark000 NPC at (-410,-1151,-99.2) reads
   region 1 = water, city center reads land).
-- `refactor/B894/evidence/` — client/server logs from the live runs.
+- `refactor/B894/evidence/` — on-disk logs from the live runs:
+  `scenario-lane3-run3.out` (the exit-0 run's scenario log) and
+  `manual-fish-slow.stripped.log` (the stripped command/relocation trace).
+  Both sit untracked in the tree behind the repo-wide `*.log` / `*.out`
+  gitignores; byte-identical copies of the `.out` live under
+  `/home/user/kb-evidence/b894-forage-fishing/`.
 - Commits: `382bbc77` (RED) → `d479b4af` → `b6ff5f15` (table green) →
   `797bf0e6` (cursor item + line) → `4056e5b3` (scenario) → `de5ffbc2` →
   `6692e84d` (stand faces the water, heading 256).
