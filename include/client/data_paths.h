@@ -37,9 +37,10 @@ namespace eqt {
  *      (this is the pre-T397 behaviour and is deliberately first);
  *   3. $WILLEQ_DATA_ROOT/<relative>, if that variable is set and non-empty;
  *   4. the directory holding the running executable, then each of its
- *      parents up to kMaxParentWalk levels -- which finds <repo>/config/...
- *      from <repo>/build/bin/willeq, <repo>/build-gles2/bin/willeq and
- *      <repo>/build-arm-noble/bin/willeq alike.
+ *      parents up to kMaxParentWalk levels (five) -- which finds
+ *      <repo>/config/... from <repo>/build/bin/willeq,
+ *      <repo>/build-gles2/bin/willeq, <repo>/build-arm-noble/bin/willeq and
+ *      CI's per-ref <repo>/build/ref/<slug>/bin/willeq (B1012) alike.
  *
  * If nothing exists, the input is returned unchanged so the caller's error
  * message names the path the caller asked for.

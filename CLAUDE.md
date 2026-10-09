@@ -263,7 +263,7 @@ existing file wins:
    read before this existed (the visual gate included);
 3. `$WILLEQ_DATA_ROOT/<relative>`, for a staged install whose data tree is not
    beside the binary;
-4. the directory holding the running executable, then up to three parents.
+4. the directory holding the running executable, then up to five parents.
 
 If nothing exists the input comes back unchanged, so the caller's own "could not
 open X" names the X it asked for. `willeq.json` is resolved the same way. **A new

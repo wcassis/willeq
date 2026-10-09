@@ -20,9 +20,10 @@ namespace eqt {
 namespace {
 
 // How far up from the executable's own directory to look for the data tree.
-// <repo>/build/bin/willeq needs two levels; the extra headroom covers a
+// <repo>/build/bin/willeq needs two levels; CI's per-ref trees (B1012,
+// <repo>/build/ref/<slug>/bin/willeq) need four; the fifth is headroom for a
 // deeper staging layout without turning the search into a filesystem crawl.
-constexpr int kMaxParentWalk = 3;
+constexpr int kMaxParentWalk = 5;
 
 bool FileExists(const std::string& path) {
     struct stat st;

@@ -1856,3 +1856,17 @@ glFlush; `GEM_PP_JOBS_PER_FRAME_BOUND` moves 2.0 → 2.5 as a MEASURED number
 the B997 (#317) known condition, and B997 is re-scoped around draw count, not
 buffering. The first write-up of the glFlush leg read gfaydark's 22.14 MiB as
 short of the cut's 23.06; it is below it (corrected by B1011).
+
+**CI builds one warm tree per ref, with an expiry job (2026-10-09, B1012
+#333).** On the `concurrent = 1` x86 runner the stages of two pipelines
+interleave; with one shared `build/`, MR !119's `test` stage ran over binaries
+MR !118's `build` stage had just written (pipelines 697/698, 2026-10-08) and
+failed on tests that were not in its source. B907's orphan prune cannot see
+that case (the binaries had targets in the other branch's graph). Will chose
+per-ref build directories over cold builds by default, on the condition that
+old trees are monitored and cleaned up: `build/ref/<slug>` and
+`build-gles2/ref/<slug>` per ref, each stamped with its ref name and build
+time, and a `prune-build-trees` job on every fable pipeline that removes trees
+whose branch is gone from the remote or untouched for 14 days and prints the
+census (`docs/ci.md`, "One warm tree per ref"). `build/hygiene` and the
+patched Irrlicht stay shared (no binaries; content-stamped).

@@ -332,6 +332,12 @@ ADD_TEST(NAME CheckBuildTreeOrphansPrune
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_check_build_tree_orphans.py -v)
 SET_TESTS_PROPERTIES(CheckBuildTreeOrphansPrune PROPERTIES LABELS "hygiene")
 
+# B1012 (#333): the per-ref warm-tree expiry on the CI runner. Pure temp-dir
+# test of scripts/ci/prune_ref_build_trees.py's decision rules + refusals.
+ADD_TEST(NAME PruneRefBuildTrees
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_prune_ref_build_trees.py -v)
+SET_TESTS_PROPERTIES(PruneRefBuildTrees PROPERTIES LABELS "hygiene")
+
 # B975: zone-hop warmup must not contaminate the crowd's idle timing table.
 ADD_TEST(NAME NameTagCrowdTiming
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/b975/test_frametiming_table.py)

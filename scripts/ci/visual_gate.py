@@ -96,6 +96,7 @@ import argparse
 import base64
 import csv
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -108,9 +109,12 @@ import owned_memory  # noqa: E402  B978: the one owned-memory definition
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 GOLDENS_DIR = PROJECT_DIR / "tests" / "goldens"
 MANIFEST_PATH = GOLDENS_DIR / "manifest.json"
-BENCH_BIN = PROJECT_DIR / "build-gles2" / "bin" / "gles2_zone_benchmark"
+# B1012: CI points this at the ref's own tree (build-gles2/ref/<slug>) through
+# WILLEQ_GLES2_BUILD_DIR; a developer's checkout keeps build-gles2/.
+GLES2_BUILD_DIR = Path(os.environ.get("WILLEQ_GLES2_BUILD_DIR") or (PROJECT_DIR / "build-gles2"))
+BENCH_BIN = GLES2_BUILD_DIR / "bin" / "gles2_zone_benchmark"
 EQ_PATH = PROJECT_DIR / "data" / "eq_client"
-ARTIFACTS_DIR = PROJECT_DIR / "build-gles2" / "ci_artifacts"  # gitignored (whole build-gles2/ is)
+ARTIFACTS_DIR = GLES2_BUILD_DIR / "ci_artifacts"  # gitignored (whole build-gles2/ is)
 
 # T80: ETC1 archive directory for the memory-coverage run (see
 # MEMORY_COVERAGE_* below). Mirrors the pre-existing data/eq_client

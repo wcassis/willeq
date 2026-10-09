@@ -117,10 +117,10 @@ longer downloads them: SourceForge returned HTTP 522 for ~3 h on 2026-10-01 and 
 
 | Stage | What it does | Cold | Warm |
 | --- | --- | --- | --- |
-| `hygiene` | `ctest -L hygiene` in a no-C++ tree (`EQT_GRAPHICS=OFF`), configured into `build/hygiene` | 45 s | 44 s |
-| `build` | the Release recipe from `CLAUDE.md`, `-j8` | 1,237 s (20.6 min) | 6 s |
+| `hygiene` | `ctest -L hygiene` in a no-C++ tree (`EQT_GRAPHICS=OFF`), configured into `build/hygiene`; on `fable` also `prune-build-trees` (B1012, the per-ref tree expiry + census) | 45 s | 44 s |
+| `build` | the Release recipe from `CLAUDE.md`, `-j8`, into `build/ref/<slug>` (B1012) | 1,237 s (20.6 min) | 6 s |
 | `test` | full `ctest -j6`, minus two cases, then one of them with retries | 116 s (4,908 tests) | 116 s |
-| `gate` | `visual_gate` (T80/T291) over `build-gles2/bin/gles2_zone_benchmark` | 363 s | 18 s |
+| `gate` | `visual_gate` (T80/T291) over `build-gles2/ref/<slug>/bin/gles2_zone_benchmark` (B1012) | 363 s | 18 s |
 | | B813 (2026-09-20): the manifest names FIVE zones (qeynos2, gfaydark, befallen + iceclad + timorous); `gate` verifies all five (`--zones`, B903/B904 2026-09-29) | — | 40 s for all five in one job (measured back-to-back on a quiet hermes-ext: 10.6 s wall for three zones, 19.6 s wall for five; +9.0 s wall) |
 
 (T502's own measurements on hermes-ext; `test` does the same work either way —
@@ -260,13 +260,51 @@ would be pure waste. `build/hygiene` is a subdirectory of the preserved `build`
 tree for the same reason: its CMake cache and its googletest `FetchContent` clone
 survive too.
 
-**The trade-off is real:** a stale object file, a stale CMake cache or a
-half-written artifact can survive into the next pipeline, so a green pipeline is
-evidence about an *incremental* build, not a clean one. To force a cold run:
+### One warm tree per ref (B1012, issue #333)
+
+Inside those two preserved roots, **each ref builds into its own subtree**:
+`build/ref/$CI_COMMIT_REF_SLUG` (`$BUILD_TREE`) and
+`build-gles2/ref/$CI_COMMIT_REF_SLUG` (`$GLES2_TREE`). The slug is the SOURCE
+branch for a merge-request pipeline too, so a branch's push pipeline and its MR
+pipeline share one tree and stay warm against each other. The cause: on the
+`concurrent = 1` runner the stages of two pipelines interleave, and with one
+shared `build/` MR !119's `test` stage (pipeline 697, 2026-10-08) ran over
+binaries MR !118's `build` stage (698) had just written — it failed on
+`JumpFallArc.*` and `BridgeIntentTable.*`, tests that did not exist in its own
+source. `--prune` (B907, below) could not see that: those binaries DID have
+targets in the other branch's graph. With a tree per ref the only leftovers a
+pipeline can meet are its own ref's earlier commit's, which `--prune` handles.
+
+The `build` and `gate` jobs stamp the tree they use (`.willeq_ref`: the full ref
+name + the job's UTC time, `scripts/ci/prune_ref_build_trees.py --stamp`). The
+expiry the shared layout never had is the **`prune-build-trees` job**
+(hygiene stage, `needs: []`, automatic on every `fable` pipeline, manual and
+non-blocking elsewhere): it deletes a tree whose stamped ref is no longer a
+branch on the remote (`git ls-remote --heads`), whose stamp is older than 14
+days, or that has no stamp; sweeps the pre-B1012 shared tree's entries at the
+two roots (everything except `ref/` and `hygiene/`); and prints every decision
+with the tree's size and age plus `du`/`df` for the roots. **`prune.log` on the
+latest fable pipeline is the census** — read it to see what the runner holds.
+The script refuses an empty live-ref list (a failed `ls-remote` must never
+read as "every branch is gone") and any root that is not
+`<build|build-gles2>/ref`; `scripts/ci/test_prune_ref_build_trees.py`
+(ctest `PruneRefBuildTrees`, hygiene label) pins each rule. Measured
+2026-10-09 on gitlab-runner-1: one ref's two trees are ~4.4 GB; the disk had
+206 GB free, so ~40 live refs fit before the 14-day expiry matters.
+`scripts/build-gles2-x86.sh` honours `GLES2_BUILD_DIR` and `visual_gate.py`
+honours `WILLEQ_GLES2_BUILD_DIR` for this; a developer's checkout keeps the
+default `build/` and `build-gles2/`.
+
+**The trade-off is still real within a ref:** a stale object file, a stale
+CMake cache or a half-written artifact can survive into the next pipeline OF
+THE SAME REF, so a green pipeline is evidence about an *incremental* build, not
+a clean one. To force a cold run:
 
 - run the pipeline with `GIT_CLEAN_FLAGS` overridden to `-ffdx` (Run pipeline →
   add the variable), **or**
-- on hermes-ext: `rm -rf ~/builds/*/0/willeq/willeq/{build,build-gles2,third_party/irrlicht-gles2-x86}`.
+- on gitlab-runner-1 (as root): `rm -rf /home/gitlab-runner/builds/*/0/willeq/willeq/{build/ref/<slug>,build-gles2/ref/<slug>}`
+  for one ref, or the whole `{build,build-gles2,third_party/irrlicht-gles2-x86}`
+  for everything.
 
 Do the cold run before trusting a green pipeline on anything that changed the
 build system itself.
@@ -351,7 +389,9 @@ but **never deletes a file it once wrote to bin/**.
   keeps the warm-tree speed *within* a branch, but multiplies disk use by the
   number of branches with pipeline history on a `concurrent = 1` runner that
   already has no ccache and no ninja, with no expiry mechanism proposed. Not
-  chosen; revisit only if `--prune` itself proves insufficient.
+  chosen at B907; **chosen at B1012 (2026-10-09, Will) once `--prune` proved
+  insufficient against concurrent pipelines, with the expiry mechanism added**
+  — see "One warm tree per ref" above.
 
 ### Device-source changes are caught by the input stamp, not by a cold run
 
