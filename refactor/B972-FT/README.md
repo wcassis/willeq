@@ -259,7 +259,16 @@ prediction.**
    0.068, no-cut 0.014–0.016) — the write-triggered `lima_bo_wait` stays
    gone; the flush never enters `lima_transfer_map`, as fact 1 predicted.
 
-**Consequence for the ruling (B1011 framing).** ring + glFlush buys
+**RULING (Will, 2026-10-09): option (d).** Ship ring + one `glFlush()` after
+the impostor pass (this branch, `cf56196a`); `GEM_PP_JOBS_PER_FRAME_BOUND`
+re-pinned 2.0 → 2.5 in `scripts/pi/rendered_zone_summarize.py` as a measured
+number citing the table above (the two-job frame is the design; a third
+split, the write-wait pattern at 3.1–3.2, still trips the row); the 10 MiB
+`gpu_unnamed_steady` guard row stays RED as the B997 (#317) known condition,
+and B997's lever is draw count, not buffering. Recorded in
+`docs/decisions.md`.
+
+**Consequence for the ruling (B1011 framing, superseded by the ruling above).** ring + glFlush buys
 −1.85 / −5.75 MiB of `gpu_unnamed_steady` (all of the cut on gfaydark,
 60 % of it on qeynos2) for +1.2 / +0.5 ms of impostor p50 (34.70 vs 33.48;
 41.79 vs 41.31 — qeynos2's +3.6 % is above the no-cut run-to-run spread of

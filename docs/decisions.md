@@ -1840,3 +1840,19 @@ CI: `gitlab-runner-1/2` (10.0.30.81/82) take the x86 jobs under tag
 `x86-build`; one runner carries the tag until build+test+gate fold into one
 job, since the stages share a warm tree. hermes-ext's runner no longer
 builds, which is what the 2026-10-06 local-gate rule wanted.
+
+**B972-FT ships ring + one glFlush; the PP-jobs bound is 2.5 (2026-10-09,
+#326, option d).** The per-page VBO ring removed the B972 cut's ~30 % Pi
+frame-time regression but gave back its 4–7 MiB `gpu_unnamed_steady` win,
+because that win was the by-product of the per-page write-wait flushes
+(B1006, cost-sheet fact 1). One deliberate `glFlush()` after the impostor pass
+recovers it without a wait: `gpu_unnamed_steady` −1.85 MiB on qeynos2 and
+−5.75 MiB on gfaydark (at the cut's level there), `gem_wait_ms_per_frame` at
+ring parity, impostor p50 +1.2 / +0.5 ms, PP jobs 2.23 / 2.29 per frame.
+Under memory-first (2026-09-29) Will ruled (d): MR !94 ships cuts + ring +
+glFlush; `GEM_PP_JOBS_PER_FRAME_BOUND` moves 2.0 → 2.5 as a MEASURED number
+(the two-job frame is the design, a third split still trips
+`gem_pp_jobs_over_bound`); the 10 MiB `gpu_unnamed_steady` guard stays red as
+the B997 (#317) known condition, and B997 is re-scoped around draw count, not
+buffering. The first write-up of the glFlush leg read gfaydark's 22.14 MiB as
+short of the cut's 23.06; it is below it (corrected by B1011).

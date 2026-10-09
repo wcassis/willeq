@@ -914,9 +914,13 @@ it without taking that measurement first.
   frame gate's job-count PROXY (`gem_pp_jobs_per_frame` 2.23 / 2.29 > 2.0:
   the flush splits the frame's render job into two; `gem_wait_ms_per_frame`
   stays at ring parity ~0.05; p50 +1.2 / +0.5 ms). The worker recommends
-  **(a)**; B1011 adds **(d) ring + glFlush, jobs bound re-pinned at 2.5** as
-  the memory-first option (`refactor/B972-FT/README.md`, the glFlush
-  section). Will's call.
+  **(a)**; B1011 added **(d) ring + glFlush, jobs bound re-pinned at 2.5** as
+  the memory-first option. **RULED by Will 2026-10-09: (d)** — MR !94 ships
+  the self-contained cuts + the per-page VBO ring + one `glFlush()` after the
+  impostor pass (`cf56196a`), `GEM_PP_JOBS_PER_FRAME_BOUND` 2.0 → 2.5 as a
+  measured number (the two-job frame is deliberate; a third split still
+  trips the row), the 10 MiB `gpu_unnamed_steady` guard row stays RED as the
+  B997 known condition (`docs/decisions.md` 2026-10-09).
 - **B997** (B, memory) → issue #317. The B972 split-off: the zone-merge pool
   (6 × 1 MiB `u_upload` `draw:zone` slots, ~38 client-array drawCalls/frame,
   `renderer_zone_merge.cpp`) + the remaining `draw3d:client` pool hold the
@@ -971,7 +975,7 @@ it without taking that measurement first.
   buffers, not jobs.~~ **FIXED** (`refactor/B1006/README.md`): the shim
   (`scripts/pi/lima_bo_census.c`) counts GEM submits per pipe, blocking GEM
   waits and their wall time, and frames; `rendered_zone_summarize.py` carries
-  them as the `gem_*` columns and the `gem_pp_jobs_over_bound` row (bound 2.0;
+  them as the `gem_*` columns and the `gem_pp_jobs_over_bound` row (bound 2.0, re-pinned 2.5 by the #326 ruling of 2026-10-09;
   no-cut 1.2–1.3 PP jobs/frame, the B972 cut 3.1–3.2 with 17–21 ms/frame in
   waits = the whole regression); `pi_crowd.sh --bo-census` loads the shim,
   which the crowd runs never had.

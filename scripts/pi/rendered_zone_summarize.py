@@ -82,7 +82,15 @@ GPU_UNNAMED_BOUND = 10 * 1024 * 1024  # B962: measured 5.0-7.7 MiB fixed, 11.4-1
 # no-cut c7abab9c 1.20 (qeynos2) / 1.31 (gfaydark) PP jobs per frame with
 # ~1.1 near-instant waits; the B972 cut a893b467 3.12 jobs, 10.45 waits and
 # 17.2 ms per frame inside them on qeynos2 -- the whole 16 ms regression.
-GEM_PP_JOBS_PER_FRAME_BOUND = 2.0
+# Re-pinned 2.0 -> 2.5 by Will's ruling of 2026-10-09 (#326, option d): the
+# shipped B972-FT shape is the VBO ring plus ONE deliberate glFlush() after the
+# impostor pass, which splits the frame into exactly two PP jobs on purpose
+# (measured 2.23 qeynos2 / 2.29 gfaydark, gem_wait_ms at ring parity ~0.05,
+# impostor p50 +1.2 / +0.5 ms) to free the impostor pass's draw-time BOs early
+# (gpu_unnamed_steady -1.85 / -5.75 MiB). The bound sits just above that
+# measured two-job frame so a THIRD split -- a write-wait, the B972-cut
+# pattern at 3.1-3.2 -- still trips the row.
+GEM_PP_JOBS_PER_FRAME_BOUND = 2.5
 DRIVER_SO = re.compile(r"owner=(so:(libLLVM|libgallium|libEGL|libGLES|libGLdispatch|libdrm|libgbm|libglapi)[^ ]*"
                        r"|[^ ]*(/dev/dri|renderD|card[0-9])[^ ]*)")
 

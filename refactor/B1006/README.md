@@ -33,7 +33,9 @@ not jobs. This unit makes the job stream a column and a guard.
 - `scripts/pi/rendered_zone_summarize.py`: five END-appended columns
   (`gem_frames_steady`, `gem_pp_jobs_per_frame`, `gem_gp_jobs_per_frame`,
   `gem_waits_per_frame`, `gem_wait_ms_per_frame`) and the
-  `gem_pp_jobs_over_bound` row, `GEM_PP_JOBS_PER_FRAME_BOUND = 2.0`.
+  `gem_pp_jobs_over_bound` row, `GEM_PP_JOBS_PER_FRAME_BOUND = 2.0` (re-pinned
+  to 2.5 by Will's 2026-10-09 ruling on #326: the shipped B972-FT frame is two
+  PP jobs by design, `refactor/B972-FT/README.md`).
 - `scripts/b964/pi_crowd.sh --bo-census <so>`: the crowd rig never loaded the
   shim before, so every B972 crowd row had no census at all.
 

@@ -73,8 +73,11 @@ the line numbers move, the function names do not.
    The driver accumulates draws into `ctx->job` and submits at the flush
    (`eglSwapBuffers`); fact 1's flush submits the partial frame early, so each
    such write adds a PP job. Measured by B1006: 1.2–1.3 PP jobs per frame on
-   the client-array build, 3.1–3.2 on the B972 cut; the guard row
-   `gem_pp_jobs_over_bound` fails a zone above 2.0. A split's GPU-side cost
+   the client-array build, 3.1–3.2 on the B972 cut, and 2.2–2.3 on the shipped
+   ring + one deliberate `glFlush()` after the impostor pass (B972-FT, Will's
+   2026-10-09 ruling: that one split costs +1.2 / +0.5 ms of impostor p50 and
+   buys −1.85 / −5.75 MiB of `gpu_unnamed_steady`); the guard row
+   `gem_pp_jobs_over_bound` fails a zone above 2.5. A split's GPU-side cost
    (the tile-based PP pass re-walks the framebuffer per job) is **not
    separated** from the CPU wait, which already accounts for the delta. The
    count and the wait come from the census shim's job-stream counters
