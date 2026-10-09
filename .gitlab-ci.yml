@@ -31,14 +31,29 @@ variables:
   JOBS: "8"
   CTEST_JOBS: "6"
   # Keep a warm tree per project on the runner: clean everything EXCEPT the two
-  # build trees and the locally built Irrlicht, so a pipeline is incremental.
+  # build roots and the locally built Irrlicht, so a pipeline is incremental.
   # `git clean -ffdx -e <pattern>` keeps the excluded paths (GitLab passes these
   # flags straight to `git clean`); GitLab's own default is a bare `-ffdx`.
   # TRADE-OFF: a stale object file or a stale CMake cache can survive into the
-  # next pipeline. A from-scratch pipeline is a manual
+  # next pipeline OF THE SAME REF. A from-scratch pipeline is a manual
   # `rm -rf build build-gles2 third_party/irrlicht-gles2-x86` on the runner, or
   # run the pipeline with GIT_CLEAN_FLAGS=-ffdx (see docs/ci.md).
   GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e third_party/irrlicht-gles2-x86
+  # B1012 (#333): ONE WARM TREE PER REF. Two branches' pipelines interleaving
+  # on the concurrent=1 runner shared one build/ -- MR !119's `test` stage
+  # (pipeline 697) ran over binaries MR !118's `build` stage (698) had just
+  # written, and failed on tests that did not exist in its own source. Each
+  # ref now configures into its own subtree, so a pipeline can only ever see
+  # its own ref's leftovers (the within-ref warm speed is kept). The `build`
+  # and `gate` jobs stamp the tree they use with .willeq_ref; the
+  # `prune-build-trees` job (fable pipelines) deletes trees whose ref is gone
+  # from the remote or untouched for 14 days -- the expiry the old shared
+  # layout never had -- and prints the census. $CI_COMMIT_REF_SLUG is the
+  # SOURCE branch for an MR pipeline too, so a branch's push pipeline and its
+  # MR pipeline share one tree. build/hygiene stays shared: no binaries, a
+  # cheap reconfigure, and the googletest FetchContent clone is worth keeping.
+  BUILD_TREE: build/ref/$CI_COMMIT_REF_SLUG
+  GLES2_TREE: build-gles2/ref/$CI_COMMIT_REF_SLUG
 
 # Branch/MR scope, pipeline-wide: task/* and plans/* branches, merge requests,
 # and fable. Never on tags. The CI_OPEN_MERGE_REQUESTS rule suppresses the
@@ -58,7 +73,8 @@ workflow:
   timeout: 3h
   interruptible: true
   # Nothing is passed between stages as artifacts -- the jobs share one warm
-  # working tree on a concurrent=1 runner. Never download upstream artifacts.
+  # working tree on a concurrent=1 runner (one build subtree per ref, B1012).
+  # Never download upstream artifacts.
   # B1008 (2026-10-08): the x86 jobs run on the dedicated runner VMs
   # (gitlab-runner-1/2, 10.0.30.81/82: 16 cores, 15 GB, local copies of the
   # two client trees at the same paths), tag `x86-build`, so hermes-ext's
@@ -81,6 +97,34 @@ workflow:
     # instead of a silent SKIP.
     - ln -sfn /mnt/projects/EverQuestP1999 data/eq_client
     - ln -sfn /mnt/projects/EverQuest_ETC1 data/eqe1_client
+    - echo "build tree $BUILD_TREE / gate tree $GLES2_TREE (ref $CI_COMMIT_REF_NAME)"
+
+# B1012 (#333): the expiry for the per-ref warm trees, and the census an
+# operator reads to see what the runner holds. Automatic on fable pipelines
+# (every merge runs one), MANUAL and non-blocking anywhere else. Deletes a
+# tree whose stamped ref is no longer a remote branch, whose stamp is older
+# than 14 days, or that carries no stamp at all (the pre-B1012 shared tree's
+# leftovers at build/ and build-gles2/ root are swept by the same rule in
+# the script's legacy step). Declared before `gate:` on purpose
+# (test_visual_gate_ledger slices the file at "\ngate:").
+prune-build-trees:
+  extends: .goldfarm
+  stage: hygiene
+  needs: []
+  rules:
+    - if: $CI_COMMIT_BRANCH == "fable"
+    - when: manual
+      allow_failure: true
+  script:
+    - git ls-remote --heads origin | awk '{print $2}' | sed 's#^refs/heads/##' > live-refs.txt
+    - wc -l live-refs.txt
+    - nice -n 10 python3 scripts/ci/prune_ref_build_trees.py --root build/ref --root build-gles2/ref --live-refs-file live-refs.txt --max-age-days 14 --legacy-root build --legacy-root build-gles2 2>&1 | tee prune.log
+    - du -sh build build-gles2 third_party/irrlicht-gles2-x86 2>/dev/null | tee -a prune.log; df -h . | tail -1 | tee -a prune.log
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - prune.log
 
 # Stage 1: pure source/doc scans (ctest label `hygiene`). No C++ compile, so it
 # fails a bad doc/file-size/citation change in ~a minute instead of after a
@@ -115,17 +159,18 @@ build:
       if [ ! -f third_party/irrlicht-gles2-x86/lib/libIrrlicht.a ] || ! bash scripts/ci/irrlicht_input_stamp.sh verify third_party/irrlicht-gles2-x86/irrlicht_input_stamp.txt; then
         JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh --irrlicht-only
       fi
-    - nice -n 10 cmake -S . -B build -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_GLES2_IRRLICHT_DIR=$PWD/third_party/irrlicht-gles2-x86
-    # B907 (issue #227): this is a WARM tree shared with every other branch's
-    # pipeline (GIT_CLEAN_FLAGS keeps build/ across runs). A binary another
-    # branch's pipeline built into build/bin/ has no target in THIS branch's
-    # just-regenerated CMake graph, and cmake never prunes bin/ on its own --
-    # so it survives into this build and fails the `test` stage's
+    - python3 scripts/ci/prune_ref_build_trees.py --stamp "$BUILD_TREE" --ref "$CI_COMMIT_REF_NAME"
+    - nice -n 10 cmake -S . -B "$BUILD_TREE" -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_GLES2_IRRLICHT_DIR=$PWD/third_party/irrlicht-gles2-x86
+    # B907 (issue #227): this is a WARM tree (GIT_CLEAN_FLAGS keeps build/
+    # across runs; since B1012 it is this ref's own tree, so the orphan can
+    # only be this ref's earlier commit's binary). A binary with no target in
+    # the just-regenerated CMake graph survives in bin/ because cmake never
+    # prunes bin/ on its own, and fails the `test` stage's
     # check_build_tree_orphans a moment later. Prune right after the
     # reconfigure above (so the graph is current) and before the build, using
     # the exact discovery check_build_tree_orphans uses read-only.
-    - nice -n 10 python3 scripts/ci/check_build_tree_orphans.py --prune build
-    - nice -n 10 cmake --build build -j $JOBS 2>&1 | tail -n 200
+    - nice -n 10 python3 scripts/ci/check_build_tree_orphans.py --prune "$BUILD_TREE"
+    - nice -n 10 cmake --build "$BUILD_TREE" -j $JOBS 2>&1 | tail -n 200
 
 # Stage 3: the full suite, minus the two documented special cases:
 #   - visual_gate      -- runs in the `gate` stage (it needs build-gles2/).
@@ -171,14 +216,15 @@ test:
     # test_asset_requirement pins both outcomes.
     WILLEQ_REQUIRE_ASSETS: "1"
   script:
-    - nice -n 10 ctest --test-dir build -j $CTEST_JOBS --output-on-failure -E '(^visual_gate$|^RDPServerFrameTest\.UpdateFrameMultipleTimes$)' 2>&1 | tee ctest.log
-    - nice -n 10 ctest --test-dir build -R '^RDPServerFrameTest\.UpdateFrameMultipleTimes$' --repeat until-pass:3 --output-on-failure 2>&1 | tee -a ctest.log
+    - nice -n 10 ctest --test-dir "$BUILD_TREE" -j $CTEST_JOBS --output-on-failure -E '(^visual_gate$|^RDPServerFrameTest\.UpdateFrameMultipleTimes$)' 2>&1 | tee ctest.log
+    - nice -n 10 ctest --test-dir "$BUILD_TREE" -R '^RDPServerFrameTest\.UpdateFrameMultipleTimes$' --repeat until-pass:3 --output-on-failure 2>&1 | tee -a ctest.log
+    - cp "$BUILD_TREE/Testing/Temporary/LastTest.log" ctest-LastTest.log || true
   artifacts:
     when: always
     expire_in: 7 days
     paths:
       - ctest.log
-      - build/Testing/Temporary/LastTest.log
+      - ctest-LastTest.log
 
 # Stage 4: the visual gate (T80/T291) -- golden frames + CPU-p95 + memory ledger
 # over build-gles2/bin/gles2_zone_benchmark against real client assets.
@@ -217,9 +263,14 @@ test:
       if [ ! -f third_party/irrlicht-gles2-x86/lib/libIrrlicht.a ] || ! bash scripts/ci/irrlicht_input_stamp.sh verify third_party/irrlicht-gles2-x86/irrlicht_input_stamp.txt; then
         JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh --irrlicht-only
       fi
+    # B1012: the gate's tree is per ref too. GLES2_BUILD_DIR steers
+    # build-gles2-x86.sh and WILLEQ_GLES2_BUILD_DIR steers visual_gate.py
+    # (both default to build-gles2/ for a developer's checkout).
+    - export GLES2_BUILD_DIR="$PWD/$GLES2_TREE" WILLEQ_GLES2_BUILD_DIR="$PWD/$GLES2_TREE"
+    - python3 scripts/ci/prune_ref_build_trees.py --stamp "$GLES2_TREE" --ref "$CI_COMMIT_REF_NAME"
     - |
-      if [ -x build-gles2/bin/gles2_zone_benchmark ]; then
-        nice -n 10 cmake --build build-gles2 --target willeq gles2_zone_benchmark -j "$JOBS" 2>&1 | tail -n 60
+      if [ -x "$GLES2_TREE/bin/gles2_zone_benchmark" ]; then
+        nice -n 10 cmake --build "$GLES2_TREE" --target willeq gles2_zone_benchmark -j "$JOBS" 2>&1 | tail -n 60
       else
         JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh 2>&1 | tail -n 100
       fi
@@ -259,7 +310,7 @@ client-ledger-live:
       when: manual
       allow_failure: true
   script:
-    - test -x build/bin/willeq || { echo "no build/bin/willeq -- the build stage did not land"; exit 1; }
+    - test -x "$BUILD_TREE/bin/willeq" || { echo "no $BUILD_TREE/bin/willeq -- the build stage did not land"; exit 1; }
     - |
       nice -n 10 bash scripts/client_ledger_capture.sh \
         --zones iceclad --modes spatial --assert-budgets \
@@ -292,5 +343,5 @@ gate:
     expire_in: 7 days
     paths:
       - gate.log
-      - build-gles2/ci_artifacts/
+      - build-gles2/ref/*/ci_artifacts/
 

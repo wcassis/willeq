@@ -198,7 +198,9 @@ fi
 # lib both trees link against (third_party/irrlicht-gles2-x86/), not to
 # distinguish a "GLES2 tree" from some other still-supported desktop tree.
 # ------------------------------------------------------------------
-BUILD_DIR="$PROJECT_DIR/build-gles2"
+# B1012: CI builds one tree per ref (GLES2_BUILD_DIR=<checkout>/build-gles2/ref/<slug>);
+# a developer's checkout keeps the default build-gles2/.
+BUILD_DIR="${GLES2_BUILD_DIR:-$PROJECT_DIR/build-gles2}"
 echo "=== Configuring $BUILD_DIR (EQT_GLES2=ON) ==="
 mkdir -p "$BUILD_DIR"
 MAIN_CXXFLAGS=""
