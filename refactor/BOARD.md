@@ -928,10 +928,26 @@ it without taking that measurement first.
   qeynos2 18.90 / gfaydark 24.5 MiB cache-on imp200far, the impostor proven
   NOT the lever by the `off200far` control — the B972 README in
   `refactor/B972/` on the `task/B972-mesa-stream-buffers` branch, MR !94).
-  Conversion to bounded reused VBOs (partial `glBufferSubData`, the merged
-  B975 `NameTagBatchNode` slack pattern); a static VBO is the measured
-  anti-pattern (B962: +4.3 MiB, half qeynos2 fps). Cut behind #290/MR !94
-  (re-measure the residual after it lands).
+  **RE-SCOPED 2026-10-09 (post B972-FT / Will's ruling (d), MR !94): the lever
+  is DRAWS PER FRAME, not buffering** (cost-sheet fact 5: `lima_update_varying`
+  allocates a fresh ~4 KiB varying BO per draw; the per-draw churn pool is the
+  part of `gpu_unnamed_steady` a draw cut touches — `refactor/B997/README.md`).
+  **Step 2 census done (2026-10-09, `9f184921`, platform-consistent x86↔Pi):**
+  at the crowd-in `steady_60s` guard point, 3D client-array draws/frame =
+  qeynos2 **75** (zone 20 + entity 13 + **scene_graph 42**), gfaydark **158**
+  (zone 38 + entity 0 + **scene_graph 120**); `win_3d_vbo = 0` (impostors/
+  nametags are named VBO pools). The **scene-graph residual** (PVS doors +
+  placed objects + equipment + overlays, per-node `smgr->drawAll()` client
+  draws) is the dominant lever (56 % / 76 % of the draws). Varying-BO pool
+  10.61 / 14.90 MiB of the 15.89 / 18.69 MiB unnamed; the rest (5.28 / 3.79 MiB)
+  is the non-draw Mesa floor (PP streams / shader bins / BO cache / tile heap)
+  — unreachable by a draw cut, and below the 10 MiB target on both zones.
+  Reaching 10 MiB needs ~56–58 % of the varying pool cut ≈ the near-entire
+  scene-graph residual batched. Zone-merge generations are the u16 65 535-vertex
+  index constraint, NOT a reducible split. Next: pixel-identical per-material
+  client-array batch of the residual (zone-merge's pooled loop is the template),
+  x86 `visual_gate` byte-identical before the Pi A/B; if it does not reach
+  10 MiB, report the residual + Mesa floor and block for Will's ruling.
 - **B998** (B, frame-time) → issue #325. **BLOCKED with measured ceiling
   (2026-10-07)** — no in-scope fix; see `refactor/B998/README.md` for the
   full A/B. The gfaydark low-geometry 31 fps floor (2 vsyncs) is a vsync
