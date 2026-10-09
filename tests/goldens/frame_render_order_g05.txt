@@ -356,8 +356,9 @@
 355 eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
 356 ctx_.driver->endScene();
 357 eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
-358 eqtGPUPhaseCollectResults();
-359 frameTimings_.endScene = measureSection();
-360 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
-361 FlushThreadLog();
-362 return true;
+358 drawCensusEndFrame(static_cast<void*>(ctx_.driver));
+359 eqtGPUPhaseCollectResults();
+360 frameTimings_.endScene = measureSection();
+361 LOG_TRACE(MOD_GRAPHICS, "POST-DRAW checkpoint 12: frame complete");
+362 FlushThreadLog();
+363 return true;

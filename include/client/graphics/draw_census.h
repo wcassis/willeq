@@ -49,6 +49,17 @@
 #include <cstdio>
 #include <cstdlib>
 
+#ifdef EQT_HAS_GLES2
+// B997: the driver-side bridge that exposes the just-closed [drawcensus]
+// window to the render thread (defined in COpenGLES2Driver.cpp, the extern
+// precedent beside gles2Draw3DLinesBatch -- a plain C++ extern, NOT extern
+// "C", matching the bridge's definition). Declared here so
+// drawCensusEndFrame() can read the snapshot without the TU re-declaring it.
+extern void gles2GetDrawCensusTotals(void* driver, unsigned long* winD3client,
+                                     unsigned long* winD3vbo, unsigned long* frames,
+                                     bool* newWindow);
+#endif
+
 namespace EQT {
 namespace Graphics {
 
@@ -103,6 +114,24 @@ inline bool drawCensusEmit(bool newWindow, long winD3client, long winD3Vbo,
     c.entityBody = 0;
     return true;
 }
+
+// G05 (frame_render_order golden) requires the census to touch exactly ONE
+// statement in endSceneAndSwap() -- the golden is a position-by-position
+// text-parse of renderer_frame_render.cpp, and a multi-statement emit block
+// shifts the composed order. drawCensusEndFrame() is that one statement: it
+// reads the driver's just-closed 120-frame [drawcensus] window through the
+// gles2 bridge and emits the client's [drawsite] split on the same boundary.
+// No-op when the census is off or no window just closed. Only the GLES2 build
+// calls it (and the bridge it reads), so the body is GLES2-only.
+#ifdef EQT_HAS_GLES2
+inline void drawCensusEndFrame(void* driver) {
+    unsigned long wc = 0, wv = 0, fr = 0;
+    bool newWin = false;
+    gles2GetDrawCensusTotals(driver, &wc, &wv, &fr, &newWin);
+    drawCensusEmit(newWin, static_cast<long>(wc), static_cast<long>(wv),
+                   static_cast<long>(fr));
+}
+#endif
 
 } // namespace Graphics
 } // namespace EQT

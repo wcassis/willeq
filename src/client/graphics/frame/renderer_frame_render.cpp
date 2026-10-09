@@ -816,20 +816,14 @@ void FrameComponent::endSceneAndSwap() {
     eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
     ctx_.driver->endScene();
     eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
-    // B997: per-site 3D-draw census (gated on EQT_DRAW_CENSUS). Reads the
-    // driver's just-closed 120-frame [drawcensus] window through the bridge
-    // (the driver emitted its own line a moment earlier in endScene()) and
-    // emits the client's [drawsite] split on the same boundary, so the two
-    // streams line up for a per-window draws/frame + per-site diff.
+    // B997 (G05: one statement, see test_frame_render_order changelog): the
+    // per-site 3D-draw census. Reads the driver's just-closed 120-frame
+    // [drawcensus] window through the gles2 bridge and emits the client's
+    // [drawsite] split (zone/entity/scene_graph) on the same endScene
+    // cadence. Gated on EQT_DRAW_CENSUS (off by default); draws nothing, so
+    // it sits after the swap phase without changing any visible order.
 #ifdef EQT_HAS_GLES2
-    {
-        unsigned long wc = 0, wv = 0, fr = 0;
-        bool newWin = false;
-        gles2GetDrawCensusTotals(static_cast<void*>(ctx_.driver), &wc, &wv, &fr,
-                                 &newWin);
-        drawCensusEmit(newWin, static_cast<long>(wc), static_cast<long>(wv),
-                       static_cast<long>(fr));
-    }
+    drawCensusEndFrame(static_cast<void*>(ctx_.driver));
 #endif
     // Collect any GPU query results that became available (double-buffered,
     // non-blocking) and flip the write buffer for next frame. Must be
