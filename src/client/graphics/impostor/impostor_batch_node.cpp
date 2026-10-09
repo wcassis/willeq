@@ -2,16 +2,31 @@
 
 #include "client/graphics/impostor/impostor_batch_node.h"
 
+#include "client/core/gem_owner_census.h"
 #include "common/logging.h"
+
+#include <chrono>
+#include <cstdlib>
 
 #ifdef EQT_HAS_GLES2
 #include <GLES2/gl2.h>
+extern void gles2AdjustRawBufferBytes(void* driver, ptrdiff_t delta);
+extern void gles2SyncBufferBindings(void* driver);
 #endif
 
 namespace EQT {
 namespace Graphics {
 
 namespace {
+
+// docker/irrlicht-drm/COGLES2Shaders.h: the fixed attribute slots (EOGLES2VA_*)
+// the driver binds with glBindAttribLocation before every program link -- the
+// custom program's own aPosition/aTexCoord0 ride slots 0 and 3 of that.
+constexpr unsigned kAttrPosition = 0;
+constexpr unsigned kAttrNormal = 1;
+constexpr unsigned kAttrColor = 2;
+constexpr unsigned kAttrTexCoord0 = 3;
+constexpr unsigned kAttrTexCoord1 = 4;
 
 // The entity vertex shader's fog, evaluated the same way (zone_shader_sources_gles2.h,
 // VERTEX_SHADER_SRC): linear in the length of the clip-space position.
@@ -127,7 +142,44 @@ ImpostorBatchNode::ImpostorBatchNode(irr::scene::ISceneNode* parent, irr::scene:
     }
 }
 
-ImpostorBatchNode::~ImpostorBatchNode() { clearQuads(); }
+ImpostorBatchNode::~ImpostorBatchNode() {
+    releaseGpuBuffers();
+    clearQuads();
+}
+
+// B972-FT: the configured ring depth: B972FT_RING_DEPTH (1..3), default 3.
+// 1 is the pre-B972-FT single shared pair -- the A/C control on the Pi.
+size_t ImpostorBatchNode::ringDepth() const {
+    const char* env = getenv("B972FT_RING_DEPTH");
+    if (env && env[0]) {
+        const long d = strtol(env, nullptr, 10);
+        if (d >= 1 && d <= (long)kVboRingDepthMax) return static_cast<size_t>(d);
+    }
+    return 3;
+}
+
+size_t ImpostorBatchNode::vboBytes() const {
+    size_t sum = 0;
+    for (const VboPair& p : vboRing_) sum += p.vertBytes + p.idxBytes;
+    return sum;
+}
+
+void ImpostorBatchNode::releaseGpuBuffers() {
+#ifdef EQT_HAS_GLES2
+    size_t total = 0;
+    for (const VboPair& p : vboRing_) total += p.vertBytes + p.idxBytes;
+    for (VboPair& p : vboRing_) {
+        if (p.vert) glDeleteBuffers(1, &p.vert);
+        if (p.idx) glDeleteBuffers(1, &p.idx);
+        p.vert = p.idx = 0;
+        p.vertBytes = p.idxBytes = 0;
+    }
+    vboRing_.clear();
+    if (gpuDriver_)
+        gles2AdjustRawBufferBytes(gpuDriver_, -static_cast<ptrdiff_t>(total));
+#endif
+    gpuDriver_ = nullptr;
+}
 
 void ImpostorBatchNode::setDiagnosticMode(int mode) {
     diagMode_ = mode;
@@ -193,15 +245,53 @@ void ImpostorBatchNode::render() {
     drawCallsLastRender_ = 0;
     irr::video::IVideoDriver* driver = SceneManager->getVideoDriver();
     irr::scene::ICameraSceneNode* cam = SceneManager->getActiveCamera();
-    if (!driver || !cam || quadCount_ == 0) return;
+    if (!driver || !cam || quadCount_ == 0) {
+        if (const char* d = getenv("B972_DIAG")) fprintf(stderr, "[B972] render SKIP %s\n", d);
+        return;
+    }
     const irr::core::vector3df camPos = cam->getAbsolutePosition();
     driver->setTransform(irr::video::ETS_WORLD, irr::core::matrix4());
+    if (getenv("B972_DIAG")) {
+        const float* pj = driver->getTransform(irr::video::ETS_PROJECTION).pointer();
+        const float* vw = driver->getTransform(irr::video::ETS_VIEW).pointer();
+        fprintf(stderr, "[B972] render quads=%d vbo=%d matType=%d prog=%d\n", (int)quadCount_,
+                (int)useVbo_, (int)material_.MaterialType, materialType_);
+        fprintf(stderr, "[B972] PROJ[0][0]=%g PROJ[1][1]=%g VIEW[0][3]=%g VIEW[1][3]=%g VIEW[2][3]=%g\n",
+                pj[0], pj[5], vw[12], vw[13], vw[14]);
+    }
     const irr::video::SColor white(255, 255, 255, 255);
 
-    for (const auto& page : pages_) {
+    // B972-FT (the card-sanctioned ALTERNATIVE, chosen by measurement -- see
+    // refactor/B972-FT/README.md Measurement): pack ALL of this frame's
+    // visible pages into ONE bounded VBO/EBO pair from a ring deep enough
+    // that no write touches a buffer any in-flight job references (the
+    // write-wait stays gone), and draw each page through an index OFFSET
+    // into that one buffer. The job then references ONE VBO -- the pre-ring
+    // cut's shape -- so Mesa's driver-retained per-BO scratch stays minimal
+    // (the per-page VBO ring, the primary shape, re-added 4-5 MiB of unnamed
+    // GEM: the scratch scales with the number of distinct VBOs the frame's
+    // job names). Depth 1 is the pre-B972-FT shared pair, the A/C control.
+    const size_t depth = ringDepth();
+    const size_t slot = depth > 1 ? (frameCount_ % depth) : 0;
+    ++frameCount_;
+
+    // Rebuild the frame's pack from scratch: the page loop APPENDS, and the
+    // ring's high-water is only bounded if the frame's pack is the same size
+    // every frame (it is: the same quads, the same camera). Without the
+    // clear the pack grows every frame and the VBO high-water with it.
+    verts_.clear();
+    indices_.clear();
+
+    std::vector<PageRun> runs;
+
+    bool any = false;
+    const size_t pageCount = pages_.size();
+    for (size_t pageIdx = 0; pageIdx < pageCount; ++pageIdx) {
+        const auto& page = pages_[pageIdx];
         if (page.quads.empty() || !page.tex) continue;
-        verts_.clear();
-        indices_.clear();
+        PageRun run;
+        run.tex = page.tex;
+        run.indexOffset = indices_.size();
         for (const Quad& q : page.quads) {
             // Face the camera along the horizontal camera->billboard direction
             // (the direction the capture looked along); right = up x forward.
@@ -218,16 +308,219 @@ void ImpostorBatchNode::render() {
             verts_.emplace_back(q.center.X - r.X, y1, q.center.Z - r.Z, 0, 0, 1, white, q.u0, q.v1);
             const irr::u16 quadIdx[6] = {0, 1, 2, 0, 2, 3};
             for (irr::u16 i : quadIdx) indices_.push_back(static_cast<irr::u16>(base + i));
-            // 16-bit indices: flush at the limit (16,384 billboards a page is
-            // far past the 64 cells one holds, so this never triggers).
         }
-        material_.setTexture(0, page.tex);
-        driver->setMaterial(material_);
-        driver->drawVertexPrimitiveList(verts_.data(), static_cast<irr::u32>(verts_.size()), indices_.data(),
-                                        static_cast<irr::u32>(indices_.size() / 3), irr::video::EVT_STANDARD,
-                                        irr::scene::EPT_TRIANGLES, irr::video::EIT_16BIT);
-        ++drawCallsLastRender_;
+        run.indexCount = indices_.size() - run.indexOffset;
+        runs.push_back(run);
+        any = true;
     }
+    if (!any) return;
+
+    // ONE upload for the whole frame (the card's alternative shape): the
+    // frame's pages concatenated into the ring slot, written once. The
+    // WILLEQ_B972FT_TIMING gate wall-clocks that one subdata pair -- on
+    // Lima the shared pair (depth 1) makes it block in lima_bo_wait, the
+    // ringed slot must collapse toward the memcpy.
+    {
+        bool usedVbo = false;
+#ifdef EQT_HAS_GLES2
+        if (useVbo_ && driver->getDriverType() == irr::video::EDT_OGLES2)
+            usedVbo = uploadFrameVbo(driver, slot);
+#endif
+        if (usedVbo) {
+            // Draw each page through its index window of the one frame VBO.
+            for (const PageRun& run : runs) {
+                material_.setTexture(0, run.tex);
+                driver->setMaterial(material_);
+                drawPackedPageVbo(run);
+                ++drawCallsLastRender_;
+            }
+            // drawPackedPageVbo leaves the pair bound; unbind it and re-sync
+            // the driver's state_ cache (which the raw binds do not update).
+            // Otherwise the NEXT frame's client-array draw -- which skips its
+            // own unbind when the cache says 0 -- would still see this
+            // VBO/EBO bound and read its client pointers/indices as offsets
+            // into it (the B972 pattern the old drawPageVbo ended with).
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+            gles2SyncBufferBindings(driver);
+        } else {
+            // The client-array baseline: drawVertexPrimitiveList treats
+            // indices as ABSOLUTE offsets into the passed vertices pointer,
+            // and the packed indices_ ARE absolute (each quad's base is its
+            // index into the whole verts_), so the whole verts_ array stays
+            // in place and each page only windows its indices_.
+            for (size_t i = 0; i < runs.size(); ++i) {
+                const PageRun& run = runs[i];
+                material_.setTexture(0, run.tex);
+                driver->setMaterial(material_);
+                driver->drawVertexPrimitiveList(
+                    verts_.data(), static_cast<irr::u32>(verts_.size()),
+                    indices_.data() + run.indexOffset,
+                    static_cast<irr::u32>(run.indexCount / 3),
+                    irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES,
+                    irr::video::EIT_16BIT);
+                ++drawCallsLastRender_;
+            }
+        }
+    }
+#ifdef EQT_HAS_GLES2
+    // B972-FT (#326), the flush-without-wait leg (note 2938 / card option c):
+    // ONE explicit glFlush() immediately after the impostor pass, before the
+    // frame's remaining non-impostor draws. It submits the impostor-pass job
+    // early. It does NO buffer write, so it never enters
+    // lima_transfer_map's lima_bo_wait (the cost sheet's fact 1 is
+    // write-triggered) -- unlike the pre-ring cut, whose shared-VBO
+    // glBufferSubData flushes AND waits. If the cut's 4-7 MiB reduction is
+    // the per-draw varying BOs being freed by that early submit, this
+    // recovers it at ring frame parity; if not, gpu_unnamed_steady stays in
+    // the no-cut band and the cut is not client-achievable with the frame
+    // fix (refactor/B972-FT/README.md Measurement: the glFlush row).
+    glFlush();
+#endif
+}
+
+// B972 (#290) / B972-FT (#326), the ALTERNATIVE shape: grow + write the ring
+// slot's ONE VBO/EBO pair for the whole packed frame (verts_ + indices_, the
+// frame's pages concatenated) and set the attribute pointers once. The tag
+// spans the whole run: the glBufferData growth AND the glBufferSubData
+// uploads both allocate GEM storage, and the attribution must name them
+// vbo:impostor, not leave them for the 1 MiB slot.
+//
+// The write-wait (issue #326) is measured here, not in the draws: on Lima
+// the subdata's wall clock carries lima_transfer_map's
+// lima_flush_job_accessing_bo + lima_bo_wait when the written BO is still
+// referenced by an in-flight job. With the ring (depth >= 2) the slot was
+// last written two frames ago and no live job references it, so the wait
+// returns immediately; with depth 1 (the pre-B972-FT shared pair, the A/C
+// control) it blocks. WILLEQ_B972FT_TIMING wall-clocks the two subdatas.
+bool ImpostorBatchNode::uploadFrameVbo(irr::video::IVideoDriver* driver, size_t slot) {
+#ifdef EQT_HAS_GLES2
+    if (verts_.empty() || indices_.empty()) return false;
+    eqt::memory::GemTag gemTag("vbo:impostor");
+    gpuDriver_ = driver;
+    if (slot >= vboRing_.size()) vboRing_.resize(slot + 1);
+    VboPair& pair = vboRing_[slot];
+    if (!pair.vert) glGenBuffers(1, &pair.vert);
+    if (!pair.idx) glGenBuffers(1, &pair.idx);
+    // The attribute pointers capture the buffer bound AT CALL TIME (no VAO),
+    // so the bind precedes the pointer setup -- the run-381 nametag SEGV was
+    // exactly the reverse order.
+    glBindBuffer(GL_ARRAY_BUFFER, pair.vert);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pair.idx);
+    // One slack vertex/index keeps every subdata write strictly smaller than
+    // the allocation (B975): a whole-resource write is what renames a fresh
+    // BO; a partial write reuses the bounded storage.
+    const size_t neededVerts =
+        verts_.size() * sizeof(irr::video::S3DVertex) + sizeof(irr::video::S3DVertex);
+    const size_t neededIdx =
+        indices_.size() * sizeof(irr::u16) + sizeof(irr::u16);
+    if (neededVerts > pair.vertBytes) {
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(neededVerts), nullptr,
+                     GL_DYNAMIC_DRAW);
+        gles2AdjustRawBufferBytes(gpuDriver_,
+                                  static_cast<ptrdiff_t>(neededVerts) - pair.vertBytes);
+        pair.vertBytes = neededVerts;
+    }
+    if (neededIdx > pair.idxBytes) {
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(neededIdx), nullptr,
+                     GL_DYNAMIC_DRAW);
+        gles2AdjustRawBufferBytes(gpuDriver_,
+                                  static_cast<ptrdiff_t>(neededIdx) - pair.idxBytes);
+        pair.idxBytes = neededIdx;
+    }
+    if (getenv("WILLEQ_B972FT_TIMING")) {
+        const auto t0 = std::chrono::steady_clock::now();
+        glBufferSubData(GL_ARRAY_BUFFER, 0,
+                        static_cast<GLsizeiptr>(verts_.size() * sizeof(irr::video::S3DVertex)),
+                        verts_.data());
+        const auto t1 = std::chrono::steady_clock::now();
+        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0,
+                        static_cast<GLsizeiptr>(indices_.size() * sizeof(irr::u16)), indices_.data());
+        const auto t2 = std::chrono::steady_clock::now();
+        const int64_t vertUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        const int64_t idxUs = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        fprintf(stderr,
+                "[B972FT] frame=%u slot=%zu subdata=1 vert=%lld us idx=%lld us verts=%zu idx=%zu "
+                "pack verts=%zu idx=%zu\n",
+                (unsigned)(frameCount_ - 1), slot, (long long)vertUs, (long long)idxUs,
+                pair.vertBytes / sizeof(irr::video::S3DVertex), pair.idxBytes / sizeof(irr::u16),
+                verts_.size(), indices_.size());
+    } else {
+        glBufferSubData(GL_ARRAY_BUFFER, 0,
+                        static_cast<GLsizeiptr>(verts_.size() * sizeof(irr::video::S3DVertex)),
+                        verts_.data());
+        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0,
+                        static_cast<GLsizeiptr>(indices_.size() * sizeof(irr::u16)), indices_.data());
+    }
+
+    // NO attribute-pointer setup here: pointers capture the buffer bound AT
+    // CALL TIME (no VAO), and the unbind below would make them capture client
+    // null. drawPackedPageVbo() re-binds the pair and THEN sets them.
+    //
+    // Unbind before returning: the driver's state_ cache is NOT updated by
+    // the raw glBindBuffer above (it stays at the driver's last tracked
+    // bind, usually 0), so a later client-array draw -- which skips its own
+    // unbind when the cache says 0 -- would leave this VBO bound and draw
+    // through it. drawPackedPageVbo() re-binds the pair per page, so the
+    // unbind costs nothing. gles2SyncBufferBindings re-reads the real GL
+    // bindings into the cache (the B972 pattern) -- the raw unbind alone
+    // leaves the cache stale (still 0) and a later client-array draw would
+    // skip its own unbind.
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    gles2SyncBufferBindings(driver);
+    return true;
+#else
+    (void)driver;
+    (void)slot;
+    return false;
+#endif
+}
+
+// B972-FT (#326): draw one page's index WINDOW of the packed frame VBO. The
+// material state (blend off / depth write on / the page texture on unit 0,
+// the custom program, its uniforms) is exactly what the preceding
+// driver->setMaterial() applied; this re-binds the pair (setMaterial does
+// not touch buffer bindings, but the run-381 pattern re-binds per draw) and
+// issues the draw. GL 2.0: with an element buffer bound, glDrawElements'
+// index parameter is a BYTE OFFSET into it (not a pointer), so a page is
+// indexed from run.indexOffset * sizeof(u16) without a baseVertex (GLES2
+// has none). Every page draws through the SAME pair, so the frame's job
+// references one VBO + one EBO -- the pre-ring cut's shape, which is what
+// keeps Mesa's driver-retained per-BO scratch at the cut's level.
+void ImpostorBatchNode::drawPackedPageVbo(const PageRun& run) const {
+#ifdef EQT_HAS_GLES2
+    if (run.indexCount == 0) return;
+    const size_t depth = ringDepth();
+    const size_t slot = depth > 1 ? ((frameCount_ - 1) % depth) : 0;
+    if (slot >= vboRing_.size() || !vboRing_[slot].vert) return;
+    const VboPair& pair = vboRing_[slot];
+    glBindBuffer(GL_ARRAY_BUFFER, pair.vert);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pair.idx);
+    // The attribute pointers capture the buffer bound AT CALL TIME (no VAO),
+    // so they are set HERE, after the bind: they must name this VBO, not
+    // client memory (the run-381 nametag SEGV was exactly the reverse
+    // order). Per-page cost is a handful of pointer sets against the draw
+    // itself -- the same order the pre-ring code paid.
+    const GLsizei stride = sizeof(irr::video::S3DVertex);
+    glVertexAttribPointer(kAttrPosition, 3, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<const GLvoid*>(0));
+    glEnableVertexAttribArray(kAttrPosition);
+    glVertexAttribPointer(kAttrNormal, 3, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<const GLvoid*>(12));
+    glEnableVertexAttribArray(kAttrNormal);
+    glVertexAttribPointer(kAttrColor, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride,
+                          reinterpret_cast<const GLvoid*>(24));
+    glEnableVertexAttribArray(kAttrColor);
+    glVertexAttribPointer(kAttrTexCoord0, 2, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<const GLvoid*>(28));
+    glEnableVertexAttribArray(kAttrTexCoord0);
+    glDisableVertexAttribArray(kAttrTexCoord1);
+    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(run.indexCount), GL_UNSIGNED_SHORT,
+                   reinterpret_cast<const GLvoid*>(run.indexOffset * sizeof(irr::u16)));
+#else
+    (void)run;
+#endif
 }
 
 }  // namespace Graphics

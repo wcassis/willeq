@@ -294,6 +294,11 @@ TEST_F(NameTagBatchTest, GpuStorageIsBoundedAccountedAndReleasedWithTheBatch) {
     makeTags(true);
     tags_[3]->setText(L"Fippy Darkpaw");
     render()->drop();
+    // B972-FT: the ring slots grow LAZILY -- one per frame row, first use
+    // (the row a frame writes is the one that grows). A second frame puts
+    // every slot that will ever exist into service, so the row read after
+    // it is the steady-state total the release gives back exactly.
+    render()->drop();
     const size_t bytes = batch_->gpuBufferBytes();
     EXPECT_GT(bytes, 0u);
     EXPECT_LE(bytes, 16384u * (80u + 12u) + 20u);

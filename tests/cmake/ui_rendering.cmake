@@ -711,6 +711,24 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_ui_atlas_pixels DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B972 (GitLab #290): the self-contained stream-buffer cuts -- the particle
+# point draw and the impostor page draws move from client arrays to bounded
+# reused VBOs. This test pins their PIXEL IDENTITY (old path vs new path on
+# the same headless GLES2 device) plus the logical-tally accounting. Needs
+# texture_generators.cpp compiled in directly (willeq_core does not contain
+# it) and EQT_HAS_GLES2 so the renderer class and the driver's accounting
+# seams are visible. Self-skips without a GLES2 device.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b972_stream_buffers
+        test_b972_stream_buffers.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/texture_generators.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_b972_stream_buffers PRIVATE EQT_HAS_GLES2)
+    TARGET_INCLUDE_DIRECTORIES(test_b972_stream_buffers PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b972_stream_buffers GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_b972_stream_buffers DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T462 (boards B505/B506): the static UI's per-frame cost -- draw-count pins
 # for the batched UIRenderer flush and the chat wrap cache, plus a timing
 # account that runs only with WILLEQ_T462_ACCOUNT=1. Same headless GLES2 +

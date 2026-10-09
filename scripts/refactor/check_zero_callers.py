@@ -503,6 +503,8 @@ BOARD_REASONS.update({
         "the T415/T419 recipe window (TradeskillPanelState, EQUI_TradeskillWnd) -- since B899 (#215, Will 2026-09-23: the recipe half is out of baseline) no event opens it, so its close applier is reached only from its tests; deleting the window is a follow-up, not done mid-unit",
     "B606":
         "renderer, asset and data API with no production caller -- setNewUIEnabled, EntityRenderer's two global loaders (not called even by the zero-caller loadGlobalAssets, which T468 deleted), the superseded applyStoredZoneEnvironment, RDPServer::setCertificate, BackgroundWorkQueue's pollAll/batch hooks, StringDatabase's legacy text loaders, and eight free helpers (race reload, lift travel, body-type restriction, SpellVisualSource toString, formatted-message text parse, three options-slider conversions)",
+    "B972":
+        "the particle VBO path's GL-handle accessor -- the draw reads the member itself; the accessor (name_tag_batch's buffer-handle convention) exists for the stream-buffer test suite's observation window, and no production or test caller has landed yet",
 })
 
 # (owner, name) -> the board entry that owns it.  Same contract as
@@ -549,6 +551,11 @@ EXEMPT_GROUPS = {
     ("StormCloudLayer", "getCurrentOpacity"): "B490",
     ("StormCloudLayer", "getSettings"): "B490",
     ("UnifiedParticleRenderer", "getMaxPointSize"): "B490",
+    # B972 (#290): the bounded VBO's GL handle -- the observation window the
+    # stream-buffer test uses to verify the point draw's vertices live in the
+    # reused VBO (a zero in production, which keeps the handle itself tests-
+    # only in the sense the check looks for, not dead: the draw reads it).
+    ("UnifiedParticleRenderer", "vertexBuffer"): "B972",
     ("(free)", "getAnimationSourceFromConfig"): "B491",
     ("(free)", "getAnimationSourceS3DFileByCode"): "B491",
     ("(free)", "getRobeClkTextureNumber"): "B491",
@@ -945,6 +952,19 @@ EXEMPT_TESTS_GROUPS = {
     # T504 fix 1: the custom SoundFont is loaded lazily and freed on the way
     # back to GM; the test's window on whether it is resident right now.
     ("MidiPlayer", "isCustomSoundFontResident"): "observer",
+    # B972 (#290): the bounded-VBO/EBO seams on the two self-contained cut
+    # sites. setVboPathEnabled is the SEAM -- the pixel-identity test flips it
+    # to prove the VBO and client-array paths render the same bytes; production
+    # keeps the default (VBO on) and never calls it. isVboPathEnabled and the
+    # byte-count accessors (vertexBufferBytes / vboBytes) are the test's
+    # OBSERVATION window: the logical-tally assertions read the byte count the
+    # VBO path reports into the driver's tally.
+    ("UnifiedParticleRenderer", "setVboPathEnabled"): "seam",
+    ("UnifiedParticleRenderer", "isVboPathEnabled"): "observer",
+    ("UnifiedParticleRenderer", "vertexBufferBytes"): "observer",
+    ("ImpostorBatchNode", "setVboPathEnabled"): "seam",
+    ("ImpostorBatchNode", "isVboPathEnabled"): "observer",
+    ("ImpostorBatchNode", "vboBytes"): "observer",
     # B944: whether one cache entry's GL storage is resident right now (an
     # evicted entry keeps its object and restores on the next bind).
     # test_texture_eviction_residency asserts eviction and restore through it;

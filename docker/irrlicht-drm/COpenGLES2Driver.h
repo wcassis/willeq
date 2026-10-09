@@ -378,6 +378,14 @@ public:
                         const core::rect<s32>* clipRect, bool useAlphaChannelOfTexture);
     void adjustRawBufferBytes(ptrdiff_t delta) { rawBufferBytes_ += delta; }
 
+    // B972: raw-GL code (name tags, particles, ...) that binds its own
+    // VBO/EBO and restores the GL bindings leaves state_.boundVBO/EBO stale.
+    // That desync is invisible while only drawMeshBuffer() follows (it re-binds
+    // on mismatch), but the client-array fallbacks skip a bind that their
+    // cache says is a no-op -- so a later raw client-array draw would sample
+    // the stale VBO. Re-read both bindings from GL after a raw draw run.
+    void syncBufferBindings();
+
     // Wrap an already-uploaded GL texture as an ITexture (for strip uploads)
     // gpuBytes: actual GPU memory consumed (0 = assume RGBA8888 = w*h*4)
     ITexture* wrapExternalTexture(const io::path& name, GLuint glTexName,

@@ -864,7 +864,63 @@ it without taking that measurement first.
   vertices); the zone-merge + entity-aux pool that keeps the guard red moves
   to **B997 (#317)** — bounded-VBO conversion (B975 pattern), NOT the rejected
   static VBO (B962). The guard reads red on the crowd tours until B997 lands
-  (B988/#307 known condition).
+  (B988/#307 known condition). **2026-10-07 re-measured on the Pi (two A/B
+  orderings, `refactor/B972/README.md`): the cut is real (qeynos2 18.8→13.4–14.1,
+  gfaydark 27.7→20.7–22.8 MiB `gpu_unnamed_steady`, buffers now NAMED in
+  `logical_buffers`) and pixel-identical (x86 suite green), but it REGRESSES
+  Pi frame time ~30% (fps 31→21 / 25→17, order-independent) — the B975
+  slack-pattern bounded VBO is the same cost class B962 rejected for the zone
+  pools. Option-2 acceptance NOT met: MR !94 stays draft, frame-time finding
+  boarded **B972-FT** for Will's ruling.
+- **B972-FT** (B, memory/frame-time) → the B972 re-measurement finding: the
+  option-2 self-contained cuts (impostor pages + raw-GL particle draw →
+  bounded VBO/EBO, per-frame `glBufferSubData`, the merged B975 `NameTagBatchNode`
+  slack pattern) cost ~30% frame time on the Pi (qeynos2 31→21 fps, gfaydark
+  25→17, order-independent two-way A/B, `refactor/B972/README.md` 2026-10-07)
+  against a ~4–7 MiB `gpu_unnamed_steady` gain. **RULED: option-2 (fix the
+  write path, keep the cut)** — the mechanism (B1006, #326 note 2873) is a
+  per-write `lima_bo_wait` serialization, not a byte-scaled upload cost, so
+  the fix is a per-page/per-batch VBO RING (3 frame-rows deep: no write
+  touches a buffer an in-flight job references). Implemented on
+  `task/B972-mesa-stream-buffers` (MR !94 head): impostor VBO/EBO pairs,
+  particle 12 slots, nametag 12 slots — `refactor/B972-FT/`. Two CI red
+  defects at the ring head (nametag SEGV: attribute pointers set before the
+  slot bind; release under-subtracting the tally) are fixed and pinned by
+  `test_name_tag_batch`. **Pi crowd-tour A/B complete** (four builds,
+  `refactor/B972-FT/README.md` Measurement): the frame gate is **MET** by both
+  ring shapes (imp p50 at no-cut parity, `gem_pp_jobs_per_frame` 1.23–1.32 ≤ 2.0,
+  `gem_wait_ms_per_frame` ~0.05 — the `lima_bo_wait` is gone), but the memory
+  gate is **NOT met** — `gpu_unnamed_steady` is back in the no-cut band
+  (18.9–19.5 / 27.9–28.1), not the cut's 14.6 / 23.1. Mechanism named
+  (`gem_owners` decomposition): the cut's reduction sits in Mesa/Lima's
+  driver-retained `lima: draw-time BOs` row and tracks the per-frame FLUSH,
+  not the VBO count — the cut is the only low-memory leg AND the only one that
+  flushes, and the packed one-VBO/frame alternative (same VBO count as the
+  cut, 0.05 ms wait) sits at no-cut-level scratch. The memory cut and the
+  frame fix are FLUSH-COUPLED: the low memory is a by-product of the very flush
+  the ring removes. **NEEDS WILL'S RULING (Class C):** (a) accept the frame fix
+  and let `gpu_unnamed_steady` return to the no-cut band, (b) re-scope the cut
+  so the frame fix stands on its own, or (c) hold both gates — which needs a
+  driver-side flush-without-wait, out of the client's reach. MR !94 stays
+  DRAFT; no issue set to review. x86 full suite 5668/5668 + CI build/test/
+  visual-gate green at head `09b71c7e`. **The glFlush leg (note 2938, ruling
+  option c as corrected) was measured 2026-10-09 (`cf56196a`, build
+  `ffecf7d3`, pipeline 685):** ONE explicit `glFlush()` after the impostor pass
+  recovers PART of the cut — `gpu_unnamed_steady` 17.07 / 22.14 MiB (vs the
+  ring's 18.92 / 27.89; the cut is 14.58 / 23.06) — so the early submit does
+  free part of the `lima: draw-time BOs` pool: it reaches the cut on
+  gfaydark (22.14 < 23.06, **B1011 corrected the sign** the first write-up
+  got wrong) and stays 2.49 MiB above it on qeynos2, and it exceeds the
+  frame gate's job-count PROXY (`gem_pp_jobs_per_frame` 2.23 / 2.29 > 2.0:
+  the flush splits the frame's render job into two; `gem_wait_ms_per_frame`
+  stays at ring parity ~0.05; p50 +1.2 / +0.5 ms). The worker recommends
+  **(a)**; B1011 added **(d) ring + glFlush, jobs bound re-pinned at 2.5** as
+  the memory-first option. **RULED by Will 2026-10-09: (d)** — MR !94 ships
+  the self-contained cuts + the per-page VBO ring + one `glFlush()` after the
+  impostor pass (`cf56196a`), `GEM_PP_JOBS_PER_FRAME_BOUND` 2.0 → 2.5 as a
+  measured number (the two-job frame is deliberate; a third split still
+  trips the row), the 10 MiB `gpu_unnamed_steady` guard row stays RED as the
+  B997 known condition (`docs/decisions.md` 2026-10-09).
 - **B997** (B, memory) → issue #317. The B972 split-off: the zone-merge pool
   (6 × 1 MiB `u_upload` `draw:zone` slots, ~38 client-array drawCalls/frame,
   `renderer_zone_merge.cpp`) + the remaining `draw3d:client` pool hold the
@@ -920,7 +976,7 @@ it without taking that measurement first.
   buffers, not jobs.~~ **FIXED** (`refactor/B1006/README.md`): the shim
   (`scripts/pi/lima_bo_census.c`) counts GEM submits per pipe, blocking GEM
   waits and their wall time, and frames; `rendered_zone_summarize.py` carries
-  them as the `gem_*` columns and the `gem_pp_jobs_over_bound` row (bound 2.0;
+  them as the `gem_*` columns and the `gem_pp_jobs_over_bound` row (bound 2.0, re-pinned 2.5 by the #326 ruling of 2026-10-09;
   no-cut 1.2–1.3 PP jobs/frame, the B972 cut 3.1–3.2 with 17–21 ms/frame in
   waits = the whole regression); `pi_crowd.sh --bo-census` loads the shim,
   which the crowd runs never had.

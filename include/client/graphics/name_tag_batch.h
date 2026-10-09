@@ -156,7 +156,11 @@ public:
 
     /** Bytes held by the batch's reusable buffers (the owner row's value). */
     size_t bufferBytes() const;
-    size_t gpuBufferBytes() const { return gpuVertexBytes_ + gpuIndexBytes_; }
+    size_t gpuBufferBytes() const {
+        size_t sum = gpuIndexBytes_;
+        for (size_t i = 0; i < kNametagRingSlots; ++i) sum += gpuVertexRingBytes_[i];
+        return sum;
+    }
 
 private:
     struct Entry {
@@ -185,7 +189,7 @@ private:
     irr::core::aabbox3d<irr::f32> box_;
     std::vector<NameTagNode*> pending_;          // grabbed until render()
     irr::core::array<Entry> sorted_;
-    // The compact run (B975's shrink): no UiQuad intermediate.
+    // B975's shrink: no UiQuad intermediate.
     // 80 B/quad: 4 x 20 B CompactVertex, plus 6 u16 indices in a grow-once
     // pattern {0,1,2, 0,2,3}, reused for each chunk; the colour bytes are
     // normalized at the attribute. Buffers at need, trimmed at a window
@@ -194,8 +198,23 @@ private:
     std::vector<CompactVertex> compactVertices_;
     size_t compactVertexCount_ = 0; // used prefix; vector storage survives each run
     std::vector<uint16_t> compactIndices_;
-    unsigned gpuVertex_ = 0, gpuIndex_ = 0;
-    size_t gpuVertexBytes_ = 0, gpuIndexBytes_ = 0;
+    // B972-FT (#326): the chunked run's RING -- 12 vertex VBOs, exactly the
+    // particle renderer's shape: 3 frame rows x 4 chunk slots. Run r's chunk
+    // k writes slot (r % 3) * 4 + k, so a run's chunks use distinct slots
+    // (no within-run write-after-draw on the same BO, issue #326's pattern)
+    // and a run never writes a slot the previous TWO runs' chunks reference
+    // (the transparent pass is the frame's LAST, and the 3-deep rows outlive
+    // a two-in-flight-job tail). The one index EBO stays static (written
+    // only at growth, the B975 pattern). Both kinds of bytes enter
+    // gpuBufferBytes().
+    static constexpr size_t kNametagRingFrames = 3;
+    static constexpr size_t kNametagRingChunks = 4;  // chunk slots reserved per run
+    static constexpr size_t kNametagRingSlots = kNametagRingFrames * kNametagRingChunks;
+    unsigned gpuVertexRing_[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    size_t gpuVertexRingBytes_[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    unsigned gpuIndex_ = 0;
+    size_t gpuIndexBytes_ = 0;
+    unsigned runChunk_ = 0;  // run count; its ring row is run % 3
     irr::video::IVideoDriver* gpuDriver_ = nullptr; // scene manager owns it
     // The per-quad fallback (any other driver): the old UiQuad + UiQuadBatch
     // path, untouched. Zero capacity on the GLES2 driver, which never fills it.

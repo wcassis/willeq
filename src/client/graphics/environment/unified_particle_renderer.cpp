@@ -2,10 +2,15 @@
 
 #include "client/graphics/environment/unified_particle_renderer.h"
 #include "client/graphics/environment/spell_sprite_atlas.h"
+#include "client/core/gem_owner_census.h"  // B972: GemTag for the VBO's census row
 #include "common/logging.h"
-#include "client/core/gem_owner_census.h"  // B962
 #include <cstring>
 #include <chrono>
+#include <cstddef>
+
+// The driver's raw-GL accounting seams (docker/irrlicht-drm/COpenGLES2Driver.cpp).
+extern void gles2AdjustRawBufferBytes(void* driver, ptrdiff_t delta);
+extern void gles2SyncBufferBindings(void* driver);
 
 // GLES2 spec constants — fallback defines for older headers
 #ifndef GL_BLEND_SRC_RGB
@@ -136,6 +141,19 @@ UnifiedParticleRenderer::~UnifiedParticleRenderer() {
         glDeleteTextures(1, &opaqueAlphaFallback_);
         opaqueAlphaFallback_ = 0;
     }
+    if (vertexVbo_[0] != 0 || vertexVboBytes_[0] != 0) {  // B972
+        size_t total = 0;
+        for (size_t i = 0; i < kVboRingFrames; ++i) {
+            if (vertexVbo_[i] != 0) glDeleteBuffers(1, &vertexVbo_[i]);
+            total += vertexVboBytes_[i];
+        }
+        if (driver_ && total != 0)
+            gles2AdjustRawBufferBytes(driver_, -static_cast<ptrdiff_t>(total));
+        for (size_t i = 0; i < kVboRingFrames; ++i) {
+            vertexVbo_[i] = 0;
+            vertexVboBytes_[i] = 0;
+        }
+    }
 }
 
 GLuint UnifiedParticleRenderer::compileShader(GLenum type, const char* source) {
@@ -198,7 +216,8 @@ GLuint UnifiedParticleRenderer::linkProgram(GLuint vs, GLuint fs) {
     return prog;
 }
 
-bool UnifiedParticleRenderer::init() {
+bool UnifiedParticleRenderer::init(irr::video::IVideoDriver* driver) {
+    driver_ = driver;
     // Compile vertex shader
     GLuint vs = compileShader(GL_VERTEX_SHADER, POINT_SPRITE_VS);
     if (vs == 0) {
@@ -269,6 +288,12 @@ bool UnifiedParticleRenderer::init() {
     spriteAdditiveVerts_.reserve(1024);
     spriteAlphaVerts_.reserve(256);
 
+    // B972 (#290) / B972-FT (#326), the ALTERNATIVE shape: the ring's VBOs
+    // are created EMPTY and grown on first use in uploadPackedVerts(); the
+    // byte deltas go through the driver's logical tally so the draws'
+    // storage stops being UNNAMED GEM (the 1 MiB stream-upload slots the
+    // old client-array paths warmed up stay freed with them).
+
     initialized_ = true;
     LOG_INFO(MOD_GRAPHICS, "UnifiedParticleRenderer: Initialized (max point size: {:.0f}, "
              "uProj={}, uView={}, uFogStart={}, uScreenHeight={})",
@@ -283,6 +308,8 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
                                       GLuint alphaCompanion, GLuint spriteTexture,
                                       GLuint spriteAlphaCompanion) {
     if (!initialized_ || count <= 0 || !particles) return;
+    // B972-FT: the ring's row advances once per render(), not per batch.
+    ++frameCount_;
 
     auto t0 = std::chrono::steady_clock::now();
 
@@ -465,6 +492,47 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
 
     auto t3 = std::chrono::steady_clock::now();
 
+    // B972-FT (alternative shape): pack the frame's non-empty batches into
+    // ONE bounded VBO (the ring row) with a single upload, then draw each
+    // batch's vertex window. The job references one VBO -- the pre-ring
+    // cut's shape -- so Mesa's driver-retained per-BO scratch stays at the
+    // cut's level, while the ring keeps issue #326's write-wait gone.
+    GLuint packVbo = 0;
+    {
+        packedVerts_.clear();
+        auto pack = [](std::vector<PointSpriteVertex>& v,
+                       const std::vector<PointSpriteVertex>& src) {
+            v.insert(v.end(), src.begin(), src.end());
+        };
+        pack(packedVerts_, additiveVerts_);
+        pack(packedVerts_, alphaVerts_);
+        pack(packedVerts_, spriteAdditiveVerts_);
+        pack(packedVerts_, spriteAlphaVerts_);
+        if (useVbo_ && !packedVerts_.empty()) packVbo = uploadPackedVerts();
+    }
+    const PointSpriteVertex* pv = packVbo ? packedVerts_.data() : nullptr;
+    size_t cursor = 0;
+    bool packedBound = false;
+    auto drawWindow = [&](const std::vector<PointSpriteVertex>& src, UnifiedBlendMode mode,
+                          int batchIdx) -> size_t {
+        (void)batchIdx;  // the batch identity, kept for the draw order and log
+        const size_t start = cursor;
+        cursor += src.size();
+        if (!src.empty()) {
+            // VBO path: start is the batch's window into the PACK (one
+            // buffer). Client-array path: start is 0 into the batch's own
+            // array (there is no pack) -- mixing the two is an OOB read.
+            // The bind + attribute pointers go to the first batch that
+            // ACTUALLY draws (an earlier empty batch must not consume the
+            // flag, or the real batch would draw with stale pointers).
+            const bool bindAndPointers = packVbo && !packedBound;
+            renderBatch(packVbo ? pv : src.data(), packVbo ? start : 0,
+                        src.size(), mode, batchIdx, bindAndPointers);
+            if (bindAndPointers) packedBound = true;
+        }
+        return start;
+    };
+
     // ── Sheet 0: the 4x4 procedural particle atlas ──────────────────────
     if (!additiveVerts_.empty() || !alphaVerts_.empty()) {
         if (uAtlasRegionSize_ >= 0) glUniform2f(uAtlasRegionSize_, 0.25f, 0.25f);
@@ -474,12 +542,8 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, atlasTexture);
 
-        if (!additiveVerts_.empty()) {
-            renderBatch(additiveVerts_, UnifiedBlendMode::ADDITIVE);
-        }
-        if (!alphaVerts_.empty()) {
-            renderBatch(alphaVerts_, UnifiedBlendMode::ALPHA);
-        }
+        drawWindow(additiveVerts_, UnifiedBlendMode::ADDITIVE, 0);
+        drawWindow(alphaVerts_, UnifiedBlendMode::ALPHA, 1);
     }
 
     auto t4 = std::chrono::steady_clock::now();
@@ -498,12 +562,8 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, spriteTexture);
 
-        if (!spriteAdditiveVerts_.empty()) {
-            renderBatch(spriteAdditiveVerts_, UnifiedBlendMode::ADDITIVE);
-        }
-        if (!spriteAlphaVerts_.empty()) {
-            renderBatch(spriteAlphaVerts_, UnifiedBlendMode::ALPHA);
-        }
+        drawWindow(spriteAdditiveVerts_, UnifiedBlendMode::ADDITIVE, 2);
+        drawWindow(spriteAlphaVerts_, UnifiedBlendMode::ALPHA, 3);
     }
 
     auto t5 = std::chrono::steady_clock::now();
@@ -526,6 +586,11 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
 
     glBindBuffer(GL_ARRAY_BUFFER, savedVBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, savedEBO);
+    // B972: when the batches streamed through the VBO the GL bindings are
+    // correct again, but the driver's state_ cache still named the VBO it
+    // last drew with; a client-array fallback that skips its bind on a
+    // 0-cache would then sample it. Re-read the real bindings from GL.
+    if (driver_ && useVbo_) gles2SyncBufferBindings(driver_);
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(savedTexture1));
@@ -556,9 +621,12 @@ void UnifiedParticleRenderer::render(const UnifiedParticle* particles, int count
     }
 }
 
-void UnifiedParticleRenderer::renderBatch(const std::vector<PointSpriteVertex>& verts,
-                                           UnifiedBlendMode blendMode) {
-    if (verts.empty()) return;
+void UnifiedParticleRenderer::renderBatch(const PointSpriteVertex* verts, size_t start,
+                                          size_t count, UnifiedBlendMode blendMode,
+                                          int batchIdx, bool bindAndPointers) {
+    if (count == 0) return;
+    const PointSpriteVertex* v = verts + start;
+    (void)batchIdx;  // the batch identity for the timing log (uploadPackedVerts)
 
     if (blendMode == UnifiedBlendMode::ADDITIVE) {
         glBlendFunc(GL_ONE, GL_ONE);
@@ -567,23 +635,126 @@ void UnifiedParticleRenderer::renderBatch(const std::vector<PointSpriteVertex>& 
     }
 
     const int stride = sizeof(PointSpriteVertex);
-    const char* base = reinterpret_cast<const char*>(verts.data());
 
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, base + 0);
+    if (useVbo_) {
+        // B972-FT (alternative shape): re-bind the row's VBO and set the
+        // attribute pointers HERE, after the bind (they capture the buffer
+        // bound AT CALL TIME, no VAO -- the run-381 pattern: bind first,
+        // pointers second), then draw this batch's vertex WINDOW. The
+        // pointers name the row's VBO set up by uploadPackedVerts().
+        if (bindAndPointers) {
+            // The first packed batch of the frame re-establishes the bind the
+            // upload's trailing unbind removed; later batches leave it in
+            // place (and the pointers already name this VBO).
+            glBindBuffer(GL_ARRAY_BUFFER, vertexVbo_[(frameCount_ - 1) % kVboRingFrames]);
+            const int stride = sizeof(PointSpriteVertex);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
+            glDisableVertexAttribArray(1);
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const GLvoid*>(12));
+            glEnableVertexAttribArray(3);
+            glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const GLvoid*>(28));
+            glEnableVertexAttribArray(4);
+            glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const GLvoid*>(36));
+        }
+        glDrawArrays(GL_POINTS, static_cast<GLsizei>(start),
+                     static_cast<GLsizei>(count));
+        (void)v;
+    } else {
+        // The pre-B972 client-array path, kept for the pixel-identity seam
+        // (test_b972_particle_vbo renders both and demands a byte-identical
+        // framebuffer).
+        const char* base = reinterpret_cast<const char*>(v);
 
-    glDisableVertexAttribArray(1);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, base + 0);
 
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, base + 12);
+        glDisableVertexAttribArray(1);
 
-    glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, base + 28);
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, stride, base + 12);
 
-    glEnableVertexAttribArray(4);
-    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, base + 36);
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, base + 28);
 
-    glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(verts.size()));
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, stride, base + 36);
+
+        glDrawArrays(GL_POINTS, static_cast<GLsizei>(start),
+                     static_cast<GLsizei>(count));
+    }
+}
+
+// B972 (#290) / B972-FT (#326), the ALTERNATIVE shape: grow the ring row's
+// ONE VBO and write the frame's packed point vertices (packedVerts_) into
+// it with a single glBufferSubData, then set the point-vertex attribute
+// pointers once. The tag spans the whole run: the glBufferData growth AND
+// the subdata both allocate GEM storage, and the attribution must name them
+// vbo:particles, not leave them for the 1 MiB slot.
+//
+// The write-wait (issue #326) is measured here: on Lima the subdata's wall
+// clock carries lima_transfer_map's lima_flush_job_accessing_bo +
+// lima_bo_wait when the written BO is still referenced by an in-flight job.
+// The row was last written two frames ago, so no live job references it and
+// the wait returns immediately. WILLEQ_B972FT_TIMING wall-clocks it.
+GLuint UnifiedParticleRenderer::uploadPackedVerts() {
+    if (packedVerts_.empty()) return 0;
+    eqt::memory::GemTag gemTag("vbo:particles");
+    const size_t needed =
+        packedVerts_.size() * static_cast<size_t>(sizeof(PointSpriteVertex)) +
+        sizeof(PointSpriteVertex);
+    // The row advances once per render() (frameCount_ incremented at the top),
+    // and the row was last written two frames ago.
+    const size_t row = (frameCount_ - 1) % kVboRingFrames;
+    // One slack vertex keeps every subdata write strictly smaller than the
+    // allocation (B975): a whole-resource write is what renames a fresh BO;
+    // a partial write reuses the bounded storage.
+    if (!vertexVbo_[row]) glGenBuffers(1, &vertexVbo_[row]);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexVbo_[row]);
+    if (needed > vertexVboBytes_[row]) {
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(needed), nullptr,
+                     GL_DYNAMIC_DRAW);
+        if (driver_)
+            gles2AdjustRawBufferBytes(driver_,
+                                      static_cast<ptrdiff_t>(needed) - vertexVboBytes_[row]);
+        vertexVboBytes_[row] = needed;
+    }
+    if (getenv("WILLEQ_B972FT_TIMING")) {
+        const auto t0 = std::chrono::steady_clock::now();
+        glBufferSubData(GL_ARRAY_BUFFER, 0,
+                        static_cast<GLsizeiptr>(packedVerts_.size() *
+                                                static_cast<size_t>(sizeof(PointSpriteVertex))),
+                        packedVerts_.data());
+        const auto t1 = std::chrono::steady_clock::now();
+        const int64_t subUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        fprintf(stderr, "[B972FT] frame=%u row=%zu subdata=1 verts=%zu sub=%lld us\n",
+                (unsigned)(frameCount_ - 1), row, packedVerts_.size(), (long long)subUs);
+    } else {
+        glBufferSubData(GL_ARRAY_BUFFER, 0,
+                        static_cast<GLsizeiptr>(packedVerts_.size() *
+                                                static_cast<size_t>(sizeof(PointSpriteVertex))),
+                        packedVerts_.data());
+    }
+
+    // NO attribute-pointer setup here: pointers capture the buffer bound AT
+    // CALL TIME (no VAO), and the unbind below would make them capture
+    // client null. renderBatch() re-binds the row (first batch) and THEN
+    // sets them.
+    //
+    // Unbind before returning: the driver's state_ cache is NOT updated by
+    // the raw glBindBuffer above (it stays at the driver's last tracked
+    // bind, usually 0), so a later client-array draw -- which skips its own
+    // unbind when the cache says 0 -- would leave this VBO bound and draw
+    // through it. The batch draws re-bind the row (first batch) and
+    // render() restores the saved binds at its end; this unbind only matters
+    // for a client-array frame in between. gles2SyncBufferBindings re-reads
+    // the real GL bindings into the cache (the B972 pattern) -- but only
+    // when a driver is attached: test doubles init() without one and draw
+    // in raw GL, where there is no cache to re-read.
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    if (driver_) gles2SyncBufferBindings(driver_);
+    return vertexVbo_[row];
 }
 
 } // namespace Environment
