@@ -908,13 +908,15 @@ it without taking that measurement first.
   `ffecf7d3`, pipeline 685):** ONE explicit `glFlush()` after the impostor pass
   recovers PART of the cut — `gpu_unnamed_steady` 17.07 / 22.14 MiB (vs the
   ring's 18.92 / 27.89; the cut is 14.58 / 23.06) — so the early submit does
-  free part of the `lima: draw-time BOs` pool, but it does NOT reach the
-  cut's 14.6 / 23.1, and it FAILS the frame gate's job-count column
-  (`gem_pp_jobs_per_frame` 2.23 / 2.29 > 2.0: the flush splits the frame's
-  render job into two; `gem_wait_ms_per_frame` stays at ring parity ~0.05 and
-  p50 stays within noise of no-cut). Recommendation stands as **(a)** — the
-  4–7 MiB cut is not client-achievable with the frame fix in current Mesa
-  25.2.8 Lima (`refactor/B972-FT/README.md`, the glFlush section).
+  free part of the `lima: draw-time BOs` pool: it reaches the cut on
+  gfaydark (22.14 < 23.06, **B1011 corrected the sign** the first write-up
+  got wrong) and stays 2.49 MiB above it on qeynos2, and it exceeds the
+  frame gate's job-count PROXY (`gem_pp_jobs_per_frame` 2.23 / 2.29 > 2.0:
+  the flush splits the frame's render job into two; `gem_wait_ms_per_frame`
+  stays at ring parity ~0.05; p50 +1.2 / +0.5 ms). The worker recommends
+  **(a)**; B1011 adds **(d) ring + glFlush, jobs bound re-pinned at 2.5** as
+  the memory-first option (`refactor/B972-FT/README.md`, the glFlush
+  section). Will's call.
 - **B997** (B, memory) → issue #317. The B972 split-off: the zone-merge pool
   (6 × 1 MiB `u_upload` `draw:zone` slots, ~38 client-array drawCalls/frame,
   `renderer_zone_merge.cpp`) + the remaining `draw3d:client` pool hold the

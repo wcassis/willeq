@@ -227,16 +227,20 @@ report windows in the steady window (frame ≥ 3000); `gpu_unnamed_steady` is
 | (reference) cut `a893b467` | qeynos2 | 49.21 | 3.14 | 16.88 | 14.58 |
 | (reference) cut `a893b467` | gfaydark | 62.35 | 3.20 | 21.57 | 23.06 |
 
-**Verdict: the prediction is NOT met — both gates fail, each for a different
-reason, and the flush is the wrong lever.**
+**Verdict (corrected by B1011, 2026-10-09 — the first write-up had the
+gfaydark sign wrong): the memory gate is MET on gfaydark and missed on
+qeynos2; the frame gate fails on its job-count proxy while the frame time
+itself stays near parity. This is a trade for Will, not a failed
+prediction.**
 
-1. **Memory gate: partially recovered, not met.** `gpu_unnamed_steady`
-   drops below the ring's no-cut band — qeynos2 17.07 vs 18.92 (−1.85 MiB
-   vs the ring) and gfaydark 22.14 vs 27.89 (−5.75 MiB) — so the early
-   submit DOES free part of the per-draw varying pool, exactly as the
-   hypothesis predicted. But it does not reach the cut's 14.6 / 23.1: the
-   cut is still 2.49 MiB (qeynos2) / 0.96 MiB (gfaydark) below. The
-   cut's 4–7 MiB leg is not recovered. (Mechanism note: the pre-ring cut
+1. **Memory gate: met on gfaydark, 2.49 MiB short on qeynos2.**
+   `gpu_unnamed_steady` drops below the ring's no-cut band — qeynos2 17.07
+   vs 18.92 (−1.85 MiB vs the ring) and gfaydark 22.14 vs 27.89 (−5.75
+   MiB) — so the early submit DOES free part of the per-draw varying pool,
+   exactly as the hypothesis predicted. Against the cut's 14.58 / 23.06:
+   qeynos2 is still 2.49 MiB above the cut, but **gfaydark at 22.14 is 0.92
+   MiB BELOW the cut** (the earlier text read this as "0.96 short"; it is
+   the heavier zone, and the one where the memory matters). (Mechanism note: the pre-ring cut
    flushed on every `glBufferSubData` — ~10 flushes/frame across impostor,
    particle and nametag writes; this leg flushes exactly once, after the
    impostor pass. The freed share scales with how many writes' BOs are in
@@ -255,11 +259,17 @@ reason, and the flush is the wrong lever.**
    0.068, no-cut 0.014–0.016) — the write-triggered `lima_bo_wait` stays
    gone; the flush never enters `lima_transfer_map`, as fact 1 predicted.
 
-**Consequence for the ruling.** The client-side flush-without-wait does not
-exist in the shape this leg tested: glFlush() recovers 40–80 % of the memory
-cut but breaks the `gem_pp_jobs_per_frame` ≤ 2.0 gate, and the full cut
+**Consequence for the ruling (B1011 framing).** ring + glFlush buys
+−1.85 / −5.75 MiB of `gpu_unnamed_steady` (all of the cut on gfaydark,
+60 % of it on qeynos2) for +1.2 / +0.5 ms of impostor p50 (34.70 vs 33.48;
+41.79 vs 41.31 — qeynos2's +3.6 % is above the no-cut run-to-run spread of
+~0.1 ms, so it is a small real cost, not noise) and a job count of 2.2–2.3
+against the 2.0 proxy bound B1006 pinned. `gem_wait_ms` is at ring parity,
+so the cost is the job split only. Will's standing order is memory first,
+frame rate second, so this is a legitimate third option: **(d) ship ring +
+glFlush and re-pin the jobs/frame bound at 2.5**. The full cut on qeynos2
 would have needed the cut's ~10 per-write flushes, which is precisely the
-per-page write-wait the ring was built to remove. **The recommendation
+per-page write-wait the ring was built to remove. **The worker's recommendation
 stands as (a): ship the frame fix; `gpu_unnamed_steady` returns to the
 no-cut band (the 4–7 MiB cut is not client-achievable with the frame fix
 in current Mesa 25.2.8 Lima).** No budget, golden or ratchet is touched by
