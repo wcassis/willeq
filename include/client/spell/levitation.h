@@ -12,11 +12,14 @@
 // spell_constants.h). This file is that predicate -- the first reader of SPA
 // 57 in willeq -- and the ONE table of its two motion numbers.
 //
-// [assumed] until the lane-1 oracle capture lands (refactor/B892/README.md):
-// the numbers below are the classic client's behaviour as observed, marked
-// assumed because no Z trace has been recorded yet. When measured, the
-// values are updated HERE and the mark changes to [measured] in the README;
-// nothing else names them.
+// [measured] by the lane-1 oracle capture (refactor/B892/README.md,
+// "The two motion numbers — [measured]", evidence in refactor/B892/evidence/):
+// the official client in-world as Testchar, GM-cast Levitate, the C->S
+// OP_ClientUpdate wire (eqemu packet logging, categories 83/84) decoded at
+// z_pos@+26. Standing floor at the pre-cast standing spot (x=20, y=5.0) =
+// -38.2157 (593 constant samples); the buff landed and the client's own
+// computed z bobbed ~4.4 s about the hover line: feet 1.458 (low) .. 4.556
+// (high) above the floor, mean 2.989. Nothing else names these two numbers.
 
 #include "client/spell/buff_manager.h"
 #include "client/spell/spell_database.h"
@@ -32,14 +35,23 @@ enum class LevitationState {
 };
 
 // The hover line above the floor, in EQ world units at the FEET.
-// [assumed] -- classic client hovers roughly a foot off the ground.
+// [measured] -- the lane-1 oracle capture: the classic client's self-
+// levitation BOBS about the hover line -- the C->S z bobbed feet
+// 1.458 (low) .. 4.556 (high) above the floor (period ~4.4 s) -- and the LOW of
+// that bob is where the feet rest between cycles. fable's renderer does not
+// animate the bob (it pins the feet at the line and descends to it), so the
+// line it should hold is the bob's LOW, 1.458 -- the point the classic client
+// re-anchors the feet at every cycle, not the bob's mean (2.989).
 constexpr float kLevitationHoverHeight = 1.5f;
 
 // Descent rate in units/sec when the feet are above the hover line (the
-// "descend slowly when walking off a ledge" of the issue). [assumed] --
-// the classic fall acceleration is ~80 units/s^2 (PlayerMovementState::
-// gravity); a slow, roughly constant descent is the observed behaviour.
-constexpr float kLevitationDescentRate = 10.0f;
+// "descend slowly when walking off a ledge" of the issue). [measured] -- the
+// lane-1 oracle capture's 33 high->low levitation legs (z_pos@+26 on the C->S
+// OP_ClientUpdate wire, ~1 Hz) descend at a median 1.294 u/s (range 0.697-1.487;
+// the spread is 1 Hz sampling jitter on a ~2.6 u drop), so the classic client
+// descends slowly and roughly constantly -- far slower than the old assumed
+// 10.0 u/s (which was a guess against the classic fall acceleration).
+constexpr float kLevitationDescentRate = 1.3f;
 
 // The predicate: any active buff whose spell carries SPA 57, OR the
 // player's own flymode 2 (levitate) / 5 (levitate while running) -- the
