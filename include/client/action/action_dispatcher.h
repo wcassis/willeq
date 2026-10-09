@@ -200,6 +200,12 @@ public:
     ActionResult toggleAutoFire();
 
     /**
+     * B900 (#216): fire one ranged attack (the /range command and the Range
+     * Attack key both dispatch here). One-shot; distinct from toggleAutoFire.
+     */
+    ActionResult rangedAttack();
+
+    /**
      * Enable the combat manager (auto-attack/hunting subsystem).
      */
     ActionResult enableCombatManager();

@@ -124,6 +124,12 @@ enum class HotkeyAction : uint32_t {
     ClearTarget,
     Consider,           // Consider target (C key, sends server packet)
     Attack,             // Initiate attack on target (Ctrl+Q, distinct from toggle)
+    // B900 (#216): one ranged shot (bow/crossbow/throwing) -> OP_CombatAbility
+    // with m_atk = slotRange. The oracle's default key is [assumed]-owed (Leg
+    // O: read from the live eqclient.ini [KeyMaps]), so it is UNBOUND in
+    // setupDefaults() and config/hotkeys.json; it is listed on the Options
+    // Keys page where the user can bind it.
+    RangeAttack,
     ReplyToTell,        // Reply to last tell (R key)
 
     // Targeting (F1-F8, Tab)

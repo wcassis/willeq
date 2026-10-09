@@ -423,6 +423,14 @@ ActionResult ActionDispatcher::toggleAutoFire() {
     return ActionResult::Success();
 }
 
+ActionResult ActionDispatcher::rangedAttack() {
+    auto result = checkZoneConnection();
+    if (!result.success) return result;
+
+    m_handler->rangedAttack();
+    return ActionResult::Success();
+}
+
 ActionResult ActionDispatcher::enableCombatManager() {
     auto result = checkZoneConnection();
     if (!result.success) return result;

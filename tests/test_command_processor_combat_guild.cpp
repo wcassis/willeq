@@ -281,6 +281,39 @@ TEST_F(CommandProcessorTest, Autofire_Alias_DispatchesToggleAutoFire) {
     ASSERT_TRUE(handler.calledOnceWith("toggleAutoFire()"));
 }
 
+// ---------- range (B900, #216) ----------
+// The single ranged attack. A distinct command from /autofire: it fires ONE
+// shot (OP_CombatAbility with m_atk = slotRange) and dispatches rangedAttack,
+// not the autofire toggle. The wire shape and the no-weapon refusal are
+// pinned in test_ranged_attack_wire.cpp against a live CombatManager.
+
+TEST_F(CommandProcessorTest, B900_RangeRegisteredInTheCombatCategory) {
+    auto info = processor->getCommandInfo("range");
+    ASSERT_TRUE(info.has_value()) << "/range is not registered";
+    EXPECT_EQ(info->category, "Combat");
+    // The issue's era-correct aliases.
+    EXPECT_TRUE(processor->hasCommand("rangedattack"));
+    EXPECT_TRUE(processor->hasCommand("fire"));
+}
+
+TEST_F(CommandProcessorTest, Range_DispatchesRangedAttack) {
+    auto result = processor->processCommand("/range");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("rangedAttack()"));
+}
+
+TEST_F(CommandProcessorTest, Range_AliasRangedattack_DispatchesRangedAttack) {
+    auto result = processor->processCommand("/rangedattack");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("rangedAttack()"));
+}
+
+TEST_F(CommandProcessorTest, Range_AliasFire_DispatchesRangedAttack) {
+    auto result = processor->processCommand("/fire");
+    EXPECT_TRUE(result.success);
+    ASSERT_TRUE(handler.calledOnceWith("rangedAttack()"));
+}
+
 // ---------- assist ----------
 
 TEST_F(CommandProcessorTest, Assist_ExplicitName_ResolvesEntityAndDispatches) {

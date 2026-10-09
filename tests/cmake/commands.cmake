@@ -360,6 +360,27 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_combat_manager DISCOVERY_TIMEOUT 120)
 
+# B900 (#216): a single ranged attack. The one-shot trigger shared by /range
+# and the Range Attack key. Same seam as test_combat_manager -- a bare
+# EverQuest via MakeEq(), the live CombatManager, a target replayed as a real
+# NewSpawn -- but the assertions are on the OUTBOUND OP_CombatAbility bytes
+# (the T268 queued-packet capture, armed in PacketSender) and the eqstr-9150
+# refusal SystemMessage (a TestBridge), which the targeting cases cannot see.
+# It is its own target because it reads inventory and the skill/item constants,
+# not just the combat enum/struct surface test_combat_manager covers.
+ADD_EXECUTABLE(test_ranged_attack_wire
+    test_ranged_attack_wire.cpp
+)
+TARGET_LINK_LIBRARIES(test_ranged_attack_wire GTest::gtest_main willeq_core)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    TARGET_INCLUDE_DIRECTORIES(test_ranged_attack_wire PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    # B900 (#216): the key-leg tests source-parse two device-bound arms and
+    # load the shipped config/hotkeys.json, both by repo-root-relative path.
+    TARGET_COMPILE_DEFINITIONS(test_ranged_attack_wire PRIVATE
+        WILLEQ_REPO_ROOT="${CMAKE_SOURCE_DIR}")
+ENDIF()
+GTEST_DISCOVER_TESTS(test_ranged_attack_wire DISCOVERY_TIMEOUT 120)
+
 # T308 Leg 1: hunt-target filtering classifies on the server-sent body type,
 # not on CombatManager::IsHumanoid()'s hand-written race-id table (the FIFTH
 # live copy of the pre-JSON numbering; T267/T270/T271/T304 killed the other

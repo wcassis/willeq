@@ -106,6 +106,7 @@ public:
     void shieldTarget(uint16_t targetId) override { record("shieldTarget", targetId); }
     void taunt() override { record("taunt"); }
     void toggleAutoFire() override { record("toggleAutoFire"); }
+    void rangedAttack() override { record("rangedAttack"); }
     void enableCombatManager() override { record("enableCombatManager"); }
     void disableCombatManager() override { record("disableCombatManager"); }
     void toggleCombatManager() override { record("toggleCombatManager"); }

@@ -10,6 +10,10 @@
 #include "client/eq_body_types.h"
 #include "client/eq.h"
 #include "client/bridge/game_state_bridge.h"
+#include "client/inventory/inventory_manager.h"
+#include "client/inventory/inventory_constants.h"
+#include "client/skill/skill_constants.h"
+#include "client/skill/skill_packet_bodies.h"
 #include "common/logging.h"
 #include "common/net/daybreak_connection.h"
 #ifdef WITH_AUDIO
@@ -648,6 +652,62 @@ void CombatManager::UseAbility(uint32_t ability_id, uint16_t target_id) {
 	m_eq->QueuePacket(HC_OP_CombatAbility, &packet);
 
 	LOG_DEBUG(MOD_COMBAT, "Sent CombatAbility packet: skill={}, target={}", ability_id, actual_target);
+}
+
+bool CombatManager::RangedAttack() {
+	if (!m_eq) {
+		LOG_ERROR(MOD_COMBAT, "RangedAttack: No EQ reference");
+		return false;
+	}
+
+	// Resolve the current target; a ranged attack needs one.
+	uint16_t target = m_current_target_id;
+	if (target == 0) {
+		LOG_DEBUG(MOD_COMBAT, "RangedAttack: No target");
+		return false;
+	}
+
+	// The range-slot item, Titanium numbering (SLOT_RANGE = 11 = eqemu's
+	// EQ::invslot::slotRange, so the client's own id goes on the wire unchanged).
+	auto* inv = m_eq->GetInventoryManager();
+	const eqt::inventory::ItemInstance* range_item =
+		inv ? inv->getItem(eqt::inventory::SLOT_RANGE) : nullptr;
+
+	// Pick the wire skill from the range item's eqemu ItemType (the value
+	// ItemInstance::skillType carries). Bow -> Archery, throwing -> Throwing;
+	// mirroring eqemu's client_process.cpp:345-380 split. Any other item (or
+	// nothing) is not a ranged weapon.
+	uint8_t skill = 0;
+	if (range_item && range_item->itemId != 0) {
+		if (range_item->skillType == EQ::skill::kItemTypeBow) {
+			skill = EQ::kSkillArchery;
+		} else if (range_item->skillType == EQ::skill::kItemTypeLargeThrowing ||
+		           range_item->skillType == EQ::skill::kItemTypeSmallThrowing) {
+			skill = EQ::kSkillThrowing;
+		}
+	}
+	if (skill == 0) {
+		// Official client refusal (eqstr_us.txt:9150). The server says the
+		// same thing from a different string (special_attacks.cpp:880).
+		m_eq->AddChatSystemMessage("You do not have a ranged weapon equipped.");
+		LOG_DEBUG(MOD_COMBAT, "RangedAttack: no ranged weapon in slot {}", eqt::inventory::SLOT_RANGE);
+		return false;
+	}
+
+	// One OP_CombatAbility shot. Structure matches UseAbility (target, m_atk,
+	// m_skill -- 3 x u32, 12 bytes); the difference is m_atk = slotRange, not
+	// the 100 UseAbility hard-codes for the melee abilities.
+	EQ::Net::DynamicPacket packet;
+	packet.Resize(12);
+	packet.PutUInt32(0, target);                    // m_target
+	packet.PutUInt32(4, eqt::inventory::SLOT_RANGE); // m_atk = slotRange (11)
+	packet.PutUInt32(8, skill);                     // m_skill = Archery(7)/Throwing(51)
+
+	m_eq->QueuePacket(HC_OP_CombatAbility, &packet);
+
+	LOG_DEBUG(MOD_COMBAT, "RangedAttack: target={}, slot={}, skill={}",
+		target, eqt::inventory::SLOT_RANGE, skill);
+	return true;
 }
 
 void CombatManager::Taunt(uint16_t target_id) {

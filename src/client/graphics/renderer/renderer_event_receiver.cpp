@@ -202,6 +202,10 @@ bool RendererEventReceiver::OnEvent(const irr::SEvent& event) {
                     case HA::ToggleAutoAttack: pushBridgeAction({RA::ToggleAutoAttack}); break;
                     // B905 (#225): Ctrl+Q was bound and fell to default.
                     case HA::Attack: pushBridgeAction({RA::Attack}); break;
+                    // B900 (#216): one ranged shot. Unbound by default (the
+                    // oracle key is [assumed]-owed); the user can bind it on
+                    // the Options Keys page, which then reaches this arm.
+                    case HA::RangeAttack: pushBridgeAction({RA::RangeAttack}); break;
                     case HA::ToggleInventory: actionQueue_.push_back({RA::ToggleInventory}); break;
                     case HA::ToggleSkills: actionQueue_.push_back({RA::ToggleSkills}); break;
                     case HA::ToggleGroup: actionQueue_.push_back({RA::ToggleGroup}); break;

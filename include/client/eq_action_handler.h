@@ -59,6 +59,7 @@ public:
     void shieldTarget(uint16_t targetId) override;
     void taunt() override;
     void toggleAutoFire() override;
+    void rangedAttack() override;
     void enableCombatManager() override;
     void disableCombatManager() override;
     void toggleCombatManager() override;
