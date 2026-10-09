@@ -192,7 +192,7 @@ The two ring shapes both pass the pixel-identity test (`test_b972_stream_buffers
 5668/5668 and the CI `build`/`test`/`gate` (visual_gate) jobs are all green on
 the packed tip `054fa115` (pipeline 670).
 
-## The glFlush leg (note 2938 / ruling option c) — commit `cf56196a`, MEASUREMENT PENDING
+## The glFlush leg (note 2938 / ruling option c) — commit `cf56196a`, MEASURED 2026-10-09
 
 The last untested client-side shape: ONE explicit `glFlush()` immediately after
 the impostor pass (`ImpostorBatchNode::render()`, after the packed VBO's
@@ -209,25 +209,67 @@ client-achievable with the frame fix.
 byte-identical — the flush is a no-op for pixels), hygiene 25/25, pipeline 683
 green (hygiene/build/test/gate; the `test` job runs the full suite).
 
-**Pi A/B status (2026-10-08 ~16:40 UTC):** the glFlush ARM build is NOT
-produced — the only ARM build path (the `arm-nfs` runner on `dev-u24`,
-`build-arm` jobs 3163/3164/3165) fails at `vendor_fetch.sh --ensure` with
-`mkdir: cannot create directory '/mnt/projects/fable': Permission denied`. Job
-3085 succeeded on the same runner at 06:48 the same day, so this is a fresh
-NFS-mount fault on `dev-u24`, not this commit; the host is unreachable from
-hermes-ext (no ssh path, no docker, no cross-compiler here) and a shell-runner
-retry does not re-mount NFS. A no-cut control leg of THIS leg's own A/B WAS
-completed on the identical rig (`~/kb-evidence/b972ft-vbo-ring/glflush-cf56196a/
-nocut/`): qeynos2 p50 33.56 / unnamed 18.92 MiB, gfaydark 41.34 / 27.76 MiB,
-pp jobs 1.24/1.31, wait 0.014/0.016 ms — within noise of the README's four-build
-table (33.62/41.55, 19.29/28.20), confirming the rig. **The glFlush row itself
-(p50 + unnamed + gem_ on the `cf56196a` ARM build) is the outstanding
-measurement; resume the A/B (`--pi-dir ~/ci-arm/cf56196a…`) the moment
-`build-arm` is green again.**
+**Pi A/B (2026-10-09 ~01:46 UTC, build `ffecf7d3` = `cf56196a` + the README
+update commit; pipeline 685, `build-arm` job 3277).** Same rig as the
+four-build table (qeynos2 + gfaydark, imp200far, 800×600, Mesa nollvm, VM
+lane, census shim). `impostor-frames` p50 is the median of the per-120-frame
+report windows in the steady window (frame ≥ 3000); `gpu_unnamed_steady` is
+`steady_60s` from `results.tsv`:
+
+| build | zone | imp p50 (ms) | pp jobs/f | wait ms/f | unnamed (MiB) |
+|---|---|---|---|---|---|
+| no-cut `c7abab9c` (fresh, this A/B) | qeynos2 | 33.48 | 1.24 | 0.014 | 18.92 |
+| no-cut `c7abab9c` (fresh, this A/B) | gfaydark | 41.31 | 1.31 | 0.016 | 27.76 |
+| packed `054fa115` (ring, no flush) | qeynos2 | 33.21 | 1.23 | 0.053 | 18.92 |
+| packed `054fa115` (ring, no flush) | gfaydark | 41.30 | 1.32 | 0.053 | 27.89 |
+| **glFlush `ffecf7d3` (this leg)** | **qeynos2** | **34.70** | **2.23** | **0.054** | **17.07** |
+| **glFlush `ffecf7d3` (this leg)** | **gfaydark** | **41.79** | **2.29** | **0.052** | **22.14** |
+| (reference) cut `a893b467` | qeynos2 | 49.21 | 3.14 | 16.88 | 14.58 |
+| (reference) cut `a893b467` | gfaydark | 62.35 | 3.20 | 21.57 | 23.06 |
+
+**Verdict: the prediction is NOT met — both gates fail, each for a different
+reason, and the flush is the wrong lever.**
+
+1. **Memory gate: partially recovered, not met.** `gpu_unnamed_steady`
+   drops below the ring's no-cut band — qeynos2 17.07 vs 18.92 (−1.85 MiB
+   vs the ring) and gfaydark 22.14 vs 27.89 (−5.75 MiB) — so the early
+   submit DOES free part of the per-draw varying pool, exactly as the
+   hypothesis predicted. But it does not reach the cut's 14.6 / 23.1: the
+   cut is still 2.49 MiB (qeynos2) / 0.96 MiB (gfaydark) below. The
+   cut's 4–7 MiB leg is not recovered. (Mechanism note: the pre-ring cut
+   flushed on every `glBufferSubData` — ~10 flushes/frame across impostor,
+   particle and nametag writes; this leg flushes exactly once, after the
+   impostor pass. The freed share scales with how many writes' BOs are in
+   flight, so a single flush frees only the impostor pass's slice of the
+   pool.)
+2. **Frame gate: the job-count column FAILS.** `gem_pp_jobs_per_frame`
+   rises to 2.23 / 2.29 — above the ≤ 2.0 gate — because the explicit
+   flush splits the frame's render job into two (the impostor pass, then
+   the rest of the frame) plus the tail of the previous frame's job still
+   draining. The CPU wait stays at ring parity (0.052–0.054 ms vs the
+   ring's 0.053) and the p50 stays within noise of no-cut (34.70 / 41.79
+   vs 33.48 / 41.31), so the flush costs frame rate through the job split,
+   not through a wait — the exact pattern the pre-ring cut showed, at a
+   much smaller dose (2.2 jobs vs 3.1–3.2).
+3. **`gem_wait_ms_per_frame` passes** in all three ring shapes (0.052–
+   0.068, no-cut 0.014–0.016) — the write-triggered `lima_bo_wait` stays
+   gone; the flush never enters `lima_transfer_map`, as fact 1 predicted.
+
+**Consequence for the ruling.** The client-side flush-without-wait does not
+exist in the shape this leg tested: glFlush() recovers 40–80 % of the memory
+cut but breaks the `gem_pp_jobs_per_frame` ≤ 2.0 gate, and the full cut
+would have needed the cut's ~10 per-write flushes, which is precisely the
+per-page write-wait the ring was built to remove. **The recommendation
+stands as (a): ship the frame fix; `gpu_unnamed_steady` returns to the
+no-cut band (the 4–7 MiB cut is not client-achievable with the frame fix
+in current Mesa 25.2.8 Lima).** No budget, golden or ratchet is touched by
+`cf56196a`; the 10 MiB `gpu_unnamed_over_bound` guard row stays RED as the
+B988/#307 known condition (closes with B997).
 
 **Evidence:** `~/kb-evidence/b972ft-vbo-ring/{nocut-c7abab9c,prering-a893b467,
-ringed-e5f69cd6,packed-054fa115,glflush-cf56196a/nocut}/{qeynos2,gfaydark}/
-imp200far/` (results.tsv, gem_owners.tsv, zones/<zone>/client.log).
+ringed-e5f69cd6,packed-054fa115,glflush-cf56196a/{nocut,glflush}}/
+{qeynos2,gfaydark}/imp200far/` (results.tsv, gem_owners.tsv,
+zones/<zone>/client.log — the p50 windows).
 
 ## Not verified / left open
 

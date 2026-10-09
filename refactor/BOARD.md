@@ -903,7 +903,18 @@ it without taking that measurement first.
   so the frame fix stands on its own, or (c) hold both gates — which needs a
   driver-side flush-without-wait, out of the client's reach. MR !94 stays
   DRAFT; no issue set to review. x86 full suite 5668/5668 + CI build/test/
-  visual-gate green at head `09b71c7e`.
+  visual-gate green at head `09b71c7e`. **The glFlush leg (note 2938, ruling
+  option c as corrected) was measured 2026-10-09 (`cf56196a`, build
+  `ffecf7d3`, pipeline 685):** ONE explicit `glFlush()` after the impostor pass
+  recovers PART of the cut — `gpu_unnamed_steady` 17.07 / 22.14 MiB (vs the
+  ring's 18.92 / 27.89; the cut is 14.58 / 23.06) — so the early submit does
+  free part of the `lima: draw-time BOs` pool, but it does NOT reach the
+  cut's 14.6 / 23.1, and it FAILS the frame gate's job-count column
+  (`gem_pp_jobs_per_frame` 2.23 / 2.29 > 2.0: the flush splits the frame's
+  render job into two; `gem_wait_ms_per_frame` stays at ring parity ~0.05 and
+  p50 stays within noise of no-cut). Recommendation stands as **(a)** — the
+  4–7 MiB cut is not client-achievable with the frame fix in current Mesa
+  25.2.8 Lima (`refactor/B972-FT/README.md`, the glFlush section).
 - **B997** (B, memory) → issue #317. The B972 split-off: the zone-merge pool
   (6 × 1 MiB `u_upload` `draw:zone` slots, ~38 client-array drawCalls/frame,
   `renderer_zone_merge.cpp`) + the remaining `draw3d:client` pool hold the
