@@ -113,19 +113,32 @@ and a draw cut removes its BO directly.
 **"other unnamed"** (5.28 / 3.79 MiB) is the non-draw Mesa floor: per-frame
 post-processing stream uploads, the shader-binary cache, the BO cache, and the
 tile heap. **This part is not touchable by a draw cut.** It is *below* the
-10 MiB target on both zones (q2 5.28, gd 3.79), so in principle the target is
-reachable — but only if the varying-BO pool is cut hard enough:
+10 MiB target on both zones (q2 5.28, gd 3.79), so the target is reachable in
+principle — by cutting the cuttable pool, not the floor.
 
-| zone | unnamed | target | must cut | of which varying-BO pool | must cut (as % of pool) |
-|---|---|---|---|---|---|
-| qeynos2 | 15.89 | 10.0 | 5.89 | 10.61 | **56 %** |
-| gfaydark | 18.69 | 10.0 | 8.69 | 14.90 | **58 %** |
+**Reachability (rigorous, per site).** The cuttable pool is the *generic*
+`draw3d:client` (untagged client-array draws), fed by the **scene_graph** and
+**entity_body** sites — *not* the `draw:zone` pool (the zone-merge gathers,
+whose BOs are large because the generations are large, and whose draw count is
+the u16 65 535-vertex index constraint, not a reducible split). So the relevant
+denominator for a scene-graph batch is the generic-d3c draw count (scene_graph
++ entity_body), not the total 3D client-array count:
 
-That is ~38 fewer draws/frame on qeynos2 and ~91 on gfaydark — i.e. the
-**entire scene-graph residual (42 / 120 per frame)** must almost entirely
-disappear, plus part of the zone/entity share. (The pool is not exactly
-∝ draws/frame: the per-BO size and churn depth vary, so treat 56/58 % as a
-lower bound on the draw cut needed, not an exact one.)
+| zone | generic `d3c` pool | fed by (d/f) | batch scene_graph→~2 | cuts | removes | → unnamed |
+|---|---|---|---|---|---|---|
+| qeynos2 | 9.28 MiB | 55 (sg 42 + ent 13) | 40 of 55 | 73 % of pool | 6.75 MiB | **9.14** ✅ <10 |
+| gfaydark | 10.07 MiB | 120 (sg 120 + ent 0) | 118 of 120 | 98 % of pool | 9.90 MiB | **8.79** ✅ <10 |
+
+So **batching the scene-graph residual to ~2 draws reaches the 10 MiB target on
+both zones.** The irreducible remainder after that batch is the Mesa floor
+(5.28 / 3.79 MiB) + the `draw:zone` + `vbo:nametags` pools (1.33 / 4.83 MiB,
+named-or-u16-constrained, not batchable here) — well under the guard. This is
+the step-3 design: a pixel-identical per-material client-array batch of the
+visible PVS doors + equipment + overlays (the `smgr->drawAll()` residual), the
+zone-merge's pooled loop being the template. (The `entity_body` crowd models on
+qeynos2 are a separate site — 13/d — that a door/object batch does not touch,
+which is why q2 needs the entity share too; on gfaydark the crowd is all
+impostor pages so the scene-graph batch alone closes it.)
 
 ### What splits the scene-graph residual (the step-3 target)
 
