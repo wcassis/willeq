@@ -256,10 +256,34 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
     // All textures should be in the EQE1 files. A miss means the EQE1 directory
     // is incomplete or the wrong path was specified.
     if (!snapshotEQE1Loaders().empty()) {
-        LOG_FATAL(MOD_GRAPHICS, "Texture '{}' not found in any EQE1 flat pack. "
-                  "The --eqe1-path directory is missing this texture. "
-                  "Re-run eqe1_builder to regenerate, or remove --eqe1-path to use S3D textures.",
-                  name);
+        // B930: before the generic asset-gap FATAL, check for the STALE-PACK
+        // signature — a name longer than the 31-char inline field that a v1/v2
+        // pack holds truncated (its 31-char prefix as a genuine entry key).
+        // That is a different defect than "the directory is missing this
+        // texture": the pack IS present and IS open, it was just built by the
+        // pre-B910 builder that silently strncpy'd the name to 31. soldunga
+        // died here with the generic message (which names a texture, not the
+        // cause), #248. The diagnosis is pure (diagnoseStaleEQE1Pack) so the
+        // RED/GREEN test exercises it without a GL context.
+        const auto diag = diagnoseStaleEQE1Pack(snapshotEQE1Loaders(), name);
+        if (diag.stalePack) {
+            LOG_FATAL(MOD_GRAPHICS,
+                      "EQE1 pack '{}' is format v{}; this client needs v3 "
+                      "(rebuild with tools/convert_all_to_eqe1.sh). "
+                      "The pack's inline name field caps at {} chars, so it "
+                      "holds '{}' but not '{}'; that truncation is why the "
+                      "texture miss above is not a plain asset gap. Every "
+                      "name in a rebuilt pack either fits the field or goes "
+                      "to the v3 name table.",
+                      diag.packPath, diag.packVersion,
+                      static_cast<unsigned>(EQE1_INLINE_NAME_LIMIT),
+                      diag.truncatedName, name);
+        } else {
+            LOG_FATAL(MOD_GRAPHICS, "Texture '{}' not found in any EQE1 flat pack. "
+                      "The --eqe1-path directory is missing this texture. "
+                      "Re-run eqe1_builder to regenerate, or remove --eqe1-path to use S3D textures.",
+                      name);
+        }
         std::exit(1);
     }
 

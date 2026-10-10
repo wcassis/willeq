@@ -12,6 +12,32 @@ ADD_EXECUTABLE(test_eqe1_loader
 TARGET_INCLUDE_DIRECTORIES(test_eqe1_loader PRIVATE ${CMAKE_SOURCE_DIR}/include)
 ADD_TEST(NAME test_eqe1_loader COMMAND test_eqe1_loader)
 
+# B930 (#248): the STALE pack must fail loudly by pack name + version.
+# Standalone like test_eqe1_loader — it drives the B930 diagnosis on the
+# loader directly (no GL, no GTest). RED on origin/fable: EQE1Loader has no
+# getFormatVersion()/holdsTruncatedName() and diagnoseStaleEQE1Pack() does
+# not exist, so the target does not compile and this ctest fails.
+ADD_EXECUTABLE(test_eqe1_stale_pack
+    test_eqe1_stale_pack.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/graphics/eqe1_loader.cpp
+)
+TARGET_INCLUDE_DIRECTORIES(test_eqe1_stale_pack PRIVATE ${CMAKE_SOURCE_DIR}/include)
+ADD_TEST(NAME test_eqe1_stale_pack COMMAND test_eqe1_stale_pack)
+
+# B930 (#248), criterion 2: tools/verify_eqe1 prints the version on every
+# line and --require-v3 flags a structurally-clean v1/v2 pack as STALE
+# (exit 1) so a host's pack directory is one audit loop. Pure python + the
+# built tool; the script SKIPs (125, the tree's convention) when
+# verify_eqe1 was not built in this tree, so the test is registered
+# unconditionally. (No BUILD_DEPENDS: the ctest run builds the tool in the
+# same tree first — CI's build stage covers it.)
+ADD_TEST(NAME test_eqe1_verify_stale_pack
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_eqe1_verify_stale_pack.py
+)
+SET_TESTS_PROPERTIES(test_eqe1_verify_stale_pack PROPERTIES
+    SKIP_RETURN_CODE 125
+    ENVIRONMENT "WILLEQ_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+
 # H02: golden-frame/metric/memory CI gate on top of H01's x86 GLES2 build
 # (build-gles2/, gitignored, produced by scripts/build-gles2-x86.sh). Not a
 # GTest binary — it's a script that drives gles2_zone_benchmark directly.

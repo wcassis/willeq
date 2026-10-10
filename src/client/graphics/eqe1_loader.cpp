@@ -38,6 +38,7 @@ EQE1Loader::EQE1Loader(EQE1Loader&& other) noexcept
     other.mapping_ = nullptr;
     other.mappingSize_ = 0;
     other.entryCount_ = 0;
+    other.formatVersion_ = 0;
     other.lookupHits_ = 0;
     other.isOpen_ = false;
 }
@@ -51,11 +52,13 @@ EQE1Loader& EQE1Loader::operator=(EQE1Loader&& other) noexcept {
         textureLookup_ = std::move(other.textureLookup_);
         rawDataLookup_ = std::move(other.rawDataLookup_);
         entryCount_ = other.entryCount_;
+        formatVersion_ = other.formatVersion_;
         lookupHits_ = other.lookupHits_;
         isOpen_ = other.isOpen_;
         other.mapping_ = nullptr;
         other.mappingSize_ = 0;
         other.entryCount_ = 0;
+        other.formatVersion_ = 0;
         other.lookupHits_ = 0;
         other.isOpen_ = false;
     }
@@ -260,6 +263,7 @@ bool EQE1Loader::open(const std::string& filepath) {
     mapping_ = mapping;
     mappingSize_ = fileSize;
     entryCount_ = numEntries;
+    formatVersion_ = header->version;
     isOpen_ = true;
 
     EQE1_LOG_INFO("EQE1Loader: mmap'd '%s' (v%u, %d textures, %d alpha, %d raw, %zu bytes)",
@@ -278,6 +282,7 @@ void EQE1Loader::close() {
     }
     filepath_.clear();
     entryCount_ = 0;
+    formatVersion_ = 0;
     lookupHits_ = 0;
     isOpen_ = false;
 }
@@ -301,6 +306,37 @@ bool EQE1Loader::getRawData(const std::string& name,
         return true;
     }
     return false;
+}
+
+bool EQE1Loader::holdsTruncatedName(const std::string& name) const {
+    // B930: see the header. Only a v1/v2 pack can hold a truncation (v3 names
+    // are full-length by construction), so this is a no-op for any v3 pack
+    // and for a name that fits in the 31-char inline field. The candidate key
+    // is the first 31 characters of `name`; a v1/v2 pack that was built by
+    // the pre-B910 builder for a >31-char texture holds exactly that key.
+    if (formatVersion_ >= EQE1_VERSION_V3 || name.size() <= EQE1_INLINE_NAME_LIMIT)
+        return false;
+    return textureLookup_.find(name.substr(0, EQE1_INLINE_NAME_LIMIT)) != textureLookup_.end();
+}
+
+StaleEQE1PackDiagnosis diagnoseStaleEQE1Pack(const std::vector<const EQE1Loader*>& loaders,
+                                             const std::string& name) {
+    StaleEQE1PackDiagnosis diag;
+    // Short names cannot be truncated (they fit the inline field in every
+    // version), and a name the open set holds in full never reaches the
+    // caller (getOrLoad() would have hit it). Keep the first stale pack in
+    // open order: for a zone load the zone-own packs were opened up front,
+    // so the pack that owns the zone's texture comes first.
+    for (const EQE1Loader* loader : loaders) {
+        if (!loader || !loader->isOpen()) continue;
+        if (!loader->holdsTruncatedName(name)) continue;
+        diag.stalePack = true;
+        diag.packPath = loader->getFilePath();
+        diag.packVersion = loader->getFormatVersion();
+        diag.truncatedName = name.substr(0, EQE1_INLINE_NAME_LIMIT);
+        break;
+    }
+    return diag;
 }
 
 std::vector<std::string> EQE1Loader::getTextureNames() const {
