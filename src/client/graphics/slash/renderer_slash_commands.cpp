@@ -407,8 +407,9 @@ void SlashCommandsComponent::processSlashCommand(const std::string& command) {
     // had zero callers, per T105/T106) — EverQuest::runPmemDiagnostics() is now
     // called directly by the command handler; see irrlicht_bridge.cpp.
     // --- UI ---
-    // T301 Leg D: the scriptable half of the UI-hide toggle. F11
-    // (HotkeyAction::ToggleAllUI) has hidden the UI since long before this,
+    // T301 Leg D: the scriptable half of the UI-hide toggle. F10
+    // (HotkeyAction::ToggleAllUI; B582 moved it off F11, the official
+    // netstat key) has hidden the UI since long before this,
     // but a raw key event is not reachable from a --script run or from any
     // capture harness that does not own an X server -- the same gap /camera
     // closed for camera modes in T66. Every visual gate since T63 has fought

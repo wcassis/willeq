@@ -4,7 +4,7 @@
         "global": {
             "Screenshot": "F12",
             "Quit": "Shift+Escape",
-            "ToggleAllUI": "F11",
+            "ToggleAllUI": "F10",
             "ScrollUIUp": "PageUp",
             "ScrollUIDown": "PageDown",
             "ToggleOptions": "Alt+O",
@@ -85,11 +85,7 @@
             "CameraPitchDown": ["Alt+Numpad3", "Alt+PageDown"],
             "ToggleCameraMode": "F9",
             "ToggleZoneLights": "Ctrl+F4",
-            "ToggleCombatAbilities": "Alt+C",
-            "CycleObjectLights": "L",
-            "MusicVolumeDown": "F10",
-            "EffectsVolumeDown": "Shift+F10",
-            "EffectsVolumeUp": "Shift+F11"
+            "ToggleCombatAbilities": "Alt+C"
         }
     }
 }

@@ -153,7 +153,7 @@ private:
 	bool debugObjectLightsEnabled_ = true;  // /olight toggle
 	bool debugPlayerLightEnabled_ = true;  // /plight toggle
 	bool hudEnabled_ = true;
-	int maxObjectLights_ = 8;  // Max object lights to display (1-8), cycles with L key
+	int maxObjectLights_ = 8;  // Max object lights to display (1-8); B582: no key (the old L binding went to the official Leadership-window key)
 	irr::scene::ILightSceneNode* playerLightNode_ = nullptr;
 	bool portalDebugDraw_ = false;
 	bool sceneProfileEnabled_ = false;
