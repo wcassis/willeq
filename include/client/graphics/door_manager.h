@@ -4,6 +4,7 @@
 #include <irrlicht.h>
 #include "client/graphics/door_collision.h"
 #include "client/graphics/door_motion.h"
+#include "client/graphics/scene_graph_batch.h"
 #include <map>
 #include <set>
 #include <string>
@@ -73,6 +74,12 @@ struct DoorVisual {
 
     // Scene graph membership (grab/remove pattern like entities)
     bool inSceneGraph = false;
+
+    // B997: true when this frame the door was drawn by the per-material
+    // SceneGraphBatch instead of smgr->drawAll(). The PVS gate in update()
+    // skips its own detach/attach for a batched door (the batch owns the
+    // detach for the frame), and the SOLID-post restore re-attaches it.
+    bool batchSuppressed = false;
 
     // Deferred mesh building (progressive loading)
     bool meshBuilt = false;          // false = registered only, true = mesh built
@@ -212,6 +219,28 @@ public:
     // Set visibility of all door nodes (for profiling)
     void setAllDoorsVisible(bool visible);
 
+    // B997 (board #317): the per-material client-array batch of the PVS doors
+    // that smgr->drawAll() would otherwise draw one per node. See
+    // scene_graph_batch.h for the pixel-identity argument. Three per-frame
+    // hooks, each a no-op when the gate is off (or no doors are batchable):
+    //   setSceneGraphBatchEnabled(bool) -- the gate (A/B-able; off by default)
+    //   gatherSceneGraphBatch()         -- after update(): collect this frame's
+    //                                      PVS-visible doors, detach the ones
+    //                                      the batch fully takes (so drawAll's
+    //                                      SOLID list never contains them)
+    //   renderSceneGraphBatch()         -- at the SOLID-pre point: one gathered
+    //                                      draw per material group
+    //   restoreSceneGraphBatch()        -- at the SOLID-post point: re-attach
+    //                                      the doors the batch drew
+    void setSceneGraphBatchEnabled(bool enabled) { sceneGraphBatchEnabled_ = enabled; }
+    bool sceneGraphBatchEnabled() const { return sceneGraphBatchEnabled_; }
+    void gatherSceneGraphBatch();
+    int  renderSceneGraphBatch();
+    void restoreSceneGraphBatch();
+    // Diagnostics: how many doors the batch took on the last gather (0 when
+    // the gate is off or nothing was batchable).
+    unsigned long long batchedDoorCount() const { return sgBatch_.batchedNodes(); }
+
     // Every built door's mesh node. T433 found the old "for collision
     // detection" claim on this accessor to be false -- collision does not go
     // through scene nodes at all (see computeDoorCollision above), and the one
@@ -278,6 +307,13 @@ private:
     mutable std::vector<std::string> lastMissingTextures_;  // Textures missing from the last findDoorMesh
     irr::scene::ISceneManager* smgr_ = nullptr;
     irr::video::IVideoDriver* driver_ = nullptr;
+    // B997: the per-material client-array batch of PVS doors (see
+    // scene_graph_batch.h). Re-gathered every frame in gatherSceneGraphBatch();
+    // the pivot list is what renderSceneGraphBatch()/restoreSceneGraphBatch()
+    // detach / re-attach for the frame.
+    SceneGraphBatch sgBatch_;
+    bool sceneGraphBatchEnabled_ = false;
+    std::vector<irr::scene::ISceneNode*> sgBatchedPivots_;
     irr::s32 shaderMaterialSolid_ = -1;
     irr::s32 shaderMaterialAlphaTest_ = -1;
     irr::s32 shaderMaterialAlphaTestRGBA_ = -1;  // P21: H02d Option-A main-texture-alpha variant

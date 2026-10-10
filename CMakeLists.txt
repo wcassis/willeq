@@ -639,6 +639,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/player/camera_rig.cpp
         src/client/graphics/player/renderer_camera_modes.cpp
         src/client/graphics/slash/camera_command.cpp
+        src/client/graphics/scene_graph_batch.cpp
         src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp
         src/client/graphics/zone_stream/renderer_zone_merge.cpp
         src/client/graphics/zone_stream/renderer_zone_stream.cpp

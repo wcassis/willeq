@@ -656,10 +656,17 @@ void ZoneLifecycleComponent::ensureDoorManager() {
                                          ctx_.zoneShader->getActiveAlphaTest(),
                                          ctx_.zoneShader->getActiveAlphaTestRGBA());
         }
-        LOG_INFO(MOD_GRAPHICS, "Door manager created (zone={}, cache={}, bsp={}, frustum={}, neighbors={}, shader={})",
+        // B997 (board #317): the per-material client-array batch of PVS doors.
+        // A/B-able gate, OFF by default so goldens/live behaviour are untouched
+        // until it is flipped. EQT_SG_BATCH=1 turns it on (the Pi A/B leg uses
+        // the env; the census/step-4 comparison runs one leg on, one off).
+        const char* sgBatchEnv = std::getenv("EQT_SG_BATCH");
+        const bool sgBatchOn = sgBatchEnv && (sgBatchEnv[0] == '1' || sgBatchEnv[0] == 'y' || sgBatchEnv[0] == 'Y');
+        doors.setSceneGraphBatchEnabled(sgBatchOn);
+        LOG_INFO(MOD_GRAPHICS, "Door manager created (zone={}, cache={}, bsp={}, frustum={}, neighbors={}, shader={}, sgBatch={})",
                  (bool)ctx_.currentZone, ctx_.constrainedTextureCache != nullptr, (bool)ctx_.zoneBspTree,
                  (bool)ctx_.frustumCuller, !ctx_.regionNeighbors.empty(),
-                 ctx_.zoneShader && ctx_.zoneShader->isAvailable());
+                 ctx_.zoneShader && ctx_.zoneShader->isAvailable(), sgBatchOn);
     }
     // Idempotent; needs both the cache and the manager, and the cache exists
     // from initLoadingScreen() on.

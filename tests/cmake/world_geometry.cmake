@@ -150,6 +150,19 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_object_collision_set DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B997 (GitLab #317): the per-material client-array batch of the PVS doors.
+# Pins the batching decision (grouping, the opaque-only guard, the world
+# transform bake + u16 index remap) so the residual draw count cannot silently
+# regress. Runs headless on the EDT_NULL driver (lastBakedDraw() seam).
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_scene_graph_batch
+        test_scene_graph_batch.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_scene_graph_batch PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_scene_graph_batch GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_scene_graph_batch DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B936 (GitLab #254): placed objects hold one mesh per geometry, the
 # vertex-animated (keyframe) ones included; one pose routine.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)

@@ -263,6 +263,21 @@ void IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender(irr::scene::E_SCEN
         renderer_->Frame().have3DTransforms() = true;
     }
 
+    // B997 (board #317): the per-material client-array batch of the PVS doors,
+    // drawn at this SOLID-pre point (the CAMERA pass has already set the 3D P/V
+    // matrices -- see the capture block above). The batch bakes each door's
+    // world matrix into its vertices and draws with identity ETS_WORLD, one
+    // gathered client-array draw per material group (the zone-merge's primitive,
+    // COpenGLES2Driver.cpp:1484). The doors it drew were detached from the
+    // scene graph in gatherSceneGraphBatch(), so drawAll()'s SOLID list below
+    // never re-draws them; onSolidPassPost() re-attaches them. It sits OUTSIDE
+    // the manualZoneDrawEnabled_ block on purpose: the gather runs
+    // unconditionally in phase 1, so the render must too, or a door would be
+    // detached but never drawn. No-op when the gate is off or nothing batched.
+    // See scene_graph_batch.h for the pixel-identity argument.
+    if (renderPass == irr::scene::ESNRP_SOLID && renderer_ && renderer_->Context().doorManager)
+        renderer_->Context().doorManager->renderSceneGraphBatch();
+
     // Hook: draw zone geometry manually before Irrlicht's SOLID pass
     if (renderPass == irr::scene::ESNRP_SOLID && renderer_ && renderer_->manualZoneDrawEnabled_) {
         auto drawStart = std::chrono::steady_clock::now();
@@ -290,6 +305,18 @@ void IrrlichtRenderer::RenderPassTimer::OnRenderPassPreRender(irr::scene::E_SCEN
         eqtGPUPhaseBegin(1 /* GPUSyncPhase::EntityPass */);
         entityGPUQueryActive_ = true;
     }
+}
+
+// ======== onSolidPassPost (B997) ========
+// Re-attach the PVS doors the per-material client-array batch drew at the
+// SOLID-pre point. The batch detached them in gatherSceneGraphBatch() so
+// drawAll()'s SOLID list skipped them; this runs right after the SOLID pass
+// (before the next frame's gather) and puts them back in the scene graph.
+// RenderPassTimer only forward-declares IrrlichtRenderer, so this body lives
+// here (same split as OnRenderPassPreRender). No-op when nothing batched.
+void IrrlichtRenderer::RenderPassTimer::onSolidPassPost() {
+    if (renderer_ && renderer_->Context().doorManager)
+        renderer_->Context().doorManager->restoreSceneGraphBatch();
 }
 
 // ======== uploadMeshHardwareBuffers ========

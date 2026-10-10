@@ -47,6 +47,10 @@ public:
     }
     void OnPostRender() override {}
     void OnRenderPassPreRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) override;
+    // B997: re-attach the batched doors after the SOLID pass (implementation in
+    // renderer_zone_draw.cpp, same as OnRenderPassPreRender -- this header only
+    // forward-declares IrrlichtRenderer). No-op when nothing was batched.
+    void onSolidPassPost();
     // Implementation in renderer_zone_draw.cpp (needs access to IrrlichtRenderer)
     void OnRenderPassPostRender(irr::scene::E_SCENE_NODE_RENDER_PASS renderPass) override {
         auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -61,6 +65,11 @@ public:
                     eqtGPUPhaseEnd(1 /* GPUSyncPhase::EntityPass */);
                     entityGPUQueryActive_ = false;
                 }
+                // B997 (board #317): re-attach the PVS doors the per-material
+                // client-array batch drew at the SOLID-pre point (it detached
+                // them so drawAll()'s SOLID list skipped them). No-op when
+                // nothing was batched / gate off.
+                onSolidPassPost();
                 break;
             case irr::scene::ESNRP_TRANSPARENT:
             case irr::scene::ESNRP_TRANSPARENT_EFFECT:
