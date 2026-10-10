@@ -965,6 +965,17 @@ EXEMPT_TESTS_GROUPS = {
     ("ImpostorBatchNode", "setVboPathEnabled"): "seam",
     ("ImpostorBatchNode", "isVboPathEnabled"): "observer",
     ("ImpostorBatchNode", "vboBytes"): "observer",
+    # B997 (#317): the per-material client-array batch of the PVS doors. The
+    # unit test (test_scene_graph_batch.cpp) drives addNode/build/render on the
+    # EDT_NULL driver and needs three things production never uses: a way to
+    # override the per-type transparency classification (the null driver
+    # reports every built-in type opaque, so the opaque-only guard is
+    # unobservable without it), the baked client array exactly as render()
+    # would draw it (the transform + index-remap assertions), and the group
+    # count the test compares against the distinct-material count.
+    ("SceneGraphBatch", "setTransparencyClassifier"): "seam",
+    ("SceneGraphBatch", "lastBakedDraw"): "observer",
+    ("SceneGraphBatch", "groupCount"): "observer",
     # B944: whether one cache entry's GL storage is resident right now (an
     # evicted entry keeps its object and restores on the next bind).
     # test_texture_eviction_residency asserts eviction and restore through it;

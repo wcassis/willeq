@@ -147,22 +147,22 @@ int SceneGraphBatch::build() {
     }
 
     // Make each group's entries contiguous (stable -- within-group order is
-    // node order), then firstEntry/entryCount/vertexBase/indexBase fall out
-    // of the runs.
+    // node order), then the group's first-entry index, per-group entry count,
+    // and the vertex/index bases all fall out of the runs.
     std::stable_sort(entries_.begin(), entries_.end(),
                      [](const Entry& a, const Entry& b) { return a.group < b.group; });
     size_t vbase = 0, ibase = 0;
     for (size_t g = 0; g < groups_.size(); ++g) {
         Group& grp = groups_[g];
         grp.vertexCount = grp.indexCount = 0;
-        grp.entryCount = 0;
+        grp.nEntries = 0;
         size_t i = 0;
         while (i < entries_.size() && entries_[i].group != static_cast<int>(g)) ++i;
         grp.firstEntry = static_cast<int>(i);
         for (; i < entries_.size() && entries_[i].group == static_cast<int>(g); ++i) {
             grp.vertexCount += entries_[i].vertexCount;
             grp.indexCount += entries_[i].indexCount;
-            ++grp.entryCount;
+            ++grp.nEntries;
         }
         grp.vertexBase = static_cast<int>(vbase);
         grp.indexBase = static_cast<int>(ibase);
@@ -221,7 +221,7 @@ int SceneGraphBatch::render(irr::video::IVideoDriver* driver,
         if (!grp.valid) continue;
         irr::video::S3DVertex* vd = vbase + grp.vertexBase;
         unsigned short* id = ibase + grp.indexBase;
-        for (int i = grp.firstEntry; i < grp.firstEntry + grp.entryCount; ++i) {
+        for (int i = grp.firstEntry; i < grp.firstEntry + grp.nEntries; ++i) {
             const Entry& e = entries_[i];
             const irr::video::S3DVertex* src = static_cast<const irr::video::S3DVertex*>(e.vertices);
             // Bake: transform each entry's source-local S3DVertex by the node's

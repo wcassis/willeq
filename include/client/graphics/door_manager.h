@@ -233,13 +233,9 @@ public:
     //   restoreSceneGraphBatch()        -- at the SOLID-post point: re-attach
     //                                      the doors the batch drew
     void setSceneGraphBatchEnabled(bool enabled) { sceneGraphBatchEnabled_ = enabled; }
-    bool sceneGraphBatchEnabled() const { return sceneGraphBatchEnabled_; }
     void gatherSceneGraphBatch();
     int  renderSceneGraphBatch();
     void restoreSceneGraphBatch();
-    // Diagnostics: how many doors the batch took on the last gather (0 when
-    // the gate is off or nothing was batchable).
-    unsigned long long batchedDoorCount() const { return sgBatch_.batchedNodes(); }
 
     // Every built door's mesh node. T433 found the old "for collision
     // detection" claim on this accessor to be false -- collision does not go

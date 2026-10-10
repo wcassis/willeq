@@ -142,7 +142,7 @@ private:
         unsigned int vertexCount = 0;      // gathered vertex total
         unsigned int indexCount = 0;       // gathered index total
         int firstEntry = -1;               // contiguous run start in entries_
-        int entryCount = 0;
+        int nEntries = 0;                  // number of entries in the group
         int vertexBase = 0;                // offset into the vertex scratch
         int indexBase = 0;                 // offset into the index scratch
         bool valid = true;                 // false = u16 overflow, doors stay per-node
