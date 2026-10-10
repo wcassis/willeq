@@ -295,7 +295,7 @@ group panel and the buff bar (board **B366**).
 **Global:**
 | Key | Action |
 |-----|--------|
-| F11 | Toggle ALL UI (T301: also hides the static panels -- chat, hotbar, gems, popups, XP bar; before T301 it gated only the casting bars, the legacy `guienv_` draw and the FPS counter, so with the static UI on it hid nothing. Scriptable as `/hideui`.) |
+| F10 | Toggle ALL UI (T301: also hides the static panels -- chat, hotbar, gems, popups, XP bar; before T301 it gated only the casting bars, the legacy `guienv_` draw and the FPS counter, so with the static UI on it hid nothing. Scriptable as `/hideui`.) B582 moved it from F11: F10 is the oracle's official "Toggle UI Display" (T466), while F11 is the oracle's netstat toggle, unbound in fable |
 | F12 | Screenshot |
 | PageUp / PageDown | Scroll the static-UI panel under the cursor one page (chat scrollback, the skills list, the loot list). T313; scriptable as `/scroll`. PageDown used to be a second StrafeRight binding — that moved to Home, pairing with StrafeLeft's End, so paging a loot list does not also strafe. |
 | Mouse wheel | Scroll that same panel 3 lines per notch. T313: `EMIE_MOUSE_WHEEL` had no case in `RendererEventReceiver::OnEvent()` at all before this, so the wheel was discarded client-wide. **T461: a notch with the cursor over no scrollable panel zooms the camera** — the official client's Mouse Wheel Zoom option (`eqclient.ini` `MouseWheelZoom=1`, `EQUI_OptionsWindow.xml` `OMP_MouseWheelZoomCheckbox`). There is still one reader (`FrameComponent::processFrameInput()`), so no notch both scrolls and zooms. |
@@ -351,8 +351,7 @@ group panel and the buff bar (board **B366**).
 | Alt+C | Toggle combat abilities window (T415, board B320 -- measured at the oracle's Options > Keys > UI page, `review/T377/oracle/T377_oracle_options_keys_UI_page3.png`: "Toggle Combat Ability Window   Alt C") |
 | U | Interact (nearest door/object) |
 | H | Hail (say "Hail" or "Hail, <target>") |
-| L | Cycle object lights |
-| F10 / Shift+F10 / Shift+F11 | Music volume down / effects volume down / effects volume up. Until T464 (board B535) these, Alt+C and L were compiled-in defaults the shipped `config/hotkeys.json` did not carry, so production never reached them. **F11 is not music volume up**: the defaults also bind it, but F11's Global `ToggleAllUI` wins, so F11 has only ever toggled the UI; the official key is oracle-owed (board B561). |
+| (none) | B582: the four volume keys (F10 / F11 / Shift+F10 / Shift+F11) and L's `CycleObjectLights` binding are GONE -- the official keymap has no volume key and L is the official Leadership window (post-Velious, ignored). Volume routes: the Options > General sliders plus `/musicvolume` and `/effectsvolume` (`CycleObjectLights` keeps its consumer, no key and no slash alias) |
 | ESC | Close the most recently opened window, one per press (B460, measured); with none open, clear target. `/cleartarget` (no alias, category Combat) reaches the same `ActionDispatcher::clearTarget()` since T347 (board B012 CLOSED), so a `--script` run can clear a target |
 | Numpad7 / Insert, Numpad1 / Delete, +/- | Camera zoom in / out: the active orbit camera's distance -- Chase's too since T474, which made Chase a rig at T466's oracle fit (T461, `PlayerCameraComponent::zoomCamera()`, shared with the wheel). T466 saw no visible change on the official client after Insert/Delete in Chase; whether the official Chase zooms is board B680. First person does not zoom. Numpad7/Insert and Numpad1/Delete are the official keys, MEASURED on the oracle's Options > Keys > Camera page (T466, bound by T471). fable's own +/- (and Shift+= / Numpad- in the shipped file) are kept; on the official client Shift+- / Shift+= are Clip plane and Numpad- is Screenshot (board B652). |
 | Alt+Numpad9 / Alt+PageUp, Alt+Numpad3 / Alt+PageDown | Pitch the ACTIVE user camera up / down 5 degrees per press (`CameraPitchUp` / `CameraPitchDown`; keys measured, T466/T471). Pitch up tilts the VIEW up (the camera goes lower), as the official key does. T466 boarded fable's sign as mirrored; T471 found it already matched. The bare PageUp/PageDown still scroll the UI. |
@@ -409,7 +408,7 @@ field to its default on a change FROM a character, and the next
 `syncUiPreferences()` applies it before reading the new file
 (`tests/test_ui_preferences_identity.cpp`). Loot, tradeskill-container and item-display windows are NOT
 persisted -- the server or a click opens them, the player does not. Neither is
-`F11`'s all-UI hide: a client that starts with no UI gives the player nothing
+`F10`'s all-UI hide: a client that starts with no UI gives the player nothing
 to click. The format lives in `ui_preferences.h`/`.cpp`; the load/save tick is
 `FrameComponent::syncUiPreferences()` in
 `src/client/graphics/frame/renderer_frame_preferences.cpp`, which COMPARES the
@@ -456,7 +455,7 @@ migration); `Application::DispatchSlashCommand` tries them in order:
    reached via the `RendererCommand` bridge queue): ~70 debug/graphics
    toggles (`/sort`, `/portal`, `/plight`, `/detail`, `/screenshot`,
    `/dumpscene`, `/hideui` (aliases `/toggleui`, `/ui` — the scriptable half
-   of F11, T301), `/scroll [chat|skills|loot] [up|down|top|bottom] [lines]`
+   of F10, T301), `/scroll [chat|skills|loot] [up|down|top|bottom] [lines]`
    (the scriptable half of the wheel and PageUp/PageDown, T313 — a `--script`
    run cannot generate either), `/camera` (T66; T461 — no argument reports
    the mode, `cycle` is F9, `<mode>` names one of the six official cameras,
