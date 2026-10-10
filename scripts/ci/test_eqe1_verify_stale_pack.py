@@ -24,8 +24,16 @@ import tempfile
 REPO = os.environ.get("WILLEQ_SOURCE_DIR",
                       os.path.dirname(os.path.dirname(os.path.dirname(
                           os.path.abspath(__file__)))))
-TOOL = os.path.join(REPO, os.environ.get("WILLEQ_VERIFY_EQE1_BIN",
-                                         os.path.join("build", "bin", "verify_eqe1")))
+# The tool lives in the build tree under test (eqe1.cmake passes both).
+# CI (B1012) builds per-ref trees at build/ref/<ref-slug>, so the default
+# <repo>/build/bin would never find it there — WILLEQ_BUILD_DIR (set by the
+# test's ENVIRONMENT to CMAKE_BINARY_DIR) is the tree ctest runs against.
+_BUILD_DIR = os.environ.get("WILLEQ_BUILD_DIR")
+if _BUILD_DIR:
+    TOOL = os.path.join(_BUILD_DIR, "bin", "verify_eqe1")
+else:
+    # Local runs configured by hand: the recipe tree <repo>/build.
+    TOOL = os.path.join(REPO, os.path.join("build", "bin", "verify_eqe1"))
 
 FULL_NAME = b"gnome_stronghold_floor_transition"  # 33 chars, the soldunga class
 
