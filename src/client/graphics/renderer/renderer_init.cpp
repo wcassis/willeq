@@ -1,5 +1,6 @@
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/graphics/gles2_shader_cache.h"
+#include "client/core/gl_driver_census.h"  // B946: the [gldriver] line at GL init
 #include "client/graphics/lima_buffer_policy.h"
 #include "client/core/memory_ledger.h"  // T504: startup owner labels
 #include "client/core/gem_owner_census.h"  // B962: GEM owner tags
@@ -110,6 +111,14 @@ extern void gles2RegisterExternalHWBuffer(void* driver, const void* meshBuffer,
 // remains in the header (forward-declared). This allows the unique_ptr destructor to compile.
 namespace eqt { namespace ui { class WindowManager { public: virtual ~WindowManager() = default; }; } }
 
+#ifdef EQT_HAS_GLES2
+// B946 (#264): GL_RENDERER bridge (defined in COpenGLES2Driver.cpp, the
+// gles2GetDrawCensusTotals precedent: declared at global scope, the driver
+// symbol is global; the client's own namespace would mangle a different
+// name and fail to link).
+extern void gles2GetGlRenderer(void* driver, char* out, size_t outSize);
+#endif
+
 namespace EQT {
 namespace Graphics {
 
@@ -189,6 +198,55 @@ static void logDriverDetails(irr::video::IVideoDriver* driver, irr::IrrlichtDevi
     // DISPLAY environment variable (important for X11/GLX)
     const char* display = std::getenv("DISPLAY");
     LOG_DEBUG(MOD_GRAPHICS, "[GL] DISPLAY env: {}", display ? display : "(not set)");
+}
+
+// B946 (#264): ONE [gldriver] line per process, at the first GL init.
+// This is the place x86 and ARM share: initLoadingScreen() is the first GL
+// init on both (the same COpenGLES2Driver.cpp is compiled into the patched
+// Irrlicht on x86 -- scripts/build-gles2-x86.sh copies the unmodified driver
+// in -- and into the ARM build). The driver itself sits BELOW this one in
+// the stack and its GL headers are private to the patched Irrlicht build,
+// so the client cannot call glGetString itself: initDriver() stores
+// GL_RENDERER (where the context is guaranteed current) and the client
+// reads it back through the bridge function below (the
+// gles2GetDrawCensusTotals precedent). glDriverInfo() reads /proc/self/maps
+// (the same file the [memmap] census attributes, T491) for the mapped
+// libgallium/libLLVM; the decision's ERROR (a nollvm binary whose baked-in
+// prefix is missing) fires here too, before the INFO line names what
+// actually got loaded instead.
+static void glDriverInitLog(irr::video::IVideoDriver* driver) {
+    std::string renderer;
+#ifdef EQT_HAS_GLES2
+    {
+        char buf[256];
+        gles2GetGlRenderer(driver, buf, sizeof(buf));
+        renderer = buf;
+    }
+#endif
+    const eqt::memory::GlDriverInfo info = eqt::memory::glDriverInfo(renderer);
+    LOG_INFO(MOD_GRAPHICS, "{}", eqt::memory::makeGlDriverLine(info));
+    // B946 (#264): the nollvm decision. The binary identifies itself in its
+    // own DT_RPATH -- the publish step (scripts/pi/mesa_nollvm_select.sh)
+    // writes `<prefix>/lib` into it, and only a nollvm build carries a
+    // `mesa-nollvm-*` entry -- so no build-time define is needed: a fresh
+    // build of the same commit behaves the same way a deployed one does,
+    // and a plain willeq binary (no such rpath) never fires this. If the
+    // baked-in prefix directory is absent on THIS machine, the client names
+    // the fallback it will take (the default search path, i.e. the system
+    // Mesa) and CONTINUES: a hand run on a fresh Pi still has to work, and
+    // the rigs already fail such a run (mesa_mismatch, exit 67).
+    const std::string prefix = eqt::memory::glPrefixExpected();
+    if (eqt::memory::mesaPrefixMissing(prefix)) {
+        LOG_ERROR(MOD_GRAPHICS,
+                  "[gldriver] nollvm Mesa prefix missing: {} does not exist; "
+                  "falling back to the default library search path (the system "
+                  "Mesa -- libLLVM included). Deploy it with "
+                  "scripts/pi/deploy_mesa_prefix.sh (or run bin/willeq / "
+                  "WILLEQ_MESA=system for the opt-out). The client continues: "
+                  "a hand run on a fresh Pi must still work, and the Pi rigs "
+                  "already fail such a run (mesa_mismatch, exit 67).",
+                  prefix);
+    }
 }
 
 // --- IrrlichtRenderer Implementation ---
@@ -472,6 +530,13 @@ bool IrrlichtRenderer::initLoadingScreen(const RendererConfig& config) {
 
     // Log comprehensive driver/OpenGL details
     logDriverDetails(driver_, device_, params);
+
+    // B946 (#264): the [gldriver] line -- the ONE place the x86 and ARM
+    // paths share (initLoadingScreen runs once per process on both; a zone
+    // reload reuses this device). The client never said which driver it
+    // loaded before this; a willeq-nollvm run with a missing prefix now says
+    // so (the decision's ERROR) and then names what it actually loaded.
+    glDriverInitLog(driver_);
 
     // In DRM mode, enable and create software cursor (no hardware cursor available)
     if (config_.constrainedConfig.useDRM && device_->getCursorControl()) {

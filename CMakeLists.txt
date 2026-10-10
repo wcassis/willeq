@@ -279,6 +279,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/core/memory_ledger.cpp
     src/client/core/memory_ledger_trace.cpp
     src/client/core/gpu_buffer_census.cpp
+    src/client/core/gl_driver_census.cpp  # B946 (GitLab #264): the [gldriver] line
     src/client/zone/zone_dispatch.cpp
     src/client/zone/zone_handshake.cpp
     src/client/zone/zone_entry.cpp

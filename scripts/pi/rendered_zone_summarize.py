@@ -57,6 +57,15 @@ point (the [memledger] line carries gpu_buffers since B955); the 2 s RssAnon
 sample peak adds the gpu_buffers at ready. The RssAnon component is printed
 beside it (owned_rss_anon_steady, owned_rss_anon_peak). Logs written before
 B978 are read too (owned_memory.owned_from_memgpu).
+
+B946 (#264): the mesa_driver column (appended at the END). The CLIENT's own
+[gldriver] line (src/client/core/gl_driver_census.cpp): which GL driver the
+process loaded, from its own /proc/self/maps at GL init. A run whose client
+predates the line (or never reached GL init) has an empty column -- the
+maps-snapshot proof (mesa_gallium / llvm_mapped / mesa_check) is the fallback
+and keeps its rules. The line and the snapshots are two independent reads of
+the same fact, which is the point: a rig whose snapshots are missing can still
+see the driver the client named.
 """
 import argparse
 import glob
@@ -114,7 +123,9 @@ HEADER = ("zone expansion s3d_bytes attempt verdict signature exit_code kill_rea
           "owned_rss_anon_peak gpu_buffers_at_owned_peak "
           # B1006: appended at the END -- the Lima job stream ready->steady_60s
           "gem_frames_steady gem_pp_jobs_per_frame gem_gp_jobs_per_frame gem_waits_per_frame "
-          "gem_wait_ms_per_frame").split()
+          "gem_wait_ms_per_frame "
+          # B946: appended at the END -- the client's own [gldriver] line
+          "mesa_driver").split()
 
 
 def mesa_proof(run, expect, prefix):
@@ -147,6 +158,20 @@ def mesa_proof(run, expect, prefix):
         if bad:
             return gallium, llvm, "mismatch (asked for the system Mesa; mapped %s)" % ",".join(gallium)
     return gallium, llvm, "ok"
+
+
+def mesa_driver_field(lines):
+    """B946: the client's own [gldriver] line (src/client/core/gl_driver_census.cpp)
+    -- which GL driver the process loaded, from its own /proc/self/maps at GL
+    init. The FIRST line wins (the line is emitted once, at the first GL init);
+    a log without it (a client that predates B946, or a run that never reached
+    GL init) yields "". Fields are returned as the client writes them:
+    renderer='...' (quoted), gallium=<path|none>, llvm=<path|none>."""
+    for ln in lines:
+        m = re.search(r"\[gldriver\] renderer='([^']*)' gallium=(\S+) llvm=(\S+)", ln)
+        if m:
+            return "%s:%s:%s" % m.groups()
+    return ""
 
 
 def parse_kv(s):
@@ -418,6 +443,11 @@ def main():
     kill = summ.get("kill_reason", "") if summ else "no summary.json (runner never finished)"
     rendered = zm > 0 and tx > 0 and irr > 0 and n_good >= 1
     gallium, llvm, mesa_check = mesa_proof(a.run, a.expect_mesa, a.mesa_prefix)
+    # B946: the client's own driver line -- present only in logs written by
+    # B946+ clients that reached GL init; the maps-snapshot proof above keeps
+    # its rules either way. Read over all_lines (not the final-visit cut):
+    # the line is emitted once, at the first GL init, before any zone.
+    mesa_driver = mesa_driver_field(all_lines)
     mg = memgpu_points(lines)
     mg_ready = mg.get("ready")
     mg_steady = mg.get("steady_60s") if steady else None
@@ -510,6 +540,7 @@ def main():
         "gem_frames_steady": jobs["frames"] if jobs else "",
         "gem_pp_jobs_per_frame": jv("pp_jobs_per_frame"), "gem_gp_jobs_per_frame": jv("gp_jobs_per_frame"),
         "gem_waits_per_frame": jv("waits_per_frame"), "gem_wait_ms_per_frame": jv("wait_ms_per_frame", 3),
+        "mesa_driver": mesa_driver,
     }
     clean = {k: str(v).replace("\t", " ").replace("\n", " ") for k, v in row.items()}
     new = not os.path.exists(a.tsv) or os.path.getsize(a.tsv) == 0
@@ -525,13 +556,14 @@ def main():
                                   "gpu_buffers_added": gpu_buf_net(v)}
                               for k, v in pts.items()}}, f, indent=1)
     print("%s %s %s peak_rss_anon=%.1fMB steady=%.1fMB owned_peak(%s)=%.1fMB gpu_buffers_steady=%s(%s) "
-          "fps_med=%s frames=%d/%d libgallium=%s libLLVM=%s mesa=%s %s"
+          "fps_med=%s frames=%d/%d libgallium=%s libLLVM=%s mesa=%s driver=%s %s"
           % (a.zone, a.attempt, verdict, peak / 1048576.0, rss_steady / 1048576.0,
              owned_memory.OWNED_LABEL, owned_peak / 1048576.0,
              ("%.1fMB" % (row["gpu_buffers_steady"] / 1048576.0)) if row["gpu_buffers_steady"] != "" else "-",
              row["gpu_buffers_src"] or "-",
              row["fps_median"], n_good, n_png, ",".join(gallium) or "-", llvm or "-",
-             (a.expect_mesa + ":" + mesa_check) if a.expect_mesa else "-", sig))
+             (a.expect_mesa + ":" + mesa_check) if a.expect_mesa else "-",
+             mesa_driver or "-", sig))
 
 
 if __name__ == "__main__":

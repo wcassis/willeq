@@ -350,3 +350,10 @@ SET_TESTS_PROPERTIES(CrowdObservationControls PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME RenderedZoneFinalVisit
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_rendered_zone_final_visit.py)
 SET_TESTS_PROPERTIES(RenderedZoneFinalVisit PROPERTIES LABELS "hygiene")
+
+# B946 (#264): the rig's half of the [gldriver] net -- the summarizer's
+# mesa_driver field over synthetic client.log lines (no Pi, no GL, no maps
+# snapshots), pinned the same way as its neighbours above.
+ADD_TEST(NAME RenderedZoneSummarizeGlDriver
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_rendered_zone_gl_driver.py)
+SET_TESTS_PROPERTIES(RenderedZoneSummarizeGlDriver PROPERTIES LABELS "hygiene")
