@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <string>
 #include <cstring>
+#include <algorithm>
 #include <dlfcn.h>
 
 namespace irr
@@ -63,6 +64,19 @@ inline B997DrawCensus& b997Census() {
     }();
     return c;
 }
+
+// B946 (GitLab #264): GL_RENDERER, captured by initDriver() the first time
+// the context is current. The client's [gldriver] line (the ONE place the
+// x86 and ARM paths share, initLoadingScreen) reads it through the bridge
+// function gles2GetGlRenderer below: the client cannot call glGetString
+// itself -- the driver's GL headers live inside the patched Irrlicht build,
+// not on the client's include path (the gles2WrapTexture /
+// gles2GetDrawCensusTotals precedent).
+namespace {
+std::string g_b946GlRenderer;
+}
+inline void b946StoreGlRenderer(const char* renderer) { g_b946GlRenderer = renderer ? renderer : ""; }
+inline const std::string& b946StoredGlRenderer() { return g_b946GlRenderer; }
 // Count one client-side 3D draw (call after the early-out guards).
 inline void b997Count3dClient() {
     B997DrawCensus& c = b997Census();
@@ -364,6 +378,11 @@ bool COpenGLES2Driver::initDriver()
     const char* renderer = (const char*)glGetString(GL_RENDERER);
     const char* version = (const char*)glGetString(GL_VERSION);
     const char* vendor = (const char*)glGetString(GL_VENDOR);
+
+    // B946 (#264): keep the renderer string for the client's [gldriver] line
+    // (gles2GetGlRenderer below) -- the context is current here, which is the
+    // only moment glGetString(GL_RENDERER) is guaranteed to work.
+    b946StoreGlRenderer(renderer);
 
     char msg[512];
     snprintf(msg, sizeof(msg), "GLES2 Driver: %s (%s) [%s]",
@@ -2498,6 +2517,22 @@ void gles2GetDrawCensusTotals(void* driver, unsigned long* winD3client,
     if (frames) *frames = c.emitted;
     if (newWindow) *newWindow = c.newWinPending;
     c.newWinPending = false;  // consumed by the client emit
+}
+
+// B946 (GitLab #264): the client's [gldriver] line reads GL_RENDERER through
+// this (extern-declared in renderer_init.cpp, like the other bridge
+// functions -- COpenGLES2Driver.h is private to the patched Irrlicht build).
+// "" before the first initDriver() (no context yet), so the client's line
+// degrades to renderer='' rather than a stale string.
+void gles2GetGlRenderer(void* driver, char* out, size_t outSize)
+{
+    (void)driver;
+    const std::string& r = irr::video::b946StoredGlRenderer();
+    if (out && outSize > 0) {
+        const size_t n = std::min(r.size(), outSize - 1);
+        std::memcpy(out, r.data(), n);
+        out[n] = '\0';
+    }
 }
 
 void gles2TextureSetStorageBytes(void* texture, unsigned int bytes)
