@@ -685,11 +685,12 @@ void FrameComponent::renderStaticUI() {
     inventoryState_.paperdollTexture = ctx_.Overlays().characterModelView() ? ctx_.Overlays().characterModelView()->getTexture() : nullptr;
 
     // U03c: Render new static UI when enabled.
-    // T301 Leg D: ...and NOT when the UI is hidden. `allUIHidden_` (F11 /
-    // `/hideui`) predates the static UI and gated only the three things that
+    // T301 Leg D: ...and NOT when the UI is hidden. `allUIHidden_` (F10 /
+    // `/hideui`; F11 before B582, which moved the toggle to the official
+    // key) predates the static UI and gated only the three things that
     // existed when it was written -- the casting bars, the old guienv_ draw
     // and the FPS counter -- so with the static UI on (the shipped default)
-    // pressing F11 left the chat panel, the hotbar and every other panel
+    // pressing it left the chat panel, the hotbar and every other panel
     // painted on top of the frame. That is why T300 Leg C could not rule out
     // a weapon sliver hidden under the chat box.
     // B992 (#312): every window is its own z-layer (`uiRenderer_->layer()`),
