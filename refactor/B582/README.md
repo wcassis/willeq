@@ -94,14 +94,15 @@ local run of the untouched suites would only re-prove what CI re-proves.
 
 ## Not verified / left open
 
-- `include/client/graphics/ui/CLAUDE.md` (the key-bindings table: the `| F11 |`
-  Global row at ~line 298, the `| L |` Player row at ~line 354 and the volume
-  row at ~line 355) could NOT be edited: the edit path is gated on an
-  interactive CLAUDE.md-approval prompt that times out in this headless
-  single-query run, so the write was refused rather than forced. The table
-  still lists the pre-B582 keys. Fix = change the three table rows to the
-  mapping above when the approval path is available. `src/client/input/CLAUDE.md`
-  (the B561-exemption sentence, line 28) is in the same situation.
+- ~~`include/client/graphics/ui/CLAUDE.md` (the key-bindings table) and
+  `src/client/input/CLAUDE.md` (the B561-exemption sentence) still named the
+  pre-B582 keys: the CLAUDE.md write is gated on an interactive approval
+  prompt that times out in a headless single-query run.~~ RESOLVED in follow-up
+  t_d85121df (commit 90363a63, MR !125 pipeline 748 green): the Global row is
+  now F10 (with the move note), the L and volume rows are replaced by one row
+  documenting the removal, the two inline mentions and the B561-exemption
+  sentence are re-pointed to the B582 outcome, and `ctest -L hygiene`
+  (DocCounts/DocClaims/DocCitations/CommentClaims) is green.
 - The Options Keys UI page (`options_keys.cpp`) still lists the four volume
   actions under its UI category: a user MAY bind volume keys in a user copy
   (pinned by `B582_APreB582UserFileStillLoads`), and removing them from the
