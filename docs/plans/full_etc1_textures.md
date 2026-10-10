@@ -113,7 +113,19 @@ name-table reference that is out of bounds or escapes the table, and a v1/v2
 entry whose name field is not null-terminated (the truncation signature of a
 pack that needs a v3 rebuild). `eqe1_builder` and
 `entity_composite_builder` emit v3 when needed and stay v1/v2 otherwise;
-`verify_eqe1` validates all three versions.
+`verify_eqe1` validates all three versions. **A v1/v2 pack is a LEGITIMATE
+format** (the builder keeps a pack that way when every name fits the
+31-char inline field — `willeq.eqe1` is one, v2), but it cannot hold a
+>31-char name, so a zone whose textures need one dies in the client with
+the B930 FATAL that names the pack and its version (issue #248). Auditing
+a host's pack directory for exactly that:
+
+```
+for f in <dir>/*.eqe1; do ./build/bin/verify_eqe1 --require-v3 "$f"; done
+```
+
+prints the version on every line and exits non-zero (reporting `STALE`) on
+any v1/v2 pack. Pinned by the `test_eqe1_verify_stale_pack` ctest test.
 
 ### File Mapping
 
