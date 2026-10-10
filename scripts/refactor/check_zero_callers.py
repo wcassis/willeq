@@ -669,7 +669,6 @@ EXEMPT_GROUPS = {
     ("ConstrainedTextureCache", "isPending"): "B494",
     ("ConstrainedTextureCache", "setLedgerEnabled"): "B494",
     ("DiagnosticsComponent", "toggleFog"): "B494",
-    ("DoorManager", "isDoorMeshBuilt"): "B494",
     ("DoorManager", "rebuildPlaceholderDoors"): "B494",
     ("DoorManager", "recomputeAllBspRegions"): "B494",
     ("EntityRenderer", "adjustOffsetX"): "B494",
@@ -967,15 +966,15 @@ EXEMPT_TESTS_GROUPS = {
     ("ImpostorBatchNode", "vboBytes"): "observer",
     # B997 (#317): the per-material client-array batch of the PVS doors. The
     # unit test (test_scene_graph_batch.cpp) drives addNode/build/render on the
-    # EDT_NULL driver and needs three things production never uses: a way to
+    # EDT_NULL driver and needs two things production never uses: a way to
     # override the per-type transparency classification (the null driver
     # reports every built-in type opaque, so the opaque-only guard is
-    # unobservable without it), the baked client array exactly as render()
-    # would draw it (the transform + index-remap assertions), and the group
-    # count the test compares against the distinct-material count.
+    # unobservable without it) and the baked client array exactly as
+    # render() would draw it (the transform + index-remap assertions).
+    # (groupCount left this list when the final leg made it production: the
+    # A/B's proof line reads it via DoorManager::sgBatchGroups().)
     ("SceneGraphBatch", "setTransparencyClassifier"): "seam",
     ("SceneGraphBatch", "lastBakedDraw"): "observer",
-    ("SceneGraphBatch", "groupCount"): "observer",
     # B944: whether one cache entry's GL storage is resident right now (an
     # evicted entry keeps its object and restores on the next bind).
     # test_texture_eviction_residency asserts eviction and restore through it;
