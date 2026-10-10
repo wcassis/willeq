@@ -105,9 +105,12 @@ DT_NEEDED of willeq, so which libgbm gets mapped shows which rpath won.
 | `bin/willeq-nollvm` (absolute) | same | 1 | `/home/user/mesa-nollvm-25.2.8/lib/libgbm.so.1.0.0` |
 | `bin/willeq` (no rpath) | same | 1 | `/usr/lib/...` |
 
-The same `willeq-nollvm` run **before** the prefix was deployed mapped the
+The same `bin/willeq-nollvm` run **before** the prefix was deployed mapped the
 system libgbm without any error: a silent fallback. The rig's maps check
-exists to catch that. The client itself does not report it: **B946 → #264**.
+exists to catch that. Since **B946 → #264** the client itself says so: it
+logs the `[gldriver]` line at GL init (the mapped libgallium/libLLVM and the
+GL_RENDERER string, `refactor/B946/README.md`), and a nollvm binary whose
+baked-in prefix is missing logs an ERROR naming it before continuing.
 
 `deploy_mesa_prefix.sh` installed the prefix at
 `/home/user/mesa-nollvm-25.2.8` (11 MB, pin checked on both ends). B932's
@@ -166,8 +169,11 @@ pi lock now: ''`, and `down.sh` brought the local stack down each time.
 ## Findings filed
 
 - **B946 → #264**: a `willeq-nollvm` whose prefix directory is missing
-  silently loads the system Mesa, and the client logs no GL driver identity.
-  The rigs catch it and a hand run does not.
+  silently loaded the system Mesa and the client logged no GL driver
+  identity. The rigs catch it and a hand run does not. **CLOSED** — the
+  client now reports it: the `[gldriver]` line at GL init plus the
+  missing-prefix ERROR (format, decisions and evidence:
+  `refactor/B946/README.md`).
 
 ## Not verified
 
