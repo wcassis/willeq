@@ -10330,7 +10330,8 @@ because the Pi had no keyboard or mouse attached (B510).
   which LOWERS the camera and tilts the view up -- exactly the oracle's Alt+PgUp
   (the scene moved down the screen). T466 read the action name, not the arm.
   `PitchUpTiltsTheViewUpAsTheOfficialKeyDoes` passed before any T471 change and
-  pins it. F10, F11, L and Alt+C untouched (B582). Still owed: what Raise,
+  pins it. F10, F11 and L were untouched then and are applied now (B582
+  CLOSED 2026-10-10); Alt+C matched the oracle already. Still owed: what Raise,
   Lower and Tether-slide move on the official client and every step (B653).
 
 - ~~**B532**~~ (A) **CLOSED by T464 (2026-09-13)** -- confirmed from code with a
@@ -10440,7 +10441,7 @@ because the Pi had no keyboard or mouse attached (B510).
   Confirm by: `/camp` to character select, log in a second character with no
   `UI_<char>_<server>.ini`, look at the windows and `/camera get`. Found by T464.
 
-- **B561** (C, ORACLE-OWED) **F11 is bound to two actions in the defaults.** → issue #42
+- ~~**B561**~~ (C, ORACLE-OWED) **CLOSED by B582 (2026-10-10)** **F11 is bound to two actions in the defaults.** → issue #42
   `HotkeyManager::setupDefaults()` binds F11 to `ToggleAllUI` (Global) and
   `MusicVolumeUp` (Player); `getAction()` prefers Global, so F11 has only ever
   toggled the UI, and `config/hotkeys.json` binds `MusicVolumeUp` nowhere. T464
@@ -11222,7 +11223,15 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   Tether the node must land on the follow pose at T466's baseline pose). Not
   live-proven: no lock was assigned.
 
-- **B582** (C) **fable's F10/F11 and L do not mean what the official keys mean.** → issue #49
+- ~~**B582**~~ (C) **CLOSED 2026-10-10 (GitLab #49, MR on
+  task/kb-b582-official-keymap)** **fable's F10/F11 and L do not mean what the official keys mean.** → issue #49
+  Applied per Will's ruling: F10 = `ToggleAllUI` (Global, the official "Toggle
+  UI Display", T466); F11 UNBOUND (the official netstat toggle; fable has no
+  netstat); L UNBOUND (the official Leadership window is post-Velious,
+  IGNORED) — `CycleObjectLights` has no key; the four volume bindings
+  (F10/F11/Shift+F10/Shift+F11) REMOVED — the Options General sliders and
+  `/musicvolume` /`effectsvolume` are the routes. Red/green and the pre-B582
+  user-file test: `refactor/B582/README.md`.
   Measured on the oracle's Options > Keys (UI category): **F10 = Toggle UI
   Display, F11 = Toggle netstat, L = Toggle Leadership Window, Alt+C = Toggle
   Combat Ability Window** (fable's Alt+C matches). fable binds F11 =

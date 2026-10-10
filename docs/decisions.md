@@ -999,8 +999,9 @@ applied by T461/T464/T471/T474:
   deleted, not kept as an extra.
 - **F9 cycles the modes in the official order and REPLACES Ctrl+F5** (no
   alias). The other camera keys follow the official Options > Keys > Camera
-  page as T466 measured them (T471); F10/F11/L/Alt+C are still Will's call
-  (B582).
+  page as T466 measured them (T471). F10/F11/L/Alt+C are Will's call
+  (B582) — **applied 2026-10-10 (B582)**: F10 = ToggleAllUI, F11 and L unbound
+  (netstat and Leadership window), the four volume keys removed.
 - **Include the official orbit camera**: the user cameras orbit the player and
   zoom; the wheel and the zoom keys edit the active rig's distance.
 - **`/camera` is the exact-placement command**: azimuth, pitch, distance and
@@ -1251,6 +1252,7 @@ not asked. Will ruled in chat; each issue carries the same text.
    official panels' measured opacity, not fable's translucency.
 2. **Keymap (B582, with B561 and B652): adopt the official keymap.** F10, F11
    and L mean what the official keys mean; fable's own zoom keys move off them.
+   (B582/B561 applied 2026-10-10; B652 remains.)
 3. **Left HUD column (B366): resolution-aware** (the entry's option (b)).
 4. **Spell burst ramps (B396): match the oracle.** Low priority.
 5. **Guild line on name tags (B459): match the oracle** — capture it (a guild
