@@ -944,10 +944,29 @@ it without taking that measurement first.
   — unreachable by a draw cut, and below the 10 MiB target on both zones.
   Reaching 10 MiB needs ~56–58 % of the varying pool cut ≈ the near-entire
   scene-graph residual batched. Zone-merge generations are the u16 65 535-vertex
-  index constraint, NOT a reducible split. Next: pixel-identical per-material
-  client-array batch of the residual (zone-merge's pooled loop is the template),
-  x86 `visual_gate` byte-identical before the Pi A/B; if it does not reach
-  10 MiB, report the residual + Mesa floor and block for Will's ruling.
+  index constraint, NOT a reducible split. **Steps 3–4 DONE + measured
+  (2026-10-10, head `ec14bad0`):** the per-material client-array batch of the
+  PVS doors (`EQT_SG_BATCH`, **off by default**, `SceneGraphBatch`,
+  `scene_graph_batch.{h,cpp}`, unit test `tests/test_scene_graph_batch.cpp`)
+  is built and the Pi A/B (lane 2, same-build, imp200far crowd tour) is
+  measured. **The draw lever worked — the memory guard did NOT drop.**
+  draws/frame fell (qeynos2 scene_graph 41→27/f doors 28→14 gathers, gfaydark
+  122→~19/f doors 77→4 gathers; win_3d_client 74→60 / ~160→~57) with pp jobs
+  falling and wait_ms/fps flat-to-better (no frame-time regression), but
+  `gpu_unnamed_steady` stayed over 10 MiB on **both** zones (q2 17.44→17.16,
+  gd 17.71→18.84 MiB) — the 10 MiB guard is RED on both. **Mechanism:** the
+  Mesa varying BO is sized to the vertex payload a draw uploads
+  (data-proportional), not flat ~4 KiB, so a gathered draw conserves the byte
+  pool it removes (q2 draw3d:client 1545→1524 BOs, bytes ~flat). The step-2
+  linear reachability model (flat ~4 KiB/draw) is not borne out; the measured
+  D_sg is the distinct-**material** count (14/4), not the distinct-*model*
+  count (5/3) the census assumed. **BLOCKED for Will's ruling** per the card's
+  legitimate-result path: the measured cut does not reach 10 MiB, the
+  residual + mechanism + per-change table are reported in
+  `refactor/B997/README.md` (step 4), and no buffering change is attempted
+  (out of scope). No golden/budget/baseline moved. Evidence:
+  `~/kb-evidence/b997-draw-count/pisgbatch-sg0-20261010T003000Z/` +
+  `pisgbatch-sg1-20261010T004903Z/`.
 - **B998** (B, frame-time) → issue #325. **BLOCKED with measured ceiling
   (2026-10-07)** — no in-scope fix; see `refactor/B998/README.md` for the
   full A/B. The gfaydark low-geometry 31 fps floor (2 vsyncs) is a vsync
