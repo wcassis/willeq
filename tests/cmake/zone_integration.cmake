@@ -75,6 +75,8 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/door_motion.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/door_manager_collision.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/door_manager_animation.cpp
+        # B997 (GitLab #317): door_manager.cpp drives the scene-graph door batch.
+        ${CMAKE_SOURCE_DIR}/src/client/graphics/scene_graph_batch.cpp
         ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/frustum_culler.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/software_occlusion_culler.cpp
