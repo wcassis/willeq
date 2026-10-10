@@ -816,11 +816,17 @@ it without taking that measurement first.
   `tests/test_texture_lru_draw_order.cpp` (a texture bound every frame survives
   load-pressure eviction; a no-draw control still evicts in load order). No
   budget, golden or gate assertion changed.
-- **B950** (B) → issue #268. `ZoneMeshBuilder`'s layout depends on
+- ~~**B950** (B) → issue #268. `ZoneMeshBuilder`'s layout depends on
   `EQT_HAS_TEXTURE_ATLAS`, a PRIVATE define of `willeq_core`;
   `tests/test_placed_object_meshes.cpp` constructs one without it (B944's own
   test hit the resulting ASan stack-buffer-overflow and defines it). Confirmed
-  by B944 for its own test; the other by construction.
+  by B944 for its own test; the other by construction.~~ **DONE 2026-10-10**
+  (branch `task/kb-b950-atlas-define-odr`, issue #268,
+  `refactor/B950/README.md`): the define is PUBLIC on `willeq_core`, the
+  per-target PRIVATE copies are deleted, and `test_zone_geometry_atlas_layout`
+  (two probe TUs, consumer state vs core state, must agree on
+  `sizeof(ZoneMeshBuilder)`; 272 vs 280 on x86-64 before the fix) keeps it
+  that way.
 - **B952** (B) → issue #270, **in review** (`refactor/B952/README.md`).
   Impostor billboards part 1: the benchmark's impostor row (`tex.impostor`),
   sizes 64/128/256, unique/shared, measured on x86 and the Pi; budget

@@ -916,8 +916,21 @@ SET(ALL_CORE_SOURCES
 
 # Create a static library for the core client code (used by both executable and tests)
 ADD_LIBRARY(willeq_core STATIC ${ALL_CORE_SOURCES})
-# TextureAtlas requires GL - only available in main library, not standalone tools
-TARGET_COMPILE_DEFINITIONS(willeq_core PRIVATE EQT_HAS_TEXTURE_ATLAS)
+# B950 (GitLab #268): PUBLIC, not PRIVATE. ZoneMeshBuilder's member layout in
+# zone_geometry.h depends on EQT_HAS_TEXTURE_ATLAS (four #ifdef blocks,
+# 16 bytes on x86-64), so every TU that constructs one must see the same
+# layout the core's constructor was generated against. PRIVATE left every
+# consumer of willeq_core one sizeof smaller (B944's ASan stack-buffer-
+# overflow; test_placed_object_meshes by construction). No target links
+# willeq_core and compiles zone_geometry.cpp itself, so the define
+# propagate through the link cannot shadow a local copy -- the per-target
+# PRIVATE copies in the three tests that linked willeq_core
+# (renderer_guards.cmake) are deleted as now-redundant. The three gles2
+# tools below still declare it PRIVATE: they do NOT link willeq_core and
+# compile the atlas TUs themselves, so for them the PRIVATE copy is the only
+# one and stays.
+# Pinned by test_zone_geometry_atlas_layout.
+TARGET_COMPILE_DEFINITIONS(willeq_core PUBLIC EQT_HAS_TEXTURE_ATLAS)
 # SQLite for WilleqDatabase
 TARGET_INCLUDE_DIRECTORIES(willeq_core PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 TARGET_COMPILE_DEFINITIONS(willeq_core PRIVATE SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)

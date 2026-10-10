@@ -46,11 +46,9 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_texture_eviction_residency.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_texture_eviction_residency PRIVATE ${IRRLICHT_INCLUDE_DIR})
-    # ZoneMeshBuilder's layout depends on EQT_HAS_TEXTURE_ATLAS, which
-    # willeq_core compiles with (PRIVATE); a test that constructs one must
-    # agree or it gets a smaller object than the core's constructor writes
-    # (ASan: stack-buffer-overflow in ZoneMeshBuilder::ZoneMeshBuilder).
-    TARGET_COMPILE_DEFINITIONS(test_texture_eviction_residency PRIVATE EQT_HAS_TEXTURE_ATLAS)
+    # (B950, #268 removed this test's per-target EQT_HAS_TEXTURE_ATLAS
+    # define: it is PUBLIC on willeq_core now, so it flows in through the
+    # link, and test_zone_geometry_atlas_layout keeps the two states equal.)
     TARGET_LINK_LIBRARIES(test_texture_eviction_residency GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_texture_eviction_residency DISCOVERY_TIMEOUT 120)
 ENDIF()
@@ -67,12 +65,35 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_texture_eviction_character_restore.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_texture_eviction_character_restore PRIVATE ${IRRLICHT_INCLUDE_DIR})
-    # Constructs RaceModelLoader (which owns a ZoneMeshBuilder): see the
-    # EQT_HAS_TEXTURE_ATLAS note on test_texture_eviction_residency above.
-    TARGET_COMPILE_DEFINITIONS(test_texture_eviction_character_restore PRIVATE EQT_HAS_TEXTURE_ATLAS
+    # (B950, #268 removed this test's EQT_HAS_TEXTURE_ATLAS half of the
+    # compile definitions: PUBLIC on willeq_core now, flows in through the
+    # link; the WILLEQ_DB_REAL_PATH half is unrelated and stays.)
+    TARGET_COMPILE_DEFINITIONS(test_texture_eviction_character_restore PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     TARGET_LINK_LIBRARIES(test_texture_eviction_character_restore GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_texture_eviction_character_restore DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B950 (GitLab #268): a test TU and willeq_core must see the SAME
+# ZoneMeshBuilder layout. Two probe TUs compiled into this one target:
+# the CONSUMER probe carries no explicit define and sees the public
+# header in the state a bare willeq_core consumer does (WITHOUT
+# EQT_HAS_TEXTURE_ATLAS before the fix, WITH it once the define is PUBLIC
+# on willeq_core and flows in through the link); the CORE probe carries
+# the define explicitly, the state willeq_core's own sources are in. Each
+# reports sizeof(ZoneMeshBuilder) and the two must agree. Before the fix
+# the consumer probe is 16 bytes smaller and the test is RED.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_zone_geometry_atlas_layout
+        test_zone_geometry_atlas_layout.cpp
+        zone_geometry_atlas_layout_probe_consumer.cpp
+        zone_geometry_atlas_layout_probe_with.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_geometry_atlas_layout PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    SET_SOURCE_FILES_PROPERTIES(zone_geometry_atlas_layout_probe_with.cpp PROPERTIES
+        COMPILE_DEFINITIONS "EQT_HAS_TEXTURE_ATLAS")
+    TARGET_LINK_LIBRARIES(test_zone_geometry_atlas_layout GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_zone_geometry_atlas_layout DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # B949 (GitLab #267): LRU follows DRAW order, not load order. Drives a real
@@ -86,7 +107,8 @@ if(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_texture_lru_draw_order.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_texture_lru_draw_order PRIVATE ${IRRLICHT_INCLUDE_DIR})
-    TARGET_COMPILE_DEFINITIONS(test_texture_lru_draw_order PRIVATE EQT_HAS_TEXTURE_ATLAS)
+    # (B950, #268 removed this test's per-target EQT_HAS_TEXTURE_ATLAS
+    # define: PUBLIC on willeq_core now, flows in through the link.)
     TARGET_LINK_LIBRARIES(test_texture_lru_draw_order GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_texture_lru_draw_order DISCOVERY_TIMEOUT 120)
 endif()
