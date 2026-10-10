@@ -327,6 +327,17 @@ GTEST_DISCOVER_TESTS(test_config_key_reachability DISCOVERY_TIMEOUT 120)
 # (include/client/core/memory_ledger.h). Links the ledger TU directly -- it
 # REPLACES malloc/free/operator new for this whole binary, gtest included --
 # and exercises the hooks through the public allocation entry points.
+# B946 (GitLab #264): the [gldriver] line -- which GL driver the process
+# really loaded (the mapped libgallium, the GL_RENDERER string, whether
+# libLLVM is mapped), emitted once at GL init. Links gl_driver_census.cpp
+# directly, like test_memory_ledger links its own ledger TU.
+ADD_EXECUTABLE(test_gl_driver_census
+    test_gl_driver_census.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gl_driver_census.cpp
+)
+TARGET_LINK_LIBRARIES(test_gl_driver_census GTest::gtest_main Threads::Threads)
+GTEST_DISCOVER_TESTS(test_gl_driver_census DISCOVERY_TIMEOUT 120)
+
 ADD_EXECUTABLE(test_memory_ledger
     test_memory_ledger.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
