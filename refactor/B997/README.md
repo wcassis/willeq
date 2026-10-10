@@ -469,3 +469,64 @@ batched configuration. (`[sgbatch]` in the default leg:
 q2 `doors=28 groups=14 draws=14`, gd `doors=77 groups=4 draws=4` — same
 collapse as the Pi SG=1 leg.) Evidence:
 `~/kb-evidence/b997-draw-count/x86census-default-20261010T133623Z/`.
+
+### Step 3 — Pi confirmation of the default build (lane 2, this head)
+
+One crowd-tour leg on lane 2 with the **DEFAULT build, no `EQT_SG_BATCH`
+env at all** — the shipped configuration — same rig as the step-4 Pi A/B
+(`pi_default_confirm.sh` → `scripts/b964/pi_crowd.sh`, imp200far, 800×600,
+cache-on, `--bo-census` shim, `--idle 180 --hold-after 75`, `--allow-vm-lane`,
+ARM build published by job 3547 at `593eba6d`, staged from the Pi). The
+per-zone sweep's rc=1 on both zones is the EXPECTED RED row (the
+documented known condition below), not a failure of the leg.
+
+| zone | metric | SG=0 (step 4) | SG=1 (step 4) | **DEFAULT (step 3)** |
+|---|---|---|---|---|
+| qeynos2 | fps_med | 29 | 30 | **30** |
+| qeynos2 | gem_pp_jobs_per_frame (≤ 2.5) | 2.23 | 2.24 | **2.23** |
+| qeynos2 | gem_wait_ms_per_frame | 0.055 | 0.057 | **0.057** |
+| qeynos2 | gpu_unnamed_steady (guard <10 MiB) | 17.44 | 17.16 | **17.41 — RED (known condition)** |
+| gfaydark | fps_med | 24 | 27.5 | **27** |
+| gfaydark | gem_pp_jobs_per_frame (≤ 2.5) | 2.31 | 2.26 | **2.28** |
+| gfaydark | gem_wait_ms_per_frame | 0.053 | 0.055 | **0.056** |
+| gfaydark | gpu_unnamed_steady (guard <10 MiB) | 17.71 | 18.84 | **19.63 — RED (known condition)** |
+
+All frame-time metrics are within ±10 % of the SG=1 leg on both zones
+(fps 30/30, 27/27.5; pp jobs 2.23/2.24, 2.28/2.26; wait 0.057/0.057,
+0.056/0.055). The batch is provably active in the default build — the
+`[sgbatch]` log lines are the same collapse as the SG=1 leg (q2
+`doors=28 groups=14 draws=14`, gd `doors=77 groups=4 draws=4`).
+
+Draw-count comparison from the rolling 120-frame `[drawsite]` windows
+(value ÷ 120 = per-frame). The crowd-PEAK windows (f600–960) are NOT a
+leg-vs-leg channel: with a ~150/f total 3D client draw rate in the
+crowd, the batch's ~14/f (q2) / ~100/f (gd) cut is a small fraction of a
+120-frame window whose contents move with the tour (the SG=0 leg's own
+q2 peak is 20.1/f — below the SG=1 leg's 38.5/f — which shows the
+window noise, not the batch). The comparison band is the
+**post-crowd steady state** (the final stable windows, f10 000+, where
+the scene is static and the counter is uninterrupted):
+
+| zone | metric | SG=1 | DEFAULT | Δ |
+|---|---|---|---|---|
+| qeynos2 | win_3d_client draws/f | 39.0 (4 680/120) | **39.0** (4 680/120) | exact |
+| qeynos2 | scene_graph draws/f | 15.0 (1 800/120) | **15.0** (1 800/120) | exact |
+| gfaydark | win_3d_client draws/f | 44.0 (5 280/120) | **46.0** (5 520/120) | +4.5 % |
+| gfaydark | scene_graph draws/f | 6.0 (720/120) | **8.0** (960/120) | +2 draws/f |
+
+The total steady-state draw rate is within ±10 % on both zones (exact
+on q2, +4.5 % on gd). The gd `scene_graph` sub-component runs +2
+draws/f higher: the tour is time-driven, so the two legs' final resting
+positions (and therefore the PVS-visible door count at rest) differ
+slightly between two independent runs — the batch's own per-frame state
+is identical by the `[sgbatch]` lines (both legs: gd
+`doors=77 groups=4 draws=4`, q2 `doors=28 groups=14 draws=14`), so the
+DEFAULT build IS the SG=1 configuration; the +2 is scene content, not
+batch behaviour. The `gpu_unnamed_steady` rows read RED exactly as the
+known condition says (q2 17.41 MiB, gd 19.63 MiB — the gd leg's +4.2 %
+vs SG=1 is within the leg-to-leg spread the step-4 table itself shows).
+Snapshot restored byte-identically, stack down, both locks released.
+
+Evidence: `~/kb-evidence/b997-draw-count/final-pidefault-20261010T141840Z/`
+(`{qeynos2,gfaydark}/imp200far/results.tsv` — the rows above;
+`zones/<zone>/client.log` — `[sgbatch]` + `[drawsite]`; `sweep.log`).
