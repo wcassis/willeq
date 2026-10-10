@@ -2276,6 +2276,21 @@ IF(EQT_GRAPHICS)
         third_party/sqlite3.c
         src/client/zone_bsp.cpp
         src/common/util/compression.cpp
+        # B997 (GitLab #317) step 2: the deterministic door A/B links the
+        # PRODUCTION door path (the same DoorManager + PVS gating + the
+        # per-material scene-graph batch the client uses) so leg B exercises
+        # the gather/render/restore hooks renderer_zone_draw.cpp drives, not
+        # a copy. The door TU list mirrors test_door_loading's.
+        src/client/graphics/door_manager.cpp
+        src/client/graphics/door_manager_create.cpp
+        src/client/graphics/door_manager_mesh.cpp
+        src/client/graphics/door_manager_rebuild.cpp
+        src/client/graphics/door_collision.cpp
+        src/client/graphics/door_motion.cpp
+        src/client/graphics/door_manager_collision.cpp
+        src/client/graphics/door_manager_animation.cpp
+        src/client/graphics/scene_graph_batch.cpp
+        tools/hwcaps/zone_bench_door_batch_ab.cpp  # B997 step 2
         # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )

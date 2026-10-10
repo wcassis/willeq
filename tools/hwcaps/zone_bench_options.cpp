@@ -309,6 +309,10 @@ Options parseArgs(int argc, char** argv) {
         else if (strcmp(argv[i], "--entity-viewer-race-label") == 0 && i + 1 < argc) opts.entityViewerRaceLabel = argv[++i];
         else if (strcmp(argv[i], "--entity-viewer-frame") == 0 && i + 1 < argc) opts.entityViewerFrame = atoi(argv[++i]);
         else if (strcmp(argv[i], "--entity-viewer-out-dir") == 0 && i + 1 < argc) opts.entityViewerOutDir = argv[++i];
+        else if (strcmp(argv[i], "--sg-batch-ab") == 0) opts.sgBatchAb = true;
+        else if (strcmp(argv[i], "--sg-batch-ab-doors") == 0 && i + 1 < argc) opts.sgBatchAbDoors = argv[++i];
+        else if (strcmp(argv[i], "--sg-batch-ab-out-dir") == 0 && i + 1 < argc) opts.sgBatchAbOutDir = argv[++i];
+        else if (strcmp(argv[i], "--sg-batch-ab-min-doors") == 0 && i + 1 < argc) opts.sgBatchAbMinDoors = atoi(argv[++i]);
         else if (strcmp(argv[i], "--entity-viewer-composite") == 0) opts.entityViewerComposite = true;
         // Portal culling DOES NOT WORK and has NEVER WORKED with WillEQ.
         // else if (strcmp(argv[i], "--analyze-portals") == 0) opts.analyzePortals = true;

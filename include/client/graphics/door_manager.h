@@ -234,6 +234,11 @@ public:
     //                                      the doors the batch drew
     void setSceneGraphBatchEnabled(bool enabled) { sceneGraphBatchEnabled_ = enabled; }
     void gatherSceneGraphBatch();
+    // B997 step 2 (the deterministic door A/B): the batch's own census for
+    // the last frame (renderSceneGraphBatch), for the A/B's proof lines.
+    // Zeroed by gatherSceneGraphBatch().
+    int  sgBatchedCount() const { return static_cast<int>(sgBatch_.batchedNodes()); }
+    int  sgBatchGroups() const { return sgBatch_.groupCount(); }
     int  renderSceneGraphBatch();
     void restoreSceneGraphBatch();
 

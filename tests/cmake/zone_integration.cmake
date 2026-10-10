@@ -22,6 +22,27 @@ IF(EQT_GRAPHICS)
     TARGET_LINK_LIBRARIES(test_entity_viewer_regression GTest::gtest_main)
     ADD_DEPENDENCIES(test_entity_viewer_regression gles2_zone_benchmark)
     GTEST_DISCOVER_TESTS(test_entity_viewer_regression DISCOVERY_TIMEOUT 120)
+
+    # B997 (GitLab #317) step 2: the DETERMINISTIC door pixel A/B for the
+    # per-material scene-graph batch (EQT_SG_BATCH) -- the gate for shipping
+    # it ON. Same shellout-via-popen() pattern as
+    # test_entity_viewer_regression above: two tool runs (one leg per
+    # process, EQT_SG_BATCH=0 then =1) through --sg-batch-ab, then a
+    # byte-comparison of the two PNGs (tests/test_sg_batch_door_pixel_ab.cpp
+    # and tools/hwcaps/zone_bench_door_batch_ab.h for the design).
+    # Asset-gated the same way (EQ_CLIENT_PATH / data/eq_client symlink,
+    # else skip) + the binary-missing guard. The door fixtures are committed
+    # under refactor/B997/data/ (the eqemu `doors` table rows, see the
+    # README's "How the doors were sourced").
+    ADD_EXECUTABLE(test_sg_batch_door_pixel_ab
+        test_sg_batch_door_pixel_ab.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_sg_batch_door_pixel_ab PRIVATE
+        GLES2_ZONE_BENCHMARK_BIN="$<TARGET_FILE:gles2_zone_benchmark>"
+        WILLEQ_SRC="${CMAKE_SOURCE_DIR}")
+    TARGET_LINK_LIBRARIES(test_sg_batch_door_pixel_ab GTest::gtest_main)
+    ADD_DEPENDENCIES(test_sg_batch_door_pixel_ab gles2_zone_benchmark)
+    GTEST_DISCOVER_TESTS(test_sg_batch_door_pixel_ab DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T30: exit-matrix pin for "headless + piped stdin + no server" -- the case

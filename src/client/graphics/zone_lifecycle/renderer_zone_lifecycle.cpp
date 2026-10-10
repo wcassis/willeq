@@ -657,11 +657,16 @@ void ZoneLifecycleComponent::ensureDoorManager() {
                                          ctx_.zoneShader->getActiveAlphaTestRGBA());
         }
         // B997 (board #317): the per-material client-array batch of PVS doors.
-        // A/B-able gate, OFF by default so goldens/live behaviour are untouched
-        // until it is flipped. EQT_SG_BATCH=1 turns it on (the Pi A/B leg uses
-        // the env; the census/step-4 comparison runs one leg on, one off).
+        // ON by default since the ruling (a) final leg (2026-10-10): the
+        // DETERMINISTIC x86 door pixel A/B (ctest test_sg_batch_door_pixel_ab,
+        // refactor/B997/README.md "The deterministic x86 door pixel A/B")
+        // measured leg-on vs leg-off BYTE-IDENTICAL on both zones (qeynos2
+        // 60 in-graph doors, 59 batched to 19 per-material draws; gfaydark 78
+        // in-graph, 77 batched to 4 draws), with the same active-camera,
+        // ILightManager-hook, SOLID-pre point the live path uses.
+        // EQT_SG_BATCH=0 is the A/B opt-out.
         const char* sgBatchEnv = std::getenv("EQT_SG_BATCH");
-        const bool sgBatchOn = sgBatchEnv && (sgBatchEnv[0] == '1' || sgBatchEnv[0] == 'y' || sgBatchEnv[0] == 'Y');
+        const bool sgBatchOn = !(sgBatchEnv && sgBatchEnv[0] == '0');
         doors.setSceneGraphBatchEnabled(sgBatchOn);
         LOG_INFO(MOD_GRAPHICS, "Door manager created (zone={}, cache={}, bsp={}, frustum={}, neighbors={}, shader={}, sgBatch={})",
                  (bool)ctx_.currentZone, ctx_.constrainedTextureCache != nullptr, (bool)ctx_.zoneBspTree,
