@@ -928,10 +928,53 @@ it without taking that measurement first.
   qeynos2 18.90 / gfaydark 24.5 MiB cache-on imp200far, the impostor proven
   NOT the lever by the `off200far` control — the B972 README in
   `refactor/B972/` on the `task/B972-mesa-stream-buffers` branch, MR !94).
-  Conversion to bounded reused VBOs (partial `glBufferSubData`, the merged
-  B975 `NameTagBatchNode` slack pattern); a static VBO is the measured
-  anti-pattern (B962: +4.3 MiB, half qeynos2 fps). Cut behind #290/MR !94
-  (re-measure the residual after it lands).
+  **RE-SCOPED 2026-10-09 (post B972-FT / Will's ruling (d), MR !94): the lever
+  is DRAWS PER FRAME, not buffering** (cost-sheet fact 5: `lima_update_varying`
+  allocates a fresh ~4 KiB varying BO per draw; the per-draw churn pool is the
+  part of `gpu_unnamed_steady` a draw cut touches — `refactor/B997/README.md`).
+  **Step 2 census done (2026-10-09, `9f184921`, platform-consistent x86↔Pi):**
+  at the crowd-in `steady_60s` guard point, 3D client-array draws/frame =
+  qeynos2 **75** (zone 20 + entity 13 + **scene_graph 42**), gfaydark **158**
+  (zone 38 + entity 0 + **scene_graph 120**); `win_3d_vbo = 0` (impostors/
+  nametags are named VBO pools). The **scene-graph residual** (PVS doors +
+  placed objects + equipment + overlays, per-node `smgr->drawAll()` client
+  draws) is the dominant lever (56 % / 76 % of the draws). Varying-BO pool
+  10.61 / 14.90 MiB of the 15.89 / 18.69 MiB unnamed; the rest (5.28 / 3.79 MiB)
+  is the non-draw Mesa floor (PP streams / shader bins / BO cache / tile heap)
+  — unreachable by a draw cut, and below the 10 MiB target on both zones.
+  Reaching 10 MiB needs ~56–58 % of the varying pool cut ≈ the near-entire
+  scene-graph residual batched. Zone-merge generations are the u16 65 535-vertex
+  index constraint, NOT a reducible split. **Steps 3–4 DONE + measured
+  (2026-10-10, head `ec14bad0`):** the per-material client-array batch of the
+  PVS doors (`EQT_SG_BATCH`, **off by default**, `SceneGraphBatch`,
+  `scene_graph_batch.{h,cpp}`, unit test `tests/test_scene_graph_batch.cpp`)
+  is built and the Pi A/B (lane 2, same-build, imp200far crowd tour) is
+  measured. **The draw lever worked — the memory guard did NOT drop.**
+  draws/frame fell (qeynos2 scene_graph 41→27/f doors 28→14 gathers, gfaydark
+  122→~19/f doors 77→4 gathers; win_3d_client 74→60 / ~160→~57) with pp jobs
+  falling and wait_ms/fps flat-to-better (no frame-time regression), but
+  `gpu_unnamed_steady` stayed over 10 MiB on **both** zones (q2 17.44→17.16,
+  gd 17.71→18.84 MiB) — the 10 MiB guard is RED on both. **Mechanism:** the
+  Mesa varying BO is sized to the vertex payload a draw uploads
+  (data-proportional), not flat ~4 KiB, so a gathered draw conserves the byte
+  pool it removes (q2 draw3d:client 1545→1524 BOs, bytes ~flat). The step-2
+  linear reachability model (flat ~4 KiB/draw) is not borne out; the measured
+  D_sg is the distinct-**material** count (14/4), not the distinct-*model*
+  count (5/3) the census assumed. **RULED by Will 2026-10-10 (#317 note 3233),
+  option (a):** the draw-count lever is at its ceiling — the 10 MiB
+  `gpu_unnamed_steady` crowd-tour guard **stays RED on qeynos2 and gfaydark as
+  a documented known condition** (same class as B988/#307), the bound is NOT
+  re-scoped and no buffering change is allowed; the real levers (varying
+  stride, per-frame vertex volume) are B1013 #334. The residual + mechanism +
+  per-change table stand in `refactor/B997/README.md` (step 4 + the
+  "Known condition (ruling a)" section). The `EQT_SG_BATCH` batch's ship
+  decision is made by the DETERMINISTIC x86 door pixel A/B (ctest
+  `test_sg_batch_door_pixel_ab`; the live-client frame diff is not a channel —
+  0/18 frames identical across two baseline legs): **MEASURED byte-identical
+  on both zones (q2 60 in-graph doors, 59→19 draws; gd 78, 77→4), so the
+  default flips ON** (batch on unless `EQT_SG_BATCH=0`). No golden/budget/
+  baseline moved. Evidence: `~/kb-evidence/b997-draw-count/pisgbatch-sg0-20261010T003000Z/` +
+  `pisgbatch-sg1-20261010T004903Z/` + the pixel A/B (this head).
 - **B998** (B, frame-time) → issue #325. **BLOCKED with measured ceiling
   (2026-10-07)** — no in-scope fix; see `refactor/B998/README.md` for the
   full A/B. The gfaydark low-geometry 31 fps floor (2 vsyncs) is a vsync

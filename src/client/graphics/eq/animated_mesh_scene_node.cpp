@@ -5,6 +5,7 @@
 // line ranges of that file, moved verbatim.
 
 #include "client/graphics/eq/animated_mesh_scene_node.h"
+#include "client/graphics/draw_census.h"  // B997: per-site 3D-draw census
 #include "common/simd_detect.h"
 #include "common/logging.h"
 #include <atomic>
@@ -274,19 +275,27 @@ void EQAnimatedMeshSceneNode::render() {
     }
 
     // Render each mesh buffer from our per-instance mesh
-    for (irr::u32 i = 0; i < instanceMesh_->getMeshBufferCount(); ++i) {
-        irr::scene::IMeshBuffer* mb = instanceMesh_->getMeshBuffer(i);
-        if (!mb) continue;
+    {
+        // B997: count this entity's 3D client-array draws for the [drawsite]
+        // census (the generic draw3d:client pool; entity bodies are not in the
+        // driver's HWBufferMap, so they take the client-array fallback path).
+        long drawnHere = 0;
+        for (irr::u32 i = 0; i < instanceMesh_->getMeshBufferCount(); ++i) {
+            irr::scene::IMeshBuffer* mb = instanceMesh_->getMeshBuffer(i);
+            if (!mb) continue;
 
-        // Set material
-        if (i < materials_.size() && !readOnlyMaterials_) {
-            driver->setMaterial(materials_[i]);
-        } else {
-            driver->setMaterial(mb->getMaterial());
+            // Set material
+            if (i < materials_.size() && !readOnlyMaterials_) {
+                driver->setMaterial(materials_[i]);
+            } else {
+                driver->setMaterial(mb->getMaterial());
+            }
+
+            // Draw the mesh buffer
+            driver->drawMeshBuffer(mb);
+            ++drawnHere;
         }
-
-        // Draw the mesh buffer
-        driver->drawMeshBuffer(mb);
+        drawCensusAddEntity(drawnHere);
     }
 
     // Debug: draw bounding box if enabled

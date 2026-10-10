@@ -1870,3 +1870,40 @@ time, and a `prune-build-trees` job on every fable pipeline that removes trees
 whose branch is gone from the remote or untouched for 14 days and prints the
 census (`docs/ci.md`, "One warm tree per ref"). `build/hygiene` and the
 patched Irrlicht stay shared (no binaries; content-stamped).
+
+## 2026-10-10 — B997 closed: the draw lever is at its ceiling; the 10 MiB
+crowd-tour guard stays RED as a known condition (Will, option (a); #317)
+
+**Will's ruling (a), 2026-10-10 (#317 note 3233):** the draw-count lever is at
+its ceiling. The 10 MiB `gpu_unnamed_steady` crowd-tour guard **stays RED on
+qeynos2 and gfaydark as a documented known condition** — the same class as the
+B988/#307 known condition above (a guard row that reads red on the crowd tours
+by a measured, named mechanism). The bound is **not re-scoped** and **no
+buffering change is allowed**; the real levers — varying stride and
+per-frame vertex volume — are **B1013 #334**.
+
+The measured basis (B997 step 4, `refactor/B997/README.md`, same-build Pi A/B,
+imp200far crowd tour, lane 2): the per-material scene-graph door batch
+(`EQT_SG_BATCH`) cut scene-graph draws (qeynos2 41→27/frame, gfaydark
+122→~19/frame) with no frame-time regression, but `gpu_unnamed_steady` stayed
+over 10 MiB on both zones (qeynos2 17.44→17.16, gfaydark 17.71→18.84 MiB).
+Mechanism: cost-sheet fact 5 says `lima_update_varying` allocates a varying BO
+per draw, and the Pi measured that BO to be sized to the **vertex payload a
+draw uploads** (data-proportional, mean 8–12 KiB), not flat ~4 KiB — so a
+gathered draw removes K small door draws and adds one gather whose BO costs
+roughly their total (q2 draw3d:client 1545→1524 BOs, bytes ~flat). The draw
+count and the per-draw fixed cost fall; the byte pool the guard measures does
+not.
+
+The `EQT_SG_BATCH` batch's own ship decision (ON by default or removed) was
+separate from the guard and rested on the deterministic x86 door pixel A/B
+(`refactor/B997/README.md`, "The deterministic x86 door pixel A/B"; ctest
+`test_sg_batch_door_pixel_ab`), because the live-client frame diff is not a
+channel (0/18 frames identical across two baseline legs — the crowd is not
+frame-locked). The A/B measured **byte-identical** on both zones (qeynos2
+60 in-graph doors, 59 batched to 19 per-material draws; gfaydark 78 in-graph,
+77 batched to 4 draws; non-vacuous frames), so the decision taken is: **the
+default flips to ON** — the batch is on unless `EQT_SG_BATCH=0`
+(`src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp`), and the
+ctest keeps the byte-identity pinned on every CI run. No golden, budget or
+baseline moved in B997.

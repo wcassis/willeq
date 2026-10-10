@@ -1081,6 +1081,13 @@ void FrameComponent::processFrameSimulation(float deltaTime) {
             ctx_.occlusionCulledRegions.empty() ? nullptr : &ctx_.occlusionCulledRegions);
         ctx_.doorManager->setPvsRegion(ctx_.currentPvsRegion);
         ctx_.doorManager->update(deltaTime);
+        // B997 (board #317): gather this frame's PVS doors into the per-material
+        // client-array batch (and detach the ones it fully takes) BEFORE
+        // drawAll() -- which runs in the render phase -- builds its SOLID node
+        // list. No-op when the gate is off. The batch draws at the SOLID-pre
+        // point (renderer_zone_draw.cpp) and restoreSceneGraphBatch() at
+        // SOLID-post re-attaches the doors. See scene_graph_batch.h.
+        ctx_.doorManager->gatherSceneGraphBatch();
         // T435 (board B425): doors only collide because this runs. Must follow
         // update(), which is what marks a moving door's geometry stale.
         ctx_.PlayerCamera().syncDoorCollision();
