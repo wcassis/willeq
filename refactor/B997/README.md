@@ -1,9 +1,11 @@
 # B997 — fewer draws per frame on the Pi: close the 10 MiB `gpu_unnamed_steady` guard (issue #317)
 
-**Class B (memory / frame-time).** **Status: step 2 (draw census) complete;
-the census below is the evidence for step 3.** Step 1 baseline:
-`refactor/B997/BASELINE.md` (committed separately). Step 3 (draw reduction) is
-next and is gated on the scene-graph lever characterized below.
+**Class B (memory / frame-time).** **Status: steps 1–4 complete — the
+per-material client-array batch is built (gated off by default), the Pi A/B is
+measured, and the result is that the 10 MiB `gpu_unnamed_steady` guard is NOT
+closed on either zone (see the step-4 measured result + mechanism). The card is
+blocked for Will's ruling per the card's legitimate-result path.** Step 1
+baseline: `refactor/B997/BASELINE.md`. Step 2 (draw census) below.
 
 The card was re-scoped 2026-10-09 (after B972-FT / Will's ruling (d), MR !94):
 the lever is **draws per frame**, not buffering. Cost-sheet fact 5
@@ -162,6 +164,17 @@ case, and names the one open variable (q2's equipment/overlay material count,
 and whether the 13/f entity crowd also needs batching) that a built+measured
 batch settles.
 
+**MEASURED (step 4) — this linear model is NOT borne out.** The built+measured
+Pi A/B (step 4, below) shows the guard does **not** drop on either zone (q2
+17.44→17.16, gd 17.71→18.84 MiB), despite the draw count falling (scene_graph
+41→27 / 122→~19 per frame). Two reasons the model missed: (1) D_sg is the
+distinct-**material** count the batch actually groups by (measured 14 / 4, not
+the distinct-*model* 5 / 3 above), so the linear "cut" overestimates; (2) the
+model's core assumption — a flat ~4 KiB varying BO per draw — is wrong: the BO
+is **data-proportional** (sized to the vertex payload), so a gathered draw
+conserves the byte pool it removes. The model is kept above as the step-2
+census record; the step-4 measured result + mechanism is the authoritative one.
+
 ### What splits the scene-graph residual (the step-3 target)
 
 From the census `client.log` door records and the `steady_60s` memledger:
@@ -180,9 +193,10 @@ objects (trees, crates, props) + equipment + target overlays — one `smgr->draw
 draw each, each allocating its own varying BO. The batching opportunity is a
 shared per-material client-array batch (gather the visible doors/objects/equipment
 of one material into one draw), the same shape as the zone-merge's pooled loop.
-This is a **new batch-draw path** (pixel-identical by construction, proven by the
-x86 `visual_gate` byte-identical PNGs before it goes to the Pi), not a
-buffer-type change.
+This is a **new batch-draw path** (pixel-identical by construction — see step 3
+for the pixel channel, since this scene's crowd is not frame-locked and so the
+x86 byte-diff cannot be the proof, unlike the zone-merge which had a
+deterministic seed), not a buffer-type change.
 
 ### Evidence
 
@@ -195,19 +209,126 @@ buffer-type change.
   + `[drawsite]`; `zones/<zone>/gem_owners.tsv` carries the pool tags.
 - Census instrument: commit `9f184921` (`draw_census.h` + the 4 call sites).
 
-## Step 3 — reduce draws (in progress)
+## Step 3 — reduce draws (built + measured)
 
 The census says the lever is the scene-graph residual (42 / 120 per frame).
-Next: a pixel-identical per-material client-array batch of the visible
-PVS doors + placed objects + equipment + overlays (the zone-merge's pooled
-loop is the template), proven byte-identical on x86 (`scripts/ci/visual_gate.sh`)
-before the Pi A/B. Zone-merge generation buckets are **not** reducible "for no
-visual reason" — the 65 535-vertex u16 index space is the constraint, not a
-spurious split. One change per commit, each with its draws/frame + `gpu_unnamed`
-delta; the Pi A/B columns are `gpu_unnamed_steady`, draws/frame,
-`gem_pp_jobs_per_frame` (≤ 2.5), imp p50.
+Built: a pixel-identical per-material client-array batch of the visible PVS
+doors (the scene-graph residual), proven by the x86 determinism probe + the
+unit-test construction + the Pi A/B. Zone-merge generation buckets are **not**
+reducible "for no visual reason" — the 65 535-vertex u16 index space is the
+constraint, not a spurious split.
 
-If the measured reductions do not reach 10 MiB: report the residual (the
-5.28 / 3.79 MiB Mesa floor above is the irreducible part a draw cut cannot
-reach) with its mechanism and the per-change table, and block for Will's
-ruling rather than reaching for a buffering change.
+### The per-material client-array batch (built, gated off by default)
+
+`EQT_SG_BATCH=1` (off by default) turns on a `SceneGraphBatch` that gathers
+this frame's PVS-visible doors by **full SMaterial equality** and emits one
+gathered client-array draw per material group at the SOLID-pre point, baking
+each door's world matrix into its `S3DVertex` and drawing with identity
+`ETS_WORLD` (the zone-merge's exact primitive, `COpenGLES2Driver.cpp:1484`).
+The doors it takes are detached from the scene graph for the frame (the
+`clearDoors` grab/remove idiom) so `smgr->drawAll()`'s SOLID list never
+re-draws them, then re-attached after the SOLID pass. Opaque-only (a door with
+any transparent buffer stays per-node), pixel-identical by construction
+(rasterization-order-identical: same material + opaque under the Z-buffer +
+the P09c-accepted transform-order reorder). Commit `aa8b8a49` + hygiene
+`23e3903b`; unit test `tests/test_scene_graph_batch.cpp` (grouping, the
+opaque-only guard, the row-major irrlicht `CMatrix4` transform bake — which
+pins a real bug a column-vector bake would have introduced: doors collapse to
+the origin). The x86 live-client frame-diff is non-deterministic (0/18 frames
+identical across two baseline legs — the live-server crowd is not frame-locked),
+so the pixel channel for this scene is the construction argument + the Pi A/B,
+the same way the zone-merge itself was blessed (P09/P09c).
+
+**The batch groups by full SMaterial, so the post-batch draw floor is the
+distinct-MATERIAL count D_sg, not the distinct-MODEL count** the census
+assumed. Measured on the x86 leg (lane 2, imp200far crowd tour, `EQT_SG_BATCH=1`):
+qeynos2 28 visible doors → **14** groups; gfaydark 77 visible doors → **4**
+groups. (The census's 5 / 3 *model* counts under-predict: a single model
+carries several distinct materials — solid vs alpha-test, distinct textures.)
+
+## Step 4 — Pi A/B (the measured result; the guard does NOT drop)
+
+Rig: `scripts/b964/pi_crowd.sh`, same build (head `23e3903b`), qeynos2 +
+gfaydark, imp200far, 800×600, cache-on, `--bo-census` shim, `--idle 180
+--hold-after 75`, lane 2 (`EQEMU_HOST=172.16.200.98`). Two legs, the only
+variable `EQT_SG_BATCH` (0 = the baseline behaviour on this build, 1 = batch on).
+Same-build A/B, so every diff is exact.
+
+### draws/frame — the lever worked
+
+Per-frame 3D client-array draws at the guard's sampling point (crowd-in
+steady), from the Pi client.log `[drawsite]` + `[sgbatch]`:
+
+| zone | site | SG=0 | SG=1 | Δ | note |
+|---|---|---|---|---|---|
+| qeynos2 | scene_graph | 41.1/f | 27.1/f | **−14** | doors 28→14 gathers |
+| qeynos2 | entity_body | 13.0/f | 13.0/f | 0 | untouched (separate path) |
+| qeynos2 | zone_draws | 20.0/f | 20.0/f | 0 | u16-constrained |
+| qeynos2 | **win_3d_client** | 74/f | 60/f | **−14** | |
+| gfaydark | scene_graph | 122/f | ~19/f | **~−103** | doors 77→4 gathers |
+| gfaydark | **win_3d_client** | 160/f | ~57/f | **~−103** | |
+
+Post-crowd (idle) floor, the cleanest cut: qeynos2 scene_graph 29.0→15.0/f,
+gfaydark 53.0→6.0/f. **The draw count fell on both zones** — the batch does
+what the census predicted for draws. `[sgbatch]` on the Pi (platform-consistent
+with x86): q2 `doors=28 groups=14 draws=14`, gd `doors=77 groups=4 draws=4`.
+
+### gpu_unnamed_steady — the guard did NOT drop
+
+| zone | SG=0 (MiB) | SG=1 (MiB) | Δ | guard (<10 MiB) |
+|---|---|---|---|---|
+| qeynos2 | 17.44 | 17.16 | **−0.28** | RED / RED |
+| gfaydark | 17.71 | 18.84 | **+1.13** | RED / RED |
+
+Frame-time is flat / no regression (the card's "report both numbers" clause):
+
+| zone | pp jobs/f (SG=0→1) | wait ms/f | fps_med |
+|---|---|---|---|
+| qeynos2 | 2.23 → 2.24 | 0.055 → 0.057 | 29 → 30 |
+| gfaydark | 2.31 → 2.26 | 0.053 → 0.055 | 24 → 27.5 |
+
+pp jobs (the per-draw fixed cost) fell, wait_ms flat, fps flat-to-better — no
+frame-time regression. But **the memory guard is RED on both zones, and the
+byte pool did not cut proportionally the draws** (the linear reachability model
+predicted −4.64 / −9.73 MiB; measured −0.28 / +1.13).
+
+### The mechanism (why the draw cut doesn't cut the byte pool)
+
+The census's reachability model (step 2) assumed fact 5 — "a fresh ~4 KiB
+varying BO per draw" — as a **flat** per-draw cost, so "every draw you remove
+removes its varying BO". The measured pool contradicts that: the Mesa varying
+BO is **sized to the vertex payload a draw uploads, not flat 4 KiB**. The q2
+varying-BO pool (gem_owners `draw3d:client`, steady):
+
+| | SG=0 | SG=1 |
+|---|---|---|
+| draw3d:client total | 12.39 MiB / 1545 BOs / mean 8.2 KiB | 13.46 MiB / 1524 BOs / mean 9.0 KiB |
+| size histogram 4 KiB | ×1377 | ×1380 |
+| 8/12/16 KiB | ×335 | ×312 |
+
+So collapsing K same-material doors into **one gather** removes K small
+(~4 KiB) door draws and adds **one gather whose varying BO is sized to the
+full gathered vertex payload** (larger, 8–12 KiB). The BO *count* falls by the
+door share (1545→1524) but the BO *bytes* are conserved — the gather's payload
+costs roughly what the K small door draws did. The draw count (and the
+per-draw fixed cost: pp jobs, stream-slot churn) falls; `gpu_unnamed_steady`
+(the byte pool) does not. The 5.28/3.79 MiB Mesa floor and the named `vbo:`
+pools are untouched, as the census said.
+
+**Conclusion.** The scene-graph batch is the right *draw-count* lever (it cut
+scene_graph 41→27 and 122→~19 per frame, and pp jobs) but the **10 MiB
+`gpu_unnamed_steady` guard is not closed on either zone** — the guard measures
+the varying-BO *byte* pool, and a data-proportional gather BO does not shrink
+that pool by removing draws. This is the card's explicit legitimate-result
+path: the measured reduction does not reach 10 MiB, so the residual is
+reported here with its mechanism and the per-change table, and the card is
+blocked for Will's ruling rather than reaching for a buffering change. The 10
+MiB guard row stays RED as the known condition. Buffer-type changes remain out
+of scope per the card.
+
+Evidence: `~/kb-evidence/b997-draw-count/` — `pisgbatch-sg0-20261010T003000Z/`
+(SG=0 baseline), `pisgbatch-sg1-20261010T004903Z/` (SG=1 batch on), each with
+`zones/<zone>/results.tsv` (the columns above) + `client.log` (`[sgbatch]`,
+`[drawsite]`) + `gem_owners.tsv` (the varying-BO pool). x86 A/B:
+`x86sgbatch-onfixed-20261009T234519Z/` (q2) + `x86sgbatch-gd-20261009T2358Z/`
+(gd).
