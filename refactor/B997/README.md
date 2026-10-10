@@ -444,3 +444,28 @@ unless `EQT_SG_BATCH=0`). The env read site
 (`src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp`), this
 README and `docs/decisions.md` (2026-10-10 entry) record the flip; the ctest
 above keeps it byte-pinned on every CI run.
+
+### The default-build census leg (x86, this head)
+
+The card's other half of step 2: the x86 crowd census re-run with the
+**DEFAULT build, no `EQT_SG_BATCH` env at all** — the shipped configuration.
+Same rig as the step-2/3 x86 legs (`x86_census_default.sh`, lane 2,
+`EQT_DRAW_CENSUS=1`, imp200far 200-tag tour, `--idle 180 --hold-after 75`,
+snapshot restored byte-identically, stack down, lock released). The
+`[drawsite]` lines are a rolling 120-frame window (window total ÷ 120 =
+per-frame); crowd-phase rows:
+
+| zone | SG=0 leg | SG=1 x86 leg | DEFAULT (no env) | Pi SG=1 (step 4) |
+|---|---|---|---|---|
+| qeynos2 scene_graph | 41.0 /f (x86 off leg) | 27.0 /f | **27.0 /f** | 27.1 /f |
+| gfaydark scene_graph | 122 /f (Pi SG=0, step 4) | 19.0 /f (stable) | **19.0 /f** (stable) | ~19 /f (crowd) |
+
+(Both x86 gd legs settle at 2,280/120 = 19.0/f in their stable crowd
+windows; the post-crowd idle floor is 6.0/f in the default leg, matching
+the step-4 idle row.) The default build reproduces the SG=1 leg within ±10 %
+on both zones (q2 **exactly**: 3,240/120 = 27.0/f in all three legs; gd
+stable window 19.0/f in both x86 legs), so the shipped default is the
+batched configuration. (`[sgbatch]` in the default leg:
+q2 `doors=28 groups=14 draws=14`, gd `doors=77 groups=4 draws=4` — same
+collapse as the Pi SG=1 leg.) Evidence:
+`~/kb-evidence/b997-draw-count/x86census-default-20261010T133623Z/`.
