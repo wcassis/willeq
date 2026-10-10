@@ -162,8 +162,10 @@ re-derived here from the raw logs (`~/kb-evidence/b990-soundfont-release/
   loaded in this run (the 24 MB is in it: 28,850,592 − 24,225,520 ≈ 4,625,072
   ≈ the non-font audio live 4,386,288); at steady_60s the font's 24,225,520 B
   are gone and the audio row is back to its non-font level. Against B977's
-  24,162,944 B / 28,614,000 B at the same point: **−24,160,968 B /
-  −24,227,712 B** (the delta is the font ± the residual below).
+ 24,162,944 B / 28,614,000 B at the same point: **−24,159,968 B** on the
+ custom row, **−24,227,712 B** on the audio category (the extra ~67 KB over
+ the custom delta is the music channel's own live bytes at the two runs'
+ steady points — B977's music was still playing, mine had stopped).
 - **The residual 2,976 B / 32 blocks is NOT font samples.** It is charged
   under the `au.soundfont_custom` owner scope by `playMusic`'s
   `selectSoundFont(...)` bookkeeping (audio_manager.cpp, the scope wraps the
