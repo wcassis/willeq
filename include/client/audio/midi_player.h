@@ -44,6 +44,22 @@ public:
     // the lazy-load contract above; not a playback control.
     bool isCustomSoundFontResident() const;
 
+    // B990 (issue #309): release the custom font if resident. The mirror of
+    // selectSoundFont(Custom)'s on-demand load: a song that STOPS must give
+    // its 23 MiB of float samples back (selectSoundFont(GM) is the other,
+    // switch-driven half -- the production stop path reaches THIS one instead
+    // of a switch, because nothing selects GM when the music simply ends).
+    //
+    // Thread contract (the T248 render barrier, render_barrier.h): like every
+    // other mutating path it calls stop() first -- playing_=false plus the
+    // render-barrier wait, so no render pass can still read impl_->soundFont
+    // while the pointer is moved and the instance closed, and a later pass
+    // sees playing_==false. stop() zeroes the playback position, so the
+    // immediate MusicPlayer::stop() path saves it beforehand and restores it
+    // after (zone-music resume reads it via getPlaybackTimeMs()); the fade
+    // path needs no restore because it stops the song for good.
+    void releaseCustomSoundFont();
+
     // Replace the GM SoundFont slot.
     //
     // PRECONDITION (T359, board B015): the audio backend must NOT be running.
