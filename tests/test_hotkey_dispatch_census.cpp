@@ -18,8 +18,10 @@
  * and the shipped file, through the exact load sequence the client runs):
  *
  *   1. The binding is not shadowed: getAction() on its own key returns its own
- *      action. (One exemption: F11 MusicVolumeUp, the oracle-owed conflict
- *      test_hotkey_manager.cpp's T464 test already carries -- board B561/B582.)
+ *      action. (B582: the former exemption -- F11 MusicVolumeUp, the
+ *      B561 double binding that test_hotkey_manager.cpp's T464 test carried --
+ *      is gone; the official keymap binds no volume key, so the defaults have
+ *      none to shadow.)
  *   2. The binding has a consumer, measured behaviourally on a fresh
  *      RendererEventReceiver: pressing the key leaves an OBSERVABLE request on
  *      one of the receiver's outputs (renderer action queue, bridge queue,
@@ -94,11 +96,6 @@ std::vector<HotkeyBinding> AllBindings(const HotkeyManager& mgr) {
     return out;
 }
 
-bool IsTheOracleOwedF11Conflict(const HotkeyBinding& b) {
-    return b.action == HotkeyAction::MusicVolumeUp && b.keyCode == irr::KEY_F11 &&
-           b.modifiers == ModifierFlags::None;
-}
-
 irr::SEvent KeyEvent(irr::EKEY_CODE key, bool down, bool ctrl, bool shift) {
     irr::SEvent ev{};
     ev.EventType = irr::EET_KEY_INPUT_EVENT;
@@ -146,22 +143,17 @@ PressResult Press(const HotkeyBinding& b) {
     return p;
 }
 
-void CheckEveryBindingIsConsumed(const char* table, size_t expectedExemptions) {
+void CheckEveryBindingIsConsumed(const char* table) {
     auto& mgr = HotkeyManager::instance();
     const std::set<std::string> held = PolledHeldActions();
     ASSERT_GE(held.size(), 9u) << "the held-key poll moved out of renderer_player_physics.cpp";
 
     const std::vector<HotkeyBinding> bindings = AllBindings(mgr);
     ASSERT_GT(bindings.size(), 50u);
-    size_t exempted = 0;
     for (const auto& b : bindings) {
         const std::string name = HotkeyManager::actionEnumToName(b.action);
         const std::string where = std::string(table) + ": " + name + " = " +
                                   HotkeyManager::bindingToString(b);
-        if (IsTheOracleOwedF11Conflict(b)) {
-            ++exempted;
-            continue;
-        }
 
         // (1) not shadowed.
         const auto resolved = mgr.getAction(
@@ -194,22 +186,22 @@ void CheckEveryBindingIsConsumed(const char* table, size_t expectedExemptions) {
             << where << " has NO dispatch consumer: the key falls through "
                         "RendererEventReceiver::OnEvent()'s default";
     }
-    EXPECT_EQ(exempted, expectedExemptions) << table << ": the F11 exemption no longer matches";
 }
 
 }  // namespace
 
 TEST(HotkeyDispatchCensus, EveryDefaultBindingHasADispatchConsumer) {
     HotkeyManager::instance().resetToDefaults();
-    CheckEveryBindingIsConsumed("defaults", 1u);
+    CheckEveryBindingIsConsumed("defaults");
 }
 
 TEST(HotkeyDispatchCensus, EveryShippedBindingHasADispatchConsumer) {
     auto& mgr = HotkeyManager::instance();
     mgr.resetToDefaults();
     ASSERT_TRUE(mgr.loadFromFile(std::string(WILLEQ_REPO_ROOT) + "/config/hotkeys.json"));
-    // The shipped file carries only F11's ToggleAllUI meaning (T464).
-    CheckEveryBindingIsConsumed("config/hotkeys.json", 0u);
+    // B582: the shipped file carries F10's ToggleAllUI meaning; the pre-B582
+    // F11 double binding (B561) and the volume rows are gone from both tables.
+    CheckEveryBindingIsConsumed("config/hotkeys.json");
     mgr.resetToDefaults();
 }
 

@@ -1112,19 +1112,15 @@ TEST_F(HotkeyOracleWindowKeysTest, T471_TheShippedHotkeysJsonCarriesTheMeasuredC
 // Shift+F10 (EffectsVolumeDown) and Shift+F11 (EffectsVolumeUp) -- so those
 // keys did nothing in a real run while every resetToDefaults()-based test
 // passed.
+//
+// B582 (GitLab #49, applied 2026-10-10) removed the one exemption: F11's
+// default MusicVolumeUp (the B561 double binding) is gone, along with the
+// whole F10/F11/Shift+F10/Shift+F11 volume set and L. The loops below now
+// fail if a double binding, a file-only binding or a default the file drops
+// ever returns.
 // =============================================================================
 
 namespace {
-
-// F11 is bound twice in the defaults: ToggleAllUI (Global) and MusicVolumeUp
-// (Player). getAction() prefers a Global binding, so F11 has only ever meant
-// ToggleAllUI, with or without the file, and the file carries only that one.
-// Which of the two the official keymap gives F11 is ORACLE-OWED (board B561);
-// T464 keeps today's production meaning and does not pick a winner.
-bool IsTheOracleOwedF11Conflict(const HotkeyBinding& b) {
-    return b.action == HotkeyAction::MusicVolumeUp && b.keyCode == irr::KEY_F11 &&
-           b.modifiers == ModifierFlags::None && b.mode == HotkeyMode::Player;
-}
 
 std::vector<HotkeyBinding> AllBindings(const HotkeyManager& mgr) {
     std::vector<HotkeyBinding> out;
@@ -1160,28 +1156,18 @@ TEST(HotkeyShippedFileTest, T464_TheShippedFileCarriesEveryDefaultBinding) {
     ASSERT_TRUE(mgr.loadFromFile(std::string(WILLEQ_REPO_ROOT) + "/config/hotkeys.json"));
     const std::vector<HotkeyBinding> production = AllBindings(mgr);
 
-    size_t exempted = 0;
     for (const auto& d : defaults) {
-        if (IsTheOracleOwedF11Conflict(d)) {
-            ++exempted;
-            continue;
-        }
         EXPECT_TRUE(Contains(production, d))
             << "config/hotkeys.json drops the default "
             << HotkeyManager::actionEnumToName(d.action) << " = "
             << HotkeyManager::bindingToString(d)
             << " -- production never reaches this key";
     }
-    EXPECT_EQ(exempted, 1u) << "the F11 exemption no longer matches a default; "
-                               "if B561 was settled, delete the exemption";
 
     // B562, the converse: the file must not bind anything the defaults do not.
     // A file-only binding is silently dead in the fallback (no-file) run, so
     // it is the same class of defect as a default the file drops.
     for (const auto& p : production) {
-        if (IsTheOracleOwedF11Conflict(p)) {
-            continue;
-        }
         EXPECT_TRUE(Contains(defaults, p))
             << "config/hotkeys.json binds "
             << HotkeyManager::actionEnumToName(p.action) << " = "
@@ -1192,23 +1178,73 @@ TEST(HotkeyShippedFileTest, T464_TheShippedFileCarriesEveryDefaultBinding) {
     mgr.resetToDefaults();
 }
 
-// Today's F11: ToggleAllUI, in the defaults AND in production. Pinned so a
-// change to it is a decision (board B561), not a side effect of a file edit.
-TEST(HotkeyShippedFileTest, T464_F11KeepsItsProductionMeaningPendingTheOracle) {
+// B582 (GitLab #49, Will's ruling 2026-09-18): the official keymap. F10 =
+// Toggle UI Display (T466, oracle Options > Keys > UI page); F11 = the
+// official netstat toggle, which fable does not have, so it is unbound; L =
+// the official Leadership window, post-Velious, ignored. The four volume
+// bindings (F10/F11/Shift+F10/Shift+F11) are gone -- the Options sliders and
+// /musicvolume /effectsvolume are the routes. The pre-B582 F11 double
+// binding (B561) is pinned as ABSENT on both tables, so it cannot return in
+// either table unnoticed.
+TEST(HotkeyShippedFileTest, B582_TheOfficialKeymapIsBound) {
+    auto& mgr = HotkeyManager::instance();
+    auto check = [&](const char* table) {
+        // F10 is ToggleAllUI in every mode.
+        for (auto mode : {HotkeyMode::Global, HotkeyMode::Player}) {
+            EXPECT_EQ(mgr.getAction(irr::KEY_F10, false, false, false, mode),
+                      std::optional<HotkeyAction>(HotkeyAction::ToggleAllUI))
+                << table << ": F10 is not ToggleAllUI in "
+                << (mode == HotkeyMode::Global ? "Global" : "Player") << " mode";
+        }
+        // F11 and L are bound to nothing.
+        EXPECT_FALSE(mgr.getAction(irr::KEY_F11, false, false, false, HotkeyMode::Player).has_value())
+            << table << ": F11 must be unbound (the official netstat toggle; fable has no netstat)";
+        EXPECT_FALSE(mgr.getAction(irr::KEY_KEY_L, false, false, false, HotkeyMode::Player).has_value())
+            << table << ": L must be unbound (the official Leadership window is post-Velious)";
+        // No key at all reaches any of the four volume actions.
+        for (auto a : {HotkeyAction::MusicVolumeUp, HotkeyAction::MusicVolumeDown,
+                       HotkeyAction::EffectsVolumeUp, HotkeyAction::EffectsVolumeDown}) {
+            EXPECT_TRUE(mgr.getBindingsForAction(a).empty())
+                << table << ": " << HotkeyManager::actionEnumToName(a)
+                << " is bound -- the official keymap has no volume key";
+        }
+    };
+
+    mgr.resetToDefaults();
+    check("defaults");
+    ASSERT_TRUE(mgr.loadFromFile(std::string(WILLEQ_REPO_ROOT) + "/config/hotkeys.json"));
+    check("config/hotkeys.json");
+    mgr.resetToDefaults();
+}
+
+// A B433 user copy saved BEFORE B582 (Options Keys page) still names F11 for
+// ToggleAllUI and carries the old volume rows: it must load without crashing
+// and every surviving binding in it must still load.
+TEST(HotkeyShippedFileTest, B582_APreB582UserFileStillLoads) {
+    const std::string path = ::testing::TempDir() + "b582_old_user_hotkeys.json";
+    {
+        std::ofstream out(path);
+        out << R"({"version":1,"bindings":{"global":{"Screenshot":"F12","ToggleAllUI":"F11"},)";
+        out << R"("player":{"CycleTargets":"Tab","MusicVolumeDown":"F10","MusicVolumeUp":"F11",)";
+        out << R"("EffectsVolumeDown":"Shift+F10","EffectsVolumeUp":"Shift+F11"}}})";
+    }
     auto& mgr = HotkeyManager::instance();
     mgr.resetToDefaults();
-    auto viaDefaults = mgr.getAction(irr::KEY_F11, false, false, false, HotkeyMode::Player);
-    ASSERT_TRUE(viaDefaults.has_value());
-    EXPECT_EQ(*viaDefaults, HotkeyAction::ToggleAllUI);
-    EXPECT_EQ(mgr.getBindingsForAction(HotkeyAction::MusicVolumeUp).size(), 1u)
-        << "the defaults still carry the conflicting MusicVolumeUp = F11";
-
-    ASSERT_TRUE(mgr.loadFromFile(std::string(WILLEQ_REPO_ROOT) + "/config/hotkeys.json"));
-    auto viaFile = mgr.getAction(irr::KEY_F11, false, false, false, HotkeyMode::Player);
-    ASSERT_TRUE(viaFile.has_value());
-    EXPECT_EQ(*viaFile, HotkeyAction::ToggleAllUI);
-    EXPECT_TRUE(mgr.getBindingsForAction(HotkeyAction::MusicVolumeUp).empty())
-        << "the shipped file yields ToggleAllUI for F11 and binds MusicVolumeUp nowhere";
+    ASSERT_TRUE(mgr.loadFromFile(path));
+    // The user's F11 choice is respected (it is a live action, not a retired
+    // one): F11 toggles the UI, and F10 -- which the old file gave to
+    // MusicVolumeDown -- reaches it, since a user file may bind volume keys.
+    EXPECT_EQ(mgr.getAction(irr::KEY_F11, false, false, false, HotkeyMode::Player),
+              std::optional<HotkeyAction>(HotkeyAction::ToggleAllUI));
+    EXPECT_EQ(mgr.getAction(irr::KEY_F10, false, false, false, HotkeyMode::Player),
+              std::optional<HotkeyAction>(HotkeyAction::MusicVolumeDown));
+    // The old volume rows: the actions still exist (Options sliders drive
+    // them), they simply have no default key; a user file may bind one.
+    EXPECT_EQ(mgr.getAction(irr::KEY_F11, false, true, false, HotkeyMode::Player),
+              std::optional<HotkeyAction>(HotkeyAction::EffectsVolumeUp));
+    // Every other binding in the file still loads.
+    EXPECT_EQ(mgr.getAction(irr::KEY_TAB, false, false, false, HotkeyMode::Player),
+              std::optional<HotkeyAction>(HotkeyAction::CycleTargets));
     mgr.resetToDefaults();
 }
 #endif
