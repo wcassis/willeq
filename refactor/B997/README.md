@@ -1,11 +1,17 @@
 # B997 — fewer draws per frame on the Pi: close the 10 MiB `gpu_unnamed_steady` guard (issue #317)
 
-**Class B (memory / frame-time).** **Status: steps 1–4 complete — the
-per-material client-array batch is built (gated off by default), the Pi A/B is
-measured, and the result is that the 10 MiB `gpu_unnamed_steady` guard is NOT
-closed on either zone (see the step-4 measured result + mechanism). The card is
-blocked for Will's ruling per the card's legitimate-result path.** Step 1
-baseline: `refactor/B997/BASELINE.md`. Step 2 (draw census) below.
+**Class B (memory / frame-time).** **Status: COMPLETE per Will's ruling (a)
+of 2026-10-10 (#317 note 3233) — the draw-count lever is at its ceiling; the
+10 MiB `gpu_unnamed_steady` guard stays RED on qeynos2 and gfaydark as a
+DOCUMENTED KNOWN CONDITION (same class as B988/#307), the bound is not
+re-scoped, no buffering change is allowed, and the real levers (varying stride,
+per-frame vertex volume) are B1013 #334.** The per-material client-array batch
+was built (gated off by default at step 3) and the Pi A/B is measured; the
+measured result + mechanism are the step-4. The batch's own ship decision came
+from the deterministic x86 door pixel A/B: **byte-identical on both zones →
+the default is now ON** (ON unless `EQT_SG_BATCH=0`). See the "Known condition
+(ruling a)" and A/B sections below. Step 1 baseline:
+`refactor/B997/BASELINE.md`. Step 2 (draw census) below.
 
 The card was re-scoped 2026-10-09 (after B972-FT / Will's ruling (d), MR !94):
 the lever is **draws per frame**, not buffering. Cost-sheet fact 5
@@ -218,12 +224,13 @@ unit-test construction + the Pi A/B. Zone-merge generation buckets are **not**
 reducible "for no visual reason" — the 65 535-vertex u16 index space is the
 constraint, not a spurious split.
 
-### The per-material client-array batch (built, gated off by default)
+### The per-material client-array batch (built; step 3 gated it off, the final
+leg flips the default ON)
 
-`EQT_SG_BATCH=1` (off by default) turns on a `SceneGraphBatch` that gathers
-this frame's PVS-visible doors by **full SMaterial equality** and emits one
-gathered client-array draw per material group at the SOLID-pre point, baking
-each door's world matrix into its `S3DVertex` and drawing with identity
+At step 3 `EQT_SG_BATCH=1` (off by default) turned on a `SceneGraphBatch` that
+gathers this frame's PVS-visible doors by **full SMaterial equality** and
+emits one gathered client-array draw per material group at the SOLID-pre point,
+baking each door's world matrix into its `S3DVertex` and drawing with identity
 `ETS_WORLD` (the zone-merge's exact primitive, `COpenGLES2Driver.cpp:1484`).
 The doors it takes are detached from the scene graph for the frame (the
 `clearDoors` grab/remove idiom) so `smgr->drawAll()`'s SOLID list never
@@ -319,12 +326,10 @@ pools are untouched, as the census said.
 scene_graph 41→27 and 122→~19 per frame, and pp jobs) but the **10 MiB
 `gpu_unnamed_steady` guard is not closed on either zone** — the guard measures
 the varying-BO *byte* pool, and a data-proportional gather BO does not shrink
-that pool by removing draws. This is the card's explicit legitimate-result
-path: the measured reduction does not reach 10 MiB, so the residual is
-reported here with its mechanism and the per-change table, and the card is
-blocked for Will's ruling rather than reaching for a buffering change. The 10
-MiB guard row stays RED as the known condition. Buffer-type changes remain out
-of scope per the card.
+that pool by removing draws. Will's ruling (a) of 2026-10-10 (#317 note 3233)
+confirmed this is the terminal state of the card: the guard stays RED as a
+documented known condition (below). Buffer-type changes remain out of scope
+per the card.
 
 Evidence: `~/kb-evidence/b997-draw-count/` — `pisgbatch-sg0-20261010T003000Z/`
 (SG=0 baseline), `pisgbatch-sg1-20261010T004903Z/` (SG=1 batch on), each with
@@ -332,3 +337,110 @@ Evidence: `~/kb-evidence/b997-draw-count/` — `pisgbatch-sg0-20261010T003000Z/`
 `[drawsite]`) + `gem_owners.tsv` (the varying-BO pool). x86 A/B:
 `x86sgbatch-onfixed-20261009T234519Z/` (q2) + `x86sgbatch-gd-20261009T2358Z/`
 (gd).
+
+## Known condition (ruling a) — the 10 MiB `gpu_unnamed_steady` guard stays RED
+
+**Will's ruling, option (a), 2026-10-10 (#317 note 3233):** the draw-count
+lever is at its ceiling. The 10 MiB `gpu_unnamed_steady` crowd-tour guard
+stays **RED on qeynos2 and gfaydark as a documented known condition** — the
+same class as the B988/#307 known condition (a guard row that reads red on
+the crowd tours by a measured, named mechanism, while the card that owned the
+residual closes on its own legitimate-result path). The bound is **not
+re-scoped** and **no buffering change is allowed**; the real levers — varying
+stride and per-frame vertex volume — are **B1013 #334**.
+
+| zone | SG=0 (MiB) | SG=1 (MiB) | guard (<10 MiB) |
+|---|---|---|---|
+| qeynos2 | 17.44 | 17.16 | RED / RED |
+| gfaydark | 17.71 | 18.84 | RED / RED |
+
+(There is no standalone "known conditions" list in the tree where B988/#307 is
+registered: B988/#307 is recorded as its own ruling entry in
+`docs/decisions.md` (2026-10-05) and by the B972/B972-FT READMEs, so B997 is
+recorded the same way — this section, `docs/decisions.md` (2026-10-10 entry)
+and the BOARD entry. Nothing was invented to fit a list that does not exist.)
+
+**Mechanism (why the draw cut cannot close the guard):** cost-sheet fact 5
+(`docs/reference/lima_cost_sheet.md`) says `lima_update_varying` allocates a
+fresh varying BO per draw — but the Pi A/B measured that the BO is sized to
+the **vertex payload a draw uploads** (data-proportional, mean 8–12 KiB in the
+q2 steady pool), not a flat ~4 KiB. Collapsing K same-material doors into one
+gather removes K small door draws and adds one gather whose varying BO costs
+roughly their total, so the BO *count* falls (1545→1524) while the BO *bytes*
+are conserved. The draw count and the per-draw fixed cost (pp jobs,
+stream-slot churn) do fall; the byte pool does not.
+
+The scene-graph batch itself (`EQT_SG_BATCH`) is a separate, smaller question
+than the guard: it cuts draws with zero memory change, so it ships on its own
+pixel-identity evidence, not the guard. That evidence is the deterministic
+x86 door pixel A/B below (the live-client frame diff is not a channel — 0/18
+frames identical across two baseline legs, the crowd is not frame-locked).
+
+## The deterministic x86 door pixel A/B for `EQT_SG_BATCH` (final leg, step 2)
+
+The gate for shipping the batch ON: render the zone's doors through the
+production door path at a fixed camera with fixed deterministic lighting,
+once with `EQT_SG_BATCH=0` and once with `=1`, and the two frames must be
+**byte-identical**.
+
+- Instrument: `--sg-batch-ab` in `gles2_zone_benchmark`
+  (`tools/hwcaps/zone_bench_door_batch_ab.{h,cpp}`); one leg per process, the
+  leg selected by the `EQT_SG_BATCH` env var the production gate reads
+  (`renderer_zone_lifecycle.cpp`). Pinned by the ctest
+  `test_sg_batch_door_pixel_ab` (`tests/cmake/zone_integration.cmake`), which
+  byte-compares the two PNGs and fails on any difference.
+- Determinism: no server, no NPCs, `update(0.0)` (no animation clock); the
+  doors-only population (nothing else in the scene graph), a fixed camera
+  aimed at the fixture's central cluster (named in the run log), fixed
+  lighting + fog zeroed (the SOLID shader's fog would add a per-run state
+  variable). Doors are unlit (`Lighting=false` → `vColor = aColor`), so the
+  output pixels are a function of texture + transform only.
+- Door population: the committed fixtures `refactor/B997/data/doors_<zone>.txt`
+  — the eqemu `doors` table rows (version 0, `CHAR_LENGTH(name) > 3`) the
+  server serialises into `SpawnDoor`/`Door_Struct`, sourced from the lane-2
+  mariadb: **qeynos2 = 70, gfaydark = 102** (the live client's `Received {}
+  doors` log line reads 60/79 — the delta is the PVS/hidden split; the A/B
+  registers the full fixture and the PVS gate draws the in-graph subset,
+  exactly as production does).
+- Proof lines per leg: `doors_in_graph` (the drawn population, must match
+  between legs and be ≥ 2), `batched_nodes` / `batch_draws` (leg B must have
+  actually batched — a vacuous 0-batch match is not a pass).
+
+**MEASURED (2026-10-10, this head): BYTE-IDENTICAL on both zones.**
+
+| zone | in-graph doors | leg A (per-node `drawAll`) | leg B (batch) | PNG compare |
+|---|---|---|---|---|
+| qeynos2 | 60 | 60 per-node client draws | **59 batched → 19 draws** | byte-identical |
+| gfaydark | 78 | 78 per-node client draws | **77 batched → 4 draws** | byte-identical |
+
+Frame content is non-vacuous (the PNGs are not both clear-colour): qeynos2
+26,701 / 307,200 non-clear pixels (door textures), gfaydark 3,710 (a
+further-out camera on that fixture's spread). Fixed pose: the camera is the
+fixture's centroid + (45, 0, 25) EQ, looking at the centroid; 60° FOV, near 1,
+far 300; the same pose is both the manual P/V matrices and a real active
+camera node (see below). Leg B's one door not batched per zone is the
+per-node fallback for a door with a non-S3DVertex or u16-overflow buffer —
+the same by-construction exclusion production has.
+
+Two harness facts that matter for the verdict (both fixed, documented here
+because a future re-run must reproduce them):
+
+1. **The batch must draw at the SOLID-pre point INSIDE `drawAll()`**, at the
+   exact point production's `RenderPassTimer::OnRenderPassPreRender` hook fires
+   (after the active camera sets the 3D P/V, before the SOLID pass). The
+   harness installs a local `ILightManager` hook doing the same. Drawing the
+   batch BEFORE `drawAll()` with the manual matrices is NOT pixel-equivalent:
+   `CSceneManager::drawAll()` resets every transform to identity and re-derives
+   P/V from the active camera, so a pre-`drawAll` batch and the per-node SOLID
+   pass would see different projections.
+2. **The per-node leg needs a real active camera node**, for the same reason —
+   `drawAll()`'s SOLID pass projects through it. With no active camera the
+   baseline leg projects with an identity view and renders a blank frame (the
+   first A/B runs caught exactly this: leg A 100% clear, leg B doors — a
+   false "not identical" from a harness defect, not a batch defect).
+
+Decision per the card: **byte-identical → the default flips to ON** (batch on
+unless `EQT_SG_BATCH=0`). The env read site
+(`src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp`), this
+README and `docs/decisions.md` (2026-10-10 entry) record the flip; the ctest
+above keeps it byte-pinned on every CI run.

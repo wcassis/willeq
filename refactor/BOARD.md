@@ -960,13 +960,21 @@ it without taking that measurement first.
   pool it removes (q2 draw3d:client 1545→1524 BOs, bytes ~flat). The step-2
   linear reachability model (flat ~4 KiB/draw) is not borne out; the measured
   D_sg is the distinct-**material** count (14/4), not the distinct-*model*
-  count (5/3) the census assumed. **BLOCKED for Will's ruling** per the card's
-  legitimate-result path: the measured cut does not reach 10 MiB, the
-  residual + mechanism + per-change table are reported in
-  `refactor/B997/README.md` (step 4), and no buffering change is attempted
-  (out of scope). No golden/budget/baseline moved. Evidence:
-  `~/kb-evidence/b997-draw-count/pisgbatch-sg0-20261010T003000Z/` +
-  `pisgbatch-sg1-20261010T004903Z/`.
+  count (5/3) the census assumed. **RULED by Will 2026-10-10 (#317 note 3233),
+  option (a):** the draw-count lever is at its ceiling — the 10 MiB
+  `gpu_unnamed_steady` crowd-tour guard **stays RED on qeynos2 and gfaydark as
+  a documented known condition** (same class as B988/#307), the bound is NOT
+  re-scoped and no buffering change is allowed; the real levers (varying
+  stride, per-frame vertex volume) are B1013 #334. The residual + mechanism +
+  per-change table stand in `refactor/B997/README.md` (step 4 + the
+  "Known condition (ruling a)" section). The `EQT_SG_BATCH` batch's ship
+  decision is made by the DETERMINISTIC x86 door pixel A/B (ctest
+  `test_sg_batch_door_pixel_ab`; the live-client frame diff is not a channel —
+  0/18 frames identical across two baseline legs): **MEASURED byte-identical
+  on both zones (q2 60 in-graph doors, 59→19 draws; gd 78, 77→4), so the
+  default flips ON** (batch on unless `EQT_SG_BATCH=0`). No golden/budget/
+  baseline moved. Evidence: `~/kb-evidence/b997-draw-count/pisgbatch-sg0-20261010T003000Z/` +
+  `pisgbatch-sg1-20261010T004903Z/` + the pixel A/B (this head).
 - **B998** (B, frame-time) → issue #325. **BLOCKED with measured ceiling
   (2026-10-07)** — no in-scope fix; see `refactor/B998/README.md` for the
   full A/B. The gfaydark low-geometry 31 fps floor (2 vsyncs) is a vsync
