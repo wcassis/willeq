@@ -11045,14 +11045,21 @@ B712–B719 unused.
   change leaves stale module state without `resetForZoneChange()`.
   `WriteOnlyFields` covers the first half. Found by T458.
 
-- **B602** (B, unreached) **EntityManager's query and mutation API with no → issue #186
+- ~~**B602** (B, unreached) **EntityManager's query and mutation API with no → issue #186
   production caller.** `findEntityByExactName`, `findPetByOwner`,
   `forEachEntity`, `forEachEntityMutable`, `getAllPets`,
   `getEntitiesInRange`, `getNearestCorpse`, `getPetOwnerId`, `markAsCorpse`,
   `updateEntityEquipment`, `updateEntityHP` -- 11 rows, all reached only from
   `tests/test_state_modules.cpp`. T362 (B070) already made
   `findEntityByName` the one name resolver; these are the rest of the
-  surface. Found by T458.
+  surface. Found by T458. **STRUCK (2026-10-11, `task/kb-b602-entity-manager-zero-callers`,
+  `refactor/B602/README.md`):** all 11 deleted with their `test_state_modules.cpp`
+  tests (the only net), plus `fireEntityStatsChangedEvent` (its only caller was the
+  deleted `updateEntityHP`; the live route is the `EntityStatsChanged` bridge
+  publish in `ZoneProcessMobHealth`). The B468 live routes: HP/equipment/corpse
+  are written by `SyncEntityToGameState` + `ApplyAppearanceToGameState`, not by
+  these setters. `ZeroCallers` went RED with 11 STALE rows and GREEN at 309
+  tests-only.~~
 
 - **B603** (B, unreached) **Gameplay-manager control API with no production → issue #187
   caller.** `CombatManager::EnableAutoLoot/GetHighestPriorityTarget/

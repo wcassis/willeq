@@ -53,44 +53,6 @@ bool EntityManager::updateEntityPosition(uint16_t spawnId, float x, float y, flo
     return true;
 }
 
-bool EntityManager::updateEntityHP(uint16_t spawnId, uint8_t hpPercent) {
-    auto it = m_entities.find(spawnId);
-    if (it == m_entities.end()) {
-        return false;
-    }
-
-    Entity& entity = it->second;
-    if (entity.hpPercent != hpPercent) {
-        entity.hpPercent = hpPercent;
-        fireEntityStatsChangedEvent(entity);
-    }
-    return true;
-}
-
-bool EntityManager::updateEntityEquipment(uint16_t spawnId, int slot, uint32_t materialId, uint32_t tint) {
-    if (slot < 0 || slot >= 9) {
-        return false;
-    }
-
-    auto it = m_entities.find(spawnId);
-    if (it == m_entities.end()) {
-        return false;
-    }
-
-    Entity& entity = it->second;
-    entity.equipment[slot] = materialId;
-    entity.equipmentTint[slot] = tint;
-    // Could fire an EntityAppearanceChanged event here
-    return true;
-}
-
-void EntityManager::markAsCorpse(uint16_t spawnId) {
-    auto it = m_entities.find(spawnId);
-    if (it != m_entities.end()) {
-        it->second.isCorpse = true;
-    }
-}
-
 void EntityManager::clear() {
     // Fire despawn events for all entities
     for (const auto& pair : m_entities) {
@@ -215,37 +177,11 @@ const Entity* EntityManager::findEntityByNameRanked(const std::string& name,
     return best;
 }
 
-const Entity* EntityManager::findEntityByExactName(const std::string& name) const {
-    for (const auto& pair : m_entities) {
-        if (pair.second.name == name) {
-            return &pair.second;
-        }
-    }
-    return nullptr;
-}
-
 bool EntityManager::hasEntity(uint16_t spawnId) const {
     return m_entities.find(spawnId) != m_entities.end();
 }
 
 // ========== Spatial Queries ==========
-
-std::vector<uint16_t> EntityManager::getEntitiesInRange(float x, float y, float z, float range) const {
-    std::vector<uint16_t> result;
-    float rangeSq = range * range;
-
-    for (const auto& pair : m_entities) {
-        const Entity& entity = pair.second;
-        float dx = entity.x - x;
-        float dy = entity.y - y;
-        float dz = entity.z - z;
-        float distSq = dx * dx + dy * dy + dz * dz;
-        if (distSq <= rangeSq) {
-            result.push_back(pair.first);
-        }
-    }
-    return result;
-}
 
 const Entity* EntityManager::getNearestEntity(float x, float y, float z,
                                               std::function<bool(const Entity&)> filter) const {
@@ -284,58 +220,11 @@ const Entity* EntityManager::getNearestPlayer(float x, float y, float z, uint16_
     });
 }
 
-const Entity* EntityManager::getNearestCorpse(float x, float y, float z) const {
-    return getNearestEntity(x, y, z, [](const Entity& e) {
-        return e.isAnyCorpse();
-    });
-}
-
 // ========== Pet Queries ==========
 
 bool EntityManager::isPet(uint16_t spawnId) const {
     const Entity* entity = getEntity(spawnId);
     return entity && entity->isPet != 0;
-}
-
-uint32_t EntityManager::getPetOwnerId(uint16_t spawnId) const {
-    const Entity* entity = getEntity(spawnId);
-    if (entity && entity->isPet != 0) {
-        return entity->petOwnerId;
-    }
-    return 0;
-}
-
-uint16_t EntityManager::findPetByOwner(uint16_t ownerSpawnId) const {
-    for (const auto& pair : m_entities) {
-        if (pair.second.isPet != 0 && pair.second.petOwnerId == ownerSpawnId) {
-            return pair.first;
-        }
-    }
-    return 0;
-}
-
-std::vector<uint16_t> EntityManager::getAllPets() const {
-    std::vector<uint16_t> result;
-    for (const auto& pair : m_entities) {
-        if (pair.second.isPet != 0) {
-            result.push_back(pair.first);
-        }
-    }
-    return result;
-}
-
-// ========== Iteration ==========
-
-void EntityManager::forEachEntity(std::function<void(const Entity&)> callback) const {
-    for (const auto& pair : m_entities) {
-        callback(pair.second);
-    }
-}
-
-void EntityManager::forEachEntityMutable(std::function<void(Entity&)> callback) {
-    for (auto& pair : m_entities) {
-        callback(pair.second);
-    }
 }
 
 // ========== Event Firing ==========
@@ -381,17 +270,6 @@ void EntityManager::fireEntityMovedEvent(const Entity& entity) {
         data.dz = entity.deltaZ;
         data.animation = entity.animation;
         m_eventBus->publish(GameEventType::EntityMoved, data);
-    }
-}
-
-void EntityManager::fireEntityStatsChangedEvent(const Entity& entity) {
-    if (m_eventBus) {
-        EntityStatsChangedData data;
-        data.spawnId = entity.spawnId;
-        data.hpPercent = entity.hpPercent;
-        data.curMana = entity.curMana;
-        data.maxMana = entity.maxMana;
-        m_eventBus->publish(GameEventType::EntityStatsChanged, data);
     }
 }
 

@@ -136,58 +136,6 @@ TEST(EntityManagerTest, UpdateEntityPositionNotFoundReturnsFalse) {
     EXPECT_FALSE(mgr.updateEntityPosition(404, 0, 0, 0, 0));
 }
 
-TEST(EntityManagerTest, UpdateEntityHPFiresOnlyWhenChanged) {
-    EntityManager mgr;
-    EventBus bus;
-    mgr.setEventBus(&bus);
-    mgr.addEntity(makeEntity(20));
-
-    int statsChangedCount = 0;
-    bus.subscribe(GameEventType::EntityStatsChanged, [&](const GameEvent&) { ++statsChangedCount; });
-
-    // Default hpPercent is 100; setting to 100 again should not fire.
-    EXPECT_TRUE(mgr.updateEntityHP(20, 100));
-    EXPECT_EQ(statsChangedCount, 0);
-
-    EXPECT_TRUE(mgr.updateEntityHP(20, 50));
-    EXPECT_EQ(statsChangedCount, 1);
-
-    // Same value again -- no additional event.
-    EXPECT_TRUE(mgr.updateEntityHP(20, 50));
-    EXPECT_EQ(statsChangedCount, 1);
-}
-
-TEST(EntityManagerTest, UpdateEntityHPNotFoundReturnsFalse) {
-    EntityManager mgr;
-    EXPECT_FALSE(mgr.updateEntityHP(404, 50));
-}
-
-TEST(EntityManagerTest, UpdateEntityEquipmentBoundsChecked) {
-    EntityManager mgr;
-    mgr.addEntity(makeEntity(1));
-    EXPECT_FALSE(mgr.updateEntityEquipment(1, -1, 5, 0));
-    EXPECT_FALSE(mgr.updateEntityEquipment(1, 9, 5, 0));
-    EXPECT_TRUE(mgr.updateEntityEquipment(1, 0, 5, 0));
-    EXPECT_TRUE(mgr.updateEntityEquipment(1, 8, 5, 0)); // max valid index
-}
-
-TEST(EntityManagerTest, UpdateEntityEquipmentNotFoundReturnsFalse) {
-    EntityManager mgr;
-    EXPECT_FALSE(mgr.updateEntityEquipment(404, 0, 5, 0));
-}
-
-TEST(EntityManagerTest, MarkAsCorpseSetsFlag) {
-    EntityManager mgr;
-    mgr.addEntity(makeEntity(1));
-    mgr.markAsCorpse(1);
-    EXPECT_TRUE(mgr.getEntity(1)->isCorpse);
-}
-
-TEST(EntityManagerTest, MarkAsCorpseNotFoundIsNoOp) {
-    EntityManager mgr;
-    EXPECT_NO_THROW(mgr.markAsCorpse(404));
-}
-
 TEST(EntityManagerTest, ClearFiresDespawnForAllAndEmptiesMap) {
     EntityManager mgr;
     EventBus bus;
@@ -383,31 +331,6 @@ TEST(EntityManagerTest, FindEntityByNameTiesResolveToLowestSpawnId) {
     EXPECT_EQ(found->spawnId, 15);
 }
 
-TEST(EntityManagerTest, FindEntityByExactNameRequiresFullMatch) {
-    EntityManager mgr;
-    mgr.addEntity(makeEntity(1, "Sir Lucan"));
-
-    EXPECT_NE(mgr.findEntityByExactName("Sir Lucan"), nullptr);
-    EXPECT_EQ(mgr.findEntityByExactName("sir lucan"), nullptr); // case-sensitive
-    EXPECT_EQ(mgr.findEntityByExactName("Sir"), nullptr);       // partial no match
-}
-
-TEST(EntityManagerTest, GetEntitiesInRangeFiltersByDistance) {
-    EntityManager mgr;
-    mgr.addEntity(makeEntity(1, "Near", 0, 0, 0));
-    mgr.addEntity(makeEntity(2, "Far", 100, 0, 0));
-
-    auto inRange = mgr.getEntitiesInRange(0, 0, 0, 10.0f);
-    ASSERT_EQ(inRange.size(), 1u);
-    EXPECT_EQ(inRange[0], 1u);
-}
-
-TEST(EntityManagerTest, GetEntitiesInRangeEmptyWhenNoneMatch) {
-    EntityManager mgr;
-    mgr.addEntity(makeEntity(1, "Far", 1000, 0, 0));
-    EXPECT_TRUE(mgr.getEntitiesInRange(0, 0, 0, 1.0f).empty());
-}
-
 TEST(EntityManagerTest, GetNearestEntityWithFilter) {
     EntityManager mgr;
     mgr.addEntity(makeEntity(1, "Close", 1, 0, 0));
@@ -455,64 +378,6 @@ TEST(EntityManagerTest, GetNearestPlayerExcludesSelfAndCorpses) {
     const Entity* nearest = mgr.getNearestPlayer(0, 0, 0, /*excludeSpawnId=*/1);
     ASSERT_NE(nearest, nullptr);
     EXPECT_EQ(nearest->spawnId, 2u);
-}
-
-TEST(EntityManagerTest, GetNearestCorpseFindsOnlyCorpses) {
-    EntityManager mgr;
-    Entity npc = makeEntity(1, "Alive", 1, 0, 0);
-    npc.npcType = 1;
-    mgr.addEntity(npc);
-
-    Entity corpse = makeEntity(2, "Dead", 2, 0, 0);
-    corpse.npcType = 2; // pc_corpse
-    mgr.addEntity(corpse);
-
-    const Entity* nearest = mgr.getNearestCorpse(0, 0, 0);
-    ASSERT_NE(nearest, nullptr);
-    EXPECT_EQ(nearest->spawnId, 2u);
-}
-
-TEST(EntityManagerTest, PetQueriesTrackOwnerRelationship) {
-    EntityManager mgr;
-    Entity pet = makeEntity(50, "Pet");
-    pet.isPet = 1;
-    pet.petOwnerId = 1;
-    mgr.addEntity(pet);
-    mgr.addEntity(makeEntity(1, "Owner"));
-
-    EXPECT_TRUE(mgr.isPet(50));
-    EXPECT_FALSE(mgr.isPet(1));
-    EXPECT_EQ(mgr.getPetOwnerId(50), 1u);
-    EXPECT_EQ(mgr.getPetOwnerId(1), 0u); // not a pet -> 0
-    EXPECT_EQ(mgr.findPetByOwner(1), 50u);
-    EXPECT_EQ(mgr.findPetByOwner(999), 0u); // no pet for that owner
-
-    auto pets = mgr.getAllPets();
-    ASSERT_EQ(pets.size(), 1u);
-    EXPECT_EQ(pets[0], 50u);
-}
-
-TEST(EntityManagerTest, IsPetAbsentEntityReturnsFalse) {
-    EntityManager mgr;
-    EXPECT_FALSE(mgr.isPet(404));
-    EXPECT_EQ(mgr.getPetOwnerId(404), 0u);
-}
-
-TEST(EntityManagerTest, ForEachEntityVisitsAll) {
-    EntityManager mgr;
-    mgr.addEntity(makeEntity(1));
-    mgr.addEntity(makeEntity(2));
-
-    int visited = 0;
-    mgr.forEachEntity([&](const Entity&) { ++visited; });
-    EXPECT_EQ(visited, 2);
-}
-
-TEST(EntityManagerTest, ForEachEntityMutableAllowsModification) {
-    EntityManager mgr;
-    mgr.addEntity(makeEntity(1));
-    mgr.forEachEntityMutable([](Entity& e) { e.hpPercent = 42; });
-    EXPECT_EQ(mgr.getEntity(1)->hpPercent, 42);
 }
 
 // =============================================================================
