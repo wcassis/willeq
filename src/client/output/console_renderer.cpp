@@ -46,7 +46,6 @@ bool ConsoleRenderer::initialize(const RendererConfig& config) {
     m_verbose = config.verbose;
     m_showTimestamps = config.showTimestamps;
     m_colorOutput = config.colorOutput;
-    m_startTime = std::chrono::steady_clock::now();
     m_running = true;
 
     std::cout << "\n=== WillEQ Console Mode ===" << std::endl;
@@ -293,7 +292,8 @@ void ConsoleRenderer::setPlayerPosition(float x, float y, float z, float heading
     m_playerX = x;
     m_playerY = y;
     m_playerZ = z;
-    m_playerHeading = heading;
+    // B345 deleted m_playerHeading (write-only); the interface parameter stays.
+    (void)heading;
 }
 
 void ConsoleRenderer::setCharacterInfo(const std::wstring& name, int level, const std::wstring& className) {
@@ -309,8 +309,11 @@ void ConsoleRenderer::updateCharacterStats(uint32_t curHp, uint32_t maxHp,
     m_maxHp = maxHp;
     m_curMana = curMana;
     m_maxMana = maxMana;
-    m_curEnd = curEnd;
-    m_maxEnd = maxEnd;
+    // B345 deleted m_curEnd and m_maxEnd (both write-only; the status print
+    // shows HP and Mana but not END). The endurance parameters stay on the
+    // base signature and are ignored here.
+    (void)curEnd;
+    (void)maxEnd;
 }
 
 void ConsoleRenderer::setCurrentTarget(uint16_t spawnId, const std::string& name,

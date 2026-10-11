@@ -242,7 +242,7 @@ void SkillManager::stopFishing() {
 
 void SkillManager::initialize(uint8_t player_class, uint8_t player_race, uint8_t player_level) {
     m_player_class = player_class;
-    m_player_race = player_race;
+    // B344 deleted m_player_race (write-only); player_race stays in the log line.
     m_player_level = player_level;
 
     loadClassSkillCaps(player_class, player_level);

@@ -283,7 +283,8 @@ private:
 	// Phase 4: Duel state
 	bool m_is_dueling = false;
 	bool m_has_pending_duel = false;
-	uint32_t m_duel_target_id = 0;
+	// B344 deleted m_duel_target_id: /duel recorded it, the reply path
+	// never consulted it.
 	uint32_t m_duel_initiator_id = 0;
 	EQT::Resurrect_Struct m_pending_rezz;
 

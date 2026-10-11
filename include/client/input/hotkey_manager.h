@@ -219,10 +219,10 @@ struct HotkeyBinding {
 
 /**
  * ConflictInfo - Information about conflicting hotkey bindings.
+ * B345 deleted binding1/binding2 (the report never formats them); the
+ * message string carries both actions and both bindings.
  */
 struct ConflictInfo {
-    HotkeyBinding binding1;
-    HotkeyBinding binding2;
     std::string message;
 };
 

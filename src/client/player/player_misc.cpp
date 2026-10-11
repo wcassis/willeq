@@ -417,7 +417,6 @@ void eqt::player::PlayerComponent::SendDuelRequest(uint32_t target_id)
 	if (ctx_.zone_connection && ctx_.game_state.world().isZoneConnected()) {
 		ctx_.net.SafeQueueZone(packet);
 		m_has_pending_duel = true;
-		m_duel_target_id = target_id;
 		LOG_INFO(MOD_MAIN, "Sent duel request to target ID: {}", target_id);
 		ctx_.out.System("You have challenged someone to a duel.");
 	}
@@ -437,7 +436,6 @@ void eqt::player::PlayerComponent::SendDuelAccept(uint32_t target_id)
 		ctx_.net.SafeQueueZone(packet);
 		m_is_dueling = true;
 		m_has_pending_duel = false;
-		m_duel_target_id = target_id;
 		LOG_INFO(MOD_MAIN, "Accepted duel from: {}", target_id);
 		ctx_.out.System("You have accepted the duel!");
 	}

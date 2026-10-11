@@ -638,7 +638,7 @@ void OverlaysComponent::clearCurrentTarget() {
     currentTargetName_.clear();
     currentTargetHpPercent_ = 100;
     currentTargetLevel_ = 0;
-    currentTargetInfo_ = TargetInfo();  // Reset to defaults
+    // B341 deleted currentTargetInfo_ (write-only); its reset goes with it.
     // Disable animation debugging
     if (ctx_.entityRenderer) {
         ctx_.entityRenderer->setDebugTargetId(0);
@@ -647,7 +647,9 @@ void OverlaysComponent::clearCurrentTarget() {
 
 void OverlaysComponent::setCurrentTargetInfo(const TargetInfo& info) {
     if (owner_.isLoading()) return;
-    currentTargetInfo_ = info;
+    // B341 deleted currentTargetInfo_ (write-only); the extended fields
+    // (race, class, equipment, position, ...) never reach a draw site, so the
+    // body maintains only the legacy fields the outline/name-plate/ring read.
     // Also update the legacy fields for backward compatibility
     currentTargetId_ = info.spawnId;
     currentTargetName_ = info.name;

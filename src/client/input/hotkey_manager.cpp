@@ -937,9 +937,7 @@ std::vector<ConflictInfo> HotkeyManager::detectConflicts() const {
 
                 if (sameMode || globalConflict) {
                     ConflictInfo info;
-                    info.binding1 = b1;
-                    info.binding2 = b2;
-
+                    // B345: binding1/binding2 went with their report fields.
                     std::string modeInfo;
                     if (sameMode) {
                         modeInfo = " in " + modeEnumToName(b1.mode) + " mode";
