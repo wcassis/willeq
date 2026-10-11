@@ -82,7 +82,7 @@ ENDIF()
 # on willeq_core and flows in through the link); the CORE probe carries
 # the define explicitly, the state willeq_core's own sources are in. Each
 # reports sizeof(ZoneMeshBuilder) and the two must agree. Before the fix
-# the consumer probe is 16 bytes smaller and the test is RED.
+# the consumer probe is 8 bytes smaller and the test is RED.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_zone_geometry_atlas_layout
         test_zone_geometry_atlas_layout.cpp

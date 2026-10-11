@@ -4,9 +4,10 @@
 // willeq_core compiles zone_geometry.cpp with EQT_HAS_TEXTURE_ATLAS as a
 // PRIVATE target definition, and the class's member layout in
 // include/client/graphics/eq/zone_geometry.h depends on it (four #ifdef
-// blocks: buildAtlasedMesh, setAtlasShaderMaterialTypes and the two
-// shaderMaterialAtlas* members). A TU that links willeq_core WITHOUT the
-// define then sees a 16-byte-smaller class while calling the core's
+// blocks; only the two data-member blocks -- the shaderMaterialAtlas*
+// members -- change sizeof, the forward declaration and the inline-method
+// block do not): a TU that links willeq_core WITHOUT the
+// define then sees an 8-byte-smaller class while calling the core's
 // constructor, which writes the two atlas members: the ASan
 // stack-buffer-overflow B944 measured in ZoneMeshBuilder::ZoneMeshBuilder,
 // and the same violation by construction in test_placed_object_meshes.cpp

@@ -4,7 +4,7 @@
 // This TU has NO explicit define of its own: it sees zone_geometry.h in the
 // state a bare consumer of willeq_core's public interface sees it. Before
 // the fix that means WITHOUT EQT_HAS_TEXTURE_ATLAS (the define was PRIVATE
-// to willeq_core), so this half is 16 bytes smaller than the
+// to willeq_core), so this half is 8 bytes smaller than the
 // with-probe and the test is RED -- the same smaller object that
 // test_placed_object_meshes.cpp constructs and that B944's own test hit the
 // ASan stack-buffer-overflow on. After the fix the define is PUBLIC on

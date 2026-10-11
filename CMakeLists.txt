@@ -918,8 +918,10 @@ SET(ALL_CORE_SOURCES
 # Create a static library for the core client code (used by both executable and tests)
 ADD_LIBRARY(willeq_core STATIC ${ALL_CORE_SOURCES})
 # B950 (GitLab #268): PUBLIC, not PRIVATE. ZoneMeshBuilder's member layout in
-# zone_geometry.h depends on EQT_HAS_TEXTURE_ATLAS (four #ifdef blocks,
-# 16 bytes on x86-64), so every TU that constructs one must see the same
+# zone_geometry.h depends on EQT_HAS_TEXTURE_ATLAS (four #ifdef blocks in the
+# header; only the two data-member blocks -- the shaderMaterialAtlas*
+# members -- change sizeof, 8 bytes total on x86-64), so
+# every TU that constructs one must see the same
 # layout the core's constructor was generated against. PRIVATE left every
 # consumer of willeq_core one sizeof smaller (B944's ASan stack-buffer-
 # overflow; test_placed_object_meshes by construction). No target links

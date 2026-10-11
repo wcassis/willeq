@@ -10,9 +10,9 @@ behaviour win; a two-line visibility change is the root fix.
 ## Why (a) is safe: no configuration builds `willeq_core` without the atlas
 
 The atlas TUs are inside `willeq_core` unconditionally whenever graphics is on
-— `src/client/graphics/eq/zone_geometry_atlased.cpp` and
-`src/client/graphics/texture_atlas.cpp` are in `GRAPHICS_SOURCES`
-(CMakeLists.txt:547, inside the `IF(EQT_GRAPHICS)` at :545), and
+— `src/client/graphics/eq/zone_geometry_atlased.cpp` (CMakeLists.txt:567) and
+`src/client/graphics/texture_atlas.cpp` (:720) are in `GRAPHICS_SOURCES`
+(:547, inside the `IF(EQT_GRAPHICS)` at :545), and
 `EQT_GRAPHICS=ON` is mandatory whenever a patched Irrlicht is found
 (the configure gate at CMakeLists.txt:150 fails the build without
 `-DEQT_GLES2=ON` and the local Irrlicht). There is no configure where
@@ -27,9 +27,9 @@ The atlas TUs are inside `willeq_core` unconditionally whenever graphics is on
   consumer the issue names, which constructed a `ZoneMeshBuilder` without the
   define — now gets it through the link. No change needed at its CMake site.
 - The three gles2 tools (`gles2_zone_benchmark`, `gles2_shader_diagnostic`,
-  `gles2_composite_audit`, CMakeLists.txt:2314/2491/2616 pre-fix) **keep**
+  `gles2_composite_audit`, CMakeLists.txt:2328/:2505/:2630) **keep**
   their PRIVATE copy: they do NOT link `willeq_core` (they link
-  `${ZONE_BENCH_LIBS}`, CMakeLists.txt:2338) and compile
+  `${ZONE_BENCH_LIBS}`, CMakeLists.txt:2352) and compile
   `zone_geometry.cpp` / `zone_geometry_atlased.cpp` / `texture_atlas.cpp`
   themselves — for them the PRIVATE define is still the only one, and the
   acceptance criterion deletes only copies that the PUBLIC define makes
@@ -77,7 +77,7 @@ define is not PUBLIC on willeq_core (pre-B950 shape). ...
   1 FAILED TEST
 ```
 
-The 8-byte gap per `irr::s32` member × 2 = 16 bytes [measured: 280-272].
+2 × `irr::s32` members = 8 bytes total [measured: 280-272].
 
 ## GREEN (post-fix)
 
