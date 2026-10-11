@@ -11921,14 +11921,25 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   `SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart`. Of the affected codes
   only CLM/CLF, KAM/KAF, SSN, STG and IVM have a `race_models` row.
 
-- **B733** (A, *unconfirmed*) **The race model builder selects parts by NAME, so → issue #70
-  a listed part with another name is still dropped.** `RaceModelLoader` keeps
-  `{CODE}_DMSPRITEDEF` + `{CODE}HE00_DMSPRITEDEF` whenever either exists
-  (`loadModelFromZoneChr`, `loadModelFromCachedChr` in `model_loading_chr.cpp`,
-  `searchAndBuildModel` in `model_loading_search.cpp`, `model_loading.cpp`,
-  `variant_loading_animation.cpp`). The character now carries SSN's head
-  SNNHE00_DMSPRITEDEF and SRG's cape, but that selection would drop both.
-  Confirm with a model-build test for race 146 (Spectral Sarnak). Found by T479.
+- ~~**B733**~~ **CLOSED on `task/kb-b733-race-model-parts` (issue #70).** CONFIRMED
+  Class A: race 146 SSN's skeleton `SSN_HS_DEF` 0x200 list names the head
+  `SNNHE00_DMSPRITEDEF` (974 verts) — the "SNN" spelling the name-based selection
+  (`SSN`/`SSNHE00`) cannot reach — so the built model held 3359 of the 4333
+  referenced verts. Root fix: the loader now stores the UNION of the old storage
+  and the 0x200-listed meshes the bones/prefix didn't store (`s3d_loader_characters.cpp`),
+  and the base builders select the OLD name set plus the skeleton-referenced
+  additions the name selection missed (`selectCharacterParts`, `geometry_combiner.cpp`,
+  wired into the four base-builder call sites in `model_loading{,_chr,_search}.cpp`).
+  Pinned by `B733Race146LoaderTest` (`tests/test_b733_skeleton_mesh_refs.cpp`),
+  which derives the expected part list from the WLD data (never hand-typed) and
+  was RED (3359/4333) on origin/fable. Gate impact [measured]: the four
+  `EntitySourcePruning` goldens each change by exactly 6 lines — the IVM body
+  recovery (races 127/240: 73→506 verts, base + variant rows) and the SSN head
+  (race 146: 3359→4333 verts, both genders); every other line byte-identical.
+  Gate-zone character change -- blessed by Will 2026-10-11: the four
+  `model_fingerprint` goldens at `bdf9f802` and the `memoryCoverage`
+  `characterModelsBytes` re-pin (the 24 B `skeletonReferenced` member) at
+  `4463dd3b`. See `refactor/B733/README.md` (frame diff + mechanism).
 
 - ~~**B734**~~ **CLOSED on `task/kb-b734-object-geometries-posed` (issue #71).** `loadObjects()` now poses skinned
   object geometries (vertex pieces on a 0x10 skeleton, flag 0x200) through T476's

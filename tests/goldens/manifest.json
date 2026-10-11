@@ -253,7 +253,7 @@
           "eqe1MappedBytes": 126860164,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 145812,
-          "characterModelsBytes": 1445267
+          "characterModelsBytes": 1445411
         }
       },
       {
@@ -262,7 +262,7 @@
           "eqe1MappedBytes": 125526256,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 266388,
-          "characterModelsBytes": 1445267
+          "characterModelsBytes": 1445411
         }
       },
       {
@@ -271,7 +271,7 @@
           "eqe1MappedBytes": 120010752,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 130968,
-          "characterModelsBytes": 1445267
+          "characterModelsBytes": 1445411
         }
       },
       {
@@ -280,7 +280,7 @@
           "eqe1MappedBytes": 139111816,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 215112,
-          "characterModelsBytes": 1522794
+          "characterModelsBytes": 1522962
         }
       },
       {
@@ -289,7 +289,7 @@
           "eqe1MappedBytes": 134169640,
           "eqe1ArchiveCount": 28,
           "placeableObjectsBytes": 981756,
-          "characterModelsBytes": 1465276
+          "characterModelsBytes": 1465468
         }
       }
     ]
