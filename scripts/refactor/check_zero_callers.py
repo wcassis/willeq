@@ -491,8 +491,6 @@ BOARD_REASONS.update({
         "the audio sound-category layer that is never constructed -- CombatMusicManager (in the client target, referenced by nothing outside its own two files), and CreatureSounds, UISounds, PlayerSounds and WeatherAudio (whose .cpp files are in no client target at all; only their tests link them) -- plus DoorSounds' unused static lookups and AudioManager::preloadSound",
     "B601":
         "GameState module mutators with no production writer -- the target/pet HP updaters, the group member updaters, three InventoryState setters, PlayerState::loadFromProfile/setCurHP/setPositionAndHeading, the SpellState memorize/scribe mutators, WorldState::setZoneId/setZoning and GameState::resetForZoneChange",
-    "B602":
-        "EntityManager's query and mutation API with no production caller -- exact-name, pet-owner, range and nearest-corpse lookups, the two forEach iterators, and the HP/equipment/corpse updaters",
     "B899":
         "B442's published interface for the bag (container) window, built by the concurrent unit B899 -- StaticUIInput::cursorGesture() is how that window's slot arm reaches the shared gesture; it has no caller until that branch merges",
     "B603":
@@ -1261,17 +1259,6 @@ EXEMPT_TESTS_GROUPS = {
     ("SpellState", "updateMemorizeProgress"): "B601",
     ("WorldState", "setZoneId"): "B601",
     ("WorldState", "setZoning"): "B601",
-    ("EntityManager", "findEntityByExactName"): "B602",
-    ("EntityManager", "findPetByOwner"): "B602",
-    ("EntityManager", "forEachEntity"): "B602",
-    ("EntityManager", "forEachEntityMutable"): "B602",
-    ("EntityManager", "getAllPets"): "B602",
-    ("EntityManager", "getEntitiesInRange"): "B602",
-    ("EntityManager", "getNearestCorpse"): "B602",
-    ("EntityManager", "getPetOwnerId"): "B602",
-    ("EntityManager", "markAsCorpse"): "B602",
-    ("EntityManager", "updateEntityEquipment"): "B602",
-    ("EntityManager", "updateEntityHP"): "B602",
     ("(free)", "calcBankBagSlotId"): "B603",
     ("ActiveBuff", "getTimeString"): "B603",
     ("ActiveBuff", "isAboutToExpire"): "B603",

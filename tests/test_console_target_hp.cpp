@@ -12,8 +12,7 @@
 // status line would still say 100%.
 //
 // The fix wires the existing method to the event that actually carries the
-// new percentage (EntityStatsChanged, published by
-// EntityManager::fireEntityStatsChangedEvent), filtered to the current
+// new percentage (EntityStatsChanged), filtered to the current
 // target. The verdict for the interface method was WIRE, not delete, and
 // this is what makes the fixture stub in
 // tests/command_processor_test_fixture.h pin real behaviour.
