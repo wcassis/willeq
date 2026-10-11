@@ -456,3 +456,24 @@ IF(WITH_AUDIO)
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_audio_ledger_attribution DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B989 (#308): the decoded PCM of a played WAV is held ONCE. playSound() used
+# to decode into bufferCache_ (au.sound_buffers) AND copy the same samples
+# into SfxManager::cache_ (au.sfx_cache) -- up to 16 MiB of duplicated PCM,
+# each cache capped separately. The cases play real archive sounds through the
+# client's own paths and assert the owner rows agree (one holds the PCM, the
+# other 0 for it), the `audio` category carries it once, and the preset's
+# soundCache cap bounds the single cache with T412's LRU surviving.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_sfx_single_pcm_cache
+        test_sfx_single_pcm_cache.cpp
+        ${AUDIO_COMMON_TEST_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_sfx_single_pcm_cache PRIVATE
+        WITH_AUDIO
+        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+    TARGET_LINK_LIBRARIES(test_sfx_single_pcm_cache
+        GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
+    GTEST_DISCOVER_TESTS(test_sfx_single_pcm_cache DISCOVERY_TIMEOUT 120)
+ENDIF()
