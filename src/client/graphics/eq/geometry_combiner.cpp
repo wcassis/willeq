@@ -325,54 +325,58 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsRaw(
 
 SelectedCharacterParts selectCharacterParts(const CharacterModel& character,
                                             const std::string& upperRaceCode) {
-    // B733 (issue #70): the skeleton's 0x200 mesh list (character.skeleton,
-    // T476) names the meshes this character DEFORMS. A head can carry a name
-    // the race code does not predict (race 146 SSN's head is
-    // "SNNHE00_DMSPRITEDEF" -- the "SNN" spelling differs from the race code
-    // "SSN"), so the old name selection ({CODE}_DMSPRITEDEF /
-    // {CODE}HE00_DMSPRITEDEF) dropped it even though the skeleton referenced
-    // it.
+    // B733 (issue #70): the old base-model selection picked parts by NAME --
+    // exactly "{CODE}_DMSPRITEDEF" and "{CODE}HE00_DMSPRITEDEF". A part whose
+    // mesh carries a name the race code does not predict (race 146 SSN's head
+    // is "SNNHE00_DMSPRITEDEF") was dropped even though the character's
+    // skeleton references it.
     //
-    // The loader stores EXACTLY the geometries the skeleton references: the
-    // bone-attached meshes (flattenSkeleton) plus the 0x200-listed meshes the
-    // bones did not name (B733, s3d_loader_characters.cpp). So when the list
-    // is non-empty, every part the character carries is a referenced part and
-    // the selection is the whole stored set -- the skeleton's part list, no
-    // name matching. When the list is empty there is no part list to select
-    // from, and the old name selection runs verbatim: the race-code names as
-    // the fallback for skeletons that list none. (An empty-list character's
-    // stored set is already exactly its referenced set, so this also matches
-    // the "select what the skeleton references" rule -- but keeping the name
-    // match verbatim is what makes every such character draw byte-identically
-    // to before, which the gate's golden frames demand.)
-    const bool hasSkeletonMeshList = character.skeleton
-        && !character.skeleton->meshRefs.empty();
-    if (hasSkeletonMeshList) {
-        SelectedCharacterParts out;
-        out.skinned = character.partsWithTransforms;
-        out.raw = character.rawParts;
-        return out;
+    // The selection is now the UNION of the old name selection (run verbatim,
+    // in the stored part order, so every character the old code drew keeps
+    // drawing exactly what it drew) and the geometries the skeleton's 0x200
+    // mesh list (T476) names that the name selection did not pick
+    // (CharacterModel::skeletonReferenced, recorded by the loader). A
+    // skeleton whose list adds nothing stores an empty tag and draws
+    // byte-identically to before; a skeleton whose list names a mesh the
+    // name selection cannot reach (the #70 head) draws it in addition.
+    auto isDefaultName = [](const ZoneGeometry* g, const std::string& code) {
+        std::string name = g->name;
+        std::transform(name.begin(), name.end(), name.begin(),
+                       [](unsigned char c) { return std::toupper(c); });
+        std::string defaultBodyName = code + "_DMSPRITEDEF";
+        std::string defaultHeadName = code + "HE00_DMSPRITEDEF";
+        return name == defaultBodyName || name == defaultHeadName;
+    };
+    std::vector<const ZoneGeometry*> picked;
+    auto pickByName = [&](const std::vector<CharacterPart>& src) {
+        for (const auto& part : src) {
+            if (!part.geometry) continue;
+            if (isDefaultName(part.geometry.get(), upperRaceCode))
+                picked.push_back(part.geometry.get());
+        }
+    };
+    // The skinned and the raw lists carry parallel geometry names (the
+    // loader stores each part in both), so one name selection covers both.
+    pickByName(character.partsWithTransforms);
+    for (const ZoneGeometry* g : character.skeletonReferenced) {
+        if (std::find(picked.begin(), picked.end(), g) == picked.end())
+            picked.push_back(g);
     }
 
-    // Fallback: the old name selection, verbatim.
     SelectedCharacterParts out;
-    std::string defaultBodyName = upperRaceCode + "_DMSPRITEDEF";
-    std::string defaultHeadName = upperRaceCode + "HE00_DMSPRITEDEF";
     for (const auto& part : character.partsWithTransforms) {
         if (!part.geometry) continue;
-        std::string partName = part.geometry->name;
-        std::transform(partName.begin(), partName.end(), partName.begin(),
-                       [](unsigned char c) { return std::toupper(c); });
-        if (partName == defaultBodyName || partName == defaultHeadName)
+        if (std::find(picked.begin(), picked.end(), part.geometry.get()) != picked.end())
             out.skinned.push_back(part);
     }
     for (const auto& part : character.rawParts) {
         if (!part.geometry) continue;
-        std::string partName = part.geometry->name;
-        std::transform(partName.begin(), partName.end(), partName.begin(),
-                       [](unsigned char c) { return std::toupper(c); });
-        if (partName == defaultBodyName || partName == defaultHeadName)
+        if (isDefaultName(part.geometry.get(), upperRaceCode)) {
             out.raw.push_back(part);
+        } else {
+            for (const ZoneGeometry* g : character.skeletonReferenced)
+                if (part.geometry->name == g->name) { out.raw.push_back(part); break; }
+        }
     }
     return out;
 }

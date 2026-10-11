@@ -250,12 +250,18 @@ bool S3DLoader::loadCharacters(const std::string& archivePath, PfsArchive* openA
             // SSN: the bones name nothing, the 0x200 list names SNNHE00_
             // DMSPRITEDEF + SSN_DMSPRITEDEF -- the "SNN" head spelling differs
             // from the "SSN" race code), so flattenSkeleton alone does not
-            // see it. Add every listed mesh that flatten missed, with an
-            // unskinned copy for animation the way the prefix-match path
-            // below does. When the 0x200 list is empty nothing changes:
-            // flattenSkeleton and the prefix fallback below behave exactly as
-            // before.
-            if (!skeleton->meshRefs.empty()) {
+            // see it. Collect every listed mesh the bone walk did not store,
+            // with an unskinned copy for animation the way the prefix-match
+            // path does; they are APPENDED below, AFTER the prefix fallback,
+            // so the stored order of a skeleton that the old loader stored
+            // non-empty for is unchanged (bone parts, then prefix family) and
+            // only genuinely new meshes trail the old set. A skeleton whose
+            // list adds nothing stores exactly what the old loader stored,
+            // in the old order; one whose list names a mesh the bones/prefix
+            // could not reach stores that mesh in addition.
+            const bool boneWalkStoredNothing = character->parts.empty();
+            std::vector<std::shared_ptr<ZoneGeometry>> skeletonListedExtras;
+            {
                 const auto& modelRefs = chrLoader.getModelRefs();
                 for (uint32_t meshRef : skeleton->meshRefs) {
                     auto modelIt = modelRefs.find(meshRef);
@@ -266,35 +272,14 @@ bool S3DLoader::loadCharacters(const std::string& archivePath, PfsArchive* openA
                     for (const auto& existing : character->parts)
                         if (existing.get() == listed.get()) { alreadyAdded = true; break; }
                     if (alreadyAdded) continue;
-                    character->parts.push_back(listed);
-                    CharacterPart part;
-                    part.geometry = listed;
-                    part.shiftX = part.shiftY = part.shiftZ = 0;
-                    part.rotateX = part.rotateY = part.rotateZ = 0;
-                    character->partsWithTransforms.push_back(part);
-                    auto rawGeom = std::make_shared<ZoneGeometry>();
-                    rawGeom->name = listed->name;
-                    rawGeom->vertices = listed->vertices;
-                    rawGeom->triangles = listed->triangles;
-                    rawGeom->materialData = listed->materialData;
-                    rawGeom->vertexPieces = listed->vertexPieces;
-                    rawGeom->minX = listed->minX; rawGeom->minY = listed->minY; rawGeom->minZ = listed->minZ;
-                    rawGeom->maxX = listed->maxX; rawGeom->maxY = listed->maxY; rawGeom->maxZ = listed->maxZ;
-                    rawGeom->centerX = listed->centerX;
-                    rawGeom->centerY = listed->centerY;
-                    rawGeom->centerZ = listed->centerZ;
-                    CharacterPart rawPart;
-                    rawPart.geometry = rawGeom;
-                    rawPart.shiftX = rawPart.shiftY = rawPart.shiftZ = 0;
-                    rawPart.rotateX = rawPart.rotateY = rawPart.rotateZ = 0;
-                    character->rawParts.push_back(rawPart);
-                    LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: skeleton '{}' 0x200 list added '{}' verts={}",
+                    skeletonListedExtras.push_back(listed);
+                    LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: skeleton '{}' 0x200 list listed-but-unstored '{}' verts={}",
                               skeleton->name, listed->name, listed->vertices.size());
                 }
             }
 
             // If no parts found through skeleton, filter geometries by race code prefix
-            if (character->parts.empty() && !geometries.empty()) {
+            if (boneWalkStoredNothing && !geometries.empty()) {
                 std::string skelName = skeleton->name;
                 std::transform(skelName.begin(), skelName.end(), skelName.begin(),
                               [](unsigned char c) { return std::toupper(c); });
@@ -319,6 +304,15 @@ bool S3DLoader::loadCharacters(const std::string& archivePath, PfsArchive* openA
                                   [](unsigned char c) { return std::toupper(c); });
 
                     if (geomName.find(raceCode) == 0) {
+                        // B733: the 0x200 block above may already have stored
+                        // this geometry (its body/head are usually in the list
+                        // too). Skip it so the stored set is the UNION, not a
+                        // double-stored copy (a duplicate part doubles the
+                        // built vertex count).
+                        bool alreadyAdded = false;
+                        for (const auto& existing : character->parts)
+                            if (existing.get() == geom.get()) { alreadyAdded = true; break; }
+                        if (alreadyAdded) continue;
                         LOG_TRACE(MOD_GRAPHICS, "  prefix match: '{}' verts={} materialData={} textureNames={}",
                                   geom->name, geom->vertices.size(),
                                   (bool)geom->materialData, geom->textureNames().size());
@@ -358,6 +352,44 @@ bool S3DLoader::loadCharacters(const std::string& archivePath, PfsArchive* openA
 
                 LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: skeleton '{}' prefix match found {} parts, {} rawParts",
                           skeleton->name, character->parts.size(), character->rawParts.size());
+            }
+
+            // B733: append the meshes the skeleton's 0x200 list references that
+            // neither the bone walk nor the prefix fallback stored, trailing
+            // the old stored set (old-order-preservation: everything the old
+            // loader stored is still in the old order; only genuinely new
+            // meshes are added after it). The unskinned raw copy follows the
+            // prefix path's device so animation sees the mesh.
+            for (const auto& listed : skeletonListedExtras) {
+                bool alreadyAdded = false;
+                for (const auto& existing : character->parts)
+                    if (existing.get() == listed.get()) { alreadyAdded = true; break; }
+                if (alreadyAdded) continue;
+                character->parts.push_back(listed);
+                CharacterPart part;
+                part.geometry = listed;
+                part.shiftX = part.shiftY = part.shiftZ = 0;
+                part.rotateX = part.rotateY = part.rotateZ = 0;
+                character->partsWithTransforms.push_back(part);
+                auto rawGeom = std::make_shared<ZoneGeometry>();
+                rawGeom->name = listed->name;
+                rawGeom->vertices = listed->vertices;
+                rawGeom->triangles = listed->triangles;
+                rawGeom->materialData = listed->materialData;
+                rawGeom->vertexPieces = listed->vertexPieces;
+                rawGeom->minX = listed->minX; rawGeom->minY = listed->minY; rawGeom->minZ = listed->minZ;
+                rawGeom->maxX = listed->maxX; rawGeom->maxY = listed->maxY; rawGeom->maxZ = listed->maxZ;
+                rawGeom->centerX = listed->centerX;
+                rawGeom->centerY = listed->centerY;
+                rawGeom->centerZ = listed->centerZ;
+                CharacterPart rawPart;
+                rawPart.geometry = rawGeom;
+                rawPart.shiftX = rawPart.shiftY = rawPart.shiftZ = 0;
+                rawPart.rotateX = rawPart.rotateY = rawPart.rotateZ = 0;
+                character->rawParts.push_back(rawPart);
+                character->skeletonReferenced.push_back(listed.get());
+                LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: skeleton '{}' 0x200 list added '{}' verts={}",
+                          skeleton->name, listed->name, listed->vertices.size());
             }
 
             // Apply skinning to meshes that have vertex piece data

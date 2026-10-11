@@ -29,16 +29,13 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsRaw(
 // was never selected, so it was dropped even though the character's skeleton
 // referenced it.
 //
-// This selects the parts the skeleton actually REFERENCES instead, with the
-// race-code names as the fallback for skeletons that reference none. When the
-// skeleton's 0x200 mesh list (SkeletonTrack::meshRefs, T476) is non-empty the
-// skinned selection is every stored part whose geometry the loader stored for
-// that skeleton (the loader stores exactly the geometries the skeleton
-// references: the bone-attached meshes plus the 0x200-listed ones), so the
-// selection is the whole stored set -- no name matching. When the list is
-// empty the old name selection runs verbatim, so every skeleton that lists
-// none draws exactly what it drew before. The raw (unskinned, animation)
-// selection mirrors the skinned one.
+// This selects the UNION of that old name selection (run verbatim, so every
+// character the old code drew keeps drawing exactly what it drew, variant
+// meshes included) and the meshes the skeleton's 0x200 list (T476) names that
+// the name selection missed (CharacterModel::skeletonReferenced, recorded by
+// the loader). A skeleton whose list adds nothing has an empty tag and draws
+// byte-identically to before; a skeleton whose list names a mesh the name
+// selection cannot reach (the #70 head) draws it in addition.
 //
 // Returns the (selectedSkinned, selectedRaw) part vectors the caller hands to
 // combineCharacterPartsWithTransforms / combineCharacterPartsRaw.
