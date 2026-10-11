@@ -284,8 +284,6 @@ EXEMPT = {
         ("report", "B337: TreeIdentifier counters filled and never printed"),
     ("Stats", "zoneTreeMeshCount"):
         ("report", "B337: TreeIdentifier counters filled and never printed"),
-    ("WeatherEffectsController", "targetIntensity_"):
-        ("boarded", "B339: the smooth weather transition it was for does not exist"),
     ("ZoneLifecycleComponent", "entitiesLoaded_"):
         ("boarded", "B340: L09 deleted the zero-caller accessor and left the member"),
     ("ZoneLifecycleComponent", "expectedEntityCount_"):

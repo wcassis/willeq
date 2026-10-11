@@ -127,8 +127,6 @@ void WeatherEffectsController::setWeather(uint8_t type, uint8_t intensity) {
 
     // Start transition if weather changed
     if (newType != currentType_ || newIntensity != currentIntensity_) {
-        targetIntensity_ = newIntensity;
-
         // Quick transition for type change, slower for intensity change
         if (newType != currentType_) {
             transitionProgress_ = 0.0f;
@@ -824,7 +822,6 @@ void WeatherEffectsController::onZoneLeave() {
 void WeatherEffectsController::resetWeatherState() {
     currentType_ = 0;
     currentIntensity_ = 0;
-    targetIntensity_ = 0;
     currentDarkening_ = 0.0f;
     targetDarkening_ = 0.0f;
     darkeningRate_ = 0.0f;
