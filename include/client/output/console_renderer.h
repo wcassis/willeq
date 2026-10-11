@@ -140,10 +140,14 @@ private:
     int m_playerLevel = 0;
     std::wstring m_playerClass;
     float m_playerX = 0, m_playerY = 0, m_playerZ = 0;
-    float m_playerHeading = 0;
+    // B345 deleted m_playerHeading (write-only; the IOutputRenderer heading
+    // parameter stays on the interface, the console body ignores it).
     uint32_t m_curHp = 0, m_maxHp = 0;
     uint32_t m_curMana = 0, m_maxMana = 0;
-    uint32_t m_curEnd = 0, m_maxEnd = 0;
+    // B345 deleted m_curEnd AND m_maxEnd (both write-only: the status print
+    // at printStatus() shows HP and Mana but not END). The base
+    // updateCharacterStats() keeps its endurance parameters (NullRenderer
+    // overrides the same signature); the console body ignores the pair.
 
     // Target info
     uint16_t m_targetSpawnId = 0;
@@ -165,7 +169,7 @@ private:
 
     // Timing
     float m_timeSinceStatusUpdate = 0.0f;
-    std::chrono::steady_clock::time_point m_startTime;
+    // B345 deleted m_startTime (write-only).
 
     // Event subscription
     state::EventBus* m_eventBus = nullptr;

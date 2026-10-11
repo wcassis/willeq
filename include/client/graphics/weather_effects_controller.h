@@ -412,7 +412,8 @@ private:
     // Current weather state
     uint8_t currentType_ = 0;       // 0=none, 1=rain, 2=snow
     uint8_t currentIntensity_ = 0;  // 1-10
-    uint8_t targetIntensity_ = 0;   // For smooth transitions
+    // B339 deleted targetIntensity_ ("For smooth transitions"): the
+    // interpolation it was for does not exist, weather is applied outright.
     float transitionProgress_ = 1.0f;
     float transitionDuration_ = 2.0f;
 

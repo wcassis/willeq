@@ -139,7 +139,7 @@ private:
     // Camera orbit angle in EQ heading units (0-512)
     // This is independent of player heading - player can rotate without camera following
     float orbitAngle_ = 0.0f;
-    bool orbitAngleInitialized_ = false;  // Set by setOrbitAngle()
+    // B345 deleted orbitAngleInitialized_ (first-frame latch, no reader).
 };
 
 } // namespace Graphics

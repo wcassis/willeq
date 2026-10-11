@@ -62,8 +62,10 @@ public:
 	// because irrlicht_bridge.cpp calls them and must not learn a component
 	// exists (the K11 rule) -- setCurrentTarget/clearCurrentTarget are also the
 	// IOutputRenderer-shaped public surface ConsoleRenderer/NullRenderer
-	// implement. getCurrentTargetInfo() had zero callers tree-wide and moved
-	// with currentTargetInfo_, so it was deleted (Mechanism 5).
+	// implement. getCurrentTargetInfo() had zero callers tree-wide and was
+	// deleted (Mechanism 5); B341 deleted currentTargetInfo_, which
+	// setCurrentTargetInfo() then wrote as its only state -- it now maintains
+	// the legacy fields (and the debug-target id) from its argument.
 	//
 	// setZoneLineBoundingBoxes() likewise stays a forwarder there because
 	// application_zone_loading.cpp calls it. The renderer's own callers of
@@ -246,10 +248,14 @@ private:
 	// frame family reads them too (Batch K Mechanism 3).
 	uint8_t currentTargetHpPercent_ = 100;
 	uint8_t currentTargetLevel_ = 0;
-	// B994: the 3D target ring (default off, target_ring.h R5).
+	// B994: the 3D target ring (default off, target_ring_draw.cpp reads
+	// currentTargetLevel_ through ConTierForLevels) keeps the level live.
 	bool targetRingEnabled_ = false;
 	TargetRing::Geometry targetRingGeometry_;
-	TargetInfo currentTargetInfo_;  // Extended target info for HUD display
+	// B341 deleted currentTargetInfo_: write-only (the TargetChanged arm
+	// fills it, the draw reads the legacy fields). The TargetInfo type stays
+	// -- it is the bridge's payload unit (irrlicht_bridge.cpp's TargetChanged
+	// arm builds one).
 
 	// --- Zone line debugging ----------------------------------------------
 	// GONE. L03 deleted setZoneLineDebug(), the sole writer of inZoneLine_,

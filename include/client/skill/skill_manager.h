@@ -143,9 +143,9 @@ private:
     // All skills indexed by skill_id
     std::array<SkillData, EQT::MAX_PP_SKILL> m_skills;
 
-    // Player info for skill availability
+    // Player info for skill availability (B344 deleted m_player_race: stored
+    // for skill gating that does not gate on race)
     uint8_t m_player_class = 0;
-    uint8_t m_player_race = 0;
     uint8_t m_player_level = 1;
 
     // Callbacks

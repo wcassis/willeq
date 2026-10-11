@@ -1010,7 +1010,8 @@ private:
     std::atomic<bool> loading_{false};   // True while loading thread owns GL context
     bool loadingScreenVisible_ = true;  // True when loading screen is showing (default: show at start)
     bool zoneReady_ = false;  // True when zone is fully loaded and ready for player input
-    // L09 (Batch L): entitiesLoaded_/expectedEntityCount_ moved out.
+    // L09 (Batch L): entitiesLoaded_/expectedEntityCount_ moved out; B340
+    // deleted them and their four writes (write-only after L09).
     bool wireframeMode_ = false;
     bool fogEnabled_ = true;
     bool lightingEnabled_ = true;   // Lighting enabled by default
