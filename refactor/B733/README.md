@@ -164,8 +164,46 @@ byte-identical to the old code [measured, `b733_bytelines.py` line-diff].
 This is a gate-zone character change, so per acceptance criterion 2 it was
 blessed by Will (2026-10-11, commit `bdf9f802` on this branch): the four
 `EntitySourcePruning` goldens were regenerated with the test's own command,
-exactly these 6 lines per zone. No other golden or manifest is touched in this
-branch.
+exactly these 6 lines per zone. **No image golden moved anywhere** (the CI
+gate's zone image comparisons pass at `4139cee6`; only the memory metric
+below moved). The one remaining gate failure is the memory metric, which is
+a SEPARATE bless question (next section).
+
+## Gate memory metric: `characterModelsBytes` moves in all five zones -- a second bless (pending, CI 782)
+
+The CI `gate` job (pipeline 782, head `4139cee6`, all 3 in-script attempts,
+deterministic) fails on the `memoryCoverage` values in
+`tests/goldens/manifest.json` only:
+
+| zone | blessed | got | delta |
+|------|---------|-----|-------|
+| qeynos2 | 1,445,267 | 1,445,411 | +144 |
+| gfaydark | 1,445,267 | 1,445,411 | +144 |
+| befallen | 1,445,267 | 1,445,411 | +144 |
+| iceclad | 1,522,794 | 1,522,962 | +168 |
+| timorous | 1,465,276 | 1,465,468 | +168 |
+
+Mechanism, proven [measured]: `CharacterModel` grew by exactly one member --
+`std::vector<const ZoneGeometry*> skeletonReferenced` (s3d_loader.h:149), the
+#70 tag. `sizeof(CharacterModel)` = 160, the added member = 24 bytes (a
+compiled probe at `4139cee6`). `calcCharModels()`
+(model_loading_search.cpp:918) charges `sizeof(CharacterModel)` per retained
+model and never counts `skeletonReferenced`'s contents (empty or filled), so
+the gate's `--test-races 1..5` run gains 24 B per loaded model: +144 = 6
+models (the three classic zones) and +168 = 7 models (iceclad, timorous).
+No new geometry, no new skeleton data, no frame change: the five gate zones'
+image goldens are byte-identical in the same CI run. Races 127/146/240 are
+outside `MEMORY_COVERAGE_TEST_RACES` (visual_gate.py:248), so the recovered
+IVM/SSN meshes are not in the sample at all -- the entire delta is the struct
+member.
+
+`manifest.json` is BLESS-ONLY (Will's rule); the 2026-10-11 bless at
+`bdf9f802` covered the four `model_fingerprint/*.txt` goldens, not these
+`memoryCoverage` values. **OPEN BLESS QUESTION FOR WILL:** re-bless
+`memoryCoverage.zones[*].characterModelsBytes` to the `got` column (the +24
+per loaded model is a permanent consequence of the #70 tag; it cannot be
+avoided without dropping the tag or special-casing the metric, both of which
+break the 100 %-accounting shape of `calcCharModels`).
 
 ## Not verified / left open
 
