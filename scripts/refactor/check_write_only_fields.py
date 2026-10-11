@@ -284,6 +284,11 @@ EXEMPT = {
         ("report", "B337: TreeIdentifier counters filled and never printed"),
     ("Stats", "zoneTreeMeshCount"):
         ("report", "B337: TreeIdentifier counters filled and never printed"),
+    # B339/B340/B341/B344/B345 rows (targetIntensity_, entitiesLoaded_,
+    # expectedEntityCount_, currentTargetInfo_, m_audio_config_vendor_music,
+    # m_duel_target_id, m_player_race, orbitAngleInitialized_, m_curEnd,
+    # m_playerHeading, m_startTime, ConflictInfo::binding1/binding2) went
+    # with their fields -- an exemption may not outlive its row.
     ("InventoryManager", "deleteItemCallback_"):
         ("boarded", "B342: three registered callbacks the manager never invokes"),
     ("InventoryManager", "equipmentChangedCallback_"):
@@ -296,18 +301,6 @@ EXEMPT = {
         ("boarded", "B343: paperdoll holds the inventory manager and reads nothing from it"),
     ("EQAnimatedMeshSceneNode", "sceneManager_"):
         ("boarded", "B343: stored scene manager with no reader"),
-    ("CameraController", "orbitAngleInitialized_"):
-        ("boarded", "B345: orbit-camera latch with no reader"),
-    ("ConsoleRenderer", "m_curEnd"):
-        ("boarded", "B345: headless console renderer state with no reader"),
-    ("ConsoleRenderer", "m_playerHeading"):
-        ("boarded", "B345: headless console renderer state with no reader"),
-    ("ConsoleRenderer", "m_startTime"):
-        ("boarded", "B345: headless console renderer state with no reader"),
-    ("ConflictInfo", "binding1"):
-        ("boarded", "B345: hotkey conflict report fields nothing formats"),
-    ("ConflictInfo", "binding2"):
-        ("boarded", "B345: hotkey conflict report fields nothing formats"),
     ("EntityResult", "shouldDeactivate"):
         ("boarded", "B346: SimulationWorker sets it and the drain ignores it"),
     ("SimulationInput", "cameraTarget"):
