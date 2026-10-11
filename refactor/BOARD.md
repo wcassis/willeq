@@ -10446,7 +10446,7 @@ because the Pi had no keyboard or mouse attached (B510).
   not seen live. Confirm by: zone in, `/camera user1`, zone through a zone line,
   `/camera` and read `UI_<char>_<server>.ini`. Found by T461.
 
-- **B533** (B, unreached) **What T461's deletion of the free-fly camera left → issue #180
+- ~~**B533** (B, unreached) **What T461's deletion of the free-fly camera left → issue #180
   write-only.** T461 deleted `CameraController::update()` with the Free mode it
   was the body of. That made two SETTERS pointless: `setMoveSpeed()` and
   `setMouseSensitivity()` are still called once from `IrrlichtRenderer`'s init
@@ -10461,7 +10461,16 @@ because the Pi had no keyboard or mouse attached (B510).
   `check_zero_callers.py`); T461 did not add to it. Work the two together:
   deleting the CameraController fly/orbit state is one change touching
   `camera_controller.*` and the two init lines. Not done by T461 because those
-  lines were T460's territory in that wave. Found by T461.
+  lines were T460's territory in that wave. Found by T461. **STRUCK (2026-10-11,
+  `task/kb-b533-camera-fly-residue`, `refactor/B533/README.md`):** all 12
+  accessors, their 5 state fields (`moveSpeed_`, `rotateSpeed_`,
+  `mouseSensitivity_`, `yaw_`, `pitch_`), the `MIN_PITCH`/`MAX_PITCH` clamp and
+  `orbitAngle_` (checked per card: the live orbit path never reads it) deleted
+  with the two `setupCamera()` init writes; the per-name table (deleted vs
+  kept-because-read) is the README. `WriteOnlyFields` went RED with the
+  `mouseSensitivity_` STALE row and GREEN at 47; `ZeroCallers` RED with the ten
+  B494-group rows and GREEN at 364. B494 (#169) stays open with its other
+  groups.~~
 
 - **B534** (B, unreached) **The output-layer camera route is a second, stale → issue #181
   camera vocabulary.** `output::CameraMode` (`include/client/output/output_renderer.h`)
