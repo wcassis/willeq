@@ -166,6 +166,37 @@ bool MidiPlayer::isCustomSoundFontResident() const {
     return impl_->customSoundFont != nullptr;
 }
 
+void MidiPlayer::releaseCustomSoundFont() {
+    if (!impl_->customSoundFont) {
+        return;
+    }
+    // T248: stop() first, exactly like every other mutating path (play,
+    // selectSoundFont, loadSoundFont, the destructor). It sets playing_=false
+    // and waits on the render barrier, so no render pass can still be reading
+    // impl_->soundFont while the pointer is moved and the instance closed
+    // below, and a later pass sees playing_==false and never dereferences the
+    // freed font. (freeChannel() alone is not enough: it only proves no pass
+    // is in flight RIGHT NOW, while a channel still active could re-enter
+    // render() while MidiPlayer's own playing_ is still true.)
+    //
+    // The playback position it zeroes is not lost: MusicPlayer's immediate
+    // stop path saves it beforehand and restores it afterwards -- the
+    // pre-B990 code preserved it for the same reason (AudioManager's
+    // zone-music resume reads it via getPlaybackTimeMs()).
+    stop();
+    // The active pointer is an alias of customSoundFont only when the custom
+    // font is selected; point it back at GM before the close (exactly what
+    // selectSoundFont(GM)'s release block does) so nothing aliases the freed
+    // instance.
+    if (impl_->soundFont == impl_->customSoundFont) {
+        impl_->soundFont = impl_->gmSoundFont;
+        activeSoundFont_ = SoundFontType::GM;
+    }
+    tsf_close(impl_->customSoundFont);
+    impl_->customSoundFont = nullptr;
+    LOG_INFO(MOD_AUDIO, "MidiPlayer: released custom SoundFont on stop");
+}
+
 void MidiPlayer::selectSoundFont(SoundFontType type) {
     if (type == activeSoundFont_) return;
 

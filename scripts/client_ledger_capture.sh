@@ -271,7 +271,8 @@ wait ${HOLD_S}
 /q
 EOF
     fi
-    local -a envs=( "WILLEQ_BASELINE=1" "WILLEQ_LEDGER_OWNERS=${mode}" "TZ=UTC" )
+    local -a envs=( "WILLEQ_BASELINE=1" "WILLEQ_LEDGER_OWNERS=${mode}" "TZ=UTC"
+                    "WILLEQ_LEDGER_IDLE_EVERY=${WILLEQ_LEDGER_IDLE_EVERY:-10}" )
     [ "$mode" = zone_parse ] && envs+=( "WILLEQ_LEDGER_TRACE=zone_parse:startup" "WILLEQ_LEDGER_TRACE_DEPTH=8" )
     # B945: the game_state misc row is site-split the same way the issue's
     # trace recipe names it -- every allocation of the category from the
