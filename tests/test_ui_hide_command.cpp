@@ -118,16 +118,21 @@ TEST_F(UIHideCommandTest, AliasesReachTheSameToggle) {
     EXPECT_FALSE(renderer.isAllUIHidden());
 }
 
-// --- User path 2: the F11 key ---
-
-TEST_F(UIHideCommandTest, F11IsBoundToToggleAllUIInEveryMode) {
+// B582 (GitLab #49, Will's ruling 2026-09-18): F10 is the official
+// "Toggle UI Display" key, so the /hideui test drives it through F10.
+TEST_F(UIHideCommandTest, F10IsBoundToToggleAllUIInEveryMode) {
     auto& hotkeys = eqt::input::HotkeyManager::instance();
     hotkeys.resetToDefaults();
     for (auto mode : {eqt::input::HotkeyMode::Global, eqt::input::HotkeyMode::Player}) {
-        auto action = hotkeys.getAction(irr::KEY_F11, false, false, false, mode);
-        ASSERT_TRUE(action.has_value()) << "F11 is not bound in this mode";
+        auto action = hotkeys.getAction(irr::KEY_F10, false, false, false, mode);
+        ASSERT_TRUE(action.has_value()) << "F10 is not bound in this mode";
         EXPECT_EQ(*action, eqt::input::HotkeyAction::ToggleAllUI);
     }
+    // F11 is the official client's netstat toggle (fable has no netstat) and
+    // L is its Leadership window toggle (post-Velious, ignored): both are
+    // unbound, so neither shadows anything on its key.
+    EXPECT_FALSE(hotkeys.getAction(irr::KEY_F11, false, false, false, eqt::input::HotkeyMode::Player).has_value());
+    EXPECT_FALSE(hotkeys.getAction(irr::KEY_KEY_L, false, false, false, eqt::input::HotkeyMode::Player).has_value());
 }
 
 TEST_F(UIHideCommandTest, RendererActionFromThatKeyTogglesTheUI) {

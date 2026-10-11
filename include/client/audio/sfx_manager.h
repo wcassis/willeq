@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <list>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -14,17 +15,20 @@ namespace EQT {
 namespace Audio {
 
 class AudioMixer;
+class SoundBuffer;
 
-// Decoded WAV data stored as float PCM
-struct WavData {
-    std::vector<float> samples;  // Interleaved if stereo
-    uint32_t sampleRate = 0;
-    uint8_t channels = 0;
-    size_t totalFrames = 0;
-    size_t memoryBytes = 0;      // Approximate memory usage
-};
-
-// WAV loading and spatial playback via AudioMixer channels
+// WAV playback and spatial positioning via AudioMixer channels.
+//
+// B989 (#308): the cache holds a shared_ptr to the SAME SoundBuffer the
+// AudioManager's buffer cache already holds. There is exactly ONE decoded
+// float-PCM copy per sound -- the buffer's vector -- and the ledger reports it
+// once, to the owner that decoded it (the `au.sound_buffers` row, charged in
+// AudioManager::loadSound()). Before B989 preload() COPIED the samples into a
+// per-entry WavData, so every played WAV was held twice (the `au.sfx_cache`
+// row) with each cache capped separately at the preset's soundCache. The
+// shared_ptr also makes the LRU eviction safe the way a copy never was:
+// evicting a cache entry only drops a reference, and the buffer stays alive
+// while an active mixer channel reads its samples.
 class SfxManager {
 public:
     SfxManager();
@@ -37,9 +41,11 @@ public:
     // Set mixer reference
     void setMixer(AudioMixer* mixer);
 
-    // Load a WAV file into cache (returns true if loaded or already cached)
-    bool preload(const std::string& filename, const float* samples,
-                 size_t frameCount, uint32_t sampleRate, uint8_t channels);
+    // Share a decoded sound in the cache (a no-op when the filename is
+    // already there). The buffer is owned by whoever decoded it -- the
+    // AudioManager's buffer cache -- and the entry only adds a reference.
+    // Returns true if the filename is cached afterwards.
+    bool preload(const std::string& filename, std::shared_ptr<SoundBuffer> buffer);
 
     // Play a cached sound
     // Returns channel handle (>= 0) or -1 on failure
@@ -56,8 +62,9 @@ public:
     // Update listener position for spatial sounds
     void updateListener(const glm::vec3& pos, const glm::vec3& forward);
 
-    // Get cached WAV data (for SoundBuffer compatibility)
-    const WavData* getWavData(const std::string& filename) const;
+    // Get the cached decoded buffer (the shared_ptr the entry holds -- it is
+    // the AudioManager's buffer, NOT a copy). Null when not cached.
+    const SoundBuffer* getWavData(const std::string& filename) const;
 
     // Cache management
     size_t getCacheSize() const;
@@ -85,9 +92,10 @@ private:
     void enforceCacheBudgetLocked();
 
     // A WAV is "in use" when an ACTIVE mixer channel's sample pointer aliases
-    // its vector -- play() hands the channel wav->samples.data() directly, so
-    // freeing a playing entry is a use-after-free on the audio thread.
-    bool isInUseLocked(const WavData& wav) const;
+    // its vector -- play() hands the channel buffer->getSamples() directly, so
+    // the last reference going away while a channel plays is a use-after-free
+    // on the audio thread. isInUseLocked() refuses to evict those.
+    bool isInUseLocked(const SoundBuffer& buffer) const;
 
     // Move filename to the most-recently-used end.
     void touchLruLocked(const std::string& filename) const;
@@ -95,7 +103,10 @@ private:
     AudioMixer* mixer_ = nullptr;
 
     mutable std::mutex cacheMutex_;
-    std::unordered_map<std::string, WavData> cache_;
+    // B989: the decoded buffer itself is the AudioManager's (one copy,
+    // `au.sound_buffers`); the entry is a reference counted by this cache and
+    // the buffer cache, and the LRU drops references, not PCM.
+    std::unordered_map<std::string, std::shared_ptr<SoundBuffer>> cache_;
     // Most-recently-used at the front. Mutable because getWavData() is const
     // and IS the read that makes a sound recently used (play() goes through it).
     mutable std::list<std::string> lruOrder_;

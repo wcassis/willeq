@@ -88,6 +88,17 @@ on the Pi are never touched.
   Each row records the mapped libgallium and `llvm_mapped`. A run that loaded the other Mesa fails as
   `mesa_mismatch` and aborts the sweep with **exit 67**. A run with no snapshot fails as `mesa_unproven`.
   `scripts/pi/kmscube_floor.sh` prints the same two facts per run.
+  **The client says so too (B946, #264):** at the first GL init every
+  graphics run logs ONE
+  `[gldriver] renderer='<GL_RENDERER>' gallium=<path|none> llvm=<path|none>`
+  INFO line — the GL renderer string and the libgallium/libLLVM the process
+  mapped from its own `/proc/self/maps` (format: `refactor/B946/README.md`).
+  A `willeq-nollvm` whose baked-in prefix directory is missing logs an ERROR
+  variant naming the missing directory and the fallback (the default search
+  path, i.e. the system Mesa) before the INFO line, and continues — a hand
+  run on a fresh Pi must still work. The sweep's summarizer reads the line
+  back and reports `driver=` in the result row (`mesa_driver` TSV column,
+  additive — the maps-snapshot proof above stays the primary evidence).
 - **By hand** (Pi lock held): `bash scripts/pi/deploy_mesa_prefix.sh`, then run `$D/bin/willeq-nollvm`, or a setcap'd
   ext4 copy of it. For another binary (kmscube, `gles2_zone_benchmark`), use
   `scripts/pi/mesa_nollvm_select.sh <in> <out>`.

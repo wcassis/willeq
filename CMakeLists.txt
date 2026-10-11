@@ -279,6 +279,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/core/memory_ledger.cpp
     src/client/core/memory_ledger_trace.cpp
     src/client/core/gpu_buffer_census.cpp
+    src/client/core/gl_driver_census.cpp  # B946 (GitLab #264): the [gldriver] line
     src/client/zone/zone_dispatch.cpp
     src/client/zone/zone_handshake.cpp
     src/client/zone/zone_entry.cpp
@@ -639,6 +640,7 @@ IF(EQT_GRAPHICS)
         src/client/graphics/player/camera_rig.cpp
         src/client/graphics/player/renderer_camera_modes.cpp
         src/client/graphics/slash/camera_command.cpp
+        src/client/graphics/scene_graph_batch.cpp
         src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp
         src/client/graphics/zone_stream/renderer_zone_merge.cpp
         src/client/graphics/zone_stream/renderer_zone_stream.cpp
@@ -915,8 +917,23 @@ SET(ALL_CORE_SOURCES
 
 # Create a static library for the core client code (used by both executable and tests)
 ADD_LIBRARY(willeq_core STATIC ${ALL_CORE_SOURCES})
-# TextureAtlas requires GL - only available in main library, not standalone tools
-TARGET_COMPILE_DEFINITIONS(willeq_core PRIVATE EQT_HAS_TEXTURE_ATLAS)
+# B950 (GitLab #268): PUBLIC, not PRIVATE. ZoneMeshBuilder's member layout in
+# zone_geometry.h depends on EQT_HAS_TEXTURE_ATLAS (four #ifdef blocks in the
+# header; only the two data-member blocks -- the shaderMaterialAtlas*
+# members -- change sizeof, 8 bytes total on x86-64), so
+# every TU that constructs one must see the same
+# layout the core's constructor was generated against. PRIVATE left every
+# consumer of willeq_core one sizeof smaller (B944's ASan stack-buffer-
+# overflow; test_placed_object_meshes by construction). No target links
+# willeq_core and compiles zone_geometry.cpp itself, so the define
+# propagate through the link cannot shadow a local copy -- the per-target
+# PRIVATE copies in the three tests that linked willeq_core
+# (renderer_guards.cmake) are deleted as now-redundant. The three gles2
+# tools below still declare it PRIVATE: they do NOT link willeq_core and
+# compile the atlas TUs themselves, so for them the PRIVATE copy is the only
+# one and stays.
+# Pinned by test_zone_geometry_atlas_layout.
+TARGET_COMPILE_DEFINITIONS(willeq_core PUBLIC EQT_HAS_TEXTURE_ATLAS)
 # SQLite for WilleqDatabase
 TARGET_INCLUDE_DIRECTORIES(willeq_core PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 TARGET_COMPILE_DEFINITIONS(willeq_core PRIVATE SQLITE_THREADSAFE=1 SQLITE_OMIT_LOAD_EXTENSION)
@@ -2275,6 +2292,21 @@ IF(EQT_GRAPHICS)
         third_party/sqlite3.c
         src/client/zone_bsp.cpp
         src/common/util/compression.cpp
+        # B997 (GitLab #317) step 2: the deterministic door A/B links the
+        # PRODUCTION door path (the same DoorManager + PVS gating + the
+        # per-material scene-graph batch the client uses) so leg B exercises
+        # the gather/render/restore hooks renderer_zone_draw.cpp drives, not
+        # a copy. The door TU list mirrors test_door_loading's.
+        src/client/graphics/door_manager.cpp
+        src/client/graphics/door_manager_create.cpp
+        src/client/graphics/door_manager_mesh.cpp
+        src/client/graphics/door_manager_rebuild.cpp
+        src/client/graphics/door_collision.cpp
+        src/client/graphics/door_motion.cpp
+        src/client/graphics/door_manager_collision.cpp
+        src/client/graphics/door_manager_animation.cpp
+        src/client/graphics/scene_graph_batch.cpp
+        tools/hwcaps/zone_bench_door_batch_ab.cpp  # B997 step 2
         # T399 (board B235): every routed loader calls eqt::ResolveDataPath().
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
     )

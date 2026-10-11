@@ -101,8 +101,8 @@ TEST_F(ZoneLifecycleComponentTest, NetworkNotReadyClearsTheZoneReadyFlagThroughO
 }
 
 TEST_F(ZoneLifecycleComponentTest, ExpectedEntityCountIsAcceptedThroughTheForwarder) {
-    // expectedEntityCount_ is one of the six members that MOVED, and it has no
-    // reader outside the component, so the observable contract is just that the
+    // B340 deleted expectedEntityCount_ (write-only after L09 deleted its
+    // zero-caller accessor), so the observable contract is just that the
     // bridge's forwarder reaches the body without touching anything null.
     EXPECT_NO_THROW(renderer.setExpectedEntityCount(42));
     EXPECT_NO_THROW(renderer.ZoneLifecycle().setExpectedEntityCount(0));

@@ -669,7 +669,6 @@ EXEMPT_GROUPS = {
     ("ConstrainedTextureCache", "isPending"): "B494",
     ("ConstrainedTextureCache", "setLedgerEnabled"): "B494",
     ("DiagnosticsComponent", "toggleFog"): "B494",
-    ("DoorManager", "isDoorMeshBuilt"): "B494",
     ("DoorManager", "rebuildPlaceholderDoors"): "B494",
     ("DoorManager", "recomputeAllBspRegions"): "B494",
     ("EntityRenderer", "adjustOffsetX"): "B494",
@@ -882,7 +881,6 @@ EXEMPT_GROUPS = {
     ("MusicPlayer", "enableSoftwareRendering"): "B499",
     ("MusicPlayer", "isSoftwareRendering"): "B499",
     ("MusicPlayer", "reinitializeOpenAL"): "B499",
-    ("SoundBuffer", "loadFromPCM"): "B499",
     ("WeatherAudio", "getThunderTimer"): "B499",
     ("ZoneSoundEmitter", "getXmiIndex1"): "B499",
     ("ZoneSoundEmitter", "getXmiIndex2"): "B499",
@@ -909,6 +907,11 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # B946: the [gldriver] line's parser. Its C++ callers are tests (the
+    # emitter is makeGlDriverLine/glDriverInfo); its production consumer is
+    # scripts/pi/rendered_zone_summarize.py, which parses the same format
+    # from zone logs -- the test pins the format both sides share.
+    ("(free)", "parseGlDriverLine"): "seam",
     # B430/B433: the Options window's per-control classification table is a
     # CENSUS, not a runtime input -- its reader is the test that fails on an
     # unclassified control row (OptionsClassification.*), which is the point.
@@ -952,6 +955,11 @@ EXEMPT_TESTS_GROUPS = {
     # T504 fix 1: the custom SoundFont is loaded lazily and freed on the way
     # back to GM; the test's window on whether it is resident right now.
     ("MidiPlayer", "isCustomSoundFontResident"): "observer",
+    # B989 (#308): the raw-PCM construction seam. Production decodes only
+    # from files/memory archives; test_sfx_cache_eviction builds a
+    # SoundBuffer from deterministic raw PCM (no archive, no EQ client files
+    # needed) to pin the shared-buffer cache's LRU mechanics.
+    ("SoundBuffer", "loadFromPCM"): "seam",
     # B972 (#290): the bounded-VBO/EBO seams on the two self-contained cut
     # sites. setVboPathEnabled is the SEAM -- the pixel-identity test flips it
     # to prove the VBO and client-array paths render the same bytes; production
@@ -965,6 +973,17 @@ EXEMPT_TESTS_GROUPS = {
     ("ImpostorBatchNode", "setVboPathEnabled"): "seam",
     ("ImpostorBatchNode", "isVboPathEnabled"): "observer",
     ("ImpostorBatchNode", "vboBytes"): "observer",
+    # B997 (#317): the per-material client-array batch of the PVS doors. The
+    # unit test (test_scene_graph_batch.cpp) drives addNode/build/render on the
+    # EDT_NULL driver and needs two things production never uses: a way to
+    # override the per-type transparency classification (the null driver
+    # reports every built-in type opaque, so the opaque-only guard is
+    # unobservable without it) and the baked client array exactly as
+    # render() would draw it (the transform + index-remap assertions).
+    # (groupCount left this list when the final leg made it production: the
+    # A/B's proof line reads it via DoorManager::sgBatchGroups().)
+    ("SceneGraphBatch", "setTransparencyClassifier"): "seam",
+    ("SceneGraphBatch", "lastBakedDraw"): "observer",
     # B944: whether one cache entry's GL storage is resident right now (an
     # evicted entry keeps its object and restores on the next bind).
     # test_texture_eviction_residency asserts eviction and restore through it;

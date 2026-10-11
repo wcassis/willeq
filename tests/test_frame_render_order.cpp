@@ -308,7 +308,25 @@ const std::string kGolden = kRoot + "/tests/goldens/frame_render_order_g05.txt";
 //     renderer_frame_tooltips.cpp, so it is emitted as itself. Entries 0-333
 //     are byte-identical; the rest shift by one, text byte-identical. The
 //     count rises 362 -> 363.
-const size_t kGoldenSize = 363u;
+//   * B997 (GitLab #317): the per-site 3D-draw census. ONE pure insertion, no
+//     text change and no reorder: entry 358,
+//     `drawCensusEndFrame(static_cast<void*>(ctx_.driver));`, directly after
+//     entry 357 `eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);` and before
+//     entry 358 (now 359) `eqtGPUPhaseCollectResults();`. It goes there
+//     because it must read the driver's just-closed 120-frame [drawcensus]
+//     window, which is only settled once endScene() has returned -- i.e.
+//     after the swap phase's PhaseEnd and before the frame's GPU-query
+//     collection. It draws NOTHING (the census is a stderr counter), so it
+//     changes no visible draw order; it sits in the tail after all geometry
+//     and UI are committed. It is a free function (not a FrameComponent
+//     pass), so the composer emits it as itself rather than expanding it.
+//     Entries 0-357 are byte-identical; everything after shifts by one with
+//     its text byte-identical. The count rises 363 -> 364. (The census body
+//     is gated on EQT_DRAW_CENSUS, off by default, and the call is wrapped in
+//     #ifdef EQT_HAS_GLES2 -- a preprocessor line the composer's normaliser
+//     drops -- so in a non-GLES2 build the composed order is the pre-B997
+//     363 and this entry is the only thing that moves.)
+const size_t kGoldenSize = 364u;
 
 std::vector<std::string> readLines(const std::string& path) {
     std::ifstream in(path);

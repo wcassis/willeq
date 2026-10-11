@@ -329,6 +329,115 @@ const DoorVisual* DoorManager::getDoor(uint8_t doorId) const
     return nullptr;
 }
 
+// ---- B997: per-material client-array batch of the PVS doors ---------------
+//
+// The census (refactor/B997/README.md) shows smgr->drawAll()'s SOLID residual
+// is dominated by one client-array draw per PVS door (q2 ~29/f, gd ~78/f);
+// each costs its own Mesa per-draw varying BO (cost-sheet fact 5). These three
+// hooks collapse a run of same-material doors into ONE gathered client-array
+// draw per material group. Pixel-identity is by construction (see
+// scene_graph_batch.h): same material, same world transform (only the
+// P09c-accepted transform-order reorder P*V*(W*p) vs (P*V*W)*p), opaque
+// geometry under the Z-buffer. The batch draws at the SOLID-pre point and the
+// door is kept OUT of drawAll()'s SOLID list for the frame via the grab/remove
+// idiom this class already uses (clearDoors), so it is drawn exactly once.
+
+void DoorManager::gatherSceneGraphBatch()
+{
+    sgBatch_.clear();
+    sgBatchedPivots_.clear();
+    // Reset last frame's suppression flags so a door that is NOT re-batched
+    // this frame (or the gate toggled off) is left to the normal PVS path.
+    for (auto& [id, visual] : doors_) visual.batchSuppressed = false;
+
+    if (!sceneGraphBatchEnabled_ || !driver_ || !smgr_) return;
+
+    // Camera position = the front-to-back sort key (a perf-only hint for
+    // opaque geometry; the zone path uses the same smgr active-camera idiom,
+    // renderer_zone_draw.cpp:609). The batch renders at the SOLID-pre point,
+    // where the active camera holds the 3D perspective matrices.
+    irr::core::vector3df camPos(0, 0, 0);
+    if (smgr_->getActiveCamera())
+        camPos = smgr_->getActiveCamera()->getAbsolutePosition();
+
+    for (auto& [id, visual] : doors_) {
+        // Only a door the PVS gate left in the scene graph this frame
+        // (inSceneGraph==true after update()) is a drawAll() residual to cut.
+        // A PVS-hidden door is already detached by update() and is not a draw.
+        if (!visual.inSceneGraph || !visual.sceneNode || !visual.pivotNode)
+            continue;
+        if (!visual.sceneNode->getMesh())
+            continue;
+
+        // The node's world matrix: the mesh node is a child of the pivot, both
+        // under the (always-refreshed) scene root. updateAbsolutePosition()
+        // propagates the pivot's fresh absolute (relative + root identity) to
+        // the mesh child, so this is the same transform smgr->drawAll() would
+        // have used this frame (CMeshSceneNode::render() uses the mesh node's
+        // AbsoluteTransformation).
+        visual.pivotNode->updateAbsolutePosition();
+        visual.sceneNode->updateAbsolutePosition();
+        const irr::core::matrix4 world =
+            visual.sceneNode->getAbsoluteTransformation();
+
+        irr::core::vector3df diff = camPos - visual.sceneNode->getAbsolutePosition();
+        const float distSq = diff.getLengthSQ();
+
+        if (sgBatch_.addNode(driver_, visual.sceneNode->getMesh(), world, distSq)) {
+            // Fully taken by the batch: detach the pivot so drawAll()'s SOLID
+            // list (built in OnRegisterSceneNode, which runs inside drawAll,
+            // AFTER this gather) never contains it. Mark batchSuppressed so
+            // next frame's update() PVS gate skips its own detach (the batch
+            // owns it for the frame) -- restore re-attaches.
+            visual.pivotNode->remove();
+            visual.inSceneGraph = false;
+            visual.batchSuppressed = true;
+            sgBatchedPivots_.push_back(visual.pivotNode);
+        }
+    }
+}
+
+int DoorManager::renderSceneGraphBatch()
+{
+    if (sgBatch_.empty()) return 0;
+    const int groups = sgBatch_.build();
+    if (groups <= 0) return 0;
+    const int draws = sgBatch_.render(driver_);
+    // Census hook: how many doors collapsed into how many per-material draws
+    // this frame (logged every 120th batched frame, matching the [mergedraws]
+    // cadence). The scene_graph census count (draw_census.h) is the primary
+    // signal; this is the per-door breakdown.
+    static int sgBatchLogCounter = 0;
+    if ((++sgBatchLogCounter % 120) == 0) {
+        LOG_INFO(MOD_GRAPHICS,
+                 "[sgbatch] doors={} groups={} draws={} (replaced {} per-node client draws)",
+                 sgBatch_.batchedNodes(), groups, draws, sgBatch_.batchedNodes());
+    }
+    return draws;
+}
+
+void DoorManager::restoreSceneGraphBatch()
+{
+    // Re-attach the doors the batch drew, back where update() left them.
+    // updateAbsolutePosition() keeps the mesh child's matrix fresh for the
+    // window before next frame's update() (the pivot was detached for a frame,
+    // so without this a static door's absolute could be one frame stale).
+    for (auto* pivot : sgBatchedPivots_) {
+        if (!pivot) continue;
+        if (pivot->getParent() != smgr_->getRootSceneNode())
+            smgr_->getRootSceneNode()->addChild(pivot);
+        pivot->updateAbsolutePosition();
+    }
+    for (auto& [id, visual] : doors_) {
+        if (!visual.batchSuppressed) continue;
+        // inSceneGraph is back to true; clear the flag so next frame's PVS
+        // gate (which reads inSceneGraph, not this) behaves normally.
+        visual.inSceneGraph = true;
+        visual.batchSuppressed = false;
+    }
+    sgBatchedPivots_.clear();
+}
+
 void DoorManager::clearDoors()
 {
     for (auto& [id, visual] : doors_) {

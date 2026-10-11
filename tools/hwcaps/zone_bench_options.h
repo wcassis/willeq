@@ -180,6 +180,18 @@ struct Options {
     // per-part legs already exercise.
     bool entityViewerComposite = false;
 
+    // B997 (GitLab #317) step 2: the deterministic door A/B for the
+    // per-material scene-graph batch (EQT_SG_BATCH). Renders ONLY the zone's
+    // doors through the production door path (DoorManager + PVS gating) at
+    // a fixed camera derived from the door fixture, one frame per leg, and
+    // byte-compares the two PNGs (see zone_bench_door_batch_ab.h). The door
+    // placement comes from --sg-batch-ab-doors (the eqemu `doors` table
+    // fixture); --sg-batch-ab-min-doors is the in-frame proof floor.
+    bool sgBatchAb = false;
+    std::string sgBatchAbDoors;      // fixture path (refactor/B997/data/doors_<zone>.txt)
+    std::string sgBatchAbOutDir;     // directory for the two leg PNGs (must exist)
+    int sgBatchAbMinDoors = 2;       // fewer in-graph doors than this = setup failure
+
     // Diagnostic
     bool treeTest = false;        // Render single tree object, screenshot, exit
     bool compositeEntityTest = false; // Render 1 of each race/gender, screenshot, exit

@@ -11,6 +11,7 @@
 // See --help for full options.
 
 #include "zone_bench_loader.h"
+#include "zone_bench_door_batch_ab.h"  // B997 step 2
 #include "zone_bench_gpu_tally.h"  // B955
 #include "zone_bench_camera.h"
 #include "zone_bench_entity_viewer.h"
@@ -179,6 +180,12 @@ int main(int argc, char** argv) {
     benchConfig.animate = opts.animate;
     benchConfig.compositeEntities = opts.compositeEntities;
     benchConfig.loadObjects = opts.loadObjects;
+    // B997 step 2: the door A/B needs the zone's _obj.s3d geometries -- the
+    // door meshes resolve through S3DZone::objectGeometries (door_manager_
+    // mesh.cpp's findDoorMesh), which only loadObjects populates. The A/B
+    // draws ONLY the doors, so the placed zone objects this loads are never
+    // rendered; only their geometry definitions matter.
+    benchConfig.loadObjects = opts.loadObjects || opts.sgBatchAb;
     benchConfig.objectAnimFrame = opts.objectAnimFrame;
     benchConfig.shaderDebugMode = opts.shaderDebugMode;
     benchConfig.loadMemAudit = opts.loadMemAudit;
@@ -289,6 +296,40 @@ int main(int argc, char** argv) {
         }
         printf("Entity viewer complete: %zu angle(s), %d failure(s).\n", results.size(), failures);
         return failures > 0 ? 1 : 0;
+    }
+
+    // ── B997 step 2: deterministic door A/B for the scene-graph batch ──
+    // One leg per process: the EQT_SG_BATCH env var the production gate reads
+    // (renderer_zone_lifecycle.cpp:663) selects the leg, and the ctest runs
+    // the tool twice (0 then 1) byte-comparing the two PNGs. The door
+    // placement comes from the fixture, the camera is derived from it, and
+    // the lighting is fixed -- see zone_bench_door_batch_ab.h.
+    if (opts.sgBatchAb) {
+        if (opts.sgBatchAbDoors.empty() || opts.sgBatchAbOutDir.empty()) {
+            fprintf(stderr, "ERROR: --sg-batch-ab requires --sg-batch-ab-doors FILE "
+                            "and --sg-batch-ab-out-dir DIR\n");
+            return 1;
+        }
+        // Mirror the production gate exactly (renderer_zone_lifecycle.cpp):
+        // the batch is ON by default; only an explicit EQT_SG_BATCH=0
+        // turns it off (the leg-A opt-out).
+        const char* env = std::getenv("EQT_SG_BATCH");
+        const bool batchOn = !(env && env[0] == '0');
+        ZoneBench::SgBatchAbConfig abCfg;
+        abCfg.doorFixturePath = opts.sgBatchAbDoors;
+        abCfg.outDir = opts.sgBatchAbOutDir;
+        abCfg.eqPath = opts.eqPath;
+        abCfg.zoneName = opts.zoneName;
+        ZoneBench::SgBatchAbResult ab;
+        printf("[sg-batch-ab] leg: EQT_SG_BATCH=%s batchOn=%d\n",
+               env ? env : "(unset)", batchOn ? 1 : 0);
+        if (!ZoneBench::runSgBatchAbLeg(*data, batchOn, abCfg,
+                                        opts.sgBatchAbMinDoors, ab))
+            return 1;
+        // The verdict is the PNG bytes (compared by the ctest across the two
+        // process runs); the exit code is the leg's setup success only.
+        printf("SG_BATCH_AB_OK leg=%d png=%s\n", batchOn ? 1 : 0, ab.pngPath.c_str());
+        return 0;
     }
 
     // ── Tree test: render one tree, screenshot, exit ──

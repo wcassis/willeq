@@ -225,7 +225,7 @@ void CameraController::setOrbitAngle(float eqHeading) {
     // Normalize to 0-512 range
     while (orbitAngle_ < 0) orbitAngle_ += 512.0f;
     while (orbitAngle_ >= 512.0f) orbitAngle_ -= 512.0f;
-    orbitAngleInitialized_ = true;
+    // B345: the orbitAngleInitialized_ latch went (no reader).
 }
 
 void CameraController::adjustOrbitAngle(float delta) {

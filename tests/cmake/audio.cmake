@@ -365,6 +365,32 @@ IF(WITH_AUDIO)
     GTEST_DISCOVER_TESTS(test_music_player_soundfont_lifetime DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B990 (issue #309): the custom orchestral SoundFont (synthus2.sf2) is loaded
+# on demand by the first Velious/Luclin XMI (T504) and B977 measured it is
+# NEVER released -- 24,162,944 B of float samples for the rest of the session
+# (refactor/B977/audio_ledger_census.tsv). This target pins the release at the
+# mechanism that ends a song (MusicPlayer::stop immediate + its fade
+# completion): a stopped custom-font song must release the font, a following
+# one reloads it (T504 unchanged), and a GM-font song never loads it. It
+# constructs the real AudioManager (forceLoopback, no device needed) so the
+# release is proven at AudioManager::stopMusic, not just on a bare MidiPlayer.
+# Links the whole AUDIO_COMMON_TEST_SOURCES set for the same reason
+# test_audio_startup_peak does. Skips itself when no EQ client SoundFont is
+# present.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_soundfont_release
+        test_soundfont_release.cpp
+        ${AUDIO_COMMON_TEST_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_soundfont_release PRIVATE
+        WITH_AUDIO
+        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+    TARGET_LINK_LIBRARIES(test_soundfont_release
+        GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
+    GTEST_DISCOVER_TESTS(test_soundfont_release DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T496 Leg D (board B823): the `audio` category's PEAK at startup. Links the
 # ledger TU directly so the assertion is in bytes of Category::Audio, and links
 # the same AUDIO_COMMON_TEST_SOURCES the other AudioManager tests use.
@@ -429,4 +455,25 @@ IF(WITH_AUDIO)
     TARGET_LINK_LIBRARIES(test_audio_ledger_attribution
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_audio_ledger_attribution DISCOVERY_TIMEOUT 120)
+ENDIF()
+
+# B989 (#308): the decoded PCM of a played WAV is held ONCE. playSound() used
+# to decode into bufferCache_ (au.sound_buffers) AND copy the same samples
+# into SfxManager::cache_ (au.sfx_cache) -- up to 16 MiB of duplicated PCM,
+# each cache capped separately. The cases play real archive sounds through the
+# client's own paths and assert the owner rows agree (one holds the PCM, the
+# other 0 for it), the `audio` category carries it once, and the preset's
+# soundCache cap bounds the single cache with T412's LRU surviving.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_sfx_single_pcm_cache
+        test_sfx_single_pcm_cache.cpp
+        ${AUDIO_COMMON_TEST_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_sfx_single_pcm_cache PRIVATE
+        WITH_AUDIO
+        WILLEQ_EQ_CLIENT_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+    TARGET_LINK_LIBRARIES(test_sfx_single_pcm_cache
+        GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
+    GTEST_DISCOVER_TESTS(test_sfx_single_pcm_cache DISCOVERY_TIMEOUT 120)
 ENDIF()

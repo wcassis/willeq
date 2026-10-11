@@ -39,19 +39,23 @@ it without taking that measurement first.
 
 ## A — live defects
 
-- **B990** (A) → issue #309. The custom orchestral SoundFont `synthus2.sf2`
-  (12,036,844 B on disk) is held in the client as **24,160,712 B (23.16 MiB) of
-  float samples** (`tsf` holds float; `au.soundfont_custom`, Pi velketor steady
-  `refactor/B977/audio_ledger_census.tsv` — the same 24,162,944 B on x86). It
-  loads on the first `playMusic` of a Velious/Luclin XMI stem (T504 deferred
-  it from startup to `MidiPlayer::selectSoundFont(Custom)`) and is never
-  released: it is 84 % of the audio ledger's measured worst (velketor,
-  28,720,320 B at steady_60s) and what makes the audio ratchet (35 MiB) refuse
-  to move the 32 MiB budget down (B977, #295; docs/decisions.md 2026-10-05).
-  The original client (32 MB total) never decoded its font to float. **This
-  defect moves first**; a re-ratchet of `memoryLedgerBudgets.audio` follows
-  Will's number when it lands. Filed by B977, class::A, lane::pi.
-- **B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
+- ~~**B990** (A) → issue #309. The custom orchestral SoundFont `synthus2.sf2`
+  was never released: 24,160,712 B (Pi) / 24,162,944 B (x86) of float samples
+  resident for the rest of the session, 84 % of the audio ledger's measured
+  worst, what made the audio ratchet refuse to move the 32 MiB budget down
+  (B977, #295; docs/decisions.md 2026-10-05).~~ **CLOSED 2026-10-10: the font
+  is released at `MusicPlayer::stop()`, the one place a song ends — immediate
+  and faded stops both, at the mechanism, not a timer (commit e5acd72b,
+  `refactor/B990/README.md`).** RED/GREEN: `tests/test_soundfont_release.cpp`
+  (2/3 red at base tip: 24,225,520 B held after stop; 8/8 green at the tip,
+  incl. the stop-race suite); live lane-3 x86 leg (`refactor/B990/
+  audio_ledger_census.tsv`): velketor `au.soundfont_custom` 2,976 B / 32
+  blocks at steady_60s after the music started and stopped — the 24 MB gone,
+  the residual being the GM-identical selection bookkeeping — vs B977's
+  24,162,944 B at the same point; qeynos2 (classic control) never loaded the
+  custom font. **Left for Will (per the card): the Pi re-run and the
+  `memoryLedgerBudgets.audio` re-ratchet, after B989 lands too.**
+- ~~**B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
   float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode,
   ~2.0–2.4 MB after the B977 tour's combat) and `SfxManager::cache_`
   (`au.sfx_cache`, `preload()`'s second copy of the same samples), each capped
@@ -60,8 +64,29 @@ it without taking that measurement first.
   Measured: b977-audio x86 befallen `au.sound_buffers` 2,322,320 +
   `au.sfx_cache` 310,640 B at steady_60s (723,600 B at the shutdown and
   zone_change points; Pi befallen 2,320,376 + 723,456 B at steady_60s,
-  `refactor/B977/audio_ledger_census.tsv` owner rows). Moves SECOND, after
-  B990, in the audio re-ratchet. Filed by B977, class::A, lane::pi.
+  `refactor/B977/audio_ledger_census.tsv` owner rows). **STRUCK (2026-10-11,
+  `task/kb-b989-sfx-cache-dup`, `refactor/B989/README.md`):** the decoded PCM
+  is now held ONCE — `AudioManager::loadSound` decodes into its buffer cache
+  and hands the same `std::shared_ptr<SoundBuffer>` to
+  `SfxManager::preload()`; `SfxManager::cache_` is a shared-reference LRU (it
+  evicts references, never the PCM), the `au.sfx_cache` owner row is gone, and
+  the preset's `soundCache` cap bounds the single cache (T412's LRU now
+  actually enforced). RED/GREEN: `tests/test_sfx_single_pcm_cache` (3 cases:
+  a fresh play grows the `audio` category by the decoded PCM exactly once, a
+  buffer-cached replay grows it ~0 where the pre-fix code grew it by a full
+  second copy — 22,336 B of 21,920 B PCM on the RED commit — and the cap
+  evicts LRU-oldest and bounds resident bytes); `tests/test_sfx_cache_eviction`
+  covers the eviction mechanics; the CI `test` job's audio suite is green
+  (5,757/5,757 at MR head cbdb905b, pipeline 773 — re-measured per push, not
+  quoted). Live
+  ledger leg, same tour/character/eligibility as B977's (lane 3, x86,
+  befallen, rat fight, `refactor/B989/audio_ledger_census.tsv`): steady_60s
+  `audio` **3,872,576** live vs B977's 4,252,448; `au.sound_buffers`
+  2,322,288 (B977: 2,322,320); **`au.sfx_cache` ABSENT** (B977: 310,640) —
+  the 310,640 B of duplicate PCM is gone and the category carries the PCM
+  once. The 16 MiB worst-case bound is structural (one cache, one cap) rather
+  than re-measured live, and the Pi steady-state re-run is deferred to the
+  audio re-ratchet alongside B990's.~~
 
 - ~~**B852** (A) **Nothing verifies that Kunark and Velious zones load.** The CI
   gate renders three classic zones and nothing else; no test, script or gate
@@ -816,11 +841,17 @@ it without taking that measurement first.
   `tests/test_texture_lru_draw_order.cpp` (a texture bound every frame survives
   load-pressure eviction; a no-draw control still evicts in load order). No
   budget, golden or gate assertion changed.
-- **B950** (B) → issue #268. `ZoneMeshBuilder`'s layout depends on
+- ~~**B950** (B) → issue #268. `ZoneMeshBuilder`'s layout depends on
   `EQT_HAS_TEXTURE_ATLAS`, a PRIVATE define of `willeq_core`;
   `tests/test_placed_object_meshes.cpp` constructs one without it (B944's own
   test hit the resulting ASan stack-buffer-overflow and defines it). Confirmed
-  by B944 for its own test; the other by construction.
+  by B944 for its own test; the other by construction.~~ **DONE 2026-10-10**
+  (branch `task/kb-b950-atlas-define-odr`, issue #268,
+  `refactor/B950/README.md`): the define is PUBLIC on `willeq_core`, the
+  per-target PRIVATE copies are deleted, and `test_zone_geometry_atlas_layout`
+  (two probe TUs, consumer state vs core state, must agree on
+  `sizeof(ZoneMeshBuilder)`; 272 vs 280 on x86-64 before the fix) keeps it
+  that way.
 - **B952** (B) → issue #270, **in review** (`refactor/B952/README.md`).
   Impostor billboards part 1: the benchmark's impostor row (`tex.impostor`),
   sizes 64/128/256, unique/shared, measured on x86 and the Pi; budget
@@ -928,10 +959,53 @@ it without taking that measurement first.
   qeynos2 18.90 / gfaydark 24.5 MiB cache-on imp200far, the impostor proven
   NOT the lever by the `off200far` control — the B972 README in
   `refactor/B972/` on the `task/B972-mesa-stream-buffers` branch, MR !94).
-  Conversion to bounded reused VBOs (partial `glBufferSubData`, the merged
-  B975 `NameTagBatchNode` slack pattern); a static VBO is the measured
-  anti-pattern (B962: +4.3 MiB, half qeynos2 fps). Cut behind #290/MR !94
-  (re-measure the residual after it lands).
+  **RE-SCOPED 2026-10-09 (post B972-FT / Will's ruling (d), MR !94): the lever
+  is DRAWS PER FRAME, not buffering** (cost-sheet fact 5: `lima_update_varying`
+  allocates a fresh ~4 KiB varying BO per draw; the per-draw churn pool is the
+  part of `gpu_unnamed_steady` a draw cut touches — `refactor/B997/README.md`).
+  **Step 2 census done (2026-10-09, `9f184921`, platform-consistent x86↔Pi):**
+  at the crowd-in `steady_60s` guard point, 3D client-array draws/frame =
+  qeynos2 **75** (zone 20 + entity 13 + **scene_graph 42**), gfaydark **158**
+  (zone 38 + entity 0 + **scene_graph 120**); `win_3d_vbo = 0` (impostors/
+  nametags are named VBO pools). The **scene-graph residual** (PVS doors +
+  placed objects + equipment + overlays, per-node `smgr->drawAll()` client
+  draws) is the dominant lever (56 % / 76 % of the draws). Varying-BO pool
+  10.61 / 14.90 MiB of the 15.89 / 18.69 MiB unnamed; the rest (5.28 / 3.79 MiB)
+  is the non-draw Mesa floor (PP streams / shader bins / BO cache / tile heap)
+  — unreachable by a draw cut, and below the 10 MiB target on both zones.
+  Reaching 10 MiB needs ~56–58 % of the varying pool cut ≈ the near-entire
+  scene-graph residual batched. Zone-merge generations are the u16 65 535-vertex
+  index constraint, NOT a reducible split. **Steps 3–4 DONE + measured
+  (2026-10-10, head `ec14bad0`):** the per-material client-array batch of the
+  PVS doors (`EQT_SG_BATCH`, **off by default**, `SceneGraphBatch`,
+  `scene_graph_batch.{h,cpp}`, unit test `tests/test_scene_graph_batch.cpp`)
+  is built and the Pi A/B (lane 2, same-build, imp200far crowd tour) is
+  measured. **The draw lever worked — the memory guard did NOT drop.**
+  draws/frame fell (qeynos2 scene_graph 41→27/f doors 28→14 gathers, gfaydark
+  122→~19/f doors 77→4 gathers; win_3d_client 74→60 / ~160→~57) with pp jobs
+  falling and wait_ms/fps flat-to-better (no frame-time regression), but
+  `gpu_unnamed_steady` stayed over 10 MiB on **both** zones (q2 17.44→17.16,
+  gd 17.71→18.84 MiB) — the 10 MiB guard is RED on both. **Mechanism:** the
+  Mesa varying BO is sized to the vertex payload a draw uploads
+  (data-proportional), not flat ~4 KiB, so a gathered draw conserves the byte
+  pool it removes (q2 draw3d:client 1545→1524 BOs, bytes ~flat). The step-2
+  linear reachability model (flat ~4 KiB/draw) is not borne out; the measured
+  D_sg is the distinct-**material** count (14/4), not the distinct-*model*
+  count (5/3) the census assumed. **RULED by Will 2026-10-10 (#317 note 3233),
+  option (a):** the draw-count lever is at its ceiling — the 10 MiB
+  `gpu_unnamed_steady` crowd-tour guard **stays RED on qeynos2 and gfaydark as
+  a documented known condition** (same class as B988/#307), the bound is NOT
+  re-scoped and no buffering change is allowed; the real levers (varying
+  stride, per-frame vertex volume) are B1013 #334. The residual + mechanism +
+  per-change table stand in `refactor/B997/README.md` (step 4 + the
+  "Known condition (ruling a)" section). The `EQT_SG_BATCH` batch's ship
+  decision is made by the DETERMINISTIC x86 door pixel A/B (ctest
+  `test_sg_batch_door_pixel_ab`; the live-client frame diff is not a channel —
+  0/18 frames identical across two baseline legs): **MEASURED byte-identical
+  on both zones (q2 60 in-graph doors, 59→19 draws; gd 78, 77→4), so the
+  default flips ON** (batch on unless `EQT_SG_BATCH=0`). No golden/budget/
+  baseline moved. Evidence: `~/kb-evidence/b997-draw-count/pisgbatch-sg0-20261010T003000Z/` +
+  `pisgbatch-sg1-20261010T004903Z/` + the pixel A/B (this head).
 - **B998** (B, frame-time) → issue #325. **BLOCKED with measured ceiling
   (2026-10-07)** — no in-scope fix; see `refactor/B998/README.md` for the
   full A/B. The gfaydark low-geometry 31 fps floor (2 vsyncs) is a vsync
@@ -7011,19 +7085,27 @@ client uses every field.
   only thing deleted) so it stays the sole consumer of
   `config_.enableCompressedTextures`.
 
-- **B339** (B) `include/client/graphics/weather_effects_controller.h` → issue #133
+- ~~**B339**~~ (B) `include/client/graphics/weather_effects_controller.h` → issue #133
+  **CLOSED by T506 (2026-10-11):** `targetIntensity_` and its two writes
+  deleted with the exemption row (`refactor/B339/README.md`).
   `targetIntensity_` -- commented "For smooth transitions", written on every
   intensity change and on reset, read by nothing: weather intensity is applied
   outright, never interpolated toward a target. Closes when the transition
   exists or the member goes. Found by T414 Leg C.
 
-- **B340** (B) `include/client/graphics/zone_lifecycle/zone_lifecycle_component.h` → issue #134
+- ~~**B340**~~ (B) `include/client/graphics/zone_lifecycle/zone_lifecycle_component.h` → issue #134
+  **CLOSED by T506 (2026-10-11):** `entitiesLoaded_` / `expectedEntityCount_`
+  and their four writes deleted with the exemption rows (`refactor/B339/README.md`).
   `entitiesLoaded_` / `expectedEntityCount_` -- **the header already documents
   them as write-only.** L09 deleted their zero-caller accessors and left the
   members and their four writes behind. Closes when they go with the writes, or
   a consumer for the zone-in entity gate appears. Found by T414 Leg C.
 
-- **B341** (B) `include/client/graphics/overlays/overlays_component.h` → issue #135
+- ~~**B341**~~ (B) `include/client/graphics/overlays/overlays_component.h` → issue #135
+  **CLOSED by T506 (2026-10-11), PARTIALLY:** `currentTargetInfo_` deleted
+  with its writes and exemption row, but `currentTargetLevel_` is READ
+  (target_ring_draw.cpp, ConTierForLevels) and stays -- the issue is noted, not
+  closed, on that finding (`refactor/B339/README.md`).
   `currentTargetInfo_` / `currentTargetLevel_` -- target-overlay state cached
   when the target changes and never read by the draw. The target outline and
   name plate get their data elsewhere. Closes when the overlay draws from them
@@ -7043,7 +7125,11 @@ client uses every field.
   `sceneManager_` -- stored collaborator pointers with no reader. Closes when
   each is used or dropped from the constructor/setter. Found by T414 Leg C.
 
-- **B344** (B) `include/client/bridge/bridge_component.h` → issue #138
+- ~~**B344**~~ (B) `include/client/bridge/bridge_component.h` → issue #138
+  **CLOSED by T506 (2026-10-11):** `m_audio_config_vendor_music` (the config
+  key is still parsed and now logs WARN ignored), `m_duel_target_id` and
+  `m_player_race` deleted with their writes and exemption rows
+  (`refactor/B339/README.md`).
   `m_audio_config_vendor_music`, `include/client/player/player_component.h`
   `m_duel_target_id`, `include/client/skill/skill_manager.h` `m_player_race` --
   three pieces of state stored at the point a decision is made and never
@@ -7052,7 +7138,11 @@ client uses every field.
   player race is stored for skill gating that does not gate on race. Closes per
   member. Found by T414 Leg C.
 
-- **B345** (B) `include/client/graphics/camera_controller.h` → issue #139
+- ~~**B345**~~ (B) `include/client/graphics/camera_controller.h` → issue #139
+  **CLOSED by T506 (2026-10-11):** `orbitAngleInitialized_`, `m_playerHeading`,
+  `m_curEnd`, `m_maxEnd` (also write-only -- verified, not just assumed),
+  `m_startTime` and `ConflictInfo::binding1` / `binding2` deleted with their
+  writes and exemption rows (`refactor/B339/README.md`).
   `orbitAngleInitialized_`, `include/client/output/console_renderer.h`
   `m_curEnd` / `m_playerHeading` / `m_startTime`,
   `include/client/input/hotkey_manager.h` `ConflictInfo::binding1` / `binding2`
@@ -10330,7 +10420,8 @@ because the Pi had no keyboard or mouse attached (B510).
   which LOWERS the camera and tilts the view up -- exactly the oracle's Alt+PgUp
   (the scene moved down the screen). T466 read the action name, not the arm.
   `PitchUpTiltsTheViewUpAsTheOfficialKeyDoes` passed before any T471 change and
-  pins it. F10, F11, L and Alt+C untouched (B582). Still owed: what Raise,
+  pins it. F10, F11 and L were untouched then and are applied now (B582
+  CLOSED 2026-10-10); Alt+C matched the oracle already. Still owed: what Raise,
   Lower and Tether-slide move on the official client and every step (B653).
 
 - ~~**B532**~~ (A) **CLOSED by T464 (2026-09-13)** -- confirmed from code with a
@@ -10440,7 +10531,7 @@ because the Pi had no keyboard or mouse attached (B510).
   Confirm by: `/camp` to character select, log in a second character with no
   `UI_<char>_<server>.ini`, look at the windows and `/camera get`. Found by T464.
 
-- **B561** (C, ORACLE-OWED) **F11 is bound to two actions in the defaults.** → issue #42
+- ~~**B561**~~ (C, ORACLE-OWED) **CLOSED by B582 (2026-10-10)** **F11 is bound to two actions in the defaults.** → issue #42
   `HotkeyManager::setupDefaults()` binds F11 to `ToggleAllUI` (Global) and
   `MusicVolumeUp` (Player); `getAction()` prefers Global, so F11 has only ever
   toggled the UI, and `config/hotkeys.json` binds `MusicVolumeUp` nowhere. T464
@@ -11222,7 +11313,15 @@ Evidence for every entry below is in `review/T466/` (README names each file).
   Tether the node must land on the follow pose at T466's baseline pose). Not
   live-proven: no lock was assigned.
 
-- **B582** (C) **fable's F10/F11 and L do not mean what the official keys mean.** → issue #49
+- ~~**B582**~~ (C) **CLOSED 2026-10-10 (GitLab #49, MR on
+  task/kb-b582-official-keymap)** **fable's F10/F11 and L do not mean what the official keys mean.** → issue #49
+  Applied per Will's ruling: F10 = `ToggleAllUI` (Global, the official "Toggle
+  UI Display", T466); F11 UNBOUND (the official netstat toggle; fable has no
+  netstat); L UNBOUND (the official Leadership window is post-Velious,
+  IGNORED) — `CycleObjectLights` has no key; the four volume bindings
+  (F10/F11/Shift+F10/Shift+F11) REMOVED — the Options General sliders and
+  `/musicvolume` /`effectsvolume` are the routes. Red/green and the pre-B582
+  user-file test: `refactor/B582/README.md`.
   Measured on the oracle's Options > Keys (UI category): **F10 = Toggle UI
   Display, F11 = Toggle netstat, L = Toggle Leadership Window, Alt+C = Toggle
   Combat Ability Window** (fable's Alt+C matches). fable binds F11 =

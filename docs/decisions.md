@@ -999,8 +999,9 @@ applied by T461/T464/T471/T474:
   deleted, not kept as an extra.
 - **F9 cycles the modes in the official order and REPLACES Ctrl+F5** (no
   alias). The other camera keys follow the official Options > Keys > Camera
-  page as T466 measured them (T471); F10/F11/L/Alt+C are still Will's call
-  (B582).
+  page as T466 measured them (T471). F10/F11/L/Alt+C are Will's call
+  (B582) — **applied 2026-10-10 (B582)**: F10 = ToggleAllUI, F11 and L unbound
+  (netstat and Leadership window), the four volume keys removed.
 - **Include the official orbit camera**: the user cameras orbit the player and
   zoom; the wheel and the zoom keys edit the active rig's distance.
 - **`/camera` is the exact-placement command**: azimuth, pitch, distance and
@@ -1251,6 +1252,7 @@ not asked. Will ruled in chat; each issue carries the same text.
    official panels' measured opacity, not fable's translucency.
 2. **Keymap (B582, with B561 and B652): adopt the official keymap.** F10, F11
    and L mean what the official keys mean; fable's own zoom keys move off them.
+   (B582/B561 applied 2026-10-10; B652 remains.)
 3. **Left HUD column (B366): resolution-aware** (the entry's option (b)).
 4. **Spell burst ramps (B396): match the oracle.** Low priority.
 5. **Guild line on name tags (B459): match the oracle** — capture it (a guild
@@ -1708,7 +1710,14 @@ Measured worst (at `steady_60s`, the asserted point):
 velketor is the worst on both machines because it is the only zone whose
 zone music actually STARTED in these runs: the custom SoundFont
 `synthus2.sf2` loads on first `playMusic` of a Velious/Luclin stem and is
-24,160,712 B (Pi) / 24,162,944 B (x86) of it. kael and thurgadina carry the
+24,160,712 B (Pi) / 24,162,944 B (x86) of it. **B990 (#309, 2026-10-10)
+changed the font's lifetime: it is now released at `MusicPlayer::stop()`,
+the one place a song ends — both the immediate and the faded path — so it
+is resident only while a custom-font song plays; a following custom song
+reloads it (~35 ms, page-cache; `refactor/B990/README.md`), a GM song never
+loads it. The figures above are the PRE-B990 census (music still playing at
+steady_60s); the post-B990 live x86 census is
+`refactor/B990/audio_ledger_census.tsv`.** kael and thurgadina carry the
 same font in their zone EFF, but their music region was not entered in these
 runs (the seeded safe point sits outside it), so their worst is the ~3.6 MB
 startup-only row. The 10 classic zones top out at 4,945,872 B (Pi, erudnint).
@@ -1870,3 +1879,40 @@ time, and a `prune-build-trees` job on every fable pipeline that removes trees
 whose branch is gone from the remote or untouched for 14 days and prints the
 census (`docs/ci.md`, "One warm tree per ref"). `build/hygiene` and the
 patched Irrlicht stay shared (no binaries; content-stamped).
+
+## 2026-10-10 — B997 closed: the draw lever is at its ceiling; the 10 MiB
+crowd-tour guard stays RED as a known condition (Will, option (a); #317)
+
+**Will's ruling (a), 2026-10-10 (#317 note 3233):** the draw-count lever is at
+its ceiling. The 10 MiB `gpu_unnamed_steady` crowd-tour guard **stays RED on
+qeynos2 and gfaydark as a documented known condition** — the same class as the
+B988/#307 known condition above (a guard row that reads red on the crowd tours
+by a measured, named mechanism). The bound is **not re-scoped** and **no
+buffering change is allowed**; the real levers — varying stride and
+per-frame vertex volume — are **B1013 #334**.
+
+The measured basis (B997 step 4, `refactor/B997/README.md`, same-build Pi A/B,
+imp200far crowd tour, lane 2): the per-material scene-graph door batch
+(`EQT_SG_BATCH`) cut scene-graph draws (qeynos2 41→27/frame, gfaydark
+122→~19/frame) with no frame-time regression, but `gpu_unnamed_steady` stayed
+over 10 MiB on both zones (qeynos2 17.44→17.16, gfaydark 17.71→18.84 MiB).
+Mechanism: cost-sheet fact 5 says `lima_update_varying` allocates a varying BO
+per draw, and the Pi measured that BO to be sized to the **vertex payload a
+draw uploads** (data-proportional, mean 8–12 KiB), not flat ~4 KiB — so a
+gathered draw removes K small door draws and adds one gather whose BO costs
+roughly their total (q2 draw3d:client 1545→1524 BOs, bytes ~flat). The draw
+count and the per-draw fixed cost fall; the byte pool the guard measures does
+not.
+
+The `EQT_SG_BATCH` batch's own ship decision (ON by default or removed) was
+separate from the guard and rested on the deterministic x86 door pixel A/B
+(`refactor/B997/README.md`, "The deterministic x86 door pixel A/B"; ctest
+`test_sg_batch_door_pixel_ab`), because the live-client frame diff is not a
+channel (0/18 frames identical across two baseline legs — the crowd is not
+frame-locked). The A/B measured **byte-identical** on both zones (qeynos2
+60 in-graph doors, 59 batched to 19 per-material draws; gfaydark 78 in-graph,
+77 batched to 4 draws; non-vacuous frames), so the decision taken is: **the
+default flips to ON** — the batch is on unless `EQT_SG_BATCH=0`
+(`src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp`), and the
+ctest keeps the byte-identity pinned on every CI run. No golden, budget or
+baseline moved in B997.

@@ -474,7 +474,14 @@ void HotkeyManager::setupDefaults() {
     // (review/T377/oracle/T377_oracle_options_keys_UI_page1.png): "Toggle
     // friend window   Alt F" (eqstr 6599), Alternate column empty.
     addBinding(HotkeyAction::ToggleFriends, HotkeyMode::Global, irr::KEY_KEY_F, ModifierFlags::Alt);
-    addBinding(HotkeyAction::ToggleAllUI, HotkeyMode::Global, irr::KEY_F11);
+    // B582 (GitLab #49, Will's ruling 2026-09-18, docs/decisions.md
+    // 2026-09-18 item 2): adopt the official keymap. F10 = "Toggle UI Display",
+    // MEASURED on the oracle's Options > Keys > UI page (T466) -- F11, which
+    // this used to bind, is the official client's netstat toggle, which fable
+    // does not have, so F11 is unbound. The old F10/F11/Shift+F10/Shift+F11
+    // volume bindings below are gone too: the oracle's Camera, UI and Commands
+    // pages name no volume key.
+    addBinding(HotkeyAction::ToggleAllUI, HotkeyMode::Global, irr::KEY_F10);
     // T313: PageUp/PageDown scroll the static-UI panel under the cursor --
     // chat scrollback, the skills list, the loot list -- which is what they
     // do in the real client. PageDown used to be a second binding for
@@ -635,14 +642,20 @@ void HotkeyManager::setupDefaults() {
     addBinding(HotkeyAction::CameraPitchDown, HotkeyMode::Player, irr::KEY_NEXT, ModifierFlags::Alt);
 
     // === Player Mode - Lighting ===
-    addBinding(HotkeyAction::CycleObjectLights, HotkeyMode::Player, irr::KEY_KEY_L);
+    // B582 (GitLab #49, Will's ruling 2026-09-18): the official client's L
+    // toggles the Leadership window, which is post-Velious (LoY/GoD) and
+    // IGNORED by Will's feature-gap ruling -- so fable's CycleObjectLights
+    // (L) is unbound. It has no slash route of its own: /olight is the
+    // on/off toggle (renderer_slash_commands.cpp), not the cycle; the
+    // Options > Keys Debug page still reaches it.
 
     // === Player Mode - Audio Volume ===
-    // Use function keys which work reliably on all platforms including Linux/VNC
-    addBinding(HotkeyAction::MusicVolumeDown, HotkeyMode::Player, irr::KEY_F10);         // F10
-    addBinding(HotkeyAction::MusicVolumeUp, HotkeyMode::Player, irr::KEY_F11);           // F11
-    addBinding(HotkeyAction::EffectsVolumeDown, HotkeyMode::Player, irr::KEY_F10, ModifierFlags::Shift);  // Shift+F10
-    addBinding(HotkeyAction::EffectsVolumeUp, HotkeyMode::Player, irr::KEY_F11, ModifierFlags::Shift);    // Shift+F11
+    // B582: unbound. The oracle's Options > Keys pages (Camera, UI, Commands;
+    // T466) name no volume key; the official route is the slider. The Options
+    // General sliders and /musicvolume /effectsvolume remain (docs/decisions.md
+    // "Volumes round-trip", CLAUDE.md). The MusicVolume*/EffectsVolume*
+    // receiver arms in renderer_event_receiver.cpp are kept: they serve the
+    // Options window's volume step intents.
 
     rebuildIndex();
 }
@@ -924,9 +937,7 @@ std::vector<ConflictInfo> HotkeyManager::detectConflicts() const {
 
                 if (sameMode || globalConflict) {
                     ConflictInfo info;
-                    info.binding1 = b1;
-                    info.binding2 = b2;
-
+                    // B345: binding1/binding2 went with their report fields.
                     std::string modeInfo;
                     if (sameMode) {
                         modeInfo = " in " + modeEnumToName(b1.mode) + " mode";

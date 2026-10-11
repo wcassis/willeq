@@ -32,6 +32,9 @@ struct VerifyResult {
     int alphaCount = 0;
     int rawDataCount = 0;
     uint32_t totalDataSize = 0;
+    // B930: the header version the file declared (0 when the header itself is
+    // unreadable). Printed on every line, and checked against --require-v3.
+    uint16_t version = 0;
 };
 
 static VerifyResult verifyFile(const std::string& filepath, bool verbose) {
@@ -67,6 +70,10 @@ static VerifyResult verifyFile(const std::string& filepath, bool verbose) {
         result.errors++;
         return result;
     }
+
+    // B930: record the version now — it is printed on every line even when the
+    // version check below fails (a future v4 still gets a readable report).
+    result.version = header->version;
 
     if (header->version != EQE1_VERSION && header->version != EQE1_VERSION_V2 &&
         header->version != EQE1_VERSION_V3) {
@@ -286,9 +293,17 @@ static void printUsage(const char* argv0) {
     printf("Usage: %s <file.eqe1>\n"
            "       %s --all <directory>\n"
            "       %s --verbose <file.eqe1>\n"
+           "       %s --require-v3 <file.eqe1 | directory>\n"
            "\nValidates .eqe1 flat pack files (v1/v2/v3) for structural integrity.\n"
+           "Every line prints the pack's header version (v1, v2 or v3).\n"
+           "--require-v3 additionally FAILs (exit 1) on any pack whose version\n"
+           "is below v3: a v1/v2 pack can only store 31-char names, so a zone\n"
+           "with a longer name in it is stale and must be rebuilt (the client\n"
+           "FATALs loudly on the first miss — see B930, #248). Auditing a\n"
+           "host's pack directory:\n"
+           "  for f in <dir>/*.eqe1; do %s --require-v3 \"$f\"; done\n"
            "Exit code: 0 = OK, 1 = errors found.\n",
-           argv0, argv0, argv0);
+           argv0, argv0, argv0, argv0, argv0);
 }
 
 int main(int argc, char** argv) {
@@ -299,6 +314,7 @@ int main(int argc, char** argv) {
 
     bool allMode = false;
     bool verbose = false;
+    bool requireV3 = false;
     std::string target;
 
     for (int i = 1; i < argc; ++i) {
@@ -308,6 +324,8 @@ int main(int argc, char** argv) {
             target = argv[++i];
         } else if (arg == "--verbose") {
             verbose = true;
+        } else if (arg == "--require-v3") {
+            requireV3 = true;
         } else if (arg == "--help" || arg == "-h") {
             printUsage(argv[0]);
             return 0;
@@ -351,14 +369,36 @@ int main(int argc, char** argv) {
         totalErrors += result.errors;
         totalWarnings += result.warnings;
 
+        // B930: the version is part of every line — an audit of a host's pack
+        // directory reads it at a glance. A file whose header could not even
+        // be read (bad magic, truncated) has version 0 and stays FAILED.
+        // --require-v3: a structurally-clean v1/v2 pack is reported for the
+        // audit and the run exits non-zero. The version alone cannot prove
+        // the pack STALE — a v1/v2 pack is legitimate when every name it
+        // holds fits 31 chars (willeq.eqe1 is one) — but it is the only
+        // format that CAN truncate a >31-char name, and that is the defect
+        // that kills the client (B930, #248). The line therefore says
+        // "STALE: below v3" in the card's wording: it marks the candidates
+        // for the rebuild, and the client-side FATAL (which names the exact
+        // pack + version + truncated name) is the ground truth for which of
+        // them actually needs it.
+        if (requireV3 && result.version != 0 && result.version < EQE1_VERSION_V3) {
+            printf("STALE: format v%u below v3 (a v1/v2 pack cannot hold >31-char "
+                   "names; rebuild with tools/convert_all_to_eqe1.sh if this "
+                   "zone's textures need one)\n",
+                   result.version);
+            result.errors++;
+            totalErrors++;
+        }
+
         if (result.errors == 0) {
-            printf("OK (%d textures, %d alpha, %d raw, %u KB data)\n",
-                   result.textureCount, result.alphaCount, result.rawDataCount,
-                   result.totalDataSize / 1024);
+            printf("OK (v%u, %d textures, %d alpha, %d raw, %u KB data)\n",
+                   result.version, result.textureCount, result.alphaCount,
+                   result.rawDataCount, result.totalDataSize / 1024);
             passedFiles++;
         } else {
-            printf("FAIL (%d errors, %d warnings)\n",
-                   result.errors, result.warnings);
+            printf("FAIL (v%u, %d errors, %d warnings)\n",
+                   result.version, result.errors, result.warnings);
         }
     }
 

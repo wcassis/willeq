@@ -41,8 +41,6 @@ void ZoneLifecycleComponent::unloadZone() {
 
     // Reset entity loading state - we're starting a new zone
     networkReady_ = false;
-    entitiesLoaded_ = false;
-    expectedEntityCount_ = 0;
     loadedEntityCount_ = 0;
     ctx_.zoneReady = false;
     ctx_.entityPrepReady = false;
@@ -656,10 +654,22 @@ void ZoneLifecycleComponent::ensureDoorManager() {
                                          ctx_.zoneShader->getActiveAlphaTest(),
                                          ctx_.zoneShader->getActiveAlphaTestRGBA());
         }
-        LOG_INFO(MOD_GRAPHICS, "Door manager created (zone={}, cache={}, bsp={}, frustum={}, neighbors={}, shader={})",
+        // B997 (board #317): the per-material client-array batch of PVS doors.
+        // ON by default since the ruling (a) final leg (2026-10-10): the
+        // DETERMINISTIC x86 door pixel A/B (ctest test_sg_batch_door_pixel_ab,
+        // refactor/B997/README.md "The deterministic x86 door pixel A/B")
+        // measured leg-on vs leg-off BYTE-IDENTICAL on both zones (qeynos2
+        // 60 in-graph doors, 59 batched to 19 per-material draws; gfaydark 78
+        // in-graph, 77 batched to 4 draws), with the same active-camera,
+        // ILightManager-hook, SOLID-pre point the live path uses.
+        // EQT_SG_BATCH=0 is the A/B opt-out.
+        const char* sgBatchEnv = std::getenv("EQT_SG_BATCH");
+        const bool sgBatchOn = !(sgBatchEnv && sgBatchEnv[0] == '0');
+        doors.setSceneGraphBatchEnabled(sgBatchOn);
+        LOG_INFO(MOD_GRAPHICS, "Door manager created (zone={}, cache={}, bsp={}, frustum={}, neighbors={}, shader={}, sgBatch={})",
                  (bool)ctx_.currentZone, ctx_.constrainedTextureCache != nullptr, (bool)ctx_.zoneBspTree,
                  (bool)ctx_.frustumCuller, !ctx_.regionNeighbors.empty(),
-                 ctx_.zoneShader && ctx_.zoneShader->isAvailable());
+                 ctx_.zoneShader && ctx_.zoneShader->isAvailable(), sgBatchOn);
     }
     // Idempotent; needs both the cache and the manager, and the cache exists
     // from initLoadingScreen() on.
@@ -774,7 +784,8 @@ void ZoneLifecycleComponent::applyStoredZoneEnvironment() {
 
 void ZoneLifecycleComponent::setExpectedEntityCount(size_t count) {
     if (owner_.isLoading()) return;
-    expectedEntityCount_ = count;
+    // B340 deleted expectedEntityCount_: write-only after L09 deleted its
+    // zero-caller accessor; the count stays in this log line only.
     // Note: Entity count is tracked for informational purposes only.
     // Zone ready is triggered when the player entity is created (isPlayer=true in createEntity).
     LOG_DEBUG(MOD_GRAPHICS, "Expected entity count: {}, already loaded: {}", count, loadedEntityCount_);
@@ -787,8 +798,6 @@ void ZoneLifecycleComponent::setNetworkReady(bool ready) {
 
     if (!ready) {
         // Network not ready means we're zoning, reset entity loading state
-        entitiesLoaded_ = false;
-        expectedEntityCount_ = 0;
         loadedEntityCount_ = 0;
         ctx_.zoneReady = false;
     }

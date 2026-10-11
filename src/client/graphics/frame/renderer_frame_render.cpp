@@ -43,6 +43,7 @@
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/ui_renderer.h"
 #include "client/graphics/ui/character_model_view.h"
+#include "client/graphics/draw_census.h"  // B997: per-site 3D-draw census
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "client/events/renderer_intents.h"
@@ -61,6 +62,10 @@
 // Declared in irrlicht_renderer.cpp (H01: hit when building EQT_GLES2 on x86;
 // pre-existing gap from the Batch F file split).
 extern void gles2Draw3DLinesBatch(void* driver, const float* vertices, unsigned int lineCount);
+// B997: per-site 3D-draw census bridge (defined in COpenGLES2Driver.cpp).
+extern void gles2GetDrawCensusTotals(void* driver, unsigned long* winD3client,
+                                     unsigned long* winD3vbo, unsigned long* frames,
+                                     bool* newWindow);
 #endif
 
 namespace EQT {
@@ -680,11 +685,12 @@ void FrameComponent::renderStaticUI() {
     inventoryState_.paperdollTexture = ctx_.Overlays().characterModelView() ? ctx_.Overlays().characterModelView()->getTexture() : nullptr;
 
     // U03c: Render new static UI when enabled.
-    // T301 Leg D: ...and NOT when the UI is hidden. `allUIHidden_` (F11 /
-    // `/hideui`) predates the static UI and gated only the three things that
+    // T301 Leg D: ...and NOT when the UI is hidden. `allUIHidden_` (F10 /
+    // `/hideui`; F11 before B582, which moved the toggle to the official
+    // key) predates the static UI and gated only the three things that
     // existed when it was written -- the casting bars, the old guienv_ draw
     // and the FPS counter -- so with the static UI on (the shipped default)
-    // pressing F11 left the chat panel, the hotbar and every other panel
+    // pressing it left the chat panel, the hotbar and every other panel
     // painted on top of the frame. That is why T300 Leg C could not rule out
     // a weapon sliver hidden under the chat box.
     // B992 (#312): every window is its own z-layer (`uiRenderer_->layer()`),
@@ -811,6 +817,15 @@ void FrameComponent::endSceneAndSwap() {
     eqtGPUPhaseBegin(3 /* GPUSyncPhase::Swap */);
     ctx_.driver->endScene();
     eqtGPUPhaseEnd(3 /* GPUSyncPhase::Swap */);
+    // B997 (G05: one statement, see test_frame_render_order changelog): the
+    // per-site 3D-draw census. Reads the driver's just-closed 120-frame
+    // [drawcensus] window through the gles2 bridge and emits the client's
+    // [drawsite] split (zone/entity/scene_graph) on the same endScene
+    // cadence. Gated on EQT_DRAW_CENSUS (off by default); draws nothing, so
+    // it sits after the swap phase without changing any visible order.
+#ifdef EQT_HAS_GLES2
+    drawCensusEndFrame(static_cast<void*>(ctx_.driver));
+#endif
     // Collect any GPU query results that became available (double-buffered,
     // non-blocking) and flip the write buffer for next frame. Must be
     // called exactly once per frame, after the last eqtGPUPhaseEnd() above.
