@@ -7054,19 +7054,27 @@ client uses every field.
   only thing deleted) so it stays the sole consumer of
   `config_.enableCompressedTextures`.
 
-- **B339** (B) `include/client/graphics/weather_effects_controller.h` → issue #133
+- ~~**B339**~~ (B) `include/client/graphics/weather_effects_controller.h` → issue #133
+  **CLOSED by T506 (2026-10-11):** `targetIntensity_` and its two writes
+  deleted with the exemption row (`refactor/B339/README.md`).
   `targetIntensity_` -- commented "For smooth transitions", written on every
   intensity change and on reset, read by nothing: weather intensity is applied
   outright, never interpolated toward a target. Closes when the transition
   exists or the member goes. Found by T414 Leg C.
 
-- **B340** (B) `include/client/graphics/zone_lifecycle/zone_lifecycle_component.h` → issue #134
+- ~~**B340**~~ (B) `include/client/graphics/zone_lifecycle/zone_lifecycle_component.h` → issue #134
+  **CLOSED by T506 (2026-10-11):** `entitiesLoaded_` / `expectedEntityCount_`
+  and their four writes deleted with the exemption rows (`refactor/B339/README.md`).
   `entitiesLoaded_` / `expectedEntityCount_` -- **the header already documents
   them as write-only.** L09 deleted their zero-caller accessors and left the
   members and their four writes behind. Closes when they go with the writes, or
   a consumer for the zone-in entity gate appears. Found by T414 Leg C.
 
-- **B341** (B) `include/client/graphics/overlays/overlays_component.h` → issue #135
+- ~~**B341**~~ (B) `include/client/graphics/overlays/overlays_component.h` → issue #135
+  **CLOSED by T506 (2026-10-11), PARTIALLY:** `currentTargetInfo_` deleted
+  with its writes and exemption row, but `currentTargetLevel_` is READ
+  (target_ring_draw.cpp, ConTierForLevels) and stays -- the issue is noted, not
+  closed, on that finding (`refactor/B339/README.md`).
   `currentTargetInfo_` / `currentTargetLevel_` -- target-overlay state cached
   when the target changes and never read by the draw. The target outline and
   name plate get their data elsewhere. Closes when the overlay draws from them
@@ -7086,7 +7094,11 @@ client uses every field.
   `sceneManager_` -- stored collaborator pointers with no reader. Closes when
   each is used or dropped from the constructor/setter. Found by T414 Leg C.
 
-- **B344** (B) `include/client/bridge/bridge_component.h` → issue #138
+- ~~**B344**~~ (B) `include/client/bridge/bridge_component.h` → issue #138
+  **CLOSED by T506 (2026-10-11):** `m_audio_config_vendor_music` (the config
+  key is still parsed and now logs WARN ignored), `m_duel_target_id` and
+  `m_player_race` deleted with their writes and exemption rows
+  (`refactor/B339/README.md`).
   `m_audio_config_vendor_music`, `include/client/player/player_component.h`
   `m_duel_target_id`, `include/client/skill/skill_manager.h` `m_player_race` --
   three pieces of state stored at the point a decision is made and never
@@ -7095,7 +7107,11 @@ client uses every field.
   player race is stored for skill gating that does not gate on race. Closes per
   member. Found by T414 Leg C.
 
-- **B345** (B) `include/client/graphics/camera_controller.h` → issue #139
+- ~~**B345**~~ (B) `include/client/graphics/camera_controller.h` → issue #139
+  **CLOSED by T506 (2026-10-11):** `orbitAngleInitialized_`, `m_playerHeading`,
+  `m_curEnd`, `m_maxEnd` (also write-only -- verified, not just assumed),
+  `m_startTime` and `ConflictInfo::binding1` / `binding2` deleted with their
+  writes and exemption rows (`refactor/B339/README.md`).
   `orbitAngleInitialized_`, `include/client/output/console_renderer.h`
   `m_curEnd` / `m_playerHeading` / `m_startTime`,
   `include/client/input/hotkey_manager.h` `ConflictInfo::binding1` / `binding2`
