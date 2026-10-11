@@ -244,6 +244,55 @@ bool S3DLoader::loadCharacters(const std::string& archivePath, PfsArchive* openA
                 }
             }
 
+            // B733 (issue #70): the skeleton's 0x200 mesh list (T476's
+            // track->meshRefs) names the meshes this skeleton DEFORMS. A
+            // head can carry another name than its bones reference (race 146
+            // SSN: the bones name nothing, the 0x200 list names SNNHE00_
+            // DMSPRITEDEF + SSN_DMSPRITEDEF -- the "SNN" head spelling differs
+            // from the "SSN" race code), so flattenSkeleton alone does not
+            // see it. Add every listed mesh that flatten missed, with an
+            // unskinned copy for animation the way the prefix-match path
+            // below does. When the 0x200 list is empty nothing changes:
+            // flattenSkeleton and the prefix fallback below behave exactly as
+            // before.
+            if (!skeleton->meshRefs.empty()) {
+                const auto& modelRefs = chrLoader.getModelRefs();
+                for (uint32_t meshRef : skeleton->meshRefs) {
+                    auto modelIt = modelRefs.find(meshRef);
+                    if (modelIt == modelRefs.end() || modelIt->second.geometryFragRef == 0) continue;
+                    auto listed = chrLoader.getGeometryByFragmentIndex(modelIt->second.geometryFragRef);
+                    if (!listed || listed->vertices.empty()) continue;
+                    bool alreadyAdded = false;
+                    for (const auto& existing : character->parts)
+                        if (existing.get() == listed.get()) { alreadyAdded = true; break; }
+                    if (alreadyAdded) continue;
+                    character->parts.push_back(listed);
+                    CharacterPart part;
+                    part.geometry = listed;
+                    part.shiftX = part.shiftY = part.shiftZ = 0;
+                    part.rotateX = part.rotateY = part.rotateZ = 0;
+                    character->partsWithTransforms.push_back(part);
+                    auto rawGeom = std::make_shared<ZoneGeometry>();
+                    rawGeom->name = listed->name;
+                    rawGeom->vertices = listed->vertices;
+                    rawGeom->triangles = listed->triangles;
+                    rawGeom->materialData = listed->materialData;
+                    rawGeom->vertexPieces = listed->vertexPieces;
+                    rawGeom->minX = listed->minX; rawGeom->minY = listed->minY; rawGeom->minZ = listed->minZ;
+                    rawGeom->maxX = listed->maxX; rawGeom->maxY = listed->maxY; rawGeom->maxZ = listed->maxZ;
+                    rawGeom->centerX = listed->centerX;
+                    rawGeom->centerY = listed->centerY;
+                    rawGeom->centerZ = listed->centerZ;
+                    CharacterPart rawPart;
+                    rawPart.geometry = rawGeom;
+                    rawPart.shiftX = rawPart.shiftY = rawPart.shiftZ = 0;
+                    rawPart.rotateX = rawPart.rotateY = rawPart.rotateZ = 0;
+                    character->rawParts.push_back(rawPart);
+                    LOG_DEBUG(MOD_GRAPHICS, "S3DLoader::loadCharacters: skeleton '{}' 0x200 list added '{}' verts={}",
+                              skeleton->name, listed->name, listed->vertices.size());
+                }
+            }
+
             // If no parts found through skeleton, filter geometries by race code prefix
             if (character->parts.empty() && !geometries.empty()) {
                 std::string skelName = skeleton->name;

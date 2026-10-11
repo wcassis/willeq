@@ -323,5 +323,59 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsRaw(
     return combined;
 }
 
+SelectedCharacterParts selectCharacterParts(const CharacterModel& character,
+                                            const std::string& upperRaceCode) {
+    // B733 (issue #70): the skeleton's 0x200 mesh list (character.skeleton,
+    // T476) names the meshes this character DEFORMS. A head can carry a name
+    // the race code does not predict (race 146 SSN's head is
+    // "SNNHE00_DMSPRITEDEF" -- the "SNN" spelling differs from the race code
+    // "SSN"), so the old name selection ({CODE}_DMSPRITEDEF /
+    // {CODE}HE00_DMSPRITEDEF) dropped it even though the skeleton referenced
+    // it.
+    //
+    // The loader stores EXACTLY the geometries the skeleton references: the
+    // bone-attached meshes (flattenSkeleton) plus the 0x200-listed meshes the
+    // bones did not name (B733, s3d_loader_characters.cpp). So when the list
+    // is non-empty, every part the character carries is a referenced part and
+    // the selection is the whole stored set -- the skeleton's part list, no
+    // name matching. When the list is empty there is no part list to select
+    // from, and the old name selection runs verbatim: the race-code names as
+    // the fallback for skeletons that list none. (An empty-list character's
+    // stored set is already exactly its referenced set, so this also matches
+    // the "select what the skeleton references" rule -- but keeping the name
+    // match verbatim is what makes every such character draw byte-identically
+    // to before, which the gate's golden frames demand.)
+    const bool hasSkeletonMeshList = character.skeleton
+        && !character.skeleton->meshRefs.empty();
+    if (hasSkeletonMeshList) {
+        SelectedCharacterParts out;
+        out.skinned = character.partsWithTransforms;
+        out.raw = character.rawParts;
+        return out;
+    }
+
+    // Fallback: the old name selection, verbatim.
+    SelectedCharacterParts out;
+    std::string defaultBodyName = upperRaceCode + "_DMSPRITEDEF";
+    std::string defaultHeadName = upperRaceCode + "HE00_DMSPRITEDEF";
+    for (const auto& part : character.partsWithTransforms) {
+        if (!part.geometry) continue;
+        std::string partName = part.geometry->name;
+        std::transform(partName.begin(), partName.end(), partName.begin(),
+                       [](unsigned char c) { return std::toupper(c); });
+        if (partName == defaultBodyName || partName == defaultHeadName)
+            out.skinned.push_back(part);
+    }
+    for (const auto& part : character.rawParts) {
+        if (!part.geometry) continue;
+        std::string partName = part.geometry->name;
+        std::transform(partName.begin(), partName.end(), partName.begin(),
+                       [](unsigned char c) { return std::toupper(c); });
+        if (partName == defaultBodyName || partName == defaultHeadName)
+            out.raw.push_back(part);
+    }
+    return out;
+}
+
 } // namespace Graphics
 } // namespace EQT
