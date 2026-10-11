@@ -55,7 +55,7 @@ it without taking that measurement first.
   24,162,944 B at the same point; qeynos2 (classic control) never loaded the
   custom font. **Left for Will (per the card): the Pi re-run and the
   `memoryLedgerBudgets.audio` re-ratchet, after B989 lands too.**
-- **B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
+- ~~**B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
   float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode,
   ~2.0–2.4 MB after the B977 tour's combat) and `SfxManager::cache_`
   (`au.sfx_cache`, `preload()`'s second copy of the same samples), each capped
@@ -64,8 +64,29 @@ it without taking that measurement first.
   Measured: b977-audio x86 befallen `au.sound_buffers` 2,322,320 +
   `au.sfx_cache` 310,640 B at steady_60s (723,600 B at the shutdown and
   zone_change points; Pi befallen 2,320,376 + 723,456 B at steady_60s,
-  `refactor/B977/audio_ledger_census.tsv` owner rows). Moves SECOND, after
-  B990, in the audio re-ratchet. Filed by B977, class::A, lane::pi.
+  `refactor/B977/audio_ledger_census.tsv` owner rows). **STRUCK (2026-10-11,
+  `task/kb-b989-sfx-cache-dup`, `refactor/B989/README.md`):** the decoded PCM
+  is now held ONCE — `AudioManager::loadSound` decodes into its buffer cache
+  and hands the same `std::shared_ptr<SoundBuffer>` to
+  `SfxManager::preload()`; `SfxManager::cache_` is a shared-reference LRU (it
+  evicts references, never the PCM), the `au.sfx_cache` owner row is gone, and
+  the preset's `soundCache` cap bounds the single cache (T412's LRU now
+  actually enforced). RED/GREEN: `tests/test_sfx_single_pcm_cache` (3 cases:
+  a fresh play grows the `audio` category by the decoded PCM exactly once, a
+  buffer-cached replay grows it ~0 where the pre-fix code grew it by a full
+  second copy — 22,336 B of 21,920 B PCM on the RED commit — and the cap
+  evicts LRU-oldest and bounds resident bytes); `tests/test_sfx_cache_eviction`
+  covers the eviction mechanics; the CI `test` job's audio suite is green
+  (5,757/5,757 at MR head cbdb905b, pipeline 773 — re-measured per push, not
+  quoted). Live
+  ledger leg, same tour/character/eligibility as B977's (lane 3, x86,
+  befallen, rat fight, `refactor/B989/audio_ledger_census.tsv`): steady_60s
+  `audio` **3,872,576** live vs B977's 4,252,448; `au.sound_buffers`
+  2,322,288 (B977: 2,322,320); **`au.sfx_cache` ABSENT** (B977: 310,640) —
+  the 310,640 B of duplicate PCM is gone and the category carries the PCM
+  once. The 16 MiB worst-case bound is structural (one cache, one cap) rather
+  than re-measured live, and the Pi steady-state re-run is deferred to the
+  audio re-ratchet alongside B990's.~~
 
 - ~~**B852** (A) **Nothing verifies that Kunark and Velious zones load.** The CI
   gate renders three classic zones and nothing else; no test, script or gate

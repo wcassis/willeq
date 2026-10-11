@@ -881,7 +881,6 @@ EXEMPT_GROUPS = {
     ("MusicPlayer", "enableSoftwareRendering"): "B499",
     ("MusicPlayer", "isSoftwareRendering"): "B499",
     ("MusicPlayer", "reinitializeOpenAL"): "B499",
-    ("SoundBuffer", "loadFromPCM"): "B499",
     ("WeatherAudio", "getThunderTimer"): "B499",
     ("ZoneSoundEmitter", "getXmiIndex1"): "B499",
     ("ZoneSoundEmitter", "getXmiIndex2"): "B499",
@@ -956,6 +955,11 @@ EXEMPT_TESTS_GROUPS = {
     # T504 fix 1: the custom SoundFont is loaded lazily and freed on the way
     # back to GM; the test's window on whether it is resident right now.
     ("MidiPlayer", "isCustomSoundFontResident"): "observer",
+    # B989 (#308): the raw-PCM construction seam. Production decodes only
+    # from files/memory archives; test_sfx_cache_eviction builds a
+    # SoundBuffer from deterministic raw PCM (no archive, no EQ client files
+    # needed) to pin the shared-buffer cache's LRU mechanics.
+    ("SoundBuffer", "loadFromPCM"): "seam",
     # B972 (#290): the bounded-VBO/EBO seams on the two self-contained cut
     # sites. setVboPathEnabled is the SEAM -- the pixel-identity test flips it
     # to prove the VBO and client-array paths render the same bytes; production

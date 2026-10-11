@@ -12,8 +12,8 @@
 //    12,036,844-byte file becomes ~24 MB. MEASURED on the Orange Pi (B854
 //    sweep, velketor): `audio` 1,625,664 B at ready AND at steady_60s, while
 //    `game_state` went 4,850,304 -> 29,661,808 B across the load.
-//  * every WAV, decoded to float on its first play (AudioManager's buffer cache
-//    plus SfxManager's own copy of the same samples).
+//  * every WAV, decoded to float on its first play (AudioManager's buffer cache;
+//    the SfxManager's second copy of the same samples was B989's defect).
 //
 // So the `audio` budget (memoryLedgerBudgets.audio) bounded only the part of
 // audio that exists at startup. Each case below opens a GameState scope -- the

@@ -29,8 +29,10 @@
 #                          [memledger-trace] rows split the misc row by call
 #                          site (the B903 method; resolve with --bin).
 #   audio               -- the B977 labels (au.soundfont_gm, au.soundfont_custom,
-#                          au.sound_buffers, au.sfx_cache, au.music, au.mixer_sfx,
-#                          au.backend, au.pfs_index, au.zone_emitters); run it
+#                          au.sound_buffers, au.music, au.mixer_sfx,
+#                          au.backend, au.pfs_index, au.zone_emitters;
+#                          B989 removed au.sfx_cache: the sfx cache shares the
+#                          buffer's decoded PCM instead of copying it); run it
 #                          WITHOUT --no-audio, or the row is empty
 #   zone_parse          -- the shared S3D/WLD parser carries no labels, so this
 #                          mode ALSO sets WILLEQ_LEDGER_TRACE=zone_parse:startup

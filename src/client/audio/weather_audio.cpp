@@ -228,11 +228,10 @@ void WeatherAudio::startRain() {
     SfxManager* sfx = audioManager_->getSfxManager();
     if (!sfx) return;
 
-    // Preload into SfxManager cache
-    sfx->preload(RAIN_LOOP_FILE, rainLoopBuffer_->getSamples(),
-                 rainLoopBuffer_->getFrameCount(),
-                 rainLoopBuffer_->getSampleRate(),
-                 rainLoopBuffer_->getChannels());
+    // B989: the SfxManager cache SHARES the buffer it plays from (a
+    // shared_ptr reference) instead of copying its samples -- the copy was
+    // the second decoded-PCM row (au.sfx_cache) of the same WAV.
+    sfx->preload(RAIN_LOOP_FILE, rainLoopBuffer_);
 
     // Play looping
     float effectiveVolume = currentVolume_ * volume_;
@@ -269,11 +268,10 @@ void WeatherAudio::startWind() {
     SfxManager* sfx = audioManager_->getSfxManager();
     if (!sfx) return;
 
-    // Preload into SfxManager cache
-    sfx->preload(WIND_LOOP_FILE, windLoopBuffer_->getSamples(),
-                 windLoopBuffer_->getFrameCount(),
-                 windLoopBuffer_->getSampleRate(),
-                 windLoopBuffer_->getChannels());
+    // B989: the SfxManager cache SHARES the buffer it plays from (a
+    // shared_ptr reference) instead of copying its samples -- the copy was
+    // the second decoded-PCM row (au.sfx_cache) of the same WAV.
+    sfx->preload(WIND_LOOP_FILE, windLoopBuffer_);
 
     // Play looping
     float effectiveVolume = currentVolume_ * volume_;
