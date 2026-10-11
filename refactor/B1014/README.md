@@ -201,7 +201,7 @@ No timer, no second cache, `memoryLedgerBudgets.audio` untouched (32 MiB).
 - [x] the struck B990 entry in `refactor/BOARD.md` — corrected: the release
   is at a REAL end (public stop / fade completion, game thread), never at the
   stop inside `play()`; the 2,976 B residual re-attributed; the test count
-  updated to 8.
+  updated to 7.
 
 ## Not verified / left open
 
@@ -240,7 +240,7 @@ No timer, no second cache, `memoryLedgerBudgets.audio` untouched (32 MiB).
 - `include/client/audio/midi_player.h` + `src/client/audio/midi_player.cpp`
   — lifetime docs rewritten; false save/restore sentences deleted;
   `setCustomSoundFontPath()` test hook (failed-reload case).
-- `tests/test_soundfont_release.cpp` — the 8 tests above (RED/GREEN in this
+- `tests/test_soundfont_release.cpp` — the 7 tests above (RED/GREEN in this
   README).
 - `docs/decisions.md` — the 2026-10-05 entry's worker paragraph moved to a
   new 2026-10-11 worker entry.
