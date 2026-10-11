@@ -8939,7 +8939,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `VisionAmbientTest.DaylightIsUntouchedByInfravisionAndBarelyMovedByUltravision`.
   Prov: T428 Review §3b.
 
-- **B448** (A) `src/client/graphics/player/renderer_camera.cpp` → issue #29
+- ~~**B448** (A) `src/client/graphics/player/renderer_camera.cpp` → issue #29
   `PlayerCameraComponent::setPlayerRace` -- **a server-side race change on the
   player's OWN character never reaches the vision system.** `setPlayerRace()` is
   called from `IrrlichtRenderer::registerEntity()` (T348, B056), i.e. when an
@@ -8955,7 +8955,17 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   and bracketed by them, but the live pair is OWED). Closes when a race change
   on self reaches `setPlayerRace()` and a live session shows the fourth level's
   ratio against the oracle's x2.6803 / x1.9478 / x2.1753. Prov: T428 Review §4;
-  B060; B056.
+  B060; B056.~~ **STRUCK (2026-10-11, `task/B448-self-race-vision`,
+  `refactor/B448/README.md`):** the defect half is fixed --
+  `IrrlichtRenderer::updatePlayerAppearance()` (the `EntityAppearanceChanged`
+  bridge arm for `isPlayer`) now calls `setPlayerRace()` on a race CHANGE, and
+  `setPlayerRace()` recomposes max(base, buff) so a race change keeps a vision
+  buff that is up; pinned by `tests/test_self_race_vision.cpp` (5 of 7 red on
+  fable). Live on the local lane: `#race 330` after zone-in logged
+  `Player race 330 -> base vision: FroglokVision`. NOT done here: fable's own
+  night ratio for the fourth level against the oracle's x2.6803 / x1.9478 /
+  x2.1753 (needs a T428-style measured session) -- see the README's
+  "Not verified / left open".
 
 - (T428 also boarded the DocCitations red at BOARD.md:6877 as its B434; the orchestrator had already fixed it on fable at 6aadff59, so that entry is not carried.)
 
