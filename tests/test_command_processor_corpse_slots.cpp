@@ -49,9 +49,15 @@
 // What this file pins: the table (every value the server's two functions
 // produce over 0..60, the round-trips, the dead slots), the IN hop through
 // the real CommandProcessor (typed server number -> model slot, with the
-// refusal shapes), and the parser itself. The OUT hop is pinned in
-// tests/test_loot_window_actions.cpp (LootingAPrintsTheServerNumber, the
-// SystemMessage the take prints) and the intent's model numbering in
+// refusal shapes), the parser itself, and the OUT hop's DISPATCHER printout
+// (the real ActionDispatcher::lootItem's refusal names the slot with
+// corpseSlotToServer(), the same SERVER number the user typed, not the
+// model slot it was handed -- the OUT call site the reviewer found
+// untested). The take's success printout (eq_action_handler.cpp lootItem,
+// "Looting {} (slot {})...") is built at its call site with the SAME
+// conversion -- the two TEST_F cases below pin the conversion over the
+// slots it formats, and the number the handler prints is the number this
+// file pins. The intent's model numbering is pinned in
 // tests/test_loot_panel.cpp (ClickingARowPushesLootItemIntentCarryingTheCorpseSlot).
 
 #include "command_processor_test_fixture.h"
@@ -309,6 +315,57 @@ TEST_F(CommandProcessorTest, Loot_WindowOpen_NameFormStillResolvesTheItem) {
     auto result = processor->processCommand("/loot Fire Beetle Eye");
     EXPECT_TRUE(result.success) << result.message;
     ASSERT_TRUE(handler.calledOnceWith("lootItemByName(\"Fire Beetle Eye\")"));
+}
+
+// ---------------------------------------------------------------------------
+// OUT hop: the two changed printout call sites both format their slot with
+// corpseSlotToServer(), the same SERVER number the user typed (B796's
+// rule). The refusal's site -- ActionDispatcher::lootItem
+// (action_dispatcher.cpp) -- is linked into this target, so its MESSAGE is
+// asserted here: a refused take must name the SERVER slot, not the model
+// slot the dispatcher was handed. Pre-B810 it printed the raw model slot
+// ("slot 22" for a typed 23).
+// ---------------------------------------------------------------------------
+
+// The fixture's RecordingActionHandler always succeeds, so the
+// dispatcher's refusal arm (and its printout) is unreachable with it: a
+// subclass whose take fails, recording the slot it was handed in the
+// same format RecordingActionHandler uses, so calledOnceWith() works.
+class RefusingLootHandler : public eqt::action::test::RecordingActionHandler {
+public:
+    bool lootItem(uint16_t corpseId, int16_t slot) override {
+        calls.push_back(std::string("lootItem(") + std::to_string(corpseId) +
+                        ", " + std::to_string(slot) + ")");
+        return false;  // the item is not in the window
+    }
+};
+
+TEST_F(CommandProcessorTest, Loot_DispatcherRefusalNamesTheServerSlotGeneralArm) {
+    RefusingLootHandler refusing;
+    dispatcher->setActionHandler(&refusing);
+    state.player().setLootingCorpse(176);
+    // Typed 23 (server general 1) dispatches model slot 22; the refusal
+    // that comes back must name the SERVER number the user typed.
+    auto result = processor->processCommand("/loot 23");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("slot 23"), std::string::npos) << result.message;
+    EXPECT_EQ(result.message.find("slot 22"), std::string::npos)
+        << "the model slot must not leak into the printout: " << result.message;
+    ASSERT_TRUE(refusing.calledOnceWith("lootItem(176, 22)"));
+}
+
+TEST_F(CommandProcessorTest, Loot_DispatcherRefusalNamesTheServerSlotEquipmentArm) {
+    RefusingLootHandler refusing;
+    dispatcher->setActionHandler(&refusing);
+    state.player().setLootingCorpse(176);
+    // Typed 34 (the corpse's first equipment slot: server 34 = model 31,
+    // the -3 arm).
+    auto result = processor->processCommand("/loot 34");
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(result.message.find("slot 34"), std::string::npos) << result.message;
+    EXPECT_EQ(result.message.find("slot 31"), std::string::npos)
+        << "the model slot must not leak into the printout: " << result.message;
+    ASSERT_TRUE(refusing.calledOnceWith("lootItem(176, 31)"));
 }
 
 // ---------------------------------------------------------------------------

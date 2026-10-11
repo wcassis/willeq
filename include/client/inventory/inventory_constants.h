@@ -21,8 +21,12 @@ namespace inventory {
 // 33, and server slot 21 (the power source) has no Titanium slot at all.
 //
 // USER-FACING SLOT NUMBERS ARE `inventory.slot_id`. The conversion lives in
-// exactly two functions below -- parseUserSlot() on the way IN and
-// describeSlot() on the way OUT. Nothing else in the tree converts.
+// exactly two pairs below, one per domain -- the POSSESSIONS pair,
+// parseUserSlot() on the way IN and describeSlot() on the way OUT (T494),
+// and the CORPSE pair, parseCorpseSlot() on the way IN and
+// corpseSlotToServer() on the way OUT (B810, #199, the loot window's slots,
+// whose table and domain are defined below). Nothing else in the tree
+// converts.
 enum EquipmentSlot : int16_t {
     SLOT_CHARM = 0,
     SLOT_EAR1 = 1,

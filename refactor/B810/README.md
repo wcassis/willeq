@@ -109,11 +109,16 @@ Green after: the full suites, all rebuilt after the last edit,
 - hygiene `ctest -L hygiene`: all doc/size tests green (FileSizeCeiling,
   DocCitations, DocClaims, DocCounts, CommentClaims). [measured]
 
-The new `tests/test_command_processor_corpse_slots.cpp` (32 tests) pins: both
+The new `tests/test_command_processor_corpse_slots.cpp` (20 test cases: 10
+TEST + 10 TEST_F, recountable with
+`grep -cE '^(TEST|TEST_F)\(' tests/test_command_processor_corpse_slots.cpp`)
+pins: both
 functions against the table for every slot 0-60 (dead slots included), the
 IN-then-OUT round-trip over the whole domain, the dead slot 22/21/31/32/55 in
-BOTH directions, the parser's three outcomes, and the command processor's IN
-hop (dispatch + both refusal messages).
+BOTH directions, the parser's three outcomes, the command processor's IN
+hop (dispatch + both refusal messages), and the OUT hop's dispatcher
+printout (the refusal message names the SERVER slot after
+`corpseSlotToServer()`, not the model slot it was handed).
 
 ## Existing tests
 
