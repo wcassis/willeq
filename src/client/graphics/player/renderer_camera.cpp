@@ -374,10 +374,20 @@ void PlayerCameraComponent::setPlayerRace(uint16_t raceId) {
     // x1.9478 G, x2.1753 B over its own night base, against Ultravision's
     // x2.7995 / x1.9517 / x2.4946) and `VisionType::FroglokVision` carries
     // it. It is 5.5% under Ultravision on B and 60% over Infravision there.
+    //
+    // B448 (#29): two callers now -- registerEntity() at zone-in, and
+    // updatePlayerAppearance() (the EntityAppearanceChanged bridge arm) when
+    // the server changes the race of a player already in the world: an
+    // illusion, or a GM `#race N`, both OP_Illusion. Because the second one can
+    // land while a vision buff is up, the floor is recomposed with the last
+    // buff value rather than overwriting it: current = max(base, buff), the
+    // same rank rule setVisionType() applies from the other side.
+    playerRace_ = raceId;
     baseVision_ = racialBaseVision(raceId);
-    ctx_.currentVision = baseVision_;
+    ctx_.currentVision = (visionRank(buffVision_) > visionRank(baseVision_))
+                             ? buffVision_ : baseVision_;
     LOG_INFO(MOD_GRAPHICS, "Player race {} -> base vision: {}",
-             raceId, visionName(ctx_.currentVision));
+             raceId, visionName(baseVision_));
     // Zone light colors updated by SimulationWorker via visionType in SimulationInput
     refreshVisionLighting();
 }
@@ -397,6 +407,7 @@ void PlayerCameraComponent::setPlayerRace(uint16_t raceId) {
 // top. A published Normal means "no vision BUFFS left", never "no vision".
 void PlayerCameraComponent::setVisionType(VisionType vision) {
     if (owner_.isLoading()) return;
+    buffVision_ = vision;  // B448: kept so a later race change can recompose
     resetVisionToBase();
     // Buffs raise vision above the racial base; they never lower it below.
     // T428: rank, not enumerator -- FroglokVision is 3 by wire value and 2 by
