@@ -118,7 +118,6 @@ TEST(NinthSpellGem, TheNinthGemIsNeverCastFromTheClient) {
     EXPECT_FALSE(mgr->isCasting());
     EXPECT_FALSE(mgr->memorizeSpell(kFirstSpell, 8));
     EXPECT_FALSE(mgr->forgetSpell(8));
-    EXPECT_FALSE(mgr->swapGems(0, 8));
     EXPECT_EQ(mgr->getMemorizedSpell(8), kFirstSpell + 8) << "a refused offer must not clear it";
 }
 

@@ -72,7 +72,7 @@ TEST_F(PlayerComponentTest, InspectAnswerSeamMovedWithItsStruct) {
 
 // THE CUT. The player-state facade stayed on EverQuest: these still resolve
 // on the class itself, and they read the same store the component writes.
-// SetMoveSpeed/SetCombatStopDistance moved; GetPosition/SetPosition did not.
+// SetMoveSpeed moved and was deleted in B603 (zero callers); GetPosition/SetPosition did not.
 TEST_F(PlayerComponentTest, TheFacadeStayedOnEverQuest) {
     eq.SetPosition(10.0f, 20.0f, 30.0f);
     const glm::vec3 pos = eq.GetPosition();
@@ -92,9 +92,10 @@ TEST_F(PlayerComponentTest, TheFacadeStayedOnEverQuest) {
 }
 
 // A moved one-line GameState mutator, reached through the component, lands in
-// the same single store the facade reads.
+// the same single store the facade reads. B603 deleted the SetMoveSpeed half:
+// the setter had no production caller (the state's own setMoveSpeed() store
+// stays).
 TEST_F(PlayerComponentTest, MovedMutatorsStillWriteTheOneStore) {
-    eq.Player().SetMoveSpeed(2.5f);
     eq.Player().SetCombatStopDistance(7.0f);
     SUCCEED();
 }

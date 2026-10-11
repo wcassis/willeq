@@ -103,32 +103,8 @@ TEST(ActiveBuffStruct, IsPermanentAndIsExpired) {
     EXPECT_FALSE(active.isExpired());
 }
 
-TEST(ActiveBuffStruct, IsAboutToExpireBoundary) {
-    ActiveBuff b;
-    b.remaining_seconds = 9;
-    EXPECT_TRUE(b.isAboutToExpire());
-    b.remaining_seconds = 10;
-    EXPECT_FALSE(b.isAboutToExpire()) << "boundary is strictly < 10, per the implementation";
-    b.remaining_seconds = 0;
-    EXPECT_FALSE(b.isAboutToExpire()) << "0 means expired, not about-to-expire";
-    b.remaining_seconds = 0xFFFFFFFF;
-    EXPECT_FALSE(b.isAboutToExpire()) << "permanent buffs are never about to expire";
-}
-
-TEST(ActiveBuffStruct, GetTimeStringFormats) {
-    ActiveBuff b;
-    b.remaining_seconds = 0xFFFFFFFF;
-    EXPECT_EQ(b.getTimeString(), "Perm");
-
-    b.remaining_seconds = 45;
-    EXPECT_EQ(b.getTimeString(), "45 sec");
-
-    b.remaining_seconds = 125;  // 2 min 5 sec -> minutes-only format
-    EXPECT_EQ(b.getTimeString(), "2 min");
-
-    b.remaining_seconds = 3600 + 13 * 60;  // 1h 13m
-    EXPECT_EQ(b.getTimeString(), "1h 13m");
-}
+// B603 deleted isAboutToExpire()/getTimeString() (nothing called either)
+// and their two tests with them.
 
 // ===================================================================
 // Player buffs (setPlayerBuffs bulk load, setPlayerBuff single-slot update)
@@ -315,7 +291,7 @@ TEST(BuffManagerPetBuffs, SetPetBuffsReplacesPriorSet) {
 // Entity buffs
 // ===================================================================
 
-TEST(BuffManagerEntityBuffs, SetGetClearRoundTrip) {
+TEST(BuffManagerEntityBuffs, SetGetRoundTrip) {
     BuffManager mgr(nullptr);
     mgr.setEntityBuff(500, 0, MakeBuff(100, static_cast<uint8_t>(BuffEffectType::Buff), 10));
     mgr.setEntityBuff(500, 1, MakeBuff(200, static_cast<uint8_t>(BuffEffectType::Inverse), -1));
@@ -328,9 +304,6 @@ TEST(BuffManagerEntityBuffs, SetGetClearRoundTrip) {
     const auto* buffs = mgr.getEntityBuffs(500);
     ASSERT_NE(buffs, nullptr);
     EXPECT_EQ(buffs->size(), 2u);
-
-    mgr.clearEntityBuffs(500);
-    EXPECT_EQ(mgr.getEntityBuffs(500), nullptr);
 }
 
 TEST(BuffManagerEntityBuffs, GetEntityBuffsUnknownEntityReturnsNull) {
@@ -411,22 +384,6 @@ TEST(BuffManagerApply, ApplyBuffPastMaxPlayerBuffsIsSilentlyDropped) {
     EXPECT_FALSE(mgr.hasPlayerBuff(9999));
 }
 
-TEST(BuffManagerApply, RemoveBuffByIdFiresFadeCallbackAndErases) {
-    BuffManager mgr(nullptr);
-    mgr.applyBuff(0, 100, 1, 50, 10);
-    uint32_t seenSpell = 0;
-    mgr.setBuffFadeCallback([&](uint16_t, uint32_t s) { seenSpell = s; });
-
-    mgr.removeBuff(0, 100);
-    EXPECT_FALSE(mgr.hasPlayerBuff(100));
-    EXPECT_EQ(seenSpell, 100u);
-}
-
-TEST(BuffManagerApply, RemoveBuffUnknownTargetIsNoOp) {
-    BuffManager mgr(nullptr);
-    EXPECT_NO_THROW(mgr.removeBuff(12345, 100));
-}
-
 TEST(BuffManagerApply, RemoveBuffBySlotOnEntityWorks) {
     BuffManager mgr(nullptr);
     mgr.setEntityBuff(500, 3, MakeBuff(100, static_cast<uint8_t>(BuffEffectType::Buff), 10));
@@ -503,9 +460,9 @@ TEST(BuffManagerExpiration, ExpirationAppliesToPetAndEntityBuffsToo) {
 
     EXPECT_TRUE(mgr.getPetBuffs().empty());
     // Real behavior, verified rather than assumed: checkBuffExpiration()
-    // (buff_manager.cpp:69-87) erases individual expired ActiveBuff entries
+    // (buff_manager.cpp) erases individual expired ActiveBuff entries
     // from the per-entity vector, but never erases the now-empty vector's
-    // key from m_entity_buffs itself (only clearEntityBuffs() does that).
+    // key from m_entity_buffs itself.
     // getEntityBuffs() therefore returns a non-null pointer to an empty
     // vector here, not nullptr -- distinct from a truly-unknown entity id.
     const auto* entityBuffs = mgr.getEntityBuffs(500);

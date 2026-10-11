@@ -262,69 +262,6 @@ CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
     publishCastStarted(spell_id, target_id, m_cast_duration_ms);
 
     // Send cast packet to server
-    sendCastSpellPacket(spell_id, gem_slot, target_id);
-
-    LOG_INFO(MOD_SPELL, "Beginning cast of '{}' (ID: {}) on target {}",
-        spell->name, spell_id, target_id);
-
-    return CastResult::Success;
-}
-
-CastResult SpellManager::beginCastById(uint32_t spell_id, uint16_t target_id)
-{
-    // Find which gem has this spell
-    uint8_t gem_slot = findGemSlotForSpell(spell_id);
-    if (gem_slot < EQT::VISIBLE_SPELL_GEM_COUNT) {
-        return beginCastFromGem(gem_slot, target_id);
-    }
-
-    // Spell not memorized - check if we can cast it anyway (item/scroll)
-    const SpellData* spell = m_spell_db.getSpell(spell_id);
-    if (!spell) {
-        return CastResult::InvalidSpell;
-    }
-
-    // For non-memorized casts, we still need to validate
-    if (target_id == 0) {
-        target_id = m_eq->GetCombatManager()->GetTargetId();
-    }
-
-    // Adjust target based on spell type (self-only, pet-only, group spells, etc.)
-    uint16_t adjusted_target = adjustTargetForSpellType(*spell, target_id);
-    if (adjusted_target != target_id) {
-        LOG_DEBUG(MOD_SPELL, "beginCastById: adjusted target from {} to {} for spell '{}'",
-            target_id, adjusted_target, spell->name);
-        target_id = adjusted_target;
-    }
-
-    // Check if target adjustment failed (pet spell without pet). T244: its
-    // own result, so the refusal can say "You do not have a pet." instead
-    // of the creature-type InvalidTarget's "can not affect this target".
-    if (target_id == 0 && spell->target_type == SpellTargetType::Pet) {
-        return CastResult::NoPet;
-    }
-
-    CastResult result = validateCast(*spell, target_id);
-    if (result != CastResult::Success) {
-        return result;
-    }
-
-    resolvePendingOutcome(CastResult::Interrupted);  // T482, see beginCastFromGem()
-
-    // Set up casting state (no gem slot)
-    m_is_casting = true;
-    m_current_spell_id = spell_id;
-    m_current_target_id = target_id;
-    m_current_gem_slot = 0xFF;  // Invalid slot marker for item/scroll casts
-    m_cast_start_time = std::chrono::steady_clock::now();
-    m_cast_duration_ms = spell->cast_time_ms;
-    m_waiting_for_server_confirm = true;
-
-    // T44: see beginCastFromGem() -- same reasoning, no gem event to piggyback
-    // on here since item/scroll casts don't touch a gem slot.
-    publishCastStarted(spell_id, target_id, m_cast_duration_ms);
-
-    // Send cast packet (slot 0xFF or use inventory slot for item casts)
     sendCastSpellPacket(spell_id, 0xFF, target_id);
 
     LOG_INFO(MOD_SPELL, "Beginning item/scroll cast of '{}' (ID: {})",
@@ -352,11 +289,6 @@ void SpellManager::interruptCast()
     if (m_current_gem_slot < EQT::SPELL_GEM_COUNT) {
         m_gem_states[m_current_gem_slot] = GemState::Ready;
         publishGemChanged(m_current_gem_slot);
-    }
-
-    // Notify callback
-    if (m_on_cast_complete) {
-        m_on_cast_complete(CastResult::Interrupted, m_current_spell_id);
     }
 
     publishCastComplete(m_current_spell_id, CastResult::Interrupted);
@@ -402,9 +334,10 @@ uint32_t SpellManager::getCastTimeRemaining() const
 // spell_cast_checks.cpp (same class, own TUs).
 
 // T407: the gem bar and the spellbook -- memorizeSpell / forgetSpell /
-// swapGems / startGemCooldown / scribeSpell / setSpellbook /
+// startGemCooldown / scribeSpell / setSpellbook /
 // applyServerGemUpdate and their accessors -- live in spell_gems.cpp
-// (same class, own TU).
+// (same class, own TU; swapGems went in B603 with the rest of the
+// unreached control API).
 
 // T407: the four inbound-packet arms -- handleBeginCast / handleAction /
 // handleInterrupt / handleManaChange -- and the two chat-message helpers
@@ -435,11 +368,6 @@ void SpellManager::completeCast(bool success)
         // Start gem cooldown
         if (m_current_gem_slot < EQT::SPELL_GEM_COUNT && spell) {
             startGemCooldown(m_current_gem_slot, spell->recast_time_ms);
-        }
-
-        // Notify callback
-        if (m_on_cast_complete) {
-            m_on_cast_complete(CastResult::Success, m_current_spell_id);
         }
 
         LOG_INFO(MOD_SPELL, "Cast of '{}' completed successfully",

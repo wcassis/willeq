@@ -809,8 +809,8 @@ float eqt::movement::MovementComponent::GetSwimSpeed() const
 //
 // The apply hook calls this with no exclusion (the landing buff is already
 // in the list and counts); the FADE hook passes the fading spell, because
-// the fade fires while that buff is still in the list (removeBuff and
-// removeBuffBySlot notify before erasing) -- the same pre-erase shape T339's
+// the fade fires while that buff is still in the list (removeBuffBySlot and
+// checkBuffExpiration notify before erasing) -- the same pre-erase shape T339's
 // computeVisionType() excludes for. `selfFlymode` is an explicit input: the
 // production call sites read it off the entity map (0 before the self row
 // exists), and a test rig without a zone passes 0.

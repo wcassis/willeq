@@ -91,10 +91,10 @@ public:
     ZoneLineResult checkPosition(float x, float y, float z,
                                   float currentX = 0.0f, float currentY = 0.0f, float currentZ = 0.0f) const;
 
-    // Check if movement from old_pos to new_pos crosses a zone line
-    // Returns the zone line info if crossing detected
-    std::optional<ZoneLineResult> checkMovement(float oldX, float oldY, float oldZ,
-                                                 float newX, float newY, float newZ) const;
+    // B603 deleted checkMovement(): the planned "did movement from old to
+    // new cross a zone line" query was never wired (the live poll is the
+    // 3-argument checkPosition() in movement_state.cpp), so it left with
+    // its two test lines in test_zone_lines.cpp.
 
     // Get a zone point by index (for resolving reference-type zone lines)
     std::optional<ZonePoint> getZonePoint(uint32_t index) const;

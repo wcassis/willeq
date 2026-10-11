@@ -459,7 +459,7 @@ protected:
             }
             std::cout << "  Slot " << (int)buff.slot << ": " << name
                       << " (ID=" << buff.spell_id
-                      << ", remaining=" << buff.getTimeString() << ")"
+                      << ", remaining=" << buff.remaining_seconds << "s)"
                       << std::endl;
         }
     }
@@ -499,7 +499,7 @@ protected:
                 if (bspell) bname = bspell->name;
             }
             std::cout << "    - " << bname << " (ID=" << b.spell_id << ", slot=" << (int)b.slot
-                      << ", remaining=" << b.getTimeString() << ")" << std::endl;
+                      << ", remaining=" << b.remaining_seconds << "s)" << std::endl;
         }
 
         // Check if we already have this buff (for refresh testing)
@@ -507,7 +507,7 @@ protected:
         uint32_t remaining_before = 0;
         if (had_buff_before) {
             const EQ::ActiveBuff* existing = buffMgr->getPlayerBuff(spell_id);
-            if (existing) remaining_before = existing->getRemainingSeconds();
+            if (existing) remaining_before = existing->remaining_seconds;
             std::cout << "  (Already have buff, remaining=" << remaining_before << "s, testing refresh)" << std::endl;
         }
 
@@ -548,7 +548,7 @@ protected:
                 if (bspell) bname = bspell->name;
             }
             std::cout << "    - " << bname << " (ID=" << b.spell_id << ", slot=" << (int)b.slot
-                      << ", remaining=" << b.getTimeString() << ")" << std::endl;
+                      << ", remaining=" << b.remaining_seconds << "s)" << std::endl;
         }
         std::cout << "  Looking for spell_id=" << spell_id << std::endl;
 
@@ -558,11 +558,11 @@ protected:
         if (has_buff) {
             const EQ::ActiveBuff* buff = buffMgr->getPlayerBuff(spell_id);
             if (buff) {
-                std::cout << "  Buff landed! Remaining time: " << buff->getTimeString() << std::endl;
+                std::cout << "  Buff landed! Remaining time: " << buff->remaining_seconds << "s" << std::endl;
 
                 // If we had the buff before, verify it was refreshed (duration increased or reset)
                 if (had_buff_before && remaining_before > 0) {
-                    uint32_t remaining_after = buff->getRemainingSeconds();
+                    uint32_t remaining_after = buff->remaining_seconds;
                     if (remaining_after >= remaining_before) {
                         std::cout << "  Buff successfully refreshed!" << std::endl;
                     } else {
@@ -854,7 +854,7 @@ TEST_F(BeneficialSpellCastingTest, BuffRefreshOnRecast) {
     // Note: Due to server buff refresh behavior, buff may not be tracked if it was a refresh
     const EQ::ActiveBuff* buff_after_first = buffMgr->getPlayerBuff(spell.spell_id);
     if (buff_after_first) {
-        uint32_t duration_after_first = buff_after_first->getRemainingSeconds();
+        uint32_t duration_after_first = buff_after_first->remaining_seconds;
         std::cout << "Duration after first cast: " << duration_after_first << " seconds" << std::endl;
 
         // Wait a few seconds for duration to tick down
@@ -864,7 +864,7 @@ TEST_F(BeneficialSpellCastingTest, BuffRefreshOnRecast) {
         // Check duration has decreased
         const EQ::ActiveBuff* buff_before_second = buffMgr->getPlayerBuff(spell.spell_id);
         if (buff_before_second) {
-            uint32_t duration_before_second = buff_before_second->getRemainingSeconds();
+            uint32_t duration_before_second = buff_before_second->remaining_seconds;
             std::cout << "Duration before second cast: " << duration_before_second << " seconds" << std::endl;
         }
     } else {
@@ -914,7 +914,7 @@ TEST_F(BeneficialSpellCastingTest, BuffRefreshOnRecast) {
     // Note: Due to server buff refresh behavior, buff may not be tracked
     const EQ::ActiveBuff* buff_after_second = buffMgr->getPlayerBuff(spell.spell_id);
     if (buff_after_second) {
-        uint32_t duration_after_second = buff_after_second->getRemainingSeconds();
+        uint32_t duration_after_second = buff_after_second->remaining_seconds;
         std::cout << "Duration after second cast: " << duration_after_second << " seconds" << std::endl;
     } else {
         std::cout << "Note: Buff not tracked after second cast (server refresh behavior)" << std::endl;

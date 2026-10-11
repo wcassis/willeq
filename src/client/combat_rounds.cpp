@@ -52,23 +52,6 @@ std::vector<CombatTarget> CombatManager::GetNearbyAllies(float range) {
 	return allies;
 }
 
-CombatTarget* CombatManager::GetHighestPriorityTarget() {
-	if (m_potential_targets.empty()) {
-		return nullptr;
-	}
-
-	// Sort by priority and distance
-	std::sort(m_potential_targets.begin(), m_potential_targets.end(),
-		[](const CombatTarget& a, const CombatTarget& b) {
-			if (a.priority != b.priority) {
-				return a.priority > b.priority;
-			}
-			return a.distance < b.distance;
-		});
-
-	return &m_potential_targets[0];
-}
-
 void CombatManager::InitiateFlee() {
 	SetCombatState(COMBAT_STATE_FLEEING);
 	m_flee_start_time = std::chrono::steady_clock::now();
