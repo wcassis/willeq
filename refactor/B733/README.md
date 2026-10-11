@@ -166,10 +166,10 @@ blessed by Will (2026-10-11, commit `bdf9f802` on this branch): the four
 `EntitySourcePruning` goldens were regenerated with the test's own command,
 exactly these 6 lines per zone. **No image golden moved anywhere** (the CI
 gate's zone image comparisons pass at `4139cee6`; only the memory metric
-below moved). The one remaining gate failure is the memory metric, which is
-a SEPARATE bless question (next section).
+below moved). The memory metric was a SEPARATE bless question, answered by
+Will at `4463dd3b` (next section).
 
-## Gate memory metric: `characterModelsBytes` moves in all five zones -- a second bless (pending, CI 782)
+## Gate memory metric: `characterModelsBytes` moves in all five zones -- blessed by Will at `4463dd3b`
 
 The CI `gate` job (pipeline 782, head `4139cee6`, all 3 in-script attempts,
 deterministic) fails on the `memoryCoverage` values in
@@ -199,11 +199,11 @@ member.
 
 `manifest.json` is BLESS-ONLY (Will's rule); the 2026-10-11 bless at
 `bdf9f802` covered the four `model_fingerprint/*.txt` goldens, not these
-`memoryCoverage` values. **OPEN BLESS QUESTION FOR WILL:** re-bless
-`memoryCoverage.zones[*].characterModelsBytes` to the `got` column (the +24
-per loaded model is a permanent consequence of the #70 tag; it cannot be
-avoided without dropping the tag or special-casing the metric, both of which
-break the 100 %-accounting shape of `calcCharModels`).
+`memoryCoverage` values. **BLESSED (Will, 2026-10-11, commit `4463dd3b` on
+this branch):** `memoryCoverage.zones[*].characterModelsBytes` re-pinned to
+the `got` column above (the +24 per loaded model is a permanent consequence
+of the #70 tag; the alternatives -- dropping the tag or special-casing the
+metric -- both break the 100 %-accounting shape of `calcCharModels`).
 
 ## Not verified / left open
 

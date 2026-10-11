@@ -11929,8 +11929,10 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   `EntitySourcePruning` goldens each change by exactly 6 lines — the IVM body
   recovery (races 127/240: 73→506 verts, base + variant rows) and the SSN head
   (race 146: 3359→4333 verts, both genders); every other line byte-identical.
-  That is a gate-zone character change, so the goldens are a WILL BLESS — see
-  `refactor/B733/README.md` (frame diff + mechanism).
+  Gate-zone character change -- blessed by Will 2026-10-11: the four
+  `model_fingerprint` goldens at `bdf9f802` and the `memoryCoverage`
+  `characterModelsBytes` re-pin (the 24 B `skeletonReferenced` member) at
+  `4463dd3b`. See `refactor/B733/README.md` (frame diff + mechanism).
 
 - ~~**B734**~~ **CLOSED on `task/kb-b734-object-geometries-posed` (issue #71).** `loadObjects()` now poses skinned
   object geometries (vertex pieces on a 0x10 skeleton, flag 0x200) through T476's
