@@ -500,6 +500,28 @@ and carries only a stale rsync of the archive, so from there those citations are
 reported SKIP rather than judged against out-of-date media. In-repo citations
 are checked on CI exactly as they are locally.
 
+## Anchored citations
+
+A bare `path:LINE` citation only proves the file exists and has that many
+lines; pipeline 767 was hygiene-green on four README line numbers that were
+two lines short (`/mnt/projects/fable/review/RETRO-WAVE7/README.md`, ids 5 and
+37). So cite a line WITH its anchor: `` `<file>:LINE` (`token`) `` or a range,
+`` `<file>:LINE-END` (`token`) `` (B1020). `DocCitations` FAILS when the
+token (one pair of surrounding backticks or quotes stripped) does not occur on
+that line or range at the checked-out tree. Rules of the form:
+
+- The parenthesis follows the citation (or its closing backtick) after exactly
+  ONE space; that shape is always read as an anchor, so prose belongs after a
+  comma instead (`` `<file>:12`, the clear path ``), not in that parenthesis.
+- The anchor is one token that is literally on the line: a symbol, a quoted
+  string fragment, a key. Re-measure after your LAST commit
+  (`git grep -n '<token>' -- <path>`), since your own hunks move lines.
+- The anchored rule runs over the live docs AND over every `*.md` under
+  `refactor/B<NNN>*/` (the unit write-ups the kanban workers produce); in the
+  unit directories ONLY anchored citations are checked.
+- `python3 scripts/refactor/check_doc_citations.py --self-test`
+  (`DocCitationsSelfTest`) pins the accepted and refused shapes.
+
 **The `gate` job checks the stamp too (B959).** Its `.visual_gate_prepare` used to
 build `build-gles2/` incrementally without looking at libIrrlicht, so a driver
 change that adds a symbol the client calls (B959's `eqtSetShaderBinaryCacheDir`)

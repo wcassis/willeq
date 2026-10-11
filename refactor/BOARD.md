@@ -1658,7 +1658,7 @@ it without taking that measurement first.
   `MusicPlayer` renders through the shared `MidiPlayer` either way.~~
   **STRUCK B849 (2026-09-18, issue #10 closed by the B849 unit)**: both halves
   verified on fable — the ordering fix is
-  `src/client/audio/audio_manager.cpp:128-139` (T496 Leg B, `942c51e9`) and
+  `src/client/audio/audio_manager.cpp:128-139`, T496 Leg B `942c51e9`, and
   `MusicPlayer::setMidiPlayer()` releases the superseded fallback,
   `src/client/audio/music_player.cpp:95-106`; the destructor leak is closed in
   `src/client/audio/midi_player.cpp:92-106`, pinned by
@@ -1763,7 +1763,7 @@ it without taking that measurement first.
   issue #12 closed by the B849 unit)**: verified on fable — the streaming
   index is `PfsArchive::listFilenames()`, `src/client/graphics/eq/pfs.cpp:304`
   (declared `include/client/graphics/eq/pfs.h:56`), called from
-  `src/client/audio/audio_manager.cpp:975` (T496 Leg D, `39fe0166`), pinned by
+  `src/client/audio/audio_manager.cpp:975`, T496 Leg D `39fe0166`, pinned by
   `tests/test_audio_startup_peak.cpp`.
 
 - **B831** (C) **There is one ledger budget table and it is asserted on two → issue #13
@@ -8140,7 +8140,7 @@ client uses every field.
   `feetZ + 1000.0f` as a "blocked / that is a ceiling, not a floor" sentinel
   (`src/client/graphics/player/renderer_player_collision.cpp:574`). Four
   jump-landing tests compare `feetZ <= groundZ` with **no upper bound** --
-  `src/client/graphics/player/renderer_player_physics.cpp:434` (clear path),
+  `src/client/graphics/player/renderer_player_physics.cpp:434` for the clear path,
   `:537` (blocked path), `:651` and `:666` (the HCMap paths) -- so fed the
   sentinel they all evaluate true and set `newZ = groundZ + modelYOffset`,
   teleporting the player 1,000 units up and ending the jump there. The swim
