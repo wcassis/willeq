@@ -1,0 +1,7 @@
+version,platform,zone,point,owner,bytes,blocks,note
+1,x86,befallen,steady_60s,au.sound_buffers,2322320,73,B977 baseline (refactor/B977/x86/befallen/audio/client.log)
+1,x86,befallen,steady_60s,au.sfx_cache,310640,4,B977 baseline (same file)
+1,x86,befallen,steady_60s,audio_total,4252448,4905,B977 baseline memledger-startup owner=TOTAL
+1,x86,befallen,steady_60s,au.sound_buffers,2322288,73,B989 (this fix)
+1,x86,befallen,steady_60s,au.sfx_cache,0,0,B989: owner row ABSENT
+1,x86,befallen,steady_60s,audio_total,3872576,4898,B989 (this fix)

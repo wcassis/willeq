@@ -330,12 +330,11 @@ void AudioManager::playSoundInternal(const std::string& filename, const glm::vec
     auto buffer = loadSound(filename);
     if (!buffer || !buffer->isValid()) return;
 
-    // Preload into SfxManager if not already. B977: this is a SECOND float
-    // copy of the samples loadSound() keeps in bufferCache_ -- its own owner.
-    StartupScope owner("au.sfx_cache");
-    sfxManager_->preload(filename, buffer->getSamples(),
-                         buffer->getFrameCount(), buffer->getSampleRate(),
-                         buffer->getChannels());
+    // B989: the SfxManager cache SHARES this buffer (a shared_ptr reference),
+    // it does not copy the samples. The decoded PCM is reported ONCE, under
+    // the owner that decoded it (au.sound_buffers in loadSound()); the sfx
+    // cache no longer owns a second copy of it.
+    sfxManager_->preload(filename, std::move(buffer));
 
     // Check if this is a positioned sound. K15 (B037): use3DAudio_ is the
     // configured "audio.use_3d" switch -- with it off, every sound plays

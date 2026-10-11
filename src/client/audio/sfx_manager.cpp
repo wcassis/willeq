@@ -2,6 +2,7 @@
 
 #include "client/audio/sfx_manager.h"
 #include "client/audio/audio_mixer.h"
+#include "client/audio/sound_buffer.h"
 #include "common/logging.h"
 
 #include <cmath>
@@ -21,25 +22,23 @@ void SfxManager::setMixer(AudioMixer* mixer) {
     mixer_ = mixer;
 }
 
-bool SfxManager::preload(const std::string& filename, const float* samples,
-                          size_t frameCount, uint32_t sampleRate, uint8_t channels) {
+bool SfxManager::preload(const std::string& filename, std::shared_ptr<SoundBuffer> buffer) {
     std::lock_guard<std::mutex> lock(cacheMutex_);
 
     if (cache_.count(filename)) {
         return true;  // Already cached
     }
+    if (!buffer || !buffer->isValid()) {
+        return false;
+    }
 
-    WavData wav;
-    wav.sampleRate = sampleRate;
-    wav.channels = channels;
-    wav.totalFrames = frameCount;
-
-    size_t totalSamples = frameCount * channels;
-    wav.samples.assign(samples, samples + totalSamples);
-    wav.memoryBytes = totalSamples * sizeof(float);
-
-    cacheSizeBytes_ += wav.memoryBytes;
-    cache_[filename] = std::move(wav);
+    // B989: no copy. The buffer is the AudioManager's -- the ledger already
+    // charged its PCM to the owner that decoded it (au.sound_buffers) -- so
+    // cacheSizeBytes_ counts the entry's SHARE, not the PCM. (It is the
+    // buffer's whole PCM: the cache is one owner of it; the buffer cache is
+    // the other. The cap bounds how many references THIS cache may hold.)
+    cacheSizeBytes_ += buffer->getMemorySize();
+    cache_[filename] = std::move(buffer);
     touchLruLocked(filename);
 
     // T412 (board B292): the ceiling AudioManager::setMemoryConstraints() hands
@@ -52,8 +51,8 @@ bool SfxManager::preload(const std::string& filename, const float* samples,
 int SfxManager::play(const std::string& filename, float volume, float pan, bool loop) {
     if (!mixer_) return -1;
 
-    const WavData* wav = getWavData(filename);
-    if (!wav || wav->samples.empty()) {
+    const SoundBuffer* buffer = getWavData(filename);
+    if (!buffer || !buffer->isValid()) {
         return -1;
     }
 
@@ -68,10 +67,10 @@ int SfxManager::play(const std::string& filename, float volume, float pan, bool 
     ch->type = MixChannelType::SFX;
     ch->volume = volume;
     ch->pan = pan;
-    ch->samples = wav->samples.data();
-    ch->sampleRate = wav->sampleRate;
-    ch->channels = wav->channels;
-    ch->totalFrames = wav->totalFrames;
+    ch->samples = buffer->getSamples();
+    ch->sampleRate = buffer->getSampleRate();
+    ch->channels = buffer->getChannels();
+    ch->totalFrames = buffer->getFrameCount();
     ch->position = 0;
     ch->looping = loop;
     ch->active.store(true);
@@ -134,14 +133,14 @@ void SfxManager::updateListener(const glm::vec3& pos, const glm::vec3& forward) 
     listenerForward_ = forward;
 }
 
-const WavData* SfxManager::getWavData(const std::string& filename) const {
+const SoundBuffer* SfxManager::getWavData(const std::string& filename) const {
     std::lock_guard<std::mutex> lock(cacheMutex_);
     auto it = cache_.find(filename);
     if (it != cache_.end()) {
         // This IS the use that makes a sound recently used: play() reaches the
         // cache only through here (T412, board B292).
         touchLruLocked(filename);
-        return &it->second;
+        return it->second.get();
     }
     return nullptr;
 }
@@ -201,9 +200,9 @@ void SfxManager::touchLruLocked(const std::string& filename) const {
     lruOrder_.push_front(filename);
 }
 
-bool SfxManager::isInUseLocked(const WavData& wav) const {
-    if (!mixer_ || wav.samples.empty()) return false;
-    const float* base = wav.samples.data();
+bool SfxManager::isInUseLocked(const SoundBuffer& buffer) const {
+    if (!mixer_ || !buffer.isValid()) return false;
+    const float* base = buffer.getSamples();
     for (int handle = 0; handle < AudioMixer::TOTAL_CHANNELS; ++handle) {
         MixChannel* ch = mixer_->getChannel(handle);
         if (ch && ch->active.load() && ch->samples == base) return true;
@@ -225,13 +224,14 @@ void SfxManager::enforceCacheBudgetLocked() {
                 evicted = true;
                 break;
             }
-            if (isInUseLocked(cacheIt->second)) continue;
+            if (isInUseLocked(*cacheIt->second)) continue;
 
             LOG_DEBUG(MOD_AUDIO, "SFX cache: evicting '{}' ({} bytes, {} -> {} of {})",
-                      *it, cacheIt->second.memoryBytes, cacheSizeBytes_,
-                      cacheSizeBytes_ - cacheIt->second.memoryBytes, cacheMaxBytes_);
-            cacheSizeBytes_ -= cacheIt->second.memoryBytes;
-            cache_.erase(cacheIt);
+                      *it, cacheIt->second->getMemorySize(), cacheSizeBytes_,
+                      cacheSizeBytes_ - cacheIt->second->getMemorySize(), cacheMaxBytes_);
+            cacheSizeBytes_ -= cacheIt->second->getMemorySize();
+            cache_.erase(cacheIt);  // drops one reference; the PCM stays alive
+                                    // while the buffer cache (or a channel) holds it
             lruOrder_.erase(it);
             ++evictionCount_;
             evicted = true;
