@@ -1105,10 +1105,17 @@ see prints, and `/equip 21 13` silently addressed DB slot 22 (board B796).
 
 What did NOT change, and must not: fable's inventory model, `MoveItemIntent`,
 `SendMoveItem` and the whole wire stay TITANIUM-numbered, because that is what
-the server serialises to a Titanium client. The conversion exists at exactly
-two seams, both in `include/client/inventory/inventory_constants.h`:
-`parseUserSlot()` on the way in and `describeSlot()` on the way out. If a
-third one ever appears, one of them is wrong.
+the server serialises to a Titanium client. B796's conversion exists at
+`parseUserSlot()` on the way in and `describeSlot()` on the way out, both in
+`include/client/inventory/inventory_constants.h`; B810 (#199) added a
+PARALLEL second pair for the corpse slots the loot window addresses --
+`parseCorpseSlot()` in, `corpseSlotToServer()` out, ported from the
+server's separate `ServerToTitaniumCorpseSlot()`/`TitaniumToServerCorpseSlot()`
+in `titanium.cpp`. The corpse pair agrees with the possessions pair over the
+corpse domain (server 23-56) but refuses the looter's own gear (server 0-22)
+that a corpse never holds, and it is the only one the `/loot`-by-number hop may
+use. A conversion that appears anywhere else, or a third pair for these same
+two domains, means one of them is wrong.
 
 **If Will prefers Titanium numbering at the user boundary**, the change is
 small and local: delete the conversion from `parseUserSlot()` (keep its

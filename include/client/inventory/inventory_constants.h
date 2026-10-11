@@ -296,6 +296,153 @@ static_assert(serverSlotToClient(21) == SLOT_INVALID,
 static_assert(serverSlotToClient(23) == GENERAL_BEGIN, "DB general 1 is model slot 22");
 static_assert(clientSlotToServer(GENERAL_BEGIN) == 23, "and back again");
 
+// ============================================================================
+// CORPSE slots -- the second conversion pair (B810, #199)
+// ============================================================================
+// The corpse slots the loot window addresses use a DISTINCT pair on the
+// server, titanium.cpp:3641 ServerToTitaniumCorpseSlot() / :3727
+// TitaniumToServerCorpseSlot(), not the possessions pair (T494's port). The
+// two share the SAME three arms over the corpse domain -- general1-8 shift
+// by 1, the cursor-and-equipment range (server 33 .. POSSESSIONS_COUNT+
+// slotWaist = 34+20 = 54) by 3, and the single POSSESSIONS_COUNT+slotAmmo
+// (34+22 = 56) by 4 -- and agree with each other on every one of those
+// values. What makes this a SEPARATE pair is the DOMAIN, not the arms: a
+// corpse only ever holds what the looter could carry as possessions, so the
+// corpse pair REFUSES the looter's own equipment (server 0-22, i.e.
+// 0-20 identity and the 22->21 ammo shift the possessions pair performs),
+// general 9/10 (server 31/32) and the single 55 -- none of which a corpse
+// slot can be. T494 fixed the possessions/bank/trade/world/bag table and
+// deliberately left this domain untouched (it is a class-B split, not a
+// table split). The model side (titanium_limits.h: slotGeneral1 22 ..
+// slotCursor 30, POSSESSIONS_COUNT 31) runs 22-29, 30-51 (+3) and 52 (+4).
+//
+//     meaning                       server (RoF2)     Titanium (model)
+//     general 1-8                       23-30               22-29
+//     corpse cursor/equipment range     33-54               30-51
+//     POSSESSIONS_COUNT + slotAmmo      56                  52
+//     (server 0-22, 31/32 and 55 have no model slot)
+//
+// WHY THE WIRE IS MODEL-NUMBERED (the same B796 rule): eqemu packs the loot
+// window's contents into corpse slots (corpse.cpp MakeLootRequestPackets,
+// loot_slot = CORPSE_BEGIN=slotGeneral1=23 .. CORPSE_END) and sends each via
+// SendItemPacket -> ENCODE(OP_ItemPacket)'s ServerToTitaniumSlot()
+// (titanium.cpp:1135) -- identical to the corpse IN over this domain. The
+// client's OP_LootItem comes back through TitaniumToServerCorpseSlot()
+// (titanium.cpp:2980). So fable's loot window, LootItemIntent,
+// PendingLootSlots, the auto-loot queue and the sent packet are all
+// MODEL-numbered, and the server accepts exactly that back. The only hops
+// that need the corpse conversion are the USER boundary, B796's rule: a
+// typed /loot <N> is a SERVER number (inventory.slot_id), converted on the
+// way in by parseCorpseSlot(); anything that PRINTS a corpse slot prints
+// corpseSlotToServer(), the same number the user can type back. The loot
+// popup draws names only, so it prints no slots. Use this pair -- not the
+// possessions pair -- for every corpse hop, because the corpse pair's
+// refusal of server 0-22 is exactly what stops "/loot 22" (the looter's
+// own ammo slot) from being silently re-read as a corpse slot.
+/**
+ * Model corpse slot -> server (`inventory.slot_id`).
+ * Port of titanium.cpp:3727 TitaniumToServerCorpseSlot(). The number the
+ * user should SEE for a corpse slot, so it is the only OUT conversion for
+ * the corpse domain.
+ */
+constexpr int16_t corpseSlotToServer(int16_t modelSlot) {
+    if (modelSlot < 0) return SLOT_INVALID;
+    if (modelSlot >= GENERAL_BEGIN && modelSlot <= GENERAL_END)
+        return static_cast<int16_t>(modelSlot + 1);  // general1-8
+    if (modelSlot >= CURSOR_SLOT && modelSlot <= POSSESSIONS_COUNT + SLOT_WAIST)
+        return static_cast<int16_t>(modelSlot + 3);  // the corpse cursor/equipment range
+    if (modelSlot == POSSESSIONS_COUNT + SLOT_AMMO)
+        return static_cast<int16_t>(modelSlot + 4);  // the single ammo corpse slot
+    return SLOT_INVALID;
+}
+
+/**
+ * Server (`inventory.slot_id`) corpse slot -> model slot.
+ * Port of titanium.cpp:3641 ServerToTitaniumCorpseSlot(). SLOT_INVALID
+ * means the number is not a slot a corpse can hold for a Titanium client.
+ */
+constexpr int16_t serverCorpseSlotToModel(int16_t serverSlot) {
+    if (serverSlot < 0) return SLOT_INVALID;
+    if (serverSlot >= serverslot::GENERAL_BEGIN &&
+        serverSlot <= serverslot::GENERAL_BEGIN + 7)
+        return static_cast<int16_t>(serverSlot - 1);  // general1-8 only
+    if (serverSlot >= serverslot::CURSOR &&
+        serverSlot <= serverslot::POSSESSIONS_COUNT + serverslot::SLOT_WAIST)
+        return static_cast<int16_t>(serverSlot - 3);  // the RoF2 cursor/equipment range
+    if (serverSlot == serverslot::POSSESSIONS_COUNT + serverslot::SLOT_AMMO)
+        return static_cast<int16_t>(serverSlot - 4);  // the single ammo corpse slot
+    return SLOT_INVALID;
+}
+
+static_assert(corpseSlotToServer(GENERAL_BEGIN) == 23, "corpse general 1 is server 23");
+static_assert(corpseSlotToServer(GENERAL_END) == 30, "corpse general 8 is server 30");
+static_assert(corpseSlotToServer(CURSOR_SLOT) == 33, "the model's own cursor prints as 33");
+static_assert(corpseSlotToServer(POSSESSIONS_COUNT + SLOT_WAIST) == 54,
+              "the +3 arm tops out at model 51 -> server 54");
+static_assert(corpseSlotToServer(POSSESSIONS_COUNT + SLOT_AMMO) == 56,
+              "the single ammo corpse slot is 52 -> 56, NOT 55");
+static_assert(serverCorpseSlotToModel(23) == GENERAL_BEGIN, "and back again");
+static_assert(serverCorpseSlotToModel(56) == POSSESSIONS_COUNT + SLOT_AMMO, "and the ammo slot back");
+static_assert(serverCorpseSlotToModel(31) == SLOT_INVALID,
+              "RoF2 general 9 has no Titanium slot");
+static_assert(serverCorpseSlotToModel(22) == SLOT_INVALID,
+              "the ammo slot is not a corpse slot -- the domain starts at general 1");
+static_assert(serverCorpseSlotToModel(21) == SLOT_INVALID,
+              "equipment is not a corpse slot");
+
+// ============================================================================
+// parseCorpseSlot -- the corpse-domain inbound conversion (B810, #199)
+// ============================================================================
+// The /loot <slot> hop: with a loot window open, a typed number is a SERVER
+// number (inventory.slot_id, B796's rule) and a word is an item name. This
+// parses AND converts over the corpse domain only -- the possessions
+// parseUserSlot() is the wrong table here: it converts the looter's own
+// equipment and ammo (server 0-22), which a corpse never holds, so it
+// cannot refuse "/loot 22". Same three outcomes as parseUserSlot(): a typo
+// is a usage error; a real server corpse slot this client cannot reach
+// (general 9/10, or the equipment/ammo numbers a database reader might
+// type) needs to say so, or the user re-types it and blames the client.
+// (The enum lives HERE, above its two users, rather than beside
+// parseUserSlot() at the bottom of the file.)
+enum class UserSlotResult {
+    Ok,
+    NotANumber,       // not an integer, or out of int16_t range
+    NotAddressable,   // a number, but no slot this client can reach
+};
+
+inline UserSlotResult parseCorpseSlot(const std::string& tok, int16_t& out) {
+    out = SLOT_INVALID;
+    if (tok.empty()) return UserSlotResult::NotANumber;
+    long value = 0;
+    try {
+        size_t consumed = 0;
+        value = std::stol(tok, &consumed);
+        if (consumed != tok.size()) return UserSlotResult::NotANumber;
+    } catch (const std::exception&) {
+        return UserSlotResult::NotANumber;
+    }
+    if (value < std::numeric_limits<int16_t>::min() ||
+        value > std::numeric_limits<int16_t>::max()) {
+        return UserSlotResult::NotANumber;
+    }
+    const int16_t serverSlot = static_cast<int16_t>(value);
+    const int16_t modelSlot = serverCorpseSlotToModel(serverSlot);
+    if (modelSlot == SLOT_INVALID) return UserSlotResult::NotAddressable;
+    // Round-trip guard, parseUserSlot()'s device: the corpse pair is
+    // injective over its domain, so this passes for every addressable slot
+    // and stays the safety net if the table ever drifts.
+    if (corpseSlotToServer(modelSlot) != serverSlot) return UserSlotResult::NotAddressable;
+    out = modelSlot;
+    return UserSlotResult::Ok;
+}
+
+/** The refusal text for a corpse slot this client cannot reach, in one place. */
+inline std::string describeUnaddressableCorpseSlot(const std::string& tok) {
+    return "Slot " + tok +
+           " is not a corpse slot this client can reach -- corpse slots are "
+           "inventory.slot_id from 23 (general 1) to 56, and general 9/10 have "
+           "no Titanium slot.";
+}
 
 // ============================================================================
 // The ZONE-IN SNAPSHOT's slot set (T439, board B444)
@@ -1047,13 +1194,8 @@ inline std::string describeSlot(int16_t slotId) {
 // Three outcomes, because the refusals are not interchangeable: a typo is a
 // usage error, but a real server slot this client is not sent (21, the power
 // source, is the one a reader of the DB will type) needs to say so, or the
-// user re-types it and blames the client.
-enum class UserSlotResult {
-    Ok,
-    NotANumber,       // not an integer, or out of int16_t range
-    NotAddressable,   // a number, but no slot this client can reach
-};
-
+// user re-types it and blames the client. UserSlotResult is defined above,
+// beside parseCorpseSlot() -- the first user of the three-outcome shape.
 inline UserSlotResult parseUserSlot(const std::string& tok, int16_t& out) {
     out = SLOT_INVALID;
     if (tok.empty()) return UserSlotResult::NotANumber;
