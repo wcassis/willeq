@@ -9,19 +9,9 @@ namespace Graphics {
 
 CameraController::CameraController(irr::scene::ICameraSceneNode* camera)
     : camera_(camera) {
-    if (camera_) {
-        // Initialize orientation from current camera direction
-        irr::core::vector3df dir = camera_->getTarget() - camera_->getPosition();
-        dir.normalize();
-
-        yaw_ = std::atan2(dir.X, dir.Z) * 180.0f / irr::core::PI;
-        pitch_ = std::asin(dir.Y) * 180.0f / irr::core::PI;
-    }
-}
-
-void CameraController::setOrientation(float yaw, float pitch) {
-    yaw_ = yaw;
-    pitch_ = std::max(MIN_PITCH, std::min(MAX_PITCH, pitch));
+    // B533: the constructor no longer initializes yaw_ / pitch_ from the
+    // camera's direction -- that state existed only for the deleted
+    // free-fly/orbit API (see camera_controller.h).
 }
 
 // T474 (board B650): setFollowPosition() -- the pre-T474 Chase camera -- is
@@ -141,14 +131,6 @@ void CameraController::getPositionEQ(float& x, float& y, float& z) const {
     z = pos.Y;
 }
 
-float CameraController::getHeadingEQ() const {
-    // Convert yaw to EQ heading (0-512)
-    float heading = (yaw_ + 180.0f) / 360.0f * 512.0f;
-    while (heading < 0) heading += 512.0f;
-    while (heading >= 512.0f) heading -= 512.0f;
-    return heading;
-}
-
 void CameraController::setBspCollision(const BspTree* bspTree,
                                        const std::map<size_t, irr::core::aabbox3df>* regionBounds) {
     bspTree_ = bspTree;
@@ -218,21 +200,6 @@ void CameraController::setCollisionManager(irr::scene::ISceneCollisionManager* m
     collisionSelector_ = selector;
     LOG_DEBUG(MOD_GRAPHICS, "Camera collision manager set (mgr={}, selector={})",
               mgr != nullptr, selector != nullptr);
-}
-
-void CameraController::setOrbitAngle(float eqHeading) {
-    orbitAngle_ = eqHeading;
-    // Normalize to 0-512 range
-    while (orbitAngle_ < 0) orbitAngle_ += 512.0f;
-    while (orbitAngle_ >= 512.0f) orbitAngle_ -= 512.0f;
-    // B345: the orbitAngleInitialized_ latch went (no reader).
-}
-
-void CameraController::adjustOrbitAngle(float delta) {
-    orbitAngle_ += delta;
-    // Normalize to 0-512 range
-    while (orbitAngle_ < 0) orbitAngle_ += 512.0f;
-    while (orbitAngle_ >= 512.0f) orbitAngle_ -= 512.0f;
 }
 
 } // namespace Graphics

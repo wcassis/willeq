@@ -650,16 +650,11 @@ EXEMPT_GROUPS = {
     ("GraphicalRenderer", "getRenderQuality"): "B493",
     ("AnimatedTextureManager", "getAnimatedTextureCount"): "B494",
     ("AnimatedTextureManager", "getCurrentTexture"): "B494",
-    ("CameraController", "adjustOrbitAngle"): "B494",
-    ("CameraController", "getHeadingEQ"): "B494",
-    ("CameraController", "getMoveSpeed"): "B494",
-    ("CameraController", "getOrbitAngle"): "B494",
-    ("CameraController", "getPitch"): "B494",
-    ("CameraController", "getRotateSpeed"): "B494",
-    ("CameraController", "getYaw"): "B494",
-    ("CameraController", "setOrbitAngle"): "B494",
-    ("CameraController", "setOrientation"): "B494",
-    ("CameraController", "setRotateSpeed"): "B494",
+    # B533 (issue #180) removed the CameraController group's ten rows
+    # (2026-10-11): adjustOrbitAngle / getHeadingEQ / getMoveSpeed /
+    # getOrbitAngle / getPitch / getRotateSpeed / getYaw / setOrbitAngle /
+    # setOrientation / setRotateSpeed are all deleted with the fly/orbit
+    # state (refactor/B533/README.md). B494 keeps its other groups.
     ("ConstrainedTextureCache", "freeze"): "B494",
     ("ConstrainedTextureCache", "getAvailableMemory"): "B494",
     ("ConstrainedTextureCache", "getCompressedUploadCount"): "B494",
