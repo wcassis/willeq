@@ -41,8 +41,6 @@ void ZoneLifecycleComponent::unloadZone() {
 
     // Reset entity loading state - we're starting a new zone
     networkReady_ = false;
-    entitiesLoaded_ = false;
-    expectedEntityCount_ = 0;
     loadedEntityCount_ = 0;
     ctx_.zoneReady = false;
     ctx_.entityPrepReady = false;
@@ -786,7 +784,8 @@ void ZoneLifecycleComponent::applyStoredZoneEnvironment() {
 
 void ZoneLifecycleComponent::setExpectedEntityCount(size_t count) {
     if (owner_.isLoading()) return;
-    expectedEntityCount_ = count;
+    // B340 deleted expectedEntityCount_: write-only after L09 deleted its
+    // zero-caller accessor; the count stays in this log line only.
     // Note: Entity count is tracked for informational purposes only.
     // Zone ready is triggered when the player entity is created (isPlayer=true in createEntity).
     LOG_DEBUG(MOD_GRAPHICS, "Expected entity count: {}, already loaded: {}", count, loadedEntityCount_);
@@ -799,8 +798,6 @@ void ZoneLifecycleComponent::setNetworkReady(bool ready) {
 
     if (!ready) {
         // Network not ready means we're zoning, reset entity loading state
-        entitiesLoaded_ = false;
-        expectedEntityCount_ = 0;
         loadedEntityCount_ = 0;
         ctx_.zoneReady = false;
     }

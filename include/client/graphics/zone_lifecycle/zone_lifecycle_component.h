@@ -81,7 +81,8 @@
 // pushEvent/GameEventType:: appears anywhere in the three moved TUs):
 //   notifyEntityLoaded()    empty body
 //   checkAndSetZoneReady()  empty body
-//   areEntitiesLoaded()     inline accessor on entitiesLoaded_ (K04 (f))
+//   areEntitiesLoaded()     inline accessor on entitiesLoaded_ (K04 (f));
+//       B340 deleted entitiesLoaded_ itself, which L09's write-only member was
 // Both bodies carried a "kept for interface compatibility" comment whose
 // premise correction 13 refutes.
 //
@@ -297,17 +298,14 @@ private:
 	// tree-wide ever constructs it, so that branch can never fire. Moved
 	// verbatim and boarded rather than deleted: it is referenced, so it is not
 	// the §Mechanism 3 zero-reference case.
-	// entitiesLoaded_ is likewise write-only after L09 deleted its zero-caller
-	// accessor areEntitiesLoaded().
-#ifdef EQT_HAS_GLES2
-	bool gpuUploadEnabled_ = true;   // Runtime toggle for /upload command
-#endif
-#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
-	std::unique_ptr<GLES2EGLHelper> gles2Helper_;  // GLES2 context for ETC1 EGL image sharing
-#endif
-	// Cached terrain triangles for placeholder rebuild
-	bool entitiesLoaded_ = false;    // True when all entities have been loaded with models/textures
-	size_t expectedEntityCount_ = 0; // Expected number of entities from ZoneSpawns
+	// B340 deleted entitiesLoaded_/expectedEntityCount_ with their four
+	// writes: write-only after L09 deleted their zero-caller accessors.
+	#ifdef EQT_HAS_GLES2
+		bool gpuUploadEnabled_ = true;   // Runtime toggle for /upload command
+	#endif
+	#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
+		std::unique_ptr<GLES2EGLHelper> gles2Helper_;  // GLES2 context for ETC1 EGL image sharing
+	#endif
 
 	// L13: owned state, see the accessors above.
 	StoredZoneEnvironment storedZoneEnvironment_;

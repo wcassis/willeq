@@ -284,10 +284,6 @@ EXEMPT = {
         ("report", "B337: TreeIdentifier counters filled and never printed"),
     ("Stats", "zoneTreeMeshCount"):
         ("report", "B337: TreeIdentifier counters filled and never printed"),
-    ("ZoneLifecycleComponent", "entitiesLoaded_"):
-        ("boarded", "B340: L09 deleted the zero-caller accessor and left the member"),
-    ("ZoneLifecycleComponent", "expectedEntityCount_"):
-        ("boarded", "B340: L09 deleted the zero-caller accessor and left the member"),
     ("OverlaysComponent", "currentTargetInfo_"):
         ("boarded", "B341: target-overlay state cached per frame and never drawn from"),
     ("InventoryManager", "deleteItemCallback_"):
