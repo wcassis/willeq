@@ -296,10 +296,6 @@ EXEMPT = {
         ("boarded", "B343: paperdoll holds the inventory manager and reads nothing from it"),
     ("EQAnimatedMeshSceneNode", "sceneManager_"):
         ("boarded", "B343: stored scene manager with no reader"),
-    ("PlayerComponent", "m_duel_target_id"):
-        ("boarded", "B344: /duel stores the target id; the reply path never consults it"),
-    ("SkillManager", "m_player_race"):
-        ("boarded", "B344: race stored for skill gating that does not gate on race"),
     ("CameraController", "orbitAngleInitialized_"):
         ("boarded", "B345: orbit-camera latch with no reader"),
     ("ConsoleRenderer", "m_curEnd"):
