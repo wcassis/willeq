@@ -90,6 +90,15 @@ direction; it now only binds `camera_`.
     `zero-caller census clean: 364 functions, all classified in EXEMPT`
   - `ctest --test-dir build -L hygiene` green locally at the push head
     (CI re-runs it in the `hygiene` stage)
+- Baselines for the deltas: the branch tip before this unit's deletions
+  (`06852f31`, the pre-`origin/fable`-merge tip) read 48 write-only / 374
+  zero-caller (`/home/user/kb-evidence/b533-camera-fly-residue/baseline_*.txt`)
+  — so this unit's delta is exactly 1 (the `mouseSensitivity_` row) and 10
+  (the CameraController group). The three `*Reproducible` hygiene tests first
+  failed locally only because the partial `-j3` build had not built their
+  generator tools (`generate_textures`, `eqe1_builder`, `willeq_db_builder`,
+  `ui_atlas_builder`); built those and the full label is 28/28 (my change
+  touches none of that path).
 - Build: local `willeq` + `test_camera_bsp_ceiling` +
   `test_camera_mode_wiring` + `test_chase_camera_fit` built green at
   1dc42487-based tip (local, `-j3`); the full suite and the visual gate
