@@ -1,0 +1,24 @@
+# B990 live ledger census (x86, eqemu lane 3, scripts/client_ledger_capture.sh,
+# mode audio, WILLEQ_LEDGER_OWNERS=audio, WILLEQ_LEDGER_IDLE_EVERY=10, music
+# started at zone-in then stopped by /sound off ~18 s BEFORE steady_60s).
+#
+# run      = which run's client.log the row was taken from
+# baseline = B990-live rows: music STARTED then STOPPED (the card's point);
+#            B977-base: the B977 census run, music STILL PLAYING at steady_60s
+#            (its tour held to ~75 s, no stop) -- the 24 MB resident defect.
+# live     = au.soundfont_custom live bytes at the named point
+# peak     = category audio live/peak at the named point (audio category, the
+#            budgeted row -- the custom font's 24 MB lived in it while resident)
+# B990-live velketor peak (28,850,592) proves the font loaded in that run
+# (loaded 22:20:55.155, released 22:21:31.772); at steady_60s the live row is
+# the residual 2,976 B / 32 blocks -- the selectSoundFont bookkeeping charged
+# under the owner scope (audio_manager.cpp playMusic, the same 2,976/32 in the
+# GM-only B977 qeynos2 control and in B990's qeynos2: not font samples).
+#
+# zone          run         point      au.soundfont_custom_live  custom_blocks  audio_live  audio_peak
+velketor        B990-live   steady_60s 2976                        32             4386288     28850592
+velketor        B990-live   idle_100   2976                        32             4386288     28850592
+velketor        B977-base   steady_60s 24162944                    136            28614000    28918432
+qeynos2         B990-live   steady_60s 2976                        32             3908640     5654592
+qeynos2         B990-live   idle_100   2976                        32             3908640     5654592
+qeynos2         B977-base   steady_60s 2976                        32             3910144     5652480

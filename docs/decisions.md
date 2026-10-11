@@ -1710,7 +1710,14 @@ Measured worst (at `steady_60s`, the asserted point):
 velketor is the worst on both machines because it is the only zone whose
 zone music actually STARTED in these runs: the custom SoundFont
 `synthus2.sf2` loads on first `playMusic` of a Velious/Luclin stem and is
-24,160,712 B (Pi) / 24,162,944 B (x86) of it. kael and thurgadina carry the
+24,160,712 B (Pi) / 24,162,944 B (x86) of it. **B990 (#309, 2026-10-10)
+changed the font's lifetime: it is now released at `MusicPlayer::stop()`,
+the one place a song ends — both the immediate and the faded path — so it
+is resident only while a custom-font song plays; a following custom song
+reloads it (~35 ms, page-cache; `refactor/B990/README.md`), a GM song never
+loads it. The figures above are the PRE-B990 census (music still playing at
+steady_60s); the post-B990 live x86 census is
+`refactor/B990/audio_ledger_census.tsv`.** kael and thurgadina carry the
 same font in their zone EFF, but their music region was not entered in these
 runs (the seeded safe point sits outside it), so their worst is the ~3.6 MB
 startup-only row. The 10 classic zones top out at 4,945,872 B (Pi, erudnint).

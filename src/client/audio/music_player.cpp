@@ -190,6 +190,25 @@ void MusicPlayer::stop(float fadeSeconds) {
         musicChannelHandle_ = -1;
     }
 
+    // B990 (issue #309): the custom orchestral SoundFont (24 MB of float
+    // samples) is resident while a custom-font song plays and was, before
+    // this, NEVER released -- the T504 free path (selectSoundFont(GM)) is
+    // driven only by a font SWITCH, and a song that simply ends never
+    // switches. Release it here, the one place a song ends.
+    // releaseCustomSoundFont() calls MidiPlayer::stop() (the T248 render-
+    // barrier handshake) before freeing the font, which zeroes the playback
+    // position. That is not observable by any caller: the only readers of
+    // getPlaybackTimeMs() are startAutoAttackMusic()/startVendorBankMusic(),
+    // and both read it while the song is still playing (guarded by
+    // isPlaying()) and stash it in savedZoneMusicTimeMs_ -- the resume uses
+    // that saved value, never the live one. The pre-B990 comment above
+    // (deliberately not calling bare MidiPlayer::stop()) defended the same
+    // invariant by avoidance; this defends it by the font being the only
+    // thing stop() needs to free.
+    if (midiPlayer_) {
+        midiPlayer_->releaseCustomSoundFont();
+    }
+
     decodedData_.clear();
     currentFile_.clear();
     playingMidi_ = false;
@@ -266,6 +285,18 @@ void MusicPlayer::mixerRenderCallback(void* userData, float* buffer, int frameCo
                 player->playing_.store(false);
                 if (player->playingMidi_ && player->midiPlayer_) {
                     player->midiPlayer_->stop();
+                    // B990 (issue #309): the custom SoundFont is resident
+                    // while this custom-font song plays and, before this, was
+                    // never released on the faded path -- the deferred stop
+                    // (stopMusic(fade>0)) returns to the caller with the song
+                    // still fading, so the immediate path's release never ran.
+                    // Release it now that the fade has finished, on the audio
+                    // thread: the stop() above already quiesced the synth, and
+                    // this thread is the one renderBarrier_ last entered (the
+                    // re-entrant rule in render_barrier.h), so no render pass
+                    // can still read the font. A later pass sees
+                    // playing_==false before it dereferences it.
+                    player->midiPlayer_->releaseCustomSoundFont();
                 }
                 std::memset(buffer, 0, frameCount * 2 * sizeof(float));
                 return;

@@ -39,18 +39,22 @@ it without taking that measurement first.
 
 ## A — live defects
 
-- **B990** (A) → issue #309. The custom orchestral SoundFont `synthus2.sf2`
-  (12,036,844 B on disk) is held in the client as **24,160,712 B (23.16 MiB) of
-  float samples** (`tsf` holds float; `au.soundfont_custom`, Pi velketor steady
-  `refactor/B977/audio_ledger_census.tsv` — the same 24,162,944 B on x86). It
-  loads on the first `playMusic` of a Velious/Luclin XMI stem (T504 deferred
-  it from startup to `MidiPlayer::selectSoundFont(Custom)`) and is never
-  released: it is 84 % of the audio ledger's measured worst (velketor,
-  28,720,320 B at steady_60s) and what makes the audio ratchet (35 MiB) refuse
-  to move the 32 MiB budget down (B977, #295; docs/decisions.md 2026-10-05).
-  The original client (32 MB total) never decoded its font to float. **This
-  defect moves first**; a re-ratchet of `memoryLedgerBudgets.audio` follows
-  Will's number when it lands. Filed by B977, class::A, lane::pi.
+- ~~**B990** (A) → issue #309. The custom orchestral SoundFont `synthus2.sf2`
+  was never released: 24,160,712 B (Pi) / 24,162,944 B (x86) of float samples
+  resident for the rest of the session, 84 % of the audio ledger's measured
+  worst, what made the audio ratchet refuse to move the 32 MiB budget down
+  (B977, #295; docs/decisions.md 2026-10-05).~~ **CLOSED 2026-10-10: the font
+  is released at `MusicPlayer::stop()`, the one place a song ends — immediate
+  and faded stops both, at the mechanism, not a timer (commit e5acd72b,
+  `refactor/B990/README.md`).** RED/GREEN: `tests/test_soundfont_release.cpp`
+  (2/3 red at base tip: 24,225,520 B held after stop; 8/8 green at the tip,
+  incl. the stop-race suite); live lane-3 x86 leg (`refactor/B990/
+  audio_ledger_census.tsv`): velketor `au.soundfont_custom` 2,976 B / 32
+  blocks at steady_60s after the music started and stopped — the 24 MB gone,
+  the residual being the GM-identical selection bookkeeping — vs B977's
+  24,162,944 B at the same point; qeynos2 (classic control) never loaded the
+  custom font. **Left for Will (per the card): the Pi re-run and the
+  `memoryLedgerBudgets.audio` re-ratchet, after B989 lands too.**
 - **B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
   float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode,
   ~2.0–2.4 MB after the B977 tour's combat) and `SfxManager::cache_`
