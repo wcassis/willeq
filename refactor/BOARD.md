@@ -11048,7 +11048,7 @@ B712–B719 unused.
   `findEntityByName` the one name resolver; these are the rest of the
   surface. Found by T458.
 
-- **B603** (B, unreached) **Gameplay-manager control API with no production → issue #187
+- ~~**B603** (B, unreached) **Gameplay-manager control API with no production → issue #187
   caller.** `CombatManager::EnableAutoLoot/GetHighestPriorityTarget/
   SetAggroRadius/SetFleeThreshold/ToggleAutoFire`,
   `SpellManager::beginCastById/setOnCastComplete/setOnSpellFade/swapGems`
@@ -11060,7 +11060,23 @@ B712–B719 unused.
   `InventoryManager::pickupMoney/pickupPartialStack/placeOnMatchingStack/
   returnCursorMoney`, `HotbarModel::assignSlot/clearSlot`,
   `ZoneLines::checkMovement`, `WhoAllEntry::isLinkdead`, the free
-  `calcBankBagSlotId` -- 24 rows. Found by T458.
+  `calcBankBagSlotId` -- 24 rows. Found by T458. **STRUCK (2026-10-11,
+  `task/kb-b603-gameplay-manager-zero-callers`, `refactor/B603/README.md`):**
+  17 of the 20 ratchet rows deleted with their tests-only nets (B468),
+  including the two std::function cast callbacks and their 4 invocation
+  sites (the live outcome path is the bridge `publishCastComplete`); the
+  `ActiveBuff::getRemainingSeconds()` accessor went as a cascade (its only
+  production caller was `getTimeString`). `HotbarModel::assignSlot/clearSlot`
+  and `calcBankBagSlotId` reclassified `seam` (their tests pin live
+  behaviour). The four `InventoryManager` cursor functions are LIVE since
+  B442 (`bridge_component_cursor.cpp:129/:132`,
+  `cursor_gesture.cpp:199/:225`) -- the card text predates B442, kept.
+  Declining a group invite IS reachable (`/decline` ->
+  `ActionDispatcher::declineGroupInvite` -> `EqActionHandler`, which sends
+  `SendGroupDecline` directly); the component method was a dead duplicate.
+  Hotbar slot assignment is NOT user-reachable (config-load only) --
+  missing feature, left for a separate entry. `ZeroCallers` went RED with
+  17 STALE rows and GREEN at 303 tests-only.~~
 
 - ~~**B604** (A, *unconfirmed live*) **The server's cast interrupt never reaches
   `SpellManager::handleInterrupt()`.** `src/client/zone/zone_dispatch.cpp`
@@ -11138,7 +11154,8 @@ B712–B719 unused.
   the tail back behind them, so one can arrive inside the tail. The gem's recast
   is still right, because `handleSpellBarRefresh()` starts it from the
   MemorizeSpell alone. Only the `SpellCastComplete` result is wrong, and nothing
-  in production reads it (B603). In a quiet zone the result also waits for the
+  in production reads it (B603 deleted the callback that was left for a
+  consumer). In a quiet zone the result also waits for the
   next packet. Confirm by recording, on the B630 live run, whether anything
   arrives between the two tail packets.
 
