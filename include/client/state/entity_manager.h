@@ -132,30 +132,6 @@ public:
                               float dx = 0, float dy = 0, float dz = 0, uint8_t animation = 0);
 
     /**
-     * Update an entity's HP percentage. Fires EntityStatsChanged event.
-     * @param spawnId The spawn ID of the entity
-     * @param hpPercent HP percentage (0-100)
-     * @return true if updated, false if entity not found
-     */
-    bool updateEntityHP(uint16_t spawnId, uint8_t hpPercent);
-
-    /**
-     * Update an entity's equipment.
-     * @param spawnId The spawn ID of the entity
-     * @param slot Equipment slot (0-8)
-     * @param materialId Material/texture ID
-     * @param tint Tint color
-     * @return true if updated, false if entity not found
-     */
-    bool updateEntityEquipment(uint16_t spawnId, int slot, uint32_t materialId, uint32_t tint);
-
-    /**
-     * Mark an entity as a corpse (for death handling).
-     * @param spawnId The spawn ID of the entity
-     */
-    void markAsCorpse(uint16_t spawnId);
-
-    /**
      * Clear all entities.
      */
     void clear();
@@ -193,13 +169,6 @@ public:
                                    float px, float py, float pz) const;
 
     /**
-     * Find an entity by exact name.
-     * @param name Exact name to search for
-     * @return Pointer to entity or nullptr if not found
-     */
-    const Entity* findEntityByExactName(const std::string& name) const;
-
-    /**
      * Get all entities.
      * @return Reference to the entity map
      */
@@ -219,16 +188,6 @@ public:
     bool hasEntity(uint16_t spawnId) const;
 
     // ========== Spatial Queries ==========
-
-    /**
-     * Get entities within a certain range of a position.
-     * @param x Center X position
-     * @param y Center Y position
-     * @param z Center Z position
-     * @param range Maximum distance
-     * @return Vector of spawn IDs within range
-     */
-    std::vector<uint16_t> getEntitiesInRange(float x, float y, float z, float range) const;
 
     /**
      * Get the nearest entity matching a filter.
@@ -260,15 +219,6 @@ public:
      */
     const Entity* getNearestPlayer(float x, float y, float z, uint16_t excludeSpawnId = 0) const;
 
-    /**
-     * Get the nearest corpse.
-     * @param x Center X position
-     * @param y Center Y position
-     * @param z Center Z position
-     * @return Pointer to nearest corpse or nullptr
-     */
-    const Entity* getNearestCorpse(float x, float y, float z) const;
-
     // ========== Pet Queries ==========
 
     /**
@@ -278,40 +228,6 @@ public:
      */
     bool isPet(uint16_t spawnId) const;
 
-    /**
-     * Get the owner spawn ID of a pet.
-     * @param spawnId The pet's spawn ID
-     * @return Owner spawn ID or 0 if not a pet or not found
-     */
-    uint32_t getPetOwnerId(uint16_t spawnId) const;
-
-    /**
-     * Find a pet by its owner's spawn ID.
-     * @param ownerSpawnId The owner's spawn ID
-     * @return Pet's spawn ID or 0 if not found
-     */
-    uint16_t findPetByOwner(uint16_t ownerSpawnId) const;
-
-    /**
-     * Get all pets in the zone.
-     * @return Vector of pet spawn IDs
-     */
-    std::vector<uint16_t> getAllPets() const;
-
-    // ========== Iteration ==========
-
-    /**
-     * Iterate over all entities.
-     * @param callback Function to call for each entity
-     */
-    void forEachEntity(std::function<void(const Entity&)> callback) const;
-
-    /**
-     * Iterate over all entities with mutable access.
-     * @param callback Function to call for each entity
-     */
-    void forEachEntityMutable(std::function<void(Entity&)> callback);
-
 private:
     // T244: shared body of the two findEntityByName overloads; pos is null
     // for the id-ordered form, else {x,y,z} of the reference point.
@@ -320,7 +236,6 @@ private:
     void fireEntitySpawnedEvent(const Entity& entity);
     void fireEntityDespawnedEvent(uint16_t spawnId, const std::string& name);
     void fireEntityMovedEvent(const Entity& entity);
-    void fireEntityStatsChangedEvent(const Entity& entity);
 
     float calculateDistance(float x1, float y1, float z1, float x2, float y2, float z2) const;
 
