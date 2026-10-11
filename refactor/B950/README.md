@@ -27,9 +27,9 @@ The atlas TUs are inside `willeq_core` unconditionally whenever graphics is on
   consumer the issue names, which constructed a `ZoneMeshBuilder` without the
   define — now gets it through the link. No change needed at its CMake site.
 - The three gles2 tools (`gles2_zone_benchmark`, `gles2_shader_diagnostic`,
-  `gles2_composite_audit`, CMakeLists.txt:2328/:2505/:2630) **keep**
+  `gles2_composite_audit`, CMakeLists.txt:2330/:2507/:2632) **keep**
   their PRIVATE copy: they do NOT link `willeq_core` (they link
-  `${ZONE_BENCH_LIBS}`, CMakeLists.txt:2352) and compile
+  `${ZONE_BENCH_LIBS}`, CMakeLists.txt:2354) and compile
   `zone_geometry.cpp` / `zone_geometry_atlased.cpp` / `texture_atlas.cpp`
   themselves — for them the PRIVATE define is still the only one, and the
   acceptance criterion deletes only copies that the PUBLIC define makes
