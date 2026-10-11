@@ -486,7 +486,8 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (26 tests: `FileSizeCeiling`, `DocCitations`, `DocClaims` and
+`hygiene` (27 tests: `FileSizeCeiling`, `DocCitations` (+ B1020's
+`DocCitationsSelfTest`, the anchored-citation probes), `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
 reachability ratchet), T450's `DbReproducible`, T455's

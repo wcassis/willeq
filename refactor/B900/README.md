@@ -41,7 +41,7 @@ Constants, [measured] against the eqemu source on lane 4
 
 | constant | value | source |
 |---|---|---|
-| `slotRange` | 11 | `common/rof2/rof2_limits.h:124` (Titanium aliases) |
+| `slotRange` | 11 | `common/rof2/rof2_limits.h:124`, Titanium aliases |
 | `SkillArchery` | 7 | `common/skills.h` |
 | `SkillThrowing` | 51 | `common/skills.h` |
 | `ItemTypeBow` | 5 | `common/item_data.h:61` |
