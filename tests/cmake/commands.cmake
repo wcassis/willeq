@@ -305,6 +305,35 @@ TARGET_COMPILE_DEFINITIONS(test_input_action_bridge PRIVATE
     INPUT_ACTION_HEADER="${CMAKE_SOURCE_DIR}/include/client/input/input_handler.h")
 GTEST_DISCOVER_TESTS(test_input_action_bridge DISCOVERY_TIMEOUT 120)
 
+# B534 (#181): the output-layer camera route is deleted at the root -- the
+# eqt::output::CameraMode enum, the IOutputRenderer camera virtuals,
+# GraphicalRenderer's member/cycle/string, GraphicalMode's three methods and
+# its InputAction::ToggleCameraMode arm, and the enumerator itself (no
+# handler ever produced it). Its net is a text-scan in the same shape as
+# InputActionEnumTest.T368_NoConsumerlessUITogglesRemain: five cases that
+# fail while ANY part of the route is still in the tree, plus a negative
+# control that the LIVE F9 route (HotkeyAction -> RendererAction ->
+# PlayerCameraComponent::cycleCameraMode) is untouched. Pure source scan --
+# no graphics, no artefact, no server.
+ADD_EXECUTABLE(test_b534_output_camera_route
+    test_b534_output_camera_route.cpp
+)
+TARGET_LINK_LIBRARIES(test_b534_output_camera_route GTest::gtest_main)
+TARGET_COMPILE_DEFINITIONS(test_b534_output_camera_route PRIVATE
+    OUTPUT_RENDERER_HEADER="${CMAKE_SOURCE_DIR}/include/client/output/output_renderer.h"
+    GRAPHICAL_RENDERER_HEADER="${CMAKE_SOURCE_DIR}/include/client/output/graphical_renderer.h"
+    GRAPHICAL_RENDERER_CPP="${CMAKE_SOURCE_DIR}/src/client/output/graphical_renderer.cpp"
+    GRAPHICAL_MODE_HEADER="${CMAKE_SOURCE_DIR}/include/client/mode/graphical_mode.h"
+    GRAPHICAL_MODE_CPP="${CMAKE_SOURCE_DIR}/src/client/mode/graphical_mode.cpp"
+    INPUT_HANDLER_HEADER="${CMAKE_SOURCE_DIR}/include/client/input/input_handler.h"
+    GRAPHICS_INPUT_HANDLER_CPP="${CMAKE_SOURCE_DIR}/src/client/input/graphics_input_handler.cpp"
+    CONSOLE_INPUT_HANDLER_CPP="${CMAKE_SOURCE_DIR}/src/client/input/console_input_handler.cpp"
+    HOTKEY_MANAGER_HEADER="${CMAKE_SOURCE_DIR}/include/client/input/hotkey_manager.h"
+    HOTKEY_MANAGER_CPP="${CMAKE_SOURCE_DIR}/src/client/input/hotkey_manager.cpp"
+    RENDERER_FRAME_INPUT_CPP="${CMAKE_SOURCE_DIR}/src/client/graphics/frame/renderer_frame_input.cpp"
+    PLAYER_CAMERA_COMPONENT_HEADER="${CMAKE_SOURCE_DIR}/include/client/graphics/player/player_camera_component.h")
+GTEST_DISCOVER_TESTS(test_b534_output_camera_route DISCOVERY_TIMEOUT 120)
+
 # T40/T227: GameStateSyncBridge tests -- since T227 the decorator projects
 # nothing (one GameState, written at the source), so this covers only the
 # forwarding hop: single-stage applyEvent() and the T220 stage/forward pair.
