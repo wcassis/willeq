@@ -17,17 +17,17 @@ untouched.
 
 | owner::name | verdict | evidence |
 |---|---|---|
-| `EntityManager::findEntityByExactName` | **deleted** | decl `include/client/state/entity_manager.h:200`, def `src/client/state/entity_manager.cpp:218`; only uses: `tests/test_state_modules.cpp:390-392` (test deleted). T362 (B070) already made `findEntityByName` the one name resolver — this exact-match sibling was never wired. |
-| `EntityManager::findPetByOwner` | **deleted** | decl h:293, def cpp:308; only uses: `tests/test_state_modules.cpp:487-488` (deleted). |
-| `EntityManager::forEachEntity` | **deleted** | decl h:307, def cpp:329; only use: `tests/test_state_modules.cpp:507` (deleted). |
-| `EntityManager::forEachEntityMutable` | **deleted** | decl h:313, def cpp:335; only use: `tests/test_state_modules.cpp:514` (deleted). |
-| `EntityManager::getAllPets` | **deleted** | decl h:299, def cpp:317; only use: `tests/test_state_modules.cpp:490` (deleted). |
-| `EntityManager::getEntitiesInRange` | **deleted** | decl h:231, def cpp:233; only uses: `tests/test_state_modules.cpp:400,408` (deleted). |
-| `EntityManager::getNearestCorpse` | **deleted** | decl h:270, def cpp:287; only use: `tests/test_state_modules.cpp:470` (deleted). |
-| `EntityManager::getPetOwnerId` | **deleted** | decl h:286, def cpp:300; only uses: `tests/test_state_modules.cpp:485-486,498` (deleted). |
-| `EntityManager::markAsCorpse` | **deleted** | decl h:156, def cpp:87; only uses: `tests/test_state_modules.cpp:182,188` (deleted). |
-| `EntityManager::updateEntityEquipment` | **deleted** | decl h:150, def cpp:70; only uses: `tests/test_state_modules.cpp:168-176` (deleted). |
-| `EntityManager::updateEntityHP` | **deleted** | decl h:140, def cpp:56; only uses: `tests/test_state_modules.cpp:149-162` (deleted). |
+| `EntityManager::findEntityByExactName` | **deleted** | decl `include/client/state/entity_manager.h:200`, def `src/client/state/entity_manager.cpp:218`; only use: `tests/test_state_modules.cpp` (TEST block deleted with the unit). T362 (B070) already made `findEntityByName` the one name resolver — this exact-match sibling was never wired. |
+| `EntityManager::findPetByOwner` | **deleted** | decl h:293, def cpp:308; only use: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
+| `EntityManager::forEachEntity` | **deleted** | decl h:307, def cpp:329; only use: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
+| `EntityManager::forEachEntityMutable` | **deleted** | decl h:313, def cpp:335; only use: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
+| `EntityManager::getAllPets` | **deleted** | decl h:299, def cpp:317; only use: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
+| `EntityManager::getEntitiesInRange` | **deleted** | decl h:231, def cpp:233; only uses: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
+| `EntityManager::getNearestCorpse` | **deleted** | decl h:270, def cpp:287; only use: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
+| `EntityManager::getPetOwnerId` | **deleted** | decl h:286, def cpp:300; only uses: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
+| `EntityManager::markAsCorpse` | **deleted** | decl h:156, def cpp:87; only uses: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
+| `EntityManager::updateEntityEquipment` | **deleted** | decl h:150, def cpp:70; only uses: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
+| `EntityManager::updateEntityHP` | **deleted** | decl h:140, def cpp:56; only use: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
 | `EntityManager::fireEntityStatsChangedEvent` (private) | **deleted — cascade** | decl h:323, def cpp:387. Its ONLY caller was the deleted `updateEntityHP` (cpp:65); with that gone it is zero-caller (grep: declaration, definition and a comment in `tests/test_console_target_hp.cpp:16` — comment re-pointed to the event type). It was also the sole PUBLISHER of `GameEventType::EntityStatsChanged` on the state-layer EventBus. Deleting it loses no live behaviour because that enumerator is still published and consumed: `ReachabilitySweep` passes [measured, `test_reachability_sweep` 5/5 green at this tip] with the remaining publisher `ZoneProcessMobHealth`'s bridge `pushEvent(EntityStatsChanged)` (`src/client/entities/entities_component_appearance.cpp:207`) and the consumer `ConsoleRenderer`'s subscription (`src/client/output/console_renderer.cpp:113`) + `IrrlichtBridge`'s case (`src/client/bridge/irrlicht_bridge.cpp:97`). |
 
 ## The B468 trap — the live routes, named
@@ -84,7 +84,7 @@ name references). Death handling re-syncs the same way
 (`player_state.cpp:182`). `isCorpse` itself is read live by
 `IsCorpseByFields` (T456's one corpse predicate, `findEntityByNameRanked`
 cpp:193, `command_processor_loot.cpp:93`) and the spawn-event payload
-(cpp:248).
+(cpp:246).
 
 **Pet queries (`findPetByOwner`/`getAllPets`/`getPetOwnerId`) — `Entity::isPet` /
 `petOwnerId`.**
@@ -106,11 +106,12 @@ it stays declared without a row, as before [measured: tests-only census is
   `fireEntityStatsChangedEvent` declaration. (11 + 1 = 12 declarations.)
 - `src/client/state/entity_manager.cpp`: the 11 definitions + the
   `fireEntityStatsChangedEvent` definition (12 bodies). `calculateDistance`
-  (private, def cpp:289) is KEPT: it was already zero-caller BEFORE this unit
+  (private, def cpp:276) is KEPT: it was already zero-caller BEFORE this unit
   (private members are outside the census's scope) and is not one of the 11,
   so it is out of scope — flagged in "Not verified / left open" below.
-- `tests/test_state_modules.cpp`: the 11 TEST() blocks that were the only net
-  (file 1087 → 952 lines; 83 → 69 TESTs in this file).
+- `tests/test_state_modules.cpp`: 14 TEST blocks — the 11 named ones plus
+  3 that shared callers with the deleted siblings (file 1087 → 952 lines;
+  83 → 69 TESTs in this file).
 - `tests/test_console_target_hp.cpp`: header comment re-pointed — it named
   `fireEntityStatsChangedEvent` as the publisher; it now names the event type
   only.
@@ -169,7 +170,7 @@ was unreachable in production, and the only event-publish path removed,
 
 ## Not verified / left open
 
-- `EntityManager::calculateDistance` (private, `entity_manager.cpp:289`) is
+- `EntityManager::calculateDistance` (private, `entity_manager.cpp:276`) is
   dead (zero callers tree-wide, pre-existing — private members are outside
   the census). NOT deleted here: it is not one of the 11 and is not made
   dead by this unit. Candidate for a follow-up zero-caller sweep that extends
