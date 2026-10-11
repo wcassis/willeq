@@ -284,8 +284,6 @@ EXEMPT = {
         ("report", "B337: TreeIdentifier counters filled and never printed"),
     ("Stats", "zoneTreeMeshCount"):
         ("report", "B337: TreeIdentifier counters filled and never printed"),
-    ("OverlaysComponent", "currentTargetInfo_"):
-        ("boarded", "B341: target-overlay state cached per frame and never drawn from"),
     ("InventoryManager", "deleteItemCallback_"):
         ("boarded", "B342: three registered callbacks the manager never invokes"),
     ("InventoryManager", "equipmentChangedCallback_"):
