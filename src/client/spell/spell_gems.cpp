@@ -118,38 +118,6 @@ bool SpellManager::forgetSpell(uint8_t gem_slot)
     return true;
 }
 
-bool SpellManager::swapGems(uint8_t slot1, uint8_t slot2)
-{
-    if (slot1 >= EQT::VISIBLE_SPELL_GEM_COUNT || slot2 >= EQT::VISIBLE_SPELL_GEM_COUNT) {
-        return false;
-    }
-
-    if (slot1 == slot2) {
-        return false;
-    }
-
-    // Can't swap while casting from either slot
-    if (m_is_casting && (m_current_gem_slot == slot1 || m_current_gem_slot == slot2)) {
-        return false;
-    }
-
-    // Can't swap if either is on cooldown or memorizing
-    if (m_gem_states[slot1] == GemState::Refresh ||
-        m_gem_states[slot1] == GemState::MemorizeProgress ||
-        m_gem_states[slot2] == GemState::Refresh ||
-        m_gem_states[slot2] == GemState::MemorizeProgress) {
-        return false;
-    }
-
-    // Swap
-    std::swap(m_spell_gems[slot1], m_spell_gems[slot2]);
-    std::swap(m_gem_states[slot1], m_gem_states[slot2]);
-
-    LOG_DEBUG(MOD_SPELL, "Swapped gems {} and {}", slot1 + 1, slot2 + 1);
-
-    return true;
-}
-
 uint32_t SpellManager::getMemorizedSpell(uint8_t gem_slot) const
 {
     if (gem_slot >= EQT::SPELL_GEM_COUNT) {

@@ -77,12 +77,6 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-
-void eqt::player::PlayerComponent::SetMoveSpeed(float speed)
-{
-	ctx_.game_state.player().setMoveSpeed(speed);  // T286: only store
-}
-
 // ============================================================================
 // Combat State Sync (Phase 7.6 - sync to CombatState)
 // ============================================================================

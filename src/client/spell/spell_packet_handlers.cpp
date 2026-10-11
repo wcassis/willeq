@@ -288,10 +288,6 @@ void SpellManager::endOwnCastByServer(CastResult result)
         publishGemChanged(m_current_gem_slot);
     }
 
-    if (m_on_cast_complete) {
-        m_on_cast_complete(result, spell_id);
-    }
-
     publishCastComplete(spell_id, result);
 
     const SpellData* spell = m_spell_db.getSpell(spell_id);
@@ -395,9 +391,6 @@ void SpellManager::resolvePendingOutcome(CastResult result)
     const SpellData* spell = m_spell_db.getSpell(spell_id);
     if (result == CastResult::Success && gem_slot < EQT::SPELL_GEM_COUNT) {
         startGemCooldown(gem_slot, spell ? spell->recast_time_ms : 0);
-    }
-    if (m_on_cast_complete) {
-        m_on_cast_complete(result, spell_id);
     }
     publishCastComplete(spell_id, result);
 

@@ -586,17 +586,6 @@ ZoneLineResult ZoneLines::checkExtractedZoneLines(float x, float y, float z,
     return result;
 }
 
-std::optional<ZoneLineResult> ZoneLines::checkMovement(float oldX, float oldY, float oldZ,
-                                                        float newX, float newY, float newZ) const {
-    // Simple approach: check if new position is in a zone line
-    // More sophisticated approach would check line segment intersection with BSP regions
-    auto result = checkPosition(newX, newY, newZ, oldX, oldY, oldZ);
-    if (result.isZoneLine) {
-        return result;
-    }
-    return std::nullopt;
-}
-
 std::optional<ZonePoint> ZoneLines::getZonePoint(uint32_t index) const {
     auto it = serverZonePoints_.find(index);
     if (it != serverZonePoints_.end()) {

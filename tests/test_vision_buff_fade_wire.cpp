@@ -175,7 +175,17 @@ struct VisionPublisherHarness {
     void Cast(uint32_t spell_id) {
         buffs->applyBuff(0, spell_id, /*caster*/ 0, /*level*/ 50, /*ticks*/ 100);
     }
-    void Fade(uint32_t spell_id) { buffs->removeBuff(0, spell_id); }
+    // B603: the fade path is by-slot (removeBuffBySlot is what the wire uses);
+    // look the slot up from the player list.
+    void Fade(uint32_t spell_id) {
+        const auto& player = buffs->getPlayerBuffs();
+        for (const auto& b : player) {
+            if (b.spell_id == spell_id) {
+                buffs->removeBuffBySlot(0, static_cast<uint8_t>(b.slot));
+                return;
+            }
+        }
+    }
 };
 
 }  // namespace
@@ -214,9 +224,9 @@ TEST(VisionBuffLandingWireTest, FadingTheBestBuffFallsBackToTheOtherThenToBase) 
     h.Cast(kInfravisionSpell);
     ASSERT_EQ(h.renderer.getVisionType(), VisionType::Ultravision);
 
-    // removeBuff() notifies BEFORE erasing, so the shared recompute has to
-    // exclude the departing spell; without that this would report Ultravision
-    // for a buff that is on its way out.
+    // removeBuffBySlot() notifies BEFORE erasing, so the shared recompute
+    // has to exclude the departing spell; without that this would report
+    // Ultravision for a buff that is on its way out.
     h.Fade(kUltravisionSpell);
     EXPECT_EQ(h.renderer.getVisionType(), VisionType::Infravision);
 

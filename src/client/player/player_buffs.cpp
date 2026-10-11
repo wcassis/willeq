@@ -118,7 +118,7 @@ void eqt::player::PlayerComponent::ZoneProcessBeginCast(const EQ::Net::Packet &p
 	// confirmation of BeginCast for *any* caster (self, NPC, other player);
 	// GameStateSyncBridge (T44) filters to our own casts by casterId. For
 	// our own cast, SpellManager already knows the target it chose at
-	// beginCastFromGem()/beginCastById() time -- carry it so the bridge
+	// beginCastFromGem() time -- carry it so the bridge
 	// doesn't need a second source of truth. targetId is meaningless for
 	// non-self casters and left at its default (0).
 	//

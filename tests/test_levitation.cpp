@@ -197,7 +197,9 @@ TEST_F(LevitationWireTest, AnSpa57BuffApplyPublishesUpAndTheFadePublishesDown) {
     EXPECT_EQ(bridge.events, 1);
     EXPECT_TRUE(bridge.last);
 
-    Buffs()->removeBuff(0, 261);
+    const auto* fading = Buffs()->getPlayerBuff(261);
+    ASSERT_NE(fading, nullptr);
+    Buffs()->removeBuffBySlot(0, static_cast<uint8_t>(fading->slot));
     bridge.Drain();
     EXPECT_FALSE(Mv().PlayerLevitating());
     EXPECT_EQ(bridge.events, 2);
