@@ -11918,18 +11918,19 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   Class A: race 146 SSN's skeleton `SSN_HS_DEF` 0x200 list names the head
   `SNNHE00_DMSPRITEDEF` (974 verts) — the "SNN" spelling the name-based selection
   (`SSN`/`SSNHE00`) cannot reach — so the built model held 3359 of the 4333
-  referenced verts. Root fix: the loader now stores every 0x200-listed mesh the
-  bones didn't name (`s3d_loader_characters.cpp`) and the base builders select the
-  skeleton-referenced part set, with the race-code names as the fallback for
-  skeletons that list none (`selectCharacterParts`, `geometry_combiner.cpp`, wired
-  into the five base-builder sites in `model_loading{,_chr,_search}.cpp`). Pinned
-  by `B733Race146LoaderTest` (`tests/test_b733_skeleton_mesh_refs.cpp`), which
-  derives the expected part list from the WLD data (never hand-typed) and was
-  RED (3359/4333) on origin/fable. Gate byte-identical [measured]: memory-coverage
-  renders only races 1–5 (all 10 built-model hashes ==), golden runs render no
-  character models. The same class of bug recovers FAF/PIF/TRI (`HE01` heads) and
-  GOM (limbs) — none a gate race, none in a golden frame. See
-  `refactor/B733/README.md`.
+  referenced verts. Root fix: the loader now stores the UNION of the old storage
+  and the 0x200-listed meshes the bones/prefix didn't store (`s3d_loader_characters.cpp`),
+  and the base builders select the OLD name set plus the skeleton-referenced
+  additions the name selection missed (`selectCharacterParts`, `geometry_combiner.cpp`,
+  wired into the four base-builder call sites in `model_loading{,_chr,_search}.cpp`).
+  Pinned by `B733Race146LoaderTest` (`tests/test_b733_skeleton_mesh_refs.cpp`),
+  which derives the expected part list from the WLD data (never hand-typed) and
+  was RED (3359/4333) on origin/fable. Gate impact [measured]: the four
+  `EntitySourcePruning` goldens each change by exactly 6 lines — the IVM body
+  recovery (races 127/240: 73→506 verts, base + variant rows) and the SSN head
+  (race 146: 3359→4333 verts, both genders); every other line byte-identical.
+  That is a gate-zone character change, so the goldens are a WILL BLESS — see
+  `refactor/B733/README.md` (frame diff + mechanism).
 
 - ~~**B734**~~ **CLOSED on `task/kb-b734-object-geometries-posed` (issue #71).** `loadObjects()` now poses skinned
   object geometries (vertex pieces on a 0x10 skeleton, flag 0x200) through T476's
