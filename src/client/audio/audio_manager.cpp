@@ -821,6 +821,14 @@ bool AudioManager::enableLoopbackMode() {
 void AudioManager::update() {
     // Per-frame audio updates
     // The mixer and backends handle their own timing
+
+    // B1014 (issue #335): the game-thread half of the custom-Font release.
+    // A faded song's real end is FLAGGED by the audio thread (the render
+    // callback must not free); this tick frees it -- but only while no song
+    // plays, so a font the next song is using survives the flag.
+    if (musicPlayer_) {
+        musicPlayer_->drainPendingFontRelease();
+    }
 }
 
 size_t AudioManager::getSoundFontMemoryEstimate() const {

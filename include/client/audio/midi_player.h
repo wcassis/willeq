@@ -36,28 +36,47 @@ public:
     // RssAnon at process start, in every session, although only the tracks
     // AudioManager::getSoundFontTypeForFile() names (8 Velious + 23 Luclin
     // zones) ever render from it. init() records the path; the first
-    // selectSoundFont(Custom) loads it and selectSoundFont(GM) frees it, so the
-    // font is resident exactly while a track that needs it is selected.
+    // selectSoundFont(Custom) loads it. Lifetime after B1014 (issue #335):
+    // resident from that load until a song that plays on it REALLY ends --
+    // MusicPlayer's public stop (immediate) or a fade's completion (flagged
+    // by the audio thread, freed by the game thread's drainPendingFontRelease)
+    // -- after which a following custom-font song reloads it here again. It is
+    // never session-long state, and it is never freed by the stop inside
+    // play() (that stop serves the next song, which may be on this font).
     bool init(const std::string& gmPath, const std::string& customPath, uint32_t sampleRate);
 
     // T504: true while the custom font's samples are in memory. Test hook for
     // the lazy-load contract above; not a playback control.
     bool isCustomSoundFontResident() const;
 
-    // B990 (issue #309): release the custom font if resident. The mirror of
-    // selectSoundFont(Custom)'s on-demand load: a song that STOPS must give
-    // its 23 MiB of float samples back (selectSoundFont(GM) is the other,
-    // switch-driven half -- the production stop path reaches THIS one instead
-    // of a switch, because nothing selects GM when the music simply ends).
+    // B1014 (issue #335) test hook: re-point the on-demand custom-font path
+    // before the next selectSoundFont(Custom). Production code never needs it
+    // (the path is fixed at init); it exists so the failed-reload case in
+    // tests/test_soundfont_release.cpp can exercise a corrupt/incomplete EQ
+    // install (the file gone at select time) without deleting the real asset.
+    void setCustomSoundFontPath(const std::string& path) { customSoundFontPath_ = path; }
+
+    // B990 (issue #309), re-ordered by B1014 (issue #335): release the
+    // custom font if resident. The mirror of selectSoundFont(Custom)'s
+    // on-demand load: a song that STOPS gives its ~23 MiB of float samples
+    // back (selectSoundFont(GM) is the other, switch-driven half -- a song
+    // that simply ends never switches, so the production end paths reach
+    // THIS one). B1014 moved the callers to the REAL ends only: MusicPlayer's
+    // public stop() (immediate, nothing following) and the fade's completion
+    // (flagged by the audio thread, performed by the game thread's
+    // MusicPlayer::drainPendingFontRelease) -- never by the stop inside
+    // play(), which serves the next song (see music_player.cpp for the full
+    // release-ordering reasoning).
     //
     // Thread contract (the T248 render barrier, render_barrier.h): like every
     // other mutating path it calls stop() first -- playing_=false plus the
     // render-barrier wait, so no render pass can still read impl_->soundFont
     // while the pointer is moved and the instance closed, and a later pass
-    // sees playing_==false. stop() zeroes the playback position, so the
-    // immediate MusicPlayer::stop() path saves it beforehand and restores it
-    // after (zone-music resume reads it via getPlaybackTimeMs()); the fade
-    // path needs no restore because it stops the song for good.
+    // sees playing_==false. stop() zeroes the playback position, which no
+    // caller observes: the only readers of getPlaybackTimeMs() are
+    // startAutoAttackMusic()/startVendorBankMusic(), both guarded by
+    // isPlaying() (see music_player.cpp), and a release happens only when no
+    // song plays.
     void releaseCustomSoundFont();
 
     // Replace the GM SoundFont slot.

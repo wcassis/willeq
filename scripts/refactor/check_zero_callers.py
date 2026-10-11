@@ -953,8 +953,15 @@ EXEMPT_TESTS_GROUPS = {
     # shares the body (extractFromParsed) with the live path.
     ("EquipmentModelLoader", "extractEquipmentModelOffThread"): "seam",
     # T504 fix 1: the custom SoundFont is loaded lazily and freed on the way
-    # back to GM; the test's window on whether it is resident right now.
-    ("MidiPlayer", "isCustomSoundFontResident"): "observer",
+    # back to GM. B1014 moved the release to a real end and made
+    # isCustomSoundFontResident a production caller (the stop paths' release
+    # guard), so its observer exemption is gone; the test's window is now on
+    # the release side (drainPendingFontRelease). setCustomSoundFontPath is
+    # B1014's failed-reload seam: it re-points the on-demand load so
+    # test_soundfont_release can exercise a missing font file without
+    # deleting the real asset. Production never calls it (the path is fixed
+    # at init).
+    ("MidiPlayer", "setCustomSoundFontPath"): "seam",
     # B989 (#308): the raw-PCM construction seam. Production decodes only
     # from files/memory archives; test_sfx_cache_eviction builds a
     # SoundBuffer from deterministic raw PCM (no archive, no EQ client files
