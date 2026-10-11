@@ -262,10 +262,10 @@ CastResult SpellManager::beginCastFromGem(uint8_t gem_slot, uint16_t target_id)
     publishCastStarted(spell_id, target_id, m_cast_duration_ms);
 
     // Send cast packet to server
-    sendCastSpellPacket(spell_id, 0xFF, target_id);
+    sendCastSpellPacket(spell_id, gem_slot, target_id);
 
-    LOG_INFO(MOD_SPELL, "Beginning item/scroll cast of '{}' (ID: {})",
-        spell->name, spell_id);
+    LOG_INFO(MOD_SPELL, "Beginning cast of '{}' (ID: {}) on target {}",
+        spell->name, spell_id, target_id);
 
     return CastResult::Success;
 }

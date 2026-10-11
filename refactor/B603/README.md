@@ -59,6 +59,17 @@ docker, scripts) before touching it.
   **MISSING feature** — board it as its own line (see FOLLOW-UP), do not wire
   it here.
 
+## A merge artifact caught by ctest (2026-10-11)
+
+While this branch's first commit was being composed, a mid-lean run left the
+working tree's `beginCastFromGem()` tail with `sendCastSpellPacket(spell_id,
+0xFF, target_id)` — `beginCastById`'s no-gem marker (its tail is nearly
+identical) — instead of `gem_slot`. Two `test_eq_action_handler_cast` tests
+(`CastSpell_ProfileLoadedGem_CastsThroughSpellManager`,
+`CastSpell_GemIndexIsOneBased`) went red on the wire slot (255 vs 0). The fix
+(commit 3) restores `gem_slot`. After the fix, `spell_manager.cpp` differs
+from origin/fable only by B603's deletions — verified by diff.
+
 ## Red / green
 
 Ratchet: `scripts/refactor/check_zero_callers.py --repo . --check` (ctest
