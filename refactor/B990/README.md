@@ -45,7 +45,7 @@ saved value, never the live one. (Commented at the call site,
 the live leg's own log: `tsf_load_filename` for the 12 MB font completed in
 **~35 ms** (`live_velketor/velketor/audio/client.log`: the `State snapshot
 published` line at 22:20:55.120, the `loaded custom SoundFont on demand` line
-at 22:20:55.155 — the load sits between them; B977's run shows 16 ms,
+at 22:20:55.155 — the load sits between them; B977's run shows 74 ms,
 23:17:18.042→23:17:18.116). The font is page-cache-resident on every reload in
 the same zone (same file, same session), so the measured cost is a page-cache
 read, not a disk seek. A stutter of <50 ms at a music START (the song's first
