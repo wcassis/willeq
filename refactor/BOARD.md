@@ -11815,14 +11815,22 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   `SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart`. Of the affected codes
   only CLM/CLF, KAM/KAF, SSN, STG and IVM have a `race_models` row.
 
-- **B733** (A, *unconfirmed*) **The race model builder selects parts by NAME, so → issue #70
-  a listed part with another name is still dropped.** `RaceModelLoader` keeps
-  `{CODE}_DMSPRITEDEF` + `{CODE}HE00_DMSPRITEDEF` whenever either exists
-  (`loadModelFromZoneChr`, `loadModelFromCachedChr` in `model_loading_chr.cpp`,
-  `searchAndBuildModel` in `model_loading_search.cpp`, `model_loading.cpp`,
-  `variant_loading_animation.cpp`). The character now carries SSN's head
-  SNNHE00_DMSPRITEDEF and SRG's cape, but that selection would drop both.
-  Confirm with a model-build test for race 146 (Spectral Sarnak). Found by T479.
+- ~~**B733**~~ **CLOSED on `task/kb-b733-race-model-parts` (issue #70).** CONFIRMED
+  Class A: race 146 SSN's skeleton `SSN_HS_DEF` 0x200 list names the head
+  `SNNHE00_DMSPRITEDEF` (974 verts) — the "SNN" spelling the name-based selection
+  (`SSN`/`SSNHE00`) cannot reach — so the built model held 3359 of the 4333
+  referenced verts. Root fix: the loader now stores every 0x200-listed mesh the
+  bones didn't name (`s3d_loader_characters.cpp`) and the base builders select the
+  skeleton-referenced part set, with the race-code names as the fallback for
+  skeletons that list none (`selectCharacterParts`, `geometry_combiner.cpp`, wired
+  into the five base-builder sites in `model_loading{,_chr,_search}.cpp`). Pinned
+  by `B733Race146LoaderTest` (`tests/test_b733_skeleton_mesh_refs.cpp`), which
+  derives the expected part list from the WLD data (never hand-typed) and was
+  RED (3359/4333) on origin/fable. Gate byte-identical [measured]: memory-coverage
+  renders only races 1–5 (all 10 built-model hashes ==), golden runs render no
+  character models. The same class of bug recovers FAF/PIF/TRI (`HE01` heads) and
+  GOM (limbs) — none a gate race, none in a golden frame. See
+  `refactor/B733/README.md`.
 
 - ~~**B734**~~ **CLOSED on `task/kb-b734-object-geometries-posed` (issue #71).** `loadObjects()` now poses skinned
   object geometries (vertex pieces on a 0x10 skeleton, flag 0x200) through T476's
