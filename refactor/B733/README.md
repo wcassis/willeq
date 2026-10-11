@@ -161,10 +161,11 @@ Every other line in all four zone files — all variant rows of every
 multi-variant race (HUM 714/791, GRM 715, ...), every other base row — is
 byte-identical to the old code [measured, `b733_bytelines.py` line-diff].
 
-This is a gate-zone character change, so per acceptance criterion 2 this is a
-BLESS question: the four `EntitySourcePruning` goldens (and any gate frames
-showing IVM/SSN characters) will need to be blessed by Will. No golden or
-manifest has been touched in this branch.
+This is a gate-zone character change, so per acceptance criterion 2 it was
+blessed by Will (2026-10-11, commit `bdf9f802` on this branch): the four
+`EntitySourcePruning` goldens were regenerated with the test's own command,
+exactly these 6 lines per zone. No other golden or manifest is touched in this
+branch.
 
 ## Not verified / left open
 
@@ -172,11 +173,12 @@ manifest has been touched in this branch.
   runs on the CI `gate` job, not in this worker (4 GiB cap; no local gate).
   The `model_fingerprint` byte-diff above is the local proof of exactly which
   character frames move and why; the CI gate job is the authoritative run.
-  [assumed that the CI gate changes only IVM/SSN rows, given the fingerprint
-  proof; the CI trace will confirm]
-- The four `EntitySourcePruning` goldens are BLESS-ONLY (Will's rule): they
-  will stay RED in CI until the new IVM/SSN lines are blessed. The old-code
-  baseline proving the goldens reflect pre-B733 behaviour is at
+- **BLESSED (Will, 2026-10-11):** the four `EntitySourcePruning` goldens were
+  re-blessed by Will himself at `bdf9f802` with the test's own command
+  (`WILLEQ_PRUNE_SOURCES=1 model_fingerprint --zone <z> --eq data/eq_client
+  --db data/willeq.db`) — exactly the 6 lines/zone above, every other line
+  byte-identical. The old-code baseline proving the old goldens reflected
+  pre-B733 behaviour is at
   `/home/user/kb-evidence/b733-race-model-parts/baseline_<zone>.txt`.
 - `TexturesReproducible` / `PackReproducible` / `DbReproducible` fail in THIS
   environment (also fail on a pristine `16c9cf44` worktree) — pre-existing and
