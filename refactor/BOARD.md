@@ -76,7 +76,9 @@ it without taking that measurement first.
   buffer-cached replay grows it ~0 where the pre-fix code grew it by a full
   second copy — 22,336 B of 21,920 B PCM on the RED commit — and the cap
   evicts LRU-oldest and bounds resident bytes); `tests/test_sfx_cache_eviction`
-  covers the eviction mechanics; the 383-case audio suite is green. Live
+  covers the eviction mechanics; the CI `test` job's audio suite is green
+  (5,757/5,757 at MR head cbdb905b, pipeline 773 — re-measured per push, not
+  quoted). Live
   ledger leg, same tour/character/eligibility as B977's (lane 3, x86,
   befallen, rat fight, `refactor/B989/audio_ledger_census.tsv`): steady_60s
   `audio` **3,872,576** live vs B977's 4,252,448; `au.sound_buffers`

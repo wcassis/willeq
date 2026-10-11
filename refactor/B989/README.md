@@ -82,8 +82,8 @@ Files changed (tests):
 
 Stale docs updated: `tests/test_audio_ledger_attribution.cpp`'s comment,
 `scripts/client_ledger_capture.sh`'s mode description,
-`docs/reference/music.md`'s SfxManager line,
-`src/client/audio/CLAUDE.md`'s one-liner, `refactor/BOARD.md` (B989 struck).
+`docs/reference/music.md`'s SfxManager one-liner (`:71-74`),
+`refactor/BOARD.md` (B989 struck).
 
 ## RED (pre-fix, this branch's first commit 4ea10711)
 
@@ -139,8 +139,10 @@ and `tests/test_sfx_cache_eviction` (6 cases) asserts the LRU mechanics —
 ceiling enforcement, LRU-first, playing-entry pinning, immediate re-eviction
 on a lowered ceiling — against the shared-buffer cache.
 
-Full audio suite at the tip: **383/383 pass** (one `Skipped`:
-`SoundBufferTest.LoadSwingWav`, pre-existing, needs a file not shipped).
+The audio suite is the CI `test` job's (it was 5,757/5,757 green at MR
+head cbdb905b, pipeline 773); the authoritative count is re-measured per
+push, not quoted. (`SoundBufferTest.LoadSwingWav` is pre-existing and
+`Skipped` — needs a file not shipped.)
 
 ## LIVE ledger leg (eqemu lane 3, x86, befallen)
 
