@@ -75,10 +75,10 @@ The full log and commands are in `/mnt/projects/fable/review/B448/`:
   ratio over the session's own night base. The live run above proves that the
   floor now MOVES. It does not prove the pixels match the official client.
 - `updatePlayerAppearance()` drops the event while `isLoading()` is true (the
-  guard that was already there). A race change that lands during a zone load
-  is applied by the next zone-in's `registerEntity()` from the spawn's race, so
-  it is not lost unless the server's spawn race differs from the illusion.
-  Not measured.
+  guard was already there). If a race change lands during a zone load, it is
+  not established whether the load's `registerEntity()` picks up the
+  illusioned race (`ZoneProcessIllusion` writes it into the entity record) or
+  the race is lost until the next change. Not measured.
 - Buff vision is now kept across a zone-in's `setPlayerRace()`, where it used
   to be reset to the base. That is the intended max(base, buff) rule, and the
   buff landings at zone-in republish `VisionChanged` in any case. Not measured live.
