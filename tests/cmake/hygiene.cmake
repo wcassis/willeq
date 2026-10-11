@@ -15,6 +15,16 @@ ADD_TEST(NAME DocCitations
             --repo ${CMAKE_SOURCE_DIR})
 SET_TESTS_PROPERTIES(DocCitations PROPERTIES LABELS "hygiene")
 
+# B1020 (wave-7 retrospective ids 5, 37): DocCitations' anchored form
+# `path:LINE (anchor)` fails when the anchor is not on that line -- a line
+# number that merely exists was hygiene-green on four wrong lines. The
+# --self-test drives that rule's accept/refuse shapes on a temp tree; no tree
+# is scanned, so it is instant. Same "hygiene" label.
+ADD_TEST(NAME DocCitationsSelfTest
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_doc_citations.py
+            --self-test)
+SET_TESTS_PROPERTIES(DocCitationsSelfTest PROPERTIES LABELS "hygiene")
+
 # T371 (2026-09-05): DocCitations proves a cited PATH resolves; it says
 # nothing about the CLAIMS. This is the regression net for the deletion half
 # -- a table of retired names that must not reappear in the ORIENTATION docs

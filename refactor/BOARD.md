@@ -1658,7 +1658,7 @@ it without taking that measurement first.
   `MusicPlayer` renders through the shared `MidiPlayer` either way.~~
   **STRUCK B849 (2026-09-18, issue #10 closed by the B849 unit)**: both halves
   verified on fable — the ordering fix is
-  `src/client/audio/audio_manager.cpp:128-139` (T496 Leg B, `942c51e9`) and
+  `src/client/audio/audio_manager.cpp:128-139`, T496 Leg B `942c51e9`, and
   `MusicPlayer::setMidiPlayer()` releases the superseded fallback,
   `src/client/audio/music_player.cpp:95-106`; the destructor leak is closed in
   `src/client/audio/midi_player.cpp:92-106`, pinned by
@@ -1763,7 +1763,7 @@ it without taking that measurement first.
   issue #12 closed by the B849 unit)**: verified on fable — the streaming
   index is `PfsArchive::listFilenames()`, `src/client/graphics/eq/pfs.cpp:304`
   (declared `include/client/graphics/eq/pfs.h:56`), called from
-  `src/client/audio/audio_manager.cpp:975` (T496 Leg D, `39fe0166`), pinned by
+  `src/client/audio/audio_manager.cpp:975`, T496 Leg D `39fe0166`, pinned by
   `tests/test_audio_startup_peak.cpp`.
 
 - **B831** (C) **There is one ledger budget table and it is asserted on two → issue #13
@@ -8140,7 +8140,7 @@ client uses every field.
   `feetZ + 1000.0f` as a "blocked / that is a ceiling, not a floor" sentinel
   (`src/client/graphics/player/renderer_player_collision.cpp:574`). Four
   jump-landing tests compare `feetZ <= groundZ` with **no upper bound** --
-  `src/client/graphics/player/renderer_player_physics.cpp:434` (clear path),
+  `src/client/graphics/player/renderer_player_physics.cpp:434` for the clear path,
   `:537` (blocked path), `:651` and `:666` (the HCMap paths) -- so fed the
   sentinel they all evaluate true and set `newZ = groundZ + modelYOffset`,
   teleporting the player 1,000 units up and ending the jump there. The swim
@@ -10446,7 +10446,7 @@ because the Pi had no keyboard or mouse attached (B510).
   not seen live. Confirm by: zone in, `/camera user1`, zone through a zone line,
   `/camera` and read `UI_<char>_<server>.ini`. Found by T461.
 
-- **B533** (B, unreached) **What T461's deletion of the free-fly camera left → issue #180
+- ~~**B533** (B, unreached) **What T461's deletion of the free-fly camera left → issue #180
   write-only.** T461 deleted `CameraController::update()` with the Free mode it
   was the body of. That made two SETTERS pointless: `setMoveSpeed()` and
   `setMouseSensitivity()` are still called once from `IrrlichtRenderer`'s init
@@ -10461,7 +10461,16 @@ because the Pi had no keyboard or mouse attached (B510).
   `check_zero_callers.py`); T461 did not add to it. Work the two together:
   deleting the CameraController fly/orbit state is one change touching
   `camera_controller.*` and the two init lines. Not done by T461 because those
-  lines were T460's territory in that wave. Found by T461.
+  lines were T460's territory in that wave. Found by T461. **STRUCK (2026-10-11,
+  `task/kb-b533-camera-fly-residue`, `refactor/B533/README.md`):** all 12
+  accessors, their 5 state fields (`moveSpeed_`, `rotateSpeed_`,
+  `mouseSensitivity_`, `yaw_`, `pitch_`), the `MIN_PITCH`/`MAX_PITCH` clamp and
+  `orbitAngle_` (checked per card: the live orbit path never reads it) deleted
+  with the two `setupCamera()` init writes; the per-name table (deleted vs
+  kept-because-read) is the README. `WriteOnlyFields` went RED with the
+  `mouseSensitivity_` STALE row and GREEN at 47; `ZeroCallers` RED with the ten
+  B494-group rows and GREEN at 364. B494 (#169) stays open with its other
+  groups.~~
 
 - **B534** (B, unreached) **The output-layer camera route is a second, stale → issue #181
   camera vocabulary.** `output::CameraMode` (`include/client/output/output_renderer.h`)
@@ -11039,16 +11048,23 @@ B712–B719 unused.
   change leaves stale module state without `resetForZoneChange()`.
   `WriteOnlyFields` covers the first half. Found by T458.
 
-- **B602** (B, unreached) **EntityManager's query and mutation API with no → issue #186
+- ~~**B602** (B, unreached) **EntityManager's query and mutation API with no → issue #186
   production caller.** `findEntityByExactName`, `findPetByOwner`,
   `forEachEntity`, `forEachEntityMutable`, `getAllPets`,
   `getEntitiesInRange`, `getNearestCorpse`, `getPetOwnerId`, `markAsCorpse`,
   `updateEntityEquipment`, `updateEntityHP` -- 11 rows, all reached only from
   `tests/test_state_modules.cpp`. T362 (B070) already made
   `findEntityByName` the one name resolver; these are the rest of the
-  surface. Found by T458.
+  surface. Found by T458. **STRUCK (2026-10-11, `task/kb-b602-entity-manager-zero-callers`,
+  `refactor/B602/README.md`):** all 11 deleted with their `test_state_modules.cpp`
+  tests (the only net), plus `fireEntityStatsChangedEvent` (its only caller was the
+  deleted `updateEntityHP`; the live route is the `EntityStatsChanged` bridge
+  publish in `ZoneProcessMobHealth`). The B468 live routes: HP/equipment/corpse
+  are written by `SyncEntityToGameState` + `ApplyAppearanceToGameState`, not by
+  these setters. `ZeroCallers` went RED with 11 STALE rows and GREEN at 309
+  tests-only.~~
 
-- **B603** (B, unreached) **Gameplay-manager control API with no production → issue #187
+- ~~**B603** (B, unreached) **Gameplay-manager control API with no production → issue #187
   caller.** `CombatManager::EnableAutoLoot/GetHighestPriorityTarget/
   SetAggroRadius/SetFleeThreshold/ToggleAutoFire`,
   `SpellManager::beginCastById/setOnCastComplete/setOnSpellFade/swapGems`
@@ -11060,7 +11076,23 @@ B712–B719 unused.
   `InventoryManager::pickupMoney/pickupPartialStack/placeOnMatchingStack/
   returnCursorMoney`, `HotbarModel::assignSlot/clearSlot`,
   `ZoneLines::checkMovement`, `WhoAllEntry::isLinkdead`, the free
-  `calcBankBagSlotId` -- 24 rows. Found by T458.
+  `calcBankBagSlotId` -- 24 rows. Found by T458. **STRUCK (2026-10-11,
+  `task/kb-b603-gameplay-manager-zero-callers`, `refactor/B603/README.md`):**
+  17 of the 20 ratchet rows deleted with their tests-only nets (B468),
+  including the two std::function cast callbacks and their 4 invocation
+  sites (the live outcome path is the bridge `publishCastComplete`); the
+  `ActiveBuff::getRemainingSeconds()` accessor went as a cascade (its only
+  production caller was `getTimeString`). `HotbarModel::assignSlot/clearSlot`
+  and `calcBankBagSlotId` reclassified `seam` (their tests pin live
+  behaviour). The four `InventoryManager` cursor functions are LIVE since
+  B442 (`bridge_component_cursor.cpp:129/:132`,
+  `cursor_gesture.cpp:199/:225`) -- the card text predates B442, kept.
+  Declining a group invite IS reachable (`/decline` ->
+  `ActionDispatcher::declineGroupInvite` -> `EqActionHandler`, which sends
+  `SendGroupDecline` directly); the component method was a dead duplicate.
+  Hotbar slot assignment is NOT user-reachable (config-load only) --
+  missing feature, left for a separate entry. `ZeroCallers` went RED with
+  17 STALE rows and GREEN at 303 tests-only.~~
 
 - ~~**B604** (A, *unconfirmed live*) **The server's cast interrupt never reaches
   `SpellManager::handleInterrupt()`.** `src/client/zone/zone_dispatch.cpp`
@@ -11138,7 +11170,8 @@ B712–B719 unused.
   the tail back behind them, so one can arrive inside the tail. The gem's recast
   is still right, because `handleSpellBarRefresh()` starts it from the
   MemorizeSpell alone. Only the `SpellCastComplete` result is wrong, and nothing
-  in production reads it (B603). In a quiet zone the result also waits for the
+  in production reads it (B603 deleted the callback that was left for a
+  consumer). In a quiet zone the result also waits for the
   next packet. Confirm by recording, on the B630 live run, whether anything
   arrives between the two tail packets.
 
@@ -11914,14 +11947,25 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   `SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart`. Of the affected codes
   only CLM/CLF, KAM/KAF, SSN, STG and IVM have a `race_models` row.
 
-- **B733** (A, *unconfirmed*) **The race model builder selects parts by NAME, so → issue #70
-  a listed part with another name is still dropped.** `RaceModelLoader` keeps
-  `{CODE}_DMSPRITEDEF` + `{CODE}HE00_DMSPRITEDEF` whenever either exists
-  (`loadModelFromZoneChr`, `loadModelFromCachedChr` in `model_loading_chr.cpp`,
-  `searchAndBuildModel` in `model_loading_search.cpp`, `model_loading.cpp`,
-  `variant_loading_animation.cpp`). The character now carries SSN's head
-  SNNHE00_DMSPRITEDEF and SRG's cape, but that selection would drop both.
-  Confirm with a model-build test for race 146 (Spectral Sarnak). Found by T479.
+- ~~**B733**~~ **CLOSED on `task/kb-b733-race-model-parts` (issue #70).** CONFIRMED
+  Class A: race 146 SSN's skeleton `SSN_HS_DEF` 0x200 list names the head
+  `SNNHE00_DMSPRITEDEF` (974 verts) — the "SNN" spelling the name-based selection
+  (`SSN`/`SSNHE00`) cannot reach — so the built model held 3359 of the 4333
+  referenced verts. Root fix: the loader now stores the UNION of the old storage
+  and the 0x200-listed meshes the bones/prefix didn't store (`s3d_loader_characters.cpp`),
+  and the base builders select the OLD name set plus the skeleton-referenced
+  additions the name selection missed (`selectCharacterParts`, `geometry_combiner.cpp`,
+  wired into the four base-builder call sites in `model_loading{,_chr,_search}.cpp`).
+  Pinned by `B733Race146LoaderTest` (`tests/test_b733_skeleton_mesh_refs.cpp`),
+  which derives the expected part list from the WLD data (never hand-typed) and
+  was RED (3359/4333) on origin/fable. Gate impact [measured]: the four
+  `EntitySourcePruning` goldens each change by exactly 6 lines — the IVM body
+  recovery (races 127/240: 73→506 verts, base + variant rows) and the SSN head
+  (race 146: 3359→4333 verts, both genders); every other line byte-identical.
+  Gate-zone character change -- blessed by Will 2026-10-11: the four
+  `model_fingerprint` goldens at `bdf9f802` and the `memoryCoverage`
+  `characterModelsBytes` re-pin (the 24 B `skeletonReferenced` member) at
+  `4463dd3b`. See `refactor/B733/README.md` (frame diff + mechanism).
 
 - ~~**B734**~~ **CLOSED on `task/kb-b734-object-geometries-posed` (issue #71).** `loadObjects()` now poses skinned
   object geometries (vertex pieces on a 0x10 skeleton, flag 0x200) through T476's

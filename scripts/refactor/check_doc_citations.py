@@ -15,6 +15,19 @@ Two citation shapes are checked:
      exist. This catches a citation that dropped its line number but is
      still pointing at a moved/deleted file.
 
+  3. B1020: an ANCHORED citation, `path/to/file.ext:NNN (anchor)` or
+     `path/to/file.ext:NNN-MMM (anchor)` -- the parenthesis must follow the
+     line number (or its closing backtick) after exactly one space. On top of
+     rule 1, FAIL unless `anchor` (one pair of surrounding backticks or
+     quotes stripped) occurs verbatim on line NNN, or on some line of
+     NNN..MMM. Rule 1 alone was hygiene-green on wrong line numbers (wave-7
+     retrospective ids 5 and 37, /mnt/projects/fable/review/RETRO-WAVE7/):
+     a line that exists is not the line the prose means. A parenthesis right
+     after a citation therefore IS an anchor; put prose elsewhere.
+     Rule 3 also runs over the unit write-ups under refactor/B<NNN>*/ (where
+     the wave-7 misses were), checking ONLY anchored citations there -- the
+     path rules 1 and 2 are not applied to those historical files.
+
 Citations are resolved relative to the repo root, with two exceptions
 (K00 Leg C):
   - A citation whose path starts with `review/` is resolved against
@@ -38,6 +51,7 @@ Citations are resolved relative to the repo root, with two exceptions
 
 Usage:
     check_doc_citations.py [--repo REPO_ROOT]
+    check_doc_citations.py --self-test   # rule 3's probes, no tree scanned
 
 Exit 0 if every citation found resolves (including the case of zero live
 docs found, or zero citations found — always printed, never a silent pass,
@@ -115,6 +129,26 @@ def find_live_docs(repo_root):
     return deduped, notes
 
 
+def find_unit_docs(repo_root):
+    """B1020: every *.md under refactor/B<digits>*/ -- the per-unit READMEs
+    the kanban workers write. Only rule 3 (anchored citations) is applied to
+    them; see the module docstring."""
+    found = []
+    refactor_dir = os.path.join(repo_root, "refactor")
+    if not os.path.isdir(refactor_dir):
+        return found
+    for name in sorted(os.listdir(refactor_dir)):
+        full = os.path.join(refactor_dir, name)
+        if not (os.path.isdir(full) and re.match(r"B[0-9]", name)):
+            continue
+        for dirpath, dirnames, filenames in os.walk(full):
+            dirnames.sort()
+            for fn in sorted(filenames):
+                if fn.endswith(".md"):
+                    found.append(os.path.join(dirpath, fn))
+    return found
+
+
 # Path charset: letters, digits, underscore, dot, dash, slash. Extension set
 # for the WITH-line form is intentionally a little wider than the bare-path
 # FAIL rule (which the plan pins to .cpp|.h|.py|.sh|.md) — .hpp and .cmake
@@ -138,6 +172,26 @@ CITE_WITH_LINE = re.compile(
     r"%s(?P<path>/?[A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)+\.(?:%s)):(?P<line>[0-9]+)"
     % (_NOT_PATH_TOKEN_BEFORE, _EXT_WITH_LINE)
 )
+# B1020: the anchored form. Same path/line shape as CITE_WITH_LINE plus an
+# optional "-END" range, an optional closing backtick (the usual
+# "`path:12` (anchor)" markdown), ONE space, and a parenthesis with no nested
+# parentheses.
+CITE_ANCHORED = re.compile(
+    r"%s(?P<path>/?[A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)+\.(?:%s)):(?P<line>[0-9]+)"
+    r"(?:-(?P<end>[0-9]+))?`? \((?P<anchor>[^()]*)\)"
+    % (_NOT_PATH_TOKEN_BEFORE, _EXT_WITH_LINE)
+)
+
+
+def normalize_anchor(raw):
+    """The token to look for: whitespace trimmed, then ONE pair of matching
+    surrounding backticks or quotes removed."""
+    a = raw.strip()
+    if len(a) >= 2 and a[0] == a[-1] and a[0] in "`\"'":
+        a = a[1:-1]
+    return a
+
+
 # T398: the bare form needs a TRAILING guard too. Without one,
 # "data/willeq.eqe1.sha256" matched as the path "data/willeq.eqe1.sh" (the
 # ".sh" extension, with "a256" simply left unmatched) and FAILed as a
@@ -193,12 +247,37 @@ def resolve_target(repo_root, cited_path):
     return os.path.join(repo_root, cited_path), None
 
 
+def _anchored_by_start(line):
+    """{match start: anchored match} for every rule-3 citation on a line."""
+    return {m.start("path"): m for m in CITE_ANCHORED.finditer(line)}
+
+
+def _check_anchored(doc_path, lineno, repo_root, m):
+    end = int(m.group("end")) if m.group("end") else None
+    return check_with_line(doc_path, lineno, repo_root, m.group("path"),
+                           int(m.group("line")), end_line=end,
+                           anchor=normalize_anchor(m.group("anchor")))
+
+
+def scan_unit_doc(doc_path, repo_root, results):
+    """Rule 3 only (B1020): anchored citations in a refactor/B<NNN>*/ doc."""
+    with open(doc_path, "r", encoding="utf-8", errors="replace") as fh:
+        for lineno, line in enumerate(fh, start=1):
+            for m in CITE_ANCHORED.finditer(line):
+                results.append(_check_anchored(doc_path, lineno, repo_root, m))
+
+
 def scan_doc(doc_path, repo_root, results):
     with open(doc_path, "r", encoding="utf-8", errors="replace") as fh:
         for lineno, line in enumerate(fh, start=1):
             claimed_spans = []
+            anchored = _anchored_by_start(line)
             for m in CITE_WITH_LINE.finditer(line):
                 claimed_spans.append(m.span())
+                am = anchored.get(m.start("path"))
+                if am is not None:
+                    results.append(_check_anchored(doc_path, lineno, repo_root, am))
+                    continue
                 results.append(
                     check_with_line(doc_path, lineno, repo_root, m.group("path"), int(m.group("line")))
                 )
@@ -213,18 +292,37 @@ def scan_doc(doc_path, repo_root, results):
                 )
 
 
-def check_with_line(doc_path, doc_lineno, repo_root, cited_path, cited_line):
+def check_with_line(doc_path, doc_lineno, repo_root, cited_path, cited_line,
+                    end_line=None, anchor=None):
     label = "%s:%d" % (cited_path, cited_line)
+    if end_line is not None:
+        label += "-%d" % end_line
+    if anchor is not None:
+        label += " (%s)" % anchor
     target, status = resolve_target(repo_root, cited_path)
     if status == "SKIP":
         return ("SKIP", doc_path, doc_lineno, label, _skip_reason(cited_path))
     if not os.path.isfile(target):
         return ("FAIL", doc_path, doc_lineno, label, "file does not exist")
     with open(target, "r", encoding="utf-8", errors="replace") as fh:
-        n_lines = sum(1 for _ in fh)
-    if cited_line > n_lines:
+        lines = fh.read().splitlines()
+    n_lines = len(lines)
+    last = end_line if end_line is not None else cited_line
+    if cited_line > n_lines or last > n_lines:
         return ("FAIL", doc_path, doc_lineno, label,
-                "line %d beyond file length (%d lines)" % (cited_line, n_lines))
+                "line %d beyond file length (%d lines)" % (last, n_lines))
+    if end_line is not None and end_line < cited_line:
+        return ("FAIL", doc_path, doc_lineno, label,
+                "range %d-%d runs backwards" % (cited_line, end_line))
+    if anchor is not None:
+        if not anchor:
+            return ("FAIL", doc_path, doc_lineno, label, "empty anchor")
+        if not any(anchor in l for l in lines[max(cited_line - 1, 0):last]):
+            where = ("line %d" % cited_line if end_line is None
+                     else "lines %d-%d" % (cited_line, end_line))
+            return ("FAIL", doc_path, doc_lineno, label,
+                    "anchor not on %s (re-measure: git grep -n the anchor at HEAD)"
+                    % where)
     return ("OK", doc_path, doc_lineno, label, "")
 
 
@@ -244,7 +342,14 @@ def main():
         default=None,
         help="repo root to check (default: this script's own checkout)",
     )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="run rule 3's (anchored citation) probes on a temp tree and exit",
+    )
     args = parser.parse_args()
+    if args.self_test:
+        return self_test()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     default_repo_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
@@ -266,8 +371,12 @@ def main():
 
     results = []
     for doc in docs:
-        rel_doc = os.path.relpath(doc, repo_root)
         scan_doc(doc, repo_root, results)
+    unit_docs = [d for d in find_unit_docs(repo_root) if d not in set(docs)]
+    print("checking anchored citations only in %d unit doc(s) under refactor/B*/"
+          % len(unit_docs))
+    for doc in unit_docs:
+        scan_unit_doc(doc, repo_root, results)
 
     n_ok = sum(1 for r in results if r[0] == "OK")
     n_fail = sum(1 for r in results if r[0] == "FAIL")
@@ -287,10 +396,74 @@ def main():
         return 0
 
     print(
-        "checked %d live doc(s), %d citation(s): %d ok, %d fail, %d skip"
-        % (len(docs), len(results), n_ok, n_fail, n_skip)
+        "checked %d live doc(s) + %d unit doc(s) (anchored only), %d citation(s): "
+        "%d ok, %d fail, %d skip"
+        % (len(docs), len(unit_docs), len(results), n_ok, n_fail, n_skip)
     )
     return 1 if n_fail else 0
+
+
+# B1020 self-test: (doc line, expected status) probes against a two-file
+# temp tree. Every shape rule 3 must accept, and every one it must refuse.
+_SELF_TEST_SOURCE = (
+    "int first();\n"            # 1
+    "void anchorTarget(int x);\n"  # 2
+    "// \"quoted token\" here\n"  # 3
+    "int last();\n"             # 4
+)
+_SELF_TEST_PROBES = [
+    # anchored, correct
+    ("`src/a.cpp:2` (`anchorTarget`)", "OK"),
+    ("src/a.cpp:2 (anchorTarget)", "OK"),
+    ("`src/a.cpp:3` (\"quoted token\")", "OK"),
+    ("`src/a.cpp:1-3` (`anchorTarget`)", "OK"),
+    # anchored, wrong line: the wave-7 shape (ids 5, 37)
+    ("`src/a.cpp:1` (`anchorTarget`)", "FAIL"),
+    ("`src/a.cpp:3-4` (`anchorTarget`)", "FAIL"),
+    # prose in the parenthesis is not on the line either
+    ("`src/a.cpp:2` (the declaration)", "FAIL"),
+    ("`src/a.cpp:2` ()", "FAIL"),
+    # rule 1 still applies to an anchored citation
+    ("`src/a.cpp:9` (`last`)", "FAIL"),
+    ("`src/a.cpp:3-9` (`last`)", "FAIL"),
+    ("`src/missing.cpp:1` (`first`)", "FAIL"),
+    # not anchored: no space / two spaces / prose after a comma
+    ("`src/a.cpp:1`(`anchorTarget`)", "OK"),
+    ("`src/a.cpp:1`  (`anchorTarget`)", "OK"),
+    ("`src/a.cpp:1`, the first declaration (`anchorTarget` is on :2)", "OK"),
+    # absolute cross-project paths still SKIP
+    ("`/opt/x/y.cpp:3` (`anything`)", "SKIP"),
+]
+
+
+def self_test():
+    import tempfile
+    failed = 0
+    with tempfile.TemporaryDirectory() as root:
+        os.makedirs(os.path.join(root, "src"))
+        os.makedirs(os.path.join(root, "refactor", "B1"))
+        with open(os.path.join(root, "src", "a.cpp"), "w") as fh:
+            fh.write(_SELF_TEST_SOURCE)
+        for scanner, doc_rel in ((scan_doc, "CLAUDE.md"),
+                                 (scan_unit_doc, "refactor/B1/README.md")):
+            for text, want in _SELF_TEST_PROBES:
+                doc = os.path.join(root, doc_rel)
+                with open(doc, "w") as fh:
+                    fh.write(text + "\n")
+                results = []
+                scanner(doc, root, results)
+                if scanner is scan_unit_doc and not CITE_ANCHORED.search(text):
+                    # Rule 3 only: a non-anchored line yields nothing there.
+                    got = "OK" if not results else results[0][0]
+                else:
+                    got = results[0][0] if results else "NONE"
+                ok = got == want
+                failed += 0 if ok else 1
+                print("%s  [%s] %s -> %s (want %s)"
+                      % ("ok  " if ok else "FAIL", doc_rel, text, got, want))
+    print("anchored-citation self-test: %d probes, %d failed"
+          % (2 * len(_SELF_TEST_PROBES), failed))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

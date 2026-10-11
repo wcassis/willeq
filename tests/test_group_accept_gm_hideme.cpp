@@ -83,20 +83,10 @@ TEST_F(GroupAcceptTest, AcceptWithoutPendingInviteSaysNothing) {
     EXPECT_TRUE(DrainSystemMessages(bridge).empty());
 }
 
-TEST_F(GroupAcceptTest, DeclineStillConsumesThePendingInvite) {
-    ReplayZone(eq, HC_OP_GroupInvite, GroupInvitePayload("Oraclerogue", "Testchar"));
-    ASSERT_TRUE(eq.HasPendingGroupInvite());
-    DrainSystemMessages(bridge);
-
-    eq.Net().Test_SetBypassSendGuardForSeam(true);
-    eq.Group().DeclineGroupInvite();
-
-    auto msgs = DrainSystemMessages(bridge);
-    ASSERT_EQ(msgs.size(), 1u);
-    EXPECT_EQ(msgs[0], "Group invite declined");
-    eq.Group().DeclineGroupInvite();
-    EXPECT_TRUE(DrainSystemMessages(bridge).empty()) << "second decline must be a no-op";
-}
+// B603: DeclineStillConsumesThePendingInvite went with DeclineGroupInvite()
+// (the only caller). The decline route itself is pinned by
+// test_command_processor_migration.cpp's Decline_PendingInvite_* tests, which
+// drive the live path (/decline -> ActionDispatcher -> EqActionHandler).
 
 TEST_F(GroupAcceptTest, GuardStillBlocksWhenNotZonedIn) {
     // Production behaviour with the seam unset: not zoned in -> nothing sent,

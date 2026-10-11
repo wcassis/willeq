@@ -517,41 +517,15 @@ bool RaceModelLoader::loadModelFromGlobalChr(uint16_t raceId, uint8_t gender) {
 
             // Look for race code in character name
             if (charName.find(codeToTry) != std::string::npos) {
-                // Found a match - select only the DEFAULT body and head parts
-                // Default body: "{RACE}_DMSPRITEDEF" (no number suffix)
-                // Default head: "{RACE}HE00_DMSPRITEDEF" (head variant 0)
-                std::string defaultBodyName = codeToTry + "_DMSPRITEDEF";
-                std::string defaultHeadName = codeToTry + "HE00_DMSPRITEDEF";
-
-                // Select skinned parts (from partsWithTransforms - already has skinning applied)
-                std::vector<CharacterPart> selectedSkinnedParts;
-                for (const auto& part : character->partsWithTransforms) {
-                    if (!part.geometry) continue;
-
-                    std::string partName = part.geometry->name;
-                    std::transform(partName.begin(), partName.end(), partName.begin(),
-                                   [](unsigned char c) { return std::toupper(c); });
-
-                    // Only include default body and head
-                    if (partName == defaultBodyName || partName == defaultHeadName) {
-                        selectedSkinnedParts.push_back(part);
-                    }
-                }
-
-                // Select raw parts (from rawParts - unskinned for animation)
-                std::vector<CharacterPart> selectedRawParts;
-                for (const auto& part : character->rawParts) {
-                    if (!part.geometry) continue;
-
-                    std::string partName = part.geometry->name;
-                    std::transform(partName.begin(), partName.end(), partName.begin(),
-                                   [](unsigned char c) { return std::toupper(c); });
-
-                    // Only include default body and head
-                    if (partName == defaultBodyName || partName == defaultHeadName) {
-                        selectedRawParts.push_back(part);
-                    }
-                }
+                // Found a match. B733 (issue #70): select the parts the
+                // skeleton REFERENCES (its 0x200 mesh list), with the
+                // race-code default names as the fallback for skeletons that
+                // list none -- a part whose mesh carries a name the race code
+                // does not predict (race 146 SSN's head "SNNHE00_DMSPRITEDEF")
+                // was dropped by the old name-only selection.
+                SelectedCharacterParts selected = selectCharacterParts(*character, codeToTry);
+                std::vector<CharacterPart> selectedSkinnedParts = std::move(selected.skinned);
+                std::vector<CharacterPart> selectedRawParts = std::move(selected.raw);
 
                 if (selectedSkinnedParts.empty()) {
                     // Fall back to using all parts if we couldn't find defaults
@@ -646,37 +620,15 @@ bool RaceModelLoader::loadModelFromNumberedGlobal(int globalNum, uint16_t raceId
                        [](unsigned char c) { return std::toupper(c); });
 
         if (charName.find(raceCode) != std::string::npos) {
-            // Found a match - select only the DEFAULT body and head parts
-            std::string defaultBodyName = raceCode + "_DMSPRITEDEF";
-            std::string defaultHeadName = raceCode + "HE00_DMSPRITEDEF";
-
-            // Select skinned parts (from partsWithTransforms - already has skinning applied)
-            std::vector<CharacterPart> selectedSkinnedParts;
-            for (const auto& part : character->partsWithTransforms) {
-                if (!part.geometry) continue;
-
-                std::string partName = part.geometry->name;
-                std::transform(partName.begin(), partName.end(), partName.begin(),
-                               [](unsigned char c) { return std::toupper(c); });
-
-                if (partName == defaultBodyName || partName == defaultHeadName) {
-                    selectedSkinnedParts.push_back(part);
-                }
-            }
-
-            // Select raw parts (from rawParts - unskinned for animation)
-            std::vector<CharacterPart> selectedRawParts;
-            for (const auto& part : character->rawParts) {
-                if (!part.geometry) continue;
-
-                std::string partName = part.geometry->name;
-                std::transform(partName.begin(), partName.end(), partName.begin(),
-                               [](unsigned char c) { return std::toupper(c); });
-
-                if (partName == defaultBodyName || partName == defaultHeadName) {
-                    selectedRawParts.push_back(part);
-                }
-            }
+            // Found a match. B733 (issue #70): select the parts the
+            // skeleton REFERENCES (its 0x200 mesh list), with the
+            // race-code default names as the fallback for skeletons that
+            // list none -- a part whose mesh carries a name the race code
+            // does not predict (race 146 SSN's head "SNNHE00_DMSPRITEDEF")
+            // was dropped by the old name-only selection.
+            SelectedCharacterParts selected = selectCharacterParts(*character, raceCode);
+            std::vector<CharacterPart> selectedSkinnedParts = std::move(selected.skinned);
+            std::vector<CharacterPart> selectedRawParts = std::move(selected.raw);
 
             if (selectedSkinnedParts.empty()) {
                 // Fall back to using all parts if we couldn't find defaults

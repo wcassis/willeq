@@ -140,7 +140,6 @@ TEST(WhoResponseParse, ReadsEveryFieldOfTwoEntries) {
     EXPECT_EQ(out[0].guild, "<Guildy>");
     EXPECT_EQ(out[0].unknown80[0], kWhoStringNone);
     EXPECT_EQ(out[0].unknown80[1], kWhoStrLinkdead);
-    EXPECT_TRUE(out[0].isLinkdead());
     EXPECT_EQ(out[0].zoneString, kWhoStrZone);
     EXPECT_EQ(out[0].zone, 2u);
     EXPECT_EQ(out[0].classId, 1u);
@@ -152,7 +151,7 @@ TEST(WhoResponseParse, ReadsEveryFieldOfTwoEntries) {
     EXPECT_EQ(out[1].formatString, kWhoStrFormatAnon);
     EXPECT_EQ(out[1].name, "Alice");
     EXPECT_EQ(out[1].guild, "");
-    EXPECT_FALSE(out[1].isLinkdead());
+    EXPECT_FALSE(out[1].unknown80[1] == kWhoStrLinkdead);
     EXPECT_EQ(out[1].level, 0u);
 }
 

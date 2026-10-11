@@ -78,7 +78,9 @@ struct WhoAllEntry {
     std::string account;
     uint32_t unknown100 = 0;
 
-    bool isLinkdead() const { return unknown80[1] == kWhoStrLinkdead; }
+    // B603 deleted isLinkdead(): the unknown80[1] == kWhoStrLinkdead compare
+    // was inlined into its only (test) callers; the wire byte stays pinned by
+    // those assertions directly.
 };
 
 // Parses up to `count` entries from `data[0..len)` (the bytes AFTER the

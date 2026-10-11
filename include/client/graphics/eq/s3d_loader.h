@@ -140,6 +140,13 @@ struct CharacterModel {
     std::vector<CharacterPart> rawParts;               // Parts WITHOUT transforms (for animation)
     std::shared_ptr<SkeletonTrack> skeleton;           // Original skeleton data
     std::shared_ptr<CharacterSkeleton> animatedSkeleton;  // Skeleton with animation data
+    // B733 (issue #70): the geometries the skeleton's 0x200 mesh list (T476)
+    // references, as stored on this model -- the set the old name-based
+    // selection ({CODE}_DMSPRITEDEF / {CODE}HE00_DMSPRITEDEF) cannot always
+    // reach (race 146 SSN's head is "SNNHE00_DMSPRITEDEF"). Pointers into
+    // `parts`; empty when the skeleton lists no meshes, which is exactly when
+    // the name selection runs verbatim and the model draws as before.
+    std::vector<const ZoneGeometry*> skeletonReferenced;
 };
 
 // Complete S3D zone data

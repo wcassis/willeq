@@ -371,10 +371,13 @@ void InventoryManager::pickupMoney(CursorMoneyType type, uint32_t amount) {
     // cursor to a money slot, is measured SILENT (row 9), so
     // returnCursorMoney() gets nothing.
     //
-    // REACHABILITY: pickupMoney() has no production caller today -- fable has
-    // no money-slot UI (nothing under src/client/graphics/ui mentions money).
-    // The sound is wired at the correct publisher so it fires the moment that
-    // UI exists; boarded on B036.
+    // REACHABILITY: the coin gesture is the production caller (B442) --
+    // RunCursorCoinGesture() calls this for the to-cursor half of a coin
+    // move. There is still no money-slot UI: nothing under
+    // src/client/graphics/ui mentions money, so the gesture is reached
+    // only from the trade window (B896) and the bank's coin rows (B996).
+    // The sound is wired at the correct publisher for the moment a
+    // money-slot UI exists; boarded on B036.
 #ifdef WITH_AUDIO
     if (bridge_) {
         bridge_->pushIntent(eqt::events::PlaySoundIntent{

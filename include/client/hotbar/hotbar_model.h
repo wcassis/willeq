@@ -52,6 +52,18 @@ public:
     int getSlotCount() const { return SLOT_COUNT; }
 
     // --- Slot mutation (publishes events) ---
+    // B603 (T458 class: test seam, kept): no production caller. The only
+    // production slot writer is loadFromJson() (LoadHotbarConfig at startup);
+    // nothing in a command or the UI assigns or clears a slot, so the
+    // config-save callback (setSaveCallback, registered in
+    // BridgeComponent::InitGraphics, bridge_component.cpp:145) fires in
+    // production only from these two -- which today is never, i.e. hotbar
+    // slot assignment is a missing feature, not a live path. They stay
+    // because their tests drive assignSlot/clearSlot as the REAL producer of
+    // the HotbarSlotAssigned bridge event, not a hand-built fixture (T156's
+    // skill-reachability leg, the T15 input-action-bridge routing, T230's
+    // hotbar item route) -- the tests are the net, so the functions live
+    // with them.
     void assignSlot(int index, HotbarSlotType type, uint32_t id,
                     const std::string& emoteText = "", uint32_t iconId = 0);
     void clearSlot(int index);

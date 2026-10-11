@@ -183,13 +183,11 @@ void eqt::group::GroupComponent::AcceptGroupInvite()
 	}
 }
 
-void eqt::group::GroupComponent::DeclineGroupInvite()
-{
-	if (ctx_.game_state.group().hasPendingInvite()) {
-		SendGroupDecline(ctx_.game_state.group().pendingInviterName());
-		ctx_.out.System("Group invite declined");
-	}
-}
+// B603 deleted DeclineGroupInvite(): nothing called it. The /decline command
+// does NOT route through it -- command_processor_social.cpp reaches
+// ActionDispatcher::declineGroupInvite() -> EqActionHandler, which sends the
+// packet directly (SendGroupDecline is its wire half and stays). So declining
+// an invite is reachable; the component method was the dead duplicate.
 
 // ============================================================================
 // Pet Methods

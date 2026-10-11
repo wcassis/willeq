@@ -323,5 +323,63 @@ std::shared_ptr<ZoneGeometry> combineCharacterPartsRaw(
     return combined;
 }
 
+SelectedCharacterParts selectCharacterParts(const CharacterModel& character,
+                                            const std::string& upperRaceCode) {
+    // B733 (issue #70): the old base-model selection picked parts by NAME --
+    // exactly "{CODE}_DMSPRITEDEF" and "{CODE}HE00_DMSPRITEDEF". A part whose
+    // mesh carries a name the race code does not predict (race 146 SSN's head
+    // is "SNNHE00_DMSPRITEDEF") was dropped even though the character's
+    // skeleton references it.
+    //
+    // The selection is now the UNION of the old name selection (run verbatim,
+    // in the stored part order, so every character the old code drew keeps
+    // drawing exactly what it drew) and the geometries the skeleton's 0x200
+    // mesh list (T476) names that the name selection did not pick
+    // (CharacterModel::skeletonReferenced, recorded by the loader). A
+    // skeleton whose list adds nothing stores an empty tag and draws
+    // byte-identically to before; a skeleton whose list names a mesh the
+    // name selection cannot reach (the #70 head) draws it in addition.
+    auto isDefaultName = [](const ZoneGeometry* g, const std::string& code) {
+        std::string name = g->name;
+        std::transform(name.begin(), name.end(), name.begin(),
+                       [](unsigned char c) { return std::toupper(c); });
+        std::string defaultBodyName = code + "_DMSPRITEDEF";
+        std::string defaultHeadName = code + "HE00_DMSPRITEDEF";
+        return name == defaultBodyName || name == defaultHeadName;
+    };
+    std::vector<const ZoneGeometry*> picked;
+    auto pickByName = [&](const std::vector<CharacterPart>& src) {
+        for (const auto& part : src) {
+            if (!part.geometry) continue;
+            if (isDefaultName(part.geometry.get(), upperRaceCode))
+                picked.push_back(part.geometry.get());
+        }
+    };
+    // The skinned and the raw lists carry parallel geometry names (the
+    // loader stores each part in both), so one name selection covers both.
+    pickByName(character.partsWithTransforms);
+    for (const ZoneGeometry* g : character.skeletonReferenced) {
+        if (std::find(picked.begin(), picked.end(), g) == picked.end())
+            picked.push_back(g);
+    }
+
+    SelectedCharacterParts out;
+    for (const auto& part : character.partsWithTransforms) {
+        if (!part.geometry) continue;
+        if (std::find(picked.begin(), picked.end(), part.geometry.get()) != picked.end())
+            out.skinned.push_back(part);
+    }
+    for (const auto& part : character.rawParts) {
+        if (!part.geometry) continue;
+        if (isDefaultName(part.geometry.get(), upperRaceCode)) {
+            out.raw.push_back(part);
+        } else {
+            for (const ZoneGeometry* g : character.skeletonReferenced)
+                if (part.geometry->name == g->name) { out.raw.push_back(part); break; }
+        }
+    }
+    return out;
+}
+
 } // namespace Graphics
 } // namespace EQT

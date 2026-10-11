@@ -73,7 +73,7 @@ void SpellManager::sendMemorizePacket(uint32_t spell_id, uint8_t gem_slot, bool 
 }
 
 // T44: push SpellCastStarted for our own cast, at the moment it begins
-// locally -- see beginCastFromGem()/beginCastById() for why this can't wait
+// locally -- see beginCastFromGem() for why this can't wait
 // for the server-echoed BeginCast packet (eq_player_buffs.cpp also publishes
 // SpellCastStarted, for any caster including NPCs/other players; that one is
 // unrelated to this, driven by the packet, not local intent).

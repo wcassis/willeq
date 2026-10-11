@@ -204,10 +204,12 @@ public:
 	void ToggleAutoAttack();
 	bool IsAutoAttackEnabled() const { return m_auto_attack_enabled; }
 
-	// Auto fire (ranged)
+	// Auto fire (ranged). /autofire toggles through Enable/Disable (the
+	// one-toggle rule lives in EqActionHandler::toggleAutoFire). B603
+	// deleted ToggleAutoFire(): nothing called it -- the command handler
+	// inlines the same rule.
 	void EnableAutoFire();
 	void DisableAutoFire();
-	void ToggleAutoFire();
 	bool IsAutoFireEnabled() const { return m_auto_fire_enabled; }
 
 	// Auto movement during combat
@@ -239,12 +241,13 @@ public:
 	bool ShouldFlee() const;
 	std::vector<CombatTarget> GetNearbyHostiles(float range = 50.0f);
 	std::vector<CombatTarget> GetNearbyAllies(float range = 50.0f);
-	CombatTarget* GetHighestPriorityTarget();
 
-	// Fleeing
+	// Fleeing. B603 deleted GetHighestPriorityTarget() and
+	// SetFleeThreshold(): m_flee_hp_threshold stays at its constructor
+	// value (20.0f, the official client's flee point) because nothing
+	// could change it -- the setter's only callers were tests.
 	void InitiateFlee();
 	bool IsFleeing() const { return m_combat_state == COMBAT_STATE_FLEEING; }
-	void SetFleeThreshold(float hp_percent) { m_flee_hp_threshold = hp_percent; }
 
 	// Looting. T268: CombatManager is the loot POLICY (when to take what,
 	// pacing, when to close); every packet goes through EverQuest's single
@@ -279,9 +282,10 @@ public:
 	void UpdateLootState();
 	LootSubState GetLootSubState() const { return m_loot_sub_state; }
 
-	// Configuration
-	void SetAggroRadius(float radius) { m_aggro_radius = radius; }
-	void EnableAutoLoot(bool enable) { m_auto_loot_enabled = enable; }
+	// Configuration. B603 deleted SetAggroRadius() (nothing could change
+	// the 30.0f constructor value; m_aggro_radius is still read by
+	// GetNearbyHostiles() and the hunt scan) and EnableAutoLoot() (the
+	// duplicate of SetAutoLootEnabled() below -- one setter over one flag).
 
 	// Auto-hunting
 	void SetAutoHunting(bool enable);

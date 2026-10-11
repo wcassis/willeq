@@ -75,8 +75,8 @@ race=125 gender=0 variant=0,0 none
 race=125 gender=1 variant=0,0 none
 race=126 gender=0 variant=0,0 none
 race=126 gender=1 variant=0,0 none
-race=127 gender=0 variant=0,0 code=IVM verts=73 tris=80 geom=2449dd4bcdfed4c2 bones=26 skel=7ff80fd6c12ba4a2 anims=- xf=14650fb0739d0383
-race=127 gender=0 variant=1,1 none
+race=127 gender=0 variant=0,0 code=IVM verts=506 tris=360 geom=0704dc261a0b8ba5 bones=26 skel=7ff80fd6c12ba4a2 anims=- xf=14650fb0739d0383
+race=127 gender=0 variant=1,1 code=IVM verts=506 tris=360 geom=0704dc261a0b8ba5 bones=26 skel=7ff80fd6c12ba4a2 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
 race=127 gender=1 variant=0,0 none
 race=128 gender=0 variant=0,0 code=IKM verts=1169 tris=708 geom=036d12f7ad8b26b0 bones=39 skel=02543ae2174f68c2 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,o02,o03,p01,p02,p03,p04,p05,p06,p07,p08,s01,s02,s03,s04,s05,s06,s07,s08,s09,s10,s11,s12,s13,s14,s15,s16,s17,s18,s19,s20,s21,s22,s23,s24,s25,s26,s27,s28,t04,t05,t06,t07,t08,t09 xf=0e56b4c39e244105
 race=128 gender=0 variant=1,1 none
@@ -124,9 +124,9 @@ race=144 gender=0 variant=0,0 none
 race=144 gender=1 variant=0,0 none
 race=145 gender=0 variant=0,0 none
 race=145 gender=1 variant=0,0 none
-race=146 gender=0 variant=0,0 code=SSN verts=3359 tris=2402 geom=4d1ec6f1c663cbc2 bones=98 skel=661d75a36800a555 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=8489b7daa48b4b76
+race=146 gender=0 variant=0,0 code=SSN verts=4333 tris=3074 geom=34a3881c6e2a691e bones=98 skel=661d75a36800a555 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=8489b7daa48b4b76
 race=146 gender=0 variant=1,1 code=SSN verts=3359 tris=2402 geom=4d1ec6f1c663cbc2 bones=98 skel=661d75a36800a555 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=8489b7daa48b4b76
-race=146 gender=1 variant=0,0 code=SSN verts=3359 tris=2402 geom=4d1ec6f1c663cbc2 bones=98 skel=661d75a36800a555 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=8489b7daa48b4b76
+race=146 gender=1 variant=0,0 code=SSN verts=4333 tris=3074 geom=34a3881c6e2a691e bones=98 skel=661d75a36800a555 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=8489b7daa48b4b76
 race=146 gender=1 variant=1,1 code=SSN verts=3359 tris=2402 geom=4d1ec6f1c663cbc2 bones=98 skel=661d75a36800a555 anims=c05,d02,d05,l01,l02,o01,p01,p03,t06 xf=8489b7daa48b4b76
 race=147 gender=0 variant=0,0 code=SIM verts=1230 tris=708 geom=c85200e075fc4c9d bones=39 skel=9f548bbf6637cb0e anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=9dd7ddc8487f54f7
 race=147 gender=0 variant=1,1 code=SIM verts=1230 tris=708 geom=86b4bbd99b014cb3 bones=39 skel=9f548bbf6637cb0e anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=9dd7ddc8487f54f7
@@ -278,8 +278,8 @@ race=24 gender=0 variant=0,0 code=FIS verts=42 tris=26 geom=86074b454ea85de4 bon
 race=24 gender=0 variant=1,1 code=FIS verts=42 tris=26 geom=c6a4bf9c49ee4142 bones=4 skel=2676427ee336dcb9 anims=c10,l09,p01,p06 xf=0e9b7a5cb9e5e8b6
 race=24 gender=1 variant=0,0 code=FIS verts=42 tris=26 geom=86074b454ea85de4 bones=4 skel=2676427ee336dcb9 anims=c10,l09,p01,p06 xf=0e9b7a5cb9e5e8b6
 race=24 gender=1 variant=1,1 code=FIS verts=42 tris=26 geom=c6a4bf9c49ee4142 bones=4 skel=2676427ee336dcb9 anims=c10,l09,p01,p06 xf=0e9b7a5cb9e5e8b6
-race=240 gender=0 variant=0,0 code=IVM verts=73 tris=80 geom=2449dd4bcdfed4c2 bones=26 skel=7ff80fd6c12ba4a2 anims=- xf=14650fb0739d0383
-race=240 gender=0 variant=1,1 none
+race=240 gender=0 variant=0,0 code=IVM verts=506 tris=360 geom=0704dc261a0b8ba5 bones=26 skel=7ff80fd6c12ba4a2 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
+race=240 gender=0 variant=1,1 code=IVM verts=506 tris=360 geom=0704dc261a0b8ba5 bones=26 skel=7ff80fd6c12ba4a2 anims=c01,c02,c03,c04,c05,c06,c07,c08,c09,c10,c11,d01,d02,d04,d05,l01,l02,l03,l04,l05,l06,l07,l08,l09,o01,p01,p02,p03,p04,p05,p06,s01,s02,s03,s04,t02,t03,t04,t05,t06,t07,t08,t09 xf=3b73e3e8c7b5ff48
 race=240 gender=1 variant=0,0 none
 race=25 gender=0 variant=0,0 none
 race=25 gender=1 variant=0,0 none

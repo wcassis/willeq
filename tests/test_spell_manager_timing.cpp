@@ -325,7 +325,7 @@ TEST(SpellManagerTiming, BUG_UpdateIgnoresDeltaTimeHugeDeltaDoesNotFastForwardCa
 // : "Unknown"`, `if (spell) { ... }`).
 // ===================================================================
 
-TEST(SpellManagerInterrupt, InterruptCastWhileCastingResetsStateAndFiresCallback) {
+TEST(SpellManagerInterrupt, InterruptCastWhileCastingResetsState) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
     uint32_t gems[1] = {42};
@@ -335,30 +335,19 @@ TEST(SpellManagerInterrupt, InterruptCastWhileCastingResetsStateAndFiresCallback
     mgr->m_current_gem_slot = 0;
     mgr->m_gem_states[0] = GemState::Casting;
 
-    CastResult seenResult = CastResult::Success;
-    uint32_t seenSpellId = 0;
-    mgr->setOnCastComplete([&](CastResult r, uint32_t id) {
-        seenResult = r;
-        seenSpellId = id;
-    });
-
     mgr->interruptCast();
 
     EXPECT_FALSE(mgr->isCasting());
     EXPECT_EQ(mgr->getGemState(0), GemState::Ready);
-    EXPECT_EQ(seenResult, CastResult::Interrupted);
-    EXPECT_EQ(seenSpellId, 42u);
     EXPECT_EQ(mgr->getCurrentSpellId(), SPELL_UNKNOWN);
 }
 
 TEST(SpellManagerInterrupt, InterruptCastWhileNotCastingIsNoOp) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
-    bool called = false;
-    mgr->setOnCastComplete([&](CastResult, uint32_t) { called = true; });
 
     EXPECT_NO_THROW(mgr->interruptCast());
-    EXPECT_FALSE(called);
+    EXPECT_FALSE(mgr->isCasting());
 }
 
 TEST(SpellManagerHandlers, HandleBeginCastOwnCastConfirmsAndUsesServerCastTime) {
@@ -426,9 +415,6 @@ TEST(SpellManagerHandlers, HandleActionSuccessPacketDoesNotEndOwnCast) {
     mgr->m_current_spell_id = 99;
     mgr->m_current_gem_slot = 0xFF;  // no gem cooldown side effect (no DB spell object)
 
-    bool fired = false;
-    mgr->setOnCastComplete([&](CastResult, uint32_t) { fired = true; });
-
     EQT::SpellActionInfo action{};
     action.type = 231;
     action.effect_flag = 4;  // success packet
@@ -439,7 +425,6 @@ TEST(SpellManagerHandlers, HandleActionSuccessPacketDoesNotEndOwnCast) {
     mgr->handleAction(action);
 
     EXPECT_TRUE(mgr->isCasting());
-    EXPECT_FALSE(fired);
 }
 
 TEST(SpellManagerHandlers, HandleActionClearsTargetCastTracking) {
@@ -470,15 +455,9 @@ TEST(SpellManagerHandlers, HandleInterruptOwnCastFizzleMessageIsFizzle) {
     mgr->m_current_spell_id = 33;
     mgr->m_current_gem_slot = 0xFF;
 
-    CastResult seen = CastResult::Success;
-    uint32_t seenId = 0;
-    mgr->setOnCastComplete([&](CastResult r, uint32_t id) { seen = r; seenId = id; });
-
     mgr->handleInterrupt(eq.GetEntityID(), /*SPELL_FIZZLE*/ 173, "");
 
     EXPECT_FALSE(mgr->isCasting());
-    EXPECT_EQ(seen, CastResult::Fizzle);
-    EXPECT_EQ(seenId, 33u) << "the spell id comes from our own cast, not the packet";
 }
 
 TEST(SpellManagerHandlers, HandleInterruptOwnCastInterruptMessageIsInterrupted) {
@@ -488,12 +467,9 @@ TEST(SpellManagerHandlers, HandleInterruptOwnCastInterruptMessageIsInterrupted) 
     mgr->m_current_spell_id = 33;
     mgr->m_current_gem_slot = 0xFF;
 
-    CastResult seen = CastResult::Success;
-    mgr->setOnCastComplete([&](CastResult r, uint32_t) { seen = r; });
-
     mgr->handleInterrupt(eq.GetEntityID(), /*INTERRUPT_SPELL*/ 439, "");
 
-    EXPECT_EQ(seen, CastResult::Interrupted);
+    EXPECT_FALSE(mgr->isCasting());
 }
 
 TEST(SpellManagerHandlers, HandleInterruptOtherCasterOnlyClearsTargetTracking) {
@@ -501,14 +477,13 @@ TEST(SpellManagerHandlers, HandleInterruptOtherCasterOnlyClearsTargetTracking) {
     auto* mgr = eq.GetSpellManager();
     mgr->m_target_caster_id = 200;
     mgr->m_target_spell_id = 88;
-    // Not our own cast -- must not touch m_is_casting/callback.
-    bool called = false;
-    mgr->setOnCastComplete([&](CastResult, uint32_t) { called = true; });
+    // Not our own cast -- must not touch m_is_casting.
+    EXPECT_FALSE(mgr->isCasting());
 
     mgr->handleInterrupt(/*caster_id=*/200, /*INTERRUPT_SPELL_OTHER*/ 12478, "an enemy caster");
 
     EXPECT_EQ(mgr->m_target_caster_id, 0u);
-    EXPECT_FALSE(called);
+    EXPECT_FALSE(mgr->isCasting());
 }
 
 TEST(SpellManagerHandlers, HandleManaChangeKeepcastingOneDoesNotEndACast) {
@@ -525,10 +500,10 @@ TEST(SpellManagerHandlers, HandleManaChangeKeepcastingOneDoesNotEndACast) {
 }
 
 // ===================================================================
-// 5. Callbacks -- setOnCastComplete/setOnSpellFade fire with the right
-// arguments. (setOnSpellFade has no production caller in spell_manager.cpp
-// itself -- see Review; round-tripped via direct std::function
-// assignment/invocation instead.)
+// 5. Callbacks -- B603 deleted the two std::function slots
+// (setOnCastComplete/setOnSpellFade: nothing ever registered either), and
+// with them the tests that only exercised them. The observable outcome path
+// is the bridge publish (section 6 below).
 //
 // T357 (B061): setOnSpellLand is GONE, and so is the test that only
 // exercised it. It had zero setters in production, and its invocation in
@@ -537,40 +512,6 @@ TEST(SpellManagerHandlers, HandleManaChangeKeepcastingOneDoesNotEndACast) {
 // landing producer is OP_Action effect_flag 4 (T348). The absence is pinned
 // below by SpellLandHookIsGone.
 // ===================================================================
-
-TEST(SpellManagerCallbacks, OnCastCompleteReceivesResultAndSpellId) {
-    EverQuest eq = MakeEq();
-    auto* mgr = eq.GetSpellManager();
-    mgr->m_is_casting = true;
-    mgr->m_current_spell_id = 7;
-    mgr->m_current_gem_slot = 0xFF;
-
-    bool called = false;
-    mgr->setOnCastComplete([&](CastResult r, uint32_t id) {
-        called = true;
-        EXPECT_EQ(r, CastResult::Success);
-        EXPECT_EQ(id, 7u);
-    });
-    mgr->completeCast(true);
-    EXPECT_TRUE(called);
-}
-
-TEST(SpellManagerCallbacks, OnSpellFadeInvokesWithGivenArguments) {
-    // No production call site invokes m_on_spell_fade in spell_manager.cpp
-    // (grep-verified: only assigned via setOnSpellFade, never called --
-    // likely reserved for a future buff-fade wiring elsewhere). Pinning
-    // that the callback slot itself works mechanically.
-    EverQuest eq = MakeEq();
-    auto* mgr = eq.GetSpellManager();
-    bool called = false;
-    mgr->setOnSpellFade([&](uint32_t spell_id, uint16_t entity_id) {
-        called = true;
-        EXPECT_EQ(spell_id, 9u);
-        EXPECT_EQ(entity_id, 10u);
-    });
-    mgr->m_on_spell_fade(9, 10);
-    EXPECT_TRUE(called);
-}
 
 // ===================================================================
 // getCastProgress / getCastTimeRemaining
@@ -622,7 +563,7 @@ TEST(SpellManagerCastProgress, ElapsedPastDurationClampsProgressTo1AndRemainingT
 // never published before this unit; completeCast()/interruptCast()/
 // handleInterrupt() are the three places m_is_casting flips back to false
 // for our own cast, and each now pushes it. (SpellCastStarted's publish
-// sites -- beginCastFromGem()/beginCastById() -- need a real DB-backed
+// sites -- beginCastFromGem() -- need a real DB-backed
 // spell to reach CastResult::Success, so they're covered in
 // test_spell_manager.cpp's beginCast end-to-end tests instead.)
 // ===================================================================
@@ -789,11 +730,12 @@ TEST(SpellLandHookIsGone, NoTypedefSetterMemberOrInvocationRemains) {
         << "the invocation came back -- and it fires outside the is_success_packet "
            "gate, i.e. on the animation packet, which is not a landing";
 
-    // The two neighbours it was deleted from between are untouched.
-    EXPECT_NE(header.find("SpellCastCallback"), std::string::npos);
-    EXPECT_NE(header.find("SpellFadeCallback"), std::string::npos);
-    EXPECT_NE(header.find("setOnCastComplete"), std::string::npos);
-    EXPECT_NE(header.find("setOnSpellFade"), std::string::npos);
+    // B603: the two callback slots next to it are gone as well (nothing
+    // ever registered either).
+    EXPECT_EQ(header.find("SpellCastCallback"), std::string::npos);
+    EXPECT_EQ(header.find("SpellFadeCallback"), std::string::npos);
+    EXPECT_EQ(header.find("setOnCastComplete"), std::string::npos);
+    EXPECT_EQ(header.find("setOnSpellFade"), std::string::npos);
 }
 
 int main(int argc, char** argv) {

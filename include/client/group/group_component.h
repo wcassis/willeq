@@ -52,7 +52,6 @@ public:
 	void SendGroupDecline(const std::string& inviter_name); // Decline invite
 	void SendLeaveGroup();
 	void AcceptGroupInvite();
-	void DeclineGroupInvite();
 	void ClearGroup();
 
 	// Pet queries and commands.

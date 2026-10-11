@@ -73,6 +73,12 @@ Additional context is in subdirectory CLAUDE.md files:
   one) and the prediction that fact makes, checked against the measurements
   in hand. A finding without one is a measurement, not a ruling request;
   reviewers re-derive the mechanism, not only the citations.
+- **Local-model kanban cards follow `docs/local_model_cards.md`** (B1020):
+  prove-then-fix and tool-plus-live-leg are two cards each, workers never edit
+  a CLAUDE.md or cut cards (`CLAUDE.md EDITS` / `FOLLOW-UP` summary sections
+  instead), and a chain merges only on PASS verdicts naming the current head
+  sha. After every wave a retrospective classifies each block/fail/retry by
+  cause and fixes the cause there.
 - **CI runs the build and the suite on the GitLab runner, not in your
   worker.** `.gitlab-ci.yml` (T502) builds Release and runs the full ctest suite
   on pushes to `task/*`, `plans/*` and `fable`, and on merge requests, in four
@@ -275,10 +281,7 @@ fails on a bare `"config/…"` / `"data/…"` literal that does not.
 checkout** (T402, board B248), through `eqt::ResolveCachePathForRead()` /
 `ResolveCachePathForWrite()` (same header), which pick the first writable of
 `$WILLEQ_CACHE_DIR`, `$WILLEQ_DATA_ROOT/cache`, `<exe dir>/cache` and `cache/`.
-Before this, `snd_index_cache.json` and `gfx_index_cache.json` were git-tracked
-files under `config/` that the client rewrote on every run, so a plain run left
-the working tree dirty and a careless `git add -A` committed one machine's
-absolute EQ path. A cache miss is not an error — it costs a rescan, measured at
+A cache miss is not an error — it costs a rescan, measured at
 ~0.4 s for the 17 sound archives and ~30 ms for the 378 character archives. The GLES2 driver's shader-binary cache
 (`<hash>.bin`, `<cache dir>/shader_cache/`) is one too (B959): the host calls
 `eqt::ConfigureGles2ShaderCache()` before creating its device and the driver, which
@@ -301,6 +304,17 @@ The pack lives outside the repo and is read live by every worktree; only
 `build_willeq_pack.sh` may install it (temp file in the destination directory,
 `mv`d into place).
 
+**The EQE1 pack's format version matters, and a stale one fails loudly**
+(B930, #248). A v1/v2 pack caps entry names at 31 characters, so a zone
+whose shipped textures need a longer name dies in the client's
+all-or-nothing texture load with a FATAL that names the STALE PACK AND
+ITS VERSION. A structurally-clean v1/v2 pack is still legitimate when
+all its names fit 31 chars (willeq.eqe1 is v2 and stays v2 by the
+builder's design). Audit a host's pack directory:
+`for f in <dir>/*.eqe1; do ./build/bin/verify_eqe1 --require-v3 "$f"; done`
+(STALE on any v1/v2, exit 1). Pinned by test_eqe1_stale_pack and
+test_eqe1_verify_stale_pack.
+
 **The pack's inputs are the 67 BMPs plus `tools/ui_atlas_builder`, so a texture
 change cascades**: regenerate the BMPs, rewrite `data/textures.sha256`
 (`--write-pins`), rebuild the pack, update `data/willeq.eqe1.sha256` — all in
@@ -318,11 +332,8 @@ row edit is not a schema change.
 **Every table the database ships is one the client queries, in both directions,
 with no exemptions** (T452/T454/T456, boards B468/B474/B476).
 `WilleqDatabaseShippedContent.EveryTableTheClientQueriesExists` and
-`…EveryTableTheDatabaseShipsIsOneTheClientQueries` are the two nets. They exist
-because `s3d_assets` shipped as a MISSING table two live queries returned "not
-found" from for six months, and `equipment_textures` / `equipment_models`
-shipped as tables nothing read — the equipment paths resolve live through
-`EquipmentModelLoader::buildEquipmentIndex()`. **B468's lesson: "nothing reads
+`…EveryTableTheDatabaseShipsIsOneTheClientQueries` are the two nets; the
+equipment paths resolve live through `EquipmentModelLoader::buildEquipmentIndex()`. **B468's lesson: "nothing reads
 it" and "nothing CAN read it" look identical from a grep**, so each drop gets
 its own deliberate check rather than being swept along.
 `data/equipment_models.json` and `tools/equipment_index_builder` still exist and
@@ -418,9 +429,8 @@ alpha-BLEND it and converting it is a look change), and `rain_streaks.bmp` +
 the 67 shipped BMPs is now byte-reproducible from its generator** and
 `NOT_REPRODUCIBLE` is empty. `generate_textures --report` prints the census.
 
-**A 32-bit entry is not free.** With 60 alphas in band the pack went 2.83 MB to
-19.99 MB and every zone's `eqe1MappedBytes` rose by 17.2 MB, because an ETC1
-256x256 entry with mips is 43,704 bytes and its RGBA8888 form is 349,524. T411
+**A 32-bit entry is not free**: an ETC1 256x256 entry with mips is 43,704
+bytes and its RGBA8888 form is 349,524. T411
 (board B287) took that back by fixing the shaders instead of the payload: the
 three alpha-BLEND shaders (`SOLID3D_FS`, `UI2D_FS`, the particle point sprite)
 sample the ETC1 `_alpha` companion on texture unit 1, bound in one place,
@@ -436,9 +446,8 @@ test's `kInBandAlpha` list naming the consumer and the reason.
 
 A generator must be **bit-identical across optimisation levels** — a shipped
 asset whose bytes depend on `CMAKE_BUILD_TYPE` makes `TexturesReproducible` a
-coin toss. Two noise hashes overflowed signed `int` (UB) and GCC folded them
-differently at -O0 and -O2, moving 157 texels of the particle atlas (board B268).
-Keep new generator arithmetic defined.
+coin toss (board B268: signed-`int` overflow UB in two noise hashes). Keep new
+generator arithmetic defined.
 
 ## The eqemu lane
 
@@ -454,10 +463,7 @@ this file; see `refactor/EXECUTOR_PROTOCOL.md` for the lock discipline.
 
 ### The scenario lane — a live verification that exits with a code
 
-**T410 (board B138/B139).** Before this, every live verification ended with a
-human reading a session transcript: `main.cpp` returned `0` unconditionally, so
-a client that crashed, never logged in, or logged in and did nothing were
-indistinguishable to a script. The lane makes the exit code the result.
+**T410 (board B138/B139): the exit code is the result** of a live verification.
 
 ```bash
 # One scenario, headless, against a running eqemu:
@@ -478,10 +484,7 @@ bash scripts/eqemu/ready_selftest.sh --unit T4xx --legacy
 
 **"Restore with the world DOWN" means STOP THE CONTAINER** (T493, board B784),
 because **the zone writes its in-memory copy of a character back when the zone
-SHUTS DOWN, not when the client disconnects.** A row moved while a character was
-in world survived the client's death by 60 s untouched and was overwritten the
-instant the zone got SIGTERM — so a restore verified itself byte-identical and
-the `down.sh` that followed silently undid it.
+SHUTS DOWN, not when the client disconnects.**
 
 **A PORT PROBE IS NOT LIVENESS** (T497, board B797). A host-side `connect()` on
 5998/9000 answers with the server fleet at ZERO processes: those are PUBLISHED
@@ -515,9 +518,7 @@ shapes are `'/bin/(loginserver|world|zone)( |$)'` and the bracket trick
 sourced by `scripts/scenario.sh`, `scripts/llmbench/teardown.sh` and
 `scripts/llmbench/record.sh` — `eqemu_world_stop` (`docker stop` the
 eqemu-server container; mariadb is a separate container and stays up) then ONE
-statement batch, not one `UPDATE` per row. Measured on the local lane: 17 s
-byte-identical, against 22 s (local) / 2 min (over ssh) for the per-row loop that
-did not work. **Do not inline another copy**, and do not go back to `pkill`.
+statement batch, not one `UPDATE` per row. **Do not inline another copy**, and do not go back to `pkill`.
 `scripts/eqemu/restore_selftest.sh` is the net: it logs a character in, makes the
 snapshot and the world disagree on purpose, restores, runs `down.sh`'s SIGTERM
 step and only THEN diffs, so the write-back is caught rather than waited for. Its
@@ -1006,9 +1007,7 @@ ABSOLUTE step 0..20 (`include/client/audio/volume_steps.h`, the oracle's own
 unit) and `BridgeComponent::PublishVolumesChanged()` publishes what the audio
 manager actually holds back on `GameEventType::VolumesChanged`, from all four
 sites that move a volume: the config apply, the two intents, and `/musicvolume`
-/ `/effectsvolume`. Before that the intents carried a delta and the renderer
-shadowed what it had last sent, so a slash command behind its back left the
-slider stale.
+/ `/effectsvolume`.
 
 `config/chat_settings.json` and `config/ui_settings.json` — the DELETED
 `WindowManager`'s saved state — described draggable windows the client no longer
