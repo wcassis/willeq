@@ -80,11 +80,12 @@ B733: SSN_HS_DEF references [SNNHE00_DMSPRITEDEF(974), SSN_DMSPRITEDEF(3359)] to
    declared in `include/client/graphics/eq/geometry_combiner.h`) runs the OLD
    name selection verbatim (in stored order, so unchanged characters keep the
    exact same part order) and adds every `skeletonReferenced` geometry the name
-   selection did not pick. It is wired into the four base-builder call sites:
+   selection did not pick. It is wired into the five base-builder call sites:
    `model_loading_chr.cpp` (`loadModelFromZoneChr`, `loadModelFromCachedChr` —
    the path race 146's db row drives), `model_loading_search.cpp`
-   (`searchAndBuildModel`), and `model_loading.cpp` (the global-archive +
-   search paths).
+   (`searchZoneChrFilesForModel`), and `model_loading.cpp` (the global-archive
+   path `loadModelFromGlobalChr` and the numbered-global path
+   `loadModelFromNumberedGlobal`, `model_loading.cpp:629`).
 
 Why NOT "select the whole stored set" (the first, reverted approach): the
 stored set now includes the prefix family's VARIANT meshes (HUM01, HUMHE01,
@@ -181,7 +182,7 @@ deterministic) fails on the `memoryCoverage` values in
 | gfaydark | 1,445,267 | 1,445,411 | +144 |
 | befallen | 1,445,267 | 1,445,411 | +144 |
 | iceclad | 1,522,794 | 1,522,962 | +168 |
-| timorous | 1,465,276 | 1,465,468 | +168 |
+| timorous | 1,465,276 | 1,465,468 | +192 |
 
 Mechanism, proven [measured]: `CharacterModel` grew by exactly one member --
 `std::vector<const ZoneGeometry*> skeletonReferenced` (s3d_loader.h:149), the
@@ -190,7 +191,8 @@ compiled probe at `4139cee6`). `calcCharModels()`
 (model_loading_search.cpp:918) charges `sizeof(CharacterModel)` per retained
 model and never counts `skeletonReferenced`'s contents (empty or filled), so
 the gate's `--test-races 1..5` run gains 24 B per loaded model: +144 = 6
-models (the three classic zones) and +168 = 7 models (iceclad, timorous).
+models (the three classic zones), +168 = 1,522,962 - 1,522,794 = 7 models
+(iceclad), and +192 = 1,465,468 - 1,465,276 = 8 x 24 B (timorous).
 No new geometry, no new skeleton data, no frame change: the five gate zones'
 image goldens are byte-identical in the same CI run. Races 127/146/240 are
 outside `MEMORY_COVERAGE_TEST_RACES` (visual_gate.py:248), so the recovered

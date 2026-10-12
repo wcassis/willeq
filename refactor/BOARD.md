@@ -11980,7 +11980,8 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   and the 0x200-listed meshes the bones/prefix didn't store (`s3d_loader_characters.cpp`),
   and the base builders select the OLD name set plus the skeleton-referenced
   additions the name selection missed (`selectCharacterParts`, `geometry_combiner.cpp`,
-  wired into the four base-builder call sites in `model_loading{,_chr,_search}.cpp`).
+  wired into the five base-builder call sites in `model_loading{,_chr,_search}.cpp`,
+  incl. `loadModelFromNumberedGlobal`, `model_loading.cpp:629`).
   Pinned by `B733Race146LoaderTest` (`tests/test_b733_skeleton_mesh_refs.cpp`),
   which derives the expected part list from the WLD data (never hand-typed) and
   was RED (3359/4333) on origin/fable. Gate impact [measured]: the four
