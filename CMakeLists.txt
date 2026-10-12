@@ -902,6 +902,7 @@ IF(WITH_AUDIO)
         src/client/audio/audio_backend.cpp
         src/client/audio/midi_player.cpp
         src/client/audio/sfx_manager.cpp
+        src/client/audio/sound_buffer_cache.cpp
     )
 ENDIF()
 

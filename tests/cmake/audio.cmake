@@ -11,6 +11,7 @@ SET(AUDIO_COMMON_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/src/client/audio/audio_backend.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/midi_player.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/sfx_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/audio/sound_buffer_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/sound_buffer.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/music_player.cpp
     ${CMAKE_SOURCE_DIR}/src/client/audio/sound_assets.cpp

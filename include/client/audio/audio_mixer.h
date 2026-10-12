@@ -87,6 +87,15 @@ public:
     // is logged. Callable from the render thread (returns at once).
     void freeChannel(int handle);
 
+    // Deactivate EVERY active channel and wait for the render thread to
+    // quiesce. The channels are not freed (their sample pointers become
+    // stale but nothing reads them again); the point is that no audio-thread
+    // pass is still inside render() when this returns, so callers may safely
+    // free the sample data a deactivated channel pointed at. Used at shutdown
+    // and by the cache-eviction tests, which need "every sound stopped"
+    // before they can observe the cap evict.
+    void stopAll();
+
     // T248: the teardown side of the render handshake, exposed for callers
     // that mutate channel state without freeing the channel. Publish the
     // change (an atomic store) first, then call this; returns false only if

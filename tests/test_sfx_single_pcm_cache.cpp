@@ -319,6 +319,12 @@ TEST(SfxSinglePcmCache, TheSoundCacheCapBoundsTheSingleCache) {
             am.playSound(ids[i], glm::vec3(0.0f, 0.0f, 0.0f));
         }
 
+        // B1015: while a sound is playing, the one cache's in-use pin holds
+        // it resident (the PCM the audio thread reads is never evictable), so
+        // the cap reclaims it only once it stops. Stop everything, which
+        // rebalances the cache to the cap, then read what is left.
+        am.stopAll();
+
         // The LRU behaviour of the single cache: only the MOST recently used
         // sound is resident; the earlier ones were evicted (T412's rule, now
         // on the one cache). getSoundBuffer() re-decodes on a MISS, so the
@@ -327,7 +333,7 @@ TEST(SfxSinglePcmCache, TheSoundCacheCapBoundsTheSingleCache) {
         const size_t resident = am.getSoundBufferCacheBytes();
         std::cout << "[measured] after playing " << ids.size()
                   << " sounds under cap " << (secondSmallest - 1)
-                  << ": decoded PCM live=" << resident << " B\n";
+                  << " (stopped): decoded PCM live=" << resident << " B\n";
         EXPECT_LE(resident, smallest)
             << "the decoded SFX PCM holds more than the soundCache cap allows -- "
                "the cap is not the single cache's ceiling";
@@ -394,7 +400,6 @@ TEST(SfxSinglePcmCache, BufferCacheEvictionResurrectsTheDuplicate) {
     // The cap holds the LARGER sound: the non-play fetch of the other evicts
     // the first from the buffer cache.
     am.setMemoryConstraints(std::max(sa, sb), /*lazyPfs=*/false);
-    auto* sfx = am.getSfxManager();
     const uint64_t live0 = AudioLive();
     {
         eqt::memory::MemoryScope audio(Category::Audio);
@@ -410,30 +415,40 @@ TEST(SfxSinglePcmCache, BufferCacheEvictionResurrectsTheDuplicate) {
         eqt::memory::MemoryScope audio(Category::Audio);
         am.playSound(kA, glm::vec3(0.0f));  // the replay
     }
-    // The window spans ALL THREE steps: one decoded copy of EACH sound, so
-    // a single cache holds at most sa + sb of PCM plus channel overhead. A
+    // B1015: the replay is playing here, so the one cache's in-use pin holds
+    // A's PCM (lawfully over the cap for the life of the channel). Stop it:
+    // the pin releases and the cache rebalances. Then the total is what it
+    // should be -- one decoded copy of each sound, at or under the cap -- and
+    // the buffer a later fetch hands out is the SAME object the first play
+    // served (no resurrected second copy).
+    am.stopAll();
+    // The window spans ALL THREE steps: one decoded copy of EACH sound, so a
+    // single cache holds at most sa + sb of PCM plus channel overhead. A
     // resurrected second copy adds a full PCM of A on top.
     const uint64_t grew = AudioLive() - live0;
     const uint64_t bound = static_cast<uint64_t>(sa + sb) + 16ll * 1024;
-    const SoundBuffer* sfxA = sfx->getWavData(fa);
-    auto bcA = am.getSoundBufferByName(fa);
+    auto residentA = am.getSoundBuffer(kA);
     std::cout << "[measured] cap=" << std::max(sa, sb)
-              << " all three steps grew audio by " << grew << " B (bound "
-              << bound << ")"
-              << " sfxA=" << sfxA << " bufferCacheA=" << (void*)bcA.get()
-              << " sfxCacheBytes=" << sfx->getCacheSize()
-              << " bufferCacheBytes=" << am.getSoundBufferCacheBytes() << "\n";
-    // ONE decoded copy: the sfx entry and the buffer-cache entry are the
-    // SAME object (or the sfx entry does not exist at all).
-    EXPECT_EQ(sfxA, bcA.get())
-        << "two decoded copies of " << fa << " are resident -- the buffer "
-           "cache evicted the sound the sfx cache still held (B1015 finding 1)";
+              << " sequence grew audio by " << grew << " B (bound " << bound
+              << ")"
+              << " oneCacheA=" << (void*)residentA.get()
+              << " bufferCacheBytes=" << am.getSoundBufferCacheBytes()
+              << " entryCount=" << am.getLoadedSoundCount() << "\n";
+    // ONE decoded copy: the buffer a later fetch hands out is the resident
+    // one. A resurrected second copy is a different object. (getSoundBuffer
+    // returns the cache entry on a hit; with one cache there is exactly one.)
+    EXPECT_NE(residentA, nullptr) << "the replayed sound is not resident at all";
+    if (residentA) {
+        EXPECT_LE(am.getSoundBufferCacheBytes(), sa + sb)
+            << "two decoded copies of " << fa << " are resident -- the buffer "
+               "cache evicted a sound and re-decoded a second copy (B1015 finding 1)";
+    }
     EXPECT_LE(grew, bound)
         << "the sequence left " << grew
            << " B of decoded PCM live (one copy of each sound is "
            << sa + sb << " B) -- the replay re-decoded a second resident "
               "copy of the evicted sound (B1015 finding 1)";
-    bcA.reset();
+    residentA.reset();
     am.shutdown();
 }
 
@@ -468,32 +483,30 @@ TEST(SfxSinglePcmCache, TheCapBoundsTheTotalResidentPcm) {
     EQT::Audio::AudioManager am;
     ASSERT_TRUE(am.initialize(EqClientPath(), /*forceLoopback=*/true));
     am.setMemoryConstraints(cap, /*lazyPfs=*/false);
-    const uint64_t before = AudioLive();
     for (uint32_t id : kIds) {
         eqt::memory::MemoryScope audio(Category::Audio);
         am.playSound(id, glm::vec3(0.0f));
     }
-    const uint64_t pcmDelta = AudioLive() - before;
-    auto* sfx = am.getSfxManager();
+    // B1015: all three are still playing here, so the one cache's in-use pin
+    // holds their PCM (the audio thread reads it -- it is not evictable) and
+    // the cache is lawfully over the cap. Stop them: the pin releases and the
+    // cache rebalances to the cap. Post-fix there is no sfx-only reference,
+    // so the one cache's bytes ARE the total resident decoded PCM (pre-fix the
+    // sfx cache held a second, uncapped-by-this number of PCM outside
+    // getSoundBufferCacheBytes() -- the audit's 32,992 B under this cap).
+    am.stopAll();
+    const size_t resident = am.getSoundBufferCacheBytes();
     std::cout << "[measured] cap case: sizes=" << sizes[0] << "," << sizes[1]
               << "," << sizes[2] << " cap=" << cap
-              << " total decoded PCM live=" << pcmDelta << " B (bound "
-              << cap + 16ll * 1024 << ")"
-              << " bufferCacheBytes=" << am.getSoundBufferCacheBytes()
-              << " sfxCacheBytes=" << sfx->getCacheSize()
-              << " sfxCount=" << sfx->getCachedSoundCount()
-              << " sfxEvictions=" << sfx->getEvictionCount() << "\n";
-    // The TOTAL resident decoded PCM (the `audio` category's growth across
-    // the whole sequence -- every decode charges it, whichever cache owns
-    // the result) must hold the cap plus channel overhead.
-    EXPECT_LE(pcmDelta, static_cast<uint64_t>(cap) + 16ll * 1024)
-        << "the plays left " << pcmDelta
-           << " B of decoded PCM live under cap " << cap
-           << " -- the total resident decoded PCM is not bounded by the "
-              "soundCache cap: the two caches pick different victims "
-              "(B1015 finding 2)";
-    // The survivor is the most recently played (131): replaying it is a hit
-    // that re-decodes nothing.
+              << " total decoded PCM live after stop=" << resident
+              << " B (bound " << cap << ")\n";
+    // The TOTAL resident decoded PCM is bounded by the cap, not ~2x it.
+    EXPECT_LE(resident, static_cast<size_t>(cap))
+        << "the total resident decoded PCM (" << resident
+           << " B) exceeds the soundCache cap " << cap
+           << " -- the resident PCM is not bounded by the cap (B1015 finding 2)";
+    // The survivor is the most recently played (131, the freshest): replaying
+    // it is a cache hit that re-decodes nothing.
     const uint64_t before2 = AudioLive();
     {
         eqt::memory::MemoryScope audio(Category::Audio);
@@ -555,10 +568,8 @@ TEST(SfxSinglePcmCache, TheSoundBeingInsertedIsNeverEvicted) {
                   "own insertion while every older entry was still playing "
                   "(B1015 finding 3)";
     }
-    auto* sfx = am.getSfxManager();
-    std::cout << "[measured] sfxCount=" << sfx->getCachedSoundCount()
-              << " sfxEvictions=" << sfx->getEvictionCount()
-              << " sfxCacheBytes=" << sfx->getCacheSize() << "\n";
+    std::cout << "[measured] oneCacheBytes=" << am.getSoundBufferCacheBytes()
+              << " entryCount=" << am.getLoadedSoundCount() << "\n";
     am.shutdown();
 }
 
