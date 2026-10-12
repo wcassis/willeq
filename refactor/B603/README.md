@@ -56,8 +56,7 @@ docker, scripts) before touching it.
   through another path: slots are filled only by `loadFromJson()` at startup
   and published by `publishAllSlots()` at zone-in. No command, no intent, no
   UI control calls `assignSlot`/`clearSlot`. Hotbar slot assignment is a
-  **MISSING feature** — board it as its own line (see FOLLOW-UP), do not wire
-  it here.
+  **MISSING feature** — boarded as B1025 (#345), do not wire it here.
 
 ## An edit splice caught by ctest (2026-10-11)
 
@@ -117,8 +116,8 @@ which had no row of its own — it was a live pass-through in HEAD).
   CI pipeline on the pushed head is the build/census/gate proof; the gate
   frames must be identical — no rendering-reachable path is touched by this
   diff (the bridge publishes stay; only the dead std::function slots go).
-- **Hotbar slot assignment** is a missing feature (see above): board it
-  separately (FOLLOW-UP on #187), do not wire it in this unit.
+- **Hotbar slot assignment** is a missing feature (see above): boarded as
+  B1025 (#345), do not wire it in this unit.
 - The `inventory_cursor.cpp` REACHABILITY comment (`pickupMoney`) still names
   B036 as the open item — B036 is the money-slot **UI**, which is genuinely
   still absent (the coin gesture is reached via the trade window and bank
