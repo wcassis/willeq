@@ -326,15 +326,30 @@ def check_pi():
         if rc != 2 or "orchestrator" not in out or "--capture" not in out:
             failures.append(f"--bless --platform pi: rc={rc} out={out!r}")
 
-        # 4. no platforms.pi section -> NOT YET BLESSED, exit 1, no x86 fallback
-        rc, out = _run_main(gate, ["--platform", "pi", "--bench", str(PI_BENCH)])
+        # 4. no platforms.pi section -> NOT YET BLESSED, exit 1, no x86
+        #    fallback. BLESS-STATE-SAFE: since 55ec17b3 the real manifest
+        #    carries a blessed platforms.pi, so this path is exercised from
+        #    a manifest WITHOUT the section (the pre-bless state the check
+        #    was written for), not from the real manifest.
+        unsectioned = json.loads(json.dumps(manifest))
+        unsectioned.get("platforms", {}).pop("pi", None)
+        with mock.patch.object(gate, "load_manifest", return_value=unsectioned):
+            rc, out = _run_main(gate, ["--platform", "pi", "--bench", str(PI_BENCH)])
         if rc != 1 or "NOT YET BLESSED" not in out:
             failures.append(f"missing platforms.pi: rc={rc} out={out!r}")
         if "tests/goldens/qeynos2_f" in out or "no golden at" in out:
             failures.append("missing platforms.pi fell back to the x86 set")
 
         # 5. --goldens-dir supplies the goldens + section when the manifest
-        #    lacks one: the run2-vs-run1 determinism check and QA re-runs use it
+        #    lacks one: the run2-vs-run1 determinism check and QA re-runs use
+        #    it. BLESS-STATE-SAFE: the real manifest carries platforms.pi
+        #    since 55ec17b3, and verify_pi() only falls back to
+        #    <goldens-dir>/manifest_pi.json when cfg.section is None -- so
+        #    the run above a manifest WITHOUT the section, which is exactly
+        #    the state in which a --goldens-dir capture supplies its section.
+        #    The stub section still has to match the stub's metrics, so the
+        #    real verify path (pixels, metrics, memory, maps) runs against
+        #    the goldens-dir manifest, and a broken verify still FAILs.
         with tempfile.TemporaryDirectory(prefix="b1024_goldens_") as td:
             section = _pi_section(manifest)
             for z in manifest["zones"]:
@@ -346,8 +361,11 @@ def check_pi():
             cfg = gate.platform_config(manifest, "pi", str(PI_BENCH), td)
             if cfg.golden_root != Path(td):
                 failures.append(f"pi --goldens-dir golden_root {cfg.golden_root} != {td}")
-            rc, out = _run_main(gate, ["--platform", "pi", "--bench", str(PI_BENCH),
-                                       "--goldens-dir", td])
+            unsectioned = json.loads(json.dumps(manifest))
+            unsectioned.get("platforms", {}).pop("pi", None)
+            with mock.patch.object(gate, "load_manifest", return_value=unsectioned):
+                rc, out = _run_main(gate, ["--platform", "pi", "--bench", str(PI_BENCH),
+                                           "--goldens-dir", td])
             if rc != 0:
                 failures.append(f"pi --goldens-dir verify (blessed stub): rc={rc} out={out!r}")
             elif "FAIL" in out:
