@@ -80,10 +80,33 @@ nothing reintroduced.
 - `createMode(mode, rendererType)` and `GraphicalRendererType` — the
   requested-type log line in `Application::initGameMode` still reads it.
 
+## Local verification (all in `scripts/ref/kb-evidence/`)
+
+- `build_willeq_after.txt` — `cmake --build build -j3 --target willeq`,
+  `exit=0`: every TU that includes a touched header (audio, modes,
+  common/, logging) rebuilt and linked.
+- `build_tests_after.txt` — `test_sfx_cache_eviction`, `test_eff_loader`,
+  `test_data_verification` all build, `exit=0`;
+  `ctest -R "SfxCacheEviction|EffLoader|DataVerification"` 28/28 passed.
+- `hygiene_after.txt` — first `ctest --test-dir build -L hygiene` run:
+  the ratchets this card owns (`ZeroCallers`, `ZeroCallersSelfTest`,
+  `WriteOnlyFields`, `FileSizeCeiling`, `DocCitations`, `DocClaims`,
+  `DocCounts`, `CommentClaims`) PASS; the three `*Reproducible` recipe
+  tests failed only because their generator binaries were not yet built in
+  this worktree's `build/` ("ERROR: generate_textures not found. Build it
+  first:").
+- `hygiene_allgreen.txt` — after building the six missing recipe-generator
+  binaries: `ctest --test-dir build -L hygiene` **29/29 passed, exit 0** —
+  including `TexturesReproducible`, `PackReproducible`, `DbReproducible`.
+  (They failed on the first run, `hygiene_after.txt`, only because their
+  generator binaries were not yet built in this worktree's `build/` —
+  "ERROR: generate_textures not found. Build it first:").
+- `deleted_names_census.txt` — tree-wide grep (src, include, tests, tools,
+  benchmarks, docker, scripts; .h .hpp .cpp .cc .inl) for all 23 deleted
+  names: 0 matches.
+
 ## Not verified / left open
 
 - CI (full build + ctest + visual gate) runs on the GitLab runner per the
-  card; local verification is the two ratchets above + the targeted build
-  (`willeq`, `test_sfx_cache_eviction`, `test_eff_loader`,
-  `test_data_verification` — all green after the last edit).
+  card — the gate frames are CI's job, not this card's.
 - No live-server or Pi leg exists for this card (offline by design).

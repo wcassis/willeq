@@ -1,0 +1,82 @@
+Internal ctest changing into directory: /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/build
+Test project /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/build
+      Start 430: GemOwnerTable
+ 1/29 Test #430: GemOwnerTable ......................   Passed    0.10 sec
+      Start 443: FileSizeCeiling
+ 2/29 Test #443: FileSizeCeiling ....................   Passed   10.81 sec
+      Start 444: DocCitations
+ 3/29 Test #444: DocCitations .......................   Passed    0.52 sec
+      Start 445: DocCitationsSelfTest
+ 4/29 Test #445: DocCitationsSelfTest ...............   Passed    0.08 sec
+      Start 446: DocClaims
+ 5/29 Test #446: DocClaims ..........................   Passed    1.07 sec
+      Start 447: DocCounts
+ 6/29 Test #447: DocCounts ..........................   Passed    0.11 sec
+      Start 448: CommentClaims
+ 7/29 Test #448: CommentClaims ......................   Passed    0.07 sec
+      Start 449: TexturesReproducible
+ 8/29 Test #449: TexturesReproducible ...............***Failed    0.01 sec
+ERROR: generate_textures not found. Build it first:
+       cmake --build /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/build --target generate_textures
+
+      Start 450: PackReproducible
+ 9/29 Test #450: PackReproducible ...................***Failed    0.01 sec
+ERROR: /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/build/bin/eqe1_builder is missing or not executable
+
+      Start 451: DbReproducible
+10/29 Test #451: DbReproducible .....................***Failed    0.01 sec
+ERROR: /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/build/bin/willeq_db_builder is missing or not executable
+
+      Start 452: ItemModelsMatchServer
+11/29 Test #452: ItemModelsMatchServer ..............   Passed    0.23 sec
+      Start 453: WriteOnlyFields
+12/29 Test #453: WriteOnlyFields ....................   Passed   65.68 sec
+      Start 454: ZeroCallers
+13/29 Test #454: ZeroCallers ........................   Passed    2.81 sec
+      Start 455: ZeroCallersSelfTest
+14/29 Test #455: ZeroCallersSelfTest ................   Passed    0.07 sec
+      Start 456: ItemModelMapDeletion
+15/29 Test #456: ItemModelMapDeletion ...............   Passed    0.44 sec
+      Start 457: VisualGateLedgerAssertions
+16/29 Test #457: VisualGateLedgerAssertions .........   Passed    0.07 sec
+      Start 458: ClientLedgerBudgetCheck
+17/29 Test #458: ClientLedgerBudgetCheck ............   Passed    0.32 sec
+      Start 459: MemoryCapHuntScript
+18/29 Test #459: MemoryCapHuntScript ................   Passed    0.47 sec
+      Start 460: BoardToIssuesHygiene
+19/29 Test #460: BoardToIssuesHygiene ...............   Passed    0.12 sec
+      Start 461: LlmBenchHeldBeforeAfterHygiene
+20/29 Test #461: LlmBenchHeldBeforeAfterHygiene .....   Passed    0.27 sec
+      Start 462: LlmBenchTimelineHeldFromSnapshot
+21/29 Test #462: LlmBenchTimelineHeldFromSnapshot ...   Passed    0.60 sec
+      Start 463: BoardDirNumbers
+22/29 Test #463: BoardDirNumbers ....................   Passed    0.08 sec
+      Start 464: CheckBuildTreeOrphansPrune
+23/29 Test #464: CheckBuildTreeOrphansPrune .........   Passed    0.10 sec
+      Start 465: PruneRefBuildTrees
+24/29 Test #465: PruneRefBuildTrees .................   Passed    0.11 sec
+      Start 466: CiBuildTreeStamp
+25/29 Test #466: CiBuildTreeStamp ...................   Passed    0.05 sec
+      Start 467: NameTagCrowdTiming
+26/29 Test #467: NameTagCrowdTiming .................   Passed    0.10 sec
+      Start 468: CrowdObservationControls
+27/29 Test #468: CrowdObservationControls ...........   Passed   11.63 sec
+      Start 469: RenderedZoneFinalVisit
+28/29 Test #469: RenderedZoneFinalVisit .............   Passed    0.16 sec
+      Start 470: RenderedZoneSummarizeGlDriver
+29/29 Test #470: RenderedZoneSummarizeGlDriver ......   Passed    0.13 sec
+
+90% tests passed, 3 tests failed out of 29
+
+Label Time Summary:
+hygiene    =  96.21 sec*proc (29 tests)
+slow       =   0.01 sec*proc (1 test)
+
+Total Test time (real) =  96.31 sec
+
+The following tests FAILED:
+	449 - TexturesReproducible (Failed)
+	450 - PackReproducible (Failed)
+	451 - DbReproducible (Failed)
+Errors while running CTest
+exit=8
