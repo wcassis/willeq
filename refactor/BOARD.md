@@ -1053,10 +1053,16 @@ it without taking that measurement first.
   regenerated from the armhf file and pinned derived by
   `scripts/ci/check_arm64_dockerfile.sh` (ctest `DockerfileArm64Derived`),
   `scripts/build-arm64-noble.sh` + `scripts/pi/publish_arm64_build.sh` →
-  `ci-arm64/<sha>/`; `docs/ci.md` "The aarch64 SBC lanes". Open: a CI job
-  for the arm64 build (`build-arm` is not widened), the kmscube floor + ledger
-  run per lane, and a `--constrained` preset per device — the last is class C
-  with measurements attached, never a default.
+  `ci-arm64/<sha>/`; `docs/ci.md` "The aarch64 SBC lanes". Smoke PASS on both
+  lanes (`review/B1030/README.md`), after one port fix: Panfrost lists 10-bit
+  EGL visuals first, so the DRM device now picks the config whose native
+  visual is the GBM format (`chooseConfigForGbmFormat`, unchanged result on
+  Lima, A/B in the README). Open: a CI job for the arm64 build (`build-arm`
+  is not widened); the `[memgpu]` census takes Panfrost's `drm-total-memory`
+  (174.8 MB) where `drm-resident-memory` is 38.8 MB — read the fdinfo
+  semantics before choosing a field (its own B item); the cgroup ledger run
+  per lane; and a `--constrained` preset per device — class C with
+  measurements attached, never a default.
 - ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
   mechanism (a partial `glBufferSubData` into a buffer the current Lima job
   references flushes the job and blocks in `lima_bo_wait`, once per write): the
