@@ -1,0 +1,4 @@
+declared members: 8063 (5399 distinct names) in include/client, src/client
+write-only census clean: 45 fields, all 45 classified in EXEMPT.
+unused census clean: 86 fields, all 86 classified in EXEMPT_UNUSED.
+exit=0

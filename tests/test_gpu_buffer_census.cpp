@@ -70,11 +70,13 @@ TEST(GpuBufferCensus, DocumentedFdinfoKeysSumOverRegions) {
     EXPECT_EQ(f.clientId, 7u);
     EXPECT_EQ(f.totalBytes, 6148u * 1024 + 1024u * 1024);
     EXPECT_EQ(f.residentBytes, 6148u * 1024);
+    EXPECT_FALSE(f.totalIsLegacyResident);   // drm-total-*: NOT a resident figure
 }
 
 TEST(GpuBufferCensus, LegacyDrmMemoryKeyIsTheTotal) {
     const DrmFdinfo f = parseDrmFdinfo("drm-driver:\tpanfrost\ndrm-memory-vram:\t300 KiB\n");
     EXPECT_TRUE(f.hasMemoryKeys);
+    EXPECT_TRUE(f.totalIsLegacyResident);
     EXPECT_EQ(f.totalBytes, 300u * 1024);
 }
 
@@ -170,13 +172,121 @@ TEST(GpuBufferCensus, FdinfoKeysWinOverEverything) {
     GpuBufferInputs in;
     in.drmFds = 1;
     in.fdinfoMemoryKeys = true;
-    in.fdinfoTotalBytes = 12345678;
+    in.fdinfoTotalBytes = 12345678;   // legacy drm-memory-* only: the total IS the resident size
+    in.fdinfoLegacyKeys = true;       // (B1032 review: the fold records that it was legacy)
+    in.fdinfoLegacyResidentBytes = 12345678;
     in.memcg = parseMemcgStat(fixture("kmscube_memory.stat"));
     in.cgroupProcs = 1;
     in.softwareRasteriser = 0;
     const GpuBufferCensus c = decideGpuBuffers(in);
     EXPECT_EQ(c.source, GpuBufferSource::DrmFdinfo);
     EXPECT_EQ(c.gpuBuffersBytes, 12345678u);
+}
+
+// B1032 (#352): the row is the RESIDENT figure, never the total. Numbers from
+// the ROCK 4D (Panfrost, kernel 7.1, Mesa 26.0) at qeynos2 steady: the total
+// counts the unfaulted part of Mesa's 128 MiB growable tiler heap (NOT the BO
+// cache: purgeable was 64-512 KiB, review/B1032/README.md), 4.5x the bytes
+// with pages behind them; the resident figure agrees with the cgroup's
+// shmem (41.2 MB) and the mapped lower bound (36.7 MB).
+TEST(GpuBufferCensus, FdinfoResidentIsTheRowNotTheTotal) {
+    GpuBufferInputs in;
+    in.drmFds = 6;
+    in.fdinfoMemoryKeys = true;
+    in.fdinfoResidentKeys = true;
+    in.fdinfoTotalBytes = 175411200;
+    in.fdinfoResidentBytes = 39407616;
+    in.softwareRasteriser = 0;
+    const GpuBufferCensus c = decideGpuBuffers(in);
+    EXPECT_EQ(c.source, GpuBufferSource::DrmFdinfo);
+    EXPECT_EQ(c.gpuBuffersBytes, 39407616u);
+    EXPECT_TRUE(c.outsideRssAnon);
+    EXPECT_EQ(ownedPlusGpuBuffers(25208784u, c), 25208784u + 39407616u);
+    const std::string line = gpuBuffersToLogLine("steady", "qeynos2", c, 25208784u);
+    EXPECT_NE(line.find(" gpu_buffers=39407616 "), std::string::npos) << line;
+    EXPECT_NE(line.find(" fdinfo_total=175411200 "), std::string::npos) << line;
+    EXPECT_NE(line.find(" fdinfo_resident=39407616 "), std::string::npos) << line;
+    EXPECT_NE(line.find(" fdinfo_purgeable="), std::string::npos) << line;
+}
+
+// B1032 review: a MODERN kernel that prints drm-total-* with no resident key.
+// drm_show_memory_stats() prints drm-resident-* only when some object reports
+// a resident status (lane 3's kernel 7.1 prints `drm-total-memory: 0` and no
+// resident key when nothing is resident), so a Panfrost-shaped fdinfo holding
+// only the total -- here the unfaulted 128 MiB tiler heap -- carries NO
+// resident figure. Taking its total would be the very overstatement B1032
+// removes; the fdinfo source has nothing to say, so the census falls through
+// to the next source (the exclusive cgroup's shmem). The fd is folded exactly
+// as readGpuBufferCensus() folds it.
+TEST(GpuBufferCensus, TotalOnlyFdinfoIsNotTheRow) {
+    const DrmFdinfo f = parseDrmFdinfo(
+        "drm-driver:\tpanfrost\n"
+        "drm-client-id:\t12\n"
+        "drm-total-memory:\t131072 KiB\n"
+        "drm-shared-memory:\t0\n");
+    EXPECT_TRUE(f.hasMemoryKeys);
+    EXPECT_FALSE(f.hasResidentKeys);
+    EXPECT_EQ(f.totalBytes, 134217728u);
+    GpuBufferInputs in;
+    in.drmFds = 1;
+    in.fdinfoMemoryKeys = f.hasMemoryKeys;
+    in.fdinfoResidentKeys = f.hasResidentKeys;
+    in.fdinfoTotalBytes = f.totalBytes;
+    in.fdinfoResidentBytes = f.residentBytes;
+    in.memcg = parseMemcgStat(fixture("kmscube_memory.stat"));
+    in.cgroupProcs = 1;
+    in.softwareRasteriser = 0;
+    const GpuBufferCensus c = decideGpuBuffers(in);
+    EXPECT_NE(c.gpuBuffersBytes, 134217728u);
+    EXPECT_EQ(c.source, GpuBufferSource::MemcgShmem);
+    EXPECT_EQ(c.gpuBuffersBytes, 1806336u);
+}
+
+// The render node's fdinfo CAPTURED on the ROCK 4D during that run.
+TEST(GpuBufferCensus, PanfrostFdinfoPublishesResidentAndPurgeable) {
+    const DrmFdinfo f = parseDrmFdinfo(fixture("rock4d_fdinfo_renderD128"));
+    EXPECT_TRUE(f.isDrm);
+    EXPECT_TRUE(f.hasMemoryKeys);
+    EXPECT_TRUE(f.hasResidentKeys);
+    EXPECT_GT(f.totalBytes, f.residentBytes * 3);
+    EXPECT_GT(f.residentBytes, 0u);
+    // drm-usage-stats.rst: purgeable buffers are a subset of the RESIDENT ones.
+    EXPECT_LE(f.purgeableBytes, f.residentBytes);
+}
+
+// readGpuBufferCensus()'s per-fd fold (B1032 review): an fd with no memory key
+// is skipped, a repeated drm-client-id counts once, the key flags are OR'ed
+// over fds and the byte figures summed -- so a resident key on ANY fd makes the
+// fdinfo the row, a total-only fd adds nothing to it, and a legacy drm-memory-*
+// fd adds its figure as resident.
+TEST(GpuBufferCensus, FdinfoFoldOrsKeysAndDedupesClients) {
+    const DrmFdinfo lima = parseDrmFdinfo(fixture("kmscube_fdinfo_renderD128"));
+    const DrmFdinfo panfrost = parseDrmFdinfo(fixture("rock4d_fdinfo_renderD128"));
+    const DrmFdinfo totalOnly = parseDrmFdinfo(
+        "drm-driver:\trockchip\ndrm-client-id:\t5\ndrm-total-memory:\t0\ndrm-shared-memory:\t0\n");
+    const DrmFdinfo legacy = parseDrmFdinfo(
+        "drm-driver:\told\ndrm-client-id:\t9\ndrm-memory-vram:\t300 KiB\n");
+    GpuBufferInputs in;
+    DrmFdinfoSeen seen;
+    foldDrmFdinfo(totalOnly, seen, in);   // first: no resident key yet
+    EXPECT_TRUE(in.fdinfoMemoryKeys);
+    EXPECT_FALSE(in.fdinfoResidentKeys);
+    foldDrmFdinfo(lima, seen, in);        // no memory key: skipped
+    foldDrmFdinfo(panfrost, seen, in);
+    foldDrmFdinfo(panfrost, seen, in);    // the same client (a dup'd fd): once
+    foldDrmFdinfo(legacy, seen, in);
+    EXPECT_EQ(seen.n, 3u);
+    EXPECT_TRUE(in.fdinfoResidentKeys);   // OR'ed: true once any fd had one
+    EXPECT_TRUE(in.fdinfoLegacyKeys);
+    EXPECT_EQ(in.fdinfoTotalBytes, panfrost.totalBytes + 300u * 1024);
+    EXPECT_EQ(in.fdinfoResidentBytes, 38484u * 1024);
+    EXPECT_EQ(in.fdinfoLegacyResidentBytes, 300u * 1024);
+    EXPECT_EQ(in.fdinfoPurgeableBytes, 512u * 1024);
+    in.drmFds = 5;
+    in.softwareRasteriser = 0;
+    const GpuBufferCensus c = decideGpuBuffers(in);
+    EXPECT_EQ(c.source, GpuBufferSource::DrmFdinfo);
+    EXPECT_EQ(c.gpuBuffersBytes, 38484u * 1024 + 300u * 1024);
 }
 
 // llvmpipe: the buffers are heap already charged to gpu_driver. The row

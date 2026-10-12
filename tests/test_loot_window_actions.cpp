@@ -128,10 +128,16 @@ protected:
     void OpenWithTwoItems() {
         auto r = processor.processCommand("/loot 777");
         ASSERT_TRUE(r.success) << r.message;
+        // B810 (#199): the loot window's model slots are TITANIUM-numbered --
+        // eqemu packs server slots 23+ and ServerToTitaniumSlot() converts
+        // them before the packet crosses the wire. Server general 1-2 (23,
+        // 24) are model 22, 23. (The pre-B810 test used slots 0/1, which are
+        // the looter's own equipment and no corpse can hold -- the raw-number
+        // defect this unit fixes.)
         ReplayZone(eq, HC_OP_ItemPacket,
-            ItemPacketPayload(kItemPacketLoot, BuildLootItemString(0, 2001, "Fire Beetle Eye")));
+            ItemPacketPayload(kItemPacketLoot, BuildLootItemString(22, 2001, "Fire Beetle Eye")));
         ReplayZone(eq, HC_OP_ItemPacket,
-            ItemPacketPayload(kItemPacketLoot, BuildLootItemString(1, 2002, "Fire Beetle Leg")));
+            ItemPacketPayload(kItemPacketLoot, BuildLootItemString(23, 2002, "Fire Beetle Leg")));
         bridge.drainEvents();
         eq.Test_ClearQueuedPackets();
     }
@@ -250,22 +256,27 @@ TEST_F(LootWindowActionsTest, TakeOneByName_SendsExactlyOneLootItem) {
     auto w = DecodeLootItem(q[0]);
     EXPECT_EQ(w.lootee, kCorpseId);
     EXPECT_EQ(w.looter, kMySpawnId);
-    EXPECT_EQ(w.slot_id, 1u);
+    EXPECT_EQ(w.slot_id, 23u) << "the wire carries the TITANIUM (model) corpse slot, B810";
     EXPECT_EQ(w.auto_loot, 1u) << "command-driven take goes to inventory, not the cursor";
     EXPECT_TRUE(IsLooting()) << "taking one item does not close the window";
 }
 
-TEST_F(LootWindowActionsTest, TakeOneBySlot_WhileOpen_IsAnItemNotACorpseId) {
+TEST_F(LootWindowActionsTest, TakeOneByServerSlot_WhileOpen_IsAnItemNotACorpseId) {
     OpenWithTwoItems();
 
-    auto r = processor.processCommand("/loot 0");
+    // B810 (#199): /loot takes the SERVER number. Server 24 is model 23 --
+    // the "Fire Beetle Leg" row -- so the take finds the item and sends the
+    // MODEL slot on the wire. Pre-B810, "/loot 23" would have dispatched raw
+    // slot 23 against a window holding model 22/23 by raw-number coincidence
+    // only, and "/loot 24" would have refused as out of range.
+    auto r = processor.processCommand("/loot 24");
     ASSERT_TRUE(r.success) << r.message;
 
     const auto& q = eq.Test_GetQueuedPackets();
     ASSERT_EQ(q.size(), 1u);
     auto w = DecodeLootItem(q[0]);
     EXPECT_EQ(w.lootee, kCorpseId);
-    EXPECT_EQ(w.slot_id, 0u);
+    EXPECT_EQ(w.slot_id, 23u);
 }
 
 TEST_F(LootWindowActionsTest, TakeOne_UnknownItem_FailsAndSendsNothing) {
@@ -276,6 +287,8 @@ TEST_F(LootWindowActionsTest, TakeOne_UnknownItem_FailsAndSendsNothing) {
     EXPECT_NE(r.message.find("rusty sword"), std::string::npos) << r.message;
     EXPECT_TRUE(eq.Test_GetQueuedPackets().empty());
 
+    // Server 7 is the looter's own equipment, not a corpse slot: refused,
+    // no packet (B810: the corpse domain starts at server 23).
     auto r2 = processor.processCommand("/loot 7");
     EXPECT_FALSE(r2.success);
     EXPECT_TRUE(eq.Test_GetQueuedPackets().empty());
@@ -286,9 +299,11 @@ TEST_F(LootWindowActionsTest, TakeOne_LootedItemArrival_RemovesItFromBothViews) 
     ASSERT_TRUE(processor.processCommand("/loot beetle leg").success);
 
     // The server ACKs, then the item lands in inventory (ItemPacket while
-    // slot 1 is pending -> ZoneProcessLootedItemToInventory).
+    // model slot 23 is pending -> ZoneProcessLootedItemToInventory). The
+    // arrival slot is a real inventory slot (server 25 = general 3 = model
+    // 24) -- distinct from the two corpse model slots 22/23 this test holds.
     ReplayZone(eq, HC_OP_ItemPacket,
-        ItemPacketPayload(kItemPacketInventory, BuildLootItemString(23, 2002, "Fire Beetle Leg")));
+        ItemPacketPayload(kItemPacketInventory, BuildLootItemString(24, 2002, "Fire Beetle Leg")));
 
     auto evs = bridge.drainEvents();
     EXPECT_EQ(CountEvents(evs, eqt::state::GameEventType::LootItemRemoved), 1u);
@@ -296,7 +311,7 @@ TEST_F(LootWindowActionsTest, TakeOne_LootedItemArrival_RemovesItFromBothViews) 
     // The auto-loot machine's own slot list must drop it too, or a later
     // /lootall would re-request an already-taken slot.
     EXPECT_EQ(cm->m_loot_items.size(), 1u);
-    EXPECT_EQ(cm->m_loot_items.front(), 0u);
+    EXPECT_EQ(cm->m_loot_items.front(), 22u) << "the remaining row's MODEL corpse slot (server 23)";
     EXPECT_TRUE(IsLooting());
 
     // A second take by the same name now finds nothing.
@@ -307,14 +322,14 @@ TEST_F(LootWindowActionsTest, TakeOne_LootedItemArrival_RemovesItFromBothViews) 
 TEST_F(LootWindowActionsTest, LootItemIntent_SendsLootItemToCursor) {
     OpenWithTwoItems();
 
-    bridge.pushIntent(eqt::events::LootItemIntent{kCorpseId, 1});
+    bridge.pushIntent(eqt::events::LootItemIntent{kCorpseId, 23});
     eq.Bridge().ProcessBridgeIntents();
 
     const auto& q = eq.Test_GetQueuedPackets();
     ASSERT_EQ(q.size(), 1u);
     auto w = DecodeLootItem(q[0]);
     EXPECT_EQ(w.lootee, kCorpseId);
-    EXPECT_EQ(w.slot_id, 1u);
+    EXPECT_EQ(w.slot_id, 23u) << "the intent carries the MODEL corpse slot verbatim";
     EXPECT_EQ(w.auto_loot, 0u) << "the UI gesture takes to the cursor, as the real client does";
 }
 
@@ -323,14 +338,14 @@ TEST_F(LootWindowActionsTest, LootItemIntent_SendsLootItemToCursor) {
 TEST_F(LootWindowActionsTest, LootItemIntent_RightClickSendsAutoLootToInventory) {
     OpenWithTwoItems();
 
-    bridge.pushIntent(eqt::events::LootItemIntent{kCorpseId, 1, /*autoLoot=*/true});
+    bridge.pushIntent(eqt::events::LootItemIntent{kCorpseId, 23, /*autoLoot=*/true});
     eq.Bridge().ProcessBridgeIntents();
 
     const auto& q = eq.Test_GetQueuedPackets();
     ASSERT_EQ(q.size(), 1u);
     auto w = DecodeLootItem(q[0]);
     EXPECT_EQ(w.lootee, kCorpseId);
-    EXPECT_EQ(w.slot_id, 1u);
+    EXPECT_EQ(w.slot_id, 23u);
     EXPECT_EQ(w.auto_loot, 1u) << "row 46c: straight into the inventory";
 }
 
@@ -350,9 +365,9 @@ TEST_F(LootWindowActionsTest, LootAll_SendsOneLootItemPerSlotThenEndLootRequest)
     auto w0 = DecodeLootItem(q[0]);
     auto w1 = DecodeLootItem(q[1]);
     EXPECT_EQ(w0.lootee, kCorpseId);
-    EXPECT_EQ(w0.slot_id, 0u);
+    EXPECT_EQ(w0.slot_id, 22u) << "the wire carries the MODEL corpse slots, B810";
     EXPECT_EQ(w0.auto_loot, 1u);
-    EXPECT_EQ(w1.slot_id, 1u);
+    EXPECT_EQ(w1.slot_id, 23u);
     EXPECT_EQ(w1.auto_loot, 1u);
     EXPECT_EQ(q[2].opcode, HC_OP_EndLootRequest);
     ASSERT_EQ(q[2].bytes.size(), 4u);
@@ -370,15 +385,15 @@ TEST_F(LootWindowActionsTest, LootAll_AfterTakingOne_SkipsTheTakenSlot) {
     OpenWithTwoItems();
     ASSERT_TRUE(processor.processCommand("/loot beetle eye").success);
     ReplayZone(eq, HC_OP_ItemPacket,
-        ItemPacketPayload(kItemPacketInventory, BuildLootItemString(23, 2001, "Fire Beetle Eye")));
+        ItemPacketPayload(kItemPacketInventory, BuildLootItemString(24, 2001, "Fire Beetle Eye")));
     eq.Test_ClearQueuedPackets();
 
     ASSERT_TRUE(processor.processCommand("/lootall").success);
     TickLootMachineToIdle();
 
     const auto& q = eq.Test_GetQueuedPackets();
-    ASSERT_EQ(q.size(), 2u) << "only slot 1 remains, then the close";
-    EXPECT_EQ(DecodeLootItem(q[0]).slot_id, 1u);
+    ASSERT_EQ(q.size(), 2u) << "only model slot 23 (server 24) remains, then the close";
+    EXPECT_EQ(DecodeLootItem(q[0]).slot_id, 23u);
     EXPECT_EQ(q[1].opcode, HC_OP_EndLootRequest);
 }
 

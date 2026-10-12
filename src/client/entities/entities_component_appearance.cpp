@@ -194,6 +194,27 @@ void eqt::entities::EntitiesComponent::ZoneProcessMobHealth(const EQ::Net::Packe
 				: 0;
 			ctx_.game_state.pet().updatePetStats(hp_percent, manaPercent);
 		}
+		// B1027 (#347): the STATE-bus publish of the same percentage.
+		// ConsoleRenderer (console_renderer.cpp:113,193) takes the current
+		// target's HP off EntityStatsChanged on state.events() -- a channel
+		// the bridge push below does not reach (nothing forwards bridge ->
+		// state bus; combat_state.cpp:76-84). B602 deleted the old
+		// state-bus publisher (EntityManager::fireEntityStatsChangedEvent,
+		// zero-caller) on the false premise that this bridge publish fed
+		// the console; since then a headless status line froze the target's
+		// HP at the value TargetChanged carried when it was acquired.
+		// Exactly one state-bus publisher of the enumerator -- a second
+		// would double the console's target-HP readout and fail
+		// test_console_target_hp_feed's "exactly once" census.
+		{
+			eqt::state::EntityStatsChangedData data;
+			data.spawnId = spawn_id;
+			data.hpPercent = hp_percent;
+			data.curMana = 0;
+			data.maxMana = 0;
+			ctx_.game_state.events().publish(eqt::state::GameEvent(
+				eqt::state::GameEventType::EntityStatsChanged, data));
+		}
 		// Update target HP via bridge if this is our current target (D17b)
 		// Note: EntityStatsChanged event published below covers this
 		// Publish EntityStatsChanged event

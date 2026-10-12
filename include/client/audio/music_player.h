@@ -74,11 +74,6 @@ public:
     // Output callback for RDP streaming (legacy — handled by AudioBackend now)
     void setOutputCallback(MusicOutputCallback callback);
 
-    // Legacy methods (no-ops — always software rendering now)
-    void enableSoftwareRendering();
-    bool isSoftwareRendering() const { return true; }
-    void reinitializeOpenAL();
-
     // Render callback for mixer (called from audio thread)
     static void mixerRenderCallback(void* userData, float* buffer, int frameCount);
 

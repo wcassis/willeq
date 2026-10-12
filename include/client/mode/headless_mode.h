@@ -52,20 +52,6 @@ public:
     // ========== Headless-Specific API ==========
 
     /**
-     * Get direct access to the console input handler.
-     */
-    input::ConsoleInputHandler* consoleInput() {
-        return m_inputHandler.get();
-    }
-
-    /**
-     * Get direct access to the console renderer.
-     */
-    output::ConsoleRenderer* consoleRenderer() {
-        return m_renderer.get();
-    }
-
-    /**
      * Set verbose mode (show entity spawn/despawn).
      */
     void setVerbose(bool verbose);
@@ -80,18 +66,12 @@ public:
      */
     void setColorOutput(bool color);
 
-    /**
-     * Get the game state.
-     */
-    state::GameState* getGameState() { return m_gameState; }
-
 private:
     void processInput();
 
     std::unique_ptr<input::ConsoleInputHandler> m_inputHandler;
     std::unique_ptr<output::ConsoleRenderer> m_renderer;
 
-    state::GameState* m_gameState = nullptr;
     bool m_running = false;
     bool m_quitRequested = false;
 };

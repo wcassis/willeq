@@ -15,7 +15,6 @@ bool HeadlessMode::initialize(state::GameState& state, const ModeConfig& config)
     // B839 (issue #94): the console input handler and renderer adapter are
     // part of the "mode" sub-owner (see createMode in game_mode.cpp).
     eqt::memory::StartupScope modeScope("mode");
-    m_gameState = &state;
 
     // Create input handler
     m_inputHandler = std::make_unique<input::ConsoleInputHandler>();
@@ -56,7 +55,6 @@ void HeadlessMode::shutdown() {
         }
 
         m_running = false;
-        m_gameState = nullptr;
     }
 }
 
