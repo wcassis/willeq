@@ -156,7 +156,7 @@ TEST(B534OutputCameraRouteTest, TheLiveCameraRouteSurvives) {
     // The guard's own negative control: the F9 route this unit must NOT
     // have touched. Every line here is a token that exists on fable
     // (hotkey_manager.h:57, hotkey_manager.cpp:132/619,
-    // renderer_frame_input.cpp:243, player_camera_component.h:229) and must
+    // renderer_frame_input.cpp:243, player_camera_component.h:230) and must
     // keep existing, so a sweep that grabs the LIVE enum or the consumer
     // arm goes red here.
     const char* const needles[] = {"ToggleCameraMode"};
