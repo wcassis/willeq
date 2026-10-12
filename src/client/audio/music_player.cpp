@@ -117,8 +117,13 @@ bool MusicPlayer::play(const std::string& filepath, bool loop, int trackIndex, d
         return false;
     }
 
-    // Stop current playback
-    stop();
+    // Stop current playback. B1014 (issue #335): a song is coming, so this is
+    // not a real end -- the previous song's font (if custom) is still in use
+    // by the one being selected (AudioManager::playMusic selects the font
+    // BEFORE play()), and B990's release here freed it out from under its own
+    // next song (the custom track then played on GM). Stop without releasing;
+    // the font stays resident until a real end.
+    stopImmediateInternal();
 
     currentFile_ = filepath;
     currentTrackIndex_ = trackIndex;
@@ -158,15 +163,75 @@ bool MusicPlayer::play(const std::string& filepath, bool loop, int trackIndex, d
     return true;
 }
 
-void MusicPlayer::stop(float fadeSeconds) {
-    if (!playing_) {
-        return;
-    }
+// B1014 (issue #335): the custom-font release ordering, in one place.
+//
+// The custom orchestral SoundFont (~23 MiB resident; B977 measured
+// 24,162,944 B live) loads on demand (MidiPlayer::selectSoundFont(Custom),
+// the T504 path) and must be released when a song that plays on it REALLY
+// ends -- but never earlier, and never from the audio thread. B990 released
+// it in stop(), "the one place a song ends", and that was wrong twice over:
+//
+//   1. play() calls stop() FIRST (above), and AudioManager::playMusic selects
+//      the font BEFORE calling play() (the StartupScope "au.soundfont_custom"
+//      block in audio_manager.cpp). So with ANY song playing -- a GM zone
+//      track about to change to a custom one, or one custom track about to
+//      change to another (the setDayNight order stopMusic(1.0) + playMusic in
+//      zone_audio_manager.cpp) -- the font playMusic had just selected was
+//      freed by the very next call and the custom song played on GM.
+//
+//   2. the fade-completion release ran in mixerRenderCallback, i.e. on the
+//      AUDIO thread. It tsf_closed the font while the game thread could be in
+//      selectSoundFont(Custom) (a tsf_load) or MidiPlayer::play() (a
+//      tsf_reset) -- a possible double-close/use-after-free. The T248 render
+//      barrier covers render passes, not game-thread mutators.
+//
+// The ordering now:
+//   * stop(fade>0)          : the stop is deferred to the fade. At completion
+//                             the audio thread calls MidiPlayer::stop()
+//                             (thread-safe: re-entrant waitQuiescent) and
+//                             sets fontReleasePending_ -- it NEVER frees.
+//   * stop(0.0) public      : a real end. stopImmediateInternal() stops the
+//                             song (and flags the font if resident), then
+//                             drainPendingFontRelease() frees it on this
+//                             thread.
+//   * stop() inside play()  : NOT a real end -- a song is coming. It uses
+//                             stopImmediateInternal() only: the font the next
+//                             song was selected for stays resident.
+//   * drainPendingFontRelease(): the game thread's only free site (besides
+//                             the public stop above). Called every game tick
+//                             from AudioManager::update(). Refuses while a
+//                             song plays, so a flag left by a faded stop can
+//                             never free the font of the custom song that
+//                             started in the meantime -- the release rides on
+//                             that song's own real end.
+//
+// Consequence pinned by tests/test_soundfont_release.cpp: a custom-font song
+// that follows any playing song plays on the CUSTOM font (getActiveSoundFont
+// == Custom), the font is released at the first real end after its load, and
+// a following custom-font song reloads it (T504 unchanged).
 
+void MusicPlayer::stop(float fadeSeconds) {
     if (fadeSeconds > 0.0f) {
+        if (!playing_) {
+            return;
+        }
         fadeTarget_ = 0.0f;
         fadeRate_ = 1.0f / fadeSeconds;
         // Fade will be handled in the render callback
+        return;
+    }
+
+    // Immediate stop
+    stopImmediateInternal();
+
+    // B1014 (issue #335): a PUBLIC stop is a real end -- no song follows, so
+    // the custom font this song held (or the one a previous faded song left
+    // flagged for release) is freed here, on this (game) thread.
+    drainPendingFontRelease();
+}
+
+void MusicPlayer::stopImmediateInternal() {
+    if (!playing_) {
         return;
     }
 
@@ -190,28 +255,45 @@ void MusicPlayer::stop(float fadeSeconds) {
         musicChannelHandle_ = -1;
     }
 
-    // B990 (issue #309): the custom orchestral SoundFont (24 MB of float
-    // samples) is resident while a custom-font song plays and was, before
-    // this, NEVER released -- the T504 free path (selectSoundFont(GM)) is
-    // driven only by a font SWITCH, and a song that simply ends never
-    // switches. Release it here, the one place a song ends.
-    // releaseCustomSoundFont() calls MidiPlayer::stop() (the T248 render-
-    // barrier handshake) before freeing the font, which zeroes the playback
-    // position. That is not observable by any caller: the only readers of
-    // getPlaybackTimeMs() are startAutoAttackMusic()/startVendorBankMusic(),
-    // and both read it while the song is still playing (guarded by
-    // isPlaying()) and stash it in savedZoneMusicTimeMs_ -- the resume uses
-    // that saved value, never the live one. The pre-B990 comment above
-    // (deliberately not calling bare MidiPlayer::stop()) defended the same
-    // invariant by avoidance; this defends it by the font being the only
-    // thing stop() needs to free.
-    if (midiPlayer_) {
-        midiPlayer_->releaseCustomSoundFont();
+    // B1014 (issue #335): flag, do not free. This stop serves two different
+    // endings and only one of them is real:
+    //   * a song follows (play() above) -- the font the next song was
+    //     selected for is in use, the release must wait for ITS real end;
+    //   * a song ends here (the public stop() below) -- drainPendingFontRelease()
+    //     frees it immediately after this returns.
+    // Either way the free happens on this thread; the audio thread never frees
+    // (see the fade-complete flag in mixerRenderCallback). seq_cst: the flag is
+    // the cross-thread "this end is finished, safe to free" signal.
+    if (midiPlayer_ && midiPlayer_->isCustomSoundFontResident()) {
+        fontReleasePending_.store(true);
     }
 
     decodedData_.clear();
     currentFile_.clear();
     playingMidi_ = false;
+}
+
+void MusicPlayer::drainPendingFontRelease() {
+    // B1014 (issue #335): the audio thread flags a real end it cannot
+    // perform (fade completion); this thread frees. While a song plays the
+    // font is in use -- a pending flag just stays pending until that song's
+    // own real end (the guard is what keeps B990's defect from re-entering
+    // through the flag: the fade may complete while the NEXT custom song is
+    // already playing).
+    if (!fontReleasePending_.load()) {
+        return;
+    }
+    if (playing_.load(std::memory_order_relaxed)) {
+        return;
+    }
+    fontReleasePending_.store(false);
+    if (midiPlayer_) {
+        // releaseCustomSoundFont() calls MidiPlayer::stop() (the T248
+        // render-barrier handshake) before freeing the font. Safe from this
+        // thread: no song plays (playing_ is false above) and stop() is
+        // precisely the thread-safe mutating path.
+        midiPlayer_->releaseCustomSoundFont();
+    }
 }
 
 void MusicPlayer::pause() {
@@ -285,18 +367,20 @@ void MusicPlayer::mixerRenderCallback(void* userData, float* buffer, int frameCo
                 player->playing_.store(false);
                 if (player->playingMidi_ && player->midiPlayer_) {
                     player->midiPlayer_->stop();
-                    // B990 (issue #309): the custom SoundFont is resident
-                    // while this custom-font song plays and, before this, was
-                    // never released on the faded path -- the deferred stop
-                    // (stopMusic(fade>0)) returns to the caller with the song
-                    // still fading, so the immediate path's release never ran.
-                    // Release it now that the fade has finished, on the audio
-                    // thread: the stop() above already quiesced the synth, and
-                    // this thread is the one renderBarrier_ last entered (the
-                    // re-entrant rule in render_barrier.h), so no render pass
-                    // can still read the font. A later pass sees
-                    // playing_==false before it dereferences it.
-                    player->midiPlayer_->releaseCustomSoundFont();
+                    // B1014 (issue #335): a faded stop is a real end, but this
+                    // (audio) thread may only STOP, never release. The B990
+                    // code tsf_closed here while the game thread could be in
+                    // selectSoundFont(Custom) or MidiPlayer::play() (tsf_reset)
+                    // -- a double-close the render barrier does not cover (it
+                    // covers render passes, not game-thread mutators). Flag
+                    // the end instead: the game thread frees it on the next
+                    // drainPendingFontRelease() (the audio update tick, or the
+                    // next public stop()), and only while no song plays.
+                    // If a following custom song is already playing when the
+                    // flag is read, the drain refuses and the release rides on
+                    // that song's own real end. seq_cst: the flag is the
+                    // cross-thread "end finished, safe to free" signal.
+                    player->fontReleasePending_.store(true);
                 }
                 std::memset(buffer, 0, frameCount * 2 * sizeof(float));
                 return;

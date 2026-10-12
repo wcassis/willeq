@@ -39,6 +39,12 @@ const Entry kScenarios[] = {
     {"cast_buff_notake", &MakeCastBuffNotakeScenario},
     {"cast_interrupt_observe", &MakeCastInterruptObserveScenario},
     {"cast_fizzle", &MakeCastFizzleScenario},
+    // B760 (issue #45): the repeated cast-tail lane -- one caster, two
+    // conditions (its peer is chosen by scripts/scenario.sh from the name).
+    {"cast_tail_repeat_quiet", &MakeCastTailRepeatQuietScenario},
+    {"cast_tail_repeat_traffic", &MakeCastTailRepeatTrafficScenario},
+    {"cast_tail_quiet_peer", &MakeCastTailQuietPeerScenario},
+    {"cast_tail_traffic_peer", &MakeCastTailTrafficPeerScenario},
     // UIGAP-live: the wave-1 UI units' live legs (#151 #215 #214 #213 #211).
     // Pairs: click_equip_observed <- click_equip_actor; friends_who /
     // ignore_tell <- social_peer; track_list <- track_peer

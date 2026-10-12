@@ -161,6 +161,15 @@ namespace EQ
 			const DaybreakConnectionManager* GetManager() const { return m_owner; }
 			DaybreakConnectionManager* GetManager() { return m_owner; }
 
+			// B760 (#45): true while an application packet handed to the
+			// OnPacketRecv callback came off a RELIABLE stream (OP_Packet or a
+			// reassembled OP_Fragment, which consume a sequence number and are
+			// delivered strictly in sequence order); false for an unreliable
+			// app packet, which is delivered the moment it arrives and so can
+			// overtake a reliable packet that is still being resent. Only
+			// meaningful inside the callback.
+			bool DeliveringReliable() const { return m_reliable_delivery_depth > 0; }
+
 			// Static debug level that can be set by applications
 			static void SetDebugLevel(int level) { s_debug_level = level; }
 			static int GetDebugLevel() { return s_debug_level; }
@@ -224,6 +233,18 @@ namespace EQ
 
 			DaybreakStream m_streams[4];
 			std::weak_ptr<DaybreakConnection> m_self;
+
+			// B760: nesting depth of reliable deliveries (an OP_Packet's
+			// payload may itself be an OP_Combined / OP_AppCombined, which
+			// recurses through ProcessDecodedPacket). See DeliveringReliable().
+			int m_reliable_delivery_depth = 0;
+			struct ReliableDeliveryScope {
+				explicit ReliableDeliveryScope(int &depth) : depth_(depth) { ++depth_; }
+				~ReliableDeliveryScope() { --depth_; }
+				ReliableDeliveryScope(const ReliableDeliveryScope &) = delete;
+				ReliableDeliveryScope &operator=(const ReliableDeliveryScope &) = delete;
+				int &depth_;
+			};
 
 			void Process();
 			void ProcessPacket(Packet &p);

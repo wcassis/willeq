@@ -655,6 +655,12 @@ void eqt::bridge::BridgeComponent::UpdateAudioListener(float deltaTime) {
 		ctx_.zone_audio_manager->update(deltaTime, listenerPos, m_is_daytime);
 	}
 
+	// B1014 (issue #335): the game-thread drain of the custom-Font release
+	// the audio thread flagged at fade completion. This body runs every game
+	// tick (PostRenderTick), so a flagged release lands within a tick instead
+	// of waiting for the next public MusicPlayer call.
+	ctx_.audio_manager->update();
+
 	// D20c2: Volume hotkeys handled via intents from renderer
 	// (MusicVolumeChangeIntent / EffectsVolumeChangeIntent in ProcessBridgeIntents)
 }
