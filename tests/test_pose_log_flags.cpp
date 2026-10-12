@@ -65,6 +65,10 @@ ApplicationConfig parseCapture(std::vector<std::string> args) {
     return parse(std::move(args));
 }
 
+#ifdef EQT_HAS_GRAPHICS
+// B1038: the row format and the writer format through cameraModeName()
+// (camera_rig.cpp, a renderer TU): their helpers and cases are compiled out of
+// an EQT_GRAPHICS=OFF build. The CLI-flag and preflight cases run headless.
 // pose_log_format.h formats into a FILE*: this writes rows into a named
 // file and hands the path back. The file lives under a per-process stem
 // (getpid()), because /tmp is shared by every worktree slot on this host
@@ -108,6 +112,7 @@ PoseLogRow sampleRow() {
     r.movementState = 1;  // move
     return r;
 }
+#endif  // EQT_HAS_GRAPHICS
 
 }  // namespace
 
@@ -170,6 +175,7 @@ TEST(PoseLogFlags, ParseLeaveOtherFlagsUnmodified) {
     EXPECT_TRUE(config.dumpFramesDir.empty());
 }
 
+#ifdef EQT_HAS_GRAPHICS
 // ---------------------------------------------------------------------------
 // The row format -- what the TSV actually contains
 // ---------------------------------------------------------------------------
@@ -413,12 +419,15 @@ TEST(PoseLogWriter, FileAppearsAtConfigPath) {
     EXPECT_FALSE(in) << "exactly 2 data rows written";
 }
 
+#endif  // EQT_HAS_GRAPHICS
+
 // ---------------------------------------------------------------------------
 // B874 audit: nothing about --pose-log may be SILENT. A QA capture ran with
 // the logger effectively off and produced nothing, with no message. Every
 // combination that would do that is now a parse error or a startup error.
 // ---------------------------------------------------------------------------
 
+#ifdef EQT_HAS_GRAPHICS  // B1038: a build without graphics refuses --pose-log (Application::parseArguments)
 TEST(PoseLogFlags, KnobsBeforePoseLogAreNotClobbered) {
     // --pose-log used to reset every/max to 1/600, so the knobs only worked
     // when they came AFTER it.
@@ -429,6 +438,7 @@ TEST(PoseLogFlags, KnobsBeforePoseLogAreNotClobbered) {
     EXPECT_EQ(config.poseLogEvery, 5);
     EXPECT_EQ(config.poseLogMaxCount, 40);
 }
+#endif  // EQT_HAS_GRAPHICS
 
 TEST(PoseLogFlags, NonPositiveOrGarbageIntervalIsAParseError) {
     for (const char* bad : {"0", "-3", "abc", "", "4x"}) {
@@ -461,18 +471,21 @@ TEST(PoseLogFlags, PoseLogWithoutARendererIsAParseError) {
     EXPECT_TRUE(parse({"--pose-log", "pl.tsv", "--scenario", "zone_in"}).parseError);
 }
 
+#ifdef EQT_HAS_GRAPHICS  // B1038: a build without graphics refuses --pose-log (Application::parseArguments)
 TEST(PoseLogFlags, AbsentIntervalDefaultsToEveryFrame) {
     ApplicationConfig config = parse({"--pose-log", "pl.tsv"});
     EXPECT_FALSE(config.parseError);
     EXPECT_EQ(config.poseLogEvery, 1) << "documented default, not 0 (= off)";
     EXPECT_EQ(config.poseLogMaxCount, 600);
 }
+#endif  // EQT_HAS_GRAPHICS
 
 TEST(PoseLogPreflight, OffIsFine) {
     std::string err;
     EXPECT_TRUE(Application::preflightPoseLog(parse({}), err)) << err;
 }
 
+#ifdef EQT_HAS_GRAPHICS  // B1038: a build without graphics refuses --pose-log (Application::parseArguments)
 TEST(PoseLogPreflight, UnwritablePathIsRefusedWithTheReason) {
     const willeq_test::ScopedTempDir tmp("t874_preflight_bad");  // B571
     // A directory that does not exist: fopen("w") cannot create the file.
@@ -489,6 +502,7 @@ TEST(PoseLogPreflight, UnwritablePathIsRefusedWithTheReason) {
     EXPECT_FALSE(Application::preflightPoseLog(config, err));
     EXPECT_FALSE(err.empty());
 }
+#endif  // EQT_HAS_GRAPHICS
 
 TEST(PoseLogPreflight, WritablePathLeavesAHeaderOnlyFile) {
     const willeq_test::ScopedTempDir tmp("t874_preflight_ok");  // B571
@@ -502,6 +516,7 @@ TEST(PoseLogPreflight, WritablePathLeavesAHeaderOnlyFile) {
     EXPECT_FALSE(std::getline(in, extra)) << "the probe writes no data row";
 }
 
+#ifdef EQT_HAS_GRAPHICS
 // PoseLogWriter's bookkeeping against a fake source. The GATHER is the e2e
 // test's job (tests/test_pose_log_e2e.cpp); this pins cadence and cap.
 namespace {
@@ -552,3 +567,4 @@ TEST(PoseLogWriter, BadArgumentsAndUnopenablePathsFailLoudly) {
     FakeSource src;
     EXPECT_FALSE(w.onRenderedFrame(src)) << "a writer that never opened writes nothing";
 }
+#endif  // EQT_HAS_GRAPHICS

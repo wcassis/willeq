@@ -20,6 +20,14 @@ a GitLab-only tag) and asserts:
   3. the `.goldfarm` comment no longer claims a single tagged runner.
 
 Red before B1026 (no verify, no claim stamp, the single-runner comment).
+
+B1038 (#358) adds group 4, the headless net: a `build-headless` job in the
+`build` stage runs the SHARED willeq_build_tree (no second copy of the build
+steps) with WILLEQ_HEADLESS=1 into its own build-headless/ref tree, the shared
+function configures that case with EQT_GRAPHICS=OFF, and the job runs
+`ctest -LE hygiene` itself after the build (no stage split, so no verify is
+needed); GIT_CLEAN_FLAGS keeps the tree and prune-build-trees expires it.
+Red before B1038 (no such job: the EQT_GRAPHICS=OFF C++ build rotted unseen).
 """
 import re
 import sys
@@ -104,6 +112,32 @@ def check(text):
         expect(stale not in gold, f".goldfarm comment still says {stale!r}")
     expect("BOTH runners carry `x86-build`" in gold, ".goldfarm comment must say both runners carry x86-build")
     expect("tags: [x86-build]" in gold, ".goldfarm must still tag x86-build")
+    # 4. B1038: the headless configuration is built and tested in ONE job.
+    if not re.search(r"^build-headless:\s*$", text, re.M):
+        failures.append("no `build-headless` job: the EQT_GRAPHICS=OFF build is never compiled (B1038)")
+        return failures
+    raw = job_body(text, "build-headless")
+    hl = code_lines(raw)
+    expect(any(l.strip() == "stage: build" for l in hl), "`build-headless` must be in the build stage")
+    expect(any(l.strip() == "extends: .goldfarm" for l in hl), "`build-headless` must extend .goldfarm")
+    expect(any(re.match(r"\s*BUILD_TREE: build-headless/ref/\$CI_COMMIT_REF_SLUG\s*$", l) for l in hl),
+           "`build-headless` must build into its own build-headless/ref/$CI_COMMIT_REF_SLUG tree")
+    expect(any(re.match(r'\s*WILLEQ_HEADLESS: "1"\s*$', l) for l in hl), "`build-headless` must set WILLEQ_HEADLESS: \"1\"")
+    expect(any("!reference [.build_tree, script]" in l for l in hl), "`build-headless` must use the shared .build_tree")
+    expect(not any("cmake --build" in l or "cmake -S" in l for l in hl),
+           "`build-headless` keeps its own copy of the build steps (use .build_tree)")
+    i_b = [i for i, l in enumerate(hl) if l.strip() == "- willeq_build_tree"]
+    i_t = [i for i, l in enumerate(hl) if "ctest" in l and '--test-dir "$BUILD_TREE"' in l and "-LE hygiene" in l]
+    expect(bool(i_b) and bool(i_t) and i_b[0] < i_t[0],
+           "`build-headless` must run willeq_build_tree and then ctest -LE hygiene in the same job")
+    off = [i for i, l in enumerate(bt) if re.search(r'cmake -S \. -B "\$BUILD_TREE".*-DEQT_GRAPHICS=OFF', l)]
+    gate = [i for i, l in enumerate(bt) if "WILLEQ_HEADLESS" in l]
+    expect(len(off) == 1 and bool(gate) and gate[0] < off[0],
+           ".build_tree must configure EQT_GRAPHICS=OFF (once) under WILLEQ_HEADLESS")
+    clean = re.search(r"^\s*GIT_CLEAN_FLAGS:([^\n]*)$", text, re.M)
+    expect(bool(clean) and "-e build-headless" in clean.group(1), "GIT_CLEAN_FLAGS must keep build-headless")
+    prune = "\n".join(code_lines(job_body(text, "prune-build-trees")))
+    expect("--root build-headless/ref" in prune, "prune-build-trees must expire build-headless/ref trees")
     return failures
 
 
@@ -123,12 +157,19 @@ def main():
     if stamp_first == text or not any("before cmake --build" in f for f in check(stamp_first)):
         failures.append("self-test: a claim written before cmake --build still passes")
 
+    no_hl = re.sub(r"\nbuild-headless:\n(?:[ #][^\n]*\n|\n)*", "\n", text)
+    if no_hl == text or not any("build-headless" in f for f in check(no_hl)):
+        failures.append("self-test: a pipeline without build-headless still passes")
+    no_ct = re.sub(r"\n[^\n]*ctest --test-dir \"\$BUILD_TREE\" -LE hygiene[^\n]*", "", text)
+    if no_ct == text or not any("ctest -LE hygiene" in f for f in check(no_ct)):
+        failures.append("self-test: a build-headless job without its in-job ctest still passes")
+
     for f in failures:
         print("FAIL:", f)
     if failures:
         return 1
     print("OK: build-test/client-ledger-live verify the host+sha stamp first; build claims only after cmake --build; "
-          ".goldfarm names both x86-build runners")
+          ".goldfarm names both x86-build runners; build-headless builds EQT_GRAPHICS=OFF and runs ctest in-job")
     return 0
 
 
