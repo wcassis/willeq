@@ -1062,7 +1062,9 @@ it without taking that measurement first.
   under 1 MB (not the BO cache), and the gap is constant while both figures
   grow (`review/B1032/README.md`). `decideGpuBuffers()` now takes the resident
   figure whenever a `drm-resident-*` key was published (the legacy
-  `drm-memory-*` key is already the resident size), prints
+  `drm-memory-*` key is already the resident size; an fdinfo with only
+  `drm-total-*` keys has no resident figure and falls through to the cgroup /
+  mapped sources, `TotalOnlyFdinfoIsNotTheRow`), prints
   `fdinfo_purgeable=`, and the captured fdinfo is a fixture
   (`GpuBufferCensus.FdinfoResidentIsTheRowNotTheTotal`). Lima lanes publish
   no memory keys and are untouched.

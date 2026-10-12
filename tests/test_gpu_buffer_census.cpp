@@ -70,11 +70,13 @@ TEST(GpuBufferCensus, DocumentedFdinfoKeysSumOverRegions) {
     EXPECT_EQ(f.clientId, 7u);
     EXPECT_EQ(f.totalBytes, 6148u * 1024 + 1024u * 1024);
     EXPECT_EQ(f.residentBytes, 6148u * 1024);
+    EXPECT_FALSE(f.totalIsLegacyResident);   // drm-total-*: NOT a resident figure
 }
 
 TEST(GpuBufferCensus, LegacyDrmMemoryKeyIsTheTotal) {
     const DrmFdinfo f = parseDrmFdinfo("drm-driver:\tpanfrost\ndrm-memory-vram:\t300 KiB\n");
     EXPECT_TRUE(f.hasMemoryKeys);
+    EXPECT_TRUE(f.totalIsLegacyResident);
     EXPECT_EQ(f.totalBytes, 300u * 1024);
 }
 
@@ -171,6 +173,8 @@ TEST(GpuBufferCensus, FdinfoKeysWinOverEverything) {
     in.drmFds = 1;
     in.fdinfoMemoryKeys = true;
     in.fdinfoTotalBytes = 12345678;   // legacy drm-memory-* only: the total IS the resident size
+    in.fdinfoLegacyKeys = true;       // (B1032 review: the fold records that it was legacy)
+    in.fdinfoLegacyResidentBytes = 12345678;
     in.memcg = parseMemcgStat(fixture("kmscube_memory.stat"));
     in.cgroupProcs = 1;
     in.softwareRasteriser = 0;
@@ -202,6 +206,39 @@ TEST(GpuBufferCensus, FdinfoResidentIsTheRowNotTheTotal) {
     EXPECT_NE(line.find(" fdinfo_total=175411200 "), std::string::npos) << line;
     EXPECT_NE(line.find(" fdinfo_resident=39407616 "), std::string::npos) << line;
     EXPECT_NE(line.find(" fdinfo_purgeable="), std::string::npos) << line;
+}
+
+// B1032 review: a MODERN kernel that prints drm-total-* with no resident key.
+// drm_show_memory_stats() prints drm-resident-* only when some object reports
+// a resident status (lane 3's kernel 7.1 prints `drm-total-memory: 0` and no
+// resident key when nothing is resident), so a Panfrost-shaped fdinfo holding
+// only the total -- here the unfaulted 128 MiB tiler heap -- carries NO
+// resident figure. Taking its total would be the very overstatement B1032
+// removes; the fdinfo source has nothing to say, so the census falls through
+// to the next source (the exclusive cgroup's shmem). The fd is folded exactly
+// as readGpuBufferCensus() folds it.
+TEST(GpuBufferCensus, TotalOnlyFdinfoIsNotTheRow) {
+    const DrmFdinfo f = parseDrmFdinfo(
+        "drm-driver:\tpanfrost\n"
+        "drm-client-id:\t12\n"
+        "drm-total-memory:\t131072 KiB\n"
+        "drm-shared-memory:\t0\n");
+    EXPECT_TRUE(f.hasMemoryKeys);
+    EXPECT_FALSE(f.hasResidentKeys);
+    EXPECT_EQ(f.totalBytes, 134217728u);
+    GpuBufferInputs in;
+    in.drmFds = 1;
+    in.fdinfoMemoryKeys = f.hasMemoryKeys;
+    in.fdinfoResidentKeys = f.hasResidentKeys;
+    in.fdinfoTotalBytes = f.totalBytes;
+    in.fdinfoResidentBytes = f.residentBytes;
+    in.memcg = parseMemcgStat(fixture("kmscube_memory.stat"));
+    in.cgroupProcs = 1;
+    in.softwareRasteriser = 0;
+    const GpuBufferCensus c = decideGpuBuffers(in);
+    EXPECT_NE(c.gpuBuffersBytes, 134217728u);
+    EXPECT_EQ(c.source, GpuBufferSource::MemcgShmem);
+    EXPECT_EQ(c.gpuBuffersBytes, 1806336u);
 }
 
 // The render node's fdinfo CAPTURED on the ROCK 4D during that run.

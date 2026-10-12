@@ -177,10 +177,27 @@ DrmFdinfo parseDrmFdinfo(const std::string& text) {
             const size_t colon = line.find(':');
             if (colon == std::string::npos) continue;
             f.hasMemoryKeys = true;
+            f.totalIsLegacyResident = true;
             f.totalBytes += parseScaled(line.c_str() + colon + 1);
         }
     }
     return f;
+}
+
+void foldDrmFdinfo(const DrmFdinfo& f, DrmFdinfoSeen& seen, GpuBufferInputs& in) {
+    if (!f.hasMemoryKeys) return;
+    for (size_t i = 0; i < seen.n; ++i)
+        if (seen.clientIds[i] == f.clientId) return;
+    if (seen.n < sizeof(seen.clientIds) / sizeof(seen.clientIds[0])) seen.clientIds[seen.n++] = f.clientId;
+    in.fdinfoMemoryKeys = true;
+    in.fdinfoResidentKeys = in.fdinfoResidentKeys || f.hasResidentKeys;
+    in.fdinfoTotalBytes += f.totalBytes;
+    in.fdinfoResidentBytes += f.residentBytes;
+    in.fdinfoPurgeableBytes += f.purgeableBytes;
+    if (f.totalIsLegacyResident) {
+        in.fdinfoLegacyKeys = true;
+        in.fdinfoLegacyResidentBytes += f.totalBytes;
+    }
 }
 
 void accumulateDrmMapsLine(const char* line, size_t len, DrmMaps& acc) {
@@ -245,14 +262,21 @@ GpuBufferCensus decideGpuBuffers(const GpuBufferInputs& in) {
         c.source = in.logicalPublished ? GpuBufferSource::LogicalInGpuDriver : GpuBufferSource::None;
         c.gpuBuffersBytes = in.logicalPublished ? c.logicalBytes : 0;
         c.outsideRssAnon = false;
-    } else if (in.fdinfoMemoryKeys) {
+    } else if (in.fdinfoResidentKeys || in.fdinfoLegacyKeys) {
         // B1032: the row is the RESIDENT figure. drm-total-* counts buffers
-        // with no backing store (Panfrost: the BO cache's purged buffers, the
-        // unfaulted tiler heap) -- 4.5x the resident bytes on the ROCK 4D.
-        // Without a drm-resident-* key the total came from the legacy
-        // drm-memory-<region> key, which is the resident size by definition.
+        // with no backing store (Panfrost: the unfaulted part of Mesa's 128 MiB
+        // growable tiler heap; NOT the BO cache, purgeable was <= 512 KiB) --
+        // 4.5x the resident bytes on the ROCK 4D. The legacy
+        // drm-memory-<region> key is the resident size by definition, so a fd
+        // that published only that one adds its figure here. A fd that
+        // published drm-total-* with no resident key has NO resident figure:
+        // its total is never used, and when no fd has one this branch is not
+        // taken -- the census falls through to the exclusive cgroup / the
+        // mapped lower bound, keeping the documented order a ranking of
+        // RESIDENT sources (an fdinfo row of 0 would claim a measurement the
+        // kernel did not make).
         c.source = GpuBufferSource::DrmFdinfo;
-        c.gpuBuffersBytes = in.fdinfoResidentKeys ? in.fdinfoResidentBytes : in.fdinfoTotalBytes;
+        c.gpuBuffersBytes = in.fdinfoResidentBytes + in.fdinfoLegacyResidentBytes;
         c.outsideRssAnon = true;
     } else if (c.cgroupExclusive) {
         c.source = GpuBufferSource::MemcgShmem;
@@ -282,8 +306,7 @@ GpuBufferCensus readGpuBufferCensus() {
     // DRM fds: one client may hold several fds (dup'd, or card + render
     // node); dedupe the memory keys by drm-client-id.
     if (DIR* d = opendir("/proc/self/fd")) {
-        uint64_t seen[16];
-        size_t nSeen = 0;
+        DrmFdinfoSeen seen;
         while (struct dirent* e = readdir(d)) {
             if (e->d_name[0] == '.') continue;
             char link[320], target[256];
@@ -295,17 +318,7 @@ GpuBufferCensus readGpuBufferCensus() {
             ++in.drmFds;
             char info[320];
             snprintf(info, sizeof(info), "/proc/self/fdinfo/%s", e->d_name);
-            const DrmFdinfo f = parseDrmFdinfo(readSmallFile(info));
-            if (!f.hasMemoryKeys) continue;
-            bool dup = false;
-            for (size_t i = 0; i < nSeen; ++i) dup = dup || seen[i] == f.clientId;
-            if (dup) continue;
-            if (nSeen < 16) seen[nSeen++] = f.clientId;
-            in.fdinfoMemoryKeys = true;
-            in.fdinfoResidentKeys = in.fdinfoResidentKeys || f.hasResidentKeys;
-            in.fdinfoTotalBytes += f.totalBytes;
-            in.fdinfoResidentBytes += f.residentBytes;
-            in.fdinfoPurgeableBytes += f.purgeableBytes;
+            foldDrmFdinfo(parseDrmFdinfo(readSmallFile(info)), seen, in);
         }
         closedir(d);
     }

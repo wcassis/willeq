@@ -89,6 +89,9 @@ struct DrmFdinfo {
     bool isDrm = false;           // a drm-driver: or drm-client-id: key was present
     bool hasMemoryKeys = false;   // any drm-total-/drm-resident-/drm-memory- key
     bool hasResidentKeys = false; // a drm-resident-* key was present (B1032)
+    bool totalIsLegacyResident = false;  // totalBytes came from the legacy
+                                  // drm-memory-* keys (no drm-total-* key), which ARE
+                                  // the resident size; false = drm-total-*, which is not
     uint64_t clientId = 0;        // drm-client-id (dedupe: several fds, one client)
     uint64_t totalBytes = 0;      // sum over regions of drm-total-* (else drm-memory-*)
     uint64_t residentBytes = 0;   // sum over regions of drm-resident-*
@@ -97,11 +100,16 @@ struct DrmFdinfo {
 // Which fdinfo figure is the row (B1032, #352): drm-resident-* -- the buffers
 // whose backing store is instantiated. drm-total-* counts every created
 // buffer whether or not it has pages (Documentation/gpu/drm-usage-stats.rst),
-// and on Panfrost that includes the Mesa BO cache's purged buffers and the
-// unfaulted part of the growable tiler heap: 175 MB total against 39 MB
-// resident on the ROCK 4D (review/B1032/README.md). The legacy
-// drm-memory-<region> key IS the resident figure (the same document), so a
-// kernel that publishes only that one still yields the right row.
+// and on Panfrost that is the unfaulted part of Mesa's 128 MiB growable tiler
+// heap (pages attached only on GPU fault): 175 MB total against 39 MB
+// resident on the ROCK 4D. It is NOT the Mesa BO cache -- drm-purgeable-* was
+// 64-512 KiB there (review/B1032/README.md). The legacy drm-memory-<region>
+// key IS the resident figure (the same document), so a kernel that publishes
+// only that one still yields the right row (totalIsLegacyResident). A modern
+// kernel that prints drm-total-* with NO drm-resident-* key (it omits the
+// resident key when no object reports a resident status -- lane 3's kernel
+// 7.1 prints `drm-total-memory: 0` that way) gives no resident figure at all,
+// and its total is never used as one.
 // Parse one /proc/<pid>/fdinfo/<fd> text. Units: a bare number is bytes, a
 // "KiB"/"MiB" suffix scales (Documentation/gpu/drm-usage-stats.rst).
 DrmFdinfo parseDrmFdinfo(const std::string& text);
@@ -144,8 +152,10 @@ struct GpuBufferInputs {
     uint32_t drmFds = 0;
     bool fdinfoMemoryKeys = false;
     bool fdinfoResidentKeys = false;   // some fd published drm-resident-* (B1032)
+    bool fdinfoLegacyKeys = false;     // some fd published only legacy drm-memory-*
     uint64_t fdinfoTotalBytes = 0;
     uint64_t fdinfoResidentBytes = 0;
+    uint64_t fdinfoLegacyResidentBytes = 0;  // those fds' drm-memory-* sum (resident)
     uint64_t fdinfoPurgeableBytes = 0;
     DrmMaps maps;
     MemcgStat memcg;
@@ -156,6 +166,17 @@ struct GpuBufferInputs {
     bool logicalPublished = false;
     int softwareRasteriser = -1;  // -1 unpublished, 0 no, 1 yes
 };
+
+// Fold one fd's parsed fdinfo into `in` the way readGpuBufferCensus() does for
+// every /dev/dri fd: an fd with no memory key is skipped, a repeated
+// drm-client-id (dup'd fd, card + render node of one client) is counted once,
+// the key flags are OR'ed over fds and the byte figures summed. `drmFds` is
+// the caller's (it counts every DRM fd, memory keys or not).
+struct DrmFdinfoSeen {
+    uint64_t clientIds[16] = {};
+    size_t n = 0;
+};
+void foldDrmFdinfo(const DrmFdinfo& f, DrmFdinfoSeen& seen, GpuBufferInputs& in);
 
 struct GpuBufferCensus {
     GpuBufferInputs in;
@@ -168,8 +189,11 @@ struct GpuBufferCensus {
     bool cgroupExclusive = false;
 };
 
-// The decision, pure: fdinfo memory keys > exclusive memcg shmem > DRM maps
-// (lower bound) > the logical tally (in gpu_driver on a software rasteriser).
+// The decision, pure: fdinfo RESIDENT figure (drm-resident-* or the legacy
+// drm-memory-*) > exclusive memcg shmem > DRM maps (lower bound) > the logical
+// tally (in gpu_driver on a software rasteriser). An fdinfo with only
+// drm-total-* keys has no resident figure, so it falls through to the next
+// source rather than reporting 0 or its total (B1032 review).
 GpuBufferCensus decideGpuBuffers(const GpuBufferInputs& in);
 
 // Read every source for THIS process now and decide. Linux only; elsewhere
