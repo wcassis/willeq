@@ -54,6 +54,26 @@
 //    rendered_zone_summarize.py turn the deltas between two points into
 //    per-frame rates and a guard row.
 //
+// 4. B1013 (GitLab #334): the per-frame zone-in BURST counters, appended to the
+//    mode-2 dump as F/FE lines (P/B/E formats unchanged). B1013_FRAME_MARKER
+//    (default "ready"): a willeq_gem_dump(point) with point == marker ARMS a
+//    window at row 0 (re-arming on every marker -- the rig's last `ready` is
+//    the one that matters). B1013_FRAME_WINDOW (default 600, clamped [1,600]):
+//    the window holds up to that many per-frame rows, one STATIC row each (no
+//    malloc, mode 2's rule). Each row counts, from the previous swap up to and
+//    including this one's work:
+//      <creates>   LIMA_GEM_CREATE that succeeded
+//      <poll_hit>  LIMA_GEM_WAIT with timeout_ns == 0 whose ioctl returned 0
+//                  (the BO-cache poll found the cached BO idle -> REUSED)
+//      <poll_busy> the same poll returning non-zero (busy -> the cache then
+//                  allocates a NEW BO)
+//      <gp_submits> / <pp_submits>  DRM_IOCTL_LIMA_GEM_SUBMIT per pipe
+//    The row index advances in eglSwapBuffers. An armed window with rows is
+//    flushed at the NEXT willeq_gem_dump call (any point) or the next marker,
+//    BEFORE that call's P line: one "F\t<marker>\t<frame>\t<creates>\t<poll_hit>\t<poll_busy>\t<gp_submits>\t<pp_submits>"
+//    line per recorded frame, then "FE\t<marker>\t<frames_recorded>".
+//    gem_owner_table.py read_frames() parses them.
+//
 // Exported API (resolved by the client with dlsym(RTLD_DEFAULT, ...); absent
 // shim = every call site is a null check):
 //   void willeq_gem_tag_push(const char* tag);
@@ -66,6 +86,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -114,6 +135,57 @@ static uint32_t g_gp_submits, g_pp_submits;
 static uint32_t g_waits;                  // GEM_WAIT with timeout_ns != 0
 static uint64_t g_wait_ns;                // wall time inside those waits
 static unsigned int (*real_eglSwapBuffers)(void*, void*);
+
+// B1013: the per-frame burst window (mode 4). One STATIC row per frame (no
+// malloc: the header's rule, the client's allocator is the memory ledger).
+// Row model: eglSwapBuffers seals the row and advances the index -- row i
+// counts the work AFTER swap i, up to and including swap i+1 (row 0 = work
+// after the arm up to and including the first swap). A window is flushed at
+// the NEXT willeq_gem_dump call (any point, before its P line) or the next
+// marker -- the marker re-arms at row 0 (re-arming on every marker: the rig's
+// last `ready` is the one that matters) carrying the unsealed tail row's
+// counts into the new row 0 (that work happened before the marker's dump).
+// The dump prints the SEALED rows: the unsealed final row of a run (work
+// after the last swap, no closing swap) is dropped.
+#define B1013_FRAME_MAX 600
+struct b1013_frame {
+    uint32_t creates;
+    uint32_t poll_hit, poll_busy;
+    uint32_t gp_submits, pp_submits;
+};
+static struct b1013_frame g_b1013[B1013_FRAME_MAX];
+static char g_b1013_marker[64] = "ready";
+static int g_b1013_marker_set = 1;
+static uint32_t g_b1013_window = 600;     // rows recorded per window
+static int g_b1013_armed;                 // 1 while recording rows
+static uint32_t g_b1013_rows;             // sealed rows + 1 (the open one); 0 = not armed
+
+static int b1013_marker_eq(const char* p) {
+    if (!p) return 0;
+    return g_b1013_marker_set && !strcmp(p, g_b1013_marker);
+}
+// The row the counters accumulate into: rows is "sealed + 1" while armed, so
+// the open row is index rows (rows 0 after arming; after k swaps, rows k).
+// armed/rows are written under g_lock (swap seal, dump arm/flush) and read
+// here without the lock, so the loads are relaxed atomics (the card's
+// "atomics or g_lock" rule -- the counters' row field is bumped atomically).
+static struct b1013_frame* b1013_row(void) {
+    unsigned armed = __atomic_load_n(&g_b1013_armed, __ATOMIC_RELAXED);
+    unsigned rows = __atomic_load_n(&g_b1013_rows, __ATOMIC_RELAXED);
+    if (!armed || rows >= g_b1013_window) return NULL;
+    return &g_b1013[rows];
+}
+// field: 0=creates 1=poll_hit 2=poll_busy 3=gp_submits 4=pp_submits.
+static const uint32_t b1013_field_off[5] = {
+    offsetof(struct b1013_frame, creates), offsetof(struct b1013_frame, poll_hit),
+    offsetof(struct b1013_frame, poll_busy), offsetof(struct b1013_frame, gp_submits),
+    offsetof(struct b1013_frame, pp_submits),
+};
+static void b1013_count(uint32_t field) {
+    struct b1013_frame* r = b1013_row();
+    if (r) __atomic_add_fetch((uint32_t*)((char*)r + b1013_field_off[field]), 1u,
+                              __ATOMIC_RELAXED);
+}
 
 static double mono_now(void) {
     struct timespec ts;
@@ -369,6 +441,33 @@ __attribute__((visibility("default"))) void willeq_gem_dump(const char* point) {
     char buf[8192];
     size_t used = 0;
     pthread_mutex_lock(&g_lock);
+    // B1013: flush an armed window BEFORE this dump's P line (a window is
+    // flushed at the next willeq_gem_dump call of ANY point, or the next
+    // marker -- the marker re-arms, below). A swap seals the row, so the
+    // SEALED rows (g_b1013_rows of them) are the record; the still-open row
+    // (work after the last swap, no closing swap) is dropped.
+    if (g_b1013_armed && g_b1013_rows > 0) {
+        for (uint32_t i = 0; i < g_b1013_rows; ++i) {
+            const struct b1013_frame* r = &g_b1013[i];
+            if (used + 128 > sizeof(buf)) { dump_write(buf, used); used = 0; }
+            used += (size_t)snprintf(buf + used, sizeof(buf) - used,
+                                     "F\t%s\t%u\t%u\t%u\t%u\t%u\t%u\n",
+                                     g_b1013_marker, (unsigned)i, r->creates, r->poll_hit,
+                                     r->poll_busy, r->gp_submits, r->pp_submits);
+        }
+        if (used + 64 > sizeof(buf)) { dump_write(buf, used); used = 0; }
+        used += (size_t)snprintf(buf + used, sizeof(buf) - used, "FE\t%s\t%u\n",
+                                 g_b1013_marker, (unsigned)g_b1013_rows);
+        g_b1013_armed = 0;
+        g_b1013_rows = 0;
+    }
+    // The marker point re-arms at row 0 (re-arming on every marker: the rig's
+    // last `ready` is the one that matters).
+    if (b1013_marker_eq(point)) {
+        for (uint32_t i = 0; i < B1013_FRAME_MAX; ++i) g_b1013[i] = (struct b1013_frame){0};
+        g_b1013_armed = 1;
+        g_b1013_rows = 0;
+    }
     uint32_t live = 0;
     uint64_t bytes = 0;
     for (uint32_t i = 0; i < TABLE_SIZE; ++i) {
@@ -417,6 +516,20 @@ __attribute__((constructor)) static void init(void) {
     }
     const char* d = getenv("B962_GEMDUMP");
     if (d) dumpfd = open(d, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND | O_CLOEXEC, 0644);
+    // B1013: the mode-4 window's trigger and size (defaults: "ready", 600).
+    const char* mk = getenv("B1013_FRAME_MARKER");
+    if (mk && *mk) {
+        strncpy(g_b1013_marker, mk, sizeof(g_b1013_marker) - 1);
+        g_b1013_marker[sizeof(g_b1013_marker) - 1] = 0;
+        g_b1013_marker_set = 1;
+    }
+    const char* wn = getenv("B1013_FRAME_WINDOW");
+    if (wn) {
+        long w = atol(wn);
+        if (w < 1) w = 1;
+        if (w > B1013_FRAME_MAX) w = B1013_FRAME_MAX;
+        g_b1013_window = (uint32_t)w;
+    }
 }
 
 static void observe_ioctl(int fd, unsigned long req, void* arg) {
@@ -424,6 +537,7 @@ static void observe_ioctl(int fd, unsigned long req, void* arg) {
         const struct lima_gem_create* c = arg;
         logline("C %u %u %u fd%d\n", c->handle, c->size, c->flags, fd);
         table_create(fd, c->handle, c->size, c->flags);
+        b1013_count(0);                                   // B1013: a create that succeeded
     } else if (req == IOCTL_LIMA_GEM_INFO) {
         const struct lima_gem_info* g = arg;
         table_info(fd, g->handle, g->offset);
@@ -439,6 +553,7 @@ static void observe_ioctl(int fd, unsigned long req, void* arg) {
         const uint32_t pipe = ((const struct lima_gem_submit_head*)arg)->pipe;
         __atomic_fetch_add(pipe == LIMA_PIPE_PP_ID ? &g_pp_submits : &g_gp_submits, 1u,
                            __ATOMIC_RELAXED);
+        b1013_count(pipe == LIMA_PIPE_PP_ID ? 4 : 3);      // B1013: per-pipe submits per frame
     }
 }
 
@@ -455,6 +570,13 @@ static int observed_ioctl(int (*fn)(int, unsigned long, ...), int fd, unsigned l
         ++g_waits;
         if (ns > 0) g_wait_ns += (uint64_t)ns;
         pthread_mutex_unlock(&g_lock);
+        return r;
+    }
+    if (req == IOCTL_LIMA_GEM_WAIT && arg && ((const struct lima_gem_wait*)arg)->timeout_ns == 0) {
+        // B1013: a BO-cache POLL: ioctl return 0 = the cached BO is idle and
+        // is REUSED (a hit); non-zero = busy (the cache then creates a new BO).
+        int r = fn(fd, req, arg);
+        b1013_count(r == 0 ? 1 : 2);
         return r;
     }
     int r = fn(fd, req, arg);
@@ -490,6 +612,11 @@ unsigned int eglSwapBuffers(void* dpy, void* surface) {
     if (!real_eglSwapBuffers)
         real_eglSwapBuffers = (unsigned int (*)(void*, void*))dlsym(RTLD_NEXT, "eglSwapBuffers");
     __atomic_fetch_add(&g_frames, 1u, __ATOMIC_RELAXED);
+    // B1013: seal the frame's row and open the next (row i counts the work
+    // after swap i; a full window stops recording, it does not wrap).
+    pthread_mutex_lock(&g_lock);
+    if (g_b1013_armed && g_b1013_rows < g_b1013_window) ++g_b1013_rows;
+    pthread_mutex_unlock(&g_lock);
     return real_eglSwapBuffers ? real_eglSwapBuffers(dpy, surface) : 0u;
 }
 
@@ -524,6 +651,8 @@ int munmap(void* addr, size_t len) {
 // bookkeeping on the host, with a fake ioctl standing in for Lima. Linked as
 // a program, so its ioctl/mmap/munmap interpose this process only.
 static uint32_t fake_next_handle = 1;
+// B1013: the return code the fake ioctl gives LIMA_GEM_WAIT (0 = idle/hit).
+static int fake_wait_rc = 0;
 static int fake_ioctl(int fd, unsigned long req, ...) {
     (void)fd;
     va_list ap;
@@ -532,6 +661,7 @@ static int fake_ioctl(int fd, unsigned long req, ...) {
     va_end(ap);
     if (req == IOCTL_LIMA_GEM_CREATE) ((struct lima_gem_create*)arg)->handle = fake_next_handle++;
     else if (req == IOCTL_LIMA_GEM_INFO) ((struct lima_gem_info*)arg)->offset = 0x100000ull * ((struct lima_gem_info*)arg)->handle;
+    else if (req == IOCTL_LIMA_GEM_WAIT) return fake_wait_rc;
     return 0;
 }
 static uint32_t fake_create(int fd, uint32_t size, uint32_t flags) {
@@ -588,8 +718,33 @@ int main(int argc, char** argv) {
     struct lima_gem_wait poll = {1, 2, 0};
     shim_ioctl_time64(7, IOCTL_LIMA_GEM_WAIT, &poll);
     willeq_gem_dump("selftest");
+    // 5. B1013: the per-frame burst window. Arm at the marker point (whose
+    // P line is written, as always), then three frames with a known pattern
+    // per frame (row i = the work after swap i, up to and including swap
+    // i+1): frame 0: 2 creates + 1 hit poll + 1 busy poll + 1 GP + 1 PP
+    // submit; frame 1: none; frame 2: 1 busy poll. Dump at "after": the
+    // armed window is flushed BEFORE that P line as three F rows + the FE.
+    struct lima_gem_wait p1 = {1, 2, 0};
+    willeq_gem_dump("ready");
+    for (int i = 0; i < 2; ++i) fake_create(7, 4096, 0);
+    fake_wait_rc = 0; shim_ioctl(7, IOCTL_LIMA_GEM_WAIT, &p1);
+    fake_wait_rc = 1; shim_ioctl(7, IOCTL_LIMA_GEM_WAIT, &p1);
+    ((struct lima_gem_submit_head*)submit)->pipe = LIMA_PIPE_GP_ID;
+    shim_ioctl(7, IOCTL_LIMA_GEM_SUBMIT, submit);
+    ((struct lima_gem_submit_head*)submit)->pipe = LIMA_PIPE_PP_ID;
+    shim_ioctl(7, IOCTL_LIMA_GEM_SUBMIT, submit);
+    eglSwapBuffers(NULL, NULL);                          // seals row 0
+    eglSwapBuffers(NULL, NULL);                          // seals row 1 (empty)
+    fake_wait_rc = 1; shim_ioctl(7, IOCTL_LIMA_GEM_WAIT, &p1);
+    eglSwapBuffers(NULL, NULL);                          // seals row 2
+    willeq_gem_dump("after");
+    fake_wait_rc = 0;
     close(dumpfd);
-    // re-read the dump: 1500 + 2 live BOs, sizes summed
+    // re-read the dump: three blocks (P selftest / P ready / P after; the F/FE
+    // lines sit between the ready and after P lines). The original owner-table
+    // checks are scoped to the FIRST block; the last P line carries the
+    // CUMULATIVE B1006 counters including the window's work (gp 2 + 1 = 3,
+    // pp 3 + 1 = 4; the window used timeout-0 polls, not waits).
     FILE* f = fopen(path, "r");
     CHECK(f != NULL);
     char line[512];
@@ -599,15 +754,38 @@ int main(int argc, char** argv) {
     expect += 8192;
     unsigned frames = 0, gp = 0, pp = 0, waits = 0;
     unsigned long long wait_ns = 1;
-    int plines = 0;
+    int plines = 0, cur_block = 0;
+    unsigned frows = 0, fe_count = 0, fe_frames = 0;
+    unsigned f0c = 0, f0h = 0, f0b = 0, f0g = 0, f0p = 0;
+    unsigned f1c = 0, f1h = 0, f1b = 0, f1g = 0, f1p = 0;
+    unsigned f2c = 0, f2h = 0, f2b = 0, f2g = 0, f2p = 0;
+    int f2_idx = -1;
+    char f_marker[64] = "";
     while (fgets(line, sizeof(line), f)) {
         if (line[0] == 'P') {
-            ++plines;
+            ++plines; ++cur_block;
             CHECK(sscanf(line, "P\t%*[^\t]\t%*f\t%*u\t%*u\t%*u\t%*u\t%*d\t%u\t%u\t%u\t%u\t%llu",
                          &frames, &gp, &pp, &waits, &wait_ns) == 5);
             continue;
         }
-        if (line[0] != 'B') continue;
+        if (line[0] == 'F' && line[1] == 'E') {
+            ++fe_count;
+            CHECK(sscanf(line, "FE\t%63[^\t]\t%u", f_marker, &fe_frames) == 2);
+            CHECK(fe_frames == 3);
+            continue;
+        }
+        if (line[0] == 'F') {
+            ++frows;
+            unsigned idx = 9999, c = 9999, h = 9999, b = 9999, g = 9999, p = 9999;
+            CHECK(sscanf(line, "F\t%63[^\t]\t%u\t%u\t%u\t%u\t%u\t%u",
+                          f_marker, &idx, &c, &h, &b, &g, &p) == 7);
+            CHECK(idx == frows - 1);                 // consecutive frame numbers
+            if (frows == 1) { f0c = c; f0h = h; f0b = b; f0g = g; f0p = p; }
+            else if (frows == 2) { f1c = c; f1h = h; f1b = b; f1g = g; f1p = p; }
+            else if (frows == 3) { f2c = c; f2h = h; f2b = b; f2g = g; f2p = p; f2_idx = (int)idx; }
+            continue;
+        }
+        if (line[0] != 'B' || cur_block != 1) continue;   // block 1's live set only
         ++live;
         unsigned fd, h, sz, heapf, mp, seq, tid;
         char scope[64], tag[256];
@@ -619,11 +797,21 @@ int main(int argc, char** argv) {
     CHECK(live == 1502);
     CHECK(tagged == 1500);
     CHECK(bytes == expect);
-    CHECK(plines == 1);
-    CHECK(frames == 4 && gp == 2 && pp == 3 && waits == 1);
+    CHECK(plines == 3);
+    CHECK(fe_count == 1);
+    // LAST P line: cumulative B1006 counters incl. the window's work
+    // (frames 4 + 3, gp 2 + 1, pp 3 + 1; the window polls are not waits).
+    CHECK(frames == 7 && gp == 3 && pp == 4 && waits == 1);
     CHECK(wait_ns < 1000000000ull);  // a fake wait returns at once; the clock still ran
-    printf("lima_bo_census selftest OK: live=%u bytes=%llu created=%llu closed=%llu\n",
-           live, bytes, (unsigned long long)g_created, (unsigned long long)g_closed);
+    CHECK(frows == 3);
+    CHECK(!strcmp(f_marker, "ready"));
+    // row 0 = the work after the arm, up to and including the first swap
+    CHECK(f0c == 2 && f0h == 1 && f0b == 1 && f0g == 1 && f0p == 1);
+    CHECK(f1c == 0 && f1h == 0 && f1b == 0 && f1g == 0 && f1p == 0);
+    CHECK(f2c == 0 && f2h == 0 && f2b == 1 && f2g == 0 && f2p == 0);
+    CHECK(f2_idx == 2);
+    printf("lima_bo_census selftest OK: live=%u bytes=%llu created=%llu closed=%llu frows=%u\n",
+           live, bytes, (unsigned long long)g_created, (unsigned long long)g_closed, frows);
     return 0;
 }
 #endif

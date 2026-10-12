@@ -1008,7 +1008,12 @@ it without taking that measurement first.
   `gpu_unnamed_steady` crowd-tour guard **stays RED on qeynos2 and gfaydark as
   a documented known condition** (same class as B988/#307), the bound is NOT
   re-scoped and no buffering change is allowed; the real levers (varying
-  stride, per-frame vertex volume) are B1013 #334. The residual + mechanism +
+  stride, per-frame vertex volume) are B1013 #334 — B1013's investigation
+  found those are not levers either (the draw-time pool is a Lima BO cache
+  frozen at the zone-in peak, cost-sheet fact 13) and B1013 is now the
+  four-card plan (timeline counters, Pi burst measurement, zone-in
+  frames-in-flight cap, a BO-cache trim in the shipped Mesa prefix). The
+  residual + mechanism +
   per-change table stand in `refactor/B997/README.md` (step 4 + the
   "Known condition (ruling a)" section). The `EQT_SG_BATCH` batch's ship
   decision is made by the DETERMINISTIC x86 door pixel A/B (ctest
@@ -1034,6 +1039,7 @@ it without taking that measurement first.
   cap). Fix options are B997's batch/merge of manual zone draws or a
   per-draw submit-cost cut — both need Will's decision (look/coverage +
   B726/B979 invariants), so the card blocks with the measurement.
+- **B1031** (B, platform) → issue #351. macOS dev-platform probe; card 2 = fix. Card 1 (PROVE) on `task/B1031-macos-probe`: the headless configure succeeds on the M4 mini and the keep-going build fails; the error census by TU and KIND, the linked binaries, the ctest results and the card-2 fix list are in `refactor/B1031/README.md`.
 - **B1026** (B, CI) → issue #346. Since gitlab-runner-2 took the `x86-build` tag (2026-10-11) a pipeline's `build` and `test` jobs can land on different hosts, and the stages pass no artifacts: fable pipeline 809 built on gitlab-runner-1 (job 4006) and tested runner-2's pre-B603 binary (job 4007), a false red; MR pipeline 805's green was the same luck. **FIX on `task/B1026-ci-host-stamp`** (Will ruled option (a)): the build steps are ONE shell function (`.build_tree` → `willeq_build_tree`); the tree gets a ref-only stamp before the configure and a host+sha claim (`.willeq_ref` `host=`/`sha=`, `prune_ref_build_trees.py --stamp ... --host --sha`) only after `cmake --build` succeeds; `test` and `client-ledger-live` run `--verify` first and, on a mismatch, print `B1026 STAMP MISMATCH`, rebuild in-job and verify again; `gate` builds its own GLES2 tree in-job. Pinned by `CiBuildTreeStamp` (hygiene) + `PruneRefBuildTrees`; `docs/ci.md` "Two x86 runners: the host+sha stamp"; evidence `refactor/B1026/README.md`.
 - **B1038** (B, CI/build) → issue #358. The headless configuration (`EQT_GRAPHICS=OFF`, the `--no-graphics` client) did not compile on ANY host and no job built it (`hygiene` configures OFF but compiles nothing; `build` is ON) -- found by B1031's macOS probe, confirmed on Linux (`review/B1031/linux_crosscheck_pass2.tsv`): `application.cpp`'s steady_60s census read `m_renderer`, `test_data_paths`/`test_ranged_attack_wire`/`test_detail_view_distance` include `irrlicht.h`, and the T260 cases of `test_zone_connection_flow_identity.cpp` call the graphics-only bridge seam; behind those, 8 test executables did not link (cases calling `GRAPHICS_SOURCES` TUs) and 5 cases asserted graphics-only behaviour. Also `cereal` was included by `packet.h`/`daybreak_structs.h` and never checked by CMake. **FIX on `task/B1038-headless-build`**: guards only (the census; renderer-path test cases `#ifdef EQT_HAS_GRAPHICS`; `test_detail_view_distance`, `test_door_motion`, `test_texture_alpha_census`, `test_ui_sprite_roster` registered only under graphics), `FIND_PATH(CEREAL_INCLUDE_DIR ...)` with a `FATAL_ERROR` naming `libcereal-dev` / Homebrew `cereal` (not vendored -- Will's call), and the `build-headless` CI job (`build` stage, shared `willeq_build_tree` with `WILLEQ_HEADLESS=1`, own `build-headless/ref/<slug>` tree, `ctest -LE hygiene` in-job). Pinned by `CiBuildTreeStamp` + `PruneRefBuildTrees`; `docs/ci.md` "The headless build"; evidence `refactor/B1038/README.md`.
 - **B1039** (B, build/macOS) → issue #359 (closes B1031's #351). The headless client and suite did not build on macOS: B1031's census (238 error lines; 281 with the ledger ON) was glibc allocator internals, void* arithmetic, 2-arg `pthread_setname_np`, `SO_RCVBUFFORCE`, clang/fmt 12 strictness and the EGL probe tools, plus `pipe2` and the `/proc/self/exe` data resolver found after it. **FIX on `task/B1039-macos-fix`**: `__linux__`/`__APPLE__` guards and CMake conditions only (ledger compiles to its OFF shape on Darwin, `eqt::setCurrentThreadName`, EGL tools only where EGL is found, Linux-only `test_memory_ledger`/Lima shim), `check_file_sizes.sh` bash-3.2-safe; M4 mini: build exit 0, `ctest -LE hygiene` + `-L hygiene` green. Recipe `docs/macos.md`; evidence `refactor/B1039/README.md`. Open: a `malloc_zone` ledger backend, `RssAnon` on Darwin, the renderer (ANGLE).
@@ -1061,6 +1067,49 @@ it without taking that measurement first.
   take pipelines too~~ (superseded: runner-2 carries `x86-build` since
   2026-10-11 and B1026's host+sha stamp makes a split pipeline safe);
   `ready_selftest.sh` not yet run on the clones.
+- **B1032** (B) → issue #352. On the ROCK 4D (Panfrost) the `gpu_buffers`
+  census took the render node's `drm-total-memory` (171 MB) where
+  `drm-resident-memory` was 38 MB, so lane 3's owned figure printed 207 MB
+  against lane 2's 58 MB for the same zone. Mechanism: Mesa's
+  `panfrost_open_device` creates a 128 MiB `PAN_BO_GROWABLE` tiler heap that
+  the kernel backs only on GPU fault; the total counts it whole, purgeable is
+  under 1 MB (not the BO cache), and the gap is constant while both figures
+  grow (`review/B1032/README.md`). `decideGpuBuffers()` now takes the resident
+  figure whenever a `drm-resident-*` key was published (the legacy
+  `drm-memory-*` key is already the resident size; an fdinfo with only
+  `drm-total-*` keys has no resident figure and falls through to the cgroup /
+  mapped sources, `TotalOnlyFdinfoIsNotTheRow`), prints
+  `fdinfo_purgeable=`, and the captured fdinfo is a fixture
+  (`GpuBufferCensus.FdinfoResidentIsTheRowNotTheTotal`). Lima lanes publish
+  no memory keys and are untouched.
+- **B1030** (B) → issue #350. Two aarch64 SBCs joined the Orange Pi as client
+  targets (Rock64: RK3328, Mali-450/Lima, 4 GB, eMMC; ROCK 4D: RK3576,
+  Mali-G52/Panfrost, 12 GB), but every Pi script hardcoded ONE host and the
+  arm64 Dockerfile had drifted from the armhf one for three months. Done in
+  the unit: `PI_LANE=1..3` table + per-device locks in `scripts/pi/env.sh`
+  (`lock_selftest.sh` PASS on lanes 2 and 3), `Dockerfile.arm64-noble`
+  regenerated from the armhf file and pinned derived by
+  `scripts/ci/check_arm64_dockerfile.sh` (ctest `DockerfileArm64Derived`),
+  `scripts/build-arm64-noble.sh` + `scripts/pi/publish_arm64_build.sh` →
+  `ci-arm64/<sha>/`; `docs/ci.md` "The aarch64 SBC lanes". Smoke PASS on both
+  lanes (`review/B1030/README.md`), after one port fix: Panfrost lists 10-bit
+  EGL visuals first, so the DRM device now picks the config whose native
+  visual is the GBM format (`chooseConfigForGbmFormat`, unchanged result on
+  Lima, A/B in the README). Follow-ups done: `build-arm64` CI job (sibling
+  of `build-arm`, not a widening); the rendered sweep runs on the aarch64
+  lanes (system Mesa, `ci-arm64/`, headless HDMI via `pi_hdmi_force_on`,
+  `--constrained <preset>`); ledger rows for both lanes in the README
+  (~70 MB owned_rss_anon each on the orangepi preset). Spun off: the
+  Panfrost census field → B1032; the per-lane preset ruling → B1033.
+  Open: lane 2's 17.2 MiB of unnamed GEM fails the Pi rig's 10 MiB bound
+  and the B962 owner-census shim is armhf-only (an aarch64 build of it is
+  the next B item there).
+- ~~**B1033** (C) → issue #353.~~ RULED 2026-10-12 (Will, `docs/decisions.md`):
+  the aarch64 lanes keep the `orangepi` preset, the same 256 MB bound and
+  64 MB target, and get no goldens of their own until a lane runs the gate
+  (lane 2 shares the Pi's Mesa; whether it matches the Pi goldens is a
+  measurement to take first). Both lanes measure ~70 MB owned_rss_anon at
+  qeynos2 steady on that preset (`review/B1030/README.md`).
 - ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
   mechanism (a partial `glBufferSubData` into a buffer the current Lima job
   references flushes the job and blocks in `lima_bo_wait`, once per write): the
@@ -9987,8 +10036,8 @@ fine — the table fails on a stale entry, so it cannot rot.
   — do not delete it without reading `include/client/scenario/scenario.h`
   first. Found by T455.
 
-- **B499** (B, unreached) **Audio query API with no caller: 12 zero-caller → issue #174
-  public functions across 7 headers under `include/client/audio/`.**
+- ~~**B499** (B, unreached) **Audio query API with no caller: 12 zero-caller → issue #174
+  public functions across 7 headers under `include/client/audio/`.**~~
   `AudioManager::isAutoAttackMusicPlaying()` / `isVendorBankMusicPlaying()` /
   `isUse3DAudio()`, `AudioMixer::getSfxVolume()`, `EffLoader::getMp3Index()`,
   `SoundBuffer::loadFromPCM()`, `WeatherAudio::getThunderTimer()`,
@@ -9996,9 +10045,15 @@ fine — the table fails on a stale entry, so it cannot rot.
   three OpenAL-era methods (`enableSoftwareRendering()`,
   `isSoftwareRendering()`, `reinitializeOpenAL()`) — the client uses miniaudio,
   so those three are residue from a backend that is gone. Found by T455.
+  **STRUCK 2026-10-12 (issue #174)**: 11 DELETED, 1 kept as a live test seam —
+  `SoundBuffer::loadFromPCM` (called by `tests/test_sfx_cache_eviction.cpp:52`,
+  classified "seam" in check_zero_callers.py's EXEMPT_TESTS). `setUse3DAudio`
+  stays (a live writer; only the getter went). `getXmiIndex(bool)` stays
+  (live). All state behind the deleted getters is still read by live code and
+  was kept. See `refactor/B501/README.md`.
 
-- **B500** (B, unreached) **The `IGameMode` implementations' accessors: 10 → issue #175
-  zero-caller public functions across the three mode headers.**
+- ~~**B500** (B, unreached) **The `IGameMode` implementations' accessors: 10 → issue #175
+  zero-caller public functions across the three mode headers.**~~
   `AutomatedMode::getGameState()` / `queueCommand()` / `getNextCommand()` /
   `hasPendingCommands()` / `setEventCallback()` — a whole command queue that
   T410's scenario lane replaced with `setAutomationCallback` and did not
@@ -10006,10 +10061,17 @@ fine — the table fails on a stale entry, so it cannot rot.
   `getGameState()` and `GraphicalMode::getGameState()` /
   `getRendererType()`. Note B345 already owns three write-only
   `ConsoleRenderer` members, which is the same corner of the tree. Found by
-  T455.
+  T455. **STRUCK 2026-10-12 (issue #175)**: all 10 DELETED with their
+  cascades — `AutomatedMode`'s command queue (`m_commandQueue`,
+  `m_commandMutex`, `m_eventCallback`, `m_listenerHandles`, `handleEvent`),
+  `m_gameState` in all three modes and `m_rendererType` in `GraphicalMode`.
+  `createMode`'s `rendererType` parameter and the `GraphicalRendererType`
+  enum stay: `Application::initGameMode` still logs the requested type
+  (`src/client/application.cpp:431-432`). Nothing reintroduced; B345's three
+  members were not touched. See `refactor/B501/README.md`.
 
-- **B501** (B, unreached) **`common/` utility API with no caller: 12 → issue #176
-  zero-caller public functions across 5 headers.**
+- ~~**B501** (B, unreached) **`common/` utility API with no caller: 12 → issue #176
+  zero-caller public functions across 5 headers.**~~
   `PerformanceMetrics::getTimings()` / `resetGameplay()` / `getElapsedMs()` /
   `markZoneLoadStart()` / `markZoneLoadEnd()` / `getCategoryName()` — a
   zone-load timing channel nothing marks; `ClampLower()`; `Random::Shuffle()`;
@@ -10018,6 +10080,13 @@ fine — the table fails on a stale entry, so it cannot rot.
   (`MarkHeapStart()`, `MeasureHeapUsage()`, `PageAlignVectorAligned()`)~~:
   B941 (#259) deleted the whole `ksm.h` header when its last user,
   `RaycastMesh`, moved to plain vectors. Found by T455.
+  **STRUCK 2026-10-12 (issue #176)**: 9 live DELETED (`getTimings()`,
+  `resetGameplay()`, `getElapsedMs()`, `markZoneLoadStart()`,
+  `markZoneLoadEnd()`, the `getCategoryName()` free function, `ClampLower()`,
+  `Random::Shuffle()`, `LogManager::GetMutex()` — with its `m_mutex` member)
+  plus the zone-load tracking members `currentZoneName_` /
+  `zoneLoadStart_`; the four KSM helpers were already gone via B941 (#259).
+  See `refactor/B501/README.md`.
 
 - ~~**B502** (B, unreached) **Gameplay-domain manager API with no caller: 21
   zero-caller public functions across 9 headers
@@ -11179,9 +11248,14 @@ B712–B719 unused.
   `HotkeyBinding::toString`, `ConsoleRenderer::setStatusUpdateInterval` (the
   one tests-only method on a class the census sees no live use of), and
   `focusTextEntry` -- 8 rows. The hotkey rows sit beside T466's territory
-  (`hotkey_manager.cpp`) and were not touched. Found by T458.
+  (`hotkey_manager.cpp`) and were not touched. Found by T458. **`HotkeyBinding::toString`
+  struck early (2026-10-12, `task/kb-b606-renderer-asset-data-zero-callers`):**
+  a B606 deletion cascaded it -- its B605 row was tests-only only by
+  name-collision with the free `toString(SpellVisualSource)` (three test
+  lines), which B606 removed; the dead one-line delegate (over the live
+  `HotkeyManager::bindingToString`) went with it. `refactor/B606/README.md`.
 
-- **B606** (B, unreached) **Renderer, asset and data API with no production → issue #189
+- ~~**B606** (B, unreached) **Renderer, asset and data API with no production → issue #189
   caller.** `IrrlichtRenderer::setNewUIEnabled`,
   `EntityRenderer::loadEquipmentModels/loadGlobalCharacters` (not called even
   by the zero-caller `loadGlobalAssets`, B494, which T468 deleted; since T485
@@ -11197,7 +11271,15 @@ B712–B719 unused.
   `reloadRaceMappings`, `LiftTravelSeconds`, `TargetTypeRestrictsCreature`,
   `toString(SpellVisualSource)`, `parseFormattedMessageText`,
   `optionsClipPlaneStep`, `optionsVolumeFraction`, `optionsVolumeStep` -- 18
-  rows. Found by T458.
+  rows. Found by T458.~~ **CLOSED 2026-10-12** (`task/kb-b606-renderer-asset-data-zero-callers`,
+  `refactor/B606/README.md`): all 18 ratchet rows deleted with their tests-only
+  nets; `EntityRenderer::loadEquipmentModels/loadGlobalCharacters` kept (tool
+  callers, no longer census rows); the `login_strings` table dropped with its
+  only reader (db rebuilt, no version bump); `applyStoredZoneEnvironment`
+  deleted (the zone-load Step 10 applies a strict superset); one B605 row
+  (`HotkeyBinding::toString`) cascaded out (name collision with the deleted
+  free `toString(SpellVisualSource)`). ZeroCallers RED 21 stale → GREEN 271
+  tests-only.
 
 - **B607** (P) **The zero-caller census INVENTED dead functions through a
   stream operator, and one of them was a T455 exemption.**
@@ -12805,7 +12887,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   `slotPrimary -> weaponPrimary`, `slotSecondary -> weaponSecondary`) or to
   accept it as era behaviour -- the official client has the same server. Found
   by T494.
-- **B810** (B) **`LootItemIntent`'s corpse slot numbers have the SAME → issue #199
+- ~~**B810** (B) **`LootItemIntent`'s corpse slot numbers have the SAME → issue #199
   Titanium/server split B796 was, and nothing converts them either.** The
   server's pair is `titanium.cpp:3641` `ServerToTitaniumCorpseSlot()` /
   `:3727` `TitaniumToServerCorpseSlot()`, and it is NOT the same table as the
@@ -12814,7 +12896,12 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   `invslot::slotGeneral1`. T494 fixed the possessions/bank/trade/world/bag
   table and deliberately did not touch this one (out of scope). Anything that
   prints or takes a corpse slot number is suspect; start at whatever pushes
-  `LootItemIntent`. Found by T494.
+  `LootItemIntent`. Found by T494.~~ **STRUCK 2026-10-11**
+  (`task/kb-b810-corpse-slot-split`, `refactor/B810/README.md`): the corpse
+  pair (`parseCorpseSlot()` in, `corpseSlotToServer()` out, port of the
+  server's two functions) is the only conversion, and it sits beside T494's
+  pair in `inventory_constants.h`; `/loot <n>` (window open) and the loot
+  printouts now speak server numbers, the wire stays model-numbered.
 - ~~**B811** (A) **The llmbench held-item check cannot tell "already holding it" → issue #82
   from "just equipped it", and that is how B796's own experiment produced a
   false positive.** `E_heldA_*` records what the inventory table says at

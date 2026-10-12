@@ -18,14 +18,6 @@ bool DoorTravels(uint8_t opentype, uint32_t doorParam)
     return DoorOpentypeIsLift(opentype) && doorParam > 0;
 }
 
-float LiftTravelSeconds(uint32_t doorParam)
-{
-    if (doorParam == 0) {
-        return 0.0f;
-    }
-    return static_cast<float>(doorParam) / DoorMotion::kLiftUnitsPerSecond;
-}
-
 bool PlayerRidesLift(float feetZ, float surfaceZ, float tolerance)
 {
     return std::fabs(feetZ - surfaceZ) <= tolerance;

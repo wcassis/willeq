@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "client/graphics/background_work_queue.h"
 #include "client/graphics/background_thread_pool.h"
@@ -130,7 +131,13 @@ TEST(BackgroundWorkQueue, MultipleItemsDrainInOrder) {
 
     ASSERT_TRUE(waitForResults(q, 3, 2000));
 
-    auto results = q.pollAll();
+    // B606 (#189) deleted the production pollAll() (zero callers; the live
+    // worker polls one at a time) with its tests. A local drain -- pollOne
+    // until the queue is empty -- keeps these nets over the same behaviour:
+    // FIFO order, full drain, and an empty queue.
+    std::vector<TestResult> results;
+    TestResult one;
+    while (q.pollOne(one)) results.push_back(one);
     ASSERT_EQ(results.size(), 3u);
     EXPECT_EQ(results[0].id, 1);
     EXPECT_EQ(results[1].id, 2);
@@ -142,15 +149,15 @@ TEST(BackgroundWorkQueue, MultipleItemsDrainInOrder) {
     q.stop();
 }
 
-TEST(BackgroundWorkQueue, PollAllReturnsEmptyWhenNoResults) {
+TEST(BackgroundWorkQueue, PollOneReturnsFalseWhenNoResults) {
     BackgroundWorkQueue<TestRequest, TestResult> q(simpleProcessor);
     q.start();
-    auto results = q.pollAll();
-    EXPECT_TRUE(results.empty());
+    TestResult r;
+    EXPECT_FALSE(q.pollOne(r));
     q.stop();
 }
 
-TEST(BackgroundWorkQueue, PollOneAndPollAllInterleaved) {
+TEST(BackgroundWorkQueue, PollOneDrainsTheRestAfterOne) {
     BackgroundWorkQueue<TestRequest, TestResult> q(simpleProcessor);
     q.start();
 
@@ -164,7 +171,8 @@ TEST(BackgroundWorkQueue, PollOneAndPollAllInterleaved) {
     ASSERT_TRUE(q.pollOne(first));
     EXPECT_EQ(first.id, 1);
 
-    auto rest = q.pollAll();
+    std::vector<TestResult> rest;
+    while (q.pollOne(first)) rest.push_back(first);
     ASSERT_EQ(rest.size(), 2u);
     EXPECT_EQ(rest[0].id, 2);
     EXPECT_EQ(rest[1].id, 3);
@@ -208,44 +216,8 @@ TEST(BackgroundWorkQueue, StopWhileItemsPending) {
     EXPECT_LT(count, 20);
 }
 
-TEST(BackgroundWorkQueue, BatchHooksCalledAroundWork) {
-    std::atomic<int> beginCount{0};
-    std::atomic<int> endCount{0};
-
-    BackgroundWorkQueue<TestRequest, TestResult> q(simpleProcessor);
-    q.setBatchHooks(
-        [&beginCount] { beginCount.fetch_add(1, std::memory_order_relaxed); },
-        [&endCount] { endCount.fetch_add(1, std::memory_order_relaxed); });
-    q.start();
-
-    q.submit({1, "a"});
-    q.submit({2, "b"});
-    q.submit({3, "c"});
-
-    ASSERT_TRUE(waitForIdle(q, 2000));
-
-    q.stop();
-
-    EXPECT_GE(beginCount.load(), 1);
-    EXPECT_GE(endCount.load(), 1);
-    EXPECT_EQ(beginCount.load(), endCount.load());
-}
-
-TEST(BackgroundWorkQueue, BatchHooksNotCalledWhenNoWork) {
-    std::atomic<int> beginCount{0};
-    std::atomic<int> endCount{0};
-
-    BackgroundWorkQueue<TestRequest, TestResult> q(simpleProcessor);
-    q.setBatchHooks(
-        [&beginCount] { beginCount.fetch_add(1, std::memory_order_relaxed); },
-        [&endCount] { endCount.fetch_add(1, std::memory_order_relaxed); });
-    q.start();
-    // No submits
-    q.stop();
-
-    EXPECT_EQ(beginCount.load(), 0);
-    EXPECT_EQ(endCount.load(), 0);
-}
+// B606 (#189) deleted setBatchHooks()/onBatchBegin_/onBatchEnd_ (zero callers;
+// the only queue user, EntityPrepWorker, never set them) with their two tests.
 
 TEST(BackgroundWorkQueue, MoveOnlyTypes) {
     struct MoveRequest {
@@ -375,12 +347,10 @@ TEST(BackgroundWorkQueue, PoolBacked_MultipleItems) {
 
     ASSERT_TRUE(waitForResults(q, 3, 2000));
 
-    auto results = q.pollAll();
-    ASSERT_EQ(results.size(), 3u);
-
-    // Results may arrive in any order with multiple pool threads
+    // B606 (#189): drained one at a time now (pollAll() deleted, zero callers).
     std::set<int> ids;
-    for (const auto& r : results) ids.insert(r.id);
+    TestResult one;
+    while (q.pollOne(one)) ids.insert(one.id);
     EXPECT_EQ(ids.count(1), 1u);
     EXPECT_EQ(ids.count(2), 1u);
     EXPECT_EQ(ids.count(3), 1u);

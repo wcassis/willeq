@@ -1,19 +1,33 @@
-# Cross-compilation environment for AArch64 (arm64) targeting Ubuntu Noble (24.04)
-# Produces a willeq binary for Rock64 (RK3328, Cortex-A53, Mali-450 MP2)
-# Uses Lima open-source GPU driver (Mesa GLES2) via DRM/KMS/GBM/EGL - no X11 needed
+# Cross-compilation environment for AArch64 (arm64) targeting Armbian Noble (Ubuntu 24.04)
+# Produces a willeq binary for the aarch64 SBC lanes (scripts/pi/env.sh, B1030 #350):
+#   lane 2  Rock64   RK3328  Cortex-A53  Mali-450  (lima)      -- the original target
+#   lane 3  ROCK 4D  RK3576  A72+A53     Mali-G52  (panfrost)  -- Armbian resolute (26.04);
+#           a noble-sysroot binary runs there because glibc is forward compatible
+# Generic -march=armv8-a, no -mtune: one binary serves both lanes.
+# Uses the Mesa GLES2 driver via DRM/KMS/GBM/EGL - no X11 needed.
 #
-# Build: docker build -f docker/Dockerfile.arm64-noble -t willeq-arm64-noble .
+# B1030: this file is docker/Dockerfile.arm-noble with the architecture swapped and
+# NOTHING else -- `scripts/ci/check_arm64_dockerfile.sh` fails if the two drift apart
+# in any line other than the ones the arch substitution table there produces. Edit the
+# armhf file, then regenerate this one with `scripts/ci/check_arm64_dockerfile.sh --write`.
+#
+# Build: scripts/build-arm64-noble.sh  (supplies the `vendor` build context; B970)
+#   By hand: docker build -f docker/Dockerfile.arm64-noble \
+#              --build-context vendor="$(scripts/ci/vendor_fetch.sh --ensure)" -t willeq-arm64-noble .
 # Run:   docker run --rm -v $(pwd):/src -v $(pwd)/build-arm64-noble/bin:/output willeq-arm64-noble
 #
 # Build options (passed as --build-arg):
 #   ENABLE_GRAPHICS=ON|OFF   (default: ON)
 #   ENABLE_AUDIO=ON|OFF      (default: ON)
+# Run-time env: BUILD_JOBS (default: nproc) -- dev-u24 runs ONE C++ build at a time;
+#   pass a small value when another build is alive (hand-off 2026-10-12).
 
 FROM ubuntu:24.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install cross-compiler and build tools
+# No gl4es/fbturbo deps needed (Lima provides native GL 2.1 via Mesa)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
@@ -34,6 +48,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM base AS sysroot
 
 # Bootstrap Noble arm64 sysroot using --foreign mode
+# Noble's glibc matches Docker host (both Ubuntu 24.04) - no version mismatch hacks needed
+# DRM/GBM/EGL instead of X11 - renders directly via kernel mode setting
 RUN debootstrap --no-check-gpg --foreign --arch=arm64 \
     --include=libssl-dev,zlib1g-dev,libdrm-dev,libgbm-dev,libegl-dev,libgl-dev,libgles2-mesa-dev,mesa-common-dev,libglib2.0-dev,libffi-dev,libpcre2-dev,libasound2-dev \
     noble /opt/noble-sysroot http://ports.ubuntu.com/ubuntu-ports/
@@ -68,7 +84,7 @@ RUN if [ ! -f /opt/noble-sysroot/usr/include/GL/gl.h ]; then \
         cp /usr/include/EGL/*.h /opt/noble-sysroot/usr/include/EGL/; \
     fi
 
-# Ensure GLES2 headers exist
+# Ensure GLES2 headers exist (needed for gles2_etc1_benchmark tool)
 RUN if [ ! -f /opt/noble-sysroot/usr/include/GLES2/gl2.h ]; then \
         apt-get update && apt-get install -y --no-install-recommends libgles2-mesa-dev && \
         mkdir -p /opt/noble-sysroot/usr/include/GLES2 && \
@@ -98,12 +114,14 @@ ENV CXX=${CROSS}-g++
 ENV AR=${CROSS}-ar
 ENV RANLIB=${CROSS}-ranlib
 ENV STRIP=${CROSS}-strip
-ENV CFLAGS="--sysroot=${ARM_SYSROOT} -march=armv8-a -mtune=cortex-a53 -O2"
-ENV CXXFLAGS="--sysroot=${ARM_SYSROOT} -march=armv8-a -mtune=cortex-a53 -O2"
+ENV CFLAGS="--sysroot=${ARM_SYSROOT} -march=armv8-a -O2"
+ENV CXXFLAGS="--sysroot=${ARM_SYSROOT} -march=armv8-a -O2"
 ENV LDFLAGS="--sysroot=${ARM_SYSROOT}"
 ENV PKG_CONFIG_PATH="${ARM_SYSROOT}/usr/lib/aarch64-linux-gnu/pkgconfig:${ARM_SYSROOT}/usr/lib/pkgconfig:${ARM_SYSROOT}/usr/share/pkgconfig"
 ENV PKG_CONFIG_LIBDIR="${ARM_SYSROOT}/usr/lib/aarch64-linux-gnu/pkgconfig:${ARM_SYSROOT}/usr/lib/pkgconfig"
 ENV PKG_CONFIG_SYSROOT_DIR="${ARM_SYSROOT}"
+
+# No glibc .so replacement needed - Docker (Noble) and target (Noble) use the same glibc
 
 WORKDIR /tmp/deps
 
@@ -118,7 +136,7 @@ RUN wget -q https://github.com/fmtlib/fmt/releases/download/9.1.0/fmt-9.1.0.zip 
         -DCMAKE_C_COMPILER=${CROSS}-gcc \
         -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
         -DCMAKE_SYSROOT=${ARM_SYSROOT} \
-        -DCMAKE_CXX_FLAGS="-march=armv8-a -mtune=cortex-a53" \
+        -DCMAKE_CXX_FLAGS="-march=armv8-a" \
         -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
         -DFMT_TEST=OFF \
         -DFMT_DOC=OFF && \
@@ -137,7 +155,7 @@ RUN wget -q https://github.com/open-source-parsers/jsoncpp/archive/refs/tags/1.9
         -DCMAKE_C_COMPILER=${CROSS}-gcc \
         -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
         -DCMAKE_SYSROOT=${ARM_SYSROOT} \
-        -DCMAKE_CXX_FLAGS="-march=armv8-a -mtune=cortex-a53" \
+        -DCMAKE_CXX_FLAGS="-march=armv8-a" \
         -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
         -DJSONCPP_WITH_TESTS=OFF \
         -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF \
@@ -158,12 +176,49 @@ RUN wget -q https://github.com/USCiLab/cereal/archive/refs/tags/v1.3.2.tar.gz -O
     cp -r cereal-1.3.2/include/cereal ${ARM_SYSROOT}/usr/include/ && \
     rm -rf cereal-*
 
+# --- Recast/Detour (for navmesh pathfinding) ---
+# Pin to same commit as host Ubuntu package (1.5.1+git20210215.e75adf8-1).
+# This old version lacks CMake, so we compile the .a files directly and
+# install headers to recastnavigation/ to match the host package layout.
+RUN RECAST_COMMIT=e75adf86f91eb3082220085e42dda62679f9a3ea && \
+    wget -q "https://github.com/recastnavigation/recastnavigation/archive/${RECAST_COMMIT}.tar.gz" -O recast.tar.gz && \
+    tar xzf recast.tar.gz && \
+    cd recastnavigation-${RECAST_COMMIT} && \
+    # Build Recast static library
+    ${CROSS}-g++ -march=armv8-a --sysroot=${ARM_SYSROOT} \
+        -O2 -c -IRecast/Include Recast/Source/*.cpp && \
+    ${CROSS}-ar rcs libRecast.a *.o && rm -f *.o && \
+    # Build Detour static library
+    ${CROSS}-g++ -march=armv8-a --sysroot=${ARM_SYSROOT} \
+        -O2 -c -IDetour/Include Detour/Source/*.cpp && \
+    ${CROSS}-ar rcs libDetour.a *.o && rm -f *.o && \
+    # Install
+    cp libRecast.a libDetour.a ${ARM_SYSROOT}/usr/lib/ && \
+    mkdir -p ${ARM_SYSROOT}/usr/include/recastnavigation && \
+    cp Recast/Include/*.h Detour/Include/*.h ${ARM_SYSROOT}/usr/include/recastnavigation/ && \
+    cd /tmp/deps && rm -rf recast* recastnavigation-*
+
 # --- Irrlicht 1.8.5 (optional, for graphics) ---
 # Built as STATIC library to avoid C++ ABI issues with -static-libstdc++
+# Irrlicht's bundled libpng 1.6.37 is missing the arm/ NEON source directory;
+# we download the upstream libpng 1.6.37 source and copy in the arm/ files
+# to enable hardware-accelerated PNG decoding via NEON intrinsics (NEON is baseline on ARMv8; libpng still needs the arm/ objects).
 # DRM/KMS/GBM/EGL patches replace X11 with direct framebuffer rendering.
-# AArch64: no NEON PNG flags needed (NEON is baseline on ARMv8)
 ARG ENABLE_GRAPHICS=ON
 ARG ENABLE_GLES2=ON
+# T137: mirrors scripts/build-gles2-x86.sh's --t122-texprobe. OFF by default
+# -- a plain `bash scripts/build-arm-noble.sh` (no --t122-texprobe) passes
+# ENABLE_T122_TEXPROBE=OFF here and PROBE_CXXFLAGS stays empty below, so the
+# probe macro is never defined and a normal ARM build contains no probe
+# symbols, exactly like the x86 default build.
+ARG ENABLE_T122_TEXPROBE=OFF
+# B970 (#288): the Irrlicht and libpng archives come from the vendor store (a named build
+# context = the NFS dir ci-arm/vendor/, filled and SHA256-checked by scripts/ci/vendor_fetch.sh
+# against docker/vendor.sha256), NOT from SourceForge. They are COPYed BEFORE the patch sources
+# below so editing docker/irrlicht-drm/* never re-runs this layer or needs the network.
+COPY --from=vendor irrlicht-1.8.5.zip libpng-1.6.37.tar.xz /tmp/vendor/
+COPY docker/vendor.sha256 /tmp/vendor/vendor.sha256
+RUN cd /tmp/vendor && grep -v '^#' vendor.sha256 | sha256sum -c -
 COPY docker/irrlicht-drm/CIrrDeviceFB.h /tmp/irrlicht-drm/CIrrDeviceFB.h
 COPY docker/irrlicht-drm/CIrrDeviceFB.cpp /tmp/irrlicht-drm/CIrrDeviceFB.cpp
 COPY docker/irrlicht-drm/COpenGLES2Driver.h /tmp/irrlicht-drm/COpenGLES2Driver.h
@@ -174,15 +229,14 @@ COPY docker/irrlicht-drm/COGLES2Shaders.h /tmp/irrlicht-drm/COGLES2Shaders.h
 COPY docker/irrlicht-drm/COGLES2Shaders.cpp /tmp/irrlicht-drm/COGLES2Shaders.cpp
 COPY docker/irrlicht-drm/COGLES2MaterialRenderer.h /tmp/irrlicht-drm/COGLES2MaterialRenderer.h
 COPY docker/irrlicht-drm/COGLES2MaterialRenderer.cpp /tmp/irrlicht-drm/COGLES2MaterialRenderer.cpp
-COPY docker/irrlicht-drm/drm_mode_select.h /tmp/irrlicht-drm/drm_mode_select.h
 COPY docker/irrlicht-drm/gl_call_counters.h /tmp/irrlicht-drm/gl_call_counters.h
 COPY docker/irrlicht-drm/gpu_sync_probe.h /tmp/irrlicht-drm/gpu_sync_probe.h
+COPY docker/irrlicht-drm/t122_texprobe.h /tmp/irrlicht-drm/t122_texprobe.h
+COPY docker/irrlicht-drm/drm_mode_select.h /tmp/irrlicht-drm/drm_mode_select.h
 COPY docker/irrlicht-drm-patch.py /tmp/irrlicht-drm-patch.py
 RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
-        wget -q https://downloads.sourceforge.net/irrlicht/irrlicht-1.8.5.zip && \
-        python3 -c "import zipfile; zipfile.ZipFile('irrlicht-1.8.5.zip').extractall()" && \
-        wget -q https://downloads.sourceforge.net/libpng/libpng-1.6.37.tar.xz && \
-        tar xJf libpng-1.6.37.tar.xz && \
+        python3 -c "import zipfile; zipfile.ZipFile('/tmp/vendor/irrlicht-1.8.5.zip').extractall()" && \
+        tar xJf /tmp/vendor/libpng-1.6.37.tar.xz && \
         cp -r libpng-1.6.37/arm irrlicht-1.8.5/source/Irrlicht/libpng/ && \
         cp /tmp/irrlicht-drm/CIrrDeviceFB.h irrlicht-1.8.5/source/Irrlicht/CIrrDeviceFB.h && \
         cp /tmp/irrlicht-drm/CIrrDeviceFB.cpp irrlicht-1.8.5/source/Irrlicht/CIrrDeviceFB.cpp && \
@@ -194,9 +248,10 @@ RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
         cp /tmp/irrlicht-drm/COGLES2Shaders.cpp irrlicht-1.8.5/source/Irrlicht/COGLES2Shaders.cpp && \
         cp /tmp/irrlicht-drm/COGLES2MaterialRenderer.h irrlicht-1.8.5/source/Irrlicht/COGLES2MaterialRenderer.h && \
         cp /tmp/irrlicht-drm/COGLES2MaterialRenderer.cpp irrlicht-1.8.5/source/Irrlicht/COGLES2MaterialRenderer.cpp && \
-        cp /tmp/irrlicht-drm/drm_mode_select.h irrlicht-1.8.5/source/Irrlicht/drm_mode_select.h && \
         cp /tmp/irrlicht-drm/gl_call_counters.h irrlicht-1.8.5/source/Irrlicht/gl_call_counters.h && \
         cp /tmp/irrlicht-drm/gpu_sync_probe.h irrlicht-1.8.5/source/Irrlicht/gpu_sync_probe.h && \
+        cp /tmp/irrlicht-drm/t122_texprobe.h irrlicht-1.8.5/source/Irrlicht/t122_texprobe.h && \
+        cp /tmp/irrlicht-drm/drm_mode_select.h irrlicht-1.8.5/source/Irrlicht/drm_mode_select.h && \
         python3 /tmp/irrlicht-drm-patch.py irrlicht-1.8.5 && \
         if [ "$ENABLE_GLES2" = "ON" ]; then \
             sed -i 's|^#define _IRR_COMPILE_WITH_OPENGL_|//#define _IRR_COMPILE_WITH_OPENGL_|' irrlicht-1.8.5/include/IrrCompileConfig.h; \
@@ -204,10 +259,16 @@ RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
         cd irrlicht-1.8.5/source/Irrlicht && \
         sed -i 's|^LIBPNGOBJ = |LIBPNGOBJ = libpng/arm/arm_init.o libpng/arm/filter_neon_intrinsics.o libpng/arm/palette_neon_intrinsics.o |' Makefile && \
         sed -i 's|^IRRMESHOBJ = |IRRMESHOBJ = COpenGLES2Driver.o COGLES2Texture.o COGLES2Shaders.o COGLES2MaterialRenderer.o |' Makefile && \
+        PROBE_CXXFLAGS="" && \
+        if [ "$ENABLE_T122_TEXPROBE" = "ON" ]; then \
+            echo "*** T122 probe ARM build: WILLEQ_T122_TEXPROBE defined, -g + -fno-omit-frame-pointer kept for core symbolization / call-chain capture ***" && \
+            PROBE_CXXFLAGS="-g -fno-omit-frame-pointer -DWILLEQ_T122_TEXPROBE"; \
+        fi && \
         make NDEBUG=1 \
-            CC="${CROSS}-gcc --sysroot=${ARM_SYSROOT} -march=armv8-a -mtune=cortex-a53 -I${ARM_SYSROOT}/usr/include/libdrm" \
-            CXX="${CROSS}-g++ --sysroot=${ARM_SYSROOT} -march=armv8-a -mtune=cortex-a53 -I${ARM_SYSROOT}/usr/include/libdrm" \
+            CC="${CROSS}-gcc --sysroot=${ARM_SYSROOT} -march=armv8-a -I${ARM_SYSROOT}/usr/include/libdrm" \
+            CXX="${CROSS}-g++ --sysroot=${ARM_SYSROOT} -march=armv8-a -I${ARM_SYSROOT}/usr/include/libdrm" \
             AR="${CROSS}-ar" \
+            CXXFLAGS="$PROBE_CXXFLAGS" \
             staticlib && \
         cp ../../lib/Linux/libIrrlicht.a ${ARM_SYSROOT}/usr/lib/ && \
         cp -r ../../include ${ARM_SYSROOT}/usr/include/irrlicht && \
@@ -227,8 +288,8 @@ RUN if [ "$ENABLE_AUDIO" = "ON" ]; then \
             -DCMAKE_C_COMPILER=${CROSS}-gcc \
             -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
             -DCMAKE_SYSROOT=${ARM_SYSROOT} \
-            -DCMAKE_C_FLAGS="-march=armv8-a -mtune=cortex-a53" \
-            -DCMAKE_CXX_FLAGS="-march=armv8-a -mtune=cortex-a53" \
+            -DCMAKE_C_FLAGS="-march=armv8-a" \
+            -DCMAKE_CXX_FLAGS="-march=armv8-a" \
             -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
             -DALSOFT_UTILS=OFF \
             -DALSOFT_EXAMPLES=OFF \
@@ -251,7 +312,7 @@ RUN if [ "$ENABLE_AUDIO" = "ON" ]; then \
             -DCMAKE_C_COMPILER=${CROSS}-gcc \
             -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
             -DCMAKE_SYSROOT=${ARM_SYSROOT} \
-            -DCMAKE_C_FLAGS="-march=armv8-a -mtune=cortex-a53" \
+            -DCMAKE_C_FLAGS="-march=armv8-a" \
             -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
             -DBUILD_SHARED_LIBS=OFF \
             -DBUILD_PROGRAMS=OFF \
@@ -274,7 +335,7 @@ RUN if [ "$ENABLE_AUDIO" = "ON" ]; then \
             -DCMAKE_C_COMPILER=${CROSS}-gcc \
             -DCMAKE_CXX_COMPILER=${CROSS}-g++ \
             -DCMAKE_SYSROOT=${ARM_SYSROOT} \
-            -DCMAKE_C_FLAGS="-march=armv8-a -mtune=cortex-a53" \
+            -DCMAKE_C_FLAGS="-march=armv8-a" \
             -DCMAKE_INSTALL_PREFIX=${ARM_SYSROOT}/usr \
             -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \
             -DBUILD_SHARED_LIBS=OFF \
@@ -305,6 +366,9 @@ COPY --from=deps /opt/noble-sysroot /opt/noble-sysroot
 
 ENV ARM_SYSROOT=/opt/noble-sysroot
 
+# No glibc .so replacement needed (same glibc on both sides)
+# No fcntl64 compat wrapper needed (same glibc on both sides)
+
 WORKDIR /build
 
 ENTRYPOINT ["/bin/bash", "-c", "\
@@ -322,21 +386,30 @@ ENTRYPOINT ["/bin/bash", "-c", "\
         -DIRRLICHT_LIBRARY=${ARM_SYSROOT}/usr/lib/libIrrlicht.a \
         -DWITH_RDP=OFF \
         -DEQT_BUILD_TESTS=OFF \
-    && cmake --build . --target willeq -j$(nproc) \
-    && cmake --build . --target model_viewer -j$(nproc) \
-    && cmake --build . --target gpu_texture_formats -j$(nproc) \
-    && cmake --build . --target gles2_etc1_benchmark -j$(nproc) \
-    && cmake --build . --target egl_image_sharing_test -j$(nproc) \
-    && cmake --build . --target test_gl_points -j$(nproc) \
-    && cmake --build . --target gles2_derivatives_test -j$(nproc) \
-    && cmake --build . --target gles2_npot_test -j$(nproc) \
-    && cmake --build . --target gles2_shader_perpixel_benchmark -j$(nproc) \
-    && cmake --build . --target gles2_program_switch_benchmark -j$(nproc) \
-    && cmake --build . --target gles2_fog_volume_benchmark -j$(nproc) \
-    && cmake --build . --target gles2_fog_visual_compare -j$(nproc) \
-    && cmake --build . --target gles2_icosphere_anim_benchmark -j$(nproc) \
-    && cmake --build . --target gles2_texture_read_benchmark -j$(nproc) \
+    && cmake --build . --target willeq -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target model_viewer -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gpu_texture_formats -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_etc1_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target egl_image_sharing_test -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target test_gl_points -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_derivatives_test -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_npot_test -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_shader_perpixel_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_program_switch_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_fog_volume_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_fog_visual_compare -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_icosphere_anim_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_texture_read_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_zone_benchmark -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_shader_diagnostic -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_composite_audit -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_etc1_alpha_readback_test -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target ui_inventory_capture -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_alpha_test_probe -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target impostor_pixel_compare -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target gles2_player_light_probe -j${BUILD_JOBS:-$(nproc)} \
+    && cmake --build . --target nametag_drawcost -j${BUILD_JOBS:-$(nproc)} \
     && echo 'Skipping strip — debug symbols retained for GDB' \
-    && mkdir -p /output && cp bin/willeq bin/model_viewer bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test bin/test_gl_points bin/gles2_derivatives_test bin/gles2_npot_test bin/gles2_shader_perpixel_benchmark bin/gles2_program_switch_benchmark bin/gles2_fog_volume_benchmark bin/gles2_fog_visual_compare bin/gles2_icosphere_anim_benchmark bin/gles2_texture_read_benchmark /output/ \
+    && mkdir -p /output && cp bin/willeq bin/model_viewer bin/gpu_texture_formats bin/gles2_etc1_benchmark bin/egl_image_sharing_test bin/test_gl_points bin/gles2_derivatives_test bin/gles2_npot_test bin/gles2_shader_perpixel_benchmark bin/gles2_program_switch_benchmark bin/gles2_fog_volume_benchmark bin/gles2_fog_visual_compare bin/gles2_icosphere_anim_benchmark bin/gles2_texture_read_benchmark bin/gles2_zone_benchmark bin/gles2_shader_diagnostic bin/gles2_composite_audit bin/ui_inventory_capture bin/gles2_alpha_test_probe bin/gles2_player_light_probe bin/impostor_pixel_compare bin/nametag_drawcost /output/ \
     && echo '=== Build complete ===' \
 "]

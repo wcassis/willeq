@@ -41,7 +41,7 @@
   where you find it. `initLoadingScreen`, `initDeferredGraphics`,
   `processFrame`, `shutdown` and `run` stay on `IrrlichtRenderer`:
   `Application` and `IrrlichtBridge` must not learn a component exists.
-- `CameraController` - places the third-person cameras with BSP (or triangle-selector) collision: `placeRigCamera()` for the orbit-rig cameras (Overhead, User Defined 1/2, Tether; T461) and `placeChaseCamera()` for Chase, which is the same rig placement plus T464's eye-region ceiling clamp. T474 (board B650) deleted `setFollowPosition()` and the follow-distance API: Chase is a rig at T466's oracle fit (`kChaseRig`, pitch 6, dist 4.0, look-at 7.0 above the feet), scaled by the player's per-race eye height. The mode set and the rig geometry are `include/client/graphics/player/camera_mode.h` / `camera_rig.h`; first person is `PlayerCameraComponent::repositionFirstPersonCamera()`. T461 deleted its never-called free-fly `update()` (there is no Free mode); the fly-camera setters left behind are board B533
+- `CameraController` - places the third-person cameras with BSP (or triangle-selector) collision: `placeRigCamera()` for the orbit-rig cameras (Overhead, User Defined 1/2, Tether; T461) and `placeChaseCamera()` for Chase, which is the same rig placement plus T464's eye-region ceiling clamp. T474 (board B650) deleted `setFollowPosition()` and the follow-distance API: Chase is a rig at T466's oracle fit (`kChaseRig`, pitch 6, dist 4.0, look-at 7.0 above the feet), scaled by the player's per-race eye height. The mode set and the rig geometry are `include/client/graphics/player/camera_mode.h` / `camera_rig.h`; first person is `PlayerCameraComponent::repositionFirstPersonCamera()`. T461 deleted its never-called free-fly `update()` (there is no Free mode); B533 (2026-10-11, MR !138) deleted the remaining fly/orbit CameraController setters and state (the two setupCamera() init writes in irrlicht_renderer.cpp; per-name table in refactor/B533/README.md)
 - `EntityRenderer` - Character/NPC 3D model rendering with GLSL shaders, split across `entity_renderer.cpp` + 12 `entity_*.cpp` TUs (J03)
 - `RaceModelLoader` - Loads character models from S3D archives by race ID
 - `DoorManager` - Door object rendering and state management
@@ -243,7 +243,14 @@ chunk to whatever `eqt::memory::Category` the CALLING THREAD is scoped to.
   On the Orange Pi every texture, VBO, depth buffer and render target is a Lima
   GEM object: shmem pages the kernel pins for the process. They are in no
   RssAnon, RssShmem or `gpu_driver` figure (`gpu_driver` is the driver's CPU
-  heap), and Lima on the Pi's 6.12 kernel publishes no `drm-*` fdinfo keys. The
+  heap), and Lima on the Pi's 6.12 kernel publishes no `drm-*` fdinfo keys. A
+  driver that does publish them (Panfrost on the ROCK 4D) gives the row its
+  `drm-resident-memory`, never `drm-total-memory` (B1032): the total counts
+  every created buffer whether or not it has pages, and Mesa's
+  `panfrost_open_device` creates a 128 MiB growable tiler heap
+  (`PAN_BO_GROWABLE`, `src/gallium/drivers/panfrost/pan_device.c`) that the
+  kernel backs only as the tiler faults it in -- 171 MB total against 38 MB
+  resident at qeynos2, `review/B1032/README.md`. The
   row reads them from the process's OWN memory cgroup (`memory.stat` shmem),
   which is exact only when the client is alone in it: `scripts/pi/rendered_zone_run.py
   --own-cgroup` (`systemd-run --user --scope`), the default in

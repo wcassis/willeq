@@ -325,7 +325,6 @@ TEST_F(RaceNameNoDatabaseTest, RaceMappingsFailOnTheDatabaseAndNothingElse) {
     EXPECT_FALSE(EQT::Graphics::loadRaceMappings())
         << "with no database open there is nothing to bind to";
     EXPECT_FALSE(EQT::Graphics::areRaceMappingsLoaded());
-    EXPECT_FALSE(EQT::Graphics::reloadRaceMappings());
 }
 
 TEST_F(RaceNameFromDbTest, RaceMappingsBindToTheDatabase) {

@@ -89,7 +89,7 @@ Additional context is in subdirectory CLAUDE.md files:
   gitlab-runner-2** (both tag `x86-build`, B1008) and refuse other hosts (a kanban worker's 4 GiB cap
   OOM-kills a link; builds stay off the Inspur box and off hermes-ext). One pipeline's stages may land
   on different hosts: `test` refuses a build tree not stamped by its own host at its own sha and
-  rebuilds it in-job (B1026, `docs/ci.md` "Two x86 runners"). Pushing a branch is the
+  rebuilds in-job (B1026, `docs/ci.md`). Pushing a branch is the
   cheapest suite run, but each runner's build tree is **warm**: force a clean
   pipeline before trusting a build-system change (`docs/ci.md`).
 
@@ -236,8 +236,7 @@ never a defect).
 # Headless (no graphics)
 ./build/bin/willeq -c willeq.json --no-graphics
 
-# VNC (headless servers). VNC_PORT=5950 in the script; its header says 5999 --
-# the variable wins (T215)
+# VNC (headless servers). VNC_PORT=5950 (the script header's 5999 is stale, T215)
 ./scripts/start-with-vnc.sh -c willeq.json          # vnc://localhost:5950
 
 # VNC + audio streaming: VNC_PORT=5910, AUDIO_PORT=8085
@@ -661,8 +660,9 @@ kernel, Lima open-source driver.
   textures (real 6:1 savings via `GL_ETC1_RGB8_OES`), and the shared path for
   the planned Android port. See `src/client/graphics/CLAUDE.md`.
 - **Display**: DRM/KMS direct rendering without X11 (`--drm`).
-- **Pi lock + CI ARM builds** (`docs/ci.md`, "The ARM runner and Pi runs"): the Pi is single-tenant — `source scripts/pi/env.sh; pi_lock_take <owner>` before
-  any run, `pi_lock_release <owner>` after (atomic, on the Pi; pinned by `scripts/pi/lock_selftest.sh`).
+- **Three single-tenant SBC lanes** (B1030, `docs/ci.md` "The aarch64 SBC lanes"): `PI_LANE=1` Orange Pi,
+  `2` Rock64, `3` ROCK 4D (table in `scripts/pi/env.sh`; a card names its lane, never an address).
+  `pi_lock_take <owner>` before any run, `pi_lock_release <owner>` after (on the device; `lock_selftest.sh`).
 - **GL driver: the shipped LLVM-less Mesa prefix** (Will 2026-09-30, B935; `docs/ci.md` "The shipped Mesa
   prefix"): Pi rigs run `ci-arm/<sha>/bin/willeq-nollvm` (absolute DT_RPATH; `$ORIGIN` is dropped under setcap)
   by default, `WILLEQ_MESA=system` opts out, and every run proves the loaded libgallium from its maps.
@@ -686,10 +686,8 @@ compiles only the DRM/FB device. On x86 the forked device
 (`docker/irrlicht-drm-x86/`) falls back to Mesa's surfaceless EGL platform
 (llvmpipe), which is how CI runs the real GLES2 driver headlessly.
 
-**Legacy platforms**: Noble with desktop GL 2.1 (Lima/Mesa) is retired (P32,
-`docs/decisions.md` 2026-07-28 addendum) — `--no-gles2` no longer exists, GLES2
-is the only ARM renderer. Debian Jessie (kernel 3.4) with the proprietary Mali
-blob and gl4es translation is fully superseded.
+**Legacy platforms**: desktop GL 2.1 on Noble is retired (P32, `docs/decisions.md`
+2026-07-28); `--no-gles2` no longer exists; Jessie + Mali blob + gl4es is superseded.
 
 **DRM input handling**: the DRM device
 (`docker/irrlicht-drm/CIrrDeviceFB.cpp`) reads keyboard/mouse via Linux evdev
@@ -918,10 +916,12 @@ mode keeps the test green without a recording. Protocol-level pcap tests
   and everything Spire shows are **server/RoF2**-numbered (waist 20, **power
   source 21 — not sent to this client at all**, ammo 22, general 23-30, cursor
   33, general bags `4010 + 200*bag + idx`). **Everything a user types or reads is
-  `inventory.slot_id`**, and the conversion lives in exactly two functions in
-  `include/client/inventory/inventory_constants.h`: `parseUserSlot()` in,
-  `describeSlot()` out (both ported from the server's own `titanium.cpp`). **Do
-  not add a third conversion**, and do not "fix" a model-side number to match a
+  `inventory.slot_id`**, and the conversions live in
+  `include/client/inventory/inventory_constants.h`: the possessions pair
+  `parseUserSlot()` in / `describeSlot()` out (both ported from the server's own
+  `titanium.cpp`) and the corpse pair `parseCorpseSlot()` in /
+  `corpseSlotToServer()` out (B810, #199). **Do not add a third ad-hoc
+  conversion at a call site**, and do not "fix" a model-side number to match a
   message.
 - **`EntityAppearance::equipment[]` is a MATERIAL / IT model number, never a
   database item id** (T498, board B755/B823). Slots 0-6 carry the armour

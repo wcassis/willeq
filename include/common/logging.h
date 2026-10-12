@@ -213,9 +213,6 @@ public:
         }
     }
 
-    // Get mutex for thread-safe output (used by FATAL/ERROR direct writes)
-    std::mutex& GetMutex() { return m_mutex; }
-
     // --- Drain thread and buffer registry ---
 
     // Forward declaration — ThreadLogBuffer registers itself here
@@ -354,7 +351,6 @@ private:
 
     int m_global_level;
     std::array<int, MOD_COUNT> m_module_levels;
-    std::mutex m_mutex;
 
     // Buffer registry
     std::mutex m_registry_mutex;

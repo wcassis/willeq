@@ -277,22 +277,13 @@ protected:
     }
 };
 
-TEST_F(RDPServerCertificateTest, SetCertificatePaths) {
-    server_.setCertificate("/path/to/cert.pem", "/path/to/key.pem");
-
-    EXPECT_EQ(server_.getCertPath(), "/path/to/cert.pem");
-    EXPECT_EQ(server_.getKeyPath(), "/path/to/key.pem");
-}
-
-TEST_F(RDPServerCertificateTest, SetCertificateEmptyPaths) {
-    server_.setCertificate("", "");
-
-    EXPECT_EQ(server_.getCertPath(), "");
-    EXPECT_EQ(server_.getKeyPath(), "");
-}
+// B606 (#189) deleted setCertificate()/getCertPath()/getKeyPath(): the file
+// branch they backed was unreachable (no config key or CLI flag fed the
+// setter). The generation tests below cover what createPeerCertificate()/
+// createPeerKey() now do -- always generate a self-signed pair.
 
 TEST_F(RDPServerCertificateTest, GenerateSelfSignedCertificate) {
-    // With no cert paths set, createPeerCertificate should generate one
+    // createPeerCertificate should generate a self-signed certificate
     rdpCertificate* cert = server_.createPeerCertificate();
     rdpPrivateKey* key = server_.createPeerKey();
 

@@ -19,6 +19,19 @@ protected:
         data.push_back(0x12);
         data.push_back(']');
     }
+
+    // B606 (#189): parseFormattedMessageText() is gone; the tests that
+    // compared its display string join the parsed args themselves, with
+    // single spaces between them -- the legacy parser's null->space
+    // rendering.
+    std::string joinArgs(const eqt::ParsedFormattedMessageWithArgs& p) const {
+        std::string out;
+        for (const auto& a : p.args) {
+            if (!out.empty()) out += " ";
+            out += a;
+        }
+        return out;
+    }
 };
 
 // Test plain message with no links
@@ -26,7 +39,8 @@ TEST_F(FormattedMessageTest, PlainMessage_NoLinks) {
     std::string plain = "Hello, this is a plain message with no links.";
     auto data = buildTestData(plain);
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, plain);
 }
 
@@ -34,7 +48,8 @@ TEST_F(FormattedMessageTest, PlainMessage_NoLinks) {
 TEST_F(FormattedMessageTest, NullBytesReplacedWithSpaces) {
     std::vector<uint8_t> data = {'H', 'e', 'l', 'l', 'o', 0x00, 'W', 'o', 'r', 'l', 'd'};
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "Hello World");
 }
 
@@ -46,7 +61,8 @@ TEST_F(FormattedMessageTest, SingleLink_45CharMetadata) {
     appendLink(data, "0FFFFF0000F0000000000000000000000000000000000", "Renux");
     for (char c : std::string(" now")) data.push_back(c);
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "Talk to [Renux] now");
 }
 
@@ -57,7 +73,8 @@ TEST_F(FormattedMessageTest, SingleLink_LongMetadata) {
     // 56 char hex metadata (typical EQ format)
     appendLink(data, "0FFFFF0000F000000000000000000000000000000000000000000000", "Hanns");
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "See [Hanns]");
 }
 
@@ -74,7 +91,8 @@ TEST_F(FormattedMessageTest, MultipleLinks_MixedMetadataLengths) {
     // Another 45-char metadata
     appendLink(data, "0FFFFF000070000000000000000000000000000000000", "Item3");
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "Get [Item1] and [Item2] and [Item3]");
 }
 
@@ -93,7 +111,8 @@ TEST_F(FormattedMessageTest, ManyLinks_FiveInRow_ShortMetadata) {
         }
     }
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_NE(result.find("[Alpha]"), std::string::npos) << "Result: " << result;
     EXPECT_NE(result.find("[Beta]"), std::string::npos) << "Result: " << result;
     EXPECT_NE(result.find("[Gamma]"), std::string::npos) << "Result: " << result;
@@ -116,7 +135,8 @@ TEST_F(FormattedMessageTest, ManyLinks_FiveInRow_LongMetadata) {
         }
     }
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_NE(result.find("[Alpha]"), std::string::npos) << "Result: " << result;
     EXPECT_NE(result.find("[Beta]"), std::string::npos) << "Result: " << result;
     EXPECT_NE(result.find("[Gamma]"), std::string::npos) << "Result: " << result;
@@ -133,7 +153,8 @@ TEST_F(FormattedMessageTest, RealPacket_Renux_Hanns) {
     appendLink(data, "0FFFFF00010000000000000000000000000000000000000000000000", "Hanns");
     for (char c : std::string(", and you know how he is.")) data.push_back(c);
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_NE(result.find("[Renux]"), std::string::npos);
     EXPECT_NE(result.find("[Hanns]"), std::string::npos);
     EXPECT_NE(result.find("mess around with"), std::string::npos);
@@ -148,7 +169,8 @@ TEST_F(FormattedMessageTest, NameStartsWithHexLetter) {
     // 45-char metadata followed by name starting with 'A'
     appendLink(data, "0FFFFF0000D0000000000000000000000000000000000", "Arnold");
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_NE(result.find("[Arnold]"), std::string::npos) << "Result: " << result;
 }
 
@@ -162,7 +184,8 @@ TEST_F(FormattedMessageTest, EmptyLink) {
     data.push_back(']');
     for (char c : std::string(" after")) data.push_back(c);
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "Before [] after");
 }
 
@@ -176,7 +199,8 @@ TEST_F(FormattedMessageTest, LinkWithOnlyHexMetadata) {
     data.push_back(0x12);
     data.push_back(']');
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "See []");
 }
 
@@ -190,7 +214,8 @@ TEST_F(FormattedMessageTest, UnpairedLinkMarker) {
     // No closing 0x12
     for (char c : std::string(" more text")) data.push_back(c);
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     // Content inside unpaired link is skipped
     EXPECT_EQ(result, "Text with [");
 }
@@ -204,7 +229,8 @@ TEST_F(FormattedMessageTest, NPCDialogue_WithNullSeparator) {
     // Dialogue
     for (char c : std::string("Yeah, whatever, Knarg.")) data.push_back(c);
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "Zannsin Resdinet Yeah, whatever, Knarg.");
 }
 
@@ -213,7 +239,8 @@ TEST_F(FormattedMessageTest, TrimsLeadingAndTrailingSpaces) {
     std::vector<uint8_t> data;
     for (char c : std::string("   Hello World   ")) data.push_back(c);
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "Hello World");
 }
 
@@ -221,12 +248,13 @@ TEST_F(FormattedMessageTest, TrimsLeadingAndTrailingSpaces) {
 TEST_F(FormattedMessageTest, NonPrintableCharsSkipped) {
     std::vector<uint8_t> data = {'H', 'i', 0x01, 0x02, 0x03, 'B', 'y', 'e'};
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "HiBye");
 }
 
 // ============================================================================
-// Structured Parsing Tests (parseFormattedMessage)
+// Structured Parsing Tests (parseFormattedMessageArgs)
 // ============================================================================
 
 // Test structured parsing returns same display text as simple parser
@@ -236,11 +264,16 @@ TEST_F(FormattedMessageTest, StructuredParsing_SameDisplayText) {
     appendLink(data, "0FFFFF0000F0000000000000000000000000000000000", "Renux");
     for (char c : std::string(" now")) data.push_back(c);
 
-    std::string simpleResult = eqt::parseFormattedMessageText(data.data(), data.size());
-    eqt::ParsedFormattedMessage structured = eqt::parseFormattedMessage(data.data(), data.size());
+    // B606 (#189): the second, structured parser (parseFormattedMessage,
+    // per-link startPos/endPos) had no production caller and is deleted;
+    // the test keeps its point -- parsing twice is stable.
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string first = joinArgs(_p);
+    eqt::ParsedFormattedMessageWithArgs _p2 = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string second = joinArgs(_p2);
 
-    EXPECT_EQ(structured.displayText, simpleResult);
-    EXPECT_EQ(structured.displayText, "Talk to [Renux] now");
+    EXPECT_EQ(first, second);
+    EXPECT_EQ(first, "Talk to [Renux] now");
 }
 
 // Test single link has correct position
@@ -249,19 +282,15 @@ TEST_F(FormattedMessageTest, StructuredParsing_SingleLinkPosition) {
     for (char c : std::string("See ")) data.push_back(c);
     appendLink(data, "0FFFFF0000D0000000000000000000000000000000000", "Arnold");
 
-    eqt::ParsedFormattedMessage result = eqt::parseFormattedMessage(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string flat = joinArgs(result);
 
-    EXPECT_EQ(result.displayText, "See [Arnold]");
+    EXPECT_EQ(flat, "See [Arnold]");
     ASSERT_EQ(result.links.size(), 1u);
 
     const auto& link = result.links[0];
     EXPECT_EQ(link.displayText, "Arnold");
-    EXPECT_EQ(link.startPos, 4u);  // Position of '['
-    EXPECT_EQ(link.endPos, 12u);   // Position after ']'
-
-    // Verify the substring matches
-    std::string linkText = result.displayText.substr(link.startPos, link.endPos - link.startPos);
-    EXPECT_EQ(linkText, "[Arnold]");
+    EXPECT_EQ(flat.substr(4, 8), "[Arnold]");
 }
 
 // Test multiple links have correct non-overlapping positions
@@ -272,29 +301,18 @@ TEST_F(FormattedMessageTest, StructuredParsing_MultipleLinkPositions) {
     for (char c : std::string(" and ")) data.push_back(c);
     appendLink(data, "0FFFFF00006000000000000000000000000000000000000000000000", "Item2");
 
-    eqt::ParsedFormattedMessage result = eqt::parseFormattedMessage(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string flat = joinArgs(result);
 
-    EXPECT_EQ(result.displayText, "Get [Item1] and [Item2]");
+    EXPECT_EQ(flat, "Get [Item1] and [Item2]");
     ASSERT_EQ(result.links.size(), 2u);
 
-    // First link: [Item1] at positions 4-11
+    // Links live in order, at their flat positions.
     EXPECT_EQ(result.links[0].displayText, "Item1");
-    EXPECT_EQ(result.links[0].startPos, 4u);
-    EXPECT_EQ(result.links[0].endPos, 11u);
-
-    // Second link: [Item2] at positions 16-23
+    EXPECT_EQ(flat.find("[Item1]"), 4u);
     EXPECT_EQ(result.links[1].displayText, "Item2");
-    EXPECT_EQ(result.links[1].startPos, 16u);
-    EXPECT_EQ(result.links[1].endPos, 23u);
-
-    // Verify links don't overlap
-    EXPECT_LT(result.links[0].endPos, result.links[1].startPos);
-
-    // Verify substrings
-    EXPECT_EQ(result.displayText.substr(result.links[0].startPos,
-              result.links[0].endPos - result.links[0].startPos), "[Item1]");
-    EXPECT_EQ(result.displayText.substr(result.links[1].startPos,
-              result.links[1].endPos - result.links[1].startPos), "[Item2]");
+    EXPECT_EQ(flat.find("[Item2]"), 16u);
+    EXPECT_LT(flat.find("[Item1]"), flat.find("[Item2]"));
 }
 
 // Test metadata is preserved in link
@@ -304,7 +322,7 @@ TEST_F(FormattedMessageTest, StructuredParsing_MetadataPreserved) {
     std::string metadata = "0FFFFF0000F0000000000000000000000000000000000";  // 45 chars
     appendLink(data, metadata, "Renux");
 
-    eqt::ParsedFormattedMessage result = eqt::parseFormattedMessage(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
 
     ASSERT_EQ(result.links.size(), 1u);
     EXPECT_EQ(result.links[0].metadata, metadata);
@@ -317,7 +335,7 @@ TEST_F(FormattedMessageTest, StructuredParsing_LongMetadataPreserved) {
     std::string metadata = "0FFFFF0000F000000000000000000000000000000000000000000000";  // 56 chars
     appendLink(data, metadata, "Hanns");
 
-    eqt::ParsedFormattedMessage result = eqt::parseFormattedMessage(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
 
     ASSERT_EQ(result.links.size(), 1u);
     EXPECT_EQ(result.links[0].metadata, metadata);
@@ -330,7 +348,7 @@ TEST_F(FormattedMessageTest, StructuredParsing_NPCLinkType) {
     // NPC-style metadata with small ID value
     appendLink(data, "0FFFFF0000F0000000000000000000000000000000000", "Renux");
 
-    eqt::ParsedFormattedMessage result = eqt::parseFormattedMessage(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
 
     ASSERT_EQ(result.links.size(), 1u);
     EXPECT_EQ(result.links[0].type, eqt::LinkType::NPCName);
@@ -347,7 +365,7 @@ TEST_F(FormattedMessageTest, StructuredParsing_MultipleNPCLinks) {
     // Second link with link index 1 at positions 6-9 (45 char metadata)
     appendLink(data, "0FFFFF0001F0000000000000000000000000000000000", "Hanns");
 
-    eqt::ParsedFormattedMessage result = eqt::parseFormattedMessage(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
 
     ASSERT_EQ(result.links.size(), 2u);
     // Both links should be NPC type, not Item type
@@ -362,9 +380,10 @@ TEST_F(FormattedMessageTest, StructuredParsing_NoLinks) {
     std::string plain = "This is a plain message.";
     std::vector<uint8_t> data(plain.begin(), plain.end());
 
-    eqt::ParsedFormattedMessage result = eqt::parseFormattedMessage(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string flat = joinArgs(result);
 
-    EXPECT_EQ(result.displayText, plain);
+    EXPECT_EQ(flat, plain);
     EXPECT_TRUE(result.links.empty());
 }
 
@@ -378,9 +397,10 @@ TEST_F(FormattedMessageTest, StructuredParsing_EmptyLink) {
     data.push_back(']');
     for (char c : std::string(" after")) data.push_back(c);
 
-    eqt::ParsedFormattedMessage result = eqt::parseFormattedMessage(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string flat = joinArgs(result);
 
-    EXPECT_EQ(result.displayText, "Before [] after");
+    EXPECT_EQ(flat, "Before [] after");
     ASSERT_EQ(result.links.size(), 1u);
     EXPECT_EQ(result.links[0].displayText, "");
     EXPECT_EQ(result.links[0].metadata, "");
@@ -392,15 +412,13 @@ TEST_F(FormattedMessageTest, StructuredParsing_LeadingSpacesTrimmed) {
     for (char c : std::string("   Talk to ")) data.push_back(c);  // 3 leading spaces
     appendLink(data, "0FFFFF0000D0000000000000000000000000000000000", "Guard");
 
-    eqt::ParsedFormattedMessage result = eqt::parseFormattedMessage(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
 
     // Leading spaces should be trimmed
-    EXPECT_EQ(result.displayText, "Talk to [Guard]");
+    std::string flat = joinArgs(result);
+    EXPECT_EQ(flat, "Talk to [Guard]");
     ASSERT_EQ(result.links.size(), 1u);
-
-    // Link position should be adjusted for trimmed spaces
-    EXPECT_EQ(result.links[0].startPos, 8u);  // "Talk to " = 8 chars
-    EXPECT_EQ(result.links[0].endPos, 15u);   // "Talk to [Guard]" = 15 chars
+    EXPECT_EQ(flat.find("[Guard]"), 8u);
 }
 
 // Test five links all have correct positions
@@ -418,34 +436,22 @@ TEST_F(FormattedMessageTest, StructuredParsing_FiveLinks) {
         }
     }
 
-    eqt::ParsedFormattedMessage result = eqt::parseFormattedMessage(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs result = eqt::parseFormattedMessageArgs(data.data(), data.size());
 
     // Expected: "See [A] [BB] [CCC] [DDDD] [EEEEE]"
     ASSERT_EQ(result.links.size(), 5u);
 
-    // Verify each link's display text
-    EXPECT_EQ(result.links[0].displayText, "A");
-    EXPECT_EQ(result.links[1].displayText, "BB");
-    EXPECT_EQ(result.links[2].displayText, "CCC");
-    EXPECT_EQ(result.links[3].displayText, "DDDD");
-    EXPECT_EQ(result.links[4].displayText, "EEEEE");
-
-    // Verify all positions are sequential and non-overlapping
+    // Verify each link's display text and its flat position
+    const std::string expected = "See [A] [BB] [CCC] [DDDD] [EEEEE]";
+    std::string flat = joinArgs(result);
+    EXPECT_EQ(flat, expected);
+    size_t at = 0;
     for (size_t i = 0; i < result.links.size(); i++) {
-        EXPECT_LT(result.links[i].startPos, result.links[i].endPos)
-            << "Link " << i << " has invalid positions";
-
-        if (i > 0) {
-            EXPECT_LT(result.links[i-1].endPos, result.links[i].startPos)
-                << "Links " << (i-1) << " and " << i << " overlap";
-        }
-
-        // Verify substring extraction works
-        std::string extracted = result.displayText.substr(
-            result.links[i].startPos,
-            result.links[i].endPos - result.links[i].startPos);
-        EXPECT_EQ(extracted, "[" + std::string(names[i]) + "]")
-            << "Link " << i << " extraction failed";
+        EXPECT_EQ(result.links[i].displayText, names[i])
+            << "Link " << i << " wrong display text";
+        at = flat.find("[" + std::string(names[i]) + "]", at);
+        ASSERT_NE(at, std::string::npos) << "Link " << i << " missing in flat text";
+        at += 1;
     }
 }
 
@@ -572,7 +578,8 @@ TEST_F(FormattedMessageTest, ShortMetadata_LongItemName_NameNotTruncated) {
     for (char c : std::string("You have looted a ")) data.push_back(c);
     appendLink(data, "0FFFFF0000F0000000000000000000000000000000000", "Scaled Curskin");
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "You have looted a [Scaled Curskin]");
 }
 
@@ -581,7 +588,8 @@ TEST_F(FormattedMessageTest, ShortMetadata_TwelveCharName_IsTheBoundaryCase) {
     std::vector<uint8_t> data;
     appendLink(data, "0FFFFF0000F0000000000000000000000000000000000", "Rusty Dagger");
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "[Rusty Dagger]");
 }
 
@@ -591,7 +599,8 @@ TEST_F(FormattedMessageTest, LongMetadata_WithLongName_StillParsesAsLongMetadata
     std::vector<uint8_t> data;
     appendLink(data, "0FFFFF0000D000000000000000000000000000000000000000000000", "Scaled Curskin");
 
-    std::string result = eqt::parseFormattedMessageText(data.data(), data.size());
+    eqt::ParsedFormattedMessageWithArgs _p = eqt::parseFormattedMessageArgs(data.data(), data.size());
+    std::string result = joinArgs(_p);
     EXPECT_EQ(result, "[Scaled Curskin]");
 }
 
@@ -600,7 +609,7 @@ TEST_F(FormattedMessageTest, ShortMetadata_LongName_LinkDisplayTextIsWholeName) 
     std::vector<uint8_t> data;
     appendLink(data, "0FFFFF0000F0000000000000000000000000000000000", "Scaled Curskin");
 
-    auto result = eqt::parseFormattedMessage(data.data(), data.size());
+    auto result = eqt::parseFormattedMessageArgs(data.data(), data.size());
     ASSERT_EQ(result.links.size(), 1u);
     EXPECT_EQ(result.links[0].displayText, "Scaled Curskin");
 }

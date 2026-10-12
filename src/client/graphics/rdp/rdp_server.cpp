@@ -120,11 +120,6 @@ bool RDPServer::initialize(uint16_t port) {
     return true;
 }
 
-void RDPServer::setCertificate(const std::string& certPath, const std::string& keyPath) {
-    certPath_ = certPath;
-    keyPath_ = keyPath;
-}
-
 bool RDPServer::generateSelfSignedCertificate() {
     std::lock_guard<std::mutex> lock(certMutex_);
 
@@ -242,22 +237,10 @@ bool RDPServer::generateSelfSignedCertificate() {
 }
 
 rdpCertificate* RDPServer::createPeerCertificate() {
-    // Try to load PEM from file first if not already loaded
-    if (certPem_.empty() && !certPath_.empty()) {
-        // Read cert file into certPem_
-        FILE* f = fopen(certPath_.c_str(), "r");
-        if (f) {
-            fseek(f, 0, SEEK_END);
-            long size = ftell(f);
-            fseek(f, 0, SEEK_SET);
-            certPem_.resize(size);
-            fread(&certPem_[0], 1, size, f);
-            fclose(f);
-            LOG_INFO(MOD_GRAPHICS, "Loaded certificate from {}", certPath_);
-        }
-    }
-
-    // Generate if not loaded
+    // Generate on first use. B606 (#189) deleted setCertificate() and the
+    // certPath_/keyPath_ file-load branch: no config key or CLI flag ever
+    // reached the setter (the RDP guide: certificates are optional, FreeRDP
+    // auto-generates self-signed), so the branch was unreachable in practice.
     if (certPem_.empty()) {
         if (!generateSelfSignedCertificate()) {
             return nullptr;
@@ -269,22 +252,7 @@ rdpCertificate* RDPServer::createPeerCertificate() {
 }
 
 rdpPrivateKey* RDPServer::createPeerKey() {
-    // Try to load PEM from file first if not already loaded
-    if (keyPem_.empty() && !keyPath_.empty()) {
-        // Read key file into keyPem_
-        FILE* f = fopen(keyPath_.c_str(), "r");
-        if (f) {
-            fseek(f, 0, SEEK_END);
-            long size = ftell(f);
-            fseek(f, 0, SEEK_SET);
-            keyPem_.resize(size);
-            fread(&keyPem_[0], 1, size, f);
-            fclose(f);
-            LOG_INFO(MOD_GRAPHICS, "Loaded private key from {}", keyPath_);
-        }
-    }
-
-    // Generate if not loaded
+    // Generate on first use (see createPeerCertificate()).
     if (keyPem_.empty()) {
         if (!generateSelfSignedCertificate()) {
             return nullptr;
