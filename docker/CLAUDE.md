@@ -68,6 +68,7 @@ DRM/KMS/GBM/EGL framebuffer device replacing Irrlicht's X11 device:
 
 - **Initialization chain**: `initDRM()` → `initGBM()` → `initEGL()` — finds CRTC/connector, creates GBM device/surface, creates EGL display/context
 - **Page flipping**: `drmPageFlip()` uses `DRM_MODE_PAGE_FLIP_EVENT` flag + `waitForFlipComplete()` to avoid `-EBUSY` fallback to synchronous `drmModeSetCrtc` (which blocks ~35ms)
+- **EGL config = the GBM format** (B1030): `chooseConfigForGbmFormat()` walks every `eglChooseConfig` match and takes the first whose `EGL_NATIVE_VISUAL_ID` is `GBM_FORMAT_XRGB8888`. Panfrost (Mesa 26, ROCK 4D) lists 10-bit AR30/XR30 configs first, so the old single-config call got a 10-bit visual and `eglCreateWindowSurface` failed on the 8-bit gbm_surface; Lima never exposed one. Same fix in the x86 fork.
 - **Input**: Linux evdev (`/dev/input/event*`) for keyboard/mouse. VT keyboard disabled via `KDSKBMODE(K_OFF)` to prevent console layer from intercepting Ctrl+key combos
 - **EGL accessors**: `getEGLDisplay()`, `getEGLSurface()`, `getEGLContext()`, `getEGLConfig()`, `getGBMDevice()` — used by `GPUUploadThread` to create shared EGL context
 

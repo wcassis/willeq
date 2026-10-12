@@ -8,6 +8,8 @@
 #   2. the offline zone benchmark from ci-arm64/<sha>/bin on the DRM output
 #      (--drm, qeynos2, 300 frames, CSV) -- the production S3D/WLD + GLES2 path with
 #      no server, so a crash here is the port, not the lane.
+# With no monitor on the lane's HDMI (the aarch64 boards share one KVM) the connector is
+# forced "on" for the run via its sysfs status file and set back to "detect" after.
 # Evidence lands in <out-dir> (default /mnt/projects/fable/review/B1030/lane<N>/):
 # floor/run*.json + floor.txt, bench.csv, bench.log, device.txt. Exit 0 = both ran.
 # This is a SMOKE: it proves the binary starts and renders; it blesses nothing.
@@ -24,6 +26,20 @@ mkdir -p "$OUT/floor"
 pi_lock_take "$OWNER" || { echo "lane $PI_LANE lock held: $(pi_lock_show)"; exit 64; }
 trap 'pi_lock_release "$OWNER"' EXIT
 pi_remote "test -x $D/bin/willeq && test -x $D/bin/gles2_zone_benchmark" || { echo "no $D/bin on lane $PI_LANE"; exit 65; }
+
+# Headless run: the aarch64 boards share ONE KVM, so the HDMI connector is usually
+# "disconnected" and the DRM device (rightly) refuses to start. The DRM sysfs status
+# file is writable by root: forcing it "on" makes the kernel offer its default modes
+# (1024x768, 800x600, 640x480 ...) with no monitor, and `detect` restores hotplug
+# behaviour afterwards. Only done when the connector is NOT connected.
+CONN=/sys/class/drm/card0-HDMI-A-1
+FORCED=0
+if [ "$(pi_remote cat $CONN/status)" != connected ]; then
+    pi_remote "echo on | sudo -n tee $CONN/status >/dev/null; sleep 1; cat $CONN/status; head -3 $CONN/modes | tr '\n' ' '; echo" \
+        | sed 's/^/connector forced: /'
+    FORCED=1
+fi
+trap 'pi_lock_release "$OWNER"; [ "$FORCED" -eq 1 ] && pi_remote "echo detect | sudo -n tee $CONN/status >/dev/null"' EXIT
 
 pi_remote "set -o pipefail; { uname -a; cat /proc/device-tree/model; echo; free -m | head -2; \
   for c in /sys/class/drm/card*; do echo \"\$(basename \$c): \$(basename \$(readlink \$c/device/driver 2>/dev/null) 2>/dev/null)\"; done; \
