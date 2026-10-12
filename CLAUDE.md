@@ -236,8 +236,7 @@ never a defect).
 # Headless (no graphics)
 ./build/bin/willeq -c willeq.json --no-graphics
 
-# VNC (headless servers). VNC_PORT=5950 in the script; its header says 5999 --
-# the variable wins (T215)
+# VNC (headless servers). VNC_PORT=5950 (the script header's 5999 is stale, T215)
 ./scripts/start-with-vnc.sh -c willeq.json          # vnc://localhost:5950
 
 # VNC + audio streaming: VNC_PORT=5910, AUDIO_PORT=8085
@@ -687,10 +686,8 @@ compiles only the DRM/FB device. On x86 the forked device
 (`docker/irrlicht-drm-x86/`) falls back to Mesa's surfaceless EGL platform
 (llvmpipe), which is how CI runs the real GLES2 driver headlessly.
 
-**Legacy platforms**: Noble with desktop GL 2.1 (Lima/Mesa) is retired (P32,
-`docs/decisions.md` 2026-07-28 addendum) — `--no-gles2` no longer exists, GLES2
-is the only ARM renderer. Debian Jessie (kernel 3.4) with the proprietary Mali
-blob and gl4es translation is fully superseded.
+**Legacy platforms**: desktop GL 2.1 on Noble is retired (P32, `docs/decisions.md`
+2026-07-28); `--no-gles2` no longer exists; Jessie + Mali blob + gl4es is superseded.
 
 **DRM input handling**: the DRM device
 (`docker/irrlicht-drm/CIrrDeviceFB.cpp`) reads keyboard/mouse via Linux evdev
