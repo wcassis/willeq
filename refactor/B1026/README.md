@@ -117,4 +117,35 @@ commit:
 A split onto a host whose tree is at ANOTHER sha is the mismatch case. It is
 recorded below from the pipelines at the next head(s).
 
-MISMATCH_PROOF_PENDING
+**Head `59fcea50` (a README-only commit): MR pipeline 821. This is the
+mismatch case, and it is green.**
+
+| job | stage | host | result |
+|---|---|---|---|
+| 4089 | hygiene | gitlab-runner-1 | ok |
+| 4090 | build | **gitlab-runner-2** | ok; claim `host=gitlab-runner-2 sha=59fcea50…` |
+| 4091 | test | **gitlab-runner-1** (its tree was still at `99a97cd8`) | MISMATCH, in-job rebuild, MATCH, 5735/5735 + 1 passed |
+| 4093 | gate | gitlab-runner-1 | VISUAL GATE: PASS |
+
+Before B1026 this was exactly the pl809 false-red/false-green setup: job 4091
+would have tested runner-1's `99a97cd8` binary. The job 4091 trace:
+
+    Running on gitlab-runner-1...
+    stamp MISMATCH build/ref/task-b1026-ci-host-stamp (stamp read): stored host=gitlab-runner-1 sha=99a97cd8658bc6bfbd360ec31862c1b9fedbd521 ref=task/B1026-ci-host-stamp at=2026-10-12T02:01:57Z; expected host=gitlab-runner-1 sha=59fcea50996847710990617b9c84cbb2fd29bf2c
+    !!! B1026 STAMP MISMATCH: build/ref/task-b1026-ci-host-stamp on gitlab-runner-1 was not built here at 59fcea50996847710990617b9c84cbb2fd29bf2c (stored vs expected above) -- the build job ran on another host or this tree is stale; REBUILDING IN-JOB (docs/ci.md, 'Two x86 runners: the host+sha stamp') !!!
+    === willeq_build_tree: build/ref/task-b1026-ci-host-stamp on gitlab-runner-1 at 59fcea50996847710990617b9c84cbb2fd29bf2c ===
+    stamped build/ref/task-b1026-ci-host-stamp ref=task/B1026-ci-host-stamp (ref only, no build claim)
+    stamped build/ref/task-b1026-ci-host-stamp ref=task/B1026-ci-host-stamp host=gitlab-runner-1 sha=59fcea50996847710990617b9c84cbb2fd29bf2c
+    stamp MATCH build/ref/task-b1026-ci-host-stamp (stamp read): stored host=gitlab-runner-1 sha=59fcea50996847710990617b9c84cbb2fd29bf2c ref=task/B1026-ci-host-stamp at=2026-10-12T03:05:37Z; expected host=gitlab-runner-1 sha=59fcea50996847710990617b9c84cbb2fd29bf2c
+    B1026: in-job rebuild done and verified on gitlab-runner-1
+    100% tests passed, 0 tests failed out of 5735
+
+**Measured cost of the split:** the in-job incremental rebuild ran from
+02:50:03 to 03:05:37, about 15.5 min, for a commit that touched only a
+README. That matches `docs/ci.md`'s note that a warm build on these hosts is
+dominated by relinking. The build job's own incremental build of the same
+commit on runner-2 took about 10.7 min. Only a split pipeline pays this;
+same-host pipelines (818's gate, 821's gate) read the stamp and move on.
+
+The final head's pipeline is in the hand-back and in
+`/mnt/projects/fable/review/B1026/README.md`.
