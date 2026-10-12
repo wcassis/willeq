@@ -28,7 +28,7 @@ untouched.
 | `EntityManager::markAsCorpse` | **deleted** | decl h:156, def cpp:87; only uses: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
 | `EntityManager::updateEntityEquipment` | **deleted** | decl h:150, def cpp:70; only uses: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
 | `EntityManager::updateEntityHP` | **deleted** | decl h:140, def cpp:56; only use: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
-| `EntityManager::fireEntityStatsChangedEvent` (private) | **deleted — cascade** | decl h:323, def cpp:387. Its ONLY caller was the deleted `updateEntityHP` (cpp:65); with that gone it is zero-caller (grep: declaration, definition and a comment in `tests/test_console_target_hp.cpp:16` — comment re-pointed to the event type). It was also the sole PUBLISHER of `GameEventType::EntityStatsChanged` on the state-layer EventBus. Deleting it loses no live behaviour because that enumerator is still published and consumed: `ReachabilitySweep` passes [measured, `test_reachability_sweep` 5/5 green at this tip] with the remaining publisher `ZoneProcessMobHealth`'s bridge `pushEvent(EntityStatsChanged)` (`src/client/entities/entities_component_appearance.cpp:207`) and the consumer `ConsoleRenderer`'s subscription (`src/client/output/console_renderer.cpp:113`) + `IrrlichtBridge`'s case (`src/client/bridge/irrlicht_bridge.cpp:97`). |
+| `EntityManager::fireEntityStatsChangedEvent` (private) | **deleted — cascade** | decl h:323, def cpp:387. Its ONLY caller was the deleted `updateEntityHP` (cpp:65); with that gone it is zero-caller (grep: declaration, definition and a comment in `tests/test_console_target_hp.cpp:16` — comment re-pointed to the event type). It was the sole PUBLISHER of `GameEventType::EntityStatsChanged` on the state-layer EventBus at this tip's time. **B1027 (#347) corrected the "loses no live behaviour" conclusion**: that enumerator's state-bus consumer (`ConsoleRenderer`, `console_renderer.cpp:113,193`) had NO remaining state-bus publisher after this deletion — the surviving publisher below is on the RENDERER-BRIDGE channel, a different bus that a headless console does not read (the two channels, named under "The B468 trap" below). B1027 added the state-bus publisher in `ZoneProcessMobHealth` (`src/client/entities/entities_component_appearance.cpp`, the state-bus publish at cpp:216 just above the bridge `pushEvent` at cpp:228, both at the B1027 tip) and pinned it with `tests/test_console_target_hp_feed.cpp` (RED at this unit's tip, GREEN at the B1027 head; `refactor/B1027/README.md`). |
 
 ## The B468 trap — the live routes, named
 
@@ -43,15 +43,27 @@ entity store `it->second.hp_percent = hp_percent` (line 179) and then:
   (line 189, which fires `TargetChanged` on the state EventBus —
   `combat_state.cpp:66`),
 - updates `PetState::updatePetStats(...)` when it is the pet (line 195),
+- (B1027: publishes `EntityStatsChanged` on the STATE EventBus —
+  `entities_component_appearance.cpp:216` at the B1027 tip),
 - pushes `EntityStatsChanged` / `TargetChanged` / `PetStatsChanged` onto the
-  renderer bridge (lines 200-245).
-The deleted setter published `EntityStatsChanged` on the state EventBus — the
-`ConsoleRenderer` headless status line takes target HP off that same enumerator
-(`console_renderer.cpp:113,193`), but the live feed of that enumerator in a
-headless run is the MobHealth bridge path (single-stage `applyEvent` in
-`GameStateSyncBridge::applyEvent`, `game_state_sync_bridge.cpp:6`), not the
-EntityManager publisher, which fired only when `updateEntityHP` was called —
-and it was called by nothing.
+  renderer bridge (lines 200-245 at this unit's tip).
+**The two channels** (B1027, #347): the STATE EventBus
+(`state::GameState::events()`, `game_state.h:61`) and the RENDERER bridge
+(`GameStateBridge::pushEvent`, `game_state_bridge.h:36`) are DISJOINT —
+nothing forwards bridge → state bus (`combat_state.cpp:76-84`), and the
+headless bridge's `applyEvent` (the single-stage `GameStateSyncBridge::
+applyEvent`, `game_state_sync_bridge.cpp:6`) is the headless
+`ConsoleBridge`, a LOG-only `applyEvent` that calls no renderer method — it
+never touches a `ConsoleRenderer`. So the claim at lines 50-54 ("the live
+feed of that enumerator in a headless run is the MobHealth bridge path")
+was FALSE: the `ConsoleRenderer` headless status line subscribes to
+`EntityStatsChanged` on the STATE EventBus (`console_renderer.cpp:113,193`),
+and after this unit's deletion nothing published it there — the status line
+froze the target's HP at the value `TargetChanged` carried when the target
+was acquired. B1027 added the state-bus publish and pinned it with
+`tests/test_console_target_hp_feed.cpp` (`refactor/B1027/README.md`).
+The EntityManager publisher, which fired only when `updateEntityHP` was
+called — and it was called by nothing — stayed correctly deleted.
 
 **`updateEntityHP` — the state-layer `Entity::hpPercent` field.**
 Note: `ZoneProcessMobHealth` does NOT write the state-layer

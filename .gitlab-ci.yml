@@ -72,17 +72,21 @@ workflow:
 .goldfarm:
   timeout: 3h
   interruptible: true
-  # Nothing is passed between stages as artifacts -- the jobs share one warm
-  # working tree on a concurrent=1 runner (one build subtree per ref, B1012).
-  # Never download upstream artifacts.
+  # Nothing is passed between stages as artifacts -- each job uses the warm
+  # working tree of the concurrent=1 runner it lands on (one build subtree per
+  # ref, B1012). Never download upstream artifacts.
   # B1008 (2026-10-08): the x86 jobs run on the dedicated runner VMs
   # (gitlab-runner-1/2, 10.0.30.81/82: 16 cores, 15 GB, local copies of the
   # two client trees at the same paths), tag `x86-build`, so hermes-ext's
   # untagged runner no longer builds (Will 2026-10-06: keep hermes-ext for the
-  # board). ONE runner carries the tag today: the stages share a warm tree and
-  # pass no artifacts, so a second tagged runner would split a pipeline across
-  # two trees. gitlab-runner-2 is registered as `x86-build-2` and idles until
-  # build+test+gate are folded into one job (docs/ci.md).
+  # board). BOTH runners carry `x86-build` (runner-2 since 2026-10-11), so the
+  # stages of one pipeline may land on DIFFERENT hosts, each with its own
+  # warm tree. B1026 (#346) is what makes that safe: the build tree carries a
+  # host+sha stamp written only after a successful build (`.build_tree`), and
+  # every job that consumes the tree (`test`, `client-ledger-live`) verifies
+  # it first and rebuilds in-job on a mismatch (fable pipeline 809 tested
+  # runner-2's stale binary after runner-1 built the new one; docs/ci.md, "Two
+  # x86 runners: the host+sha stamp").
   dependencies: []
   tags: [x86-build]
   before_script:
@@ -151,26 +155,61 @@ hygiene:
 # changes docker/irrlicht-drm[-x86]/ or the build script forces a rebuild
 # instead of every later pipeline silently testing against the old lib.
 # (docs/ci.md, "Device-source changes are caught by the input stamp".)
+#
+# B1026 (#346): the build steps live in ONE place, the shell function
+# willeq_build_tree defined by `.build_tree` below. The `build` job runs it;
+# `test` and `client-ledger-live` define it too and run it only when the tree
+# they landed on is not stamped by THIS host at THIS sha. Order inside it:
+#   1. a ref-only stamp BEFORE the configure -- it wipes any earlier host/sha
+#      claim, so a build that fails part-way leaves a tree no job trusts;
+#   2. configure, B907 orphan prune, `cmake --build`;
+#   3. the host+sha claim, written only once `cmake --build` succeeded (errexit
+#      + pipefail: a failed build never reaches this line).
+.build_tree:
+  script:
+    - |
+      willeq_build_tree() {
+        set -eo pipefail
+        echo "=== willeq_build_tree: $BUILD_TREE on $(hostname) at $CI_COMMIT_SHA ==="
+        if [ ! -f third_party/irrlicht-gles2-x86/lib/libIrrlicht.a ] || ! bash scripts/ci/irrlicht_input_stamp.sh verify third_party/irrlicht-gles2-x86/irrlicht_input_stamp.txt; then
+          JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh --irrlicht-only
+        fi
+        python3 scripts/ci/prune_ref_build_trees.py --stamp "$BUILD_TREE" --ref "$CI_COMMIT_REF_NAME"
+        nice -n 10 cmake -S . -B "$BUILD_TREE" -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_GLES2_IRRLICHT_DIR=$PWD/third_party/irrlicht-gles2-x86
+        # B907 (issue #227): this is a WARM tree (GIT_CLEAN_FLAGS keeps build/
+        # across runs; since B1012 it is this ref's own tree, so the orphan can
+        # only be this ref's earlier commit's binary). A binary with no target in
+        # the just-regenerated CMake graph survives in bin/ because cmake never
+        # prunes bin/ on its own, and fails the `test` stage's
+        # check_build_tree_orphans a moment later. Prune right after the
+        # reconfigure above (so the graph is current) and before the build, using
+        # the exact discovery check_build_tree_orphans uses read-only.
+        nice -n 10 python3 scripts/ci/check_build_tree_orphans.py --prune "$BUILD_TREE"
+        nice -n 10 cmake --build "$BUILD_TREE" -j $JOBS 2>&1 | tail -n 200
+        python3 scripts/ci/prune_ref_build_trees.py --stamp "$BUILD_TREE" --ref "$CI_COMMIT_REF_NAME" --host "$(hostname)" --sha "$CI_COMMIT_SHA"
+      }
+
+# B1026: verify the tree this job landed on; on a mismatch say so loudly,
+# rebuild it here with the build job's own steps, and verify again (must pass).
+.verify_build_tree:
+  script:
+    - !reference [.build_tree, script]
+    - |
+      if python3 scripts/ci/prune_ref_build_trees.py --verify "$BUILD_TREE" --host "$(hostname)" --sha "$CI_COMMIT_SHA"; then
+        echo "B1026: $BUILD_TREE was built by this host at this sha -- using it as the build job left it"
+      else
+        echo "!!! B1026 STAMP MISMATCH: $BUILD_TREE on $(hostname) was not built here at $CI_COMMIT_SHA (stored vs expected above) -- the build job ran on another host or this tree is stale; REBUILDING IN-JOB (docs/ci.md, 'Two x86 runners: the host+sha stamp') !!!"
+        willeq_build_tree
+        python3 scripts/ci/prune_ref_build_trees.py --verify "$BUILD_TREE" --host "$(hostname)" --sha "$CI_COMMIT_SHA"
+        echo "B1026: in-job rebuild done and verified on $(hostname)"
+      fi
+
 build:
   extends: .goldfarm
   stage: build
   script:
-    - |
-      if [ ! -f third_party/irrlicht-gles2-x86/lib/libIrrlicht.a ] || ! bash scripts/ci/irrlicht_input_stamp.sh verify third_party/irrlicht-gles2-x86/irrlicht_input_stamp.txt; then
-        JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh --irrlicht-only
-      fi
-    - python3 scripts/ci/prune_ref_build_trees.py --stamp "$BUILD_TREE" --ref "$CI_COMMIT_REF_NAME"
-    - nice -n 10 cmake -S . -B "$BUILD_TREE" -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_GLES2_IRRLICHT_DIR=$PWD/third_party/irrlicht-gles2-x86
-    # B907 (issue #227): this is a WARM tree (GIT_CLEAN_FLAGS keeps build/
-    # across runs; since B1012 it is this ref's own tree, so the orphan can
-    # only be this ref's earlier commit's binary). A binary with no target in
-    # the just-regenerated CMake graph survives in bin/ because cmake never
-    # prunes bin/ on its own, and fails the `test` stage's
-    # check_build_tree_orphans a moment later. Prune right after the
-    # reconfigure above (so the graph is current) and before the build, using
-    # the exact discovery check_build_tree_orphans uses read-only.
-    - nice -n 10 python3 scripts/ci/check_build_tree_orphans.py --prune "$BUILD_TREE"
-    - nice -n 10 cmake --build "$BUILD_TREE" -j $JOBS 2>&1 | tail -n 200
+    - !reference [.build_tree, script]
+    - willeq_build_tree
 
 # Stage 3: the full suite, minus the two documented special cases:
 #   - visual_gate      -- runs in the `gate` stage (it needs build-gles2/).
@@ -192,7 +231,12 @@ build-arm:
   timeout: 2h
   interruptible: true
   variables:
-    GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble
+    # Both ARM jobs share this concurrent=1 runner's ONE checkout, so each must
+    # keep BOTH build trees: excluding only its own dir made build-arm wipe
+    # build-arm64-noble/ and build-arm64 wipe build-arm-noble/ (which holds the
+    # incremental cache/), i.e. two cold cross-builds per fable pipeline.
+    # Keep this line identical in build-arm and build-arm64 (B1030 review).
+    GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble -e build-arm64-noble
   rules:
     - if: $CI_COMMIT_BRANCH == "fable"
     - when: manual
@@ -205,6 +249,34 @@ build-arm:
     - nice -n 10 scripts/build-arm-noble.sh 2>&1 | tail -n 40
     - scripts/pi/publish_arm_build.sh "$CI_COMMIT_SHA" "${CI_COMMIT_BRANCH:-$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
 
+# B1030 (#350): the aarch64 lanes' binary (Rock64 + ROCK 4D), the same runner
+# and the same shape as build-arm, published to ci-arm64/<sha>/. The runner is
+# concurrent=1, so the two ARM builds of a fable pipeline run one after the
+# other (one C++ build at a time on dev-u24); BUILD_JOBS caps the docker build
+# so a hand-run build on the host still fits beside it. Manual off fable
+# (`glab ci trigger build-arm64`), exactly like build-arm.
+build-arm64:
+  stage: arm
+  tags: [arm-nfs]
+  needs: []
+  dependencies: []
+  timeout: 2h
+  interruptible: true
+  variables:
+    # Same line as build-arm: the two jobs share one checkout (see there).
+    GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble -e build-arm64-noble
+    BUILD_JOBS: "8"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "fable"
+    - when: manual
+      allow_failure: true
+  script:
+    - set -o pipefail
+    - '[ "$(hostname)" = "dev-u24" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
+    - scripts/ci/vendor_fetch.sh --ensure
+    - nice -n 10 scripts/build-arm64-noble.sh 2>&1 | tail -n 40
+    - scripts/pi/publish_arm64_build.sh "$CI_COMMIT_SHA" "${CI_COMMIT_BRANCH:-$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+
 test:
   extends: .goldfarm
   stage: test
@@ -216,6 +288,8 @@ test:
     # test_asset_requirement pins both outcomes.
     WILLEQ_REQUIRE_ASSETS: "1"
   script:
+    # B1026: never test a tree another host or another commit built.
+    - !reference [.verify_build_tree, script]
     - nice -n 10 ctest --test-dir "$BUILD_TREE" -j $CTEST_JOBS --output-on-failure -E '(^visual_gate$|^RDPServerFrameTest\.UpdateFrameMultipleTimes$)' 2>&1 | tee ctest.log
     - nice -n 10 ctest --test-dir "$BUILD_TREE" -R '^RDPServerFrameTest\.UpdateFrameMultipleTimes$' --repeat until-pass:3 --output-on-failure 2>&1 | tee -a ctest.log
     - cp "$BUILD_TREE/Testing/Temporary/LastTest.log" ctest-LastTest.log || true
@@ -310,6 +384,8 @@ client-ledger-live:
       when: manual
       allow_failure: true
   script:
+    # B1026: `needs: [build]` does not put this job on the build job's host.
+    - !reference [.verify_build_tree, script]
     - test -x "$BUILD_TREE/bin/willeq" || { echo "no $BUILD_TREE/bin/willeq -- the build stage did not land"; exit 1; }
     - |
       nice -n 10 bash scripts/client_ledger_capture.sh \
@@ -322,6 +398,11 @@ client-ledger-live:
     paths:
       - client-ledger-live/
 
+# B1026: no host+sha verify here. The gate never reads $BUILD_TREE: its
+# `.visual_gate_prepare` builds its own $GLES2_TREE IN THIS JOB (incremental
+# `cmake --build` of willeq + gles2_zone_benchmark, or the full bootstrap), on
+# whichever host the job landed, so the binary it measures is always this
+# host's build of this commit.
 gate:
   extends: .goldfarm
   stage: gate
