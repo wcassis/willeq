@@ -332,14 +332,6 @@ void MusicPlayer::setOutputCallback(MusicOutputCallback callback) {
     outputCallback_ = std::move(callback);
 }
 
-void MusicPlayer::enableSoftwareRendering() {
-    // No-op — always software rendering now
-}
-
-void MusicPlayer::reinitializeOpenAL() {
-    // No-op — no OpenAL to reinitialize
-}
-
 void MusicPlayer::mixerRenderCallback(void* userData, float* buffer, int frameCount) {
     auto* player = static_cast<MusicPlayer*>(userData);
     if (!player) {

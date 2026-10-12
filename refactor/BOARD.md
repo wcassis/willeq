@@ -9985,8 +9985,8 @@ fine — the table fails on a stale entry, so it cannot rot.
   — do not delete it without reading `include/client/scenario/scenario.h`
   first. Found by T455.
 
-- **B499** (B, unreached) **Audio query API with no caller: 12 zero-caller → issue #174
-  public functions across 7 headers under `include/client/audio/`.**
+- ~~**B499** (B, unreached) **Audio query API with no caller: 12 zero-caller → issue #174
+  public functions across 7 headers under `include/client/audio/`.**~~
   `AudioManager::isAutoAttackMusicPlaying()` / `isVendorBankMusicPlaying()` /
   `isUse3DAudio()`, `AudioMixer::getSfxVolume()`, `EffLoader::getMp3Index()`,
   `SoundBuffer::loadFromPCM()`, `WeatherAudio::getThunderTimer()`,
@@ -9994,9 +9994,15 @@ fine — the table fails on a stale entry, so it cannot rot.
   three OpenAL-era methods (`enableSoftwareRendering()`,
   `isSoftwareRendering()`, `reinitializeOpenAL()`) — the client uses miniaudio,
   so those three are residue from a backend that is gone. Found by T455.
+  **STRUCK 2026-10-12 (issue #174)**: 11 DELETED, 1 kept as a live test seam —
+  `SoundBuffer::loadFromPCM` (called by `tests/test_sfx_cache_eviction.cpp:52`,
+  classified "seam" in check_zero_callers.py's EXEMPT_TESTS). `setUse3DAudio`
+  stays (a live writer; only the getter went). `getXmiIndex(bool)` stays
+  (live). All state behind the deleted getters is still read by live code and
+  was kept. See `refactor/B501/README.md`.
 
-- **B500** (B, unreached) **The `IGameMode` implementations' accessors: 10 → issue #175
-  zero-caller public functions across the three mode headers.**
+- ~~**B500** (B, unreached) **The `IGameMode` implementations' accessors: 10 → issue #175
+  zero-caller public functions across the three mode headers.**~~
   `AutomatedMode::getGameState()` / `queueCommand()` / `getNextCommand()` /
   `hasPendingCommands()` / `setEventCallback()` — a whole command queue that
   T410's scenario lane replaced with `setAutomationCallback` and did not
@@ -10004,10 +10010,17 @@ fine — the table fails on a stale entry, so it cannot rot.
   `getGameState()` and `GraphicalMode::getGameState()` /
   `getRendererType()`. Note B345 already owns three write-only
   `ConsoleRenderer` members, which is the same corner of the tree. Found by
-  T455.
+  T455. **STRUCK 2026-10-12 (issue #175)**: all 10 DELETED with their
+  cascades — `AutomatedMode`'s command queue (`m_commandQueue`,
+  `m_commandMutex`, `m_eventCallback`, `m_listenerHandles`, `handleEvent`),
+  `m_gameState` in all three modes and `m_rendererType` in `GraphicalMode`.
+  `createMode`'s `rendererType` parameter and the `GraphicalRendererType`
+  enum stay: `Application::initGameMode` still logs the requested type
+  (`src/client/application.cpp:431-432`). Nothing reintroduced; B345's three
+  members were not touched. See `refactor/B501/README.md`.
 
-- **B501** (B, unreached) **`common/` utility API with no caller: 12 → issue #176
-  zero-caller public functions across 5 headers.**
+- ~~**B501** (B, unreached) **`common/` utility API with no caller: 12 → issue #176
+  zero-caller public functions across 5 headers.**~~
   `PerformanceMetrics::getTimings()` / `resetGameplay()` / `getElapsedMs()` /
   `markZoneLoadStart()` / `markZoneLoadEnd()` / `getCategoryName()` — a
   zone-load timing channel nothing marks; `ClampLower()`; `Random::Shuffle()`;
@@ -10016,6 +10029,13 @@ fine — the table fails on a stale entry, so it cannot rot.
   (`MarkHeapStart()`, `MeasureHeapUsage()`, `PageAlignVectorAligned()`)~~:
   B941 (#259) deleted the whole `ksm.h` header when its last user,
   `RaycastMesh`, moved to plain vectors. Found by T455.
+  **STRUCK 2026-10-12 (issue #176)**: 9 live DELETED (`getTimings()`,
+  `resetGameplay()`, `getElapsedMs()`, `markZoneLoadStart()`,
+  `markZoneLoadEnd()`, the `getCategoryName()` free function, `ClampLower()`,
+  `Random::Shuffle()`, `LogManager::GetMutex()` — with its `m_mutex` member)
+  plus the zone-load tracking members `currentZoneName_` /
+  `zoneLoadStart_`; the four KSM helpers were already gone via B941 (#259).
+  See `refactor/B501/README.md`.
 
 - ~~**B502** (B, unreached) **Gameplay-domain manager API with no caller: 21
   zero-caller public functions across 9 headers
