@@ -55,6 +55,7 @@
 #include "common/net/posix_udp_transport.h"
 #include "client/animation_constants.h"
 #include <array>
+#include <cstdlib>
 #include <iomanip>
 #include <sstream>
 #include <ctime>
@@ -881,6 +882,24 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 {
 	auto opcode = p.GetUInt16(0);
 
+	// B760 (#45): a diagnostic lever, off unless set. WILLEQ_SIM_ZONE_IN_LOSS=<n>
+	// drops inbound zone datagrams at the Daybreak manager's own
+	// simulated_in_packet_loss rate (`n >= Int(0, 100)`) once the client is
+	// fully zoned in (at 20 the zone-in burst itself never completed), so a
+	// live lane can make the server RESEND reliable packets while unreliable
+	// ones keep arriving -- the only way an unreliable packet reaches the
+	// client inside a reliable sequence (refactor/B760/README.md).
+	static const size_t kSimZoneInLoss = [] {
+		const char* v = std::getenv("WILLEQ_SIM_ZONE_IN_LOSS");
+		return v ? static_cast<size_t>(std::strtoul(v, nullptr, 10)) : size_t{0};
+	}();
+	if (kSimZoneInLoss != 0 && m_zone_connection_manager && IsFullyZonedIn() &&
+		m_zone_connection_manager->GetOptions().simulated_in_packet_loss != kSimZoneInLoss) {
+		m_zone_connection_manager->GetOptions().simulated_in_packet_loss = kSimZoneInLoss;
+		LOG_WARN(MOD_ZONE, "WILLEQ_SIM_ZONE_IN_LOSS={}: simulating inbound zone packet loss from now on",
+			kSimZoneInLoss);
+	}
+
 	LOG_TRACE(MOD_ZONE, "[ZONE RECV] opcode=0x{:04x} len={}", opcode, p.Length());
 
 	eqt::strings::DumpPacket("S->C", opcode, p);
@@ -892,13 +911,13 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
 	}
 
-	m_zone->DispatchZonePacket(p);
+	m_zone->DispatchZonePacket(p, conn ? conn->DeliveringReliable() : true);
 }
 
 // Batch R replay/test seam: build a synthetic app packet (2-byte opcode
 // prefix + payload, matching session_log.h's on-disk layout) and run it
 // through the same opcode switch ZoneOnPacketRecv uses.
-void EverQuest::ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t size)
+void EverQuest::ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t size, bool reliable)
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2 + size);
@@ -906,7 +925,7 @@ void EverQuest::ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t si
 	if (size > 0 && data != nullptr) {
 		memcpy(static_cast<char*>(p.Data()) + 2, data, size);
 	}
-	m_zone->DispatchZonePacket(p);
+	m_zone->DispatchZonePacket(p, reliable);
 }
 
 // K13: SafeQueueZonePacket's body is now eqt::PacketSender::SafeQueueZone

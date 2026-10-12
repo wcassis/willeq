@@ -96,7 +96,10 @@ public:
 
 	// Opcode switch shared by EverQuest::ZoneOnPacketRecv and the
 	// EverQuest::ReplayZonePacket test seam (both in eq.cpp).
-	void DispatchZonePacket(const EQ::Net::Packet &p);
+	// B760 (#45): `reliable` is whether the packet came off the reliable,
+	// in-order stream (DaybreakConnection::DeliveringReliable()). A replayed
+	// or test packet has no wire and defaults to reliable.
+	void DispatchZonePacket(const EQ::Net::Packet &p, bool reliable = true);
 
 	// G01 (refactor/G01_dispatch_zone_packet_table.md): the opcode table
 	// DispatchZonePacket dispatches through, and the deliberate no-ops.
