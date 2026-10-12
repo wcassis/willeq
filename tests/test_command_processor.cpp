@@ -716,11 +716,14 @@ TEST_F(CommandProcessorTest, Loot_ByName_NoCorpse_FailsNamingTheToken) {
     EXPECT_TRUE(handler.empty());
 }
 
-TEST_F(CommandProcessorTest, Loot_WindowOpen_NumberIsASlotNotACorpseId) {
+TEST_F(CommandProcessorTest, Loot_WindowOpen_NumberIsAServerSlotConvertedToTheModelSlot) {
+    // B810 (#199): the number is a SERVER slot (inventory.slot_id), so /loot
+    // 23 (general 1) dispatches the MODEL slot 22 the loot window holds it in
+    // -- not the raw 23, which was the pre-fix defect.
     state.player().setLootingCorpse(176);
-    auto result = processor->processCommand("/loot 3");
+    auto result = processor->processCommand("/loot 23");
     EXPECT_TRUE(result.success) << result.message;
-    ASSERT_TRUE(handler.calledOnceWith("lootItem(176, 3)"));
+    ASSERT_TRUE(handler.calledOnceWith("lootItem(176, 22)"));
 }
 
 TEST_F(CommandProcessorTest, Loot_WindowOpen_NameIsAnItem) {

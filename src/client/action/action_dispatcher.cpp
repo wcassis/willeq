@@ -15,6 +15,7 @@
 #include "client/action/action_dispatcher.h"
 #include "client/state/game_state.h"
 #include "client/pet_constants.h"
+#include "client/inventory/inventory_constants.h"  // B810 (#199): the corpse table
 #include "common/packets/common.h"  // T483: the gem counts
 #include <cmath>
 #include <limits>
@@ -669,7 +670,9 @@ ActionResult ActionDispatcher::lootItem(uint16_t corpseId, int16_t slot) {
 
     if (!m_handler->lootItem(corpseId, slot)) {
         return ActionResult::Failure(
-            "Nothing to loot in slot " + std::to_string(slot) + " (is a loot window open?)");
+            "Nothing to loot in slot " +
+            std::to_string(eqt::inventory::corpseSlotToServer(slot)) +
+            " (is a loot window open?)");
     }
     return ActionResult::Success();
 }

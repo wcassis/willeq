@@ -12832,7 +12832,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   `slotPrimary -> weaponPrimary`, `slotSecondary -> weaponSecondary`) or to
   accept it as era behaviour -- the official client has the same server. Found
   by T494.
-- **B810** (B) **`LootItemIntent`'s corpse slot numbers have the SAME → issue #199
+- ~~**B810** (B) **`LootItemIntent`'s corpse slot numbers have the SAME → issue #199
   Titanium/server split B796 was, and nothing converts them either.** The
   server's pair is `titanium.cpp:3641` `ServerToTitaniumCorpseSlot()` /
   `:3727` `TitaniumToServerCorpseSlot()`, and it is NOT the same table as the
@@ -12841,7 +12841,12 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   `invslot::slotGeneral1`. T494 fixed the possessions/bank/trade/world/bag
   table and deliberately did not touch this one (out of scope). Anything that
   prints or takes a corpse slot number is suspect; start at whatever pushes
-  `LootItemIntent`. Found by T494.
+  `LootItemIntent`. Found by T494.~~ **STRUCK 2026-10-11**
+  (`task/kb-b810-corpse-slot-split`, `refactor/B810/README.md`): the corpse
+  pair (`parseCorpseSlot()` in, `corpseSlotToServer()` out, port of the
+  server's two functions) is the only conversion, and it sits beside T494's
+  pair in `inventory_constants.h`; `/loot <n>` (window open) and the loot
+  printouts now speak server numbers, the wire stays model-numbered.
 - ~~**B811** (A) **The llmbench held-item check cannot tell "already holding it" → issue #82
   from "just equipped it", and that is how B796's own experiment produced a
   false positive.** `E_heldA_*` records what the inventory table says at

@@ -650,7 +650,12 @@ bool EqActionHandler::lootItem(uint16_t corpseId, int16_t slot) {
     if (!m_eq.Bridge().LootItemFromCorpse(corpseId, slot, true)) {
         return false;
     }
-    m_eq.AddChatSystemMessage(fmt::format("Looting {} (slot {})...", it->second.name, slot));
+    // B810 (#199): the slot the user sees is the SERVER number
+    // (inventory.slot_id, B796's rule) -- the same one they typed, so it can
+    // be typed back. `slot` itself is the model slot the model holds it in.
+    m_eq.AddChatSystemMessage(
+        fmt::format("Looting {} (slot {})...", it->second.name,
+                    eqt::inventory::corpseSlotToServer(slot)));
     return true;
 }
 
