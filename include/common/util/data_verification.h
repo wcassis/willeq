@@ -11,12 +11,6 @@ namespace EQ {
 	}
 
 	template<typename T>
-	T ClampLower(const T &value, const T &lower)
-	{
-		return std::max(lower, value);
-	}
-
-	template<typename T>
 	T ClampUpper(const T &value, const T &upper)
 	{
 		return std::min(value, upper);

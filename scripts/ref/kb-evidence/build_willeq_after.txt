@@ -1,0 +1,1693 @@
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/equipment_model_loader.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/race_model_loader.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/model_source_residency.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/model_loading.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/model_loading_chr.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/model_loading_search.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/mesh_building.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/animated_mesh_creation.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/variant_loading.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/variant_loading_animation.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/variant_loading_preload.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/skeletal_animator.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/animated_mesh_scene_node.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/animated_mesh.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/animated_mesh_skinning.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/animated_mesh_bones.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eq/animated_mesh_eye.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/first_person_eye.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/renderer/irrlicht_renderer.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/renderer/software_cursor_texture.cpp.o
+[  0%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/renderer/renderer_event_receiver.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/overlays/overlays_component.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/renderer/irrlicht_renderer.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/renderer/renderer_event_receiver.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/overlays/overlays_component.h:29,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/overlays/overlays_component.cpp:17:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/overlays/overlays_env_managers.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/overlays/overlays_hud_env.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/overlays/target_ring.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/overlays/overlays_component.h:29,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/overlays/overlays_env_managers.cpp:27:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/overlays/overlays_component.h:29,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/overlays/overlays_hud_env.cpp:10:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/overlays/target_ring_draw.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/renderer/renderer_init.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/frame/frame_component.h:138,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/overlays/target_ring_draw.cpp:19:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/renderer/renderer_pre_zone.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/renderer/renderer_init.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/renderer/renderer_pre_zone.cpp:10:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/slash/renderer_slash_commands.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/zone_load/renderer_zone_load.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/slash/renderer_slash_commands.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/zone_load/renderer_zone_load.cpp:14:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/zone_load/renderer_zone_load_objects.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/zone_load/renderer_zone_load_objects.cpp:10:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/zone_load/renderer_zone_load_entities.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/zone_load/renderer_zone_load_env.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/zone_load/renderer_zone_load_entities.cpp:7:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/zone_load/renderer_zone_load_env.cpp:6:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/zone_load/renderer_entity_load_gate.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/zone_load/zone_load_component.h:131,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/zone_load/renderer_entity_load_gate.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/diagnostics/diagnostics_component.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/diagnostics/diagnostics_component.h:32,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/diagnostics/diagnostics_component.cpp:8:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/diagnostics/diagnostics_debug.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/diagnostics/diagnostics_component.h:32,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/diagnostics/diagnostics_debug.cpp:4:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/diagnostics/scene_node_census.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/diagnostics/gpu_buffer_tally.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/player/renderer_player_physics.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/player/renderer_player_collision.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/player/renderer_player_lift.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/player/renderer_player_physics.cpp:23:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/zone_lifecycle/zone_lifecycle_component.h:96,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/player/renderer_player_collision.cpp:7:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/player/player_camera_component.h:86,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/player/renderer_player_lift.cpp:13:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/player/renderer_camera.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/player/ground_query.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/player/camera_rig.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/player/renderer_camera_modes.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/slash/camera_command.cpp.o
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/scene_graph_batch.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/player/renderer_camera.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/player/player_camera_component.h:86,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/player/renderer_camera_modes.cpp:11:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[  5%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/zone_stream/renderer_zone_merge.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/zone_lifecycle/renderer_zone_draw.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/zone_stream/zone_stream_component.h:62,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/zone_stream/renderer_zone_merge.cpp:2:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/zone_stream/renderer_zone_stream.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eqe1/eqe1_archive_component.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/zone_stream/zone_stream_component.h:62,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/zone_stream/renderer_zone_stream.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sim/renderer_sim_bridge.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/eqe1/eqe1_archive_component.h:35,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/eqe1/eqe1_archive_component.cpp:29:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame/renderer_frame.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/sim/renderer_sim_bridge.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/frame/renderer_frame.cpp:8:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame/renderer_frame_input.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame/renderer_frame_render.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/frame/renderer_frame_input.cpp:18:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/frame/renderer_frame_render.cpp:36:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame/renderer_frame_preferences.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/frame/frame_component.h:138,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/frame/renderer_frame_preferences.cpp:25:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame/renderer_frame_options.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame/renderer_frame_friends.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/frame/frame_component.h:138,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/frame/renderer_frame_options.cpp:34:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame/renderer_frame_cursor.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/frame/frame_component.h:138,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/frame/renderer_frame_friends.cpp:18:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/frame/frame_component.h:138,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/frame/renderer_frame_cursor.cpp:19:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame/renderer_frame_trade.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame/renderer_frame_tips.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/frame/frame_component.h:138,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/frame/renderer_frame_trade.cpp:14:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame/renderer_frame_tooltips.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/frame/frame_component.h:138,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/frame/renderer_frame_tips.cpp:10:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame/renderer_frame_entity_build.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/frame/frame_component.h:138,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/frame/renderer_frame_tooltips.cpp:6:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/renderer/renderer_entities.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/frame/renderer_frame_entity_build.cpp:18:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/zone_lifecycle/renderer_gpu_upload.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/renderer/renderer_entities.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/zone_shader.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/vision_ambient.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/portal_system.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frustum_culler.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/software_occlusion_culler.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/vision_ambient.cpp:1:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/camera_controller.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_renderer.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/corpse_death_pose.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_mesh_build.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_build_step.cpp.o
+[ 11%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_updates.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_impostors.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/impostor/impostor_policy.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/impostor/impostor_cache.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/impostor/impostor_batch_node.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_name_tags.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/name_tag_batch.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_interpolation.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_lifecycle.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_castbars.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_combat_anim.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_first_person_draw.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_size.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_spatial.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_equipment.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/background_thread_pool.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_prep_worker.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/simulation_worker.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sim_visibility.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sim_animation.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sim_weather.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sim_particles.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sim_entity_sync.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sim_boids.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/loading_thread.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/door_manager.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/door_manager_mesh.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/door_manager_create.cpp.o
+[ 16%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/door_manager_rebuild.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/door_collision.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/region_world_triangles.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/object_collision_set.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/placed_object_meshes.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/door_motion.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/door_manager_collision.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/door_manager_animation.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/animated_texture_manager.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sky_config.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sky_color_table.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sky_renderer.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sky_renderer_celestial.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/sky_renderer_colors.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/constrained_renderer_config.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/frame_budget_governor.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/entity_build_scheduler.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/texture_atlas.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eqe1_loader.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/eqe1_texture_index.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/constrained_texture_cache.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/constrained_texture_cache_upload_queue.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/constrained_texture_cache_eviction.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/constrained_texture_cache_compressed.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/constrained_texture_cache_residency.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/archive_texture_source.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/texture_upload_ledger.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/graphics_archive_index.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/load_mem_audit.cpp.o
+[ 22%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/ui_atlas.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/item_icon_sheets.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/static_ui_input.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/static_ui_cursor.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/quantity_window.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/confirmation_dialog.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/static_ui_merchant.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/ui_renderer.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/static_panels.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/chat_wrap_cache.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/ui_quad_batch.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/bitmap_glyph_table.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/loot_panel.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/tradeskill_panel.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/tradeskill_recipe_list.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/text_entry.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/item_display_panel.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/combat_ability_panel.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/options_panel.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/options_settings.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/options_values.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/options_lists.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/options_classification.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/options_command.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/options_keys.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/options_colors.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/color_picker.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/options_particles.cpp.o
+[ 27%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/friends_panel.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/tip_window.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/char_create_screen.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/char_create_panel.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/char_select_panel.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/char_select_screen.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/char_select_host.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/merchant_panel.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/bank_panel.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/cursor_attachment.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/vision_ambient.h:121,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/irrlicht_renderer.h:19,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/ui/char_select_host.cpp:6:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/trainer_panel.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/tracking_panel.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/container_panel.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/container_input.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/trade_panel.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/trade_input.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/item_tooltip.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/esc_window_stack.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/ui_preferences.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/ui/character_model_view.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/spell_visual_fx.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/spell_visual_fx_nodes.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/spell_visual_selection.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/text_batch.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/detail_manager.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/detail_manager_chunks.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/detail_manager_surface.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/detail_zone_configs.cpp.o
+[ 33%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/detail_chunk.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/detail_config_loader.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/detail_texture_atlas.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/detail_texture_atlas_flora.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/detail_texture_atlas_grass.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/seasonal_controller.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/foliage_disturbance.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/detail/footprint_manager.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/tree_wind_config.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/tree_identifier.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/tree_wind_controller.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/weather_system.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/weather_ambient_oracle.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/weather_effects_controller.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/weather_config_loader.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/weather_quality_preset.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/display_settings_loader.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/particle_emitter.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/particle_manager.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/environment_config.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/zone_biome.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/emitters/dust_mote_emitter.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/emitters/pollen_emitter.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/emitters/firefly_emitter.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/emitters/mist_emitter.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/emitters/sand_dust_emitter.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/emitters/ember_emitter.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/emitters/smoke_emitter.cpp.o
+[ 38%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/unified_particle_renderer.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/fire_emitter_config.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/weather_emitter_config.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/spell_emitter_presets.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/spell_effects_config.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/storm_cloud_layer.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/rain_overlay.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/snow_overlay.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/flock_controller.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/boids_manager.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/environment/tumbleweed_manager.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/gpu_upload_thread.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/rdp/rdp_server.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/rdp/rdp_server.cpp:3:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/rdp/rdp_peer_context.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_peer_context.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/rdp/rdp_peer_context.cpp:3:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/rdp/rdp_server.cpp: In member function ‘rdpCertificate* EQT::Graphics::RDPServer::createPeerCertificate()’:
+/home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/rdp/rdp_server.cpp:254:18: warning: ignoring return value of ‘size_t fread(void*, size_t, size_t, FILE*)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  254 |             fread(&certPem_[0], 1, size, f);
+      |             ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/rdp/rdp_server.cpp: In member function ‘rdpPrivateKey* EQT::Graphics::RDPServer::createPeerKey()’:
+/home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/rdp/rdp_server.cpp:281:18: warning: ignoring return value of ‘size_t fread(void*, size_t, size_t, FILE*)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  281 |             fread(&keyPem_[0], 1, size, f);
+      |             ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/rdp/rdp_input_handler.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/graphics/rdp/rdp_component.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/audio_manager.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/sound_buffer.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/music_player.cpp.o
+In file included from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/winpr.h:22,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/stream.h:26,
+                 from /usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/freerdp3/freerdp/freerdp.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_server.h:6,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_types.h:68,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/renderer_context.h:25,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/graphics/rdp/rdp_component.h:28,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/graphics/rdp/rdp_component.cpp:15:
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:942:38: warning: ‘SEC_WINPR_NTLM_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_NTLM_SETTINGS_V2 [-Wdeprecated-declarations]
+  942 |             SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
+      |                                      ^~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:922:7: note: declared here
+  922 |     } SEC_WINPR_NTLM_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:943:42: warning: ‘SEC_WINPR_KERBEROS_SETTINGS’ is deprecated: [deprecated] [since 3.31.0] use SEC_WINPR_KERBEROS_SETTINGS_V2 [-Wdeprecated-declarations]
+  943 |             SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
+      |                                          ^~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/sspi.h:937:7: note: declared here
+  937 |     } SEC_WINPR_KERBEROS_SETTINGS);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/lib/x86_64-linux-gnu/pkgconfig/../../../include/winpr3/winpr/platform.h:601:78: note: in definition of macro ‘WINPR_DEPRECATED_VAR’
+  601 | #define WINPR_DEPRECATED_VAR(text, obj) [[deprecated("[deprecated] " text)]] obj
+      |                                                                              ^~~
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/sound_assets.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/xmi_decoder.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/eff_loader.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/zone_sound_emitter.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/zone_audio_manager.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/door_sounds.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/combat_music.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/audio_mixer.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/audio_backend.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/midi_player.cpp.o
+[ 44%] Building CXX object CMakeFiles/willeq_core.dir/src/client/audio/sfx_manager.cpp.o
+[ 50%] Linking CXX static library lib/libwilleq_core.a
+[100%] Built target willeq_core
+[100%] Building CXX object CMakeFiles/willeq.dir/src/client/main.cpp.o
+[100%] Linking CXX executable bin/willeq
+[100%] Built target willeq
+exit=0

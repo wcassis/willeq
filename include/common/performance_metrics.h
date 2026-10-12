@@ -67,9 +67,6 @@ public:
     // Record a sample for statistics (frame times, etc.)
     void recordSample(const std::string& name, int64_t durationMs);
 
-    // Get all timings for a category
-    std::vector<TimingEntry> getTimings(MetricCategory category) const;
-
     // Get statistics for a named metric
     TimingStats getStats(const std::string& name) const;
 
@@ -79,21 +76,8 @@ public:
     // Reset all metrics
     void reset();
 
-    // Reset just gameplay metrics (for per-session tracking)
-    void resetGameplay();
-
     // Generate summary report
     std::string generateReport() const;
-
-    // Get time since program start
-    int64_t getElapsedMs() const;
-
-    // Mark zone load start/end for tracking
-    void markZoneLoadStart(const std::string& zoneName);
-    void markZoneLoadEnd();
-
-    // Get current zone being loaded (empty if not loading)
-    const std::string& getCurrentZoneName() const { return currentZoneName_; }
 
 private:
     PerformanceMetrics();
@@ -115,10 +99,6 @@ private:
 
     // Statistics for repeated measurements
     std::map<std::string, TimingStats> stats_;
-
-    // Zone loading tracking
-    std::string currentZoneName_;
-    std::chrono::steady_clock::time_point zoneLoadStart_;
 };
 
 // Convenience macros for timing
@@ -133,16 +113,6 @@ private:
 
 #define PERF_TIMER_GAMEPLAY(name) \
     EQT::ScopedTimer _perf_timer_##__LINE__(name, EQT::MetricCategory::Gameplay)
-
-// Helper to get category name
-inline const char* getCategoryName(MetricCategory cat) {
-    switch (cat) {
-        case MetricCategory::Startup: return "Startup";
-        case MetricCategory::Zoning: return "Zoning";
-        case MetricCategory::Gameplay: return "Gameplay";
-        default: return "Unknown";
-    }
-}
 
 } // namespace EQT
 
