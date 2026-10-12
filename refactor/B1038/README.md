@@ -175,6 +175,7 @@ cases. `glab ci lint`: valid.
   an existing job).
 - The headless cases compiled out are compiled out, not re-homed: the
   renderer TUs they test are still covered by the graphics `test` job.
-- `__LINE__`-bearing log calls below each new `#ifdef` in the touched TUs
-  shift by the added lines; no other graphics-build change.
+- Graphics-build binaries were not byte-compared. The only expected
+  differences are line numbers (gtest's `__FILE__:__LINE__` in the touched
+  tests' failure messages); `include/common/logging.h` uses no `__LINE__`.
 - Vendoring cereal into `third_party/` is not done (Will's call).
