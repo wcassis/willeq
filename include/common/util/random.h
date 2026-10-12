@@ -4,9 +4,6 @@
 #include <limits>
 #include <random>
 #include <utility>
-#include <algorithm>
-#include <iterator>
-#include <type_traits>
 
 namespace EQ {
 	class Random {
@@ -26,16 +23,6 @@ namespace EQ {
 		uint32_t UInt32()
 		{
 			return uint_dist(m_gen);
-		}
-
-		// std::shuffle requires a RNG engine passed to it, so lets provide a wrapper to use our engine
-		template<typename RandomAccessIterator>
-		void Shuffle(RandomAccessIterator first, RandomAccessIterator last)
-		{
-			static_assert(std::is_same<std::random_access_iterator_tag,
-					typename std::iterator_traits<RandomAccessIterator>::iterator_category>::value,
-					"EQ::Random::Shuffle requires random access iterators");
-			std::shuffle(first, last, m_gen);
 		}
 
 		void Reseed()

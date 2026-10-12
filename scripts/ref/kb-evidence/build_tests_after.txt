@@ -1,0 +1,45 @@
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/audio/audio_mixer.cpp.o
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/test_sfx_cache_eviction.cpp.o
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/audio/audio_manager.cpp.o
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/audio/audio_backend.cpp.o
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/audio/midi_player.cpp.o
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/audio/sfx_manager.cpp.o
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/audio/sound_buffer.cpp.o
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/audio/music_player.cpp.o
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/audio/sound_assets.cpp.o
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/audio/xmi_decoder.cpp.o
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/willeq_database.cpp.o
+[  0%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/core/memory_ledger.cpp.o
+[100%] Building CXX object tests/CMakeFiles/test_sfx_cache_eviction.dir/__/src/client/core/memory_ledger_trace.cpp.o
+/home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/core/memory_ledger.cpp: In function ‘std::string eqt::memory::toReportText(const Snapshot&)’:
+/home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/core/memory_ledger.cpp:523:30: warning: ‘ MiB on whole RssAnon (’ directive output may be truncated writing 23 bytes into a region of size between 0 and 35 [-Wformat-truncation=]
+  523 |              "vs ceiling %.0f MiB on whole RssAnon (%s%.1f MiB)\n",
+      |                              ^~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/stdio.h:980,
+                 from /usr/include/c++/13/cstdio:42,
+                 from /usr/include/c++/13/ext/string_conversions.h:45,
+                 from /usr/include/c++/13/bits/basic_string.h:4109,
+                 from /usr/include/c++/13/string:54,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/include/client/core/memory_ledger.h:52,
+                 from /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/core/memory_ledger.cpp:10:
+In function ‘int snprintf(char*, size_t, const char*, ...)’,
+    inlined from ‘std::string eqt::memory::toReportText(const Snapshot&)’ at /home/user/src/willeq-wt/kb-b499-b500-b501-zero-callers/src/client/core/memory_ledger.cpp:519:13:
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:54:35: note: ‘__builtin___snprintf_chk’ output between 262 and 3071 bytes into a destination of size 256
+   54 |   return __builtin___snprintf_chk (__s, __n, __USE_FORTIFY_LEVEL - 1,
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   55 |                                    __glibc_objsize (__s), __fmt,
+      |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   56 |                                    __va_arg_pack ());
+      |                                    ~~~~~~~~~~~~~~~~~
+[100%] Linking CXX executable ../bin/test_sfx_cache_eviction
+[100%] Built target test_sfx_cache_eviction
+[  0%] Building CXX object tests/CMakeFiles/test_eff_loader.dir/__/src/client/willeq_database.cpp.o
+[100%] Building CXX object tests/CMakeFiles/test_eff_loader.dir/test_eff_loader.cpp.o
+[100%] Building CXX object tests/CMakeFiles/test_eff_loader.dir/__/src/client/audio/eff_loader.cpp.o
+[100%] Linking CXX executable ../bin/test_eff_loader
+[100%] Built target test_eff_loader
+Building CXX object tests/CMakeFiles/test_data_verification.dir/test_data_verification.cpp.o
+Building CXX object tests/CMakeFiles/test_data_verification.dir/__/src/common/util/data_verification.cpp.o
+Linking CXX executable ../bin/test_data_verification
+Built target test_data_verification
+exit=0
