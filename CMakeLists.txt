@@ -2050,172 +2050,186 @@ ENDIF()
 # Hardware capability test tools
 # These are lightweight GPU probes (no Irrlicht dependency) for testing
 # hardware features on constrained devices like Orange Pi.
-ADD_EXECUTABLE(gpu_texture_formats tools/hwcaps/gpu_texture_formats.cpp)
-TARGET_INCLUDE_DIRECTORIES(gpu_texture_formats PRIVATE ${CMAKE_SOURCE_DIR}/include)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(gpu_texture_formats PRIVATE EQT_HAS_DRM)
-    FIND_PATH(LIBDRM_INCLUDE_DIR drm.h PATH_SUFFIXES libdrm)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(gpu_texture_formats PRIVATE ${LIBDRM_INCLUDE_DIR})
-    ENDIF()
-    TARGET_LINK_LIBRARIES(gpu_texture_formats EGL GL drm gbm)
+# B1039 (#359): they include <EGL/egl.h> and link EGL + GLESv2, so they (and
+# test_gl_points below) are built only where both are found -- every Linux
+# host and the ARM sysroots; not macOS, which has neither.
+FIND_PATH(EQT_EGL_INCLUDE_DIR EGL/egl.h)
+FIND_LIBRARY(EQT_EGL_LIBRARY EGL)
+FIND_LIBRARY(EQT_GLESV2_LIBRARY GLESv2)
+IF(EQT_EGL_INCLUDE_DIR AND EQT_EGL_LIBRARY AND EQT_GLESV2_LIBRARY)
+    SET(EQT_HAVE_EGL_TOOLS ON)
 ELSE()
-    TARGET_LINK_LIBRARIES(gpu_texture_formats EGL GL)
+    SET(EQT_HAVE_EGL_TOOLS OFF)
+    MESSAGE(STATUS "EGL/GLESv2: NOT FOUND (tools/hwcaps GPU probes and test_gl_points not built)")
 ENDIF()
+IF(EQT_HAVE_EGL_TOOLS)
+    ADD_EXECUTABLE(gpu_texture_formats tools/hwcaps/gpu_texture_formats.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gpu_texture_formats PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gpu_texture_formats PRIVATE EQT_HAS_DRM)
+        FIND_PATH(LIBDRM_INCLUDE_DIR drm.h PATH_SUFFIXES libdrm)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gpu_texture_formats PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(gpu_texture_formats EGL GL drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(gpu_texture_formats EGL GL)
+    ENDIF()
 
-ADD_EXECUTABLE(gles2_etc1_benchmark tools/hwcaps/gles2_etc1_benchmark.cpp)
-TARGET_INCLUDE_DIRECTORIES(gles2_etc1_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(gles2_etc1_benchmark PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(gles2_etc1_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ADD_EXECUTABLE(gles2_etc1_benchmark tools/hwcaps/gles2_etc1_benchmark.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gles2_etc1_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_etc1_benchmark PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_etc1_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(gles2_etc1_benchmark EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(gles2_etc1_benchmark EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_etc1_benchmark EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(gles2_etc1_benchmark EGL GLESv2)
-ENDIF()
 
-ADD_EXECUTABLE(gles2_etc1_alpha_readback_test
-    tools/hwcaps/gles2_etc1_alpha_readback_test.cpp
-    src/client/graphics/eqe1_loader.cpp
-)
-TARGET_INCLUDE_DIRECTORIES(gles2_etc1_alpha_readback_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(gles2_etc1_alpha_readback_test PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(gles2_etc1_alpha_readback_test PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ADD_EXECUTABLE(gles2_etc1_alpha_readback_test
+        tools/hwcaps/gles2_etc1_alpha_readback_test.cpp
+        src/client/graphics/eqe1_loader.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(gles2_etc1_alpha_readback_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_etc1_alpha_readback_test PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_etc1_alpha_readback_test PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(gles2_etc1_alpha_readback_test EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(gles2_etc1_alpha_readback_test EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_etc1_alpha_readback_test EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(gles2_etc1_alpha_readback_test EGL GLESv2)
-ENDIF()
 
-ADD_EXECUTABLE(gles2_shader_perpixel_benchmark
-    tools/hwcaps/gles2_shader_perpixel_benchmark.cpp
-    tools/hwcaps/shader_perpixel/shader_perpixel_egl.cpp
-    tools/hwcaps/shader_perpixel/shader_perpixel_shaders.cpp
-    tools/hwcaps/shader_perpixel/shader_perpixel_scene.cpp
-)
-TARGET_INCLUDE_DIRECTORIES(gles2_shader_perpixel_benchmark PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/tools
-)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(gles2_shader_perpixel_benchmark PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(gles2_shader_perpixel_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ADD_EXECUTABLE(gles2_shader_perpixel_benchmark
+        tools/hwcaps/gles2_shader_perpixel_benchmark.cpp
+        tools/hwcaps/shader_perpixel/shader_perpixel_egl.cpp
+        tools/hwcaps/shader_perpixel/shader_perpixel_shaders.cpp
+        tools/hwcaps/shader_perpixel/shader_perpixel_scene.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(gles2_shader_perpixel_benchmark PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/tools
+    )
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_shader_perpixel_benchmark PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_shader_perpixel_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(gles2_shader_perpixel_benchmark EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(gles2_shader_perpixel_benchmark EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_shader_perpixel_benchmark EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(gles2_shader_perpixel_benchmark EGL GLESv2)
-ENDIF()
 
-ADD_EXECUTABLE(gles2_program_switch_benchmark tools/hwcaps/gles2_program_switch_benchmark.cpp)
-TARGET_INCLUDE_DIRECTORIES(gles2_program_switch_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(gles2_program_switch_benchmark PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(gles2_program_switch_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ADD_EXECUTABLE(gles2_program_switch_benchmark tools/hwcaps/gles2_program_switch_benchmark.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gles2_program_switch_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_program_switch_benchmark PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_program_switch_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(gles2_program_switch_benchmark EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(gles2_program_switch_benchmark EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_program_switch_benchmark EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(gles2_program_switch_benchmark EGL GLESv2)
-ENDIF()
 
-# T385 (board B167): the shader sources moved out -- the benchmark TU was
-# 1,711 lines, over the 1,500 ceiling that now covers tools/.
-ADD_EXECUTABLE(gles2_fog_volume_benchmark
-    tools/hwcaps/gles2_fog_volume_benchmark.cpp
-    tools/hwcaps/fog_volume/fog_volume_shaders.cpp
-    tools/hwcaps/fog_volume/fog_volume_egl.cpp
-    tools/hwcaps/fog_volume/fog_volume_scene.cpp
-    tools/hwcaps/fog_volume/fog_volume_passes.cpp)
-TARGET_INCLUDE_DIRECTORIES(gles2_fog_volume_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/tools/hwcaps)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(gles2_fog_volume_benchmark PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(gles2_fog_volume_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+    # T385 (board B167): the shader sources moved out -- the benchmark TU was
+    # 1,711 lines, over the 1,500 ceiling that now covers tools/.
+    ADD_EXECUTABLE(gles2_fog_volume_benchmark
+        tools/hwcaps/gles2_fog_volume_benchmark.cpp
+        tools/hwcaps/fog_volume/fog_volume_shaders.cpp
+        tools/hwcaps/fog_volume/fog_volume_egl.cpp
+        tools/hwcaps/fog_volume/fog_volume_scene.cpp
+        tools/hwcaps/fog_volume/fog_volume_passes.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gles2_fog_volume_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/tools/hwcaps)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_fog_volume_benchmark PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_fog_volume_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(gles2_fog_volume_benchmark EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(gles2_fog_volume_benchmark EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_fog_volume_benchmark EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(gles2_fog_volume_benchmark EGL GLESv2)
-ENDIF()
 
-ADD_EXECUTABLE(gles2_icosphere_anim_benchmark tools/hwcaps/gles2_icosphere_anim_benchmark.cpp)
-TARGET_INCLUDE_DIRECTORIES(gles2_icosphere_anim_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(gles2_icosphere_anim_benchmark PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(gles2_icosphere_anim_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ADD_EXECUTABLE(gles2_icosphere_anim_benchmark tools/hwcaps/gles2_icosphere_anim_benchmark.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gles2_icosphere_anim_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_icosphere_anim_benchmark PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_icosphere_anim_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(gles2_icosphere_anim_benchmark EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(gles2_icosphere_anim_benchmark EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_icosphere_anim_benchmark EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(gles2_icosphere_anim_benchmark EGL GLESv2)
-ENDIF()
 
-ADD_EXECUTABLE(gles2_texture_read_benchmark tools/hwcaps/gles2_texture_read_benchmark.cpp)
-TARGET_INCLUDE_DIRECTORIES(gles2_texture_read_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(gles2_texture_read_benchmark PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(gles2_texture_read_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ADD_EXECUTABLE(gles2_texture_read_benchmark tools/hwcaps/gles2_texture_read_benchmark.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gles2_texture_read_benchmark PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_texture_read_benchmark PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_texture_read_benchmark PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(gles2_texture_read_benchmark EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(gles2_texture_read_benchmark EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_texture_read_benchmark EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(gles2_texture_read_benchmark EGL GLESv2)
-ENDIF()
 
-ADD_EXECUTABLE(gles2_fog_visual_compare tools/hwcaps/gles2_fog_visual_compare.cpp)
-TARGET_INCLUDE_DIRECTORIES(gles2_fog_visual_compare PRIVATE ${CMAKE_SOURCE_DIR}/include)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(gles2_fog_visual_compare PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(gles2_fog_visual_compare PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ADD_EXECUTABLE(gles2_fog_visual_compare tools/hwcaps/gles2_fog_visual_compare.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gles2_fog_visual_compare PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_fog_visual_compare PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_fog_visual_compare PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(gles2_fog_visual_compare EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(gles2_fog_visual_compare EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_fog_visual_compare EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(gles2_fog_visual_compare EGL GLESv2)
-ENDIF()
 
-ADD_EXECUTABLE(gles2_derivatives_test tools/hwcaps/gles2_derivatives_test.cpp)
-TARGET_INCLUDE_DIRECTORIES(gles2_derivatives_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(gles2_derivatives_test PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(gles2_derivatives_test PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ADD_EXECUTABLE(gles2_derivatives_test tools/hwcaps/gles2_derivatives_test.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gles2_derivatives_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_derivatives_test PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_derivatives_test PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(gles2_derivatives_test EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(gles2_derivatives_test EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_derivatives_test EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(gles2_derivatives_test EGL GLESv2)
-ENDIF()
 
-ADD_EXECUTABLE(gles2_npot_test tools/hwcaps/gles2_npot_test.cpp)
-TARGET_INCLUDE_DIRECTORIES(gles2_npot_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(gles2_npot_test PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(gles2_npot_test PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ADD_EXECUTABLE(gles2_npot_test tools/hwcaps/gles2_npot_test.cpp)
+    TARGET_INCLUDE_DIRECTORIES(gles2_npot_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(gles2_npot_test PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(gles2_npot_test PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(gles2_npot_test EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(gles2_npot_test EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(gles2_npot_test EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(gles2_npot_test EGL GLESv2)
-ENDIF()
 
-ADD_EXECUTABLE(egl_image_sharing_test tools/hwcaps/egl_image_sharing_test.cpp)
-TARGET_INCLUDE_DIRECTORIES(egl_image_sharing_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(egl_image_sharing_test PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(egl_image_sharing_test PRIVATE ${LIBDRM_INCLUDE_DIR})
+    ADD_EXECUTABLE(egl_image_sharing_test tools/hwcaps/egl_image_sharing_test.cpp)
+    TARGET_INCLUDE_DIRECTORIES(egl_image_sharing_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(egl_image_sharing_test PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(egl_image_sharing_test PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(egl_image_sharing_test EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(egl_image_sharing_test EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(egl_image_sharing_test EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(egl_image_sharing_test EGL GLESv2)
-ENDIF()
+ENDIF()  # EQT_HAVE_EGL_TOOLS
 
 # Zone benchmark — offline zone rendering with real S3D/WLD pipeline
 IF(EQT_GRAPHICS)
@@ -2665,20 +2679,22 @@ IF(EQT_GRAPHICS)
         WILLEQ_EQE1_INDEX_REAL_PATH="${CMAKE_SOURCE_DIR}/data/eqe1_texture_index.json")
 ENDIF()
 
-ADD_EXECUTABLE(test_gl_points
-    tools/test_gl_points.cpp
-    tools/gl_points/gl_points_egl.cpp
-    tools/gl_points/gl_points_fbo.cpp)
-TARGET_INCLUDE_DIRECTORIES(test_gl_points PRIVATE ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/tools)
-IF(EQT_DRM)
-    TARGET_COMPILE_DEFINITIONS(test_gl_points PRIVATE EQT_HAS_DRM)
-    IF(LIBDRM_INCLUDE_DIR)
-        TARGET_INCLUDE_DIRECTORIES(test_gl_points PRIVATE ${LIBDRM_INCLUDE_DIR})
+IF(EQT_HAVE_EGL_TOOLS)  # B1039: see the hwcaps block
+    ADD_EXECUTABLE(test_gl_points
+        tools/test_gl_points.cpp
+        tools/gl_points/gl_points_egl.cpp
+        tools/gl_points/gl_points_fbo.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_gl_points PRIVATE ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/tools)
+    IF(EQT_DRM)
+        TARGET_COMPILE_DEFINITIONS(test_gl_points PRIVATE EQT_HAS_DRM)
+        IF(LIBDRM_INCLUDE_DIR)
+            TARGET_INCLUDE_DIRECTORIES(test_gl_points PRIVATE ${LIBDRM_INCLUDE_DIR})
+        ENDIF()
+        TARGET_LINK_LIBRARIES(test_gl_points EGL GLESv2 drm gbm)
+    ELSE()
+        TARGET_LINK_LIBRARIES(test_gl_points EGL GLESv2)
     ENDIF()
-    TARGET_LINK_LIBRARIES(test_gl_points EGL GLESv2 drm gbm)
-ELSE()
-    TARGET_LINK_LIBRARIES(test_gl_points EGL GLESv2)
 ENDIF()
 
 # Install
