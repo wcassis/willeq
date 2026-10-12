@@ -168,6 +168,19 @@ binaries): `test_spatial_audio` 14/14, `test_weather_audio` 20/20,
 `test_sound_effects` 15/15, `test_sfx_single_pcm_cache` 6/6,
 `test_sfx_cache_eviction` 5/5. The CI `test` job re-measures the full suite.
 
+## CI (MR !151, pipeline 859, head c0969eb7)
+
+All four stages green on gitlab-runner: hygiene 4357, build 4358, test 4359,
+gate 4361. Test job 4359: the three behaviour tests are **Passed, not
+Skipped** (5,747/5,747, 0 failed):
+
+```
+Test #5417: SfxSinglePcmCache.BufferCacheEvictionResurrectsTheDuplicate ..   Passed    0.12 sec
+Test #5418: SfxSinglePcmCache.TheCapBoundsTheTotalResidentPcm               ..   Passed    0.13 sec
+Test #5419: SfxSinglePcmCache.TheSoundBeingInsertedIsNeverEvicted           ..   Passed    0.13 sec
+100% tests passed, 0 tests failed out of 5747
+```
+
 ## Docs touched
 
 - `refactor/B989/README.md` — steady_60s is BEFORE the tour's combat
