@@ -7,7 +7,7 @@ Core:
 - `AudioMixer` - Software stereo PCM mixer (16 SFX + 2 music channels)
 - `AudioBackend` - Output abstraction: MiniaudioBackend (direct) or RDPAudioBackend (streaming)
 - `MidiPlayer` - TSF + TML MIDI/XMI synthesis (SoundFont-based)
-- `SfxManager` - WAV loading (dr_wav) and spatial playback with LRU cache
+- `SfxManager` - SFX playback and spatial positioning over buffers it does not own (B1015: no cache of its own — the decoded PCM is the AudioManager's SoundBufferCache; the in-use pin (isInUse) keeps a playing buffer resident; play() hands the mixer a raw float* into the buffer's PCM)
 - `SoundBuffer` - Decoded float PCM data (loaded via dr_wav from files or PFS archives)
 - `SoundAssets` - Parses SoundAssets.txt for sound ID to filename mapping
 - `MusicPlayer` - Streaming music playback for XMI/MIDI and MP3 files

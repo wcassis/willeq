@@ -136,8 +136,11 @@ IF(WITH_AUDIO)
     GTEST_DISCOVER_TESTS(test_sound_effects DISCOVERY_TIMEOUT 120)
 ENDIF()
 
-# T412 Leg B (B292): the SFX cache must honour setCacheMaxBytes(). Drives the
-# real SfxManager and a real AudioMixer -- no device is opened.
+# B1015 (#336, supersedes the T412 B292 shape): the ONE decoded-PCM cache of
+# SFX PCM must honour its ceiling. SoundBufferCache::entries_ is that cache
+# (one cap); SfxManager holds no cache of its own and never evicts the sound
+# being inserted. Drives the real SoundBufferCache and, for the pin cases, a
+# real SfxManager + AudioMixer -- no device is opened.
 IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_sfx_cache_eviction
         test_sfx_cache_eviction.cpp
