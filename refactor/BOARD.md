@@ -1060,6 +1060,34 @@ it without taking that measurement first.
   take pipelines too~~ (superseded: runner-2 carries `x86-build` since
   2026-10-11 and B1026's host+sha stamp makes a split pipeline safe);
   `ready_selftest.sh` not yet run on the clones.
+- **B1030** (B) → issue #350. Two aarch64 SBCs joined the Orange Pi as client
+  targets (Rock64: RK3328, Mali-450/Lima, 4 GB, eMMC; ROCK 4D: RK3576,
+  Mali-G52/Panfrost, 12 GB), but every Pi script hardcoded ONE host and the
+  arm64 Dockerfile had drifted from the armhf one for three months. Done in
+  the unit: `PI_LANE=1..3` table + per-device locks in `scripts/pi/env.sh`
+  (`lock_selftest.sh` PASS on lanes 2 and 3), `Dockerfile.arm64-noble`
+  regenerated from the armhf file and pinned derived by
+  `scripts/ci/check_arm64_dockerfile.sh` (ctest `DockerfileArm64Derived`),
+  `scripts/build-arm64-noble.sh` + `scripts/pi/publish_arm64_build.sh` →
+  `ci-arm64/<sha>/`; `docs/ci.md` "The aarch64 SBC lanes". Smoke PASS on both
+  lanes (`review/B1030/README.md`), after one port fix: Panfrost lists 10-bit
+  EGL visuals first, so the DRM device now picks the config whose native
+  visual is the GBM format (`chooseConfigForGbmFormat`, unchanged result on
+  Lima, A/B in the README). Follow-ups done: `build-arm64` CI job (sibling
+  of `build-arm`, not a widening); the rendered sweep runs on the aarch64
+  lanes (system Mesa, `ci-arm64/`, headless HDMI via `pi_hdmi_force_on`,
+  `--constrained <preset>`); ledger rows for both lanes in the README
+  (~70 MB owned_rss_anon each on the orangepi preset). Spun off: the
+  Panfrost census field → B1032; the per-lane preset ruling → B1033.
+  Open: lane 2's 17.2 MiB of unnamed GEM fails the Pi rig's 10 MiB bound
+  and the B962 owner-census shim is armhf-only (an aarch64 build of it is
+  the next B item there).
+- ~~**B1033** (C) → issue #353.~~ RULED 2026-10-12 (Will, `docs/decisions.md`):
+  the aarch64 lanes keep the `orangepi` preset, the same 256 MB bound and
+  64 MB target, and get no goldens of their own until a lane runs the gate
+  (lane 2 shares the Pi's Mesa; whether it matches the Pi goldens is a
+  measurement to take first). Both lanes measure ~70 MB owned_rss_anon at
+  qeynos2 steady on that preset (`review/B1030/README.md`).
 - ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
   mechanism (a partial `glBufferSubData` into a buffer the current Lima job
   references flushes the job and blocks in `lima_bo_wait`, once per write): the

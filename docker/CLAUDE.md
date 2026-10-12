@@ -7,7 +7,7 @@
 | Dockerfile | Target | Architecture | Notes |
 |-----------|--------|-------------|-------|
 | `Dockerfile.arm-noble` | Orange Pi One | armhf (32-bit) | Primary build target; native GLES2 (`COpenGLES2Driver`) on DRM/KMS, Mesa/Lima supplying EGL |
-| `Dockerfile.arm64-noble` | Rock64 (RK3328) | aarch64 (64-bit) | Same GLES2 path, 64-bit |
+| `Dockerfile.arm64-noble` | SBC lanes 2-3: Rock64 (RK3328, Lima) + ROCK 4D (RK3576, Panfrost) | aarch64 (64-bit) | B1030: the armhf file with the arch swapped, generic armv8-a; `scripts/ci/check_arm64_dockerfile.sh` keeps it derived (`--write` regenerates); built by `scripts/build-arm64-noble.sh`, published to `ci-arm64/` |
 | `Dockerfile` | Desktop | x86_64 | Multi-stage: builder, runtime, vnc |
 | `Dockerfile.arm-cross` | ARM (legacy) | armhf | Superseded by arm-noble |
 | `Dockerfile.mesa-nollvm-armhf` | Orange Pi One | armhf (32-bit) | B932/B935: builds the SHIPPED Mesa 25.2.8 without LLVM (Lima only), plus patchelf for the rpath copy; driven by `scripts/pi/build_mesa_nollvm.sh`, measured in `refactor/B932/README.md` |
@@ -34,8 +34,8 @@ that ships with the client. The system Mesa packages are left alone.
 `vendor` (the NFS store `ci-arm/vendor/`), never from SourceForge. `docker/vendor.sha256` pins them;
 `scripts/ci/vendor_fetch.sh --ensure` fills the store. Run the Dockerfile by hand only with
 `--build-context vendor="$(scripts/ci/vendor_fetch.sh --ensure)"`. Keep the archive `COPY` ahead of the
-`docker/irrlicht-drm/*` copies. `Dockerfile`, `Dockerfile.arm64-noble` and `Dockerfile.arm-cross` still wget
-(not in CI). Details: `docs/ci.md`.
+`docker/irrlicht-drm/*` copies. `Dockerfile.arm64-noble` takes the same `vendor` context (it is derived from the armhf file, B1030);
+`Dockerfile` and `Dockerfile.arm-cross` still wget (not in CI). Details: `docs/ci.md`.
 
 **Build command**: `scripts/build-arm-noble.sh`
 ```bash
@@ -68,6 +68,7 @@ DRM/KMS/GBM/EGL framebuffer device replacing Irrlicht's X11 device:
 
 - **Initialization chain**: `initDRM()` → `initGBM()` → `initEGL()` — finds CRTC/connector, creates GBM device/surface, creates EGL display/context
 - **Page flipping**: `drmPageFlip()` uses `DRM_MODE_PAGE_FLIP_EVENT` flag + `waitForFlipComplete()` to avoid `-EBUSY` fallback to synchronous `drmModeSetCrtc` (which blocks ~35ms)
+- **EGL config = the GBM format** (B1030): `chooseConfigForGbmFormat()` walks every `eglChooseConfig` match and takes the first whose `EGL_NATIVE_VISUAL_ID` is `GBM_FORMAT_XRGB8888`. Panfrost (Mesa 26, ROCK 4D) lists 10-bit AR30/XR30 configs first, so the old single-config call got a 10-bit visual and `eglCreateWindowSurface` failed on the 8-bit gbm_surface; Lima never exposed one. Same fix in the x86 fork.
 - **Input**: Linux evdev (`/dev/input/event*`) for keyboard/mouse. VT keyboard disabled via `KDSKBMODE(K_OFF)` to prevent console layer from intercepting Ctrl+key combos
 - **EGL accessors**: `getEGLDisplay()`, `getEGLSurface()`, `getEGLContext()`, `getEGLConfig()`, `getGBMDevice()` — used by `GPUUploadThread` to create shared EGL context
 

@@ -231,7 +231,12 @@ build-arm:
   timeout: 2h
   interruptible: true
   variables:
-    GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble
+    # Both ARM jobs share this concurrent=1 runner's ONE checkout, so each must
+    # keep BOTH build trees: excluding only its own dir made build-arm wipe
+    # build-arm64-noble/ and build-arm64 wipe build-arm-noble/ (which holds the
+    # incremental cache/), i.e. two cold cross-builds per fable pipeline.
+    # Keep this line identical in build-arm and build-arm64 (B1030 review).
+    GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble -e build-arm64-noble
   rules:
     - if: $CI_COMMIT_BRANCH == "fable"
     - when: manual
@@ -243,6 +248,34 @@ build-arm:
     - scripts/ci/vendor_fetch.sh --ensure
     - nice -n 10 scripts/build-arm-noble.sh 2>&1 | tail -n 40
     - scripts/pi/publish_arm_build.sh "$CI_COMMIT_SHA" "${CI_COMMIT_BRANCH:-$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+
+# B1030 (#350): the aarch64 lanes' binary (Rock64 + ROCK 4D), the same runner
+# and the same shape as build-arm, published to ci-arm64/<sha>/. The runner is
+# concurrent=1, so the two ARM builds of a fable pipeline run one after the
+# other (one C++ build at a time on dev-u24); BUILD_JOBS caps the docker build
+# so a hand-run build on the host still fits beside it. Manual off fable
+# (`glab ci trigger build-arm64`), exactly like build-arm.
+build-arm64:
+  stage: arm
+  tags: [arm-nfs]
+  needs: []
+  dependencies: []
+  timeout: 2h
+  interruptible: true
+  variables:
+    # Same line as build-arm: the two jobs share one checkout (see there).
+    GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble -e build-arm64-noble
+    BUILD_JOBS: "8"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "fable"
+    - when: manual
+      allow_failure: true
+  script:
+    - set -o pipefail
+    - '[ "$(hostname)" = "dev-u24" ] || { echo "refusing to build on $(hostname)"; exit 1; }'
+    - scripts/ci/vendor_fetch.sh --ensure
+    - nice -n 10 scripts/build-arm64-noble.sh 2>&1 | tail -n 40
+    - scripts/pi/publish_arm64_build.sh "$CI_COMMIT_SHA" "${CI_COMMIT_BRANCH:-$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
 
 test:
   extends: .goldfarm
