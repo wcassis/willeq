@@ -240,7 +240,25 @@ went, not reclassified).
   shipped-content tests the login_strings drop would have turned red),
   `DbReproducible` OK (the rebuilt db matches its new sha256 pin).
 - `ctest --test-dir build -L hygiene`: **100% tests passed, 0 tests failed
-  out of 28** (`hygiene_tip.txt` in the evidence dir).
+ out of 28** (`hygiene_tip.txt` in the evidence dir).
+
+ ## CI verification
+
+ MR pipeline 833 (head 2a6a20d8, test job 4175) failed exactly one test,
+ `TmpPathCensus.EveryTempPathInTestsHasAPerProcessComponent` (5725/5726 passed;
+ `job4175_trace.txt` in the evidence dir) — a defect of THIS branch that local
+ verification missed: the rewritten `tests/test_string_database.cpp` (line 31)
+ and `tests/test_display_text_from_db.cpp` (line 73) both build their
+ throwaway SQLite dbs under `tmp ? tmp : "/tmp"`, the same pattern already
+ carrying precedent waivers for `test_willeq_database.cpp` and
+ `test_item_model_mapping.cpp`, without their own. The census flags the bare
+ `"/tmp"` literal; the joined file names carry a per-process component
+ (getpid / `this`), so the two missing waiver rows are the fix. Added to
+ `tests/test_tmp_path_census.cpp` (this commit). After the fix, locally:
+ `ctest -R TmpPathCensus` 2/2 Passed and `ctest -L hygiene` 28/28 Passed;
+ `test_string_database` 30 and `test_display_text_from_db` 9 cases also
+ re-passed on the tip binaries (the waiver change touches only the census
+ test, so those runs stand).
 
 ## Docs touched
 
