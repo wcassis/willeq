@@ -235,14 +235,15 @@ def _pi_section(manifest):
 
 def _stub_benchmark(gate, zone_cfg, out_dir):
     """What a real benchmark invocation would have produced for ONE zone:
-    the RUN-layout PNGs (pi: <out_dir>/<zone>/frames/f<n>.png), matching CSV
-    rows, a memory JSON with the stub section's memory values (so the
-    exact-match memory check passes when it runs), and the zone maps proof
-    (the real one comes from Popen/poll_maps; here the content is the good
-    nollvm text)."""
+    the RUN-layout PNGs (pi: <out_dir>/<zone>/f<n>.png -- the committed
+    layout, since run_benchmark's pi dump prefix is <out_dir>/<zone>),
+    matching CSV rows, a memory JSON with the stub section's memory values
+    (so the exact-match memory check passes when it runs), and the zone maps
+    proof (the real one comes from Popen/poll_maps; here the content is the
+    good nollvm text)."""
     zone = zone_cfg["zone"]
     frames = zone_cfg["designatedFrames"]
-    prefix = Path(out_dir) / zone / "frames"
+    prefix = Path(out_dir) / zone
     prefix.mkdir(parents=True, exist_ok=True)
     pngs = {}
     for f in frames:
@@ -367,6 +368,13 @@ def check_pi():
                       outdir / "SHA256SUMS", outdir / "qeynos2_maps.txt"):
                 if not p.exists():
                     failures.append(f"pi --capture missing {p}")
+            # the capture writes NO frames/ sub-layout: the staged frames are
+            # the committed layout <zone>/f<n>.png, unrenamed (the benchmark's
+            # own writeImageToFile does not mkdir, so a different prefix used
+            # to fail "FAILED to save" on the Pi)
+            if (outdir / "qeynos2" / "frames").exists():
+                failures.append("pi --capture wrote a frames/ sub-layout "
+                                "(the committed layout is <zone>/f<n>.png)")
             for w in written:
                 if str(gate.GOLDENS_DIR) in w:
                     failures.append(f"pi --capture wrote under tests/goldens/: {w}")
@@ -425,6 +433,21 @@ def check_pi():
                 failures.append(f"blessed pi verify: rc={rc} out={out!r}")
             if "p95" in out:
                 failures.append(f"pi verify asserted the p95 ceiling: {out!r}")
+
+            # 9. the metrics check actually runs: a blessed section whose
+            #    metrics disagree with the run's CSV must FAIL with the
+            #    mismatch named (pre-fix the guard was dead and metrics were
+            #    silently never checked)
+            bad_manifest = json.loads(json.dumps(tmp_manifest))
+            bz = bad_manifest["platforms"]["pi"]["zones"][0]
+            bf = str(bz["designatedFrames"][0])
+            bz["metrics"][bf]["draws"] += 1
+            with mock.patch.object(gate, "load_manifest", return_value=bad_manifest):
+                rc, out = _run_main(gate, ["--platform", "pi", "--bench", str(PI_BENCH),
+                                           "--goldens-dir", str(gd)])
+            if rc != 1 or "draws mismatch" not in out:
+                failures.append(f"pi verify did not catch the metrics "
+                                f"mismatch: rc={rc} out={out!r}")
 
     finally:
         try:

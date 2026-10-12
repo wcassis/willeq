@@ -466,12 +466,14 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None, cfg=None):
     B1024: with cfg=None (x86, the pre-B1024 path) the invocation is
     byte-identical to today's -- pinned by tests/data/b1024/x86_gate_plan.txt
     and --verify-x86. With a PlatformConfig, the platform's binary / EQ path /
-    extra args replace the x86 ones, the dump prefix follows the platform's
-    golden layout (pi: <out_dir>/<zone>/f<n>.png), and --platform pi launches
-    via Popen so poll_maps() can take the Mesa-prefix proof off a LIVE
-    process. The frames, warmup, resolution, productionConfig args and the
-    --occluder-budget 16 pin are the SAME for both platforms: the Pi set is
-    the x86 gate's invocation on the Pi's GPU, nothing else.
+    extra args replace the x86 ones, and --platform pi launches via Popen so
+    poll_maps() can take the Mesa-prefix proof off a LIVE process. The pi run
+    writes its frame PNGs straight into <out_dir>/<zone>/ -- the same layout
+    the committed set has (tests/goldens/pi/<zone>/f<n>.png) -- so a
+    capture's staged frames are the committed frames, unrenamed. The frames,
+    warmup, resolution, productionConfig args and the --occluder-budget 16 pin
+    are the SAME for both platforms: the Pi set is the x86 gate's invocation
+    on the Pi's GPU, nothing else.
     """
     zone = zone_cfg["zone"]
     frames = zone_cfg.get("designatedFrames", [0])
@@ -482,12 +484,17 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None, cfg=None):
     else:
         bench, eq_path, extra = cfg.bench, cfg.eq_path, cfg.extra_bench_args
         maps_path = out_dir / f"{zone}_maps.txt" if cfg.maps_required else None
-        if cfg.platform == "x86":
-            prefix = out_dir / zone
-        else:
-            prefix = out_dir / zone / "frames"
+        # x86-with-cfg and pi share the per-zone dump prefix: --dump-png-prefix
+        # <prefix> makes the benchmark write <prefix>_f<n>.png, i.e.
+        # <out_dir>/<zone>/f<n>.png.
+        prefix = out_dir / zone
     csv_path = out_dir / f"{zone}.csv"
     mem_path = out_dir / f"{zone}_mem.json"
+    # The benchmark's writeImageToFile() does not mkdir: without this the pi
+    # capture fails "FAILED to save" for every frame (the zone dir does not
+    # exist on a fresh capture run; x86 runs into the pre-existing
+    # ARTIFACTS_DIR, which is why it never bit there).
+    prefix.parent.mkdir(parents=True, exist_ok=True)
 
     cmd = [
         str(bench),
@@ -1395,10 +1402,15 @@ def verify_pi(manifest, cfg, bench_cfg, production_args, goldens_dir=None):
                     f"pi {zone} frame {f}: PIXEL MISMATCH ({diff_count} differing pixels, "
                     f"size={size}). Artifacts: {actual_path}, {diff_out}")
 
-        # 2. metrics (draws/stateChanges/polys) -- exact, per frame
+        # 2. metrics (draws/stateChanges/polys) -- exact, per frame, the same
+        #    rule as the x86 verify (which indexes csv_rows[f] directly). The
+        #    frame must have a CSV row: a blessed section can only carry
+        #    metrics for frames the run actually measured.
         for f_str, expected in pi_cfg.get("metrics", {}).items():
             f = int(f_str)
-            if f not in csv_rows or len(csv_rows) <= f:
+            if f >= len(csv_rows):
+                failures.append(f"pi {zone} frame {f}: no CSV row to check "
+                                f"metrics against")
                 continue
             row = csv_rows[f]
             for key, csv_key in (("draws", "draws"), ("stateChanges", "state_changes"), ("polys", "polys")):
@@ -1490,11 +1502,19 @@ def capture_pi(manifest, cfg, bench_cfg, production_args, out_dir):
             m = re.match(r"\[([^\]]+)\]", v)
             gl_renderer = m.group(1) if m else v
 
-        # stage the frames into the committed layout <zone>/f<n>.png
+        # The frames are ALREADY in the committed layout: run_benchmark's pi
+        # dump prefix is out_dir/<zone>/, so <out_dir>/<zone>/f<n>.png is
+        # exactly what the orchestrator commits as
+        # tests/goldens/pi/<zone>/f<n>.png. Check every frame is present;
+        # no copy step (a copy would be an unexplained rename).
         zone_dir = out_dir / zone
-        for f, p in png_paths.items():
-            shutil.copyfile(p, zone_dir / f"f{f}.png")
-            print(f"  wrote {zone_dir / f'f{f}.png'}")
+        for f in zone_cfg["designatedFrames"]:
+            staged = zone_dir / f"f{f}.png"
+            if not staged.exists():
+                failures.append(f"pi {zone} frame {f}: staged frame missing "
+                                f"{staged}")
+                continue
+            print(f"  staged {staged}")
 
         metrics = {}
         for f in zone_cfg["designatedFrames"]:
