@@ -133,29 +133,15 @@ public:
 	void unloadZone();
 
 	// --- Zone environment ---
-	// Set zone environment parameters (sky type, fog colors) from server data.
-	// skyType: sky type from NewZone_Struct (0-255)
-	// zoneType: zone type (0=outdoor, 1=dungeon, etc. - indoor zones disable sky)
-	// fogRed/Green/Blue: fog color arrays (4 values for different fog ranges)
-	// fogMinClip/MaxClip: fog distance arrays (4 values)
-	void setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
-	                        const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
-	                        const float fogMinClip[4], const float fogMaxClip[4]);
 	// Store zone environment data for deferred application (after sky renderer init)
+	// application_zone_loading.cpp calls this (twice); renderer_zone_load_env.cpp's
+	// Step 10 reads storedZoneEnvironment_ directly and clears .pending. B606
+	// (#189) deleted the superseded applyStoredZoneEnvironment()/setZoneEnvironment()
+	// pair -- Step 10 applies every field they would (plus weather) and defers the
+	// sky-dome build correctly, so the live path is a strict superset (README B606).
 	void storeZoneEnvironment(uint8_t skyType, uint8_t zoneType,
 	                          const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
 	                          const float fogMinClip[4], const float fogMaxClip[4]);
-	// ⚠ ZERO CALLERS, tree-wide, and so is setZoneEnvironment() apart from this
-	// body. Kept rather than deleted under L03 correction 17's shape: the state
-	// it consumes IS written live (application_zone_loading.cpp calls
-	// storeZoneEnvironment() twice) and IS read live, but by a DIFFERENT and
-	// later path -- renderer_zone_load_env.cpp reads storedZoneEnvironment_
-	// directly at lines 232-256 and clears .pending at 327. So this pair is a
-	// superseded duplicate of the apply path, not dead scaffolding, and
-	// deleting it would erase the evidence rather than fix the duplication.
-	// Boarded for a measured wire-or-delete decision; §Mechanism 5's
-	// zero-caller delete deliberately not applied.
-	void applyStoredZoneEnvironment();
 
 	// --- Instant scene + placeholder ---
 	// Build HCMap placeholder + collision for immediate gameplay (<5ms)

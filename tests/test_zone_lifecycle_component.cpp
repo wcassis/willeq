@@ -108,21 +108,12 @@ TEST_F(ZoneLifecycleComponentTest, ExpectedEntityCountIsAcceptedThroughTheForwar
     EXPECT_NO_THROW(renderer.ZoneLifecycle().setExpectedEntityCount(0));
 }
 
-// --- The zone-environment trio -------------------------------------------
-
-TEST_F(ZoneLifecycleComponentTest, StoredEnvironmentSurvivesTheForwarderAndIsApplied) {
-    // storeZoneEnvironment() is called by application_zone_loading.cpp
-    // through the forwarder (twice until T470 deleted the uncalled loader); applyStoredZoneEnvironment() has zero callers and
-    // was KEPT (not deleted) because renderer_zone_load_env.cpp reads the same
-    // storedZoneEnvironment_ directly. Both halves must stay callable so the
-    // boarded wire-or-delete decision stays a one-line decision.
-    const uint8_t fog[4] = {10, 20, 30, 40};
-    const float clip[4] = {1.0f, 2.0f, 3.0f, 4.0f};
-    EXPECT_NO_THROW(renderer.storeZoneEnvironment(3, 1, fog, fog, fog, clip, clip));
-    EXPECT_NO_THROW(renderer.ZoneLifecycle().applyStoredZoneEnvironment());
-    // Applying twice is a no-op: the first call clears .pending.
-    EXPECT_NO_THROW(renderer.ZoneLifecycle().applyStoredZoneEnvironment());
-}
+// B606 (#189) deleted the zone-environment apply trio:
+// applyStoredZoneEnvironment() was the zero-caller half, and setZoneEnvironment()
+// was its sole caller. The LIVE apply path is renderer_zone_load_env.cpp's Step
+// 10, which reads storedZoneEnvironment_ directly and applies a strict superset
+// of the fields (it also applies the weather config). storeZoneEnvironment()
+// survives because application_zone_loading.cpp writes it live.
 
 // --- Zone teardown --------------------------------------------------------
 

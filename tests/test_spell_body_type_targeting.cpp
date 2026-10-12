@@ -52,6 +52,7 @@
 #include "client/spell/spell_body_type_target.h"
 #include "zone_stream_test_utils.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -162,7 +163,27 @@ TEST(SpellBodyTypeTarget, CorpseRestrictionUsesCorpseStateNotBodyType) {
     EXPECT_FALSE(BodyTypeSatisfiesTargetType(SpellTargetType::Corpse, BT::Humanoid, false));
 }
 
+// B606 (#189) deleted TargetTypeRestrictsCreature() (zero callers). The
+// property it named -- a target type restricts IFF its accept set refuses
+// something -- is re-derived here against the local list of the creature-
+// restricted target types (the header's own set), so the accept table and the
+// restriction classification cannot drift apart.
 TEST(SpellBodyTypeTarget, RestrictedTargetTypesAreExactlyTheOnesThatCanRefuse) {
+    const std::vector<SpellTargetType> kRestricting = {
+        SpellTargetType::Animal,
+        SpellTargetType::Undead,
+        SpellTargetType::UndeadAE,
+        SpellTargetType::Summoned,
+        SpellTargetType::SummonedAE,
+        SpellTargetType::Corpse,
+        SpellTargetType::Plant,
+        SpellTargetType::Giant,
+        SpellTargetType::Dragon,
+    };
+    auto inList = [&kRestricting](SpellTargetType tt) {
+        return std::find(kRestricting.begin(), kRestricting.end(), tt)
+               != kRestricting.end();
+    };
     for (int raw = 0; raw <= 50; ++raw) {
         auto tt = static_cast<SpellTargetType>(raw);
         bool everRefuses = false;
@@ -172,7 +193,7 @@ TEST(SpellBodyTypeTarget, RestrictedTargetTypesAreExactlyTheOnesThatCanRefuse) {
                 break;
             }
         }
-        EXPECT_EQ(TargetTypeRestrictsCreature(tt), everRefuses)
+        EXPECT_EQ(inList(tt), everRefuses)
             << "target type " << raw << " disagrees with its own accept set";
     }
 }

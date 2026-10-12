@@ -70,9 +70,12 @@ TEST_F(FrameComponentTest, AllUIHiddenIsOneBoolSeenThroughBothRoutes) {
 }
 
 TEST_F(FrameComponentTest, NewUIEnabledIsOneBoolSeenThroughBothRoutes) {
+    // B606 (#189) deleted the zero-caller setNewUIEnabled(); the writer the
+    // member had left is the /newui slash command, which writes the moved
+    // member directly, and the accessor reads it through the forwarder.
     EXPECT_TRUE(renderer.isNewUIEnabled());
-    renderer.setNewUIEnabled(false);
-    EXPECT_FALSE(renderer.Frame().newUIEnabled_);
+    renderer.Frame().newUIEnabled_ = false;
+    EXPECT_FALSE(renderer.isNewUIEnabled());
     renderer.Frame().newUIEnabled_ = true;
     EXPECT_TRUE(renderer.isNewUIEnabled());
 }

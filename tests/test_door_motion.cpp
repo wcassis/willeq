@@ -22,6 +22,13 @@ using namespace EQT::Graphics;
 
 namespace {
 
+// B606 (#189) deleted the production LiftTravelSeconds() (zero callers); its
+// measured arithmetic -- door_param / kLiftUnitsPerSecond -- is what these
+// cases pin, so the net computes it locally.
+inline float liftTravelSeconds(uint32_t doorParam) {
+    return static_cast<float>(doorParam) / DoorMotion::kLiftUnitsPerSecond;
+}
+
 // --------------------------------------------------------------------------
 // The constants
 // --------------------------------------------------------------------------
@@ -76,8 +83,8 @@ TEST(DoorMotionConstants, TheHalfTurnMisreadingCannotComeBack) {
 // 30 extra units cost 3.46 s.
 TEST(DoorMotionConstants, LiftSpeedIsConstantAcrossDoorParam) {
     EXPECT_NEAR(DoorMotion::kLiftUnitsPerSecond, 8.67f, 0.20f);
-    const float t68 = LiftTravelSeconds(68);
-    const float t98 = LiftTravelSeconds(98);
+    const float t68 = liftTravelSeconds(68);
+    const float t98 = liftTravelSeconds(98);
     EXPECT_NEAR(t98 - t68, 3.46f, 0.15f);
     EXPECT_NEAR(t68, 7.84f, 0.20f);
 }
@@ -86,8 +93,8 @@ TEST(DoorMotionConstants, LiftDwellDoesNotDependOnTheDistance) {
     EXPECT_NEAR(DoorMotion::kLiftDwellSeconds, 20.5f, 0.5f);
     // Both lifts' measured open->return gaps must reproduce from the two
     // constants alone, which is the whole content of "the dwell is fixed".
-    EXPECT_NEAR(LiftTravelSeconds(68) + DoorMotion::kLiftDwellSeconds, 28.33f, 0.30f);
-    EXPECT_NEAR(LiftTravelSeconds(98) + DoorMotion::kLiftDwellSeconds, 31.79f, 0.30f);
+    EXPECT_NEAR(liftTravelSeconds(68) + DoorMotion::kLiftDwellSeconds, 28.33f, 0.30f);
+    EXPECT_NEAR(liftTravelSeconds(98) + DoorMotion::kLiftDwellSeconds, 31.79f, 0.30f);
 }
 
 // --------------------------------------------------------------------------
@@ -159,11 +166,11 @@ TEST(LiftCycleTest, OneMoveDoorRunsTravelDwellAndReturn) {
     const CycleTrace t = runCycle(c, 1.0f / 60.0f, 45.0f);
 
     // Out in door_param / 8.67 seconds...
-    EXPECT_NEAR(t.reachedNear, LiftTravelSeconds(68), 0.10f);
+    EXPECT_NEAR(t.reachedNear, liftTravelSeconds(68), 0.10f);
     // ...dwell 20.5 s...
     EXPECT_NEAR(t.startedBack - t.reachedNear, DoorMotion::kLiftDwellSeconds, 0.10f);
     // ...and home again by itself, with no second packet.
-    EXPECT_NEAR(t.parked - t.startedBack, LiftTravelSeconds(68), 0.10f);
+    EXPECT_NEAR(t.parked - t.startedBack, liftTravelSeconds(68), 0.10f);
     EXPECT_FLOAT_EQ(c.offset(), 68.0f);
     EXPECT_FALSE(c.active());
 

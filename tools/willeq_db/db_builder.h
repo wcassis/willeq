@@ -42,8 +42,7 @@ int loadEqStrings(sqlite3* db, const std::string& filepath);     // eqstr_us.txt
 int loadDbStrings(sqlite3* db, const std::string& filepath);     // dbstr_us.txt
 int loadSoundAssets(sqlite3* db, const std::string& filepath);   // SoundAssets.txt
 int loadAnimationSounds(sqlite3* db, const std::string& filepath); // AnimationSounds.txt
-int loadMusicIndex(sqlite3* db, const std::string& filepath);    // mp3index.txt
-int loadLoginStrings(sqlite3* db, const std::string& filepath);  // eqlsstr_us.txt
+int loadMusicIndex(sqlite3* db, const std::string& filepath);       // mp3index.txt
 
 // ---------------------------------------------------------------------------
 // Loaders over the WillEQ/config *.json files (db_loaders_json.cpp)
