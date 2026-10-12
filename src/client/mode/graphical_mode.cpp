@@ -10,8 +10,7 @@
 namespace eqt {
 namespace mode {
 
-GraphicalMode::GraphicalMode(GraphicalRendererType rendererType)
-    : m_rendererType(rendererType) {
+GraphicalMode::GraphicalMode(GraphicalRendererType) {
 }
 
 GraphicalMode::~GraphicalMode() {
@@ -19,8 +18,6 @@ GraphicalMode::~GraphicalMode() {
 }
 
 bool GraphicalMode::initialize(state::GameState& state, const ModeConfig& config) {
-    m_gameState = &state;
-
     // Create renderer based on type
     output::RendererConfig rendererConfig;
     rendererConfig.width = config.width;
@@ -37,8 +34,7 @@ bool GraphicalMode::initialize(state::GameState& state, const ModeConfig& config
     //
     // It is not a stand-in for the window you see. In a graphical run the
     // real Irrlicht renderer is constructed and owned by Application, not by
-    // this mode; m_rendererType only records which one Application asked for
-    // (getRendererType()). What this ConsoleRenderer is actually for is the
+    // this mode. What this ConsoleRenderer is actually for is the
     // console/headless interaction path -- driving a running client by
     // script rather than by mouse. Will (2026-08-28) confirmed that use case
     // is real but not on the radar, so it is deliberately kept and
@@ -75,7 +71,6 @@ void GraphicalMode::shutdown() {
         }
 
         m_running = false;
-        m_gameState = nullptr;
     }
 }
 

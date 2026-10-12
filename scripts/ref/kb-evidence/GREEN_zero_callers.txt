@@ -1,0 +1,5 @@
+declared functions: 8210 (5632 public/protected non-virtual candidates, 5058 distinct names) in include, src
+swept 1554 files in src, include, tests, tools, benchmarks, docker
+zero-caller census clean: 334 functions, all classified in EXEMPT (boarded 334).
+tests-only census clean: 292 functions, all classified in EXEMPT_TESTS (boarded 71, observer 168, seam 53).
+exit=0

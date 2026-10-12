@@ -78,9 +78,6 @@ public:
     void setThunderEnabled(bool enabled) { thunderEnabled_ = enabled; }
     bool isThunderEnabled() const { return thunderEnabled_; }
 
-    // Get time until next thunder (for testing/debugging)
-    float getThunderTimer() const { return thunderTimer_; }
-
     // Thunder intensity threshold (minimum intensity to trigger thunder)
     static constexpr uint8_t THUNDER_MIN_INTENSITY = 3;
 
