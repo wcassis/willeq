@@ -11205,7 +11205,8 @@ B712–B719 unused.
 
 ## Added 2026-09-14 by T482 (how a confirmed cast ends)
 
-- **B760** (A, *fixed by construction, not reproduced live*; 2026-10-12, → issue #45
+- ~~**B760** (A) **A cast's result code could say Interrupted for a success.** → issue #45~~ **CLOSED 2026-10-12 (MR !142, fable ce7ecd66; Will: close as is -- the `StopCasting` settle latency is accepted, nothing in production reads the result).** The entry follows for the record.
+  B760 (A, *fixed by construction, not reproduced live*; 2026-10-12, issue #45
   `refactor/B760/README.md`) **A cast's result code could say Interrupted for a
   success.** `SpellManager::noteZonePacket()` now settles a released cast on
   the next RELIABLE zone packet (`DaybreakConnection::DeliveringReliable()`
