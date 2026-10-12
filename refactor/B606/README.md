@@ -290,6 +290,12 @@ binaries rebuilt and passing (`affected_tests_mergetip.txt`), and the
 fable-range diff re-introduced none of the 18 deleted names (probe:
 `check_fable_overlap.sh`).
 
+Pipeline 848 (head ff7e6a16, this README commit — a docs-only diff on top of
+the code 846 graded) is the closing gate and is FULLY GREEN: hygiene 4279,
+build 4280, test 4281, gate 4283. Test job 4281: `100% tests passed, 0 tests
+failed out of 5733` (5733 = 5726 + 7 tests fable's own 46 merged commits
+added; trace `ci_test_job_4281_trace.txt` in the evidence dir).
+
 ## Docs touched
 
 - `refactor/BOARD.md` — the B606 bullet struck (every mention: the bullet is
