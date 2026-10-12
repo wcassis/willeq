@@ -96,7 +96,10 @@ protected:
     }
 
     void eqstr(sqlite3* s, uint32_t id, const std::string& text) {
-        char* err = nullptr;
+        // sqlite3_prepare_v2's tail out-param is `const char**`; the
+        // sqlite3_exec helper above takes a `char**`, hence the two
+        // different declarations.
+        const char* err = nullptr;
         sqlite3_stmt* stmt = nullptr;
         ASSERT_EQ(sqlite3_prepare_v2(s, "INSERT INTO eqstrings VALUES (?, ?)", -1, &stmt, &err), SQLITE_OK);
         sqlite3_bind_int(stmt, 1, static_cast<int>(id));
@@ -106,7 +109,7 @@ protected:
     }
 
     void dbstr(sqlite3* s, uint32_t cat, uint32_t sub, const std::string& text) {
-        char* err = nullptr;
+        const char* err = nullptr;
         sqlite3_stmt* stmt = nullptr;
         ASSERT_EQ(sqlite3_prepare_v2(s, "INSERT INTO dbstrings VALUES (?, ?, ?)", -1, &stmt, &err), SQLITE_OK);
         sqlite3_bind_int(stmt, 1, static_cast<int>(cat));

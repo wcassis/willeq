@@ -112,6 +112,11 @@ tests/
 
 ### 1. RDP Server Header (`include/client/graphics/rdp/rdp_server.h`)
 
+The listing below is a SNAPSHOT from when this feature landed. It predates
+later relocations and deletions (B606 removed the `setCertificate` /
+`certPath_` / `keyPath_` half of the class) — the current class is in the
+file it names.
+
 ```cpp
 #pragma once
 
@@ -934,7 +939,10 @@ openssl req -x509 -newkey rsa:4096 \
     -subj "/CN=WillEQ RDP Server"
 ```
 
-Custom certificate support can be added via `RDPServer::setCertificate()` if needed.
+Custom certificate support can be added if needed (B606 deleted the
+unreachable `RDPServer::setCertificate` and its cert/key config branch —
+nothing set them, and the config parser reads only `rdp.enabled` and
+`rdp.port`).
 
 ---
 
