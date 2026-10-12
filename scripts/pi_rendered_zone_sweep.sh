@@ -37,7 +37,8 @@
 #          decimal 0..86400, validated before any lock/stack/Pi resource --
 #          scripts/b964/observation_controls.py, B987's QA finding F1)
 #          [--no-retry]
-#          [--pi-dir /mnt/projects/fable/ci-arm/<sha>] [-r "1280 720"]
+#          [--pi-dir /mnt/projects/fable/ci-arm/<sha>, or ci-arm64/<sha> on
+#          PI_LANE 2/3] [-r "1280 720"]
 #          [--char-level N --char-exp E]   (the eligibility leg; see CHAR_LEVEL)
 #          [--owner NAME] [--tour FILE] [--env K=V]... [--drive-keys]
 #          [--final-visit] verify the final visit of an intentional zone-hop tour
@@ -174,7 +175,7 @@ while [ $# -gt 0 ]; do
         --constrained) CONSTRAINED="$2"; shift 2 ;;
         --stop-point) STOP_POINT="$2"; shift 2 ;;
         --bo-census) BO_CENSUS="$(readlink -f "$2")"; shift 2 ;;
-        -h|--help) sed -n '2,87p' "$0"; exit 0 ;;
+        -h|--help) awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0"; exit 0 ;;   # the whole header block
         *) echo "unknown option: $1" >&2; exit 64 ;;
     esac
 done
