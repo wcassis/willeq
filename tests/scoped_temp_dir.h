@@ -28,6 +28,7 @@
 #include <vector>
 
 #include <stdlib.h>
+#include <unistd.h>  // B1039: macOS declares mkdtemp() here, not in <stdlib.h>
 
 namespace willeq_test {
 

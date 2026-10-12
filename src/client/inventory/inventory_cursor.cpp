@@ -244,7 +244,7 @@ bool InventoryManager::pickupPartialStack(int16_t slotId, int32_t quantity) {
 
     // Notify server of partial pickup
     if (bridge_) {
-        bridge_->pushIntent(eqt::events::MoveItemIntent{slotId, CURSOR_SLOT, quantity});
+        bridge_->pushIntent(eqt::events::MoveItemIntent{slotId, CURSOR_SLOT, static_cast<uint32_t>(quantity)});
     }
 
     return true;
@@ -292,7 +292,7 @@ bool InventoryManager::placeOnMatchingStack(int16_t targetSlot) {
 
     // Notify server of stack operation
     if (bridge_) {
-        bridge_->pushIntent(eqt::events::MoveItemIntent{CURSOR_SLOT, targetSlot, toTransfer});
+        bridge_->pushIntent(eqt::events::MoveItemIntent{CURSOR_SLOT, targetSlot, static_cast<uint32_t>(toTransfer)});
     }
 
     // If cursor item is now empty, remove it from cursor
