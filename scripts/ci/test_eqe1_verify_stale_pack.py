@@ -11,7 +11,7 @@ and PASSES. On origin/fable the audit flagged EVERY v1/v2 pack (1506/1506 on
 the NFS tree, including the legitimate v2 willeq.eqe1), so this test is RED
 there on the legitimate-pack case.
 
-This writes four tiny synthetic packs in python (header + one entry, exactly
+This writes tiny synthetic packs in python (header + one entry, exactly
 the layout tools/eqe1_format.h and the test_eqe1_loader.cpp B910 idiom
 define) and runs the BUILT verify_eqe1:
 
@@ -19,8 +19,15 @@ define) and runs the BUILT verify_eqe1:
   * v1, 31-char name (soldunga class):    STALE, the name quoted, exit 1
   * v2, clean name (the willeq.eqe1 class): OK (v2) exit 0
   * v3, 33-char name in the name table:   OK (v3)   exit 0
-  * --require-v3 over all four:           the clean v1/v2 pass, the
-                                          31-char v1 fails, v3 passes.
+  * v1, 25-char base + 31-char _alpha (base present): OK (the complete
+                                          companion, frozenshadow's
+                                          bricktrimflorish&protrait_alpha)
+  * v1, 31-char base + _alpha (base was itself 31+ chars, truncated to the
+                                          field): STALE (the companion cannot
+                                          be complete when the base was 31+)
+  * --require-v3 over all:                 the clean v1/v2 and the complete
+                                          companion pass; the 31-char v1 and
+                                          the truncated pair fail; v3 passes.
 
 On origin/fable (RED) the audit flags the clean v1 and v2 packs too (exit 1
 for them), so cases 1/3/6 fail.
@@ -96,6 +103,28 @@ def write_pack(path, version, name):
             f.write(struct.pack("<II", name_off, len(name)))
             f.write(name)
             f.write(b"\x5a" * (off + sz - (name_off + len(name))))
+
+
+def write_pair_pack(path, version, base, alpha):
+    """A two-entry v1/v2 pack whose names are a hasAlpha base + its _alpha
+    companion (the frozenshadow bricktrimflorish&protrait[_alpha] pair).
+    Both entries are RAW_DATA (entryType=2): verify_eqe1 skips every
+    texture check for RAW entries, and raw data has no size/mip constraint,
+    so each carries 32 B -- dataOffsets 112 -> 144 -> 176, all 16-aligned.
+    The name fields (and thus the truncation-candidate scan) are what the
+    test is about; the payload is opaque 0x5a bytes."""
+    assert version in (1, 2)
+    sz = 32
+    index_end = 16 + 2 * 48             # 112
+    off = align16(index_end)            # 112
+    assert off == 112 and (off + sz) % 16 == 0, (off, sz)
+    with open(path, "wb") as f:
+        f.write(struct.pack("<IHHII", 0x31455145, version, 2, 0, 0))
+        f.write(base[:31].ljust(32, b"\0"))
+        f.write(struct.pack("<HHBBBBII", 0, 0, 0, 0, 2, 0, off, sz))
+        f.write(alpha[:31].ljust(32, b"\0"))
+        f.write(struct.pack("<HHBBBBII", 0, 0, 0, 0, 2, 0, off + sz, sz))
+        f.write(b"\x5a" * (off + 2 * sz - index_end))
 
 
 def run(tool, args):
@@ -174,14 +203,45 @@ def main():
             f"a 31-char v1 pack with no --require-v3 must verify structurally "
             f"clean (exit 0, OK (v1...)), got exit {rc}:\n{out}")
 
+    # 7. B1017 acceptance: an _alpha companion whose base entry is present
+    #    and shorter is a COMPLETE 31-char name, not a truncation (the
+    #    frozenshadow bricktrimflorish&protrait_alpha class: a 25-char base +
+    #    "_alpha"). --require-v3 must PASS it.
+    v1_alpha_complete = os.path.join(tmp, "alpha_complete_v1.eqe1")
+    write_pair_pack(v1_alpha_complete, 1, b"bricktrimflorish&protrait",
+                    b"bricktrimflorish&protrait_alpha")
+    rc, out = run(TOOL, ["--require-v3", v1_alpha_complete])
+    if rc != 0 or "OK (v1" not in out:
+        failures.append(
+            f"a 31-char _alpha companion whose base entry is present and "
+            f"shorter must pass --require-v3 (it is a complete name, not a "
+            f"truncation), got exit {rc}:\n{out}")
+
+    # 8. The exclusion is NOT a blanket: a 31-char _alpha whose base was
+    #    itself 31+ chars (base truncated to the field, companion too) IS a
+    #    truncation candidate and is still flagged.
+    v1_alpha_trunc = os.path.join(tmp, "alpha_trunc_v1.eqe1")
+    base31 = b"b" * 31
+    write_pair_pack(v1_alpha_trunc, 1, base31, base31 + b"_alpha")
+    rc, out = run(TOOL, ["--require-v3", v1_alpha_trunc])
+    if rc != 1 or "STALE" not in out:
+        failures.append(
+            f"a 31-char _alpha whose base was itself 31+ chars must still be "
+            f"flagged STALE (the companion cannot be complete), got exit "
+            f"{rc}:\n{out}")
+    if f"'{base31.decode()}'" not in out:
+        failures.append(f"the truncated _alpha line must name the candidate:\n{out}")
+
     if failures:
         print("test_eqe1_verify_stale_pack: FAIL")
         for f in failures:
             print("  " + f)
         return 1
     print("test_eqe1_verify_stale_pack: PASS "
-          "(clean v1/v2 pass; 31-char v1 is STALE by name; v3 passes; "
-          "version printed on every line)")
+          "(clean v1/v2 pass; 31-char v1 is STALE by name; a 31-char _alpha "
+          "with a present shorter base is a complete name and passes; a "
+          "31-char _alpha whose base was 31+ is STALE; v3 passes; version "
+          "printed on every line)")
     return 0
 
 

@@ -298,10 +298,28 @@ static VerifyResult verifyFile(const std::string& filepath, bool verbose) {
     // names are genuine, not truncations -- the audit only flags the format
     // that CAN truncate). `allNames` is the set of every entry's effective
     // name (v3 table names, v1/v2 inline names), NUL-trimmed.
+    //
+    // EXCLUSION -- an `_alpha` companion (the ETC1 alpha model's entry name
+    // is base + "_alpha"): its name's length is base-length + 6, so a
+    // 31-char companion is a TRUNCATION only if the base was itself at least
+    // 31 chars (in which case the base name is ALSO a candidate, or the
+    // entry is missing). A companion whose base is PRESENT AND shorter is a
+    // complete, legitimate 31-char name (frozenshadow's
+    // `bricktrimflorish&protrait_alpha` = a 25-char base + "_alpha"), not a
+    // truncation -- B1017/#338 acceptance: "a _alpha companion whose base
+    // name is in the same pack is not a truncation".
     if (result.version == EQE1_VERSION || result.version == EQE1_VERSION_V2) {
         for (const auto& n : allNames) {
-            if (n.size() == EQE1_INLINE_NAME_LIMIT)
-                result.truncationCandidates.push_back(n);
+            if (n.size() != EQE1_INLINE_NAME_LIMIT) continue;
+            const std::string kAlpha = "_alpha";
+            if (n.size() > kAlpha.size() && n.compare(n.size() - kAlpha.size(),
+                                                      kAlpha.size(), kAlpha) == 0) {
+                const std::string base = n.substr(0, n.size() - kAlpha.size());
+                const auto it = allNames.find(base);
+                if (it != allNames.end() && it->size() < EQE1_INLINE_NAME_LIMIT)
+                    continue;  // complete companion, base fits the field
+            }
+            result.truncationCandidates.push_back(n);
         }
         std::sort(result.truncationCandidates.begin(),
                   result.truncationCandidates.end());
@@ -323,9 +341,12 @@ static void printUsage(const char* argv0) {
            "cut with strncpy). It prints each flagged name. A structurally-clean\n"
            "v1/v2 pack with no 31-char name is legitimate (every name fits the\n"
            "field -- the builder keeps it v1/v2 by design) and PASSES (B1017,\n"
-           "#338). The audit cannot tell a genuine 31-char name from a truncated\n"
-           "32+-char original; the client's FATAL (pack + version + truncated\n"
-           "name) is the ground truth for which one bites (B930, #248).\n"
+           "#338). An _alpha companion whose base entry is present and shorter\n"
+           "is a COMPLETE 31-char name, not a truncation (frozenshadow's\n"
+           "bricktrimflorish&protrait_alpha), and is not flagged. The audit\n"
+           "cannot tell a genuine 31-char name from a truncated 32+-char\n"
+           "original; the client's FATAL (pack + version + truncated name) is\n"
+           "the ground truth for which one bites (B930, #248).\n"
            "Auditing a host's pack directory:\n"
            "  for f in <dir>/*.eqe1; do %s --require-v3 \"$f\"; done\n"
            "Exit code: 0 = OK, 1 = errors found.\n",

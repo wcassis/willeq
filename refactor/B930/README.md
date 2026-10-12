@@ -89,19 +89,32 @@ keeps its existing message. `std::exit(1)` is unchanged.
 
 - Every line now prints the pack's header version: `OK (v3, 132 textures,
   ...)`.
-- New `--require-v3` flag: a structurally-clean v1/v2 pack is reported as
-  `STALE: format v1 below v3 (rebuild with tools/convert_all_to_eqe1.sh)`
-  and the run exits non-zero — so a host's pack directory is one audit
-  loop:
+- New `--require-v3` flag: a v1/v2 pack is reported as STALE only when it
+  holds a 31-char entry name (the truncation signature) and the run exits
+  non-zero — so a host's pack directory is one audit loop:
 
       for f in <dir>/*.eqe1; do ./build/bin/verify_eqe1 --require-v3 "$f"; done
+
+  The real STALE line (B1017's shape; one 31-char name):
+  `STALE: format v1 below v3, holds 1 31-char name(s) (truncation candidates: a v1/v2 pack stores exactly 31 chars inline; these are the ones a pre-B910 builder would have cut from a longer original). '<name>' — rebuild with tools/convert_all_to_eqe1.sh if any of them is truncated; the client FATAL names the exact pack when it bites (B930, #248)`
+  [measured 2026-10-12 on this branch]. B1017 (#338) narrowed the flag:
+  before, a CLEAN v1/v2 pack was also STALE (version-shaped, 1506/1506 on
+  the NFS tree). Now a structurally-clean v1/v2 pack whose names all fit
+  31 chars prints OK and exits 0; and a 31-char `_alpha` companion whose
+  base entry is present and shorter is a complete name, not a candidate
+  (frozenshadow's `bricktrimflorish&protrait_alpha` = 25-char base +
+  `_alpha`).
 
   Deliberately a FLAG rather than a blanket failure: `willeq.eqe1` (the
   client's own pack, v2, all names ≤31) is a legitimate format that the
   pinned `PackReproducible` test rebuilds, and the B852 CI zone-content
-  sweep loads qeynos2's v1 packs every pipeline. Blanket-failing v1/v2 in
-  verify would break both. The audit flag is for hosts whose ZONE packs
-  need rebuilding — the soldunga case.
+  sweep loads qeynos2's v1 packs every pipeline. The audit flag is for
+  hosts whose ZONE packs show the truncation signature — the soldunga case.
+  (Survey at :20-27 confirmed against the live packs on 2026-10-12: the
+  single 31-char name in the NFS tree is frozenshadow's
+  `bricktrimflorish&protrait_alpha` — a COMPLETE companion name (25-char
+  base + `_alpha`), which B1017 no longer flags; the only real truncation
+  in the tree remains soldunga's.)
 
 **Tests** (RED/GREEN)
 
@@ -123,11 +136,15 @@ keeps its existing message. `std::exit(1)` is unchanged.
     gnome_stronghold_floor_transiti`. On origin/fable this leg is RED the
     other way: the pre-B930 code names only the texture, so the child's
     diagnosis is absent and the parent's assertion fails.
-- `scripts/ci/test_eqe1_verify_stale_pack.py` (new ctest leg, criterion 2):
-  writes a clean v1 and a clean v3 pack in python and runs the BUILT
-  `verify_eqe1` — v1 under `--require-v3` must print `v1` + `STALE` and
-  exit 1; v3 must print `OK (v3` and exit 0. RED on origin/fable (no
-  version in the line, no flag).
+- `scripts/ci/test_eqe1_verify_stale_pack.py` (new ctest leg, criterion 2;
+  extended by B1017): writes synthetic packs in python and runs the BUILT
+  `verify_eqe1` — a CLEAN v1/v2 (all names ≤31 chars) must print `OK` +
+  its version and exit 0; a v1/v2 holding a 31-char name must print
+  `STALE` + `31-char name` and exit 1; a 31-char `_alpha` companion whose
+  base entry is present and shorter passes (complete name); a 31-char
+  `_alpha` whose base was 31+ is STALE; a v3 pack passes. RED on
+  origin/fable (no version in the line, no `--require-v3` flag at all, and
+  the STALE shape was version-shaped, not name-shaped).
 
 **Docs**: `docs/plans/full_etc1_textures.md` (the EQE1 version section)
 carries the audit command and the v1/v2-are-legitimate note. The root
