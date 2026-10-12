@@ -10,19 +10,23 @@ failure any amount of retrying fixes.
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
-| Runner | id 1, shell executor (bash), `concurrent = 1`, tag `goldfarm`, runs untagged |
-| Host | **hermes-ext** (172.16.200.100): 16 cores, 31 GB RAM, cmake + g++, **no ninja, no ccache** |
+| x86 runners | **gitlab-runner-1** and **gitlab-runner-2** (10.0.30.81/.82, B1008): shell executor (bash), `concurrent = 1` each, **both tagged `x86-build`** since 2026-10-11 — one pipeline's stages may run on different hosts (B1026, "Two x86 runners" below) |
+| ARM runner | `dev-u24-arm-nfs` on dev-u24, tag `arm-nfs` (T503, below) |
+| Former host | **hermes-ext** (172.16.200.100): runner id 1, untagged; it ran every job until B1008 (2026-10-08) and no longer builds |
 | Config | `.gitlab-ci.yml` at the repo root |
 
-The runner's *description* in the GitLab UI reads "inspur-shell". That label is
-stale — it was registered from hermes-ext on 2026-09-12 and has always executed
-there (`Running on hermes-ext...` in every job log; GitLab's own runner record
+The rest of this section describes the original hermes-ext runner (T502). Its
+*description* in the GitLab UI reads "inspur-shell". That label is stale — it
+was registered from hermes-ext on 2026-09-12 and has always executed there
+(`Running on hermes-ext...` in every job log; GitLab's own runner record
 reports `ipAddress` 172.16.200.100).
 
 **The Inspur must never build.** Will's ruling (2026-09-17): the inference box's
-CPUs belong to the GPUs. Every job's first line is therefore
+CPUs belong to the GPUs. Every job's first line is therefore a host
+allow-list (`.goldfarm`'s `before_script`; it was `hermes-ext` alone before
+B1008)
 
-    [ "$(hostname)" = "hermes-ext" ] || { echo "refusing to build on $(hostname)"; exit 1; }
+    case "$(hostname)" in hermes-ext|gitlab-runner-1|gitlab-runner-2) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac
 
 so if the project is ever reassigned to another runner the pipeline fails loudly
 instead of quietly moving builds onto the Inspur. hermes-ext also hosts the
@@ -257,7 +261,7 @@ twice.
 
 ## The warm tree, and its trade-off
 
-The runner keeps one working directory per project, and the pipeline keeps three
+Each runner keeps one working directory per project, and the pipeline keeps three
 paths in it across runs:
 
     GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e third_party/irrlicht-gles2-x86
@@ -313,12 +317,78 @@ a clean one. To force a cold run:
 
 - run the pipeline with `GIT_CLEAN_FLAGS` overridden to `-ffdx` (Run pipeline →
   add the variable), **or**
-- on gitlab-runner-1 (as root): `rm -rf /home/gitlab-runner/builds/*/0/willeq/willeq/{build/ref/<slug>,build-gles2/ref/<slug>}`
+- on EACH x86 runner (gitlab-runner-1 and gitlab-runner-2, as root — each
+  holds its own warm trees): `rm -rf /home/gitlab-runner/builds/*/0/willeq/willeq/{build/ref/<slug>,build-gles2/ref/<slug>}`
   for one ref, or the whole `{build,build-gles2,third_party/irrlicht-gles2-x86}`
   for everything.
 
 Do the cold run before trusting a green pipeline on anything that changed the
 build system itself.
+
+### Two x86 runners: the host+sha stamp (B1026, #346)
+
+**Both x86 runners carry `x86-build`** (Will retagged gitlab-runner-2 from
+`x86-build-2` on 2026-10-11 so two pipelines build in parallel). The stages
+still pass no artifacts, so a pipeline's `build` job and its `test` job can
+land on DIFFERENT hosts, and each host has its own warm `$BUILD_TREE`. Before
+B1026 the `test` job then ran whatever binary the other host's tree held.
+**Measured:** fable pipeline 809 (at `0136137b`) built on gitlab-runner-1
+(job 4006) and tested on gitlab-runner-2 (job 4007). The failing
+`SpellLandHookIsGone` assertions cited `test_spell_manager_timing.cpp:793-796`
+`EXPECT_NE`, the PRE-B603 source; the commit under test had `EXPECT_EQ` at
+735-738. That was a false red, and the same split produces a false green: MR
+pipeline 805 was green only because pipeline 804 had happened to build the
+same sha on runner-2 (`review/AUDIT-WAVE8/sections/b603.md` finding 1).
+
+**The mechanism.** The build steps exist once, as the shell function
+`willeq_build_tree` defined by the `.build_tree` anchor:
+
+1. a **ref-only** stamp (`prune_ref_build_trees.py --stamp <tree> --ref <ref>`)
+   before the configure. It is what the prune reads, and it wipes any earlier
+   build claim, so a build that fails part-way leaves a tree no job trusts;
+2. Irrlicht bootstrap if missing or stale, configure, the B907 orphan prune,
+   `cmake --build`;
+3. the **build claim** (`--stamp <tree> --ref <ref> --host "$(hostname)"
+   --sha "$CI_COMMIT_SHA"`), written only after `cmake --build` succeeded
+   (errexit + pipefail: a failed build never reaches it).
+
+The claim is the same `.willeq_ref` file with two more lines, `host=` and
+`sha=`; the prune's parser ignores them, so there is one stamp format.
+
+`build` runs the function. `test` and `client-ledger-live` (via the
+`.verify_build_tree` anchor) first run
+`prune_ref_build_trees.py --verify "$BUILD_TREE" --host "$(hostname)" --sha "$CI_COMMIT_SHA"`,
+which exits 0 only when the claim names this host AND this commit. On a
+mismatch they print a loud line, run `willeq_build_tree` in-job, then verify
+again (a second failure fails the job), and only then run ctest or the client.
+`gate` needs no verify: `.visual_gate_prepare` already builds its own
+`$GLES2_TREE` in the gate job, on whichever host it landed.
+
+**Reading a job log.** Every verify prints one line:
+
+    stamp MATCH build/ref/<slug> (stamp read): stored host=gitlab-runner-1 sha=<sha> ref=<ref> at=<utc>; expected host=gitlab-runner-1 sha=<sha>
+
+On a split it says `stamp MISMATCH`, followed by
+`!!! B1026 STAMP MISMATCH: ... REBUILDING IN-JOB ...`, the
+`=== willeq_build_tree: ... ===` build output, a second `stamp MATCH` line and
+`B1026: in-job rebuild done and verified on <host>`. `stored host=<none>`
+means the tree was never claimed: no stamp, or a ref-only stamp left by a
+build that failed or was cancelled. A stored host equal to the expected one
+with a different sha means this host's tree is from an older commit of the
+ref (the build job ran elsewhere this time).
+
+**The cost.** Nothing when the stages share a host (the verify is a file
+read). When they split, the test job pays one build on its own host:
+incremental if that host has built this ref before, a cold Release build if
+it has not (`build` row in the stages table above). The split is still
+cheaper than the alternatives #346 listed: folding build+test+gate into one
+job gives up the stage boundaries, and passing `bin/` as artifacts moves
+gigabytes per pipeline. The regression net is the hygiene test
+`CiBuildTreeStamp` (`scripts/ci/test_ci_build_tree_stamp.py`), which fails if
+`test` reaches ctest without the verify, if the claim is written before
+`cmake --build`, or if `.goldfarm` claims a single tagged runner again;
+`PruneRefBuildTrees` pins `--verify`'s outcomes. Evidence:
+`refactor/B1026/README.md`.
 
 ### A prior branch's leftover binary is pruned, not just detected (B907)
 
