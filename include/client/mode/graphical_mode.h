@@ -53,18 +53,6 @@ public:
     void requestQuit() override;
     bool isQuitRequested() const override { return m_quitRequested; }
 
-    // ========== Graphical-Specific API ==========
-
-    /**
-     * Get the graphical renderer type.
-     */
-    GraphicalRendererType getRendererType() const { return m_rendererType; }
-
-    /**
-     * Get the game state.
-     */
-    state::GameState* getGameState() { return m_gameState; }
-
     // ========== Rendering Options ==========
 
     /**
