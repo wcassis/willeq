@@ -467,6 +467,20 @@ void IrrlichtRenderer::updatePlayerAppearance(uint16_t raceId, uint8_t gender,
     if (isLoading()) return;
     LOG_DEBUG(MOD_GRAPHICS, "IrrlichtRenderer::updatePlayerAppearance race={} gender={}", raceId, gender);
     (void)appearance;  // WindowManager removed
+
+    // B448 (#29): the RACIAL VISION FLOOR for a race change on a player who is
+    // already in the world. registerEntity() sets it at zone-in and nowhere
+    // else, so an illusion or a GM `#race N` -- OP_Illusion for our own spawn
+    // id, which EntitiesComponent::ZoneProcessIllusion() publishes as
+    // EntityAppearanceChanged with isPlayer set -- reached this function and
+    // stopped at the LOG_DEBUG above (MEASURED T428: `#race 330` confirmed in
+    // chat, no "Player race 330 -> base vision" line, vision ratio 0.95-0.99).
+    // The same arm carries every OP_WearChange / inventory re-publish of the
+    // race the player already has, so only a CHANGE moves the floor.
+    // Pinned by tests/test_self_race_vision.cpp.
+    if (playerCamera_ && raceId != 0 && raceId != playerCamera_->playerRace()) {
+        playerCamera_->setPlayerRace(raceId);
+    }
 }
 
 void IrrlichtRenderer::updateEntityAppearance(uint16_t spawnId, uint16_t raceId, uint8_t gender,

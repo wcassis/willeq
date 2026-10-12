@@ -349,6 +349,11 @@ public:
 
 	void resetVisionToBase();
 	VisionType getBaseVision() const { return baseVision_; }
+	// B448 (#29): the race setPlayerRace() last applied (0 = never told).
+	// IrrlichtRenderer::updatePlayerAppearance() compares against it so only a
+	// real race change on self (OP_Illusion / `#race N`) moves the floor, not
+	// every OP_WearChange re-publish of the same race.
+	uint16_t playerRace() const { return playerRace_; }
 
 	// T334 (board B045) DELETED getCameraTransform(). Its comment said "for
 	// audio listener", but the audio listener has had a producer since D20c2
@@ -481,6 +486,12 @@ private:
 	float playerPitch_ = 0;  // Vertical look angle in degrees (-89 to 89)
 	MouseOptions mouseOptions_;  // B433
 	VisionType baseVision_ = VisionType::Normal;    // Base vision from race
+	// B448 (#29): the floor and the buffs are two inputs, so a race change
+	// recomposes current = max(base, buff) instead of resetting to the base and
+	// wiping a vision buff that is still up. buffVision_ is the last absolute
+	// VisionChanged value (setVisionType); playerRace_ the last race applied.
+	VisionType buffVision_ = VisionType::Normal;
+	uint16_t playerRace_ = 0;
 	bool useIrrlichtCollision_ = true;  // Use zone mesh for collision instead of HCMap
 	// T332: set by setPlayerPosition() (the only external writer of
 	// ctx_.playerX/Y/Z), cleared by updatePlayerMovement() the moment the
