@@ -90,7 +90,7 @@ Additional context is in subdirectory CLAUDE.md files:
   gitlab-runner-2** (both tag `x86-build`, B1008) and refuse other hosts (a kanban worker's 4 GiB cap
   OOM-kills a link; builds stay off the Inspur box and off hermes-ext). One pipeline's stages may land
   on different hosts: `test` refuses a build tree not stamped by its own host at its own sha and
-  rebuilds it in-job (B1026, `docs/ci.md` "Two x86 runners"). Pushing a branch is the
+  rebuilds in-job (B1026, `docs/ci.md`). Pushing a branch is the
   cheapest suite run, but each runner's build tree is **warm**: force a clean
   pipeline before trusting a build-system change (`docs/ci.md`).
 
