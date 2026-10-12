@@ -1,0 +1,20 @@
+zone qeynos2 <REPO> --zone qeynos2 --eq-path <REPO> --frames 60 --warmup 5 --res 800 600 --dump-frames 0,1,2 --dump-png-prefix <OUT> --csv <OUT> --memory-json <OUT> --occluder-budget 16 --adaptive-lighting --zone-pp-budget 20 --pp-budget-mode count --player-light-level 9 --camera-pose 201.9,393.4,5.0,180.0,-5.0 --camera-pose -134.9,-238.9,6.0,0.0,-5.0 --camera-pose -202.9,-706.7,20.0,90.0,-5.0
+frame qeynos2 0 tests/goldens/qeynos2_f0.png
+frame qeynos2 1 tests/goldens/qeynos2_f1.png
+frame qeynos2 2 tests/goldens/qeynos2_f2.png
+zone gfaydark <REPO> --zone gfaydark --eq-path <REPO> --frames 60 --warmup 5 --res 800 600 --dump-frames 0,1,2 --dump-png-prefix <OUT> --csv <OUT> --memory-json <OUT> --occluder-budget 16 --adaptive-lighting --zone-pp-budget 20 --pp-budget-mode count --player-light-level 9 --camera-pose 820.0,84.9,110.0,0.0,-5.0 --camera-pose 444.7,688.9,141.0,90.0,-5.0 --camera-pose -440.9,72.3,110.0,180.0,-5.0
+frame gfaydark 0 tests/goldens/gfaydark_f0.png
+frame gfaydark 1 tests/goldens/gfaydark_f1.png
+frame gfaydark 2 tests/goldens/gfaydark_f2.png
+zone befallen <REPO> --zone befallen --eq-path <REPO> --frames 60 --warmup 5 --res 800 600 --dump-frames 0,1,2 --dump-png-prefix <OUT> --csv <OUT> --memory-json <OUT> --occluder-budget 16 --adaptive-lighting --zone-pp-budget 20 --pp-budget-mode count --player-light-level 9 --camera-pose -554.8,-186.9,-50.1,270.0,-5.0 --camera-pose -299.9,-181.9,-9.0,0.0,-5.0 --camera-pose -149.9,-5.8,7.1,180.0,-5.0
+frame befallen 0 tests/goldens/befallen_f0.png
+frame befallen 1 tests/goldens/befallen_f1.png
+frame befallen 2 tests/goldens/befallen_f2.png
+zone iceclad <REPO> --zone iceclad --eq-path <REPO> --frames 60 --warmup 5 --res 800 600 --dump-frames 0,1,2 --dump-png-prefix <OUT> --csv <OUT> --memory-json <OUT> --occluder-budget 16 --adaptive-lighting --zone-pp-budget 20 --pp-budget-mode count --player-light-level 9 --camera-pose 2365.4,2873.6,131.7,270.0,-5.0 --camera-pose 1374.8,5619.3,13.9,270.0,-5.0 --camera-pose 7234.6,-285.1,13.9,180.0,-5.0
+frame iceclad 0 tests/goldens/iceclad_f0.png
+frame iceclad 1 tests/goldens/iceclad_f1.png
+frame iceclad 2 tests/goldens/iceclad_f2.png
+zone timorous <REPO> --zone timorous --eq-path <REPO> --frames 60 --warmup 5 --res 800 600 --dump-frames 0,1,2 --dump-png-prefix <OUT> --csv <OUT> --memory-json <OUT> --occluder-budget 16 --adaptive-lighting --zone-pp-budget 20 --pp-budget-mode count --player-light-level 9 --camera-pose -686.6,2431.5,4.2,0.0,-5.0 --camera-pose -512.7,2406.5,1.5,0.0,-5.0 --camera-pose -9479.7,-5678.7,25.9,90.0,-5.0
+frame timorous 0 tests/goldens/timorous_f0.png
+frame timorous 1 tests/goldens/timorous_f1.png
+frame timorous 2 tests/goldens/timorous_f2.png
