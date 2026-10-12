@@ -86,10 +86,12 @@ Additional context is in subdirectory CLAUDE.md files:
   minute), `build`, `test` (the intermittent `RDPServerFrameTest.UpdateFrameMultipleTimes`
   is re-run with `--repeat until-pass:3`) and `gate` (`visual_gate`, 3 in-script
   retries, never `allow_failure`, all five manifest zones — B903/B904 ended
-  the 2026-09-28 iceclad/timorous split, `docs/ci.md`). The x86 jobs run on **gitlab-runner-1** (tag `x86-build`,
-  B1008) and refuse other hosts (a kanban worker's 4 GiB cap OOM-kills a
-  link; builds stay off the Inspur box and off hermes-ext). Pushing a branch is the
-  cheapest suite run, but the runner's build tree is **warm**: force a clean
+  the 2026-09-28 iceclad/timorous split, `docs/ci.md`). The x86 jobs run on **gitlab-runner-1 and
+  gitlab-runner-2** (both tag `x86-build`, B1008) and refuse other hosts (a kanban worker's 4 GiB cap
+  OOM-kills a link; builds stay off the Inspur box and off hermes-ext). One pipeline's stages may land
+  on different hosts: `test` refuses a build tree not stamped by its own host at its own sha and
+  rebuilds it in-job (B1026, `docs/ci.md` "Two x86 runners"). Pushing a branch is the
+  cheapest suite run, but each runner's build tree is **warm**: force a clean
   pipeline before trusting a build-system change (`docs/ci.md`).
 
 ### File sizes

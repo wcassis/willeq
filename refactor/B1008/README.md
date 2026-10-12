@@ -54,7 +54,7 @@ never an address.
   dependency list plus `freerdp3-dev`, `libwinpr3-dev`, `libasound2-dev`;
   gitlab-runner 19.4.1 with the GitLab CA chain installed; shell executor,
   `concurrent = 1`; registered through the API (runner 5 = `x86-build`,
-  runner 6 = `x86-build-2`). Local copies at the NFS paths the jobs expect:
+  runner 6 = `x86-build-2`, retagged `x86-build` on 2026-10-11 -- see B1026). Local copies at the NFS paths the jobs expect:
   `EverQuestP1999`, `EverQuest_ETC1`, `irrlicht-1.8.5`, `maps`. No NFS mount.
 
 ## What was proven (2026-10-08)
@@ -72,10 +72,11 @@ the result is on the MR.
 
 ## Not verified / left open
 
-- Only runner-1 carries `x86-build`. The stages share one warm tree and pass
-  no artifacts, so a second tagged runner would split a pipeline across two
-  trees. Folding build+test+gate into one job is the follow-up that lets
-  runner-2 work.
+- ~~Only runner-1 carries `x86-build`.~~ SUPERSEDED 2026-10-11: runner-2 was
+  retagged `x86-build`, which split pipelines across two trees exactly as
+  predicted here (fable pipeline 809, a false red). B1026 (#346) made the
+  split safe with a host+sha build-tree stamp instead of folding the jobs
+  (`docs/ci.md`, "Two x86 runners: the host+sha stamp").
 - `scripts/eqemu/ready_selftest.sh` was not run on the clones (zone_in exit 0
   and a byte-identical restore were taken as the proof for tonight).
 - The oracle VMs reach character select; entering the world and the capture
