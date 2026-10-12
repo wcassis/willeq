@@ -74,9 +74,11 @@ Lanes 2 and 3 run ONE generic `-march=armv8-a` binary from **`scripts/build-arm6
 (`docker/Dockerfile.arm64-noble`, a noble arm64 sysroot; lane 3's Armbian resolute runs it because glibc is
 forward compatible), published to **`/mnt/projects/fable/ci-arm64/<sha>/`** by `scripts/pi/publish_arm64_build.sh`
 -- the same shape as `ci-arm/` (stripped `bin/`, that commit's `config/` + `data/`, `BUILD_INFO`,
-`by-branch/`, newest 12 kept) minus the Mesa prefix step. `build-arm` is NOT widened: the arm64 build is run by
-hand on dev-u24 for now (one C++ build at a time there -- `BUILD_JOBS=4` while another build is alive), and a
-CI job for it is a follow-up. `docker/Dockerfile.arm64-noble` is the armhf Dockerfile with the architecture
+`by-branch/`, newest 12 kept) minus the Mesa prefix step. `build-arm` is NOT widened: the sibling job
+**`build-arm64`** (same runner, same rules -- automatic on fable, manual elsewhere via `glab ci trigger
+build-arm64`) runs it; the runner is `concurrent=1`, so a fable pipeline's two ARM builds run one after the
+other, and a hand-run `scripts/build-arm64-noble.sh` on dev-u24 takes `BUILD_JOBS=4` while any other build is
+alive. `docker/Dockerfile.arm64-noble` is the armhf Dockerfile with the architecture
 swapped and nothing else; `scripts/ci/check_arm64_dockerfile.sh` (ctest `DockerfileArm64Derived`, label
 `hygiene`) fails when they drift, and `--write` regenerates it.
 
@@ -86,6 +88,17 @@ Device facts that bound a run: both aarch64 lanes mount the NFS share at `/mnt/p
 filed with measurements (`kmscube_floor.sh`, the ledger in a cgroup), not a default. Lane 2's Mesa is the same
 25.2.8 the Pi runs, so the Lima cost sheet applies; lane 3 is Bifrost under Panfrost and nothing Lima-specific
 transfers to it.
+
+**Headless DRM.** The two boards share one KVM, so a lane's HDMI is usually `disconnected` and the DRM device
+refuses to start. `pi_hdmi_force_on` (`scripts/pi/env.sh`) writes `on` to the connector's sysfs `status`, which
+makes the kernel offer its default modes with no monitor, and `pi_hdmi_restore` puts `detect` back; both are
+no-ops on a connected lane. `scripts/pi/lane_smoke.sh` (`PI_LANE=N lane_smoke.sh <sha>`: `kmscube_floor.sh`
+then a 300-frame `gles2_zone_benchmark` on DRM) and `scripts/pi_rendered_zone_sweep.sh` use them. The sweep
+is the ledger rig for every lane: on an aarch64 lane it defaults to `ci-arm64/by-branch/fable`, the system Mesa
+(no LLVM-less prefix exists for aarch64) and the `orangepi` preset (`--constrained <preset>` overrides, for the
+measurements a per-lane preset ruling needs); the client runs in its own cgroup and zones in live against the
+eqemu lane, so the `[memgpu]` row and the rendered-zone TSV row are both device figures. Evidence from the
+first runs: `review/B1030/README.md`.
 
 ### The shipped Mesa prefix (B935, #253)
 

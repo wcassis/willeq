@@ -105,6 +105,29 @@ pi_lock_release() {
     pi_remote bash -c "'[ ! -e ${PI_LOCK} ] || grep -q \"^\$1 \" ${PI_LOCK} && rm -f ${PI_LOCK}'" _ "$1"
 }
 
+# Headless DRM (B1030): the aarch64 boards share ONE KVM, so the lane's HDMI
+# connector is usually "disconnected" and the DRM device (rightly) refuses to
+# start. The connector's sysfs status file is writable by root: forcing it "on"
+# makes the kernel offer its default modes (1024x768, 800x600, 640x480 ...) with
+# no monitor; "detect" restores hotplug behaviour. pi_hdmi_force_on does it only
+# when the connector is NOT connected and records that in PI_HDMI_FORCED, so a
+# rig's cleanup calls pi_hdmi_restore unconditionally.
+PI_HDMI_CONN="${PI_HDMI_CONN:-/sys/class/drm/card0-HDMI-A-1}"
+PI_HDMI_FORCED=0
+pi_hdmi_force_on() {
+    local st
+    st="$(pi_remote cat "$PI_HDMI_CONN/status" </dev/null 2>/dev/null)"
+    [ "$st" = connected ] && return 0
+    pi_remote "echo on | sudo -n tee $PI_HDMI_CONN/status >/dev/null; sleep 1; cat $PI_HDMI_CONN/status; head -3 $PI_HDMI_CONN/modes | tr '\n' ' '; echo" </dev/null \
+        | sed 's/^/connector forced: /'
+    PI_HDMI_FORCED=1
+}
+pi_hdmi_restore() {
+    [ "${PI_HDMI_FORCED:-0}" -eq 1 ] || return 0
+    pi_remote "echo detect | sudo -n tee $PI_HDMI_CONN/status >/dev/null" </dev/null
+    PI_HDMI_FORCED=0
+}
+
 export PI_LANE PI_LANE_NAME PI_LANE_ARCH PI_LANE_GPU PI_HOST PI_USER PI_SSH_OPTS ARM_BUILD_BIN_DIR PI_EQ_PATH PI_EQE1_PATH \
-       PI_REMOTE_TMP PI_REMOTE_BIN PI_LOCK PROJECT_DIR MANIFEST_PATH ARTIFACTS_DIR \
+       PI_HDMI_CONN PI_REMOTE_TMP PI_REMOTE_BIN PI_LOCK PROJECT_DIR MANIFEST_PATH ARTIFACTS_DIR \
        BASELINE_DIR H04_TOTAL_FRAMES H04_COOLDOWN_SEC H04_WARMUP_REPS

@@ -48,6 +48,8 @@
 #          client's --dump-every / --dump-max-frames, Pi /tmp is ~242 MB)
 #          [--account NAME --char NAME]   (B960; default the lane's test
 #          account/character from scripts/eqemu/env.sh, same password)
+#          [--constrained PRESET]   (B1030: the client's --constrained preset,
+#          default orangepi on every lane until a per-lane preset is ruled on)
 #          [--shared-cgroup]   (B955: by default the client runs in its OWN
 #          memory cgroup -- rendered_zone_run.py --own-cgroup -- so its
 #          gpu_buffers ledger row reads the Lima GEM bytes from memory.stat;
@@ -134,6 +136,14 @@ OWN_CGROUP=1
 STOP_POINT=""
 FINAL_VISIT_ARGS=()
 MESA="${WILLEQ_MESA:-nollvm}"
+# B1030: the aarch64 lanes (PI_LANE 2/3) run ci-arm64/<sha>/ builds on the
+# system Mesa -- no LLVM-less prefix exists for them (Lima needs none on 4 GB;
+# Panfrost is a different driver). The lane is read from scripts/pi/env.sh.
+if [ "${PI_LANE_ARCH:-armv7l}" = aarch64 ]; then
+    PI_DIR="/mnt/projects/fable/ci-arm64/by-branch/fable"
+    MESA="${WILLEQ_MESA:-system}"
+fi
+CONSTRAINED="orangepi"
 BO_CENSUS=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -160,6 +170,7 @@ while [ $# -gt 0 ]; do
         --account) ACCOUNT_OVERRIDE="$2"; shift 2 ;;
         --char) CHAR_OVERRIDE="$2"; shift 2 ;;
         --shared-cgroup) OWN_CGROUP=0; shift ;;
+        --constrained) CONSTRAINED="$2"; shift 2 ;;
         --stop-point) STOP_POINT="$2"; shift 2 ;;
         --bo-census) BO_CENSUS="$(readlink -f "$2")"; shift 2 ;;
         -h|--help) sed -n '2,87p' "$0"; exit 0 ;;
@@ -283,7 +294,7 @@ fi
 say "eqemu lock taken: $(eqemu_lock_show)"
 PI_LOCK_TAKEN=0
 for i in $(seq 1 30); do   # up to 15 min for a held Pi lock to free
-    if pi_lock_take "$OWNER" </dev/null; then PI_LOCK_TAKEN=1; break; fi
+    if pi_lock_take "$OWNER" </dev/null; then PI_LOCK_TAKEN=1; pi_hdmi_force_on; break; fi
     say "pi lock held by '$(pi_lock_show </dev/null)' -- waiting ($i/30)"
     sleep 30
 done
@@ -326,7 +337,7 @@ cleanup() {
     fi
     bash "$REPO/scripts/eqemu/down.sh" >>"$OUT/server.log" 2>&1
     say "stack down"
-    [ "$PI_LOCK_TAKEN" -eq 1 ] && pi_lock_release "$OWNER" </dev/null
+    [ "$PI_LOCK_TAKEN" -eq 1 ] && { pi_hdmi_restore; pi_lock_release "$OWNER" </dev/null; }
     eqemu_lock_release
     say "locks released; eqemu lock now: '$(eqemu_lock_show)'; pi lock now: '$(pi_lock_show </dev/null)'"
 }
@@ -461,7 +472,7 @@ run_one() {  # run_one <zone> <attempt: first|retry> <tsv>
 mkdir -p '$pidir/frames' '$PI_TMP/cache' && cd '$pidir' && ${drive}\
 env TZ=UTC WILLEQ_DATA_ROOT='$PI_DATA' WILLEQ_CACHE_DIR='$PI_TMP/cache' $EXTRA_ENV \
 python3 '$PI_RUNNER/rendered_zone_run.py' --out '$pidir' --cap $CAP_S --stall $STALL_S ${SNAP_POINTS:+--snap-points $SNAP_POINTS} ${STOP_POINT:+--stop-point $STOP_POINT} $([ "$OWN_CGROUP" -eq 1 ] && echo --own-cgroup) -- \
-$GEM_CENSUS_ENV '$PI_BIN' -c '$PI_INPUTS/client.json' --drm --renderer gles2 --constrained orangepi -r $RES \
+$GEM_CENSUS_ENV '$PI_BIN' -c '$PI_INPUTS/client.json' --drm --renderer gles2 --constrained $CONSTRAINED -r $RES \
 --eqe1-path '$PI_EQE1' --log-level=INFO --script '$PI_INPUTS/tour.txt' \
 --dump-frames-dir '$pidir/frames' --dump-every $DUMP_EVERY --dump-max-frames $DUMP_MAX \
 > '$pidir/runner.out' 2>&1; runner_rc=\$?; \
