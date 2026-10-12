@@ -138,12 +138,23 @@ installers keep their `setEntityDirectionCallback()` calls unchanged.
 ## Verification
 
 All runs on this host (x86 dev VM, llvmpipe), base `06852f31`
-(`origin/fable` at card cut). `origin/fable` advanced twice while this
-branch was open and was merged in twice: first `ce7ecd66` (B760's code,
-no overlap with this card's files), then `a1d14b1f` (B760's BOARD.md
-strike — one conflict in the B760 entry region of `refactor/BOARD.md`,
-resolved in fable's favour; this card's B295/B293 strike entries sit in
-a different region and are intact).
+(`origin/fable` at card cut). `origin/fable` advanced three times while
+this branch was open and was merged in three times: first `ce7ecd66`
+(B760's code, no overlap with this card's files), then `a1d14b1f`
+(B760's BOARD.md strike — one conflict in the B760 entry region of
+`refactor/BOARD.md`, resolved in fable's favour; this card's B295/B293
+strike entries sit in a different region and are intact), then
+`657c456c` (B1026's CI host+sha stamp plus B760's docs — `.gitlab-ci.yml`,
+`CLAUDE.md`, `docs/ci.md`, `docs/decisions.md`, `docs/module_map.md`,
+`refactor/B1008/README.md`, a new `refactor/B1026/README.md`,
+`scripts/ci/*`, `tests/cmake/hygiene.cmake`; no overlap with this card's
+files, clean merge). At the new head `47f88989` the pre-push checks
+re-ran green: `ctest --test-dir build2 -L hygiene` 29/29 (28 as before plus
+B1026's new hygiene test from the merge), the write-only ratchet exit 0
+(45 exempt — re-derived, `ratchet_mergehead.log`), `willeq` +
+`model_viewer` + both test binaries rebuilt green,
+`B293EntityDirectionResolutionTest` 2/2 and `EntityModelSharingTest` 6/6
+(fresh binaries, `build2_mergehead.log`).
 
 ### RED — the defect, on base
 
