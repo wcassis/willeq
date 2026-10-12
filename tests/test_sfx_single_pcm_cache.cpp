@@ -43,12 +43,16 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #include "client/data_paths.h"
@@ -358,6 +362,12 @@ TEST(SfxSinglePcmCache, TheSoundCacheCapBoundsTheSingleCache) {
 // cache still references it. The next play RE-DECODES it -- two decoded
 // copies of the same WAV are resident (audit probe: Kick1.WAV 21,920 B in
 // the sfx cache @0x5dfc6a2e9ff0 AND in the buffer cache @0x5dfc6a2ea560).
+//
+// THE RED (finding 1): the sfx entry and the buffer-cache entry are TWO
+// different objects. (The total-bytes half -- "one decoded copy of each
+// sound, or a second one" -- is pinned by the identity assertion plus the
+// single-cache arithmetic: with the fix there is no second cache to hold a
+// copy at all.)
 TEST(SfxSinglePcmCache, BufferCacheEvictionResurrectsTheDuplicate) {
     if (!eqt::memory::enabled()) GTEST_SKIP() << "ledger off in this build";
     if (!g_willeq_db_available) GTEST_SKIP() << "willeq.db not found";
@@ -385,6 +395,7 @@ TEST(SfxSinglePcmCache, BufferCacheEvictionResurrectsTheDuplicate) {
     // the first from the buffer cache.
     am.setMemoryConstraints(std::max(sa, sb), /*lazyPfs=*/false);
     auto* sfx = am.getSfxManager();
+    const uint64_t live0 = AudioLive();
     {
         eqt::memory::MemoryScope audio(Category::Audio);
         am.playSound(kA, glm::vec3(0.0f));
@@ -395,29 +406,33 @@ TEST(SfxSinglePcmCache, BufferCacheEvictionResurrectsTheDuplicate) {
         eqt::memory::MemoryScope audio(Category::Audio);
         (void)am.getSoundBuffer(kB);
     }
-    const uint64_t before = AudioLive();
     {
         eqt::memory::MemoryScope audio(Category::Audio);
         am.playSound(kA, glm::vec3(0.0f));  // the replay
     }
-    const uint64_t grew = AudioLive() - before;
+    // The window spans ALL THREE steps: one decoded copy of EACH sound, so
+    // a single cache holds at most sa + sb of PCM plus channel overhead. A
+    // resurrected second copy adds a full PCM of A on top.
+    const uint64_t grew = AudioLive() - live0;
+    const uint64_t bound = static_cast<uint64_t>(sa + sb) + 16ll * 1024;
     const SoundBuffer* sfxA = sfx->getWavData(fa);
     auto bcA = am.getSoundBufferByName(fa);
     std::cout << "[measured] cap=" << std::max(sa, sb)
-              << " replay grew audio by " << grew << " B (pcm " << sa << ")"
+              << " all three steps grew audio by " << grew << " B (bound "
+              << bound << ")"
               << " sfxA=" << sfxA << " bufferCacheA=" << (void*)bcA.get()
               << " sfxCacheBytes=" << sfx->getCacheSize()
               << " bufferCacheBytes=" << am.getSoundBufferCacheBytes() << "\n";
     // ONE decoded copy: the sfx entry and the buffer-cache entry are the
-    // SAME object (or the sfx entry does not exist at all). A resurrected
-    // second copy is a different object, and the replay grew `audio` by a
-    // full PCM.
+    // SAME object (or the sfx entry does not exist at all).
     EXPECT_EQ(sfxA, bcA.get())
         << "two decoded copies of " << fa << " are resident -- the buffer "
            "cache evicted the sound the sfx cache still held (B1015 finding 1)";
-    EXPECT_LE(grew, static_cast<uint64_t>(sa))
-        << "the replay re-decoded a second resident copy: `audio` grew by "
-           << grew << " B for a sound of " << sa << " B";
+    EXPECT_LE(grew, bound)
+        << "the sequence left " << grew
+           << " B of decoded PCM live (one copy of each sound is "
+           << sa + sb << " B) -- the replay re-decoded a second resident "
+              "copy of the evicted sound (B1015 finding 1)";
     bcA.reset();
     am.shutdown();
 }
@@ -492,21 +507,20 @@ TEST(SfxSinglePcmCache, TheCapBoundsTheTotalResidentPcm) {
 
 // B1015 finding 3 (pre-existing since T412): when every older sfx entry is
 // playing, the sfx LRU evicts the entry it had JUST preloaded -- its play()
-// gets nullptr, returns -1, and the requested sound silently never plays
-// (audit probe, cap 21,919: sfxCount=1, sfxEvictions=2 -- 131 and 130 were
-// each evicted at their own preload). Here: under a cap that holds the
-// smallest sound, C plays (its channel is pinned and running for ~0.53 s),
-// A plays while C is still running, and B plays while C AND A are still
-// running. B's insertion is over budget with every older entry pinned: the
-// pre-fix sfx LRU cannot evict the pinned older entries, and the entry it
-// evicts is B itself -- the one just preloaded.
+// gets nullptr, returns -1, and the requested sound silently never plays.
+// The audit's own cap-case run measured exactly this on its rig (cap 21,919:
+// sfxCount=1, sfxEvictions=2 -- sounds 130 and 131 were each evicted at
+// their own preload and never played). This test reruns that exact sequence
+// (ids 126/130/131 back-to-back, cap = middle size - 1) and asserts that
+// every requested sound actually plays: a play() that returned -1 grows
+// `audio` by a few bytes, a successful play grows it by the decode.
 TEST(SfxSinglePcmCache, TheSoundBeingInsertedIsNeverEvicted) {
     if (!eqt::memory::enabled()) GTEST_SKIP() << "ledger off in this build";
     if (!g_willeq_db_available) GTEST_SKIP() << "willeq.db not found";
     if (!Have("snd1.pfs")) GTEST_SKIP() << "no snd1.pfs under " << EqClientPath();
 
     PrivateCacheDir cache;
-    constexpr uint32_t kIds[] = {126, 130, 131};  // C (largest), B, A (smallest)
+    constexpr uint32_t kIds[] = {126, 130, 131};  // the audit probe's order
     std::vector<size_t> sizes;
     {
         EQT::Audio::AudioManager am;
@@ -518,20 +532,13 @@ TEST(SfxSinglePcmCache, TheSoundBeingInsertedIsNeverEvicted) {
         }
         am.shutdown();
     }
-    const size_t sC = sizes[0], sB = sizes[1], sA = sizes[2];
-    ASSERT_GT(sC, sB) << "the probe needs three distinct sizes (C > B)";
-    ASSERT_GT(sB, sA) << "the probe needs three distinct sizes (B > A)";
+    std::vector<size_t> sorted = sizes;
+    std::sort(sorted.begin(), sorted.end());
+    const size_t cap = sorted[1] - 1;  // the audit probe's cap
 
-    // A cap that holds A alone (the audit probe's shape: middle size - 1
-    // held the smallest entry, not the one inserted): every insertion after
-    // the first is over budget.
-    const size_t cap = sA - 1;
     EQT::Audio::AudioManager am;
     ASSERT_TRUE(am.initialize(EqClientPath(), /*forceLoopback=*/true));
     am.setMemoryConstraints(cap, /*lazyPfs=*/false);
-    // C (126) runs ~0.53 s and A (131) ~0.27 s at their archive rates: every
-    // play here lands inside the earlier channels, so the "every older
-    // entry is playing" state holds.
     for (size_t i = 0; i < 3; ++i) {
         const uint64_t before = AudioLive();
         eqt::memory::MemoryScope audio(Category::Audio);
