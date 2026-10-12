@@ -467,13 +467,16 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None, cfg=None):
     byte-identical to today's -- pinned by tests/data/b1024/x86_gate_plan.txt
     and --verify-x86. With a PlatformConfig, the platform's binary / EQ path /
     extra args replace the x86 ones, and --platform pi launches via Popen so
-    poll_maps() can take the Mesa-prefix proof off a LIVE process. The pi run
-    writes its frame PNGs straight into <out_dir>/<zone>/ -- the same layout
-    the committed set has (tests/goldens/pi/<zone>/f<n>.png) -- so a
-    capture's staged frames are the committed frames, unrenamed. The frames,
-    warmup, resolution, productionConfig args and the --occluder-budget 16 pin
-    are the SAME for both platforms: the Pi set is the x86 gate's invocation
-    on the Pi's GPU, nothing else.
+    poll_maps() can take the Mesa-prefix proof off a LIVE process. The
+    benchmark itself always writes flat <prefix>_f<n>.png (the literal
+    "_f" is hard-coded in its dump path -- it cannot write a directory), so
+    both platforms invoke it the same way (prefix <out_dir>/<zone>) and the
+    pi run MOVES the flat frames into <out_dir>/<zone>/f<n>.png afterwards:
+    the committed layout (tests/goldens/pi/<zone>/f<n>.png), and the only
+    reason the Pi set nests at all is that its layout is the design's.
+    The frames, warmup, resolution, productionConfig args and the
+    --occluder-budget 16 pin are the SAME for both platforms: the Pi set is
+    the x86 gate's invocation on the Pi's GPU, nothing else.
     """
     zone = zone_cfg["zone"]
     frames = zone_cfg.get("designatedFrames", [0])
@@ -484,17 +487,17 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None, cfg=None):
     else:
         bench, eq_path, extra = cfg.bench, cfg.eq_path, cfg.extra_bench_args
         maps_path = out_dir / f"{zone}_maps.txt" if cfg.maps_required else None
-        # x86-with-cfg and pi share the per-zone dump prefix: --dump-png-prefix
-        # <prefix> makes the benchmark write <prefix>_f<n>.png, i.e.
-        # <out_dir>/<zone>/f<n>.png.
+        # the benchmark's native output is flat: <prefix>_f<n>.png. (Passing
+        # <out_dir>/<zone>/"frames" would write <out_dir>/<zone>/frames_f0.png
+        # -- the "_f" is in the filename, not a directory -- and with no
+        # mkdir the save would fail anyway.)
         prefix = out_dir / zone
     csv_path = out_dir / f"{zone}.csv"
     mem_path = out_dir / f"{zone}_mem.json"
-    # The benchmark's writeImageToFile() does not mkdir: without this the pi
-    # capture fails "FAILED to save" for every frame (the zone dir does not
-    # exist on a fresh capture run; x86 runs into the pre-existing
-    # ARTIFACTS_DIR, which is why it never bit there).
-    prefix.parent.mkdir(parents=True, exist_ok=True)
+    if cfg is not None and cfg.platform == "pi":
+        # the destination for the flat-frame move below; the benchmark never
+        # writes into it
+        (out_dir / zone).mkdir(parents=True, exist_ok=True)
 
     cmd = [
         str(bench),
@@ -557,6 +560,22 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None, cfg=None):
     for f, p in png_paths.items():
         if not p.exists():
             raise RuntimeError(f"expected golden frame PNG missing: {p}\nstdout:\n{stdout_text}")
+
+    if cfg is not None and cfg.platform == "pi":
+        # B1024: the committed Pi layout is NESTED (<zone>/f<n>.png) while the
+        # benchmark's native output is flat (<zone>_f<n>.png, the "_f" being
+        # hard-coded into the filename). Move the flat frames into place and
+        # report the moved paths -- the callers (verify_pi's compare,
+        # capture_pi's staging, SHA256SUMS) all work off png_paths, so they
+        # see the committed layout without learning about the move. A move
+        # (not copy): the flat files are the run's intermediate, exactly one
+        # owner of the frame.
+        moved = {}
+        for f, p in png_paths.items():
+            dest = out_dir / zone / f"f{f}.png"
+            shutil.move(str(p), dest)
+            moved[f] = dest
+        png_paths = moved
 
     csv_rows = list(csv.DictReader(open(csv_path)))
 
@@ -1503,10 +1522,9 @@ def capture_pi(manifest, cfg, bench_cfg, production_args, out_dir):
             gl_renderer = m.group(1) if m else v
 
         # The frames are ALREADY in the committed layout: run_benchmark's pi
-        # dump prefix is out_dir/<zone>/, so <out_dir>/<zone>/f<n>.png is
-        # exactly what the orchestrator commits as
-        # tests/goldens/pi/<zone>/f<n>.png. Check every frame is present;
-        # no copy step (a copy would be an unexplained rename).
+        # run moved its flat <out_dir>/<zone>_f<n>.png into
+        # <out_dir>/<zone>/f<n>.png -- exactly what the orchestrator commits
+        # as tests/goldens/pi/<zone>/f<n>.png. Check every frame is present.
         zone_dir = out_dir / zone
         for f in zone_cfg["designatedFrames"]:
             staged = zone_dir / f"f{f}.png"
