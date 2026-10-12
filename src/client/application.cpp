@@ -1084,6 +1084,9 @@ void Application::mainLoop() {
                 // T504b Leg 0: the source-character census at the steady
                 // point too -- the prep worker builds models after
                 // zone_load_complete, so that point under-counts "used".
+                // B1038: the census is the renderer's; a headless build still
+                // polls (the ledger's steady_60s point) and has no renderer.
+#ifdef EQT_HAS_GRAPHICS
                 if (m_renderer) {
                     if (auto* er = m_renderer->getEntityRenderer()) {
                         if (auto* rml = er->getRaceModelLoader()) {
@@ -1091,6 +1094,7 @@ void Application::mainLoop() {
                         }
                     }
                 }
+#endif
             }
             // P36: SIGTERM handler (above) only sets a flag -- do the actual
             // quit request here, in ordinary (non-signal-handler) code on the

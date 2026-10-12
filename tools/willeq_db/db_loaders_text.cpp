@@ -7,7 +7,6 @@
 //   SoundAssets.txt -> sound_assets
 //   AnimationSounds.txt -> animation_sounds
 //   mp3index.txt    -> music_index
-//   eqlsstr_us.txt  -> login_strings
 
 #include "willeq_db/db_builder.h"
 
@@ -501,55 +500,6 @@ int loadMusicIndex(sqlite3* db, const std::string& filepath) {
 }
 
 // ============================================================================
-// Login server strings loader (eqlsstr_us.txt)
-// ============================================================================
-
-int loadLoginStrings(sqlite3* db, const std::string& filepath) {
-    std::ifstream file(filepath);
-    if (!file.is_open()) {
-        fprintf(stderr, "WARNING: cannot open %s\n", filepath.c_str());
-        return 0;
-    }
-
-    execSQL(db, R"(
-        CREATE TABLE IF NOT EXISTS login_strings (
-            id INTEGER PRIMARY KEY,
-            text TEXT NOT NULL
-        )
-    )");
-
-    execSQL(db, "BEGIN TRANSACTION");
-
-    sqlite3_stmt* stmt;
-    sqlite3_prepare_v2(db,
-        "INSERT OR REPLACE INTO login_strings (id, text) VALUES (?,?)",
-        -1, &stmt, nullptr);
-
-    std::string line;
-    int count = 0;
-    // First line is header (EQST0002), skip it
-    bool headerSkipped = false;
-    while (readLine(file, line)) {
-        if (line.empty()) continue;
-        if (!headerSkipped && line.find("EQST") != std::string::npos) {
-            headerSkipped = true;
-            continue;
-        }
-
-        size_t space = line.find(' ');
-        if (space == std::string::npos) continue;
-
-        int id = std::atoi(line.substr(0, space).c_str());
-        std::string text = line.substr(space + 1);
-
-        sqlite3_reset(stmt);
-        sqlite3_bind_int(stmt, 1, id);
-        sqlite3_bind_text(stmt, 2, text.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_step(stmt);
-        count++;
-    }
-
-    sqlite3_finalize(stmt);
-    execSQL(db, "COMMIT");
-    return count;
-}
+// B606 (#189): the login_strings loader (eqlsstr_us.txt -> login_strings) is
+// deleted. The table's only client reader, WilleqDatabase::getLoginString(),
+// had zero production callers.

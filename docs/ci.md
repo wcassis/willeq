@@ -185,6 +185,7 @@ longer downloads them: SourceForge returned HTTP 522 for ~3 h on 2026-10-01 and 
 | --- | --- | --- | --- |
 | `hygiene` | `ctest -L hygiene` in a no-C++ tree (`EQT_GRAPHICS=OFF`), configured into `build/hygiene`; on `fable` also `prune-build-trees` (B1012, the per-ref tree expiry + census) | 45 s | 44 s |
 | `build` | the Release recipe from `CLAUDE.md`, `-j8`, into `build/ref/<slug>` (B1012) | 1,237 s (20.6 min) | 6 s |
+| `build` (`build-headless`, B1038) | the same Release build with `EQT_GRAPHICS=OFF` into `build-headless/ref/<slug>`, then `ctest -LE hygiene` in the same job ("The headless build" below) | not yet measured on a runner; dev-u24 `-j4`: ~1,920 s cold (B1038) | not measured |
 | `test` | full `ctest -j6`, minus two cases, then one of them with retries | 116 s (4,908 tests) | 116 s |
 | `gate` | `visual_gate` (T80/T291) over `build-gles2/ref/<slug>/bin/gles2_zone_benchmark` (B1012) | 363 s | 18 s |
 | | B813 (2026-09-20): the manifest names FIVE zones (qeynos2, gfaydark, befallen + iceclad + timorous); `gate` verifies all five (`--zones`, B903/B904 2026-09-29) | — | 40 s for all five in one job (measured back-to-back on a quiet hermes-ext: 10.6 s wall for three zones, 19.6 s wall for five; +9.0 s wall) |
@@ -317,10 +318,10 @@ twice.
 
 ## The warm tree, and its trade-off
 
-Each runner keeps one working directory per project, and the pipeline keeps three
-paths in it across runs:
+Each runner keeps one working directory per project, and the pipeline keeps four
+paths in it across runs (`build-headless` since B1038):
 
-    GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e third_party/irrlicht-gles2-x86
+    GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e build-headless -e third_party/irrlicht-gles2-x86
 
 GitLab passes these straight to `git clean` (its own default is a bare `-ffdx`),
 so `-e <pattern>` excludes those paths from the wipe. Everything else is still
@@ -358,7 +359,7 @@ with the tree's size and age plus `du`/`df` for the roots. **`prune.log` on the
 latest fable pipeline is the census** — read it to see what the runner holds.
 The script refuses an empty live-ref list (a failed `ls-remote` must never
 read as "every branch is gone") and any root that is not
-`<build|build-gles2>/ref`; `scripts/ci/test_prune_ref_build_trees.py`
+`<build|build-gles2|build-headless>/ref` (the third since B1038); `scripts/ci/test_prune_ref_build_trees.py`
 (ctest `PruneRefBuildTrees`, hygiene label) pins each rule. Measured
 2026-10-09 on gitlab-runner-1: one ref's two trees are ~4.4 GB; the disk had
 206 GB free, so ~40 live refs fit before the 14-day expiry matters.
@@ -374,8 +375,8 @@ a clean one. To force a cold run:
 - run the pipeline with `GIT_CLEAN_FLAGS` overridden to `-ffdx` (Run pipeline →
   add the variable), **or**
 - on EACH x86 runner (gitlab-runner-1 and gitlab-runner-2, as root — each
-  holds its own warm trees): `rm -rf /home/gitlab-runner/builds/*/0/willeq/willeq/{build/ref/<slug>,build-gles2/ref/<slug>}`
-  for one ref, or the whole `{build,build-gles2,third_party/irrlicht-gles2-x86}`
+  holds its own warm trees): `rm -rf /home/gitlab-runner/builds/*/0/willeq/willeq/{build/ref/<slug>,build-gles2/ref/<slug>,build-headless/ref/<slug>}`
+  for one ref, or the whole `{build,build-gles2,build-headless,third_party/irrlicht-gles2-x86}`
   for everything.
 
 Do the cold run before trusting a green pipeline on anything that changed the
@@ -445,6 +446,65 @@ gigabytes per pipeline. The regression net is the hygiene test
 `cmake --build`, or if `.goldfarm` claims a single tagged runner again;
 `PruneRefBuildTrees` pins `--verify`'s outcomes. Evidence:
 `refactor/B1026/README.md`.
+
+### The headless build (B1038, #358)
+
+**What it catches.** The `--no-graphics` client is the `EQT_GRAPHICS=OFF`
+configuration, and until B1038 no job compiled it: `hygiene` configures OFF
+but builds no C++, and `build` configures ON. B1031's macOS probe (#351)
+found, and its Linux cross-check (`review/B1031/linux_crosscheck_pass2.tsv`)
+confirmed on dev-u24, that it no longer compiled on ANY host: 5 TUs
+(`application.cpp`'s steady_60s census reading `m_renderer`, three tests
+including `irrlicht.h`, and the T260 cases of
+`test_zone_connection_flow_identity.cpp`). Behind those, 8 test executables
+did not LINK (cases calling renderer TUs from `GRAPHICS_SOURCES`) and 5 cases
+asserted graphics-only behaviour (`refactor/B1038/README.md`). The fix is
+guards only: a case that exercises a renderer TU or a graphics-only path is
+`#ifdef EQT_HAS_GRAPHICS`, a test whose every case does is registered only
+under `EQT_GRAPHICS`; the headless cases of each file keep running.
+`build-headless` makes that rot a red pipeline: it configures
+`-DEQT_GRAPHICS=OFF -DEQT_BUILD_TESTS=ON`, builds everything, and runs
+`ctest -LE hygiene` (the `hygiene` job already runs the other label).
+
+**How it is built.** It runs the SAME `willeq_build_tree` as `build` (one
+copy of the B1026 order: ref-only stamp, configure, B907 orphan prune,
+`cmake --build`, host+sha claim). The job sets `WILLEQ_HEADLESS=1`, which
+picks the OFF configure line and skips the Irrlicht bootstrap; nothing else
+in the function differs. Its tree is its own, `build-headless/ref/<slug>`
+(job-level `BUILD_TREE`), so the graphics tree is never reconfigured OFF and
+each stamp describes one tree. `GIT_CLEAN_FLAGS` keeps `build-headless`, and
+`prune-build-trees` expires it like the other two (`--root
+build-headless/ref`; it is never a `--legacy-root`, it had no pre-B1012
+layout). The suite runs in the build job itself, after the claim, so the
+build and the suite can never land on different hosts and the job needs no
+B1026 verify. `WILLEQ_REQUIRE_ASSETS=1` as in `test`: an absent asset root is
+a FAIL, never a silent SKIP.
+
+**Ordering.** It is in the `build` stage with no `needs:`, so it waits for
+`hygiene` like `build`, the two run in parallel when both runners are free,
+and `test` waits for both (a red `build-headless` therefore also skips `test`
+and `gate`, the same as a red `build`).
+
+**The cost.** A second full Release build per runner per ref (it shares no
+objects with `build/ref/<slug>`), warm after the first pipeline of a ref.
+Measured on dev-u24 (40 cores, `-j4`, no ccache, 2026-10-12): a cold headless
+tree took ~1,920 s (1,534 + 352 + 32 s over the three passes that built it)
+and `ctest -LE hygiene` 48 s (3,533 tests); the runner's `-j8` number is the
+first pipeline's job log.
+
+**The cereal dependency** (same unit): `include/common/net/packet.h` and
+`daybreak_structs.h` include `<cereal/cereal.hpp>`, which `CMakeLists.txt`
+never looked for (a host without it got 217 opaque errors on macOS). It is
+now `FIND_PATH(CEREAL_INCLUDE_DIR cereal/cereal.hpp)` with a `FATAL_ERROR`
+naming `libcereal-dev` (Debian/Ubuntu) and `cereal` (Homebrew); it is not
+vendored.
+
+**Regression net.** `CiBuildTreeStamp` (`scripts/ci/test_ci_build_tree_stamp.py`)
+fails if the job is gone, leaves the `build` stage, keeps its own copy of the
+build steps, loses its own tree or `WILLEQ_HEADLESS`, stops running `ctest
+-LE hygiene` after `willeq_build_tree`, or if `.build_tree` loses its OFF
+configure, `GIT_CLEAN_FLAGS` its exclusion or `prune-build-trees` its root;
+`PruneRefBuildTrees` pins that `build-headless/ref` is a known root.
 
 ### A prior branch's leftover binary is pruned, not just detected (B907)
 

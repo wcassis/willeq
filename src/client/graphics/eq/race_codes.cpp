@@ -22,10 +22,6 @@ bool loadRaceMappings() {
     return s_mappingsLoaded;
 }
 
-bool reloadRaceMappings() {
-    return loadRaceMappings();
-}
-
 bool areRaceMappingsLoaded() {
     return s_mappingsLoaded;
 }

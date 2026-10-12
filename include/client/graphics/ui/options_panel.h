@@ -161,19 +161,13 @@ std::string optionsSettingText(const OptionsPanelState& state,
 /**
  * The clip-plane slider's step <-> fable's render distance. See the flagged
  * mapping in the header comment: step*50 + 50, clamped to 0..20.
+ * B606 (#189) deleted optionsClipPlaneStep() (zero callers): nothing ever
+ * turned a distance back into a step -- the panel only ever stores the step.
+ * The volume step <-> 0..1-float conversion is eqt::audio::volume*
+ * (include/client/audio/volume_steps.h); B606 deleted the two options_-named
+ * wrappers over it (zero callers -- callers use the audio-side functions).
  */
 float optionsClipPlaneDistance(int step);
-int optionsClipPlaneStep(float distance);
-
-/**
- * Volume step <-> the 0..1 float AudioManager takes. Thin wrappers over
- * eqt::audio::volumeFractionFromStep / volumeStepFromFraction
- * (include/client/audio/volume_steps.h) -- T439 moved the arithmetic there
- * because the GAME thread now needs it too, and options_layout.h's
- * `irr::s32` cannot be included game-side.
- */
-float optionsVolumeFraction(int step);
-int optionsVolumeStep(float fraction);
 
 /**
  * T439 (board B432): the applied volumes coming back from the audio manager.

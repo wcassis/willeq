@@ -67,6 +67,10 @@ tests/*_tests.cmake
 # (eqemu zone log; the review rule is a [measured] claim carries its capture)
 !refactor/B893/evidence/*.log
 
+# B1013 (#334): the GEM event-log fixture behind the pool-timeline column
+# (the B997 shipped-default qeynos2 leg's bo_events.log; the test pins its sha256)
+!tests/data/b1013/*.log
+
 # JSON data dumps in root (keep tests/ and src/ json files)
 /*.json
 

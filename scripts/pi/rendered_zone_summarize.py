@@ -125,7 +125,18 @@ HEADER = ("zone expansion s3d_bytes attempt verdict signature exit_code kill_rea
           "gem_frames_steady gem_pp_jobs_per_frame gem_gp_jobs_per_frame gem_waits_per_frame "
           "gem_wait_ms_per_frame "
           # B946: appended at the END -- the client's own [gldriver] line
-          "mesa_driver").split()
+          "mesa_driver "
+          # B1013: appended at the END -- the Lima BO-cache pool (cost-sheet fact 13)
+          # ready -> steady_60s, from gem_owner_table.pool_timeline over the run's
+          # bo_events.log + gem_owners.tsv. gem_pool_creates_steady_window counts
+          # GEM creates in the STEADY window [ready + 20 s, steady_60s] exactly:
+          # 0 = the pool is frozen (it is, since the zone-in burst); the window is
+          # never widened toward shutdown (this leg's log shows closes to +18.5 s
+          # and five creates at +186 s). gem_pool_last_create_s is the last create
+          # of ANY size in (ready, steady_60s] (unlike the investigation's
+          # small+1 MiB subset); growth_mib is the draw-time + stream-uploader
+          # pool bytes at steady_60s minus ready, in MiB (2 dp).
+          "gem_pool_growth_mib gem_pool_last_create_s gem_pool_creates_steady_window").split()
 
 
 def mesa_proof(run, expect, prefix):
@@ -471,6 +482,12 @@ def main():
                     and unnamed > GPU_UNNAMED_BOUND)
     # B1006: the Lima job stream between ready and steady_60s (shim P-line counters).
     jobs = gem_owner_table.job_rates(os.path.join(a.run, "gem_owners.tsv")) if steady else None
+    # B1013: the BO-cache pool timeline between the same two points (cost-sheet
+    # fact 13): None when the run has no bo_events.log or gem_owners.tsv or a
+    # point (older shims) -- the columns stay empty, nothing else changes.
+    pool = (gem_owner_table.pool_timeline(os.path.join(a.run, "bo_events.log"),
+                                          os.path.join(a.run, "gem_owners.tsv"))
+            if steady else None)
     jv = lambda k, nd=2: round(jobs[k], nd) if jobs else ""
     pp_over = bool(jobs) and GEM_PP_JOBS_PER_FRAME_BOUND is not None \
         and jobs["pp_jobs_per_frame"] > GEM_PP_JOBS_PER_FRAME_BOUND
@@ -541,6 +558,11 @@ def main():
         "gem_pp_jobs_per_frame": jv("pp_jobs_per_frame"), "gem_gp_jobs_per_frame": jv("gp_jobs_per_frame"),
         "gem_waits_per_frame": jv("waits_per_frame"), "gem_wait_ms_per_frame": jv("wait_ms_per_frame", 3),
         "mesa_driver": mesa_driver,
+        # B1013: the BO-cache pool (cost-sheet fact 13); empty when pool is None.
+        "gem_pool_growth_mib": round(pool["growth_mib"], 2) if pool else "",
+        "gem_pool_last_create_s": (round(pool["last_create_s"], 3)
+                                   if pool and pool["last_create_s"] is not None else ""),
+        "gem_pool_creates_steady_window": pool["steady_window_creates"] if pool else "",
     }
     clean = {k: str(v).replace("\t", " ").replace("\n", " ") for k, v in row.items()}
     new = not os.path.exists(a.tsv) or os.path.getsize(a.tsv) == 0
