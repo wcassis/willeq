@@ -340,23 +340,30 @@ ADD_EXECUTABLE(test_gl_driver_census
 TARGET_LINK_LIBRARIES(test_gl_driver_census GTest::gtest_main Threads::Threads)
 GTEST_DISCOVER_TESTS(test_gl_driver_census DISCOVERY_TIMEOUT 120)
 
-ADD_EXECUTABLE(test_memory_ledger
-    test_memory_ledger.cpp
-    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
-    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
-    ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
-)
-TARGET_LINK_LIBRARIES(test_memory_ledger GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} Threads::Threads)
-# B839 (issue #94): the startup sub-owner acceptance case SPAWNS the real
-# client (headless, TEST-NET-1, same idiom as test_headless_shutdown) and
-# reads its own [memledger-startup] table, so it needs the binary's path and
-# a build-order dependency on it.
-IF(TARGET willeq)
-    TARGET_COMPILE_DEFINITIONS(test_memory_ledger PRIVATE
-        WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>")
-    ADD_DEPENDENCIES(test_memory_ledger willeq)
+# B1039 (#359): the suite tests the allocator hooks (it asserts enabled()
+# first) and glibc's mallinfo2/malloc_info census, so it is built only where
+# the hooks exist: on macOS the ledger is its OFF shape (memory_ledger.h).
+IF(NOT APPLE)
+    ADD_EXECUTABLE(test_memory_ledger
+        test_memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_memory_ledger GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} Threads::Threads)
+    # B839 (issue #94): the startup sub-owner acceptance case SPAWNS the real
+    # client (headless, TEST-NET-1, same idiom as test_headless_shutdown) and
+    # reads its own [memledger-startup] table, so it needs the binary's path and
+    # a build-order dependency on it.
+    IF(TARGET willeq)
+        TARGET_COMPILE_DEFINITIONS(test_memory_ledger PRIVATE
+            WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>")
+        ADD_DEPENDENCIES(test_memory_ledger willeq)
+    ENDIF()
+    GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)
+ELSE()
+    MESSAGE(STATUS "test_memory_ledger: not built on macOS (the ledger compiles to its OFF shape there)")
 ENDIF()
-GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)
 
 # B955 (GitLab #273): the gpu_buffers ledger row -- GPU buffer memory outside
 # RssAnon (Lima GEM/shmem on the Orange Pi). Parsers against fixtures captured

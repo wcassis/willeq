@@ -91,6 +91,19 @@ double secondsSince(Clock::time_point start) {
 // One headless client: argv is `<bin> -c <config> --no-graphics`, stdin is
 // `stdinPayload` followed by EOF (what `printf ... |` gave it before), and
 // stdout+stderr share one pipe (what `2>&1` gave it).
+// B1039 (#359): pipe2() is Linux-only; macOS gets pipe() + FD_CLOEXEC (not
+// atomic, but nothing else forks while this single-threaded test does).
+int pipeCloexec(int fds[2]) {
+#if defined(__linux__)
+    return ::pipe2(fds, O_CLOEXEC);
+#else
+    if (::pipe(fds) != 0) return -1;
+    ::fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+    ::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+    return 0;
+#endif
+}
+
 class HeadlessChild {
 public:
     HeadlessChild() = default;
@@ -114,7 +127,7 @@ public:
 
         int inPipe[2];
         int outPipe[2];
-        if (::pipe2(inPipe, O_CLOEXEC) != 0 || ::pipe2(outPipe, O_CLOEXEC) != 0) {
+        if (pipeCloexec(inPipe) != 0 || pipeCloexec(outPipe) != 0) {
             error = std::string("pipe2: ") + std::strerror(errno);
             return false;
         }
