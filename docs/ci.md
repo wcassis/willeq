@@ -39,7 +39,9 @@ starve a live worker.
 A second runner, **`dev-u24-arm-nfs`** (GitLab runner id 2, tag `arm-nfs`, does NOT run untagged), runs in user
 mode on the dev host `dev-u24`: binary `~/.local/bin/gitlab-runner`, config `~/.gitlab-runner/config.toml`
 (GitLab's self-signed cert pinned beside it), `systemctl --user status gitlab-runner` (linger on), builds under
-`~/gitlab-runner/builds`. It exists for one job, **`build-arm`**: `scripts/build-arm-noble.sh` (docker image
+`~/gitlab-runner/builds`. It runs two jobs, **`build-arm`** and B1030's **`build-arm64`** (the aarch64 lanes'
+binary, "The aarch64 SBC lanes" below), one at a time in ONE shared checkout, so both jobs' `GIT_CLEAN_FLAGS`
+keep both build trees (`-e build-arm-noble -e build-arm64-noble`). `build-arm` is `scripts/build-arm-noble.sh` (docker image
 `willeq-arm-noble`) then `scripts/pi/publish_arm_build.sh`, which publishes the stripped client plus that
 commit's tracked `config/` + `data/` to **`/mnt/projects/fable/ci-arm/<sha>/`** (`by-branch/<branch>` symlinks;
 newest 12 kept). The job is automatic on `fable` and a manual, non-blocking job everywhere else
