@@ -1710,14 +1710,7 @@ Measured worst (at `steady_60s`, the asserted point):
 velketor is the worst on both machines because it is the only zone whose
 zone music actually STARTED in these runs: the custom SoundFont
 `synthus2.sf2` loads on first `playMusic` of a Velious/Luclin stem and is
-24,160,712 B (Pi) / 24,162,944 B (x86) of it. **B990 (#309, 2026-10-10)
-changed the font's lifetime: it is now released at `MusicPlayer::stop()`,
-the one place a song ends — both the immediate and the faded path — so it
-is resident only while a custom-font song plays; a following custom song
-reloads it (~35 ms, page-cache; `refactor/B990/README.md`), a GM song never
-loads it. The figures above are the PRE-B990 census (music still playing at
-steady_60s); the post-B990 live x86 census is
-`refactor/B990/audio_ledger_census.tsv`.** kael and thurgadina carry the
+24,160,712 B (Pi) / 24,162,944 B (x86) of it. kael and thurgadina carry the
 same font in their zone EFF, but their music region was not entered in these
 runs (the seeded safe point sits outside it), so their worst is the ~3.6 MB
 startup-only row. The 10 classic zones top out at 4,945,872 B (Pi, erudnint).
@@ -1918,3 +1911,40 @@ default flips to ON** — the batch is on unless `EQT_SG_BATCH=0`
 (`src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp`), and the
 ctest keeps the byte-identity pinned on every CI run. No golden, budget or
 baseline moved in B997.
+
+## 2026-10-11 — B1014: the custom-Font release moves to a real end, off the audio thread (worker, #335)
+
+**Source:** AUDIT-WAVE7 found B990's release-on-stop wrong twice over
+(`refactor/B1014/README.md`): `MusicPlayer::play()` calls `stop()` first and
+`AudioManager::playMusic` selects the font BEFORE `play()`, so a custom-font
+song following any playing song (the `setDayNight` order
+`stopMusic(1.0) + playMusic`, `zone_audio_manager.cpp`) had its font freed by
+the very next call and played on GM (probes: `resident=0 active=GM` on
+origin/fable); and the fade-completion `tsf_close` ran on the audio thread,
+racing the game thread's `selectSoundFont(Custom)` / `MidiPlayer::play()`
+(possible double-close the T248 render barrier does not cover — it covers
+render passes, not game-thread mutators).
+
+The 2026-10-05 census above carries a note on the font's lifetime since it was
+taken: B990 (#309) released it at `MusicPlayer::stop()`; B1014 moves that
+release to a REAL end only, because the stop inside `play()` was freeing the
+font the next song had just selected. The 2026-10-05 figures are the PRE-B990
+census (music still playing at steady_60s); the post-B990 live x86 census is
+`refactor/B990/audio_ledger_census.tsv`.
+
+**Fix (no timer, no second cache, `memoryLedgerBudgets.audio` untouched):**
+the font is released only when a song really ends — the public
+`MusicPlayer::stop()` (immediate, nothing following) or a fade's completion.
+The stop inside `play()` uses an internal stop that never releases (the next
+song may be on the font). The audio thread no longer frees: fade completion
+only sets `fontReleasePending_`; the game thread frees, in
+`MusicPlayer::drainPendingFontRelease()` (called from
+`AudioManager::update()`, driven every game tick, and from the public
+`stop()`), refusing while a song plays so the flag can never free a font the
+next custom song is already using. Pinned by
+`tests/test_soundfont_release.cpp` (7 tests, all asserting
+`getActiveSoundFont()` — the behaviour, not the resident proxy; plus a
+ledger census of the B990 2,976 B / 32-block `au.soundfont_custom` residual,
+confirmed as the first-call construction of
+`getSoundFontTypeForFile()`'s static `synthus2Files` name set). See
+`refactor/B1014/README.md` for red/green.
