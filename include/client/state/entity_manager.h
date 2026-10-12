@@ -219,15 +219,6 @@ public:
      */
     const Entity* getNearestPlayer(float x, float y, float z, uint16_t excludeSpawnId = 0) const;
 
-    // ========== Pet Queries ==========
-
-    /**
-     * Check if an entity is a pet.
-     * @param spawnId The spawn ID to check
-     * @return true if entity is a pet
-     */
-    bool isPet(uint16_t spawnId) const;
-
 private:
     // T244: shared body of the two findEntityByName overloads; pos is null
     // for the id-ordered form, else {x,y,z} of the reference point.
@@ -236,8 +227,6 @@ private:
     void fireEntitySpawnedEvent(const Entity& entity);
     void fireEntityDespawnedEvent(uint16_t spawnId, const std::string& name);
     void fireEntityMovedEvent(const Entity& entity);
-
-    float calculateDistance(float x1, float y1, float z1, float x2, float y2, float z2) const;
 
     EventBus* m_eventBus = nullptr;
     std::map<uint16_t, Entity> m_entities;
