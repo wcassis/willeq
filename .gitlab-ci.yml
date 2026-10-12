@@ -231,7 +231,12 @@ build-arm:
   timeout: 2h
   interruptible: true
   variables:
-    GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble
+    # Both ARM jobs share this concurrent=1 runner's ONE checkout, so each must
+    # keep BOTH build trees: excluding only its own dir made build-arm wipe
+    # build-arm64-noble/ and build-arm64 wipe build-arm-noble/ (which holds the
+    # incremental cache/), i.e. two cold cross-builds per fable pipeline.
+    # Keep this line identical in build-arm and build-arm64 (B1030 review).
+    GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble -e build-arm64-noble
   rules:
     - if: $CI_COMMIT_BRANCH == "fable"
     - when: manual
@@ -258,7 +263,8 @@ build-arm64:
   timeout: 2h
   interruptible: true
   variables:
-    GIT_CLEAN_FLAGS: -ffdx -e build-arm64-noble
+    # Same line as build-arm: the two jobs share one checkout (see there).
+    GIT_CLEAN_FLAGS: -ffdx -e build-arm-noble -e build-arm64-noble
     BUILD_JOBS: "8"
   rules:
     - if: $CI_COMMIT_BRANCH == "fable"
