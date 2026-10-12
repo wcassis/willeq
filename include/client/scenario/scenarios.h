@@ -58,7 +58,7 @@ std::unique_ptr<IScenario> MakeEquipActorReturnScenario(const ScenarioOptions& o
 // B630 (issue #48) + B760 (issue #45): the two-client interrupted-cast lane.
 // Each caster leg is a driver that runs its command sequence on a calibrated
 // clock; the assertions are read off the run's DEBUG log by
-// scripts/ci/b760_analyze.py. See src/client/scenario/scenario_interrupted_cast.cpp.
+// scripts/scenario_configs/b630_analyze.py. See src/client/scenario/scenario_interrupted_cast.cpp.
 
 /** Leg A: cast a 3 s spell and GM-`#interrupt` it mid-cast (caster side). */
 std::unique_ptr<IScenario> MakeCastInterruptScenario(const ScenarioOptions& options);
@@ -74,6 +74,21 @@ std::unique_ptr<IScenario> MakeCastInterruptChainScenario(const ScenarioOptions&
 std::unique_ptr<IScenario> MakeCastInterruptObserveScenario(const ScenarioOptions& options);
 /** Leg B: the non-GM caster loops gem casts until the fizzle roll lands. */
 std::unique_ptr<IScenario> MakeCastFizzleScenario(const ScenarioOptions& options);
+
+// B760 (issue #45): the repeated cast-tail lane. The caster alternates 12
+// let-finish casts with 12 GM-interrupted ones in one zone-in; its peer stands
+// still (quiet) or sits/stands/moves/talks throughout (traffic). The claims
+// are read off the DEBUG log by scripts/scenario_configs/b760_tail_analyze.py.
+// See src/client/scenario/scenario_cast_tail_repeat.cpp.
+
+/** The caster, quiet condition (peer: cast_tail_quiet_peer). */
+std::unique_ptr<IScenario> MakeCastTailRepeatQuietScenario(const ScenarioOptions& options);
+/** The caster, traffic condition (peer: cast_tail_traffic_peer). */
+std::unique_ptr<IScenario> MakeCastTailRepeatTrafficScenario(const ScenarioOptions& options);
+/** The quiet peer: zones in and stands still for --scenario-hold seconds. */
+std::unique_ptr<IScenario> MakeCastTailQuietPeerScenario(const ScenarioOptions& options);
+/** The traffic peer: /sit /stand /move /jump /say every 0.25 s for the hold. */
+std::unique_ptr<IScenario> MakeCastTailTrafficPeerScenario(const ScenarioOptions& options);
 
 // UIGAP-live: the live legs owed by the wave-1 UI units. See
 // src/client/scenario/scenario_ui_inventory.cpp and scenario_ui_social.cpp.

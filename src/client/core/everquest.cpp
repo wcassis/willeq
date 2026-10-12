@@ -55,6 +55,7 @@
 #include "common/net/posix_udp_transport.h"
 #include "client/animation_constants.h"
 #include <array>
+#include <cstdlib>
 #include <iomanip>
 #include <sstream>
 #include <ctime>
@@ -832,6 +833,17 @@ void EverQuest::ConnectToZone()
 	// pre-allocated in EverQuest constructor / Application::initialize()
 
 	EQ::Net::DaybreakConnectionManagerOptions zone_opts;
+	// B760 (#45): a diagnostic lever, off unless set. WILLEQ_SIM_ZONE_IN_LOSS=<n>
+	// drops inbound zone datagrams at the Daybreak manager's own
+	// simulated_in_packet_loss rate (`n >= Int(0, 100)`), so a live lane can
+	// make the server RESEND reliable packets while unreliable ones keep
+	// arriving -- the only way an unreliable packet reaches the client inside
+	// a reliable sequence (refactor/B760/README.md).
+	if (const char* loss = std::getenv("WILLEQ_SIM_ZONE_IN_LOSS")) {
+		zone_opts.simulated_in_packet_loss = static_cast<size_t>(std::strtoul(loss, nullptr, 10));
+		LOG_WARN(MOD_ZONE, "WILLEQ_SIM_ZONE_IN_LOSS={}: simulating inbound zone packet loss",
+			zone_opts.simulated_in_packet_loss);
+	}
 	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
 	m_zone_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(zone_opts, std::move(transport)));
 	m_zone_connection_manager->OnNewConnection(std::bind(&EverQuest::ZoneOnNewConnection, this, std::placeholders::_1));
@@ -892,13 +904,13 @@ void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> co
 			opcode, (const uint8_t*)p.Data() + 2, static_cast<uint32_t>(p.Length() - 2));
 	}
 
-	m_zone->DispatchZonePacket(p);
+	m_zone->DispatchZonePacket(p, conn ? conn->DeliveringReliable() : true);
 }
 
 // Batch R replay/test seam: build a synthetic app packet (2-byte opcode
 // prefix + payload, matching session_log.h's on-disk layout) and run it
 // through the same opcode switch ZoneOnPacketRecv uses.
-void EverQuest::ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t size)
+void EverQuest::ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t size, bool reliable)
 {
 	EQ::Net::DynamicPacket p;
 	p.Resize(2 + size);
@@ -906,7 +918,7 @@ void EverQuest::ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t si
 	if (size > 0 && data != nullptr) {
 		memcpy(static_cast<char*>(p.Data()) + 2, data, size);
 	}
-	m_zone->DispatchZonePacket(p);
+	m_zone->DispatchZonePacket(p, reliable);
 }
 
 // K13: SafeQueueZonePacket's body is now eqt::PacketSender::SafeQueueZone

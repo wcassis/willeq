@@ -8,7 +8,7 @@
 // string, no late impact, the observer's "<name>'s casting is interrupted!",
 // and the B760 packet order between `ManaChange keepcasting 0` and
 // `OP_MemorizeSpell` -- is made from the run's DEBUG log by
-// scripts/ci/b760_analyze.py. That matches the card's "assert from pasted log
+// scripts/scenario_configs/b630_analyze.py. That matches the card's "assert from pasted log
 // lines" and keeps IScenarioWorld's deliberately small surface intact: the
 // in-process world cannot see cast-bar / gem / chat state, and the DEBUG log
 // IS the authoritative wire record -- every zone packet now logs its opcode
