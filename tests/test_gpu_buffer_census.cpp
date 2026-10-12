@@ -170,13 +170,49 @@ TEST(GpuBufferCensus, FdinfoKeysWinOverEverything) {
     GpuBufferInputs in;
     in.drmFds = 1;
     in.fdinfoMemoryKeys = true;
-    in.fdinfoTotalBytes = 12345678;
+    in.fdinfoTotalBytes = 12345678;   // legacy drm-memory-* only: the total IS the resident size
     in.memcg = parseMemcgStat(fixture("kmscube_memory.stat"));
     in.cgroupProcs = 1;
     in.softwareRasteriser = 0;
     const GpuBufferCensus c = decideGpuBuffers(in);
     EXPECT_EQ(c.source, GpuBufferSource::DrmFdinfo);
     EXPECT_EQ(c.gpuBuffersBytes, 12345678u);
+}
+
+// B1032 (#352): the row is the RESIDENT figure, never the total. Numbers from
+// the ROCK 4D (Panfrost, kernel 7.1, Mesa 26.0) at qeynos2 steady: the total
+// counts the BO cache's purged buffers and the unfaulted tiler heap, 4.5x the
+// bytes with pages behind them; the resident figure agrees with the cgroup's
+// shmem (41.2 MB) and the mapped lower bound (36.7 MB).
+TEST(GpuBufferCensus, FdinfoResidentIsTheRowNotTheTotal) {
+    GpuBufferInputs in;
+    in.drmFds = 6;
+    in.fdinfoMemoryKeys = true;
+    in.fdinfoResidentKeys = true;
+    in.fdinfoTotalBytes = 175411200;
+    in.fdinfoResidentBytes = 39407616;
+    in.softwareRasteriser = 0;
+    const GpuBufferCensus c = decideGpuBuffers(in);
+    EXPECT_EQ(c.source, GpuBufferSource::DrmFdinfo);
+    EXPECT_EQ(c.gpuBuffersBytes, 39407616u);
+    EXPECT_TRUE(c.outsideRssAnon);
+    EXPECT_EQ(ownedPlusGpuBuffers(25208784u, c), 25208784u + 39407616u);
+    const std::string line = gpuBuffersToLogLine("steady", "qeynos2", c, 25208784u);
+    EXPECT_NE(line.find(" gpu_buffers=39407616 "), std::string::npos) << line;
+    EXPECT_NE(line.find(" fdinfo_total=175411200 "), std::string::npos) << line;
+    EXPECT_NE(line.find(" fdinfo_resident=39407616 "), std::string::npos) << line;
+    EXPECT_NE(line.find(" fdinfo_purgeable="), std::string::npos) << line;
+}
+
+// The render node's fdinfo CAPTURED on the ROCK 4D during that run.
+TEST(GpuBufferCensus, PanfrostFdinfoPublishesResidentAndPurgeable) {
+    const DrmFdinfo f = parseDrmFdinfo(fixture("rock4d_fdinfo_renderD128"));
+    EXPECT_TRUE(f.isDrm);
+    EXPECT_TRUE(f.hasMemoryKeys);
+    EXPECT_TRUE(f.hasResidentKeys);
+    EXPECT_GT(f.totalBytes, f.residentBytes * 3);
+    EXPECT_GT(f.residentBytes, 0u);
+    EXPECT_LE(f.purgeableBytes, f.totalBytes);
 }
 
 // llvmpipe: the buffers are heap already charged to gpu_driver. The row

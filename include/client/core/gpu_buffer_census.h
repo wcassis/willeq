@@ -88,10 +88,20 @@ void publishGpuSoftwareRasteriser(bool software);
 struct DrmFdinfo {
     bool isDrm = false;           // a drm-driver: or drm-client-id: key was present
     bool hasMemoryKeys = false;   // any drm-total-/drm-resident-/drm-memory- key
+    bool hasResidentKeys = false; // a drm-resident-* key was present (B1032)
     uint64_t clientId = 0;        // drm-client-id (dedupe: several fds, one client)
     uint64_t totalBytes = 0;      // sum over regions of drm-total-* (else drm-memory-*)
     uint64_t residentBytes = 0;   // sum over regions of drm-resident-*
+    uint64_t purgeableBytes = 0;  // sum over regions of drm-purgeable-* (reported only)
 };
+// Which fdinfo figure is the row (B1032, #352): drm-resident-* -- the buffers
+// whose backing store is instantiated. drm-total-* counts every created
+// buffer whether or not it has pages (Documentation/gpu/drm-usage-stats.rst),
+// and on Panfrost that includes the Mesa BO cache's purged buffers and the
+// unfaulted part of the growable tiler heap: 175 MB total against 39 MB
+// resident on the ROCK 4D (review/B1032/README.md). The legacy
+// drm-memory-<region> key IS the resident figure (the same document), so a
+// kernel that publishes only that one still yields the right row.
 // Parse one /proc/<pid>/fdinfo/<fd> text. Units: a bare number is bytes, a
 // "KiB"/"MiB" suffix scales (Documentation/gpu/drm-usage-stats.rst).
 DrmFdinfo parseDrmFdinfo(const std::string& text);
@@ -133,8 +143,10 @@ struct GpuBufferInputs {
     // fdinfo, already deduplicated by client id
     uint32_t drmFds = 0;
     bool fdinfoMemoryKeys = false;
+    bool fdinfoResidentKeys = false;   // some fd published drm-resident-* (B1032)
     uint64_t fdinfoTotalBytes = 0;
     uint64_t fdinfoResidentBytes = 0;
+    uint64_t fdinfoPurgeableBytes = 0;
     DrmMaps maps;
     MemcgStat memcg;
     uint32_t cgroupProcs = 0;     // processes in our cgroup (1 = exclusive)

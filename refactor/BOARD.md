@@ -1053,6 +1053,19 @@ it without taking that measurement first.
   take pipelines too~~ (superseded: runner-2 carries `x86-build` since
   2026-10-11 and B1026's host+sha stamp makes a split pipeline safe);
   `ready_selftest.sh` not yet run on the clones.
+- **B1032** (B) → issue #352. On the ROCK 4D (Panfrost) the `gpu_buffers`
+  census took the render node's `drm-total-memory` (171 MB) where
+  `drm-resident-memory` was 38 MB, so lane 3's owned figure printed 207 MB
+  against lane 2's 58 MB for the same zone. Mechanism: Mesa's
+  `panfrost_open_device` creates a 128 MiB `PAN_BO_GROWABLE` tiler heap that
+  the kernel backs only on GPU fault; the total counts it whole, purgeable is
+  under 1 MB (not the BO cache), and the gap is constant while both figures
+  grow (`review/B1032/README.md`). `decideGpuBuffers()` now takes the resident
+  figure whenever a `drm-resident-*` key was published (the legacy
+  `drm-memory-*` key is already the resident size), prints
+  `fdinfo_purgeable=`, and the captured fdinfo is a fixture
+  (`GpuBufferCensus.FdinfoResidentIsTheRowNotTheTotal`). Lima lanes publish
+  no memory keys and are untouched.
 - ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
   mechanism (a partial `glBufferSubData` into a buffer the current Lima job
   references flushes the job and blocks in `lima_bo_wait`, once per write): the

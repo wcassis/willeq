@@ -158,7 +158,10 @@ DrmFdinfo parseDrmFdinfo(const std::string& text) {
             f.totalBytes += parseScaled(val);
         } else if (startsWith(line, "drm-resident-")) {
             f.hasMemoryKeys = true;
+            f.hasResidentKeys = true;
             f.residentBytes += parseScaled(val);
+        } else if (startsWith(line, "drm-purgeable-")) {
+            f.purgeableBytes += parseScaled(val);
         }
     }
     // The pre-6.5 spelling (drm-memory-<region>) carries the resident size
@@ -243,8 +246,13 @@ GpuBufferCensus decideGpuBuffers(const GpuBufferInputs& in) {
         c.gpuBuffersBytes = in.logicalPublished ? c.logicalBytes : 0;
         c.outsideRssAnon = false;
     } else if (in.fdinfoMemoryKeys) {
+        // B1032: the row is the RESIDENT figure. drm-total-* counts buffers
+        // with no backing store (Panfrost: the BO cache's purged buffers, the
+        // unfaulted tiler heap) -- 4.5x the resident bytes on the ROCK 4D.
+        // Without a drm-resident-* key the total came from the legacy
+        // drm-memory-<region> key, which is the resident size by definition.
         c.source = GpuBufferSource::DrmFdinfo;
-        c.gpuBuffersBytes = in.fdinfoTotalBytes;
+        c.gpuBuffersBytes = in.fdinfoResidentKeys ? in.fdinfoResidentBytes : in.fdinfoTotalBytes;
         c.outsideRssAnon = true;
     } else if (c.cgroupExclusive) {
         c.source = GpuBufferSource::MemcgShmem;
@@ -294,8 +302,10 @@ GpuBufferCensus readGpuBufferCensus() {
             if (dup) continue;
             if (nSeen < 16) seen[nSeen++] = f.clientId;
             in.fdinfoMemoryKeys = true;
+            in.fdinfoResidentKeys = in.fdinfoResidentKeys || f.hasResidentKeys;
             in.fdinfoTotalBytes += f.totalBytes;
             in.fdinfoResidentBytes += f.residentBytes;
+            in.fdinfoPurgeableBytes += f.purgeableBytes;
         }
         closedir(d);
     }
@@ -329,6 +339,7 @@ std::string gpuBuffersToLogLine(const std::string& point, const std::string& zon
     appendKV(out, "drm_fds", c.in.drmFds);
     appendKV(out, "fdinfo_total", c.in.fdinfoTotalBytes);
     appendKV(out, "fdinfo_resident", c.in.fdinfoResidentBytes);
+    appendKV(out, "fdinfo_purgeable", c.in.fdinfoPurgeableBytes);
     // B978: owned = RssAnon - gpu_driver + gpu_buffers (outside RssAnon only).
     appendKV(out, "owned_rss_anon", ownedRssAnonBytes);
     appendKV(out, "owned", ownedPlusGpuBuffers(ownedRssAnonBytes, c));
@@ -354,6 +365,7 @@ std::string gpuBuffersToJson(const GpuBufferCensus& c, uint64_t ownedRssAnonByte
     out += ",\"drmFds\":" + std::to_string(c.in.drmFds);
     out += ",\"fdinfoTotalBytes\":" + std::to_string(c.in.fdinfoTotalBytes);
     out += ",\"fdinfoResidentBytes\":" + std::to_string(c.in.fdinfoResidentBytes);
+    out += ",\"fdinfoPurgeableBytes\":" + std::to_string(c.in.fdinfoPurgeableBytes);
     out += ",\"ownedRssAnonBytes\":" + std::to_string(ownedRssAnonBytes);
     out += ",\"ownedBytes\":" + std::to_string(ownedPlusGpuBuffers(ownedRssAnonBytes, c));
     out += "}";
