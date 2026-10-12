@@ -5,10 +5,16 @@ Fresh temp layout per test; asserts each decision rule, that --dry-run deletes
 nothing, that a root outside <build|build-gles2>/ref is refused untouched, and
 that an empty live-ref list is refused (a failed ls-remote must never read as
 "every branch is gone").
+
+B1026 (#346): the host+sha build claim. ``--verify`` passes only for the host
+AND sha that wrote the claim; another host (fable pipeline 809: built on
+gitlab-runner-1, tested on gitlab-runner-2), another sha, a ref-only stamp and
+a missing stamp are all mismatches; and the prune still reads a claim stamp.
 """
 import datetime as _dt
 import io
 import os
+import socket
 import sys
 import tempfile
 import unittest
@@ -135,6 +141,87 @@ class PruneRefBuildTrees(unittest.TestCase):
         ref, when = p.read_stamp(os.path.join(t, p.STAMP))
         self.assertEqual(ref, "task/B1012-x")
         self.assertEqual(when, NOW)
+
+
+class BuildClaimStamp(unittest.TestCase):
+    """B1026: the host+sha claim that makes a split pipeline safe."""
+
+    SHA = "0136137b" + "0" * 32
+    OTHER_SHA = "84405cef" + "0" * 32
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.t = os.path.join(self.tmp.name, "build", "ref", "fable")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def verify(self, host, sha):
+        out = io.StringIO()
+        ok = p.verify_stamp(self.t, host, sha, out=out)
+        return ok, out.getvalue()
+
+    def test_same_host_same_sha_matches(self):
+        p.write_stamp(self.t, "fable", NOW, host="gitlab-runner-1", sha=self.SHA)
+        ok, log = self.verify("gitlab-runner-1", self.SHA)
+        self.assertTrue(ok)
+        self.assertIn("stamp MATCH", log)
+
+    def test_other_host_is_a_mismatch_naming_both(self):
+        # pl809: build job 4006 on runner-1, test job 4007 on runner-2.
+        p.write_stamp(self.t, "fable", NOW, host="gitlab-runner-1", sha=self.SHA)
+        ok, log = self.verify("gitlab-runner-2", self.SHA)
+        self.assertFalse(ok)
+        self.assertIn("stamp MISMATCH", log)
+        self.assertIn("stored host=gitlab-runner-1", log)
+        self.assertIn("expected host=gitlab-runner-2", log)
+
+    def test_other_sha_is_a_mismatch(self):
+        p.write_stamp(self.t, "fable", NOW, host="gitlab-runner-2", sha=self.OTHER_SHA)
+        ok, log = self.verify("gitlab-runner-2", self.SHA)
+        self.assertFalse(ok)
+        self.assertIn(f"stored host=gitlab-runner-2 sha={self.OTHER_SHA}", log)
+        self.assertIn(f"expected host=gitlab-runner-2 sha={self.SHA}", log)
+
+    def test_missing_stamp_is_a_mismatch(self):
+        ok, log = self.verify("gitlab-runner-1", self.SHA)
+        self.assertFalse(ok)
+        self.assertIn("no stamp", log)
+        os.makedirs(self.t)
+        ok, _ = self.verify("gitlab-runner-1", self.SHA)
+        self.assertFalse(ok)
+
+    def test_ref_only_stamp_claims_no_build(self):
+        # The pre-configure stamp wipes an earlier claim, so a build that then
+        # fails leaves a tree nothing trusts.
+        p.write_stamp(self.t, "fable", NOW, host="gitlab-runner-1", sha=self.SHA)
+        p.write_stamp(self.t, "fable", NOW)
+        ok, log = self.verify("gitlab-runner-1", self.SHA)
+        self.assertFalse(ok)
+        self.assertIn("ref-only stamp", log)
+
+    def test_prune_still_reads_a_claim_stamp(self):
+        p.write_stamp(self.t, "task/B1026-x", NOW, host="h", sha=self.SHA)
+        ref, when = p.read_stamp(os.path.join(self.t, p.STAMP))
+        self.assertEqual(ref, "task/B1026-x")
+        self.assertEqual(when, NOW)
+        action, _ = p.decide(self.t, {"task/B1026-x"}, NOW, 14)
+        self.assertEqual(action, "keep")
+
+    def test_main_stamp_then_verify_exit_codes(self):
+        rc = p.main(["--stamp", self.t, "--ref", "fable", "--host", "gitlab-runner-1", "--sha", self.SHA])
+        self.assertEqual(rc, 0)
+        self.assertEqual(p.main(["--verify", self.t, "--host", "gitlab-runner-1", "--sha", self.SHA]), 0)
+        self.assertEqual(p.main(["--verify", self.t, "--host", "gitlab-runner-2", "--sha", self.SHA]), 1)
+        self.assertEqual(p.main(["--verify", self.t, "--host", "gitlab-runner-1", "--sha", self.OTHER_SHA]), 1)
+        with self.assertRaises(SystemExit):
+            p.main(["--verify", self.t, "--host", "gitlab-runner-1"])
+
+    def test_main_stamp_defaults_host_to_this_machine(self):
+        p.main(["--stamp", self.t, "--ref", "fable", "--sha", self.SHA])
+        fields = p.read_stamp_fields(os.path.join(self.t, p.STAMP))
+        self.assertEqual(fields["host"], socket.gethostname())
+        self.assertEqual(fields["sha"], self.SHA)
 
 
 if __name__ == "__main__":
