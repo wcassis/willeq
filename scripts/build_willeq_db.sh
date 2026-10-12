@@ -16,17 +16,20 @@
 # tools/willeq_db_builder.cpp is the source of truth):
 #   from the EQ client tree  spells_us.txt, eqstr_us.txt, dbstr_us.txt,
 #                            SoundAssets.txt, AnimationSounds.txt,
-#                            mp3index.txt, eqlsstr_us.txt
+#                            mp3index.txt
 #   from data/               item_models.json
 #   from config/             race_models.json
 # T452 (board B468): there is no longer an optional --s3d-index input to leave
 # out. It built an `s3d_assets` table that never shipped, and its only
 # reachable consumer had been querying a table that did not exist since
 # 2026-03-21. The flag, the loader and tools/s3d_index_builder are gone.
-# T456 (board B476) removed a tenth, data/equipment_models.json: the table it
+# T456 (board B476) removed data/equipment_models.json: the table it
 # fed, `equipment_models`, had no reader either (the model index resolves live
-# through EquipmentModelLoader::buildEquipmentIndex()). So the NINE inputs
-# above are ALL of them, and metadata.input_digest moved when the tenth went.
+# through EquipmentModelLoader::buildEquipmentIndex()).
+# B606 (#189) removed eqlsstr_us.txt: its `login_strings` table's only client
+# reader, WilleqDatabase::getLoginString(), had zero production callers, so the
+# input went with the table. The EIGHT inputs above are ALL of them, and
+# metadata.input_digest moves when one of them does.
 #
 # Usage:
 #   scripts/build_willeq_db.sh [--check] [--bin-dir DIR] [--eq-path DIR]
@@ -112,12 +115,12 @@ if [ ! -x "$BIN_DIR/willeq_db_builder" ]; then
     exit 3
 fi
 
-# The client's *.txt files are seven of the nine inputs. A missing tree is
-# not a degraded build -- it is a database with seven empty tables, which
+# The client's *.txt files are six of the eight inputs. A missing tree is
+# not a degraded build -- it is a database with six empty tables, which
 # would silently replace a good one -- so refuse rather than build it.
 if [ ! -r "$EQ_PATH/spells_us.txt" ]; then
     echo "ERROR: $EQ_PATH/spells_us.txt is not readable." >&2
-    echo "       Seven of the nine inputs come out of the EQ client tree;" >&2
+    echo "       Six of the eight inputs come out of the EQ client tree;" >&2
     echo "       building without it would ship empty spells/strings/sound" >&2
     echo "       tables. Point --eq-path at the client directory." >&2
     exit 3

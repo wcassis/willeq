@@ -1008,7 +1008,12 @@ it without taking that measurement first.
   `gpu_unnamed_steady` crowd-tour guard **stays RED on qeynos2 and gfaydark as
   a documented known condition** (same class as B988/#307), the bound is NOT
   re-scoped and no buffering change is allowed; the real levers (varying
-  stride, per-frame vertex volume) are B1013 #334. The residual + mechanism +
+  stride, per-frame vertex volume) are B1013 #334 — B1013's investigation
+  found those are not levers either (the draw-time pool is a Lima BO cache
+  frozen at the zone-in peak, cost-sheet fact 13) and B1013 is now the
+  four-card plan (timeline counters, Pi burst measurement, zone-in
+  frames-in-flight cap, a BO-cache trim in the shipped Mesa prefix). The
+  residual + mechanism +
   per-change table stand in `refactor/B997/README.md` (step 4 + the
   "Known condition (ruling a)" section). The `EQT_SG_BATCH` batch's ship
   decision is made by the DETERMINISTIC x86 door pixel A/B (ctest
@@ -1036,6 +1041,7 @@ it without taking that measurement first.
   B726/B979 invariants), so the card blocks with the measurement.
 - **B1031** (B, platform) → issue #351. macOS dev-platform probe; card 2 = fix. Card 1 (PROVE) on `task/B1031-macos-probe`: the headless configure succeeds on the M4 mini and the keep-going build fails; the error census by TU and KIND, the linked binaries, the ctest results and the card-2 fix list are in `refactor/B1031/README.md`.
 - **B1026** (B, CI) → issue #346. Since gitlab-runner-2 took the `x86-build` tag (2026-10-11) a pipeline's `build` and `test` jobs can land on different hosts, and the stages pass no artifacts: fable pipeline 809 built on gitlab-runner-1 (job 4006) and tested runner-2's pre-B603 binary (job 4007), a false red; MR pipeline 805's green was the same luck. **FIX on `task/B1026-ci-host-stamp`** (Will ruled option (a)): the build steps are ONE shell function (`.build_tree` → `willeq_build_tree`); the tree gets a ref-only stamp before the configure and a host+sha claim (`.willeq_ref` `host=`/`sha=`, `prune_ref_build_trees.py --stamp ... --host --sha`) only after `cmake --build` succeeds; `test` and `client-ledger-live` run `--verify` first and, on a mismatch, print `B1026 STAMP MISMATCH`, rebuild in-job and verify again; `gate` builds its own GLES2 tree in-job. Pinned by `CiBuildTreeStamp` (hygiene) + `PruneRefBuildTrees`; `docs/ci.md` "Two x86 runners: the host+sha stamp"; evidence `refactor/B1026/README.md`.
+- **B1038** (B, CI/build) → issue #358. The headless configuration (`EQT_GRAPHICS=OFF`, the `--no-graphics` client) did not compile on ANY host and no job built it (`hygiene` configures OFF but compiles nothing; `build` is ON) -- found by B1031's macOS probe, confirmed on Linux (`review/B1031/linux_crosscheck_pass2.tsv`): `application.cpp`'s steady_60s census read `m_renderer`, `test_data_paths`/`test_ranged_attack_wire`/`test_detail_view_distance` include `irrlicht.h`, and the T260 cases of `test_zone_connection_flow_identity.cpp` call the graphics-only bridge seam; behind those, 8 test executables did not link (cases calling `GRAPHICS_SOURCES` TUs) and 5 cases asserted graphics-only behaviour. Also `cereal` was included by `packet.h`/`daybreak_structs.h` and never checked by CMake. **FIX on `task/B1038-headless-build`**: guards only (the census; renderer-path test cases `#ifdef EQT_HAS_GRAPHICS`; `test_detail_view_distance`, `test_door_motion`, `test_texture_alpha_census`, `test_ui_sprite_roster` registered only under graphics), `FIND_PATH(CEREAL_INCLUDE_DIR ...)` with a `FATAL_ERROR` naming `libcereal-dev` / Homebrew `cereal` (not vendored -- Will's call), and the `build-headless` CI job (`build` stage, shared `willeq_build_tree` with `WILLEQ_HEADLESS=1`, own `build-headless/ref/<slug>` tree, `ctest -LE hygiene` in-job). Pinned by `CiBuildTreeStamp` + `PruneRefBuildTrees`; `docs/ci.md` "The headless build"; evidence `refactor/B1038/README.md`.
 - ~~**B1012** (P, CI) → issue #333.~~ **CLOSED 2026-10-09 (B1012, `task/B1012-per-ref-build-trees`).** Concurrent MR pipelines on the `concurrent = 1` x86 runner shared ONE warm `build/`: MR !119's `test` stage (pipeline 697) ran over binaries MR !118's `build` stage (698) had just written and failed on tests absent from its own source (rescued by a one-off cold run). Will chose per-ref build directories with monitoring and cleanup: `$BUILD_TREE = build/ref/$CI_COMMIT_REF_SLUG`, `$GLES2_TREE = build-gles2/ref/$CI_COMMIT_REF_SLUG` (the MR pipeline's slug is its source branch, so push + MR pipelines share a tree), trees stamped with `.willeq_ref`, and the `prune-build-trees` job on every fable pipeline (`scripts/ci/prune_ref_build_trees.py`: ref gone from the remote / stamp > 14 d / unstamped → delete, legacy root swept once, census + `du`/`df` in `prune.log`; rules pinned by the `PruneRefBuildTrees` hygiene test). `docs/ci.md` "One warm tree per ref".
 - ~~**B1011** (A, review) → issue #332.~~ **CLOSED 2026-10-09 (B1011, `task/B1011-wave6-corrections`).** The orchestrator's review of the wave-6 merges, applied over the local models' verdicts (Will, 2026-10-09): (1) the B892 swim event's `isLevitating` field, its flymode read and `setSwimmingState()`'s parameter are DELETED — that arm cleared a self-cast hover on every water transition and nothing restored it (`SwimmingEventCarriesNoSurfaceHeight` fails if the payload carries levitation again; `setLevitationState()` is the one writer); (2) the B893 apex is a measured LOWER BOUND (one wire sample per jump, four of five at an identical +2.509), owed from the committed video, and the fall curve is the oracle's nine measured points interpolated (`kFallDamageTable`, pinned per point by `EveryMeasuredOraclePointIsReproduced`) instead of the 1.5/unit ramp that read 8..23 where the oracle read 5 — one level-60 GM series, level/HP dependence owed; (3) `scripts/scenario.sh` takes the inventory snapshot whenever `--inventory-chars` is set and derives Testchar for `ranged_single_shot` regardless of `--seed-sql` (B900 had both inside the seed branch: silent no-op restore / kit left behind); (4) the B972-FT glFlush write-up's gfaydark sign corrected on its branch (`97cbf657`) and option (d) posted on #326.
 - ~~**B1009** (A) → issue #330. `HCMap::Load` reserved vertex/index/model/poly
@@ -11251,9 +11257,14 @@ B712–B719 unused.
   `HotkeyBinding::toString`, `ConsoleRenderer::setStatusUpdateInterval` (the
   one tests-only method on a class the census sees no live use of), and
   `focusTextEntry` -- 8 rows. The hotkey rows sit beside T466's territory
-  (`hotkey_manager.cpp`) and were not touched. Found by T458.
+  (`hotkey_manager.cpp`) and were not touched. Found by T458. **`HotkeyBinding::toString`
+  struck early (2026-10-12, `task/kb-b606-renderer-asset-data-zero-callers`):**
+  a B606 deletion cascaded it -- its B605 row was tests-only only by
+  name-collision with the free `toString(SpellVisualSource)` (three test
+  lines), which B606 removed; the dead one-line delegate (over the live
+  `HotkeyManager::bindingToString`) went with it. `refactor/B606/README.md`.
 
-- **B606** (B, unreached) **Renderer, asset and data API with no production → issue #189
+- ~~**B606** (B, unreached) **Renderer, asset and data API with no production → issue #189
   caller.** `IrrlichtRenderer::setNewUIEnabled`,
   `EntityRenderer::loadEquipmentModels/loadGlobalCharacters` (not called even
   by the zero-caller `loadGlobalAssets`, B494, which T468 deleted; since T485
@@ -11269,7 +11280,15 @@ B712–B719 unused.
   `reloadRaceMappings`, `LiftTravelSeconds`, `TargetTypeRestrictsCreature`,
   `toString(SpellVisualSource)`, `parseFormattedMessageText`,
   `optionsClipPlaneStep`, `optionsVolumeFraction`, `optionsVolumeStep` -- 18
-  rows. Found by T458.
+  rows. Found by T458.~~ **CLOSED 2026-10-12** (`task/kb-b606-renderer-asset-data-zero-callers`,
+  `refactor/B606/README.md`): all 18 ratchet rows deleted with their tests-only
+  nets; `EntityRenderer::loadEquipmentModels/loadGlobalCharacters` kept (tool
+  callers, no longer census rows); the `login_strings` table dropped with its
+  only reader (db rebuilt, no version bump); `applyStoredZoneEnvironment`
+  deleted (the zone-load Step 10 applies a strict superset); one B605 row
+  (`HotkeyBinding::toString`) cascaded out (name collision with the deleted
+  free `toString(SpellVisualSource)`). ZeroCallers RED 21 stale → GREEN 271
+  tests-only.
 
 - **B607** (P) **The zero-caller census INVENTED dead functions through a
   stream operator, and one of them was a T455 exemption.**

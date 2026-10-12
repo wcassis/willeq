@@ -126,6 +126,7 @@ TEST(SelfRelocationHeading, TheSelfStoreTakesTheInternalConvention) {
 // was the RAW server heading (160), not the internal one (480) the same handler
 // had just stored -- so a server relocation arriving as a self OP_ClientUpdate
 // aimed the camera somewhere the server never asked for.
+#ifdef EQT_HAS_GRAPHICS  // B1038: OnSpawnMovedGraphics is called only under EQT_HAS_GRAPHICS (entities_component_updates.cpp)
 TEST(SelfRelocationHeading, AServerRelocationReachesTheCameraInTheInternalConvention) {
     TestBridge bridge;
     EverQuest eq = MakeEq();
@@ -145,11 +146,13 @@ TEST(SelfRelocationHeading, AServerRelocationReachesTheCameraInTheInternalConven
         << ") that the same handler stored in ctx_.self -- B399";
     EXPECT_NE(heading512, kRawHeading512);
 }
+#endif  // EQT_HAS_GRAPHICS
 
 // The other half of the asymmetry must NOT move: an entity row still carries
 // the server's heading verbatim. If this ever goes red, the fix above leaked
 // into the entity convention, which is the thing docs/CLAUDE.md forbids
 // unifying.
+#ifdef EQT_HAS_GRAPHICS  // B1038: OnSpawnMovedGraphics is called only under EQT_HAS_GRAPHICS (entities_component_updates.cpp)
 TEST(SelfRelocationHeading, TheEntityRowStillCarriesTheServerHeadingVerbatim) {
     TestBridge bridge;
     EverQuest eq = MakeEq();
@@ -169,5 +172,6 @@ TEST(SelfRelocationHeading, TheEntityRowStillCarriesTheServerHeadingVerbatim) {
     EXPECT_FLOAT_EQ(entityHeading, 112.5f)
         << "the entity row's heading is no longer the raw server degrees";
 }
+#endif  // EQT_HAS_GRAPHICS
 
 }  // namespace

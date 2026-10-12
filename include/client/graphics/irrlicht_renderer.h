@@ -559,7 +559,6 @@ public:
     // U03: Static layout UI
     UIRenderer* getUIRenderer() { return frame_->uiRenderer_.get(); }
     bool isNewUIEnabled() const { return frame_->newUIEnabled_; }
-    void setNewUIEnabled(bool v) { frame_->newUIEnabled_ = v; }
 
     // Constrained texture cache — owned by Application, set before initLoadingScreen()
     void setConstrainedTextureCache(ConstrainedTextureCache* cache) { constrainedTextureCache_ = cache; }

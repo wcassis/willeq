@@ -483,11 +483,9 @@ BOARD_REASONS.update({
     "B603":
         "gameplay-manager control API with no production caller -- CombatManager's auto-loot/aggro/flee/auto-fire configuration, SpellManager's cast-by-id, gem swap and two callback setters, BuffManager's removals and ActiveBuff's formatting, the group-decline and move-speed mutators, ZoneLines::checkMovement, WhoAllEntry::isLinkdead; the hotbar-slot mutators and calcBankBagSlotId reclassified seam in B603 (issue #187) -- their tests pin live behaviour",
     "B605":
-        "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval",
+        "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, ConsoleRenderer's status interval (B606 deleted B605's HotkeyBinding::toString: a dead delegate whose only tests/ callers were the SpellVisualSource toString lines B606 removed)",
     "B899":
         "the T415/T419 recipe window (TradeskillPanelState, EQUI_TradeskillWnd) -- since B899 (#215, Will 2026-09-23: the recipe half is out of baseline) no event opens it, so its close applier is reached only from its tests; deleting the window is a follow-up, not done mid-unit",
-    "B606":
-        "renderer, asset and data API with no production caller -- setNewUIEnabled, EntityRenderer's two global loaders (not called even by the zero-caller loadGlobalAssets, which T468 deleted), the superseded applyStoredZoneEnvironment, RDPServer::setCertificate, BackgroundWorkQueue's pollAll/batch hooks, StringDatabase's legacy text loaders, and eight free helpers (race reload, lift travel, body-type restriction, SpellVisualSource toString, formatted-message text parse, three options-slider conversions)",
     "B972":
         "the particle VBO path's GL-handle accessor -- the draw reads the member itself; the accessor (name_tag_batch's buffer-handle convention) exists for the stream-buffer test suite's observation window, and no production or test caller has landed yet",
 })
@@ -1114,8 +1112,6 @@ EXEMPT_TESTS_GROUPS = {
     ("PlayerState", "hasMovementTarget"): "observer",
     ("PlayerState", "totalBankCopperValue"): "observer",
     ("PlayerState", "totalCopperValue"): "observer",
-    ("RDPServer", "getCertPath"): "observer",
-    ("RDPServer", "getKeyPath"): "observer",
     ("RaidRoster", "CountInGroup"): "observer",
     ("RaidRoster", "Find"): "observer",
     ("RaidRoster", "Size"): "observer",
@@ -1156,8 +1152,6 @@ EXEMPT_TESTS_GROUPS = {
     ("SpellState", "isGemReady"): "observer",
     ("SpellState", "memorizingGemSlot"): "observer",
     ("SpellState", "scribedSpellCount"): "observer",
-    ("StringDatabase", "isDbStrLoaded"): "observer",
-    ("StringDatabase", "isEqStrLoaded"): "observer",
     ("TradeState", "pendingPartnerId"): "observer",
     ("TradeState", "pendingPartnerName"): "observer",
     ("TradeskillPanelState", "maxRecipeScroll"): "observer",
@@ -1239,25 +1233,19 @@ EXEMPT_TESTS_GROUPS = {
     ("CommandProcessor", "setEchoEnabled"): "B605",
     ("CommandProcessor", "unregisterCommand"): "B605",
     ("ConsoleRenderer", "setStatusUpdateInterval"): "B605",
-    ("HotkeyBinding", "toString"): "B605",
+    # B605's HotkeyBinding::toString row is GONE: it was a dead one-line
+    # delegate to the live static HotkeyManager::bindingToString, and its only
+    # tests/ callers were toString(SpellVisualSource::...) lines in
+    # test_spell_visual_selection.cpp that B606 deleted (the census attributes
+    # a bare toString( call to it). Dead code whose only net was its own test
+    # is deleted with the test (T458's rule), not re-exempted.
     ("HotkeyManager", "isMovementKey"): "B605",
     ("HotkeyManager", "modeNameToEnum"): "B605",
-    ("(free)", "LiftTravelSeconds"): "B606",
-    ("(free)", "TargetTypeRestrictsCreature"): "B606",
-    ("(free)", "optionsClipPlaneStep"): "B606",
-    ("(free)", "optionsVolumeFraction"): "B606",
-    ("(free)", "optionsVolumeStep"): "B606",
-    ("(free)", "parseFormattedMessageText"): "B606",
-    ("(free)", "reloadRaceMappings"): "B606",
-    ("(free)", "toString"): "B606",
-    ("BackgroundWorkQueue", "pollAll"): "B606",
-    ("BackgroundWorkQueue", "setBatchHooks"): "B606",
-    ("IrrlichtRenderer", "setNewUIEnabled"): "B606",
-    ("RDPServer", "setCertificate"): "B606",
-    ("StringDatabase", "loadDbStrFile"): "B606",
-    ("StringDatabase", "loadEqStrFile"): "B606",
-    ("WilleqDatabase", "getLoginString"): "B606",
-    ("ZoneLifecycleComponent", "applyStoredZoneEnvironment"): "B606",
+    # B606 (#189) is executed: all sixteen rows here were deleted together
+    # with their only (tests/) callers. B606 also exposed two functions whose
+    # live caller was a deleted row -- eqt::parseFormattedMessage (chat runs
+    # parseFormattedMessageArgs) and the B605 HotkeyBinding::toString above --
+    # both deleted with their tests rather than re-boarded.
 }
 
 EXEMPT = {k: ("boarded", BOARD_REASONS[v] + " " + v)

@@ -55,8 +55,9 @@ Three more modes the pipeline uses:
     and the disk is not paid twice.
 
 Safety: a ``--root`` is only pruned if it is named ``ref`` and its parent is one
-of the two known build roots (``build`` / ``build-gles2``) by name; a
-``--legacy-root`` must itself be named one of those two; every deleted path is
+of the known build roots (``build`` / ``build-gles2`` / ``build-headless``, the
+last since B1038) by name; a ``--legacy-root`` must itself be named ``build``
+or ``build-gles2``; every deleted path is
 ``<root>/<one bare listdir entry>``, and nothing outside the roots given on the
 command line is ever touched.
 """
@@ -69,6 +70,9 @@ import sys
 
 STAMP = ".willeq_ref"
 KNOWN_ROOT_PARENTS = ("build", "build-gles2")
+# B1038 (#358): the build-headless job's per-ref trees. A --root parent only:
+# build-headless/ never had a pre-B1012 shared tree, so it is no legacy root.
+KNOWN_REF_PARENTS = KNOWN_ROOT_PARENTS + ("build-headless",)
 
 
 def read_stamp(path):
@@ -187,8 +191,8 @@ def prune(roots, live_refs, *, now=None, max_age_days=14, dry_run=False, out=sys
             print(f"{root}: absent, nothing to prune", file=out)
             continue
         parent = os.path.basename(os.path.dirname(root))
-        if os.path.basename(root) != "ref" or parent not in KNOWN_ROOT_PARENTS:
-            raise SystemExit(f"refusing: {root} is not <build|build-gles2>/ref")
+        if os.path.basename(root) != "ref" or parent not in KNOWN_REF_PARENTS:
+            raise SystemExit(f"refusing: {root} is not <build|build-gles2|build-headless>/ref")
         for name in sorted(os.listdir(root)):
             tree = os.path.join(root, name)
             if not os.path.isdir(tree) or os.path.islink(tree):
@@ -233,7 +237,7 @@ def sweep_legacy_root(root, *, dry_run=False, out=sys.stdout):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", action="append", default=[],
-                    help="a <build|build-gles2>/ref directory (repeatable)")
+                    help="a <build|build-gles2|build-headless>/ref directory (repeatable)")
     ap.add_argument("--live-refs-file",
                     help="file with one live ref name per line (git ls-remote --heads)")
     ap.add_argument("--max-age-days", type=float, default=14.0)

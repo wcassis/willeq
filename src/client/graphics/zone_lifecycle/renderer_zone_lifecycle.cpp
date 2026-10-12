@@ -375,62 +375,12 @@ void ZoneLifecycleComponent::unloadZone() {
     eqt::memory::resetPeaks();
 }
 
-void ZoneLifecycleComponent::setZoneEnvironment(uint8_t skyType, uint8_t zoneType,
-                                          const uint8_t fogRed[4], const uint8_t fogGreen[4], const uint8_t fogBlue[4],
-                                          const float fogMinClip[4], const float fogMaxClip[4]) {
-    // Set sky type if sky renderer is available
-    if (ctx_.skyRenderer && ctx_.skyRenderer->isInitialized()) {
-        ctx_.skyRenderer->setSkyType(skyType, ctx_.currentZoneName);
-
-        // Determine if sky should be shown based on zone type and user settings
-        // zoneType values from server: 1=Outdoors, 2=Dungeons, 255(0xFF)=Any/default
-        // Only disable sky for explicit dungeon zones (type 2)
-        bool isDungeon = (zoneType == 2);
-        ctx_.isIndoorZone = isDungeon;
-
-        // Check user setting and constrained config
-        bool skySettingEnabled = owner_.getDisplaySettings().skyEnabled;
-        bool skyAllowed = !isDungeon && skySettingEnabled && ctx_.config.constrainedConfig.skyRendering;
-        ctx_.skyRenderer->setEnabled(skyAllowed);
-
-        LOG_DEBUG(MOD_GRAPHICS, "Zone environment: sky type {}, zone type {} ({}), sky {} (setting={}, constrained={})",
-                  skyType, zoneType, isDungeon ? "dungeon" : "outdoor",
-                  skyAllowed ? "enabled" : "disabled",
-                  skySettingEnabled ? "on" : "off",
-                  ctx_.config.constrainedConfig.skyRendering ? "on" : "off");
-    }
-
-    // Apply server-provided max clip plane as ceiling on render distance
-    // fogMaxClip[0] is the primary clip distance for the zone
-    zoneMaxClip_ = (fogMaxClip[0] > 0.0f) ? fogMaxClip[0] : 99999.0f;
-    // Re-apply render distance with the new zone cap
-    owner_.setRenderDistance(userRenderDistance_);
-
-    LOG_INFO(MOD_GRAPHICS, "Zone max clip plane: {:.0f} (effective render distance: {:.0f}, user setting: {:.0f})",
-             zoneMaxClip_, ctx_.renderDistance, userRenderDistance_);
-
-    // Apply fog color from zone data
-    if (ctx_.driver && ctx_.fogEnabled) {
-        irr::video::SColor fogColor(255, fogRed[0], fogGreen[0], fogBlue[0]);
-
-        float fogEnd = ctx_.renderDistance;
-        float fogStart = ctx_.renderDistance - ctx_.fogThickness;
-        fogStart = std::max(0.0f, fogStart);
-
-        ctx_.driver->setFog(
-            fogColor,
-            irr::video::EFT_FOG_LINEAR,
-            fogStart,
-            fogEnd,
-            0.0f,  // Density (unused for linear fog)
-            true,  // Pixel fog
-            false  // Range fog
-        );
-
-        LOG_DEBUG(MOD_GRAPHICS, "Zone fog color: RGB({},{},{}), distances: {:.0f}-{:.0f} (renderDistance={:.0f})",
-                  fogRed[0], fogGreen[0], fogBlue[0], fogStart, fogEnd, ctx_.renderDistance);
-    }
-}
+// B606 (#189) deleted ZoneLifecycleComponent::setZoneEnvironment() -- its sole
+// caller was applyStoredZoneEnvironment(), itself a zero-caller superseded
+// duplicate of renderer_zone_load_env.cpp's Step 10 apply path (the latter is a
+// strict superset: same sky/indoor/fog/clip fields plus the weather config).
+// storeZoneEnvironment() below survives; Step 10 reads storedZoneEnvironment_
+// and the writer is application_zone_loading.cpp.
 
 void ZoneLifecycleComponent::buildZonePlaceholder(float playerIrrX, float playerIrrY, float playerIrrZ) {
     if (!ctx_.collisionMap || !ctx_.collisionMap->IsLoaded() || !ctx_.smgr || !ctx_.driver) return;
@@ -765,17 +715,6 @@ void ZoneLifecycleComponent::storeZoneEnvironment(uint8_t skyType, uint8_t zoneT
         storedZoneEnvironment_.fogMaxClip[i] = fogMaxClip[i];
     }
     storedZoneEnvironment_.pending = true;
-}
-
-void ZoneLifecycleComponent::applyStoredZoneEnvironment() {
-    if (storedZoneEnvironment_.pending) {
-        setZoneEnvironment(storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType,
-                           storedZoneEnvironment_.fogR, storedZoneEnvironment_.fogG, storedZoneEnvironment_.fogB,
-                           storedZoneEnvironment_.fogMinClip, storedZoneEnvironment_.fogMaxClip);
-        storedZoneEnvironment_.pending = false;
-        LOG_INFO(MOD_GRAPHICS, "Applied stored zone environment (sky={}, ztype={})",
-                 storedZoneEnvironment_.skyType, storedZoneEnvironment_.zoneType);
-    }
 }
 
 // ============================================================================
