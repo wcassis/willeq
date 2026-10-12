@@ -83,6 +83,12 @@ const Waiver kWaivers[] = {
     {"tests/test_item_model_mapping.cpp", "dir = tmp ? tmp :",
      "the DIRECTORY fallback when TMPDIR is unset; the file name joined onto "
      "it one statement later carries getpid() (TempDbPath())"},
+    {"tests/test_string_database.cpp", "dir = tmp ? tmp :",
+     "the DIRECTORY fallback when TMPDIR is unset; the file name joined onto "
+     "it one statement later carries getpid() (TempDbPath())"},
+    {"tests/test_display_text_from_db.cpp", "dir = tmp ? tmp :",
+     "the DIRECTORY fallback when TMPDIR is unset; the file name joined onto "
+     "it one statement later carries this address (TempEqStrDb)"},
 };
 
 const Waiver* FindWaiver(const std::string& file, const std::string& statement) {

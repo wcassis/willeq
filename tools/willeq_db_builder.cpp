@@ -15,7 +15,7 @@
 //   item_models     - Item ID to model ID mapping
 //   race_models     - Race ID to model code + S3D file
 //   sound_assets    - Sound file references from SoundAssets.txt
-//   animation_sounds, music_files, login_strings, metadata
+//   animation_sounds, music_files, metadata
 //
 // T450: this list used to name a `zone_points` table as well. There is no
 // such loader and no such table -- zone lines ship as data/zone_lines/*.json,
@@ -85,9 +85,9 @@ std::string trim(const std::string& s) {
 // it, missed in the snd*.pfs index, and returned the one failure exit that
 // does not log, while the log line it did print ended in a CR and rendered as
 // a clean "BuyItem.WAV" -- which is why T386 measured 31 silent sounds and
-// could not see the cause. Four other tables carried the same taint
-// (eqstrings, dbstrings, login_strings, and the race_data T395 later
-// deleted). Read lines through this,
+// could not see the cause. Three other tables carried the same taint
+// (eqstrings, dbstrings, and login_strings, which B606 (#189) later dropped
+// along with its zero-caller reader; the race_data T395 later deleted). Read lines through this,
 // never std::getline() directly, for any file that comes from the client.
 bool readLine(std::istream& in, std::string& line) {
     if (!std::getline(in, line)) return false;
@@ -274,7 +274,6 @@ int main(int argc, char** argv) {
         {"sound_assets",     eqPath + "/SoundAssets.txt"},
         {"animation_sounds", eqPath + "/AnimationSounds.txt"},
         {"music_index",      eqPath + "/mp3index.txt"},
-        {"login_strings",    eqPath + "/eqlsstr_us.txt"},
     };
 
     auto inputPath = [&](const char* label) -> const std::string& {
@@ -390,15 +389,11 @@ int main(int argc, char** argv) {
         totalEntries += n;
     }
 
-    // ── Login Strings ──
-    {
-        auto start = std::chrono::steady_clock::now();
-        int n = loadLoginStrings(db, inputPath("login_strings"));
-        auto elapsed = std::chrono::duration<double, std::milli>(
-            std::chrono::steady_clock::now() - start).count();
-        printf("  login_strings:%6d entries (%.0f ms)\n", n, elapsed);
-        totalEntries += n;
-    }
+    // B606 (#189): the login_strings table (eqlsstr_us.txt) is no longer
+    // built. Its only client reader, WilleqDatabase::getLoginString(), had
+    // zero production callers, so the table went with it -- the shipped
+    // content tests (EveryTableTheDatabaseShipsIsOneTheClientQueries) make
+    // a future dead table loud.
 
     // ── Metadata ──
     writeMetadata(db, totalEntries, computeInputDigest(inputs));

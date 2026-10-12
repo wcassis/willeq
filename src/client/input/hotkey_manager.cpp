@@ -284,10 +284,6 @@ bool HotkeyBinding::matches(irr::EKEY_CODE key, bool ctrl, bool shift, bool alt)
     return modifiers == inputMods;
 }
 
-std::string HotkeyBinding::toString() const {
-    return HotkeyManager::bindingToString(*this);
-}
-
 // =============================================================================
 // HotkeyManager Implementation
 // =============================================================================

@@ -40,10 +40,6 @@ namespace EQ {
 bool BodyTypeSatisfiesTargetType(SpellTargetType target_type, uint8_t bodytype,
                                  bool is_corpse);
 
-// True if `target_type` restricts targets by body type (or corpse state) at
-// all -- i.e. if BodyTypeSatisfiesTargetType() can ever return false for it.
-bool TargetTypeRestrictsCreature(SpellTargetType target_type);
-
 }  // namespace EQ
 
 #endif  // EQT_SPELL_BODY_TYPE_TARGET_H

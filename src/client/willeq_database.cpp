@@ -174,7 +174,6 @@ void WilleqDatabase::close() {
     fin(stmtGetSoundAsset_);
     fin(stmtGetAnimSound_);
     fin(stmtGetMusicFile_);
-    fin(stmtGetLoginString_);
 
     if (db_) {
         sqlite3_close(db_);
@@ -195,9 +194,9 @@ std::string WilleqDatabase::colText(sqlite3_stmt* stmt, int col) {
 }
 
 // T256: the string tables were built from CRLF text files and every row
-// (5901 eqstrings, 8305 dbstrings, 470 login_strings at db version 4) ends
-// in '\r'. The legacy text-file loader in StringDatabase strips it; this
-// path did not, so every SQLite-served message rendered "...^M" in chat.
+// (5901 eqstrings, 8305 dbstrings; the login_strings table T256 also served)
+// ends in '\r'. The legacy text-file loader in StringDatabase stripped it;
+// this path did not, so every SQLite-served message rendered "...^M" in chat.
 std::string WilleqDatabase::colTextNoCR(sqlite3_stmt* stmt, int col) {
     std::string s = colText(stmt, col);
     while (!s.empty() && s.back() == '\r') {
@@ -674,27 +673,6 @@ std::string WilleqDatabase::getMusicFile(int index) {
 
     if (sqlite3_step(stmt) == SQLITE_ROW)
         return colText(stmt, 0);
-    return "";
-}
-
-// ============================================================================
-// Login string queries
-// ============================================================================
-
-std::string WilleqDatabase::getLoginString(uint32_t stringId) {
-    ScopedQueryTimer timer(stats_);
-    std::lock_guard<std::mutex> lock(dbMutex_);
-    if (!db_) return "";
-
-    auto* stmt = prepare("SELECT text FROM login_strings WHERE id=?",
-                          stmtGetLoginString_);
-    if (!stmt) return "";
-
-    sqlite3_reset(stmt);
-    sqlite3_bind_int(stmt, 1, stringId);
-
-    if (sqlite3_step(stmt) == SQLITE_ROW)
-        return colTextNoCR(stmt, 0);
     return "";
 }
 
