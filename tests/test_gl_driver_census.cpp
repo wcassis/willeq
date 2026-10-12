@@ -564,8 +564,10 @@ TEST(GlDriverCensus, RealRunPrintsTheGlDriverLine) {
     // Graphics init additionally validates eq_client_path (application.cpp
     // initConfigValidation): the repo's data/eq_client symlink when present
     // (CI's before_script re-makes it; a tree without assets skips), else
-    // an empty temp dir (validation only stats the directory; GL init and
-    // the [gldriver] line do not read an EQ file before emission).
+    // an empty per-process temp dir under the UNIQUE mkdtemp dir below
+    // (TmpPathCensus: a fixed /tmp name shared by every concurrent ctest
+    // case is a B571 hazard) -- validation only stats the directory; GL
+    // init and the [gldriver] line do not read an EQ file before emission.
     std::string eqClientPath;
     {
         fs::path p = fs::absolute(
@@ -573,16 +575,16 @@ TEST(GlDriverCensus, RealRunPrintsTheGlDriverLine) {
         std::error_code ec;
         if (fs::is_directory(p, ec) && !ec) eqClientPath = p.string();
     }
-    if (eqClientPath.empty()) {
-        fs::create_directories(fs::temp_directory_path() / "b1016_fake_eq");
-        eqClientPath = (fs::temp_directory_path() / "b1016_fake_eq").string();
-    }
     std::string tmpl =
         (fs::temp_directory_path() / "b1016_gldriver_run_XXXXXX").string();
     std::vector<char> name(tmpl.begin(), tmpl.end());
     name.push_back('\0');
     ASSERT_NE(::mkdtemp(name.data()), nullptr) << "mkdtemp: " << std::strerror(errno);
     const std::string dir = name.data();
+    if (eqClientPath.empty()) {
+        fs::create_directories(dir + "/fake_eq");
+        eqClientPath = dir + "/fake_eq";
+    }
     const std::string configPath = dir + "/config.json";
     {
         std::ofstream out(configPath);
