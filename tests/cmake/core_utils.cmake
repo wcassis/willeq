@@ -388,6 +388,13 @@ ADD_TEST(NAME GemOwnerTable
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_gem_owner_table.py -v)
 SET_TESTS_PROPERTIES(GemOwnerTable PROPERTIES LABELS "hygiene")
 
+# B1013 (GitLab #334): the Lima BO-cache pool timeline over the B997 Pi captured
+# fixture (scripts/pi/test_pool_timeline.py, tests/data/b1013/: the whole
+# bo_events.log + the final ready..steady_60s cut of gem_owners.tsv).
+ADD_TEST(NAME PoolTimeline
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_pool_timeline.py -v)
+SET_TESTS_PROPERTIES(PoolTimeline PROPERTIES LABELS "hygiene")
+
 # B986: the DRM client's Lima BO retention policy, before device creation.
 ADD_EXECUTABLE(test_lima_buffer_policy test_lima_buffer_policy.cpp)
 TARGET_LINK_LIBRARIES(test_lima_buffer_policy GTest::gtest_main)

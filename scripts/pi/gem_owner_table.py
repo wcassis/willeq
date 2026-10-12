@@ -39,6 +39,13 @@ import sys
 MIB = 1048576.0
 STREAM_UPLOADER_BYTES = 1048576   # u_upload_create_default(): 1 MiB per buffer
 
+# B1013 (GitLab #334): the rows that make up the Lima BO-cache POOL (cost-sheet
+# fact 13): the draw-time BOs (varying-output BOs, shader binaries, PP streams)
+# plus Mesa's 1 MiB stream-uploader slots. Everything else (textures, the
+# window surface, the PLB, the GP tile heap) is a named, accounted row.
+POOL_DRAW_TIME_ROW = "lima: draw-time BOs (shader binaries, varyings in flight, PP streams)"
+POOL_STREAM_UPLOADER_PREFIX = "mesa: stream uploader"
+
 
 def owner_of(bo):
     """(row, detail) for one live BO dict."""
@@ -93,7 +100,8 @@ def owner_of(bo):
 
 def read_dump(path):
     """{point: {"meta": {...}, "bos": [...]}}, in file order (a point recorded
-    twice keeps the LAST block)."""
+    twice keeps the LAST block). F and FE lines (B1013 per-frame rows) are
+    skipped: read_frames() is their parser."""
     points = {}
     order = []
     cur = None
@@ -150,6 +158,61 @@ def job_rates(path, start="ready", end="steady_60s"):
             "gp_jobs_per_frame": d("gp_submits") / frames,
             "waits_per_frame": d("waits") / frames,
             "wait_ms_per_frame": d("wait_ns") / frames / 1e6}
+
+
+def pool_timeline(events_path, dump_path, start="ready", end="steady_60s",
+                  window_start_s=20.0):
+    """B1013 (GitLab #334): the Lima BO-cache pool (docs/reference/lima_cost_sheet.md
+    fact 13) at two ledger points, plus the event-log timeline between them.
+
+    The pool is the dump's `lima: draw-time BOs (shader binaries, varyings in
+    flight, PP streams)` row plus every `mesa: stream uploader` row (POOL_*
+    constants above). `last_create_s` is the last GEM create of ANY size in
+    (start, end] minus start (unlike the B1013 investigation's growth.py, which
+    printed the small + 1 MiB subset only). `steady_window_creates` /
+    `steady_window_closes` count GEM creates/closes in [start + window_start_s,
+    end] -- the STEADY window, closed at the end exactly: it is never widened
+    toward shutdown, because this leg's own log proves that would be wrong
+    (closes run to +18.5 s and five creates land at +186 s, after steady_60s).
+
+    The event log is cut on the dump's P-line CLOCK_MONOTONIC stamps (the same
+    clock both the shim's log line and the P line carry), so the log's
+    "# clock" header is NOT needed. Returns None when either file is absent or
+    a point is missing."""
+    if not os.path.exists(events_path) or not os.path.exists(dump_path):
+        return None
+    points, _ = read_dump(dump_path)
+    a, b = points.get(start), points.get(end)
+    if not a or not b:
+        return None
+    events, _ = read_events(events_path)
+    t0, t1 = a["meta"]["mono"], b["meta"]["mono"]
+
+    def pool_at(name):
+        rows = fold(points[name])["rows"]
+        dt = rows.get(POOL_DRAW_TIME_ROW)
+        su = [(r["count"], r["bytes"]) for k, r in rows.items()
+              if k.startswith(POOL_STREAM_UPLOADER_PREFIX)]
+        return {"mono": points[name]["meta"]["mono"],
+                "draw_time_bytes": dt["bytes"] if dt else 0,
+                "draw_time_count": dt["count"] if dt else 0,
+                "stream_uploader_bytes": sum(x[1] for x in su),
+                "stream_uploader_count": sum(x[0] for x in su)}
+
+    pa, pb = pool_at(start), pool_at(end)
+    creates = [t for t, op, *r in events if op == "C"]
+    closes = [t for t, op, *r in events if op == "X"]
+    last = [t for t in creates if t0 < t <= t1]
+    pool_a = pa["draw_time_bytes"] + pa["stream_uploader_bytes"]
+    pool_b = pb["draw_time_bytes"] + pb["stream_uploader_bytes"]
+    return {start: pa, end: pb,
+            "growth_bytes": pool_b - pool_a,
+            "growth_mib": (pool_b - pool_a) / MIB,
+            "last_create_s": (max(last) - t0) if last else None,
+            "steady_window_creates": sum(1 for t in creates if t0 + window_start_s <= t <= t1),
+            "steady_window_closes": sum(1 for t in closes if t0 + window_start_s <= t <= t1),
+            "creates_between": sum(1 for t in creates if t0 < t <= t1),
+            "closes_between": sum(1 for t in closes if t0 < t <= t1)}
 
 
 MEMGPU_RE = re.compile(r"\[memgpu\] point=(\S+) .*?gpu_buffers=(\d+) source=(\S+) .*?logical_textures=(\d+) "

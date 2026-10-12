@@ -4,7 +4,11 @@
 # 2026-10-12; source dir: the B997 shipped-default Pi leg, ARM build 593eba6d,
 # lane 2, imp200far, --idle 180 --hold-after 75, --bo-census):
 #   bo_events.log  190711 B, 6329 lines
-#     sha256 0bda173211730d30a93d7ce8d4a129bab6650b3f0f4fce1d375f0e670d2167122
+#     sha256 0bda173211730d30a93d7ce8d4129bab6650b3f0f4fce1d375f0e670d2167122
+#     (the card's card-expected digest carried one extra 'a' -- 65 hex chars,
+#     not 64; the file's real digest is this, re-derived from the source copy
+#     by /home/user/kb-evidence/b1013-1-pool-timeline-counters/check_hash.py;
+#     every other value in the card matched this file exactly)
 #   gem_owners.tsv cut 66552-70279 (the final P ready block through E steady_60s)
 #     231514 B, sha256 c2494b41bb99b54740249eeb010f0da90cf36f7e506cc4a0193d35cbd32d85f8
 import hashlib
@@ -23,7 +27,7 @@ DUMP = os.path.join(DATA, "qeynos2_default_gem_owners_ready_steady.tsv")
 # The fixture is the evidence: a file whose bytes changed is a different leg,
 # and the expected values below stop meaning anything.
 PINNED = {
-    EVENTS: "0bda173211730d30a93d7ce8d4a129bab6650b3f0f4fce1d375f0e670d2167122",
+    EVENTS: "0bda173211730d30a93d7ce8d4129bab6650b3f0f4fce1d375f0e670d2167122",
     DUMP: "c2494b41bb99b54740249eeb010f0da90cf36f7e506cc4a0193d35cbd32d85f8",
 }
 
