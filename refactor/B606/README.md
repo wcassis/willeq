@@ -146,7 +146,7 @@ Census arithmetic [measured, `check_db.py` in the evidence dir]:
 | this commit's db | 9 | 28,321 | — | 10ec9bedbe6c7c5e |
 
 28,791 − 470 = 28,321. 28,791 − 28,321 = 470. The digest chain documented in
-`data/willeq.db.sha256`: c3f8ff61… (T450, ten inputs) → 956f69a5 (T456, nine)
+`data/willeq.db.sha256`: c39f5cfbb75e5744 (T450, ten inputs) → 956f69a5 (T456, nine)
 → 10ec9bed (B606, eight: `eqlsstr_us.txt` left the set).
 `WilleqDatabaseShippedContent.*` (both directions) green at the tip.
 
