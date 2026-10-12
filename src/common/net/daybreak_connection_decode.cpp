@@ -211,7 +211,10 @@ void EQ::Net::DaybreakConnection::ProcessQueue()
 									stream->fragment_packet.Length() > 0 ? stream->fragment_packet.GetUInt8(0) : 0);
 							}
 
-							ProcessDecodedPacket(stream->fragment_packet);
+							{
+								ReliableDeliveryScope reliable(m_reliable_delivery_depth);  // B760
+								ProcessDecodedPacket(stream->fragment_packet);
+							}
 							stream->fragment_packet.Clear();
 							stream->fragment_total_bytes = 0;
 							stream->fragment_current_bytes = 0;
@@ -248,7 +251,10 @@ void EQ::Net::DaybreakConnection::ProcessQueue()
 									stream->fragment_packet.Length() > 0 ? stream->fragment_packet.GetUInt8(0) : 0);
 							}
 
-							ProcessDecodedPacket(stream->fragment_packet);
+							{
+								ReliableDeliveryScope reliable(m_reliable_delivery_depth);  // B760
+								ProcessDecodedPacket(stream->fragment_packet);
+							}
 							stream->fragment_packet.Clear();
 							stream->fragment_total_bytes = 0;
 							stream->fragment_current_bytes = 0;
@@ -523,6 +529,9 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 					LOG_TRACE(MOD_NET, "OP_Packet seq={} CURRENT, sequence_in: {} -> {}", sequence, stream->sequence_in, stream->sequence_in + 1);
 					stream->sequence_in++;
 					StaticPacket next((char*)p.Data() + DaybreakReliableHeader::size(), p.Length() - DaybreakReliableHeader::size());
+					// B760: everything this payload delivers (a lone app packet
+					// or a combined batch) is reliable and in sequence order.
+					ReliableDeliveryScope reliable(m_reliable_delivery_depth);
 					ProcessDecodedPacket(next);
 				}
 
@@ -599,7 +608,10 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 								LOG_TRACE(MOD_NET, "FRAG_DECOMPRESSED len={} data={}", stream->fragment_packet.Length(), full_hex_dump_pkt(stream->fragment_packet));
 							}
 
-							ProcessDecodedPacket(stream->fragment_packet);
+							{
+								ReliableDeliveryScope reliable(m_reliable_delivery_depth);  // B760
+								ProcessDecodedPacket(stream->fragment_packet);
+							}
 							stream->fragment_packet.Clear();
 							stream->fragment_total_bytes = 0;
 							stream->fragment_current_bytes = 0;
@@ -634,7 +646,10 @@ void EQ::Net::DaybreakConnection::ProcessDecodedPacket(const Packet &p)
 								LOG_TRACE(MOD_NET, "FRAG_DECOMPRESSED len={} data={}", stream->fragment_packet.Length(), full_hex_dump_pkt(stream->fragment_packet));
 							}
 
-							ProcessDecodedPacket(stream->fragment_packet);
+							{
+								ReliableDeliveryScope reliable(m_reliable_delivery_depth);  // B760
+								ProcessDecodedPacket(stream->fragment_packet);
+							}
 							stream->fragment_packet.Clear();
 							stream->fragment_total_bytes = 0;
 							stream->fragment_current_bytes = 0;

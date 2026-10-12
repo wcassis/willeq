@@ -1022,6 +1022,7 @@ it without taking that measurement first.
   cap). Fix options are B997's batch/merge of manual zone draws or a
   per-draw submit-cost cut — both need Will's decision (look/coverage +
   B726/B979 invariants), so the card blocks with the measurement.
+- **B1026** (B, CI) → issue #346. Since gitlab-runner-2 took the `x86-build` tag (2026-10-11) a pipeline's `build` and `test` jobs can land on different hosts, and the stages pass no artifacts: fable pipeline 809 built on gitlab-runner-1 (job 4006) and tested runner-2's pre-B603 binary (job 4007), a false red; MR pipeline 805's green was the same luck. **FIX on `task/B1026-ci-host-stamp`** (Will ruled option (a)): the build steps are ONE shell function (`.build_tree` → `willeq_build_tree`); the tree gets a ref-only stamp before the configure and a host+sha claim (`.willeq_ref` `host=`/`sha=`, `prune_ref_build_trees.py --stamp ... --host --sha`) only after `cmake --build` succeeds; `test` and `client-ledger-live` run `--verify` first and, on a mismatch, print `B1026 STAMP MISMATCH`, rebuild in-job and verify again; `gate` builds its own GLES2 tree in-job. Pinned by `CiBuildTreeStamp` (hygiene) + `PruneRefBuildTrees`; `docs/ci.md` "Two x86 runners: the host+sha stamp"; evidence `refactor/B1026/README.md`.
 - ~~**B1012** (P, CI) → issue #333.~~ **CLOSED 2026-10-09 (B1012, `task/B1012-per-ref-build-trees`).** Concurrent MR pipelines on the `concurrent = 1` x86 runner shared ONE warm `build/`: MR !119's `test` stage (pipeline 697) ran over binaries MR !118's `build` stage (698) had just written and failed on tests absent from its own source (rescued by a one-off cold run). Will chose per-ref build directories with monitoring and cleanup: `$BUILD_TREE = build/ref/$CI_COMMIT_REF_SLUG`, `$GLES2_TREE = build-gles2/ref/$CI_COMMIT_REF_SLUG` (the MR pipeline's slug is its source branch, so push + MR pipelines share a tree), trees stamped with `.willeq_ref`, and the `prune-build-trees` job on every fable pipeline (`scripts/ci/prune_ref_build_trees.py`: ref gone from the remote / stamp > 14 d / unstamped → delete, legacy root swept once, census + `du`/`df` in `prune.log`; rules pinned by the `PruneRefBuildTrees` hygiene test). `docs/ci.md` "One warm tree per ref".
 - ~~**B1011** (A, review) → issue #332.~~ **CLOSED 2026-10-09 (B1011, `task/B1011-wave6-corrections`).** The orchestrator's review of the wave-6 merges, applied over the local models' verdicts (Will, 2026-10-09): (1) the B892 swim event's `isLevitating` field, its flymode read and `setSwimmingState()`'s parameter are DELETED — that arm cleared a self-cast hover on every water transition and nothing restored it (`SwimmingEventCarriesNoSurfaceHeight` fails if the payload carries levitation again; `setLevitationState()` is the one writer); (2) the B893 apex is a measured LOWER BOUND (one wire sample per jump, four of five at an identical +2.509), owed from the committed video, and the fall curve is the oracle's nine measured points interpolated (`kFallDamageTable`, pinned per point by `EveryMeasuredOraclePointIsReproduced`) instead of the 1.5/unit ramp that read 8..23 where the oracle read 5 — one level-60 GM series, level/HP dependence owed; (3) `scripts/scenario.sh` takes the inventory snapshot whenever `--inventory-chars` is set and derives Testchar for `ranged_single_shot` regardless of `--seed-sql` (B900 had both inside the seed branch: silent no-op restore / kit left behind); (4) the B972-FT glFlush write-up's gfaydark sign corrected on its branch (`97cbf657`) and option (d) posted on #326.
 - ~~**B1009** (A) → issue #330. `HCMap::Load` reserved vertex/index/model/poly
@@ -1042,8 +1043,10 @@ it without taking that measurement first.
   lanes); `EQEMU_LANE=1..4` in `scripts/eqemu/env.sh`; `scripts/scenario.sh`
   keys its output dir and derives its configs per lane (three lanes under one
   unit id shared a snapshot file); gitlab-runner-1/2 registered, x86 jobs
-  tagged `x86-build`. Open: fold build+test+gate into one job so runner-2 can
-  take pipelines too; `ready_selftest.sh` not yet run on the clones.
+  tagged `x86-build`. ~~Open: fold build+test+gate into one job so runner-2 can
+  take pipelines too~~ (superseded: runner-2 carries `x86-build` since
+  2026-10-11 and B1026's host+sha stamp makes a split pipeline safe);
+  `ready_selftest.sh` not yet run on the clones.
 - ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
   mechanism (a partial `glBufferSubData` into a buffer the current Lima job
   references flushes the job and blocks in `lima_bo_wait`, once per write): the
@@ -11183,20 +11186,20 @@ B712–B719 unused.
 
 ## Added 2026-09-14 by T482 (how a confirmed cast ends)
 
-- **B760** (A, *unconfirmed live, rare*) **A cast's result code can say → issue #45
-  Interrupted for a success, and can be late.** `SpellManager::noteZonePacket()`
-  settles a released cast as a stop on the first packet after the keepcasting 0
-  that is not `OP_MemorizeSpell` or `OP_LinkedReuse`. eqemu sends some packets
-  unreliably (`OP_SpawnAppearance`, `OP_ClientUpdate`, HP and group updates:
-  `/mnt/projects/akk-stack/code/zone/mob.cpp` `Mob::SendAppearancePacket`,
-  `/mnt/projects/akk-stack/code/zone/groups.cpp`), and the reliable stream may hold
-  the tail back behind them, so one can arrive inside the tail. The gem's recast
-  is still right, because `handleSpellBarRefresh()` starts it from the
-  MemorizeSpell alone. Only the `SpellCastComplete` result is wrong, and nothing
-  in production reads it (B603 deleted the callback that was left for a
-  consumer). In a quiet zone the result also waits for the
-  next packet. Confirm by recording, on the B630 live run, whether anything
-  arrives between the two tail packets.
+- ~~**B760** (A) **A cast's result code could say Interrupted for a success.** → issue #45~~ **CLOSED 2026-10-12 (MR !142, fable ce7ecd66; Will: close as is -- the `StopCasting` settle latency is accepted, nothing in production reads the result).** The entry follows for the record.
+  B760 (A, *fixed by construction, not reproduced live*; 2026-10-12, issue #45
+  `refactor/B760/README.md`) **A cast's result code could say Interrupted for a
+  success.** `SpellManager::noteZonePacket()` now settles a released cast on
+  the next RELIABLE zone packet (`DaybreakConnection::DeliveringReliable()`
+  → `DispatchZonePacket(p, reliable)`): eqemu queues the success tail
+  contiguously on the reliable stream, so only an unreliable packet overtaking
+  a RESENT tail packet could land inside it. Live on the local lane: 60
+  success tails (quiet, traffic, 5 % and 15 % simulated inbound loss), 0
+  packets inside a tail, 0 wrong results, success settled 0-1 ms after the
+  keepcasting 0. **Still open, by design:** a `StopCasting` sends no terminal
+  packet, so its Interrupted waits for the server's next reliable packet
+  (quiet-zone proxy median 4.6 s); nothing in production reads the result
+  (B603). Close #45 unless Will wants that latency bounded.
 
 - **B761** (A, *unconfirmed live*) **A bard song with → issue #46
   `Character:EnableBardMelody` false has no end packet, so it ends on the
