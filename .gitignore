@@ -137,3 +137,4 @@ data/*.db-shm
 # local stack, say -- copies one to `<name>.local.json` and edits the host
 # there. The shipped originals' "host" is never edited in place.
 scripts/scenario_configs/*.local.json
+!tests/goldens/pi/**/*.png
