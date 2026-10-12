@@ -399,7 +399,7 @@ it without taking that measurement first.
   light ON -- and f0 and f2 are EQUAL to B960's player-light-OFF counts
   (409/54/162), so this is not the player light. Cause not isolated. Measured
   by B967 (`review/B967/pi/gate/gfaydark_after/`, `arm_bin/before_d3375b65`).~~
-  **CLOSED by B1024 (MR <url>): per-platform Pi goldens** -- Will ruled
+  **CLOSED by B1024 (MR !148): per-platform Pi goldens** -- Will ruled
   "per-platform Pi goldens, go with option (a)" (2026-10-11, #299); the
   residual is coverage flips (alpha-cutout edges + clip edges) plus the
   16-vs-24-bit depth split, so the Pi has its OWN golden set and its own

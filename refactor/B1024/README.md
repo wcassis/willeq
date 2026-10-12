@@ -1,5 +1,7 @@
 # B1024 (#344): per-platform Pi goldens — visual gate gains `--platform pi|x86`
 
+MR: https://gitlab.goldfarm.local/willeq/willeq/-/merge_requests/148
+
 Will's ruling on #299 (B980), 2026-10-11: **"per-platform Pi goldens, go with
 option (a)"**. The BLESS note (#344, Will 2026-10-11): the first Pi golden
 set this card captures is PRE-BLESSED — the orchestrator commits it on the
