@@ -207,6 +207,9 @@ TEST(ConfigKeyReachability, EveryShippedConfigKeyIsNamedByCode) {
            "\nkDataKeyedMaps in this file with the enumerating call site named.";
 }
 
+#ifdef EQT_HAS_GRAPHICS
+// B1038: display_settings_loader.cpp is a renderer TU (GRAPHICS_SOURCES); these
+// cases are compiled out of an EQT_GRAPHICS=OFF build.
 // ---------------------------------------------------------------------------
 // display_settings.json -- the wiring, key by key
 // ---------------------------------------------------------------------------
@@ -331,3 +334,4 @@ TEST(ConfigKeyReachability, ShippedDisplaySettingsIsBehaviourNeutral) {
     EXPECT_EQ(shipped.detailRocks, defaults.detailRocks);
     EXPECT_EQ(shipped.detailDebris, defaults.detailDebris);
 }
+#endif  // EQT_HAS_GRAPHICS

@@ -287,6 +287,8 @@ TEST_F(CwdElsewhere, EveryShippedLiteralResolvesToTheRepoBytes) {
 
 // --- family: core / app ----------------------------------------------------
 //
+#ifdef EQT_HAS_GRAPHICS
+// B1038: constrained_renderer_config.cpp is a renderer TU (GRAPHICS_SOURCES).
 // PRE-FIX RED. loadJsonOverrides() opened the CWD-relative literal and
 // returned false SILENTLY, so the renderer ran on the built-in preset numbers
 // with nothing said. loadDebugOverrides() was the same shape.
@@ -299,6 +301,7 @@ TEST_F(CwdElsewhere, ConstrainedPresetOverridesLoadFromAnyDirectory) {
     EXPECT_TRUE(cfg.loadDebugOverrides("config/debug.json"))
         << "the shipped debug skip-flags were not applied";
 }
+#endif  // EQT_HAS_GRAPHICS
 
 #ifdef EQT_HAS_GRAPHICS
 // PRE-FIX RED. The shipped key bindings were silently replaced by the built-in
