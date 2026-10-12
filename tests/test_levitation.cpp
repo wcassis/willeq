@@ -280,6 +280,9 @@ TEST_F(LevitationWireTest, ReSyncingTheSameStatePublishesNothing) {
     EXPECT_EQ(bridge.events, 1);
 }
 
+#ifdef EQT_HAS_GRAPHICS
+// B1038: ClampLevitationFeet lives in ground_query.cpp, a renderer TU;
+// compiled out of an EQT_GRAPHICS=OFF build (sections 1, 2 and 4 run headless).
 // ===================================================================
 // 3. The ground clamp: hover, and descend from height at the rate.
 // ===================================================================
@@ -321,6 +324,8 @@ TEST(LevitationClamp, AboveTheHoverLineTheFeetDescendAtTheRate) {
     }
     EXPECT_FLOAT_EQ(feet, hover);
 }
+
+#endif  // EQT_HAS_GRAPHICS
 
 // ===================================================================
 // 4. The scenario: levitate_applies.

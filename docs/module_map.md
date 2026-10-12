@@ -552,7 +552,9 @@ that stops a continuously logging child), plus B1026's `CiBuildTreeStamp`
 (`scripts/ci/test_ci_build_tree_stamp.py`, `.gitlab-ci.yml` as text: `test`
 and `client-ledger-live` verify the host+sha build-tree stamp before they
 consume the tree, the build steps exist once and claim the tree only after
-`cmake --build`, and `.goldfarm` no longer claims a single tagged runner)
+`cmake --build`, and `.goldfarm` no longer claims a single tagged runner;
+B1038: the `build-headless` job builds `EQT_GRAPHICS=OFF` through that same
+function into its own tree and runs `ctest -LE hygiene` in-job)
 -- the three
 `*Reproducible` tests are the pins on the three derived assets, see
 `CLAUDE.md`'s recipe table; `WriteOnlyFields` and `ZeroCallers` are the two
