@@ -10,8 +10,16 @@
 # own lock ON the device (PI_LOCK below is a path on the remote host, so one
 # lock per device falls out of the lane choice). `PI_LANE=N` picks the device,
 # exactly like scripts/eqemu/env.sh's EQEMU_LANE: a card or a script names its
-# LANE, never an address. An explicit PI_HOST still wins (and the lane id then
-# follows the host that won), so every pre-B1030 caller is unchanged.
+# LANE, never an address. A PI_HOST alone still works (the lane id then
+# follows the host), so every pre-B1030 caller is unchanged; an unlisted
+# PI_HOST keeps whatever lane the caller said (default 1). But an explicit
+# PI_LANE together with a PI_HOST that belongs to a DIFFERENT lane is an ERROR
+# (exit 2 from a script, return 2 in an interactive shell), never a silent
+# override: PI_HOST is exported, so a shell
+# that sourced this once for lane 1 and then ran `PI_LANE=3 bash <script>`
+# used to get PI_LANE rewritten to 1 and reach the Orange Pi (B1030 review,
+# scripts/pi/env_selftest.sh). Unset PI_HOST (or set it to the lane's host)
+# to switch lanes in such a shell.
 #
 #   lane 1  orangepi  10.0.30.192     armv7l  Allwinner H3  Mali-400  lima      483 MB
 #   lane 2  rock64    172.16.200.204  aarch64 RK3328        Mali-450  lima      4 GB, eMMC
@@ -24,6 +32,7 @@
 # constrained preset of its own yet -- that is a ruling request with
 # measurements attached, not something this table may invent (CLAUDE.md,
 # "Goldens ... are bless-only").
+_pi_lane_asked="${PI_LANE:-}"
 case "${PI_LANE:-}" in
     ""|1) PI_LANE_HOST=10.0.30.192;    PI_LANE_NAME=orangepi; PI_LANE_ARCH=armhf;   PI_LANE_GPU=lima ;;
     2)    PI_LANE_HOST=172.16.200.204; PI_LANE_NAME=rock64;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=lima ;;
@@ -33,11 +42,27 @@ case "${PI_LANE:-}" in
 esac
 : "${PI_HOST:=${PI_LANE_HOST}}"
 case "${PI_HOST}" in
-    10.0.30.192)    PI_LANE=1; PI_LANE_NAME=orangepi; PI_LANE_ARCH=armhf;   PI_LANE_GPU=lima ;;
-    172.16.200.204) PI_LANE=2; PI_LANE_NAME=rock64;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=lima ;;
-    172.16.200.202) PI_LANE=3; PI_LANE_NAME=rock4d;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=panfrost ;;
-    *) PI_LANE="${PI_LANE:-1}" ;;   # an unlisted host keeps whatever the caller said
+    10.0.30.192)    _pi_host_lane=1 ;;
+    172.16.200.204) _pi_host_lane=2 ;;
+    172.16.200.202) _pi_host_lane=3 ;;
+    *)              _pi_host_lane= ;;   # an unlisted host keeps whatever the caller said
 esac
+if [ -n "${_pi_host_lane}" ] && [ -n "${_pi_lane_asked}" ] && [ "${_pi_lane_asked}" != "${_pi_host_lane}" ]; then
+    echo "scripts/pi/env.sh: PI_LANE=${_pi_lane_asked} but PI_HOST=${PI_HOST} is lane ${_pi_host_lane}; refusing (unset PI_HOST to switch lanes)" >&2
+    unset _pi_lane_asked _pi_host_lane
+    # A SCRIPT that sources this exits here: most Pi rigs run without set -e, and
+    # a `return 2` they ignore would carry on against the wrong device. Only an
+    # interactive shell gets a return (so the operator's terminal survives).
+    case $- in *i*) return 2 ;; esac
+    exit 2
+fi
+case "${_pi_host_lane}" in
+    1) PI_LANE=1; PI_LANE_NAME=orangepi; PI_LANE_ARCH=armhf;   PI_LANE_GPU=lima ;;
+    2) PI_LANE=2; PI_LANE_NAME=rock64;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=lima ;;
+    3) PI_LANE=3; PI_LANE_NAME=rock4d;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=panfrost ;;
+    *) PI_LANE="${PI_LANE:-1}" ;;
+esac
+unset _pi_lane_asked _pi_host_lane
 
 # ARM cross-build lands in the MAIN worktree, not this task worktree --
 # scripts/build-arm-noble.sh / build-arm64-noble.sh always build there.

@@ -486,9 +486,11 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (29 tests: `FileSizeCeiling`, `DocCitations` (+ B1020's
+`hygiene` (30 tests: `FileSizeCeiling`, `DocCitations` (+ B1020's
 `DocCitationsSelfTest`, the anchored-citation probes), B1030's
-`DockerfileArm64Derived` (the arm64 Dockerfile stays arch-swapped armhf), `DocClaims` and
+`DockerfileArm64Derived` (the arm64 Dockerfile stays arch-swapped armhf) and
+`PiEnvLaneResolution` (`scripts/pi/env_selftest.sh`: a PI_LANE that disagrees
+with a listed PI_HOST is refused, never rewritten), `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
 reachability ratchet), T450's `DbReproducible`, T455's

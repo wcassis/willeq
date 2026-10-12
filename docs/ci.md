@@ -64,8 +64,10 @@ for the rendered Kunark + Velious sweep (#102, `refactor/B854/RENDERED_SWEEP.md`
 The Orange Pi is **lane 1** of a three-lane table in `scripts/pi/env.sh`; `PI_LANE=N` picks the device the way
 `EQEMU_LANE` picks an eqemu VM, and a card or a script names its LANE, never an address. Each lane is
 single-tenant with its own lock ON the device (`pi_lock_take`/`pi_lock_release` are unchanged; `PI_LANE=2 bash
-scripts/pi/lock_selftest.sh` is the per-lane net). An explicit `PI_HOST` still wins, so every pre-B1030 caller
-behaves as before. The table itself (host, arch, GPU driver) is in `scripts/pi/env.sh` -- read it there rather
+scripts/pi/lock_selftest.sh` is the per-lane net). A `PI_HOST` alone still picks its lane, so every pre-B1030
+caller behaves as before, but a `PI_LANE` that disagrees with a listed `PI_HOST` is refused (exit 2), never
+rewritten: `PI_HOST` is exported, so a shell that sourced `env.sh` for lane 1 must `unset PI_HOST` before
+`PI_LANE=3 bash <script>` (`scripts/pi/env_selftest.sh`, ctest `PiEnvLaneResolution`). The table itself (host, arch, GPU driver) is in `scripts/pi/env.sh` -- read it there rather
 than here.
 
 | lane | device | arch | GPU / driver | binary |
