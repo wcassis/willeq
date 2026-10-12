@@ -329,17 +329,6 @@ GTEST_DISCOVER_TESTS(test_config_key_reachability DISCOVERY_TIMEOUT 120)
 # (include/client/core/memory_ledger.h). Links the ledger TU directly -- it
 # REPLACES malloc/free/operator new for this whole binary, gtest included --
 # and exercises the hooks through the public allocation entry points.
-# B946 (GitLab #264): the [gldriver] line -- which GL driver the process
-# really loaded (the mapped libgallium, the GL_RENDERER string, whether
-# libLLVM is mapped), emitted once at GL init. Links gl_driver_census.cpp
-# directly, like test_memory_ledger links its own ledger TU.
-ADD_EXECUTABLE(test_gl_driver_census
-    test_gl_driver_census.cpp
-    ${CMAKE_SOURCE_DIR}/src/client/core/gl_driver_census.cpp
-)
-TARGET_LINK_LIBRARIES(test_gl_driver_census GTest::gtest_main Threads::Threads)
-GTEST_DISCOVER_TESTS(test_gl_driver_census DISCOVERY_TIMEOUT 120)
-
 ADD_EXECUTABLE(test_memory_ledger
     test_memory_ledger.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
@@ -357,6 +346,52 @@ IF(TARGET willeq)
     ADD_DEPENDENCIES(test_memory_ledger willeq)
 ENDIF()
 GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)
+
+# B946 (GitLab #264): the [gldriver] line -- which GL driver the process
+# really loaded (the mapped libgallium, the GL_RENDERER string, whether
+# libLLVM is mapped), emitted once at GL init. Links gl_driver_census.cpp
+# directly, like test_memory_ledger links its own ledger TU. B1016 (#337):
+# the last case spawns the REAL client (the same TEST-NET-1 + WILLEQ_BIN_PATH
+# device as B839) with --renderer gles2, so a run without the line is red --
+# the net the audit found missing (deleting glDriverInitLog() left every
+# unit test green).
+ADD_EXECUTABLE(test_gl_driver_census
+    test_gl_driver_census.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gl_driver_census.cpp
+)
+TARGET_LINK_LIBRARIES(test_gl_driver_census GTest::gtest_main Threads::Threads)
+IF(TARGET willeq)
+    TARGET_COMPILE_DEFINITIONS(test_gl_driver_census PRIVATE
+        WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>"
+        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    ADD_DEPENDENCIES(test_gl_driver_census willeq)
+ENDIF()
+GTEST_DISCOVER_TESTS(test_gl_driver_census DISCOVERY_TIMEOUT 120)
+
+# B1016 (#337): the [gldriver] line's EMITTER, made observable. Prints
+# makeGlDriverLine(info) for a caller-supplied GlDriverInfo so
+# scripts/ci/test_gldriver_line_format.py can feed the emitter's OWN output
+# through the rig's Python parser (mesa_driver_field) -- the format
+# contract both sides share, one shared input.
+ADD_EXECUTABLE(gldriver_line_emit
+    gldriver_line_emit.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/gl_driver_census.cpp
+)
+TARGET_LINK_LIBRARIES(gldriver_line_emit Threads::Threads)
+# B1016 (#337), criterion (b): the format contract, driven end to end. The
+# python test runs the BUILT emitter (gldriver_line_emit) and feeds its OWN
+# stdout through the rig's Python parser (rendered_zone_summarize.mesa_driver_field)
+# -- the two sides share one input, so they cannot diverge silently. The
+# emitter is part of `all` in a graphics tree, so the build stage has it
+# before ctest runs (no add_test build-dependency keyword; the script
+# SKIPs 125 if the binary is somehow absent).
+IF(TARGET willeq)
+    ADD_TEST(NAME GldriverLineFormatContract
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_gldriver_line_format.py)
+    SET_TESTS_PROPERTIES(GldriverLineFormatContract PROPERTIES
+        SKIP_RETURN_CODE 125
+        ENVIRONMENT "WILLEQ_BUILD_DIR=${CMAKE_BINARY_DIR}")
+ENDIF()
 
 # B955 (GitLab #273): the gpu_buffers ledger row -- GPU buffer memory outside
 # RssAnon (Lima GEM/shmem on the Orange Pi). Parsers against fixtures captured

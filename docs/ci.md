@@ -151,7 +151,20 @@ on the Pi are never touched.
   A `willeq-nollvm` whose baked-in prefix directory is missing logs an ERROR
   variant naming the missing directory and the fallback (the default search
   path, i.e. the system Mesa) before the INFO line, and continues — a hand
-  run on a fresh Pi must still work. The sweep's summarizer reads the line
+  run on a fresh Pi must still work. (B1016/#337: the check tests the
+  prefix's `lib/` directory itself — the rpath entry the publish bakes in is
+  `<prefix>/lib`, and it is returned as-is, not stripped — so a PARTIAL
+  deploy that lost only `lib/` is caught instead of passing and silently
+  falling back to system Mesa. The real-run net is
+  `test_gl_driver_census`'s `RealRunPrintsTheGlDriverLine` (spawns `willeq`),
+  the format contract is `GldriverLineFormatContract`
+  (`scripts/ci/test_gldriver_line_format.py` round-tripping
+  `tests/gldriver_line_emit` through `mesa_driver_field`), and the CI gate's
+  own run proves it too: the `gate:` job's `gles2_zone_benchmark` now emits
+  the same one-time line and `visual_gate.py`'s `assert_gldriver_line`
+  requires it to be present and parseable in every zone's benchmark stdout.
+  `src/client/core/gl_driver_census.cpp` is linked into the benchmark for
+  this.) The sweep's summarizer reads the line
   back and reports `driver=` in the result row (`mesa_driver` TSV column,
   additive — the maps-snapshot proof above stays the primary evidence).
 - **By hand** (Pi lock held): `bash scripts/pi/deploy_mesa_prefix.sh`, then run `$D/bin/willeq-nollvm`, or a setcap'd

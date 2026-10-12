@@ -93,8 +93,12 @@ std::string parseElfRpath(const std::string& bytes) {
     return std::string();
 }
 
-// See the header: the first colon entry that names the shipped prefix,
-// trailing "/lib" stripped.
+// See the header: the first colon entry that names the shipped prefix.
+// B1016 (#337): the entry is returned AS-IS (the publish step bakes in
+// `<prefix>/lib`), so the decision tests the lib directory ITSELF -- the
+// old code stripped the trailing "/lib" and the check ran against the
+// parent: a partial deploy that left the prefix dir but lost lib/ logged
+// no error while ld.so silently fell back to the system Mesa.
 std::string nollvmPrefixFromRpath(const std::string& rpath) {
     const std::string kMarker = "mesa-nollvm-";
     size_t start = 0;
@@ -103,11 +107,8 @@ std::string nollvmPrefixFromRpath(const std::string& rpath) {
         const std::string entry =
             colon == std::string::npos ? rpath.substr(start)
                                        : rpath.substr(start, colon - start);
-        if (entry.find(kMarker) != std::string::npos) {
-            if (entry.size() > 4 && entry.compare(entry.size() - 4, 4, "/lib") == 0)
-                return entry.substr(0, entry.size() - 4);
+        if (entry.find(kMarker) != std::string::npos)
             return entry;
-        }
         if (colon == std::string::npos) break;
         start = colon + 1;
     }
@@ -190,10 +191,9 @@ void scanMapsText(const std::string& text, std::string& gallium, std::string& ll
         if (nl == std::string::npos) nl = text.size();
         const std::string line = text.substr(pos, nl - pos);
         pos = nl + 1;
-        // Five columns before the pathname; on this kernel they are
-        // space-separated with padding spaces (NOT tabs -- the first draft
-        // searched for '\t' and fell through on every line). Skip the
-        // first five whitespace-separated tokens.
+        // Skip the first five whitespace-separated tokens (the columns);
+        // see the function comment for the separator story and the two
+        // regressions the fixtures pin.
         size_t p = 0;
         for (int i = 0; i < 5; ++i) {
             while (p < line.size() && (line[p] == ' ' || line[p] == '\t')) ++p;

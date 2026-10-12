@@ -2205,6 +2205,7 @@ IF(EQT_GRAPHICS)
         src/client/core/memory_ledger.cpp
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
+        src/client/core/gl_driver_census.cpp   # B1016: the gate's [gldriver] net
         tools/hwcaps/zone_bench_options.cpp
         tools/hwcaps/zone_bench_frame.cpp
         tools/hwcaps/zone_bench_modes.cpp

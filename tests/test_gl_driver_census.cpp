@@ -33,10 +33,20 @@
 
 #include <gtest/gtest.h>
 
+#include <cerrno>
+#include <chrono>
+#include <csignal>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <poll.h>
 #include <string>
+#include <system_error>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
 
@@ -241,12 +251,19 @@ TEST(GlDriverCensus, ElfRpathRejectsGarbage) {
 }
 
 TEST(GlDriverCensus, NollvmPrefixFromRpath) {
+    // B1016 (#337): the entry is returned AS-IS -- the publish step bakes
+    // in `<prefix>/lib`, so the decision tests the lib directory itself
+    // (the old contract stripped the trailing /lib and the check ran
+    // against the parent: a partial deploy that kept the prefix dir but
+    // lost lib/ logged no error).
     EXPECT_EQ(nollvmPrefixFromRpath("/home/user/mesa-nollvm-25.2.8/lib"),
-              "/home/user/mesa-nollvm-25.2.8");
+              "/home/user/mesa-nollvm-25.2.8/lib");
     // The marker need not be the FIRST colon entry.
     EXPECT_EQ(nollvmPrefixFromRpath("/a:/home/pi/mesa-nollvm-25.2.8/lib:/b"),
-              "/home/pi/mesa-nollvm-25.2.8");
-    // An entry without a trailing /lib is returned as-is.
+              "/home/pi/mesa-nollvm-25.2.8/lib");
+    // An entry without a trailing /lib is returned as-is too (the marker
+    // alone identifies a nollvm build; the check tests whatever the entry
+    // is).
     EXPECT_EQ(nollvmPrefixFromRpath("/home/pi/mesa-nollvm-25.2.8"),
               "/home/pi/mesa-nollvm-25.2.8");
     // No marker at all -- a plain willeq, or any other rpath.
@@ -325,6 +342,45 @@ TEST(GlDriverCensus, GlPrefixExpectedOnThisProcess) {
     EXPECT_EQ(glPrefixExpected(), std::string());
 }
 
+// B1016 (#337): the audit's probe. The COMPOSED check -- exactly what
+// renderer_init.cpp's glDriverInitLog() runs (nollvmPrefixFromRpath -> the
+// missing-check) -- must report a MISSING prefix when the prefix dir EXISTS
+// but its lib/ is absent (the partial/failed deploy that makes ld.so fall
+// back to the system Mesa silently), and the ERROR must name <prefix>/lib
+// -- the directory the DT_RPATH actually carries. On origin/fable the
+// composition strips /lib and tests the PARENT: the probe's prefix dir
+// exists, so the check reports PRESENT while lib/ is absent. RED there,
+// GREEN after the root fix (the check is on the rpath dir itself).
+TEST(GlDriverCensus, ComposedNollvmCheckCatchesLibMissingButPrefixPresent) {
+    // The prefix name carries the nollvm marker (the B935 convention,
+    // scripts/pi/mesa_nollvm.env); the DT_RPATH the publish step bakes in is
+    // its lib directory (patchelf --force-rpath).
+    const fs::path prefix =
+        fs::temp_directory_path() / ("mesa-nollvm-9.9_" + std::to_string(::getpid()));
+    const fs::path prefixLib = prefix / "lib";
+    ASSERT_TRUE(std::filesystem::create_directories(prefix));  // prefix EXISTS
+    ASSERT_FALSE(fs::exists(prefixLib));                        // lib/ is MISSING
+    const std::string rpath =
+        "/usr/local/lib:" + (prefix / "lib").string() + ":/usr/lib";
+    const std::string expected = nollvmPrefixFromRpath(rpath);
+    // The composition the renderer runs: the answer names the directory the
+    // check must test, and that directory is <prefix>/lib (the DT_RPATH dir
+    // itself, not its parent).
+    ASSERT_EQ(expected, (prefix / "lib").string());
+    const bool missing = mesaPrefixMissing(expected);
+    EXPECT_TRUE(missing)
+        << "the composed check must report MISSING: prefix dir exists but its "
+           "lib/ is absent, so ld.so will silently fall back to the system "
+           "Mesa (the exact defect the check exists to report). The check "
+           "tested the parent (which exists) instead of "
+           << (prefix / "lib").string();
+    // The lib/ present control: once the deploy is complete the check must
+    // stop firing.
+    ASSERT_TRUE(std::filesystem::create_directories(prefixLib));
+    EXPECT_FALSE(mesaPrefixMissing(expected));
+    fs::remove_all(prefix);
+}
+
 TEST(GlDriverCensus, RealMapsAreConsistent) {
     // The test binary maps its own glibc/gmock -- never libgallium -- so this
     // pins the NEGATIVE half against the live /proc; the positive half is the
@@ -340,4 +396,177 @@ TEST(GlDriverCensus, RealMapsAreConsistent) {
     const GlDriverInfo back = parseGlDriverLine(makeGlDriverLine(info));
     ASSERT_TRUE(back.ok);
     EXPECT_EQ(back.gallium, info.gallium);
+}
+
+// B1016 (#337): the NET the audit found missing. No test asserted that a
+// REAL willeq run prints the [gldriver] line: deleting glDriverInitLog()
+// (renderer_init.cpp) left every unit test green (the pipeline 757 traces
+// show no `gldriver` outside the unit tests). This spawns the real binary --
+// the TEST-NET-1 config idiom of test_memory_ledger, plus --renderer gles2
+// (the surfaceless-EGL default, no display) so GL init actually runs -- and
+// waits for the line in its own output. Deletion of glDriverInitLog() turns
+// it red. The gate keeps its own real-run leg (visual_gate.py --gldriver-
+// smoke); this one runs on any host with llvmpipe.
+namespace {
+
+struct GlDriverRunChild {
+    pid_t pid = -1;
+    int outFd = -1;
+    bool eof = false;
+    bool reaped = false;
+    std::string output;
+
+    ~GlDriverRunChild() {
+        if (pid > 0 && !reaped) {
+            ::kill(pid, SIGKILL);
+            int st = 0;
+            ::waitpid(pid, &st, 0);
+        }
+        if (outFd >= 0) ::close(outFd);
+    }
+
+    bool start(const std::string& bin, const std::string& config,
+               std::string& error) {
+        std::signal(SIGPIPE, SIG_IGN);
+        int inPipe[2];
+        int outPipe[2];
+        if (::pipe2(inPipe, O_CLOEXEC) != 0 ||
+            ::pipe2(outPipe, O_CLOEXEC) != 0) {
+            error = std::string("pipe2: ") + std::strerror(errno);
+            return false;
+        }
+        pid = ::fork();
+        if (pid < 0) {
+            error = std::string("fork: ") + std::strerror(errno);
+            return false;
+        }
+        if (pid == 0) {
+            ::close(inPipe[1]);
+            ::close(outPipe[0]);
+            ::dup2(inPipe[0], STDIN_FILENO);
+            ::dup2(outPipe[1], STDOUT_FILENO);
+            ::dup2(outPipe[1], STDERR_FILENO);
+            // The logger's drain thread block-buffers a pipe (B839);
+            // unbuffered, the [gldriver] line lands the moment it is
+            // flushed, not at death.
+            ::setvbuf(stdout, nullptr, _IONBF, 0);
+            ::setvbuf(stderr, nullptr, _IONBF, 0);
+            std::vector<const char*> argv = {
+                bin.c_str(), "-c", config.c_str(), "--renderer", "gles2",
+                "--no-audio", "--log-level=INFO", nullptr};
+            ::execv(bin.c_str(), const_cast<char* const*>(argv.data()));
+            _exit(127);
+        }
+        ::close(inPipe[0]);
+        ::close(inPipe[1]);  // EOF: the client has nothing to read
+        ::close(outPipe[1]);
+        outFd = outPipe[0];
+        return true;
+    }
+
+    // Drain until `deadline` or EOF. Returns true when `needle` arrives.
+    bool readUntil(const std::string& needle,
+                   std::chrono::steady_clock::time_point deadline) {
+        for (;;) {
+            if (output.find(needle) != std::string::npos) return true;
+            if (eof || std::chrono::steady_clock::now() >= deadline) return false;
+            pollfd pfd{outFd, POLLIN, 0};
+            int ready = ::poll(&pfd, 1, 500);
+            if (ready < 0 && errno != EINTR) return false;
+            if (ready > 0) {
+                char buf[8192];
+                ssize_t n = ::read(outFd, buf, sizeof(buf));
+                if (n > 0) {
+                    output.append(buf, static_cast<size_t>(n));
+                    continue;
+                }
+                eof = true;
+            }
+        }
+    }
+
+    void stop() {
+        if (pid > 0 && !reaped) {
+            ::kill(pid, SIGTERM);
+            int st = 0;
+            if (::waitpid(pid, &st, 0) > 0) reaped = true;
+        }
+    }
+};
+
+}  // namespace
+
+TEST(GlDriverCensus, RealRunPrintsTheGlDriverLine) {
+#ifndef WILLEQ_BIN_PATH
+    GTEST_SKIP() << "WILLEQ_BIN_PATH not defined at configure time";
+#else
+    // The same self-contained TEST-NET-1 config as
+    // MemoryLedger.HeadlessClientNamesAtLeast95PercentOfItsStartupBytes:
+    // the child never connects, and --renderer gles2 (the surfaceless-EGL
+    // default, no display) makes GL init -- and glDriverInitLog -- run.
+    // Graphics init additionally validates eq_client_path (application.cpp
+    // initConfigValidation): the repo's data/eq_client symlink when present
+    // (CI's before_script re-makes it; a tree without assets skips), else
+    // an empty temp dir (validation only stats the directory; GL init and
+    // the [gldriver] line do not read an EQ file before emission).
+    std::string eqClientPath;
+    {
+        fs::path p = fs::absolute(
+            fs::path(WILLEQ_SOURCE_DIR) / "data" / "eq_client");
+        std::error_code ec;
+        if (fs::is_directory(p, ec) && !ec) eqClientPath = p.string();
+    }
+    if (eqClientPath.empty()) {
+        fs::create_directories(fs::temp_directory_path() / "b1016_fake_eq");
+        eqClientPath = (fs::temp_directory_path() / "b1016_fake_eq").string();
+    }
+    std::string tmpl =
+        (fs::temp_directory_path() / "b1016_gldriver_run_XXXXXX").string();
+    std::vector<char> name(tmpl.begin(), tmpl.end());
+    name.push_back('\0');
+    ASSERT_NE(::mkdtemp(name.data()), nullptr) << "mkdtemp: " << std::strerror(errno);
+    const std::string dir = name.data();
+    const std::string configPath = dir + "/config.json";
+    {
+        std::ofstream out(configPath);
+        out << "{\n"
+            << "  \"clients\": [\n"
+            << "    {\n"
+            << "      \"character\": \"B1016Test\",\n"
+            << "      \"host\": \"192.0.2.1\",\n"
+            << "      \"port\": 5998,\n"
+            << "      \"server\": \"B1016NoServer\",\n"
+            << "      \"user\": \"b1016test\",\n"
+            << "      \"pass\": \"test\",\n"
+            << "      \"eq_client_path\": \"" << eqClientPath << "\"\n"
+            << "    }\n"
+            << "  ]\n"
+            << "}\n";
+        ASSERT_TRUE(out);
+    }
+
+    GlDriverRunChild child;
+    std::string error;
+    ASSERT_TRUE(child.start(WILLEQ_BIN_PATH, configPath, error)) << error;
+
+    // GL init on this host (llvmpipe, surfaceless) is a matter of seconds
+    // after the device is created; 120 s covers a loaded CI box.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(120);
+    const bool got = child.readUntil("[gldriver] renderer='", deadline);
+    child.stop();
+    fs::remove_all(dir);
+
+    ASSERT_TRUE(got)
+        << "a real willeq run never printed the [gldriver] line -- "
+           "glDriverInitLog() (renderer_init.cpp) is not being reached or "
+           "emitted. Output so far:\n"
+        << child.output;
+    const size_t at = child.output.find("[gldriver]");
+    const size_t nl = child.output.find('\n', at);
+    std::cout << "[B1016] real run emitted: "
+              << child.output.substr(at, nl == std::string::npos
+                                         ? std::string::npos
+                                         : nl - at)
+              << std::endl;
+#endif
 }

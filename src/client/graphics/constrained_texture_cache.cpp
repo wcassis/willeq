@@ -272,9 +272,9 @@ irr::video::ITexture* ConstrainedTextureCache::getOrLoad(const std::string& name
                       "(rebuild with tools/convert_all_to_eqe1.sh). "
                       "The pack's inline name field caps at {} chars, so it "
                       "holds '{}' but not '{}'; that truncation is why the "
-                      "texture miss above is not a plain asset gap. Every "
-                      "name in a rebuilt pack either fits the field or goes "
-                      "to the v3 name table.",
+                      "name misses every open pack -- this is not a plain "
+                      "asset gap. Every name in a rebuilt pack either fits "
+                      "the field or goes to the v3 name table.",
                       diag.packPath, diag.packVersion,
                       static_cast<unsigned>(EQE1_INLINE_NAME_LIMIT),
                       diag.truncatedName, name);

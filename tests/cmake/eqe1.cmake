@@ -24,22 +24,25 @@ ADD_EXECUTABLE(test_eqe1_stale_pack
 TARGET_INCLUDE_DIRECTORIES(test_eqe1_stale_pack PRIVATE ${CMAKE_SOURCE_DIR}/include)
 ADD_TEST(NAME test_eqe1_stale_pack COMMAND test_eqe1_stale_pack)
 
-# B930 (#248), criterion 2: tools/verify_eqe1 prints the version on every
-# line and --require-v3 flags a structurally-clean v1/v2 pack as STALE
-# (exit 1) so a host's pack directory is one audit loop. Pure python + the
-# built tool. The tool lives in the build tree UNDER TEST (${CMAKE_BINARY_DIR}/bin),
-# which is what the script is pointed at: CI (B1012) configures per-ref trees
-# at build/ref/<ref-slug>, so a hardcoded <repo>/build/bin default — the
-# pre-B1012 layout — found nothing there and this leg silently SKIPped
-# (exit 125) in every CI pipeline until the B930 follow-up pinned the path
-# here. BUILD_DEPENDS guarantees the tool is built before ctest runs it, so
-# the leg RUNS (not skips) in CI. The test is registered only when the
-# target exists (EQT_GRAPHICS=OFF trees, e.g. build/hygiene, have no tool);
-# within that the script still SKIPs (125) if the binary is somehow missing.
+# B930 (#248) + B1017 (#338): tools/verify_eqe1 prints the version on every
+# line and --require-v3 flags ONLY a v1/v2 pack that HOLDS A 31-CHAR NAME
+# (the truncation candidate; a structurally-clean v1/v2 pack -- every name
+# fits the field -- reports OK). Pure python + the built tool. The tool
+# lives in the build tree UNDER TEST (${CMAKE_BINARY_DIR}/bin), which is
+# what the script is pointed at through WILLEQ_BUILD_DIR: CI (B1012)
+# configures per-ref trees at build/ref/<ref-slug>, so a hardcoded
+# <repo>/build/bin default — the pre-B1012 layout — found nothing there and
+# this leg silently SKIPped (exit 125) in every CI pipeline until the B930
+# follow-up pinned the path here. The tool is part of the default `all`
+# target, so the build stage has already produced it before ctest runs
+# (there is no add_test build-dependency keyword; the pre-B1017
+# `BUILD_DEPENDS` keyword here was argv, not a dependency). The test is
+# registered only when the target exists (EQT_GRAPHICS=OFF trees, e.g.
+# build/hygiene, have no tool); within that the script still SKIPs (125) if
+# the binary is somehow missing.
 IF(TARGET verify_eqe1)
     ADD_TEST(NAME test_eqe1_verify_stale_pack
         COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_eqe1_verify_stale_pack.py
-        BUILD_DEPENDS verify_eqe1
     )
     SET_TESTS_PROPERTIES(test_eqe1_verify_stale_pack PROPERTIES
         SKIP_RETURN_CODE 125
