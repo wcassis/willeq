@@ -159,6 +159,14 @@ public:
     // Find zone music file with zone name mapping (e.g., oasis -> nro)
     std::string findZoneMusic(const std::string& zoneName);
 
+    // Determine which SoundFont to use for a given music file. Public because
+    // it is the on-demand-load gate for the custom font (B977's
+    // au.soundfont_custom owner scope wraps exactly its call in playMusic)
+    // and tests/test_soundfont_release.cpp reaches it to pin the
+    // au.soundfont_custom residual's identity (the synthus2 name set).
+    // Pure function: reads only its argument plus the static name set.
+    SoundFontType getSoundFontTypeForFile(const std::string& path);
+
     // B1015 (#336): deactivate every SFX channel and wait for the audio
     // thread to quiesce (AudioMixer::stopAll). After this, no channel reads
     // any SoundBuffer, so the one decoded-PCM cache's in-use pin names
@@ -203,9 +211,6 @@ private:
 
     // Music event config
     void loadMusicEventConfig();
-
-    // Determine which SoundFont to use for a given music file
-    SoundFontType getSoundFontTypeForFile(const std::string& path);
 
 private:
     bool initialized_ = false;

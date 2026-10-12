@@ -43,18 +43,24 @@ it without taking that measurement first.
   was never released: 24,160,712 B (Pi) / 24,162,944 B (x86) of float samples
   resident for the rest of the session, 84 % of the audio ledger's measured
   worst, what made the audio ratchet refuse to move the 32 MiB budget down
-  (B977, #295; docs/decisions.md 2026-10-05).~~ **CLOSED 2026-10-10: the font
-  is released at `MusicPlayer::stop()`, the one place a song ends — immediate
-  and faded stops both, at the mechanism, not a timer (commit e5acd72b,
-  `refactor/B990/README.md`).** RED/GREEN: `tests/test_soundfont_release.cpp`
-  (2/3 red at base tip: 24,225,520 B held after stop; 8/8 green at the tip,
-  incl. the stop-race suite); live lane-3 x86 leg (`refactor/B990/
+  (B977, #295; docs/decisions.md 2026-10-05).~~ **CLOSED 2026-10-10,
+  re-edited by B1014 (2026-10-11, #335): the font is released when a song that
+  plays on it REALLY ends -- the public `MusicPlayer::stop()` and a fade's
+  completion (flagged by the audio thread, freed by the game thread; never by
+  the stop inside `play()`, which was freeing the font the next song had
+  just selected -- commit e5acd72b, `refactor/B990/README.md`,
+  `refactor/B1014/README.md`).** RED/GREEN: `tests/test_soundfont_release.cpp`
+  (2/3 red at the B990 base tip: 24,225,520 B held after stop; B1014 grew it to
+  7 tests, incl. the two AUDIT-WAVE7 probes, all asserting
+  `getActiveSoundFont()` -- red/green in `refactor/B1014/README.md`); live
+  lane-3 x86 leg (`refactor/B990/
   audio_ledger_census.tsv`): velketor `au.soundfont_custom` 2,976 B / 32
   blocks at steady_60s after the music started and stopped — the 24 MB gone,
-  the residual being the GM-identical selection bookkeeping — vs B977's
-  24,162,944 B at the same point; qeynos2 (classic control) never loaded the
-  custom font. **Left for Will (per the card): the Pi re-run and the
-  `memoryLedgerBudgets.audio` re-ratchet, after B989 lands too.**
+  the residual being the first-call construction of
+  `getSoundFontTypeForFile()`'s static name set (B1014, measured) — vs
+  B977's 24,162,944 B at the same point; qeynos2 (classic control) never
+  loaded the custom font. **Left for Will (per the card): the Pi re-run and
+  the `memoryLedgerBudgets.audio` re-ratchet, after B989 lands too.**
 - ~~**B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
   float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode)
   and `SfxManager::cache_` (`au.sfx_cache`, `preload()`'s second copy of the
