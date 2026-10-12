@@ -115,8 +115,9 @@ Card requirement: grep `cert` in the RDP config parsing before deleting.
 `rdp.enabled` and `rdp.port`. There is no `rdp.cert`/`rdp.key` key and no
 CLI flag. `docs/` names no certificate option: the only hit outside
 review/completed is
-`docs/standards/rdp_implementation_guide.md:937` ("Custom certificate support
-can be added via `RDPServer::setCertificate()` if needed") — a forward-looking
+`docs/standards/rdp_implementation_guide.md:942` ("Custom certificate support
+can be added if needed (B606 deleted the unreachable
+`RDPServer::setCertificate`…)") — a forward-looking
 sentence, now updated to say B606 deleted the unreachable setter. No defect:
 nothing documents an option that silently does nothing.
 
@@ -272,13 +273,31 @@ already answered by 833: 5725/5726 passed with exactly the one failure now
 fixed. Fix is on the CI side: untag runner-2 from the x86-build tag (or fold
 the stages into one job), per `.gitlab-ci.yml`'s own comment and board B1012.
 
+Pipeline 846 (head e43bf1a3, MR pipeline on `refs/merge-requests/145/head`)
+is FULLY GREEN: hygiene 4264, build 4265 (29m10s), test 4277
+(`100% tests passed, 0 tests failed out of 5726`, incl. both
+`WilleqDatabaseShippedContent.*` directions, `DbReproducible`,
+`TmpPathCensus` 2/2), gate 4268 (visual frames identical). Job 4277's trace
+is `ci_test_job_4277_trace.txt` in the evidence dir; per-suite `Passed` lines
+in `ci_trace_b606_suites.txt`.
+
+Run 4 (post-merge of 46 fable commits, origin/fable 06852f31 → 657c456c)
+re-verified everything at merge tip d00bc8d4: `check_zero_callers.py --check`
+clean (364 / tests-only 271), `check_write_only_fields.py --check` clean,
+`ctest -L hygiene` 29/29 (one test more than run 2's 28 — the count drifted
+with fable's own merges; label green either way), all 14 touched test
+binaries rebuilt and passing (`affected_tests_mergetip.txt`), and the
+fable-range diff re-introduced none of the 18 deleted names (probe:
+`check_fable_overlap.sh`).
+
 ## Docs touched
 
 - `refactor/BOARD.md` — the B606 bullet struck (every mention: the bullet is
   the only live one; the other two hits are historical prose in other
   bullets' close-out notes).
-- `docs/standards/rdp_implementation_guide.md` — line 937 rewritten (see RDP
-  certificate decision); the embedded class snapshot (line 113) labelled a
+- `docs/standards/rdp_implementation_guide.md` — the "Custom certificate
+  support" paragraph rewritten (now at line 942; see RDP certificate
+  decision); the embedded class snapshot (line 113) labelled a
   pre-deletion snapshot.
 - `data/willeq.db.sha256` header — nine tables / 28,321 rows / 470-row
   login_strings drop / digest chain.
