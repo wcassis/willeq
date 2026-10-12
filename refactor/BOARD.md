@@ -6185,13 +6185,33 @@ T407 deleted eleven (see below). The rest are boarded here.
   along; the doc was aspirational, not stale, and is now true. Pinned by
   `tests/test_sfx_cache_eviction.cpp`, 6 cases, two independent pre-fix plants.
 
-- **B293** (B) `include/client/graphics/environment/particle_manager.h` → issue #124
+- ~~**B293** (B) `include/client/graphics/environment/particle_manager.h` → issue #124
   `ParticleManager::entityDirCallback_` -- installed by TWO callers
   (`src/client/graphics/renderer/renderer_entities.cpp` and
   `tools/model_viewer/model_viewer_spell_test.cpp`) and invoked by none, so
-  entity-direction-aware particle emission is unreachable. Closes when the
-  callback is called or the setter, the member and the `EntityDirCallback`
-  typedef are deleted with both call sites. Found by T407's census.
+  entity-direction-aware particle emission was unreachable. Found by T407's
+  census.~~ **CLOSED by B295+B293 leg B (`task/kb-b295-b293-discarded-args`),
+  HONOUR, not delete**: the one production consumer that wants the callback
+  exists -- spray casts. `SpellVisualFX::createCastGlow()` passes its `isSpray`
+  flag through `createSpellEffect()`'s `useDynamicDir` to the worker, where
+  `effect.useDynamicDirection` arms the emitter, the worker REQUIRES the
+  entity's direction every frame
+  (`SimulationOutput::particleOutput.directionRequestEntities`) and CONSUMES
+  it (`pi.entityDirections` → `emitter.dynamicDirection` → spawn velocity).
+  The single missing link was the renderer half: `SimBridgeComponent::
+  applySimulationOutput()` resolved the previous frame's
+  `positionRequestEntities` into `pendingParticleEntityPositions_` but had no
+  direction arm -- the map was cleared each frame and refilled with nothing,
+  so `entityDirCallback_` was stored by two installers and called by none.
+  The fix adds the direction arm beside the position arm (a mirror, same
+  one-frame-behind rule) and `ParticleManager::resolveEntityDirection()`
+  beside `resolveEntityPosition()`. Pinned by
+  `tests/test_b293_entity_direction_resolution.cpp` (real
+  `applySimulationOutput()` body, never-Init()'d renderer idiom; a counting
+  callback + the worker's real `directionRequestEntities`; red at the base --
+  the callback never fired and the pending map stayed empty), and the
+  write-only ratchet's `entityDirCallback_` EXEMPT row went stale and was
+  struck with the fix.
 
 - ~~**B294** (A) `include/client/graphics/irrlicht_renderer.h`
   `IrrlichtRenderer::forcePvsUpdate_` -- set true in FOUR places
@@ -6223,11 +6243,26 @@ T407 deleted eleven (see below). The rest are boarded here.
   left dangling by `6914d99b` -- an unfinished tombstone is what made the flag
   look deliberate.
 
-- **B295** (B) `include/client/graphics/graphics_archive_index.h` → issue #125
+- ~~**B295** (B) `include/client/graphics/graphics_archive_index.h` → issue #125
   `GraphicsArchiveIndex::lazyMode_` -- `buildIndex(eqPath, lazyMode, tick)`
   stores its `lazyMode` argument and never reads it, so the lazy/eager choice
-  its callers make is discarded. Closes when the parameter is honoured or
-  removed from the signature. Found by T407's census.
+  its callers make is discarded. Found by T407's census.~~ **CLOSED by
+  B295+B293 leg A (`task/kb-b295-b293-discarded-args`), REMOVE, not honour**:
+  `scanArchives()` is pure filename arithmetic -- the "NO archive opening"
+  comment at `graphics_archive_index.cpp:191` is the whole reason the flag
+  existed (a lazy index closes archives after scanning, an eager one keeps
+  them open; an index that never opens one has nothing to close). `commit
+  aea2af12` introduced the parameter and member together with the
+  progressive-loading work; by the time T407's census ran, the only surviving
+  read of `ConstrainedRendererConfig::lazyPfsLoading` the index cared about
+  was a write. Removed: the `buildIndex` parameter, the `lazyMode_` member,
+  the caller's pass-through
+  (`renderer_zone_load.cpp` Step 5 now calls `buildIndex(ctx.eqPath)` for
+  every preset), the stale "Lazy mode: closes archives after scanning" doc
+  bullet, and the write-only ratchet's EXEMPT row (stale → struck, per the
+  no-outlive rule). `getCachedArchive()`/`cachedArchives_` (a SEPARATE gap,
+  also zero-caller) stay on B494. `lazyPfsLoading` itself is the constrained
+  preset's field and out of scope here -- its other readers are intact.
 
 - ~~**B296** (A) `include/client/state/event_bus.h` -- **bridge event payload
   fields that every producer fills and no consumer reads.** The census names

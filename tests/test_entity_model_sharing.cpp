@@ -196,11 +196,7 @@ TEST_F(EntityModelSharingTest, B843SharedPixelsAreNotClaimedByEntityModels) {
     // Step 1: the archive index, built and installed the way
     // loadZoneStep5_Assets does it for the orangepi preset.
     archiveIndex_ = std::make_unique<EQT::Graphics::GraphicsArchiveIndex>();
-    ASSERT_TRUE(archiveIndex_->buildIndex(
-                    clientPath(),
-                    EQT::Graphics::ConstrainedRendererConfig::fromPreset(
-                        EQT::Graphics::ConstrainedRenderingPreset::OrangePi)
-                        .lazyPfsLoading))
+    ASSERT_TRUE(archiveIndex_->buildIndex(clientPath()))
         << "the archive index must build from the real client tree";
     loader_->setGraphicsArchiveIndex(archiveIndex_.get());
 

@@ -22,10 +22,9 @@ namespace {
 constexpr const char* kGfxIndexCacheName = "gfx_index_cache.json";
 }  // namespace
 
-bool GraphicsArchiveIndex::buildIndex(const std::string& eqPath, bool lazyMode,
+bool GraphicsArchiveIndex::buildIndex(const std::string& eqPath,
                                        std::function<void()> tickCallback) {
     eqPath_ = eqPath;
-    lazyMode_ = lazyMode;
 
     if (eqPath_.empty() || !std::filesystem::exists(eqPath_) ||
         !std::filesystem::is_directory(eqPath_)) {

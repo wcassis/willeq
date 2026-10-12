@@ -935,6 +935,25 @@ void SimBridgeComponent::applySimulationOutput(const SimulationOutput& resultsRe
                 pendingParticleEntityPositions_[entityID] = pos;
             }
         }
+
+        // Resolve entity DIRECTIONS for the next frame's particle input.
+        // T395's one-frame-behind rule applies to both: an emitter sees what
+        // THIS output named, resolved now. B293 (#124):
+        // directionRequestEntities was emitted by the worker (the spray half
+        // of useDynamicDirection, SpellVisualFX::createCastGlow passing
+        // isSpray through) and read back from pi.entityDirections, but no
+        // loop ever resolved it -- pendingParticleEntityDirections_ was
+        // cleared each frame and refilled with nothing, so
+        // ParticleManager::entityDirCallback_ (installed by two callers)
+        // was invoked by none and entity-direction-aware emission was
+        // unreachable. The position arm above was the template; this one
+        // mirrors it.
+        for (uint16_t entityID : results->particleOutput.directionRequestEntities) {
+            glm::vec3 dir;
+            if (ctx_.particleManager->resolveEntityDirection(entityID, dir)) {
+                pendingParticleEntityDirections_[entityID] = dir;
+            }
+        }
     }
 
     // Apply boids output from worker
