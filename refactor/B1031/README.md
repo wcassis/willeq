@@ -162,7 +162,7 @@ pass 2 EGL 21, `irrlicht.h` 3.
     `test_lima_bo_census_shim`.
 - **pthread_setname_np (5)**: `no matching function for call to
   'pthread_setname_np'` (Darwin takes 1 argument, the calling thread) at
-  `src/client/graphics/background_thread_pool.cpp:53` (2 objects),
+  `src/client/graphics/background_thread_pool.cpp:53`, compiled by 2 objects;
   `include/client/graphics/background_work_queue.h:163`,
   `src/client/application.cpp:937`, `src/client/application.cpp:1074`.
   The issue's other two sites (`loading_thread.cpp:149`,
@@ -195,7 +195,7 @@ pass 2 EGL 21, `irrlicht.h` 3.
     in clang): `src/client/inventory/inventory_cursor.cpp:247,295`
     (`int32_t` -> `uint32_t`).
   - **fmt 12 (2)**: `type_is_unformattable_for<eqt::inventory::EquipmentSlot>`
-    from `src/client/combat.cpp:685` (a scoped enum passed to `fmt::format`),
+    from `src/client/combat.cpp:685`, a scoped enum passed to `fmt::format`;
     and `type_is_unformattable_for<std::__bit_reference<std::vector<bool>>>`
     from `src/client/graphics/eq/wld_fragments_mesh.cpp:298` (libc++'s
     `vector<bool>` proxy; libstdc++ + fmt 9.1 accept both).
@@ -287,3 +287,64 @@ well**, independent of macOS: `willeq_core` itself fails, so no headless
 (`application.cpp:1087,1088`, the 9 flow-identity lines, the 3 `irrlicht.h`
 lines) are the headless share of the census; the other 224 pass-2 lines are
 Darwin/clang/libc++/fmt-12 specific.
+
+## Step 5 — CARD-2 FIX LIST
+
+Ordered by pass-2 error lines. "Guard" = `#if defined(__linux__)` / a CMake
+condition around Linux-only code that the dev platform does not need;
+"portable" = rewrite once, same code on every host; "Darwin backend" = a
+second implementation. Estimates are for one executor and assume the
+Homebrew install below is done.
+
+| # | KIND (pass-2 lines) | fix | kind of fix | files | estimate |
+|---|---|---|---|---|---|
+| 1 | glibc/malloc internals (176) | wrap the nine `r.mi.*` `appendKV` lines of `arenaToLogLine()` in the same `#if defined(__linux__)` the header uses; build `test_lima_bo_census_shim` (an LD_PRELOAD shim over glibc `mmap64`) only `IF(CMAKE_SYSTEM_NAME STREQUAL "Linux")`. A Darwin ledger backend (`malloc_zone_statistics`) is NOT needed: the dev platform runs with `EQT_MEMORY_LEDGER=OFF` | guard | `src/client/core/memory_ledger.cpp:1012-1020`, `tests/cmake/core_utils.cmake:384` | 30 min |
+| 2 | other: void-pointer arithmetic (13) | `static_cast<uint8_t*>(packet.Data()) + n` (or a typed accessor on the packet) | portable | `src/client/merchant/merchant.cpp`, `src/client/zone/zone_dispatch.cpp`, `src/client/entities/entities_component_world.cpp`, `tests/test_forage_fishing.cpp` | 30 min |
+| 3 | other: headless-config rot (11) + missing dep `irrlicht.h` (3) — **fails on Linux too** | put the `m_renderer` block of `application.cpp` under the `EQT_GRAPHICS` guard its neighbours use; register `test_data_paths`, `test_ranged_attack_wire`, `test_detail_view_distance` only with graphics (or drop their Irrlicht include); make the graphics-only cases of `test_zone_connection_flow_identity.cpp` conditional. Then a headless compile in CI (the `hygiene` stage already configures `build/hygiene` with graphics OFF) is the net that keeps it fixed | guard + CI net | `src/client/application.cpp:1087-1088`, `tests/test_zone_connection_flow_identity.cpp:353-454`, `tests/cmake/core_utils.cmake:284`, `tests/cmake/commands.cmake:371`, `tests/cmake/graphics.cmake:343`, `.gitlab-ci.yml` | 2-3 h |
+| 4 | missing third-party dependency: EGL (21), cereal (217 in pass 1) | declare cereal (`FIND_PATH(CEREAL_INCLUDE_DIR cereal/cereal.hpp)` + FATAL_ERROR naming `libcereal-dev` / `brew install cereal`, list it in `CLAUDE.md`'s Dependencies — a CLAUDE.md edit, so the orchestrator's); build the EGL `tools/hwcaps/*`, `tools/gl_points/*` and `test_gl_points` targets only when EGL is found / graphics is ON | CMake guard | `CMakeLists.txt` (dependency block near line 56; the EGL tools from line 2034) | 1-2 h |
+| 5 | pthread_setname_np (5; 6 sites incl. the 2 graphics TUs) | one helper `setCurrentThreadName(const char*)`: `pthread_setname_np(name)` on `__APPLE__`, `pthread_setname_np(pthread_self(), name)` elsewhere; every site names the calling thread, so the 1-arg Darwin form is exact | Darwin backend (tiny) | `src/client/application.cpp:937,1074`, `src/client/graphics/background_thread_pool.cpp:53`, `include/client/graphics/background_work_queue.h:163`, `src/client/graphics/loading_thread.cpp:149`, `src/client/graphics/simulation_worker.cpp:352` + a new small header | 45 min |
+| 6 | socket options (3) | `#ifdef SO_RCVBUFFORCE` around the force attempt; the `SO_RCVBUF` fallback already exists | guard | `src/common/net/posix_udp_transport.cpp:70` | 10 min |
+| 7 | other: clang/libc++/fmt-12 strictness (6) | narrowing: explicit `static_cast<uint32_t>`; fmt: `fmt::underlying(slot)` / `static_cast<int>` at `combat.cpp:685` and `static_cast<bool>(v[i])` at `wld_fragments_mesh.cpp:298` (both valid under fmt 9.1 as well, by the fmt API; not compiled here); `mkdtemp`: add `#include <unistd.h>` (`<cstdlib>` stays) | portable | `src/client/inventory/inventory_cursor.cpp:247,295`, `src/client/combat.cpp:685`, `src/client/graphics/eq/wld_fragments_mesh.cpp:298`, `tests/scoped_temp_dir.h:43` | 30 min |
+| 8 | test environment, not a compile error: macOS `/bin/bash` 3.2 (2 hygiene failures) | Homebrew `bash` first on the Mac's `PATH` (ctest calls `bash` by name), or make the two scripts bash-3.2-safe (`while read` for `mapfile`, no `declare -A`, `${arr[@]+"${arr[@]}"}`) | env / portable | `scripts/refactor/check_file_sizes.sh`, `scripts/b964/pi_crowd.sh:118` | 15 min env, 1 h portable |
+| 9 | /proc readers (0 compile errors) | none for card 2: they compile and simply find no file on Darwin; revisit only if a Darwin run needs their output | — | `gl_driver_census.cpp`, `load_mem_audit.cpp`, `gpu_buffer_census.cpp`, `commands_component.cpp`, `diagnostics_component.cpp` | — |
+
+**Before card 2 (Will):** `/opt/homebrew` belongs to `will`; either run
+`brew install cmake ninja fmt glm jsoncpp cereal bash` as `will`, or let card 2
+keep using the user prefix (`review/B1031/deps.sh` plus cereal). Card 2's
+acceptance can be the same two commands as this probe with BUILD_EXIT=0 and
+`ctest -LE hygiene` with zero failures and zero "Not Run"; after fix 3, the
+headless build should also be green on Linux.
+
+After fixes 1-7 the remaining unknown is the LINK step: 151 of 246 executables
+never reached their link in pass 2 (each sits behind a failed object, most
+behind `willeq_core`), which this probe could not see.
+
+## Not verified / left open
+
+- **Links behind `willeq_core`.** No executable that links `willeq_core`
+  (including `willeq`) was ever linked on Darwin; undefined symbols, duplicate
+  symbols or `-framework` needs there are unknown until fixes 1-7 land.
+- **Pass 2 is not the issue's recipe.** It adds cereal 1.3.2 headers through
+  `CMAKE_CXX_FLAGS` (copied from dev-u24's Debian `1.3.2+dfsg` package, not
+  Homebrew's `cereal`). The pass-1 log is the literal recipe.
+- **Dependencies are not Homebrew's bottles.** Same versions as `brew info`
+  reports, but built from source / release binaries into `~/willeq-deps`
+  (Homebrew was not writable). Build flags may differ from the bottles.
+- **The 50 non-hygiene SKIP reasons** were not read one by one. The assets
+  WERE linked (`data/eq_client`, `data/eqe1_client` over SMB), so some of
+  these skips are on something other than the client files (pcap captures,
+  map fixtures, the eqe1 pack directory); not investigated.
+- **Runtime behaviour on Darwin** of anything: no `willeq` binary exists, and
+  the `/proc` readers, the UDP receive-buffer fallback and audio (CoreAudio via
+  miniaudio) were never exercised.
+- **The Linux cross-check** compiled the 61 objects in a GCC tree configured
+  without `-DCMAKE_BUILD_TYPE=Release` and without `-DEQT_MEMORY_LEDGER=OFF`;
+  it answers "does this TU compile headless on Linux", not "is the Linux
+  Release headless build otherwise green" (only the failing objects were
+  tried).
+- **Graphics / ANGLE / the `IF(APPLE)` CMake branches**: out of scope
+  (`EQT_GRAPHICS=OFF`).
+- **Census counts are of a fixed log at `bfafca12`**; they will not track the
+  tree. Re-measure with `python3 review/B1031/census.py <build.log> <out>` over
+  a new keep-going log; the registered-test total is measured with
+  `ctest --test-dir build -N | tail -1`.
