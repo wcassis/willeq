@@ -207,44 +207,49 @@ def verify_x86_plan():
 
 # =============================================================== the pi half
 
-def _pi_section():
-    """A blessed-style platforms.pi section for one zone: the same per-zone
-    fields bless() writes for x86, minus p95CpuMsBaseline, plus its own
-    blessedUnder."""
+def _pi_section(manifest):
+    """A blessed-style platforms.pi section for EVERY manifest zone: the same
+    per-zone fields bless() writes for x86, minus p95CpuMsBaseline, plus its
+    own blessedUnder. metrics match the stubbed CSV rows (100+i / 10+i /
+    1000+i per designated frame), so the exact-match checks pass when they
+    run."""
+    zones = []
+    for z in manifest["zones"]:
+        metrics = {str(f): {"draws": 100 + f, "stateChanges": 10 + f, "polys": 1000 + f}
+                   for f in z["designatedFrames"]}
+        zones.append({
+            "zone": z["zone"],
+            "extraArgs": z.get("extraArgs", []),
+            "designatedFrames": z["designatedFrames"],
+            "metrics": metrics,
+            "memory": {"textureCacheBytesUsed": 100,
+                       "textureCacheBytesLimit": 200,
+                       "textureCount": 1},
+        })
     return {
         "glRenderer": "Mali-400 (Lima)",
         "glVersion": PI_GL,
-        "zones": [
-            {
-                "zone": "qeynos2",
-                "extraArgs": ["--camera-pose", "1.0,2.0,3.0,0.0,-5.0"],
-                "designatedFrames": [0, 1, 2],
-                "metrics": {"0": {"draws": 100, "stateChanges": 10, "polys": 1000},
-                            "1": {"draws": 101, "stateChanges": 11, "polys": 1001},
-                            "2": {"draws": 102, "stateChanges": 12, "polys": 1002}},
-                "memory": {"textureCacheBytesUsed": 100,
-                           "textureCacheBytesLimit": 200,
-                           "textureCount": 1},
-            }
-        ],
+        "zones": zones,
     }
 
 
-def _stub_benchmark(gate, out_dir):
-    """What a real benchmark invocation would have produced: one PNG per
-    designated frame at the PLATFORM layout, matching CSV rows, and a memory
-    JSON with the stub section's memory values (so the exact-match memory
-    check passes when it runs)."""
+def _stub_benchmark(gate, zone_cfg, out_dir):
+    """What a real benchmark invocation would have produced for ONE zone:
+    the RUN-layout PNGs (pi: <out_dir>/<zone>/frames/f<n>.png), matching CSV
+    rows, a memory JSON with the stub section's memory values (so the
+    exact-match memory check passes when it runs), and the zone maps proof
+    (the real one comes from Popen/poll_maps; here the content is the good
+    nollvm text)."""
+    zone = zone_cfg["zone"]
+    frames = zone_cfg["designatedFrames"]
+    prefix = Path(out_dir) / zone / "frames"
+    prefix.mkdir(parents=True, exist_ok=True)
     pngs = {}
-    for zone_cfg in gate.PI_TEST_ZONES:
-        zone = zone_cfg["zone"]
-        frames = zone_cfg["designatedFrames"]
-        prefix = Path(out_dir) / zone
-        prefix.mkdir(parents=True, exist_ok=True)
-        for f in frames:
-            p = prefix / f"f{f}.png"
-            p.write_bytes(_png_bytes())
-            pngs[f] = p
+    for f in frames:
+        p = prefix / f"f{f}.png"
+        p.write_bytes(_png_bytes())
+        pngs[f] = p
+    (Path(out_dir) / f"{zone}_maps.txt").write_text(_good_maps_text())
     csv = [{"frame": str(i), "draws": str(100 + i), "state_changes": str(10 + i),
             "polys": str(1000 + i), "cpu_proc_ms": "1.5", "cpu_ms": "2.5"}
            for i in range(60)]
@@ -255,8 +260,10 @@ def _stub_benchmark(gate, out_dir):
 
 
 def _good_maps_text():
-    return (f"00400000-00410000 r-xp 00010000 fe00:0000 {PI_MESA_PREFIX}/lib/libgallium.so.0.0.0\n"
-            f"00410000-00411000 r-xp 00000000 fe00:0000 {PI_MESA_PREFIX}/lib/libEGL.so.1\n")
+    # /proc/pid/maps line format: start-end perms offset dev inode path
+    # (6 fields -- the path is field 6, so the fixtures must carry all six)
+    return (f"00400000-00410000 r-xp 00010000 fe:00 1234 {PI_MESA_PREFIX}/lib/libgallium.so.0.0.0\n"
+            f"00410000-00411000 r-xp 00000000 fe:00 1235 {PI_MESA_PREFIX}/lib/libEGL.so.1\n")
 
 
 def check_pi():
@@ -266,13 +273,12 @@ def check_pi():
         print("FAIL: visual_gate.py has no platform_config (pre-B1024)")
         return 1
 
-    gate.PI_TEST_ZONES = _pi_section()["zones"]
+    manifest = gate.load_manifest()
     PI_BENCH.parent.mkdir(parents=True, exist_ok=True)
     try:
         PI_BENCH.write_bytes(b"")
 
         # 1. the resolvers: x86 unchanged, pi per the design
-        manifest = gate.load_manifest()
         x86 = gate.platform_config(manifest, "x86", None, None)
         if x86.golden_root != gate.GOLDENS_DIR:
             failures.append(f"x86 golden_root {x86.golden_root} != {gate.GOLDENS_DIR}")
@@ -325,11 +331,13 @@ def check_pi():
         # 5. --goldens-dir supplies the goldens + section when the manifest
         #    lacks one: the run2-vs-run1 determinism check and QA re-runs use it
         with tempfile.TemporaryDirectory(prefix="b1024_goldens_") as td:
-            section = _pi_section()
-            (Path(td) / "qeynos2").mkdir()
-            for i in (0, 1, 2):
-                (Path(td) / "qeynos2" / f"f{i}.png").write_bytes(_png_bytes())
-            (Path(td) / "manifest_pi.json").write_text(json.dumps(section))
+            section = _pi_section(manifest)
+            for z in manifest["zones"]:
+                (Path(td) / z["zone"]).mkdir()
+                for i in z["designatedFrames"]:
+                    (Path(td) / z["zone"] / f"f{i}.png").write_bytes(_png_bytes())
+            (Path(td) / "manifest_pi.json").write_text(
+                json.dumps({"platforms": {"pi": section}}))
             cfg = gate.platform_config(manifest, "pi", str(PI_BENCH), td)
             if cfg.golden_root != Path(td):
                 failures.append(f"pi --goldens-dir golden_root {cfg.golden_root} != {td}")
@@ -369,7 +377,8 @@ def check_pi():
                     failures.append(f"SHA256SUMS lacks the frame: {sums!r}")
             mpi = json.loads((outdir / "manifest_pi.json").read_text())
             pi_sec = mpi.get("platforms", {}).get("pi", mpi)
-            if "p95CpuMsBaseline" in str(pi_sec):
+            if "p95CpuMsBaseline" in pi_sec or any(
+                    "p95CpuMsBaseline" in z for z in pi_sec["zones"]):
                 failures.append("manifest_pi.json carries p95CpuMsBaseline (it must not)")
             if pi_sec.get("blessedUnder", {}).get("glVersion") != PI_GL:
                 failures.append(f"manifest_pi.json blessedUnder: {pi_sec.get('blessedUnder')!r}")
@@ -382,9 +391,9 @@ def check_pi():
         with tempfile.TemporaryDirectory(prefix="b1024_maps_") as td:
             cases = (
                 (_good_maps_text(), False, "nollvm prefix accepted"),
-                (_good_maps_text() + f"00500000-00510000 r-xp 00000000 fe00:0000 {PI_MESA_PREFIX}/lib/libLLVM-20.so\n",
+                (_good_maps_text() + f"00500000-00510000 r-xp 00000000 fe:00 1236 {PI_MESA_PREFIX}/lib/libLLVM-20.so\n",
                  True, "libLLVM mapped"),
-                (f"00400000-00410000 r-xp 00010000 fe00:0000 /usr/lib/arm-linux-gnueabihf/libgallium.so.0.0.0\n",
+                (f"00400000-00410000 r-xp 00010000 fe:00 1234 /usr/lib/arm-linux-gnueabihf/libgallium.so.0.0.0\n",
                  True, "system libgallium"),
             )
             for text, expect_fail, why in cases:
@@ -399,19 +408,22 @@ def check_pi():
         #    section carries no p95CpuMsBaseline at all)
         with tempfile.TemporaryDirectory(prefix="b1024_blessed_") as td:
             gd = Path(td) / "goldens"
-            (gd / "qeynos2").mkdir(parents=True)
-            for i in (0, 1, 2):
-                (gd / "qeynos2" / f"f{i}.png").write_bytes(_png_bytes())
-            (Path(td) / "manifest.json").write_text(
-                json.dumps({"benchmark": {"resolution": {"width": 800, "height": 600},
+            section = _pi_section(manifest)
+            for z in manifest["zones"]:
+                (gd / z["zone"]).mkdir(parents=True)
+                for i in z["designatedFrames"]:
+                    (gd / z["zone"] / f"f{i}.png").write_bytes(_png_bytes())
+            tmp_manifest = {"benchmark": {"resolution": {"width": 800, "height": 600},
                                           "warmup": 5, "frames": 60},
                             "blessedUnder": {"glRenderer": "llvmpipe", "glVersion": "x"},
-                            "zones": [], "platforms": {"pi": _pi_section()}}))
-            rc, out = _run_main(gate, ["--platform", "pi", "--bench", str(PI_BENCH),
-                                       "--goldens-dir", str(gd)])
+                            "zones": manifest["zones"], "platforms": {"pi": section}}
+            (Path(td) / "manifest.json").write_text(json.dumps(tmp_manifest))
+            with mock.patch.object(gate, "load_manifest", return_value=tmp_manifest):
+                rc, out = _run_main(gate, ["--platform", "pi", "--bench", str(PI_BENCH),
+                                           "--goldens-dir", str(gd)])
             if rc != 0 or "FAIL" in out:
                 failures.append(f"blessed pi verify: rc={rc} out={out!r}")
-            if "[cpu]" in out or "ceiling" in out:
+            if "p95" in out:
                 failures.append(f"pi verify asserted the p95 ceiling: {out!r}")
 
     finally:
@@ -430,17 +442,27 @@ def check_pi():
     return 0
 
 
-def _run_main(gate, argv):
+def _run_main(gate, argv, *, maps_text=None):
     """Invoke gate.main() with the benchmark layer stubbed (subprocess
     recording + a stubbed run_benchmark + stubbed coverage run); return
-    (exit_code, printed)."""
+    (exit_code, printed). poll_maps is stubbed the way a LIVE pi process
+    with the nollvm prefix up would behave: it writes the maps proof and
+    reports success (maps_text overrides, for a bad-proof run)."""
     gate.BENCH_BIN = Path(tempfile.mkdtemp(prefix="b1024_bin_")) / "gles2_zone_benchmark"
     gate.BENCH_BIN.write_bytes(b"")
     gate.ARTIFACTS_DIR = Path(tempfile.mkdtemp(prefix="b1024_art_"))
     recorded = []
     install_fake_subprocess(gate, recorded, maps_text=_good_maps_text())
+
+    def fake_poll_maps(proc, maps_path, *a, **kw):
+        mp = Path(maps_path)
+        mp.parent.mkdir(parents=True, exist_ok=True)
+        mp.write_text(maps_text if maps_text is not None else _good_maps_text())
+        return True
+
     with mock.patch.object(gate, "run_benchmark",
-                           lambda *a, **kw: _stub_benchmark(gate, a[2])), \
+                           lambda zc, bc, out, pa=None, cfg=None: _stub_benchmark(gate, zc, out)), \
+         mock.patch.object(gate, "poll_maps", fake_poll_maps), \
          mock.patch.object(gate, "run_memory_coverage_benchmark", lambda *a, **kw: None), \
          mock.patch.object(gate, "assert_memory_ledger", lambda *a, **kw: None), \
          mock.patch("PIL.Image.open",
