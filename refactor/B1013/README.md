@@ -79,8 +79,18 @@ TRAP (from the card, written into the column comment and the test): the
 README's "0 creates from ready+17 s until shutdown" is NOT literally true of
 this leg — closes run until 2740389.009650 (+18.497 s) and 5 creates of
 24-213 KiB land at 2740556.77-2740557.26 (+186 s, after steady_60s). The
-STEADY WINDOW [ready+20 s, steady_60s] is clean, and the column is defined on
-exactly that window — never widened to shutdown.
+STEADY WINDOW [ready+20 s, steady_60s] is clean IN THIS LEG (final-pidefault
+qeynos2, the committed fixture), and the column is defined on exactly that
+window — never widened to shutdown. Across the 10 B997 Pi legs the window is
+clean in every qeynos2 leg (5 of 5) but NOT in every leg: every gfaydark leg
+(5 of 5) and both baseline legs carry small nonzero events inside it (cost
+sheet fact 13's per-leg census: final-pidefault gfaydark 1 create, picensus
+gfaydark 1 create + 4 closes, pisgbatch-sg0 gfaydark 8 closes,
+pisgbatch-sg1 gfaydark 1 close, qa-pidefault gfaydark 1 create, baseline
+161526 qeynos2 6 creates + 4 closes / gfaydark 2 creates + 10 closes,
+baseline 164216 qeynos2 1 create / gfaydark 5 closes). Those are small, late
+trims — not pool growth: the growth numbers below hold per leg, and the
+frozen-pool mechanism stands.
 
 ## Step 5: the F block (per-frame burst counters)
 

@@ -127,10 +127,19 @@ the line numbers move, the function names do not.
     holds the PEAK number of BOs in flight since the last trim, and a client
     that keeps drawing never trims. Measured (B1013, the 10 B997 Pi legs; the
     shipped-default leg `tests/data/b1013/`): 0 GEM creates and 0 closes in
-    [ready+20 s, steady_60s] in every leg, while the pool (the draw-time row +
-    the stream-uploader rows of the gem_owners census) grew 7.91 MiB
-    (qeynos2) / 9.68 MiB (gfaydark) between ready and steady_60s -- the whole
-    zone-in burst. B997's batch (-14 / -103 draws per frame) moved the
+    [ready+20 s, steady_60s] in every qeynos2 leg (5 of 5); every gfaydark
+    leg (5 of 5) and both baseline legs carry small nonzero events in that
+    window -- final-pidefault gfaydark 1 create, picensus gfaydark 1 create +
+    4 closes, pisgbatch-sg0 gfaydark 8 closes, pisgbatch-sg1 gfaydark 1 close,
+    qa-pidefault gfaydark 1 create, baseline 161526 qeynos2 6 creates + 4
+    closes / gfaydark 2 creates + 10 closes, baseline 164216 qeynos2 1 create
+    / gfaydark 5 closes -- while the pool (the draw-time row + the
+    stream-uploader rows of the gem_owners census) grew 7.91 MiB (qeynos2) /
+    9.68 MiB (gfaydark) between ready and steady_60s in the shipped-default
+    leg -- the whole zone-in burst. The committed fixture leg is clean and
+    this per-leg census is what makes the frozen-pool mechanism stand: the
+    nonzero events are small, late trims inside the steady window, not pool
+    growth. B997's batch (-14 / -103 draws per frame) moved the
     `gpu_unnamed_steady` guard by -0.28 / +1.13 MiB, inside the leg spread: a
     frozen pool. Prediction: no steady-state change (draw count, varying
     stride, cull, LOD, batching) moves `gpu_unnamed_steady`; judge a lever on
