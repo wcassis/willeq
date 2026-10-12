@@ -87,9 +87,11 @@ swapped and nothing else; `scripts/ci/check_arm64_dockerfile.sh` (ctest `Dockerf
 `hygiene`) fails when they drift, and `--write` regenerates it.
 
 Device facts that bound a run: both aarch64 lanes mount the NFS share at `/mnt/projects`, have `/tmp` and
-`/mnt/ram` as `nosuid` tmpfs (copy a binary to the ext4 home for `setcap`, exactly as on lane 1), and have no
-`--constrained` preset of their own -- a preset, manifest or budget for either is a bless-only ruling request
-filed with measurements (`kmscube_floor.sh`, the ledger in a cgroup), not a default. Lane 2's Mesa is the same
+`/mnt/ram` as `nosuid` tmpfs (copy a binary to the ext4 home for `setcap`, exactly as on lane 1), and run the
+`orangepi` preset like lane 1 -- RULED (Will 2026-10-12, B1033 #353, `docs/decisions.md`): one preset on every
+lane, the same 256 MB bound and 64 MB target, no goldens of their own until a lane runs the gate; a lane
+preset is for an experiment (`pi_rendered_zone_sweep.sh --constrained <preset>`), never a default or a gate.
+Lane 2's Mesa is the same
 25.2.8 the Pi runs, so the Lima cost sheet applies; lane 3 is Bifrost under Panfrost and nothing Lima-specific
 transfers to it.
 

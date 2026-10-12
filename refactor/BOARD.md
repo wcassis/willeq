@@ -1075,13 +1075,12 @@ it without taking that measurement first.
   Open: lane 2's 17.2 MiB of unnamed GEM fails the Pi rig's 10 MiB bound
   and the B962 owner-census shim is armhf-only (an aarch64 build of it is
   the next B item there).
-- **B1033** (C) → issue #353. Ruling request: do the aarch64 lanes keep the
-  `orangepi` preset (recommended: yes, one client to reason about; a preset
-  only for an experiment, never a gate), the same 256 MB bound and 64 MB
-  target (recommended: yes), and goldens of their own (recommended: not
-  before a lane runs the gate; lane 2 shares the Pi's Mesa and may match
-  its goldens exactly). Both lanes measure ~70 MB owned_rss_anon at qeynos2
-  steady on that preset (`review/B1030/README.md`).
+- ~~**B1033** (C) → issue #353.~~ RULED 2026-10-12 (Will, `docs/decisions.md`):
+  the aarch64 lanes keep the `orangepi` preset, the same 256 MB bound and
+  64 MB target, and get no goldens of their own until a lane runs the gate
+  (lane 2 shares the Pi's Mesa; whether it matches the Pi goldens is a
+  measurement to take first). Both lanes measure ~70 MB owned_rss_anon at
+  qeynos2 steady on that preset (`review/B1030/README.md`).
 - ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
   mechanism (a partial `glBufferSubData` into a buffer the current Lima job
   references flushes the job and blocks in `lima_bo_wait`, once per write): the

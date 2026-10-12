@@ -48,8 +48,9 @@
 #          client's --dump-every / --dump-max-frames, Pi /tmp is ~242 MB)
 #          [--account NAME --char NAME]   (B960; default the lane's test
 #          account/character from scripts/eqemu/env.sh, same password)
-#          [--constrained PRESET]   (B1030: the client's --constrained preset,
-#          default orangepi on every lane until a per-lane preset is ruled on)
+#          [--constrained PRESET]   (B1030: the client's --constrained preset;
+#          Will ruled 2026-10-12 (B1033): orangepi on EVERY lane, an override
+#          is for an experiment, never a default or a gate)
 #          [--shared-cgroup]   (B955: by default the client runs in its OWN
 #          memory cgroup -- rendered_zone_run.py --own-cgroup -- so its
 #          gpu_buffers ledger row reads the Lima GEM bytes from memory.stat;
