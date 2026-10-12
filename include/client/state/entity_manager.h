@@ -61,7 +61,6 @@ struct Entity {
     uint32_t lastUpdateTime = 0;
 
     // Pet tracking
-    uint8_t isPet = 0;           // Non-zero if this entity is a pet
     uint32_t petOwnerId = 0;     // Spawn ID of pet's owner
 
     // Weapon skill types for combat animations (255 = unknown/none)
