@@ -170,8 +170,11 @@ merged in — no overlap with this card's files).
 
 - `python3 scripts/refactor/check_write_only_fields.py --repo . --check`:
   exit 0 — "write-only census clean: 45 fields, all 45 classified in
-  EXEMPT" (48 at base − 2 struck rows; exact output in
-  `ratchet_green.log`).
+  EXEMPT". Base `06852f31` is 48; at the head that is 48 − 3: this card's
+  two struck rows (`lazyMode_`, `entityDirCallback_`) plus
+  `CameraController::mouseSensitivity_`, which B533 removed from
+  `origin/fable` in the merge (not this card's line). Exact output in
+  `ratchet_green.log`.
 - `python3 scripts/refactor/check_zero_callers.py --repo . --check`: exit 0 —
   "zero-caller census clean: 364 functions, all classified in EXEMPT
   (boarded 364)" and "tests-only census clean: 292 functions, all classified
