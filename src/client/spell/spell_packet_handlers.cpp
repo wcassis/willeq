@@ -416,8 +416,8 @@ void SpellManager::handleSpellBarRefresh(uint32_t slot, uint32_t spell_id)
         return;
     }
 
-    // The outcome was already resolved (an unreliable packet reached us inside
-    // the tail): the recast is still the server's word for that gem.
+    // No outcome pending for this spell (e.g. the duration + 5 s fallback
+    // already ended it): the recast is still the server's word for that gem.
     if (slot < EQT::SPELL_GEM_COUNT && spell_id != SPELL_UNKNOWN && m_spell_gems[slot] == spell_id &&
         !(m_is_casting && m_current_gem_slot == slot)) {
         const SpellData* spell = m_spell_db.getSpell(spell_id);

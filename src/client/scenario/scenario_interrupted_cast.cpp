@@ -1,4 +1,5 @@
-// B630 (issue #48, owed live proof) + B760 (issue #45, record only).
+// B630 (issue #48, owed live proof) + B760 (issue #45; its repeated lane is
+// scenario_cast_tail_repeat.cpp, its verdict refactor/B760/README.md).
 //
 // The two-client interrupted-cast lane as small state machines.
 //

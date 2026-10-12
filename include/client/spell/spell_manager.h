@@ -215,7 +215,8 @@ public:
     // client's gem-refresh trigger. A stop never sends it. It completes our
     // cast as a Success and starts the gem's recast; a refresh for a gem
     // holding `spell_id` starts that gem's recast even when no cast is pending
-    // (an unreliable packet may have resolved the outcome first).
+    // (since B760 an unreliable packet can no longer settle the outcome first;
+    // the cast may still have ended on the duration + 5 s fallback).
     void handleSpellBarRefresh(uint32_t slot, uint32_t spell_id);
 
     // T482: called by the zone dispatcher BEFORE each packet's arm. While a
