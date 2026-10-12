@@ -59,15 +59,17 @@ docker, scripts) before touching it.
   **MISSING feature** — board it as its own line (see FOLLOW-UP), do not wire
   it here.
 
-## A merge artifact caught by ctest (2026-10-11)
+## An edit splice caught by ctest (2026-10-11)
 
-While this branch's first commit was being composed, a mid-lean run left the
-working tree's `beginCastFromGem()` tail with `sendCastSpellPacket(spell_id,
-0xFF, target_id)` — `beginCastById`'s no-gem marker (its tail is nearly
-identical) — instead of `gem_slot`. Two `test_eq_action_handler_cast` tests
-(`CastSpell_ProfileLoadedGem_CastsThroughSpellManager`,
-`CastSpell_GemIndexIsOneBased`) went red on the wire slot (255 vs 0). The fix
-(commit 3) restores `gem_slot`. After the fix, `spell_manager.cpp` differs
+The `0xFF` tail was not a working-tree or merge accident: it was COMMITTED in
+1d3a5297 (this branch's first commit) and carried through the 5f088f19
+merge-from-fable — `git grep sendCastSpellPacket 1d3a5297` shows
+`sendCastSpellPacket(spell_id, 0xFF, target_id)` already in
+`spell_manager.cpp` — an edit splice left when `beginCastById` was deleted
+(the two tails are nearly identical). Two `test_eq_action_handler_cast`
+tests (`CastSpell_ProfileLoadedGem_CastsThroughSpellManager`,
+`CastSpell_GemIndexIsOneBased`) went red on the wire slot (255 vs 0); commit
+84405cef restores `gem_slot`. After the fix, `spell_manager.cpp` differs
 from origin/fable only by B603's deletions — verified by diff.
 
 ## Red / green
@@ -82,12 +84,21 @@ which had no row of its own — it was a live pass-through in HEAD).
   STALE, the 3 seam rows do not (their functions still exist). Evidence:
   `kb-evidence/b603-gameplay-manager-zero-callers/RED_zero_callers.txt`.
 - **GREEN** — working ratchet (17 deleted rows removed; `calcBankBagSlotId`,
-  `assignSlot`, `clearSlot` re-classified `seam`) run against the working
-  tree: exit 0. `zero-caller census clean: 374 functions` (unchanged — none of
-  the deleted functions was in the zero bucket); `tests-only census clean:
-  303 functions, all classified (boarded 82, observer 169, seam 52)`.
-  Arithmetic: 320 (baseline) − 20 B603 rows + 3 seam rows = 303; boarded
-  102 − 20 = 82, seam 49 + 3 = 52, observer 169 unchanged. Evidence:
+  `assignSlot`, `clearSlot` re-classified `seam`) run against this branch's
+  head: exit 0. The census lines the run prints at the head (verbatim):
+
+  ```
+  zero-caller census clean: 364 functions, all classified in EXEMPT (boarded 364).
+  tests-only census clean: 292 functions, all classified in EXEMPT_TESTS (boarded 71, observer 169, seam 52).
+  ```
+
+  These differ from the 303 / (boarded 82) figures a mid-work snapshot of the
+  branch reported: that snapshot's arithmetic took the −20 +3 delta from the
+  320 baseline, but the baseline predates B602 — B602's 11 rows (11
+  tests-only deletions, 309 at 5f088f19) arrived only via the 5f088f19
+  merge-from-fable, so the true sequence is 320 → 309 (B602) → 292
+  (B603's own delta of −20 +3, unchanged: 309 − 20 + 3 = 292; boarded
+  102 − 11 − 20 = 71, seam 49 + 3 = 52, observer 169 unchanged). Evidence:
   `kb-evidence/b603-gameplay-manager-zero-callers/GREEN_zero_callers.txt`.
 - **WriteOnlyFields** — `check_write_only_fields.py --repo . --check`: exit 0,
   `write-only census clean: 48 fields`, `unused census clean: 86 fields` —
