@@ -155,7 +155,9 @@ hygiene    = 158.65 sec*proc (29 tests)   # all passed
 ### Pi memory fields per zone (from `manifest_pi.json`, the exact-match set)
 
 Budget-pair usage + `MEMORY_BASELINE_FIELDS` (bytes; `framebufferBytes` is
-2880000 = 800x600x24bpp for every zone — the Pi's EGL depth=24, the same reason
+2880000 = 800x600x6 B/px for every zone — 2x16-bit color front+back + the
+D16 surface the client ships (orangepi preset: `colorDepthBits=16`,
+`enableStencilBuffer=false`, `calculateFramebufferUsage`), the same reason
 a cross-platform pixel compare can never be exact):
 
 | zone | textureCacheBytesUsed | gpuTextureBytes | zoneGeometryBytes | s3dZoneSourceBytes | vboEboBytes | characterModelsBytes | eqe1MappedBytes | totalEstimate | textureCount |
