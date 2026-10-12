@@ -139,10 +139,24 @@ Every SKIP of the 90, classified:
 
 ## Linux stays identical (dev-u24)
 
-Filled in by the hand-back of this unit (`review/B1039/linux_*`): the
-headless tree (`build-headless`, `EQT_GRAPHICS=OFF`) must match B1038's
-3533/3533 + 26/26, and the graphics tree builds `willeq` + the touched
-test targets.
+- Headless (`build-headless`, `-DEQT_GRAPHICS=OFF`, cold at `03f656f9` then
+  incremental to the branch head; `-j4`, one build at a time on the host):
+  **BUILD_EXIT=0** both passes, `grep -c "error:"` = 0
+  (`review/B1039/linux_headless_build*.log`); `ls build-headless/bin | wc -l`
+  = 242 (the EGL tools, `test_gl_points`, `test_lima_bo_census_shim` and
+  `test_memory_ledger` all still built). `ctest -LE hygiene -j4`: **100%,
+  0 failed out of 3533**, 45 skipped -- B1038's numbers exactly
+  (`linux_headless_ctest.log`). `ctest -L hygiene`: **26/26**
+  (`linux_headless_hygiene.log`).
+- Graphics (the CLAUDE.md GLES2 tree, `-DEQT_GLES2_IRRLICHT_DIR=<main>/third_party/irrlicht-gles2-x86`),
+  ONLY `willeq` + the touched targets at `-j4`: **BUILD_EXIT=0**
+  (`linux_gfx_build.log`). Run directly (`linux_gfx_tests.txt`), all rc=0:
+  `test_data_paths` 17, `test_memory_ledger` 31, `test_headless_shutdown` 2,
+  `test_forage_fishing` 12, `test_background_work_queue` 22,
+  `test_background_thread_pool` 13, `test_udp_transport` 9,
+  `test_eqe1_loader` 19/19, `test_eqe1_stale_pack`,
+  `test_lima_bo_census_shim`; `gpu_texture_formats` and `test_gl_points`
+  built. CI runs the rest.
 
 ## Not verified / left open
 
