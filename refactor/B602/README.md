@@ -28,7 +28,7 @@ untouched.
 | `EntityManager::markAsCorpse` | **deleted** | decl h:156, def cpp:87; only uses: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
 | `EntityManager::updateEntityEquipment` | **deleted** | decl h:150, def cpp:70; only uses: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
 | `EntityManager::updateEntityHP` | **deleted** | decl h:140, def cpp:56; only use: `tests/test_state_modules.cpp` (TEST block deleted with the unit). |
-| `EntityManager::fireEntityStatsChangedEvent` (private) | **deleted — cascade** | decl h:323, def cpp:387. Its ONLY caller was the deleted `updateEntityHP` (cpp:65); with that gone it is zero-caller (grep: declaration, definition and a comment in `tests/test_console_target_hp.cpp:16` — comment re-pointed to the event type). It was also the sole PUBLISHER of `GameEventType::EntityStatsChanged` on the state-layer EventBus. Deleting it loses no live behaviour because that enumerator is still published and consumed: `ReachabilitySweep` passes [measured, `test_reachability_sweep` 5/5 green at this tip] with the remaining publisher `ZoneProcessMobHealth`'s bridge `pushEvent(EntityStatsChanged)` (`src/client/entities/entities_component_appearance.cpp:207`) and the consumer `ConsoleRenderer`'s subscription (`src/client/output/console_renderer.cpp:113`) + `IrrlichtBridge`'s case (`src/client/bridge/irrlicht_bridge.cpp:97`). |
+| `EntityManager::fireEntityStatsChangedEvent` (private) | **deleted — cascade** | decl h:323, def cpp:387. Its ONLY caller was the deleted `updateEntityHP` (cpp:65); with that gone it is zero-caller (grep: declaration, definition and a comment in `tests/test_console_target_hp.cpp:15` — comment re-pointed to the event type). It was also the sole PUBLISHER of `GameEventType::EntityStatsChanged` on the state-layer EventBus. There are TWO channels for that enumerator, and this cell originally conflated them (B1027, #347, corrected this sentence 2026-10-12): (a) the RENDERER-BRIDGE channel — `ZoneProcessMobHealth`'s `pushEvent(EntityStatsChanged)` (`src/client/entities/entities_component_appearance.cpp:207`), consumed by `IrrlichtBridge`'s case (`src/client/bridge/irrlicht_bridge.cpp:97`), which feeds the graphics renderer; and (b) the STATE-EventBus channel — consumed by `ConsoleRenderer`'s subscription (`src/client/output/console_renderer.cpp:113`) for the headless status-line target HP, with NO src publisher at all (nothing forwards bridge -> state; `combat_state.cpp:75-83` says so explicitly). `ReachabilitySweep` [measured, `test_reachability_sweep` 5/5 green at this tip] treats a bridge `pushEvent` as the enumerator's publisher, which is how the conflation slipped through. B1027 adds the missing state-bus publish from `ZoneProcessMobHealth` (keeping the bridge publish). Deleting this setter loses no live behaviour: it was the only state-bus publisher and fired only when `updateEntityHP` was called — and it was called by nothing. |
 
 ## The B468 trap — the live routes, named
 
@@ -47,11 +47,18 @@ entity store `it->second.hp_percent = hp_percent` (line 179) and then:
   renderer bridge (lines 200-245).
 The deleted setter published `EntityStatsChanged` on the state EventBus — the
 `ConsoleRenderer` headless status line takes target HP off that same enumerator
-(`console_renderer.cpp:113,193`), but the live feed of that enumerator in a
-headless run is the MobHealth bridge path (single-stage `applyEvent` in
-`GameStateSyncBridge::applyEvent`, `game_state_sync_bridge.cpp:6`), not the
-EntityManager publisher, which fired only when `updateEntityHP` was called —
-and it was called by nothing.
+(`console_renderer.cpp:113,193`), and that STATE channel has NO other src
+publisher (nothing forwards the renderer bridge onto the state EventBus —
+`combat_state.cpp:75-83` says so explicitly). The MobHealth path
+(`entities_component_appearance.cpp:207`) pushes the enumerator onto the
+renderer BRIDGE (single-stage `applyEvent` in
+`GameStateSyncBridge::applyEvent`, `game_state_sync_bridge.cpp:6`), which feeds
+the graphics renderer (`IrrlichtBridge`, `irrlicht_bridge.cpp:97`) — NOT the
+headless status line. So this cell's original claim ("the live feed of that
+enumerator in a headless run is the MobHealth bridge path") was FALSE: the
+headless target HP froze at acquisition after B602's deletion, which is
+B1027 (#347), fixed there by adding a state-bus publish from
+`ZoneProcessMobHealth` (2026-10-12).
 
 **`updateEntityHP` — the state-layer `Entity::hpPercent` field.**
 Note: `ZoneProcessMobHealth` does NOT write the state-layer
@@ -83,8 +90,8 @@ caller) -- /target and /loot missed it" — T268's fix, the one this board row's
 name references). Death handling re-syncs the same way
 (`player_state.cpp:182`). `isCorpse` itself is read live by
 `IsCorpseByFields` (T456's one corpse predicate, `findEntityByNameRanked`
-cpp:193, `command_processor_loot.cpp:93`) and the spawn-event payload
-(cpp:246).
+cpp:154, `command_processor_loot.cpp:93`) and the spawn-event payload
+(cpp:238).
 
 **Pet queries (`findPetByOwner`/`getAllPets`/`getPetOwnerId`) — `Entity::isPet` /
 `petOwnerId`.**
@@ -106,12 +113,20 @@ it stays declared without a row, as before [measured: tests-only census is
   `fireEntityStatsChangedEvent` declaration. (11 + 1 = 12 declarations.)
 - `src/client/state/entity_manager.cpp`: the 11 definitions + the
   `fireEntityStatsChangedEvent` definition (12 bodies). `calculateDistance`
-  (private, def cpp:276) is KEPT: it was already zero-caller BEFORE this unit
-  (private members are outside the census's scope) and is not one of the 11,
-  so it is out of scope — flagged in "Not verified / left open" below.
-- `tests/test_state_modules.cpp`: 14 TEST blocks — the 11 named ones plus
-  3 that shared callers with the deleted siblings (file 1087 → 952 lines;
-  83 → 69 TESTs in this file).
+  (private, def cpp:276 at this unit's tip) was already zero-caller BEFORE
+  this unit (private members are outside the census's scope) and was not one
+  of the 11, so B602 left it — it was later deleted by B1028 (#348, this
+  wave), which struck the "Not verified / left open" bullet below.
+- `tests/test_state_modules.cpp`: 14 TEST blocks — the 11 named in the
+  table plus 3 that shared callers with the deleted siblings. The real
+  breakdown is 14 = 2+2+2+1+2+1+2+2: `UpdateEntityHP*` 2,
+  `UpdateEntityEquipment*` 2, `MarkAsCorpse*` 2,
+  `FindEntityByExactNameRequiresFullMatch` 1, `GetEntitiesInRange*` 2,
+  `GetNearestCorpseFindsOnlyCorpses` 1, `PetQueriesTrackOwnerRelationship`
+  + `IsPetAbsentEntityReturnsFalse` 2, `ForEachEntityVisitsAll` +
+  `ForEachEntityMutableAllowsModification` 2 — counted from
+  `git diff fb83bd09 21f362c6 -- tests/test_state_modules.cpp`, 14 removed
+  `^-TEST` blocks. File 1087 → 952 lines; 83 → 69 TESTs in this file.
 - `tests/test_console_target_hp.cpp`: header comment re-pointed — it named
   `fireEntityStatsChangedEvent` as the publisher; it now names the event type
   only.
@@ -170,11 +185,13 @@ was unreachable in production, and the only event-publish path removed,
 
 ## Not verified / left open
 
-- `EntityManager::calculateDistance` (private, `entity_manager.cpp:276`) is
+- ~~`EntityManager::calculateDistance` (private, `entity_manager.cpp:276`) is
   dead (zero callers tree-wide, pre-existing — private members are outside
   the census). NOT deleted here: it is not one of the 11 and is not made
   dead by this unit. Candidate for a follow-up zero-caller sweep that extends
-  the census to private members.
+  the census to private members.~~ STRUCK 2026-10-12 (B1028, #348): deleted
+  in this wave (method + private `calculateDistance`, and the `Entity::isPet`
+  field they exposed as write-only) — the candidate above is no longer open.
 - The state-layer `Entity::hpPercent` is refreshed only on the
   `SyncEntityToGameState` routes (named above); between them it is stale for
   non-player mobs. Pre-existing, unchanged, and no live reader of that field
