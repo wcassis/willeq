@@ -833,17 +833,6 @@ void EverQuest::ConnectToZone()
 	// pre-allocated in EverQuest constructor / Application::initialize()
 
 	EQ::Net::DaybreakConnectionManagerOptions zone_opts;
-	// B760 (#45): a diagnostic lever, off unless set. WILLEQ_SIM_ZONE_IN_LOSS=<n>
-	// drops inbound zone datagrams at the Daybreak manager's own
-	// simulated_in_packet_loss rate (`n >= Int(0, 100)`), so a live lane can
-	// make the server RESEND reliable packets while unreliable ones keep
-	// arriving -- the only way an unreliable packet reaches the client inside
-	// a reliable sequence (refactor/B760/README.md).
-	if (const char* loss = std::getenv("WILLEQ_SIM_ZONE_IN_LOSS")) {
-		zone_opts.simulated_in_packet_loss = static_cast<size_t>(std::strtoul(loss, nullptr, 10));
-		LOG_WARN(MOD_ZONE, "WILLEQ_SIM_ZONE_IN_LOSS={}: simulating inbound zone packet loss",
-			zone_opts.simulated_in_packet_loss);
-	}
 	auto transport = std::make_unique<EQ::Net::PosixUdpTransport>();
 	m_zone_connection_manager.reset(new EQ::Net::DaybreakConnectionManager(zone_opts, std::move(transport)));
 	m_zone_connection_manager->OnNewConnection(std::bind(&EverQuest::ZoneOnNewConnection, this, std::placeholders::_1));
@@ -892,6 +881,24 @@ void EverQuest::ZoneOnStatusChangeReconnectEnabled(std::shared_ptr<EQ::Net::Dayb
 void EverQuest::ZoneOnPacketRecv(std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet & p)
 {
 	auto opcode = p.GetUInt16(0);
+
+	// B760 (#45): a diagnostic lever, off unless set. WILLEQ_SIM_ZONE_IN_LOSS=<n>
+	// drops inbound zone datagrams at the Daybreak manager's own
+	// simulated_in_packet_loss rate (`n >= Int(0, 100)`) once the client is
+	// fully zoned in (at 20 the zone-in burst itself never completed), so a
+	// live lane can make the server RESEND reliable packets while unreliable
+	// ones keep arriving -- the only way an unreliable packet reaches the
+	// client inside a reliable sequence (refactor/B760/README.md).
+	static const size_t kSimZoneInLoss = [] {
+		const char* v = std::getenv("WILLEQ_SIM_ZONE_IN_LOSS");
+		return v ? static_cast<size_t>(std::strtoul(v, nullptr, 10)) : size_t{0};
+	}();
+	if (kSimZoneInLoss != 0 && m_zone_connection_manager && IsFullyZonedIn() &&
+		m_zone_connection_manager->GetOptions().simulated_in_packet_loss != kSimZoneInLoss) {
+		m_zone_connection_manager->GetOptions().simulated_in_packet_loss = kSimZoneInLoss;
+		LOG_WARN(MOD_ZONE, "WILLEQ_SIM_ZONE_IN_LOSS={}: simulating inbound zone packet loss from now on",
+			kSimZoneInLoss);
+	}
 
 	LOG_TRACE(MOD_ZONE, "[ZONE RECV] opcode=0x{:04x} len={}", opcode, p.Length());
 
