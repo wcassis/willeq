@@ -1066,12 +1066,22 @@ it without taking that measurement first.
   lanes (`review/B1030/README.md`), after one port fix: Panfrost lists 10-bit
   EGL visuals first, so the DRM device now picks the config whose native
   visual is the GBM format (`chooseConfigForGbmFormat`, unchanged result on
-  Lima, A/B in the README). Open: a CI job for the arm64 build (`build-arm`
-  is not widened); the `[memgpu]` census takes Panfrost's `drm-total-memory`
-  (174.8 MB) where `drm-resident-memory` is 38.8 MB — read the fdinfo
-  semantics before choosing a field (its own B item); the cgroup ledger run
-  per lane; and a `--constrained` preset per device — class C with
-  measurements attached, never a default.
+  Lima, A/B in the README). Follow-ups done: `build-arm64` CI job (sibling
+  of `build-arm`, not a widening); the rendered sweep runs on the aarch64
+  lanes (system Mesa, `ci-arm64/`, headless HDMI via `pi_hdmi_force_on`,
+  `--constrained <preset>`); ledger rows for both lanes in the README
+  (~70 MB owned_rss_anon each on the orangepi preset). Spun off: the
+  Panfrost census field → B1032; the per-lane preset ruling → B1033.
+  Open: lane 2's 17.2 MiB of unnamed GEM fails the Pi rig's 10 MiB bound
+  and the B962 owner-census shim is armhf-only (an aarch64 build of it is
+  the next B item there).
+- **B1033** (C) → issue #353. Ruling request: do the aarch64 lanes keep the
+  `orangepi` preset (recommended: yes, one client to reason about; a preset
+  only for an experiment, never a gate), the same 256 MB bound and 64 MB
+  target (recommended: yes), and goldens of their own (recommended: not
+  before a lane runs the gate; lane 2 shares the Pi's Mesa and may match
+  its goldens exactly). Both lanes measure ~70 MB owned_rss_anon at qeynos2
+  steady on that preset (`review/B1030/README.md`).
 - ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
   mechanism (a partial `glBufferSubData` into a buffer the current Lima job
   references flushes the job and blocks in `lima_bo_wait`, once per write): the
