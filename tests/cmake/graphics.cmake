@@ -339,12 +339,15 @@ GTEST_DISCOVER_TESTS(test_texture_alpha_census DISCOVERY_TIMEOUT 120)
 # (setZoneConfig is the one place the radius is derived) and the shipped
 # config's own numbers. No device: DetailManager is constructed with null
 # scene manager and driver, which touches neither. Links willeq_core for
-# DetailManager and DetailConfigLoader.
-ADD_EXECUTABLE(test_detail_view_distance
-    test_detail_view_distance.cpp
-)
-TARGET_LINK_LIBRARIES(test_detail_view_distance GTest::gtest_main willeq_core)
-GTEST_DISCOVER_TESTS(test_detail_view_distance DISCOVERY_TIMEOUT 120)
+# DetailManager and DetailConfigLoader. Graphics builds only (B1038): every
+# case is DetailManager's, and detail_types.h includes irrlicht.h.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_detail_view_distance
+        test_detail_view_distance.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_detail_view_distance GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_detail_view_distance DISCOVERY_TIMEOUT 120)
+ENDIF()
 
 # B967/B968 (GitLab #285/#286): the per-pixel player light. The LUT and the
 # FP16 headroom of the VS-formed light vector, GL-free (header-only, no

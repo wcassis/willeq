@@ -69,6 +69,18 @@ IF(NOT GLM_INCLUDE_DIR)
     MESSAGE(FATAL_ERROR "GLM not found")
 ENDIF()
 
+# Find cereal (header-only; include/common/net/packet.h and daybreak_structs.h,
+# so every target that touches the network code). B1038 (#358): it was never
+# checked, and a host without it got 217 opaque "cereal/cereal.hpp: No such
+# file" errors (B1031's macOS probe) instead of one line here.
+FIND_PATH(CEREAL_INCLUDE_DIR cereal/cereal.hpp)
+IF(NOT CEREAL_INCLUDE_DIR)
+    MESSAGE(FATAL_ERROR
+        "cereal (header-only serialization library) not found: no cereal/cereal.hpp "
+        "on the include path. Install it -- Debian/Ubuntu: libcereal-dev; "
+        "Homebrew: cereal -- or pass -DCEREAL_INCLUDE_DIR=<dir containing cereal/>.")
+ENDIF()
+
 # Find jsoncpp
 FIND_PACKAGE(PkgConfig)
 IF(PkgConfig_FOUND)
@@ -209,6 +221,7 @@ INCLUDE_DIRECTORIES(
     ${CMAKE_SOURCE_DIR}/third_party/dr_libs
     ${CMAKE_SOURCE_DIR}/third_party/miniaudio
     ${GLM_INCLUDE_DIR}
+    ${CEREAL_INCLUDE_DIR}
     ${OPENSSL_INCLUDE_DIR}
     ${ZLIB_INCLUDE_DIRS}
 )
