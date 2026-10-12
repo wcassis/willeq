@@ -151,12 +151,10 @@ TEST(EqActionHandlerSpellPet, InterruptCast_WhileCasting_ClearsCastingState) {
     eq.GetGameState().player().setLevel(60);
     ASSERT_TRUE(spellMgr->memorizeSpell(id, 0));
     // memorizeSpell() only STARTS memorization (async, MemorizeProgress
-    // state) -- force it to Ready so beginCastById can actually cast, same
-    // shortcut test_spell_manager_timing.cpp's cast-completion tests use
-    // (private-access technique not needed here: setGem-equivalent via the
-    // public gem-state machine isn't exposed, so drive via beginCastById
-    // directly instead of gem-based casting for this state-transition test).
-    EQ::CastResult result = spellMgr->beginCastById(id, 0);
+    // state) -- the cast attempt below hits the gem-state gate and skips
+    // on that branch, same as before B603 (which drove it via the deleted
+    // beginCastById(), itself a delegate to beginCastFromGem()).
+    EQ::CastResult result = spellMgr->beginCastFromGem(0);
     if (result != EQ::CastResult::Success) {
         GTEST_SKIP() << "spell did not enter casting (validation/mana gate) -- "
                          "cannot exercise the interrupt-while-casting branch";

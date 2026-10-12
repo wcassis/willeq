@@ -81,14 +81,14 @@ KEEP_SERVER=0
 LOG_LEVEL="INFO"
 # B630 item 3: the B760 deliverable (#45) is a per-opcode cast-tail table, and
 # the only record of the wire order is the per-opcode [ZonePacket] DEBUG line
-# (zone_dispatch.cpp:958) plus the [SPELL] handler lines. The whole
+# (ZoneComponent::DispatchZonePacket, with rel=0/1 since B760) plus the [SPELL] handler lines. The whole
 # interrupted-cast family needs ZONE and SPELL at DEBUG; every OTHER scenario
 # stays at plain INFO. The module list is the comma form parsed by
 # --log-module (application_config.cpp). A run being DIAGNOSED with full
 # --log-level DEBUG subsumes this, so it is never forced on.
 log_module_for() {
     case "$1" in
-        cast_interrupt_chain|cast_interrupt|cast_interrupt_observe|cast_success_tail|cast_recast_stop|cast_buff_notake|cast_fizzle)
+        cast_interrupt_chain|cast_interrupt|cast_interrupt_observe|cast_success_tail|cast_recast_stop|cast_buff_notake|cast_fizzle|cast_tail_*)
             echo "ZONE:DEBUG,SPELL:DEBUG" ;;
         # UIGAP-live: ignore_tell's DELIVERED half is the client's own
         # MAIN:DEBUG "Ignored tell message from <peer>" line (the server sent
@@ -369,9 +369,11 @@ fi
 # client launch) leaves this block seeing an empty SEED_SQL and the two
 # characters log into their stored zones, unco-located. (First B630 run
 # 2026-09-19: seed never applied, caster 'nro' / observer 'befallen'.)
-if [ "$SCENARIO" = "cast_interrupt_chain" ] && [ -z "$SEED_SQL" ]; then
-    SEED_SQL="$REPO/scripts/scenario_configs/b630_seed.sql"
-fi
+case "$SCENARIO" in
+    cast_interrupt_chain|cast_tail_repeat_*)
+        # B760 (#45): the repeated cast-tail lane uses B630's co-location seed.
+        [ -n "$SEED_SQL" ] || SEED_SQL="$REPO/scripts/scenario_configs/b630_seed.sql" ;;
+esac
 # B900 (#216): the bow + arrow kit is DB-seeded (the client cannot seat the
 # ammo slot -- server bitmask bit 22 vs Titanium slot 21), and a shot that
 # consumes an arrow is an INVENTORY mutation, so Testchar's rows get the
@@ -423,6 +425,9 @@ case "$SCENARIO" in
     # targets the caster and holds it for the chain's duration. Co-location is
     # the seed SQL, not a re-login.
     cast_interrupt_chain) PEER_SCENARIO="cast_interrupt_observe" ;;
+    # B760 (#45): the repeated cast-tail lane; the caster's name picks the peer.
+    cast_tail_repeat_quiet) PEER_SCENARIO="cast_tail_quiet_peer" ;;
+    cast_tail_repeat_traffic) PEER_SCENARIO="cast_tail_traffic_peer" ;;
     # UIGAP-live (#151 #213 #211): the UI legs' peers. The click-equip pair is
     # equip_observed's shape (the actor equips, exits and logs back in);
     # social_peer and track_peer get the main character's name as their
@@ -450,6 +455,7 @@ if [ -n "$PEER_SCENARIO" ]; then
     # starts leg A, so it only waits a few seconds.
     PEER_STAGGER=55
     [ "$PEER_SCENARIO" = "cast_interrupt_observe" ] && PEER_STAGGER=8
+    case "$PEER_SCENARIO" in cast_tail_*_peer) PEER_STAGGER=8 ;; esac
     PEER_LOG_MODULE="$(log_module_for "$PEER_SCENARIO")"
     (
         sleep "$PEER_STAGGER"
@@ -515,7 +521,8 @@ MAIN_LOG_MODULE="$(log_module_for "$SCENARIO")"
 # (ID 378)" cell could never pass.
 MAIN_SPELL_FLAGS="--scenario-spell $SPELL"
 case "$SCENARIO" in
-    cast_interrupt_chain)
+    cast_interrupt_chain|cast_tail_repeat_*)
+        # B760: the repeat lane's interrupted gem is the chain's A-leg spell.
         MAIN_SPELL_FLAGS="--scenario-spell $CHAIN_A_SPELL"
         ;;
 esac
@@ -575,6 +582,15 @@ if [ "$SCENARIO" = "cast_interrupt_chain" ]; then
     python3 "$REPO/scripts/scenario_configs/b630_analyze.py" \
         "$LOG" "$PEERLOG" --out "$OUT" || say "analyzer reported FAIL(s) -- see $OUT/b630_results.txt"
 fi
+# B760 (#45): the per-cast tail table (packets between keepcasting 0 and the
+# settle, reliability, outcome, latency). Informational, like B630's.
+case "$SCENARIO" in
+    cast_tail_repeat_*)
+        say "analyzing the cast tails"
+        python3 "$REPO/scripts/scenario_configs/b760_tail_analyze.py" "$LOG" \
+            > "$OUT/${SCENARIO}_tail.txt" || say "tail analyzer reported a wrong outcome -- see $OUT/${SCENARIO}_tail.txt"
+        ;;
+esac
 
 # ---- 6. teardown (trap) ----------------------------------------------------
 cleanup

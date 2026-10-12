@@ -494,7 +494,7 @@ BOARD_REASONS.update({
     "B899":
         "B442's published interface for the bag (container) window, built by the concurrent unit B899 -- StaticUIInput::cursorGesture() is how that window's slot arm reaches the shared gesture; it has no caller until that branch merges",
     "B603":
-        "gameplay-manager control API with no production caller -- CombatManager's auto-loot/aggro/flee/auto-fire configuration, SpellManager's cast-by-id, gem swap and two callback setters, BuffManager's removals and ActiveBuff's formatting, the group-decline, move-speed, cursor-stack and hotbar-slot mutators, ZoneLines::checkMovement, WhoAllEntry::isLinkdead and calcBankBagSlotId",
+        "gameplay-manager control API with no production caller -- CombatManager's auto-loot/aggro/flee/auto-fire configuration, SpellManager's cast-by-id, gem swap and two callback setters, BuffManager's removals and ActiveBuff's formatting, the group-decline and move-speed mutators, ZoneLines::checkMovement, WhoAllEntry::isLinkdead; the hotbar-slot mutators and calcBankBagSlotId reclassified seam in B603 (issue #187) -- their tests pin live behaviour",
     "B605":
         "input, command and console API with no production caller -- CommandProcessor's default-channel/echo setters and unregister, HotkeyManager's movement-key and mode-name helpers, HotkeyBinding::toString, ConsoleRenderer's status interval",
     "B899":
@@ -650,16 +650,11 @@ EXEMPT_GROUPS = {
     ("GraphicalRenderer", "getRenderQuality"): "B493",
     ("AnimatedTextureManager", "getAnimatedTextureCount"): "B494",
     ("AnimatedTextureManager", "getCurrentTexture"): "B494",
-    ("CameraController", "adjustOrbitAngle"): "B494",
-    ("CameraController", "getHeadingEQ"): "B494",
-    ("CameraController", "getMoveSpeed"): "B494",
-    ("CameraController", "getOrbitAngle"): "B494",
-    ("CameraController", "getPitch"): "B494",
-    ("CameraController", "getRotateSpeed"): "B494",
-    ("CameraController", "getYaw"): "B494",
-    ("CameraController", "setOrbitAngle"): "B494",
-    ("CameraController", "setOrientation"): "B494",
-    ("CameraController", "setRotateSpeed"): "B494",
+    # B533 (issue #180) removed the CameraController group's ten rows
+    # (2026-10-11): adjustOrbitAngle / getHeadingEQ / getMoveSpeed /
+    # getOrbitAngle / getPitch / getRotateSpeed / getYaw / setOrbitAngle /
+    # setOrientation / setRotateSpeed are all deleted with the fly/orbit
+    # state (refactor/B533/README.md). B494 keeps its other groups.
     ("ConstrainedTextureCache", "freeze"): "B494",
     ("ConstrainedTextureCache", "getAvailableMemory"): "B494",
     ("ConstrainedTextureCache", "getCompressedUploadCount"): "B494",
@@ -1266,26 +1261,22 @@ EXEMPT_TESTS_GROUPS = {
     ("SpellState", "updateMemorizeProgress"): "B601",
     ("WorldState", "setZoneId"): "B601",
     ("WorldState", "setZoning"): "B601",
-    ("(free)", "calcBankBagSlotId"): "B603",
-    ("ActiveBuff", "getTimeString"): "B603",
-    ("ActiveBuff", "isAboutToExpire"): "B603",
-    ("BuffManager", "clearEntityBuffs"): "B603",
-    ("BuffManager", "removeBuff"): "B603",
-    ("CombatManager", "EnableAutoLoot"): "B603",
-    ("CombatManager", "GetHighestPriorityTarget"): "B603",
-    ("CombatManager", "SetAggroRadius"): "B603",
-    ("CombatManager", "SetFleeThreshold"): "B603",
-    ("CombatManager", "ToggleAutoFire"): "B603",
-    ("GroupComponent", "DeclineGroupInvite"): "B603",
-    ("HotbarModel", "assignSlot"): "B603",
-    ("HotbarModel", "clearSlot"): "B603",
-    ("PlayerComponent", "SetMoveSpeed"): "B603",
-    ("SpellManager", "beginCastById"): "B603",
-    ("SpellManager", "setOnCastComplete"): "B603",
-    ("SpellManager", "setOnSpellFade"): "B603",
-    ("SpellManager", "swapGems"): "B603",
-    ("WhoAllEntry", "isLinkdead"): "B603",
-    ("ZoneLines", "checkMovement"): "B603",
+    # B603: the three rows reclassified seam (2026-10-11, issue #187) --
+    # tests-only functions whose tests are the net for LIVE behaviour, so
+    # the function lives with them (T458's test-seam class).
+    # assignSlot/clearSlot: no production caller (the only slot writer is
+    # loadFromJson); their tests (T156 skill-reachability, T15
+    # input-action-bridge routing, T230 hotbar item route) drive them as
+    # the REAL producer of the HotbarSlotAssigned bridge event, not a
+    # hand-built fixture. Hotbar slot assignment is a missing feature (no
+    # command or UI path reaches it) -- board it separately, do not wire
+    # it here.
+    # calcBankBagSlotId: the wire-constant arithmetic of the bank-bag
+    # sub-slots (2031+), asserted in the bag-move tests against the same
+    # constants the server computes.
+    ("(free)", "calcBankBagSlotId"): "seam",
+    ("HotbarModel", "assignSlot"): "seam",
+    ("HotbarModel", "clearSlot"): "seam",
     ("CommandProcessor", "setDefaultChannel"): "B605",
     ("CommandProcessor", "setEchoEnabled"): "B605",
     ("CommandProcessor", "unregisterCommand"): "B605",

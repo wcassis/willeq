@@ -44,43 +44,6 @@ struct ActiveBuff {
     bool isPermanent() const {
         return remaining_seconds == 0xFFFFFFFF;
     }
-
-    // Get remaining time in seconds
-    uint32_t getRemainingSeconds() const {
-        return remaining_seconds;
-    }
-
-    // Get formatted time string
-    // >= 1 hour: "Xh Ym"
-    // < 1 hour: "X min"
-    // < 1 minute: "X sec"
-    std::string getTimeString() const {
-        if (isPermanent()) return "Perm";
-
-        uint32_t seconds = getRemainingSeconds();
-        char buf[16];
-
-        if (seconds >= 3600) {
-            // Hours and minutes format: "1h 13m"
-            uint32_t hours = seconds / 3600;
-            uint32_t mins = (seconds % 3600) / 60;
-            snprintf(buf, sizeof(buf), "%uh %um", hours, mins);
-        } else if (seconds >= 60) {
-            // Minutes format: "5 min"
-            uint32_t mins = seconds / 60;
-            snprintf(buf, sizeof(buf), "%u min", mins);
-        } else {
-            // Seconds format: "30 sec"
-            snprintf(buf, sizeof(buf), "%u sec", seconds);
-        }
-        return buf;
-    }
-
-    // Check if buff is about to expire (for flashing)
-    bool isAboutToExpire() const {
-        if (isPermanent()) return false;
-        return remaining_seconds > 0 && remaining_seconds < 10;
-    }
 };
 
 // ============================================================================
@@ -157,9 +120,6 @@ public:
     // Set a buff on an entity (from packets)
     void setEntityBuff(uint16_t entity_id, uint8_t slot, const EQT::SpellBuff_Struct& buff);
 
-    // Clear all buffs on an entity
-    void clearEntityBuffs(uint16_t entity_id);
-
     // Get all buffs on an entity
     const std::vector<ActiveBuff>* getEntityBuffs(uint16_t entity_id) const;
 
@@ -174,10 +134,8 @@ public:
     void applyBuff(uint16_t target_id, uint32_t spell_id, uint16_t caster_id,
                    uint8_t caster_level, uint32_t duration_ticks);
 
-    // Remove a buff from a target
-    void removeBuff(uint16_t target_id, uint32_t spell_id);
-
-    // Remove buff by slot
+    // Remove buff by slot (B603 deleted removeBuff(): the spell-id variant
+    // had no caller -- the fade wire path is removeBuffBySlot()).
     void removeBuffBySlot(uint16_t target_id, uint8_t slot);
 
     // ========================================================================
@@ -237,9 +195,9 @@ public:
     // (PlayerCameraComponent), never here.
     //
     // exclude_spell_id drops one spell from the tally. The fade callbacks fire
-    // while the fading buff is STILL in the list (checkBuffExpiration(),
-    // removeBuff() and removeBuffBySlot() all notify before erasing), so the
-    // fade hook must exclude the spell that is going away.
+    // while the fading buff is STILL in the list (checkBuffExpiration() and
+    // removeBuffBySlot() notify before erasing), so the fade hook must
+    // exclude the spell that is going away.
     uint8_t computeVisionType(uint32_t exclude_spell_id = NO_EXCLUDED_SPELL) const;
 
     // ========================================================================

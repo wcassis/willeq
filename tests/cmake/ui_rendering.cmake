@@ -180,6 +180,29 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_race_330_loader DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B733 (issue #70): the race model builder selects parts by NAME, so a
+# character whose skeleton's 0x200 mesh list references a part under another
+# name loses it. Race 146 (Spectral Sarnak, code SSN, cabeast_chr.s3d): the
+# skeleton SSN_HS_DEF's 0x200 list names SNNHE00_DMSPRITEDEF (the head, "SNN"
+# spelling) + SSN_DMSPRITEDEF (the body). The loader's flattenSkeleton walks
+# the BONES, so the head is never stored, and the name-based selection
+# (SSN / SSNHE00) cannot reach it. This test DERIVES the expected mesh set from
+# the archive's own WLD data (the 0x200 meshRefs + bone refs of the race's
+# skeleton) -- never hand-typed -- and asserts the built model holds all of
+# it. Same EDT_NULL + willeq_core gate as test_race_330_loader; opens the
+# shipped data/willeq.db and the real client tree and skips without either.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b733_skeleton_mesh_refs
+        test_b733_skeleton_mesh_refs.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b733_skeleton_mesh_refs PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b733_skeleton_mesh_refs GTest::gtest_main willeq_core)
+    TARGET_COMPILE_DEFINITIONS(test_b733_skeleton_mesh_refs PRIVATE
+        WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db"
+        EQ_CLIENT_DATA_PATH="${CMAKE_SOURCE_DIR}/data/eq_client")
+    GTEST_DISCOVER_TESTS(test_b733_skeleton_mesh_refs DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T364 Leg B (B065): the _chr.s3d cache's LRU accounting -- every cached entry
 # must be registered in chrCacheLruOrder_ and the maxChrCacheEntries_ cap must
 # actually evict. Same EDT_NULL + willeq_core gate as test_race_330_loader;

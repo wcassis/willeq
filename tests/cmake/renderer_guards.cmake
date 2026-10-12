@@ -458,6 +458,16 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         WILLEQ_DB_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
     TARGET_LINK_LIBRARIES(test_vision_buff_fade_wire GTest::gtest willeq_core)
     GTEST_DISCOVER_TESTS(test_vision_buff_fade_wire DISCOVERY_TIMEOUT 120)
+
+    # B448 (GitLab #29): a race change on the LOCAL player (OP_Illusion /
+    # `#race N`) reaches setPlayerRace() through the bridge -- real EverQuest
+    # publisher, real IrrlichtBridge consumer, bare renderer.
+    ADD_EXECUTABLE(test_self_race_vision
+        test_self_race_vision.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_self_race_vision PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_self_race_vision GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_self_race_vision DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # T333 (B048): the navmesh overlay's DRAW -- it drew nothing and wiped the 2D

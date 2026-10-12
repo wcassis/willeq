@@ -321,18 +321,65 @@ TEST_F(SpellCastEndWire, SpellBarRefreshWithoutKeepcastingZeroCompletesTheCast) 
     ExpectCastFinishedAsSuccessWithRecast(Look(bridge.drainEvents()));
 }
 
-// eqemu sends some packets unreliably (OP_SpawnAppearance, mob.cpp:4142), and
-// one can reach the client between the two reliable tail packets. The gem's
-// recast must still follow the server's MemorizeSpell.
+// ---------------------------------------------------------------------------
+// B760 (issue #45): an UNRELIABLE packet inside the tail.
+//
+// eqemu queues the success tail contiguously on the reliable stream
+// (spells.cpp:1817-1824, one call, single-threaded zone), so the next RELIABLE
+// packet after the keepcasting 0 is the tail's own OP_LinkedReuse /
+// OP_MemorizeSpell or, for a StopCasting, whatever the server sends next. An
+// unreliable send (OP_ClientUpdate, client_packet.cpp:4865; OP_SpawnAppearance
+// to its target/self, mob.cpp:4142-4144) is not in that sequence: when a
+// reliable tail packet is lost and resent, the unreliable one is delivered the
+// moment it arrives (DaybreakConnection, OP_Packet vs a raw app packet) and so
+// reaches the client INSIDE the tail. Measured live with simulated inbound
+// loss (refactor/B760/README.md). It says nothing about the cast's outcome.
+// ---------------------------------------------------------------------------
+
+void ReplayUnreliable(EverQuest& eq, uint16_t opcode, const std::vector<uint8_t>& payload) {
+    eq.ReplayZonePacket(opcode, payload.data(), payload.size(), /*reliable=*/false);
+}
+
+// The gem's recast follows the server's MemorizeSpell (T482).
 TEST_F(SpellCastEndWire, UnreliablePacketInsideTheTailStillStartsTheRecast) {
     StageConfirmedGemCast(kBurstOfFlame, kNpcId);
     ReplayZone(eq, HC_OP_ManaChange, ManaChangePayload(80, 100, kBurstOfFlame, 0));
-    ReplayZone(eq, HC_OP_SpawnAppearance, SpawnAppearancePayload(kNpcId, 14, 100));
+    ReplayUnreliable(eq, HC_OP_SpawnAppearance, SpawnAppearancePayload(kNpcId, 14, 100));
     ReplayZone(eq, HC_OP_MemorizeSpell,
                MemorizeSpellPayload(kGem, kBurstOfFlame, kMemSpellSpellbar));
 
     EXPECT_FALSE(mgr->isCasting());
     EXPECT_EQ(mgr->getGemState(kGem), EQ::GemState::Refresh);
+}
+
+// B760: and the RESULT is the success too, published once, at the
+// MemorizeSpell -- not an Interrupted settled by the unreliable packet.
+TEST_F(SpellCastEndWire, UnreliablePacketInsideTheTailDoesNotMakeASuccessInterrupted) {
+    StageConfirmedGemCast(kBurstOfFlame, kNpcId);
+    ReplayZone(eq, HC_OP_ManaChange, ManaChangePayload(80, 100, kBurstOfFlame, 0));
+    ReplayUnreliable(eq, HC_OP_SpawnAppearance, SpawnAppearancePayload(kNpcId, 14, 100));
+    ReplayUnreliable(eq, HC_OP_SpawnAppearance, SpawnAppearancePayload(kSelfId, 14, 110));
+    EXPECT_EQ(Look(bridge.drainEvents()).castComplete, 0)
+        << "an unreliable packet is outside the reliable tail; the outcome is still open";
+
+    ReplayZone(eq, HC_OP_MemorizeSpell,
+               MemorizeSpellPayload(kGem, kBurstOfFlame, kMemSpellSpellbar));
+    ExpectCastFinishedAsSuccessWithRecast(Look(bridge.drainEvents()));
+}
+
+// B760: a StopCasting after BeginCast settles on the next RELIABLE packet --
+// the server's next word -- never on an unreliable one, and never as a success.
+TEST_F(SpellCastEndWire, StopCastingSettlesOnTheNextReliablePacketNotAnUnreliableOne) {
+    StageConfirmedGemCast(kBurstOfFlame, kNpcId);
+    ReplayZone(eq, HC_OP_SimpleMessage, SimpleMessagePayload(kSpellRecast, kChatRed));
+    ReplayZone(eq, HC_OP_ManaChange, ManaChangePayload(100, 100, kBurstOfFlame, 0));
+    ReplayUnreliable(eq, HC_OP_SpawnAppearance, SpawnAppearancePayload(kNpcId, 14, 100));
+    EXPECT_EQ(Look(bridge.drainEvents()).castComplete, 0);
+    EXPECT_EQ(mgr->getGemState(kGem), EQ::GemState::Ready)
+        << "the gem and the cast bar are released at the keepcasting 0 regardless";
+
+    ReplayLaterPacket();
+    ExpectCastStoppedNotSuccess(Look(bridge.drainEvents()));
 }
 
 // Guard: a spell-bar refresh naming another spell is not our cast's tail.

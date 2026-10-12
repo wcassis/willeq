@@ -288,10 +288,6 @@ void SpellManager::endOwnCastByServer(CastResult result)
         publishGemChanged(m_current_gem_slot);
     }
 
-    if (m_on_cast_complete) {
-        m_on_cast_complete(result, spell_id);
-    }
-
     publishCastComplete(spell_id, result);
 
     const SpellData* spell = m_spell_db.getSpell(spell_id);
@@ -396,9 +392,6 @@ void SpellManager::resolvePendingOutcome(CastResult result)
     if (result == CastResult::Success && gem_slot < EQT::SPELL_GEM_COUNT) {
         startGemCooldown(gem_slot, spell ? spell->recast_time_ms : 0);
     }
-    if (m_on_cast_complete) {
-        m_on_cast_complete(result, spell_id);
-    }
     publishCastComplete(spell_id, result);
 
     LOG_INFO(MOD_SPELL, "Cast of '{}' (ID: {}) {}", spell ? spell->name : "Unknown",
@@ -423,8 +416,8 @@ void SpellManager::handleSpellBarRefresh(uint32_t slot, uint32_t spell_id)
         return;
     }
 
-    // The outcome was already resolved (an unreliable packet reached us inside
-    // the tail): the recast is still the server's word for that gem.
+    // No outcome pending for this spell (e.g. the duration + 5 s fallback
+    // already ended it): the recast is still the server's word for that gem.
     if (slot < EQT::SPELL_GEM_COUNT && spell_id != SPELL_UNKNOWN && m_spell_gems[slot] == spell_id &&
         !(m_is_casting && m_current_gem_slot == slot)) {
         const SpellData* spell = m_spell_db.getSpell(spell_id);
@@ -432,16 +425,27 @@ void SpellManager::handleSpellBarRefresh(uint32_t slot, uint32_t spell_id)
     }
 }
 
-void SpellManager::noteZonePacket(uint16_t opcode)
+void SpellManager::noteZonePacket(uint16_t opcode, bool reliable)
 {
     if (!m_outcome_pending) {
         return;
     }
-    // The success tail: SendSpellBarEnable, [OP_LinkedReuse], OP_MemorizeSpell
-    // (spells.cpp:1817-1824), queued contiguously on the reliable stream.
+    // B760 (issue #45): only the RELIABLE stream is ordered. eqemu queues the
+    // success tail -- SendSpellBarEnable, [OP_LinkedReuse], OP_MemorizeSpell
+    // (spells.cpp:1817-1824) -- in one call on a single-threaded zone, all
+    // reliable (Client::QueuePacket ack_req defaults true, client.h:444), so
+    // they take consecutive sequence numbers and the client delivers them in
+    // that order. An unreliable send is delivered the moment it arrives and,
+    // when a tail packet is lost and resent, reaches us INSIDE the tail; it
+    // is not the server's next word and says nothing about the outcome.
+    if (!reliable) {
+        return;
+    }
     if (opcode == HC_OP_MemorizeSpell || opcode == HC_OP_LinkedReuse) {
         return;
     }
+    // The next reliable packet is not the tail's: StopCasting
+    // (spells.cpp:1351), whose only packet was the keepcasting 0.
     resolvePendingOutcome(CastResult::Interrupted);
 }
 // ============================================================================

@@ -300,20 +300,6 @@ TEST(CombatManagerAutoFire, EnableDisablesMeleeAutoAttack_FlagsDoNotAlias) {
         << "EnableAutoFire must turn off melee auto-attack";
 }
 
-TEST(CombatManagerAutoFire, ToggleFlipsState) {
-    EverQuest eq = MakeEq();
-    ASSERT_NO_THROW(ReplayZone(eq, HC_OP_NewSpawn,
-        NewSpawnPayloadAt(100, "a_test_rat", 0, 10, 0)));
-    auto* cm = eq.GetCombatManager();
-    ASSERT_TRUE(cm->SetTarget(100));
-
-    EXPECT_FALSE(cm->IsAutoFireEnabled());
-    cm->ToggleAutoFire();
-    EXPECT_TRUE(cm->IsAutoFireEnabled());
-    cm->ToggleAutoFire();
-    EXPECT_FALSE(cm->IsAutoFireEnabled());
-}
-
 // ===================================================================
 // 3. Target cycling
 // ===================================================================

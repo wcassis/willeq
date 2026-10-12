@@ -33,7 +33,10 @@ TEST(CombatManagerTick, UpdateRunsOnFirstCallThenPacesToInterval) {
     ASSERT_EQ(cm->m_last_update, std::chrono::steady_clock::time_point{});
     cm->m_last_target_scan = std::chrono::steady_clock::now() - std::chrono::seconds(2);
     cm->Update();
-    ASSERT_NE(cm->GetHighestPriorityTarget(), nullptr)
+    // B603 deleted GetHighestPriorityTarget(); the scan's observable output
+    // is the private m_potential_targets (reached through the T17 preamble
+    // in the fixture).
+    ASSERT_EQ(cm->m_potential_targets.size(), 1u)
         << "first Update() must run the scan immediately";
     EXPECT_NE(cm->m_last_update, std::chrono::steady_clock::time_point{})
         << "Update() stamps its pacing clock when it does work";
@@ -44,14 +47,14 @@ TEST(CombatManagerTick, UpdateRunsOnFirstCallThenPacesToInterval) {
     cm->m_potential_targets.clear();
     cm->m_last_target_scan = std::chrono::steady_clock::now() - std::chrono::seconds(2);
     cm->Update();
-    EXPECT_EQ(cm->GetHighestPriorityTarget(), nullptr)
+    EXPECT_TRUE(cm->m_potential_targets.empty())
         << "a second Update() inside the interval must not scan";
 
     // Past the interval: works again.
     cm->m_last_update = std::chrono::steady_clock::now() -
         std::chrono::milliseconds(CombatManager::kUpdateIntervalMs + 10);
     cm->Update();
-    EXPECT_NE(cm->GetHighestPriorityTarget(), nullptr)
+    EXPECT_EQ(cm->m_potential_targets.size(), 1u)
         << "Update() past kUpdateIntervalMs must scan again";
 }
 
@@ -66,7 +69,7 @@ TEST(CombatManagerTick, UpdateIsANoOpWhenDisabled) {
     ASSERT_FALSE(cm->IsEnabled());
     cm->m_last_target_scan = std::chrono::steady_clock::now() - std::chrono::seconds(2);
     cm->Update();
-    EXPECT_EQ(cm->GetHighestPriorityTarget(), nullptr);
+    EXPECT_TRUE(cm->m_potential_targets.empty());
     EXPECT_EQ(cm->m_last_update, std::chrono::steady_clock::time_point{});
 }
 
@@ -76,9 +79,11 @@ TEST(CombatManagerTick, UpdateIsANoOpWhenDisabled) {
 
 // Backdates the private m_last_target_scan gate so a single Update() call
 // actually runs ScanForTargets() -- the only way to populate
-// m_potential_targets, which GetHighestPriorityTarget() (public) exposes.
-// This is the one behavior in this unit that is otherwise unreachable
-// without either a sleep (forbidden) or this T17-style backdate.
+// m_potential_targets (read directly through the T17 private-access
+// preamble in the fixture; B603 deleted its old public observer,
+// GetHighestPriorityTarget()). This is the one behavior in this unit that
+// is otherwise unreachable without either a sleep (forbidden) or this
+// T17-style backdate.
 TEST(CombatManagerConsider, ProcessConsiderResponseUpdatesPotentialTarget) {
     EverQuest eq = MakeEq();
     // class_id=0 (NPC), within default aggro radius (30.0f), distance 15.
@@ -91,9 +96,11 @@ TEST(CombatManagerConsider, ProcessConsiderResponseUpdatesPotentialTarget) {
     cm->m_last_target_scan = std::chrono::steady_clock::now() - std::chrono::seconds(2);
     cm->Update();
 
-    CombatTarget* before = cm->GetHighestPriorityTarget();
+    const CombatTarget* before = nullptr;
+    for (const auto& t : cm->m_potential_targets) {
+        if (t.entity_id == 500) before = &t;
+    }
     ASSERT_NE(before, nullptr);
-    ASSERT_EQ(before->entity_id, 500);
     EXPECT_FALSE(before->has_consider_data);
 
     // level=13 maps to CON_RED per the documented switch in
@@ -101,9 +108,11 @@ TEST(CombatManagerConsider, ProcessConsiderResponseUpdatesPotentialTarget) {
     cm->ProcessConsiderResponse(/*target_id=*/500, /*faction=*/8, /*level=*/13,
                                  /*cur_hp=*/40, /*max_hp=*/80);
 
-    CombatTarget* after = cm->GetHighestPriorityTarget();
+    const CombatTarget* after = nullptr;
+    for (const auto& t : cm->m_potential_targets) {
+        if (t.entity_id == 500) after = &t;
+    }
     ASSERT_NE(after, nullptr);
-    ASSERT_EQ(after->entity_id, 500);
     EXPECT_TRUE(after->has_consider_data);
     EXPECT_EQ(after->faction, 8u);
     EXPECT_EQ(after->con_level, 13u);
@@ -119,7 +128,7 @@ TEST(CombatManagerConsider, ProcessConsiderResponseUnknownIdIsNoOp) {
     // No potential targets, no current target -- must not crash or
     // fabricate state.
     EXPECT_NO_THROW(cm->ProcessConsiderResponse(999, 5, 10, 50, 100));
-    EXPECT_EQ(cm->GetHighestPriorityTarget(), nullptr);
+    EXPECT_TRUE(cm->m_potential_targets.empty());
 }
 
 // ===================================================================
@@ -177,13 +186,6 @@ TEST(CombatManagerState, ShouldFleeDefaultIsFalseAtFullHealth) {
     EXPECT_FALSE(cm->ShouldFlee());
 }
 
-TEST(CombatManagerState, SetFleeThresholdAboveCurrentHpTriggersShouldFlee) {
-    EverQuest eq = MakeEq();
-    auto* cm = eq.GetCombatManager();
-    cm->SetFleeThreshold(150.0f);
-    EXPECT_TRUE(cm->ShouldFlee());
-}
-
 TEST(CombatManagerState, UpdateCombatStatsFeedsShouldFlee) {
     EverQuest eq = MakeEq();
     auto* cm = eq.GetCombatManager();
@@ -212,44 +214,21 @@ TEST(CombatManagerState, UpdateCombatStatsFeedsShouldFlee) {
 // CalculateCombatRange(my_size, target_size, race), and spell range comes from
 // the spell row.
 //
-// SetAggroRadius() survives -- m_aggro_radius IS read (GetNearbyHostiles() and
-// the hunt scan) -- so it now gets a real round-trip through observable
-// behaviour rather than an EXPECT_NO_THROW: with the radius at 0 no hostile
-// can be within it, and the potential-target scan must come back empty.
+// B603 deleted SetAggroRadius() (nothing could change the 30.0f constructor
+// value) and EnableAutoLoot() (the duplicate of SetAutoLootEnabled()). What
+// actually decides each is elsewhere and is covered by its own tests: /assist
+// is a server round-trip, melee reach is CalculateCombatRange(my_size,
+// target_size, race), and spell range comes from the spell row.
 
-TEST(CombatManagerConfig, AggroRadiusIsHonouredByTheHostileScan) {
-    EverQuest eq = MakeEq();
-    auto* cm = eq.GetCombatManager();
-
-    // A generous radius and a zero radius must not agree, and zero must be
-    // empty: the radius is a real gate, not a stored number.
-    cm->SetAggroRadius(0.0f);
-    EXPECT_TRUE(cm->GetNearbyHostiles(0.0f).empty());
-
-    // The setter is total: any value round-trips through the scan without
-    // throwing, including the large one the deleted smoke test used.
-    EXPECT_NO_THROW(cm->SetAggroRadius(40.0f));
-}
-
-TEST(CombatManagerConfig, AutoLootRoundTripsViaEnableAutoLoot) {
+TEST(CombatManagerConfig, AutoLootRoundTripsViaSetAutoLootEnabled) {
+    // The one setter over the auto-loot flag (/loot routes through it).
     EverQuest eq = MakeEq();
     auto* cm = eq.GetCombatManager();
     // Constructor default is true.
     EXPECT_TRUE(cm->IsAutoLootEnabled());
-    cm->EnableAutoLoot(false);
-    EXPECT_FALSE(cm->IsAutoLootEnabled());
-    cm->EnableAutoLoot(true);
-    EXPECT_TRUE(cm->IsAutoLootEnabled());
-}
-
-TEST(CombatManagerConfig, AutoLootRoundTripsViaSetAutoLootEnabled) {
-    // SetAutoLootEnabled and EnableAutoLoot are two setters over the same
-    // underlying flag -- confirm they don't alias to different storage.
-    EverQuest eq = MakeEq();
-    auto* cm = eq.GetCombatManager();
     cm->SetAutoLootEnabled(false);
     EXPECT_FALSE(cm->IsAutoLootEnabled());
-    cm->EnableAutoLoot(true);
+    cm->SetAutoLootEnabled(true);
     EXPECT_TRUE(cm->IsAutoLootEnabled());
 }
 

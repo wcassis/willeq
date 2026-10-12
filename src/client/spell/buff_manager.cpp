@@ -312,11 +312,6 @@ void BuffManager::setEntityBuff(uint16_t entity_id, uint8_t slot, const EQT::Spe
     }
 }
 
-void BuffManager::clearEntityBuffs(uint16_t entity_id)
-{
-    m_entity_buffs.erase(entity_id);
-}
-
 const std::vector<ActiveBuff>* BuffManager::getEntityBuffs(uint16_t entity_id) const
 {
     auto it = m_entity_buffs.find(entity_id);
@@ -401,32 +396,6 @@ void BuffManager::applyBuff(uint16_t target_id, uint32_t spell_id, uint16_t cast
     // Notify callback
     if (m_on_buff_apply) {
         m_on_buff_apply(target_id, spell_id);
-    }
-}
-
-void BuffManager::removeBuff(uint16_t target_id, uint32_t spell_id)
-{
-    std::vector<ActiveBuff>* buffs = nullptr;
-    if (target_id == 0) {
-        buffs = &m_player_buffs;
-    } else {
-        auto it = m_entity_buffs.find(target_id);
-        if (it == m_entity_buffs.end()) {
-            return;
-        }
-        buffs = &it->second;
-    }
-
-    auto it = std::find_if(buffs->begin(), buffs->end(),
-        [spell_id](const ActiveBuff& b) { return b.spell_id == spell_id; });
-
-    if (it != buffs->end()) {
-        // Notify callback
-        if (m_on_buff_fade) {
-            m_on_buff_fade(target_id, spell_id);
-        }
-
-        buffs->erase(it);
     }
 }
 

@@ -60,10 +60,6 @@ struct SpellActionInfo {
 
 namespace EQ {
 
-// Callback types for spell events
-using SpellCastCallback = std::function<void(CastResult result, uint32_t spell_id)>;
-using SpellFadeCallback = std::function<void(uint32_t spell_id, uint16_t entity_id)>;
-
 class SpellManager {
 public:
     explicit SpellManager(EverQuest* eq);
@@ -90,11 +86,10 @@ public:
     // ========================================================================
 
     // Begin casting from a spell gem (0-based; only the first
-    // EQT::VISIBLE_SPELL_GEM_COUNT are castable -- T483)
+    // EQT::VISIBLE_SPELL_GEM_COUNT are castable -- T483). B603 deleted
+    // beginCastById(): nothing called it (the hotbar spell search calls
+    // beginCastFromGem directly -- T483).
     CastResult beginCastFromGem(uint8_t gem_slot, uint16_t target_id = 0);
-
-    // Begin casting by spell ID directly (for scripted/item casts)
-    CastResult beginCastById(uint32_t spell_id, uint16_t target_id = 0);
 
     // Interrupt current cast
     void interruptCast();
@@ -118,9 +113,6 @@ public:
 
     // Forget (clear) a spell from a gem slot
     bool forgetSpell(uint8_t gem_slot);
-
-    // Swap two gem slots
-    bool swapGems(uint8_t slot1, uint8_t slot2);
 
     // Get spell ID in a gem slot (returns SPELL_UNKNOWN if empty)
     uint32_t getMemorizedSpell(uint8_t gem_slot) const;
@@ -223,22 +215,19 @@ public:
     // client's gem-refresh trigger. A stop never sends it. It completes our
     // cast as a Success and starts the gem's recast; a refresh for a gem
     // holding `spell_id` starts that gem's recast even when no cast is pending
-    // (an unreliable packet may have resolved the outcome first).
+    // (since B760 an unreliable packet can no longer settle the outcome first;
+    // the cast may still have ended on the duration + 5 s fallback).
     void handleSpellBarRefresh(uint32_t slot, uint32_t spell_id);
 
     // T482: called by the zone dispatcher BEFORE each packet's arm. While a
     // confirmed cast's outcome is pending (keepcasting 0 seen, MemorizeSpell
-    // not yet), any packet other than the tail's own (OP_MemorizeSpell,
-    // OP_LinkedReuse) means the server did not send the success tail: the
-    // outcome is published as Interrupted (StopCasting).
-    void noteZonePacket(uint16_t opcode);
-
-    // ========================================================================
-    // Callbacks
-    // ========================================================================
-
-    void setOnCastComplete(SpellCastCallback cb) { m_on_cast_complete = std::move(cb); }
-    void setOnSpellFade(SpellFadeCallback cb) { m_on_spell_fade = std::move(cb); }
+    // not yet), the next RELIABLE packet other than the tail's own
+    // (OP_MemorizeSpell, OP_LinkedReuse) means the server did not send the
+    // success tail: the outcome is published as Interrupted (StopCasting).
+    // B760 (issue #45): an unreliable packet (`reliable` false,
+    // DaybreakConnection::DeliveringReliable()) is outside the ordered stream
+    // and never settles the outcome. A replayed packet counts as reliable.
+    void noteZonePacket(uint16_t opcode, bool reliable = true);
 
     // ========================================================================
     // Database Access
@@ -405,13 +394,6 @@ private:
     // ------------------------------------------------------------------------
 
     std::array<uint32_t, MAX_SPELLBOOK_SLOTS> m_spellbook;
-
-    // ------------------------------------------------------------------------
-    // Callbacks
-    // ------------------------------------------------------------------------
-
-    SpellCastCallback m_on_cast_complete;
-    SpellFadeCallback m_on_spell_fade;
 };
 
 } // namespace EQ

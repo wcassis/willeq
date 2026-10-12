@@ -618,14 +618,6 @@ void CombatManager::DisableAutoFire() {
 	LOG_DEBUG(MOD_COMBAT, "DisableAutoFire: Auto fire DISABLED");
 }
 
-void CombatManager::ToggleAutoFire() {
-	if (m_auto_fire_enabled) {
-		DisableAutoFire();
-	} else {
-		EnableAutoFire();
-	}
-}
-
 void CombatManager::UseAbility(uint32_t ability_id, uint16_t target_id) {
 	if (!m_eq) {
 		LOG_ERROR(MOD_COMBAT, "UseAbility: No EQ reference");

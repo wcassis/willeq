@@ -60,9 +60,9 @@ constexpr float kLevitationDescentRate = 1.3f;
 // spell database is up); then only the flymode half can fire.
 //
 // `exclude_spell_id` drops one buff from the buff half. The fade hooks fire
-// while the fading buff is STILL in the list (buff_manager.cpp: removeBuff
-// and removeBuffBySlot both notify before erasing, and checkBuffExpiration
-// does the same), so the fade-side recompute must exclude the spell that is
+// while the fading buff is STILL in the list (buff_manager.cpp:
+// removeBuffBySlot and checkBuffExpiration both notify before erasing), so
+// the fade-side recompute must exclude the spell that is
 // going away -- the same shape T339's computeVisionType() needs. The apply
 // hooks pass NO_EXCLUDED_SPELL (nothing excluded: the new buff IS in the
 // list already, and it counts).

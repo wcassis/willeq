@@ -162,13 +162,11 @@ def collect_members(root):
 # is no longer write-only. `WriteOnlyFields` was RED at 6522c387 for exactly
 # that reason; nothing else about T413's merge was incomplete.
 EXEMPT = {
-    # T461 deleted CameraController::update(), the never-called free-fly body
-    # of the Free camera mode the official set does not have. update() was the
-    # only reader of mouseSensitivity_; its one writer is setMouseSensitivity()
-    # from IrrlichtRenderer's init in irrlicht_renderer.cpp, which was T460's
-    # territory in that wave, so the residue is boarded rather than deleted.
-    ("CameraController", "mouseSensitivity_"):
-        ("boarded", "B533: the fly-camera residue T461 left when it deleted CameraController::update() with the Free mode; its only writer is the init call in irrlicht_renderer.cpp"),
+    # B533 (issue #180) closed the CameraController::mouseSensitivity_ row
+    # (2026-10-11): T461 deleted CameraController::update() with the Free
+    # mode, and B533 then deleted the residue update() left write-only --
+    # the setter, the field and the init call in irrlicht_renderer.cpp --
+    # so the field no longer exists at all.
     # T421 closed B298's item half: the fourteen fields that HAVE an oracle
     # line are drawn by the item display window, and their exemptions are
     # gone. `ItemInstance::currentSlot` (the last item row) lost its

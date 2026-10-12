@@ -1,7 +1,7 @@
 // T24 — SpellManager coverage, part 1 of 2 (spell/combat batch, unit 2 of 3).
 // Covers priorities 1-2 of refactor/T24_spell_manager.md: gem state
-// machine, cast validation matrix, target adjustment, beginCastFromGem/
-// beginCastById state machine. Timing (priority 3), interrupt/server
+// machine, cast validation matrix, target adjustment, beginCastFromGem
+// state machine. Timing (priority 3), interrupt/server
 // packet handlers (priority 4), and callbacks (priority 5) continue in
 // test_spell_manager_timing.cpp -- split purely to keep each file under
 // the plan's ~800-line guidance; both link against the same live
@@ -27,7 +27,7 @@
 // parameter) is exercised and documented in test_spell_manager_timing.cpp.
 //
 // A handful of tests DO need the real DB (spell existence gates inside
-// beginCastFromGem/beginCastById/memorizeSpell/scribeSpell) and follow
+// beginCastFromGem/memorizeSpell/scribeSpell) and follow
 // test_spell_database.cpp's hasDb() + GTEST_SKIP precedent so this binary
 // degrades cleanly where data/willeq.db is missing.
 
@@ -149,19 +149,6 @@ TEST(SpellManagerGems, ForgetSpellInvalidSlotReturnsFalse) {
     EXPECT_FALSE(mgr->forgetSpell(EQT::VISIBLE_SPELL_GEM_COUNT));
 }
 
-TEST(SpellManagerGems, SwapGemsInvalidSlotReturnsFalse) {
-    EverQuest eq = MakeEq();
-    auto* mgr = eq.GetSpellManager();
-    EXPECT_FALSE(mgr->swapGems(EQT::VISIBLE_SPELL_GEM_COUNT, 0));
-    EXPECT_FALSE(mgr->swapGems(0, EQT::VISIBLE_SPELL_GEM_COUNT));
-}
-
-TEST(SpellManagerGems, SwapGemsSameSlotReturnsFalse) {
-    EverQuest eq = MakeEq();
-    auto* mgr = eq.GetSpellManager();
-    EXPECT_FALSE(mgr->swapGems(3, 3));
-}
-
 TEST(SpellManagerGems, GetMemorizedSpellInvalidSlotReturnsUnknown) {
     EverQuest eq = MakeEq();
     auto* mgr = eq.GetSpellManager();
@@ -278,49 +265,7 @@ TEST(SpellManagerGems, ForgetSpellWhileCastingDifferentSlotSucceeds) {
 }
 
 // ---- swapGems
-
-TEST(SpellManagerGems, SwapGemsSwapsSpellsAndStates) {
-    EverQuest eq = MakeEq();
-    auto* mgr = eq.GetSpellManager();
-    uint32_t gems[2] = {11, 22};
-    mgr->setSpellGems(gems, 2);
-
-    EXPECT_TRUE(mgr->swapGems(0, 1));
-    EXPECT_EQ(mgr->getMemorizedSpell(0), 22u);
-    EXPECT_EQ(mgr->getMemorizedSpell(1), 11u);
-}
-
-TEST(SpellManagerGems, SwapGemsBlockedWhileCastingFromEitherSlot) {
-    EverQuest eq = MakeEq();
-    auto* mgr = eq.GetSpellManager();
-    uint32_t gems[2] = {11, 22};
-    mgr->setSpellGems(gems, 2);
-    mgr->m_is_casting = true;
-    mgr->m_current_gem_slot = 0;
-
-    EXPECT_FALSE(mgr->swapGems(0, 1));
-    EXPECT_EQ(mgr->getMemorizedSpell(0), 11u) << "must not swap while casting from slot 0";
-}
-
-TEST(SpellManagerGems, SwapGemsBlockedWhenEitherSlotOnCooldown) {
-    EverQuest eq = MakeEq();
-    auto* mgr = eq.GetSpellManager();
-    uint32_t gems[2] = {11, 22};
-    mgr->setSpellGems(gems, 2);
-    mgr->m_gem_states[1] = GemState::Refresh;
-
-    EXPECT_FALSE(mgr->swapGems(0, 1));
-}
-
-TEST(SpellManagerGems, SwapGemsBlockedWhenEitherSlotMemorizing) {
-    EverQuest eq = MakeEq();
-    auto* mgr = eq.GetSpellManager();
-    uint32_t gems[2] = {11, 22};
-    mgr->setSpellGems(gems, 2);
-    mgr->m_gem_states[0] = GemState::MemorizeProgress;
-
-    EXPECT_FALSE(mgr->swapGems(0, 1));
-}
+// B603 deleted swapGems(): nothing called it. With it go its four tests.
 
 // ---- memorizeSpell real workflow (DB needed: hasSpellScribed +
 // canClassUse both gate on real spell data).
@@ -500,9 +445,9 @@ TEST(SpellManagerGems, MemorizeSpellBlockedWhileAlreadyCastingOrMemorizing) {
 // directly with hand-built SpellData. This is deliberately NOT routed
 // through the DB for most branches: these methods take `const SpellData&`
 // by reference, so a local struct exercises the exact same decision logic
-// without needing a matching SQLite row. Only the public beginCastFromGem/
-// beginCastById wiring itself (spell lookup by id via the manager's
-// internal m_spell_db) needs the real DB -- covered separately below.
+// without needing a matching SQLite row. Only the public beginCastFromGem
+// wiring itself (spell lookup by id via the manager's internal m_spell_db)
+// needs the real DB -- covered separately below.
 // ===================================================================
 
 TEST(SpellManagerValidate, AlreadyCastingBlocksAnyCast) {
@@ -747,7 +692,7 @@ TEST(SpellManagerAdjustTarget, DefaultTargetTypePassesThroughUnchanged) {
     EXPECT_EQ(mgr->adjustTargetForSpellType(spell, 42), 42u);
 }
 
-// ---- beginCastFromGem / beginCastById state machine (no DB needed --
+// ---- beginCastFromGem state machine (no DB needed --
 // these branches return before the internal m_spell_db.getSpell() call).
 
 TEST(SpellManagerBeginCast, InvalidSlotReturnsInvalidSpell) {
@@ -792,15 +737,7 @@ TEST(SpellManagerBeginCast, MemorizeProgressGemStateReturnsSpellNotReady) {
     EXPECT_EQ(mgr->beginCastFromGem(0), CastResult::SpellNotReady);
 }
 
-TEST(SpellManagerBeginCast, ByIdUnknownSpellReturnsInvalidSpell) {
-    // Not memorized in any gem (findGemSlotForSpell misses), and no DB
-    // loaded so getSpell() is always nullptr -- InvalidSpell either way.
-    EverQuest eq = MakeEq();
-    auto* mgr = eq.GetSpellManager();
-    EXPECT_EQ(mgr->beginCastById(999999999), CastResult::InvalidSpell);
-}
-
-// ---- beginCastFromGem / beginCastById end-to-end wiring (DB needed: the
+// ---- beginCastFromGem end-to-end wiring (DB needed: the
 // manager's internal m_spell_db.getSpell(spell_id) lookup must succeed).
 
 TEST(SpellManagerBeginCast, SuccessSetsStateAndGemCasting) {
@@ -839,24 +776,6 @@ TEST(SpellManagerBeginCast, SuccessSetsStateAndGemCasting) {
         }
     }
     EXPECT_TRUE(sawCastStarted);
-}
-
-TEST(SpellManagerBeginCast, ByIdFindsGemSlotAndDelegates) {
-    if (!hasDb()) GTEST_SKIP() << "willeq.db not found, skipping";
-    EverQuest eq = MakeEq();
-    ASSERT_TRUE(eq.InitializeSpellSystem(""));
-    auto* mgr = eq.GetSpellManager();
-
-    uint32_t id = FindSpellId(mgr->getDatabase(), 1, 4000, [](const SpellData& s) {
-        return s.target_type == SpellTargetType::Self && s.mana_cost <= 0;
-    });
-    if (id == 0) GTEST_SKIP() << "no free Self-target spell found in scanned range";
-
-    uint32_t gems[3] = {0, 0, id};
-    mgr->setSpellGems(gems, 3);
-
-    EXPECT_EQ(mgr->beginCastById(id), CastResult::Success);
-    EXPECT_EQ(mgr->getGemState(2), GemState::Casting) << "must delegate to the slot holding it";
 }
 
 TEST(SpellManagerBeginCast, InvalidSpellIdViaGemReturnsInvalidSpell) {

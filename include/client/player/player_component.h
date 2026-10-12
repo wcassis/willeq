@@ -181,9 +181,8 @@ public:
 	void ZoneProcessPlayMP3(const EQ::Net::Packet &p);
 	void ZoneProcessSound(const EQ::Net::Packet &p);
 
-	// Player state the server pushes, plus the two GameState mutators
+	// Player state the server pushes, plus the GameState mutator
 	// (was eq_player_state.cpp).
-	void SetMoveSpeed(float speed);
 	void SetCombatStopDistance(float distance);  // Phase 7.6: also syncs to GameState
 	void ZoneProcessPlayerStateAdd(const EQ::Net::Packet &p);
 	void ZoneProcessDeath(const EQ::Net::Packet &p);

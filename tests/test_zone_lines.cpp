@@ -144,9 +144,6 @@ TEST(ZoneLinesRealFixtures, Qeynos2_PositionOutsideAllBoxesReportsNoZoneLine) {
 
     ZoneLineResult result = zl.checkPosition(0.0f, 0.0f, 0.0f);
     EXPECT_FALSE(result.isZoneLine);
-
-    auto movement = zl.checkMovement(0, 0, 0, 1, 1, 1);
-    EXPECT_FALSE(movement.has_value());
 }
 
 TEST(ZoneLinesRealFixtures, Befallen_AllEntriesLackBoundsSoLoadFails) {

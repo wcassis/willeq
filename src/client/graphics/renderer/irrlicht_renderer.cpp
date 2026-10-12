@@ -281,8 +281,6 @@ void IrrlichtRenderer::setupCamera() {
     LOG_INFO(MOD_GRAPHICS, "Camera far plane: {}, render distance: {}", SKY_FAR_PLANE, renderDistance_);
 
     cameraController_ = std::make_unique<CameraController>(camera_);
-    cameraController_->setMoveSpeed(500.0f);
-    cameraController_->setMouseSensitivity(0.2f);
 
     frustumCuller_ = std::make_unique<FrustumCuller>();
 

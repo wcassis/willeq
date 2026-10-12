@@ -8945,7 +8945,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `VisionAmbientTest.DaylightIsUntouchedByInfravisionAndBarelyMovedByUltravision`.
   Prov: T428 Review §3b.
 
-- **B448** (A) `src/client/graphics/player/renderer_camera.cpp` → issue #29
+- ~~**B448** (A) `src/client/graphics/player/renderer_camera.cpp` → issue #29
   `PlayerCameraComponent::setPlayerRace` -- **a server-side race change on the
   player's OWN character never reaches the vision system.** `setPlayerRace()` is
   called from `IrrlichtRenderer::registerEntity()` (T348, B056), i.e. when an
@@ -8961,7 +8961,17 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   and bracketed by them, but the live pair is OWED). Closes when a race change
   on self reaches `setPlayerRace()` and a live session shows the fourth level's
   ratio against the oracle's x2.6803 / x1.9478 / x2.1753. Prov: T428 Review §4;
-  B060; B056.
+  B060; B056.~~ **STRUCK (2026-10-11, `task/B448-self-race-vision`,
+  `refactor/B448/README.md`):** the defect half is fixed --
+  `IrrlichtRenderer::updatePlayerAppearance()` (the `EntityAppearanceChanged`
+  bridge arm for `isPlayer`) now calls `setPlayerRace()` on a race CHANGE, and
+  `setPlayerRace()` recomposes max(base, buff) so a race change keeps a vision
+  buff that is up; pinned by `tests/test_self_race_vision.cpp` (5 of 7 red on
+  fable). Live on the local lane: `#race 330` after zone-in logged
+  `Player race 330 -> base vision: FroglokVision`. NOT done here: fable's own
+  night ratio for the fourth level against the oracle's x2.6803 / x1.9478 /
+  x2.1753 (needs a T428-style measured session) -- see the README's
+  "Not verified / left open".
 
 - (T428 also boarded the DocCitations red at BOARD.md:6877 as its B434; the orchestrator had already fixed it on fable at 6aadff59, so that entry is not carried.)
 
@@ -10452,7 +10462,7 @@ because the Pi had no keyboard or mouse attached (B510).
   not seen live. Confirm by: zone in, `/camera user1`, zone through a zone line,
   `/camera` and read `UI_<char>_<server>.ini`. Found by T461.
 
-- **B533** (B, unreached) **What T461's deletion of the free-fly camera left → issue #180
+- ~~**B533** (B, unreached) **What T461's deletion of the free-fly camera left → issue #180
   write-only.** T461 deleted `CameraController::update()` with the Free mode it
   was the body of. That made two SETTERS pointless: `setMoveSpeed()` and
   `setMouseSensitivity()` are still called once from `IrrlichtRenderer`'s init
@@ -10467,7 +10477,16 @@ because the Pi had no keyboard or mouse attached (B510).
   `check_zero_callers.py`); T461 did not add to it. Work the two together:
   deleting the CameraController fly/orbit state is one change touching
   `camera_controller.*` and the two init lines. Not done by T461 because those
-  lines were T460's territory in that wave. Found by T461.
+  lines were T460's territory in that wave. Found by T461. **STRUCK (2026-10-11,
+  `task/kb-b533-camera-fly-residue`, `refactor/B533/README.md`):** all 12
+  accessors, their 5 state fields (`moveSpeed_`, `rotateSpeed_`,
+  `mouseSensitivity_`, `yaw_`, `pitch_`), the `MIN_PITCH`/`MAX_PITCH` clamp and
+  `orbitAngle_` (checked per card: the live orbit path never reads it) deleted
+  with the two `setupCamera()` init writes; the per-name table (deleted vs
+  kept-because-read) is the README. `WriteOnlyFields` went RED with the
+  `mouseSensitivity_` STALE row and GREEN at 47; `ZeroCallers` RED with the ten
+  B494-group rows and GREEN at 364. B494 (#169) stays open with its other
+  groups.~~
 
 - **B534** (B, unreached) **The output-layer camera route is a second, stale → issue #181
   camera vocabulary.** `output::CameraMode` (`include/client/output/output_renderer.h`)
@@ -11061,7 +11080,7 @@ B712–B719 unused.
   these setters. `ZeroCallers` went RED with 11 STALE rows and GREEN at 309
   tests-only.~~
 
-- **B603** (B, unreached) **Gameplay-manager control API with no production → issue #187
+- ~~**B603** (B, unreached) **Gameplay-manager control API with no production → issue #187
   caller.** `CombatManager::EnableAutoLoot/GetHighestPriorityTarget/
   SetAggroRadius/SetFleeThreshold/ToggleAutoFire`,
   `SpellManager::beginCastById/setOnCastComplete/setOnSpellFade/swapGems`
@@ -11073,7 +11092,23 @@ B712–B719 unused.
   `InventoryManager::pickupMoney/pickupPartialStack/placeOnMatchingStack/
   returnCursorMoney`, `HotbarModel::assignSlot/clearSlot`,
   `ZoneLines::checkMovement`, `WhoAllEntry::isLinkdead`, the free
-  `calcBankBagSlotId` -- 24 rows. Found by T458.
+  `calcBankBagSlotId` -- 24 rows. Found by T458. **STRUCK (2026-10-11,
+  `task/kb-b603-gameplay-manager-zero-callers`, `refactor/B603/README.md`):**
+  17 of the 20 ratchet rows deleted with their tests-only nets (B468),
+  including the two std::function cast callbacks and their 4 invocation
+  sites (the live outcome path is the bridge `publishCastComplete`); the
+  `ActiveBuff::getRemainingSeconds()` accessor went as a cascade (its only
+  production caller was `getTimeString`). `HotbarModel::assignSlot/clearSlot`
+  and `calcBankBagSlotId` reclassified `seam` (their tests pin live
+  behaviour). The four `InventoryManager` cursor functions are LIVE since
+  B442 (`bridge_component_cursor.cpp:129/:132`,
+  `cursor_gesture.cpp:199/:225`) -- the card text predates B442, kept.
+  Declining a group invite IS reachable (`/decline` ->
+  `ActionDispatcher::declineGroupInvite` -> `EqActionHandler`, which sends
+  `SendGroupDecline` directly); the component method was a dead duplicate.
+  Hotbar slot assignment is NOT user-reachable (config-load only) --
+  missing feature, left for a separate entry. `ZeroCallers` went RED with
+  17 STALE rows and GREEN at 303 tests-only.~~
 
 - ~~**B604** (A, *unconfirmed live*) **The server's cast interrupt never reaches
   `SpellManager::handleInterrupt()`.** `src/client/zone/zone_dispatch.cpp`
@@ -11141,19 +11176,19 @@ B712–B719 unused.
 
 ## Added 2026-09-14 by T482 (how a confirmed cast ends)
 
-- **B760** (A, *unconfirmed live, rare*) **A cast's result code can say → issue #45
-  Interrupted for a success, and can be late.** `SpellManager::noteZonePacket()`
-  settles a released cast as a stop on the first packet after the keepcasting 0
-  that is not `OP_MemorizeSpell` or `OP_LinkedReuse`. eqemu sends some packets
-  unreliably (`OP_SpawnAppearance`, `OP_ClientUpdate`, HP and group updates:
-  `/mnt/projects/akk-stack/code/zone/mob.cpp` `Mob::SendAppearancePacket`,
-  `/mnt/projects/akk-stack/code/zone/groups.cpp`), and the reliable stream may hold
-  the tail back behind them, so one can arrive inside the tail. The gem's recast
-  is still right, because `handleSpellBarRefresh()` starts it from the
-  MemorizeSpell alone. Only the `SpellCastComplete` result is wrong, and nothing
-  in production reads it (B603). In a quiet zone the result also waits for the
-  next packet. Confirm by recording, on the B630 live run, whether anything
-  arrives between the two tail packets.
+- **B760** (A, *fixed by construction, not reproduced live*; 2026-10-12, → issue #45
+  `refactor/B760/README.md`) **A cast's result code could say Interrupted for a
+  success.** `SpellManager::noteZonePacket()` now settles a released cast on
+  the next RELIABLE zone packet (`DaybreakConnection::DeliveringReliable()`
+  → `DispatchZonePacket(p, reliable)`): eqemu queues the success tail
+  contiguously on the reliable stream, so only an unreliable packet overtaking
+  a RESENT tail packet could land inside it. Live on the local lane: 60
+  success tails (quiet, traffic, 5 % and 15 % simulated inbound loss), 0
+  packets inside a tail, 0 wrong results, success settled 0-1 ms after the
+  keepcasting 0. **Still open, by design:** a `StopCasting` sends no terminal
+  packet, so its Interrupted waits for the server's next reliable packet
+  (quiet-zone proxy median 4.6 s); nothing in production reads the result
+  (B603). Close #45 unless Will wants that latency bounded.
 
 - **B761** (A, *unconfirmed live*) **A bard song with → issue #46
   `Character:EnableBardMelody` false has no end packet, so it ends on the
@@ -11927,14 +11962,25 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   `SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart`. Of the affected codes
   only CLM/CLF, KAM/KAF, SSN, STG and IVM have a `race_models` row.
 
-- **B733** (A, *unconfirmed*) **The race model builder selects parts by NAME, so → issue #70
-  a listed part with another name is still dropped.** `RaceModelLoader` keeps
-  `{CODE}_DMSPRITEDEF` + `{CODE}HE00_DMSPRITEDEF` whenever either exists
-  (`loadModelFromZoneChr`, `loadModelFromCachedChr` in `model_loading_chr.cpp`,
-  `searchAndBuildModel` in `model_loading_search.cpp`, `model_loading.cpp`,
-  `variant_loading_animation.cpp`). The character now carries SSN's head
-  SNNHE00_DMSPRITEDEF and SRG's cape, but that selection would drop both.
-  Confirm with a model-build test for race 146 (Spectral Sarnak). Found by T479.
+- ~~**B733**~~ **CLOSED on `task/kb-b733-race-model-parts` (issue #70).** CONFIRMED
+  Class A: race 146 SSN's skeleton `SSN_HS_DEF` 0x200 list names the head
+  `SNNHE00_DMSPRITEDEF` (974 verts) — the "SNN" spelling the name-based selection
+  (`SSN`/`SSNHE00`) cannot reach — so the built model held 3359 of the 4333
+  referenced verts. Root fix: the loader now stores the UNION of the old storage
+  and the 0x200-listed meshes the bones/prefix didn't store (`s3d_loader_characters.cpp`),
+  and the base builders select the OLD name set plus the skeleton-referenced
+  additions the name selection missed (`selectCharacterParts`, `geometry_combiner.cpp`,
+  wired into the four base-builder call sites in `model_loading{,_chr,_search}.cpp`).
+  Pinned by `B733Race146LoaderTest` (`tests/test_b733_skeleton_mesh_refs.cpp`),
+  which derives the expected part list from the WLD data (never hand-typed) and
+  was RED (3359/4333) on origin/fable. Gate impact [measured]: the four
+  `EntitySourcePruning` goldens each change by exactly 6 lines — the IVM body
+  recovery (races 127/240: 73→506 verts, base + variant rows) and the SSN head
+  (race 146: 3359→4333 verts, both genders); every other line byte-identical.
+  Gate-zone character change -- blessed by Will 2026-10-11: the four
+  `model_fingerprint` goldens at `bdf9f802` and the `memoryCoverage`
+  `characterModelsBytes` re-pin (the 24 B `skeletonReferenced` member) at
+  `4463dd3b`. See `refactor/B733/README.md` (frame diff + mechanism).
 
 - ~~**B734**~~ **CLOSED on `task/kb-b734-object-geometries-posed` (issue #71).** `loadObjects()` now poses skinned
   object geometries (vertex pieces on a 0x10 skeleton, flag 0x200) through T476's
