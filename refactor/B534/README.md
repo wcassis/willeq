@@ -95,28 +95,25 @@ cleaned — a deleted reader orphans its sole caller)
 - Hygiene: `check_zero_callers` GREEN after the two consequential findings
   (364 zero-caller / 293 tests-only, all classified), `check_write_only_fields`
   GREEN, `check_doc_claims` GREEN, `check_comment_claims` GREEN,
- `check_board_dir_numbers` GREEN. `check_doc_counts` is RED by design in this
- commit: the measurement (33 enumerators) is authoritative and the checker's
- reason string is updated, but the `src/client/input/CLAUDE.md` 34→33 line is
- a PROTECTED agent-instruction file that this headless run could not edit
- (approval prompt times out with no user present; the policy forbids routing
- around it). The exact edit is recorded in this README's "Outstanding"
- section and must land before the branch is merged.
+ `check_board_dir_numbers` GREEN. At the original head `ac7f4da5`,
+ `check_doc_counts` was RED: the protected `src/client/input/CLAUDE.md`
+ still stated 34 instead of the measured 33 enumerators. Pipelines 813/814
+ failed hygiene, so build/test/gate did not run. The review fix updates
+ that line and the checker's reason string (see "Outstanding").
 - Affected binaries rebuilt (willeq_core, willeq, test_command_processor,
   test_camera_mode_wiring, test_irrlicht_camera_command) and all pass, along
   with test_headless_command_refusal, test_autorun_arm,
   test_ranged_attack_wire, test_eq_action_handler_enum_guards and
-  test_read_and_reset_ownership — 0 failures across 588 test cases
+  test_read_and_reset_ownership — 0 failures across 552 test cases (the ten named binaries; re-run independently by the reviewer at ac7f4da5)
 
 ## Outstanding (must land before merge)
 
-`src/client/input/CLAUDE.md:10` — replace **34** with **33** and extend the
-sentence with B534's deletion (e.g. "...all seven having no consumer in
-`InputActionBridge::processDiscreteActions()`, and B534 deleted
-`ToggleCameraMode` (issue #181: its only consumer was `GraphicalMode`'s arm,
-which reached `IOutputRenderer`'s empty default body; no input handler ever
-produced it — the live F9 route is `HotkeyAction`/`RendererAction::
-ToggleCameraMode`, a different enum)"). The reason string in
-`scripts/refactor/check_doc_counts.py` (the "T365/T368 deleted seven..."
-line) should be extended in the same pass. That is the ONLY remaining RED:
-`check_doc_counts` fails on that one line and passes everything else.
+DONE in the review-fix commit containing this section, immediately after
+merged head `248e53fa5791b9aa9de6dca1bf0b69856ab59c2e` on
+`task/kb-b534-output-camera-route`: the protected
+`src/client/input/CLAUDE.md:10` now states **33** and explains B534's deletion,
+and `scripts/refactor/check_doc_counts.py` names that deletion in its reason
+string. The resulting full head SHA and exact-head pipeline status are
+recorded in kanban task `t_1c202493`'s handoff (a commit cannot embed its own
+SHA). The earlier hygiene failures above remain historical failures, not
+successful build/test/gate evidence.
