@@ -1846,8 +1846,10 @@ address. Proven on 2026-10-08: `eqemu_stack_ready` on all four; `zone_in`
 exit 0 on lanes 3 and 4 (lane 2 after the fix); the official client to
 character select on eq-oracle-1 (lanes 2-4 in the B1008 README).
 CI: `gitlab-runner-1/2` (10.0.30.81/82) take the x86 jobs under tag
-`x86-build`; one runner carries the tag until build+test+gate fold into one
-job, since the stages share a warm tree. hermes-ext's runner no longer
+`x86-build`. (Superseded 2026-10-11: "one runner carries the tag until
+build+test+gate fold into one job" no longer holds -- Will retagged runner-2
+`x86-build`, and B1026 (#346, option (a)) makes a split pipeline safe with a
+host+sha build-tree stamp; `docs/ci.md`.) hermes-ext's runner no longer
 builds, which is what the 2026-10-06 local-gate rule wanted.
 
 **B972-FT ships ring + one glFlush; the PP-jobs bound is 2.5 (2026-10-09,
