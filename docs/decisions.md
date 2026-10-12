@@ -1710,13 +1710,7 @@ Measured worst (at `steady_60s`, the asserted point):
 velketor is the worst on both machines because it is the only zone whose
 zone music actually STARTED in these runs: the custom SoundFont
 `synthus2.sf2` loads on first `playMusic` of a Velious/Luclin stem and is
-24,160,712 B (Pi) / 24,162,944 B (x86) of it. The font's lifetime changed
-twice since this census: B990 (#309) released it at `MusicPlayer::stop()`;
-B1014 (#335, 2026-10-11, below) moved that release to a REAL end only,
-because the stop inside `play()` was freeing the font the next song had just
-selected. The figures above are the PRE-B990 census (music still playing at
-steady_60s); the post-B990 live x86 census is
-`refactor/B990/audio_ledger_census.tsv`.** kael and thurgadina carry the
+24,160,712 B (Pi) / 24,162,944 B (x86) of it. kael and thurgadina carry the
 same font in their zone EFF, but their music region was not entered in these
 runs (the seeded safe point sits outside it), so their worst is the ~3.6 MB
 startup-only row. The 10 classic zones top out at 4,945,872 B (Pi, erudnint).
@@ -1928,6 +1922,13 @@ origin/fable); and the fade-completion `tsf_close` ran on the audio thread,
 racing the game thread's `selectSoundFont(Custom)` / `MidiPlayer::play()`
 (possible double-close the T248 render barrier does not cover — it covers
 render passes, not game-thread mutators).
+
+The 2026-10-05 census above carries a note on the font's lifetime since it was
+taken: B990 (#309) released it at `MusicPlayer::stop()`; B1014 moves that
+release to a REAL end only, because the stop inside `play()` was freeing the
+font the next song had just selected. The 2026-10-05 figures are the PRE-B990
+census (music still playing at steady_60s); the post-B990 live x86 census is
+`refactor/B990/audio_ledger_census.tsv`.
 
 **Fix (no timer, no second cache, `memoryLedgerBudgets.audio` untouched):**
 the font is released only when a song really ends — the public
