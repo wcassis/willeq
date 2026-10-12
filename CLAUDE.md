@@ -38,8 +38,7 @@ Additional context is in subdirectory CLAUDE.md files:
   `*_archive_20260903.md` trackers `BOARD.md` replaced (K00, 2026-09-03).
 - Workspace: canonical checkout at `/mnt/projects/fable/main` (branch `fable`;
   symlink from `/mnt/projects/willeq-fable`), executor worktree slots under
-  `/mnt/projects/fable/wt/` (`slot1`..`slot3` plus `t1`, `t2`, … — take the live
-  list from `git worktree list`, not from this sentence). Task branches:
+  `/mnt/projects/fable/wt/` (live list: `git worktree list`). Task branches:
   `task/<UNIT>-<name>`, e.g. `task/K01-guild-component`. The `renderer` branch is
   reference-only — never merge it.
 
@@ -163,8 +162,7 @@ specifically.
 ## Build Commands
 
 **`-j$(nproc)` does not expand reliably in a Bash tool command. Pass a hardcoded
-value, e.g. `cmake --build build -j24`** (this host reports 40 cores; there is
-**no ccache** here, so a cold build is not cheap — budget for it). From a script
+value, e.g. `cmake --build build -j24`** (no ccache here: a cold build is not cheap). From a script
 (e.g. `scripts/build-arm-noble.sh`), `$(nproc)` works fine.
 
 **Desktop-GL Irrlicht support has been removed (P30,
@@ -202,6 +200,10 @@ cd build && ctest --output-on-failure
 
 # The hygiene tests are pure source/doc scans and need no C++ artefact:
 #   ctest --test-dir build -L hygiene
+
+# EQT_GRAPHICS=OFF is built AND tested by CI's build-headless job (B1038): a
+# test case reaching a GRAPHICS_SOURCES TU is #ifdef EQT_HAS_GRAPHICS, or the
+# test is registered only under EQT_GRAPHICS.
 
 # One test, or the binary directly
 cd build && ctest -R TestName --output-on-failure
@@ -623,8 +625,7 @@ bash scripts/ci/encode_capture.sh /tmp/capture <UNIT_ID> [output_dir]
   effective fps on llvmpipe). **Never draw a performance conclusion from a
   capture video.**
 - Verify frames are real images before encoding — `saveScreenshot()` has
-  returned garbage under the surfaceless path before (P10, P20). Worked
-  example: `review/T64/README.md`.
+  returned garbage under the surfaceless path before (P10, P20; `review/T64/`).
 
 ### Linux Capabilities
 
@@ -697,7 +698,8 @@ to prevent the console layer from intercepting Ctrl+key combinations.
 
 ## Dependencies
 
-Required: OpenSSL, zlib, fmt, GLM (header-only), jsoncpp
+Required: OpenSSL, zlib, fmt, GLM (header-only), cereal (header-only:
+`libcereal-dev` / brew `cereal`; configure fails without it, B1038), jsoncpp
 Optional:
 - Boost (waypoint pathfinding)
 - librecast-dev (navmesh pathfinding via Recast/Detour)
