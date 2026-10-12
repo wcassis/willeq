@@ -153,7 +153,9 @@ public:
 	// and `data`/`size` is the payload excluding the 2-byte opcode prefix,
 	// matching include/common/net/session_log.h's RecordHeader layout.
 	// Any handler-triggered sends no-op safely (see m_replay_suppressed_sends).
-	void ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t size);
+	// B760 (#45): `reliable` = false replays the packet as an UNRELIABLE one
+	// (delivered outside the reliable stream's sequence order).
+	void ReplayZonePacket(uint16_t opcode, const uint8_t* data, size_t size, bool reliable = true);
 
 	// K13: the suppressed-send counter moved to eqt::PacketSender -- read it
 	// as eq.Net().ReplaySuppressedSendCount().

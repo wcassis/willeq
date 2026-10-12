@@ -942,6 +942,15 @@ bool ParticleManager::resolveEntityPosition(uint16_t entityID, glm::vec3& outPos
     return false;
 }
 
+// B293 (#124): the direction half of the same seam. The renderer's
+// applySimulationOutput() direction arm calls this once per entity the
+// worker's directionRequestEntities named, exactly as the position arm does
+// above for resolveEntityPosition().
+bool ParticleManager::resolveEntityDirection(uint16_t entityID, glm::vec3& outDir) const {
+    if (entityDirCallback_) return entityDirCallback_(entityID, outDir);
+    return false;
+}
+
 // =============================================================================
 // Spell Effect API — thin facade, enqueues commands for SimulationWorker
 // =============================================================================

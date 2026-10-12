@@ -43,18 +43,24 @@ it without taking that measurement first.
   was never released: 24,160,712 B (Pi) / 24,162,944 B (x86) of float samples
   resident for the rest of the session, 84 % of the audio ledger's measured
   worst, what made the audio ratchet refuse to move the 32 MiB budget down
-  (B977, #295; docs/decisions.md 2026-10-05).~~ **CLOSED 2026-10-10: the font
-  is released at `MusicPlayer::stop()`, the one place a song ends — immediate
-  and faded stops both, at the mechanism, not a timer (commit e5acd72b,
-  `refactor/B990/README.md`).** RED/GREEN: `tests/test_soundfont_release.cpp`
-  (2/3 red at base tip: 24,225,520 B held after stop; 8/8 green at the tip,
-  incl. the stop-race suite); live lane-3 x86 leg (`refactor/B990/
+  (B977, #295; docs/decisions.md 2026-10-05).~~ **CLOSED 2026-10-10,
+  re-edited by B1014 (2026-10-11, #335): the font is released when a song that
+  plays on it REALLY ends -- the public `MusicPlayer::stop()` and a fade's
+  completion (flagged by the audio thread, freed by the game thread; never by
+  the stop inside `play()`, which was freeing the font the next song had
+  just selected -- commit e5acd72b, `refactor/B990/README.md`,
+  `refactor/B1014/README.md`).** RED/GREEN: `tests/test_soundfont_release.cpp`
+  (2/3 red at the B990 base tip: 24,225,520 B held after stop; B1014 grew it to
+  7 tests, incl. the two AUDIT-WAVE7 probes, all asserting
+  `getActiveSoundFont()` -- red/green in `refactor/B1014/README.md`); live
+  lane-3 x86 leg (`refactor/B990/
   audio_ledger_census.tsv`): velketor `au.soundfont_custom` 2,976 B / 32
   blocks at steady_60s after the music started and stopped — the 24 MB gone,
-  the residual being the GM-identical selection bookkeeping — vs B977's
-  24,162,944 B at the same point; qeynos2 (classic control) never loaded the
-  custom font. **Left for Will (per the card): the Pi re-run and the
-  `memoryLedgerBudgets.audio` re-ratchet, after B989 lands too.**
+  the residual being the first-call construction of
+  `getSoundFontTypeForFile()`'s static name set (B1014, measured) — vs
+  B977's 24,162,944 B at the same point; qeynos2 (classic control) never
+  loaded the custom font. **Left for Will (per the card): the Pi re-run and
+  the `memoryLedgerBudgets.audio` re-ratchet, after B989 lands too.**
 - ~~**B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
   float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode,
   ~2.0–2.4 MB after the B977 tour's combat) and `SfxManager::cache_`
@@ -431,6 +437,12 @@ it without taking that measurement first.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
+- **B1025** (B, feature) → issue #345. Hotbar slot assignment is a missing
+  feature (found by B603, #187; `refactor/B603/README.md` "The two flagged
+  reads"): `HotbarModel::assignSlot/clearSlot` have NO production caller —
+  slots are filled only by `loadFromJson()` at startup and published by
+  `publishAllSlots()` at zone-in; no command, intent or UI control assigns a
+  slot. Oracle (what the official client does) + CI test owed.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
@@ -1022,6 +1034,8 @@ it without taking that measurement first.
   cap). Fix options are B997's batch/merge of manual zone draws or a
   per-draw submit-cost cut — both need Will's decision (look/coverage +
   B726/B979 invariants), so the card blocks with the measurement.
+- **B1031** (B, platform) → issue #351. macOS dev-platform probe; card 2 = fix. Card 1 (PROVE) on `task/B1031-macos-probe`: the headless configure succeeds on the M4 mini and the keep-going build fails; the error census by TU and KIND, the linked binaries, the ctest results and the card-2 fix list are in `refactor/B1031/README.md`.
+- **B1026** (B, CI) → issue #346. Since gitlab-runner-2 took the `x86-build` tag (2026-10-11) a pipeline's `build` and `test` jobs can land on different hosts, and the stages pass no artifacts: fable pipeline 809 built on gitlab-runner-1 (job 4006) and tested runner-2's pre-B603 binary (job 4007), a false red; MR pipeline 805's green was the same luck. **FIX on `task/B1026-ci-host-stamp`** (Will ruled option (a)): the build steps are ONE shell function (`.build_tree` → `willeq_build_tree`); the tree gets a ref-only stamp before the configure and a host+sha claim (`.willeq_ref` `host=`/`sha=`, `prune_ref_build_trees.py --stamp ... --host --sha`) only after `cmake --build` succeeds; `test` and `client-ledger-live` run `--verify` first and, on a mismatch, print `B1026 STAMP MISMATCH`, rebuild in-job and verify again; `gate` builds its own GLES2 tree in-job. Pinned by `CiBuildTreeStamp` (hygiene) + `PruneRefBuildTrees`; `docs/ci.md` "Two x86 runners: the host+sha stamp"; evidence `refactor/B1026/README.md`.
 - ~~**B1012** (P, CI) → issue #333.~~ **CLOSED 2026-10-09 (B1012, `task/B1012-per-ref-build-trees`).** Concurrent MR pipelines on the `concurrent = 1` x86 runner shared ONE warm `build/`: MR !119's `test` stage (pipeline 697) ran over binaries MR !118's `build` stage (698) had just written and failed on tests absent from its own source (rescued by a one-off cold run). Will chose per-ref build directories with monitoring and cleanup: `$BUILD_TREE = build/ref/$CI_COMMIT_REF_SLUG`, `$GLES2_TREE = build-gles2/ref/$CI_COMMIT_REF_SLUG` (the MR pipeline's slug is its source branch, so push + MR pipelines share a tree), trees stamped with `.willeq_ref`, and the `prune-build-trees` job on every fable pipeline (`scripts/ci/prune_ref_build_trees.py`: ref gone from the remote / stamp > 14 d / unstamped → delete, legacy root swept once, census + `du`/`df` in `prune.log`; rules pinned by the `PruneRefBuildTrees` hygiene test). `docs/ci.md` "One warm tree per ref".
 - ~~**B1011** (A, review) → issue #332.~~ **CLOSED 2026-10-09 (B1011, `task/B1011-wave6-corrections`).** The orchestrator's review of the wave-6 merges, applied over the local models' verdicts (Will, 2026-10-09): (1) the B892 swim event's `isLevitating` field, its flymode read and `setSwimmingState()`'s parameter are DELETED — that arm cleared a self-cast hover on every water transition and nothing restored it (`SwimmingEventCarriesNoSurfaceHeight` fails if the payload carries levitation again; `setLevitationState()` is the one writer); (2) the B893 apex is a measured LOWER BOUND (one wire sample per jump, four of five at an identical +2.509), owed from the committed video, and the fall curve is the oracle's nine measured points interpolated (`kFallDamageTable`, pinned per point by `EveryMeasuredOraclePointIsReproduced`) instead of the 1.5/unit ramp that read 8..23 where the oracle read 5 — one level-60 GM series, level/HP dependence owed; (3) `scripts/scenario.sh` takes the inventory snapshot whenever `--inventory-chars` is set and derives Testchar for `ranged_single_shot` regardless of `--seed-sql` (B900 had both inside the seed branch: silent no-op restore / kit left behind); (4) the B972-FT glFlush write-up's gfaydark sign corrected on its branch (`97cbf657`) and option (d) posted on #326.
 - ~~**B1009** (A) → issue #330. `HCMap::Load` reserved vertex/index/model/poly
@@ -1042,8 +1056,38 @@ it without taking that measurement first.
   lanes); `EQEMU_LANE=1..4` in `scripts/eqemu/env.sh`; `scripts/scenario.sh`
   keys its output dir and derives its configs per lane (three lanes under one
   unit id shared a snapshot file); gitlab-runner-1/2 registered, x86 jobs
-  tagged `x86-build`. Open: fold build+test+gate into one job so runner-2 can
-  take pipelines too; `ready_selftest.sh` not yet run on the clones.
+  tagged `x86-build`. ~~Open: fold build+test+gate into one job so runner-2 can
+  take pipelines too~~ (superseded: runner-2 carries `x86-build` since
+  2026-10-11 and B1026's host+sha stamp makes a split pipeline safe);
+  `ready_selftest.sh` not yet run on the clones.
+- **B1030** (B) → issue #350. Two aarch64 SBCs joined the Orange Pi as client
+  targets (Rock64: RK3328, Mali-450/Lima, 4 GB, eMMC; ROCK 4D: RK3576,
+  Mali-G52/Panfrost, 12 GB), but every Pi script hardcoded ONE host and the
+  arm64 Dockerfile had drifted from the armhf one for three months. Done in
+  the unit: `PI_LANE=1..3` table + per-device locks in `scripts/pi/env.sh`
+  (`lock_selftest.sh` PASS on lanes 2 and 3), `Dockerfile.arm64-noble`
+  regenerated from the armhf file and pinned derived by
+  `scripts/ci/check_arm64_dockerfile.sh` (ctest `DockerfileArm64Derived`),
+  `scripts/build-arm64-noble.sh` + `scripts/pi/publish_arm64_build.sh` →
+  `ci-arm64/<sha>/`; `docs/ci.md` "The aarch64 SBC lanes". Smoke PASS on both
+  lanes (`review/B1030/README.md`), after one port fix: Panfrost lists 10-bit
+  EGL visuals first, so the DRM device now picks the config whose native
+  visual is the GBM format (`chooseConfigForGbmFormat`, unchanged result on
+  Lima, A/B in the README). Follow-ups done: `build-arm64` CI job (sibling
+  of `build-arm`, not a widening); the rendered sweep runs on the aarch64
+  lanes (system Mesa, `ci-arm64/`, headless HDMI via `pi_hdmi_force_on`,
+  `--constrained <preset>`); ledger rows for both lanes in the README
+  (~70 MB owned_rss_anon each on the orangepi preset). Spun off: the
+  Panfrost census field → B1032; the per-lane preset ruling → B1033.
+  Open: lane 2's 17.2 MiB of unnamed GEM fails the Pi rig's 10 MiB bound
+  and the B962 owner-census shim is armhf-only (an aarch64 build of it is
+  the next B item there).
+- ~~**B1033** (C) → issue #353.~~ RULED 2026-10-12 (Will, `docs/decisions.md`):
+  the aarch64 lanes keep the `orangepi` preset, the same 256 MB bound and
+  64 MB target, and get no goldens of their own until a lane runs the gate
+  (lane 2 shares the Pi's Mesa; whether it matches the Pi goldens is a
+  measurement to take first). Both lanes measure ~70 MB owned_rss_anon at
+  qeynos2 steady on that preset (`review/B1030/README.md`).
 - ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
   mechanism (a partial `glBufferSubData` into a buffer the current Lima job
   references flushes the job and blocks in `lima_bo_wait`, once per write): the
@@ -6170,13 +6214,33 @@ T407 deleted eleven (see below). The rest are boarded here.
   along; the doc was aspirational, not stale, and is now true. Pinned by
   `tests/test_sfx_cache_eviction.cpp`, 6 cases, two independent pre-fix plants.
 
-- **B293** (B) `include/client/graphics/environment/particle_manager.h` → issue #124
+- ~~**B293** (B) `include/client/graphics/environment/particle_manager.h` → issue #124
   `ParticleManager::entityDirCallback_` -- installed by TWO callers
   (`src/client/graphics/renderer/renderer_entities.cpp` and
   `tools/model_viewer/model_viewer_spell_test.cpp`) and invoked by none, so
-  entity-direction-aware particle emission is unreachable. Closes when the
-  callback is called or the setter, the member and the `EntityDirCallback`
-  typedef are deleted with both call sites. Found by T407's census.
+  entity-direction-aware particle emission was unreachable. Found by T407's
+  census.~~ **CLOSED by B295+B293 leg B (`task/kb-b295-b293-discarded-args`),
+  HONOUR, not delete**: the one production consumer that wants the callback
+  exists -- spray casts. `SpellVisualFX::createCastGlow()` passes its `isSpray`
+  flag through `createSpellEffect()`'s `useDynamicDir` to the worker, where
+  `effect.useDynamicDirection` arms the emitter, the worker REQUIRES the
+  entity's direction every frame
+  (`SimulationOutput::particleOutput.directionRequestEntities`) and CONSUMES
+  it (`pi.entityDirections` → `emitter.dynamicDirection` → spawn velocity).
+  The single missing link was the renderer half: `SimBridgeComponent::
+  applySimulationOutput()` resolved the previous frame's
+  `positionRequestEntities` into `pendingParticleEntityPositions_` but had no
+  direction arm -- the map was cleared each frame and refilled with nothing,
+  so `entityDirCallback_` was stored by two installers and called by none.
+  The fix adds the direction arm beside the position arm (a mirror, same
+  one-frame-behind rule) and `ParticleManager::resolveEntityDirection()`
+  beside `resolveEntityPosition()`. Pinned by
+  `tests/test_b293_entity_direction_resolution.cpp` (real
+  `applySimulationOutput()` body, never-Init()'d renderer idiom; a counting
+  callback + the worker's real `directionRequestEntities`; red at the base --
+  the callback never fired and the pending map stayed empty), and the
+  write-only ratchet's `entityDirCallback_` EXEMPT row went stale and was
+  struck with the fix.
 
 - ~~**B294** (A) `include/client/graphics/irrlicht_renderer.h`
   `IrrlichtRenderer::forcePvsUpdate_` -- set true in FOUR places
@@ -6208,11 +6272,26 @@ T407 deleted eleven (see below). The rest are boarded here.
   left dangling by `6914d99b` -- an unfinished tombstone is what made the flag
   look deliberate.
 
-- **B295** (B) `include/client/graphics/graphics_archive_index.h` → issue #125
+- ~~**B295** (B) `include/client/graphics/graphics_archive_index.h` → issue #125
   `GraphicsArchiveIndex::lazyMode_` -- `buildIndex(eqPath, lazyMode, tick)`
   stores its `lazyMode` argument and never reads it, so the lazy/eager choice
-  its callers make is discarded. Closes when the parameter is honoured or
-  removed from the signature. Found by T407's census.
+  its callers make is discarded. Found by T407's census.~~ **CLOSED by
+  B295+B293 leg A (`task/kb-b295-b293-discarded-args`), REMOVE, not honour**:
+  `scanArchives()` is pure filename arithmetic -- the "NO archive opening"
+  comment at `graphics_archive_index.cpp:191` is the whole reason the flag
+  existed (a lazy index closes archives after scanning, an eager one keeps
+  them open; an index that never opens one has nothing to close). `commit
+  aea2af12` introduced the parameter and member together with the
+  progressive-loading work; by the time T407's census ran, the only surviving
+  read of `ConstrainedRendererConfig::lazyPfsLoading` the index cared about
+  was a write. Removed: the `buildIndex` parameter, the `lazyMode_` member,
+  the caller's pass-through
+  (`renderer_zone_load.cpp` Step 5 now calls `buildIndex(ctx.eqPath)` for
+  every preset), the stale "Lazy mode: closes archives after scanning" doc
+  bullet, and the write-only ratchet's EXEMPT row (stale → struck, per the
+  no-outlive rule). `getCachedArchive()`/`cachedArchives_` (a SEPARATE gap,
+  also zero-caller) stay on B494. `lazyPfsLoading` itself is the constrained
+  preset's field and out of scope here -- its other readers are intact.
 
 - ~~**B296** (A) `include/client/state/event_bus.h` -- **bridge event payload
   fields that every producer fills and no consumer reads.** The census names
@@ -8939,7 +9018,7 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   `VisionAmbientTest.DaylightIsUntouchedByInfravisionAndBarelyMovedByUltravision`.
   Prov: T428 Review §3b.
 
-- **B448** (A) `src/client/graphics/player/renderer_camera.cpp` → issue #29
+- ~~**B448** (A) `src/client/graphics/player/renderer_camera.cpp` → issue #29
   `PlayerCameraComponent::setPlayerRace` -- **a server-side race change on the
   player's OWN character never reaches the vision system.** `setPlayerRace()` is
   called from `IrrlichtRenderer::registerEntity()` (T348, B056), i.e. when an
@@ -8955,7 +9034,17 @@ pre-fix). Live after: `/loc` reads `137.0, 340.0, 6.0`.
   and bracketed by them, but the live pair is OWED). Closes when a race change
   on self reaches `setPlayerRace()` and a live session shows the fourth level's
   ratio against the oracle's x2.6803 / x1.9478 / x2.1753. Prov: T428 Review §4;
-  B060; B056.
+  B060; B056.~~ **STRUCK (2026-10-11, `task/B448-self-race-vision`,
+  `refactor/B448/README.md`):** the defect half is fixed --
+  `IrrlichtRenderer::updatePlayerAppearance()` (the `EntityAppearanceChanged`
+  bridge arm for `isPlayer`) now calls `setPlayerRace()` on a race CHANGE, and
+  `setPlayerRace()` recomposes max(base, buff) so a race change keeps a vision
+  buff that is up; pinned by `tests/test_self_race_vision.cpp` (5 of 7 red on
+  fable). Live on the local lane: `#race 330` after zone-in logged
+  `Player race 330 -> base vision: FroglokVision`. NOT done here: fable's own
+  night ratio for the fourth level against the oracle's x2.6803 / x1.9478 /
+  x2.1753 (needs a T428-style measured session) -- see the README's
+  "Not verified / left open".
 
 - (T428 also boarded the DocCitations red at BOARD.md:6877 as its B434; the orchestrator had already fixed it on fable at 6aadff59, so that entry is not carried.)
 
@@ -11101,7 +11190,7 @@ B712–B719 unused.
   `ActionDispatcher::declineGroupInvite` -> `EqActionHandler`, which sends
   `SendGroupDecline` directly); the component method was a dead duplicate.
   Hotbar slot assignment is NOT user-reachable (config-load only) --
-  missing feature, left for a separate entry. `ZeroCallers` went RED with
+  missing feature, boarded as B1025 (#345). `ZeroCallers` went RED with
   17 STALE rows and GREEN at 303 tests-only.~~
 
 - ~~**B604** (A, *unconfirmed live*) **The server's cast interrupt never reaches
@@ -11170,20 +11259,20 @@ B712–B719 unused.
 
 ## Added 2026-09-14 by T482 (how a confirmed cast ends)
 
-- **B760** (A, *unconfirmed live, rare*) **A cast's result code can say → issue #45
-  Interrupted for a success, and can be late.** `SpellManager::noteZonePacket()`
-  settles a released cast as a stop on the first packet after the keepcasting 0
-  that is not `OP_MemorizeSpell` or `OP_LinkedReuse`. eqemu sends some packets
-  unreliably (`OP_SpawnAppearance`, `OP_ClientUpdate`, HP and group updates:
-  `/mnt/projects/akk-stack/code/zone/mob.cpp` `Mob::SendAppearancePacket`,
-  `/mnt/projects/akk-stack/code/zone/groups.cpp`), and the reliable stream may hold
-  the tail back behind them, so one can arrive inside the tail. The gem's recast
-  is still right, because `handleSpellBarRefresh()` starts it from the
-  MemorizeSpell alone. Only the `SpellCastComplete` result is wrong, and nothing
-  in production reads it (B603 deleted the callback that was left for a
-  consumer). In a quiet zone the result also waits for the
-  next packet. Confirm by recording, on the B630 live run, whether anything
-  arrives between the two tail packets.
+- ~~**B760** (A) **A cast's result code could say Interrupted for a success.** → issue #45~~ **CLOSED 2026-10-12 (MR !142, fable ce7ecd66; Will: close as is -- the `StopCasting` settle latency is accepted, nothing in production reads the result).** The entry follows for the record.
+  B760 (A, *fixed by construction, not reproduced live*; 2026-10-12, issue #45
+  `refactor/B760/README.md`) **A cast's result code could say Interrupted for a
+  success.** `SpellManager::noteZonePacket()` now settles a released cast on
+  the next RELIABLE zone packet (`DaybreakConnection::DeliveringReliable()`
+  → `DispatchZonePacket(p, reliable)`): eqemu queues the success tail
+  contiguously on the reliable stream, so only an unreliable packet overtaking
+  a RESENT tail packet could land inside it. Live on the local lane: 60
+  success tails (quiet, traffic, 5 % and 15 % simulated inbound loss), 0
+  packets inside a tail, 0 wrong results, success settled 0-1 ms after the
+  keepcasting 0. **Still open, by design:** a `StopCasting` sends no terminal
+  packet, so its Interrupted waits for the server's next reliable packet
+  (quiet-zone proxy median 4.6 s); nothing in production reads the result
+  (B603). Close #45 unless Will wants that latency bounded.
 
 - **B761** (A, *unconfirmed live*) **A bard song with → issue #46
   `Character:EnableBardMelody` false has no end packet, so it ends on the

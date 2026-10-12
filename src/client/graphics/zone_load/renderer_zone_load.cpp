@@ -885,7 +885,7 @@ void ZoneLoadComponent::loadZoneStep5_Assets(ZoneLoadContext& ctx) {
         // Build archive index inline (was background thread)
         if (computations && ctx_.config.constrainedConfig.deferredAssetLoading) {
             computations->archiveIndex = std::make_unique<GraphicsArchiveIndex>();
-            if (computations->archiveIndex->buildIndex(ctx.eqPath, ctx_.config.constrainedConfig.lazyPfsLoading)) {
+            if (computations->archiveIndex->buildIndex(ctx.eqPath)) {
                 LOG_INFO(MOD_GRAPHICS, "Sequential: archive index built ({} race entries, {} archives)",
                          computations->archiveIndex->getRaceEntryCount(),
                          computations->archiveIndex->getArchiveCount());

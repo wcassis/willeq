@@ -521,6 +521,37 @@ bool CIrrDeviceFB::initGBM()
 // EGL Initialization
 // ============================================================
 
+// B1030 (#350): pick the EGL config whose native visual IS the GBM surface's
+// format. eglChooseConfig sorts deeper colour buffers first, so on a driver
+// that exposes 10-bit configs (Panfrost/Mesa 26 on the ROCK 4D lists AR30 and
+// XR30 before AR24/XR24) the first match for RED/GREEN/BLUE >= 8 is a 10-bit
+// visual, and eglCreateWindowSurface on the XRGB8888 gbm_surface then fails
+// (Mesa refuses a config/format mismatch). Lima never listed a 10-bit config,
+// which is why the single-config call worked on every lane until now. Same
+// rule kmscube applies: EGL_NATIVE_VISUAL_ID == the GBM format. Within the
+// matching visual eglChooseConfig's own order still holds (smallest depth and
+// stencil that satisfy the request first), so lanes 1-2 pick the config they
+// always picked.
+static bool chooseConfigForGbmFormat(EGLDisplay dpy, const EGLint* attribs,
+                                     uint32_t gbmFormat, EGLConfig* out)
+{
+    EGLConfig configs[64];
+    EGLint numConfigs = 0;
+    if (!eglChooseConfig(dpy, attribs, configs, 64, &numConfigs) || numConfigs < 1)
+        return false;
+    for (EGLint i = 0; i < numConfigs; ++i) {
+        EGLint visual = 0;
+        if (eglGetConfigAttrib(dpy, configs[i], EGL_NATIVE_VISUAL_ID, &visual)
+            && (uint32_t)visual == gbmFormat) {
+            *out = configs[i];
+            return true;
+        }
+    }
+    os::Printer::log("EGL: no config matches the GBM surface format; using the first match", ELL_WARNING);
+    *out = configs[0];
+    return true;
+}
+
 bool CIrrDeviceFB::initEGL()
 {
     // Try EGL_OPENGL_API first (desktop GL 2.1 via Lima), fallback to GLES2
@@ -582,8 +613,7 @@ bool CIrrDeviceFB::initEGL()
         EGL_NONE
     };
 
-    EGLint numConfigs;
-    if (!eglChooseConfig(eglDisplay_, configAttribs, &eglConfig_, 1, &numConfigs) || numConfigs < 1) {
+    if (!chooseConfigForGbmFormat(eglDisplay_, configAttribs, GBM_FORMAT_XRGB8888, &eglConfig_)) {
         // Fallback: try without depth buffer
         os::Printer::log("EGL: No config with depth buffer, retrying without", ELL_WARNING);
         EGLint fallbackAttribs[] = {
@@ -594,7 +624,7 @@ bool CIrrDeviceFB::initEGL()
             EGL_RENDERABLE_TYPE, useDesktopGL ? EGL_OPENGL_BIT : EGL_OPENGL_ES2_BIT,
             EGL_NONE
         };
-        if (!eglChooseConfig(eglDisplay_, fallbackAttribs, &eglConfig_, 1, &numConfigs) || numConfigs < 1) {
+        if (!chooseConfigForGbmFormat(eglDisplay_, fallbackAttribs, GBM_FORMAT_XRGB8888, &eglConfig_)) {
             os::Printer::log("EGL: eglChooseConfig failed", ELL_ERROR);
             return false;
         }

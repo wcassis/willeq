@@ -539,6 +539,10 @@ NAMED_COMMAND = [
      "the owner_ census in the IrrlichtRenderer section"),
     ("src/client/graphics/CLAUDE.md", "re-measure rather than",
      "the owner_ census in the Batch L component table"),
+    ("refactor/B1031/README.md", "ctest --test-dir build -N | tail -1",
+     "B1031: the macOS probe's registered-test totals depend on which gtest "
+     "binaries linked on the mini; the README quotes them from its logs and "
+     "must keep naming the command that re-measures them"),
 ]
 
 

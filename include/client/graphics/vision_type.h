@@ -27,8 +27,10 @@ namespace EQT {
 namespace Graphics {
 
 // Vision types affecting zone light visibility.
-// The race sets the base (PlayerCameraComponent::setPlayerRace -> baseVision_)
-// and buffs raise it above that base. T334 (B046): a buff value is APPLIED,
+// The race sets the base (PlayerCameraComponent::setPlayerRace -> baseVision_;
+// at zone-in from registerEntity(), and B448 (#29) on a race change of a
+// player already in the world -- illusion / `#race N` -- from
+// updatePlayerAppearance()) and buffs raise it above that base. T334 (B046): a buff value is APPLIED,
 // not accumulated -- the publisher recomputes the whole buff set on every fade
 // -- so vision does come back down, never below the racial base.
 //

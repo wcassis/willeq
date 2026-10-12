@@ -86,10 +86,12 @@ Additional context is in subdirectory CLAUDE.md files:
   minute), `build`, `test` (the intermittent `RDPServerFrameTest.UpdateFrameMultipleTimes`
   is re-run with `--repeat until-pass:3`) and `gate` (`visual_gate`, 3 in-script
   retries, never `allow_failure`, all five manifest zones — B903/B904 ended
-  the 2026-09-28 iceclad/timorous split, `docs/ci.md`). The x86 jobs run on **gitlab-runner-1** (tag `x86-build`,
-  B1008) and refuse other hosts (a kanban worker's 4 GiB cap OOM-kills a
-  link; builds stay off the Inspur box and off hermes-ext). Pushing a branch is the
-  cheapest suite run, but the runner's build tree is **warm**: force a clean
+  the 2026-09-28 iceclad/timorous split, `docs/ci.md`). The x86 jobs run on **gitlab-runner-1 and
+  gitlab-runner-2** (both tag `x86-build`, B1008) and refuse other hosts (a kanban worker's 4 GiB cap
+  OOM-kills a link; builds stay off the Inspur box and off hermes-ext). One pipeline's stages may land
+  on different hosts: `test` refuses a build tree not stamped by its own host at its own sha and
+  rebuilds it in-job (B1026, `docs/ci.md` "Two x86 runners"). Pushing a branch is the
+  cheapest suite run, but each runner's build tree is **warm**: force a clean
   pipeline before trusting a build-system change (`docs/ci.md`).
 
 ### File sizes
@@ -658,8 +660,9 @@ kernel, Lima open-source driver.
   textures (real 6:1 savings via `GL_ETC1_RGB8_OES`), and the shared path for
   the planned Android port. See `src/client/graphics/CLAUDE.md`.
 - **Display**: DRM/KMS direct rendering without X11 (`--drm`).
-- **Pi lock + CI ARM builds** (`docs/ci.md`, "The ARM runner and Pi runs"): the Pi is single-tenant — `source scripts/pi/env.sh; pi_lock_take <owner>` before
-  any run, `pi_lock_release <owner>` after (atomic, on the Pi; pinned by `scripts/pi/lock_selftest.sh`).
+- **Three single-tenant SBC lanes** (B1030, `docs/ci.md` "The aarch64 SBC lanes"): `PI_LANE=1` Orange Pi,
+  `2` Rock64, `3` ROCK 4D (table in `scripts/pi/env.sh`; a card names its lane, never an address).
+  `pi_lock_take <owner>` before any run, `pi_lock_release <owner>` after (on the device; `lock_selftest.sh`).
 - **GL driver: the shipped LLVM-less Mesa prefix** (Will 2026-09-30, B935; `docs/ci.md` "The shipped Mesa
   prefix"): Pi rigs run `ci-arm/<sha>/bin/willeq-nollvm` (absolute DT_RPATH; `$ORIGIN` is dropped under setcap)
   by default, `WILLEQ_MESA=system` opts out, and every run proves the loaded libgallium from its maps.
