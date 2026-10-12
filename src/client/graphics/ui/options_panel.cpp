@@ -95,25 +95,12 @@ float optionsClipPlaneDistance(int step) {
     return 50.0f + static_cast<float>(step) * 50.0f;
 }
 
-int optionsClipPlaneStep(float distance) {
-    const int step = static_cast<int>((distance - 50.0f) / 50.0f + 0.5f);
-    return std::max(0, std::min(OptionsLayout::SLIDER_STEPS, step));
-}
-
 // T439: the arithmetic moved to include/client/audio/volume_steps.h, which
 // the GAME thread also includes (the volume intents and VolumesChanged both
 // speak in steps now). These stay as the renderer-side spelling. The
 // static_assert is what stops the slider geometry and the wire unit drifting.
 static_assert(OptionsLayout::SLIDER_STEPS == eqt::audio::kVolumeSteps,
               "the slider's travel and the wire's volume unit must agree");
-
-float optionsVolumeFraction(int step) {
-    return eqt::audio::volumeFractionFromStep(step);
-}
-
-int optionsVolumeStep(float fraction) {
-    return eqt::audio::volumeStepFromFraction(fraction);
-}
 
 bool applyVolumesChanged(OptionsPanelState& state,
                          const eqt::state::VolumesChangedData& data) {

@@ -517,7 +517,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_display_text_from_db
         test_display_text_from_db.cpp
     )
-    TARGET_INCLUDE_DIRECTORIES(test_display_text_from_db PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_INCLUDE_DIRECTORIES(test_display_text_from_db PRIVATE ${IRRLICHT_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/third_party)
     TARGET_LINK_LIBRARIES(test_display_text_from_db GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_display_text_from_db PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")

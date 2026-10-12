@@ -11241,9 +11241,14 @@ B712–B719 unused.
   `HotkeyBinding::toString`, `ConsoleRenderer::setStatusUpdateInterval` (the
   one tests-only method on a class the census sees no live use of), and
   `focusTextEntry` -- 8 rows. The hotkey rows sit beside T466's territory
-  (`hotkey_manager.cpp`) and were not touched. Found by T458.
+  (`hotkey_manager.cpp`) and were not touched. Found by T458. **`HotkeyBinding::toString`
+  struck early (2026-10-12, `task/kb-b606-renderer-asset-data-zero-callers`):**
+  a B606 deletion cascaded it -- its B605 row was tests-only only by
+  name-collision with the free `toString(SpellVisualSource)` (three test
+  lines), which B606 removed; the dead one-line delegate (over the live
+  `HotkeyManager::bindingToString`) went with it. `refactor/B606/README.md`.
 
-- **B606** (B, unreached) **Renderer, asset and data API with no production → issue #189
+- ~~**B606** (B, unreached) **Renderer, asset and data API with no production → issue #189
   caller.** `IrrlichtRenderer::setNewUIEnabled`,
   `EntityRenderer::loadEquipmentModels/loadGlobalCharacters` (not called even
   by the zero-caller `loadGlobalAssets`, B494, which T468 deleted; since T485
@@ -11259,7 +11264,15 @@ B712–B719 unused.
   `reloadRaceMappings`, `LiftTravelSeconds`, `TargetTypeRestrictsCreature`,
   `toString(SpellVisualSource)`, `parseFormattedMessageText`,
   `optionsClipPlaneStep`, `optionsVolumeFraction`, `optionsVolumeStep` -- 18
-  rows. Found by T458.
+  rows. Found by T458.~~ **CLOSED 2026-10-12** (`task/kb-b606-renderer-asset-data-zero-callers`,
+  `refactor/B606/README.md`): all 18 ratchet rows deleted with their tests-only
+  nets; `EntityRenderer::loadEquipmentModels/loadGlobalCharacters` kept (tool
+  callers, no longer census rows); the `login_strings` table dropped with its
+  only reader (db rebuilt, no version bump); `applyStoredZoneEnvironment`
+  deleted (the zone-load Step 10 applies a strict superset); one B605 row
+  (`HotkeyBinding::toString`) cascaded out (name collision with the deleted
+  free `toString(SpellVisualSource)`). ZeroCallers RED 21 stale → GREEN 271
+  tests-only.
 
 - **B607** (P) **The zero-caller census INVENTED dead functions through a
   stream operator, and one of them was a T455 exemption.**

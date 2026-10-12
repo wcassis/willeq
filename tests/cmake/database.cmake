@@ -4,7 +4,10 @@
 # link changes). Included in the tests/ directory scope, so every variable
 # set in the top-level preamble is in effect here.
 
-# Test StringDatabase loading and formatting
+# Test StringDatabase loading and formatting. B606 (#189): the class is
+# SQLite-backed only (the legacy file loaders went), so the test builds a
+# throwaway db via raw sqlite3 -- needs the same include dir as
+# test_willeq_database for <sqlite3.h>.
 ADD_EXECUTABLE(test_string_database
     test_string_database.cpp
     ${CMAKE_SOURCE_DIR}/src/client/string_database.cpp
@@ -12,6 +15,7 @@ ADD_EXECUTABLE(test_string_database
     ${CMAKE_SOURCE_DIR}/src/client/willeq_database.cpp
     ${CMAKE_SOURCE_DIR}/third_party/sqlite3.c
 )
+TARGET_INCLUDE_DIRECTORIES(test_string_database PRIVATE ${CMAKE_SOURCE_DIR}/third_party)
 TARGET_LINK_LIBRARIES(test_string_database GTest::gtest_main ${FMT_LIB} dl)
 GTEST_DISCOVER_TESTS(test_string_database DISCOVERY_TIMEOUT 120)
 
