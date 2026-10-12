@@ -996,7 +996,12 @@ it without taking that measurement first.
   `gpu_unnamed_steady` crowd-tour guard **stays RED on qeynos2 and gfaydark as
   a documented known condition** (same class as B988/#307), the bound is NOT
   re-scoped and no buffering change is allowed; the real levers (varying
-  stride, per-frame vertex volume) are B1013 #334. The residual + mechanism +
+  stride, per-frame vertex volume) are B1013 #334 — B1013's investigation
+  found those are not levers either (the draw-time pool is a Lima BO cache
+  frozen at the zone-in peak, cost-sheet fact 13) and B1013 is now the
+  four-card plan (timeline counters, Pi burst measurement, zone-in
+  frames-in-flight cap, a BO-cache trim in the shipped Mesa prefix). The
+  residual + mechanism +
   per-change table stand in `refactor/B997/README.md` (step 4 + the
   "Known condition (ruling a)" section). The `EQT_SG_BATCH` batch's ship
   decision is made by the DETERMINISTIC x86 door pixel A/B (ctest

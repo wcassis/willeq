@@ -53,14 +53,24 @@ the line numbers move, the function names do not.
 
 ## Draws: what a draw call costs
 
-5. **Every draw allocates a varying-output BO.** `lima_update_varying`
-   (`lima_draw.c`) creates `ctx->gp_output` with `lima_bo_create` per draw,
-   sized by the draw's vertex count, and adds it to both pipes. The BO cache
+5. **Every draw allocates a varying-output BO, sized by the vertex payload,
+   not the draw count.** `lima_update_varying` (`lima_draw.c`) takes
+   `num = max_index - min_index + 1` for an indexed draw, else the draw's
+   `count`, and charges every varying slot `component_size * 4` bytes, where
+   component_size is always 4 (fp32: `gpir_glsl_type_size` returns 4 for
+   float, `ir/gp/nir.c`) -- so `mediump` buys nothing. Lima sets
+   `prefer_pot_aligned_varyings` (`lima_screen.c`), so a vec3 is never packed
+   with anything else. `gp_output_size = align(16 * num, 64) +
+   align(varying_stride * num, 64)` (`+ 4 * num` with point size), then
+   page-rounded by `lima_bo_create`: at two vec4 slots, one 4 KiB page holds a
+   draw of up to 84 vertices (`1344 + 2688 = 4032 B`), and ~85 % of the
+   draw-time BOs are one page (the gem_owners census, B962). The BO cache
    (`lima_bo_cache_get`, `lima_bo.c`) probes candidates with a timeout-0
    `lima_bo_wait`, which is a poll, not a block. This cost is per draw and is
    paid identically by VBO and client-array draws, so it never explains a
-   delta between two builds with the same draw count; it is the draw floor
-   (B998's gfaydark finding is draw-count bound).
+   delta between two builds with the same draw count. Whether the steady pool
+   grows when the draw count or the per-frame vertex volume moves is fact
+   13's question -- B1013 measured that it does not.
 6. **B962's static zone VBO halved fps with no per-frame writes at all**
    (`refactor/B962/README.md`, "Tried and reverted"). That is not fact 1 (a
    buffer never written never reaches `lima_transfer_map`). The mechanism is
@@ -102,6 +112,31 @@ the line numbers move, the function names do not.
     precision clamps (B965, `refactor/B965/README.md`).
 12. **A `discard` whose comparison operand depends on a derivative is
     inverted** on this driver (B958, `refactor/B958/README.md`).
+13. **The BO cache is a pool frozen at the zone-in peak.** The cache hands a
+    draw-time BO out of a per-size bucket (`lima_bo_cache_get`, `lima_bo.c`)
+    walking from the bucket's HEAD -- the OLDEST free BO -- taking the first
+    entry big enough and, if that entry is still busy (a timeout-0
+    `lima_bo_wait` that fails), `break`ing and allocating a NEW BO. A used BO
+    goes back at the bucket's TAIL with a fresh `free_time`
+    (`lima_bo_cache_put`), and `lima_bo_cache_free_stale_bos` frees from the
+    time list's head only while `time - free_time > 6` s -- so a bucket of N
+    BOs shrinks only when it serves fewer than N/6 allocations per second.
+    `lima_job_start` (`lima_job.c`) unreferences every BO right after the
+    submit ioctl, so BOs re-enter the cache while the GPU is still using them
+    (the bucket's head is idle, its tail busy). Consequence: every bucket
+    holds the PEAK number of BOs in flight since the last trim, and a client
+    that keeps drawing never trims. Measured (B1013, the 10 B997 Pi legs; the
+    shipped-default leg `tests/data/b1013/`): 0 GEM creates and 0 closes in
+    [ready+20 s, steady_60s] in every leg, while the pool (the draw-time row +
+    the stream-uploader rows of the gem_owners census) grew 7.91 MiB
+    (qeynos2) / 9.68 MiB (gfaydark) between ready and steady_60s -- the whole
+    zone-in burst. B997's batch (-14 / -103 draws per frame) moved the
+    `gpu_unnamed_steady` guard by -0.28 / +1.13 MiB, inside the leg spread: a
+    frozen pool. Prediction: no steady-state change (draw count, varying
+    stride, cull, LOD, batching) moves `gpu_unnamed_steady`; judge a lever on
+    the pool's own columns -- `gem_pool_growth_mib` and
+    `gem_pool_creates_steady_window` (0 = frozen, the lever bought nothing) --
+    not on the guard.
 
 ## Using this sheet
 
@@ -109,5 +144,9 @@ A perf or memory finding card names which facts above its mechanism rests on,
 cites the Mesa function for any fact not yet here, and states the prediction
 those facts make for the measured delta (fact 5 predicts no delta from a
 re-buffering that keeps the draw count; fact 1 predicts a cost proportional to
-writes per frame, not bytes). A new fact earns a numbered entry with its
-measurement; a fact that turns out wrong is corrected here, not in a card.
+writes per frame, not bytes; fact 13 predicts no `gpu_unnamed_steady` delta
+from any steady-state draw-path change -- the pool is frozen at the zone-in
+peak, so judge such a lever on `gem_pool_growth_mib` and
+`gem_pool_creates_steady_window` next to fact 5's prediction). A new fact
+earns a numbered entry with its measurement; a fact that turns out wrong is
+corrected here, not in a card.
