@@ -55,6 +55,38 @@ forced receive buffer). For a live zone-in, copy the binary to the Pi's ext4 hom
 buffer it actually got (`rcvbuf=... SO_RCVBUFFORCE`). `scripts/pi_rendered_zone_sweep.sh` does exactly this
 for the rendered Kunark + Velious sweep (#102, `refactor/B854/RENDERED_SWEEP.md`).
 
+### The aarch64 SBC lanes (B1030, #350)
+
+The Orange Pi is **lane 1** of a three-lane table in `scripts/pi/env.sh`; `PI_LANE=N` picks the device the way
+`EQEMU_LANE` picks an eqemu VM, and a card or a script names its LANE, never an address. Each lane is
+single-tenant with its own lock ON the device (`pi_lock_take`/`pi_lock_release` are unchanged; `PI_LANE=2 bash
+scripts/pi/lock_selftest.sh` is the per-lane net). An explicit `PI_HOST` still wins, so every pre-B1030 caller
+behaves as before. The table itself (host, arch, GPU driver) is in `scripts/pi/env.sh` -- read it there rather
+than here.
+
+| lane | device | arch | GPU / driver | binary |
+|---|---|---|---|---|
+| 1 | `orangepi` | armv7l | Mali-400, Lima | `ci-arm/<sha>/bin/willeq-nollvm` (the shipped prefix above) |
+| 2 | `rock64` (RK3328) | aarch64 | Mali-450, Lima (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
+| 3 | `rock4d` (RK3576) | aarch64 | Mali-G52, Panfrost (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
+
+Lanes 2 and 3 run ONE generic `-march=armv8-a` binary from **`scripts/build-arm64-noble.sh`**
+(`docker/Dockerfile.arm64-noble`, a noble arm64 sysroot; lane 3's Armbian resolute runs it because glibc is
+forward compatible), published to **`/mnt/projects/fable/ci-arm64/<sha>/`** by `scripts/pi/publish_arm64_build.sh`
+-- the same shape as `ci-arm/` (stripped `bin/`, that commit's `config/` + `data/`, `BUILD_INFO`,
+`by-branch/`, newest 12 kept) minus the Mesa prefix step. `build-arm` is NOT widened: the arm64 build is run by
+hand on dev-u24 for now (one C++ build at a time there -- `BUILD_JOBS=4` while another build is alive), and a
+CI job for it is a follow-up. `docker/Dockerfile.arm64-noble` is the armhf Dockerfile with the architecture
+swapped and nothing else; `scripts/ci/check_arm64_dockerfile.sh` (ctest `DockerfileArm64Derived`, label
+`hygiene`) fails when they drift, and `--write` regenerates it.
+
+Device facts that bound a run: both aarch64 lanes mount the NFS share at `/mnt/projects`, have `/tmp` and
+`/mnt/ram` as `nosuid` tmpfs (copy a binary to the ext4 home for `setcap`, exactly as on lane 1), and have no
+`--constrained` preset of their own -- a preset, manifest or budget for either is a bless-only ruling request
+filed with measurements (`kmscube_floor.sh`, the ledger in a cgroup), not a default. Lane 2's Mesa is the same
+25.2.8 the Pi runs, so the Lima cost sheet applies; lane 3 is Bifrost under Panfrost and nothing Lima-specific
+transfers to it.
+
 ### The shipped Mesa prefix (B935, #253)
 
 Will, 2026-09-30: "ship the prefix" (`docs/decisions.md`). The Pi runs the client on an LLVM-less Mesa (B932's

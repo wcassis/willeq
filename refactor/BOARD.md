@@ -1044,6 +1044,19 @@ it without taking that measurement first.
   unit id shared a snapshot file); gitlab-runner-1/2 registered, x86 jobs
   tagged `x86-build`. Open: fold build+test+gate into one job so runner-2 can
   take pipelines too; `ready_selftest.sh` not yet run on the clones.
+- **B1030** (B) → issue #350. Two aarch64 SBCs joined the Orange Pi as client
+  targets (Rock64: RK3328, Mali-450/Lima, 4 GB, eMMC; ROCK 4D: RK3576,
+  Mali-G52/Panfrost, 12 GB), but every Pi script hardcoded ONE host and the
+  arm64 Dockerfile had drifted from the armhf one for three months. Done in
+  the unit: `PI_LANE=1..3` table + per-device locks in `scripts/pi/env.sh`
+  (`lock_selftest.sh` PASS on lanes 2 and 3), `Dockerfile.arm64-noble`
+  regenerated from the armhf file and pinned derived by
+  `scripts/ci/check_arm64_dockerfile.sh` (ctest `DockerfileArm64Derived`),
+  `scripts/build-arm64-noble.sh` + `scripts/pi/publish_arm64_build.sh` →
+  `ci-arm64/<sha>/`; `docs/ci.md` "The aarch64 SBC lanes". Open: a CI job
+  for the arm64 build (`build-arm` is not widened), the kmscube floor + ledger
+  run per lane, and a `--constrained` preset per device — the last is class C
+  with measurements attached, never a default.
 - ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
   mechanism (a partial `glBufferSubData` into a buffer the current Lima job
   references flushes the job and blocks in `lima_bo_wait`, once per write): the

@@ -7,7 +7,7 @@
 | Dockerfile | Target | Architecture | Notes |
 |-----------|--------|-------------|-------|
 | `Dockerfile.arm-noble` | Orange Pi One | armhf (32-bit) | Primary build target; native GLES2 (`COpenGLES2Driver`) on DRM/KMS, Mesa/Lima supplying EGL |
-| `Dockerfile.arm64-noble` | Rock64 (RK3328) | aarch64 (64-bit) | Same GLES2 path, 64-bit |
+| `Dockerfile.arm64-noble` | SBC lanes 2-3: Rock64 (RK3328, Lima) + ROCK 4D (RK3576, Panfrost) | aarch64 (64-bit) | B1030: the armhf file with the arch swapped, generic armv8-a; `scripts/ci/check_arm64_dockerfile.sh` keeps it derived (`--write` regenerates); built by `scripts/build-arm64-noble.sh`, published to `ci-arm64/` |
 | `Dockerfile` | Desktop | x86_64 | Multi-stage: builder, runtime, vnc |
 | `Dockerfile.arm-cross` | ARM (legacy) | armhf | Superseded by arm-noble |
 | `Dockerfile.mesa-nollvm-armhf` | Orange Pi One | armhf (32-bit) | B932/B935: builds the SHIPPED Mesa 25.2.8 without LLVM (Lima only), plus patchelf for the rpath copy; driven by `scripts/pi/build_mesa_nollvm.sh`, measured in `refactor/B932/README.md` |
@@ -34,8 +34,8 @@ that ships with the client. The system Mesa packages are left alone.
 `vendor` (the NFS store `ci-arm/vendor/`), never from SourceForge. `docker/vendor.sha256` pins them;
 `scripts/ci/vendor_fetch.sh --ensure` fills the store. Run the Dockerfile by hand only with
 `--build-context vendor="$(scripts/ci/vendor_fetch.sh --ensure)"`. Keep the archive `COPY` ahead of the
-`docker/irrlicht-drm/*` copies. `Dockerfile`, `Dockerfile.arm64-noble` and `Dockerfile.arm-cross` still wget
-(not in CI). Details: `docs/ci.md`.
+`docker/irrlicht-drm/*` copies. `Dockerfile.arm64-noble` takes the same `vendor` context (it is derived from the armhf file, B1030);
+`Dockerfile` and `Dockerfile.arm-cross` still wget (not in CI). Details: `docs/ci.md`.
 
 **Build command**: `scripts/build-arm-noble.sh`
 ```bash
