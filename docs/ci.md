@@ -184,20 +184,22 @@ longer downloads them: SourceForge returned HTTP 522 for ~3 h on 2026-10-01 and 
 | Stage | What it does | Cold | Warm |
 | --- | --- | --- | --- |
 | `hygiene` | `ctest -L hygiene` in a no-C++ tree (`EQT_GRAPHICS=OFF`), configured into `build/hygiene`; on `fable` also `prune-build-trees` (B1012, the per-ref tree expiry + census) | 45 s | 44 s |
-| `build` | the Release recipe from `CLAUDE.md`, `-j8`, into `build/ref/<slug>` (B1012) | 1,237 s (20.6 min) | 6 s |
-| `test` | full `ctest -j6`, minus two cases, then one of them with retries | 116 s (4,908 tests) | 116 s |
+| `build` (`build-test`, B1042) | the Release recipe from `CLAUDE.md`, `-j8`, into `build/ref/<slug>` (B1012), then in the SAME job full `ctest -j6`, minus two cases, then one of them with retries | build 1,237 s (20.6 min) + suite 116 s (4,908 tests) | build 6 s + suite 116 s |
 | `gate` | `visual_gate` (T80/T291) over `build-gles2/ref/<slug>/bin/gles2_zone_benchmark` (B1012) | 363 s | 18 s |
 | | B813 (2026-09-20): the manifest names FIVE zones (qeynos2, gfaydark, befallen + iceclad + timorous); `gate` verifies all five (`--zones`, B903/B904 2026-09-29) | — | 40 s for all five in one job (measured back-to-back on a quiet hermes-ext: 10.6 s wall for three zones, 19.6 s wall for five; +9.0 s wall) |
 
-(T502's own measurements on hermes-ext; `test` does the same work either way —
-only the two build trees are warm or cold. A cold `gate` includes building the
+(T502's own measurements on hermes-ext, when build and suite were still two
+jobs; the suite does the same work either way — only the two build trees are
+warm or cold. B1042's ccache changes what "cold" costs: "ccache on the x86
+runners" below. A cold `gate` includes building the
 patched Irrlicht *and* the whole `build-gles2` tree.)
 
 "Warm" is not one number. A pipeline whose commit touched no source rebuilt
 nothing (6 s), while the next one — a **docs-only** commit — still recompiled 5
-test TUs and relinked 34 binaries, costing 403 s. With no ccache and no ninja on
-this host, a warm build's cost is dominated by *linking*, so expect anywhere from
-seconds to ~7 minutes. What makes a docs-only commit relink was not run to
+test TUs and relinked 34 binaries, costing 403 s. With no ninja on the runners
+a warm build's cost is dominated by *linking* (ccache, B1042, saves compiles,
+never links), so expect anywhere from seconds to ~7 minutes. Since B1042 a
+docs-only diff does not build at all ("Docs-only pipelines run hygiene only"). What makes a docs-only commit relink was not run to
 ground. A fully warm pipeline — nothing to rebuild — is about **3 minutes** end
 to end.
 
@@ -207,7 +209,7 @@ so `git clean -ffdx` removes them before every job. B815 (issue #83): without
 them the asset suites now behave by decision, not by accident —
 `tests/asset_requirement.h` (`requireEqClientAssets`) makes an absent asset
 root a GTEST_SKIP locally, and a hard FAIL when `WILLEQ_REQUIRE_ASSETS=1` is
-set, which the `test` job exports (a green pipeline proves the assets were
+set, which the `build-test` job exports (a green pipeline proves the assets were
 found, so CI can never skip them silently). `test_asset_requirement` pins
 both outcomes. A task worktree without the symlink therefore runs green with
 skipped asset suites instead of three fake reds.
@@ -315,6 +317,59 @@ Each job also uploads its logs as artifacts, kept **7 days**: `hygiene-ctest.log
 **Never** on tags. A branch with an open MR builds once (as the MR pipeline), not
 twice.
 
+### Push with `-o ci.skip`, then open the MR (B1042, #362)
+
+    git push -o ci.skip -u gitlab task/<UNIT>-<name>
+    glab -R gitlab.goldfarm.local/willeq/willeq mr create --target-branch fable ...
+
+**Why:** the workflow rule above suppresses a branch pipeline only once an MR
+exists, so the FIRST push of a new branch runs a full branch pipeline, and the
+MR opened a minute later runs the same commit again as its MR pipeline. Two
+x86 builds of one sha, each ~30 minutes of a `concurrent = 1` runner. `-o
+ci.skip` creates no pipeline for that push; the MR pipeline is the one that
+counts (the merge gate reads the MR's head pipeline). Later pushes to a branch
+with an open MR need no option: they only create the MR pipeline. A branch
+that will never get an MR (an experiment you want CI on) is pushed without it.
+
+### Docs-only pipelines run hygiene only (B1042, #362)
+
+`build-test`, `gate` and `client-ledger-live` (and `build-headless`, B1038)
+carry `rules:` (the `.code_rules` anchor in `.gitlab-ci.yml`) that add the job
+only when **at least one changed path does not end in `.md`**. `hygiene` has no
+rules and always runs, so a pipeline whose diff is only `*.md` files — anywhere,
+`refactor/` and `review/` notes included — is the hygiene stage alone (plus
+`prune-build-trees` on fable). Anything else in the diff (a `.tsv`, a `.png`, a
+script, `.gitlab-ci.yml`) builds as before. No non-hygiene ctest test reads a
+`.md` file, so nothing the skipped jobs would have run can change with one.
+
+What "changed" is compared against (GitLab's `rules:changes` semantics, read
+from the GitLab 19.x CI YAML reference, `rules:changes` / `compare_to` /
+`regexp`; this instance is 19.3.1, `GET /api/v4/version`):
+
+| pipeline | compared against |
+|---|---|
+| merge request | the MR's changes against its **target branch** (GitLab: "Merge request pipelines, `rules:changes` compares the changes with the target MR branch") |
+| `fable` push (every merge) | the pushed range, i.e. the merge's diff |
+| `fable` without a push (schedule, "Run pipeline") | nothing: GitLab evaluates `changes` as true, everything runs |
+| `task/*`, `plans/*` push | `compare_to: refs/heads/fable` — without it GitLab treats a NEW branch's first push as "everything changed" |
+
+The test is one Ruby regexp, `rules:changes:regexp: '\A(?!.*\.md\z)'` (a
+path that does not end in `.md`), because glob `changes:` can only express
+"any of these paths changed", never "a path outside these changed". GitLab adds
+the job when ANY changed path matches. To force the full pipeline anyway, run
+it with the variable `WILLEQ_FULL_PIPELINE=1`.
+
+**A docs-only pipeline is green.** Jobs excluded by `rules` are never created
+(GitLab: "If no listed files have changed, do not add either job to any
+pipeline (same as `when: never`)"), so the pipeline holds only the hygiene
+jobs and its status is theirs: `success` when hygiene passes. The solo
+orchestrator's merge gate (`merge_ok.sh` on hermes-ext) reads only
+`head_pipeline.status == success` and the pipeline sha, never job names, so it
+passes such an MR exactly as it passes a full one. Proven on a probe MR:
+`review/B1042/README.md`. The hygiene test `CiQueueRules`
+(`scripts/ci/test_ci_queue_rules.py`) pins the rules, the regexp's meaning
+over sample paths, and that `hygiene` carries no rules.
+
 ## The warm tree, and its trade-off
 
 Each runner keeps one working directory per project, and the pipeline keeps three
@@ -379,7 +434,50 @@ a clean one. To force a cold run:
   for everything.
 
 Do the cold run before trusting a green pipeline on anything that changed the
-build system itself.
+build system itself. Since B1042 a wiped tree still compiles from the ccache
+(it lives outside the checkout); add `CCACHE_DISABLE=1` to the pipeline
+variables for a cold compile as well as a cold tree.
+
+### ccache on the x86 runners (B1042, #362)
+
+**Why:** each ref builds in its own tree (B1012), so every NEW branch was a cold
+~30-minute Release build even though nearly all of its objects are byte-identical
+to fable's. ccache 4.9.1 is installed on gitlab-runner-1 and gitlab-runner-2
+(shell executor as user `gitlab-runner`, cache `/home/gitlab-runner/.cache/ccache`,
+`max_size = 20.0 GB` in `~gitlab-runner/.config/ccache/ccache.conf`); hermes-ext
+has none.
+
+- **The launcher.** `.goldfarm`'s `before_script` checks `command -v ccache`.
+  When it exists it sets `CCACHE_CMAKE_ARGS` to
+  `-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache` and
+  exports the two `CMAKE_*_COMPILER_LAUNCHER` env vars; when it does not, the
+  args are `-U...` so a warm tree drops a stale launcher. Every x86 configure
+  passes `$CCACHE_CMAKE_ARGS`: `hygiene` (no compile, harmless), `.build_tree`
+  (`build-test`, `client-ledger-live`'s rebuild, `build-headless`), and the
+  gate's warm `$GLES2_TREE` (re-configured before its incremental build).
+- **`scripts/build-gles2-x86.sh`** (the gate's cold bootstrap and the Irrlicht
+  bootstrap) honours the same env vars: its configure passes them as `-D`, and
+  the Irrlicht `make` runs `CC="ccache gcc" CXX="ccache g++"`. Cheap, so it is
+  in: the bootstrap re-copies the pristine source each time, but ccache hashes
+  content, so a stamp-triggered rebuild recompiles only the device TUs that
+  changed. A developer's run without the env vars is unchanged.
+- **Paths.** `CCACHE_BASEDIR: $CI_PROJECT_DIR` rewrites the checkout's absolute
+  paths to relative ones, and every per-ref tree is the same depth
+  (`build/ref/<slug>`), so a new branch's compile lines match fable's.
+  `CCACHE_NOHASHDIR=1` keeps the working directory out of the hash should a
+  `-g` build appear (Release has no `-g` today).
+- **Reading the win.** After every `cmake --build` the job prints
+  `ccache --show-log-stats` — THIS job's hits and misses, from a per-job stats
+  log (`CCACHE_STATSLOG=$CI_PROJECT_DIR/ccache-stats.log`, reset by
+  `git clean`) — and `ccache -s`, the host's running totals. Look for
+  `=== ccache after build/ref/<slug>` in the `build-test` log. The host totals,
+  any time:
+
+      ssh 10.0.30.81 sudo -u gitlab-runner ccache -s    # gitlab-runner-1
+      ssh 10.0.30.82 sudo -u gitlab-runner ccache -s    # gitlab-runner-2
+
+  First cold and warm figures: `review/B1042/README.md`.
+- **Linking is not cached.** A relink-heavy warm build costs what it did.
 
 ### Two x86 runners: the host+sha stamp (B1026, #346)
 
@@ -433,13 +531,22 @@ build that failed or was cancelled. A stored host equal to the expected one
 with a different sha means this host's tree is from an older commit of the
 ref (the build job ran elsewhere this time).
 
-**The cost.** Nothing when the stages share a host (the verify is a file
-read). When they split, the test job pays one build on its own host:
-incremental if that host has built this ref before, a cold Release build if
-it has not (`build` row in the stages table above). The split is still
-cheaper than the alternatives #346 listed: folding build+test+gate into one
-job gives up the stage boundaries, and passing `bin/` as artifacts moves
-gigabytes per pipeline. The regression net is the hygiene test
+**The cost, and why `build` and `test` are now one job (B1042, #362).** When
+the stages split, the test job paid one build on its own host: incremental if
+that host had built this ref before, a cold Release build if it had not.
+**Measured:** over the 50 newest pipelines that ran both jobs (ids 820..909,
+2026-10-12), `build` and `test` ran on different runners in **25 (50 %)**,
+and in 15 of those the `test` job ran over 600 s, i.e. rebuilt
+(`python3 scripts/ci/ci_host_split.py`; the table is
+`review/B1042/host_split_build_test.tsv`). On top of the rebuild, every stage
+boundary is one more wait in the runners' queue behind every other
+pipeline's jobs. B1042 therefore folded the two into ONE job, `build-test`:
+build, then the suite, on one host. The `gate` stage still follows it (it
+builds its own tree and verifies nothing). The verify stays in `build-test`
+after the build, where it always MATCHES — it is the net should the claim
+step ever move — and in `client-ledger-live`, which can still land
+elsewhere. Passing `bin/` as artifacts stays rejected (gigabytes per
+pipeline). The regression net is the hygiene test
 `CiBuildTreeStamp` (`scripts/ci/test_ci_build_tree_stamp.py`), which fails if
 `test` reaches ctest without the verify, if the claim is written before
 `cmake --build`, or if `.goldfarm` claims a single tagged runner again;
@@ -457,7 +564,7 @@ merely embarrassing; on this runner's ONE shared warm tree it is toxic across
 branches: MR !47 (pipeline 313, job 1443) failed on `test_region_world_triangles`,
 a binary built by the unmerged branch `task/B909-client-spatial-ledger`'s
 pipeline and still present when !47's own pipeline reconfigured next. The
-`check_build_tree_orphans` ctest test (in the `test` stage) was correctly
+`check_build_tree_orphans` ctest test (in the suite, `build-test` since B1042) was correctly
 reporting that condition — it is the CI *feed* into that check that was
 polluted, not the check.
 
@@ -476,11 +583,11 @@ os.listdir() entry>)` — no recursion, no traversal, nothing outside
 `<build>/bin/` is ever touched.
 
 **The plain `check_build_tree_orphans` ctest test is UNCHANGED in meaning.**
-It still runs in the `test` stage exactly as before, over the SAME `build/`
-tree the `build` job just pruned — a developer's local warm tree still gets
+It still runs in the suite exactly as before, over the SAME `build/`
+tree the build step just pruned (one `build-test` job since B1042) — a developer's local warm tree still gets
 the original warning with no `--prune` involved, and if an orphan somehow
 survives the CI prune (meaning the prune itself broke, not that the allowlist
-needs an entry), the `test` stage still fails outright on it. The `ALLOWLIST`
+needs an entry), the suite still fails outright on it. The `ALLOWLIST`
 in the script stays EMPTY; a worker "fix" that added a shim entry there was
 reverted — an allowlist entry hides a real orphan instead of explaining why CI
 produced one, and B907 is why one showed up at all.
@@ -610,9 +717,9 @@ tag, s3d bytes, notes), generated by `scripts/ci/zone_content_sweep_zones.py`
 from the census plus `docs/reference/pre_luclin_zones.json`'s expansion lists
 (two census zones it omits are tagged from `tools/generate_zone_lines.py` and
 cited in the notes column). The ctest leg (`zone_content_sweep_smoke`, label
-`slow`, in the `test` job) runs the smoke list on every push and skips loudly
+`slow`, in the `build-test` job) runs the smoke list on every push and skips loudly
 (exit 125) when the benchmark binary or the gitignored EQ asset symlinks are
-absent; CI's `test` job re-makes the symlinks and sets `WILLEQ_REQUIRE_ASSETS=1`,
+absent; CI's `build-test` job re-makes the symlinks and sets `WILLEQ_REQUIRE_ASSETS=1`,
 so a skip there is impossible. `--zones` names that are not in the list fail
 loudly (exit 3) instead of sweeping zero zones.
 
