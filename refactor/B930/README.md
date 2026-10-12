@@ -21,10 +21,14 @@ This host's survey confirms the shape of the staleness [measured,
   client's OWN pack, deliberately v1/v2 because every name fits 31 chars),
   1 v3 (the rebuilt `soldunga.eqe1`).
 - Max entry name in any v1/v2 pack: **31 characters**, and **zero**
-  v1/v2 entries with an unterminated 32-byte name field. The one
-  truncation signature in the tree is v1 `frozenshadow.eqe1` holding a
-  31-char name the old builder wrote as `strncpy(..., 31)` over a longer
-  original.
+  v1/v2 entries with an unterminated 32-byte name field. The single 31-char
+  name in the tree, `bricktrimflorish&protrait_alpha` in v1
+  `frozenshadow.eqe1`, is a GENUINE name, not a truncation: its 25-char base
+  `bricktrimflorish&protrait` is also in the pack, so the `_alpha`
+  companion's 31-char name is complete (B1017's rule). The only real
+  truncation in the tree is `gnome_stronghold_floor_transition` in
+  `soldunga.eqe1` (32 chars) -- since rebuilt as v3, so the name-shaped
+  audit (B1017) finds **zero** candidates on this tree [measured 2026-10-12].
 
 That last point is why B930's failure CANNOT live at open: a 31-char name
 followed by NUL is **byte-identical** to a genuine 31-char name. At open
@@ -186,8 +190,11 @@ should print `OK (v3, ...)` for soldunga and exit 0.
   the real stale file's byte shape (v1 header; 31-char NUL-padded name —
   the orchestrator's measurement of the stale copy).
 - **The CLAUDE.md one-liner for the audit command**: the docs/plans/ edit
-  is committed; the CLAUDE.md section edit is proposed in the MR
-  description (consent-blocked here).
+  is committed; the root CLAUDE.md B930 paragraph now carries the pre-B1017
+  semantics ("`--require-v3` reports STALE on ANY v1/v2 pack"), which the
+  B1017 name-shaped flag supersedes — the exact replacement sentence is
+  supplied under `CLAUDE.md EDITS:` in `refactor/B1016/README.md`'s
+  completion (protected file, orchestrator applies at merge).
 
 ## Claims
 

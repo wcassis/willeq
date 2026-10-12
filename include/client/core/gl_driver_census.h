@@ -82,7 +82,16 @@ std::string glPrefixExpected();
 // is expected and skipped, not required. `llvm=` and `gallium=` accept a
 // bare path or the word "none"; a renderer is everything between the single
 // quotes, spaces included.
-GlDriverInfo parseGlDriverLine(const std::string& text);
+// B1016 (#337): the function itself is TEST-ONLY (zero production callers --
+// the rig's consumer is the Python parser in
+// rendered_zone_summarize.mesa_driver_field) and now lives in
+// tests/test_gl_driver_census.cpp, per the audit's "move the parser into the
+// test". The C++ side's only production role is EMITTING (makeGlDriverLine),
+// whose format contract with the Python parser is pinned by
+// GldriverLineFormatContract (one shared input, see
+// tests/cmake/core_utils.cmake). Known LIMIT, documented per the audit: a
+// renderer containing a single quote cannot round-trip (the quote ends the
+// field on parse); no real GL_RENDERER string contains one.
 
 // The EXACT line the client emits (no prefix): the contract the rig's
 // summarizer and every future consumer parse against.

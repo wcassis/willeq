@@ -58,7 +58,7 @@ parser (`mesa_driver_field`) could drift from the emitter with no net.
   **FAILED** — `nollvmPrefixFromRpath` returned the parent (`...mesa-nollvm-9.9`)
   instead of `.../lib`. Output: `fable_red_run.log` section (a), and
   `red_a_composed.txt`.
-- **Green (branch tip):** `test_gl_driver_census` 18/18, including the new
+- **Green (branch tip):** `test_gl_driver_census` 19/19, including the new
   composed-check test and `RealRunPrintsTheGlDriverLine` (spawns the real
   `willeq` with `--renderer gles2 --no-audio` and requires the `[gldriver]`
   line on stdout — the acceptance criterion's literal ask);
@@ -78,3 +78,33 @@ parser (`mesa_driver_field`) could drift from the emitter with no net.
   string containing an unbalanced single quote would break
   `mesa_driver_field` — the format contract test pins this as a known LIMIT
   rather than a fix (no renderer string observed with a quote).
+
+## FOLLOW-UP:
+
+- Rebuilding the NFS `soldunga.eqe1` (#248 acceptance 2) and any
+  Pi/setcap live-deploy run are the orchestrator's, per the card's
+  OUT OF SCOPE.
+- The root CLAUDE.md's B930 paragraph (line 317 at the branch tip) says
+  "`--require-v3` ... (STALE on any v1/v2, exit 1)", which B1017's
+  semantics supersede — the protected file is edited by the orchestrator
+  at merge from `CLAUDE.md EDITS:` below.
+
+## CLAUDE.md EDITS:
+
+Replace the root CLAUDE.md's line
+
+```
+(STALE on any v1/v2, exit 1). Pinned by test_eqe1_stale_pack and
+test_eqe1_verify_stale_pack.
+```
+
+with
+
+```
+(STALE on a v1/v2 pack that HOLDS A 31-CHAR NAME — the truncation
+signature of a longer original; a structurally-clean v1/v2 pack whose
+names all fit prints OK, and a 31-char `_alpha` companion whose base
+entry is present and shorter is a complete name — B1017, #338; exit 1
+on any candidate). Pinned by test_eqe1_stale_pack and
+test_eqe1_verify_stale_pack.
+```

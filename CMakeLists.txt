@@ -2411,6 +2411,7 @@ IF(EQT_GRAPHICS)
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
+        src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp
@@ -2536,6 +2537,7 @@ IF(EQT_GRAPHICS)
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
+        src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
         tools/hwcaps/zone_bench_loader.cpp
         tools/hwcaps/zone_bench_draw.cpp
         tools/hwcaps/zone_bench_entities.cpp

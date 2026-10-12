@@ -4,15 +4,18 @@
 //
 // The [gldriver] line at GL init names the mapped libgallium (or "none"), the
 // GL_RENDERER string, and whether libLLVM is mapped. The gallium/libLLVM paths
-// come from /proc/self/maps -- the SAME file the [memmap] census already reads
-// for its smaps attribution (T491, include/client/core/memory_ledger.h
-// parseSmaps); this TU only adds a /proc read for the two needles, no second
-// smaps parser.
+// come from /proc/self/maps via a SECOND, minimal maps parser (scanMapsText,
+// gl_driver_census.cpp) -- the [memmap] census reads /proc/self/smaps
+// (memory_ledger.cpp:720), a different file for T491's smaps fold.
 //
 // What this binary tests:
 //   * parseGlDriverLine -- the format contract the rig's summarizer
 //     (scripts/pi/rendered_zone_summarize.py mesa_driver_field, its own ctest)
-//     and any future consumer rely on.
+//     and any future consumer rely on. B1016 (#337): the function itself
+//     MOVED INTO THIS file (it was test-only and shipped in the client, a
+//     zero-callers census row in a category it does not fit); the format
+//     contract with the Python parser is pinned by GldriverLineFormatContract
+//     over one shared input.
 //   * parseElfRpath / nollvmPrefixFromRpath / glPrefixExpected -- how the
 //     nollvm decision finds the prefix's lib directory in THIS process's OWN
 //     DT_RPATH (the publish step, scripts/pi/mesa_nollvm_select.sh, writes
@@ -60,10 +63,49 @@ using eqt::memory::makeGlDriverLine;
 using eqt::memory::mesaPrefixMissing;
 using eqt::memory::nollvmPrefixFromRpath;
 using eqt::memory::parseElfRpath;
-using eqt::memory::parseGlDriverLine;
 using eqt::memory::scanMapsText;
 
 namespace {
+
+// B1016 (#337): the [gldriver] line's C++ PARSER, moved out of
+// src/client/core/gl_driver_census.cpp into THIS test, per the audit
+// (finding 3): the function is test-only (zero production callers; the
+// rig's consumer is the Python parser
+// rendered_zone_summarize.mesa_driver_field), and a test-only free function
+// shipped in the client does not fit the census's "seam" category (a test
+// hook into a production class). Moved here, the zero-callers census no
+// longer sees the declaration at all (it scans include/ and src/ only) and
+// the exemption row was deleted from scripts/refactor/check_zero_callers.py.
+// Behaviour is byte-for-byte the B946 body; the format contract with the
+// Python parser stays pinned by GldriverLineFormatContract over one shared
+// input (the emitter's own stdout). Known LIMIT, pinned below: a renderer
+// containing a single quote cannot round-trip.
+GlDriverInfo parseGlDriverLine(const std::string& text) {
+    GlDriverInfo info;
+    const std::string marker = "[gldriver] renderer='";
+    const size_t pos = text.find(marker);
+    if (pos == std::string::npos) return info;
+    const size_t start = pos + marker.size();
+    const size_t end = text.find('\'', start);
+    if (end == std::string::npos) return info;
+    info.renderer = text.substr(start, end - start);
+
+    auto kv = [&](const char* key) -> std::string {
+        const std::string tag = std::string(" ") + key + "=";
+        const size_t p = text.find(tag, end + 1);
+        if (p == std::string::npos) return std::string();
+        size_t q = p + tag.size();
+        while (q < text.size() && text[q] != ' ' && text[q] != '\n' && text[q] != '\r') ++q;
+        return text.substr(p + tag.size(), q - (p + tag.size()));
+    };
+    const std::string g = kv("gallium");
+    const std::string l = kv("llvm");
+    if (g.empty() || l.empty()) return GlDriverInfo();
+    info.gallium = g;
+    info.llvm = l;
+    info.ok = true;
+    return info;
+}
 
 std::string writeLine(const fs::path& dir, const char* name, const std::string& body) {
     const fs::path p = dir / name;
@@ -159,22 +201,22 @@ std::string makeDynElf(bool is64, const std::string& rpath) {
 TEST(GlDriverCensus, ParseWellFormedLine) {
     const std::string line = "2026-10-10 12:00:00.123 [INFO ] [GRAPHICS] "
                              "[gldriver] renderer='llvmpipe (Mesa 25.1.7-1)' "
-                             "gallium=/usr/lib/x86_64-linux-gnu/dri/swrast_dri.so llvm=/usr/lib/x86_64-linux-gnu/libLLVM.so.18.1";
+                             "gallium=/usr/lib/x86_64-linux-gnu/libgallium-25.2.8.so llvm=/usr/lib/x86_64-linux-gnu/libLLVM.so.18.1";
     const GlDriverInfo info = parseGlDriverLine(line);
     ASSERT_TRUE(info.ok);
     EXPECT_EQ(info.renderer, "llvmpipe (Mesa 25.1.7-1)");
-    EXPECT_EQ(info.gallium, "/usr/lib/x86_64-linux-gnu/dri/swrast_dri.so");
+    EXPECT_EQ(info.gallium, "/usr/lib/x86_64-linux-gnu/libgallium-25.2.8.so");
     EXPECT_EQ(info.llvm, "/usr/lib/x86_64-linux-gnu/libLLVM.so.18.1");
 }
 
 TEST(GlDriverCensus, ParseNoLlvmIsNone) {
     const std::string line = "2026-10-10 12:00:00.000 [ERROR] [GRAPHICS] "
                              "[gldriver] renderer='Mali400' "
-                             "gallium=/home/user/mesa-nollvm-25.2.8/lib/dri/lima_dri.so llvm=none";
+                             "gallium=/home/user/mesa-nollvm-25.2.8/lib/libgallium-25.2.8.so llvm=none";
     const GlDriverInfo info = parseGlDriverLine(line);
     ASSERT_TRUE(info.ok);
     EXPECT_EQ(info.renderer, "Mali400");
-    EXPECT_EQ(info.gallium, "/home/user/mesa-nollvm-25.2.8/lib/dri/lima_dri.so");
+    EXPECT_EQ(info.gallium, "/home/user/mesa-nollvm-25.2.8/lib/libgallium-25.2.8.so");
     EXPECT_EQ(info.llvm, "none");
 }
 
@@ -205,17 +247,32 @@ TEST(GlDriverCensus, ParseGarbageFails) {
 
 TEST(GlDriverCensus, LineFormatRoundTrips) {
     const GlDriverInfo info{"Mali400",
-                            "/home/user/mesa-nollvm-25.2.8/lib/dri/lima_dri.so",
+                            "/home/user/mesa-nollvm-25.2.8/lib/libgallium-25.2.8.so",
                             "none"};
     const std::string line = makeGlDriverLine(info);
     EXPECT_EQ(line, "[gldriver] renderer='Mali400' "
-                    "gallium=/home/user/mesa-nollvm-25.2.8/lib/dri/lima_dri.so "
+                    "gallium=/home/user/mesa-nollvm-25.2.8/lib/libgallium-25.2.8.so "
                     "llvm=none");
     EXPECT_TRUE(parseGlDriverLine(line).ok);
     const GlDriverInfo back = parseGlDriverLine(line);
     EXPECT_EQ(back.renderer, info.renderer);
     EXPECT_EQ(back.gallium, info.gallium);
     EXPECT_EQ(back.llvm, info.llvm);
+}
+
+// B1016 (#337), audit NIT: a renderer containing a single quote CANNOT
+// round-trip -- the emitter writes it verbatim, the parser's quoted field
+// ends at the first ' ("it's" parses back as renderer="it"). Documented
+// LIMIT, pinned on the C++ side here and on the Python side by
+// test_gldriver_line_format.py case 3: no real GL_RENDERER string contains
+// a quote, so the format keeps the plain quoted contract rather than
+// inventing an escape.
+TEST(GlDriverCensus, SingleQuoteInRendererDoesNotRoundTrip) {
+    const GlDriverInfo info{"it's renderer", "none", "none"};
+    const std::string line = makeGlDriverLine(info);
+    const GlDriverInfo back = parseGlDriverLine(line);
+    EXPECT_TRUE(back.ok);
+    EXPECT_EQ(back.renderer, "it");  // truncated at the embedded quote
 }
 
 TEST(GlDriverCensus, MesaPrefixMissingDecidesOnTheDirectory) {

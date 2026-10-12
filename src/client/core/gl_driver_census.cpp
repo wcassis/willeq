@@ -115,33 +115,6 @@ std::string nollvmPrefixFromRpath(const std::string& rpath) {
     return std::string();
 }
 
-GlDriverInfo parseGlDriverLine(const std::string& text) {
-    GlDriverInfo info;
-    const std::string marker = "[gldriver] renderer='";
-    const size_t pos = text.find(marker);
-    if (pos == std::string::npos) return info;
-    const size_t start = pos + marker.size();
-    const size_t end = text.find('\'', start);
-    if (end == std::string::npos) return info;
-    info.renderer = text.substr(start, end - start);
-
-    auto kv = [&](const char* key) -> std::string {
-        const std::string tag = std::string(" ") + key + "=";
-        const size_t p = text.find(tag, end + 1);
-        if (p == std::string::npos) return std::string();
-        size_t q = p + tag.size();
-        while (q < text.size() && text[q] != ' ' && text[q] != '\n' && text[q] != '\r') ++q;
-        return text.substr(p + tag.size(), q - (p + tag.size()));
-    };
-    const std::string g = kv("gallium");
-    const std::string l = kv("llvm");
-    if (g.empty() || l.empty()) return GlDriverInfo();
-    info.gallium = g;
-    info.llvm = l;
-    info.ok = true;
-    return info;
-}
-
 std::string makeGlDriverLine(const GlDriverInfo& info) {
     std::string out = "[gldriver] renderer='" + info.renderer + "'";
     out += " gallium=" + (info.gallium.empty() ? std::string("none") : info.gallium);
@@ -173,13 +146,14 @@ std::string glPrefixExpected() {
 // The two needles out of a /proc/self/maps text (see the header). A maps
 // line is "start-end  perms  offset  dev  inode  [pathname]": five column
 // tokens before the pathname (which is absent for [heap]/[stack]/anonymous
-// mappings). The columns are separated by WHITESPACE -- spaces (with
-// padding) on this kernel, tabs on others -- so the skip is
-// whitespace-agnostic: skip the first five whitespace-separated tokens,
-// whatever the separator. Two regressions are pinned by the fixtures:
-// (1) the first draft skipped only four tokens and landed on the inode;
-// (2) it then searched for ' ' literally, which matched nothing on a
-// tab-padded line and made the census report "none none" for every process.
+// mappings). The columns are separated by spaces (with padding) -- the
+// kernel emits spaces, never tabs, in /proc/*/maps -- so the skip is
+// whitespace-agnostic anyway (a tab would just cost one extra iteration):
+// skip the first five whitespace-separated tokens, whatever the separator.
+// Two regressions are pinned by the fixtures: (1) the first draft skipped
+// only four tokens and landed on the inode; (2) it then searched for ' '
+// literally, which matched nothing on a tab-padded fixture line and made
+// the census report "none none" for every process.
 void scanMapsText(const std::string& text, std::string& gallium, std::string& llvm) {
     const char* const kGallium = "libgallium";
     const char* const kLlvm = "libLLVM";
