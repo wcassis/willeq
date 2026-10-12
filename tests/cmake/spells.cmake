@@ -226,6 +226,23 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_caster_own_landing DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B293 (#124): the entity-direction callback was installed by two callers and
+# invoked by none. The fix adds the renderer's direction-resolution arm
+# (SimBridgeComponent::applySimulationOutput, mirroring the position arm) and
+# ParticleManager::resolveEntityDirection(). This drives the REAL renderer
+# body (no device, no GL) with a counting direction callback and the worker's
+# real directionRequestEntities output, asserting the callback fired and its
+# result landed in the pending map. RED at base (no arm: callback never
+# fired); GREEN after.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_b293_entity_direction_resolution
+        test_b293_entity_direction_resolution.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_b293_entity_direction_resolution PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_b293_entity_direction_resolution GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_b293_entity_direction_resolution DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # T389 Leg B (board B162): the spells.eff sprite name -> particle-atlas tile
 # mapping measured against the official client, and the routing of a resolved
 # Target stage into an impact effect's EmitterConfig::textureRegions[].
