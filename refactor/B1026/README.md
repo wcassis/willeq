@@ -93,4 +93,28 @@ row.
 
 ## Proof
 
-Pending: filled in from the MR pipeline(s) on `task/B1026-ci-host-stamp`.
+Traces are saved in `/mnt/projects/fable/review/B1026/job<id>.trace`.
+
+**Head `99a97cd8`: push pipeline 817 and MR pipeline 818 ran concurrently.
+Both split, and both are green.**
+
+| pipeline | hygiene | build | test | gate |
+|---|---|---|---|---|
+| 817 (push) | 4061 runner-1 ok | 4062 **runner-1** ok | 4063 **runner-2** ok (5735/5735 + 1) | 4065 runner-1 PASS |
+| 818 (MR) | 4068 runner-2 ok | 4069 **runner-2** ok | 4070 **runner-1** ok (5735/5735 + 1) | 4072 runner-1 PASS |
+
+These are exactly pl809's shape (build on one host, test on the other), but
+the verify correctly said MATCH. The other pipeline had just built the SAME
+sha on the test host, so that host's tree was a genuine build of this
+commit:
+
+    job 4062 (build, runner-1):
+    stamped build/ref/task-b1026-ci-host-stamp ref=task/B1026-ci-host-stamp (ref only, no build claim)
+    stamped build/ref/task-b1026-ci-host-stamp ref=task/B1026-ci-host-stamp host=gitlab-runner-1 sha=99a97cd8658bc6bfbd360ec31862c1b9fedbd521
+    job 4063 (test, runner-2):
+    stamp MATCH build/ref/task-b1026-ci-host-stamp (stamp read): stored host=gitlab-runner-2 sha=99a97cd8658bc6bfbd360ec31862c1b9fedbd521 ref=task/B1026-ci-host-stamp at=2026-10-12T02:02:09Z; expected host=gitlab-runner-2 sha=99a97cd8658bc6bfbd360ec31862c1b9fedbd521
+
+A split onto a host whose tree is at ANOTHER sha is the mismatch case. It is
+recorded below from the pipelines at the next head(s).
+
+MISMATCH_PROOF_PENDING
