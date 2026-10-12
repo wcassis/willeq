@@ -394,11 +394,16 @@ it without taking that measurement first.
   `2c7d5be4` 2026-10-02): pLv-in-the-VS takes
   timorous_f2 to 15 px >32 (bar met: tens). The FP16 step lines were B967's
   interpolated `vWorldPos`; `refactor/B969/README.md` has the isolation.
-- **B980** (A) → issue #299. gfaydark gate
+- ~~**B980** (A) → issue #299. gfaydark gate
   frames differ Pi vs x86 by 409 / 55 / 162 px >32 (f0/f1/f2) with the player
   light ON -- and f0 and f2 are EQUAL to B960's player-light-OFF counts
   (409/54/162), so this is not the player light. Cause not isolated. Measured
-  by B967 (`review/B967/pi/gate/gfaydark_after/`, `arm_bin/before_d3375b65`).
+  by B967 (`review/B967/pi/gate/gfaydark_after/`, `arm_bin/before_d3375b65`).~~
+  **CLOSED by B1024 (MR <url>): per-platform Pi goldens** -- Will ruled
+  "per-platform Pi goldens, go with option (a)" (2026-10-11, #299); the
+  residual is coverage flips (alpha-cutout edges + clip edges) plus the
+  16-vs-24-bit depth split, so the Pi has its OWN golden set and its own
+  section; `docs/decisions.md` 2026-10-11.
 - ~~**B973** (A) → issue #291. Post-load entity builds are Green-gated
   (`FrameComponent::processFrame`, "1 unit per GREEN frame";
   `EntityRenderer::processOneEntityBuildStep`), and the Pi is rarely Green in

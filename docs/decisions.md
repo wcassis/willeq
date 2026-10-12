@@ -1916,3 +1916,32 @@ default flips to ON** — the batch is on unless `EQT_SG_BATCH=0`
 (`src/client/graphics/zone_lifecycle/renderer_zone_lifecycle.cpp`), and the
 ctest keeps the byte-identity pinned on every CI run. No golden, budget or
 baseline moved in B997.
+
+## 2026-10-11 — per-platform Pi goldens, exact match (Will, option (a); #299, B1024 #344)
+
+**Will's ruling, 2026-10-11 (#299):** "per-platform Pi goldens, go with option
+(a)". **The bless note (2026-10-11, #344):** the first Pi golden set
+(`tests/goldens/pi/<zone>/<frame>.png` + the Pi manifest section) is
+PRE-BLESSED — committed by the orchestrator; later Pi golden moves need a
+fresh bless by Will.
+
+Mechanism (B980): the Pi-vs-x86 residual is 626 of 626 pixels COVERAGE
+FLIPS — 595 on alpha-cutout edges, where the zone cutout shader's
+`if (texColor.a < 0.5) discard;`
+(`src/client/graphics/zone_shader_sources_gles2.h:237`) turns a sub-LSB
+sampling difference (Lima's FS is FP16, cost-sheet fact 11; Mali's hardware
+sampler vs llvmpipe's software filter) into a whole-pixel flip, and 31 on
+polygon/far-clip edges (Lima has no geometric z-clip, its own rasteriser
+subpixel/tie rules). The x86 goldens are 16-bit depth (B971) while the Pi's
+EGL answers 24 — a cross-platform compare can never be exact. The Pi IS
+deterministic (B971: 0 px across two binaries in 15 of 15 frames), so the
+rule is ONE compare rule (`compare_images_exact`, unchanged) over TWO
+golden sets: the x86 set (CI `gate`, llvmpipe,
+`tests/goldens/<zone>_f<n>.png` + `manifest["zones"]`) and the Pi set
+(by hand under the Pi lock, `tests/goldens/pi/<zone>/f<n>.png` +
+`manifest["platforms"]["pi"]`, rendered with
+`visual_gate.py --platform pi --bench <published -nollvm binary>`,
+never a CI job). **A Pi golden moves only on a Pi re-bless by Will; an
+x86 re-bless never touches the Pi set, and vice versa.**
+`docs/ci.md` ("Two golden sets: x86 and Pi (B1024)") carries the working
+rule, including why the live-client sweep is not a pixel channel.
