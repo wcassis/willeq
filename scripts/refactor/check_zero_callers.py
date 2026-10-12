@@ -1112,6 +1112,7 @@ EXEMPT_TESTS_GROUPS = {
     ("InventoryState", "freeGeneralSlots"): "observer",
     ("InventoryState", "hasBankItem"): "observer",
     ("InventoryState", "hasGeneralItem"): "observer",
+    ("IrrlichtRenderer", "getCameraMode"): "observer",  # B534: its only production caller was GraphicalMode::getCameraMode, which B534 deleted; the const accessor (PlayerCamera().cameraMode()) is the camera test suites' observation window on a live class
     ("IrrlichtRenderer", "getPlayerZ"): "observer",
     ("IrrlichtRenderer", "getUIRenderer"): "observer",
     ("IrrlichtRenderer", "getVisionType"): "observer",

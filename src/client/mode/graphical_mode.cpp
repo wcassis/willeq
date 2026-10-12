@@ -126,10 +126,6 @@ void GraphicalMode::requestQuit() {
     }
 }
 
-output::GraphicalRenderer* GraphicalMode::graphicalRenderer() {
-    return dynamic_cast<output::GraphicalRenderer*>(m_renderer.get());
-}
-
 void GraphicalMode::processInput() {
     auto* inputHandler = getInputHandler();
     if (!inputHandler) return;
@@ -144,9 +140,6 @@ void GraphicalMode::processInput() {
     if (inputHandler->consumeAction(input::InputAction::ToggleNameTags)) {
         toggleNameTags();
     }
-    if (inputHandler->consumeAction(input::InputAction::ToggleCameraMode)) {
-        cycleCameraMode();
-    }
     if (inputHandler->consumeAction(input::InputAction::Screenshot)) {
         // Generate timestamp-based filename
         auto now = std::chrono::system_clock::now();
@@ -155,28 +148,6 @@ void GraphicalMode::processInput() {
         std::strftime(filename, sizeof(filename), "screenshot_%Y%m%d_%H%M%S.png", std::localtime(&time));
         saveScreenshot(filename);
     }
-}
-
-// ========== Camera Control ==========
-
-void GraphicalMode::setCameraMode(output::CameraMode mode) {
-    if (m_renderer) {
-        m_renderer->setCameraMode(mode);
-    }
-}
-
-void GraphicalMode::cycleCameraMode() {
-    if (m_renderer) {
-        m_renderer->cycleCameraMode();
-    }
-}
-
-output::CameraMode GraphicalMode::getCameraMode() const {
-    auto* graphical = const_cast<GraphicalMode*>(this)->graphicalRenderer();
-    if (graphical) {
-        return graphical->getCameraMode();
-    }
-    return output::CameraMode::FirstPerson;
 }
 
 // ========== Rendering Options ==========
