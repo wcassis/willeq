@@ -633,10 +633,6 @@ void AudioManager::stopAll() {
     bufferCache_.rebalance();
 }
 
-bool AudioManager::isResident(const std::string& filename) const {
-    return bufferCache_.peek(filename) != nullptr;
-}
-
 void AudioManager::setMemoryConstraints(size_t soundCacheBytes, bool lazyPfs) {
     lazyPfsLoading_ = lazyPfs;
 

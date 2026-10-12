@@ -58,21 +58,6 @@ std::shared_ptr<SoundBuffer> SoundBufferCache::getOrLoad(const std::string& file
     }
 }
 
-void SoundBufferCache::evictFromCache(const std::string& filename) {
-    std::lock_guard<std::mutex> lock(bufferMutex_);
-    auto it = entries_.find(filename);
-    if (it == entries_.end()) {
-        return;
-    }
-    if (inUse_ && inUse_(*it->second)) {
-        // Pinned: a live audio channel reads this PCM.
-        return;
-    }
-    sizeBytes_ -= it->second->getMemorySize();
-    entries_.erase(it);
-    lruOrder_.remove(filename);
-}
-
 void SoundBufferCache::clear() {
     std::lock_guard<std::mutex> lock(bufferMutex_);
     entries_.clear();

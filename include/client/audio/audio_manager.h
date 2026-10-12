@@ -166,13 +166,6 @@ public:
     // which need "every sound stopped" before they can observe the cap.
     void stopAll();
 
-    // B1015 (#336): true when `filename` is resident in the one decoded-PCM
-    // cache. It does not load and does not touch the LRU, so the tests can
-    // observe what eviction left behind without triggering a re-decode
-    // (getSoundBuffer / getSoundBufferByName load on a miss, so they cannot
-    // tell "evicted" from "resident").
-    bool isResident(const std::string& filename) const;
-
     // Memory usage queries
     size_t getSoundBufferCacheBytes() const { return bufferCache_.getSizeBytes(); }
     size_t getSoundBufferCacheMaxBytes() const { return bufferCache_.getMaxBytes(); }

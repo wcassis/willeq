@@ -90,10 +90,6 @@ public:
     // miss, so it cannot be used to tell "evicted" from "resident".)
     std::shared_ptr<SoundBuffer> peek(const std::string& filename) const;
 
-    // Evict an entry by name (zone unload / shutdown). Pinned entries are
-    // not evictable: their PCM is read by a live channel.
-    void evictFromCache(const std::string& filename);
-
     // Drop every entry (shutdown). Used only after the mixer is stopped, so
     // nothing is pinned.
     void clear();
