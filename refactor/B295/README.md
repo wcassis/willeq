@@ -138,8 +138,12 @@ installers keep their `setEntityDirectionCallback()` calls unchanged.
 ## Verification
 
 All runs on this host (x86 dev VM, llvmpipe), base `06852f31`
-(`origin/fable` at card cut; the tip advanced to `ce7ecd66` with B760,
-merged in — no overlap with this card's files).
+(`origin/fable` at card cut). `origin/fable` advanced twice while this
+branch was open and was merged in twice: first `ce7ecd66` (B760's code,
+no overlap with this card's files), then `a1d14b1f` (B760's BOARD.md
+strike — one conflict in the B760 entry region of `refactor/BOARD.md`,
+resolved in fable's favour; this card's B295/B293 strike entries sit in
+a different region and are intact).
 
 ### RED — the defect, on base
 
