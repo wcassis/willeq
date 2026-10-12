@@ -11205,20 +11205,19 @@ B712–B719 unused.
 
 ## Added 2026-09-14 by T482 (how a confirmed cast ends)
 
-- **B760** (A, *unconfirmed live, rare*) **A cast's result code can say → issue #45
-  Interrupted for a success, and can be late.** `SpellManager::noteZonePacket()`
-  settles a released cast as a stop on the first packet after the keepcasting 0
-  that is not `OP_MemorizeSpell` or `OP_LinkedReuse`. eqemu sends some packets
-  unreliably (`OP_SpawnAppearance`, `OP_ClientUpdate`, HP and group updates:
-  `/mnt/projects/akk-stack/code/zone/mob.cpp` `Mob::SendAppearancePacket`,
-  `/mnt/projects/akk-stack/code/zone/groups.cpp`), and the reliable stream may hold
-  the tail back behind them, so one can arrive inside the tail. The gem's recast
-  is still right, because `handleSpellBarRefresh()` starts it from the
-  MemorizeSpell alone. Only the `SpellCastComplete` result is wrong, and nothing
-  in production reads it (B603 deleted the callback that was left for a
-  consumer). In a quiet zone the result also waits for the
-  next packet. Confirm by recording, on the B630 live run, whether anything
-  arrives between the two tail packets.
+- **B760** (A, *fixed by construction, not reproduced live*; 2026-10-12, → issue #45
+  `refactor/B760/README.md`) **A cast's result code could say Interrupted for a
+  success.** `SpellManager::noteZonePacket()` now settles a released cast on
+  the next RELIABLE zone packet (`DaybreakConnection::DeliveringReliable()`
+  → `DispatchZonePacket(p, reliable)`): eqemu queues the success tail
+  contiguously on the reliable stream, so only an unreliable packet overtaking
+  a RESENT tail packet could land inside it. Live on the local lane: 60
+  success tails (quiet, traffic, 5 % and 15 % simulated inbound loss), 0
+  packets inside a tail, 0 wrong results, success settled 0-1 ms after the
+  keepcasting 0. **Still open, by design:** a `StopCasting` sends no terminal
+  packet, so its Interrupted waits for the server's next reliable packet
+  (quiet-zone proxy median 4.6 s); nothing in production reads the result
+  (B603). Close #45 unless Will wants that latency bounded.
 
 - **B761** (A, *unconfirmed live*) **A bard song with → issue #46
   `Character:EnableBardMelody` false has no end packet, so it ends on the

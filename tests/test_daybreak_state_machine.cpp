@@ -62,6 +62,7 @@ protected:
 	std::shared_ptr<DaybreakConnection> conn_;
 
 	std::vector<std::pair<uint16_t, std::vector<uint8_t>>> received_;
+	std::vector<bool> reliable_;  // B760: DeliveringReliable() per delivery
 	std::vector<std::pair<DbProtocolStatus, DbProtocolStatus>> status_changes_;
 	std::vector<std::string> errors_;
 
@@ -89,7 +90,8 @@ protected:
 		manager_->OnNewConnection([this](std::shared_ptr<DaybreakConnection> c) {
 			conn_ = c;
 		});
-		manager_->OnPacketRecv([this](std::shared_ptr<DaybreakConnection>, const Packet &p) {
+		manager_->OnPacketRecv([this](std::shared_ptr<DaybreakConnection> c, const Packet &p) {
+			reliable_.push_back(c && c->DeliveringReliable());  // B760
 			uint16_t opcode = p.Length() >= 2 ? p.GetUInt16(0) : 0;
 			auto *base = (const uint8_t *)p.Data();
 			received_.emplace_back(opcode, std::vector<uint8_t>(base, base + p.Length()));
@@ -981,4 +983,118 @@ TEST_F(DaybreakStateMachineTest, DisconnectCallbackThatErasesItsOwnEntryIsSafe) 
 	EXPECT_EQ(victim->GetStatus(), StatusDisconnected);
 	ASSERT_EQ(manager_->m_connections.size(), 1u);
 	EXPECT_EQ(manager_->m_connections.begin()->second.get(), survivor.get());
+}
+
+// =====================================================================
+// B760 (issue #45): DeliveringReliable() tells the app callback whether the
+// packet came off the reliable, in-order stream. The client's cast-outcome
+// settle reads it (SpellManager::noteZonePacket): only the RELIABLE stream is
+// ordered, so only a reliable packet can stand for "the server's next word".
+// =====================================================================
+
+TEST_F(DaybreakStateMachineTest, ReliableFlagIsTrueForOpPacketFalseForARawSend) {
+	createManager();
+	forceConnected();
+
+	deliver(buildReliableFrame(0, 0, MakeAppPayload(0x0101, {1})));
+
+	DynamicPacket raw;
+	auto payload = MakeAppPayload(0x0202, {2});
+	raw.PutData(0, payload.data(), payload.size());
+	conn_->QueuePacket(raw, 0, false);
+	conn_->FlushBuffer();
+	ASSERT_EQ(c2s_.Pending(), 1u);
+	deliver(c2s_.PopFront());
+
+	ASSERT_EQ(received_.size(), 2u);
+	ASSERT_EQ(reliable_.size(), 2u);
+	EXPECT_TRUE(reliable_[0]) << "OP_Packet is the reliable stream";
+	EXPECT_FALSE(reliable_[1]) << "an unreliable send is delivered outside it";
+	EXPECT_FALSE(conn_->DeliveringReliable()) << "only meaningful inside the callback";
+}
+
+// The server's InternalBufferedSend combines reliable and unreliable sends
+// queued in one flush into one OP_Combined datagram: each subpacket keeps its
+// own reliability.
+TEST_F(DaybreakStateMachineTest, ReliableFlagIsPerSubpacketInsideACombinedDatagram) {
+	createManager();
+	forceConnected();
+
+	auto pa = MakeAppPayload(0x0303, {'u'});
+	auto pb = MakeAppPayload(0x0404, {'r'});
+	DynamicPacket a;
+	a.PutData(0, pa.data(), pa.size());
+	DynamicPacket b;
+	b.PutData(0, pb.data(), pb.size());
+	conn_->QueuePacket(a, 0, false);
+	conn_->QueuePacket(b, 0, true);  // our stream 0 sequence_out 0 == peer's sequence_in 0
+	conn_->FlushBuffer();
+	ASSERT_EQ(c2s_.Pending(), 1u);
+	deliver(c2s_.PopFront());
+
+	ASSERT_EQ(received_.size(), 2u);
+	EXPECT_EQ(received_[0].first, 0x0303u);
+	EXPECT_FALSE(reliable_[0]);
+	EXPECT_EQ(received_[1].first, 0x0404u);
+	EXPECT_TRUE(reliable_[1]);
+}
+
+// The B760 mechanism itself: reliable seq 0 lost, seq 1 arrives and is held;
+// an unreliable packet arrives meanwhile and is delivered AT ONCE -- so the
+// app sees it before the resent seq 0 -- flagged unreliable; seq 0 and the
+// held seq 1 then follow, flagged reliable.
+TEST_F(DaybreakStateMachineTest, UnreliablePacketOvertakesAHeldReliableOneAndIsFlagged) {
+	createManager();
+	forceConnected();
+
+	deliver(buildReliableFrame(0, 1, MakeAppPayload(0x0002, {'b'})));
+	EXPECT_EQ(received_.size(), 0u) << "seq 1 waits for seq 0";
+
+	DynamicPacket raw;
+	auto payload = MakeAppPayload(0x0505, {'x'});
+	raw.PutData(0, payload.data(), payload.size());
+	conn_->QueuePacket(raw, 0, false);
+	conn_->FlushBuffer();
+	deliver(c2s_.PopFront());
+
+	deliver(buildReliableFrame(0, 0, MakeAppPayload(0x0001, {'a'})));
+	conn_->Process();
+
+	ASSERT_EQ(received_.size(), 3u);
+	EXPECT_EQ(received_[0].first, 0x0505u);
+	EXPECT_FALSE(reliable_[0]);
+	EXPECT_EQ(received_[1].first, 0x0001u);
+	EXPECT_TRUE(reliable_[1]);
+	EXPECT_EQ(received_[2].first, 0x0002u);
+	EXPECT_TRUE(reliable_[2]) << "a queued reliable packet is delivered as reliable";
+}
+
+TEST_F(DaybreakStateMachineTest, ReassembledFragmentIsReliable) {
+	createManager();
+	forceConnected();
+
+	std::vector<uint8_t> original = MakeAppPayload(0x0606, std::vector<uint8_t>(40, 0x11));
+	DaybreakReliableFragmentHeader fh;
+	fh.reliable.zero = 0;
+	fh.reliable.opcode = (uint8_t)(OP_Fragment + 0);
+	fh.reliable.sequence = HostToNetwork((uint16_t)0);
+	fh.total_size = HostToNetwork((uint32_t)original.size());
+	DynamicPacket frag1;
+	frag1.PutSerialize(0, fh);
+	frag1.PutData(frag1.Length(), original.data(), 20);
+	conn_->AppendCRC(frag1);
+	deliver(frag1);
+
+	DaybreakReliableHeader ch;
+	ch.zero = 0;
+	ch.opcode = (uint8_t)(OP_Fragment + 0);
+	ch.sequence = HostToNetwork((uint16_t)1);
+	DynamicPacket frag2;
+	frag2.PutSerialize(0, ch);
+	frag2.PutData(frag2.Length(), original.data() + 20, original.size() - 20);
+	conn_->AppendCRC(frag2);
+	deliver(frag2);
+
+	ASSERT_EQ(received_.size(), 1u);
+	EXPECT_TRUE(reliable_[0]);
 }

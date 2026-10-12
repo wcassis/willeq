@@ -149,8 +149,9 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     // Three branches each bumped this count by 1 off the same 33 base, so
     // git kept a stale identical number as a clean (non-conflicting) merge;
     // the true count is 36 and needs the hand (see 3cf3a002 for the first
-    // of these fixes, when only B894 + B900 had merged).
-    EXPECT_EQ(names.size(), 36u);
+    // of these fixes, when only B894 + B900 had merged). B760 (#45) adds
+    // its repeated cast-tail lane: two casters and their two peers.
+    EXPECT_EQ(names.size(), 40u);
     EXPECT_TRUE(IsScenarioName("camp_to_charselect"));
     EXPECT_TRUE(IsScenarioName("camp_desktop"));
     EXPECT_TRUE(IsScenarioName("create_character"));
@@ -179,6 +180,11 @@ TEST(ScenarioRegistry, KnowsTheShippedScenarios) {
     EXPECT_TRUE(IsScenarioName("cast_buff_notake"));
     EXPECT_TRUE(IsScenarioName("cast_interrupt_observe"));
     EXPECT_TRUE(IsScenarioName("cast_fizzle"));
+    // B760: the repeated cast-tail lane.
+    EXPECT_TRUE(IsScenarioName("cast_tail_repeat_quiet"));
+    EXPECT_TRUE(IsScenarioName("cast_tail_repeat_traffic"));
+    EXPECT_TRUE(IsScenarioName("cast_tail_quiet_peer"));
+    EXPECT_TRUE(IsScenarioName("cast_tail_traffic_peer"));
 }
 
 TEST(ScenarioRegistry, UnknownNameIsNullNotACrash) {
@@ -902,7 +908,7 @@ TEST(EquipActorScenario, SettlesThenTypesTheDbSlotNumber) {
 // These scenarios are pure drivers: they run their leg's command sequence on a
 // calibrated clock and pass on completion. The wire-level assertions (cast bar
 // clears, the interrupt chat, no late impact, the B760 packet order) are made
-// from the run's DEBUG log by scripts/ci/b760_analyze.py, so what a headless
+// from the run's DEBUG log by scripts/scenario_configs/b630_analyze.py, so what a headless
 // state machine can pin is the SEQUENCE and its failure modes -- not a
 // log grep.
 
