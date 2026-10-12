@@ -99,7 +99,6 @@ public:
     // Static: Load mp3index.txt for MP3 music references
     static bool loadMp3Index(const std::string& eqPath);
     static std::string getMp3File(int index);
-    static const std::vector<std::string>& getMp3Index() { return mp3Index_; }
 
     // Static: Get hardcoded sound file for IDs 32-161
     static std::string getHardcodedSound(int32_t soundId);
@@ -111,7 +110,6 @@ private:
     std::vector<std::string> loopSounds_;
 
     // Static mp3index.txt entries (shared across all zones)
-    static std::vector<std::string> mp3Index_;
     static bool mp3IndexLoaded_;
 };
 

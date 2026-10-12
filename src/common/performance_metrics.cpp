@@ -97,18 +97,6 @@ void PerformanceMetrics::recordSample(const std::string& name, int64_t durationM
     stat.maxMs = std::max(stat.maxMs, durationMs);
 }
 
-std::vector<TimingEntry> PerformanceMetrics::getTimings(MetricCategory category) const {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    std::vector<TimingEntry> result;
-    for (const auto& entry : timings_) {
-        if (entry.category == category) {
-            result.push_back(entry);
-        }
-    }
-    return result;
-}
-
 TimingStats PerformanceMetrics::getStats(const std::string& name) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -138,51 +126,7 @@ void PerformanceMetrics::reset() {
     timerCategories_.clear();
     timings_.clear();
     stats_.clear();
-    currentZoneName_.clear();
     programStart_ = std::chrono::steady_clock::now();
-}
-
-void PerformanceMetrics::resetGameplay() {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    // Remove gameplay timings
-    timings_.erase(
-        std::remove_if(timings_.begin(), timings_.end(),
-            [](const TimingEntry& e) { return e.category == MetricCategory::Gameplay; }),
-        timings_.end());
-
-    // Clear gameplay stats
-    stats_.clear();
-}
-
-int64_t PerformanceMetrics::getElapsedMs() const {
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration_cast<std::chrono::milliseconds>(now - programStart_).count();
-}
-
-void PerformanceMetrics::markZoneLoadStart(const std::string& zoneName) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    currentZoneName_ = zoneName;
-    zoneLoadStart_ = std::chrono::steady_clock::now();
-}
-
-void PerformanceMetrics::markZoneLoadEnd() {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    if (!currentZoneName_.empty()) {
-        auto end = std::chrono::steady_clock::now();
-        auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - zoneLoadStart_).count();
-        auto startMs = std::chrono::duration_cast<std::chrono::milliseconds>(zoneLoadStart_ - programStart_).count();
-
-        TimingEntry entry;
-        entry.name = "Zone Load: " + currentZoneName_;
-        entry.category = MetricCategory::Zoning;
-        entry.durationMs = durationMs;
-        entry.startTimeMs = startMs;
-        timings_.push_back(entry);
-
-        currentZoneName_.clear();
-    }
 }
 
 std::string PerformanceMetrics::generateReport() const {

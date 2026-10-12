@@ -5,8 +5,6 @@
 #include "client/output/null_renderer.h"
 #include <memory>
 #include <functional>
-#include <queue>
-#include <mutex>
 
 namespace eqt {
 namespace mode {
@@ -67,64 +65,19 @@ public:
     }
 
     /**
-     * Event callback type for reacting to game events.
-     */
-    using EventCallback = std::function<void(const state::GameEvent&)>;
-
-    /**
-     * Set the event callback.
-     * This callback is called for each game event.
-     */
-    void setEventCallback(EventCallback callback) {
-        m_eventCallback = callback;
-    }
-
-    /**
      * Get direct access to the null input handler for injection.
      */
     input::NullInputHandler& input() { return m_inputHandler; }
 
-    /**
-     * Get the game state (for automation logic).
-     */
-    state::GameState* getGameState() { return m_gameState; }
-
-    /**
-     * Queue a command for execution.
-     * Commands are processed in order during update().
-     */
-    void queueCommand(const std::string& command);
-
-    /**
-     * Get the next pending command (consumed by the caller).
-     */
-    std::optional<std::string> getNextCommand();
-
-    /**
-     * Check if there are pending commands.
-     */
-    bool hasPendingCommands() const;
-
 private:
-    void handleEvent(const state::GameEvent& event);
-
     input::NullInputHandler m_inputHandler;
     output::NullRenderer m_renderer;
 
-    state::GameState* m_gameState = nullptr;
     bool m_running = false;
     bool m_quitRequested = false;
 
     // Callbacks
     AutomationCallback m_automationCallback;
-    EventCallback m_eventCallback;
-
-    // Event subscription
-    std::vector<state::ListenerHandle> m_listenerHandles;
-
-    // Command queue
-    std::queue<std::string> m_commandQueue;
-    mutable std::mutex m_commandMutex;
 };
 
 } // namespace mode

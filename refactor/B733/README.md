@@ -85,7 +85,7 @@ B733: SSN_HS_DEF references [SNNHE00_DMSPRITEDEF(974), SSN_DMSPRITEDEF(3359)] to
    the path race 146's db row drives), `model_loading_search.cpp`
    (`searchZoneChrFilesForModel`), and `model_loading.cpp` (the global-archive
    path `loadModelFromGlobalChr` and the numbered-global path
-   `loadModelFromNumberedGlobal`, `model_loading.cpp:629`).
+   `loadModelFromNumberedGlobal`, `model_loading_chr.cpp:632`).
 
 Why NOT "select the whole stored set" (the first, reverted approach): the
 stored set now includes the prefix family's VARIANT meshes (HUM01, HUMHE01,

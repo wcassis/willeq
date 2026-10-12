@@ -475,19 +475,6 @@ BOARD_REASONS = {
         "inject*): the automation surface T410's scenario lane does not use, "
         "because ScenarioRunner drives EverQuest through IScenarioWorld "
         "instead",
-    "B499":
-        "audio query API with no caller -- the music/3D/vendor state "
-        "predicates, the mixer's sfx volume, the MP3 index and the PCM buffer "
-        "load",
-    "B500":
-        "the IGameMode implementations' accessors with no caller -- "
-        "getGameState, consoleInput, consoleRenderer and AutomatedMode's "
-        "whole command queue, which T410's scenario lane replaced with "
-        "setAutomationCallback",
-    "B501":
-        "common/ utility API with no caller -- the performance-metrics timing "
-        "and zone-load marks, ClampLower, Shuffle and "
-        "the logging mutex accessor",
 }
 
 BOARD_REASONS.update({
@@ -870,36 +857,6 @@ EXEMPT_GROUPS = {
     ("NullInputHandler", "injectSpellCast"): "B498",
     ("NullInputHandler", "injectStopMovement"): "B498",
     ("NullInputHandler", "injectTarget"): "B498",
-    ("AudioManager", "isAutoAttackMusicPlaying"): "B499",
-    ("AudioManager", "isUse3DAudio"): "B499",
-    ("AudioManager", "isVendorBankMusicPlaying"): "B499",
-    ("AudioMixer", "getSfxVolume"): "B499",
-    ("EffLoader", "getMp3Index"): "B499",
-    ("MusicPlayer", "enableSoftwareRendering"): "B499",
-    ("MusicPlayer", "isSoftwareRendering"): "B499",
-    ("MusicPlayer", "reinitializeOpenAL"): "B499",
-    ("WeatherAudio", "getThunderTimer"): "B499",
-    ("ZoneSoundEmitter", "getXmiIndex1"): "B499",
-    ("ZoneSoundEmitter", "getXmiIndex2"): "B499",
-    ("AutomatedMode", "getGameState"): "B500",
-    ("AutomatedMode", "getNextCommand"): "B500",
-    ("AutomatedMode", "hasPendingCommands"): "B500",
-    ("AutomatedMode", "queueCommand"): "B500",
-    ("AutomatedMode", "setEventCallback"): "B500",
-    ("GraphicalMode", "getGameState"): "B500",
-    ("GraphicalMode", "getRendererType"): "B500",
-    ("HeadlessMode", "consoleInput"): "B500",
-    ("HeadlessMode", "consoleRenderer"): "B500",
-    ("HeadlessMode", "getGameState"): "B500",
-    ("(free)", "ClampLower"): "B501",
-    ("(free)", "getCategoryName"): "B501",
-    ("LogManager", "GetMutex"): "B501",
-    ("PerformanceMetrics", "getElapsedMs"): "B501",
-    ("PerformanceMetrics", "getTimings"): "B501",
-    ("PerformanceMetrics", "markZoneLoadEnd"): "B501",
-    ("PerformanceMetrics", "markZoneLoadStart"): "B501",
-    ("PerformanceMetrics", "resetGameplay"): "B501",
-    ("Random", "Shuffle"): "B501",
 }
 
 EXEMPT_TESTS_GROUPS = {

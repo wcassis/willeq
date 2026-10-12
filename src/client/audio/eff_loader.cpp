@@ -12,7 +12,6 @@ namespace EQT {
 namespace Audio {
 
 // Static member definitions
-std::vector<std::string> EffLoader::mp3Index_;
 bool EffLoader::mp3IndexLoaded_ = false;
 
 bool EffLoader::loadZone(const std::string& zoneName, const std::string& eqPath) {

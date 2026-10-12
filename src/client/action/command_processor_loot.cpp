@@ -12,6 +12,7 @@
 #include "client/action/command_processor.h"
 #include "client/state/game_state.h"
 #include "client/corpse_predicate.h"  // T268: the ONE corpse predicate (T173)
+#include "client/inventory/inventory_constants.h"  // B810 (#199): the corpse table
 
 #include <algorithm>
 #include <cctype>
@@ -63,7 +64,21 @@ ActionResult CommandProcessor::cmdLoot(const std::string& args) {
             if (number > 0x7FFF) {
                 return ActionResult::Failure("Invalid loot slot '" + args + "'");
             }
-            return m_dispatcher.lootItem(player.lootingCorpseId(), static_cast<int16_t>(number));
+            // B810 (#199): with a window open the number is a SERVER slot
+            // (inventory.slot_id, B796's rule), converted to the model's
+            // corpse slot over the CORPSE table -- not the possessions
+            // parseUserSlot(), which would also convert the looter's own
+            // gear (server 0-22) that a corpse never holds.
+            int16_t corpseSlot = eqt::inventory::SLOT_INVALID;
+            const auto parse = eqt::inventory::parseCorpseSlot(args, corpseSlot);
+            if (parse == eqt::inventory::UserSlotResult::NotANumber) {
+                return ActionResult::Failure("Invalid loot slot '" + args + "'");
+            }
+            if (parse == eqt::inventory::UserSlotResult::NotAddressable) {
+                return ActionResult::Failure(
+                    eqt::inventory::describeUnaddressableCorpseSlot(args));
+            }
+            return m_dispatcher.lootItem(player.lootingCorpseId(), corpseSlot);
         }
         return m_dispatcher.lootItemByName(args);
     }

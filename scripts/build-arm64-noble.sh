@@ -1,14 +1,22 @@
 #!/bin/bash
-# Cross-compile willeq for AArch64 (arm64) targeting Rock64 / Armbian Noble
-# Uses Lima open-source GPU driver (Mesa GLES2) - no X11 needed
+# Cross-compile willeq for AArch64 (arm64) -- the aarch64 SBC lanes of scripts/pi/env.sh
+# (B1030 #350): lane 2 Rock64 (RK3328, Mali-450/lima) and lane 3 ROCK 4D (RK3576,
+# Mali-G52/panfrost). One generic armv8-a binary serves both; the system Mesa is used
+# on both (no LLVM-less prefix -- that was a 483 MB Orange Pi decision, B935).
+#
+# This is scripts/build-arm-noble.sh for docker/Dockerfile.arm64-noble, which is in turn
+# the armhf Dockerfile with the arch swapped (scripts/ci/check_arm64_dockerfile.sh keeps
+# the two from drifting). Same vendor store, same options.
 #
 # Usage:
 #   ./scripts/build-arm64-noble.sh                # Build with graphics + audio (default)
 #   ./scripts/build-arm64-noble.sh --headless     # Build without graphics
 #   ./scripts/build-arm64-noble.sh --no-audio     # Build without audio
-#   ./scripts/build-arm64-noble.sh --headless --no-audio  # Minimal build
+#   ./scripts/build-arm64-noble.sh --t122-texprobe
+#   BUILD_JOBS=4 ./scripts/build-arm64-noble.sh   # dev-u24 runs ONE C++ build at a time:
+#                                                 # cap the jobs when another build is alive
 #
-# Output: build-arm64-noble/bin/willeq
+# Output: build-arm64-noble/bin/willeq (+ the tools the Dockerfile's target list names)
 
 set -euo pipefail
 
@@ -18,63 +26,59 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENABLE_GRAPHICS=ON
 ENABLE_AUDIO=ON
 ENABLE_GLES2=ON
+ENABLE_T122_TEXPROBE=OFF
 IMAGE_NAME="willeq-arm64-noble"
 
 for arg in "$@"; do
     case "$arg" in
-        --headless)
-            ENABLE_GRAPHICS=OFF
-            ;;
-        --no-audio)
-            ENABLE_AUDIO=OFF
-            ;;
-        --no-gles2)
-            ENABLE_GLES2=OFF
-            ;;
+        --headless) ENABLE_GRAPHICS=OFF ;;
+        --no-audio) ENABLE_AUDIO=OFF ;;
+        --t122-texprobe) ENABLE_T122_TEXPROBE=ON ;;
         --help|-h)
-            echo "Usage: $0 [--headless] [--no-audio]"
-            echo ""
-            echo "Cross-compile willeq for AArch64 (arm64) targeting Rock64 / Armbian Noble."
-            echo "Uses Lima open-source GPU driver (Mesa GLES2) - no X11 needed."
-            echo ""
-            echo "Options:"
-            echo "  --headless    Build without graphics (Irrlicht)"
-            echo "  --no-audio    Build without audio (OpenAL/FluidSynth)"
-            echo ""
+            echo "Usage: $0 [--headless] [--no-audio] [--t122-texprobe]"
+            echo "Env:   BUILD_JOBS=<n>  (default: the container's nproc)"
             echo "Output: build-arm64-noble/bin/willeq"
-            exit 0
-            ;;
+            exit 0 ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: $0 [--headless] [--no-audio]"
-            exit 1
-            ;;
+            echo "Usage: $0 [--headless] [--no-audio] [--t122-texprobe]"
+            exit 1 ;;
     esac
 done
 
-echo "=== WillEQ AArch64 Cross-Compilation (Armbian Noble) ==="
-echo "Graphics: ${ENABLE_GRAPHICS}"
-echo "Audio:    ${ENABLE_AUDIO}"
-echo "GLES2:    ${ENABLE_GLES2}"
+echo "=== WillEQ AArch64 Cross-Compilation (Armbian Noble sysroot; lanes 2-3) ==="
+echo "Graphics:      ${ENABLE_GRAPHICS}"
+echo "Audio:         ${ENABLE_AUDIO}"
+echo "T122 texprobe: ${ENABLE_T122_TEXPROBE}"
+echo "Build jobs:    ${BUILD_JOBS:-nproc}"
 echo ""
 
-# Build the Docker image (caches layers between runs)
+# B970: Irrlicht/libpng archives come from the pinned vendor store on NFS, never SourceForge.
+VENDOR_DIR="$("$PROJECT_DIR/scripts/ci/vendor_fetch.sh" --ensure)"
+
 echo "--- Building Docker cross-compilation image ---"
 docker build \
+    --build-context "vendor=$VENDOR_DIR" \
     -f "$PROJECT_DIR/docker/Dockerfile.arm64-noble" \
     --build-arg "ENABLE_GRAPHICS=${ENABLE_GRAPHICS}" \
     --build-arg "ENABLE_AUDIO=${ENABLE_AUDIO}" \
     --build-arg "ENABLE_GLES2=${ENABLE_GLES2}" \
+    --build-arg "ENABLE_T122_TEXPROBE=${ENABLE_T122_TEXPROBE}" \
     -t "$IMAGE_NAME" \
     "$PROJECT_DIR"
 
-# Create output directory and persistent build cache
 OUTPUT_DIR="$PROJECT_DIR/build-arm64-noble"
 BUILD_CACHE="$OUTPUT_DIR/cache"
 mkdir -p "$OUTPUT_DIR/bin" "$BUILD_CACHE"
 
-# Run the build inside Docker
-# Mount build cache for incremental compilation (only recompiles changed files)
+# T137 (see build-arm-noble.sh): a probe-flag toggle must force a clean relink.
+TEXPROBE_MARKER="$BUILD_CACHE/.t122_texprobe_state"
+if [ -f "$TEXPROBE_MARKER" ] && [ "$(cat "$TEXPROBE_MARKER")" != "$ENABLE_T122_TEXPROBE" ]; then
+    echo "--- T122 texprobe flag changed ($(cat "$TEXPROBE_MARKER") -> $ENABLE_T122_TEXPROBE): wiping the incremental build cache ---"
+    rm -rf "$BUILD_CACHE"
+    mkdir -p "$BUILD_CACHE"
+fi
+
 echo ""
 echo "--- Cross-compiling willeq ---"
 docker run --rm \
@@ -84,27 +88,22 @@ docker run --rm \
     -e "ENABLE_GRAPHICS=${ENABLE_GRAPHICS}" \
     -e "ENABLE_AUDIO=${ENABLE_AUDIO}" \
     -e "ENABLE_GLES2=${ENABLE_GLES2}" \
+    -e "BUILD_JOBS=${BUILD_JOBS:-}" \
     "$IMAGE_NAME"
+
+echo "$ENABLE_T122_TEXPROBE" > "$TEXPROBE_MARKER"
 
 echo ""
 if [ -f "$OUTPUT_DIR/bin/willeq" ]; then
     echo "=== Success ==="
-    file "$OUTPUT_DIR/bin/willeq"
-    ls -lh "$OUTPUT_DIR/bin/willeq"
-    for bin in model_viewer gpu_texture_formats gles2_etc1_benchmark egl_image_sharing_test test_gl_points gles2_derivatives_test gles2_npot_test gles2_shader_perpixel_benchmark gles2_program_switch_benchmark gles2_fog_volume_benchmark gles2_fog_visual_compare gles2_icosphere_anim_benchmark gles2_texture_read_benchmark; do
-        if [ -f "$OUTPUT_DIR/bin/$bin" ]; then
-            file "$OUTPUT_DIR/bin/$bin"
-            ls -lh "$OUTPUT_DIR/bin/$bin"
-        fi
+    for bin in "$OUTPUT_DIR"/bin/*; do
+        [ -f "$bin" ] && { file "$bin" | sed 's/, BuildID.*//'; ls -lh "$bin" | awk '{print "   ", $5}'; }
     done
     echo ""
-    echo "Binaries: $OUTPUT_DIR/bin/"
-    echo ""
-    echo "Deploy to Rock64 (Armbian Noble):"
-    echo "  scp $OUTPUT_DIR/bin/* rock64:~/willeq/"
-    echo ""
-    echo "Run on Rock64 (DRM/KMS, Lima GPU, GLES2 - no X11 needed):"
-    echo "  ./willeq -c config.json --drm --renderer gles2 --constrained orangepi -r 800 600"
+    echo "Publish for the lanes (NFS):  scripts/pi/publish_arm64_build.sh <sha> [branch]"
+    echo "Run on a lane (DRM/KMS, GLES2):"
+    echo "  source scripts/pi/env.sh   # PI_LANE=2 (rock64) or 3 (rock4d)"
+    echo "  pi_remote 'D=/mnt/projects/fable/ci-arm64/<sha>; WILLEQ_DATA_ROOT=\$D \$D/bin/willeq -c <config> --drm --renderer gles2 -r 1280 720'"
 else
     echo "=== Build failed: output binary not found ==="
     exit 1
