@@ -243,7 +243,14 @@ chunk to whatever `eqt::memory::Category` the CALLING THREAD is scoped to.
   On the Orange Pi every texture, VBO, depth buffer and render target is a Lima
   GEM object: shmem pages the kernel pins for the process. They are in no
   RssAnon, RssShmem or `gpu_driver` figure (`gpu_driver` is the driver's CPU
-  heap), and Lima on the Pi's 6.12 kernel publishes no `drm-*` fdinfo keys. The
+  heap), and Lima on the Pi's 6.12 kernel publishes no `drm-*` fdinfo keys. A
+  driver that does publish them (Panfrost on the ROCK 4D) gives the row its
+  `drm-resident-memory`, never `drm-total-memory` (B1032): the total counts
+  every created buffer whether or not it has pages, and Mesa's
+  `panfrost_open_device` creates a 128 MiB growable tiler heap
+  (`PAN_BO_GROWABLE`, `src/gallium/drivers/panfrost/pan_device.c`) that the
+  kernel backs only as the tiler faults it in -- 171 MB total against 38 MB
+  resident at qeynos2, `review/B1032/README.md`. The
   row reads them from the process's OWN memory cgroup (`memory.stat` shmem),
   which is exact only when the client is alone in it: `scripts/pi/rendered_zone_run.py
   --own-cgroup` (`systemd-run --user --scope`), the default in

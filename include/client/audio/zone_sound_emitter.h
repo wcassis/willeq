@@ -74,8 +74,6 @@ public:
     bool isMusic() const { return type_ == EmitterSoundType::BackgroundMusic; }
 
     // XMI track index getters (for music emitters)
-    int32_t getXmiIndex1() const { return xmiIndex1_; }
-    int32_t getXmiIndex2() const { return xmiIndex2_; }
     int32_t getXmiIndex(bool isDay) const { return isDay ? xmiIndex1_ : xmiIndex2_; }
 
     // Day/night state

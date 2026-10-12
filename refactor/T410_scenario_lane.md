@@ -83,16 +83,16 @@ timeout (pinned by `StartDeadlineIsClampedToTheOverallTimeout`), because a
 deadline longer than the timeout would report a run that never started as a
 *timeout* and erase the distinction.
 
-**Scenarios POLL; they do not subscribe.** The obvious wiring —
-`AutomatedMode::setEventCallback`, which forwards every `GameState::events()`
-event — is a dead end for this lane. `GameState::events()` and the
+**Scenarios POLL; they do not subscribe.** The obvious wiring — an event
+callback on `AutomatedMode` that forwards every `GameState::events()` event
+(deleted by B500, 2026-10-12 — it was unreached exactly as this note said)
+— is a dead end for this lane. `GameState::events()` and the
 renderer-facing `GameStateBridge` are two different streams, and the landing
 `cast_lands` has to observe goes to the **bridge**
 (`PlayerComponent::PublishPlayerBuffUpdated` -> `ctx_.bridge->pushEvent`),
 which a headless client never drains. Polling `BuffManager` reads the
 authoritative state the bridge event was published *from*, and works
-identically headless. `setEventCallback` is therefore still unregistered —
-deliberately, and it is not what B139 named.
+identically headless.
 
 ### 2. Exit-code taxonomy
 
@@ -226,11 +226,13 @@ builder or a pin. Every other test in those binaries passed, and
    running `zone_in` on the second account. A scenario that forked a client
    would need another character's whole login config, which is exactly what
    the harness already owns.
-3. **`AutomatedMode::setEventCallback` is still unregistered.** B139 named
-   `setAutomationCallback`, which now has a caller. The event callback is a
-   separate unreached seam and is deliberately NOT wired — see the polling
-   rationale in §1; wiring it would give scenarios a stream that does not
-   carry the landings they assert on.
+3. **`AutomatedMode::setEventCallback` is deleted.** B139 named
+   `setAutomationCallback`, which has a caller. The event callback was a
+   separate unreached seam and was never wired — see the polling
+   rationale in §1; wiring it would have given scenarios a stream that does not
+   carry the landings they assert on. B500 (2026-10-12) deleted it and its
+   `m_eventCallback` / `m_listenerHandles` members with the rest of the
+   unreached `AutomatedMode` accessors.
 4. **The live runs are owed, and one live run happened by accident.** A smoke
    test written to prove exit 3 against *no* server found the server up under
    T405's lock, logged Testcaster in, and passed with exit 0 in 4.95 s. It

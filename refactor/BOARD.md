@@ -1060,6 +1060,21 @@ it without taking that measurement first.
   take pipelines too~~ (superseded: runner-2 carries `x86-build` since
   2026-10-11 and B1026's host+sha stamp makes a split pipeline safe);
   `ready_selftest.sh` not yet run on the clones.
+- **B1032** (B) → issue #352. On the ROCK 4D (Panfrost) the `gpu_buffers`
+  census took the render node's `drm-total-memory` (171 MB) where
+  `drm-resident-memory` was 38 MB, so lane 3's owned figure printed 207 MB
+  against lane 2's 58 MB for the same zone. Mechanism: Mesa's
+  `panfrost_open_device` creates a 128 MiB `PAN_BO_GROWABLE` tiler heap that
+  the kernel backs only on GPU fault; the total counts it whole, purgeable is
+  under 1 MB (not the BO cache), and the gap is constant while both figures
+  grow (`review/B1032/README.md`). `decideGpuBuffers()` now takes the resident
+  figure whenever a `drm-resident-*` key was published (the legacy
+  `drm-memory-*` key is already the resident size; an fdinfo with only
+  `drm-total-*` keys has no resident figure and falls through to the cgroup /
+  mapped sources, `TotalOnlyFdinfoIsNotTheRow`), prints
+  `fdinfo_purgeable=`, and the captured fdinfo is a fixture
+  (`GpuBufferCensus.FdinfoResidentIsTheRowNotTheTotal`). Lima lanes publish
+  no memory keys and are untouched.
 - **B1030** (B) → issue #350. Two aarch64 SBCs joined the Orange Pi as client
   targets (Rock64: RK3328, Mali-450/Lima, 4 GB, eMMC; ROCK 4D: RK3576,
   Mali-G52/Panfrost, 12 GB), but every Pi script hardcoded ONE host and the
@@ -10014,8 +10029,8 @@ fine — the table fails on a stale entry, so it cannot rot.
   — do not delete it without reading `include/client/scenario/scenario.h`
   first. Found by T455.
 
-- **B499** (B, unreached) **Audio query API with no caller: 12 zero-caller → issue #174
-  public functions across 7 headers under `include/client/audio/`.**
+- ~~**B499** (B, unreached) **Audio query API with no caller: 12 zero-caller → issue #174
+  public functions across 7 headers under `include/client/audio/`.**~~
   `AudioManager::isAutoAttackMusicPlaying()` / `isVendorBankMusicPlaying()` /
   `isUse3DAudio()`, `AudioMixer::getSfxVolume()`, `EffLoader::getMp3Index()`,
   `SoundBuffer::loadFromPCM()`, `WeatherAudio::getThunderTimer()`,
@@ -10023,9 +10038,15 @@ fine — the table fails on a stale entry, so it cannot rot.
   three OpenAL-era methods (`enableSoftwareRendering()`,
   `isSoftwareRendering()`, `reinitializeOpenAL()`) — the client uses miniaudio,
   so those three are residue from a backend that is gone. Found by T455.
+  **STRUCK 2026-10-12 (issue #174)**: 11 DELETED, 1 kept as a live test seam —
+  `SoundBuffer::loadFromPCM` (called by `tests/test_sfx_cache_eviction.cpp:52`,
+  classified "seam" in check_zero_callers.py's EXEMPT_TESTS). `setUse3DAudio`
+  stays (a live writer; only the getter went). `getXmiIndex(bool)` stays
+  (live). All state behind the deleted getters is still read by live code and
+  was kept. See `refactor/B501/README.md`.
 
-- **B500** (B, unreached) **The `IGameMode` implementations' accessors: 10 → issue #175
-  zero-caller public functions across the three mode headers.**
+- ~~**B500** (B, unreached) **The `IGameMode` implementations' accessors: 10 → issue #175
+  zero-caller public functions across the three mode headers.**~~
   `AutomatedMode::getGameState()` / `queueCommand()` / `getNextCommand()` /
   `hasPendingCommands()` / `setEventCallback()` — a whole command queue that
   T410's scenario lane replaced with `setAutomationCallback` and did not
@@ -10033,10 +10054,17 @@ fine — the table fails on a stale entry, so it cannot rot.
   `getGameState()` and `GraphicalMode::getGameState()` /
   `getRendererType()`. Note B345 already owns three write-only
   `ConsoleRenderer` members, which is the same corner of the tree. Found by
-  T455.
+  T455. **STRUCK 2026-10-12 (issue #175)**: all 10 DELETED with their
+  cascades — `AutomatedMode`'s command queue (`m_commandQueue`,
+  `m_commandMutex`, `m_eventCallback`, `m_listenerHandles`, `handleEvent`),
+  `m_gameState` in all three modes and `m_rendererType` in `GraphicalMode`.
+  `createMode`'s `rendererType` parameter and the `GraphicalRendererType`
+  enum stay: `Application::initGameMode` still logs the requested type
+  (`src/client/application.cpp:431-432`). Nothing reintroduced; B345's three
+  members were not touched. See `refactor/B501/README.md`.
 
-- **B501** (B, unreached) **`common/` utility API with no caller: 12 → issue #176
-  zero-caller public functions across 5 headers.**
+- ~~**B501** (B, unreached) **`common/` utility API with no caller: 12 → issue #176
+  zero-caller public functions across 5 headers.**~~
   `PerformanceMetrics::getTimings()` / `resetGameplay()` / `getElapsedMs()` /
   `markZoneLoadStart()` / `markZoneLoadEnd()` / `getCategoryName()` — a
   zone-load timing channel nothing marks; `ClampLower()`; `Random::Shuffle()`;
@@ -10045,6 +10073,13 @@ fine — the table fails on a stale entry, so it cannot rot.
   (`MarkHeapStart()`, `MeasureHeapUsage()`, `PageAlignVectorAligned()`)~~:
   B941 (#259) deleted the whole `ksm.h` header when its last user,
   `RaycastMesh`, moved to plain vectors. Found by T455.
+  **STRUCK 2026-10-12 (issue #176)**: 9 live DELETED (`getTimings()`,
+  `resetGameplay()`, `getElapsedMs()`, `markZoneLoadStart()`,
+  `markZoneLoadEnd()`, the `getCategoryName()` free function, `ClampLower()`,
+  `Random::Shuffle()`, `LogManager::GetMutex()` — with its `m_mutex` member)
+  plus the zone-load tracking members `currentZoneName_` /
+  `zoneLoadStart_`; the four KSM helpers were already gone via B941 (#259).
+  See `refactor/B501/README.md`.
 
 - ~~**B502** (B, unreached) **Gameplay-domain manager API with no caller: 21
   zero-caller public functions across 9 headers
@@ -12832,7 +12867,7 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   `slotPrimary -> weaponPrimary`, `slotSecondary -> weaponSecondary`) or to
   accept it as era behaviour -- the official client has the same server. Found
   by T494.
-- **B810** (B) **`LootItemIntent`'s corpse slot numbers have the SAME → issue #199
+- ~~**B810** (B) **`LootItemIntent`'s corpse slot numbers have the SAME → issue #199
   Titanium/server split B796 was, and nothing converts them either.** The
   server's pair is `titanium.cpp:3641` `ServerToTitaniumCorpseSlot()` /
   `:3727` `TitaniumToServerCorpseSlot()`, and it is NOT the same table as the
@@ -12841,7 +12876,12 @@ arm-hanging frame, not frame 0 where the elbow is bent.
   `invslot::slotGeneral1`. T494 fixed the possessions/bank/trade/world/bag
   table and deliberately did not touch this one (out of scope). Anything that
   prints or takes a corpse slot number is suspect; start at whatever pushes
-  `LootItemIntent`. Found by T494.
+  `LootItemIntent`. Found by T494.~~ **STRUCK 2026-10-11**
+  (`task/kb-b810-corpse-slot-split`, `refactor/B810/README.md`): the corpse
+  pair (`parseCorpseSlot()` in, `corpseSlotToServer()` out, port of the
+  server's two functions) is the only conversion, and it sits beside T494's
+  pair in `inventory_constants.h`; `/loot <n>` (window open) and the loot
+  printouts now speak server numbers, the wire stays model-numbered.
 - ~~**B811** (A) **The llmbench held-item check cannot tell "already holding it" → issue #82
   from "just equipped it", and that is how B796's own experiment produced a
   false positive.** `E_heldA_*` records what the inventory table says at

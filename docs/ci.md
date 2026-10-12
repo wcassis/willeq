@@ -294,7 +294,12 @@ nothing is added again (no double count) and `ownedBytes` equals
 The `ownedPlusGpuBuffersBytes` field B955 shipped was removed by B978 (it equals
 `ownedBytes` now). **Nothing asserts the target**: the 256 MB bound stays the
 failing one, on whole RssAnon; the row exists for the Orange Pi, where it is
-the only figure that sees Lima's GEM buffers. `scripts/ci/owned_memory.py` is
+the only figure that sees Lima's GEM buffers. On a kernel+driver that publishes
+`drm-*` memory keys (Panfrost, the ROCK 4D lane) the source is `drm_fdinfo` and
+the row is the RESIDENT figure (B1032, #352): `drm-total-memory` includes
+Panfrost's 128 MiB growable tiler heap before the tiler has faulted it in, and
+the `[memgpu]` line carries `fdinfo_total=`/`fdinfo_resident=`/`fdinfo_purgeable=`
+so the choice stays visible. `scripts/ci/owned_memory.py` is
 the one Python definition of these figures, behind the `[rss-target]` line and
 the Pi summarizers.
 

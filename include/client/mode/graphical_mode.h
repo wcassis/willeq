@@ -57,20 +57,10 @@ public:
     // ========== Graphical-Specific API ==========
 
     /**
-     * Get the graphical renderer type.
-     */
-    GraphicalRendererType getRendererType() const { return m_rendererType; }
-
-    /**
      * Get the graphical renderer (if available).
      * Returns nullptr if the renderer is not a GraphicalRenderer subclass.
      */
     output::GraphicalRenderer* graphicalRenderer();
-
-    /**
-     * Get the game state.
-     */
-    state::GameState* getGameState() { return m_gameState; }
 
     // ========== Camera Control ==========
 
@@ -133,11 +123,9 @@ public:
 private:
     void processInput();
 
-    GraphicalRendererType m_rendererType;
     std::unique_ptr<output::IOutputRenderer> m_renderer;
     std::unique_ptr<input::IInputHandler> m_inputHandler;
 
-    state::GameState* m_gameState = nullptr;
     bool m_running = false;
     bool m_quitRequested = false;
 };

@@ -90,7 +90,7 @@ Additional context is in subdirectory CLAUDE.md files:
   gitlab-runner-2** (both tag `x86-build`, B1008) and refuse other hosts (a kanban worker's 4 GiB cap
   OOM-kills a link; builds stay off the Inspur box and off hermes-ext). One pipeline's stages may land
   on different hosts: `test` refuses a build tree not stamped by its own host at its own sha and
-  rebuilds it in-job (B1026, `docs/ci.md` "Two x86 runners"). Pushing a branch is the
+  rebuilds in-job (B1026, `docs/ci.md`). Pushing a branch is the
   cheapest suite run, but each runner's build tree is **warm**: force a clean
   pipeline before trusting a build-system change (`docs/ci.md`).
 
@@ -917,10 +917,12 @@ mode keeps the test green without a recording. Protocol-level pcap tests
   and everything Spire shows are **server/RoF2**-numbered (waist 20, **power
   source 21 — not sent to this client at all**, ammo 22, general 23-30, cursor
   33, general bags `4010 + 200*bag + idx`). **Everything a user types or reads is
-  `inventory.slot_id`**, and the conversion lives in exactly two functions in
-  `include/client/inventory/inventory_constants.h`: `parseUserSlot()` in,
-  `describeSlot()` out (both ported from the server's own `titanium.cpp`). **Do
-  not add a third conversion**, and do not "fix" a model-side number to match a
+  `inventory.slot_id`**, and the conversions live in
+  `include/client/inventory/inventory_constants.h`: the possessions pair
+  `parseUserSlot()` in / `describeSlot()` out (both ported from the server's own
+  `titanium.cpp`) and the corpse pair `parseCorpseSlot()` in /
+  `corpseSlotToServer()` out (B810, #199). **Do not add a third ad-hoc
+  conversion at a call site**, and do not "fix" a model-side number to match a
   message.
 - **`EntityAppearance::equipment[]` is a MATERIAL / IT model number, never a
   database item id** (T498, board B755/B823). Slots 0-6 carry the armour
