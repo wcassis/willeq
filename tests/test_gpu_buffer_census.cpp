@@ -185,8 +185,9 @@ TEST(GpuBufferCensus, FdinfoKeysWinOverEverything) {
 
 // B1032 (#352): the row is the RESIDENT figure, never the total. Numbers from
 // the ROCK 4D (Panfrost, kernel 7.1, Mesa 26.0) at qeynos2 steady: the total
-// counts the BO cache's purged buffers and the unfaulted tiler heap, 4.5x the
-// bytes with pages behind them; the resident figure agrees with the cgroup's
+// counts the unfaulted part of Mesa's 128 MiB growable tiler heap (NOT the BO
+// cache: purgeable was 64-512 KiB, review/B1032/README.md), 4.5x the bytes
+// with pages behind them; the resident figure agrees with the cgroup's
 // shmem (41.2 MB) and the mapped lower bound (36.7 MB).
 TEST(GpuBufferCensus, FdinfoResidentIsTheRowNotTheTotal) {
     GpuBufferInputs in;
@@ -249,7 +250,43 @@ TEST(GpuBufferCensus, PanfrostFdinfoPublishesResidentAndPurgeable) {
     EXPECT_TRUE(f.hasResidentKeys);
     EXPECT_GT(f.totalBytes, f.residentBytes * 3);
     EXPECT_GT(f.residentBytes, 0u);
-    EXPECT_LE(f.purgeableBytes, f.totalBytes);
+    // drm-usage-stats.rst: purgeable buffers are a subset of the RESIDENT ones.
+    EXPECT_LE(f.purgeableBytes, f.residentBytes);
+}
+
+// readGpuBufferCensus()'s per-fd fold (B1032 review): an fd with no memory key
+// is skipped, a repeated drm-client-id counts once, the key flags are OR'ed
+// over fds and the byte figures summed -- so a resident key on ANY fd makes the
+// fdinfo the row, a total-only fd adds nothing to it, and a legacy drm-memory-*
+// fd adds its figure as resident.
+TEST(GpuBufferCensus, FdinfoFoldOrsKeysAndDedupesClients) {
+    const DrmFdinfo lima = parseDrmFdinfo(fixture("kmscube_fdinfo_renderD128"));
+    const DrmFdinfo panfrost = parseDrmFdinfo(fixture("rock4d_fdinfo_renderD128"));
+    const DrmFdinfo totalOnly = parseDrmFdinfo(
+        "drm-driver:\trockchip\ndrm-client-id:\t5\ndrm-total-memory:\t0\ndrm-shared-memory:\t0\n");
+    const DrmFdinfo legacy = parseDrmFdinfo(
+        "drm-driver:\told\ndrm-client-id:\t9\ndrm-memory-vram:\t300 KiB\n");
+    GpuBufferInputs in;
+    DrmFdinfoSeen seen;
+    foldDrmFdinfo(totalOnly, seen, in);   // first: no resident key yet
+    EXPECT_TRUE(in.fdinfoMemoryKeys);
+    EXPECT_FALSE(in.fdinfoResidentKeys);
+    foldDrmFdinfo(lima, seen, in);        // no memory key: skipped
+    foldDrmFdinfo(panfrost, seen, in);
+    foldDrmFdinfo(panfrost, seen, in);    // the same client (a dup'd fd): once
+    foldDrmFdinfo(legacy, seen, in);
+    EXPECT_EQ(seen.n, 3u);
+    EXPECT_TRUE(in.fdinfoResidentKeys);   // OR'ed: true once any fd had one
+    EXPECT_TRUE(in.fdinfoLegacyKeys);
+    EXPECT_EQ(in.fdinfoTotalBytes, panfrost.totalBytes + 300u * 1024);
+    EXPECT_EQ(in.fdinfoResidentBytes, 38484u * 1024);
+    EXPECT_EQ(in.fdinfoLegacyResidentBytes, 300u * 1024);
+    EXPECT_EQ(in.fdinfoPurgeableBytes, 512u * 1024);
+    in.drmFds = 5;
+    in.softwareRasteriser = 0;
+    const GpuBufferCensus c = decideGpuBuffers(in);
+    EXPECT_EQ(c.source, GpuBufferSource::DrmFdinfo);
+    EXPECT_EQ(c.gpuBuffersBytes, 38484u * 1024 + 300u * 1024);
 }
 
 // llvmpipe: the buffers are heap already charged to gpu_driver. The row
