@@ -58,11 +58,9 @@ TEST(SpellVisualSelectorNullReaderTest, NoReaderAlwaysFallsBackToNoAffectIndex) 
     EXPECT_FALSE(zero.hasTargetStage());
 }
 
-TEST(SpellVisualSelectorToStringTest, AllThreeSourcesHaveDistinctNames) {
-    EXPECT_STREQ(toString(SpellVisualSource::NoAffectIndex), "NoAffectIndex");
-    EXPECT_STREQ(toString(SpellVisualSource::EmptyRecord), "EmptyRecord");
-    EXPECT_STREQ(toString(SpellVisualSource::Resolved), "Resolved");
-}
+// B606 (#189) deleted toString(SpellVisualSource) (zero callers) with its
+// names-only test; the enum itself is live (isFallback()/the stage checks
+// above exercise it through the resolver).
 
 // ============================================================================
 // File-backed tests: real spells.eff loaded, no DB dependency.

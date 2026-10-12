@@ -188,15 +188,17 @@ TARGET_COMPILE_DEFINITIONS(test_jump_fall_arc PRIVATE WILLEQ_REPO_ROOT="${CMAKE_
 GTEST_DISCOVER_TESTS(test_jump_fall_arc DISCOVERY_TIMEOUT 120)
 
 # T438 (BOARD B421/B422/B423): every door-motion constant, measured against the
-# official client, plus the lift cycle that plays them.
-ADD_EXECUTABLE(test_door_motion
-    test_door_motion.cpp
-)
-TARGET_LINK_LIBRARIES(test_door_motion GTest::gtest_main willeq_core)
+# official client, plus the lift cycle that plays them. Graphics builds only
+# (B1038): door_motion.cpp is a renderer TU (GRAPHICS_SOURCES), and every case
+# is about it.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_door_motion
+        test_door_motion.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_door_motion GTest::gtest_main willeq_core)
     TARGET_INCLUDE_DIRECTORIES(test_door_motion PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    GTEST_DISCOVER_TESTS(test_door_motion DISCOVERY_TIMEOUT 120)
 ENDIF()
-GTEST_DISCOVER_TESTS(test_door_motion DISCOVERY_TIMEOUT 120)
 
 # T437 (BOARD B435, B436): the ground query's honest answer shape, the two
 # decisions that read it, and HCMap::FindBestZ() against hand-built triangle

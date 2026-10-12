@@ -24,24 +24,6 @@ uint8_t FoldSpecialCase(uint8_t bodytype)
 
 }  // namespace
 
-bool TargetTypeRestrictsCreature(SpellTargetType target_type)
-{
-    switch (target_type) {
-        case SpellTargetType::Animal:
-        case SpellTargetType::Undead:
-        case SpellTargetType::UndeadAE:
-        case SpellTargetType::Summoned:
-        case SpellTargetType::SummonedAE:
-        case SpellTargetType::Corpse:
-        case SpellTargetType::Plant:
-        case SpellTargetType::Giant:
-        case SpellTargetType::Dragon:
-            return true;
-        default:
-            return false;
-    }
-}
-
 bool BodyTypeSatisfiesTargetType(SpellTargetType target_type, uint8_t bodytype,
                                  bool is_corpse)
 {

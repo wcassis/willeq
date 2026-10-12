@@ -1,8 +1,11 @@
 /*
- * StringDatabase - EverQuest client string file loader
+ * StringDatabase - string lookup over the shipped string tables.
  *
- * Primary mode: SQLite-backed queries via WilleqDatabase.
- * Legacy mode: Loads and parses eqstr_us.txt and dbstr_us.txt from the EQ client directory.
+ * Queries go through WilleqDatabase (data/willeq.db's eqstrings/dbstrings
+ * tables). The legacy eqstr_us.txt / dbstr_us.txt text-file loaders were
+ * B606 (#189) dead: the client initializes exclusively via
+ * initFromDatabase() (eq_strings.cpp's StringDb::LoadStringFiles), so the
+ * file mode was reachable only from tests.
  */
 
 #ifndef EQT_STRING_DATABASE_H
@@ -11,8 +14,6 @@
 #include <atomic>
 #include <cstdint>
 #include <string>
-#include <unordered_map>
-#include <map>
 #include <vector>
 
 namespace EQT {
@@ -36,23 +37,17 @@ public:
     // Initialization
     // ========================================================================
 
-    // Initialize from WilleqDatabase global instance (SQLite-backed, preferred)
+    // Initialize from WilleqDatabase global instance (SQLite-backed)
     bool initFromDatabase();
-
-    // Legacy: Load eqstr_us.txt from EQ client directory
-    bool loadEqStrFile(const std::string& filepath);
-
-    // Legacy: Load dbstr_us.txt from EQ client directory
-    bool loadDbStrFile(const std::string& filepath);
 
     // ========================================================================
     // Lookups
     // ========================================================================
 
-    // Get string by ID from eqstr_us.txt / eqstrings table
+    // Get string by ID from the eqstrings table
     std::string getString(uint32_t string_id) const;
 
-    // Get string by category and sub_id from dbstr_us.txt / dbstrings table
+    // Get string by category and sub_id from the dbstrings table
     std::string getDbString(uint32_t category, uint32_t sub_id) const;
 
     // Format string with placeholder substitution
@@ -65,12 +60,7 @@ public:
     // State
     // ========================================================================
 
-    bool isEqStrLoaded() const { return eqstr_loaded_; }
-    bool isDbStrLoaded() const { return dbstr_loaded_; }
-    bool isLoaded() const { return eqstr_loaded_; }
-
-    size_t getEqStrCount() const;
-    size_t getDbStrCount() const;
+    bool isLoaded() const { return db_ != nullptr; }
 
     // Cache/query stats for /pmem
     uint64_t getQueryCount() const { return query_count_.load(std::memory_order_relaxed); }
@@ -84,13 +74,6 @@ private:
     // SQLite database (non-owning pointer)
     WilleqDatabase* db_ = nullptr;
     bool using_db_ = false;
-
-    // Legacy storage
-    std::unordered_map<uint32_t, std::string> eq_strings_;
-    std::map<std::pair<uint32_t, uint32_t>, std::string> db_strings_;
-
-    bool eqstr_loaded_ = false;
-    bool dbstr_loaded_ = false;
 
     // Stats
     mutable std::atomic<uint64_t> query_count_{0};

@@ -2,8 +2,6 @@
 #include "client/willeq_database.h"
 #include "common/logging.h"
 
-#include <fstream>
-#include <sstream>
 #include <cctype>
 #include <algorithm>
 
@@ -21,147 +19,8 @@ bool StringDatabase::initFromDatabase() {
 
     db_ = db;
     using_db_ = true;
-    eqstr_loaded_ = true;
-    dbstr_loaded_ = true;
 
     LOG_INFO(MOD_MAIN, "StringDatabase: initialized from SQLite");
-    return true;
-}
-
-size_t StringDatabase::getEqStrCount() const {
-    if (using_db_ && db_) {
-        // Approximate — avoid expensive COUNT(*) on every call
-        return 5901;  // Known count from db build
-    }
-    return eq_strings_.size();
-}
-
-size_t StringDatabase::getDbStrCount() const {
-    if (using_db_ && db_) {
-        return 8305;  // Known count from db build
-    }
-    return db_strings_.size();
-}
-
-// ============================================================================
-// Legacy file loading
-// ============================================================================
-
-bool StringDatabase::loadEqStrFile(const std::string& filepath) {
-    std::ifstream file(filepath);
-    if (!file.is_open()) {
-        LOG_ERROR(MOD_MAIN, "StringDatabase: Failed to open eqstr file: {}", filepath);
-        return false;
-    }
-
-    eq_strings_.clear();
-    eqstr_loaded_ = false;
-
-    std::string line;
-    int line_num = 0;
-
-    while (std::getline(file, line)) {
-        line_num++;
-
-        // Skip first two header lines (e.g., "EQST0002" and "0 5901")
-        if (line_num <= 2) {
-            continue;
-        }
-
-        // Skip empty lines
-        if (line.empty()) {
-            continue;
-        }
-
-        // Format: "<id> <text>"
-        // Find first space to separate ID from text
-        size_t space_pos = line.find(' ');
-        if (space_pos == std::string::npos) {
-            // Line with only ID, no text - store empty string
-            try {
-                uint32_t id = static_cast<uint32_t>(std::stoul(line));
-                eq_strings_[id] = "";
-            } catch (...) {
-                // Skip malformed lines
-                continue;
-            }
-            continue;
-        }
-
-        // Parse ID
-        std::string id_str = line.substr(0, space_pos);
-        uint32_t id;
-        try {
-            id = static_cast<uint32_t>(std::stoul(id_str));
-        } catch (...) {
-            // Skip malformed lines
-            continue;
-        }
-
-        // Rest is the text (strip trailing \r from Windows line endings)
-        std::string text = line.substr(space_pos + 1);
-        if (!text.empty() && text.back() == '\r') {
-            text.pop_back();
-        }
-
-        eq_strings_[id] = text;
-    }
-
-    eqstr_loaded_ = true;
-    LOG_INFO(MOD_MAIN, "StringDatabase: Loaded {} strings from eqstr file", eq_strings_.size());
-    return true;
-}
-
-bool StringDatabase::loadDbStrFile(const std::string& filepath) {
-    std::ifstream file(filepath);
-    if (!file.is_open()) {
-        LOG_ERROR(MOD_MAIN, "StringDatabase: Failed to open dbstr file: {}", filepath);
-        return false;
-    }
-
-    db_strings_.clear();
-    dbstr_loaded_ = false;
-
-    std::string line;
-
-    while (std::getline(file, line)) {
-        // Skip empty lines
-        if (line.empty()) {
-            continue;
-        }
-
-        // Format: "<category>^<sub_id>^<text>"
-        size_t first_caret = line.find('^');
-        if (first_caret == std::string::npos) {
-            continue;
-        }
-
-        size_t second_caret = line.find('^', first_caret + 1);
-        if (second_caret == std::string::npos) {
-            continue;
-        }
-
-        // Parse category and sub_id
-        uint32_t category, sub_id;
-        try {
-            category = static_cast<uint32_t>(std::stoul(line.substr(0, first_caret)));
-            sub_id = static_cast<uint32_t>(std::stoul(line.substr(first_caret + 1, second_caret - first_caret - 1)));
-        } catch (...) {
-            // Skip malformed lines
-            continue;
-        }
-
-        // Rest is the text (strip trailing \r from Windows line endings)
-        std::string text = line.substr(second_caret + 1);
-        if (!text.empty() && text.back() == '\r') {
-            text.pop_back();
-        }
-
-        db_strings_[{category, sub_id}] = text;
-    }
-
-    dbstr_loaded_ = true;
-    LOG_INFO(MOD_MAIN, "StringDatabase: Loaded {} strings from dbstr file", db_strings_.size());
     return true;
 }
 
@@ -171,11 +30,6 @@ std::string StringDatabase::getString(uint32_t string_id) const {
     if (using_db_ && db_) {
         return db_->getString(string_id);
     }
-
-    auto it = eq_strings_.find(string_id);
-    if (it != eq_strings_.end()) {
-        return it->second;
-    }
     return "";
 }
 
@@ -184,11 +38,6 @@ std::string StringDatabase::getDbString(uint32_t category, uint32_t sub_id) cons
 
     if (using_db_ && db_) {
         return db_->getDbString(category, sub_id);
-    }
-
-    auto it = db_strings_.find({category, sub_id});
-    if (it != db_strings_.end()) {
-        return it->second;
     }
     return "";
 }

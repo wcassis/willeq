@@ -211,9 +211,6 @@ public:
     // ── Music queries ──
     std::string getMusicFile(int index);
 
-    // ── Login string queries ──
-    std::string getLoginString(uint32_t stringId);
-
     // ── Stats ──
     const DatabaseStats& getStats() const { return stats_; }
     void resetStats() {
@@ -276,7 +273,6 @@ private:
     sqlite3_stmt* stmtGetSoundAsset_ = nullptr;
     sqlite3_stmt* stmtGetAnimSound_ = nullptr;
     sqlite3_stmt* stmtGetMusicFile_ = nullptr;
-    sqlite3_stmt* stmtGetLoginString_ = nullptr;
 };
 
 } // namespace EQT

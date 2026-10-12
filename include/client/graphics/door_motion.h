@@ -84,9 +84,6 @@ constexpr float kLiftRideTolerance = 2.0f;
 bool DoorOpentypeIsLift(uint8_t opentype);
 bool DoorTravels(uint8_t opentype, uint32_t doorParam);
 
-// Seconds a lift of this door_param spends in ONE direction.
-float LiftTravelSeconds(uint32_t doorParam);
-
 // Would a player whose feet are at feetZ be carried by a platform whose
 // walkable surface is at surfaceZ? The ground query resolves the surface a hair
 // below the feet, and a rising platform gets ahead of the player between
