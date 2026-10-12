@@ -215,15 +215,19 @@ public:
     // client's gem-refresh trigger. A stop never sends it. It completes our
     // cast as a Success and starts the gem's recast; a refresh for a gem
     // holding `spell_id` starts that gem's recast even when no cast is pending
-    // (an unreliable packet may have resolved the outcome first).
+    // (since B760 an unreliable packet can no longer settle the outcome first;
+    // the cast may still have ended on the duration + 5 s fallback).
     void handleSpellBarRefresh(uint32_t slot, uint32_t spell_id);
 
     // T482: called by the zone dispatcher BEFORE each packet's arm. While a
     // confirmed cast's outcome is pending (keepcasting 0 seen, MemorizeSpell
-    // not yet), any packet other than the tail's own (OP_MemorizeSpell,
-    // OP_LinkedReuse) means the server did not send the success tail: the
-    // outcome is published as Interrupted (StopCasting).
-    void noteZonePacket(uint16_t opcode);
+    // not yet), the next RELIABLE packet other than the tail's own
+    // (OP_MemorizeSpell, OP_LinkedReuse) means the server did not send the
+    // success tail: the outcome is published as Interrupted (StopCasting).
+    // B760 (issue #45): an unreliable packet (`reliable` false,
+    // DaybreakConnection::DeliveringReliable()) is outside the ordered stream
+    // and never settles the outcome. A replayed packet counts as reliable.
+    void noteZonePacket(uint16_t opcode, bool reliable = true);
 
     // ========================================================================
     // Database Access
