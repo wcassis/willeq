@@ -486,8 +486,11 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (28 tests: `FileSizeCeiling`, `DocCitations` (+ B1020's
-`DocCitationsSelfTest`, the anchored-citation probes), `DocClaims` and
+`hygiene` (31 tests: `FileSizeCeiling`, `DocCitations` (+ B1020's
+`DocCitationsSelfTest`, the anchored-citation probes), B1030's
+`DockerfileArm64Derived` (the arm64 Dockerfile stays arch-swapped armhf) and
+`PiEnvLaneResolution` (`scripts/pi/env_selftest.sh`: a PI_LANE that disagrees
+with a listed PI_HOST is refused, never rewritten), `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
 reachability ratchet), T450's `DbReproducible`, T455's
@@ -545,7 +548,12 @@ plus B987's `CrowdObservationControls`
 fail-closed observation, the ONE accepted duration spelling (plain ASCII
 decimal 0..86400, rejected before any lock/stack/Pi resource, including the
 sweep's self-validation with its real scripts) and a bounded x86 deadline
-that stops a continuously logging child) and B1024's `VisualGatePlatform`
+that stops a continuously logging child), plus B1026's `CiBuildTreeStamp`
+(`scripts/ci/test_ci_build_tree_stamp.py`, `.gitlab-ci.yml` as text: `test`
+and `client-ledger-live` verify the host+sha build-tree stamp before they
+consume the tree, the build steps exist once and claim the tree only after
+`cmake --build`, and `.goldfarm` no longer claims a single tagged runner),
+and B1024's `VisualGatePlatform`
 (`scripts/ci/test_visual_gate_platform.py`, the per-platform golden-set
 resolver: the x86 gate's benchmark invocation must stay byte-identical to
 `tests/data/b1024/x86_gate_plan.txt`, and the pi half pins the

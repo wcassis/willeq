@@ -46,6 +46,17 @@ public:
     void pause();
     void resume();
 
+    // B1014 (issue #335): perform a font release the audio thread flagged at
+    // fade completion, on this (game) thread. The flag is set there because
+    // the audio thread must never free -- a tsf_close racing the game thread's
+    // selectSoundFont(Custom) / MidiPlayer::play() is the double-close the
+    // render barrier does not cover (it covers render passes, not game-thread
+    // mutators). No-op while a song plays (the font is still in use) or when
+    // nothing is pending. Called by AudioManager::update() every game tick and
+    // by stop() before a real end, so the release lands on the next game-
+    // thread music call at the latest.
+    void drainPendingFontRelease();
+
     // State queries
     bool isPlaying() const { return playing_; }
     bool isPaused() const { return paused_; }
@@ -77,6 +88,14 @@ private:
     bool loadXMI(const std::string& filepath, int trackIndex = 0, double startTimeMs = 0.0);
     bool loadWAV(const std::string& filepath);
 
+    // B1014 (issue #335): the immediate-stop mechanics WITHOUT the font
+    // release. play() must stop the previous song without ending it -- the
+    // font the NEXT song was selected for (AudioManager::playMusic selects
+    // before play()) is still in use and the stop inside play() must not free
+    // it. The public stop() is a real end and releases; this is the internal
+    // "stop because a song is coming" half.
+    void stopImmediateInternal();
+
     // Start playback on mixer channel
     void startMixerPlayback();
 
@@ -89,6 +108,12 @@ private:
     std::atomic<float> fadeVolume_{1.0f};
     std::atomic<float> fadeTarget_{1.0f};
     std::atomic<float> fadeRate_{0.0f};
+
+    // B1014 (issue #335): the audio thread flags a real end it cannot
+    // perform (fade completion), the game thread frees. Written by the audio
+    // thread in mixerRenderCallback, read/written by the game thread in
+    // drainPendingFontRelease() -- hence atomic.
+    std::atomic<bool> fontReleasePending_{false};
 
     // External components (not owned)
     MidiPlayer* midiPlayer_ = nullptr;

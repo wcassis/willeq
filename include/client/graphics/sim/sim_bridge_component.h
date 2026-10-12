@@ -137,6 +137,15 @@ public:
 	std::unique_ptr<EQ::SpellVisualFX>& spellVisualFX() { return spellVisualFX_; }
 	std::unique_ptr<EQ::SpellVisualFX> const& spellVisualFX() const { return spellVisualFX_; }
 
+    // B293 (#124): test-only access to the pending entity-direction map so
+    // tests/test_b293_entity_direction_resolution.cpp can assert the
+    // direction arm's result. Same hand-expanded FRIEND_TEST idiom the T116
+    // lifetime fixtures use (no gtest include in a production header -- the
+    // ARM cross-compile toolchain has no gtest).
+    friend class B293EntityDirectionResolutionTest;
+    friend class B293EntityDirectionResolutionTest_WorkerRequiresTheCasterDirectionForASprayEffect_Test;
+    friend class B293EntityDirectionResolutionTest_ApplySimulationOutputResolvesRequestedDirectionThroughTheCallback_Test;
+
 private:
 	RendererContext& ctx_;
 	IrrlichtRenderer& owner_;

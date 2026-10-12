@@ -10,19 +10,23 @@ failure any amount of retrying fixes.
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
-| Runner | id 1, shell executor (bash), `concurrent = 1`, tag `goldfarm`, runs untagged |
-| Host | **hermes-ext** (172.16.200.100): 16 cores, 31 GB RAM, cmake + g++, **no ninja, no ccache** |
+| x86 runners | **gitlab-runner-1** and **gitlab-runner-2** (10.0.30.81/.82, B1008): shell executor (bash), `concurrent = 1` each, **both tagged `x86-build`** since 2026-10-11 — one pipeline's stages may run on different hosts (B1026, "Two x86 runners" below) |
+| ARM runner | `dev-u24-arm-nfs` on dev-u24, tag `arm-nfs` (T503, below) |
+| Former host | **hermes-ext** (172.16.200.100): runner id 1, untagged; it ran every job until B1008 (2026-10-08) and no longer builds |
 | Config | `.gitlab-ci.yml` at the repo root |
 
-The runner's *description* in the GitLab UI reads "inspur-shell". That label is
-stale — it was registered from hermes-ext on 2026-09-12 and has always executed
-there (`Running on hermes-ext...` in every job log; GitLab's own runner record
+The rest of this section describes the original hermes-ext runner (T502). Its
+*description* in the GitLab UI reads "inspur-shell". That label is stale — it
+was registered from hermes-ext on 2026-09-12 and has always executed there
+(`Running on hermes-ext...` in every job log; GitLab's own runner record
 reports `ipAddress` 172.16.200.100).
 
 **The Inspur must never build.** Will's ruling (2026-09-17): the inference box's
-CPUs belong to the GPUs. Every job's first line is therefore
+CPUs belong to the GPUs. Every job's first line is therefore a host
+allow-list (`.goldfarm`'s `before_script`; it was `hermes-ext` alone before
+B1008)
 
-    [ "$(hostname)" = "hermes-ext" ] || { echo "refusing to build on $(hostname)"; exit 1; }
+    case "$(hostname)" in hermes-ext|gitlab-runner-1|gitlab-runner-2) ;; *) echo "refusing to build on $(hostname)"; exit 1 ;; esac
 
 so if the project is ever reassigned to another runner the pipeline fails loudly
 instead of quietly moving builds onto the Inspur. hermes-ext also hosts the
@@ -35,7 +39,9 @@ starve a live worker.
 A second runner, **`dev-u24-arm-nfs`** (GitLab runner id 2, tag `arm-nfs`, does NOT run untagged), runs in user
 mode on the dev host `dev-u24`: binary `~/.local/bin/gitlab-runner`, config `~/.gitlab-runner/config.toml`
 (GitLab's self-signed cert pinned beside it), `systemctl --user status gitlab-runner` (linger on), builds under
-`~/gitlab-runner/builds`. It exists for one job, **`build-arm`**: `scripts/build-arm-noble.sh` (docker image
+`~/gitlab-runner/builds`. It runs two jobs, **`build-arm`** and B1030's **`build-arm64`** (the aarch64 lanes'
+binary, "The aarch64 SBC lanes" below), one at a time in ONE shared checkout, so both jobs' `GIT_CLEAN_FLAGS`
+keep both build trees (`-e build-arm-noble -e build-arm64-noble`). `build-arm` is `scripts/build-arm-noble.sh` (docker image
 `willeq-arm-noble`) then `scripts/pi/publish_arm_build.sh`, which publishes the stripped client plus that
 commit's tracked `config/` + `data/` to **`/mnt/projects/fable/ci-arm/<sha>/`** (`by-branch/<branch>` symlinks;
 newest 12 kept). The job is automatic on `fable` and a manual, non-blocking job everywhere else
@@ -54,6 +60,55 @@ forced receive buffer). For a live zone-in, copy the binary to the Pi's ext4 hom
 `nosuid` ignores file capabilities) and `sudo setcap cap_net_raw,cap_net_admin+ep` it. The client logs the
 buffer it actually got (`rcvbuf=... SO_RCVBUFFORCE`). `scripts/pi_rendered_zone_sweep.sh` does exactly this
 for the rendered Kunark + Velious sweep (#102, `refactor/B854/RENDERED_SWEEP.md`).
+
+### The aarch64 SBC lanes (B1030, #350)
+
+The Orange Pi is **lane 1** of a three-lane table in `scripts/pi/env.sh`; `PI_LANE=N` picks the device the way
+`EQEMU_LANE` picks an eqemu VM, and a card or a script names its LANE, never an address. Each lane is
+single-tenant with its own lock ON the device (`pi_lock_take`/`pi_lock_release` are unchanged; `PI_LANE=2 bash
+scripts/pi/lock_selftest.sh` is the per-lane net). A `PI_HOST` alone still picks its lane, so every pre-B1030
+caller behaves as before, but a `PI_LANE` that disagrees with a listed `PI_HOST` is refused (exit 2), never
+rewritten: `PI_HOST` is exported, so a shell that sourced `env.sh` for lane 1 must `unset PI_HOST` before
+`PI_LANE=3 bash <script>` (`scripts/pi/env_selftest.sh`, ctest `PiEnvLaneResolution`). The table itself (host, arch, GPU driver) is in `scripts/pi/env.sh` -- read it there rather
+than here.
+
+| lane | device | arch | GPU / driver | binary |
+|---|---|---|---|---|
+| 1 | `orangepi` | armv7l | Mali-400, Lima | `ci-arm/<sha>/bin/willeq-nollvm` (the shipped prefix above) |
+| 2 | `rock64` (RK3328) | aarch64 | Mali-450, Lima (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
+| 3 | `rock4d` (RK3576) | aarch64 | Mali-G52, Panfrost (system Mesa) | `ci-arm64/<sha>/bin/willeq` |
+
+Lanes 2 and 3 run ONE generic `-march=armv8-a` binary from **`scripts/build-arm64-noble.sh`**
+(`docker/Dockerfile.arm64-noble`, a noble arm64 sysroot; lane 3's Armbian resolute runs it because glibc is
+forward compatible), published to **`/mnt/projects/fable/ci-arm64/<sha>/`** by `scripts/pi/publish_arm64_build.sh`
+-- the same shape as `ci-arm/` (stripped `bin/`, that commit's `config/` + `data/`, `BUILD_INFO`,
+`by-branch/`, newest 12 kept) minus the Mesa prefix step. `build-arm` is NOT widened: the sibling job
+**`build-arm64`** (same runner, same rules -- automatic on fable, manual elsewhere via `glab ci trigger
+build-arm64`) runs it; the runner is `concurrent=1`, so a fable pipeline's two ARM builds run one after the
+other, and a hand-run `scripts/build-arm64-noble.sh` on dev-u24 takes `BUILD_JOBS=4` while any other build is
+alive. `docker/Dockerfile.arm64-noble` is the armhf Dockerfile with the architecture
+swapped and nothing else; `scripts/ci/check_arm64_dockerfile.sh` (ctest `DockerfileArm64Derived`, label
+`hygiene`) fails when they drift, and `--write` regenerates it.
+
+Device facts that bound a run: both aarch64 lanes mount the NFS share at `/mnt/projects`, have `/tmp` and
+`/mnt/ram` as `nosuid` tmpfs (copy a binary to the ext4 home for `setcap`, exactly as on lane 1), and run the
+`orangepi` preset like lane 1 -- RULED (Will 2026-10-12, B1033 #353, `docs/decisions.md`): one preset on every
+lane, the same 256 MB bound and 64 MB target, no goldens of their own until a lane runs the gate; a lane
+preset is for an experiment (`pi_rendered_zone_sweep.sh --constrained <preset>`), never a default or a gate.
+Lane 2's Mesa is the same
+25.2.8 the Pi runs, so the Lima cost sheet applies; lane 3 is Bifrost under Panfrost and nothing Lima-specific
+transfers to it.
+
+**Headless DRM.** The two boards share one KVM, so a lane's HDMI is usually `disconnected` and the DRM device
+refuses to start. `pi_hdmi_force_on` (`scripts/pi/env.sh`) writes `on` to the connector's sysfs `status`, which
+makes the kernel offer its default modes with no monitor, and `pi_hdmi_restore` puts `detect` back; both are
+no-ops on a connected lane. `scripts/pi/lane_smoke.sh` (`PI_LANE=N lane_smoke.sh <sha>`: `kmscube_floor.sh`
+then a 300-frame `gles2_zone_benchmark` on DRM) and `scripts/pi_rendered_zone_sweep.sh` use them. The sweep
+is the ledger rig for every lane: on an aarch64 lane it defaults to `ci-arm64/by-branch/fable`, the system Mesa
+(no LLVM-less prefix exists for aarch64) and the `orangepi` preset (`--constrained <preset>` overrides, for the
+measurements a per-lane preset ruling needs); the client runs in its own cgroup and zones in live against the
+eqemu lane, so the `[memgpu]` row and the rendered-zone TSV row are both device figures. Evidence from the
+first runs: `review/B1030/README.md`.
 
 ### The shipped Mesa prefix (B935, #253)
 
@@ -257,7 +312,7 @@ twice.
 
 ## The warm tree, and its trade-off
 
-The runner keeps one working directory per project, and the pipeline keeps three
+Each runner keeps one working directory per project, and the pipeline keeps three
 paths in it across runs:
 
     GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e third_party/irrlicht-gles2-x86
@@ -313,12 +368,78 @@ a clean one. To force a cold run:
 
 - run the pipeline with `GIT_CLEAN_FLAGS` overridden to `-ffdx` (Run pipeline →
   add the variable), **or**
-- on gitlab-runner-1 (as root): `rm -rf /home/gitlab-runner/builds/*/0/willeq/willeq/{build/ref/<slug>,build-gles2/ref/<slug>}`
+- on EACH x86 runner (gitlab-runner-1 and gitlab-runner-2, as root — each
+  holds its own warm trees): `rm -rf /home/gitlab-runner/builds/*/0/willeq/willeq/{build/ref/<slug>,build-gles2/ref/<slug>}`
   for one ref, or the whole `{build,build-gles2,third_party/irrlicht-gles2-x86}`
   for everything.
 
 Do the cold run before trusting a green pipeline on anything that changed the
 build system itself.
+
+### Two x86 runners: the host+sha stamp (B1026, #346)
+
+**Both x86 runners carry `x86-build`** (Will retagged gitlab-runner-2 from
+`x86-build-2` on 2026-10-11 so two pipelines build in parallel). The stages
+still pass no artifacts, so a pipeline's `build` job and its `test` job can
+land on DIFFERENT hosts, and each host has its own warm `$BUILD_TREE`. Before
+B1026 the `test` job then ran whatever binary the other host's tree held.
+**Measured:** fable pipeline 809 (at `0136137b`) built on gitlab-runner-1
+(job 4006) and tested on gitlab-runner-2 (job 4007). The failing
+`SpellLandHookIsGone` assertions cited `test_spell_manager_timing.cpp:793-796`
+`EXPECT_NE`, the PRE-B603 source; the commit under test had `EXPECT_EQ` at
+735-738. That was a false red, and the same split produces a false green: MR
+pipeline 805 was green only because pipeline 804 had happened to build the
+same sha on runner-2 (`review/AUDIT-WAVE8/sections/b603.md` finding 1).
+
+**The mechanism.** The build steps exist once, as the shell function
+`willeq_build_tree` defined by the `.build_tree` anchor:
+
+1. a **ref-only** stamp (`prune_ref_build_trees.py --stamp <tree> --ref <ref>`)
+   before the configure. It is what the prune reads, and it wipes any earlier
+   build claim, so a build that fails part-way leaves a tree no job trusts;
+2. Irrlicht bootstrap if missing or stale, configure, the B907 orphan prune,
+   `cmake --build`;
+3. the **build claim** (`--stamp <tree> --ref <ref> --host "$(hostname)"
+   --sha "$CI_COMMIT_SHA"`), written only after `cmake --build` succeeded
+   (errexit + pipefail: a failed build never reaches it).
+
+The claim is the same `.willeq_ref` file with two more lines, `host=` and
+`sha=`; the prune's parser ignores them, so there is one stamp format.
+
+`build` runs the function. `test` and `client-ledger-live` (via the
+`.verify_build_tree` anchor) first run
+`prune_ref_build_trees.py --verify "$BUILD_TREE" --host "$(hostname)" --sha "$CI_COMMIT_SHA"`,
+which exits 0 only when the claim names this host AND this commit. On a
+mismatch they print a loud line, run `willeq_build_tree` in-job, then verify
+again (a second failure fails the job), and only then run ctest or the client.
+`gate` needs no verify: `.visual_gate_prepare` already builds its own
+`$GLES2_TREE` in the gate job, on whichever host it landed.
+
+**Reading a job log.** Every verify prints one line:
+
+    stamp MATCH build/ref/<slug> (stamp read): stored host=gitlab-runner-1 sha=<sha> ref=<ref> at=<utc>; expected host=gitlab-runner-1 sha=<sha>
+
+On a split it says `stamp MISMATCH`, followed by
+`!!! B1026 STAMP MISMATCH: ... REBUILDING IN-JOB ...`, the
+`=== willeq_build_tree: ... ===` build output, a second `stamp MATCH` line and
+`B1026: in-job rebuild done and verified on <host>`. `stored host=<none>`
+means the tree was never claimed: no stamp, or a ref-only stamp left by a
+build that failed or was cancelled. A stored host equal to the expected one
+with a different sha means this host's tree is from an older commit of the
+ref (the build job ran elsewhere this time).
+
+**The cost.** Nothing when the stages share a host (the verify is a file
+read). When they split, the test job pays one build on its own host:
+incremental if that host has built this ref before, a cold Release build if
+it has not (`build` row in the stages table above). The split is still
+cheaper than the alternatives #346 listed: folding build+test+gate into one
+job gives up the stage boundaries, and passing `bin/` as artifacts moves
+gigabytes per pipeline. The regression net is the hygiene test
+`CiBuildTreeStamp` (`scripts/ci/test_ci_build_tree_stamp.py`), which fails if
+`test` reaches ctest without the verify, if the claim is written before
+`cmake --build`, or if `.goldfarm` claims a single tagged runner again;
+`PruneRefBuildTrees` pins `--verify`'s outcomes. Evidence:
+`refactor/B1026/README.md`.
 
 ### A prior branch's leftover binary is pruned, not just detected (B907)
 

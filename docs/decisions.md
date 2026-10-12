@@ -1105,10 +1105,17 @@ see prints, and `/equip 21 13` silently addressed DB slot 22 (board B796).
 
 What did NOT change, and must not: fable's inventory model, `MoveItemIntent`,
 `SendMoveItem` and the whole wire stay TITANIUM-numbered, because that is what
-the server serialises to a Titanium client. The conversion exists at exactly
-two seams, both in `include/client/inventory/inventory_constants.h`:
-`parseUserSlot()` on the way in and `describeSlot()` on the way out. If a
-third one ever appears, one of them is wrong.
+the server serialises to a Titanium client. B796's conversion exists at
+`parseUserSlot()` on the way in and `describeSlot()` on the way out, both in
+`include/client/inventory/inventory_constants.h`; B810 (#199) added a
+PARALLEL second pair for the corpse slots the loot window addresses --
+`parseCorpseSlot()` in, `corpseSlotToServer()` out, ported from the
+server's separate `ServerToTitaniumCorpseSlot()`/`TitaniumToServerCorpseSlot()`
+in `titanium.cpp`. The corpse pair agrees with the possessions pair over the
+corpse domain (server 23-56) but refuses the looter's own gear (server 0-22)
+that a corpse never holds, and it is the only one the `/loot`-by-number hop may
+use. A conversion that appears anywhere else, or a third pair for these same
+two domains, means one of them is wrong.
 
 **If Will prefers Titanium numbering at the user boundary**, the change is
 small and local: delete the conversion from `parseUserSlot()` (keep its
@@ -1710,14 +1717,7 @@ Measured worst (at `steady_60s`, the asserted point):
 velketor is the worst on both machines because it is the only zone whose
 zone music actually STARTED in these runs: the custom SoundFont
 `synthus2.sf2` loads on first `playMusic` of a Velious/Luclin stem and is
-24,160,712 B (Pi) / 24,162,944 B (x86) of it. **B990 (#309, 2026-10-10)
-changed the font's lifetime: it is now released at `MusicPlayer::stop()`,
-the one place a song ends — both the immediate and the faded path — so it
-is resident only while a custom-font song plays; a following custom song
-reloads it (~35 ms, page-cache; `refactor/B990/README.md`), a GM song never
-loads it. The figures above are the PRE-B990 census (music still playing at
-steady_60s); the post-B990 live x86 census is
-`refactor/B990/audio_ledger_census.tsv`.** kael and thurgadina carry the
+24,160,712 B (Pi) / 24,162,944 B (x86) of it. kael and thurgadina carry the
 same font in their zone EFF, but their music region was not entered in these
 runs (the seeded safe point sits outside it), so their worst is the ~3.6 MB
 startup-only row. The 10 classic zones top out at 4,945,872 B (Pi, erudnint).
@@ -1846,8 +1846,10 @@ address. Proven on 2026-10-08: `eqemu_stack_ready` on all four; `zone_in`
 exit 0 on lanes 3 and 4 (lane 2 after the fix); the official client to
 character select on eq-oracle-1 (lanes 2-4 in the B1008 README).
 CI: `gitlab-runner-1/2` (10.0.30.81/82) take the x86 jobs under tag
-`x86-build`; one runner carries the tag until build+test+gate fold into one
-job, since the stages share a warm tree. hermes-ext's runner no longer
+`x86-build`. (Superseded 2026-10-11: "one runner carries the tag until
+build+test+gate fold into one job" no longer holds -- Will retagged runner-2
+`x86-build`, and B1026 (#346, option (a)) makes a split pipeline safe with a
+host+sha build-tree stamp; `docs/ci.md`.) hermes-ext's runner no longer
 builds, which is what the 2026-10-06 local-gate rule wanted.
 
 **B972-FT ships ring + one glFlush; the PP-jobs bound is 2.5 (2026-10-09,
@@ -1945,3 +1947,61 @@ never a CI job). **A Pi golden moves only on a Pi re-bless by Will; an
 x86 re-bless never touches the Pi set, and vice versa.**
 `docs/ci.md` ("Two golden sets: x86 and Pi (B1024)") carries the working
 rule, including why the live-client sweep is not a pixel channel.
+
+## 2026-10-11 — B1014: the custom-Font release moves to a real end, off the audio thread (worker, #335)
+
+**Source:** AUDIT-WAVE7 found B990's release-on-stop wrong twice over
+(`refactor/B1014/README.md`): `MusicPlayer::play()` calls `stop()` first and
+`AudioManager::playMusic` selects the font BEFORE `play()`, so a custom-font
+song following any playing song (the `setDayNight` order
+`stopMusic(1.0) + playMusic`, `zone_audio_manager.cpp`) had its font freed by
+the very next call and played on GM (probes: `resident=0 active=GM` on
+origin/fable); and the fade-completion `tsf_close` ran on the audio thread,
+racing the game thread's `selectSoundFont(Custom)` / `MidiPlayer::play()`
+(possible double-close the T248 render barrier does not cover — it covers
+render passes, not game-thread mutators).
+
+The 2026-10-05 census above carries a note on the font's lifetime since it was
+taken: B990 (#309) released it at `MusicPlayer::stop()`; B1014 moves that
+release to a REAL end only, because the stop inside `play()` was freeing the
+font the next song had just selected. The 2026-10-05 figures are the PRE-B990
+census (music still playing at steady_60s); the post-B990 live x86 census is
+`refactor/B990/audio_ledger_census.tsv`.
+
+**Fix (no timer, no second cache, `memoryLedgerBudgets.audio` untouched):**
+the font is released only when a song really ends — the public
+`MusicPlayer::stop()` (immediate, nothing following) or a fade's completion.
+The stop inside `play()` uses an internal stop that never releases (the next
+song may be on the font). The audio thread no longer frees: fade completion
+only sets `fontReleasePending_`; the game thread frees, in
+`MusicPlayer::drainPendingFontRelease()` (called from
+`AudioManager::update()`, driven every game tick, and from the public
+`stop()`), refusing while a song plays so the flag can never free a font the
+next custom song is already using. Pinned by
+`tests/test_soundfont_release.cpp` (7 tests, all asserting
+`getActiveSoundFont()` — the behaviour, not the resident proxy; plus a
+ledger census of the B990 2,976 B / 32-block `au.soundfont_custom` residual,
+confirmed as the first-call construction of
+`getSoundFontTypeForFile()`'s static `synthus2Files` name set). See
+`refactor/B1014/README.md` for red/green.
+
+## 2026-10-12 — B1033: the aarch64 SBC lanes run the `orangepi` preset, the same bounds, no goldens of their own (Will, "I agree with your suggestion re: B1033"; #353)
+
+The Rock64 (lane 2, 4 GB) and ROCK 4D (lane 3, 12 GB) joined as client
+targets under B1030 (#350). Measured on both at qeynos2 steady, own cgroup,
+live zone-in: ~70 MB owned_rss_anon on the `orangepi` preset before any GPU
+buffer is counted (`review/B1030/README.md`, "The ledger runs"). Ruled:
+
+1. **One preset.** Every SBC lane runs `--constrained orangepi` (composite
+   entities OFF, 16-bit depth, the Pi's caps). A lane-specific preset is for
+   an experiment that needs it, never a default and never a gate.
+2. **Same numbers.** The 256 MB RssAnon failing bound and the 64 MB owned
+   target apply unchanged on lanes 2 and 3; no per-board budgets.
+3. **No goldens of their own** until a lane runs the visual gate at all.
+   Lane 2 shares the Pi's Mesa 25.2.8 and may match the Pi-rendered
+   goldens (B1024) exactly — a measurement to take first, not a manifest to
+   bless.
+
+`scripts/pi_rendered_zone_sweep.sh --constrained <preset>` remains the
+override for experiments; `docs/ci.md` "The aarch64 SBC lanes" states the
+rule.
