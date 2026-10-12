@@ -115,8 +115,6 @@ public:
     void stopAutoAttackMusic();    // Restores previous music
     void startVendorBankMusic();   // Plays gl.xmi track 22, loops
     void stopVendorBankMusic();    // Restores previous music
-    bool isAutoAttackMusicPlaying() const { return autoAttackMusicActive_; }
-    bool isVendorBankMusicPlaying() const { return vendorBankMusicActive_; }
 
     // Volume controls (0.0 - 1.0)
     void setMasterVolume(float volume);
@@ -140,7 +138,6 @@ public:
     // SfxManager::playSpatial() -- see playSoundInternal(). Set once from
     // config by BridgeComponent::InitializeAudio().
     void setUse3DAudio(bool enabled) { use3DAudio_ = enabled; }
-    bool isUse3DAudio() const { return use3DAudio_; }
 
     // RDP audio streaming callback
     void setAudioOutputCallback(AudioOutputCallback callback);

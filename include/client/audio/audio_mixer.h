@@ -111,7 +111,6 @@ public:
     void setSfxVolume(float vol);
     float getMasterVolume() const { return masterVolume_.load(); }
     float getMusicVolume() const { return musicVolume_.load(); }
-    float getSfxVolume() const { return sfxVolume_.load(); }
 
     static constexpr uint32_t SAMPLE_RATE = 22050;
     static constexpr int MAX_SFX_CHANNELS = 16;

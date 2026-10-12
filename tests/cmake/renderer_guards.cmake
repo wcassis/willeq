@@ -580,6 +580,19 @@ ADD_EXECUTABLE(test_console_target_hp
 TARGET_LINK_LIBRARIES(test_console_target_hp GTest::gtest_main willeq_core)
 GTEST_DISCOVER_TESTS(test_console_target_hp DISCOVERY_TIMEOUT 120)
 
+# B1027 (#347): the headless wire leg of the same readout -- an OP_MobHealth
+# replay must move the ConsoleRenderer's status-line target HP. At
+# origin/fable this is RED: the state EventBus publish EntityStatsChanged
+# had no publisher (the MobHealth bridge publish feeds the render-thread
+# bridge, not the bus the console subscribes to). The fix's state-bus
+# publish in ZoneProcessMobHealth is pinned here and by the state-bus
+# census test.
+ADD_EXECUTABLE(test_console_target_hp_feed
+    test_console_target_hp_feed.cpp
+)
+TARGET_LINK_LIBRARIES(test_console_target_hp_feed GTest::gtest_main willeq_core)
+GTEST_DISCOVER_TESTS(test_console_target_hp_feed DISCOVERY_TIMEOUT 120)
+
 # T319: the R key (ReplyToTell) end to end -- OnEvent decode, the
 # mutex-guarded bridgeQueue_, GraphicsInputHandler, the real
 # InputActionBridge + ActionDispatcher, the action callback Application

@@ -244,8 +244,6 @@ EXEMPT = {
         ("boarded", "B298: race record field from willeq.db"),
     ("RaceModelInfo", "neuterCode"):
         ("boarded", "B298: race record field from willeq.db"),
-    ("GraphicsArchiveIndex", "lazyMode_"):
-        ("boarded", "B295: buildIndex() stores its lazyMode argument and never reads it"),
     ("EQE1Header", "reserved"):
         ("wire", "EQE1 header padding; the on-disk layout requires it"),
     ("WldFragment37Header", "param2"):
@@ -293,8 +291,12 @@ EXEMPT = {
         ("boarded", "B342: three registered callbacks the manager never invokes"),
     ("InventoryManager", "moveItemCallback_"):
         ("boarded", "B342: three registered callbacks the manager never invokes"),
-    ("ParticleManager", "entityDirCallback_"):
-        ("boarded", "B342: registered callback the manager never invokes"),
+    # The B293/B342 row (ParticleManager, entityDirCallback_) was removed by
+    # B293 (#124, 2026-10-12): the callback is READ by
+    # ParticleManager::resolveEntityDirection(), which the renderer's
+    # direction-resolution arm in SimBridgeComponent::applySimulationOutput()
+    # calls once per entity the worker's particleOutput.directionRequestEntities
+    # named. An exemption may not outlive its row.
     ("CharacterModelView", "inventoryManager_"):
         ("boarded", "B343: paperdoll holds the inventory manager and reads nothing from it"),
     ("EQAnimatedMeshSceneNode", "sceneManager_"):
