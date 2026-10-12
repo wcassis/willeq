@@ -244,8 +244,6 @@ EXEMPT = {
         ("boarded", "B298: race record field from willeq.db"),
     ("RaceModelInfo", "neuterCode"):
         ("boarded", "B298: race record field from willeq.db"),
-    ("GraphicsArchiveIndex", "lazyMode_"):
-        ("boarded", "B295: buildIndex() stores its lazyMode argument and never reads it"),
     ("EQE1Header", "reserved"):
         ("wire", "EQE1 header padding; the on-disk layout requires it"),
     ("WldFragment37Header", "param2"):
