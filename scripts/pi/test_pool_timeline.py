@@ -109,6 +109,106 @@ class PoolTimelineTest(unittest.TestCase):
         finally:
             os.unlink(t.name)
 
+    def test_read_frames_synthetic_block(self):
+        # The F block the lima_bo_census self-test writes (frame 0: 2 creates
+        # + 1 hit poll + 1 busy poll + 1 GP + 1 PP submit; frame 1: none;
+        # frame 2: 1 busy poll), interleaved with P/B/E lines that read_dump
+        # owns.
+        import tempfile
+        tsv = ("P\tready\t2740370.5\t1448\t100000000\t2314\t866\t0\t4\t2\t3\t1\t5000000\n"
+               "B\t7\t1\t4096\t0\t0\t1\t1\t-\t-\n"
+               "E\tready\n"
+               "F\tready\t0\t2\t1\t1\t1\t1\n"
+               "F\tready\t1\t0\t0\t0\t0\t0\n"
+               "F\tready\t2\t0\t0\t1\t0\t0\n"
+               "FE\tready\t3\n"
+               "P\tafter\t2740380.0\t1450\t100100000\t3157\t881\t0\t7\t3\t4\t1\t5000000\n"
+               "E\tafter\n")
+        with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False) as f:
+            f.write(tsv)
+        try:
+            rows = g.read_frames(f.name)
+            self.assertEqual(len(rows), 3)
+            self.assertEqual(rows[0], {"marker": "ready", "frame": 0, "creates": 2,
+                                       "poll_hit": 1, "poll_busy": 1,
+                                       "gp_submits": 1, "pp_submits": 1})
+            self.assertEqual(rows[1]["frame"], 1)
+            self.assertEqual(rows[1]["creates"], 0)
+            self.assertEqual(rows[2], {"marker": "ready", "frame": 2, "creates": 0,
+                                       "poll_hit": 0, "poll_busy": 1,
+                                       "gp_submits": 0, "pp_submits": 0})
+            # read_dump is unaffected by the F/FE lines (its docstring says
+            # so; this pins it):
+            points, order = g.read_dump(f.name)
+            self.assertEqual(order, ["ready", "after"])
+            self.assertEqual(points["after"]["meta"]["frames"], 7)
+            self.assertEqual(points["after"]["meta"]["gp_submits"], 3)
+        finally:
+            os.unlink(f.name)
+
+    def test_read_frames_corrupt_blocks_raise(self):
+        import tempfile
+        cases = {
+            "FE without F lines":
+                "FE\tready\t0\n",
+            "F lines with no closing FE":
+                "F\tready\t0\t1\t0\t0\t0\t0\n",
+            "FE count does not match its rows":
+                "F\tready\t0\t1\t0\t0\t0\t0\n"
+                "F\tready\t1\t0\t0\t1\t0\t0\n"
+                "FE\tready\t3\n",
+            "FE marker does not match its rows":
+                "F\tready\t0\t1\t0\t0\t0\t0\n"
+                "FE\tstartup\t1\n",
+            "an F line right after its FE (a new block always follows a P line)":
+                "F\tready\t0\t1\t0\t0\t0\t0\n"
+                "FE\tready\t1\n"
+                "F\tready\t0\t0\t0\t1\t0\t0\n"
+                "FE\tready\t1\n",
+        }
+        for name, body in cases.items():
+            with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False) as f:
+                f.write(body)
+            try:
+                with self.assertRaises(ValueError, msg=name):
+                    g.read_frames(f.name)
+            finally:
+                os.unlink(f.name)
+
+    def test_read_frames_two_blocks_and_no_f_lines(self):
+        # Re-arming: the shim flushes one block per marker pass, and a new
+        # block always follows the P line that armed it (the dump writes the
+        # F block BEFORE its own P line). A second `ready` dump therefore
+        # yields: F FE P ready F FE P ready. And a pre-B1013 dump has no F
+        # lines at all.
+        import tempfile
+        two = ("F\tready\t0\t2\t1\t1\t1\t1\n"
+               "FE\tready\t1\n"
+               "P\tready\t2740370.5\t1448\t100000000\t2314\t866\t0\n"
+               "E\tready\n"
+               "F\tready\t0\t0\t0\t1\t0\t0\n"
+               "FE\tready\t1\n"
+               "P\tready\t2740430.6\t1450\t100100000\t3157\t881\t0\n"
+               "E\tready\n")
+        with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False) as f:
+            f.write(two)
+        try:
+            rows = g.read_frames(f.name)
+            self.assertEqual([r["poll_busy"] for r in rows], [1, 1])
+            # read_dump keeps the LAST block for a twice-recorded point:
+            points, order = g.read_dump(f.name)
+            self.assertEqual(order, ["ready"])
+            self.assertEqual(points["ready"]["meta"]["mono"], 2740430.6)
+        finally:
+            os.unlink(f.name)
+        self.assertEqual(g.read_frames(os.path.join(DATA, "no_such_file.tsv")), [])
+        with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False) as f:
+            f.write("P\tready\t1.0\t1\t4096\t0\t0\t0\nB\t7\t1\t4096\t0\t0\t1\t1\t-\t-\nE\tready\n")
+        try:
+            self.assertEqual(g.read_frames(f.name), [])
+        finally:
+            os.unlink(f.name)
+
 
 if __name__ == "__main__":
     unittest.main()

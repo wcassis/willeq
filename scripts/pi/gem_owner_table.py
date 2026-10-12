@@ -160,6 +160,50 @@ def job_rates(path, start="ready", end="steady_60s"):
             "wait_ms_per_frame": d("wait_ns") / frames / 1e6}
 
 
+def read_frames(path):
+    """B1013 (#334): the per-frame zone-in burst rows the shim appends to the
+    mode-2 dump (lima_bo_census.c mode 4) -- a list of dicts, one per F line,
+    in file order, each {"marker", "frame", "creates", "poll_hit",
+    "poll_busy", "gp_submits", "pp_submits"}. The FE line (the block's
+    frame count) is the block's own checksum: an F line after the FE, or an
+    FE whose count does not match the rows read so far, is a corrupted dump
+    and raises ValueError. An absent file or one with no F lines is not an
+    error -- it is a pre-B1013 dump (a build without the counters), so [] is
+    the answer, not None."""
+    out = []
+    if not path or not os.path.exists(path):
+        return out
+    cur_marker = None
+    cur_rows = 0
+    after_fe = False
+    with open(path, errors="replace") as f:
+        for line in f:
+            p = line.rstrip("\n").split("\t")
+            if p[0] == "F" and len(p) == 8:
+                if after_fe:                     # an F line right after its FE
+                    raise ValueError("F line after FE in %s" % path)
+                cur_marker = p[1]
+                cur_rows += 1
+                out.append({"marker": p[1], "frame": int(p[2]), "creates": int(p[3]),
+                            "poll_hit": int(p[4]), "poll_busy": int(p[5]),
+                            "gp_submits": int(p[6]), "pp_submits": int(p[7])})
+            elif p[0] == "FE" and len(p) == 3:
+                count = int(p[2])
+                if cur_marker is None:           # an FE with no F lines at all
+                    raise ValueError("FE without F lines in %s" % path)
+                if p[1] != cur_marker or count != cur_rows:
+                    raise ValueError("FE (%s, %s) does not match its %d F rows in %s"
+                                     % (p[1], count, cur_rows, path))
+                cur_marker = None
+                cur_rows = 0
+                after_fe = True
+            else:
+                after_fe = False
+    if cur_marker is not None:                   # rows without a closing FE
+        raise ValueError("%d F lines with no FE in %s" % (cur_rows, path))
+    return out
+
+
 def pool_timeline(events_path, dump_path, start="ready", end="steady_60s",
                   window_start_s=20.0):
     """B1013 (GitLab #334): the Lima BO-cache pool (docs/reference/lima_cost_sheet.md
