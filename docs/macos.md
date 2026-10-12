@@ -79,11 +79,13 @@ for EGL/GLESv2 and the Lima shim.
     ctest --test-dir build -L hygiene
 
 `EQ_CLIENT_PATH` and `WILLEQ_EQE1_PATH` point the asset tests at the NAS
-mount (their default is the Linux `/mnt/projects/...` path). Without them,
-tests that look only there SKIP, and `test_eqe1_loader` FAILS. The skips
-of a correct run are the same kinds as Linux's headless tree: absent
-`data/captures/` replays, the no-renderer gate tests, and the cases that
-skip by design (`refactor/B1039/README.md` names them).
+mount (their default is the Linux `/mnt/projects/...` path); without them
+more asset tests SKIP, nothing fails. A green run on the Mac still skips
+more than Linux's headless tree: the ledger-dependent audio cases (the
+ledger is off), and the tests that hard-code a `/mnt/projects` path with no
+override, on top of Linux's own skips (absent `data/captures/` replays, the
+no-renderer gate tests, skip-by-design cases). `refactor/B1039/README.md`
+names every one.
 
 ## Float results are not x86's bit for bit
 
