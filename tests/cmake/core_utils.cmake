@@ -395,6 +395,13 @@ ADD_TEST(NAME PoolTimeline
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_pool_timeline.py -v)
 SET_TESTS_PROPERTIES(PoolTimeline PROPERTIES LABELS "hygiene")
 
+# B1013 (GitLab #334): the EQT_DRAW_CENSUS_WINDOW parse rule (the ONE place the
+# draw-census window is parsed: include/client/graphics/draw_census.h, applied
+# in the driver through the gles2SetDrawCensusWindow bridge).
+ADD_EXECUTABLE(test_draw_census_window test_draw_census_window.cpp)
+TARGET_LINK_LIBRARIES(test_draw_census_window GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_draw_census_window DISCOVERY_TIMEOUT 120)
+
 # B986: the DRM client's Lima BO retention policy, before device creation.
 ADD_EXECUTABLE(test_lima_buffer_policy test_lima_buffer_policy.cpp)
 TARGET_LINK_LIBRARIES(test_lima_buffer_policy GTest::gtest_main)
