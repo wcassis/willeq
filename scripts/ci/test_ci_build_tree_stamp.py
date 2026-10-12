@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""B1026 (#346) -- pin the host+sha build-tree stamp into .gitlab-ci.yml.
+
+Since gitlab-runner-2 took the `x86-build` tag (2026-10-11) the stages of one
+pipeline may land on different hosts, and the stages pass no artifacts: fable
+pipeline 809 built on gitlab-runner-1 (job 4006) and tested gitlab-runner-2's
+pre-B603 binary (job 4007), a false red. The fix lives in the pipeline file,
+so this test reads it as TEXT (no PyYAML on the runners, and `!reference` is
+a GitLab-only tag) and asserts:
+
+  1. the `test` job verifies the stamp before its first ctest line, and the
+     verify block rebuilds with the shared willeq_build_tree on a mismatch and
+     verifies again; `client-ledger-live` verifies before it runs the client;
+  2. the build steps exist once (`.build_tree`), the `build` job runs them, and
+     inside them the host+sha claim is written AFTER `cmake --build` (a stamp
+     must never claim a build that failed), with the only stamp before it
+     being the ref-only one that clears an earlier claim;
+  3. the `.goldfarm` comment no longer claims a single tagged runner.
+
+Red before B1026 (no verify, no claim stamp, the single-runner comment).
+"""
+import re
+import sys
+from pathlib import Path
+
+CI = Path(__file__).resolve().parents[2] / ".gitlab-ci.yml"
+
+
+def job_body(text, name):
+    """The lines of a top-level key's block (up to the next top-level key)."""
+    m = re.search(rf"^{re.escape(name)}:\s*$", text, re.M)
+    assert m, f"no top-level `{name}:` in .gitlab-ci.yml"
+    rest = text[m.end():]
+    nxt = re.search(r"^[^\s#][^:\n]*:\s*$", rest, re.M)
+    return (rest[: nxt.start()] if nxt else rest).splitlines()
+
+
+def code_lines(body):
+    """Drop comment-only lines: a comment that mentions ctest must not count."""
+    return [l for l in body if not l.strip().startswith("#")]
+
+
+def first_index(lines, pred, what):
+    for i, l in enumerate(lines):
+        if pred(l):
+            return i
+    raise AssertionError(f"not found: {what}")
+
+
+def check(text):
+    failures = []
+
+    def expect(cond, msg):
+        if not cond:
+            failures.append(msg)
+
+    # 2. one copy of the build steps; the claim comes after cmake --build.
+    bt = code_lines(job_body(text, ".build_tree"))
+    i_build = first_index(bt, lambda l: "cmake --build" in l, ".build_tree cmake --build")
+    claims = [i for i, l in enumerate(bt) if "prune_ref_build_trees.py --stamp" in l and "--sha" in l]
+    expect(len(claims) == 1, f".build_tree must write exactly one host+sha claim, found {len(claims)}")
+    expect(all(i > i_build for i in claims), ".build_tree writes the host+sha claim before cmake --build")
+    expect(all("--host" in bt[i] and "$CI_COMMIT_SHA" in bt[i] for i in claims),
+           ".build_tree's claim must record --host and $CI_COMMIT_SHA")
+    pre = [l for l in bt[:i_build] if "--stamp" in l]
+    expect(pre and all("--sha" not in l for l in pre),
+           ".build_tree needs a ref-only stamp before the build (it clears an earlier claim)")
+    i_conf = first_index(bt, lambda l: re.search(r"cmake -S \. -B \"\$BUILD_TREE\"", l), ".build_tree configure")
+    i_pre = first_index(bt, lambda l: "--stamp" in l and "--sha" not in l, ".build_tree ref-only stamp")
+    expect(i_pre < i_conf, ".build_tree's ref-only stamp must precede the configure")
+    expect(any("set -eo pipefail" in l for l in bt[:i_build]),
+           ".build_tree must run under errexit+pipefail so a failed build never stamps")
+
+    build = code_lines(job_body(text, "build"))
+    expect(any("!reference [.build_tree, script]" in l for l in build), "`build` must use !reference [.build_tree, script]")
+    expect(any(l.strip() == "- willeq_build_tree" for l in build), "`build` must run willeq_build_tree")
+    expect(not any("cmake --build" in l for l in build), "`build` keeps its own copy of cmake --build (use .build_tree)")
+
+    # 1. the verify-or-rebuild block, and its use before the first ctest.
+    vb = code_lines(job_body(text, ".verify_build_tree"))
+    expect(any("!reference [.build_tree, script]" in l for l in vb), ".verify_build_tree must define willeq_build_tree")
+    verifies = [i for i, l in enumerate(vb) if "prune_ref_build_trees.py --verify" in l]
+    expect(len(verifies) == 2, f".verify_build_tree must verify before and after the rebuild, found {len(verifies)}")
+    i_reb = first_index(vb, lambda l: l.strip() == "willeq_build_tree", ".verify_build_tree rebuild")
+    expect(verifies and verifies[0] < i_reb < verifies[-1], ".verify_build_tree order must be verify, rebuild, verify")
+    expect(any("STAMP MISMATCH" in l for l in vb), ".verify_build_tree must print a loud STAMP MISMATCH line")
+    expect(all('--host "$(hostname)"' in vb[i] and '--sha "$CI_COMMIT_SHA"' in vb[i] for i in verifies),
+           ".verify_build_tree must check this host and $CI_COMMIT_SHA")
+
+    for job, consumer in (("test", "ctest"), ("client-ledger-live", "client_ledger_capture.sh")):
+        body = code_lines(job_body(text, job))
+        i_c = first_index(body, lambda l: consumer in l, f"{job} {consumer}")
+        i_v = [i for i, l in enumerate(body) if "!reference [.verify_build_tree, script]" in l]
+        expect(bool(i_v) and i_v[0] < i_c, f"`{job}` must verify the stamp before its first {consumer} line")
+
+    # 3. the stale single-runner premise is gone from .goldfarm.
+    gold = "\n".join(job_body(text, ".goldfarm"))
+    for stale in ("ONE runner carries", "x86-build-2", "idles until"):
+        expect(stale not in gold, f".goldfarm comment still says {stale!r}")
+    expect("BOTH runners carry `x86-build`" in gold, ".goldfarm comment must say both runners carry x86-build")
+    expect("tags: [x86-build]" in gold, ".goldfarm must still tag x86-build")
+    return failures
+
+
+def main():
+    text = CI.read_text()
+    failures = check(text)
+
+    # Self-test: the pre-B1026 shape must fail every rule group.
+    old = text.replace("    - !reference [.verify_build_tree, script]\n", "")
+    old = old.replace("BOTH runners carry `x86-build`", "ONE runner carries the tag")
+    expect_red = check(old)
+    if not any("test" in f and "verify" in f for f in expect_red) or not any(".goldfarm" in f for f in expect_red):
+        failures.append(f"self-test: a pipeline without the verify still passes ({expect_red})")
+    stamp_first = re.sub(r"(\n\s*nice -n 10 cmake --build[^\n]*)(\n\s*python3 scripts/ci/prune_ref_build_trees.py --stamp[^\n]*--sha[^\n]*)",
+                         r"\2\1", text)
+    if stamp_first == text or not any("before cmake --build" in f for f in check(stamp_first)):
+        failures.append("self-test: a claim written before cmake --build still passes")
+
+    for f in failures:
+        print("FAIL:", f)
+    if failures:
+        return 1
+    print("OK: test/client-ledger-live verify the host+sha stamp first; build claims only after cmake --build; "
+          ".goldfarm names both x86-build runners")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
