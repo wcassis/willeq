@@ -207,6 +207,33 @@ the `got` column above (the +24 per loaded model is a permanent consequence
 of the #70 tag; the alternatives -- dropping the tag or special-casing the
 metric -- both break the 100 %-accounting shape of `calcCharModels`).
 
+## The #69 (B732) row: what fable now fixes, and what still rides the held branch (2026-10-12)
+
+B732 (issue #69) is the same loader defect at full T479 scope: 49 zone-chr
+skeletons whose 0x200-listed meshes carry no race-code prefix stored NO
+model, plus 8 names that missed listed meshes (GOM, SSN, UDK, SRG, TRT,
+CCD, GOJ, IVM). B733's loader fix IS the loader fix: the 0x200 collect
+(`s3d_loader_characters.cpp:262-279`, UNCONDITIONAL — it runs for every
+skeleton and collects every listed mesh the bone walk did not store; the
+`boneWalkStoredNothing` gate at `:282` is on the PREFIX-FALLBACK block
+below it, not the collect) appends those extras AFTER the prefix fallback
+(`357-395`), so on fable ALL of B732's chr-archive population — the 49
+no-prefix skeletons and the 8 missed names — now have their listed meshes
+stored. QA t_cbfd7f9a's censuses (2026-10-11, over all
+378 `*_chr.s3d` archives and all 138 db races at the B733 tip): the
+#70-class recovery is exactly SSN (7 archives: cabeast/charasis/chardok/
+citymist/kaesora/karnor/kurn), IVM, FAF, PIF, TRI, GOM, and only races
+127/146/240 change in the built-model byte census (127: 73→579, 240:
+73→579, 146: 3359→4333 both genders) — every other race byte-identical.
+What STILL rides the held T479 branch: (a) the test pin
+`SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart` (tests/ has no
+such suite on fable; `B733Race146LoaderTest` pins the race-146 shape, not
+the full 419-archive census); (b) the T479 companion fixes B730/B731
+(object loader posing, skeleton double-skinning); (c) the merge blockers
+(Pi OOM B750 / lever B752, qeynos2 gate bless). So B732's defect is FIXED
+on fable by B733's loader; what remains open is the test net and the
+T479-branch merge.
+
 ## Not verified / left open
 
 - The visual gate itself (`scripts/ci/visual_gate.py`, all five manifest zones)
