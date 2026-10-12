@@ -85,6 +85,19 @@ of a correct run are the same kinds as Linux's headless tree: absent
 `data/captures/` replays, the no-renderer gate tests, and the cases that
 skip by design (`refactor/B1039/README.md` names them).
 
+## Float results are not x86's bit for bit
+
+Apple clang on arm64 fuses `a*b+c` into one FMA unless told not to, so
+`CMakeLists.txt` passes `-ffp-contract=off` on Darwin; with it,
+`HCMapRaySetGolden` matches the x86 goldens in every zone (with the default
+contraction 4 of 4 differed, one by a flipped line-of-sight verdict). Apple's
+libm is a different matter: `GameStateIdentity`'s pinned collision-map
+digests depend on `sin`/`cos` (`HCMap`'s placeable rotation) and do NOT match
+on the Mac. Both suites look for the server maps at
+`/mnt/projects/akk-stack/server/maps/base` and SKIP on the Mac; do not point
+`WILLEQ_MAP_FIXTURES` at the NAS copy there and read the
+`GameStateIdentity` failures as a defect -- they are the platform's libm.
+
 ## What differs on Darwin in the code
 
 Every difference is a `__linux__`/`__APPLE__` guard or a CMake condition;

@@ -6,6 +6,15 @@ PROJECT(willeq VERSION 1.0.0 LANGUAGES CXX C)
 SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# B1039 (#359): Apple clang on arm64 contracts a*b+c into one FMA by default,
+# so float results differ in the last bit from the x86 builds the goldens were
+# taken on (HCMapRaySetGolden: 4 of 4 zones, one CheckLOS verdict flipped).
+# Off, the Mac's plain float arithmetic matches x86; libm (sin/cos) still may
+# not (docs/macos.md). Darwin only -- no Linux/ARM build changes.
+IF(APPLE)
+    ADD_COMPILE_OPTIONS(-ffp-contract=off)
+ENDIF()
+
 # Build options
 OPTION(EQT_DEBUG "Enable debug logging" ON)
 OPTION(EQT_BUILD_TESTS "Build tests" ON)
