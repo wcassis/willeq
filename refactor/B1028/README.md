@@ -39,8 +39,9 @@ task.
   QA t_cbfd7f9a's censuses (2026-10-11, at the B733 tip), not re-measured here.
 - B533 MR number (!138) verified by `glab mr view 138` and the merge commit
   `82deb60c` on origin/fable; the B494 row strike uses that citation.
-- `src/client/graphics/CLAUDE.md:44` (the B494 CameraController sentence) was
-  NOT touched: chain `t_c54cec35` owns it (card instruction).
+- The B494 CameraController sentence in `src/client/graphics/CLAUDE.md:44`
+  (the `CameraController` bullet) was NOT touched: chain `t_c54cec35` owns it
+  (card instruction).
 - The T479-branch text copied into BOARD.md is the historical record of
   `task/T479-skeleton-mesh-list-loaders` and was left verbatim; only the
   orchestrator note above it and the B732 row's dated annotation were updated.
