@@ -21,6 +21,9 @@ task.
 
 ## Verified at the head
 
+- CI pipeline 886 at `00f17984` (MR !154): hygiene, build, test and gate all
+  success — test 5747/5747 (100 %), the one-time red at `17a61c4f` (pipeline
+  876, DocCitations job 4479) was fixed in `00f17984`.
 - `ctest --test-dir build -L hygiene`: 29/29 (run after each commit).
 - `check_zero_callers.py --check` and `check_write_only_fields.py --check`:
   exit 0 after the step-1/1b deletions.
