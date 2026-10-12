@@ -260,6 +260,18 @@ went, not reclassified).
  re-passed on the tip binaries (the waiver change touches only the census
  test, so those runs stand).
 
+Pipeline 844 (head 36dfd68c) then failed on INFRASTRUCTURE, not code — the
+B1012 runner-split that the 833 wait was warned about (job 4250 hygiene and
+4251 build ran on gitlab-runner-1, both success; job 4252 test landed on
+gitlab-runner-2 and died before running a single test: `Failed to change
+working directory to ".../build/ref/task-kb-b606-renderer-asset-data-zero-
+callers": No such file or directory` — the warm build tree exists only on
+runner-1's disk; `job4252_trace.txt` in the evidence dir). The test job ran
+zero tests, so it cannot speak to this branch's code. The code question was
+already answered by 833: 5725/5726 passed with exactly the one failure now
+fixed. Fix is on the CI side: untag runner-2 from the x86-build tag (or fold
+the stages into one job), per `.gitlab-ci.yml`'s own comment and board B1012.
+
 ## Docs touched
 
 - `refactor/BOARD.md` — the B606 bullet struck (every mention: the bullet is
