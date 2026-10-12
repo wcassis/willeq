@@ -381,11 +381,17 @@ GTEST_DISCOVER_TESTS(test_gpu_buffer_census DISCOVERY_TIMEOUT 120)
 # dump into the per-owner table against the [memgpu] row
 # (scripts/pi/test_gem_owner_table.py, over a dump CAPTURED on the Pi in
 # tests/data/b962/). Pure host checks, no GPU.
-ADD_EXECUTABLE(test_lima_bo_census_shim ${CMAKE_SOURCE_DIR}/scripts/pi/lima_bo_census.c)
-TARGET_COMPILE_DEFINITIONS(test_lima_bo_census_shim PRIVATE B962_SHIM_SELFTEST)
-TARGET_LINK_LIBRARIES(test_lima_bo_census_shim ${CMAKE_DL_LIBS} Threads::Threads)
-ADD_TEST(NAME LimaBoCensusShim
-    COMMAND test_lima_bo_census_shim ${CMAKE_CURRENT_BINARY_DIR}/b962_shim_selftest.tsv)
+# B1039 (#359): the shim interposes Linux's ioctl/mmap64/off64_t (an LD_PRELOAD
+# for the Pi's Lima driver); it is built only where those exist.
+IF(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    ADD_EXECUTABLE(test_lima_bo_census_shim ${CMAKE_SOURCE_DIR}/scripts/pi/lima_bo_census.c)
+    TARGET_COMPILE_DEFINITIONS(test_lima_bo_census_shim PRIVATE B962_SHIM_SELFTEST)
+    TARGET_LINK_LIBRARIES(test_lima_bo_census_shim ${CMAKE_DL_LIBS} Threads::Threads)
+    ADD_TEST(NAME LimaBoCensusShim
+        COMMAND test_lima_bo_census_shim ${CMAKE_CURRENT_BINARY_DIR}/b962_shim_selftest.tsv)
+ELSE()
+    MESSAGE(STATUS "test_lima_bo_census_shim: Linux only (Lima ioctl/mmap64 shim) -- not built")
+ENDIF()
 ADD_TEST(NAME GemOwnerTable
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_gem_owner_table.py -v)
 SET_TESTS_PROPERTIES(GemOwnerTable PROPERTIES LABELS "hygiene")

@@ -27,7 +27,13 @@ OPTION(EQT_LIVE_TESTS "Register the live/integration tests (need a server + disp
 # macro is defined for EVERY target (it is in a header every TU may include)
 # so the ledger TU and its callers can never disagree about the layout.
 OPTION(EQT_MEMORY_LEDGER "Attribute every anonymous byte to a lifecycle category at the allocator (T491)" ON)
-IF(EQT_MEMORY_LEDGER)
+IF(EQT_MEMORY_LEDGER AND APPLE)
+    # B1039 (#359): the hooks wrap glibc's __libc_* entry points; macOS has
+    # none, so the ledger compiles to its OFF shape there (memory_ledger.h
+    # enforces the same in source). A malloc_zone backend is not written.
+    MESSAGE(STATUS "Memory ledger: ON requested; macOS has no glibc allocator entry points -- compiled in its OFF shape")
+    ADD_DEFINITIONS(-DEQT_MEMORY_LEDGER=0)
+ELSEIF(EQT_MEMORY_LEDGER)
     ADD_DEFINITIONS(-DEQT_MEMORY_LEDGER=1)
 ELSE()
     ADD_DEFINITIONS(-DEQT_MEMORY_LEDGER=0)
