@@ -56,37 +56,45 @@ it without taking that measurement first.
   custom font. **Left for Will (per the card): the Pi re-run and the
   `memoryLedgerBudgets.audio` re-ratchet, after B989 lands too.**
 - ~~**B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
-  float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode,
-  ~2.0–2.4 MB after the B977 tour's combat) and `SfxManager::cache_`
-  (`au.sfx_cache`, `preload()`'s second copy of the same samples), each capped
-  separately at the preset's `soundCache` (8,192 KB on orangepi) — up to
-  16 MiB of duplicated decoded PCM the 1999 client did not carry twice.
-  Measured: b977-audio x86 befallen `au.sound_buffers` 2,322,320 +
-  `au.sfx_cache` 310,640 B at steady_60s (723,600 B at the shutdown and
-  zone_change points; Pi befallen 2,320,376 + 723,456 B at steady_60s,
-  `refactor/B977/audio_ledger_census.tsv` owner rows). **STRUCK (2026-10-11,
-  `task/kb-b989-sfx-cache-dup`, `refactor/B989/README.md`):** the decoded PCM
-  is now held ONCE — `AudioManager::loadSound` decodes into its buffer cache
-  and hands the same `std::shared_ptr<SoundBuffer>` to
-  `SfxManager::preload()`; `SfxManager::cache_` is a shared-reference LRU (it
-  evicts references, never the PCM), the `au.sfx_cache` owner row is gone, and
-  the preset's `soundCache` cap bounds the single cache (T412's LRU now
-  actually enforced). RED/GREEN: `tests/test_sfx_single_pcm_cache` (3 cases:
-  a fresh play grows the `audio` category by the decoded PCM exactly once, a
-  buffer-cached replay grows it ~0 where the pre-fix code grew it by a full
-  second copy — 22,336 B of 21,920 B PCM on the RED commit — and the cap
-  evicts LRU-oldest and bounds resident bytes); `tests/test_sfx_cache_eviction`
-  covers the eviction mechanics; the CI `test` job's audio suite is green
-  (5,757/5,757 at MR head cbdb905b, pipeline 773 — re-measured per push, not
-  quoted). Live
-  ledger leg, same tour/character/eligibility as B977's (lane 3, x86,
-  befallen, rat fight, `refactor/B989/audio_ledger_census.tsv`): steady_60s
-  `audio` **3,872,576** live vs B977's 4,252,448; `au.sound_buffers`
-  2,322,288 (B977: 2,322,320); **`au.sfx_cache` ABSENT** (B977: 310,640) —
-  the 310,640 B of duplicate PCM is gone and the category carries the PCM
-  once. The 16 MiB worst-case bound is structural (one cache, one cap) rather
-  than re-measured live, and the Pi steady-state re-run is deferred to the
-  audio re-ratchet alongside B990's.~~
+  float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode)
+  and `SfxManager::cache_` (`au.sfx_cache`, `preload()`'s second copy of the
+  same samples), each capped separately at the preset's `soundCache` (8,192
+  KB on orangepi) — up to 16 MiB of duplicated decoded PCM the 1999 client
+  did not carry twice. Measured: b977-audio x86 befallen (hermes-ext
+  `/home/user/kb-evidence/b977-audio/x86/befallen/audio/client.log`, outside
+  the repo; the owner rows are committed in
+  `refactor/B989/audio_ledger_census.tsv` — the B977 TSV is a per-zone
+  TOTALS table with no owner columns) `au.sound_buffers` 2,322,320 +
+  `au.sfx_cache` 310,640 B at steady_60s, which is BEFORE the tour's combat
+  (23:03:46 vs `#npctypespawn` 23:03:58); at the shutdown point 723,600 +
+  2,322,320 = 3,045,920 B (Pi befallen 2,320,376 + 723,456 B at steady_60s).
+  **STRUCK (2026-10-11, `task/kb-b989-sfx-cache-dup`,
+  `refactor/B989/README.md`):** the decoded PCM is now held ONCE —
+  `AudioManager::loadSound` decodes into its buffer cache and hands the same
+  `std::shared_ptr<SoundBuffer>` to `SfxManager::preload()`; the `au.sfx_cache`
+  owner row is gone, and the preset's `soundCache` cap bounds the buffer
+  cache. RED/GREEN: `tests/test_sfx_single_pcm_cache` (a fresh play grows the
+  `audio` category by the decoded PCM exactly once, a buffer-cached replay
+  grows it ~0 where the pre-fix code grew it by a full second copy — 22,336 B
+  of 21,920 B PCM on the RED commit — and the cap evicts LRU-oldest and
+  bounds resident bytes); `tests/test_sfx_cache_eviction` covers the eviction
+  mechanics; the CI `test` job's audio suite is green (re-measured per push,
+  not quoted). Live ledger leg: **B977 ran on eqemu lane 1 (172.16.200.99)
+  as a 13-zone sweep** (befallen the 5th zone); **B989 on lane 3
+  (172.16.200.97), befallen only** (x86, same tour/character/eligibility,
+  rat fight, `refactor/B989/audio_ledger_census.tsv`): steady_60s `audio`
+  **3,872,576** live vs B977's 4,252,448; `au.sound_buffers` 2,322,288
+  (B977: 2,322,320); **`au.sfx_cache` ABSENT** (B977: 310,640) — the 310,640 B
+  of duplicate PCM is gone and the category carries the PCM once; at
+  shutdown 3,045,920 vs 2,322,288, a drop of 723,632. **SUPERSEDED (B1015,
+  #336, 2026-10-12):** B989 left TWO filename-keyed LRUs with two caps — the
+  buffer cache could evict a sound the sfx cache still referenced (re-decoded
+  on the next play: two decoded copies resident) and the two LRUs picked
+  different victims, so under the cap case 32,992 B = 11,072 + 21,920 of PCM
+  was live under 21,919; the "one cache, one cap" wording above was false
+  until B1015 deleted `SfxManager::cache_` entirely (one `SoundBufferCache`,
+  one cap, in-use pinning, the inserted entry never evicted). The Pi
+  steady-state re-run is deferred to the audio re-ratchet alongside B990's.~~
 
 - ~~**B852** (A) **Nothing verifies that Kunark and Velious zones load.** The CI
   gate renders three classic zones and nothing else; no test, script or gate
