@@ -11,9 +11,18 @@
 #            budgeted row -- the custom font's 24 MB lived in it while resident)
 # B990-live velketor peak (28,850,592) proves the font loaded in that run
 # (loaded 22:20:55.155, released 22:21:31.772); at steady_60s the live row is
-# the residual 2,976 B / 32 blocks -- the selectSoundFont bookkeeping charged
-# under the owner scope (audio_manager.cpp playMusic, the same 2,976/32 in the
-# GM-only B977 qeynos2 control and in B990's qeynos2: not font samples).
+# the residual 2,976 B / 32 blocks -- NOT selectSoundFont bookkeeping but the
+# FIRST-CALL CONSTRUCTION of getSoundFontTypeForFile()'s function-local
+# `static const std::unordered_set<std::string> synthus2Files`
+# (audio_manager.cpp, 31 Velious/Luclin names = 31 node blocks + 1 bucket
+# array), charged to the au.soundfont_custom owner scope that playMusic wraps
+# around it. B1014 CONFIRMED it by measurement: the first call's allocation
+# is exactly 2,976 B / 32 blocks
+# (tests/test_soundfont_release.cpp,
+# SoundFontCustomScopeFirstCallIsTheSynthus2NameSet; refactor/B1014/README.md).
+# The same 2,976/32 in the GM-only qeynos2 legs is the same static, first
+# built by that run's first playMusic -- identical with/without the custom
+# font, which is why the GM-only control shows it too.
 #
 # zone          run         point      au.soundfont_custom_live  custom_blocks  audio_live  audio_peak
 velketor        B990-live   steady_60s 2976                        32             4386288     28850592

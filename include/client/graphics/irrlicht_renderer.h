@@ -569,6 +569,15 @@ public:
 
     Environment::ParticleManager* getParticleManager() { return particleManager_.get(); }
 
+    // B293 test seam: hand the renderer a ParticleManager built by the test
+    // (production builds its own during init), returning whatever it
+    // replaced (nullptr on a never-Init()'d renderer). Nothing outside
+    // tests/test_b293_entity_direction_resolution.cpp calls this.
+    std::unique_ptr<Environment::ParticleManager>
+    Test_SetParticleManagerForSeam(std::unique_ptr<Environment::ParticleManager> pm) {
+        return std::exchange(particleManager_, std::move(pm));
+    }
+
     WeatherEffectsController* getWeatherEffects() { return weatherEffects_.get(); }
 
     // Memory usage report for /pmem command (forwarder, see dumpScene above).

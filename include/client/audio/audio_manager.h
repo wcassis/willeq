@@ -113,8 +113,6 @@ public:
     void stopAutoAttackMusic();    // Restores previous music
     void startVendorBankMusic();   // Plays gl.xmi track 22, loops
     void stopVendorBankMusic();    // Restores previous music
-    bool isAutoAttackMusicPlaying() const { return autoAttackMusicActive_; }
-    bool isVendorBankMusicPlaying() const { return vendorBankMusicActive_; }
 
     // Volume controls (0.0 - 1.0)
     void setMasterVolume(float volume);
@@ -138,7 +136,6 @@ public:
     // SfxManager::playSpatial() -- see playSoundInternal(). Set once from
     // config by BridgeComponent::InitializeAudio().
     void setUse3DAudio(bool enabled) { use3DAudio_ = enabled; }
-    bool isUse3DAudio() const { return use3DAudio_; }
 
     // RDP audio streaming callback
     void setAudioOutputCallback(AudioOutputCallback callback);
@@ -156,6 +153,14 @@ public:
 
     // Find zone music file with zone name mapping (e.g., oasis -> nro)
     std::string findZoneMusic(const std::string& zoneName);
+
+    // Determine which SoundFont to use for a given music file. Public because
+    // it is the on-demand-load gate for the custom font (B977's
+    // au.soundfont_custom owner scope wraps exactly its call in playMusic)
+    // and tests/test_soundfont_release.cpp reaches it to pin the
+    // au.soundfont_custom residual's identity (the synthus2 name set).
+    // Pure function: reads only its argument plus the static name set.
+    SoundFontType getSoundFontTypeForFile(const std::string& path);
 
     // Memory usage queries
     size_t getSoundBufferCacheBytes() const { return soundBufferCacheSizeBytes_; }
@@ -188,9 +193,6 @@ private:
 
     // Music event config
     void loadMusicEventConfig();
-
-    // Determine which SoundFont to use for a given music file
-    SoundFontType getSoundFontTypeForFile(const std::string& path);
 
 private:
     bool initialized_ = false;

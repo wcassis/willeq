@@ -328,9 +328,16 @@ public:
 
     /**
      * Entity direction callback for spray effects (returns normalized direction in Irrlicht Y-up).
+     *
+     * B293 (#124): invoked once per entity in the previous frame's
+     * SimulationWorker particleOutput.directionRequestEntities, by the
+     * renderer's direction-resolution arm beside the position one (see
+     * resolveEntityDirection and SimBridgeComponent::applySimulationOutput).
+     * useDynamicDirection emitters (spray casts) spawn along it.
      */
     using EntityDirCallback = std::function<bool(uint16_t entity_id, glm::vec3& out_dir)>;
     void setEntityDirectionCallback(EntityDirCallback cb) { entityDirCallback_ = std::move(cb); }
+    bool resolveEntityDirection(uint16_t entityID, glm::vec3& outDir) const;
 
     /**
      * Create a spell particle effect.

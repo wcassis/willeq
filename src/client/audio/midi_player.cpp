@@ -179,10 +179,15 @@ void MidiPlayer::releaseCustomSoundFont() {
     // is in flight RIGHT NOW, while a channel still active could re-enter
     // render() while MidiPlayer's own playing_ is still true.)
     //
-    // The playback position it zeroes is not lost: MusicPlayer's immediate
-    // stop path saves it beforehand and restores it afterwards -- the
-    // pre-B990 code preserved it for the same reason (AudioManager's
-    // zone-music resume reads it via getPlaybackTimeMs()).
+    // The playback position it zeroes is not observable by any caller: the
+    // only readers of getPlaybackTimeMs() are AudioManager's
+    // startAutoAttackMusic()/startVendorBankMusic(), and both read it while
+    // the song is still playing (guarded by isPlaying()) and stash it in
+    // savedZoneMusicTimeMs_ -- the resume uses that saved value, never the
+    // live one. A release only ever happens when no song plays (B1014,
+    // issue #335), so nothing after this returns reads a position this
+    // zeroed. See the release-ordering reasoning in
+    // src/client/audio/music_player.cpp.
     stop();
     // The active pointer is an alias of customSoundFont only when the custom
     // font is selected; point it back at GM before the close (exactly what
