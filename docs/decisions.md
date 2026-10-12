@@ -1948,3 +1948,24 @@ ledger census of the B990 2,976 B / 32-block `au.soundfont_custom` residual,
 confirmed as the first-call construction of
 `getSoundFontTypeForFile()`'s static `synthus2Files` name set). See
 `refactor/B1014/README.md` for red/green.
+
+## 2026-10-12 — B1033: the aarch64 SBC lanes run the `orangepi` preset, the same bounds, no goldens of their own (Will, "I agree with your suggestion re: B1033"; #353)
+
+The Rock64 (lane 2, 4 GB) and ROCK 4D (lane 3, 12 GB) joined as client
+targets under B1030 (#350). Measured on both at qeynos2 steady, own cgroup,
+live zone-in: ~70 MB owned_rss_anon on the `orangepi` preset before any GPU
+buffer is counted (`review/B1030/README.md`, "The ledger runs"). Ruled:
+
+1. **One preset.** Every SBC lane runs `--constrained orangepi` (composite
+   entities OFF, 16-bit depth, the Pi's caps). A lane-specific preset is for
+   an experiment that needs it, never a default and never a gate.
+2. **Same numbers.** The 256 MB RssAnon failing bound and the 64 MB owned
+   target apply unchanged on lanes 2 and 3; no per-board budgets.
+3. **No goldens of their own** until a lane runs the visual gate at all.
+   Lane 2 shares the Pi's Mesa 25.2.8 and may match the Pi-rendered
+   goldens (B1024) exactly — a measurement to take first, not a manifest to
+   bless.
+
+`scripts/pi_rendered_zone_sweep.sh --constrained <preset>` remains the
+override for experiments; `docs/ci.md` "The aarch64 SBC lanes" states the
+rule.

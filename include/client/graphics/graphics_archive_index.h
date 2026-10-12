@@ -19,7 +19,15 @@ class PfsArchive;
 //   - Subsequent runs: loads gfx_index_cache.json from the run-local cache
 //     directory (T402, board B248 -- eqt::ResolveCachePathForRead; it used to
 //     be a git-tracked config/gfx_index_cache.json), validated by file sizes
-//   - Lazy mode: closes archives after scanning; non-lazy: keeps them open for fast extraction
+//
+// The index is pure filename arithmetic: scanArchives() opens NO archive, so
+// the lazy/eager choice the constrained preset carries
+// (ConstrainedRendererConfig::lazyPfsLoading) never reaches it -- the
+// buildIndex(eqPath, lazyMode, ...) parameter and the lazyMode_ member were
+// stored and never read (B295, #125, found by T407's census). The parameter
+// and member went with the finding; the one surviving call site
+// (renderer_zone_load.cpp Step 5) builds the index the same way for every
+// preset.
 class GraphicsArchiveIndex {
 public:
     GraphicsArchiveIndex() = default;
@@ -28,7 +36,7 @@ public:
     // Build the index (tries cache first, falls back to scanning archives)
     // tickCallback: called between archives to pump network event loop
     // Returns true if index was built successfully
-    bool buildIndex(const std::string& eqPath, bool lazyMode,
+    bool buildIndex(const std::string& eqPath,
                     std::function<void()> tickCallback = nullptr);
 
     // Look up which archive contains a given race+gender
@@ -36,8 +44,8 @@ public:
     // Key is (raceId << 8 | gender)
     std::string getArchiveForRace(uint16_t raceId, uint8_t gender) const;
 
-    // Get a cached open archive (non-lazy mode only)
-    // Returns nullptr if not cached or in lazy mode
+    // Cached open archive. Zero-caller (check_zero_callers.py's B494 row);
+    // kept, like the cachedArchives_ member, until B494 takes it.
     PfsArchive* getCachedArchive(const std::string& archivePath);
 
     // Get the number of indexed race entries
@@ -57,7 +65,6 @@ private:
     }
 
     std::string eqPath_;
-    bool lazyMode_ = true;
 
     // Race index: (raceId << 8 | gender) -> archive filename (just the filename, not full path)
     std::unordered_map<uint32_t, std::string> raceIndex_;
@@ -65,7 +72,8 @@ private:
     // Archive validation: filename -> file size
     std::map<std::string, uintmax_t> archiveSizes_;
 
-    // Cached open archives (non-lazy mode only)
+    // Cached open archives (never populated by scanArchives(); B494's
+    // getCachedArchive is the only accessor)
     std::map<std::string, std::unique_ptr<PfsArchive>> cachedArchives_;
 };
 

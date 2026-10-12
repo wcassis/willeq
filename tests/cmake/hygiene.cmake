@@ -25,6 +25,22 @@ ADD_TEST(NAME DocCitationsSelfTest
             --self-test)
 SET_TESTS_PROPERTIES(DocCitationsSelfTest PROPERTIES LABELS "hygiene")
 
+# B1030 (#350): docker/Dockerfile.arm64-noble is docker/Dockerfile.arm-noble with
+# the architecture swapped and nothing else. The first arm64 file (52cb54d1)
+# drifted unnoticed for three months (SourceForge wgets after B970, missing
+# probe sources, a stale target list) because nothing compared them; this
+# regenerates it through the substitution table in the script and fails on any
+# other difference. Pure text, instant, no docker.
+ADD_TEST(NAME DockerfileArm64Derived
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/ci/check_arm64_dockerfile.sh)
+SET_TESTS_PROPERTIES(DockerfileArm64Derived PROPERTIES LABELS "hygiene")
+# B1030 review: scripts/pi/env.sh refuses a PI_LANE that disagrees with a
+# listed (exported) PI_HOST instead of silently rewriting the lane. Pure shell,
+# no ssh, no device.
+ADD_TEST(NAME PiEnvLaneResolution
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/pi/env_selftest.sh)
+SET_TESTS_PROPERTIES(PiEnvLaneResolution PROPERTIES LABELS "hygiene")
+
 # T371 (2026-09-05): DocCitations proves a cited PATH resolves; it says
 # nothing about the CLAIMS. This is the regression net for the deletion half
 # -- a table of retired names that must not reappear in the ORIENTATION docs

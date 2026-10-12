@@ -437,6 +437,12 @@ it without taking that measurement first.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
+- **B1025** (B, feature) → issue #345. Hotbar slot assignment is a missing
+  feature (found by B603, #187; `refactor/B603/README.md` "The two flagged
+  reads"): `HotbarModel::assignSlot/clearSlot` have NO production caller —
+  slots are filled only by `loadFromJson()` at startup and published by
+  `publishAllSlots()` at zone-in; no command, intent or UI control assigns a
+  slot. Oracle (what the official client does) + CI test owed.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
@@ -1028,6 +1034,7 @@ it without taking that measurement first.
   cap). Fix options are B997's batch/merge of manual zone draws or a
   per-draw submit-cost cut — both need Will's decision (look/coverage +
   B726/B979 invariants), so the card blocks with the measurement.
+- **B1031** (B, platform) → issue #351. macOS dev-platform probe; card 2 = fix. Card 1 (PROVE) on `task/B1031-macos-probe`: the headless configure succeeds on the M4 mini and the keep-going build fails; the error census by TU and KIND, the linked binaries, the ctest results and the card-2 fix list are in `refactor/B1031/README.md`.
 - **B1026** (B, CI) → issue #346. Since gitlab-runner-2 took the `x86-build` tag (2026-10-11) a pipeline's `build` and `test` jobs can land on different hosts, and the stages pass no artifacts: fable pipeline 809 built on gitlab-runner-1 (job 4006) and tested runner-2's pre-B603 binary (job 4007), a false red; MR pipeline 805's green was the same luck. **FIX on `task/B1026-ci-host-stamp`** (Will ruled option (a)): the build steps are ONE shell function (`.build_tree` → `willeq_build_tree`); the tree gets a ref-only stamp before the configure and a host+sha claim (`.willeq_ref` `host=`/`sha=`, `prune_ref_build_trees.py --stamp ... --host --sha`) only after `cmake --build` succeeds; `test` and `client-ledger-live` run `--verify` first and, on a mismatch, print `B1026 STAMP MISMATCH`, rebuild in-job and verify again; `gate` builds its own GLES2 tree in-job. Pinned by `CiBuildTreeStamp` (hygiene) + `PruneRefBuildTrees`; `docs/ci.md` "Two x86 runners: the host+sha stamp"; evidence `refactor/B1026/README.md`.
 - ~~**B1012** (P, CI) → issue #333.~~ **CLOSED 2026-10-09 (B1012, `task/B1012-per-ref-build-trees`).** Concurrent MR pipelines on the `concurrent = 1` x86 runner shared ONE warm `build/`: MR !119's `test` stage (pipeline 697) ran over binaries MR !118's `build` stage (698) had just written and failed on tests absent from its own source (rescued by a one-off cold run). Will chose per-ref build directories with monitoring and cleanup: `$BUILD_TREE = build/ref/$CI_COMMIT_REF_SLUG`, `$GLES2_TREE = build-gles2/ref/$CI_COMMIT_REF_SLUG` (the MR pipeline's slug is its source branch, so push + MR pipelines share a tree), trees stamped with `.willeq_ref`, and the `prune-build-trees` job on every fable pipeline (`scripts/ci/prune_ref_build_trees.py`: ref gone from the remote / stamp > 14 d / unstamped → delete, legacy root swept once, census + `du`/`df` in `prune.log`; rules pinned by the `PruneRefBuildTrees` hygiene test). `docs/ci.md` "One warm tree per ref".
 - ~~**B1011** (A, review) → issue #332.~~ **CLOSED 2026-10-09 (B1011, `task/B1011-wave6-corrections`).** The orchestrator's review of the wave-6 merges, applied over the local models' verdicts (Will, 2026-10-09): (1) the B892 swim event's `isLevitating` field, its flymode read and `setSwimmingState()`'s parameter are DELETED — that arm cleared a self-cast hover on every water transition and nothing restored it (`SwimmingEventCarriesNoSurfaceHeight` fails if the payload carries levitation again; `setLevitationState()` is the one writer); (2) the B893 apex is a measured LOWER BOUND (one wire sample per jump, four of five at an identical +2.509), owed from the committed video, and the fall curve is the oracle's nine measured points interpolated (`kFallDamageTable`, pinned per point by `EveryMeasuredOraclePointIsReproduced`) instead of the 1.5/unit ramp that read 8..23 where the oracle read 5 — one level-60 GM series, level/HP dependence owed; (3) `scripts/scenario.sh` takes the inventory snapshot whenever `--inventory-chars` is set and derives Testchar for `ranged_single_shot` regardless of `--seed-sql` (B900 had both inside the seed branch: silent no-op restore / kit left behind); (4) the B972-FT glFlush write-up's gfaydark sign corrected on its branch (`97cbf657`) and option (d) posted on #326.
@@ -1068,6 +1075,34 @@ it without taking that measurement first.
   `fdinfo_purgeable=`, and the captured fdinfo is a fixture
   (`GpuBufferCensus.FdinfoResidentIsTheRowNotTheTotal`). Lima lanes publish
   no memory keys and are untouched.
+- **B1030** (B) → issue #350. Two aarch64 SBCs joined the Orange Pi as client
+  targets (Rock64: RK3328, Mali-450/Lima, 4 GB, eMMC; ROCK 4D: RK3576,
+  Mali-G52/Panfrost, 12 GB), but every Pi script hardcoded ONE host and the
+  arm64 Dockerfile had drifted from the armhf one for three months. Done in
+  the unit: `PI_LANE=1..3` table + per-device locks in `scripts/pi/env.sh`
+  (`lock_selftest.sh` PASS on lanes 2 and 3), `Dockerfile.arm64-noble`
+  regenerated from the armhf file and pinned derived by
+  `scripts/ci/check_arm64_dockerfile.sh` (ctest `DockerfileArm64Derived`),
+  `scripts/build-arm64-noble.sh` + `scripts/pi/publish_arm64_build.sh` →
+  `ci-arm64/<sha>/`; `docs/ci.md` "The aarch64 SBC lanes". Smoke PASS on both
+  lanes (`review/B1030/README.md`), after one port fix: Panfrost lists 10-bit
+  EGL visuals first, so the DRM device now picks the config whose native
+  visual is the GBM format (`chooseConfigForGbmFormat`, unchanged result on
+  Lima, A/B in the README). Follow-ups done: `build-arm64` CI job (sibling
+  of `build-arm`, not a widening); the rendered sweep runs on the aarch64
+  lanes (system Mesa, `ci-arm64/`, headless HDMI via `pi_hdmi_force_on`,
+  `--constrained <preset>`); ledger rows for both lanes in the README
+  (~70 MB owned_rss_anon each on the orangepi preset). Spun off: the
+  Panfrost census field → B1032; the per-lane preset ruling → B1033.
+  Open: lane 2's 17.2 MiB of unnamed GEM fails the Pi rig's 10 MiB bound
+  and the B962 owner-census shim is armhf-only (an aarch64 build of it is
+  the next B item there).
+- ~~**B1033** (C) → issue #353.~~ RULED 2026-10-12 (Will, `docs/decisions.md`):
+  the aarch64 lanes keep the `orangepi` preset, the same 256 MB bound and
+  64 MB target, and get no goldens of their own until a lane runs the gate
+  (lane 2 shares the Pi's Mesa; whether it matches the Pi goldens is a
+  measurement to take first). Both lanes measure ~70 MB owned_rss_anon at
+  qeynos2 steady on that preset (`review/B1030/README.md`).
 - ~~**B1006** (B) → issue #327. Nothing in the Pi rig could see the B972-FT
   mechanism (a partial `glBufferSubData` into a buffer the current Lima job
   references flushes the job and blocks in `lima_bo_wait`, once per write): the
@@ -6194,13 +6229,33 @@ T407 deleted eleven (see below). The rest are boarded here.
   along; the doc was aspirational, not stale, and is now true. Pinned by
   `tests/test_sfx_cache_eviction.cpp`, 6 cases, two independent pre-fix plants.
 
-- **B293** (B) `include/client/graphics/environment/particle_manager.h` → issue #124
+- ~~**B293** (B) `include/client/graphics/environment/particle_manager.h` → issue #124
   `ParticleManager::entityDirCallback_` -- installed by TWO callers
   (`src/client/graphics/renderer/renderer_entities.cpp` and
   `tools/model_viewer/model_viewer_spell_test.cpp`) and invoked by none, so
-  entity-direction-aware particle emission is unreachable. Closes when the
-  callback is called or the setter, the member and the `EntityDirCallback`
-  typedef are deleted with both call sites. Found by T407's census.
+  entity-direction-aware particle emission was unreachable. Found by T407's
+  census.~~ **CLOSED by B295+B293 leg B (`task/kb-b295-b293-discarded-args`),
+  HONOUR, not delete**: the one production consumer that wants the callback
+  exists -- spray casts. `SpellVisualFX::createCastGlow()` passes its `isSpray`
+  flag through `createSpellEffect()`'s `useDynamicDir` to the worker, where
+  `effect.useDynamicDirection` arms the emitter, the worker REQUIRES the
+  entity's direction every frame
+  (`SimulationOutput::particleOutput.directionRequestEntities`) and CONSUMES
+  it (`pi.entityDirections` → `emitter.dynamicDirection` → spawn velocity).
+  The single missing link was the renderer half: `SimBridgeComponent::
+  applySimulationOutput()` resolved the previous frame's
+  `positionRequestEntities` into `pendingParticleEntityPositions_` but had no
+  direction arm -- the map was cleared each frame and refilled with nothing,
+  so `entityDirCallback_` was stored by two installers and called by none.
+  The fix adds the direction arm beside the position arm (a mirror, same
+  one-frame-behind rule) and `ParticleManager::resolveEntityDirection()`
+  beside `resolveEntityPosition()`. Pinned by
+  `tests/test_b293_entity_direction_resolution.cpp` (real
+  `applySimulationOutput()` body, never-Init()'d renderer idiom; a counting
+  callback + the worker's real `directionRequestEntities`; red at the base --
+  the callback never fired and the pending map stayed empty), and the
+  write-only ratchet's `entityDirCallback_` EXEMPT row went stale and was
+  struck with the fix.
 
 - ~~**B294** (A) `include/client/graphics/irrlicht_renderer.h`
   `IrrlichtRenderer::forcePvsUpdate_` -- set true in FOUR places
@@ -6232,11 +6287,26 @@ T407 deleted eleven (see below). The rest are boarded here.
   left dangling by `6914d99b` -- an unfinished tombstone is what made the flag
   look deliberate.
 
-- **B295** (B) `include/client/graphics/graphics_archive_index.h` → issue #125
+- ~~**B295** (B) `include/client/graphics/graphics_archive_index.h` → issue #125
   `GraphicsArchiveIndex::lazyMode_` -- `buildIndex(eqPath, lazyMode, tick)`
   stores its `lazyMode` argument and never reads it, so the lazy/eager choice
-  its callers make is discarded. Closes when the parameter is honoured or
-  removed from the signature. Found by T407's census.
+  its callers make is discarded. Found by T407's census.~~ **CLOSED by
+  B295+B293 leg A (`task/kb-b295-b293-discarded-args`), REMOVE, not honour**:
+  `scanArchives()` is pure filename arithmetic -- the "NO archive opening"
+  comment at `graphics_archive_index.cpp:191` is the whole reason the flag
+  existed (a lazy index closes archives after scanning, an eager one keeps
+  them open; an index that never opens one has nothing to close). `commit
+  aea2af12` introduced the parameter and member together with the
+  progressive-loading work; by the time T407's census ran, the only surviving
+  read of `ConstrainedRendererConfig::lazyPfsLoading` the index cared about
+  was a write. Removed: the `buildIndex` parameter, the `lazyMode_` member,
+  the caller's pass-through
+  (`renderer_zone_load.cpp` Step 5 now calls `buildIndex(ctx.eqPath)` for
+  every preset), the stale "Lazy mode: closes archives after scanning" doc
+  bullet, and the write-only ratchet's EXEMPT row (stale → struck, per the
+  no-outlive rule). `getCachedArchive()`/`cachedArchives_` (a SEPARATE gap,
+  also zero-caller) stay on B494. `lazyPfsLoading` itself is the constrained
+  preset's field and out of scope here -- its other readers are intact.
 
 - ~~**B296** (A) `include/client/state/event_bus.h` -- **bridge event payload
   fields that every producer fills and no consumer reads.** The census names
@@ -11125,7 +11195,7 @@ B712–B719 unused.
   `ActionDispatcher::declineGroupInvite` -> `EqActionHandler`, which sends
   `SendGroupDecline` directly); the component method was a dead duplicate.
   Hotbar slot assignment is NOT user-reachable (config-load only) --
-  missing feature, left for a separate entry. `ZeroCallers` went RED with
+  missing feature, boarded as B1025 (#345). `ZeroCallers` went RED with
   17 STALE rows and GREEN at 303 tests-only.~~
 
 - ~~**B604** (A, *unconfirmed live*) **The server's cast interrupt never reaches
