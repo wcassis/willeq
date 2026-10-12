@@ -9,7 +9,7 @@ origin/fable 7e17067e (merged in first):
 
 The split is deliberate and is what makes the RED faithful: at commit 1 the
 ratchet still lists the B606 rows, so its own `--check` FAILS "stale" until
-commit 2 removes them. A third commit (20bc4144, the docs/README one) fixes a
+commit 2 removes them. A third commit (the docs/README one) fixes a
 compile error the inherited working tree had in `test_string_database.cpp`
 (the `sqlite3_prepare_v2` tail parameter is `const char**`; the new fixture
 helpers declared `char* err`) — caught by the first full local build
