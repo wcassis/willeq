@@ -256,7 +256,11 @@ def _stub_benchmark(gate, zone_cfg, out_dir):
            for i in range(60)]
     mem = json.loads(_mem_json_text())
     mem.update({"textureCacheBytesUsed": 100, "textureCacheBytesLimit": 200,
-                "textureCount": 1})
+                "textureCount": 1,
+                # the report-only fields, present in every real run: check
+                # 10 relies on them being in the RUN's memory so that a
+                # disagreeing SECTION value must not fail the verify
+                "processRssBytes": 99999, "untrackedBytes": 88888})
     return pngs, csv, mem, f"[{PI_GL}]"
 
 
@@ -448,6 +452,36 @@ def check_pi():
             if rc != 1 or "draws mismatch" not in out:
                 failures.append(f"pi verify did not catch the metrics "
                                 f"mismatch: rc={rc} out={out!r}")
+
+            # 10. memory exact-match follows the x86 verify's rule: the
+            #     REPORT-ONLY fields (processRssBytes, untrackedBytes) are
+            #     recorded in the section but never asserted -- they are not
+            #     cross-run deterministic (the Pi's own run2-vs-run1 verify
+            #     measured a ~1% drift in exactly these two). A section whose
+            #     report-only fields disagree with the run must still PASS.
+            rss_manifest = json.loads(json.dumps(tmp_manifest))
+            rz = rss_manifest["platforms"]["pi"]["zones"][0]
+            rz["memory"]["processRssBytes"] = 1
+            rz["memory"]["untrackedBytes"] = 1
+            with mock.patch.object(gate, "load_manifest", return_value=rss_manifest):
+                rc, out = _run_main(gate, ["--platform", "pi", "--bench", str(PI_BENCH),
+                                           "--goldens-dir", str(gd)])
+            if rc != 0 or "processRssBytes mismatch" in out \
+                    or "untrackedBytes mismatch" in out:
+                failures.append(f"pi verify asserted the report-only memory "
+                                f"fields: rc={rc} out={out!r}")
+            # ...while a BASELINE field still exact-matches (the rule did not
+            # just go soft): textureCount in the stub section (1) vs a
+            # section value of 2 must FAIL.
+            tc_manifest = json.loads(json.dumps(tmp_manifest))
+            tz = tc_manifest["platforms"]["pi"]["zones"][0]
+            tz["memory"]["textureCount"] = 2
+            with mock.patch.object(gate, "load_manifest", return_value=tc_manifest):
+                rc, out = _run_main(gate, ["--platform", "pi", "--bench", str(PI_BENCH),
+                                           "--goldens-dir", str(gd)])
+            if rc != 1 or "textureCount mismatch" not in out:
+                failures.append(f"pi verify did not exact-match the baseline "
+                                f"memory field: rc={rc} out={out!r}")
 
     finally:
         try:

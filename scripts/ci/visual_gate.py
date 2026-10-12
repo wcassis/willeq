@@ -1332,8 +1332,17 @@ def verify_pi(manifest, cfg, bench_cfg, production_args, goldens_dir=None):
       metrics         draws/stateChanges/polys exact vs section zones
       memory budgets  assert_memory_budgets (usage <= the live budget,
                       shared with the x86 verify)
-      memory exact    MEMORY_BASELINE_FIELDS + MEMORY_BUDGET_PAIRS usage
-                      exact vs the section's per-zone memory block
+      memory exact    exact vs the section's per-zone memory block, under the
+                      SAME rules as the x86 verify: MEMORY_BUDGET_PAIRS usage
+                      + MEMORY_BASELINE_FIELDS. The report-only fields
+                      (processRssBytes, untrackedBytes) are NEVER asserted
+                      here -- the x86 verify reports them (T69: never
+                      asserted, refactor/T69_memory_enforcement_gate.md),
+                      and they are not cross-run deterministic (they
+                      measured the whole process, whose allocator state
+                      varies between runs). _pi_memory_fields() still
+                      records them in the section for bless-diff
+                      visibility, exactly as bless() does for x86.
       ledger          assert_memory_ledger (the allocator ledger is a
                       platform fact, asserted on the Pi run too)
       maps proof      check_maps_text: libgallium under the shipped
@@ -1447,10 +1456,23 @@ def verify_pi(manifest, cfg, bench_cfg, production_args, goldens_dir=None):
                 failures.append(f"pi {zone}: NOT YET BLESSED -- section zone has no "
                                 f"memory block")
             else:
-                for key, val in expected_mem.items():
-                    if key in memory and memory[key] != val:
+                # The x86 verify's exact-match rule, not "every field in the
+                # block": MEMORY_BUDGET_PAIRS_ALSO_BASELINED usage +
+                # MEMORY_BASELINE_FIELDS (the x86 verify's loops (a') and
+                # (b) -- the other budget-pair usages are already in
+                # MEMORY_BASELINE_FIELDS). The report-only fields are
+                # excluded -- the x86 verify prints them and never asserts
+                # them (T69), and they are not cross-run deterministic
+                # (processRssBytes/untrackedBytes vary run to run on the
+                # Pi, which is exactly what the run2-vs-run1 verify proved).
+                exact_keys = list(MEMORY_BUDGET_PAIRS_ALSO_BASELINED)
+                exact_keys += list(MEMORY_BASELINE_FIELDS)
+                for key in exact_keys:
+                    if key not in memory or key not in expected_mem:
+                        continue  # field predates this bless (old section); skip rather than false-fail
+                    if memory[key] != expected_mem[key]:
                         failures.append(
-                            f"pi {zone}: memory {key} mismatch (blessed {val}, got {memory[key]})")
+                            f"pi {zone}: memory {key} mismatch (blessed {expected_mem[key]}, got {memory[key]})")
             # report-only line, same shape as the x86 verify
             rss = memory.get("processRssBytes")
             total = memory.get("totalEstimate")
