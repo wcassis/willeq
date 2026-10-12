@@ -41,11 +41,14 @@ is still playing and stash it in `savedZoneMusicTimeMs_`; the resume uses the
 saved value, never the live one. (Commented at the call site,
 `music_player.cpp`.)
 
-**The reload is cheap — no second cache added** (criterion 2). Measured from
+**The reload is cheap — no second cache added** (criterion 2). Bounded from
 the live leg's own log: `tsf_load_filename` for the 12 MB font completed in
-**~35 ms** (`live_velketor/velketor/audio/client.log`: the `State snapshot
+**<= ~35 ms (log gap)** (`live_velketor/velketor/audio/client.log`: the
+`State snapshot
 published` line at 22:20:55.120, the `loaded custom SoundFont on demand` line
-at 22:20:55.155 — the load sits between them; B977's run shows 74 ms,
+at 22:20:55.155 — the load sits between those two log lines, so 35 ms is the
+upper bound of the gap, not a measurement of `tsf_load_filename` alone;
+B977's run shows <= 74 ms,
 23:17:18.042→23:17:18.116). The font is page-cache-resident on every reload in
 the same zone (same file, same session), so the measured cost is a page-cache
 read, not a disk seek. A stutter of <50 ms at a music START (the song's first
@@ -167,14 +170,21 @@ re-derived here from the raw logs (`~/kb-evidence/b990-soundfont-release/
  the custom delta is the music channel's own live bytes at the two runs'
  steady points — B977's music was still playing, mine had stopped).
 - **The residual 2,976 B / 32 blocks is NOT font samples.** It is charged
-  under the `au.soundfont_custom` owner scope by `playMusic`'s
-  `selectSoundFont(...)` bookkeeping (audio_manager.cpp, the scope wraps the
-  whole call for any `.xmi`), and it is **identical in the GM-only qeynos2
+  under the `au.soundfont_custom` owner scope by `playMusic`'s select block
+  (audio_manager.cpp, the scope wraps the whole call for any `.xmi`), and it
+  is **identical in the GM-only qeynos2
   legs, in B990's and in B977's, in both runs** (qeynos2 B977-base: 2,976/32
   at steady_60s with `loaded custom SoundFont` count = 0 in that log) — so it
   is the pre-existing selection overhead, present with or without the custom
-  font, before and after the fix. The card's "0 B" bar is met in the only
-  sense the ledger supports: the font's blocks are gone (136 → 32; the 32 are
+  font, before and after the fix. **B1014 named it by measurement: it is the
+  first-call construction of `getSoundFontTypeForFile()`'s function-local
+  `static const std::unordered_set<std::string> synthus2Files` (audio_manager.cpp:
+  31 Velious/Luclin names = 31 node blocks + 1 bucket array; the first
+  call's allocation measured at exactly 2,976 B / 32 blocks in
+  tests/test_soundfont_release.cpp, refactor/B1014/README.md) — not
+  selectSoundFont bookkeeping, which allocates nothing.** The card's "0 B" bar
+  is met in the only sense the ledger supports: the font's blocks are gone
+  (136 → 32; the 32 are
   the same 32 a GM song always shows), i.e. the 24,162,944 B of float samples
   are released.
 - **qeynos2 is the classic control**: no custom load ever (0 `loaded custom
@@ -190,13 +200,14 @@ re-derived here from the raw logs (`~/kb-evidence/b990-soundfont-release/
   the fix is platform-neutral (it closes the `tsf` instance), so the Pi
   release is expected, but NOT measured on the Pi in this unit.
 - `memoryLedgerBudgets.audio` is untouched (32 MiB), per the card.
-- The 2,976 B residual (32 small blocks from the font-SELECTION path) could
-  be scoped out of `au.soundfont_custom` into its own owner; it is below
-  3 KB and identical with/without the custom font, so it is left alone —
-  moving it would change the B977 baseline row's meaning.
-- Font reload between two custom songs is the measured ~35 ms page-cache read
-  (above); if a future font is far larger or the page cache is cold, a
-  streaming/caching decision is still open — none is made here.
+- The 2,976 B residual (32 small blocks) is the first-call construction of
+  `getSoundFontTypeForFile()`'s function-local `static` name set
+  (B1014, measured). It could be scoped out of `au.soundfont_custom` into its
+  own owner; it is below 3 KB and identical with/without the custom font, so
+  it is left alone — moving it would change the B977 baseline row's meaning.
+- Font reload between two custom songs is the <= ~35 ms page-cache read
+  (log-gap bound, above); if a future font is far larger or the page cache is
+  cold, a streaming/caching decision is still open — none is made here.
 
 ## Files
 
