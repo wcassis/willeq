@@ -978,9 +978,10 @@ void eqt::zone::ZoneComponent::DispatchZonePacket(const EQ::Net::Packet & p, boo
 
 	// T482 (board B631): a confirmed cast released by keepcasting 0 is a
 	// success only if the success tail's OP_MemorizeSpell follows; any other
-	// packet first means StopCasting. SpellManager decides, before the arm.
+	// RELIABLE packet first means StopCasting (B760: an unreliable one is not
+	// in the ordered stream). SpellManager decides, before the arm.
 	if (ctx_.spell_manager) {
-		ctx_.spell_manager->noteZonePacket(opcode);
+		ctx_.spell_manager->noteZonePacket(opcode, reliable);
 	}
 
 	const auto& table = ZoneOpcodeTable();

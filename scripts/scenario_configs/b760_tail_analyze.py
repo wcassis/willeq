@@ -32,7 +32,7 @@ TS_RE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})\]")
 ZONE_RE = re.compile(r"\[ZonePacket\] (\S+)(?: rel=([01]))?")
 KC0_RE = re.compile(r"ManaChange: mana=\d+, stamina=\d+, spell=(\d+), keepcasting=0\b")
 SETTLE_RE = re.compile(
-    r"Cast of '([^']*)' \(ID: (\d+)\) (completed successfully|"
+    r"Cast of '(.*)' \(ID: (\d+)\) (completed successfully|"
     r"was stopped by the server[^\n]*|was interrupted|fizzled)")
 CYCLE_RE = re.compile(r"cycle (\d+): (SUCCESS|INTERRUPT)")
 

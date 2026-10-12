@@ -425,16 +425,27 @@ void SpellManager::handleSpellBarRefresh(uint32_t slot, uint32_t spell_id)
     }
 }
 
-void SpellManager::noteZonePacket(uint16_t opcode)
+void SpellManager::noteZonePacket(uint16_t opcode, bool reliable)
 {
     if (!m_outcome_pending) {
         return;
     }
-    // The success tail: SendSpellBarEnable, [OP_LinkedReuse], OP_MemorizeSpell
-    // (spells.cpp:1817-1824), queued contiguously on the reliable stream.
+    // B760 (issue #45): only the RELIABLE stream is ordered. eqemu queues the
+    // success tail -- SendSpellBarEnable, [OP_LinkedReuse], OP_MemorizeSpell
+    // (spells.cpp:1817-1824) -- in one call on a single-threaded zone, all
+    // reliable (Client::QueuePacket ack_req defaults true, client.h:444), so
+    // they take consecutive sequence numbers and the client delivers them in
+    // that order. An unreliable send is delivered the moment it arrives and,
+    // when a tail packet is lost and resent, reaches us INSIDE the tail; it
+    // is not the server's next word and says nothing about the outcome.
+    if (!reliable) {
+        return;
+    }
     if (opcode == HC_OP_MemorizeSpell || opcode == HC_OP_LinkedReuse) {
         return;
     }
+    // The next reliable packet is not the tail's: StopCasting
+    // (spells.cpp:1351), whose only packet was the keepcasting 0.
     resolvePendingOutcome(CastResult::Interrupted);
 }
 // ============================================================================

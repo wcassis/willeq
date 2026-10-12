@@ -220,10 +220,13 @@ public:
 
     // T482: called by the zone dispatcher BEFORE each packet's arm. While a
     // confirmed cast's outcome is pending (keepcasting 0 seen, MemorizeSpell
-    // not yet), any packet other than the tail's own (OP_MemorizeSpell,
-    // OP_LinkedReuse) means the server did not send the success tail: the
-    // outcome is published as Interrupted (StopCasting).
-    void noteZonePacket(uint16_t opcode);
+    // not yet), the next RELIABLE packet other than the tail's own
+    // (OP_MemorizeSpell, OP_LinkedReuse) means the server did not send the
+    // success tail: the outcome is published as Interrupted (StopCasting).
+    // B760 (issue #45): an unreliable packet (`reliable` false,
+    // DaybreakConnection::DeliveringReliable()) is outside the ordered stream
+    // and never settles the outcome. A replayed packet counts as reliable.
+    void noteZonePacket(uint16_t opcode, bool reliable = true);
 
     // ========================================================================
     // Database Access
