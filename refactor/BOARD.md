@@ -431,6 +431,12 @@ it without taking that measurement first.
 
 ## B — implemented-but-unreached, and hygiene needing a code change
 
+- **B1025** (B, feature) → issue #345. Hotbar slot assignment is a missing
+  feature (found by B603, #187; `refactor/B603/README.md` "The two flagged
+  reads"): `HotbarModel::assignSlot/clearSlot` have NO production caller —
+  slots are filled only by `loadFromJson()` at startup and published by
+  `publishAllSlots()` at zone-in; no command, intent or UI control assigns a
+  slot. Oracle (what the official client does) + CI test owed.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
@@ -11104,7 +11110,7 @@ B712–B719 unused.
   `ActionDispatcher::declineGroupInvite` -> `EqActionHandler`, which sends
   `SendGroupDecline` directly); the component method was a dead duplicate.
   Hotbar slot assignment is NOT user-reachable (config-load only) --
-  missing feature, left for a separate entry. `ZeroCallers` went RED with
+  missing feature, boarded as B1025 (#345). `ZeroCallers` went RED with
   17 STALE rows and GREEN at 303 tests-only.~~
 
 - ~~**B604** (A, *unconfirmed live*) **The server's cast interrupt never reaches
