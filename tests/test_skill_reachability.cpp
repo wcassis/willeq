@@ -372,6 +372,22 @@ TEST_F(HotbarReachabilityTest, ValidConfigTypeRoundTripsThroughJson) {
     EXPECT_EQ(model.getSlot({1, 0}).type, eqt::HotbarSlotType::Empty);
 }
 
+TEST_F(HotbarReachabilityTest, LegacyEleventhButtonIsIgnored) {
+    Json::Value config;
+    Json::Value buttons(Json::arrayValue);
+    for (int i = 0; i < 11; ++i) {
+        Json::Value button;
+        button["type"] = static_cast<int>(eqt::HotbarSlotType::Skill);
+        button["id"] = i + 1;
+        buttons.append(button);
+    }
+    config["buttons"] = buttons;
+    model.loadFromJson(config);
+    EXPECT_EQ(model.getSlot({0, 9}).id, 10u);
+    EXPECT_EQ(model.getSlot({0, 10}).type, eqt::HotbarSlotType::Empty);
+    EXPECT_EQ(model.getSlot({1, 0}).type, eqt::HotbarSlotType::Empty);
+}
+
 TEST_F(HotbarReachabilityTest, PageAddressRoundTripsAndPublishesActivePage) {
     model.assignSlot({3, 7}, eqt::HotbarSlotType::Skill, 48);
     auto assigned = bridge.drainEvents();
