@@ -96,11 +96,37 @@ locally against the provisional table. The first headless Debug archive build
 failed twice at `ar` (archive-copy error); it was not reclassified as a pass.
 The Release rebuild and its focused appearance/packet tests passed. A rendered panel capture is at
 `/home/user/kb-evidence/kb-cc1-facepick/preview-provisional/charcreate_facepick_800x600.png`.
-The full hygiene rerun passed 30/30 tests. No MR has been opened because the
-numeric-range acceptance criterion is unresolved.
+The full hygiene rerun passed 30/30 tests. Draft MR !168 exists for review;
+it must remain draft while the numeric-range acceptance criterion is unresolved.
 
 ## Not verified / left open
 
+- The revised 2026-10-13 calibration method also failed its prerequisite of a
+  stable opening state across creations. Three real Barbarian-male creates
+  (untouched, then one and two attempted UP pulses per visible row) are in
+  `facepick_wire_pilot.tsv`. Each row cites the exact record-header byte offset
+  in the raw `oracle/calibration-failed.pcap` under the evidence root; the
+  pcap's SHA-256 is
+  `2d5612b21bb09330dc21fcdb0352dc68a91bf41dbe4541f9b20d0b5ae27877b3`.
+  The first two otherwise-identical Barbarian-male Warrior creation screens
+  already differed *before* any FacePick input: red hair/no beard versus
+  orange hair/full beard (`oracle/calibration-step1-selected.png` and
+  `oracle/calibration-step2-selected.png`). The untouched packet had hair=2,
+  haircolor=4, beard=4, eye1/2=5; the one-UP packet had hair=255,
+  haircolor=255, beard=0, eye1/2=10; the two-UP packet had hair=0,
+  haircolor=7, beard=2, eye1/2=1 (`facepick_wire_pilot.tsv:3-5`). These
+  observations cannot form a contiguous sequence from one fixed numeric
+  origin. DirectInput also drops some clicks, so attempted pulse counts alone
+  cannot prove a wrap. The guarded calibration batch was stopped after its
+  third creation began and *before* it submitted a packet. No row has been
+  promoted from PROVISIONAL or labeled as a measured endpoint.
+- The calibration characters (IDs 87-89) were soft-deleted via the official
+  UI, then all their linked DB rows were removed by
+  `oracle/calibration-cleanup.sql` with the world container stopped. A
+  before/after dump comparison of the `account` and `character_data` INSERT
+  statements returned exit 0. The official client exited, pcap stopped with
+  zero kernel drops, `eqclient.ini` was restored byte-for-byte (SHA-256 above),
+  the stack is down, and lane 1's run-owned lock was released.
 - The follow-up wire endpoint pilot did not establish a minimum. With the
   official client on Barbarian male, each visible FacePick row was stepped up
   and down before Accept; the create packet at
