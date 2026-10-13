@@ -19,8 +19,9 @@
 
 stages:
   - hygiene
+  # B1042 (#362): ONE job, `build-test`, builds and runs the suite; there is no
+  # separate `test` stage any more (see the comment above `build-test`).
   - build
-  - test
   - gate
   # T503: last, and build-arm has `needs: []`, so it starts at once and NOTHING waits on it.
   - arm
@@ -39,13 +40,18 @@ variables:
   # next pipeline OF THE SAME REF. A from-scratch pipeline is a manual
   # `rm -rf build build-gles2 third_party/irrlicht-gles2-x86` on the runner, or
   # run the pipeline with GIT_CLEAN_FLAGS=-ffdx (see docs/ci.md).
+  # B1042 (#362): since ccache, a wiped tree is a cold CMAKE tree but NOT a
+  # cold compile -- the object cache lives outside the checkout
+  # (~gitlab-runner/.cache/ccache, 20G per runner, git clean never sees it).
+  # A truly cold compile also needs CCACHE_DISABLE=1 (docs/ci.md, "ccache on
+  # the x86 runners").
   GIT_CLEAN_FLAGS: -ffdx -e build -e build-gles2 -e build-headless -e third_party/irrlicht-gles2-x86
   # B1012 (#333): ONE WARM TREE PER REF. Two branches' pipelines interleaving
   # on the concurrent=1 runner shared one build/ -- MR !119's `test` stage
   # (pipeline 697) ran over binaries MR !118's `build` stage (698) had just
   # written, and failed on tests that did not exist in its own source. Each
   # ref now configures into its own subtree, so a pipeline can only ever see
-  # its own ref's leftovers (the within-ref warm speed is kept). The `build`
+  # its own ref's leftovers (the within-ref warm speed is kept). The `build-test`
   # and `gate` jobs stamp the tree they use with .willeq_ref; the
   # `prune-build-trees` job (fable pipelines) deletes trees whose ref is gone
   # from the remote or untouched for 14 days -- the expiry the old shared
@@ -55,10 +61,23 @@ variables:
   # cheap reconfigure, and the googletest FetchContent clone is worth keeping.
   BUILD_TREE: build/ref/$CI_COMMIT_REF_SLUG
   GLES2_TREE: build-gles2/ref/$CI_COMMIT_REF_SLUG
+  # B1042 (#362): ccache on the x86 runners (gitlab-runner-1/2 have it; the
+  # launcher is only passed when `command -v ccache` succeeds, .goldfarm).
+  # Every ref configures into its own build/ref/<slug>, so the compile lines
+  # carry different absolute paths per ref; CCACHE_BASEDIR rewrites paths under
+  # the checkout to relative ones (the per-ref trees are all the same depth),
+  # so a NEW branch hits the objects fable's tree already compiled.
+  # CCACHE_NOHASHDIR keeps the cwd out of the hash should a -g build appear.
+  CCACHE_BASEDIR: $CI_PROJECT_DIR
+  CCACHE_NOHASHDIR: "1"
 
 # Branch/MR scope, pipeline-wide: task/* and plans/* branches, merge requests,
 # and fable. Never on tags. The CI_OPEN_MERGE_REQUESTS rule suppresses the
-# duplicate branch pipeline once a branch has an open MR.
+# duplicate branch pipeline once a branch has an open MR -- but only ONCE THE
+# MR EXISTS: the first push of a new branch still runs a full branch pipeline
+# that the MR pipeline then repeats. So push with `git push -o ci.skip -u
+# gitlab task/...`, THEN open the MR (B1042, docs/ci.md "Push with -o ci.skip,
+# then open the MR"). Docs-only diffs skip the C++ jobs: `.code_rules` below.
 workflow:
   rules:
     - if: $CI_COMMIT_TAG
@@ -84,10 +103,10 @@ workflow:
   # stages of one pipeline may land on DIFFERENT hosts, each with its own
   # warm tree. B1026 (#346) is what makes that safe: the build tree carries a
   # host+sha stamp written only after a successful build (`.build_tree`), and
-  # every job that consumes the tree (`test`, `client-ledger-live`) verifies
-  # it first and rebuilds in-job on a mismatch (fable pipeline 809 tested
-  # runner-2's stale binary after runner-1 built the new one; docs/ci.md, "Two
-  # x86 runners: the host+sha stamp").
+  # every job that consumes the tree (`build-test` after its own build, B1042;
+  # `client-ledger-live`) verifies it first and rebuilds in-job on a mismatch
+  # (fable pipeline 809 tested runner-2's stale binary after runner-1 built
+  # the new one; docs/ci.md, "Two x86 runners: the host+sha stamp").
   dependencies: []
   tags: [x86-build]
   before_script:
@@ -97,12 +116,61 @@ workflow:
     # The client asset symlinks are gitignored (tests/test_data_paths.cpp), so
     # `git clean -ffdx` removes them before every job and they must be re-made
     # here. They are NOT only the gate's business: without them the asset
-    # suites lose their real input, and the `test` job (which exports
+    # suites lose their real input, and the `build-test` job (which exports
     # WILLEQ_REQUIRE_ASSETS=1, B815) turns that absence into a hard FAIL
     # instead of a silent SKIP.
     - ln -sfn /mnt/projects/EverQuestP1999 data/eq_client
     - ln -sfn /mnt/projects/EverQuest_ETC1 data/eqe1_client
     - echo "build tree $BUILD_TREE / gate tree $GLES2_TREE (ref $CI_COMMIT_REF_NAME)"
+    # B1042 (#362): the ccache launcher, only where ccache exists (hermes-ext
+    # has none). CCACHE_CMAKE_ARGS goes on every x86 configure; the exported
+    # CMAKE_*_COMPILER_LAUNCHER env vars cover scripts/build-gles2-x86.sh (its
+    # configure and its Irrlicht `make`). CCACHE_STATSLOG is per job (inside the
+    # checkout, so git clean resets it): `ccache --show-log-stats` is THIS job's
+    # hit rate, `ccache -s` the host's running totals. ccache_report prints both
+    # after every `cmake --build`. Without ccache the -U arguments drop a
+    # launcher a warm tree may still carry.
+    - |
+      if command -v ccache >/dev/null 2>&1; then
+        export CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache CCACHE_STATSLOG="$CI_PROJECT_DIR/ccache-stats.log"
+        CCACHE_CMAKE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+        ccache_report() { echo "=== ccache after $1 on $(hostname): this job (stats log) ==="; ccache --show-log-stats || true; echo "=== ccache host totals ==="; ccache -s || true; }
+      else
+        CCACHE_CMAKE_ARGS="-UCMAKE_C_COMPILER_LAUNCHER -UCMAKE_CXX_COMPILER_LAUNCHER"
+        ccache_report() { echo "=== ccache after $1: not installed on $(hostname), no launcher ==="; }
+      fi
+      echo "ccache: ${CCACHE_CMAKE_ARGS}"
+
+# B1042 (#362): DOCS-ONLY DIFFS SKIP THE C++ JOBS. A job carrying these rules
+# (build-test, gate, client-ledger-live) is added only when at least one
+# changed path does NOT end in `.md`; `hygiene` has no rules and always runs,
+# so a docs-only pipeline is hygiene alone and still ends `success` (what the
+# merge gate reads). "Docs-only" is deliberately just `*.md`, anywhere
+# (review/ and refactor/ notes included): a change that also carries a .tsv,
+# .png or script builds as before. What each pipeline compares against:
+#   - MR pipeline: the MR's diff against its target branch (GitLab's rule);
+#   - fable push: the pushed range (the merge's diff); a fable pipeline with no
+#     push event (schedule, "Run pipeline") always runs everything;
+#   - task/ plans/ push: compare_to fable, so a NEW branch's first push is
+#     judged on its diff from fable (without compare_to GitLab treats a new
+#     branch as "everything changed").
+# WILLEQ_FULL_PIPELINE=1 ("Run pipeline" variable) forces the full set.
+# The regexp form (GitLab >= 19.2; this instance is 19.3.1) is used because
+# glob `changes:` can only say "any of these changed", never "a non-.md
+# changed". Pinned by the hygiene test CiQueueRules.
+.code_rules:
+  rules:
+    - if: $WILLEQ_FULL_PIPELINE == "1"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        regexp: &code_change_re '\A(?!.*\.md\z)'
+    - if: $CI_COMMIT_BRANCH == "fable"
+      changes:
+        regexp: *code_change_re
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        regexp: *code_change_re
+        compare_to: refs/heads/fable
 
 # B1012 (#333): the expiry for the per-ref warm trees, and the census an
 # operator reads to see what the runner holds. Automatic on fable pipelines
@@ -133,14 +201,15 @@ prune-build-trees:
 
 # Stage 1: pure source/doc scans (ctest label `hygiene`). No C++ compile, so it
 # fails a bad doc/file-size/citation change in ~a minute instead of after a
-# 30-minute build. Configured with EQT_GRAPHICS=OFF into build/hygiene -- a
+# 30-minute build. NO `rules:` on purpose (B1042): it runs on every pipeline,
+# docs-only ones included -- for those it is the whole pipeline. Configured with EQT_GRAPHICS=OFF into build/hygiene -- a
 # subdirectory of the preserved `build` tree, so its CMake cache (and the
 # googletest FetchContent clone) also survives between pipelines.
 hygiene:
   extends: .goldfarm
   stage: hygiene
   script:
-    - nice -n 10 cmake -S . -B build/hygiene -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_GRAPHICS=OFF -DEQT_BUILD_TESTS=ON
+    - nice -n 10 cmake -S . -B build/hygiene -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_GRAPHICS=OFF -DEQT_BUILD_TESTS=ON $CCACHE_CMAKE_ARGS
     - nice -n 10 ctest --test-dir build/hygiene -L hygiene -j $CTEST_JOBS --output-on-failure 2>&1 | tee hygiene-ctest.log
   artifacts:
     when: always
@@ -158,12 +227,13 @@ hygiene:
 # (docs/ci.md, "Device-source changes are caught by the input stamp".)
 #
 # B1026 (#346): the build steps live in ONE place, the shell function
-# willeq_build_tree defined by `.build_tree` below. The `build` job runs it;
-# `test` and `client-ledger-live` define it too and run it only when the tree
-# they landed on is not stamped by THIS host at THIS sha. Order inside it:
+# willeq_build_tree defined by `.build_tree` below. The `build-test` job runs
+# it; `client-ledger-live` defines it too and runs it only when the tree it
+# landed on is not stamped by THIS host at THIS sha. Order inside it:
 #   1. a ref-only stamp BEFORE the configure -- it wipes any earlier host/sha
 #      claim, so a build that fails part-way leaves a tree no job trusts;
-#   2. configure, B907 orphan prune, `cmake --build`;
+#   2. configure (with the B1042 ccache launcher when the host has ccache),
+#      B907 orphan prune, `cmake --build`, the ccache report;
 #   3. the host+sha claim, written only once `cmake --build` succeeded (errexit
 #      + pipefail: a failed build never reaches this line).
 .build_tree:
@@ -181,20 +251,21 @@ hygiene:
         fi
         python3 scripts/ci/prune_ref_build_trees.py --stamp "$BUILD_TREE" --ref "$CI_COMMIT_REF_NAME"
         if [ "${WILLEQ_HEADLESS:-0}" = 1 ]; then
-          nice -n 10 cmake -S . -B "$BUILD_TREE" -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=OFF
+          nice -n 10 cmake -S . -B "$BUILD_TREE" -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=OFF $CCACHE_CMAKE_ARGS
         else
-          nice -n 10 cmake -S . -B "$BUILD_TREE" -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_GLES2_IRRLICHT_DIR=$PWD/third_party/irrlicht-gles2-x86
+          nice -n 10 cmake -S . -B "$BUILD_TREE" -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DEQT_BUILD_TESTS=ON -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_GLES2_IRRLICHT_DIR=$PWD/third_party/irrlicht-gles2-x86 $CCACHE_CMAKE_ARGS
         fi
         # B907 (issue #227): this is a WARM tree (GIT_CLEAN_FLAGS keeps build/
         # across runs; since B1012 it is this ref's own tree, so the orphan can
         # only be this ref's earlier commit's binary). A binary with no target in
         # the just-regenerated CMake graph survives in bin/ because cmake never
-        # prunes bin/ on its own, and fails the `test` stage's
+        # prunes bin/ on its own, and fails the suite's
         # check_build_tree_orphans a moment later. Prune right after the
         # reconfigure above (so the graph is current) and before the build, using
         # the exact discovery check_build_tree_orphans uses read-only.
         nice -n 10 python3 scripts/ci/check_build_tree_orphans.py --prune "$BUILD_TREE"
         nice -n 10 cmake --build "$BUILD_TREE" -j $JOBS 2>&1 | tail -n 200
+        ccache_report "$BUILD_TREE"
         python3 scripts/ci/prune_ref_build_trees.py --stamp "$BUILD_TREE" --ref "$CI_COMMIT_REF_NAME" --host "$(hostname)" --sha "$CI_COMMIT_SHA"
       }
 
@@ -213,26 +284,21 @@ hygiene:
         echo "B1026: in-job rebuild done and verified on $(hostname)"
       fi
 
-build:
-  extends: .goldfarm
-  stage: build
-  script:
-    - !reference [.build_tree, script]
-    - willeq_build_tree
-
 # B1038 (#358): the headless configuration (EQT_GRAPHICS=OFF, the `--no-graphics`
 # client and its suite). Nothing built it before: the hygiene job configures
 # OFF but compiles no C++, so 5 TUs rotted unseen until B1031's macOS probe
-# found them (docs/ci.md, "The headless build"). Same stage as `build`, so on
+# found them (docs/ci.md, "The headless build"). Same stage as `build-test`, so on
 # two runners the two build in parallel. It runs the SHARED willeq_build_tree
 # (WILLEQ_HEADLESS=1 picks the OFF configure and skips the Irrlicht bootstrap)
 # into its own tree, and runs ctest IN THIS JOB right after the host+sha
 # claim -- build and suite can never land on different hosts, so it needs no
-# B1026 verify. WILLEQ_REQUIRE_ASSETS as in `test`: an absent asset root is a
+# B1026 verify. WILLEQ_REQUIRE_ASSETS as in `build-test`: an absent asset root is a
 # FAIL here, never a silent SKIP.
 build-headless:
   extends: .goldfarm
   stage: build
+  # B1042: docs-only diffs skip it, like build-test.
+  rules: !reference [.code_rules, rules]
   variables:
     # Its own per-ref tree (B1012 layout under build-headless/), so the
     # B1026 stamp is per tree and the graphics tree is never reconfigured OFF.
@@ -251,10 +317,44 @@ build-headless:
       - ctest-headless.log
       - ctest-headless-LastTest.log
 
-# Stage 3: the full suite, minus the two documented special cases:
+# Stage 2: build AND the full suite in ONE job (B1042, #362). Until B1042
+# `build` and `test` were two stages; on two runners they landed on different
+# hosts in 25 of the last 50 pipelines that ran both (pipelines 820..909,
+# jobs API runner.id; review/B1042/README.md), and each split cost the
+# `test` job a second build on its own host (B1026's in-job rebuild) plus a
+# second queue wait behind every other pipeline. One job builds and tests on
+# one host, so the B1026 verify below is a file read that MATCHES; it stays
+# as the net in case the claim step ever moves. The suite runs minus the two
+# documented special cases:
 #   - visual_gate      -- runs in the `gate` stage (it needs build-gles2/).
 #   - RDPServerFrameTest.UpdateFrameMultipleTimes -- documented intermittent
 #     race; re-run on its own with --repeat until-pass:3.
+build-test:
+  extends: .goldfarm
+  stage: build
+  rules: !reference [.code_rules, rules]
+  variables:
+    # B815: an absent asset root is a SKIP in a local run, but CI has the
+    # assets (before_script re-makes the gitignored symlinks) and must never
+    # skip them silently -- under this value the same condition is a hard
+    # FAIL. tests/asset_requirement.h implements the check;
+    # test_asset_requirement pins both outcomes.
+    WILLEQ_REQUIRE_ASSETS: "1"
+  script:
+    - !reference [.build_tree, script]
+    - willeq_build_tree
+    # B1026: never test a tree another host or another commit built.
+    - !reference [.verify_build_tree, script]
+    - nice -n 10 ctest --test-dir "$BUILD_TREE" -j $CTEST_JOBS --output-on-failure -E '(^visual_gate$|^RDPServerFrameTest\.UpdateFrameMultipleTimes$)' 2>&1 | tee ctest.log
+    - nice -n 10 ctest --test-dir "$BUILD_TREE" -R '^RDPServerFrameTest\.UpdateFrameMultipleTimes$' --repeat until-pass:3 --output-on-failure 2>&1 | tee -a ctest.log
+    - cp "$BUILD_TREE/Testing/Temporary/LastTest.log" ctest-LastTest.log || true
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - ctest.log
+      - ctest-LastTest.log
+
 # T503 -- ARM cross-build for the Orange Pi, on the SECOND runner
 # (dev-u24-arm-nfs: user-mode shell runner on the dev host, tag arm-nfs; it has
 # docker, the willeq-arm-noble image and the NFS share the Pi also mounts).
@@ -317,29 +417,6 @@ build-arm64:
     - nice -n 10 scripts/build-arm64-noble.sh 2>&1 | tail -n 40
     - scripts/pi/publish_arm64_build.sh "$CI_COMMIT_SHA" "${CI_COMMIT_BRANCH:-$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
 
-test:
-  extends: .goldfarm
-  stage: test
-  variables:
-    # B815: an absent asset root is a SKIP in a local run, but CI has the
-    # assets (before_script re-makes the gitignored symlinks) and must never
-    # skip them silently -- under this value the same condition is a hard
-    # FAIL. tests/asset_requirement.h implements the check;
-    # test_asset_requirement pins both outcomes.
-    WILLEQ_REQUIRE_ASSETS: "1"
-  script:
-    # B1026: never test a tree another host or another commit built.
-    - !reference [.verify_build_tree, script]
-    - nice -n 10 ctest --test-dir "$BUILD_TREE" -j $CTEST_JOBS --output-on-failure -E '(^visual_gate$|^RDPServerFrameTest\.UpdateFrameMultipleTimes$)' 2>&1 | tee ctest.log
-    - nice -n 10 ctest --test-dir "$BUILD_TREE" -R '^RDPServerFrameTest\.UpdateFrameMultipleTimes$' --repeat until-pass:3 --output-on-failure 2>&1 | tee -a ctest.log
-    - cp "$BUILD_TREE/Testing/Temporary/LastTest.log" ctest-LastTest.log || true
-  artifacts:
-    when: always
-    expire_in: 7 days
-    paths:
-      - ctest.log
-      - ctest-LastTest.log
-
 # Stage 4: the visual gate (T80/T291) -- golden frames + CPU-p95 + memory ledger
 # over build-gles2/bin/gles2_zone_benchmark against real client assets.
 # allow_failure is FALSE: hermes-ext has both asset trees and the pristine
@@ -382,12 +459,18 @@ test:
     # (both default to build-gles2/ for a developer's checkout).
     - export GLES2_BUILD_DIR="$PWD/$GLES2_TREE" WILLEQ_GLES2_BUILD_DIR="$PWD/$GLES2_TREE"
     - python3 scripts/ci/prune_ref_build_trees.py --stamp "$GLES2_TREE" --ref "$CI_COMMIT_REF_NAME"
+    # B1042: a warm tree is re-configured with $CCACHE_CMAKE_ARGS (a tree
+    # configured before ccache existed has no launcher; seconds on a warm
+    # cache); the cold bootstrap takes the launcher from the exported
+    # CMAKE_*_COMPILER_LAUNCHER (build-gles2-x86.sh).
     - |
       if [ -x "$GLES2_TREE/bin/gles2_zone_benchmark" ]; then
+        nice -n 10 cmake -S . -B "$GLES2_TREE" $CCACHE_CMAKE_ARGS 2>&1 | tail -n 5
         nice -n 10 cmake --build "$GLES2_TREE" --target willeq gles2_zone_benchmark -j "$JOBS" 2>&1 | tail -n 60
       else
         JOBS=$JOBS nice -n 10 bash scripts/build-gles2-x86.sh 2>&1 | tail -n 100
       fi
+      ccache_report "$GLES2_TREE"
 
 # B923 / #242: the CLIENT's own memory ledger against its budgets, run on a
 # schedule rather than by hand. The blocking `gate` job below measures
@@ -405,7 +488,9 @@ test:
 # both trigger it (issue #242 acceptance 2: "ClientLedgerLive on a schedule
 # with the result recorded"). The evidence dir and the check's per-category
 # lines are artifacts -- the recorded result. Needs the willeq binary from
-# the `build` stage's tree (build/bin/willeq), not build-gles2/'s.
+# the `build-test` job's tree ($BUILD_TREE/bin/willeq), not build-gles2/'s.
+# B1042: same docs-only skip as `.code_rules` (it must be, `needs:
+# [build-test]` names a job that a docs-only pipeline does not have).
 #
 # Declared ABOVE `gate:` on purpose: test_visual_gate_ledger asserts the gate
 # job's body (the text after "\ngate:") contains no "allow_failure: true", so
@@ -414,19 +499,32 @@ test:
 client-ledger-live:
   extends: .goldfarm
   stage: gate
-  needs: [build]
-  dependencies: [build]
+  needs: [build-test]
+  dependencies: [build-test]
   rules:
+    - if: $WILLEQ_FULL_PIPELINE == "1"
+      when: manual
+      allow_failure: true
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        regexp: *code_change_re
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_BRANCH == "fable"
+      changes:
+        regexp: *code_change_re
       when: manual
       allow_failure: true
     - if: $CI_COMMIT_BRANCH
+      changes:
+        regexp: *code_change_re
+        compare_to: refs/heads/fable
       when: manual
       allow_failure: true
   script:
-    # B1026: `needs: [build]` does not put this job on the build job's host.
+    # B1026: `needs: [build-test]` does not put this job on that job's host.
     - !reference [.verify_build_tree, script]
-    - test -x "$BUILD_TREE/bin/willeq" || { echo "no $BUILD_TREE/bin/willeq -- the build stage did not land"; exit 1; }
+    - test -x "$BUILD_TREE/bin/willeq" || { echo "no $BUILD_TREE/bin/willeq -- the build-test job did not land"; exit 1; }
     - |
       nice -n 10 bash scripts/client_ledger_capture.sh \
         --zones iceclad --modes spatial --assert-budgets \
@@ -447,6 +545,7 @@ gate:
   extends: .goldfarm
   stage: gate
   allow_failure: false
+  rules: !reference [.code_rules, rules]
   script:
     - !reference [.visual_gate_prepare, script]
     - |

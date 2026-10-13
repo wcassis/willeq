@@ -5,7 +5,7 @@
 // DoorLoadingUnitTest.MultipleZonesHaveObjectGeometries) used to FAIL in a
 // fresh worktree (no data/eq_client symlink) while their per-zone siblings
 // skipped cleanly. The ruling: an absent asset root is a SKIP locally, and a
-// hard FAIL under WILLEQ_REQUIRE_ASSETS=1 (which .gitlab-ci.yml's `test` job
+// hard FAIL under WILLEQ_REQUIRE_ASSETS=1 (which .gitlab-ci.yml's `build-test` job
 // sets, so CI can never skip these silently). This executable pins that
 // decision in isolation.
 //
