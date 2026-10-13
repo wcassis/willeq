@@ -32,7 +32,9 @@ unmeasured code taxonomy and conflict with the existing UI-preferences writer.
 - Keyboard and mouse Spell activation both call `FindHotbarSpellGem` over
   `GameState::spells()`, so a Spell slot stores a spell ID and resolves the
   currently memorized visible gem. Without a model or matching gem, keyboard
-  activation does not guess by button position.
+  activation does not guess by button position. The player-profile
+  `SpellManager::setSpellGems` load now publishes its initial gems into that
+  authoritative state, rather than leaving it empty until a later gem change.
 
 ## Verification
 

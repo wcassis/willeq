@@ -271,6 +271,10 @@ void SpellManager::setSpellGems(const uint32_t* gems, size_t count)
         m_spell_gems[i] = gems[i];
         m_gem_states[i] = (gems[i] != SPELL_UNKNOWN && gems[i] != 0)
             ? GemState::Ready : GemState::Empty;
+        // The player-profile load is the initial source of gem identity.
+        // Keep GameState's spell projection current before either hotbar
+        // activation route resolves a stored spell ID.
+        publishGemChanged(static_cast<uint8_t>(i));
     }
 
     LOG_DEBUG(MOD_SPELL, "Set {} spell gems", max_count);

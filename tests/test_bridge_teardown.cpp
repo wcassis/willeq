@@ -80,8 +80,8 @@ TEST(HotbarPersistence, TwoCharactersHaveIndependentFiles) {
     eqt::HotbarModel bob;
     alice.assignSlot({2, 4}, eqt::HotbarSlotType::Spell, 777);
     bob.assignSlot({9, 4}, eqt::HotbarSlotType::Item, 888);
-    ASSERT_TRUE(eqt::SaveCharacterHotbar("Alice", "server", alice));
-    ASSERT_TRUE(eqt::SaveCharacterHotbar("Bob", "server", bob));
+    EXPECT_TRUE(eqt::SaveCharacterHotbar("Alice", "server", alice));
+    EXPECT_TRUE(eqt::SaveCharacterHotbar("Bob", "server", bob));
     eqt::HotbarModel aliceRead;
     eqt::HotbarModel bobRead;
     EXPECT_TRUE(eqt::LoadCharacterHotbar("Alice", "server", aliceRead));
