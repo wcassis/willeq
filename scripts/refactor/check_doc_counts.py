@@ -344,7 +344,7 @@ ROWS = [
     ("InputAction enumerators",
      lambda r: count_enumerators(
          r, "include/client/input/input_handler.h", "InputAction"),
-     "T365/T368 deleted seven consumer-less enumerators (B090/B100)",
+     "T365/T368 deleted seven consumer-less enumerators (B090/B100); B534 deleted ToggleCameraMode (#181)",
      [("src/client/input/CLAUDE.md",
        r"`InputAction`\s+enum\s+\(\*\*(\w+)\*\*")]),
 
