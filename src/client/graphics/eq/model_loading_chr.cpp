@@ -68,12 +68,13 @@ bool RaceModelLoader::loadModelFromZoneChr(const std::string& zoneName, uint16_t
                            [](unsigned char c) { return std::toupper(c); });
 
             if (charName.find(upperCode) != std::string::npos) {
-                // Found a match. B733 (issue #70): select the parts the
-                // skeleton REFERENCES (its 0x200 mesh list), with the
-                // race-code default names as the fallback for skeletons that
-                // list none -- a part whose mesh carries a name the race code
-                // does not predict (race 146 SSN's head "SNNHE00_DMSPRITEDEF")
-                // was dropped by the old name-only selection.
+                // Found a match. B733 (issue #70): select the UNION of the old
+                // name selection (run verbatim, stored part order) and the meshes
+                // the skeleton's 0x200 list names that the name selection did not
+                // pick (the rule as geometry_combiner.h states it) -- a part whose
+                // mesh carries a name the race code does not predict (race 146
+                // SSN's head "SNNHE00_DMSPRITEDEF") was dropped by the old
+                // name-only selection.
                 SelectedCharacterParts selected = selectCharacterParts(*character, upperCode);
                 std::vector<CharacterPart> selectedSkinnedParts = std::move(selected.skinned);
                 std::vector<CharacterPart> selectedRawParts = std::move(selected.raw);
@@ -403,12 +404,13 @@ bool RaceModelLoader::loadModelFromCachedChr(const std::string& chrFilename, uin
             LOG_DEBUG(MOD_GRAPHICS, "RaceModelLoader:   Checking char '{}' for code '{}'", charName, upperCode);
 
             if (charName.find(upperCode) != std::string::npos) {
-                // Found a match. B733 (issue #70): select the parts the
-                // skeleton REFERENCES (its 0x200 mesh list), with the
-                // race-code default names as the fallback for skeletons that
-                // list none -- a part whose mesh carries a name the race code
-                // does not predict (race 146 SSN's head "SNNHE00_DMSPRITEDEF")
-                // was dropped by the old name-only selection.
+                // Found a match. B733 (issue #70): select the UNION of the old
+                // name selection (run verbatim, stored part order) and the meshes
+                // the skeleton's 0x200 list names that the name selection did not
+                // pick (the rule as geometry_combiner.h states it) -- a part whose
+                // mesh carries a name the race code does not predict (race 146
+                // SSN's head "SNNHE00_DMSPRITEDEF") was dropped by the old
+                // name-only selection.
                 SelectedCharacterParts selected = selectCharacterParts(*character, upperCode);
                 std::vector<CharacterPart> selectedSkinnedParts = std::move(selected.skinned);
                 std::vector<CharacterPart> selectedRawParts = std::move(selected.raw);

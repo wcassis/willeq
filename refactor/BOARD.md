@@ -9975,8 +9975,9 @@ fine — the table fails on a stale entry, so it cannot rot.
   getters), the per-entity animation query set (`getEntityAnimation()`,
   `hasEntityAnimation()`, `getEntityAnimationList()`,
   `isEntityPlayingThrough()`, `getEntityPoseState()`), `setOcclusionCuller()`,
-  `setNameTagDistance()`, `isPlayerInFirstPersonMode()`. Then
-  `CameraController` (11), `TextureAtlas`'s whole preload path (10:
+  `setNameTagDistance()`, `isPlayerInFirstPersonMode()`. Then ~~`CameraController`
+  (11)~~ (deleted by B533 MR !138 2026-10-11 — the fly/orbit state T461 left
+  write-only; see `refactor/B533/README.md`), `TextureAtlas`'s whole preload path (10:
   `preloadFromFile()`, `uploadPreloadedPage()`, `uploadPreloadedPageAsync()`,
   `finalizePreload()`), `ZoneShaderManager` (9, including the four wind
   material-type getters and `appendAtlasPageTextures()`), `SkyRenderer`'s strip
@@ -12054,7 +12055,7 @@ Media and every number: `review/T478/README.md`; the plan's Review.
 
 ---
 
-> **Orchestrator note (2026-09-14):** the two sections below were written on the UNMERGED branch `task/T479-skeleton-mesh-list-loaders` (commits `64c9273d` T479, `dfb3a0e8` T481) and copied here so the board of record carries them. B730–B732 are fixed ONLY on that branch; the branch is held because the T479 build is OOM-killed on the Pi (B750) until Will picks a lever (B752). Will must also bless the qeynos2 `placeableObjectsBytes` gate figure (1,365,564 → 1,389,324) before that branch can merge.
+> **Orchestrator note (2026-09-14; re-annotated 2026-10-12 by B1028/#348):** the two sections below were written on the UNMERGED branch `task/T479-skeleton-mesh-list-loaders` (commits `64c9273d` T479, `dfb3a0e8` T481) and copied here so the board of record carries them. B730 and B731 are fixed ONLY on that branch; **B732's loader half was fixed on `fable` by B733 (merged 2026-10-11)** — see the B732 row's 2026-10-12 note — while its test pin and the T479-branch merge still ride that branch, held because the T479 build is OOM-killed on the Pi (B750) until Will picks a lever (B752). Will must also bless the qeynos2 `placeableObjectsBytes` gate figure (1,365,564 → 1,389,324) before that branch can merge.
 
 ## Added 2026-09-14 by T479 (the 0x10 skeleton mesh list in the character and object loaders)
 
@@ -12085,7 +12086,7 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   skins its own copy, and the prefix no longer takes a mesh another skeleton
   lists. Pinned by `SkeletonMeshListLoaders.CharacterMeshIsSkinnedOnceByItsOwnSkeleton`.
 
-- **B732** (A) **FIXED ON THE HELD BRANCH ONLY — `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` this is still open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: `S3DLoader::loadCharacters()` never read the → issue #69
+- **B732** (A) **defect FIXED ON `fable` by B733's loader (2026-10-12) — the T479 branch test pin and merge still ride `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` before B733 the defect was open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: `S3DLoader::loadCharacters()` never read the → issue #69
   meshes a skeleton lists. 49 zone-chr skeletons (19 names: KAR, AAM, PHX, GTD,
   BKN ...) whose listed meshes carry no race-code prefix stored no model; 8
   names missed listed meshes -- GOM (body and head: its two bone meshes stopped
@@ -12095,6 +12096,18 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   no global archive and no gate zone moved. Pinned by
   `SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart`. Of the affected codes
   only CLM/CLF, KAM/KAF, SSN, STG and IVM have a `race_models` row.
+  2026-10-12 (B1028/#348): on fable the loader half of this row is FIXED by
+  B733's loader — the 0x200 collect/append
+  (`s3d_loader_characters.cpp:247-283`, `357-395`, runs for every skeleton;
+  the `boneWalkStoredNothing` gate at `:282` is on the prefix-fallback block,
+  not the collect) stores every listed-but-unstored mesh, covering BOTH the 49
+  no-prefix skeletons and the 8 missed names; QA t_cbfd7f9a's censuses (2026-10-11,
+  all 378 chr archives, all 138 db races) show the #70-class recovery SSN/IVM/GOM
+  (full list in `refactor/B733/README.md` "The #69 (B732) row") and only races
+  127/146/240 changed byte-wise. Still open: the test pin
+  `SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart`, the T479 companion
+  fixes B730/B731, and the branch's merge blockers (B750/B752, gate bless) —
+  see `refactor/B733/README.md`.
 
 - ~~**B733**~~ **CLOSED on `task/kb-b733-race-model-parts` (issue #70).** CONFIRMED
   Class A: race 146 SSN's skeleton `SSN_HS_DEF` 0x200 list names the head
@@ -12104,7 +12117,8 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   and the 0x200-listed meshes the bones/prefix didn't store (`s3d_loader_characters.cpp`),
   and the base builders select the OLD name set plus the skeleton-referenced
   additions the name selection missed (`selectCharacterParts`, `geometry_combiner.cpp`,
-  wired into the four base-builder call sites in `model_loading{,_chr,_search}.cpp`).
+  wired into the five base-builder call sites in `model_loading{,_chr,_search}.cpp`,
+  incl. `loadModelFromNumberedGlobal`, `model_loading_chr.cpp:632`).
   Pinned by `B733Race146LoaderTest` (`tests/test_b733_skeleton_mesh_refs.cpp`),
   which derives the expected part list from the WLD data (never hand-typed) and
   was RED (3359/4333) on origin/fable. Gate impact [measured]: the four

@@ -161,7 +161,6 @@ void eqt::player::PlayerComponent::SyncEntityToGameState(const Entity& entity)
 	stateEntity.deltaZ = entity.delta_z;
 	stateEntity.deltaHeading = entity.delta_heading;
 	stateEntity.lastUpdateTime = entity.last_update_time;
-	stateEntity.isPet = entity.is_pet;
 	stateEntity.petOwnerId = entity.pet_owner_id;
 	stateEntity.primaryWeaponSkill = entity.primary_weapon_skill;
 	stateEntity.secondaryWeaponSkill = entity.secondary_weapon_skill;
