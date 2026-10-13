@@ -13615,6 +13615,8 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
 - **B1053** (A, UI) → issue #373. Will's XU4 play test reports that the
   1280x720 Options window does not show all controls. The XML-backed table
   audit at the branch's starting head found no control rectangle outside its
-  page/window at 1280x720 or 1024x768; the report remains open pending visual
-  reproduction. See `refactor/B1053/README.md` for the exact audit and the
+  page/window at 1280x720 or 1024x768. A constrained DRM XU4 capture at
+  1280x720 likewise shows the General page fitting the XML-sized window;
+  the report remains open because the original failing still and affected tab
+  are unknown. See `refactor/B1053/README.md` for the exact audit and the
   explicit unverified items.
