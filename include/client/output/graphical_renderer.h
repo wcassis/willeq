@@ -42,7 +42,6 @@ struct EntityAppearanceData {
  *
  * This class provides common functionality for all graphical renderers:
  * - Input handler management
- * - Camera mode support
  * - Render quality settings
  * - Entity/door management methods
  *
@@ -64,28 +63,6 @@ public:
      * that reads from keyboard/mouse through the graphics system.
      */
     input::IInputHandler* getInputHandler() override { return m_inputHandler.get(); }
-
-    // ========== Camera Control ==========
-
-    /**
-     * Set camera mode.
-     */
-    void setCameraMode(CameraMode mode) override { m_cameraMode = mode; }
-
-    /**
-     * Get current camera mode.
-     */
-    CameraMode getCameraMode() const { return m_cameraMode; }
-
-    /**
-     * Cycle to next camera mode.
-     */
-    void cycleCameraMode() override;
-
-    /**
-     * Get camera mode as string.
-     */
-    std::string getCameraModeString() const;
 
     // ========== Render Quality ==========
 
@@ -175,7 +152,6 @@ public:
 
 protected:
     std::unique_ptr<input::IInputHandler> m_inputHandler;
-    CameraMode m_cameraMode = CameraMode::FirstPerson;
     RenderQuality m_renderQuality = RenderQuality::Medium;
 
     // Event bus subscription
