@@ -2,7 +2,7 @@
 #define EQT_GRAPHICS_BACKGROUND_WORK_QUEUE_H
 
 #include <atomic>
-#include <pthread.h>
+#include "common/thread_name.h"  // T504 thread names; B1039: Linux + macOS forms
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -29,7 +29,6 @@ template <typename Request, typename Result>
 class BackgroundWorkQueue {
 public:
     using ProcessorFn = std::function<Result(Request&&)>;
-    using BatchHookFn = std::function<void()>;
 
     /// Own-thread mode constructor.
     explicit BackgroundWorkQueue(ProcessorFn processor)
@@ -48,13 +47,6 @@ public:
     BackgroundWorkQueue& operator=(const BackgroundWorkQueue&) = delete;
     BackgroundWorkQueue(BackgroundWorkQueue&&) = delete;
     BackgroundWorkQueue& operator=(BackgroundWorkQueue&&) = delete;
-
-    /// Set optional hooks called around each batch of work on the worker thread.
-    /// Must be called before start(). Only effective in own-thread mode.
-    void setBatchHooks(BatchHookFn onBegin, BatchHookFn onEnd) {
-        onBatchBegin_ = std::move(onBegin);
-        onBatchEnd_ = std::move(onEnd);
-    }
 
     /// Launch the worker thread. No-op if pool-backed or already running.
     void start() {
@@ -120,17 +112,6 @@ public:
         return true;
     }
 
-    /// Return all pending results.
-    std::vector<Result> pollAll() {
-        std::lock_guard<std::mutex> lock(resultMutex_);
-        std::vector<Result> results;
-        results.reserve(resultQueue_.size());
-        for (auto& r : resultQueue_)
-            results.push_back(std::move(r));
-        resultQueue_.clear();
-        return results;
-    }
-
     /// True when no work is in-flight for this queue.
     bool isIdle() const {
         if (isPoolBacked())
@@ -160,7 +141,7 @@ private:
     void submitToPool(Request request, uint32_t priority);
 
     void workerLoop() {
-        pthread_setname_np(pthread_self(), "eq-prep");  // T504: the entity prep worker (own-thread mode)
+        eqt::setCurrentThreadName("eq-prep");  // T504: the entity prep worker (own-thread mode)
         while (true) {
             Request req;
             {
@@ -174,9 +155,6 @@ private:
                 req = std::move(requestQueue_.front());
                 requestQueue_.pop_front();
             }
-
-            if (onBatchBegin_)
-                onBatchBegin_();
 
             // Process the first request
             {
@@ -201,15 +179,11 @@ private:
                 resultQueue_.push_back(std::move(result));
             }
 
-            if (onBatchEnd_)
-                onBatchEnd_();
             FlushThreadLog();
         }
     }
 
     ProcessorFn processor_;
-    BatchHookFn onBatchBegin_;
-    BatchHookFn onBatchEnd_;
 
     std::thread worker_;
     std::atomic<bool> running_{false};

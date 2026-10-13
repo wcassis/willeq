@@ -517,7 +517,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_display_text_from_db
         test_display_text_from_db.cpp
     )
-    TARGET_INCLUDE_DIRECTORIES(test_display_text_from_db PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_INCLUDE_DIRECTORIES(test_display_text_from_db PRIVATE ${IRRLICHT_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/third_party)
     TARGET_LINK_LIBRARIES(test_display_text_from_db GTest::gtest_main willeq_core)
     TARGET_COMPILE_DEFINITIONS(test_display_text_from_db PRIVATE
         WILLEQ_DB_REAL_PATH="${CMAKE_SOURCE_DIR}/data/willeq.db")
@@ -1005,13 +1005,17 @@ ENDIF()
 # builder and the shipped ui_atlas.json must name the same fifteen sprites, and
 # every one of them must have a consumer. Reads files only (no device, no GPU);
 # links willeq_core for EQE1Loader to read the pack's raw ui_atlas.json entry.
-ADD_EXECUTABLE(test_ui_sprite_roster
-    test_ui_sprite_roster.cpp
-)
-TARGET_COMPILE_DEFINITIONS(test_ui_sprite_roster PRIVATE
-    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-TARGET_LINK_LIBRARIES(test_ui_sprite_roster GTest::gtest_main willeq_core)
-GTEST_DISCOVER_TESTS(test_ui_sprite_roster DISCOVERY_TIMEOUT 120)
+# Graphics builds only (B1038): EQE1Loader is a renderer TU (GRAPHICS_SOURCES)
+# and the roster is the rendered UI's.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_ui_sprite_roster
+        test_ui_sprite_roster.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_ui_sprite_roster PRIVATE
+        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    TARGET_LINK_LIBRARIES(test_ui_sprite_roster GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_ui_sprite_roster DISCOVERY_TIMEOUT 120)
+ENDIF()
 
 # T500 (B836/B837): the entity_models byte split and the merged-texture-map
 # sharing it paid for. Same EDT_NULL + willeq_core gate as test_chr_cache_lru;

@@ -329,23 +329,30 @@ GTEST_DISCOVER_TESTS(test_config_key_reachability DISCOVERY_TIMEOUT 120)
 # (include/client/core/memory_ledger.h). Links the ledger TU directly -- it
 # REPLACES malloc/free/operator new for this whole binary, gtest included --
 # and exercises the hooks through the public allocation entry points.
-ADD_EXECUTABLE(test_memory_ledger
-    test_memory_ledger.cpp
-    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
-    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
-    ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
-)
-TARGET_LINK_LIBRARIES(test_memory_ledger GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} Threads::Threads)
-# B839 (issue #94): the startup sub-owner acceptance case SPAWNS the real
-# client (headless, TEST-NET-1, same idiom as test_headless_shutdown) and
-# reads its own [memledger-startup] table, so it needs the binary's path and
-# a build-order dependency on it.
-IF(TARGET willeq)
-    TARGET_COMPILE_DEFINITIONS(test_memory_ledger PRIVATE
-        WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>")
-    ADD_DEPENDENCIES(test_memory_ledger willeq)
+# B1039 (#359): the suite tests the allocator hooks (it asserts enabled()
+# first) and glibc's mallinfo2/malloc_info census, so it is built only where
+# the hooks exist: on macOS the ledger is its OFF shape (memory_ledger.h).
+IF(NOT APPLE)
+    ADD_EXECUTABLE(test_memory_ledger
+        test_memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_memory_ledger GTest::gtest_main ${FMT_LIB} ${JSONCPP_LIBRARIES} Threads::Threads)
+    # B839 (issue #94): the startup sub-owner acceptance case SPAWNS the real
+    # client (headless, TEST-NET-1, same idiom as test_headless_shutdown) and
+    # reads its own [memledger-startup] table, so it needs the binary's path and
+    # a build-order dependency on it.
+    IF(TARGET willeq)
+        TARGET_COMPILE_DEFINITIONS(test_memory_ledger PRIVATE
+            WILLEQ_BIN_PATH="$<TARGET_FILE:willeq>")
+        ADD_DEPENDENCIES(test_memory_ledger willeq)
+    ENDIF()
+    GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)
+ELSE()
+    MESSAGE(STATUS "test_memory_ledger: not built on macOS (the ledger compiles to its OFF shape there)")
 ENDIF()
-GTEST_DISCOVER_TESTS(test_memory_ledger DISCOVERY_TIMEOUT 120)
 
 # B946 (GitLab #264): the [gldriver] line -- which GL driver the process
 # really loaded (the mapped libgallium, the GL_RENDERER string, whether
@@ -416,14 +423,34 @@ GTEST_DISCOVER_TESTS(test_gpu_buffer_census DISCOVERY_TIMEOUT 120)
 # dump into the per-owner table against the [memgpu] row
 # (scripts/pi/test_gem_owner_table.py, over a dump CAPTURED on the Pi in
 # tests/data/b962/). Pure host checks, no GPU.
-ADD_EXECUTABLE(test_lima_bo_census_shim ${CMAKE_SOURCE_DIR}/scripts/pi/lima_bo_census.c)
-TARGET_COMPILE_DEFINITIONS(test_lima_bo_census_shim PRIVATE B962_SHIM_SELFTEST)
-TARGET_LINK_LIBRARIES(test_lima_bo_census_shim ${CMAKE_DL_LIBS} Threads::Threads)
-ADD_TEST(NAME LimaBoCensusShim
-    COMMAND test_lima_bo_census_shim ${CMAKE_CURRENT_BINARY_DIR}/b962_shim_selftest.tsv)
+# B1039 (#359): the shim interposes Linux's ioctl/mmap64/off64_t (an LD_PRELOAD
+# for the Pi's Lima driver); it is built only where those exist.
+IF(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    ADD_EXECUTABLE(test_lima_bo_census_shim ${CMAKE_SOURCE_DIR}/scripts/pi/lima_bo_census.c)
+    TARGET_COMPILE_DEFINITIONS(test_lima_bo_census_shim PRIVATE B962_SHIM_SELFTEST)
+    TARGET_LINK_LIBRARIES(test_lima_bo_census_shim ${CMAKE_DL_LIBS} Threads::Threads)
+    ADD_TEST(NAME LimaBoCensusShim
+        COMMAND test_lima_bo_census_shim ${CMAKE_CURRENT_BINARY_DIR}/b962_shim_selftest.tsv)
+ELSE()
+    MESSAGE(STATUS "test_lima_bo_census_shim: Linux only (Lima ioctl/mmap64 shim) -- not built")
+ENDIF()
 ADD_TEST(NAME GemOwnerTable
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_gem_owner_table.py -v)
 SET_TESTS_PROPERTIES(GemOwnerTable PROPERTIES LABELS "hygiene")
+
+# B1013 (GitLab #334): the Lima BO-cache pool timeline over the B997 Pi captured
+# fixture (scripts/pi/test_pool_timeline.py, tests/data/b1013/: the whole
+# bo_events.log + the final ready..steady_60s cut of gem_owners.tsv).
+ADD_TEST(NAME PoolTimeline
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/pi/test_pool_timeline.py -v)
+SET_TESTS_PROPERTIES(PoolTimeline PROPERTIES LABELS "hygiene")
+
+# B1013 (GitLab #334): the EQT_DRAW_CENSUS_WINDOW parse rule (the ONE place the
+# draw-census window is parsed: include/client/graphics/draw_census.h, applied
+# in the driver through the gles2SetDrawCensusWindow bridge).
+ADD_EXECUTABLE(test_draw_census_window test_draw_census_window.cpp)
+TARGET_LINK_LIBRARIES(test_draw_census_window GTest::gtest_main)
+GTEST_DISCOVER_TESTS(test_draw_census_window DISCOVERY_TIMEOUT 120)
 
 # B986: the DRM client's Lima BO retention policy, before device creation.
 ADD_EXECUTABLE(test_lima_buffer_policy test_lima_buffer_policy.cpp)

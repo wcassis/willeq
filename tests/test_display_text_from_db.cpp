@@ -25,6 +25,7 @@
 // client's positional %n engine would render "4.5.1f".
 
 #include <gtest/gtest.h>
+#include <sqlite3.h>
 
 #include "eqstr_test_db.h"
 
@@ -34,9 +35,10 @@
 #include "client/spell/spell_data.h"
 #include "client/spell/spell_display_text.h"
 #include "client/string_database.h"
+#include "client/willeq_database.h"
 
 #include <cstdio>
-#include <fstream>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -58,29 +60,60 @@ std::string dump(const std::vector<std::string>& lines) {
     return s;
 }
 
-// A StringDatabase in LEGACY (file) mode over `rows`, written to a temp
-// eqstr_us.txt. The loader skips two header lines, so they are supplied.
-class TempEqStrFile {
+// B606 (#189) turned StringDatabase into the production mode only: the
+// legacy eqstr_us.txt file loader (loadEqStrFile) is gone, so "the table is
+// the source" now means the eqstrings TABLE is the source. This fixture
+// plays that role -- a throwaway SQLite db (the shipped db's own shape,
+// built with raw sqlite3 like test_string_database does) in which the test
+// REWORDS the rows, exactly as the old temp file did.
+class TempEqStrDb {
 public:
-    explicit TempEqStrFile(const std::vector<std::pair<uint32_t, std::string>>& rows) {
-        path_ = ::testing::TempDir() + "/t429_eqstr_" +
-                std::to_string(reinterpret_cast<uintptr_t>(this)) + ".txt";
-        std::ofstream f(path_);
-        f << "EQST0002\n0 " << rows.size() << "\n";
-        for (const auto& [id, text] : rows) {
-            f << id << " " << text << "\n";
+    TempEqStrDb(const std::vector<std::pair<uint32_t, std::string>>& rows) {
+        const char* tmp = std::getenv("TMPDIR");
+        std::string dir = tmp ? tmp : "/tmp";
+        path_ = dir + "/t429_eqstr_" + std::to_string(reinterpret_cast<uintptr_t>(this))
+                + ".sqlite";
+        std::remove(path_.c_str());
+        sqlite3* raw = nullptr;
+        if (sqlite3_open(path_.c_str(), &raw) != SQLITE_OK) {
+            sqlite3_close(raw);
+            return;
         }
+        sqlite3_exec(raw, "CREATE TABLE eqstrings (id INTEGER PRIMARY KEY, text TEXT NOT NULL);",
+                     nullptr, nullptr, nullptr);
+        // open() validates the schema version, so the temp db needs the
+        // metadata table too (the same table the builder writes).
+        std::string meta = "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT); "
+            "INSERT INTO metadata VALUES ('version', '" +
+            std::to_string(EQT::kWilleqDbExpectedVersion) + "');";
+        sqlite3_exec(raw, meta.c_str(), nullptr, nullptr, nullptr);
+        for (const auto& [id, text] : rows) {
+            sqlite3_stmt* stmt = nullptr;
+            if (sqlite3_prepare_v2(raw, "INSERT INTO eqstrings VALUES (?, ?)", -1, &stmt,
+                                   nullptr) != SQLITE_OK) {
+                continue;
+            }
+            sqlite3_bind_int(stmt, 1, static_cast<int>(id));
+            sqlite3_bind_text(stmt, 2, text.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+        sqlite3_close(raw);
     }
-    ~TempEqStrFile() { std::remove(path_.c_str()); }
+    ~TempEqStrDb() { std::remove(path_.c_str()); }
 
     // Filled in place: StringDatabase holds an atomic query counter, so it
-    // is neither copyable nor movable.
+    // is neither copyable nor movable. initFromDatabase() reads the global
+    // instance, so it is set (and cleared) around the open.
     void loadInto(EQT::StringDatabase& db) const {
-        EXPECT_TRUE(db.loadEqStrFile(path_)) << path_;
+        EXPECT_TRUE(raw_.open(path_)) << path_;
+        EQT::WilleqDatabase::setGlobalInstance(&raw_);
+        EXPECT_TRUE(db.initFromDatabase()) << path_;
     }
 
 private:
     std::string path_;
+    mutable EQT::WilleqDatabase raw_;
 };
 
 eqt::inventory::ItemInstance plainItem() {
@@ -118,7 +151,7 @@ EQ::SpellData plainSpell() {
 TEST(DisplayTextFromDbT429, ItemLinesFollowTheStringTableNotTheSource) {
     // The shipped rows are "AC: %1" and "DMG: %1". A composer that owns its
     // text draws those whatever the table says.
-    const TempEqStrFile file({
+    const TempEqStrDb file({
         {eqt::inventory::kItemStrAc,  "ARMOUR CLASS >> %1"},
         {eqt::inventory::kItemStrDmg, "WALLOP >> %1"},
     });
@@ -132,7 +165,7 @@ TEST(DisplayTextFromDbT429, ItemLinesFollowTheStringTableNotTheSource) {
 }
 
 TEST(DisplayTextFromDbT429, SpellLinesFollowTheStringTableNotTheSource) {
-    const TempEqStrFile file({
+    const TempEqStrDb file({
         {eqt::spell::kSpellStrManaCost, "MANA >>> %1"},
         {eqt::spell::kSpellStrCastTime, "CASTS IN %1"},
     });
@@ -150,7 +183,7 @@ TEST(DisplayTextFromDbT429, SpellLinesFollowTheStringTableNotTheSource) {
 // ===================================================================
 
 TEST(DisplayTextFromDbT429, AnEmptyTableDrawsNoItemLines) {
-    const TempEqStrFile file({{1, "unrelated"}});
+    const TempEqStrDb file({{1, "unrelated"}});
     EQT::StringDatabase db;
     file.loadInto(db);
 
@@ -161,7 +194,7 @@ TEST(DisplayTextFromDbT429, AnEmptyTableDrawsNoItemLines) {
 }
 
 TEST(DisplayTextFromDbT429, AnEmptyTableDrawsNoSpellLines) {
-    const TempEqStrFile file({{1, "unrelated"}});
+    const TempEqStrDb file({{1, "unrelated"}});
     EQT::StringDatabase db;
     file.loadInto(db);
 

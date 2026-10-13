@@ -1,22 +1,25 @@
 # sha256 of data/willeq.db, the shipped SQLite database. Rebuilt by
-# scripts/build_willeq_db.sh from nine inputs: the EQ client's spells_us.txt,
+# scripts/build_willeq_db.sh from eight inputs: the EQ client's spells_us.txt,
 # eqstr_us.txt, dbstr_us.txt, SoundAssets.txt, AnimationSounds.txt,
-# mp3index.txt and eqlsstr_us.txt, plus data/item_models.json and
-# config/race_models.json. 28,791 rows across ten tables,
+# mp3index.txt, plus data/item_models.json and
+# config/race_models.json. 28,321 rows across nine tables,
 # metadata.version = 7 (kWilleqDbExpectedVersion).
 #
 # T454 (board B474) dropped the twelfth table, equipment_textures (2,623 rows
 # nothing read), and T456 (board B476) dropped the eleventh, equipment_models
 # (1,000 rows, nothing read either) -- together the whole of the difference
-# from T450's 32,414. The equipment model AND texture paths both resolve LIVE,
+# from T450's 32,414. B606 (#189) dropped the tenth, login_strings (470 rows,
+# its only client reader getLoginString() had zero production callers).
+# The equipment model AND texture paths both resolve LIVE,
 # through EquipmentModelLoader::buildEquipmentIndex(); neither table was a
 # broken route, both were redundant ones.
 #
-# metadata.input_digest DID move this time (c39f5cfbb75e5744 ->
-# 956f69a5686c98bb), and that is correct: T454 changed only the loader, so the
-# nine remaining inputs hashed the same, whereas T456 removed
-# data/equipment_models.json from the input set itself. The digest is over the
-# inputs, so dropping one must move it.
+# metadata.input_digest moved with every input-set change: c39f5cfbb75e5744
+# (T450's ten inputs) -> 956f69a5686c98bb (T456's nine) ->
+# 10ec9bedbe6c7c5e (B606's eight: eqlsstr_us.txt went with the
+# login_strings table). T454 changed only the loader, so its nine inputs
+# hashed the same; T456 removed data/equipment_models.json from the input
+# set itself. The digest is over the inputs, so dropping one must move it.
 #
 # T450 (board B467) made the file reproducible in the first place: the builder
 # used to stamp metadata.build_date = __DATE__ " " __TIME__, so recompiling it
@@ -26,4 +29,4 @@
 # Pinned here so an input drift, or a hand-edit of the database, is a ctest
 # FAIL (DbReproducible). Update this line in the SAME commit that changes an
 # input -- exactly like data/willeq.eqe1.sha256 and data/textures.sha256.
-e9fc387f0c3e4d72fb5f3b22fac098917b02006e64d28f784af06d2a8e103ef7  willeq.db
+5d4e49e5e6a042a0fc14900cc056147b37d3cd84c8ae12b2a38633d898e731e5  willeq.db

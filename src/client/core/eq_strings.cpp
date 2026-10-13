@@ -487,8 +487,7 @@ bool eqt::StringDb::LoadStringFiles(const std::string& eqClientPath) {
 		LOG_ERROR(MOD_MAIN, "Failed to initialize string database from SQLite");
 		return false;
 	}
-	LOG_INFO(MOD_MAIN, "Loaded strings from SQLite ({} eqstr, {} dbstr)",
-			 m_string_db.getEqStrCount(), m_string_db.getDbStrCount());
+	LOG_INFO(MOD_MAIN, "Loaded strings from SQLite");
 	return true;
 }
 

@@ -34,7 +34,9 @@ namespace video
 // draw count. This counter is that census: one increment per 3D draw, split
 // by the draw's GEM tag (the pool rows), gated behind EQT_DRAW_CENSUS so a
 // production build's cost is one predicted-false branch per call (the
-// gl_call_counters.h precedent). Emitted by endScene() every 120 frames as
+// gl_call_counters.h precedent). Emitted by endScene() every `window` frames
+// (120 by default, EQT_DRAW_CENSUS_WINDOW via the client's drawCensusWindowFromEnv
+// -- ONE parse rule, pushed in through gles2SetDrawCensusWindow) as
 // [drawcensus] (stderr, the [B960] precedent); the Pi rig's client.log
 // captures it. Client-side per-site counters (include/client/graphics/
 // draw_census.h) explain the composition; the driver's window_3d_client total
@@ -42,13 +44,14 @@ namespace video
 // names the scene-graph remainder (doors, equipment, other scene nodes).
 struct B997DrawCensus {
     bool enabled = false;
+    unsigned long window = 120;   // frames per [drawcensus] window (EQT_DRAW_CENSUS_WINDOW)
     unsigned long d3client = 0;   // per-frame: client-side 3D draws (draw3d:client tag)
     unsigned long d3vbo = 0;      // per-frame: VBO/EBO 3D draws (draw3d:vbo tag)
     unsigned long winD3Client = 0;  // since the last [drawcensus] line (accumulating)
     unsigned long winD3Vbo = 0;
     unsigned long emitted = 0;      // lifetime frames closed (the window key)
-    // Snapshot of the just-closed 120-frame window, held for the client's
-    // [drawsite] emit (the client reads it via gles2GetDrawCensusTotals() and
+    // Snapshot of the just-closed window, held for the client's [drawsite]
+    // emit (the client reads it via gles2GetDrawCensusTotals() and
     // consumes it with newWinPending on the same endScene cadence).
     unsigned long snapD3Client = 0;
     unsigned long snapD3Vbo = 0;
@@ -87,9 +90,11 @@ inline void b997Count3dVbo() {
     if (c.enabled) c.d3vbo++;
 }
 // Per-frame close (endScene): accumulate the frame into the window, emit the
-// window every 120 frames, and hold a snapshot of the just-closed window for
-// the client's [drawsite] emit (same endScene cadence, so the two streams line
-// up).
+// window every `window` frames (120 by default; the client pushes
+// EQT_DRAW_CENSUS_WINDOW's parsed value through gles2SetDrawCensusWindow
+// before the first window can close), and hold a snapshot of the just-closed
+// window for the client's [drawsite] emit (same endScene cadence, so the two
+// streams line up).
 inline void b997CensusEndFrame() {
     B997DrawCensus& c = b997Census();
     if (!c.enabled) { c.newWinPending = false; return; }
@@ -99,7 +104,7 @@ inline void b997CensusEndFrame() {
     c.d3vbo = 0;
     c.newWinPending = false;
     c.emitted++;
-    if (c.emitted % 120 == 0) {
+    if (c.window > 0 && c.emitted % c.window == 0) {
         c.snapD3Client = c.winD3Client;
         c.snapD3Vbo = c.winD3Vbo;
         c.newWinPending = true;
@@ -2500,7 +2505,7 @@ size_t gles2GetGpuTextureStorageUsage(void* driver)
     return d->getGpuTextureStorageUsage();
 }
 
-// B997: expose the driver's just-closed 120-frame [drawcensus] window to the
+// B997: expose the driver's just-closed [drawcensus] window to the
 // client render thread (the extern-bridge precedent). The client's [drawsite]
 // line joins against this snapshot on the same endScene cadence, so
 // scene_graph = window_3d_client - (every client-site count) names the
@@ -2517,6 +2522,17 @@ void gles2GetDrawCensusTotals(void* driver, unsigned long* winD3client,
     if (frames) *frames = c.emitted;
     if (newWindow) *newWindow = c.newWinPending;
     c.newWinPending = false;  // consumed by the client emit
+}
+
+// B1013 (GitLab #334): the client's EQT_DRAW_CENSUS_WINDOW (parsed by the
+// ONE rule, draw_census.h drawCensusWindowFromEnv -- the driver never parses
+// env itself) set into the driver's window. The client calls this once,
+// before its first window close, so the driver's boundary and the client's
+// [drawsite] cadence always agree.
+void gles2SetDrawCensusWindow(void* driver, unsigned long frames)
+{
+    (void)driver;
+    irr::video::b997Census().window = frames;
 }
 
 // B946 (GitLab #264): the client's [gldriver] line reads GL_RENDERER through

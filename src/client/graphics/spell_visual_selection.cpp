@@ -7,15 +7,6 @@
 
 namespace EQ {
 
-const char* toString(SpellVisualSource source) {
-    switch (source) {
-        case SpellVisualSource::NoAffectIndex: return "NoAffectIndex";
-        case SpellVisualSource::EmptyRecord:   return "EmptyRecord";
-        case SpellVisualSource::Resolved:      return "Resolved";
-    }
-    return "Unknown";
-}
-
 SpellVisualStage SpellVisualSelector::resolveStage(const SpellsEffEmitter& emitter) {
     SpellVisualStage stage;
     stage.present = emitter.hasContent();

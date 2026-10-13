@@ -1,71 +1,134 @@
-#include <gtest/gtest.h>
-#include "client/string_database.h"
-#include "client/formatted_message.h"
-#include <fstream>
-#include <cstdlib>
+// B606 (#189) rewrote this suite over a throwaway SQLite db.
+//
+// The production StringDatabase is SQLite-backed ONLY: initFromDatabase()
+// (called by eq_strings.cpp's LoadStringFiles) is the client's one
+// initialization. The legacy eqstr_us.txt / dbstr_us.txt file loaders
+// (loadEqStrFile/loadDbStrFile) were zero-caller dead weight, so this file
+// no longer opens them. Every assertion the suite made over the legacy
+// files now runs against a temp database the fixture builds, so nothing
+// skips: the values below are the legacy file's own rows (the eqstr ids the
+// tests name), quoted here instead of re-read from the EQ client files.
+//
+// The format-engine cases (formatTemplate and friends) never touched the
+// storage at all and are unchanged.
 
+#include <gtest/gtest.h>
+#include <sqlite3.h>
+
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+#include <vector>
+
+#include "client/formatted_message.h"
+#include "client/string_database.h"
+#include "client/willeq_database.h"
+
+namespace {
+
+std::string TempDbPath(const char* name) {
+    const char* tmp = std::getenv("TMPDIR");
+    std::string dir = tmp ? tmp : "/tmp";
+    return dir + "/string_db_test_" + name + "_" + std::to_string(::getpid()) + ".sqlite";
+}
+
+// A StringDatabase over a throwaway SQLite db, the production mode. The
+// fixture builds the db with a standalone sqlite3 handle, then opens it
+// through WilleqDatabase exactly as the client does (initFromDatabase reads
+// the global instance).
 class StringDatabaseTest : public ::testing::Test {
 protected:
+    EQT::WilleqDatabase raw;
     EQT::StringDatabase db;
-
-    // Path to EQ client string files
-    std::string getEqClientPath() {
-        // Check environment variable first
-        const char* env_path = std::getenv("EQ_CLIENT_PATH");
-        if (env_path) {
-            return env_path;
-        }
-        // Default to known location
-        return EQ_CLIENT_DATA_PATH;
-    }
-
-    std::string getEqStrPath() {
-        return getEqClientPath() + "/eqstr_us.txt";
-    }
-
-    std::string getDbStrPath() {
-        return getEqClientPath() + "/dbstr_us.txt";
-    }
+    std::string path;
 
     void SetUp() override {
-        // Load string files if they exist
-        std::ifstream test_file(getEqStrPath());
-        if (test_file.good()) {
-            db.loadEqStrFile(getEqStrPath());
-        }
-        test_file.close();
+        path = TempDbPath("strings");
+        std::remove(path.c_str());
+        sqlite3* build = nullptr;
+        ASSERT_EQ(sqlite3_open(path.c_str(), &build), SQLITE_OK);
+        exec(build, "CREATE TABLE eqstrings (id INTEGER PRIMARY KEY, text TEXT NOT NULL);");
+        exec(build, "CREATE TABLE dbstrings (category INTEGER, sub_id INTEGER, text TEXT NOT NULL);");
+        // open() validates the schema version, so the temp db needs the
+        // metadata table too (the same table the builder writes).
+        exec(build, "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT); "
+            "INSERT INTO metadata VALUES ('version', '" +
+            std::to_string(EQT::kWilleqDbExpectedVersion) + "');");
+        // Rows are the legacy eqstr file's own values, keyed by the ids the
+        // tests below name.
+        eqstr(build, 100, "Your target is out of range, get closer!");
+        eqstr(build, 138, "You gain experience!!");
+        eqstr(build, 339, "You have fashioned the items together to create something new!");
+        eqstr(build, 436, "Your %1 spell has worn off of %2.");
+        eqstr(build, 467, "--You have looted a %1.--");
+        eqstr(build, 554, "%1 says '%T2'");
+        eqstr(build, 1032, "%1 says '%2'");
+        eqstr(build, 1034, "%1 shouts '%2'");
+        eqstr(build, 1095, "I'll teach you to interfere with me %3.");
+        eqstr(build, 1132, "Following you, Master.");
+        eqstr(build, 12113, "You have slain %1!");
+        // Non-empty stand-ins for the existence checks (Integration_SpellErrors).
+        eqstr(build, 199, "You cannot afford the mana cost of that spell.");
+        eqstr(build, 207, "You cannot cast while stunned.");
+        eqstr(build, 214, "Target out of reach.");
+        eqstr(build, 236, "Your spell was interrupted.");
+        eqstr(build, 237, "You cannot cast while swimming.");
+        dbstr(build, 1, 11, "Human");
+        dbstr(build, 1, 12, "Humans");
+        sqlite3_close(build);
 
-        test_file.open(getDbStrPath());
-        if (test_file.good()) {
-            db.loadDbStrFile(getDbStrPath());
-        }
+        ASSERT_TRUE(raw.open(path));
+        EQT::WilleqDatabase::setGlobalInstance(&raw);
+        ASSERT_TRUE(db.initFromDatabase());
+    }
+
+    void TearDown() override {
+        EQT::WilleqDatabase::setGlobalInstance(nullptr);
+        raw.close();
+        std::remove(path.c_str());
+    }
+
+    void exec(sqlite3* s, const std::string& sql) {
+        char* err = nullptr;
+        ASSERT_EQ(sqlite3_exec(s, sql.c_str(), nullptr, nullptr, &err), SQLITE_OK)
+            << (err ? err : "");
+        if (err) sqlite3_free(err);
+    }
+
+    void eqstr(sqlite3* s, uint32_t id, const std::string& text) {
+        // sqlite3_prepare_v2's tail out-param is `const char**`; the
+        // sqlite3_exec helper above takes a `char**`, hence the two
+        // different declarations.
+        const char* err = nullptr;
+        sqlite3_stmt* stmt = nullptr;
+        ASSERT_EQ(sqlite3_prepare_v2(s, "INSERT INTO eqstrings VALUES (?, ?)", -1, &stmt, &err), SQLITE_OK);
+        sqlite3_bind_int(stmt, 1, static_cast<int>(id));
+        sqlite3_bind_text(stmt, 2, text.c_str(), -1, SQLITE_TRANSIENT);
+        ASSERT_EQ(sqlite3_step(stmt), SQLITE_DONE);
+        sqlite3_finalize(stmt);
+    }
+
+    void dbstr(sqlite3* s, uint32_t cat, uint32_t sub, const std::string& text) {
+        const char* err = nullptr;
+        sqlite3_stmt* stmt = nullptr;
+        ASSERT_EQ(sqlite3_prepare_v2(s, "INSERT INTO dbstrings VALUES (?, ?, ?)", -1, &stmt, &err), SQLITE_OK);
+        sqlite3_bind_int(stmt, 1, static_cast<int>(cat));
+        sqlite3_bind_int(stmt, 2, static_cast<int>(sub));
+        sqlite3_bind_text(stmt, 3, text.c_str(), -1, SQLITE_TRANSIENT);
+        ASSERT_EQ(sqlite3_step(stmt), SQLITE_DONE);
+        sqlite3_finalize(stmt);
     }
 };
 
-// Test loading eqstr_us.txt
-TEST_F(StringDatabaseTest, LoadEqStrFile) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
+}  // namespace
 
-    EXPECT_GT(db.getEqStrCount(), 5000);  // Should have ~5900 strings
-}
-
-// Test loading dbstr_us.txt
-TEST_F(StringDatabaseTest, LoadDbStrFile) {
-    if (!db.isDbStrLoaded()) {
-        GTEST_SKIP() << "dbstr_us.txt not available";
-    }
-
-    EXPECT_GT(db.getDbStrCount(), 8000);  // Should have ~8300 strings
+// Test string not found returns empty
+TEST_F(StringDatabaseTest, GetString_NotFound) {
+    EXPECT_EQ(db.getString(99999999), "");
 }
 
 // Test basic string lookup
 TEST_F(StringDatabaseTest, GetString_KnownIds) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // Test known string IDs
     EXPECT_EQ(db.getString(100), "Your target is out of range, get closer!");
     EXPECT_EQ(db.getString(138), "You gain experience!!");
@@ -76,19 +139,9 @@ TEST_F(StringDatabaseTest, GetString_KnownIds) {
     EXPECT_EQ(db.getString(1132), "Following you, Master.");
 }
 
-// Test string not found returns empty
-TEST_F(StringDatabaseTest, GetString_NotFound) {
-    EXPECT_EQ(db.getString(99999999), "");
-}
-
 // Test DB string lookup
 TEST_F(StringDatabaseTest, GetDbString_KnownIds) {
-    if (!db.isDbStrLoaded()) {
-        GTEST_SKIP() << "dbstr_us.txt not available";
-    }
-
-    // Test known dbstr entries (category, sub_id)
-    // From dbstr_us.txt: 1^11^Human
+    // 1^11^Human
     EXPECT_EQ(db.getDbString(1, 11), "Human");
     // 1^12^Humans
     EXPECT_EQ(db.getDbString(1, 12), "Humans");
@@ -105,10 +158,6 @@ TEST_F(StringDatabaseTest, FormatTemplate_DirectSubstitution) {
 
 // Test %T placeholder (string ID lookup)
 TEST_F(StringDatabaseTest, FormatTemplate_StringIdLookup) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // Template: %1 says '%T2'
     // Args: "Xararn", "1132"
     // String 1132 = "Following you, Master."
@@ -122,10 +171,6 @@ TEST_F(StringDatabaseTest, FormatTemplate_StringIdLookup) {
 
 // Test nested placeholders in looked-up string
 TEST_F(StringDatabaseTest, FormatTemplate_NestedPlaceholders) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // Template: %1 says '%T2'
     // Args: "Fippy Darkpaw", "1095", "Xararn"
     // String 1095 = "I'll teach you to interfere with me %3."
@@ -139,10 +184,6 @@ TEST_F(StringDatabaseTest, FormatTemplate_NestedPlaceholders) {
 
 // Test formatString (lookup template by ID then format)
 TEST_F(StringDatabaseTest, FormatString_NpcDialogue) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // String 1032 = "%1 says '%2'"
     std::vector<std::string> args = {"Guard Hanns", "Halt! Who goes there?"};
 
@@ -152,10 +193,6 @@ TEST_F(StringDatabaseTest, FormatString_NpcDialogue) {
 
 // Test formatString with %T lookup
 TEST_F(StringDatabaseTest, FormatString_WithLookup) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // String 554 = "%1 says '%T2'"
     std::vector<std::string> args = {"Xararn", "1132"};
 
@@ -165,10 +202,6 @@ TEST_F(StringDatabaseTest, FormatString_WithLookup) {
 
 // Test loot message formatting
 TEST_F(StringDatabaseTest, FormatString_LootMessage) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // String 467 = "--You have looted a %1.--"
     std::vector<std::string> args = {"Rusty Short Sword"};
 
@@ -257,10 +290,6 @@ TEST_F(StringDatabaseTest, FormatTemplate_ZPlaceholder) {
 
 // Test spell worn off message
 TEST_F(StringDatabaseTest, FormatString_SpellWornOff) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // String 436 = "Your %1 spell has worn off of %2."
     std::vector<std::string> args = {"Flame Lick", "a gnoll pup"};
 
@@ -289,10 +318,6 @@ static std::vector<uint8_t> buildPacketArgs(const std::vector<std::string>& args
 
 // Integration test: SimpleMessage with "You gain experience!!"
 TEST_F(StringDatabaseTest, Integration_SimpleMessage_Experience) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // String 138 = "You gain experience!!"
     // SimpleMessage packets typically have no args for this message
     std::string result = db.getString(138);
@@ -301,10 +326,6 @@ TEST_F(StringDatabaseTest, Integration_SimpleMessage_Experience) {
 
 // Integration test: SimpleMessage with "Your target is out of range"
 TEST_F(StringDatabaseTest, Integration_SimpleMessage_OutOfRange) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // String 100 = "Your target is out of range, get closer!"
     std::string result = db.getString(100);
     EXPECT_EQ(result, "Your target is out of range, get closer!");
@@ -312,10 +333,6 @@ TEST_F(StringDatabaseTest, Integration_SimpleMessage_OutOfRange) {
 
 // Integration test: FormattedMessage NPC dialogue with direct substitution
 TEST_F(StringDatabaseTest, Integration_FormattedMessage_NpcSays) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // Simulate packet with: "Guard Hanns\x00Halt! Who goes there?"
     std::vector<std::string> packetArgs = {"Guard Hanns", "Halt! Who goes there?"};
     std::vector<uint8_t> packetData = buildPacketArgs(packetArgs);
@@ -335,10 +352,6 @@ TEST_F(StringDatabaseTest, Integration_FormattedMessage_NpcSays) {
 
 // Integration test: FormattedMessage NPC shout
 TEST_F(StringDatabaseTest, Integration_FormattedMessage_NpcShout) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // Simulate packet with: "Fippy Darkpaw\x00I will gnaw on your bones!"
     std::vector<std::string> packetArgs = {"Fippy Darkpaw", "I will gnaw on your bones!"};
     std::vector<uint8_t> packetData = buildPacketArgs(packetArgs);
@@ -355,10 +368,6 @@ TEST_F(StringDatabaseTest, Integration_FormattedMessage_NpcShout) {
 
 // Integration test: FormattedMessage with %T lookup (pet dialogue)
 TEST_F(StringDatabaseTest, Integration_FormattedMessage_PetDialogue) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // Simulate packet with: "Xararn\x001132"
     // String 554 = "%1 says '%T2'"
     // String 1132 = "Following you, Master."
@@ -377,10 +386,6 @@ TEST_F(StringDatabaseTest, Integration_FormattedMessage_PetDialogue) {
 
 // Integration test: FormattedMessage with nested placeholders
 TEST_F(StringDatabaseTest, Integration_FormattedMessage_NestedPlaceholders) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // Simulate packet with: "Fippy Darkpaw\x001095\x00Xararn"
     // String 554 = "%1 says '%T2'"
     // String 1095 = "I'll teach you to interfere with me %3."
@@ -398,10 +403,6 @@ TEST_F(StringDatabaseTest, Integration_FormattedMessage_NestedPlaceholders) {
 
 // Integration test: Loot message
 TEST_F(StringDatabaseTest, Integration_FormattedMessage_Loot) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // Simulate packet with item name
     std::vector<std::string> packetArgs = {"Rusty Short Sword"};
     std::vector<uint8_t> packetData = buildPacketArgs(packetArgs);
@@ -418,10 +419,6 @@ TEST_F(StringDatabaseTest, Integration_FormattedMessage_Loot) {
 
 // Integration test: Spell worn off message
 TEST_F(StringDatabaseTest, Integration_FormattedMessage_SpellWornOff) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // Simulate packet with: "Minor Healing\x00a gnoll pup"
     std::vector<std::string> packetArgs = {"Minor Healing", "a gnoll pup"};
     std::vector<uint8_t> packetData = buildPacketArgs(packetArgs);
@@ -438,10 +435,6 @@ TEST_F(StringDatabaseTest, Integration_FormattedMessage_SpellWornOff) {
 
 // Integration test: Tradeskill success message
 TEST_F(StringDatabaseTest, Integration_FormattedMessage_Tradeskill) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // String 339 = "You have fashioned the items together to create something new!"
     // This is typically sent with no args
     std::string result = db.getString(339);
@@ -450,10 +443,6 @@ TEST_F(StringDatabaseTest, Integration_FormattedMessage_Tradeskill) {
 
 // Integration test: Combat "slain" message
 TEST_F(StringDatabaseTest, Integration_SimpleMessage_Slain) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // String 12113 = "You have slain %1!"
     std::vector<std::string> args = {"Fippy Darkpaw"};
     std::string result = db.formatString(12113, args);
@@ -462,10 +451,6 @@ TEST_F(StringDatabaseTest, Integration_SimpleMessage_Slain) {
 
 // Integration test: Verify common spell error messages exist
 TEST_F(StringDatabaseTest, Integration_SpellErrors) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // Verify common spell error string IDs are loaded
     EXPECT_FALSE(db.getString(199).empty());  // Insufficient mana
     EXPECT_FALSE(db.getString(207).empty());  // Cannot cast while stunned
@@ -476,10 +461,6 @@ TEST_F(StringDatabaseTest, Integration_SpellErrors) {
 
 // Integration test: Verify "You have slain" message variants
 TEST_F(StringDatabaseTest, Integration_SlainMessageVariants) {
-    if (!db.isEqStrLoaded()) {
-        GTEST_SKIP() << "eqstr_us.txt not available";
-    }
-
     // String 12113 = "You have slain %1!"
     std::string slain12113 = db.getString(12113);
     EXPECT_EQ(slain12113, "You have slain %1!");

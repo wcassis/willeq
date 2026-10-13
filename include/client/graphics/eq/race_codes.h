@@ -19,9 +19,6 @@ namespace Graphics {
 // can actually be served. False means NO DATABASE and nothing else.
 bool loadRaceMappings();
 
-// Re-bind after the global database changes. Same meaning as above.
-bool reloadRaceMappings();
-
 // Check if race mappings have been loaded
 bool areRaceMappingsLoaded();
 

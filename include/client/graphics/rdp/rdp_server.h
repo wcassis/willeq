@@ -66,7 +66,6 @@ using RDPSyncCallback = std::function<void(uint32_t syncFlags)>;
  * Usage:
  *   RDPServer server;
  *   server.initialize(3389);
- *   server.setCertificate("server.crt", "server.key");
  *   server.setResolution(1024, 768);
  *   server.setKeyboardCallback([](uint16_t flags, uint8_t code) { ... });
  *   server.setMouseCallback([](uint16_t flags, uint16_t x, uint16_t y) { ... });
@@ -92,17 +91,6 @@ public:
      * @return true on success, false on failure
      */
     bool initialize(uint16_t port = 3389);
-
-    /**
-     * Set SSL certificate paths for RDP security.
-     *
-     * RDP requires TLS for secure connections. If not set, the server
-     * will generate a self-signed certificate (clients will see a warning).
-     *
-     * @param certPath Path to the certificate file (PEM format)
-     * @param keyPath Path to the private key file (PEM format)
-     */
-    void setCertificate(const std::string& certPath, const std::string& keyPath);
 
     /**
      * Set the desktop resolution advertised to clients.
@@ -224,8 +212,6 @@ public:
     // Getters for peer initialization
     uint32_t getWidth() const { return width_; }
     uint32_t getHeight() const { return height_; }
-    const std::string& getCertPath() const { return certPath_; }
-    const std::string& getKeyPath() const { return keyPath_; }
 
     // Create new certificate and key objects for a peer (caller takes ownership)
     // Each peer needs its own copy since FreeRDP frees them on disconnect
@@ -266,8 +252,6 @@ private:
     uint16_t port_;
     uint32_t width_;
     uint32_t height_;
-    std::string certPath_;
-    std::string keyPath_;
 
     // Certificate and key PEM data (stored as strings so we can create
     // fresh copies for each peer - FreeRDP takes ownership of the objects)

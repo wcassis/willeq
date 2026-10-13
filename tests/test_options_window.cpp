@@ -27,11 +27,13 @@
 #include "client/graphics/ui/options_panel.h"
 #include "client/graphics/ui/static_panels.h"
 #include "client/graphics/ui/static_ui_input.h"
+#include "client/audio/volume_steps.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/ui_preferences.h"
 #include "client/input/hotkey_manager.h"
 
 #include <irrlicht.h>
+#include <algorithm>
 #include <set>
 #include <string>
 
@@ -413,39 +415,49 @@ TEST(OptionsWindowT434, TheClipPlaneMappingCoversFablesRenderDistanceRange) {
     // fable's mapping, flagged in options_panel.h: step*50 + 50, so the
     // shipped renderDistance of 300 is exactly step 5 and the whole range
     // stays inside the 50..10000 band /renderdist enforces.
+    // B606 (#189) deleted optionsClipPlaneStep() (zero callers): the panel
+    // only ever stores the step, never derives one from a distance. The
+    // inverse these cases used pins the mapping, so it is computed here.
+    auto stepFromDistance = [](float distance) {
+        const int step = static_cast<int>((distance - 50.0f) / 50.0f + 0.5f);
+        return std::max(0, std::min(OL::SLIDER_STEPS, step));
+    };
     EXPECT_FLOAT_EQ(optionsClipPlaneDistance(0), 50.0f);
     EXPECT_FLOAT_EQ(optionsClipPlaneDistance(5), 300.0f);
     EXPECT_FLOAT_EQ(optionsClipPlaneDistance(20), 1050.0f);
-    EXPECT_EQ(optionsClipPlaneStep(300.0f), 5);
+    EXPECT_EQ(stepFromDistance(300.0f), 5);
     for (int step = 0; step <= OL::SLIDER_STEPS; ++step) {
-        EXPECT_EQ(optionsClipPlaneStep(optionsClipPlaneDistance(step)), step);
+        EXPECT_EQ(stepFromDistance(optionsClipPlaneDistance(step)), step);
         EXPECT_GE(optionsClipPlaneDistance(step), 50.0f);
         EXPECT_LE(optionsClipPlaneDistance(step), 10000.0f);
     }
     // Out of range clamps rather than casting to something absurd.
     EXPECT_FLOAT_EQ(optionsClipPlaneDistance(-4), 50.0f);
     EXPECT_FLOAT_EQ(optionsClipPlaneDistance(99), 1050.0f);
-    EXPECT_EQ(optionsClipPlaneStep(-1.0f), 0);
-    EXPECT_EQ(optionsClipPlaneStep(99999.0f), 20);
+    EXPECT_EQ(stepFromDistance(-1.0f), 0);
+    EXPECT_EQ(stepFromDistance(99999.0f), 20);
 }
 
 TEST(OptionsWindowT434, VolumeStepsMapOntoTheZeroToOneFractionAudioTakes) {
-    EXPECT_FLOAT_EQ(optionsVolumeFraction(0), 0.0f);
-    EXPECT_FLOAT_EQ(optionsVolumeFraction(20), 1.0f);
-    EXPECT_FLOAT_EQ(optionsVolumeFraction(14), 0.7f);   // config default
-    EXPECT_EQ(optionsVolumeStep(0.7f), 14);
-    EXPECT_EQ(optionsVolumeStep(1.0f), 20);
-    EXPECT_EQ(optionsVolumeStep(-1.0f), 0);
-    EXPECT_EQ(optionsVolumeStep(5.0f), 20);
+    // B606 (#189) deleted the optionsVolumeFraction/optionsVolumeStep
+    // wrappers (zero callers); the conversion is the audio-side function.
+    EXPECT_FLOAT_EQ(eqt::audio::volumeFractionFromStep(0), 0.0f);
+    EXPECT_FLOAT_EQ(eqt::audio::volumeFractionFromStep(20), 1.0f);
+    EXPECT_FLOAT_EQ(eqt::audio::volumeFractionFromStep(14), 0.7f);   // config default
+    EXPECT_EQ(eqt::audio::volumeStepFromFraction(0.7f), 14);
+    EXPECT_EQ(eqt::audio::volumeStepFromFraction(1.0f), 20);
+    EXPECT_EQ(eqt::audio::volumeStepFromFraction(-1.0f), 0);
+    EXPECT_EQ(eqt::audio::volumeStepFromFraction(5.0f), 20);
 }
 
 TEST(OptionsWindowT434, TheDefaultsAreFablesOwnShippedValuesOnTheOracleScale) {
     const OptionsPanelState s;
     // AudioManager/bridge_component defaults: music 0.7, effects 1.0.
-    EXPECT_EQ(s.musicVolume, optionsVolumeStep(0.7f));
-    EXPECT_EQ(s.soundVolume, optionsVolumeStep(1.0f));
-    // config/display_settings.json's renderDistance: 300.
-    EXPECT_EQ(s.clipPlane, optionsClipPlaneStep(300.0f));
+    EXPECT_EQ(s.musicVolume, eqt::audio::volumeStepFromFraction(0.7f));
+    EXPECT_EQ(s.soundVolume, eqt::audio::volumeStepFromFraction(1.0f));
+    // config/display_settings.json's renderDistance: 300, which the
+    // step*50 + 50 mapping places on step 5.
+    EXPECT_EQ(s.clipPlane, 5);
     EXPECT_FLOAT_EQ(optionsClipPlaneDistance(s.clipPlane), 300.0f);
 }
 

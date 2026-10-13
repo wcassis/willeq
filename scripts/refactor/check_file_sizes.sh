@@ -102,7 +102,10 @@ if [ "${1:-}" = "--all" ]; then
         echo "ERROR none of src/ include/ tests/ tools/ benchmarks/ exist under $repo_root — nothing was checked"
         exit 2
     fi
-    mapfile -t files < <(find "${scan_dirs[@]}" \
+    # B1039 (#359): a read loop, not mapfile -- this runs under macOS's
+    # /bin/bash 3.2 too (no mapfile, no associative arrays).
+    files=()
+    while IFS= read -r f; do files+=("$f"); done < <(find "${scan_dirs[@]}" \
         -type d \( -name third_party -o -name 'build*' -o -name '@eaDir' \) -prune -o \
         -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) -print 2>/dev/null | sort)
     source_desc="every *.cpp/*.h/*.hpp under src/, include/, tests/, tools/, benchmarks/ in $repo_root (excludes third_party/, build*/)"
@@ -123,7 +126,8 @@ else
     # --diff-filter=d excludes files deleted in the diff (T67 hit this
     # removing constrained_mesh_cache.{h,cpp} — a deleted path has nothing
     # left on disk to measure and would otherwise report a false "not found").
-    mapfile -t files < <(git -C "$repo_root" diff --name-only --diff-filter=d "$base" -- '*.cpp' '*.h' '*.hpp')
+    files=()
+    while IFS= read -r f; do files+=("$f"); done < <(git -C "$repo_root" diff --name-only --diff-filter=d "$base" -- '*.cpp' '*.h' '*.hpp')
     source_desc="files changed vs '$base' in $repo_root"
 fi
 
@@ -156,7 +160,7 @@ check_doc_ceilings() {
             status=2
             continue
         fi
-        d_bytes=$(wc -c < "$d_path")
+        d_bytes=$(($(wc -c < "$d_path")))  # B1039: BSD wc pads
         if [ "$d_bytes" -gt "$d_max" ]; then
             echo "FAIL  $d_rel: $d_bytes bytes (> $d_max — the context-file ceiling; cut narrative, not rules, and link to refactor/completed/ or docs/decisions.md instead)"
             status=1
@@ -179,16 +183,30 @@ fi
 # number, it never rises) — this is on top of, not instead of, the universal
 # FAIL-over-3000 rule. M00 emptied the list; an unlisted file over 1500 now FAILs.
 allowlist_file="$script_dir/file_size_allowlist.txt"
-declare -A allow_max
-declare -A allow_reason
+# B1039: three parallel indexed arrays (bash 3.2 has no `declare -A`); the
+# list is empty or short, so a linear lookup costs nothing.
+allow_paths=()
+allow_maxes=()
+allow_reasons=()
 if [ "$all_mode" -eq 1 ] && [ -f "$allowlist_file" ]; then
     while IFS=$'\t' read -r a_path a_max a_reason; do
         [ -z "$a_path" ] && continue
         case "$a_path" in \#*) continue ;; esac
-        allow_max["$a_path"]="$a_max"
-        allow_reason["$a_path"]="$a_reason"
+        allow_paths+=("$a_path")
+        allow_maxes+=("$a_max")
+        allow_reasons+=("$a_reason")
     done < "$allowlist_file"
 fi
+# allow_find REL: sets allow_i to REL's index in allow_paths, or -1.
+allow_find() {
+    allow_i=0
+    while [ "$allow_i" -lt "${#allow_paths[@]}" ]; do
+        [ "${allow_paths[$allow_i]}" = "$1" ] && return 0
+        allow_i=$((allow_i + 1))
+    done
+    allow_i=-1
+    return 1
+}
 
 echo "checking ${#files[@]} file(s) ($source_desc)"
 
@@ -211,19 +229,19 @@ for f in "${files[@]}"; do
     case "$f" in
         "$repo_root"/*) rel="${f#"$repo_root"/}" ;;
     esac
-    lines=$(wc -l < "$path")
+    lines=$(($(wc -l < "$path")))  # B1039: BSD wc pads the count with spaces
     if [ "$lines" -gt "$FAIL" ]; then
         echo "FAIL  $rel: $lines lines (> $FAIL)"
         status=1
         n_fail=$((n_fail + 1))
-    elif [ "$all_mode" -eq 1 ] && [ -n "${allow_max[$rel]+x}" ]; then
-        max="${allow_max[$rel]}"
+    elif [ "$all_mode" -eq 1 ] && allow_find "$rel"; then
+        max="${allow_maxes[$allow_i]}"
         if [ "$lines" -gt "$max" ]; then
-            echo "FAIL  $rel: $lines lines (> allowlisted max $max — no-grow ratchet exceeded; ${allow_reason[$rel]})"
+            echo "FAIL  $rel: $lines lines (> allowlisted max $max — no-grow ratchet exceeded; ${allow_reasons[$allow_i]})"
             status=1
             n_fail=$((n_fail + 1))
         else
-            echo "ok    $rel: $lines lines (allowlisted, max $max; ${allow_reason[$rel]})"
+            echo "ok    $rel: $lines lines (allowlisted, max $max; ${allow_reasons[$allow_i]})"
             n_ok=$((n_ok + 1))
         fi
     elif [ "$all_mode" -eq 1 ] && [ "$lines" -gt "$WARN" ]; then

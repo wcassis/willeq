@@ -207,11 +207,6 @@ struct HotkeyBinding {
      */
     bool matches(irr::EKEY_CODE key, bool ctrl, bool shift, bool alt) const;
 
-    /**
-     * Get a string representation for display/debugging.
-     */
-    std::string toString() const;
-
     bool operator==(const HotkeyBinding& other) const {
         return keyCode == other.keyCode && modifiers == other.modifiers;
     }

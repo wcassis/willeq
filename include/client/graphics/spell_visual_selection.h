@@ -39,8 +39,6 @@ enum class SpellVisualSource : uint8_t {
     Resolved,             // index resolves to a populated spells.eff record
 };
 
-const char* toString(SpellVisualSource source);
-
 // One resolved emitter stage (Source, Middle/travel, or Target).
 struct SpellVisualStage {
     bool present = false;  // SpellsEffEmitter::hasContent()

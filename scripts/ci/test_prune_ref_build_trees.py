@@ -100,6 +100,23 @@ class PruneRefBuildTrees(unittest.TestCase):
             p.prune([other], {"fable"}, now=NOW, out=io.StringIO())
         self.assertTrue(os.path.isdir(os.path.join(other, "x")))
 
+    def test_headless_ref_root_is_pruned(self):
+        # B1038: build-headless/ref is a known --root (the build-headless job).
+        root = os.path.join(self.tmp.name, "build-headless", "ref")
+        t = os.path.join(root, "task-gone")
+        os.makedirs(t)
+        p.write_stamp(t, "task/gone", NOW)
+        deleted = p.prune([root], {"fable"}, now=NOW, out=io.StringIO())
+        self.assertEqual(deleted, [t])
+
+    def test_headless_is_not_a_legacy_root(self):
+        # ...but never a --legacy-root: it had no pre-B1012 shared tree.
+        hl = os.path.join(self.tmp.name, "build-headless")
+        os.makedirs(os.path.join(hl, "bin"))
+        with self.assertRaises(SystemExit):
+            p.sweep_legacy_root(hl, out=io.StringIO())
+        self.assertTrue(os.path.isdir(os.path.join(hl, "bin")))
+
     def test_empty_live_list_is_refused_by_main(self):
         self.tree("task-a", "task/a")
         refs = os.path.join(self.tmp.name, "refs.txt")

@@ -62,6 +62,16 @@
 #define EQT_MEMORY_LEDGER 0
 #endif
 
+// B1039 (#359): the allocator hooks wrap glibc's __libc_* entry points, which
+// macOS libSystem does not have. On Darwin the ledger is ALWAYS its OFF shape
+// (no symbol replaced, empty MemoryScope, every category 0, enabled() false)
+// whatever the build asked for; CMakeLists.txt passes 0 there too, so no TU
+// can disagree about the layout. A malloc_zone backend is open (B1039 README).
+#if defined(__APPLE__) && EQT_MEMORY_LEDGER
+#undef EQT_MEMORY_LEDGER
+#define EQT_MEMORY_LEDGER 0
+#endif
+
 namespace eqt {
 namespace memory {
 
