@@ -1,19 +1,36 @@
 #!/usr/bin/env python3
-"""B930: the verify_eqe1 stale-pack audit leg.
+"""B930 + B1017: the verify_eqe1 stale-pack audit leg.
 
-Criterion 2 of the card: tools/verify_eqe1 prints the pack's header version
-and reports "stale: below v3" (exit non-zero) for a v1/v2 pack, so a host's
-pack directory can be audited with one loop. This test writes two tiny
-synthetic packs in python (header + one entry, exactly the layout
-tools/eqe1_format.h and the test_eqe1_loader.cpp B910 idiom define) — a
-structurally-clean v1 pack and a structurally-clean v3 pack — and runs the
-BUILT verify_eqe1 over each with --require-v3:
+B930: tools/verify_eqe1 prints the pack's header version on every line.
+B1017 (#338): --require-v3 flags ONLY the truncation candidates -- a v1/v2
+pack holding a 31-char entry name (the inline field's max; the signature of
+a pre-B910 builder that silently strncpy'd a longer original). A
+structurally-clean v1/v2 pack with no 31-char name is LEGITIMATE (every name
+fits the field; the builder keeps it v1/v2 by design -- willeq.eqe1 is one)
+and PASSES. On origin/fable the audit flagged EVERY v1/v2 pack (1506/1506 on
+the NFS tree, including the legitimate v2 willeq.eqe1), so this test is RED
+there on the legitimate-pack case.
 
-  * v1: exit 1, a line carrying "v1" and "STALE"
-  * v3: exit 0, a line carrying "OK (v3"
+This writes tiny synthetic packs in python (header + one entry, exactly
+the layout tools/eqe1_format.h and the test_eqe1_loader.cpp B910 idiom
+define) and runs the BUILT verify_eqe1:
 
-On origin/fable (RED) the tool prints no version and has no --require-v3,
-so the v1 case exits 0 and both assertions fail.
+  * v1, clean name (10 chars):            OK (v1)   exit 0
+  * v1, 31-char name (soldunga class):    STALE, the name quoted, exit 1
+  * v2, clean name (the willeq.eqe1 class): OK (v2) exit 0
+  * v3, 33-char name in the name table:   OK (v3)   exit 0
+  * v1, 25-char base + 31-char _alpha (base present): OK (the complete
+                                          companion, frozenshadow's
+                                          bricktrimflorish&protrait_alpha)
+  * v1, 31-char base + _alpha (base was itself 31+ chars, truncated to the
+                                          field): STALE (the companion cannot
+                                          be complete when the base was 31+)
+  * --require-v3 over all:                 the clean v1/v2 and the complete
+                                          companion pass; the 31-char v1 and
+                                          the truncated pair fail; v3 passes.
+
+On origin/fable (RED) the audit flags the clean v1 and v2 packs too (exit 1
+for them), so cases 1/3/6 fail.
 """
 import os
 import struct
@@ -36,6 +53,9 @@ else:
     TOOL = os.path.join(REPO, os.path.join("build", "bin", "verify_eqe1"))
 
 FULL_NAME = b"gnome_stronghold_floor_transition"  # 33 chars, the soldunga class
+CLEAN_NAME = b"stone_floor"                        # 11 chars, fits the field
+SHORT31 = b"a" * 31                               # 31 chars, the truncation class
+assert len(FULL_NAME) == 33 and len(CLEAN_NAME) == 11 and len(SHORT31) == 31
 
 
 def etc1_mip_chain(w, h, mips):
@@ -51,34 +71,60 @@ def align16(x):
     return (x + 15) & ~15
 
 
-def write_pack(path, version):
-    """One 4x4 3-mip ETC1 texture named FULL_NAME.
+def write_pack(path, version, name):
+    """One 4x4 3-mip ETC1 texture with entry name `name` (bytes).
 
-    version 1: the pre-B910 builder's write — 31-char truncation, NUL-padded
-    (formally valid, the silence that hid soldunga).
+    version 1: the pre-B910 builder's write — the name is NUL-padded into
+    the 32-byte inline field (a 31-char name is formally valid: the
+    silence that hid soldunga).
+    version 2: same layout, header version 2.
     version 3: full name in the name table between index and data.
     """
+    assert len(name) <= 31 or version == 3, \
+        f"a {len(name)}-char name only fits a v3 name table"
     sz = etc1_mip_chain(4, 4, 3)
     entry = 32 + 2 + 2 + 4 + 4 + 4  # name + w + h + 4x u8 + offset + size
     assert entry == 48
-    if version == 1:
+    if version in (1, 2):
         index_end = 16 + 48
         off = align16(index_end)
         with open(path, "wb") as f:
-            f.write(struct.pack("<IHHII", 0x31455145, 1, 1, 0, 0))
-            f.write(FULL_NAME[:31].ljust(32, b"\0"))  # the truncation
+            f.write(struct.pack("<IHHII", 0x31455145, version, 1, 0, 0))
+            f.write(name[:31].ljust(32, b"\0"))  # the (silent) truncation, if any
             f.write(struct.pack("<HHBBBBII", 4, 4, 3, 0, 0, 0, off, sz))
             f.write(b"\x5a" * (off + sz - index_end))
     else:
         name_off = 16 + 56
-        off = align16(name_off + len(FULL_NAME))
+        off = align16(name_off + len(name))
         with open(path, "wb") as f:
             f.write(struct.pack("<IHHII", 0x31455145, 3, 1, 0, 0))
             f.write(b"\0" * 32)  # name field zeroed — table-resident
             f.write(struct.pack("<HHBBBBII", 4, 4, 3, 0, 0, 0, off, sz))
-            f.write(struct.pack("<II", name_off, len(FULL_NAME)))
-            f.write(FULL_NAME)
-            f.write(b"\x5a" * (off + sz - (name_off + len(FULL_NAME))))
+            f.write(struct.pack("<II", name_off, len(name)))
+            f.write(name)
+            f.write(b"\x5a" * (off + sz - (name_off + len(name))))
+
+
+def write_pair_pack(path, version, base, alpha):
+    """A two-entry v1/v2 pack whose names are a hasAlpha base + its _alpha
+    companion (the frozenshadow bricktrimflorish&protrait[_alpha] pair).
+    Both entries are RAW_DATA (entryType=2): verify_eqe1 skips every
+    texture check for RAW entries, and raw data has no size/mip constraint,
+    so each carries 32 B -- dataOffsets 112 -> 144 -> 176, all 16-aligned.
+    The name fields (and thus the truncation-candidate scan) are what the
+    test is about; the payload is opaque 0x5a bytes."""
+    assert version in (1, 2)
+    sz = 32
+    index_end = 16 + 2 * 48             # 112
+    off = align16(index_end)            # 112
+    assert off == 112 and (off + sz) % 16 == 0, (off, sz)
+    with open(path, "wb") as f:
+        f.write(struct.pack("<IHHII", 0x31455145, version, 2, 0, 0))
+        f.write(base[:31].ljust(32, b"\0"))
+        f.write(struct.pack("<HHBBBBII", 0, 0, 0, 0, 2, 0, off, sz))
+        f.write(alpha[:31].ljust(32, b"\0"))
+        f.write(struct.pack("<HHBBBBII", 0, 0, 0, 0, 2, 0, off + sz, sz))
+        f.write(b"\x5a" * (off + 2 * sz - index_end))
 
 
 def run(tool, args):
@@ -92,11 +138,15 @@ def main():
               "(cmake --build build --target verify_eqe1)")
         return 125
 
-    tmp = tempfile.mkdtemp(prefix="b930_verify_audit_")
-    v1 = os.path.join(tmp, "stale.eqe1")
-    v3 = os.path.join(tmp, "fresh.eqe1")
-    write_pack(v1, 1)
-    write_pack(v3, 3)
+    tmp = tempfile.mkdtemp(prefix="b1017_verify_audit_")
+    v1_clean = os.path.join(tmp, "clean_v1.eqe1")
+    v1_stale = os.path.join(tmp, "stale_v1.eqe1")
+    v2_clean = os.path.join(tmp, "clean_v2.eqe1")
+    v3 = os.path.join(tmp, "fresh_v3.eqe1")
+    write_pack(v1_clean, 1, CLEAN_NAME)
+    write_pack(v1_stale, 1, SHORT31)
+    write_pack(v2_clean, 2, CLEAN_NAME)
+    write_pack(v3, 3, FULL_NAME)
 
     failures = []
 
@@ -105,20 +155,82 @@ def main():
     if rc != 0:
         failures.append(f"v3 pack should verify clean, got exit {rc}:\n{out}")
     if "OK (v3" not in out:
-        failures.append(f"v3 line must print the version (RED on pre-B930):\n{out}")
+        failures.append(f"v3 line must print the version:\n{out}")
 
-    # 2. --require-v3: a structurally-clean v1 pack is STALE and fails.
-    rc, out = run(TOOL, ["--require-v3", v1])
+    # 2. B1017: a structurally-clean v1 pack (no 31-char name) is LEGITIMATE:
+    #    --require-v3 must PASS it. RED on origin/fable (flagged STALE).
+    rc, out = run(TOOL, ["--require-v3", v1_clean])
+    if rc != 0:
+        failures.append(
+            f"legitimate v1 pack (no 31-char name) must pass --require-v3 "
+            f"(B1017: the audit cannot tell stale from fine by VERSION "
+            f"alone), got exit {rc}:\n{out}")
+    if "OK (v1" not in out:
+        failures.append(f"clean v1 line must print OK (v1...):\n{out}")
+
+    # 3. B1017: a v1 pack holding a 31-char name is the truncation
+    #    candidate: STALE, the name printed by name, exit 1.
+    rc, out = run(TOOL, ["--require-v3", v1_stale])
     if rc != 1:
-        failures.append(f"v1 pack under --require-v3 must exit 1, got {rc} "
-                        f"(RED on pre-B930):\n{out}")
-    if "v1" not in out or "STALE" not in out:
-        failures.append(f"v1 line must carry the version and STALE:\n{out}")
+        failures.append(f"v1 pack with a 31-char name must exit 1, got {rc}:\n{out}")
+    if "STALE" not in out or "v1" not in out:
+        failures.append(f"31-char v1 line must carry the version and STALE:\n{out}")
+    if "'aaaaa" not in out and "'a' * 31" not in out:
+        # quote the candidate name by its 5-char prefix (it is all a's)
+        if f"'{'a' * 31}'" not in out:
+            failures.append(f"31-char v1 line must name the candidate:\n{out}")
 
-    # 3. --require-v3: the clean v3 pack still passes the audit.
+    # 4. B1017: a structurally-clean v2 pack (the willeq.eqe1 class — the
+    #    client's OWN pack, deliberately v2) is LEGITIMATE too.
+    rc, out = run(TOOL, ["--require-v3", v2_clean])
+    if rc != 0:
+        failures.append(
+            f"legitimate v2 pack (no 31-char name) must pass --require-v3, "
+            f"got exit {rc}:\n{out}")
+    if "OK (v2" not in out:
+        failures.append(f"clean v2 line must print OK (v2...):\n{out}")
+
+    # 5. --require-v3: the clean v3 pack still passes the audit.
     rc, out = run(TOOL, ["--require-v3", v3])
     if rc != 0 or "OK (v3" not in out:
         failures.append(f"v3 pack must pass --require-v3, got exit {rc}:\n{out}")
+
+    # 6. Without --require-v3 the 31-char v1 pack is still structurally
+    #    clean: the audit is an OPT-IN flag, not a structural verdict.
+    rc, out = run(TOOL, [v1_stale])
+    if rc != 0 or "OK (v1" not in out:
+        failures.append(
+            f"a 31-char v1 pack with no --require-v3 must verify structurally "
+            f"clean (exit 0, OK (v1...)), got exit {rc}:\n{out}")
+
+    # 7. B1017 acceptance: an _alpha companion whose base entry is present
+    #    and shorter is a COMPLETE 31-char name, not a truncation (the
+    #    frozenshadow bricktrimflorish&protrait_alpha class: a 25-char base +
+    #    "_alpha"). --require-v3 must PASS it.
+    v1_alpha_complete = os.path.join(tmp, "alpha_complete_v1.eqe1")
+    write_pair_pack(v1_alpha_complete, 1, b"bricktrimflorish&protrait",
+                    b"bricktrimflorish&protrait_alpha")
+    rc, out = run(TOOL, ["--require-v3", v1_alpha_complete])
+    if rc != 0 or "OK (v1" not in out:
+        failures.append(
+            f"a 31-char _alpha companion whose base entry is present and "
+            f"shorter must pass --require-v3 (it is a complete name, not a "
+            f"truncation), got exit {rc}:\n{out}")
+
+    # 8. The exclusion is NOT a blanket: a 31-char _alpha whose base was
+    #    itself 31+ chars (base truncated to the field, companion too) IS a
+    #    truncation candidate and is still flagged.
+    v1_alpha_trunc = os.path.join(tmp, "alpha_trunc_v1.eqe1")
+    base31 = b"b" * 31
+    write_pair_pack(v1_alpha_trunc, 1, base31, base31 + b"_alpha")
+    rc, out = run(TOOL, ["--require-v3", v1_alpha_trunc])
+    if rc != 1 or "STALE" not in out:
+        failures.append(
+            f"a 31-char _alpha whose base was itself 31+ chars must still be "
+            f"flagged STALE (the companion cannot be complete), got exit "
+            f"{rc}:\n{out}")
+    if f"'{base31.decode()}'" not in out:
+        failures.append(f"the truncated _alpha line must name the candidate:\n{out}")
 
     if failures:
         print("test_eqe1_verify_stale_pack: FAIL")
@@ -126,7 +238,10 @@ def main():
             print("  " + f)
         return 1
     print("test_eqe1_verify_stale_pack: PASS "
-          "(v1 prints v1 + STALE + exit 1; v3 prints OK (v3 + exit 0)")
+          "(clean v1/v2 pass; 31-char v1 is STALE by name; a 31-char _alpha "
+          "with a present shorter base is a complete name and passes; a "
+          "31-char _alpha whose base was 31+ is STALE; v3 passes; version "
+          "printed on every line)")
     return 0
 
 

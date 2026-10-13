@@ -285,6 +285,28 @@ def main():
     assert sorted(ci_zones) == sorted(manifest_zones), (lists, manifest_zones)
     assert set(coverage_zones) <= set(ci_zones), (lists, coverage_zones)
 
+    # 12. B1016 (#337): the [gldriver] net, beside the ledger assertions --
+    #     assert_gldriver_line() on synthetic benchmark stdout (no benchmark
+    #     run): a real line is accepted, an absent line is a failure, an
+    #     unparseable line (the format drift the audit found unpinned) is a
+    #     failure.
+    assert hasattr(gate, "assert_gldriver_line"), "visual_gate.py has no assert_gldriver_line (pre-B1016)"
+    good = ("[gldriver] renderer='llvmpipe (LLVM 20.1.2, 256 bits)' "
+            "gallium=/usr/lib/x86_64-linux-gnu/libgallium-25.2.8.so "
+            "llvm=/usr/lib/x86_64-linux-gnu/libLLVM.so.20.1")
+    f, out = [], io.StringIO()
+    with redirect_stdout(out):
+        gate.assert_gldriver_line("t", "before\n" + good + "\nafter", f)
+    assert f == [], f
+    assert "[gldriver] t:" in out.getvalue(), out.getvalue()
+    f = []
+    gate.assert_gldriver_line("t", "no driver line here\n", f)
+    assert len(f) == 1 and "no [gldriver] line" in f[0], f
+    f = []
+    gate.assert_gldriver_line("t", "[gldriver] renderer='x' gallium=/g\n", f)
+    assert len(f) == 1 and "parse" in f[0], f
+    print("test_visual_gate_ledger: gldriver-line checks OK")
+
     print("test_visual_gate_ledger: 19 checks OK")
     return 0
 
