@@ -1808,6 +1808,8 @@ IF(EQT_GRAPHICS)
         etc2comp
         GIT_REPOSITORY https://github.com/google/etc2comp.git
         GIT_TAG master
+        PATCH_COMMAND ${CMAKE_COMMAND} -DETC2COMP_SOURCE_DIR=<SOURCE_DIR>
+            -P ${CMAKE_SOURCE_DIR}/scripts/ci/patch_etc2comp_cmake.cmake
     )
     FetchContent_MakeAvailable(etc2comp)
 

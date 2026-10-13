@@ -82,10 +82,7 @@ cmake -S "$PROJECT_DIR" -B "$BUILD_DIR" -G Ninja \
     -DEQT_GLES2_IRRLICHT_DIR="$IRRLICHT_BUILD_DIR" \
     -DEQT_ANGLE_DIR="$ANGLE_DIR" -DEQT_ANGLE_LIB_DIR="$ANGLE_OUT" \
     -DEQT_BUILD_TESTS=OFF -DWITH_RDP=OFF \
-    -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl@3 \
-    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-# CMAKE_POLICY_VERSION_MINIMUM: Homebrew's CMake 4.x refuses the FetchContent'd
-# etc2comp's cmake_minimum_required(VERSION 2.x); Linux hosts run CMake 3.28.
+    -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl@3
 echo "=== Building willeq + gles2_zone_benchmark ==="
 nice -n 10 cmake --build "$BUILD_DIR" --target willeq gles2_zone_benchmark -j"$JOBS"
 echo "=== Done. Binaries in $BUILD_DIR/bin/ ==="
