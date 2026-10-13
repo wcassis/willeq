@@ -56,10 +56,9 @@ the helper's expected `[memledger] point=ready` line was absent, although
 `xu4/frames/frame_000039.png` shows the character zoned in. It is retained
 as a failed capture attempt, not counted as Options-window evidence.
 
-MR !174 pipeline 1017 passed at head
-`929aa6dcfe14bc1bc7b927231f2eb9d8f22716c0` (including hygiene and
-build-test) before this documentation-only update. A new MR-head pipeline
-is needed for the final documentation commit.
+MR !174 pipeline 1021 passed at head
+`d4b4f37af15054bf158b85f84c505ff13f8d2e0f` (including hygiene and
+build-test). Any later documentation commit requires a new MR-head pipeline.
 
 ## Not verified / left open
 
@@ -71,4 +70,3 @@ is needed for the final documentation commit.
   original XU4 still or a precise tab/control description is still needed.
 - There is no after-fix still because no layout fix has been made. The
   before/after acceptance row therefore remains open.
-- MR CI is pending.
