@@ -49,7 +49,7 @@ expected_for() {
             *) return 65 ;;
             esac ;;
         random|accept|cancel) echo 'Character Creation|Face' ;;
-        create) echo "$target" ;;
+        create) echo 'Character Select|Create a New Character' ;;
         *) echo "${optional:-window:EverQuest}" ;;
     esac
 }
@@ -59,6 +59,7 @@ if [[ $ACTION == selftest ]]; then
     for verb in open random accept cancel; do
         expected_for "$verb" character-create >/dev/null || exit 1
     done
+    [[ $(expected_for create Testname) == 'Character Select|Create a New Character' ]] || exit 1
     DIR=$2
     shot() { touch "$DIR/$1.png"; }
     screen_text() { echo 'Character Creation'; }
@@ -206,7 +207,15 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             xdotool key a; xdotool key BackSpace
             xdotool type --delay 100 "$target"; sleep 2
             shot "$name-before-submit"
-            jclick 1243 54; sleep 15 ;;
+            submitted=0
+            for attempt in 1 2 3 4 5; do
+                jclick 1243 54; sleep 12
+                if screen_text | grep -qiE 'Character Select|Create a New Character'; then
+                    submitted=1
+                    break
+                fi
+            done
+            [[ $submitted == 1 ]] || { shot "$name-submit-failed"; exit 65; } ;;
         command) xdotool key Return; xdotool type --delay 80 "$target"; xdotool key Return ;;
         still) : ;;
         wait) [[ $target =~ ^[0-9]+$ ]] || exit 65; sleep "$(awk -v ms="$target" 'BEGIN {printf "%.3f",ms/1000}')" ;;

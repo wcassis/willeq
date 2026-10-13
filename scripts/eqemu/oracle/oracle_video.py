@@ -15,7 +15,7 @@ def calibrate_video(out: Path) -> float:
     for frame in sorted(marker_frames.glob('f*.png')):
         ocr = subprocess.run(['tesseract', str(frame), 'stdout', '--psm', '6'],
                              capture_output=True, text=True, check=True).stdout.upper()
-        if 'ORACLE' in ocr and 'MARKER' in ocr:
+        if 'TIMING MARKER' in ocr:
             marker_frame = int(frame.stem[1:]) - 1
             break
     if marker_frame is None:

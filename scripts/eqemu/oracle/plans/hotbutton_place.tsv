@@ -1,6 +1,6 @@
 # action	target	hold_ms	still_name
 # ini-unset=HotButtons.Page3Button1
-login	Testchar	0	char_select
+login	Testcaster	0	char_select
 zone	ecommons	0	in_world
 command	/hotbutton H8 1 /say H8probe	0	cursor_social
 press	shift+3	0	page_three

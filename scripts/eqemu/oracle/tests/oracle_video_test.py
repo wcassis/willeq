@@ -31,6 +31,11 @@ def main():
         actual = calibrate_video(out)
         assert abs(actual - 100) <= 0.11, actual
         assert (out / 'video.calibration.tsv').is_file()
+    if len(sys.argv) == 2:
+        captured = Path(sys.argv[1])
+        measured = calibrate_video(captured)
+        assert (captured / 'video.calibration.tsv').is_file()
+        print(f'captured video calibrated t0={measured:.3f}')
     print('PASS: marker-calibrated t0 and root-to-video action points')
 
 
