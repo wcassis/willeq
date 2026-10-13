@@ -169,7 +169,7 @@ public:
      * draw calls that took. The two times are wall-clock microseconds spent
      * inside the command flush and the text flush.
      *
-     * TAKE-and-reset: a frame that does not call endFrame() (F11 hides the UI)
+     * TAKE-and-reset: a frame that does not call endFrame() (F10 / `/hideui` hides the UI)
      * reads zeros rather than the previous frame's numbers.
      */
     struct FlushStats {

@@ -82,7 +82,8 @@
 //   notifyEntityLoaded()    empty body
 //   checkAndSetZoneReady()  empty body
 //   areEntitiesLoaded()     inline accessor on entitiesLoaded_ (K04 (f));
-//       B340 deleted entitiesLoaded_ itself, which L09's write-only member was
+//       B340 deleted entitiesLoaded_ itself (write-only after L09 deleted
+//       its zero-caller accessors)
 // Both bodies carried a "kept for interface compatibility" comment whose
 // premise correction 13 refutes.
 //
@@ -286,12 +287,12 @@ private:
 	// the §Mechanism 3 zero-reference case.
 	// B340 deleted entitiesLoaded_/expectedEntityCount_ with their four
 	// writes: write-only after L09 deleted their zero-caller accessors.
-	#ifdef EQT_HAS_GLES2
-		bool gpuUploadEnabled_ = true;   // Runtime toggle for /upload command
-	#endif
-	#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
-		std::unique_ptr<GLES2EGLHelper> gles2Helper_;  // GLES2 context for ETC1 EGL image sharing
-	#endif
+#ifdef EQT_HAS_GLES2
+	bool gpuUploadEnabled_ = true;   // Runtime toggle for /upload command
+#endif
+#if defined(EQT_HAS_DRM) && !defined(EQT_HAS_GLES2)
+	std::unique_ptr<GLES2EGLHelper> gles2Helper_;  // GLES2 context for ETC1 EGL image sharing
+#endif
 
 	// L13: owned state, see the accessors above.
 	StoredZoneEnvironment storedZoneEnvironment_;

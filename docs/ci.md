@@ -777,7 +777,16 @@ drivers can never render byte-identical frames:
 
 - **x86** (the CI `gate` job): llvmpipe, 16-bit depth (B971), goldens at
   `tests/goldens/<zone>_f<n>.png`, section `manifest["zones"]`. The CI
-  job passes no `--platform`; nothing about it changed.
+  job passes no `--platform`; nothing about it changed. The runners take
+  the x86 device fork's surfaceless-EGL path (no /dev/dri grant), so the
+  goldens are driver-stable. On a multi-GPU x86 box (lane 5, the
+  ThinkPad: a headless NVIDIA Quadro on card0, the Intel UHD 630 eDP
+  panel on card1) `--drm` card selection tries every `/dev/dri/card*` in
+  numeric order and skips a card that opens without a connected
+  connector and a CRTC, landing on the card that actually has a display
+  (B1054, #374); `WILLEQ_DRM_DEVICE=/dev/dri/cardN` is an explicit
+  single-path override whose failure is an error, never a silent
+  fallback.
 - **Pi** (by hand, never a CI job): Mali-400 under the Lima driver on the
   Orange Pi with the shipped LLVM-less Mesa prefix, goldens at
   `tests/goldens/pi/<zone>/f<n>.png`, section

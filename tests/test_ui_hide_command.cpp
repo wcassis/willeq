@@ -10,14 +10,17 @@
  *
  * fable was NOT missing the feature, which is the interesting part:
  * IrrlichtRenderer::toggleAllUI() has existed for a long time, bound to F11
- * (HotkeyAction::ToggleAllUI, hotkey_manager.cpp's global defaults). It was
+ * at the time (HotkeyAction::ToggleAllUI, hotkey_manager.cpp's global
+ * defaults; B582, 2026-10-10, moved the key to the official F10 and left
+ * F11 unbound). It was
  * broken and unreachable in two separate ways, both closed by this unit:
  *
  *   1. `allUIHidden_` gated only what existed when it was written -- the
  *      entity casting bars, the old `guienv_->drawAll()` and the FPS counter
  *      (renderer_frame.cpp). The STATIC UI block right below them -- chat,
  *      hotbar, gems, buffs, popups, XP bar, i.e. the entire UI the client
- *      actually ships -- was not gated at all, so F11 hid nothing a capture
+ *      actually ships -- was not gated at all, so F11 (now F10) hid nothing
+ *      a capture
  *      cared about. (The reachability pattern's cousin: a feature with a
  *      caller, whose effect no longer reaches the thing it names.)
  *   2. A raw key event is not reachable from a `--script` run or from any
@@ -151,7 +154,7 @@ TEST(UIHideSourceInvariants, KeyEventSwitchQueuesTheRendererAction) {
     const std::string src = readFile(kRoot / "src/client/graphics/renderer/renderer_event_receiver.cpp");  // J11
     EXPECT_NE(src.find("case HA::ToggleAllUI: actionQueue_.push_back({RA::ToggleAllUI});"),
               std::string::npos)
-        << "the F11 hotkey no longer reaches RendererAction::ToggleAllUI -- the key is dead";
+        << "the F10 hotkey no longer reaches RendererAction::ToggleAllUI -- the key is dead";
 }
 
 TEST(UIHideSourceInvariants, StaticUiBlockIsGatedOnAllUIHidden) {
@@ -174,7 +177,7 @@ TEST(UIHideSourceInvariants, StaticUiBlockIsGatedOnAllUIHidden) {
     int found = 0;
     for (const auto& sp : spellings) if (src.find(sp) != std::string::npos) ++found;
     EXPECT_EQ(found, 1)
-        << "the static UI panels are drawn without consulting allUIHidden_ -- /hideui and F11 "
+        << "the static UI panels are drawn without consulting allUIHidden_ -- /hideui and F10 "
            "will leave the chat box and hotbar over every frame of a visual gate again";
 
     // G05 (batch correction 21, fourth sighting): the guarded block is no

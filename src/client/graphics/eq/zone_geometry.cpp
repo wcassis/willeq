@@ -37,6 +37,12 @@
 namespace EQT {
 namespace Graphics {
 
+// B1019 (GitLab #340): the layout-equality net's CORE side, defined in this
+// TU because this is the TU willeq_core compiles -- the sizeof here carries
+// the core's own macro state. tests/test_zone_geometry_atlas_layout.cpp
+// links willeq_core and compares its consumer-side sizeof against this.
+size_t ZoneMeshBuilder::layoutSize() { return sizeof(ZoneMeshBuilder); }
+
 ZoneMeshBuilder::ZoneMeshBuilder(irr::scene::ISceneManager* smgr, irr::video::IVideoDriver* driver,
                                  irr::io::IFileSystem* fileSystem)
     : smgr_(smgr), driver_(driver), fileSystem_(fileSystem) {

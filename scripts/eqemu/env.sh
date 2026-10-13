@@ -22,12 +22,16 @@
 #   2     172.16.200.98   172.16.200.92  (eq-oracle-2)
 #   3     172.16.200.97   172.16.200.93  (eq-oracle-3)
 #   4     172.16.200.96   172.16.200.94  (eq-oracle-4)
+#   5     172.16.200.205  172.16.200.205 (the ThinkPad: eqemu AND the oracle on one x86 box with a
+#                                         real GPU, B1055; its akk-stack is at /opt/akk-stack because
+#                                         /mnt/projects is the NFS mount there, not local disk)
 case "${EQEMU_LANE:-}" in
     ""|1) EQEMU_LANE_HOST=172.16.200.99 ;;
     2)    EQEMU_LANE_HOST=172.16.200.98 ;;
     3)    EQEMU_LANE_HOST=172.16.200.97 ;;
     4)    EQEMU_LANE_HOST=172.16.200.96 ;;
-    *)    echo "scripts/eqemu/env.sh: unknown EQEMU_LANE '${EQEMU_LANE}' (1-4)" >&2
+    5)    EQEMU_LANE_HOST=172.16.200.205 ;;
+    *)    echo "scripts/eqemu/env.sh: unknown EQEMU_LANE '${EQEMU_LANE}' (1-5)" >&2
           return 1 2>/dev/null || exit 1 ;;
 esac
 EQEMU_HOST="${EQEMU_HOST:-${EQEMU_LANE_HOST}}"
@@ -39,6 +43,7 @@ case "${EQEMU_HOST}" in
     172.16.200.98) EQEMU_LANE=2 ;;
     172.16.200.97) EQEMU_LANE=3 ;;
     172.16.200.96) EQEMU_LANE=4 ;;
+    172.16.200.205) EQEMU_LANE=5 ;;
     *) EQEMU_LANE="${EQEMU_LANE:-1}" ;;
 esac
 case "${EQEMU_LANE}" in
@@ -46,10 +51,12 @@ case "${EQEMU_LANE}" in
     2) EQEMU_ORACLE_HOST="${EQEMU_ORACLE_HOST:-172.16.200.92}" ;;
     3) EQEMU_ORACLE_HOST="${EQEMU_ORACLE_HOST:-172.16.200.93}" ;;
     4) EQEMU_ORACLE_HOST="${EQEMU_ORACLE_HOST:-172.16.200.94}" ;;
+    5) EQEMU_ORACLE_HOST="${EQEMU_ORACLE_HOST:-172.16.200.205}" ;;
 esac
 export EQEMU_LANE
 EQEMU_SSH="${EQEMU_SSH:-user@${EQEMU_HOST}}"
-AKK_DIR="${AKK_DIR:-/mnt/projects/akk-stack}"
+# Lane 5 (B1055) keeps its stack on local disk at /opt/akk-stack: /mnt/projects is NFS there.
+if [ "${EQEMU_LANE}" = 5 ]; then AKK_DIR="${AKK_DIR:-/opt/akk-stack}"; else AKK_DIR="${AKK_DIR:-/mnt/projects/akk-stack}"; fi
 COMPOSE_FILE="${AKK_DIR}/docker-compose.yml"
 # Cross-session exclusive lock, kept ON the eqemu host so every dev machine
 # (NFS or not) sees the same file. Use eqemu_lock_take/_show/_release.
