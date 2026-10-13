@@ -173,14 +173,12 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
     : CIrrDeviceStub(param),
       drmFd_(-1), crtcId_(0), connectorId_(0), savedCrtc_(nullptr),
       gbmDevice_(nullptr), gbmSurface_(nullptr),
-      previousBo_(nullptr),
-      retiredBo_(nullptr),
       eglDisplay_(EGL_NO_DISPLAY), eglSurface_(EGL_NO_SURFACE),
       eglContext_(EGL_NO_CONTEXT), eglConfig_(nullptr),
       ttyFd_(-1), savedKbMode_(-1),
       keyboardFd_(-1), mouseFd_(-1),
       shiftDown_(false), ctrlDown_(false), altDown_(false),
-      Close(false), firstFrame_(true), flipPending_(false), useGLES2_(false)
+      Close(false), firstFrame_(true), useGLES2_(false)
 {
     Width = param.WindowSize.Width;
     Height = param.WindowSize.Height;
@@ -258,17 +256,21 @@ CIrrDeviceFB::~CIrrDeviceFB()
 
     // Wait before retiring a displaced buffer; restore the original CRTC
     // before releasing the final buffer still scanned out by this device.
-    const bool flipComplete = waitForFlipComplete();
-    if (flipComplete && retiredBo_)
-        gbm_surface_release_buffer(gbmSurface_, retiredBo_);
+    waitForFlipComplete();
 
     if (savedCrtc_) {
-        drmModeSetCrtc(drmFd_, savedCrtc_->crtc_id, savedCrtc_->buffer_id,
-                       savedCrtc_->x, savedCrtc_->y, &connectorId_, 1, &savedCrtc_->mode);
+        const bool restored = drmModeSetCrtc(drmFd_, savedCrtc_->crtc_id, savedCrtc_->buffer_id,
+                                             savedCrtc_->x, savedCrtc_->y, &connectorId_, 1,
+                                             &savedCrtc_->mode) == 0;
+        if (restored) {
+            const auto releases = flipTracker_.onCrtcRestored();
+            if (releases.retired)
+                gbm_surface_release_buffer(gbmSurface_, releases.retired);
+            if (releases.previous)
+                gbm_surface_release_buffer(gbmSurface_, releases.previous);
+        }
         drmModeFreeCrtc(savedCrtc_);
     }
-    if (previousBo_)
-        gbm_surface_release_buffer(gbmSurface_, previousBo_);
     if (gbmSurface_)
         gbm_surface_destroy(gbmSurface_);
     if (gbmDevice_)
@@ -688,16 +690,20 @@ static uint32_t getOrCreateFb(struct gbm_bo* bo, int drmFd, uint32_t width, uint
 }
 
 // Page flip event handler — called by drmHandleEvent when flip completes
+static thread_local std::uintptr_t expectedFlipSerial = 0;
+static thread_local bool expectedFlipReceived = false;
 static void pageFlipHandler(int fd, unsigned int frame,
                             unsigned int sec, unsigned int usec, void* data)
 {
-    bool* flipPending = static_cast<bool*>(data);
-    *flipPending = false;
+    if (reinterpret_cast<std::uintptr_t>(data) == expectedFlipSerial)
+        expectedFlipReceived = true;
 }
 
 bool CIrrDeviceFB::waitForFlipComplete()
 {
-    if (!flipPending_) return true;
+    if (!flipTracker_.pending()) return true;
+    expectedFlipSerial = flipTracker_.serial();
+    expectedFlipReceived = false;
 
     drmEventContext evctx = {};
     evctx.version = 2;
@@ -706,7 +712,7 @@ bool CIrrDeviceFB::waitForFlipComplete()
     pfd.fd = drmFd_;
     pfd.events = POLLIN;
 
-    while (flipPending_) {
+    while (!expectedFlipReceived) {
         const int ret = poll(&pfd, 1, 100);
         if (ret > 0 && (pfd.revents & POLLIN)) {
             if (drmHandleEvent(drmFd_, &evctx) != 0)
@@ -714,7 +720,7 @@ bool CIrrDeviceFB::waitForFlipComplete()
         } else if (ret > 0) {
             return false;
         } else if (ret == 0 || (ret < 0 && errno != EINTR)) {
-            // No completion event: keep both locked buffers out of GBM's pool.
+            // The tracker retains both buffers until completion or recovery.
             return false;
         }
     }
@@ -735,15 +741,24 @@ void CIrrDeviceFB::drmPageFlip()
     }
 
     if (!flipComplete) {
-        os::Printer::log("DRM: page flip completion not observed; retaining buffers", ELL_WARNING);
-        return;
+        if (flipTracker_.onTimeout() != eqt_drm::FlipTracker<gbm_bo>::TimeoutAction::Recover)
+            return;
+        const uint32_t fb = getOrCreateFb(flipTracker_.previous(), drmFd_, Width, Height);
+        if (!fb || drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0,
+                                  &connectorId_, 1, &mode_) != 0) {
+            os::Printer::log("DRM: flip recovery SetCrtc failed; retaining buffers", ELL_WARNING);
+            return;
+        }
+        os::Printer::log("DRM: flip event lost; recovering with a synchronous SetCrtc", ELL_WARNING);
+        const auto releases = flipTracker_.onSetCrtcSync(flipTracker_.previous());
+        if (releases.retired)
+            gbm_surface_release_buffer(gbmSurface_, releases.retired);
+    } else {
+        if (auto* released = flipTracker_.onFlipComplete(flipTracker_.serial()))
+            gbm_surface_release_buffer(gbmSurface_, released);
     }
     // B1050 (#370): kmscube waits for the flip event before releasing the
     // displaced scanout bo. Releasing at submission lets GBM render into it.
-    if (retiredBo_) {
-        gbm_surface_release_buffer(gbmSurface_, retiredBo_);
-        retiredBo_ = nullptr;
-    }
 
     if (probeOn) {
         const auto t0 = std::chrono::steady_clock::now();
@@ -773,10 +788,9 @@ void CIrrDeviceFB::drmPageFlip()
         }
         firstFrame_ = false;
     } else if (drmModePageFlip(drmFd_, crtcId_, fb,
-                               DRM_MODE_PAGE_FLIP_EVENT, &flipPending_) == 0) {
-        flipPending_ = true;
-        retiredBo_ = previousBo_;
-        previousBo_ = bo;
+                               DRM_MODE_PAGE_FLIP_EVENT,
+                               reinterpret_cast<void*>(flipTracker_.nextSerial())) == 0) {
+        flipTracker_.onFlipSubmitted(bo);
         return;
     } else if (drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0,
                               &connectorId_, 1, &mode_) != 0) {
@@ -787,9 +801,11 @@ void CIrrDeviceFB::drmPageFlip()
 
     // The initial/fallback SetCrtc is synchronous: the old bo is no longer
     // scanned out and can be released immediately.
-    if (previousBo_)
-        gbm_surface_release_buffer(gbmSurface_, previousBo_);
-    previousBo_ = bo;
+    const auto releases = flipTracker_.onSetCrtcSync(bo);
+    if (releases.retired)
+        gbm_surface_release_buffer(gbmSurface_, releases.retired);
+    if (releases.previous)
+        gbm_surface_release_buffer(gbmSurface_, releases.previous);
 }
 
 // ============================================================

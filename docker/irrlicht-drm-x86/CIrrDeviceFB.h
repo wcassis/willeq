@@ -47,6 +47,7 @@
 #include "ICursorControl.h"
 
 #include <EGL/egl.h>
+#include "drm_flip_tracker.h"
 #ifndef __APPLE__
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -174,8 +175,7 @@ private:
     // GBM
     struct gbm_device* gbmDevice_;
     struct gbm_surface* gbmSurface_;
-    struct gbm_bo* previousBo_;
-    struct gbm_bo* retiredBo_;
+    eqt_drm::FlipTracker<gbm_bo> flipTracker_;
 
     // EGL
     EGLDisplay eglDisplay_;
@@ -210,7 +210,6 @@ private:
     bool firstFrame_;
 
     // Page flip synchronization
-    bool flipPending_;          // True if a page flip event hasn't been received yet
     bool waitForFlipComplete(); // True only after the page flip event
 
     // GLES2 mode (set before construction, affects EGL init and driver creation)

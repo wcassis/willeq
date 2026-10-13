@@ -232,6 +232,7 @@ COPY docker/irrlicht-drm/COGLES2MaterialRenderer.cpp /tmp/irrlicht-drm/COGLES2Ma
 COPY docker/irrlicht-drm/gl_call_counters.h /tmp/irrlicht-drm/gl_call_counters.h
 COPY docker/irrlicht-drm/gpu_sync_probe.h /tmp/irrlicht-drm/gpu_sync_probe.h
 COPY docker/irrlicht-drm/drm_key_translation.h /tmp/irrlicht-drm/drm_key_translation.h
+COPY docker/irrlicht-drm/drm_flip_tracker.h /tmp/irrlicht-drm/drm_flip_tracker.h
 COPY docker/irrlicht-drm/t122_texprobe.h /tmp/irrlicht-drm/t122_texprobe.h
 COPY docker/irrlicht-drm/drm_mode_select.h /tmp/irrlicht-drm/drm_mode_select.h
 COPY docker/irrlicht-drm-patch.py /tmp/irrlicht-drm-patch.py
@@ -252,6 +253,7 @@ RUN if [ "$ENABLE_GRAPHICS" = "ON" ]; then \
         cp /tmp/irrlicht-drm/gl_call_counters.h irrlicht-1.8.5/source/Irrlicht/gl_call_counters.h && \
         cp /tmp/irrlicht-drm/gpu_sync_probe.h irrlicht-1.8.5/source/Irrlicht/gpu_sync_probe.h && \
         cp /tmp/irrlicht-drm/drm_key_translation.h irrlicht-1.8.5/source/Irrlicht/drm_key_translation.h && \
+        cp /tmp/irrlicht-drm/drm_flip_tracker.h irrlicht-1.8.5/source/Irrlicht/drm_flip_tracker.h && \
         cp /tmp/irrlicht-drm/t122_texprobe.h irrlicht-1.8.5/source/Irrlicht/t122_texprobe.h && \
         cp /tmp/irrlicht-drm/drm_mode_select.h irrlicht-1.8.5/source/Irrlicht/drm_mode_select.h && \
         python3 /tmp/irrlicht-drm-patch.py irrlicht-1.8.5 && \
