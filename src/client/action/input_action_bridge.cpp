@@ -311,7 +311,7 @@ void InputActionBridge::processHotbarRequests() {
         // HotbarModel the rest of the client uses (the mouse path in
         // eq_bridge.cpp switches on this same enum). No default: -Wswitch then
         // catches the next enumerator that grows a keyboard route.
-        const eqt::HotbarSlot& slot = m_hotbarModel->getSlot(slotIndex);
+        const eqt::HotbarSlot& slot = m_hotbarModel->getSlot({m_hotbarModel->currentPage(), slotIndex});
         switch (slot.type) {
             case eqt::HotbarSlotType::Spell:
                 // Preserve the legacy position->gem mapping for spells: the

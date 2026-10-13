@@ -29,9 +29,16 @@ struct HotbarSlot {
     std::string name;             // Display name (resolved from spell/skill DB)
 };
 
+// Stock Titanium exposes one hotbar with ten pages of ten buttons.
+struct HotbarAddress {
+    int page = 0;
+    int slot = 0;
+};
+
 class HotbarModel {
 public:
     static constexpr int SLOT_COUNT = 10;
+    static constexpr int PAGE_COUNT = 10;
 
     HotbarModel() = default;
     ~HotbarModel() = default;
@@ -48,8 +55,11 @@ public:
     void setSaveCallback(SaveCallback cb) { saveCallback_ = std::move(cb); }
 
     // --- Slot access ---
-    const HotbarSlot& getSlot(int index) const;
+    const HotbarSlot& getSlot(HotbarAddress address) const;
     int getSlotCount() const { return SLOT_COUNT; }
+    int currentPage() const { return currentPage_; }
+    void setCurrentPage(int page);
+    void reset();
 
     // --- Slot mutation (publishes events) ---
     // B603 (T458 class: test seam, kept): no production caller. The only
@@ -64,9 +74,9 @@ public:
     // skill-reachability leg, the T15 input-action-bridge routing, T230's
     // hotbar item route) -- the tests are the net, so the functions live
     // with them.
-    void assignSlot(int index, HotbarSlotType type, uint32_t id,
+    void assignSlot(HotbarAddress address, HotbarSlotType type, uint32_t id,
                     const std::string& emoteText = "", uint32_t iconId = 0);
-    void clearSlot(int index);
+    void clearSlot(HotbarAddress address);
 
     // --- JSON serialization ---
     void loadFromJson(const Json::Value& data);
@@ -76,10 +86,11 @@ public:
     void publishAllSlots();
 
 private:
-    void publishSlot(int index);
+    void publishSlot(HotbarAddress address);
     void onChanged();
 
-    std::array<HotbarSlot, SLOT_COUNT> slots_;
+    std::array<std::array<HotbarSlot, SLOT_COUNT>, PAGE_COUNT> slots_;
+    int currentPage_ = 0;
     bridge::GameStateBridge* bridge_ = nullptr;
     NameResolver nameResolver_;
     SaveCallback saveCallback_;

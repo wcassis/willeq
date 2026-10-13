@@ -732,7 +732,7 @@ bool eqt::bridge::BridgeComponent::UseInventoryItem(int16_t slot) {
 	// Cooldown feedback to the renderer for every hotbar slot holding this item.
 	if (item->clickEffect.recastDelay > 0 && ctx_.bridge && ctx_.hotbar_model) {
 		for (int idx = 0; idx < ctx_.hotbar_model->getSlotCount(); ++idx) {
-			const eqt::HotbarSlot& hs = ctx_.hotbar_model->getSlot(idx);
+			const eqt::HotbarSlot& hs = ctx_.hotbar_model->getSlot({ctx_.hotbar_model->currentPage(), idx});
 			if (hs.type != eqt::HotbarSlotType::Item || hs.id != item->itemId) continue;
 			eqt::state::HotbarCooldownStartedData cd;
 			cd.index = idx;

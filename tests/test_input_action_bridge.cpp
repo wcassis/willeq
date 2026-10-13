@@ -517,7 +517,7 @@ TEST_F(InputActionBridgeTest, HotbarRequests_NoModelFallsBackToSpellGem) {
 
 TEST_F(InputActionBridgeTest, HotbarSkillSlot_ReachesUseSkillNotCastSpell) {
     eqt::HotbarModel model;
-    model.assignSlot(0, eqt::HotbarSlotType::Skill, /*id=*/73);  // Taunt
+    model.assignSlot({0, 0}, eqt::HotbarSlotType::Skill, /*id=*/73);  // Taunt
     bridge->setHotbarModel(&model);
 
     input.hotbarRequests.push({0});
@@ -536,7 +536,7 @@ TEST_F(InputActionBridgeTest, HotbarSkillSlot_ReachesUseSkillNotCastSpell) {
 // see refactor/T230_target_resolver_and_hotbar_items.md).
 TEST_F(InputActionBridgeTest, HotbarItemSlot_ReachesUseItemWithResolvedInventorySlot) {
     eqt::HotbarModel model;
-    model.assignSlot(3, eqt::HotbarSlotType::Item, /*id=*/1234);  // item id
+    model.assignSlot({0, 3}, eqt::HotbarSlotType::Item, /*id=*/1234);  // item id
     bridge->setHotbarModel(&model);
     handler.inventoryByItemId[1234] = 24;  // carried in general slot 24
 
@@ -550,7 +550,7 @@ TEST_F(InputActionBridgeTest, HotbarItemSlot_ReachesUseItemWithResolvedInventory
 
 TEST_F(InputActionBridgeTest, HotbarItemSlot_ItemNotCarried_FailsWithoutUsing) {
     eqt::HotbarModel model;
-    model.assignSlot(3, eqt::HotbarSlotType::Item, /*id=*/1234);
+    model.assignSlot({0, 3}, eqt::HotbarSlotType::Item, /*id=*/1234);
     bridge->setHotbarModel(&model);
     // handler.inventoryByItemId empty: item 1234 is not in inventory.
 
@@ -563,7 +563,7 @@ TEST_F(InputActionBridgeTest, HotbarItemSlot_ItemNotCarried_FailsWithoutUsing) {
 
 TEST_F(InputActionBridgeTest, HotbarSpellSlot_StillReachesCastSpellByPosition) {
     eqt::HotbarModel model;
-    model.assignSlot(2, eqt::HotbarSlotType::Spell, /*id=*/999);
+    model.assignSlot({0, 2}, eqt::HotbarSlotType::Spell, /*id=*/999);
     bridge->setHotbarModel(&model);
 
     input.hotbarRequests.push({2});
@@ -592,7 +592,7 @@ TEST_F(InputActionBridgeTest, HotbarEmptySlot_IsSkippedNotCast) {
 // (was a logged skip for all three, T174/T230).
 TEST_F(InputActionBridgeTest, HotbarEmoteSlot_ReachesCommandRouteWithItsText) {
     eqt::HotbarModel model;
-    model.assignSlot(1, eqt::HotbarSlotType::Emote, /*id=*/0, "/wave");
+    model.assignSlot({0, 1}, eqt::HotbarSlotType::Emote, /*id=*/0, "/wave");
     bridge->setHotbarModel(&model);
 
     input.hotbarRequests.push({1});
@@ -604,7 +604,7 @@ TEST_F(InputActionBridgeTest, HotbarEmoteSlot_ReachesCommandRouteWithItsText) {
 
 TEST_F(InputActionBridgeTest, HotbarMacroSlot_ReachesCommandRouteWithItsText) {
     eqt::HotbarModel model;
-    model.assignSlot(2, eqt::HotbarSlotType::Macro, /*id=*/0, "/say hi");
+    model.assignSlot({0, 2}, eqt::HotbarSlotType::Macro, /*id=*/0, "/say hi");
     bridge->setHotbarModel(&model);
 
     input.hotbarRequests.push({2});
@@ -616,7 +616,7 @@ TEST_F(InputActionBridgeTest, HotbarMacroSlot_ReachesCommandRouteWithItsText) {
 
 TEST_F(InputActionBridgeTest, HotbarCombatSlot_ReachesCommandRoute) {
     eqt::HotbarModel model;
-    model.assignSlot(4, eqt::HotbarSlotType::Combat, /*id=*/0);
+    model.assignSlot({0, 4}, eqt::HotbarSlotType::Combat, /*id=*/0);
     bridge->setHotbarModel(&model);
 
     input.hotbarRequests.push({4});
@@ -628,7 +628,7 @@ TEST_F(InputActionBridgeTest, HotbarCombatSlot_ReachesCommandRoute) {
 
 TEST_F(InputActionBridgeTest, HotbarMacroSlot_EmptyText_FailsWithoutDispatch) {
     eqt::HotbarModel model;
-    model.assignSlot(2, eqt::HotbarSlotType::Macro, /*id=*/0, "");
+    model.assignSlot({0, 2}, eqt::HotbarSlotType::Macro, /*id=*/0, "");
     bridge->setHotbarModel(&model);
 
     input.hotbarRequests.push({2});

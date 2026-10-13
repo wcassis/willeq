@@ -250,6 +250,7 @@ struct HotbarSlotState {
 struct HotbarPanelState {
     static constexpr int SLOT_COUNT = 10;
     HotbarSlotState slots[10];
+    int currentPage = 0;
     int hoveredSlot = -1;
 };
 

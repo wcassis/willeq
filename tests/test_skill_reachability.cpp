@@ -210,7 +210,7 @@ protected:
     // Run the real chain for one slot assignment, with nothing copied by hand.
     void assignAndPump(int slot, eqt::HotbarSlotType type, uint32_t id,
                        const std::string& emoteText = "") {
-        model.assignSlot(slot, type, id, emoteText);
+        model.assignSlot({0, slot}, type, id, emoteText);
         pumpEvents();
     }
 
@@ -322,7 +322,7 @@ TEST_F(HotbarReachabilityTest, EmptySlotPushesNothing) {
 
 TEST_F(HotbarReachabilityTest, ClearingASlotStopsItActivating) {
     assignAndPump(2, eqt::HotbarSlotType::Skill, 16);
-    model.clearSlot(2);
+    model.clearSlot({0, 2});
     pumpEvents();
     clickSlot(2);
     EXPECT_TRUE(drain().empty());
@@ -331,10 +331,11 @@ TEST_F(HotbarReachabilityTest, ClearingASlotStopsItActivating) {
 // The published event itself carries the enum, so the numbering cannot be
 // reinterpreted between HotbarModel and the renderer either.
 TEST_F(HotbarReachabilityTest, PublishedEventCarriesTheTypedEnumAndTheId) {
-    model.assignSlot(4, eqt::HotbarSlotType::Skill, 6);
+    model.assignSlot({0, 4}, eqt::HotbarSlotType::Skill, 6);
     auto events = bridge.drainEvents();
     ASSERT_FALSE(events.empty());
     const auto& d = std::get<eqt::state::HotbarSlotAssignedData>(events[0].data);
+    EXPECT_EQ(d.page, 0);
     EXPECT_EQ(d.index, 4);
     EXPECT_EQ(d.type, eqt::HotbarSlotType::Skill);
     EXPECT_EQ(d.id, 6u);
@@ -352,8 +353,8 @@ TEST_F(HotbarReachabilityTest, OutOfRangeConfigTypeClearsTheSlotInsteadOfCasting
     cfg["buttons"] = buttons;
 
     model.loadFromJson(cfg);
-    EXPECT_EQ(model.getSlot(0).type, eqt::HotbarSlotType::Empty);
-    EXPECT_EQ(model.getSlot(0).id, 0u);
+    EXPECT_EQ(model.getSlot({0, 0}).type, eqt::HotbarSlotType::Empty);
+    EXPECT_EQ(model.getSlot({0, 0}).id, 0u);
 }
 
 TEST_F(HotbarReachabilityTest, ValidConfigTypeRoundTripsThroughJson) {
@@ -366,8 +367,31 @@ TEST_F(HotbarReachabilityTest, ValidConfigTypeRoundTripsThroughJson) {
     cfg["buttons"] = buttons;
 
     model.loadFromJson(cfg);
-    EXPECT_EQ(model.getSlot(0).type, eqt::HotbarSlotType::Skill);
-    EXPECT_EQ(model.getSlot(0).id, 48u);
+    EXPECT_EQ(model.getSlot({0, 0}).type, eqt::HotbarSlotType::Skill);
+    EXPECT_EQ(model.getSlot({0, 0}).id, 48u);
+    EXPECT_EQ(model.getSlot({1, 0}).type, eqt::HotbarSlotType::Empty);
+}
+
+TEST_F(HotbarReachabilityTest, PageAddressRoundTripsAndPublishesActivePage) {
+    model.assignSlot({3, 7}, eqt::HotbarSlotType::Skill, 48);
+    EXPECT_TRUE(bridge.drainEvents().empty());
+    model.setCurrentPage(3);
+    auto events = bridge.drainEvents();
+    ASSERT_EQ(events.size(), 10u);
+    const auto& d = std::get<eqt::state::HotbarSlotAssignedData>(events[7].data);
+    EXPECT_EQ(d.page, 3);
+    EXPECT_EQ(d.index, 7);
+    EXPECT_EQ(d.id, 48u);
+
+    eqt::HotbarModel loaded;
+    loaded.loadFromJson(model.saveToJson());
+    EXPECT_EQ(loaded.currentPage(), 3);
+    EXPECT_EQ(loaded.getSlot({3, 7}).id, 48u);
+    EXPECT_EQ(loaded.getSlot({0, 7}).type, eqt::HotbarSlotType::Empty);
+    loaded.setCurrentPage(10);
+    EXPECT_EQ(loaded.currentPage(), 3);
+    loaded.assignSlot({10, 7}, eqt::HotbarSlotType::Item, 999);
+    EXPECT_EQ(loaded.getSlot({3, 7}).id, 48u);
 }
 
 // ===================================================================
