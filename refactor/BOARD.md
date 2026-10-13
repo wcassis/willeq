@@ -448,6 +448,9 @@ it without taking that measurement first.
   slots are filled only by `loadFromJson()` at startup and published by
   `publishAllSlots()` at zone-in; no command, intent or UI control assigns a
   slot. Oracle (what the official client does) + CI test owed.
+  Partial official-client capture for the H0 oracle leg is recorded in
+  `refactor/B1025-H0/README.md`; its "Not captured / not verified" cases
+  remain open and this item is not closed.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
