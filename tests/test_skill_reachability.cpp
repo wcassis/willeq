@@ -388,7 +388,7 @@ TEST_F(HotbarReachabilityTest, LegacyEleventhButtonIsIgnored) {
     EXPECT_EQ(model.getSlot({1, 0}).type, eqt::HotbarSlotType::Empty);
 }
 
-TEST_F(HotbarReachabilityTest, PageAddressRoundTripsAndPublishesActivePage) {
+TEST_F(HotbarReachabilityTest, PageAddressPublishesActivePage) {
     model.assignSlot({3, 7}, eqt::HotbarSlotType::Skill, 48);
     auto assigned = bridge.drainEvents();
     ASSERT_EQ(assigned.size(), 1u);
@@ -406,15 +406,31 @@ TEST_F(HotbarReachabilityTest, PageAddressRoundTripsAndPublishesActivePage) {
     EXPECT_EQ(d.index, 7);
     EXPECT_EQ(d.id, 48u);
 
-    eqt::HotbarModel loaded;
-    loaded.loadFromJson(model.saveToJson());
-    EXPECT_EQ(loaded.currentPage(), 3);
-    EXPECT_EQ(loaded.getSlot({3, 7}).id, 48u);
-    EXPECT_EQ(loaded.getSlot({0, 7}).type, eqt::HotbarSlotType::Empty);
-    loaded.setCurrentPage(10);
-    EXPECT_EQ(loaded.currentPage(), 3);
-    loaded.assignSlot({10, 7}, eqt::HotbarSlotType::Item, 999);
-    EXPECT_EQ(loaded.getSlot({3, 7}).id, 48u);
+    EXPECT_EQ(model.currentPage(), 3);
+    EXPECT_EQ(model.getSlot({3, 7}).id, 48u);
+    EXPECT_EQ(model.getSlot({0, 7}).type, eqt::HotbarSlotType::Empty);
+    model.setCurrentPage(10);
+    EXPECT_EQ(model.currentPage(), 3);
+    model.assignSlot({10, 7}, eqt::HotbarSlotType::Item, 999);
+    EXPECT_EQ(model.getSlot({3, 7}).id, 48u);
+}
+
+TEST_F(HotbarReachabilityTest, PageSwitchDoesNotCarryVisibleCooldown) {
+    model.assignSlot({0, 0}, eqt::HotbarSlotType::Item, 100);
+    pumpEvents();
+    hotbar.slots[0].cooldownDurationMs = 60000;
+    hotbar.slots[0].cooldownEndTime =
+        std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    model.assignSlot({1, 0}, eqt::HotbarSlotType::Item, 200);
+    pumpEvents();
+    model.setCurrentPage(1);
+    pumpEvents();
+    EXPECT_EQ(hotbar.slots[0].id, 200u);
+    EXPECT_FALSE(hotbar.slots[0].isOnCooldown());
+    model.setCurrentPage(0);
+    pumpEvents();
+    EXPECT_EQ(hotbar.slots[0].id, 100u);
+    EXPECT_FALSE(hotbar.slots[0].isOnCooldown());
 }
 
 // ===================================================================

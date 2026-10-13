@@ -1086,9 +1086,19 @@ void applyHotbarSlotAssigned(HotbarPanelState& state,
     if (data.index < 0 || data.index >= HotbarPanelState::SLOT_COUNT) return;
     if (data.page < 0 || data.page >= eqt::HotbarModel::PAGE_COUNT ||
         data.currentPage < 0 || data.currentPage >= eqt::HotbarModel::PAGE_COUNT) return;
+    if (state.currentPage != data.currentPage) {
+        for (auto& slot : state.slots) {
+            slot.cooldownDurationMs = 0;
+            slot.cooldownEndTime = {};
+        }
+    }
     state.currentPage = data.currentPage;
     if (data.page != data.currentPage) return;
     auto& slot = state.slots[data.index];
+    if (slot.type != data.type || slot.id != data.id || slot.emoteText != data.emoteText) {
+        slot.cooldownDurationMs = 0;
+        slot.cooldownEndTime = {};
+    }
     slot.type = data.type;
     slot.id = data.id;
     slot.emoteText = data.emoteText;

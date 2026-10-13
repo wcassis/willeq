@@ -427,7 +427,12 @@ void eqt::bridge::BridgeComponent::LoadHotbarConfig() {
 	if (!ctx_.hotbar_model || ctx_.character.empty()) return;
 	ctx_.hotbar_model->reset();
 	const auto& server = ctx_.LoginWorld().ServerName();
-	if (eqt::LoadCharacterHotbar(ctx_.character, server, *ctx_.hotbar_model)) return;
+	const auto load = eqt::LoadCharacterHotbar(ctx_.character, server, *ctx_.hotbar_model);
+	if (load == eqt::HotbarLoadResult::Loaded) return;
+	if (load == eqt::HotbarLoadResult::Error) {
+		LOG_WARN(MOD_CONFIG, "Could not load per-character hotbar; legacy import skipped");
+		return;
+	}
 	if (m_config_path.empty()) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);

@@ -1,6 +1,6 @@
 /*
  * HotbarModel implementation.
- * U07b: Standalone hotbar data model with JSON + bridge events.
+ * U07b: Standalone hotbar data model with legacy JSON import + bridge events.
  */
 
 #include "client/hotbar/hotbar_model.h"
@@ -52,6 +52,7 @@ void HotbarModel::assignSlot(HotbarAddress address, HotbarSlotType type, uint32_
     slot.id = id;
     slot.emoteText = emoteText;
     slot.iconId = iconId;
+    slot.sourceCode.clear();
 
     // Resolve display name
     // T239: Emote and Macro slots are named by their command text; the
@@ -113,6 +114,7 @@ void HotbarModel::loadFromJson(const Json::Value& data) {
                 slots_[p][i].id = id;
                 slots_[p][i].emoteText = emoteText;
                 slots_[p][i].iconId = iconId;
+                slots_[p][i].sourceCode = btn.get("sourceCode", "").asString();
 
                 if (slotType == HotbarSlotType::Emote || slotType == HotbarSlotType::Macro) {
                     slots_[p][i].name = emoteText.empty() ? hotbarSlotTypeName(slotType) : emoteText.substr(0, 10);
@@ -126,27 +128,6 @@ void HotbarModel::loadFromJson(const Json::Value& data) {
         if (!pages.isArray()) break;
     }
     LOG_DEBUG(MOD_CONFIG, "HotbarModel: loaded hotbar from JSON");
-}
-
-Json::Value HotbarModel::saveToJson() const {
-    Json::Value hotbar;
-    Json::Value pages(Json::arrayValue);
-    for (int p = 0; p < PAGE_COUNT; ++p) {
-        Json::Value buttons(Json::arrayValue);
-        for (int i = 0; i < SLOT_COUNT; ++i) {
-            const auto& slot = slots_[p][i];
-            Json::Value btn;
-            btn["type"] = static_cast<int>(slot.type);
-            btn["id"] = slot.id;
-            btn["emoteText"] = slot.emoteText;
-            btn["iconId"] = slot.iconId;
-            buttons.append(btn);
-        }
-        pages.append(buttons);
-    }
-    hotbar["pages"] = pages;
-    hotbar["currentPage"] = currentPage_;
-    return hotbar;
 }
 
 void HotbarModel::publishAllSlots() {

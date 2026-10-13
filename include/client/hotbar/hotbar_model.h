@@ -1,7 +1,7 @@
 /*
  * HotbarModel — standalone hotbar data model.
  *
- * U07b/B1025-H1: Owns ten pages of slot data, reads/writes JSON, publishes
+ * U07b/B1025-H1: Owns ten pages of slot data, imports legacy JSON, publishes
  * HotbarSlotAssigned events. No dependency on WindowManager or old UI.
  */
 
@@ -27,6 +27,7 @@ struct HotbarSlot {
     std::string emoteText;        // For emote type
     uint32_t iconId = 0;          // Cached icon ID
     std::string name;             // Display name (resolved from spell/skill DB)
+    std::string sourceCode;       // Verbatim official [HotButtons] value, when loaded
 };
 
 // Stock Titanium exposes one hotbar with ten pages of ten buttons.
@@ -52,6 +53,7 @@ public:
     using SpellAtGem = std::function<uint32_t(uint8_t)>;
     void setSpellAtGem(SpellAtGem reader) { spellAtGem_ = std::move(reader); }
     int findSpellGem(uint32_t spellId) const;
+    uint32_t spellAtGem(uint8_t gem) const { return spellAtGem_ ? spellAtGem_(gem) : 0; }
 
     /** Callback for config save (triggered on any slot change). */
     using SaveCallback = std::function<void()>;
@@ -81,9 +83,8 @@ public:
                     const std::string& emoteText = "", uint32_t iconId = 0);
     void clearSlot(HotbarAddress address);
 
-    // --- JSON serialization ---
+    // --- Legacy JSON import ---
     void loadFromJson(const Json::Value& data);
-    Json::Value saveToJson() const;
 
     // --- Publish all slots to bridge (for snapshot) ---
     void publishAllSlots();

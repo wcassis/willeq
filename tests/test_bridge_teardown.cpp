@@ -80,24 +80,26 @@ TEST(HotbarPersistence, TwoCharactersHaveIndependentFiles) {
 
     eqt::HotbarModel alice;
     eqt::HotbarModel bob;
+    alice.setSpellAtGem([](uint8_t gem) { return gem == 0 ? 777u : 0u; });
     alice.assignSlot({2, 4}, eqt::HotbarSlotType::Spell, 777);
     bob.assignSlot({9, 4}, eqt::HotbarSlotType::Item, 888);
     EXPECT_TRUE(eqt::SaveCharacterHotbar("Alice", "server", alice));
     EXPECT_TRUE(eqt::SaveCharacterHotbar("Bob", "server", bob));
     eqt::HotbarModel aliceRead;
     eqt::HotbarModel bobRead;
-    EXPECT_TRUE(eqt::LoadCharacterHotbar("Alice", "server", aliceRead));
-    EXPECT_TRUE(eqt::LoadCharacterHotbar("Bob", "server", bobRead));
+    aliceRead.setSpellAtGem([](uint8_t gem) { return gem == 0 ? 777u : 0u; });
+    EXPECT_EQ(eqt::LoadCharacterHotbar("Alice", "server", aliceRead), eqt::HotbarLoadResult::Loaded);
+    EXPECT_EQ(eqt::LoadCharacterHotbar("Bob", "server", bobRead), eqt::HotbarLoadResult::Loaded);
     EXPECT_EQ(aliceRead.getSlot({2, 4}).id, 777u);
     EXPECT_EQ(aliceRead.getSlot({9, 4}).type, eqt::HotbarSlotType::Empty);
     EXPECT_EQ(bobRead.getSlot({9, 4}).id, 888u);
     EXPECT_EQ(bobRead.getSlot({2, 4}).type, eqt::HotbarSlotType::Empty);
     aliceRead.reset();  // BridgeComponent does this before an identity load.
-    EXPECT_TRUE(eqt::LoadCharacterHotbar("Bob", "server", aliceRead));
+    EXPECT_EQ(eqt::LoadCharacterHotbar("Bob", "server", aliceRead), eqt::HotbarLoadResult::Loaded);
     EXPECT_EQ(aliceRead.getSlot({2, 4}).type, eqt::HotbarSlotType::Empty);
     EXPECT_EQ(aliceRead.getSlot({9, 4}).id, 888u);
     EXPECT_EQ(eqt::HotbarCacheName("O'Brian", "my server"),
-              "ui/UI_O_Brian_my_server.hotbar.json");
+              "ui/O_Brian_my_server.ini");
 
     if (saved.empty()) ::unsetenv("WILLEQ_CACHE_DIR");
     else ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
@@ -127,9 +129,9 @@ TEST(HotbarPersistence, LegacyConfigImportsOnceAndThenSavesPerCharacter) {
 
     TestBridge bridge;
     alice.setBridge(&bridge);
-    alice.GetHotbarModel()->assignSlot({4, 3}, eqt::HotbarSlotType::Spell, 999);
+    alice.GetHotbarModel()->assignSlot({4, 3}, eqt::HotbarSlotType::Item, 999);
     eqt::HotbarModel savedAlice;
-    EXPECT_TRUE(eqt::LoadCharacterHotbar("Testchar", "test", savedAlice));
+    EXPECT_EQ(eqt::LoadCharacterHotbar("Testchar", "test", savedAlice), eqt::HotbarLoadResult::Loaded);
     EXPECT_EQ(savedAlice.getSlot({4, 3}).id, 999u);
 
     EverQuest bob("127.0.0.1", 0, "test", "test", "test", "Bob");
@@ -143,6 +145,71 @@ TEST(HotbarPersistence, LegacyConfigImportsOnceAndThenSavesPerCharacter) {
     else ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
     std::filesystem::remove_all(dir);
 }
+
+TEST(HotbarPersistence, ExistingInvalidCharacterFileIsNeverReplacedByLegacyImport) {
+    const auto dir = std::filesystem::temp_directory_path() /
+        ("willeq_h1_invalid_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir / "ui");
+    const char* previous = std::getenv("WILLEQ_CACHE_DIR");
+    const std::string saved = previous ? previous : "";
+    ::setenv("WILLEQ_CACHE_DIR", dir.c_str(), 1);
+    const auto characterPath = dir / eqt::HotbarCacheName("Testchar", "test");
+    const auto configPath = dir / "client.json";
+    {
+        std::ofstream character(characterPath);
+        character << "[HotButtons]\nPage1Button1=bad!\n";
+        std::ofstream config(configPath);
+        config << R"({"clients":[{"hotbar":{"buttons":[{"type":2,"id":77}]}}]})";
+    }
+    EverQuest eq = MakeEq();
+    eq.Bridge().SetConfigPath(configPath.string());
+    eq.Bridge().LoadHotbarConfig();
+    std::ifstream character(characterPath);
+    const std::string contents((std::istreambuf_iterator<char>(character)),
+                               std::istreambuf_iterator<char>());
+    EXPECT_EQ(contents, "[HotButtons]\nPage1Button1=bad!\n");
+    EXPECT_EQ(eq.GetHotbarModel()->getSlot({0, 0}).type, eqt::HotbarSlotType::Empty);
+    auto config = EQ::JsonConfigFile::Load(configPath.string());
+    EXPECT_TRUE(config.RawHandle()["clients"][0].isMember("hotbar"));
+    if (saved.empty()) ::unsetenv("WILLEQ_CACHE_DIR");
+    else ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
+    std::filesystem::remove_all(dir);
+}
+
+void ExpectObservedCode(const char* code, eqt::HotbarSlotType type, uint32_t id) {
+    const auto dir = std::filesystem::temp_directory_path() /
+        ("willeq_h1_codes_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir / "ui");
+    const char* previous = std::getenv("WILLEQ_CACHE_DIR");
+    const std::string saved = previous ? previous : "";
+    ::setenv("WILLEQ_CACHE_DIR", dir.c_str(), 1);
+    const auto path = dir / eqt::HotbarCacheName("Testchar", "test");
+    {
+        std::ofstream file(path);
+        file << "[Other]\nKeep=1\n[HotButtons]\nPage1Button1=" << code << "\n";
+    }
+    eqt::HotbarModel model;
+    model.setSpellAtGem([](uint8_t gem) { return gem == 0 ? 700u : gem == 2 ? 702u : 0u; });
+    ASSERT_EQ(eqt::LoadCharacterHotbar("Testchar", "test", model), eqt::HotbarLoadResult::Loaded);
+    EXPECT_EQ(model.getSlot({0, 0}).type, type);
+    EXPECT_EQ(model.getSlot({0, 0}).id, id);
+    EXPECT_EQ(model.getSlot({0, 0}).sourceCode, code);
+    ASSERT_TRUE(eqt::SaveCharacterHotbar("Testchar", "test", model));
+    std::ifstream file(path);
+    const std::string contents((std::istreambuf_iterator<char>(file)),
+                               std::istreambuf_iterator<char>());
+    EXPECT_EQ(contents, std::string("[Other]\nKeep=1\n[HotButtons]\nPage1Button1=") + code + "\n");
+    if (saved.empty()) ::unsetenv("WILLEQ_CACHE_DIR");
+    else ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
+    std::filesystem::remove_all(dir);
+}
+
+TEST(HotbarPersistence, ObservedE12) { ExpectObservedCode("E12", eqt::HotbarSlotType::Emote, 12); }
+TEST(HotbarPersistence, ObservedJ10) { ExpectObservedCode("J10", eqt::HotbarSlotType::Combat, 10); }
+TEST(HotbarPersistence, ObservedJ30) { ExpectObservedCode("J30", eqt::HotbarSlotType::Skill, 30); }
+TEST(HotbarPersistence, ObservedH0) { ExpectObservedCode("H0", eqt::HotbarSlotType::Spell, 700); }
+TEST(HotbarPersistence, ObservedH2) { ExpectObservedCode("H2", eqt::HotbarSlotType::Spell, 702); }
+TEST(HotbarPersistence, ObservedF22) { ExpectObservedCode("F22", eqt::HotbarSlotType::Item, 22); }
 
 TEST(BridgeTeardownInvariant, EverQuestSetBridgeNullStopsHotbarModelForwarding) {
     EverQuest eq = MakeEq();
