@@ -400,11 +400,16 @@ it without taking that measurement first.
   `2c7d5be4` 2026-10-02): pLv-in-the-VS takes
   timorous_f2 to 15 px >32 (bar met: tens). The FP16 step lines were B967's
   interpolated `vWorldPos`; `refactor/B969/README.md` has the isolation.
-- **B980** (A) → issue #299. gfaydark gate
+- ~~**B980** (A) → issue #299. gfaydark gate
   frames differ Pi vs x86 by 409 / 55 / 162 px >32 (f0/f1/f2) with the player
   light ON -- and f0 and f2 are EQUAL to B960's player-light-OFF counts
   (409/54/162), so this is not the player light. Cause not isolated. Measured
-  by B967 (`review/B967/pi/gate/gfaydark_after/`, `arm_bin/before_d3375b65`).
+  by B967 (`review/B967/pi/gate/gfaydark_after/`, `arm_bin/before_d3375b65`).~~
+  **CLOSED by B1024 (MR !148): per-platform Pi goldens** -- Will ruled
+  "per-platform Pi goldens, go with option (a)" (2026-10-11, #299); the
+  residual is coverage flips (alpha-cutout edges + clip edges) plus the
+  16-vs-24-bit depth split, so the Pi has its OWN golden set and its own
+  section; `docs/decisions.md` 2026-10-11.
 - ~~**B973** (A) → issue #291. Post-load entity builds are Green-gated
   (`FrameComponent::processFrame`, "1 unit per GREEN frame";
   `EntityRenderer::processOneEntityBuildStep`), and the Pi is rarely Green in
@@ -1044,6 +1049,7 @@ it without taking that measurement first.
 - **B1026** (B, CI) → issue #346. Since gitlab-runner-2 took the `x86-build` tag (2026-10-11) a pipeline's `build` and `test` jobs can land on different hosts, and the stages pass no artifacts: fable pipeline 809 built on gitlab-runner-1 (job 4006) and tested runner-2's pre-B603 binary (job 4007), a false red; MR pipeline 805's green was the same luck. **FIX on `task/B1026-ci-host-stamp`** (Will ruled option (a)): the build steps are ONE shell function (`.build_tree` → `willeq_build_tree`); the tree gets a ref-only stamp before the configure and a host+sha claim (`.willeq_ref` `host=`/`sha=`, `prune_ref_build_trees.py --stamp ... --host --sha`) only after `cmake --build` succeeds; `test` and `client-ledger-live` run `--verify` first and, on a mismatch, print `B1026 STAMP MISMATCH`, rebuild in-job and verify again; `gate` builds its own GLES2 tree in-job. Pinned by `CiBuildTreeStamp` (hygiene) + `PruneRefBuildTrees`; `docs/ci.md` "Two x86 runners: the host+sha stamp"; evidence `refactor/B1026/README.md`.
 - **B1038** (B, CI/build) → issue #358. The headless configuration (`EQT_GRAPHICS=OFF`, the `--no-graphics` client) did not compile on ANY host and no job built it (`hygiene` configures OFF but compiles nothing; `build` is ON) -- found by B1031's macOS probe, confirmed on Linux (`review/B1031/linux_crosscheck_pass2.tsv`): `application.cpp`'s steady_60s census read `m_renderer`, `test_data_paths`/`test_ranged_attack_wire`/`test_detail_view_distance` include `irrlicht.h`, and the T260 cases of `test_zone_connection_flow_identity.cpp` call the graphics-only bridge seam; behind those, 8 test executables did not link (cases calling `GRAPHICS_SOURCES` TUs) and 5 cases asserted graphics-only behaviour. Also `cereal` was included by `packet.h`/`daybreak_structs.h` and never checked by CMake. **FIX on `task/B1038-headless-build`**: guards only (the census; renderer-path test cases `#ifdef EQT_HAS_GRAPHICS`; `test_detail_view_distance`, `test_door_motion`, `test_texture_alpha_census`, `test_ui_sprite_roster` registered only under graphics), `FIND_PATH(CEREAL_INCLUDE_DIR ...)` with a `FATAL_ERROR` naming `libcereal-dev` / Homebrew `cereal` (not vendored -- Will's call), and the `build-headless` CI job (`build` stage, shared `willeq_build_tree` with `WILLEQ_HEADLESS=1`, own `build-headless/ref/<slug>` tree, `ctest -LE hygiene` in-job). Pinned by `CiBuildTreeStamp` + `PruneRefBuildTrees`; `docs/ci.md` "The headless build"; evidence `refactor/B1038/README.md`.
 - **B1039** (B, build/macOS) → issue #359 (closes B1031's #351). The headless client and suite did not build on macOS: B1031's census (238 error lines; 281 with the ledger ON) was glibc allocator internals, void* arithmetic, 2-arg `pthread_setname_np`, `SO_RCVBUFFORCE`, clang/fmt 12 strictness and the EGL probe tools, plus `pipe2` and the `/proc/self/exe` data resolver found after it. **FIX on `task/B1039-macos-fix`**: `__linux__`/`__APPLE__` guards and CMake conditions only (ledger compiles to its OFF shape on Darwin, `eqt::setCurrentThreadName`, EGL tools only where EGL is found, Linux-only `test_memory_ledger`/Lima shim), `check_file_sizes.sh` bash-3.2-safe; M4 mini: build exit 0, `ctest -LE hygiene` + `-L hygiene` green. Recipe `docs/macos.md`; evidence `refactor/B1039/README.md`. Open: a `malloc_zone` ledger backend, `RssAnon` on Darwin, the renderer (ANGLE).
+- **B1043** (B, build/macOS) → issue #363. Will 2026-10-12: the mini is a full-parity graphics platform, not headless-only (`docs/decisions.md` 2026-10-12). PROVE card on `task/B1043-macos-graphics`: ANGLE built from source at `25078a77` (EGL 1.5 / GLES 3.0 over Metal; pbuffer + shared context + ETC1 proven; a CALayer window surface swaps but no on-screen window from ssh); the x86 patch set + device builds on Darwin via `scripts/build-gles2-darwin.sh` (census 73 → 0 error lines: the patch's config edits land in the Linux-only block, bundled libpng/zlib take `TARGET_OS_MAC`, DRM/GBM/evdev/X11 guarded with stubs in `CIrrDeviceFB_Darwin.cpp`); `willeq` + `gles2_zone_benchmark` build (census 12 → 0: Mesa's desktop `gl.h` in `constrained_texture_cache*.cpp`, Homebrew glm 1.x) and link via CMake targets standing in for `EGL GLESv2 drm gbm X11`; qeynos2 runs headless with draws/state changes/polys equal to the x86 manifest and frames 50-55 dB PSNR from the llvmpipe goldens (not pixel-exact; Mac goldens are Will's bless). Linux preprocessed output of every changed TU identical. Recipe `docs/macos.md`; evidence `review/B1043/README.md`. FIX card: Cocoa window + input, the rest of the GLES2 tree, stale Apple frameworks, the desktop `gl.h` include on Linux too, a `malloc_zone` ledger backend + `phys_footprint` row, Mac goldens.
 - ~~**B1012** (P, CI) → issue #333.~~ **CLOSED 2026-10-09 (B1012, `task/B1012-per-ref-build-trees`).** Concurrent MR pipelines on the `concurrent = 1` x86 runner shared ONE warm `build/`: MR !119's `test` stage (pipeline 697) ran over binaries MR !118's `build` stage (698) had just written and failed on tests absent from its own source (rescued by a one-off cold run). Will chose per-ref build directories with monitoring and cleanup: `$BUILD_TREE = build/ref/$CI_COMMIT_REF_SLUG`, `$GLES2_TREE = build-gles2/ref/$CI_COMMIT_REF_SLUG` (the MR pipeline's slug is its source branch, so push + MR pipelines share a tree), trees stamped with `.willeq_ref`, and the `prune-build-trees` job on every fable pipeline (`scripts/ci/prune_ref_build_trees.py`: ref gone from the remote / stamp > 14 d / unstamped → delete, legacy root swept once, census + `du`/`df` in `prune.log`; rules pinned by the `PruneRefBuildTrees` hygiene test). `docs/ci.md` "One warm tree per ref".
 - ~~**B1011** (A, review) → issue #332.~~ **CLOSED 2026-10-09 (B1011, `task/B1011-wave6-corrections`).** The orchestrator's review of the wave-6 merges, applied over the local models' verdicts (Will, 2026-10-09): (1) the B892 swim event's `isLevitating` field, its flymode read and `setSwimmingState()`'s parameter are DELETED — that arm cleared a self-cast hover on every water transition and nothing restored it (`SwimmingEventCarriesNoSurfaceHeight` fails if the payload carries levitation again; `setLevitationState()` is the one writer); (2) the B893 apex is a measured LOWER BOUND (one wire sample per jump, four of five at an identical +2.509), owed from the committed video, and the fall curve is the oracle's nine measured points interpolated (`kFallDamageTable`, pinned per point by `EveryMeasuredOraclePointIsReproduced`) instead of the 1.5/unit ramp that read 8..23 where the oracle read 5 — one level-60 GM series, level/HP dependence owed; (3) `scripts/scenario.sh` takes the inventory snapshot whenever `--inventory-chars` is set and derives Testchar for `ranged_single_shot` regardless of `--seed-sql` (B900 had both inside the seed branch: silent no-op restore / kit left behind); (4) the B972-FT glFlush write-up's gfaydark sign corrected on its branch (`97cbf657`) and option (d) posted on #326.
 - ~~**B1009** (A) → issue #330. `HCMap::Load` reserved vertex/index/model/poly
@@ -9971,8 +9977,9 @@ fine — the table fails on a stale entry, so it cannot rot.
   getters), the per-entity animation query set (`getEntityAnimation()`,
   `hasEntityAnimation()`, `getEntityAnimationList()`,
   `isEntityPlayingThrough()`, `getEntityPoseState()`), `setOcclusionCuller()`,
-  `setNameTagDistance()`, `isPlayerInFirstPersonMode()`. Then
-  `CameraController` (11), `TextureAtlas`'s whole preload path (10:
+  `setNameTagDistance()`, `isPlayerInFirstPersonMode()`. Then ~~`CameraController`
+  (11)~~ (deleted by B533 MR !138 2026-10-11 — the fly/orbit state T461 left
+  write-only; see `refactor/B533/README.md`), `TextureAtlas`'s whole preload path (10:
   `preloadFromFile()`, `uploadPreloadedPage()`, `uploadPreloadedPageAsync()`,
   `finalizePreload()`), `ZoneShaderManager` (9, including the four wind
   material-type getters and `appendAtlasPageTextures()`), `SkyRenderer`'s strip
@@ -12050,7 +12057,7 @@ Media and every number: `review/T478/README.md`; the plan's Review.
 
 ---
 
-> **Orchestrator note (2026-09-14):** the two sections below were written on the UNMERGED branch `task/T479-skeleton-mesh-list-loaders` (commits `64c9273d` T479, `dfb3a0e8` T481) and copied here so the board of record carries them. B730–B732 are fixed ONLY on that branch; the branch is held because the T479 build is OOM-killed on the Pi (B750) until Will picks a lever (B752). Will must also bless the qeynos2 `placeableObjectsBytes` gate figure (1,365,564 → 1,389,324) before that branch can merge.
+> **Orchestrator note (2026-09-14; re-annotated 2026-10-12 by B1028/#348):** the two sections below were written on the UNMERGED branch `task/T479-skeleton-mesh-list-loaders` (commits `64c9273d` T479, `dfb3a0e8` T481) and copied here so the board of record carries them. B730 and B731 are fixed ONLY on that branch; **B732's loader half was fixed on `fable` by B733 (merged 2026-10-11)** — see the B732 row's 2026-10-12 note — while its test pin and the T479-branch merge still ride that branch, held because the T479 build is OOM-killed on the Pi (B750) until Will picks a lever (B752). Will must also bless the qeynos2 `placeableObjectsBytes` gate figure (1,365,564 → 1,389,324) before that branch can merge.
 
 ## Added 2026-09-14 by T479 (the 0x10 skeleton mesh list in the character and object loaders)
 
@@ -12081,7 +12088,7 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   skins its own copy, and the prefix no longer takes a mesh another skeleton
   lists. Pinned by `SkeletonMeshListLoaders.CharacterMeshIsSkinnedOnceByItsOwnSkeleton`.
 
-- **B732** (A) **FIXED ON THE HELD BRANCH ONLY — `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` this is still open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: `S3DLoader::loadCharacters()` never read the → issue #69
+- **B732** (A) **defect FIXED ON `fable` by B733's loader (2026-10-12) — the T479 branch test pin and merge still ride `task/T479-skeleton-mesh-list-loaders` (commit `64c9273d`), UNMERGED** (Pi OOM B750, lever B752, qeynos2 gate bless owed); on `fable` before B733 the defect was open. Re-marked by T486 (the copied text said CLOSED). Text as written on that branch: `S3DLoader::loadCharacters()` never read the → issue #69
   meshes a skeleton lists. 49 zone-chr skeletons (19 names: KAR, AAM, PHX, GTD,
   BKN ...) whose listed meshes carry no race-code prefix stored no model; 8
   names missed listed meshes -- GOM (body and head: its two bone meshes stopped
@@ -12091,6 +12098,18 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   no global archive and no gate zone moved. Pinned by
   `SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart`. Of the affected codes
   only CLM/CLF, KAM/KAF, SSN, STG and IVM have a `race_models` row.
+  2026-10-12 (B1028/#348): on fable the loader half of this row is FIXED by
+  B733's loader — the 0x200 collect/append
+  (`s3d_loader_characters.cpp:247-283`, `357-395`, runs for every skeleton;
+  the `boneWalkStoredNothing` gate at `:282` is on the prefix-fallback block,
+  not the collect) stores every listed-but-unstored mesh, covering BOTH the 49
+  no-prefix skeletons and the 8 missed names; QA t_cbfd7f9a's censuses (2026-10-11,
+  all 378 chr archives, all 138 db races) show the #70-class recovery SSN/IVM/GOM
+  (full list in `refactor/B733/README.md` "The #69 (B732) row") and only races
+  127/146/240 changed byte-wise. Still open: the test pin
+  `SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart`, the T479 companion
+  fixes B730/B731, and the branch's merge blockers (B750/B752, gate bless) —
+  see `refactor/B733/README.md`.
 
 - ~~**B733**~~ **CLOSED on `task/kb-b733-race-model-parts` (issue #70).** CONFIRMED
   Class A: race 146 SSN's skeleton `SSN_HS_DEF` 0x200 list names the head
@@ -12100,7 +12119,8 @@ skeletons: `review/T479/census/` (`skeletons.csv`, `objects.csv`), taken by
   and the 0x200-listed meshes the bones/prefix didn't store (`s3d_loader_characters.cpp`),
   and the base builders select the OLD name set plus the skeleton-referenced
   additions the name selection missed (`selectCharacterParts`, `geometry_combiner.cpp`,
-  wired into the four base-builder call sites in `model_loading{,_chr,_search}.cpp`).
+  wired into the five base-builder call sites in `model_loading{,_chr,_search}.cpp`,
+  incl. `loadModelFromNumberedGlobal`, `model_loading_chr.cpp:632`).
   Pinned by `B733Race146LoaderTest` (`tests/test_b733_skeleton_mesh_refs.cpp`),
   which derives the expected part list from the WLD data (never hand-typed) and
   was RED (3359/4333) on origin/fable. Gate impact [measured]: the four

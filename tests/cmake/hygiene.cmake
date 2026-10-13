@@ -270,6 +270,19 @@ ADD_TEST(NAME VisualGateLedgerAssertions
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_visual_gate_ledger.py)
 SET_TESTS_PROPERTIES(VisualGateLedgerAssertions PROPERTIES LABELS "hygiene")
 
+# B1024 (#344): the per-platform golden-set resolution. --verify-x86 re-records
+# the x86 gate's benchmark invocation (subprocess patched) and requires it to
+# stay byte-identical to tests/data/b1024/x86_gate_plan.txt -- the fixture was
+# generated on the UNTOUCHED tree in step 1, so a platform change that moves
+# the x86 golden paths or the gate's command is red here before it reaches CI.
+# --check-pi pins the pi resolver (tests/goldens/pi/<zone>/f<n>.png, the
+# platforms.pi section, --bench, --drm), the NOT YET BLESSED verify, the
+# --bless --platform pi refusal, the --capture layout (nothing under
+# tests/goldens/) and the Mesa-prefix maps proof. Pure-python, "hygiene" label.
+ADD_TEST(NAME VisualGatePlatform
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_visual_gate_platform.py)
+SET_TESTS_PROPERTIES(VisualGatePlatform PROPERTIES LABELS "hygiene")
+
 # B923 / #242: the repeatable budget check for a CLIENT-ledger capture.
 # `scripts/client_ledger_table.py check` asserts every budgeted
 # memoryLedgerBudgets category of a client_ledger_capture.sh evidence dir at
