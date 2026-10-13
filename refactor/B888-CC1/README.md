@@ -101,6 +101,20 @@ numeric-range acceptance criterion is unresolved.
 
 ## Not verified / left open
 
+- The follow-up wire endpoint pilot did not establish a minimum. With the
+  official client on Barbarian male, each visible FacePick row was stepped up
+  and down before Accept; the create packet at
+  `/home/user/kb-evidence/kb-cc1-facepick/oracle/wire-pilot-create.tsv:1`
+  contains face 4 (payload byte offset 64), eye colours 20 (offsets 68/72),
+  and 255 for hair style/colour and beard style/colour (offsets 28/4/12/8).
+  These are not the provisional first-option numbers. The picker has no
+  numeric display and wraps, so returning to the starting appearance cannot
+  identify the absolute minimum. This pilot is **not** one of the requested
+  52 endpoint packets and must not be cited as a range. Its raw pcap is
+  `oracle/wire-pilot-failed.pcap` in the evidence root. The seeded character
+  was removed with the world stopped; account/character-table data returned
+  to the pre-run snapshot (ignoring only the dump timestamps), the INI was
+  restored byte-for-byte, and lane 1 was stopped and unlocked.
 - The 3D character preview/sample model is a separate #204 leg. Until it
   lands, this modal shows the numeric choice beside each official picker
   label; it still serializes and validates the selected appearance.
