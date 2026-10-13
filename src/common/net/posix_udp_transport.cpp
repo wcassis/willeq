@@ -67,7 +67,15 @@ bool PosixUdpTransport::open(const std::string& addr, int port)
 	// it, ask for net.core.rmem_max (what the kernel allows, not 212992);
 	// and say at INFO what was actually granted, so a run's log shows it.
 	int requested = 8 * 1024 * 1024;
-	bool forced = setsockopt(m_fd, SOL_SOCKET, SO_RCVBUFFORCE, &requested, sizeof(requested)) == 0;
+	// B1039 (#359): SO_RCVBUFFORCE is Linux-only; elsewhere (macOS) only the
+	// SO_RCVBUF path below exists, and the INFO line says so.
+	bool forced = false;
+#ifdef SO_RCVBUFFORCE
+	forced = setsockopt(m_fd, SOL_SOCKET, SO_RCVBUFFORCE, &requested, sizeof(requested)) == 0;
+	const char* unforcedPath = "SO_RCVBUF, no CAP_NET_ADMIN: capped by net.core.rmem_max";
+#else
+	const char* unforcedPath = "SO_RCVBUF; this platform has no SO_RCVBUFFORCE";
+#endif
 	if (!forced) {
 		int rmem_max = 212992;
 		if (FILE* f = fopen("/proc/sys/net/core/rmem_max", "r")) {
@@ -84,7 +92,7 @@ bool PosixUdpTransport::open(const std::string& addr, int port)
 	socklen_t optlen = sizeof(rcvbuf_size);
 	getsockopt(m_fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf_size, &optlen);
 	LOG_INFO(MOD_NET, "PosixUdpTransport: fd={} rcvbuf={} bytes ({}; asked {})", m_fd, rcvbuf_size,
-	         forced ? "SO_RCVBUFFORCE, CAP_NET_ADMIN" : "SO_RCVBUF, no CAP_NET_ADMIN: capped by net.core.rmem_max",
+	         forced ? "SO_RCVBUFFORCE, CAP_NET_ADMIN" : unforcedPath,
 	         requested);
 
 	// Connect (so send()/recv() work without per-packet address)

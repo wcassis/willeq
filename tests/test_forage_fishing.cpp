@@ -581,7 +581,7 @@ void ReplayItemPacket(EverQuest& eq, const std::string& item) {
     p.PutData(2 + 4, const_cast<char*>(item.data()), item.size());
     p.PutUInt8(2 + 4 + item.size(), 0);
     std::vector<uint8_t> payload(p.Length() - 2);
-    std::memcpy(payload.data(), p.Data() + 2, payload.size());
+    std::memcpy(payload.data(), static_cast<const uint8_t*>(p.Data()) + 2, payload.size());
     ReplayZone(eq, HC_OP_ItemPacket, payload);
 }
 
@@ -597,7 +597,7 @@ void ReplaySimpleMessage(EverQuest& eq, uint32_t stringId, uint32_t color = 0) {
     p.PutUInt32(6, color);
     p.PutUInt32(10, 0);
     std::vector<uint8_t> payload(p.Length() - 2);
-    std::memcpy(payload.data(), p.Data() + 2, payload.size());
+    std::memcpy(payload.data(), static_cast<const uint8_t*>(p.Data()) + 2, payload.size());
     ReplayZone(eq, HC_OP_SimpleMessage, payload);
 }
 

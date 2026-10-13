@@ -1,5 +1,5 @@
 #include "client/graphics/background_thread_pool.h"
-#include <pthread.h>
+#include "common/thread_name.h"  // T504 thread names; B1039: Linux + macOS forms
 #include "common/logging.h"
 #include "client/core/memory_ledger.h"
 
@@ -50,7 +50,7 @@ void BackgroundThreadPool::workerLoop() {
     // T504c: the pool serves the entity prep worker (pool-backed mode); its
     // threads used to show up as "willeq" in the [srcchar] parse census, which
     // reads like the main thread.
-    pthread_setname_np(pthread_self(), "eq-bgpool");
+    eqt::setCurrentThreadName("eq-bgpool");
     while (true) {
         std::function<void()> task;
         {

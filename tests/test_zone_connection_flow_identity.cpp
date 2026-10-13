@@ -291,6 +291,10 @@ TEST(GMModeGate, SecondPlayerProfileRefreshesGMMode) {
     EXPECT_TRUE(eq.Zone().GetGMMode());
 }
 
+#ifdef EQT_HAS_GRAPHICS
+// B1038: CreateZoneLoadSnapshot()/SetZoneBspTree() are the loading thread's
+// seam and exist only in a graphics build (bridge_component.h), so these
+// cases are compiled out of an EQT_GRAPHICS=OFF build.
 // ============================================================================
 // T260: the zone-load snapshot's player BSP region.
 //
@@ -456,3 +460,4 @@ TEST(ZoneLoadSnapshot, OutOfTreeStartPositionIsNotFatal) {
     EXPECT_EQ(snap.playerBspRegion, SIZE_MAX);
     EXPECT_FALSE(eq.IsQuitRequested());
 }
+#endif  // EQT_HAS_GRAPHICS

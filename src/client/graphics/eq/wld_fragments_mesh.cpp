@@ -296,7 +296,7 @@ void WldLoader::parseFragment36(const char* fragBuffer, uint32_t fragLength, uin
                 // Log first few resolved names
                 for (size_t ti = 0; ti < matList->textureNames.size() && ti < 5; ++ti) {
                     LOG_TRACE(MOD_GRAPHICS, "  Frag36[{}] textureName[{}]='{}' invisible={}",
-                              fragIndex, ti, matList->textureNames[ti], matList->textureInvisible[ti]);
+                              fragIndex, ti, matList->textureNames[ti], static_cast<bool>(matList->textureInvisible[ti]));
                 }
                 if (matList->textureNames.size() > 5) {
                     LOG_TRACE(MOD_GRAPHICS, "  Frag36[{}] ... and {} more textureNames", fragIndex, matList->textureNames.size() - 5);

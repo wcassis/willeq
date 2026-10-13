@@ -325,26 +325,32 @@ GTEST_DISCOVER_TESTS(test_item_icon_atlas DISCOVERY_TIMEOUT 120)
 # T406 (board B266): the census of every shipped BMP's alpha, its consumer's
 # blend, and the willeq.eqe1 payload that carries it. Reads files only (the
 # BMPs, the pack, and the consumer sources) -- no device, no GPU. Links
-# willeq_core for EQE1Loader.
-ADD_EXECUTABLE(test_texture_alpha_census
-    test_texture_alpha_census.cpp
-)
-TARGET_COMPILE_DEFINITIONS(test_texture_alpha_census PRIVATE
-    WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-TARGET_LINK_LIBRARIES(test_texture_alpha_census GTest::gtest_main willeq_core)
-GTEST_DISCOVER_TESTS(test_texture_alpha_census DISCOVERY_TIMEOUT 120)
+# willeq_core for EQE1Loader. Graphics builds only (B1038): EQE1Loader is a
+# renderer TU (GRAPHICS_SOURCES) and the census is of the renderer's textures.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_texture_alpha_census
+        test_texture_alpha_census.cpp
+    )
+    TARGET_COMPILE_DEFINITIONS(test_texture_alpha_census PRIVATE
+        WILLEQ_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    TARGET_LINK_LIBRARIES(test_texture_alpha_census GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_texture_alpha_census DISCOVERY_TIMEOUT 120)
+ENDIF()
 
 # T445 (board B336): the configured detail view distance drives the chunk cull
 # radius. Pins the arithmetic (detailChunkRadius), the DetailManager wiring
 # (setZoneConfig is the one place the radius is derived) and the shipped
 # config's own numbers. No device: DetailManager is constructed with null
 # scene manager and driver, which touches neither. Links willeq_core for
-# DetailManager and DetailConfigLoader.
-ADD_EXECUTABLE(test_detail_view_distance
-    test_detail_view_distance.cpp
-)
-TARGET_LINK_LIBRARIES(test_detail_view_distance GTest::gtest_main willeq_core)
-GTEST_DISCOVER_TESTS(test_detail_view_distance DISCOVERY_TIMEOUT 120)
+# DetailManager and DetailConfigLoader. Graphics builds only (B1038): every
+# case is DetailManager's, and detail_types.h includes irrlicht.h.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_detail_view_distance
+        test_detail_view_distance.cpp
+    )
+    TARGET_LINK_LIBRARIES(test_detail_view_distance GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_detail_view_distance DISCOVERY_TIMEOUT 120)
+ENDIF()
 
 # B967/B968 (GitLab #285/#286): the per-pixel player light. The LUT and the
 # FP16 headroom of the VS-formed light vector, GL-free (header-only, no

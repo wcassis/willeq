@@ -31,8 +31,12 @@
 #include "client/inventory/item_instance.h"
 #include "client/skill/skill_constants.h"
 #include "client/skill/skill_packet_bodies.h"
+// B1038: the key leg (RangedAttackKey below) needs the graphics-only hotkey
+// manager and Options Keys page (irrlicht.h); the wire cases are headless.
+#ifdef EQT_HAS_GRAPHICS
 #include "client/input/hotkey_manager.h"
 #include "client/graphics/ui/options_keys.h"
+#endif
 
 #include <cstring>
 #include <filesystem>
@@ -197,6 +201,7 @@ TEST(RangedAttackWire, NonBowNonThrowingItemInRangeSlot_Refuses) {
     EXPECT_TRUE(h.sawRefusal());
 }
 
+#ifdef EQT_HAS_GRAPHICS
 // ---------------------------------------------------------------------------
 // Key leg (B900 criterion 2): the Range Attack action is listed on the
 // Options Keys page, is UNBOUND by default (the oracle's default key is
@@ -263,5 +268,6 @@ TEST(RangedAttackKey, TheReceiverAndInputHandlerCarryTheRangeAttackArm) {
         << "the RA::RangeAttack arm is gone from GraphicsInputHandler -- the press "
            "never becomes InputAction::RangeAttack";
 }
+#endif  // EQT_HAS_GRAPHICS
 
 }  // namespace

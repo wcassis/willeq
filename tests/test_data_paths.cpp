@@ -40,7 +40,11 @@
 
 // T399 (board B235): the loaders whose CWD-relative literals T399 routed.
 #include "client/graphics/constrained_renderer_config.h"
+// B1038: the hotkey manager is graphics-only (hotkey_manager.h includes
+// irrlicht.h); its case below is compiled out of an EQT_GRAPHICS=OFF build.
+#ifdef EQT_HAS_GRAPHICS
 #include "client/input/hotkey_manager.h"
+#endif
 #include "client/skill/skill_cap_table.h"
 #include "client/zone_lines.h"
 
@@ -283,6 +287,8 @@ TEST_F(CwdElsewhere, EveryShippedLiteralResolvesToTheRepoBytes) {
 
 // --- family: core / app ----------------------------------------------------
 //
+#ifdef EQT_HAS_GRAPHICS
+// B1038: constrained_renderer_config.cpp is a renderer TU (GRAPHICS_SOURCES).
 // PRE-FIX RED. loadJsonOverrides() opened the CWD-relative literal and
 // returned false SILENTLY, so the renderer ran on the built-in preset numbers
 // with nothing said. loadDebugOverrides() was the same shape.
@@ -295,7 +301,9 @@ TEST_F(CwdElsewhere, ConstrainedPresetOverridesLoadFromAnyDirectory) {
     EXPECT_TRUE(cfg.loadDebugOverrides("config/debug.json"))
         << "the shipped debug skip-flags were not applied";
 }
+#endif  // EQT_HAS_GRAPHICS
 
+#ifdef EQT_HAS_GRAPHICS
 // PRE-FIX RED. The shipped key bindings were silently replaced by the built-in
 // defaults (and the miss logged at DEBUG, i.e. nowhere).
 TEST_F(CwdElsewhere, HotkeyBindingsLoadFromAnyDirectory) {
@@ -304,6 +312,7 @@ TEST_F(CwdElsewhere, HotkeyBindingsLoadFromAnyDirectory) {
     EXPECT_TRUE(mgr.loadFromFile("config/hotkeys.json"))
         << "the shipped key bindings were not loaded";
 }
+#endif  // EQT_HAS_GRAPHICS
 
 // PRE-FIX RED. A missing skill_caps.json disables the skill possession gate
 // entirely -- the loudest silent default in the census, and it fired for every

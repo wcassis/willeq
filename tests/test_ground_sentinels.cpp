@@ -125,6 +125,10 @@ TEST(GroundSentinelsT437, NoFloorIsNotAFloorAndCarriesNoNumber) {
     EXPECT_FLOAT_EQ(floor.zOr(12.5f), 31.25f);
 }
 
+#ifdef EQT_HAS_GRAPHICS
+// B1038: the jump/swim/miss verdicts live in ground_query.cpp, a renderer TU
+// (GRAPHICS_SOURCES); compiled out of an EQT_GRAPHICS=OFF build. The HCMap
+// half below (B436) is game-side and runs headless.
 // ---------------------------------------------------------------------------
 // B435 -- the four jump landings
 // ---------------------------------------------------------------------------
@@ -290,6 +294,8 @@ TEST(GroundMissT440, AMissAndACeilingGiveTheSameAnswerAndItIsNotAFloor) {
         EXPECT_FLOAT_EQ(g.zOr(feetZ) - feetZ, 0.0f);
     }
 }
+
+#endif  // EQT_HAS_GRAPHICS
 
 // ---------------------------------------------------------------------------
 // B436 -- HCMap::FindBestZ() and its callers
