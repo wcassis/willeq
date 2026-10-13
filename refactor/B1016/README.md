@@ -61,7 +61,10 @@ parser (`mesa_driver_field`) could drift from the emitter with no net.
 - **Green (branch tip):** `test_gl_driver_census` 19/19, including the new
   composed-check test and `RealRunPrintsTheGlDriverLine` (spawns the real
   `willeq` with `--renderer gles2 --no-audio` and requires the `[gldriver]`
-  line on stdout — the acceptance criterion's literal ask);
+  line on stdout — the acceptance criterion's literal ask; the real-run leg
+  is `#ifdef EQT_HAS_GRAPHICS` because B1038's `build-headless` CI job runs
+  this suite against a graphics-OFF `willeq` that can never do GL init and
+  emit the line — the gate keeps the leg live in every graphics tree);
   `GldriverLineFormatContract` PASS; the benchmark's own run prints the line
   (line 56 of a 1-frame headless run, per the identical local run) [measured].
 - **The gate assertion** was exercised directly against three cases (a real

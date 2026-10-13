@@ -464,6 +464,16 @@ TEST(GlDriverCensus, RealMapsAreConsistent) {
 // waits for the line in its own output. Deletion of glDriverInitLog() turns
 // it red. The gate keeps its own real-run leg (visual_gate.py --gldriver-
 // smoke); this one runs on any host with llvmpipe.
+//
+// B1038 (the headless build, EQT_GRAPHICS=OFF) added the `build-headless` CI
+// job, which runs `ctest -LE hygiene` against a graphics-OFF `willeq`. The
+// spawned child only prints the [gldriver] line when the product actually
+// does GL init, so a headless `willeq` can never emit it and this case would
+// sit red for a full 120 s deadline. Per B1038's idiom (README: "a test case
+// that exercises a graphics-only path is #ifdef EQT_HAS_GRAPHICS, and the
+// file's headless cases keep running") the real-run leg -- helper struct and
+// TEST below -- is graphics-gated; the other cases above still run headless.
+#ifdef EQT_HAS_GRAPHICS
 namespace {
 
 struct GlDriverRunChild {
@@ -629,3 +639,4 @@ TEST(GlDriverCensus, RealRunPrintsTheGlDriverLine) {
               << std::endl;
 #endif
 }
+#endif  // EQT_HAS_GRAPHICS
