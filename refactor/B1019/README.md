@@ -107,9 +107,12 @@ oracle-netstat meaning, key-scan/RDP code mapping, or explicit history):
 - `src/client/graphics/overlays/overlays_component.cpp` — the dead "for backward compatibility" line deleted
 - `include/client/graphics/zone_lifecycle/zone_lifecycle_component.h` — the `B340 deleted entitiesLoaded_/expectedEntityCount_` comment restored
 
-The F11 census after the sweep: 164 raw hits, all categorized as one of the
-five classes above (the base64 contact-sheet and `docs/reference/` BONE
-names are false positives excluded by extension).
+The F11 census after the sweep (`grep -rn "F11" docs include src tests scripts`,
+B1019 head): 81 hit lines (118 occurrences), all categorized — 32 BONE-name
+hits in `docs/reference/s3d_contents_reference.md` (TREF11R/L_DAG) and the
+base64 contact-sheet line in `tests/goldens/contact_sheet.html` are false
+positives; every other hit is history, the official client's netstat F11,
+the RDP scancode mapping, or explicit "F11 unbound / was F11" prose.
 
 Hygiene fallout of the new `layoutSize()` seam: `ZeroCallers` classifies it
 in `EXEMPT_TESTS_GROUPS` (`("ZoneMeshBuilder", "layoutSize"): "observer"` —
