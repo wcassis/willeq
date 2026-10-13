@@ -57,13 +57,46 @@
 #include <gtest/gtest.h>
 
 #include "client/hotbar/hotbar_model.h"
+#include "client/hotbar/hotbar_persistence.h"
 #include "zone_stream_test_utils.h"
 
 #include <cstdlib>
+#include <filesystem>
+#include <unistd.h>
 
 using namespace zonetest;
 
 namespace {
+
+TEST(HotbarPersistence, TwoCharactersHaveIndependentFiles) {
+    const auto dir = std::filesystem::temp_directory_path() /
+        ("willeq_h1_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    const char* previous = std::getenv("WILLEQ_CACHE_DIR");
+    const std::string saved = previous ? previous : "";
+    ::setenv("WILLEQ_CACHE_DIR", dir.c_str(), 1);
+
+    eqt::HotbarModel alice;
+    eqt::HotbarModel bob;
+    alice.assignSlot({2, 4}, eqt::HotbarSlotType::Spell, 777);
+    bob.assignSlot({9, 4}, eqt::HotbarSlotType::Item, 888);
+    ASSERT_TRUE(eqt::SaveCharacterHotbar("Alice", "server", alice));
+    ASSERT_TRUE(eqt::SaveCharacterHotbar("Bob", "server", bob));
+    eqt::HotbarModel aliceRead;
+    eqt::HotbarModel bobRead;
+    EXPECT_TRUE(eqt::LoadCharacterHotbar("Alice", "server", aliceRead));
+    EXPECT_TRUE(eqt::LoadCharacterHotbar("Bob", "server", bobRead));
+    EXPECT_EQ(aliceRead.getSlot({2, 4}).id, 777u);
+    EXPECT_EQ(aliceRead.getSlot({9, 4}).type, eqt::HotbarSlotType::Empty);
+    EXPECT_EQ(bobRead.getSlot({9, 4}).id, 888u);
+    EXPECT_EQ(bobRead.getSlot({2, 4}).type, eqt::HotbarSlotType::Empty);
+    EXPECT_EQ(eqt::HotbarCacheName("O'Brian", "my server"),
+              "ui/UI_O_Brian_my_server.hotbar.json");
+
+    if (saved.empty()) ::unsetenv("WILLEQ_CACHE_DIR");
+    else ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
+    std::filesystem::remove_all(dir);
+}
 
 TEST(BridgeTeardownInvariant, EverQuestSetBridgeNullStopsHotbarModelForwarding) {
     EverQuest eq = MakeEq();

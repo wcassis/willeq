@@ -209,8 +209,8 @@ public:
 	// ---- config paths and persistence ----
 	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
 	void SetConfigPath(const std::string& path) { m_config_path = path; }
-	void SaveHotbarConfig();  // Save hotbar assignments to config file
-	void LoadHotbarConfig();  // Load hotbar assignments from config file
+	void SaveHotbarConfig();  // Save to per-character cache file
+	void LoadHotbarConfig();  // Load per-character file; import legacy config once
 	void SaveInspectMessage();  // T171: persist the inspect message
 	void LoadInspectMessage();  // T171: restore it at startup
 
@@ -475,7 +475,7 @@ private:
 #endif
 
 	std::string m_region_maps_path = "data/region_maps";
-	std::string m_config_path;  // Path to per-character config file
+	std::string m_config_path;  // Client config path (legacy hotbar import and inspect message)
 
 	// T170/T171: what we send as our inspect message. eqemu never tells a
 	// Titanium client its own stored message, so this client keeps its own --

@@ -45,6 +45,8 @@
 #include "client/chat/chat_message_buffer.h"
 #include "client/graphics/ui/command_registry.h"
 #include "client/hotbar/hotbar_model.h"
+#include "client/hotbar/hotbar_persistence.h"
+#include "client/login_world/login_world_component.h"
 #include "common/util/json_config.h"
 #ifdef EQT_HAS_GRAPHICS
 #include "client/graphics/loading_thread.h"
@@ -414,31 +416,33 @@ const Json::Value* eqt::bridge::BridgeComponent::ResolveClientConfigForRead(cons
 }
 
 void eqt::bridge::BridgeComponent::SaveHotbarConfig() {
-	if (m_config_path.empty() || !ctx_.hotbar_model) return;
-
-	auto config = EQ::JsonConfigFile::Load(m_config_path);
-	Json::Value& root = config.RawHandle();
-
-	Json::Value* clientConfig = ResolveClientConfigForWrite(root);
-	if (clientConfig && clientConfig->isObject()) {
-		(*clientConfig)["hotbar"] = ctx_.hotbar_model->saveToJson();
-		config.Save(m_config_path);
-		LOG_DEBUG(MOD_CONFIG, "Saved hotbar config to {}", m_config_path);
+	if (!ctx_.hotbar_model || ctx_.character.empty()) return;
+	if (!eqt::SaveCharacterHotbar(ctx_.character, ctx_.LoginWorld().ServerName(),
+	                              *ctx_.hotbar_model)) {
+		LOG_WARN(MOD_CONFIG, "Could not save per-character hotbar");
 	}
 }
 
 void eqt::bridge::BridgeComponent::LoadHotbarConfig() {
-	if (m_config_path.empty() || !ctx_.hotbar_model) return;
+	if (!ctx_.hotbar_model || ctx_.character.empty()) return;
+	ctx_.hotbar_model->reset();
+	const auto& server = ctx_.LoginWorld().ServerName();
+	if (eqt::LoadCharacterHotbar(ctx_.character, server, *ctx_.hotbar_model)) return;
+	if (m_config_path.empty()) return;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
-	const Json::Value& root = config.RawHandle();
-
+	Json::Value& root = config.RawHandle();
 	const Json::Value* clientConfig = ResolveClientConfigForRead(root);
 	if (clientConfig && clientConfig->isObject() && clientConfig->isMember("hotbar")) {
 		ctx_.hotbar_model->loadFromJson((*clientConfig)["hotbar"]);
-		LOG_DEBUG(MOD_CONFIG, "Loaded hotbar config from {}", m_config_path);
-	} else {
-		LOG_DEBUG(MOD_CONFIG, "No hotbar config found in {}", m_config_path);
+		if (eqt::SaveCharacterHotbar(ctx_.character, server, *ctx_.hotbar_model)) {
+			// Consume once so a second character cannot inherit these assignments.
+			Json::Value* writable = ResolveClientConfigForWrite(root);
+			if (writable) {
+				writable->removeMember("hotbar");
+				config.Save(m_config_path);
+			}
+		}
 	}
 }
 
