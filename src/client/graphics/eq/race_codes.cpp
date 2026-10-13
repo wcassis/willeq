@@ -44,31 +44,11 @@ std::string getRaceS3DFileByCode(const std::string& raceCode) {
     return "";
 }
 
-std::string getAnimationSourceFromConfig(uint16_t raceId) {
-    auto* db = WilleqDatabase::globalInstance();
-    if (db) {
-        auto info = db->getRaceModel(raceId);
-        if (info.found) return info.animationSource;
-    }
-    return "";
-}
-
 std::string getAnimationSourceS3DFile(uint16_t raceId) {
     auto* db = WilleqDatabase::globalInstance();
     if (db) {
         auto info = db->getRaceModel(raceId);
         if (info.found) return info.animationSourceS3d;
-    }
-    return "";
-}
-
-std::string getAnimationSourceS3DFileByCode(const std::string& raceCode) {
-    auto* db = WilleqDatabase::globalInstance();
-    if (!db) return "";
-
-    auto info = db->getRaceModelByCode(raceCode);
-    if (info.found && !info.animationSourceS3d.empty()) {
-        return info.animationSourceS3d;
     }
     return "";
 }

@@ -182,11 +182,6 @@ public:
                           uint32_t sampleRate, uint8_t channels);
 
     /**
-     * Check if audio streaming is enabled and ready.
-     */
-    bool isAudioReady() const { return audioReady_.load(); }
-
-    /**
      * Enable or disable audio streaming.
      */
     void setAudioEnabled(bool enabled) { audioEnabled_ = enabled; }

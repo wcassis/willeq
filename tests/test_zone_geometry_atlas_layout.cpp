@@ -2,15 +2,18 @@
 // must see the SAME ZoneMeshBuilder layout.
 //
 // willeq_core compiles zone_geometry.cpp with EQT_HAS_TEXTURE_ATLAS (PUBLIC
-// on the target since B950, CMakeLists.txt), and the class's member layout in
-// include/client/graphics/eq/zone_geometry.h depends on it (four #ifdef
-// blocks; only the two data-member blocks -- the shaderMaterialAtlas*
-// members -- change sizeof, 8 bytes total on x86-64): a TU that links
-// willeq_core WITHOUT the define then sees an 8-byte-smaller class while
-// calling the core's constructor, which writes the two atlas members: the
-// ASan stack-buffer-overflow B944 measured in
+// on the target since B950, CMakeLists.txt). That define USED to matter:
+// the class's member layout in include/client/graphics/eq/zone_geometry.h
+// depended on it (the two #ifdef data-member blocks -- the
+// shaderMaterialAtlas* members -- changed sizeof, 8 bytes total on x86-64),
+// so a TU that linked willeq_core WITHOUT the define saw an 8-byte-smaller
+// class while calling the core's constructor, which wrote the two atlas
+// members: the ASan stack-buffer-overflow B944 measured in
 // ZoneMeshBuilder::ZoneMeshBuilder, and the same violation by construction in
-// test_placed_object_meshes.cpp (this issue's second half).
+// test_placed_object_meshes.cpp (B950's second half). B494 (this MR) deleted
+// the guarded members, so zone_geometry.h now has zero #ifdef blocks and the
+// layout no longer depends on the define; the define and this net are kept
+// but vacuous (retirement is a FOLLOW-UP) and still assert both sides agree.
 //
 // The net, as B1019 tightened it: the CORE side is measured INSIDE
 // willeq_core. ZoneMeshBuilder::layoutSize() (zone_geometry.h, defined in

@@ -146,12 +146,6 @@ void ZoneLoadComponent::loadZoneStep6_Objects(ZoneLoadContext& ctx) {
                 LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj builder shader materials set (solid={}, alphaTest={})",
                           ctx_.zoneShader->getActiveSolid(), ctx_.zoneShader->getActiveAlphaTest());
             }
-            if (ctx_.zoneShader && ctx_.zoneShader->isAtlasAvailable()) {
-                objBuilder.setAtlasShaderMaterialTypes(ctx_.zoneShader->getActiveAtlasSolid(),
-                                                         ctx_.zoneShader->getActiveAtlasAlpha());
-                LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: obj builder atlas shader materials set (solid={}, alpha={})",
-                          ctx_.zoneShader->getActiveAtlasSolid(), ctx_.zoneShader->getActiveAtlasAlpha());
-            }
             LOG_DEBUG(MOD_GRAPHICS, "SEQ Step6: totalObjects={}", ctx_.deferredObjects.size());
 
             size_t totalObjects = ctx_.deferredObjects.size();
