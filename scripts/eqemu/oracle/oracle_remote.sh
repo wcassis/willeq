@@ -39,8 +39,8 @@ city_y() { case "$1" in
 gender_x() { case "$1" in Male) echo 105;; Female) echo 169;; *) return 65;; esac; }
 selected_at() {
     # The selected label is yellow; enabled but unselected labels are white.
-    # The table is in screenshot coordinates; the screenshot begins 30 pixels
-    # below root-screen coordinates, so clicks add 30 but crops do not.
+    # ImageMagick preserves import's root-screen virtual page offset (+0,+30).
+    # Both click and crop therefore use the table's root-screen coordinates.
     local label=$1 x=$2 y=$3 image=$DIR/selected-$label.png mean
     import -window root -crop 1280x800+0+30 "$image" 2>/dev/null || return 65
     mean=$(convert "$image" -crop "95x18+$((x-45))+$((y-9))" +repage \
@@ -52,7 +52,7 @@ select_at() {
     local label=$1 x=$2 y=$3 attempt
     for attempt in 1 2 3 4; do
         if selected_at "$label" "$x" "$y"; then return 0; fi
-        jclick "$x" "$((y+30))"; sleep 3
+        jclick "$x" "$y"; sleep 3
     done
     selected_at "$label" "$x" "$y" && return 0
     echo "selection failed: $label at $x,$y" >&2
