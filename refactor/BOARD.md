@@ -453,11 +453,12 @@ it without taking that measurement first.
 - **B1025** (B, feature) → issue #345. Hotbar slot assignment is a missing
   feature (found by B603, #187; `refactor/B603/README.md` "The two flagged
   reads"): `HotbarModel::assignSlot/clearSlot` have NO production caller —
-  slots are filled only by `loadFromJson()` at zone-in and published by
+  slots are filled only by `loadFromJson()` at startup and published by
   `publishAllSlots()` at zone-in; no command, intent or UI control assigns a
-  slot. H1 (`refactor/B1025-H1/README.md`) adds the stock client's ten-page
-  address space, per-character storage and shared spell-id activation rule;
-  the assignment gesture and end-to-end CI feature leg remain open.
+  slot. Oracle (what the official client does) + CI test owed.
+  Partial official-client capture for the H0 oracle leg is recorded in
+  `refactor/B1025-H0/README.md`; its "Not captured / not verified" cases
+  remain open and this item is not closed.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`
@@ -10634,7 +10635,7 @@ because the Pi had no keyboard or mouse attached (B510).
   B494-group rows and GREEN at 364. B494 (#169) stays open with its other
   groups.~~
 
-- **B534** (B, unreached) **The output-layer camera route is a second, stale → issue #181
+- ~~**B534** (B, unreached) **The output-layer camera route is a second, stale → issue #181
   camera vocabulary.** `output::CameraMode` (`include/client/output/output_renderer.h`)
   is still `Free, Follow, FirstPerson`; `GraphicalMode::processInput()` consumes
   `InputAction::ToggleCameraMode` into `GraphicalMode::cycleCameraMode()`, which
@@ -10642,7 +10643,17 @@ because the Pi had no keyboard or mouse attached (B510).
   `IrrlichtRenderer` does not derive from that interface, and
   `GraphicalRenderer::cycleCameraMode()` / `getCameraModeString()` rotate the
   old three. Nothing a player reaches goes through it. The same shape B043
-  recorded for wireframe/HUD/name tags. Found by T461.
+  recorded for wireframe/HUD/name tags. Found by T461. **STRUCK (2026-10-11,
+  `task/kb-b534-output-camera-route`, `refactor/B534/README.md`):** the whole
+  route deleted -- the enum and both empty virtuals from `IOutputRenderer`,
+  `GraphicalRenderer`'s member/override/getter/string-form (its two bodies were
+  the class's only non-virtual methods; the TU keeps only its namespace),
+  `GraphicalMode::{set,cycle,get}CameraMode` plus its consumeAction arm, and the
+  `InputAction::ToggleCameraMode` enumerator itself (no input handler ever
+  produced it). The live F9 route is untouched: `HotkeyAction`/
+  `RendererAction::ToggleCameraMode` -> `PlayerCameraComponent::cycleCameraMode()`.
+  Net: `tests/test_b534_output_camera_route.cpp` (RED at 4 failed / 2 negative
+  controls on the tip, GREEN at 6/6 after).~~
 
 - ~~**B535**~~ (A) **CLOSED by T464 (2026-09-13).** Contract established: a
   file that loads REPLACES the defaults, which are only the fallback for an

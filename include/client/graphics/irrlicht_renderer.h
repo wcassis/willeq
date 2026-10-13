@@ -342,7 +342,9 @@ public:
     // L05: CameraMode lives at namespace scope (renderer_types.h); this alias
     // keeps IrrlichtRenderer::CameraMode::Follow resolving. Why the enum
     // moved, why there is no cycleCameraMode() or getCameraTransform() here:
-    // player_camera_component.h (T448).
+    // player_camera_component.h (T448). (The output-layer CameraMode that a
+    // stale comment used to point at alongside this one -- eqt::output::
+    // CameraMode in output_renderer.h -- is gone: B534.)
     using CameraMode = EQT::Graphics::CameraMode;
     void setCameraMode(CameraMode mode) { playerCamera_->setCameraMode(mode); }
     // T464 (B532): application_zone_loading.cpp (both loaders, step 7).

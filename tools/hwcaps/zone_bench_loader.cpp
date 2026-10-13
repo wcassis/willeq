@@ -34,9 +34,11 @@
 #include "client/graphics/eqe1_texture_index.h"
 #include "client/graphics/load_mem_audit.h"
 #include "client/core/memory_ledger.h"
+#include "client/core/gl_driver_census.h"  // B1016: the gate's [gldriver] net
 
 #ifdef EQT_HAS_GLES2
 extern bool gles2CreateStaticHWBuffer(void* driver, const void* meshBuffer);
+extern void gles2GetGlRenderer(void* driver, char* out, size_t outSize);  // B1016
 #endif
 
 // T284: repo-root fallback for the EQE1 name->pack index, set by CMake for
@@ -176,6 +178,32 @@ static irr::IrrlichtDevice* createDevice(const BenchConfig& config) {
         fprintf(stderr, "ERROR: Failed to create Irrlicht device\n");
         return nullptr;
     }
+
+    // B1016 (#337): the gate's [gldriver] net. The benchmark is the CI
+    // gate's only real GLES2 run (visual_gate.py), so it emits the same
+    // one-time [gldriver] line the client does at GL init -- the gate
+    // asserts the line is present AND parseable by the rig's summarizer
+    // (assert_gldriver_line), so a build that drops the emission or breaks
+    // the line format fails the gate job, not just a hand run. The
+    // renderer name comes from the driver's own GL_RENDERER (the same
+    // gles2GetGlRenderer the client uses); the nollvm prefix check fires
+    // in the same order as the client's (ERROR before the INFO line).
+#ifdef EQT_HAS_GLES2
+    {
+        char gldBuf[256];
+        gles2GetGlRenderer(device->getVideoDriver(), gldBuf, sizeof(gldBuf));
+        const eqt::memory::GlDriverInfo info =
+            eqt::memory::glDriverInfo(gldBuf);
+        const std::string prefixLib = eqt::memory::glPrefixExpected();
+        if (eqt::memory::mesaPrefixMissing(prefixLib)) {
+            fprintf(stderr,
+                    "[gldriver] nollvm Mesa prefix missing: %s does not "
+                    "exist; falling back to the system Mesa\n",
+                    prefixLib.c_str());
+        }
+        printf("%s\n", eqt::memory::makeGlDriverLine(info).c_str());
+    }
+#endif
 
     printf("  Driver: %s\n",
            device->getVideoDriver()->getName() ?

@@ -35,6 +35,12 @@ struct VerifyResult {
     // B930: the header version the file declared (0 when the header itself is
     // unreadable). Printed on every line, and checked against --require-v3.
     uint16_t version = 0;
+    // B1017 (#338): the pack's entry names of EXACTLY the 31-char inline
+    // field's max length (EQE1_INLINE_NAME_LIMIT) -- the truncation
+    // signature -- empty for a v3 pack (its names are full-length) or a
+    // v1/v2 pack with no such name. --require-v3 flags on this, not on the
+    // version alone.
+    std::vector<std::string> truncationCandidates = {};
 };
 
 static VerifyResult verifyFile(const std::string& filepath, bool verbose) {
@@ -286,6 +292,39 @@ static VerifyResult verifyFile(const std::string& filepath, bool verbose) {
         }
     }
 
+    // B1017 (#338): collect the truncation candidates -- entry names of
+    // EXACTLY the 31-char inline field's max length. Only a v1/v2 pack can
+    // hold them (a v3 name is full-length by construction, so its 31-char
+    // names are genuine, not truncations -- the audit only flags the format
+    // that CAN truncate). `allNames` is the set of every entry's effective
+    // name (v3 table names, v1/v2 inline names), NUL-trimmed.
+    //
+    // EXCLUSION -- an `_alpha` companion (the ETC1 alpha model's entry name
+    // is base + "_alpha"): its name's length is base-length + 6, so a
+    // 31-char companion is a TRUNCATION only if the base was itself at least
+    // 31 chars (in which case the base name is ALSO a candidate, or the
+    // entry is missing). A companion whose base is PRESENT AND shorter is a
+    // complete, legitimate 31-char name (frozenshadow's
+    // `bricktrimflorish&protrait_alpha` = a 25-char base + "_alpha"), not a
+    // truncation -- B1017/#338 acceptance: "a _alpha companion whose base
+    // name is in the same pack is not a truncation".
+    if (result.version == EQE1_VERSION || result.version == EQE1_VERSION_V2) {
+        for (const auto& n : allNames) {
+            if (n.size() != EQE1_INLINE_NAME_LIMIT) continue;
+            const std::string kAlpha = "_alpha";
+            if (n.size() > kAlpha.size() && n.compare(n.size() - kAlpha.size(),
+                                                      kAlpha.size(), kAlpha) == 0) {
+                const std::string base = n.substr(0, n.size() - kAlpha.size());
+                const auto it = allNames.find(base);
+                if (it != allNames.end() && it->size() < EQE1_INLINE_NAME_LIMIT)
+                    continue;  // complete companion, base fits the field
+            }
+            result.truncationCandidates.push_back(n);
+        }
+        std::sort(result.truncationCandidates.begin(),
+                  result.truncationCandidates.end());
+    }
+
     return result;
 }
 
@@ -296,11 +335,19 @@ static void printUsage(const char* argv0) {
            "       %s --require-v3 <file.eqe1 | directory>\n"
            "\nValidates .eqe1 flat pack files (v1/v2/v3) for structural integrity.\n"
            "Every line prints the pack's header version (v1, v2 or v3).\n"
-           "--require-v3 additionally FAILs (exit 1) on any pack whose version\n"
-           "is below v3: a v1/v2 pack can only store 31-char names, so a zone\n"
-           "with a longer name in it is stale and must be rebuilt (the client\n"
-           "FATALs loudly on the first miss — see B930, #248). Auditing a\n"
-           "host's pack directory:\n"
+           "--require-v3 additionally FAILs (exit 1) on a v1/v2 pack that HOLDS A\n"
+           "31-CHAR NAME: the inline field stores exactly 31 chars, so such a name\n"
+           "is the truncation signature of a pre-B910 builder (a longer original\n"
+           "cut with strncpy). It prints each flagged name. A structurally-clean\n"
+           "v1/v2 pack with no 31-char name is legitimate (every name fits the\n"
+           "field -- the builder keeps it v1/v2 by design) and PASSES (B1017,\n"
+           "#338). An _alpha companion whose base entry is present and shorter\n"
+           "is a COMPLETE 31-char name, not a truncation (frozenshadow's\n"
+           "bricktrimflorish&protrait_alpha), and is not flagged. The audit\n"
+           "cannot tell a genuine 31-char name from a truncated 32+-char\n"
+           "original; the client's FATAL (pack + version + truncated name) is\n"
+           "the ground truth for which one bites (B930, #248).\n"
+           "Auditing a host's pack directory:\n"
            "  for f in <dir>/*.eqe1; do %s --require-v3 \"$f\"; done\n"
            "Exit code: 0 = OK, 1 = errors found.\n",
            argv0, argv0, argv0, argv0, argv0);
@@ -372,23 +419,35 @@ int main(int argc, char** argv) {
         // B930: the version is part of every line — an audit of a host's pack
         // directory reads it at a glance. A file whose header could not even
         // be read (bad magic, truncated) has version 0 and stays FAILED.
-        // --require-v3: a structurally-clean v1/v2 pack is reported for the
-        // audit and the run exits non-zero. The version alone cannot prove
-        // the pack STALE — a v1/v2 pack is legitimate when every name it
-        // holds fits 31 chars (willeq.eqe1 is one) — but it is the only
-        // format that CAN truncate a >31-char name, and that is the defect
-        // that kills the client (B930, #248). The line therefore says
-        // "STALE: below v3" in the card's wording: it marks the candidates
-        // for the rebuild, and the client-side FATAL (which names the exact
-        // pack + version + truncated name) is the ground truth for which of
-        // them actually needs it.
+        // --require-v3 (B1017, #338): a v1/v2 pack is flagged ONLY when it
+        // holds a 31-char entry name — the truncation signature of a
+        // pre-B910 builder (names of exactly the inline field's max length
+        // are the ones that were strncpy'd from a longer original). A
+        // structurally-clean v1/v2 pack with no 31-char name is LEGITIMATE
+        // (the builder keeps one that way when every name fits the field —
+        // willeq.eqe1 is one) and passes the audit. The audit cannot tell
+        // a genuine 31-char name from a truncated 32+-char original (the
+        // two are byte-identical, which is also why B930's failure cannot
+        // live at open): every flagged name is printed, and the client's
+        // own FATAL (which names the exact pack + version + truncated name)
+        // is the ground truth for which of them actually truncates.
         if (requireV3 && result.version != 0 && result.version < EQE1_VERSION_V3) {
-            printf("STALE: format v%u below v3 (a v1/v2 pack cannot hold >31-char "
-                   "names; rebuild with tools/convert_all_to_eqe1.sh if this "
-                   "zone's textures need one)\n",
-                   result.version);
-            result.errors++;
-            totalErrors++;
+            if (!result.truncationCandidates.empty()) {
+                printf("STALE: format v%u below v3, holds %zu 31-char name(s) "
+                       "(truncation candidates: a v1/v2 pack stores exactly "
+                       "31 chars inline; these are the ones a pre-B910 "
+                       "builder would have cut from a longer original). ",
+                       result.version, result.truncationCandidates.size());
+                for (size_t i = 0; i < result.truncationCandidates.size(); ++i) {
+                    if (i) printf(", ");
+                    printf("'%s'", result.truncationCandidates[i].c_str());
+                }
+                printf(" — rebuild with tools/convert_all_to_eqe1.sh if any "
+                       "of them is truncated; the client FATAL names the "
+                       "exact pack when it bites (B930, #248)\n");
+                result.errors++;
+                totalErrors++;
+            }
         }
 
         if (result.errors == 0) {
