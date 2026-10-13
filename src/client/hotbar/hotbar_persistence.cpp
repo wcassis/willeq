@@ -151,7 +151,34 @@ std::string HotbarCacheName(const std::string& character,
 HotbarLoadResult LoadCharacterHotbar(const std::string& character,
                                     const std::string& server, HotbarModel& model) {
     const auto path = ResolveCachePathForRead(HotbarCacheName(character, server));
-    if (path.empty()) return HotbarLoadResult::Missing;
+    if (path.empty()) {
+        // Migrate the short-lived H1 JSON twin once. A malformed twin still
+        // means an existing character file, never permission to import the
+        // unrelated global clients[0].hotbar binding.
+        const auto oldName = "ui/" + UiIdentityFileStem(character, server) + ".hotbar.json";
+        const auto oldPath = ResolveCachePathForRead(oldName);
+        if (oldPath.empty()) return HotbarLoadResult::Missing;
+        std::string oldText;
+        if (!readFile(oldPath, oldText)) return HotbarLoadResult::Error;
+        Json::Value root;
+        Json::CharReaderBuilder builder;
+        std::string errors;
+        std::istringstream input(oldText);
+        if (!Json::parseFromStream(builder, input, &root, &errors) || !root.isObject() ||
+            (!root["pages"].isArray() && !root["buttons"].isArray()))
+            return HotbarLoadResult::Error;
+        model.loadFromJson(root);
+        if (model.currentPage() != 0) return HotbarLoadResult::Error;
+        for (int p = 0; p < HotbarModel::PAGE_COUNT; ++p)
+            for (int s = 0; s < HotbarModel::SLOT_COUNT; ++s) {
+                const auto& slot = model.getSlot({p, s});
+                if (!slot.emoteText.empty() || slot.iconId != 0)
+                    return HotbarLoadResult::Error;
+            }
+        if (!SaveCharacterHotbar(character, server, model)) return HotbarLoadResult::Error;
+        std::remove(oldPath.c_str());
+        return HotbarLoadResult::Loaded;
+    }
     std::string text;
     if (!readFile(path, text)) return HotbarLoadResult::Error;
     Json::Value pages;
@@ -178,7 +205,10 @@ bool SaveCharacterHotbar(const std::string& character, const std::string& server
     output += "[HotButtons]\n";
     for (int p = 0; p < HotbarModel::PAGE_COUNT; ++p) {
         for (int s = 0; s < HotbarModel::SLOT_COUNT; ++s) {
-            const auto value = encoded(model.getSlot({p, s}), model);
+            const auto& slot = model.getSlot({p, s});
+            const auto value = encoded(slot, model);
+            if (slot.type != HotbarSlotType::Empty &&
+                (value.empty() || !slot.emoteText.empty())) return false;
             if (value.empty()) continue;
             output += "Page" + std::to_string(p + 1) + "Button" +
                       std::to_string(s + 1) + "=" + value + "\n";

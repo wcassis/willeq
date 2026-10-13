@@ -176,6 +176,78 @@ TEST(HotbarPersistence, ExistingInvalidCharacterFileIsNeverReplacedByLegacyImpor
     std::filesystem::remove_all(dir);
 }
 
+TEST(HotbarPersistence, MalformedJsonTwinBlocksGlobalLegacyImport) {
+    const auto dir = std::filesystem::temp_directory_path() /
+        ("willeq_h1_bad_twin_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir / "ui");
+    const char* previous = std::getenv("WILLEQ_CACHE_DIR");
+    const std::string saved = previous ? previous : "";
+    ::setenv("WILLEQ_CACHE_DIR", dir.c_str(), 1);
+    const auto twin = dir / "ui/UI_Testchar_test.hotbar.json";
+    const auto configPath = dir / "client.json";
+    {
+        std::ofstream file(twin);
+        file << "{not valid json}";
+        std::ofstream config(configPath);
+        config << R"({"clients":[{"hotbar":{"buttons":[{"type":2,"id":77}]}}]})";
+    }
+    EverQuest eq = MakeEq();
+    eq.Bridge().SetConfigPath(configPath.string());
+    eq.Bridge().LoadHotbarConfig();
+    EXPECT_EQ(eq.GetHotbarModel()->getSlot({0, 0}).type, eqt::HotbarSlotType::Empty);
+    auto config = EQ::JsonConfigFile::Load(configPath.string());
+    EXPECT_TRUE(config.RawHandle()["clients"][0].isMember("hotbar"));
+    EXPECT_TRUE(std::filesystem::exists(twin));
+    EXPECT_FALSE(std::filesystem::exists(dir / eqt::HotbarCacheName("Testchar", "test")));
+    if (saved.empty()) ::unsetenv("WILLEQ_CACHE_DIR");
+    else ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
+    std::filesystem::remove_all(dir);
+}
+
+TEST(HotbarPersistence, ValidJsonTwinMigratesAndIsRemoved) {
+    const auto dir = std::filesystem::temp_directory_path() /
+        ("willeq_h1_good_twin_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir / "ui");
+    const char* previous = std::getenv("WILLEQ_CACHE_DIR");
+    const std::string saved = previous ? previous : "";
+    ::setenv("WILLEQ_CACHE_DIR", dir.c_str(), 1);
+    const auto twin = dir / "ui/UI_Testchar_test.hotbar.json";
+    {
+        std::ofstream file(twin);
+        file << R"({"buttons":[{"type":2,"id":30}]})";
+    }
+    eqt::HotbarModel model;
+    EXPECT_EQ(eqt::LoadCharacterHotbar("Testchar", "test", model), eqt::HotbarLoadResult::Loaded);
+    EXPECT_EQ(model.getSlot({0, 0}).id, 30u);
+    EXPECT_FALSE(std::filesystem::exists(twin));
+    EXPECT_TRUE(std::filesystem::exists(dir / eqt::HotbarCacheName("Testchar", "test")));
+    if (saved.empty()) ::unsetenv("WILLEQ_CACHE_DIR");
+    else ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
+    std::filesystem::remove_all(dir);
+}
+
+TEST(HotbarPersistence, UnencodableJsonTwinIsPreserved) {
+    const auto dir = std::filesystem::temp_directory_path() /
+        ("willeq_h1_page_twin_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir / "ui");
+    const char* previous = std::getenv("WILLEQ_CACHE_DIR");
+    const std::string saved = previous ? previous : "";
+    ::setenv("WILLEQ_CACHE_DIR", dir.c_str(), 1);
+    const auto twin = dir / "ui/UI_Testchar_test.hotbar.json";
+    {
+        std::ofstream file(twin);
+        file << R"({"currentPage":1,"pages":[[{"type":2,"id":30}]]})";
+    }
+    eqt::HotbarModel model;
+    EXPECT_EQ(eqt::LoadCharacterHotbar("Testchar", "test", model), eqt::HotbarLoadResult::Error);
+    EXPECT_EQ(model.currentPage(), 1);
+    EXPECT_TRUE(std::filesystem::exists(twin));
+    EXPECT_FALSE(std::filesystem::exists(dir / eqt::HotbarCacheName("Testchar", "test")));
+    if (saved.empty()) ::unsetenv("WILLEQ_CACHE_DIR");
+    else ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
+    std::filesystem::remove_all(dir);
+}
+
 void ExpectObservedCode(const char* code, eqt::HotbarSlotType type, uint32_t id) {
     const auto dir = std::filesystem::temp_directory_path() /
         ("willeq_h1_codes_" + std::to_string(::getpid()));

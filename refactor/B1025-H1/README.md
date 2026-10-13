@@ -29,7 +29,10 @@ for the six observed values, not a claim to know the complete taxonomy.
   `clients[0].hotbar` is imported only when no per-character INI exists, then
   removed after a successful new-file write. A malformed existing INI is
   preserved and reported as a load failure. `SaveHotbarConfig` writes the
-  character INI on slot/page changes. No second client-config loader exists.
+  character INI on slot/page changes. The short-lived H1 JSON twin is migrated
+  once if it is parseable and its stored fields are representable; malformed
+  or unencodable twins remain in place and block the unrelated global import. No second
+  client-config loader exists.
 - Keyboard and mouse Spell activation both use `HotbarModel::findSpellGem` over
   `SpellManager::getMemorizedSpell`, so a Spell slot stores a spell ID and
   resolves the currently memorized visible gem. Without a model or matching
@@ -51,14 +54,17 @@ Fix regression baseline: `ctest --test-dir build -R
 'PageSwitchDoesNotCarryVisibleCooldown|ExistingInvalidCharacterFileIsNeverReplacedByLegacyImport'
 --output-on-failure` failed both new assertions before the production fixes;
 the captured log is `/home/user/kb-evidence/kb-h1-hotbar-model/red-fix12.log`.
+After the fix, the same focused selection, six observed-code cases and three
+JSON-twin migration/preservation cases passed 11/11 in
+`/home/user/kb-evidence/kb-h1-hotbar-model/green-fix12-final.log`.
 
 | Acceptance criterion | Result | Evidence |
 |---|---|---|
 | One window, ten pages, ten slots; addressed model and event | PASS | `include/client/hotbar/hotbar_model.h:33`; `tests/test_skill_reachability.cpp:391` |
-| Per-character INI storage, observed-code round-trip and one-time legacy import | PASS | `src/client/hotbar/hotbar_persistence.cpp`; `tests/test_bridge_teardown.cpp` |
+| Per-character INI storage, observed-code round-trip, twin migration and one-time legacy import | PASS | `src/client/hotbar/hotbar_persistence.cpp`; `tests/test_bridge_teardown.cpp` |
 | One spell-ID-to-visible-gem rule for keyboard and mouse | PASS | `src/client/hotbar/hotbar_model.cpp:26`; `src/client/bridge/bridge_component_intents.cpp:744`; `tests/test_input_action_bridge.cpp:559` |
-| Relevant hotbar and neighbouring tests at original H1 head | PASS | Captured local CTest selection: 168 passed, two ASAN-only repros skipped (170 discovered). New fix tests: see the RED/GREEN evidence paths below. |
-| Hygiene | PASS | Final local hygiene CTest: 31 passed, 0 failed. |
+| Relevant hotbar and neighbouring tests at original H1 head | PASS | Captured local CTest selection: 168 passed, two ASAN-only repros skipped (170 discovered). Fix RED/GREEN pair: paths above; `/home/user/kb-evidence/kb-h1-hotbar-model/hotbar-neighbours-fix12.log` recorded 87 passed and two intentional skips. |
+| Hygiene | PASS | Initial merged-tree run failed ZeroCallers and three missing local builder binaries. After removal of the tests-only JSON writer and building the three tools, `/home/user/kb-evidence/kb-h1-hotbar-model/hygiene-fix12-green.log` recorded 34 passed, zero failed. |
 | Golden/budget/third-party files untouched | PASS | `git diff --name-only origin/fable...HEAD` and clean worktree at handoff. |
 
 ## Not verified / left open

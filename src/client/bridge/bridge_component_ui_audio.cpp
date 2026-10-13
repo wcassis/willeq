@@ -430,7 +430,7 @@ void eqt::bridge::BridgeComponent::LoadHotbarConfig() {
 	const auto load = eqt::LoadCharacterHotbar(ctx_.character, server, *ctx_.hotbar_model);
 	if (load == eqt::HotbarLoadResult::Loaded) return;
 	if (load == eqt::HotbarLoadResult::Error) {
-		LOG_WARN(MOD_CONFIG, "Could not load per-character hotbar; legacy import skipped");
+		LOG_WARN(MOD_CONFIG, "Could not load or migrate per-character hotbar; legacy import skipped");
 		return;
 	}
 	if (m_config_path.empty()) return;
