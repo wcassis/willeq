@@ -85,13 +85,16 @@ case "${PI_LANE}" in
     4) : "${PI_USER:=radxa}"
        : "${PI_LANE_PUBLISH:=/mnt/projects/fable/ci-arm64-bullseye}"
        : "${PI_HDMI_CONN:=/sys/class/drm/card0-DP-1}"
-       : "${PI_RUN_ENV:=LD_LIBRARY_PATH=/usr/local/lib LIBGL_DRIVERS_PATH=/usr/local/lib/dri}" ;;
+       : "${PI_RUN_ENV:=LD_LIBRARY_PATH=/usr/local/lib LIBGL_DRIVERS_PATH=/usr/local/lib/dri}"
+       # kmscube's own device scan lands on card1 (pvrsrvkm, render-only: "no connected
+       # connector!"); the display is sunxi-drm card0 and GBM there reaches the IMG driver.
+       : "${PI_KMSCUBE_ARGS:=-D /dev/dri/card0}" ;;
     2|3) : "${PI_USER:=user}"
        : "${PI_LANE_PUBLISH:=/mnt/projects/fable/ci-arm64}"
-       : "${PI_RUN_ENV:=}" ;;
+       : "${PI_RUN_ENV:=}"; : "${PI_KMSCUBE_ARGS:=}" ;;
     *) : "${PI_USER:=user}"
        : "${PI_LANE_PUBLISH:=/mnt/projects/fable/ci-arm}"
-       : "${PI_RUN_ENV:=}" ;;
+       : "${PI_RUN_ENV:=}"; : "${PI_KMSCUBE_ARGS:=}" ;;
 esac
 
 # ARM cross-build lands in the MAIN worktree, not this task worktree --
@@ -184,6 +187,6 @@ pi_hdmi_restore() {
     PI_HDMI_FORCED=0
 }
 
-export PI_LANE PI_LANE_NAME PI_LANE_ARCH PI_LANE_GPU PI_LANE_PUBLISH PI_RUN_ENV PI_HOST PI_USER PI_SSH_OPTS ARM_BUILD_BIN_DIR PI_EQ_PATH PI_EQE1_PATH \
+export PI_LANE PI_LANE_NAME PI_LANE_ARCH PI_LANE_GPU PI_LANE_PUBLISH PI_RUN_ENV PI_KMSCUBE_ARGS PI_HOST PI_USER PI_SSH_OPTS ARM_BUILD_BIN_DIR PI_EQ_PATH PI_EQE1_PATH \
        PI_HDMI_CONN PI_REMOTE_TMP PI_REMOTE_BIN PI_LOCK PROJECT_DIR MANIFEST_PATH ARTIFACTS_DIR \
        BASELINE_DIR H04_TOTAL_FRAMES H04_COOLDOWN_SEC H04_WARMUP_REPS

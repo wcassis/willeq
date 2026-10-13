@@ -19,7 +19,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$OUT"
 for i in $(seq 1 "$RUNS"); do
     # B1056: lane 4 needs the IMG libraries on the loader path (PI_RUN_ENV, env.sh); sudo drops LD_LIBRARY_PATH.
-    ( sleep 25 | sudo -n env ${PI_RUN_ENV:-} timeout 20 "$BIN" > "$OUT/run$i.stdout" 2>&1 ) &
+    # PI_KMSCUBE_ARGS (env.sh) pins the DRM card where the render node and the display are different devices.
+    ( sleep 25 | sudo -n env ${PI_RUN_ENV:-} timeout 20 "$BIN" ${PI_KMSCUBE_ARGS:-} > "$OUT/run$i.stdout" 2>&1 ) &
     wrapper=$!
     sleep "$AT"
     pid="$(pgrep -n -f "^${BIN}( |\$)")"
