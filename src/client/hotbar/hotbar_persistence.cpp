@@ -94,9 +94,9 @@ bool parseButtons(const std::string& text, const HotbarModel& model,
             inButtons = entry == "[HotButtons]";
             continue;
         }
-        if (!inButtons) continue;
         const auto equals = entry.find('=');
         if (equals == std::string::npos) return false;
+        if (!inButtons) continue;
         HotbarAddress address;
         HotbarSlotType type;
         uint32_t id;

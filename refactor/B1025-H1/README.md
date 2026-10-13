@@ -68,6 +68,14 @@ JSON-twin migration/preservation cases passed 11/11 in
 
 ## Not verified / left open
 
+- Fix leg 3's first standalone probe found that a non-INI character file
+  containing `invalid JSON to preserve` returned `Loaded` at the earlier
+  fix-3 commit. `red-fix3-malformed.log` records the failed assertion.
+  `parseButtons` now rejects a non-comment line without `=`, even outside
+  `[HotButtons]`; the revised product test and standalone probe pass in
+  `green-fix3-final.log` and `review/fix3/tests.log`, respectively. Both paths
+  are under the H1 worker evidence directory. The switch-back probe checks
+  the model page and rendered page as well as the restored slot.
 - Fix leg 3 reverts the `check_zero_callers.py` exemption as requested by Q3.
   Its local hygiene run is red: `ZeroCallers` reports the tests-only
   `HotbarModel::setCurrentPage` seam, which H-4 has not wired to production

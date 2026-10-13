@@ -171,6 +171,16 @@ TEST(HotbarPersistence, ExistingInvalidCharacterFileIsNeverReplacedByLegacyImpor
     EXPECT_EQ(eq.GetHotbarModel()->getSlot({0, 0}).type, eqt::HotbarSlotType::Empty);
     auto config = EQ::JsonConfigFile::Load(configPath.string());
     EXPECT_TRUE(config.RawHandle()["clients"][0].isMember("hotbar"));
+    {
+        std::ofstream malformed(characterPath, std::ios::trunc);
+        malformed << "invalid JSON to preserve";
+    }
+    EXPECT_EQ(eq.Bridge().LoadHotbarConfig(), eqt::HotbarLoadResult::Error);
+    std::ifstream stillMalformed(characterPath);
+    const std::string unchanged((std::istreambuf_iterator<char>(stillMalformed)),
+                                std::istreambuf_iterator<char>());
+    EXPECT_EQ(unchanged, "invalid JSON to preserve");
+    EXPECT_EQ(eq.GetHotbarModel()->getSlot({0, 0}).type, eqt::HotbarSlotType::Empty);
     if (saved.empty()) ::unsetenv("WILLEQ_CACHE_DIR");
     else ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
     std::filesystem::remove_all(dir);
