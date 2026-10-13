@@ -1,184 +1,184 @@
-# PROVISIONAL: visibility is official-client observed; numeric bounds are eqemu RaceAppearance candidates pending per-row official-client wrap proof. Do not ship as a measured oracle table.
-race	gender	picker	min	max	visible	source
-2	0	face	0	7	1	oracle:facepick-matrix4/barbarian-male/face
-2	0	hair	0	3	1	oracle:facepick-matrix4/barbarian-male/hair
-2	0	haircolor	0	19	1	oracle:facepick-matrix4/barbarian-male/haircolor
-2	0	eyes	0	9	1	oracle:facepick-matrix4/barbarian-male/eyes
-2	0	beard	0	5	1	oracle:facepick-matrix4/barbarian-male/beard
-2	0	beardcolor	0	19	1	oracle:facepick-matrix4/barbarian-male/beardcolor
-2	0	wode	0	8	1	oracle:facepick-matrix4/barbarian-male/wode
-2	1	face	0	7	1	oracle:facepick-matrix4/barbarian-female/face
-2	1	hair	0	3	1	oracle:facepick-matrix4/barbarian-female/hair
-2	1	haircolor	0	19	1	oracle:facepick-matrix4/barbarian-female/haircolor
-2	1	eyes	0	9	1	oracle:facepick-matrix4/barbarian-female/eyes
-2	1	beard	0	0	0	oracle:facepick-matrix4/barbarian-female/open/00.png
-2	1	beardcolor	0	0	0	oracle:facepick-matrix4/barbarian-female/open/00.png
-2	1	wode	0	8	1	oracle:facepick-matrix4/barbarian-female/wode
-6	0	face	0	7	1	oracle:facepick-matrix4/darkelf-male/face
-6	0	hair	0	3	1	oracle:facepick-matrix4/darkelf-male/hair
-6	0	haircolor	13	18	1	oracle:facepick-matrix4/darkelf-male/haircolor
-6	0	eyes	0	9	1	oracle:facepick-matrix4/darkelf-male/eyes
-6	0	beard	0	3	1	oracle:facepick-matrix4/darkelf-male/beard
-6	0	beardcolor	13	18	1	oracle:facepick-matrix4/darkelf-male/beardcolor
-6	0	wode	0	0	0	oracle:facepick-matrix4/darkelf-male/open/00.png
-6	1	face	0	7	1	oracle:facepick-matrix4/darkelf-female/face
-6	1	hair	0	3	1	oracle:facepick-matrix4/darkelf-female/hair
-6	1	haircolor	13	18	1	oracle:facepick-matrix4/darkelf-female/haircolor
-6	1	eyes	0	9	1	oracle:facepick-matrix4/darkelf-female/eyes
-6	1	beard	0	0	0	oracle:facepick-matrix4/darkelf-female/open/00.png
-6	1	beardcolor	0	0	0	oracle:facepick-matrix4/darkelf-female/open/00.png
-6	1	wode	0	0	0	oracle:facepick-matrix4/darkelf-female/open/00.png
-8	0	face	0	7	1	oracle:facepick-matrix4/dwarf-male/face
-8	0	hair	0	3	1	oracle:facepick-matrix4/dwarf-male/hair
-8	0	haircolor	0	19	1	oracle:facepick-matrix4/dwarf-male/haircolor
-8	0	eyes	0	9	1	oracle:facepick-matrix4/dwarf-male/eyes
-8	0	beard	0	5	1	oracle:facepick-matrix4/dwarf-male/beard
-8	0	beardcolor	0	19	1	oracle:facepick-matrix4/dwarf-male/beardcolor
-8	0	wode	0	0	0	oracle:facepick-matrix4/dwarf-male/open/00.png
-8	1	face	0	7	1	oracle:facepick-matrix4/dwarf-female/face
-8	1	hair	0	3	1	oracle:facepick-matrix4/dwarf-female/hair
-8	1	haircolor	0	19	1	oracle:facepick-matrix4/dwarf-female/haircolor
-8	1	eyes	0	9	1	oracle:facepick-matrix4/dwarf-female/eyes
-8	1	beard	0	1	1	oracle:facepick-matrix4/dwarf-female/beard
-8	1	beardcolor	0	19	1	oracle:facepick-matrix4/dwarf-female/beardcolor
-8	1	wode	0	0	0	oracle:facepick-matrix4/dwarf-female/open/00.png
-3	0	face	0	7	1	oracle:facepick-matrix4/erudite-male/face
-3	0	hair	0	5	1	oracle:facepick-matrix4/erudite-male/hair
-3	0	haircolor	0	0	0	oracle:facepick-matrix4/erudite-male/open/00.png
-3	0	eyes	0	9	1	oracle:facepick-matrix4/erudite-male/eyes
-3	0	beard	0	5	1	oracle:facepick-matrix4/erudite-male/beard
-3	0	beardcolor	0	19	1	oracle:facepick-matrix4/erudite-male/beardcolor
-3	0	wode	0	0	0	oracle:facepick-matrix4/erudite-male/open/00.png
-3	1	face	0	7	1	oracle:facepick-matrix4/erudite-female/face
-3	1	hair	0	8	1	oracle:facepick-matrix4/erudite-female/hair
-3	1	haircolor	0	0	0	oracle:facepick-matrix4/erudite-female/open/00.png
-3	1	eyes	0	9	1	oracle:facepick-matrix4/erudite-female/eyes
-3	1	beard	0	0	0	oracle:facepick-matrix4/erudite-female/open/00.png
-3	1	beardcolor	0	0	0	oracle:facepick-matrix4/erudite-female/open/00.png
-3	1	wode	0	0	0	oracle:facepick-matrix4/erudite-female/open/00.png
-12	0	face	0	7	1	oracle:facepick-matrix4/gnome-male/face
-12	0	hair	0	3	1	oracle:facepick-matrix4/gnome-male/hair
-12	0	haircolor	0	24	1	oracle:facepick-matrix4/gnome-male/haircolor
-12	0	eyes	0	9	1	oracle:facepick-matrix4/gnome-male/eyes
-12	0	beard	0	5	1	oracle:facepick-matrix4/gnome-male/beard
-12	0	beardcolor	0	24	1	oracle:facepick-matrix4/gnome-male/beardcolor
-12	0	wode	0	0	0	oracle:facepick-matrix4/gnome-male/open/00.png
-12	1	face	0	7	1	oracle:facepick-matrix4/gnome-female/face
-12	1	hair	0	3	1	oracle:facepick-matrix4/gnome-female/hair
-12	1	haircolor	0	24	1	oracle:facepick-matrix4/gnome-female/haircolor
-12	1	eyes	0	9	1	oracle:facepick-matrix4/gnome-female/eyes
-12	1	beard	0	0	0	oracle:facepick-matrix4/gnome-female/open/00.png
-12	1	beardcolor	0	0	0	oracle:facepick-matrix4/gnome-female/open/00.png
-12	1	wode	0	0	0	oracle:facepick-matrix4/gnome-female/open/00.png
-7	0	face	0	7	1	oracle:facepick-matrix4/halfelf-male/face
-7	0	hair	0	3	1	oracle:facepick-matrix4/halfelf-male/hair
-7	0	haircolor	0	19	1	oracle:facepick-matrix4/halfelf-male/haircolor
-7	0	eyes	0	9	1	oracle:facepick-matrix4/halfelf-male/eyes
-7	0	beard	0	3	1	oracle:facepick-matrix4/halfelf-male/beard
-7	0	beardcolor	0	19	1	oracle:facepick-matrix4/halfelf-male/beardcolor
-7	0	wode	0	0	0	oracle:facepick-matrix4/halfelf-male/open/00.png
-7	1	face	0	7	1	oracle:facepick-matrix4/halfelf-female/face
-7	1	hair	0	3	1	oracle:facepick-matrix4/halfelf-female/hair
-7	1	haircolor	0	19	1	oracle:facepick-matrix4/halfelf-female/haircolor
-7	1	eyes	0	9	1	oracle:facepick-matrix4/halfelf-female/eyes
-7	1	beard	0	0	0	oracle:facepick-matrix4/halfelf-female/open/00.png
-7	1	beardcolor	0	0	0	oracle:facepick-matrix4/halfelf-female/open/00.png
-7	1	wode	0	0	0	oracle:facepick-matrix4/halfelf-female/open/00.png
-11	0	face	0	7	1	oracle:facepick-matrix4/halfling-male/face
-11	0	hair	0	3	1	oracle:facepick-matrix4/halfling-male/hair
-11	0	haircolor	0	19	1	oracle:facepick-matrix4/halfling-male/haircolor
-11	0	eyes	0	9	1	oracle:facepick-matrix4/halfling-male/eyes
-11	0	beard	0	5	1	oracle:facepick-matrix4/halfling-male/beard
-11	0	beardcolor	0	19	1	oracle:facepick-matrix4/halfling-male/beardcolor
-11	0	wode	0	0	0	oracle:facepick-matrix4/halfling-male/open/00.png
-11	1	face	0	7	1	oracle:facepick-matrix4/halfling-female/face
-11	1	hair	0	3	1	oracle:facepick-matrix4/halfling-female/hair
-11	1	haircolor	0	19	1	oracle:facepick-matrix4/halfling-female/haircolor
-11	1	eyes	0	9	1	oracle:facepick-matrix4/halfling-female/eyes
-11	1	beard	0	0	0	oracle:facepick-matrix4/halfling-female/open/00.png
-11	1	beardcolor	0	0	0	oracle:facepick-matrix4/halfling-female/open/00.png
-11	1	wode	0	0	0	oracle:facepick-matrix4/halfling-female/open/00.png
-5	0	face	0	7	1	oracle:facepick-matrix4/highelf-male/face
-5	0	hair	0	3	1	oracle:facepick-matrix4/highelf-male/hair
-5	0	haircolor	0	14	1	oracle:facepick-matrix4/highelf-male/haircolor
-5	0	eyes	0	9	1	oracle:facepick-matrix4/highelf-male/eyes
-5	0	beard	0	3	1	oracle:facepick-matrix4/highelf-male/beard
-5	0	beardcolor	0	14	1	oracle:facepick-matrix4/highelf-male/beardcolor
-5	0	wode	0	0	0	oracle:facepick-matrix4/highelf-male/open/00.png
-5	1	face	0	7	1	oracle:facepick-matrix4/highelf-female/face
-5	1	hair	0	3	1	oracle:facepick-matrix4/highelf-female/hair
-5	1	haircolor	0	14	1	oracle:facepick-matrix4/highelf-female/haircolor
-5	1	eyes	0	9	1	oracle:facepick-matrix4/highelf-female/eyes
-5	1	beard	0	0	0	oracle:facepick-matrix4/highelf-female/open/00.png
-5	1	beardcolor	0	0	0	oracle:facepick-matrix4/highelf-female/open/00.png
-5	1	wode	0	0	0	oracle:facepick-matrix4/highelf-female/open/00.png
-1	0	face	0	7	1	oracle:facepick-matrix4/human-male/face
-1	0	hair	0	3	1	oracle:facepick-matrix4/human-male/hair
-1	0	haircolor	0	19	1	oracle:facepick-matrix4/human-male/haircolor
-1	0	eyes	0	9	1	oracle:facepick-matrix4/human-male/eyes
-1	0	beard	0	5	1	oracle:facepick-matrix4/human-male/beard
-1	0	beardcolor	0	19	1	oracle:facepick-matrix4/human-male/beardcolor
-1	0	wode	0	0	0	oracle:facepick-matrix4/human-male/open/00.png
-1	1	face	0	7	1	oracle:facepick-matrix4/human-female/face
-1	1	hair	0	3	1	oracle:facepick-matrix4/human-female/hair
-1	1	haircolor	0	19	1	oracle:facepick-matrix4/human-female/haircolor
-1	1	eyes	0	9	1	oracle:facepick-matrix4/human-female/eyes
-1	1	beard	0	0	0	oracle:facepick-matrix4/human-female/open/00.png
-1	1	beardcolor	0	0	0	oracle:facepick-matrix4/human-female/open/00.png
-1	1	wode	0	0	0	oracle:facepick-matrix4/human-female/open/00.png
-128	0	face	0	7	1	oracle:facepick-matrix4/iksar-male/face
-128	0	hair	0	0	0	oracle:facepick-matrix4/iksar-male/open/00.png
-128	0	haircolor	0	0	0	oracle:facepick-matrix4/iksar-male/open/00.png
-128	0	eyes	0	9	1	oracle:facepick-matrix4/iksar-male/eyes
-128	0	beard	0	0	0	oracle:facepick-matrix4/iksar-male/open/00.png
-128	0	beardcolor	0	0	0	oracle:facepick-matrix4/iksar-male/open/00.png
-128	0	wode	0	0	0	oracle:facepick-matrix4/iksar-male/open/00.png
-128	1	face	0	7	1	oracle:facepick-matrix4/iksar-female/face
-128	1	hair	0	0	0	oracle:facepick-matrix4/iksar-female/open/00.png
-128	1	haircolor	0	0	0	oracle:facepick-matrix4/iksar-female/open/00.png
-128	1	eyes	0	9	1	oracle:facepick-matrix4/iksar-female/eyes
-128	1	beard	0	0	0	oracle:facepick-matrix4/iksar-female/open/00.png
-128	1	beardcolor	0	0	0	oracle:facepick-matrix4/iksar-female/open/00.png
-128	1	wode	0	0	0	oracle:facepick-matrix4/iksar-female/open/00.png
-10	0	face	0	7	1	oracle:facepick-matrix4/ogre-male/face
-10	0	hair	0	0	0	oracle:facepick-matrix4/ogre-male/open/00.png
-10	0	haircolor	0	0	0	oracle:facepick-matrix4/ogre-male/open/00.png
-10	0	eyes	0	9	1	oracle:facepick-matrix4/ogre-male/eyes
-10	0	beard	0	0	0	oracle:facepick-matrix4/ogre-male/open/00.png
-10	0	beardcolor	0	0	0	oracle:facepick-matrix4/ogre-male/open/00.png
-10	0	wode	0	0	0	oracle:facepick-matrix4/ogre-male/open/00.png
-10	1	face	0	7	1	oracle:facepick-matrix4/ogre-female/face
-10	1	hair	0	3	1	oracle:facepick-matrix4/ogre-female/hair
-10	1	haircolor	0	23	1	oracle:facepick-matrix4/ogre-female/haircolor
-10	1	eyes	0	9	1	oracle:facepick-matrix4/ogre-female/eyes
-10	1	beard	0	0	0	oracle:facepick-matrix4/ogre-female/open/00.png
-10	1	beardcolor	0	0	0	oracle:facepick-matrix4/ogre-female/open/00.png
-10	1	wode	0	0	0	oracle:facepick-matrix4/ogre-female/open/00.png
-9	0	face	0	7	1	oracle:facepick-matrix4/troll-male/face
-9	0	hair	0	0	0	oracle:facepick-matrix4/troll-male/open/00.png
-9	0	haircolor	0	0	0	oracle:facepick-matrix4/troll-male/open/00.png
-9	0	eyes	0	10	1	oracle:facepick-matrix4/troll-male/eyes
-9	0	beard	0	0	0	oracle:facepick-matrix4/troll-male/open/00.png
-9	0	beardcolor	0	0	0	oracle:facepick-matrix4/troll-male/open/00.png
-9	0	wode	0	0	0	oracle:facepick-matrix4/troll-male/open/00.png
-9	1	face	0	7	1	oracle:facepick-matrix4/troll-female/face
-9	1	hair	0	3	1	oracle:facepick-matrix4/troll-female/hair
-9	1	haircolor	0	23	1	oracle:facepick-matrix4/troll-female/haircolor
-9	1	eyes	0	10	1	oracle:facepick-matrix4/troll-female/eyes
-9	1	beard	0	0	0	oracle:facepick-matrix4/troll-female/open/00.png
-9	1	beardcolor	0	0	0	oracle:facepick-matrix4/troll-female/open/00.png
-9	1	wode	0	0	0	oracle:facepick-matrix4/troll-female/open/00.png
-4	0	face	0	7	1	oracle:facepick-matrix4/woodelf-male/face
-4	0	hair	0	3	1	oracle:facepick-matrix4/woodelf-male/hair
-4	0	haircolor	0	19	1	oracle:facepick-matrix4/woodelf-male/haircolor
-4	0	eyes	0	9	1	oracle:facepick-matrix4/woodelf-male/eyes
-4	0	beard	0	0	0	oracle:facepick-matrix4/woodelf-male/open/00.png
-4	0	beardcolor	0	0	0	oracle:facepick-matrix4/woodelf-male/open/00.png
-4	0	wode	0	0	0	oracle:facepick-matrix4/woodelf-male/open/00.png
-4	1	face	0	7	1	oracle:facepick-matrix4/woodelf-female/face
-4	1	hair	0	3	1	oracle:facepick-matrix4/woodelf-female/hair
-4	1	haircolor	0	19	1	oracle:facepick-matrix4/woodelf-female/haircolor
-4	1	eyes	0	9	1	oracle:facepick-matrix4/woodelf-female/eyes
-4	1	beard	0	0	0	oracle:facepick-matrix4/woodelf-female/open/00.png
-4	1	beardcolor	0	0	0	oracle:facepick-matrix4/woodelf-female/open/00.png
-4	1	wode	0	0	0	oracle:facepick-matrix4/woodelf-female/open/00.png
+# Numeric endpoints are source candidates; count/visibility are matrix4 observations. See refactor/B888-CC1/README.md.
+race	gender	picker	min	max	visible	source	count_measured	status
+2	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-male/face	8	COUNT-MEASURED+SAMPLED
+2	0	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-male/hair	4	PROVISIONAL
+2	0	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-male/haircolor	20	PROVISIONAL
+2	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-male/eyes	10	PROVISIONAL
+2	0	beard	0	5	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-male/beard	6	PROVISIONAL
+2	0	beardcolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-male/beardcolor	20	PROVISIONAL
+2	0	wode	0	8	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-male/wode	9	COUNT-MEASURED+SAMPLED
+2	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-female/face	8	PROVISIONAL
+2	1	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-female/hair	4	PROVISIONAL
+2	1	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-female/haircolor	20	PROVISIONAL
+2	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-female/eyes	10	PROVISIONAL
+2	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-female/open/00.png	hidden	PROVISIONAL
+2	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-female/open/00.png	hidden	PROVISIONAL
+2	1	wode	0	8	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/barbarian-female/wode	9	PROVISIONAL
+6	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-male/face	8	COUNT-MEASURED+SAMPLED
+6	0	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-male/hair	4	COUNT-MEASURED+SAMPLED
+6	0	haircolor	13	18	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-male/haircolor	6	COUNT-MEASURED+SAMPLED
+6	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-male/eyes	10	COUNT-MEASURED+SAMPLED
+6	0	beard	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-male/beard	4	PROVISIONAL
+6	0	beardcolor	13	18	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-male/beardcolor	6	PROVISIONAL
+6	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-male/open/00.png	hidden	PROVISIONAL
+6	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-female/face	8	COUNT-MEASURED+SAMPLED
+6	1	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-female/hair	4	COUNT-MEASURED+SAMPLED
+6	1	haircolor	13	18	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-female/haircolor	6	PROVISIONAL
+6	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-female/eyes	10	COUNT-MEASURED+SAMPLED
+6	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-female/open/00.png	hidden	PROVISIONAL
+6	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-female/open/00.png	hidden	PROVISIONAL
+6	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/darkelf-female/open/00.png	hidden	PROVISIONAL
+8	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-male/face	8	PROVISIONAL
+8	0	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-male/hair	4	PROVISIONAL
+8	0	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-male/haircolor	20	PROVISIONAL
+8	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-male/eyes	10	PROVISIONAL
+8	0	beard	0	5	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-male/beard	6	PROVISIONAL
+8	0	beardcolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-male/beardcolor	20	PROVISIONAL
+8	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-male/open/00.png	hidden	PROVISIONAL
+8	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-female/face	8	PROVISIONAL
+8	1	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-female/hair	4	PROVISIONAL
+8	1	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-female/haircolor	20	PROVISIONAL
+8	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-female/eyes	10	PROVISIONAL
+8	1	beard	0	1	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-female/beard	2	PROVISIONAL
+8	1	beardcolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-female/beardcolor	20	PROVISIONAL
+8	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/dwarf-female/open/00.png	hidden	PROVISIONAL
+3	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-male/face	8	PROVISIONAL
+3	0	hair	0	5	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-male/hair	6	PROVISIONAL
+3	0	haircolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-male/open/00.png	hidden	PROVISIONAL
+3	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-male/eyes	10	PROVISIONAL
+3	0	beard	0	5	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-male/beard	6	PROVISIONAL
+3	0	beardcolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-male/beardcolor	20	PROVISIONAL
+3	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-male/open/00.png	hidden	PROVISIONAL
+3	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-female/face	8	PROVISIONAL
+3	1	hair	0	8	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-female/hair	9	PROVISIONAL
+3	1	haircolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-female/open/00.png	hidden	PROVISIONAL
+3	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-female/eyes	10	PROVISIONAL
+3	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-female/open/00.png	hidden	PROVISIONAL
+3	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-female/open/00.png	hidden	PROVISIONAL
+3	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/erudite-female/open/00.png	hidden	PROVISIONAL
+12	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-male/face	8	PROVISIONAL
+12	0	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-male/hair	4	PROVISIONAL
+12	0	haircolor	0	24	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-male/haircolor	25	PROVISIONAL
+12	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-male/eyes	10	PROVISIONAL
+12	0	beard	0	5	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-male/beard	6	PROVISIONAL
+12	0	beardcolor	0	24	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-male/beardcolor	25	PROVISIONAL
+12	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-male/open/00.png	hidden	PROVISIONAL
+12	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-female/face	8	PROVISIONAL
+12	1	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-female/hair	4	PROVISIONAL
+12	1	haircolor	0	24	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-female/haircolor	25	PROVISIONAL
+12	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-female/eyes	10	PROVISIONAL
+12	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-female/open/00.png	hidden	PROVISIONAL
+12	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-female/open/00.png	hidden	PROVISIONAL
+12	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/gnome-female/open/00.png	hidden	PROVISIONAL
+7	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-male/face	8	PROVISIONAL
+7	0	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-male/hair	4	PROVISIONAL
+7	0	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-male/haircolor	20	PROVISIONAL
+7	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-male/eyes	10	PROVISIONAL
+7	0	beard	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-male/beard	4	PROVISIONAL
+7	0	beardcolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-male/beardcolor	20	PROVISIONAL
+7	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-male/open/00.png	hidden	PROVISIONAL
+7	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-female/face	8	PROVISIONAL
+7	1	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-female/hair	4	PROVISIONAL
+7	1	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-female/haircolor	20	PROVISIONAL
+7	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-female/eyes	10	PROVISIONAL
+7	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-female/open/00.png	hidden	PROVISIONAL
+7	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-female/open/00.png	hidden	PROVISIONAL
+7	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfelf-female/open/00.png	hidden	PROVISIONAL
+11	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-male/face	8	PROVISIONAL
+11	0	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-male/hair	4	PROVISIONAL
+11	0	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-male/haircolor	20	PROVISIONAL
+11	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-male/eyes	10	PROVISIONAL
+11	0	beard	0	5	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-male/beard	6	PROVISIONAL
+11	0	beardcolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-male/beardcolor	20	PROVISIONAL
+11	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-male/open/00.png	hidden	PROVISIONAL
+11	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-female/face	8	PROVISIONAL
+11	1	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-female/hair	4	PROVISIONAL
+11	1	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-female/haircolor	20	PROVISIONAL
+11	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-female/eyes	10	PROVISIONAL
+11	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-female/open/00.png	hidden	PROVISIONAL
+11	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-female/open/00.png	hidden	PROVISIONAL
+11	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/halfling-female/open/00.png	hidden	PROVISIONAL
+5	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-male/face	8	PROVISIONAL
+5	0	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-male/hair	4	PROVISIONAL
+5	0	haircolor	0	14	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-male/haircolor	15	PROVISIONAL
+5	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-male/eyes	10	PROVISIONAL
+5	0	beard	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-male/beard	4	PROVISIONAL
+5	0	beardcolor	0	14	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-male/beardcolor	15	PROVISIONAL
+5	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-male/open/00.png	hidden	PROVISIONAL
+5	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-female/face	8	PROVISIONAL
+5	1	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-female/hair	4	PROVISIONAL
+5	1	haircolor	0	14	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-female/haircolor	15	PROVISIONAL
+5	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-female/eyes	10	PROVISIONAL
+5	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-female/open/00.png	hidden	PROVISIONAL
+5	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-female/open/00.png	hidden	PROVISIONAL
+5	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/highelf-female/open/00.png	hidden	PROVISIONAL
+1	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-male/face	8	PROVISIONAL
+1	0	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-male/hair	4	PROVISIONAL
+1	0	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-male/haircolor	20	PROVISIONAL
+1	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-male/eyes	10	PROVISIONAL
+1	0	beard	0	5	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-male/beard	6	PROVISIONAL
+1	0	beardcolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-male/beardcolor	20	PROVISIONAL
+1	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-male/open/00.png	hidden	PROVISIONAL
+1	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-female/face	8	PROVISIONAL
+1	1	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-female/hair	4	PROVISIONAL
+1	1	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-female/haircolor	20	PROVISIONAL
+1	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-female/eyes	10	PROVISIONAL
+1	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-female/open/00.png	hidden	PROVISIONAL
+1	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-female/open/00.png	hidden	PROVISIONAL
+1	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/human-female/open/00.png	hidden	PROVISIONAL
+128	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-male/face	8	PROVISIONAL
+128	0	hair	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-male/open/00.png	hidden	PROVISIONAL
+128	0	haircolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-male/open/00.png	hidden	PROVISIONAL
+128	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-male/eyes	10	PROVISIONAL
+128	0	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-male/open/00.png	hidden	PROVISIONAL
+128	0	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-male/open/00.png	hidden	PROVISIONAL
+128	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-male/open/00.png	hidden	PROVISIONAL
+128	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-female/face	8	PROVISIONAL
+128	1	hair	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-female/open/00.png	hidden	PROVISIONAL
+128	1	haircolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-female/open/00.png	hidden	PROVISIONAL
+128	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-female/eyes	10	PROVISIONAL
+128	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-female/open/00.png	hidden	PROVISIONAL
+128	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-female/open/00.png	hidden	PROVISIONAL
+128	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/iksar-female/open/00.png	hidden	PROVISIONAL
+10	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-male/face	8	PROVISIONAL
+10	0	hair	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-male/open/00.png	hidden	PROVISIONAL
+10	0	haircolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-male/open/00.png	hidden	PROVISIONAL
+10	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-male/eyes	10	PROVISIONAL
+10	0	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-male/open/00.png	hidden	PROVISIONAL
+10	0	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-male/open/00.png	hidden	PROVISIONAL
+10	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-male/open/00.png	hidden	PROVISIONAL
+10	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-female/face	8	PROVISIONAL
+10	1	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-female/hair	4	PROVISIONAL
+10	1	haircolor	0	23	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-female/haircolor	24	PROVISIONAL
+10	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-female/eyes	10	PROVISIONAL
+10	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-female/open/00.png	hidden	PROVISIONAL
+10	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-female/open/00.png	hidden	PROVISIONAL
+10	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/ogre-female/open/00.png	hidden	PROVISIONAL
+9	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-male/face	8	PROVISIONAL
+9	0	hair	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-male/open/00.png	hidden	PROVISIONAL
+9	0	haircolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-male/open/00.png	hidden	PROVISIONAL
+9	0	eyes	0	10	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-male/eyes	11	PROVISIONAL
+9	0	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-male/open/00.png	hidden	PROVISIONAL
+9	0	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-male/open/00.png	hidden	PROVISIONAL
+9	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-male/open/00.png	hidden	PROVISIONAL
+9	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-female/face	8	PROVISIONAL
+9	1	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-female/hair	4	PROVISIONAL
+9	1	haircolor	0	23	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-female/haircolor	24	PROVISIONAL
+9	1	eyes	0	10	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-female/eyes	11	PROVISIONAL
+9	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-female/open/00.png	hidden	PROVISIONAL
+9	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-female/open/00.png	hidden	PROVISIONAL
+9	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/troll-female/open/00.png	hidden	PROVISIONAL
+4	0	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-male/face	8	PROVISIONAL
+4	0	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-male/hair	4	PROVISIONAL
+4	0	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-male/haircolor	20	PROVISIONAL
+4	0	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-male/eyes	10	PROVISIONAL
+4	0	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-male/open/00.png	hidden	PROVISIONAL
+4	0	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-male/open/00.png	hidden	PROVISIONAL
+4	0	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-male/open/00.png	hidden	PROVISIONAL
+4	1	face	0	7	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-female/face	8	PROVISIONAL
+4	1	hair	0	3	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-female/hair	4	PROVISIONAL
+4	1	haircolor	0	19	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-female/haircolor	20	PROVISIONAL
+4	1	eyes	0	9	1	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-female/eyes	10	PROVISIONAL
+4	1	beard	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-female/open/00.png	hidden	PROVISIONAL
+4	1	beardcolor	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-female/open/00.png	hidden	PROVISIONAL
+4	1	wode	0	0	0	candidate:eqemu:RaceAppearance;visibility:oracle:facepick-matrix4/woodelf-female/open/00.png	hidden	PROVISIONAL

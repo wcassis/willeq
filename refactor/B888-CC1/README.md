@@ -30,10 +30,9 @@ pair videos and 182 visibility rows are present; the raw corpus is on the
 oracle VM under `/home/user/eq-oracle/facepick-matrix4/`. Local review copies
 are under `oracle/matrix4-review-videos/`, `oracle/matrix4-contacts/`, and
 `oracle/facepick-matrix4-compact/`. The copy in
-`data/char_create_faces.tsv` is **provisional** for build and UI verification.
-The server bounds alone are not an oracle measurement; some numeric wraps are
-not yet proved by the stepped visuals or wire. Do not ship that table as
-measured.
+`data/char_create_faces.tsv` now distinguishes the matrix4-observed option
+count from the server-derived candidate endpoints, and labels each row's
+evidence status. The server bounds alone are not an endpoint measurement.
 
 The first fast matrix attempt is explicitly marked INVALID in
 `oracle/INVALID-matrix-attempt.txt`: a selected race failed visual
@@ -96,10 +95,78 @@ locally against the provisional table. The first headless Debug archive build
 failed twice at `ar` (archive-copy error); it was not reclassified as a pass.
 The Release rebuild and its focused appearance/packet tests passed. A rendered panel capture is at
 `/home/user/kb-evidence/kb-cc1-facepick/preview-provisional/charcreate_facepick_800x600.png`.
-The full hygiene rerun passed 30/30 tests. Draft MR !168 exists for review;
-it must remain draft while the numeric-range acceptance criterion is unresolved.
+The full hygiene rerun passed 30/30 tests at the earlier provisional head.
+At the revised table/parser head, the focused `CharCreate|FacePick` run passed
+48/48 tests, `check_doc_counts.py` exited 0, and the headless hygiene run
+passed 31/31 tests. Draft MR !168 exists; CI must still verify the pushed head.
+
+## Range evidence standard
+
+For every visible pair and picker, the option COUNT `c` is the matrix4
+recurrence; the live steps are in `oracle/facepick-matrix4-meta/steps.tsv`, and
+the recurrence record is `facepick.tsv` (the `wrap` column). The `min` and
+`max` in `data/char_create_faces.tsv` are **source-derived candidates** from
+eqemu `RaceAppearance`, not measured endpoints. Their width must equal `c`.
+Every captured wire value for that pair and picker must fall within the
+candidate. `facepick_all_wire_samples.tsv` cites each raw pcap record-header
+offset, and `facepick_status_findings.tsv` lists every hidden, unsampled,
+wrong-width, or out-of-range row. No out-of-range value is normalized away.
+
+For the Barbarian-male endpoint trial, each untouched creation is an
+independent sample. A row is ENDPOINTS-PROVEN only when its endpoint-trial
+minimum and maximum equal the candidate endpoints, so its span is `c-1`.
+Otherwise the row is COUNT-MEASURED+SAMPLED only if at least one wire sample
+falls inside its candidate and none contradicts it; hidden, unsampled, or
+contradicted rows are PROVISIONAL. The exhaustive row statuses are in the
+shipped TSV. `facepick_endpoint_summary.tsv` reports the trial's per-row
+sample count, minimum, maximum, span, candidate endpoints, and verdict;
+`facepick_endpoints_barbarian_male.tsv` gives each name and packet offset.
+
+The endpoint trial stopped at the authorized worker budget before its
+forty-attempt limit. Its real packet count is below the fifteen-packet
+threshold, so every Barbarian-male endpoint row is **NOT PROVEN**; none is
+presented as an endpoint measurement. Creation 6's packet is real, but the
+UI-delete guard failed on OCR. Its exact character ID was hard-removed with
+the world container down. The account's before/after character-list diff was
+empty (`oracle/endpoints-run705-before-characters.tsv` against
+`oracle/endpoints-run717-after-characters.tsv`); the client and capture stopped,
+the INI matched its snapshot, the stack went down, and the owned lock was
+released. The guard failure remains in `endpoint-run717-job/job.log`.
 
 ## Not verified / left open
+
+The following are **all PROVISIONAL rows** (race/gender: pickers). The
+reason and any conflicting packet offset for each are in
+`facepick_status_findings.tsv`; `data/char_create_faces.tsv` is the status
+source of truth. Endpoint trial rows **NOT PROVEN**: face, hair, haircolor,
+eyes, beard, beardcolor, wode (see `facepick_endpoint_summary.tsv`).
+
+- 2/0: hair, haircolor, eyes, beard, beardcolor.
+- 2/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 6/0: beard, beardcolor, wode.
+- 6/1: haircolor, beard, beardcolor, wode.
+- 8/0: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 8/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 3/0: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 3/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 12/0: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 12/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 7/0: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 7/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 11/0: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 11/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 5/0: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 5/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 1/0: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 1/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 128/0: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 128/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 10/0: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 10/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 9/0: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 9/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 4/0: face, hair, haircolor, eyes, beard, beardcolor, wode.
+- 4/1: face, hair, haircolor, eyes, beard, beardcolor, wode.
 
 - The revised 2026-10-13 calibration method also failed its prerequisite of a
   stable opening state across creations. Three real Barbarian-male creates
@@ -118,8 +185,8 @@ it must remain draft while the numeric-range acceptance criterion is unresolved.
   observations cannot form a contiguous sequence from one fixed numeric
   origin. DirectInput also drops some clicks, so attempted pulse counts alone
   cannot prove a wrap. The guarded calibration batch was stopped after its
-  third creation began and *before* it submitted a packet. No row has been
-  promoted from PROVISIONAL or labeled as a measured endpoint.
+  third creation began and *before* it submitted a packet. That pilot by
+  itself did not promote a row or establish an endpoint.
 - The calibration characters (IDs 87-89) were soft-deleted via the official
   UI, then all their linked DB rows were removed by
   `oracle/calibration-cleanup.sql` with the world container stopped. A
@@ -136,7 +203,8 @@ it must remain draft while the numeric-range acceptance criterion is unresolved.
   These are not the provisional first-option numbers. The picker has no
   numeric display and wraps, so returning to the starting appearance cannot
   identify the absolute minimum. This pilot is **not** one of the requested
-  52 endpoint packets and must not be cited as a range. Its raw pcap is
+  52 endpoint packets in the superseded plan and must not be cited as a range.
+  Its raw pcap is
   `oracle/wire-pilot-failed.pcap` in the evidence root. The seeded character
   was removed with the world stopped; account/character-table data returned
   to the pre-run snapshot (ignoring only the dump timestamps), the INI was
