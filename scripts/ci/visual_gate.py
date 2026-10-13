@@ -378,8 +378,15 @@ def platform_config(manifest, platform, bench=None, goldens_dir=None):
             platform="x86", golden_root=root, section=manifest["zones"],
             bench=Path(bench) if bench else BENCH_BIN, eq_path=EQ_PATH,
             extra_bench_args=[], maps_required=False)
+    if platform == "mac":
+        root = Path(goldens_dir) if goldens_dir else GOLDENS_DIR / "mac"
+        return PlatformConfig(
+            platform="mac", golden_root=root,
+            section=manifest.get("platforms", {}).get("mac"),
+            bench=Path(bench) if bench else BENCH_BIN, eq_path=EQ_PATH,
+            extra_bench_args=[], maps_required=False)
     if platform != "pi":
-        raise ValueError(f"unknown --platform {platform!r} (x86|pi)")
+        raise ValueError(f"unknown --platform {platform!r} (x86|pi|mac)")
     if not bench:
         raise ValueError(
             "--platform pi requires --bench PATH (the published "
@@ -494,7 +501,7 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None, cfg=None):
         prefix = out_dir / zone
     csv_path = out_dir / f"{zone}.csv"
     mem_path = out_dir / f"{zone}_mem.json"
-    if cfg is not None and cfg.platform == "pi":
+    if cfg is not None and cfg.platform in ("pi", "mac"):
         # the destination for the flat-frame move below; the benchmark never
         # writes into it
         (out_dir / zone).mkdir(parents=True, exist_ok=True)
@@ -561,7 +568,7 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None, cfg=None):
         if not p.exists():
             raise RuntimeError(f"expected golden frame PNG missing: {p}\nstdout:\n{stdout_text}")
 
-    if cfg is not None and cfg.platform == "pi":
+    if cfg is not None and cfg.platform in ("pi", "mac"):
         # B1024: the committed Pi layout is NESTED (<zone>/f<n>.png) while the
         # benchmark's native output is flat (<zone>_f<n>.png, the "_f" being
         # hard-coded into the filename). Move the flat frames into place and
@@ -587,7 +594,7 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None, cfg=None):
     return png_paths, csv_rows, memory, stdout_text
 
 
-def run_memory_coverage_benchmark(zone, out_dir):
+def run_memory_coverage_benchmark(zone, out_dir, cfg=None):
     """T80: separate benchmark invocation for the three no-longer-zero memory
     categories. Full asset loading (--eqe1-path/--objects/--entities/
     --test-races), memory-JSON only -- deliberately NO --dump-frames/
@@ -605,9 +612,9 @@ def run_memory_coverage_benchmark(zone, out_dir):
 
     mem_path = out_dir / f"{zone}_coverage_mem.json"
     cmd = [
-        str(BENCH_BIN),
+        str(cfg.bench if cfg else BENCH_BIN),
         "--zone", zone,
-        "--eq-path", str(EQ_PATH),
+        "--eq-path", str(cfg.eq_path if cfg else EQ_PATH),
         "--frames", str(MEMORY_COVERAGE_FRAMES),
         "--warmup", str(MEMORY_COVERAGE_WARMUP),
         "--res", str(RESOLUTION_DEFAULT["width"]), str(RESOLUTION_DEFAULT["height"]),
@@ -1612,6 +1619,70 @@ def capture_pi(manifest, cfg, bench_cfg, production_args, out_dir):
     return 0
 
 
+def capture_mac(manifest, cfg, bench_cfg, production_args, out_dir):
+    """Stage Darwin frames and both benchmark memory legs without blessing them.
+
+    The x86 manifest supplies poses and expected geometry metrics, never Mac
+    pixels or memory baselines. Those require Will's separate bless.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    failures = []
+    captured = []
+    for zone_cfg in manifest["zones"]:
+        zone = zone_cfg["zone"]
+        print(f"[capture] mac {zone} ...")
+        try:
+            png_paths, csv_rows, memory, stdout_text = run_benchmark(
+                zone_cfg, bench_cfg, out_dir, production_args, cfg=cfg)
+            (out_dir / f"{zone}.log").write_text(stdout_text)
+            for frame in zone_cfg["designatedFrames"]:
+                if frame not in png_paths or frame >= len(csv_rows):
+                    failures.append(f"mac {zone} frame {frame}: missing image or CSV row")
+                    continue
+                row = csv_rows[frame]
+                expected = zone_cfg["metrics"][str(frame)]
+                for key, csv_key in (("draws", "draws"),
+                                     ("stateChanges", "state_changes"),
+                                     ("polys", "polys")):
+                    if int(row[csv_key]) != expected[key]:
+                        failures.append(f"mac {zone} frame {frame}: {key} "
+                                        f"{row[csv_key]} != x86 {expected[key]}")
+            if not memory:
+                failures.append(f"mac {zone}: memory JSON missing")
+            else:
+                assert_memory_budgets(f"mac {zone}", memory, failures)
+                if not memory.get("physFootprintBytes"):
+                    failures.append(f"mac {zone}: phys_footprint missing")
+                assert_memory_ledger(f"mac {zone}", memory, failures)
+            coverage = run_memory_coverage_benchmark(zone, out_dir, cfg=cfg)
+            if not coverage:
+                failures.append(f"mac {zone}: memory coverage missing")
+            else:
+                assert_memory_budgets(f"mac coverage {zone}", coverage, failures)
+                if not coverage.get("physFootprintBytes"):
+                    failures.append(f"mac coverage {zone}: phys_footprint missing")
+                assert_memory_ledger(f"mac coverage {zone}", coverage, failures)
+            captured.append(zone)
+        except RuntimeError as e:
+            failures.append(f"mac {zone}: {e}")
+
+    sums = []
+    for zone in captured:
+        for p in sorted((out_dir / zone).glob("f*.png")):
+            sums.append(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  "
+                        f"{p.relative_to(out_dir).as_posix()}")
+    (out_dir / "SHA256SUMS").write_text("\n".join(sums) + "\n")
+    if failures:
+        print("\n=== CAPTURE (mac): FAIL ===")
+        for failure in failures:
+            print(f"  - {failure}")
+        return 1
+    print(f"\n=== CAPTURE (mac): PASS; {len(captured)} zones, "
+          f"{len(sums)} frames staged; NOT BLESSED ===")
+    return 0
+
+
 def write_contact_sheet(manifest):
     rows_html = []
     for zone_cfg in manifest["zones"]:
@@ -1695,7 +1766,7 @@ def main():
     parser.add_argument("--zones", default=None,
                         help="Comma-separated subset of the manifest's zones to VERIFY "
                              "(default: all). Not valid with --bless. See select_zones().")
-    parser.add_argument("--platform", choices=["x86", "pi"], default="x86",
+    parser.add_argument("--platform", choices=["x86", "pi", "mac"], default="x86",
                         help="B1024: which golden set the gate runs. x86 (default) is "
                              "today's gate, byte for byte (the CI job passes no "
                              "--platform). pi = the Pi set: tests/goldens/pi/ + "
@@ -1719,8 +1790,8 @@ def main():
     if args.bless and args.zones is not None:
         print("ERROR: --zones cannot be combined with --bless (a bless always covers every zone)")
         return 2
-    if args.bless and args.platform == "pi":
-        print("ERROR: --bless --platform pi is refused -- Pi goldens are committed by the "
+    if args.bless and args.platform in ("pi", "mac"):
+        print(f"ERROR: --bless --platform {args.platform} is refused -- platform goldens are committed by the "
               "orchestrator from a captured set; use --platform pi --capture DIR. "
               "(Bless is Will's; the orchestrator's commit of the blessed set is that bless.)")
         return 2
@@ -1755,14 +1826,6 @@ def main():
 
     cfg = platform_config(manifest, args.platform, args.bench, args.goldens_dir)
 
-    if args.capture is not None:
-        return capture_pi(manifest, cfg, bench_cfg, production_args, args.capture)
-
-    if args.platform == "pi":
-        rc, _failures = verify_pi(manifest, cfg, bench_cfg, production_args,
-                                  goldens_dir=args.goldens_dir)
-        return rc
-
     if args.zones is not None:
         try:
             manifest, skipped = select_zones(manifest, args.zones)
@@ -1771,6 +1834,38 @@ def main():
             return 2
         print(f"[verify] --zones: verifying {', '.join(z['zone'] for z in manifest['zones'])}; "
               f"NOT verified by this invocation: {', '.join(skipped) or '(none)'}")
+
+    if args.capture is not None and args.platform == "mac":
+        return capture_mac(manifest, cfg, bench_cfg, production_args, args.capture)
+    if args.capture is not None:
+        return capture_pi(manifest, cfg, bench_cfg, production_args, args.capture)
+
+    if args.platform == "mac":
+        if args.goldens_dir is None:
+            print("ERROR: mac goldens are not blessed; use --platform mac "
+                  "--capture DIR or --goldens-dir DIR to verify a captured set")
+            return 1
+        rc = capture_mac(manifest, cfg, bench_cfg, production_args, ARTIFACTS_DIR)
+        for zone_cfg in manifest["zones"]:
+            zone = zone_cfg["zone"]
+            for frame in zone_cfg["designatedFrames"]:
+                expected = golden_frame_path(cfg, zone, frame)
+                actual = ARTIFACTS_DIR / zone / f"f{frame}.png"
+                if not expected.exists() or not actual.exists():
+                    print(f"mac {zone} frame {frame}: captured frame missing")
+                    rc = 1
+                    continue
+                if expected.read_bytes() != actual.read_bytes():
+                    print(f"mac {zone} frame {frame}: PNG BYTE MISMATCH "
+                          f"against captured set {expected}")
+                    rc = 1
+        return rc
+
+    if args.platform == "pi":
+        rc, _failures = verify_pi(manifest, cfg, bench_cfg, production_args,
+                                  goldens_dir=args.goldens_dir)
+        return rc
+
     return verify(manifest)
 
 
