@@ -33,6 +33,10 @@
 #include <malloc.h>
 #include <unistd.h>
 #endif
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#include <unistd.h>
+#endif
 
 #include "common/logging.h"
 
@@ -1139,16 +1143,18 @@ bool pollSteadyState() {
 // ============================================================================
 #if EQT_MEMORY_LEDGER
 
-#if !defined(__GLIBC__)
-#error "EQT_MEMORY_LEDGER=1 needs glibc's __libc_malloc family; configure with -DEQT_MEMORY_LEDGER=OFF"
+#if !defined(__GLIBC__) && !defined(__APPLE__)
+#error "EQT_MEMORY_LEDGER=1 needs glibc or macOS malloc zones"
 #endif
 
+#if defined(__GLIBC__)
 extern "C" {
 void* __libc_malloc(size_t);
 void __libc_free(void*);
 void* __libc_realloc(void*, size_t);
 void* __libc_memalign(size_t, size_t);
 }
+#endif
 
 namespace {
 
@@ -1172,15 +1178,7 @@ struct LedgerHeader {
 static_assert(sizeof(LedgerHeader) == 16, "header must be 16 bytes");
 constexpr size_t kHeader = sizeof(LedgerHeader);
 
-// glibc chunk accounting, exactly what its own malloc_usable_size() does:
-// the size word sits SIZE_SZ bytes before the returned block; low three bits
-// are flags (bit 1 = IS_MMAPPED). Usable = chunksize - SIZE_SZ, or minus
-// 2*SIZE_SZ for an mmapped chunk.
-inline uint64_t backendChunkBytes(void* mem) {
-    const size_t sz = reinterpret_cast<size_t*>(mem)[-1];
-    const size_t chunk = sz & ~static_cast<size_t>(7);
-    return chunk;  // the whole chunk, header included: what the arena really spent
-}
+#include "memory_ledger_backend.h"
 
 inline LedgerHeader* headerOf(void* user) {
     return reinterpret_cast<LedgerHeader*>(static_cast<char*>(user) - kHeader);
@@ -1308,13 +1306,13 @@ void* ledgerAlloc(size_t size, size_t align, const void* caller) {
     void* base;
     uint32_t offset;
     if (align <= kHeader) {
-        base = __libc_malloc(size + kHeader);
+        base = backendMalloc(size + kHeader);
         offset = kHeader;
     } else {
         // Over-allocate one alignment unit so the user pointer can sit at
         // base + align with the header in the padding before it.
         if (align & (align - 1)) return nullptr;  // not a power of two
-        base = __libc_memalign(align, size + align);
+        base = backendMemalign(align, size + align);
         offset = static_cast<uint32_t>(align);
     }
     if (!base) return nullptr;
@@ -1346,7 +1344,7 @@ void ledgerFree(void* user) {
     eqt::memory::credit(eqt::memory::catOf(h->category), charged, h->requested,
                         eqt::memory::subOf(h->category));
     eqt::memory::trace_detail::traceCredit(h->category, charged);
-    __libc_free(static_cast<char*>(user) - h->offset);
+    backendFree(static_cast<char*>(user) - h->offset);
 }
 
 void* ledgerRealloc(void* user, size_t size, const void* caller) {
@@ -1361,7 +1359,7 @@ void* ledgerRealloc(void* user, size_t size, const void* caller) {
         const uint64_t oldCharged = chargedOf(user);
         const uint64_t oldRequested = h->requested;
         void* base = static_cast<char*>(user) - kHeader;
-        void* nbase = __libc_realloc(base, size + kHeader);
+        void* nbase = backendRealloc(base, size + kHeader);
         if (!nbase) return nullptr;
         void* nuser = static_cast<char*>(nbase) + kHeader;
         LedgerHeader* nh = headerOf(nuser);
@@ -1429,9 +1427,11 @@ int posix_memalign(void** out, size_t align, size_t size) {
     *out = p;
     return 0;
 }
+#if !defined(__APPLE__)
 void* valloc(size_t size) {
     return ledgerAlloc(size, static_cast<size_t>(sysconf(_SC_PAGESIZE)), __builtin_return_address(0));
 }
+#endif
 void* pvalloc(size_t size) {
     const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
     return ledgerAlloc((size + page - 1) & ~(page - 1), page, __builtin_return_address(0));
@@ -1444,8 +1444,12 @@ size_t malloc_usable_size(void* p) {
     // recomputed rather than cached in the header -- same number, no extra
     // header bytes.
     const uint64_t charged = chargedOf(p);
+#if defined(__APPLE__)
+    const uint64_t tail = charged > h->offset ? charged - h->offset : 0;
+#else
     const uint64_t tail = charged > h->offset + sizeof(size_t)
                               ? charged - h->offset - sizeof(size_t) : 0;
+#endif
     return static_cast<size_t>(tail);
 }
 
