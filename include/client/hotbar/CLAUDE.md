@@ -1,3 +1,0 @@
-HotbarModel is one stock Titanium hotbar with ten pages and ten zero-based slots per page. Address every slot as {page, slot}; the model owns currentPage and publishes only the active page to the renderer.
-Hotbar slots persist per character as <cache>/ui/<Char>_<server>.ini [HotButtons], sharing the sanitized identity stem with UI_<Char>_<server>.ini. The former UI_<Char>_<server>.hotbar.json twin, or the older clients[0].hotbar JSON binding, is imported only when no character INI exists and removed after successful save; a malformed existing INI is preserved.
-Spell slots store spell IDs. Keyboard and mouse both call HotbarModel::findSpellGem(), backed by SpellManager's currently memorized visible gems; neither casts by hotbar position.
