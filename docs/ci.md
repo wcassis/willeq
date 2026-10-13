@@ -50,7 +50,9 @@ keep both build trees (`-e build-arm-noble -e build-arm64-noble`). `build-arm` i
 `willeq-arm-noble`) then `scripts/pi/publish_arm_build.sh`, which publishes the stripped client plus that
 commit's tracked `config/` + `data/` to **`/mnt/projects/fable/ci-arm/<sha>/`** (`by-branch/<branch>` symlinks;
 newest 12 kept). The job is automatic on `fable` and a manual, non-blocking job everywhere else
-(`glab ci trigger build-arm`), and refuses any host but `dev-u24`.
+(`glab ci trigger build-arm`), and refuses any host but `dev-u24`. Both ARM jobs write the whole build to
+`build-<arch>-noble.log`, kept as a job artifact (14 days); a failure prints the `error:` lines and the tail,
+so an ARM-only compile error reaches the trace (B1054's did not through the old `| tail -n 40`).
 
 Why there: hermes-ext has no docker and no NFS; the Orange Pi mounts the same NFS share as the dev host. A
 hermes-ext worker therefore runs a Pi leg entirely over ssh — NFS paths exist **on the Pi**, not on the worker:
