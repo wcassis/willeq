@@ -47,8 +47,9 @@ TEST(DRMKeyTranslation, ShiftAndControlPersistAcrossRepeat) {
     EXPECT_TRUE(state.event.KeyInput.Control);
 }
 
-TEST(DRMKeyTranslation, RejectsNonKeyAndUnknownValue) {
+TEST(DRMKeyTranslation, RejectsNonKeyAndOutOfRangeValuesWithoutMutation) {
     KeyState state;
+    state.event.EventType = irr::EET_USER_EVENT;
     input_event input = {};
     input.type = EV_REL;
     input.code = KEY_A;
@@ -56,7 +57,17 @@ TEST(DRMKeyTranslation, RejectsNonKeyAndUnknownValue) {
     EXPECT_FALSE(eqt_drm::translateKeyEvent(input, irr::KEY_KEY_A,
         state.keys, KEY_CNT, state.shift, state.ctrl, state.alt, state.event));
     input.type = EV_KEY;
-    input.value = 3;
-    EXPECT_FALSE(eqt_drm::translateKeyEvent(input, irr::KEY_KEY_A,
-        state.keys, KEY_CNT, state.shift, state.ctrl, state.alt, state.event));
+    for (int value : {-1, 3, 255}) {
+        KeyState invalidState;
+        invalidState.event.EventType = irr::EET_USER_EVENT;
+        input.value = value;
+        EXPECT_FALSE(eqt_drm::translateKeyEvent(input, irr::KEY_KEY_A,
+            invalidState.keys, KEY_CNT, invalidState.shift, invalidState.ctrl,
+            invalidState.alt, invalidState.event)) << value;
+        EXPECT_FALSE(invalidState.keys[KEY_A]) << value;
+        EXPECT_FALSE(invalidState.shift) << value;
+        EXPECT_FALSE(invalidState.ctrl) << value;
+        EXPECT_FALSE(invalidState.alt) << value;
+        EXPECT_EQ(invalidState.event.EventType, irr::EET_USER_EVENT) << value;
+    }
 }

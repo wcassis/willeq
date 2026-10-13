@@ -13,7 +13,8 @@ even though its normal x86 route is surfaceless EGL.
 
 The new test `DRMKeyTranslation.PressRepeatRepeatRelease` drives evdev
 press/repeat/repeat/release without a DRM device. The shift/control and
-invalid-event cases exercise the same free function used by both forks.
+`RejectsNonKeyAndOutOfRangeValuesWithoutMutation` cases pin the accepted
+EV_KEY value domain (0/1/2) in the free function used by both forks.
 
 ## Not verified / left open
 

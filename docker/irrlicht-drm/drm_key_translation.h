@@ -58,14 +58,15 @@
 
 namespace eqt_drm {
 
-// Returns false for non-key/invalid events; a repeat is another key-down
-// event, while the held-key state and modifiers remain down.
+// Accept only EV_KEY values 0 (release), 1 (press), and 2 (repeat).
+// A repeat is another key-down event; held-key state and modifiers stay down.
 inline bool translateKeyEvent(const input_event& input, irr::EKEY_CODE key,
                               bool* keyIsDown, unsigned keyCount,
                               bool& shiftDown, bool& ctrlDown, bool& altDown,
                               irr::SEvent& event)
 {
-    if (input.type != EV_KEY || input.value > 2 || input.code >= keyCount)
+    if (input.type != EV_KEY || input.value < 0 || input.value > 2 ||
+        input.code >= keyCount)
         return false;
     const bool down = input.value != 0;
     keyIsDown[input.code] = down;
