@@ -39,26 +39,20 @@ int statByKey(const std::string& key) {
     return -1;
 }
 
-uint32_t CharCreateRequest::* appearanceByKey(const std::string& key) {
-    const std::string k = upper(key);
-    if (k == "FACE") return &CharCreateRequest::face;
-    if (k == "HAIR") return &CharCreateRequest::hairstyle;
-    if (k == "HAIRCOLOR") return &CharCreateRequest::haircolor;
-    if (k == "EYES") return &CharCreateRequest::eyecolor1;
-    if (k == "BEARD") return &CharCreateRequest::beard;
-    if (k == "BEARDCOLOR") return &CharCreateRequest::beardcolor;
-    return nullptr;
-}
+struct AppearanceDescriptor {
+    uint32_t CharCreateRequest::*member;
+    size_t index;
+};
 
-size_t appearanceIndex(const std::string& key) {
+AppearanceDescriptor appearanceByKey(const std::string& key) {
     const std::string k = upper(key);
-    if (k == "FACE") return static_cast<size_t>(FacePickFeature::Face);
-    if (k == "HAIR") return static_cast<size_t>(FacePickFeature::Hair);
-    if (k == "HAIRCOLOR") return static_cast<size_t>(FacePickFeature::HairColor);
-    if (k == "EYES") return static_cast<size_t>(FacePickFeature::Eyes);
-    if (k == "BEARD") return static_cast<size_t>(FacePickFeature::Beard);
-    if (k == "BEARDCOLOR") return static_cast<size_t>(FacePickFeature::BeardColor);
-    return kFacePickFeatures;
+    if (k == "FACE") return {&CharCreateRequest::face, static_cast<size_t>(FacePickFeature::Face)};
+    if (k == "HAIR") return {&CharCreateRequest::hairstyle, static_cast<size_t>(FacePickFeature::Hair)};
+    if (k == "HAIRCOLOR") return {&CharCreateRequest::haircolor, static_cast<size_t>(FacePickFeature::HairColor)};
+    if (k == "EYES") return {&CharCreateRequest::eyecolor1, static_cast<size_t>(FacePickFeature::Eyes)};
+    if (k == "BEARD") return {&CharCreateRequest::beard, static_cast<size_t>(FacePickFeature::Beard)};
+    if (k == "BEARDCOLOR") return {&CharCreateRequest::beardcolor, static_cast<size_t>(FacePickFeature::BeardColor)};
+    return {nullptr, kFacePickFeatures};
 }
 
 bool parseAppearanceValue(const std::string& text, uint32_t& value) {
@@ -138,7 +132,8 @@ bool ParseCreateSpec(const std::string& spec, const CharCreateData& data, CharCr
             return false;
         }
         const std::string key = trim(f[i].substr(0, eq));
-        if (auto field = appearanceByKey(key)) {
+        const auto appearance = appearanceByKey(key);
+        if (appearance.member) {
             uint32_t value = 0;
             if (!parseAppearanceValue(trim(f[i].substr(eq + 1)), value)) {
                 error = "appearance term '" + f[i] + "' requires an integer from 0 to 255";
@@ -149,15 +144,15 @@ bool ParseCreateSpec(const std::string& spec, const CharCreateData& data, CharCr
                 ranges = faces.find(r.race, r.gender);
                 if (!ranges) { error = "no FacePick ranges for this race/gender"; return false; }
             }
-            const size_t index = appearanceIndex(key);
+            const size_t index = appearance.index;
             const auto& range = (*ranges)[index];
             if (appearanceSeen[index] || !range.visible || value < range.min || value > range.max) {
                 error = "appearance term '" + f[i] + "' is repeated or not offered for this race/gender";
                 return false;
             }
             appearanceSeen[index] = true;
-            r.*field = value;
-            if (field == &CharCreateRequest::eyecolor1) r.eyecolor2 = value;
+            r.*appearance.member = value;
+            if (appearance.member == &CharCreateRequest::eyecolor1) r.eyecolor2 = value;
             continue;
         }
         const int stat = statByKey(key);
