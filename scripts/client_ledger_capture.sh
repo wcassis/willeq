@@ -31,8 +31,10 @@
 #   audio               -- the B977 labels (au.soundfont_gm, au.soundfont_custom,
 #                          au.sound_buffers, au.music, au.mixer_sfx,
 #                          au.backend, au.pfs_index, au.zone_emitters;
-#                          B989 removed au.sfx_cache: the sfx cache shares the
-#                          buffer's decoded PCM instead of copying it); run it
+#                          B989 removed au.sfx_cache: the sfx cache stopped
+#                          copying the decoded PCM (B1015 then deleted the
+#                          sfx LRU entirely -- the one cache is the
+#                          AudioManager's SoundBufferCache); run it
 #                          WITHOUT --no-audio, or the row is empty
 #   zone_parse          -- the shared S3D/WLD parser carries no labels, so this
 #                          mode ALSO sets WILLEQ_LEDGER_TRACE=zone_parse:startup

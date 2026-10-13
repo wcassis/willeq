@@ -3,10 +3,7 @@
 #ifdef WITH_AUDIO
 
 #include <cstdint>
-#include <list>
-#include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 #include <mutex>
 #include <glm/glm.hpp>
@@ -19,16 +16,30 @@ class SoundBuffer;
 
 // WAV playback and spatial positioning via AudioMixer channels.
 //
-// B989 (#308): the cache holds a shared_ptr to the SAME SoundBuffer the
-// AudioManager's buffer cache already holds. There is exactly ONE decoded
-// float-PCM copy per sound -- the buffer's vector -- and the ledger reports it
-// once, to the owner that decoded it (the `au.sound_buffers` row, charged in
-// AudioManager::loadSound()). Before B989 preload() COPIED the samples into a
-// per-entry WavData, so every played WAV was held twice (the `au.sfx_cache`
-// row) with each cache capped separately at the preset's soundCache. The
-// shared_ptr also makes the LRU eviction safe the way a copy never was:
-// evicting a cache entry only drops a reference, and the buffer stays alive
-// while an active mixer channel reads its samples.
+// B1015 (#336): this class keeps NO cache. Before it (since T412) it held its
+// own filename-keyed LRU with its own cap BESIDE the AudioManager's buffer
+// cache -- two LRUs, two caps, two different victims. B989 (#308) removed
+// the COPY between them but left the second LRU, which is where the defect
+// lived: the two caches evicted different entries, so the buffer cache could
+// evict a sound the sfx cache still held (the next play re-decoded it -- two
+// decoded copies resident), and when every older sfx entry was playing the
+// sfx LRU evicted the entry it had just preloaded, so the play returned -1
+// and the requested sound silently never played.
+//
+// The ONE decoded-PCM cache of SFX PCM is the AudioManager's
+// `SoundBufferCache` (the old bufferCache_, with in-use pinning added): one
+// population under the preset's one soundCache cap, and the entry a play
+// just inserted is never the entry it evicts. This class is the channel
+// side: it allocates and frees mixer channels for decoded buffers it does
+// NOT own.
+//
+// The pin, stated plainly: the channel holds a raw `float*`
+// (MixChannel::samples = the buffer's vector data) that the audio thread
+// reads until the channel goes inactive. The shared_ptr is NOT what keeps a
+// playing channel safe -- nothing here holds a shared_ptr. What keeps it
+// safe is the SoundBufferCache's in-use pin: it asks this class (isInUse():
+// does an ACTIVE channel point into that buffer?) before evicting, and
+// refuses any entry an active channel names.
 class SfxManager {
 public:
     SfxManager();
@@ -41,78 +52,37 @@ public:
     // Set mixer reference
     void setMixer(AudioMixer* mixer);
 
-    // Share a decoded sound in the cache (a no-op when the filename is
-    // already there). The buffer is owned by whoever decoded it -- the
-    // AudioManager's buffer cache -- and the entry only adds a reference.
-    // Returns true if the filename is cached afterwards.
-    bool preload(const std::string& filename, std::shared_ptr<SoundBuffer> buffer);
+    // Play a sound whose decoded buffer is already resident in the one
+    // cache (the AudioManager loads it -- every play goes through
+    // SoundBufferCache::getOrLoad first, so a null here means the sound
+    // does not exist, not "not cached"). Allocates a mixer channel over the
+    // buffer's PCM (the channel stores a raw pointer into the buffer's
+    // vector; the cache's in-use pin keeps that PCM resident for the life of
+    // the channel). Returns a channel handle (>= 0) or -1 on failure.
+    int play(const SoundBuffer* buffer,
+             float volume = 1.0f, float pan = 0.0f, bool loop = false);
 
-    // Play a cached sound
-    // Returns channel handle (>= 0) or -1 on failure
-    int play(const std::string& filename, float volume = 1.0f,
-             float pan = 0.0f, bool loop = false);
-
-    // Play with 3D spatial positioning
-    int playSpatial(const std::string& filename, const glm::vec3& pos,
+    // Play with 3D spatial positioning (computes distance volume/pan and
+    // calls play()).
+    int playSpatial(const SoundBuffer* buffer, const glm::vec3& pos,
                     float maxDist = 500.0f, float fullVolDist = 50.0f);
 
     // Stop a playing sound by channel handle
     void stopChannel(int handle);
 
+    // B1015 (#336): the in-use pin for the ONE cache. True when an ACTIVE
+    // mixer channel points into `buffer`'s PCM (the channel stores
+    // buffer->getSamples() raw -- the audio thread reads through it until the
+    // channel goes inactive). The SoundBufferCache asks this before evicting,
+    // and never evicts a buffer it names. (It is the old SfxManager cache's
+    // isInUseLocked() -- same check, moved next to the only cache left.)
+    bool isInUse(const SoundBuffer& buffer) const;
+
     // Update listener position for spatial sounds
     void updateListener(const glm::vec3& pos, const glm::vec3& forward);
 
-    // Get the cached decoded buffer (the shared_ptr the entry holds -- it is
-    // the AudioManager's buffer, NOT a copy). Null when not cached.
-    const SoundBuffer* getWavData(const std::string& filename) const;
-
-    // Cache management
-    size_t getCacheSize() const;
-
-    // Set the cache ceiling in bytes; 0 means unlimited. Applying a ceiling
-    // evicts immediately, so lowering it at runtime takes effect at once.
-    // T412 (board B292): before this the budget was stored and nothing ever
-    // compared cacheSizeBytes_ against it, so the SFX cache grew without bound
-    // on a memory-constrained target.
-    void setCacheMaxBytes(size_t maxBytes);
-    size_t getCacheMaxBytes() const;
-
-    // Number of WAVs currently cached, and how many have been evicted since
-    // construction. Both exist for the budget tests and the debug HUD.
-    size_t getCachedSoundCount() const;
-    size_t getEvictionCount() const;
-
 private:
-    // --- T412 (board B292): LRU budget enforcement. All three require
-    // cacheMutex_ to be held by the caller. ---
-
-    // Evict least-recently-used entries until cacheSizeBytes_ <= cacheMaxBytes_,
-    // skipping anything a mixer channel is still playing, and always keeping at
-    // least one entry (the sibling rule in AudioManager::loadSound()).
-    void enforceCacheBudgetLocked();
-
-    // A WAV is "in use" when an ACTIVE mixer channel's sample pointer aliases
-    // its vector -- play() hands the channel buffer->getSamples() directly, so
-    // the last reference going away while a channel plays is a use-after-free
-    // on the audio thread. isInUseLocked() refuses to evict those.
-    bool isInUseLocked(const SoundBuffer& buffer) const;
-
-    // Move filename to the most-recently-used end.
-    void touchLruLocked(const std::string& filename) const;
-
     AudioMixer* mixer_ = nullptr;
-
-    mutable std::mutex cacheMutex_;
-    // B989: the decoded buffer itself is the AudioManager's (one copy,
-    // `au.sound_buffers`); the entry is a reference counted by this cache and
-    // the buffer cache, and the LRU drops references, not PCM.
-    std::unordered_map<std::string, std::shared_ptr<SoundBuffer>> cache_;
-    // Most-recently-used at the front. Mutable because getWavData() is const
-    // and IS the read that makes a sound recently used (play() goes through it).
-    mutable std::list<std::string> lruOrder_;
-    size_t cacheMaxBytes_ = 0;  // 0 = unlimited
-    size_t cacheSizeBytes_ = 0;
-    size_t evictionCount_ = 0;
 
     // Listener state for spatial audio
     glm::vec3 listenerPos_{0.0f};

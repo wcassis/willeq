@@ -788,8 +788,9 @@ MemoryReportBreakdown DiagnosticsComponent::getMemoryReportBreakdown(const Memor
     // Audio (from external input)
     // ============================================================
     if (ext.audioAvailable) {
-        b.sfxCacheBytes = ext.sfxCacheBytes;
-        b.totalEstimate += b.sfxCacheBytes;
+        // B1015 (#336): the sfx cache row is gone -- one decoded-PCM cache,
+        // one total. sfxCacheBytes is dead (always 0) and no longer counted.
+        b.sfxCacheBytes = 0;
 
         b.soundBufferCacheBytes = ext.soundBufferCacheBytes;
         b.totalEstimate += b.soundBufferCacheBytes;
@@ -1028,8 +1029,6 @@ std::vector<std::string> DiagnosticsComponent::getMemoryReport(const MemoryRepor
     if (ext.audioAvailable) {
         lines.push_back("");
         lines.push_back("--- Audio ---");
-
-        lines.push_back(fmt::format("[SFX Cache] {}", formatBytes(b.sfxCacheBytes)));
 
         if (ext.soundBufferCacheMaxBytes > 0) {
             lines.push_back(fmt::format("[Sound Buffer Cache] {} / {}",
