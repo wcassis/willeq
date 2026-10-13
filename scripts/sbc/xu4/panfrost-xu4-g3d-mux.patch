@@ -1,0 +1,93 @@
+From: willeq (B1045, 2026-10-13)
+Subject: [PATCH] drm/panfrost: exynos5420-family: re-select the G3D PLL mux on every power-on
+
+The ODROID XU4 (Exynos 5422, Mali-T628 r0p1) runs its GPU at 24 MHz under
+mainline Panfrost. The G3D "user" clock mux mout_user_aclk_g3d (CMU_TOP
+SRC_TOP5 bit 16) is forced to fin_pll (the 24 MHz crystal) whenever the G3D
+power domain goes down. drivers/clk/samsung/clk-exynos5-subcmu.c knows this
+(exynos5x_g3d_subcmu lists { SRC_TOP5, 0, BIT(16) } as the value to park
+while the domain is off) and restores the saved value from the sub-CMU
+platform device's runtime_resume -- but that device stays runtime-suspended
+while Panfrost cycles the domain, so the restore never runs. The common clock
+framework still reports g3d at 177-600 MHz; GPU_CYCLE_COUNT against wall
+time measures 24.0 MHz.
+
+Re-select the PLL path (bit 16 = mout_sw_aclk_g3d) at the top of every
+panfrost_gpu_power_on(), which probe, runtime resume and job reset all pass
+through. Measured on the XU4: glmark2 'build' 15 -> 279 fps, fragment job
+60.7 -> 2.8 ms, willeq qeynos2 1280x720 10 -> 89 fps.
+
+Device-local workaround for a module built out of tree against the Armbian
+6.6.y headers (scripts/sbc/xu4/README.md; apply with patch -p1 inside the
+panfrost source directory). The upstream-shaped fix belongs in
+clk-exynos5-subcmu.c (restore from a genpd power-on notifier).
+
+--- a/panfrost_gpu.c
++++ b/panfrost_gpu.c
+@@ -8,6 +8,7 @@
+ #include <linux/dma-mapping.h>
+ #include <linux/interrupt.h>
+ #include <linux/io.h>
++#include <linux/of.h>
+ #include <linux/iopoll.h>
+ #include <linux/platform_device.h>
+ #include <linux/pm_runtime.h>
+@@ -348,12 +349,58 @@
+ 	return core_mask;
+ }
+ 
++/*
++ * Exynos 5420-family (ODROID XU4; willeq B1045, 2026-10-13): the G3D "user"
++ * mux mout_user_aclk_g3d (CMU_TOP SRC_TOP5 bit 16) is forced to fin_pll
++ * (24 MHz) whenever the G3D power domain goes down, and the sub-CMU code that
++ * should put it back (clk-exynos5-subcmu.c, exynos5x_g3d_subcmu) only
++ * restores from its platform device's runtime_resume, which never runs while
++ * this driver cycles the domain. Without this the GPU runs at 24 MHz
++ * (GPU_CYCLE_COUNT-measured) while the clock framework reports 177-600 MHz.
++ * Re-select the PLL path on every power-on.
++ * Register: 0x10010000 + 0x10214, bit 16 (1 = mout_sw_aclk_g3d).
++ */
++#define XU4_CMU_TOP_SRC_TOP5	0x10020214
++static void __iomem *xu4_src_top5;
++static bool xu4_mux_fix_off;
++
++static void xu4_g3d_mux_fix(struct panfrost_device *pfdev)
++{
++	u32 v;
++
++	if (xu4_mux_fix_off)
++		return;
++	if (!xu4_src_top5) {
++		if (!of_machine_is_compatible("samsung,exynos5420") &&
++		    !of_machine_is_compatible("samsung,exynos5800") &&
++		    !of_machine_is_compatible("samsung,exynos5422")) {
++			dev_info(pfdev->dev, "G3D mux fix: not an exynos5420-family machine, off\n");
++			xu4_mux_fix_off = true;
++			return;
++		}
++		xu4_src_top5 = ioremap(XU4_CMU_TOP_SRC_TOP5, 4);
++		if (!xu4_src_top5) {
++			dev_info(pfdev->dev, "G3D mux fix: ioremap failed, off\n");
++			xu4_mux_fix_off = true;
++			return;
++		}
++		dev_info(pfdev->dev, "G3D mux fix armed (SRC_TOP5 bit16 -> mout_sw_aclk_g3d on every power-on)\n");
++	}
++	v = readl(xu4_src_top5);
++	if (!(v & BIT(16))) {
++		writel(v | BIT(16), xu4_src_top5);
++		dev_info(pfdev->dev, "G3D mux: fin_pll -> mout_sw_aclk_g3d (SRC_TOP5 0x%08x)\n",
++			 readl(xu4_src_top5));
++	}
++}
++
+ void panfrost_gpu_power_on(struct panfrost_device *pfdev)
+ {
+ 	int ret;
+ 	u32 val;
+ 	u64 core_mask;
+ 
++	xu4_g3d_mux_fix(pfdev);
+ 	panfrost_gpu_init_quirks(pfdev);
+ 	core_mask = panfrost_get_core_mask(pfdev);
+ 
