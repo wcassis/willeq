@@ -12,6 +12,10 @@ A card body still says `-j3` for any direct `cmake --build`.
 
 ## What runs where
 
+Official-client oracle sessions are separate from CI. The one-command lane
+driver, plan vocabulary, evidence layout and exit codes are in
+[`oracle_driver.md`](oracle_driver.md).
+
 | | |
 | --- | --- |
 | GitLab | `https://gitlab.goldfarm.local`, project `willeq/willeq` (id 1) |
