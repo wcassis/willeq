@@ -94,6 +94,9 @@ enum LinuxKey {
 
 // NOW safe to include Irrlicht headers (EKEY_CODE enum values won't be shadowed)
 #include "CIrrDeviceFB.h"
+#ifndef __APPLE__
+#include "drm_key_translation.h"
+#endif
 
 #ifdef _IRR_COMPILE_WITH_FB_DEVICE_
 
@@ -1088,79 +1091,11 @@ void CIrrDeviceFB::pollEvdev()
     if (keyboardFd_ >= 0) {
         while (read(keyboardFd_, &ev, sizeof(ev)) == sizeof(ev)) {
             if (ev.type == EV_KEY) {
-                bool pressed = (ev.value == 1);
-                bool released = (ev.value == 0);
-                // value == 2 is repeat
-
-                if (ev.code < EVDEV_KEY_MAX)
-                    keyIsDown_[ev.code] = pressed || (ev.value == 2);
-
-                // Track modifiers (KEY_LEFTSHIFT etc. don't conflict with Irrlicht)
-                if (ev.code == KEY_LEFTSHIFT || ev.code == KEY_RIGHTSHIFT)
-                    shiftDown_ = pressed || (ev.value == 2);
-                else if (ev.code == KEY_LEFTCTRL || ev.code == KEY_RIGHTCTRL)
-                    ctrlDown_ = pressed || (ev.value == 2);
-                else if (ev.code == KEY_LEFTALT || ev.code == KEY_RIGHTALT)
-                    altDown_ = pressed || (ev.value == 2);
-
-                if (pressed || released) {
-                    EKEY_CODE irrKey = linuxKeyToIrrlicht(ev.code);
-
-                    SEvent event;
-                    event.EventType = EET_KEY_INPUT_EVENT;
-                    event.KeyInput.Key = irrKey;
-                    event.KeyInput.PressedDown = pressed;
-                    event.KeyInput.Shift = shiftDown_;
-                    event.KeyInput.Control = ctrlDown_;
-                    event.KeyInput.Char = 0;
-
-                    // For keys where shift produces a different logical key,
-                    // clear the shift flag since it was "consumed" by the
-                    // keymap translation (e.g. Shift+"=" → "+", not Shift+"+")
-                    if (shiftDown_ && ev.code == KEY_EQUAL) {
-                        event.KeyInput.Shift = false;
-                    }
-
-                    // Generate character for printable keys
-                    // (KEY_KEY_A etc. are Irrlicht-only names, no conflict)
-                    if (pressed && irrKey >= KEY_KEY_A && irrKey <= KEY_KEY_Z) {
-                        event.KeyInput.Char = shiftDown_ ?
-                            (wchar_t)('A' + (irrKey - KEY_KEY_A)) :
-                            (wchar_t)('a' + (irrKey - KEY_KEY_A));
-                    } else if (pressed && irrKey >= KEY_KEY_0 && irrKey <= KEY_KEY_9) {
-                        if (!shiftDown_) {
-                            event.KeyInput.Char = (wchar_t)('0' + (irrKey - KEY_KEY_0));
-                        } else {
-                            // Shifted number keys
-                            const char shifted[] = ")!@#$%^&*(";
-                            int idx = irrKey - KEY_KEY_0;
-                            if (idx >= 0 && idx < 10)
-                                event.KeyInput.Char = (wchar_t)shifted[idx];
-                        }
-                    } else if (pressed) {
-                        // These are all Irrlicht EKEY_CODE values (Linux macros were #undef'd)
-                        switch (irrKey) {
-                            case KEY_SPACE: event.KeyInput.Char = L' '; break;
-                            case KEY_RETURN: event.KeyInput.Char = L'\r'; break;
-                            case KEY_TAB: event.KeyInput.Char = L'\t'; break;
-                            case KEY_BACK: event.KeyInput.Char = L'\b'; break;
-                            case KEY_MINUS: event.KeyInput.Char = shiftDown_ ? L'_' : L'-'; break;
-                            case KEY_PLUS: event.KeyInput.Char = shiftDown_ ? L'+' : L'='; break;
-                            case KEY_COMMA: event.KeyInput.Char = shiftDown_ ? L'<' : L','; break;
-                            case KEY_PERIOD: event.KeyInput.Char = shiftDown_ ? L'>' : L'.'; break;
-                            case KEY_OEM_2: event.KeyInput.Char = shiftDown_ ? L'?' : L'/'; break;
-                            case KEY_OEM_1: event.KeyInput.Char = shiftDown_ ? L':' : L';'; break;
-                            case KEY_OEM_7: event.KeyInput.Char = shiftDown_ ? L'"' : L'\''; break;
-                            case KEY_OEM_4: event.KeyInput.Char = shiftDown_ ? L'{' : L'['; break;
-                            case KEY_OEM_6: event.KeyInput.Char = shiftDown_ ? L'}' : L']'; break;
-                            case KEY_OEM_5: event.KeyInput.Char = shiftDown_ ? L'|' : L'\\'; break;
-                            case KEY_OEM_3: event.KeyInput.Char = shiftDown_ ? L'~' : L'`'; break;
-                            default: break;
-                        }
-                    }
-
+                SEvent event;
+                if (eqt_drm::translateKeyEvent(ev, linuxKeyToIrrlicht(ev.code),
+                                               keyIsDown_, EVDEV_KEY_MAX,
+                                               shiftDown_, ctrlDown_, altDown_, event))
                     postEventFromUser(event);
-                }
             }
         }
     }

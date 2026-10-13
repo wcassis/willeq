@@ -63,6 +63,14 @@ TARGET_INCLUDE_DIRECTORIES(test_drm_mode_select PRIVATE ${CMAKE_SOURCE_DIR})
 TARGET_LINK_LIBRARIES(test_drm_mode_select GTest::gtest_main)
 GTEST_DISCOVER_TESTS(test_drm_mode_select DISCOVERY_TIMEOUT 120)
 
+IF(EQT_GRAPHICS AND EQT_GLES2)
+    ADD_EXECUTABLE(test_drm_key_translation test_drm_key_translation.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_drm_key_translation PRIVATE
+        ${CMAKE_SOURCE_DIR} ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_drm_key_translation GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_drm_key_translation DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # Test packet serialization - packet.cpp uses fmt
 ADD_EXECUTABLE(test_packet
     test_packet.cpp
