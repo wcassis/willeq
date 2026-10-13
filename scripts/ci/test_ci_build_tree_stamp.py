@@ -8,10 +8,12 @@ pre-B603 binary (job 4007), a false red. The fix lives in the pipeline file,
 so this test reads it as TEXT (no PyYAML on the runners, and `!reference` is
 a GitLab-only tag) and asserts:
 
-  1. the `test` job verifies the stamp before its first ctest line, and the
-     verify block rebuilds with the shared willeq_build_tree on a mismatch and
-     verifies again; `client-ledger-live` verifies before it runs the client;
-  2. the build steps exist once (`.build_tree`), the `build` job runs them, and
+  1. the `build-test` job verifies the stamp before its first ctest line, and
+     the verify block rebuilds with the shared willeq_build_tree on a mismatch
+     and verifies again; `client-ledger-live` verifies before it runs the
+     client (B1042 folded `build` + `test` into `build-test`, so there the
+     verify is a file read that matches -- the net is kept regardless);
+  2. the build steps exist once (`.build_tree`), the `build-test` job runs them, and
      inside them the host+sha claim is written AFTER `cmake --build` (a stamp
      must never claim a build that failed), with the only stamp before it
      being the ref-only one that clears an earlier claim;
@@ -79,10 +81,13 @@ def check(text):
     expect(any("set -eo pipefail" in l for l in bt[:i_build]),
            ".build_tree must run under errexit+pipefail so a failed build never stamps")
 
-    build = code_lines(job_body(text, "build"))
-    expect(any("!reference [.build_tree, script]" in l for l in build), "`build` must use !reference [.build_tree, script]")
-    expect(any(l.strip() == "- willeq_build_tree" for l in build), "`build` must run willeq_build_tree")
-    expect(not any("cmake --build" in l for l in build), "`build` keeps its own copy of cmake --build (use .build_tree)")
+    build = code_lines(job_body(text, "build-test"))
+    expect(any("!reference [.build_tree, script]" in l for l in build), "`build-test` must use !reference [.build_tree, script]")
+    expect(any(l.strip() == "- willeq_build_tree" for l in build), "`build-test` must run willeq_build_tree")
+    expect(not any("cmake --build" in l for l in build), "`build-test` keeps its own copy of cmake --build (use .build_tree)")
+    i_wbt = [i for i, l in enumerate(build) if l.strip() == "- willeq_build_tree"]
+    i_ct = [i for i, l in enumerate(build) if "ctest" in l]
+    expect(bool(i_wbt) and bool(i_ct) and i_wbt[0] < i_ct[0], "`build-test` must build before its first ctest line")
 
     # 1. the verify-or-rebuild block, and its use before the first ctest.
     vb = code_lines(job_body(text, ".verify_build_tree"))
@@ -95,7 +100,7 @@ def check(text):
     expect(all('--host "$(hostname)"' in vb[i] and '--sha "$CI_COMMIT_SHA"' in vb[i] for i in verifies),
            ".verify_build_tree must check this host and $CI_COMMIT_SHA")
 
-    for job, consumer in (("test", "ctest"), ("client-ledger-live", "client_ledger_capture.sh")):
+    for job, consumer in (("build-test", "ctest"), ("client-ledger-live", "client_ledger_capture.sh")):
         body = code_lines(job_body(text, job))
         i_c = first_index(body, lambda l: consumer in l, f"{job} {consumer}")
         i_v = [i for i, l in enumerate(body) if "!reference [.verify_build_tree, script]" in l]
@@ -146,8 +151,9 @@ def main():
     expect_red = check(old)
     if not any("test" in f and "verify" in f for f in expect_red) or not any(".goldfarm" in f for f in expect_red):
         failures.append(f"self-test: a pipeline without the verify still passes ({expect_red})")
-    stamp_first = re.sub(r"(\n\s*nice -n 10 cmake --build[^\n]*)(\n\s*python3 scripts/ci/prune_ref_build_trees.py --stamp[^\n]*--sha[^\n]*)",
-                         r"\2\1", text)
+    # (B1042: the ccache report line may sit between the build and the claim.)
+    stamp_first = re.sub(r"(\n\s*nice -n 10 cmake --build[^\n]*)((?:\n\s*ccache_report[^\n]*)?)(\n\s*python3 scripts/ci/prune_ref_build_trees.py --stamp[^\n]*--sha[^\n]*)",
+                         r"\3\1\2", text)
     if stamp_first == text or not any("before cmake --build" in f for f in check(stamp_first)):
         failures.append("self-test: a claim written before cmake --build still passes")
 
@@ -162,7 +168,7 @@ def main():
         print("FAIL:", f)
     if failures:
         return 1
-    print("OK: test/client-ledger-live verify the host+sha stamp first; build claims only after cmake --build; "
+    print("OK: build-test/client-ledger-live verify the host+sha stamp first; build claims only after cmake --build; "
           ".goldfarm names both x86-build runners; build-headless builds EQT_GRAPHICS=OFF and runs ctest in-job")
     return 0
 

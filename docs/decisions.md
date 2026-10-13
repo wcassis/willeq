@@ -2005,3 +2005,25 @@ buffer is counted (`review/B1030/README.md`, "The ledger runs"). Ruled:
 `scripts/pi_rendered_zone_sweep.sh --constrained <preset>` remains the
 override for experiments; `docs/ci.md` "The aarch64 SBC lanes" states the
 rule.
+
+## 2026-10-12 — macOS is a full-parity client platform, not a headless one (Will; B1043, #363)
+
+"The mini is not meant to be headless only, it is meant to have the same
+graphical capabilities as the x86 and orange pi builds." B1039 (#359) had
+been scoped headless-only by the orchestrator, a misreading of "dev platform
+scope". Ruled:
+
+1. **The target is parity:** the GLES2 renderer, the rendered client,
+   `gles2_zone_benchmark`, the visual gate and the memory ledger, on the M4
+   mini, the same as x86 and the Orange Pi.
+2. **The provider is ANGLE** (EGL + GLES2 over Metal), built from source at
+   a pinned commit; the Irrlicht is the same patched GLES2 build as x86 with a
+   Darwin device. GLES2 over EGL stays the only backend (P30/P32): no
+   desktop-GL/Cocoa-NSOpenGL path comes back.
+3. **Goldens and budgets stay bless-only.** A `mac` gate platform with its
+   own goldens is Will's bless, filed with captured frames; nothing is
+   committed by a probe.
+
+B1043 (PROVE) reached a running headless `gles2_zone_benchmark` on qeynos2;
+`docs/macos.md` carries the per-piece status and the recipe, the FIX card the
+rest (window + input, the remaining GLES2 targets, a ledger backend).

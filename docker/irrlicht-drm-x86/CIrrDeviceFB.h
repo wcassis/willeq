@@ -47,9 +47,22 @@
 #include "ICursorControl.h"
 
 #include <EGL/egl.h>
+#ifndef __APPLE__
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include <gbm.h>
+#else
+// B1043 (#363): Darwin has no libdrm/GBM. The DRM/GBM members below stay in
+// the class (so the layout and every member access compile unchanged), typed
+// by these opaque stand-ins; on Darwin they are never set and the DRM/GBM/
+// evdev/X11 member functions are the stubs in CIrrDeviceFB_Darwin.cpp. EGL
+// comes from ANGLE (Metal); the device takes the surfaceless/pbuffer path.
+struct gbm_device;
+struct gbm_surface;
+struct gbm_bo;
+typedef struct _drmModeCrtc drmModeCrtc;
+typedef struct { int unused; } drmModeModeInfo;
+#endif
 
 // linux/input.h is NOT included here to avoid KEY_* macro collisions with
 // Irrlicht's EKEY_CODE enum (both define KEY_SPACE, KEY_TAB, KEY_MINUS, etc.)

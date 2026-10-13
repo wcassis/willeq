@@ -395,13 +395,20 @@ SET_TESTS_PROPERTIES(PruneRefBuildTrees PROPERTIES LABELS "hygiene")
 
 # B1026 (#346): two runners carry `x86-build`, so a pipeline's build and test
 # jobs can land on different hosts (fable pipeline 809: false red). Pins the
-# .gitlab-ci.yml shape that makes that safe: test/client-ledger-live verify
+# .gitlab-ci.yml shape that makes that safe: build-test/client-ledger-live verify
 # the host+sha stamp before they consume the tree (rebuild in-job on a
 # mismatch), the build steps exist once and claim the tree only after
 # `cmake --build`, and .goldfarm no longer claims a single tagged runner.
 ADD_TEST(NAME CiBuildTreeStamp
     COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_ci_build_tree_stamp.py)
 SET_TESTS_PROPERTIES(CiBuildTreeStamp PROPERTIES LABELS "hygiene")
+
+# B1042 (#362): the CI queue savings -- the guarded ccache launcher on every
+# x86 configure (+ the hit-rate report after every build), docs-only diffs
+# skipping the C++ jobs while hygiene always runs, and build+test as ONE job.
+ADD_TEST(NAME CiQueueRules
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/ci/test_ci_queue_rules.py)
+SET_TESTS_PROPERTIES(CiQueueRules PROPERTIES LABELS "hygiene")
 
 # B975: zone-hop warmup must not contaminate the crowd's idle timing table.
 ADD_TEST(NAME NameTagCrowdTiming
