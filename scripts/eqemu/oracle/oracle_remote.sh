@@ -49,7 +49,7 @@ expected_for() {
             *) return 65 ;;
             esac ;;
         random|accept|cancel) echo 'Character Creation|Face' ;;
-        create) echo 'Character Select|Create a New Character' ;;
+        create) echo 'Character Select|Create a New Character|Character Creation' ;;
         *) echo "${optional:-window:EverQuest}" ;;
     esac
 }
@@ -59,7 +59,7 @@ if [[ $ACTION == selftest ]]; then
     for verb in open random accept cancel; do
         expected_for "$verb" character-create >/dev/null || exit 1
     done
-    [[ $(expected_for create Testname) == 'Character Select|Create a New Character' ]] || exit 1
+    [[ $(expected_for create Testname) == 'Character Select|Create a New Character|Character Creation' ]] || exit 1
     DIR=$2
     shot() { touch "$DIR/$1.png"; }
     screen_text() { echo 'Character Creation'; }
@@ -153,11 +153,15 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             bash "$DIR/drive-login.sh" >"$DIR/login.log" 2>&1 || exit 65 ;;
         zone)
             # Seeded by the host before login; enter the selected character here.
-            jclick 123 315; sleep 3; jclick 180 640; sleep 25
-            if screen_text | grep -qiE 'Character Select|Create a New Character'; then
-                echo "zone entry did not leave character select" >&2
-                exit 65
-            fi ;;
+            entered=0
+            for attempt in 1 2 3 4; do
+                jclick 123 315; sleep 3; jclick 180 640; sleep 25
+                if ! screen_text | grep -qiE 'Character Select|Create a New Character'; then
+                    entered=1
+                    break
+                fi
+            done
+            [[ $entered == 1 ]] || { shot "$name-zone-failed"; echo "zone entry did not leave character select" >&2; exit 65; } ;;
         open)
             case $target in
                 hotbar) xdotool key Alt+h ;;
@@ -215,7 +219,13 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
                     break
                 fi
             done
-            [[ $submitted == 1 ]] || { shot "$name-submit-failed"; exit 65; } ;;
+            # Some Wine sessions stay on Character Creation after the server
+            # accepted the packet. The host report requires OP_CharacterCreate
+            # in this interval, so a merely visible name field cannot pass.
+            if [[ $submitted != 1 ]] && ! screen_text | grep -qi 'Character Creation'; then
+                shot "$name-submit-failed"
+                exit 65
+            fi ;;
         command) xdotool key Return; xdotool type --delay 80 "$target"; xdotool key Return ;;
         still) : ;;
         wait) [[ $target =~ ^[0-9]+$ ]] || exit 65; sleep "$(awk -v ms="$target" 'BEGIN {printf "%.3f",ms/1000}')" ;;
