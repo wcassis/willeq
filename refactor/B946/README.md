@@ -26,10 +26,12 @@ client logs ONE INFO line:
 
 `renderer` is everything `GL_RENDERER` says, single-quoted (spaces allowed);
 `gallium` and `llvm` are the mapped libgallium/libLLVM paths from the
-process's own `/proc/self/maps` — the same file the `[memmap]` census already
-attributes (T491) — or the word `none`. `GL_RENDERER` comes back through
+process's own `/proc/self/maps` — a SECOND, minimal maps parser
+(`scanMapsText`, this TU; the `[memmap]` census reads `/proc/self/smaps`,
+`memory_ledger.cpp:720`, a different file, for T491's fold) — or the word
+`none`. `GL_RENDERER` comes back through
 `gles2GetGlRenderer()` (the driver stores it where the context is guaranteed
-current; `COpenGLES2Driver.cpp:2522`), because the driver's GL headers are
+current; `COpenGLES2Driver.cpp:2527`), because the driver's GL headers are
 private to the patched Irrlicht build. The one-place choice is x86/ARM-shared:
 `initLoadingScreen()` runs once per process on both, the same
 `COpenGLES2Driver.cpp` is compiled into both trees, and the client cannot call
@@ -48,8 +50,15 @@ the client logs an ERROR naming the missing directory and the fallback it
 will take — the default search path, i.e. the system Mesa — and **continues**:
 
 ```
-[gldriver] nollvm Mesa prefix missing: /home/user/mesa-nollvm-25.2.8/lib does not exist; falling back to the default library search path (the system Mesa -- libLLVM included). Deploy it with scripts/pi/deploy_mesa_prefix.sh (or run bin/willeq / WILLEQ_MESA=system for the opt-out). The client continues: a hand run on a fresh Pi must still work, and the Pi rigs already fail such a run (mesa_mismatch, exit 67).
+[gldriver] nollvm Mesa prefix missing: <prefix>/lib does not exist; falling back to the default library search path (the system Mesa -- libLLVM included). Deploy it with scripts/pi/deploy_mesa_prefix.sh (or run bin/willeq / WILLEQ_MESA=system for the opt-out). The client continues: a hand run on a fresh Pi must still work, and the Pi rigs already fail such a run (mesa_mismatch, exit 67).
 ```
+(The line above is the code's format verbatim, with `<prefix>` standing for the
+baked-in rpath entry. The full string with a real path is the fixture output
+of B1016's error probe — `nollvmPrefixFromRpath` composed into
+`mesaPrefixMissing`, the fixed code's own functions — a partial deploy whose
+prefix dir exists but whose `lib/` is missing:
+`[gldriver] nollvm Mesa prefix missing: /tmp/nollvm-error.B1IUkc/mesa-nollvm-25.2.8/lib does not exist; falling back to the default library search path (the system Mesa -- libLLVM included). Deploy it with scripts/pi/deploy_mesa_prefix.sh (or run bin/willeq / WILLEQ_MESA=system for the opt-out). The client continues: a hand run on a fresh Pi must still work, and the Pi rigs already fail such a run (mesa_mismatch, exit 67).`
+`refactor/B1016/README.md` names the probe.)
 
 It must not refuse: a hand run on a fresh Pi still has to work, and the rigs
 already fail such a run.
@@ -73,12 +82,18 @@ result row reports `driver=` from it.
 - **ERROR-and-continue** on a missing nollvm prefix (see above).
 - **Append-at-end column**, matching the B962/B978/B1006 TSV-column precedent;
   the maps proof stays primary.
-- **One /proc shape.** `scanMapsText()` parses the PATHNAME column of
-  `/proc/self/maps` whitespace-agnostically (six fields, pathname last). Two
-  regressions are pinned by fixtures in `tests/test_gl_driver_census.cpp`:
-  the first draft skipped only four columns, then searched for `' '`
-  literally, which matched nothing on a tab-padded line and reported
-  `none none` for every process.
+- **A SECOND, minimal /proc parser, on purpose.** `scanMapsText()`
+  parses the PATHNAME column of `/proc/self/maps` whitespace-agnostically
+  (six fields, pathname last). It is NOT the `[memmap]` census's parser:
+  that one reads `/proc/self/smaps` (`memory_ledger.cpp:720`) for T491's
+  fold, a different file whose pathname the smaps fold folds away. Reusing
+  it here would have pulled the ledger's allocator-replacement TU into a
+  GL-init read; instead this parser is two needles and never grows. The
+  tab-vs-space history that produced the skip's shape (first draft skipped
+  four tokens, then searched for `' '` literally) is pinned by the
+  fixtures in `tests/test_gl_driver_census.cpp` (space- and
+  tab-separated layouts) -- the fixtures pin the SKIPPED-SHAPE
+  regressions; they are not a red/green record.
 
 ## Evidence
 

@@ -836,6 +836,25 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_eqe1_alpha_companion_mip DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1017 (#338), criteria (d)+(e): the test that REACHES THE STALE-PACK FATAL
+# through the real ConstrainedTextureCache::getOrLoad() miss path (a fork
+# child runs the LOG_FATAL + std::exit(1) site; the parent greps its
+# stdout) and the mixed-case .BMP request that still gets the diagnosis.
+# The pre-B1017 B930 leg (test_eqe1_stale_pack) drives
+# diagnoseStaleEQE1Pack() and _exit(1)s unconditionally -- deleting the
+# diagnosis CALL at the FATAL site left it green (audit finding 7).
+# Links willeq_core (which carries constrained_texture_cache*.cpp +
+# eqe1_loader.cpp, the client's own TU set); no GL device is needed -- the
+# miss path never touches a driver.
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+    ADD_EXECUTABLE(test_eqe1_real_miss
+        test_eqe1_real_miss.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_eqe1_real_miss PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(test_eqe1_real_miss GTest::gtest_main willeq_core)
+    GTEST_DISCOVER_TESTS(test_eqe1_real_miss DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # B948 (GitLab #266): getGpuTextureMemoryUsage() counts each ETC1 alpha chain
 # exactly once -- upload a synthetic ETC1+alpha pair and assert the driver's
 # figure is main + alpha once each, through the B944 eviction/restore round

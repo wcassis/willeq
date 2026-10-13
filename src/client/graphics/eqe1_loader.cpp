@@ -327,13 +327,33 @@ StaleEQE1PackDiagnosis diagnoseStaleEQE1Pack(const std::vector<const EQE1Loader*
     // caller (getOrLoad() would have hit it). Keep the first stale pack in
     // open order: for a zone load the zone-own packs were opened up front,
     // so the pack that owns the zone's texture comes first.
+    //
+    // B1017 (#338): `name` is NORMALISED first -- the pack entries were
+    // lowercased + extension-stripped by the loader, and the lookup that
+    // missed (findCompressedEntry) used that same normalised form
+    // (constrained_texture_cache_compressed.cpp: strip .bmp/.dds,
+    // lowercase). A mixed-case request or one with a .BMP/.DDS suffix
+    // would otherwise compare its RAW form against a 31-char key that the
+    // pack never stored, and the diagnosis fell back to the generic
+    // "not found in any pack" FATAL. The normalisation mirrors
+    // findCompressedEntry's, verbatim, so the key the diagnosis tests is
+    // the exact key the lookup tested.
+    std::string lookupName = name;
+    if (lookupName.size() > 4) {
+        const std::string ext = lookupName.substr(lookupName.size() - 4);
+        if (ext == ".bmp" || ext == ".dds")
+            lookupName = lookupName.substr(0, lookupName.size() - 4);
+    }
+    std::transform(lookupName.begin(), lookupName.end(), lookupName.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
     for (const EQE1Loader* loader : loaders) {
         if (!loader || !loader->isOpen()) continue;
-        if (!loader->holdsTruncatedName(name)) continue;
+        if (!loader->holdsTruncatedName(lookupName)) continue;
         diag.stalePack = true;
         diag.packPath = loader->getFilePath();
         diag.packVersion = loader->getFormatVersion();
-        diag.truncatedName = name.substr(0, EQE1_INLINE_NAME_LIMIT);
+        diag.truncatedName = lookupName.substr(0, EQE1_INLINE_NAME_LIMIT);
         break;
     }
     return diag;
