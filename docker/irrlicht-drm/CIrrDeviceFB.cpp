@@ -389,28 +389,28 @@ bool CIrrDeviceFB::initDRM()
     // exactly that path; a failure there is an explicit error naming the
     // path and the reason, never a silent fallback to auto-selection or to
     // surfaceless EGL.
-    std::vector<std::string> candidates = eqt_drm::drmCardCandidates();
+    std::vector<std::string> cardCandidates = eqt_drm::drmCardCandidates();
     const char* override = std::getenv("WILLEQ_DRM_DEVICE");
     const bool overrideInForce = override && override[0] != '\0';
-    eqt_drm::DRMCardSelection selection =
-        eqt_drm::selectDRMCard(candidates, openDRMCard, checkDRMCard, overrideInForce);
+    eqt_drm::DRMCardSelection cardSelection =
+        eqt_drm::selectDRMCard(cardCandidates, openDRMCard, checkDRMCard, overrideInForce);
 
-    if (!selection.ok) {
+    if (!cardSelection.ok) {
         char msg[256];
         if (overrideInForce) {
             snprintf(msg, sizeof(msg),
                      "DRM: WILLEQ_DRM_DEVICE=%s: %s (explicit override, "
                      "no fallback)",
-                     override, selection.reason.c_str());
+                     override, cardSelection.reason.c_str());
         } else {
             snprintf(msg, sizeof(msg),
-                     "DRM: no usable /dev/dri/card* (%s)", selection.reason.c_str());
+                     "DRM: no usable /dev/dri/card* (%s)", cardSelection.reason.c_str());
         }
         os::Printer::log(msg, ELL_ERROR);
         return false;
     }
 
-    const std::string& cardPath = candidates[selection.index];
+    const std::string& cardPath = cardCandidates[cardSelection.index];
     drmFd_ = openDRMCard(cardPath);
     if (drmFd_ < 0) {
         os::Printer::log("DRM: re-open of the selected card failed", ELL_ERROR);
