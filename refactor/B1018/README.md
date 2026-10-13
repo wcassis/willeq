@@ -40,7 +40,7 @@ AC1b RED captured: unsplit fails 6 probe(s), committed split 0.
 
 | census | pre-B1018 (unsplit) | post-B1018 (split) |
 |---|---|---|
-| declared members | 8,062 (5,398 distinct) | **8,321 (5,537 distinct)** |
+| declared members | 8,061 (5,397 distinct) | **8,320 (5,536 distinct)** |
 | write-only fields | 45 | **45** (zero new rows) |
 | unused fields | 86 | **89** (+3, all rowed in `EXEMPT_UNUSED`) |
 
