@@ -83,9 +83,8 @@ public:
     /**
      * T174: give the bridge read access to the one hotbar model the rest of
      * the client uses (owned by EverQuest, see EverQuest::GetHotbarModel()).
-     * Without it, processHotbarRequests() cannot tell a keyboard hotbar press
-     * apart by content type and falls back to the legacy "every slot is a
-     * spell gem" behavior. Injected by setter to match the other collaborators
+     * Without it, processHotbarRequests() has no slot to activate.
+     * Injected by setter to match the other collaborators
      * (input handler, command processor, console source) rather than the
      * constructor, since the model is created after the bridge.
      * @param model Hotbar model (may be nullptr; the bridge only reads it)
