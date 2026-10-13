@@ -74,24 +74,22 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     GTEST_DISCOVER_TESTS(test_texture_eviction_character_restore DISCOVERY_TIMEOUT 120)
 ENDIF()
 
-# B950 (GitLab #268): a test TU and willeq_core must see the SAME
-# ZoneMeshBuilder layout. Two probe TUs compiled into this one target:
-# the CONSUMER probe carries no explicit define and sees the public
-# header in the state a bare willeq_core consumer does (WITHOUT
-# EQT_HAS_TEXTURE_ATLAS before the fix, WITH it once the define is PUBLIC
-# on willeq_core and flows in through the link); the CORE probe carries
-# the define explicitly, the state willeq_core's own sources are in. Each
-# reports sizeof(ZoneMeshBuilder) and the two must agree. Before the fix
-# the consumer probe is 8 bytes smaller and the test is RED.
+# B950 (GitLab #268) + B1019 (GitLab #340): a plain consumer and willeq_core
+# must see the SAME ZoneMeshBuilder layout. One test TU, NO explicit define
+# of its own: it sees zone_geometry.h in the state a bare willeq_core
+# consumer does (WITHOUT EQT_HAS_TEXTURE_ATLAS before the fix, WITH it once
+# the define is PUBLIC on willeq_core and flows in through the link), and it
+# compares its own sizeof against willeq_core's own
+# ZoneMeshBuilder::layoutSize() -- the sizeof of the class as willeq_core's
+# zone_geometry.cpp was built. Before the fix the consumer is 8 bytes
+# smaller and the test is RED. B1019 replaced the old shape -- a sibling
+# "core" probe TU carrying a hand-placed per-source define -- which pinned
+# the macro state of THIS test target, not of willeq_core.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_zone_geometry_atlas_layout
         test_zone_geometry_atlas_layout.cpp
-        zone_geometry_atlas_layout_probe_consumer.cpp
-        zone_geometry_atlas_layout_probe_with.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_zone_geometry_atlas_layout PRIVATE ${IRRLICHT_INCLUDE_DIR})
-    SET_SOURCE_FILES_PROPERTIES(zone_geometry_atlas_layout_probe_with.cpp PROPERTIES
-        COMPILE_DEFINITIONS "EQT_HAS_TEXTURE_ATLAS")
     TARGET_LINK_LIBRARIES(test_zone_geometry_atlas_layout GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_zone_geometry_atlas_layout DISCOVERY_TIMEOUT 120)
 ENDIF()

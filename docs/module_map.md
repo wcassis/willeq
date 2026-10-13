@@ -486,14 +486,14 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (32 tests: `FileSizeCeiling`, `DocCitations` (+ B1020's
+`hygiene` (33 tests: `FileSizeCeiling`, `DocCitations` (+ B1020's
 `DocCitationsSelfTest`, the anchored-citation probes), B1030's
 `DockerfileArm64Derived` (the arm64 Dockerfile stays arch-swapped armhf) and
 `PiEnvLaneResolution` (`scripts/pi/env_selftest.sh`: a PI_LANE that disagrees
 with a listed PI_HOST is refused, never rewritten), `DocClaims` and
 `DocCounts` from T371/T373, plus `CommentClaims`, `TexturesReproducible`,
 `PackReproducible`, `WriteOnlyFields` (T414 Leg C, the field half of the
-reachability ratchet), T450's `DbReproducible`, T455's
+reachability ratchet), B1018's `WriteOnlyFieldsSelfTest` (`check_write_only_fields.py --self-test`, the multi-declarator split's own probes) and T450's `DbReproducible`, T455's
 `ZeroCallers`, T486's `ZeroCallersSelfTest` (the classifier's own probes,
 `check_zero_callers.py --self-test`), T491's `VisualGateLedgerAssertions`
 + `MemoryCapHuntScript` (the memory-ledger half of the visual gate and the
@@ -554,7 +554,11 @@ and `client-ledger-live` verify the host+sha build-tree stamp before they
 consume the tree, the build steps exist once and claim the tree only after
 `cmake --build`, and `.goldfarm` no longer claims a single tagged runner;
 B1038: the `build-headless` job builds `EQT_GRAPHICS=OFF` through that same
-function into its own tree and runs `ctest -LE hygiene` in-job),
+function into its own tree and runs `ctest -LE hygiene` in-job) and B1042's
+`CiQueueRules` (`scripts/ci/test_ci_queue_rules.py`, `.gitlab-ci.yml` as
+text: the docs-only diff skips the C++ jobs while hygiene always runs,
+build+test is one job, and every x86 configure goes through the guarded
+ccache launcher),
 and B1024's `VisualGatePlatform`
 (`scripts/ci/test_visual_gate_platform.py`, the per-platform golden-set
 resolver: the x86 gate's benchmark invocation must stay byte-identical to

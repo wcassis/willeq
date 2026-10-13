@@ -56,7 +56,9 @@
 // now lives here. Transition scaffolding too.
 
 #include "client/client_context.h"
-#include "common/logging.h"   // B344: SetVendorMusic()'s one-time WARN
+// (B1018 removed the "common/logging.h" include: its only user was
+// SetVendorMusic()'s B344 one-time WARN, which moved to the parse site in
+// application_config.cpp.)
 #include "client/eq_enums.h"   // T341: LoadingPhase, this component's state now
 #include "client/pet_constants.h"
 #include "client/hotbar/hotbar_slot_type.h"
@@ -314,10 +316,15 @@ public:
 	void SetSoundFont(const std::string& path) { m_audio_config_soundfont = path; }
 	// B344: the vendor-music config reaches no audio decision, so the member
 	// and the store went; the key is user-facing, so the config keeps
-	// parsing it and this logs the ignore once per run.
-	void SetVendorMusic(const std::string& filename) {
-		LOG_WARN(MOD_AUDIO, "audio.vendor_music is parsed but ignored: {}", filename);
-	}
+	// parsing it. B1018 (GitLab #339): the "parsed but ignored" WARN does NOT
+	// live here. Application::initEverQuestClient() calls this setter
+	// UNCONDITIONALLY with config.audioVendorMusic (whose default is
+	// "gl.xmi"), so a warn in this body fired on every WITH_AUDIO run even
+	// when no config named the key. The warn belongs at the PARSE site,
+	// application_config.cpp's `audio_config.isMember("vendor_music")` arm,
+	// which runs only when the key is actually present -- pinned by
+	// test_vendor_music_config_warn (0 warns absent, exactly 1 present).
+	void SetVendorMusic(const std::string& /*filename*/) {}
 	void SetUse3DAudio(bool enabled) { m_audio_config_use_3d_audio = enabled; }
 #endif
 
@@ -502,7 +509,9 @@ private:
 	float m_audio_config_effects_volume = 1.0f;
 	std::string m_audio_config_soundfont;
 	// B344 deleted m_audio_config_vendor_music (write-only); the vendor_music
-	// config key is still parsed and reported as ignored by SetVendorMusic().
+	// config key is still parsed, and the "parsed but ignored" WARN now lives
+	// at that parse site (application_config.cpp) -- B1018 moved it out of
+	// SetVendorMusic(), which Application calls unconditionally.
 	// K15 (B037): re-wired. K11 deleted SetUse3DAudio() as callerless and the
 	// flag was then settable only by editing this header -- AND it had zero
 	// READERS too (the K11 note claiming InitializeAudio() read it was wrong,
