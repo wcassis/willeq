@@ -423,17 +423,17 @@ void eqt::bridge::BridgeComponent::SaveHotbarConfig() {
 	}
 }
 
-void eqt::bridge::BridgeComponent::LoadHotbarConfig() {
-	if (!ctx_.hotbar_model || ctx_.character.empty()) return;
+eqt::HotbarLoadResult eqt::bridge::BridgeComponent::LoadHotbarConfig() {
+	if (!ctx_.hotbar_model || ctx_.character.empty()) return eqt::HotbarLoadResult::Missing;
 	ctx_.hotbar_model->reset();
 	const auto& server = ctx_.LoginWorld().ServerName();
 	const auto load = eqt::LoadCharacterHotbar(ctx_.character, server, *ctx_.hotbar_model);
-	if (load == eqt::HotbarLoadResult::Loaded) return;
+	if (load == eqt::HotbarLoadResult::Loaded) return load;
 	if (load == eqt::HotbarLoadResult::Error) {
-		LOG_WARN(MOD_CONFIG, "Could not load or migrate per-character hotbar; legacy import skipped");
-		return;
+		LOG_ERROR(MOD_CONFIG, "Could not load per-character hotbar; legacy import skipped");
+		return load;
 	}
-	if (m_config_path.empty()) return;
+	if (m_config_path.empty()) return load;
 
 	auto config = EQ::JsonConfigFile::Load(m_config_path);
 	Json::Value& root = config.RawHandle();
@@ -447,8 +447,13 @@ void eqt::bridge::BridgeComponent::LoadHotbarConfig() {
 				writable->removeMember("hotbar");
 				config.Save(m_config_path);
 			}
+			return eqt::HotbarLoadResult::Loaded;
 		}
+		LOG_ERROR(MOD_CONFIG, "Could not import legacy hotbar into per-character INI");
+		ctx_.hotbar_model->reset();
+		return eqt::HotbarLoadResult::Error;
 	}
+	return load;
 }
 
 // T171: the inspect message, persisted per character alongside the hotbar.

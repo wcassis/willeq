@@ -429,6 +429,8 @@ TEST_F(HotbarReachabilityTest, PageSwitchDoesNotCarryVisibleCooldown) {
     EXPECT_FALSE(hotbar.slots[0].isOnCooldown());
     model.setCurrentPage(0);
     pumpEvents();
+    EXPECT_EQ(model.currentPage(), 0);
+    EXPECT_EQ(hotbar.currentPage, 0);
     EXPECT_EQ(hotbar.slots[0].id, 100u);
     EXPECT_FALSE(hotbar.slots[0].isOnCooldown());
 }

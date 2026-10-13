@@ -62,6 +62,7 @@
 #include "client/eq_enums.h"   // T341: LoadingPhase, this component's state now
 #include "client/pet_constants.h"
 #include "client/hotbar/hotbar_slot_type.h"
+#include "client/hotbar/hotbar_persistence.h"
 #include "client/zone_load_snapshot.h"
 #include "client/state/social_lists_io.h"  // B897: SocialListsSync
 // G02: the intent handlers below take one alternative of RendererIntent each,
@@ -212,7 +213,7 @@ public:
 	void SetRegionMapsPath(const std::string& path) { m_region_maps_path = path; }
 	void SetConfigPath(const std::string& path) { m_config_path = path; }
 	void SaveHotbarConfig();  // Save to per-character cache file
-	void LoadHotbarConfig();  // Load per-character file; import legacy config once
+	eqt::HotbarLoadResult LoadHotbarConfig();  // Load per-character file; import legacy config once
 	void SaveInspectMessage();  // T171: persist the inspect message
 	void LoadInspectMessage();  // T171: restore it at startup
 

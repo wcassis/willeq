@@ -28,10 +28,9 @@ for the six observed values, not a claim to know the complete taxonomy.
 - `BridgeComponent::LoadHotbarConfig` resets before character load. The old
   `clients[0].hotbar` is imported only when no per-character INI exists, then
   removed after a successful new-file write. A malformed existing INI is
-  preserved and reported as a load failure. `SaveHotbarConfig` writes the
-  character INI on slot/page changes. The short-lived H1 JSON twin is migrated
-  once if it is parseable and its stored fields are representable; malformed
-  or unencodable twins remain in place and block the unrelated global import. No second
+  preserved and reported as a load failure to `Application` and the log;
+  model slots remain at defaults. `SaveHotbarConfig` writes the character
+  INI on slot/page changes. There is no separate hotbar JSON store. No second
   client-config loader exists.
 - Keyboard and mouse Spell activation both use `HotbarModel::findSpellGem` over
   `SpellManager::getMemorizedSpell`, so a Spell slot stores a spell ID and
@@ -44,7 +43,7 @@ for the six observed values, not a claim to know the complete taxonomy.
 ## Verification
 
 The page switching, legacy migration, invalid page, event payload, two-character
-disk separation, unsafe filename character and keyboard spell-id cases are
+disk separation, real captured character-INI round-trip, unsafe filename character and keyboard spell-id cases are
 asserted by `test_skill_reachability`, `test_bridge_teardown` and
 `test_input_action_bridge`. The persistence test also exercises the actual
 `BridgeComponent` legacy import, removal of the old global key, and callback
@@ -61,7 +60,7 @@ JSON-twin migration/preservation cases passed 11/11 in
 | Acceptance criterion | Result | Evidence |
 |---|---|---|
 | One window, ten pages, ten slots; addressed model and event | PASS | `include/client/hotbar/hotbar_model.h:33`; `tests/test_skill_reachability.cpp:391` |
-| Per-character INI storage, observed-code round-trip, twin migration and one-time legacy import | PASS | `src/client/hotbar/hotbar_persistence.cpp`; `tests/test_bridge_teardown.cpp` |
+| Per-character INI storage, observed-code and captured-INI round-trips, one-time legacy import | PASS | `src/client/hotbar/hotbar_persistence.cpp`; `tests/test_bridge_teardown.cpp` |
 | One spell-ID-to-visible-gem rule for keyboard and mouse | PASS | `src/client/hotbar/hotbar_model.cpp:26`; `src/client/bridge/bridge_component_intents.cpp:744`; `tests/test_input_action_bridge.cpp:559` |
 | Relevant hotbar and neighbouring tests at original H1 head | PASS | Captured local CTest selection: 168 passed, two ASAN-only repros skipped (170 discovered). Fix RED/GREEN pair: paths above; `/home/user/kb-evidence/kb-h1-hotbar-model/hotbar-neighbours-fix12.log` recorded 87 passed and two intentional skips. |
 | Hygiene | PASS | Initial merged-tree run failed ZeroCallers and three missing local builder binaries. After removal of the tests-only JSON writer and building the three tools, `/home/user/kb-evidence/kb-h1-hotbar-model/hygiene-fix12-green.log` recorded 34 passed, zero failed. |
@@ -69,6 +68,15 @@ JSON-twin migration/preservation cases passed 11/11 in
 
 ## Not verified / left open
 
+- Fix leg 3 reverts the `check_zero_callers.py` exemption as requested by Q3.
+  Its local hygiene run is red: `ZeroCallers` reports the tests-only
+  `HotbarModel::setCurrentPage` seam, which H-4 has not wired to production
+  page keys. The prior hygiene PASS row above describes the earlier H1 head,
+  not this fix leg. See `hygiene-fix3.log` in the H1 worker evidence directory.
+- The delegated `include/client/hotbar/CLAUDE.md` and
+  `src/client/input/CLAUDE.md` remain for the orchestrator to remove/revert;
+  this worker's protected-file rule prohibits a direct edit. Its stale JSON
+  twin sentence is therefore still present until that action.
 - Hotbutton assignment gesture and live relog scenario belong to H-3/H-5,
   not this model leg. The observed-code mapping does not establish the full
   official-client code taxonomy.
