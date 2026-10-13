@@ -22,6 +22,9 @@
 # vendor store, GLES2-only compile config) and its project configure
 # (EQT_DRM=ON, EQT_GLES2=ON, RelWithDebInfo, tests off, RDP off), minus the
 # sysroot and the -static-libstdc++ (the binary runs on the box that built it).
+# EGL_NO_X11 / MESA_EGL_NO_X11_HEADERS: bullseye's libglvnd 1.3 eglplatform.h
+# includes <X11/Xlib.h> unless told not to (glvnd >= 1.4 needs USE_X11 instead),
+# and Xlib's `None` macro breaks `CachedTexture::Source::None`. Noble never saw it.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$(cd "$HERE/../../.." && pwd)"
@@ -83,6 +86,8 @@ fi
 cmake -S "$SRC" -B "$BUILD_DIR" -G Ninja \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DCMAKE_CXX_FLAGS_RELWITHDEBINFO='-O2 -g1 -DNDEBUG' \
+    -DCMAKE_C_FLAGS='-DEGL_NO_X11 -DMESA_EGL_NO_X11_HEADERS' \
+    -DCMAKE_CXX_FLAGS='-DEGL_NO_X11 -DMESA_EGL_NO_X11_HEADERS' \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DEQT_GRAPHICS=ON -DEQT_DRM=ON -DEQT_GLES2=ON \
     -DIRRLICHT_INCLUDE_DIR="$IRR_DIR/include" -DIRRLICHT_LIBRARY="$IRR_DIR/lib/libIrrlicht.a" \
