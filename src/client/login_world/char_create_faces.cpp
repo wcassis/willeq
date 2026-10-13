@@ -71,7 +71,7 @@ bool FacePickData::loadText(const std::string& text) {
             error_ = "char_create_faces.tsv line " + std::to_string(lineNo) + ": " + why;
             return false;
         };
-        // The shipped table adds measured option counts and provenance status.
+        // The shipped table adds independently measured counts and provenance.
         // Seven-column synthetic fixtures remain useful to exercise the parser.
         if (f.size() != 7 && f.size() != 9) return bad("expected 7 or 9 columns");
         uint32_t race = 0, gender = 0, lo = 0, hi = 0;
@@ -85,13 +85,13 @@ bool FacePickData::loadText(const std::string& text) {
         if (f[6].empty()) return bad("missing oracle source");
         if (f.size() == 9) {
             uint32_t count = 0;
-            if (f[5] == "1" ? !number(f[7], count) || count == 0
-                            : f[7] != "hidden")
+            if (f[7] != "UNMEASURED" && (!number(f[7], count) || count == 0))
                 return bad("invalid measured count");
-            if (f[8] != "ENDPOINTS-PROVEN" &&
-                f[8] != "COUNT-MEASURED+SAMPLED" &&
-                f[8] != "PROVISIONAL")
+            if (f[8] != "COUNT-MEASURED+SAMPLED" &&
+                f[8] != "COUNT-MEASURED" && f[8] != "UNMEASURED")
                 return bad("invalid range status");
+            if ((f[7] == "UNMEASURED") != (f[8] == "UNMEASURED"))
+                return bad("count and status disagree");
         }
         if (!seen[{race, gender}].insert(picker).second) return bad("duplicate picker");
         parsed[{race, gender}][picker] = {lo, hi, f[5] == "1", f[6]};

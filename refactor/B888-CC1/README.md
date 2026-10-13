@@ -30,9 +30,12 @@ pair videos and 182 visibility rows are present; the raw corpus is on the
 oracle VM under `/home/user/eq-oracle/facepick-matrix4/`. Local review copies
 are under `oracle/matrix4-review-videos/`, `oracle/matrix4-contacts/`, and
 `oracle/facepick-matrix4-compact/`. The copy in
-`data/char_create_faces.tsv` now distinguishes the matrix4-observed option
-count from the server-derived candidate endpoints, and labels each row's
-evidence status. The server bounds alone are not an endpoint measurement.
+`data/char_create_faces.tsv` now distinguishes independently detected image
+recurrences from server-derived candidate endpoints. The `facepick.tsv` wrap
+field came from server bounds, so is NOT an independent count observation.
+`scripts/b888/face_recurrence_check.py` checks the retained matrix stills;
+unproved rows are `UNMEASURED`. The server bounds alone prove neither count
+nor endpoints.
 
 The first fast matrix attempt is explicitly marked INVALID in
 `oracle/INVALID-matrix-attempt.txt`: a selected race failed visual
@@ -102,23 +105,25 @@ passed 31/31 tests. Draft MR !168 exists; CI must still verify the pushed head.
 
 ## Range evidence standard
 
-For every visible pair and picker, the option COUNT `c` is the matrix4
-recurrence; the live steps are in `oracle/facepick-matrix4-meta/steps.tsv`, and
-the recurrence record is `facepick.tsv` (the `wrap` column). The `min` and
-`max` in `data/char_create_faces.tsv` are **source-derived candidates** from
-eqemu `RaceAppearance`, not measured endpoints. Their width must equal `c`.
-Every captured wire value for that pair and picker must fall within the
-candidate. `facepick_all_wire_samples.tsv` cites each raw pcap record-header
-offset, and `facepick_status_findings.tsv` lists every hidden, unsampled,
-wrong-width, or out-of-range row. No out-of-range value is normalized away.
+An option count is `COUNT-MEASURED` only when
+`scripts/b888/face_recurrence_check.py` detects the first repeated model still
+without using server bounds, and that count agrees with the candidate width.
+The Human-male FACE self-test finds eight. The live steps are in
+`oracle/facepick-matrix4-meta/steps.tsv`; the historical `facepick.tsv` `wrap`
+column is merely a server candidate. The `min` and `max` in
+`data/char_create_faces.tsv` are also **source-derived candidates** from eqemu
+`RaceAppearance`, not measured endpoints. `facepick_all_wire_samples.tsv`
+cites raw pcap record-header offsets; `facepick_status_findings.tsv` preserves
+out-of-range samples. No out-of-range value is normalized away.
 
 For the Barbarian-male endpoint trial, each untouched creation is an
 independent sample. A row is ENDPOINTS-PROVEN only when its endpoint-trial
 minimum and maximum equal the candidate endpoints, so its span is `c-1`.
-Otherwise the row is COUNT-MEASURED+SAMPLED only if at least one wire sample
-falls inside its candidate and none contradicts it; hidden, unsampled, or
-contradicted rows are PROVISIONAL. The exhaustive row statuses are in the
-shipped TSV. `facepick_endpoint_summary.tsv` reports the trial's per-row
+Otherwise the row is COUNT-MEASURED+SAMPLED only if the detector verified the
+count and at least one wire sample falls inside its candidate with none
+contradicting it. Verified counts without that sample are COUNT-MEASURED;
+unverified rows are UNMEASURED. The exhaustive row statuses are in the
+shipped TSV. `facepick_endpoint_summary.tsv` reports the historical trial's per-row
 sample count, minimum, maximum, span, candidate endpoints, and verdict;
 `facepick_endpoints_barbarian_male.tsv` gives each name and packet offset.
 
@@ -153,11 +158,12 @@ The outside-candidate wire values remain findings, not enlarged ranges:
 hair, haircolor, beard, and beardcolor are preserved in
 `facepick_all_wire_samples.tsv` and itemized with their packet offsets in
 `facepick_status_findings.tsv`. Each sampled row with any such outside value
-is PROVISIONAL in `data/char_create_faces.tsv`.
+is retained as a finding even when an independent recurrence is found.
 
 ## Not verified / left open
 
-The following are **all PROVISIONAL rows** (race/gender: pickers). The
+The following is the **historical PROVISIONAL list before independent
+recurrence detection** (race/gender: pickers). The
 reason and any conflicting packet offset for each are in
 `facepick_status_findings.tsv`; `data/char_create_faces.tsv` is the status
 source of truth. Endpoint trial rows **NOT PROVEN**: face, hair, haircolor,

@@ -1,7 +1,8 @@
 #pragma once
 
-// B888-CC1 (#204): measured stock-client FacePick ranges. The shipped TSV
-// records each race/gender/picker separately; no appearance limit lives in C++.
+// B888-CC1 (#204): candidate FacePick endpoints with independently checked
+// counts only where the retained matrix stills prove recurrence. Other counts
+// remain UNMEASURED; no appearance limit lives in C++.
 
 #include <array>
 #include <cstddef>
