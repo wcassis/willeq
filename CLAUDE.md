@@ -162,7 +162,7 @@ specifically.
 ## Build Commands
 
 **`-j$(nproc)` does not expand reliably in a Bash tool command. Pass a hardcoded
-value, e.g. `cmake --build build -j24`** (no ccache here: a cold build is not cheap). From a script
+value, e.g. `cmake --build build -j24`** (hermes-ext workers: 4 GiB cgroup, so `-j3`, B1046). From a script
 (e.g. `scripts/build-arm-noble.sh`), `$(nproc)` works fine.
 
 **Desktop-GL Irrlicht support has been removed (P30,

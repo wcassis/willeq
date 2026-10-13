@@ -4,6 +4,11 @@
 GitLab runner, not inside a hermes kanban worker. The workers are capped at
 4 GiB and were being OOM-killed while linking (board `B847`), which is not a
 failure any amount of retrying fixes.
+Compiling is the same story: `scripts/build-gles2-x86.sh` defaults to 24 jobs
+and a worker that ran it was OOM-killed at 04:40Z on 2026-10-13 (`cc1plus`,
+`CONSTRAINT_MEMCG`); since B1046 the script reads its cgroup's `memory.max`
+and clamps `JOBS` to 1 GiB per compiler (4 under the worker cap, 24 elsewhere).
+A card body still says `-j3` for any direct `cmake --build`.
 
 ## What runs where
 
