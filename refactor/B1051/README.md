@@ -35,6 +35,25 @@ a nearby wall; no NPC is visible (`live/frame_000000.png`,
 not qeynos2 (`live/standing.log`). A pixel-counting script over these frames
 would measure the wall, not silhouettes, so no artefact count is claimed.
 
+## Retry on 2026-10-13
+
+A scripted `/say #zone qeynos2` reached qeynos2 (`retry/run.log`), but the
+safe-point capture again contained no NPC in view (`retry/frames/`). A second
+script set daylight, hid the UI, and swept four headings from the fixed
+`#goto -74 428 3.751` pose (`sweep/tour.txt`, `sweep/run.log`). One sampled
+view contains the named NPC Grennet Stormhand
+(`sweep/frames/frame_000007.png`); the other sampled views face a wall or
+contain no clearly visible NPC. That one distant NPC is not a reproduction of
+Will's reported *many* corrupted and all-black NPCs. No pixel threshold or
+crop-based count from this sample can classify the reported defect reliably.
+No knob comparison was run against this inconclusive baseline.
+
+The sweep sent `/say #zone qeynos` before exit. A separate verification run
+entered qeynos and reported location `10.0, 0.0, 5.0` (`retry/verify.log`).
+All retry logs and frames are under the same evidence root named above. Scratch
+files on the XU4 were removed after transfer; `~/willeq/*` and the GPU
+governor were not changed.
+
 ## Not verified / left open
 
 - No reproduction still containing a corrupted or black NPC; no scripted NPC
@@ -45,6 +64,7 @@ would measure the wall, not silhouettes, so no artefact count is claimed.
   has been established on the device.
 - No ARM build proof for a change; this attempt changes documentation only.
 
-Next run needs a deterministic camera/character position at the reported
-qeynos2 gate, or a live capture with visible affected NPCs, before modifying
-client code or proposing preset values.
+Next run needs the exact affected NPC group and camera pose from Will's play
+session, or another deterministic capture containing visibly affected NPCs,
+before modifying client code or proposing preset values. The retry's one
+distant NPC does not establish a failing baseline.

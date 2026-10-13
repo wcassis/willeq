@@ -80,9 +80,11 @@ Evidence: `review/B1045/README.md`.
 Will reported corrupted NPC textures and all-black NPC silhouettes on this box
 (B1051, issue #371). The first headless investigation did not capture an
 affected NPC: synthetic benchmark entities used diagnostic coloring, and the
-live Testchar camera faced a nearby wall in qeynos. No GPU mechanism or preset
-change is established. See `refactor/B1051/README.md` for commands, raw-evidence
-locations, and the remaining reproduction requirement.
+live Testchar camera faced a nearby wall in qeynos. A later scripted qeynos2
+heading sweep captured one distant named NPC, but not the reported group or a
+classifiable defect. No GPU mechanism or preset change is established. See
+`refactor/B1051/README.md` for commands, raw-evidence locations, and the
+remaining reproduction requirement.
 
 ## Kernel and module state on the box
 
