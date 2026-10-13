@@ -189,14 +189,15 @@ void eqt::commands::CommandsComponent::runPmemDiagnostics(const std::string& lab
 #ifdef WITH_AUDIO
 	if (ctx_.audio_manager && ctx_.audio_manager->isInitialized()) {
 		d.audioAvailable = true;
+		// B1015 (#336): the sfx cache row is GONE -- there is one decoded-PCM
+		// cache now, and its total is the Sound Buffer Cache row below.
+		// d.sfxCacheBytes stays 0 (a dead field in the payload; the HUD no
+		// longer prints a row for it).
 		d.soundBufferCacheBytes = ctx_.audio_manager->getSoundBufferCacheBytes();
 		d.soundBufferCacheMaxBytes = ctx_.audio_manager->getSoundBufferCacheMaxBytes();
 		d.soundFontEstimateBytes = ctx_.audio_manager->getSoundFontMemoryEstimate();
 		d.musicDecodedBytes = ctx_.audio_manager->getMusicDecodedBytes();
 		d.audioPfsArchiveBytes = ctx_.audio_manager->getPfsArchiveCacheBytes();
-		if (auto* sfx = ctx_.audio_manager->getSfxManager()) {
-			d.sfxCacheBytes = sfx->getCacheSize();
-		}
 	}
 	if (ctx_.zone_audio_manager) {
 		d.zoneEmitterCount = ctx_.zone_audio_manager->getEmitterCount();
