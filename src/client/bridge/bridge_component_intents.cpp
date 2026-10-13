@@ -26,7 +26,6 @@
 #include "client/trade_manager.h"
 #include "client/world_object.h"
 #include "client/spell/spell_manager.h"
-#include "client/hotbar/hotbar_spell.h"
 #include "client/spell/cast_refusal.h"  // T244: official refusal strings
 #include "client/spell/buff_manager.h"
 #include "client/skill/skill_manager.h"
@@ -742,7 +741,7 @@ void eqt::bridge::BridgeComponent::onHotbarActivateIntent(const eqt::events::Hot
 	switch (i.type) {
 	case eqt::HotbarSlotType::Spell: { // Spell
 		if (ctx_.spell_manager) {
-			const int resolved = eqt::FindHotbarSpellGem(ctx_.game_state.spells(), i.id);
+			const int resolved = ctx_.hotbar_model ? ctx_.hotbar_model->findSpellGem(i.id) : -1;
 			if (resolved >= 0) {
 				const auto gem = static_cast<uint8_t>(resolved);
 				uint16_t targetId = ctx_.combat_manager ? ctx_.combat_manager->GetTargetId() : 0;

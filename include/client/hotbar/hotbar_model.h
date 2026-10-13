@@ -49,6 +49,9 @@ public:
     /** Callback to resolve spell/skill names from IDs. */
     using NameResolver = std::function<std::string(HotbarSlotType type, uint32_t id)>;
     void setNameResolver(NameResolver resolver) { nameResolver_ = std::move(resolver); }
+    using SpellAtGem = std::function<uint32_t(uint8_t)>;
+    void setSpellAtGem(SpellAtGem reader) { spellAtGem_ = std::move(reader); }
+    int findSpellGem(uint32_t spellId) const;
 
     /** Callback for config save (triggered on any slot change). */
     using SaveCallback = std::function<void()>;
@@ -66,8 +69,8 @@ public:
     // production slot writer is loadFromJson() (LoadHotbarConfig at zone-in);
     // nothing in a command or the UI assigns or clears a slot, so the
     // per-character save callback (setSaveCallback, registered in
-    // BridgeComponent::wireBridgeToSubsystems) fires in
-    // production only from these two -- which today is never, i.e. hotbar
+    // BridgeComponent::wireBridgeToSubsystems) has no production assignment
+    // trigger yet, i.e. hotbar
     // slot assignment is a missing feature, not a live path. They stay
     // because their tests drive assignSlot/clearSlot as the REAL producer of
     // the HotbarSlotAssigned bridge event, not a hand-built fixture (T156's
@@ -93,6 +96,7 @@ private:
     int currentPage_ = 0;
     bridge::GameStateBridge* bridge_ = nullptr;
     NameResolver nameResolver_;
+    SpellAtGem spellAtGem_;
     SaveCallback saveCallback_;
 };
 

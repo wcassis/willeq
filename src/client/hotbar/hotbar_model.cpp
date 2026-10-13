@@ -4,6 +4,7 @@
  */
 
 #include "client/hotbar/hotbar_model.h"
+#include "client/spell/spell_constants.h"
 #include "client/bridge/game_state_bridge.h"
 #include "client/state/event_bus.h"
 #include "common/logging.h"
@@ -20,6 +21,14 @@ static bool valid(HotbarAddress address) {
 const HotbarSlot& HotbarModel::getSlot(HotbarAddress address) const {
     if (!valid(address)) return emptySlot;
     return slots_[address.page][address.slot];
+}
+
+int HotbarModel::findSpellGem(uint32_t spellId) const {
+    if (!spellAtGem_ || spellId == 0 || spellId == EQ::SPELL_UNKNOWN) return -1;
+    for (int gem = 0; gem < EQT::VISIBLE_SPELL_GEM_COUNT; ++gem) {
+        if (spellAtGem_(static_cast<uint8_t>(gem)) == spellId) return gem;
+    }
+    return -1;
 }
 
 void HotbarModel::setCurrentPage(int page) {

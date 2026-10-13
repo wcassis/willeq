@@ -1,8 +1,6 @@
 #include "client/action/input_action_bridge.h"
 #include "client/action/command_processor.h"
 #include "client/hotbar/hotbar_model.h"  // T174: read slot content type
-#include "client/hotbar/hotbar_spell.h"
-#include "client/state/game_state.h"
 #include "common/logging.h"
 
 namespace eqt {
@@ -309,8 +307,8 @@ void InputActionBridge::processHotbarRequests() {
         switch (slot.type) {
             case eqt::HotbarSlotType::Spell:
                 // A hotbar Spell stores a spell ID, not a gem position.
-                // FindHotbarSpellGem is shared with HotbarActivateIntent.
-                if (const int gem = eqt::FindHotbarSpellGem(m_state.spells(), slot.id); gem >= 0) {
+                // HotbarModel::findSpellGem is shared with HotbarActivateIntent.
+                if (const int gem = m_hotbarModel->findSpellGem(slot.id); gem >= 0) {
                     reportAction("CastSpell",
                         m_dispatcher.beginCastFromGem(static_cast<uint8_t>(gem + 1)));
                 }

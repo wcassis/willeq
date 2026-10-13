@@ -135,7 +135,7 @@ void SpellManager::publishGemChanged(uint8_t gem_slot) {
     data.gemState = static_cast<uint8_t>(m_gem_states[gem_slot]);
     data.cooldownRemainingMs = getGemCooldownRemaining(gem_slot);
     data.cooldownTotalMs = m_gem_cooldown_duration[gem_slot];
-    if (spellId != SPELL_UNKNOWN && spellId != 0) {
+    if (spellId != SPELL_UNKNOWN) {
         const auto* spell = m_spell_db.getSpell(spellId);
         data.spellName = spell ? spell->name : "";
         data.iconId = spell ? spell->gem_icon : 0;

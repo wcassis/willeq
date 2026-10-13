@@ -560,7 +560,7 @@ TEST_F(InputActionBridgeTest, HotbarSpellSlot_ResolvesSpellIdLikeMouse) {
     eqt::HotbarModel model;
     model.assignSlot({0, 2}, eqt::HotbarSlotType::Spell, /*id=*/999);
     bridge->setHotbarModel(&model);
-    state.spells().setGem(5, 999, eqt::state::SpellGemState::Ready);
+    model.setSpellAtGem([](uint8_t gem) { return gem == 5 ? 999u : 0xFFFFFFFFu; });
 
     input.hotbarRequests.push({2});
     update();
@@ -575,6 +575,7 @@ TEST_F(InputActionBridgeTest, HotbarSpellNotMemorized_DoesNotCastByPosition) {
     eqt::HotbarModel model;
     model.assignSlot({0, 2}, eqt::HotbarSlotType::Spell, 999);
     bridge->setHotbarModel(&model);
+    model.setSpellAtGem([](uint8_t) { return 0xFFFFFFFFu; });
     input.hotbarRequests.push({2});
     update();
     EXPECT_TRUE(handler.empty());
@@ -587,7 +588,7 @@ TEST_F(InputActionBridgeTest, HotbarSpellUsesCurrentPageAndRejectsPageTen) {
     model.setCurrentPage(2);
     model.setCurrentPage(10);
     bridge->setHotbarModel(&model);
-    state.spells().setGem(5, 999, eqt::state::SpellGemState::Ready);
+    model.setSpellAtGem([](uint8_t gem) { return gem == 5 ? 999u : 0xFFFFFFFFu; });
     input.hotbarRequests.push({2});
     update();
     EXPECT_EQ(model.currentPage(), 2);

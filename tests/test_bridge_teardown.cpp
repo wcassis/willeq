@@ -58,10 +58,12 @@
 
 #include "client/hotbar/hotbar_model.h"
 #include "client/hotbar/hotbar_persistence.h"
+#include "common/util/json_config.h"
 #include "zone_stream_test_utils.h"
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <unistd.h>
 
 using namespace zonetest;
@@ -90,9 +92,53 @@ TEST(HotbarPersistence, TwoCharactersHaveIndependentFiles) {
     EXPECT_EQ(aliceRead.getSlot({9, 4}).type, eqt::HotbarSlotType::Empty);
     EXPECT_EQ(bobRead.getSlot({9, 4}).id, 888u);
     EXPECT_EQ(bobRead.getSlot({2, 4}).type, eqt::HotbarSlotType::Empty);
+    aliceRead.reset();  // BridgeComponent does this before an identity load.
+    EXPECT_TRUE(eqt::LoadCharacterHotbar("Bob", "server", aliceRead));
+    EXPECT_EQ(aliceRead.getSlot({2, 4}).type, eqt::HotbarSlotType::Empty);
+    EXPECT_EQ(aliceRead.getSlot({9, 4}).id, 888u);
     EXPECT_EQ(eqt::HotbarCacheName("O'Brian", "my server"),
               "ui/UI_O_Brian_my_server.hotbar.json");
 
+    if (saved.empty()) ::unsetenv("WILLEQ_CACHE_DIR");
+    else ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
+    std::filesystem::remove_all(dir);
+}
+
+TEST(HotbarPersistence, LegacyConfigImportsOnceAndThenSavesPerCharacter) {
+    const auto dir = std::filesystem::temp_directory_path() /
+        ("willeq_h1_import_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    const char* previous = std::getenv("WILLEQ_CACHE_DIR");
+    const std::string saved = previous ? previous : "";
+    ::setenv("WILLEQ_CACHE_DIR", dir.c_str(), 1);
+    const auto configPath = dir / "client.json";
+    {
+        std::ofstream config(configPath);
+        config << R"({"clients":[{"hotbar":{"buttons":[{"type":2,"id":77}]}}]})";
+    }
+
+    EverQuest alice = MakeEq();
+    alice.Bridge().SetConfigPath(configPath.string());
+    alice.Bridge().LoadHotbarConfig();
+    EXPECT_EQ(alice.GetHotbarModel()->getSlot({0, 0}).id, 77u);
+    EXPECT_TRUE(std::filesystem::exists(dir / eqt::HotbarCacheName("Testchar", "test")));
+    auto config = EQ::JsonConfigFile::Load(configPath.string());
+    EXPECT_FALSE(config.RawHandle()["clients"][0].isMember("hotbar"));
+
+    TestBridge bridge;
+    alice.setBridge(&bridge);
+    alice.GetHotbarModel()->assignSlot({4, 3}, eqt::HotbarSlotType::Spell, 999);
+    eqt::HotbarModel savedAlice;
+    EXPECT_TRUE(eqt::LoadCharacterHotbar("Testchar", "test", savedAlice));
+    EXPECT_EQ(savedAlice.getSlot({4, 3}).id, 999u);
+
+    EverQuest bob("127.0.0.1", 0, "test", "test", "test", "Bob");
+    bob.Bridge().SetConfigPath(configPath.string());
+    bob.Bridge().LoadHotbarConfig();
+    EXPECT_EQ(bob.GetHotbarModel()->getSlot({0, 0}).type, eqt::HotbarSlotType::Empty);
+    EXPECT_FALSE(std::filesystem::exists(dir / eqt::HotbarCacheName("Bob", "test")));
+
+    alice.setBridge(nullptr);
     if (saved.empty()) ::unsetenv("WILLEQ_CACHE_DIR");
     else ::setenv("WILLEQ_CACHE_DIR", saved.c_str(), 1);
     std::filesystem::remove_all(dir);

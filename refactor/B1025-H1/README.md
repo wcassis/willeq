@@ -29,19 +29,22 @@ unmeasured code taxonomy and conflict with the existing UI-preferences writer.
   `clients[0].hotbar` is imported only when no per-character file exists, then
   removed after a successful new-file write. `SaveHotbarConfig` writes the
   character twin on slot/page changes. No second client-config loader exists.
-- Keyboard and mouse Spell activation both call `FindHotbarSpellGem` over
-  `GameState::spells()`, so a Spell slot stores a spell ID and resolves the
-  currently memorized visible gem. Without a model or matching gem, keyboard
-  activation does not guess by button position. The player-profile
-  `SpellManager::setSpellGems` load now publishes its initial gems into that
-  authoritative state, rather than leaving it empty until a later gem change.
+- Keyboard and mouse Spell activation both use `HotbarModel::findSpellGem` over
+  `SpellManager::getMemorizedSpell`, so a Spell slot stores a spell ID and
+  resolves the currently memorized visible gem. Without a model or matching
+  gem, keyboard activation does not guess by button position. EverQuest wires
+  the model's gem reader to its SpellManager, and both input routes call the
+  model's `findSpellGem`; no second spell table or later GameState projection
+  is involved.
 
 ## Verification
 
 The page round-trip, legacy migration, invalid page, event payload, two-character
 disk separation, unsafe filename character and keyboard spell-id cases are
 asserted by `test_skill_reachability`, `test_bridge_teardown` and
-`test_input_action_bridge`. The remaining hotbar handler tests are retained.
+`test_input_action_bridge`. The persistence test also exercises the actual
+`BridgeComponent` legacy import, removal of the old global key, and callback
+save after assignment. The remaining hotbar handler tests are retained.
 
 ## Not verified / left open
 

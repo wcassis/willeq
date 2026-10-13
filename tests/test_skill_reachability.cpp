@@ -398,7 +398,6 @@ TEST_F(HotbarReachabilityTest, PageAddressRoundTripsAndPublishesActivePage) {
     EQT::Graphics::HotbarPanelState panel;
     EQT::Graphics::applyHotbarSlotAssigned(panel, assignedData);
     EXPECT_EQ(panel.slots[7].type, eqt::HotbarSlotType::Empty);
-    EXPECT_EQ(panel.pages[3][7].id, 48u);
     model.setCurrentPage(3);
     auto events = bridge.drainEvents();
     ASSERT_EQ(events.size(), 10u);

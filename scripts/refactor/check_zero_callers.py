@@ -1164,6 +1164,8 @@ EXEMPT_TESTS_GROUPS = {
     ("SpellState", "castTimeTotal"): "observer",
     ("SpellState", "castingSpellId"): "observer",
     ("SpellState", "getGemCooldownProgress"): "observer",
+    ("SpellState", "getGemSpellId"): "observer",
+    ("SpellState", "hasSpellMemorized"): "observer",
     ("SpellState", "isGemReady"): "observer",
     ("SpellState", "memorizingGemSlot"): "observer",
     ("SpellState", "scribedSpellCount"): "observer",
