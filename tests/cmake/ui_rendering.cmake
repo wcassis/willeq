@@ -109,7 +109,8 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
 ENDIF()
 
 # T301 Leg D: the UI-hide toggle, from the paths a user or a capture script
-# reaches (/hideui and the F11 hotkey), plus source pins on the two single-site
+# reaches (/hideui and the F10 hotkey -- F11 at T301's time, moved to the
+# official F10 by B582), plus source pins on the two single-site
 # steps that need a GL device to execute.
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     ADD_EXECUTABLE(test_ui_hide_command
@@ -746,7 +747,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_b972_stream_buffers.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/texture_generators.cpp
     )
-    TARGET_COMPILE_DEFINITIONS(test_b972_stream_buffers PRIVATE EQT_HAS_GLES2)
+    # B1019: the PRIVATE EQT_HAS_GLES2 copy here was deleted -- the define
+    # flows in globally (ADD_DEFINITIONS at CMakeLists.txt:1027, every
+    # EQT_GLES2 configuration), exactly as the other graphics test targets
+    # already rely on.
     TARGET_INCLUDE_DIRECTORIES(test_b972_stream_buffers PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_b972_stream_buffers GTest::gtest_main willeq_core)
     GTEST_DISCOVER_TESTS(test_b972_stream_buffers DISCOVERY_TIMEOUT 120)

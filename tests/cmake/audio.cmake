@@ -152,6 +152,32 @@ IF(WITH_AUDIO)
     GTEST_DISCOVER_TESTS(test_sfx_cache_eviction DISCOVERY_TIMEOUT 120)
 ENDIF()
 
+# B1018 (GitLab #339): the "audio.vendor_music is parsed but ignored" WARN
+# must fire only when a config actually sets the key. Drives the exact
+# production parse path, Application::loadConfigFile() (application_config
+# .cpp's `audio_config.isMember("vendor_music")` arm, where the post-B1018
+# WARN lives) with two minimal configs -- the key absent (0 warns) and
+# present (exactly 1). Steady-state stdout capture (the T31 idiom from
+# test_renderer_command_echo.cpp).
+#
+# Link shape: willeq_core ALREADY compiles application_config.cpp (it is in
+# ALL_CORE_SOURCES), so this target compiles NOTHING from it -- it links the
+# archive and pulls in only the objects it actually calls (loadConfigFile,
+# the hotkey-manager objects its EQT_HAS_GRAPHICS block references, and
+# performance_metrics / json_config / data_paths for the two timers, the
+# JsonConfigFile::Load and ResolveDataPath). No direct source of that TU, or
+# the archive's copy and a duplicate collide at link time.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_vendor_music_config_warn
+        test_vendor_music_config_warn.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_vendor_music_config_warn PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_COMPILE_DEFINITIONS(test_vendor_music_config_warn PRIVATE WITH_AUDIO)
+    TARGET_LINK_LIBRARIES(test_vendor_music_config_warn
+        GTest::gtest_main willeq_core ${JSONCPP_LIBRARIES} ${FMT_LIB})
+    GTEST_DISCOVER_TESTS(test_vendor_music_config_warn DISCOVERY_TIMEOUT 120)
+ENDIF()
+
 # Test spatial audio (3D positional audio, distance attenuation, listener position)
 IF(WITH_AUDIO)
     ADD_EXECUTABLE(test_spatial_audio

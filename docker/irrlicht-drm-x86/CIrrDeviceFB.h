@@ -175,6 +175,7 @@ private:
     struct gbm_device* gbmDevice_;
     struct gbm_surface* gbmSurface_;
     struct gbm_bo* previousBo_;
+    struct gbm_bo* retiredBo_;
 
     // EGL
     EGLDisplay eglDisplay_;
@@ -210,7 +211,7 @@ private:
 
     // Page flip synchronization
     bool flipPending_;          // True if a page flip event hasn't been received yet
-    void waitForFlipComplete(); // Poll DRM fd for page flip completion event
+    bool waitForFlipComplete(); // True only after the page flip event
 
     // GLES2 mode (set before construction, affects EGL init and driver creation)
     bool useGLES2_;

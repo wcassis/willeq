@@ -650,7 +650,6 @@ void OverlaysComponent::setCurrentTargetInfo(const TargetInfo& info) {
     // B341 deleted currentTargetInfo_ (write-only); the extended fields
     // (race, class, equipment, position, ...) never reach a draw site, so the
     // body maintains only the legacy fields the outline/name-plate/ring read.
-    // Also update the legacy fields for backward compatibility
     currentTargetId_ = info.spawnId;
     currentTargetName_ = info.name;
     currentTargetHpPercent_ = info.hpPercent;

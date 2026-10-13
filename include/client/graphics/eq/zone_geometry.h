@@ -29,6 +29,16 @@ public:
                     irr::io::IFileSystem* fileSystem);
     ~ZoneMeshBuilder() = default;
 
+    // B1019 (GitLab #340): the layout-equality net's CORE side, STATIC so a
+    // consumer can call it without constructing a builder. Defined in
+    // zone_geometry.cpp, the TU willeq_core compiles -- the sizeof there
+    // carries the core's own macro state, the very thing a consumer that
+    // links willeq_core must match. tests/test_zone_geometry_atlas_layout
+    // .cpp compares its own sizeof against this. (No target links
+    // willeq_core and compiles zone_geometry.cpp itself, so the definition
+    // cannot collide with a local copy.)
+    static size_t layoutSize();
+
     // Build an Irrlicht mesh from zone geometry
     irr::scene::IMesh* buildMesh(const ZoneGeometry& geometry);
 
