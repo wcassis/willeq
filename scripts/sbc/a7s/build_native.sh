@@ -37,6 +37,10 @@ BUILD_DIR="$BUILD_ROOT/willeq-a7s"
 VENDOR="${VENDOR_STORE:-/mnt/projects/fable/ci-arm/vendor}"
 PRISTINE="${PRISTINE_IRRLICHT:-/mnt/projects/irrlicht-1.8.5}"
 PUBLISH_ROOT="${PI_LANE_PUBLISH:-/mnt/projects/fable/ci-arm64-bullseye}"
+# /mnt/projects is an sshfs mount here (no NFS client in the vendor kernel), mounted with follow_symlinks so
+# the by-branch links read as directories. Through that mount symlink(2) lands on the server but returns EIO
+# and unlink(2) refuses, so the by-branch link is made ON the share host (the sshfs peer) over ssh.
+PUBLISH_SSH="${PUBLISH_SSH:-user@10.0.30.23}"
 KEEP="${PUBLISH_KEEP:-6}"
 PUBLISH=1; IRR_ONLY=0
 for a in "$@"; do case "$a" in
@@ -114,6 +118,9 @@ git -C "$SRC" archive "$SHA" config data | tar -x -C "$TMP"
     echo "tools=$(ls "$TMP/bin" | tr '\n' ' ')"
 } > "$TMP/BUILD_INFO"
 rm -rf "$DEST"; mv "$TMP" "$DEST"
-[ -n "$BRANCH" ] && [ "$BRANCH" != HEAD ] && ln -sfn "../$SHA" "$PUBLISH_ROOT/by-branch/$(echo "$BRANCH" | tr / _)"
+if [ -n "$BRANCH" ] && [ "$BRANCH" != HEAD ]; then
+    LINK="$PUBLISH_ROOT/by-branch/$(echo "$BRANCH" | tr / _)"
+    ssh -o BatchMode=yes "$PUBLISH_SSH" "ln -sfn '../$SHA' '$LINK' && readlink '$LINK'" || echo "WARN: by-branch link not made ($LINK)"
+fi
 ls -1dt "$PUBLISH_ROOT"/*/ | grep -v by-branch | tail -n +"$((KEEP + 1))" | xargs -r rm -rf
 echo "=== published $DEST ==="; cat "$DEST/BUILD_INFO"
