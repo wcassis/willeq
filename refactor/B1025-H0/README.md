@@ -41,4 +41,4 @@ Raw evidence: `/home/user/kb-evidence/kb-h0-hotbar-oracle/`. This is an incomple
 | C — assignment INI encoding from real diffs | Partly met | `persistence.md` and the captured per-character INIs show page/slot/source transitions. Independent window 2–4 assignments and their encoding remain unverified. |
 | D — zero broken ledger references | Met | `ledger_check.txt` (`rows=38 broken_references=0`). |
 | E — seeded DB restored | Met | Three byte-identical snapshot pairs after both later captures; lane 2 stack stopped and task-owned lock released. |
-| F — docs-only MR | Pending publication | The proposed MR diff contains only this README and `refactor/BOARD.md`; publication and CI status must be checked separately. |
+| F — docs-only MR | Met | Draft MR !165 changes only this README and `refactor/BOARD.md`; CI status is a separate gate and is not claimed green here. |
