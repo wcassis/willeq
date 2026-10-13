@@ -228,14 +228,20 @@ void WeatherAudio::startRain() {
     SfxManager* sfx = audioManager_->getSfxManager();
     if (!sfx) return;
 
-    // B989: the SfxManager cache SHARES the buffer it plays from (a
-    // shared_ptr reference) instead of copying its samples -- the copy was
-    // the second decoded-PCM row (au.sfx_cache) of the same WAV.
-    sfx->preload(RAIN_LOOP_FILE, rainLoopBuffer_);
+    // B1015 (#336): every decoded SFX PCM reference lives in the ONE cache.
+    // loadSounds() already resolved the rain loop through it (getSoundBuffer
+    // = SoundBufferCache::getOrLoad): the in-use pin keeps its PCM resident
+    // for the life of the looping channel, and a cap eviction can never
+    // evict it while the channel is live.
+    rainLoopBuffer_ = audioManager_->getSoundBufferByName(RAIN_LOOP_FILE);
+    if (!rainLoopBuffer_ || !rainLoopBuffer_->isValid()) {
+        LOG_WARN(MOD_AUDIO, "Cannot start rain: sound not resident");
+        return;
+    }
 
     // Play looping
     float effectiveVolume = currentVolume_ * volume_;
-    rainHandle_ = sfx->play(RAIN_LOOP_FILE, effectiveVolume, 0.0f, true);
+    rainHandle_ = sfx->play(rainLoopBuffer_.get(), effectiveVolume, 0.0f, true);
 
     LOG_DEBUG(MOD_AUDIO, "Rain ambient started (handle={})", rainHandle_);
 }
@@ -268,14 +274,17 @@ void WeatherAudio::startWind() {
     SfxManager* sfx = audioManager_->getSfxManager();
     if (!sfx) return;
 
-    // B989: the SfxManager cache SHARES the buffer it plays from (a
-    // shared_ptr reference) instead of copying its samples -- the copy was
-    // the second decoded-PCM row (au.sfx_cache) of the same WAV.
-    sfx->preload(WIND_LOOP_FILE, windLoopBuffer_);
+    // B1015 (#336): same rule as the rain loop -- the wind loop's buffer was
+    // loaded through the ONE cache (loadSounds) and is played from there.
+    windLoopBuffer_ = audioManager_->getSoundBufferByName(WIND_LOOP_FILE);
+    if (!windLoopBuffer_ || !windLoopBuffer_->isValid()) {
+        LOG_WARN(MOD_AUDIO, "Cannot start wind: sound not resident");
+        return;
+    }
 
     // Play looping
     float effectiveVolume = currentVolume_ * volume_;
-    windHandle_ = sfx->play(WIND_LOOP_FILE, effectiveVolume, 0.0f, true);
+    windHandle_ = sfx->play(windLoopBuffer_.get(), effectiveVolume, 0.0f, true);
 
     LOG_DEBUG(MOD_AUDIO, "Wind ambient started (handle={})", windHandle_);
 }

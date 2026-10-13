@@ -187,6 +187,37 @@ IF(EQT_GRAPHICS)
     ENDIF()
 ENDIF()
 
+# B1043 (#363): macOS GLES2 = ANGLE (EGL + GLES2 over Metal). macOS has no
+# system EGL/GLESv2, libdrm, GBM or X11, and every GLES2 target in this file
+# links the literal names `EGL GLESv2 drm gbm` (+ `X11` on x86). On Darwin
+# those names become CMake targets: EGL/GLESv2 = ANGLE's dylibs, drm/gbm/X11 =
+# empty INTERFACE libraries (the patched Irrlicht's Darwin device has no
+# DRM/GBM/X11 code -- docker/irrlicht-drm-x86/CIrrDeviceFB_Darwin.cpp). No
+# Linux/ARM configure sees any of this. Recipe: docs/macos.md,
+# scripts/build-gles2-darwin.sh.
+IF(APPLE AND EQT_GRAPHICS AND EQT_GLES2)
+    SET(EQT_ANGLE_DIR "" CACHE PATH "ANGLE source checkout (headers in <dir>/include) for macOS GLES2 builds")
+    SET(EQT_ANGLE_LIB_DIR "" CACHE PATH "Directory holding ANGLE's libEGL.dylib + libGLESv2.dylib")
+    IF(NOT EXISTS "${EQT_ANGLE_DIR}/include/EGL/egl.h"
+       OR NOT EXISTS "${EQT_ANGLE_LIB_DIR}/libEGL.dylib"
+       OR NOT EXISTS "${EQT_ANGLE_LIB_DIR}/libGLESv2.dylib")
+        MESSAGE(FATAL_ERROR "macOS EQT_GLES2=ON needs ANGLE: -DEQT_ANGLE_DIR=<angle checkout> "
+            "-DEQT_ANGLE_LIB_DIR=<angle>/out/Release (docs/macos.md)")
+    ENDIF()
+    INCLUDE_DIRECTORIES(SYSTEM "${EQT_ANGLE_DIR}/include")
+    ADD_LIBRARY(EGL SHARED IMPORTED)
+    SET_TARGET_PROPERTIES(EGL PROPERTIES IMPORTED_LOCATION "${EQT_ANGLE_LIB_DIR}/libEGL.dylib")
+    ADD_LIBRARY(GLESv2 SHARED IMPORTED)
+    SET_TARGET_PROPERTIES(GLESv2 PROPERTIES IMPORTED_LOCATION "${EQT_ANGLE_LIB_DIR}/libGLESv2.dylib")
+    ADD_LIBRARY(drm INTERFACE)
+    ADD_LIBRARY(gbm INTERFACE)
+    ADD_LIBRARY(X11 INTERFACE)
+    # ANGLE's dylibs are @rpath/-named; run from the build tree without
+    # DYLD_LIBRARY_PATH.
+    LIST(APPEND CMAKE_BUILD_RPATH "${EQT_ANGLE_LIB_DIR}")
+    MESSAGE(STATUS "macOS GLES2: ANGLE ${EQT_ANGLE_LIB_DIR}")
+ENDIF()
+
 # Audio support (uses header-only libraries: miniaudio, TinySoundFont, dr_wav)
 # No external audio dependencies required
 OPTION(WITH_AUDIO "Enable audio support" ON)
@@ -933,6 +964,7 @@ IF(WITH_AUDIO)
         src/client/audio/audio_backend.cpp
         src/client/audio/midi_player.cpp
         src/client/audio/sfx_manager.cpp
+        src/client/audio/sound_buffer_cache.cpp
     )
 ENDIF()
 
@@ -1002,7 +1034,16 @@ ENDIF()
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     LIST(APPEND LINK_LIBS ${IRRLICHT_LIBRARY})
     IF(APPLE)
-        # macOS frameworks
+        # B1043 (#363): STALE. These frameworks are the desktop-GL era's
+        # (Irrlicht's Cocoa/NSOpenGL CIrrDeviceMacOSX); P30 removed desktop GL
+        # and nothing in the tree builds that device any more. macOS GLES2 is
+        # ANGLE + the patched FB device (the EGL/GLESv2 targets defined near
+        # the top of this file); OpenGL/Carbon/IOKit go with the FIX card,
+        # Cocoa stays for the windowed (CAMetalLayer) device path.
+        IF(EQT_GLES2)
+            ADD_DEFINITIONS(-DEQT_HAS_GLES2)
+            LIST(APPEND LINK_LIBS EGL GLESv2)
+        ENDIF()
         FIND_LIBRARY(COCOA_FRAMEWORK Cocoa)
         FIND_LIBRARY(OPENGL_FRAMEWORK OpenGL)
         FIND_LIBRARY(IOKIT_FRAMEWORK IOKit)

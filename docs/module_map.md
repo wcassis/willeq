@@ -486,7 +486,7 @@ the variant plus `GameEvent` (the count of enumerators is measured by
 `tests/CMakeLists.txt` is now a driver that `include()`s **19** per-domain
 fragments from `tests/cmake/`: `action_handlers`, `archives`, `audio`,
 `commands`, `core_utils`, `data_formats`, `database`, `eqe1`, `graphics`,
-`hygiene` (31 tests: `FileSizeCeiling`, `DocCitations` (+ B1020's
+`hygiene` (32 tests: `FileSizeCeiling`, `DocCitations` (+ B1020's
 `DocCitationsSelfTest`, the anchored-citation probes), B1030's
 `DockerfileArm64Derived` (the arm64 Dockerfile stays arch-swapped armhf) and
 `PiEnvLaneResolution` (`scripts/pi/env_selftest.sh`: a PI_LANE that disagrees

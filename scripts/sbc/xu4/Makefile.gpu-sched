@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+ifneq ($(KERNELRELEASE),)
+ccflags-y += -I$(src)
+obj-m := gpu-sched.o
+gpu-sched-y := sched_main.o sched_fence.o sched_entity.o
+else
+KDIR ?= /lib/modules/$(shell uname -r)/build
+all:
+	$(MAKE) -C $(KDIR) M=$(CURDIR) modules
+clean:
+	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
+endif

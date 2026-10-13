@@ -7,6 +7,7 @@
 // Provides EDT_OPENGL support via EGL on GBM surfaces with DRM/KMS page flipping.
 // No X11 required - renders directly to the display via kernel mode setting.
 
+#ifndef __APPLE__ // B1043 (#363): Linux-only (DRM/GBM/evdev/VT/X11); Darwin stubs in CIrrDeviceFB_Darwin.cpp
 // linux/input.h MUST be included FIRST, before any Irrlicht headers.
 // Both linux/input.h and Irrlicht's Keycodes.h define KEY_SPACE, KEY_TAB,
 // KEY_MINUS, KEY_F1, etc. - Linux as preprocessor macros (#define KEY_SPACE 57),
@@ -89,6 +90,7 @@ enum LinuxKey {
 #undef KEY_COMMA
 #undef KEY_PLAY
 #undef KEY_ZOOM
+#endif // !__APPLE__
 
 // NOW safe to include Irrlicht headers (EKEY_CODE enum values won't be shadowed)
 #include "CIrrDeviceFB.h"
@@ -106,8 +108,10 @@ enum LinuxKey {
 #include <sys/ioctl.h>
 #include <sys/time.h>
 #include <poll.h>
+#ifndef __APPLE__ // B1043: Linux-only
 #include <linux/kd.h>
 #include <linux/vt.h>
+#endif // !__APPLE__
 
 #include "IEventReceiver.h"
 #include "os.h"
@@ -122,10 +126,13 @@ enum LinuxKey {
 // that could otherwise shadow identifiers parsed earlier. Nothing in this
 // file uses those names for its own symbols, so no #undef dance is needed
 // here — X11 headers just have to come last.
+#ifndef __APPLE__ // B1043: Linux-only
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
+#endif // !__APPLE__
 
+#ifndef __APPLE__ // B1043: Linux-only
 // Signal handler to restore VT keyboard mode on abnormal exit.
 // Without this, SIGINT/SIGTERM/SIGSEGV leaves the keyboard stuck in K_OFF mode
 // and the console becomes unresponsive to local keyboard input.
@@ -148,6 +155,7 @@ static void restoreKeyboardSignalHandler(int sig)
     signal(sig, SIG_DFL);
     raise(sig);
 }
+#endif // !__APPLE__
 
 // Software driver factory functions are declared in CIrrDeviceStub.h (base class)
 // OpenGL driver factory function is declared locally below
@@ -296,6 +304,7 @@ CIrrDeviceFB::~CIrrDeviceFB()
         eglTerminate(eglDisplay_);
     }
 
+#ifndef __APPLE__ // B1043: Linux-only
     // Release GBM (cached DRM FBs are cleaned up by gbm_bo user_data destructors)
     if (previousBo_) {
         gbm_surface_release_buffer(gbmSurface_, previousBo_);
@@ -315,12 +324,14 @@ CIrrDeviceFB::~CIrrDeviceFB()
     // Close DRM
     if (drmFd_ >= 0)
         close(drmFd_);
+#endif // !__APPLE__
 
     // P25: close the X11 window/display if the windowed EGL backend was used
     if (x11Active_) {
         closeX11Window();
     }
 
+#ifndef __APPLE__ // B1043: Linux-only
     // Restore VT keyboard mode before closing evdev
     if (ttyFd_ >= 0) {
         if (savedKbMode_ >= 0)
@@ -330,6 +341,7 @@ CIrrDeviceFB::~CIrrDeviceFB()
         s_savedKbMode = -1;
         close(ttyFd_);
     }
+#endif // !__APPLE__
 
     // Close evdev
     if (keyboardFd_ >= 0)
@@ -338,6 +350,7 @@ CIrrDeviceFB::~CIrrDeviceFB()
         close(mouseFd_);
 }
 
+#ifndef __APPLE__ // B1043: Linux-only
 // ============================================================
 // DRM Initialization
 // ============================================================
@@ -672,6 +685,7 @@ bool CIrrDeviceFB::initEGL()
     os::Printer::log("EGL: Context created and made current", ELL_INFORMATION);
     return true;
 }
+#endif // !__APPLE__
 
 // ============================================================
 // x86/Xvfb Surfaceless EGL Fallback (H01)
@@ -695,8 +709,20 @@ bool CIrrDeviceFB::initEGLSurfaceless()
     GetPlatformDisplayEXT getPlatformDisplay =
         (GetPlatformDisplayEXT)eglGetProcAddress("eglGetPlatformDisplayEXT");
 
+#ifdef __APPLE__
+    // B1043 (#363): ANGLE on macOS. Ask for its Metal backend explicitly
+    // (Mesa's surfaceless platform does not exist there); the eglGetDisplay
+    // fallback below gives ANGLE's default display if this is refused.
+    static const EGLint angleMetal[] = {
+        0x3203 /* EGL_PLATFORM_ANGLE_TYPE_ANGLE */, 0x3489 /* EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE */,
+        EGL_NONE
+    };
+    if (getPlatformDisplay)
+        eglDisplay_ = getPlatformDisplay(0x3202 /* EGL_PLATFORM_ANGLE_ANGLE */, nullptr, angleMetal);
+#else
     if (getPlatformDisplay)
         eglDisplay_ = getPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, nullptr);
+#endif
 
     if (eglDisplay_ == EGL_NO_DISPLAY)
         eglDisplay_ = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -787,6 +813,7 @@ bool CIrrDeviceFB::initEGLSurfaceless()
 // map moved to CIrrDeviceFB_X11.cpp (same class, split out to stay under
 // the file-size warning threshold - docs/decisions.md Batch F ceilings).
 
+#ifndef __APPLE__ // B1043: Linux-only
 // ============================================================
 // DRM Page Flip
 // ============================================================
@@ -909,6 +936,7 @@ void CIrrDeviceFB::drmPageFlip()
     }
     previousBo_ = bo;
 }
+#endif // !__APPLE__
 
 // ============================================================
 // Driver Creation
@@ -946,6 +974,7 @@ void CIrrDeviceFB::createDriver()
     }
 }
 
+#ifndef __APPLE__ // B1043: Linux-only
 // ============================================================
 // evdev Input
 // ============================================================
@@ -1339,6 +1368,7 @@ void CIrrDeviceFB::initKeyMap()
     keyMap_[KEY_KPASTERISK] = KEY_MULTIPLY;
     keyMap_[KEY_KPSLASH]    = KEY_DIVIDE;
 }
+#endif // !__APPLE__
 
 EKEY_CODE CIrrDeviceFB::linuxKeyToIrrlicht(int linuxKey) const
 {
@@ -1392,7 +1422,9 @@ void CIrrDeviceFB::setWindowCaption(const wchar_t* text)
             n++;
         }
         buf[n] = '\0';
+#ifndef __APPLE__ // B1043: Linux-only
         XStoreName((Display*)x11Display_, x11Window_, buf);
+#endif // !__APPLE__
     }
 }
 
