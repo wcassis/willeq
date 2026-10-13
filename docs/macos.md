@@ -21,12 +21,12 @@ graphics PROVE card (`review/B1043/README.md` has every command and log).
 | ANGLE (EGL 1.5 + GLES 3.0 over Metal) | **works**: built from source at a pinned commit; pbuffer GLES2 clear + triangle + `glReadPixels` PASS, shared context OK, ETC1 exposed | "ANGLE" below |
 | ANGLE window surface | **partial**: `eglCreateWindowSurface` on an NSView's `CALayer` + 120 swaps + readback PASS from an ssh session; no on-screen window there (no WindowServer session for the ssh user) | `review/B1043/egl_probe/` |
 | patched GLES2 Irrlicht | **works, headless**: `scripts/build-gles2-darwin.sh`, the x86 patch set + device with a Darwin pbuffer path; 0 errors | "Build (GLES2)" below |
-| Irrlicht Darwin window + input (the `--egl-x11` parallel) | **not written** (FIX card): Cocoa window/CAMetalLayer surface, Cocoa key/mouse input | #363 |
+| Irrlicht Darwin window + input (the `--egl-x11` parallel) | **open**: no `willeq` WindowServer login to prove an on-screen Cocoa window or NSEvent mapping | B1044 README |
 | willeq GLES2 build (`willeq`, `gles2_zone_benchmark`) | **works**: both link against ANGLE | "Build (GLES2)" below |
 | `gles2_zone_benchmark` (qeynos2, headless) | **runs**: draws/state changes/polys equal the x86 manifest on all 3 frames; frames deterministic run to run | B1043 README |
-| visual gate | **not on the Mac yet**: the gate compares pixel-exact; Metal vs the x86 llvmpipe goldens differ in 14.7-40.8 % of pixels at MAE 0.07-0.18 (PSNR 50-55 dB). A `mac` platform with its own goldens is Will's bless | B1043 README |
-| memory ledger | **OFF shape** on Darwin (no glibc allocator entry points; no `malloc_zone` backend). `RssAnon` has no Darwin reading; the candidate is `phys_footprint` (peak 162-171 MiB on the qeynos2 benchmark run, `/usr/bin/time -l`) | B1039, B1043 |
-| the rest of the GLES2 tree (`model_viewer`, tools, graphics tests) | **not attempted** | FIX card |
+| visual gate | `--platform mac --capture` ran the manifest zones and memory-coverage legs, but returned **FAIL** on timorous frame 0's draws/polys mismatch. Frames are staged for a later bless, not committed. | B1044 README, capture.log |
+| memory ledger | malloc-zone backend compiles ON; benchmark reports `ledgerEnabled=true` and point-in-time `physFootprintBytes`. Full reconciliation is **not verified**: there is no Darwin `RssAnon`, and the measured ledger is far below footprint. A platform-figure ruling is requested. | B1044 README |
+| the rest of the GLES2 tree (`model_viewer`, tools, graphics tests) | **partial**: ANGLE tools/linkage enabled; full tree build is red on a platform-specific pinned `PlacedObjectRecord` layout assertion. Partial ctest also failed (19 failed/not-run of 5627, 167 skipped). | B1044 README |
 
 ## One-time setup
 
@@ -103,10 +103,10 @@ for EGL/GLESv2 and the Lima shim.
 
 It builds the patched Irrlicht into `third_party/irrlicht-gles2-darwin/`, then
 configures `build-gles2/` with `-DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_DRM=OFF
--DEQT_GLES2_IRRLICHT_DIR=... -DEQT_ANGLE_DIR=... -DEQT_ANGLE_LIB_DIR=...
--DCMAKE_POLICY_VERSION_MINIMUM=3.5` (Homebrew's CMake 4 refuses the
-FetchContent'd etc2comp's old `cmake_minimum_required`) and builds `willeq`
-and `gles2_zone_benchmark`. Clean, on the M4: 236 s for all of it
+-DEQT_GLES2_IRRLICHT_DIR=... -DEQT_ANGLE_DIR=... -DEQT_ANGLE_LIB_DIR=...`
+(the fetched etc2comp minimum is patched locally for CMake 4, with no global
+policy override) and builds `willeq` and `gles2_zone_benchmark`, with graphics
+tests configured ON. B1043's clean baseline on the M4 was 236 s
 (`--irrlicht-only` for the library alone, about 1 min).
 
 ## Run
@@ -114,9 +114,9 @@ and `gles2_zone_benchmark`. Clean, on the M4: 236 s for all of it
     ./build/bin/willeq --no-graphics --help
     ./build/bin/willeq --no-graphics -c <config.json>
 
-The GLES2 `willeq` binary starts and parses options; on the Mac it has no
-window or input yet (the Darwin device is pbuffer-only), so a rendered
-interactive session is the FIX card's.
+The GLES2 `willeq` binary starts and parses options; the Darwin device remains
+pbuffer-only. An interactive window and input still need the console proof in
+B1044; a headless benchmark is not an on-screen client.
 
 ## Benchmark
 
@@ -132,10 +132,12 @@ the manifest's benchmark block, `productionConfig.args`, the zone's
         --camera-pose -134.9,-238.9,6.0,0.0,-5.0 --camera-pose -202.9,-706.7,20.0,90.0,-5.0
 
 The device logs `DRM: not available on Darwin (B1043) - using the pbuffer EGL
-path`, then the surfaceless fallback's lines (their "llvmpipe, x86/Xvfb"
-wording is the x86 fork's), then `GLES2 Driver: ANGLE (Apple, ANGLE Metal
-Renderer: Apple M4, ...)`. Do not run `visual_gate.py` itself on the Mac and
-read its pixel failures as a regression: there are no Mac goldens.
+path`, then the ANGLE/Metal pbuffer fallback line (the x86 branch still says
+llvmpipe/Xvfb), then `GLES2 Driver: ANGLE (Apple, ANGLE Metal
+Renderer: Apple M4, ...)`. `visual_gate.py --platform mac --capture <dir>`
+stages a Mac set without using x86 pixels as a pass threshold. It still checks
+draw/state/poly parity and live memory budgets; B1044 returned FAIL on timorous
+frame 0. No Mac goldens are blessed yet.
 
 ## Test
 
@@ -148,11 +150,13 @@ read its pixel failures as a regression: there are no Mac goldens.
 `EQ_CLIENT_PATH` and `WILLEQ_EQE1_PATH` point the asset tests at the NAS
 mount (their default is the Linux `/mnt/projects/...` path); without them
 more asset tests SKIP, nothing fails. A green run on the Mac still skips
-more than Linux's headless tree: the ledger-dependent audio cases (the
-ledger is off), and the tests that hard-code a `/mnt/projects` path with no
-override, on top of Linux's own skips (absent `data/captures/` replays, the
-no-renderer gate tests, skip-by-design cases). `refactor/B1039/README.md`
-names every one. The GLES2 tree's tests are not built on the Mac yet.
+more than Linux's headless tree. B1039's headless run had the ledger OFF and
+its ledger-dependent audio cases skipped, plus tests hard-coding
+`/mnt/projects` and ordinary absent-capture/skip-by-design cases;
+`refactor/B1039/README.md` names them. B1044 enabled the ledger for Mac but
+the full GLES2 test-tree build is red on a platform-layout assertion, so a
+full graphics-suite PASS has not been verified. The partial run's 167 skips and
+19 failed/not-run cases are recorded in `refactor/B1044/README.md`.
 
 ## Float results are not x86's bit for bit
 
@@ -169,12 +173,13 @@ on the Mac. Both suites look for the server maps at
 
 ## What differs on Darwin in the code
 
-Every difference is a `__linux__`/`__APPLE__` guard or a CMake condition;
-the Linux build compiles the same code it did before (B1043 checked the
-changed TUs' preprocessed output, base vs branch: identical).
+The B1043 differences were `__linux__`/`__APPLE__` guards or CMake conditions;
+its changed Linux TUs preprocessed identically. B1044 also changes the shared
+GLES2 header rule, so Linux CI must verify that regression surface.
 
-- The memory ledger: the OFF shape (above); `[memarena]`'s mallinfo2 line
-  is Linux-only, like its only caller.
+- The memory ledger: malloc-zone allocation-class charges are ON (B1044);
+  `[memarena]`'s mallinfo2 line remains Linux-only. The Mac figure equivalent
+  to `RssAnon - gpu_driver` is not settled; see B1044's ruling request.
 - Thread names: the T504 names go through `eqt::setCurrentThreadName`
   (`include/common/thread_name.h`), the one-argument `pthread_setname_np`
   on macOS. The tree has the 6 thread names set this way.
@@ -190,6 +195,6 @@ changed TUs' preprocessed output, base vs branch: identical).
   (`docker/irrlicht-drm-x86/CIrrDeviceFB*`) compiles its DRM/GBM/evdev/VT/X11
   code only off Darwin; `CIrrDeviceFB_Darwin.cpp` supplies the Darwin
   stubs, and `initEGLSurfaceless()` asks ANGLE for its Metal display.
-  `constrained_texture_cache*.cpp` include ANGLE's GLES2 headers (`gl2.h`,
-  `gl2ext.h`) on Darwin (Linux still includes Mesa's desktop `gl.h` there); `flock_controller.cpp` defines
+  `constrained_texture_cache*.cpp` include GLES2 headers (`gl2.h`,
+  `gl2ext.h`) on every platform; `flock_controller.cpp` defines
   `GLM_ENABLE_EXPERIMENTAL` for Homebrew's glm 1.x.
