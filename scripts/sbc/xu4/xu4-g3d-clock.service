@@ -1,0 +1,12 @@
+[Unit]
+Description=XU4: put the Mali-T628 (G3D) clock on the PLL path instead of the 24 MHz crystal
+After=systemd-modules-load.service
+Wants=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/xu4-g3d-clock.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

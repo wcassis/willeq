@@ -110,6 +110,11 @@ measurements a per-lane preset ruling needs); the client runs in its own cgroup 
 eqemu lane, so the `[memgpu]` row and the rendered-zone TSV row are both device figures. Evidence from the
 first runs: `review/B1030/README.md`.
 
+**Not a lane: the ODROID XU4** (B1045, #365) is Will's interactive play-test box. It runs the same armhf
+`ci-arm/by-branch/fable` publish on Panfrost, and needed a self-built Panfrost module whose power-on path
+re-selects the GPU's PLL clock mux -- the Exynos sub-CMU otherwise leaves the GPU at 24 MHz under mainline
+(`docs/reference/odroid_xu4.md`, `scripts/sbc/xu4/`).
+
 ### The shipped Mesa prefix (B935, #253)
 
 Will, 2026-09-30: "ship the prefix" (`docs/decisions.md`). The Pi runs the client on an LLVM-less Mesa (B932's

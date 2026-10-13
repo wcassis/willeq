@@ -1082,6 +1082,19 @@ it without taking that measurement first.
   `fdinfo_purgeable=`, and the captured fdinfo is a fixture
   (`GpuBufferCensus.FdinfoResidentIsTheRowNotTheTotal`). Lima lanes publish
   no memory keys and are untouched.
+- ~~**B1045** (B) → issue #365. The ODROID XU4 (Exynos 5422, Mali-T628,
+  Will's interactive play-test box, not a lane) ran willeq at ~12 fps because
+  its GPU was clocked at 24 MHz: the Exynos sub-CMU parks the G3D user mux
+  `mout_user_aclk_g3d` on `fin_pll` whenever the power domain goes down and its
+  restore (the sub-CMU device's runtime_resume) never runs while Panfrost cycles
+  the domain, so the clock framework reports 177-600 MHz while
+  `GPU_CYCLE_COUNT` measures 24.0 MHz.~~ **FIXED** on the device
+  (`docs/reference/odroid_xu4.md`, `scripts/sbc/xu4/`): the out-of-tree
+  Panfrost module re-selects the PLL path in `panfrost_gpu_power_on()`; qeynos2
+  1280x720 10 → 89 fps, glmark2 `build` 15 → 279 fps (`review/B1045/README.md`).
+  Open: an upstream report for `clk-exynos5-subcmu.c` (restore from a genpd
+  power-on notifier) -- Will's call; cold-boot verification of the module hook
+  (the board needs a power cycle, `systemctl reboot` strands it).
 - **B1030** (B) → issue #350. Two aarch64 SBCs joined the Orange Pi as client
   targets (Rock64: RK3328, Mali-450/Lima, 4 GB, eMMC; ROCK 4D: RK3576,
   Mali-G52/Panfrost, 12 GB), but every Pi script hardcoded ONE host and the
