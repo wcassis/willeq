@@ -41,10 +41,12 @@
 // the deity/city it pre-selects (fable: the first one offered).
 
 #include "client/graphics/ui/text_entry.h"
+#include "client/graphics/ui/face_pick_panel.h"
 #include "client/login_world/char_create_data.h"
 #include "client/login_world/char_create_packets.h"
 #include "client/login_world/char_create_rules.h"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -64,6 +66,10 @@ struct CharCreateScreenState {
     uint32_t race = 0, cls = 0, gender = eqt::charcreate::Gender::Male, deity = 0, city = 0;
     eqt::charcreate::StatAllocator alloc;
     TextEntryState nameEntry;           // CC1_NameInput
+
+    FacePickData faceData;              // data/char_create_faces.tsv
+    FacePickState facePick;             // modal draft, separate from committed picks
+    std::array<uint32_t, kFacePickFeatures> appearance{};
 
     // CC0_Help / CC1_Help: an eqstr id (0 = none) and, for a deity or city,
     // nothing else -- the pane prints the string. helpTitle is the label shown

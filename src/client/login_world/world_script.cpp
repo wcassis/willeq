@@ -4,8 +4,10 @@
 #include "client/login_world/world_script.h"
 
 #include "client/login_world/char_create_data.h"
+#include "client/login_world/char_create_faces.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdlib>
 #include <sstream>
@@ -35,6 +37,40 @@ int statByKey(const std::string& key) {
         if (k == kKeys[i]) return i;
     }
     return -1;
+}
+
+uint32_t CharCreateRequest::* appearanceByKey(const std::string& key) {
+    const std::string k = upper(key);
+    if (k == "FACE") return &CharCreateRequest::face;
+    if (k == "HAIR") return &CharCreateRequest::hairstyle;
+    if (k == "HAIRCOLOR") return &CharCreateRequest::haircolor;
+    if (k == "EYES") return &CharCreateRequest::eyecolor1;
+    if (k == "BEARD") return &CharCreateRequest::beard;
+    if (k == "BEARDCOLOR") return &CharCreateRequest::beardcolor;
+    return nullptr;
+}
+
+size_t appearanceIndex(const std::string& key) {
+    const std::string k = upper(key);
+    if (k == "FACE") return static_cast<size_t>(FacePickFeature::Face);
+    if (k == "HAIR") return static_cast<size_t>(FacePickFeature::Hair);
+    if (k == "HAIRCOLOR") return static_cast<size_t>(FacePickFeature::HairColor);
+    if (k == "EYES") return static_cast<size_t>(FacePickFeature::Eyes);
+    if (k == "BEARD") return static_cast<size_t>(FacePickFeature::Beard);
+    if (k == "BEARDCOLOR") return static_cast<size_t>(FacePickFeature::BeardColor);
+    return kFacePickFeatures;
+}
+
+bool parseAppearanceValue(const std::string& text, uint32_t& value) {
+    if (text.empty()) return false;
+    uint32_t result = 0;
+    for (unsigned char c : text) {
+        if (!std::isdigit(c)) return false;
+        result = result * 10 + (c - '0');
+        if (result > 255) return false;
+    }
+    value = result;
+    return true;
 }
 
 }  // namespace
@@ -90,24 +126,54 @@ bool ParseCreateSpec(const std::string& spec, const CharCreateData& data, CharCr
     r.deity = deity->id;
     r.startZone = city->id;
 
-    if (f.size() == 6) {
-        r.stats = defaultAllocation(r.race, r.cls);
-    } else {
-        StatAllocator a(r.race, r.cls);
-        for (size_t i = 6; i < f.size(); ++i) {
-            const size_t eq = f[i].find('=');
-            const int stat = eq == std::string::npos ? -1 : statByKey(trim(f[i].substr(0, eq)));
-            if (stat < 0) {
-                error = "stat term '" + f[i] + "' is not STR|STA|AGI|DEX|WIS|INT|CHA=n";
-                return false;
-            }
-            const int v = std::atoi(f[i].c_str() + eq + 1);
-            if (!a.set(stat, v)) {
-                error = std::string(statLabel(stat)) + "=" + std::to_string(v) + " is outside [" +
-                        std::to_string(a.base(stat)) + ", base + points left]";
-                return false;
-            }
+    StatAllocator a(r.race, r.cls);
+    bool hasStat = false;
+    FacePickData faces;
+    const FacePickRanges* ranges = nullptr;
+    std::array<bool, kFacePickFeatures> appearanceSeen{};
+    for (size_t i = 6; i < f.size(); ++i) {
+        const size_t eq = f[i].find('=');
+        if (eq == std::string::npos) {
+            error = "term '" + f[i] + "' requires KEY=value";
+            return false;
         }
+        const std::string key = trim(f[i].substr(0, eq));
+        if (auto field = appearanceByKey(key)) {
+            uint32_t value = 0;
+            if (!parseAppearanceValue(trim(f[i].substr(eq + 1)), value)) {
+                error = "appearance term '" + f[i] + "' requires an integer from 0 to 255";
+                return false;
+            }
+            if (!ranges) {
+                if (!faces.loadShipped()) { error = faces.error(); return false; }
+                ranges = faces.find(r.race, r.gender);
+                if (!ranges) { error = "no FacePick ranges for this race/gender"; return false; }
+            }
+            const size_t index = appearanceIndex(key);
+            const auto& range = (*ranges)[index];
+            if (appearanceSeen[index] || !range.visible || value < range.min || value > range.max) {
+                error = "appearance term '" + f[i] + "' is repeated or not offered for this race/gender";
+                return false;
+            }
+            appearanceSeen[index] = true;
+            r.*field = value;
+            if (field == &CharCreateRequest::eyecolor1) r.eyecolor2 = value;
+            continue;
+        }
+        const int stat = statByKey(key);
+        if (stat < 0) {
+            error = "term '" + f[i] + "' is not a stat or FACE|HAIR|HAIRCOLOR|EYES|BEARD|BEARDCOLOR=n";
+            return false;
+        }
+        hasStat = true;
+        const int v = std::atoi(f[i].c_str() + eq + 1);
+        if (!a.set(stat, v)) {
+            error = std::string(statLabel(stat)) + "=" + std::to_string(v) + " is outside [" +
+                    std::to_string(a.base(stat)) + ", base + points left]";
+            return false;
+        }
+    }
+    if (hasStat) {
         if (!a.allSpent()) {
             // eqstr 1577, verbatim.
             error = "You must spend all of your ability points before continuing. (" +
@@ -115,6 +181,8 @@ bool ParseCreateSpec(const std::string& spec, const CharCreateData& data, CharCr
             return false;
         }
         r.stats = a.stats();
+    } else {
+        r.stats = defaultAllocation(r.race, r.cls);
     }
     out = r;
     return true;
