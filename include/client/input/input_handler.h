@@ -77,7 +77,6 @@ enum class InputAction {
     ToggleZoneLights,
     ToggleZoneLineVisualization,
     CycleObjectLights,
-    ToggleCameraMode,
     ToggleOldModels,
     ToggleCollision,
     ToggleCollisionDebug,
