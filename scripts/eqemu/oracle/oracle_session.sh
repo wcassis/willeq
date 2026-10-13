@@ -17,8 +17,9 @@ if [[ -e $OUT/session.started ]]; then echo "output already used: $OUT" >&2; exi
 export EQEMU_LANE=$LANE
 source "$REPO/scripts/eqemu/env.sh"
 source "$REPO/scripts/eqemu/restore_lib.sh"
-OWNER="t_fba63bb7_oracle_$(date -u +%Y%m%dT%H%M%S)_$$"
-STATUS=0 LOCKED=0 SNAPSHOT=0 REMOTE_STARTED=0 CREATED_NAME=
+OWNER="${ORACLE_OWNER:-oracle_session}_$(date -u +%Y%m%dT%H%M%S)_$$"
+[[ $OWNER =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid ORACLE_OWNER" >&2; exit 64; }
+STATUS=0 LOCKED=0 SNAPSHOT=0 REMOTE_STARTED=0 CREATE_ACCOUNT_ID=
 REMOTE_DIR="/home/user/eq-oracle/sessions/$OWNER"
 say() { printf '%s\n' "$*" | tee -a "$OUT/driver.log"; }
 remote() { ssh -n -o BatchMode=yes -o ConnectTimeout=10 "user@$EQEMU_ORACLE_HOST" "$@"; }
@@ -30,9 +31,19 @@ cleanup() {
     fi
     if (( LOCKED )); then
         if (( SNAPSHOT )); then
-            if [[ -n $CREATED_NAME ]]; then
+            # Only remove a plan name that was absent before this locked run,
+            # exists now with an id, and belongs to the login character's account.
+            : >"$OUT/created-ids.tsv"
+            while IFS= read -r name; do
+                [[ -n $name ]] || continue
+                eqemu_sql "SELECT id,name FROM character_data WHERE name='$name' AND account_id=$CREATE_ACCOUNT_ID;" >>"$OUT/created-ids.tsv" || STATUS=66
+            done <"$OUT/absent-names.tsv"
+            if [[ -s $OUT/created-ids.tsv ]]; then
                 eqemu_world_stop >>"$OUT/driver.log" 2>&1 || STATUS=66
-                eqemu_sql "DELETE FROM character_data WHERE name='$CREATED_NAME';" >/dev/null || STATUS=66
+                while IFS=$'\t' read -r id name; do
+                    [[ $id =~ ^[0-9]+$ ]] || { STATUS=66; continue; }
+                    eqemu_sql "DELETE FROM character_data WHERE id=$id AND name='$name' AND account_id=$CREATE_ACCOUNT_ID;" >/dev/null || STATUS=66
+                done <"$OUT/created-ids.tsv"
             fi
             eqemu_restore_snapshot "$OUT/db-before.tsv" "$OUT/db-after.tsv" say >>"$OUT/driver.log" 2>&1 || STATUS=66
             eqemu_inventory_restore "$OUT/inventory-before.tsv" "$CHAR_IDS" >>"$OUT/driver.log" 2>&1 || STATUS=66
@@ -67,7 +78,7 @@ cleanup() {
 }
 trap 'cleanup' EXIT
 trap 'STATUS=65; exit 65' INT TERM
-if ! eqemu_lock_take "$OWNER"; then say "lane lock held: $(eqemu_lock_show || :)"; exit 64; fi
+if ! eqemu_lock_take "$OWNER"; then say "lane lock held: $(eqemu_lock_show || :)"; STATUS=64; exit "$STATUS"; fi
 LOCKED=1
 printf '%s\n' "$OWNER" >"$OUT/session.started"
 if ! bash "$REPO/scripts/eqemu/up.sh" >>"$OUT/driver.log" 2>&1 || ! eqemu_stack_ready; then STATUS=65; exit "$STATUS"; fi
@@ -81,11 +92,18 @@ SNAPSHOT=1
 # A plan's zone row is an explicit pre-login seed, never a persistent change.
 ZONE=$(awk -F'\t' '$1=="zone" {print $2; exit}' "$PLAN")
 CHARACTER=$(awk -F'\t' '$1=="login" {print $2; exit}' "$PLAN")
-CREATED_NAME=$(awk -F'\t' '$1=="create" {print $2; exit}' "$PLAN")
-if [[ -n $CREATED_NAME ]]; then
-    [[ $CREATED_NAME =~ ^[A-Za-z]{3,15}$ ]] || { STATUS=65; exit "$STATUS"; }
-    [[ -z $(eqemu_sql "SELECT id FROM character_data WHERE name='$CREATED_NAME';") ]] || { STATUS=65; exit "$STATUS"; }
-fi
+awk -F'\t' '$1=="create" {print $2}' "$PLAN" >"$OUT/plan-names.tsv"
+: >"$OUT/absent-names.tsv"
+: >"$OUT/validated-names.tsv"
+CREATE_ACCOUNT_ID=$(eqemu_sql "SELECT account_id FROM character_data WHERE name='$CHARACTER' LIMIT 1;")
+[[ $CREATE_ACCOUNT_ID =~ ^[0-9]+$ ]] || { STATUS=65; exit "$STATUS"; }
+while IFS= read -r name; do
+    [[ $name =~ ^[A-Za-z]{3,15}$ ]] || { STATUS=65; exit "$STATUS"; }
+    [[ -z $(eqemu_sql "SELECT id FROM character_data WHERE name='$name';") ]] || { STATUS=65; exit "$STATUS"; }
+    if grep -Fxq "$name" "$OUT/validated-names.tsv"; then STATUS=65; exit "$STATUS"; fi
+    printf '%s\n' "$name" >>"$OUT/validated-names.tsv"
+done <"$OUT/plan-names.tsv"
+cp "$OUT/validated-names.tsv" "$OUT/absent-names.tsv"
 if [[ -n $ZONE && -n $CHARACTER ]]; then
     [[ $ZONE =~ ^[a-z0-9_]+$ && $CHARACTER =~ ^[A-Za-z]+$ ]] || { STATUS=65; exit "$STATUS"; }
     ZONE_ID=$(eqemu_sql "SELECT zoneidnumber FROM zone WHERE short_name='$ZONE' LIMIT 1;")
