@@ -1,5 +1,5 @@
 #include "client/graphics/loading_thread.h"
-#include <pthread.h>  // T504: thread names
+#include "common/thread_name.h"  // T504 thread names; B1039: Linux + macOS forms
 
 #include <chrono>
 #include <irrlicht.h>
@@ -146,7 +146,7 @@ void LoadingThread::threadFunc(irr::IrrlichtDevice* device,
     // B909: the owner row for what the loading thread charges to its DEFAULT
     // category (a step with no scope of its own) under WILLEQ_LEDGER_OWNERS=zone_mesh.
     eqt::memory::StartupScope threadOwner("zm.load_thread_default");
-    pthread_setname_np(pthread_self(), "eq-load");  // T504: visible in top -H and the [srcchar] parse lines
+    eqt::setCurrentThreadName("eq-load");  // T504: visible in top -H and the [srcchar] parse lines
     // Acquire GL context on this thread
     if (!acquireContext(handles)) {
         LOG_ERROR(MOD_GRAPHICS, "LoadingThread: failed to acquire GL context, aborting");

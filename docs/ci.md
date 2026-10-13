@@ -616,6 +616,11 @@ build steps, loses its own tree or `WILLEQ_HEADLESS`, stops running `ctest
 configure, `GIT_CLEAN_FLAGS` its exclusion or `prune-build-trees` its root;
 `PruneRefBuildTrees` pins that `build-headless/ref` is a known root.
 
+**macOS** (B1039, #359): the same headless configuration builds and passes its
+suite on the M4 mac mini; no CI job runs there. The recipe (Homebrew line,
+configure, ctest environment, the NAS mount) and what is not supported on a
+Mac (renderer, gate, memory-ledger numbers) are in `docs/macos.md`.
+
 ### A prior branch's leftover binary is pruned, not just detected (B907)
 
 The warm tree has a second concrete failure mode beyond the input-stamp one

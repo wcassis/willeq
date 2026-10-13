@@ -19,6 +19,7 @@
   - `pvs_implementation_guide.md` - PVS visibility culling guide
   - `voodoo1_mode_prompt.md` - Retro rendering mode constraints
 
+- **`docs/macos.md`** - macOS headless dev platform (B1039): brew deps, configure/ctest recipe, the NAS mount, what is unsupported
 - **`docs/plans/`** - Historical feature implementation plans and investigations
   - Implementation plans for detail system, trees, particles, weather, environment, surface maps
   - Bug investigations (spawn544, zone ClientUpdate)

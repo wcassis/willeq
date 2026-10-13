@@ -1000,6 +1000,7 @@ ArenaReport arenaNow() {
     return r;
 }
 
+#if defined(__linux__)  // B1039: mallinfo2 fields; the only caller (recordArena) is Linux-only
 namespace {
 
 std::string arenaToLogLine(const std::string& point, const ArenaReport& r,
@@ -1033,6 +1034,7 @@ std::string arenaToLogLine(const std::string& point, const ArenaReport& r,
 }
 
 }  // namespace
+#endif  // __linux__
 
 ArenaReport recordArena(const std::string& point, bool trim) {
     ArenaReport r;

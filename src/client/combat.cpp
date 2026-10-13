@@ -682,7 +682,7 @@ bool CombatManager::RangedAttack() {
 		// Official client refusal (eqstr_us.txt:9150). The server says the
 		// same thing from a different string (special_attacks.cpp:880).
 		m_eq->AddChatSystemMessage("You do not have a ranged weapon equipped.");
-		LOG_DEBUG(MOD_COMBAT, "RangedAttack: no ranged weapon in slot {}", eqt::inventory::SLOT_RANGE);
+		LOG_DEBUG(MOD_COMBAT, "RangedAttack: no ranged weapon in slot {}", static_cast<int>(eqt::inventory::SLOT_RANGE));
 		return false;
 	}
 
@@ -698,7 +698,7 @@ bool CombatManager::RangedAttack() {
 	m_eq->QueuePacket(HC_OP_CombatAbility, &packet);
 
 	LOG_DEBUG(MOD_COMBAT, "RangedAttack: target={}, slot={}, skill={}",
-		target, eqt::inventory::SLOT_RANGE, skill);
+		target, static_cast<int>(eqt::inventory::SLOT_RANGE), skill);
 	return true;
 }
 
