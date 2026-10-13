@@ -350,7 +350,7 @@ void eqt::zone::ZoneComponent::OnCancelTrade(const EQ::Net::Packet & p)
 {
 	// Trade cancelled
 	if (p.Length() >= 2 + sizeof(EQT::CancelTrade_Struct)) {
-		const EQT::CancelTrade_Struct* cancel = reinterpret_cast<const EQT::CancelTrade_Struct*>(p.Data() + 2);
+		const EQT::CancelTrade_Struct* cancel = reinterpret_cast<const EQT::CancelTrade_Struct*>(static_cast<const uint8_t*>(p.Data()) + 2);
 		if (ctx_.trade_manager) {
 			ctx_.trade_manager->handleCancelTrade(*cancel);
 		}
@@ -364,7 +364,7 @@ void eqt::zone::ZoneComponent::OnTradeRequest(const EQ::Net::Packet & p)
 {
 	// Trade request from another player
 	if (p.Length() >= 2 + sizeof(EQT::TradeRequest_Struct)) {
-		const EQT::TradeRequest_Struct* req = reinterpret_cast<const EQT::TradeRequest_Struct*>(p.Data() + 2);
+		const EQT::TradeRequest_Struct* req = reinterpret_cast<const EQT::TradeRequest_Struct*>(static_cast<const uint8_t*>(p.Data()) + 2);
 		if (ctx_.trade_manager) {
 			// Look up the name of the requesting player
 			std::string from_name = "Unknown";
@@ -393,7 +393,7 @@ void eqt::zone::ZoneComponent::OnTradeRequestAck(const EQ::Net::Packet & p)
 {
 	// Trade request accepted
 	if (p.Length() >= 2 + sizeof(EQT::TradeRequestAck_Struct)) {
-		const EQT::TradeRequestAck_Struct* ack = reinterpret_cast<const EQT::TradeRequestAck_Struct*>(p.Data() + 2);
+		const EQT::TradeRequestAck_Struct* ack = reinterpret_cast<const EQT::TradeRequestAck_Struct*>(static_cast<const uint8_t*>(p.Data()) + 2);
 		if (ctx_.trade_manager) {
 			// B896 (#212): OUR request answered (a player's client, or the
 			// server for an NPC) -> the held item goes into slot 3000 by
@@ -415,7 +415,7 @@ void eqt::zone::ZoneComponent::OnTradeCoins(const EQ::Net::Packet & p)
 {
 	// Trade partner changed money
 	if (p.Length() >= 2 + sizeof(EQT::TradeCoins_Struct)) {
-		const EQT::TradeCoins_Struct* coins = reinterpret_cast<const EQT::TradeCoins_Struct*>(p.Data() + 2);
+		const EQT::TradeCoins_Struct* coins = reinterpret_cast<const EQT::TradeCoins_Struct*>(static_cast<const uint8_t*>(p.Data()) + 2);
 		if (ctx_.trade_manager) {
 			ctx_.trade_manager->handleTradeCoins(*coins);
 		}
@@ -430,7 +430,7 @@ void eqt::zone::ZoneComponent::OnTradeAcceptClick(const EQ::Net::Packet & p)
 {
 	// Trade partner clicked accept
 	if (p.Length() >= 2 + sizeof(EQT::TradeAcceptClick_Struct)) {
-		const EQT::TradeAcceptClick_Struct* accept = reinterpret_cast<const EQT::TradeAcceptClick_Struct*>(p.Data() + 2);
+		const EQT::TradeAcceptClick_Struct* accept = reinterpret_cast<const EQT::TradeAcceptClick_Struct*>(static_cast<const uint8_t*>(p.Data()) + 2);
 		if (ctx_.trade_manager) {
 			ctx_.trade_manager->handleTradeAcceptClick(*accept);
 		}

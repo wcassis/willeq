@@ -149,6 +149,21 @@ def count_calls(repo, rel, literal):
     return n
 
 
+def count_calls_under(repo, dirs, literal):
+    """Occurrences of a call literal in every *.cpp/*.h under DIRS, comments
+    stripped (B1039: a helper whose call sites span several TUs)."""
+    n = 0
+    for d in dirs:
+        for root, _subdirs, files in os.walk(os.path.join(repo, d)):
+            for name in files:
+                if name.endswith((".cpp", ".h")):
+                    rel = os.path.relpath(os.path.join(root, name), repo)
+                    n += strip_comments(read(repo, rel)).count(literal)
+    if n == 0:
+        raise SourceError("'%s' does not occur under %s" % (literal, ", ".join(dirs)))
+    return n
+
+
 def count_step_functions(repo, rel, prefix):
     """Distinct `<prefix>N_Name(` function names declared in a header."""
     text = strip_comments(read(repo, rel))
@@ -488,6 +503,14 @@ ROWS = [
      "T371/T373 added hygiene.cmake; a new test domain adds another",
      [("docs/module_map.md",
        r"`include\(\)`s \*\*(\w+)\*\* per-domain")]),
+
+    ("eqt::setCurrentThreadName call sites",
+     lambda r: count_calls_under(r, ["src", "include"],
+                                 "eqt::setCurrentThreadName("),
+     "B1039 routed the T504 thread names through one helper; a new named "
+     "thread adds one",
+     [("docs/macos.md",
+       r"The tree has the\s+(\w+)\s+thread names set this way")]),
 ]
 
 # Directories whose every source file must be NAMED in a doc (T444).

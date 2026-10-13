@@ -408,7 +408,7 @@ void eqt::entities::EntitiesComponent::ZoneProcessClickObjectAction(const EQ::Ne
 		return;
 	}
 
-	const auto* action = reinterpret_cast<const EQT::ClickObjectAction_Struct*>(p.Data() + 2);
+	const auto* action = reinterpret_cast<const EQT::ClickObjectAction_Struct*>(static_cast<const uint8_t*>(p.Data()) + 2);
 
 	std::string objectName(action->object_name, strnlen(action->object_name, sizeof(action->object_name)));
 

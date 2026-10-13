@@ -362,7 +362,7 @@ void eqt::merchant::MerchantComponent::SendTradeRequest(const EQT::TradeRequest_
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(2 + sizeof(EQT::TradeRequest_Struct));
 	packet.PutUInt16(0, HC_OP_TradeRequest);
-	memcpy(packet.Data() + 2, &req, sizeof(EQT::TradeRequest_Struct));
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &req, sizeof(EQT::TradeRequest_Struct));
 
 	eqt::strings::DumpPacket("C->S", HC_OP_TradeRequest, packet);
 	ctx_.net.SafeQueueZone(packet);
@@ -378,7 +378,7 @@ void eqt::merchant::MerchantComponent::SendTradeRequestAck(const EQT::TradeReque
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(2 + sizeof(EQT::TradeRequestAck_Struct));
 	packet.PutUInt16(0, HC_OP_TradeRequestAck);
-	memcpy(packet.Data() + 2, &ack, sizeof(EQT::TradeRequestAck_Struct));
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &ack, sizeof(EQT::TradeRequestAck_Struct));
 
 	eqt::strings::DumpPacket("C->S", HC_OP_TradeRequestAck, packet);
 	ctx_.net.SafeQueueZone(packet);
@@ -407,7 +407,7 @@ void eqt::merchant::MerchantComponent::SendMoveCoin(const EQT::MoveCoin_Struct& 
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(2 + sizeof(EQT::MoveCoin_Struct));
 	packet.PutUInt16(0, HC_OP_MoveCoin);
-	memcpy(packet.Data() + 2, &move, sizeof(EQT::MoveCoin_Struct));
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &move, sizeof(EQT::MoveCoin_Struct));
 
 	LOG_DEBUG(MOD_MAIN, "Queueing MoveCoin packet, size={}", packet.Length());
 	eqt::strings::DumpPacket("C->S", HC_OP_MoveCoin, packet);
@@ -478,7 +478,7 @@ void eqt::merchant::MerchantComponent::SendTradeAcceptClick(const EQT::TradeAcce
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(2 + sizeof(EQT::TradeAcceptClick_Struct));
 	packet.PutUInt16(0, HC_OP_TradeAcceptClick);
-	memcpy(packet.Data() + 2, &accept, sizeof(EQT::TradeAcceptClick_Struct));
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &accept, sizeof(EQT::TradeAcceptClick_Struct));
 
 	eqt::strings::DumpPacket("C->S", HC_OP_TradeAcceptClick, packet);
 	ctx_.net.SafeQueueZone(packet);
@@ -494,7 +494,7 @@ void eqt::merchant::MerchantComponent::SendCancelTrade(const EQT::CancelTrade_St
 	EQ::Net::DynamicPacket packet;
 	packet.Resize(2 + sizeof(EQT::CancelTrade_Struct));
 	packet.PutUInt16(0, HC_OP_CancelTrade);
-	memcpy(packet.Data() + 2, &cancel, sizeof(EQT::CancelTrade_Struct));
+	memcpy(static_cast<uint8_t*>(packet.Data()) + 2, &cancel, sizeof(EQT::CancelTrade_Struct));
 
 	eqt::strings::DumpPacket("C->S", HC_OP_CancelTrade, packet);
 	ctx_.net.SafeQueueZone(packet);
