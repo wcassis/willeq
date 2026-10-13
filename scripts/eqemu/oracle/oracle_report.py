@@ -7,6 +7,7 @@ import importlib.util
 from pathlib import Path
 import subprocess
 import sys
+from oracle_video import action_point, calibrate_video
 
 
 out, plan, repo = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
@@ -19,7 +20,7 @@ marks = {}
 for row in csv.reader((out / 'timeline.tsv').open(), delimiter='\t'):
     if len(row) == 3:
         marks.setdefault(row[2], {})[row[1]] = float(row[0])
-t0 = float((out / 'video.mp4.t0').read_text())
+t0 = calibrate_video(out)
 decoded = eqpcap.decode(out / 'capture.pcap')
 with (out / 'all-opcodes.tsv').open('w') as stream:
     stream.write('utc\tdirection\topcode\tcode\tsize\tfields\n')
@@ -36,6 +37,11 @@ stepper = []
 previous_ini = out / 'before-character.ini'
 for index, row in enumerate(actions, 1):
     verb, target, hold_ms, label = (row + [''] * 4)[:4]
+    if verb == 'create':
+        if len(row) != 6:
+            raise RuntimeError('create row requires name, race, class, gender, still_name')
+        _, target, race, klass, gender, label = row
+        hold_ms = '0'
     name = f'{index:02d}_{label or verb}'
     window = marks.get(name, {})
     if 'BEGIN' not in window or 'END' not in window:
@@ -73,8 +79,10 @@ for index, row in enumerate(actions, 1):
     summary.append(f'| {name} | {verb} {target} | [{still.name}]({still.name}) | '
                    f'[{frame.name}]({frame.name}) | [{packet_file.name}]({packet_file.name}): '
                    f'{len(packets)} data rows | [{diff_file.name}]({diff_file.name}) |')
-    if verb not in ('login', 'zone', 'wait') and end - begin < 15:
-        stepper.extend([(begin, 'BEGIN', name), (end, 'END', name)])
+    pointer = action_point(verb, target)
+    if pointer and end - begin < 15:
+        stepper.extend([(begin, 'BEGIN', name, pointer),
+                        (end, 'END', name, pointer)])
 
 with (out / 'steps.tsv').open('w') as stream:
     writer = csv.writer(stream, delimiter='\t', lineterminator='\n')
@@ -87,8 +95,8 @@ with (out / 'steps.tsv').open('w') as stream:
 base = out / 'marked'
 (out / 'marked.mp4.geom').write_text('0 30 1280 800 (window origin 0,30)\n')
 (out / 'marked.timeline.tsv').write_text(''.join(
-    f'00:00:00\t{when-t0:.3f}\t640,400\t{kind} {name}\n'
-    for when, kind, name in stepper))
+    f'00:00:00\t{when-t0:.3f}\t{point[0]},{point[1]}\t{kind} {name}\n'
+    for when, kind, name, point in stepper))
 marked = out / 'marked.mp4'
 if marked.is_symlink():
     if marked.readlink() != Path('video.mp4'):

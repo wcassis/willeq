@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Vendored 2026-10-13 from /home/user/eq-oracle/uigap-scripts/eqpcap.py.
 """eqpcap.py — decode a Titanium EQStream pcap into application packets.
 
 Usage: eqpcap.py <capture.pcap> [--all] [--marks timeline.tsv] [--hex]

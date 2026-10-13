@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Vendored 2026-10-13 from /home/user/eq-oracle/uigap-scripts/step_frames.py.
 """step_frames.py <base> — for every BEGIN/END step in <base>.timeline.tsv,
 step the video <base>.mp4 frame by frame (10 fps) and report, mechanically:
 

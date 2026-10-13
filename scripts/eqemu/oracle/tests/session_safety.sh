@@ -34,6 +34,7 @@ printf 'touch "$OUT/down"\n' >"$FIXTURE/scripts/eqemu/down.sh"
 printf 'login\tTestchar\t0\tselect\ncreate\tTestchar\tHuman\tWarrior\tMale\texisting\n' >"$FIXTURE/plan.tsv"
 for PROBE_CASE in ${PROBE_CASES:-held existing}; do
     export PROBE_CASE
+    export ORACLE_OWNER=oracle_safety_probe
     OUT="$FIXTURE/$PROBE_CASE"; export OUT
     set +e
     bash "$FIXTURE/scripts/eqemu/oracle/oracle_session.sh" 3 "$FIXTURE/plan.tsv" "$OUT" >"$FIXTURE/$PROBE_CASE.log" 2>&1
@@ -44,6 +45,7 @@ for PROBE_CASE in ${PROBE_CASES:-held existing}; do
         [[ ! -e $OUT/released && ! -e $OUT/down ]] || { echo 'other owner was disturbed'; exit 1; }
     else
         [[ $rc == 65 ]] || { echo "existing name returned $rc, expected 65"; exit 1; }
+        [[ $(cat "$OUT/session.started") == oracle_safety_probe_* ]] || { echo 'owner prefix ignored'; exit 1; }
         ! grep -q 'DELETE FROM character_data' "$OUT/sql.log" || { echo 'existing character deleted'; exit 1; }
         [[ ! -s $OUT/absent-names.tsv ]] || { echo 'cleanup armed before validation'; exit 1; }
     fi

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Adapted 2026-10-13 from /home/user/eq-oracle/uigap-scripts/check_ledgers.py.
 """Session-dir adaptation of the UIGAP check_ledgers.py consistency pass."""
 import csv
 from pathlib import Path

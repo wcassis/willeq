@@ -14,6 +14,9 @@ bash scripts/eqemu/oracle/oracle_session.sh 2 \
 bash scripts/eqemu/oracle/oracle_session.sh 3 \
   scripts/eqemu/oracle/plans/charcreate_untouched.tsv \
   /home/user/kb-evidence/kb-b1048-oracle-driver/charcreate
+bash scripts/eqemu/oracle/oracle_session.sh 4 \
+  scripts/eqemu/oracle/plans/charcreate_barbarian_male.tsv \
+  /home/user/kb-evidence/kb-b1048-oracle-driver/barbarian
 ```
 
 `install.sh` also writes `~/eq-oracle/uigap-scripts/.oracle-repo`, so the
@@ -26,10 +29,15 @@ sets that character's zone **before** login and then enters world. `open`
 accepts `hotbar`, `inventory`, `character-create`; `click` and `hold` use
 root-screen `x,y`; `hold` uses its duration column in milliseconds. `press`
 takes an xdotool keysym, `command` sends a slash command, `random`, `accept`,
-`cancel`, `create <name>`, `still <name>`, and `wait <ms>` are available.
-The shipped untouched-create plan uses the stock Human Warrior path and does
-not change any appearance control. Use a fresh output directory and a unique
-creation name. A plan cannot reuse an output directory containing
+`cancel`, `create <name> <race> <class> <gender>`, `still <name>`, and `wait <ms>`
+are available. A create row has six columns: `create`, name, race, class,
+gender, still name. Its coordinates are selected from the in-script table,
+and the chosen race is OCR-asserted before submission. The shipped untouched
+plans use Human-male and Barbarian-male Warrior paths without changing any
+appearance control. Other verbs may put an expected OCR regex in column five;
+the built-in verb assertions otherwise check the expected window or label.
+Set `ORACLE_OWNER` to the unit's lock-owner prefix (default `oracle_session`).
+Use a fresh output directory and a unique creation name. A plan cannot reuse an output directory containing
 `session.started`.
 The optional `# ini-unset=Section.Key` plan directive temporarily removes one
 key from the login character's writable INI before capture. The driver saves
