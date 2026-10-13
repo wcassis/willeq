@@ -110,3 +110,8 @@ oracle-netstat meaning, key-scan/RDP code mapping, or explicit history):
 The F11 census after the sweep: 164 raw hits, all categorized as one of the
 five classes above (the base64 contact-sheet and `docs/reference/` BONE
 names are false positives excluded by extension).
+
+Hygiene fallout of the new `layoutSize()` seam: `ZeroCallers` classifies it
+in `EXEMPT_TESTS_GROUPS` (`("ZoneMeshBuilder", "layoutSize"): "observer"` —
+the test's observation window on the core's macro state), so the ratchet
+stays green with the new function.

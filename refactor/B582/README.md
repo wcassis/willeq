@@ -15,7 +15,7 @@ Ability Window** (Alt+C already matched). Applied exactly:
 | F10 | `MusicVolumeDown` (Player) | `ToggleAllUI` (Global) — the official "Toggle UI Display" |
 | F11 | `ToggleAllUI` (Global) AND `MusicVolumeUp` (Player) — the B561 double binding | UNBOUND — fable has no netstat display, and this card does not build one. A future netstat owns F11. |
 | L | `CycleObjectLights` (Player) | UNBOUND — the official Leadership window is post-Velious (LoY/GoD), which Will's feature-gap ruling IGNORES. `CycleObjectLights` keeps its consumer (`DiagnosticsComponent::cycleObjectLights()`, Options > Keys Debug page) but no key; `/olight` is the on/off toggle (`renderer_slash_commands.cpp:240`), not the cycle, so no slash alias was invented. |
-| Shift+F10 | `EffectsVolumeDown` | REMOVED — no volume key on any oracle page |
+| Shift+F10 | `EffectsVolumeDown` | REMOVED — no volume key on the Camera, UI or Commands pages (T466) |
 | Shift+F11 | `EffectsVolumeUp` | REMOVED — same |
 
 `MusicVolumeUp`/`MusicVolumeDown`/`EffectsVolumeUp`/`EffectsVolumeDown` keep
@@ -107,7 +107,10 @@ local run of the untouched suites would only re-prove what CI re-proves.
   actions under its UI category: a user MAY bind volume keys in a user copy
   (pinned by `B582_APreB582UserFileStillLoads`), and removing them from the
   page would delete live actions from the rebinding surface — that is a
-  separate decision, not made here.
+  separate decision, not made here. A saved pre-B582 user copy therefore keeps
+  its old volume/F10/F11/L keys until the user hits "Reload defaults" — no
+  migration is applied and there was no user base to migrate (T464's shipped
+  file was the only table; `loadFromFile()` replaces, never merges).
 - Live proof (pressing F10/F11/L in a running zone) was not done: the lane
   rig was not used for a keypress; the hotkey tables are what the receiver
   consults, and both are pinned above.
