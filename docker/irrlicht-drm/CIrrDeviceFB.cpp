@@ -103,6 +103,8 @@ enum LinuxKey {
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <string>
+#include <vector>
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
@@ -113,6 +115,7 @@ enum LinuxKey {
 #include "IEventReceiver.h"
 #include "os.h"
 #include "CTimer.h"
+#include "drm_card_select.h"
 #include "drm_mode_select.h"
 #include "gpu_sync_probe.h"
 #include "COpenGLES2Driver.h"
@@ -301,23 +304,126 @@ CIrrDeviceFB::~CIrrDeviceFB()
 // DRM Initialization
 // ============================================================
 
-bool CIrrDeviceFB::initDRM()
-{
-    // Try /dev/dri/card0 first, then card1
-    const char* cards[] = { "/dev/dri/card0", "/dev/dri/card1", nullptr };
-    for (int i = 0; cards[i]; i++) {
-        drmFd_ = open(cards[i], O_RDWR | O_CLOEXEC);
-        if (drmFd_ >= 0) {
-            char msg[128];
-            snprintf(msg, sizeof(msg), "DRM: Opened %s (fd=%d)", cards[i], drmFd_);
-            os::Printer::log(msg, ELL_INFORMATION);
-            break;
-        }
+// B1054 (#374): card-selection decision. The candidate list and the
+// open/check callbacks are this TU's libdrm side; the pure decision
+// (eqt_drm::selectDRMCard, drm_card_select.h) is unit tested in
+// tests/test_drm_card_select.cpp over a fake card list.
+namespace {
+int openDRMCard(const std::string& path) {
+    return open(path.c_str(), O_RDWR | O_CLOEXEC);
+}
+
+eqt_drm::DRMCardState checkDRMCard(int fd, const std::string& path) {
+    eqt_drm::DRMCardState state;
+    drmModeRes* resources = drmModeGetResources(fd);
+    if (!resources) {
+        os::Printer::log("DRM: drmModeGetResources failed", ELL_ERROR);
+        return state;
     }
 
-    if (drmFd_ < 0) {
-        os::Printer::log("DRM: Failed to open /dev/dri/card*", ELL_ERROR);
+    // Find a connected connector with at least one advertised mode.
+    int connectorId = 0;
+    for (int i = 0; i < resources->count_connectors; i++) {
+        drmModeConnector* connector = drmModeGetConnector(fd, resources->connectors[i]);
+        if (connector && connector->connection == DRM_MODE_CONNECTED &&
+            connector->count_modes > 0) {
+            connectorId = connector->connector_id;
+            state.connectorType = connector->connector_type;
+            drmModeFreeConnector(connector);
+            break;
+        }
+        if (connector)
+            drmModeFreeConnector(connector);
+    }
+    bool hasCrtc = false;
+    if (connectorId) {
+        // A connector is only usable when some CRTC can drive it: the
+        // encoder's CRTC, or any encoder whose possible_crtcs covers one.
+        drmModeEncoder* encoder = nullptr;
+        drmModeConnector* probe = drmModeGetConnector(fd, connectorId);
+        if (probe && probe->encoder_id) {
+            encoder = drmModeGetEncoder(fd, probe->encoder_id);
+        }
+        if (encoder) {
+            hasCrtc = encoder->crtc_id != 0;
+            drmModeFreeEncoder(encoder);
+        }
+        if (!hasCrtc) {
+            for (int i = 0; i < resources->count_encoders; i++) {
+                drmModeEncoder* e = drmModeGetEncoder(fd, resources->encoders[i]);
+                if (!e)
+                    continue;
+                for (int j = 0; j < resources->count_crtcs && !hasCrtc; j++)
+                    if (e->possible_crtcs & (1 << j))
+                        hasCrtc = true;
+                drmModeFreeEncoder(e);
+            }
+        }
+        if (probe)
+            drmModeFreeConnector(probe);
+    }
+    drmModeFreeResources(resources);
+
+    state.hasConnectedConnector = connectorId != 0;
+    state.hasCrtc = hasCrtc;
+    if (!state.hasConnectedConnector || !state.hasCrtc) {
+        char msg[128];
+        snprintf(msg, sizeof(msg),
+                 "DRM: %s opens but has no usable display (connector: %s, CRTC: %s) - trying next card",
+                 path.c_str(),
+                 state.hasConnectedConnector ? "connected" : "none",
+                 state.hasCrtc ? "yes" : "no");
+        os::Printer::log(msg, ELL_WARNING);
+    }
+    return state;
+}
+}  // namespace
+
+bool CIrrDeviceFB::initDRM()
+{
+    // B1054 (#374): iterate /dev/dri/card* in numeric order and take the
+    // FIRST card that both opens AND has a connected connector with a CRTC
+    // (pre-B1054: the first card that merely OPENED won, so a headless
+    // dGPU on card0 hid the iGPU panel on card1 -- measured on the
+    // ThinkPad). WILLEQ_DRM_DEVICE, when set, replaces the auto list with
+    // exactly that path; a failure there is an explicit error naming the
+    // path and the reason, never a silent fallback to auto-selection or to
+    // surfaceless EGL.
+    std::vector<std::string> candidates = eqt_drm::drmCardCandidates();
+    const char* override = std::getenv("WILLEQ_DRM_DEVICE");
+    const bool overrideInForce = override && override[0] != '\0';
+    eqt_drm::DRMCardSelection selection =
+        eqt_drm::selectDRMCard(candidates, openDRMCard, checkDRMCard, overrideInForce);
+
+    if (!selection.ok) {
+        char msg[256];
+        if (overrideInForce) {
+            snprintf(msg, sizeof(msg),
+                     "DRM: WILLEQ_DRM_DEVICE=%s: %s (explicit override, "
+                     "no fallback)",
+                     override, selection.reason.c_str());
+        } else {
+            snprintf(msg, sizeof(msg),
+                     "DRM: no usable /dev/dri/card* (%s)", selection.reason.c_str());
+        }
+        os::Printer::log(msg, ELL_ERROR);
         return false;
+    }
+
+    const std::string& cardPath = candidates[selection.index];
+    drmFd_ = openDRMCard(cardPath);
+    if (drmFd_ < 0) {
+        os::Printer::log("DRM: re-open of the selected card failed", ELL_ERROR);
+        return false;
+    }
+    {
+        drmVersion* ver = drmGetVersion(drmFd_);
+        char msg[160];
+        const char* driverName = ver ? ver->name : "unknown";
+        snprintf(msg, sizeof(msg), "DRM: Opened %s (fd=%d) driver=%s",
+                 cardPath.c_str(), drmFd_, driverName);
+        os::Printer::log(msg, ELL_INFORMATION);
+        drmFreeVersion(ver);
     }
 
     drmModeRes* resources = drmModeGetResources(drmFd_);
@@ -326,15 +432,17 @@ bool CIrrDeviceFB::initDRM()
         return false;
     }
 
-    // Find a connected connector
+    // Re-probe the winning card for the connector (the check above only
+    // recorded that one exists).
     drmModeConnector* connector = nullptr;
     for (int i = 0; i < resources->count_connectors; i++) {
-        connector = drmModeGetConnector(drmFd_, resources->connectors[i]);
-        if (connector && connector->connection == DRM_MODE_CONNECTED && connector->count_modes > 0)
+        drmModeConnector* c = drmModeGetConnector(drmFd_, resources->connectors[i]);
+        if (c && c->connection == DRM_MODE_CONNECTED && c->count_modes > 0) {
+            connector = c;
             break;
-        if (connector)
-            drmModeFreeConnector(connector);
-        connector = nullptr;
+        }
+        if (c)
+            drmModeFreeConnector(c);
     }
 
     if (!connector) {
@@ -344,6 +452,12 @@ bool CIrrDeviceFB::initDRM()
     }
 
     connectorId_ = connector->connector_id;
+    {
+        char msg[160];
+        snprintf(msg, sizeof(msg), "DRM: using %s connector=%d",
+                 cardPath.c_str(), connector->connector_type);
+        os::Printer::log(msg, ELL_INFORMATION);
+    }
 
     // Log available modes
     for (int i = 0; i < connector->count_modes; i++) {
