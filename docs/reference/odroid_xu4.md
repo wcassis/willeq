@@ -97,9 +97,14 @@ Will reported corrupted NPC textures and all-black NPC silhouettes on this box
 affected NPC: synthetic benchmark entities used diagnostic coloring, and the
 live Testchar camera faced a nearby wall in qeynos. A later scripted qeynos2
 heading sweep captured one distant named NPC, but not the reported group or a
-classifiable defect. No GPU mechanism or preset change is established. See
-`refactor/B1051/README.md` for commands, raw-evidence locations, and the
-remaining reproduction requirement.
+classifiable defect. Take 2 ran Will's `play.sh` at his saved qeynos location:
+the baseline showed one normally textured bridge NPC, while the subsequent
+1024x768 and per-frame turn captures produced no classifiable affected NPC.
+An image-only script counted dark and high-variance *proxies* in every frame,
+but UI panels, windows, water, and wood also triggered them; they are not an
+NPC defect count. Therefore the result remains **NOT REPRODUCED**, and no
+Panfrost mechanism, one-knob result, or preset change is established. See
+`refactor/B1051/README.md` for the four run rows, raw evidence, and limitations.
 
 ## Kernel and module state on the box
 

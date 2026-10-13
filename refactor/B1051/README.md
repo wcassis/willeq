@@ -1,4 +1,63 @@
-# B1051 XU4 texture investigation (incomplete)
+# B1051 XU4 texture investigation (not reproduced)
+
+## Take 2: Will's saved qeynos position, 2026-10-13
+
+Will's `~/willeq/play.sh` logged Testchar into qeynos using the existing
+setcap binary and config. The only client additions were `--dump-frames-dir`,
+`--dump-every`, `--dump-max-frames`, and `--log-level=INFO`. A temporary copy of
+`scripts/pi/uinput_drive.py` created the virtual evdev keyboard before the
+client started, dismissed the initially open Tip and Options windows, held D
+for 4 seconds (the client's 90 degrees/s turn setting), and typed `/q`. No
+movement keys were sent. The first two runs timed out with UI panels still
+open and no `/q` command observed in the log; the final burst exited cleanly
+with code 0. These deviations
+are visible in each `keys.tsv` and `client.log`.
+
+Raw evidence is under
+`/home/user/kb-evidence/kb-b1051-panfrost-npc-textures/` on hermes-ext:
+
+| Run | Capture settings | Frames | Persistent dark proxies | High-variance proxies | Validity |
+|---|---|---:|---:|---:|---|
+| `take2` | 1280x720, every 15, cap 120 | 56 | 132 | 1193 | Options and Tip cover the entity band; one normally textured Gash Flockwalker is visible on the bridge. |
+| `take2_1024` | 1024x768, every 15, cap 120 | 49 | 58 | 955 | Tip closed, Options still covers the band; no affected NPC visible. |
+| `take2_burst` | 1280x720, every 1, cap 60 | 46 | 74 | 406 | Popups closed, but chat input held focus and the turn did not occur; wall-only view. |
+| `take2_burst_retry` | 1280x720, every 1, cap 60 | 12 | 16 | 99 | Popups and chat closed; D turn occurred, but available frames show bridge edge/sky and a building wall, not an affected NPC. `/q` exited cleanly. |
+
+The counts are sums of the per-frame `counts.tsv` columns, **not counts of bad
+NPCs**. `scripts/sbc/xu4/count_npc_artifacts.py` uses the fixed central crop
+x=20-80 %, y=30-80 % of each PNG: a dark proxy is a connected near-black,
+low-chroma blob of 160-18000 pixels, 18+ px high and at most 140 px wide,
+with height at least 1.2 times width; persistence means bounding-box IoU >=
+0.3 against the preceding frame. A variance proxy is a connected patch of
+100-18000 pixels where 7x7 local grayscale variance exceeds 1800. The
+`counts.tsv` files contain a row for **every** frame. UI panels, dark windows,
+water and wood texture trigger these proxies, so they cannot be called the
+reported silhouettes or corrupt textures without a visibly matching NPC.
+
+Six stills for cold review:
+`take2/frames/frame_000000.png`, `take2/frames/frame_000030.png`,
+`take2_1024/frames/frame_000000.png`, `take2_1024/frames/frame_000012.png`,
+`take2_burst_retry/frames/frame_000005.png`, and
+`take2_burst_retry/frames/frame_000008.png`. Each directory also contains the
+raw `client.log`, `keys.tsv`, and per-frame `counts.tsv`.
+
+**Verdict: NOT REPRODUCED.** The prescribed 1280x720, 1024x768, and burst
+capture modes were attempted at Will's saved login position. A normal-looking
+bridge NPC appears in the baseline, but no frame establishes either reported
+defect. The extra burst was necessary because the first burst's chat focus
+prevented the turn. The final burst did turn, but generated only twelve frames
+before `/q`, none with a classifiable affected NPC. No one-knob experiments or
+Mesa mechanism attribution are justified without a failing baseline.
+
+The XU4 was left as found: only `/tmp/b1051` was used and removed after all
+logs/PNGs were transferred; `~/willeq/play.sh`, `~/willeq/willeq`, and
+`~/willeq/willeq.json` retained their initial size and mtime; the GPU governor
+remained `simple_ondemand`; no client process remained. The per-character UI
+cache changed when ESC closed Options, so its sole changed `Show` byte and
+original mtime were restored; its SHA-256 again matched the pre-run pin
+`e30f4e24fca4b7d2ce1768bf4ba2bf48136574cbc269d2c265255cec0f324be4`.
+The input sequence never requested character movement or altered the config or
+DB. No reboot, package install, or kernel change was performed.
 
 ## Attempt on 2026-10-13
 
@@ -64,7 +123,8 @@ governor were not changed.
   has been established on the device.
 - No ARM build proof for a change; this attempt changes documentation only.
 
-Next run needs the exact affected NPC group and camera pose from Will's play
-session, or another deterministic capture containing visibly affected NPCs,
-before modifying client code or proposing preset values. The retry's one
-distant NPC does not establish a failing baseline.
+Will's saved qeynos position was tried in take 2, but the reported artifacts
+still did not appear in a classifiable NPC view. A follow-up needs a capture
+with at least one visibly affected NPC and a way to keep that entity in view
+long enough for a before/after comparison. Neither the prior distant NPC nor
+the take-2 bridge NPC establishes a failing baseline.
