@@ -1,0 +1,4 @@
+# action	target	hold_ms	still_name
+login	Testchar	0	char_select
+create	Oraclebface	0	untouched_created
+still	after_create	0	after_create
