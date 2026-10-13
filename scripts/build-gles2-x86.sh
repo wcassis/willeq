@@ -160,9 +160,15 @@ sed -i 's|^IRROTHEROBJ = |IRROTHEROBJ = CIrrDeviceFB_X11.o |' \
 # Step 5: Build static lib with the host x86_64 toolchain (no cross-compiler,
 # no ARM sysroot, no NEON flags).
 # ------------------------------------------------------------------
-echo "--- Building libIrrlicht.a (native x86_64, make -j$JOBS) ---"
+# B1042 (#362): honour the same CMAKE_{C,CXX}_COMPILER_LAUNCHER environment
+# variables CMake reads (CI exports them as `ccache` on the x86 runners), so
+# a stamp-triggered Irrlicht rebuild recompiles only the TUs whose input
+# changed. Unset (a developer's host) means plain gcc/g++, exactly as before.
+IRR_CC="${CMAKE_C_COMPILER_LAUNCHER:+$CMAKE_C_COMPILER_LAUNCHER }gcc"
+IRR_CXX="${CMAKE_CXX_COMPILER_LAUNCHER:+$CMAKE_CXX_COMPILER_LAUNCHER }g++"
+echo "--- Building libIrrlicht.a (native x86_64, make -j$JOBS, CXX='$IRR_CXX') ---"
 make -C "$DEST_SRC" NDEBUG=1 -j"$JOBS" \
-    CXX=g++ CC=gcc AR=ar \
+    CXX="$IRR_CXX" CC="$IRR_CC" AR=ar \
     CXXFLAGS="$PROBE_CXXFLAGS" \
     CXXINCS="-I../../include -Izlib -Ijpeglib -Ilibpng -I/usr/include/libdrm" \
     staticlib
@@ -199,7 +205,9 @@ fi
 # distinguish a "GLES2 tree" from some other still-supported desktop tree.
 # ------------------------------------------------------------------
 # B1012: CI builds one tree per ref (GLES2_BUILD_DIR=<checkout>/build-gles2/ref/<slug>);
-# a developer's checkout keeps the default build-gles2/.
+# a developer's checkout keeps the default build-gles2/. B1042: the launcher
+# env vars (above) are passed explicitly too, so a re-run over an existing
+# tree picks them up (CMake reads the env vars only on a tree's FIRST configure).
 BUILD_DIR="${GLES2_BUILD_DIR:-$PROJECT_DIR/build-gles2}"
 echo "=== Configuring $BUILD_DIR (EQT_GLES2=ON) ==="
 mkdir -p "$BUILD_DIR"
@@ -216,7 +224,9 @@ cmake -S "$PROJECT_DIR" -B "$BUILD_DIR" \
     -DEQT_GLES2_IRRLICHT_DIR="$IRRLICHT_BUILD_DIR" \
     -DEQT_BUILD_TESTS=OFF \
     -DWITH_RDP=OFF \
-    -DCMAKE_CXX_FLAGS="$MAIN_CXXFLAGS"
+    -DCMAKE_CXX_FLAGS="$MAIN_CXXFLAGS" \
+    ${CMAKE_C_COMPILER_LAUNCHER:+-DCMAKE_C_COMPILER_LAUNCHER=$CMAKE_C_COMPILER_LAUNCHER} \
+    ${CMAKE_CXX_COMPILER_LAUNCHER:+-DCMAKE_CXX_COMPILER_LAUNCHER=$CMAKE_CXX_COMPILER_LAUNCHER}
 
 echo "=== Building willeq + gles2_zone_benchmark ($BUILD_DIR, -j$JOBS) ==="
 cmake --build "$BUILD_DIR" --target willeq -j"$JOBS"
