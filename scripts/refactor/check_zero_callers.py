@@ -866,11 +866,6 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
-    # B946: the [gldriver] line's parser. Its C++ callers are tests (the
-    # emitter is makeGlDriverLine/glDriverInfo); its production consumer is
-    # scripts/pi/rendered_zone_summarize.py, which parses the same format
-    # from zone logs -- the test pins the format both sides share.
-    ("(free)", "parseGlDriverLine"): "seam",
     # B430/B433: the Options window's per-control classification table is a
     # CENSUS, not a runtime input -- its reader is the test that fails on an
     # unclassified control row (OptionsClassification.*), which is the point.
