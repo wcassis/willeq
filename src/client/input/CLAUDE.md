@@ -81,13 +81,7 @@ recipe for a command whose mechanism is a bridge intent rather than a packet
 is a thin `EverQuest::Request*` wrapper (T136/T138) — `EqActionHandler` has no
 bridge pointer by design.
 
-`InputActionBridge` dispatches keyboard hotbar presses by the slot's content
-type (T174, `InputActionBridge::processHotbarRequests()`). Every slot type is
-routed: Spell → `castSpell`, Skill → `useSkill`, Item → `useItemById` (T230
-resolves the item id to an inventory slot through
-`IActionHandler::findItemSlotByItemId`, the same lookup the mouse path uses),
-and Emote/Macro/Combat → `activateHotbarCommandSlot` (T239, the same body as the
-mouse path). The DEBUG-logged skips T174 shipped are gone.
+InputActionBridge dispatches keyboard hotbar presses from HotbarModel's current page by slot content type. Spell resolves the stored spell ID through HotbarModel::findSpellGem(), the same lookup as mouse HotbarActivateIntent; no matching visible memorized gem means no cast. Skill routes to useSkill, Item routes to useItemById, and Emote/Macro/Combat route to activateHotbarCommandSlot.
 
 ## Data Flow
 
