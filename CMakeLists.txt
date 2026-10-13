@@ -977,19 +977,24 @@ SET(ALL_CORE_SOURCES
 # Create a static library for the core client code (used by both executable and tests)
 ADD_LIBRARY(willeq_core STATIC ${ALL_CORE_SOURCES})
 # B950 (GitLab #268): PUBLIC, not PRIVATE. ZoneMeshBuilder's member layout in
-# zone_geometry.h depends on EQT_HAS_TEXTURE_ATLAS (four #ifdef blocks in the
-# header; only the two data-member blocks -- the shaderMaterialAtlas*
-# members -- change sizeof, 8 bytes total on x86-64), so
+# zone_geometry.h USED to depend on EQT_HAS_TEXTURE_ATLAS (the two #ifdef
+# data-member blocks -- the shaderMaterialAtlas* members -- changed sizeof,
+# 8 bytes total on x86-64), so
 # every TU that constructs one must see the same
 # layout the core's constructor was generated against. PRIVATE left every
 # consumer of willeq_core one sizeof smaller (B944's ASan stack-buffer-
-# overflow; test_placed_object_meshes by construction). No target links
+# overflow; test_placed_object_meshes by construction). B494 (this MR)
+# deleted the guarded members: zone_geometry.h now has zero #ifdef blocks,
+# so the define gates nothing in the header and the layout no longer depends
+# on it. The define and the net are KEPT but vacuous (retirement is a
+# FOLLOW-UP); the net still asserts consumer and core agree. No target links
 # willeq_core and compiles zone_geometry.cpp itself, so the define
 # propagate through the link cannot shadow a local copy -- the per-target
 # PRIVATE copies in the three tests that linked willeq_core
 # (renderer_guards.cmake) are deleted as now-redundant. The three gles2
 # tools below still declare it PRIVATE: they do NOT link willeq_core and
-# compile the atlas TUs themselves, so for them the PRIVATE copy is the only
+# compile the zone TUs themselves (zone_geometry.cpp, mesh_building.cpp),
+# so for them the PRIVATE copy is the only
 # one and stays.
 # Pinned by test_zone_geometry_atlas_layout.
 TARGET_COMPILE_DEFINITIONS(willeq_core PUBLIC EQT_HAS_TEXTURE_ATLAS)

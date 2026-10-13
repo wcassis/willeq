@@ -181,3 +181,38 @@ The deleted files were never named in the map.
   green (`build_willeq.log`), all eight named test binaries rebuilt and run
   green (`test_runs.log`), `ctest -L hygiene` 35/35 (`ctest_hygiene3.log`).
 - Left open, see FOLLOW-UP.
+
+## Review fix leg (t_283c4499, 2026-10-13; review t_1de8d8b0 FAIL on MR !179 @ f3f2140f)
+
+The FAIL was the step-5 doc sweep only (stale docs are a first-class defect);
+the deletion and the ratchet rows were re-derived cold and stand. The three
+findings, and where they were struck (post-fix lines; the fable merge
+811c98db into this branch moved no lines in these files):
+
+1. `tests/test_zone_geometry_atlas_layout.cpp:4-16` -- the header comment
+   still said "four #ifdef blocks ... the shaderMaterialAtlas* members ...
+   change sizeof"; zone_geometry.h now has 0 #ifdef blocks
+   (`grep -c 'ifdef' include/client/graphics/eq/zone_geometry.h` = 0,
+   measured at the fix commit). Rewritten: the define USED to matter
+   (history kept), B494 deleted the guarded members, the net is kept but
+   vacuous (retirement FOLLOW-UP).
+2. `CMakeLists.txt:979-999` (the willeq_core EQT_HAS_TEXTURE_ATLAS comment)
+   -- same stale "four #ifdef blocks in the header" claim (this README's own
+   step-4 entry at the time already admitted the blocks were gone). Same
+   rewrite; the trailing clause "compile the atlas TUs themselves" also went
+   stale (those TUs are deleted) and now names the TUs the three gles2 tools
+   actually compile (zone_geometry.cpp, mesh_building.cpp -- verified in the
+   target source lists).
+3. `src/client/graphics/CLAUDE.md:49` -- the deleted `TextureAtlas`
+   component line (`- \`TextureAtlas\` - Atlas tile layout (256px slots,
+   248px inner, 4px padding)`). PROTECTED file: the exact deletion was
+   handed under the `CLAUDE.md EDITS:` heading of the fix-leg completion
+   summary (t_283c4499); the orchestrator applies it.
+
+Not touched, per the card: the deletion, the ratchet rows
+(check_zero_callers.py / check_write_only_fields.py), the B950/B1019 net
+(test + PUBLIC define) and the three gles2-tool PRIVATE defines (retirement
+remains the FOLLOW-UP). `tests/cmake/renderer_guards.cmake:80-85`'s
+"WITHOUT EQT_HAS_TEXTURE_ATLAS before the fix / WITH it once ... PUBLIC"
+and its "8 bytes smaller" line are the historical B950 defect story the net
+pins -- not flagged by the review, left as-is.
