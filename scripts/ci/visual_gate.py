@@ -88,6 +88,21 @@ Usage:
                             Verify only zones a and b (CI splits the blocking
                             and non-blocking gate jobs this way; see
                             select_zones() and docs/ci.md).
+  B1024 -- the platform dimension (docs/ci.md "Two golden sets: x86 and Pi"):
+  visual_gate.py --platform pi --bench /path/to/gles2_zone_benchmark-nollvm
+                Verify the Pi set against tests/goldens/pi/ + manifest
+                platforms.pi (NOT YET BLESSED, exit 1, until blessed; the
+                Mesa-prefix maps proof runs too). Run this ON THE ORANGE PI
+                under the Pi lock.
+  visual_gate.py --platform pi --bench BIN --capture DIR
+                Capture the Pi set into DIR (staged bless; never touches
+                tests/goldens/; the orchestrator commits it).
+  visual_gate.py --platform pi --bench BIN --goldens-dir DIR
+                Verify against a captured set (run2-vs-run1 determinism).
+  --platform x86 (or no --platform) is the CI gate job, byte-identical to
+  today's invocation (pinned by tests/data/b1024/x86_gate_plan.txt).
+  --bless --platform pi is refused: Pi goldens are committed by the
+  orchestrator from a captured set (that commit is the bless).
 
 Exit code is nonzero on any failure (or when build-gles2/ is missing --
 see the ctest wrapper, scripts/ci/visual_gate.sh, for the SKIP path).
@@ -95,12 +110,15 @@ see the ctest wrapper, scripts/ci/visual_gate.sh, for the SKIP path).
 import argparse
 import base64
 import csv
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import time
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -301,27 +319,190 @@ LEDGER_SLACK_MAX_PCT = 35.0
 RSS_CEILING_BYTES = 256 * 1024 * 1024
 RSS_TARGET_BYTES = 64 * 1024 * 1024
 
+# B1024 (#344) -- per-platform golden sets. One compare rule (exact match,
+# compare_images_exact unchanged), two golden sets: the x86 set the CI gate
+# verifies today (llvmpipe, 16-bit depth, B971) and a Pi set (Lima/Mali-400,
+# 24-bit depth) rendered on the Orange Pi under the Pi lock by hand. The two
+# sets can never be cross-compared (B980 measured the residual as coverage
+# flips on alpha-cutout/clip edges -- a driver difference, not a regression),
+# so each platform resolves its OWN goldens location and its OWN manifest
+# section. See docs/ci.md "Two golden sets: x86 and Pi (B1024)" and
+# docs/decisions.md 2026-10-11 (Will: "per-platform Pi goldens, go with
+# option (a)").
+#
+# Pi constants. PI_EQ_PATH mirrors scripts/pi/env.sh's PI_EQ_PATH (the NFS
+# mount the Pi sees); PI_MESA_PREFIX is the shipped LLVM-less Mesa prefix the
+# published ci-arm/<sha>/bin/*-nollvm binaries run against (docs/ci.md "The
+# shipped Mesa prefix"), whose directory name the published BUILD_INFO's
+# mesa_nollvm_pi_prefix carries.
+PI_EQ_PATH = Path(os.environ.get("PI_EQ_PATH", "/mnt/projects/EverQuestP1999"))
+PI_MESA_PREFIX = os.environ.get(
+    "WILLEQ_MESA_NOLLLVM_PREFIX", "/home/user/mesa-nollvm-25.2.8")
+
+
+@dataclass(frozen=True)
+class PlatformConfig:
+    """Everything a run needs that differs by platform (B1024): the goldens
+    location, the manifest section, the benchmark binary, the EQ path and
+    the extra benchmark args. x86 is today's invocation, byte for byte
+    (pinned by tests/data/b1024/x86_gate_plan.txt via
+    scripts/ci/test_visual_gate_platform.py --verify-x86); pi is the same
+    invocation on the Pi's GPU (its own EQ path + --drm, no other change)."""
+    platform: str
+    golden_root: Path            # where <zone>/<frame>.png goldens live
+    section: object              # manifest["zones"] or manifest["platforms"]["pi"]
+    bench: Path                  # the benchmark binary to launch
+    eq_path: Path                # the --eq-path argument
+    extra_bench_args: list       # appended after production args + extraArgs
+    maps_required: bool          # pi: the Mesa-prefix proof must pass
+    maps_prefix: str = PI_MESA_PREFIX
+
+
+def platform_config(manifest, platform, bench=None, goldens_dir=None):
+    """B1024: the ONE resolver for the platform dimension.
+
+    x86 (the default; the CI gate job passes no --platform) = today,
+    unchanged: goldens tests/goldens/<zone>_f<n>.png, section
+    manifest["zones"], the built BENCH_BIN, EQ_PATH, no extra args, no maps
+    proof. pi = goldens tests/goldens/pi/<zone>/f<n>.png (or goldens_dir/...),
+    section manifest["platforms"]["pi"] (may be None until blessed -- verify
+    then fails NOT YET BLESSED; there is no fallback to the x86 set), the
+    --bench PATH (REQUIRED), PI_EQ_PATH, and --drm. The same poses, frames,
+    warmup, resolution, productionConfig args and --occluder-budget 16 pin
+    as run_benchmark() -- the Pi set is the x86 gate's invocation on the
+    Pi's GPU, nothing else.
+    """
+    if platform == "x86":
+        root = Path(goldens_dir) if goldens_dir else GOLDENS_DIR
+        return PlatformConfig(
+            platform="x86", golden_root=root, section=manifest["zones"],
+            bench=Path(bench) if bench else BENCH_BIN, eq_path=EQ_PATH,
+            extra_bench_args=[], maps_required=False)
+    if platform != "pi":
+        raise ValueError(f"unknown --platform {platform!r} (x86|pi)")
+    if not bench:
+        raise ValueError(
+            "--platform pi requires --bench PATH (the published "
+            "ci-arm/<sha>/bin/gles2_zone_benchmark-nollvm)")
+    root = Path(goldens_dir) if goldens_dir else GOLDENS_DIR / "pi"
+    return PlatformConfig(
+        platform="pi", golden_root=root,
+        section=manifest.get("platforms", {}).get("pi"),
+        bench=Path(bench), eq_path=PI_EQ_PATH,
+        extra_bench_args=["--drm"], maps_required=True,
+        maps_prefix=PI_MESA_PREFIX)
+
+
+def golden_frame_path(cfg, zone, frame):
+    """B1024: the golden PNG for one platform's one frame -- x86
+    <root>/<zone>_f<n>.png (today's layout), pi <root>/<zone>/f<n>.png."""
+    if cfg.platform == "x86":
+        return cfg.golden_root / f"{zone}_f{frame}.png"
+    return cfg.golden_root / zone / f"f{frame}.png"
+
+
+def check_maps_text(maps_path, mesa_prefix=PI_MESA_PREFIX):
+    """B1024: the Mesa-prefix proof for a pi zone run. The maps file is
+    /proc/<pid>/maps of the benchmark while its GL stack is up (captured the
+    way scripts/pi/mesa_frame_ab.sh:39-40 polls for libgallium). The zone
+    FAILS if libLLVM is mapped (that is the LLVM build, not the published
+    -nollvm binary) or if libgallium is not under the shipped LLVM-less
+    prefix (mesa_prefix -- the published BUILD_INFO's mesa_nollvm_pi_prefix).
+    Returns a list of failure strings (empty = proof green)."""
+    failures = []
+    if not maps_path.exists():
+        return [f"maps proof missing: {maps_path} (the benchmark never showed a libgallium mapping)"]
+    text = maps_path.read_text()
+    if "libLLVM" in text:
+        failures.append(f"{maps_path.name}: libLLVM is mapped -- that is the LLVM "
+                        f"Mesa build, not the published -nollvm binary")
+    gallium_lines = [ln for ln in text.splitlines() if "libgallium" in ln]
+    if not gallium_lines:
+        failures.append(f"{maps_path.name}: no libgallium mapping found")
+    for ln in gallium_lines:
+        # /proc/pid/maps: start-end perms offset dev inode path
+        parts = ln.split()
+        path = parts[5] if len(parts) >= 6 else ""
+        if not path.startswith(mesa_prefix + "/"):
+            failures.append(f"{maps_path.name}: libgallium {path} is not under "
+                            f"the shipped prefix {mesa_prefix}/")
+    return failures
+
+
+def poll_maps(proc, maps_path, timeout_s=120.0):
+    """B1024: copy /proc/<pid>/maps of a RUNNING benchmark once its GL stack
+    is up (poll for libgallium, the mesa_frame_ab.sh:39-40 precedent -- the
+    first pose is drawn after load, so a fixed delay would be a guess), and
+    again shortly before it exits is NOT needed: the GL libraries stay mapped
+    for the whole run. Returns True when a maps file was written."""
+    maps_path = Path(maps_path)
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            text = Path(f"/proc/{proc.pid}/maps").read_text()
+        except (OSError, FileNotFoundError):
+            if proc.poll() is not None:
+                return False
+            time.sleep(0.5)
+            continue
+        if "libgallium" in text:
+            maps_path.parent.mkdir(parents=True, exist_ok=True)
+            maps_path.write_text(text)
+            return True
+        time.sleep(0.5)
+    return False
+
 
 def load_manifest():
     with open(MANIFEST_PATH) as f:
         return json.load(f)
 
 
-def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None):
+def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None, cfg=None):
     """Run the benchmark for one zone, dumping designated frames + CSV + memory JSON.
 
     Returns (png_paths_by_frame, csv_rows, memory_dict, stdout_text).
+
+    B1024: with cfg=None (x86, the pre-B1024 path) the invocation is
+    byte-identical to today's -- pinned by tests/data/b1024/x86_gate_plan.txt
+    and --verify-x86. With a PlatformConfig, the platform's binary / EQ path /
+    extra args replace the x86 ones, and --platform pi launches via Popen so
+    poll_maps() can take the Mesa-prefix proof off a LIVE process. The
+    benchmark itself always writes flat <prefix>_f<n>.png (the literal
+    "_f" is hard-coded in its dump path -- it cannot write a directory), so
+    both platforms invoke it the same way (prefix <out_dir>/<zone>) and the
+    pi run MOVES the flat frames into <out_dir>/<zone>/f<n>.png afterwards:
+    the committed layout (tests/goldens/pi/<zone>/f<n>.png), and the only
+    reason the Pi set nests at all is that its layout is the design's.
+    The frames, warmup, resolution, productionConfig args and the
+    --occluder-budget 16 pin are the SAME for both platforms: the Pi set is
+    the x86 gate's invocation on the Pi's GPU, nothing else.
     """
     zone = zone_cfg["zone"]
     frames = zone_cfg.get("designatedFrames", [0])
-    prefix = out_dir / zone
+    if cfg is None:
+        bench, eq_path, extra = BENCH_BIN, EQ_PATH, ()
+        maps_path = None
+        prefix = out_dir / zone
+    else:
+        bench, eq_path, extra = cfg.bench, cfg.eq_path, cfg.extra_bench_args
+        maps_path = out_dir / f"{zone}_maps.txt" if cfg.maps_required else None
+        # the benchmark's native output is flat: <prefix>_f<n>.png. (Passing
+        # <out_dir>/<zone>/"frames" would write <out_dir>/<zone>/frames_f0.png
+        # -- the "_f" is in the filename, not a directory -- and with no
+        # mkdir the save would fail anyway.)
+        prefix = out_dir / zone
     csv_path = out_dir / f"{zone}.csv"
     mem_path = out_dir / f"{zone}_mem.json"
+    if cfg is not None and cfg.platform == "pi":
+        # the destination for the flat-frame move below; the benchmark never
+        # writes into it
+        (out_dir / zone).mkdir(parents=True, exist_ok=True)
 
     cmd = [
-        str(BENCH_BIN),
+        str(bench),
         "--zone", zone,
-        "--eq-path", str(EQ_PATH),
+        "--eq-path", str(eq_path),
         "--frames", str(bench_cfg["frames"]),
         "--warmup", str(bench_cfg["warmup"]),
         "--res", str(bench_cfg["resolution"]["width"]), str(bench_cfg["resolution"]["height"]),
@@ -344,19 +525,57 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None):
         # default. A future re-bless (Will's call, out of this unit's scope)
         # can drop this pin once goldens are regenerated under the new default.
         "--occluder-budget", "16",
-    ] + (production_args or []) + zone_cfg.get("extraArgs", [])
+    ] + (production_args or []) + zone_cfg.get("extraArgs", []) + list(extra)
 
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"benchmark failed for zone {zone} (exit {proc.returncode}):\n"
-            f"cmd: {' '.join(cmd)}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
-        )
+    if maps_path is None:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"benchmark failed for zone {zone} (exit {proc.returncode}):\n"
+                f"cmd: {' '.join(cmd)}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+            )
+        stdout_text, stderr_text = proc.stdout, proc.stderr
+    else:
+        # B1024: the pi run is a LIVE process while poll_maps() takes its
+        # /proc/<pid>/maps (the GL libraries are mapped for the whole run;
+        # the poll lands the moment libgallium appears -- a fixed delay
+        # would be a guess, see mesa_frame_ab.sh:39-40). maps_path stays a
+        # local here; poll_maps gets it directly.
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True)
+        if not poll_maps(proc, maps_path):
+            # the maps file may still exist (taken before a crash);
+            # check_maps_text() reports it either way
+            pass
+        rc = proc.wait()
+        stdout_text = proc.stdout.read()
+        stderr_text = proc.stderr.read()
+        if rc != 0:
+            raise RuntimeError(
+                f"benchmark failed for zone {zone} (exit {rc}):\n"
+                f"cmd: {' '.join(cmd)}\nstdout:\n{stdout_text}\nstderr:\n{stderr_text}"
+            )
 
     png_paths = {f: Path(f"{prefix}_f{f}.png") for f in frames}
     for f, p in png_paths.items():
         if not p.exists():
-            raise RuntimeError(f"expected golden frame PNG missing: {p}\nstdout:\n{proc.stdout}")
+            raise RuntimeError(f"expected golden frame PNG missing: {p}\nstdout:\n{stdout_text}")
+
+    if cfg is not None and cfg.platform == "pi":
+        # B1024: the committed Pi layout is NESTED (<zone>/f<n>.png) while the
+        # benchmark's native output is flat (<zone>_f<n>.png, the "_f" being
+        # hard-coded into the filename). Move the flat frames into place and
+        # report the moved paths -- the callers (verify_pi's compare,
+        # capture_pi's staging, SHA256SUMS) all work off png_paths, so they
+        # see the committed layout without learning about the move. A move
+        # (not copy): the flat files are the run's intermediate, exactly one
+        # owner of the frame.
+        moved = {}
+        for f, p in png_paths.items():
+            dest = out_dir / zone / f"f{f}.png"
+            shutil.move(str(p), dest)
+            moved[f] = dest
+        png_paths = moved
 
     csv_rows = list(csv.DictReader(open(csv_path)))
 
@@ -365,7 +584,7 @@ def run_benchmark(zone_cfg, bench_cfg, out_dir, production_args=None):
         with open(mem_path) as f:
             memory = json.load(f)
 
-    return png_paths, csv_rows, memory, proc.stdout
+    return png_paths, csv_rows, memory, stdout_text
 
 
 def run_memory_coverage_benchmark(zone, out_dir):
@@ -1081,6 +1300,318 @@ def verify(manifest):
     return 0
 
 
+# ====================================================== B1024: the Pi platform
+
+def _pi_memory_fields(memory):
+    """The per-zone memory block a Pi bless writes: the same fields bless()
+    writes for x86 (the MEMORY_BUDGET_PAIRS usage+limit pairs present in the
+    run, MEMORY_BASELINE_FIELDS, MEMORY_REPORT_ONLY_FIELDS) -- the Pi's own
+    measurements of the same categories. p95CpuMsBaseline is deliberately
+    NOT among them: Pi TIMING is H04's lane (scripts/pi/compare_pi.sh ->
+    pi_bench_compare.py), not the pixel gate's."""
+    mem = {}
+    for used_key, limit_key, _label in MEMORY_BUDGET_PAIRS:
+        if used_key in memory and limit_key in memory:
+            mem[used_key] = memory[used_key]
+            mem[limit_key] = memory[limit_key]
+    for key in MEMORY_BASELINE_FIELDS:
+        if key in memory:
+            mem[key] = memory[key]
+    for key in MEMORY_REPORT_ONLY_FIELDS:
+        if key in memory:
+            mem[key] = memory[key]
+    return mem
+
+
+def verify_pi(manifest, cfg, bench_cfg, production_args, goldens_dir=None):
+    """B1024: verify the Pi set. ONE compare rule -- compare_images_exact,
+    unchanged -- against the Pi's OWN goldens and section:
+
+      pixels          every designated frame, pixel-exact vs
+                      cfg.golden_root/<zone>/f<n>.png
+      metrics         draws/stateChanges/polys exact vs section zones
+      memory budgets  assert_memory_budgets (usage <= the live budget,
+                      shared with the x86 verify)
+      memory exact    exact vs the section's per-zone memory block, under the
+                      SAME rules as the x86 verify: MEMORY_BUDGET_PAIRS usage
+                      + MEMORY_BASELINE_FIELDS. The report-only fields
+                      (processRssBytes, untrackedBytes) are NEVER asserted
+                      here -- the x86 verify reports them (T69: never
+                      asserted, refactor/T69_memory_enforcement_gate.md),
+                      and they are not cross-run deterministic (they
+                      measured the whole process, whose allocator state
+                      varies between runs). _pi_memory_fields() still
+                      records them in the section for bless-diff
+                      visibility, exactly as bless() does for x86.
+      ledger          assert_memory_ledger (the allocator ledger is a
+                      platform fact, asserted on the Pi run too)
+      maps proof      check_maps_text: libgallium under the shipped
+                      LLVM-less prefix, libLLVM never mapped
+      glVersion       the section's blessedUnder.glVersion is reported
+                      (mismatch is a NOTE, exactly like the x86 verify --
+                      a mesa point release is a re-bless bookkeeping, not a
+                      regression)
+    NOT asserted here: the p95CpuMsBaseline ceiling (Pi timing is H04's) and
+    the memoryCoverage run (T80 is an x86-asset-mix measurement; the Pi
+    coverage run is H04/B1006 territory, not this gate's).
+
+    A section (manifest["platforms"]["pi"], or goldens_dir/manifest_pi.json
+    when --goldens-dir names the captured set) that is missing fails NOT
+    YET BLESSED with exit 1 -- there is no fallback to the x86 set.
+    """
+    failures = []
+    # per-run scratch for the pi verify (diffs, maps proofs) -- never under
+    # tests/goldens/, same rule as the x86 verify's ARTIFACTS_DIR
+    out_dir = ARTIFACTS_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    section = cfg.section
+    if section is None and goldens_dir is not None:
+        candidate = Path(goldens_dir) / "manifest_pi.json"
+        if candidate.exists():
+            section = json.loads(candidate.read_text()).get("platforms", {}).get("pi")
+    if section is None:
+        print("[verify] pi: NOT YET BLESSED -- no platforms.pi section in the "
+              "manifest (and no manifest_pi.json in --goldens-dir). The Pi "
+              "set must be captured (--capture) and blessed before the Pi "
+              "gate can verify; it never falls back to the x86 set.")
+        return 1, failures
+
+    # the section's zones (pi layout: zone configs live under section["zones"])
+    zones = section.get("zones", [])
+    by_zone = {z["zone"]: z for z in zones}
+    manifest_zone_cfgs = {z["zone"]: z for z in manifest["zones"]}
+
+    for zone_cfg in manifest_zone_cfgs.values():
+        zone = zone_cfg["zone"]
+        print(f"[verify] pi {zone} ...")
+        if zone not in by_zone:
+            failures.append(f"pi {zone}: NOT YET BLESSED -- no zone in the "
+                            f"platforms.pi section")
+            continue
+        pi_cfg = by_zone[zone]
+        if (pi_cfg.get("extraArgs") != zone_cfg.get("extraArgs", [])
+                or pi_cfg.get("designatedFrames") != zone_cfg.get("designatedFrames", [0])):
+            failures.append(
+                f"pi {zone}: section poses/frames disagree with manifest zones "
+                f"-- the Pi set must be the x86 gate's invocation, nothing else")
+        try:
+            png_paths, csv_rows, memory, stdout_text = run_benchmark(
+                zone_cfg, bench_cfg, out_dir, production_args, cfg=cfg)
+        except RuntimeError as e:
+            failures.append(f"pi {zone}: {e}")
+            continue
+
+        # the Mesa-prefix proof (pi mode only; the x86 gate needs no proof)
+        if cfg.maps_required:
+            failures.extend(check_maps_text(out_dir / f"{zone}_maps.txt",
+                                            mesa_prefix=cfg.maps_prefix))
+
+        gl_version = extract_gl_version(stdout_text)
+        expected_gl = section.get("blessedUnder", {}).get("glVersion")
+        if gl_version and expected_gl and gl_version != expected_gl:
+            print(f"  NOTE: pi GLES version differs from the Pi blessed baseline "
+                  f"(blessed='{expected_gl}', current='{gl_version}') -- "
+                  f"mesa moved, re-capture + re-bless the Pi set instead of "
+                  f"treating diffs as regressions.")
+
+        # 1. golden frames, pixel-exact against the Pi set
+        for f, actual_path in png_paths.items():
+            golden_path = golden_frame_path(cfg, zone, f)
+            if not golden_path.exists():
+                failures.append(f"pi {zone} frame {f}: no golden at {golden_path} "
+                                f"(capture the Pi set first: --platform pi --capture DIR)")
+                continue
+            identical, diff_count, size = compare_images_exact(golden_path, actual_path)
+            if not identical:
+                diff_out = ARTIFACTS_DIR / f"pi_{zone}_f{f}_diff.png"
+                save_diff_artifact(golden_path, actual_path, diff_out)
+                failures.append(
+                    f"pi {zone} frame {f}: PIXEL MISMATCH ({diff_count} differing pixels, "
+                    f"size={size}). Artifacts: {actual_path}, {diff_out}")
+
+        # 2. metrics (draws/stateChanges/polys) -- exact, per frame, the same
+        #    rule as the x86 verify (which indexes csv_rows[f] directly). The
+        #    frame must have a CSV row: a blessed section can only carry
+        #    metrics for frames the run actually measured.
+        for f_str, expected in pi_cfg.get("metrics", {}).items():
+            f = int(f_str)
+            if f >= len(csv_rows):
+                failures.append(f"pi {zone} frame {f}: no CSV row to check "
+                                f"metrics against")
+                continue
+            row = csv_rows[f]
+            for key, csv_key in (("draws", "draws"), ("stateChanges", "state_changes"), ("polys", "polys")):
+                actual_val = int(row[csv_key])
+                if actual_val != expected[key]:
+                    failures.append(
+                        f"pi {zone} frame {f}: {key} mismatch (expected {expected[key]}, got {actual_val})")
+
+        # 3. memory: budgets (shared rule) + exact match against the Pi section
+        if memory:
+            assert_memory_budgets(f"pi {zone}", memory, failures)
+            assert_memory_ledger(f"pi {zone}", memory, failures)
+            expected_mem = pi_cfg.get("memory")
+            if not expected_mem:
+                failures.append(f"pi {zone}: NOT YET BLESSED -- section zone has no "
+                                f"memory block")
+            else:
+                # The x86 verify's exact-match rule, not "every field in the
+                # block": MEMORY_BUDGET_PAIRS_ALSO_BASELINED usage +
+                # MEMORY_BASELINE_FIELDS (the x86 verify's loops (a') and
+                # (b) -- the other budget-pair usages are already in
+                # MEMORY_BASELINE_FIELDS). The report-only fields are
+                # excluded -- the x86 verify prints them and never asserts
+                # them (T69), and they are not cross-run deterministic
+                # (processRssBytes/untrackedBytes vary run to run on the
+                # Pi, which is exactly what the run2-vs-run1 verify proved).
+                exact_keys = list(MEMORY_BUDGET_PAIRS_ALSO_BASELINED)
+                exact_keys += list(MEMORY_BASELINE_FIELDS)
+                for key in exact_keys:
+                    if key not in memory or key not in expected_mem:
+                        continue  # field predates this bless (old section); skip rather than false-fail
+                    if memory[key] != expected_mem[key]:
+                        failures.append(
+                            f"pi {zone}: memory {key} mismatch (blessed {expected_mem[key]}, got {memory[key]})")
+            # report-only line, same shape as the x86 verify
+            rss = memory.get("processRssBytes")
+            total = memory.get("totalEstimate")
+            if rss:
+                pct = (100.0 * total / rss) if (total is not None and rss) else 0.0
+                print(f"  [memory] pi {zone}: tracked={total} RSS={rss} ({pct:.0f}%) "
+                      f"(reported only; the ledger above is gated; Pi TIMING is H04's lane)")
+
+    if failures:
+        print("\n=== VISUAL GATE (pi): FAIL ===")
+        for f in failures:
+            print(f"  - {f}")
+        return 1, failures
+
+    print("\n=== VISUAL GATE (pi): PASS ===")
+    return 0, failures
+
+
+def capture_pi(manifest, cfg, bench_cfg, production_args, out_dir):
+    """B1024: render the Pi set and stage the proposed bless. Writes into
+    out_dir ONLY -- never under tests/goldens/:
+
+      out_dir/<zone>/f<n>.png        the frames (the committed layout)
+      out_dir/manifest_pi.json       {"platforms": {"pi": <the section>}} --
+                                     blessedUnder (glRenderer/glVersion from
+                                     the run) + per-zone metrics + memory
+                                     (the x86 bless fields, minus
+                                     p95CpuMsBaseline: Pi timing is H04's)
+      out_dir/SHA256SUMS             every frame, "<sha256>  <zone>/<f>.png"
+      out_dir/<zone>_maps.txt        the Mesa-prefix proof (Popen/poll_maps)
+      out_dir/<zone>.log             the benchmark stdout per zone
+
+    The orchestrator commits this staged set as tests/goldens/pi/<zone>/f<n>.png
+    + manifest["platforms"]["pi"] from a captured set -- that commit is the
+    Pi bless (Will's 2026-10-11 bless note on #344); --bless --platform pi is
+    refused for that reason.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    failures = []
+    section_zones = []
+    gl_version = None
+    gl_renderer = None
+
+    for zone_cfg in manifest["zones"]:
+        zone = zone_cfg["zone"]
+        print(f"[capture] pi {zone} ...")
+        # one run dir per zone: out_dir/<zone>/ (frames/, csv, mem, maps) --
+        # run_benchmark computes the per-zone layout from out_dir, exactly as
+        # verify_pi does, so the run's own artifacts sit beside the staged
+        # frames and travel with the set
+        try:
+            png_paths, csv_rows, memory, stdout_text = run_benchmark(
+                zone_cfg, bench_cfg, out_dir, production_args, cfg=cfg)
+        except RuntimeError as e:
+            failures.append(f"pi {zone}: {e}")
+            continue
+
+        # keep the run's stdout (the blessedUnder extraction lives in it)
+        (out_dir / f"{zone}.log").write_text(stdout_text)
+
+        failures.extend(check_maps_text(out_dir / f"{zone}_maps.txt",
+                                        mesa_prefix=cfg.maps_prefix))
+
+        v = extract_gl_version(stdout_text)
+        if v and gl_version is None:
+            gl_version = v
+            m = re.match(r"\[([^\]]+)\]", v)
+            gl_renderer = m.group(1) if m else v
+
+        # The frames are ALREADY in the committed layout: run_benchmark's pi
+        # run moved its flat <out_dir>/<zone>_f<n>.png into
+        # <out_dir>/<zone>/f<n>.png -- exactly what the orchestrator commits
+        # as tests/goldens/pi/<zone>/f<n>.png. Check every frame is present.
+        zone_dir = out_dir / zone
+        for f in zone_cfg["designatedFrames"]:
+            staged = zone_dir / f"f{f}.png"
+            if not staged.exists():
+                failures.append(f"pi {zone} frame {f}: staged frame missing "
+                                f"{staged}")
+                continue
+            print(f"  staged {staged}")
+
+        metrics = {}
+        for f in zone_cfg["designatedFrames"]:
+            row = csv_rows[f]
+            metrics[str(f)] = {
+                "draws": int(row["draws"]),
+                "stateChanges": int(row["state_changes"]),
+                "polys": int(row["polys"]),
+            }
+        section_zones.append({
+            "zone": zone,
+            "extraArgs": zone_cfg.get("extraArgs", []),
+            "designatedFrames": zone_cfg.get("designatedFrames", [0]),
+            "metrics": metrics,
+            "memory": _pi_memory_fields(memory) if memory else {},
+        })
+
+    if failures:
+        print("\n=== CAPTURE (pi): FAIL (set NOT staged) ===")
+        for f in failures:
+            print(f"  - {f}")
+        return 1
+
+    section = {
+        "note": ("B1024: the Pi golden set's manifest section -- the same "
+                 "per-zone fields bless() writes for x86, minus "
+                 "p95CpuMsBaseline (Pi timing is H04's: scripts/pi/"
+                 "compare_pi.sh). Committed by the orchestrator from a "
+                 "--capture staging; a Pi golden moves only on a Pi re-bless "
+                 "by Will. docs/ci.md 'Two golden sets: x86 and Pi (B1024)'."),
+        "blessedUnder": {
+            "glRenderer": gl_renderer or "(unknown -- see the zone logs)",
+            "glVersion": gl_version or "(unknown -- see the zone logs)",
+        },
+        "zones": section_zones,
+    }
+    (out_dir / "manifest_pi.json").write_text(
+        json.dumps({"platforms": {"pi": section}}, indent=2) + "\n")
+
+    # SHA256SUMS over every staged frame, "<sha>  <zone>/<f>.png" (relative to
+    # out_dir, so the file travels with the set)
+    sums = []
+    for zone_dir in sorted(out_dir.iterdir()):
+        if not zone_dir.is_dir():
+            continue
+        for p in sorted(zone_dir.glob("f*.png")):
+            h = hashlib.sha256(p.read_bytes()).hexdigest()
+            sums.append(f"{h}  {p.relative_to(out_dir).as_posix()}")
+    (out_dir / "SHA256SUMS").write_text("\n".join(sums) + "\n")
+
+    print(f"[capture] pi set staged in {out_dir} "
+          f"({len(section_zones)} zones, {len(sums)} frames). "
+          f"NOT committed: the orchestrator blesses it into tests/goldens/pi/ "
+          f"once Will's bless note lists these hashes.")
+    return 0
+
+
 def write_contact_sheet(manifest):
     rows_html = []
     for zone_cfg in manifest["zones"]:
@@ -1164,19 +1695,74 @@ def main():
     parser.add_argument("--zones", default=None,
                         help="Comma-separated subset of the manifest's zones to VERIFY "
                              "(default: all). Not valid with --bless. See select_zones().")
+    parser.add_argument("--platform", choices=["x86", "pi"], default="x86",
+                        help="B1024: which golden set the gate runs. x86 (default) is "
+                             "today's gate, byte for byte (the CI job passes no "
+                             "--platform). pi = the Pi set: tests/goldens/pi/ + "
+                             "manifest platforms.pi, the --bench binary on the Orange "
+                             "Pi, --drm, and the Mesa-prefix maps proof.")
+    parser.add_argument("--bench", default=None,
+                        help="B1024: the benchmark binary (REQUIRED with --platform pi: "
+                             "the published ci-arm/<sha>/bin/gles2_zone_benchmark-nollvm).")
+    parser.add_argument("--goldens-dir", default=None,
+                        help="B1024 (VERIFY only): read the goldens from DIR instead of "
+                             "the platform's committed location; for pi, DIR/manifest_pi.json "
+                             "supplies the section when the manifest has none. This is the "
+                             "run2-vs-run1 determinism check and QA re-run path.")
+    parser.add_argument("--capture", default=None, metavar="DIR",
+                        help="B1024: render the set and stage the proposed bless into DIR "
+                             "(DIR/<zone>/f<n>.png + manifest_pi.json + SHA256SUMS + logs "
+                             "+ maps proof). NEVER writes under tests/goldens/ -- the "
+                             "orchestrator commits the captured set (that commit is the bless).")
     args = parser.parse_args()
 
     if args.bless and args.zones is not None:
         print("ERROR: --zones cannot be combined with --bless (a bless always covers every zone)")
         return 2
+    if args.bless and args.platform == "pi":
+        print("ERROR: --bless --platform pi is refused -- Pi goldens are committed by the "
+              "orchestrator from a captured set; use --platform pi --capture DIR. "
+              "(Bless is Will's; the orchestrator's commit of the blessed set is that bless.)")
+        return 2
+    if args.capture and args.goldens_dir is not None:
+        print("ERROR: --capture and --goldens-dir are mutually exclusive (capture stages, "
+              "verify reads)")
+        return 2
+    if args.capture and args.bless:
+        print("ERROR: --capture and --bless are mutually exclusive")
+        return 2
+    if args.platform == "pi" and not args.bench:
+        print("ERROR: --platform pi requires --bench PATH (the published "
+              "ci-arm/<sha>/bin/gles2_zone_benchmark-nollvm)")
+        return 2
 
-    if not BENCH_BIN.exists():
-        print(f"SKIP: {BENCH_BIN} not found (build-gles2/ absent -- run scripts/build-gles2-x86.sh first)")
-        return 125  # ctest SKIP_RETURN_CODE (see scripts/ci/visual_gate.sh / tests/CMakeLists.txt)
+    bench_bin = Path(args.bench) if args.bench else BENCH_BIN
+    if not bench_bin.exists():
+        if args.platform == "pi":
+            print(f"SKIP: {bench_bin} not found on this host -- run the pi capture ON THE "
+                  f"ORANGE PI (under pi_lock_take), where the published ci-arm/<sha>/ "
+                  f"binary lives (scripts/pi/env.sh)")
+            return 125  # ctest SKIP_RETURN_CODE (see scripts/ci/visual_gate.sh)
+        print(f"SKIP: {bench_bin} not found (build-gles2/ absent -- run scripts/build-gles2-x86.sh first)")
+        return 125  # ctest SKIP_RETURN_CODE (see scripts/ci/visual_gate.sh)
 
     manifest = load_manifest()
+    bench_cfg = manifest["benchmark"]
+    production_args = manifest.get("productionConfig", {}).get("args", [])
+
     if args.bless:
         return bless(manifest)
+
+    cfg = platform_config(manifest, args.platform, args.bench, args.goldens_dir)
+
+    if args.capture is not None:
+        return capture_pi(manifest, cfg, bench_cfg, production_args, args.capture)
+
+    if args.platform == "pi":
+        rc, _failures = verify_pi(manifest, cfg, bench_cfg, production_args,
+                                  goldens_dir=args.goldens_dir)
+        return rc
+
     if args.zones is not None:
         try:
             manifest, skipped = select_zones(manifest, args.zones)

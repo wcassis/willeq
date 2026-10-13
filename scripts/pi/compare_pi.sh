@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # H04 -- compare a Pi timing run (or bless it as the new baseline).
+# B1024: this is the H04 TIMING compare (pi_bench_compare.py); the PIXEL
+# checks live in scripts/ci/visual_gate.py --platform pi (the Pi golden set).
 #
 # Usage:
 #   scripts/pi/compare_pi.sh [--run-name NAME]              # compare (default: latest run)
