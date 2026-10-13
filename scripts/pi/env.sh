@@ -3,7 +3,6 @@
 # Source this from bench_pi.sh / compare_pi.sh (or their Python engines).
 # Every value can be overridden by exporting it before sourcing.
 
-: "${PI_USER:=user}"
 : "${PI_SSH_OPTS:=-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new}"
 
 # B1030 (#350) -- the SBC LANES. Three single-tenant devices, each with its
@@ -24,6 +23,15 @@
 #   lane 1  orangepi  10.0.30.192     armv7l  Allwinner H3  Mali-400  lima      483 MB
 #   lane 2  rock64    172.16.200.204  aarch64 RK3328        Mali-450  lima      4 GB, eMMC
 #   lane 3  rock4d    172.16.200.202  aarch64 RK3576        Mali-G52  panfrost  12 GB, SD
+#   lane 4  a7s       172.16.200.206  aarch64 Allwinner A733 PowerVR BXM-4-64 pvr (IMG DDK 24.2)  4 GB, eMMC
+#
+# Lane 4 (B1056, #376) is Debian 11 bullseye on a vendor 5.15 kernel, user `radxa`,
+# and its GPU is Imagination's, not Mali: the IMG DDK blob (`/usr/local/lib/dri/pvr_dri.so`
+# behind IMG's own Mesa-derived libEGL/libgbm in /usr/local/lib) does the GLES2 work, so
+# nothing Lima- or Panfrost-specific transfers. Its glibc is 2.31, so the noble-sysroot
+# ci-arm64/ publish does NOT run there (GLIBC_2.38): the lane's binary is built ON the
+# device by scripts/sbc/a7s/build_native.sh and published under ci-arm64-bullseye/<sha>/
+# in the same shape as ci-arm64/ (PI_LANE_PUBLISH below names the root per lane).
 #
 # Lane 1 keeps everything it had (the armhf CI publish under ci-arm/, the
 # LLVM-less Mesa prefix, the `orangepi` constrained preset). Lanes 2-3 run the
@@ -37,7 +45,8 @@ case "${PI_LANE:-}" in
     ""|1) PI_LANE_HOST=10.0.30.192;    PI_LANE_NAME=orangepi; PI_LANE_ARCH=armhf;   PI_LANE_GPU=lima ;;
     2)    PI_LANE_HOST=172.16.200.204; PI_LANE_NAME=rock64;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=lima ;;
     3)    PI_LANE_HOST=172.16.200.202; PI_LANE_NAME=rock4d;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=panfrost ;;
-    *)    echo "scripts/pi/env.sh: unknown PI_LANE '${PI_LANE}' (1-3)" >&2
+    4)    PI_LANE_HOST=172.16.200.206; PI_LANE_NAME=a7s;      PI_LANE_ARCH=aarch64; PI_LANE_GPU=pvr ;;
+    *)    echo "scripts/pi/env.sh: unknown PI_LANE '${PI_LANE}' (1-4)" >&2
           return 2 2>/dev/null || exit 2 ;;
 esac
 : "${PI_HOST:=${PI_LANE_HOST}}"
@@ -45,6 +54,7 @@ case "${PI_HOST}" in
     10.0.30.192)    _pi_host_lane=1 ;;
     172.16.200.204) _pi_host_lane=2 ;;
     172.16.200.202) _pi_host_lane=3 ;;
+    172.16.200.206) _pi_host_lane=4 ;;
     *)              _pi_host_lane= ;;   # an unlisted host keeps whatever the caller said
 esac
 if [ -n "${_pi_host_lane}" ] && [ -n "${_pi_lane_asked}" ] && [ "${_pi_lane_asked}" != "${_pi_host_lane}" ]; then
@@ -60,9 +70,29 @@ case "${_pi_host_lane}" in
     1) PI_LANE=1; PI_LANE_NAME=orangepi; PI_LANE_ARCH=armhf;   PI_LANE_GPU=lima ;;
     2) PI_LANE=2; PI_LANE_NAME=rock64;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=lima ;;
     3) PI_LANE=3; PI_LANE_NAME=rock4d;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=panfrost ;;
+    4) PI_LANE=4; PI_LANE_NAME=a7s;      PI_LANE_ARCH=aarch64; PI_LANE_GPU=pvr ;;
     *) PI_LANE="${PI_LANE:-1}" ;;
 esac
 unset _pi_lane_asked _pi_host_lane
+
+# Per-lane facts the rigs read instead of guessing (B1056): the ssh user (lane 4's
+# image has no `user`), the publish root the lane's binary comes from, the DRM
+# connector a headless run forces on, and the environment a run needs on the
+# device (lane 4: the IMG libraries are in /usr/local/lib and the DRI driver in
+# /usr/local/lib/dri; /etc/environment on that image uses `export`, which pam_env
+# ignores, so an ssh session does not get them by itself).
+case "${PI_LANE}" in
+    4) : "${PI_USER:=radxa}"
+       : "${PI_LANE_PUBLISH:=/mnt/projects/fable/ci-arm64-bullseye}"
+       : "${PI_HDMI_CONN:=/sys/class/drm/card0-DP-1}"
+       : "${PI_RUN_ENV:=LD_LIBRARY_PATH=/usr/local/lib LIBGL_DRIVERS_PATH=/usr/local/lib/dri}" ;;
+    2|3) : "${PI_USER:=user}"
+       : "${PI_LANE_PUBLISH:=/mnt/projects/fable/ci-arm64}"
+       : "${PI_RUN_ENV:=}" ;;
+    *) : "${PI_USER:=user}"
+       : "${PI_LANE_PUBLISH:=/mnt/projects/fable/ci-arm}"
+       : "${PI_RUN_ENV:=}" ;;
+esac
 
 # ARM cross-build lands in the MAIN worktree, not this task worktree --
 # scripts/build-arm-noble.sh / build-arm64-noble.sh always build there.
@@ -153,6 +183,6 @@ pi_hdmi_restore() {
     PI_HDMI_FORCED=0
 }
 
-export PI_LANE PI_LANE_NAME PI_LANE_ARCH PI_LANE_GPU PI_HOST PI_USER PI_SSH_OPTS ARM_BUILD_BIN_DIR PI_EQ_PATH PI_EQE1_PATH \
+export PI_LANE PI_LANE_NAME PI_LANE_ARCH PI_LANE_GPU PI_LANE_PUBLISH PI_RUN_ENV PI_HOST PI_USER PI_SSH_OPTS ARM_BUILD_BIN_DIR PI_EQ_PATH PI_EQE1_PATH \
        PI_HDMI_CONN PI_REMOTE_TMP PI_REMOTE_BIN PI_LOCK PROJECT_DIR MANIFEST_PATH ARTIFACTS_DIR \
        BASELINE_DIR H04_TOTAL_FRAMES H04_COOLDOWN_SEC H04_WARMUP_REPS

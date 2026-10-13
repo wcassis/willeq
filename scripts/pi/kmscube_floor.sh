@@ -18,7 +18,8 @@ BIN="$1"; OUT="$2"; RUNS="${3:-3}"; AT="${4:-12}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$OUT"
 for i in $(seq 1 "$RUNS"); do
-    ( sleep 25 | sudo -n timeout 20 "$BIN" > "$OUT/run$i.stdout" 2>&1 ) &
+    # B1056: lane 4 needs the IMG libraries on the loader path (PI_RUN_ENV, env.sh); sudo drops LD_LIBRARY_PATH.
+    ( sleep 25 | sudo -n env ${PI_RUN_ENV:-} timeout 20 "$BIN" > "$OUT/run$i.stdout" 2>&1 ) &
     wrapper=$!
     sleep "$AT"
     pid="$(pgrep -n -f "^${BIN}( |\$)")"
