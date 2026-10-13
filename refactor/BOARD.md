@@ -11121,8 +11121,8 @@ B672–B679 unused.
     `include/client/graphics/gpu_upload_thread.h` and
     `include/client/graphics/work_priority.h` and use nothing from either (pre-existing; the last use in the cache went
     with T326).
-  - `src/client/graphics/texture_atlas.cpp` includes the fmt format header for
-    the deleted async page upload alone.
+  - the texture_atlas.cpp source file (deleted wholesale by B494) includes the
+    fmt format header for the deleted async page upload alone.
   - Enumerators and includes are not in `ZeroCallers` or `WriteOnlyFields`.
     Fix: delete, or decide the enumerator is kept for `WorkPriorityKey`'s
     ordering contract (its test pins the order).
