@@ -133,6 +133,28 @@ empty (`oracle/endpoints-run705-before-characters.tsv` against
 the INI matched its snapshot, the stack went down, and the owned lock was
 released. The guard failure remains in `endpoint-run717-job/job.log`.
 
+The bounded Barbarian-male trial is reported per row below. These observed
+wire extrema are **not** candidate endpoints; the six packet offsets and names
+are in `facepick_endpoints_barbarian_male.tsv`, and the underlying values are
+in `facepick_endpoint_summary.tsv`. `eyes` includes both eye fields.
+
+| Picker | Samples | Observed min | Observed max | Span | Candidate | Endpoint verdict |
+|---|---:|---:|---:|---:|---|---|
+| face | 6 | 3 | 7 | 4 | 0..7 | NOT PROVEN |
+| hair | 6 | 0 | 255 | 255 | 0..3 | NOT PROVEN |
+| haircolor | 6 | 0 | 255 | 255 | 0..19 | NOT PROVEN |
+| eyes | 6 | 1 | 209 | 208 | 0..9 | NOT PROVEN |
+| beard | 6 | 15 | 255 | 240 | 0..5 | NOT PROVEN |
+| beardcolor | 6 | 0 | 255 | 255 | 0..19 | NOT PROVEN |
+| wode | 6 | 0 | 0 | 0 | 0..8 | NOT PROVEN |
+
+The outside-candidate wire values remain findings, not enlarged ranges:
+`eye2=209` is in `oracle/endpoints-final.pcap:943095`; `255` values for
+hair, haircolor, beard, and beardcolor are preserved in
+`facepick_all_wire_samples.tsv` and itemized with their packet offsets in
+`facepick_status_findings.tsv`. Each sampled row with any such outside value
+is PROVISIONAL in `data/char_create_faces.tsv`.
+
 ## Not verified / left open
 
 The following are **all PROVISIONAL rows** (race/gender: pickers). The
