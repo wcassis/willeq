@@ -107,28 +107,8 @@ DRM_SRC="$PROJECT_DIR/docker/irrlicht-drm"
 DRM_X86_SRC="$PROJECT_DIR/docker/irrlicht-drm-x86"
 DEST_SRC="$IRRLICHT_BUILD_DIR/source/Irrlicht"
 
-cp "$DRM_SRC/COpenGLES2Driver.h"        "$DEST_SRC/COpenGLES2Driver.h"
-cp "$DRM_SRC/COpenGLES2Driver.cpp"      "$DEST_SRC/COpenGLES2Driver.cpp"
-cp "$DRM_SRC/COGLES2Texture.h"          "$DEST_SRC/COGLES2Texture.h"
-cp "$DRM_SRC/COGLES2Texture.cpp"        "$DEST_SRC/COGLES2Texture.cpp"
-cp "$DRM_SRC/COGLES2Shaders.h"          "$DEST_SRC/COGLES2Shaders.h"
-cp "$DRM_SRC/COGLES2Shaders.cpp"        "$DEST_SRC/COGLES2Shaders.cpp"
-cp "$DRM_SRC/COGLES2MaterialRenderer.h" "$DEST_SRC/COGLES2MaterialRenderer.h"
-cp "$DRM_SRC/COGLES2MaterialRenderer.cpp" "$DEST_SRC/COGLES2MaterialRenderer.cpp"
-cp "$DRM_SRC/gl_call_counters.h"        "$DEST_SRC/gl_call_counters.h"
-cp "$DRM_SRC/gpu_sync_probe.h"          "$DEST_SRC/gpu_sync_probe.h"
-cp "$DRM_SRC/t122_texprobe.h"           "$DEST_SRC/t122_texprobe.h"
-# x86 fork (surfaceless EGL fallback) instead of the ARM DRM-only version
-cp "$DRM_X86_SRC/CIrrDeviceFB.h"        "$DEST_SRC/CIrrDeviceFB.h"
-cp "$DRM_X86_SRC/CIrrDeviceFB.cpp"      "$DEST_SRC/CIrrDeviceFB.cpp"
-# P25: X11-windowed EGL backend member functions, split into their own TU to
-# keep CIrrDeviceFB.cpp under the file-size warning threshold (same class,
-# not a separate device) - x86-only, no ARM equivalent.
-cp "$DRM_X86_SRC/CIrrDeviceFB_X11.cpp"  "$DEST_SRC/CIrrDeviceFB_X11.cpp"
-# B654: the pure X11-keysym -> EKEY_CODE map, shared by CIrrDeviceFB_X11.cpp
-# and the display-less unit test. Copied into the build area next to the TU
-# (like the other driver headers) so the TU's relative #include resolves.
-cp "$DRM_X86_SRC/x11_keysym_map.h"      "$DEST_SRC/x11_keysym_map.h"
+source "$SCRIPT_DIR/ci/irrlicht_gles2_files.sh"
+copy_irrlicht_gles2_files
 
 # ------------------------------------------------------------------
 # Step 3: Apply the shared DRM/GLES2 compile-config patch (identical to ARM;

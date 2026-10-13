@@ -253,7 +253,11 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
                 // no /dev/dri permission, or no connected connector). Fall back to a
                 // Mesa surfaceless EGL platform + pbuffer surface so the real
                 // COpenGLES2Driver still gets a genuine llvmpipe GLES2 context.
+#ifdef __APPLE__
+                os::Printer::log("DRM unavailable - using ANGLE/Metal pbuffer EGL", ELL_INFORMATION);
+#else
                 os::Printer::log("DRM/GBM/EGL initialization failed - falling back to surfaceless EGL (x86/Xvfb)", ELL_WARNING);
+#endif
                 eglOk = initEGLSurfaceless();
                 if (eglOk) {
                     surfaceless_ = true;
@@ -804,7 +808,11 @@ bool CIrrDeviceFB::initEGLSurfaceless()
         return false;
     }
 
+#ifdef __APPLE__
+    os::Printer::log("EGL (pbuffer): Context created and made current (ANGLE/Metal)",
+#else
     os::Printer::log("EGL (surfaceless): Context created and made current (llvmpipe, x86/Xvfb fallback)",
+#endif
                      ELL_INFORMATION);
     return true;
 }

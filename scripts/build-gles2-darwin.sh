@@ -45,14 +45,8 @@ cp -R "$PRISTINE_IRRLICHT"/. "$IRRLICHT_BUILD_DIR"/
 DRM_SRC="$PROJECT_DIR/docker/irrlicht-drm"
 DRM_X86_SRC="$PROJECT_DIR/docker/irrlicht-drm-x86"
 DEST_SRC="$IRRLICHT_BUILD_DIR/source/Irrlicht"
-for f in COpenGLES2Driver.h COpenGLES2Driver.cpp COGLES2Texture.h COGLES2Texture.cpp \
-         COGLES2Shaders.h COGLES2Shaders.cpp COGLES2MaterialRenderer.h COGLES2MaterialRenderer.cpp \
-         gl_call_counters.h gpu_sync_probe.h t122_texprobe.h; do
-    cp "$DRM_SRC/$f" "$DEST_SRC/$f"
-done
-for f in CIrrDeviceFB.h CIrrDeviceFB.cpp CIrrDeviceFB_X11.cpp CIrrDeviceFB_Darwin.cpp x11_keysym_map.h; do
-    cp "$DRM_X86_SRC/$f" "$DEST_SRC/$f"
-done
+source "$SCRIPT_DIR/ci/irrlicht_gles2_files.sh"
+copy_irrlicht_gles2_files
 
 echo "--- Applying irrlicht-drm-patch.py (shared with ARM/x86) ---"
 python3 "$PROJECT_DIR/docker/irrlicht-drm-patch.py" "$IRRLICHT_BUILD_DIR"
