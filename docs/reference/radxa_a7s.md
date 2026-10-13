@@ -3,7 +3,7 @@
 Will added the board on 2026-10-13 ("let's get this device set up for willeq work"). It is `PI_LANE=4` in
 `scripts/pi/env.sh` and the first lane that is neither Ubuntu nor Mali: Debian 11 bullseye on Radxa's vendor
 kernel, with an Imagination PowerVR GPU driven by the IMG DDK blob. This page records the device, what was set up on
-it, the four traps that make it different from lanes 1-3, and how to build and run willeq there. The build script
+it, the six traps that make it different from lanes 1-3, and how to build and run willeq there. The build script
 lives in `scripts/sbc/a7s/`.
 
 ## The device
@@ -34,7 +34,7 @@ lives in `scripts/sbc/a7s/`.
 - `/tmp` and `/mnt/ram` tmpfs, root `noatime` (fstab backup `/etc/fstab.pre-willeq`); ccache 6 G at
   `~/.cache/ccache`, `/usr/lib/ccache` on PATH.
 
-## The four traps
+## The six traps
 
 1. **The `ci-arm64/` binary does not start.** It is linked against a noble sysroot and needs `GLIBC_2.38`
    (`objdump -T bin/willeq | grep GLIBC_`); the board has 2.31. Lane 4's binary is built on the device
@@ -47,6 +47,13 @@ lives in `scripts/sbc/a7s/`.
    $PI_RUN_ENV ...` (`kmscube_floor.sh` does this).
 3. **The ssh user is `radxa`**, so the lane's lock is `/home/radxa/.pi-lock` and `env.sh` sets `PI_USER` per lane.
 4. **The connector is `card0-DP-1`**, not `HDMI-A-1` (`PI_HDMI_CONN` per lane).
+5. **kmscube's own device scan picks card1** (`pvrsrvkm`, render-only) and quits with "no connected
+   connector!". The display is sunxi-drm card0 and GBM there reaches the IMG driver, so lane 4 sets
+   `PI_KMSCUBE_ARGS=-D /dev/dri/card0` (`env.sh`; `kmscube_floor.sh` passes it). willeq's `CIrrDeviceFB`
+   opens card0 first and needs nothing.
+6. **Symlinks through the sshfs mount.** The share is mounted `follow_symlinks`, so `symlink(2)` lands on the
+   server but returns EIO and `unlink(2)` refuses ("Is a directory"). `build_native.sh` makes the by-branch
+   link over ssh on the share host (`PUBLISH_SSH`, default `user@10.0.30.23`).
 
 ## Building and running
 
@@ -69,3 +76,8 @@ under `~/build` (a debug tree does not fit the tmpfs); the publish has the `ci-a
 
 Filled in by the first-light smoke (`review/B1056/`): GL floor, qeynos2 frame times, owned memory. Nothing from
 the Lima cost sheet or the Panfrost findings transfers to this driver; re-measure before reasoning about it.
+
+**2026-10-13 19:07Z, first attempt:** the native build published fine (`ci-arm64-bullseye/e09ab815.../`), but the
+first `gles2_zone_benchmark --drm qeynos2` run took the board off the network within a minute (unreachable from
+the gateway, no `bench.log`); the board has no remote power control. The next run starts with `journalctl -b -1`
+for the cause. No number on this page is measured yet.
