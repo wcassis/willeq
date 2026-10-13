@@ -1,5 +1,5 @@
 #include "client/application.h"
-#include <pthread.h>  // T504: thread names
+#include "common/thread_name.h"  // T504 thread names; B1039: Linux + macOS forms
 #include <json/json.h>  // Must be before eq.h → logging.h so JSONCPP_VERSION_STRING is defined
 #include "client/eq.h"
 #include "client/data_paths.h"
@@ -934,7 +934,7 @@ void Application::gameThreadLoop() {
     // T491: the game thread owns game state; the network tick and packet
     // dispatch re-scope themselves (Network / GameState) underneath.
     eqt::memory::setThreadCategory(eqt::memory::Category::GameState);
-    pthread_setname_np(pthread_self(), "eq-game");  // T504
+    eqt::setCurrentThreadName("eq-game");  // T504
     LOG_INFO(MOD_MAIN, "Game thread started");
     auto lastTick = std::chrono::steady_clock::now();
 
@@ -1071,7 +1071,7 @@ void Application::mainLoop() {
     // T491: per-frame driver/scene-manager work on the render thread is
     // Irrlicht scene memory; UI draw re-scopes itself.
     eqt::memory::setThreadCategory(eqt::memory::Category::IrrlichtScene);
-    pthread_setname_np(pthread_self(), "eq-render");  // T504
+    eqt::setCurrentThreadName("eq-render");  // T504
 
     while (m_running.load()) {
         try {

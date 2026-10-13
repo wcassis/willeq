@@ -15,6 +15,10 @@
 
 #include <limits.h>
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>  // _NSGetExecutablePath (B1039)
+#endif
+
 namespace eqt {
 
 namespace {
@@ -40,11 +44,23 @@ std::string ParentOf(const std::string& dir) {
 }  // namespace
 
 std::string ExecutableDirectory() {
+#if defined(__APPLE__)
+    // B1039 (#359): macOS has no /proc. _NSGetExecutablePath gives the path
+    // the binary was started by; realpath() resolves symlinks the way the
+    // /proc/self/exe link does on Linux.
+    char raw[PATH_MAX];
+    uint32_t size = sizeof(raw);
+    if (::_NSGetExecutablePath(raw, &size) != 0) return "";
+    char buf[PATH_MAX];
+    if (::realpath(raw, buf) == nullptr) return "";
+    return ParentOf(std::string(buf));
+#else
     char buf[PATH_MAX];
     const ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
     if (n <= 0) return "";
     buf[n] = '\0';
     return ParentOf(std::string(buf));
+#endif
 }
 
 std::string ResolveDataPath(const std::string& relative) {

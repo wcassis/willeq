@@ -33,6 +33,18 @@ GOOD_DURATIONS = ["0", "5", "86400"]
 
 
 class ControlsTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # B1039 (#359): the wrappers need bash >= 4 (empty arrays under
+        # `set -u`, mapfile). macOS's /bin/bash is 3.2: say so, by name,
+        # instead of eight unbound-variable failures (docs/macos.md).
+        major = subprocess.run(["bash", "-c", "echo ${BASH_VERSINFO[0]}"],
+                               capture_output=True, text=True).stdout.strip()
+        if not major.isdigit() or int(major) < 4:
+            raise RuntimeError(f"`bash` on PATH is version {major or '?'}; these "
+                               "wrappers need bash >= 4 (macOS: put Homebrew's "
+                               "/opt/homebrew/bin first on PATH, docs/macos.md)")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -76,6 +88,10 @@ eqemu_sql() { echo 0; }
         self.write("bin/sleep", "#!/bin/bash\nif [ \"${1:-}\" = real ]; then shift; fi\n"
                                 "/bin/sleep 0.01\n")
         self.write("client", '#!/bin/bash\ncat "$TEST_ROOT/fixture.log"\n')
+        if shutil.which("timeout") is None:
+            # B1039: macOS has no GNU `timeout`; crowd_run.sh wraps only the
+            # (inert, exit-0) up.sh/down.sh stubs with it, so drop the limit.
+            self.write("bin/timeout", '#!/bin/bash\nshift\nexec "$@"\n')
         self.env = dict(os.environ, TEST_ROOT=str(self.root),
                         PATH=str(self.root / "bin") + os.pathsep + os.environ["PATH"])
 
