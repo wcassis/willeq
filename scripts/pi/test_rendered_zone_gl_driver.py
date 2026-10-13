@@ -26,7 +26,7 @@ import rendered_zone_summarize as summary
 
 LINE = ("2026-10-10 12:00:00.123 [INFO ] [GRAPHICS] "
         "[gldriver] renderer='Mali400 (Lima)' "
-        "gallium=/home/user/mesa-nollvm-25.2.8/lib/dri/lima_dri.so llvm=none")
+        "gallium=/home/user/mesa-nollvm-25.2.8/lib/libgallium-25.2.8.so llvm=none")
 
 
 def point(epoch, name, zone):
@@ -64,7 +64,7 @@ class MesaDriverFieldTest(unittest.TestCase):
         field = summary.mesa_driver_field([LINE])
         self.assertEqual(
             field,
-            "Mali400 (Lima):/home/user/mesa-nollvm-25.2.8/lib/dri/lima_dri.so:none")
+            "Mali400 (Lima):/home/user/mesa-nollvm-25.2.8/lib/libgallium-25.2.8.so:none")
 
     def test_absent_line_is_empty(self):
         # A client that predates B946 (or a run that never reached GL init):
@@ -79,22 +79,22 @@ class MesaDriverFieldTest(unittest.TestCase):
         self.assertEqual(summary.mesa_driver_field([LINE, other]),
                          summary.mesa_driver_field([LINE]))
         self.assertEqual(summary.mesa_driver_field([LINE, other]),
-                         "Mali400 (Lima):/home/user/mesa-nollvm-25.2.8/lib/dri/lima_dri.so:none")
+                         "Mali400 (Lima):/home/user/mesa-nollvm-25.2.8/lib/libgallium-25.2.8.so:none")
 
     def test_system_mesa_line(self):
         line = ("2026-10-10 12:00:00.000 [INFO ] [GRAPHICS] "
                 "[gldriver] renderer='llvmpipe (Mesa 25.1.7-1)' "
-                "gallium=/usr/lib/x86_64-linux-gnu/dri/swrast_dri.so "
+                "gallium=/usr/lib/x86_64-linux-gnu/libgallium-25.2.8.so "
                 "llvm=/usr/lib/x86_64-linux-gnu/libLLVM.so.18.1")
         self.assertEqual(
             summary.mesa_driver_field([line]),
-            "llvmpipe (Mesa 25.1.7-1):/usr/lib/x86_64-linux-gnu/dri/swrast_dri.so"
+            "llvmpipe (Mesa 25.1.7-1):/usr/lib/x86_64-linux-gnu/libgallium-25.2.8.so"
             ":/usr/lib/x86_64-linux-gnu/libLLVM.so.18.1")
 
     def test_row_carries_the_field_and_header_extends_at_end(self):
         row, header, tsv_row, printed = run_main(LINE)
         self.assertEqual(row["mesa_driver"],
-                         "Mali400 (Lima):/home/user/mesa-nollvm-25.2.8/lib/dri/lima_dri.so:none")
+                         "Mali400 (Lima):/home/user/mesa-nollvm-25.2.8/lib/libgallium-25.2.8.so:none")
         # Appended at the END: every pre-B946 column keeps its index, so the
         # sweep's existing `cut -f5` / `cut -f11` stay put (the B935/B955 rule).
         # B1013 appended three more after mesa_driver (PoolColumnsTest pins
@@ -102,7 +102,7 @@ class MesaDriverFieldTest(unittest.TestCase):
         self.assertEqual(header.index("mesa_driver"), 70)
         self.assertEqual(len(header), len(tsv_row))
         self.assertEqual(tsv_row[header.index("mesa_driver")], row["mesa_driver"])
-        self.assertIn("driver=Mali400 (Lima):/home/user/mesa-nollvm-25.2.8/lib/dri/lima_dri.so:none",
+        self.assertIn("driver=Mali400 (Lima):/home/user/mesa-nollvm-25.2.8/lib/libgallium-25.2.8.so:none",
                       printed)
 
     def test_old_log_leaves_column_empty(self):

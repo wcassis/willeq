@@ -640,6 +640,44 @@ def extract_gl_version(stdout_text):
     return None
 
 
+def assert_gldriver_line(zone, stdout_text, failures):
+    """B1016 (#337): the gate's [gldriver] net.
+
+    The benchmark (the gate's only real GLES2 run) emits the same one-time
+    [gldriver] line the client logs at GL init (zone_bench_loader.cpp,
+    makeGlDriverLine). This asserts that line is present AND parseable by
+    the rig's summarizer (rendered_zone_summarize.mesa_driver_field -- the
+    SAME parser the Pi runs use for their maps snapshots), so a build that
+    drops the emission or breaks the line format fails THIS job, not just a
+    hand run. No threshold, no golden: presence + parse only.
+    """
+    line = next(
+        (l for l in stdout_text.splitlines() if l.lstrip().startswith("[gldriver]")),
+        None)
+    if line is None:
+        failures.append(
+            f"{zone}: benchmark stdout has no [gldriver] line -- the "
+            f"one-time GL-driver emission (B1016, #337) is missing from this build")
+        return
+    try:
+        import sys
+        _here = Path(__file__).resolve().parent
+        sys.path.insert(0, str(_here))
+        sys.path.insert(0, str(_here.parent / "pi"))
+        from rendered_zone_summarize import mesa_driver_field
+    except Exception as e:  # the parser import failing is itself the failure
+        failures.append(f"{zone}: [gldriver] parser unavailable: {e}")
+        return
+    # mesa_driver_field(lines) -> "renderer:gallium:llvm" or "" (no line).
+    fields = mesa_driver_field([line])
+    if not fields or fields == "::":
+        failures.append(
+            f"{zone}: [gldriver] line is not parseable by the rig's "
+            f"summarizer (format drift): {line!r}")
+        return
+    print(f"  [gldriver] {zone}: {fields}")
+
+
 def p95(values):
     values = sorted(values)
     idx = int(len(values) * 0.95)
@@ -1195,6 +1233,9 @@ def verify(manifest):
                   f"(blessed='{expected_gl_version}', current='{gl_version}') -- "
                   f"mesa upgraded, re-bless with --bless instead of treating diffs as regressions.")
             mesa_mismatch_warned = True
+
+        # B1016 (#337): the [gldriver] net, beside the ledger assertions.
+        assert_gldriver_line(zone, stdout_text, failures)
 
         # 1. Golden-frame pixel comparison.
         for f, actual_path in png_paths.items():

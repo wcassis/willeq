@@ -93,8 +93,12 @@ std::string parseElfRpath(const std::string& bytes) {
     return std::string();
 }
 
-// See the header: the first colon entry that names the shipped prefix,
-// trailing "/lib" stripped.
+// See the header: the first colon entry that names the shipped prefix.
+// B1016 (#337): the entry is returned AS-IS (the publish step bakes in
+// `<prefix>/lib`), so the decision tests the lib directory ITSELF -- the
+// old code stripped the trailing "/lib" and the check ran against the
+// parent: a partial deploy that left the prefix dir but lost lib/ logged
+// no error while ld.so silently fell back to the system Mesa.
 std::string nollvmPrefixFromRpath(const std::string& rpath) {
     const std::string kMarker = "mesa-nollvm-";
     size_t start = 0;
@@ -103,42 +107,12 @@ std::string nollvmPrefixFromRpath(const std::string& rpath) {
         const std::string entry =
             colon == std::string::npos ? rpath.substr(start)
                                        : rpath.substr(start, colon - start);
-        if (entry.find(kMarker) != std::string::npos) {
-            if (entry.size() > 4 && entry.compare(entry.size() - 4, 4, "/lib") == 0)
-                return entry.substr(0, entry.size() - 4);
+        if (entry.find(kMarker) != std::string::npos)
             return entry;
-        }
         if (colon == std::string::npos) break;
         start = colon + 1;
     }
     return std::string();
-}
-
-GlDriverInfo parseGlDriverLine(const std::string& text) {
-    GlDriverInfo info;
-    const std::string marker = "[gldriver] renderer='";
-    const size_t pos = text.find(marker);
-    if (pos == std::string::npos) return info;
-    const size_t start = pos + marker.size();
-    const size_t end = text.find('\'', start);
-    if (end == std::string::npos) return info;
-    info.renderer = text.substr(start, end - start);
-
-    auto kv = [&](const char* key) -> std::string {
-        const std::string tag = std::string(" ") + key + "=";
-        const size_t p = text.find(tag, end + 1);
-        if (p == std::string::npos) return std::string();
-        size_t q = p + tag.size();
-        while (q < text.size() && text[q] != ' ' && text[q] != '\n' && text[q] != '\r') ++q;
-        return text.substr(p + tag.size(), q - (p + tag.size()));
-    };
-    const std::string g = kv("gallium");
-    const std::string l = kv("llvm");
-    if (g.empty() || l.empty()) return GlDriverInfo();
-    info.gallium = g;
-    info.llvm = l;
-    info.ok = true;
-    return info;
 }
 
 std::string makeGlDriverLine(const GlDriverInfo& info) {
@@ -172,13 +146,14 @@ std::string glPrefixExpected() {
 // The two needles out of a /proc/self/maps text (see the header). A maps
 // line is "start-end  perms  offset  dev  inode  [pathname]": five column
 // tokens before the pathname (which is absent for [heap]/[stack]/anonymous
-// mappings). The columns are separated by WHITESPACE -- spaces (with
-// padding) on this kernel, tabs on others -- so the skip is
-// whitespace-agnostic: skip the first five whitespace-separated tokens,
-// whatever the separator. Two regressions are pinned by the fixtures:
-// (1) the first draft skipped only four tokens and landed on the inode;
-// (2) it then searched for ' ' literally, which matched nothing on a
-// tab-padded line and made the census report "none none" for every process.
+// mappings). The columns are separated by spaces (with padding) -- the
+// kernel emits spaces, never tabs, in /proc/*/maps -- so the skip is
+// whitespace-agnostic anyway (a tab would just cost one extra iteration):
+// skip the first five whitespace-separated tokens, whatever the separator.
+// Two regressions are pinned by the fixtures: (1) the first draft skipped
+// only four tokens and landed on the inode; (2) it then searched for ' '
+// literally, which matched nothing on a tab-padded fixture line and made
+// the census report "none none" for every process.
 void scanMapsText(const std::string& text, std::string& gallium, std::string& llvm) {
     const char* const kGallium = "libgallium";
     const char* const kLlvm = "libLLVM";
@@ -190,10 +165,9 @@ void scanMapsText(const std::string& text, std::string& gallium, std::string& ll
         if (nl == std::string::npos) nl = text.size();
         const std::string line = text.substr(pos, nl - pos);
         pos = nl + 1;
-        // Five columns before the pathname; on this kernel they are
-        // space-separated with padding spaces (NOT tabs -- the first draft
-        // searched for '\t' and fell through on every line). Skip the
-        // first five whitespace-separated tokens.
+        // Skip the first five whitespace-separated tokens (the columns);
+        // see the function comment for the separator story and the two
+        // regressions the fixtures pin.
         size_t p = 0;
         for (int i = 0; i < 5; ++i) {
             while (p < line.size() && (line[p] == ' ' || line[p] == '\t')) ++p;
