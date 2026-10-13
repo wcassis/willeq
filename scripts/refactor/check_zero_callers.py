@@ -38,7 +38,11 @@ matched by IDENTIFIER, not by receiver type, so a name shared with another
 class collects that class's occurrences too.  Every such collision can only
 ADD uses, so it can only HIDE a dead function, never invent one.  The report
 is a FLOOR: everything it names is worth looking at, and it misses some.  A
-green run is not a proof that the tree has no dead functions.
+green run is not a proof that the tree has no dead functions.  The field-name
+half of that blind spot is real (B1028): EntityManager::isPet(uint16_t) sat
+zero-caller while the Entity::isPet FIELD kept lighting the name up, so the
+census saw uses that were never calls of the method -- a member and a field
+sharing a name defeat the identifier sweep entirely.
 
 Two further limits, stated so a green is not over-read:
   * A caller count is not reachability.  T442/B451: checkCollisionIrrlicht()

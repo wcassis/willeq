@@ -80,11 +80,12 @@ B733: SSN_HS_DEF references [SNNHE00_DMSPRITEDEF(974), SSN_DMSPRITEDEF(3359)] to
    declared in `include/client/graphics/eq/geometry_combiner.h`) runs the OLD
    name selection verbatim (in stored order, so unchanged characters keep the
    exact same part order) and adds every `skeletonReferenced` geometry the name
-   selection did not pick. It is wired into the four base-builder call sites:
+   selection did not pick. It is wired into the five base-builder call sites:
    `model_loading_chr.cpp` (`loadModelFromZoneChr`, `loadModelFromCachedChr` —
    the path race 146's db row drives), `model_loading_search.cpp`
-   (`searchAndBuildModel`), and `model_loading.cpp` (the global-archive +
-   search paths).
+   (`searchZoneChrFilesForModel`), and `model_loading.cpp` (the global-archive
+   path `loadModelFromGlobalChr` and the numbered-global path
+   `loadModelFromNumberedGlobal`, `model_loading_chr.cpp:632`).
 
 Why NOT "select the whole stored set" (the first, reverted approach): the
 stored set now includes the prefix family's VARIANT meshes (HUM01, HUMHE01,
@@ -181,7 +182,7 @@ deterministic) fails on the `memoryCoverage` values in
 | gfaydark | 1,445,267 | 1,445,411 | +144 |
 | befallen | 1,445,267 | 1,445,411 | +144 |
 | iceclad | 1,522,794 | 1,522,962 | +168 |
-| timorous | 1,465,276 | 1,465,468 | +168 |
+| timorous | 1,465,276 | 1,465,468 | +192 |
 
 Mechanism, proven [measured]: `CharacterModel` grew by exactly one member --
 `std::vector<const ZoneGeometry*> skeletonReferenced` (s3d_loader.h:149), the
@@ -190,7 +191,8 @@ compiled probe at `4139cee6`). `calcCharModels()`
 (model_loading_search.cpp:918) charges `sizeof(CharacterModel)` per retained
 model and never counts `skeletonReferenced`'s contents (empty or filled), so
 the gate's `--test-races 1..5` run gains 24 B per loaded model: +144 = 6
-models (the three classic zones) and +168 = 7 models (iceclad, timorous).
+models (the three classic zones), +168 = 1,522,962 - 1,522,794 = 7 models
+(iceclad), and +192 = 1,465,468 - 1,465,276 = 8 x 24 B (timorous).
 No new geometry, no new skeleton data, no frame change: the five gate zones'
 image goldens are byte-identical in the same CI run. Races 127/146/240 are
 outside `MEMORY_COVERAGE_TEST_RACES` (visual_gate.py:248), so the recovered
@@ -204,6 +206,33 @@ this branch):** `memoryCoverage.zones[*].characterModelsBytes` re-pinned to
 the `got` column above (the +24 per loaded model is a permanent consequence
 of the #70 tag; the alternatives -- dropping the tag or special-casing the
 metric -- both break the 100 %-accounting shape of `calcCharModels`).
+
+## The #69 (B732) row: what fable now fixes, and what still rides the held branch (2026-10-12)
+
+B732 (issue #69) is the same loader defect at full T479 scope: 49 zone-chr
+skeletons whose 0x200-listed meshes carry no race-code prefix stored NO
+model, plus 8 names that missed listed meshes (GOM, SSN, UDK, SRG, TRT,
+CCD, GOJ, IVM). B733's loader fix IS the loader fix: the 0x200 collect
+(`s3d_loader_characters.cpp:262-279`, UNCONDITIONAL — it runs for every
+skeleton and collects every listed mesh the bone walk did not store; the
+`boneWalkStoredNothing` gate at `:282` is on the PREFIX-FALLBACK block
+below it, not the collect) appends those extras AFTER the prefix fallback
+(`357-395`), so on fable ALL of B732's chr-archive population — the 49
+no-prefix skeletons and the 8 missed names — now have their listed meshes
+stored. QA t_cbfd7f9a's censuses (2026-10-11, over all
+378 `*_chr.s3d` archives and all 138 db races at the B733 tip): the
+#70-class recovery is exactly SSN (7 archives: cabeast/charasis/chardok/
+citymist/kaesora/karnor/kurn), IVM, FAF, PIF, TRI, GOM, and only races
+127/146/240 change in the built-model byte census (127: 73→579, 240:
+73→579, 146: 3359→4333 both genders) — every other race byte-identical.
+What STILL rides the held T479 branch: (a) the test pin
+`SkeletonMeshListLoaders.EveryMeshASkeletonListsIsAPart` (tests/ has no
+such suite on fable; `B733Race146LoaderTest` pins the race-146 shape, not
+the full 419-archive census); (b) the T479 companion fixes B730/B731
+(object loader posing, skeleton double-skinning); (c) the merge blockers
+(Pi OOM B750 / lever B752, qeynos2 gate bless). So B732's defect is FIXED
+on fable by B733's loader; what remains open is the test net and the
+T479-branch merge.
 
 ## Not verified / left open
 

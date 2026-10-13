@@ -58,8 +58,9 @@ direction; it now only binds `camera_`.
 
 ## Changes
 
-- `include/client/graphics/camera_controller.h` — 12 members + 3 fields +
-  2 clamp constants + the ctor-init state gone; banner updated
+- `include/client/graphics/camera_controller.h` — 12 members + 6 fields
+  (`moveSpeed_`, `rotateSpeed_`, `mouseSensitivity_`, `yaw_`, `pitch_`,
+  `orbitAngle_`) + 2 clamp constants + the ctor-init state gone; banner updated
 - `src/client/graphics/camera_controller.cpp` — `setOrientation()`,
   `getHeadingEQ()`, `setOrbitAngle()`, `adjustOrbitAngle()` bodies and the
   ctor's yaw/pitch init gone
