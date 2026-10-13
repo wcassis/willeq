@@ -116,9 +116,9 @@ definition, comment/log-string mentions, and the ratchet's own EXEMPT line.
 - `ZoneMeshBuilder::isAtlasAvailable()`: live callers (diagnostics); only
   `setAtlasShaderMaterialTypes()` (its companion) went.
 - `buildCompositeMesh`'s LIVE twin: the log-line emitter is
-  `src/client/graphics/eq/mesh_building.cpp:670` (untouched) -- `test_eqe1_
-  composite_open.cpp:177/:197` grep that one, not the deleted
-  `zone_geometry.cpp` twin.
+  `mesh_building.cpp` (line 670, untouched -- not the deleted
+  `zone_geometry.cpp` twin). `test_eqe1_composite_open.cpp:177/:197`
+  grep that one.
 - The B950/B1019 layout net (`tests/test_zone_geometry_atlas_layout.cpp` +
   `CMakeLists.txt:995` PUBLIC define): the guarded members are gone, both
   sides now agree; the net is vacuous but KEPT per the card (retirement is a
