@@ -5,7 +5,7 @@
 
 : "${PI_SSH_OPTS:=-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new}"
 
-# B1030 (#350) -- the SBC LANES. Three single-tenant devices, each with its
+# B1030 (#350) -- the SBC LANES. Four single-tenant devices (lane 4 = B1056), each with its
 # own lock ON the device (PI_LOCK below is a path on the remote host, so one
 # lock per device falls out of the lane choice). `PI_LANE=N` picks the device,
 # exactly like scripts/eqemu/env.sh's EQEMU_LANE: a card or a script names its
@@ -109,7 +109,8 @@ fi
 
 # Pi tmpfs -- I/O rule: ALL timed-run output goes here, never to NFS/SD/eMMC
 # while frames are being timed. Lane 1 has 242 MB total, watch the ceiling;
-# lanes 2-3 have a 2 G / 5.9 G /tmp plus a /mnt/ram scratch tmpfs. All are
+# lanes 2-3 have a 2 G / 5.9 G /tmp plus a /mnt/ram scratch tmpfs, lane 4 a 1 G /tmp
+# plus a 1.5 G /mnt/ram. All are
 # mounted nosuid: a binary that needs setcap goes in the ext4 home.
 : "${PI_REMOTE_TMP:=/tmp}"
 : "${PI_REMOTE_BIN:=/tmp/gles2_zone_benchmark_h04}"

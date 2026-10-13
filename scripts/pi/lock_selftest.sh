@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # T503 -- pins the Pi lock contract against the real device (needs ssh reach).
 # B1030: takes the lane from the environment -- `PI_LANE=2 bash lock_selftest.sh`
-# (1 = orangepi, 2 = rock64, 3 = rock4d; see scripts/pi/env.sh). Each lane's
+# (1 = orangepi, 2 = rock64, 3 = rock4d, 4 = a7s; see scripts/pi/env.sh). Each lane's
 # lock lives on its own device, so a PASS here is per lane.
 # Exit 0 = PASS, 64 = device unreachable or lock held by a real owner (not run).
 set -u
