@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 from oracle_video import action_point, calibrate_video
+from oracle_create import validate_create
 
 
 out, plan, repo = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
@@ -50,8 +51,8 @@ for index, row in enumerate(actions, 1):
     packets = [(t, direction, op, code, payload) for t, direction, _, _, op, code, payload in decoded if begin <= t <= end]
     if verb == 'zone' and not packets:
         raise RuntimeError(f'{name}: no decoded zone-entry packets; refusing a false success')
-    if verb == 'create' and not any(op == 'OP_CharacterCreate' for _, _, op, _, _ in packets):
-        raise RuntimeError(f'{name}: missing OP_CharacterCreate; refusing a false success')
+    if verb == 'create':
+        validate_create(packets, race, klass, gender)
     packet_file = out / f'{name}.opcodes.tsv'
     with packet_file.open('w') as stream:
         stream.write('utc\tdirection\topcode\tcode\tsize\tfields\n')

@@ -37,8 +37,29 @@ city_y() { case "$1" in
     HighElf) echo 496;; Iksar) echo 540;; Ogre) echo 430;; Troll) echo 408;;
     WoodElf) echo 474;; *) return 65;; esac; }
 gender_x() { case "$1" in Male) echo 105;; Female) echo 169;; *) return 65;; esac; }
+selected_at() {
+    # The selected label is yellow; enabled but unselected labels are white.
+    # The screenshot begins 30 pixels below root-screen coordinates.
+    local label=$1 x=$2 y=$3 image=$DIR/selected-$label.png mean
+    import -window root -crop 1280x800+0+30 "$image" 2>/dev/null || return 65
+    mean=$(convert "$image" -crop "95x18+$((x-45))+$((y-39))" +repage \
+        -fuzz 25% -fill black +opaque yellow -colorspace Gray -negate \
+        -format '%[fx:mean]' info:) || return 65
+    awk -v mean="$mean" 'BEGIN {exit !(mean < 0.98)}'
+}
+select_at() {
+    local label=$1 x=$2 y=$3 attempt
+    for attempt in 1 2 3 4; do
+        if selected_at "$label" "$x" "$y"; then return 0; fi
+        jclick "$x" "$y"; sleep 3
+    done
+    selected_at "$label" "$x" "$y" && return 0
+    echo "selection failed: $label at $x,$y" >&2
+    return 65
+}
 expected_for() {
     local verb=$1 target=$2 optional=${3:-}
+    if [[ -n $optional ]]; then echo "$optional"; return; fi
     case $verb in
         login) echo 'Character Select|Create a New Character' ;;
         zone) echo window:EverQuest ;;
@@ -48,10 +69,27 @@ expected_for() {
             character-create) echo 'Character Creation' ;;
             *) return 65 ;;
             esac ;;
-        random|accept|cancel) echo 'Character Creation|Face' ;;
+        random) echo 'Random|Accept|Cancel' ;;
+        accept|cancel) echo 'Character Creation' ;;
         create) echo window:EverQuest ;;
         *) echo "${optional:-window:EverQuest}" ;;
     esac
+}
+face_open() { screen_text '205x400+0+180' | grep -qiE 'Random|Accept|Cancel'; }
+require_face_open() { face_open || { echo "$1 without face dialog" >&2; return 65; }; }
+assert_action_state() {
+    local verb=$1 expected=$2 name=$3
+    case $verb in
+        random)
+            face_open || { shot "$name-face-missing"; echo 'random missed face dialog' >&2; return 65; } ;;
+        accept|cancel)
+            if face_open; then
+                shot "$name-face-still-open"
+                echo "$verb did not close face dialog" >&2
+                return 65
+            fi ;;
+    esac
+    assert_visible "$expected" "$name"
 }
 if [[ $ACTION == selftest ]]; then
     [[ $(race_y Barbarian) == 291 && $(class_y Warrior) == 627 &&
@@ -62,11 +100,26 @@ if [[ $ACTION == selftest ]]; then
     [[ $(expected_for create Testname) == window:EverQuest ]] || exit 1
     DIR=$2
     shot() { touch "$DIR/$1.png"; }
-    screen_text() { echo 'Character Creation'; }
+    SCREEN_TEXT='Character Creation'
+    screen_text() { echo "$SCREEN_TEXT"; }
     assert_visible 'Character Creation' positive || exit 1
     if assert_visible 'Missing Window' negative; then exit 1; fi
     [[ -f $DIR/negative-assertion-failed.png ]] || exit 1
-    echo 'PASS: coordinate table and per-verb assertion failure still'
+    if assert_action_state random "$(expected_for random face)" missed-random; then exit 1; fi
+    for verb in accept cancel; do if require_face_open "$verb"; then exit 1; fi; done
+    SCREEN_TEXT='Character Creation Random Accept Cancel'
+    assert_action_state random "$(expected_for random face)" random-open || exit 1
+    for verb in accept cancel; do
+        if assert_action_state "$verb" "$(expected_for "$verb" face)" "missed-$verb-open"; then exit 1; fi
+    done
+    SCREEN_TEXT='Character Creation'
+    for verb in accept cancel; do
+        assert_action_state "$verb" "$(expected_for "$verb" face)" "$verb-closed" || exit 1
+        if assert_action_state "$verb" "$(expected_for "$verb" face 'Missing Window')" "override-$verb"; then exit 1; fi
+    done
+    SCREEN_TEXT='Character Creation Random Accept Cancel'
+    if assert_action_state random "$(expected_for random face 'Missing Window')" override-random; then exit 1; fi
+    echo 'PASS: selected coordinates and random/accept/cancel missed-action and override assertions'
     exit 0
 fi
 stop_capture() {
@@ -181,8 +234,8 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             sleep "$(awk -v ms="$hold_ms" 'BEGIN {printf "%.3f",ms/1000}')"
             xdotool mouseup 1 ;;
         random) jclick 148 348 ;;
-        accept) jclick 50 519 ;;
-        cancel) jclick 50 539 ;;
+        accept) require_face_open accept || exit 65; jclick 50 519 ;;
+        cancel) require_face_open cancel || exit 65; jclick 50 539 ;;
         create)
             [[ $target =~ ^[A-Za-z]{3,15}$ && ( $gender == Male || $gender == Female ) ]] || exit 65
             race_row=$(race_y "$race") || exit 65
@@ -195,11 +248,9 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
                 jclick 123 421; sleep 12
             fi
             screen_text | grep -qi 'Character Creation' || { echo "create slot did not open" >&2; exit 65; }
-            jclick 53 "$race_row"; sleep 3
-            assert_visible "$race" "$name-race" || exit 65
-            jclick 153 "$class_row"; sleep 3
-            jclick "$(gender_x "$gender")" 252
-            sleep 3
+            select_at "$race" 53 "$race_row" || exit 65
+            select_at "$class" 153 "$class_row" || exit 65
+            select_at "$gender" "$(gender_x "$gender")" 252 || exit 65
             jrclick 1170 348; sleep 3
             jrclick 1170 389; sleep 3
             shot "$name-attributes"
@@ -230,8 +281,9 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
     esac
     sleep 2
     if ! alive; then mark DISCONNECT "$name"; exit 67; fi
-    expected=$(expected_for "$verb" "$target" "$arg5") || exit 65
-    assert_visible "$expected" "$name" || exit 65
+    if [[ $verb == create ]]; then expected=$(expected_for "$verb" "$target")
+    else expected=$(expected_for "$verb" "$target" "$arg5"); fi || exit 65
+    assert_action_state "$verb" "$expected" "$name" || exit 65
     mark END "$name"
     shot "$name" || exit 65
     cp "$CLIENT/${CHARACTER}_"*.ini "$DIR/$name.ini" 2>/dev/null || :
