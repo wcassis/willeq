@@ -897,6 +897,12 @@ EXEMPT_TESTS_GROUPS = {
     # T504: the original client's LOAD order (globals first) as opposed to the
     # loader's lookup order (resolverOrder); the era-sources test pins it.
     ("EraModelSources", "orderedArchives"): "observer",
+    # B1019 (#340): the layout-equality net's core side -- the sizeof
+    # of ZoneMeshBuilder as willeq_core's zone_geometry.cpp saw it. Its
+    # only caller is test_zone_geometry_atlas_layout, which is the test's
+    # observation window on the core's macro state (the public define's
+    # whole point is that a consumer sees the same class the core built).
+    ("ZoneMeshBuilder", "layoutSize"): "observer",
     ("(free)", "traceConfigure"): "seam",
     ("(free)", "traceReport"): "observer",
     # T504: the entity-load callers moved to the instance form

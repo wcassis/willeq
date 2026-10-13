@@ -67,3 +67,9 @@ Posted 2026-10-13:
   `currentTargetLevel_` is read at
   `src/client/graphics/overlays/target_ring_draw.cpp:48`) —
   https://gitlab.goldfarm.local/willeq/willeq/issues/135#note_4230
+
+## Hygiene fallout of the new test
+
+`WriteOnlyFieldsSelfTest` joins the `hygiene` label (31 -> 32), which the
+DocCounts net reads at `docs/module_map.md` ("hygiene ctest tests"); the
+module map's line is updated in the same commit.

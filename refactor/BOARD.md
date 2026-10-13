@@ -9928,8 +9928,9 @@ fine — the table fails on a stale entry, so it cannot rot.
   `setWeatherLights()`; `FlockController::setDestination()` / `scatter()` /
   `setCollisionDetection()`; `RainOverlay::getSettings()` /
   `SnowOverlay::getSettings()`. Note the overlap with the FIELD census: B339
-  and B346 already own `WeatherEffectsController::targetIntensity_` and
-  `ParticleEmitter::spawnRadius_`, which are the same subsystem's unread
+  and B346 already own `WeatherEffectsController::targetIntensity_` (B339
+  deleted it, 2026-10-11) and `ParticleEmitter::spawnRadius_`, which are the
+  same subsystem's unread
   members. Found by T455.
 
 - **B491** (B, unreached) **The S3D/WLD asset-loader query API: 49 zero-caller → issue #166
@@ -10074,7 +10075,9 @@ fine — the table fails on a stale entry, so it cannot rot.
   `createMode`'s `rendererType` parameter and the `GraphicalRendererType`
   enum stay: `Application::initGameMode` still logs the requested type
   (`src/client/application.cpp:431-432`). Nothing reintroduced; B345's three
-  members were not touched. See `refactor/B501/README.md`.
+  `ConsoleRenderer` members (`m_curEnd` / `m_startTime` / `m_maxEnd`) were
+  deleted with their writes by T506's B345 close (2026-10-11), after the
+  strike. See `refactor/B501/README.md`.
 
 - ~~**B501** (B, unreached) **`common/` utility API with no caller: 12 → issue #176
   zero-caller public functions across 5 headers.**~~
