@@ -44,7 +44,6 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_animation.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/variant_loading_preload.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         # T490: BspRegion/BspTree PVS methods moved into zone_bsp.cpp (RLE store).
         ${CMAKE_SOURCE_DIR}/src/client/zone_bsp.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/wld_loader.cpp
@@ -147,7 +146,6 @@ IF(EQT_GRAPHICS)
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_characters.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/s3d_loader_skinning.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry.cpp
-        ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/zone_geometry_atlased.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/dds_decoder.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_codes.cpp
         ${CMAKE_SOURCE_DIR}/src/client/graphics/eq/race_model_loader.cpp

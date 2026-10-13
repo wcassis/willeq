@@ -1085,14 +1085,10 @@ bool ZoneLifecycleComponent::rebuildRegionMesh(size_t regionIdx) {
         builder.setConstrainedTextureCache(ctx_.constrainedTextureCache);
 
     bool shaderAvail = ctx_.zoneShader && ctx_.zoneShader->isAvailable();
-    bool atlasAvail = ctx_.zoneShader && ctx_.zoneShader->isAtlasAvailable();
     if (shaderAvail)
         builder.setShaderMaterialTypes(ctx_.zoneShader->getActiveSolid(),
                                        ctx_.zoneShader->getActiveAlphaTest(),
                                        ctx_.zoneShader->getActiveAlphaTestRGBA());
-    if (atlasAvail)
-        builder.setAtlasShaderMaterialTypes(ctx_.zoneShader->getActiveAtlasSolid(),
-                                             ctx_.zoneShader->getActiveAtlasAlpha());
 
     bool hasTextures = !ctx_.currentZone->textures.empty();
     bool hasTexNames = !geom->textureNames().empty();
