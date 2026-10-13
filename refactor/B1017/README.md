@@ -8,8 +8,10 @@ this branch — `refactor/B1016/README.md`).
 Two defects sat in the B930 stale-pack net:
 
 1. **The audit was version-shaped.** `verify_eqe1 --require-v3` reported
-   STALE on ANY v1/v2 file. On `origin/fable` it flagged **1,506 of 1,506**
-   packs in the host's data directory — including `willeq.eqe1`, which is v2
+   STALE on ANY v1/v2 file. On `origin/fable` it flagged **1,505 of the
+   1,506** packs in the host's data directory (1,504 v1 + 1 v2 —
+   soldunga.eqe1 was already a rebuilt v3 when the paired audit ran, so it
+   passed even the version-shaped flag) — including `willeq.eqe1`, which is v2
    BY THE BUILDER'S DESIGN and whose longest name is 26 chars (nothing in it
    could ever be truncated). A net that flags every legitimate pack teaches
    no one anything; the acceptance criterion ("a clean v1/v2 must NOT be
@@ -83,10 +85,13 @@ Two defects sat in the B930 stale-pack net:
   `test_eqe1_stale_pack` (the B930 leg) still green.
 - **Live pack audit (2026-10-12, `/mnt/projects/EverQuest_ETC1`, 1,506
   packs):** `--require-v3` reports **0** STALE candidates — the pre-fix
-  version-shaped flag reported 1,506. The tree's single 31-char name is
+  version-shaped flag reported 1,505 (1,504 v1 + 1 v2; soldunga.eqe1 was
+  already a rebuilt v3, so it passed even the version-shaped flag). The
+  tree's single 31-char name is
   frozenshadow's `bricktrimflorish&protrait_alpha` (25-char base + `_alpha`,
   both entries present), which the `_alpha` exception correctly passes;
-  soldunga.eqe1 is already a rebuilt v3 (144 textures).
+  soldunga.eqe1 is already a rebuilt v3 (144 textures). Re-derivable via
+  `qa_audit_both.py` in the evidence dir.
 - **The mutation that proves the (d)/(e) net** (acceptance 8): with the
   diagnosis call neutered at the FATAL site
   (`diagnoseStaleEQE1Pack(std::vector<const EQE1Loader*>{}, name)`), both

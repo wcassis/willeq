@@ -63,7 +63,7 @@ parser (`mesa_driver_field`) could drift from the emitter with no net.
   `willeq` with `--renderer gles2 --no-audio` and requires the `[gldriver]`
   line on stdout — the acceptance criterion's literal ask);
   `GldriverLineFormatContract` PASS; the benchmark's own run prints the line
-  (line 58 of a 1-frame headless run) [measured].
+  (line 56 of a 1-frame headless run, per the identical local run) [measured].
 - **The gate assertion** was exercised directly against three cases (a real
   parsed line, an absent line, an unparseable line) — `test_gate_gldriver.py`
   in the evidence dir, all pass. A full `visual_gate.py` run over all five
