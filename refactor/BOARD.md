@@ -62,37 +62,45 @@ it without taking that measurement first.
   loaded the custom font. **Left for Will (per the card): the Pi re-run and
   the `memoryLedgerBudgets.audio` re-ratchet, after B989 lands too.**
 - ~~**B989** (A) → issue #308. Every played WAV is held **twice** as 32-bit
-  float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode,
-  ~2.0–2.4 MB after the B977 tour's combat) and `SfxManager::cache_`
-  (`au.sfx_cache`, `preload()`'s second copy of the same samples), each capped
-  separately at the preset's `soundCache` (8,192 KB on orangepi) — up to
-  16 MiB of duplicated decoded PCM the 1999 client did not carry twice.
-  Measured: b977-audio x86 befallen `au.sound_buffers` 2,322,320 +
-  `au.sfx_cache` 310,640 B at steady_60s (723,600 B at the shutdown and
-  zone_change points; Pi befallen 2,320,376 + 723,456 B at steady_60s,
-  `refactor/B977/audio_ledger_census.tsv` owner rows). **STRUCK (2026-10-11,
-  `task/kb-b989-sfx-cache-dup`, `refactor/B989/README.md`):** the decoded PCM
-  is now held ONCE — `AudioManager::loadSound` decodes into its buffer cache
-  and hands the same `std::shared_ptr<SoundBuffer>` to
-  `SfxManager::preload()`; `SfxManager::cache_` is a shared-reference LRU (it
-  evicts references, never the PCM), the `au.sfx_cache` owner row is gone, and
-  the preset's `soundCache` cap bounds the single cache (T412's LRU now
-  actually enforced). RED/GREEN: `tests/test_sfx_single_pcm_cache` (3 cases:
-  a fresh play grows the `audio` category by the decoded PCM exactly once, a
-  buffer-cached replay grows it ~0 where the pre-fix code grew it by a full
-  second copy — 22,336 B of 21,920 B PCM on the RED commit — and the cap
-  evicts LRU-oldest and bounds resident bytes); `tests/test_sfx_cache_eviction`
-  covers the eviction mechanics; the CI `test` job's audio suite is green
-  (5,757/5,757 at MR head cbdb905b, pipeline 773 — re-measured per push, not
-  quoted). Live
-  ledger leg, same tour/character/eligibility as B977's (lane 3, x86,
-  befallen, rat fight, `refactor/B989/audio_ledger_census.tsv`): steady_60s
-  `audio` **3,872,576** live vs B977's 4,252,448; `au.sound_buffers`
-  2,322,288 (B977: 2,322,320); **`au.sfx_cache` ABSENT** (B977: 310,640) —
-  the 310,640 B of duplicate PCM is gone and the category carries the PCM
-  once. The 16 MiB worst-case bound is structural (one cache, one cap) rather
-  than re-measured live, and the Pi steady-state re-run is deferred to the
-  audio re-ratchet alongside B990's.~~
+  float PCM: `AudioManager::bufferCache_` (the `au.sound_buffers` decode)
+  and `SfxManager::cache_` (`au.sfx_cache`, `preload()`'s second copy of the
+  same samples), each capped separately at the preset's `soundCache` (8,192
+  KB on orangepi) — up to 16 MiB of duplicated decoded PCM the 1999 client
+  did not carry twice. Measured: b977-audio x86 befallen (hermes-ext
+  `/home/user/kb-evidence/b977-audio/x86/befallen/audio/client.log`, outside
+  the repo; the owner rows are committed in
+  `refactor/B989/audio_ledger_census.tsv` — the B977 TSV is a per-zone
+  TOTALS table with no owner columns) `au.sound_buffers` 2,322,320 +
+  `au.sfx_cache` 310,640 B at steady_60s, which is BEFORE the tour's combat
+  (23:03:46 vs `#npctypespawn` 23:03:58); at the shutdown point 723,600 +
+  2,322,320 = 3,045,920 B (Pi befallen 2,320,376 + 723,456 B at steady_60s).
+  **STRUCK (2026-10-11, `task/kb-b989-sfx-cache-dup`,
+  `refactor/B989/README.md`):** the decoded PCM is now held ONCE —
+  `AudioManager::loadSound` decodes into its buffer cache and hands the same
+  `std::shared_ptr<SoundBuffer>` to `SfxManager::preload()`; the `au.sfx_cache`
+  owner row is gone, and the preset's `soundCache` cap bounds the buffer
+  cache. RED/GREEN: `tests/test_sfx_single_pcm_cache` (a fresh play grows the
+  `audio` category by the decoded PCM exactly once, a buffer-cached replay
+  grows it ~0 where the pre-fix code grew it by a full second copy — 22,336 B
+  of 21,920 B PCM on the RED commit — and the cap evicts LRU-oldest and
+  bounds resident bytes); `tests/test_sfx_cache_eviction` covers the eviction
+  mechanics; the CI `test` job's audio suite is green (re-measured per push,
+  not quoted). Live ledger leg: **B977 ran on eqemu lane 1 (172.16.200.99)
+  as a 13-zone sweep** (befallen the 5th zone); **B989 on lane 3
+  (172.16.200.97), befallen only** (x86, same tour/character/eligibility,
+  rat fight, `refactor/B989/audio_ledger_census.tsv`): steady_60s `audio`
+  **3,872,576** live vs B977's 4,252,448; `au.sound_buffers` 2,322,288
+  (B977: 2,322,320); **`au.sfx_cache` ABSENT** (B977: 310,640) — the 310,640 B
+  of duplicate PCM is gone and the category carries the PCM once; at
+  shutdown 3,045,920 vs 2,322,288, a drop of 723,632. **SUPERSEDED (B1015,
+  #336, 2026-10-12):** B989 left TWO filename-keyed LRUs with two caps — the
+  buffer cache could evict a sound the sfx cache still referenced (re-decoded
+  on the next play: two decoded copies resident) and the two LRUs picked
+  different victims, so under the cap case 32,992 B = 11,072 + 21,920 of PCM
+  was live under 21,919; the "one cache, one cap" wording above was false
+  until B1015 deleted `SfxManager::cache_` entirely (one `SoundBufferCache`,
+  one cap, in-use pinning, the inserted entry never evicted). The Pi
+  steady-state re-run is deferred to the audio re-ratchet alongside B990's.~~
 
 - ~~**B852** (A) **Nothing verifies that Kunark and Velious zones load.** The CI
   gate renders three classic zones and nothing else; no test, script or gate
@@ -1044,6 +1052,7 @@ it without taking that measurement first.
   cap). Fix options are B997's batch/merge of manual zone draws or a
   per-draw submit-cost cut — both need Will's decision (look/coverage +
   B726/B979 invariants), so the card blocks with the measurement.
+- **B1042** (P, CI) → issue #362. The x86 CI queue: every new branch was a cold ~30-minute build (one tree per ref, B1012), a docs-only diff built and tested like code, the first push of a branch ran a full pipeline its MR pipeline then repeated, and `build`/`test` landed on different runners in 25 of the 50 newest pipelines that ran both (`scripts/ci/ci_host_split.py`), each split rebuilding in `test` (B1026). **FIX on `task/B1042-ci-queue`:** the ccache launcher on every x86 configure behind `command -v ccache` (`CCACHE_BASEDIR`, per-job `ccache --show-log-stats` + `ccache -s` after every build; `scripts/build-gles2-x86.sh` honours it too); `.code_rules` skips `build-test`/`gate`/`client-ledger-live` when every changed path is `*.md` (MR: vs target; branch: `compare_to` fable), `hygiene` always runs; `build` + `test` folded into ONE `build-test` job; push `-o ci.skip`, then open the MR. Pinned by `CiQueueRules` + `CiBuildTreeStamp` (hygiene); `docs/ci.md` "ccache on the x86 runners", "Docs-only pipelines run hygiene only", "Push with `-o ci.skip`, then open the MR"; evidence `review/B1042/README.md`. Open: the CLAUDE.md sentences and the hermes card templates (orchestrator; wording in the MR), `build-headless` (B1038) takes `.code_rules` at its merge.
 - **B1031** (B, platform) → issue #351. macOS dev-platform probe; card 2 = fix. Card 1 (PROVE) on `task/B1031-macos-probe`: the headless configure succeeds on the M4 mini and the keep-going build fails; the error census by TU and KIND, the linked binaries, the ctest results and the card-2 fix list are in `refactor/B1031/README.md`.
 - **B1026** (B, CI) → issue #346. Since gitlab-runner-2 took the `x86-build` tag (2026-10-11) a pipeline's `build` and `test` jobs can land on different hosts, and the stages pass no artifacts: fable pipeline 809 built on gitlab-runner-1 (job 4006) and tested runner-2's pre-B603 binary (job 4007), a false red; MR pipeline 805's green was the same luck. **FIX on `task/B1026-ci-host-stamp`** (Will ruled option (a)): the build steps are ONE shell function (`.build_tree` → `willeq_build_tree`); the tree gets a ref-only stamp before the configure and a host+sha claim (`.willeq_ref` `host=`/`sha=`, `prune_ref_build_trees.py --stamp ... --host --sha`) only after `cmake --build` succeeds; `test` and `client-ledger-live` run `--verify` first and, on a mismatch, print `B1026 STAMP MISMATCH`, rebuild in-job and verify again; `gate` builds its own GLES2 tree in-job. Pinned by `CiBuildTreeStamp` (hygiene) + `PruneRefBuildTrees`; `docs/ci.md` "Two x86 runners: the host+sha stamp"; evidence `refactor/B1026/README.md`.
 - **B1038** (B, CI/build) → issue #358. The headless configuration (`EQT_GRAPHICS=OFF`, the `--no-graphics` client) did not compile on ANY host and no job built it (`hygiene` configures OFF but compiles nothing; `build` is ON) -- found by B1031's macOS probe, confirmed on Linux (`review/B1031/linux_crosscheck_pass2.tsv`): `application.cpp`'s steady_60s census read `m_renderer`, `test_data_paths`/`test_ranged_attack_wire`/`test_detail_view_distance` include `irrlicht.h`, and the T260 cases of `test_zone_connection_flow_identity.cpp` call the graphics-only bridge seam; behind those, 8 test executables did not link (cases calling `GRAPHICS_SOURCES` TUs) and 5 cases asserted graphics-only behaviour. Also `cereal` was included by `packet.h`/`daybreak_structs.h` and never checked by CMake. **FIX on `task/B1038-headless-build`**: guards only (the census; renderer-path test cases `#ifdef EQT_HAS_GRAPHICS`; `test_detail_view_distance`, `test_door_motion`, `test_texture_alpha_census`, `test_ui_sprite_roster` registered only under graphics), `FIND_PATH(CEREAL_INCLUDE_DIR ...)` with a `FATAL_ERROR` naming `libcereal-dev` / Homebrew `cereal` (not vendored -- Will's call), and the `build-headless` CI job (`build` stage, shared `willeq_build_tree` with `WILLEQ_HEADLESS=1`, own `build-headless/ref/<slug>` tree, `ctest -LE hygiene` in-job). Pinned by `CiBuildTreeStamp` + `PruneRefBuildTrees`; `docs/ci.md` "The headless build"; evidence `refactor/B1038/README.md`.
@@ -1088,6 +1097,19 @@ it without taking that measurement first.
   `fdinfo_purgeable=`, and the captured fdinfo is a fixture
   (`GpuBufferCensus.FdinfoResidentIsTheRowNotTheTotal`). Lima lanes publish
   no memory keys and are untouched.
+- ~~**B1045** (B) → issue #365. The ODROID XU4 (Exynos 5422, Mali-T628,
+  Will's interactive play-test box, not a lane) ran willeq at ~12 fps because
+  its GPU was clocked at 24 MHz: the Exynos sub-CMU parks the G3D user mux
+  `mout_user_aclk_g3d` on `fin_pll` whenever the power domain goes down and its
+  restore (the sub-CMU device's runtime_resume) never runs while Panfrost cycles
+  the domain, so the clock framework reports 177-600 MHz while
+  `GPU_CYCLE_COUNT` measures 24.0 MHz.~~ **FIXED** on the device
+  (`docs/reference/odroid_xu4.md`, `scripts/sbc/xu4/`): the out-of-tree
+  Panfrost module re-selects the PLL path in `panfrost_gpu_power_on()`; qeynos2
+  1280x720 10 → 89 fps, glmark2 `build` 15 → 279 fps (`review/B1045/README.md`).
+  Cold boot verified 2026-10-13 (hook armed at probe, re-selected the mux on
+  the first runtime resume, 288 fps). Open: an upstream report for
+  `clk-exynos5-subcmu.c` (restore from a genpd power-on notifier) -- Will's call.
 - **B1030** (B) → issue #350. Two aarch64 SBCs joined the Orange Pi as client
   targets (Rock64: RK3328, Mali-450/Lima, 4 GB, eMMC; ROCK 4D: RK3576,
   Mali-G52/Panfrost, 12 GB), but every Pi script hardcoded ONE host and the

@@ -4,7 +4,7 @@
 // T401 measured k = 2.00 on three assets in a bit-exact ALSA-loopback
 // recording (review/T401/ SS1d). The cause is NOT the decoder and NOT the PFS
 // path: SoundBuffer::loadFromMemory reads the WAV header correctly and
-// SfxManager::preload carries the rate onto the channel. AudioMixer::render()
+// SfxManager::play carries the rate onto the channel. AudioMixer::render()
 // then STEPS ch.position BY ONE OUTPUT FRAME and never reads ch.sampleRate at
 // all, so a channel is always played at the device rate. The device is opened
 // at AudioMixer::SAMPLE_RATE == 22050 and the shipped effects are 11025 Hz

@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-2.0
+ifneq ($(KERNELRELEASE),)
+obj-m := panfrost.o
+panfrost-y := \
+	panfrost_drv.o \
+	panfrost_device.o \
+	panfrost_devfreq.o \
+	panfrost_gem.o \
+	panfrost_gem_shrinker.o \
+	panfrost_gpu.o \
+	panfrost_job.o \
+	panfrost_mmu.o \
+	panfrost_perfcnt.o \
+	panfrost_dump.o
+else
+KDIR ?= /lib/modules/$(shell uname -r)/build
+all:
+	$(MAKE) -C $(KDIR) M=$(CURDIR) modules
+clean:
+	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
+endif

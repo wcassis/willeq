@@ -80,18 +80,17 @@ Additional context is in subdirectory CLAUDE.md files:
   cause and fixes the cause there.
 - **CI runs the build and the suite on the GitLab runner, not in your
   worker.** `.gitlab-ci.yml` (T502) builds Release and runs the full ctest suite
-  on pushes to `task/*`, `plans/*` and `fable`, and on merge requests, in four
+  on pushes to `task/*`, `plans/*` and `fable`, and on merge requests, in three
   stages: `hygiene` (no C++ build, so a doc/size/citation break fails in under a
-  minute), `build`, `test` (the intermittent `RDPServerFrameTest.UpdateFrameMultipleTimes`
-  is re-run with `--repeat until-pass:3`) and `gate` (`visual_gate`, 3 in-script
-  retries, never `allow_failure`, all five manifest zones — B903/B904 ended
-  the 2026-09-28 iceclad/timorous split, `docs/ci.md`). The x86 jobs run on **gitlab-runner-1 and
-  gitlab-runner-2** (both tag `x86-build`, B1008) and refuse other hosts (a kanban worker's 4 GiB cap
-  OOM-kills a link; builds stay off the Inspur box and off hermes-ext). One pipeline's stages may land
-  on different hosts: `test` refuses a build tree not stamped by its own host at its own sha and
-  rebuilds in-job (B1026, `docs/ci.md`). Pushing a branch is the
-  cheapest suite run, but each runner's build tree is **warm**: force a clean
-  pipeline before trusting a build-system change (`docs/ci.md`).
+  minute; the WHOLE pipeline when every changed path is `*.md`, B1042), `build` (`build-test`
+  builds and runs the suite in one job, B1042; `RDPServerFrameTest.UpdateFrameMultipleTimes`
+  is re-run with `--repeat until-pass:3`) and `gate` (`visual_gate`, 3 in-script retries,
+  never `allow_failure`, all five manifest zones, `docs/ci.md`). The x86 jobs run
+  on **gitlab-runner-1 and gitlab-runner-2** (both tag `x86-build`, B1008, ccache on both) and refuse
+  other hosts (a kanban worker's 4 GiB cap OOM-kills a link; builds stay off the Inspur box and off
+  hermes-ext). `client-ledger-live` rebuilds in-job a tree not stamped by its host+sha (B1026).
+  Push a new branch with `-o ci.skip`, then open the MR: the MR pipeline is the one that counts
+  (B1042). Runner trees are **warm**: force a clean pipeline before trusting a build-system change.
 
 ### File sizes
 
@@ -162,7 +161,7 @@ specifically.
 ## Build Commands
 
 **`-j$(nproc)` does not expand reliably in a Bash tool command. Pass a hardcoded
-value, e.g. `cmake --build build -j24`** (no ccache here: a cold build is not cheap). From a script
+value, e.g. `cmake --build build -j24`** (hermes-ext workers: 4 GiB cgroup, so `-j3`, B1046). From a script
 (e.g. `scripts/build-arm-noble.sh`), `$(nproc)` works fine.
 
 **Desktop-GL Irrlicht support has been removed (P30,

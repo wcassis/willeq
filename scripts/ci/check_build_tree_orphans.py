@@ -53,12 +53,12 @@ and built next; B's CMake graph has no such target, so this check correctly
 failed B's pipeline on A's leftover binary. The check was always RIGHT to fail
 on that -- what was missing was anything that removed the leftover before the
 check ran. `--prune` is that removal: same target discovery as the check
-(`_discover()` below), run once, right after the CI `build` job's cmake
+(`_discover()` below), run once, right after the CI `build-test` job's cmake
 configure step and before the build/test steps, so a stale binary from the
 PREVIOUS branch's pipeline is gone before this pipeline's own build can even
 create a fresh one. The plain (no `--prune`) check stays registered in ctest
 unchanged, so a developer's local warm tree still gets the same warning it
-always did, and CI's `test` stage still fails outright if an orphan survives
+always did, and CI's suite (`build-test`, B1042) still fails outright if an orphan survives
 the prune -- which would mean the prune itself is broken, not that the
 allowlist needs an entry.
 """

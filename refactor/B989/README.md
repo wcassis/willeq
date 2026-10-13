@@ -6,10 +6,12 @@ decode on first `playSound`/`playSoundByName`) **and** `SfxManager::cache_`
 (ledger owner `au.sfx_cache`, the second copy `SfxManager::preload()` made of
 the very same samples), each capped separately at the preset's `soundCache`
 (8,192 KB on `orangepi`) — up to 16 MiB of duplicated decoded PCM. Filed by
-B977 (#295); the B977 census measured it at x86 befallen steady_60s after the
-tour's combat: `au.sound_buffers` 2,322,320 B + `au.sfx_cache` 310,640 B
-(`refactor/B977/audio_ledger_census.tsv`; the issue's table quotes the shutdown
-point's 723,600 B).
+B977 (#295); the B977 census measured it at x86 befallen steady_60s, which
+is BEFORE the tour's combat (23:03:46 vs `#npctypespawn` at 23:03:58):
+`au.sound_buffers` 2,322,320 B + `au.sfx_cache` 310,640 B
+(`refactor/B977/audio_ledger_census.tsv`; the shutdown point's rows:
+`au.sfx_cache` 723,600 B + `au.sound_buffers` 2,322,320 B = 3,045,920 B —
+B989's shutdown is 2,322,288 B, a drop of 723,632 B).
 
 ## The fix: share the buffer, do not copy it
 
@@ -152,27 +154,53 @@ befallen --modes audio`, B977's own tour file, `--char-level 60
 the snapshot byte-identically with the world down). `run_meta.txt` pins
 `commit=07f9ea83 dirty=0`, the binary's sha256, and the lane; raw client log
 in `/home/user/kb-evidence/b989-sfx-cache-dup/live_befallen/befallen/audio/`.
+The live binary's `commit=07f9ea83` never reached GitLab: it is a local merge
+of the B989 work branch's in-flight state (parent `3dedf83c62cfd3f5d3ad2842651e8e14af7f37a8`, "WIP: B989 GREEN
+changes in flight") with then-tip `origin/fable` (`f005f70a`), taken while the
+branch was being re-cut, and the branch that actually merged (`4ea10711` →
+`28d14c48` → …) superseded it. The live binary's C++ is byte-identical to
+`28d14c48` ("B989 (#308) GREEN: the sfx cache shares the buffer cache's
+SoundBuffer (PCM once)"): `git diff 28d14c48 07f9ea83 -- '*.cpp' '*.h'` is
+empty (the two differ only in docs/scripts, `audio_ledger_census.tsv` and
+`refactor/BOARD.md`).
+
+The two legs are NOT identical rigs: **B977 ran on eqemu lane 1
+(172.16.200.99) as a 13-zone sweep** (befallen the 5th zone), **B989 on lane 3
+(172.16.200.97), befallen only**. That difference — plus the different eqemu
+fleet on the two lanes and the different commits (B977 1b8ebb6f vs B989
+28d14c48) — is the unmeasured part of the rows that moved besides
+`au.sfx_cache`, and it is why the 68,016 B `au.pfs_index` delta
+(403,184 vs 471,200) is attributed to the legs differing, not to
+"run-to-run variation" of an identical run.
 
 | owner row (steady_60s)        | B977 baseline | after B989 |
 |-------------------------------|--------------:|-----------:|
 | `au.sound_buffers`            |     2,322,320 |    2,322,288 |
 | `au.sfx_cache`                |       310,640 | **ABSENT** |
-| **the pair's SUM**            |   2,632,960   |  **2,322,288** |
+| **the pair's SUM**            |     2,632,960 |    2,322,288 |
 | `audio` category TOTAL (startup scope) | 4,252,448 | 3,872,576 |
+| `au.sfx_cache` (shutdown)     |       723,600 | **ABSENT** |
+| `au.sound_buffers` (shutdown) |     2,322,320 |    2,322,288 |
+| **shutdown pair's SUM**       |     3,045,920 |  2,322,288 (drop 723,632) |
 
-The pair's sum dropped by **310,672 B** — at least the smaller row (310,640
-B), the criterion, [measured]. `au.sound_buffers` is byte-parallel with the
-baseline (−32 B, one less mixer-side allocation in this run); the duplicate
-PCM is gone entirely — the `au.sfx_cache` `[memledger-startup]` line does not
-exist in the new log (grep count 0), and the `audio` category total is 379,872
-B lower, of which 310,640 B is exactly the removed sfx_cache row and the
-remaining 69,232 B is run-to-run variation in the other owner rows (pfs_index
-403,184 vs 471,200, backend 46,512 vs 48,032, soundfont_gm 1,036,640 vs
-1,036,624, zone_emitters 3,616 vs 3,600, misc 6,128 vs 5,824, plus unlabelled
-audio-category map overhead) — none of it a PCM row. The two quoted `[memledger]` lines:
+The pair's sum dropped by **310,672 B** at steady_60s — at least the smaller
+row (310,640 B), the criterion, [measured]. At shutdown the drop is 723,632 B
+(3,045,920 = 723,600 + 2,322,320 vs 2,322,288; 3,045,920 − 2,322,288 =
+723,632) — the entire `au.sfx_cache` row, plus the same 32 B
+`au.sound_buffers` delta as steady_60s. `au.sound_buffers` is byte-parallel
+with the baseline (−32 B, one less mixer-side allocation in this run); the
+duplicate PCM is gone entirely — the `au.sfx_cache` `[memledger-startup]` line
+does not exist in the new log (grep count 0). The `audio` category total is
+379,872 B lower (4,252,448 − 3,872,576 = 379,872), of which 310,640 B is
+exactly the removed sfx_cache row and the remaining 69,232 B (379,872 −
+310,640 = 69,232) is the legs-differing above (pfs_index 403,184 vs 471,200 —
+68,016 B = 471,200 − 403,184; backend 46,512 vs 48,032; soundfont_gm 1,036,640
+vs 1,036,624; zone_emitters 3,616 vs 3,600; misc 6,128 vs 5,824, plus
+unlabelled audio-category map overhead) — none of it a PCM row. The two
+quoted `[memledger]` lines:
 
 ```
-# B977 baseline (refactor/B977/x86/befallen/audio/client.log, 2026-10-05 23:03:46)
+# B977 baseline (hermes-ext: /home/user/kb-evidence/b977-audio/x86/befallen/audio/client.log, 2026-10-05 23:03:46 — outside the repo; the rows are committed in refactor/B989/audio_ledger_census.tsv)
 [memledger-startup] point=steady_60s owner=startup.au.sound_buffers live=2322320 blocks=73
 [memledger-startup] point=steady_60s owner=startup.au.sfx_cache live=310640 blocks=4
 
@@ -188,9 +216,19 @@ The census table: `refactor/B989/audio_ledger_census.tsv`.
 - **The Pi leg** (befallen Pi steady_60s: B977 measured 2,320,376 + 723,456
   B) and **the `memoryLedgerBudgets.audio` re-ratchet** are explicitly NOT this
   card — Will's number, after B990, `docs/decisions.md`. The 16 MiB
-  worst-case bound is structural (one cache, one cap) and not re-measured
-  live: the tour plays a small fraction of the archive, so a live worst-case
-  number would need a dedicated tour and belongs to the re-ratchet.
+  worst-case bound was stated as "structural (one cache, one cap)" — that
+  wording was FALSE while B989 was live: the sfx LRU that B989 left stood
+  beside the buffer cache with its own cap and its own victim, and the cap
+  case held 32,992 B = 11,072 + 21,920 of PCM under 21,919. **B1015 (#336)
+  deleted the second LRU**; the bound is now structural in the fixed code:
+  the preset's `soundCache` (8,192 KB on orangepi) caps the ONE
+  `SoundBufferCache` — `getSizeBytes()` sums every resident `SoundBuffer`,
+  the LRU holds no PCM of its own and `SfxManager` holds none (channels
+  store raw `float*` into the cache's buffers, pinned while active), so
+  resident SFX PCM = the cache's bytes ≤ the cap (+ any pinned entries, which
+  a stopped mixer releases via `rebalance()`). Not re-measured live: the tour
+  plays a small fraction of the archive, so a live worst-case number would
+  need a dedicated tour and belongs to the re-ratchet.
 - The `memoryLedgerBudgets.audio` value (32 MiB) and the preset's `soundCache`
   (8,192 KB on `orangepi`) are untouched, per the card.
 - The RED run's "fresh decode" case passed even pre-fix (it measures the
