@@ -40,9 +40,23 @@ AC1b RED captured: unsplit fails 6 probe(s), committed split 0.
 
 | census | pre-B1018 (unsplit) | post-B1018 (split) |
 |---|---|---|
-| declared members | 8,061 (5,397 distinct) | **8,320 (5,536 distinct)** |
+| declared members | 8,061 (5,397 distinct) | **8,317 (5,533 distinct)** |
 | write-only fields | 45 | **45** (zero new rows) |
 | unused fields | 86 | **89** (+3, all rowed in `EXEMPT_UNUSED`) |
+
+<pre>
+wof_check_after.log is the committed (split) checker's --check at the new
+head (post the fable merge of f5c06497), and wof_check_merged.log is the
+pre-B1018 baseline at 735b3ef1 (the merge-base). Both logs live in the QA
+evidence directory (kb-evidence/b1018-b1019-wave7-nets-docs/) -- *.log is
+gitignored, so they are not in the tree -- and were recaptured at the new
+head, so they print 8317 (5533) and 8061 (5397) exactly like the table
+above. The B1015 PCM-cache merge (f5c06497) moved the whole-tree count from
+8,320 (5,536) to 8,317 (5,533) -- it added the seven SoundBufferCache
+members and removed ten superseded AudioManager/SfxManager cache members --
+so the [measured] cells are the post-merge ones. The B1018 delta itself is
+unaffected (259 on 153 lines, both at the new head and at the old).
+</pre>
 
 259 members became visible on the **153 lines** carrying more than one
 declarator (`wof_multidecl_lines.txt`, one `Type::field` line per
