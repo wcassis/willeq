@@ -69,6 +69,11 @@ IF(EQT_GRAPHICS AND EQT_GLES2 AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
         ${CMAKE_SOURCE_DIR} ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_drm_key_translation GTest::gtest_main)
     GTEST_DISCOVER_TESTS(test_drm_key_translation DISCOVERY_TIMEOUT 120)
+
+    ADD_EXECUTABLE(test_drm_flip_tracker test_drm_flip_tracker.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_drm_flip_tracker PRIVATE ${CMAKE_SOURCE_DIR})
+    TARGET_LINK_LIBRARIES(test_drm_flip_tracker GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_drm_flip_tracker DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # Test packet serialization - packet.cpp uses fmt
