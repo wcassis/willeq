@@ -26,7 +26,11 @@
 #include <atomic>
 #include <cstdlib>
 #include <fstream>
+#ifdef __APPLE__
+#include <malloc/malloc.h>
+#else
 #include <malloc.h>
+#endif
 #include <memory>
 #include <new>
 #include <string>
@@ -46,8 +50,16 @@ namespace {
 std::atomic<size_t> g_heapCurrent{0};
 std::atomic<size_t> g_heapPeak{0};
 
+size_t allocationSize(void* p) {
+#ifdef __APPLE__
+    return malloc_size(p);
+#else
+    return malloc_usable_size(p);
+#endif
+}
+
 void trackAlloc(void* p) {
-    size_t n = malloc_usable_size(p);
+    size_t n = allocationSize(p);
     size_t cur = g_heapCurrent.fetch_add(n, std::memory_order_relaxed) + n;
     size_t peak = g_heapPeak.load(std::memory_order_relaxed);
     while (cur > peak && !g_heapPeak.compare_exchange_weak(peak, cur, std::memory_order_relaxed)) {}
@@ -55,7 +67,7 @@ void trackAlloc(void* p) {
 
 void trackFree(void* p) {
     if (!p) return;
-    g_heapCurrent.fetch_sub(malloc_usable_size(p), std::memory_order_relaxed);
+    g_heapCurrent.fetch_sub(allocationSize(p), std::memory_order_relaxed);
 }
 
 void resetPeak() { g_heapPeak.store(g_heapCurrent.load()); }

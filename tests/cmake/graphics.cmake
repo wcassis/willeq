@@ -227,7 +227,7 @@ ENDIF()
 # no graphics driver. Needs only gtest + <Keycodes.h> (IRRLICHT_INCLUDE_DIR) +
 # the system X11 headers, so it links no driver and runs in the normal suite.
 # RED before the fix (the ten nav-alias cases returned 0), GREEN after.
-IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
+IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY AND NOT APPLE)
     ADD_EXECUTABLE(test_x11_keysym_map
         test_x11_keysym_map.cpp
     )

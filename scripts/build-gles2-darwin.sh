@@ -81,7 +81,7 @@ cmake -S "$PROJECT_DIR" -B "$BUILD_DIR" -G Ninja \
     -DEQT_GRAPHICS=ON -DEQT_GLES2=ON -DEQT_DRM=OFF \
     -DEQT_GLES2_IRRLICHT_DIR="$IRRLICHT_BUILD_DIR" \
     -DEQT_ANGLE_DIR="$ANGLE_DIR" -DEQT_ANGLE_LIB_DIR="$ANGLE_OUT" \
-    -DEQT_BUILD_TESTS=OFF -DWITH_RDP=OFF \
+    -DEQT_BUILD_TESTS=ON -DWITH_RDP=OFF \
     -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl@3
 echo "=== Building willeq + gles2_zone_benchmark ==="
 nice -n 10 cmake --build "$BUILD_DIR" --target willeq gles2_zone_benchmark -j"$JOBS"
