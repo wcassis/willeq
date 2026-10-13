@@ -1,7 +1,7 @@
 /*
  * HotbarModel — standalone hotbar data model.
  *
- * U07b: Owns hotbar slot data, reads/writes JSON config, publishes
+ * U07b/B1025-H1: Owns ten pages of slot data, reads/writes JSON, publishes
  * HotbarSlotAssigned events. No dependency on WindowManager or old UI.
  */
 
@@ -63,10 +63,10 @@ public:
 
     // --- Slot mutation (publishes events) ---
     // B603 (T458 class: test seam, kept): no production caller. The only
-    // production slot writer is loadFromJson() (LoadHotbarConfig at startup);
+    // production slot writer is loadFromJson() (LoadHotbarConfig at zone-in);
     // nothing in a command or the UI assigns or clears a slot, so the
-    // config-save callback (setSaveCallback, registered in
-    // BridgeComponent::InitGraphics, bridge_component.cpp:145) fires in
+    // per-character save callback (setSaveCallback, registered in
+    // BridgeComponent::wireBridgeToSubsystems) fires in
     // production only from these two -- which today is never, i.e. hotbar
     // slot assignment is a missing feature, not a live path. They stay
     // because their tests drive assignSlot/clearSlot as the REAL producer of

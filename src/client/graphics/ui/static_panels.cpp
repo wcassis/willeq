@@ -1083,7 +1083,15 @@ void renderXPBar(UIRenderer& ui, const UILayout& layout,
 void applyHotbarSlotAssigned(HotbarPanelState& state,
                              const eqt::state::HotbarSlotAssignedData& data) {
     if (data.index < 0 || data.index >= HotbarPanelState::SLOT_COUNT) return;
-    state.currentPage = data.page;
+    if (data.page < 0 || data.page >= 10 ||
+        data.currentPage < 0 || data.currentPage >= 10) return;
+    state.pages[data.page][data.index].type = data.type;
+    state.pages[data.page][data.index].id = data.id;
+    state.pages[data.page][data.index].emoteText = data.emoteText;
+    state.pages[data.page][data.index].name = data.name;
+    state.pages[data.page][data.index].iconId = data.iconId;
+    state.currentPage = data.currentPage;
+    if (data.page != data.currentPage) return;
     auto& slot = state.slots[data.index];
     slot.type = data.type;
     slot.id = data.id;

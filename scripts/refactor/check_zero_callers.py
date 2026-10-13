@@ -1164,8 +1164,6 @@ EXEMPT_TESTS_GROUPS = {
     ("SpellState", "castTimeTotal"): "observer",
     ("SpellState", "castingSpellId"): "observer",
     ("SpellState", "getGemCooldownProgress"): "observer",
-    ("SpellState", "getGemSpellId"): "observer",
-    ("SpellState", "hasSpellMemorized"): "observer",
     ("SpellState", "isGemReady"): "observer",
     ("SpellState", "memorizingGemSlot"): "observer",
     ("SpellState", "scribedSpellCount"): "observer",
@@ -1245,6 +1243,7 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "calcBankBagSlotId"): "seam",
     ("HotbarModel", "assignSlot"): "seam",
     ("HotbarModel", "clearSlot"): "seam",
+    ("HotbarModel", "setCurrentPage"): "seam",  # H1 model; H4 wires page keys
     ("CommandProcessor", "setDefaultChannel"): "B605",
     ("CommandProcessor", "setEchoEnabled"): "B605",
     ("CommandProcessor", "unregisterCommand"): "B605",

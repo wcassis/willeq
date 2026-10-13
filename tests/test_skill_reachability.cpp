@@ -374,7 +374,15 @@ TEST_F(HotbarReachabilityTest, ValidConfigTypeRoundTripsThroughJson) {
 
 TEST_F(HotbarReachabilityTest, PageAddressRoundTripsAndPublishesActivePage) {
     model.assignSlot({3, 7}, eqt::HotbarSlotType::Skill, 48);
-    EXPECT_TRUE(bridge.drainEvents().empty());
+    auto assigned = bridge.drainEvents();
+    ASSERT_EQ(assigned.size(), 1u);
+    const auto& assignedData = std::get<eqt::state::HotbarSlotAssignedData>(assigned[0].data);
+    EXPECT_EQ(assignedData.page, 3);
+    EXPECT_EQ(assignedData.currentPage, 0);
+    EQT::Graphics::HotbarPanelState panel;
+    EQT::Graphics::applyHotbarSlotAssigned(panel, assignedData);
+    EXPECT_EQ(panel.slots[7].type, eqt::HotbarSlotType::Empty);
+    EXPECT_EQ(panel.pages[3][7].id, 48u);
     model.setCurrentPage(3);
     auto events = bridge.drainEvents();
     ASSERT_EQ(events.size(), 10u);

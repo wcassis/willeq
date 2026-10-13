@@ -453,9 +453,11 @@ it without taking that measurement first.
 - **B1025** (B, feature) → issue #345. Hotbar slot assignment is a missing
   feature (found by B603, #187; `refactor/B603/README.md` "The two flagged
   reads"): `HotbarModel::assignSlot/clearSlot` have NO production caller —
-  slots are filled only by `loadFromJson()` at startup and published by
+  slots are filled only by `loadFromJson()` at zone-in and published by
   `publishAllSlots()` at zone-in; no command, intent or UI control assigns a
-  slot. Oracle (what the official client does) + CI test owed.
+  slot. H1 (`refactor/B1025-H1/README.md`) adds the stock client's ten-page
+  address space, per-character storage and shared spell-id activation rule;
+  the assignment gesture and end-to-end CI feature leg remain open.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`

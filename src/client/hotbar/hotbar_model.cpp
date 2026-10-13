@@ -147,11 +147,12 @@ void HotbarModel::publishAllSlots() {
 }
 
 void HotbarModel::publishSlot(HotbarAddress address) {
-    if (!bridge_ || !valid(address) || address.page != currentPage_) return;
+    if (!bridge_ || !valid(address)) return;
 
     const auto& slot = slots_[address.page][address.slot];
     state::HotbarSlotAssignedData data;
     data.page = address.page;
+    data.currentPage = currentPage_;
     data.index = address.slot;
     data.type = slot.type;
     data.id = slot.id;

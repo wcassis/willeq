@@ -567,7 +567,7 @@ TEST_F(InputActionBridgeTest, HotbarSpellSlot_ResolvesSpellIdLikeMouse) {
 
     // The mouse path uses the same FindHotbarSpellGem() lookup; gem 5 is
     // dispatched as 1-based gem 6, independent of button position 2.
-    EXPECT_TRUE(handler.calledOnceWith("beginCastFromGem(6,0)"));
+    EXPECT_TRUE(handler.calledOnceWith("beginCastFromGem(6, 0)"));
     EXPECT_EQ(handler.count(), 1u);
 }
 
@@ -578,6 +578,20 @@ TEST_F(InputActionBridgeTest, HotbarSpellNotMemorized_DoesNotCastByPosition) {
     input.hotbarRequests.push({2});
     update();
     EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(InputActionBridgeTest, HotbarSpellUsesCurrentPageAndRejectsPageTen) {
+    eqt::HotbarModel model;
+    model.assignSlot({0, 2}, eqt::HotbarSlotType::Spell, 111);
+    model.assignSlot({2, 2}, eqt::HotbarSlotType::Spell, 999);
+    model.setCurrentPage(2);
+    model.setCurrentPage(10);
+    bridge->setHotbarModel(&model);
+    state.spells().setGem(5, 999, eqt::state::SpellGemState::Ready);
+    input.hotbarRequests.push({2});
+    update();
+    EXPECT_EQ(model.currentPage(), 2);
+    EXPECT_TRUE(handler.calledOnceWith("beginCastFromGem(6, 0)"));
 }
 
 TEST_F(InputActionBridgeTest, HotbarEmptySlot_IsSkippedNotCast) {
