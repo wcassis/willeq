@@ -855,6 +855,13 @@ EXEMPT_GROUPS = {
     ("NullInputHandler", "injectSpellCast"): "B498",
     ("NullInputHandler", "injectStopMovement"): "B498",
     ("NullInputHandler", "injectTarget"): "B498",
+    # B1015 (#336): the tip's test_sfx_cache_eviction.cpp carried a free
+    # function named preloadSound that kept this one tests-only; the B1015
+    # rewrite dropped that helper, so the name is now called from nowhere.
+    # (The B499/B500/B501 rows that flanked this one on the MR side were
+    # deleted with their functions by 5b913256 on fable and do not survive
+    # the merge.)
+    ("AudioManager", "preloadSound"): "B600",
 }
 
 EXEMPT_TESTS_GROUPS = {
@@ -919,6 +926,11 @@ EXEMPT_TESTS_GROUPS = {
     # SoundBuffer from deterministic raw PCM (no archive, no EQ client files
     # needed) to pin the shared-buffer cache's LRU mechanics.
     ("SoundBuffer", "loadFromPCM"): "seam",
+    # B1015 (#336): the test's observation window on the one decoded-PCM
+    # cache -- a non-loading residency read that lets the eviction tests see
+    # what was evicted without triggering a re-decode (getOrLoad re-loads on
+    # a miss, so it cannot tell "evicted" from "resident").
+    ("SoundBufferCache", "peek"): "observer",
     # B972 (#290): the bounded-VBO/EBO seams on the two self-contained cut
     # sites. setVboPathEnabled is the SEAM -- the pixel-identity test flips it
     # to prove the VBO and client-array paths render the same bytes; production
@@ -1032,7 +1044,6 @@ EXEMPT_TESTS_GROUPS = {
     ("ZoneComponent", "Test_SetZoneToZoneInProgressForSeam"): "seam",
     ("ActionDispatcher", "isReady"): "observer",
     ("AudioManager", "getLoadedSoundCount"): "observer",
-    ("AudioManager", "getSoundBufferByName"): "observer",
     ("AudioManager", "isLoopbackMode"): "observer",
     ("BackgroundThreadPool", "getThreadCount"): "observer",
     ("BackgroundThreadPool", "isShutdown"): "observer",
@@ -1078,6 +1089,7 @@ EXEMPT_TESTS_GROUPS = {
     ("InventoryState", "freeGeneralSlots"): "observer",
     ("InventoryState", "hasBankItem"): "observer",
     ("InventoryState", "hasGeneralItem"): "observer",
+    ("IrrlichtRenderer", "getCameraMode"): "observer",  # B534: its only production caller was GraphicalMode::getCameraMode, which B534 deleted; the const accessor (PlayerCamera().cameraMode()) is the camera test suites' observation window on a live class
     ("IrrlichtRenderer", "getPlayerZ"): "observer",
     ("IrrlichtRenderer", "getUIRenderer"): "observer",
     ("IrrlichtRenderer", "getVisionType"): "observer",
@@ -1121,8 +1133,6 @@ EXEMPT_TESTS_GROUPS = {
     ("RainOverlay", "getIntensity"): "observer",
     ("S3DLoader", "getCharacterCount"): "observer",
     ("ScenarioRunner", "started"): "observer",
-    ("SfxManager", "getCacheMaxBytes"): "observer",
-    ("SfxManager", "getCachedSoundCount"): "observer",
     ("SkillCapTable", "classCanEverHaveSkill"): "observer",
     ("SkillCapTable", "entryCount"): "observer",
     ("SkillManager", "getSkill"): "observer",
@@ -1139,6 +1149,11 @@ EXEMPT_TESTS_GROUPS = {
     ("SoundBuffer", "getDuration"): "observer",
     ("SpellData", "getEffect"): "observer",
     ("SpellData", "getEffectCount"): "observer",
+    # B1015 (#336): the /pmem stat's production caller was the deleted
+    # SfxManager::getCacheSize (the second LRU); the same-named
+    # SpellDatabase accessor dropped to tests-only. It is the test's
+    # observation window on the spell LRU's capacity bound.
+    ("SpellDatabase", "getCacheSize"): "observer",
     ("SpellDatabase", "getCacheCapacity"): "observer",
     ("SpellDatabase", "getMaxSpellId"): "observer",
     ("SpellManager", "getCastProgress"): "observer",
@@ -1169,7 +1184,6 @@ EXEMPT_TESTS_GROUPS = {
     ("ZoneAudioManager", "isZoneLoaded"): "observer",
     ("ZoneLines", "hasExtractedZoneLines"): "observer",
     ("ZoneSoundEmitter", "getSequence"): "observer",
-    ("AudioManager", "preloadSound"): "B600",
     ("CombatMusicManager", "getCombatDelay"): "B600",
     ("CombatMusicManager", "getFadeOutTime"): "B600",
     ("CombatMusicManager", "getStingerCount"): "B600",

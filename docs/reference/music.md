@@ -69,10 +69,16 @@ TSF + TML MIDI synthesis for XMI/MIDI music.
 
 ### SfxManager (`sfx_manager.h/.cpp`)
 WAV playback and spatial positioning via AudioMixer channels.
-- Cache: `unordered_map<string, shared_ptr<SoundBuffer>>` with LRU eviction
-  (B989: the buffer is the AudioManager's — one decoded-PCM copy, not a second
-  `WavData` copy; the entry only adds a reference and evicting drops it)
-- Spatial attenuation: `playSpatial(filename, pos, max_dist, full_vol_dist)`
+- **No cache of its own** (B1015: `SfxManager::cache_` and its LRU are
+  deleted). It plays buffers it does not own: `play(buffer, …)` hands the
+  mixer a raw `float*` into the buffer's PCM vector, and the buffer is
+  resident in the ONE decoded-PCM cache, the AudioManager's
+  `SoundBufferCache` (B1015: the old `bufferCache_`, one population under the
+  preset's one `soundCache` cap, with the in-use pin
+  inside it — an entry an active mixer channel points into is never
+  evicted, and the entry a fetch just inserted is never that fetch's
+  victim). The shared_ptr is NOT the playing-channel's guard; the pin is.
+- Spatial attenuation: `playSpatial(buffer, pos, max_dist, full_vol_dist)`
 
 ### AudioManager (`audio_manager.h/.cpp`)
 Top-level coordinator — public interface unchanged from OpenAL era.
