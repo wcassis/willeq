@@ -192,6 +192,7 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
       drmFd_(-1), crtcId_(0), connectorId_(0), savedCrtc_(nullptr),
       gbmDevice_(nullptr), gbmSurface_(nullptr),
       previousBo_(nullptr),
+      retiredBo_(nullptr),
       eglDisplay_(EGL_NO_DISPLAY), eglSurface_(EGL_NO_SURFACE),
       eglContext_(EGL_NO_CONTEXT), eglConfig_(nullptr),
       ttyFd_(-1), savedKbMode_(-1),
@@ -308,21 +309,23 @@ CIrrDeviceFB::~CIrrDeviceFB()
     }
 
 #ifndef __APPLE__ // B1043: Linux-only
-    // Release GBM (cached DRM FBs are cleaned up by gbm_bo user_data destructors)
-    if (previousBo_) {
-        gbm_surface_release_buffer(gbmSurface_, previousBo_);
-    }
-    if (gbmSurface_)
-        gbm_surface_destroy(gbmSurface_);
-    if (gbmDevice_)
-        gbm_device_destroy(gbmDevice_);
+    // Wait before retiring a displaced buffer; restore the original CRTC
+    // before releasing the final buffer still scanned out by this device.
+    const bool flipComplete = waitForFlipComplete();
+    if (flipComplete && retiredBo_)
+        gbm_surface_release_buffer(gbmSurface_, retiredBo_);
 
-    // Restore original CRTC
     if (savedCrtc_) {
         drmModeSetCrtc(drmFd_, savedCrtc_->crtc_id, savedCrtc_->buffer_id,
                        savedCrtc_->x, savedCrtc_->y, &connectorId_, 1, &savedCrtc_->mode);
         drmModeFreeCrtc(savedCrtc_);
     }
+    if (previousBo_)
+        gbm_surface_release_buffer(gbmSurface_, previousBo_);
+    if (gbmSurface_)
+        gbm_surface_destroy(gbmSurface_);
+    if (gbmDevice_)
+        gbm_device_destroy(gbmDevice_);
 
     // Close DRM
     if (drmFd_ >= 0)
@@ -869,36 +872,46 @@ static void pageFlipHandler(int fd, unsigned int frame,
     *flipPending = false;
 }
 
-void CIrrDeviceFB::waitForFlipComplete()
+bool CIrrDeviceFB::waitForFlipComplete()
 {
-    if (!flipPending_) return;
+    if (!flipPending_) return true;
 
     drmEventContext evctx = {};
     evctx.version = 2;
     evctx.page_flip_handler = pageFlipHandler;
-
-    // Poll DRM fd until the flip event arrives
     struct pollfd pfd = {};
     pfd.fd = drmFd_;
     pfd.events = POLLIN;
 
     while (flipPending_) {
-        int ret = poll(&pfd, 1, 100);  // 100ms timeout (safety)
+        const int ret = poll(&pfd, 1, 100);
         if (ret > 0 && (pfd.revents & POLLIN)) {
-            drmHandleEvent(drmFd_, &evctx);
-        } else if (ret == 0) {
-            // Timeout — flip event lost, force clear
-            flipPending_ = false;
+            if (drmHandleEvent(drmFd_, &evctx) != 0)
+                return false;
+        } else if (ret > 0) {
+            return false;
+        } else if (ret == 0 || (ret < 0 && errno != EINTR)) {
+            // No completion event: keep both locked buffers out of GBM's pool.
+            return false;
         }
     }
+    return true;
 }
 
 void CIrrDeviceFB::drmPageFlip()
 {
-    // Wait for previous flip to complete before submitting a new one.
-    // This prevents drmModePageFlip from returning -EBUSY and falling
-    // back to the synchronous drmModeSetCrtc (which blocks ~35ms).
-    waitForFlipComplete();
+    const bool flipComplete = waitForFlipComplete();
+
+    if (!flipComplete) {
+        os::Printer::log("DRM: page flip completion not observed; retaining buffers", ELL_WARNING);
+        return;
+    }
+    // B1050 (#370): kmscube waits for the flip event before releasing the
+    // displaced scanout bo. Releasing at submission lets GBM render into it.
+    if (retiredBo_) {
+        gbm_surface_release_buffer(gbmSurface_, retiredBo_);
+        retiredBo_ = nullptr;
+    }
 
     eglSwapBuffers(eglDisplay_, eglSurface_);
 
@@ -907,36 +920,36 @@ void CIrrDeviceFB::drmPageFlip()
         os::Printer::log("DRM: gbm_surface_lock_front_buffer failed", ELL_WARNING);
         return;
     }
-
-    uint32_t fb = getOrCreateFb(bo, drmFd_, Width, Height);
+    const uint32_t fb = getOrCreateFb(bo, drmFd_, Width, Height);
     if (!fb) {
         gbm_surface_release_buffer(gbmSurface_, bo);
         return;
     }
 
     if (firstFrame_) {
-        // First frame: set the CRTC
-        int ret = drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0, &connectorId_, 1, &mode_);
-        if (ret) {
+        if (drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0, &connectorId_, 1, &mode_) != 0) {
             os::Printer::log("DRM: drmModeSetCrtc failed", ELL_WARNING);
+            gbm_surface_release_buffer(gbmSurface_, bo);
+            return;
         }
         firstFrame_ = false;
-    } else {
-        // Async page flip with event notification
-        int ret = drmModePageFlip(drmFd_, crtcId_, fb,
-                                  DRM_MODE_PAGE_FLIP_EVENT, &flipPending_);
-        if (ret) {
-            // Fallback: synchronous CRTC set (should rarely happen now)
-            drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0, &connectorId_, 1, &mode_);
-        } else {
-            flipPending_ = true;
-        }
+    } else if (drmModePageFlip(drmFd_, crtcId_, fb,
+                               DRM_MODE_PAGE_FLIP_EVENT, &flipPending_) == 0) {
+        flipPending_ = true;
+        retiredBo_ = previousBo_;
+        previousBo_ = bo;
+        return;
+    } else if (drmModeSetCrtc(drmFd_, crtcId_, fb, 0, 0,
+                              &connectorId_, 1, &mode_) != 0) {
+        os::Printer::log("DRM: drmModeSetCrtc fallback failed", ELL_WARNING);
+        gbm_surface_release_buffer(gbmSurface_, bo);
+        return;
     }
 
-    // Release previous buffer (FB stays cached via gbm_bo user_data)
-    if (previousBo_) {
+    // The initial/fallback SetCrtc is synchronous: the old bo is no longer
+    // scanned out and can be released immediately.
+    if (previousBo_)
         gbm_surface_release_buffer(gbmSurface_, previousBo_);
-    }
     previousBo_ = bo;
 }
 #endif // !__APPLE__
