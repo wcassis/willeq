@@ -46,6 +46,15 @@ asserted by `test_skill_reachability`, `test_bridge_teardown` and
 `BridgeComponent` legacy import, removal of the old global key, and callback
 save after assignment. The remaining hotbar handler tests are retained.
 
+| Acceptance criterion | Result | Evidence |
+|---|---|---|
+| One window, ten pages, ten slots; addressed model and event | PASS | `include/client/hotbar/hotbar_model.h:33`; `tests/test_skill_reachability.cpp:391` |
+| Per-character storage and one-time legacy import | PASS | `src/client/bridge/bridge_component_ui_audio.cpp:418`; `tests/test_bridge_teardown.cpp:73,107` |
+| One spell-ID-to-visible-gem rule for keyboard and mouse | PASS | `src/client/hotbar/hotbar_model.cpp:26`; `src/client/bridge/bridge_component_intents.cpp:744`; `tests/test_input_action_bridge.cpp:559` |
+| Relevant hotbar and neighbouring tests | PASS | Final local CTest selection: 170 passed, 0 failed; two ASAN-only repros skipped. |
+| Hygiene | PASS | Final local hygiene CTest: 31 passed, 0 failed. |
+| Golden/budget/third-party files untouched | PASS | `git diff --name-only origin/fable...HEAD` and clean worktree at handoff. |
+
 ## Not verified / left open
 
 - Hotbutton assignment gesture and live relog scenario belong to H-3/H-5,
