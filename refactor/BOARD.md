@@ -1092,9 +1092,9 @@ it without taking that measurement first.
   (`docs/reference/odroid_xu4.md`, `scripts/sbc/xu4/`): the out-of-tree
   Panfrost module re-selects the PLL path in `panfrost_gpu_power_on()`; qeynos2
   1280x720 10 → 89 fps, glmark2 `build` 15 → 279 fps (`review/B1045/README.md`).
-  Open: an upstream report for `clk-exynos5-subcmu.c` (restore from a genpd
-  power-on notifier) -- Will's call; cold-boot verification of the module hook
-  (the board needs a power cycle, `systemctl reboot` strands it).
+  Cold boot verified 2026-10-13 (hook armed at probe, re-selected the mux on
+  the first runtime resume, 288 fps). Open: an upstream report for
+  `clk-exynos5-subcmu.c` (restore from a genpd power-on notifier) -- Will's call.
 - **B1030** (B) → issue #350. Two aarch64 SBCs joined the Orange Pi as client
   targets (Rock64: RK3328, Mali-450/Lima, 4 GB, eMMC; ROCK 4D: RK3576,
   Mali-G52/Panfrost, 12 GB), but every Pi script hardcoded ONE host and the

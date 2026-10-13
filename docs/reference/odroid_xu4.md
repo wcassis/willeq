@@ -85,7 +85,11 @@ patch, builds both against the Armbian headers (the headers' `Module.symvers` la
 scheduler build supplies it) and installs them under `/lib/modules/<ver>/extra` with the `modules-load.d` entry
 and the boot service. A kernel package upgrade drops `extra/`: re-run the script.
 
+Cold boot verified 2026-10-13 after a power cycle: the modules load from `modules-load.d`, the hook logs
+"armed" at probe, the GPU runtime-suspends while idle, and the first GPU use logs the re-select
+(`G3D mux: fin_pll -> mout_sw_aclk_g3d`); glmark2 `build` 288 fps.
+
 Traps: `systemctl reboot` twice left the board unreachable until Will power-cycled it (the USB-ethernet
-XU4 does not come back from a soft reboot reliably); the GPU's `runtime_usage` count on this kernel sits at
-3-4 after a few module reloads, so the GPU rarely runtime-suspends, which is why a hand-set mux bit appeared
-to survive -- do not take that as evidence the restore is unnecessary.
+XU4 does not come back from a soft reboot reliably); after a few module reloads the GPU's `runtime_usage`
+count sits at 3-4 and it stops runtime-suspending, which is why a hand-set mux bit appeared to survive
+during the investigation -- do not take that as evidence the restore is unnecessary.
