@@ -99,7 +99,11 @@ CREATE_ACCOUNT_ID=$(eqemu_sql "SELECT account_id FROM character_data WHERE name=
 [[ $CREATE_ACCOUNT_ID =~ ^[0-9]+$ ]] || { STATUS=65; exit "$STATUS"; }
 while IFS= read -r name; do
     [[ $name =~ ^[A-Za-z]{3,15}$ ]] || { STATUS=65; exit "$STATUS"; }
-    [[ -z $(eqemu_sql "SELECT id FROM character_data WHERE name='$name';") ]] || { STATUS=65; exit "$STATUS"; }
+    if ! existing_id=$(eqemu_sql "SELECT id FROM character_data WHERE name='$name';"); then
+        say "name lookup failed for $name; refusing to arm cleanup"
+        STATUS=65; exit "$STATUS"
+    fi
+    [[ -z $existing_id ]] || { STATUS=65; exit "$STATUS"; }
     if grep -Fxq "$name" "$OUT/validated-names.tsv"; then STATUS=65; exit "$STATUS"; fi
     printf '%s\n' "$name" >>"$OUT/validated-names.tsv"
 done <"$OUT/plan-names.tsv"

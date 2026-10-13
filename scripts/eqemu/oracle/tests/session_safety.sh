@@ -23,7 +23,11 @@ eqemu_sql() {
     case "$1" in
         "SELECT id FROM character_data WHERE name IN"*) echo 1 ;;
         "SELECT account_id FROM character_data"*) echo 7 ;;
-        "SELECT id FROM character_data WHERE name='Testchar';") echo 1 ;;
+        "SELECT id FROM character_data WHERE name='Testchar';")
+            if [[ $PROBE_CASE == query_failure ]]; then return 1; fi
+            echo 1 ;;
+        "SELECT id,name FROM character_data WHERE name='Testchar' AND account_id="*)
+            printf '1\tTestchar\n' ;;
         "SELECT id,name FROM account"*) printf '7\ttest\n' ;;
         "SELECT id,account_name FROM login_accounts"*) printf '7\ttest\n' ;;
     esac
@@ -32,7 +36,7 @@ EOF
 printf 'exit 0\n' >"$FIXTURE/scripts/eqemu/up.sh"
 printf 'touch "$OUT/down"\n' >"$FIXTURE/scripts/eqemu/down.sh"
 printf 'login\tTestchar\t0\tselect\ncreate\tTestchar\tHuman\tWarrior\tMale\texisting\n' >"$FIXTURE/plan.tsv"
-for PROBE_CASE in ${PROBE_CASES:-held existing}; do
+for PROBE_CASE in ${PROBE_CASES:-held existing query_failure}; do
     export PROBE_CASE
     export ORACLE_OWNER=oracle_safety_probe
     OUT="$FIXTURE/$PROBE_CASE"; export OUT
@@ -50,4 +54,4 @@ for PROBE_CASE in ${PROBE_CASES:-held existing}; do
         [[ ! -s $OUT/absent-names.tsv ]] || { echo 'cleanup armed before validation'; exit 1; }
     fi
 done
-echo 'PASS: held lock exits 64 untouched; existing name exits 65 without DELETE'
+echo 'PASS: held lock untouched; existing and failed-query names never arm cleanup or DELETE'
