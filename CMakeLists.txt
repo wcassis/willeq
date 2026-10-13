@@ -1030,21 +1030,14 @@ ENDIF()
 IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
     LIST(APPEND LINK_LIBS ${IRRLICHT_LIBRARY})
     IF(APPLE)
-        # B1043 (#363): STALE. These frameworks are the desktop-GL era's
-        # (Irrlicht's Cocoa/NSOpenGL CIrrDeviceMacOSX); P30 removed desktop GL
-        # and nothing in the tree builds that device any more. macOS GLES2 is
-        # ANGLE + the patched FB device (the EGL/GLESv2 targets defined near
-        # the top of this file); OpenGL/Carbon/IOKit go with the FIX card,
-        # Cocoa stays for the windowed (CAMetalLayer) device path.
+        # ANGLE + the patched FB device use Cocoa for the window, not the
+        # retired desktop-GL/Carbon/IOKit backend.
         IF(EQT_GLES2)
             ADD_DEFINITIONS(-DEQT_HAS_GLES2)
             LIST(APPEND LINK_LIBS EGL GLESv2)
         ENDIF()
         FIND_LIBRARY(COCOA_FRAMEWORK Cocoa)
-        FIND_LIBRARY(OPENGL_FRAMEWORK OpenGL)
-        FIND_LIBRARY(IOKIT_FRAMEWORK IOKit)
-        FIND_LIBRARY(CARBON_FRAMEWORK Carbon)
-        LIST(APPEND LINK_LIBS ${COCOA_FRAMEWORK} ${OPENGL_FRAMEWORK} ${IOKIT_FRAMEWORK} ${CARBON_FRAMEWORK})
+        LIST(APPEND LINK_LIBS ${COCOA_FRAMEWORK})
     ELSE()
         # DRM/KMS/GBM/EGL (no X11) - for ARM boards with Lima/Panfrost, and for
         # H01's x86 GLES2 dev builds (EQT_DRM=OFF, EQT_GLES2=ON — CIrrDeviceFB
@@ -1317,9 +1310,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
             ${JSONCPP_LIBRARIES}
             fmt::fmt
             ${COCOA_FRAMEWORK}
-            ${OPENGL_FRAMEWORK}
-            ${IOKIT_FRAMEWORK}
-            ${CARBON_FRAMEWORK}
+            EGL GLESv2
         )
     ELSE()
         # P30: this is now the only non-APPLE path (desktop X11/Xxf86vm/GL
