@@ -31,7 +31,9 @@
 
 #include "CIrrDeviceFB.h"
 
-#ifdef _IRR_COMPILE_WITH_FB_DEVICE_
+// B1043 (#363): X11 is Linux-only; the Darwin stubs for these three members
+// are in CIrrDeviceFB_Darwin.cpp.
+#if defined(_IRR_COMPILE_WITH_FB_DEVICE_) && !defined(__APPLE__)
 
 #include <cstdio>
 #include <cstring>
@@ -359,4 +361,4 @@ void CIrrDeviceFB::pollX11Events()
 
 } // end namespace irr
 
-#endif // _IRR_COMPILE_WITH_FB_DEVICE_
+#endif // _IRR_COMPILE_WITH_FB_DEVICE_ && !__APPLE__

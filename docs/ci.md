@@ -649,6 +649,43 @@ A gate that fails all three attempts twice in a row is a real regression, not
 load — pull `build-gles2/ci_artifacts/` from the artifacts and compare the
 frames. Never re-bless goldens to make CI green.
 
+## Two golden sets: x86 and Pi (B1024)
+
+The pixel gate has ONE compare rule — `compare_images_exact`
+(`scripts/ci/visual_gate.py`) — and TWO golden sets, because the two
+drivers can never render byte-identical frames:
+
+- **x86** (the CI `gate` job): llvmpipe, 16-bit depth (B971), goldens at
+  `tests/goldens/<zone>_f<n>.png`, section `manifest["zones"]`. The CI
+  job passes no `--platform`; nothing about it changed.
+- **Pi** (by hand, never a CI job): Mali-400 under the Lima driver on the
+  Orange Pi with the shipped LLVM-less Mesa prefix, goldens at
+  `tests/goldens/pi/<zone>/f<n>.png`, section
+  `manifest["platforms"]["pi"]` (its own `blessedUnder`, per-zone
+  `metrics`/`memory`). Rendered under the Pi lock
+  (`scripts/pi/env.sh`) with
+  `visual_gate.py --platform pi --bench <published gles2_zone_benchmark-nollvm> --capture DIR`;
+  the run carries the Mesa-prefix maps proof (libgallium under the
+  shipped prefix, libLLVM never mapped) and never asserts the p95 CPU
+  ceiling (Pi TIMING is H04's lane: `scripts/pi/compare_pi.sh`).
+
+Why two sets: the Pi-vs-x86 residual (B980) is entirely coverage flips at
+alpha-cutout edges (Lima's FS is FP16; Mali's hardware sampler vs
+llvmpipe's software filter turns a sub-LSB sampling difference into a
+whole-pixel flip) plus polygon/far-clip subpixel rules, and the x86
+goldens are 16-bit depth while the Pi's EGL answers 24 — a
+cross-platform compare can never be exact. The Pi IS deterministic
+(B971: 0 px across two binaries in 15 of 15 frames), so one exact-match
+rule works per set.
+
+**A Pi golden moves only on a Pi re-bless by Will; an x86 re-bless never
+touches the Pi set, and vice versa.** The Pi verify fails `NOT YET
+BLESSED` (exit 1) until the section exists — it never falls back to the
+x86 set. The live-client sweep (`scripts/pi_rendered_zone_sweep.sh`) is
+not a pixel channel: it drives the LIVE client, whose frames are not
+frame-locked (B997 measured 0/18 identical across two baseline legs), so
+it can never be an exact pixel compare.
+
 ## The zone-content sweep (B852, issue #98)
 
 The blocking `gate` renders five zones: three classic ones plus iceclad and

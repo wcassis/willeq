@@ -2,7 +2,6 @@
 #include "client/corpse_predicate.h"
 #include "client/state/event_bus.h"
 #include <algorithm>
-#include <cmath>
 #include <cctype>
 
 namespace eqt {
@@ -220,13 +219,6 @@ const Entity* EntityManager::getNearestPlayer(float x, float y, float z, uint16_
     });
 }
 
-// ========== Pet Queries ==========
-
-bool EntityManager::isPet(uint16_t spawnId) const {
-    const Entity* entity = getEntity(spawnId);
-    return entity && entity->isPet != 0;
-}
-
 // ========== Event Firing ==========
 
 void EntityManager::fireEntitySpawnedEvent(const Entity& entity) {
@@ -271,13 +263,6 @@ void EntityManager::fireEntityMovedEvent(const Entity& entity) {
         data.animation = entity.animation;
         m_eventBus->publish(GameEventType::EntityMoved, data);
     }
-}
-
-float EntityManager::calculateDistance(float x1, float y1, float z1, float x2, float y2, float z2) const {
-    float dx = x2 - x1;
-    float dy = y2 - y1;
-    float dz = z2 - z1;
-    return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 } // namespace state

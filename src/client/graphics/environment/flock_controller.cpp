@@ -1,6 +1,11 @@
 #include "client/graphics/environment/flock_controller.h"
 #include "client/graphics/detail/surface_map.h"
 #include <irrlicht.h>
+// B1043 (#363): glm >= 1.0 (Homebrew) refuses gtx/ headers without this;
+// older glm (Ubuntu 24.04) ignores it.
+#ifndef GLM_ENABLE_EXPERIMENTAL
+#define GLM_ENABLE_EXPERIMENTAL
+#endif
 #include <glm/gtx/norm.hpp>
 #include <algorithm>
 #include <sstream>
