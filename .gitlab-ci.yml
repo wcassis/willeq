@@ -104,10 +104,9 @@ workflow:
   # warm tree. B1026 (#346) is what makes that safe: the build tree carries a
   # host+sha stamp written only after a successful build (`.build_tree`), and
   # every job that consumes the tree (`build-test` after its own build, B1042;
-  # `client-ledger-live`) verifies
-  # it first and rebuilds in-job on a mismatch (fable pipeline 809 tested
-  # runner-2's stale binary after runner-1 built the new one; docs/ci.md, "Two
-  # x86 runners: the host+sha stamp").
+  # `client-ledger-live`) verifies it first and rebuilds in-job on a mismatch
+  # (fable pipeline 809 tested runner-2's stale binary after runner-1 built
+  # the new one; docs/ci.md, "Two x86 runners: the host+sha stamp").
   dependencies: []
   tags: [x86-build]
   before_script:
