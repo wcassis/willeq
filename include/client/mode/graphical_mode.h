@@ -97,11 +97,9 @@ public:
 private:
     void processInput();
 
-    GraphicalRendererType m_rendererType;
     std::unique_ptr<output::IOutputRenderer> m_renderer;
     std::unique_ptr<input::IInputHandler> m_inputHandler;
 
-    state::GameState* m_gameState = nullptr;
     bool m_running = false;
     bool m_quitRequested = false;
 };
