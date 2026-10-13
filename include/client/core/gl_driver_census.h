@@ -14,12 +14,15 @@
 // tested, no GL) and the missing-prefix decision. The /proc read and the
 // one-time emission at GL init live in src/client/core/gl_driver_census.cpp.
 //
-// The gallium/libLLVM needles are deliberately the SAME file the [memmap]
-// census already attributes (T491, memory_ledger.h parseSmaps folds "so:"
-// rows out of smaps) -- one /proc read shape for the whole driver question,
-// no second smaps parser. scripts/pi/rendered_zone_summarize.py reads this
-// line when present and reports driver= alongside its maps-snapshot proof
-// (its ctest, RenderedZoneSummarizeGlDriver, is the rig's half of the net).
+// The gallium/libLLVM needles are found by a SECOND, minimal /proc parser:
+// scanMapsText reads /proc/self/maps (the file is a list of mappings), which
+// is a different file from the [memmap] census's /proc/self/smaps read
+// (memory_ledger.cpp, T491's parseSmaps fold) -- the shape overlaps (a
+// whitespace-delimited column layout, pathname last) but the consumers and
+// the parsers are separate, on purpose: this one is two needles and never
+// grows. scripts/pi/rendered_zone_summarize.py reads this line when present
+// and reports driver= alongside its maps-snapshot proof (its ctest,
+// RenderedZoneSummarizeGlDriver, is the rig's half of the net).
 
 #ifndef CLIENT_CORE_GL_DRIVER_CENSUS_H
 #define CLIENT_CORE_GL_DRIVER_CENSUS_H
@@ -53,11 +56,15 @@ struct GlDriverInfo {
 // production call is `glPrefixExpected`'s job.
 std::string parseElfRpath(const std::string& bytes);
 
-// Pure half of `glPrefixExpected`: the nollvm prefix's directory out of a
-// full rpath string -- the first colon entry containing "mesa-nollvm-", with
-// its trailing "/lib" stripped (the rpath the publish step writes is
-// `<prefix>/lib`; an entry without it is returned as-is). "" when no entry
-// carries the marker (a non-nollvm binary).
+// Pure half of `glPrefixExpected`: the nollvm prefix directory out of a
+// full rpath string -- the first colon entry containing "mesa-nollvm-".
+// B1016 (#337): returned AS-IS, because the publish step
+// (scripts/pi/mesa_nollvm_select.sh) bakes in `<prefix>/lib` and the
+// decision (mesaPrefixMissing) must test THAT directory -- the lib dir
+// itself, where ld.so actually looks. (The old contract stripped a
+// trailing "/lib" and the check ran against the parent, so a partial
+// deploy that kept the prefix dir but lost lib/ logged no error.) "" when
+// no entry carries the marker (a non-nollvm binary).
 std::string nollvmPrefixFromRpath(const std::string& rpath);
 
 // The prefix's lib directory this process was built against, from its OWN
@@ -75,7 +82,16 @@ std::string glPrefixExpected();
 // is expected and skipped, not required. `llvm=` and `gallium=` accept a
 // bare path or the word "none"; a renderer is everything between the single
 // quotes, spaces included.
-GlDriverInfo parseGlDriverLine(const std::string& text);
+// B1016 (#337): the function itself is TEST-ONLY (zero production callers --
+// the rig's consumer is the Python parser in
+// rendered_zone_summarize.mesa_driver_field) and now lives in
+// tests/test_gl_driver_census.cpp, per the audit's "move the parser into the
+// test". The C++ side's only production role is EMITTING (makeGlDriverLine),
+// whose format contract with the Python parser is pinned by
+// GldriverLineFormatContract (one shared input, see
+// tests/cmake/core_utils.cmake). Known LIMIT, documented per the audit: a
+// renderer containing a single quote cannot round-trip (the quote ends the
+// field on parse); no real GL_RENDERER string contains one.
 
 // The EXACT line the client emits (no prefix): the contract the rig's
 // summarizer and every future consumer parse against.

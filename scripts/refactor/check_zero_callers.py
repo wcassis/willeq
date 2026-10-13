@@ -866,11 +866,6 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
-    # B946: the [gldriver] line's parser. Its C++ callers are tests (the
-    # emitter is makeGlDriverLine/glDriverInfo); its production consumer is
-    # scripts/pi/rendered_zone_summarize.py, which parses the same format
-    # from zone logs -- the test pins the format both sides share.
-    ("(free)", "parseGlDriverLine"): "seam",
     # B430/B433: the Options window's per-control classification table is a
     # CENSUS, not a runtime input -- its reader is the test that fails on an
     # unclassified control row (OptionsClassification.*), which is the point.
@@ -904,6 +899,12 @@ EXEMPT_TESTS_GROUPS = {
     # T504: the original client's LOAD order (globals first) as opposed to the
     # loader's lookup order (resolverOrder); the era-sources test pins it.
     ("EraModelSources", "orderedArchives"): "observer",
+    # B1019 (#340): the layout-equality net's core side -- the sizeof
+    # of ZoneMeshBuilder as willeq_core's zone_geometry.cpp saw it. Its
+    # only caller is test_zone_geometry_atlas_layout, which is the test's
+    # observation window on the core's macro state (the public define's
+    # whole point is that a consumer sees the same class the core built).
+    ("ZoneMeshBuilder", "layoutSize"): "observer",
     ("(free)", "traceConfigure"): "seam",
     ("(free)", "traceReport"): "observer",
     # T504: the entity-load callers moved to the instance form

@@ -240,3 +240,44 @@ TEST(HotkeyDispatchCensus, ARetiredActionNameInASavedFileIsIgnored) {
     EXPECT_EQ(HotkeyManager::actionNameToEnum("ChatAutocomplete"), HotkeyAction::Count);
     mgr.resetToDefaults();
 }
+
+// B1019 (GitLab #340, AUDIT-WAVE7): the five actions B582 left with NO
+// default key (the four volume actions plus CycleObjectLights) are still
+// bindable on the Options Keys page (options_keys.cpp:57,62), and their
+// receiver arms (renderer_event_receiver.cpp:313-316 ->
+// renderer_frame_input.cpp:568-580) are the ONLY way a bound key reaches
+// them. CheckEveryBindingIsConsumed over the defaults and the shipped file
+// never covers them: they have no binding there. This binds all five with
+// setBinding() -- the Options Keys page's own API -- over the shipped
+// config/hotkeys.json (T464 pins it equal to the defaults; loadFromFile
+// REPLACES, so the saved file is the full table plus the five), saves it
+// through saveToFile() and runs the same census over the reloaded table.
+// It passes on fable (the defect is a MISSING net, not a behaviour); the
+// net-ness is proven by breaking one receiver arm and watching it fail
+// (refactor/B1019/README.md carries that run).
+TEST(HotkeyDispatchCensus, AUserFileBindingTheDefaultlessActionsStillDispatches) {
+    auto& mgr = HotkeyManager::instance();
+    mgr.resetToDefaults();
+    ASSERT_TRUE(mgr.loadFromFile(std::string(WILLEQ_REPO_ROOT) + "/config/hotkeys.json"));
+    // The five, one key each -- all free of the shipped table (L was the
+    // former Leadership toggle B582 unbound; Comma/Period/Quote are the
+    // oracle's unbound punctuation keys).
+    ASSERT_TRUE(mgr.setBinding(HotkeyAction::MusicVolumeUp, 0, irr::KEY_KEY_M, ModifierFlags::None));
+    ASSERT_TRUE(mgr.setBinding(HotkeyAction::MusicVolumeDown, 0, irr::KEY_COMMA, ModifierFlags::None));
+    ASSERT_TRUE(mgr.setBinding(HotkeyAction::EffectsVolumeUp, 0, irr::KEY_PERIOD, ModifierFlags::None));
+    ASSERT_TRUE(mgr.setBinding(HotkeyAction::EffectsVolumeDown, 0, irr::KEY_OEM_7, ModifierFlags::None));
+    ASSERT_TRUE(mgr.setBinding(HotkeyAction::CycleObjectLights, 0, irr::KEY_KEY_L, ModifierFlags::None));
+    const std::string path = ::testing::TempDir() + "b1019_defaultless_user_hotkeys.json";
+    ASSERT_TRUE(mgr.saveToFile(path));
+    ASSERT_TRUE(mgr.loadFromFile(path));  // loadFromFile replaces: the file IS the table
+    // The five are actually bound the way the save asked (the two most
+    // contested: the former Leadership L, and a volume key).
+    EXPECT_EQ(mgr.getAction(irr::KEY_KEY_M, false, false, false, HotkeyMode::Player),
+              std::optional<HotkeyAction>(HotkeyAction::MusicVolumeUp));
+    EXPECT_EQ(mgr.getAction(irr::KEY_KEY_L, false, false, false, HotkeyMode::Player),
+              std::optional<HotkeyAction>(HotkeyAction::CycleObjectLights));
+    EXPECT_EQ(mgr.getAction(irr::KEY_OEM_7, false, false, false, HotkeyMode::Player),
+              std::optional<HotkeyAction>(HotkeyAction::EffectsVolumeDown));
+    CheckEveryBindingIsConsumed("user file binding the default-less actions");
+    mgr.resetToDefaults();
+}

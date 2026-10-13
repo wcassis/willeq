@@ -81,6 +81,59 @@ def strip_noncode(text):
     return text
 
 
+# B1018 (issue #339): the DECL regex captures only the FIRST declarator of a
+# declaration line (`T a = 0, b = 0;` registers `a`; `b` was invisible to the
+# census, which is why no member ever surfaced from a multi-declarator line
+# -- the audit's example `m_maxEnd` was written, never read, and never
+# EXEMPT-rowed because the collector never saw it at all). split_declarators()
+# recovers the rest: it splits the text after the first declarator's name on
+# TOP-LEVEL commas (a comma inside <>, (), {}, [] or a string/char literal
+# does not separate declarators) and takes the trailing identifier of each
+# part after dropping its initialiser, so `std::map<int, int> m;` and
+# `int x = 1, y = 2;` both come out right. The write-only half stays a floor
+# (a missed declarator can only HIDE a field, as before); the unused half can
+# no longer be hidden by a same-named first declarator. Whole-tree delta at
+# the B1018 head: 259 members on 153 lines newly registered; write-only 45
+# -> 45 (zero new rows), unused 86 -> 89 (three genuine no-writer/no-reader
+# fields, added to EXEMPT_UNUSED below). The `--self-test` probes
+# (SPLIT_PROBES / split_self_test, defined after main's usage but before
+# dispatch) pin AC1b's row and the negative shapes.
+def split_declarators(name, tail):
+    """The declarator names on a declaration line, first included."""
+    names = [name]
+    parts, depth, cur, in_str = [], 0, "", False
+    for ch in tail:
+        if in_str:
+            cur += ch
+            if ch in ('"', "'"):
+                in_str = False
+            continue
+        if ch in ('"', "'"):
+            in_str = True
+            cur += ch
+            continue
+        if ch in "<([{":
+            depth += 1
+        elif ch in ">)]}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    parts.append(cur)
+    for part in parts[1:]:
+        head = part.strip()
+        if "=" in head:
+            head = head.split("=", 1)[0]
+        if "{" in head:
+            head = head.split("{", 1)[0]
+        m = re.search(r"([A-Za-z_]\w*)\s*$", head.strip())
+        if m:
+            names.append(m.group(1))
+    return names
+
+
 def walk(root, dirs):
     for d in dirs:
         base = os.path.join(root, d)
@@ -115,10 +168,13 @@ def collect_members(root):
                         and not stripped.startswith(SKIP_DECL_PREFIX)):
                     d = DECL.match(code)
                     if d:
-                        nm = d.group(1)
-                        if nm not in ("struct", "class", "union", "const",
-                                      "static", "unsigned", "signed"):
-                            members.setdefault((stack[-1][0], nm), (rel, lineno))
+                        # B1018 (issue #339): the line may carry several
+                        # declarators (`T a = 0, b = 0;`); the DECL regex
+                        # sees only the first.
+                        for nm in split_declarators(d.group(1), code[d.end(1):]):
+                            if nm not in ("struct", "class", "union", "const",
+                                          "static", "unsigned", "signed"):
+                                members.setdefault((stack[-1][0], nm), (rel, lineno))
             opens = code.count("{")
             closes = code.count("}")
             for _ in range(opens):
@@ -496,6 +552,21 @@ EXEMPT_UNUSED = {
         ("unused", "per-frame occlusion cache; the occlusion test that would fill/read it was never wired (a line-of-sight cull in entity culling would make it live)"),
     ("EntityVisual", "occlusionTestX"):
         ("unused", "per-frame occlusion cache; the occlusion test that would fill/read it was never wired (a line-of-sight cull in entity culling would make it live)"),
+    # B1018 (issue #339): the declarator split (split_declarators, the
+    # --self-test probes above) registered every declarator on a
+    # multi-declarator line, not only the first. These three rows sit on the
+    # same lines as rows already listed above (playerVelY beside the live
+    # playerVelX/Z, occlusionTestY/Z beside the live occlusionTestX) and only
+    # became visible once the census saw the whole line. All three are
+    # genuinely no-writer/no-reader: the disturbance push is X/Z (Irrlicht's
+    # Y-up world, renderer_sim_bridge.cpp:575-576 writes only X/Z) and the
+    # occlusion cache is dead as a set (its X sibling is rowed above).
+    ("DetailInput", "playerVelY"):
+        ("unused", "B1018: the Y component of the detail disturbance player velocity; the X/Z siblings are live (renderer_sim_bridge.cpp:575-576, sim_animation.cpp:269-273) and Y is dead in Irrlicht's Y-up world (the push that would read it is X/Z-only, a Y term there would make it live)"),
+    ("EntityVisual", "occlusionTestY"):
+        ("unused", "B1018: the Y axis of the occlusion position cache; the cache is dead as a set (occlusionHidden/occlusionFrame/occlusionTestX rowed above), so a live line-of-sight cull is what would make all of them live at once"),
+    ("EntityVisual", "occlusionTestZ"):
+        ("unused", "B1018: the Z axis of the occlusion position cache; the cache is dead as a set (occlusionHidden/occlusionFrame/occlusionTestX rowed above), so a live line-of-sight cull is what would make all of them live at once"),
     ("EntityVisual", "velocityHeading"):
         ("unused", "interpolation velocity; the movement extrapolator uses velocityX/Y/Z, not a heading (rotating the extrapolation by it would make it live)"),
     ("EntityVisual", "fpAttackTimer"):
@@ -570,6 +641,56 @@ EXEMPT_UNUSED = {
 
 ASSIGN = re.compile(r"^\s*(?:\+|-|\*|/|%|\||&|\^|<<|>>)?=(?!=)")
 CTOR_INIT_PREFIX = re.compile(r"[:,]\s*$")
+
+
+# The self-test probes for split_declarators(): (decl line, expected
+# declarator names). The first row is AC1b's own -- `int a = 0, b = 0;`, the
+# line the DECL regex used to see only the first half of. The negatives are
+# the shapes a comma split must NOT treat as separations: template arguments,
+# an expression's own comma inside the initialiser, a string literal's comma,
+# and a single-declarator line (no tail parts).
+SPLIT_PROBES = [
+    ("int a = 0, b = 0;", ["a", "b"]),
+    ("float x = 1.0f, y = 2.0f, z = 3.0f;", ["x", "y", "z"]),
+    ("std::string first = \"a\", second = \"b\";", ["first", "second"]),
+    ("std::map<int, int> m;", ["m"]),
+    ("std::pair<int, float> p = std::make_pair(1, 2.0f);", ["p"]),
+    ("int x = 1, y = f(a, b);", ["x", "y"]),
+    ("const char* s = \"x,y\", t = \"z\";", ["s", "t"]),
+    ("int only = 0;", ["only"]),
+    ("char name[8] = \"abc\", flags = 0;", ["name", "flags"]),
+]
+
+
+def split_self_test():
+    """Run every SPLIT_PROBES row through split_declarators(); exit 1 on the
+    first disagreement. No tree is scanned, so it is instant -- the same
+    shape as ZeroCallers' classify_occurrence self-test (T486), wired beside
+    it as WriteOnlyFieldsSelfTest (B1018, issue #339).
+
+    Each row's expected[0] IS the first declarator's name -- the DECL regex's
+    own group(1) -- so the row simulates exactly what the collector hands
+    split_declarators(): that name plus the line from just after it. The name
+    is located as a whole word (not the first token, which would be the type:
+    `int`/`char`), which is also what distinguishes `m` in `std::map<int,
+    int> m;` from the `m` inside `map`."""
+    failed = 0
+    for line, expected in SPLIT_PROBES:
+        m = re.search(r"\b%s\b" % re.escape(expected[0]), line)
+        if not m:
+            print("PROBE BROKEN (first declarator not found as a word): %r"
+                  % line)
+            failed += 1
+            continue
+        first = expected[0]
+        got = split_declarators(first, line[m.end():])
+        if got != expected:
+            print("FAIL %-60r split %s, expected %s"
+                  % (line, got, expected))
+            failed += 1
+    print("split_declarators self-test: %d probes, %d failed"
+          % (len(SPLIT_PROBES), failed))
+    return 1 if failed else 0
 
 
 # ---------------------------------------------------------------------------
@@ -783,7 +904,14 @@ def main():
                          "field is missing from EXEMPT_UNUSED, or any table "
                          "entry is no longer in that state. Used by the "
                          "WriteOnlyFields ctest test.")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run the split_declarators() probes (B1018, issue "
+                         "#339) and exit; no tree is scanned. Used by the "
+                         "WriteOnlyFieldsSelfTest ctest test, beside "
+                         "ZeroCallersSelfTest.")
     args = ap.parse_args()
+    if args.self_test:
+        return split_self_test()
     root = os.path.abspath(args.repo)
 
     members = collect_members(root)

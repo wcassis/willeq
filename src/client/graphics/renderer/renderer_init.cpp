@@ -210,10 +210,10 @@ static void logDriverDetails(irr::video::IVideoDriver* driver, irr::IrrlichtDevi
 // GL_RENDERER (where the context is guaranteed current) and the client
 // reads it back through the bridge function below (the
 // gles2GetDrawCensusTotals precedent). glDriverInfo() reads /proc/self/maps
-// (the same file the [memmap] census attributes, T491) for the mapped
-// libgallium/libLLVM; the decision's ERROR (a nollvm binary whose baked-in
-// prefix is missing) fires here too, before the INFO line names what
-// actually got loaded instead.
+// (a second, minimal maps parser over the libgallium/libLLVM needles --
+// the [memmap] census reads smaps, a different file, for the T491 fold)
+// for the mapped driver; the nollvm decision's ERROR fires FIRST here, and
+// only then does the INFO line name what actually got loaded instead.
 static void glDriverInitLog(irr::video::IVideoDriver* driver) {
     std::string renderer;
 #ifdef EQT_HAS_GLES2
@@ -223,20 +223,19 @@ static void glDriverInitLog(irr::video::IVideoDriver* driver) {
         renderer = buf;
     }
 #endif
-    const eqt::memory::GlDriverInfo info = eqt::memory::glDriverInfo(renderer);
-    LOG_INFO(MOD_GRAPHICS, "{}", eqt::memory::makeGlDriverLine(info));
-    // B946 (#264): the nollvm decision. The binary identifies itself in its
-    // own DT_RPATH -- the publish step (scripts/pi/mesa_nollvm_select.sh)
+    // B1016 (#337): the nollvm decision fires FIRST, before the INFO line
+    // names what actually got loaded -- a nollvm binary whose baked-in
+    // prefix lib directory is absent on THIS machine logs the ERROR naming
+    // that directory and the fallback it will take (the default search
+    // path, i.e. the system Mesa), then CONTINUES: a hand run on a fresh Pi
+    // still has to work, and the rigs already fail such a run
+    // (mesa_mismatch, exit 67). The binary identifies itself in its own
+    // DT_RPATH -- the publish step (scripts/pi/mesa_nollvm_select.sh)
     // writes `<prefix>/lib` into it, and only a nollvm build carries a
-    // `mesa-nollvm-*` entry -- so no build-time define is needed: a fresh
-    // build of the same commit behaves the same way a deployed one does,
-    // and a plain willeq binary (no such rpath) never fires this. If the
-    // baked-in prefix directory is absent on THIS machine, the client names
-    // the fallback it will take (the default search path, i.e. the system
-    // Mesa) and CONTINUES: a hand run on a fresh Pi still has to work, and
-    // the rigs already fail such a run (mesa_mismatch, exit 67).
-    const std::string prefix = eqt::memory::glPrefixExpected();
-    if (eqt::memory::mesaPrefixMissing(prefix)) {
+    // `mesa-nollvm-*` entry -- so no build-time define is needed: a plain
+    // willeq binary (no such rpath) answers "" and never fires this.
+    const std::string prefixLib = eqt::memory::glPrefixExpected();
+    if (eqt::memory::mesaPrefixMissing(prefixLib)) {
         LOG_ERROR(MOD_GRAPHICS,
                   "[gldriver] nollvm Mesa prefix missing: {} does not exist; "
                   "falling back to the default library search path (the system "
@@ -245,8 +244,10 @@ static void glDriverInitLog(irr::video::IVideoDriver* driver) {
                   "WILLEQ_MESA=system for the opt-out). The client continues: "
                   "a hand run on a fresh Pi must still work, and the Pi rigs "
                   "already fail such a run (mesa_mismatch, exit 67).",
-                  prefix);
+                  prefixLib);
     }
+    const eqt::memory::GlDriverInfo info = eqt::memory::glDriverInfo(renderer);
+    LOG_INFO(MOD_GRAPHICS, "{}", eqt::memory::makeGlDriverLine(info));
 }
 
 // --- IrrlichtRenderer Implementation ---
