@@ -1219,6 +1219,9 @@ EXEMPT_TESTS_GROUPS = {
     ("(free)", "calcBankBagSlotId"): "seam",
     ("HotbarModel", "assignSlot"): "seam",
     ("HotbarModel", "clearSlot"): "seam",
+    # B1025-H1: only the page-switch tests call this until H-4 (#345) wires
+    # production page keys. One no-grow seam; H-4 removes this exact row.
+    ("HotbarModel", "setCurrentPage"): "seam",
     ("CommandProcessor", "setDefaultChannel"): "B605",
     ("CommandProcessor", "setEchoEnabled"): "B605",
     ("CommandProcessor", "unregisterCommand"): "B605",

@@ -64,6 +64,7 @@ JSON-twin migration/preservation cases passed 11/11 in
 | One spell-ID-to-visible-gem rule for keyboard and mouse | PASS | `src/client/hotbar/hotbar_model.cpp:26`; `src/client/bridge/bridge_component_intents.cpp:744`; `tests/test_input_action_bridge.cpp:559` |
 | Relevant hotbar and neighbouring tests at original H1 head | PASS | Captured local CTest selection: 168 passed, two ASAN-only repros skipped (170 discovered). Fix RED/GREEN pair: paths above; `/home/user/kb-evidence/kb-h1-hotbar-model/hotbar-neighbours-fix12.log` recorded 87 passed and two intentional skips. |
 | Hygiene | PASS | Initial merged-tree run failed ZeroCallers and three missing local builder binaries. After removal of the tests-only JSON writer and building the three tools, `/home/user/kb-evidence/kb-h1-hotbar-model/hygiene-fix12-green.log` recorded 34 passed, zero failed. |
+| Fix-3 hygiene after the explicit H-4 seam ruling | PASS | `/home/user/kb-evidence/kb-h1-hotbar-model/hygiene-fix3-ruling.log` records 32 passed, zero failed, including `ZeroCallers`. The earlier failed fix-3 run remains in `hygiene-fix3-final.log`. |
 | Golden/budget/third-party files untouched | PASS | `git diff --name-only origin/fable...HEAD` and clean worktree at handoff. |
 
 ## Not verified / left open
@@ -76,15 +77,14 @@ JSON-twin migration/preservation cases passed 11/11 in
   `green-fix3-final.log` and `review/fix3/tests.log`, respectively. Both paths
   are under the H1 worker evidence directory. The switch-back probe checks
   the model page and rendered page as well as the restored slot.
-- Fix leg 3 reverts the `check_zero_callers.py` exemption as requested by Q3.
-  Its local hygiene run is red: `ZeroCallers` reports the tests-only
-  `HotbarModel::setCurrentPage` seam, which H-4 has not wired to production
-  page keys. The prior hygiene PASS row above describes the earlier H1 head,
-  not this fix leg. See `hygiene-fix3.log` in the H1 worker evidence directory.
-- The delegated `include/client/hotbar/CLAUDE.md` and
-  `src/client/input/CLAUDE.md` remain for the orchestrator to remove/revert;
-  this worker's protected-file rule prohibits a direct edit. Its stale JSON
-  twin sentence is therefore still present until that action.
+- FOLLOW-UP H-4 (#345): wire production page keys to
+  `HotbarModel::setCurrentPage`, then remove its one no-grow tests-only seam
+  row from `scripts/refactor/check_zero_callers.py`. The orchestrator ruled
+  this narrow exception after the fix-3 hygiene run found the unwired method;
+  that earlier failure remains recorded in `hygiene-fix3-final.log`.
+- The orchestrator removed the delegated `include/client/hotbar/CLAUDE.md`
+  and restored `src/client/input/CLAUDE.md` to the fable version; neither
+  protected path appears in this MR's diff.
 - Hotbutton assignment gesture and live relog scenario belong to H-3/H-5,
   not this model leg. The observed-code mapping does not establish the full
   official-client code taxonomy.
