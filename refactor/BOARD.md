@@ -452,13 +452,19 @@ it without taking that measurement first.
 
 - **B1025** (B, feature) → issue #345. Hotbar slot assignment is a missing
   feature (found by B603, #187; `refactor/B603/README.md` "The two flagged
-  reads"): `HotbarModel::assignSlot/clearSlot` have NO production caller —
-  slots are filled only by `loadFromJson()` at startup and published by
-  `publishAllSlots()` at zone-in; no command, intent or UI control assigns a
-  slot. Oracle (what the official client does) + CI test owed.
-  Partial official-client capture for the H0 oracle leg is recorded in
-  `refactor/B1025-H0/README.md`; its "Not captured / not verified" cases
-  remain open and this item is not closed.
+  reads"). Chain status: **H-1** (merged, MR !169) — the per-character paged
+  `HotbarModel`, one window x 10 pages x 10 buttons, per-character persisted;
+  **H-2** (this item's rendering, `refactor/B1025-H2/README.md`) — the stock
+  `EQUI_HotButtonWnd.xml` window drawn and hit-tested: page buttons, 2x5 slot
+  grid, per-kind art (Item = dragitem decal, the rest = name text; a spell
+  icon texture is not in the shipped atlas), close box, `HotbarPageChangedIntent`.
+  The stock client cannot show Hotbars 2-4 (the XML gives them zero size; the
+  H-O oracle measured them invisible even forced on), so there is no geometry
+  for bars 2-4. What remains is **H-3** (the slot-ASSIGNMENT gesture:
+  right-click/drag a gem or item onto a slot — `HotbarModel::assignSlot`
+  still has no production caller) and the live feature scenario. The
+  H0 partial official-client capture (`refactor/B1025-H0/README.md`) and its
+  "Not captured / not verified" cases remain open; this item is not closed.
 - **B988** (A) → issue #307. Will 2026-10-05: "make the nobocache flag opt-in
   (off by default) and fix the stale docs". A DRM client now leaves
   `LIMA_DEBUG` untouched (Lima's BO cache on); `WILLEQ_LIMA_NOBOCACHE=1`

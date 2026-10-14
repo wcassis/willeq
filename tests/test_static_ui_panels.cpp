@@ -90,34 +90,36 @@ protected:
 // --- Hotbar ---
 
 TEST_F(StaticUIInputTest, HotbarFirstSlotHoverSetsIndexZero) {
-    bool consumed = input.processInput(222, 570, false, layout, hotbar, gems,
+    // B1025-H2: the stock window at 800x600 is {0,310,96,570} (defaults.ini's
+    // [HotButtonWnd] YPos800x600=310); slot 0 is the top-left 40x40 cell,
+    // center (22, 350).
+    bool consumed = input.processInput(22, 350, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(hotbar.hoveredSlot, 0);
 }
 
 TEST_F(StaticUIInputTest, HotbarLastSlotHoverSetsIndexNine) {
-    // Slot 9: sx = 222 + 9*36 = 546, occupies x in [546, 578).
-    bool consumed = input.processInput(577, 570, false, layout, hotbar, gems,
+    // Slot 9: the bottom-right cell (46,506,86,546), center (66, 526).
+    bool consumed = input.processInput(66, 526, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(hotbar.hoveredSlot, 9);
 }
 
-TEST_F(StaticUIInputTest, HotbarPaddingGapClearsHoverAndDoesNotConsume) {
-    // Slot 0 ends at x=254 (222+32), slot 1 starts at x=258 (222+36).
-    // x=256 falls in the 4px padding gap between them.
-    bool consumed = input.processInput(256, 570, false, layout, hotbar, gems,
+TEST_F(StaticUIInputTest, HotbarColumnGapClearsHoverAndDoesNotConsume) {
+    // Slot 0 ends at x=42, slot 1 starts at x=46. x=44 is in the 4px gap.
+    bool consumed = input.processInput(44, 350, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_EQ(hotbar.hoveredSlot, -1);
-    // Unlike the popup panels below, the hotbar/gem row only consumes the
-    // point when a cell is actually hit — a gap-hover with nothing else
-    // under the cursor passes through to the 3D scene.
-    EXPECT_FALSE(consumed);
+    // The window consumes the point (it is over the frame), so the click does
+    // not fall through to the 3D scene, but no control is hit.
+    EXPECT_TRUE(consumed);
 }
 
-TEST_F(StaticUIInputTest, HotbarOutsideVerticalRangeClearsHover) {
-    bool consumed = input.processInput(222, 540, false, layout, hotbar, gems,
+TEST_F(StaticUIInputTest, HotbarOutsideWindowClearsHover) {
+    // The window starts at y=310; y=300 is above it.
+    bool consumed = input.processInput(22, 300, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_EQ(hotbar.hoveredSlot, -1);
     EXPECT_FALSE(consumed);
@@ -134,7 +136,7 @@ TEST_F(StaticUIInputTest, HotbarClickPushesActivateIntentWithSlotIndex) {
     hotbar.slots[0].type = eqt::HotbarSlotType::Spell;
     hotbar.slots[0].id = 278;
 
-    bool consumed = input.processInput(222, 570, /*leftClicked=*/true, layout,
+    bool consumed = input.processInput(22, 350, /*leftClicked=*/true, layout,
                                         hotbar, gems, inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
 
@@ -153,7 +155,7 @@ TEST_F(StaticUIInputTest, HotbarClickOnEmptySlotPushesNothing) {
     TestBridge bridge;
     input.init(&bridge);
 
-    bool consumed = input.processInput(222, 570, /*leftClicked=*/true, layout,
+    bool consumed = input.processInput(22, 350, /*leftClicked=*/true, layout,
                                         hotbar, gems, inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(hotbar.hoveredSlot, 0);
@@ -166,24 +168,95 @@ TEST_F(StaticUIInputTest, HotbarClickWithoutInitDoesNotCrash) {
     // both extant click sites (hotbar here, spell gem below) already guard
     // with `if (leftClicked && bridge_)` — this pins that guard holds.
     EXPECT_NO_FATAL_FAILURE({
-        input.processInput(222, 570, /*leftClicked=*/true, layout, hotbar, gems,
+        input.processInput(22, 350, /*leftClicked=*/true, layout, hotbar, gems,
                             inventory, spellbook, skills, buffs, loot);
     });
     EXPECT_EQ(hotbar.hoveredSlot, 0);
 }
 
+// --- B1025-H2: the page buttons and the close box ---
+
+TEST_F(StaticUIInputTest, HotbarPageRightPushesNextPageIntent) {
+    // The page-right button (58,313,80,325), center (69, 319).
+    TestBridge bridge;
+    input.init(&bridge);
+    hotbar.currentPage = 3;
+    bool consumed = input.processInput(69, 319, /*leftClicked=*/true, layout,
+                                        hotbar, gems, inventory, spellbook, skills, buffs, loot);
+    EXPECT_TRUE(consumed);
+    auto intents = bridge.drainIntents();
+    ASSERT_EQ(intents.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<eqt::events::HotbarPageChangedIntent>(intents[0]));
+    EXPECT_EQ(std::get<eqt::events::HotbarPageChangedIntent>(intents[0]).page, 4);
+}
+
+TEST_F(StaticUIInputTest, HotbarPageLeftClampsAtZero) {
+    // On page zero the left button pushes nothing (no page -1).
+    TestBridge bridge;
+    input.init(&bridge);
+    hotbar.currentPage = 0;
+    bool consumed = input.processInput(19, 319, /*leftClicked=*/true, layout,
+                                        hotbar, gems, inventory, spellbook, skills, buffs, loot);
+    EXPECT_TRUE(consumed);
+    EXPECT_TRUE(bridge.drainIntents().empty());
+}
+
+TEST_F(StaticUIInputTest, HotbarPageLeftPushesPreviousPageIntent) {
+    TestBridge bridge;
+    input.init(&bridge);
+    hotbar.currentPage = 5;
+    input.processInput(19, 319, /*leftClicked=*/true, layout,
+                        hotbar, gems, inventory, spellbook, skills, buffs, loot);
+    auto intents = bridge.drainIntents();
+    ASSERT_EQ(intents.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<eqt::events::HotbarPageChangedIntent>(intents[0]));
+    EXPECT_EQ(std::get<eqt::events::HotbarPageChangedIntent>(intents[0]).page, 4);
+}
+
+TEST_F(StaticUIInputTest, HotbarCloseBoxClosesWindow) {
+    // The close box (84,310,96,322), center (90, 316).
+    TestBridge bridge;
+    input.init(&bridge);
+    ASSERT_TRUE(hotbar.isOpen);
+    bool consumed = input.processInput(90, 316, /*leftClicked=*/true, layout,
+                                        hotbar, gems, inventory, spellbook, skills, buffs, loot);
+    EXPECT_TRUE(consumed);
+    EXPECT_FALSE(hotbar.isOpen);
+    EXPECT_TRUE(bridge.drainIntents().empty());
+    // A closed window hits nothing: the same point no longer consumes.
+    bool again = input.processInput(22, 350, false, layout, hotbar, gems,
+                                     inventory, spellbook, skills, buffs, loot);
+    EXPECT_FALSE(again);
+    EXPECT_EQ(hotbar.hoveredSlot, -1);
+}
+
+TEST_F(StaticUIInputTest, HotbarCloseHoverFlagsBoxOnly) {
+    TestBridge bridge;
+    input.init(&bridge);
+    // Hovering the close box flags it and consumes the point...
+    EXPECT_TRUE(input.processInput(90, 316, false, layout, hotbar, gems,
+                                   inventory, spellbook, skills, buffs, loot));
+    EXPECT_TRUE(hotbar.closeHovered);
+    // ...and moving onto a slot clears it (the slot row is checked first).
+    input.processInput(22, 350, false, layout, hotbar, gems,
+                       inventory, spellbook, skills, buffs, loot);
+    EXPECT_FALSE(hotbar.closeHovered);
+}
+
 // --- Spell gems ---
 
 TEST_F(StaticUIInputTest, SpellGemFirstHoverSetsIndexZero) {
-    bool consumed = input.processInput(770, 270, false, layout, hotbar, gems,
+    // B1025-H2: the gem bar ends at the hotbar window's top (310 at 800x600),
+    // so gem 0 occupies y [22, 54).
+    bool consumed = input.processInput(770, 42, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(gems.hoveredGem, 0);
 }
 
 TEST_F(StaticUIInputTest, SpellGemLastHoverSetsIndexSeven) {
-    // Gem 7: gy = 268 + 7*36 = 520, occupies y in [520, 552).
-    bool consumed = input.processInput(770, 530, false, layout, hotbar, gems,
+    // Gem 7: gy = 22 + 7*36 = 274, occupies y in [274, 306).
+    bool consumed = input.processInput(770, 290, false, layout, hotbar, gems,
                                         inventory, spellbook, skills, buffs, loot);
     EXPECT_TRUE(consumed);
     EXPECT_EQ(gems.hoveredGem, 7);
@@ -193,7 +266,7 @@ TEST_F(StaticUIInputTest, SpellGemClickPushesCastSpellIntent) {
     TestBridge bridge;
     input.init(&bridge);
 
-    input.processInput(770, 270, /*leftClicked=*/true, layout, hotbar, gems,
+    input.processInput(770, 42, /*leftClicked=*/true, layout, hotbar, gems,
                         inventory, spellbook, skills, buffs, loot);
 
     auto intents = bridge.drainIntents();

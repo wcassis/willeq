@@ -805,6 +805,8 @@ IF(EQT_GRAPHICS)
         src/client/graphics/ui/static_ui_merchant.cpp  # B442b
         src/client/graphics/ui/ui_renderer.cpp
         src/client/graphics/ui/static_panels.cpp
+        # B1025-H2: the stock hotbar window (its own TU, M00).
+        src/client/graphics/ui/hotbar_panel.cpp
         src/client/graphics/ui/chat_wrap_cache.cpp
         src/client/graphics/ui/ui_quad_batch.cpp
         src/client/graphics/ui/bitmap_glyph_table.cpp

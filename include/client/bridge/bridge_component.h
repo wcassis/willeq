@@ -402,6 +402,8 @@ private:
 	void onMusicVolumeChangeIntent(const eqt::events::MusicVolumeChangeIntent& i);
 	void onEffectsVolumeChangeIntent(const eqt::events::EffectsVolumeChangeIntent& i);
 	void onHotbarActivateIntent(const eqt::events::HotbarActivateIntent& i);
+	// B1025-H2: the hotbar window's page buttons (HotbarPageChangedIntent).
+	void onHotbarPageChangedIntent(const eqt::events::HotbarPageChangedIntent& i);
 	void onTradeskillCombineIntent(const eqt::events::TradeskillCombineIntent& i);
 	void onTradeskillCloseIntent(const eqt::events::TradeskillCloseIntent& i);
 	void onRecipeDetailsRequestIntent(const eqt::events::RecipeDetailsRequestIntent& i);
