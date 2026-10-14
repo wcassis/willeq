@@ -7,8 +7,8 @@ if [[ ! -f $REPO/scripts/eqemu/env.sh && -f $SCRIPT_DIR/.oracle-repo ]]; then
     REPO=$(cat "$SCRIPT_DIR/.oracle-repo")
 fi
 [[ -f $REPO/scripts/eqemu/env.sh ]] || { echo "oracle repo not found; rerun install.sh" >&2; exit 65; }
-if [[ $# != 3 || ! $1 =~ ^[1-4]$ ]]; then
-    echo "usage: $0 <lane 1..4> <plan.tsv> <out_dir>" >&2
+if [[ $# != 3 || ! $1 =~ ^[1-5]$ ]]; then
+    echo "usage: $0 <lane 1..5> <plan.tsv> <out_dir>" >&2
     exit 64
 fi
 LANE=$1 PLAN=$(realpath "$2") OUT=$(realpath -m "$3")

@@ -229,8 +229,13 @@ stop_capture() {
         touch "$DIR/character-restored"
     fi
     rm -f "$DIR/drive-login.sh"
+    # Kill only the Xvfb this session started (xvfb.pid). Lane 5's :99 is a
+    # real Xorg (oracle-xorg.service) that run found up, so no pid is saved;
+    # a stale or reused pid that is not an Xvfb is left alone.
     p=$(cat "$DIR/xvfb.pid" 2>/dev/null || :)
-    if [[ $p =~ ^[0-9]+$ ]]; then kill -TERM "$p" 2>/dev/null || :; fi
+    if [[ $p =~ ^[0-9]+$ && $(ps -o comm= -p "$p" 2>/dev/null) == Xvfb ]]; then
+        kill -TERM "$p" 2>/dev/null || :
+    fi
 }
 if [[ $ACTION == stop ]]; then stop_capture; exit $?; fi
 [[ $ACTION == run ]] || exit 65
