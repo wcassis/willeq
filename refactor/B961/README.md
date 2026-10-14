@@ -96,16 +96,53 @@ absent source reads 0 and `seen=0`, not a guessed 0.
 
 ## x86 vs Pi (item 4)
 
-| row | x86 (surfaceless/surfaceless-fallback) | Pi (DRM/GBM/EGL, 1280x720) |
-|---|---|---|
-| `scanout_fb` | 0 (no GBM device -- never published) | ~7.03 MiB (2 x 3,686,400 B), cross-checked against the rigs' root read `gpu.scanout_fb_bytes` |
-| `scanout_fb_bufs` | 0 | 2 (the GBM pool locks two at steady state; three at most after a flip-event loss) |
-| `memcg_kernel` | the dev-VM cgroup's kernel (the row is whatever the source says) | 1.11-1.93 MiB band (issue body, steady_60s) |
-| `memcg_kernel_seen` | 1 when the dev-VM cgroup has a memory controller | 1 |
+Measured this MR (x86: `gles2_zone_benchmark` qeynos2 1280x720, surfaceless
+llvmpipe, this head; Pi: the rendered-zone sweep leg below).
 
-Pi-leg measurements: <TO BE FILLED from the rendered-zone sweep: scanout_fb
-vs the rigs' gpu.scanout_fb_bytes, memcg_kernel vs the band, file:line of
-each>
+| row | x86 (surfaceless llvmpipe) | Pi (DRM/GBM/EGL, 1280x720) |
+|---|---|---|
+| `scanout_fb` | 0 (no GBM device -- never published) | 3,686,400 (1 buffer at the steady_60s sample; 2 = 7,372,800 when the pool holds two, the issue's figure) |
+| `scanout_fb_bufs` | 0 | 1 (steady_60s sample this leg; the pool locks up to three) |
+| `memcg_kernel` | 18,710,528 (this dev-VM's shared cgroup, 4 procs -- whatever the source says) | 6,197,248 at steady_60s this leg |
+| `memcg_kernel_seen` | 1 | 1 |
+
+x86 evidence: `/tmp/b961_bench.log` `[memgpu] point=steady` line (re-runnable:
+the bench prints the row at every point). The x86 row is non-negative and
+present, which is what the test asserts; its value is whatever the local
+cgroup says.
+
+## The Pi leg (item 4, done)
+
+Rendered-zone sweep, qeynos2, 1280x720, `--constrained orangepi`, shipped
+Mesa 25.2.8 prefix, the CI `build-arm` publish of head
+`6492e2d263014aeb52e873e22d11e36fc88258b2` (MR !184's fix leg). Evidence:
+`/home/user/kb-evidence/kb-b961-scanout-kernel/pi/` (attached to the task).
+
+- **The client's own row** — `pi/zones/qeynos2/client.log:5234`
+  (`[memgpu] point=steady_60s`): `scanout_fb=3686400 scanout_fb_bufs=1
+  memcg_kernel=6197248 memcg_kernel_seen=1`, with `owned=87049384` and
+  `owned_rss_anon=44754088` UNCHANGED by the new rows (REPORT not COUNT).
+- **The cross-check** — the rig's root debugfs read at the same point
+  (`scripts/pi/proc_mem_snapshot.py` `gpu.scanout_fb_bytes`, the framebuffer
+  blocks whose `allocated by` names the client) agrees: 3,686,400 B
+  (`pi/results.tsv`, column `scanout_fb_bytes`; also `zones/qeynos2/
+  details.json` `gpu.scanout_fb_bytes`). The rig's `memcg_kernel_steady`
+  (same TSV) is the client's own cgroup read from outside: 6,197,248, equal
+  to the row.
+- **The issue's 2 x 3,686,400 = 7.03 MiB figure is timing-dependent.** The
+  GBM pool holds three buffers and the count locked at a sample instant
+  varies 1-2 (three at most after a flip-event loss); the B955 issue runs
+  sampled with two locked. This leg sampled with one locked at steady_60s.
+  Per buffer the two sources are exact: 1280x720 pitch 5120 = 3,686,400 B
+  each. The row therefore reads 3.55-7.03 MiB across sample instants; the
+  full-buffer figure is the conservative one for a counting ruling.
+- **memcg_kernel came in ABOVE the issue's 1.11-1.93 MiB band** (5.02-5.91
+  MiB across the leg's points; 5.91 at steady_60s). The issue's band is the
+  B955 sweep's; the kernel charge (slab, page tables, stacks) moves with the
+  process's mappings and kernel state, and this run's `drm_maps=526`
+  mapping set is larger than a minimal one. The row reports whatever
+  `memory.stat kernel` says; both figures are within the same order of
+  magnitude (single-MiB), and the mechanism is unchanged.
 
 ## Left open for Will — THE COUNTING QUESTION
 
@@ -125,14 +162,16 @@ willeq's own memory), or are they listed-but-excluded like `gpu_driver`?
   willeq's share of the kernel, charged to willeq's cgroup.
 
 **The prediction each choice makes for the Pi owned figure** (steady_60s,
-1280x720; the issue's measured rows):
-- **Exclude both (the status quo this MR ships):** owned is unchanged.
-  Both rows are reported beside it, the way `gpu_driver` is listed but
-  excluded.
-- **Count both:** owned rises by scanout (7.03 MiB) + memcg kernel
-  (1.11-1.93 MiB) = +8.14 to +8.96 MiB on top of the current owned figure.
-- **Count scanout only:** +7.03 MiB.
-- **Count memcg kernel only:** +1.11 to +1.93 MiB.
+1280x720; the figures this leg measured, above):
+- **Exclude both (the status quo this MR ships):** owned is unchanged
+  (87,049,384 at this leg's steady_60s). Both rows are reported beside it,
+  the way `gpu_driver` is listed but excluded.
+- **Count both:** owned rises by scanout (3.55-7.03 MiB, sample-dependent;
+  7.03 at the issue's two-buffer instant) + memcg kernel (5.02-5.91 MiB
+  this leg; 1.11-1.93 at the B955 runs) = +8.6 to +12.9 MiB on the current
+  figure.
+- **Count scanout only:** +3.55 to +7.03 MiB.
+- **Count memcg kernel only:** +5.02 to +5.91 MiB.
 
 A one-line ruling ("count both" / "exclude both" / either one) settles it;
 the follow-up MR moves the row into the owned formula and, if counting,
