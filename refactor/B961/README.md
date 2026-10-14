@@ -96,20 +96,23 @@ absent source reads 0 and `seen=0`, not a guessed 0.
 
 ## x86 vs Pi (item 4)
 
-Measured this MR (x86: `gles2_zone_benchmark` qeynos2 1280x720, surfaceless
-llvmpipe, this head; Pi: the rendered-zone sweep leg below).
+Measured this MR (x86: a LOCAL dev-VM run -- `gles2_zone_benchmark` qeynos2
+1280x720, surfaceless llvmpipe, this head; CI did not measure it: the only
+x86 CI binary that constructs a DRM device, `test_x11_numpad_e2e`, was
+skipped in the CI build-test job -- no Xvfb on the runner; Pi: the
+rendered-zone sweep leg below, CI- and Pi-measured).
 
-| row | x86 (surfaceless llvmpipe) | Pi (DRM/GBM/EGL, 1280x720) |
+| row | x86 (local run, x86 -- CI device-construction job skipped, no Xvfb on the runner) | Pi (CI/Pi-measured, DRM/GBM/EGL, 1280x720) |
 |---|---|---|
 | `scanout_fb` | 0 (no GBM device -- never published) | 3,686,400 (1 buffer at the steady_60s sample; 2 = 7,372,800 when the pool holds two, the issue's figure) |
 | `scanout_fb_bufs` | 0 | 1 (steady_60s sample this leg; the pool locks up to three) |
 | `memcg_kernel` | 18,710,528 (this dev-VM's shared cgroup, 4 procs -- whatever the source says) | 6,197,248 at steady_60s this leg |
 | `memcg_kernel_seen` | 1 | 1 |
 
-x86 evidence: `/tmp/b961_bench.log` `[memgpu] point=steady` line (re-runnable:
-the bench prints the row at every point). The x86 row is non-negative and
-present, which is what the test asserts; its value is whatever the local
-cgroup says.
+x86 evidence: `/tmp/b961_bench.log` `[memgpu] point=steady` line (LOCAL
+dev-VM run -- re-runnable: the bench prints the row at every point). The
+x86 row is non-negative and present, which is what the test asserts; its
+value is whatever the local cgroup says.
 
 ## The Pi leg (item 4, done)
 
