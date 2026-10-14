@@ -715,8 +715,15 @@ private:
     void parseFragment29(const char* fragBuffer, uint32_t fragLength, uint32_t fragIndex,
                          int32_t nameRef, const char* hash);
 
-    // Decode zone line info from region type string (drntp, wtntp, lantp patterns)
+public:
+    // Decode zone line info from region type string (drntp, wtntp, lantp
+    // patterns). B1068: public (pure, static) so its unit test pins it
+    // against the zone files' own strings.
     static std::optional<ZoneLineInfo> decodeZoneLineString(const std::string& regionTypeString);
+    // B1068: the 0x29 body's own region-type string (int32 size + XOR-encoded
+    // bytes at `p`), "" when absent.
+    static std::string regionTypeStringFromBody(const char* p, size_t remaining);
+private:
 
     std::vector<std::shared_ptr<ZoneGeometry>> geometries_;
     std::map<uint32_t, WldTexture> textures_;
