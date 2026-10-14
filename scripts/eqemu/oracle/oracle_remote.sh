@@ -37,6 +37,21 @@ city_y() { case "$1" in
     HighElf) echo 496;; Iksar) echo 540;; Ogre) echo 430;; Troll) echo 408;;
     WoodElf) echo 474;; *) return 65;; esac; }
 gender_x() { case "$1" in Male) echo 105;; Female) echo 169;; *) return 65;; esac; }
+name_filled() {
+    # The Name field on the deity/city page (file y 262-274, x 30-228). A typed
+    # name's glyphs make the box's gray standard deviation 0.172 and an empty
+    # field's uniform background 0.094 (measured on real stills:
+    # charcreate-fix4's 'Oracleface' vs barbarian-fix2h's empty field), so
+    # >= 0.13 means text is present. Without this, a lost xdotool keystroke
+    # sails straight to submit and the client answers with a "Name is not
+    # valid" dialog (fix2h) instead of a create packet -- the report then
+    # finds zero OP_CharacterCreate and the run dies with no evidence of why.
+    local image="$DIR/name-check.png" std
+    import -window root -crop 1280x800+0+30 "$image" 2>/dev/null || return 65
+    std=$(convert "$image" -crop "190x10+30+264" +repage -colorspace Gray \
+        -format '%[fx:standard_deviation]' info:) || return 65
+    awk -v std="$std" 'BEGIN {exit !(std >= 0.13)}'
+}
 selected_at() {
     # The selected label is yellow; enabled but unselected labels are white.
     # ImageMagick preserves import's root-screen virtual page offset (+0,+30).
@@ -131,6 +146,15 @@ if [[ $ACTION == selftest ]]; then
     # fix2g through.
     STUB_MEAN=1.0
     if selected_at "$race" 53 "$race_row"; then echo "unselected row passed selected_at"; exit 1; fi
+    # name_filled: the convert stub returns STUB_MEAN as the std. A uniform
+    # (empty) field (std 0) must be rejected and a glyph-like field (std
+    # 0.172) accepted -- the fix2h mode of failure is a lost xdotool
+    # keystroke leaving an empty field that submit answers "Name is not
+    # valid".
+    STUB_MEAN=0.0
+    if name_filled; then echo "empty name field passed name_filled"; exit 1; fi
+    STUB_MEAN=0.172
+    name_filled || { echo "typed name field failed name_filled"; exit 1; }
     STUB_MEAN=
     SCREEN_TEXT='Character Creation'
     screen_text() { echo "$SCREEN_TEXT"; }
@@ -311,11 +335,19 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             shot "$name-attributes"
             jclick 1243 54; sleep 15
             jclick 105 271; sleep 2
-            jclick 1218 "$((city_row+17))"; sleep 2
+            jclick 1218 "$((city_row+17))"
             jclick 68 77; xdotool key End
             for unused in {1..20}; do xdotool key BackSpace; done
             xdotool key a; xdotool key BackSpace
             xdotool type --delay 100 "$target"; sleep 2
+            if ! name_filled; then
+                # Lost xdotool keystrokes (fix2h: empty field -> "Name is not
+                # valid" dialog, zero create packets): re-type once, verify again.
+                jclick 68 77; xdotool key End
+                for unused in {1..20}; do xdotool key BackSpace; done
+                xdotool type --delay 100 "$target"; sleep 2
+                name_filled || { shot "$name-not-typed"; echo "name field empty after re-type" >&2; exit 65; }
+            fi
             shot "$name-before-submit"
             # The submit clicks below still touch the shared selection cursor
             # (fix2e's packet decoded race=7 although the attribute still
