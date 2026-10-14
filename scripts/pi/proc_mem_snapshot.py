@@ -86,16 +86,19 @@ def _fdinfo_is_safe(dev_path):
     if os.environ.get("WILLEQ_GPU_CENSUS_NO_FDINFO", "0") not in ("", "0"):
         return False
     node = dev_path.rsplit("/", 1)[-1]
+    if not node:
+        return False
     try:
         drv = os.readlink("/sys/class/drm/%s/device/driver" % node)
     except OSError:
-        return True
-    return drv.rsplit("/", 1)[-1] != "pvrsrvkm"
+        return False  # fails closed: an unknown driver is not worth a panic
+    drv = drv.rsplit("/", 1)[-1]
+    return bool(drv) and drv != "pvrsrvkm"
 
 
 def gpu_sources(pid, comm, files):
     """B955: every per-process view of GPU buffer memory we can read."""
-    out = {"drm_fds": 0, "fdinfo_drm_keys": {}, "drm_mapped_bytes": 0, "drm_mappings": 0,
+    out = {"drm_fds": 0, "fdinfo_skipped": 0, "fdinfo_drm_keys": {}, "drm_mapped_bytes": 0, "drm_mappings": 0,
            "memcg": None, "scanout_fb_bytes": None, "scanout_fbs": [], "system_shmem_bytes": None}
     try:
         fds = os.listdir("/proc/%d/fd" % pid)
@@ -110,6 +113,7 @@ def gpu_sources(pid, comm, files):
             continue
         out["drm_fds"] += 1
         if not _fdinfo_is_safe(target):
+            out["fdinfo_skipped"] += 1  # B1056: distinguishes "not asked" from "no drm-* keys"
             continue
         text = _read("/proc/%d/fdinfo/%s" % (pid, fd)) or ""
         keys = {k.strip(): v.strip() for k, _, v in (l.partition(":") for l in text.splitlines())

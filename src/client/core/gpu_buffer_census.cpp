@@ -116,24 +116,25 @@ uint32_t countLines(const std::string& text) {
 // B1056: the DRM fdinfo read is a kernel call into the driver's show_fdinfo.
 // The IMG PowerVR DDK module (pvrsrvkm 24.2, lane 4 / Radxa A7S) dereferences
 // NULL in pvr_show_fdinfo on that read and panics the kernel (trace in
-// review/B1056/lane4/bench60_local4.dmesg), so that driver is never asked.
-// WILLEQ_GPU_CENSUS_NO_FDINFO=1 skips the read for every driver.
+// review/B1056/lane4_attempts/bench60_local4.dmesg), so that driver is never
+// asked. The guard FAILS CLOSED: an fd whose driver cannot be resolved through
+// sysfs is not read either (a panic is the cost of a wrong "yes").
+// WILLEQ_GPU_CENSUS_NO_FDINFO=1 skips the read for every driver; it is read
+// per call so a rig (or a test) can set it after startup.
 bool drmFdinfoIsSafe(const char* devPath) {
-    static const bool noFdinfo = [] {
-        const char* v = std::getenv("WILLEQ_GPU_CENSUS_NO_FDINFO");
-        return v && *v && *v != '0';
-    }();
-    if (noFdinfo) return false;
+    const char* v = std::getenv("WILLEQ_GPU_CENSUS_NO_FDINFO");
+    if (v && *v && *v != '0') return false;
+    if (!devPath) return false;
     const char* node = strrchr(devPath, '/');
     if (!node || !*(node + 1)) return false;
     char link[320], target[320];
     snprintf(link, sizeof(link), "/sys/class/drm/%s/device/driver", node + 1);
     const ssize_t n = readlink(link, target, sizeof(target) - 1);
-    if (n <= 0) return true;  // no sysfs row: nothing known against it
+    if (n <= 0) return false;  // unknown driver: not worth a kernel panic
     target[n] = '\0';
     const char* drv = strrchr(target, '/');
     drv = drv ? drv + 1 : target;
-    return strcmp(drv, "pvrsrvkm") != 0;
+    return *drv != '\0' && strcmp(drv, "pvrsrvkm") != 0;
 }
 
 void publishGpuLogicalTally(uint64_t textureBytes, uint64_t bufferBytes, uint64_t depthStencilBytes) {

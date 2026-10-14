@@ -41,6 +41,8 @@ PUBLISH_ROOT="${PI_LANE_PUBLISH:-/mnt/projects/fable/ci-arm64-bullseye}"
 # the by-branch links read as directories. Through that mount symlink(2) lands on the server but returns EIO
 # and unlink(2) refuses, so the by-branch link is made ON the share host (the sshfs peer) over ssh.
 PUBLISH_SSH="${PUBLISH_SSH:-user@10.0.30.23}"
+# Every delete/link in the publish root goes through the share host too (same reason).
+share_sh() { ssh -o BatchMode=yes "$PUBLISH_SSH" "$@"; }
 KEEP="${PUBLISH_KEEP:-6}"
 PUBLISH=1; IRR_ONLY=0
 for a in "$@"; do case "$a" in
@@ -95,6 +97,7 @@ cmake -S "$SRC" -B "$BUILD_DIR" -G Ninja \
     -DCMAKE_C_FLAGS='-DEGL_NO_X11 -DMESA_EGL_NO_X11_HEADERS' \
     -DCMAKE_CXX_FLAGS='-DEGL_NO_X11 -DMESA_EGL_NO_X11_HEADERS' \
     -DCMAKE_CXX_STANDARD_LIBRARIES='-ldl -lpthread' \
+    -DCMAKE_EXE_LINKER_FLAGS='-Wl,--disable-new-dtags -Wl,-rpath,/usr/local/lib' \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DEQT_GRAPHICS=ON -DEQT_DRM=ON -DEQT_GLES2=ON \
     -DIRRLICHT_INCLUDE_DIR="$IRR_DIR/include" -DIRRLICHT_LIBRARY="$IRR_DIR/lib/libIrrlicht.a" \
@@ -106,7 +109,8 @@ echo "--- built: $(ls "$BUILD_DIR/bin")"
 
 # --- 3. publish (same shape as scripts/pi/publish_arm64_build.sh) ---
 DEST="$PUBLISH_ROOT/$SHA"; TMP="$PUBLISH_ROOT/.tmp.$SHA.$$"
-rm -rf "$TMP"; mkdir -p "$TMP/bin" "$PUBLISH_ROOT/by-branch"
+share_sh "rm -rf '$TMP'"; mkdir -p "$TMP/bin" "$PUBLISH_ROOT/by-branch"
+trap 'share_sh "rm -rf \"$TMP\"" 2>/dev/null' EXIT
 for t in "${TARGETS[@]}"; do cp "$BUILD_DIR/bin/$t" "$TMP/bin/"; strip "$TMP/bin/$t"; done
 git -C "$SRC" archive "$SHA" config data | tar -x -C "$TMP"
 {
@@ -117,10 +121,12 @@ git -C "$SRC" archive "$SHA" config data | tar -x -C "$TMP"
     file -b "$TMP/bin/willeq"
     echo "tools=$(ls "$TMP/bin" | tr '\n' ' ')"
 } > "$TMP/BUILD_INFO"
-rm -rf "$DEST"; mv "$TMP" "$DEST"
+share_sh "rm -rf '$DEST' && mv '$TMP' '$DEST'"
 if [ -n "$BRANCH" ] && [ "$BRANCH" != HEAD ]; then
     LINK="$PUBLISH_ROOT/by-branch/$(echo "$BRANCH" | tr / _)"
     ssh -o BatchMode=yes "$PUBLISH_SSH" "ln -sfn '../$SHA' '$LINK' && readlink '$LINK'" || echo "WARN: by-branch link not made ($LINK)"
 fi
-ls -1dt "$PUBLISH_ROOT"/*/ | grep -v by-branch | tail -n +"$((KEEP + 1))" | xargs -r rm -rf
+# Keep the newest KEEP builds, never one a by-branch link points at (publish_arm64_build.sh does the same).
+share_sh "cd '$PUBLISH_ROOT' && keep=\$(for l in by-branch/*; do [ -L \"\$l\" ] && basename \"\$(readlink \"\$l\")\"; done | sort -u); \
+  ls -1dt */ | grep -v by-branch | tr -d / | tail -n +$((KEEP + 1)) | while read -r d; do echo \"\$keep\" | grep -qx \"\$d\" || rm -rf \"\$d\"; done"
 echo "=== published $DEST ==="; cat "$DEST/BUILD_INFO"

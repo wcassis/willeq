@@ -85,7 +85,9 @@ case "${PI_LANE}" in
     4) : "${PI_USER:=radxa}"
        : "${PI_LANE_PUBLISH:=/mnt/projects/fable/ci-arm64-bullseye}"
        : "${PI_HDMI_CONN:=/sys/class/drm/card0-DP-1}"
-       : "${PI_RUN_ENV:=LD_LIBRARY_PATH=/usr/local/lib LIBGL_DRIVERS_PATH=/usr/local/lib/dri}"
+       # WILLEQ_GPU_CENSUS_NO_FDINFO: reading a DRM fd's fdinfo panics this kernel (pvr_show_fdinfo);
+       # the device-level fact rides in the lane env, not only in the in-process sysfs lookup.
+       : "${PI_RUN_ENV:=LD_LIBRARY_PATH=/usr/local/lib LIBGL_DRIVERS_PATH=/usr/local/lib/dri WILLEQ_GPU_CENSUS_NO_FDINFO=1}"
        # kmscube's own device scan lands on card1 (pvrsrvkm, render-only: "no connected
        # connector!"); the display is sunxi-drm card0 and GBM there reaches the IMG driver.
        : "${PI_KMSCUBE_ARGS:=-D /dev/dri/card0}" ;;
@@ -100,7 +102,11 @@ esac
 # ARM cross-build lands in the MAIN worktree, not this task worktree --
 # scripts/build-arm-noble.sh / build-arm64-noble.sh always build there.
 # Override if needed. The default follows the lane's architecture.
-if [ "${PI_LANE_ARCH}" = aarch64 ]; then
+if [ "${PI_LANE}" = 4 ]; then
+    # Lane 4 has no cross build (the noble binary needs GLIBC_2.38, the board has
+    # 2.31): its binaries come from the on-device build's publish (B1056).
+    : "${ARM_BUILD_BIN_DIR:=${PI_LANE_PUBLISH}/by-branch/fable/bin}"
+elif [ "${PI_LANE_ARCH}" = aarch64 ]; then
     : "${ARM_BUILD_BIN_DIR:=/mnt/projects/fable/main/build-arm64-noble/bin}"
 else
     : "${ARM_BUILD_BIN_DIR:=/mnt/projects/fable/main/build-arm-noble/bin}"
@@ -147,8 +153,16 @@ PROJECT_DIR="$(cd "$PI_ENV_SCRIPT_DIR/../.." && pwd)"
 : "${PI_LOCK:=/home/${PI_USER}/.pi-lock}"
 
 pi_remote() {
+    # The lane's run environment (PI_RUN_ENV, lane 4: the IMG loader paths + the
+    # fdinfo kill switch) is applied HERE, once, for every rig and hand run; the
+    # rigs never prefix it themselves. PI_RUN_ENV / PI_KMSCUBE_ARGS are exported
+    # too, for the sudo boundary inside kmscube_floor.sh. "$*" is what ssh would
+    # have joined anyway.
+    local pre="export PI_RUN_ENV='${PI_RUN_ENV:-}' PI_KMSCUBE_ARGS='${PI_KMSCUBE_ARGS:-}'"
+    local kv
+    for kv in ${PI_RUN_ENV:-}; do pre="$pre $kv"; done
     # shellcheck disable=SC2086
-    ssh ${PI_SSH_OPTS} "${PI_USER}@${PI_HOST}" "$@"
+    ssh ${PI_SSH_OPTS} "${PI_USER}@${PI_HOST}" "$pre; $*"
 }
 pi_lock_take() {
     # pi_lock_take <owner, e.g. T### or kb-slug> -- exit 0 = you own it;

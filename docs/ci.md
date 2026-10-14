@@ -332,9 +332,12 @@ Panfrost's 128 MiB growable tiler heap before the tiler has faulted it in, and
 the `[memgpu]` line carries `fdinfo_total=`/`fdinfo_resident=`/`fdinfo_purgeable=`
 so the choice stays visible. The fdinfo read is never made against the IMG
 PowerVR module (`pvrsrvkm`, lane 4): its `pvr_show_fdinfo` panics the kernel on
-any read of a DRM fd's fdinfo (B1056, trace in `review/B1056/lane4/`); the lane
-reports `source=none` from that row, and `WILLEQ_GPU_CENSUS_NO_FDINFO=1` skips
-the read for every driver. `scripts/ci/owned_memory.py` is
+any read of a DRM fd's fdinfo (B1056, trace in `review/B1056/lane4_attempts/`).
+The guard fails closed (an fd whose driver has no sysfs row is not read either),
+and `WILLEQ_GPU_CENSUS_NO_FDINFO=1` (in lane 4's `PI_RUN_ENV`) skips the read for
+every driver. With fdinfo skipped `decideGpuBuffers` falls through in order to
+`memcg_shmem`, `drm_maps_lower_bound`, then `logical`: lane 4's smoke row is
+`source=drm_maps_lower_bound`. `scripts/ci/owned_memory.py` is
 the one Python definition of these figures, behind the `[rss-target]` line and
 the Pi summarizers.
 

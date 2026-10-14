@@ -11,7 +11,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
 #include <cstdlib>
+#include <unistd.h>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -363,13 +365,29 @@ TEST(GpuBufferCensus, LedgerSnapshotCarriesTheRow) {
     EXPECT_NE(json.find("\"gpuBuffers\":{"), std::string::npos) << json;
 }
 
-// B1056: the fdinfo read is skipped for the PowerVR module and under the kill
-// switch; a node with no sysfs driver row is not held against the driver.
-TEST(GpuBufferCensus, FdinfoGuardHonoursKillSwitchAndUnknownNodes) {
+// B1056: the fdinfo guard fails closed -- an fd whose driver has no sysfs row
+// is NOT read (a wrong "yes" is a kernel panic on pvrsrvkm) -- and the kill
+// switch, read per call, wins over everything.
+TEST(GpuBufferCensus, FdinfoGuardFailsClosedAndHonoursKillSwitch) {
     unsetenv("WILLEQ_GPU_CENSUS_NO_FDINFO");
-    EXPECT_TRUE(eqt::memory::drmFdinfoIsSafe("/dev/dri/no-such-node-b1056"));
+    EXPECT_FALSE(eqt::memory::drmFdinfoIsSafe("/dev/dri/no-such-node-b1056"));
     EXPECT_FALSE(eqt::memory::drmFdinfoIsSafe("/dev/dri/"));
-    // The kill switch is read once per process (static), so it is exercised
-    // through the environment of a fresh helper in scripts/pi/proc_mem_snapshot.py;
-    // here only the sysfs resolution is covered.
+    EXPECT_FALSE(eqt::memory::drmFdinfoIsSafe(nullptr));
+    // A real node on the build host (any in-tree driver) is readable...
+    bool anyReal = false;
+    for (const char* node : {"/dev/dri/card0", "/dev/dri/card1", "/dev/dri/renderD128"}) {
+        char link[128];
+        snprintf(link, sizeof(link), "/sys/class/drm/%s/device/driver", node + 9);
+        char buf[256];
+        if (readlink(link, buf, sizeof(buf) - 1) <= 0) continue;
+        anyReal = true;
+        EXPECT_TRUE(eqt::memory::drmFdinfoIsSafe(node)) << node;
+        // ...unless the kill switch is set, which is read on every call.
+        setenv("WILLEQ_GPU_CENSUS_NO_FDINFO", "1", 1);
+        EXPECT_FALSE(eqt::memory::drmFdinfoIsSafe(node)) << node;
+        unsetenv("WILLEQ_GPU_CENSUS_NO_FDINFO");
+        EXPECT_TRUE(eqt::memory::drmFdinfoIsSafe(node)) << node;
+        break;
+    }
+    if (!anyReal) GTEST_SKIP() << "no DRM node with a sysfs driver row on this host";
 }

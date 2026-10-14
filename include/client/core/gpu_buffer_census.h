@@ -202,7 +202,9 @@ GpuBufferCensus readGpuBufferCensus();
 
 // B1056: whether /proc/<pid>/fdinfo of a DRM fd on `devPath` (/dev/dri/<node>)
 // may be read. False for the IMG PowerVR module (pvrsrvkm: pvr_show_fdinfo
-// panics the kernel, lane 4) and when WILLEQ_GPU_CENSUS_NO_FDINFO is set.
+// panics the kernel, lane 4), false when the driver cannot be resolved through
+// /sys/class/drm/<node>/device/driver (fails closed), and false whenever
+// WILLEQ_GPU_CENSUS_NO_FDINFO is set (read per call).
 // scripts/pi/proc_mem_snapshot.py mirrors it for out-of-process readers.
 bool drmFdinfoIsSafe(const char* devPath);
 

@@ -37,9 +37,9 @@ pi_remote "set -o pipefail; { uname -a; cat /proc/device-tree/model; echo; free 
   for c in /sys/class/drm/card*; do echo \"\$(basename \$c): \$(basename \$(readlink \$c/device/driver 2>/dev/null) 2>/dev/null)\"; done; \
   cat $PI_HDMI_CONN/status; dpkg-query -W libgl1-mesa-dri; ls /usr/local/lib/dri 2>/dev/null; cat $D/BUILD_INFO; }" > "$OUT/device.txt" 2>&1
 echo "--- lane $PI_LANE ($PI_LANE_NAME): GL floor ---"
-pi_remote "PI_RUN_ENV='$PI_RUN_ENV' PI_KMSCUBE_ARGS='$PI_KMSCUBE_ARGS' bash $HERE/kmscube_floor.sh /usr/bin/kmscube $OUT/floor 3 12" 2>&1 | tee "$OUT/floor.txt"
+pi_remote "bash $HERE/kmscube_floor.sh /usr/bin/kmscube $OUT/floor 3 12" 2>&1 | tee "$OUT/floor.txt"
 echo "--- lane $PI_LANE ($PI_LANE_NAME): offline zone benchmark ($ZONE, $FRAMES frames, --drm) ---"
-pi_remote "mkdir -p /tmp/b1030 && cd $D && env $PI_RUN_ENV WILLEQ_DATA_ROOT=$D WILLEQ_CACHE_DIR=/tmp/b1030/cache \
+pi_remote "mkdir -p /tmp/b1030 && cd $D && env WILLEQ_DATA_ROOT=$D WILLEQ_CACHE_DIR=/tmp/b1030/cache \
   timeout 600 $D/bin/gles2_zone_benchmark --zone $ZONE --eq-path $PI_EQ_PATH --eqe1-path $PI_EQE1_PATH \
   --drm --frames $FRAMES --csv /tmp/b1030/bench.csv > /tmp/b1030/bench.log 2>&1; echo BENCH_EXIT=\$? >> /tmp/b1030/bench.log; \
   cp /tmp/b1030/bench.log $OUT/bench.log; cp /tmp/b1030/bench.csv $OUT/bench.csv 2>/dev/null; true"

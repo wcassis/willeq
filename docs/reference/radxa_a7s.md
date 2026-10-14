@@ -42,9 +42,11 @@ lives in `scripts/sbc/a7s/`.
    `lane_smoke.sh` and `pi_rendered_zone_sweep.sh` read.
 2. **An ssh session does not see the GPU driver.** The image puts the IMG libraries on the loader path through
    `/etc/environment`, but with an `export` keyword that pam_env ignores, so `eglinfo` over ssh finds Mesa and no
-   driver. Every GL run is prefixed with `env.sh`'s `PI_RUN_ENV`
-   (`LD_LIBRARY_PATH=/usr/local/lib LIBGL_DRIVERS_PATH=/usr/local/lib/dri`); `sudo` drops it, so `sudo env
-   $PI_RUN_ENV ...` (`kmscube_floor.sh` does this).
+   driver. `env.sh`'s `pi_remote` exports the lane's `PI_RUN_ENV`
+   (`LD_LIBRARY_PATH=/usr/local/lib LIBGL_DRIVERS_PATH=/usr/local/lib/dri WILLEQ_GPU_CENSUS_NO_FDINFO=1`) in
+   front of EVERY remote command, so no rig prefixes it itself; `sudo` drops it, so `kmscube_floor.sh` re-applies
+   it past sudo. A `setcap` binary (the sweep's staged `willeq`) loses `LD_LIBRARY_PATH` under `AT_SECURE`
+   whatever the env says, so `build_native.sh` links with `DT_RPATH=/usr/local/lib` as well.
 3. **The ssh user is `radxa`**, so the lane's lock is `/home/radxa/.pi-lock` and `env.sh` sets `PI_USER` per lane.
 4. **The connector is `card0-DP-1`**, not `HDMI-A-1` (`PI_HDMI_CONN` per lane).
 5. **kmscube's own device scan picks card1** (`pvrsrvkm`, render-only) and quits with "no connected
@@ -54,7 +56,8 @@ lives in `scripts/sbc/a7s/`.
 6. **Symlinks through the sshfs mount.** The share is mounted `follow_symlinks`, so `symlink(2)` lands on the
    server but returns EIO and `unlink(2)` refuses ("Is a directory"). `build_native.sh` makes the by-branch
    link over ssh on the share host (`PUBLISH_SSH`, default `user@10.0.30.23`).
-7. **Reading a DRM fd's fdinfo panics the kernel.** `pvr_show_fdinfo` in the IMG module (pvrsrvkm, DDK 24.2)
+7. **Reading a DRM fd's fdinfo panics the kernel.** (The guard fails closed: an fd whose driver cannot be resolved is
+   not read either.) `pvr_show_fdinfo` in the IMG module (pvrsrvkm, DDK 24.2)
    dereferences NULL on any read of `/proc/<pid>/fdinfo/<drm fd>` -- from inside the process (willeq's GPU
    buffer census, the impostor memory probe) or from outside (`proc_mem_snapshot.py` on kmscube, and so any
    `nvtop`-style tool). Full trace: `review/B1056/lane4/bench60_local4.dmesg`. Every reader in the tree asks
@@ -66,6 +69,10 @@ lives in `scripts/sbc/a7s/`.
    reader on cpu7 + `kernel.printk_delay`).
 
 ## Building and running
+
+`ARM_BUILD_BIN_DIR` (what `bench_pi.sh` scp's) is `ci-arm64-bullseye/by-branch/fable/bin` on this lane -- there is
+no cross build for it; a `fable` build appears there once `build_native.sh` has run on a `fable` checkout.
+
 
 ```bash
 # on the board (ssh a7s); the checkout is a clone of the task branch on the eMMC
