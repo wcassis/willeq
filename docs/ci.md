@@ -330,7 +330,11 @@ the only figure that sees Lima's GEM buffers. On a kernel+driver that publishes
 the row is the RESIDENT figure (B1032, #352): `drm-total-memory` includes
 Panfrost's 128 MiB growable tiler heap before the tiler has faulted it in, and
 the `[memgpu]` line carries `fdinfo_total=`/`fdinfo_resident=`/`fdinfo_purgeable=`
-so the choice stays visible. `scripts/ci/owned_memory.py` is
+so the choice stays visible. The fdinfo read is never made against the IMG
+PowerVR module (`pvrsrvkm`, lane 4): its `pvr_show_fdinfo` panics the kernel on
+any read of a DRM fd's fdinfo (B1056, trace in `review/B1056/lane4/`); the lane
+reports `source=none` from that row, and `WILLEQ_GPU_CENSUS_NO_FDINFO=1` skips
+the read for every driver. `scripts/ci/owned_memory.py` is
 the one Python definition of these figures, behind the `[rss-target]` line and
 the Pi summarizers.
 
