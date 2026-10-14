@@ -120,7 +120,7 @@ public:
 	void updateNavmeshOverlay(const glm::vec3& playerPos);
 	void drawNavmeshOverlay();
 #ifdef EQT_HAS_GLES2
-	void drawTargetOutline();       // Stencil-based silhouette outline (GLES2)
+	void drawTargetOutline();       // Inverted-hull silhouette outline, no stencil (GLES2, B1064)
 #else
 	void drawTargetSelectionBox();  // Wireframe bounding box (desktop GL)
 #endif

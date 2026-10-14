@@ -16,6 +16,7 @@
 
 #include "client/graphics/overlays/overlays_component.h"
 #include "client/graphics/world_line_batch.h"  // T335: the shared post-drawAll() 3D-line guard
+#include "client/graphics/overlays/target_outline_pass.h"  // B1064: the outline's GL state plan
 #include "client/graphics/ui/character_model_view.h"  // L13: complete type for the out-of-line dtor
 #include "client/graphics/irrlicht_renderer.h"
 #include "client/bridge/game_state_bridge.h"
@@ -440,8 +441,25 @@ void OverlaysComponent::drawTargetOutline() {
     ctx_.driver->setTransform(irr::video::ETS_VIEW, ctx_.captured3DView);
     ctx_.driver->setTransform(irr::video::ETS_PROJECTION, ctx_.captured3DProj);
 
-    // Stencil reference value above portal range (portals use 1-4)
-    const GLint STENCIL_REF = 128;
+    // B1064 (#384): an INVERTED HULL, not a stencil rim. The surface may
+    // have no stencil planes at all (the orangepi preset, B971), where the
+    // old two-pass stencil rim painted the whole inflated model. The plan is
+    // one draw of the scaled mesh, front faces culled, depth LESSEQUAL, no
+    // depth write: inside the silhouette the hull's back faces lie behind
+    // the model's depth, outside it they are the rim. See
+    // include/client/graphics/overlays/target_outline_pass.h.
+    static const GLint surfaceStencilBits = [] {
+        GLint bits = 0;
+        glGetIntegerv(GL_STENCIL_BITS, &bits);
+        return bits;
+    }();
+    const TargetOutlinePass::Plan plan = TargetOutlinePass::plan(surfaceStencilBits);
+    static bool loggedPlan = false;
+    if (!loggedPlan) {
+        loggedPlan = true;
+        LOG_INFO(MOD_GRAPHICS, "Target outline: inverted hull (surface stencil bits={}, uses stencil={}, scale={:.2f})",
+                 surfaceStencilBits, plan.usesStencil, plan.scale);
+    }
 
     // Compute normal transform (mirrors EQAnimatedMeshSceneNode::render() logic)
     irr::core::matrix4 normalTransform;
@@ -451,46 +469,20 @@ void OverlaysComponent::drawTargetOutline() {
         normalTransform = node->getAbsoluteTransformation();
     }
 
-    // Scaled transform for outline pass (scale from entity center)
-    irr::core::vector3df pos = normalTransform.getTranslation();
-    const float scaleFactor = 1.10f;
-    irr::core::matrix4 toOrigin, fromOrigin, scaleMat;
-    toOrigin.setTranslation(-pos);
-    fromOrigin.setTranslation(pos);
-    scaleMat.setScale(irr::core::vector3df(scaleFactor, scaleFactor, scaleFactor));
-    irr::core::matrix4 outlineTransform = fromOrigin * scaleMat * toOrigin * normalTransform;
+    // Scaled transform for the hull (uniform scale about the entity origin)
+    const irr::core::matrix4 outlineTransform =
+        TargetOutlinePass::outlineTransform(normalTransform, plan.scale);
 
     // Material: no texture → driver selects Color2D shader (renders vertex colors).
     // EMT_SOLID forces depth write ON in the driver, so we override with raw GL
-    // after setMaterial() calls.
+    // after setMaterial() calls. BackfaceCulling=false keeps the driver's cull
+    // cache at "off"; the hull's front-face cull is raw GL below and is undone
+    // before returning, so that cache stays true.
     irr::video::SMaterial outlineMat;
     outlineMat.Lighting = false;
-    outlineMat.ZBuffer = irr::video::ECFN_LESSEQUAL;
+    outlineMat.ZBuffer = plan.depthLessEqual ? irr::video::ECFN_LESSEQUAL : irr::video::ECFN_LESS;
     outlineMat.BackfaceCulling = false;
     outlineMat.MaterialType = irr::video::EMT_SOLID;
-
-    // --- Pass 1: Write stencil at normal scale (no color output) ---
-    // Depth test ON (only mark visible pixels), depth write OFF, color OFF.
-    glEnable(GL_STENCIL_TEST);
-    glStencilFunc(GL_ALWAYS, STENCIL_REF, 0xFF);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-
-    ctx_.driver->setTransform(irr::video::ETS_WORLD, normalTransform);
-    ctx_.driver->setMaterial(outlineMat);
-    // Override depth write after setMaterial (EMT_SOLID forces it ON)
-    glDepthMask(GL_FALSE);
-    for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
-        irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(i);
-        if (mb) ctx_.driver->drawMeshBuffer(mb);
-    }
-
-    // --- Pass 2: Draw outline at scaled-up size (only where stencil != ref) ---
-    // Depth test ON with LESSEQUAL so outline is occluded by closer geometry (pet, etc.)
-    // but draws over geometry behind/at the target.
-    glStencilFunc(GL_NOTEQUAL, STENCIL_REF, 0xFF);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
     // Rotating outline color: cycle hue over time (full rotation every 3 seconds)
     static float outlineHue = 0.0f;
@@ -528,7 +520,11 @@ void OverlaysComponent::drawTargetOutline() {
     ctx_.driver->setTransform(irr::video::ETS_WORLD, outlineTransform);
     ctx_.driver->setMaterial(outlineMat);
     // Override depth write after setMaterial (don't contaminate depth buffer)
-    glDepthMask(GL_FALSE);
+    glDepthMask(plan.depthWrite ? GL_TRUE : GL_FALSE);
+    if (plan.cull != TargetOutlinePass::Cull::None) {
+        glEnable(GL_CULL_FACE);
+        glCullFace(plan.cull == TargetOutlinePass::Cull::Front ? GL_FRONT : GL_BACK);
+    }
     for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
         irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(i);
         if (mb) ctx_.driver->drawMeshBuffer(mb);
@@ -544,9 +540,11 @@ void OverlaysComponent::drawTargetOutline() {
             verts[v].Color = white;
     }
 
-    // --- Cleanup: restore to defaults matching SOGLES2State::reset() ---
-    glDisable(GL_STENCIL_TEST);
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    // --- Cleanup: back to what the driver's state cache holds (cull off,
+    // face GL_BACK, depth write on -- SOGLES2State::reset() and setMaterial()
+    // above). No stencil state was touched.
+    glCullFace(GL_BACK);
+    glDisable(GL_CULL_FACE);
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
 }
