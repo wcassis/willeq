@@ -360,6 +360,33 @@ expected_for() {
     esac
 }
 face_open() { face_buttons_text '200x55+0+485' | grep -qiE 'Random|Accept|Cancel'; }
+# B888-CC1 (#204): the Set Face OPEN click. matrix3 (the reference stock
+# capture, oracle/matrix_capture3.sh, which rendered all 26 pairs' picker
+# rows) opens Set Face with a net-ZERO drag: mousedown, move +1,+1, move BACK
+# to the start, then mouseup -- its comment is "the net-zero drag keeps the
+# popup stationary". The ui-lib jclick used by every earlier capture leg is a
+# 1px NET drag (mousedown, move +1,+1, mouseup, no move-back), and on this
+# client that opens the modal in the half-open "FACE + buttons only" state
+# with the picker LIST never rendered (the full26/pilot failure: all pairs
+# stilled showing only the FACE row). The net-zero drag is the one matrix3
+# proved renders the full list, so the open uses exactly its sequence.
+face_open_click() {
+    local x=$1 y=$2
+    xdotool mousemove "$x" "$y"
+    sleep 0.4
+    xdotool mousemove "$((x+1))" "$y"
+    sleep 0.2
+    xdotool mousemove "$x" "$y"
+    sleep 0.4
+    xdotool mousedown 1
+    sleep 0.35
+    xdotool mousemove "$((x+1))" "$((y+1))"
+    sleep 0.3
+    xdotool mousemove "$x" "$y"  # net-zero drag keeps the popup stationary
+    sleep 0.2
+    xdotool mouseup 1
+    sleep 0.3
+}
 face_buttons_text() {
     # The modal's own three bottom buttons (window at 1280x1024: (0,374)
     # 175x215 image-space, i.e. (0,404) root; Random/Accept/Cancel at root
@@ -961,7 +988,7 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             # once and settle until the list is on screen.
             for open_attempt in 1 2 3 4 5; do
                 face_open && break
-                jclick 37 252; sleep 3
+                face_open_click 37 251; sleep 2
                 xdotool mousemove 600 900
             done
             face_open || { shot "$name-face-missing"; echo 'facepick-rows: modal did not open' >&2; exit 65; }
@@ -994,7 +1021,7 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
                 face_open && { shot "$name-close-failed"; echo 'facepick-rows: modal still open after Cancel retries' >&2; exit 65; }
                 for open_attempt in 1 2 3 4 5; do
                     face_open && break
-                    jclick 37 252; sleep 3
+                    face_open_click 37 251; sleep 2
                     xdotool mousemove 600 900
                 done
                 face_open || { shot "$name-face-missing2"; echo 'facepick-rows: modal not open after re-open' >&2; exit 65; }
