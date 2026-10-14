@@ -336,6 +336,7 @@ SET(COMMON_SOURCES
 SET(CLIENT_CORE_SOURCES
     src/client/core/everquest.cpp
     src/client/core/memory_ledger.cpp
+    src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
     src/client/core/memory_ledger_trace.cpp
     src/client/core/gpu_buffer_census.cpp
     src/client/core/gl_driver_census.cpp  # B946 (GitLab #264): the [gldriver] line
@@ -1246,6 +1247,7 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         src/client/graphics/eq/model_loading_chr.cpp
         src/client/graphics/eq/model_loading_search.cpp
         src/client/core/memory_ledger.cpp  # T500: model_loading_search.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/mesh_building.cpp
@@ -1383,6 +1385,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -1462,6 +1465,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -1667,6 +1671,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -1745,6 +1750,7 @@ IF(EQT_GRAPHICS)
         src/client/zone_bsp.cpp
         src/client/graphics/eq/s3d_loader.cpp
         src/client/core/memory_ledger.cpp  # T504c: s3d_loader.cpp reads eqt::memory::stats()
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/graphics/eq/s3d_loader_textures.cpp
@@ -2284,6 +2290,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_zone_benchmark
         tools/hwcaps/gles2_zone_benchmark.cpp
         src/client/core/memory_ledger.cpp
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp   # B1016: the gate's [gldriver] net
@@ -2488,6 +2495,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_shader_diagnostic
         tools/hwcaps/gles2_shader_diagnostic.cpp
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
@@ -2612,6 +2620,7 @@ IF(EQT_GRAPHICS)
     ADD_EXECUTABLE(gles2_composite_audit
         tools/hwcaps/gles2_composite_audit.cpp
         src/client/core/memory_ledger.cpp  # T491: zone_bench_loader.cpp records ledger points
+        src/client/core/memory_ledger_b924.cpp  # B924: noteRenderedFrame/renderedFrames/idleMemmapEnabled
         src/client/core/memory_ledger_trace.cpp
         src/client/core/gpu_buffer_census.cpp
         src/client/core/gl_driver_census.cpp  # B1016: zone_bench_loader.cpp emits the [gldriver] line
