@@ -368,6 +368,7 @@ IF(NOT APPLE)
     ADD_EXECUTABLE(test_memory_ledger
         test_memory_ledger.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
     )
@@ -440,6 +441,7 @@ ENDIF()
 ADD_EXECUTABLE(test_gpu_buffer_census
     test_gpu_buffer_census.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
 )
