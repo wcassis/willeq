@@ -217,6 +217,11 @@ int g_b1051LastMatType = -1;
 // read-back still discriminates.
 typedef void (*B1051GetTexLevelParamFn)(GLenum, GLint, GLenum, GLint*);
 B1051GetTexLevelParamFn g_b1051GetTexLevelParam = nullptr;
+// GL_TEXTURE_WIDTH is the per-level width pname (0x1000, shared with the 1D
+// width) — not in the GLES2 core header, so define it for the trace read.
+#ifndef GL_TEXTURE_WIDTH
+#define GL_TEXTURE_WIDTH 0x1000
+#endif
 
 void alphaTraceDraw(const irr::video::ITexture* tex)
 {
