@@ -41,7 +41,8 @@ selected_at() {
     # The selected label is yellow; enabled but unselected labels are white.
     # ImageMagick preserves import's root-screen virtual page offset (+0,+30).
     # Both click and crop therefore use the table's root-screen coordinates.
-    local label=$1 x=$2 y=$3 image=$DIR/selected-$label.png mean
+    local label=$1 x=$2 y=$3
+    local image="$DIR/selected-$label.png" mean
     import -window root -crop 1280x800+0+30 "$image" 2>/dev/null || return 65
     mean=$(convert "$image" -crop "95x18+$((x-45))+$((y-9))" +repage \
         -fuzz 25% -fill black +opaque yellow -colorspace Gray -negate \
@@ -108,6 +109,15 @@ if [[ $ACTION == selftest ]]; then
     [[ $(expected_for create Testname) == window:EverQuest ]] || exit 1
     DIR=$2
     shot() { touch "$DIR/$1.png"; }
+    # selected_at must run with NO caller-scoped 'label' (fix2f crashed
+    # "line 44: label: unbound variable" once a consolidated check called it
+    # directly): stub only the imaging, use the real function.
+    import() { local f; f=$(echo "$@" | awk '{print $NF}'); : >"$f"; }
+    convert() { echo 0.5; }
+    race=Barbarian class=Warrior gender=Male race_row=291 class_row=627
+    selected_at "$race" 53 "$race_row" || { echo "selected_at crashed without caller label"; exit 1; }
+    selected_at "$class" 153 "$class_row" || { echo "selected_at crashed without caller label"; exit 1; }
+    selected_at "$gender" 105 252 || { echo "selected_at crashed without caller label"; exit 1; }
     SCREEN_TEXT='Character Creation'
     screen_text() { echo "$SCREEN_TEXT"; }
     assert_visible 'Character Creation' positive || exit 1
@@ -293,6 +303,13 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             xdotool key a; xdotool key BackSpace
             xdotool type --delay 100 "$target"; sleep 2
             shot "$name-before-submit"
+            # The submit clicks below still touch the shared selection cursor
+            # (fix2e's packet decoded race=7 although the attribute still
+            # showed Barbarian): re-verify the selected state right before
+            # submit, not only right after the selection clicks.
+            selected_at "$race" 53 "$race_row" || exit 65
+            selected_at "$class" 153 "$class_row" || exit 65
+            selected_at "$gender" "$(gender_x "$gender")" 252 || exit 65
             submitted=0
             for attempt in 1 2 3 4 5; do
                 jclick 1243 54; sleep 12
