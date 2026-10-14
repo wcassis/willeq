@@ -20,6 +20,7 @@
 #include "client/events/renderer_intents.h"
 #include "common/logging.h"
 #include "common/performance_metrics.h"
+#include "client/core/memory_ledger.h"  // B924: noteRenderedFrame()
 #include <fmt/format.h>
 #include <algorithm>
 #include <chrono>
@@ -95,6 +96,9 @@ bool FrameComponent::processFrame(float deltaTime) {
     // Update FPS
     irr::u32 currentTime = ctx_.device->getTimer()->getTime();
     frameCount_++;
+    // B924: one relaxed atomic touch per frame (the ledger's own per-frame
+    // cost is zero) plus the WILLEQ_FPS_CAP pace when set.
+    eqt::memory::noteRenderedFrame();
     if (currentTime - lastFpsTime_ >= 1000) {
         currentFps_ = frameCount_;
         frameCount_ = 0;

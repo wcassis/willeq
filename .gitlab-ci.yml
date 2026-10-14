@@ -142,7 +142,8 @@ workflow:
       echo "ccache: ${CCACHE_CMAKE_ARGS}"
 
 # B1042 (#362): DOCS-ONLY DIFFS SKIP THE C++ JOBS. A job carrying these rules
-# (build-test, gate, client-ledger-live) is added only when at least one
+# (build-test, gate, zone-budget-census, client-ledger-live) is added only when
+# at least one
 # changed path does NOT end in `.md`; `hygiene` has no rules and always runs,
 # so a docs-only pipeline is hygiene alone and still ends `success` (what the
 # merge gate reads). "Docs-only" is deliberately just `*.md`, anywhere
@@ -580,4 +581,74 @@ gate:
     paths:
       - gate.log
       - build-gles2/ref/*/ci_artifacts/
+
+# B929 (#247): the zone budget census -- every era zone against every budget.
+# The blocking `gate` above asserts the five manifest zones; this job sweeps
+# ALL of scripts/ci/zone_content_sweep_zones.tsv (the 118-zone T490 census,
+# B852's list) and asserts, per zone: every estimate budget pair the gate
+# checks (placeableObjectsBytes and the rest of MEMORY_BUDGET_PAIRS minus the
+# two also-baselined) AND every memoryLedgerBudgets category, all against the
+# budgets the benchmark read out of the shipped orangepi preset -- the same
+# numbers the gate compares against, so config/constrained_presets.json stays
+# the single source and a zone over ANY budget fails the pipeline (B929's
+# growthplane sat at 28,687,788 B of placeableObjectsBytes against 25,165,824
+# with nothing asserting it: refactor/B927/category_census.tsv, the issue's
+# own evidence).
+#
+# The full census is too slow for the ctest suite: 118 sequential
+# gles2_zone_benchmark zone loads measured 246 s of zone time + the
+# script's own 2 s polling ticks = 4m46s on the runner-class host's
+# llvmpipe (refactor/B929/README.md), so it runs HERE, in the gate stage.
+# It is BLOCKING (allow_failure false, no retries): the gate's 3 in-script
+# retries exist because its CPU-p95 assertion is load-sensitive; the census
+# asserts memory figures that are load-invariant by construction
+# (platform-independent vertex/index sums and allocator-ledger live bytes at
+# a fixed lifecycle point -- B927/README.md), so a retry would only mask a
+# real over-budget zone. The budgets are BLESS-ONLY (Will): the job reads
+# them and fails against them; a red row is code to fix, never a number to
+# move (the ratchet-down rule, docs/ci.md).
+#
+# Same shape as the `gate` job: .visual_gate_prepare builds the benchmark
+# into $GLES2_TREE in this job (the per-ref warm tree), so the binary it
+# sweeps is this host's build of this commit. The ctest legs of the same
+# net: test_zone_budget_census (pure python, every pipeline) and
+# zone_budget_census_smoke (the 3-zone smoke, label slow, in build-test).
+zone-budget-census:
+  extends: .goldfarm
+  stage: gate
+  allow_failure: false
+  needs: []
+  rules: !reference [.code_rules, rules]
+  script:
+    - !reference [.visual_gate_prepare, script]
+    - |
+      # B929: heal stale EQE1 packs (B930's soldunga signature) into a local
+      # pack tree the sweep reads (--eqe1-path below). The NFS pack tree is
+      # read-only for the runner, so clean packs are linked and stale ones
+      # rebuilt into $GLES2_TREE (the per-ref build tree this job owns);
+      # the tools build there on demand.
+      nice -n 10 cmake --build "$GLES2_TREE" --target verify_eqe1 eqe1_builder -j "$JOBS" 2>&1 | tail -n 10
+      nice -n 10 bash scripts/ci/zone_census_pack_selfheal.sh \
+        --verify "$GLES2_TREE/bin/verify_eqe1" \
+        --builder "$GLES2_TREE/bin/eqe1_builder" \
+        --eq-path data/eq_client --pack-dir data/eqe1_client \
+        --out-dir "$GLES2_TREE/b929_packs" 2>&1 | tee census-pack-heal.log
+    - |
+      set -o pipefail
+      nice -n 10 bash scripts/ci/zone_content_sweep.sh \
+        --out-dir "$GLES2_TREE/b929_census" \
+        --bench-bin "$GLES2_TREE/bin/gles2_zone_benchmark" \
+        --eqe1-path "$GLES2_TREE/b929_packs" 2>&1 | tee census-sweep.log
+      nice -n 10 python3 scripts/ci/zone_budget_census.py --check-budgets \
+        --sweep-dir "$GLES2_TREE/b929_census" \
+        --out census-budget-rows.tsv 2>&1 | tee census-budget.log
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - census-sweep.log
+      - census-pack-heal.log
+      - census-budget.log
+      - census-budget-rows.tsv
+      - build-gles2/ref/*/b929_census/results.tsv
 

@@ -93,6 +93,12 @@ IF(EQT_GRAPHICS AND EQT_GLES2 AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
     TARGET_INCLUDE_DIRECTORIES(test_drm_flip_tracker PRIVATE ${CMAKE_SOURCE_DIR})
     TARGET_LINK_LIBRARIES(test_drm_flip_tracker GTest::gtest_main)
     GTEST_DISCOVER_TESTS(test_drm_flip_tracker DISCOVERY_TIMEOUT 120)
+
+    # B961: the device's scanout-framebuffer tally (header-only, no GBM).
+    ADD_EXECUTABLE(test_scanout_buffer_tally test_scanout_buffer_tally.cpp)
+    TARGET_INCLUDE_DIRECTORIES(test_scanout_buffer_tally PRIVATE ${CMAKE_SOURCE_DIR})
+    TARGET_LINK_LIBRARIES(test_scanout_buffer_tally GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_scanout_buffer_tally DISCOVERY_TIMEOUT 120)
 ENDIF()
 
 # Test packet serialization - packet.cpp uses fmt
@@ -368,6 +374,7 @@ IF(NOT APPLE)
     ADD_EXECUTABLE(test_memory_ledger
         test_memory_ledger.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+        ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
     )
@@ -440,6 +447,7 @@ ENDIF()
 ADD_EXECUTABLE(test_gpu_buffer_census
     test_gpu_buffer_census.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger.cpp
+    ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_b924.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/memory_ledger_trace.cpp
     ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
 )
