@@ -509,3 +509,20 @@ IF(WITH_AUDIO)
         GTest::gtest_main ${AUDIO_COMMON_TEST_LIBS} Threads::Threads)
     GTEST_DISCOVER_TESTS(test_sfx_single_pcm_cache DISCOVERY_TIMEOUT 120)
 ENDIF()
+
+# B1069 (#389): the playback DEVICE rate -- audio.device_sample_rate /
+# --audio-rate (default 48000, 0 = native), DeviceRateAdapter's frame counts
+# (22050 mixer -> 48000 device, no drift over 10 s), and MiniaudioBackend on
+# miniaudio's NULL backend (no audio hardware needed) with its init log line.
+# Links willeq_core for Application::parseArguments/loadConfigFile and the
+# audio TUs, the test_vendor_music_config_warn shape.
+IF(WITH_AUDIO)
+    ADD_EXECUTABLE(test_audio_device_rate
+        test_audio_device_rate.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_audio_device_rate PRIVATE ${IRRLICHT_INCLUDE_DIR})
+    TARGET_COMPILE_DEFINITIONS(test_audio_device_rate PRIVATE WITH_AUDIO)
+    TARGET_LINK_LIBRARIES(test_audio_device_rate
+        GTest::gtest_main willeq_core ${JSONCPP_LIBRARIES} ${FMT_LIB})
+    GTEST_DISCOVER_TESTS(test_audio_device_rate DISCOVERY_TIMEOUT 120)
+ENDIF()
