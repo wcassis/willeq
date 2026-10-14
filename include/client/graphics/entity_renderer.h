@@ -429,14 +429,6 @@ public:
                                                   irr::video::SColor color, const irr::core::vector3df& offset);
     void releaseNameTagBatch();  // destructor only: every tag holds its own reference
 
-    // B1051 (GitLab #371): set the GL_RENDERER string captured from the
-    // driver (called once at init, when the context is guaranteed current).
-    // isPanfrostRenderer() over it (panfrost_gate.h) selects the ETC1-masked
-    // material variant in applyAlphaTestMaterialType(). Empty = unknown
-    // driver (llvmpipe x86 reports "llvmpipe (Mesa ...)", which classifies
-    // as NOT Panfrost, so the x86 path is byte-identical to pre-B1051).
-    void setGlRendererString(const std::string& renderer) { glRendererString_ = renderer; }
-
     // Enable/disable lighting on entity materials
     void setLightingEnabled(bool enabled);
 
@@ -861,13 +853,6 @@ private:
     irr::s32 shaderMaterialSolid_ = -1;
     irr::s32 shaderMaterialAlphaTest_ = -1;
     irr::s32 shaderMaterialAlphaTestRGBA_ = -1;  // P21: H02d Option-A main-texture-alpha variant
-    // B1051 (GitLab #371): the driver's GL_RENDERER string (set once at
-    // init via setGlRendererString()). isPanfrostRenderer() over it (see
-    // panfrost_gate.h) selects the ETC1-masked material variant in
-    // applyAlphaTestMaterialType(). Empty = unknown driver (llvmpipe x86
-    // reports "llvmpipe (Mesa ...)", which classifies as NOT Panfrost, so
-    // the x86 path is byte-identical to pre-B1051).
-    std::string glRendererString_;
 
     // Visibility settings
     float renderDistance_ = 300.0f;   // Max distance to render entity models (synced from main renderer)
