@@ -119,7 +119,8 @@ done
 # exit 0 (the smoke's RED case must be loud, not hollow): validate up front.
 if [ -n "${SWEEP_ZONES:-}" ]; then
     for z in ${SWEEP_ZONES//,/ }; do
-        if ! grep -P "^$z\t" "$LIST" >/dev/null; then
+        # B1044: awk, not GNU grep -P (macOS's BSD grep has no -P).
+        if ! awk -F'\t' -v z="$z" '$1 == z { found = 1 } END { exit !found }' "$LIST"; then
             echo "FATAL: --zones names unknown zone '$z' (not in $LIST; regenerate the list with scripts/ci/zone_content_sweep_zones.py)" >&2
             exit 3
         fi
