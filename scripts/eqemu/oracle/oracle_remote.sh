@@ -267,9 +267,21 @@ kill -0 "$(cat "$DIR/pcap.pid")" 2>/dev/null || exit 65
 kill -0 "$(cat "$DIR/video.pid")" 2>/dev/null || exit 65
 # A visible onset lets the report reject a wall-clock/video mapping that is
 # more than one frame off. The marker is removed before Wine launches.
-xmessage -title ORACLE_TIMING_MARKER -geometry 420x80+400+350 'ORACLE TIMING MARKER' >"$DIR/marker.log" 2>&1 &
-marker_pid=$!
-xdotool search --sync --name '^ORACLE_TIMING_MARKER$' >/dev/null || exit 65
+# B1057: lane 5's :99 is a long-lived Xorg whose screen saver is usually
+# active when a session starts (Xvfb on lanes 1-4 is fresh); reset it so the
+# capture starts on a live screen. The marker wait is bounded: lane-5 attempt
+# 1 drew the marker on screen but xdotool never found its window and the
+# unbounded --sync hung the session. One relaunch, then fail cleanly.
+xset s reset 2>/dev/null || :
+for marker_try in 1 2; do
+    xmessage -title ORACLE_TIMING_MARKER -geometry 420x80+400+350 'ORACLE TIMING MARKER' >>"$DIR/marker.log" 2>&1 &
+    marker_pid=$!
+    timeout 20 xdotool search --sync --name '^ORACLE_TIMING_MARKER$' >/dev/null && break
+    echo "timing marker not found (try $marker_try)" >>"$DIR/marker.log"
+    kill "$marker_pid" 2>/dev/null || :
+    wait "$marker_pid" 2>/dev/null || :
+    [[ $marker_try == 2 ]] && exit 65
+done
 printf '%s\n' "$(stamp)" >"$DIR/video.marker.epoch"
 shot timeline_begin || exit 65
 sleep 3
