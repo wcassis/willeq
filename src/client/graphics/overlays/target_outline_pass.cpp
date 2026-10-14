@@ -9,6 +9,7 @@ namespace TargetOutlinePass {
 Plan plan(int /*stencilBits*/) {
 	Plan p;
 	p.usesStencil = false;
+	p.depthPrepass = true;
 	p.cull = Cull::Front;
 	p.scale = kScale;
 	p.depthWrite = false;

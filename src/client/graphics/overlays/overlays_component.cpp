@@ -443,11 +443,12 @@ void OverlaysComponent::drawTargetOutline() {
 
     // B1064 (#384): an INVERTED HULL, not a stencil rim. The surface may
     // have no stencil planes at all (the orangepi preset, B971), where the
-    // old two-pass stencil rim painted the whole inflated model. The plan is
-    // one draw of the scaled mesh, front faces culled, depth LESSEQUAL, no
-    // depth write: inside the silhouette the hull's back faces lie behind
-    // the model's depth, outside it they are the rim. See
-    // include/client/graphics/overlays/target_outline_pass.h.
+    // old two-pass stencil rim painted the whole inflated model. The plan:
+    // a depth-only pre-pass of the unscaled mesh (the target's own depth,
+    // also when the scene drew it as an impostor billboard), then the scaled
+    // mesh with front faces culled, depth LESSEQUAL, no depth write: inside
+    // the silhouette the hull's back faces lie behind that depth, outside it
+    // they are the rim. See include/client/graphics/overlays/target_outline_pass.h.
     static const GLint surfaceStencilBits = [] {
         GLint bits = 0;
         glGetIntegerv(GL_STENCIL_BITS, &bits);
@@ -483,6 +484,21 @@ void OverlaysComponent::drawTargetOutline() {
     outlineMat.ZBuffer = plan.depthLessEqual ? irr::video::ECFN_LESSEQUAL : irr::video::ECFN_LESS;
     outlineMat.BackfaceCulling = false;
     outlineMat.MaterialType = irr::video::EMT_SOLID;
+
+    // --- Pass 1 (plan.depthPrepass): the target's depth at normal scale,
+    // no colour. Where the scene drew the model this rewrites the same
+    // depth; where it drew an impostor (or nothing) it supplies it.
+    if (plan.depthPrepass) {
+        ctx_.driver->setTransform(irr::video::ETS_WORLD, normalTransform);
+        ctx_.driver->setMaterial(outlineMat);  // EMT_SOLID: depth write on
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glDepthMask(GL_TRUE);
+        for (irr::u32 i = 0; i < mesh->getMeshBufferCount(); ++i) {
+            irr::scene::IMeshBuffer* mb = mesh->getMeshBuffer(i);
+            if (mb) ctx_.driver->drawMeshBuffer(mb);
+        }
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    }
 
     // Rotating outline color: cycle hue over time (full rotation every 3 seconds)
     static float outlineHue = 0.0f;

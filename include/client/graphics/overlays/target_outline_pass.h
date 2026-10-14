@@ -9,11 +9,16 @@
  * inflated model as one flat-colour silhouette (Will's XU4 screenshot,
  * review/B1064/xu4_dionna_qeynos_2026-10-14.png).
  *
- * The outline is now an INVERTED HULL: one draw of the scaled mesh with its
- * front faces culled, depth test LESSEQUAL, depth write off. Inside the
- * model's silhouette the hull's back faces lie behind the model's own depth
- * and fail the test; outside it they are the rim. No stencil, on any
- * surface: plan() never asks for one, whatever the surface has.
+ * The outline is now an INVERTED HULL in two draws, neither touching the
+ * stencil: (1) a DEPTH-ONLY pre-pass of the unscaled mesh (colour writes off,
+ * depth write on, LESSEQUAL) -- the target's own depth, present even when the
+ * scene drew it as an impostor billboard or not at all (beyond
+ * impostorTierDistance the target is a billboard, and without this pass the
+ * hull painted solid: review/B1064/x86/README.md); (2) the scaled mesh with
+ * its front faces culled, depth LESSEQUAL, depth write off. Inside the
+ * silhouette the hull's back faces lie behind the pre-pass depth and fail the
+ * test; outside it they are the rim. plan() never asks for a stencil,
+ * whatever the surface has.
  *
  * Device-free: plain values the overlay applies with raw GL
  * (OverlaysComponent::drawTargetOutline()). Irrlicht appears only as the
@@ -35,9 +40,10 @@ enum class Cull { None, Front, Back };
 
 struct Plan {
 	bool usesStencil;    // never true (B1064)
+	bool depthPrepass;   // true: unscaled mesh, colour off, depth write on
 	Cull cull;           // Front: keep the hull's back faces = the rim
 	float scale;         // kScale
-	bool depthWrite;     // false: the outline never contaminates depth
+	bool depthWrite;     // false: the hull itself writes no depth
 	bool depthLessEqual; // true: closer geometry (a pet) still occludes it
 };
 

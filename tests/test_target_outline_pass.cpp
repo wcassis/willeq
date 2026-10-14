@@ -3,7 +3,9 @@
 // What is pinned:
 //   * TargetOutlinePass::plan() never asks for the stencil, whatever the
 //     surface has (0 planes is the orangepi preset since B971), and its pass
-//     is the inverted hull: front faces culled, depth LESSEQUAL, no depth
+//     is the inverted hull: a depth-only pre-pass of the unscaled mesh (the
+//     target's own depth, also when the scene drew it as an impostor), then
+//     the scaled mesh with front faces culled, depth LESSEQUAL, no depth
 //     write, the 1.10 scale;
 //   * outlineTransform() composes the uniform scale about the entity origin
 //     onto the draw's own world transform -- checked element by element
@@ -51,6 +53,7 @@ TEST(TargetOutlinePass, NeverUsesTheStencilOnAnySurface) {
 	for (int bits : {0, 1, 4, 8, 16, -1}) {
 		const TOP::Plan p = TOP::plan(bits);
 		EXPECT_FALSE(p.usesStencil) << "stencilBits=" << bits;
+		EXPECT_TRUE(p.depthPrepass) << "stencilBits=" << bits;
 		EXPECT_EQ(p.cull, TOP::Cull::Front) << "stencilBits=" << bits;
 		EXPECT_FALSE(p.depthWrite) << "stencilBits=" << bits;
 		EXPECT_TRUE(p.depthLessEqual) << "stencilBits=" << bits;
@@ -62,6 +65,7 @@ TEST(TargetOutlinePass, TheSameSinglePathWithAndWithoutAStencil) {
 	const TOP::Plan none = TOP::plan(0);
 	const TOP::Plan s8 = TOP::plan(8);
 	EXPECT_EQ(none.usesStencil, s8.usesStencil);
+	EXPECT_EQ(none.depthPrepass, s8.depthPrepass);
 	EXPECT_EQ(none.cull, s8.cull);
 	EXPECT_EQ(none.depthWrite, s8.depthWrite);
 	EXPECT_EQ(none.depthLessEqual, s8.depthLessEqual);
@@ -125,6 +129,7 @@ TEST(TargetOutlinePass, TheOverlayDrawsThePlanAndTouchesNoStencil) {
 	ASSERT_FALSE(body.empty()) << "drawTargetOutline() not found in " << TARGET_OUTLINE_OVERLAY_SOURCE;
 	EXPECT_NE(body.find("TargetOutlinePass::plan("), std::string::npos);
 	EXPECT_NE(body.find("TargetOutlinePass::outlineTransform("), std::string::npos);
+	EXPECT_NE(body.find("plan.depthPrepass"), std::string::npos);
 	EXPECT_EQ(body.find("GL_STENCIL_TEST"), std::string::npos);
 	EXPECT_EQ(body.find("glStencilFunc"), std::string::npos);
 	EXPECT_EQ(body.find("glStencilOp"), std::string::npos);
