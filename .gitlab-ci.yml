@@ -142,7 +142,8 @@ workflow:
       echo "ccache: ${CCACHE_CMAKE_ARGS}"
 
 # B1042 (#362): DOCS-ONLY DIFFS SKIP THE C++ JOBS. A job carrying these rules
-# (build-test, gate, client-ledger-live) is added only when at least one
+# (build-test, gate, zone-budget-census, client-ledger-live) is added only when
+# at least one
 # changed path does NOT end in `.md`; `hygiene` has no rules and always runs,
 # so a docs-only pipeline is hygiene alone and still ends `success` (what the
 # merge gate reads). "Docs-only" is deliberately just `*.md`, anywhere

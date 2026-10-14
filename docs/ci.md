@@ -213,6 +213,7 @@ longer downloads them: SourceForge returned HTTP 522 for ~3 h on 2026-10-01 and 
 | `build` (`build-headless`, B1038) | the same Release build with `EQT_GRAPHICS=OFF` into `build-headless/ref/<slug>`, then `ctest -LE hygiene` in the same job ("The headless build" below) | not yet measured on a runner; dev-u24 `-j4`: ~1,920 s cold (B1038) | not measured |
 | `gate` | `visual_gate` (T80/T291) over `build-gles2/ref/<slug>/bin/gles2_zone_benchmark` (B1012) | 363 s | 18 s |
 | | B813 (2026-09-20): the manifest names FIVE zones (qeynos2, gfaydark, befallen + iceclad + timorous); `gate` verifies all five (`--zones`, B903/B904 2026-09-29) | — | 40 s for all five in one job (measured back-to-back on a quiet hermes-ext: 10.6 s wall for three zones, 19.6 s wall for five; +9.0 s wall) |
+| | B929 (#247): `zone-budget-census`, the full 118-zone sweep + `zone_budget_census.py --check-budgets` ("The zone-content sweep" below) | not yet measured on a runner; hermes-ext: 4 m 46 s of zone time + benchmark build | 4 m 46 s of zone time (warm benchmark build) |
 
 (T502's own measurements on hermes-ext, when build and suite were still two
 jobs; the suite does the same work either way — only the two build trees are
@@ -359,7 +360,8 @@ that will never get an MR (an experiment you want CI on) is pushed without it.
 
 ### Docs-only pipelines run hygiene only (B1042, #362)
 
-`build-test`, `gate` and `client-ledger-live` (and `build-headless`, B1038)
+`build-test`, `gate`, `zone-budget-census` (B929) and `client-ledger-live`
+(and `build-headless`, B1038)
 carry `rules:` (the `.code_rules` anchor in `.gitlab-ci.yml`) that add the job
 only when **at least one changed path does not end in `.md`**. `hygiene` has no
 rules and always runs, so a pipeline whose diff is only `*.md` files — anywhere,
