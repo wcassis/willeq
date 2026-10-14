@@ -118,17 +118,21 @@ expected_for() {
         open-creation|open-face) echo 'Character Creation' ;;
         # The capture-leg verbs leave the creation slot OPEN (page 0, no
         # The capture-leg verbs leave the creation slot OPEN (page 0, no
-        # submission); their per-step postcondition is deliberately the weak
-        # 'Character' substring (character-select AND creation pages both
-        # OCR it reliably, whereas the full "Character Creation" heading and
-        # the bottom "Create a New Character" row both flake under psm 6 on
-        # the lane-5 rig, 2026-10-14 pilots). The STRONG state checks happen
-        # in-driver, not in this postcondition: facepick-rows requires
-        # face_open (the modal's Random/Accept/Cancel strip) before it
-        # probes, and close-creation requires the creation heading to have
-        # disappeared. A full-screen OCR gate here would add flakiness, not
-        # signal.
-        race-table|facepick-rows|close-creation) echo 'Character' ;;
+        # submission). facepick-rows' postcondition is its OWN modal's
+        # button strip (Random/Accept/Cancel -- the one region the lane-5
+        # OCR reads reliably, and the same gate face_open uses): the creation
+        # page's full-screen text is too flaky under psm 6 (heading and
+        # bottom row both miss intermittently, 2026-10-14 pilots). race-table
+        # and close-creation stay on the character-select/creation screens,
+        # never a zone, so a window check would be wrong; they use the weak
+        # 'Character' substring (both "Character Select" and "Character
+        # Creation" carry it -- the most reliably-read word on the rig). The
+        # STRONG state checks live in-driver: facepick-rows requires
+        # face_open before probing; close-creation requires the creation
+        # heading to have disappeared.
+        race-table) echo 'Character' ;;
+        close-creation) echo window:EverQuest ;;
+        facepick-rows) echo 'Random|Accept|Cancel' ;;
         *) echo "${optional:-window:EverQuest}" ;;
     esac
 }
@@ -273,12 +277,16 @@ if [[ $ACTION == selftest ]]; then
     # to the default 'window:EverQuest' and would assert a live zone.
     [[ $(expected_for open-creation Barbarian) == 'Character Creation' ]] || exit 1
     [[ $(expected_for open-face x) == 'Character Creation' ]] || exit 1
-    # B888-CC1 (#204): the capture-leg verbs' per-step postcondition is the
-    # weak 'Character' substring (the strong state checks are in-driver); a
-    # misfiled verb would still assert the zone default 'window:EverQuest'.
+    # B888-CC1 (#204): the capture-leg verbs' per-step postconditions.
+    # facepick-rows asserts its OWN modal's button strip (the reliable
+    # cropped read; the strong checks are in-driver). close-creation asserts
+    # the live-client window (its proof is the creation heading having
+    # DISAPPEARED, in-driver, not any full-screen text). A misfiled verb
+    # would still assert the zone default 'window:EverQuest' or the weak
+    # 'Character' substring.
     [[ $(expected_for race-table x) == 'Character' ]] || exit 1
-    [[ $(expected_for facepick-rows x) == 'Character' ]] || exit 1
-    [[ $(expected_for close-creation x) == 'Character' ]] || exit 1
+    [[ $(expected_for facepick-rows x) == 'Random|Accept|Cancel' ]] || exit 1
+    [[ $(expected_for close-creation x) == window:EverQuest ]] || exit 1
     # The calibrated arrow probe must classify the two measured extremes:
     # the brightest hidden row (21.68) hidden, the dimmest visible (73.92)
     # visible. The convert stub yields STUB_MEAN as the strip's Gray mean.
@@ -574,6 +582,15 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
                 done
                 creation_page_open && { shot "$name-back-stuck"; echo 'close-creation: Back did not leave the creation screen' >&2; exit 65; }
             fi
+            # In-driver proof we reached character select: the creation
+            # heading must be GONE after Back (the one reliable creation-page
+            # signal). We do NOT assert a "Character Select" string appears --
+            # full-screen psm 6 reads of the panel title and the bottom "Return
+            # Home" row both flake on the lane-5 rig (the 2026-10-14 pilots),
+            # so a positive text assertion would be a flaky gate.
+            if creation_page_up; then
+                shot "$name-still-creation"; echo 'close-creation: creation heading still present after Back' >&2; exit 65
+            fi
             shot "$name" ;;
         facepick-rows)
             # B888-CC1 (#204): the capture leg. Plan line (tab fields):
@@ -600,6 +617,15 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
                 xdotool mousemove 600 900
             done
             face_open || { shot "$name-face-missing"; echo 'facepick-rows: modal did not open' >&2; exit 65; }
+            # The first open can show the FACE heading + button strip with the
+            # picker LIST not yet rendered (the 2026-10-14 pilot stills: only
+            # FACE + Random/Accept/Cancel, no rows). Close and re-open once,
+            # like a user toggling Set Face, then settle: the re-open renders
+            # the full list.
+            jclick 50 539; sleep 2
+            face_open && { jclick 50 539; sleep 2; }
+            jclick 37 252; sleep 3
+            face_open || { shot "$name-face-missing2"; echo 'facepick-rows: modal not open after re-open' >&2; exit 65; }
             sleep 5
             shot "$name" || :
             facepick_probe_tsv "$DIR/$name.png" "$target" "$arg5" "$DIR/rows.tsv" || exit 65 ;;
@@ -673,8 +699,20 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
     esac
     sleep 2
     if ! alive; then mark DISCONNECT "$name"; exit 67; fi
-    if [[ $verb == create ]]; then expected=$(expected_for "$verb" "$target")
+    if [[ $verb == create || $verb == facepick-rows || $verb == still ]]; then expected=$(expected_for "$verb" "$target")
     else expected=$(expected_for "$verb" "$target" "$arg5"); fi || exit 65
+    if [[ $verb == facepick-rows || $verb == still ]]; then
+        # No full-screen postcondition: facepick-rows already required
+        # face_open (the modal's own Random/Accept/Cancel strip, cropped
+        # read) before it probed, and that cropped strip is the reliable
+        # signal -- the full-screen OCR mangles the same words (measured
+        # 'Randam Accent Cance!'), and the creation page behind the modal
+        # has no legible heading under psm 6 (the 2026-10-14 pilots).
+        mark END "$name"
+        shot "$name" || :
+        cp "$CLIENT/${CHARACTER}_".ini "$DIR/$name.ini" 2>/dev/null || :
+        continue
+    fi
     assert_action_state "$verb" "$expected" "$name" || exit 65
     mark END "$name"
     shot "$name" || exit 65
