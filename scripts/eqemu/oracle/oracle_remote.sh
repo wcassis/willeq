@@ -115,10 +115,21 @@ expected_for() {
         random) echo 'Random|Accept|Cancel' ;;
         accept|cancel) echo 'Character Creation' ;;
         create) echo window:EverQuest ;;
+        open-creation|open-face) echo 'Character Creation' ;;
         *) echo "${optional:-window:EverQuest}" ;;
     esac
 }
-face_open() { screen_text '205x400+0+180' | grep -qiE 'Random|Accept|Cancel'; }
+face_open() { face_buttons_text '200x55+0+485' | grep -qiE 'Random|Accept|Cancel'; }
+face_buttons_text() {
+    # The modal's own three bottom buttons (window at 1280x1024: (0,374)
+    # 175x215 image-space, i.e. (0,404) root; Random/Accept/Cancel at root
+    # y 515-540 = image 485-510, B888-CC1: the lane-5 stills put Random at
+    # image ~485). A crop of THAT strip is the open-gate: whole-screen OCR
+    # on this rig mangles "Accept" (measured 'Recept'), so the gate reads
+    # only the button strip. screen_text's crop is image space (import
+    # crops 1280x800+0+30), so the +30 is already absorbed.
+    screen_text "$1"
+}
 require_face_open() { face_open || { echo "$1 without face dialog" >&2; return 65; }; }
 assert_action_state() {
     local verb=$1 expected=$2 name=$3
@@ -159,6 +170,12 @@ if [[ $ACTION == selftest ]]; then
     # fix2g through.
     STUB_MEAN=1.0
     if selected_at "$race" 53 "$race_row"; then echo "unselected row passed selected_at"; exit 1; fi
+    # B888-CC1 (#204): the open-creation / open-face verbs must resolve their
+    # expected postconditions (the creation screen stays up; open-face then
+    # shows the modal's button strip). A verb with no expected_for arm falls
+    # to the default 'window:EverQuest' and would assert a live zone.
+    [[ $(expected_for open-creation Barbarian) == 'Character Creation' ]] || exit 1
+    [[ $(expected_for open-face x) == 'Character Creation' ]] || exit 1
     # name_filled: the convert stub returns STUB_MEAN as the std. A uniform
     # (empty) field (std 0) must be rejected and a glyph-like field (std
     # 0.172) accepted -- the fix2h mode of failure is a lost xdotool
@@ -171,6 +188,13 @@ if [[ $ACTION == selftest ]]; then
     STUB_MEAN=
     SCREEN_TEXT='Character Creation'
     screen_text() { echo "$SCREEN_TEXT"; }
+    # B888-CC1 (#204): the face_open gate (open-face's success check) must
+    # read the modal's OWN button strip, not the whole screen: a closed
+    # creation screen has no Random/Accept/Cancel and must fail it.
+    if face_open; then echo 'closed creation screen passed face_open'; exit 1; fi
+    SCREEN_TEXT='Random Accept Cancel'
+    face_open || { echo 'open modal failed face_open (button-strip gate)'; exit 1; }
+    SCREEN_TEXT='Character Creation'   # restore: the assert_visible below keys off it
     assert_visible 'Character Creation' positive || exit 1
     if assert_visible 'Missing Window' negative; then exit 1; fi
     [[ -f $DIR/negative-assertion-failed.png ]] || exit 1
@@ -346,6 +370,52 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
         random) jclick 148 348 ;;
         accept) require_face_open accept || exit 65; jclick 50 519 ;;
         cancel) require_face_open cancel || exit 65; jclick 50 539 ;;
+        open-face)
+            # B888-CC1 (#204): open the FacePick modal of an ALREADY OPEN creation
+            # screen (the stock stills' state: Set Face on the creation page).
+            # The Set Face button is CC0_Face_Button, XML (2,45,64,24) in the
+            # 0a row that also carries Male/Female (XML (70,45)/(134,45)): on
+            # the lane-5 rig (B1057 measured) Male is display (105,252) and
+            # Female (169,252) -- a 1:1 x-map (offset -1) -- so Set Face's
+            # centre is display (37,252). The modal is a popup: it opens over
+            # the creation screen without closing it.
+            jclick 37 252
+            sleep 2
+            face_open || { shot "$name-face-missing"; echo 'open-face did not open the modal' >&2; exit 65; } ;;
+        open-creation)
+            # B888-CC1 (#204): leave the creation screen if the previous
+            # pair's flow is still inside it (the Back button is shared by
+            # both pages: page 1 -> page 0 -> character select; the live
+            # creation screen opens on page 0), then open it fresh and
+            # select the target's race and gender -- WITHOUT submitting
+            # (no class, no points, no page 1, no name, no create
+            # packet). This is exactly the state the stock UseLuclin=FALSE
+            # stills were taken in: the pair's FacePick modal over the
+            # creation page. arg3 is the gender. The host report must not
+            # require a decoded create packet for this verb (it only does
+            # for the create verb).
+            [[ $arg3 == Male || $arg3 == Female ]] || exit 65
+            local race_row gender_row
+            race_row=$(race_y "$target") || exit 65
+            gender_row=$(gender_x "$arg3") || exit 65
+            if screen_text | grep -qi 'Character Creation'; then
+                # Previous pair is still inside: page 0 Back -> select.
+                jclick 899 23; sleep 6
+                screen_text | grep -qi 'Character Creation' && { shot "$name-back-stuck"; echo 'open-creation: Back did not leave the creation screen' >&2; exit 65; }
+            fi
+            screen_text | grep -qiE 'Character Select|Create a New Character' || { shot "$name-no-select"; echo 'open-creation: character select not visible' >&2; exit 65; }
+            jclick 123 421; sleep 3
+            if ! screen_text | grep -qi 'Character Creation'; then
+                jclick 123 421; sleep 12
+            fi
+            screen_text | grep -qi 'Character Creation' || { shot "$name-create-slot-missing"; echo 'open-creation: slot did not open' >&2; exit 65; }
+            # Let the restored selection finish re-rendering (create verb).
+            sleep 12
+            select_once "$target" 53 "$race_row" || exit 65
+            select_once "$arg3" "$gender_row" 252 || exit 65
+            selected_at "$target" 53 "$race_row" || exit 65
+            selected_at "$arg3" "$gender_row" 252 || exit 65
+            shot "$name-pair-selected" || : ;;
         create)
             [[ $target =~ ^[A-Za-z]{3,15}$ && ( $gender == Male || $gender == Female ) ]] || exit 65
             race_row=$(race_y "$race") || exit 65
