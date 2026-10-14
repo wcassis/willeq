@@ -31,14 +31,19 @@ root-screen `x,y`; `hold` uses its duration column in milliseconds. `press`
 takes an xdotool keysym, `command` sends a slash command, `random`, `accept`,
 `cancel`, `create <name> <race> <class> <gender>`, `still <name>`, and `wait <ms>`
 are available. A create row has six columns: `create`, name, race, class,
-gender, still name. Its coordinates are selected from the in-script table,
-one click per control (the race and class lists share one selection cursor,
-so a second click moves the selection; a missed click fails the run), and
-the selected race, class and gender are re-verified after the point
-allocation and again right before submit. The host report then decodes the
-step's `OP_CharacterCreate` and requires its class/gender/race fields to
-match the row (`scripts/eqemu/oracle/oracle_create.py`), so a wrong identity
-fails the report even if the screen looked right. The shipped untouched
+gender, still name. Its coordinates come from the in-script table; each
+control gets one click and is verified by the yellow selected-state (the
+race and class lists share one selection cursor, and the screen restores
+the previous session's selection with a settle animation that scrolls the
+lists, so a missed or mis-landed click is retried once after an 8 s
+settle and then fails the run). The selected race, class and gender are
+re-verified after the ability-point allocation. The Name field is verified
+non-empty before submit (a lost keystroke otherwise reaches submit and the
+client answers with a "Name is not valid" dialog instead of a create
+packet). The host report then decodes the step's `OP_CharacterCreate` and
+requires its class/gender/race fields to match the row
+(`scripts/eqemu/oracle/oracle_create.py`), so a wrong identity fails the
+report even if the screen looked right. The shipped untouched
 plans use Human-male and Barbarian-male Warrior paths without changing any
 appearance control. Other verbs may put an expected OCR regex in column five;
 the built-in verb assertions otherwise check the expected window or label.
