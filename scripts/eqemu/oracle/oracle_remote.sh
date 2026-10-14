@@ -945,17 +945,77 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
                 xdotool mousemove 600 900
             done
             face_open || { shot "$name-face-missing"; echo 'facepick-rows: modal did not open' >&2; exit 65; }
-            # The first open can show the FACE heading + button strip with the
+            # The first open shows the FACE heading + button strip with the
             # picker LIST not yet rendered (the 2026-10-14 pilot stills: only
-            # FACE + Random/Accept/Cancel, no rows). Close and re-open once,
-            # like a user toggling Set Face, then settle: the re-open renders
-            # the full list.
-            jclick 50 539; sleep 2
-            face_open && { jclick 50 539; sleep 2; }
-            jclick 37 252; sleep 3
+            # FACE + Random/Accept/Cancel, no rows). Close and re-open, like a
+            # user toggling Set Face: the re-open renders the full list.
+            #
+            # The close MUST use the MEASURED Cancel button row, not 50,539:
+            # full26/b/c proved 539 is ~20px BELOW the button (the text sits
+            # at image y ~486-492, the button bodies centre at ROOT y ~520;
+            # the still crop is +0+30-offset). A close that misses leaves the
+            # modal open, the re-open is a no-op, and the still is the
+            # half-open FACE-only state -- exactly the full26f failure (all 26
+            # pairs stilled before the list rendered). Reuse close-creation's
+            # measured sweep and VERIFY the close (face_open false) before
+            # re-opening.
+            for coord in '47 520' '115 520' '132 520' '47 526' '115 526' '132 526' '50 539' '140 539'; do
+                face_open || break
+                set -- $coord; cxb=$1; cby=$2
+                jclick "$cxb" "$cby"; sleep 3
+            done
+            face_open && { shot "$name-close-failed"; echo 'facepick-rows: modal still open after Cancel retries -- re-open would be a no-op' >&2; exit 65; }
+            # Re-open, retrying (Set Face is 37,252; move the cursor off the
+            # modal between tries, settle ~3s each, like the matrix4
+            # reference's open loop).
+            for open_attempt in 1 2 3 4 5; do
+                face_open && break
+                jclick 37 252; sleep 3
+                xdotool mousemove 600 900
+            done
             face_open || { shot "$name-face-missing2"; echo 'facepick-rows: modal not open after re-open' >&2; exit 65; }
-            sleep 5
+            # Settle until the picker LIST renders, not a fixed 5s. The first
+            # open shows the FACE heading + button strip with the picker LIST
+            # not yet rendered (the 2026-10-14 pilot stills). The FACE row's
+            # arrow strip (x138-158, image y312-324) reads ~74 once the list
+            # has rendered and ~21 in the half-open state -- the calibrated
+            # probe's own FACE measurement, validated against the matrix4
+            # all-rows table (73.92-75.02 visible, 20.58-21.68 hidden). Poll
+            # it; if the list never renders after several toggles, the still
+            # is untrustworthy and the step FAILS rather than emitting a row
+            # (the full26f failure: all 26 pairs stilled before the list
+            # rendered).
+            face_rendered() {
+                # $1 still path. Returns 0 iff the FACE arrow strip reads a
+                # visible-row value (>48, the probe's threshold).
+                local mean
+                mean=$(convert "$1" -crop "20x12+138+312" +repage -colorspace Gray -format '%[fx:mean*255]' info: 2>/dev/null)
+                [[ $mean =~ ^[0-9.]+$ ]] || return 1
+                awk -v m="$mean" 'BEGIN { exit (m > 48) ? 0 : 1 }'
+            }
+            for toggle in 1 2 3; do
+                for settle in $(seq 1 10); do
+                    sleep 2
+                    shot "$name" || :
+                    face_rendered "$DIR/$name.png" && break 2
+                done
+                # Still half-open after ~20s: close (measured Cancel sweep) and
+                # re-open once more, like a user toggling Set Face.
+                face_open || break
+                for coord in '47 520' '115 520' '132 520' '47 526' '115 526' '132 526' '50 539' '140 539'; do
+                    face_open || break
+                    set -- $coord; cxb=$1; cby=$2
+                    jclick "$cxb" "$cby"; sleep 3
+                done
+                for open_attempt in 1 2 3 4 5; do
+                    face_open && break
+                    jclick 37 252; sleep 3
+                    xdotool mousemove 600 900
+                done
+                face_open || break
+            done
             shot "$name" || :
+            face_rendered "$DIR/$name.png" || { shot "$name-face-not-rendered"; echo 'facepick-rows: picker list not rendered after toggles -- FACE arrow strip reads dark, the still is the half-open state' >&2; exit 65; }
             facepick_probe_tsv "$DIR/$name.png" "$target" "$arg5" "$DIR/rows.tsv" || exit 65 ;;
         create)
             [[ $target =~ ^[A-Za-z]{3,15}$ && ( $gender == Male || $gender == Female ) ]] || exit 65
