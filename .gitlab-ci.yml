@@ -624,7 +624,8 @@ zone-budget-census:
     - |
       set -o pipefail
       nice -n 10 bash scripts/ci/zone_content_sweep.sh \
-        --out-dir "$GLES2_TREE/b929_census" 2>&1 | tee census-sweep.log
+        --out-dir "$GLES2_TREE/b929_census" \
+        --bench-bin "$GLES2_TREE/bin/gles2_zone_benchmark" 2>&1 | tee census-sweep.log
       nice -n 10 python3 scripts/ci/zone_budget_census.py --check-budgets \
         --sweep-dir "$GLES2_TREE/b929_census" \
         --out census-budget-rows.tsv 2>&1 | tee census-budget.log
