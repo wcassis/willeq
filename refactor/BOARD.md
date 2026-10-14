@@ -1685,9 +1685,10 @@ it without taking that measurement first.
   meshes. This unit is the net: `scripts/ci/zone_budget_census.py` fails on
   ANY of the 118 era zones over ANY estimate or ledger budget, run by the
   blocking gate-stage CI job `zone-budget-census` (4 m 46 s measured; first
-  heals a stale NFS EQE1 pack with `zone_census_pack_selfheal.sh` — the
-  runner's B930/#248 soldunga v1 would FATAL the sweep on an asset, never
-  assert the zone) and by the ctest legs `test_zone_budget_census`,
+  sweeps the self-heal's LOCAL pack tree — `zone_census_pack_selfheal.sh`
+  hard-links or rebuilds the mandatory packs, because the runner's NFS tree
+  is read-only and its B930/#248 soldunga v1 would FATAL the sweep on an
+  asset, never assert the zone) and by the ctest legs `test_zone_budget_census`,
   `test_zone_census_pack_selfheal` + `zone_budget_census_smoke` (the
   synthetic over-budget row must fail the checker; the three smoke zones must
   be inside every budget). Full 118-zone census GREEN on the current tree.

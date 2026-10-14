@@ -227,17 +227,17 @@ same run (`ledger objects` 1,648,640 / 41,943,040 = 3.9 %).
   on this host; the stub test is the durable net).
 - Full 118-zone sweep + checker: PASS, 2026-10-14, this host (runtime
   cited above).
-- **MR !182 pipeline 1166, 2026-10-14 (the runners):** `hygiene`,
-  `build-headless`, `build-test` and `gate` all green; `zone-budget-census`
-  failed in 394 s with the job dying on exactly the asset this unit's
-  self-heal addresses — the runner's stale `soldunga.eqe1` (v1; the sweep's
-  row: `rc=1 first_fatal="...EQE1 pack '.../soldunga.eqe1' is format v1;
-  this client needs v3 (rebuild with tools/convert_all_to_eqe1.sh)"`,
-  117/118 rows clean, the checker never ran because the sweep exits 1).
-  The fix (self-heal + `--bench-bin` from the first failure, pipeline 1161
-  job 6231 dying on `build/bin/gles2_zone_benchmark` missing in the gate
-  stage) is this branch's later commits; the re-run is the outstanding
-  piece.
+- **MR !182 pipeline 1177, job 6298 (the runners, 2026-10-14):**
+  `zone-budget-census` GREEN, 8 min. The self-heal rebuilt the runner's
+  stale `soldunga.eqe1` in place of the NFS copy — "REBUILD: soldunga.eqe1
+  (stale, B930 signature) from data/eq_client/soldunga.s3d" → "v3, 9148 KB,
+  144 textures, 1 long name(s)" → "soldunga: rebuilt, verify clean" (~94 s,
+  matching this host's ~90 s single-archive pass); "378 linked, 1 rebuilt,
+  0 failed"; the full sweep then ran all 118 zones, soldunga's row
+  `rc=0 load=y ... CLEAN`, and the checker printed "PASS: all 118 zones
+  inside every budget". This closes the unmeasured leg below: it cost
+  ~94 s of rebuild + ~9 s of links on top of the 4 m 46 s zone time,
+  inside the 3 h `.goldfarm` default.
 - The MR pipeline's gate stage runs the new `zone-budget-census` job cold;
   its `gate` job re-runs the five zones against the untouched manifest —
   acceptance C (goldens byte-identical) and E in one.
@@ -246,18 +246,9 @@ same run (`ledger objects` 1,648,640 / 41,943,040 = 3.9 %).
 
 ## Not verified / left open
 
-- **The re-run of `zone-budget-census` on the runners after the self-heal**
-  is the one unmeasured leg: expected to be 4 m 46 s of zone time + the
-  `verify_eqe1`/`eqe1_builder` tool build (ccache-warm on the runner trees)
-  + the self-heal pass (measured on this host against the real NFS tree:
-  379 mandatory packs linked in ~11 s, 0 rebuilt — the tree's
-  `soldunga.eqe1` here is already v3; on the runners' stale copy expect
-  the one `soldunga` rebuild, ~90 s of the builder's single-archive pass)
-  + the 3-zone sweep on the local tree (this host, 2026-10-14:
-  qeynos2/arena/iceclad all CLEAN, the budget checker PASS on all three).
-  The rebuild lands in the runner's per-pipeline build tree, NOT
-  the NFS tree, so every pipeline pass pays the one rebuild; the link
-  pass over the 379 mandatory packs is the cheap part.
+- ~~**The re-run of `zone-budget-census` on the runners after the
+  self-heal** is the one unmeasured leg~~ — measured: pipeline 1177,
+  job 6298 (2026-10-14), 8 min, GREEN (see Verification above).
 - The Pi figures for this unit: none were needed. B936 measured the Pi's
   own `objects` ledger and frame rate after the fix (`refactor/B936/README.md`
   Orange Pi A/B table), and the census's asserted quantities
