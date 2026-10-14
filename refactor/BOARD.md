@@ -386,6 +386,11 @@ it without taking that measurement first.
   is not claimed there; gate poses vs B967 Pi frames: 0 px in all 15 (stencil
   drop is pixel-inert on Lima's shared 32-bit word). ARM benchmark now
   published by `publish_arm_build.sh`; runner `scripts/b971/run_gate_poses.sh`.
+  **B1064 (#384):** `/portal` was NOT the only stencil user -- the target
+  outline was a stencil rim and painted the whole inflated model on this
+  surface. It is now an inverted hull that touches no stencil
+  (`target_outline_pass.h`, `refactor/B1064/README.md`); the stencil-off
+  surface stands.
 - ~~**B967** (C) → issue #285. The player light is quantized at large world
   coordinates on BOTH GPUs: the mediump `vWorldPos` varying.~~ **FIXED**
   (`refactor/B967/README.md`, MR !74 **merged into fable `2c7d5be4`
