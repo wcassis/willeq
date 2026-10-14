@@ -565,7 +565,16 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             # Postcondition: the character-select "Create a New Character"
             # slots (OCR-reliable on the lane-5 stills -- the only page
             # signature that reads across all psm/mode combinations).
-            if face_open; then jclick 50 539; sleep 2; fi
+            # Close the modal FIRST, with retries: a single Cancel click can
+            # be dropped by the rig (the 2026-10-14 full26 run: the modal
+            # stayed open, covered the heading, so the Back sweep below was
+            # skipped and the next pair's slot click missed). Poll face_open
+            # (the modal's own button strip) after every click.
+            for cancel_try in 1 2 3 4 5 6; do
+                face_open || break
+                jclick 50 539; sleep 3
+            done
+            face_open && { shot "$name-modal-still-open"; echo 'close-creation: modal still open after Cancel retries' >&2; exit 65; }
             if creation_page_up; then
                 # The Back button's centre is ~(1100-1130, 45-55) display
                 # (two 3x/4x vision reads of the pilot stills, 2026-10-14;
@@ -591,6 +600,13 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             if creation_page_up; then
                 shot "$name-still-creation"; echo 'close-creation: creation heading still present after Back' >&2; exit 65
             fi
+            # The modal must be GONE too (the first check ran before the Back
+            # re-render finished): the full26 run exited with the heading check
+            # passed and the modal still up, so the next pair's slot click
+            # landed on nothing. The strip read (face_open) is cropped, not
+            # flaky.
+            sleep 2
+            face_open && { shot "$name-modal-reopened"; echo 'close-creation: modal open after leaving the creation page' >&2; exit 65; }
             shot "$name" ;;
         facepick-rows)
             # B888-CC1 (#204): the capture leg. Plan line (tab fields):
