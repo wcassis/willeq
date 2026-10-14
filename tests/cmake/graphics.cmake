@@ -366,3 +366,20 @@ GTEST_DISCOVER_TESTS(test_player_light_lut DISCOVERY_TIMEOUT 120)
 IF(TARGET gles2_player_light_probe)
     ADD_TEST(NAME PlayerLightProbeMonotonic COMMAND gles2_player_light_probe --assert)
 ENDIF()
+
+# B976 (#294): the zone region depth tie-break (the top-facing region wins a
+# depth tie). Header-only decision + a source-scan of the region vertex
+# programs (the uniform declared in exactly the two region programs, nowhere
+# else) and of the header's GLSL macro (the +z/-Y form, not the +w/+-Y first
+# draft). No GPU, no build-tree artifact.
+IF(EQT_GRAPHICS)
+    ADD_EXECUTABLE(test_zone_depth_tie_break
+        test_zone_depth_tie_break.cpp
+    )
+    TARGET_INCLUDE_DIRECTORIES(test_zone_depth_tie_break PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    TARGET_COMPILE_DEFINITIONS(test_zone_depth_tie_break PRIVATE
+        B976_ZONE_SHADER_SOURCES="${CMAKE_SOURCE_DIR}/src/client/graphics/zone_shader_sources_gles2.h"
+        B976_DEPTH_TIE_HEADER="${CMAKE_SOURCE_DIR}/include/client/graphics/zone_depth_tie_break.h")
+    TARGET_LINK_LIBRARIES(test_zone_depth_tie_break GTest::gtest_main)
+    GTEST_DISCOVER_TESTS(test_zone_depth_tie_break DISCOVERY_TIMEOUT 120)
+ENDIF()

@@ -425,6 +425,9 @@ std::unique_ptr<ZoneBenchData> loadZone(const BenchConfig& config) {
 
     ZoneMeshBuilder builder(data->smgr, data->driver, data->device->getFileSystem());
     builder.setConstrainedTextureCache(data->textureCache.get());
+    // B976 (#294): match the client -- region geometry takes the depth
+    // tie-break. The object builder (objBuilder below) deliberately does not.
+    builder.setZoneGeometryDepthTie(true);
 
     if (data->zoneShader && data->zoneShader->isAvailable()) {
         builder.setShaderMaterialTypes(

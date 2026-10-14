@@ -129,25 +129,117 @@ plane is nearly black on both platforms (x86 (1,3,3), Pi (0,0,0), issue
 body) — the ±Y normal flip changes the diffuse term of a mostly-ambient dark
 floor, which is well inside the gate's per-pixel budget.
 
-## Fix status
+## Fix (2026-10-14, Will ruled option 1: the top-facing region wins a depth tie)
 
-**No production change applied.** Any fix (a depth bias between the two
-layers, merging the coincident region quads, a polygon-offset pass, or a
-WLD-authoring question of whether the zone ships a double floor at all) moves
-golden pixels, and per the card such a fix stops at the measured fix + delta
-table and blocks for Will's bless. The candidate fixes and their measured
-surface:
+**The implemented rule.** When two zone regions tie in depth at a pixel, the
+region whose face normal points UP (+Y in Irrlicht space) wins, on every
+platform. The bias is a per-vertex clip-space depth offset in the zone REGION
+vertex programs, gated by a per-material flag so nothing outside zone-region
+geometry is ever touched:
 
-1. **Per-region depth bias** (e.g. a small polygon offset for the lower-
-   elevation `w1` layer, or draw-order + depthFunc tweak in the zone pass) —
-   makes the +Y `sand3` win everywhere and kills the D16 z-fight; changes
-   timorous_f1/f2 goldens (the f1 frame already carries 168k "any-diff" px
-   from the D24→D16 change, B971 table).
-2. **Data-side** — if the double floor is a WLD authoring artifact (a −Y
-   underlayer under the +Y top), the clean fix is upstream data, not client
-   bias; needs Will's call since it changes what the official-client match is.
+- `include/client/graphics/zone_depth_tie_break.h` — the rule, stated and the
+  pure C++ decision (`downFacingSelector`, `ndcDepthTieShift`,
+  `biasedStoredDepth`, `uDepthTieBiasForFlag`), unit-tested without a GPU
+  (`tests/test_zone_depth_tie_break.cpp`, 7 tests), plus the one GLSL line:
+  `EQT_DEPTH_TIE_VS_LINES`.
+- The line: `gl_Position.z += uDepthTieBias * step(0.5, -worldN.y) * gl_Position.w;`
+  — spliced into exactly the two region vertex programs
+  (`VERTEX_SHADER_SRC`, `VERTEX_SHADER_LIGHTWEIGHT_SRC` in
+  `src/client/graphics/zone_shader_sources_gles2.h`); the source-scan test
+  pins its presence there and its absence from the atlas/wind programs.
+- The flag: `SMaterial::MaterialTypeParam2 = 1.0`, stamped by
+  `ZoneMeshBuilder::setZoneGeometryDepthTie(true)` for zone-REGION buffers
+  (`zone_geometry.cpp`, enabled in `renderer_zone_load.cpp` step 4 and the
+  benchmark's region builder). Objects, doors and trees never set it, and the
+  atlas/wind programs (which trees DO use) neither declare nor read
+  `uDepthTieBias`.
+- `B = kNdcDepthTieBias = 2 * (1/32768)` NDC-z — exactly 2 D16 cells: the
+  smallest value that breaks the measured within-~1-cell tie with a 1-cell
+  margin over the per-row quantization ripple (the README's D16 z-fight is
+  the test case), and too small to reorder surfaces a few cm apart.
 
-Both are blessed-golden changes, so this unit stops here.
+**Why this form (two properties, and two corrected draft errors).**
+1. The offset is B in clip-z, which is B in NDC-z *at every fragment*: the
+   rasterizer perspective-correctly interpolates z/w, and adding B*w to
+   every vertex's clip-z adds B to the interpolated z/w regardless of w.
+   x/w and y/w are untouched, so every triangle's screen-space footprint is
+   bit-exact — only its stored depth moves. (A world-space nudge would decay
+   into sub-quantum at range on D16.) At the clip plane (w=0) B*w = 0, so
+   near-clipped edges are unchanged too.
+2. LARGER stored depth = farther and the test is GL_LEQUAL (nearer wins), so
+   pushing the down-facing layer +B makes the top layer strictly nearer — in
+   every depth format, on every driver. The selector `step(0.5, -worldN.y)`
+   is 1 only for down-facing faces (worldN.y ≤ −0.5); a top-facing floor is
+   untouched, and region matrices are pure translations, so a floor's −1.0
+   source normal never wavers by interpolation.
+
+Corrected from the first draft (pinned by `TheMacroIsPlusZFartherOnTheDownFacingLayer`):
+adding B to `gl_Position.w` would move the vertex NEARER (z/w shrinks) — the
+wrong direction — and `step(0.5, worldN.y)` selects the UP-facing layer.
+
+### Acceptance measurements (this run, x86 llvmpipe, the gate's exact args)
+
+**(A) Unit test + goldens.** `test_zone_depth_tie_break`: 7/7 green (the pure
+decision: the +Y quad strictly wins a within-<1-cell tie; two down-facing
+surfaces more than B apart keep their order; the material gate; B = 2 D16
+cells; the GLSL splice scoped to the two region programs). The zone dispatch /
+renderer order/coverage goldens for the touched TUs are green; hygiene
+(`ctest -L hygiene`, 32/32) and DocCounts (0 failures) are green.
+
+**(B) The pose, both surface formats** (timorous f2, 800×600, `--shader-debug 5`,
+x=400 column y=463..598; D24S8 via the recreated throwaway
+`B976_FORCE_STENCIL=1` gate in a scratch lib, never committed):
+
+| run | surface | (400,520) | col x=400 |
+|---|---|---|---|
+| before, D16 (committed surface, `logical_depth_stencil=960000`) | D16 | (128,0,128) −Y | **z-fights**: 22 ±Y switches, +Y runs 2-3px / −Y runs 9-10px — matches the pre-fix README run byte-for-byte (before run is 0 px vs the blessed golden on all 15 frames) |
+| after, D16 | D16 | **(128,255,128) +Y** | **0 switches**: 136 +Y / 0 −Y, single boundary at y=463 |
+| after, D24S8 (scratch `B976_FORCE_STENCIL=1`, `logical_depth_stencil=1920000`) | D24S8 | **(128,255,128) +Y** | **0 switches**: 136 +Y / 0 −Y |
+
++Y wins on BOTH formats now — the tie is broken deterministically.
+
+**(C) Delta table — and the finding that changes the bless scope.**
+
+Draws, state changes and poly counts are IDENTICAL before/after for all five
+gate zones × 3 frames (per-frame CSV, the gate's own invocation; see
+`gate_before/run/`, `gate_after/run/` in the evidence dir). The bias changes
+no draw, state or poly count anywhere:
+
+| zone | f0 d/s/p (b→a) | f1 d/s/p | f2 d/s/p |
+|---|---|---|---|
+| qeynos2 | 236/31/885 = 236/31/885 | 119/22/542 = 119/22/542 | 228/16/663 = 228/16/663 |
+| gfaydark | 143/15/3338 = 143/15/3338 | 134/13/3633 = 134/13/3633 | 203/16/4421 = 203/16/4421 |
+| befallen | 368/13/1241 = 368/13/1241 | 75/9/384 = 75/9/384 | 170/9/526 = 170/9/526 |
+| iceclad | 35/5/1129 = 35/5/1129 | 36/3/979 = 36/3/979 | 32/3/533 = 32/3/533 |
+| timorous | 586/20/11258 = 586/20/11258 | 432/20/7624 = 432/20/7624 | 197/7/6802 = 197/7/6802 |
+
+Per-pixel delta, before (origin/fable, 0 px vs blessed on all 15 frames) vs
+after (this run), production frames (no `--shader-debug`):
+
+| zone/frame | px changed (of 480 000) | what changed |
+|---|---|---|
+| qeynos2 f0/f1/f2 | 134 444 / 0 / 320 | lit ground plane (was black) |
+| gfaydark f0/f1/f2 | 273 / 876 / 953 | floor edges |
+| befallen f0/f1/f2 | 28 / 0 / 0 | floor corner |
+| iceclad f0/f1/f2 | 1 116 / 124 677 / 13 642 | lit ground plane (was dark) |
+| timorous f0/f1/f2 | 114 759 / 171 726 / 121 222 | the lit floor (the target) |
+
+**The card expected only timorous_f1/f2 to change. They do not — every
+zone's floor pixels move. This is NOT a leak in the mechanism; it is the
+double-floor defect being more common than the README's "timorous-specific
+measurement; a zone-wide census would be a follow-up unit" anticipated.**
+The debug5 normal renders of the changed regions (evidence `mech/`) show
+100% of the changed pixels are clean −Y→+Y normal flips — zero wrong-direction
+flips, zero non-normal (lighting/color) changes — in both qeynos2 f0 and
+iceclad f1, and the changed region is the flat ground plane in each. Those
+zones ALSO ship a −Y underlayer under a +Y top layer; before the bias, D16
+picked the −Y (or z-fought) and the floor was unlit/dark, so the gate never
+saw it. Will's ruling covers this: option 1 "makes the +Y `sand3` win
+everywhere and kills the D16 z-fight". The bless scope is therefore the
+**floor pixels of all five zones, on both platforms**, not just timorous
+(Will's call, stated here). The two timorous goldens the card named remain
+the largest deltas; the other zones' deltas are the same ruling's
+consequence on the same defect.
 
 ## Not verified
 
@@ -161,13 +253,24 @@ Both are blessed-golden changes, so this unit stops here.
   gate's 1280×720 Pi pose was not re-taken for this pixel — the surface line
   and the per-pixel normal at 800×600 are the acceptance items the issue
   names.
-- Whether the double floor exists in other zones (timorous-specific
-  measurement; a zone-wide census of stacked opposite-normal quads would be a
-  follow-up unit).
+- **The Pi leg of the FIX** (lane 1, same pose, `--shader-debug 5` + debug4
+  lit floor on the biased binary) — this card is the x86 leg only; the Pi
+  run is the named FOLLOW-UP after Will's bless. The mechanism's platform
+  independence is argued (the bias is in NDC-z, format- and
+  driver-independent), not re-measured on Lima here.
+- The double-floor census is now PARTIALLY verified: the gate's five zones
+  all show the −Y→+Y flip on flat ground (qeynos2 f0/f2, gfaydark f0/f1/f2,
+  befallen f0, iceclad f0/f1/f2, timorous f0/f1/f2 — the Fix delta table),
+  so the defect is not timorous-specific. A census of the NON-gate zones is
+  still open (FOLLOW-UP).
+- The D24S8 A/B of the FIX used a scratch libIrrlicht with a throwaway
+  `B976_FORCE_STENCIL` gate (recreated out-of-tree; the committed driver only
+  honors the preset's stencil request, post-B971). It proves the +Y win on
+  the 24-bit surface on x86; it is not a committed code path.
 
 ## Evidence
 
-Raw (this run): `~/kb-evidence/b976-timorous-plane/`
+Raw (pre-fix measurement, 2026-10-07): `~/kb-evidence/b976-timorous-plane/`
 
 - `gateargs_d16_081207/` — x86 D16, debug5/4, bench.log (`logical_depth_stencil=960000`)
 - `d24s8_gateargs_081816/` — x86 D24S8, debug5/4, bench.log (`logical_depth_stencil=1920000`)
@@ -175,3 +278,12 @@ Raw (this run): `~/kb-evidence/b976-timorous-plane/`
 - `dbgin6_083659/bench.log` — per-entry probe lines (entries 158–163 `w1` ±Y, entry 196 `sand3` +Y, behindNear counts, zview per hit)
 - `d10_d16_084125/`, `d10_d24s8_084135/` — debug10 depth-visualization pairs (same quantized value at (400,520) in both formats: the tie is sub-quantum on the winner, visible in the loser's cells)
 - `b969_evidence/{pi,x86}/` — B969 reference frames (pixel-identical to this run's D24S8 x86 and Pi at (400,520))
+
+Raw (the fix, 2026-10-14): `~/kb-evidence/kb-b976-depth-tiebreak/`
+
+- `before_d16/`, `after_d16/` — the f2 pose, production D16 surface, `--shader-debug 5`, before (origin/fable) vs after (branch) frames + CSVs
+- `after_d24s8/` — the f2 pose on the forced D24S8 scratch surface, after code, `--shader-debug 5` (`logical_depth_stencil=1920000`)
+- `gate_before/run/`, `gate_after/run/` — all five gate zones × 3 frames, the gate's exact invocation (production frames + CSVs + memory JSON); `baseline_check.py` output: before is 0 px vs the blessed goldens on all 15 frames
+- `mech/{qe_before,qe_after,ic_before,ic_after}/` — debug5 normal renders of the non-timorous changed regions; `mech_check.py` output: 100% of changed pixels are −Y→+Y flips
+- `build_d24s8_irrlicht.sh` + `patch_gate.py` — the throwaway D24S8 gate (out-of-tree)
+- `delta_table.py`, `before_after_px.py`, `f2_colstats.py` — the delta and column statistics above

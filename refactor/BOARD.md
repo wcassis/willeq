@@ -506,9 +506,22 @@ it without taking that measurement first.
   10298, and a −Y `w1` underlayer, draw entries 158–163, whose near corners
   clip behind the near plane) at a depth near-tie; the depth buffer picks a
   different winner per platform (x86 D16 z-fights per row; x86 D24S8 → +Y;
-  Lima depth=24 → −Y, uniform), so the player light lights the plane on x86-D24S8
-  only. No production fix applied — any fix (per-region depth bias, or upstream
-  WLD data for the double floor) moves goldens and is blocked for Will's bless.
+  Lima depth=24 → −Y, uniform).
+  **FIXED in code (2026-10-14, MR open DRAFT awaiting bless of the goldens):
+  the top-facing region wins a depth tie** — a per-vertex clip-space depth
+  bias of 2 D16 cells in the zone REGION vertex programs, gated by
+  `SMaterial::MaterialTypeParam2` (stamped for region geometry only;
+  `include/client/graphics/zone_depth_tie_break.h` states the rule,
+  `tests/test_zone_depth_tie_break.cpp` pins it GPU-less). Will's ruling
+  covers the finding that the double floor is NOT timorous-specific: the
+  gate's other four zones also carry a −Y underlayer under a +Y top layer,
+  so the fix lights their floors too (qeynos2 f0 134 444 px, iceclad f1
+  124 677 px, … — delta table in `refactor/B976/README.md`); draws/state/
+  poly counts are identical before/after on all five zones, the before run
+  is 0 px vs the blessed goldens on all 15 frames, and 100% of the changed
+  pixels are clean −Y→+Y flips (debug5 mechanism check). The bless scope is
+  therefore all five zones' floor pixels on both platforms (Will's call);
+  the Pi leg of the fix is a follow-up card after the bless.
 
 - **B981** (B) → issue #300. `tests/goldens/manifest.json`'s
   `memory.textureCacheBytesLimit` is 67,108,864 (64 MiB) in all five gate zones;
