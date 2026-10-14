@@ -253,6 +253,10 @@ IF(EQT_GRAPHICS AND IRRLICHT_LIBRARY)
         test_x11_numpad_e2e.cpp
         ${CMAKE_SOURCE_DIR}/src/client/input/hotkey_manager.cpp
         ${CMAKE_SOURCE_DIR}/src/client/core/data_paths.cpp
+        # B961: createDeviceEx(EDT_OGLES2) pulls CIrrDeviceFB.o in, whose scanout
+        # publish references eqt::memory::publishScanoutTally -- compile the core
+        # census TU in, the standalone-tool pattern gles2_zone_benchmark uses.
+        ${CMAKE_SOURCE_DIR}/src/client/core/gpu_buffer_census.cpp
     )
     TARGET_INCLUDE_DIRECTORIES(test_x11_numpad_e2e PRIVATE ${IRRLICHT_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(test_x11_numpad_e2e
