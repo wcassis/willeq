@@ -21,6 +21,11 @@ for f in "$BUILD/bin/willeq" "$BUILD/bin/gles2_zone_benchmark" "$ANGLE_OUT/libEG
     [ -e "$f" ] || { echo "ERROR: missing $f" >&2; exit 1; }
 done
 
+# Never re-stage under a running proof (B1044: a re-stage replaced bin/ in
+# the middle of the console user's run).
+if pgrep -f "$DEST/bin/" >/dev/null 2>&1; then
+    echo "ERROR: a process from $DEST/bin is running; re-stage after it ends" >&2; exit 1
+fi
 rm -rf "$DEST.staging"; mkdir -p "$DEST.staging"/{bin,lib,out}
 S="$DEST.staging"
 cp "$BUILD/bin/willeq" "$BUILD/bin/gles2_zone_benchmark" "$S/bin/"
