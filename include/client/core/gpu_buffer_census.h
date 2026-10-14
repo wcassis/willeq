@@ -200,6 +200,12 @@ GpuBufferCensus decideGpuBuffers(const GpuBufferInputs& in);
 // the logical tally alone.
 GpuBufferCensus readGpuBufferCensus();
 
+// B1056: whether /proc/<pid>/fdinfo of a DRM fd on `devPath` (/dev/dri/<node>)
+// may be read. False for the IMG PowerVR module (pvrsrvkm: pvr_show_fdinfo
+// panics the kernel, lane 4) and when WILLEQ_GPU_CENSUS_NO_FDINFO is set.
+// scripts/pi/proc_mem_snapshot.py mirrors it for out-of-process readers.
+bool drmFdinfoIsSafe(const char* devPath);
+
 // `[memgpu] point=<p> zone=<z> gpu_buffers=<B> source=<tok> outside_rss_anon=<0|1>
 //  logical=<B> logical_textures=<B> logical_buffers=<B> residual=<B>
 //  ... (B962, appended last so every existing parse holds:)

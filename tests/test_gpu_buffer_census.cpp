@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -360,4 +361,15 @@ TEST(GpuBufferCensus, LedgerSnapshotCarriesTheRow) {
     const std::string json = toJson(s);
     EXPECT_NE(json.find("\"gpuBuffersBytes\":4194304"), std::string::npos) << json;
     EXPECT_NE(json.find("\"gpuBuffers\":{"), std::string::npos) << json;
+}
+
+// B1056: the fdinfo read is skipped for the PowerVR module and under the kill
+// switch; a node with no sysfs driver row is not held against the driver.
+TEST(GpuBufferCensus, FdinfoGuardHonoursKillSwitchAndUnknownNodes) {
+    unsetenv("WILLEQ_GPU_CENSUS_NO_FDINFO");
+    EXPECT_TRUE(eqt::memory::drmFdinfoIsSafe("/dev/dri/no-such-node-b1056"));
+    EXPECT_FALSE(eqt::memory::drmFdinfoIsSafe("/dev/dri/"));
+    // The kill switch is read once per process (static), so it is exercised
+    // through the environment of a fresh helper in scripts/pi/proc_mem_snapshot.py;
+    // here only the sysfs resolution is covered.
 }

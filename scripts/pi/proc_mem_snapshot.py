@@ -79,6 +79,20 @@ def _read(path):
         return None
 
 
+def _fdinfo_is_safe(dev_path):
+    """B1056: reading a DRM fd's fdinfo calls the driver's show_fdinfo; the IMG
+    PowerVR module (pvrsrvkm, lane 4) panics the kernel there, so it is never
+    asked. Mirrors drmFdinfoIsSafe in src/client/core/gpu_buffer_census.cpp."""
+    if os.environ.get("WILLEQ_GPU_CENSUS_NO_FDINFO", "0") not in ("", "0"):
+        return False
+    node = dev_path.rsplit("/", 1)[-1]
+    try:
+        drv = os.readlink("/sys/class/drm/%s/device/driver" % node)
+    except OSError:
+        return True
+    return drv.rsplit("/", 1)[-1] != "pvrsrvkm"
+
+
 def gpu_sources(pid, comm, files):
     """B955: every per-process view of GPU buffer memory we can read."""
     out = {"drm_fds": 0, "fdinfo_drm_keys": {}, "drm_mapped_bytes": 0, "drm_mappings": 0,
@@ -95,6 +109,8 @@ def gpu_sources(pid, comm, files):
         if not target.startswith("/dev/dri/"):
             continue
         out["drm_fds"] += 1
+        if not _fdinfo_is_safe(target):
+            continue
         text = _read("/proc/%d/fdinfo/%s" % (pid, fd)) or ""
         keys = {k.strip(): v.strip() for k, _, v in (l.partition(":") for l in text.splitlines())
                 if k.startswith("drm-")}

@@ -61,29 +61,6 @@ void appendKVs(std::string& out, const char* key, int64_t v) {
 
 #if defined(__linux__)
 // Read a small /proc or /sys file into a string (fdinfo, memory.stat, cgroup).
-// B1056: the DRM fdinfo read is a kernel call into the driver's show_fdinfo.
-// The IMG PowerVR DDK module (pvrsrvkm 24.2, lane 4 / Radxa A7S) dereferences
-// NULL in pvr_show_fdinfo on that read and panics the kernel (trace in
-// review/B1056/lane4/bench60_local4.dmesg), so that driver is never asked.
-// WILLEQ_GPU_CENSUS_NO_FDINFO=1 skips the read for every driver.
-bool drmFdinfoIsSafe(const char* devPath) {
-    static const bool noFdinfo = [] {
-        const char* v = std::getenv("WILLEQ_GPU_CENSUS_NO_FDINFO");
-        return v && *v && *v != '0';
-    }();
-    if (noFdinfo) return false;
-    const char* node = strrchr(devPath, '/');
-    if (!node || !*(node + 1)) return false;
-    char link[320], target[320];
-    snprintf(link, sizeof(link), "/sys/class/drm/%s/device/driver", node + 1);
-    const ssize_t n = readlink(link, target, sizeof(target) - 1);
-    if (n <= 0) return true;  // no sysfs row: nothing known against it
-    target[n] = '\0';
-    const char* drv = strrchr(target, '/');
-    drv = drv ? drv + 1 : target;
-    return strcmp(drv, "pvrsrvkm") != 0;
-}
-
 std::string readSmallFile(const char* path) {
     std::string out;
     const int fd = open(path, O_RDONLY | O_CLOEXEC);
@@ -135,6 +112,29 @@ uint32_t countLines(const std::string& text) {
 #endif
 
 } // namespace
+
+// B1056: the DRM fdinfo read is a kernel call into the driver's show_fdinfo.
+// The IMG PowerVR DDK module (pvrsrvkm 24.2, lane 4 / Radxa A7S) dereferences
+// NULL in pvr_show_fdinfo on that read and panics the kernel (trace in
+// review/B1056/lane4/bench60_local4.dmesg), so that driver is never asked.
+// WILLEQ_GPU_CENSUS_NO_FDINFO=1 skips the read for every driver.
+bool drmFdinfoIsSafe(const char* devPath) {
+    static const bool noFdinfo = [] {
+        const char* v = std::getenv("WILLEQ_GPU_CENSUS_NO_FDINFO");
+        return v && *v && *v != '0';
+    }();
+    if (noFdinfo) return false;
+    const char* node = strrchr(devPath, '/');
+    if (!node || !*(node + 1)) return false;
+    char link[320], target[320];
+    snprintf(link, sizeof(link), "/sys/class/drm/%s/device/driver", node + 1);
+    const ssize_t n = readlink(link, target, sizeof(target) - 1);
+    if (n <= 0) return true;  // no sysfs row: nothing known against it
+    target[n] = '\0';
+    const char* drv = strrchr(target, '/');
+    drv = drv ? drv + 1 : target;
+    return strcmp(drv, "pvrsrvkm") != 0;
+}
 
 void publishGpuLogicalTally(uint64_t textureBytes, uint64_t bufferBytes, uint64_t depthStencilBytes) {
     g_logicalTextures.store(textureBytes, std::memory_order_relaxed);
