@@ -211,6 +211,12 @@ GLuint g_b1051LastUnit = 0xFFFFFFFFu;
 GLuint g_b1051LastTex0 = 0xFFFFFFFFu;
 GLuint g_b1051LastTex1 = 0xFFFFFFFFu;
 int g_b1051LastMatType = -1;
+// The Mesa GLES2 header on the target does not declare
+// glGetTexLevelParameteriv, so resolve it at init (dlsym, like the gem-tag
+// functions) and fall back to width-unknown when it is absent — the name
+// read-back still discriminates.
+typedef void (*B1051GetTexLevelParamFn)(GLenum, GLint, GLenum, GLint*);
+B1051GetTexLevelParamFn g_b1051GetTexLevelParam = nullptr;
 
 void alphaTraceDraw(const irr::video::ITexture* tex)
 {
@@ -602,12 +608,15 @@ bool COpenGLES2Driver::initDriver()
     const char* b1051Knob = std::getenv("WILLEQ_B1051_TRACE");
     if (b1051Knob && std::strcmp(b1051Knob, "1") == 0) {
         g_b1051Trace = true;
+        g_b1051GetTexLevelParam = reinterpret_cast<B1051GetTexLevelParamFn>(
+            dlsym(RTLD_DEFAULT, "glGetTexLevelParameteriv"));
         const char* from = std::getenv("WILLEQ_B1051_FROM");
         if (from) g_b1051FromFrame = static_cast<unsigned>(std::strtoul(from, nullptr, 10));
         const char* frames = std::getenv("WILLEQ_B1051_FRAMES");
         if (frames) g_b1051Frames = static_cast<unsigned>(std::strtoul(frames, nullptr, 10));
-        std::fprintf(stderr, "[B1051] sampler trace on, from=%u frames=%u (0=rest)\n",
-                     g_b1051FromFrame, g_b1051Frames);
+        std::fprintf(stderr, "[B1051] sampler trace on, from=%u frames=%u (0=rest), width-read=%s\n",
+                     g_b1051FromFrame, g_b1051Frames,
+                     g_b1051GetTexLevelParam ? "yes" : "no");
     }
     if (!shaderManager_.init(legacyFwidth)) {
         os::Printer::log("GLES2: Shader initialization failed", ELL_ERROR);
@@ -1630,21 +1639,28 @@ void COpenGLES2Driver::b1051Trace3DDraw()
     const GLuint unit1 = state_.boundTexture[1];
     const GLenum saved = static_cast<GLenum>(state_.activeTextureUnit);
     const char* name0 = "(none)";
-    int w0 = 0;
+    int w0 = -1;
     if (unit0) {
         glActiveTexture(GL_TEXTURE0);
-        // Panfrost/Mesa glGetString(GL_TEXTURE_BINDING_2D) can return just the
-        // texture ID, so the object's WIDTH is the real discriminator: the
-        // 13 Lieutenant ETC1 textures are all different sizes (64x128,
-        // 32x16, 128x64, ...).
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w0);
+        // The width is the real discriminator (the 13 Lieutenant ETC1
+        // textures are all different sizes: 64x128, 32x16, 128x64, ...);
+        // glGetString(GL_TEXTURE_BINDING_2D) on Mesa may return a bare id.
+        if (g_b1051GetTexLevelParam) {
+            GLint w = 0;
+            g_b1051GetTexLevelParam(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
+            w0 = static_cast<int>(w);
+        }
         name0 = reinterpret_cast<const char*>(glGetString(GL_TEXTURE_BINDING_2D));
     }
     const char* name1 = "(none)";
-    int w1 = 0;
+    int w1 = -1;
     if (unit1) {
         glActiveTexture(GL_TEXTURE1);
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w1);
+        if (g_b1051GetTexLevelParam) {
+            GLint w = 0;
+            g_b1051GetTexLevelParam(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
+            w1 = static_cast<int>(w);
+        }
         name1 = reinterpret_cast<const char*>(glGetString(GL_TEXTURE_BINDING_2D));
     }
     glActiveTexture(saved);
