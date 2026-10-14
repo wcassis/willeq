@@ -155,6 +155,7 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename
 | `--music-volume <0-100>` | Music volume | 70 |
 | `--effects-volume <0-100>` | Sound effects volume | 100 |
 | `--soundfont <path>` | SoundFont for MIDI | None |
+| `--audio-rate <hz>` | Playback DEVICE sample rate; `0` = the backend's native rate. Wins over `audio.device_sample_rate` (B1069) | 48000 |
 
 ### JSON Configuration
 
@@ -165,10 +166,36 @@ std::shared_ptr<SoundBuffer> AudioManager::loadSound(const std::string& filename
         "master_volume": 100,
         "music_volume": 70,
         "effects_volume": 100,
-        "soundfont": "/path/to/soundfont.sf2"
+        "soundfont": "/path/to/soundfont.sf2",
+        "device_sample_rate": 48000
     }
 }
 ```
+
+`device_sample_rate` (B1069, issue #389) is the rate the playback DEVICE is
+opened at. The mixer and every asset stay at 22050 Hz (`AudioMixer::SAMPLE_RATE`);
+`MiniaudioBackend` resamples the mix once (`DeviceRateAdapter`, one linear
+`ma_resampler`) to the device rate. The default is 48000 because before B1069
+the client asked the device for 22050, ALSA rounded it to what the hardware
+has (32000 on the ODROID XU4's HDMI path) and an HDMI monitor that does not
+accept 32 kHz played nothing. `0` lets the backend choose its native rate; a
+board whose sink accepts it can set 44100 or 32000 (the same as the mixer
+rate, 22050, turns the resampler off and is the pre-B1069 behaviour). The
+loopback/RDP stream is not affected: it stays 22050 Hz
+(`AudioManager::LOOPBACK_SAMPLE_RATE`).
+
+What the device really runs at is one log line at audio start
+(`MOD_AUDIO`, INFO):
+
+```
+Audio device: requested=48000Hz configured=48000Hz native=48000Hz format=s16 channels=2 period=... backend=ALSA device="..." mixer=22050Hz resample=linear
+```
+
+(`format` is one of `u8`/`s16`/`s24`/`s32`/`f32`.) `requested` is the configured knob, `configured` the rate frames are handed to
+miniaudio at (`ma_device.sampleRate`), `native`/`format` the hardware side
+(`ma_device.playback.internalSampleRate` / `internalFormat`). When `native`
+differs from `configured`, miniaudio converts a second time internally; a
+sink that plays nothing with `native=32000` is the B1069 case.
 
 ### In-Game Commands
 

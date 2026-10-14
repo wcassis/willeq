@@ -13661,3 +13661,19 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   the report remains open because the original failing still and affected tab
   are unknown. See `refactor/B1053/README.md` for the exact audit and the
   explicit unverified items.
+
+## Added 2026-10-14 by task/B1069-hdmi-audio-rate (issue #389)
+
+- **B1069** (A, audio) → issue #389. No game audio on the XU4's HDMI monitor:
+  `MiniaudioBackend::init()` opened the device at the mixer's 22050 Hz, ALSA
+  ran the Exynos HDMI PCM at 32000 and the monitor drops 32 kHz (Fable's
+  measurements are on the issue). **Fixed on the branch, MR pending:** the
+  device opens at `audio.device_sample_rate` / `--audio-rate` (default 48000,
+  0 = native); the mixer stays at 22050 and `DeviceRateAdapter` resamples once
+  (one linear `ma_resampler`), chosen over rendering the mixer at 48000 by
+  measurement (`refactor/B1069/README.md`, `bench_x86.tsv`); after start one
+  `Audio device: requested=.. configured=.. native=.. format=..` INFO line
+  names what the hardware runs at. Pinned by `tests/test_audio_device_rate.cpp`.
+  - Open: Will's device acceptance on the XU4 from the branch's armhf publish;
+    the Orange Pi cost is scaled, not measured, and the live zone-in `audio`
+    ledger row was not taken (the README says why).
