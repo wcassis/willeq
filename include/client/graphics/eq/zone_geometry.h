@@ -112,6 +112,17 @@ public:
         shaderMaterialAlphaTestRGBA_ = alphaTestRGBAType;
     }
 
+    // B976 (#294): stamp SMaterial::MaterialTypeParam2 = 1.0 on every buffer
+    // this builder produces, so the zone region depth tie-break (see
+    // include/client/graphics/zone_depth_tie_break.h) applies to zone REGION
+    // geometry only. Region builders enable this; object/door builders leave
+    // it false so shared-program meshes (entities, trees) are never biased.
+    // Param2 is free on the region programs: MaterialTypeParam already carries
+    // the baked-light flag, and Param2's only other use is the tree-bbox
+    // MaxEdge.Y written on WIND-material buffers, which never use the region
+    // programs.
+    void setZoneGeometryDepthTie(bool enabled) { zoneGeometryDepthTie_ = enabled; }
+
     // Textures that were null during the last build (async GPU upload not yet complete).
     // Caller can check after buildTexturedMesh to queue rebuilds.
     const std::vector<std::string>& getMissingTextures() const { return missingTextures_; }
@@ -141,6 +152,9 @@ private:
     irr::s32 shaderMaterialSolid_ = -1;
     irr::s32 shaderMaterialAlphaTest_ = -1;         // ETC1 companion-texture variant
     irr::s32 shaderMaterialAlphaTestRGBA_ = -1;      // H02d: main-texture-alpha variant
+
+    // B976 (#294): stamp MaterialTypeParam2 = 1 on every built buffer when true.
+    bool zoneGeometryDepthTie_ = false;
 };
 
 // Helper to generate colors for visualization

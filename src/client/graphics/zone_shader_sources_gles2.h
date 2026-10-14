@@ -5,6 +5,8 @@
 // ELSE. See refactor/J09_zone_shader_split.md.
 
 #include "client/graphics/player_light_shader.h"
+// B976 (#294): the zone depth tie-break GLSL splice (see its header).
+#include "client/graphics/zone_depth_tie_break.h"
 
 namespace EQT {
 namespace Graphics {
@@ -24,6 +26,9 @@ namespace Graphics {
 // on large triangles. Lights[1..7] (zone torches etc.) remain per-vertex.
 static const char* VERTEX_SHADER_SRC = R"(
 precision highp float;
+// B976 (#294): zone depth tie-break; see include/client/graphics/zone_depth_tie_break.h.
+uniform float uDepthTieBias;
+
 
 attribute vec3 aPosition;
 attribute vec3 aNormal;
@@ -78,7 +83,7 @@ void main() {
     vec3 worldPos = (mWorld * pos).xyz;
     vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
 
-)" EQT_PLAYER_LIGHT_VS_LINE R"(
+)" EQT_DEPTH_TIE_VS_LINES EQT_PLAYER_LIGHT_VS_LINE R"(
     vWorldNormal = worldN;
 
     // Directional sun light
@@ -661,6 +666,9 @@ void main() {
 // Lightweight VS (standard) — all 8 lights per-vertex, 3 varyings output
 static const char* VERTEX_SHADER_LIGHTWEIGHT_SRC = R"(
 precision highp float;
+// B976 (#294): zone depth tie-break; see include/client/graphics/zone_depth_tie_break.h.
+uniform float uDepthTieBias;
+
 
 attribute vec3 aPosition;
 attribute vec3 aNormal;
@@ -708,6 +716,7 @@ void main() {
 
     vec3 worldPos = (mWorld * pos).xyz;
     vec3 worldN = normalize((mWorld * vec4(aNormal, 0.0)).xyz);
+)" EQT_DEPTH_TIE_VS_LINES R"(
 
     // Directional sun light
     vec3 sunL = normalize(-uSunDir);

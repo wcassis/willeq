@@ -838,6 +838,13 @@ EXEMPT_GROUPS = {
 
 EXEMPT_TESTS_GROUPS = {
     ("(free)", "ComputeHelpCoverage"): "seam",
+    # B976 (#294): the zone depth tie-break's pure C++ decision -- the C++
+    # mirror of the GLSL line EQT_DEPTH_TIE_VS_LINES that production executes
+    # in the region vertex programs. Its only caller is the unit test
+    # (tests/test_zone_depth_tie_break.cpp), which drives it without a GPU;
+    # the production counterpart is the GLSL splice plus uDepthTieBiasForFlag
+    # (live in zone_shader_callbacks.h). A test seam, like ComputeHelpCoverage.
+    ("(free)", "biasedStoredDepth"): "seam",
     # B430/B433: the Options window's per-control classification table is a
     # CENSUS, not a runtime input -- its reader is the test that fails on an
     # unclassified control row (OptionsClassification.*), which is the point.
