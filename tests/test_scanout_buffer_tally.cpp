@@ -83,17 +83,19 @@ TEST(ScanoutBufferTally, NullBoIsIgnored) {
     EXPECT_EQ(t.bytes(), 0u);
 }
 
-// The C export the ledger reads: the device's strong definition reads the
-// member tally, the core TU's weak default answers {0,0}. Here the tally is
-// exercised through the exact accessors the strong definition calls
-// (CIrrDeviceFB.cpp's eqtGetScanoutBufferTally is `bufs = t.bufs(); bytes =
-// t.bytes();`).
+// The device-side half of the publish idiom (README "The fix"): the device's
+// TU calls eqt::memory::publishScanoutTally(bufs, bytes) -- the member
+// tally's two accessors -- from its register/destroy callbacks, so the core's
+// atomic pair reads the tally the client-side GBM source holds. This binary
+// links no device, so nothing publishes and the pair reads its {0, 0}
+// initial value -- the true answer of "no GBM buffers in this process".
 TEST(ScanoutBufferTally, PublishedPairIsTheAccessorsTheCEXportReads) {
     Tally t;
     uint32_t bufs = 99;
     uint64_t bytes = 99;
-    // Before the device publishes, the pair is zero -- the same answer the
-    // weak default gives a deviceless binary.
+    // Before the device publishes, the pair is zero -- the answer a
+    // deviceless binary (this test binary, the bench) reads: no GBM
+    // buffers in this process.
     bufs = t.bufs();
     bytes = t.bytes();
     EXPECT_EQ(bufs, 0u);
