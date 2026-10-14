@@ -127,6 +127,19 @@ enum LinuxKey {
 #include "COpenGLES2Driver.h"
 #include <chrono>
 
+// B961 (GitLab #279): the memory ledger's scanout row, defined in the client
+// core (include/client/core/gpu_buffer_census.h) inside namespace
+// eqt::memory. The device and the core never share a header include path, so
+// the device declares the exact mangled name itself -- the same shape as the
+// client TUs declaring the driver's gles2GetHWBufferMemoryUsage. This is the
+// ONE strong device->core reference that binds across the two static archives
+// (the core side is a plain strong definition, no weak symbol).
+namespace eqt {
+namespace memory {
+void publishScanoutTally(uint32_t bufs, uint64_t bytes);
+} // namespace memory
+} // namespace eqt
+
 // P25: X11 headers for the opt-in windowed EGL backend. Included after all
 // Irrlicht headers (same ordering discipline as linux/input.h above) since
 // Xlib.h defines plain macros/typedefs (None, Bool, Status, True, False)
@@ -191,6 +204,26 @@ namespace video
 // Constructor / Destructor
 // ============================================================
 
+// B961 (GitLab #279): the device whose tally the static gbm callbacks below
+// drive. The gbm_bo_set_user_data callback takes only (bo, data), so the
+// destroy path and getOrCreateFb reach their device (and thus the tally)
+// through this pointer. std::atomic: written on the render thread (ctor,
+// dtor) and read from any thread (the callbacks, and the ledger's reads via
+// the published pair). One device per process in willeq. Set in the
+// constructor before any buffer lock, cleared in the destructor after the
+// surface (and thus every bo) is gone.
+static std::atomic<CIrrDeviceFB*> s_scanoutDevice{nullptr};
+
+void CIrrDeviceFB::scanoutRegisterBo(void* bo, uint32_t stride, uint32_t height) {
+    scanoutTally_.registerBo(bo, stride, height);
+    eqt::memory::publishScanoutTally(scanoutTally_.bufs(), scanoutTally_.bytes());
+}
+
+void CIrrDeviceFB::scanoutUnregisterBo(void* bo) {
+    scanoutTally_.destroyCallback(bo, nullptr);
+    eqt::memory::publishScanoutTally(scanoutTally_.bufs(), scanoutTally_.bytes());
+}
+
 CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
     : CIrrDeviceStub(param),
       drmFd_(-1), crtcId_(0), connectorId_(0), savedCrtc_(nullptr),
@@ -229,6 +262,11 @@ CIrrDeviceFB::CIrrDeviceFB(const SIrrlichtCreationParameters& param)
     // docker/irrlicht-drm-patch.py / build-gles2-x86.sh --irrlicht-only for
     // how this file lands in the built tree.
     if (CreationParams.DriverType != video::EDT_NULL) {
+        // B961: the gbm callbacks reach this device through the pointer
+        // from this moment on, so it is published before the first lock.
+        // Cleared in the destructor, after the surface (and thus every bo)
+        // is gone.
+        s_scanoutDevice.store(this, std::memory_order_release);
         bool eglOk = false;
 
         // P25: explicit opt-in X11-windowed EGL backend. WILLEQ_EGL_X11 is only
@@ -336,6 +374,15 @@ CIrrDeviceFB::~CIrrDeviceFB()
         gbm_surface_destroy(gbmSurface_);
     if (gbmDevice_)
         gbm_device_destroy(gbmDevice_);
+    // B961: every bo above is gone (the surface's release ran its destroy
+    // callbacks, each of which published the shrunken tally). Drop any that
+    // did not (defensive) and publish {0, 0} so a late ledger read sees an
+    // empty tally rather than a stale one; then unpublish the device
+    // pointer.
+    scanoutTally_.clear();
+    eqt::memory::publishScanoutTally(0, 0);
+    if (s_scanoutDevice.load(std::memory_order_acquire) == this)
+        s_scanoutDevice.store(nullptr, std::memory_order_release);
 
     // Close DRM
     if (drmFd_ >= 0)
@@ -957,6 +1004,13 @@ struct DrmFbData {
     uint32_t fbId;
 };
 
+static void scanoutFbDestroyCallback(void* bo, void* data) {
+    (void)data;
+    if (CIrrDeviceFB* dev = s_scanoutDevice.load(std::memory_order_acquire))
+        if (bo)
+            dev->scanoutUnregisterBo(bo);
+}
+
 static void drmFbDestroyCallback(struct gbm_bo* bo, void* data) {
     auto* fbData = static_cast<DrmFbData*>(data);
     if (fbData) {
@@ -964,6 +1018,9 @@ static void drmFbDestroyCallback(struct gbm_bo* bo, void* data) {
             drmModeRmFB(fbData->drmFd, fbData->fbId);
         delete fbData;
     }
+    // B961: the bo is being freed -- drop it from the scanout tally. The
+    // DrmFbData pointer passes through unchanged.
+    scanoutFbDestroyCallback(bo, data);
 }
 
 static uint32_t getOrCreateFb(struct gbm_bo* bo, int drmFd, uint32_t width, uint32_t height) {
@@ -984,6 +1041,11 @@ static uint32_t getOrCreateFb(struct gbm_bo* bo, int drmFd, uint32_t width, uint
     }
 
     auto* fbData = new DrmFbData{drmFd, fb};
+    // B961: the bo is now locked by the surface for this frame -- count it
+    // (stride x height, its backing store's byte size). The set_user_data
+    // callback below is the single owner-removal point (see above).
+    if (CIrrDeviceFB* dev = s_scanoutDevice.load(std::memory_order_acquire))
+        dev->scanoutRegisterBo(bo, stride, height);
     gbm_bo_set_user_data(bo, fbData, drmFbDestroyCallback);
     return fb;
 }
