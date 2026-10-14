@@ -439,3 +439,13 @@ SET_TESTS_PROPERTIES(OracleSessionSafety PROPERTIES LABELS "hygiene")
 ADD_TEST(NAME OracleRemoteStopSafety
     COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/remote_stop_safety.sh)
 SET_TESTS_PROPERTIES(OracleRemoteStopSafety PROPERTIES LABELS "hygiene")
+
+# B1058 (#378): the oracle driver's template library located over the archived
+# corpus (review/B1058/corpus): every positive within 1 px of its measured
+# centre and above min_score, every negative below it, cv2 and numpy agreeing
+# to 1e-3. SKIPs (125) on a host without the corpus or NumPy/Pillow -- the CI
+# runners have neither.
+ADD_TEST(NAME OracleLocateTemplates
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/eqemu/oracle/tests/oracle_locate_test.py)
+SET_TESTS_PROPERTIES(OracleLocateTemplates PROPERTIES LABELS "hygiene"
+    SKIP_RETURN_CODE 125 TIMEOUT 900)
