@@ -5299,27 +5299,15 @@ only; no source file changed; tip `c0a76fea`, both slot2 trees rebuilt from it).
   +34/+71/+32% (B431) -- so a lamp-shaped term is back on the table for that spot,
   which is what B110 originally proposed and T408 measured away in grey.
 
-- **B326** (B) `src/client/graphics/eq/zone_geometry.cpp` → issue #121
-  `ZoneMeshBuilder::buildTexturedMeshFromUploaded` / `buildCompositeMesh` /
-  `zone_geometry_atlased.cpp` `buildAtlasedMesh` -- **three of the four zone
-  mesh builders have ZERO callers, and T408 wired the baked colours into only
-  the one that is reached.** Census over `src/ include/ tests/ tools/
-  benchmarks/ docker/`: `buildTexturedMesh` is called from
-  `renderer_zone_draw.cpp` (the zone), `renderer_zone_stream.cpp` and
-  `door_manager.cpp` (objects and doors) and `variant_loading.cpp` /
-  `race_model_loader.cpp` (characters, `flipV=true`); the other three are
-  called by nothing outside their own declarations. The atlased builder cannot
-  take the baked flag as things stand anyway -- `AtlasShaderCallback` already
-  uses `SMaterial::MaterialTypeParam` for the atlas page index and
-  `MaterialTypeParam2` for the alpha page, which is the field T408 uses as the
-  flag on the main callback. Closes when the three are deleted, or wired and
-  reached with a test. Found by T408 while looking for "the three mesh
-  builders" the plan named -- the plan named the ENTITY builders
-  (`entity_mesh_build.cpp`, `entity_build_step.cpp`), which must NOT get the
-  zone's baked light: they draw character models, and character WLD meshes
-  carry no colour array at all (T408 measured `colorCount == 0` for every one,
-  which is why the memory baselines moved by exactly one empty vector header
-  per geometry). Prov: T408 Review §5.
+- ~~**B326** (B)~~ **CLOSED by B494+B491** (MR closing #121, 2026-10-14): the three
+  unreached zone mesh builders are gone -- `ZoneMeshBuilder::buildTexturedMeshFromUploaded`
+  and `buildCompositeMesh` (zone_geometry.cpp) and the whole `zone_geometry_atlased.cpp`
+  (`buildAtlasedMesh` + `splitTriangleToUVCells`) -- each confirmed zero-caller by the
+  wave-9 census and re-grepped at the merge head, then deleted with their members. The
+  one reached builder (`buildTexturedMesh`) already carries T408's baked colours; the
+  entity builders it must NOT touch are untouched. The B950 `sizeof(ZoneMeshBuilder)`
+  layout net (B1019's `test_zone_geometry_atlas_layout`) stays green: the guarded atlas
+  members are gone, so both sides of the net agree.
 
 - **B281** (A) `src/client/graphics/renderer/irrlicht_renderer.cpp` / → issue #16
   `SkyRenderer::updateTimeOfDay` -- **fable's night frame gets steadily
@@ -9954,8 +9942,9 @@ fine — the table fails on a stale entry, so it cannot rot.
   `setWeatherLights()`; `FlockController::setDestination()` / `scatter()` /
   `setCollisionDetection()`; `RainOverlay::getSettings()` /
   `SnowOverlay::getSettings()`. Note the overlap with the FIELD census: B339
-  and B346 already own `WeatherEffectsController::targetIntensity_` and
-  `ParticleEmitter::spawnRadius_`, which are the same subsystem's unread
+  and B346 already own `WeatherEffectsController::targetIntensity_` (B339
+  deleted it, 2026-10-11) and `ParticleEmitter::spawnRadius_`, which are the
+  same subsystem's unread
   members. Found by T455.
 
 - **B491** (B, unreached) **The S3D/WLD asset-loader query API: 49 zero-caller → issue #166
@@ -10100,7 +10089,9 @@ fine — the table fails on a stale entry, so it cannot rot.
   `createMode`'s `rendererType` parameter and the `GraphicalRendererType`
   enum stay: `Application::initGameMode` still logs the requested type
   (`src/client/application.cpp:431-432`). Nothing reintroduced; B345's three
-  members were not touched. See `refactor/B501/README.md`.
+  `ConsoleRenderer` members (`m_curEnd` / `m_startTime` / `m_maxEnd`) were
+  deleted with their writes by T506's B345 close (2026-10-11), after the
+  strike. See `refactor/B501/README.md`.
 
 - ~~**B501** (B, unreached) **`common/` utility API with no caller: 12 → issue #176
   zero-caller public functions across 5 headers.**~~
@@ -11130,8 +11121,8 @@ B672–B679 unused.
     `include/client/graphics/gpu_upload_thread.h` and
     `include/client/graphics/work_priority.h` and use nothing from either (pre-existing; the last use in the cache went
     with T326).
-  - `src/client/graphics/texture_atlas.cpp` includes the fmt format header for
-    the deleted async page upload alone.
+  - the texture_atlas.cpp source file (deleted wholesale by B494) includes the
+    fmt format header for the deleted async page upload alone.
   - Enumerators and includes are not in `ZeroCallers` or `WriteOnlyFields`.
     Fix: delete, or decide the enumerator is kept for `WorkPriorityKey`'s
     ordering contract (its test pins the order).

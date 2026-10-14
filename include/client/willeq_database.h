@@ -70,7 +70,6 @@ struct RaceModelInfo {
     std::string neuterCode;
     std::string s3dFile;
     std::string fallbackCode;
-    std::string animationSource;
     std::string animationSourceS3d;
     float scale = 1.0f;
     // T304 Leg 2: packed ARGB placeholder-cube tint, used only when no model

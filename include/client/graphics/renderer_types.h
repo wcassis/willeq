@@ -50,7 +50,6 @@
 #include "client/graphics/tree_identifier.h"
 #include "client/graphics/weather_system.h"
 #include "client/graphics/zone_shader.h"
-#include "client/graphics/texture_atlas.h"
 #include "client/graphics/eqe1_loader.h"
 #include "client/graphics/eqe1_texture_index.h"
 #include "client/graphics/portal_system.h"

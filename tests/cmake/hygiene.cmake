@@ -242,6 +242,22 @@ ADD_TEST(NAME ZeroCallersSelfTest
             --self-test)
 SET_TESTS_PROPERTIES(ZeroCallersSelfTest PROPERTIES LABELS "hygiene")
 
+# B1018 (issue #339, AUDIT-WAVE7 on MR !130): the write-only census's
+# DECL regex captured only the FIRST declarator of `T a = 0, b = 0;`, so
+# `b` was invisible to the census -- that is why `m_maxEnd` (written, never
+# read) never got an EXEMPT row. The split (split_declarators, top-level
+# commas) plus its probes now run as their own self-test beside the
+# ZeroCallers one above: the `int a = 0, b = 0;` row (AC1b's own) and the
+# negative shapes a naive comma split would break (template arguments, an
+# expression's comma, a literal's comma). Instant -- no tree is scanned.
+# The ratchet itself (WriteOnlyFields) sees the split through the same
+# script; its delta was 259 members on 153 lines, write-only 45 -> 45
+# (zero new rows), unused 86 -> 89 (three rowed in EXEMPT_UNUSED).
+ADD_TEST(NAME WriteOnlyFieldsSelfTest
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/refactor/check_write_only_fields.py
+            --self-test)
+SET_TESTS_PROPERTIES(WriteOnlyFieldsSelfTest PROPERTIES LABELS "hygiene")
+
 # B824 (issue #86, kanban t_20a88e62): the deleted item-to-model JSON map,
 # ratcheted. EquipmentModelLoader parsed all 3,661 rows of
 # data/item_models.json into itemToModelMap_ on every startup and read it

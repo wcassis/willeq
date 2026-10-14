@@ -11,8 +11,6 @@
 namespace EQT {
 namespace Graphics {
 
-class PfsArchive;
-
 // Persistent archive index for O(1) race-to-archive lookups.
 // Mirrors the audio system's PFS index caching pattern:
 //   - First run: scans *_chr.s3d archives, extracts character names, maps race codes
@@ -44,10 +42,6 @@ public:
     // Key is (raceId << 8 | gender)
     std::string getArchiveForRace(uint16_t raceId, uint8_t gender) const;
 
-    // Cached open archive. Zero-caller (check_zero_callers.py's B494 row);
-    // kept, like the cachedArchives_ member, until B494 takes it.
-    PfsArchive* getCachedArchive(const std::string& archivePath);
-
     // Get the number of indexed race entries
     size_t getRaceEntryCount() const { return raceIndex_.size(); }
 
@@ -71,10 +65,6 @@ private:
 
     // Archive validation: filename -> file size
     std::map<std::string, uintmax_t> archiveSizes_;
-
-    // Cached open archives (never populated by scanArchives(); B494's
-    // getCachedArchive is the only accessor)
-    std::map<std::string, std::unique_ptr<PfsArchive>> cachedArchives_;
 };
 
 } // namespace Graphics

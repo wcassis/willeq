@@ -50,7 +50,9 @@ keep both build trees (`-e build-arm-noble -e build-arm64-noble`). `build-arm` i
 `willeq-arm-noble`) then `scripts/pi/publish_arm_build.sh`, which publishes the stripped client plus that
 commit's tracked `config/` + `data/` to **`/mnt/projects/fable/ci-arm/<sha>/`** (`by-branch/<branch>` symlinks;
 newest 12 kept). The job is automatic on `fable` and a manual, non-blocking job everywhere else
-(`glab ci trigger build-arm`), and refuses any host but `dev-u24`.
+(`glab ci trigger build-arm`), and refuses any host but `dev-u24`. Both ARM jobs write the whole build to
+`build-<arch>-noble.log`, kept as a job artifact (14 days); a failure prints the `error:` lines and the tail,
+so an ARM-only compile error reaches the trace (B1054's did not through the old `| tail -n 40`).
 
 Why there: hermes-ext has no docker and no NFS; the Orange Pi mounts the same NFS share as the dev host. A
 hermes-ext worker therefore runs a Pi leg entirely over ssh — NFS paths exist **on the Pi**, not on the worker:
@@ -777,7 +779,16 @@ drivers can never render byte-identical frames:
 
 - **x86** (the CI `gate` job): llvmpipe, 16-bit depth (B971), goldens at
   `tests/goldens/<zone>_f<n>.png`, section `manifest["zones"]`. The CI
-  job passes no `--platform`; nothing about it changed.
+  job passes no `--platform`; nothing about it changed. The runners take
+  the x86 device fork's surfaceless-EGL path (no /dev/dri grant), so the
+  goldens are driver-stable. On a multi-GPU x86 box (lane 5, the
+  ThinkPad: a headless NVIDIA Quadro on card0, the Intel UHD 630 eDP
+  panel on card1) `--drm` card selection tries every `/dev/dri/card*` in
+  numeric order and skips a card that opens without a connected
+  connector and a CRTC, landing on the card that actually has a display
+  (B1054, #374); `WILLEQ_DRM_DEVICE=/dev/dri/cardN` is an explicit
+  single-path override whose failure is an error, never a silent
+  fallback.
 - **Pi** (by hand, never a CI job): Mali-400 under the Lima driver on the
   Orange Pi with the shipped LLVM-less Mesa prefix, goldens at
   `tests/goldens/pi/<zone>/f<n>.png`, section

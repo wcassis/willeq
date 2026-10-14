@@ -69,11 +69,17 @@ them restored (they are present in the file again).
 
 - #133, #134, #138, #139: every member the issue names was deleted (plus
   `m_maxEnd`, verified write-only). Closed by the MR's `Closes` lines; #139
-  gets a note recording the `m_maxEnd` finding.
+  gets a note recording the `m_maxEnd` finding (posted 2026-10-13 by B1018,
+  https://gitlab.goldfarm.local/willeq/willeq/issues/139#note_4233 — it also
+  records the multi-declarator census fix that is WHY `m_maxEnd` never
+  surfaced in an earlier census pass).
 - #135: NOT closed by `Closes`. `currentTargetInfo_` went, but
   `currentTargetLevel_` is read (`target_ring_draw.cpp:48`) and stays, so a
-  note is posted on the issue recording the split instead -- the card's rule
-  is that an issue where a member was KEPT because it is read gets a note, not
+  note is posted on the issue recording the split instead (posted 2026-10-13
+  by B1018,
+  https://gitlab.goldfarm.local/willeq/willeq/issues/135#note_4230) -- the
+  card's rule is that an issue where a member was KEPT because it is read
+  gets a note, not
   a close. The MR lists `Closes #133 / #134 / #138 / #139` (all of their
   members went); `#135` gets the note. The card's AC text said "the MR
   description lists `Closes #135`" but its own kept-member rule overrides that
