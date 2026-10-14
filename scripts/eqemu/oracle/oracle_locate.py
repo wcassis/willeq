@@ -35,9 +35,12 @@ Commands
   cut-sheet <sheet.tga> <x,y,w,h> <out.png> --name N --xml FILE:LINE [--note T]
   cut-frame <frame.png> <x,y,w,h> <out.png> --name N [--xml FILE:LINE] [--note T]
       Cut a template and write/replace its manifest.tsv row (beside out.png).
-  broker --remote user@host --remote-dir DIR --out DIR [--templates DIR]
+  broker --remote user@host --remote-dir DIR --out DIR [--templates DIR] [--rig R]
       The driver-side half of click-template / wait-template: one ssh
       exchange per locate (see docs/oracle_driver.md "Template clicks").
+      B1059: also answers text reads ("read:<mode>:<rect>:<hex>"): the glyph
+      atlas of rig R first, tesseract as the fallback (docs/oracle_driver.md
+      "Reading text"); each read is a row of <out>/text-reads.tsv.
 """
 
 import argparse
@@ -289,10 +292,76 @@ def cut(kind, source, rect, out, name, xml_ref, note, keep_source_rel=True):
 
 # --- broker (driver side of click-template / wait-template) -------------------
 
-ANSWER_RE = re.compile(r"^\d+ (-?\d+ -?\d+ -?\d+\.\d+ (cv2|numpy) [01]|ERR)$")
+ANSWER_RE = re.compile(r"^\d+ (-?\d+ -?\d+ -?\d+\.\d+ (cv2|numpy) [01]|ERR"
+                       r"|TEXT (atlas|tesseract|unknown) [01] \d+\.\d{4} (cv2|numpy|tesseract|-) [0-9a-f]{0,256})$")
+# B1059: a text request is "read:<mode>:<x,y,w,h>:<expected, hex>" (mode edit|line|screen)
+READ_RE = re.compile(r"read:(edit|line|screen):(\d+,\d+,\d+,\d+):([0-9a-f]{0,512})")
+REGIONS = os.path.join(HERE, "glyphs", "regions.tsv")
 
 
-def broker(remote, remote_dir, out, templates, idle_limit, ssh_opts):
+def tesseract_line(luma, rect):
+    """verify_labels.py's recipe: gray crop x5, threshold 50 %, psm 7."""
+    import tempfile
+    from PIL import Image
+    x, y, w, h = rect
+    im = Image.fromarray(luma[y:y + h, x:x + w]).resize((w * 5, h * 5))
+    im = im.point(lambda v: 255 if v >= 128 else 0)
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as fh:
+        tmp = fh.name
+    try:
+        im.save(tmp)
+        p = subprocess.run(["tesseract", tmp, "-", "--psm", "7"], capture_output=True,
+                           text=True, timeout=60)
+        return " ".join(p.stdout.split())
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    finally:
+        os.unlink(tmp)
+
+
+def screen_regions(shape):
+    """glyphs/regions.tsv rows for a frame of this size: (name, rect, edit)."""
+    out = []
+    if os.path.exists(REGIONS):
+        for line in open(REGIONS, encoding="utf-8"):
+            if line.startswith("#") or not line.strip():
+                continue
+            name, size, rect, edit = line.rstrip("\n").split("\t")[:4]
+            if size == f"{shape[1]}x{shape[0]}":
+                out.append((name, parse_rect(rect), edit == "1"))
+    return out
+
+
+def read_answer(seq, mode, rect, expect, luma, rig):
+    """-> (answer line, log row). Atlas first; tesseract decides only a match;
+    anything else is 'unknown' and the remote keeps its legacy check."""
+    import oracle_glyphs as og
+    name = og.rig_atlas(rig) if rig else None
+    atlas = og.Atlas(name) if name else None
+    decider, ok, text, score, path = "unknown", 0, "", 0.0, "-"
+    if mode == "screen":
+        if atlas is not None:
+            reads = [og.read_crop(luma, r, atlas, edit=e)["text"] for _, r, e in screen_regions(luma.shape)]
+            joined = "\n".join(t for t in reads if t and t != og.UNKNOWN)
+            if joined and re.search(expect, joined.replace("[Il]", "l"), re.I):
+                decider, ok, text, score, path = "atlas", 1, joined, 1.0, og.default_path()
+    else:
+        if atlas is not None:
+            r = og.read_crop(luma, rect, atlas, edit=(mode == "edit"))
+            if r["text"] != og.UNKNOWN:
+                decider, ok, text, score, path = ("atlas", int(og.text_matches(r["text"], expect)),
+                                                  r["text"], r["score"], r["path"])
+        if decider == "unknown":
+            t = tesseract_line(luma, rect)
+            if t == expect:
+                decider, ok, text, score, path = "tesseract", 1, t, 1.0, "tesseract"
+            else:
+                text = t
+    hexed = text.encode()[:128].hex()
+    return f"{seq} TEXT {decider} {ok} {score:.4f} {path} {hexed}", [decider, ok, text, f"{score:.4f}", path]
+
+
+def broker(remote, remote_dir, out, templates, idle_limit, ssh_opts, rig=None):
     os.makedirs(out, exist_ok=True)
     log_path = os.path.join(out, "locate.tsv")
     if not os.path.exists(log_path):
@@ -325,7 +394,7 @@ def broker(remote, remote_dir, out, templates, idle_limit, ssh_opts):
                 return 0
             continue
         idle = 0
-        m = re.fullmatch(rb"REQ\t(\d+)\t([A-Za-z0-9_-]+)", first)
+        m = re.fullmatch(rb"REQ\t(\d+)\t([A-Za-z0-9_,:-]+)", first)
         if not m or int(m.group(1)) != seq:
             sys.stderr.write(f"broker: bad reply {first[:80]!r}\n")
             return 65
@@ -334,6 +403,20 @@ def broker(remote, remote_dir, out, templates, idle_limit, ssh_opts):
         with open(shot, "wb") as fh:
             fh.write(rest)
         t0 = time.monotonic()
+        rm = READ_RE.fullmatch(name)
+        if rm:
+            try:
+                mode, rect = rm.group(1), parse_rect(rm.group(2))
+                expect = bytes.fromhex(rm.group(3)).decode()
+                answer, cols = read_answer(seq, mode, rect, expect, load_luma(shot), rig)
+            except Exception as exc:  # unreadable shot, bad rect
+                sys.stderr.write(f"broker: seq {seq} {name}: {exc}\n")
+                answer, cols = f"{seq} ERR", ["ERR", 0, "", "-", "-"]
+            with open(os.path.join(out, "text-reads.tsv"), "a") as fh:
+                fh.write("\t".join(map(str, [seq, name, *cols, int((time.monotonic() - t0) * 1000)])) + "\n")
+            assert ANSWER_RE.match(answer), answer
+            seq += 1
+            continue
         try:
             tpl_path, min_score = template_entry(name, templates)
             r = locate_arrays(load_luma(shot), load_luma(tpl_path))
@@ -387,6 +470,7 @@ def main(argv=None):
     p.add_argument("--templates", default=TEMPLATES)
     p.add_argument("--idle-limit", type=int, default=0)
     p.add_argument("--ssh-opt", action="append", default=[])
+    p.add_argument("--rig", help="B1059: the lane's rig name for the glyph atlas (glyphs/rigs.tsv)")
     a = ap.parse_args(argv)
     try:
         if a.cmd in ("locate", "find"):
@@ -413,7 +497,7 @@ def main(argv=None):
             return 0
         if a.cmd == "broker":
             return broker(a.remote, a.remote_dir, a.out, a.templates, a.idle_limit,
-                          a.ssh_opt)
+                          a.ssh_opt, a.rig)
     except (OSError, ValueError, KeyError) as exc:
         print(f"oracle_locate: {exc}", file=sys.stderr)
         return 2

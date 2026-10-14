@@ -14,8 +14,19 @@ assert_visible() {
     local expected=$1 name=$2
     if [[ $expected == window:EverQuest ]]; then
         xdotool search --name '^EverQuest$' >/dev/null 2>&1 && return 0
-    elif screen_text | grep -qiE "$expected"; then
-        return 0
+    else
+        # B1059: with the broker up (template plans) the glyph atlas reads the
+        # known text regions first; only its match decides. Otherwise, and
+        # whenever it does not match, the legacy tesseract screen_text does.
+        if [[ -n ${TEXT_BROKER:-} ]] && read_text screen 0,0,1,1 "$expected" "$name" column5 &&
+            [[ $RT_DECIDER == atlas && $RT_OK == 1 ]]; then
+            return 0
+        fi
+        if screen_text | grep -qiE "$expected"; then
+            [[ -n ${TEXT_BROKER:-} ]] && text_log "$name" column5 screen tesseract 1 "screen_text matched: $expected" - tesseract
+            return 0
+        fi
+        [[ -n ${TEXT_BROKER:-} ]] && text_log "$name" column5 screen unknown 0 "no match: $expected" - -
     fi
     shot "$name-assertion-failed" || :
     echo "screen assertion failed: $name expected $expected" >&2
@@ -69,6 +80,60 @@ name_filled_at() {
     std=$(convert "$image" +repage -crop "110x10+$((gx-156))+$((gy-35))" +repage \
         -colorspace Gray -format '%[fx:standard_deviation]' info:) || return 65
     awk -v std="$std" 'BEGIN {exit !(std >= 0.134)}'
+}
+# --- B1059 text reads ---------------------------------------------------------
+# read_text asks the broker (driver host) to read a rect of a fresh shot with
+# the glyph atlas, tesseract as the fallback (oracle_locate.py read_answer).
+# Request "read:<mode>:<x,y,w,h>:<expected as hex>", answer "<seq> TEXT
+# <decider> <ok> <score> <path> <text as hex>"; decider atlas|tesseract|unknown.
+# An unanswered or ERR read is decider 'unknown': the caller keeps its legacy
+# check. Every read is a row of text-reads.tsv (the report's "Text reads").
+RT_DECIDER= RT_OK= RT_TEXT=
+text_log() {
+    # step what mode decider ok text score path
+    local t=${6//$'\t'/ }
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "${t//$'\n'/ | }" "$7" "$8" \
+        >>"$DIR/text-reads.tsv"
+}
+read_text() {
+    local mode=$1 rect=$2 expect=$3 step=$4 what=$5 seq=$LOCATE_SEQ hex i aseq kind score path thex
+    [[ $mode =~ ^(edit|line|screen)$ && $rect =~ ^[0-9]+,[0-9]+,[0-9]+,[0-9]+$ ]] || return 65
+    hex=$(printf '%s' "$expect" | od -An -tx1 | tr -d ' \n')
+    (( ${#hex} <= 512 )) || return 65
+    LOCATE_SEQ=$((LOCATE_SEQ+1))
+    RT_DECIDER=unknown RT_OK=0 RT_TEXT=
+    mkdir -p "$DIR/locate" || return 65
+    import -window root -crop 1280x800+0+30 "$DIR/locate/shot-$seq.png" 2>/dev/null || return 65
+    printf 'read:%s:%s:%s\n' "$mode" "$rect" "$hex" >"$DIR/locate/req-$seq.tmp" || return 65
+    mv "$DIR/locate/req-$seq.tmp" "$DIR/locate/req-$seq.tsv" || return 65
+    for ((i = 0; i < LOCATE_WAIT_S * 5; i++)); do
+        [[ -s $DIR/locate/ans-$seq.tsv ]] && break
+        sleep 0.2
+    done
+    if [[ -s $DIR/locate/ans-$seq.tsv ]]; then
+        read -r aseq kind RT_DECIDER RT_OK score path thex <"$DIR/locate/ans-$seq.tsv"
+        if [[ $aseq != "$seq" || $kind != TEXT || ! $RT_DECIDER =~ ^(atlas|tesseract|unknown)$ ||
+              ! $RT_OK =~ ^[01]$ || ! ${thex:-} =~ ^[0-9a-f]*$ ]]; then
+            RT_DECIDER=unknown RT_OK=0 score=- path=- thex=
+        fi
+        RT_TEXT=$(printf '%b' "$(sed 's/../\\x&/g' <<<"${thex:-}")")
+    else
+        score=- path=-
+    fi
+    text_log "$step" "$what" "$mode" "$RT_DECIDER" "$RT_OK" "$RT_TEXT" "${score:--}" "${path:--}"
+    return 0
+}
+name_verify() {
+    # Template mode's Name check: the field (file rect 165 px left of and 8 px
+    # above the Get Name centre; label_crops.py) read by the atlas must equal
+    # the typed name. tesseract only ever confirms; an atlas-less rig or an
+    # UNKNOWN read keeps the presence check (name_filled_at) unchanged.
+    local gx=$1 gy=$2 typed=$3 step=$4
+    read_text edit "$((gx-165)),$((gy-38)),118,16" "$typed" "$step" name-field || return 65
+    case $RT_DECIDER in
+        atlas|tesseract) [[ $RT_OK == 1 ]] ;;
+        *) name_filled_at "$gx" "$gy" ;;
+    esac
 }
 selected_at() {
     # The selected label is yellow; enabled but unselected labels are white.
@@ -243,7 +308,7 @@ broker_exchange() {
     [[ $next =~ ^[0-9]+$ ]] || return 65
     mkdir -p "$DIR/locate" || return 65
     if [[ -n $answer ]]; then
-        [[ $answer =~ ^[0-9]+\ (-?[0-9]+\ -?[0-9]+\ -?[0-9]+\.[0-9]+\ (cv2|numpy)\ [01]|ERR)$ ]] || return 65
+        [[ $answer =~ ^[0-9]+\ (-?[0-9]+\ -?[0-9]+\ -?[0-9]+\.[0-9]+\ (cv2|numpy)\ [01]|ERR|TEXT\ (atlas|tesseract|unknown)\ [01]\ [0-9]+\.[0-9]{4}\ (cv2|numpy|tesseract|-)\ [0-9a-f]{0,256})$ ]] || return 65
         aseq=${answer%% *}
         printf '%s\n' "$answer" >"$DIR/locate/ans-$aseq.tmp" || return 65
         mv "$DIR/locate/ans-$aseq.tmp" "$DIR/locate/ans-$aseq.tsv" || return 65
@@ -399,9 +464,39 @@ if [[ $ACTION == selftest ]]; then
     broker_exchange 7 '6 1 2 0.5000 cv2 0' >/dev/null || exit 1
     [[ $(cat "$DIR/locate/ans-6.tsv") == '6 1 2 0.5000 cv2 0' ]] || { echo 'broker answer not stored'; exit 1; }
     if broker_exchange 7 '6 1 2 0.5 cv2; rm -rf ~' >/dev/null; then echo 'malformed broker answer accepted'; exit 1; fi
+    broker_exchange 7 '8 TEXT atlas 1 1.0000 cv2 4f6b' >/dev/null || { echo 'text answer refused'; exit 1; }
+    if broker_exchange 7 '8 TEXT atlas 1 1.0000 cv2 4f6b; id' >/dev/null; then echo 'malformed text answer accepted'; exit 1; fi
     printf 'race_Human\n' >"$DIR/locate/req-7.tsv"; printf 'PNGBYTES' >"$DIR/locate/shot-7.png"
     [[ $(broker_exchange 7 '') == $'REQ\t7\trace_Human\nPNGBYTES' ]] || { echo 'broker request not streamed'; exit 1; }
-    echo 'PASS: selected coordinates, random/accept/cancel missed-action and override assertions, template clicks and broker exchange'
+    # B1059: text reads. The atlas decides the Name check both ways; an
+    # unknown or missing answer falls back to the presence check untouched;
+    # a screen check passes on an atlas match without running screen_text.
+    hexof() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
+    name_filled_at() { echo called >"$DIR/presence"; return 0; }
+    printf 'step\twhat\tmode\tdecider\tok\ttext\tscore\tpath\n' >"$DIR/text-reads.tsv"
+    LOCATE_SEQ=20
+    printf '20 TEXT atlas 1 1.0000 cv2 %s\n' "$(hexof 'Orac[Il]ebartp[Il]')" >"$DIR/locate/ans-20.tsv"
+    name_verify 171 77 Oraclebartpl st || { echo 'atlas match refused'; exit 1; }
+    [[ ! -e $DIR/presence ]] || { echo 'atlas-decided name ran the presence check'; exit 1; }
+    [[ $(cat "$DIR/locate/req-20.tsv") == "read:edit:6,39,118,16:$(hexof Oraclebartpl)" ]] || { echo 'name read request wrong'; exit 1; }
+    [[ $(tail -1 "$DIR/text-reads.tsv" | cut -f2,4,5,6) == $'name-field\tatlas\t1\tOrac[Il]ebartp[Il]' ]] || { echo 'text-reads row wrong'; exit 1; }
+    printf '21 TEXT atlas 0 1.0000 cv2 %s\n' "$(hexof Oraclebart)" >"$DIR/locate/ans-21.tsv"
+    if name_verify 171 77 Oraclebartpl st; then echo 'atlas mismatch passed'; exit 1; fi
+    printf '22 TEXT unknown 0 0.0000 - \n' >"$DIR/locate/ans-22.tsv"
+    name_verify 171 77 Oraclebartpl st && [[ -e $DIR/presence ]] || { echo 'unknown read skipped the presence check'; exit 1; }
+    rm -f "$DIR/presence"
+    name_verify 171 77 Oraclebartpl st && [[ -e $DIR/presence ]] || { echo 'missing answer skipped the presence check'; exit 1; }
+    TEXT_BROKER=1 SCREEN_TEXT='nothing here'
+    printf '24 TEXT atlas 1 1.0000 cv2 %s\n' "$(hexof 'Create a New Character')" >"$DIR/locate/ans-24.tsv"
+    assert_visible 'Character Select|Create a New Character' atlas-screen || { echo 'atlas screen match refused'; exit 1; }
+    printf '25 TEXT unknown 0 0.0000 - \n' >"$DIR/locate/ans-25.tsv"
+    if assert_visible 'Character Select|Create a New Character' atlas-screen-miss; then echo 'unknown screen read passed without screen_text'; exit 1; fi
+    SCREEN_TEXT='Character Select'
+    printf '26 TEXT unknown 0 0.0000 - \n' >"$DIR/locate/ans-26.tsv"
+    assert_visible 'Character Select|Create a New Character' tess-screen || { echo 'tesseract fallback refused'; exit 1; }
+    [[ $(tail -1 "$DIR/text-reads.tsv" | cut -f4,5) == $'tesseract\t1' ]] || { echo 'tesseract decider not recorded'; exit 1; }
+    unset TEXT_BROKER
+    echo 'PASS: selected coordinates, random/accept/cancel missed-action and override assertions, template clicks, broker exchange and text reads'
     exit 0
 fi
 stop_capture() {
@@ -454,6 +549,9 @@ CREATE_CLICKS=$(sed -n 's/^# create-clicks=//p' "$DIR/plan.tsv" | head -1)
 [[ -z $CREATE_CLICKS || $CREATE_CLICKS == template ]] || exit 65
 if [[ -n $CREATE_CLICKS ]] || grep -qE '^(click|wait)-template'$'\t' "$DIR/plan.tsv"; then
     printf 'step\ttemplate\troot_x\troot_y\tscore\tpath\tverify\tsettle_retries\n' >"$DIR/template-clicks.tsv"
+    # B1059: the broker is up, so text checks try the glyph atlas first
+    printf 'step\twhat\tmode\tdecider\tok\ttext\tscore\tpath\n' >"$DIR/text-reads.tsv"
+    TEXT_BROKER=1
 fi
 if [[ -n $INI_UNSET ]]; then
     [[ $INI_UNSET =~ ^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*$ ]] || exit 65
@@ -617,7 +715,7 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             for unused in {1..20}; do xdotool key BackSpace; done
             xdotool key a; xdotool key BackSpace
             xdotool type --delay 100 "$target"; sleep 2
-            if [[ $CREATE_CLICKS == template ]]; then name_check=(name_filled_at "$getname_x" "$getname_y")
+            if [[ $CREATE_CLICKS == template ]]; then name_check=(name_verify "$getname_x" "$getname_y" "$target" "$name")
             else name_check=(name_filled); fi
             if ! "${name_check[@]}"; then
                 # Lost xdotool keystrokes (fix2h: empty field -> "Name is not
@@ -625,7 +723,7 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
                 jclick "$name_x" "$name_y"; xdotool key End
                 for unused in {1..20}; do xdotool key BackSpace; done
                 xdotool type --delay 100 "$target"; sleep 2
-                "${name_check[@]}" || { shot "$name-not-typed"; echo "name field empty after re-type" >&2; exit 65; }
+                "${name_check[@]}" || { shot "$name-not-typed"; echo "name field not verified after re-type (${RT_DECIDER:-presence} '${RT_TEXT:-}')" >&2; exit 65; }
             fi
             shot "$name-before-submit"
             # The race/class/gender state was already verified on page 1 (the
