@@ -581,7 +581,7 @@ private:
     // for no effect. The publish side exists: HotbarModel's slot writers
     // call publishSlot() (HotbarSlotAssigned on the bridge) and Application
     // calls publishAllSlots() at zone-in; the only production writer is
-    // loadFromJson() at startup -- no command, intent or UI control assigns
+    // loadFromJson() from per-character storage at zone-in -- no command, intent or UI control assigns
     // a slot (B1025, #345). There is nothing left for a callback to carry.
     void setupRDPAudio(void* rdpServer);  // D20g: Wire RDP audio streaming
     // U07b: publishHotbarSnapshot removed — HotbarModel::publishAllSlots() handles this

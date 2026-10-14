@@ -474,6 +474,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/inventory/inventory_bags.cpp
     src/client/inventory/inventory_packets.cpp
     src/client/hotbar/hotbar_model.cpp
+    src/client/hotbar/hotbar_persistence.cpp
     src/client/chat/chat_message_buffer.cpp
     src/client/chat/chat_text_colors.cpp  # B993: [TextColors] User_1..86
     src/client/graphics/ui/command_registry.cpp

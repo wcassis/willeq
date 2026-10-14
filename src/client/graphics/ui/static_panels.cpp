@@ -14,6 +14,7 @@
 #include "client/chat/chat_text_colors.h"
 #include "client/graphics/text_batch.h"
 #include "client/state/event_bus.h"  // T156: applyHotbarSlotAssigned
+#include "client/hotbar/hotbar_model.h"
 #include <fmt/format.h>
 #include <chrono>
 
@@ -1083,7 +1084,21 @@ void renderXPBar(UIRenderer& ui, const UILayout& layout,
 void applyHotbarSlotAssigned(HotbarPanelState& state,
                              const eqt::state::HotbarSlotAssignedData& data) {
     if (data.index < 0 || data.index >= HotbarPanelState::SLOT_COUNT) return;
+    if (data.page < 0 || data.page >= eqt::HotbarModel::PAGE_COUNT ||
+        data.currentPage < 0 || data.currentPage >= eqt::HotbarModel::PAGE_COUNT) return;
+    if (state.currentPage != data.currentPage) {
+        for (auto& slot : state.slots) {
+            slot.cooldownDurationMs = 0;
+            slot.cooldownEndTime = {};
+        }
+    }
+    state.currentPage = data.currentPage;
+    if (data.page != data.currentPage) return;
     auto& slot = state.slots[data.index];
+    if (slot.type != data.type || slot.id != data.id || slot.emoteText != data.emoteText) {
+        slot.cooldownDurationMs = 0;
+        slot.cooldownEndTime = {};
+    }
     slot.type = data.type;
     slot.id = data.id;
     slot.emoteText = data.emoteText;

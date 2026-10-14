@@ -13600,3 +13600,14 @@ Every entry below comes from `refactor/B854/RENDERED_SWEEP.md`, measured on the 
   - Evidence: `~/kb-evidence/b945-event-staging/{x86-before,x86-after,pi-before-ej,pi-after-ej}`; full tables and the verdict: `refactor/B945/README.md`.
   - Open: none. Recommend closing #263 as not-a-retention (see the README verdict).
   - **Re-review findings fixed 2026-10-06** (review card t_0d1891b6, CHANGES REQUESTED, doc-only): README steady_60s `game_state` row re-cited to the `point=steady_60s` lines (28,450,392 / 28,457,392, delta +7,000 — the previously cited pair was the `zone_change_before_unload` point); "Not verified" section added; the "Repeatable test" pipeline citation now names pipeline #531 on the code head 428f0ff3 (hygiene/build/test/gate success; build-arm and client-ledger-live manual) instead of the pre-README pipeline #512. The final head's docs-only delta is re-verified by its own pipeline (id recorded on the fix card). MR !85 description now carries `Closes #263`.
+
+## Added 2026-10-13 by task/kb-b1053-options-window (issue #373)
+
+- **B1053** (A, UI) → issue #373. Will's XU4 play test reports that the
+  1280x720 Options window does not show all controls. The XML-backed table
+  audit at the branch's starting head found no control rectangle outside its
+  page/window at 1280x720 or 1024x768. A constrained DRM XU4 capture at
+  1280x720 likewise shows the General page fitting the XML-sized window;
+  the report remains open because the original failing still and affected tab
+  are unknown. See `refactor/B1053/README.md` for the exact audit and the
+  explicit unverified items.

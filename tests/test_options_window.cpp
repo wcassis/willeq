@@ -201,6 +201,31 @@ TEST(OptionsLayoutT434, EveryControlIsInsideItsPage) {
     }
 }
 
+TEST(OptionsLayout, NoControlOutsideItsPage) {
+    for (const auto wh : {std::pair<int, int>{1280, 720},
+                          std::pair<int, int>{1024, 768}}) {
+        const auto l = layoutAt(wh.first, wh.second);
+        const auto page = OL::pageRect(l);
+        const auto window = OL::windowRect(l);
+        for (int i = 0; i < OL::CONTROL_COUNT; ++i) {
+            const auto& control = OL::kControls[i];
+            const auto r = OL::controlRect(l, i);
+            EXPECT_GE(static_cast<int>(control.tab), 0) << control.xmlItem;
+            EXPECT_LT(static_cast<int>(control.tab), OL::TAB_COUNT) << control.xmlItem;
+            EXPECT_GT(r.getWidth(), 0) << control.xmlItem;
+            EXPECT_GT(r.getHeight(), 0) << control.xmlItem;
+            EXPECT_GE(r.UpperLeftCorner.X, page.UpperLeftCorner.X) << control.xmlItem;
+            EXPECT_GE(r.UpperLeftCorner.Y, page.UpperLeftCorner.Y) << control.xmlItem;
+            EXPECT_LE(r.LowerRightCorner.X, page.LowerRightCorner.X) << control.xmlItem;
+            EXPECT_LE(r.LowerRightCorner.Y, page.LowerRightCorner.Y) << control.xmlItem;
+            EXPECT_GE(r.UpperLeftCorner.X, window.UpperLeftCorner.X) << control.xmlItem;
+            EXPECT_GE(r.UpperLeftCorner.Y, window.UpperLeftCorner.Y) << control.xmlItem;
+            EXPECT_LE(r.LowerRightCorner.X, window.LowerRightCorner.X) << control.xmlItem;
+            EXPECT_LE(r.LowerRightCorner.Y, window.LowerRightCorner.Y) << control.xmlItem;
+        }
+    }
+}
+
 TEST(OptionsLayoutT434, ControlNamesAreUnique) {
     std::set<std::string> seen;
     for (int i = 0; i < OL::CONTROL_COUNT; ++i) {
@@ -219,10 +244,12 @@ TEST(OptionsLayoutT434, TheQuotedOffsetsAreTheOraclesOwn) {
         {"OGP_MusicVolumeSlider", 200, 70, 100, 16},
         {"OGP_SoundVolumeSlider", 200, 110, 100, 16},
         {"OGP_LoadSkinButton", 200, 345, 150, 20},
+        {"OGP_AutoConsentGuildCheckbox", 10, 375, 150, 20},
         // Display
         {"ODP_PCNamesCheckbox", 10, 12, 150, 18},
         {"ODP_ClipPlaneSlider", 200, 129, 100, 16},
         {"ODP_ParticlesTabs", 190, 174, 190, 170},
+        {"ODP_AdvancedButton", 190, 350, 150, 20},
         // Mouse
         {"OMP_MouseSensitivitySlider", 200, 30, 100, 16},
         // Keys: anchored -- Top=60, Left=5, Right=5, Bottom=5 in a 387x402
@@ -233,8 +260,10 @@ TEST(OptionsLayoutT434, TheQuotedOffsetsAreTheOraclesOwn) {
         // Colors: the change button anchors BOTH edges to the bottom --
         // Top=30 => y=372, Bottom=8 => y=394.
         {"OCP_UserColorChange", 126, 372, 159, 22},
+        {"OFP_FilterComboBox", 60, 368, 267, 24},
         // Mail: a 16x16 checkbox with its caption in a separate label.
         {"OMP_MailForwardingCheckbox", 10, 80, 16, 16},
+        {"OMP_AddressBookConfirmDeletionLabel", 30, 140, 347, 16},
     };
     for (const auto& row : rows) {
         const int i = controlIndex(row.item);
