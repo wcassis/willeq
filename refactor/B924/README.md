@@ -116,6 +116,12 @@ samples.tsv, summary.txt, bound_check.txt, rig.log) under
 `/home/user/kb-evidence/kb-b924-llvmpipe-growth/<run>/`: run1, run3, run4
 (uncapped), run2, run5 (capped), net_uncapped, net_capped.
 
+The branch tip since measurement merged origin/fable forward (28 commits:
+hotbar persistence, the options-window fix, test additions — no
+gpu_driver/render-loop or ledger changes); the MR pipeline re-runs the
+full suite on that tip. The growth conclusion is unaffected: the growth
+lives in the driver's scene queue, not in anything the merge touched.
+
 Per-run `ready → last-idle` growth (from each `summary.txt`):
 
 | run | zone | cap | peak RssAnon | gpu_driver @ready | @last idle | growth | frames Δ |
