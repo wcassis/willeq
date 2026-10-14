@@ -404,10 +404,10 @@ fi
     echo "mesa=$MESA expect_prefix=$MESA_NOLLVM_PI_PREFIX pin=$(mesa_nollvm_pin)"
     echo "mesa_deploy=$MESA_DEPLOY"
     echo "pi_copy_sha256=$(pi_remote "sha256sum '$PI_BIN' | cut -d' ' -f1" </dev/null)"
-    echo "pi_getcap=$(pi_remote "getcap '$PI_BIN'" </dev/null)"
+    echo "pi_getcap=$(pi_remote "PATH=\$PATH:/usr/sbin getcap '$PI_BIN'" </dev/null)"   # B1060: trixie ssh PATH has no /usr/sbin
     echo "published_getcap=$(getcap "$PI_SHA_DIR/bin/willeq")"
     echo "pi_tmp_mount=$(pi_remote "findmnt -no OPTIONS /tmp" </dev/null)"
-    echo "pi_rmem=$(pi_remote "sysctl -n net.core.rmem_max net.core.rmem_default" </dev/null | tr '\n' ' ')"
+    echo "pi_rmem=$(pi_remote "PATH=\$PATH:/usr/sbin sysctl -n net.core.rmem_max net.core.rmem_default" </dev/null | tr '\n' ' ')"
     echo "pi_kernel=$(pi_remote "uname -r" </dev/null)"
     echo "pi_meminfo=$(pi_remote "grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree|CmaTotal|CmaFree' /proc/meminfo" </dev/null | tr -s ' ' | tr '\n' ';')"
     echo "worktree_commit=$(git -C "$REPO" rev-parse HEAD)"

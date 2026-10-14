@@ -130,6 +130,25 @@ if final_ini.is_file() and (out / 'before-character.ini').is_file():
         fromfile='before-character.ini', tofile=final_ini.name)))
     summary += [f'[Final character INI diff]({final_diff.name}) is the post-session '
                 'value; no earlier step is credited with a change absent from its own diff.', '']
+# B1059: which reader decided each text check (oracle_remote.sh text-reads.tsv:
+# the glyph atlas, the tesseract fallback, or neither -> the legacy check).
+reads_file = out / 'text-reads.tsv'
+if reads_file.is_file():
+    reads = [r for r in csv.reader(reads_file.open(), delimiter='\t')][1:]
+    counts = {}
+    for r in reads:
+        if len(r) >= 5:
+            counts[r[3]] = counts.get(r[3], 0) + 1
+    summary += ['## Text reads', '',
+                'Each text check of the run and the reader that decided it (`atlas` = the glyph '
+                'atlas, `tesseract` = the fallback, `unknown` = neither; the legacy check ran). '
+                'Totals: ' + ', '.join(f'{k} {v}' for k, v in sorted(counts.items())) + '.', '',
+                '| step | check | mode | decided by | ok | text | score | path |',
+                '| --- | --- | --- | --- | --- | --- | --- | --- |']
+    for r in reads:
+        r = (r + [''] * 8)[:8]
+        summary.append('| ' + ' | '.join(c.replace('|', '\\|') for c in r) + ' |')
+    summary.append('')
 (out / 'summary.md').write_text('\n'.join(summary))
 with (out / 'ledger_check.txt').open('w') as stream:
     subprocess.run([sys.executable, str(vendor / 'check_ledgers.py'), str(out)],

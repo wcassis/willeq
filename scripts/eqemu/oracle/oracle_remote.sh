@@ -14,8 +14,19 @@ assert_visible() {
     local expected=$1 name=$2
     if [[ $expected == window:EverQuest ]]; then
         xdotool search --name '^EverQuest$' >/dev/null 2>&1 && return 0
-    elif screen_text | grep -qiE "$expected"; then
-        return 0
+    else
+        # B1059: with the broker up (template plans) the glyph atlas reads the
+        # known text regions first; only its match decides. Otherwise, and
+        # whenever it does not match, the legacy tesseract screen_text does.
+        if [[ -n ${TEXT_BROKER:-} ]] && read_text screen 0,0,1,1 "$expected" "$name" column5 &&
+            [[ $RT_DECIDER == atlas && $RT_OK == 1 ]]; then
+            return 0
+        fi
+        if screen_text | grep -qiE "$expected"; then
+            [[ -n ${TEXT_BROKER:-} ]] && text_log "$name" column5 screen tesseract 1 "screen_text matched: $expected" - tesseract
+            return 0
+        fi
+        [[ -n ${TEXT_BROKER:-} ]] && text_log "$name" column5 screen unknown 0 "no match: $expected" - -
     fi
     shot "$name-assertion-failed" || :
     echo "screen assertion failed: $name expected $expected" >&2
@@ -46,11 +57,83 @@ name_filled() {
     # sails straight to submit and the client answers with a "Name is not
     # valid" dialog (fix2h) instead of a create packet -- the report then
     # finds zero OP_CharacterCreate and the run dies with no evidence of why.
+    # B1058: that crop is root-relative (ImageMagick honours the +0+30 page
+    # offset), so it reads FILE rows 234-244: the deity list's first row
+    # (AGNOSTIC), not the Name field at file rows 38-55 (review/B1058/README.md
+    # "name_filled"). Template-mode creates pass the field rect located from
+    # the Get Name button instead (name_filled_at); this legacy path is kept
+    # byte-for-byte so B1048's accepted plans are unchanged.
     local image="$DIR/name-check.png" std
     import -window root -crop 1280x800+0+30 "$image" 2>/dev/null || return 65
     std=$(convert "$image" -crop "190x10+30+264" +repage -colorspace Gray \
         -format '%[fx:standard_deviation]' info:) || return 65
     awk -v std="$std" 'BEGIN {exit !(std >= 0.13)}'
+}
+name_filled_at() {
+    # B1058: the Name field's text area relative to the located Get Name
+    # button centre (root gx,gy): file x gx-156..gx-46, y gy-30-5..+10. Typed
+    # field std 0.26-0.31, empty 0.0086 (lane-5 name-check.png, fix2l/fix2i
+    # name-check.png, UIGAP-ORACLE/204/11 vs fix2h/02, 204/07, 204/09); the
+    # threshold is their midpoint, 0.134. +repage first: FILE coordinates.
+    local gx=$1 gy=$2 image="$DIR/name-check.png" std
+    import -window root -crop 1280x800+0+30 "$image" 2>/dev/null || return 65
+    std=$(convert "$image" +repage -crop "110x10+$((gx-156))+$((gy-35))" +repage \
+        -colorspace Gray -format '%[fx:standard_deviation]' info:) || return 65
+    awk -v std="$std" 'BEGIN {exit !(std >= 0.134)}'
+}
+# --- B1059 text reads ---------------------------------------------------------
+# read_text asks the broker (driver host) to read a rect of a fresh shot with
+# the glyph atlas, tesseract as the fallback (oracle_locate.py read_answer).
+# Request "read:<mode>:<x,y,w,h>:<expected as hex>", answer "<seq> TEXT
+# <decider> <ok> <score> <path> <text as hex>"; decider atlas|tesseract|unknown.
+# An unanswered or ERR read is decider 'unknown': the caller keeps its legacy
+# check. Every read is a row of text-reads.tsv (the report's "Text reads").
+RT_DECIDER= RT_OK= RT_TEXT=
+text_log() {
+    # step what mode decider ok text score path
+    local t=${6//$'\t'/ }
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "${t//$'\n'/ | }" "$7" "$8" \
+        >>"$DIR/text-reads.tsv"
+}
+read_text() {
+    local mode=$1 rect=$2 expect=$3 step=$4 what=$5 seq=$LOCATE_SEQ hex i aseq kind score path thex
+    [[ $mode =~ ^(edit|line|screen)$ && $rect =~ ^[0-9]+,[0-9]+,[0-9]+,[0-9]+$ ]] || return 65
+    hex=$(printf '%s' "$expect" | od -An -tx1 | tr -d ' \n')
+    (( ${#hex} <= 512 )) || return 65
+    LOCATE_SEQ=$((LOCATE_SEQ+1))
+    RT_DECIDER=unknown RT_OK=0 RT_TEXT=
+    mkdir -p "$DIR/locate" || return 65
+    import -window root -crop 1280x800+0+30 "$DIR/locate/shot-$seq.png" 2>/dev/null || return 65
+    printf 'read:%s:%s:%s\n' "$mode" "$rect" "$hex" >"$DIR/locate/req-$seq.tmp" || return 65
+    mv "$DIR/locate/req-$seq.tmp" "$DIR/locate/req-$seq.tsv" || return 65
+    for ((i = 0; i < LOCATE_WAIT_S * 5; i++)); do
+        [[ -s $DIR/locate/ans-$seq.tsv ]] && break
+        sleep 0.2
+    done
+    if [[ -s $DIR/locate/ans-$seq.tsv ]]; then
+        read -r aseq kind RT_DECIDER RT_OK score path thex <"$DIR/locate/ans-$seq.tsv"
+        if [[ $aseq != "$seq" || $kind != TEXT || ! $RT_DECIDER =~ ^(atlas|tesseract|unknown)$ ||
+              ! $RT_OK =~ ^[01]$ || ! ${thex:-} =~ ^[0-9a-f]*$ ]]; then
+            RT_DECIDER=unknown RT_OK=0 score=- path=- thex=
+        fi
+        RT_TEXT=$(printf '%b' "$(sed 's/../\\x&/g' <<<"${thex:-}")")
+    else
+        score=- path=-
+    fi
+    text_log "$step" "$what" "$mode" "$RT_DECIDER" "$RT_OK" "$RT_TEXT" "${score:--}" "${path:--}"
+    return 0
+}
+name_verify() {
+    # Template mode's Name check: the field (file rect 165 px left of and 8 px
+    # above the Get Name centre; label_crops.py) read by the atlas must equal
+    # the typed name. tesseract only ever confirms; an atlas-less rig or an
+    # UNKNOWN read keeps the presence check (name_filled_at) unchanged.
+    local gx=$1 gy=$2 typed=$3 step=$4
+    read_text edit "$((gx-165)),$((gy-38)),118,16" "$typed" "$step" name-field || return 65
+    case $RT_DECIDER in
+        atlas|tesseract) [[ $RT_OK == 1 ]] ;;
+        *) name_filled_at "$gx" "$gy" ;;
+    esac
 }
 selected_at() {
     # The selected label is yellow; enabled but unselected labels are white.
@@ -99,6 +182,146 @@ select_once() {
         echo "selection failed: $label at $x,$y" >&2
         return 65
     fi
+}
+# --- B1058 template clicks ---------------------------------------------------
+# The oracle box has no NumPy/OpenCV, so locating runs on the driver host.
+# locate_template takes a root shot into $DIR/locate/shot-N.png, publishes
+# req-N.tsv (the template name) and waits for ans-N.tsv. The driver's broker
+# (oracle_locate.py broker) fetches each request and delivers the previous
+# answer in ONE ssh exchange (broker_exchange below). The answer is FRAME
+# pixels of the shot as Pillow reads it; import's crop is root +0+30, so the
+# root point is (frame x, frame y + 30) (review/B1058/README.md "Coordinates").
+LOCATE_SEQ=0 LOC_X= LOC_Y= LOC_SCORE= LOC_PATH= SETTLE_RETRIES=0
+LOCATE_WAIT_S=${LOCATE_WAIT_S:-60}
+locate_template() {
+    # 0 found (LOC_X/LOC_Y = root centre), 1 best score below min_score, 65 error.
+    local tname=$1 seq=$LOCATE_SEQ i aseq fx fy found
+    [[ $tname =~ ^[A-Za-z0-9_-]+$ ]] || return 65
+    LOCATE_SEQ=$((LOCATE_SEQ+1))
+    LOC_X= LOC_Y= LOC_SCORE= LOC_PATH=
+    mkdir -p "$DIR/locate" || return 65
+    import -window root -crop 1280x800+0+30 "$DIR/locate/shot-$seq.png" 2>/dev/null || return 65
+    printf '%s\n' "$tname" >"$DIR/locate/req-$seq.tmp" || return 65
+    mv "$DIR/locate/req-$seq.tmp" "$DIR/locate/req-$seq.tsv" || return 65
+    for ((i = 0; i < LOCATE_WAIT_S * 5; i++)); do
+        [[ -s $DIR/locate/ans-$seq.tsv ]] && break
+        sleep 0.2
+    done
+    if [[ ! -s $DIR/locate/ans-$seq.tsv ]]; then
+        echo "locate $tname: no broker answer in ${LOCATE_WAIT_S}s" >&2
+        return 65
+    fi
+    read -r aseq fx fy LOC_SCORE LOC_PATH found <"$DIR/locate/ans-$seq.tsv"
+    if [[ $aseq != "$seq" || ! $fx =~ ^-?[0-9]+$ || ! $fy =~ ^-?[0-9]+$ || ! $found =~ ^[01]$ ]]; then
+        echo "locate $tname: broker answered '$(cat "$DIR/locate/ans-$seq.tsv")'" >&2
+        return 65
+    fi
+    LOC_X=$fx LOC_Y=$((fy + 30))
+    [[ $found == 1 ]]
+}
+template_log() {
+    # step template root_x root_y score path verify settle_retries
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >>"$DIR/template-clicks.tsv"
+}
+click_template() {
+    local tname=$1 off=$2 step=$3 dx dy rc
+    [[ $off == 0 || -z $off ]] && off=0,0
+    [[ $off =~ ^-?[0-9]+,-?[0-9]+$ ]] || return 65
+    IFS=, read -r dx dy <<<"$off"
+    locate_template "$tname"; rc=$?
+    if (( rc != 0 )); then
+        template_log "$step" "$tname" "${LOC_X:--}" "${LOC_Y:--}" "${LOC_SCORE:--}" "${LOC_PATH:--}" not-found 0
+        shot "$step-template-missing-$tname" || :
+        echo "click-template $tname: not located (score ${LOC_SCORE:-none})" >&2
+        return 65
+    fi
+    jclick "$((LOC_X + dx))" "$((LOC_Y + dy))"
+    template_log "$step" "$tname" "$((LOC_X + dx))" "$((LOC_Y + dy))" "$LOC_SCORE" "$LOC_PATH" clicked 0
+}
+wait_template() {
+    # Poll (ui-lib RULE 2) until the template scores >= its min_score.
+    local tname=$1 ms=$2 step=$3 end rc
+    [[ $ms =~ ^[0-9]+$ ]] || return 65
+    end=$(( $(date +%s%3N) + ms ))
+    while :; do
+        locate_template "$tname"; rc=$?
+        (( rc == 65 )) && return 65
+        if (( rc == 0 )); then
+            template_log "$step" "$tname" "$LOC_X" "$LOC_Y" "$LOC_SCORE" "$LOC_PATH" seen 0
+            return 0
+        fi
+        (( $(date +%s%3N) >= end )) && break
+        sleep 0.5
+    done
+    template_log "$step" "$tname" "${LOC_X:--}" "${LOC_Y:--}" "${LOC_SCORE:--}" "${LOC_PATH:--}" timeout 0
+    shot "$step-wait-template-timeout-$tname" || :
+    echo "wait-template $tname: not seen in ${ms} ms" >&2
+    return 65
+}
+selected_poll() {
+    # selected_at polled for up to ~12 tries instead of a fixed 3 s sleep.
+    local label=$1 x=$2 y=$3 i
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+        selected_at "$label" "$x" "$y" && return 0
+        sleep 0.5
+    done
+    return 1
+}
+select_template() {
+    # select_once with the row LOCATED instead of read from the table. The
+    # settle retry is kept and COUNTED (SETTLE_RETRIES, template-clicks.tsv)
+    # so a run shows whether templates made it unnecessary.
+    local tname=$1 label=$2 step=$3 verify=first retries=0
+    if ! locate_template "$tname"; then
+        template_log "$step" "$tname" "${LOC_X:--}" "${LOC_Y:--}" "${LOC_SCORE:--}" "${LOC_PATH:--}" not-found 0
+        shot "select-missing-$label" || :
+        echo "select $label: template $tname not located" >&2
+        return 65
+    fi
+    jclick "$LOC_X" "$LOC_Y"
+    if ! selected_poll "$label" "$LOC_X" "$LOC_Y"; then
+        template_log "$step" "$tname" "$LOC_X" "$LOC_Y" "$LOC_SCORE" "$LOC_PATH" first-failed 0
+        retries=1 verify=retry
+        SETTLE_RETRIES=$((SETTLE_RETRIES+1))
+        sleep 8
+        if ! locate_template "$tname"; then
+            template_log "$step" "$tname" "${LOC_X:--}" "${LOC_Y:--}" "${LOC_SCORE:--}" "${LOC_PATH:--}" not-found 1
+            return 65
+        fi
+        jclick "$LOC_X" "$LOC_Y"
+        if ! selected_poll "$label" "$LOC_X" "$LOC_Y"; then
+            template_log "$step" "$tname" "$LOC_X" "$LOC_Y" "$LOC_SCORE" "$LOC_PATH" failed 1
+            shot "select-failed-$label" || :
+            echo "selection failed: $label at $LOC_X,$LOC_Y" >&2
+            return 65
+        fi
+    fi
+    template_log "$step" "$tname" "$LOC_X" "$LOC_Y" "$LOC_SCORE" "$LOC_PATH" "$verify" "$retries"
+    SEL_X=$LOC_X SEL_Y=$LOC_Y
+}
+broker_exchange() {
+    # The remote half of one broker ssh exchange: store the answer to the
+    # previous request (if any), then wait up to BROKER_WAIT_S for request
+    # <next> and stream it: "REQ<TAB>n<TAB>name" + newline + the shot's PNG
+    # bytes. Prints IDLE when nothing was requested in time.
+    local next=$1 answer=$2 aseq i
+    [[ $next =~ ^[0-9]+$ ]] || return 65
+    mkdir -p "$DIR/locate" || return 65
+    if [[ -n $answer ]]; then
+        [[ $answer =~ ^[0-9]+\ (-?[0-9]+\ -?[0-9]+\ -?[0-9]+\.[0-9]+\ (cv2|numpy)\ [01]|ERR|TEXT\ (atlas|tesseract|unknown)\ [01]\ [0-9]+\.[0-9]{4}\ (cv2|numpy|tesseract|-)\ [0-9a-f]{0,256})$ ]] || return 65
+        aseq=${answer%% *}
+        printf '%s\n' "$answer" >"$DIR/locate/ans-$aseq.tmp" || return 65
+        mv "$DIR/locate/ans-$aseq.tmp" "$DIR/locate/ans-$aseq.tsv" || return 65
+    fi
+    for ((i = 0; i < ${BROKER_WAIT_S:-20} * 5; i++)); do
+        if [[ -f $DIR/locate/req-$next.tsv ]]; then
+            printf 'REQ\t%s\t%s\n' "$next" "$(head -1 "$DIR/locate/req-$next.tsv")"
+            cat "$DIR/locate/shot-$next.png"
+            return 0
+        fi
+        sleep 0.2
+    done
+    echo IDLE
 }
 expected_for() {
     local verb=$1 target=$2 optional=${3:-}
@@ -349,7 +572,76 @@ if [[ $ACTION == selftest ]]; then
     SELECTION_OK=1
     select_once Barbarian 53 291 || exit 1
     [[ $CLICKS == 3 ]] || { echo "verified selection clicked again ($CLICKS clicks), expected 3"; exit 1; }
-    echo 'PASS: selected coordinates and random/accept/cancel missed-action and override assertions'
+    # B1058: template clicks. The broker answer is FRAME pixels; the click
+    # lands at root (x, y+30) plus the plan offset; a below-threshold answer
+    # clicks nothing; a garbled or mis-sequenced answer is an error (65).
+    unset -f shot selected_at
+    shot() { :; }
+    import() { local f; f=$(echo "$@" | awk '{print $NF}'); : >"$f"; }
+    mkdir -p "$DIR/locate"
+    CLICKED=
+    jclick() { CLICKED="$1,$2"; }
+    LOCATE_WAIT_S=1
+    printf '0 54 262 0.9661 cv2 1\n' >"$DIR/locate/ans-0.tsv"
+    click_template race_Barbarian 0 st || { echo 'click_template refused a found answer'; exit 1; }
+    [[ $CLICKED == 54,292 ]] || { echo "click_template clicked $CLICKED, expected root 54,292"; exit 1; }
+    printf '1 171 47 0.9999 numpy 1\n' >"$DIR/locate/ans-1.tsv"
+    click_template name_getname -103,0 st || exit 1
+    [[ $CLICKED == 68,77 ]] || { echo "offset click landed $CLICKED, expected the Name field 68,77"; exit 1; }
+    CLICKED=
+    printf '2 54 262 0.6100 cv2 0\n' >"$DIR/locate/ans-2.tsv"
+    if click_template race_Barbarian 0 st; then echo 'below-threshold answer was clicked'; exit 1; fi
+    [[ -z $CLICKED ]] || { echo 'below-threshold answer moved the pointer'; exit 1; }
+    printf '9 54 262 0.9661 cv2 1\n' >"$DIR/locate/ans-3.tsv"
+    locate_template race_Barbarian; [[ $? == 65 ]] || { echo 'mis-sequenced answer accepted'; exit 1; }
+    locate_template race_Barbarian; [[ $? == 65 ]] || { echo 'missing answer did not time out with 65'; exit 1; }
+    [[ $(wc -l <"$DIR/template-clicks.tsv") == 3 ]] || { echo 'template-clicks.tsv rows wrong'; exit 1; }
+    # select_template: a first-time yellow verification records 'first' and
+    # no settle retry; a miss records the retry and counts it.
+    selected_at() { [[ $SELECTION_OK == 1 ]]; }
+    SELECTION_OK=1 SETTLE_RETRIES=0
+    printf '5 54 262 0.9661 cv2 1\n' >"$DIR/locate/ans-5.tsv"
+    select_template race_Barbarian Barbarian st || exit 1
+    [[ $(tail -1 "$DIR/template-clicks.tsv" | cut -f7,8) == $'first\t0' && $SETTLE_RETRIES == 0 ]] || { echo 'first-time selection not logged'; exit 1; }
+    # broker_exchange: stores a valid answer, refuses a malformed one, and
+    # streams a pending request header + PNG.
+    BROKER_WAIT_S=1
+    broker_exchange 7 '6 1 2 0.5000 cv2 0' >/dev/null || exit 1
+    [[ $(cat "$DIR/locate/ans-6.tsv") == '6 1 2 0.5000 cv2 0' ]] || { echo 'broker answer not stored'; exit 1; }
+    if broker_exchange 7 '6 1 2 0.5 cv2; rm -rf ~' >/dev/null; then echo 'malformed broker answer accepted'; exit 1; fi
+    broker_exchange 7 '8 TEXT atlas 1 1.0000 cv2 4f6b' >/dev/null || { echo 'text answer refused'; exit 1; }
+    if broker_exchange 7 '8 TEXT atlas 1 1.0000 cv2 4f6b; id' >/dev/null; then echo 'malformed text answer accepted'; exit 1; fi
+    printf 'race_Human\n' >"$DIR/locate/req-7.tsv"; printf 'PNGBYTES' >"$DIR/locate/shot-7.png"
+    [[ $(broker_exchange 7 '') == $'REQ\t7\trace_Human\nPNGBYTES' ]] || { echo 'broker request not streamed'; exit 1; }
+    # B1059: text reads. The atlas decides the Name check both ways; an
+    # unknown or missing answer falls back to the presence check untouched;
+    # a screen check passes on an atlas match without running screen_text.
+    hexof() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
+    name_filled_at() { echo called >"$DIR/presence"; return 0; }
+    printf 'step\twhat\tmode\tdecider\tok\ttext\tscore\tpath\n' >"$DIR/text-reads.tsv"
+    LOCATE_SEQ=20
+    printf '20 TEXT atlas 1 1.0000 cv2 %s\n' "$(hexof 'Orac[Il]ebartp[Il]')" >"$DIR/locate/ans-20.tsv"
+    name_verify 171 77 Oraclebartpl st || { echo 'atlas match refused'; exit 1; }
+    [[ ! -e $DIR/presence ]] || { echo 'atlas-decided name ran the presence check'; exit 1; }
+    [[ $(cat "$DIR/locate/req-20.tsv") == "read:edit:6,39,118,16:$(hexof Oraclebartpl)" ]] || { echo 'name read request wrong'; exit 1; }
+    [[ $(tail -1 "$DIR/text-reads.tsv" | cut -f2,4,5,6) == $'name-field\tatlas\t1\tOrac[Il]ebartp[Il]' ]] || { echo 'text-reads row wrong'; exit 1; }
+    printf '21 TEXT atlas 0 1.0000 cv2 %s\n' "$(hexof Oraclebart)" >"$DIR/locate/ans-21.tsv"
+    if name_verify 171 77 Oraclebartpl st; then echo 'atlas mismatch passed'; exit 1; fi
+    printf '22 TEXT unknown 0 0.0000 - \n' >"$DIR/locate/ans-22.tsv"
+    name_verify 171 77 Oraclebartpl st && [[ -e $DIR/presence ]] || { echo 'unknown read skipped the presence check'; exit 1; }
+    rm -f "$DIR/presence"
+    name_verify 171 77 Oraclebartpl st && [[ -e $DIR/presence ]] || { echo 'missing answer skipped the presence check'; exit 1; }
+    TEXT_BROKER=1 SCREEN_TEXT='nothing here'
+    printf '24 TEXT atlas 1 1.0000 cv2 %s\n' "$(hexof 'Create a New Character')" >"$DIR/locate/ans-24.tsv"
+    assert_visible 'Character Select|Create a New Character' atlas-screen || { echo 'atlas screen match refused'; exit 1; }
+    printf '25 TEXT unknown 0 0.0000 - \n' >"$DIR/locate/ans-25.tsv"
+    if assert_visible 'Character Select|Create a New Character' atlas-screen-miss; then echo 'unknown screen read passed without screen_text'; exit 1; fi
+    SCREEN_TEXT='Character Select'
+    printf '26 TEXT unknown 0 0.0000 - \n' >"$DIR/locate/ans-26.tsv"
+    assert_visible 'Character Select|Create a New Character' tess-screen || { echo 'tesseract fallback refused'; exit 1; }
+    [[ $(tail -1 "$DIR/text-reads.tsv" | cut -f4,5) == $'tesseract\t1' ]] || { echo 'tesseract decider not recorded'; exit 1; }
+    unset TEXT_BROKER
+    echo 'PASS: selected coordinates, random/accept/cancel missed-action and override assertions, template clicks, broker exchange and text reads'
     exit 0
 fi
 stop_capture() {
@@ -383,6 +675,7 @@ stop_capture() {
     fi
 }
 if [[ $ACTION == stop ]]; then stop_capture; exit $?; fi
+if [[ $ACTION == broker ]]; then broker_exchange "${3:-}" "${4:-}"; exit $?; fi
 [[ $ACTION == run ]] || exit 65
 mkdir -p "$DIR"
 if ! xdpyinfo -display :99 >/dev/null 2>&1; then
@@ -395,6 +688,16 @@ cp "$CLIENT/eqclient.ini" "$DIR/eqclient-before.ini"
 CHARACTER=$(awk -F'\t' '$1=="login" {print $2; exit}' "$DIR/plan.tsv")
 [[ $CHARACTER =~ ^[A-Za-z]+$ ]] || exit 65
 INI_UNSET=$(sed -n 's/^# ini-unset=//p' "$DIR/plan.tsv" | head -1)
+# B1058: `# create-clicks=template` makes a create row locate its race, class,
+# gender and Name-field controls from templates instead of the table above.
+CREATE_CLICKS=$(sed -n 's/^# create-clicks=//p' "$DIR/plan.tsv" | head -1)
+[[ -z $CREATE_CLICKS || $CREATE_CLICKS == template ]] || exit 65
+if [[ -n $CREATE_CLICKS ]] || grep -qE '^(click|wait)-template'$'\t' "$DIR/plan.tsv"; then
+    printf 'step\ttemplate\troot_x\troot_y\tscore\tpath\tverify\tsettle_retries\n' >"$DIR/template-clicks.tsv"
+    # B1059: the broker is up, so text checks try the glyph atlas first
+    printf 'step\twhat\tmode\tdecider\tok\ttext\tscore\tpath\n' >"$DIR/text-reads.tsv"
+    TEXT_BROKER=1
+fi
 if [[ -n $INI_UNSET ]]; then
     [[ $INI_UNSET =~ ^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*$ ]] || exit 65
     python3 /home/user/eq-oracle/uigap-scripts/oracle_ini_seed.py \
@@ -484,6 +787,8 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
         click)
             [[ $target =~ ^[0-9]+,[0-9]+$ ]] || exit 65
             IFS=, read -r x y <<<"$target"; jclick "$x" "$y" ;;
+        click-template) click_template "$target" "$hold_ms" "$name" || exit 65 ;;
+        wait-template) wait_template "$target" "$hold_ms" "$name" || exit 65 ;;
         press) xdotool key "$target" ;;
         hold)
             [[ $target =~ ^[0-9]+,[0-9]+$ && $hold_ms =~ ^[0-9]+$ ]] || exit 65
@@ -668,31 +973,63 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             # click (measured 12 s in diag-charcreate2); a click on a half
             # rendered list can light a row the cursor does not hold.
             sleep 12
-            select_once "$race" 53 "$race_row" || exit 65
-            select_once "$class" 153 "$class_row" || exit 65
-            select_once "$gender" "$(gender_x "$gender")" 252 || exit 65
+            if [[ $CREATE_CLICKS == template ]]; then
+                # B1058: each row is LOCATED in a fresh shot (templates/),
+                # clicked, and its yellow state polled at the located point.
+                select_template "race_$race" "$race" "$name" || exit 65
+                race_x=$SEL_X race_yy=$SEL_Y
+                select_template "class_$class" "$class" "$name" || exit 65
+                class_x=$SEL_X class_yy=$SEL_Y
+                select_template "gender_$gender" "$gender" "$name" || exit 65
+                gender_xx=$SEL_X gender_yy=$SEL_Y
+            else
+                select_once "$race" 53 "$race_row" || exit 65
+                select_once "$class" 153 "$class_row" || exit 65
+                select_once "$gender" "$(gender_x "$gender")" 252 || exit 65
+                race_x=53 race_yy=$race_row class_x=153 class_yy=$class_row
+                gender_xx=$(gender_x "$gender") gender_yy=252
+            fi
             jrclick 1170 348; sleep 3
             jrclick 1170 389; sleep 3
             # One consolidated selected-state check after all three controls,
             # before any other click touches the shared cursor.
-            selected_at "$race" 53 "$race_row" || exit 65
-            selected_at "$class" 153 "$class_row" || exit 65
-            selected_at "$gender" "$(gender_x "$gender")" 252 || exit 65
+            selected_at "$race" "$race_x" "$race_yy" || exit 65
+            selected_at "$class" "$class_x" "$class_yy" || exit 65
+            selected_at "$gender" "$gender_xx" "$gender_yy" || exit 65
             shot "$name-attributes"
-            jclick 1243 54; sleep 15
+            if [[ $CREATE_CLICKS == template ]]; then
+                # Page 2 is up when its Get Name button is (poll, RULE 2),
+                # then the same 3 s the deity click had after its own sleep.
+                jclick 1243 54
+                wait_template name_getname 30000 "$name" || exit 65
+                getname_x=$LOC_X getname_y=$LOC_Y
+                sleep 3
+            else
+                jclick 1243 54; sleep 15
+            fi
             jclick 105 271; sleep 2
             jclick 1218 "$((city_row+17))"
-            jclick 68 77; xdotool key End
+            if [[ $CREATE_CLICKS == template ]]; then
+                # The field is 103 px left of the Get Name centre (lane-5
+                # name-check.png: Get Name centre frame 171,47, field 11..129).
+                name_x=$((getname_x-103)) name_y=$getname_y
+                template_log "$name" name_getname "$name_x" "$name_y" "$LOC_SCORE" "$LOC_PATH" name-field 0
+            else
+                name_x=68 name_y=77
+            fi
+            jclick "$name_x" "$name_y"; xdotool key End
             for unused in {1..20}; do xdotool key BackSpace; done
             xdotool key a; xdotool key BackSpace
             xdotool type --delay 100 "$target"; sleep 2
-            if ! name_filled; then
+            if [[ $CREATE_CLICKS == template ]]; then name_check=(name_verify "$getname_x" "$getname_y" "$target" "$name")
+            else name_check=(name_filled); fi
+            if ! "${name_check[@]}"; then
                 # Lost xdotool keystrokes (fix2h: empty field -> "Name is not
                 # valid" dialog, zero create packets): re-type once, verify again.
-                jclick 68 77; xdotool key End
+                jclick "$name_x" "$name_y"; xdotool key End
                 for unused in {1..20}; do xdotool key BackSpace; done
                 xdotool type --delay 100 "$target"; sleep 2
-                name_filled || { shot "$name-not-typed"; echo "name field empty after re-type" >&2; exit 65; }
+                "${name_check[@]}" || { shot "$name-not-typed"; echo "name field not verified after re-type (${RT_DECIDER:-presence} '${RT_TEXT:-}')" >&2; exit 65; }
             fi
             shot "$name-before-submit"
             # The race/class/gender state was already verified on page 1 (the
@@ -741,4 +1078,5 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
     shot "$name" || exit 65
     cp "$CLIENT/${CHARACTER}_"*.ini "$DIR/$name.ini" 2>/dev/null || :
 done <"$DIR/plan.tsv"
+[[ -f $DIR/template-clicks.tsv ]] && printf '%s\n' "$SETTLE_RETRIES" >"$DIR/settle-retries.txt"
 stop_capture

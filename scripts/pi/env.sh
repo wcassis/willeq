@@ -24,6 +24,15 @@
 #   lane 1  orangepi  10.0.30.192     armv7l  Allwinner H3  Mali-400  lima      483 MB
 #   lane 2  rock64    172.16.200.204  aarch64 RK3328        Mali-450  lima      4 GB, eMMC
 #   lane 3  rock4d    172.16.200.202  aarch64 RK3576        Mali-G52  panfrost  12 GB, SD
+#   lane 5  orangepizero 172.16.200.207 armv7l Allwinner H2+ Mali-400 lima     484 MB, SD, trixie
+#
+# Lane 5 (B1060, #380) is lane 1's sibling: the same armhf ci-arm/ publish, the same
+# preset and ceilings, but Armbian trixie (Debian 13, glibc 2.41, system Mesa 25.0.7)
+# and NO display output wired in its device tree (the Zero has no HDMI; display-engine
+# and tv-encoder are `disabled`), so card0 is Lima, render-only. A DRM run needs a KMS
+# device: pi_hdmi_force_on loads the stock vkms module there (pi_vkms_on below; Mesa's kmsro
+# vkms_dri.so pairs its Virtual-1 connector with Lima); PI_DRM_CARD names that card
+# (docs/reference/orangepizero.md).
 #
 # Lane 1 keeps everything it had (the armhf CI publish under ci-arm/, the
 # LLVM-less Mesa prefix, the `orangepi` constrained preset). Lanes 2-3 run the
@@ -37,7 +46,8 @@ case "${PI_LANE:-}" in
     ""|1) PI_LANE_HOST=10.0.30.192;    PI_LANE_NAME=orangepi; PI_LANE_ARCH=armhf;   PI_LANE_GPU=lima ;;
     2)    PI_LANE_HOST=172.16.200.204; PI_LANE_NAME=rock64;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=lima ;;
     3)    PI_LANE_HOST=172.16.200.202; PI_LANE_NAME=rock4d;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=panfrost ;;
-    *)    echo "scripts/pi/env.sh: unknown PI_LANE '${PI_LANE}' (1-3)" >&2
+    5)    PI_LANE_HOST=172.16.200.207; PI_LANE_NAME=orangepizero; PI_LANE_ARCH=armhf; PI_LANE_GPU=lima ;;
+    *)    echo "scripts/pi/env.sh: unknown PI_LANE '${PI_LANE}' (1-3, 5)" >&2
           return 2 2>/dev/null || exit 2 ;;
 esac
 : "${PI_HOST:=${PI_LANE_HOST}}"
@@ -45,6 +55,7 @@ case "${PI_HOST}" in
     10.0.30.192)    _pi_host_lane=1 ;;
     172.16.200.204) _pi_host_lane=2 ;;
     172.16.200.202) _pi_host_lane=3 ;;
+    172.16.200.207) _pi_host_lane=5 ;;
     *)              _pi_host_lane= ;;   # an unlisted host keeps whatever the caller said
 esac
 if [ -n "${_pi_host_lane}" ] && [ -n "${_pi_lane_asked}" ] && [ "${_pi_lane_asked}" != "${_pi_host_lane}" ]; then
@@ -60,6 +71,7 @@ case "${_pi_host_lane}" in
     1) PI_LANE=1; PI_LANE_NAME=orangepi; PI_LANE_ARCH=armhf;   PI_LANE_GPU=lima ;;
     2) PI_LANE=2; PI_LANE_NAME=rock64;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=lima ;;
     3) PI_LANE=3; PI_LANE_NAME=rock4d;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=panfrost ;;
+    5) PI_LANE=5; PI_LANE_NAME=orangepizero; PI_LANE_ARCH=armhf; PI_LANE_GPU=lima ;;
     *) PI_LANE="${PI_LANE:-1}" ;;
 esac
 unset _pi_lane_asked _pi_host_lane
@@ -140,6 +152,7 @@ pi_lock_release() {
 PI_HDMI_CONN="${PI_HDMI_CONN:-/sys/class/drm/card0-HDMI-A-1}"
 PI_HDMI_FORCED=0
 pi_hdmi_force_on() {
+    [ "${PI_DRM_VIRTUAL:-0}" = 1 ] && { pi_vkms_on; return; }   # B1060: lane 5 has no connector to force
     local st
     st="$(pi_remote cat "$PI_HDMI_CONN/status" </dev/null 2>/dev/null)"
     [ "$st" = connected ] && return 0
@@ -148,11 +161,46 @@ pi_hdmi_force_on() {
     PI_HDMI_FORCED=1
 }
 pi_hdmi_restore() {
+    [ "${PI_DRM_VIRTUAL:-0}" = 1 ] && { pi_vkms_off; return; }
     [ "${PI_HDMI_FORCED:-0}" -eq 1 ] || return 0
     pi_remote "echo detect | sudo -n tee $PI_HDMI_CONN/status >/dev/null" </dev/null
     PI_HDMI_FORCED=0
 }
 
-export PI_LANE PI_LANE_NAME PI_LANE_ARCH PI_LANE_GPU PI_HOST PI_USER PI_SSH_OPTS ARM_BUILD_BIN_DIR PI_EQ_PATH PI_EQE1_PATH \
+# B1060 (#380): a lane with NO display output (lane 5, the Orange Pi Zero: no HDMI,
+# display-engine/tv-encoder `disabled` in its device tree, card0 = Lima, render-only)
+# gets a virtual KMS device for the run: the stock vkms module (Virtual-1 connector,
+# 1024x768 preferred, 800x600 and 1280x720 offered), whose scanout Mesa's kmsro
+# vkms_dri.so pairs with the Lima render node -- measured: kmscube renders on
+# `Mali400` at 60 fps through it (review/B1060/drm/). Nothing is persisted: vkms is
+# loaded only when it is absent, unloaded only by the rig that loaded it, and its
+# card node (root-only 0600 when it appears: no udev seat tag) is opened to the
+# `video` group the client runs in. The client's own card scan (B1054,
+# drm_card_select.h) skips the connector-less Lima card0 and takes the vkms card.
+# kmscube does not (libdrm cannot enumerate vkms's faux bus), so the floor
+# pins it through PI_KMSCUBE_ARGS.
+case "${PI_LANE}" in
+    5) : "${PI_DRM_VIRTUAL:=1}"; : "${PI_DRM_CARD:=/dev/dri/card1}"
+       : "${PI_KMSCUBE_ARGS:=-D ${PI_DRM_CARD}}" ;;
+    *) : "${PI_DRM_VIRTUAL:=0}"; : "${PI_DRM_CARD:=}"; : "${PI_KMSCUBE_ARGS:=}" ;;
+esac
+PI_VKMS_LOADED=0
+pi_vkms_on() {
+    # Loads vkms if absent (records that in PI_VKMS_LOADED), checks the vkms card is
+    # PI_DRM_CARD with a connected Virtual-1, opens it to `video`. Non-zero = no KMS.
+    local out rc
+    out="$(pi_remote "set -e; if lsmod | grep -q '^vkms '; then echo preloaded; else sudo -n modprobe vkms; echo loaded; fi; \
+        sleep 1; c=\$(basename ${PI_DRM_CARD}); test \"\$(cat /sys/class/drm/\$c-Virtual-1/status)\" = connected; \
+        sudo -n chgrp video ${PI_DRM_CARD}; sudo -n chmod 0660 ${PI_DRM_CARD}" </dev/null 2>&1)"; rc=$?
+    echo "vkms: ${out//$'\n'/ } (${PI_DRM_CARD}, rc=$rc)"
+    case "$out" in loaded*) PI_VKMS_LOADED=1 ;; esac
+    return $rc
+}
+pi_vkms_off() {
+    [ "${PI_VKMS_LOADED:-0}" -eq 1 ] || return 0
+    pi_remote "sudo -n rmmod vkms" </dev/null && PI_VKMS_LOADED=0
+}
+
+export PI_LANE PI_LANE_NAME PI_LANE_ARCH PI_LANE_GPU PI_DRM_VIRTUAL PI_DRM_CARD PI_KMSCUBE_ARGS PI_HOST PI_USER PI_SSH_OPTS ARM_BUILD_BIN_DIR PI_EQ_PATH PI_EQE1_PATH \
        PI_HDMI_CONN PI_REMOTE_TMP PI_REMOTE_BIN PI_LOCK PROJECT_DIR MANIFEST_PATH ARTIFACTS_DIR \
        BASELINE_DIR H04_TOTAL_FRAMES H04_COOLDOWN_SEC H04_WARMUP_REPS
