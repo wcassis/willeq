@@ -276,7 +276,7 @@ private:
 		float maxX = 0, maxY = 0, maxZ = 0;
 	};
 	std::vector<ZoneLineBoxNode> zoneLineBoxNodes_;
-	bool showZoneLineBoxes_ = false;  // Toggle with Ctrl+Z or /zone
+	bool showZoneLineBoxes_ = false;  // Toggle with Ctrl+Z (debug boxes only; B1068: zoning is independent)
 	bool zoneLineBoxesCreated_ = false;  // Whether scene nodes exist
 	void createZoneLineBoxMesh(const EQT::ZoneLineBoundingBox& box);
 	void createZoneLineBoxMeshForNode(const EQT::ZoneLineBoundingBox& box, ZoneLineBoxNode& boxNode);

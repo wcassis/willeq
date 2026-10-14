@@ -441,7 +441,10 @@ private:
 	std::unique_ptr<EQT::ZoneLines> m_zone_lines;
 
 	// Zone line detection state
-	bool m_zoning_enabled = false;                                   // Whether zone line detection triggers zoning (Ctrl+Z toggles)
+	// B1068 (#388): ON by default -- the official client zones at every line.
+	// 2c7bf6dd (2026-02-23) turned it off with the debug boxes, so no walked
+	// crossing ever sent OP_ZoneChange. `/zoning off` is the debug switch.
+	bool m_zoning_enabled = true;
 
 	// T322: graceful zone-out hand-off state. The official Titanium client
 	// does NOT close its source-zone socket on a zone change: it sends
