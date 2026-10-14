@@ -24,7 +24,7 @@ time:
 | run | zone | rate | gpu_driver @ready | @last idle | growth | last point |
 |---|---|---|---:|---:|---:|---|
 | run1 | gfaydark | uncapped (~16 fps) | 137 MiB | 2272 MiB (idle_360) | **+2136 MiB** | flat |
-| run3 | iceclad | uncapped (~20 fps) | 123 MiB | 2271 MiB (idle_330) | **+2148 MiB** | flat |
+| run3 | iceclad | uncapped (~20 fps) | 123 MiB | 2323 MiB (idle_330) | **+2200 MiB** | flat |
 | run4 | gfaydark | uncapped (~23 fps, trace) | 137 MiB | 2270 MiB (idle_360) | **+2133 MiB** | flat |
 | run2 | gfaydark | **10 fps cap** | 137 MiB | 155 MiB (idle_360) | **+18 MiB** | flat |
 | run5 | gfaydark | **10 fps cap** | 137 MiB | 139 MiB (idle_270) | **−2.5 MiB** | flat |
@@ -43,7 +43,7 @@ full scenes**, each scene a slab of command/data blocks capped at
 - `LP_SCENE_MAX_SIZE (36*1024*1024)` — `lp_scene.h:64` (each scene's command
   + data budget; `lp_scene_new_data_block` in `lp_scene.c:342` refuses blocks
   past it).
-- 64 × 36 MiB = **2304 MiB**, against the measured 2133–2148 MiB (the queue
+- 64 × 36 MiB = **2304 MiB**, against the measured 2133–2200 MiB (the queue
   rarely holds all 64 at exactly-max size — the gap is the unfilled tail and
   freed-but-not-yet-reused slots).
 
@@ -188,8 +188,8 @@ the capped leg's 64 MiB is ~3.5× the observed capped run spread (18.3 MiB max).
   category (`gpu_driver`), the ceiling arithmetic, and the rate A/B are
   sufficient for the mechanism; a symbolized re-run (dbgsym or a debug build)
   would name the exact `lp_*` functions.
-- Run-to-run: the three uncapped runs agree to ±1.5 % on the plateau
-  (2133–2148 MiB); the capped runs agree to the ~20 MiB noise floor. The 25 %
+- Run-to-run: the three uncapped runs agree to within ~3 % on the plateau
+  (2133–2200 MiB); the capped runs agree to the ~20 MiB noise floor. The 25 %
   margin on the uncapped bound covers a zone heavier than iceclad.
 - **Acceptance 2 (the FOLLOW-UP decision) is a DECISION RECORD, not a client
   fix.** The growth is llvmpipe's bounded scene queue at its design ceiling —
