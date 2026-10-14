@@ -5,6 +5,7 @@
 // See refactor/J09_zone_shader_split.md.
 
 #include "client/graphics/zone_shader.h"
+#include "client/graphics/zone_depth_tie_break.h"
 #include "common/logging.h"
 #ifdef EQT_HAS_GLES2
 #include <GLES2/gl2.h>
@@ -33,6 +34,11 @@ public:
     // equation exact for them. The field was unused on this callback.
     void OnSetMaterial(const irr::video::SMaterial& material) override {
         bakedFlag_ = (material.MaterialTypeParam > 0.5f) ? 1.0f : 0.0f;
+        // B976 (#294): MaterialTypeParam2 is the zone-region depth tie-break
+        // flag (stamped by ZoneMeshBuilder::setZoneGeometryDepthTie). Entities
+        // and other shared-program meshes carry 0, so they are never biased;
+        // the region programs are the only ones that even declare uDepthTieBias.
+        depthTieBias_ = DepthTie::uDepthTieBiasForFlag(material.MaterialTypeParam2);
     }
 
     void OnSetConstants(irr::video::IMaterialRendererServices* services,
@@ -80,6 +86,9 @@ public:
             locUnifiedLighting_     = glGetUniformLocation(prog, "uUnifiedLighting");
             locBakedLight_          = glGetUniformLocation(prog, "uBakedLight");
             locBakedFlag_           = glGetUniformLocation(prog, "uBakedFlag");
+            // B976: -1 (not 0) on programs without the uniform (atlas/wind
+            // don't declare it), so the per-material upload below is skipped.
+            locDepthTieBias_        = glGetUniformLocation(prog, "uDepthTieBias");
             LOG_DEBUG(MOD_SHADER, "ShaderCallback: uniforms resolved — WVP={} World={} SunDir={} "
                       "LightPos={} LightColor={} LightAtten={} PlayerLightPos={} Texture={} AlphaTex={} "
                       "NumPointLights={} NumFireGlow={}",
@@ -102,6 +111,8 @@ public:
         // live in the per-frame block below.
         if (locBakedFlag_ >= 0)  glUniform1f(locBakedFlag_, bakedFlag_);
         if (locBakedLight_ >= 0) glUniform3fv(locBakedLight_, 1, owner_->bakedLight());
+        // B976: depth tie-break bias is also PER MATERIAL (from Param2).
+        if (locDepthTieBias_ >= 0) glUniform1f(locDepthTieBias_, depthTieBias_);
 
         // Per-frame uniforms (same for every node — skip if already set this frame)
         if (lastFrameId_ != owner_->frameId()) {
@@ -216,14 +227,17 @@ public:
         services->setVertexShaderConstant("uUnifiedLighting", &unifiedLighting, 1);
         services->setVertexShaderConstant("uBakedLight", owner_->bakedLight(), 3);
         services->setVertexShaderConstant("uBakedFlag", &bakedFlag_, 1);
+        // B976: depth tie-break bias, per material.
+        services->setVertexShaderConstant("uDepthTieBias", &depthTieBias_, 1);
 #endif
     }
 
 private:
     ZoneShaderManager* owner_;
     float bakedFlag_ = 0.0f;   // T408: set by OnSetMaterial, uploaded per node
+    float depthTieBias_ = 0.0f; // B976: set by OnSetMaterial from MaterialTypeParam2
 #ifdef EQT_HAS_GLES2
-    GLint locBakedLight_ = -2, locBakedFlag_ = -2;
+    GLint locBakedLight_ = -2, locBakedFlag_ = -2, locDepthTieBias_ = -2;
     // Cached uniform locations (-2 = not yet resolved)
     GLint locWVP_ = -2, locWorld_ = -2;
     GLint locSunDir_ = -2, locSunColor_ = -2, locAmbient_ = -2, locTint_ = -2;
