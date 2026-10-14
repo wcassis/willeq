@@ -490,18 +490,13 @@ TEST_F(InputActionBridgeTest, SpellCastRequest_MidAndTopGemsMapExactly) {
 // Hotbar, targeting, loot requests
 // ===================================================================
 
-TEST_F(InputActionBridgeTest, HotbarRequests_NoModelFallsBackToSpellGem) {
-    // T174: with no HotbarModel wired the bridge cannot know a slot's content
-    // type, so it degrades to the pre-T174 behavior: every hotbar button is a
-    // spell gem, 0-based slot -> 1-based gem. (SetUp() wires no model.)
+TEST_F(InputActionBridgeTest, HotbarRequests_NoModelDoesNotGuessSpellGem) {
     input.hotbarRequests.push({0});
     input.hotbarRequests.push({7});
 
     update();
 
-    ASSERT_EQ(handler.count(), 2u);
-    EXPECT_EQ(handler.calls[0], "castSpell(1)");
-    EXPECT_EQ(handler.calls[1], "castSpell(8)");
+    EXPECT_TRUE(handler.empty());
 }
 
 // ===================================================================
@@ -517,7 +512,7 @@ TEST_F(InputActionBridgeTest, HotbarRequests_NoModelFallsBackToSpellGem) {
 
 TEST_F(InputActionBridgeTest, HotbarSkillSlot_ReachesUseSkillNotCastSpell) {
     eqt::HotbarModel model;
-    model.assignSlot(0, eqt::HotbarSlotType::Skill, /*id=*/73);  // Taunt
+    model.assignSlot({0, 0}, eqt::HotbarSlotType::Skill, /*id=*/73);  // Taunt
     bridge->setHotbarModel(&model);
 
     input.hotbarRequests.push({0});
@@ -536,7 +531,7 @@ TEST_F(InputActionBridgeTest, HotbarSkillSlot_ReachesUseSkillNotCastSpell) {
 // see refactor/T230_target_resolver_and_hotbar_items.md).
 TEST_F(InputActionBridgeTest, HotbarItemSlot_ReachesUseItemWithResolvedInventorySlot) {
     eqt::HotbarModel model;
-    model.assignSlot(3, eqt::HotbarSlotType::Item, /*id=*/1234);  // item id
+    model.assignSlot({0, 3}, eqt::HotbarSlotType::Item, /*id=*/1234);  // item id
     bridge->setHotbarModel(&model);
     handler.inventoryByItemId[1234] = 24;  // carried in general slot 24
 
@@ -550,7 +545,7 @@ TEST_F(InputActionBridgeTest, HotbarItemSlot_ReachesUseItemWithResolvedInventory
 
 TEST_F(InputActionBridgeTest, HotbarItemSlot_ItemNotCarried_FailsWithoutUsing) {
     eqt::HotbarModel model;
-    model.assignSlot(3, eqt::HotbarSlotType::Item, /*id=*/1234);
+    model.assignSlot({0, 3}, eqt::HotbarSlotType::Item, /*id=*/1234);
     bridge->setHotbarModel(&model);
     // handler.inventoryByItemId empty: item 1234 is not in inventory.
 
@@ -561,18 +556,43 @@ TEST_F(InputActionBridgeTest, HotbarItemSlot_ItemNotCarried_FailsWithoutUsing) {
     EXPECT_TRUE(reportedOnce("UseItem", false));
 }
 
-TEST_F(InputActionBridgeTest, HotbarSpellSlot_StillReachesCastSpellByPosition) {
+TEST_F(InputActionBridgeTest, HotbarSpellSlot_ResolvesSpellIdLikeMouse) {
     eqt::HotbarModel model;
-    model.assignSlot(2, eqt::HotbarSlotType::Spell, /*id=*/999);
+    model.assignSlot({0, 2}, eqt::HotbarSlotType::Spell, /*id=*/999);
     bridge->setHotbarModel(&model);
+    model.setSpellAtGem([](uint8_t gem) { return gem == 5 ? 999u : 0xFFFFFFFFu; });
 
     input.hotbarRequests.push({2});
     update();
 
-    // Preserved behavior: spell slots map hotbar position (0-based) to gem
-    // (1-based), so slot 2 -> castSpell(3).
-    EXPECT_TRUE(handler.calledOnceWith("castSpell(3)"));
+    // The mouse path uses the same FindHotbarSpellGem() lookup; gem 5 is
+    // dispatched as 1-based gem 6, independent of button position 2.
+    EXPECT_TRUE(handler.calledOnceWith("beginCastFromGem(6, 0)"));
     EXPECT_EQ(handler.count(), 1u);
+}
+
+TEST_F(InputActionBridgeTest, HotbarSpellNotMemorized_DoesNotCastByPosition) {
+    eqt::HotbarModel model;
+    model.assignSlot({0, 2}, eqt::HotbarSlotType::Spell, 999);
+    bridge->setHotbarModel(&model);
+    model.setSpellAtGem([](uint8_t) { return 0xFFFFFFFFu; });
+    input.hotbarRequests.push({2});
+    update();
+    EXPECT_TRUE(handler.empty());
+}
+
+TEST_F(InputActionBridgeTest, HotbarSpellUsesCurrentPageAndRejectsPageTen) {
+    eqt::HotbarModel model;
+    model.assignSlot({0, 2}, eqt::HotbarSlotType::Spell, 111);
+    model.assignSlot({2, 2}, eqt::HotbarSlotType::Spell, 999);
+    model.setCurrentPage(2);
+    model.setCurrentPage(10);
+    bridge->setHotbarModel(&model);
+    model.setSpellAtGem([](uint8_t gem) { return gem == 5 ? 999u : 0xFFFFFFFFu; });
+    input.hotbarRequests.push({2});
+    update();
+    EXPECT_EQ(model.currentPage(), 2);
+    EXPECT_TRUE(handler.calledOnceWith("beginCastFromGem(6, 0)"));
 }
 
 TEST_F(InputActionBridgeTest, HotbarEmptySlot_IsSkippedNotCast) {
@@ -592,7 +612,7 @@ TEST_F(InputActionBridgeTest, HotbarEmptySlot_IsSkippedNotCast) {
 // (was a logged skip for all three, T174/T230).
 TEST_F(InputActionBridgeTest, HotbarEmoteSlot_ReachesCommandRouteWithItsText) {
     eqt::HotbarModel model;
-    model.assignSlot(1, eqt::HotbarSlotType::Emote, /*id=*/0, "/wave");
+    model.assignSlot({0, 1}, eqt::HotbarSlotType::Emote, /*id=*/0, "/wave");
     bridge->setHotbarModel(&model);
 
     input.hotbarRequests.push({1});
@@ -604,7 +624,7 @@ TEST_F(InputActionBridgeTest, HotbarEmoteSlot_ReachesCommandRouteWithItsText) {
 
 TEST_F(InputActionBridgeTest, HotbarMacroSlot_ReachesCommandRouteWithItsText) {
     eqt::HotbarModel model;
-    model.assignSlot(2, eqt::HotbarSlotType::Macro, /*id=*/0, "/say hi");
+    model.assignSlot({0, 2}, eqt::HotbarSlotType::Macro, /*id=*/0, "/say hi");
     bridge->setHotbarModel(&model);
 
     input.hotbarRequests.push({2});
@@ -616,7 +636,7 @@ TEST_F(InputActionBridgeTest, HotbarMacroSlot_ReachesCommandRouteWithItsText) {
 
 TEST_F(InputActionBridgeTest, HotbarCombatSlot_ReachesCommandRoute) {
     eqt::HotbarModel model;
-    model.assignSlot(4, eqt::HotbarSlotType::Combat, /*id=*/0);
+    model.assignSlot({0, 4}, eqt::HotbarSlotType::Combat, /*id=*/0);
     bridge->setHotbarModel(&model);
 
     input.hotbarRequests.push({4});
@@ -628,7 +648,7 @@ TEST_F(InputActionBridgeTest, HotbarCombatSlot_ReachesCommandRoute) {
 
 TEST_F(InputActionBridgeTest, HotbarMacroSlot_EmptyText_FailsWithoutDispatch) {
     eqt::HotbarModel model;
-    model.assignSlot(2, eqt::HotbarSlotType::Macro, /*id=*/0, "");
+    model.assignSlot({0, 2}, eqt::HotbarSlotType::Macro, /*id=*/0, "");
     bridge->setHotbarModel(&model);
 
     input.hotbarRequests.push({2});

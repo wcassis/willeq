@@ -84,6 +84,8 @@ struct RendererCommandData {
 
 // U00: Hotbar slot content assigned (from client-side config or user action)
 struct HotbarSlotAssignedData {
+    int page = 0;
+    int currentPage = 0;
     int index = 0;                      // Slot index (0-9)
     // T156: THE hotbar numbering (Empty=0, Spell=1, Skill=2, Item=3,
     // Emote=4, Macro=5, Combat=6) — see client/hotbar/hotbar_slot_type.h.

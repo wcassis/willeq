@@ -179,8 +179,8 @@ What landed:
   methods, the `m_pending_hotbar_buttons` member and the `eq_chat.cpp` block are
   all gone. **One numbering now exists in the tree.**
 * **`HotbarModel::loadFromJson` no longer casts an unvalidated `int` to the
-  enum** (T95). An out-of-range `type` in `hotbar.json` now logs a warning and
-  clears the slot instead of manufacturing a bogus enumerator.
+  enum** (T95). An out-of-range `type` in the legacy hotbar JSON config now
+  logs a warning and clears the slot instead of manufacturing a bogus enumerator.
 
 ### Leg 2 — the hotbar producer, and the fields it dropped
 
@@ -317,4 +317,3 @@ numbering reconciliation stayed inside the hotbar arm, per deviation 1.
    produces them either, so this is latent rather than broken; the explicit
    no-op cases in `eq_bridge.cpp` name it rather than hiding it under a
    `default:`.
-

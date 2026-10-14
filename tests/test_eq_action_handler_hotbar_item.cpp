@@ -104,9 +104,9 @@ TEST(EqActionHandlerHotbarItem, UseItem_SendsClickEffectAndReportsUsing) {
 TEST(EqActionHandlerHotbarItem, UseItem_CooldownReachesEveryHotbarSlotHoldingTheItem) {
     Harness h;
     h.eq.GetInventoryManager()->setItem(kPotionSlot, makePotion(500, /*recast=*/30000));
-    h.eq.GetHotbarModel()->assignSlot(3, eqt::HotbarSlotType::Item, kPotionId);
-    h.eq.GetHotbarModel()->assignSlot(7, eqt::HotbarSlotType::Item, kPotionId);
-    h.eq.GetHotbarModel()->assignSlot(5, eqt::HotbarSlotType::Item, kPotionId + 1);  // other item
+    h.eq.GetHotbarModel()->assignSlot({0, 3}, eqt::HotbarSlotType::Item, kPotionId);
+    h.eq.GetHotbarModel()->assignSlot({0, 7}, eqt::HotbarSlotType::Item, kPotionId);
+    h.eq.GetHotbarModel()->assignSlot({0, 5}, eqt::HotbarSlotType::Item, kPotionId + 1);  // other item
     h.bridge.drainEvents();
 
     h.handler.useItem(kPotionSlot);
@@ -119,7 +119,7 @@ TEST(EqActionHandlerHotbarItem, UseItem_CooldownReachesEveryHotbarSlotHoldingThe
 TEST(EqActionHandlerHotbarItem, UseItem_NoClickEffect_RefusesWithoutCooldown) {
     Harness h;
     h.eq.GetInventoryManager()->setItem(kPotionSlot, makePotion(/*effect=*/0, 30000));
-    h.eq.GetHotbarModel()->assignSlot(3, eqt::HotbarSlotType::Item, kPotionId);
+    h.eq.GetHotbarModel()->assignSlot({0, 3}, eqt::HotbarSlotType::Item, kPotionId);
     h.bridge.drainEvents();
 
     h.handler.useItem(kPotionSlot);
