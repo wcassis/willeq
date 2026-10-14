@@ -170,6 +170,11 @@ irr::scene::IMesh* ZoneMeshBuilder::buildMesh(const ZoneGeometry& geometry) {
 
         irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
 
+        // B976 (#294): zone region geometry gets the depth tie-break flag
+        // (see include/client/graphics/zone_depth_tie_break.h).
+        if (zoneGeometryDepthTie_)
+            buffer->Material.MaterialTypeParam2 = 1.0f;
+
         // Track which vertices we've added to this buffer
         std::unordered_map<size_t, irr::u16> globalToLocal;
 
@@ -248,6 +253,11 @@ irr::scene::IMesh* ZoneMeshBuilder::buildColoredMesh(const ZoneGeometry& geometr
         if (bufferTriangles[bufIdx].empty()) continue;
 
         irr::scene::SMeshBuffer* buffer = new irr::scene::SMeshBuffer();
+
+        // B976 (#294): zone region geometry gets the depth tie-break flag
+        // (see include/client/graphics/zone_depth_tie_break.h).
+        if (zoneGeometryDepthTie_)
+            buffer->Material.MaterialTypeParam2 = 1.0f;
 
         // Track which vertices we've added to this buffer
         std::unordered_map<size_t, irr::u16> globalToLocal;
@@ -477,6 +487,10 @@ irr::scene::IMesh* ZoneMeshBuilder::buildTexturedMesh(
             buffer->Material.MaterialType = irr::video::EMT_SOLID;
             buffer->Material.BackfaceCulling = false;  // Disabled to show both sides of polygons
             buffer->Material.Lighting = false;  // Use vertex/texture colors
+            // B976 (#294): zone region geometry gets the depth tie-break flag
+            // (see include/client/graphics/zone_depth_tie_break.h).
+            if (zoneGeometryDepthTie_)
+                buffer->Material.MaterialTypeParam2 = 1.0f;
             // T408 (B110): the zone shader's per-material baked-light flag.
             // ShaderCallback::OnSetMaterial reads it; 0 keeps the pre-T408
             // equation exact for every mesh that is not carrying baked light.
