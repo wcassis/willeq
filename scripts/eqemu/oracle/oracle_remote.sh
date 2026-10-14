@@ -349,13 +349,14 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
                 name_filled || { shot "$name-not-typed"; echo "name field empty after re-type" >&2; exit 65; }
             fi
             shot "$name-before-submit"
-            # The submit clicks below still touch the shared selection cursor
-            # (fix2e's packet decoded race=7 although the attribute still
-            # showed Barbarian): re-verify the selected state right before
-            # submit, not only right after the selection clicks.
-            selected_at "$race" 53 "$race_row" || exit 65
-            selected_at "$class" 153 "$class_row" || exit 65
-            selected_at "$gender" "$(gender_x "$gender")" 252 || exit 65
+            # The race/class/gender state was already verified on page 1 (the
+            # consolidated check after the ability-point clicks, above) and is
+            # the final authority only in the decoded create packet. There is
+            # deliberately NO selected_at re-check here: this is page 2
+            # (deity/city), where those page-1 list coordinates no longer hold
+            # the selection, so a re-check would test the wrong pixels and fail
+            # a correct run (measured in barbarian-fix2i: selected-Barbarian at
+            # 53,291 read no yellow on page 2 and aborted a good capture).
             submitted=0
             for attempt in 1 2 3 4 5; do
                 jclick 1243 54; sleep 12
