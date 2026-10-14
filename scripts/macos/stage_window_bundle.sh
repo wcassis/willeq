@@ -50,10 +50,9 @@ done
 } > "$S/STAGED.txt"
 
 chmod -R a+rX "$S"
-chmod 1777 "$S/out"
+chmod 777 "$S/out"  # not sticky: any user may replace another's results
 if [ -d "$DEST" ]; then
-    # Re-stage IN PLACE: out/ may hold the console user's files, which this
-    # (build) user cannot delete in the sticky directory; leave out/ alone.
+    # Re-stage IN PLACE: out/ may hold the console user's files; leave them.
     rsync -a --delete --exclude /out/ "$S/" "$DEST/"
     rm -rf "$S"
 else

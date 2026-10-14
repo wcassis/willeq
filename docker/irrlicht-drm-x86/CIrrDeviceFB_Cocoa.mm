@@ -95,6 +95,8 @@ static const NSUInteger kDevLCtl = 0x00000001, kDevLShift = 0x00000002, kDevRShi
     return NO;  // the device tears the window down in its destructor
 }
 - (void)windowDidResize:(NSNotification*)note { self.resized = YES; }
+- (void)windowDidBecomeKey:(NSNotification*)note { fprintf(stderr, "[cocoa-window] key window: yes\n"); }
+- (void)windowDidResignKey:(NSNotification*)note { fprintf(stderr, "[cocoa-window] key window: no\n"); }
 @end
 
 namespace
@@ -153,9 +155,16 @@ bool CIrrDeviceFB::initEGLX11()
         [st.window makeFirstResponder:st.view];
         [st.window center];
         [st.window makeKeyAndOrderFront:nil];
+        // A process started from Terminal is not a bundled app: ask for
+        // activation every way macOS offers (14+ made activation cooperative,
+        // and the deprecated call alone can leave Terminal the key app, so
+        // keys keep going to Terminal until the window is clicked).
+        if (@available(macOS 14.0, *)) [NSApp activate];
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
         [NSApp activateIgnoringOtherApps:YES];
+        [[NSRunningApplication currentApplication]
+            activateWithOptions:NSApplicationActivateAllWindows | NSApplicationActivateIgnoringOtherApps];
 #pragma clang diagnostic pop
 
         x11Display_ = (__bridge_retained void*)st;  // the Cocoa state; released in closeX11Window()
@@ -246,8 +255,9 @@ bool CIrrDeviceFB::initEGLX11()
                  "EGL (Cocoa): window %u created %ux%u, surface %dx%d, backing scale %.1f (--egl-window)",
                  (unsigned)st.window.windowNumber, Width, Height, sw, sh, st.window.backingScaleFactor);
         os::Printer::log(msg, ELL_INFORMATION);
-        fprintf(stderr, "[cocoa-window] created window=%u size=%ux%u surface=%dx%d scale=%.1f\n",
-                (unsigned)st.window.windowNumber, Width, Height, sw, sh, st.window.backingScaleFactor);
+        fprintf(stderr, "[cocoa-window] created window=%u size=%ux%u surface=%dx%d scale=%.1f active=%d key=%d\n",
+                (unsigned)st.window.windowNumber, Width, Height, sw, sh, st.window.backingScaleFactor,
+                NSApp.active ? 1 : 0, st.window.keyWindow ? 1 : 0);
     }
     return true;
 }

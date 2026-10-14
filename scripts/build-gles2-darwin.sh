@@ -67,12 +67,20 @@ perl -pi -e 's|^IRRMESHOBJ = |IRRMESHOBJ = COpenGLES2Driver.o COGLES2Texture.o C
 perl -pi -e 's|^IRROTHEROBJ = |IRROTHEROBJ = CIrrDeviceFB_X11.o CIrrDeviceFB_Darwin.o CIrrDeviceFB_Cocoa.o |' "$MAKEFILE"
 # B1044: the Cocoa window backend is Objective-C++ under ARC (the Makefile's
 # own %.o:%.mm rule compiles it; this target-specific flag adds ARC).
-printf '\nCIrrDeviceFB_Cocoa.o: CXXFLAGS += -fobjc-arc\n' >> "$MAKEFILE"
+printf '\nCIrrDeviceFB_Cocoa.o: override CXXFLAGS += -fobjc-arc\n' >> "$MAKEFILE"
 perl -pi -e 's|^staticlib sharedlib: CXXINCS \+= -I/usr/X11R6/include||' "$MAKEFILE"
 
 echo "--- Building libIrrlicht.a (clang, make -j$JOBS) ---"
+# B1044: CXXFLAGS on the command line, exactly as build-gles2-x86.sh passes it
+# (there "$PROBE_CXXFLAGS", normally empty): a command-line CXXFLAGS REPLACES
+# the Makefile's `-fno-exceptions -fno-rtti -O3 ...`, so the x86 library has
+# RTTI and the Darwin one did not -- and every willeq dynamic_cast over an
+# Irrlicht-built node (a camera, a CMeshSceneNode) then crashed on the Mac
+# (FirstPersonBodyDrawRule / FirstPersonWeaponAttachment SEGFAULTs).
+# -ffp-contract=off is the same no-FMA rule CMakeLists.txt applies on Darwin.
 nice -n 10 make -C "$DEST_SRC" NDEBUG=1 -j"$JOBS" CXX=clang++ CC=clang AR=ar \
     CXXINCS="-I../../include -Izlib -Ijpeglib -Ilibpng -I$ANGLE_DIR/include -DPNG_ARM_NEON_OPT=0" \
+    CXXFLAGS="-ffp-contract=off" \
     staticlib
 mkdir -p "$IRRLICHT_BUILD_DIR/lib"
 cp "$IRRLICHT_BUILD_DIR/lib/Linux/libIrrlicht.a" "$IRRLICHT_BUILD_DIR/lib/libIrrlicht.a"

@@ -22,30 +22,39 @@
 # first check with "no WindowServer session: run this at the console".
 
 set -u
+# --leg a | --leg b runs one leg only (default: both).
+LEG=both
+[ "${1:-}" = "--leg" ] && LEG="${2:-both}"
 BUNDLE="$(cd "$(dirname "$0")" && pwd)"
+
+# 1. A window needs this user's Aqua (WindowServer) session. Checked FIRST,
+#    so a run that cannot show a window (ssh) never touches out/.
+MGR="$(launchctl managername 2>/dev/null || echo unknown)"
+if [ "$MGR" != "Aqua" ]; then
+    echo "window created (benchmark): no"
+    echo "window created (client): no"
+    echo "RESULT: no WindowServer session: run this at the console (launchctl managername=$MGR)"
+    exit 3
+fi
+
 OUT="${WILLEQ_PROOF_OUT:-$BUNDLE/out}"
 mkdir -p "$OUT" 2>/dev/null
 if ! touch "$OUT/.w" 2>/dev/null; then
     OUT="$HOME/willeq-b1044-out"; mkdir -p "$OUT"
 fi
 rm -f "$OUT/.w"
-# A previous run's results (they belong to whoever ran it).
-rm -f "$OUT"/*.png "$OUT"/*.log "$OUT"/summary.txt "$OUT"/willeq_window.json 2>/dev/null
-SUMMARY="$OUT/summary.txt"
+# This user's own previous results only; another user's files stay.
+find "$OUT" -maxdepth 1 -type f -user "$(id -un)" \( -name '*.png' -o -name '*.log' \
+    -o -name 'summary*.txt' -o -name 'willeq_window.json' \) -delete 2>/dev/null
+# Each run writes its own summary file, so a stale summary.txt owned by
+# another user can never block it; summary.txt is refreshed when possible.
+SUMMARY="$OUT/summary_$(date -u +%Y%m%dT%H%M%SZ).txt"
 : > "$SUMMARY"
+trap 'cp -f "$SUMMARY" "$OUT/summary.txt" 2>/dev/null || true' EXIT
 note() { echo "$*"; echo "$*" >> "$SUMMARY"; }
 
 note "B1044 window proof  $(date -u +%Y-%m-%dT%H:%M:%SZ)  user=$(id -un)  host=$(hostname -s)"
 note "bundle=$BUNDLE out=$OUT"
-
-# 1. A window needs this user's Aqua (WindowServer) session.
-MGR="$(launchctl managername 2>/dev/null || echo unknown)"
-if [ "$MGR" != "Aqua" ]; then
-    note "window created (benchmark): no"
-    note "window created (client): no"
-    note "RESULT: no WindowServer session: run this at the console (launchctl managername=$MGR)"
-    exit 3
-fi
 
 # 2. The assets: /Volumes/projects (Will's console session), else ~/projects.
 ASSETS=""
@@ -89,6 +98,7 @@ shoot() {
 }
 
 # ---------------------------------------------------------------- leg A
+if [ "$LEG" != b ]; then
 echo
 echo "=== Leg A: gles2_zone_benchmark in a window (hands off, about 30 s) ==="
 echo "leg A: the window renders qeynos2, then HOLDS the last frame for 20 s and"
@@ -117,6 +127,8 @@ if [ -n "$BWIN" ]; then note "window created (benchmark): yes  ${BWIN#\[cocoa-wi
 else note "window created (benchmark): no  (see out/benchmark.log; EGL lines: $(grep -m2 'EGL (' "$BLOG" | tr '\n' ' '))"; fi
 note "benchmark frames: $(grep -m1 'Zone Benchmark Summary' "$BLOG")  $(grep -m1 'Avg FPS' "$BLOG" | sed 's/^ *//')"
 note "benchmark exit code: $BRC  screenshots: $(cd "$OUT" && ls window*.png 2>/dev/null | tr '\n' ' ')"
+fi
+[ "$LEG" = a ] && { echo "Done (leg A only). Summary: $SUMMARY"; exit 0; }
 
 # ---------------------------------------------------------------- leg B
 CFG="$OUT/willeq_window.json"
@@ -140,7 +152,8 @@ cat > "$CFG" <<EOF
 EOF
 echo
 echo "=== Leg B: the willeq client in a window (you drive this one) ==="
-echo "A 1280x720 'WillEQ' window opens. Click into it once, then:"
+echo "A 1280x720 'WillEQ' window opens (it shows 'Connecting to login server')."
+echo "FIRST click once INSIDE the WillEQ window, so it -- not Terminal -- gets the keys; then:"
 echo "  1. press and release W, A, S, D (one at a time), then Escape"
 echo "  2. hold Shift and press W; hold Control and press A"
 echo "  3. move the mouse around inside the window"
@@ -176,6 +189,7 @@ note "client device events: key_down=$(count '^\[cocoa-input\] key down') key_up
      "mouse_up=$(count '^\[cocoa-input\] mouse up') wheel=$(count '^\[cocoa-input\] mouse wheel')" \
      "resize=$(count '^\[cocoa-input\] resize')"
 note "client receiver lines ([INPUT-EVENT], MOD_INPUT TRACE): key=$(count 'INPUT-EVENT\] key') mouse=$(count 'INPUT-EVENT\] mouse')"
+note "client window focus: became key $(count '^\[cocoa-window\] key window: yes') time(s), lost key $(count '^\[cocoa-window\] key window: no') time(s); at creation: $(grep -m1 '^\[cocoa-window\] created' "$CLOG" | sed -n 's/.*\(active=[01] key=[01]\).*/\1/p')"
 note "device summary: $(grep -m1 '^\[cocoa-input\] summary' "$CLOG" | sed 's/^\[cocoa-input\] summary //')"
 note "keys seen (irr codes, down): $(sed -n 's/^\[cocoa-input\] key down code=0x\([0-9a-f]*\) irr=\([0-9]*\).*/\2/p' "$CLOG" | sort -n | uniq -c | awk '{printf "%s x%s, ", $2, $1}')"
 note "client end $(stamp)  exit code: $CRC  screenshots: $(cd "$OUT" && ls client_window*.png 2>/dev/null | tr '\n' ' ')"
