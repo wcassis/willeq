@@ -6,6 +6,8 @@
 #include "client/graphics/ui/static_ui_input.h"
 #include "client/graphics/ui/ui_layout.h"
 #include "client/graphics/ui/static_panels.h"
+#include "client/graphics/ui/hotbar_panel.h"   // B1025-H2: hitTestHotbar
+#include "client/hotbar/hotbar_model.h"        // B1025-H2: PAGE_COUNT
 #include "client/graphics/ui/inventory_layout.h"
 #include "client/graphics/ui/tradeskill_panel.h"
 #include "client/graphics/ui/tradeskill_layout.h"
@@ -75,24 +77,46 @@ bool StaticUIInput::processInput(int mouseX, int mouseY, bool leftClicked,
     skills.hoveredRow = -1;
     loot.hoveredRow = -1;
 
-    // --- Hotbar hit test (10 horizontal slots) ---
+    // --- Hotbar window (B1025-H2): the stock HotButtonWnd, one window ---
+    // The renderer and this test share HotbarLayout's rects, so a click lands
+    // on the drawn control. The old horizontal-row hitTestSlotRow() is gone
+    // with the old geometry.
     {
-        int slot = hitTestSlotRow(mouseX, mouseY,
-            layout.hotbar.UpperLeftCorner.X, layout.hotbar.UpperLeftCorner.Y,
-            UILayout::SLOT_SIZE, UILayout::MARGIN, HotbarPanelState::SLOT_COUNT);
-        if (slot >= 0) {
-            hotbar.hoveredSlot = slot;
+        const HotbarHit hbHit = hitTestHotbar(layout, hotbar, mouseX, mouseY);
+        if (hbHit != HotbarHit::None) {
             consumed = true;
             if (leftClicked && bridge_) {
-                // T156: was `HotbarActivateIntent{slot}` — a brace-init with
-                // the index alone, which value-initialised buttonType/id/
-                // emoteText and made every click look like "Spell 0". Fill all
-                // four fields from the cached slot state, carrying the model's
-                // own HotbarSlotType so the consumer switches on enumerators.
-                const auto& cached = hotbar.slots[slot];
-                if (cached.type != eqt::HotbarSlotType::Empty) {
-                    bridge_->pushIntent(eqt::events::HotbarActivateIntent{
-                        slot, cached.type, cached.id, cached.emoteText});
+                switch (hbHit) {
+                case HotbarHit::Slot: {
+                    // T156: fill all four fields from the cached slot state so
+                    // the consumer switches on the model's enumerators.
+                    const int slot = hotbar.hoveredSlot;
+                    const auto& cached = hotbar.slots[slot];
+                    if (cached.type != eqt::HotbarSlotType::Empty) {
+                        bridge_->pushIntent(eqt::events::HotbarActivateIntent{
+                            slot, cached.type, cached.id, cached.emoteText});
+                    }
+                    break;
+                }
+                case HotbarHit::PageLeft:
+                    if (hotbar.currentPage > 0) {
+                        bridge_->pushIntent(eqt::events::HotbarPageChangedIntent{
+                            hotbar.currentPage - 1});
+                    }
+                    break;
+                case HotbarHit::PageRight:
+                    if (hotbar.currentPage < eqt::HotbarModel::PAGE_COUNT - 1) {
+                        bridge_->pushIntent(eqt::events::HotbarPageChangedIntent{
+                            hotbar.currentPage + 1});
+                    }
+                    break;
+                case HotbarHit::Close:
+                    // In-session toggle; nothing user-changeable is persisted
+                    // (T432), so the flag lives on the panel state.
+                    hotbar.isOpen = false;
+                    break;
+                case HotbarHit::None:
+                    break;
                 }
             }
         }
@@ -849,16 +873,6 @@ std::string StaticUIInput::runScrollCommand(const std::string& args,
 
     static const char* kNames[] = {"none", "chat", "skills", "loot", "item"};
     return std::string("Scroll: ") + kNames[static_cast<int>(target)] + " " + which;
-}
-
-int StaticUIInput::hitTestSlotRow(int mx, int my, int startX, int startY,
-                                   int slotSize, int padding, int count) const {
-    if (my < startY || my >= startY + slotSize) return -1;
-    for (int i = 0; i < count; ++i) {
-        int sx = startX + i * (slotSize + padding);
-        if (mx >= sx && mx < sx + slotSize) return i;
-    }
-    return -1;
 }
 
 // T421 (board B298, item half) -- see the declaration for why this is its

@@ -12,6 +12,7 @@
 #include <irrlicht.h>
 
 #include "common/packets/common.h"  // T483: the gem counts
+#include "client/graphics/ui/hotbar_layout.h"  // B1025-H2: the stock window rect
 
 namespace EQT {
 namespace Graphics {
@@ -47,14 +48,17 @@ struct UILayout {
     irr::core::rect<irr::s32> targetHPBar;
     irr::core::rect<irr::s32> targetNameLabel;
 
-    // --- Bottom-left: Chat panel ---
+    // --- Bottom-left: Hotbar (B1025-H2) + chat panel ---
+    // The stock hotbar window (EQUI_HotButtonWnd.xml, bottom-LEFT) and the
+    // chat panel that sits to its right. The hotbar's geometry lives in
+    // hotbar_layout.h (HotbarLayout::windowRect); this member is the window
+    // rect computed for this screen, so the always-on panels' input guards
+    // and the chat's own placement share one rect.
+    irr::core::rect<irr::s32> hotbar;
     irr::core::rect<irr::s32> chatPanel;
     irr::core::rect<irr::s32> chatMessages;
     irr::core::rect<irr::s32> chatInput;
     irr::core::rect<irr::s32> chatTabs;
-
-    // --- Bottom-center: Hotbar ---
-    irr::core::rect<irr::s32> hotbar;
 
     // --- Bottom-right: Spell gems ---
     irr::core::rect<irr::s32> spellGems;
@@ -103,11 +107,10 @@ struct UILayout {
         // XP bar: very bottom, full width
         xpBar = {0, height - 8, width, height};
 
-        // Hotbar: bottom-center, above XP bar
-        irr::s32 hotbarW = SLOT_SIZE * 10 + MARGIN * 9;
-        irr::s32 hotbarX = (width - hotbarW) / 2;
-        irr::s32 hotbarY = xpBar.UpperLeftCorner.Y - MARGIN - SLOT_SIZE;
-        hotbar = {hotbarX, hotbarY, hotbarX + hotbarW, hotbarY + SLOT_SIZE};
+        // Hotbar: the stock window, bottom-LEFT (B1025-H2). Geometry is the
+        // oracle's own, in hotbar_layout.h; this rect is where it lands on
+        // this screen (clamped for the shortest supported heights).
+        hotbar = HotbarLayout::windowRect(width, height);
 
         // Spell gems: bottom-right, above XP bar
         irr::s32 gemsW = SLOT_SIZE;
@@ -118,26 +121,36 @@ struct UILayout {
         irr::s32 gemsY = hotbar.UpperLeftCorner.Y - MARGIN - gemsH;
         spellGems = {gemsX, gemsY, gemsX + gemsW, gemsY + gemsH};
 
-        // Chat panel: bottom-left, above XP bar
+        // Chat panel: to the RIGHT of the hotbar window (B1025-H2). The oracle
+        // puts the hotbar bottom-LEFT and the chat beside it; fable's chat was
+        // bottom-LEFT, so it moves right to make room. Bottom-anchored like
+        // the hotbar, same 300x160 size as before.
         irr::s32 chatW = 300;
         irr::s32 chatH = 160;
-        irr::s32 chatX = MARGIN;
-        irr::s32 chatY = hotbar.UpperLeftCorner.Y - MARGIN - chatH;
+        irr::s32 chatX = hotbar.LowerRightCorner.X + MARGIN;
+        if (chatX + chatW > width - MARGIN) chatX = MARGIN;
+        irr::s32 chatY = height - MARGIN - chatH;
         chatTabs     = {chatX, chatY, chatX + chatW, chatY + BAR_HEIGHT + 2};
         chatMessages = {chatX, chatTabs.LowerRightCorner.Y, chatX + chatW, chatY + chatH - BAR_HEIGHT - 4};
         chatInput    = {chatX, chatMessages.LowerRightCorner.Y + 2, chatX + chatW, chatY + chatH};
         chatPanel    = {chatX, chatY, chatX + chatW, chatY + chatH};
 
-        // Buff bar: above chat
+        // Buff bar: above the hotbar window (the bottom-left is the stock
+        // hotbar's 96x260 window, so the bar sits on top of it, left-aligned).
         irr::s32 buffW = 300;
         irr::s32 buffH = SLOT_SIZE + MARGIN * 2;
-        buffBar = {MARGIN, chatY - MARGIN - buffH, MARGIN + buffW, chatY - MARGIN};
+        buffBar = {MARGIN, hotbar.UpperLeftCorner.Y - MARGIN - buffH,
+                   MARGIN + buffW, hotbar.UpperLeftCorner.Y - MARGIN};
 
-        // Casting bar: center-bottom, above hotbar
+        // Casting bar: center-bottom, above the hotbar window's TOP and clear
+        // of the window's right edge (the window is 96 wide at the bottom-left
+        // now, so a centered 200 bar no longer clears it).
         irr::s32 castW = 200;
         irr::s32 castH = BAR_HEIGHT + 4;
-        castingBar = {(width - castW) / 2, hotbar.UpperLeftCorner.Y - MARGIN - castH,
-                      (width + castW) / 2, hotbar.UpperLeftCorner.Y - MARGIN};
+        irr::s32 castX = (hotbar.LowerRightCorner.X + width) / 2;
+        if (castX + castW > width - MARGIN) castX = width - MARGIN - castW;
+        castingBar = {castX, hotbar.UpperLeftCorner.Y - MARGIN - castH,
+                      castX + castW, hotbar.UpperLeftCorner.Y - MARGIN};
 
         // Center popup: middle of screen
         irr::s32 popW = 400;
@@ -145,8 +158,11 @@ struct UILayout {
         centerPopup = {(width - popW) / 2, (height - popH) / 2,
                        (width + popW) / 2, (height + popH) / 2};
 
-        // Group panel: left side below player status
-        irr::s32 gpX = MARGIN;
+        // Group panel: beside the hotbar window, below player status. The
+        // column used to sit at x=MARGIN, where it overlaps the window's
+        // top-left corner (the window is 96 wide and reaches y=220 at 480px
+        // tall), so it starts just clear of the window's right edge.
+        irr::s32 gpX = hotbar.LowerRightCorner.X + MARGIN;
         irr::s32 gpY = playerStatus.LowerRightCorner.Y + MARGIN;
         irr::s32 gpW = BAR_WIDTH;
         irr::s32 gpH = 5 * (BAR_HEIGHT + MARGIN) + MARGIN;

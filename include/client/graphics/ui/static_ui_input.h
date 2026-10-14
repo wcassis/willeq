@@ -510,12 +510,6 @@ private:
                        const std::string& name, uint32_t iconId);
     // MW_Buy_Button / MW_Sell_Button: the side of the last selection.
     void merchantTradeClick(MerchantPanelState& merchant);
-
-    // Hit test a point against a horizontal slot row and return slot index,
-    // or -1. Used by the hotbar; the inventory popup's grid geometry comes
-    // from InventoryLayout::slotRect() instead (T57 — single shared source).
-    int hitTestSlotRow(int mx, int my, int startX, int startY,
-                       int slotSize, int padding, int count) const;
 };
 
 } // namespace Graphics
