@@ -117,8 +117,8 @@ passed 31/31 tests. Draft MR !168 exists; CI must still verify the pushed head.
   until they land, the parser defaults a 9-column row's classic cell to hidden.
 - **Finding 6 (RED/GREEN) closed.** `CharCreateClicks.SetFaceButtonIsNotGreyed`
   uses only seam symbols present in both trees, so it compiles and runs at the
-  pre-feature baseline (origin/fable f8ead59d): 1 test selected, FAILED
-  (`finding6-RED-baseline-f8ead59d.txt`); at the feature head the same body
+  pre-feature baseline (origin/fable ac32a25e): 1 test selected, FAILED
+  (`finding6-RED-baseline-ac32a25e.txt`); at the feature head the same body
   passes (`finding6-GREEN-head.txt`).
 
 ## Range evidence standard

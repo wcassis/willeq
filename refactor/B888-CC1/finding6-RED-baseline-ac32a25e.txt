@@ -4,7 +4,7 @@ Note: Google Test filter = CharCreateClicks.SetFaceButtonIsNotGreyed
 [----------] Global test environment set-up.
 [----------] 1 test from CharCreateClicks
 [ RUN      ] CharCreateClicks.SetFaceButtonIsNotGreyed
-/home/user/.hermes/profiles/dev/cache/scratch/fable-baseline/tests/test_char_create_screen.cpp:369: Failure
+/home/user/scratch/b888-fix2-red/tests/test_char_create_screen.cpp:366: Failure
 Expected: (hit.hit) != (CharCreateHit::None), actual: 1-byte object <00> vs 1-byte object <00>
 Set Face is greyed: the FacePick modal the feature adds is absent
 

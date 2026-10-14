@@ -622,7 +622,7 @@ TEST(CharCreateClicks, PlainTextDropsTheMarkup) {
 // test body compiles and RUNS on the pre-feature baseline (origin/fable,
 // where CC0_Face_Button is greyed -- hitTestCharCreate returns
 // CharCreateHit::None, "greyed: no FacePick yet") and there FAILs (the RED
-// log, refactor/B888-CC1/finding6-RED-baseline-f8ead59d.log); here, at the
+// log, refactor/B888-CC1/finding6-RED-baseline-ac32a25e.txt); here, at the
 // feature head, Set Face resolves to the FacePick modal, so it passes. Only
 // seam symbols present in BOTH trees are named (hitTestCharCreate,
 // CharCreateHit::None, OpenHumanWarrior), so the body is byte-identical.
