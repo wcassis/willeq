@@ -869,16 +869,26 @@ job** (B929, #247). The sweep's own "clean" row is load-cleanness plus the
 256 MB RssAnon ceiling; a zone that loads fine but exceeds a memory budget
 was invisible to CI (B929's growthplane: 28,687,788 B of
 `placeableObjectsBytes` against 25,165,824 — fixed in the loader by B936b,
-asserted here). The job runs the full 118-zone sweep (4 m 46 s measured,
-refactor/B929/README.md) and then
+asserted here). The job first runs
+`scripts/ci/zone_census_pack_selfheal.sh` over the swept zones' EQE1 packs:
+the runners read the shared NFS pack tree, and a STALE pack (B930/#248's
+soldunga v1 signature) FATALs the benchmark's all-or-nothing texture load —
+the sweep would then die on an asset, never asserting that zone's budget.
+The self-heal rebuilds a `verify_eqe1 --require-v3` STALE pack with
+`eqe1_builder` from the zone's `.s3d` (the client FATAL's own named remedy)
+and fails the job if a rebuild does not come back clean. Then the full
+118-zone sweep (4 m 46 s measured, refactor/B929/README.md; the benchmark
+is the per-ref tree's binary, passed with `--bench-bin`) and then
 `scripts/ci/zone_budget_census.py --check-budgets`, which fails on ANY zone
 over ANY budget: every estimate pair the `gate` job asserts
 (`visual_gate.py`'s `MEMORY_BUDGET_PAIRS` minus the two also-baselined,
 against the budgets the benchmark read out of the shipped orangepi preset)
 and every `memoryLedgerBudgets` category. Blocking, no retries (the figures
 are load-invariant, unlike the gate's CPU-p95). The ctest legs of the same
-net: `test_zone_budget_census` (pure python, every pipeline) and
-`zone_budget_census_smoke` (the 3-zone smoke, label `slow`).
+net: `test_zone_budget_census` (pure python, every pipeline),
+`zone_budget_census_smoke` (the 3-zone smoke, label `slow`) and
+`test_zone_census_pack_selfheal` (the self-heal's exit-code contract on stub
+verify/builder binaries, pure bash+python).
 
 ## `review/` citations
 

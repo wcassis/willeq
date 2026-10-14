@@ -622,6 +622,14 @@ zone-budget-census:
   script:
     - !reference [.visual_gate_prepare, script]
     - |
+      # B929: heal stale EQE1 packs (B930's soldunga signature) for the swept
+      # zones before the sweep; the tools build into $GLES2_TREE on demand.
+      nice -n 10 cmake --build "$GLES2_TREE" --target verify_eqe1 eqe1_builder -j "$JOBS" 2>&1 | tail -n 10
+      nice -n 10 bash scripts/ci/zone_census_pack_selfheal.sh \
+        --verify "$GLES2_TREE/bin/verify_eqe1" \
+        --builder "$GLES2_TREE/bin/eqe1_builder" \
+        --eq-path data/eq_client --pack-dir data/eqe1_client 2>&1 | tee census-pack-heal.log
+    - |
       set -o pipefail
       nice -n 10 bash scripts/ci/zone_content_sweep.sh \
         --out-dir "$GLES2_TREE/b929_census" \
@@ -634,6 +642,7 @@ zone-budget-census:
     expire_in: 7 days
     paths:
       - census-sweep.log
+      - census-pack-heal.log
       - census-budget.log
       - census-budget-rows.tsv
       - build-gles2/ref/*/b929_census/results.tsv

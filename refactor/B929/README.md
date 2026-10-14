@@ -92,7 +92,32 @@ What was missing was the NET — acceptance 2:
   hence the gate-stage job. No retries: the gate's 3 in-script retries
   exist for its load-sensitive CPU-p95 assertion; the census asserts
   platform-invariant memory figures, so a retry would only mask a real
-  over-budget zone.
+  over-budget zone. The benchmark is the per-ref tree's
+  `build-gles2/ref/<slug>/bin/gles2_zone_benchmark` (B1012's `GLES2_TREE`,
+  passed with `--bench-bin`; the sweep's default `build/bin` does not exist
+  in the gate stage), and the job first runs the pack self-heal below.
+- **The pack self-heal** — `scripts/ci/zone_census_pack_selfheal.sh`, the
+  job's first step. The runners' EQE1 tree is the shared NFS mount
+  (`data/eqe1_client` → `/mnt/projects/EverQuest_ETC1`), and B930 (#248)
+  left that tree's `soldunga.eqe1` stale (v1 holding a 31-char name — the
+  pre-B910 truncation; the hermes-ext copy was rebuilt to v3 on 2026-09-21,
+  the runner's was not). A stale pack FATALs the benchmark's all-or-nothing
+  texture load, so that zone could never be asserted against the budgets,
+  and the sweep's exit-1-on-NOT-CLEAN would then fail the job on an asset,
+  not a budget. The self-heal verifies every swept zone's pack with
+  `verify_eqe1 --require-v3` (B930/B1017: flags exactly the
+  truncation-signature packs, so the 117 clean packs pass through) and
+  rebuilds a STALE one with `eqe1_builder --archive <zone>.s3d --output
+  <pack-dir>` (the client FATAL's own named remedy; the builder emits v3
+  only when a name is >31 chars, so it cannot downgrade a clean pack).
+  Still-stale-after-rebuild or missing `.s3d` fails the job (exit 1); an
+  absent pack is skipped, not failed — the sweep's own row names it.
+  Measured end-to-end on this host: synthetic stale v1 soldunga → `verify`
+  flags it (`STALE: format v1' ... 31-char name(s)`) → rebuilt from
+  `soldunga.s3d` → `verify` clean → the zone loads (sweep row `ok`, 2 s)
+  and is inside every budget. The rebuild overwrites the runner's NFS pack
+  in place — the same bytes the hermes-ext tree already carries, which is
+  what closes B930's open item for the x86 runners.
 - ctest legs (in `build-test`, so they run on every code pipeline):
   - `test_zone_budget_census` — pure python, no benchmark/assets: drives
     the checker through its real exit-code contract on synthetic sweep
@@ -159,9 +184,22 @@ same run (`ledger objects` 1,648,640 / 41,943,040 = 3.9 %).
 
 - `test_zone_budget_census` 9/9 (unittest, direct + ctest);
   `zone_budget_census_smoke` ctest PASS (6.4 s: RED half + 3-zone GREEN
-  half); both run in the MR pipeline's `build-test`.
+  half); `test_zone_census_pack_selfheal` ctest PASS (0.2 s: the self-heal's
+  exit-code contract on stub verify/builder binaries); all three run in the
+  MR pipeline's `build-test`.
 - Full 118-zone sweep + checker: PASS, 2026-10-14, this host (runtime
   cited above).
+- **MR !182 pipeline 1166, 2026-10-14 (the runners):** `hygiene`,
+  `build-headless`, `build-test` and `gate` all green; `zone-budget-census`
+  failed in 394 s with the job dying on exactly the asset this unit's
+  self-heal addresses — the runner's stale `soldunga.eqe1` (v1; the sweep's
+  row: `rc=1 first_fatal="...EQE1 pack '.../soldunga.eqe1' is format v1;
+  this client needs v3 (rebuild with tools/convert_all_to_eqe1.sh)"`,
+  117/118 rows clean, the checker never ran because the sweep exits 1).
+  The fix (self-heal + `--bench-bin` from the first failure, pipeline 1161
+  job 6231 dying on `build/bin/gles2_zone_benchmark` missing in the gate
+  stage) is this branch's later commits; the re-run is the outstanding
+  piece.
 - The MR pipeline's gate stage runs the new `zone-budget-census` job cold;
   its `gate` job re-runs the five zones against the untouched manifest —
   acceptance C (goldens byte-identical) and E in one.
@@ -170,6 +208,12 @@ same run (`ledger objects` 1,648,640 / 41,943,040 = 3.9 %).
 
 ## Not verified / left open
 
+- **The re-run of `zone-budget-census` on the runners after the self-heal**
+  is the one unmeasured leg: expected to be 4 m 46 s of zone time + the
+  `verify_eqe1`/`eqe1_builder` tool build (ccache-warm on the runner trees)
+  + one `soldunga` rebuild (~10 s of the builder's single-archive pass) —
+  the first pass heals the NFS tree, every later pipeline pass is a
+  verify-no-op for all 118 packs.
 - The Pi figures for this unit: none were needed. B936 measured the Pi's
   own `objects` ledger and frame rate after the fix (`refactor/B936/README.md`
   Orange Pi A/B table), and the census's asserted quantities
@@ -178,7 +222,9 @@ same run (`ledger objects` 1,648,640 / 41,943,040 = 3.9 %).
   at a fixed lifecycle point — B927), so the x86 census is the assertion
   surface. The Pi's live `objects` bytes would be a client run (the census
   uses the benchmark, which is what the gate asserts), which B936 already
-  took.
+  took. The Pi and dev-u24 pack copies remain B930's open item (they are
+  not on the x86 runners' NFS tree); this unit's self-heal heals only what
+  the job reads.
 - The 4 m 46 s census runtime was measured on hermes-ext (16 cores, shared
   with kanban workers); the x86 runners are the same class (B1008). The job
   has no `timeout:` beyond the 3 h `.goldfarm` default, so a 2× slower host

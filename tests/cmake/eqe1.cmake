@@ -160,10 +160,18 @@ SET_TESTS_PROPERTIES(zone_content_sweep_smoke PROPERTIES
 ADD_TEST(NAME test_zone_budget_census
     COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_zone_budget_census.py)
 
+# B929 (#247): the pack self-heal unit test (zone_census_pack_selfheal.sh's
+# exit-code contract with stub verify/builder binaries -- no build tree,
+# no assets): a clean pack passes through, a STALE pack is rebuilt and
+# re-verified, a still-stale rebuild or a missing .s3d fails the script,
+# an absent pack is skipped, and the list's header row is skipped.
+ADD_TEST(NAME test_zone_census_pack_selfheal
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_zone_census_pack_selfheal.py)
+
 # B929 (#247): the zone budget census's ctest leg. The full 118-zone run is
 # the CI gate-stage job zone-budget-census (one gles2_zone_benchmark per
-# zone, ~3 s each, ~10 min measured on this host's llvmpipe:
-# refactor/B929/README.md); this smoke is its net:
+# zone, ~3 s each, ~5 min of zone time measured, refactor/B929/README.md);
+# this smoke is its net:
 #   RED half   -- a synthetic sweep row carrying B927's measured over-budget
 #                 figure (growthplane placeableObjectsBytes 28,687,788
 #                 against 25,165,824) MUST be failed by
