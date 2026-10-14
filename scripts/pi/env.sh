@@ -24,6 +24,15 @@
 #   lane 1  orangepi  10.0.30.192     armv7l  Allwinner H3  Mali-400  lima      483 MB
 #   lane 2  rock64    172.16.200.204  aarch64 RK3328        Mali-450  lima      4 GB, eMMC
 #   lane 3  rock4d    172.16.200.202  aarch64 RK3576        Mali-G52  panfrost  12 GB, SD
+#   lane 5  orangepizero 172.16.200.207 armv7l Allwinner H2+ Mali-400 lima     484 MB, SD, trixie
+#
+# Lane 5 (B1060, #380) is lane 1's sibling: the same armhf ci-arm/ publish, the same
+# preset and ceilings, but Armbian trixie (Debian 13, glibc 2.41, system Mesa 25.0.7)
+# and NO display output wired in its device tree (the Zero has no HDMI; display-engine
+# and tv-encoder are `disabled`), so card0 is Lima, render-only. A DRM run needs a KMS
+# device: PI_DRM_SETUP loads the stock vkms module (virtual connector; Mesa's kmsro
+# vkms_dri.so pairs it with Lima) and PI_DRM_CARD names that card for the run
+# (docs/reference/orangepizero.md).
 #
 # Lane 1 keeps everything it had (the armhf CI publish under ci-arm/, the
 # LLVM-less Mesa prefix, the `orangepi` constrained preset). Lanes 2-3 run the
@@ -37,7 +46,8 @@ case "${PI_LANE:-}" in
     ""|1) PI_LANE_HOST=10.0.30.192;    PI_LANE_NAME=orangepi; PI_LANE_ARCH=armhf;   PI_LANE_GPU=lima ;;
     2)    PI_LANE_HOST=172.16.200.204; PI_LANE_NAME=rock64;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=lima ;;
     3)    PI_LANE_HOST=172.16.200.202; PI_LANE_NAME=rock4d;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=panfrost ;;
-    *)    echo "scripts/pi/env.sh: unknown PI_LANE '${PI_LANE}' (1-3)" >&2
+    5)    PI_LANE_HOST=172.16.200.207; PI_LANE_NAME=orangepizero; PI_LANE_ARCH=armhf; PI_LANE_GPU=lima ;;
+    *)    echo "scripts/pi/env.sh: unknown PI_LANE '${PI_LANE}' (1-3, 5)" >&2
           return 2 2>/dev/null || exit 2 ;;
 esac
 : "${PI_HOST:=${PI_LANE_HOST}}"
@@ -45,6 +55,7 @@ case "${PI_HOST}" in
     10.0.30.192)    _pi_host_lane=1 ;;
     172.16.200.204) _pi_host_lane=2 ;;
     172.16.200.202) _pi_host_lane=3 ;;
+    172.16.200.207) _pi_host_lane=5 ;;
     *)              _pi_host_lane= ;;   # an unlisted host keeps whatever the caller said
 esac
 if [ -n "${_pi_host_lane}" ] && [ -n "${_pi_lane_asked}" ] && [ "${_pi_lane_asked}" != "${_pi_host_lane}" ]; then
@@ -60,6 +71,7 @@ case "${_pi_host_lane}" in
     1) PI_LANE=1; PI_LANE_NAME=orangepi; PI_LANE_ARCH=armhf;   PI_LANE_GPU=lima ;;
     2) PI_LANE=2; PI_LANE_NAME=rock64;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=lima ;;
     3) PI_LANE=3; PI_LANE_NAME=rock4d;   PI_LANE_ARCH=aarch64; PI_LANE_GPU=panfrost ;;
+    5) PI_LANE=5; PI_LANE_NAME=orangepizero; PI_LANE_ARCH=armhf; PI_LANE_GPU=lima ;;
     *) PI_LANE="${PI_LANE:-1}" ;;
 esac
 unset _pi_lane_asked _pi_host_lane
