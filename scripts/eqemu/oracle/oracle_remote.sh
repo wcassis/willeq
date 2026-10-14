@@ -257,7 +257,15 @@ if [[ -n $INI_UNSET ]]; then
 fi
 cp "$CLIENT/${CHARACTER}_"*.ini "$DIR/before-character.ini" 2>/dev/null || :
 # Capture starts before even launching Wine. Save PIDs for interrupted cleanup.
-sudo -n tcpdump -i any -s 0 -U -Z user -w "$DIR/capture.pcap" 'udp and (port 5998 or port 5999 or portrange 9000-9001 or portrange 7000-7030)' >"$DIR/pcap.log" 2>&1 &
+# B1057: on lane 5 the eqemu containers run on this box, so `-i any` records
+# every packet twice, on the docker bridge and on the container's veth
+# (attempt 2: each opcode doubled, "expected one OP_CharacterCreate, got 2").
+# Drop the veth copies; an oracle VM with no veth keeps the plain filter.
+filter='udp and (port 5998 or port 5999 or portrange 9000-9001 or portrange 7000-7030)'
+veths=$(ip -o link show type veth 2>/dev/null | awk -F': ' '{printf "%sifindex %s", (n++ ? " or " : ""), $1}')
+[[ -z $veths ]] || filter="$filter and not ($veths)"
+printf '%s\n' "$filter" >"$DIR/pcap.filter"
+sudo -n tcpdump -i any -s 0 -U -Z user -w "$DIR/capture.pcap" "$filter" >"$DIR/pcap.log" 2>&1 &
 echo $! >"$DIR/pcap.pid"
 date -u +%s.%N >"$DIR/video.mp4.t0"
 ffmpeg -nostdin -loglevel error -f x11grab -framerate 10 -video_size 1280x800 -i :99+0,30 -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p "$DIR/video.mp4" >"$DIR/video.log" 2>&1 &
