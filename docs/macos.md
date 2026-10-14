@@ -21,12 +21,12 @@ graphics PROVE card (`review/B1043/README.md` has every command and log).
 | ANGLE (EGL 1.5 + GLES 3.0 over Metal) | **works**: built from source at a pinned commit; pbuffer GLES2 clear + triangle + `glReadPixels` PASS, shared context OK, ETC1 exposed | "ANGLE" below |
 | ANGLE window surface | **partial**: `eglCreateWindowSurface` on an NSView's `CALayer` + 120 swaps + readback PASS from an ssh session; no on-screen window there (no WindowServer session for the ssh user) | `review/B1043/egl_probe/` |
 | patched GLES2 Irrlicht | **works, headless**: `scripts/build-gles2-darwin.sh`, the x86 patch set + device with a Darwin pbuffer path; 0 errors | "Build (GLES2)" below |
-| Irrlicht Darwin window + input (the `--egl-x11` parallel) | **open**: no `willeq` WindowServer login to prove an on-screen Cocoa window or NSEvent mapping | B1044 README |
+| Irrlicht Darwin window + input (`--egl-window`, the `--egl-x11` parallel) | **works**: `CIrrDeviceFB_Cocoa.mm` (NSWindow + CAMetalLayer, ANGLE window surface, NSEvent keys/modifiers/mouse/wheel, resize, teardown). Proven at the console as `will` (B1044 run 4): a 1280x720 window, keys with Shift/Control, left and right (two-finger) clicks, wheel both ways, reaching the client's hotkeys (W = MoveForward); resize, Option and Command-Q are coded but were not exercised. From ssh it refuses cleanly ("no WindowServer session"). The window becomes key only on the first click (macOS 14+ cooperative activation from a Terminal launch) | "Run" below, `refactor/B1044/README.md` |
 | willeq GLES2 build (`willeq`, `gles2_zone_benchmark`) | **works**: both link against ANGLE | "Build (GLES2)" below |
 | `gles2_zone_benchmark` (qeynos2, headless) | **runs**: draws/state changes/polys equal the x86 manifest on all 3 frames; frames deterministic run to run | B1043 README |
-| visual gate | `--platform mac --capture` ran the manifest zones and memory-coverage legs, but returned **FAIL** on timorous frame 0's draws/polys mismatch. Frames are staged for a later bless, not committed. | B1044 README, capture.log |
-| memory ledger | malloc-zone backend compiles ON; benchmark reports `ledgerEnabled=true` and point-in-time `physFootprintBytes`. Full reconciliation is **not verified**: there is no Darwin `RssAnon`, and the measured ledger is far below footprint. A platform-figure ruling is requested. | B1044 README |
-| the rest of the GLES2 tree (`model_viewer`, tools, graphics tests) | **partial**: ANGLE tools/linkage enabled; full tree build is red on a platform-specific pinned `PlacedObjectRecord` layout assertion. Partial ctest also failed (19 failed/not-run of 5627, 167 skipped). | B1044 README |
+| visual gate | `--platform mac` is the third golden set (Will's 2026-10-14 ruling): `--capture DIR` stages the five zones + memory-coverage legs and `DIR/manifest_mac.json` (the Mac's own metrics and memory rows); x86 metric differences are reported, not gated. B1044's capture is staged in the evidence directory (goldens_mac/) for Will's bless; it is red on one ledger ratchet (qeynos2 unowned 1.04 % of the ledger, bound 1 %) | B1044 README |
+| memory ledger | malloc-zone backend ON; the Darwin reading is `phys_footprint` (Will's 2026-10-14 ruling, option 1: platform-scoped figures; "Memory on macOS" below). Every snapshot carries it (`[memledger] ... phys_footprint= owned_phys_footprint=`, JSON `physFootprintBytes`); the ledger is far below footprint, and reconciling the two is open | B1044 README |
+| the rest of the GLES2 tree (`model_viewer`, tools, graphics tests) | **builds; suite 5,631 of 5,633 pass** (168 skipped): `NameTagBatchTest.BatchIsPixelIdenticalToPerNodeTextSceneNodes` differs by 615 px in its densest pose, and `visual_gate` needs Pillow or ImageMagick, neither installed for the build user | B1044 README |
 
 ## One-time setup
 
@@ -114,9 +114,36 @@ tests configured ON. B1043's clean baseline on the M4 was 236 s
     ./build/bin/willeq --no-graphics --help
     ./build/bin/willeq --no-graphics -c <config.json>
 
-The GLES2 `willeq` binary starts and parses options; the Darwin device remains
-pbuffer-only. An interactive window and input still need the console proof in
-B1044; a headless benchmark is not an on-screen client.
+Without a flag the GLES2 device takes the ANGLE/Metal pbuffer (headless; the
+benchmark, the visual gate and CI). `--egl-window` opens a Cocoa window
+instead (B1044, `docker/irrlicht-drm-x86/CIrrDeviceFB_Cocoa.mm`): an NSWindow
+whose content view hosts a `CAMetalLayer` with `contentsScale` 1, so the EGL
+window surface is exactly `-r W H` pixels (the compositor scales it on a
+Retina display), ANGLE's Metal display, and NSEvent input mapped to the same
+Irrlicht events the X11 device sends (`cocoa_keycode_map.h` is the key map,
+from the SDK's `kVK_*` codes; Option is Alt; Command-Q or the close button
+quits; the window is resizable and the driver gets `OnResize`). `--egl-x11`
+on macOS prints a one-line hint and means `--egl-window`.
+`gles2_zone_benchmark --egl-window` renders its frames into the same window.
+
+    ./build-gles2/bin/willeq --egl-window -r 1280 720 -c <config.json> \
+        --eqe1-path ~/projects/EverQuest_ETC1
+
+Started from Terminal, the window comes up behind it and takes keys only after
+the first click inside it (macOS 14+ cooperative activation; a bundled `.app`
+would activate on launch). A window needs the run user's WindowServer (Aqua) session: from ssh
+`launchctl managername` says `Background`, the device logs `EGL (Cocoa): no
+WindowServer session: run this at the console` and falls back to the pbuffer.
+Input tracing: `WILLEQ_INPUT_TRACE=1` prints one `[cocoa-input]` line per
+event the device delivers plus a `[cocoa-input] summary` line at teardown;
+`--log-module=INPUT:TRACE` prints the client's `[INPUT-EVENT]` line per event.
+
+For another user (the console user is not the build user on the mini),
+`scripts/macos/stage_window_bundle.sh` stages `bin/`, ANGLE's `lib/` (rpath
+`@executable_path/../lib`, ad-hoc re-signed), `config/`, `data/` and
+`scripts/macos/run_window_proof.sh` into `/Users/Shared/willeq-b1044`; that
+script runs the windowed benchmark and the windowed client, screenshots both
+and writes `out/summary.txt`.
 
 ## Benchmark
 
@@ -132,12 +159,15 @@ the manifest's benchmark block, `productionConfig.args`, the zone's
         --camera-pose -134.9,-238.9,6.0,0.0,-5.0 --camera-pose -202.9,-706.7,20.0,90.0,-5.0
 
 The device logs `DRM: not available on Darwin (B1043) - using the pbuffer EGL
-path`, then the ANGLE/Metal pbuffer fallback line (the x86 branch still says
-llvmpipe/Xvfb), then `GLES2 Driver: ANGLE (Apple, ANGLE Metal
+path`, then the ANGLE/Metal pbuffer fallback line (`EGL (pbuffer): Context created and made current (ANGLE/Metal)`), then `GLES2 Driver: ANGLE (Apple, ANGLE Metal
 Renderer: Apple M4, ...)`. `visual_gate.py --platform mac --capture <dir>`
-stages a Mac set without using x86 pixels as a pass threshold. It still checks
-draw/state/poly parity and live memory budgets; B1044 returned FAIL on timorous
-frame 0. No Mac goldens are blessed yet.
+stages a Mac set (`manifest_mac.json` + frames) without using x86 pixels or
+x86 metrics as a threshold; it still fails on live memory budgets and the
+ledger invariants. Draw/state/poly counts equal x86's on 14 of the 15 frames;
+timorous frame 0 draws 7 fewer (579 vs 586): with `--no-occlusion-cull` both
+platforms give 766/14,875, so the difference is the CPU software occlusion
+culler hiding three more regions on arm64 (B1044 README). No Mac goldens are
+blessed yet.
 
 ## Test
 
@@ -153,10 +183,31 @@ more asset tests SKIP, nothing fails. A green run on the Mac still skips
 more than Linux's headless tree. B1039's headless run had the ledger OFF and
 its ledger-dependent audio cases skipped, plus tests hard-coding
 `/mnt/projects` and ordinary absent-capture/skip-by-design cases;
-`refactor/B1039/README.md` names them. B1044 enabled the ledger for Mac but
-the full GLES2 test-tree build is red on a platform-layout assertion, so a
-full graphics-suite PASS has not been verified. The partial run's 167 skips and
-19 failed/not-run cases are recorded in `refactor/B1044/README.md`.
+`refactor/B1039/README.md` names them. B1044's full GLES2 suite on the M4 (`ctest -LE hygiene`): 2 failed of 5,633,
+168 skipped; the classification of every case that failed on the way is in
+`refactor/B1044/README.md`. `zone_content_sweep_smoke` SKIPs on macOS (a
+Linux rig: GNU `stdbuf`, `/proc` RssAnon).
+
+## Memory on macOS
+
+Will ruled on 2026-10-14 (#364, option 1): memory figures are
+platform-scoped. Each platform's manifest section carries its own rows
+(`textureCacheBytesLimit`, the Mac's `physFootprintBytes`), and the visual
+gate has a third golden set, `--platform mac` (`tests/goldens/mac/`,
+manifest `platforms.mac`), which Will blesses from a `--capture` staging.
+
+The Darwin figure that stands where Linux reads `RssAnon` is Mach's
+`task_vm_info.phys_footprint`: `task_info(mach_task_self(), TASK_VM_INFO,
+...)` (`src/client/core/memory_ledger_darwin.h`). It is the task's dirty,
+compressed and swapped memory, including IOSurface/Metal memory charged to
+the task (what Activity Monitor shows as "Memory"); `resident_size` from the
+same call is the `VmRSS` counterpart. On Darwin `rssAnonBytes` stays 0, so
+none of the Linux bounds (the 256 MiB ceiling, slack, `[heap]` coverage) read
+it; `owned_phys_footprint = phys_footprint - gpu_driver` is the counterpart of
+`owned_rss_anon`. The ledger (malloc-zone hooks, `memory_ledger_backend.h`)
+charges only what reaches the executable's allocator wrappers, so it sits far
+below the footprint (ANGLE/Metal and libSystem allocate around it); that gap
+is measured per zone in the B1044 README, not yet reconciled.
 
 ## Float results are not x86's bit for bit
 
@@ -178,8 +229,15 @@ its changed Linux TUs preprocessed identically. B1044 also changes the shared
 GLES2 header rule, so Linux CI must verify that regression surface.
 
 - The memory ledger: malloc-zone allocation-class charges are ON (B1044);
-  `[memarena]`'s mallinfo2 line remains Linux-only. The Mac figure equivalent
-  to `RssAnon - gpu_driver` is not settled; see B1044's ruling request.
+  `[memarena]`'s mallinfo2 line remains Linux-only. The Darwin reading is
+  `phys_footprint` ("Memory on macOS" above).
+- The window: `CIrrDeviceFB_Cocoa.mm` defines the three "X11" members
+  (`initEGLX11`, `pollX11Events`, `closeX11Window`) on Darwin, so
+  `CIrrDeviceFB.cpp`'s run()/present()/destructor are unchanged; its state
+  object lives in `x11Display_`. The frameworks it needs (Cocoa, QuartzCore,
+  CoreGraphics) ride on the Darwin `EGL` CMake target.
+- `PlacedObjectRecord` is 160 bytes, not 168: libc++'s `std::string` is 24
+  bytes (libstdc++'s is 32); `tests/test_placed_object_record.cpp` pins both.
 - Thread names: the T504 names go through `eqt::setCurrentThreadName`
   (`include/common/thread_name.h`), the one-argument `pthread_setname_np`
   on macOS. The tree has the 6 thread names set this way.

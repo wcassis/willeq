@@ -753,16 +753,21 @@ frames. Never re-bless goldens to make CI green.
 
 ## Two golden sets: x86 and Pi (B1024)
 
-**Darwin staging (B1044, not a third blessed set yet).** On the M4 mini,
-`scripts/build-gles2-darwin.sh` builds the ANGLE/Metal GLES2 client and
-benchmark (the macOS counterpart of `scripts/build-gles2-x86.sh`; ANGLE setup
-is in `docs/macos.md`). Run `python3 scripts/ci/visual_gate.py --platform mac
---capture DIR` there, with `--bench build-gles2/bin/gles2_zone_benchmark`, to
-stage the manifest's zones plus memory-coverage legs. The capture checks
-draw/state/poly parity and live budgets, and keeps the PNGs outside the repo.
-B1044's five-zone capture is **red** on timorous frame 0; `refactor/B1044/README.md`
-names the log, frames and unresolved Darwin memory accounting. Do not commit
-Mac goldens or treat `--goldens-dir`'s staged-set comparison as Will's bless.
+**The Mac set (B1044; ruled 2026-10-14, not blessed yet).** Will ruled the
+memory figures platform-scoped (#364, option 1), so the Mac is a third set:
+`tests/goldens/mac/<zone>/f<n>.png` + manifest `platforms.mac`, with the
+Mac's own metrics and memory rows (`textureCacheBytesLimit`,
+`physFootprintBytes`). On the M4 mini, `scripts/build-gles2-darwin.sh` builds
+the ANGLE/Metal client and benchmark (the macOS counterpart of
+`scripts/build-gles2-x86.sh`; ANGLE setup in `docs/macos.md`). `python3
+scripts/ci/visual_gate.py --platform mac --bench
+build-gles2/bin/gles2_zone_benchmark --capture DIR` stages the five zones plus
+the memory-coverage legs and writes `DIR/manifest_mac.json`; a draw/state/poly
+difference from the x86 manifest is reported (`x86Divergence`), not gated;
+budgets and ledger invariants still fail it. `--platform mac` without
+`--capture` verifies against the blessed section and says NOT YET BLESSED
+until there is one. The bless is the orchestrator's commit of a staged set
+that Will approved; the README in the B1044 evidence directory's goldens_mac/ names the files.
 
 The pixel gate has ONE compare rule — `compare_images_exact`
 (`scripts/ci/visual_gate.py`) — and TWO golden sets, because the two
