@@ -48,15 +48,22 @@ selected_at() {
         -format '%[fx:mean]' info:) || return 65
     awk -v mean="$mean" 'BEGIN {exit !(mean < 0.98)}'
 }
-select_at() {
-    local label=$1 x=$2 y=$3 attempt
-    for attempt in 1 2 3 4; do
-        if selected_at "$label" "$x" "$y"; then return 0; fi
-        jclick "$x" "$y"; sleep 3
-    done
-    selected_at "$label" "$x" "$y" && return 0
-    echo "selection failed: $label at $x,$y" >&2
-    return 65
+select_once() {
+    # ONE click, then verify -- never a second click. The race and class lists
+    # share one selection cursor, and the screen restores the previous
+    # session's selection: a retry click mid-re-render moves the cursor to a
+    # different row (measured: fix2e's retry left race=HalfElf, class=Warrior,
+    # and the decoded packet was (1,0,7), not the requested (1,0,2)). A missed
+    # click therefore FAILS the run and gets re-driven, instead of silently
+    # creating the wrong identity; the decoded create packet
+    # (oracle_create.py) is the final authority either way.
+    local label=$1 x=$2 y=$3
+    jclick "$x" "$y"; sleep 3
+    if ! selected_at "$label" "$x" "$y"; then
+        shot "select-failed-$label" || :
+        echo "selection failed: $label at $x,$y" >&2
+        return 65
+    fi
 }
 expected_for() {
     local verb=$1 target=$2 optional=${3:-}
@@ -120,6 +127,20 @@ if [[ $ACTION == selftest ]]; then
     done
     SCREEN_TEXT='Character Creation Random Accept Cancel'
     if assert_action_state random "$(expected_for random face 'Missing Window')" override-random; then exit 1; fi
+    # select_once: a missed click FAILS after exactly one click (never a
+    # re-click -- the old retry loop moved the shared race/class selection
+    # cursor: fix4 created class=16, fix2e created race=7, both rejected by
+    # validate_create), and a verified selection issues no further click.
+    CLICKS=0
+    jclick() { CLICKS=$((CLICKS+1)); }
+    shot() { :; }
+    selected_at() { [[ $SELECTION_OK == 1 ]]; }
+    SELECTION_OK=0
+    if select_once Barbarian 53 291; then exit 1; fi
+    [[ $CLICKS == 1 ]] || { echo "missed click re-driven ($CLICKS clicks), expected 1"; exit 1; }
+    SELECTION_OK=1
+    select_once Barbarian 53 291 || exit 1
+    [[ $CLICKS == 2 ]] || { echo "verified selection clicked again ($CLICKS clicks), expected 2"; exit 1; }
     echo 'PASS: selected coordinates and random/accept/cancel missed-action and override assertions'
     exit 0
 fi
@@ -249,11 +270,20 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
                 jclick 123 421; sleep 12
             fi
             screen_text | grep -qi 'Character Creation' || { echo "create slot did not open" >&2; exit 65; }
-            select_at "$race" 53 "$race_row" || exit 65
-            select_at "$class" 153 "$class_row" || exit 65
-            select_at "$gender" "$(gender_x "$gender")" 252 || exit 65
+            # Let the restored selection finish re-rendering before the first
+            # click (measured 12 s in diag-charcreate2); a click on a half
+            # rendered list can light a row the cursor does not hold.
+            sleep 12
+            select_once "$race" 53 "$race_row" || exit 65
+            select_once "$class" 153 "$class_row" || exit 65
+            select_once "$gender" "$(gender_x "$gender")" 252 || exit 65
             jrclick 1170 348; sleep 3
             jrclick 1170 389; sleep 3
+            # One consolidated selected-state check after all three controls,
+            # before any other click touches the shared cursor.
+            selected_at "$race" 53 "$race_row" || exit 65
+            selected_at "$class" 153 "$class_row" || exit 65
+            selected_at "$gender" "$(gender_x "$gender")" 252 || exit 65
             shot "$name-attributes"
             jclick 1243 54; sleep 15
             jclick 105 271; sleep 2
