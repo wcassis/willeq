@@ -1,5 +1,6 @@
 #pragma once
 
+#include "client/audio/audio_device_rate.h"  // B1069
 #include "client/state/game_state.h"
 #include "client/mode/game_mode.h"
 #include "client/mode/graphical_mode.h"
@@ -86,6 +87,14 @@ struct ApplicationConfig {
     std::string audioSoundfont;
     std::string audioVendorMusic = "gl.xmi";
     bool audioUse3D = true;  // K15 (B037): "audio.use_3d"
+    // B1069 (#389): "audio.device_sample_rate" / --audio-rate. The playback
+    // DEVICE rate (the mixer stays at 22050); 0 = the backend's native rate.
+    // main.cpp publishes it to EQT::Audio::setConfiguredDeviceSampleRate()
+    // (client/audio/audio_device_rate.h, which says why it is not a setter).
+    uint32_t audioDeviceSampleRate = EQT::Audio::kDefaultDeviceSampleRate;
+    // Set by --audio-rate: the config file (loaded AFTER the arguments) then
+    // leaves audioDeviceSampleRate alone, so the CLI mirror wins.
+    bool audioDeviceSampleRateFromCli = false;
 
     // RDP settings (guarded by WITH_RDP at usage sites)
     bool rdpEnabled = false;

@@ -143,6 +143,13 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
                 int vol = std::atoi(argv[++i]);
                 config.audioEffectsVolume = std::clamp(vol, 0, 100) / 100.0f;
             }
+        } else if (arg == "--audio-rate") {
+            // B1069 (#389): playback DEVICE rate in Hz; 0 = backend native.
+            if (i + 1 < argc) {
+                long hz = std::atol(argv[++i]);
+                config.audioDeviceSampleRate = static_cast<uint32_t>(std::clamp(hz, 0L, 384000L));
+                config.audioDeviceSampleRateFromCli = true;
+            }
         } else if (arg == "--soundfont") {
             if (i + 1 < argc) {
                 config.audioSoundfont = argv[++i];
@@ -360,6 +367,7 @@ ApplicationConfig Application::parseArguments(int argc, char* argv[]) {
             std::cout << "  --music-volume <0-100>   Music volume (default: 50)\n";
             std::cout << "  --effects-volume <0-100> Sound effects volume (default: 100)\n";
             std::cout << "  --soundfont <path>       Path to SoundFont for MIDI playback\n";
+            std::cout << "  --audio-rate <hz>        Audio device sample rate (default: 48000, 0 = native)\n";
 #endif
             std::cout << "  --headless               Run in headless interactive mode\n";
             std::cout << "  --automated              Run in automated/bot mode\n";
@@ -538,6 +546,15 @@ bool Application::loadConfigFile(const std::string& configFile, ApplicationConfi
                     config.audioUse3D = audio_config["use_3d"].asBool();
                     LOG_INFO(MOD_AUDIO, "3D positional audio {} from config",
                              config.audioUse3D ? "enabled" : "disabled");
+                }
+                // B1069 (#389): the playback DEVICE rate. --audio-rate wins.
+                if (audio_config.isMember("device_sample_rate") &&
+                    !config.audioDeviceSampleRateFromCli) {
+                    const Json::Int64 hz = audio_config["device_sample_rate"].asInt64();
+                    config.audioDeviceSampleRate = static_cast<uint32_t>(
+                        std::clamp<Json::Int64>(hz, 0, 384000));
+                    LOG_INFO(MOD_AUDIO, "Audio device sample rate from config: {}Hz",
+                             config.audioDeviceSampleRate);
                 }
             }
 #endif

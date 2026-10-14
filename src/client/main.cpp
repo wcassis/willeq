@@ -280,6 +280,11 @@ static bool parseCliAndLoadConfig(int argc, char* argv[],
         return false;
     }
 
+    // B1069 (#389): publish the playback DEVICE rate (audio.device_sample_rate
+    // / --audio-rate) to the audio system before Application::initialize();
+    // client/audio/audio_device_rate.h says why this is not a Bridge setter.
+    EQT::Audio::setConfiguredDeviceSampleRate(config.audioDeviceSampleRate);
+
     out = std::move(config);
     return true;
 }
