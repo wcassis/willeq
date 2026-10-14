@@ -56,17 +56,48 @@ the helper's expected `[memledger] point=ready` line was absent, although
 `xu4/frames/frame_000039.png` shows the character zoned in. It is retained
 as a failed capture attempt, not counted as Options-window evidence.
 
-MR !174 pipeline 1021 passed at head
-`d4b4f37af15054bf158b85f84c505ff13f8d2e0f` (including hygiene and
-build-test). Any later documentation commit requires a new MR-head pipeline.
+A second, independent XU4 capture for the fix leg (2026-10-14) used the
+same publish and flags, `--dump-frames-dir /tmp/b1053 --dump-every 30
+--dump-max-frames 40` (the orchestrator's 17:25Z command). Alt+O was sent
+`xu4-fix/out/keys.tsv:2` 3 s after zone entry; the Options window (General
+page) is open in `xu4-fix/out/frames/frame_000004.png` through
+`frame_000009.png`, and `/q` ended the run at `keys.tsv:3`. Compared with
+`before-1280x720/options_general_1280x720.png` (x86, same 1280x720 render):
+the window sits at the same position, the tab row and both control columns
+are the same set of controls, and no control is clipped at the lower or
+right edge on either platform. (The two stills' 39.4 % pixel difference over
+the 600x580 window crop is the 3D zone background and chat/tip windows, not
+the Options panel; the panel regions match side by side in
+`xu4-fix/zoom_right_sidebyside.png`.) Finding for both platforms: NOT
+REPRODUCED.
+
+MR !174 pipeline 1031 passed at head
+`cac2f612ba2e9dd1cbb86b98ec794e54d0858aef` (including hygiene and
+build-test). The full pipeline record is in
+`/home/user/kb-evidence/kb-b1053-options-window/ci-final.json`. This line
+names the head the QA leg graded; if a later commit moves the MR head, this
+citation and a new MR-head pipeline are required.
+
+## Acceptance (contract reconciled 2026-10-13 18:00Z)
+
+The pre-reconciliation "before/after stills" row was replaced by two checks:
+
+- `stills-two-resolutions-reported`: MET — the x86 GLES2 stills at 1280x720
+  and 1024x768 are under `before-1280x720/` and `before-1024x768/` in the
+  evidence directory, plus the XU4 constrained-DRM still from the "XU4
+  constrained DRM check" section.
+- `overflow-finding-reported`: MET — the overflow list is EMPTY (zero
+  controls outside their page or window at 1280x720 and 1024x768,
+  `measurement.txt:5-6`), so the finding is NOT REPRODUCED. NOT REPRODUCED
+  is a reportable outcome of this check.
 
 ## Not verified / left open
 
 - The reported XU4 Options-window overflow was not reproduced in the
-  General-page still on constrained DRM, the measured control rectangles,
+  General-page stills on constrained DRM, the measured control rectangles,
   or the x86 GLES2 stills. Other XU4 tabs were not exercised with uinput;
   a page-specific or text-rendering defect may remain. No layout coordinates
   or page assignments were changed without a failing measurement. The
   original XU4 still or a precise tab/control description is still needed.
-- There is no after-fix still because no layout fix has been made. The
-  before/after acceptance row therefore remains open.
+- There is no after-fix still because no layout fix has been made; the
+  applicable acceptance rows are the reconciled pair above.
