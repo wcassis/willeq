@@ -391,11 +391,11 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             # (no class, no points, no page 1, no name, no create
             # packet). This is exactly the state the stock UseLuclin=FALSE
             # stills were taken in: the pair's FacePick modal over the
-            # creation page. arg3 is the gender. The host report must not
-            # require a decoded create packet for this verb (it only does
-            # for the create verb).
+            # creation page. Plan line: open-creation <race> <gender>
+            # <still_name> (3 fields, the still label). The host report
+            # must not require a decoded create packet for this verb (it
+            # only does for the create verb).
             [[ $arg3 == Male || $arg3 == Female ]] || exit 65
-            local race_row gender_row
             race_row=$(race_y "$target") || exit 65
             gender_row=$(gender_x "$arg3") || exit 65
             if screen_text | grep -qi 'Character Creation'; then
