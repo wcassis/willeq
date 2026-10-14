@@ -445,6 +445,25 @@ facepick_probe_tsv() {
         printf '\n'
     } >> "$out"
 }
+# B888-CC1 (#204): the settle discriminator behind facepick-rows. Counts how
+# many of the seven picker rows read a visible arrow-strip value (>48, the
+# probe's threshold). A modal that is OPEN but whose picker LIST has not yet
+# rendered shows only the FACE row bright (~74) and the other six dark (~21),
+# so it counts 1; a rendered list shows >= 2, because every stock (UseLuclin=
+# FALSE) pair shows at least face+eyes (matrix3's 2/7 floor -- iksar/troll/
+# ogre MALE show exactly face+eyes). The FACE row alone reads ~74 in BOTH
+# states, so it cannot discriminate; the COUNT can. Validated 2026-10-14:
+# matrix3-open (all rows) counts 7, a half-open full26f still counts 1.
+facepick_row_count() {
+    local row label yrow mean n=0
+    for row in 'face:348' 'hair:368' 'haircolor:388' 'eyes:408' 'beard:428' 'beardcolor:448' 'wode:468'; do
+        label=${row%%:*}; yrow=${row##*:}
+        mean=$(convert "$1" -crop "20x12+138+$((yrow-6-30))" +repage -colorspace Gray -format '%[fx:mean*255]' info: 2>/dev/null)
+        [[ $mean =~ ^[0-9.]+$ ]] || continue
+        if [[ $(awk -v m="$mean" 'BEGIN { print (m > 48) ? 1 : 0 }') == 1 ]]; then n=$((n+1)); fi
+    done
+    printf '%s\n' "$n"
+}
 assert_action_state() {
     local verb=$1 expected=$2 name=$3
     case $verb in
@@ -933,89 +952,64 @@ while IFS=$'\t' read -r verb target arg3 arg4 arg5 arg6; do
             [[ $arg5 == Male || $arg5 == Female ]] || exit 65
             [[ -n $arg6 && $arg6 =~ ^[A-Za-z0-9_-]+$ ]] || exit 65
             creation_pair_open "$target" "$arg5" "$name" || exit 65
-            # matrix4 (the reference) opens Set Face in a retry loop, moving
-            # the cursor off the modal between tries and settling ~3s each.
-            # The picker list renders a moment AFTER the modal's button strip
-            # appears, so a single click + 2s can still a modal that is open
-            # but not yet expanded. Retry the open like the reference, then
-            # settle before the still so the list is on screen.
+            # matrix3 (the reference stock capture, oracle/matrix_capture3.sh)
+            # opens Set Face in a retry loop and STILLs the modal directly --
+            # no close/reopen. A re-open does NOT re-render the picker list on
+            # this rig: it strands the modal in the half-open "FACE + buttons
+            # only" state, which is exactly the full26/pilot2 failure (all
+            # pairs stilled before the list rendered). So mirror matrix3: open
+            # once and settle until the list is on screen.
             for open_attempt in 1 2 3 4 5; do
                 face_open && break
                 jclick 37 252; sleep 3
                 xdotool mousemove 600 900
             done
             face_open || { shot "$name-face-missing"; echo 'facepick-rows: modal did not open' >&2; exit 65; }
-            # The first open shows the FACE heading + button strip with the
-            # picker LIST not yet rendered (the 2026-10-14 pilot stills: only
-            # FACE + Random/Accept/Cancel, no rows). Close and re-open, like a
-            # user toggling Set Face: the re-open renders the full list.
-            #
-            # The close MUST use the MEASURED Cancel button row, not 50,539:
-            # full26/b/c proved 539 is ~20px BELOW the button (the text sits
-            # at image y ~486-492, the button bodies centre at ROOT y ~520;
-            # the still crop is +0+30-offset). A close that misses leaves the
-            # modal open, the re-open is a no-op, and the still is the
-            # half-open FACE-only state -- exactly the full26f failure (all 26
-            # pairs stilled before the list rendered). Reuse close-creation's
-            # measured sweep and VERIFY the close (face_open false) before
-            # re-opening.
-            for coord in '47 520' '115 520' '132 520' '47 526' '115 526' '132 526' '50 539' '140 539'; do
-                face_open || break
-                set -- $coord; cxb=$1; cby=$2
-                jclick "$cxb" "$cby"; sleep 3
+            # Settle until the picker LIST renders. The FACE row alone reads
+            # ~74 in BOTH the half-open and rendered states, so it cannot
+            # discriminate; the ROW COUNT can (facepick_row_count: half-open =
+            # 1, rendered = >= 2, because every stock pair shows at least
+            # face+eyes). matrix3 stills the modal right after it opens, but
+            # its capture settles ~2s; the re-render can take longer, so poll
+            # the row count for up to ~24s.
+            for settle in $(seq 1 12); do
+                sleep 2
+                shot "$name" || :
+                if [[ $(facepick_row_count "$DIR/$name.png") -ge 2 ]]; then
+                    break
+                fi
             done
-            face_open && { shot "$name-close-failed"; echo 'facepick-rows: modal still open after Cancel retries -- re-open would be a no-op' >&2; exit 65; }
-            # Re-open, retrying (Set Face is 37,252; move the cursor off the
-            # modal between tries, settle ~3s each, like the matrix4
-            # reference's open loop).
-            for open_attempt in 1 2 3 4 5; do
-                face_open && break
-                jclick 37 252; sleep 3
-                xdotool mousemove 600 900
-            done
-            face_open || { shot "$name-face-missing2"; echo 'facepick-rows: modal not open after re-open' >&2; exit 65; }
-            # Settle until the picker LIST renders, not a fixed 5s. The first
-            # open shows the FACE heading + button strip with the picker LIST
-            # not yet rendered (the 2026-10-14 pilot stills). The FACE row's
-            # arrow strip (x138-158, image y312-324) reads ~74 once the list
-            # has rendered and ~21 in the half-open state -- the calibrated
-            # probe's own FACE measurement, validated against the matrix4
-            # all-rows table (73.92-75.02 visible, 20.58-21.68 hidden). Poll
-            # it; if the list never renders after several toggles, the still
-            # is untrustworthy and the step FAILS rather than emitting a row
-            # (the full26f failure: all 26 pairs stilled before the list
-            # rendered).
-            face_rendered() {
-                # $1 still path. Returns 0 iff the FACE arrow strip reads a
-                # visible-row value (>48, the probe's threshold).
-                local mean
-                mean=$(convert "$1" -crop "20x12+138+312" +repage -colorspace Gray -format '%[fx:mean*255]' info: 2>/dev/null)
-                [[ $mean =~ ^[0-9.]+$ ]] || return 1
-                awk -v m="$mean" 'BEGIN { exit (m > 48) ? 0 : 1 }'
-            }
-            for toggle in 1 2 3; do
-                for settle in $(seq 1 10); do
-                    sleep 2
-                    shot "$name" || :
-                    face_rendered "$DIR/$name.png" && break 2
-                done
-                # Still half-open after ~20s: close (measured Cancel sweep) and
-                # re-open once more, like a user toggling Set Face.
-                face_open || break
+            # If it is STILL the half-open state after the settle window, do
+            # ONE verified close (the MEASURED Cancel row, not 50,539 which
+            # full26/b/c proved ~20px below the button) -> reopen, then settle
+            # again. The close is verified (face_open false) before the
+            # re-open, so the re-open is never a no-op on an already-open
+            # modal.
+            if [[ $(facepick_row_count "$DIR/$name.png") -lt 2 ]]; then
                 for coord in '47 520' '115 520' '132 520' '47 526' '115 526' '132 526' '50 539' '140 539'; do
                     face_open || break
                     set -- $coord; cxb=$1; cby=$2
                     jclick "$cxb" "$cby"; sleep 3
                 done
+                face_open && { shot "$name-close-failed"; echo 'facepick-rows: modal still open after Cancel retries' >&2; exit 65; }
                 for open_attempt in 1 2 3 4 5; do
                     face_open && break
                     jclick 37 252; sleep 3
                     xdotool mousemove 600 900
                 done
-                face_open || break
-            done
+                face_open || { shot "$name-face-missing2"; echo 'facepick-rows: modal not open after re-open' >&2; exit 65; }
+                for settle in $(seq 1 12); do
+                    sleep 2
+                    shot "$name" || :
+                    [[ $(facepick_row_count "$DIR/$name.png") -ge 2 ]] && break
+                done
+            fi
+            # The still must show a rendered list (>= 2 rows). Every stock
+            # pair shows at least face+eyes; a single-row read means the list
+            # never rendered (the half-open state) and the step FAILS rather
+            # than recording an untrustworthy row (the full26f failure).
             shot "$name" || :
-            face_rendered "$DIR/$name.png" || { shot "$name-face-not-rendered"; echo 'facepick-rows: picker list not rendered after toggles -- FACE arrow strip reads dark, the still is the half-open state' >&2; exit 65; }
+            [[ $(facepick_row_count "$DIR/$name.png") -ge 2 ]] || { shot "$name-face-not-rendered"; echo 'facepick-rows: picker list not rendered -- only the FACE row is bright, the still is the half-open state' >&2; exit 65; }
             facepick_probe_tsv "$DIR/$name.png" "$target" "$arg5" "$DIR/rows.tsv" || exit 65 ;;
         create)
             [[ $target =~ ^[A-Za-z]{3,15}$ && ( $gender == Male || $gender == Female ) ]] || exit 65
