@@ -103,6 +103,24 @@ At the revised table/parser head, the focused `CharCreate|FacePick` run passed
 48/48 tests, `check_doc_counts.py` exited 0, and the headless hygiene run
 passed 31/31 tests. Draft MR !168 exists; CI must still verify the pushed head.
 
+## Fix leg 2 (2026-10-14): findings 1 + 6
+
+- **Finding 1 (era gate) implemented.** `data/char_create_faces.tsv` gains a
+  `visible_classic` column (10th field) parsed beside the Luclin `visible`
+  column (`char_create_faces.cpp`); `openFacePick` copies the era-SELECTED
+  column into the modal state (`face_pick_panel.cpp`), so drawing,
+  hit-testing, stepping and Random all gate on `CharCreateScreenState::useOldModels`,
+  which the host mirrors from `RaceModelLoader::isUsingOldModels()`
+  (`char_select_host.cpp`). `FacePick.ClassicModelsGateTheRowsOnTheModelEra`
+  pins the gate on both eras. The `visible_classic` CELLS are the capture leg's
+  output (26 stock-client stills under `kb-evidence/kb-cc1-facepick/classic-visibility/`);
+  until they land, the parser defaults a 9-column row's classic cell to hidden.
+- **Finding 6 (RED/GREEN) closed.** `CharCreateClicks.SetFaceButtonIsNotGreyed`
+  uses only seam symbols present in both trees, so it compiles and runs at the
+  pre-feature baseline (origin/fable f8ead59d): 1 test selected, FAILED
+  (`finding6-RED-baseline-f8ead59d.txt`); at the feature head the same body
+  passes (`finding6-GREEN-head.txt`).
+
 ## Range evidence standard
 
 An option count is `COUNT-MEASURED` only when
