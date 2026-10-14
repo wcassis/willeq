@@ -441,6 +441,7 @@ SET(CLIENT_CORE_SOURCES
     src/client/hc_map.cpp
     src/client/zone_bsp.cpp
     src/client/zone_lines.cpp
+    src/client/zone_line_crossing.cpp
     # B917: the game/render-thread zone-load handoff (device-free)
     src/client/zone_load_handoff.cpp
     # B918: the process-wide FATAL-exit record main() turns into exit code 4
