@@ -1,7 +1,8 @@
 # One-command official-client oracle capture (B1048)
 
-Run from a willeq worktree on hermes-ext. The driver pairs `EQEMU_LANE=1..4`
-with its official Titanium Wine VM, takes the eqemu lock, starts the stack,
+Run from a willeq worktree on hermes-ext or dev-u24 (both need NumPy/Pillow for
+the host-side report). The driver pairs `EQEMU_LANE=1..5`
+with its official Titanium Wine client, takes the eqemu lock, starts the stack,
 snapshots character/currency and inventory, starts pcap and video **before
 login**, drives each TSV row, decodes packets, writes a step ledger and
 summary, then stops the world before restoring and releases its exact lock.
@@ -18,6 +19,20 @@ bash scripts/eqemu/oracle/oracle_session.sh 4 \
   scripts/eqemu/oracle/plans/charcreate_barbarian_male.tsv \
   /home/user/kb-evidence/kb-b1048-oracle-driver/barbarian
 ```
+
+**Lane 5 (the ThinkPad, `docs/thinkpad.md`) is the default oracle lane for
+oracle legs** (B1057, #377): the stack and the Wine client share one x86 box
+whose `:99` is a real Xorg on the Quadro (`oracle-xorg.service`), so the run
+finds the display up and starts no Xvfb, and stop only ever kills an Xvfb the
+session itself recorded in `xvfb.pid` (`scripts/eqemu/oracle/tests/remote_stop_safety.sh`). Use
+lanes 1-4 (llvmpipe VMs) only when lane 5's lock is held or the leg needs a
+second oracle in parallel. Two lane-5 differences are handled in
+`oracle_remote.sh`: the capture drops the eqemu containers' veth copy of each
+packet (`-i any` otherwise records every datagram twice, saved filter in
+`pcap.filter`), and the run resets the long-lived Xorg's screen saver and
+bounds the timing-marker wait. Measured per-step times against lanes 1/3/4
+(`review/B1057/README.md`): the steps are bound by the driver's fixed sleeps,
+so lane 5 saves about 25 s on login and little on create, not minutes.
 
 `install.sh` also writes `~/eq-oracle/uigap-scripts/.oracle-repo`, so the
 installed copy can be invoked from outside the checkout until that checkout
