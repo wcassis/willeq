@@ -198,8 +198,10 @@ x=400 column y=463..598; D24S8 via the recreated throwaway
 
 +Y wins on BOTH formats now — the tie is broken deterministically.
 
-The committed strip image `refactor/B976/floor_before_after_diff.jpg`
-(floor region y 430..600 of the 800×600 frames): rows 1–2 timorous_f1
+The strip image `refactor/B976/floor_before_after_diff.jpg` is gitignored
+(`*.jpg` is in `.gitignore`), so it is a local evidence artifact in the
+checkout, not committed — the full-resolution frames below are the committed
+record. Floor region y 430..600 of the 800×600 frames: rows 1–2 timorous_f1
 before/after, rows 3–4 timorous_f2 before/after, row 5 the f2 before→after
 diff — the before rows are dark floors, the after rows the lit +Y floor.
 Full-resolution frames: `gate_before/run/`, `gate_after/run/` in the
